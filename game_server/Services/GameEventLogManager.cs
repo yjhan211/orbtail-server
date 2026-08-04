@@ -445,7 +445,8 @@ public class GameEventLogManager
         bool isCore,
         long firstAttackerPlayerId,
         long lastAttackerPlayerId,
-        IReadOnlyDictionary<long, int> damageByPlayer)
+        IReadOnlyDictionary<long, int> damageByPlayer,
+        bool isReinforcement = false)
     {
         var contributions = damageByPlayer
             .Where(pair => pair.Key != 0 && pair.Value > 0)
@@ -456,12 +457,12 @@ public class GameEventLogManager
 
         Append(matchingId, "AFTERIMAGE_KILLED", lastAttackerPlayerId,
             BotPlayerManager.IsBotPlayerId(lastAttackerPlayerId),
-            $"Afterimage {monsterId} killed: core={isCore}, first={firstAttackerPlayerId}, last={lastAttackerPlayerId}, contributors={contributions.Count}.",
+            $"Afterimage {monsterId} killed: core={isCore}, reinforcement={isReinforcement}, first={firstAttackerPlayerId}, last={lastAttackerPlayerId}, contributors={contributions.Count}.",
             entry =>
             {
                 entry.MonsterId = monsterId;
                 entry.Area = area;
-                entry.Outcome = isCore ? "core" : "normal";
+                entry.Outcome = isCore ? "core" : isReinforcement ? "reinforcement" : "normal";
                 entry.FirstAttackerPlayerId = firstAttackerPlayerId;
                 entry.LastAttackerPlayerId = lastAttackerPlayerId;
                 entry.MonsterDamageContributions = contributions;
@@ -498,6 +499,76 @@ public class GameEventLogManager
                 entry.PhaseIndex = snapshot.PhaseIndex;
                 entry.Outcome = reason;
                 entry.RewardAreaStates = areas;
+            });
+    }
+
+    public void LogReinforcementReleased(long matchingId, MonsterReinforcementRelease release)
+    {
+        if (matchingId <= 0 || release.ReleasedCount <= 0)
+            return;
+
+        Append(matchingId, "SURVIVOR_REINFORCEMENT_RELEASED", 0, false,
+            $"Reinforcement released in {release.Area}: phase={release.PhaseIndex}, count={release.ReleasedCount}, remaining={release.RemainingBudget}.",
+            entry =>
+            {
+                entry.Area = release.Area.ToString();
+                entry.PhaseIndex = release.PhaseIndex;
+                entry.ReinforcementReleasedCount = release.ReleasedCount;
+                entry.ReinforcementRemainingBudget = release.RemainingBudget;
+                entry.AliveMonsterCount = release.AliveCountAfterRelease;
+            });
+    }
+
+    public void LogMonsterDensitySample(long matchingId, MonsterDensitySample sample)
+    {
+        if (matchingId <= 0)
+            return;
+
+        Append(matchingId, "SURVIVOR_MONSTER_DENSITY_SAMPLE", 0, false,
+            $"Monster density in {sample.Area}: alive={sample.AliveMonsterCount}, remaining={sample.ReinforcementRemainingBudget}.",
+            entry =>
+            {
+                entry.Area = sample.Area.ToString();
+                entry.PhaseIndex = sample.PhaseIndex;
+                entry.AliveMonsterCount = sample.AliveMonsterCount;
+                entry.ReinforcementRemainingBudget = sample.ReinforcementRemainingBudget;
+                entry.GlobalAliveMonsterCount = sample.GlobalAliveMonsterCount;
+                entry.HasAttackableMonster = sample.HasAttackableMonster;
+            });
+    }
+
+    public void LogBotMovementTickPerformance(
+        long matchingId,
+        double p50Milliseconds,
+        double p95Milliseconds,
+        double p99Milliseconds,
+        double snapshotP95Milliseconds,
+        double planningP95Milliseconds,
+        double walkingP95Milliseconds,
+        double broadcastP95Milliseconds,
+        int sampleCount,
+        int skippedTickCount,
+        int maxConsecutiveSkippedTicks)
+    {
+        if (matchingId <= 0 || sampleCount <= 0)
+            return;
+
+        Append(matchingId, "SURVIVOR_BOT_MOVEMENT_TICK_PERFORMANCE", 0, false,
+            $"Bot movement tick: p50={p50Milliseconds:F1}ms, p95={p95Milliseconds:F1}ms, p99={p99Milliseconds:F1}ms, " +
+            $"sections p95 snapshot={snapshotP95Milliseconds:F1}ms, planning={planningP95Milliseconds:F1}ms, " +
+            $"walking={walkingP95Milliseconds:F1}ms, broadcast={broadcastP95Milliseconds:F1}ms, skips={skippedTickCount}.",
+            entry =>
+            {
+                entry.BotMovementTickP50Milliseconds = p50Milliseconds;
+                entry.BotMovementTickP95Milliseconds = p95Milliseconds;
+                entry.BotMovementTickP99Milliseconds = p99Milliseconds;
+                entry.BotMovementSnapshotP95Milliseconds = snapshotP95Milliseconds;
+                entry.BotMovementPlanningP95Milliseconds = planningP95Milliseconds;
+                entry.BotMovementWalkingP95Milliseconds = walkingP95Milliseconds;
+                entry.BotMovementBroadcastP95Milliseconds = broadcastP95Milliseconds;
+                entry.BotMovementTickSampleCount = sampleCount;
+                entry.BotMovementTickSkipCount = skippedTickCount;
+                entry.BotMovementMaxConsecutiveSkipCount = maxConsecutiveSkippedTicks;
             });
     }
 
@@ -708,6 +779,24 @@ public class GameEventLogManager
                 entry.DiscovererPlayerId = discovererPlayerId;
                 entry.PickerPlayerId = pickerPlayerId;
                 entry.AutoUsed = autoUsed;
+            });
+    }
+
+    public void LogSurvivorPhaseTransition(
+        long matchingId,
+        SurvivorPhaseSnapshot before,
+        SurvivorPhaseSnapshot after)
+    {
+        Append(matchingId, "SURVIVOR_PHASE_TRANSITION", 0, false,
+            $"Survivor phase: {before.Phase}->{after.Phase}, stage={after.StageIndex}, open={string.Join(',', after.OpenAreas)}.",
+            entry =>
+            {
+                entry.FromArea = before.Phase.ToString();
+                entry.ToArea = after.Phase.ToString();
+                entry.PhaseIndex = after.StageIndex;
+                entry.Outcome = after.Phase.ToString();
+                entry.OpenAreas = after.OpenAreas.Select(area => area.ToString()).ToList();
+                entry.DurationSeconds = SurvivorPhaseManager.GetPhaseDurationSeconds(after.Phase);
             });
     }
 
@@ -1044,6 +1133,73 @@ public class GameEventLogManager
         }
     }
 
+    public void LogDodgeableProjectileLaunches(
+        long matchingId,
+        IReadOnlyCollection<DodgeableProjectileLaunch> launches)
+    {
+        foreach (var launch in launches)
+        {
+            var attack = launch.Attack;
+            AppendAt(
+                matchingId,
+                "SURVIVOR_PVP_PROJECTILE_LAUNCHED",
+                attack.AttackerPlayerId,
+                BotPlayerManager.IsBotPlayerId(attack.AttackerPlayerId),
+                $"PvP projectile launched: id={launch.ProjectileId}, target={attack.TargetPlayerId}, item={attack.WeaponItemId}.",
+                new DateTimeOffset(launch.LaunchedAtUtc),
+                entry =>
+                {
+                    entry.ProjectileId = launch.ProjectileId;
+                    entry.TargetPlayerId = attack.TargetPlayerId;
+                    entry.Area = attack.Area.ToString();
+                    entry.WeaponItemId = attack.WeaponItemId;
+                    entry.Damage = attack.Damage;
+                    entry.CandidateTargetCount = attack.CandidateTargetCount;
+                    entry.ProjectileTravelSeconds = Math.Max(
+                        0d,
+                        (launch.ImpactAtUtc - launch.LaunchedAtUtc).TotalSeconds);
+                    entry.Outcome = "launched";
+                });
+        }
+    }
+
+    public void LogDodgeableProjectileResolutions(
+        long matchingId,
+        IReadOnlyCollection<DodgeableProjectileResolution> resolutions)
+    {
+        foreach (var resolution in resolutions)
+        {
+            var launch = resolution.Launch;
+            var attack = launch.Attack;
+            var hitTargetIds = resolution.Hits
+                .Select(hit => hit.TargetPlayerId)
+                .Distinct()
+                .ToList();
+            AppendAt(
+                matchingId,
+                "SURVIVOR_PVP_PROJECTILE_RESOLVED",
+                attack.AttackerPlayerId,
+                BotPlayerManager.IsBotPlayerId(attack.AttackerPlayerId),
+                $"PvP projectile resolved: id={launch.ProjectileId}, outcome={resolution.Outcome}, hits={hitTargetIds.Count}.",
+                new DateTimeOffset(launch.ImpactAtUtc),
+                entry =>
+                {
+                    entry.ProjectileId = launch.ProjectileId;
+                    entry.TargetPlayerId = attack.TargetPlayerId;
+                    entry.Area = attack.Area.ToString();
+                    entry.WeaponItemId = attack.WeaponItemId;
+                    entry.Damage = attack.Damage;
+                    entry.ProjectileTravelSeconds = Math.Max(
+                        0d,
+                        (launch.ImpactAtUtc - launch.LaunchedAtUtc).TotalSeconds);
+                    entry.TargetDisplacement = resolution.TargetDisplacement;
+                    entry.ProjectileHitRadius = resolution.HitRadius;
+                    entry.HitTargetCount = hitTargetIds.Count;
+                    entry.AttackTargetPlayerIds = hitTargetIds;
+                    entry.Outcome = resolution.Outcome;
+                });
+        }
+    }
     private OrbTransitionSnapshot TrackOrbTelemetry(long matchingId, long playerId, IReadOnlyList<int> itemIds,
         int equippedItemId, bool active, SurvivorOrbColor color)
     {
@@ -1914,6 +2070,21 @@ public class GameEventEntry
     public int? TargetWeaponTier { get; set; }
     public int? MonsterId { get; set; }
     public int? PhaseIndex { get; set; }
+    public int? ReinforcementReleasedCount { get; set; }
+    public int? ReinforcementRemainingBudget { get; set; }
+    public int? AliveMonsterCount { get; set; }
+    public int? GlobalAliveMonsterCount { get; set; }
+    public bool? HasAttackableMonster { get; set; }
+    public double? BotMovementTickP50Milliseconds { get; set; }
+    public double? BotMovementTickP95Milliseconds { get; set; }
+    public double? BotMovementTickP99Milliseconds { get; set; }
+    public double? BotMovementSnapshotP95Milliseconds { get; set; }
+    public double? BotMovementPlanningP95Milliseconds { get; set; }
+    public double? BotMovementWalkingP95Milliseconds { get; set; }
+    public double? BotMovementBroadcastP95Milliseconds { get; set; }
+    public int? BotMovementTickSampleCount { get; set; }
+    public int? BotMovementTickSkipCount { get; set; }
+    public int? BotMovementMaxConsecutiveSkipCount { get; set; }
     public int? CoreCurrentHealth { get; set; }
     public int? CoreMaxHealth { get; set; }
     public List<MonsterRewardAreaTelemetry>? RewardAreaStates { get; set; }
@@ -1960,6 +2131,10 @@ public class GameEventEntry
     public int? CandidateTargetCount { get; set; }
     public int? ValidTargetCount { get; set; }
     public int? HitTargetCount { get; set; }
+    public long? ProjectileId { get; set; }
+    public double? ProjectileTravelSeconds { get; set; }
+    public float? TargetDisplacement { get; set; }
+    public float? ProjectileHitRadius { get; set; }
     public int? RequestedRecoveryAmount { get; set; }
     public int? WastedRecoveryAmount { get; set; }
     public long? DiscovererPlayerId { get; set; }
@@ -1968,6 +2143,7 @@ public class GameEventEntry
     public bool? PriorityExpired { get; set; }
     public bool? AutoUsed { get; set; }
     public List<string>? WarningAreas { get; set; }
+    public List<string>? OpenAreas { get; set; }
     public int? Corruption { get; set; }
     public int? InventorySlotsUsed { get; set; }
     public int? InventorySlotCapacity { get; set; }

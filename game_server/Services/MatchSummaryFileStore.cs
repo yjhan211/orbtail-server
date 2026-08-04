@@ -215,6 +215,27 @@ public sealed class MatchSummaryFileStore
 
         var stoneEvents = events.Where(entry => entry.Type == "SUMMON_STONE_AWARDED").ToList();
         var afterimageKillEvents = events.Where(entry => entry.Type == "AFTERIMAGE_KILLED").ToList();
+        var reinforcementReleaseEvents = events
+            .Where(entry => entry.Type == "SURVIVOR_REINFORCEMENT_RELEASED").ToList();
+        var densityEvents = events
+            .Where(entry => entry.Type == "SURVIVOR_MONSTER_DENSITY_SAMPLE").ToList();
+        var botMovementPerformanceEvents = events
+            .Where(entry => entry.Type == "SURVIVOR_BOT_MOVEMENT_TICK_PERFORMANCE").ToList();
+        var projectileLaunchEvents = events
+            .Where(entry => entry.Type == "SURVIVOR_PVP_PROJECTILE_LAUNCHED").ToList();
+        var projectileResolutionEvents = events
+            .Where(entry => entry.Type == "SURVIVOR_PVP_PROJECTILE_RESOLVED").ToList();
+        var projectileOutcomeCounts = projectileResolutionEvents
+            .GroupBy(entry => string.IsNullOrWhiteSpace(entry.Outcome) ? "unknown" : entry.Outcome!,
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+        int projectileHitCount = projectileResolutionEvents.Count(entry =>
+            string.Equals(entry.Outcome, "hit", StringComparison.OrdinalIgnoreCase));
+        int projectileMissCount = projectileResolutionEvents.Count - projectileHitCount;
+        var humanProjectileResolutionEvents = projectileResolutionEvents
+            .Where(entry => !entry.IsBot).ToList();
+        var botProjectileResolutionEvents = projectileResolutionEvents
+            .Where(entry => entry.IsBot).ToList();
         var stoneSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
             ["room"] = stoneEvents.Where(entry => !IsCorridorArea(entry.Area))
@@ -245,6 +266,29 @@ public sealed class MatchSummaryFileStore
                 Math.Max(0, entry.TimestampUnixMs - startedAtUtc.ToUnixTimeMilliseconds()),
                 entry.AlreadyPresentPlayerIds ?? []))
             .ToList();
+        var hotspotDensity = BuildHotspotDensity(densityEvents, reinforcementReleaseEvents);
+        int botMovementTickSampleCount = botMovementPerformanceEvents
+            .Sum(entry => entry.BotMovementTickSampleCount ?? 0);
+        int botMovementTickSkipCount = botMovementPerformanceEvents
+            .Sum(entry => entry.BotMovementTickSkipCount ?? 0);
+        int botMovementTickAttemptCount = botMovementTickSampleCount + botMovementTickSkipCount;
+        double? botMovementTickP50Milliseconds = MaxNullable(
+            botMovementPerformanceEvents.Select(entry => entry.BotMovementTickP50Milliseconds));
+        double? botMovementTickP95Milliseconds = MaxNullable(
+            botMovementPerformanceEvents.Select(entry => entry.BotMovementTickP95Milliseconds));
+        double? botMovementTickP99Milliseconds = MaxNullable(
+            botMovementPerformanceEvents.Select(entry => entry.BotMovementTickP99Milliseconds));
+        double? botMovementSnapshotP95Milliseconds = MaxNullable(
+            botMovementPerformanceEvents.Select(entry => entry.BotMovementSnapshotP95Milliseconds));
+        double? botMovementPlanningP95Milliseconds = MaxNullable(
+            botMovementPerformanceEvents.Select(entry => entry.BotMovementPlanningP95Milliseconds));
+        double? botMovementWalkingP95Milliseconds = MaxNullable(
+            botMovementPerformanceEvents.Select(entry => entry.BotMovementWalkingP95Milliseconds));
+        double? botMovementBroadcastP95Milliseconds = MaxNullable(
+            botMovementPerformanceEvents.Select(entry => entry.BotMovementBroadcastP95Milliseconds));
+        int botMovementMaxConsecutiveSkipCount = botMovementPerformanceEvents
+            .Select(entry => entry.BotMovementMaxConsecutiveSkipCount ?? 0).DefaultIfEmpty(0).Max();
+
 
         return new SurvivorMatchMetrics
         {
@@ -260,13 +304,74 @@ public sealed class MatchSummaryFileStore
             CoreKillCount = afterimageKillEvents.Count(entry =>
                 string.Equals(entry.Outcome, "core", StringComparison.OrdinalIgnoreCase)),
             NormalKillCount = afterimageKillEvents.Count(entry =>
-                !string.Equals(entry.Outcome, "core", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(entry.Outcome, "normal", StringComparison.OrdinalIgnoreCase) &&
                 !IsCorridorArea(entry.Area)),
+            ReinforcementKillCount = afterimageKillEvents.Count(entry =>
+                string.Equals(entry.Outcome, "reinforcement", StringComparison.OrdinalIgnoreCase)),
             CorridorKillCount = afterimageKillEvents.Count(entry => IsCorridorArea(entry.Area)),
             ContestedAreaEntryCount = areaContention.Sum(metric => metric.ContestedEntryCount),
             AreaContention = areaContention,
             RewardAreaSnapshots = rewardAreaSnapshots,
-            CoreContestedEntries = coreContestedEntries
+            CoreContestedEntries = coreContestedEntries,
+            ReinforcementReleasedCount = reinforcementReleaseEvents
+                .Sum(entry => entry.ReinforcementReleasedCount ?? 0),
+            MonsterDensitySampleCount = densityEvents.Count,
+            MonsterContactSampleCount = densityEvents.Count(entry => entry.HasAttackableMonster == true),
+            MonsterContactRatio = densityEvents.Count == 0
+                ? 0d
+                : densityEvents.Count(entry => entry.HasAttackableMonster == true) / (double)densityEvents.Count,
+            MaxConcurrentAliveAfterimages = densityEvents
+                .Select(entry => entry.GlobalAliveMonsterCount ?? 0).DefaultIfEmpty(0).Max(),
+            PvpProjectileLaunchCount = projectileLaunchEvents.Count,
+            PvpProjectileResolvedCount = projectileResolutionEvents.Count,
+            PvpProjectileUnresolvedCount = Math.Max(0, projectileLaunchEvents.Count - projectileResolutionEvents.Count),
+            PvpProjectileHitCount = projectileHitCount,
+            PvpProjectileMissCount = projectileMissCount,
+            PvpProjectileHitRate = projectileResolutionEvents.Count == 0
+                ? 0d
+                : projectileHitCount / (double)projectileResolutionEvents.Count,
+            PvpProjectileOutcomeCounts = projectileOutcomeCounts,
+            HumanPvpProjectileMetrics = BuildProjectileActorMetrics(
+                projectileLaunchEvents.Count(entry => !entry.IsBot),
+                humanProjectileResolutionEvents),
+            BotPvpProjectileMetrics = BuildProjectileActorMetrics(
+                projectileLaunchEvents.Count(entry => entry.IsBot),
+                botProjectileResolutionEvents),
+            HotspotDensity = hotspotDensity,
+            BotMovementTickP50Milliseconds = botMovementTickP50Milliseconds,
+            BotMovementTickP95Milliseconds = botMovementTickP95Milliseconds,
+            BotMovementTickP99Milliseconds = botMovementTickP99Milliseconds,
+            BotMovementSnapshotP95Milliseconds = botMovementSnapshotP95Milliseconds,
+            BotMovementPlanningP95Milliseconds = botMovementPlanningP95Milliseconds,
+            BotMovementWalkingP95Milliseconds = botMovementWalkingP95Milliseconds,
+            BotMovementBroadcastP95Milliseconds = botMovementBroadcastP95Milliseconds,
+            BotMovementTickSampleCount = botMovementTickSampleCount,
+            BotMovementTickSkipCount = botMovementTickSkipCount,
+            BotMovementTickSkipRate = botMovementTickAttemptCount == 0
+                ? 0d
+                : botMovementTickSkipCount / (double)botMovementTickAttemptCount,
+            BotMovementMaxConsecutiveSkipCount = botMovementMaxConsecutiveSkipCount
+        };
+    }
+
+    private static ProjectileActorMetrics BuildProjectileActorMetrics(
+        int launchCount,
+        IReadOnlyCollection<GameEventEntry> resolutionEvents)
+    {
+        int hitCount = resolutionEvents.Count(entry =>
+            string.Equals(entry.Outcome, "hit", StringComparison.OrdinalIgnoreCase));
+        return new ProjectileActorMetrics
+        {
+            LaunchCount = launchCount,
+            ResolvedCount = resolutionEvents.Count,
+            UnresolvedCount = Math.Max(0, launchCount - resolutionEvents.Count),
+            HitCount = hitCount,
+            MissCount = resolutionEvents.Count - hitCount,
+            HitRate = resolutionEvents.Count == 0 ? 0d : hitCount / (double)resolutionEvents.Count,
+            OutcomeCounts = resolutionEvents
+                .GroupBy(entry => string.IsNullOrWhiteSpace(entry.Outcome) ? "unknown" : entry.Outcome!,
+                    StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase)
         };
     }
 
@@ -369,6 +474,97 @@ public sealed class MatchSummaryFileStore
                 accumulator.MaxConcurrentPlayers,
                 accumulator.UniqueVisitors.Count))
             .ToList();
+    }
+
+    private static IReadOnlyList<MatchHotspotDensityMetric> BuildHotspotDensity(
+        IReadOnlyList<GameEventEntry> densityEvents,
+        IReadOnlyList<GameEventEntry> reinforcementReleaseEvents)
+    {
+        var releasedByArea = reinforcementReleaseEvents
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Area))
+            .GroupBy(entry => entry.Area!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Sum(entry => entry.ReinforcementReleasedCount ?? 0),
+                StringComparer.OrdinalIgnoreCase);
+
+        return densityEvents
+            .Where(entry => !string.IsNullOrWhiteSpace(entry.Area))
+            .GroupBy(entry => entry.Area!, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var ordered = group.OrderBy(entry => entry.TimestampUnixMs).ToList();
+                int contactSampleCount = ordered.Count(entry => entry.HasAttackableMonster == true);
+                var gaps = MeasureNoContactGaps(ordered);
+                return new MatchHotspotDensityMetric(
+                    group.Key,
+                    ordered.Count,
+                    contactSampleCount,
+                    ordered.Count == 0 ? 0d : contactSampleCount / (double)ordered.Count,
+                    ordered.Select(entry => entry.AliveMonsterCount ?? 0).DefaultIfEmpty(0).Max(),
+                    releasedByArea.GetValueOrDefault(group.Key),
+                    gaps.Count,
+                    gaps.LongestMilliseconds);
+            })
+            .ToList();
+    }
+
+    private static (int Count, long LongestMilliseconds) MeasureNoContactGaps(
+        IReadOnlyList<GameEventEntry> orderedSamples)
+    {
+        const long sampleSpanMilliseconds = 1_000;
+        const long maximumContinuousSampleGapMilliseconds = 1_500;
+        const long reportThresholdMilliseconds = 2_000;
+        int count = 0;
+        long longestMilliseconds = 0;
+        long? gapStartedAt = null;
+        long? lastGapSampleAt = null;
+
+        void CompleteGap()
+        {
+            if (!gapStartedAt.HasValue || !lastGapSampleAt.HasValue)
+                return;
+
+            long durationMilliseconds =
+                lastGapSampleAt.Value - gapStartedAt.Value + sampleSpanMilliseconds;
+            if (durationMilliseconds >= reportThresholdMilliseconds)
+            {
+                count++;
+                longestMilliseconds = Math.Max(longestMilliseconds, durationMilliseconds);
+            }
+
+            gapStartedAt = null;
+            lastGapSampleAt = null;
+        }
+
+        foreach (var sample in orderedSamples)
+        {
+            if (sample.HasAttackableMonster != false)
+            {
+                CompleteGap();
+                continue;
+            }
+
+            if (!gapStartedAt.HasValue ||
+                lastGapSampleAt.HasValue &&
+                sample.TimestampUnixMs - lastGapSampleAt.Value > maximumContinuousSampleGapMilliseconds)
+            {
+                CompleteGap();
+                gapStartedAt = sample.TimestampUnixMs;
+            }
+
+            lastGapSampleAt = sample.TimestampUnixMs;
+        }
+
+        CompleteGap();
+        return (count, longestMilliseconds);
+    }
+
+    private static double? MaxNullable(IEnumerable<double?> values)
+    {
+        var availableValues = values.Where(value => value.HasValue).Select(value => value!.Value).ToList();
+        return availableValues.Count == 0 ? null : availableValues.Max();
     }
 
     private static bool IsCorridorArea(string? area) =>
@@ -484,6 +680,17 @@ public sealed record MatchSummaryParticipant(
     public int CoreSummonStonesEarned { get; init; }
 }
 
+public sealed record ProjectileActorMetrics
+{
+    public int LaunchCount { get; init; }
+    public int ResolvedCount { get; init; }
+    public int UnresolvedCount { get; init; }
+    public int HitCount { get; init; }
+    public int MissCount { get; init; }
+    public double HitRate { get; init; }
+    public IReadOnlyDictionary<string, int> OutcomeCounts { get; init; } = new Dictionary<string, int>();
+}
+
 public sealed record SurvivorMatchMetrics
 {
     public double MatchDurationSeconds { get; init; }
@@ -499,11 +706,39 @@ public sealed record SurvivorMatchMetrics
         new Dictionary<string, int>();
     public int CoreKillCount { get; init; }
     public int NormalKillCount { get; init; }
+    public int ReinforcementKillCount { get; init; }
     public int CorridorKillCount { get; init; }
     public int ContestedAreaEntryCount { get; init; }
     public IReadOnlyList<MatchAreaContentionMetric> AreaContention { get; init; } = [];
     public IReadOnlyList<MatchRewardAreaSnapshotMetric> RewardAreaSnapshots { get; init; } = [];
     public IReadOnlyList<MatchCoreContestedEntryMetric> CoreContestedEntries { get; init; } = [];
+    public int ReinforcementReleasedCount { get; init; }
+    public int MonsterDensitySampleCount { get; init; }
+    public int MonsterContactSampleCount { get; init; }
+    public double MonsterContactRatio { get; init; }
+    public int MaxConcurrentAliveAfterimages { get; init; }
+    public int PvpProjectileLaunchCount { get; init; }
+    public int PvpProjectileResolvedCount { get; init; }
+    public int PvpProjectileUnresolvedCount { get; init; }
+    public int PvpProjectileHitCount { get; init; }
+    public int PvpProjectileMissCount { get; init; }
+    public double PvpProjectileHitRate { get; init; }
+    public IReadOnlyDictionary<string, int> PvpProjectileOutcomeCounts { get; init; } =
+        new Dictionary<string, int>();
+    public ProjectileActorMetrics HumanPvpProjectileMetrics { get; init; } = new();
+    public ProjectileActorMetrics BotPvpProjectileMetrics { get; init; } = new();
+    public IReadOnlyList<MatchHotspotDensityMetric> HotspotDensity { get; init; } = [];
+    public double? BotMovementTickP50Milliseconds { get; init; }
+    public double? BotMovementTickP95Milliseconds { get; init; }
+    public double? BotMovementTickP99Milliseconds { get; init; }
+    public double? BotMovementSnapshotP95Milliseconds { get; init; }
+    public double? BotMovementPlanningP95Milliseconds { get; init; }
+    public double? BotMovementWalkingP95Milliseconds { get; init; }
+    public double? BotMovementBroadcastP95Milliseconds { get; init; }
+    public int BotMovementTickSampleCount { get; init; }
+    public int BotMovementTickSkipCount { get; init; }
+    public double BotMovementTickSkipRate { get; init; }
+    public int BotMovementMaxConsecutiveSkipCount { get; init; }
 }
 
 public sealed record MatchRewardAreaSnapshotMetric(
@@ -527,6 +762,16 @@ public sealed record MatchAreaContentionMetric(
     int ContestedEntryCount,
     int MaxConcurrentPlayers,
     int UniqueVisitorCount);
+
+public sealed record MatchHotspotDensityMetric(
+    string Area,
+    int SampleCount,
+    int ContactSampleCount,
+    double ContactRatio,
+    int MaxAliveMonsterCount,
+    int ReinforcementReleasedCount,
+    int LongNoContactGapCount,
+    long LongestNoContactGapMilliseconds);
 
 public sealed record MatchSummaryListItem(
     long MatchingId,

@@ -89,11 +89,10 @@ public partial class GameClientSession
         // 3. 구역 이동 자체에는 스태미나 비용이 없다.
         const int staminaCost = 0;
 
-        // 5. 목적지 스폰 셀 조회 — CSV 연결별 스폰(from→to 방향, 계단은 서/동 구분) 우선,
-        //    없으면 영역 중심 fallback
+        // 3. 연결별 서버 스폰 셀만 허용한다. 영역 중심 fallback은 변조 요청이 문을
+        // 건너뛰어 이동하는 통로가 되므로 사용하지 않는다.
         var spawnCell = GameAreaConnectionData.GetSpawnCell(CurrentMapId, CurrentArea, msg.TargetArea,
-                            msg.StairSide)
-                        ?? GameMapData.GetAreaSpawnCell(CurrentMapId, msg.TargetArea);
+            msg.StairSide);
         if (ReferenceEquals(spawnCell, null))
         {
             Logger.LogWarning(
@@ -101,6 +100,13 @@ public partial class GameClientSession
                 PlayerId, CurrentArea, msg.TargetArea, msg.StairSide);
             LogAreaMoveError(ErrorCode.SERVER_INTERNAL_ERROR, msg.TargetArea);
             SendAreaMoveError(ErrorCode.SERVER_INTERNAL_ERROR, msg.TargetArea);
+            return;
+        }
+
+        if (!TryValidateMarkerAreaTransition(msg.TargetArea, spawnCell, out var transitionError))
+        {
+            LogAreaMoveError(transitionError, msg.TargetArea);
+            SendAreaMoveError(transitionError, msg.TargetArea);
             return;
         }
 
@@ -161,6 +167,35 @@ public partial class GameClientSession
         foreach (var session in sameAreaSessions) session.Send(movePacket);
     }
 
+    private bool TryValidateMarkerAreaTransition(AreaType targetArea, Cell targetSpawnCell,
+        out ErrorCode errorCode)
+    {
+        errorCode = ErrorCode.INVALID_AREA;
+        if (_lastValidCell is not { } currentCell)
+        {
+            Logger.LogWarning("Player {PlayerId} requested area move without a validated source cell", PlayerId);
+            return false;
+        }
+
+
+        var door = GameDoorData.GetDoorForTransition(CurrentArea, targetArea, currentCell, targetSpawnCell);
+        if (door == null || GameDoorData.IsOutsidePassageRadius(door, currentCell))
+        {
+            Logger.LogWarning(
+                "Player {PlayerId} requested area move away from the transition: {From} → {To}, Cell=({X},{Y})",
+                PlayerId, CurrentArea, targetArea, currentCell.X, currentCell.Y);
+            return false;
+        }
+
+        if (!_doorStateManager.IsDoorOpen(CurrentMapSubId, door.DoorId))
+        {
+            Logger.LogWarning("Player {PlayerId} requested locked door transition: Door={DoorId}, {From} → {To}",
+                PlayerId, door.DoorId, CurrentArea, targetArea);
+            return false;
+        }
+
+        return true;
+    }
     private void SendAreaMoveError(ErrorCode errorCode, AreaType requestedArea)
     {
         if (PlayerId == null) return;

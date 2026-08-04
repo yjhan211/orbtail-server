@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -79,6 +80,9 @@ public partial class BotPlayerManager
         public List<BotMovementEvent> Movements { get; } = new();
         public List<(long botId, AreaType area)> ExploreEnds { get; } = new();
         public List<BotGroundItemPickup> GroundItemPickups { get; } = new();
+        public long PlanningBotId { get; set; }
+        public double PlanningElapsedMilliseconds { get; set; }
+        public double WalkingElapsedMilliseconds { get; set; }
     }
 
     /// <summary>
@@ -193,63 +197,93 @@ public partial class BotPlayerManager
         InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
         IReadOnlyCollection<BotCombatTargetSnapshot> combatTargets,
-        IReadOnlyCollection<MonsterCombatTarget>? pveTargets = null)
+        IReadOnlyCollection<MonsterCombatTarget>? pveTargets = null,
+        SurvivorPhaseManager? survivorPhaseManager = null)
     {
         var result = new BotWalkingTickResult();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
 
+        var activeBots = bots.Where(bot => !bot.IsEliminated).ToList();
+        if (activeBots.Count == 0) return result;
+
+        result.PlanningBotId = SelectMovementPlanningBot(matchingId, activeBots);
+
         // 전체 플레이어(인간 + 봇) 현재 영역 맵 — 봇 타겟 추적/떠보기 인원수 계산용.
         var playerAreas = new Dictionary<long, AreaType>(humanAreas);
-        foreach (var b in bots)
-            if (!b.IsEliminated) playerAreas[b.PlayerId] = b.CurrentArea;
+        foreach (var b in activeBots)
+            playerAreas[b.PlayerId] = b.CurrentArea;
 
+        SurvivorPhaseSnapshot survivorPhase = survivorPhaseManager?.GetSnapshot(matchingId)
+            ?? SurvivorPhaseSnapshot.Empty;
         bool hasOpenNonCorridorRefuge = HasOpenNonCorridorRefuge(matchingId, closureManager);
-        foreach (var bot in bots)
+        foreach (var bot in activeBots)
         {
-            if (bot.IsEliminated) continue;
+            bool canPlanThisTick = bot.PlayerId == result.PlanningBotId;
+            bool isEvacuating = bot.EvacuationDestination != AreaType.None &&
+                                bot.PathIndex < bot.Path.Count;
+            bool isCommittingToDestination = bot.MovementDestination != AreaType.None &&
+                                             bot.PathIndex < bot.Path.Count;
 
-            // Escape routes outrank looting and combat so a warning cannot be overwritten by a chase path.
-            bool isEvacuating = TryMaintainClosureEvacuation(
-                bot, matchingId, closureManager, hasOpenNonCorridorRefuge);
-            // 목적지 커밋이 살아 있으면 잔상 사냥 계획을 아예 타지 않는다. 그래서 방에서
-            // 굳은 봇은 계획 안쪽의 정체 판정에 닿지도 못한다. 커밋을 먼저 풀어 다음 단계가
-            // 새 목적지를 고를 기회를 만든다. 대피는 정체보다 우선이므로 건드리지 않는다.
-            if (!isEvacuating && IsRoomHuntStalled(bot))
+            long planningStartedAt = Stopwatch.GetTimestamp();
+            if (canPlanThisTick)
             {
-                // 커밋 해제만으로도 봇은 재계획으로 밀려난다. 사냥 계획까지 도달하는 경우만
-                // 세면 실제 발동을 크게 과소 집계하므로 여기서 기록한다.
-                _logger.LogInformation(
-                    "Bot room hunt stalled: MatchingId={MatchingId}, BotId={BotId}, Area={Area}, " +
-                    "DroppedDestination={DroppedDestination}",
-                    matchingId, bot.PlayerId, bot.CurrentArea, bot.MovementDestination);
-                bot.RoomHuntEscapeRequested = true;
-                bot.MovementDestination = AreaType.None;
-                bot.LoopWaitUntil = DateTime.MinValue;
-                // 재계획은 경로가 비었을 때만 돈다. 방 안 kite 경로가 계속 갱신되면 경로가
-                // 마르지 않아 사냥 계획에 영영 닿지 못한다. 진행이 없는 상태이므로 버려도 잃을 게 없다.
-                bot.Path.Clear();
-                bot.PathIndex = 0;
-                bot.RoomHuntStartedAtUtc = DateTime.UtcNow;
-            }
+                // #214 phase movement owns room exits and safe-room selection. The legacy closure
+                // evacuation remains the fallback for matches that do not use the phase machine.
+                isEvacuating = TryMaintainSurvivorPhaseMovement(
+                    bot,
+                    matchingId,
+                    survivorPhase,
+                    closureManager,
+                    inventoryManager,
+                    playerAreas);
+                if (!isEvacuating)
+                {
+                    isEvacuating = TryMaintainClosureEvacuation(
+                        bot, matchingId, closureManager, hasOpenNonCorridorRefuge);
+                }
+                // 목적지 커밋이 살아 있으면 잔상 사냥 계획을 아예 타지 않는다. 그래서 방에서
+                // 굳은 봇은 계획 안쪽의 정체 판정에 닿지도 못한다. 커밋을 먼저 풀어 다음 단계가
+                // 새 목적지를 고를 기회를 만든다. 대피는 정체보다 우선이므로 건드리지 않는다.
+                if (!isEvacuating && IsRoomHuntStalled(bot))
+                {
+                    // 커밋 해제만으로도 봇은 재계획으로 밀려난다. 사냥 계획까지 도달하는 경우만
+                    // 세면 실제 발동을 크게 과소 집계하므로 여기서 기록한다.
+                    _logger.LogInformation(
+                        "Bot room hunt stalled: MatchingId={MatchingId}, BotId={BotId}, Area={Area}, " +
+                        "DroppedDestination={DroppedDestination}",
+                        matchingId, bot.PlayerId, bot.CurrentArea, bot.MovementDestination);
+                    bot.RoomHuntEscapeRequested = true;
+                    bot.MovementDestination = AreaType.None;
+                    bot.LoopWaitUntil = DateTime.MinValue;
+                    // 재계획은 경로가 비었을 때만 돈다. 방 안 kite 경로가 계속 갱신되면 경로가
+                    // 마르지 않아 사냥 계획에 영영 닿지 못한다. 진행이 없는 상태이므로 버려도 잃을 게 없다.
+                    bot.Path.Clear();
+                    bot.PathIndex = 0;
+                    bot.RoomHuntStartedAtUtc = DateTime.UtcNow;
+                }
 
-            bool isCommittingToDestination = !isEvacuating &&
-                                             TryMaintainMovementDestination(bot, matchingId, closureManager);
-            if (!isEvacuating &&
-                TryAutoPickupGroundItem(bot, matchingId, inventoryManager, groundItemManager, out var pickup) &&
-                pickup.HasValue)
-            {
-                result.GroundItemPickups.Add(pickup.Value);
+                isCommittingToDestination = !isEvacuating &&
+                                            TryMaintainMovementDestination(bot, matchingId, closureManager);
+                if (!isEvacuating &&
+                    TryAutoPickupGroundItem(bot, matchingId, inventoryManager, groundItemManager, out var pickup) &&
+                    pickup.HasValue)
+                {
+                    result.GroundItemPickups.Add(pickup.Value);
+                }
+                if (!isEvacuating && !isCommittingToDestination)
+                {
+                    UpdateCombatMovementIntent(bot, matchingId, closureManager, combatTargets);
+                    TryStartPveKitePath(bot, matchingId, closureManager, pveTargets ?? []);
+                }
+                if (!hasOpenNonCorridorRefuge && bot.PathIndex >= bot.Path.Count &&
+                    !bot.IsInInteraction && bot.PendingRngInteractId == 0 && bot.PendingChecklistTaskId == 0)
+                {
+                    TryStartLastStandPatrolPath(bot, matchingId, closureManager);
+                }
             }
-            if (!isEvacuating && !isCommittingToDestination)
-            {
-                UpdateCombatMovementIntent(bot, matchingId, closureManager, combatTargets);
-                TryStartPveKitePath(bot, matchingId, closureManager, pveTargets ?? []);
-            }
-            if (!hasOpenNonCorridorRefuge && bot.PathIndex >= bot.Path.Count &&
-                !bot.IsInInteraction && bot.PendingRngInteractId == 0 && bot.PendingChecklistTaskId == 0)
-            {
-                TryStartLastStandPatrolPath(bot, matchingId, closureManager);
-            }
+            result.PlanningElapsedMilliseconds += Stopwatch.GetElapsedTime(planningStartedAt).TotalMilliseconds;
+
+            long walkingStartedAt = Stopwatch.GetTimestamp();
             var ev = WalkStep(
                 bot,
                 matchingId,
@@ -258,7 +292,9 @@ public partial class BotPlayerManager
                 inventoryManager,
                 playerAreas,
                 checklistManager,
-                pveTargets ?? []);
+                pveTargets ?? [],
+                canPlanThisTick);
+            result.WalkingElapsedMilliseconds += Stopwatch.GetElapsedTime(walkingStartedAt).TotalMilliseconds;
             if (ev != null) result.Movements.Add(ev);
             if (bot.PendingExploreEndBroadcast)
             {
@@ -269,11 +305,232 @@ public partial class BotPlayerManager
         return result;
     }
 
+    private long SelectMovementPlanningBot(long matchingId, IReadOnlyList<BotPlayerState> activeBots)
+    {
+        int cursor = _botMovementPlanningCursors.AddOrUpdate(
+            matchingId,
+            0,
+            (_, current) => (current + 1) % activeBots.Count);
+        return activeBots[cursor % activeBots.Count].PlayerId;
+    }
+
+    private bool TryMaintainSurvivorPhaseMovement(
+        BotPlayerState bot,
+        long matchingId,
+        SurvivorPhaseSnapshot phase,
+        AreaClosureManager closureManager,
+        InGameInventoryManager inventoryManager,
+        IReadOnlyDictionary<long, AreaType> playerAreas)
+    {
+        if (phase.MatchingId != matchingId)
+            return false;
+
+        switch (phase.Phase)
+        {
+            case SurvivorMatchPhase.ROOM_CLOSURE_WARNING:
+                bot.SurvivorRoomChoice = AreaType.None;
+                if (bot.CurrentArea.IsCorridor())
+                    return true;
+                return TryStageBotAtCorridorExit(bot, matchingId, closureManager);
+
+            case SurvivorMatchPhase.CORRIDOR_ENTRY:
+            case SurvivorMatchPhase.CORRIDOR_COMBAT:
+                bot.SurvivorRoomChoice = AreaType.None;
+                if (bot.CurrentArea.IsCorridor())
+                    return false;
+                return TryCommitSurvivorPhaseDestination(
+                    bot, matchingId, AreaType.Corridor, closureManager);
+
+            case SurvivorMatchPhase.ROOM_SELECTION:
+            case SurvivorMatchPhase.CORRIDOR_CLOSURE_WARNING:
+                if (phase.NextRooms.Contains(bot.CurrentArea))
+                {
+                    bot.Path.Clear();
+                    bot.PathIndex = 0;
+                    bot.MovementDestination = AreaType.None;
+                    return true;
+                }
+
+                if (!phase.NextRooms.Contains(bot.SurvivorRoomChoice))
+                {
+                    bot.SurvivorRoomChoice = ChooseSurvivorSafeRoom(
+                        bot, matchingId, phase.NextRooms, closureManager, inventoryManager, playerAreas);
+                }
+
+                if (bot.SurvivorRoomChoice == AreaType.None)
+                    return true;
+
+                return TryCommitSurvivorPhaseDestination(
+                    bot, matchingId, bot.SurvivorRoomChoice, closureManager);
+
+            case SurvivorMatchPhase.FINAL:
+                bot.SurvivorRoomChoice = AreaType.Ground;
+                if (bot.CurrentArea == AreaType.Ground)
+                    return false;
+                return TryCommitSurvivorPhaseDestination(
+                    bot, matchingId, AreaType.Ground, closureManager);
+
+            case SurvivorMatchPhase.ROOM_COMBAT:
+                bot.SurvivorRoomChoice = AreaType.None;
+                // 복도 봇은 일반 AI에 맡긴다. true(정지)를 돌려줘도 WalkStep의 재계획은
+                // 막지 못해 사냥 AI가 방으로 끌고 갔었다. 방 진입은 잠긴 방 게이트가 막으므로,
+                // 여기서는 교전 의도·카이팅이 살아 있는 편이 복도 교전 공간답다.
+                if (bot.CurrentArea.IsCorridor())
+                    return false;
+                if (!phase.CurrentRooms.Contains(bot.CurrentArea))
+                    return true;
+                if (!phase.ClearedRooms.Contains(bot.CurrentArea))
+                    return false;
+                return TryCommitSurvivorPhaseDestination(
+                    bot, matchingId, AreaType.Corridor, closureManager);
+
+            default:
+                return false;
+        }
+    }
+
+    private bool TryStageBotAtCorridorExit(
+        BotPlayerState bot,
+        long matchingId,
+        AreaClosureManager closureManager)
+    {
+        if (bot.MovementDestination == AreaType.Corridor && bot.PathIndex < bot.Path.Count)
+            return true;
+
+        CancelBotActionForEvacuation(bot);
+        MapId mapId = GetMatchingMapId(matchingId);
+        var fullPath = BotPathfinder.FindPath(
+            mapId,
+            bot.CurrentArea,
+            bot.Cell,
+            AreaType.Corridor,
+            GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, AreaType.Corridor)
+            ?? GameMapData.GetAreaSpawnCell(mapId, AreaType.Corridor),
+            area => IsAreaClosingOrClosed(closureManager, matchingId, area));
+
+        if (fullPath == null)
+            return true;
+
+        // The corridor remains closed during the warning. Walk to the final in-room
+        // doorway cell now, then cross only after CORRIDOR_ENTRY opens it.
+        var stagingPath = fullPath
+            .TakeWhile(step => !step.IsAreaTransition && step.Area == bot.CurrentArea)
+            .ToList();
+        bot.Path = stagingPath;
+        bot.PathIndex = 0;
+        bot.MovementDestination = AreaType.Corridor;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        return true;
+    }
+
+    private bool TryCommitSurvivorPhaseDestination(
+        BotPlayerState bot,
+        long matchingId,
+        AreaType destination,
+        AreaClosureManager closureManager)
+    {
+        if (destination == AreaType.None || bot.CurrentArea == destination)
+            return false;
+        if (bot.MovementDestination == destination && bot.PathIndex < bot.Path.Count)
+            return true;
+
+        CancelBotActionForEvacuation(bot);
+        MapId mapId = GetMatchingMapId(matchingId);
+        var path = BotPathfinder.FindPath(
+            mapId,
+            bot.CurrentArea,
+            bot.Cell,
+            destination,
+            GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, destination)
+            ?? GameMapData.GetAreaSpawnCell(mapId, destination),
+            area => IsAreaClosingOrClosed(closureManager, matchingId, area));
+
+        if (path is not { Count: > 0 })
+        {
+            bot.LoopWaitUntil = DateTime.UtcNow.AddMilliseconds(250);
+            return true;
+        }
+
+        bot.Path = path;
+        bot.PathIndex = 0;
+        bot.MovementDestination = destination;
+        bot.LoopWaitUntil = DateTime.MinValue;
+        _logger.LogInformation(
+            "Bot survivor phase move: MatchingId={MatchingId}, BotId={BotId}, {From}->{To}, Steps={Steps}",
+            matchingId, bot.PlayerId, bot.CurrentArea, destination, path.Count);
+        return true;
+    }
+
+    private AreaType ChooseSurvivorSafeRoom(
+        BotPlayerState bot,
+        long matchingId,
+        IReadOnlyList<AreaType> nextRooms,
+        AreaClosureManager closureManager,
+        InGameInventoryManager inventoryManager,
+        IReadOnlyDictionary<long, AreaType> playerAreas)
+    {
+        if (nextRooms.Count == 0)
+            return AreaType.None;
+
+        MapId mapId = GetMatchingMapId(matchingId);
+        float corruptionRatio = Math.Clamp(
+            bot.Corruption / (float)Config.SURVIVOR_MAX_CORRUPTION, 0f, 1f);
+        var boardItemIds = inventoryManager.GetPlayerInventory(matchingId, bot.PlayerId)
+            .GetAllItems()
+            .Where(item => item.Count > 0)
+            .Select(item => item.ItemId)
+            .ToArray();
+        SurvivorOrbData.TryGetDominantPveColor(boardItemIds, out SurvivorOrbColor dominantColor);
+
+        var candidates = nextRooms
+            .Distinct()
+            .Select(area =>
+            {
+                var path = BotPathfinder.FindPath(
+                    mapId,
+                    bot.CurrentArea,
+                    bot.Cell,
+                    area,
+                    GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, area)
+                    ?? GameMapData.GetAreaSpawnCell(mapId, area),
+                    blocked => IsAreaClosingOrClosed(closureManager, matchingId, blocked));
+                int occupants = playerAreas.Count(entry =>
+                    entry.Key != bot.PlayerId && entry.Value == area);
+                float pressureWeight = corruptionRatio >= 0.65f ? 10f : 2.5f;
+                float score = (path?.Count ?? 10000) * 0.08f + occupants * pressureWeight;
+
+                int coreRewardItemId = EmotionAfterimageMonsterSpawnData.Definitions
+                    .Where(definition => definition.Area == area && definition.IsCore)
+                    .Select(definition => definition.RewardItemId)
+                    .FirstOrDefault();
+                if (dominantColor != SurvivorOrbColor.None &&
+                    SurvivorOrbData.TryGetColorAndTier(coreRewardItemId, out SurvivorOrbColor roomColor, out _))
+                {
+                    float affinity = SurvivorOrbData.GetPveDamageMultiplier(dominantColor, roomColor);
+                    score += affinity > 1f ? -3f : affinity < 1f ? 4f : 0f;
+                }
+
+                // Healthy bots may deliberately contest an occupied room; damaged bots seek space.
+                if (corruptionRatio < 0.35f && occupants > 0)
+                    score -= 2f;
+
+                return new { Area = area, Path = path, Score = score };
+            })
+            .Where(candidate => candidate.Path is { Count: > 0 })
+            .OrderBy(candidate => candidate.Score)
+            .ThenBy(candidate => Math.Abs((int)(bot.PlayerId % 97) - (int)candidate.Area))
+            .FirstOrDefault();
+
+        return candidates?.Area ?? AreaType.None;
+    }
+
     private bool TryMaintainClosureEvacuation(BotPlayerState bot, long matchingId,
         AreaClosureManager closureManager, bool hasOpenNonCorridorRefuge)
     {
         var closure = closureManager.GetClientStateSnapshot(matchingId);
         var unavailableAreas = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
+        // 대피·후퇴 목적지에서도 잠긴 방은 제외한다.
+        unavailableAreas.UnionWith(GetLockedRoomAreas(matchingId).Where(area => area != bot.CurrentArea));
         bool currentAreaUnsafe = unavailableAreas.Contains(bot.CurrentArea);
 
         if (bot.EvacuationDestination != AreaType.None &&
@@ -400,7 +657,9 @@ public partial class BotPlayerManager
         AreaClosureManager closureManager, IReadOnlyCollection<MonsterCombatTarget> pveTargets)
     {
         var now = DateTime.UtcNow;
-        if (pveTargets.Count == 0 || bot.CurrentArea == AreaType.None || bot.CurrentArea.IsCorridor() ||
+        // 복도도 카이팅한다. 복도가 대기·교전 공간이 되면서 봇이 복도 잔상을 서서 맞는
+        // 그림이 생겼다 — 회피는 어디서든 살아 있어야 한다.
+        if (pveTargets.Count == 0 || bot.CurrentArea == AreaType.None ||
             bot.EvacuationDestination != AreaType.None || bot.MovementDestination != AreaType.None ||
             bot.PathIndex < bot.Path.Count || now < bot.NextPveKiteRepathAt)
         {
@@ -474,16 +733,22 @@ public partial class BotPlayerManager
             bot.Path = path;
             bot.PathIndex = 0;
             bot.LoopWaitUntil = DateTime.MinValue;
-            bot.NextPveKiteRepathAt = now.AddMilliseconds(850);
+            bot.NextPveKiteRepathAt = now.AddMilliseconds(
+                GetPveKiteRepathDelayMilliseconds(bot.PlayerId, 850));
             _logger.LogDebug(
                 "Bot PVE kite: MatchingId={MatchingId}, BotId={BotId}, Area={Area}, Threats={Threats}, Steps={Steps}",
                 matchingId, bot.PlayerId, bot.CurrentArea, nearby.Count, path.Count);
             return true;
         }
 
-        bot.NextPveKiteRepathAt = now.AddMilliseconds(400);
+        bot.NextPveKiteRepathAt = now.AddMilliseconds(
+            GetPveKiteRepathDelayMilliseconds(bot.PlayerId, 400));
         return false;
     }
+
+    private static double GetPveKiteRepathDelayMilliseconds(long playerId, int baseMilliseconds) =>
+        baseMilliseconds + Math.Abs(playerId % 7) * 90d;
+
     private bool TryStartLastStandPatrolPath(BotPlayerState bot, long matchingId,
         AreaClosureManager closureManager)
     {
@@ -653,7 +918,8 @@ public partial class BotPlayerManager
     private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
         AreaItemStockManager areaItemStockManager, InGameInventoryManager inventoryManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
-        ChecklistManager checklistManager, IReadOnlyCollection<MonsterCombatTarget> pveTargets)
+        ChecklistManager checklistManager, IReadOnlyCollection<MonsterCombatTarget> pveTargets,
+        bool allowPathPlanning)
     {
         var now = DateTime.UtcNow;
         float deltaSec = (float)(now - bot.LastWalkStepTime).TotalSeconds;
@@ -712,6 +978,8 @@ public partial class BotPlayerManager
 
         if (bot.PendingForcedInteractId > 0 && bot.PendingForcedInteractArea != AreaType.None)
         {
+            if (!allowPathPlanning) return null;
+
             if (TryStartBotInteractPath(bot, matchingId, bot.PendingForcedInteractArea,
                     bot.PendingForcedInteractId, closureManager))
                 return null;
@@ -729,6 +997,7 @@ public partial class BotPlayerManager
             // #134 — 도착 후 RNG 채집이 아직 안 됐으면 walking 보류 (ProcessBotMissionTick이 PendingRngInteractId 처리 후 0으로 클리어할 때까지 대기).
             if (bot.PendingRngInteractId != 0 || bot.PendingChecklistTaskId != 0) return null;
 
+            if (!allowPathPlanning) return null;
             ChooseNewWanderTarget(bot, matchingId, closureManager, areaItemStockManager, inventoryManager, playerAreas,
                 checklistManager, pveTargets);
             if (bot.Path.Count == 0) return null;
@@ -745,6 +1014,27 @@ public partial class BotPlayerManager
         var fromArea = bot.CurrentArea;
         var fromCell = bot.Cell;
         bool reachedStep = false;
+
+        // 최후 방어선: 어떤 플래너가 만든 경로든 잠긴 방으로 넘어가는 걸음은 문턱에서 버린다.
+        // 계획 지점 차단만으로는 커밋 잔존·경로 재빌드·페이즈 경합이 새어 들어왔다
+        // (2026-08-04 match-2159: 방 페이즈 중 미클리어 방 침입 45회).
+        if (nextStep.Area != bot.CurrentArea &&
+            GetLockedRoomAreas(matchingId).Contains(nextStep.Area))
+        {
+            bot.Path.Clear();
+            bot.PathIndex = 0;
+            bot.MovementDestination = AreaType.None;
+            bot.EvacuationDestination = AreaType.None;
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.6, 1.2);
+            if (bot.LastLockedDoorBlockArea != nextStep.Area)
+            {
+                bot.LastLockedDoorBlockArea = nextStep.Area;
+                _logger.LogInformation(
+                    "Bot blocked at locked door: MatchingId={MatchingId}, BotId={BotId}, From={From}, Locked={Locked}",
+                    matchingId, bot.PlayerId, bot.CurrentArea, nextStep.Area);
+            }
+            return null;
+        }
 
         // Walk every waypoint at the same speed. An area transition is just the adjacent cell across a door.
         var targetPos = CellToWorldPosition(mapId, nextStep.Cell);
@@ -885,6 +1175,29 @@ public partial class BotPlayerManager
             return;
         }
 
+        // 방 페이즈의 복도 봇은 갈 방이 없다(현재 방 전부 잠금). 그렇다고 멈춰 서면 죽은
+        // 판처럼 보이므로 근처 복도 셀을 어슬렁거린다. 교전 의도·상대 추격 경로가 있으면
+        // 그쪽이 우선한다 (여기는 경로가 비었을 때만 온다).
+        if (bot.CurrentArea.IsCorridor() && GetLockedRoomAreas(matchingId).Count > 0 &&
+            TryStartCorridorLoiterPath(bot, matchingId, mapId))
+        {
+            return;
+        }
+
+        // 자기 방이 잠겨 있으면(클리어 전) 방 밖 목적지를 만들지 않는다. 문이 잠겼는데
+        // 봇만 나가면 사람 규칙과 어긋난다. 방 안 사냥만 허용하고, 계획이 없으면 대기한다.
+        if (!bot.CurrentArea.IsCorridor() && GetLockedRoomAreas(matchingId).Contains(bot.CurrentArea))
+        {
+            if (!needsGuardianOrb && Config.MONSTER_SUMMON_ECONOMY_ENABLED &&
+                TryStartAfterimageHuntPath(bot, matchingId, mapId, closureManager, inventoryManager, pveTargets))
+            {
+                return;
+            }
+
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.45, 0.9);
+            return;
+        }
+
         if (!needsGuardianOrb && bot.IsForcedFollowActive &&
             TryStartBotForcedFollowPath(bot, matchingId, mapId, playerAreas))
         {
@@ -978,6 +1291,11 @@ public partial class BotPlayerManager
 
         var closure = closureManager.GetClientStateSnapshot(matchingId);
         var unavailable = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
+        // 잠긴 방(클리어 전)은 목적지가 될 수 없다. 자기 방이 잠겨 있으면 밖으로 나가는
+        // 사냥 목적지도 전부 막는다 — 문이 잠겼는데 봇만 통과하면 사람 규칙과 어긋난다.
+        var lockedRooms = GetLockedRoomAreas(matchingId);
+        unavailable.UnionWith(lockedRooms.Where(area => area != bot.CurrentArea));
+        bool selfRoomLocked = lockedRooms.Contains(bot.CurrentArea);
         var boardItemIds = inventoryManager.GetPlayerInventory(matchingId, bot.PlayerId)
             .GetAllItems()
             .Select(item => item.ItemId)
@@ -996,6 +1314,7 @@ public partial class BotPlayerManager
                              target.Area != AreaType.None &&
                              !(target.Area.IsCorridor() && bot.CurrentArea.IsCorridor()) &&
                              !unavailable.Contains(target.Area) &&
+                             !(selfRoomLocked && target.Area != bot.CurrentArea) &&
                              !IsRecentCombatRetreatOrigin(bot, target.Area) &&
                              !(roomHuntStalled && target.Area == bot.CurrentArea))
             .GroupBy(target => target.Area)
@@ -1017,10 +1336,6 @@ public partial class BotPlayerManager
             areaGroups = nearbyGroups;
 
         var candidates = areaGroups
-            .OrderByDescending(group => group.Key == bot.CurrentArea)
-            .ThenByDescending(group => group.Count() * 3 + group.Count(target => target.IsCore) * 8 -
-                                       CountAreaPressure(matchingId, group.Key, bot.PlayerId) * 5)
-            .Take(MaxHuntPathCandidates)
             .Select(group =>
             {
                 var preferredTarget = group
@@ -1028,31 +1343,52 @@ public partial class BotPlayerManager
                     .ThenBy(target => DistanceSquared(bot.Position, target.Position.X, target.Position.Y))
                     .First();
                 var targetCell = WorldToCell(preferredTarget.Position);
-                var path = group.Key == bot.CurrentArea
-                    ? BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, bot.CurrentArea, targetCell,
-                        area => area != bot.CurrentArea || unavailable.Contains(area))
-                    : BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, group.Key,
-                        GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, group.Key) ?? targetCell,
-                        unavailable.Contains);
+                var pathTargetCell = group.Key == bot.CurrentArea
+                    ? targetCell
+                    : GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, group.Key) ?? targetCell;
                 int coreCount = group.Count(target => target.IsCore);
                 float affinityScore = CalculateBotPveAffinityScore(boardItemIds, preferredTarget.RewardItemId);
+                int estimatedSteps = Math.Abs(bot.Cell.X - pathTargetCell.X) +
+                                     Math.Abs(bot.Cell.Y - pathTargetCell.Y);
                 return new
                 {
                     Area = group.Key,
                     Target = preferredTarget,
-                    Path = path,
+                    PathTargetCell = pathTargetCell,
                     AffinityScore = affinityScore,
                     Score = group.Count() * 3 + coreCount * 8 + affinityScore * 4 -
-                            CountAreaPressure(matchingId, group.Key, bot.PlayerId) * 5
+                            CountAreaPressure(matchingId, group.Key, bot.PlayerId) * 5,
+                    EstimatedSteps = estimatedSteps
                 };
             })
-            .Where(candidate => candidate.Path is { Count: > 0 } || candidate.Area == bot.CurrentArea)
-            .OrderByDescending(candidate => candidate.Score - (candidate.Path?.Count ?? 0) * 0.2)
+            .OrderByDescending(candidate => candidate.Area == bot.CurrentArea)
+            .ThenByDescending(candidate => candidate.Score - candidate.EstimatedSteps * 0.2)
             .ThenBy(candidate => candidate.Area == bot.CurrentArea ? 0 : 1)
             .ThenBy(candidate => Math.Abs((int)(bot.PlayerId % 97) - (int)candidate.Area))
+            .Take(MaxHuntPathCandidates)
             .ToList();
 
-        var selected = candidates.FirstOrDefault();
+        int selectedIndex = -1;
+        List<BotPathfinder.Step>? selectedPath = null;
+        for (int index = 0; index < candidates.Count; index++)
+        {
+            var candidate = candidates[index];
+            var path = candidate.Area == bot.CurrentArea
+                ? BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, bot.CurrentArea,
+                    candidate.PathTargetCell,
+                    area => area != bot.CurrentArea || unavailable.Contains(area))
+                : BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, candidate.Area,
+                    candidate.PathTargetCell,
+                    unavailable.Contains);
+            if (path is not { Count: > 0 } && candidate.Area != bot.CurrentArea)
+                continue;
+
+            selectedIndex = index;
+            selectedPath = path;
+            break;
+        }
+
+        var selected = selectedIndex >= 0 ? candidates[selectedIndex] : null;
 
         // 정체 판정이 실제로 봇을 내보냈는지 확인할 수 있어야 한다. 탈출에 실패하면
         // 후보가 없는 것인지 경로를 못 찾은 것인지 이 한 줄로 갈린다.
@@ -1073,13 +1409,13 @@ public partial class BotPlayerManager
 
         // The bot already owns this room's hunt. Let the automatic combat and lateral
         // kite logic work instead of immediately replacing the local objective.
-        if (selected.Area == bot.CurrentArea && selected.Path is not { Count: > 0 })
+        if (selected.Area == bot.CurrentArea && selectedPath is not { Count: > 0 })
         {
             bot.LoopWaitUntil = RandomizedDelayFromNow(0.45, 0.9);
             return true;
         }
 
-        bot.Path = selected.Path!;
+        bot.Path = selectedPath!;
         bot.PathIndex = 0;
         bot.MovementDestination = selected.Area;
         bot.LoopWaitUntil = DateTime.MinValue;
@@ -1092,7 +1428,7 @@ public partial class BotPlayerManager
             pveTargets.Count(target => target.Area == selected.Area),
             selected.Target.IsCore,
             selected.AffinityScore,
-            selected.Path!.Count);
+            selectedPath!.Count);
         return true;
     }
 
@@ -1405,6 +1741,7 @@ public partial class BotPlayerManager
     private bool TryStartCorridorExitPath(BotPlayerState bot, long matchingId, MapId mapId,
         AreaClosureManager closureManager)
     {
+        var lockedRooms = GetLockedRoomAreas(matchingId);
         var exitAreas = GetOpenBotDestinationAreas(matchingId, mapId, closureManager)
             .Where(area => area != bot.CurrentArea)
             .ToList();
@@ -1429,7 +1766,8 @@ public partial class BotPlayerManager
                     area,
                     GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, area)
                     ?? GameMapData.GetAreaSpawnCell(mapId, area),
-                    candidate => IsAreaClosingOrClosed(closureManager, matchingId, candidate))
+                    candidate => lockedRooms.Contains(candidate) ||
+                                 IsAreaClosingOrClosed(closureManager, matchingId, candidate))
             })
             .Where(candidate => candidate.Path is { Count: > 0 })
             .OrderBy(candidate => candidate.Path!.Count)
@@ -1481,14 +1819,70 @@ public partial class BotPlayerManager
         return ChooseProto0Destination(bot, matchingId, mapId, playerAreas, closureManager);
     }
 
+    private IReadOnlyCollection<AreaType> GetLockedRoomAreas(long matchingId) =>
+        _lockedRoomAreasProvider?.Invoke(matchingId) ?? Array.Empty<AreaType>();
+
+    /// <summary>
+    ///     복도 순찰. 방 페이즈 동안 복도에 나온 봇이 서성이지 않도록, 멀리 있는 복도
+    ///     지점까지 끊김 없이 걷는 긴 다리(leg)를 만든다. 도착하면 다음 지점을 고르므로
+    ///     연속 이동으로 보이고, 교전 의도·카이팅이 경로를 세우면 그쪽이 우선한다.
+    /// </summary>
+    private bool TryStartCorridorLoiterPath(BotPlayerState bot, long matchingId, MapId mapId)
+    {
+        // 가끔은 멈춰 서서 숨을 고른다 — 항상 걷기만 하면 순찰 로봇처럼 보인다.
+        if (_rng.NextDouble() < 0.2)
+        {
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.5, 1.1);
+            return true;
+        }
+
+        // 먼 지점부터 시도해 다리를 최대한 길게 잡는다. 배율 1(±4셀)은 마지막 폴백.
+        foreach (int scale in (int[])[3, 2, 1])
+        {
+            for (int attempt = 0; attempt < 4; attempt++)
+            {
+                var offset = LastStandPatrolOffsets[_rng.Next(LastStandPatrolOffsets.Length)];
+                var targetCell = new Cell(
+                    bot.Cell.X + offset.X * scale,
+                    bot.Cell.Y + offset.Y * scale);
+                if (GameMapData.GetCurrentArea(mapId, targetCell) != bot.CurrentArea ||
+                    !GameMapData.IsMoveablePosition(mapId, targetCell))
+                {
+                    continue;
+                }
+
+                var path = BotPathfinder.FindPath(
+                    mapId, bot.CurrentArea, bot.Cell, bot.CurrentArea, targetCell,
+                    area => area != bot.CurrentArea);
+                if (path is not { Count: > 0 })
+                    continue;
+
+                bot.Path = path;
+                bot.PathIndex = 0;
+                // LoopWaitUntil은 걷기 시작 자체를 막는 게이트라, 커밋 즉시 출발해야
+                // 다리 사이가 끊기지 않는다.
+                bot.LoopWaitUntil = DateTime.MinValue;
+                return true;
+            }
+        }
+
+        bot.LoopWaitUntil = RandomizedDelayFromNow(0.6, 1.2);
+        return true;
+    }
+
     private List<AreaType> GetOpenBotDestinationAreas(long matchingId, MapId mapId,
-        AreaClosureManager closureManager) =>
-        GameMapData.GetAreas(mapId)
+        AreaClosureManager closureManager)
+    {
+        // 클리어 전 방은 문이 잠겨 있다. 봇도 사람과 같은 규칙으로 목적지에서 제외한다.
+        var lockedRooms = GetLockedRoomAreas(matchingId);
+        return GameMapData.GetAreas(mapId)
             .Select(region => region.AreaType)
             .Distinct()
             .Where(area => area != AreaType.None && !area.IsCorridor() &&
+                           !lockedRooms.Contains(area) &&
                            !IsAreaClosingOrClosed(closureManager, matchingId, area))
             .ToList();
+    }
 
     private AreaType ChooseSimpleProto0Destination(BotPlayerState bot, long matchingId, MapId mapId,
         IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)

@@ -17,6 +17,15 @@ namespace game_server.services;
 /// </summary>
 public partial class BotPlayerManager
 {
+    /// <summary>
+    ///     클리어 전이라 문이 잠긴 방 목록 제공자. 사람은 이동 검증이 문을 막지만 봇은
+    ///     서버가 직접 걷게 하므로, 같은 규칙을 봇 경로 결정에서 강제한다.
+    /// </summary>
+    private Func<long, IReadOnlyCollection<AreaType>>? _lockedRoomAreasProvider;
+
+    public void SetLockedRoomAreasProvider(Func<long, IReadOnlyCollection<AreaType>> provider) =>
+        _lockedRoomAreasProvider = provider ?? throw new ArgumentNullException(nameof(provider));
+
     // ?꾨줈??0: ?쒖꽦 怨듦컙 = 3쨌4痢?6援ъ뿭(1쨌2痢??대룞??李⑤떒, 3??留??대룞).
     //   諛??뺤떊???뚮났 媛??: Classroom3(2-1)/ExamRoom(怨좎궗??/Classroom4(3-1)/BroadcastRoom(諛⑹넚??
     //   蹂듬룄(transit, ?뚮났 ?놁쓬 + ?κ린 泥대쪟 ???몄젒 諛?媛뺤젣 ?좊룄): Corridor
@@ -83,6 +92,10 @@ public partial class BotPlayerManager
     // matchingId ??遊?紐⑸줉
     private readonly ConcurrentDictionary<long, List<BotPlayerState>> _botStates = new();
 
+    // Cell BFS is expensive enough that replanning every bot in one 50 ms tick stalls broadcasts.
+    // Rotate one planning slot per matching while every bot keeps walking its existing path.
+    private readonly ConcurrentDictionary<long, int> _botMovementPlanningCursors = new();
+
     // matchingId ???몄뒪?댁뒪媛 ?ъ슜?섎뒗 MapId. 遊?ENTER/MOVE ?⑦궥??LastMapId/Position 蹂?섏뿉 ?꾩슂.
     private readonly ConcurrentDictionary<long, MapId> _botMapIds = new();
 
@@ -145,6 +158,8 @@ public partial class BotPlayerManager
                 LastMissionTickTime = now.AddMilliseconds(-_rng.Next(BotMissionTickIntervalSeconds * 1000)),
                 LastCellWanderTime = now,
                 GameStartTime = now,
+                NextPveKiteRepathAt = now.AddMilliseconds(
+                    Math.Abs(info.PlayerId % 8) * 100d),
                 LoopWaitUntil = now.AddSeconds(RandomRange(
                     Proto0InitialDecisionDelayMinSeconds,
                     Proto0InitialDecisionDelayMaxSeconds)),
@@ -154,6 +169,7 @@ public partial class BotPlayerManager
         }).ToList();
 
         _botStates[matchingId] = bots;
+        _botMovementPlanningCursors[matchingId] = 0;
 
         _logger.LogInformation(
             "遊?{Count}紐??깅줉(紐⑹쟻???숈꽑): MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]",
@@ -324,6 +340,7 @@ public partial class BotPlayerManager
     {
         _botStates.TryRemove(matchingId, out _);
         _botMapIds.TryRemove(matchingId, out _);
+        _botMovementPlanningCursors.TryRemove(matchingId, out _);
     }
 
     /// <summary>
@@ -412,6 +429,9 @@ public class BotPlayerState
     /// </summary>
     public DateTime RoomHuntStartedAtUtc { get; set; } = DateTime.UtcNow;
 
+    /// <summary>잠긴 문 차단 로그의 중복 억제 — 같은 방에 연속으로 막히면 한 번만 남긴다.</summary>
+    public AreaType LastLockedDoorBlockArea { get; set; } = AreaType.None;
+
     /// <summary>
     ///     정체가 감지되어 현재 방을 떠나야 한다는 요청. 이동 루프 상단에서 세우고
     ///     잔상 사냥 계획이 소비한다. 목적지 커밋이 사냥 계획을 가로막기 때문에 두 단계로 나눈다.
@@ -462,6 +482,9 @@ public class BotPlayerState
 
     /// <summary>Room goal retained while the bot is travelling for loot, an interaction, or a target.</summary>
     public AreaType MovementDestination { get; set; } = AreaType.None;
+
+    /// <summary>Safe room selected during #214 corridor selection.</summary>
+    public AreaType SurvivorRoomChoice { get; set; } = AreaType.None;
 
     /// <summary>?먭린 吏곸콉 諛쒓껄 援ъ뿭 ?쒗쉶 ??(?뷀뵆??4媛?+ ?좏뻾 ?꾩씠???꾩튂)</summary>
     public List<AreaType> JobAreaQueue { get; set; } = new();

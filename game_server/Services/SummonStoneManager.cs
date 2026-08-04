@@ -85,7 +85,8 @@ public sealed class SummonStoneManager
             return CreateSnapshot(state);
     }
 
-    public SummonOrbAttempt TrySummon(long matchingId, long playerId, Func<int, InGameItemInfo?> grantItem)
+    public SummonOrbAttempt TrySummon(long matchingId, long playerId, Func<int, InGameItemInfo?> grantItem,
+        int choiceIndex = 0)
     {
         ArgumentNullException.ThrowIfNull(grantItem);
         var state = GetOrCreatePlayerState(matchingId, playerId);
@@ -95,7 +96,8 @@ public sealed class SummonStoneManager
             if (state.StoneCount < cost)
                 return SummonOrbAttempt.Failed(ErrorCode.INSUFFICIENT_CURRENCY, CreateSnapshot(state));
 
-            int itemId = SelectOrbItemId(matchingId, playerId, state.SuccessfulSummonCount);
+            int[] candidates = ComputeSummonCandidates(matchingId, playerId, state.SuccessfulSummonCount);
+            int itemId = candidates[Math.Clamp(choiceIndex, 0, candidates.Length - 1)];
             InGameItemInfo? item = grantItem(itemId);
             if (item == null)
                 return SummonOrbAttempt.Failed(ErrorCode.INVENTORY_FULL, CreateSnapshot(state));
@@ -104,6 +106,31 @@ public sealed class SummonStoneManager
             state.SuccessfulSummonCount++;
             return new SummonOrbAttempt(true, ErrorCode.SUCCESS, itemId, item, CreateSnapshot(state));
         }
+    }
+
+    /// <summary>
+    ///     소환 2택 후보. 결과가 (매치, 플레이어, 소환 횟수)에만 결정론적으로 묶여 있으므로
+    ///     대기 상태·만료 타이머 없이 미리 공개할 수 있고, 재접속에도 같은 값이 복원된다.
+    ///     후보 0은 기존 단일 소환 스트림과 동일해 선택 인덱스를 보내지 않는 요청과 호환된다.
+    /// </summary>
+    public int[] GetSummonCandidates(long matchingId, long playerId)
+    {
+        var state = GetOrCreatePlayerState(matchingId, playerId);
+        lock (state.SyncRoot)
+            return ComputeSummonCandidates(matchingId, playerId, state.SuccessfulSummonCount);
+    }
+
+    private static int[] ComputeSummonCandidates(long matchingId, long playerId, int successfulSummonCount)
+    {
+        int first = SelectOrbItemId(matchingId, playerId, successfulSummonCount);
+        int second = SelectOrbItemId(matchingId, playerId, successfulSummonCount, salt: 1);
+        if (second != first)
+            return [first, second];
+
+        // 같은 오브 두 개는 선택이 아니다. 결정론을 유지한 채 풀의 다음 항목으로 민다.
+        int[] pool = successfulSummonCount == 0 ? OpeningAttackPool : SummonPool;
+        second = pool[(Array.IndexOf(pool, second) + 1) % pool.Length];
+        return [first, second];
     }
 
     public void RemoveMatchingState(long matchingId) => _matchingStates.TryRemove(matchingId, out _);
@@ -125,13 +152,16 @@ public sealed class SummonStoneManager
         return (int)Math.Min(int.MaxValue, cost);
     }
 
-    private static int SelectOrbItemId(long matchingId, long playerId, int successfulSummonCount)
+    private static int SelectOrbItemId(long matchingId, long playerId, int successfulSummonCount, int salt = 0)
     {
         // The result is keyed only by match, player and successful summon count.
         // Region, target and afterimage-affinity state never participate in this RNG path.
+        // salt 0은 XOR 항등이라 기존 단일 소환 스트림을 그대로 보존한다. 2택의 두 번째
+        // 후보만 salt 1로 분기한다.
         ulong value = unchecked((ulong)matchingId * 0x9E3779B185EBCA87UL)
                       ^ unchecked((ulong)playerId * 0xC2B2AE3D27D4EB4FUL)
-                      ^ unchecked((ulong)(successfulSummonCount + 1) * 0x165667B19E3779F9UL);
+                      ^ unchecked((ulong)(successfulSummonCount + 1) * 0x165667B19E3779F9UL)
+                      ^ unchecked((ulong)salt * 0x27D4EB2F165667C5UL);
         value ^= value >> 30;
         value *= 0xBF58476D1CE4E5B9UL;
         value ^= value >> 27;

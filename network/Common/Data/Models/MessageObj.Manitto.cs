@@ -406,6 +406,8 @@ namespace network.common.data.models
     public class G_TO_C_AREA_CLOSED : IMessagePackObject
     {
         [Key("areaType")] public AreaType AreaType { get; set; }
+        [Key("isClosed")] public bool IsClosed { get; set; } = true;
+        [Key("suppressAlert")] public bool SuppressAlert { get; set; }
     }
 
     // ===== 타겟 위치 추적 =====

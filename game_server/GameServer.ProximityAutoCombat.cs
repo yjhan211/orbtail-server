@@ -21,6 +21,7 @@ public partial class GameServer
     private static readonly TimeSpan ProximityCombatAreaReentryWindow = TimeSpan.FromSeconds(5);
 
     private readonly ProximityAutoCombatResolver _proximityAutoCombatResolver = new();
+    private readonly DodgeableProjectileResolver _dodgeableProjectileResolver = new();
     private readonly Dictionary<(long MatchingId, long ObserverPlayerId, long ActorPlayerId),
         SurvivorOrbVisualState> _survivorOrbVisualStates = new();
     private readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex), DateTime>
@@ -141,6 +142,31 @@ public partial class GameServer
         var combatActors = actors
             .Where(actor => combatReadyPlayerIds.Contains(actor.PlayerId))
             .ToList();
+        var activeOrbColors = new Dictionary<long, SurvivorOrbColor>();
+        foreach (var actor in actors.Where(actor => actor.OrbEffectActive))
+        {
+            if (SurvivorOrbData.TryGetColorAndTier(actor.WeaponItemId, out var color, out _))
+                activeOrbColors[actor.PlayerId] = color;
+        }
+
+        var projectileResolutions = _dodgeableProjectileResolver.ResolveImpacts(
+            matchingId,
+            combatActors,
+            nowUtc,
+            actors);
+        var projectileHits = projectileResolutions
+            .SelectMany(resolution => resolution.Hits)
+            .Where(attack => _survivorPhaseManager.IsPvpAllowed(matchingId, attack.Area))
+            .ToList();
+        if (projectileResolutions.Count > 0)
+            _gameEventLogManager.LogDodgeableProjectileResolutions(matchingId, projectileResolutions);
+        if (projectileHits.Count > 0)
+        {
+            ApplyProximityCombatVolley(
+                matchingId, projectileHits, matchingSessions, matchingBots, activeSessions,
+                activeOrbColors, resonanceStates, actors, nowUtc, broadcastAttackVfx: false);
+        }
+
         var aliveMonsterTargets = AdvanceEmotionAfterimageMonsters(
             matchingId, matchingSessions, matchingBots, nowUtc);
         var monsterTargetIds = aliveMonsterTargets
@@ -153,7 +179,7 @@ public partial class GameServer
             matchingId,
             combatTargets,
             nowUtc,
-            ProximityCombatLineOfSight.CanTarget,
+            (attacker, target) => CanResolveSurvivorPhaseCombatTarget(matchingId, attacker, target),
             onTargetAcquired: targetEvent =>
                 _gameEventLogManager.LogSurvivorTargetAcquired(
                     matchingId,
@@ -173,29 +199,97 @@ public partial class GameServer
                     BotPlayerManager.IsBotPlayerId(targetEvent.AttackerPlayerId),
                     targetEvent.OccurredAtUtc));
 
+        var playerCombatActors = combatTargets.Where(actor => !actor.IsMonsterTarget).ToList();
+        var occupiedAreas = playerCombatActors
+            .Select(actor => actor.Area)
+            .Where(area => area != AreaType.None)
+            .ToHashSet();
+        var monsterCombatActors = combatTargets.Where(actor => actor.IsMonsterTarget).ToList();
+        var attackableMonsterAreas = playerCombatActors
+            .Where(attacker => attacker.AttackRange > 0f && attacker.Damage > 0)
+            .Where(attacker => monsterCombatActors.Any(monster =>
+            {
+                if (monster.Area != attacker.Area)
+                    return false;
+                float dx = attacker.Position.X - monster.Position.X;
+                float dy = attacker.Position.Y - monster.Position.Y;
+                return dx * dx + dy * dy <= attacker.AttackRange * attacker.AttackRange &&
+                       ProximityCombatLineOfSight.CanTarget(attacker, monster);
+            }))
+            .Select(attacker => attacker.Area)
+            .ToHashSet();
+        foreach (var sample in _emotionAfterimageMonsterManager.SampleDensity(
+                     matchingId, occupiedAreas, attackableMonsterAreas, nowUtc))
+            _gameEventLogManager.LogMonsterDensitySample(matchingId, sample);
+
         if (attacks.Count == 0)
             return;
 
-        var resolvedAttacks = ExpandWaveAreaAttacks(attacks, combatTargets);
-        var playerAttacks = resolvedAttacks
+        var playerAttacks = attacks
             .Where(attack => !monsterTargetIds.Contains(attack.TargetPlayerId))
             .ToList();
         if (playerAttacks.Count > 0)
         {
-            var activeOrbColors = new Dictionary<long, SurvivorOrbColor>();
-            foreach (var actor in actors.Where(actor => actor.OrbEffectActive))
+            var windPulseAttacks = playerAttacks
+                .Where(attack => !attack.IsResonanceProc &&
+                                 SurvivorOrbData.GetAttackPattern(attack.WeaponItemId) ==
+                                 SurvivorOrbAttackPattern.AttackerArea)
+                .ToList();
+            var dodgeableAttacks = playerAttacks
+                .Where(attack => !attack.IsResonanceProc &&
+                                 SurvivorOrbData.GetAttackPattern(attack.WeaponItemId) is
+                                     SurvivorOrbAttackPattern.HomingProjectile or
+                                     SurvivorOrbAttackPattern.TargetArea)
+                .ToList();
+            var immediateAttacks = playerAttacks
+                .Where(attack => attack.IsResonanceProc ||
+                                 SurvivorOrbData.GetAttackPattern(attack.WeaponItemId) ==
+                                 SurvivorOrbAttackPattern.None)
+                .ToList();
+            if (immediateAttacks.Count > 0)
             {
-                if (SurvivorOrbData.TryGetColorAndTier(actor.WeaponItemId, out var color, out _))
-                    activeOrbColors[actor.PlayerId] = color;
+                ApplyProximityCombatVolley(
+                    matchingId, immediateAttacks, matchingSessions, matchingBots, activeSessions,
+                    activeOrbColors, resonanceStates, actors, nowUtc, broadcastAttackVfx: true);
             }
-            ApplyProximityCombatVolley(matchingId, playerAttacks, matchingSessions, matchingBots, activeSessions, activeOrbColors, resonanceStates, actors, nowUtc);
+
+            var expandedWindPulseAttacks = ExpandWindAreaAttacks(windPulseAttacks, combatActors);
+            foreach (var windPulse in windPulseAttacks)
+                BroadcastDodgeablePvpAttackLaunch(windPulse, matchingSessions);
+            if (expandedWindPulseAttacks.Count > 0)
+            {
+                ApplyProximityCombatVolley(
+                    matchingId, expandedWindPulseAttacks, matchingSessions, matchingBots, activeSessions,
+                    activeOrbColors, resonanceStates, actors, nowUtc, broadcastAttackVfx: false);
+            }
+
+            var launches = _dodgeableProjectileResolver.Queue(
+                matchingId, dodgeableAttacks, combatActors, nowUtc);
+            if (launches.Count > 0)
+                _gameEventLogManager.LogDodgeableProjectileLaunches(matchingId, launches);
+            foreach (var launch in launches)
+                BroadcastDodgeablePvpAttackLaunch(launch.Attack, matchingSessions);
         }
 
-        var monsterAttacks = resolvedAttacks
-            .Where(attack => monsterTargetIds.Contains(attack.TargetPlayerId))
-            .ToList();
+        var monsterAttacks = ExpandWindAreaAttacks(
+            ExpandWaveAreaAttacks(
+                attacks.Where(attack => monsterTargetIds.Contains(attack.TargetPlayerId)).ToList(),
+                combatTargets),
+            combatTargets);
         ApplyPlayerOrbDamageToEmotionAfterimageMonsters(
             matchingId, monsterAttacks, aliveMonsterTargets, nowUtc, matchingSessions);
+    }
+    private bool CanResolveSurvivorPhaseCombatTarget(
+        long matchingId,
+        ProximityCombatActor attacker,
+        ProximityCombatActor target)
+    {
+        if (!ProximityCombatLineOfSight.CanTarget(attacker, target))
+            return false;
+
+        return attacker.IsMonsterTarget || target.IsMonsterTarget
+            ? _survivorPhaseManager.IsPveAllowed(matchingId, attacker.Area)
+            : _survivorPhaseManager.IsPvpAllowed(matchingId, attacker.Area);
     }
     private List<ProximityCombatActor> BuildProximityCombatActors(
         long matchingId,
@@ -326,8 +420,11 @@ public partial class GameServer
                 actors.Add(spatialActor with
                 {
                     WeaponItemId = item.ItemId,
-                    AttackRange = combatData.AttackRange *
-                                  (windActive ? SurvivorOrbData.WindAttackRangeMultiplier : 1f),
+                    AttackRange = SurvivorOrbData.GetAttackPattern(item.ItemId) ==
+                                  SurvivorOrbAttackPattern.AttackerArea
+                        ? SurvivorOrbData.GetWindPulseRadius(item.ItemId)
+                        : combatData.AttackRange *
+                          (windActive ? SurvivorOrbData.WindAttackRangeMultiplier : 1f),
                     Damage = SurvivorOrbData.GetBaseAttackDamage(combatData.Damage, orbColor),
                     AttackIntervalSeconds = combatData.AttackIntervalSeconds *
                                             SurvivorOrbData.GetAttackIntervalMultiplier(item.ItemId) *
@@ -562,6 +659,7 @@ public partial class GameServer
         }
 
         RemoveSurvivorOrbResonanceStates(matchingId);
+        _dodgeableProjectileResolver.RemoveMatching(matchingId);
     }
 
     private static IReadOnlyList<ProximityCombatAttack> ExpandWaveAreaAttacks(
@@ -599,6 +697,56 @@ public partial class GameServer
 
         return expanded;
     }
+    private static IReadOnlyList<ProximityCombatAttack> ExpandWindAreaAttacks(
+        IReadOnlyCollection<ProximityCombatAttack> attacks,
+        IReadOnlyCollection<ProximityCombatActor> combatTargets)
+    {
+        if (attacks.Count == 0)
+            return [];
+
+        var uniqueActors = combatTargets
+            .GroupBy(actor => actor.PlayerId)
+            .ToDictionary(group => group.Key, group => group.First());
+        var expanded = new List<ProximityCombatAttack>(attacks.Count);
+        foreach (var attack in attacks)
+        {
+            if (attack.IsResonanceProc ||
+                SurvivorOrbData.GetAttackPattern(attack.WeaponItemId) !=
+                SurvivorOrbAttackPattern.AttackerArea ||
+                !uniqueActors.TryGetValue(attack.AttackerPlayerId, out var attacker) ||
+                !uniqueActors.TryGetValue(attack.TargetPlayerId, out var primaryTarget))
+            {
+                expanded.Add(attack);
+                continue;
+            }
+
+            float radius = SurvivorOrbData.GetWindPulseRadius(attack.WeaponItemId);
+            float radiusSquared = radius * radius;
+            foreach (var target in uniqueActors.Values
+                         .Where(target => target.PlayerId != attack.AttackerPlayerId &&
+                                          target.Area == attack.Area &&
+                                          target.MapId == attacker.MapId &&
+                                          target.IsMonsterTarget == primaryTarget.IsMonsterTarget)
+                         .Where(target =>
+                         {
+                             float dx = target.Position.X - attacker.Position.X;
+                             float dy = target.Position.Y - attacker.Position.Y;
+                             return dx * dx + dy * dy <= radiusSquared &&
+                                    ProximityCombatLineOfSight.CanTarget(attacker, target);
+                         })
+                         .OrderBy(target => target.PlayerId))
+            {
+                expanded.Add(attack with
+                {
+                    TargetPlayerId = target.PlayerId,
+                    IsWindAreaAttack = true,
+                    IsWindAreaSecondary = target.PlayerId != attack.TargetPlayerId
+                });
+            }
+        }
+
+        return expanded;
+    }
     private void ApplyProximityCombatVolley(
         long matchingId,
         IReadOnlyCollection<ProximityCombatAttack> attacks,
@@ -608,7 +756,8 @@ public partial class GameServer
         IReadOnlyDictionary<long, SurvivorOrbColor> activeOrbColors,
         IReadOnlyDictionary<long, SurvivorOrbResonanceSnapshot> resonanceStates,
         IReadOnlyCollection<ProximityCombatActor> actors,
-        DateTime nowUtc)
+        DateTime nowUtc,
+        bool broadcastAttackVfx)
     {
         var actualHits = new List<ProximityCombatAttack>();
         var pendingAttacks = new Queue<ProximityCombatAttack>(attacks);
@@ -616,7 +765,7 @@ public partial class GameServer
         {
             var attack = pendingAttacks.Dequeue();
             int damage = attack.Damage;
-            if (damage <= 0)
+            if (damage <= 0 || !_survivorPhaseManager.IsPvpAllowed(matchingId, attack.Area))
                 continue;
 
             bool attackerStillValid = matchingSessions.Any(session =>
@@ -745,7 +894,8 @@ public partial class GameServer
                     attack.Area,
                     attack.WeaponItemId,
                     damage);
-                BroadcastObservedProximityAttackVfx(attack, matchingSessions);
+                if (broadcastAttackVfx)
+                    BroadcastObservedProximityAttackVfx(attack, matchingSessions);
             }
 
             logger.LogDebug(
@@ -826,6 +976,28 @@ public partial class GameServer
             if (!observer.PlayerId.HasValue || observer.IsEliminated ||
                 observer.PlayerId.Value == attack.AttackerPlayerId ||
                 observer.PlayerId.Value == attack.TargetPlayerId ||
+                observer.CurrentArea != attack.Area)
+                continue;
+
+            using var packet = Packet.Create((int)Protocol.G_TO_C_PROXIMITY_ATTACK_VFX);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_PROXIMITY_ATTACK_VFX
+            {
+                AttackerPlayerId = attack.AttackerPlayerId,
+                TargetPlayerId = attack.TargetPlayerId,
+                AreaType = attack.Area,
+                WeaponItemId = attack.WeaponItemId
+            }));
+            observer.Send(packet);
+        }
+    }
+
+    private static void BroadcastDodgeablePvpAttackLaunch(
+        ProximityCombatAttack attack,
+        IReadOnlyCollection<GameClientSession> matchingSessions)
+    {
+        foreach (var observer in matchingSessions)
+        {
+            if (!observer.PlayerId.HasValue || observer.IsEliminated ||
                 observer.CurrentArea != attack.Area)
                 continue;
 

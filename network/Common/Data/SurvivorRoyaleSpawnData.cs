@@ -24,6 +24,21 @@ namespace network.common.data
         new(165, 85)
     };
 
+        private static readonly AreaType[] PhaseRoomCandidates =
+        {
+            AreaType.ExamRoom,
+            AreaType.BroadcastRoom,
+            AreaType.Classroom2,
+            AreaType.Classroom3,
+            AreaType.Classroom4,
+            AreaType.Library,
+            AreaType.AdminOffice,
+            AreaType.StaffRoom
+        };
+
+        public static IReadOnlyList<AreaType> GetPhaseRoomCandidates() =>
+            PhaseRoomCandidates.ToArray();
+
         public static IReadOnlyList<Cell> GetCorridorAnchors() =>
             CorridorAnchors.Select(Cell.Clone).ToList();
 
@@ -48,6 +63,33 @@ namespace network.common.data
             return orderedPlayerIds
                 .Select((playerId, index) => new KeyValuePair<long, Cell>(
                     playerId, Cell.Clone(CorridorAnchors[shuffledAnchors[index]])))
+                .ToDictionary(pair => pair.Key, pair => pair.Value);
+        }
+
+        public static IReadOnlyDictionary<long, Cell> CreatePhaseRoomAssignments(
+            long matchingId,
+            IEnumerable<long> playerIds)
+        {
+            var orderedPlayerIds = playerIds.Distinct().OrderBy(playerId => playerId).ToList();
+            if (orderedPlayerIds.Count > 8)
+            {
+                throw new ArgumentOutOfRangeException(nameof(playerIds), orderedPlayerIds.Count,
+                    "Survivor Royale supports at most 8 players per match.");
+            }
+
+            var shuffledRooms = PhaseRoomCandidates.ToList();
+            var rng = new Random(GetDeterministicSeed(matchingId));
+            for (int index = shuffledRooms.Count - 1; index > 0; index--)
+            {
+                int swapIndex = rng.Next(index + 1);
+                (shuffledRooms[index], shuffledRooms[swapIndex]) =
+                    (shuffledRooms[swapIndex], shuffledRooms[index]);
+            }
+
+            return orderedPlayerIds
+                .Select((playerId, index) => new KeyValuePair<long, Cell>(
+                    playerId,
+                    Cell.Clone(GameMapData.GetAreaSpawnCell(MapId.School, shuffledRooms[index]))))
                 .ToDictionary(pair => pair.Key, pair => pair.Value);
         }
 

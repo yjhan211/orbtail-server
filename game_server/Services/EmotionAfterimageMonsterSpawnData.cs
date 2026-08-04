@@ -15,6 +15,7 @@ internal static class EmotionAfterimageMonsterSpawnData
     private const int ForgetT1 = 107000020;
     private const int DespairT1 = 107000030;
     private const int PackSize = 9;
+    private const int ReinforcementSlotsPerArea = 10;
     private const int DefaultRoomAffinity = HopeT1;
     // Recovery remains a player-board option, but it has no combat identity for
     // afterimages. Monster packs only spawn the three attack affinities.
@@ -39,6 +40,22 @@ internal static class EmotionAfterimageMonsterSpawnData
         TimeSpan.FromSeconds(15),
         TimeSpan.FromSeconds(15)
     ];
+    // 몸은 무한, 지갑은 유한. 증원 몸 예산은 없다 — 생존 상한 아래로 떨어지면 계속 리필한다.
+    // 대신 방·페이즈당 보상 예산을 두어, 예산 안의 처치만 소환석을 지급한다. 예산이 마르면
+    // 몸은 계속 나오되 돈이 되지 않아, 위험만 남은 방을 떠날 이유가 생긴다. 핵 보상은 예산 외.
+    private static readonly int[] AreaRewardBudgets = [10, 11, 12, 13];
+    // 유리 떼: 스테이지가 오를수록 동시 상한이 올라 화면이 차오른다. HP는 12로 유지해
+    // 성장한 플레이어의 쓸어버리는 감각을 지킨다. 위협은 양과 데미지에서 온다.
+    private static readonly int[] ReinforcementAliveTargets = [9, 12, 15, 18];
+
+    public const int ReinforcementBatchSize = 2;
+    public static readonly TimeSpan ReinforcementReleaseInterval = TimeSpan.FromSeconds(1.5);
+
+    public static int GetAreaRewardBudget(int closurePhase) =>
+        AreaRewardBudgets[Math.Clamp(closurePhase, 0, AreaRewardBudgets.Length - 1)];
+
+    public static int GetReinforcementAliveTarget(int closurePhase) =>
+        ReinforcementAliveTargets[Math.Clamp(closurePhase, 0, ReinforcementAliveTargets.Length - 1)];
 
     public static int GetWaveActiveAreaTarget(int waveIndex) =>
         waveIndex >= 0 && waveIndex < WaveActiveAreaTargets.Length ? WaveActiveAreaTargets[waveIndex] : 0;
@@ -56,7 +73,7 @@ internal static class EmotionAfterimageMonsterSpawnData
     public static MonsterDefinition[] CreateDefinitionsForMatching(long matchingId)
     {
         var packs = Definitions
-            .Where(definition => !definition.IsAmbientCorridor)
+            .Where(definition => !definition.IsAmbientCorridor && !definition.IsReinforcement)
             .GroupBy(definition => definition.ClusterId)
             .Select(group => new { ClusterId = group.Key, Area = group.First().Area })
             .OrderBy(pack => pack.Area)
@@ -89,11 +106,23 @@ internal static class EmotionAfterimageMonsterSpawnData
                     affinityOrder[(hotspotIndex + Math.Min(packIndex++, 1)) % affinityOrder.Length];
             }
         }
+        var primaryAffinityByArea = packs
+            .GroupBy(pack => pack.Area)
+            .ToDictionary(group => group.Key, group => affinityByPack[group.First().ClusterId]);
 
         return Definitions.Select(definition =>
         {
             if (definition.IsAmbientCorridor)
                 return definition;
+
+            if (definition.IsReinforcement)
+            {
+                return definition with
+                {
+                    RewardItemId = primaryAffinityByArea[definition.Area],
+                    StartsActive = false
+                };
+            }
 
             return definition with
             {
@@ -168,6 +197,33 @@ internal static class EmotionAfterimageMonsterSpawnData
                         FormationOffset: CreatePackFormationOffset(packId, memberIndex)));
                 }
             }
+
+            int reinforcementClusterId = nextPackId++;
+            for (int memberIndex = 0; memberIndex < ReinforcementSlotsPerArea; memberIndex++)
+            {
+                var cell = cells[memberIndex % cells.Count];
+                definitions.Add(new MonsterDefinition(
+                    id++, MapId.School, area, CellToWorld(MapId.School, cell.x, cell.y),
+                    MaxHealth: 12,
+                    AttackDamage: 1,
+                    AttackRange: 0.65f,
+                    AttackIntervalSeconds: 1.5f,
+                    RewardItemId: DefaultRoomAffinity,
+                    IsCore: false,
+                    // 증원도 보상 예산이 남아 있는 동안은 지급한다. 예산이 마르면 자동으로 0이 되므로
+                    // 무한 리필이 무한 수입이 되지 않는다.
+                    SummonStoneReward: 1,
+                    MoveSpeed: 2.4f,
+                    LeashRange: 5f,
+                    AreaAliveLimit: ReinforcementSlotsPerArea,
+                    StartsActive: false,
+                    SpawnPriority: priority,
+                    ClusterId: reinforcementClusterId,
+                    ClusterMemberIndex: memberIndex,
+                    ClusterSize: ReinforcementSlotsPerArea,
+                    FormationOffset: CreateReinforcementFormationOffset(reinforcementClusterId, memberIndex),
+                    IsReinforcement: true));
+            }
         }
 
         void AddCorridorAnchors()
@@ -204,6 +260,13 @@ internal static class EmotionAfterimageMonsterSpawnData
         }
     }
 
+
+    private static Vector3f CreateReinforcementFormationOffset(int clusterId, int memberIndex)
+    {
+        float angle = clusterId * 2.39996323f + MathF.Tau * memberIndex / ReinforcementSlotsPerArea;
+        float radius = 1.45f + memberIndex % 2 * 0.25f;
+        return new Vector3f(MathF.Cos(angle) * radius, MathF.Sin(angle) * radius, 0f);
+    }
 
     private static Vector3f CreatePackFormationOffset(int packId, int memberIndex)
     {

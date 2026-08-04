@@ -198,7 +198,29 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
             },
             new()
             {
-                Seq = 13, TimestampUnixMs = startedAt + 300_000, Type = "MATCH_ENDED",
+                Seq = 13, TimestampUnixMs = startedAt + 230_000, Type = "SURVIVOR_PVP_PROJECTILE_LAUNCHED",
+                PlayerId = 1, ActorPlayerId = 1, TargetPlayerId = 2, ProjectileId = 1, Outcome = "launched"
+            },
+            new()
+            {
+                Seq = 14, TimestampUnixMs = startedAt + 231_000, Type = "SURVIVOR_PVP_PROJECTILE_RESOLVED",
+                PlayerId = 1, ActorPlayerId = 1, TargetPlayerId = 2, ProjectileId = 1,
+                HitTargetCount = 1, Outcome = "hit"
+            },
+            new()
+            {
+                Seq = 15, TimestampUnixMs = startedAt + 240_000, Type = "SURVIVOR_PVP_PROJECTILE_LAUNCHED",
+                PlayerId = 2, ActorPlayerId = 2, IsBot = true, TargetPlayerId = 1, ProjectileId = 2, Outcome = "launched"
+            },
+            new()
+            {
+                Seq = 16, TimestampUnixMs = startedAt + 241_000, Type = "SURVIVOR_PVP_PROJECTILE_RESOLVED",
+                PlayerId = 2, ActorPlayerId = 2, IsBot = true, TargetPlayerId = 1, ProjectileId = 2,
+                HitTargetCount = 0, Outcome = "dodged"
+            },
+            new()
+            {
+                Seq = 17, TimestampUnixMs = startedAt + 300_000, Type = "MATCH_ENDED",
                 WinnerPlayerId = 1, EndReason = "test"
             }
         };
@@ -210,6 +232,20 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
         Assert.Equal(100_000, summary.Metrics.FirstTier3ElapsedMilliseconds);
         Assert.Equal(150_000, summary.Metrics.FirstBoardFullElapsedMilliseconds);
         Assert.Equal(1, summary.Metrics.PvpEliminationCount);
+        Assert.Equal(2, summary.Metrics.PvpProjectileLaunchCount);
+        Assert.Equal(2, summary.Metrics.PvpProjectileResolvedCount);
+        Assert.Equal(0, summary.Metrics.PvpProjectileUnresolvedCount);
+        Assert.Equal(1, summary.Metrics.PvpProjectileHitCount);
+        Assert.Equal(1, summary.Metrics.PvpProjectileMissCount);
+        Assert.Equal(0.5d, summary.Metrics.PvpProjectileHitRate);
+        Assert.Equal(1, summary.Metrics.PvpProjectileOutcomeCounts["hit"]);
+        Assert.Equal(1, summary.Metrics.PvpProjectileOutcomeCounts["dodged"]);
+        Assert.Equal(1, summary.Metrics.HumanPvpProjectileMetrics.LaunchCount);
+        Assert.Equal(1d, summary.Metrics.HumanPvpProjectileMetrics.HitRate);
+        Assert.Equal(1, summary.Metrics.HumanPvpProjectileMetrics.OutcomeCounts["hit"]);
+        Assert.Equal(1, summary.Metrics.BotPvpProjectileMetrics.LaunchCount);
+        Assert.Equal(0d, summary.Metrics.BotPvpProjectileMetrics.HitRate);
+        Assert.Equal(1, summary.Metrics.BotPvpProjectileMetrics.OutcomeCounts["dodged"]);
         Assert.Equal(1, summary.Metrics.EliminationCounts["closure"]);
         Assert.Equal(6, summary.Metrics.SummonStoneSources["room"]);
         Assert.Equal(1, summary.Metrics.SummonStoneSources["corridor"]);
@@ -362,8 +398,113 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
         Assert.Equal(11, killed.FirstAttackerPlayerId);
         Assert.Equal(22, killed.LastAttackerPlayerId);
         Assert.Equal([11L, 22L], killed.MonsterDamageContributions!.Select(entry => entry.PlayerId));
-        Assert.Equal([30, 18], killed.MonsterDamageContributions.Select(entry => entry.Damage));
+        Assert.Equal([30, 18], killed.MonsterDamageContributions!.Select(entry => entry.Damage));
     }
+
+    [Fact]
+    public void SaveBuildsReinforcementDensityAndBotPerformanceMetrics()
+    {
+        const long matchingId = 214001;
+        long startedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var events = new List<GameEventEntry>
+        {
+            new() { Seq = 1, TimestampUnixMs = startedAt, Type = "MATCH_STARTED" },
+            new()
+            {
+                Seq = 2, TimestampUnixMs = startedAt + 1_000,
+                Type = "SURVIVOR_MONSTER_DENSITY_SAMPLE", Area = "Library",
+                AliveMonsterCount = 0, GlobalAliveMonsterCount = 100,
+                ReinforcementRemainingBudget = 4, HasAttackableMonster = false
+            },
+            new()
+            {
+                Seq = 3, TimestampUnixMs = startedAt + 2_000,
+                Type = "SURVIVOR_MONSTER_DENSITY_SAMPLE", Area = "Library",
+                AliveMonsterCount = 0, GlobalAliveMonsterCount = 99,
+                ReinforcementRemainingBudget = 4, HasAttackableMonster = false
+            },
+            new()
+            {
+                Seq = 4, TimestampUnixMs = startedAt + 2_500,
+                Type = "SURVIVOR_REINFORCEMENT_RELEASED", Area = "Library",
+                PhaseIndex = 0, ReinforcementReleasedCount = 2,
+                ReinforcementRemainingBudget = 2, AliveMonsterCount = 2
+            },
+            new()
+            {
+                Seq = 5, TimestampUnixMs = startedAt + 3_000,
+                Type = "SURVIVOR_MONSTER_DENSITY_SAMPLE", Area = "Library",
+                AliveMonsterCount = 2, GlobalAliveMonsterCount = 102,
+                ReinforcementRemainingBudget = 2, HasAttackableMonster = true
+            },
+            new()
+            {
+                Seq = 6, TimestampUnixMs = startedAt + 4_000,
+                Type = "SURVIVOR_BOT_MOVEMENT_TICK_PERFORMANCE",
+                BotMovementTickP50Milliseconds = 20,
+                BotMovementTickP95Milliseconds = 55,
+                BotMovementTickP99Milliseconds = 80,
+                BotMovementSnapshotP95Milliseconds = 4,
+                BotMovementPlanningP95Milliseconds = 40,
+                BotMovementWalkingP95Milliseconds = 2,
+                BotMovementBroadcastP95Milliseconds = 6,
+                BotMovementTickSampleCount = 200,
+                BotMovementTickSkipCount = 5,
+                BotMovementMaxConsecutiveSkipCount = 2
+            },
+            new()
+            {
+                Seq = 7, TimestampUnixMs = startedAt + 5_000,
+                Type = "SURVIVOR_BOT_MOVEMENT_TICK_PERFORMANCE",
+                BotMovementTickP50Milliseconds = 25,
+                BotMovementTickP95Milliseconds = 60,
+                BotMovementTickP99Milliseconds = 100,
+                BotMovementSnapshotP95Milliseconds = 5,
+                BotMovementPlanningP95Milliseconds = 45,
+                BotMovementWalkingP95Milliseconds = 3,
+                BotMovementBroadcastP95Milliseconds = 8,
+                BotMovementTickSampleCount = 200,
+                BotMovementTickSkipCount = 15,
+                BotMovementMaxConsecutiveSkipCount = 4
+            },
+            new()
+            {
+                Seq = 8, TimestampUnixMs = startedAt + 6_000,
+                Type = "AFTERIMAGE_KILLED", Area = "Library", Outcome = "reinforcement"
+            },
+            new()
+            {
+                Seq = 9, TimestampUnixMs = startedAt + 7_000,
+                Type = "MATCH_ENDED", WinnerPlayerId = 1, EndReason = "test"
+            }
+        };
+
+        var summary = new MatchSummaryFileStore(_directory, 5)
+            .Save(matchingId, "test", 1, events);
+
+        Assert.Equal(1, summary.Metrics.ReinforcementKillCount);
+        Assert.Equal(2, summary.Metrics.ReinforcementReleasedCount);
+        Assert.Equal(3, summary.Metrics.MonsterDensitySampleCount);
+        Assert.Equal(1, summary.Metrics.MonsterContactSampleCount);
+        Assert.Equal(1d / 3d, summary.Metrics.MonsterContactRatio, 6);
+        Assert.Equal(102, summary.Metrics.MaxConcurrentAliveAfterimages);
+        var library = Assert.Single(summary.Metrics.HotspotDensity);
+        Assert.Equal(1, library.LongNoContactGapCount);
+        Assert.Equal(2_000, library.LongestNoContactGapMilliseconds);
+        Assert.Equal(2, library.ReinforcementReleasedCount);
+        Assert.Equal(25, summary.Metrics.BotMovementTickP50Milliseconds);
+        Assert.Equal(60, summary.Metrics.BotMovementTickP95Milliseconds);
+        Assert.Equal(100, summary.Metrics.BotMovementTickP99Milliseconds);
+        Assert.Equal(5, summary.Metrics.BotMovementSnapshotP95Milliseconds);
+        Assert.Equal(45, summary.Metrics.BotMovementPlanningP95Milliseconds);
+        Assert.Equal(3, summary.Metrics.BotMovementWalkingP95Milliseconds);
+        Assert.Equal(8, summary.Metrics.BotMovementBroadcastP95Milliseconds);
+        Assert.Equal(400, summary.Metrics.BotMovementTickSampleCount);
+        Assert.Equal(20, summary.Metrics.BotMovementTickSkipCount);
+        Assert.Equal(20d / 420d, summary.Metrics.BotMovementTickSkipRate, 6);
+        Assert.Equal(4, summary.Metrics.BotMovementMaxConsecutiveSkipCount);
+    }
+
     [Fact]
     public void FinalizationGate_AcceptsOnlyTheFirstCaller()
     {

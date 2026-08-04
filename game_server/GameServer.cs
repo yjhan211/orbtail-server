@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using game_server.admin.dto;
 using game_server.controllers;
@@ -44,7 +45,9 @@ public partial class GameServer(
     private readonly AreaItemStockManager _areaItemStockManager =
         new(naturalExploreLootEnabled: !Config.MONSTER_SUMMON_ECONOMY_ENABLED);
     private readonly GroundItemManager _groundItemManager = new();
-    private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager = new();
+    private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager =
+        new(ambientCorridorEnabled: false);
+    private readonly SurvivorPhaseManager _survivorPhaseManager = new();
     private readonly SummonStoneManager _summonStoneManager = new();
     private readonly SabotageManager _sabotageManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();
@@ -89,7 +92,14 @@ public partial class GameServer(
     private int _botMovementTickSkips;
     private int _botMovementTickCount;
     private double _botMovementTickTotalMs;
+    private readonly List<double> _botMovementSnapshotSamples = new(200);
+    private readonly List<double> _botMovementPlanningSamples = new(200);
+    private readonly List<double> _botMovementWalkingSamples = new(200);
+    private readonly List<double> _botMovementBroadcastSamples = new(200);
     private double _botMovementTickMaxMs;
+    private readonly List<double> _botMovementTickSamples = new(200);
+    private int _botMovementConsecutiveSkips;
+    private int _botMovementMaxConsecutiveSkips;
 
     internal const int ResourceTickIntervalSeconds = 5;
     private const int ChecklistProgressTickIntervalSeconds = 1;
@@ -105,6 +115,7 @@ public partial class GameServer(
         {
             logger.LogInformation("Game server starting...");
             GameClientSession.SetPresenceTracker(_presenceTracker);
+            GameClientSession.SetSurvivorPhaseManager(_survivorPhaseManager);
 
             InitializeServices();
             InitializeControllers();
@@ -193,6 +204,19 @@ public partial class GameServer(
             Action<string> log = msg => logger.LogInformation(msg);
             _emotionAfterimageMonsterManager.SetMatchingStateRemovedCallback(
                 CleanupEmotionAfterimageMonsterRuntime);
+            // 방 전투 페이즈 동안 봇의 방 진입을 통제한다. 클리어 전 방은 문이 잠겨 있고,
+            // 클리어된 방은 페이즈 규칙이 봇을 복도로 내보내는 공간이다 — 무한 리필로 잔상이
+            // 남아 있어 사냥 AI가 되들어가면 페이즈 이동과 0.7초 왕복 루프가 생긴다
+            // (2026-08-04 match-2157: 봇당 문턱 왕복 최대 40회). 그래서 현재 스테이지 방
+            // 전체를 봇 경로에서 차단한다. 자기 방(현재 위치)은 게이트가 항상 예외로 둔다.
+            // 폐쇄 예고부터는 대피를 위해 전 문이 열리므로 ROOM_COMBAT에서만 적용한다.
+            _botPlayerManager.SetLockedRoomAreasProvider(matchingId =>
+            {
+                var snapshot = _survivorPhaseManager.GetSnapshot(matchingId);
+                return snapshot.Phase == SurvivorMatchPhase.ROOM_COMBAT
+                    ? snapshot.CurrentRooms
+                    : Array.Empty<AreaType>();
+            });
             _interactableStateManager.Initialize(log);
             _inGameInventoryManager.Initialize(log);
             _areaRuleManager.Initialize(log);
@@ -1580,6 +1604,24 @@ public partial class GameServer(
         logger.LogInformation("구역 폐쇄 타이머 시작 (1초 간격)");
     }
 
+    private void BroadcastDoorStateChanges(
+        IReadOnlyCollection<GameClientSession> sessions,
+        IEnumerable<int> doorIds,
+        bool isOpen,
+        long openerPlayerId)
+    {
+        foreach (int doorId in doorIds.Distinct())
+        {
+            using var packet = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(
+                doorId,
+                isOpen,
+                ErrorCode.SUCCESS,
+                openerPlayerId);
+            foreach (var session in sessions)
+                session.Send(packet);
+        }
+    }
+
     private void ProcessAreaClosureTick(object? state)
     {
         try
@@ -1590,11 +1632,126 @@ public partial class GameServer(
             foreach (long matchingId in matchingIds)
             {
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
-                var closureTick = _areaClosureManager.CheckClosureSchedule(matchingId);
-                var globalClosureTick = _areaClosureManager.CheckGlobalClosureSchedule(matchingId);
                 var sessions = _clientSessions.Values
                     .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
                     .ToList();
+                var bots = _botPlayerManager.GetBots(matchingId)
+                    .Where(bot => !bot.IsEliminated)
+                    .ToList();
+                var alivePlayerIds = sessions
+                    .Where(session => !session.IsEliminated)
+                    .Select(session => session.PlayerId!.Value)
+                    .Concat(bots.Select(bot => bot.PlayerId))
+                    .ToArray();
+                bool phaseWasUninitialized = !_survivorPhaseManager.HasMatching(matchingId);
+                DateTime phaseStartUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId) ?? DateTime.UtcNow;
+                var occupiedStartingRooms = sessions
+                    .Where(session => !session.IsEliminated)
+                    .Select(session => session.CurrentArea)
+                    .Concat(bots.Select(bot => bot.CurrentArea))
+                    .Where(area => area != AreaType.None)
+                    .ToArray();
+                _survivorPhaseManager.InitializeMatching(
+                    matchingId,
+                    phaseStartUtc,
+                    occupiedStartingRooms);
+                var phaseTick = _survivorPhaseManager.Tick(matchingId, alivePlayerIds);
+
+                if (phaseWasUninitialized && phaseTick.Snapshot.Phase == SurvivorMatchPhase.ROOM_COMBAT)
+                {
+                    var closedDoorIds = _doorStateManager.CloseDoorsForAreas(
+                        matchingId,
+                        phaseTick.Snapshot.CurrentRooms);
+                    BroadcastDoorStateChanges(sessions, closedDoorIds, false, 0);
+                }
+
+                foreach (var transition in phaseTick.Transitions)
+                {
+                    if (transition.Before.Phase == SurvivorMatchPhase.ROOM_COMBAT &&
+                        transition.After.Phase == SurvivorMatchPhase.ROOM_CLOSURE_WARNING)
+                    {
+                        var openedDoorIds = _doorStateManager.OpenDoorsForAreas(
+                            matchingId,
+                            transition.Before.CurrentRooms);
+                        BroadcastDoorStateChanges(sessions, openedDoorIds, true, -1);
+                    }
+
+                    if (transition.After.Phase == SurvivorMatchPhase.ROOM_COMBAT)
+                    {
+                        var closedDoorIds = _doorStateManager.CloseDoorsForAreas(
+                            matchingId,
+                            transition.After.CurrentRooms);
+                        BroadcastDoorStateChanges(sessions, closedDoorIds, false, 0);
+                    }
+                }
+
+                var phaseAreaDelta = _areaClosureManager.ApplyPhaseSnapshot(matchingId, phaseTick.Snapshot);
+                var closureTick = new ClosureScheduleTick(
+                    phaseAreaDelta.WarningAreas,
+                    phaseAreaDelta.WarningSeconds,
+                    phaseAreaDelta.TransitionAtUnixMs,
+                    phaseAreaDelta.ClosedAreas);
+                var globalClosureTick = GlobalClosureTick.Empty;
+
+                var visibleNextRooms = phaseTick.Snapshot.Phase is
+                    SurvivorMatchPhase.CORRIDOR_ENTRY or
+                    SurvivorMatchPhase.CORRIDOR_COMBAT or
+                    SurvivorMatchPhase.ROOM_SELECTION or
+                    SurvivorMatchPhase.CORRIDOR_CLOSURE_WARNING
+                        ? phaseTick.Snapshot.NextRooms
+                        : [];
+                int[] visibleNextRoomAreaTypes = visibleNextRooms
+                    .Select(area => (int)area)
+                    .ToArray();
+                int[] visibleNextRoomOccupancies = visibleNextRooms
+                    .Select(area => Math.Min(2,
+                        sessions.Count(session => !session.IsEliminated && session.CurrentArea == area) +
+                        bots.Count(bot => !bot.IsEliminated && bot.CurrentArea == area)))
+                    .ToArray();
+                using (var phasePacket = PacketMaker.G_TO_C_ROUND_STATE(
+                           matchingId,
+                           phaseTick.Snapshot.StageIndex + 1,
+                           5,
+                           SurvivorPhaseManager.ToRoundPhase(phaseTick.Snapshot.Phase),
+                           phaseTick.Snapshot.RemainingSeconds,
+                           SurvivorPhaseManager.GetPhaseDurationSeconds(phaseTick.Snapshot),
+                           phaseTick.Snapshot.Phase == SurvivorMatchPhase.FINISHED,
+                           visibleNextRoomAreaTypes,
+                           visibleNextRoomOccupancies))
+                {
+                    foreach (var session in sessions) session.Send(phasePacket);
+                }
+
+                var monsterPhaseStates = new Dictionary<int, MonsterRuntimeInfo>();
+                if (phaseWasUninitialized || phaseTick.Transitions.Count > 0)
+                {
+                    bool beginRoomWave = phaseTick.Snapshot.Phase is
+                        SurvivorMatchPhase.ROOM_COMBAT or SurvivorMatchPhase.FINAL;
+                    foreach (var monster in _emotionAfterimageMonsterManager.ApplyPhaseSnapshot(
+                                 matchingId,
+                                 phaseTick.Snapshot.OpenAreas,
+                                 beginRoomWave,
+                                 phaseTick.Snapshot.StageIndex,
+                                 DateTime.UtcNow))
+                        monsterPhaseStates[monster.MonsterId] = monster;
+
+                    if (phaseWasUninitialized)
+                        _gameEventLogManager.LogSurvivorPhaseTransition(
+                            matchingId, SurvivorPhaseSnapshot.Empty, phaseTick.Snapshot);
+
+                    foreach (var transition in phaseTick.Transitions)
+                    {
+                        _gameEventLogManager.LogSurvivorPhaseTransition(
+                            matchingId, transition.Before, transition.After);
+                        logger.LogInformation(
+                            "Survivor phase transition: MatchingId={MatchingId}, Stage={Stage}, From={From}, To={To}, OpenAreas={OpenAreas}",
+                            matchingId,
+                            transition.After.StageIndex,
+                            transition.Before.Phase,
+                            transition.After.Phase,
+                            string.Join(',', transition.After.OpenAreas));
+                    }
+                }
 
                 foreach (var expired in _groundItemManager.ExpireClaimReservations(matchingId))
                     _gameEventLogManager.LogGroundItemPriorityExpired(
@@ -1613,20 +1770,25 @@ public partial class GameServer(
 
                 if (closureTick.WarningAreas.Count > 0)
                 {
-                    var closureState = _areaClosureManager.GetClientStateSnapshot(matchingId);
-                    var replenished = _areaItemStockManager.ReplenishForClosureWarning(
-                        matchingId,
-                        closureTick.ClosureAtUnixMs,
-                        closureTick.WarningAreas,
-                        closureState.ClosedAreas);
-                    if (replenished.Count > 0)
+                    // #214 room phases use monsters and summon stones as their economy. The old
+                    // exploration-stock refresh remains available only to legacy closure matches.
+                    if (!_survivorPhaseManager.HasMatching(matchingId))
                     {
-                        BroadcastSurvivorAreaStockState(matchingId, sessions);
-                        BroadcastNaturalStockRefresh(matchingId, sessions, replenished.Select(entry => entry.AreaType));
-                        logger.LogInformation(
-                            "Survivor Royale closure supply added: MatchingId={MatchingId}, Supply={Supply}",
+                        var closureState = _areaClosureManager.GetClientStateSnapshot(matchingId);
+                        var replenished = _areaItemStockManager.ReplenishForClosureWarning(
                             matchingId,
-                            string.Join(',', replenished.Select(entry => $"{entry.AreaType}:{entry.ItemId}")));
+                            closureTick.ClosureAtUnixMs,
+                            closureTick.WarningAreas,
+                            closureState.ClosedAreas);
+                        if (replenished.Count > 0)
+                        {
+                            BroadcastSurvivorAreaStockState(matchingId, sessions);
+                            BroadcastNaturalStockRefresh(matchingId, sessions, replenished.Select(entry => entry.AreaType));
+                            logger.LogInformation(
+                                "Survivor Royale closure supply added: MatchingId={MatchingId}, Supply={Supply}",
+                                matchingId,
+                                string.Join(',', replenished.Select(entry => $"{entry.AreaType}:{entry.ItemId}")));
+                        }
                     }
 
                     var warningAreas = closureTick.WarningAreas.Select(area => area.ToString()).ToList();
@@ -1666,6 +1828,16 @@ public partial class GameServer(
                     }
                 }
 
+                foreach (var reopenedArea in phaseAreaDelta.ReopenedAreas)
+                {
+                    using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
+                    packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED
+                    {
+                        AreaType = reopenedArea,
+                        IsClosed = false
+                    }));
+                    foreach (var session in sessions) session.Send(packet);
+                }
                 foreach (var warningArea in closureTick.WarningAreas)
                 {
                     using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
@@ -1679,12 +1851,10 @@ public partial class GameServer(
                     foreach (var session in sessions) session.Send(packet);
                 }
 
-                bool monsterWaveChanged = _emotionAfterimageMonsterManager.ApplyAreaClosureAndSpawnWave(
-                    matchingId, closureTick.ClosedAreas, DateTime.UtcNow);
-                if (monsterWaveChanged)
+                if (monsterPhaseStates.Count > 0)
                 {
-                    BroadcastMonsterSnapshot(matchingId, sessions);
-                    BroadcastMonsterMinimapSnapshot(sessions, _emotionAfterimageMonsterManager.GetSnapshot(matchingId));
+                    BroadcastMonsterSnapshot(matchingId, sessions, monsterPhaseStates.Values);
+                    BroadcastMonsterMinimapSnapshot(sessions, monsterPhaseStates.Values);
                 }
                 if (closureTick.ClosedAreas.Count > 0)
                 {
@@ -1699,7 +1869,11 @@ public partial class GameServer(
                     _gameEventLogManager.LogClosure(matchingId, closedArea.ToString());
 
                     using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
-                    var msg = new G_TO_C_AREA_CLOSED { AreaType = closedArea };
+                    var msg = new G_TO_C_AREA_CLOSED
+                    {
+                        AreaType = closedArea,
+                        SuppressAlert = phaseWasUninitialized
+                    };
                     packet.SetBody(MessagePackSerializer.Serialize(msg));
                     foreach (var session in sessions) session.Send(packet);
                 }
@@ -1817,11 +1991,17 @@ public partial class GameServer(
         {
             // 틱이 50ms를 넘기면 다음 틱이 통째로 스킵되어 봇 위치 브로드캐스트 간격이
             // 50ms와 100ms를 오간다. 클라 보간이 그대로 튀므로 빈도를 계측한다.
-            _botMovementTickSkips++;
+            System.Threading.Interlocked.Increment(ref _botMovementTickSkips);
+            int consecutiveSkips = System.Threading.Interlocked.Increment(ref _botMovementConsecutiveSkips);
+            UpdateMaximum(ref _botMovementMaxConsecutiveSkips, consecutiveSkips);
             return;
         }
 
         var botMovementTickStartedAt = DateTime.UtcNow;
+        double snapshotElapsedMilliseconds = 0d;
+        double planningElapsedMilliseconds = 0d;
+        double walkingElapsedMilliseconds = 0d;
+        double broadcastElapsedMilliseconds = 0d;
         try
         {
             var activeSessions = _clientSessions.Values
@@ -1836,6 +2016,7 @@ public partial class GameServer(
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
                 // 프로토 0: 봇 타겟 추적/떠보기를 위해 같은 매칭 인간 플레이어의 현재 영역을 넘긴다.
+                long snapshotStartedAt = Stopwatch.GetTimestamp();
                 var humanAreas = activeSessions
                     .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
                     .ToDictionary(s => s.PlayerId!.Value, s => s.CurrentArea);
@@ -1858,6 +2039,8 @@ public partial class GameServer(
                             bot.Corruption)))
                     .ToList();
                 var pveTargets = _emotionAfterimageMonsterManager.GetAliveTargets(matchingId);
+                snapshotElapsedMilliseconds += Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
+
                 var movementResult = _botPlayerManager.ProcessBotMovementTick(
                     matchingId,
                     _areaClosureManager,
@@ -1867,7 +2050,12 @@ public partial class GameServer(
                     _inGameInventoryManager,
                     _groundItemManager,
                     combatTargets,
-                    pveTargets);
+                    pveTargets,
+                    _survivorPhaseManager);
+                planningElapsedMilliseconds += movementResult.PlanningElapsedMilliseconds;
+                walkingElapsedMilliseconds += movementResult.WalkingElapsedMilliseconds;
+
+                long broadcastStartedAt = Stopwatch.GetTimestamp();
                 foreach (var ev in movementResult.Movements)
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 if (movementResult.ExploreEnds.Count > 0)
@@ -1879,6 +2067,7 @@ public partial class GameServer(
                 if (movementResult.GroundItemPickups.Count > 0)
                     BroadcastBotGroundItemPickups(matchingId, movementResult.GroundItemPickups, activeSessions);
                 StartTargetBotInterrogations(matchingId, activeSessions);
+                broadcastElapsedMilliseconds += Stopwatch.GetElapsedTime(broadcastStartedAt).TotalMilliseconds;
             }
         }
         catch (Exception ex)
@@ -1887,25 +2076,107 @@ public partial class GameServer(
         }
         finally
         {
-            System.Threading.Volatile.Write(ref _botMovementProcessing, 0);
-
-            double botTickElapsedMs = (DateTime.UtcNow - botMovementTickStartedAt).TotalMilliseconds;
-            _botMovementTickCount++;
-            _botMovementTickTotalMs += botTickElapsedMs;
-            if (botTickElapsedMs > _botMovementTickMaxMs) _botMovementTickMaxMs = botTickElapsedMs;
-            if (_botMovementTickCount >= 200)
+            try
             {
-                logger.LogInformation(
-                    "Bot movement tick: avg={Avg:F1}ms max={Max:F1}ms skips={Skips} over {Count} ticks",
-                    _botMovementTickTotalMs / _botMovementTickCount,
-                    _botMovementTickMaxMs,
-                    _botMovementTickSkips,
-                    _botMovementTickCount);
-                _botMovementTickCount = 0;
-                _botMovementTickTotalMs = 0;
-                _botMovementTickMaxMs = 0;
-                _botMovementTickSkips = 0;
+                double botTickElapsedMs = (DateTime.UtcNow - botMovementTickStartedAt).TotalMilliseconds;
+                System.Threading.Interlocked.Exchange(ref _botMovementConsecutiveSkips, 0);
+                _botMovementTickSamples.Add(botTickElapsedMs);
+                _botMovementSnapshotSamples.Add(snapshotElapsedMilliseconds);
+                _botMovementPlanningSamples.Add(planningElapsedMilliseconds);
+                _botMovementWalkingSamples.Add(walkingElapsedMilliseconds);
+                _botMovementBroadcastSamples.Add(broadcastElapsedMilliseconds);
+                _botMovementTickCount++;
+                _botMovementTickTotalMs += botTickElapsedMs;
+                if (botTickElapsedMs > _botMovementTickMaxMs) _botMovementTickMaxMs = botTickElapsedMs;
+                if (_botMovementTickCount >= 200)
+                {
+                    var sortedSamples = _botMovementTickSamples.OrderBy(value => value).ToArray();
+                    double p50Milliseconds = CalculatePercentile(sortedSamples, 0.50);
+                    double p95Milliseconds = CalculatePercentile(sortedSamples, 0.95);
+                    double p99Milliseconds = CalculatePercentile(sortedSamples, 0.99);
+                    double snapshotP95Milliseconds = CalculatePercentile(
+                        _botMovementSnapshotSamples.OrderBy(value => value).ToArray(), 0.95);
+                    double planningP95Milliseconds = CalculatePercentile(
+                        _botMovementPlanningSamples.OrderBy(value => value).ToArray(), 0.95);
+                    double walkingP95Milliseconds = CalculatePercentile(
+                        _botMovementWalkingSamples.OrderBy(value => value).ToArray(), 0.95);
+                    double broadcastP95Milliseconds = CalculatePercentile(
+                        _botMovementBroadcastSamples.OrderBy(value => value).ToArray(), 0.95);
+                    int skippedTicks = System.Threading.Interlocked.Exchange(ref _botMovementTickSkips, 0);
+                    int maxConsecutiveSkippedTicks =
+                        System.Threading.Interlocked.Exchange(ref _botMovementMaxConsecutiveSkips, 0);
+                    logger.LogInformation(
+                        "Bot movement tick: avg={Avg:F1}ms max={Max:F1}ms skips={Skips} over {Count} ticks; " +
+                        "p95 snapshot={SnapshotP95:F1}ms planning={PlanningP95:F1}ms walking={WalkingP95:F1}ms " +
+                        "broadcast={BroadcastP95:F1}ms",
+                        _botMovementTickTotalMs / _botMovementTickCount,
+                        _botMovementTickMaxMs,
+                        skippedTicks,
+                        _botMovementTickCount,
+                        snapshotP95Milliseconds,
+                        planningP95Milliseconds,
+                        walkingP95Milliseconds,
+                        broadcastP95Milliseconds);
+                    foreach (long matchingId in GetActiveMatchingIds()
+                                 .Where(_botPlayerManager.HasBots))
+                    {
+                        _gameEventLogManager.LogBotMovementTickPerformance(
+                            matchingId,
+                            p50Milliseconds,
+                            p95Milliseconds,
+                            p99Milliseconds,
+                            snapshotP95Milliseconds,
+                            planningP95Milliseconds,
+                            walkingP95Milliseconds,
+                            broadcastP95Milliseconds,
+                            _botMovementTickCount,
+                            skippedTicks,
+                            maxConsecutiveSkippedTicks);
+                    }
+                    _botMovementTickCount = 0;
+                    _botMovementTickTotalMs = 0;
+                    _botMovementTickMaxMs = 0;
+                    _botMovementTickSamples.Clear();
+                    _botMovementSnapshotSamples.Clear();
+                    _botMovementPlanningSamples.Clear();
+                    _botMovementWalkingSamples.Clear();
+                    _botMovementBroadcastSamples.Clear();
+                }
             }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to record bot movement tick metrics");
+            }
+            finally
+            {
+                System.Threading.Volatile.Write(ref _botMovementProcessing, 0);
+            }
+        }
+    }
+
+    private static double CalculatePercentile(IReadOnlyList<double> sortedValues, double percentile)
+    {
+        if (sortedValues.Count == 0)
+            return 0d;
+
+        double position = (sortedValues.Count - 1) * Math.Clamp(percentile, 0d, 1d);
+        int lowerIndex = (int)Math.Floor(position);
+        int upperIndex = (int)Math.Ceiling(position);
+        if (lowerIndex == upperIndex)
+            return sortedValues[lowerIndex];
+        double fraction = position - lowerIndex;
+        return sortedValues[lowerIndex] + (sortedValues[upperIndex] - sortedValues[lowerIndex]) * fraction;
+    }
+
+    private static void UpdateMaximum(ref int location, int candidate)
+    {
+        int current = System.Threading.Volatile.Read(ref location);
+        while (candidate > current)
+        {
+            int observed = System.Threading.Interlocked.CompareExchange(ref location, candidate, current);
+            if (observed == current)
+                return;
+            current = observed;
         }
     }
 
@@ -2272,6 +2543,7 @@ public partial class GameServer(
 
         GameClientSession.CleanupAbandonedMatchingRuntime(matchingId);
         _areaClosureManager.CleanupMatching(matchingId);
+        _survivorPhaseManager.CleanupMatching(matchingId);
         _botPlayerManager.CleanupMatching(matchingId);
         _presenceTracker.Remove(matchingId);
         _checklistManager.RemoveMatchingState(matchingId);
@@ -2450,7 +2722,7 @@ public partial class GameServer(
             });
         }
 
-        var spawnAssignments = SurvivorRoyaleSpawnData.CreateAssignments(matchingId, playerIds);
+        var spawnAssignments = SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
         foreach (var botInfo in botInfoList)
             botInfo.SpawnCell = Cell.Clone(spawnAssignments[botInfo.PlayerId]);
 
@@ -2487,7 +2759,10 @@ public partial class GameServer(
             _summonStoneManager.EnsureStartingStones(matchingId, bot.PlayerId);
         }
 
-        _areaClosureManager.InitializeMatching(matchingId, jobs);
+        _areaClosureManager.InitializeMatching(
+            matchingId,
+            jobs,
+            SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
         _areaItemStockManager.InitializeMatching(matchingId);
         _groundItemManager.InitializeMatching(matchingId);
         _emotionAfterimageMonsterManager.InitializeMatching(matchingId);
@@ -2495,7 +2770,9 @@ public partial class GameServer(
             matchingId,
             _emotionAfterimageMonsterManager.GetRewardAreaSnapshot(matchingId),
             "initial");
-        _doorStateManager.InitializeMatching(matchingId);
+        _doorStateManager.InitializeMatching(
+            matchingId,
+            SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
         _checklistManager.StartRound(matchingId, 1, playerIds,
             playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
         if (Config.ROUND_SYSTEM_ENABLED)

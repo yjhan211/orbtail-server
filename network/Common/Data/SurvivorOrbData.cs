@@ -17,6 +17,14 @@ namespace network.common.data
         Recovery = 4
     }
 
+    public enum SurvivorOrbAttackPattern
+    {
+        None = 0,
+        HomingProjectile = 1,
+        TargetArea = 2,
+        AttackerArea = 3
+    }
+
     public static class SurvivorOrbData
     {
         public const float RecoveryTickSeconds = 5f;
@@ -45,9 +53,21 @@ namespace network.common.data
         public const float WaveSplashRadius = 1.8f;
         public const float WaveTierTwoSplashRadius = 2.2f;
         public const float WaveTierThreeSplashRadius = 2.6f;
+        public const float WindPulseRadius = 2.4f;
+        public const float WindTierTwoPulseRadius = 2.8f;
+        public const float WindTierThreePulseRadius = 3.2f;
         public const float PveAdvantageDamageMultiplier = 1.5f;
         public const float PveNeutralDamageMultiplier = 1f;
         public const float PveDisadvantageDamageMultiplier = 0.5f;
+
+        // PvP attacks are fired at the target's launch-time position. These shared
+        // timings keep the server impact check and Unity projectile presentation aligned.
+        public const float HopeProjectileSpeed = 6f;
+        public const float ForgetProjectileSpeed = 9f;
+        public const float DespairImpactDelaySeconds = 0.8f;
+        public const float MinimumProjectileImpactDelaySeconds = 0.45f;
+        public const float MaximumProjectileImpactDelaySeconds = 1.4f;
+        public const float ProjectileTargetBodyRadius = 0.4f;
 
         private static readonly SurvivorOrbColor[] EvolutionColors =
             new[] { SurvivorOrbColor.Red, SurvivorOrbColor.Green, SurvivorOrbColor.Blue };
@@ -70,6 +90,64 @@ namespace network.common.data
         }
 
         public static bool IsSurvivorOrb(int itemId) => TryGetColorAndTier(itemId, out _, out _);
+
+        public static SurvivorOrbAttackPattern GetAttackPattern(int itemId)
+        {
+            if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out _))
+                return SurvivorOrbAttackPattern.None;
+
+            return color switch
+            {
+                SurvivorOrbColor.Red => SurvivorOrbAttackPattern.HomingProjectile,
+                SurvivorOrbColor.Blue => SurvivorOrbAttackPattern.TargetArea,
+                SurvivorOrbColor.Green => SurvivorOrbAttackPattern.AttackerArea,
+                _ => SurvivorOrbAttackPattern.None
+            };
+        }
+
+        public static float GetWindPulseRadius(int itemId)
+        {
+            if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out int tier) ||
+                color != SurvivorOrbColor.Green)
+            {
+                return WindPulseRadius;
+            }
+
+            return tier switch
+            {
+                >= 3 => WindTierThreePulseRadius,
+                2 => WindTierTwoPulseRadius,
+                _ => WindPulseRadius
+            };
+        }
+
+        public static float GetPvpProjectileImpactDelaySeconds(int itemId, float distance)
+        {
+            if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out _))
+                return MinimumProjectileImpactDelaySeconds;
+
+            if (color == SurvivorOrbColor.Blue)
+                return DespairImpactDelaySeconds;
+
+            float speed = color == SurvivorOrbColor.Green
+                ? ForgetProjectileSpeed
+                : HopeProjectileSpeed;
+            return Math.Clamp(
+                Math.Max(0f, distance) / speed,
+                MinimumProjectileImpactDelaySeconds,
+                MaximumProjectileImpactDelaySeconds);
+        }
+
+        public static float GetPvpProjectileHitRadius(int itemId, float projectileWidth)
+        {
+            if (TryGetColorAndTier(itemId, out SurvivorOrbColor color, out _) &&
+                color == SurvivorOrbColor.Blue)
+            {
+                return 0f;
+            }
+
+            return Math.Max(0.55f, Math.Max(0f, projectileWidth) + ProjectileTargetBodyRadius);
+        }
 
         public static float GetBaseAttackIntervalMultiplier(SurvivorOrbColor color) => color switch
         {

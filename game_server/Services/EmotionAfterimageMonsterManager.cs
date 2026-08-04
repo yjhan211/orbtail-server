@@ -16,6 +16,7 @@ public sealed class EmotionAfterimageMonsterManager
     private static readonly TimeSpan AmbientCorridorDespawnDelay = TimeSpan.FromSeconds(4);
     private const float AmbientCorridorSafeSpawnDistance = 3f;
     private const int AmbientCorridorAliveLimit = 6;
+    private static readonly TimeSpan DensitySampleInterval = TimeSpan.FromSeconds(1);
 
     /// <summary>
     ///     페이즈마다 개체 하나씩 줄인다. 한 마리가 강해지고 보상도 커지므로 수까지 유지하면
@@ -27,13 +28,21 @@ public sealed class EmotionAfterimageMonsterManager
 
     private const int MinAmbientCorridorAliveLimit = 3;
     private readonly ConcurrentDictionary<long, MatchingMonsterState> _matchingStates = new();
+    private readonly bool _ambientCorridorEnabled;
     private Action<long>? _matchingStateRemoved;
+
+    public EmotionAfterimageMonsterManager(bool ambientCorridorEnabled = true)
+    {
+        _ambientCorridorEnabled = ambientCorridorEnabled;
+    }
 
     public void InitializeMatching(long matchingId)
     {
         if (matchingId <= 0 || IsSoloMapValidationEnabled) return;
         _matchingStates.GetOrAdd(matchingId,
-            id => new MatchingMonsterState(EmotionAfterimageMonsterSpawnData.CreateDefinitionsForMatching(id)));
+            id => new MatchingMonsterState(
+                EmotionAfterimageMonsterSpawnData.CreateDefinitionsForMatching(id),
+                _ambientCorridorEnabled));
     }
 
     private static bool IsSoloMapValidationEnabled =>
@@ -67,6 +76,9 @@ public sealed class EmotionAfterimageMonsterManager
     public bool HasAliveMonsterInArea(long matchingId, AreaType area) =>
         _matchingStates.TryGetValue(matchingId, out var state) && state.HasAliveMonsterInArea(area);
 
+    public bool IsAreaWaveCleared(long matchingId, AreaType area) =>
+        _matchingStates.TryGetValue(matchingId, out var state) && state.IsAreaWaveCleared(area);
+
     public MonsterDamageResult ApplyDamage(long matchingId, int monsterId, long attackerPlayerId, int damage,
         DateTime nowUtc)
     {
@@ -82,6 +94,16 @@ public sealed class EmotionAfterimageMonsterManager
             ? state.Tick(possibleTargets, nowUtc)
             : MonsterTickResult.None;
 
+    public IReadOnlyList<MonsterReinforcementState> GetReinforcementSnapshot(long matchingId) =>
+        _matchingStates.TryGetValue(matchingId, out var state) ? state.GetReinforcementSnapshot() : [];
+
+    public IReadOnlyList<MonsterDensitySample> SampleDensity(
+        long matchingId,
+        IReadOnlySet<AreaType> occupiedAreas,
+        IReadOnlySet<AreaType> attackableMonsterAreas,
+        DateTime nowUtc) => _matchingStates.TryGetValue(matchingId, out var state)
+        ? state.SampleDensity(occupiedAreas, attackableMonsterAreas, nowUtc) : [];
+
     /// <summary>
     /// A wave is consumed only when a new area actually reaches the closed state.
     /// Closing an area despawns its live monsters without rewards; only empty nodes
@@ -92,20 +114,51 @@ public sealed class EmotionAfterimageMonsterManager
         closedAreas.Count > 0 && _matchingStates.TryGetValue(matchingId, out var state)
         && state.ApplyAreaClosureAndQueueWave(closedAreas, nowUtc);
 
+    public IReadOnlyList<MonsterRuntimeInfo> ApplyPhaseSnapshot(
+        long matchingId,
+        IReadOnlyCollection<AreaType> openAreas,
+        bool beginRoomWave,
+        int stageIndex,
+        DateTime nowUtc) =>
+        _matchingStates.TryGetValue(matchingId, out var state)
+            ? state.ApplyPhaseSnapshot(openAreas, beginRoomWave, stageIndex, nowUtc)
+            : [];
     private sealed class MatchingMonsterState
     {
         private readonly object _sync = new();
         private readonly Dictionary<int, MonsterState> _monsters;
         private readonly HashSet<AreaType> _closedAreas = [];
+        private readonly HashSet<AreaType> _activeHotspotAreas = [];
+        private readonly Dictionary<AreaType, ReinforcementAreaState> _reinforcements = [];
         private readonly List<PendingWavePack> _pendingWavePacks = [];
         private int _waveIndex;
+        private readonly bool _ambientCorridorEnabled;
         private DateTime _nextAmbientCorridorSpawnAtUtc = DateTime.MinValue;
+        private DateTime _nextDensitySampleAtUtc = DateTime.MinValue;
 
-        public MatchingMonsterState(IEnumerable<MonsterDefinition> definitions)
+        public MatchingMonsterState(IEnumerable<MonsterDefinition> definitions, bool ambientCorridorEnabled)
         {
-            _monsters = definitions.ToDictionary(definition => definition.MonsterId,
+            _ambientCorridorEnabled = ambientCorridorEnabled;
+            var materialized = definitions.ToList();
+            _monsters = materialized.ToDictionary(definition => definition.MonsterId,
                 definition => new MonsterState(definition));
+            foreach (AreaType area in materialized
+                         .Where(definition => definition.StartsActive && definition.IsCore)
+                         .Select(definition => definition.Area)
+                         .Distinct())
+                ActivateHotspot(area, 0);
+
         }
+
+        public IReadOnlyList<MonsterReinforcementState> GetReinforcementSnapshot()
+        {
+            lock (_sync)
+                return _reinforcements.Values
+                    .OrderBy(state => state.Area)
+                    .Select(state => state.ToSnapshot())
+                    .ToList();
+        }
+
 
         public IReadOnlyList<MonsterRuntimeInfo> GetSnapshot()
         {
@@ -163,6 +216,31 @@ public sealed class EmotionAfterimageMonsterManager
                 return _monsters.Values.Any(state => state.IsAlive && state.Definition.Area == area);
         }
 
+        public bool IsAreaWaveCleared(AreaType area)
+        {
+            lock (_sync)
+            {
+                if (!_activeHotspotAreas.Contains(area) || _closedAreas.Contains(area))
+                    return false;
+
+                // 무한 리필에서 "전부 정리"는 성립하지 않는다. 방의 목표는 유한한 핵이며,
+                // 이 방의 핵이 모두 쓰러진 순간을 클리어로 판정한다. 클리어 후에도 필러는
+                // 계속 나오지만 문 개방과는 무관하다. 대기 중인 핵 팩이 있으면 아직이다.
+                bool corePending = _pendingWavePacks.Any(pending => _monsters.Values.Any(state =>
+                    state.Definition.ClusterId == pending.ClusterId &&
+                    state.Definition.IsCore &&
+                    state.Definition.Area == area));
+                if (corePending)
+                    return false;
+
+                return !_monsters.Values.Any(state =>
+                    state.IsAlive &&
+                    state.Definition.IsCore &&
+                    !state.Definition.IsAmbientCorridor &&
+                    state.Definition.Area == area);
+            }
+        }
+
         public MonsterDamageResult ApplyDamage(int monsterId, long attackerPlayerId, int damage, DateTime nowUtc)
         {
             lock (_sync)
@@ -190,17 +268,102 @@ public sealed class EmotionAfterimageMonsterManager
 
                 state.IsAlive = false;
                 state.NextAttackAtUtc = DateTime.MaxValue;
+
+                // 보상 예산: 핵은 방의 목표라 예산 외로 지급하고, 일반·증원은 방 예산에서 차감한다.
+                // 예산이 마르면 몸은 계속 나오되 0석이 되어, 위험만 남은 방을 떠날 이유가 생긴다.
+                int grantedReward = state.SummonStoneReward;
+                if (!state.Definition.IsCore && !state.Definition.IsAmbientCorridor &&
+                    _reinforcements.TryGetValue(state.Definition.Area, out var areaBudget))
+                {
+                    grantedReward = Math.Clamp(areaBudget.RewardBudgetRemaining, 0, grantedReward);
+                    areaBudget.RewardBudgetRemaining -= grantedReward;
+                }
+
                 return new MonsterDamageResult(
                     ToRuntimeInfo(state),
                     true,
-                    state.SummonStoneReward,
+                    grantedReward,
                     true,
                     state.FirstAttackerPlayerId,
                     state.LastAttackerPlayerId,
-                    contributions);
+                    contributions,
+                    state.Definition.IsReinforcement);
             }
         }
 
+        public IReadOnlyList<MonsterRuntimeInfo> ApplyPhaseSnapshot(
+            IReadOnlyCollection<AreaType> openAreas,
+            bool beginRoomWave,
+            int stageIndex,
+            DateTime nowUtc)
+        {
+            lock (_sync)
+            {
+                var open = openAreas.ToHashSet();
+                var changed = new Dictionary<int, MonsterRuntimeInfo>();
+                _closedAreas.Clear();
+                foreach (AreaType area in _monsters.Values.Select(monster => monster.Definition.Area).Distinct())
+                {
+                    if (!open.Contains(area))
+                        _closedAreas.Add(area);
+                }
+
+                _pendingWavePacks.RemoveAll(pack =>
+                {
+                    var member = _monsters.Values.FirstOrDefault(monster =>
+                        monster.Definition.ClusterId == pack.ClusterId);
+                    return member == null || _closedAreas.Contains(member.Definition.Area);
+                });
+                foreach (AreaType area in _reinforcements.Keys.Where(_closedAreas.Contains).ToList())
+                    _reinforcements.Remove(area);
+                _activeHotspotAreas.RemoveWhere(_closedAreas.Contains);
+
+                foreach (var monster in _monsters.Values.Where(monster =>
+                             monster.IsAlive && _closedAreas.Contains(monster.Definition.Area)))
+                {
+                    monster.Deactivate();
+                    changed[monster.Definition.MonsterId] = ToRuntimeInfo(monster);
+                }
+
+                if (!beginRoomWave)
+                    return changed.Values.OrderBy(monster => monster.MonsterId).ToList();
+
+                _waveIndex = Math.Max(0, stageIndex);
+                _pendingWavePacks.Clear();
+                foreach (var monster in _monsters.Values.Where(monster =>
+                             !monster.Definition.IsAmbientCorridor && open.Contains(monster.Definition.Area)))
+                {
+                    if (monster.IsAlive)
+                    {
+                        monster.Deactivate();
+                        changed[monster.Definition.MonsterId] = ToRuntimeInfo(monster);
+                    }
+                }
+
+                foreach (AreaType area in open.Where(area => !area.IsCorridor()))
+                {
+                    var pack = _monsters.Values
+                        .Where(monster => !monster.Definition.IsAmbientCorridor &&
+                                          monster.Definition.Area == area)
+                        .GroupBy(monster => monster.Definition.ClusterId)
+                        .Where(group => group.Any(monster => monster.Definition.IsCore))
+                        .OrderBy(group => group.Min(monster => monster.Definition.SpawnPriority))
+                        .FirstOrDefault();
+                    if (pack == null)
+                        continue;
+
+                    foreach (var monster in pack)
+                    {
+                        monster.ActivateAtHome(stageIndex);
+                        changed[monster.Definition.MonsterId] = ToRuntimeInfo(monster);
+                    }
+                    ActivateHotspot(area, stageIndex);
+                }
+
+                _nextAmbientCorridorSpawnAtUtc = nowUtc;
+                return changed.Values.OrderBy(monster => monster.MonsterId).ToList();
+            }
+        }
         public bool ApplyAreaClosureAndQueueWave(IReadOnlyCollection<AreaType> closedAreas, DateTime nowUtc)
         {
             lock (_sync)
@@ -208,6 +371,12 @@ public sealed class EmotionAfterimageMonsterManager
                 bool addedClosure = false;
                 foreach (var area in closedAreas) addedClosure |= _closedAreas.Add(area);
                 if (!addedClosure) return false;
+                foreach (AreaType closedArea in closedAreas)
+                {
+                    _activeHotspotAreas.Remove(closedArea);
+                    _reinforcements.Remove(closedArea);
+                }
+
 
                 bool changed = false;
                 foreach (var state in _monsters.Values.Where(state => state.IsAlive &&
@@ -219,6 +388,7 @@ public sealed class EmotionAfterimageMonsterManager
                 }
 
                 int waveIndex = _waveIndex++;
+                RefreshOpenHotspotBudgets(_waveIndex);
                 foreach (var ambientState in _monsters.Values
                              .Where(state => state.IsAlive && state.Definition.IsAmbientCorridor))
                     changed |= ambientState.ApplyAmbientCorridorPhase(_waveIndex);
@@ -283,6 +453,8 @@ public sealed class EmotionAfterimageMonsterManager
                 var changed = new List<MonsterRuntimeInfo>();
                 var spawned = new List<MonsterRuntimeInfo>();
                 ReleaseDueWavePacks(possibleTargets, nowUtc, changed, spawned);
+                var reinforcementReleases = ReleaseDueReinforcements(
+                    targetsByArea, nowUtc, changed, spawned);
                 var attacks = new List<MonsterAttack>();
                 int spawnedAmbientMonsterId = SpawnAmbientCorridorMonster(possibleTargets, nowUtc, changed);
                 foreach (var state in _monsters.Values)
@@ -333,8 +505,150 @@ public sealed class EmotionAfterimageMonsterManager
                     attacks.Add(new MonsterAttack(state.Definition.MonsterId, target.PlayerId, state.Definition.Area,
                         state.AttackDamage));
                 }
-                return new MonsterTickResult(changed, attacks, spawned);
+                return new MonsterTickResult(changed, attacks, spawned, reinforcementReleases);
             }
+        }
+
+        private IReadOnlyList<MonsterReinforcementRelease> ReleaseDueReinforcements(
+            IReadOnlyDictionary<(MapId MapId, AreaType Area), List<MonsterSpatialTarget>> targetsByArea,
+            DateTime nowUtc,
+            ICollection<MonsterRuntimeInfo> changed,
+            ICollection<MonsterRuntimeInfo> spawned)
+        {
+            var releases = new List<MonsterReinforcementRelease>();
+            foreach (AreaType area in _activeHotspotAreas.OrderBy(value => value).ToList())
+            {
+                if (_closedAreas.Contains(area) || !_reinforcements.TryGetValue(area, out var reinforcement))
+                    continue;
+
+                if (!targetsByArea.TryGetValue((MapId.School, area), out var areaTargets) || areaTargets.Count == 0)
+                {
+                    reinforcement.PendingReleaseAtUtc = null;
+                    continue;
+                }
+
+                int aliveCount = CountAliveRoomMonsters(area);
+                int releaseThreshold = Math.Max(
+                    0,
+                    reinforcement.TargetAliveCount - EmotionAfterimageMonsterSpawnData.ReinforcementBatchSize);
+                // 몸 예산은 없다 — 생존 상한 아래로 떨어지면 무조건 리필한다. 죽은 증원
+                // 슬롯이 재사용되므로 공급은 무한이고, 유한한 것은 보상 예산뿐이다.
+                if (aliveCount > releaseThreshold)
+                {
+                    reinforcement.PendingReleaseAtUtc = null;
+                    continue;
+                }
+
+                if (!reinforcement.PendingReleaseAtUtc.HasValue)
+                {
+                    reinforcement.PendingReleaseAtUtc =
+                        nowUtc + EmotionAfterimageMonsterSpawnData.ReinforcementReleaseInterval;
+                    continue;
+                }
+                if (nowUtc < reinforcement.PendingReleaseAtUtc.Value)
+                    continue;
+
+                int releaseCount = Math.Min(
+                    EmotionAfterimageMonsterSpawnData.ReinforcementBatchSize,
+                    reinforcement.TargetAliveCount - aliveCount);
+                var candidates = _monsters.Values
+                    .Where(state => !state.IsAlive && state.Definition.IsReinforcement &&
+                                    state.Definition.Area == area)
+                    .Select(state => new
+                    {
+                        State = state,
+                        MinDistanceSquared = areaTargets.Min(target =>
+                            DistanceSquared(GetHomePosition(state.Definition), target.Position))
+                    })
+                    .Where(candidate => candidate.MinDistanceSquared >=
+                                        AmbientCorridorSafeSpawnDistance * AmbientCorridorSafeSpawnDistance)
+                    .OrderByDescending(candidate => candidate.MinDistanceSquared)
+                    .ThenBy(candidate => candidate.State.Definition.MonsterId)
+                    .Take(releaseCount)
+                    .Select(candidate => candidate.State)
+                    .ToList();
+
+                foreach (var candidate in candidates)
+                {
+                    // 유리 떼 데미지 곡선이 증원에도 붙도록 스테이지 티어를 전달한다.
+                    candidate.ActivateAtHome(reinforcement.PhaseIndex);
+                    var runtime = ToRuntimeInfo(candidate);
+                    changed.Add(runtime);
+                    spawned.Add(runtime);
+                }
+
+                int releasedCount = candidates.Count;
+                if (releasedCount > 0)
+                {
+                    reinforcement.TotalReleased += releasedCount;
+                    releases.Add(new MonsterReinforcementRelease(
+                        area,
+                        reinforcement.PhaseIndex,
+                        releasedCount,
+                        reinforcement.RewardBudgetRemaining,
+                        aliveCount + releasedCount));
+                }
+                reinforcement.PendingReleaseAtUtc = null;
+            }
+
+            return releases;
+        }
+
+        public IReadOnlyList<MonsterDensitySample> SampleDensity(
+            IReadOnlySet<AreaType> occupiedAreas,
+            IReadOnlySet<AreaType> attackableMonsterAreas,
+            DateTime nowUtc)
+        {
+            lock (_sync)
+            {
+                if (nowUtc < _nextDensitySampleAtUtc)
+                    return [];
+
+                _nextDensitySampleAtUtc = nowUtc + DensitySampleInterval;
+                int globalAliveCount = _monsters.Values.Count(state => state.IsAlive);
+                var samples = new List<MonsterDensitySample>();
+                foreach (AreaType area in _activeHotspotAreas.OrderBy(value => value))
+                {
+                    if (_closedAreas.Contains(area) || !occupiedAreas.Contains(area))
+                        continue;
+
+                    int aliveCount = CountAliveRoomMonsters(area);
+                    int remainingBudget = _reinforcements.TryGetValue(area, out var reinforcement)
+                        ? reinforcement.RewardBudgetRemaining
+                        : 0;
+                    samples.Add(new MonsterDensitySample(
+                        area,
+                        _waveIndex,
+                        aliveCount,
+                        remainingBudget,
+                        globalAliveCount,
+                        attackableMonsterAreas.Contains(area)));
+                }
+                return samples;
+            }
+        }
+
+        private int CountAliveRoomMonsters(AreaType area) =>
+            _monsters.Values.Count(state => state.IsAlive && !state.Definition.IsAmbientCorridor &&
+                                            state.Definition.Area == area);
+
+        private void ActivateHotspot(AreaType area, int phaseIndex)
+        {
+            if (_closedAreas.Contains(area))
+                return;
+
+            _activeHotspotAreas.Add(area);
+            _reinforcements[area] = new ReinforcementAreaState(
+                area,
+                phaseIndex,
+                EmotionAfterimageMonsterSpawnData.GetAreaRewardBudget(phaseIndex),
+                EmotionAfterimageMonsterSpawnData.GetReinforcementAliveTarget(phaseIndex));
+        }
+
+        private void RefreshOpenHotspotBudgets(int phaseIndex)
+        {
+            foreach (AreaType area in _activeHotspotAreas.Where(area => !_closedAreas.Contains(area)).ToList())
+                ActivateHotspot(area, phaseIndex);
         }
 
         private void ReleaseDueWavePacks(IReadOnlyList<MonsterSpatialTarget> possibleTargets, DateTime nowUtc,
@@ -370,13 +684,15 @@ public sealed class EmotionAfterimageMonsterManager
                     changed.Add(runtime);
                     spawned.Add(runtime);
                 }
+                if (pack.Any(state => state.Definition.IsCore))
+                    ActivateHotspot(pack[0].Definition.Area, pending.StrengthTier);
                 _pendingWavePacks.RemoveAt(index);
             }
         }
         private int SpawnAmbientCorridorMonster(IReadOnlyList<MonsterSpatialTarget> possibleTargets, DateTime nowUtc,
             ICollection<MonsterRuntimeInfo> changed)
         {
-            if (nowUtc < _nextAmbientCorridorSpawnAtUtc)
+            if (!_ambientCorridorEnabled || nowUtc < _nextAmbientCorridorSpawnAtUtc)
                 return 0;
 
             var corridorTargets = possibleTargets
@@ -459,8 +775,9 @@ public sealed class EmotionAfterimageMonsterManager
         }
 
         private static bool IsEscort(MonsterDefinition definition) =>
-            !definition.IsAmbientCorridor && !definition.IsCore &&
-            definition.ClusterMemberIndex < definition.ClusterSize - 3;
+            definition.IsReinforcement ||
+            (!definition.IsAmbientCorridor && !definition.IsCore &&
+             definition.ClusterMemberIndex < definition.ClusterSize - 3);
 
         private static Vector3f GetChaseDestination(MonsterState state, Vector3f targetPosition, DateTime nowUtc)
         {
@@ -572,9 +889,15 @@ public sealed class EmotionAfterimageMonsterManager
 
         public void ActivateAtHome(int strengthTier = 0)
         {
-            int coreStrengthTier = Definition.IsCore ? Math.Clamp(strengthTier, 0, 3) : 0;
+            int tier = Math.Clamp(strengthTier, 0, 3);
+            int coreStrengthTier = Definition.IsCore ? tier : 0;
             MaxHealth = Definition.MaxHealth + coreStrengthTier * 24;
-            AttackDamage = Definition.AttackDamage + coreStrengthTier * 2;
+            // 유리 떼: 일반 잔상은 스테이지가 오를수록 아파지지만 물러야 한다. HP를 같이 올리면
+            // 후반의 쓸어버리는 감각이 벽이 되므로 데미지만 올린다. 강도는 킬이 아니라 스테이지에
+            // 묶는다 — 잘 클수록 세계가 따라 세지면 성장이 체감에서 지워진다. 핵은 기존 강화 유지.
+            AttackDamage = Definition.IsCore
+                ? Definition.AttackDamage + coreStrengthTier * 2
+                : Definition.AttackDamage + tier;
             SummonStoneReward = Definition.SummonStoneReward + coreStrengthTier * 2;
             AppliedAmbientCorridorPhase = -1;
             Position = new Vector3f(
@@ -640,6 +963,31 @@ public sealed class EmotionAfterimageMonsterManager
         }
     }
 
+    private sealed class ReinforcementAreaState(
+        AreaType area,
+        int phaseIndex,
+        int rewardBudget,
+        int targetAliveCount)
+    {
+        public AreaType Area { get; } = area;
+        public int PhaseIndex { get; } = phaseIndex;
+
+        /// <summary>
+        ///     방·페이즈당 보상 예산. 몸 예산은 폐기됐다 — 증원은 생존 상한 기준으로 무한 리필되고,
+        ///     이 예산 안의 처치만 소환석을 지급한다. 스냅샷·릴리즈 레코드의 RemainingBudget 필드는
+        ///     텔레메트리 연속성을 위해 이 값을 그대로 싣는다.
+        /// </summary>
+        public int RewardBudgetRemaining { get; set; } = rewardBudget;
+
+        public int TargetAliveCount { get; } = targetAliveCount;
+        public int TotalReleased { get; set; }
+        public DateTime? PendingReleaseAtUtc { get; set; }
+
+        public MonsterReinforcementState ToSnapshot() =>
+            new(Area, PhaseIndex, RewardBudgetRemaining, TargetAliveCount, TotalReleased,
+                PendingReleaseAtUtc.HasValue);
+    }
+
     private readonly record struct PendingWavePack(int ClusterId, DateTime ReleaseAtUtc, DateTime ForceAtUtc, int StrengthTier);
 }
 
@@ -647,7 +995,7 @@ public readonly record struct MonsterDefinition(int MonsterId, MapId MapId, Area
     int MaxHealth, int AttackDamage, float AttackRange, float AttackIntervalSeconds, int RewardItemId,
     bool IsCore, int SummonStoneReward, float MoveSpeed, float LeashRange, int AreaAliveLimit,
     bool StartsActive, int SpawnPriority, int ClusterId, int ClusterMemberIndex, int ClusterSize,
-    Vector3f FormationOffset, bool IsAmbientCorridor = false);
+    Vector3f FormationOffset, bool IsAmbientCorridor = false, bool IsReinforcement = false);
 
 public readonly record struct MonsterCombatTarget(
     int MonsterId,
@@ -679,12 +1027,38 @@ public readonly record struct MonsterDamageResult(
     bool StateChanged,
     long FirstAttackerPlayerId,
     long LastAttackerPlayerId,
-    IReadOnlyDictionary<long, int>? DamageByPlayer)
+    IReadOnlyDictionary<long, int>? DamageByPlayer,
+    bool IsReinforcement = false)
 {
-    public static MonsterDamageResult None => new(null, false, 0, false, 0, 0, null);
+    public static MonsterDamageResult None => new(null, false, 0, false, 0, 0, null, false);
 }
 public readonly record struct MonsterTickResult(IReadOnlyList<MonsterRuntimeInfo> ChangedStates,
-    IReadOnlyList<MonsterAttack> Attacks, IReadOnlyList<MonsterRuntimeInfo> SpawnedStates)
+    IReadOnlyList<MonsterAttack> Attacks,
+    IReadOnlyList<MonsterRuntimeInfo> SpawnedStates,
+    IReadOnlyList<MonsterReinforcementRelease> ReinforcementReleases)
 {
-    public static MonsterTickResult None => new([], [], []);
+    public static MonsterTickResult None => new([], [], [], []);
 }
+
+public readonly record struct MonsterReinforcementState(
+    AreaType Area,
+    int PhaseIndex,
+    int RemainingBudget,
+    int TargetAliveCount,
+    int TotalReleased,
+    bool IsReleasePending);
+
+public readonly record struct MonsterReinforcementRelease(
+    AreaType Area,
+    int PhaseIndex,
+    int ReleasedCount,
+    int RemainingBudget,
+    int AliveCountAfterRelease);
+
+public readonly record struct MonsterDensitySample(
+    AreaType Area,
+    int PhaseIndex,
+    int AliveMonsterCount,
+    int ReinforcementRemainingBudget,
+    int GlobalAliveMonsterCount,
+    bool HasAttackableMonster);

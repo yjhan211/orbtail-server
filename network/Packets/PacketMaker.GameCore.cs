@@ -146,7 +146,9 @@ public static partial class PacketMaker
         RoundPhase phase,
         int remainingSeconds,
         int phaseDurationSeconds,
-        bool isSessionEnded)
+        bool isSessionEnded,
+        int[] survivorNextRoomAreaTypes = null,
+        int[] survivorNextRoomOccupancies = null)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_ROUND_STATE);
         G_TO_C_ROUND_STATE body = new()
@@ -158,7 +160,9 @@ public static partial class PacketMaker
             RemainingSeconds = remainingSeconds,
             PhaseDurationSeconds = phaseDurationSeconds,
             ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            IsSessionEnded = isSessionEnded
+            IsSessionEnded = isSessionEnded,
+            SurvivorNextRoomAreaTypes = survivorNextRoomAreaTypes ?? [],
+            SurvivorNextRoomOccupancies = survivorNextRoomOccupancies ?? []
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

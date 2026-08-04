@@ -942,6 +942,7 @@ public partial class GameClientSession
             timer.Dispose();
         GameRoundStates.TryRemove(matchingId, out _);
         _areaClosureManager.CleanupMatching(matchingId);
+        _survivorPhaseManager?.CleanupMatching(matchingId);
         _presenceTracker?.Remove(matchingId);
 
         MatchStartGate.RemoveMatching(matchingId);
@@ -1813,6 +1814,12 @@ public partial class GameClientSession
                                     SurvivorOrbData.IsSurvivorOrb(msg.PartB);
         if (isSurvivorOrbRequest)
         {
+            if (IsSurvivorBoardActionLocked())
+            {
+                SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INVALID_GAME_STATE);
+                return true;
+            }
+
             var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
             bool hadResonance = inventory.TryGetActiveSurvivorOrbPair(out SurvivorOrbColor previousResonanceColor,
                 out int previousSupportTier);

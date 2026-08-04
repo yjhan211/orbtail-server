@@ -325,6 +325,13 @@ namespace network.common
         SettlementDetectionResultReveal = 5,
         SettlementEliminationReveal = 6,
         Ended = 7,
+        SurvivorRoomCombat = 20,
+        SurvivorRoomClosureWarning = 21,
+        SurvivorCorridorEntry = 22,
+        SurvivorCorridorCombat = 23,
+        SurvivorRoomSelection = 24,
+        SurvivorCorridorClosureWarning = 25,
+        SurvivorFinal = 26,
     }
 
     public enum ManittoStatus : short

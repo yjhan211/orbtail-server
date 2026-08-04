@@ -34,6 +34,8 @@ public partial class GameServer
                 _emotionAfterimageMonsterManager.GetRewardAreaSnapshot(matchingId),
                 "wave_spawn");
         }
+        foreach (var release in monsterTick.ReinforcementReleases)
+            _gameEventLogManager.LogReinforcementReleased(matchingId, release);
 
         foreach (var monsterAttack in monsterTick.Attacks)
             ApplyMonsterAttack(matchingId, monsterAttack, matchingSessions, matchingBots);
@@ -92,6 +94,9 @@ public partial class GameServer
         var finalMonsterStates = new MonsterSnapshotAccumulator();
         foreach (var attack in attacks)
         {
+            if (!_survivorPhaseManager.IsPveAllowed(matchingId, attack.Area))
+                continue;
+
             int primaryMonsterId = checked((int)-attack.TargetPlayerId);
             if (!monsterTargetsById.TryGetValue(primaryMonsterId, out var primaryTarget))
                 continue;
@@ -101,11 +106,13 @@ public partial class GameServer
                 primaryTarget,
                 attack,
                 hitDamageMultiplier: 1f,
-                isSplash: attack.IsWaveAreaSecondary,
+                isSplash: attack.IsWaveAreaSecondary || attack.IsWindAreaSecondary,
                 nowUtc,
                 matchingSessions,
                 finalMonsterStates);
-            if (primaryHit && EmotionAfterimagePveCombatRules.ShouldEmitWaveProjectilePresentation(attack.IsWaveAreaSecondary))
+            if (primaryHit &&
+                !attack.IsWaveAreaSecondary &&
+                !attack.IsWindAreaSecondary)
                 BroadcastObservedProximityAttackVfx(attack, matchingSessions);
         }
 
@@ -161,13 +168,36 @@ public partial class GameServer
                 result.State.IsCore,
                 result.FirstAttackerPlayerId,
                 result.LastAttackerPlayerId,
-                result.DamageByPlayer ?? new Dictionary<long, int>());
+                result.DamageByPlayer ?? new Dictionary<long, int>(),
+                result.IsReinforcement);
             AwardMonsterKill(
                 matchingId,
                 result.State,
                 attack.AttackerPlayerId,
                 result.SummonStoneReward,
                 matchingSessions);
+
+            if (_emotionAfterimageMonsterManager.IsAreaWaveCleared(
+                    matchingId,
+                    result.State.AreaType) &&
+                _survivorPhaseManager.ReportRoomCleared(
+                    matchingId,
+                    result.State.AreaType))
+            {
+                var openedDoorIds = _doorStateManager.OpenDoorsForAreas(
+                    matchingId,
+                    [result.State.AreaType]);
+                BroadcastDoorStateChanges(
+                    matchingSessions,
+                    openedDoorIds,
+                    true,
+                    attack.AttackerPlayerId);
+                logger.LogInformation(
+                    "Survivor room cleared: MatchingId={MatchingId}, Area={Area}, OpenedDoors={DoorIds}",
+                    matchingId,
+                    result.State.AreaType,
+                    string.Join(',', openedDoorIds));
+            }
         }
 
         bool playProjectilePresentation = EmotionAfterimagePveCombatRules.ShouldEmitWaveProjectilePresentation(isSplash);
@@ -207,6 +237,9 @@ public partial class GameServer
     private void ApplyMonsterAttack(long matchingId, MonsterAttack attack,
         IReadOnlyCollection<GameClientSession> matchingSessions, IReadOnlyCollection<BotPlayerState> matchingBots)
     {
+        if (!_survivorPhaseManager.IsPveAllowed(matchingId, attack.Area))
+            return;
+
         BroadcastMonsterAttackVfx(attack, matchingSessions);
 
         var targetSession = matchingSessions.FirstOrDefault(session =>

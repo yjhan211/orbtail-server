@@ -36,6 +36,42 @@ public class SummonStoneManagerTests
 
 
     [Fact]
+    public void SummonCandidates_AreDeterministicDistinctAndChoiceOneIsGranted()
+    {
+        var manager = new SummonStoneManager();
+        manager.EnsureStartingStones(214, 10);
+
+        // 결정론: 같은 상태에서 몇 번을 조회해도 같은 후보. 재접속 복원의 전제다.
+        var candidates = manager.GetSummonCandidates(214, 10);
+        Assert.Equal(candidates, manager.GetSummonCandidates(214, 10));
+        Assert.Equal(2, candidates.Length);
+
+        // 같은 오브 두 개는 선택이 아니다.
+        Assert.NotEqual(candidates[0], candidates[1]);
+
+        // 선택 인덱스 1이 실제로 두 번째 후보를 지급한다.
+        var summon = manager.TrySummon(214, 10,
+            itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 },
+            choiceIndex: 1);
+        Assert.True(summon.Success);
+        Assert.Equal(candidates[1], summon.ItemId);
+
+        // 소환 후에는 다음 소환 횟수 기준의 새 후보가 나온다.
+        Assert.NotEqual(candidates, manager.GetSummonCandidates(214, 10));
+    }
+
+    [Fact]
+    public void FirstSummon_Candidates_AreBothAttackOrbs()
+    {
+        var manager = new SummonStoneManager();
+        for (long playerId = 1; playerId <= 40; playerId++)
+        {
+            var candidates = manager.GetSummonCandidates(214, playerId);
+            Assert.All(candidates, itemId => Assert.False(SurvivorOrbData.IsRecoveryOrb(itemId)));
+        }
+    }
+
+    [Fact]
     public void FirstSummon_IsAlwaysAnAttackOrb()
     {
         for (long matchingId = 1; matchingId <= 16; matchingId++)
