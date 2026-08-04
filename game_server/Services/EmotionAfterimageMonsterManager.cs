@@ -76,6 +76,9 @@ public sealed class EmotionAfterimageMonsterManager
     public bool HasAliveMonsterInArea(long matchingId, AreaType area) =>
         _matchingStates.TryGetValue(matchingId, out var state) && state.HasAliveMonsterInArea(area);
 
+    public bool IsAreaWaveCleared(long matchingId, AreaType area) =>
+        _matchingStates.TryGetValue(matchingId, out var state) && state.IsAreaWaveCleared(area);
+
     public MonsterDamageResult ApplyDamage(long matchingId, int monsterId, long attackerPlayerId, int damage,
         DateTime nowUtc)
     {
@@ -213,6 +216,31 @@ public sealed class EmotionAfterimageMonsterManager
                 return _monsters.Values.Any(state => state.IsAlive && state.Definition.Area == area);
         }
 
+        public bool IsAreaWaveCleared(AreaType area)
+        {
+            lock (_sync)
+            {
+                if (!_activeHotspotAreas.Contains(area) || _closedAreas.Contains(area))
+                    return false;
+
+                // 무한 리필에서 "전부 정리"는 성립하지 않는다. 방의 목표는 유한한 핵이며,
+                // 이 방의 핵이 모두 쓰러진 순간을 클리어로 판정한다. 클리어 후에도 필러는
+                // 계속 나오지만 문 개방과는 무관하다. 대기 중인 핵 팩이 있으면 아직이다.
+                bool corePending = _pendingWavePacks.Any(pending => _monsters.Values.Any(state =>
+                    state.Definition.ClusterId == pending.ClusterId &&
+                    state.Definition.IsCore &&
+                    state.Definition.Area == area));
+                if (corePending)
+                    return false;
+
+                return !_monsters.Values.Any(state =>
+                    state.IsAlive &&
+                    state.Definition.IsCore &&
+                    !state.Definition.IsAmbientCorridor &&
+                    state.Definition.Area == area);
+            }
+        }
+
         public MonsterDamageResult ApplyDamage(int monsterId, long attackerPlayerId, int damage, DateTime nowUtc)
         {
             lock (_sync)
@@ -240,10 +268,21 @@ public sealed class EmotionAfterimageMonsterManager
 
                 state.IsAlive = false;
                 state.NextAttackAtUtc = DateTime.MaxValue;
+
+                // 보상 예산: 핵은 방의 목표라 예산 외로 지급하고, 일반·증원은 방 예산에서 차감한다.
+                // 예산이 마르면 몸은 계속 나오되 0석이 되어, 위험만 남은 방을 떠날 이유가 생긴다.
+                int grantedReward = state.SummonStoneReward;
+                if (!state.Definition.IsCore && !state.Definition.IsAmbientCorridor &&
+                    _reinforcements.TryGetValue(state.Definition.Area, out var areaBudget))
+                {
+                    grantedReward = Math.Clamp(areaBudget.RewardBudgetRemaining, 0, grantedReward);
+                    areaBudget.RewardBudgetRemaining -= grantedReward;
+                }
+
                 return new MonsterDamageResult(
                     ToRuntimeInfo(state),
                     true,
-                    state.SummonStoneReward,
+                    grantedReward,
                     true,
                     state.FirstAttackerPlayerId,
                     state.LastAttackerPlayerId,
@@ -492,7 +531,9 @@ public sealed class EmotionAfterimageMonsterManager
                 int releaseThreshold = Math.Max(
                     0,
                     reinforcement.TargetAliveCount - EmotionAfterimageMonsterSpawnData.ReinforcementBatchSize);
-                if (reinforcement.RemainingBudget <= 0 || aliveCount > releaseThreshold)
+                // 몸 예산은 없다 — 생존 상한 아래로 떨어지면 무조건 리필한다. 죽은 증원
+                // 슬롯이 재사용되므로 공급은 무한이고, 유한한 것은 보상 예산뿐이다.
+                if (aliveCount > releaseThreshold)
                 {
                     reinforcement.PendingReleaseAtUtc = null;
                     continue;
@@ -509,7 +550,7 @@ public sealed class EmotionAfterimageMonsterManager
 
                 int releaseCount = Math.Min(
                     EmotionAfterimageMonsterSpawnData.ReinforcementBatchSize,
-                    Math.Min(reinforcement.RemainingBudget, reinforcement.TargetAliveCount - aliveCount));
+                    reinforcement.TargetAliveCount - aliveCount);
                 var candidates = _monsters.Values
                     .Where(state => !state.IsAlive && state.Definition.IsReinforcement &&
                                     state.Definition.Area == area)
@@ -529,7 +570,8 @@ public sealed class EmotionAfterimageMonsterManager
 
                 foreach (var candidate in candidates)
                 {
-                    candidate.ActivateAtHome();
+                    // 유리 떼 데미지 곡선이 증원에도 붙도록 스테이지 티어를 전달한다.
+                    candidate.ActivateAtHome(reinforcement.PhaseIndex);
                     var runtime = ToRuntimeInfo(candidate);
                     changed.Add(runtime);
                     spawned.Add(runtime);
@@ -538,13 +580,12 @@ public sealed class EmotionAfterimageMonsterManager
                 int releasedCount = candidates.Count;
                 if (releasedCount > 0)
                 {
-                    reinforcement.RemainingBudget -= releasedCount;
                     reinforcement.TotalReleased += releasedCount;
                     releases.Add(new MonsterReinforcementRelease(
                         area,
                         reinforcement.PhaseIndex,
                         releasedCount,
-                        reinforcement.RemainingBudget,
+                        reinforcement.RewardBudgetRemaining,
                         aliveCount + releasedCount));
                 }
                 reinforcement.PendingReleaseAtUtc = null;
@@ -573,7 +614,7 @@ public sealed class EmotionAfterimageMonsterManager
 
                     int aliveCount = CountAliveRoomMonsters(area);
                     int remainingBudget = _reinforcements.TryGetValue(area, out var reinforcement)
-                        ? reinforcement.RemainingBudget
+                        ? reinforcement.RewardBudgetRemaining
                         : 0;
                     samples.Add(new MonsterDensitySample(
                         area,
@@ -600,7 +641,7 @@ public sealed class EmotionAfterimageMonsterManager
             _reinforcements[area] = new ReinforcementAreaState(
                 area,
                 phaseIndex,
-                EmotionAfterimageMonsterSpawnData.GetReinforcementBudget(phaseIndex),
+                EmotionAfterimageMonsterSpawnData.GetAreaRewardBudget(phaseIndex),
                 EmotionAfterimageMonsterSpawnData.GetReinforcementAliveTarget(phaseIndex));
         }
 
@@ -848,9 +889,15 @@ public sealed class EmotionAfterimageMonsterManager
 
         public void ActivateAtHome(int strengthTier = 0)
         {
-            int coreStrengthTier = Definition.IsCore ? Math.Clamp(strengthTier, 0, 3) : 0;
+            int tier = Math.Clamp(strengthTier, 0, 3);
+            int coreStrengthTier = Definition.IsCore ? tier : 0;
             MaxHealth = Definition.MaxHealth + coreStrengthTier * 24;
-            AttackDamage = Definition.AttackDamage + coreStrengthTier * 2;
+            // 유리 떼: 일반 잔상은 스테이지가 오를수록 아파지지만 물러야 한다. HP를 같이 올리면
+            // 후반의 쓸어버리는 감각이 벽이 되므로 데미지만 올린다. 강도는 킬이 아니라 스테이지에
+            // 묶는다 — 잘 클수록 세계가 따라 세지면 성장이 체감에서 지워진다. 핵은 기존 강화 유지.
+            AttackDamage = Definition.IsCore
+                ? Definition.AttackDamage + coreStrengthTier * 2
+                : Definition.AttackDamage + tier;
             SummonStoneReward = Definition.SummonStoneReward + coreStrengthTier * 2;
             AppliedAmbientCorridorPhase = -1;
             Position = new Vector3f(
@@ -919,18 +966,26 @@ public sealed class EmotionAfterimageMonsterManager
     private sealed class ReinforcementAreaState(
         AreaType area,
         int phaseIndex,
-        int remainingBudget,
+        int rewardBudget,
         int targetAliveCount)
     {
         public AreaType Area { get; } = area;
         public int PhaseIndex { get; } = phaseIndex;
-        public int RemainingBudget { get; set; } = remainingBudget;
+
+        /// <summary>
+        ///     방·페이즈당 보상 예산. 몸 예산은 폐기됐다 — 증원은 생존 상한 기준으로 무한 리필되고,
+        ///     이 예산 안의 처치만 소환석을 지급한다. 스냅샷·릴리즈 레코드의 RemainingBudget 필드는
+        ///     텔레메트리 연속성을 위해 이 값을 그대로 싣는다.
+        /// </summary>
+        public int RewardBudgetRemaining { get; set; } = rewardBudget;
+
         public int TargetAliveCount { get; } = targetAliveCount;
         public int TotalReleased { get; set; }
         public DateTime? PendingReleaseAtUtc { get; set; }
 
         public MonsterReinforcementState ToSnapshot() =>
-            new(Area, PhaseIndex, RemainingBudget, TargetAliveCount, TotalReleased, PendingReleaseAtUtc.HasValue);
+            new(Area, PhaseIndex, RewardBudgetRemaining, TargetAliveCount, TotalReleased,
+                PendingReleaseAtUtc.HasValue);
     }
 
     private readonly record struct PendingWavePack(int ClusterId, DateTime ReleaseAtUtc, DateTime ForceAtUtc, int StrengthTier);

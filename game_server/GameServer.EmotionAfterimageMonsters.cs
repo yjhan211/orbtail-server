@@ -161,10 +161,6 @@ public partial class GameServer
         finalMonsterStates.Record(result.State);
         if (result.Killed)
         {
-            if (result.State.IsCore)
-                _survivorPhaseManager.ReportCoreDefeated(
-                    matchingId, attack.AttackerPlayerId, result.State.AreaType);
-
             _gameEventLogManager.LogEmotionAfterimageKilled(
                 matchingId,
                 result.State.MonsterId,
@@ -180,6 +176,28 @@ public partial class GameServer
                 attack.AttackerPlayerId,
                 result.SummonStoneReward,
                 matchingSessions);
+
+            if (_emotionAfterimageMonsterManager.IsAreaWaveCleared(
+                    matchingId,
+                    result.State.AreaType) &&
+                _survivorPhaseManager.ReportRoomCleared(
+                    matchingId,
+                    result.State.AreaType))
+            {
+                var openedDoorIds = _doorStateManager.OpenDoorsForAreas(
+                    matchingId,
+                    [result.State.AreaType]);
+                BroadcastDoorStateChanges(
+                    matchingSessions,
+                    openedDoorIds,
+                    true,
+                    attack.AttackerPlayerId);
+                logger.LogInformation(
+                    "Survivor room cleared: MatchingId={MatchingId}, Area={Area}, OpenedDoors={DoorIds}",
+                    matchingId,
+                    result.State.AreaType,
+                    string.Join(',', openedDoorIds));
+            }
         }
 
         bool playProjectilePresentation = EmotionAfterimagePveCombatRules.ShouldEmitWaveProjectilePresentation(isSplash);

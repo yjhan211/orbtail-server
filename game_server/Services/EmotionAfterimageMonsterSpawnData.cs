@@ -40,14 +40,19 @@ internal static class EmotionAfterimageMonsterSpawnData
         TimeSpan.FromSeconds(15),
         TimeSpan.FromSeconds(15)
     ];
-    private static readonly int[] ReinforcementBudgets = [4, 6, 8, 10];
-    private static readonly int[] ReinforcementAliveTargets = [9, 10, 11, 12];
+    // 몸은 무한, 지갑은 유한. 증원 몸 예산은 없다 — 생존 상한 아래로 떨어지면 계속 리필한다.
+    // 대신 방·페이즈당 보상 예산을 두어, 예산 안의 처치만 소환석을 지급한다. 예산이 마르면
+    // 몸은 계속 나오되 돈이 되지 않아, 위험만 남은 방을 떠날 이유가 생긴다. 핵 보상은 예산 외.
+    private static readonly int[] AreaRewardBudgets = [10, 11, 12, 13];
+    // 유리 떼: 스테이지가 오를수록 동시 상한이 올라 화면이 차오른다. HP는 12로 유지해
+    // 성장한 플레이어의 쓸어버리는 감각을 지킨다. 위협은 양과 데미지에서 온다.
+    private static readonly int[] ReinforcementAliveTargets = [9, 12, 15, 18];
 
     public const int ReinforcementBatchSize = 2;
     public static readonly TimeSpan ReinforcementReleaseInterval = TimeSpan.FromSeconds(1.5);
 
-    public static int GetReinforcementBudget(int closurePhase) =>
-        ReinforcementBudgets[Math.Clamp(closurePhase, 0, ReinforcementBudgets.Length - 1)];
+    public static int GetAreaRewardBudget(int closurePhase) =>
+        AreaRewardBudgets[Math.Clamp(closurePhase, 0, AreaRewardBudgets.Length - 1)];
 
     public static int GetReinforcementAliveTarget(int closurePhase) =>
         ReinforcementAliveTargets[Math.Clamp(closurePhase, 0, ReinforcementAliveTargets.Length - 1)];
@@ -205,7 +210,9 @@ internal static class EmotionAfterimageMonsterSpawnData
                     AttackIntervalSeconds: 1.5f,
                     RewardItemId: DefaultRoomAffinity,
                     IsCore: false,
-                    SummonStoneReward: 0,
+                    // 증원도 보상 예산이 남아 있는 동안은 지급한다. 예산이 마르면 자동으로 0이 되므로
+                    // 무한 리필이 무한 수입이 되지 않는다.
+                    SummonStoneReward: 1,
                     MoveSpeed: 2.4f,
                     LeashRange: 5f,
                     AreaAliveLimit: ReinforcementSlotsPerArea,

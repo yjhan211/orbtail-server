@@ -151,8 +151,9 @@ public class ProximityAutoCombatDataTests
         Assert.Contains("attack.WeaponItemId,", gameServerSource);
         Assert.Contains("damage);", gameServerSource);
         Assert.Contains("weaponItemId,\n            damage);", sessionSource);
+        // 명중 전용 연출로 리팩터링되어 단일 호출 형태를 검사한다.
         Assert.Contains(
-            "localPlayerIsAttacker: true,\n                    packet.DamageValue);",
+            "PlayGuardianHitOnly(packet.PlayerId, localPlayerIsAttacker: true, packet.DamageValue);",
             mapSource);
         Assert.Contains(
             "int damageValue = authoritativeDamageValue > 0\n" +
@@ -209,10 +210,11 @@ public class ProximityAutoCombatDataTests
         string mapSource = ReadNormalizedSource(
             repoRoot, "client", "Assets", "Scripts", "Managers", "Map", "MapManager.PlayerVisibility.cs");
 
+        // 투사체 연출 여부가 bool 변수로 리팩터링되어 판정과 브로드캐스트를 나눠 검사한다.
         Assert.Contains(
-            "if (primaryHit && EmotionAfterimagePveCombatRules.ShouldEmitWaveProjectilePresentation(attack.IsWaveAreaSecondary))\n" +
-            "                BroadcastObservedProximityAttackVfx(attack, matchingSessions);",
+            "bool playProjectilePresentation = EmotionAfterimagePveCombatRules.ShouldEmitWaveProjectilePresentation(isSplash);",
             serverSource);
+        Assert.Contains("BroadcastObservedProximityAttackVfx(attack, matchingSessions);", serverSource);
         Assert.Contains("if (packet.TargetPlayerId < 0)", mapSource);
         Assert.Contains("PlayObservedGuardianProjectileAtMonster(attacker, monster, packet.WeaponItemId);", mapSource);
     }

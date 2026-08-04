@@ -44,7 +44,8 @@ public class EmotionAfterimageMonsterManagerTests
         var reinforcementStates = manager.GetReinforcementSnapshot(MatchingId);
         Assert.Equal(4, reinforcementStates.Count);
         Assert.All(reinforcementStates, state => Assert.Equal(0, state.PhaseIndex));
-        Assert.All(reinforcementStates, state => Assert.Equal(4, state.RemainingBudget));
+        // RemainingBudget은 몸 예산이 아니라 방 보상 예산이다. 몸은 생존 상한 기준 무한 리필.
+        Assert.All(reinforcementStates, state => Assert.Equal(10, state.RemainingBudget));
         Assert.All(reinforcementStates, state => Assert.Equal(9, state.TargetAliveCount));
     }
 
@@ -140,7 +141,7 @@ public class EmotionAfterimageMonsterManagerTests
     }
 
     [Fact]
-    public void Reinforcement_ReleasesTwoAfterDelay_AndAwardsNoStone()
+    public void Reinforcement_ReleasesTwoAfterDelay_AndPaysFromRewardBudget()
     {
         var manager = CreateManager();
         KillRoomMonsters(manager, AreaType.Classroom4, 2);
@@ -158,19 +159,21 @@ public class EmotionAfterimageMonsterManagerTests
 
         Assert.Equal(AreaType.Classroom4, release.Area);
         Assert.Equal(2, release.ReleasedCount);
-        Assert.Equal(2, release.RemainingBudget);
+        // 보상 예산 10에서 사전 킬 2가 차감된 잔액이 릴리즈 레코드에 실린다.
+        Assert.Equal(8, release.RemainingBudget);
         Assert.Equal(9, release.AliveCountAfterRelease);
         Assert.Equal(2, releasedTick.SpawnedStates.Count(state =>
-            state.AreaType == AreaType.Classroom4 && state.SummonStoneReward == 0));
+            state.AreaType == AreaType.Classroom4 && state.SummonStoneReward == 1));
 
         int reinforcementId = releasedTick.SpawnedStates
-            .First(state => state.AreaType == AreaType.Classroom4 && state.SummonStoneReward == 0)
+            .First(state => state.AreaType == AreaType.Classroom4 && state.SummonStoneReward == 1)
             .MonsterId;
         var lethal = manager.ApplyDamage(
             MatchingId, reinforcementId, 10, 999, StartedAt.AddSeconds(1.6));
         Assert.True(lethal.Killed);
         Assert.True(lethal.IsReinforcement);
-        Assert.Equal(0, lethal.SummonStoneReward);
+        // 증원도 보상 예산이 남아 있는 동안은 1석을 지급한다.
+        Assert.Equal(1, lethal.SummonStoneReward);
     }
 
     [Fact]
@@ -179,7 +182,7 @@ public class EmotionAfterimageMonsterManagerTests
         var manager = CreateManager();
         KillRoomMonsters(manager, AreaType.Classroom4, 2);
         var firstRelease = ReleaseReinforcementPair(manager, AreaType.Classroom4, StartedAt);
-        Assert.Equal(2, Assert.Single(firstRelease.ReinforcementReleases).RemainingBudget);
+        Assert.Equal(8, Assert.Single(firstRelease.ReinforcementReleases).RemainingBudget);
 
         KillRoomMonsters(manager, AreaType.Classroom4, 2);
         var target = FarTarget(AreaType.Classroom4);
@@ -196,35 +199,69 @@ public class EmotionAfterimageMonsterManagerTests
             MatchingId, [target], StartedAt.AddSeconds(11.5)).ReinforcementReleases);
 
         Assert.Equal(2, released.ReleasedCount);
-        Assert.Equal(0, released.RemainingBudget);
+        Assert.Equal(6, released.RemainingBudget);
     }
 
     [Fact]
-    public void Reinforcement_StopsAfterFinitePhaseBudgetIsConsumed()
+    public void Reinforcement_KeepsRefillingBodies_WhileRewardBudgetDrains()
     {
         var manager = CreateManager();
-        KillRoomMonsters(manager, AreaType.Classroom4, 2);
+        var when = StartedAt;
 
-        var first = ReleaseReinforcementPair(manager, AreaType.Classroom4, StartedAt);
-        Assert.Equal(2, Assert.Single(first.ReinforcementReleases).RemainingBudget);
+        // 옛 몸 예산(4)을 넘어서도 방출이 계속된다 — 죽은 증원 슬롯이 재사용된다.
+        for (int round = 0; round < 3; round++)
+        {
+            KillRoomMonsters(manager, AreaType.Classroom4, 2);
+            var released = ReleaseReinforcementPair(manager, AreaType.Classroom4, when);
+            Assert.Equal(2, Assert.Single(released.ReinforcementReleases).ReleasedCount);
+            when = when.AddSeconds(2);
+        }
 
-        KillRoomMonsters(manager, AreaType.Classroom4, 2);
-        var second = ReleaseReinforcementPair(
-            manager, AreaType.Classroom4, StartedAt.AddSeconds(2));
-        Assert.Equal(0, Assert.Single(second.ReinforcementReleases).RemainingBudget);
+        var refilled = Assert.Single(manager.GetReinforcementSnapshot(MatchingId),
+            state => state.Area == AreaType.Classroom4);
+        Assert.Equal(6, refilled.TotalReleased);
+        Assert.Equal(4, refilled.RemainingBudget);
 
-        KillRoomMonsters(manager, AreaType.Classroom4, 2);
-        var target = FarTarget(AreaType.Classroom4);
-        manager.Tick(MatchingId, [target], StartedAt.AddSeconds(4));
-        var exhausted = manager.Tick(MatchingId, [target], StartedAt.AddSeconds(10));
+        // 남은 보상 예산 4가 마르면 이후 처치는 0석이 된다. 몸 방출은 계속된다.
+        for (int paidKill = 0; paidKill < 4; paidKill++)
+        {
+            var paid = manager.ApplyDamage(
+                MatchingId, FirstAliveNonCoreId(manager), 10, 999, when);
+            Assert.True(paid.Killed);
+            Assert.Equal(1, paid.SummonStoneReward);
+        }
 
-        Assert.Empty(exhausted.ReinforcementReleases);
-        Assert.DoesNotContain(exhausted.SpawnedStates, state =>
-            state.AreaType == AreaType.Classroom4 && state.SummonStoneReward == 0);
-        var state = Assert.Single(manager.GetReinforcementSnapshot(MatchingId),
-            candidate => candidate.Area == AreaType.Classroom4);
-        Assert.Equal(0, state.RemainingBudget);
-        Assert.Equal(4, state.TotalReleased);
+        var unpaid = manager.ApplyDamage(MatchingId, FirstAliveNonCoreId(manager), 10, 999, when);
+        Assert.True(unpaid.Killed);
+        Assert.Equal(0, unpaid.SummonStoneReward);
+
+        var drained = ReleaseReinforcementPair(manager, AreaType.Classroom4, when.AddSeconds(2));
+        var release = Assert.Single(drained.ReinforcementReleases);
+        Assert.Equal(2, release.ReleasedCount);
+        Assert.Equal(0, release.RemainingBudget);
+    }
+
+    [Fact]
+    public void AreaWaveClears_WhenCoreDies_WhileBodiesKeepSpawning()
+    {
+        var manager = CreateManager();
+
+        // 핵 외 전원을 잡아도 클리어가 아니다.
+        foreach (var monster in manager.GetSnapshot(MatchingId, AreaType.Classroom4)
+                     .Where(info => info.IsAlive && !info.IsCore))
+            manager.ApplyDamage(MatchingId, monster.MonsterId, 10, 999, StartedAt);
+        Assert.False(manager.IsAreaWaveCleared(MatchingId, AreaType.Classroom4));
+
+        // 핵 처치 = 클리어. 무한 리필에서 "전부 정리"는 성립하지 않으므로 유한한 핵이 방의 목표다.
+        int coreId = manager.GetSnapshot(MatchingId, AreaType.Classroom4)
+            .Single(info => info.IsAlive && info.IsCore).MonsterId;
+        manager.ApplyDamage(MatchingId, coreId, 10, 999, StartedAt.AddSeconds(1));
+        Assert.True(manager.IsAreaWaveCleared(MatchingId, AreaType.Classroom4));
+
+        // 클리어 후 증원이 계속 나와도 클리어 상태는 유지된다.
+        var released = ReleaseReinforcementPair(manager, AreaType.Classroom4, StartedAt.AddSeconds(2));
+        Assert.NotEmpty(released.ReinforcementReleases);
+        Assert.True(manager.IsAreaWaveCleared(MatchingId, AreaType.Classroom4));
     }
 
     [Fact]
@@ -237,8 +274,9 @@ public class EmotionAfterimageMonsterManagerTests
         var refreshed = manager.GetReinforcementSnapshot(MatchingId);
         Assert.Equal(4, refreshed.Count);
         Assert.All(refreshed, state => Assert.Equal(1, state.PhaseIndex));
-        Assert.All(refreshed, state => Assert.Equal(6, state.RemainingBudget));
-        Assert.All(refreshed, state => Assert.Equal(10, state.TargetAliveCount));
+        Assert.All(refreshed, state => Assert.Equal(11, state.RemainingBudget));
+        // 유리 떼: 스테이지가 오를수록 동시 상한이 오른다 (9 -> 12 -> 15 -> 18).
+        Assert.All(refreshed, state => Assert.Equal(12, state.TargetAliveCount));
 
         Assert.True(manager.ApplyAreaClosureAndSpawnWave(
             MatchingId, [AreaType.Classroom4], StartedAt.AddSeconds(1)));
@@ -632,6 +670,11 @@ public class EmotionAfterimageMonsterManagerTests
         manager.InitializeMatching(MatchingId);
         return manager;
     }
+
+    private static int FirstAliveNonCoreId(EmotionAfterimageMonsterManager manager) =>
+        manager.GetSnapshot(MatchingId, AreaType.Classroom4)
+            .First(state => state.IsAlive && !state.IsCore)
+            .MonsterId;
 
     private static int FirstEscortId(EmotionAfterimageMonsterManager manager) =>
         manager.GetAliveTargets(MatchingId)
