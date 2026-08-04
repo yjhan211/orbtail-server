@@ -31,11 +31,13 @@ namespace network.common.data
             AreaType.Classroom2,
             AreaType.Classroom3,
             AreaType.Classroom4,
-            AreaType.Storage,
-            AreaType.Storage2,
+            AreaType.Library,
             AreaType.AdminOffice,
             AreaType.StaffRoom
         };
+
+        public static IReadOnlyList<AreaType> GetPhaseRoomCandidates() =>
+            PhaseRoomCandidates.ToArray();
 
         public static IReadOnlyList<Cell> GetCorridorAnchors() =>
             CorridorAnchors.Select(Cell.Clone).ToList();

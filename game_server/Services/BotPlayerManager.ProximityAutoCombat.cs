@@ -206,6 +206,9 @@ public partial class BotPlayerManager
         var mapId = GetMatchingMapId(matchingId);
         var closure = closureManager.GetClientStateSnapshot(matchingId);
         var unavailableAreas = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
+        // 잠긴 방을 빼지 않으면 후퇴 경로가 잠긴 문 앞에서 걸음 게이트에 잘려,
+        // 방 탈출도 못 하고 아래 지역 내 도주 폴백에도 못 가는 문가 정지가 된다.
+        unavailableAreas.UnionWith(GetLockedRoomAreas(matchingId));
         var escape = GameMapData.GetAreas(mapId)
             .Select(region => region.AreaType)
             .Distinct()

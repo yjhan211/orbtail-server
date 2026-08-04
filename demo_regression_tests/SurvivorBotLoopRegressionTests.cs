@@ -636,22 +636,7 @@ public sealed class SurvivorBotLoopRegressionTests
                     RecorderT3)
             ]);
 
-        Assert.Empty(bot.Path);
-        Assert.Equal(BotCombatMovementDecision.Retreat, bot.PendingCombatDecision);
-        bot.PendingCombatDecisionReadyAt = DateTime.UtcNow.AddMilliseconds(-1);
-        fixture.BotManager.UpdateCombatMovementIntent(
-            bot,
-            matchingId,
-            fixture.ClosureManager,
-            [
-                new BotCombatTargetSnapshot(botPlayerId, AreaType.Classroom3, bot.Position, RecorderT1),
-                new BotCombatTargetSnapshot(
-                    enemyPlayerId,
-                    AreaType.Classroom3,
-                    new Vector3f(bot.Position.X + 0.5f, bot.Position.Y, 0f),
-                    RecorderT3)
-            ]);
-
+        // 전투 반응 지연이 제거되어 후퇴 결정은 첫 판단 호출에서 즉시 경로로 이어진다.
         Assert.NotEmpty(bot.Path);
         Assert.NotEqual(AreaType.Classroom3, bot.Path[^1].Area);
         Assert.False(bot.Path[^1].Area.IsCorridor());
@@ -741,22 +726,7 @@ public sealed class SurvivorBotLoopRegressionTests
                     RecorderT1)
             ]);
 
-        Assert.Equal(AreaType.Classroom4, bot.MovementDestination);
-        Assert.Equal(BotCombatMovementDecision.Retreat, bot.PendingCombatDecision);
-        bot.PendingCombatDecisionReadyAt = DateTime.UtcNow.AddMilliseconds(-1);
-        fixture.BotManager.UpdateCombatMovementIntent(
-            bot,
-            matchingId,
-            fixture.ClosureManager,
-            [
-                new BotCombatTargetSnapshot(botPlayerId, AreaType.Classroom3, bot.Position, RecorderT1, bot.Corruption),
-                new BotCombatTargetSnapshot(
-                    enemyPlayerId,
-                    AreaType.Classroom3,
-                    new Vector3f(bot.Position.X + 0.5f, bot.Position.Y, 0f),
-                    RecorderT1)
-            ]);
-
+        // 전투 반응 지연이 제거되어 저체력 후퇴는 첫 판단 호출에서 즉시 루트를 버린다.
         Assert.Equal(AreaType.None, bot.MovementDestination);
         Assert.NotEqual(AreaType.None, bot.EvacuationDestination);
         Assert.NotEqual(AreaType.Classroom3, bot.EvacuationDestination);
@@ -789,21 +759,7 @@ public sealed class SurvivorBotLoopRegressionTests
                     RecorderT3)
             ]);
 
-        Assert.Equal(BotCombatMovementDecision.Retreat, bot.PendingCombatDecision);
-        bot.PendingCombatDecisionReadyAt = DateTime.UtcNow.AddMilliseconds(-1);
-        fixture.BotManager.UpdateCombatMovementIntent(
-            bot,
-            matchingId,
-            fixture.ClosureManager,
-            [
-                new BotCombatTargetSnapshot(botPlayerId, AreaType.Classroom3, bot.Position, 107000020, bot.Corruption),
-                new BotCombatTargetSnapshot(
-                    enemyPlayerId,
-                    AreaType.Classroom3,
-                    new Vector3f(bot.Position.X + 0.5f, bot.Position.Y, 0f),
-                    RecorderT3)
-            ]);
-
+        // 전투 반응 지연이 제거되어 후퇴는 첫 판단 호출에서 즉시 확정된다.
         AreaType escapeArea = bot.EvacuationDestination;
         Assert.NotEqual(AreaType.None, escapeArea);
         SetBotPosition(bot, escapeArea);
@@ -822,6 +778,96 @@ public sealed class SurvivorBotLoopRegressionTests
             Array.Empty<BotCombatTargetSnapshot>());
 
         Assert.NotEqual(AreaType.Classroom3, bot.MovementDestination);
+    }
+
+    /// <summary>
+    ///     클리어 전 방은 문이 잠긴다. 사람은 이동 검증이 막지만 봇은 서버가 직접 걷게
+    ///     하므로, 잠긴 방이 봇의 목적지·사냥 후보에서 빠지는지 경로 결정 수준에서 검증한다.
+    /// </summary>
+    [Fact]
+    public void BotsDoNotRouteIntoLockedRooms()
+    {
+        const long matchingId = 194212;
+        const long botPlayerId = -1942121;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        SetBotPosition(bot, AreaType.Corridor);
+        bot.EquippedBattleItemId = RecorderT1;
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+        bot.LoopWaitUntil = DateTime.MinValue;
+
+        // Classroom4는 클리어 전(잠김), ExamRoom은 클리어됨(열림)으로 설정한다.
+        fixture.BotManager.SetLockedRoomAreasProvider(_ => [AreaType.Classroom4]);
+
+        var favorableCell = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Classroom4);
+        var openCell = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.ExamRoom);
+        var targets = new[]
+        {
+            // 잠긴 방 쪽이 사냥 점수는 더 높다 (핵 존재). 그래도 골라선 안 된다.
+            new MonsterCombatTarget(
+                202001, MapId.School, AreaType.Classroom4,
+                new Vector3f((favorableCell.X - favorableCell.Y) / 2f, (favorableCell.X + favorableCell.Y) / 4f, 0f),
+                107000010, IsCore: true),
+            new MonsterCombatTarget(
+                202002, MapId.School, AreaType.ExamRoom,
+                new Vector3f((openCell.X - openCell.Y) / 2f, (openCell.X + openCell.Y) / 4f, 0f),
+                107000030)
+        };
+
+        fixture.BotManager.ProcessBotMovementTick(
+            matchingId,
+            fixture.ClosureManager,
+            fixture.AreaStockManager,
+            new Dictionary<long, AreaType>(),
+            fixture.ChecklistManager,
+            fixture.InventoryManager,
+            fixture.GroundItemManager,
+            Array.Empty<BotCombatTargetSnapshot>(),
+            targets);
+
+        Assert.NotEqual(AreaType.Classroom4, bot.MovementDestination);
+        Assert.All(bot.Path, step => Assert.NotEqual(AreaType.Classroom4, step.Area));
+    }
+
+    /// <summary>자기 방이 잠겨 있으면(클리어 전) 봇도 방 밖으로 나가는 경로를 만들지 않는다.</summary>
+    [Fact]
+    public void BotInsideLockedRoomStaysUntilCleared()
+    {
+        const long matchingId = 194213;
+        const long botPlayerId = -1942131;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        SetBotPosition(bot, AreaType.Classroom3);
+        bot.EquippedBattleItemId = RecorderT1;
+        bot.Path.Clear();
+        bot.PathIndex = 0;
+        bot.LoopWaitUntil = DateTime.MinValue;
+
+        fixture.BotManager.SetLockedRoomAreasProvider(_ => [AreaType.Classroom3]);
+
+        var outsideCell = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.ExamRoom);
+        var targets = new[]
+        {
+            new MonsterCombatTarget(
+                202001, MapId.School, AreaType.ExamRoom,
+                new Vector3f((outsideCell.X - outsideCell.Y) / 2f, (outsideCell.X + outsideCell.Y) / 4f, 0f),
+                107000030, IsCore: true)
+        };
+
+        fixture.BotManager.ProcessBotMovementTick(
+            matchingId,
+            fixture.ClosureManager,
+            fixture.AreaStockManager,
+            new Dictionary<long, AreaType>(),
+            fixture.ChecklistManager,
+            fixture.InventoryManager,
+            fixture.GroundItemManager,
+            Array.Empty<BotCombatTargetSnapshot>(),
+            targets);
+
+        Assert.All(bot.Path.Skip(bot.PathIndex), step => Assert.Equal(AreaType.Classroom3, step.Area));
+        Assert.NotEqual(AreaType.ExamRoom, bot.MovementDestination);
     }
 
     [Fact]

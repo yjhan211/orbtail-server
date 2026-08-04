@@ -17,6 +17,15 @@ namespace game_server.services;
 /// </summary>
 public partial class BotPlayerManager
 {
+    /// <summary>
+    ///     클리어 전이라 문이 잠긴 방 목록 제공자. 사람은 이동 검증이 문을 막지만 봇은
+    ///     서버가 직접 걷게 하므로, 같은 규칙을 봇 경로 결정에서 강제한다.
+    /// </summary>
+    private Func<long, IReadOnlyCollection<AreaType>>? _lockedRoomAreasProvider;
+
+    public void SetLockedRoomAreasProvider(Func<long, IReadOnlyCollection<AreaType>> provider) =>
+        _lockedRoomAreasProvider = provider ?? throw new ArgumentNullException(nameof(provider));
+
     // ?꾨줈??0: ?쒖꽦 怨듦컙 = 3쨌4痢?6援ъ뿭(1쨌2痢??대룞??李⑤떒, 3??留??대룞).
     //   諛??뺤떊???뚮났 媛??: Classroom3(2-1)/ExamRoom(怨좎궗??/Classroom4(3-1)/BroadcastRoom(諛⑹넚??
     //   蹂듬룄(transit, ?뚮났 ?놁쓬 + ?κ린 泥대쪟 ???몄젒 諛?媛뺤젣 ?좊룄): Corridor
@@ -419,6 +428,9 @@ public class BotPlayerState
     ///     정상적인 팩 정리는 20초 안에 끝나므로, 이 시각이 오래되면 그 방을 목적지 후보에서 뺀다.
     /// </summary>
     public DateTime RoomHuntStartedAtUtc { get; set; } = DateTime.UtcNow;
+
+    /// <summary>잠긴 문 차단 로그의 중복 억제 — 같은 방에 연속으로 막히면 한 번만 남긴다.</summary>
+    public AreaType LastLockedDoorBlockArea { get; set; } = AreaType.None;
 
     /// <summary>
     ///     정체가 감지되어 현재 방을 떠나야 한다는 요청. 이동 루프 상단에서 세우고

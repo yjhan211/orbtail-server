@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using network.common;
+using network.common.data;
 
 namespace game_server.services;
 
@@ -17,6 +18,7 @@ public enum SurvivorMatchPhase
 
 public sealed class SurvivorPhaseManager
 {
+    public const int FirstRoomCombatSeconds = 75;
     public const int RoomCombatSeconds = 45;
     public const int RoomClosureWarningSeconds = 10;
     public const int CorridorEntrySeconds = 3;
@@ -26,17 +28,7 @@ public sealed class SurvivorPhaseManager
 
     private static readonly int[] OpenRoomCounts = [8, 6, 4, 2];
     private static readonly AreaType[] RoomCandidates =
-    [
-        AreaType.ExamRoom,
-        AreaType.BroadcastRoom,
-        AreaType.Classroom2,
-        AreaType.Classroom3,
-        AreaType.Classroom4,
-        AreaType.Storage,
-        AreaType.Storage2,
-        AreaType.AdminOffice,
-        AreaType.StaffRoom
-    ];
+        SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().ToArray();
 
     private readonly ConcurrentDictionary<long, SurvivorPhaseState> _states = new();
     private readonly Func<DateTime> _utcNow;
@@ -74,13 +66,6 @@ public sealed class SurvivorPhaseManager
         {
             state.AlivePlayerIds.Clear();
             state.AlivePlayerIds.UnionWith(alivePlayerIds.Where(id => id != 0));
-            state.CoreClearPlayerIds.IntersectWith(state.AlivePlayerIds);
-
-            bool shouldEndRoomEarly = state.Phase == SurvivorMatchPhase.ROOM_COMBAT &&
-                                      state.AlivePlayerIds.Count > 0 &&
-                                      state.CoreClearPlayerIds.Count >= RequiredCoreClearCount(state.AlivePlayerIds.Count);
-            if (shouldEndRoomEarly)
-                state.PhaseEndsAtUtc = nowUtc;
 
             int transitionGuard = 0;
             while (state.Phase is not (SurvivorMatchPhase.FINAL or SurvivorMatchPhase.FINISHED) &&
@@ -96,22 +81,30 @@ public sealed class SurvivorPhaseManager
         }
     }
 
-    public bool ReportCoreDefeated(long matchingId, long playerId, AreaType area)
+    public bool ReportRoomCleared(long matchingId, AreaType area)
     {
-        if (playerId == 0 || !_states.TryGetValue(matchingId, out var state))
+        if (!_states.TryGetValue(matchingId, out var state))
             return false;
 
         lock (state.SyncRoot)
         {
             if (state.Phase != SurvivorMatchPhase.ROOM_COMBAT ||
-                !state.CurrentRooms.Contains(area) ||
-                state.AlivePlayerIds.Count > 0 && !state.AlivePlayerIds.Contains(playerId))
+                !state.CurrentRooms.Contains(area))
             {
                 return false;
             }
 
-            return state.CoreClearPlayerIds.Add(playerId);
+            return state.ClearedRooms.Add(area);
         }
+    }
+
+    public bool IsRoomCleared(long matchingId, AreaType area)
+    {
+        if (!_states.TryGetValue(matchingId, out var state))
+            return false;
+
+        lock (state.SyncRoot)
+            return state.ClearedRooms.Contains(area);
     }
 
     public SurvivorPhaseSnapshot GetSnapshot(long matchingId)
@@ -128,7 +121,7 @@ public sealed class SurvivorPhaseManager
         return snapshot.Phase switch
         {
             SurvivorMatchPhase.ROOM_COMBAT or SurvivorMatchPhase.ROOM_CLOSURE_WARNING =>
-                snapshot.OpenAreas.Contains(area) && !area.IsCorridor(),
+                snapshot.OpenAreas.Contains(area),
             SurvivorMatchPhase.CORRIDOR_COMBAT or SurvivorMatchPhase.ROOM_SELECTION or
                 SurvivorMatchPhase.CORRIDOR_CLOSURE_WARNING => area.IsCorridor(),
             SurvivorMatchPhase.FINAL => area == AreaType.Ground,
@@ -148,7 +141,19 @@ public sealed class SurvivorPhaseManager
         };
     }
 
-    public bool AreOrbBoardActionsAllowed(long matchingId, AreaType area) => IsPveAllowed(matchingId, area);
+    public bool AreOrbBoardActionsAllowed(long matchingId, AreaType area)
+    {
+        var snapshot = GetSnapshot(matchingId);
+        return snapshot.Phase switch
+        {
+            // 방 페이즈의 복도는 클리어한 플레이어의 대기·정비 공간이다. 소환·머지·파괴를
+            // 방에서만 허용하면 클리어하고 나온 순간 보드가 잠겨 "머지가 안 되는" 경험이 된다.
+            SurvivorMatchPhase.ROOM_COMBAT or SurvivorMatchPhase.ROOM_CLOSURE_WARNING =>
+                snapshot.OpenAreas.Contains(area),
+            SurvivorMatchPhase.FINAL => area == AreaType.Ground,
+            _ => false
+        };
+    }
 
     public static RoundPhase ToRoundPhase(SurvivorMatchPhase phase) => phase switch
     {
@@ -172,6 +177,12 @@ public sealed class SurvivorPhaseManager
         SurvivorMatchPhase.CORRIDOR_CLOSURE_WARNING => CorridorClosureWarningSeconds,
         _ => 0
     };
+
+    public static int GetPhaseDurationSeconds(SurvivorPhaseSnapshot snapshot) =>
+        snapshot.PhaseEndsAtUtc == DateTime.MaxValue
+            ? 0
+            : Math.Max(0,
+                (int)Math.Round((snapshot.PhaseEndsAtUtc - snapshot.PhaseStartedAtUtc).TotalSeconds));
 
     public void MarkFinished(long matchingId)
     {
@@ -206,6 +217,7 @@ public sealed class SurvivorPhaseManager
         }
 
         var orderedRooms = preferred.Concat(remaining).ToArray();
+        var stageRooms = BuildStageRooms(orderedRooms, random);
 
         return new SurvivorPhaseState
         {
@@ -213,11 +225,42 @@ public sealed class SurvivorPhaseManager
             Phase = SurvivorMatchPhase.ROOM_COMBAT,
             StageIndex = 0,
             OrderedRooms = orderedRooms,
-            CurrentRooms = orderedRooms.Take(OpenRoomCounts[0]).ToHashSet(),
-            NextRooms = orderedRooms.Take(OpenRoomCounts[1]).ToHashSet(),
+            StageRooms = stageRooms,
+            CurrentRooms = stageRooms[0].ToHashSet(),
+            NextRooms = stageRooms[1].ToHashSet(),
             PhaseStartedAtUtc = startsAtUtc,
-            PhaseEndsAtUtc = startsAtUtc.AddSeconds(RoomCombatSeconds)
+            PhaseEndsAtUtc = startsAtUtc.AddSeconds(FirstRoomCombatSeconds)
         };
+    }
+
+    private static AreaType[][] BuildStageRooms(AreaType[] orderedRooms, Random random)
+    {
+        var stages = new AreaType[OpenRoomCounts.Length][];
+        stages[0] = orderedRooms.Take(OpenRoomCounts[0]).ToArray();
+
+        for (int stageIndex = 1; stageIndex < OpenRoomCounts.Length; stageIndex++)
+        {
+            var previous = stages[stageIndex - 1].ToHashSet();
+            var outsidePrevious = orderedRooms.Where(area => !previous.Contains(area)).ToList();
+            var insidePrevious = orderedRooms.Where(previous.Contains).ToList();
+            Shuffle(outsidePrevious, random);
+            Shuffle(insidePrevious, random);
+            stages[stageIndex] = outsidePrevious
+                .Concat(insidePrevious)
+                .Take(OpenRoomCounts[stageIndex])
+                .ToArray();
+        }
+
+        return stages;
+    }
+
+    private static void Shuffle<T>(IList<T> values, Random random)
+    {
+        for (int index = values.Count - 1; index > 0; index--)
+        {
+            int swapIndex = random.Next(index + 1);
+            (values[index], values[swapIndex]) = (values[swapIndex], values[index]);
+        }
     }
 
     private static void Advance(SurvivorPhaseState state)
@@ -244,7 +287,7 @@ public sealed class SurvivorPhaseManager
                 break;
             case SurvivorMatchPhase.CORRIDOR_CLOSURE_WARNING:
                 state.StageIndex++;
-                state.CoreClearPlayerIds.Clear();
+                state.ClearedRooms.Clear();
                 if (state.StageIndex >= OpenRoomCounts.Length)
                 {
                     state.CurrentRooms.Clear();
@@ -253,9 +296,9 @@ public sealed class SurvivorPhaseManager
                     break;
                 }
 
-                state.CurrentRooms = state.OrderedRooms.Take(OpenRoomCounts[state.StageIndex]).ToHashSet();
+                state.CurrentRooms = state.StageRooms[state.StageIndex].ToHashSet();
                 state.NextRooms = state.StageIndex + 1 < OpenRoomCounts.Length
-                    ? state.OrderedRooms.Take(OpenRoomCounts[state.StageIndex + 1]).ToHashSet()
+                    ? state.StageRooms[state.StageIndex + 1].ToHashSet()
                     : [];
                 SetPhase(state, SurvivorMatchPhase.ROOM_COMBAT, nextStartedAtUtc, RoomCombatSeconds);
                 break;
@@ -276,8 +319,11 @@ public sealed class SurvivorPhaseManager
     {
         HashSet<AreaType> openAreas = state.Phase switch
         {
+            // 방 페이즈에도 복도는 개방이다. 방 커밋은 잠긴 문이 강제하므로 복도에 나올 수
+            // 있는 것은 방을 클리어한 플레이어뿐이고, 복도를 폐쇄하면 클리어 보상(조기 진출·
+            // 선점·교전)이 폐쇄 피해로 바뀐다. 복도 잔상은 여전히 생성하지 않는다.
             SurvivorMatchPhase.ROOM_COMBAT or SurvivorMatchPhase.ROOM_CLOSURE_WARNING =>
-                state.CurrentRooms.ToHashSet(),
+                state.CurrentRooms.Append(AreaType.Corridor).ToHashSet(),
             SurvivorMatchPhase.CORRIDOR_ENTRY or SurvivorMatchPhase.CORRIDOR_COMBAT =>
                 [AreaType.Corridor],
             SurvivorMatchPhase.ROOM_SELECTION or SurvivorMatchPhase.CORRIDOR_CLOSURE_WARNING =>
@@ -307,12 +353,10 @@ public sealed class SurvivorPhaseManager
             remainingSeconds,
             state.PhaseStartedAtUtc,
             state.PhaseEndsAtUtc,
-            state.CoreClearPlayerIds.Count,
-            RequiredCoreClearCount(state.AlivePlayerIds.Count));
+            state.ClearedRooms.OrderBy(area => area).ToArray(),
+            state.ClearedRooms.Count,
+            state.CurrentRooms.Count);
     }
-
-    private static int RequiredCoreClearCount(int alivePlayerCount) =>
-        alivePlayerCount <= 0 ? 0 : (alivePlayerCount + 1) / 2;
 
     private sealed class SurvivorPhaseState
     {
@@ -321,10 +365,11 @@ public sealed class SurvivorPhaseManager
         public SurvivorMatchPhase Phase { get; set; }
         public int StageIndex { get; set; }
         public AreaType[] OrderedRooms { get; init; } = [];
+        public AreaType[][] StageRooms { get; init; } = [];
         public HashSet<AreaType> CurrentRooms { get; set; } = [];
         public HashSet<AreaType> NextRooms { get; set; } = [];
         public HashSet<long> AlivePlayerIds { get; } = [];
-        public HashSet<long> CoreClearPlayerIds { get; } = [];
+        public HashSet<AreaType> ClearedRooms { get; } = [];
         public DateTime PhaseStartedAtUtc { get; set; }
         public DateTime PhaseEndsAtUtc { get; set; }
     }
@@ -342,11 +387,12 @@ public readonly record struct SurvivorPhaseSnapshot(
     int RemainingSeconds,
     DateTime PhaseStartedAtUtc,
     DateTime PhaseEndsAtUtc,
+    IReadOnlyList<AreaType> ClearedRooms,
     int CoreClearCount,
     int RequiredCoreClearCount)
 {
     public static SurvivorPhaseSnapshot Empty => new(
-        0, SurvivorMatchPhase.FINISHED, 0, 0, [], [], [], [], 0, DateTime.MinValue, DateTime.MinValue, 0, 0);
+        0, SurvivorMatchPhase.FINISHED, 0, 0, [], [], [], [], 0, DateTime.MinValue, DateTime.MinValue, [], 0, 0);
 }
 
 public readonly record struct SurvivorPhaseTransition(

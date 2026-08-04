@@ -17,18 +17,22 @@ public class DoorStateManager
     /// <summary>
     ///     매칭 시작 시 초기 열린 문 등록
     /// </summary>
-    public void InitializeMatching(long matchingId)
+    public void InitializeMatching(long matchingId, IEnumerable<AreaType>? initiallyLockedAreas = null)
     {
         lock (_lock)
         {
             // 이미 초기화되어 있으면 스킵
             if (_openDoors.ContainsKey(matchingId)) return;
 
+            var lockedAreas = initiallyLockedAreas?.ToHashSet() ?? [];
             _openDoors[matchingId] = new HashSet<int>();
 
             // 초기 열림 상태인 문 등록
             foreach (var door in GameDoorData.GetAll())
-                _openDoors[matchingId].Add(door.DoorId);
+            {
+                if (!lockedAreas.Contains(door.AreaType))
+                    _openDoors[matchingId].Add(door.DoorId);
+            }
         }
     }
 
@@ -45,6 +49,60 @@ public class DoorStateManager
             return _openDoors[matchingId].Add(doorId);
         }
     }
+
+    public bool CloseDoor(long matchingId, int doorId)
+    {
+        lock (_lock)
+        {
+            return _openDoors.TryGetValue(matchingId, out var doors) && doors.Remove(doorId);
+        }
+    }
+
+    public IReadOnlyList<int> OpenDoorsForAreas(long matchingId, IEnumerable<AreaType> areas)
+    {
+        lock (_lock)
+        {
+            if (!_openDoors.TryGetValue(matchingId, out var openDoors))
+            {
+                openDoors = [];
+                _openDoors[matchingId] = openDoors;
+            }
+
+            var changed = new List<int>();
+            foreach (int doorId in GetDoorIds(areas))
+            {
+                if (openDoors.Add(doorId))
+                    changed.Add(doorId);
+            }
+
+            return changed;
+        }
+    }
+
+    public IReadOnlyList<int> CloseDoorsForAreas(long matchingId, IEnumerable<AreaType> areas)
+    {
+        lock (_lock)
+        {
+            if (!_openDoors.TryGetValue(matchingId, out var openDoors))
+                return [];
+
+            var changed = new List<int>();
+            foreach (int doorId in GetDoorIds(areas))
+            {
+                if (openDoors.Remove(doorId))
+                    changed.Add(doorId);
+            }
+
+            return changed;
+        }
+    }
+
+    private static IEnumerable<int> GetDoorIds(IEnumerable<AreaType> areas) =>
+        areas
+            .Distinct()
+            .SelectMany(GameDoorData.GetByAreaType)
+            .Select(door => door.DoorId)
+            .Distinct();
 
     /// <summary>
     ///     문이 열려있는지 확인

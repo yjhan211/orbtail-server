@@ -94,7 +94,10 @@ public partial class GameClientSession
             // 援ъ뿭 ?먯뇙 珥덇린??(留ㅼ묶??理쒖큹 1??
             // #87: 留ㅼ묶??吏곸콉 ????뷀뵆 ?곗꽑?쒖쐞??諛섏쁺 (5遺?1?④퀎 蹂댁옣 + 吏곸콉蹂??꾩닚??
             var jobPool = _manittoChainManager.GetMatchingJobs(msg.MatchingId);
-            _areaClosureManager.InitializeMatching(msg.MatchingId, jobPool);
+            _areaClosureManager.InitializeMatching(
+                msg.MatchingId,
+                jobPool,
+                SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
             _areaItemStockManager.InitializeMatching(msg.MatchingId);
             _groundItemManager.InitializeMatching(msg.MatchingId);
             _emotionAfterimageMonsterManager.InitializeMatching(msg.MatchingId);
@@ -200,7 +203,9 @@ public partial class GameClientSession
                 connectionBoard.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
 
             // 臾?珥덇린 ?곹깭 ?ㅼ젙 諛??대┛ 臾?紐⑸줉 ?꾩넚
-            _doorStateManager.InitializeMatching(CurrentMapSubId);
+            _doorStateManager.InitializeMatching(
+                CurrentMapSubId,
+                SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
             SendDoorStateList();
 
             // 誘몄뀡 ?뺣낫 ?꾩넚
@@ -1344,7 +1349,7 @@ public partial class GameClientSession
                 5,
                 SurvivorPhaseManager.ToRoundPhase(survivor.Phase),
                 survivor.RemainingSeconds,
-                SurvivorPhaseManager.GetPhaseDurationSeconds(survivor.Phase),
+                SurvivorPhaseManager.GetPhaseDurationSeconds(survivor),
                 survivor.Phase == SurvivorMatchPhase.FINISHED,
                 visibleNextRoomAreaTypes,
                 visibleNextRoomOccupancies);

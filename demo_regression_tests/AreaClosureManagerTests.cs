@@ -53,6 +53,23 @@ public class AreaClosureManagerTests
     }
 
     [Fact]
+    public void InitializeMatching_WithStartingRoomsClosesCorridorBeforeFirstPhaseTick()
+    {
+        var now = new DateTime(2026, 8, 4, 0, 0, 0, DateTimeKind.Utc);
+        var manager = CreateManager(() => now);
+        var startingRooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates();
+
+        var state = manager.InitializeMatching(214101, initiallyOpenAreas: startingRooms);
+        var clientState = manager.GetClientStateSnapshot(214101);
+
+        Assert.True(state.PhaseDriven);
+        Assert.All(startingRooms, area => Assert.DoesNotContain(area, clientState.ClosedAreas));
+        Assert.Contains(AreaType.Corridor, clientState.ClosedAreas);
+        Assert.Contains(AreaType.Gym, clientState.ClosedAreas);
+        Assert.Contains(AreaType.Storage, clientState.ClosedAreas);
+        Assert.Contains(AreaType.Storage2, clientState.ClosedAreas);
+    }
+    [Fact]
     public void CheckClosureSchedule_WarnsForEveryAreaThenClosesTheWholeWave()
     {
         var now = new DateTime(2026, 7, 20, 0, 0, 0, DateTimeKind.Utc);

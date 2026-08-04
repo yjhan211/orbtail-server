@@ -224,7 +224,7 @@ public class SchoolNewMapRestorationTests
     }
 
     [Fact]
-    public void DoorStateManager_Initializes_All_Doors_Open_And_Does_Not_Close_Them()
+    public void DoorStateManager_CanCloseAndReopenAllDoorsForAnAreaIdempotently()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
         GameDataHelper.Initialize();
@@ -233,13 +233,48 @@ public class SchoolNewMapRestorationTests
         var manager = new DoorStateManager();
         manager.InitializeMatching(matchingId);
 
-        var doorIds = GameDoorData.GetAll().Select(door => door.DoorId).ToList();
-        Assert.Equal(doorIds.Order(), manager.GetOpenDoors(matchingId).Order());
+        var doorIds = GameDoorData.GetByAreaType(AreaType.ExamRoom)
+            .Select(door => door.DoorId)
+            .ToList();
+        Assert.NotEmpty(doorIds);
         Assert.All(doorIds, doorId => Assert.True(manager.IsDoorOpen(matchingId, doorId)));
-        Assert.False(manager.OpenDoor(matchingId, 101));
-        Assert.True(manager.IsDoorOpen(matchingId, 101));
+
+        Assert.Equal(doorIds.Order(), manager.CloseDoorsForAreas(matchingId, [AreaType.ExamRoom]).Order());
+        Assert.Empty(manager.CloseDoorsForAreas(matchingId, [AreaType.ExamRoom]));
+        Assert.All(doorIds, doorId => Assert.False(manager.IsDoorOpen(matchingId, doorId)));
+
+        Assert.Equal(doorIds.Order(), manager.OpenDoorsForAreas(matchingId, [AreaType.ExamRoom]).Order());
+        Assert.Empty(manager.OpenDoorsForAreas(matchingId, [AreaType.ExamRoom]));
+        Assert.All(doorIds, doorId => Assert.True(manager.IsDoorOpen(matchingId, doorId)));
     }
 
+    [Fact]
+    public void DoorStateManager_InitializesAllStartingRoomDoorsLocked()
+    {
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+
+        const long matchingId = 193002;
+        var manager = new DoorStateManager();
+        var startingRooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates();
+        manager.InitializeMatching(matchingId, startingRooms);
+
+        var startingDoorIds = startingRooms
+            .SelectMany(GameDoorData.GetByAreaType)
+            .Select(door => door.DoorId)
+            .Distinct()
+            .ToArray();
+
+        Assert.NotEmpty(startingDoorIds);
+        Assert.All(startingDoorIds, doorId => Assert.False(manager.IsDoorOpen(matchingId, doorId)));
+
+        AreaType clearedRoom = startingRooms[0];
+        var clearedDoorIds = GameDoorData.GetByAreaType(clearedRoom)
+            .Select(door => door.DoorId)
+            .ToArray();
+        Assert.Equal(clearedDoorIds.Order(), manager.OpenDoorsForAreas(matchingId, [clearedRoom]).Order());
+        Assert.All(clearedDoorIds, doorId => Assert.True(manager.IsDoorOpen(matchingId, doorId)));
+    }
     [Fact]
     public void School_New_Does_Not_Load_Corridor_Stop_Penalty_Rule()
     {

@@ -38,7 +38,10 @@ public class AreaClosureManager
     /// <summary>
     /// 매치별 고정 P0 웨이브를 만든다. jobsInMatching은 기존 호출 호환을 위해 유지한다.
     /// </summary>
-    public MatchingClosureState InitializeMatching(long matchingId, List<JobTitle>? jobsInMatching = null)
+    public MatchingClosureState InitializeMatching(
+        long matchingId,
+        List<JobTitle>? jobsInMatching = null,
+        IEnumerable<AreaType>? initiallyOpenAreas = null)
     {
         _ = jobsInMatching;
 
@@ -69,6 +72,15 @@ public class AreaClosureManager
             StartDelaySec = waves.Count > 0 ? waves[0].ClosureAtSeconds : 0,
             IntervalSec = 0
         };
+
+        if (initiallyOpenAreas != null)
+        {
+            var openAreas = initiallyOpenAreas.ToHashSet();
+            state.PhaseDriven = true;
+            state.ClosedAreas = mapAreas
+                .Where(area => area != AreaType.None && !openAreas.Contains(area))
+                .ToHashSet();
+        }
 
         // 동시에 접속한 플레이어가 있어도 하나의 웨이브 시계만 사용한다.
         var actualState = _states.GetOrAdd(matchingId, state);

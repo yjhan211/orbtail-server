@@ -87,6 +87,23 @@ public partial class GameClientSession
             // — 일시적 None 상태에서 마커 클릭 시 IsAdjacent(None, X) = false로 INVALID_AREA 거절되는 문제 방지
             if (newArea != CurrentArea && newArea != AreaType.None)
             {
+                var survivorPhase = _survivorPhaseManager?.GetSnapshot(CurrentMapSubId)
+                                    ?? SurvivorPhaseSnapshot.Empty;
+                if (survivorPhase.Phase == SurvivorMatchPhase.ROOM_COMBAT &&
+                    survivorPhase.CurrentRooms.Contains(CurrentArea) &&
+                    !survivorPhase.ClearedRooms.Contains(CurrentArea))
+                {
+                    var fallbackCell = _lastValidatedPosition != null
+                        ? WorldPositionToCell(_lastValidatedPosition)
+                        : currentCell;
+                    Logger.LogDebug(
+                        "Player {PlayerId} cannot leave uncleared survivor room {Area}",
+                        PlayerId,
+                        CurrentArea);
+                    SendAreaExitBlocked(newArea, fallbackCell);
+                    return;
+                }
+
                 // 가장 가까운 문 기준으로 잠김 체크 (클라이언트는 이미 막고 있음, 서버는 보정 역할)
                 // 1. 진입하려는 영역의 가장 가까운 문이 잠겨있으면 차단
                 var entryBlockedDoor =
@@ -118,22 +135,8 @@ public partial class GameClientSession
                 }
             }
 
-            // 잠긴 문 검증이 끝난 뒤 위치를 게시한다. 전투 타이머는 아래 지역 갱신까지의
-            // 짧은 불일치 구간을 좌표에서 재계산한 지역과 비교해 제외한다.
-            // #214 uses closed areas as locked combat spaces, not optional hazard zones.
-            // Keep the legacy "enter and take damage" behavior for non-phase matches.
-            if (newArea != CurrentArea &&
-                newArea != AreaType.None &&
-                _survivorPhaseManager?.HasMatching(CurrentMapSubId) == true &&
-                _areaClosureManager.IsAreaClosed(CurrentMapSubId, newArea))
-            {
-                var fallbackCell = _lastValidatedPosition != null
-                    ? WorldPositionToCell(_lastValidatedPosition)
-                    : WorldPositionToCell(validatedPosition);
-                SendAreaExitBlocked(newArea, fallbackCell);
-                return;
-            }
-
+            // 잠긴 문 검증이 끝난 뒤 위치를 게시한다. 폐쇄 구역도 문이 열려 있으면
+            // 진입할 수 있으며, 체류 페널티는 ResourceTick에서 서버 권위로 적용한다.
             _lastValidatedPosition = validatedPosition;
             _groundItemManager.ReleaseSourcePickupBlocks(CurrentMapSubId, PlayerId.Value,
                 newArea == AreaType.None ? CurrentArea : newArea, validatedPosition.X, validatedPosition.Y);

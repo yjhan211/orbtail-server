@@ -522,6 +522,25 @@ public partial class GameClientSession
         {
             int doorId = msg.DoorId;
             var doorInfo = GameDoorData.Get(doorId);
+            if (doorInfo == null)
+            {
+                using var missingDoorPacket =
+                    PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.INVALID_GAME_STATE);
+                Send(missingDoorPacket);
+                return Task.CompletedTask;
+            }
+
+            var survivorPhase = _survivorPhaseManager?.GetSnapshot(CurrentMapSubId)
+                                ?? SurvivorPhaseSnapshot.Empty;
+            if (survivorPhase.Phase == SurvivorMatchPhase.ROOM_COMBAT &&
+                survivorPhase.CurrentRooms.Contains(doorInfo.AreaType) &&
+                !survivorPhase.ClearedRooms.Contains(doorInfo.AreaType))
+            {
+                using var unclearedRoomPacket =
+                    PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.INVALID_GAME_STATE);
+                Send(unclearedRoomPacket);
+                return Task.CompletedTask;
+            }
 
             // 이미 열려있는지 확인
             if (_doorStateManager.IsDoorOpen(CurrentMapSubId, doorId))

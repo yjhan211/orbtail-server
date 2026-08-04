@@ -204,6 +204,19 @@ public partial class GameServer(
             Action<string> log = msg => logger.LogInformation(msg);
             _emotionAfterimageMonsterManager.SetMatchingStateRemovedCallback(
                 CleanupEmotionAfterimageMonsterRuntime);
+            // 방 전투 페이즈 동안 봇의 방 진입을 통제한다. 클리어 전 방은 문이 잠겨 있고,
+            // 클리어된 방은 페이즈 규칙이 봇을 복도로 내보내는 공간이다 — 무한 리필로 잔상이
+            // 남아 있어 사냥 AI가 되들어가면 페이즈 이동과 0.7초 왕복 루프가 생긴다
+            // (2026-08-04 match-2157: 봇당 문턱 왕복 최대 40회). 그래서 현재 스테이지 방
+            // 전체를 봇 경로에서 차단한다. 자기 방(현재 위치)은 게이트가 항상 예외로 둔다.
+            // 폐쇄 예고부터는 대피를 위해 전 문이 열리므로 ROOM_COMBAT에서만 적용한다.
+            _botPlayerManager.SetLockedRoomAreasProvider(matchingId =>
+            {
+                var snapshot = _survivorPhaseManager.GetSnapshot(matchingId);
+                return snapshot.Phase == SurvivorMatchPhase.ROOM_COMBAT
+                    ? snapshot.CurrentRooms
+                    : Array.Empty<AreaType>();
+            });
             _interactableStateManager.Initialize(log);
             _inGameInventoryManager.Initialize(log);
             _areaRuleManager.Initialize(log);
@@ -1591,6 +1604,24 @@ public partial class GameServer(
         logger.LogInformation("구역 폐쇄 타이머 시작 (1초 간격)");
     }
 
+    private void BroadcastDoorStateChanges(
+        IReadOnlyCollection<GameClientSession> sessions,
+        IEnumerable<int> doorIds,
+        bool isOpen,
+        long openerPlayerId)
+    {
+        foreach (int doorId in doorIds.Distinct())
+        {
+            using var packet = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(
+                doorId,
+                isOpen,
+                ErrorCode.SUCCESS,
+                openerPlayerId);
+            foreach (var session in sessions)
+                session.Send(packet);
+        }
+    }
+
     private void ProcessAreaClosureTick(object? state)
     {
         try
@@ -1625,6 +1656,35 @@ public partial class GameServer(
                     phaseStartUtc,
                     occupiedStartingRooms);
                 var phaseTick = _survivorPhaseManager.Tick(matchingId, alivePlayerIds);
+
+                if (phaseWasUninitialized && phaseTick.Snapshot.Phase == SurvivorMatchPhase.ROOM_COMBAT)
+                {
+                    var closedDoorIds = _doorStateManager.CloseDoorsForAreas(
+                        matchingId,
+                        phaseTick.Snapshot.CurrentRooms);
+                    BroadcastDoorStateChanges(sessions, closedDoorIds, false, 0);
+                }
+
+                foreach (var transition in phaseTick.Transitions)
+                {
+                    if (transition.Before.Phase == SurvivorMatchPhase.ROOM_COMBAT &&
+                        transition.After.Phase == SurvivorMatchPhase.ROOM_CLOSURE_WARNING)
+                    {
+                        var openedDoorIds = _doorStateManager.OpenDoorsForAreas(
+                            matchingId,
+                            transition.Before.CurrentRooms);
+                        BroadcastDoorStateChanges(sessions, openedDoorIds, true, -1);
+                    }
+
+                    if (transition.After.Phase == SurvivorMatchPhase.ROOM_COMBAT)
+                    {
+                        var closedDoorIds = _doorStateManager.CloseDoorsForAreas(
+                            matchingId,
+                            transition.After.CurrentRooms);
+                        BroadcastDoorStateChanges(sessions, closedDoorIds, false, 0);
+                    }
+                }
+
                 var phaseAreaDelta = _areaClosureManager.ApplyPhaseSnapshot(matchingId, phaseTick.Snapshot);
                 var closureTick = new ClosureScheduleTick(
                     phaseAreaDelta.WarningAreas,
@@ -1654,7 +1714,7 @@ public partial class GameServer(
                            5,
                            SurvivorPhaseManager.ToRoundPhase(phaseTick.Snapshot.Phase),
                            phaseTick.Snapshot.RemainingSeconds,
-                           SurvivorPhaseManager.GetPhaseDurationSeconds(phaseTick.Snapshot.Phase),
+                           SurvivorPhaseManager.GetPhaseDurationSeconds(phaseTick.Snapshot),
                            phaseTick.Snapshot.Phase == SurvivorMatchPhase.FINISHED,
                            visibleNextRoomAreaTypes,
                            visibleNextRoomOccupancies))
@@ -2699,7 +2759,10 @@ public partial class GameServer(
             _summonStoneManager.EnsureStartingStones(matchingId, bot.PlayerId);
         }
 
-        _areaClosureManager.InitializeMatching(matchingId, jobs);
+        _areaClosureManager.InitializeMatching(
+            matchingId,
+            jobs,
+            SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
         _areaItemStockManager.InitializeMatching(matchingId);
         _groundItemManager.InitializeMatching(matchingId);
         _emotionAfterimageMonsterManager.InitializeMatching(matchingId);
@@ -2707,7 +2770,9 @@ public partial class GameServer(
             matchingId,
             _emotionAfterimageMonsterManager.GetRewardAreaSnapshot(matchingId),
             "initial");
-        _doorStateManager.InitializeMatching(matchingId);
+        _doorStateManager.InitializeMatching(
+            matchingId,
+            SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
         _checklistManager.StartRound(matchingId, 1, playerIds,
             playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
         if (Config.ROUND_SYSTEM_ENABLED)
