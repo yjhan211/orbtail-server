@@ -103,11 +103,13 @@ public partial class GameServer
                 primaryTarget,
                 attack,
                 hitDamageMultiplier: 1f,
-                isSplash: attack.IsWaveAreaSecondary,
+                isSplash: attack.IsWaveAreaSecondary || attack.IsWindAreaSecondary,
                 nowUtc,
                 matchingSessions,
                 finalMonsterStates);
-            if (primaryHit && EmotionAfterimagePveCombatRules.ShouldEmitWaveProjectilePresentation(attack.IsWaveAreaSecondary))
+            if (primaryHit &&
+                !attack.IsWaveAreaSecondary &&
+                !attack.IsWindAreaSecondary)
                 BroadcastObservedProximityAttackVfx(attack, matchingSessions);
         }
 

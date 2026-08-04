@@ -42,9 +42,9 @@ namespace network.common.data
         private static readonly Dictionary<MapId, List<AreaRegion>> _areaRegions = new();
 
         // 런타임 오버라이드: 에디터에서 추가한 장애물 위치
-        private static readonly Dictionary<MapId, HashSet<Cell>> _runtimeObstacles = new();
-        private static readonly Dictionary<MapId, HashSet<Cell>> _staticWalkableCells = new();
-        private static readonly Dictionary<MapId, HashSet<Cell>> _staticObstacleCells = new();
+        private static readonly Dictionary<MapId, HashSet<long>> _runtimeObstacles = new();
+        private static readonly Dictionary<MapId, HashSet<long>> _staticWalkableCells = new();
+        private static readonly Dictionary<MapId, HashSet<long>> _staticObstacleCells = new();
         private static readonly HashSet<MapId> _mapsWithExplicitWalkableCells = new();
 
         public static void Initialize(List<CsvRow> mapInfo, List<CsvRow> mapRegion)
@@ -179,7 +179,7 @@ namespace network.common.data
                 var areas = _areaRegions.TryGetValue(mapId, out var areaRegions)
                     ? areaRegions
                     : new List<AreaRegion>();
-                var obstacleCells = new HashSet<Cell>();
+                var obstacleCells = new HashSet<long>();
 
                 foreach (var region in regions)
                 {
@@ -199,7 +199,7 @@ namespace network.common.data
                     continue;
                 }
 
-                var walkableCells = new HashSet<Cell>();
+                var walkableCells = new HashSet<long>();
                 foreach (var region in groundRegions)
                 {
                     AddRectangleCells(walkableCells, region.Start, region.End);
@@ -216,13 +216,13 @@ namespace network.common.data
             }
         }
 
-        private static void AddRectangleCells(HashSet<Cell> cells, Cell start, Cell end)
+        private static void AddRectangleCells(HashSet<long> cells, Cell start, Cell end)
         {
             for (var x = start.X; x <= end.X; x++)
             {
                 for (var y = start.Y; y <= end.Y; y++)
                 {
-                    cells.Add(new Cell(x, y));
+                    cells.Add(MakeCellKey(x, y));
                 }
             }
         }
@@ -251,10 +251,20 @@ namespace network.common.data
             return mapInfo.IsCommon;
         }
 
+        private static long MakeCellKey(Cell cell) => MakeCellKey(cell.X, cell.Y);
+
+        private static long MakeCellKey(int x, int y) => ((long)x << 32) | (uint)y;
+
         public static bool IsMoveablePosition(MapId mapId, Cell position)
         {
+            if (position == null)
+            {
+                return false;
+            }
+
+            var cellKey = MakeCellKey(position);
             if (_runtimeObstacles.TryGetValue(mapId, out var obstacles) &&
-                obstacles.Contains(position))
+                obstacles.Contains(cellKey))
             {
                 return false;
             }
@@ -262,11 +272,11 @@ namespace network.common.data
             if (_mapsWithExplicitWalkableCells.Contains(mapId))
             {
                 return _staticWalkableCells.TryGetValue(mapId, out var walkableCells) &&
-                       walkableCells.Contains(position);
+                       walkableCells.Contains(cellKey);
             }
 
             return !_staticObstacleCells.TryGetValue(mapId, out var staticObstacles) ||
-                   !staticObstacles.Contains(position);
+                   !staticObstacles.Contains(cellKey);
         }
 
         // Runtime obstacle overrides are applied before the cached static map cells.
@@ -274,14 +284,14 @@ namespace network.common.data
         {
             if (!_runtimeObstacles.ContainsKey(mapId))
             {
-                _runtimeObstacles[mapId] = new HashSet<Cell>();
+                _runtimeObstacles[mapId] = new HashSet<long>();
             }
 
             _runtimeObstacles[mapId].Clear();
 
             foreach (var pos in obstaclePositions)
             {
-                _runtimeObstacles[mapId].Add(new Cell(pos.x, pos.y));
+                _runtimeObstacles[mapId].Add(MakeCellKey(pos.x, pos.y));
             }
         }
 

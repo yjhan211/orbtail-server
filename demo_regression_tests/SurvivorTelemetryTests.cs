@@ -144,6 +144,45 @@ public sealed class SurvivorTelemetryTests
         Assert.False(hit.IsBot);
     }
     [Fact]
+    public void DodgeableProjectileTelemetryPairsLaunchAndResolutionWithMissReason()
+    {
+        const long matchingId = 198400;
+        var log = new GameEventLogManager();
+        var now = new DateTime(2026, 8, 4, 0, 0, 0, DateTimeKind.Utc);
+        var attack = new ProximityCombatAttack(401, 402, AreaType.Gym, 107000010, 4, 0.25f, 0f, 3);
+        var launch = new DodgeableProjectileLaunch(
+            17,
+            matchingId,
+            attack,
+            MapId.School,
+            new Cell(195, 93),
+            new Vector3f(1f, 2f, 0f),
+            new Vector3f(2f, 2f, 0f),
+            7f,
+            now,
+            now.AddSeconds(0.5));
+        var resolution = new DodgeableProjectileResolution(
+            launch,
+            "dodged",
+            [],
+            1.25f,
+            0.4f);
+
+        log.LogDodgeableProjectileLaunches(matchingId, [launch]);
+        log.LogDodgeableProjectileResolutions(matchingId, [resolution]);
+
+        var events = log.GetRecent(matchingId, 10);
+        var launched = Assert.Single(events, entry => entry.Type == "SURVIVOR_PVP_PROJECTILE_LAUNCHED");
+        Assert.Equal(17, launched.ProjectileId);
+        Assert.Equal(402, launched.TargetPlayerId);
+        Assert.Equal(0.5d, launched.ProjectileTravelSeconds);
+        var resolved = Assert.Single(events, entry => entry.Type == "SURVIVOR_PVP_PROJECTILE_RESOLVED");
+        Assert.Equal("dodged", resolved.Outcome);
+        Assert.Equal(1.25f, resolved.TargetDisplacement);
+        Assert.Equal(0.4f, resolved.ProjectileHitRadius);
+        Assert.Equal(0, resolved.HitTargetCount);
+    }
+    [Fact]
     public void OrbBoardTelemetryCapturesTransitionsMergeWindowsColorRatesAndVolleyTargets()
     {
         const long matchingId = 198401;

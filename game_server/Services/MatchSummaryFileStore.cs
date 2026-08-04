@@ -221,6 +221,21 @@ public sealed class MatchSummaryFileStore
             .Where(entry => entry.Type == "SURVIVOR_MONSTER_DENSITY_SAMPLE").ToList();
         var botMovementPerformanceEvents = events
             .Where(entry => entry.Type == "SURVIVOR_BOT_MOVEMENT_TICK_PERFORMANCE").ToList();
+        var projectileLaunchEvents = events
+            .Where(entry => entry.Type == "SURVIVOR_PVP_PROJECTILE_LAUNCHED").ToList();
+        var projectileResolutionEvents = events
+            .Where(entry => entry.Type == "SURVIVOR_PVP_PROJECTILE_RESOLVED").ToList();
+        var projectileOutcomeCounts = projectileResolutionEvents
+            .GroupBy(entry => string.IsNullOrWhiteSpace(entry.Outcome) ? "unknown" : entry.Outcome!,
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+        int projectileHitCount = projectileResolutionEvents.Count(entry =>
+            string.Equals(entry.Outcome, "hit", StringComparison.OrdinalIgnoreCase));
+        int projectileMissCount = projectileResolutionEvents.Count - projectileHitCount;
+        var humanProjectileResolutionEvents = projectileResolutionEvents
+            .Where(entry => !entry.IsBot).ToList();
+        var botProjectileResolutionEvents = projectileResolutionEvents
+            .Where(entry => entry.IsBot).ToList();
         var stoneSources = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
         {
             ["room"] = stoneEvents.Where(entry => !IsCorridorArea(entry.Area))
@@ -307,6 +322,21 @@ public sealed class MatchSummaryFileStore
                 : densityEvents.Count(entry => entry.HasAttackableMonster == true) / (double)densityEvents.Count,
             MaxConcurrentAliveAfterimages = densityEvents
                 .Select(entry => entry.GlobalAliveMonsterCount ?? 0).DefaultIfEmpty(0).Max(),
+            PvpProjectileLaunchCount = projectileLaunchEvents.Count,
+            PvpProjectileResolvedCount = projectileResolutionEvents.Count,
+            PvpProjectileUnresolvedCount = Math.Max(0, projectileLaunchEvents.Count - projectileResolutionEvents.Count),
+            PvpProjectileHitCount = projectileHitCount,
+            PvpProjectileMissCount = projectileMissCount,
+            PvpProjectileHitRate = projectileResolutionEvents.Count == 0
+                ? 0d
+                : projectileHitCount / (double)projectileResolutionEvents.Count,
+            PvpProjectileOutcomeCounts = projectileOutcomeCounts,
+            HumanPvpProjectileMetrics = BuildProjectileActorMetrics(
+                projectileLaunchEvents.Count(entry => !entry.IsBot),
+                humanProjectileResolutionEvents),
+            BotPvpProjectileMetrics = BuildProjectileActorMetrics(
+                projectileLaunchEvents.Count(entry => entry.IsBot),
+                botProjectileResolutionEvents),
             HotspotDensity = hotspotDensity,
             BotMovementTickP50Milliseconds = botMovementTickP50Milliseconds,
             BotMovementTickP95Milliseconds = botMovementTickP95Milliseconds,
@@ -321,6 +351,27 @@ public sealed class MatchSummaryFileStore
                 ? 0d
                 : botMovementTickSkipCount / (double)botMovementTickAttemptCount,
             BotMovementMaxConsecutiveSkipCount = botMovementMaxConsecutiveSkipCount
+        };
+    }
+
+    private static ProjectileActorMetrics BuildProjectileActorMetrics(
+        int launchCount,
+        IReadOnlyCollection<GameEventEntry> resolutionEvents)
+    {
+        int hitCount = resolutionEvents.Count(entry =>
+            string.Equals(entry.Outcome, "hit", StringComparison.OrdinalIgnoreCase));
+        return new ProjectileActorMetrics
+        {
+            LaunchCount = launchCount,
+            ResolvedCount = resolutionEvents.Count,
+            UnresolvedCount = Math.Max(0, launchCount - resolutionEvents.Count),
+            HitCount = hitCount,
+            MissCount = resolutionEvents.Count - hitCount,
+            HitRate = resolutionEvents.Count == 0 ? 0d : hitCount / (double)resolutionEvents.Count,
+            OutcomeCounts = resolutionEvents
+                .GroupBy(entry => string.IsNullOrWhiteSpace(entry.Outcome) ? "unknown" : entry.Outcome!,
+                    StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase)
         };
     }
 
@@ -629,6 +680,17 @@ public sealed record MatchSummaryParticipant(
     public int CoreSummonStonesEarned { get; init; }
 }
 
+public sealed record ProjectileActorMetrics
+{
+    public int LaunchCount { get; init; }
+    public int ResolvedCount { get; init; }
+    public int UnresolvedCount { get; init; }
+    public int HitCount { get; init; }
+    public int MissCount { get; init; }
+    public double HitRate { get; init; }
+    public IReadOnlyDictionary<string, int> OutcomeCounts { get; init; } = new Dictionary<string, int>();
+}
+
 public sealed record SurvivorMatchMetrics
 {
     public double MatchDurationSeconds { get; init; }
@@ -655,6 +717,16 @@ public sealed record SurvivorMatchMetrics
     public int MonsterContactSampleCount { get; init; }
     public double MonsterContactRatio { get; init; }
     public int MaxConcurrentAliveAfterimages { get; init; }
+    public int PvpProjectileLaunchCount { get; init; }
+    public int PvpProjectileResolvedCount { get; init; }
+    public int PvpProjectileUnresolvedCount { get; init; }
+    public int PvpProjectileHitCount { get; init; }
+    public int PvpProjectileMissCount { get; init; }
+    public double PvpProjectileHitRate { get; init; }
+    public IReadOnlyDictionary<string, int> PvpProjectileOutcomeCounts { get; init; } =
+        new Dictionary<string, int>();
+    public ProjectileActorMetrics HumanPvpProjectileMetrics { get; init; } = new();
+    public ProjectileActorMetrics BotPvpProjectileMetrics { get; init; } = new();
     public IReadOnlyList<MatchHotspotDensityMetric> HotspotDensity { get; init; } = [];
     public double? BotMovementTickP50Milliseconds { get; init; }
     public double? BotMovementTickP95Milliseconds { get; init; }

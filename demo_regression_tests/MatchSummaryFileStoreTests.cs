@@ -198,7 +198,29 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
             },
             new()
             {
-                Seq = 13, TimestampUnixMs = startedAt + 300_000, Type = "MATCH_ENDED",
+                Seq = 13, TimestampUnixMs = startedAt + 230_000, Type = "SURVIVOR_PVP_PROJECTILE_LAUNCHED",
+                PlayerId = 1, ActorPlayerId = 1, TargetPlayerId = 2, ProjectileId = 1, Outcome = "launched"
+            },
+            new()
+            {
+                Seq = 14, TimestampUnixMs = startedAt + 231_000, Type = "SURVIVOR_PVP_PROJECTILE_RESOLVED",
+                PlayerId = 1, ActorPlayerId = 1, TargetPlayerId = 2, ProjectileId = 1,
+                HitTargetCount = 1, Outcome = "hit"
+            },
+            new()
+            {
+                Seq = 15, TimestampUnixMs = startedAt + 240_000, Type = "SURVIVOR_PVP_PROJECTILE_LAUNCHED",
+                PlayerId = 2, ActorPlayerId = 2, IsBot = true, TargetPlayerId = 1, ProjectileId = 2, Outcome = "launched"
+            },
+            new()
+            {
+                Seq = 16, TimestampUnixMs = startedAt + 241_000, Type = "SURVIVOR_PVP_PROJECTILE_RESOLVED",
+                PlayerId = 2, ActorPlayerId = 2, IsBot = true, TargetPlayerId = 1, ProjectileId = 2,
+                HitTargetCount = 0, Outcome = "dodged"
+            },
+            new()
+            {
+                Seq = 17, TimestampUnixMs = startedAt + 300_000, Type = "MATCH_ENDED",
                 WinnerPlayerId = 1, EndReason = "test"
             }
         };
@@ -210,6 +232,20 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
         Assert.Equal(100_000, summary.Metrics.FirstTier3ElapsedMilliseconds);
         Assert.Equal(150_000, summary.Metrics.FirstBoardFullElapsedMilliseconds);
         Assert.Equal(1, summary.Metrics.PvpEliminationCount);
+        Assert.Equal(2, summary.Metrics.PvpProjectileLaunchCount);
+        Assert.Equal(2, summary.Metrics.PvpProjectileResolvedCount);
+        Assert.Equal(0, summary.Metrics.PvpProjectileUnresolvedCount);
+        Assert.Equal(1, summary.Metrics.PvpProjectileHitCount);
+        Assert.Equal(1, summary.Metrics.PvpProjectileMissCount);
+        Assert.Equal(0.5d, summary.Metrics.PvpProjectileHitRate);
+        Assert.Equal(1, summary.Metrics.PvpProjectileOutcomeCounts["hit"]);
+        Assert.Equal(1, summary.Metrics.PvpProjectileOutcomeCounts["dodged"]);
+        Assert.Equal(1, summary.Metrics.HumanPvpProjectileMetrics.LaunchCount);
+        Assert.Equal(1d, summary.Metrics.HumanPvpProjectileMetrics.HitRate);
+        Assert.Equal(1, summary.Metrics.HumanPvpProjectileMetrics.OutcomeCounts["hit"]);
+        Assert.Equal(1, summary.Metrics.BotPvpProjectileMetrics.LaunchCount);
+        Assert.Equal(0d, summary.Metrics.BotPvpProjectileMetrics.HitRate);
+        Assert.Equal(1, summary.Metrics.BotPvpProjectileMetrics.OutcomeCounts["dodged"]);
         Assert.Equal(1, summary.Metrics.EliminationCounts["closure"]);
         Assert.Equal(6, summary.Metrics.SummonStoneSources["room"]);
         Assert.Equal(1, summary.Metrics.SummonStoneSources["corridor"]);

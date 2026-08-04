@@ -43,7 +43,9 @@ public readonly record struct ProximityCombatAttack(
     bool WaveResonanceArmed = false,
     bool IsResonanceProc = false,
     bool IsWaveAreaAttack = false,
-    bool IsWaveAreaSecondary = false);
+    bool IsWaveAreaSecondary = false,
+    bool IsWindAreaAttack = false,
+    bool IsWindAreaSecondary = false);
 
 public readonly record struct ProximityCombatTargetEvent(
     long AttackerPlayerId,
