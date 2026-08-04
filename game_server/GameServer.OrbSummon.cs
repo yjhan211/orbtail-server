@@ -1,5 +1,6 @@
 using game_server.services;
 using network.common;
+using network.common.data;
 
 namespace game_server;
 
@@ -19,6 +20,7 @@ public partial class GameServer
 
             while (true)
             {
+                int choiceIndex = SelectBotSummonChoice(matchingId, bot);
                 var attempt = _summonStoneManager.TrySummon(
                     matchingId,
                     bot.PlayerId,
@@ -29,7 +31,8 @@ public partial class GameServer
                         Config.SURVIVOR_INVENTORY_SLOT_COUNT,
                         out var addedItem)
                         ? addedItem
-                        : null);
+                        : null,
+                    choiceIndex);
 
                 if (!attempt.Success || attempt.AddedItem == null)
                     break;
@@ -60,6 +63,42 @@ public partial class GameServer
                     $"Stones={attempt.State.StoneCount}, NextCost={attempt.State.NextCost}");
             }
         }
+    }
+
+    /// <summary>
+    ///     봇의 소환 2택. 사람이 고를 법한 순서로 고른다 — 오염이 높은데 회복이 없으면 회복,
+    ///     아니면 보드에 이미 있는 계열(머지 짝)을 우선한다. 둘 다 아니면 후보 0.
+    /// </summary>
+    private int SelectBotSummonChoice(long matchingId, BotPlayerState bot)
+    {
+        var candidates = _summonStoneManager.GetSummonCandidates(matchingId, bot.PlayerId);
+        if (candidates.Length < 2 || candidates[0] == candidates[1])
+            return 0;
+
+        var boardItemIds = _inGameInventoryManager.GetPlayerInventory(matchingId, bot.PlayerId)
+            .GetAllItems()
+            .Where(item => item.Count > 0)
+            .Select(item => item.ItemId)
+            .ToList();
+
+        bool needsRecovery = bot.Corruption >= Config.SURVIVOR_MAX_CORRUPTION * 2 / 5 &&
+                             !boardItemIds.Any(SurvivorOrbData.IsRecoveryOrb);
+        if (needsRecovery)
+        {
+            for (int index = 0; index < candidates.Length; index++)
+            {
+                if (SurvivorOrbData.IsRecoveryOrb(candidates[index]))
+                    return index;
+            }
+        }
+
+        for (int index = 0; index < candidates.Length; index++)
+        {
+            if (boardItemIds.Contains(candidates[index]))
+                return index;
+        }
+
+        return 0;
     }
 
     private void TryDestroyBotOverflowOrb(long matchingId, BotPlayerState bot)

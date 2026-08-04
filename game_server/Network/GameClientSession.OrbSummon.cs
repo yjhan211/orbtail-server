@@ -34,7 +34,8 @@ public partial class GameClientSession
                 Config.SURVIVOR_INVENTORY_SLOT_COUNT,
                 out var addedItem)
                 ? addedItem
-                : null);
+                : null,
+            request.ChoiceIndex);
 
         if (attempt.Success && attempt.AddedItem != null)
         {
@@ -196,6 +197,10 @@ public partial class GameClientSession
         StoneCount = state.StoneCount,
         SuccessfulSummonCount = state.SuccessfulSummonCount,
         NextCost = state.NextCost,
-        PoolItemIds = _summonStoneManager.PoolItemIds.ToList()
+        PoolItemIds = _summonStoneManager.PoolItemIds.ToList(),
+        // 다음 소환의 2택 후보. 결정론적이라 상태 패킷마다 실어도 대기 상태가 필요 없다.
+        NextCandidateItemIds = PlayerId.HasValue && CurrentMapSubId > 0
+            ? _summonStoneManager.GetSummonCandidates(CurrentMapSubId, PlayerId.Value).ToList()
+            : []
     };
 }

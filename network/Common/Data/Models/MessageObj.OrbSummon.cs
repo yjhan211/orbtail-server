@@ -11,6 +11,13 @@ namespace network.common.data.models
         [Key("successfulSummonCount")] public int SuccessfulSummonCount { get; set; }
         [Key("nextCost")] public int NextCost { get; set; }
         [Key("poolItemIds")] public List<int> PoolItemIds { get; set; } = new();
+
+        /// <summary>
+        ///     소환 2택 후보. 다음 소환에서 고를 수 있는 오브 2종이다. 결과가 (매치, 플레이어,
+        ///     소환 횟수)에만 결정론적으로 묶여 있어 서버가 미리 공개할 수 있고, 대기 상태나
+        ///     만료 타이머 없이 재접속에도 같은 값이 복원된다.
+        /// </summary>
+        [Key("nextCandidateItemIds")] public List<int> NextCandidateItemIds { get; set; } = new();
     }
 
     [MessagePackObject]
@@ -26,6 +33,11 @@ namespace network.common.data.models
     [MessagePackObject]
     public sealed class C_TO_G_SUMMON_ORB : IMessagePackObject
     {
+        /// <summary>
+        ///     소환 2택 선택 인덱스 (0 또는 1). 미지정(기본 0)이면 후보 0이 뽑히며,
+        ///     이는 기존 단일 소환 스트림과 동일해 구버전 요청과 호환된다.
+        /// </summary>
+        [Key("choiceIndex")] public int ChoiceIndex { get; set; }
     }
 
     [MessagePackObject]
