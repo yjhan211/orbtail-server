@@ -15,10 +15,11 @@ public sealed class SpotArenaManager
     public const int MatchDurationSeconds = 180;
     public const int SpotMaxHealth = 360;
     public const int WaveMaxHealth = 12;
-    public const int WaveDamage = 4;
+    public const int WavePlayerDamage = 4;
+    public const int WaveSpotDamage = 2;
     public const int WaveSize = 3;
-    public const int WaveIntervalSeconds = 8;
-    public const int WaveCapPerOwner = 12;
+    public const double WaveIntervalSeconds = 8d;
+    public const int WaveCapPerDirection = 6;
     public const int WaveTtlSeconds = 30;
     public const int RespawnSeconds = 5;
     public const int RespawnInvulnerabilitySeconds = 2;
@@ -29,6 +30,7 @@ public sealed class SpotArenaManager
     public const float WaveClashAttackIntervalSeconds = 2f;
     public const float WaveRetaliationSeconds = 2f;
     public const float WaveRetaliationRange = 2.5f;
+    public const float BotDefendProximity = 8f;
 
     private const int FirstWaveMonsterId = 5_000_000;
     private const int FirstSpotMonsterId = 6_000_000;
@@ -36,6 +38,8 @@ public sealed class SpotArenaManager
     private const long FirstSpotCombatTargetId = -3_000_000_000_000_000_000L;
     private static readonly (int OrbItemId, int CorridorAnchorNumber)[] SpotDefinitions =
     [
+        // 체인 순서는 복도 링의 순환 방향을 따라야 한다. 대각선 배선([3,8,6,2] 등)은 관계
+        // 차선이 중간 복도에서 정면으로 겹쳐 웨이브 교전 규칙과 만나 영구 전선이 생긴다.
         (107000010, 3), // Sun: SR3
         (107000020, 2), // Wind: SR2
         (107000030, 8), // Wave: SR8
@@ -171,7 +175,7 @@ public sealed class SpotArenaManager
                             wave.MonsterId,
                             retaliationTarget.PlayerId,
                             wave.Area,
-                            WaveDamage));
+                            WavePlayerDamage));
                     }
                 }
                 else if (wave.PathIndex >= wave.Path.Count &&
@@ -180,7 +184,7 @@ public sealed class SpotArenaManager
                          now >= wave.NextAttackAtUtc)
                 {
                     wave.NextAttackAtUtc = now.AddSeconds(WaveSpotAttackIntervalSeconds);
-                    ApplySpotDamageLocked(state, targetSpot, WaveDamage, wave.OwnerPlayerId, result);
+                    ApplySpotDamageLocked(state, targetSpot, WaveSpotDamage, wave.OwnerPlayerId, result);
                 }
 
                 if (stateChanged && wave.Alive)
@@ -334,23 +338,10 @@ public sealed class SpotArenaManager
         {
             if (!state.Spots.TryGetValue(attackerPlayerId, out var attacker) || attacker.Destroyed)
                 return false;
-            if (waveTargetOwnerPlayerId == attackerPlayerId)
-                return true;
-            if (attacker.TargetPlayerId != waveOwnerPlayerId)
-                return false;
 
-            var targetWave = state.Waves.Values.FirstOrDefault(wave =>
-                wave.MonsterId == waveMonsterId && wave.Alive);
-            if (targetWave == null)
-                return false;
-
-            float rangeSquared = WaveClashRange * WaveClashRange;
-            return state.Waves.Values.Any(ownWave =>
-                ownWave.Alive &&
-                ownWave.OwnerPlayerId == attackerPlayerId &&
-                ownWave.Area == targetWave.Area &&
-                AreRelatedWaves(ownWave, targetWave) &&
-                DistanceSquared(ownWave.Position, targetWave.Position) <= rangeSquared);
+            // 내 좌우 차선의 적 웨이브는 전부 나를 향해 온다. 나를 향하지 않는 웨이브는
+            // 무관계 차선이므로 공격할 수 없다.
+            return waveTargetOwnerPlayerId == attackerPlayerId;
         }
     }
 
@@ -367,7 +358,9 @@ public sealed class SpotArenaManager
                 return false;
 
             return attacker.TargetPlayerId == targetPlayerId ||
-                   target.TargetPlayerId == attackerPlayerId;
+                   attacker.LeftTargetPlayerId == targetPlayerId ||
+                   target.TargetPlayerId == attackerPlayerId ||
+                   target.LeftTargetPlayerId == attackerPlayerId;
         }
     }
 
@@ -459,25 +452,77 @@ public sealed class SpotArenaManager
                 ownSpot.Destroyed)
                 return SpotArenaBotDirective.None;
 
-            int incoming = state.Waves.Values.Count(wave =>
-                wave.Alive && wave.TargetOwnerPlayerId == playerId);
-            SpotArenaBotMode mode = incoming >= 3
-                ? SpotArenaBotMode.Defend
-                : state.Waves.Values.Any(wave => wave.Alive && wave.OwnerPlayerId == playerId)
-                    ? SpotArenaBotMode.Escort
-                    : SpotArenaBotMode.Return;
+            // 전선이 웨이브를 계속 살려두므로 "들어오는 웨이브 수"는 상시 임계 이상이다.
+            // 위협은 수가 아니라 내 스팟까지 밀려든 거리로 판정한다.
+            WaveRuntime? nearestThreat = null;
+            float nearestThreatSquared = float.MaxValue;
+            foreach (var wave in state.Waves.Values)
+            {
+                if (!wave.Alive || wave.TargetOwnerPlayerId != playerId)
+                    continue;
 
-            long targetOwnerId = mode == SpotArenaBotMode.Escort
-                ? ownSpot.TargetPlayerId
-                : playerId;
-            if (!state.Spots.TryGetValue(targetOwnerId, out var destination) || destination.Destroyed)
-                destination = ownSpot;
+                float distanceSquared = DistanceSquared(wave.Position, ownSpot.Position);
+                if (distanceSquared < nearestThreatSquared)
+                {
+                    nearestThreatSquared = distanceSquared;
+                    nearestThreat = wave;
+                }
+            }
+
+            if (nearestThreat != null &&
+                nearestThreatSquared <= BotDefendProximity * BotDefendProximity)
+            {
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Defend,
+                    nearestThreat.Area,
+                    Cell.Clone(nearestThreat.Cell),
+                    nearestThreat.Position);
+            }
+
+            int rightLaneWaves = state.Waves.Values.Count(wave =>
+                wave.Alive &&
+                wave.OwnerPlayerId == playerId &&
+                wave.TargetOwnerPlayerId == ownSpot.TargetPlayerId);
+            int leftLaneWaves = state.Waves.Values.Count(wave =>
+                wave.Alive &&
+                wave.OwnerPlayerId == playerId &&
+                wave.TargetOwnerPlayerId == ownSpot.LeftTargetPlayerId);
+            long laneTargetId = leftLaneWaves > rightLaneWaves
+                ? ownSpot.LeftTargetPlayerId
+                : ownSpot.TargetPlayerId;
+
+            // 가담 지점은 상대 스팟이 아니라 내 차선 선두 웨이브(전선)다.
+            WaveRuntime? leadWave = null;
+            float leadDistanceSquared = -1f;
+            foreach (var wave in state.Waves.Values)
+            {
+                if (!wave.Alive ||
+                    wave.OwnerPlayerId != playerId ||
+                    wave.TargetOwnerPlayerId != laneTargetId)
+                    continue;
+
+                float distanceSquared = DistanceSquared(wave.Position, ownSpot.Position);
+                if (distanceSquared > leadDistanceSquared)
+                {
+                    leadDistanceSquared = distanceSquared;
+                    leadWave = wave;
+                }
+            }
+
+            if (leadWave != null)
+            {
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Escort,
+                    leadWave.Area,
+                    Cell.Clone(leadWave.Cell),
+                    leadWave.Position);
+            }
 
             return new SpotArenaBotDirective(
-                mode,
-                destination.Area,
-                Cell.Clone(destination.Cell),
-                destination.Position);
+                SpotArenaBotMode.Return,
+                ownSpot.Area,
+                Cell.Clone(ownSpot.Cell),
+                ownSpot.Position);
         }
     }
 
@@ -491,44 +536,84 @@ public sealed class SpotArenaManager
                 continue;
 
             owner.NextWaveAtUtc = now.AddSeconds(WaveIntervalSeconds);
-            int activeOwned = state.Waves.Values.Count(wave => wave.Alive && wave.OwnerPlayerId == owner.OwnerPlayerId);
-            int spawnCount = Math.Min(WaveSize, WaveCapPerOwner - activeOwned);
-            if (spawnCount <= 0 || !state.Spots.TryGetValue(owner.TargetPlayerId, out var target) || target.Destroyed)
-                continue;
-
-            var path = BotPathfinder.FindPath(
-                MapId.School,
-                owner.Area,
-                owner.Cell,
-                target.Area,
-                target.Cell);
-            if (path is not { Count: > 0 })
-                continue;
-
-            for (int index = 0; index < spawnCount; index++)
-            {
-                int serial = state.NextWaveSerial++;
-                var wave = new WaveRuntime
-                {
-                    MonsterId = FirstWaveMonsterId + serial,
-                    CombatTargetId = FirstWaveCombatTargetId - serial,
-                    OwnerPlayerId = owner.OwnerPlayerId,
-                    TargetOwnerPlayerId = target.OwnerPlayerId,
-                    OrbItemId = owner.OrbItemId,
-                    Area = owner.Area,
-                    Cell = Cell.Clone(owner.Cell),
-                    Position = OffsetSpawn(owner.Position, index),
-                    Health = WaveMaxHealth,
-                    Alive = true,
-                    SpawnedAtUtc = now,
-                    ExpiresAtUtc = now.AddSeconds(WaveTtlSeconds),
-                    NextAttackAtUtc = now,
-                    Path = path
-                };
-                state.Waves[serial] = wave;
-                result.SpawnedWaves.Add(wave.ToMonsterRuntimeInfo());
-            }
+            SpawnWaveBatch(state, owner, owner.TargetPlayerId, now, result);
+            SpawnWaveBatch(state, owner, owner.LeftTargetPlayerId, now, result);
         }
+    }
+
+    private static void SpawnWaveBatch(
+        MatchState state,
+        SpotRuntime owner,
+        long targetPlayerId,
+        DateTime now,
+        SpotArenaTickResult result)
+    {
+        if (!state.Spots.TryGetValue(targetPlayerId, out var target) || target.Destroyed)
+            return;
+
+        int activeLane = state.Waves.Values.Count(wave =>
+            wave.Alive &&
+            wave.OwnerPlayerId == owner.OwnerPlayerId &&
+            wave.TargetOwnerPlayerId == target.OwnerPlayerId);
+        int spawnCount = Math.Min(WaveSize, WaveCapPerDirection - activeLane);
+        if (spawnCount <= 0)
+            return;
+
+        var path = BuildLanePath(owner, target);
+        if (path is not { Count: > 0 })
+            return;
+
+        for (int index = 0; index < spawnCount; index++)
+        {
+            int serial = state.NextWaveSerial++;
+            var wave = new WaveRuntime
+            {
+                MonsterId = FirstWaveMonsterId + serial,
+                CombatTargetId = FirstWaveCombatTargetId - serial,
+                OwnerPlayerId = owner.OwnerPlayerId,
+                TargetOwnerPlayerId = target.OwnerPlayerId,
+                OrbItemId = owner.OrbItemId,
+                Area = owner.Area,
+                Cell = Cell.Clone(owner.Cell),
+                Position = OffsetSpawn(owner.Position, index),
+                Health = WaveMaxHealth,
+                Alive = true,
+                SpawnedAtUtc = now,
+                ExpiresAtUtc = now.AddSeconds(WaveTtlSeconds),
+                NextAttackAtUtc = now,
+                SummonStoneReward = owner.NextWaveGrantsSummonStone ? 1 : 0,
+                Path = path
+            };
+            owner.NextWaveGrantsSummonStone = !owner.NextWaveGrantsSummonStone;
+            state.Waves[serial] = wave;
+            result.SpawnedWaves.Add(wave.ToMonsterRuntimeInfo());
+        }
+    }
+
+    // 같은 차선의 양방향 경로는 웨이포인트 그래프 특성상 서로 다른 복도를 탈 수 있다.
+    // 마주 보는 웨이브가 같은 복도에서 만나 전선을 만들도록, 차선당 정방향 경로 하나를
+    // 기준으로 삼고 반대 방향은 그 경로를 뒤집어 쓴다.
+    private static List<BotPathfinder.Step>? BuildLanePath(SpotRuntime owner, SpotRuntime target)
+    {
+        bool canonical = owner.OwnerPlayerId < target.OwnerPlayerId;
+        var origin = canonical ? owner : target;
+        var destination = canonical ? target : owner;
+        var path = BotPathfinder.FindPath(
+            MapId.School,
+            origin.Area,
+            origin.Cell,
+            destination.Area,
+            destination.Cell);
+        if (path is not { Count: > 0 })
+            return null;
+        if (canonical)
+            return path;
+
+        var reversed = new List<BotPathfinder.Step>(path.Count);
+        for (int index = path.Count - 2; index >= 0; index--)
+            reversed.Add(new BotPathfinder.Step { Cell = path[index].Cell, Area = path[index].Area });
+        reversed.Add(new BotPathfinder.Step { Cell = origin.Cell, Area = origin.Area });
+        return reversed;
     }
 
     private static Dictionary<int, WaveRuntime> FindWaveEngagements(MatchState state)
@@ -569,8 +654,10 @@ public sealed class SpotArenaManager
         return engagements;
     }
 
+    // 교전은 같은 차선의 마주 보는 웨이브만 성립한다. 스치는 이웃 차선까지 넓히면
+    // 전선이 차선 밖으로 번져 링 전체가 한 덩어리로 엉긴다.
     private static bool AreRelatedWaves(WaveRuntime left, WaveRuntime right) =>
-        left.TargetOwnerPlayerId == right.OwnerPlayerId ||
+        left.TargetOwnerPlayerId == right.OwnerPlayerId &&
         right.TargetOwnerPlayerId == left.OwnerPlayerId;
 
     private static void ApplyWaveClashDamage(
@@ -644,60 +731,27 @@ public sealed class SpotArenaManager
             target.Area,
             target.TargetPlayerId));
 
+        // 파괴된 스팟의 웨이브와 그 스팟을 향하던 웨이브(전선 양측)를 모두 해체한다.
+        // 이동 중 웨이브를 새 이웃에게 급회전시키지 않는다. 다음 스폰부터 새 링을 쓴다.
         foreach (var wave in state.Waves.Values.Where(wave =>
-                     wave.Alive && wave.OwnerPlayerId == target.OwnerPlayerId))
+                     wave.Alive &&
+                     (wave.OwnerPlayerId == target.OwnerPlayerId ||
+                      wave.TargetOwnerPlayerId == target.OwnerPlayerId)))
             KillWave(wave, result);
 
-        var predator = state.Spots.Values.FirstOrDefault(spot =>
-            !spot.Destroyed && spot.TargetPlayerId == target.OwnerPlayerId);
-        if (predator != null && state.Spots.TryGetValue(target.TargetPlayerId, out var next) && !next.Destroyed)
+        if (state.Spots.TryGetValue(target.LeftTargetPlayerId, out var leftNeighbor) &&
+            !leftNeighbor.Destroyed &&
+            state.Spots.TryGetValue(target.TargetPlayerId, out var rightNeighbor) &&
+            !rightNeighbor.Destroyed &&
+            leftNeighbor.OwnerPlayerId != rightNeighbor.OwnerPlayerId)
         {
-            predator.TargetPlayerId = next.OwnerPlayerId;
+            leftNeighbor.TargetPlayerId = rightNeighbor.OwnerPlayerId;
+            rightNeighbor.LeftTargetPlayerId = leftNeighbor.OwnerPlayerId;
             result.Reconnections.Add(new SpotArenaReconnectEvent(
-                predator.OwnerPlayerId,
+                leftNeighbor.OwnerPlayerId,
                 target.OwnerPlayerId,
-                next.OwnerPlayerId));
-
-            foreach (var wave in state.Waves.Values.Where(wave =>
-                         wave.Alive &&
-                         wave.OwnerPlayerId == predator.OwnerPlayerId &&
-                         wave.TargetOwnerPlayerId == target.OwnerPlayerId))
-            {
-                if (!TryRetargetWave(wave, next))
-                {
-                    KillWave(wave, result);
-                    continue;
-                }
-
-                result.ChangedWaves.Add(wave.ToMonsterRuntimeInfo());
-            }
+                rightNeighbor.OwnerPlayerId));
         }
-        else
-        {
-            foreach (var wave in state.Waves.Values.Where(wave =>
-                         wave.Alive && wave.TargetOwnerPlayerId == target.OwnerPlayerId))
-                KillWave(wave, result);
-        }
-    }
-
-    private static bool TryRetargetWave(WaveRuntime wave, SpotRuntime target)
-    {
-        var path = BotPathfinder.FindPath(
-            MapId.School,
-            wave.Area,
-            wave.Cell,
-            target.Area,
-            target.Cell);
-        bool alreadyAtTarget = wave.Area == target.Area && wave.Cell.Equals(target.Cell);
-        if (path == null || (path.Count == 0 && !alreadyAtTarget))
-            return false;
-
-        wave.TargetOwnerPlayerId = target.OwnerPlayerId;
-        wave.Path = path;
-        wave.PathIndex = 0;
-        wave.RetaliationPlayerId = 0;
-        wave.RetaliationUntilUtc = default;
-        return true;
     }
 
     private static void KillWave(WaveRuntime wave, SpotArenaTickResult result)
@@ -712,7 +766,8 @@ public sealed class SpotArenaManager
     {
         return state.Spots.TryGetValue(attackerPlayerId, out var attacker) &&
                !attacker.Destroyed &&
-               attacker.TargetPlayerId == ownerPlayerId;
+               (attacker.TargetPlayerId == ownerPlayerId ||
+                attacker.LeftTargetPlayerId == ownerPlayerId);
     }
 
     private static bool IsRespawning(MatchState state, long playerId) =>
@@ -803,19 +858,22 @@ public sealed class SpotArenaManager
                 LastTickAtUtc = startsAtUtc
             };
 
-            int index = 0;
-            foreach (var registration in registrations)
+            var orderedRegistrations = registrations.ToList();
+            for (int index = 0; index < orderedRegistrations.Count; index++)
             {
-                int spotIndex = index++;
-                var spotDefinition = SpotDefinitions[spotIndex % SpotDefinitions.Length];
+                var registration = orderedRegistrations[index];
+                var spotDefinition = SpotDefinitions[index % SpotDefinitions.Length];
                 Cell spotCell = SurvivorRoyaleSpawnData.GetCorridorAnchor(
                     spotDefinition.CorridorAnchorNumber);
+                long leftPlayerId = orderedRegistrations[
+                    (index - 1 + orderedRegistrations.Count) % orderedRegistrations.Count].PlayerId;
                 state.Spots[registration.PlayerId] = new SpotRuntime
                 {
-                    MonsterId = FirstSpotMonsterId + spotIndex,
-                    CombatTargetId = FirstSpotCombatTargetId - spotIndex,
+                    MonsterId = FirstSpotMonsterId + index,
+                    CombatTargetId = FirstSpotCombatTargetId - index,
                     OwnerPlayerId = registration.PlayerId,
                     TargetPlayerId = registration.TargetPlayerId,
+                    LeftTargetPlayerId = leftPlayerId,
                     OrbItemId = spotDefinition.OrbItemId,
                     Area = AreaType.Corridor,
                     Cell = spotCell,
@@ -849,6 +907,7 @@ public sealed class SpotArenaManager
         public long CombatTargetId { get; init; }
         public long OwnerPlayerId { get; init; }
         public long TargetPlayerId { get; set; }
+        public long LeftTargetPlayerId { get; set; }
         public int OrbItemId { get; init; }
         public AreaType Area { get; init; }
         public Cell Cell { get; init; } = new(0, 0);
@@ -856,6 +915,7 @@ public sealed class SpotArenaManager
         public int Health { get; set; }
         public int DamageDealtToTarget { get; set; }
         public DateTime NextWaveAtUtc { get; set; }
+        public bool NextWaveGrantsSummonStone { get; set; } = true;
         public bool Destroyed { get; set; }
 
         public MonsterRuntimeInfo ToMonsterRuntimeInfo() => new()
@@ -901,6 +961,7 @@ public sealed class SpotArenaManager
         public DateTime ExpiresAtUtc { get; set; }
         public DateTime NextAttackAtUtc { get; set; }
         public DateTime NextClashAttackAtUtc { get; set; }
+        public int SummonStoneReward { get; init; }
         public long RetaliationPlayerId { get; set; }
         public DateTime RetaliationUntilUtc { get; set; }
         public List<BotPathfinder.Step> Path { get; set; } = new();
@@ -917,7 +978,7 @@ public sealed class SpotArenaManager
             IsAlive = Alive,
             RewardItemId = OrbItemId,
             IsCore = false,
-            SummonStoneReward = 1
+            SummonStoneReward = SummonStoneReward
         };
 
         public SpotArenaWaveSnapshot ToSnapshot() => new(

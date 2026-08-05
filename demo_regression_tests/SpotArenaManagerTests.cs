@@ -63,7 +63,7 @@ public class SpotArenaManagerTests
     }
 
     [Fact]
-    public void DestroyingSpot_ReconnectsPredatorWithoutDestroyingItsIncomingWaves()
+    public void DestroyingSpot_RelinksRingAndDissolvesItsFronts()
     {
         var manager = CreateManager();
         DateTime now = StartUtc;
@@ -85,7 +85,13 @@ public class SpotArenaManagerTests
         Assert.DoesNotContain(snapshot.Waves, wave => wave.OwnerPlayerId == 2);
         Assert.DoesNotContain(snapshot.Waves, wave => wave.TargetOwnerPlayerId == 2);
         Assert.All(snapshot.Waves.Where(wave => wave.OwnerPlayerId == 1),
-            wave => Assert.Equal(3, wave.TargetOwnerPlayerId));
+            wave => Assert.Equal(4, wave.TargetOwnerPlayerId));
+
+        var nextSpawn = manager.Tick(216001, [], now.AddSeconds(16));
+        Assert.Contains(nextSpawn.Snapshot.Waves,
+            wave => wave.OwnerPlayerId == 1 && wave.TargetOwnerPlayerId == 3);
+        Assert.Contains(nextSpawn.Snapshot.Waves,
+            wave => wave.OwnerPlayerId == 3 && wave.TargetOwnerPlayerId == 1);
     }
 
     [Fact]
@@ -149,57 +155,90 @@ public class SpotArenaManagerTests
         for (int index = 0; index < anchorNumbers.Length; index++)
         {
             Cell fromCell = SurvivorRoyaleSpawnData.GetCorridorAnchor(anchorNumbers[index]);
-            Cell toCell = SurvivorRoyaleSpawnData.GetCorridorAnchor(
-                anchorNumbers[(index + 1) % anchorNumbers.Length]);
+            foreach (int offset in new[] { 1, anchorNumbers.Length - 1 })
+            {
+                Cell toCell = SurvivorRoyaleSpawnData.GetCorridorAnchor(
+                    anchorNumbers[(index + offset) % anchorNumbers.Length]);
 
-            var path = BotPathfinder.FindPath(
-                MapId.School,
-                AreaType.Corridor,
-                fromCell,
-                AreaType.Corridor,
-                toCell);
+                var path = BotPathfinder.FindPath(
+                    MapId.School,
+                    AreaType.Corridor,
+                    fromCell,
+                    AreaType.Corridor,
+                    toCell);
 
-            Assert.NotNull(path);
-            Assert.NotEmpty(path!);
-            Assert.Equal(AreaType.Corridor, path![^1].Area);
-            Assert.Equal(toCell, path[^1].Cell);
+                Assert.NotNull(path);
+                Assert.NotEmpty(path!);
+                Assert.Equal(AreaType.Corridor, path![^1].Area);
+                Assert.Equal(toCell, path[^1].Cell);
+            }
         }
     }
 
     [Fact]
-    public void SpawnedWaves_TravelBetweenTheirCorridorSpots()
+    public void Waves_SpawnInBatchesTowardBothNeighbors()
     {
-        var areas = SurvivorRoyaleSpawnData.GetSpotArenaCandidates();
-        var registrations = areas
-            .Select((area, index) => new SpotArenaPlayerRegistration(
-                index + 1,
-                (index + 1) % areas.Count + 1,
-                area,
-                GameMapData.GetAreaSpawnCell(MapId.School, area)))
-            .ToArray();
-        var manager = new SpotArenaManager(() => StartUtc);
-        Assert.True(manager.InitializeMatching(216006, registrations, StartUtc));
-        var spotsByOwner = manager.GetSnapshot(216006).Spots.ToDictionary(spot => spot.OwnerPlayerId);
+        var manager = CreateManager();
 
-        DateTime now = StartUtc.AddSeconds(SpotArenaManager.WaveIntervalSeconds);
-        manager.Tick(216006, [], now);
-        var reachedOwners = new HashSet<long>();
+        DateTime firstSpawnAt = StartUtc.AddSeconds(SpotArenaManager.WaveIntervalSeconds);
+        var first = manager.Tick(216001, [], firstSpawnAt);
 
-        for (int tick = 0; tick < 116; tick++)
+        Assert.Equal(4 * 2 * SpotArenaManager.WaveSize, first.SpawnedWaves.Count);
+        Assert.All(first.SpawnedWaves,
+            wave => Assert.Equal(SpotArenaManager.WaveMaxHealth, wave.CurrentHealth));
+
+        long[][] expectedLanes = [[2, 4], [3, 1], [4, 2], [1, 3]];
+        for (long ownerId = 1; ownerId <= 4; ownerId++)
         {
-            now = now.AddSeconds(0.25);
-            var result = manager.Tick(216006, [], now);
-            foreach (var wave in result.Snapshot.Waves)
+            var ownWaves = first.Snapshot.Waves
+                .Where(wave => wave.OwnerPlayerId == ownerId)
+                .ToList();
+            Assert.Equal(2 * SpotArenaManager.WaveSize, ownWaves.Count);
+            foreach (long lane in expectedLanes[ownerId - 1])
             {
-                var targetSpot = spotsByOwner[wave.TargetOwnerPlayerId];
-                if (wave.Area == targetSpot.Area &&
-                    MathF.Abs(wave.Position.X - targetSpot.Position.X) < 0.01f &&
-                    MathF.Abs(wave.Position.Y - targetSpot.Position.Y) < 0.01f)
-                    reachedOwners.Add(wave.OwnerPlayerId);
+                Assert.Equal(SpotArenaManager.WaveSize,
+                    ownWaves.Count(wave => wave.TargetOwnerPlayerId == lane));
             }
         }
 
-        Assert.Equal(registrations.Select(item => item.PlayerId).OrderBy(id => id), reachedOwners.OrderBy(id => id));
+        var early = manager.Tick(
+            216001,
+            [],
+            firstSpawnAt.AddSeconds(SpotArenaManager.WaveIntervalSeconds - 0.01d));
+        Assert.Empty(early.SpawnedWaves);
+    }
+
+    [Fact]
+    public void OpposingWaves_FormFrontsAndKeepSpotsUntouched()
+    {
+        var manager = CreateManager();
+        var spotsByOwner = manager.GetSnapshot(216001).Spots.ToDictionary(spot => spot.OwnerPlayerId);
+
+        DateTime now = StartUtc.AddSeconds(SpotArenaManager.WaveIntervalSeconds);
+        manager.Tick(216001, [], now);
+        int clashCount = 0;
+
+        // 소모전으로 구멍이 나기 전인 첫 10초 동안은 어떤 웨이브도 전선을 지나
+        // 상대 스팟에 도달할 수 없어야 한다.
+        for (int tick = 0; tick < 40; tick++)
+        {
+            now = now.AddSeconds(0.25);
+            var result = manager.Tick(216001, [], now);
+            clashCount += result.WaveClashes.Count;
+            foreach (var wave in result.Snapshot.Waves)
+            {
+                var targetSpot = spotsByOwner[wave.TargetOwnerPlayerId];
+                Assert.False(
+                    MathF.Abs(wave.Position.X - targetSpot.Position.X) < 0.01f &&
+                    MathF.Abs(wave.Position.Y - targetSpot.Position.Y) < 0.01f,
+                    "대칭 스폰에서는 웨이브가 전선을 뚫고 상대 스팟에 도달하면 안 된다.");
+            }
+        }
+
+        Assert.True(clashCount > 0, "마주 보는 차선에서 교전이 발생해야 한다.");
+        var snapshot = manager.GetSnapshot(216001);
+        Assert.All(snapshot.Spots,
+            spot => Assert.Equal(SpotArenaManager.SpotMaxHealth, spot.Health));
     }
 
     [Fact]
@@ -225,41 +264,22 @@ public class SpotArenaManagerTests
     }
 
     [Fact]
-    public void PlayerCanAttackIncomingAndEngagedPreyWavesButNotUnrelatedWaves()
+    public void PlayerCanAttackOnlyWavesMarchingAtThem()
     {
         var manager = CreateManager();
 
         Assert.True(manager.CanPlayerAttackWave(
             216001, attackerPlayerId: 1, waveMonsterId: 0,
             waveOwnerPlayerId: 4, waveTargetOwnerPlayerId: 1));
+        Assert.True(manager.CanPlayerAttackWave(
+            216001, attackerPlayerId: 1, waveMonsterId: 0,
+            waveOwnerPlayerId: 2, waveTargetOwnerPlayerId: 1));
         Assert.False(manager.CanPlayerAttackWave(
             216001, attackerPlayerId: 1, waveMonsterId: 0,
             waveOwnerPlayerId: 2, waveTargetOwnerPlayerId: 3));
         Assert.False(manager.CanPlayerAttackWave(
             216001, attackerPlayerId: 1, waveMonsterId: 0,
             waveOwnerPlayerId: 3, waveTargetOwnerPlayerId: 4));
-
-        DateTime now = StartUtc.AddSeconds(SpotArenaManager.WaveIntervalSeconds);
-        manager.Tick(216001, [], now);
-        SpotArenaWaveClashEvent? playerOneFront = null;
-        for (int tick = 0; tick < 240 && playerOneFront == null; tick++)
-        {
-            now = now.AddSeconds(0.25);
-            var found = manager.Tick(216001, [], now).WaveClashes.FirstOrDefault(clash =>
-                (clash.AttackerOwnerPlayerId == 1 && clash.TargetOwnerPlayerId == 2) ||
-                (clash.AttackerOwnerPlayerId == 2 && clash.TargetOwnerPlayerId == 1));
-            if (found.AttackerMonsterId != 0)
-                playerOneFront = found;
-        }
-
-        Assert.True(playerOneFront.HasValue);
-        var clashEvent = playerOneFront.Value;
-        int preyWaveMonsterId = clashEvent.AttackerOwnerPlayerId == 2
-            ? clashEvent.AttackerMonsterId
-            : clashEvent.TargetMonsterId;
-        Assert.True(manager.CanPlayerAttackWave(
-            216001, attackerPlayerId: 1, waveMonsterId: preyWaveMonsterId,
-            waveOwnerPlayerId: 2, waveTargetOwnerPlayerId: 3));
     }
 
     [Fact]

@@ -115,13 +115,11 @@ public partial class GameServer
         if (participants.Count != 4)
             return false;
 
-        var areaOrder = SurvivorRoyaleSpawnData.GetSpotArenaCandidates()
-            .Select((area, index) => (area, index))
-            .ToDictionary(pair => pair.area, pair => pair.index);
+        // 사람을 항상 첫 좌석(SR3, 공격 왕복 ~13.8초)에 고정한다. 좌석마다 체인 경로 길이가
+        // 2.1~6.9초로 비대칭이라, 자리를 판마다 섞으면 "동일 조건 5판" 검증이 오염된다.
+        var botPlayerIds = bots.Select(bot => bot.PlayerId).ToHashSet();
         participants = participants
-            .OrderBy(participant => areaOrder.TryGetValue(participant.Area, out int index)
-                ? index
-                : int.MaxValue)
+            .OrderBy(participant => botPlayerIds.Contains(participant.PlayerId) ? 1 : 0)
             .ThenBy(participant => participant.PlayerId)
             .ToList();
 
@@ -326,11 +324,9 @@ public partial class GameServer
                        wave.TargetOwnerPlayerId);
         }
 
-        if (_spotArenaManager.TryGetSpotTarget(matchingId, target.PlayerId, out var spot))
-            return spot.OwnerPlayerId != attacker.PlayerId &&
-                   attacker.Area == spot.Area &&
-                   _spotArenaManager.CanPlayerAttackSpot(
-                       matchingId, attacker.PlayerId, spot.OwnerPlayerId);
+        // 스팟 피해는 전선을 밀어붙인 웨이브만 만든다. 플레이어는 스팟을 직접 치지 못한다.
+        if (_spotArenaManager.TryGetSpotTarget(matchingId, target.PlayerId, out _))
+            return false;
 
         return !_spotArenaManager.IsRespawning(matchingId, target.PlayerId) &&
                !_spotArenaManager.IsInvulnerable(matchingId, target.PlayerId) &&
