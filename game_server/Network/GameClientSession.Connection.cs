@@ -233,7 +233,11 @@ public partial class GameClientSession
             // The standalone submission client is only ready after the full initial snapshot
             // has been sent. Starting the countdown earlier lets bots consume finite room stock
             // while the human client is still loading the match.
-            int expectedBotCount = Config.SWARM_P0_ENABLED ? 0 : Config.SPOT_ARENA_P0_ENABLED ? 3 : 7;
+            int expectedBotCount = Config.SWARM_P0_ENABLED
+                ? Config.SWARM_PLAYERS_PER_MATCH - 1
+                : Config.SPOT_ARENA_P0_ENABLED
+                    ? 3
+                    : 7;
             if (connectedBotCount == expectedBotCount || MatchStartGate.IsSoloMapValidationEnabled)
             {
                 MatchStartGate.MarkHumanReady(msg.MatchingId, PlayerId.Value);

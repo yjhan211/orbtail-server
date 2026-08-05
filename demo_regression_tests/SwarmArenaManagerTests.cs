@@ -25,7 +25,7 @@ public class SwarmArenaManagerTests
         Vector3f center = GroundCenter();
 
         now = StartUtc.AddSeconds(3);
-        var tick = manager.Tick(217001, center, now);
+        var tick = manager.Tick(217001, Participants(center), now);
 
         Assert.Equal(SwarmArenaManager.RingSpawnCount, tick.SpawnedMonsters.Count);
         Assert.All(tick.SpawnedMonsters, monster =>
@@ -51,7 +51,7 @@ public class SwarmArenaManagerTests
         for (double elapsed = 3d; elapsed <= 12d; elapsed += 0.25d)
         {
             now = StartUtc.AddSeconds(elapsed);
-            damageEvents.AddRange(manager.Tick(217001, center, now).PlayerDamage);
+            damageEvents.AddRange(manager.Tick(217001, Participants(center), now).PlayerDamage);
         }
 
         Assert.NotEmpty(damageEvents);
@@ -74,13 +74,13 @@ public class SwarmArenaManagerTests
         Vector3f center = GroundCenter();
 
         now = StartUtc.AddSeconds(3);
-        manager.Tick(217001, center, now);
+        manager.Tick(217001, Participants(center), now);
         now = StartUtc.AddSeconds(4.2);
-        manager.Tick(217001, center, now);
+        manager.Tick(217001, Participants(center), now);
 
         var target = manager.GetCombatTargets(217001).First();
         var result = manager.ApplyMonsterDamage(
-            217001, target.CombatTargetId, SwarmArenaManager.MonsterMaxHealth);
+            217001, target.CombatTargetId, attackerPlayerId: 1, SwarmArenaManager.MonsterMaxHealth);
 
         Assert.True(result.Applied);
         Assert.True(result.Killed);
@@ -101,8 +101,9 @@ public class SwarmArenaManagerTests
         for (double elapsed = 0.25d; elapsed <= 29d; elapsed += 0.25d)
         {
             now = StartUtc.AddSeconds(elapsed);
-            manager.Tick(217001, center, now);
-            int alive = manager.GetVisualStates(217001).Count(state => state.IsAlive);
+            manager.Tick(217001, Participants(center), now);
+            int alive = manager.GetVisualStates(217001)
+                .Count(state => state.IsAlive && !state.IsCore);
             Assert.True(alive <= 20, $"1단계 밀도 상한 20을 초과했다: {alive}");
         }
     }
@@ -114,7 +115,7 @@ public class SwarmArenaManagerTests
         var manager = CreateManager(() => now);
 
         now = StartUtc.AddSeconds(SwarmArenaManager.MatchDurationSeconds);
-        var tick = manager.Tick(217001, GroundCenter(), now);
+        var tick = manager.Tick(217001, Participants(GroundCenter()), now);
 
         Assert.True(tick.MatchEnded);
         Assert.True(tick.Survived);
@@ -137,6 +138,39 @@ public class SwarmArenaManagerTests
         Assert.False(summary.Survived);
         Assert.True(summary.SurvivalSeconds <= 10.01d);
     }
+
+    [Fact]
+    public void Monsters_ChaseAndBiteNearestParticipant()
+    {
+        DateTime now = StartUtc;
+        var manager = CreateManager(() => now);
+        Vector3f center = GroundCenter();
+
+        // 봇(2)이 사람(1)보다 스폰 링에 훨씬 가깝게 서 있으면,
+        // 잔상은 봇을 물어야 한다 — 몹 끌기의 판정 근거.
+        var botPosition = new Vector3f(center.X + 6f, center.Y, 0f);
+        var participants = new[]
+        {
+            new SpotArenaPlayerSpatial(1, AreaType.Ground, center),
+            new SpotArenaPlayerSpatial(2, AreaType.Ground, botPosition)
+        };
+
+        var damageEvents = new List<SpotArenaPlayerDamage>();
+        for (double elapsed = 3d; elapsed <= 10d; elapsed += 0.25d)
+        {
+            now = StartUtc.AddSeconds(elapsed);
+            damageEvents.AddRange(manager.Tick(217001, participants, now).PlayerDamage);
+        }
+
+        Assert.Contains(damageEvents, damage => damage.TargetPlayerId == 2);
+        // 봇 피격은 사람 계측(HitsTaken)에 섞이지 않는다.
+        Assert.Equal(
+            damageEvents.Count(damage => damage.TargetPlayerId == 1),
+            manager.GetSummary(217001).HitsTaken);
+    }
+
+    private static IReadOnlyCollection<SpotArenaPlayerSpatial> Participants(Vector3f position) =>
+        [new SpotArenaPlayerSpatial(1, AreaType.Ground, position)];
 
     private static SwarmArenaManager CreateManager(Func<DateTime> clock)
     {

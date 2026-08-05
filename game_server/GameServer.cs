@@ -2074,7 +2074,9 @@ public partial class GameServer(
                     combatTargets,
                     pveTargets,
                     _survivorPhaseManager,
-                    _spotArenaManager.GetBotDirective,
+                    Config.SWARM_P0_ENABLED
+                        ? _swarmArenaManager.GetBotDirective
+                        : _spotArenaManager.GetBotDirective,
                     _summonStoneManager);
                 planningElapsedMilliseconds += movementResult.PlanningElapsedMilliseconds;
                 walkingElapsedMilliseconds += movementResult.WalkingElapsedMilliseconds;

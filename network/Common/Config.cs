@@ -126,6 +126,12 @@ namespace network.common
         public static readonly bool SWARM_P0_ENABLED = true;
 
         /// <summary>
+        ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2(사람 1 + 봇 1).
+        ///     사람은 항상 1명이고 나머지는 봇으로 채운다.
+        /// </summary>
+        public static readonly int SWARM_PLAYERS_PER_MATCH = 2;
+
+        /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.
         /// 데이터와 프로토콜은 보존하므로 레거시 모드가 다시 분리되면 이 게이트로 복구할 수 있다.
         /// </summary>

@@ -35,7 +35,7 @@ public class MatchingManager : IMatchingManager
     private static int GamePlayersPerMatch => IsSoloMapValidation
         ? DefaultPlayersPerMatch
         : Config.SWARM_P0_ENABLED
-            ? 1
+            ? Config.SWARM_PLAYERS_PER_MATCH
             : Config.SPOT_ARENA_P0_ENABLED
                 ? SpotArenaPlayersPerMatch
                 : DefaultGamePlayersPerMatch;

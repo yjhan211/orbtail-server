@@ -16,6 +16,14 @@ public partial class GameClientSession
         if (!PlayerId.HasValue)
             return Task.CompletedTask;
 
+        if (Config.SWARM_P0_ENABLED)
+        {
+            // 스웜 P0-c: 소환은 수호물 오브젝트 개봉(장소 드래프트)으로만 일어난다.
+            SendSummonOrbResult(false, ErrorCode.INVALID_GAME_STATE, 0, 0,
+                _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value));
+            return Task.CompletedTask;
+        }
+
         if (IsRoundActionLocked(out _) || IsSurvivorBoardActionLocked())
         {
             SendSummonOrbResult(false, ErrorCode.INVALID_GAME_STATE, 0, 0,
@@ -23,7 +31,17 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        long playerId = PlayerId.Value;
+        ExecuteOrbSummon(request.ChoiceIndex, costOverride: null);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     소환 실행 코어. 버튼 소환과 수호물 오브젝트 개봉이 같은 경로(2택 후보·인벤토리
+    ///     추가·결과 패킷·로그)를 쓴다. costOverride는 스웜 P0-c의 보유 오브 비례 비용.
+    /// </summary>
+    internal SummonOrbAttempt ExecuteOrbSummon(int choiceIndex, int? costOverride)
+    {
+        long playerId = PlayerId!.Value;
         var attempt = _summonStoneManager.TrySummon(
             CurrentMapSubId,
             playerId,
@@ -35,7 +53,8 @@ public partial class GameClientSession
                 out var addedItem)
                 ? addedItem
                 : null,
-            request.ChoiceIndex);
+            choiceIndex,
+            costOverride);
 
         if (attempt.Success && attempt.AddedItem != null)
         {
@@ -78,7 +97,7 @@ public partial class GameClientSession
             attempt.ItemId,
             attempt.State.StoneCount,
             attempt.State.NextCost);
-        return Task.CompletedTask;
+        return attempt;
     }
 
     private Task HandleDestroyOrb(C_TO_G_DESTROY_ORB request)

@@ -27,6 +27,10 @@ public partial class GameClientSession
     private const int RngCollectItemResultType = 2;
     private const int RngCollectStaminaCost = 5;
 
+    // #217 P0-c: 스웜 아레나 탐색 오브젝트 개봉 비용(소환석)과 재사용 대기.
+    private const int SwarmExploreSummonCost = 5;
+    private const int SwarmExploreCooldownSeconds = 30;
+
     /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — 매칭 단위 추적.
     /// FINISH 도착 시 이 set에 있어야 결과 산출 진행.</summary>
     private static readonly TimeSpan RngCollectPendingEncounterBlockDuration = TimeSpan.FromSeconds(10);
@@ -36,6 +40,8 @@ public partial class GameClientSession
     private Task HandleRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (Config.SWARM_P0_ENABLED)
+            return HandleSwarmRngCollectStart(msg);
         if (Config.SPOT_ARENA_P0_ENABLED)
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
@@ -124,6 +130,8 @@ public partial class GameClientSession
     private Task HandleRngCollectFinish(C_TO_G_RNG_COLLECT_FINISH msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (Config.SWARM_P0_ENABLED)
+            return HandleSwarmRngCollectFinish(msg);
         if (Config.SPOT_ARENA_P0_ENABLED) return Task.CompletedTask;
         if (IsEliminated) return Task.CompletedTask;
 
@@ -422,6 +430,88 @@ public partial class GameClientSession
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, state);
         foreach (var session in sameAreaSessions) session.Send(packet);
+    }
+
+    /// <summary>
+    ///     #217 P0-c: 스웜 아레나에서 탐색 오브젝트는 소환석 5개짜리 오브 드래프트 상자다.
+    ///     기존 자동탐색 UX(접근 → 게이지 → 완료)를 그대로 쓰고, 완료 시 오브를 소환한다.
+    ///     스태미나·미션·선물·조우 등 레거시 채집 결과는 사용하지 않는다.
+    /// </summary>
+    private Task HandleSwarmRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
+    {
+        var info = GameInteractableData.Get(msg.InteractId);
+        if (info == null)
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
+            return Task.CompletedTask;
+        }
+
+        if (info.ZoneId != (int)CurrentArea)
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.AREA_MISMATCH, 0);
+            return Task.CompletedTask;
+        }
+
+        // 소환석 부족이면 게이지를 시작하지 않는다 — 헛 채널 방지.
+        if (_summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId!.Value).StoneCount <
+            SwarmExploreSummonCost)
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.INSUFFICIENT_CURRENCY, 0);
+            return Task.CompletedTask;
+        }
+
+        if (!RngCollectCooldownStore.TryAcquireCooldown(
+                CurrentMapSubId, msg.InteractId, RngCollectCooldownStore.DefaultCooldownSeconds,
+                out int remaining))
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.ACTION_ALREADY_EXPLORED, remaining);
+            return Task.CompletedTask;
+        }
+
+        _pendingFinish.Add(msg.InteractId);
+        _gameEventLogManager.LogExploreStart(
+            CurrentMapSubId, PlayerId.Value, msg.InteractId, CurrentArea.ToString(), isBot: false);
+        SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleSwarmRngCollectFinish(C_TO_G_RNG_COLLECT_FINISH msg)
+    {
+        if (msg.EncounterCheckOnly)
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
+            return Task.CompletedTask;
+        }
+
+        if (!_pendingFinish.Remove(msg.InteractId))
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+            return Task.CompletedTask;
+        }
+
+        var attempt = ExecuteOrbSummon(choiceIndex: 0, costOverride: SwarmExploreSummonCost);
+        if (!attempt.Success)
+        {
+            // 소환 실패(석 부족·보드 포화) — 쿨다운을 풀어 나중에 다시 열 수 있게 한다.
+            RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
+            BroadcastRngCollectCooldown(msg.InteractId, 0);
+            SendRngCollectResult(msg.InteractId, 0, 0, 0, 0);
+            BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+            return Task.CompletedTask;
+        }
+
+        // 같은 오브젝트 연타 방지 — 쿨다운 동안 다른 오브젝트로 동선을 유도한다.
+        RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
+        RngCollectCooldownStore.TryAcquireCooldown(
+            CurrentMapSubId, msg.InteractId, SwarmExploreCooldownSeconds, out _);
+        BroadcastRngCollectCooldown(msg.InteractId, SwarmExploreCooldownSeconds);
+        SendRngCollectResult(
+            msg.InteractId, RngCollectItemResultType, attempt.ItemId, 0, SwarmExploreCooldownSeconds);
+        BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+        Logger.LogInformation(
+            "Swarm explore summon: PlayerId={PlayerId}, InteractId={InteractId}, ItemId={ItemId}",
+            PlayerId, msg.InteractId, attempt.ItemId);
+        return Task.CompletedTask;
     }
 
     private void SendRngCollectAck(int interactId, ErrorCode errorCode, int cooldownRemain)

@@ -367,8 +367,10 @@ public partial class BotPlayerManager
             {
                 bool changed = bot.SpotArenaMode != currentDirective.Mode;
                 bot.SpotArenaMode = currentDirective.Mode;
+                // 스웜 아레나 봇은 회피가 본체라 5초 홀드로는 서 있는 것처럼 보인다.
+                double holdSeconds = Config.SWARM_P0_ENABLED ? 1.5 : 5;
                 if (changed || bot.SpotArenaModeUntilUtc <= nowUtc)
-                    bot.SpotArenaModeUntilUtc = nowUtc.AddSeconds(5);
+                    bot.SpotArenaModeUntilUtc = nowUtc.AddSeconds(holdSeconds);
 
                 bot.MovementDestination = currentDirective.DestinationArea;
                 bot.Path = BotPathfinder.FindPath(

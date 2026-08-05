@@ -14,7 +14,14 @@ public sealed class SwarmArenaManager
 {
     public const int MatchDurationSeconds = 90;
     public const int MonsterMaxHealth = 12;
-    public const int ContactDamage = 30;
+
+    // 실측(2026-08-05): 30 + 무적 0.6초 조합은 18초 생존으로 끝났다. 연속 접촉 기준
+    // 최소 사망 시간이 판 길이의 1/6을 넘도록 24 × 0.8초로 완화한다 (420/24×0.8 ≈ 14초).
+    public const int ContactDamage = 24;
+
+    // 몬스터별 쿨다운만 있으면 무리에 겹칠 때 마릿수만큼 중첩 피격되어 1~2초 만에 죽는다.
+    // 뱀서 표준대로 참가자 측 피격 무적을 둔다: 한 입은 아프게, 무리는 초당 한 입만.
+    public const float ContactImmunitySeconds = 0.8f;
 
     // 접촉은 실제 겹침 수준에서만 성립해야 한다. 산포 정지 지점보다 크고
     // 시각적 비접촉 거리보다 작게 유지할 것. 서버 위치는 클라이언트 예측보다
@@ -29,6 +36,9 @@ public sealed class SwarmArenaManager
     public const int RushSpawnCount = 8;
     public const int EncircleSpawnCount = 8;
 
+    // PvP는 압박·마무리 보조다. 킬의 주 경로는 스웜(접촉 30)이어야 한다.
+    public const int PvpDamage = 3;
+
     private const int FirstMonsterId = 7_000_000;
     private const long FirstCombatTargetId = -4_000_000_000_000_000_000L;
     private const float RingRadius = 9f;
@@ -36,6 +46,12 @@ public sealed class SwarmArenaManager
     private const float RushLateralSpread = 1.6f;
     private const float EncircleRadius = 4.5f;
     private const float ScatterRadius = 0.2f;
+    private const float RetargetStickinessSquared = 1.5625f;
+    private const float BotDangerRadius = 4f;
+
+    // 사거리(7) 밖 + 포위 스폰 반경(4.5) 밖에서 배회해야 상시 칩딜·패턴 즉사를 피한다.
+    private const float BotHoverDistance = 8f;
+    private const float BotFleeDistance = 5f;
     private const double FirstPatternDelaySeconds = 3d;
     private const double PatternIntervalStartSeconds = 10d;
     private const double PatternIntervalEndSeconds = 6d;
@@ -81,7 +97,7 @@ public sealed class SwarmArenaManager
 
     public SwarmArenaTickResult Tick(
         long matchingId,
-        Vector3f? playerPosition,
+        IReadOnlyCollection<SpotArenaPlayerSpatial> participants,
         DateTime? nowUtc = null)
     {
         var result = new SwarmArenaTickResult();
@@ -100,6 +116,7 @@ public sealed class SwarmArenaManager
 
             double deltaSeconds = Math.Clamp((now - state.LastTickAtUtc).TotalSeconds, 0d, 0.25d);
             state.LastTickAtUtc = now;
+            state.LastParticipants = participants.ToArray();
 
             if (now >= state.EndsAtUtc)
             {
@@ -110,37 +127,110 @@ public sealed class SwarmArenaManager
                 return result;
             }
 
-            Vector3f target = playerPosition ?? state.CenterPosition;
-            SpawnDuePattern(state, target, now, result);
+            // 패턴은 검증 대상인 사람을 중심으로 소환한다. 잔상은 소환 후 가장 가까운
+            // 참가자를 문다 — 스웜을 상대 쪽으로 끌고 가는 플레이(몹 끌기)의 근거.
+            Vector3f patternCenter = state.CenterPosition;
+            foreach (var participant in state.LastParticipants)
+            {
+                if (participant.PlayerId != state.PlayerId)
+                    continue;
+                patternCenter = participant.Position;
+                break;
+            }
+
+            SpawnDuePattern(state, patternCenter, now, result);
 
             foreach (var monster in state.Monsters.Values)
             {
                 if (!monster.Alive || now < monster.ActivatesAtUtc)
                     continue;
 
-                MoveTowardPlayer(monster, target, deltaSeconds);
-                if (playerPosition == null || now < monster.NextContactAtUtc)
+                if (!TryResolveChaseTarget(monster, state.LastParticipants, out var chaseTarget))
                     continue;
 
-                float dx = monster.Position.X - playerPosition.X;
-                float dy = monster.Position.Y - playerPosition.Y;
-                if (dx * dx + dy * dy > ContactRange * ContactRange)
+                MoveTowardPlayer(monster, chaseTarget.Position, deltaSeconds);
+                if (now < monster.NextContactAtUtc)
                     continue;
 
-                monster.NextContactAtUtc = now.AddSeconds(ContactCooldownSeconds);
-                state.HitsTaken++;
-                state.PatternHits[monster.Pattern] =
-                    state.PatternHits.GetValueOrDefault(monster.Pattern) + 1;
-                result.PlayerDamage.Add(new SpotArenaPlayerDamage(
-                    monster.MonsterId,
-                    state.PlayerId,
-                    state.Area,
-                    ContactDamage));
+                foreach (var participant in state.LastParticipants)
+                {
+                    float dx = monster.Position.X - participant.Position.X;
+                    float dy = monster.Position.Y - participant.Position.Y;
+                    if (dx * dx + dy * dy > ContactRange * ContactRange)
+                        continue;
+                    if (state.ContactImmuneUntilUtc.TryGetValue(participant.PlayerId, out var immuneUntil) &&
+                        now < immuneUntil)
+                        continue;
+
+                    monster.NextContactAtUtc = now.AddSeconds(ContactCooldownSeconds);
+                    state.ContactImmuneUntilUtc[participant.PlayerId] =
+                        now.AddSeconds(ContactImmunitySeconds);
+                    if (participant.PlayerId == state.PlayerId)
+                    {
+                        state.HitsTaken++;
+                        state.PatternHits[monster.Pattern] =
+                            state.PatternHits.GetValueOrDefault(monster.Pattern) + 1;
+                    }
+
+                    result.PlayerDamage.Add(new SpotArenaPlayerDamage(
+                        monster.MonsterId,
+                        participant.PlayerId,
+                        state.Area,
+                        ContactDamage));
+                    break;
+                }
             }
 
             PruneDeadMonsters(state, now);
             return result;
         }
+    }
+
+    /// <summary>
+    ///     가장 가까운 참가자를 쫓되, 기존 목표가 최근접의 1.25배 거리 안이면 유지한다.
+    ///     히스테리시스 없이 매 틱 최근접으로 갈아타면 두 참가자 중간에서 왕복 진동한다.
+    /// </summary>
+    private static bool TryResolveChaseTarget(
+        MonsterRuntime monster,
+        IReadOnlyList<SpotArenaPlayerSpatial> participants,
+        out SpotArenaPlayerSpatial target)
+    {
+        target = default;
+        if (participants.Count == 0)
+            return false;
+
+        int nearestIndex = -1;
+        float nearestSquared = float.MaxValue;
+        int currentIndex = -1;
+        float currentSquared = float.MaxValue;
+        for (int index = 0; index < participants.Count; index++)
+        {
+            var participant = participants[index];
+            float dx = participant.Position.X - monster.Position.X;
+            float dy = participant.Position.Y - monster.Position.Y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared < nearestSquared)
+            {
+                nearestSquared = distanceSquared;
+                nearestIndex = index;
+            }
+
+            if (participant.PlayerId == monster.ChaseTargetPlayerId)
+            {
+                currentIndex = index;
+                currentSquared = distanceSquared;
+            }
+        }
+
+        if (currentIndex >= 0 && currentSquared <= nearestSquared * RetargetStickinessSquared)
+        {
+            target = participants[currentIndex];
+            return true;
+        }
+
+        target = participants[nearestIndex];
+        monster.ChaseTargetPlayerId = target.PlayerId;
+        return true;
     }
 
     public void EndForDeath(long matchingId, DateTime? nowUtc = null)
@@ -169,7 +259,11 @@ public sealed class SwarmArenaManager
         }
     }
 
-    public SwarmArenaDamageResult ApplyMonsterDamage(long matchingId, long combatTargetId, int damage)
+    public SwarmArenaDamageResult ApplyMonsterDamage(
+        long matchingId,
+        long combatTargetId,
+        long attackerPlayerId,
+        int damage)
     {
         if (damage <= 0 || !_matches.TryGetValue(matchingId, out var state))
             return SwarmArenaDamageResult.None;
@@ -187,10 +281,105 @@ public sealed class SwarmArenaManager
             {
                 monster.Alive = false;
                 monster.DiedAtUtc = _utcNow();
-                state.Kills++;
+                if (attackerPlayerId == state.PlayerId)
+                    state.Kills++;
             }
 
             return new SwarmArenaDamageResult(true, killed, monster.MonsterId, monster.ToMonsterRuntimeInfo());
+        }
+    }
+
+    /// <summary>
+    ///     봇 지시: 잔상 무리가 가까우면 무리 반대쪽으로 도망치고, 아니면 사람 근처를 배회한다.
+    ///     회피 압력을 유지하면서 조우가 자연 발생하게 만드는 최소 행동이다.
+    /// </summary>
+    public SpotArenaBotDirective GetBotDirective(long matchingId, long botPlayerId)
+    {
+        if (!_matches.TryGetValue(matchingId, out var state))
+            return SpotArenaBotDirective.None;
+
+        lock (state.SyncRoot)
+        {
+            if (state.Ended)
+                return SpotArenaBotDirective.None;
+
+            bool botFound = false;
+            Vector3f botPosition = state.CenterPosition;
+            Vector3f humanPosition = state.CenterPosition;
+            foreach (var participant in state.LastParticipants)
+            {
+                if (participant.PlayerId == botPlayerId)
+                {
+                    botFound = true;
+                    botPosition = participant.Position;
+                }
+                else if (participant.PlayerId == state.PlayerId)
+                {
+                    humanPosition = participant.Position;
+                }
+            }
+
+            if (!botFound)
+                return SpotArenaBotDirective.None;
+
+            DateTime now = _utcNow();
+            float threatX = 0f, threatY = 0f;
+            int threatCount = 0;
+            foreach (var monster in state.Monsters.Values)
+            {
+                if (!monster.Alive || now < monster.ActivatesAtUtc)
+                    continue;
+                float dx = monster.Position.X - botPosition.X;
+                float dy = monster.Position.Y - botPosition.Y;
+                if (dx * dx + dy * dy > BotDangerRadius * BotDangerRadius)
+                    continue;
+                threatX += monster.Position.X;
+                threatY += monster.Position.Y;
+                threatCount++;
+            }
+
+            Vector3f destination;
+            SpotArenaBotMode mode;
+            if (threatCount > 0)
+            {
+                float centroidX = threatX / threatCount;
+                float centroidY = threatY / threatCount;
+                float awayX = botPosition.X - centroidX;
+                float awayY = botPosition.Y - centroidY;
+                float length = MathF.Sqrt(awayX * awayX + awayY * awayY);
+                if (length < 0.01f)
+                {
+                    awayX = 1f;
+                    awayY = 0f;
+                    length = 1f;
+                }
+
+                destination = new Vector3f(
+                    botPosition.X + awayX / length * BotFleeDistance,
+                    botPosition.Y + awayY / length * BotFleeDistance,
+                    0f);
+                mode = SpotArenaBotMode.Return;
+            }
+            else
+            {
+                // 사람 주위를 접선 방향으로 돈다. 재계획마다 60도씩 진행해 봇이
+                // 제자리에 서 있지 않고 계속 궤도를 그리며 조우 압력을 만든다.
+                float angle = MathF.Atan2(
+                    botPosition.Y - humanPosition.Y,
+                    botPosition.X - humanPosition.X) + 1.05f;
+                destination = new Vector3f(
+                    humanPosition.X + MathF.Cos(angle) * BotHoverDistance,
+                    humanPosition.Y + MathF.Sin(angle) * BotHoverDistance,
+                    0f);
+                mode = SpotArenaBotMode.Escort;
+            }
+
+            destination = ClampToWalkable(destination, state.CenterPosition);
+            return new SpotArenaBotDirective(
+                mode,
+                state.Area,
+                MapCoordinateConverter.WorldToCell(MapId.School, destination),
+                destination);
         }
     }
 
@@ -460,6 +649,8 @@ public sealed class SwarmArenaManager
         public bool Ended { get; set; }
         public bool Survived { get; set; }
         public bool NextMonsterGrantsSummonStone { get; set; } = true;
+        public SpotArenaPlayerSpatial[] LastParticipants { get; set; } = [];
+        public Dictionary<long, DateTime> ContactImmuneUntilUtc { get; } = new();
         public int HitsTaken { get; set; }
         public int Kills { get; set; }
         public Dictionary<SwarmPattern, int> PatternHits { get; } = new();
@@ -478,6 +669,7 @@ public sealed class SwarmArenaManager
         public DateTime DiedAtUtc { get; set; }
         public float ScatterAngle { get; init; }
         public int SummonStoneReward { get; init; }
+        public long ChaseTargetPlayerId { get; set; }
 
         public MonsterRuntimeInfo ToMonsterRuntimeInfo(AreaType area = AreaType.Ground) => new()
         {
