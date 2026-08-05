@@ -198,9 +198,12 @@ public partial class BotPlayerManager
         GroundItemManager groundItemManager,
         IReadOnlyCollection<BotCombatTargetSnapshot> combatTargets,
         IReadOnlyCollection<MonsterCombatTarget>? pveTargets = null,
-        SurvivorPhaseManager? survivorPhaseManager = null)
+        SurvivorPhaseManager? survivorPhaseManager = null,
+        Func<long, long, SpotArenaBotDirective>? spotArenaDirectiveProvider = null,
+        SummonStoneManager? summonStoneManager = null)
     {
         var result = new BotWalkingTickResult();
+        summonStoneManager ??= new SummonStoneManager();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
 
         var activeBots = bots.Where(bot => !bot.IsEliminated).ToList();
@@ -212,6 +215,23 @@ public partial class BotPlayerManager
         var playerAreas = new Dictionary<long, AreaType>(humanAreas);
         foreach (var b in activeBots)
             playerAreas[b.PlayerId] = b.CurrentArea;
+
+        if (Config.SPOT_ARENA_P0_ENABLED && spotArenaDirectiveProvider != null)
+        {
+            return ProcessSpotArenaBotMovement(
+                matchingId,
+                activeBots,
+                result,
+                closureManager,
+                areaItemStockManager,
+                inventoryManager,
+                groundItemManager,
+                summonStoneManager,
+                checklistManager,
+                playerAreas,
+                pveTargets ?? [],
+                spotArenaDirectiveProvider);
+        }
 
         SurvivorPhaseSnapshot survivorPhase = survivorPhaseManager?.GetSnapshot(matchingId)
             ?? SurvivorPhaseSnapshot.Empty;
@@ -265,7 +285,8 @@ public partial class BotPlayerManager
                 isCommittingToDestination = !isEvacuating &&
                                             TryMaintainMovementDestination(bot, matchingId, closureManager);
                 if (!isEvacuating &&
-                    TryAutoPickupGroundItem(bot, matchingId, inventoryManager, groundItemManager, out var pickup) &&
+                    TryAutoPickupGroundItem(
+                        bot, matchingId, inventoryManager, groundItemManager, summonStoneManager, out var pickup) &&
                     pickup.HasValue)
                 {
                     result.GroundItemPickups.Add(pickup.Value);
@@ -305,6 +326,83 @@ public partial class BotPlayerManager
         return result;
     }
 
+    private BotWalkingTickResult ProcessSpotArenaBotMovement(
+        long matchingId,
+        IReadOnlyList<BotPlayerState> activeBots,
+        BotWalkingTickResult result,
+        AreaClosureManager closureManager,
+        AreaItemStockManager areaItemStockManager,
+        InGameInventoryManager inventoryManager,
+        GroundItemManager groundItemManager,
+        SummonStoneManager summonStoneManager,
+        ChecklistManager checklistManager,
+        IReadOnlyDictionary<long, AreaType> playerAreas,
+        IReadOnlyCollection<MonsterCombatTarget> pveTargets,
+        Func<long, long, SpotArenaBotDirective> directiveProvider)
+    {
+        DateTime nowUtc = DateTime.UtcNow;
+        foreach (var bot in activeBots)
+        {
+            if (TryAutoPickupGroundItem(
+                    bot, matchingId, inventoryManager, groundItemManager, summonStoneManager, out var pickup) &&
+                pickup.HasValue)
+            {
+                result.GroundItemPickups.Add(pickup.Value);
+            }
+
+            SpotArenaBotDirective currentDirective = directiveProvider(matchingId, bot.PlayerId);
+            if (currentDirective.Mode == SpotArenaBotMode.None)
+            {
+                bot.SpotArenaMode = SpotArenaBotMode.None;
+                bot.Path.Clear();
+                bot.PathIndex = 0;
+                bot.LastWalkStepTime = nowUtc;
+                continue;
+            }
+
+            bool canPlanThisTick = bot.PlayerId == result.PlanningBotId;
+            if (canPlanThisTick &&
+                (bot.SpotArenaMode == SpotArenaBotMode.None ||
+                 nowUtc >= bot.SpotArenaModeUntilUtc))
+            {
+                bool changed = bot.SpotArenaMode != currentDirective.Mode;
+                bot.SpotArenaMode = currentDirective.Mode;
+                if (changed || bot.SpotArenaModeUntilUtc <= nowUtc)
+                    bot.SpotArenaModeUntilUtc = nowUtc.AddSeconds(5);
+
+                bot.MovementDestination = currentDirective.DestinationArea;
+                bot.Path = BotPathfinder.FindPath(
+                               GetMatchingMapId(matchingId),
+                               bot.CurrentArea,
+                               bot.Cell,
+                               currentDirective.DestinationArea,
+                               currentDirective.DestinationCell)
+                           ?? [];
+                bot.PathIndex = 0;
+            }
+
+            if (bot.PathIndex >= bot.Path.Count)
+            {
+                bot.LastWalkStepTime = nowUtc;
+                continue;
+            }
+
+            var movement = WalkStep(
+                bot,
+                matchingId,
+                closureManager,
+                areaItemStockManager,
+                inventoryManager,
+                playerAreas,
+                checklistManager,
+                pveTargets,
+                canPlanThisTick);
+            if (movement != null)
+                result.Movements.Add(movement);
+        }
+
+        return result;
+    }
     private long SelectMovementPlanningBot(long matchingId, IReadOnlyList<BotPlayerState> activeBots)
     {
         int cursor = _botMovementPlanningCursors.AddOrUpdate(

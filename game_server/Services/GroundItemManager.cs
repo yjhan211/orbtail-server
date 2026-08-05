@@ -25,6 +25,7 @@ public enum GroundItemSpawnLayout
 public sealed class GroundItemManager
 {
     public const float PickupRadius = 1.15f;
+    public const float SummonStonePickupRadius = 1.75f;
     public static readonly TimeSpan DiscovererPickupWindow = TimeSpan.FromSeconds(1);
     private readonly ConcurrentDictionary<long, MatchingGroundItemState> _matchingStates = new();
     private readonly TimeProvider _timeProvider;
@@ -166,7 +167,10 @@ public sealed class GroundItemManager
 
             float dx = item.PositionX - playerX;
             float dy = item.PositionY - playerY;
-            if (dx * dx + dy * dy > PickupRadius * PickupRadius)
+            float pickupRadius = item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID
+                ? SummonStonePickupRadius
+                : PickupRadius;
+            if (dx * dx + dy * dy > pickupRadius * pickupRadius)
                 return GroundItemClaimStatus.TooFar;
             if (!accept(item))
                 return GroundItemClaimStatus.Rejected;

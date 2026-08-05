@@ -9,12 +9,19 @@ namespace game_server.services;
 public static class MatchStartGate
 {
     private const int DefaultMatchCapacity = 8;
+    private const int SpotArenaMatchCapacity = 4;
     private static readonly ConcurrentDictionary<long, State> States = new();
 
     public static bool IsSoloMapValidationEnabled =>
         Environment.GetEnvironmentVariable("SOLO_MAP_VALIDATION") == "1";
 
-    private static int MatchCapacity => IsSoloMapValidationEnabled ? 1 : DefaultMatchCapacity;
+    private static int MatchCapacity => IsSoloMapValidationEnabled
+        ? 1
+        : global::network.common.Config.SWARM_P0_ENABLED
+            ? 1
+            : global::network.common.Config.SPOT_ARENA_P0_ENABLED
+                ? SpotArenaMatchCapacity
+                : DefaultMatchCapacity;
 
     public static void RegisterHumanPlayer(long matchingId, long playerId, int botCount)
     {

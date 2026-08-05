@@ -94,19 +94,25 @@ public partial class GameClientSession
             // 援ъ뿭 ?먯뇙 珥덇린??(留ㅼ묶??理쒖큹 1??
             // #87: 留ㅼ묶??吏곸콉 ????뷀뵆 ?곗꽑?쒖쐞??諛섏쁺 (5遺?1?④퀎 蹂댁옣 + 吏곸콉蹂??꾩닚??
             var jobPool = _manittoChainManager.GetMatchingJobs(msg.MatchingId);
-            _areaClosureManager.InitializeMatching(
-                msg.MatchingId,
-                jobPool,
-                SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
+            if (!Config.SPOT_ARENA_P0_ENABLED)
+            {
+                _areaClosureManager.InitializeMatching(
+                    msg.MatchingId,
+                    jobPool,
+                    SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
+            }
             _areaItemStockManager.InitializeMatching(msg.MatchingId);
             _groundItemManager.InitializeMatching(msg.MatchingId);
-            _emotionAfterimageMonsterManager.InitializeMatching(msg.MatchingId);
             int matchSeed = SurvivorRoyaleSpawnData.GetDeterministicSeed(msg.MatchingId);
             _gameEventLogManager.BeginMatch(msg.MatchingId, matchSeed);
-            _gameEventLogManager.LogRewardAreaSnapshot(
-                msg.MatchingId,
-                _emotionAfterimageMonsterManager.GetRewardAreaSnapshot(msg.MatchingId),
-                "initial");
+            if (!Config.SPOT_ARENA_P0_ENABLED)
+            {
+                _emotionAfterimageMonsterManager.InitializeMatching(msg.MatchingId);
+                _gameEventLogManager.LogRewardAreaSnapshot(
+                    msg.MatchingId,
+                    _emotionAfterimageMonsterManager.GetRewardAreaSnapshot(msg.MatchingId),
+                    "initial");
+            }
             foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
             {
                 _gameEventLogManager.LogSpawnAssignment(
@@ -193,7 +199,8 @@ public partial class GameClientSession
             Logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
 
 
-            _summonStoneManager.EnsureStartingStones(CurrentMapSubId, PlayerId.Value);
+            if (!Config.SPOT_ARENA_P0_ENABLED)
+                _summonStoneManager.EnsureStartingStones(CurrentMapSubId, PlayerId.Value);
 
             SendInGameInventoryList();
             SendSummonStoneState();
@@ -205,15 +212,19 @@ public partial class GameClientSession
             // 臾?珥덇린 ?곹깭 ?ㅼ젙 諛??대┛ 臾?紐⑸줉 ?꾩넚
             _doorStateManager.InitializeMatching(
                 CurrentMapSubId,
-                SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
+                Config.SPOT_ARENA_P0_ENABLED
+                    ? Array.Empty<AreaType>()
+                    : SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
             SendDoorStateList();
 
             // 誘몄뀡 ?뺣낫 ?꾩넚
             SendMissionInfo();
             SendRoundStateSnapshot(msg.MatchingId);
-            SendAreaClosureStateSnapshot();
+            if (!Config.SPOT_ARENA_P0_ENABLED)
+                SendAreaClosureStateSnapshot();
             SendSurvivorAreaStockStateSnapshot();
-            SendMonsterSnapshot();
+            if (!Config.SPOT_ARENA_P0_ENABLED)
+                SendMonsterSnapshot();
             SendChecklistInfo();
 
             // ?ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚 & ???뺣낫 釉뚮줈?쒖틦?ㅽ듃
@@ -222,7 +233,8 @@ public partial class GameClientSession
             // The standalone submission client is only ready after the full initial snapshot
             // has been sent. Starting the countdown earlier lets bots consume finite room stock
             // while the human client is still loading the match.
-            if (connectedBotCount == 7 || MatchStartGate.IsSoloMapValidationEnabled)
+            int expectedBotCount = Config.SWARM_P0_ENABLED ? 0 : Config.SPOT_ARENA_P0_ENABLED ? 3 : 7;
+            if (connectedBotCount == expectedBotCount || MatchStartGate.IsSoloMapValidationEnabled)
             {
                 MatchStartGate.MarkHumanReady(msg.MatchingId, PlayerId.Value);
                 SendMatchStartCountdown(msg.MatchingId);
@@ -485,7 +497,8 @@ public partial class GameClientSession
                 _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
                 _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
 
-                _summonStoneManager.EnsureStartingStones(matchingId, bot.PlayerId);
+                if (!Config.SPOT_ARENA_P0_ENABLED)
+                    _summonStoneManager.EnsureStartingStones(matchingId, bot.PlayerId);
             }
         }
         catch (Exception ex)
@@ -499,7 +512,8 @@ public partial class GameClientSession
         var bots = _botPlayerManager.GetBots(matchingId)
             .Where(b => !b.IsEliminated)
             .ToList();
-        if (bots.Count != 4 || bots.All(b => b.TargetPlayerId != humanPlayerId)) return 0;
+        int expectedBotCount = Config.SPOT_ARENA_P0_ENABLED ? 3 : 4;
+        if (bots.Count != expectedBotCount || bots.All(b => b.TargetPlayerId != humanPlayerId)) return 0;
 
         var botIds = bots.Select(b => b.PlayerId).ToHashSet();
         var targetedBotIds = bots

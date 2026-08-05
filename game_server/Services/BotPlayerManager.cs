@@ -486,6 +486,9 @@ public class BotPlayerState
     /// <summary>Safe room selected during #214 corridor selection.</summary>
     public AreaType SurvivorRoomChoice { get; set; } = AreaType.None;
 
+    public SpotArenaBotMode SpotArenaMode { get; set; } = SpotArenaBotMode.None;
+    public DateTime SpotArenaModeUntilUtc { get; set; } = DateTime.MinValue;
+
     /// <summary>?먭린 吏곸콉 諛쒓껄 援ъ뿭 ?쒗쉶 ??(?뷀뵆??4媛?+ ?좏뻾 ?꾩씠???꾩튂)</summary>
     public List<AreaType> JobAreaQueue { get; set; } = new();
 

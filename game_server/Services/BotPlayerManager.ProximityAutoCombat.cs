@@ -17,6 +17,20 @@ public partial class BotPlayerManager
         long matchingId,
         InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
+        out BotGroundItemPickup? pickup) =>
+        TryAutoPickupGroundItem(
+            bot,
+            matchingId,
+            inventoryManager,
+            groundItemManager,
+            new SummonStoneManager(),
+            out pickup);
+    public bool TryAutoPickupGroundItem(
+        BotPlayerState bot,
+        long matchingId,
+        InGameInventoryManager inventoryManager,
+        GroundItemManager groundItemManager,
+        SummonStoneManager summonStoneManager,
         out BotGroundItemPickup? pickup)
     {
         pickup = null;
@@ -30,6 +44,7 @@ public partial class BotPlayerManager
             GroundItemPickupDisposition disposition = GroundItemPickupDisposition.LeaveOnGround;
             int staminaRecovery = 0;
             int corruptionRecovery = 0;
+            bool summonStonePickup = candidate.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID;
             bool canStore = inventory.GetAllItems().Count < Config.SURVIVOR_INVENTORY_SLOT_COUNT;
 
             long discovererPlayerId = groundItemManager.GetDiscovererPlayerId(
@@ -43,6 +58,9 @@ public partial class BotPlayerManager
                 bot.Position.Y,
                 item =>
                 {
+                    if (item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
+                        return true;
+
                     disposition = GroundItemPickupPolicy.Resolve(
                         item.ItemId,
                         bot.Stamina,
@@ -61,7 +79,12 @@ public partial class BotPlayerManager
             int requestedRecovery = staminaRecovery + corruptionRecovery;
             int effectiveRecovery = 0;
             InGameItemInfo? addedItem = null;
-            if (autoUsed)
+            SummonStoneSnapshot summonStoneState = default;
+            if (summonStonePickup)
+            {
+                summonStoneState = summonStoneManager.AddStones(matchingId, bot.PlayerId, 1);
+            }
+            else if (autoUsed)
             {
                 int effectiveStaminaRecovery = Math.Min(staminaRecovery, Math.Max(0, 100 - bot.Stamina));
                 int effectiveCorruptionRecovery = Math.Min(corruptionRecovery, Math.Max(0, bot.Corruption));
@@ -99,7 +122,9 @@ public partial class BotPlayerManager
                 discovererPlayerId,
                 autoEquippedItemId,
                 requestedRecovery,
-                effectiveRecovery);
+                effectiveRecovery,
+                summonStonePickup ? 1 : 0,
+                summonStonePickup ? summonStoneState.StoneCount : 0);
             return true;
         }
 
@@ -335,7 +360,9 @@ public readonly record struct BotGroundItemPickup(
     long DiscovererPlayerId,
     int AutoEquippedItemId = 0,
     int RequestedRecovery = 0,
-    int EffectiveRecovery = 0);
+    int EffectiveRecovery = 0,
+    int SummonStoneAmount = 0,
+    int SummonStoneBalance = 0);
 
 public readonly record struct BotCombatTargetSnapshot(
     long PlayerId,

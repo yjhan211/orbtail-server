@@ -97,6 +97,9 @@ namespace network.common
         /// <summary>Survivor Royale inventory slot capacity shared by clients, bots, and the game server.</summary>
         public const int SURVIVOR_INVENTORY_SLOT_COUNT = 6;
 
+        /// <summary>World pickup used to represent one summon stone.</summary>
+        public const int SUMMON_STONE_GROUND_ITEM_ID = 107000050;
+
         /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
         public const int SURVIVOR_MAX_CORRUPTION = 420;
 
@@ -108,6 +111,19 @@ namespace network.common
         /// Legacy area pools stay loadable for data validation and isolated regression tests.
         /// </summary>
         public static readonly bool MONSTER_SUMMON_ECONOMY_ENABLED = true;
+
+        /// <summary>
+        /// Issue #216 vertical slice: four linked home spots, marching waves, and respawning players.
+        /// This branch intentionally bypasses the orb economy and the #214 room phase machine.
+        /// </summary>
+        public static readonly bool SPOT_ARENA_P0_ENABLED = true;
+
+        /// <summary>
+        ///     Issue #217 스웜 회피 P0-a: 사람 1명 + 패턴 스폰 잔상 스웜. 잔상은 공급이 아니라
+        ///     회피해야 하는 압력이다. 켜지면 스팟 아레나 대신 스웜 아레나가 매치를 소유한다.
+        ///     SPOT_ARENA_P0_ENABLED는 레거시 시스템(폐쇄·오브 경제·페이즈)을 끄는 게이트로 유지한다.
+        /// </summary>
+        public static readonly bool SWARM_P0_ENABLED = true;
 
         /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.

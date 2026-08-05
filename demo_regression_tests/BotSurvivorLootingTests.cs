@@ -141,6 +141,35 @@ public sealed class BotSurvivorLootingTests
     }
 
     [Fact]
+    public void BotAutomaticallyCollectsWorldSummonStoneWithoutUsingInventory()
+    {
+        const long matchingId = 194120;
+        const long botPlayerId = -1941201;
+        var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
+        var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
+        var stones = new SummonStoneManager();
+
+        Assert.Single(fixture.GroundItemManager.SpawnItems(
+            matchingId,
+            bot.CurrentArea,
+            bot.Position.X,
+            bot.Position.Y,
+            [Config.SUMMON_STONE_GROUND_ITEM_ID]));
+
+        Assert.True(fixture.BotManager.TryAutoPickupGroundItem(
+            bot,
+            matchingId,
+            fixture.InventoryManager,
+            fixture.GroundItemManager,
+            stones,
+            out BotGroundItemPickup? pickup));
+        Assert.True(pickup.HasValue);
+        Assert.Equal(1, pickup.Value.SummonStoneAmount);
+        Assert.Equal(1, pickup.Value.SummonStoneBalance);
+        Assert.Equal(1, stones.GetSnapshot(matchingId, botPlayerId).StoneCount);
+        Assert.Empty(fixture.InventoryManager.GetAllItems(matchingId, botPlayerId));
+    }
+    [Fact]
     public void BotDoesNotEvaluateLegacyRoomStockForMovement()
     {
         const long matchingId = 194103;

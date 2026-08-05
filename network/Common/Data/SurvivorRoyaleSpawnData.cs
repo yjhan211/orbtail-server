@@ -36,11 +36,43 @@ namespace network.common.data
             AreaType.StaffRoom
         };
 
+        private static readonly AreaType[] SpotArenaCandidates =
+        {
+            AreaType.Classroom3,
+            AreaType.Classroom4,
+            AreaType.BroadcastRoom,
+            AreaType.Classroom2,
+        };
+
         public static IReadOnlyList<AreaType> GetPhaseRoomCandidates() =>
             PhaseRoomCandidates.ToArray();
 
+        public static IReadOnlyList<AreaType> GetSpotArenaCandidates() =>
+            SpotArenaCandidates.ToArray();
+
         public static IReadOnlyList<Cell> GetCorridorAnchors() =>
             CorridorAnchors.Select(Cell.Clone).ToList();
+
+        public static Cell GetCorridorAnchor(int srNumber)
+        {
+            if (srNumber < 1 || srNumber > CorridorAnchors.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(srNumber), srNumber,
+                    $"Corridor anchor must be between SR1 and SR{CorridorAnchors.Length}.");
+            }
+
+            return Cell.Clone(CorridorAnchors[srNumber - 1]);
+        }
+
+        public static Cell GetCorridorSpawnCell(int srNumber)
+        {
+            Cell anchor = GetCorridorAnchor(srNumber);
+            Cell? spawnCell = anchor.GetAdjacentCells()
+                .FirstOrDefault(cell =>
+                    GameMapData.GetCurrentArea(MapId.School, cell) == AreaType.Corridor &&
+                    GameMapData.IsMoveablePosition(MapId.School, cell));
+            return spawnCell is null ? anchor : Cell.Clone(spawnCell);
+        }
 
         public static IReadOnlyDictionary<long, Cell> CreateAssignments(long matchingId, IEnumerable<long> playerIds)
         {
@@ -78,6 +110,33 @@ namespace network.common.data
             }
 
             var shuffledRooms = PhaseRoomCandidates.ToList();
+            var rng = new Random(GetDeterministicSeed(matchingId));
+            for (int index = shuffledRooms.Count - 1; index > 0; index--)
+            {
+                int swapIndex = rng.Next(index + 1);
+                (shuffledRooms[index], shuffledRooms[swapIndex]) =
+                    (shuffledRooms[swapIndex], shuffledRooms[index]);
+            }
+
+            return orderedPlayerIds
+                .Select((playerId, index) => new KeyValuePair<long, Cell>(
+                    playerId,
+                    Cell.Clone(GameMapData.GetAreaSpawnCell(MapId.School, shuffledRooms[index]))))
+                .ToDictionary(pair => pair.Key, pair => pair.Value);
+        }
+
+        public static IReadOnlyDictionary<long, Cell> CreateSpotArenaAssignments(
+            long matchingId,
+            IEnumerable<long> playerIds)
+        {
+            var orderedPlayerIds = playerIds.Distinct().OrderBy(playerId => playerId).ToList();
+            if (orderedPlayerIds.Count > SpotArenaCandidates.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(playerIds), orderedPlayerIds.Count,
+                    "Spot Arena supports at most four players per match.");
+            }
+
+            var shuffledRooms = SpotArenaCandidates.ToList();
             var rng = new Random(GetDeterministicSeed(matchingId));
             for (int index = shuffledRooms.Count - 1; index > 0; index--)
             {
