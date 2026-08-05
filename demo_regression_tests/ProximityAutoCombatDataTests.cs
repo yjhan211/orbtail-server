@@ -153,7 +153,7 @@ public class ProximityAutoCombatDataTests
         Assert.Contains("weaponItemId,\n            damage);", sessionSource);
         // 명중 전용 연출로 리팩터링되어 단일 호출 형태를 검사한다.
         Assert.Contains(
-            "PlayGuardianHitOnly(packet.PlayerId, localPlayerIsAttacker: true, packet.DamageValue);",
+            "PlayGuardianHitOnly(packet.PlayerId, localPlayerIsAttacker: false, packet.DamageValue);",
             mapSource);
         Assert.Contains(
             "int damageValue = authoritativeDamageValue > 0\n" +
