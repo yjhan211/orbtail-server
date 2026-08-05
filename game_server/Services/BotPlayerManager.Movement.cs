@@ -199,9 +199,11 @@ public partial class BotPlayerManager
         IReadOnlyCollection<BotCombatTargetSnapshot> combatTargets,
         IReadOnlyCollection<MonsterCombatTarget>? pveTargets = null,
         SurvivorPhaseManager? survivorPhaseManager = null,
-        Func<long, long, SpotArenaBotDirective>? spotArenaDirectiveProvider = null)
+        Func<long, long, SpotArenaBotDirective>? spotArenaDirectiveProvider = null,
+        SummonStoneManager? summonStoneManager = null)
     {
         var result = new BotWalkingTickResult();
+        summonStoneManager ??= new SummonStoneManager();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
 
         var activeBots = bots.Where(bot => !bot.IsEliminated).ToList();
@@ -223,6 +225,8 @@ public partial class BotPlayerManager
                 closureManager,
                 areaItemStockManager,
                 inventoryManager,
+                groundItemManager,
+                summonStoneManager,
                 checklistManager,
                 playerAreas,
                 pveTargets ?? [],
@@ -281,7 +285,8 @@ public partial class BotPlayerManager
                 isCommittingToDestination = !isEvacuating &&
                                             TryMaintainMovementDestination(bot, matchingId, closureManager);
                 if (!isEvacuating &&
-                    TryAutoPickupGroundItem(bot, matchingId, inventoryManager, groundItemManager, out var pickup) &&
+                    TryAutoPickupGroundItem(
+                        bot, matchingId, inventoryManager, groundItemManager, summonStoneManager, out var pickup) &&
                     pickup.HasValue)
                 {
                     result.GroundItemPickups.Add(pickup.Value);
@@ -328,6 +333,8 @@ public partial class BotPlayerManager
         AreaClosureManager closureManager,
         AreaItemStockManager areaItemStockManager,
         InGameInventoryManager inventoryManager,
+        GroundItemManager groundItemManager,
+        SummonStoneManager summonStoneManager,
         ChecklistManager checklistManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets,
@@ -336,6 +343,13 @@ public partial class BotPlayerManager
         DateTime nowUtc = DateTime.UtcNow;
         foreach (var bot in activeBots)
         {
+            if (TryAutoPickupGroundItem(
+                    bot, matchingId, inventoryManager, groundItemManager, summonStoneManager, out var pickup) &&
+                pickup.HasValue)
+            {
+                result.GroundItemPickups.Add(pickup.Value);
+            }
+
             SpotArenaBotDirective currentDirective = directiveProvider(matchingId, bot.PlayerId);
             if (currentDirective.Mode == SpotArenaBotMode.None)
             {

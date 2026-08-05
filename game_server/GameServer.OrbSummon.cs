@@ -13,8 +13,11 @@ public partial class GameServer
 
         foreach (var bot in _botPlayerManager.GetBots(matchingId).Where(bot => !bot.IsEliminated))
         {
-            if (!_survivorPhaseManager.AreOrbBoardActionsAllowed(matchingId, bot.CurrentArea))
+            if (!Config.SPOT_ARENA_P0_ENABLED &&
+                !_survivorPhaseManager.AreOrbBoardActionsAllowed(matchingId, bot.CurrentArea))
+            {
                 continue;
+            }
 
             TryDestroyBotOverflowOrb(matchingId, bot);
 

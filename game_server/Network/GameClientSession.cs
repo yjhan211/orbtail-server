@@ -253,7 +253,7 @@ public partial class GameClientSession : SessionBase
     private bool IsSurvivorBoardActionLocked()
     {
         if (Config.SPOT_ARENA_P0_ENABLED)
-            return true;
+            return false;
 
         return CurrentMapSubId > 0 &&
                _survivorPhaseManager is { } manager &&

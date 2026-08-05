@@ -97,6 +97,9 @@ namespace network.common
         /// <summary>Survivor Royale inventory slot capacity shared by clients, bots, and the game server.</summary>
         public const int SURVIVOR_INVENTORY_SLOT_COUNT = 6;
 
+        /// <summary>World pickup used to represent one summon stone.</summary>
+        public const int SUMMON_STONE_GROUND_ITEM_ID = 107000050;
+
         /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
         public const int SURVIVOR_MAX_CORRUPTION = 420;
 

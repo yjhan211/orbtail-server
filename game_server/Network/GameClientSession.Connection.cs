@@ -203,8 +203,7 @@ public partial class GameClientSession
                 _summonStoneManager.EnsureStartingStones(CurrentMapSubId, PlayerId.Value);
 
             SendInGameInventoryList();
-            if (!Config.SPOT_ARENA_P0_ENABLED)
-                SendSummonStoneState();
+            SendSummonStoneState();
             var connectionBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
             _gameEventLogManager.LogSurvivorOrbBoardTransition(
                 CurrentMapSubId, PlayerId.Value, connectionBoard.GetAllItems(),

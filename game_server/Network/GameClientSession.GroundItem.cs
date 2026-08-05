@@ -20,6 +20,7 @@ public partial class GameClientSession
         InGameItemInfo? addedItem = null;
         bool autoUsed = false;
         bool autoEquipped = false;
+        bool summonStonePickup = false;
         int staminaRecovery = 0;
         int corruptionRecovery = 0;
         ErrorCode rejection = ErrorCode.INVENTORY_FULL;
@@ -36,6 +37,12 @@ public partial class GameClientSession
             position.Y,
             item =>
             {
+                if (item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
+                {
+                    summonStonePickup = true;
+                    return true;
+                }
+
                 var disposition = GroundItemPickupPolicy.Resolve(
                     item.ItemId,
                     Stamina,
@@ -103,7 +110,21 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        if (autoUsed)
+        if (summonStonePickup)
+        {
+            var summonState = _summonStoneManager.AddStones(CurrentMapSubId, PlayerId.Value, 1);
+            SendSummonStoneState(1, claimedItem.PositionX, claimedItem.PositionY);
+            _gameEventLogManager.LogSummonStoneAward(
+                CurrentMapSubId,
+                PlayerId.Value,
+                monsterId: 0,
+                amount: 1,
+                summonState.StoneCount,
+                CurrentArea.ToString(),
+                isCore: false,
+                isBot: false);
+        }
+        else if (autoUsed)
         {
             int effectiveStaminaRecovery = Math.Min(staminaRecovery, Math.Max(0, MaxStamina - Stamina));
             int effectiveCorruptionRecovery = Math.Min(corruptionRecovery, Math.Max(0, Corruption));
@@ -139,10 +160,13 @@ public partial class GameClientSession
             CurrentArea.ToString(),
             autoUsed,
             isBot: false);
-        var boardAfterPickup = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
-        _gameEventLogManager.LogSurvivorOrbBoardTransition(
-            CurrentMapSubId, PlayerId.Value, boardAfterPickup.GetAllItems(),
-            boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "pickup", isBot: false);
+        if (!summonStonePickup)
+        {
+            var boardAfterPickup = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+            _gameEventLogManager.LogSurvivorOrbBoardTransition(
+                CurrentMapSubId, PlayerId.Value, boardAfterPickup.GetAllItems(),
+                boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "pickup", isBot: false);
+        }
         SendGroundItemPickupResult(claimedItem.GroundItemUid, claimedItem.ItemId, true, autoUsed, ErrorCode.SUCCESS);
         return Task.CompletedTask;
     }

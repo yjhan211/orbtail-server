@@ -1408,10 +1408,25 @@ public partial class GameServer(
                 area.ToString(),
                 pickup.AutoUsed,
                 isBot: true);
-            var boardAfterPickup = _inGameInventoryManager.GetPlayerInventory(matchingId, pickup.BotPlayerId);
-            _gameEventLogManager.LogSurvivorOrbBoardTransition(
-                matchingId, pickup.BotPlayerId, boardAfterPickup.GetAllItems(),
-                boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, area.ToString(), "pickup", isBot: true);
+            if (pickup.SummonStoneAmount > 0)
+            {
+                _gameEventLogManager.LogSummonStoneAward(
+                    matchingId,
+                    pickup.BotPlayerId,
+                    monsterId: 0,
+                    pickup.SummonStoneAmount,
+                    pickup.SummonStoneBalance,
+                    area.ToString(),
+                    isCore: false,
+                    isBot: true);
+            }
+            else
+            {
+                var boardAfterPickup = _inGameInventoryManager.GetPlayerInventory(matchingId, pickup.BotPlayerId);
+                _gameEventLogManager.LogSurvivorOrbBoardTransition(
+                    matchingId, pickup.BotPlayerId, boardAfterPickup.GetAllItems(),
+                    boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, area.ToString(), "pickup", isBot: true);
+            }
             using var packet = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(
                 pickup.Item.GroundItemUid,
                 pickup.BotPlayerId,
@@ -2058,7 +2073,8 @@ public partial class GameServer(
                     combatTargets,
                     pveTargets,
                     _survivorPhaseManager,
-                    _spotArenaManager.GetBotDirective);
+                    _spotArenaManager.GetBotDirective,
+                    _summonStoneManager);
                 planningElapsedMilliseconds += movementResult.PlanningElapsedMilliseconds;
                 walkingElapsedMilliseconds += movementResult.WalkingElapsedMilliseconds;
 

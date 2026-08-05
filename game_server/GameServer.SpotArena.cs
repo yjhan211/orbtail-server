@@ -32,6 +32,7 @@ public partial class GameServer
         }
 
         DateTime nowUtc = DateTime.UtcNow;
+        ProcessBotOrbSummons(matchingId);
         var spatialPlayers = sessions
             .Where(session => session.PlayerId.HasValue && session.LastValidatedPosition != null)
             .Select(session => new SpotArenaPlayerSpatial(
@@ -50,7 +51,9 @@ public partial class GameServer
         ApplySpotArenaReconnections(tick.Reconnections, sessions, bots);
         ApplySpotArenaDestroyedSpots(tick.DestroyedSpots, sessions, bots);
 
-        var actors = BuildSpotArenaCombatActors(matchingId, sessions, bots);
+        var resonanceStates = UpdateSurvivorOrbResonanceStates(matchingId, sessions, bots, nowUtc);
+        var actors = BuildSpotArenaCombatActors(matchingId, sessions, bots, resonanceStates);
+        ProcessSurvivorOrbRecovery(matchingId, actors, sessions, bots, nowUtc);
         BroadcastSurvivorOrbVisualStates(matchingId, actors, sessions);
         var attacks = _proximityAutoCombatResolver.Resolve(
             matchingId,
@@ -157,7 +160,8 @@ public partial class GameServer
     private List<ProximityCombatActor> BuildSpotArenaCombatActors(
         long matchingId,
         IReadOnlyCollection<GameClientSession> sessions,
-        IReadOnlyCollection<BotPlayerState> bots)
+        IReadOnlyCollection<BotPlayerState> bots,
+        IReadOnlyDictionary<long, SurvivorOrbResonanceSnapshot> resonanceStates)
     {
         var actors = new List<ProximityCombatActor>();
 
@@ -178,7 +182,12 @@ public partial class GameServer
                 continue;
             }
 
-            actors.Add(CreateSpotArenaPlayerActor(matchingId, spatial));
+            AddSpotArenaPlayerCombatActors(
+                actors,
+                matchingId,
+                spatial,
+                session.PlayerId.Value,
+                resonanceStates.GetValueOrDefault(session.PlayerId.Value));
         }
 
         MapId botMapId = _botPlayerManager.GetMatchingMapId(matchingId);
@@ -197,7 +206,12 @@ public partial class GameServer
                 continue;
             }
 
-            actors.Add(CreateSpotArenaPlayerActor(matchingId, spatial));
+            AddSpotArenaPlayerCombatActors(
+                actors,
+                matchingId,
+                spatial,
+                bot.PlayerId,
+                resonanceStates.GetValueOrDefault(bot.PlayerId));
         }
 
         foreach (var target in _spotArenaManager.GetCombatTargets(matchingId))
@@ -219,6 +233,33 @@ public partial class GameServer
         }
 
         return actors;
+    }
+
+    private void AddSpotArenaPlayerCombatActors(
+        ICollection<ProximityCombatActor> actors,
+        long matchingId,
+        ProximityCombatActor spatial,
+        long playerId,
+        SurvivorOrbResonanceSnapshot resonanceState)
+    {
+        var fallback = CreateSpotArenaPlayerActor(matchingId, spatial);
+        var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
+        if (!inventory.GetAllItems().Any(item => item.Count > 0))
+        {
+            actors.Add(fallback);
+            return;
+        }
+
+        AddInventoryCombatActors(
+            actors,
+            fallback with
+            {
+                AttackRange = 0f,
+                Damage = 0,
+                AttackIntervalSeconds = 0f
+            },
+            inventory,
+            resonanceState);
     }
 
     private ProximityCombatActor CreateSpotArenaPlayerActor(long matchingId, ProximityCombatActor spatial) =>
@@ -269,8 +310,10 @@ public partial class GameServer
     {
         if (_spotArenaManager.TryGetWaveByCombatTarget(matchingId, attack.TargetPlayerId, out var wave))
         {
-            _spotArenaManager.ApplyWaveDamage(
+            var damageResult = _spotArenaManager.ApplyWaveDamage(
                 matchingId, wave.MonsterId, attack.AttackerPlayerId, attack.Damage, nowUtc);
+            if (damageResult.DestroyedOrKilled && damageResult.WaveState != null)
+                SpawnSpotArenaSummonStone(matchingId, damageResult.WaveState, sessions);
             sessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId)
                 ?.SendEmotionAfterimageMonsterAttackFeedback(
                     wave.MonsterId, attack.Area, attack.WeaponItemId, attack.Damage);
@@ -315,6 +358,47 @@ public partial class GameServer
             ?.SendProximityAutoCombatAttackFeedback(
                 attack.TargetPlayerId, attack.Area, attack.WeaponItemId, attack.Damage);
         BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, sessions);
+    }
+
+    private void SpawnSpotArenaSummonStone(
+        long matchingId,
+        MonsterRuntimeInfo defeatedWave,
+        IReadOnlyCollection<GameClientSession> sessions)
+    {
+        if (defeatedWave.SummonStoneReward <= 0)
+            return;
+
+        var itemIds = Enumerable.Repeat(
+            Config.SUMMON_STONE_GROUND_ITEM_ID,
+            defeatedWave.SummonStoneReward).ToArray();
+        var spawned = _groundItemManager.SpawnItems(
+            matchingId,
+            defeatedWave.AreaType,
+            defeatedWave.PositionX,
+            defeatedWave.PositionY,
+            itemIds,
+            mapId: MapId.School,
+            layout: GroundItemSpawnLayout.EliminationScatter);
+
+        foreach (var item in spawned)
+        {
+            _gameEventLogManager.LogGroundItemSpawned(
+                matchingId,
+                0,
+                item.GroundItemUid,
+                item.ItemId,
+                defeatedWave.AreaType.ToString(),
+                0,
+                isBot: false);
+        }
+
+        int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)defeatedWave.AreaType);
+        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
+            (int)defeatedWave.AreaType,
+            remaining,
+            spawned);
+        foreach (var session in sessions.Where(session => session.CurrentArea == defeatedWave.AreaType))
+            session.Send(packet);
     }
 
     private static void BroadcastSpotArenaAttackVfxToTargetAndObservers(
@@ -499,13 +583,17 @@ public partial class GameServer
                     prey.MaxHealth,
                     incoming,
                     respawnSeconds,
-                    snapshot.Spots.Count(spot => !spot.Destroyed)
+                    snapshot.Spots.Count(spot => !spot.Destroyed),
+                    EncodeSpotArenaPlayerId(own.TargetPlayerId),
+                    EncodeSpotArenaPlayerId(predator.OwnerPlayerId)
                 ]
             }));
             session.Send(packet);
         }
     }
 
+    private static int EncodeSpotArenaPlayerId(long playerId) =>
+        playerId is >= int.MinValue and <= int.MaxValue ? (int)playerId : 0;
     private readonly record struct SpotArenaParticipant(
         long PlayerId,
         AreaType Area,

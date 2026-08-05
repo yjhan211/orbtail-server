@@ -791,7 +791,7 @@ public sealed class SpotArenaManager
             IsAlive = Alive,
             RewardItemId = OrbItemId,
             IsCore = false,
-            SummonStoneReward = 0
+            SummonStoneReward = 1
         };
 
         public SpotArenaWaveSnapshot ToSnapshot() => new(
