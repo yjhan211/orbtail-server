@@ -49,6 +49,7 @@ public partial class GameServer(
         new(ambientCorridorEnabled: false);
     private readonly SurvivorPhaseManager _survivorPhaseManager = new();
     private readonly SpotArenaManager _spotArenaManager = new();
+    private readonly SwarmArenaManager _swarmArenaManager = new();
     private readonly SummonStoneManager _summonStoneManager = new();
     private readonly SabotageManager _sabotageManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();

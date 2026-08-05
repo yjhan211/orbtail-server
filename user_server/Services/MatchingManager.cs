@@ -34,9 +34,11 @@ public class MatchingManager : IMatchingManager
     private static int PlayersPerMatch => IsSoloMapValidation ? 1 : IsTwoPlayerTestMatch ? 2 : DefaultPlayersPerMatch;
     private static int GamePlayersPerMatch => IsSoloMapValidation
         ? DefaultPlayersPerMatch
-        : Config.SPOT_ARENA_P0_ENABLED
-            ? SpotArenaPlayersPerMatch
-            : DefaultGamePlayersPerMatch;
+        : Config.SWARM_P0_ENABLED
+            ? 1
+            : Config.SPOT_ARENA_P0_ENABLED
+                ? SpotArenaPlayersPerMatch
+                : DefaultGamePlayersPerMatch;
 
     private static bool IsTwoPlayerTestMatch => Environment.GetEnvironmentVariable("TEST_TWO_PLAYER_MATCH") == "1";
     private static bool IsSoloMapValidation =>
@@ -479,9 +481,13 @@ public class MatchingManager : IMatchingManager
         var playerIds = chain
             .Select(link => MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry).PlayerId)
             .ToList();
-        var assignments = Config.SPOT_ARENA_P0_ENABLED
-            ? SurvivorRoyaleSpawnData.CreateSpotArenaAssignments(matchingId, playerIds)
-            : SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
+        IReadOnlyDictionary<long, Cell> assignments = Config.SWARM_P0_ENABLED
+            ? playerIds.Distinct().ToDictionary(
+                playerId => playerId,
+                _ => GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Ground))
+            : Config.SPOT_ARENA_P0_ENABLED
+                ? SurvivorRoyaleSpawnData.CreateSpotArenaAssignments(matchingId, playerIds)
+                : SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
 
         foreach (var link in chain)
         {

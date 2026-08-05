@@ -103,6 +103,12 @@ public partial class GameServer
         long matchingId,
         List<GameClientSession> activeSessions)
     {
+        if (Config.SWARM_P0_ENABLED)
+        {
+            ProcessSwarmArenaForMatching(matchingId);
+            return;
+        }
+
         if (Config.SPOT_ARENA_P0_ENABLED)
         {
             ProcessSpotArenaForMatching(matchingId, activeSessions);

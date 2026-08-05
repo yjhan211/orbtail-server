@@ -17,9 +17,11 @@ public static class MatchStartGate
 
     private static int MatchCapacity => IsSoloMapValidationEnabled
         ? 1
-        : global::network.common.Config.SPOT_ARENA_P0_ENABLED
-            ? SpotArenaMatchCapacity
-            : DefaultMatchCapacity;
+        : global::network.common.Config.SWARM_P0_ENABLED
+            ? 1
+            : global::network.common.Config.SPOT_ARENA_P0_ENABLED
+                ? SpotArenaMatchCapacity
+                : DefaultMatchCapacity;
 
     public static void RegisterHumanPlayer(long matchingId, long playerId, int botCount)
     {

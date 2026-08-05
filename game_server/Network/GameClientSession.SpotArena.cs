@@ -96,6 +96,15 @@ public partial class GameClientSession
             _ = HandleAreaChange(oldArea, area);
     }
 
+    internal void GrantSwarmArenaOrb(int itemId)
+    {
+        if (!PlayerId.HasValue)
+            return;
+
+        _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, 1);
+        SendInGameInventoryList();
+    }
+
     internal void EnterSpotArenaSpectatorMode()
     {
         _spotArenaRespawning = false;
