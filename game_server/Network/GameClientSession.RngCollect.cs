@@ -472,6 +472,9 @@ public partial class GameClientSession
         _gameEventLogManager.LogExploreStart(
             CurrentMapSubId, PlayerId.Value, msg.InteractId, CurrentArea.ToString(), isBot: false);
         SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
+
+        // 개봉 소음 — 주변 스웜이 개봉자에게 몰린다. 게이지가 곧 리스크 창.
+        SwarmExploreNoiseCallback?.Invoke(CurrentMapSubId, PlayerId.Value);
         return Task.CompletedTask;
     }
 

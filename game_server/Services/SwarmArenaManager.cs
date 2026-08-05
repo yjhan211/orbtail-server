@@ -39,6 +39,10 @@ public sealed class SwarmArenaManager
     // PvP는 압박·마무리 보조다. 킬의 주 경로는 스웜(접촉 30)이어야 한다.
     public const int PvpDamage = 3;
 
+    // 개봉 소음 유인 반경: 채집을 시작하면 이 반경의 잔상이 개봉자에게 몰린다.
+    // 게이지 1.5~2초 + 잔상 속도 4.2면 최대 3초대에 도착 — 개봉이 곧 리스크 창이 된다.
+    public const float ExploreAttractRadius = 14f;
+
     private const int FirstMonsterId = 7_000_000;
     private const long FirstCombatTargetId = -4_000_000_000_000_000_000L;
     private const float RingRadius = 9f;
@@ -286,6 +290,40 @@ public sealed class SwarmArenaManager
             }
 
             return new SwarmArenaDamageResult(true, killed, monster.MonsterId, monster.ToMonsterRuntimeInfo());
+        }
+    }
+
+    /// <summary>개봉 소음: 반경 안 잔상이 개봉자를 새 추적 목표로 삼는다 (#217 P0-c 리스크 창).</summary>
+    public void AttractSwarm(long matchingId, long playerId)
+    {
+        if (!_matches.TryGetValue(matchingId, out var state))
+            return;
+        lock (state.SyncRoot)
+        {
+            bool found = false;
+            Vector3f position = state.CenterPosition;
+            foreach (var participant in state.LastParticipants)
+            {
+                if (participant.PlayerId != playerId)
+                    continue;
+                found = true;
+                position = participant.Position;
+                break;
+            }
+
+            if (!found)
+                return;
+
+            foreach (var monster in state.Monsters.Values)
+            {
+                if (!monster.Alive)
+                    continue;
+                float dx = monster.Position.X - position.X;
+                float dy = monster.Position.Y - position.Y;
+                if (dx * dx + dy * dy > ExploreAttractRadius * ExploreAttractRadius)
+                    continue;
+                monster.ChaseTargetPlayerId = playerId;
+            }
         }
     }
 

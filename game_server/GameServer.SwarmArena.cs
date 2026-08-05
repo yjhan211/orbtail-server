@@ -22,6 +22,11 @@ public partial class GameServer
     private const float SwarmMovingAttackMultiplier = 1f;
     private const float SwarmMovingSpeedThreshold = 1.5f;
 
+    // 오브 CSV 수치는 구 잔상(고HP) 기준이라 유리 떼(HP 12)에는 너무 약하다.
+    // 데미지 3배로 T1(4)도 원킬을 유지하고, 성장은 오브 수 = 처치 스트림 수로 체감시킨다.
+    private const int SwarmOrbDamageMultiplier = 3;
+    private const float SwarmOrbIntervalMultiplier = 0.6f;
+
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmBotRespawnAtUtc = new();
     private readonly Dictionary<(long MatchingId, long PlayerId), (Vector3f Position, DateTime At, bool Moving)>
         _swarmMovementSamples = new();
@@ -47,6 +52,9 @@ public partial class GameServer
 
             player.PlaceAtSpotArenaStart(AreaType.Ground, startCell);
             player.GrantSwarmArenaOrb(SwarmArenaWeaponItemId);
+            GameClientSession.SwarmExploreNoiseCallback ??=
+                (noiseMatchingId, noisePlayerId) =>
+                    _swarmArenaManager.AttractSwarm(noiseMatchingId, noisePlayerId);
             for (int index = 0; index < bots.Count; index++)
                 PlaceSwarmBot(bots[index], startCell, index);
             logger.LogInformation(
@@ -295,14 +303,14 @@ public partial class GameServer
                 player.LastValidatedPosition,
                 out var playerSpatial))
         {
-            actors.Add(CreateSwarmParticipantActor(matchingId, playerSpatial));
+            AddSwarmParticipantCombatActors(actors, matchingId, playerSpatial);
         }
 
         MapId botMapId = _botPlayerManager.GetMatchingMapId(matchingId);
         foreach (var bot in bots.Where(candidate => !candidate.IsEliminated))
         {
             if (TryCreateSpatialActor(bot.PlayerId, botMapId, bot.CurrentArea, bot.Position, out var botSpatial))
-                actors.Add(CreateSwarmParticipantActor(matchingId, botSpatial));
+                AddSwarmParticipantCombatActors(actors, matchingId, botSpatial);
         }
 
         foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
@@ -322,6 +330,45 @@ public partial class GameServer
         }
 
         return actors;
+    }
+
+    /// <summary>
+    ///     보드의 오브가 곧 화력이다. 오브가 있으면 오브별 공격 문법(기존 인벤토리 액터)을
+    ///     스웜 배율로 얹고, 없을 때만 기본 공격 하나로 싸운다 — 드래프트가 성장 체감이 되게.
+    /// </summary>
+    private void AddSwarmParticipantCombatActors(
+        List<ProximityCombatActor> actors,
+        long matchingId,
+        ProximityCombatActor spatial)
+    {
+        var fallback = CreateSwarmParticipantActor(matchingId, spatial);
+        var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, spatial.PlayerId);
+        if (!inventory.GetAllItems().Any(item => item.Count > 0))
+        {
+            actors.Add(fallback);
+            return;
+        }
+
+        int before = actors.Count;
+        AddInventoryCombatActors(
+            actors,
+            fallback with
+            {
+                AttackRange = 0f,
+                Damage = 0,
+                AttackIntervalSeconds = 0f
+            },
+            inventory,
+            resonanceState: default);
+        for (int index = before; index < actors.Count; index++)
+        {
+            var actor = actors[index];
+            actors[index] = actor with
+            {
+                Damage = actor.Damage * SwarmOrbDamageMultiplier,
+                AttackIntervalSeconds = actor.AttackIntervalSeconds * SwarmOrbIntervalMultiplier
+            };
+        }
     }
 
     private ProximityCombatActor CreateSwarmParticipantActor(long matchingId, ProximityCombatActor spatial)
