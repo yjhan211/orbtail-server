@@ -332,6 +332,7 @@ namespace network.common
         SurvivorRoomSelection = 24,
         SurvivorCorridorClosureWarning = 25,
         SurvivorFinal = 26,
+        SpotArena = 30,
     }
 
     public enum ManittoStatus : short

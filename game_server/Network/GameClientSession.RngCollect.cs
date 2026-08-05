@@ -36,6 +36,11 @@ public partial class GameClientSession
     private Task HandleRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (Config.SPOT_ARENA_P0_ENABLED)
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+            return Task.CompletedTask;
+        }
         if (IsEliminated)
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
@@ -119,6 +124,7 @@ public partial class GameClientSession
     private Task HandleRngCollectFinish(C_TO_G_RNG_COLLECT_FINISH msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (Config.SPOT_ARENA_P0_ENABLED) return Task.CompletedTask;
         if (IsEliminated) return Task.CompletedTask;
 
         if (msg.EncounterCheckOnly)

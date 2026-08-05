@@ -110,6 +110,12 @@ namespace network.common
         public static readonly bool MONSTER_SUMMON_ECONOMY_ENABLED = true;
 
         /// <summary>
+        /// Issue #216 vertical slice: four linked home spots, marching waves, and respawning players.
+        /// This branch intentionally bypasses the orb economy and the #214 room phase machine.
+        /// </summary>
+        public static readonly bool SPOT_ARENA_P0_ENABLED = true;
+
+        /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.
         /// 데이터와 프로토콜은 보존하므로 레거시 모드가 다시 분리되면 이 게이트로 복구할 수 있다.
         /// </summary>

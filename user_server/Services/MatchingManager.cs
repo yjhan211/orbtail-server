@@ -29,11 +29,14 @@ public class MatchingManager : IMatchingManager
     private const int PenaltyDecayIntervalHours = 24;
     private const int DefaultPlayersPerMatch = 1;
     private const int DefaultGamePlayersPerMatch = 8;
+    private const int SpotArenaPlayersPerMatch = 4;
 
     private static int PlayersPerMatch => IsSoloMapValidation ? 1 : IsTwoPlayerTestMatch ? 2 : DefaultPlayersPerMatch;
     private static int GamePlayersPerMatch => IsSoloMapValidation
         ? DefaultPlayersPerMatch
-        : DefaultGamePlayersPerMatch;
+        : Config.SPOT_ARENA_P0_ENABLED
+            ? SpotArenaPlayersPerMatch
+            : DefaultGamePlayersPerMatch;
 
     private static bool IsTwoPlayerTestMatch => Environment.GetEnvironmentVariable("TEST_TWO_PLAYER_MATCH") == "1";
     private static bool IsSoloMapValidation =>
@@ -229,7 +232,7 @@ public class MatchingManager : IMatchingManager
                         MyJobTitle = link.MyJobTitle,
                         TargetJobTitle = link.TargetJobTitle,
                         Persona = PersonaType.None,
-                        StartArea = AreaType.Corridor,
+                        StartArea = link.StartArea,
                         SpawnCell = Cell.Clone(link.SpawnCell),
                         ActiveBuffIds = new List<int>()
                     });
@@ -326,7 +329,7 @@ public class MatchingManager : IMatchingManager
                 MyJobTitle = link.MyJobTitle,
                 TargetJobTitle = link.TargetJobTitle,
                 Persona = PersonaType.None,
-                StartArea = AreaType.Corridor,
+                StartArea = link.StartArea,
                 SpawnCell = Cell.Clone(link.SpawnCell),
                 ActiveBuffIds = new List<int>()
             });
@@ -476,14 +479,16 @@ public class MatchingManager : IMatchingManager
         var playerIds = chain
             .Select(link => MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry).PlayerId)
             .ToList();
-        var assignments = SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
+        var assignments = Config.SPOT_ARENA_P0_ENABLED
+            ? SurvivorRoyaleSpawnData.CreateSpotArenaAssignments(matchingId, playerIds)
+            : SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
 
         foreach (var link in chain)
         {
             var playerId = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry).PlayerId;
             link.Persona = PersonaType.None;
-            link.StartArea = AreaType.Corridor;
             link.SpawnCell = Cell.Clone(assignments[playerId]);
+            link.StartArea = GameMapData.GetCurrentArea(MapId.School, link.SpawnCell);
 
             _logger.LogInformation(
                 "Survivor Royale spawn assigned: MatchingId={MatchingId}, PlayerId={PlayerId}, Area={Area}, Cell=({X},{Y})",

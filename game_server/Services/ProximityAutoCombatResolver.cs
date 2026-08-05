@@ -28,7 +28,8 @@ public readonly record struct ProximityCombatActor(
     bool WaveResonanceArmed = false,
     float InitialAttackDelaySeconds = 0f,
     bool IsMonsterTarget = false,
-    bool IsCoreMonsterTarget = false);
+    bool IsCoreMonsterTarget = false,
+    int TargetPriority = -1);
 
 public readonly record struct ProximityCombatAttack(
     long AttackerPlayerId,
@@ -319,6 +320,8 @@ public sealed class ProximityAutoCombatResolver
 
     private static int GetTargetPriority(ProximityCombatActor target, long currentTargetPlayerId)
     {
+        if (target.TargetPriority >= 0)
+            return target.TargetPriority;
         if (!target.IsMonsterTarget)
             return 0;
         if (target.PlayerId == currentTargetPlayerId)

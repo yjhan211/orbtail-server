@@ -252,6 +252,9 @@ public partial class GameClientSession : SessionBase
 
     private bool IsSurvivorBoardActionLocked()
     {
+        if (Config.SPOT_ARENA_P0_ENABLED)
+            return true;
+
         return CurrentMapSubId > 0 &&
                _survivorPhaseManager is { } manager &&
                manager.HasMatching(CurrentMapSubId) &&
@@ -301,6 +304,13 @@ public partial class GameClientSession : SessionBase
     {
         phase = RoundPhase.Action;
         reason = string.Empty;
+
+        if (Config.SPOT_ARENA_P0_ENABLED && _spotArenaRespawning)
+        {
+            phase = RoundPhase.SpotArena;
+            reason = "Waiting for spot respawn";
+            return true;
+        }
 
         if (IsEliminated)
         {
@@ -366,6 +376,7 @@ public partial class GameClientSession : SessionBase
     private bool _isGameEnded;
     /// <summary>서버 셧다운/크래시로 인한 종료: 페널티 면제</summary>
     private bool _isServerInitiatedDisconnect;
+    private bool _spotArenaRespawning;
 
     /// <summary>
     ///     탈락/관전 상태에서 행동 가능한지 체크

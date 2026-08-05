@@ -103,6 +103,12 @@ public partial class GameServer
         long matchingId,
         List<GameClientSession> activeSessions)
     {
+        if (Config.SPOT_ARENA_P0_ENABLED)
+        {
+            ProcessSpotArenaForMatching(matchingId, activeSessions);
+            return;
+        }
+
         var matchingSessions = activeSessions
             .Where(session =>
                 session.CurrentMapSubId == matchingId &&

@@ -48,6 +48,7 @@ public partial class GameServer(
     private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager =
         new(ambientCorridorEnabled: false);
     private readonly SurvivorPhaseManager _survivorPhaseManager = new();
+    private readonly SpotArenaManager _spotArenaManager = new();
     private readonly SummonStoneManager _summonStoneManager = new();
     private readonly SabotageManager _sabotageManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();
@@ -314,6 +315,7 @@ public partial class GameServer(
             var matchingIds = GetActiveMatchingIds();
             foreach (long matchingId in matchingIds)
             {
+                if (Config.SPOT_ARENA_P0_ENABLED) continue;
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
 
@@ -342,6 +344,7 @@ public partial class GameServer(
 
             foreach (long matchingId in matchingIds)
             {
+                if (Config.SPOT_ARENA_P0_ENABLED) continue;
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 ProcessSurvivorResourceTickForMatching(matchingId, activeSessions);
                 ProcessPassiveSummonStoneIncomeForMatching(matchingId, activeSessions);
@@ -356,6 +359,7 @@ public partial class GameServer(
             // 7. 프로토 0 기척 틱 (#159) — 5초 조우 강도 계산 후 인간 세션에 전송
             foreach (long matchingId in matchingIds)
             {
+                if (Config.SPOT_ARENA_P0_ENABLED) continue;
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 var playerAreas = BuildPlayerAreas(matchingId, activeSessions);
                 _presenceTracker.Tick(matchingId, playerAreas);
@@ -1631,6 +1635,7 @@ public partial class GameServer(
 
             foreach (long matchingId in matchingIds)
             {
+                if (Config.SPOT_ARENA_P0_ENABLED) continue;
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 var sessions = _clientSessions.Values
                     .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
@@ -1973,6 +1978,7 @@ public partial class GameServer(
 
             foreach (long matchingId in matchingIds)
             {
+                if (Config.SPOT_ARENA_P0_ENABLED) continue;
                 if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
@@ -2051,7 +2057,8 @@ public partial class GameServer(
                     _groundItemManager,
                     combatTargets,
                     pveTargets,
-                    _survivorPhaseManager);
+                    _survivorPhaseManager,
+                    _spotArenaManager.GetBotDirective);
                 planningElapsedMilliseconds += movementResult.PlanningElapsedMilliseconds;
                 walkingElapsedMilliseconds += movementResult.WalkingElapsedMilliseconds;
 
@@ -2563,6 +2570,8 @@ public partial class GameServer(
         _interactionLogManager.CleanupMatching(matchingId);
         _gameEventLogManager.Clear(matchingId);
         _encounterRevealManager.CleanupMatching(matchingId);
+        _spotArenaManager.RemoveMatching(matchingId);
+        _proximityAutoCombatResolver.RemoveMatching(matchingId);
         CleanupSurvivorSettlementState(matchingId);
         _ = CleanupAbandonedMatchingRedisAsync(matchingId);
 
@@ -2756,23 +2765,32 @@ public partial class GameServer(
             _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
             _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
 
-            _summonStoneManager.EnsureStartingStones(matchingId, bot.PlayerId);
+            if (!Config.SPOT_ARENA_P0_ENABLED)
+                _summonStoneManager.EnsureStartingStones(matchingId, bot.PlayerId);
         }
 
-        _areaClosureManager.InitializeMatching(
-            matchingId,
-            jobs,
-            SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
+        if (!Config.SPOT_ARENA_P0_ENABLED)
+        {
+            _areaClosureManager.InitializeMatching(
+                matchingId,
+                jobs,
+                SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
+        }
         _areaItemStockManager.InitializeMatching(matchingId);
         _groundItemManager.InitializeMatching(matchingId);
-        _emotionAfterimageMonsterManager.InitializeMatching(matchingId);
-        _gameEventLogManager.LogRewardAreaSnapshot(
-            matchingId,
-            _emotionAfterimageMonsterManager.GetRewardAreaSnapshot(matchingId),
-            "initial");
+        if (!Config.SPOT_ARENA_P0_ENABLED)
+        {
+            _emotionAfterimageMonsterManager.InitializeMatching(matchingId);
+            _gameEventLogManager.LogRewardAreaSnapshot(
+                matchingId,
+                _emotionAfterimageMonsterManager.GetRewardAreaSnapshot(matchingId),
+                "initial");
+        }
         _doorStateManager.InitializeMatching(
             matchingId,
-            SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
+            Config.SPOT_ARENA_P0_ENABLED
+                ? Array.Empty<AreaType>()
+                : SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
         _checklistManager.StartRound(matchingId, 1, playerIds,
             playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
         if (Config.ROUND_SYSTEM_ENABLED)
