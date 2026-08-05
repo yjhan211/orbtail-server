@@ -53,6 +53,27 @@ namespace network.common.data
         public static IReadOnlyList<Cell> GetCorridorAnchors() =>
             CorridorAnchors.Select(Cell.Clone).ToList();
 
+        public static Cell GetCorridorAnchor(int srNumber)
+        {
+            if (srNumber < 1 || srNumber > CorridorAnchors.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(srNumber), srNumber,
+                    $"Corridor anchor must be between SR1 and SR{CorridorAnchors.Length}.");
+            }
+
+            return Cell.Clone(CorridorAnchors[srNumber - 1]);
+        }
+
+        public static Cell GetCorridorSpawnCell(int srNumber)
+        {
+            Cell anchor = GetCorridorAnchor(srNumber);
+            Cell? spawnCell = anchor.GetAdjacentCells()
+                .FirstOrDefault(cell =>
+                    GameMapData.GetCurrentArea(MapId.School, cell) == AreaType.Corridor &&
+                    GameMapData.IsMoveablePosition(MapId.School, cell));
+            return spawnCell is null ? anchor : Cell.Clone(spawnCell);
+        }
+
         public static IReadOnlyDictionary<long, Cell> CreateAssignments(long matchingId, IEnumerable<long> playerIds)
         {
             var orderedPlayerIds = playerIds.Distinct().OrderBy(playerId => playerId).ToList();

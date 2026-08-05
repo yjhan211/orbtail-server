@@ -24,6 +24,9 @@ public sealed class SpotArenaManager
     public const int RespawnInvulnerabilitySeconds = 2;
     public const float WaveMoveSpeed = 4.5f;
     public const float WaveSpotAttackIntervalSeconds = 1f;
+    public const int WaveClashDamage = 1;
+    public const float WaveClashRange = 1.5f;
+    public const float WaveClashAttackIntervalSeconds = 2f;
     public const float WaveRetaliationSeconds = 2f;
     public const float WaveRetaliationRange = 2.5f;
 
@@ -31,12 +34,12 @@ public sealed class SpotArenaManager
     private const int FirstSpotMonsterId = 6_000_000;
     private const long FirstWaveCombatTargetId = -2_000_000_000_000_000_000L;
     private const long FirstSpotCombatTargetId = -3_000_000_000_000_000_000L;
-    private static readonly int[] SpotOrbItemIds =
+    private static readonly (int OrbItemId, int CorridorAnchorNumber)[] SpotDefinitions =
     [
-        107000010, // Sun
-        107000030, // Wave
-        107000020, // Wind
-        107000040  // Recovery
+        (107000010, 3), // Sun: SR3
+        (107000020, 2), // Wind: SR2
+        (107000030, 8), // Wave: SR8
+        (107000040, 6)  // Recovery: SR6
     ];
 
     private readonly ConcurrentDictionary<long, MatchState> _matches = new();
@@ -116,11 +119,32 @@ public sealed class SpotArenaManager
 
             SpawnDueWaves(state, now, result);
 
+            var engagements = FindWaveEngagements(state);
+            var clashDamageByMonsterId = new Dictionary<int, int>();
             var playersById = players.ToDictionary(player => player.PlayerId);
             foreach (var wave in state.Waves.Values.ToArray())
             {
                 if (!wave.Alive)
                     continue;
+
+                if (engagements.TryGetValue(wave.MonsterId, out var opponent))
+                {
+                    wave.ExpiresAtUtc = now.AddSeconds(WaveTtlSeconds);
+                    if (now >= wave.NextClashAttackAtUtc)
+                    {
+                        wave.NextClashAttackAtUtc = now.AddSeconds(WaveClashAttackIntervalSeconds);
+                        clashDamageByMonsterId[opponent.MonsterId] =
+                            clashDamageByMonsterId.GetValueOrDefault(opponent.MonsterId) + WaveClashDamage;
+                        result.WaveClashes.Add(new SpotArenaWaveClashEvent(
+                            wave.MonsterId,
+                            opponent.MonsterId,
+                            wave.OwnerPlayerId,
+                            opponent.OwnerPlayerId,
+                            wave.Area,
+                            WaveClashDamage));
+                    }
+                    continue;
+                }
 
                 if (now >= wave.ExpiresAtUtc)
                 {
@@ -162,6 +186,8 @@ public sealed class SpotArenaManager
                 if (stateChanged && wave.Alive)
                     result.ChangedWaves.Add(wave.ToMonsterRuntimeInfo());
             }
+
+            ApplyWaveClashDamage(state, clashDamageByMonsterId, result);
 
             if (state.AliveSpotCount <= 1 && !state.Ended)
                 EndForLastSpot(state);
@@ -291,6 +317,40 @@ public sealed class SpotArenaManager
 
             itemId = spot.OrbItemId;
             return itemId > 0;
+        }
+    }
+
+    public bool CanPlayerAttackWave(
+        long matchingId,
+        long attackerPlayerId,
+        int waveMonsterId,
+        long waveOwnerPlayerId,
+        long waveTargetOwnerPlayerId)
+    {
+        if (!_matches.TryGetValue(matchingId, out var state))
+            return false;
+
+        lock (state.SyncRoot)
+        {
+            if (!state.Spots.TryGetValue(attackerPlayerId, out var attacker) || attacker.Destroyed)
+                return false;
+            if (waveTargetOwnerPlayerId == attackerPlayerId)
+                return true;
+            if (attacker.TargetPlayerId != waveOwnerPlayerId)
+                return false;
+
+            var targetWave = state.Waves.Values.FirstOrDefault(wave =>
+                wave.MonsterId == waveMonsterId && wave.Alive);
+            if (targetWave == null)
+                return false;
+
+            float rangeSquared = WaveClashRange * WaveClashRange;
+            return state.Waves.Values.Any(ownWave =>
+                ownWave.Alive &&
+                ownWave.OwnerPlayerId == attackerPlayerId &&
+                ownWave.Area == targetWave.Area &&
+                AreRelatedWaves(ownWave, targetWave) &&
+                DistanceSquared(ownWave.Position, targetWave.Position) <= rangeSquared);
         }
     }
 
@@ -468,6 +528,68 @@ public sealed class SpotArenaManager
                 state.Waves[serial] = wave;
                 result.SpawnedWaves.Add(wave.ToMonsterRuntimeInfo());
             }
+        }
+    }
+
+    private static Dictionary<int, WaveRuntime> FindWaveEngagements(MatchState state)
+    {
+        var engagements = new Dictionary<int, WaveRuntime>();
+        var aliveWaves = state.Waves.Values
+            .Where(wave => wave.Alive)
+            .OrderBy(wave => wave.MonsterId)
+            .ToArray();
+        float rangeSquared = WaveClashRange * WaveClashRange;
+
+        foreach (var wave in aliveWaves)
+        {
+            WaveRuntime? nearest = null;
+            float nearestDistance = float.MaxValue;
+            foreach (var candidate in aliveWaves)
+            {
+                if (candidate.MonsterId == wave.MonsterId ||
+                    candidate.OwnerPlayerId == wave.OwnerPlayerId ||
+                    candidate.Area != wave.Area ||
+                    !AreRelatedWaves(wave, candidate))
+                {
+                    continue;
+                }
+
+                float distance = DistanceSquared(wave.Position, candidate.Position);
+                if (distance > rangeSquared || distance >= nearestDistance)
+                    continue;
+
+                nearest = candidate;
+                nearestDistance = distance;
+            }
+
+            if (nearest != null)
+                engagements[wave.MonsterId] = nearest;
+        }
+
+        return engagements;
+    }
+
+    private static bool AreRelatedWaves(WaveRuntime left, WaveRuntime right) =>
+        left.TargetOwnerPlayerId == right.OwnerPlayerId ||
+        right.TargetOwnerPlayerId == left.OwnerPlayerId;
+
+    private static void ApplyWaveClashDamage(
+        MatchState state,
+        IReadOnlyDictionary<int, int> damageByMonsterId,
+        SpotArenaTickResult result)
+    {
+        foreach (var (monsterId, damage) in damageByMonsterId)
+        {
+            var target = state.Waves.Values.FirstOrDefault(wave =>
+                wave.MonsterId == monsterId && wave.Alive);
+            if (damage <= 0 || target == null)
+                continue;
+
+            target.Health = Math.Max(0, target.Health - damage);
+            if (target.Health == 0)
+                KillWave(target, result);
+            else
+                result.ChangedWaves.Add(target.ToMonsterRuntimeInfo());
         }
     }
 
@@ -685,16 +807,19 @@ public sealed class SpotArenaManager
             foreach (var registration in registrations)
             {
                 int spotIndex = index++;
+                var spotDefinition = SpotDefinitions[spotIndex % SpotDefinitions.Length];
+                Cell spotCell = SurvivorRoyaleSpawnData.GetCorridorAnchor(
+                    spotDefinition.CorridorAnchorNumber);
                 state.Spots[registration.PlayerId] = new SpotRuntime
                 {
                     MonsterId = FirstSpotMonsterId + spotIndex,
                     CombatTargetId = FirstSpotCombatTargetId - spotIndex,
                     OwnerPlayerId = registration.PlayerId,
                     TargetPlayerId = registration.TargetPlayerId,
-                    OrbItemId = SpotOrbItemIds[spotIndex % SpotOrbItemIds.Length],
-                    Area = registration.Area,
-                    Cell = Cell.Clone(registration.Cell),
-                    Position = BotPlayerManager.CellToWorldPosition(MapId.School, registration.Cell),
+                    OrbItemId = spotDefinition.OrbItemId,
+                    Area = AreaType.Corridor,
+                    Cell = spotCell,
+                    Position = BotPlayerManager.CellToWorldPosition(MapId.School, spotCell),
                     Health = SpotMaxHealth,
                     NextWaveAtUtc = startsAtUtc.AddSeconds(WaveIntervalSeconds)
                 };
@@ -773,8 +898,9 @@ public sealed class SpotArenaManager
         public int Health { get; set; }
         public bool Alive { get; set; }
         public DateTime SpawnedAtUtc { get; init; }
-        public DateTime ExpiresAtUtc { get; init; }
+        public DateTime ExpiresAtUtc { get; set; }
         public DateTime NextAttackAtUtc { get; set; }
+        public DateTime NextClashAttackAtUtc { get; set; }
         public long RetaliationPlayerId { get; set; }
         public DateTime RetaliationUntilUtc { get; set; }
         public List<BotPathfinder.Step> Path { get; set; } = new();
@@ -867,6 +993,7 @@ public sealed class SpotArenaTickResult
     public SpotArenaSnapshot Snapshot { get; set; }
     public List<MonsterRuntimeInfo> SpawnedWaves { get; } = new();
     public List<MonsterRuntimeInfo> ChangedWaves { get; } = new();
+    public List<SpotArenaWaveClashEvent> WaveClashes { get; } = new();
     public List<SpotArenaPlayerDamage> PlayerDamage { get; } = new();
     public List<SpotArenaRespawnEvent> RespawnedPlayers { get; } = new();
     public List<SpotArenaSpotDestroyedEvent> DestroyedSpots { get; } = new();
@@ -885,6 +1012,14 @@ public readonly record struct SpotArenaDamageResult(
 {
     public static SpotArenaDamageResult None => new(false, false, null, 0, 0);
 }
+
+public readonly record struct SpotArenaWaveClashEvent(
+    int AttackerMonsterId,
+    int TargetMonsterId,
+    long AttackerOwnerPlayerId,
+    long TargetOwnerPlayerId,
+    AreaType Area,
+    int Damage);
 
 public readonly record struct SpotArenaPlayerDamage(
     int MonsterId,

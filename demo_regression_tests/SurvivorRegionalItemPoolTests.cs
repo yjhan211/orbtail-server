@@ -344,6 +344,30 @@ public sealed class SurvivorRegionalItemPoolTests
     }
 
     [Fact]
+    public void SummonStonePickupAllowsMovementReplicationTolerance()
+    {
+        var manager = new GroundItemManager();
+        const long matchId = 19313;
+        var item = Assert.Single(manager.SpawnItems(
+            matchId,
+            AreaType.Corridor,
+            5f,
+            5f,
+            [Config.SUMMON_STONE_GROUND_ITEM_ID]));
+
+        Assert.Equal(GroundItemClaimStatus.Success,
+            manager.TryClaim(
+                matchId,
+                item.GroundItemUid,
+                7001,
+                AreaType.Corridor,
+                item.PositionX + 1.5f,
+                item.PositionY,
+                _ => true,
+                out _));
+    }
+
+    [Fact]
     public void DroppedItemCannotBeReclaimedUntilOwnerLeavesRadius()
     {
         var manager = new GroundItemManager();

@@ -1,5 +1,6 @@
 using game_server.services;
 using MessagePack;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -77,6 +78,22 @@ public partial class GameClientSession
 
         if (status != GroundItemClaimStatus.Success || claimedItem == null)
         {
+            if (attemptedItem?.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
+            {
+                Logger.LogDebug(
+                    "Summon stone pickup rejected: MatchingId={MatchingId}, PlayerId={PlayerId}, GroundItemUid={GroundItemUid}, Status={Status}, PlayerArea={PlayerArea}, ItemArea={ItemArea}, Player=({PlayerX:F2},{PlayerY:F2}), Item=({ItemX:F2},{ItemY:F2})",
+                    CurrentMapSubId,
+                    PlayerId.Value,
+                    msg.GroundItemUid,
+                    status,
+                    CurrentArea,
+                    attemptedItem.AreaType,
+                    position.X,
+                    position.Y,
+                    attemptedItem.PositionX,
+                    attemptedItem.PositionY);
+            }
+
             ErrorCode error = status switch
             {
                 GroundItemClaimStatus.AreaMismatch => ErrorCode.AREA_MISMATCH,

@@ -147,6 +147,7 @@ public partial class GameServer
         bool initialized = _spotArenaManager.InitializeMatching(matchingId, registrations, startsAtUtc);
         if (initialized)
         {
+            PlaceSpotArenaParticipantsAtOwnSpots(matchingId, sessions, bots);
             logger.LogInformation(
                 "Spot arena initialized: MatchingId={MatchingId}, Players={Players}",
                 matchingId,
@@ -155,6 +156,34 @@ public partial class GameServer
         }
 
         return initialized;
+    }
+
+    private void PlaceSpotArenaParticipantsAtOwnSpots(
+        long matchingId,
+        IReadOnlyCollection<GameClientSession> sessions,
+        IReadOnlyCollection<BotPlayerState> bots)
+    {
+        var snapshot = _spotArenaManager.GetSnapshot(matchingId);
+        foreach (var spot in snapshot.Spots)
+        {
+            int anchorNumber = SurvivorRoyaleSpawnData.GetAnchorIndex(spot.Cell);
+            Cell spawnCell = anchorNumber > 0
+                ? SurvivorRoyaleSpawnData.GetCorridorSpawnCell(anchorNumber)
+                : Cell.Clone(spot.Cell);
+
+            sessions.FirstOrDefault(session => session.PlayerId == spot.OwnerPlayerId)
+                ?.PlaceAtSpotArenaStart(spot.Area, spawnCell);
+
+            var bot = bots.FirstOrDefault(candidate => candidate.PlayerId == spot.OwnerPlayerId);
+            if (bot == null)
+                continue;
+
+            bot.CurrentArea = spot.Area;
+            bot.Cell = Cell.Clone(spawnCell);
+            bot.Position = BotPlayerManager.CellToWorldPosition(MapId.School, spawnCell);
+            bot.Path.Clear();
+            bot.PathIndex = 0;
+        }
     }
 
     private List<ProximityCombatActor> BuildSpotArenaCombatActors(
@@ -287,7 +316,15 @@ public partial class GameServer
         }
 
         if (_spotArenaManager.TryGetWaveByCombatTarget(matchingId, target.PlayerId, out var wave))
-            return wave.TargetOwnerPlayerId == attacker.PlayerId && attacker.Area == wave.Area;
+        {
+            return attacker.Area == wave.Area &&
+                   _spotArenaManager.CanPlayerAttackWave(
+                       matchingId,
+                       attacker.PlayerId,
+                       wave.MonsterId,
+                       wave.OwnerPlayerId,
+                       wave.TargetOwnerPlayerId);
+        }
 
         if (_spotArenaManager.TryGetSpotTarget(matchingId, target.PlayerId, out var spot))
             return spot.OwnerPlayerId != attacker.PlayerId &&

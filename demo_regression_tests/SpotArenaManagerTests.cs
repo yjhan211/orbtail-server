@@ -1,6 +1,7 @@
 using game_server.services;
 using network.common;
 using network.common.data;
+using network.common.data.helpers;
 using network.common.data.models;
 
 namespace demo_regression_tests;
@@ -9,6 +10,12 @@ public class SpotArenaManagerTests
 {
     private static readonly DateTime StartUtc =
         new(2026, 8, 4, 0, 0, 0, DateTimeKind.Utc);
+
+    public SpotArenaManagerTests()
+    {
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+    }
 
     [Fact]
     public void Initialize_CreatesFourSpotRingWithThreeMinuteTimer()
@@ -24,10 +31,22 @@ public class SpotArenaManagerTests
         Assert.Equal(1, snapshot.Spots.Single(spot => spot.OwnerPlayerId == 4).TargetPlayerId);
         Assert.All(snapshot.Spots, spot => Assert.Equal(SpotArenaManager.SpotMaxHealth, spot.Health));
         Assert.True(manager.TryGetPlayerOrbItemId(216001, 1, out int sun));
-        Assert.True(manager.TryGetPlayerOrbItemId(216001, 2, out int wave));
-        Assert.True(manager.TryGetPlayerOrbItemId(216001, 3, out int wind));
+        Assert.True(manager.TryGetPlayerOrbItemId(216001, 2, out int wind));
+        Assert.True(manager.TryGetPlayerOrbItemId(216001, 3, out int wave));
         Assert.True(manager.TryGetPlayerOrbItemId(216001, 4, out int recovery));
-        Assert.Equal([107000010, 107000030, 107000020, 107000040], [sun, wave, wind, recovery]);
+        Assert.Equal([107000010, 107000020, 107000030, 107000040], [sun, wind, wave, recovery]);
+
+        int[] expectedAnchors = [3, 2, 8, 6];
+        for (int index = 0; index < snapshot.Spots.Count; index++)
+        {
+            var spot = snapshot.Spots.Single(candidate => candidate.OwnerPlayerId == index + 1);
+            Assert.Equal(AreaType.Corridor, spot.Area);
+            Assert.Equal(SurvivorRoyaleSpawnData.GetCorridorAnchor(expectedAnchors[index]), spot.Cell);
+            Cell spawnCell = SurvivorRoyaleSpawnData.GetCorridorSpawnCell(expectedAnchors[index]);
+            Assert.Equal(AreaType.Corridor, GameMapData.GetCurrentArea(MapId.School, spawnCell));
+            Assert.True(GameMapData.IsMoveablePosition(MapId.School, spawnCell));
+            Assert.Contains(spawnCell, spot.Cell.GetAdjacentCells());
+        }
     }
 
     [Fact]
@@ -125,30 +144,30 @@ public class SpotArenaManagerTests
     [Fact]
     public void ConfiguredSpotArenaRing_HasTraversableWavePaths()
     {
-        var areas = SurvivorRoyaleSpawnData.GetSpotArenaCandidates();
+        int[] anchorNumbers = [3, 2, 8, 6];
 
-        for (int index = 0; index < areas.Count; index++)
+        for (int index = 0; index < anchorNumbers.Length; index++)
         {
-            AreaType fromArea = areas[index];
-            AreaType toArea = areas[(index + 1) % areas.Count];
-            Cell fromCell = GameMapData.GetAreaSpawnCell(MapId.School, fromArea);
-            Cell toCell = GameMapData.GetAreaSpawnCell(MapId.School, toArea);
+            Cell fromCell = SurvivorRoyaleSpawnData.GetCorridorAnchor(anchorNumbers[index]);
+            Cell toCell = SurvivorRoyaleSpawnData.GetCorridorAnchor(
+                anchorNumbers[(index + 1) % anchorNumbers.Length]);
 
             var path = BotPathfinder.FindPath(
                 MapId.School,
-                fromArea,
+                AreaType.Corridor,
                 fromCell,
-                toArea,
+                AreaType.Corridor,
                 toCell);
 
             Assert.NotNull(path);
             Assert.NotEmpty(path!);
-            Assert.Equal(toArea, path![^1].Area);
+            Assert.Equal(AreaType.Corridor, path![^1].Area);
+            Assert.Equal(toCell, path[^1].Cell);
         }
     }
 
     [Fact]
-    public void SpawnedWaves_LeaveTheirRoomAndEnterTheirTargetsRoom()
+    public void SpawnedWaves_TravelBetweenTheirCorridorSpots()
     {
         var areas = SurvivorRoyaleSpawnData.GetSpotArenaCandidates();
         var registrations = areas
@@ -160,6 +179,7 @@ public class SpotArenaManagerTests
             .ToArray();
         var manager = new SpotArenaManager(() => StartUtc);
         Assert.True(manager.InitializeMatching(216006, registrations, StartUtc));
+        var spotsByOwner = manager.GetSnapshot(216006).Spots.ToDictionary(spot => spot.OwnerPlayerId);
 
         DateTime now = StartUtc.AddSeconds(SpotArenaManager.WaveIntervalSeconds);
         manager.Tick(216006, [], now);
@@ -171,13 +191,75 @@ public class SpotArenaManagerTests
             var result = manager.Tick(216006, [], now);
             foreach (var wave in result.Snapshot.Waves)
             {
-                AreaType targetArea = registrations.Single(item => item.PlayerId == wave.TargetOwnerPlayerId).Area;
-                if (wave.Area == targetArea)
+                var targetSpot = spotsByOwner[wave.TargetOwnerPlayerId];
+                if (wave.Area == targetSpot.Area &&
+                    MathF.Abs(wave.Position.X - targetSpot.Position.X) < 0.01f &&
+                    MathF.Abs(wave.Position.Y - targetSpot.Position.Y) < 0.01f)
                     reachedOwners.Add(wave.OwnerPlayerId);
             }
         }
 
         Assert.Equal(registrations.Select(item => item.PlayerId).OrderBy(id => id), reachedOwners.OrderBy(id => id));
+    }
+
+    [Fact]
+    public void RelatedWaves_ClashInsteadOfPassingThrough()
+    {
+        var manager = CreateManager();
+        DateTime now = StartUtc.AddSeconds(SpotArenaManager.WaveIntervalSeconds);
+        manager.Tick(216001, [], now);
+
+        var clashEvents = new List<SpotArenaWaveClashEvent>();
+        for (int tick = 0; tick < 240 && clashEvents.Count == 0; tick++)
+        {
+            now = now.AddSeconds(0.25);
+            clashEvents.AddRange(manager.Tick(216001, [], now).WaveClashes);
+        }
+
+        Assert.NotEmpty(clashEvents);
+        Assert.All(clashEvents, clash =>
+        {
+            Assert.NotEqual(clash.AttackerOwnerPlayerId, clash.TargetOwnerPlayerId);
+            Assert.Equal(SpotArenaManager.WaveClashDamage, clash.Damage);
+        });
+    }
+
+    [Fact]
+    public void PlayerCanAttackIncomingAndEngagedPreyWavesButNotUnrelatedWaves()
+    {
+        var manager = CreateManager();
+
+        Assert.True(manager.CanPlayerAttackWave(
+            216001, attackerPlayerId: 1, waveMonsterId: 0,
+            waveOwnerPlayerId: 4, waveTargetOwnerPlayerId: 1));
+        Assert.False(manager.CanPlayerAttackWave(
+            216001, attackerPlayerId: 1, waveMonsterId: 0,
+            waveOwnerPlayerId: 2, waveTargetOwnerPlayerId: 3));
+        Assert.False(manager.CanPlayerAttackWave(
+            216001, attackerPlayerId: 1, waveMonsterId: 0,
+            waveOwnerPlayerId: 3, waveTargetOwnerPlayerId: 4));
+
+        DateTime now = StartUtc.AddSeconds(SpotArenaManager.WaveIntervalSeconds);
+        manager.Tick(216001, [], now);
+        SpotArenaWaveClashEvent? playerOneFront = null;
+        for (int tick = 0; tick < 240 && playerOneFront == null; tick++)
+        {
+            now = now.AddSeconds(0.25);
+            var found = manager.Tick(216001, [], now).WaveClashes.FirstOrDefault(clash =>
+                (clash.AttackerOwnerPlayerId == 1 && clash.TargetOwnerPlayerId == 2) ||
+                (clash.AttackerOwnerPlayerId == 2 && clash.TargetOwnerPlayerId == 1));
+            if (found.AttackerMonsterId != 0)
+                playerOneFront = found;
+        }
+
+        Assert.True(playerOneFront.HasValue);
+        var clashEvent = playerOneFront.Value;
+        int preyWaveMonsterId = clashEvent.AttackerOwnerPlayerId == 2
+            ? clashEvent.AttackerMonsterId
+            : clashEvent.TargetMonsterId;
+        Assert.True(manager.CanPlayerAttackWave(
+            216001, attackerPlayerId: 1, waveMonsterId: preyWaveMonsterId,
+            waveOwnerPlayerId: 2, waveTargetOwnerPlayerId: 3));
     }
 
     [Fact]
@@ -214,6 +296,20 @@ public class SpotArenaManagerTests
         new(3, 4, AreaType.BroadcastRoom, new Cell(120, 100)),
         new(4, 1, AreaType.Classroom2, new Cell(130, 100))
     ];
+
+    private static string FindNetworkBasePath()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null)
+        {
+            string candidate = Path.Combine(directory.FullName, "network", "Common", "csv");
+            if (Directory.Exists(candidate))
+                return Path.Combine(directory.FullName, "network");
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate network/Common/csv.");
+    }
 
     private static ProximityCombatActor Actor(
         long id,

@@ -11,6 +11,22 @@ public partial class GameClientSession
         TargetPlayerId = targetPlayerId;
     }
 
+    internal void PlaceAtSpotArenaStart(AreaType area, Cell cell)
+    {
+        if (!PlayerId.HasValue || IsEliminated)
+            return;
+
+        AreaType oldArea = CurrentArea;
+        CurrentState = PlayerState.Idle;
+        CurrentArea = area;
+        _lastValidCell = Cell.Clone(cell);
+        _lastValidatedPosition = CellToWorldPosition(cell);
+        _lastValidatedRotation = 0f;
+        SendMovementCorrection(0);
+        if (oldArea != area)
+            _ = HandleAreaChange(oldArea, area);
+    }
+
     internal bool ApplySpotArenaCombatHit(
         long sourcePlayerId,
         AreaType area,
