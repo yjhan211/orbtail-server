@@ -305,6 +305,20 @@ public class InGameInventoryManager
     }
 
     /// <summary>
+    ///     보드 위 오브 수 (스택 포함). 개봉 비용 비례식의 입력 — 머지가 이 수를 줄여
+    ///     다음 개봉을 싸게 한다.
+    /// </summary>
+    public int CountOrbs(long matchingId, long playerId)
+    {
+        return GetPlayerInventory(matchingId, playerId)
+            .GetAllItems()
+            .Where(item => item.Count > 0 &&
+                           (SurvivorOrbData.IsRecoveryOrb(item.ItemId) ||
+                            SurvivorOrbData.TryGetColorAndTier(item.ItemId, out _, out _)))
+            .Sum(item => item.Count);
+    }
+
+    /// <summary>
     ///     아이템 추가
     /// </summary>
     public InGameItemInfo AddItem(long matchingId, long playerId, int itemId, int count = 1,

@@ -131,8 +131,18 @@ namespace network.common
         /// </summary>
         public static readonly int SWARM_PLAYERS_PER_MATCH = 6;
 
-        /// <summary>스웜 탐색 스팟 개봉 비용(소환석). 사람·봇 공통.</summary>
-        public const int SWARM_EXPLORE_SUMMON_COST = 5;
+        /// <summary>
+        ///     스웜 탐색 스팟 개봉 비용 비례식(성장곡선 v3): 기본 3석 + 보유 오브당 2석.
+        ///     시작 오브 1개 기준 첫 개봉 5석 — 종전 고정 비용과 같은 체감이다.
+        ///     머지가 보유 수를 줄여 다음 개봉을 싸게 한다 (전투+경제 이중 인센티브). 사람·봇 공통.
+        /// </summary>
+        public const int SWARM_EXPLORE_COST_BASE = 3;
+
+        /// <summary>보유 오브 1개당 개봉 비용 가산.</summary>
+        public const int SWARM_EXPLORE_COST_PER_ORB = 2;
+
+        public static int GetSwarmExploreCost(int ownedOrbCount) =>
+            SWARM_EXPLORE_COST_BASE + SWARM_EXPLORE_COST_PER_ORB * (ownedOrbCount > 0 ? ownedOrbCount : 0);
 
         /// <summary>
         ///     스웜 탐색 스팟은 한 번 열면 판이 끝날 때까지 소진된다 — 방을 떠날 이유를 만든다.

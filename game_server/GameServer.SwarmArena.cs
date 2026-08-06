@@ -42,13 +42,14 @@ public partial class GameServer
                               session.CurrentMapSubId == matchingId &&
                               !session.IsGameEnded)
             .ToList();
-        if (sessions.Count == 0)
-            return;
         var bots = _botPlayerManager.GetBots(matchingId).ToList();
+        // 봇 전용 매치(어드민 검증)에서도 스웜을 돌린다 — 생존·완주 계측의 기반.
+        if (sessions.Count == 0 && bots.Count == 0)
+            return;
 
         if (!_swarmArenaManager.HasMatching(matchingId))
         {
-            long humanPlayerId = sessions[0].PlayerId!.Value;
+            long humanPlayerId = sessions.Count > 0 ? sessions[0].PlayerId!.Value : bots[0].PlayerId;
             if (!_swarmArenaManager.InitializeMatching(matchingId, humanPlayerId, DateTime.UtcNow))
                 return;
 
@@ -133,6 +134,7 @@ public partial class GameServer
     }
 
     private const float SwarmBotOpenRange = 1.6f;
+    private const float SwarmBotContactDamageMultiplier = 0.5f;
 
     // 시작방 탐색 스팟 수는 스폰 운의 균등을 위해 방당 이 개수로 맞춘다.
     private const int SwarmStartRoomSpotCount = 2;
@@ -211,8 +213,8 @@ public partial class GameServer
     {
         foreach (var bot in bots)
         {
-            if (_summonStoneManager.GetSnapshot(matchingId, bot.PlayerId).StoneCount <
-                Config.SWARM_EXPLORE_SUMMON_COST)
+            int exploreCost = GetSwarmBotExploreCost(matchingId, bot.PlayerId);
+            if (_summonStoneManager.GetSnapshot(matchingId, bot.PlayerId).StoneCount < exploreCost)
                 continue;
 
             if (!TryFindNearestAvailableExploreSpot(
@@ -237,7 +239,7 @@ public partial class GameServer
                     ? addedItem
                     : null,
                 SelectBotSummonChoice(matchingId, bot),
-                costOverride: Config.SWARM_EXPLORE_SUMMON_COST);
+                costOverride: exploreCost);
             if (!attempt.Success)
             {
                 RngCollectCooldownStore.ClearCooldown(matchingId, spot.Id);
@@ -245,9 +247,21 @@ public partial class GameServer
             }
 
             BroadcastSwarmExploreConsumed(spot.Id, sessions);
+            // 요약 카운터(summonCount) 배선 — 봇 개봉이 매치 요약에서 0으로 잡히던 계측 구멍.
+            _gameEventLogManager.LogOrbSummonAttempt(
+                matchingId,
+                bot.PlayerId,
+                true,
+                ErrorCode.SUCCESS,
+                attempt.ItemId,
+                attempt.State.StoneCount,
+                attempt.State.NextCost,
+                attempt.State.SuccessfulSummonCount,
+                bot.CurrentArea.ToString(),
+                isBot: true);
             logger.LogInformation(
-                "Swarm bot explore: MatchingId={MatchingId}, BotId={BotId}, InteractId={InteractId}, ItemId={ItemId}",
-                matchingId, bot.PlayerId, spot.Id, attempt.ItemId);
+                "Swarm bot explore: MatchingId={MatchingId}, BotId={BotId}, InteractId={InteractId}, ItemId={ItemId}, Cost={Cost}",
+                matchingId, bot.PlayerId, spot.Id, attempt.ItemId, exploreCost);
         }
     }
 
@@ -352,7 +366,7 @@ public partial class GameServer
 
         // 2) 소환석이 차면 전 구역에서 가장 가까운 미소진 스팟으로 순례 (구역 간 이동 포함).
         if (_summonStoneManager.GetSnapshot(matchingId, botPlayerId).StoneCount >=
-            Config.SWARM_EXPLORE_SUMMON_COST &&
+            GetSwarmBotExploreCost(matchingId, botPlayerId) &&
             TryFindNearestAvailableExploreSpot(
                 matchingId, area: null, bot.Position, out var spot, out _))
         {
@@ -372,19 +386,7 @@ public partial class GameServer
                 BotPlayerManager.CellToWorldPosition(MapId.School, spotCell));
         }
 
-        // 3) 정지 공격 규칙: 도주·줍기·개봉 용무가 없고 사거리 안에 잔상이 있으면
-        //    제자리에 선다 — 이동 중에는 공격이 나가지 않으므로 서야 사냥이 된다.
-        //    도주(반경 4)가 먼저 걸리므로 정지 위치는 항상 4~7 거리의 안전 사격 지점이다.
-        if (HasSwarmMonsterInBasicRange(matchingId, bot))
-        {
-            return new SpotArenaBotDirective(
-                SpotArenaBotMode.Escort,
-                bot.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, bot.Position),
-                bot.Position);
-        }
-
-        // 4) 시작방·복도는 공급이 마른다 — 무한 스폰 사냥터로 이주해 소환석을 번다.
+        // 3) 시작방·복도는 공급이 마른다 — 무한 스폰 사냥터로 이주해 소환석을 번다.
         if (bot.CurrentArea == AreaType.Corridor ||
             SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().Contains(bot.CurrentArea))
         {
@@ -409,21 +411,9 @@ public partial class GameServer
         return directive;
     }
 
-    private bool HasSwarmMonsterInBasicRange(long matchingId, BotPlayerState bot)
-    {
-        const float rangeSquared = SwarmArenaBasicRange * SwarmArenaBasicRange;
-        foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
-        {
-            if (target.Area != bot.CurrentArea)
-                continue;
-            float dx = target.Position.X - bot.Position.X;
-            float dy = target.Position.Y - bot.Position.Y;
-            if (dx * dx + dy * dy <= rangeSquared)
-                return true;
-        }
-
-        return false;
-    }
+    /// <summary>봇 개봉 비용 — 사람과 같은 비례식(기본 3석 + 보유 오브당 2석)을 쓴다.</summary>
+    private int GetSwarmBotExploreCost(long matchingId, long botPlayerId) =>
+        Config.GetSwarmExploreCost(_inGameInventoryManager.CountOrbs(matchingId, botPlayerId));
 
     private void ApplySwarmParticipantDamage(
         long matchingId,
@@ -445,7 +435,10 @@ public partial class GameServer
         if (bot == null)
             return;
 
-        bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + damage.Damage);
+        // 봇은 사람 수준의 마이크로 회피가 없어 같은 수치로는 조우 전에 녹는다 (계측:
+        // 첫 탈락 19초, 40초 반수 사망). 봇의 역할은 조우·경제 흐름 재현이므로 피격만 보정한다.
+        int botDamage = Math.Max(1, (int)(damage.Damage * SwarmBotContactDamageMultiplier));
+        bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + botDamage);
     }
 
     private void ApplySwarmPvpAttack(

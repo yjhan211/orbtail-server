@@ -54,8 +54,10 @@ public sealed class SwarmArenaManager
     private const float RetargetStickinessSquared = 1.5625f;
     // 아이소 월드 스케일에서 방의 세로 폭은 ~2.5유닛에 불과하다. 이동 목표가 방을
     // 벗어나면 구역 클램프로 제자리 회귀해 봇이 서 있는 것처럼 보인다 — 짧게 잡는다.
-    private const float BotDangerRadius = 4f;
-    private const float BotFleeDistance = 3.5f;
+    // 6인 첫 계측(매치 2221)에서 봇 전멸 91초·첫 탈락 24초 — 반경 4/이탈 3.5로는
+    // 추적 잔상(속도 4.2)을 못 벗어난다. 더 일찍, 더 멀리 도망치게 넓힌다.
+    private const float BotDangerRadius = 6f;
+    private const float BotFleeDistance = 5f;
     private const float BotRoamDistance = 3f;
     private const double FirstPatternDelaySeconds = 3d;
     private const double StartRoomFirstPatternDelaySeconds = 1.5d;
@@ -78,7 +80,8 @@ public sealed class SwarmArenaManager
 
     public bool InitializeMatching(long matchingId, long humanPlayerId, DateTime startsAtUtc)
     {
-        if (matchingId <= 0 || humanPlayerId <= 0)
+        // 봇 전용 검증 매치는 대표 참가자가 봇(음수 id)이다 — 0만 거부한다.
+        if (matchingId <= 0 || humanPlayerId == 0)
             return false;
 
         var state = new MatchState
@@ -725,7 +728,8 @@ public sealed class SwarmArenaManager
                 _ => 107000030
             },
             IsCore = false,
-            SummonStoneReward = SummonStoneReward
+            SummonStoneReward = SummonStoneReward,
+            ChaseTargetPlayerId = ChaseTargetPlayerId
         };
     }
 }

@@ -28,8 +28,12 @@ public partial class GameClientSession
     private const int RngCollectStaminaCost = 5;
 
     // #217 P0-c: 스웜 아레나 탐색 스팟 — 비용·소진 규칙은 봇과 공유하므로 Config에 있다.
-    private const int SwarmExploreSummonCost = Config.SWARM_EXPLORE_SUMMON_COST;
     private const int SwarmExploreCooldownSeconds = Config.SWARM_EXPLORE_CONSUME_SECONDS;
+
+    /// <summary>개봉 비용 비례식: 현재 보드 오브 수 기준. 게이지 시작과 완료 시점 각각 계산한다.</summary>
+    private int GetSwarmExploreCost() =>
+        Config.GetSwarmExploreCost(
+            _inGameInventoryManager.CountOrbs(CurrentMapSubId, PlayerId ?? 0));
 
     /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — 매칭 단위 추적.
     /// FINISH 도착 시 이 set에 있어야 결과 산출 진행.</summary>
@@ -460,7 +464,7 @@ public partial class GameClientSession
 
         // 소환석 부족이면 게이지를 시작하지 않는다 — 헛 채널 방지.
         if (_summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId!.Value).StoneCount <
-            SwarmExploreSummonCost)
+            GetSwarmExploreCost())
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.INSUFFICIENT_CURRENCY, 0);
             return Task.CompletedTask;
@@ -506,7 +510,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        var attempt = ExecuteOrbSummon(choiceIndex: 0, costOverride: SwarmExploreSummonCost);
+        var attempt = ExecuteOrbSummon(choiceIndex: 0, costOverride: GetSwarmExploreCost());
         if (!attempt.Success)
         {
             // 소환 실패(석 부족·보드 포화) — 쿨다운을 풀어 나중에 다시 열 수 있게 한다.
