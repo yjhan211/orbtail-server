@@ -439,6 +439,12 @@ public partial class GameClientSession
     /// </summary>
     private Task HandleSwarmRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
+        if (IsEliminated)
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
+            return Task.CompletedTask;
+        }
+
         var info = GameInteractableData.Get(msg.InteractId);
         if (info == null)
         {
@@ -483,6 +489,14 @@ public partial class GameClientSession
         if (msg.EncounterCheckOnly)
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
+            return Task.CompletedTask;
+        }
+
+        // 탈락 후 도착한 FINISH가 소환에 성공하면 드랍된 인벤토리와 상태가 꼬인다
+        if (IsEliminated)
+        {
+            _pendingFinish.Remove(msg.InteractId);
+            SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
             return Task.CompletedTask;
         }
 

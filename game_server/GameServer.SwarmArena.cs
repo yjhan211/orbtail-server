@@ -55,7 +55,8 @@ public partial class GameServer
             GameClientSession.SwarmExploreNoiseCallback ??=
                 (noiseMatchingId, noisePlayerId) =>
                     _swarmArenaManager.AttractSwarm(noiseMatchingId, noisePlayerId);
-            EqualizeStartRoomExploreSpots(matchingId, sessions);
+            ApplySwarmExploreSpotBudget(matchingId, sessions);
+            LogSwarmPairZoneDistances(matchingId);
             logger.LogInformation(
                 "Swarm arena initialized: MatchingId={MatchingId}, Humans={HumanCount}, Bots={BotCount}",
                 matchingId, sessions.Count, bots.Count);
@@ -134,23 +135,63 @@ public partial class GameServer
     private const float SwarmBotOpenRange = 1.6f;
 
     // 시작방 탐색 스팟 수는 스폰 운의 균등을 위해 방당 이 개수로 맞춘다.
-    // 최소 보유 방(쓰레기장 2개)이 기준 — 늘리려면 씬·CSV에 스팟 추가가 필요하다.
     private const int SwarmStartRoomSpotCount = 2;
 
+    // 전 맵 개봉 재고 예산 (성장곡선 v3): 시작방 6×2 + 도서관·강당 2씩 + 교실 1씩 +
+    // 운동장 3 = 21. 여기 없는 구역은 0 — 재고 고갈이 이동과 조우를 만들도록 총량을 조인다.
+    private static readonly Dictionary<AreaType, int> SwarmExploreSpotBudget = new()
+    {
+        [AreaType.Library] = 2,
+        [AreaType.Gym] = 2,
+        [AreaType.Classroom3] = 1,
+        [AreaType.Classroom4] = 1,
+        [AreaType.Ground] = 3
+    };
+
+    // 쌍 깔때기: 시작방 → 만남 구역. 거리 편차의 보정값(잔상 스폰 시점)은 이 로그를 계측한 뒤 정한다.
+    private static readonly (AreaType StartRoom, AreaType PairZone)[] SwarmPairZones =
+    [
+        (AreaType.ExamRoom, AreaType.Library),
+        (AreaType.Storage, AreaType.Library),
+        (AreaType.Classroom2, AreaType.Gym),
+        (AreaType.Storage2, AreaType.Gym),
+        (AreaType.AdminOffice, AreaType.Corridor),
+        (AreaType.StaffRoom, AreaType.Corridor)
+    ];
+
     /// <summary>
-    ///     시작방별 스팟 수 균일화: 초과분을 매치 시작 시 선소진 처리한다.
+    ///     쌍별 시작방→만남 구역 경로 길이를 매치 시작 시 한 번 로그로 남긴다.
+    ///     공정성 판정(편차가 첫 성장 시각을 가르는지)의 계측 기준이다.
+    /// </summary>
+    private void LogSwarmPairZoneDistances(long matchingId)
+    {
+        foreach (var (startRoom, pairZone) in SwarmPairZones)
+        {
+            var path = BotPathfinder.FindPath(
+                MapId.School,
+                startRoom, GameMapData.GetAreaSpawnCell(MapId.School, startRoom),
+                pairZone, GameMapData.GetAreaSpawnCell(MapId.School, pairZone));
+            logger.LogInformation(
+                "Swarm pair distance: MatchingId={MatchingId}, StartRoom={StartRoom}, PairZone={PairZone}, Steps={Steps}",
+                matchingId, startRoom, pairZone, path?.Count ?? -1);
+        }
+    }
+
+    /// <summary>
+    ///     구역별 스팟 예산 적용: 예산 초과분을 매치 시작 시 선소진 처리한다.
     ///     CSV·씬은 건드리지 않고 소진 쿨다운 저장소만 쓴다 (id 오름차순으로 앞의 N개 유지).
     /// </summary>
-    private void EqualizeStartRoomExploreSpots(long matchingId, List<GameClientSession> sessions)
+    private void ApplySwarmExploreSpotBudget(long matchingId, List<GameClientSession> sessions)
     {
-        foreach (var area in SurvivorRoyaleSpawnData.GetPhaseRoomCandidates())
+        var startRooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().ToHashSet();
+        foreach (var group in GameInteractableData.GetAll()
+                     .Where(info => info.InteractionType == InteractionType.RNG_COLLECT)
+                     .GroupBy(info => (AreaType)info.ZoneId))
         {
-            var excessSpots = GameInteractableData.GetAll()
-                .Where(info => info.ZoneId == (int)area &&
-                               info.InteractionType == InteractionType.RNG_COLLECT)
-                .OrderBy(info => info.Id)
-                .Skip(SwarmStartRoomSpotCount);
-            foreach (var spot in excessSpots)
+            int budget = startRooms.Contains(group.Key)
+                ? SwarmStartRoomSpotCount
+                : SwarmExploreSpotBudget.GetValueOrDefault(group.Key);
+            foreach (var spot in group.OrderBy(info => info.Id).Skip(budget))
             {
                 if (RngCollectCooldownStore.TryAcquireCooldown(
                         matchingId, spot.Id, Config.SWARM_EXPLORE_CONSUME_SECONDS, out _))
@@ -265,11 +306,12 @@ public partial class GameServer
     }
 
     // 시작방 팩이 마르면 봇이 이주할 무한 스폰 사냥터.
-    // 쓰레기장은 문 잠금(113·114·118·119)으로 도달 불가, 보건실·3-2는 시작방으로 승격되어 제외.
-    // 조우 지점(도서관·강당)과 운동장·3-1이 순례 목적지.
+    // 쓰레기장은 문 잠금(113·114·118·119)으로 도달 불가.
+    // 6인 깔때기: 쌍 구역(도서관·강당)과 복도층 교실(3-2·4-2)·운동장이 순례 목적지.
     private static readonly AreaType[] SwarmHuntingAreas =
     [
-        AreaType.Ground, AreaType.Gym, AreaType.Library, AreaType.Classroom4
+        AreaType.Ground, AreaType.Gym, AreaType.Library,
+        AreaType.Classroom3, AreaType.Classroom4
     ];
 
     /// <summary>

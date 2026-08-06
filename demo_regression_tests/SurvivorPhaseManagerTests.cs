@@ -8,7 +8,7 @@ namespace demo_regression_tests;
 public class SurvivorPhaseManagerTests
 {
     [Fact]
-    public void Initialize_OpensExactEightStartingRoomsAndCorridorStaysSafe()
+    public void Initialize_OpensExactSixStartingRoomsAndCorridorStaysSafe()
     {
         DateTime now = new(2026, 8, 4, 0, 0, 0, DateTimeKind.Utc);
         var manager = new SurvivorPhaseManager(() => now);
@@ -17,10 +17,10 @@ public class SurvivorPhaseManagerTests
         var second = manager.InitializeMatching(214001, now.AddMinutes(1));
 
         Assert.Equal(SurvivorMatchPhase.ROOM_COMBAT, first.Phase);
-        Assert.Equal(8, first.CurrentRooms.Count);
+        Assert.Equal(6, first.CurrentRooms.Count);
         // 방 커밋은 잠긴 문이 강제한다. 복도는 개방이라 클리어한 플레이어의 조기 진출이
         // 폐쇄 피해로 벌받지 않고, 클리어자끼리의 복도 교전(PvP)은 허용된다.
-        Assert.Equal(9, first.OpenAreas.Count);
+        Assert.Equal(7, first.OpenAreas.Count);
         Assert.Contains(AreaType.Corridor, first.OpenAreas);
         Assert.Equal(first.CurrentRooms, second.CurrentRooms);
         Assert.True(manager.IsPveAllowed(214001, first.CurrentRooms[0]));
@@ -29,7 +29,7 @@ public class SurvivorPhaseManagerTests
         Assert.False(manager.IsPveAllowed(214001, AreaType.Corridor));
         // 방 페이즈의 복도는 클리어자의 대기·정비 공간 — 소환·머지·파괴가 허용된다.
         Assert.True(manager.AreOrbBoardActionsAllowed(214001, AreaType.Corridor));
-        // #217 8인 스폰 분산으로 창고·쓰레기장도 시작방 후보가 됐다.
+        // #217 6인 3쌍 깔때기: 시작방은 고사실·창고들·보건실·행정실·교무실 여섯 곳뿐이다.
         Assert.DoesNotContain(AreaType.Junkyard2, first.CurrentRooms);
         Assert.DoesNotContain(AreaType.Gym, first.CurrentRooms);
     }
@@ -77,7 +77,7 @@ public class SurvivorPhaseManagerTests
         now = now.AddSeconds(7);
         var selection = manager.Tick(214003, alive).Snapshot;
         Assert.Equal(SurvivorMatchPhase.ROOM_SELECTION, selection.Phase);
-        Assert.Equal(6, selection.NextRooms.Count);
+        Assert.Equal(4, selection.NextRooms.Count);
         Assert.All(selection.NextRooms, area => Assert.Contains(area, selection.OpenAreas));
 
         now = now.AddSeconds(3);
@@ -88,25 +88,25 @@ public class SurvivorPhaseManagerTests
     }
 
     [Fact]
-    public void FullSchedule_UsesEightSixFourTwoRoomsThenGroundFinal()
+    public void FullSchedule_UsesSixFourTwoRoomsThenGroundFinal()
     {
         DateTime now = new(2026, 8, 4, 0, 0, 0, DateTimeKind.Utc);
         var manager = new SurvivorPhaseManager(() => now);
         var initial = manager.InitializeMatching(214004, now);
-        long[] alive = [1, 2, 3, 4, 5, 6, 7, 8];
+        long[] alive = [1, 2, 3, 4, 5, 6];
 
-        Assert.Equal(8, initial.OpenRoomCount);
+        Assert.Equal(6, initial.OpenRoomCount);
         Assert.Equal(SurvivorPhaseManager.FirstRoomCombatSeconds,
             SurvivorPhaseManager.GetPhaseDurationSeconds(initial));
 
         var allowedRooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().ToHashSet();
-        for (int expectedStage = 1; expectedStage < 4; expectedStage++)
+        for (int expectedStage = 1; expectedStage < 3; expectedStage++)
         {
             now = now.AddSeconds(expectedStage == 1 ? 103 : 73);
             var snapshot = manager.Tick(214004, alive).Snapshot;
             Assert.Equal(SurvivorMatchPhase.ROOM_COMBAT, snapshot.Phase);
             Assert.Equal(expectedStage, snapshot.StageIndex);
-            Assert.Equal(new[] { 8, 6, 4, 2 }[expectedStage], snapshot.CurrentRooms.Count);
+            Assert.Equal(new[] { 6, 4, 2 }[expectedStage], snapshot.CurrentRooms.Count);
             Assert.All(snapshot.CurrentRooms, area => Assert.Contains(area, allowedRooms));
             Assert.Equal(snapshot.CurrentRooms.Count, snapshot.CurrentRooms.Distinct().Count());
             Assert.Equal(SurvivorPhaseManager.RoomCombatSeconds,
@@ -129,36 +129,32 @@ public class SurvivorPhaseManagerTests
         AreaType[] occupied =
         [
             AreaType.ExamRoom,
-            AreaType.BroadcastRoom,
-            AreaType.Classroom2,
             AreaType.Storage,
+            AreaType.Classroom2,
             AreaType.Storage2,
-            AreaType.Classroom3,
             AreaType.AdminOffice,
             AreaType.StaffRoom
         ];
 
         var initial = manager.InitializeMatching(214006, now, occupied);
 
-        Assert.Equal(8, initial.CurrentRooms.Count);
+        Assert.Equal(6, initial.CurrentRooms.Count);
         Assert.All(occupied, area => Assert.Contains(area, initial.CurrentRooms));
         Assert.DoesNotContain(AreaType.Corridor, initial.CurrentRooms);
     }
 
     [Fact]
-    public void PhaseRoomAssignments_UseEightUniqueWalkableRoomCells()
+    public void PhaseRoomAssignments_UseSixUniqueWalkableRoomCells()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
         GameDataHelper.Initialize();
-        long[] playerIds = Enumerable.Range(1, 8).Select(value => (long)value).ToArray();
+        long[] playerIds = Enumerable.Range(1, 6).Select(value => (long)value).ToArray();
         HashSet<AreaType> expectedRooms =
         [
             AreaType.ExamRoom,
-            AreaType.BroadcastRoom,
-            AreaType.Classroom2,
             AreaType.Storage,
+            AreaType.Classroom2,
             AreaType.Storage2,
-            AreaType.Classroom3,
             AreaType.AdminOffice,
             AreaType.StaffRoom
         ];
@@ -169,9 +165,9 @@ public class SurvivorPhaseManagerTests
             .Select(cell => GameMapData.GetCurrentArea(MapId.School, cell))
             .ToArray();
 
-        Assert.Equal(8, assignments.Count);
-        Assert.Equal(8, cells.Select(cell => (cell.X, cell.Y)).Distinct().Count());
-        Assert.Equal(8, resolvedAreas.Distinct().Count());
+        Assert.Equal(6, assignments.Count);
+        Assert.Equal(6, cells.Select(cell => (cell.X, cell.Y)).Distinct().Count());
+        Assert.Equal(6, resolvedAreas.Distinct().Count());
         Assert.All(cells, cell =>
         {
             Assert.NotEqual((0, 0), (cell.X, cell.Y));

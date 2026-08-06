@@ -24,18 +24,17 @@ namespace network.common.data
         new(165, 85)
     };
 
-        // #217 8인 시작방 — 3쌍 조우 토폴로지.
-        // 고사실+창고1 → 도서관 / 보건실+창고2 → 강당 / 행정실+교무실+방송실+3-2 → 복도.
-        // 도서관·강당은 조우 지점이므로 스폰 금지, 쓰레기장은 문 잠금으로 도달 불가.
-        // (보건실 = Classroom2, 3-2 = Classroom3)
+        // #217 6인 시작방 — 3쌍 깔때기 토폴로지 (성장곡선 v3).
+        // 고사실+서쪽창고 → 도서관 / 보건실+동쪽창고 → 강당 / 행정실+교무실 → 복도층.
+        // 도서관·강당은 만남 구역이므로 스폰 금지, 복도층의 판돈은 교실(3-2·4-2)이 담당,
+        // 쓰레기장은 문 잠금으로 도달 불가.
+        // (보건실 = Classroom2, 서쪽창고 = Storage, 동쪽창고 = Storage2)
         private static readonly AreaType[] PhaseRoomCandidates =
         {
             AreaType.ExamRoom,
-            AreaType.BroadcastRoom,
-            AreaType.Classroom2,
             AreaType.Storage,
+            AreaType.Classroom2,
             AreaType.Storage2,
-            AreaType.Classroom3,
             AreaType.AdminOffice,
             AreaType.StaffRoom
         };
@@ -107,10 +106,10 @@ namespace network.common.data
             IEnumerable<long> playerIds)
         {
             var orderedPlayerIds = playerIds.Distinct().OrderBy(playerId => playerId).ToList();
-            if (orderedPlayerIds.Count > 8)
+            if (orderedPlayerIds.Count > PhaseRoomCandidates.Length)
             {
                 throw new ArgumentOutOfRangeException(nameof(playerIds), orderedPlayerIds.Count,
-                    "Survivor Royale supports at most 8 players per match.");
+                    $"Survivor Royale supports at most {PhaseRoomCandidates.Length} players per match.");
             }
 
             var shuffledRooms = PhaseRoomCandidates.ToList();

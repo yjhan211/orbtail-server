@@ -40,6 +40,19 @@ public class SwarmMeetupTopologyTests
     }
 
     [Fact]
+    public void FunnelDownstream_MeetingAreasReachCorridorTierAndGround()
+    {
+        // 3단 깔때기 하류: 쌍 구역 → 복도층(교실 포함) → 운동장.
+        AssertReachable(AreaType.Library, AreaType.Corridor);
+        AssertReachable(AreaType.Gym, AreaType.Corridor);
+        AssertReachable(AreaType.Corridor, AreaType.Classroom3);
+        AssertReachable(AreaType.Corridor, AreaType.Classroom4);
+        AssertReachable(AreaType.Corridor, AreaType.Ground);
+        AssertReachable(AreaType.Library, AreaType.Ground);
+        AssertReachable(AreaType.Gym, AreaType.Ground);
+    }
+
+    [Fact]
     public void Junkyards_AreUnreachable()
     {
         Assert.Null(FindPath(AreaType.AdminOffice, AreaType.Junkyard));

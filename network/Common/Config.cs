@@ -126,10 +126,10 @@ namespace network.common
         public static readonly bool SWARM_P0_ENABLED = true;
 
         /// <summary>
-        ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2, 8인 맵 역할 검증(M1)은 8.
+        ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2, 3쌍 깔때기(성장곡선 v3)는 6.
         ///     사람은 항상 1명이고 나머지는 봇으로 채운다.
         /// </summary>
-        public static readonly int SWARM_PLAYERS_PER_MATCH = 8;
+        public static readonly int SWARM_PLAYERS_PER_MATCH = 6;
 
         /// <summary>스웜 탐색 스팟 개봉 비용(소환석). 사람·봇 공통.</summary>
         public const int SWARM_EXPLORE_SUMMON_COST = 5;

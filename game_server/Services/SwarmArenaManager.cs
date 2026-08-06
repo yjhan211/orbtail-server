@@ -18,6 +18,10 @@ public sealed class SwarmArenaManager
     // 최소 사망 시간이 충분히 길도록 24 × 0.8초를 유지한다.
     public const int ContactDamage = 24;
 
+    // 시작방 몹은 약하게: 봇 포함 8인 전원이 초반 2팩을 버티고 조우 지점까지 살아나가야
+    // 조우 구도가 성립한다. 위험 경사는 시작방(약) → 조우 지점·외곽(강)으로 유지.
+    public const int StartRoomContactDamage = 12;
+
     // 몬스터별 쿨다운만 있으면 무리에 겹칠 때 마릿수만큼 중첩 피격되어 1~2초 만에 죽는다.
     // 뱀서 표준대로 참가자 측 피격 무적을 둔다: 한 입은 아프게, 무리는 초당 한 입만.
     public const float ContactImmunitySeconds = 0.8f;
@@ -162,7 +166,7 @@ public sealed class SwarmArenaManager
                         monster.MonsterId,
                         participant.PlayerId,
                         monster.Area,
-                        ContactDamage));
+                        monster.ContactDamageValue));
                     break;
                 }
             }
@@ -553,7 +557,10 @@ public sealed class SwarmArenaManager
             ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
             // 매 킬 1석: 시작방 선지급 10마리 = 방 스팟 2개(10석)를 정확히 커버한다.
             // 스팟이 유한 소진형이라 드롭률 인상은 스노우볼이 아니라 페이스 조절이다.
-            SummonStoneReward = 1
+            SummonStoneReward = 1,
+            ContactDamageValue = StartRooms.Contains(anchor.Area)
+                ? StartRoomContactDamage
+                : ContactDamage
         };
         state.Monsters[monster.MonsterId] = monster;
         result.SpawnedMonsters.Add(monster.ToMonsterRuntimeInfo());
@@ -699,6 +706,7 @@ public sealed class SwarmArenaManager
         public DateTime DiedAtUtc { get; set; }
         public float ScatterAngle { get; init; }
         public int SummonStoneReward { get; init; }
+        public int ContactDamageValue { get; init; }
         public long ChaseTargetPlayerId { get; set; }
 
         public MonsterRuntimeInfo ToMonsterRuntimeInfo() => new()

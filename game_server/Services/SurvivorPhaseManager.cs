@@ -26,9 +26,19 @@ public sealed class SurvivorPhaseManager
     public const int RoomSelectionSeconds = 3;
     public const int CorridorClosureWarningSeconds = 5;
 
-    private static readonly int[] OpenRoomCounts = [8, 6, 4, 2];
     private static readonly AreaType[] RoomCandidates =
         SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().ToArray();
+
+    // 시작방 수에서 파생: 6방이면 [6, 4, 2]. 두 방씩 닫으며 수렴한다.
+    private static readonly int[] OpenRoomCounts = BuildOpenRoomCounts(RoomCandidates.Length);
+
+    private static int[] BuildOpenRoomCounts(int roomCount)
+    {
+        var counts = new List<int>();
+        for (int count = roomCount; count >= 2; count -= 2)
+            counts.Add(count);
+        return counts.ToArray();
+    }
 
     private readonly ConcurrentDictionary<long, SurvivorPhaseState> _states = new();
     private readonly Func<DateTime> _utcNow;
