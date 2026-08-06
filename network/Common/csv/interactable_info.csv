@@ -22,7 +22,7 @@ id,area_type,object_type,short_name_key,description_key,interaction_type,cell_x,
 701000035,1,12,interactable/701000035/name,interactable/701000035/desc,7,116,70
 701000038,14,12,interactable/701000038/name,interactable/701000038/desc,7,98,66
 701000039,22,3,interactable/701000039/name,interactable/701000039/desc,7,94,107
-701000040,22,7,interactable/701000040/name,interactable/701000040/desc,7,88,107
+701000040,22,7,interactable/701000040/name,interactable/701000040/desc,7,96,102
 701000044,22,12,interactable/701000044/name,interactable/701000044/desc,7,92,87
 701000045,22,12,interactable/701000045/name,interactable/701000045/desc,7,93,84
 701000050,20,5,interactable/701000050/name,interactable/701000050/desc,7,172,120
