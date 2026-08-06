@@ -132,23 +132,34 @@ namespace network.common
         public static readonly int SWARM_PLAYERS_PER_MATCH = 6;
 
         /// <summary>
-        ///     스웜 탐색 스팟 개봉 비용 비례식(성장곡선 v3): 기본 3석 + 보유 오브당 2석.
-        ///     시작 오브 1개 기준 첫 개봉 5석 — 종전 고정 비용과 같은 체감이다.
-        ///     머지가 보유 수를 줄여 다음 개봉을 싸게 한다 (전투+경제 이중 인센티브). 사람·봇 공통.
+        ///     스웜 탐색 스팟 개봉 비용은 장소에 붙는다: 처음 여는 스팟은 기본가, 이미 열린
+        ///     스팟은 리젠될 때마다 가산이 붙는다. 스팟마다 가격이 하나라 모든 플레이어에게
+        ///     같은 숫자로 읽힌다. 사람·봇 공통 (개봉 횟수 장부 공유).
         /// </summary>
-        public const int SWARM_EXPLORE_COST_BASE = 3;
+        public const int SWARM_EXPLORE_COST_BASE = 5;
 
-        /// <summary>보유 오브 1개당 개봉 비용 가산.</summary>
-        public const int SWARM_EXPLORE_COST_PER_ORB = 2;
+        /// <summary>스팟 리젠 시간(초). 개봉된 스팟은 사라지지 않고 이 시간 뒤 다시 나온다.</summary>
+        public const int SWARM_EXPLORE_REGEN_SECONDS = 60;
 
-        public static int GetSwarmExploreCost(int ownedOrbCount) =>
-            SWARM_EXPLORE_COST_BASE + SWARM_EXPLORE_COST_PER_ORB * (ownedOrbCount > 0 ? ownedOrbCount : 0);
+        /// <summary>같은 스팟이 다시 나올 때마다 요구 소환석 가산 — 리젠 눌러앉기 감속.</summary>
+        public const int SWARM_EXPLORE_REOPEN_SURCHARGE = 2;
+
+        public static int GetSwarmExploreCost(int spotOpenCount) =>
+            SWARM_EXPLORE_COST_BASE +
+            SWARM_EXPLORE_REOPEN_SURCHARGE * (spotOpenCount > 0 ? spotOpenCount : 0);
 
         /// <summary>
-        ///     스웜 탐색 스팟은 한 번 열면 판이 끝날 때까지 소진된다 — 방을 떠날 이유를 만든다.
-        ///     쿨다운 저장소를 재사용하므로 "판보다 긴 쿨다운"으로 표현한다.
+        ///     예산 초과 스팟의 선소진용 — 판보다 긴 쿨다운으로 영구 봉인을 표현한다.
+        ///     (일반 개봉은 SWARM_EXPLORE_REGEN_SECONDS 리젠으로 되돌아온다.)
         /// </summary>
         public const int SWARM_EXPLORE_CONSUME_SECONDS = 100_000;
+
+        /// <summary>
+        ///     궤도 스쿼드(#217 오브 성장 개편): 6칸 보드를 폐지하고 궤도 오브 수가 곧 성장이다.
+        ///     같은 색 3개가 모이면 자동으로 상위 티어(같은 색)로 합쳐진다 — SB 3머지 문법.
+        ///     상한은 클라 궤도 슬롯 수와 같아야 한다 (PlayerTool.MaxOrbSlots).
+        /// </summary>
+        public const int SWARM_ORB_CAPACITY = 9;
 
         /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.

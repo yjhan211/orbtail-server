@@ -49,7 +49,7 @@ public partial class GameClientSession
                 CurrentMapSubId,
                 playerId,
                 itemId,
-                Config.SURVIVOR_INVENTORY_SLOT_COUNT,
+                Config.SWARM_P0_ENABLED ? Config.SWARM_ORB_CAPACITY : Config.SURVIVOR_INVENTORY_SLOT_COUNT,
                 out var addedItem)
                 ? addedItem
                 : null,

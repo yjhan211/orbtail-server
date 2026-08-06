@@ -27,13 +27,13 @@ public partial class GameClientSession
     private const int RngCollectItemResultType = 2;
     private const int RngCollectStaminaCost = 5;
 
-    // #217 P0-c: 스웜 아레나 탐색 스팟 — 비용·소진 규칙은 봇과 공유하므로 Config에 있다.
-    private const int SwarmExploreCooldownSeconds = Config.SWARM_EXPLORE_CONSUME_SECONDS;
+    // #217 P0-c: 스웜 아레나 탐색 스팟 — 비용·리젠 규칙은 봇과 공유하므로 Config에 있다.
+    private const int SwarmExploreCooldownSeconds = Config.SWARM_EXPLORE_REGEN_SECONDS;
 
-    /// <summary>개봉 비용 비례식: 현재 보드 오브 수 기준. 게이지 시작과 완료 시점 각각 계산한다.</summary>
-    private int GetSwarmExploreCost() =>
+    /// <summary>개봉 비용은 장소에 붙는다: 기본가 + 그 스팟의 재개봉 가산.</summary>
+    private int GetSwarmExploreCost(int interactId) =>
         Config.GetSwarmExploreCost(
-            _inGameInventoryManager.CountOrbs(CurrentMapSubId, PlayerId ?? 0));
+            RngCollectCooldownStore.GetOpenCount(CurrentMapSubId, interactId));
 
     /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — 매칭 단위 추적.
     /// FINISH 도착 시 이 set에 있어야 결과 산출 진행.</summary>
@@ -464,7 +464,7 @@ public partial class GameClientSession
 
         // 소환석 부족이면 게이지를 시작하지 않는다 — 헛 채널 방지.
         if (_summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId!.Value).StoneCount <
-            GetSwarmExploreCost())
+            GetSwarmExploreCost(msg.InteractId))
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.INSUFFICIENT_CURRENCY, 0);
             return Task.CompletedTask;
@@ -510,7 +510,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        var attempt = ExecuteOrbSummon(choiceIndex: 0, costOverride: GetSwarmExploreCost());
+        var attempt = ExecuteOrbSummon(choiceIndex: 0, costOverride: GetSwarmExploreCost(msg.InteractId));
         if (!attempt.Success)
         {
             // 소환 실패(석 부족·보드 포화) — 쿨다운을 풀어 나중에 다시 열 수 있게 한다.
@@ -521,10 +521,11 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        // 같은 오브젝트 연타 방지 — 쿨다운 동안 다른 오브젝트로 동선을 유도한다.
+        // 스팟은 소진되지 않는다 — 리젠 시간 뒤 재개봉 가산이 붙어 다시 나온다.
         RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
         RngCollectCooldownStore.TryAcquireCooldown(
             CurrentMapSubId, msg.InteractId, SwarmExploreCooldownSeconds, out _);
+        RngCollectCooldownStore.IncrementOpenCount(CurrentMapSubId, msg.InteractId);
         BroadcastRngCollectCooldown(msg.InteractId, SwarmExploreCooldownSeconds);
         SendRngCollectResult(
             msg.InteractId, RngCollectItemResultType, attempt.ItemId, 0, SwarmExploreCooldownSeconds);
@@ -532,6 +533,12 @@ public partial class GameClientSession
         Logger.LogInformation(
             "Swarm explore summon: PlayerId={PlayerId}, InteractId={InteractId}, ItemId={ItemId}",
             PlayerId, msg.InteractId, attempt.ItemId);
+
+        // 자동 머지: 개봉으로 쌍이 생기면 즉시 합성 — 보드 관리를 실시간에서 제거한다.
+        foreach (var mergedItem in _inGameInventoryManager.AutoMergeSurvivorOrbs(
+                     CurrentMapSubId, PlayerId.Value, Random.Shared))
+            SendInGameInventoryUpdate(mergedItem);
+
         return Task.CompletedTask;
     }
 
