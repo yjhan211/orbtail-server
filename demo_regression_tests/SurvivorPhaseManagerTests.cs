@@ -29,9 +29,7 @@ public class SurvivorPhaseManagerTests
         Assert.False(manager.IsPveAllowed(214001, AreaType.Corridor));
         // 방 페이즈의 복도는 클리어자의 대기·정비 공간 — 소환·머지·파괴가 허용된다.
         Assert.True(manager.AreOrbBoardActionsAllowed(214001, AreaType.Corridor));
-        Assert.DoesNotContain(AreaType.Storage, first.CurrentRooms);
-        Assert.DoesNotContain(AreaType.Storage2, first.CurrentRooms);
-        Assert.DoesNotContain(AreaType.Junkyard, first.CurrentRooms);
+        // #217 8인 스폰 분산으로 창고·쓰레기장도 시작방 후보가 됐다.
         Assert.DoesNotContain(AreaType.Junkyard2, first.CurrentRooms);
         Assert.DoesNotContain(AreaType.Gym, first.CurrentRooms);
     }
@@ -132,10 +130,10 @@ public class SurvivorPhaseManagerTests
         [
             AreaType.ExamRoom,
             AreaType.BroadcastRoom,
-            AreaType.Classroom2,
-            AreaType.Classroom3,
-            AreaType.Classroom4,
             AreaType.Library,
+            AreaType.Storage,
+            AreaType.Storage2,
+            AreaType.Junkyard,
             AreaType.AdminOffice,
             AreaType.StaffRoom
         ];
@@ -157,10 +155,10 @@ public class SurvivorPhaseManagerTests
         [
             AreaType.ExamRoom,
             AreaType.BroadcastRoom,
-            AreaType.Classroom2,
-            AreaType.Classroom3,
-            AreaType.Classroom4,
             AreaType.Library,
+            AreaType.Storage,
+            AreaType.Storage2,
+            AreaType.Junkyard,
             AreaType.AdminOffice,
             AreaType.StaffRoom
         ];
@@ -180,8 +178,6 @@ public class SurvivorPhaseManagerTests
             Assert.True(GameMapData.IsMoveablePosition(MapId.School, cell));
         });
         Assert.Equal(expectedRooms.OrderBy(area => area), resolvedAreas.OrderBy(area => area));
-        Assert.DoesNotContain(AreaType.Storage, resolvedAreas);
-        Assert.DoesNotContain(AreaType.Storage2, resolvedAreas);
         Assert.DoesNotContain(AreaType.Gym, resolvedAreas);
     }
 

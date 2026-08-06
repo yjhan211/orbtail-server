@@ -24,14 +24,16 @@ namespace network.common.data
         new(165, 85)
     };
 
+        // #217 8인 시작방: 교실 3개가 층별 클러스터를 만들어 스폰 밀도가 몰렸다.
+        // 창고·쓰레기장까지 써서 층·외곽으로 흩뿌린다. (보건실은 AreaType에 없음)
         private static readonly AreaType[] PhaseRoomCandidates =
         {
             AreaType.ExamRoom,
             AreaType.BroadcastRoom,
-            AreaType.Classroom2,
-            AreaType.Classroom3,
-            AreaType.Classroom4,
             AreaType.Library,
+            AreaType.Storage,
+            AreaType.Storage2,
+            AreaType.Junkyard,
             AreaType.AdminOffice,
             AreaType.StaffRoom
         };

@@ -126,10 +126,19 @@ namespace network.common
         public static readonly bool SWARM_P0_ENABLED = true;
 
         /// <summary>
-        ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2(사람 1 + 봇 1).
+        ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2, 8인 맵 역할 검증(M1)은 8.
         ///     사람은 항상 1명이고 나머지는 봇으로 채운다.
         /// </summary>
-        public static readonly int SWARM_PLAYERS_PER_MATCH = 2;
+        public static readonly int SWARM_PLAYERS_PER_MATCH = 8;
+
+        /// <summary>스웜 탐색 스팟 개봉 비용(소환석). 사람·봇 공통.</summary>
+        public const int SWARM_EXPLORE_SUMMON_COST = 5;
+
+        /// <summary>
+        ///     스웜 탐색 스팟은 한 번 열면 판이 끝날 때까지 소진된다 — 방을 떠날 이유를 만든다.
+        ///     쿨다운 저장소를 재사용하므로 "판보다 긴 쿨다운"으로 표현한다.
+        /// </summary>
+        public const int SWARM_EXPLORE_CONSUME_SECONDS = 100_000;
 
         /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.

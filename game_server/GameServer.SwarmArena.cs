@@ -9,14 +9,10 @@ namespace game_server;
 
 public partial class GameServer
 {
-    // 유리 떼 원킬 기준(#214 "무섭지만 녹는다"). 8이면 2타라 처치율이 스폰율을 못 따라가
-    // 스웜이 계속 누적된다 — 실측 18초 판에서 처치 7 / 스폰 18.
     private const int SwarmArenaBasicDamage = 12;
     private const float SwarmArenaBasicRange = 7f;
     private const float SwarmArenaBasicAttackIntervalSeconds = 1f;
     private const int SwarmArenaWeaponItemId = 107000010;
-    private const int SwarmBotRespawnSeconds = 5;
-    private const float SwarmBotSpawnOffset = 4f;
 
     // P0-b A/B: A안 = 1.0 (이동 무관), B안 = 0.4 (이동 중 공격 감쇠, Archero 문법).
     private const float SwarmMovingAttackMultiplier = 1f;
@@ -27,66 +23,73 @@ public partial class GameServer
     private const int SwarmOrbDamageMultiplier = 3;
     private const float SwarmOrbIntervalMultiplier = 0.6f;
 
-    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmBotRespawnAtUtc = new();
     private readonly Dictionary<(long MatchingId, long PlayerId), (Vector3f Position, DateTime At, bool Moving)>
         _swarmMovementSamples = new();
+    private readonly HashSet<long> _swarmOrbGrantedMatchings = new();
 
-    private void ProcessSwarmArenaForMatching(long matchingId)
+    /// <summary>
+    ///     #217 8인 맵 역할 검증(M1). 매치 수명(탈락·최후 1인·타이머)은 기존 서바이버 로얄
+    ///     흐름이 소유하고, 여기서는 스웜 디렉터 틱·접촉 피해·전투 액터·PvP만 돌린다.
+    /// </summary>
+    private void ProcessSwarmArenaForMatching(long matchingId, List<GameClientSession> activeSessions)
     {
-        var sessions = _clientSessions.Values
+        var sessions = activeSessions
             .Where(session => session.PlayerId.HasValue &&
                               session.CurrentMapSubId == matchingId &&
                               !session.IsGameEnded)
             .ToList();
         if (sessions.Count == 0)
             return;
-        var player = sessions[0];
         var bots = _botPlayerManager.GetBots(matchingId).ToList();
 
         if (!_swarmArenaManager.HasMatching(matchingId))
         {
-            Cell startCell = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Ground);
-            if (!_swarmArenaManager.InitializeMatching(
-                    matchingId, player.PlayerId!.Value, AreaType.Ground, startCell, DateTime.UtcNow))
+            long humanPlayerId = sessions[0].PlayerId!.Value;
+            if (!_swarmArenaManager.InitializeMatching(matchingId, humanPlayerId, DateTime.UtcNow))
                 return;
 
-            player.PlaceAtSpotArenaStart(AreaType.Ground, startCell);
-            player.GrantSwarmArenaOrb(SwarmArenaWeaponItemId);
             GameClientSession.SwarmExploreNoiseCallback ??=
                 (noiseMatchingId, noisePlayerId) =>
                     _swarmArenaManager.AttractSwarm(noiseMatchingId, noisePlayerId);
-            for (int index = 0; index < bots.Count; index++)
-                PlaceSwarmBot(bots[index], startCell, index);
+            EqualizeStartRoomExploreSpots(matchingId, sessions);
             logger.LogInformation(
-                "Swarm arena initialized: MatchingId={MatchingId}, PlayerId={PlayerId}, Bots={BotCount}",
-                matchingId, player.PlayerId, bots.Count);
+                "Swarm arena initialized: MatchingId={MatchingId}, Humans={HumanCount}, Bots={BotCount}",
+                matchingId, sessions.Count, bots.Count);
+        }
+
+        if (_swarmOrbGrantedMatchings.Add(matchingId))
+        {
+            foreach (var session in sessions)
+                session.GrantSwarmArenaOrb(SwarmArenaWeaponItemId);
         }
 
         DateTime nowUtc = DateTime.UtcNow;
-        ProcessSwarmBotRespawns(matchingId, bots, nowUtc);
 
-        var participants = new List<SpotArenaPlayerSpatial>();
-        if (player.LastValidatedPosition != null && !player.IsEliminated)
-        {
-            participants.Add(new SpotArenaPlayerSpatial(
-                player.PlayerId!.Value, player.CurrentArea, player.LastValidatedPosition));
-        }
-
-        participants.AddRange(bots
-            .Where(bot => !bot.IsEliminated)
-            .Select(bot => new SpotArenaPlayerSpatial(bot.PlayerId, bot.CurrentArea, bot.Position)));
+        var aliveSessions = sessions.Where(session => !session.IsEliminated).ToList();
+        var aliveBots = bots.Where(bot => !bot.IsEliminated).ToList();
+        var participants = aliveSessions
+            .Where(session => session.LastValidatedPosition != null)
+            .Select(session => new SpotArenaPlayerSpatial(
+                session.PlayerId!.Value, session.CurrentArea, session.LastValidatedPosition!))
+            .Concat(aliveBots.Select(bot =>
+                new SpotArenaPlayerSpatial(bot.PlayerId, bot.CurrentArea, bot.Position)))
+            .ToList();
 
         var tick = _swarmArenaManager.Tick(matchingId, participants, nowUtc);
 
         foreach (var damage in tick.PlayerDamage)
-            ApplySwarmParticipantDamage(matchingId, damage.MonsterId, damage.TargetPlayerId, damage.Damage,
-                player, bots, nowUtc);
+            ApplySwarmParticipantDamage(matchingId, damage, aliveSessions, aliveBots, sessions);
+
+        // 봇도 사람과 같은 규칙으로 성장한다: 소환석 5개 + 스팟 소진. 공짜 버튼 소환 없음.
+        ProcessSwarmBotExplores(matchingId, aliveBots, sessions);
 
         if (TryConsumeMonsterPositionBroadcastSlot(matchingId, nowUtc))
             BroadcastMonsterMinimapSnapshot(sessions, _swarmArenaManager.GetVisualStates(matchingId));
 
         UpdateSwarmMovementSamples(matchingId, participants, nowUtc);
-        var actors = BuildSwarmArenaCombatActors(matchingId, player, bots);
+        var actors = BuildSwarmArenaCombatActors(matchingId, aliveSessions, aliveBots);
+        ProcessSurvivorOrbRecovery(matchingId, actors, aliveSessions, aliveBots, nowUtc);
+        BroadcastSurvivorOrbVisualStates(matchingId, actors, sessions);
         var attacks = _proximityAutoCombatResolver.Resolve(
             matchingId,
             actors,
@@ -97,9 +100,6 @@ public partial class GameServer
                                       : ProximityCombatLineOfSight.CanTarget(attacker, target)));
         foreach (var attack in attacks)
         {
-            if (_swarmArenaManager.TryGetEndState(matchingId, out _))
-                break;
-
             var damageResult = _swarmArenaManager.ApplyMonsterDamage(
                 matchingId, attack.TargetPlayerId, attack.AttackerPlayerId, attack.Damage);
             if (damageResult.Applied)
@@ -112,142 +112,241 @@ public partial class GameServer
                 continue;
             }
 
-            // PvP는 저데미지 보조다. 킬의 주 경로는 스웜이어야 한다 (#217 P0-b 결합 원칙).
-            ApplySwarmPvpAttack(matchingId, attack, player, bots, sessions, nowUtc);
+            // PvP는 저데미지 보조다. 킬의 주 경로는 스웜이어야 한다 (#217 결합 원칙).
+            ApplySwarmPvpAttack(matchingId, attack, aliveSessions, aliveBots, sessions);
         }
 
-        if (!_swarmArenaManager.TryGetEndState(matchingId, out bool survived))
-            return;
-
-        var summary = _swarmArenaManager.GetSummary(matchingId);
-        logger.LogInformation(
-            "Swarm arena ended: MatchingId={MatchingId}, Survived={Survived}, " +
-            "SurvivalSeconds={SurvivalSeconds:F1}, HitsTaken={HitsTaken}, Kills={Kills}, PatternHits={PatternHits}",
-            matchingId,
-            summary.Survived,
-            summary.SurvivalSeconds,
-            summary.HitsTaken,
-            summary.Kills,
-            string.Join(",", summary.PatternHits.Select(pair => $"{pair.Key}:{pair.Value}")));
-
-        player.SendSpotArenaGameResult(
-            sessions,
-            survived ? player.PlayerId!.Value : 0,
-            survived ? "swarm_survived" : "swarm_dead");
-        _swarmArenaManager.RemoveMatching(matchingId);
-        _proximityAutoCombatResolver.RemoveMatching(matchingId);
-        CleanupSwarmArenaState(matchingId);
-    }
-
-    private void PlaceSwarmBot(BotPlayerState bot, Cell centerCell, int index)
-    {
-        var center = BotPlayerManager.CellToWorldPosition(MapId.School, centerCell);
-        float angle = index * 2.1f + 0.8f;
-        var position = new Vector3f(
-            center.X + MathF.Cos(angle) * SwarmBotSpawnOffset,
-            center.Y + MathF.Sin(angle) * SwarmBotSpawnOffset,
-            0f);
-        Cell cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, position);
-        if (!GameMapData.IsMoveablePosition(MapId.School, cell))
+        // 봇 탈락 확정은 기존 근접전투 파이프라인과 동일한 경로를 쓴다.
+        foreach (var bot in aliveBots)
         {
-            cell = Cell.Clone(centerCell);
-            position = center;
-        }
+            if (!_botPlayerManager.TryFinalizeProximityAutoCombatElimination(bot, matchingId))
+                continue;
 
-        bot.IsEliminated = false;
-        bot.ManittoStatus = ManittoStatus.ACTIVE;
-        bot.Corruption = 0;
-        bot.Stamina = 100;
-        bot.CurrentArea = AreaType.Ground;
-        bot.Cell = cell;
-        bot.Position = position;
-        bot.Path.Clear();
-        bot.PathIndex = 0;
+            ProcessBotElimination(matchingId, bot.PlayerId, EliminationReason.MENTAL_ZERO, activeSessions,
+                attackerPlayerId: bot.LastProximityAttackerPlayerId);
+        }
     }
 
-    private void ProcessSwarmBotRespawns(long matchingId, List<BotPlayerState> bots, DateTime nowUtc)
+    private const float SwarmBotOpenRange = 1.6f;
+
+    // 시작방 탐색 스팟 수는 스폰 운의 균등을 위해 방당 이 개수로 맞춘다.
+    // 최소 보유 방(쓰레기장 2개)이 기준 — 늘리려면 씬·CSV에 스팟 추가가 필요하다.
+    private const int SwarmStartRoomSpotCount = 2;
+
+    /// <summary>
+    ///     시작방별 스팟 수 균일화: 초과분을 매치 시작 시 선소진 처리한다.
+    ///     CSV·씬은 건드리지 않고 소진 쿨다운 저장소만 쓴다 (id 오름차순으로 앞의 N개 유지).
+    /// </summary>
+    private void EqualizeStartRoomExploreSpots(long matchingId, List<GameClientSession> sessions)
+    {
+        foreach (var area in SurvivorRoyaleSpawnData.GetPhaseRoomCandidates())
+        {
+            var excessSpots = GameInteractableData.GetAll()
+                .Where(info => info.ZoneId == (int)area &&
+                               info.InteractionType == InteractionType.RNG_COLLECT)
+                .OrderBy(info => info.Id)
+                .Skip(SwarmStartRoomSpotCount);
+            foreach (var spot in excessSpots)
+            {
+                if (RngCollectCooldownStore.TryAcquireCooldown(
+                        matchingId, spot.Id, Config.SWARM_EXPLORE_CONSUME_SECONDS, out _))
+                    BroadcastSwarmExploreConsumed(spot.Id, sessions);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     봇의 스팟 개봉: 게이지 없이 반경 안에서 즉시 연다. 소진 스팟은 사람·봇 공용
+    ///     쿨다운 저장소로 잠기므로, 유한 스팟을 둘러싼 경쟁이 성립한다.
+    /// </summary>
+    private void ProcessSwarmBotExplores(
+        long matchingId,
+        List<BotPlayerState> bots,
+        List<GameClientSession> sessions)
     {
         foreach (var bot in bots)
         {
-            if (!_swarmBotRespawnAtUtc.TryGetValue((matchingId, bot.PlayerId), out var respawnAt) ||
-                nowUtc < respawnAt)
+            if (_summonStoneManager.GetSnapshot(matchingId, bot.PlayerId).StoneCount <
+                Config.SWARM_EXPLORE_SUMMON_COST)
                 continue;
 
-            _swarmBotRespawnAtUtc.Remove((matchingId, bot.PlayerId));
-            PlaceSwarmBot(bot, GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Ground), bot.GetHashCode() & 3);
+            if (!TryFindNearestAvailableExploreSpot(
+                    matchingId, bot.CurrentArea, bot.Position, out var spot, out float distance) ||
+                distance > SwarmBotOpenRange)
+                continue;
+
+            if (!RngCollectCooldownStore.TryAcquireCooldown(
+                    matchingId, spot.Id, Config.SWARM_EXPLORE_CONSUME_SECONDS, out _))
+                continue;
+
+            TryDestroyBotOverflowOrb(matchingId, bot);
+            var attempt = _summonStoneManager.TrySummon(
+                matchingId,
+                bot.PlayerId,
+                itemId => _inGameInventoryManager.TryAddItemWithCapacity(
+                    matchingId,
+                    bot.PlayerId,
+                    itemId,
+                    Config.SURVIVOR_INVENTORY_SLOT_COUNT,
+                    out var addedItem)
+                    ? addedItem
+                    : null,
+                SelectBotSummonChoice(matchingId, bot),
+                costOverride: Config.SWARM_EXPLORE_SUMMON_COST);
+            if (!attempt.Success)
+            {
+                RngCollectCooldownStore.ClearCooldown(matchingId, spot.Id);
+                continue;
+            }
+
+            BroadcastSwarmExploreConsumed(spot.Id, sessions);
             logger.LogInformation(
-                "Swarm bot respawned: MatchingId={MatchingId}, BotId={BotId}", matchingId, bot.PlayerId);
+                "Swarm bot explore: MatchingId={MatchingId}, BotId={BotId}, InteractId={InteractId}, ItemId={ItemId}",
+                matchingId, bot.PlayerId, spot.Id, attempt.ItemId);
         }
+    }
+
+    private bool TryFindNearestAvailableExploreSpot(
+        long matchingId,
+        AreaType area,
+        Vector3f position,
+        out InteractableInfoData spot,
+        out float distance)
+    {
+        spot = null!;
+        distance = float.MaxValue;
+        var onCooldown = RngCollectCooldownStore.GetSnapshot(matchingId)
+            .Where(entry => entry.RemainingSeconds > 0)
+            .Select(entry => entry.InteractId)
+            .ToHashSet();
+        foreach (var info in GameInteractableData.GetAll())
+        {
+            if (info.ZoneId != (int)area ||
+                info.InteractionType != InteractionType.RNG_COLLECT ||
+                onCooldown.Contains(info.Id))
+                continue;
+
+            var world = BotPlayerManager.CellToWorldPosition(
+                MapId.School, new Cell(info.CellX, info.CellY));
+            float dx = world.X - position.X;
+            float dy = world.Y - position.Y;
+            float candidateDistance = MathF.Sqrt(dx * dx + dy * dy);
+            if (candidateDistance < distance)
+            {
+                distance = candidateDistance;
+                spot = info;
+            }
+        }
+
+        return spot != null;
+    }
+
+    private static void BroadcastSwarmExploreConsumed(int interactId, List<GameClientSession> sessions)
+    {
+        var body = MessagePack.MessagePackSerializer.Serialize(new G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST
+        {
+            InteractId = interactId,
+            CooldownSeconds = Config.SWARM_EXPLORE_CONSUME_SECONDS
+        });
+        foreach (var session in sessions)
+        {
+            if (!session.PlayerId.HasValue)
+                continue;
+            using var packet = global::network.packets.Packet.Create(
+                (int)Protocol.G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST, session.PlayerId.Value);
+            packet.SetBody(body);
+            session.Send(packet);
+        }
+    }
+
+    /// <summary>
+    ///     봇 이동 지시 라우팅: 도주(생존)가 최우선이고, 소환석이 차 있으면 가장 가까운
+    ///     미소진 스팟으로 순례하며, 둘 다 아니면 스웜 디렉터의 배회를 따른다.
+    /// </summary>
+    private SpotArenaBotDirective ResolveSwarmBotDirective(long matchingId, long botPlayerId)
+    {
+        var directive = _swarmArenaManager.GetBotDirective(matchingId, botPlayerId);
+        if (directive.Mode != SpotArenaBotMode.Escort)
+            return directive;
+
+        var bot = _botPlayerManager.GetBots(matchingId)
+            .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
+        if (bot == null || bot.IsEliminated)
+            return directive;
+        if (_summonStoneManager.GetSnapshot(matchingId, botPlayerId).StoneCount <
+            Config.SWARM_EXPLORE_SUMMON_COST)
+            return directive;
+        if (!TryFindNearestAvailableExploreSpot(
+                matchingId, bot.CurrentArea, bot.Position, out var spot, out _))
+            return directive;
+
+        Cell spotCell = new(spot.CellX, spot.CellY);
+        if (!GameMapData.IsMoveablePosition(MapId.School, spotCell))
+        {
+            spotCell = spotCell.GetAdjacentCells().FirstOrDefault(cell =>
+                GameMapData.IsMoveablePosition(MapId.School, cell) &&
+                GameMapData.GetCurrentArea(MapId.School, cell) == bot.CurrentArea) ?? spotCell;
+        }
+
+        return new SpotArenaBotDirective(
+            SpotArenaBotMode.Escort,
+            bot.CurrentArea,
+            spotCell,
+            BotPlayerManager.CellToWorldPosition(MapId.School, spotCell));
     }
 
     private void ApplySwarmParticipantDamage(
         long matchingId,
-        int sourceMonsterId,
-        long targetPlayerId,
-        int damage,
-        GameClientSession player,
-        List<BotPlayerState> bots,
-        DateTime nowUtc)
+        SpotArenaPlayerDamage damage,
+        List<GameClientSession> aliveSessions,
+        List<BotPlayerState> aliveBots,
+        List<GameClientSession> allSessions)
     {
-        if (player.PlayerId == targetPlayerId)
+        var session = aliveSessions.FirstOrDefault(candidate =>
+            candidate.PlayerId == damage.TargetPlayerId);
+        if (session != null)
         {
-            if (player.ApplySpotArenaMonsterHit(sourceMonsterId, damage))
-                _swarmArenaManager.EndForDeath(matchingId, nowUtc);
+            // 기존 잔상 피격 경로 — 오염 증가·피격 피드백·일반 탈락 흐름까지 담당한다.
+            session.ApplyEmotionAfterimageMonsterHit(damage.MonsterId, damage.Damage);
             return;
         }
 
-        var bot = bots.FirstOrDefault(candidate =>
-            candidate.PlayerId == targetPlayerId && !candidate.IsEliminated);
+        var bot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == damage.TargetPlayerId);
         if (bot == null)
             return;
 
-        bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + damage);
-        if (bot.Corruption >= Config.SURVIVOR_MAX_CORRUPTION)
-            DownSwarmBot(matchingId, bot, nowUtc);
+        bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + damage.Damage);
     }
 
     private void ApplySwarmPvpAttack(
         long matchingId,
         ProximityCombatAttack attack,
-        GameClientSession player,
-        List<BotPlayerState> bots,
-        List<GameClientSession> sessions,
-        DateTime nowUtc)
+        List<GameClientSession> aliveSessions,
+        List<BotPlayerState> aliveBots,
+        List<GameClientSession> allSessions)
     {
         int damage = Math.Min(attack.Damage, SwarmArenaManager.PvpDamage);
-        if (player.PlayerId == attack.TargetPlayerId)
+        var targetSession = aliveSessions.FirstOrDefault(session =>
+            session.PlayerId == attack.TargetPlayerId);
+        if (targetSession != null)
         {
-            if (player.ApplySpotArenaCombatHit(
-                    attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, damage))
-                _swarmArenaManager.EndForDeath(matchingId, nowUtc);
+            targetSession.ApplyProximityAutoCombatHit(attack.AttackerPlayerId, attack.Area,
+                attack.WeaponItemId, damage);
         }
         else
         {
-            var bot = bots.FirstOrDefault(candidate =>
-                candidate.PlayerId == attack.TargetPlayerId && !candidate.IsEliminated);
+            var bot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == attack.TargetPlayerId);
             if (bot == null)
                 return;
 
             bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + damage);
-            if (bot.Corruption >= Config.SURVIVOR_MAX_CORRUPTION)
-                DownSwarmBot(matchingId, bot, nowUtc);
+            bot.LastProximityAttackerPlayerId = attack.AttackerPlayerId;
         }
 
-        sessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId)
+        allSessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId)
             ?.SendProximityAutoCombatAttackFeedback(
                 attack.TargetPlayerId, attack.Area, attack.WeaponItemId, damage);
-        BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, sessions);
-    }
-
-    private void DownSwarmBot(long matchingId, BotPlayerState bot, DateTime nowUtc)
-    {
-        bot.IsEliminated = true;
-        bot.ManittoStatus = ManittoStatus.SPECTATING;
-        bot.Path.Clear();
-        bot.PathIndex = 0;
-        _swarmBotRespawnAtUtc[(matchingId, bot.PlayerId)] = nowUtc.AddSeconds(SwarmBotRespawnSeconds);
-        logger.LogInformation(
-            "Swarm bot downed: MatchingId={MatchingId}, BotId={BotId}", matchingId, bot.PlayerId);
+        BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, allSessions);
     }
 
     private void UpdateSwarmMovementSamples(
@@ -281,33 +380,35 @@ public partial class GameServer
 
     private void CleanupSwarmArenaState(long matchingId)
     {
-        foreach (var key in _swarmBotRespawnAtUtc.Keys.Where(key => key.MatchingId == matchingId).ToList())
-            _swarmBotRespawnAtUtc.Remove(key);
+        _swarmArenaManager.RemoveMatching(matchingId);
+        _swarmOrbGrantedMatchings.Remove(matchingId);
         foreach (var key in _swarmMovementSamples.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmMovementSamples.Remove(key);
     }
 
     private List<ProximityCombatActor> BuildSwarmArenaCombatActors(
         long matchingId,
-        GameClientSession player,
-        List<BotPlayerState> bots)
+        List<GameClientSession> aliveSessions,
+        List<BotPlayerState> aliveBots)
     {
         var actors = new List<ProximityCombatActor>();
-        if (player.PlayerId.HasValue &&
-            player.LastValidatedPosition != null &&
-            !player.IsEliminated &&
-            TryCreateSpatialActor(
-                player.PlayerId.Value,
-                player.CurrentMapId,
-                player.CurrentArea,
-                player.LastValidatedPosition,
-                out var playerSpatial))
+        foreach (var session in aliveSessions)
         {
-            AddSwarmParticipantCombatActors(actors, matchingId, playerSpatial);
+            if (session.PlayerId.HasValue &&
+                session.LastValidatedPosition != null &&
+                TryCreateSpatialActor(
+                    session.PlayerId.Value,
+                    session.CurrentMapId,
+                    session.CurrentArea,
+                    session.LastValidatedPosition,
+                    out var spatial))
+            {
+                AddSwarmParticipantCombatActors(actors, matchingId, spatial);
+            }
         }
 
         MapId botMapId = _botPlayerManager.GetMatchingMapId(matchingId);
-        foreach (var bot in bots.Where(candidate => !candidate.IsEliminated))
+        foreach (var bot in aliveBots)
         {
             if (TryCreateSpatialActor(bot.PlayerId, botMapId, bot.CurrentArea, bot.Position, out var botSpatial))
                 AddSwarmParticipantCombatActors(actors, matchingId, botSpatial);

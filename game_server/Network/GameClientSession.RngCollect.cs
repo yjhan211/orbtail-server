@@ -27,9 +27,9 @@ public partial class GameClientSession
     private const int RngCollectItemResultType = 2;
     private const int RngCollectStaminaCost = 5;
 
-    // #217 P0-c: 스웜 아레나 탐색 오브젝트 개봉 비용(소환석)과 재사용 대기.
-    private const int SwarmExploreSummonCost = 5;
-    private const int SwarmExploreCooldownSeconds = 30;
+    // #217 P0-c: 스웜 아레나 탐색 스팟 — 비용·소진 규칙은 봇과 공유하므로 Config에 있다.
+    private const int SwarmExploreSummonCost = Config.SWARM_EXPLORE_SUMMON_COST;
+    private const int SwarmExploreCooldownSeconds = Config.SWARM_EXPLORE_CONSUME_SECONDS;
 
     /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — 매칭 단위 추적.
     /// FINISH 도착 시 이 set에 있어야 결과 산출 진행.</summary>

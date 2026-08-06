@@ -65,9 +65,9 @@ public class AreaClosureManagerTests
         Assert.True(state.PhaseDriven);
         Assert.All(startingRooms, area => Assert.DoesNotContain(area, clientState.ClosedAreas));
         Assert.Contains(AreaType.Corridor, clientState.ClosedAreas);
+        // #217 8인 스폰 분산으로 창고들이 시작방이 됐다 — 비시작방 폐쇄 검증은 강당·교실로.
         Assert.Contains(AreaType.Gym, clientState.ClosedAreas);
-        Assert.Contains(AreaType.Storage, clientState.ClosedAreas);
-        Assert.Contains(AreaType.Storage2, clientState.ClosedAreas);
+        Assert.Contains(AreaType.Classroom2, clientState.ClosedAreas);
     }
     [Fact]
     public void CheckClosureSchedule_WarnsForEveryAreaThenClosesTheWholeWave()
