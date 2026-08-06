@@ -175,6 +175,7 @@ id,name_kr,name_en,name_jp,requirements,comment_kr,reusable
 601000007,3-1 교실 열쇠,Class 3-1 Key,3-1教室の鍵,[],열지 못할 것은 없어요,1
 601000008,3-2 교실 열쇠,Class 3-2 Key,3-2教室の鍵,[],열지 못할 것은 없어요,1
 601000009,분필,Chalk,チョーク,[],백색 분필 한 자루,1
+601000010,폐쇄 구역 열쇠,Sealed Area Key,封鎖区域の鍵,[],어디에서도 찾을 수 없는 열쇠,1
 700000101,손상된 마이크 헤드,Damaged Mic Head,破損したマイクヘッド,[],,1
 800000102,변조된 회로 기판,Modified Circuit Board,改造された回路基板,[],,1
 800000103,비상 호출 코드 메모,Emergency Call Code Memo,緊急呼出コードのメモ,[],,1

@@ -130,10 +130,10 @@ public class SurvivorPhaseManagerTests
         [
             AreaType.ExamRoom,
             AreaType.BroadcastRoom,
-            AreaType.Library,
+            AreaType.Classroom2,
             AreaType.Storage,
             AreaType.Storage2,
-            AreaType.Junkyard,
+            AreaType.Classroom3,
             AreaType.AdminOffice,
             AreaType.StaffRoom
         ];
@@ -155,10 +155,10 @@ public class SurvivorPhaseManagerTests
         [
             AreaType.ExamRoom,
             AreaType.BroadcastRoom,
-            AreaType.Library,
+            AreaType.Classroom2,
             AreaType.Storage,
             AreaType.Storage2,
-            AreaType.Junkyard,
+            AreaType.Classroom3,
             AreaType.AdminOffice,
             AreaType.StaffRoom
         ];

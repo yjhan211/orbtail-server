@@ -15,7 +15,7 @@ namespace network.common.data
         private static readonly Cell[] CorridorAnchors =
         {
         new(140, 70),
-        new(174, 108),
+        new(160, 108),
         new(112, 108),
         new(145, 108),
         new(178, 73),
@@ -24,16 +24,18 @@ namespace network.common.data
         new(165, 85)
     };
 
-        // #217 8인 시작방: 교실 3개가 층별 클러스터를 만들어 스폰 밀도가 몰렸다.
-        // 창고·쓰레기장까지 써서 층·외곽으로 흩뿌린다. (보건실은 AreaType에 없음)
+        // #217 8인 시작방 — 3쌍 조우 토폴로지.
+        // 고사실+창고1 → 도서관 / 보건실+창고2 → 강당 / 행정실+교무실+방송실+3-2 → 복도.
+        // 도서관·강당은 조우 지점이므로 스폰 금지, 쓰레기장은 문 잠금으로 도달 불가.
+        // (보건실 = Classroom2, 3-2 = Classroom3)
         private static readonly AreaType[] PhaseRoomCandidates =
         {
             AreaType.ExamRoom,
             AreaType.BroadcastRoom,
-            AreaType.Library,
+            AreaType.Classroom2,
             AreaType.Storage,
             AreaType.Storage2,
-            AreaType.Junkyard,
+            AreaType.Classroom3,
             AreaType.AdminOffice,
             AreaType.StaffRoom
         };

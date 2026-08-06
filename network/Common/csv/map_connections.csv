@@ -5,9 +5,9 @@ map_id,from_area,to_area,connection_type,stair_side,forward_spawn_x,forward_spaw
 1,30,7,door,none,143,93,144,93
 1,30,7,door,none,160,100,159,100
 1,12,7,door,none,142,66,143,66
-1,32,7,door,none,117,112,117,114
+1,32,22,door,none,89,107,89,109
 1,42,7,door,none,148,112,148,114
-1,20,7,door,none,181,112,181,114
+1,20,13,door,none,177,103,177,105
 1,22,7,door,none,103,98,102,98
 1,22,14,door,none,92,71,93,72
 1,14,2,door,none,92,56,93,57

@@ -175,6 +175,7 @@ public static class BotPathfinder
                 if (isAreaBlocked != null && isAreaBlocked(next) && next != toArea) continue;
                 // 미설정 SpawnCell(0,0) conn은 사용 불가 — 영역 중심 폴백 회피용 가드
                 if (conn.SpawnCell.X == 0 && conn.SpawnCell.Y == 0) continue;
+                if (IsConnectionStaticallyLocked(mapId, conn)) continue;
 
                 visited.Add(next);
                 parent[next] = (current, conn);
@@ -215,6 +216,7 @@ public static class BotPathfinder
         {
             if (conn.ToArea != toArea) continue;
             if (conn.SpawnCell.X == 0 && conn.SpawnCell.Y == 0) continue;
+            if (IsConnectionStaticallyLocked(mapId, conn)) continue;
             // exit cell(fromArea 측 도어) = reverse conn의 SpawnCell
             var exit = FindReverseSpawnCell(mapId, conn);
             if (exit == null) continue;
@@ -227,6 +229,19 @@ public static class BotPathfinder
             }
         }
         return best;
+    }
+
+    /// <summary>
+    ///     연결이 정적으로 잠긴 문(is_initially_open=0)으로 막혀 있는지.
+    ///     매칭별 동적 개폐 상태는 다루지 않는다 — 열쇠 전용 영구 잠금 문의 봇 경로 차단용.
+    /// </summary>
+    public static bool IsConnectionStaticallyLocked(MapId mapId, AreaConnectionInfo conn)
+    {
+        var exit = FindReverseSpawnCell(mapId, conn);
+        if (exit == null) return false;
+
+        var door = GameDoorData.GetDoorForTransition(conn.FromArea, conn.ToArea, exit, conn.SpawnCell);
+        return door is { IsInitiallyOpen: false };
     }
 
     /// <summary>
