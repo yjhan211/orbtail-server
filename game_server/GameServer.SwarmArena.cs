@@ -16,7 +16,7 @@ public partial class GameServer
 
     // P0-b 정지 공격 규칙(하드 컷): 이동 중에는 공격하지 않는다. 감쇠안(0.4)은 상대가
     // 읽을 수 없고 무빙 최적해를 남겨서 기각 — #217 기획 코멘트 참조.
-    private static readonly bool SwarmStopToAttackEnabled = true;
+    private static readonly bool SwarmStopToAttackEnabled = false;
     private const float SwarmMovingSpeedThreshold = 1.5f;
 
     // 정지를 이 시간 이상 유지해야 무장된다 — 끊어 걷기(스텝 샷)가 무료가 되지 않게.
