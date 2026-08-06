@@ -27,10 +27,10 @@ public class DoorStateManager
             var lockedAreas = initiallyLockedAreas?.ToHashSet() ?? [];
             _openDoors[matchingId] = new HashSet<int>();
 
-            // 초기 열림 상태인 문 등록
+            // 초기 열림 상태인 문 등록 (is_initially_open=0인 문은 열쇠로만 개방)
             foreach (var door in GameDoorData.GetAll())
             {
-                if (!lockedAreas.Contains(door.AreaType))
+                if (!lockedAreas.Contains(door.AreaType) && door.IsInitiallyOpen)
                     _openDoors[matchingId].Add(door.DoorId);
             }
         }

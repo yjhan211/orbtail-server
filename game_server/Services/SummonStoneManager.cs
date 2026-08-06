@@ -86,13 +86,14 @@ public sealed class SummonStoneManager
     }
 
     public SummonOrbAttempt TrySummon(long matchingId, long playerId, Func<int, InGameItemInfo?> grantItem,
-        int choiceIndex = 0)
+        int choiceIndex = 0, int? costOverride = null)
     {
         ArgumentNullException.ThrowIfNull(grantItem);
         var state = GetOrCreatePlayerState(matchingId, playerId);
         lock (state.SyncRoot)
         {
-            int cost = GetCost(state.SuccessfulSummonCount);
+            // costOverride: 스웜 P0-c의 보유 오브 비례 비용. 기본 곡선(소환 횟수 삼각수)을 대체한다.
+            int cost = costOverride ?? GetCost(state.SuccessfulSummonCount);
             if (state.StoneCount < cost)
                 return SummonOrbAttempt.Failed(ErrorCode.INSUFFICIENT_CURRENCY, CreateSnapshot(state));
 

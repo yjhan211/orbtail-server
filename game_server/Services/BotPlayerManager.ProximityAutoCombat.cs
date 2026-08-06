@@ -45,7 +45,7 @@ public partial class BotPlayerManager
             int staminaRecovery = 0;
             int corruptionRecovery = 0;
             bool summonStonePickup = candidate.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID;
-            bool canStore = inventory.GetAllItems().Count < Config.SURVIVOR_INVENTORY_SLOT_COUNT;
+            bool canStore = inventory.GetAllItems().Count < Config.GetOrbCapacity();
 
             long discovererPlayerId = groundItemManager.GetDiscovererPlayerId(
                 matchingId, candidate.GroundItemUid);
@@ -96,7 +96,7 @@ public partial class BotPlayerManager
                          matchingId,
                          bot.PlayerId,
                          claimedItem.ItemId,
-                         Config.SURVIVOR_INVENTORY_SLOT_COUNT,
+                         Config.GetOrbCapacity(),
                          out addedItem))
             {
                 _logger.LogWarning(

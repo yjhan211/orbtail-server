@@ -126,6 +126,46 @@ namespace network.common
         public static readonly bool SWARM_P0_ENABLED = true;
 
         /// <summary>
+        ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2, 3쌍 깔때기(성장곡선 v3)는 6.
+        ///     사람은 항상 1명이고 나머지는 봇으로 채운다.
+        /// </summary>
+        public static readonly int SWARM_PLAYERS_PER_MATCH = 6;
+
+        /// <summary>
+        ///     스웜 탐색 스팟 개봉 비용은 장소에 붙는다: 처음 여는 스팟은 기본가, 이미 열린
+        ///     스팟은 리젠될 때마다 가산이 붙는다. 스팟마다 가격이 하나라 모든 플레이어에게
+        ///     같은 숫자로 읽힌다. 사람·봇 공통 (개봉 횟수 장부 공유).
+        /// </summary>
+        public const int SWARM_EXPLORE_COST_BASE = 5;
+
+        /// <summary>스팟 리젠 시간(초). 개봉된 스팟은 사라지지 않고 이 시간 뒤 다시 나온다.</summary>
+        public const int SWARM_EXPLORE_REGEN_SECONDS = 60;
+
+        /// <summary>같은 스팟이 다시 나올 때마다 요구 소환석 가산 — 리젠 눌러앉기 감속.</summary>
+        public const int SWARM_EXPLORE_REOPEN_SURCHARGE = 2;
+
+        public static int GetSwarmExploreCost(int spotOpenCount) =>
+            SWARM_EXPLORE_COST_BASE +
+            SWARM_EXPLORE_REOPEN_SURCHARGE * (spotOpenCount > 0 ? spotOpenCount : 0);
+
+        /// <summary>
+        ///     예산 초과 스팟의 선소진용 — 판보다 긴 쿨다운으로 영구 봉인을 표현한다.
+        ///     (일반 개봉은 SWARM_EXPLORE_REGEN_SECONDS 리젠으로 되돌아온다.)
+        /// </summary>
+        public const int SWARM_EXPLORE_CONSUME_SECONDS = 100_000;
+
+        /// <summary>
+        ///     궤도 스쿼드(#217 오브 성장 개편): 6칸 보드를 폐지하고 궤도 오브 수가 곧 성장이다.
+        ///     같은 색 3개가 모이면 자동으로 상위 티어(같은 색)로 합쳐진다 — SB 3머지 문법.
+        ///     상한은 클라 궤도 슬롯 수와 같아야 한다 (PlayerTool.MaxOrbSlots).
+        /// </summary>
+        public const int SWARM_ORB_CAPACITY = 9;
+
+        /// <summary>현재 모드의 오브 보유 상한 — 스웜(궤도 스쿼드)은 9, 레거시 보드는 6.</summary>
+        public static int GetOrbCapacity() =>
+            SWARM_P0_ENABLED ? SWARM_ORB_CAPACITY : SURVIVOR_INVENTORY_SLOT_COUNT;
+
+        /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.
         /// 데이터와 프로토콜은 보존하므로 레거시 모드가 다시 분리되면 이 게이트로 복구할 수 있다.
         /// </summary>

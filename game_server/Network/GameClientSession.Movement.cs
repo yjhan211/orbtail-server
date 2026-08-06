@@ -104,33 +104,26 @@ public partial class GameClientSession
                     return;
                 }
 
-                // 가장 가까운 문 기준으로 잠김 체크 (클라이언트는 이미 막고 있음, 서버는 보정 역할)
-                // 1. 진입하려는 영역의 가장 가까운 문이 잠겨있으면 차단
-                var entryBlockedDoor =
-                    _doorStateManager.GetBlockingDoorForArea(CurrentMapSubId, newArea, currentCell.X, currentCell.Y);
-                if (entryBlockedDoor != null)
+                // 이 전이를 관장하는 문 기준으로 잠김 체크 (클라이언트 IsAreaExitBlocked와 동일 판정).
+                // "영역의 가장 가까운 문" 휴리스틱은 열린 문과 잠긴 문이 공존하는 방에서
+                // 열린 문 통과까지 오차단한다 (예: 창고1의 열린 111 옆 잠긴 113).
+                var previousCell = _lastValidatedPosition != null
+                    ? WorldPositionToCell(_lastValidatedPosition)
+                    : currentCell;
+                var transitionDoor = GameDoorData.GetDoorForTransition(
+                    CurrentArea, newArea, previousCell, currentCell);
+                if (transitionDoor != null &&
+                    !_doorStateManager.IsDoorOpen(CurrentMapSubId, transitionDoor.DoorId))
                 {
-                    Logger.LogWarning("Player {PlayerId} blocked entering area {NewArea} (locked door: {DoorId})",
-                        PlayerId, newArea, entryBlockedDoor.DoorId);
+                    Logger.LogWarning(
+                        "Player {PlayerId} blocked crossing {CurrentArea}→{NewArea} (locked door: {DoorId})",
+                        PlayerId, CurrentArea, newArea, transitionDoor.DoorId);
 
-                    // 진입 차단: fallback (밖쪽)으로 보정
-                    var fallbackCell = new Cell(entryBlockedDoor.FallbackCellX, entryBlockedDoor.FallbackCellY);
-                    SendAreaExitBlocked(newArea, fallbackCell);
-                    return;
-                }
-
-                // 2. 현재 영역의 가장 가까운 문이 잠겨있으면 퇴장 차단
-                var exitBlockedDoor =
-                    _doorStateManager.GetBlockingDoorForArea(CurrentMapSubId, CurrentArea, currentCell.X,
-                        currentCell.Y);
-                if (exitBlockedDoor != null)
-                {
-                    Logger.LogWarning("Player {PlayerId} blocked exiting area {CurrentArea} (locked door: {DoorId})",
-                        PlayerId, CurrentArea, exitBlockedDoor.DoorId);
-
-                    // 퇴장 차단: position (안쪽)으로 보정
-                    var positionCell = new Cell((int)exitBlockedDoor.PositionX, (int)exitBlockedDoor.PositionY);
-                    SendAreaExitBlocked(newArea, positionCell);
+                    // 문 소속 방에서 나가려던 경우 안쪽(door cell), 들어가려던 경우 바깥(fallback)으로 보정
+                    var blockedCell = transitionDoor.AreaType == CurrentArea
+                        ? new Cell((int)transitionDoor.PositionX, (int)transitionDoor.PositionY)
+                        : new Cell(transitionDoor.FallbackCellX, transitionDoor.FallbackCellY);
+                    SendAreaExitBlocked(newArea, blockedCell);
                     return;
                 }
             }

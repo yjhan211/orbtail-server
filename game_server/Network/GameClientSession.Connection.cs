@@ -220,7 +220,8 @@ public partial class GameClientSession
             // 誘몄뀡 ?뺣낫 ?꾩넚
             SendMissionInfo();
             SendRoundStateSnapshot(msg.MatchingId);
-            if (!Config.SPOT_ARENA_P0_ENABLED)
+            // 스웜 모드(M4)는 시간 웨이브 폐쇄를 쓰므로 폐쇄 스냅샷을 복원해야 한다.
+            if (!Config.SPOT_ARENA_P0_ENABLED || Config.SWARM_P0_ENABLED)
                 SendAreaClosureStateSnapshot();
             SendSurvivorAreaStockStateSnapshot();
             if (!Config.SPOT_ARENA_P0_ENABLED)
@@ -233,7 +234,11 @@ public partial class GameClientSession
             // The standalone submission client is only ready after the full initial snapshot
             // has been sent. Starting the countdown earlier lets bots consume finite room stock
             // while the human client is still loading the match.
-            int expectedBotCount = Config.SWARM_P0_ENABLED ? 0 : Config.SPOT_ARENA_P0_ENABLED ? 3 : 7;
+            int expectedBotCount = Config.SWARM_P0_ENABLED
+                ? Config.SWARM_PLAYERS_PER_MATCH - 1
+                : Config.SPOT_ARENA_P0_ENABLED
+                    ? 3
+                    : 7;
             if (connectedBotCount == expectedBotCount || MatchStartGate.IsSoloMapValidationEnabled)
             {
                 MatchStartGate.MarkHumanReady(msg.MatchingId, PlayerId.Value);

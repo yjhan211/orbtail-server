@@ -184,12 +184,12 @@ public class SchoolNewMapRestorationTests
             GameMapData.GetMapRegions(MapId.School),
             region => region.RegionType.Equals("obstacle", StringComparison.OrdinalIgnoreCase));
         // 벽은 obstacle CSV가 막고, 고사실 문 앞의 비워 둔 셀은 통과 가능해야 한다.
-        Assert.False(GameMapData.IsMoveablePosition(MapId.School, new Cell(118, 113)));
-        Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(117, 114)));
+        Assert.False(GameMapData.IsMoveablePosition(MapId.School, new Cell(95, 108)));
+        Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(89, 108)));
         Assert.True(GameMapData.IsMoveablePosition(MapId.School, new Cell(82, 18)));
         Assert.False(GameMapData.IsMoveablePosition(MapId.School, new Cell(0, 0)));
 
-        Assert.Equal(AreaType.ExamRoom, GameMapData.GetCurrentArea(MapId.School, new Cell(117, 113)));
+        Assert.Equal(AreaType.ExamRoom, GameMapData.GetCurrentArea(MapId.School, new Cell(89, 109)));
         Assert.Equal(AreaType.BroadcastRoom, GameMapData.GetCurrentArea(MapId.School, new Cell(148, 113)));
         Assert.Equal(AreaType.Classroom2, GameMapData.GetCurrentArea(MapId.School, new Cell(181, 113)));
         Assert.Equal(AreaType.Gym, GameMapData.GetCurrentArea(MapId.School, new Cell(198, 90)));
@@ -363,10 +363,21 @@ public class SchoolNewMapRestorationTests
         Assert.Equal(AreaType.AdminOffice, GameDoorData.Get(118)!.AreaType);
         Assert.Equal(AreaType.StaffRoom, GameDoorData.Get(119)!.AreaType);
         Assert.Equal(19, GameDoorData.GetAll().Count());
+        // 3쌍 조우 토폴로지: 스폰 방이 조우 지점 밖으로 새는 문 5개는 획득 불가 열쇠로 영구 잠금
+        var lockedDoorIds = new HashSet<int> { 112, 113, 114, 118, 119 };
         Assert.All(GameDoorData.GetAll(), door =>
         {
-            Assert.True(door.IsInitiallyOpen);
-            Assert.Equal(0, door.RequiredItemId);
+            if (lockedDoorIds.Contains(door.DoorId))
+            {
+                Assert.False(door.IsInitiallyOpen);
+                Assert.Equal(601000010, door.RequiredItemId);
+            }
+            else
+            {
+                Assert.True(door.IsInitiallyOpen);
+                Assert.Equal(0, door.RequiredItemId);
+            }
+
             Assert.Equal(2f, door.InteractDistance);
         });
 
@@ -382,17 +393,17 @@ public class SchoolNewMapRestorationTests
 
         var examRoomDoor = GameDoorData.GetDoorForTransition(
             AreaType.ExamRoom,
-            AreaType.Corridor,
-            new Cell(117, 114),
-            new Cell(117, 112));
+            AreaType.Library,
+            new Cell(89, 109),
+            new Cell(89, 107));
         Assert.NotNull(examRoomDoor);
         Assert.Equal(107, examRoomDoor.DoorId);
 
         var infirmaryDoor = GameDoorData.GetDoorForTransition(
             AreaType.Classroom2,
-            AreaType.Corridor,
-            new Cell(181, 114),
-            new Cell(180, 112));
+            AreaType.Gym,
+            new Cell(177, 105),
+            new Cell(177, 103));
         Assert.NotNull(infirmaryDoor);
         Assert.Equal(109, infirmaryDoor.DoorId);
 

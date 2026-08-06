@@ -103,6 +103,12 @@ public partial class GameClientSession : SessionBase
 
     private Timer? _periodicBuffTimer;
 
+    /// <summary>
+    ///     #217 스웜: 채집(개봉) 시작을 스웜 매니저에 알리는 훅. GameServer가 스웜 매치
+    ///     초기화 시 배선한다 — 세션이 매니저를 직접 참조하지 않기 위한 최소 연결.
+    /// </summary>
+    internal static Action<long, long>? SwarmExploreNoiseCallback { get; set; }
+
     public IReadOnlyCollection<int> ActiveBuffIds => _activeBuffIds;
 
     private void SetActiveBuffIds(IEnumerable<int>? activeBuffIds)

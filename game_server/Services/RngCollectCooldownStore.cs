@@ -14,6 +14,15 @@ public static class RngCollectCooldownStore
 
     private static readonly ConcurrentDictionary<(long, int), DateTime> _cooldowns = new();
 
+    // 스팟 재개봉 가산의 근거 — (MatchingId, InteractId) → 지금까지 열린 횟수. 사람·봇 공유.
+    private static readonly ConcurrentDictionary<(long, int), int> _openCounts = new();
+
+    public static int GetOpenCount(long matchingId, int interactId) =>
+        _openCounts.GetValueOrDefault((matchingId, interactId));
+
+    public static void IncrementOpenCount(long matchingId, int interactId) =>
+        _openCounts.AddOrUpdate((matchingId, interactId), 1, (_, count) => count + 1);
+
     public static bool IsInCooldown(long matchingId, int interactId, out int remainingSeconds)
     {
         remainingSeconds = 0;
@@ -81,6 +90,8 @@ public static class RngCollectCooldownStore
     {
         var keys = _cooldowns.Keys.Where(k => k.Item1 == matchingId).ToList();
         foreach (var key in keys) _cooldowns.TryRemove(key, out _);
+        var countKeys = _openCounts.Keys.Where(k => k.Item1 == matchingId).ToList();
+        foreach (var key in countKeys) _openCounts.TryRemove(key, out _);
     }
 
     /// <summary>

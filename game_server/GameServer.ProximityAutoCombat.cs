@@ -69,6 +69,7 @@ public partial class GameServer
                     if (!HasProximityAutoCombatMatchingEnded(matchingId)) continue;
                     _proximityAutoCombatResolver.RemoveMatching(matchingId);
                     RemoveSurvivorOrbVisualStates(matchingId);
+                    CleanupSwarmArenaState(matchingId);
                     _survivorSettlementLocks.TryRemove(matchingId, out _);
                 }
             }
@@ -105,7 +106,7 @@ public partial class GameServer
     {
         if (Config.SWARM_P0_ENABLED)
         {
-            ProcessSwarmArenaForMatching(matchingId);
+            ProcessSwarmArenaForMatching(matchingId, activeSessions);
             return;
         }
 

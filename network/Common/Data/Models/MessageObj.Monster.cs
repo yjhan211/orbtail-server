@@ -22,6 +22,7 @@ namespace network.common.data.models
         [Key("rewardItemId")] public int RewardItemId { get; set; }
         [Key("isCore")] public bool IsCore { get; set; }
         [Key("summonStoneReward")] public int SummonStoneReward { get; set; }
+        [Key("chaseTargetPlayerId")] public long ChaseTargetPlayerId { get; set; }
     }
 
     [MessagePackObject]

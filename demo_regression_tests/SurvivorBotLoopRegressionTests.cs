@@ -952,6 +952,8 @@ public sealed class SurvivorBotLoopRegressionTests
         foreach (var fromArea in Enum.GetValues<AreaType>())
         {
             foreach (var toArea in GameAreaConnectionData.GetConnections(MapId.School, fromArea)
+                         .Where(connection =>
+                             !BotPathfinder.IsConnectionStaticallyLocked(MapId.School, connection))
                          .Select(connection => connection.ToArea)
                          .Distinct())
             {

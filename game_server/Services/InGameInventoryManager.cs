@@ -391,6 +391,59 @@ public class InGameInventoryManager
                 $"InGameInventoryManager: Random Survivor orb merge (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{inputA},{inputB}], Output={outputItemId})");
         return result;
     }
+
+    /// <summary>
+    ///     #217 궤도 스쿼드 자동 머지: 같은 색·티어 3개가 모이면 같은 색 상위 티어로
+    ///     즉시 합성한다 (SB 3머지 문법). 보드 관리를 실시간 태스크에서 제거하고,
+    ///     드래프트(무슨 색을 쌓나)는 개봉 선택에 남는다. 반환은 변경 목록(클라 전송용).
+    /// </summary>
+    public List<InGameItemInfo> AutoMergeSurvivorOrbs(long matchingId, long playerId, Random random)
+    {
+        _ = random; // 랜덤 진화(2머지)를 대체 — 시그니처는 호출부 호환을 위해 유지.
+        var allChanged = new List<InGameItemInfo>();
+        var inventory = GetPlayerInventory(matchingId, playerId);
+        while (true)
+        {
+            int mergeItemId = inventory.GetAllItems()
+                .Where(item => item.Count > 0)
+                .GroupBy(item => item.ItemId)
+                .Where(group => group.Sum(item => item.Count) >= 3 &&
+                                TryGetTripleMergeOutput(group.Key, out _))
+                .Select(group => group.Key)
+                .FirstOrDefault();
+            if (mergeItemId == 0)
+                return allChanged;
+
+            if (!TryGetTripleMergeOutput(mergeItemId, out int outputItemId) ||
+                !inventory.TryCombineItems(
+                    [mergeItemId, mergeItemId, mergeItemId], outputItemId, out var changedItems))
+                return allChanged;
+
+            allChanged.AddRange(changedItems);
+            _logAction?.Invoke(
+                $"InGameInventoryManager: Auto-merged orbs (MatchingId={matchingId}, PlayerId={playerId}, Input={mergeItemId}x3, Output={outputItemId})");
+        }
+    }
+
+    /// <summary>같은 색 3개 → 같은 색 상위 티어. 회복 오브도 동일 규칙.</summary>
+    private static bool TryGetTripleMergeOutput(int itemId, out int outputItemId)
+    {
+        outputItemId = 0;
+        if (SurvivorOrbData.TryGetRecoveryTier(itemId, out int recoveryTier))
+        {
+            outputItemId = recoveryTier switch
+            {
+                1 => 107000041,
+                2 => 107000042,
+                _ => 0
+            };
+            return outputItemId > 0;
+        }
+
+        return SurvivorOrbData.TryGetColorAndTier(itemId, out var color, out int tier) &&
+               tier < 3 &&
+               SurvivorOrbData.TryGetItemId(color, tier + 1, out outputItemId);
+    }
     public bool TryEquipBattleItem(long matchingId, long playerId, long itemUid,
         out InGameItemInfo? equippedItem)
     {

@@ -9,7 +9,7 @@ namespace demo_regression_tests;
 public class SwarmArenaManagerTests
 {
     private static readonly DateTime StartUtc =
-        new(2026, 8, 5, 0, 0, 0, DateTimeKind.Utc);
+        new(2026, 8, 6, 0, 0, 0, DateTimeKind.Utc);
 
     public SwarmArenaManagerTests()
     {
@@ -22,36 +22,71 @@ public class SwarmArenaManagerTests
     {
         DateTime now = StartUtc;
         var manager = CreateManager(() => now);
-        Vector3f center = GroundCenter();
+        Vector3f center = AreaCenter(AreaType.Ground);
 
-        now = StartUtc.AddSeconds(3);
-        var tick = manager.Tick(217001, center, now);
+        // 첫 틱에 스케줄이 잡히고, 3초 뒤 첫 패턴이 나온다.
+        manager.Tick(217001, Participants(center), StartUtc.AddSeconds(0.25));
+        now = StartUtc.AddSeconds(3.5);
+        var tick = manager.Tick(217001, Participants(center), now);
 
         Assert.Equal(SwarmArenaManager.RingSpawnCount, tick.SpawnedMonsters.Count);
         Assert.All(tick.SpawnedMonsters, monster =>
         {
             Assert.Equal(SwarmArenaManager.MonsterMaxHealth, monster.CurrentHealth);
             Assert.True(monster.IsAlive);
+            Assert.Equal(AreaType.Ground, monster.AreaType);
         });
 
         // 예고 시간 안에는 전투 대상으로 잡히지 않는다.
         Assert.Empty(manager.GetCombatTargets(217001));
-        now = StartUtc.AddSeconds(3 + SwarmArenaManager.RingTelegraphSeconds + 0.1);
+        now = StartUtc.AddSeconds(3.5 + SwarmArenaManager.RingTelegraphSeconds + 0.1);
         Assert.Equal(SwarmArenaManager.RingSpawnCount, manager.GetCombatTargets(217001).Count);
     }
 
     [Fact]
-    public void ConvergingMonsters_DealContactDamageWithCooldown()
+    public void Corridor_NeverSpawnsSwarm()
     {
         DateTime now = StartUtc;
         var manager = CreateManager(() => now);
-        Vector3f center = GroundCenter();
+        Vector3f corridor = AreaCenter(AreaType.Corridor);
+
+        for (double elapsed = 0.25d; elapsed <= 15d; elapsed += 0.25d)
+        {
+            now = StartUtc.AddSeconds(elapsed);
+            manager.Tick(217001, Participants(corridor, AreaType.Corridor), now);
+        }
+
+        Assert.Empty(manager.GetVisualStates(217001));
+    }
+
+    [Fact]
+    public void AreaDensity_StaysWithinProfileCap()
+    {
+        DateTime now = StartUtc;
+        var manager = CreateManager(() => now);
+        Vector3f center = AreaCenter(AreaType.Ground);
+
+        for (double elapsed = 0.25d; elapsed <= 40d; elapsed += 0.25d)
+        {
+            now = StartUtc.AddSeconds(elapsed);
+            manager.Tick(217001, Participants(center), now);
+            int alive = manager.GetVisualStates(217001).Count(state => state.IsAlive);
+            Assert.True(alive <= 14, $"운동장 밀도 상한 14를 초과했다: {alive}");
+        }
+    }
+
+    [Fact]
+    public void ConvergingMonsters_DealContactDamageWithImmunityWindow()
+    {
+        DateTime now = StartUtc;
+        var manager = CreateManager(() => now);
+        Vector3f center = AreaCenter(AreaType.Ground);
 
         var damageEvents = new List<SpotArenaPlayerDamage>();
         for (double elapsed = 3d; elapsed <= 12d; elapsed += 0.25d)
         {
             now = StartUtc.AddSeconds(elapsed);
-            damageEvents.AddRange(manager.Tick(217001, center, now).PlayerDamage);
+            damageEvents.AddRange(manager.Tick(217001, Participants(center), now).PlayerDamage);
         }
 
         Assert.NotEmpty(damageEvents);
@@ -60,10 +95,7 @@ public class SwarmArenaManagerTests
             Assert.Equal(SwarmArenaManager.ContactDamage, damage.Damage);
             Assert.Equal(1, damage.TargetPlayerId);
         });
-
-        var summary = manager.GetSummary(217001);
-        Assert.Equal(damageEvents.Count, summary.HitsTaken);
-        Assert.True(summary.PatternHits.Values.Sum() == damageEvents.Count);
+        Assert.Equal(damageEvents.Count, manager.GetSummary(217001).HitsTaken);
     }
 
     [Fact]
@@ -71,16 +103,17 @@ public class SwarmArenaManagerTests
     {
         DateTime now = StartUtc;
         var manager = CreateManager(() => now);
-        Vector3f center = GroundCenter();
+        Vector3f center = AreaCenter(AreaType.Ground);
 
-        now = StartUtc.AddSeconds(3);
-        manager.Tick(217001, center, now);
-        now = StartUtc.AddSeconds(4.2);
-        manager.Tick(217001, center, now);
+        manager.Tick(217001, Participants(center), StartUtc.AddSeconds(0.25));
+        now = StartUtc.AddSeconds(3.5);
+        manager.Tick(217001, Participants(center), now);
+        now = StartUtc.AddSeconds(4.7);
+        manager.Tick(217001, Participants(center), now);
 
         var target = manager.GetCombatTargets(217001).First();
         var result = manager.ApplyMonsterDamage(
-            217001, target.CombatTargetId, SwarmArenaManager.MonsterMaxHealth);
+            217001, target.CombatTargetId, attackerPlayerId: 1, SwarmArenaManager.MonsterMaxHealth);
 
         Assert.True(result.Applied);
         Assert.True(result.Killed);
@@ -92,63 +125,46 @@ public class SwarmArenaManagerTests
     }
 
     [Fact]
-    public void Density_StaysWithinFirstStageCap()
+    public void Monsters_OnlyChaseAndBiteSameAreaParticipants()
     {
         DateTime now = StartUtc;
         var manager = CreateManager(() => now);
-        Vector3f center = GroundCenter();
+        Vector3f ground = AreaCenter(AreaType.Ground);
+        Vector3f corridor = AreaCenter(AreaType.Corridor);
 
-        for (double elapsed = 0.25d; elapsed <= 29d; elapsed += 0.25d)
+        var participants = new[]
+        {
+            new SpotArenaPlayerSpatial(1, AreaType.Ground, ground),
+            new SpotArenaPlayerSpatial(2, AreaType.Corridor, corridor)
+        };
+
+        var damageEvents = new List<SpotArenaPlayerDamage>();
+        for (double elapsed = 3d; elapsed <= 12d; elapsed += 0.25d)
         {
             now = StartUtc.AddSeconds(elapsed);
-            manager.Tick(217001, center, now);
-            int alive = manager.GetVisualStates(217001).Count(state => state.IsAlive);
-            Assert.True(alive <= 20, $"1단계 밀도 상한 20을 초과했다: {alive}");
+            damageEvents.AddRange(manager.Tick(217001, participants, now).PlayerDamage);
         }
+
+        // 운동장 스웜은 운동장의 1번만 문다. 복도의 2번은 무관하다.
+        Assert.NotEmpty(damageEvents);
+        Assert.All(damageEvents, damage => Assert.Equal(1, damage.TargetPlayerId));
     }
 
-    [Fact]
-    public void Timeout_EndsMatchAsSurvived()
-    {
-        DateTime now = StartUtc;
-        var manager = CreateManager(() => now);
-
-        now = StartUtc.AddSeconds(SwarmArenaManager.MatchDurationSeconds);
-        var tick = manager.Tick(217001, GroundCenter(), now);
-
-        Assert.True(tick.MatchEnded);
-        Assert.True(tick.Survived);
-        Assert.True(manager.TryGetEndState(217001, out bool survived));
-        Assert.True(survived);
-    }
-
-    [Fact]
-    public void Death_EndsMatchAsNotSurvived()
-    {
-        DateTime now = StartUtc;
-        var manager = CreateManager(() => now);
-
-        now = StartUtc.AddSeconds(10);
-        manager.EndForDeath(217001, now);
-
-        Assert.True(manager.TryGetEndState(217001, out bool survived));
-        Assert.False(survived);
-        var summary = manager.GetSummary(217001);
-        Assert.False(summary.Survived);
-        Assert.True(summary.SurvivalSeconds <= 10.01d);
-    }
+    private static IReadOnlyCollection<SpotArenaPlayerSpatial> Participants(
+        Vector3f position,
+        AreaType area = AreaType.Ground) =>
+        [new SpotArenaPlayerSpatial(1, area, position)];
 
     private static SwarmArenaManager CreateManager(Func<DateTime> clock)
     {
         var manager = new SwarmArenaManager(clock);
-        Cell center = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Ground);
-        Assert.True(manager.InitializeMatching(217001, 1, AreaType.Ground, center, StartUtc));
+        Assert.True(manager.InitializeMatching(217001, 1, StartUtc));
         return manager;
     }
 
-    private static Vector3f GroundCenter() =>
+    private static Vector3f AreaCenter(AreaType area) =>
         MapCoordinateConverter.CellToWorld(
-            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Ground));
+            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
 
     private static string FindNetworkBasePath()
     {

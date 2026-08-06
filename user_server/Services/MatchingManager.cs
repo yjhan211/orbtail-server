@@ -35,7 +35,7 @@ public class MatchingManager : IMatchingManager
     private static int GamePlayersPerMatch => IsSoloMapValidation
         ? DefaultPlayersPerMatch
         : Config.SWARM_P0_ENABLED
-            ? 1
+            ? Config.SWARM_PLAYERS_PER_MATCH
             : Config.SPOT_ARENA_P0_ENABLED
                 ? SpotArenaPlayersPerMatch
                 : DefaultGamePlayersPerMatch;
@@ -481,10 +481,9 @@ public class MatchingManager : IMatchingManager
         var playerIds = chain
             .Select(link => MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry).PlayerId)
             .ToList();
+        // 스웜 8인(M1): 기존 시작방 8곳 분산 스폰을 그대로 쓴다.
         IReadOnlyDictionary<long, Cell> assignments = Config.SWARM_P0_ENABLED
-            ? playerIds.Distinct().ToDictionary(
-                playerId => playerId,
-                _ => GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Ground))
+            ? SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds)
             : Config.SPOT_ARENA_P0_ENABLED
                 ? SurvivorRoyaleSpawnData.CreateSpotArenaAssignments(matchingId, playerIds)
                 : SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
