@@ -369,7 +369,8 @@ public partial class GameServer
                     matchingId, spot.Id, Config.SWARM_EXPLORE_REGEN_SECONDS, out _))
                 continue;
 
-            TryDestroyBotOverflowOrb(matchingId, bot);
+            // 궤도 스쿼드: 파괴(버리기)는 퇴역 — 궤도가 가득 차면 개봉이 실패할 뿐이다.
+            // 3머지 자동 압축이 자리를 만들고, 상한 도달은 성장의 자연 종점이다.
             var attempt = _summonStoneManager.TrySummon(
                 matchingId,
                 bot.PlayerId,

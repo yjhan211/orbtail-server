@@ -63,7 +63,7 @@ public partial class GameClientSession
                 }
 
                 bool added = _inGameInventoryManager.TryAddItemWithCapacity(
-                    CurrentMapSubId, PlayerId.Value, item.ItemId, Config.SURVIVOR_INVENTORY_SLOT_COUNT,
+                    CurrentMapSubId, PlayerId.Value, item.ItemId, Config.GetOrbCapacity(),
                     out addedItem);
                 if (!added) rejection = ErrorCode.INVENTORY_FULL;
                 else if (addedItem != null)
