@@ -68,6 +68,19 @@ public sealed class SwarmArenaManager
     private static readonly HashSet<AreaType> StartRooms =
         SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().ToHashSet();
 
+    // M4 격화: 폐쇄 웨이브와 동기화된 시간 단계. 접촉 데미지는 올리지 않는다 —
+    // TTK가 아니라 밀도·페이스·이속만 조인다 (결정 브리프 2026-08-06).
+    private const double EscalationStage1AtSeconds = 120d;
+    private const double EscalationStage2AtSeconds = 230d;
+    private const float EscalationStage2MoveSpeedMultiplier = 1.1f;
+
+    /// <summary>폐쇄된 구역은 신규 스폰을 멈춘다 — 잔존 몹은 이주로 처리된다.</summary>
+    public Func<long, AreaType, bool>? IsAreaClosedResolver { get; set; }
+
+    private static int GetEscalationStage(double elapsedSeconds) =>
+        elapsedSeconds >= EscalationStage2AtSeconds ? 2 :
+        elapsedSeconds >= EscalationStage1AtSeconds ? 1 : 0;
+
     private readonly ConcurrentDictionary<long, MatchState> _matches = new();
     private readonly Func<DateTime> _utcNow;
 
@@ -128,6 +141,11 @@ public sealed class SwarmArenaManager
             state.LastTickAtUtc = now;
             state.LastParticipants = participants.ToArray();
 
+            // 격화 2단계: 이속만 소폭 상승 — 접촉 데미지는 불변 (M4).
+            double moveDeltaSeconds = GetEscalationStage((now - state.StartsAtUtc).TotalSeconds) >= 2
+                ? deltaSeconds * EscalationStage2MoveSpeedMultiplier
+                : deltaSeconds;
+
             foreach (var participant in state.LastParticipants)
                 SpawnDueParticipantPattern(state, participant, now, result);
 
@@ -139,7 +157,7 @@ public sealed class SwarmArenaManager
                 if (!TryResolveChaseTarget(monster, state.LastParticipants, out var chaseTarget))
                     continue;
 
-                MoveTowardPlayer(monster, chaseTarget.Position, deltaSeconds);
+                MoveTowardPlayer(monster, chaseTarget.Position, moveDeltaSeconds);
                 if (now < monster.NextContactAtUtc)
                     continue;
 
@@ -256,6 +274,49 @@ public sealed class SwarmArenaManager
 
             return new SwarmArenaDamageResult(true, killed, monster.MonsterId, monster.ToMonsterRuntimeInfo());
         }
+    }
+
+    /// <summary>
+    ///     M4 폐쇄 이주: 폐쇄된 구역의 잔존 스웜을 다음 구역으로 재배치한다.
+    ///     추적이 아니라 디렉터의 재배치다 — 목적지에서 스폰 텔레그래프를 다시 거치고,
+    ///     추적 대상도 초기화된다. "같은 구역만 추적" 규칙은 불변.
+    /// </summary>
+    public IReadOnlyList<MonsterRuntimeInfo> EvacuateArea(
+        long matchingId,
+        AreaType from,
+        AreaType to,
+        DateTime? nowUtc = null)
+    {
+        if (!_matches.TryGetValue(matchingId, out var state))
+            return Array.Empty<MonsterRuntimeInfo>();
+
+        DateTime now = nowUtc ?? _utcNow();
+        var moved = new List<MonsterRuntimeInfo>();
+        lock (state.SyncRoot)
+        {
+            var anchorCell = GameMapData.GetAreaSpawnCell(MapId.School, to);
+            var anchor = MapCoordinateConverter.CellToWorld(MapId.School, anchorCell);
+            foreach (var monster in state.Monsters.Values)
+            {
+                if (!monster.Alive || monster.Area != from)
+                    continue;
+
+                float angle = (float)(state.Rng.NextDouble() * Math.PI * 2d);
+                float radius = 1f + (float)state.Rng.NextDouble() * 2.5f;
+                var candidate = new Vector3f(
+                    anchor.X + MathF.Cos(angle) * radius,
+                    anchor.Y + MathF.Sin(angle) * radius,
+                    0f);
+                monster.Area = to;
+                monster.Position = ClampToAreaWalkable(candidate, anchor, to);
+                monster.ActivatesAtUtc = now.AddSeconds(EncircleTelegraphSeconds);
+                monster.NextContactAtUtc = monster.ActivatesAtUtc;
+                monster.ChaseTargetPlayerId = 0;
+                moved.Add(monster.ToMonsterRuntimeInfo());
+            }
+        }
+
+        return moved;
     }
 
     /// <summary>개봉 소음: 같은 구역 반경 안 잔상이 개봉자를 새 추적 목표로 삼는다.</summary>
@@ -417,7 +478,7 @@ public sealed class SwarmArenaManager
 
     public void RemoveMatching(long matchingId) => _matches.TryRemove(matchingId, out _);
 
-    private static void SpawnDueParticipantPattern(
+    private void SpawnDueParticipantPattern(
         MatchState state,
         SpotArenaPlayerSpatial participant,
         DateTime now,
@@ -426,6 +487,22 @@ public sealed class SwarmArenaManager
         var (densityCap, intervalSeconds) = GetAreaProfile(participant.Area);
         if (densityCap <= 0)
             return;
+
+        // 폐쇄 구역은 신규 스폰 정지 — 잔존 몹은 EvacuateArea가 다음 구역으로 밀어낸다.
+        if (IsAreaClosedResolver?.Invoke(state.MatchingId, participant.Area) == true)
+            return;
+
+        int escalationStage = GetEscalationStage((now - state.StartsAtUtc).TotalSeconds);
+        if (escalationStage == 1)
+        {
+            densityCap += 2;
+            intervalSeconds *= 0.85d;
+        }
+        else if (escalationStage >= 2)
+        {
+            densityCap += 4;
+            intervalSeconds *= 0.7d;
+        }
 
         if (!state.PatternSchedules.TryGetValue(participant.PlayerId, out var schedule))
         {
@@ -700,11 +777,11 @@ public sealed class SwarmArenaManager
         public int MonsterId { get; init; }
         public long CombatTargetId { get; init; }
         public SwarmPattern Pattern { get; init; }
-        public AreaType Area { get; init; }
+        public AreaType Area { get; set; }
         public Vector3f Position { get; set; } = new(0f, 0f, 0f);
         public int Health { get; set; }
         public bool Alive { get; set; }
-        public DateTime ActivatesAtUtc { get; init; }
+        public DateTime ActivatesAtUtc { get; set; }
         public DateTime NextContactAtUtc { get; set; }
         public DateTime DiedAtUtc { get; set; }
         public float ScatterAngle { get; init; }

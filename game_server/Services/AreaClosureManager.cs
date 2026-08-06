@@ -41,7 +41,8 @@ public class AreaClosureManager
     public MatchingClosureState InitializeMatching(
         long matchingId,
         List<JobTitle>? jobsInMatching = null,
-        IEnumerable<AreaType>? initiallyOpenAreas = null)
+        IEnumerable<AreaType>? initiallyOpenAreas = null,
+        IReadOnlyList<ClosureWaveDefinition>? wavesOverride = null)
     {
         _ = jobsInMatching;
 
@@ -53,7 +54,7 @@ public class AreaClosureManager
         var mapAreas = GameMapData.GetAreas(MapId.School)
             .Select(region => region.AreaType)
             .ToHashSet();
-        var waves = DefaultP0Waves
+        var waves = (wavesOverride ?? DefaultP0Waves)
             .Select(wave => wave with
             {
                 Areas = wave.Areas.Where(mapAreas.Contains).ToArray()

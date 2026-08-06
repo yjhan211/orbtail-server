@@ -1,9 +1,11 @@
 using game_server.network;
 using game_server.services;
+using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.packets;
 
 namespace game_server;
 
@@ -30,6 +32,15 @@ public partial class GameServer
     private readonly Dictionary<(long MatchingId, long PlayerId),
         (Vector3f Position, DateTime At, bool Moving, DateTime StoppedAtUtc)> _swarmMovementSamples = new();
     private readonly HashSet<long> _swarmOrbGrantedMatchings = new();
+
+    // 봇 오염 자연 회복: 회복 오브 운에 기대지 않는 생존 바닥. 마지막 피격 후 유예가
+    // 지나면 초당 일정량 회복한다 — "도망 성공"이 실제 생존이 되게 (계측: 매치 2223에서
+    // 봇 오염이 단조 증가해 85초 전멸). 사람은 위로 오브가 같은 역할을 하므로 제외.
+    private const double SwarmBotRecoveryGraceSeconds = 4d;
+    private const int SwarmBotRecoveryPerSecond = 4;
+
+    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmBotLastDamagedAtUtc = new();
+    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmBotNextRecoveryAtUtc = new();
 
     /// <summary>
     ///     #217 8인 맵 역할 검증(M1). 매치 수명(탈락·최후 1인·타이머)은 기존 서바이버 로얄
@@ -58,6 +69,8 @@ public partial class GameServer
                     _swarmArenaManager.AttractSwarm(noiseMatchingId, noisePlayerId);
             ApplySwarmExploreSpotBudget(matchingId, sessions);
             LogSwarmPairZoneDistances(matchingId);
+            // M4: 폐쇄 시계는 스웜 개전과 함께 돈다 (2:00 시작방 → 3:50 성장 구역 → 5:10 복도)
+            _areaClosureManager.InitializeMatching(matchingId, wavesOverride: SwarmClosureWaves);
             logger.LogInformation(
                 "Swarm arena initialized: MatchingId={MatchingId}, Humans={HumanCount}, Bots={BotCount}",
                 matchingId, sessions.Count, bots.Count);
@@ -85,6 +98,7 @@ public partial class GameServer
 
         foreach (var damage in tick.PlayerDamage)
             ApplySwarmParticipantDamage(matchingId, damage, aliveSessions, aliveBots, sessions);
+        ProcessSwarmBotRecovery(matchingId, aliveBots, nowUtc);
 
         // 봇도 사람과 같은 규칙으로 성장한다: 소환석 5개 + 스팟 소진. 공짜 버튼 소환 없음.
         ProcessSwarmBotExplores(matchingId, aliveBots, sessions);
@@ -149,6 +163,94 @@ public partial class GameServer
         [AreaType.Classroom4] = 1,
         [AreaType.Ground] = 3
     };
+
+    // M4 종반 수렴 (결정 브리프 2026-08-06): 폐쇄가 스웜을 밀어낸다.
+    // 2:00 시작방 → 3:50 성장 구역 → 5:10 복도, 운동장 종착. 경고는 폐쇄 15초 전.
+    private static readonly IReadOnlyList<ClosureWaveDefinition> SwarmClosureWaves =
+    [
+        new(120, SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().ToArray(), 4),
+        new(230, [
+            AreaType.Library, AreaType.Gym, AreaType.Classroom3,
+            AreaType.Classroom4, AreaType.BroadcastRoom
+        ], 8),
+        new(310, [AreaType.Corridor], 12)
+    ];
+
+    // 폐쇄 흐름 그래프: 폐쇄된 구역의 잔존 스웜이 밀려나는 목적지.
+    // 시작방은 각 쌍의 조우 지점으로, 성장 구역은 복도로, 복도는 운동장으로.
+    private static readonly Dictionary<AreaType, AreaType> SwarmEvacuationFlow = new()
+    {
+        [AreaType.ExamRoom] = AreaType.Library,
+        [AreaType.Storage] = AreaType.Library,
+        [AreaType.Classroom2] = AreaType.Gym,
+        [AreaType.Storage2] = AreaType.Gym,
+        [AreaType.AdminOffice] = AreaType.Corridor,
+        [AreaType.StaffRoom] = AreaType.Corridor,
+        [AreaType.Library] = AreaType.Corridor,
+        [AreaType.Gym] = AreaType.Corridor,
+        [AreaType.Classroom3] = AreaType.Corridor,
+        [AreaType.Classroom4] = AreaType.Corridor,
+        [AreaType.BroadcastRoom] = AreaType.Corridor,
+        [AreaType.Corridor] = AreaType.Ground
+    };
+
+    /// <summary>
+    ///     스웜 모드 폐쇄 틱 (1초): 웨이브 경고·폐쇄를 브로드캐스트하고,
+    ///     폐쇄 순간 잔존 스웜을 폐쇄 흐름 그래프의 다음 구역으로 이주시킨다.
+    /// </summary>
+    private void ProcessSwarmClosureTick(long matchingId)
+    {
+        if (!_swarmArenaManager.HasMatching(matchingId))
+            return;
+
+        var sessions = _clientSessions.Values
+            .Where(session => session.PlayerId.HasValue && session.CurrentMapSubId == matchingId)
+            .ToList();
+
+        var closureTick = _areaClosureManager.CheckClosureSchedule(matchingId);
+        foreach (var warningArea in closureTick.WarningAreas)
+        {
+            using var packet = global::network.packets.Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
+            packet.SetBody(MessagePack.MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
+            {
+                AreaType = warningArea,
+                SecondsRemaining = closureTick.WarningSeconds,
+                ClosureAtUnixMs = closureTick.ClosureAtUnixMs
+            }));
+            foreach (var session in sessions) session.Send(packet);
+        }
+
+        var evacuatedMonsters = new List<MonsterRuntimeInfo>();
+        foreach (var closedArea in closureTick.ClosedAreas)
+        {
+            _gameEventLogManager.LogClosure(matchingId, closedArea.ToString());
+            using (var packet = global::network.packets.Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED))
+            {
+                packet.SetBody(MessagePack.MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED
+                {
+                    AreaType = closedArea,
+                    IsClosed = true
+                }));
+                foreach (var session in sessions) session.Send(packet);
+            }
+
+            if (!SwarmEvacuationFlow.TryGetValue(closedArea, out var destination))
+                continue;
+
+            var moved = _swarmArenaManager.EvacuateArea(matchingId, closedArea, destination);
+            evacuatedMonsters.AddRange(moved);
+            if (moved.Count > 0)
+                logger.LogInformation(
+                    "Swarm closure evacuation: MatchingId={MatchingId}, {From} → {To}, Monsters={Count}",
+                    matchingId, closedArea, destination, moved.Count);
+        }
+
+        if (evacuatedMonsters.Count > 0)
+        {
+            BroadcastMonsterSnapshot(matchingId, sessions, evacuatedMonsters);
+            BroadcastMonsterMinimapSnapshot(sessions, _swarmArenaManager.GetVisualStates(matchingId));
+        }
+    }
 
     // 쌍 깔때기: 시작방 → 만남 구역. 거리 편차의 보정값(잔상 스폰 시점)은 이 로그를 계측한 뒤 정한다.
     private static readonly (AreaType StartRoom, AreaType PairZone)[] SwarmPairZones =
@@ -343,6 +445,28 @@ public partial class GameServer
         if (bot == null || bot.IsEliminated)
             return directive;
 
+        // 0) 폐쇄 구역 탈출 최우선 — 폐쇄 흐름 그래프를 따라 첫 열린 구역으로 대피한다 (M4).
+        if (_areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea))
+        {
+            var evacuationArea = bot.CurrentArea;
+            while (SwarmEvacuationFlow.TryGetValue(evacuationArea, out var nextArea))
+            {
+                evacuationArea = nextArea;
+                if (!_areaClosureManager.IsAreaClosed(matchingId, evacuationArea))
+                    break;
+            }
+
+            if (!_areaClosureManager.IsAreaClosed(matchingId, evacuationArea))
+            {
+                Cell evacuationCell = GameMapData.GetAreaSpawnCell(MapId.School, evacuationArea);
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Escort,
+                    evacuationArea,
+                    evacuationCell,
+                    BotPlayerManager.CellToWorldPosition(MapId.School, evacuationCell));
+            }
+        }
+
         // 1) 같은 구역 바닥 소환석 — 걸어가면 자동 픽업 반경(1.75)이 줍는다.
         var groundStone = _groundItemManager.GetSnapshot(matchingId, bot.CurrentArea)
             .Where(item => item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
@@ -368,7 +492,8 @@ public partial class GameServer
         if (_summonStoneManager.GetSnapshot(matchingId, botPlayerId).StoneCount >=
             GetSwarmBotExploreCost(matchingId, botPlayerId) &&
             TryFindNearestAvailableExploreSpot(
-                matchingId, area: null, bot.Position, out var spot, out _))
+                matchingId, area: null, bot.Position, out var spot, out _) &&
+            !_areaClosureManager.IsAreaClosed(matchingId, (AreaType)spot.ZoneId))
         {
             var spotArea = (AreaType)spot.ZoneId;
             Cell spotCell = new(spot.CellX, spot.CellY);
@@ -390,7 +515,9 @@ public partial class GameServer
         if (bot.CurrentArea == AreaType.Corridor ||
             SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().Contains(bot.CurrentArea))
         {
+            // 폐쇄된 사냥터는 제외 — 전부 닫혔으면 종착지 운동장으로 (운동장은 폐쇄되지 않는다).
             AreaType huntingArea = SwarmHuntingAreas
+                .Where(area => !_areaClosureManager.IsAreaClosed(matchingId, area))
                 .OrderBy(area =>
                 {
                     var center = BotPlayerManager.CellToWorldPosition(
@@ -399,6 +526,7 @@ public partial class GameServer
                     float dy = center.Y - bot.Position.Y;
                     return dx * dx + dy * dy;
                 })
+                .DefaultIfEmpty(AreaType.Ground)
                 .First();
             Cell huntingCell = GameMapData.GetAreaSpawnCell(MapId.School, huntingArea);
             return new SpotArenaBotDirective(
@@ -439,6 +567,7 @@ public partial class GameServer
         // 첫 탈락 19초, 40초 반수 사망). 봇의 역할은 조우·경제 흐름 재현이므로 피격만 보정한다.
         int botDamage = Math.Max(1, (int)(damage.Damage * SwarmBotContactDamageMultiplier));
         bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + botDamage);
+        _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
     }
 
     private void ApplySwarmPvpAttack(
@@ -464,12 +593,37 @@ public partial class GameServer
 
             bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + damage);
             bot.LastProximityAttackerPlayerId = attack.AttackerPlayerId;
+            _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
         }
 
         allSessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId)
             ?.SendProximityAutoCombatAttackFeedback(
                 attack.TargetPlayerId, attack.Area, attack.WeaponItemId, damage);
         BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, allSessions);
+    }
+
+    /// <summary>
+    ///     비접촉 유예를 넘긴 봇의 오염을 1초 단위로 회복한다. 피격이 들어오면
+    ///     유예가 리셋되므로, 스웜에 물려 있는 동안에는 회복되지 않는다.
+    /// </summary>
+    private void ProcessSwarmBotRecovery(long matchingId, List<BotPlayerState> aliveBots, DateTime nowUtc)
+    {
+        foreach (var bot in aliveBots)
+        {
+            if (bot.Corruption <= 0)
+                continue;
+
+            var key = (matchingId, bot.PlayerId);
+            if (_swarmBotLastDamagedAtUtc.TryGetValue(key, out var lastDamagedAtUtc) &&
+                (nowUtc - lastDamagedAtUtc).TotalSeconds < SwarmBotRecoveryGraceSeconds)
+                continue;
+            if (_swarmBotNextRecoveryAtUtc.TryGetValue(key, out var nextRecoveryAtUtc) &&
+                nowUtc < nextRecoveryAtUtc)
+                continue;
+
+            _swarmBotNextRecoveryAtUtc[key] = nowUtc.AddSeconds(1d);
+            bot.Corruption = Math.Max(0, bot.Corruption - SwarmBotRecoveryPerSecond);
+        }
     }
 
     private void UpdateSwarmMovementSamples(
@@ -518,6 +672,10 @@ public partial class GameServer
         _swarmOrbGrantedMatchings.Remove(matchingId);
         foreach (var key in _swarmMovementSamples.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmMovementSamples.Remove(key);
+        foreach (var key in _swarmBotLastDamagedAtUtc.Keys.Where(key => key.MatchingId == matchingId).ToList())
+            _swarmBotLastDamagedAtUtc.Remove(key);
+        foreach (var key in _swarmBotNextRecoveryAtUtc.Keys.Where(key => key.MatchingId == matchingId).ToList())
+            _swarmBotNextRecoveryAtUtc.Remove(key);
     }
 
     private List<ProximityCombatActor> BuildSwarmArenaCombatActors(
