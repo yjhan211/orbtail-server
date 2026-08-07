@@ -12,7 +12,9 @@ namespace game_server.services;
 /// </summary>
 public sealed class SwarmArenaManager
 {
-    public const int MonsterMaxHealth = 12;
+    // 성장 체감 재앵커 (2026-08-07): T1 오브 DPS 20 기준 SB ÷15 환산. 해골도 2대는 맞아야
+    // 하고, 탈주(100)는 시작 스쿼드론 5초+ — 오브가 늘수록 브루저가 눈에 띄게 빨리 녹는다.
+    public const int MonsterMaxHealth = 20;
 
     // 실측(2026-08-05): 30 + 무적 0.6초 조합은 18초 생존으로 끝났다. 연속 접촉 기준
     // 최소 사망 시간이 충분히 길도록 24 × 0.8초를 유지한다.
@@ -66,9 +68,9 @@ public sealed class SwarmArenaManager
     public static (int MaxHp, int OrbDamage, float AttackRange, float AttackCooldownSeconds, int StoneReward)
         GetKindStats(SwarmMonsterKind kind) => kind switch
     {
-        SwarmMonsterKind.DartGoblin => (16, 2, 5f, 2f, 1),
-        SwarmMonsterKind.RunawayGoblin => (60, 5, ContactRange, 1.2f, 4),
-        SwarmMonsterKind.Bowler => (48, 2, 4.5f, 2.5f, 4),
+        SwarmMonsterKind.DartGoblin => (27, 2, 5f, 2f, 1),
+        SwarmMonsterKind.RunawayGoblin => (100, 5, ContactRange, 1.2f, 4),
+        SwarmMonsterKind.Bowler => (80, 2, 4.5f, 2.5f, 4),
         _ => (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1)
     };
 
@@ -631,7 +633,7 @@ public sealed class SwarmArenaManager
 
     // 임시(비주얼 확인): 전 캠프를 고블린 2종만으로 스폰한다. 확인 끝나면 false로 복원.
     // 테스트는 정규 편성을 검증하므로 생성자에서 끈다.
-    public static bool GoblinOnlySpawnForVisualCheck = true;
+    public static bool GoblinOnlySpawnForVisualCheck = false;
 
     /// <summary>
     ///     캠프 편성 (SB 배치 문법): 밴드·광장은 "다리 위 해골 3마리" — 전 캠프 해골 무리.
