@@ -470,6 +470,16 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        // 궤도 포화도 시작 전에 막는다 — FINISH의 소환 실패가 쿨다운을 되돌리는 설계와
+        // 클라 자동 수집이 맞물리면 1.5초 주기 무한 재수집 루프가 된다 (2026-08-07 보건실 관측).
+        // 판정은 TryAddItemWithCapacity와 동일한 슬롯 수 기준.
+        if (_inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value)
+                .GetAllItems().Count >= Config.SWARM_ORB_CAPACITY)
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.INVENTORY_FULL, 0);
+            return Task.CompletedTask;
+        }
+
         if (!RngCollectCooldownStore.TryAcquireCooldown(
                 CurrentMapSubId, msg.InteractId, RngCollectCooldownStore.DefaultCooldownSeconds,
                 out int remaining))
