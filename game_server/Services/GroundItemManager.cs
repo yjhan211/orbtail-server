@@ -25,7 +25,9 @@ public enum GroundItemSpawnLayout
 public sealed class GroundItemManager
 {
     public const float PickupRadius = 1.15f;
-    public const float SummonStonePickupRadius = 1.75f;
+
+    // 소환석 자석 흡수 (#219): 접촉이 아니라 근처를 지나가면 딸려온다 — SB 코인 흡수 문법.
+    public const float SummonStonePickupRadius = 3.5f;
     public static readonly TimeSpan DiscovererPickupWindow = TimeSpan.FromSeconds(1);
     private readonly ConcurrentDictionary<long, MatchingGroundItemState> _matchingStates = new();
     private readonly TimeProvider _timeProvider;
