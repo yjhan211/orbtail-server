@@ -32,10 +32,10 @@ public partial class GameServer
     private static readonly bool SwarmFieldEnabled = false;
     private static readonly bool SwarmOrbHealthEnabled = true;
 
-    // 오브 CSV 수치는 구 잔상(고HP) 기준이라 유리 떼(HP 12)에는 너무 약하다.
-    // 데미지 3배로 T1(4)도 원킬을 유지하고, 성장은 오브 수 = 처치 스트림 수로 체감시킨다.
+    // 오브 CSV 수치는 구 잔상(고HP) 기준이라 데미지만 3배 보정한다.
+    // 공속 가속(0.6)은 초반 스팸으로 판정되어 퇴역 — CSV 기본 리듬(2026-08-07).
     private const int SwarmOrbDamageMultiplier = 3;
-    private const float SwarmOrbIntervalMultiplier = 0.6f;
+    private const float SwarmOrbIntervalMultiplier = 1f;
 
     private readonly Dictionary<(long MatchingId, long PlayerId),
         (Vector3f Position, DateTime At, bool Moving, DateTime StoppedAtUtc)> _swarmMovementSamples = new();

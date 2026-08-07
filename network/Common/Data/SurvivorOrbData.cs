@@ -172,7 +172,10 @@ namespace network.common.data
             return Math.Max(0.55f, Math.Max(0f, projectileWidth) + ProjectileTargetBodyRadius);
         }
 
-        public static float GetBaseAttackIntervalMultiplier(SurvivorOrbColor color) => color switch
+        // #219 M2 공격 문법 통일: 색별 공속·데미지 차이 퇴역 — 색은 시각과 스탯 버프만.
+        public static float GetBaseAttackIntervalMultiplier(SurvivorOrbColor color) => 1f;
+
+        private static float LegacyBaseAttackIntervalMultiplier(SurvivorOrbColor color) => color switch
         {
             SurvivorOrbColor.Green => WindBaseAttackIntervalMultiplier,
             SurvivorOrbColor.Blue => WaveBaseAttackIntervalMultiplier,
@@ -181,12 +184,8 @@ namespace network.common.data
 
         public static int GetBaseAttackDamage(int baseDamage, SurvivorOrbColor color)
         {
-            if (baseDamage <= 0)
-                return 0;
-
-            return color == SurvivorOrbColor.Green
-                ? Math.Max(1, (int)Math.Floor(baseDamage * WindBaseDamageMultiplier))
-                : baseDamage;
+            // 통일: 바람 데미지 반감 퇴역 — 전 색 동일 기본 데미지.
+            return Math.Max(0, baseDamage);
         }
 
         public static float GetAttackIntervalMultiplier(int itemId) => itemId switch
@@ -215,20 +214,8 @@ namespace network.common.data
 
         public static float GetPveDamageMultiplier(SurvivorOrbColor attackerColor, SurvivorOrbColor targetColor)
         {
-            if (attackerColor is SurvivorOrbColor.None or SurvivorOrbColor.Recovery ||
-                targetColor is SurvivorOrbColor.None or SurvivorOrbColor.Recovery)
-                return PveNeutralDamageMultiplier;
-
-            return (attackerColor, targetColor) switch
-            {
-                (SurvivorOrbColor.Red, SurvivorOrbColor.Green) => PveAdvantageDamageMultiplier,
-                (SurvivorOrbColor.Green, SurvivorOrbColor.Blue) => PveAdvantageDamageMultiplier,
-                (SurvivorOrbColor.Blue, SurvivorOrbColor.Red) => PveAdvantageDamageMultiplier,
-                (SurvivorOrbColor.Red, SurvivorOrbColor.Blue) => PveDisadvantageDamageMultiplier,
-                (SurvivorOrbColor.Green, SurvivorOrbColor.Red) => PveDisadvantageDamageMultiplier,
-                (SurvivorOrbColor.Blue, SurvivorOrbColor.Green) => PveDisadvantageDamageMultiplier,
-                _ => PveNeutralDamageMultiplier
-            };
+            // 통일: 색 상성(1.5/0.5) 퇴역 — 클론 비목표(상성 금지). 항상 중립 배율.
+            return PveNeutralDamageMultiplier;
         }
 
         /// <summary>

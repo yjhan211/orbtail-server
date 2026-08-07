@@ -105,7 +105,7 @@ public sealed class SurvivorBotLoopRegressionTests
         Assert.True(bot.NextPveKiteRepathAt > DateTime.UtcNow);
         Assert.All(bot.Path.Skip(bot.PathIndex), step => Assert.Equal(AreaType.Classroom3, step.Area));
     }
-    [Fact]
+    [Fact(Skip = "#219 색 상성 퇴역: 배율이 전부 중립이라 상성 우선 라우팅 전제가 사라짐 — 봇 사냥 우선순위 재설계 시 재작성")]
     public void BotPveRouteUsesBoardAffinityBeforeLegacyWander()
     {
         const long matchingId = 1942005;
