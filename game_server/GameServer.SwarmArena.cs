@@ -57,6 +57,28 @@ public partial class GameServer
     // 최저 티어 오브가 항상 앞줄에서 맞는다 — 파괴 순서와 같은 규칙. 접촉 피해량은 몬스터 종이 결정.
     private readonly Dictionary<(long MatchingId, long PlayerId), (int ItemId, int Hp)> _swarmFrontOrbHp = new();
 
+    // 몬스터 착탄 지연: 발사 즉시 판정하되 피해는 투사체 비행시간 뒤에 정산한다.
+    private readonly List<(long MatchingId, long CombatTargetId, long AttackerId, int Damage, DateTime ApplyAtUtc)>
+        _pendingSwarmMonsterHits = new();
+
+    private void ProcessPendingSwarmMonsterHits(
+        long matchingId, DateTime nowUtc, List<GameClientSession> sessions)
+    {
+        for (int index = _pendingSwarmMonsterHits.Count - 1; index >= 0; index--)
+        {
+            var hit = _pendingSwarmMonsterHits[index];
+            if (hit.MatchingId != matchingId || nowUtc < hit.ApplyAtUtc)
+                continue;
+
+            _pendingSwarmMonsterHits.RemoveAt(index);
+            var damageResult = _swarmArenaManager.ApplyMonsterDamage(
+                matchingId, hit.CombatTargetId, hit.AttackerId, hit.Damage);
+            // 비행 중 몬스터가 이미 죽었으면 조용히 소멸 — 이중 정산 없음.
+            if (damageResult.Applied && damageResult.Killed && damageResult.MonsterState != null)
+                SpawnSpotArenaSummonStone(matchingId, damageResult.MonsterState, sessions);
+        }
+    }
+
     private static int GetSquadOrbMaxHp(int tier) => tier switch { >= 3 => 60, 2 => 28, _ => 12 };
 
     /// <summary>
@@ -157,6 +179,9 @@ public partial class GameServer
         var actors = BuildSwarmArenaCombatActors(matchingId, aliveSessions, aliveBots, nowUtc);
         ProcessSurvivorOrbRecovery(matchingId, actors, aliveSessions, aliveBots, nowUtc);
         BroadcastSurvivorOrbVisualStates(matchingId, actors, sessions);
+        // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
+        ProcessPendingSwarmMonsterHits(matchingId, nowUtc, sessions);
+
         var attacks = _proximityAutoCombatResolver.Resolve(
             matchingId,
             actors,
@@ -166,17 +191,28 @@ public partial class GameServer
                                       ? attacker.Area == target.Area &&
                                         IsWithinSwarmOrbRange(attacker, target)
                                       : ProximityCombatLineOfSight.CanTarget(attacker, target)));
+        Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
         {
-            var damageResult = _swarmArenaManager.ApplyMonsterDamage(
-                matchingId, attack.TargetPlayerId, attack.AttackerPlayerId, attack.Damage);
-            if (damageResult.Applied)
+            int monsterId = _swarmArenaManager.GetMonsterIdForCombatTarget(matchingId, attack.TargetPlayerId);
+            if (monsterId > 0)
             {
+                // 발사 연출은 즉시, 피해는 투사체 비행시간 뒤에 — 체력바와 폭발이 일치한다.
                 sessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId)
                     ?.SendEmotionAfterimageMonsterAttackFeedback(
-                        damageResult.MonsterId, attack.Area, attack.WeaponItemId, attack.Damage);
-                if (damageResult.Killed && damageResult.MonsterState != null)
-                    SpawnSpotArenaSummonStone(matchingId, damageResult.MonsterState, sessions);
+                        monsterId, attack.Area, attack.WeaponItemId, attack.Damage);
+
+                actorById ??= actors
+                    .GroupBy(actor => actor.PlayerId)
+                    .ToDictionary(group => group.Key, group => group.First());
+                float distance = actorById.TryGetValue(attack.AttackerPlayerId, out var attackerActor) &&
+                                 actorById.TryGetValue(attack.TargetPlayerId, out var targetActor)
+                    ? Vector3f.Distance(attackerActor.Position, targetActor.Position)
+                    : Config.SWARM_ORB_ATTACK_RANGE;
+                double delaySeconds =
+                    SurvivorOrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
+                _pendingSwarmMonsterHits.Add((matchingId, attack.TargetPlayerId, attack.AttackerPlayerId,
+                    attack.Damage, nowUtc.AddSeconds(delaySeconds)));
                 continue;
             }
 
@@ -890,6 +926,7 @@ public partial class GameServer
             _swarmPvpOrbHitImmuneUntilUtc.Remove(key);
         foreach (var key in _swarmFrontOrbHp.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmFrontOrbHp.Remove(key);
+        _pendingSwarmMonsterHits.RemoveAll(hit => hit.MatchingId == matchingId);
     }
 
     private List<ProximityCombatActor> BuildSwarmArenaCombatActors(

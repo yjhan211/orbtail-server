@@ -566,6 +566,19 @@ public sealed class SwarmArenaManager
         }
     }
 
+    /// <summary>착탄 지연 피해의 발사 연출용 — 전투 대상 id로 몬스터 id를 조회한다. 없으면 0.</summary>
+    public int GetMonsterIdForCombatTarget(long matchingId, long combatTargetId)
+    {
+        if (!_matches.TryGetValue(matchingId, out var state))
+            return 0;
+        lock (state.SyncRoot)
+        {
+            var monster = state.Monsters.Values.FirstOrDefault(candidate =>
+                candidate.CombatTargetId == combatTargetId && candidate.Alive);
+            return monster?.MonsterId ?? 0;
+        }
+    }
+
     public SwarmArenaSummary GetSummary(long matchingId)
     {
         if (!_matches.TryGetValue(matchingId, out var state))
