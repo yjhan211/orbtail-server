@@ -974,15 +974,21 @@ public partial class GameServer
             resonanceState: default);
         // #219 M2 색 스탯: 태양=공격력 배율, 파도=사거리 가산 (바람=이속은 클라 이동에서).
         var colorStats = SurvivorOrbData.GetSwarmColorStats(inventory.GetAllItems());
+        int orbActorCount = Math.Max(1, actors.Count - before);
         for (int index = before; index < actors.Count; index++)
         {
             var actor = actors[index];
+            float interval = actor.AttackIntervalSeconds * SwarmOrbIntervalMultiplier;
             actors[index] = actor with
             {
                 Damage = armed
                     ? (int)MathF.Round(actor.Damage * SwarmOrbDamageMultiplier * colorStats.AttackMultiplier)
                     : 0,
-                AttackIntervalSeconds = actor.AttackIntervalSeconds * SwarmOrbIntervalMultiplier,
+                AttackIntervalSeconds = interval,
+                // SB 스태거: 오브들이 간격을 균등 분할해 엇박으로 쏜다 — 일제사격 금지.
+                // 총 DPS는 그대로, 발사 밀도가 오브 수에 비례해 촘촘해진다.
+                InitialAttackDelaySeconds = actor.InitialAttackDelaySeconds +
+                                            interval * ((index - before) / (float)orbActorCount),
                 // 사거리는 CSV 티어값 대신 단일 기준 + 파도 가산 — 링 표시가 곧 판정.
                 AttackRange = Config.SWARM_ORB_ATTACK_RANGE + colorStats.RangeBonus
             };
