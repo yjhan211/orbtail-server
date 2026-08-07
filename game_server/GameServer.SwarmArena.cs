@@ -163,7 +163,8 @@ public partial class GameServer
             nowUtc,
             (attacker, target) => !attacker.IsMonsterTarget &&
                                   (target.IsMonsterTarget
-                                      ? attacker.Area == target.Area
+                                      ? attacker.Area == target.Area &&
+                                        IsWithinSwarmOrbRange(attacker, target)
                                       : ProximityCombatLineOfSight.CanTarget(attacker, target)));
         foreach (var attack in attacks)
         {
@@ -977,9 +978,24 @@ public partial class GameServer
             actors[index] = actor with
             {
                 Damage = armed ? actor.Damage * SwarmOrbDamageMultiplier : 0,
-                AttackIntervalSeconds = actor.AttackIntervalSeconds * SwarmOrbIntervalMultiplier
+                AttackIntervalSeconds = actor.AttackIntervalSeconds * SwarmOrbIntervalMultiplier,
+                // 사거리는 CSV 티어값(7/8/9) 대신 링 표시와 같은 단일 값 — 표시가 곧 판정.
+                AttackRange = Config.SWARM_ORB_ATTACK_RANGE
             };
         }
+    }
+
+    /// <summary>
+    ///     아이소메트릭 타원 사거리: 이 맵의 월드 y는 셀 스케일이 x의 절반이라, 유클리드
+    ///     원은 화면상 위아래로 과하게 길다. dy를 2배 보정한 타원(= 셀 공간 등거리)이
+    ///     기울인 사거리 링(x회전 60°, cos=0.5)과 정확히 일치한다.
+    /// </summary>
+    private static bool IsWithinSwarmOrbRange(ProximityCombatActor attacker, ProximityCombatActor target)
+    {
+        float dx = target.Position.X - attacker.Position.X;
+        float dy = (target.Position.Y - attacker.Position.Y) * 2f;
+        return dx * dx + dy * dy <=
+               Config.SWARM_ORB_ATTACK_RANGE * Config.SWARM_ORB_ATTACK_RANGE;
     }
 
     private ProximityCombatActor CreateSwarmParticipantActor(ProximityCombatActor spatial, bool armed)

@@ -175,8 +175,9 @@ namespace network.common
         /// <summary>
         ///     스웜 기본 오브 사거리. 서버 전투(GameServer.SwarmArena)와 클라 사거리 링
         ///     (PlayerRangeRing)이 같은 값을 읽어야 표시와 판정이 일치한다.
+        ///     7 → 5: 화면에서 자연스럽게 읽히는 링 크기에 판정을 맞춤 (2026-08-07).
         /// </summary>
-        public const float SWARM_ORB_ATTACK_RANGE = 7f;
+        public const float SWARM_ORB_ATTACK_RANGE = 5f;
 
         /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.
