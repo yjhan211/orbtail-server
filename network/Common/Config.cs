@@ -173,6 +173,12 @@ namespace network.common
             SWARM_P0_ENABLED ? SWARM_ORB_CAPACITY : SURVIVOR_INVENTORY_SLOT_COUNT;
 
         /// <summary>
+        ///     스웜 기본 오브 사거리. 서버 전투(GameServer.SwarmArena)와 클라 사거리 링
+        ///     (PlayerRangeRing)이 같은 값을 읽어야 표시와 판정이 일치한다.
+        /// </summary>
+        public const float SWARM_ORB_ATTACK_RANGE = 7f;
+
+        /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.
         /// 데이터와 프로토콜은 보존하므로 레거시 모드가 다시 분리되면 이 게이트로 복구할 수 있다.
         /// </summary>

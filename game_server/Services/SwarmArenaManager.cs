@@ -629,12 +629,26 @@ public sealed class SwarmArenaManager
         }
     }
 
+    // 임시(비주얼 확인): 전 캠프를 고블린 2종만으로 스폰한다. 확인 끝나면 false로 복원.
+    // 테스트는 정규 편성을 검증하므로 생성자에서 끈다.
+    public static bool GoblinOnlySpawnForVisualCheck = true;
+
     /// <summary>
     ///     캠프 편성 (SB 배치 문법): 밴드·광장은 "다리 위 해골 3마리" — 전 캠프 해골 무리.
     ///     포드 방은 해골 무리 1캠프 + 다트 고블린 1기 + (탈주 고블린 | 볼러) 1기.
     /// </summary>
     private static SwarmMonsterKind[] GetCampComposition(MatchState state, AreaType area, int campIndex)
     {
+        if (GoblinOnlySpawnForVisualCheck)
+        {
+            return campIndex switch
+            {
+                0 => [SwarmMonsterKind.DartGoblin, SwarmMonsterKind.DartGoblin, SwarmMonsterKind.DartGoblin],
+                1 => [SwarmMonsterKind.DartGoblin],
+                _ => [SwarmMonsterKind.RunawayGoblin]
+            };
+        }
+
         if (!StartRooms.Contains(area) || campIndex == 0)
             return [SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton];
         if (campIndex == 1)

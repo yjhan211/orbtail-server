@@ -15,6 +15,8 @@ public class SwarmArenaManagerTests
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
         GameDataHelper.Initialize();
+        // 비주얼 확인용 임시 편성(고블린만)을 끄고 정규 편성을 검증한다.
+        SwarmArenaManager.GoblinOnlySpawnForVisualCheck = false;
     }
 
     [Fact]

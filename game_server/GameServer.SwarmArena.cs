@@ -12,7 +12,8 @@ namespace game_server;
 public partial class GameServer
 {
     private const int SwarmArenaBasicDamage = 12;
-    private const float SwarmArenaBasicRange = 7f;
+    // 사거리는 클라 표시(PlayerRangeRing)와 공유 — Config가 단일 출처다.
+    private const float SwarmArenaBasicRange = Config.SWARM_ORB_ATTACK_RANGE;
     private const float SwarmArenaBasicAttackIntervalSeconds = 1f;
     private const int SwarmArenaWeaponItemId = 107000010;
 
