@@ -56,6 +56,11 @@ public partial class GameServer
     /// </summary>
     private void ProcessSwarmArenaForMatching(long matchingId, List<GameClientSession> activeSessions)
     {
+        // 탐사 모드(SOLO_MAP_VALIDATION=1): 맵 검증용 1인 매치 — 캠프 몹·접촉 피해·
+        // 전투·오브 스트림을 전부 끈다. 이동·문·탐색만 남는다.
+        if (MatchStartGate.IsSoloMapValidationEnabled)
+            return;
+
         var sessions = activeSessions
             .Where(session => session.PlayerId.HasValue &&
                               session.CurrentMapSubId == matchingId &&
