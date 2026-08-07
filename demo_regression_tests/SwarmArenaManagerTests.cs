@@ -55,6 +55,22 @@ public class SwarmArenaManagerTests
     }
 
     [Fact]
+    public void PodArea_SpawnsSkeletonPackPlusDartAndBruiser()
+    {
+        // #219 SB 몬스터 4종: 포드 방 = 해골 무리(12×3) + 다트(16) + 탈주(60)|볼러(48).
+        DateTime now = StartUtc.AddSeconds(0.25);
+        var manager = CreateManager(() => now);
+        Vector3f library = AreaCenter(AreaType.Library);
+
+        var tick = manager.Tick(217001, Participants(library, AreaType.Library), now);
+
+        Assert.Equal(5, tick.SpawnedMonsters.Count);
+        Assert.Equal(3, tick.SpawnedMonsters.Count(monster => monster.MaxHealth == 12));
+        Assert.Equal(1, tick.SpawnedMonsters.Count(monster => monster.MaxHealth == 16));
+        Assert.Equal(1, tick.SpawnedMonsters.Count(monster => monster.MaxHealth is 60 or 48));
+    }
+
+    [Fact]
     public void AreaDensity_StaysWithinProfileCap()
     {
         DateTime now = StartUtc;
@@ -92,7 +108,8 @@ public class SwarmArenaManagerTests
         Assert.NotEmpty(damageEvents);
         Assert.All(damageEvents, damage =>
         {
-            Assert.Equal(SwarmArenaManager.ContactDamage, damage.Damage);
+            // 운동장 캠프는 전원 해골 — 접촉 피해는 오브 HP 1이다 (SB: 잡몹은 거의 무해).
+            Assert.Equal(1, damage.Damage);
             Assert.Equal(1, damage.TargetPlayerId);
         });
         Assert.Equal(damageEvents.Count, manager.GetSummary(217001).HitsTaken);

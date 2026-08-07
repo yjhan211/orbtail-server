@@ -59,6 +59,19 @@ public sealed class SwarmArenaManager
     private const double CampRespawnSeconds = 45d;
     private const float CampReturnArriveDistance = 0.4f;
 
+    // #219 SB 몬스터 4종 (원작 스펙 ÷25 환산, 잼 보류 — 보상은 소환석만).
+    // 해골: 무해한 코인 파밍 무리. 다트: 원거리 단발. 탈주: 접촉 강펀치 브루저. 볼러: 범위 투척.
+    public const float BowlerSplashRadius = 1.5f;
+
+    public static (int MaxHp, int OrbDamage, float AttackRange, float AttackCooldownSeconds, int StoneReward)
+        GetKindStats(SwarmMonsterKind kind) => kind switch
+    {
+        SwarmMonsterKind.DartGoblin => (16, 2, 5f, 2f, 1),
+        SwarmMonsterKind.RunawayGoblin => (60, 5, ContactRange, 1.2f, 4),
+        SwarmMonsterKind.Bowler => (48, 2, 4.5f, 2.5f, 4),
+        _ => (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1)
+    };
+
     private const int FirstMonsterId = 7_000_000;
     private const long FirstCombatTargetId = -4_000_000_000_000_000_000L;
     private const float RingRadius = 9f;
@@ -194,19 +207,21 @@ public sealed class SwarmArenaManager
                 if (now < monster.NextContactAtUtc)
                     continue;
 
+                // 잠든 원거리 몹은 저격하지 않는다 — 부딪힘(접촉 반경)만 개전이 된다.
+                float attackRange = monster.Aggro ? monster.AttackRangeValue : ContactRange;
                 foreach (var participant in state.LastParticipants)
                 {
                     if (participant.Area != monster.Area)
                         continue;
                     float dx = monster.Position.X - participant.Position.X;
                     float dy = monster.Position.Y - participant.Position.Y;
-                    if (dx * dx + dy * dy > ContactRange * ContactRange)
+                    if (dx * dx + dy * dy > attackRange * attackRange)
                         continue;
                     if (state.ContactImmuneUntilUtc.TryGetValue(participant.PlayerId, out var immuneUntil) &&
                         now < immuneUntil)
                         continue;
 
-                    monster.NextContactAtUtc = now.AddSeconds(ContactCooldownSeconds);
+                    monster.NextContactAtUtc = now.AddSeconds(monster.AttackCooldownValue);
                     state.ContactImmuneUntilUtc[participant.PlayerId] =
                         now.AddSeconds(ContactImmunitySeconds);
                     if (CampModeEnabled)
@@ -227,6 +242,32 @@ public sealed class SwarmArenaManager
                         participant.PlayerId,
                         monster.Area,
                         monster.ContactDamageValue));
+
+                    // 볼러 스플래시: 주 대상 주변까지 함께 맞는다 — 뭉치기 견제.
+                    if (monster.Kind == SwarmMonsterKind.Bowler)
+                    {
+                        foreach (var splashed in state.LastParticipants)
+                        {
+                            if (splashed.PlayerId == participant.PlayerId ||
+                                splashed.Area != monster.Area)
+                                continue;
+                            float sx = splashed.Position.X - participant.Position.X;
+                            float sy = splashed.Position.Y - participant.Position.Y;
+                            if (sx * sx + sy * sy > BowlerSplashRadius * BowlerSplashRadius)
+                                continue;
+                            if (state.ContactImmuneUntilUtc.TryGetValue(splashed.PlayerId, out var splashImmune) &&
+                                now < splashImmune)
+                                continue;
+                            state.ContactImmuneUntilUtc[splashed.PlayerId] =
+                                now.AddSeconds(ContactImmunitySeconds);
+                            result.PlayerDamage.Add(new SpotArenaPlayerDamage(
+                                monster.MonsterId,
+                                splashed.PlayerId,
+                                monster.Area,
+                                monster.ContactDamageValue));
+                        }
+                    }
+
                     break;
                 }
             }
@@ -588,6 +629,21 @@ public sealed class SwarmArenaManager
         }
     }
 
+    /// <summary>
+    ///     캠프 편성 (SB 배치 문법): 밴드·광장은 "다리 위 해골 3마리" — 전 캠프 해골 무리.
+    ///     포드 방은 해골 무리 1캠프 + 다트 고블린 1기 + (탈주 고블린 | 볼러) 1기.
+    /// </summary>
+    private static SwarmMonsterKind[] GetCampComposition(MatchState state, AreaType area, int campIndex)
+    {
+        if (!StartRooms.Contains(area) || campIndex == 0)
+            return [SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton];
+        if (campIndex == 1)
+            return [SwarmMonsterKind.DartGoblin];
+        return state.Rng.NextDouble() < 0.5d
+            ? [SwarmMonsterKind.RunawayGoblin]
+            : [SwarmMonsterKind.Bowler];
+    }
+
     private static void SpawnCamp(
         MatchState state, AreaType area, int campIndex, DateTime now, SwarmArenaTickResult result)
     {
@@ -602,15 +658,17 @@ public sealed class SwarmArenaManager
 
         // 캠프별 오브 색 유지 — 처치 보상 색이 캠프 단위로 읽힌다.
         var pattern = (SwarmPattern)(campIndex % 3);
-        for (int index = 0; index < CampMonstersPerCamp; index++)
+        var kinds = GetCampComposition(state, area, campIndex);
+        for (int index = 0; index < kinds.Length; index++)
         {
-            float angle = (float)(index * Math.PI * 2d / CampMonstersPerCamp) +
+            float angle = (float)(index * Math.PI * 2d / kinds.Length) +
                           (float)(state.Rng.NextDouble() * 0.5d - 0.25d);
             var position = ClampToAreaWalkable(new Vector3f(
                 campAnchor.X + MathF.Cos(angle) * CampScatterRadius,
                 campAnchor.Y + MathF.Sin(angle) * CampScatterRadius,
                 0f), campAnchor, area);
 
+            var stats = GetKindStats(kinds[index]);
             int serial = state.NextSerial++;
             var monster = new MonsterRuntime
             {
@@ -619,13 +677,17 @@ public sealed class SwarmArenaManager
                 Pattern = pattern,
                 Area = area,
                 Position = position,
-                Health = MonsterMaxHealth,
+                Health = stats.MaxHp,
                 Alive = true,
                 ActivatesAtUtc = now,
                 NextContactAtUtc = now,
                 ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
-                SummonStoneReward = 1,
-                ContactDamageValue = ContactDamage,
+                SummonStoneReward = stats.StoneReward,
+                ContactDamageValue = stats.OrbDamage,
+                Kind = kinds[index],
+                MaxHealthValue = stats.MaxHp,
+                AttackRangeValue = stats.AttackRange,
+                AttackCooldownValue = stats.AttackCooldownSeconds,
                 CampIndex = campIndex,
                 AnchorX = position.X,
                 AnchorY = position.Y
@@ -1029,6 +1091,12 @@ public sealed class SwarmArenaManager
         public int ContactDamageValue { get; init; }
         public long ChaseTargetPlayerId { get; set; }
 
+        // 몬스터 4종: 종별 스탯은 스폰 시 박제된다. 레거시 스폰 경로는 기본값(해골 상당)을 쓴다.
+        public SwarmMonsterKind Kind { get; init; } = SwarmMonsterKind.Skeleton;
+        public int MaxHealthValue { get; init; } = MonsterMaxHealth;
+        public float AttackRangeValue { get; init; } = ContactRange;
+        public float AttackCooldownValue { get; init; } = ContactCooldownSeconds;
+
         // 캠프 모드: 소속 캠프와 제자리(앵커), 어그로 상태.
         public int CampIndex { get; set; } = -1;
         public float AnchorX { get; set; }
@@ -1041,7 +1109,7 @@ public sealed class SwarmArenaManager
             AreaType = Area,
             PositionX = Position.X,
             PositionY = Position.Y,
-            MaxHealth = MonsterMaxHealth,
+            MaxHealth = MaxHealthValue,
             CurrentHealth = Health,
             IsAlive = Alive,
             RewardItemId = Pattern switch
@@ -1062,6 +1130,15 @@ public enum SwarmPattern
     Ring = 0,
     Rush = 1,
     Encircle = 2
+}
+
+/// <summary>#219 SB 몬스터 4종. 보스(골렘·베이비 드래곤)는 M4 몫.</summary>
+public enum SwarmMonsterKind
+{
+    Skeleton = 0,
+    DartGoblin = 1,
+    RunawayGoblin = 2,
+    Bowler = 3
 }
 
 public sealed class SwarmArenaTickResult

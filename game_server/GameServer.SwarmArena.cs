@@ -53,8 +53,7 @@ public partial class GameServer
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmPvpOrbHitImmuneUntilUtc = new();
 
     // SB 유닛 개별 체력: 접촉·PvP는 오브 HP를 깎고, HP가 0이 된 오브만 파괴된다.
-    // 최저 티어 오브가 항상 앞줄에서 맞는다 — 파괴 순서와 같은 규칙.
-    private const int SwarmContactOrbDamage = 4;
+    // 최저 티어 오브가 항상 앞줄에서 맞는다 — 파괴 순서와 같은 규칙. 접촉 피해량은 몬스터 종이 결정.
     private readonly Dictionary<(long MatchingId, long PlayerId), (int ItemId, int Hp)> _swarmFrontOrbHp = new();
 
     private static int GetSquadOrbMaxHp(int tier) => tier switch { >= 3 => 60, 2 => 28, _ => 12 };
@@ -643,7 +642,8 @@ public partial class GameServer
         {
             if (SwarmOrbHealthEnabled)
             {
-                ApplySwarmSquadOrbHit(matchingId, session, damage.MonsterId, SwarmContactOrbDamage);
+                // 피해량은 몬스터 종이 결정한다 (해골 1 · 다트 2 · 탈주 5 · 볼러 2).
+                ApplySwarmSquadOrbHit(matchingId, session, damage.MonsterId, damage.Damage);
                 return;
             }
 
@@ -660,7 +660,7 @@ public partial class GameServer
         {
             // 유닛 낱개 체력: 접촉은 오브 HP를 깎는다. 마지막 유닛을 잃으면 그 타격이
             // 곧 버스트 — 오염 만충으로 기존 탈락 파이프라인(순위·드롭)을 그대로 탄다.
-            if (ApplySwarmOrbHpDamage(matchingId, bot.PlayerId, SwarmContactOrbDamage).Busted)
+            if (ApplySwarmOrbHpDamage(matchingId, bot.PlayerId, damage.Damage).Busted)
                 bot.Corruption = Config.SURVIVOR_MAX_CORRUPTION;
             return;
         }
