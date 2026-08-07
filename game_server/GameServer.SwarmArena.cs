@@ -50,6 +50,13 @@ public partial class GameServer
     // 유닛 낱개 체력의 PvP 피격 무적창 — 접촉 무적(0.8초)과 같은 리듬.
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmPvpOrbHitImmuneUntilUtc = new();
 
+    // SB 유닛 개별 체력: 접촉·PvP는 오브 HP를 깎고, HP가 0이 된 오브만 파괴된다.
+    // 최저 티어 오브가 항상 앞줄에서 맞는다 — 파괴 순서와 같은 규칙.
+    private const int SwarmContactOrbDamage = 4;
+    private readonly Dictionary<(long MatchingId, long PlayerId), (int ItemId, int Hp)> _swarmFrontOrbHp = new();
+
+    private static int GetSquadOrbMaxHp(int tier) => tier switch { >= 3 => 60, 2 => 28, _ => 12 };
+
     /// <summary>
     ///     #217 8인 맵 역할 검증(M1). 매치 수명(탈락·최후 1인·타이머)은 기존 서바이버 로얄
     ///     흐름이 소유하고, 여기서는 스웜 디렉터 틱·접촉 피해·전투 액터·PvP만 돌린다.
@@ -669,7 +676,7 @@ public partial class GameServer
         {
             if (SwarmOrbHealthEnabled)
             {
-                ApplySwarmSquadOrbHit(matchingId, session, damage.MonsterId);
+                ApplySwarmSquadOrbHit(matchingId, session, damage.MonsterId, SwarmContactOrbDamage);
                 return;
             }
 
@@ -684,10 +691,9 @@ public partial class GameServer
 
         if (SwarmOrbHealthEnabled)
         {
-            // 유닛 낱개 체력: 피격 1회 = 오브 1개 파괴. 마지막 유닛을 잃으면 그 타격이
+            // 유닛 낱개 체력: 접촉은 오브 HP를 깎는다. 마지막 유닛을 잃으면 그 타격이
             // 곧 버스트 — 오염 만충으로 기존 탈락 파이프라인(순위·드롭)을 그대로 탄다.
-            if (!TryDestroyOneSquadOrb(matchingId, bot.PlayerId, out _) ||
-                !HasAnySquadOrb(matchingId, bot.PlayerId))
+            if (ApplySwarmOrbHpDamage(matchingId, bot.PlayerId, SwarmContactOrbDamage).Busted)
                 bot.Corruption = Config.SURVIVOR_MAX_CORRUPTION;
             return;
         }
@@ -698,31 +704,58 @@ public partial class GameServer
     }
 
     /// <summary>
-    ///     사람 피격 (유닛 낱개 체력): 오브 1개 파괴 + 인벤 동기화, 궤도가 비면 버스트.
-    ///     피격 연출·탈락은 기존 잔상 피격 경로를 재사용한다 (파괴 시 미미한 오염 1로 연출만 태움).
+    ///     사람 피격 (유닛 낱개 체력): 오브 HP 차감 → 0이면 파괴 + 인벤 동기화, 궤도가 비면 버스트.
+    ///     피격 연출·탈락은 기존 잔상 피격 경로를 재사용한다 (오염은 연출용 1, 표시는 실제 피해량).
     /// </summary>
-    private void ApplySwarmSquadOrbHit(long matchingId, GameClientSession session, int monsterId)
+    private void ApplySwarmSquadOrbHit(long matchingId, GameClientSession session, int monsterId, int damage)
     {
         if (!session.PlayerId.HasValue)
             return;
 
-        if (TryDestroyOneSquadOrb(matchingId, session.PlayerId.Value, out var destroyedItem))
+        var hit = ApplySwarmOrbHpDamage(matchingId, session.PlayerId.Value, damage);
+        if (hit.DestroyedItem != null)
+            session.SendInGameInventoryUpdate(hit.DestroyedItem);
+
+        // 마지막 유닛을 잃는 그 타격이 곧 버스트다 (SB: 스쿼드 전멸).
+        if (hit.Busted)
         {
-            if (destroyedItem != null)
-                session.SendInGameInventoryUpdate(destroyedItem);
-
-            // 마지막 유닛을 잃는 그 타격이 곧 버스트다 (SB: 스쿼드 전멸).
-            if (!HasAnySquadOrb(matchingId, session.PlayerId.Value))
-            {
-                session.ApplyEmotionAfterimageMonsterHit(monsterId, Config.SURVIVOR_MAX_CORRUPTION);
-                return;
-            }
-
-            session.ApplyEmotionAfterimageMonsterHit(monsterId, 1);
+            session.ApplyEmotionAfterimageMonsterHit(monsterId, Config.SURVIVOR_MAX_CORRUPTION);
             return;
         }
 
-        session.ApplyEmotionAfterimageMonsterHit(monsterId, Config.SURVIVOR_MAX_CORRUPTION);
+        session.ApplyEmotionAfterimageMonsterHit(monsterId, 1, damage);
+    }
+
+    /// <summary>
+    ///     오브 HP 피해 공통 처리 (사람·봇). 최저 티어 오브의 HP를 깎고, 0이 되면 그 오브를 파괴한다.
+    ///     앞줄 오브가 바뀌면(머지·획득) HP는 새 오브 만충으로 리셋된다 — 잔여 HP 이월 없음.
+    /// </summary>
+    private (InGameItemInfo DestroyedItem, bool Busted) ApplySwarmOrbHpDamage(
+        long matchingId, long playerId, int damage)
+    {
+        var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
+        var frontOrb = inventory.GetAllItems()
+            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
+            .OrderBy(item => GetSquadOrbTier(item.ItemId))
+            .ThenBy(item => item.ItemUid)
+            .FirstOrDefault();
+        if (frontOrb == null)
+            return (null, true);
+
+        var key = (matchingId, playerId);
+        int currentHp = _swarmFrontOrbHp.TryGetValue(key, out var stored) && stored.ItemId == frontOrb.ItemId
+            ? stored.Hp
+            : GetSquadOrbMaxHp(GetSquadOrbTier(frontOrb.ItemId));
+        currentHp -= damage;
+        if (currentHp > 0)
+        {
+            _swarmFrontOrbHp[key] = (frontOrb.ItemId, currentHp);
+            return (null, false);
+        }
+
+        _swarmFrontOrbHp.Remove(key);
+        inventory.TryRemoveItem(frontOrb.ItemUid, 1, out var destroyedItem);
+        return (destroyedItem, !HasAnySquadOrb(matchingId, playerId));
     }
 
     private bool HasAnySquadOrb(long matchingId, long playerId)
@@ -730,21 +763,6 @@ public partial class GameServer
         return _inGameInventoryManager.GetPlayerInventory(matchingId, playerId)
             .GetAllItems()
             .Any(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0);
-    }
-
-    /// <summary>낮은 티어부터 오브 1개 파괴. 파괴하면 true, 궤도가 비어 있으면 false.</summary>
-    private bool TryDestroyOneSquadOrb(long matchingId, long playerId, out InGameItemInfo destroyedItem)
-    {
-        destroyedItem = null;
-        var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
-        var lowestOrb = inventory.GetAllItems()
-            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
-            .OrderBy(item => GetSquadOrbTier(item.ItemId))
-            .ThenBy(item => item.ItemUid)
-            .FirstOrDefault();
-        if (lowestOrb == null)
-            return false;
-        return inventory.TryRemoveItem(lowestOrb.ItemUid, 1, out destroyedItem);
     }
 
     private static int GetSquadOrbTier(int itemId)
@@ -764,8 +782,8 @@ public partial class GameServer
         int damage = Math.Min(attack.Damage, SwarmArenaManager.PvpDamage);
         if (SwarmOrbHealthEnabled)
         {
-            // 유닛 낱개 체력의 PvP: 피격 무적창(0.8초)당 오브 1개 — 스쿼드 싸움이 수 초 안에
-            // 결판나되, 스트림 여러 발이 같은 순간에 궤도를 갈아버리지는 않게.
+            // 유닛 낱개 체력의 PvP: 피격 무적창(0.8초)당 오브 HP 피해 1회 — 스트림 여러 발이
+            // 같은 순간에 궤도를 갈아버리지는 않게. 티어가 높은 오브일수록 오래 버틴다.
             var immunityKey = (matchingId, attack.TargetPlayerId);
             DateTime nowUtc = DateTime.UtcNow;
             if (_swarmPvpOrbHitImmuneUntilUtc.TryGetValue(immunityKey, out var immuneUntil) &&
@@ -778,7 +796,7 @@ public partial class GameServer
                 session.PlayerId == attack.TargetPlayerId);
             if (pvpTargetSession != null)
             {
-                ApplySwarmSquadOrbHit(matchingId, pvpTargetSession, monsterId: 0);
+                ApplySwarmSquadOrbHit(matchingId, pvpTargetSession, monsterId: 0, damage);
             }
             else
             {
@@ -787,8 +805,7 @@ public partial class GameServer
                 if (pvpTargetBot == null)
                     return;
                 pvpTargetBot.LastProximityAttackerPlayerId = attack.AttackerPlayerId;
-                if (!TryDestroyOneSquadOrb(matchingId, pvpTargetBot.PlayerId, out _) ||
-                    !HasAnySquadOrb(matchingId, pvpTargetBot.PlayerId))
+                if (ApplySwarmOrbHpDamage(matchingId, pvpTargetBot.PlayerId, damage).Busted)
                     pvpTargetBot.Corruption = Config.SURVIVOR_MAX_CORRUPTION;
             }
 
@@ -902,6 +919,8 @@ public partial class GameServer
         _swarmFieldOutsideAreas.Remove(matchingId);
         foreach (var key in _swarmPvpOrbHitImmuneUntilUtc.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmPvpOrbHitImmuneUntilUtc.Remove(key);
+        foreach (var key in _swarmFrontOrbHp.Keys.Where(key => key.MatchingId == matchingId).ToList())
+            _swarmFrontOrbHp.Remove(key);
     }
 
     private List<ProximityCombatActor> BuildSwarmArenaCombatActors(
