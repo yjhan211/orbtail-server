@@ -972,15 +972,19 @@ public partial class GameServer
             },
             inventory,
             resonanceState: default);
+        // #219 M2 색 스탯: 태양=공격력 배율, 파도=사거리 가산 (바람=이속은 클라 이동에서).
+        var colorStats = SurvivorOrbData.GetSwarmColorStats(inventory.GetAllItems());
         for (int index = before; index < actors.Count; index++)
         {
             var actor = actors[index];
             actors[index] = actor with
             {
-                Damage = armed ? actor.Damage * SwarmOrbDamageMultiplier : 0,
+                Damage = armed
+                    ? (int)MathF.Round(actor.Damage * SwarmOrbDamageMultiplier * colorStats.AttackMultiplier)
+                    : 0,
                 AttackIntervalSeconds = actor.AttackIntervalSeconds * SwarmOrbIntervalMultiplier,
-                // 사거리는 CSV 티어값(7/8/9) 대신 링 표시와 같은 단일 값 — 표시가 곧 판정.
-                AttackRange = Config.SWARM_ORB_ATTACK_RANGE
+                // 사거리는 CSV 티어값 대신 단일 기준 + 파도 가산 — 링 표시가 곧 판정.
+                AttackRange = Config.SWARM_ORB_ATTACK_RANGE + colorStats.RangeBonus
             };
         }
     }
@@ -992,10 +996,11 @@ public partial class GameServer
     /// </summary>
     private static bool IsWithinSwarmOrbRange(ProximityCombatActor attacker, ProximityCombatActor target)
     {
+        // 파도 사거리 가산이 액터에 실려 온다 — 없으면(0) 기본 사거리.
+        float range = attacker.AttackRange > 0f ? attacker.AttackRange : Config.SWARM_ORB_ATTACK_RANGE;
         float dx = target.Position.X - attacker.Position.X;
         float dy = (target.Position.Y - attacker.Position.Y) * 2f;
-        return dx * dx + dy * dy <=
-               Config.SWARM_ORB_ATTACK_RANGE * Config.SWARM_ORB_ATTACK_RANGE;
+        return dx * dx + dy * dy <= range * range;
     }
 
     private ProximityCombatActor CreateSwarmParticipantActor(ProximityCombatActor spatial, bool armed)

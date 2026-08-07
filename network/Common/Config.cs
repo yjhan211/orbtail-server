@@ -176,6 +176,7 @@ namespace network.common
         ///     스웜 기본 오브 사거리. 서버 전투(GameServer.SwarmArena)와 클라 사거리 링
         ///     (PlayerRangeRing)이 같은 값을 읽어야 표시와 판정이 일치한다.
         ///     7 → 5: 화면에서 자연스럽게 읽히는 링 크기에 판정을 맞춤 (2026-08-07).
+        ///     좁은 시작이 파도(사거리 성장, 캡 +3)의 여지이기도 하다 — 만렙이 기존 7을 넘는 8.
         /// </summary>
         public const float SWARM_ORB_ATTACK_RANGE = 5f;
 

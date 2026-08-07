@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using network.common.data.models;
 
 namespace network.common.data
 {
@@ -68,6 +69,44 @@ namespace network.common.data
         public const float MinimumProjectileImpactDelaySeconds = 0.45f;
         public const float MaximumProjectileImpactDelaySeconds = 1.4f;
         public const float ProjectileTargetBodyRadius = 0.4f;
+
+        // #219 M2: 색 = 스탯 축 (SB 유닛 선택의 압축). 태양(빨강)=공격력, 바람(초록)=이속,
+        // 파도(파랑)=사거리. 매 개봉의 색 선택이 빌드 결정이 된다.
+        public const float SunAttackBonusPerOrb = 0.15f;
+        public const float WindSpeedBonusPerOrb = 0.04f;
+        public const float WindSpeedBonusCap = 0.30f;
+        public const float WaveRangeBonusPerOrb = 0.4f;
+        public const float WaveRangeBonusCap = 3f;
+
+        /// <summary>
+        ///     스탯 티어 가중(1/1.75/4): 3머지는 슬롯·개봉비를 돌려주는 대신 스탯 합이
+        ///     약간 손해 — 전문화(머지) vs 분산(보유)의 트레이드가 SB 융합 문법이다.
+        /// </summary>
+        public static float GetSwarmStatTierWeight(int tier) =>
+            tier >= 3 ? 4f : tier == 2 ? 1.75f : 1f;
+
+        /// <summary>궤도 전체의 색 스탯 합산 — 서버 판정과 클라 표시(링·이속)가 같은 값을 읽는다.</summary>
+        public static (float AttackMultiplier, float MoveSpeedMultiplier, float RangeBonus)
+            GetSwarmColorStats(IEnumerable<InGameItemInfo> items)
+        {
+            float sun = 0f;
+            float wind = 0f;
+            float wave = 0f;
+            foreach (var item in items)
+            {
+                if (item == null || item.Count <= 0) continue;
+                if (!TryGetColorAndTier(item.ItemId, out SurvivorOrbColor color, out int tier)) continue;
+                float weight = GetSwarmStatTierWeight(tier) * item.Count;
+                if (color == SurvivorOrbColor.Red) sun += weight;
+                else if (color == SurvivorOrbColor.Green) wind += weight;
+                else if (color == SurvivorOrbColor.Blue) wave += weight;
+            }
+
+            return (
+                1f + sun * SunAttackBonusPerOrb,
+                1f + Math.Min(WindSpeedBonusCap, wind * WindSpeedBonusPerOrb),
+                Math.Min(WaveRangeBonusCap, wave * WaveRangeBonusPerOrb));
+        }
 
         private static readonly SurvivorOrbColor[] EvolutionColors =
             new[] { SurvivorOrbColor.Red, SurvivorOrbColor.Green, SurvivorOrbColor.Blue };
