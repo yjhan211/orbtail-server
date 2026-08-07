@@ -175,10 +175,10 @@ namespace network.common
         /// <summary>
         ///     스웜 기본 오브 사거리. 서버 전투(GameServer.SwarmArena)와 클라 사거리 링
         ///     (PlayerRangeRing)이 같은 값을 읽어야 표시와 판정이 일치한다.
-        ///     7 → 5 → 4 → 3.5 → 3 (2026-08-07): 좁은 시작이 파도(사거리 성장) 여지다.
-        ///     다트 고블린 사거리(5)보다 한참 짧다 — 원거리 몹 접근엔 피격 감수가 전제.
+        ///     7 → … → 3 → 2.5 (2026-08-07): 좁은 시작이 파도(사거리 성장) 여지다.
+        ///     다트 고블린 사거리(5)의 절반 — 원거리 몹 접근엔 피격 감수가 전제.
         /// </summary>
-        public const float SWARM_ORB_ATTACK_RANGE = 3f;
+        public const float SWARM_ORB_ATTACK_RANGE = 2.5f;
 
         /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.
