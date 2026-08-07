@@ -24,19 +24,21 @@ namespace network.common.data
         new(165, 85)
     };
 
-        // #217 6인 시작방 — 3쌍 깔때기 토폴로지 (성장곡선 v3).
-        // 고사실+서쪽창고 → 도서관 / 보건실+동쪽창고 → 강당 / 행정실+교무실 → 복도층.
-        // 도서관·강당은 만남 구역이므로 스폰 금지, 복도층의 판돈은 교실(3-2·4-2)이 담당,
-        // 쓰레기장은 문 잠금으로 도달 불가.
-        // (보건실 = Classroom2, 서쪽창고 = Storage, 동쪽창고 = Storage2)
+        // #219 SB 클론 맵 — 중앙 광장(Ground)을 포드 10개가 직접 포위한다.
+        // 스폰 후보 = 포드 10곳 (기존 방 enum 재사용). Ground(광장)와 상하 회랑 밴드
+        // (Junkyard=1, Corridor=7)는 스폰 금지. 6인 매치는 이 중 6곳을 뽑는다.
         private static readonly AreaType[] PhaseRoomCandidates =
         {
-            AreaType.ExamRoom,
-            AreaType.Storage,
-            AreaType.Classroom2,
             AreaType.Storage2,
             AreaType.AdminOffice,
-            AreaType.StaffRoom
+            AreaType.StaffRoom,
+            AreaType.Gym,
+            AreaType.Classroom2,
+            AreaType.Library,
+            AreaType.Classroom3,
+            AreaType.ExamRoom,
+            AreaType.Classroom4,
+            AreaType.BroadcastRoom
         };
 
         private static readonly AreaType[] SpotArenaCandidates =

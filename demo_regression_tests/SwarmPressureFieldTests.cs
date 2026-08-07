@@ -21,7 +21,7 @@ public class SwarmPressureFieldTests
         Assert.InRange(SwarmPressureField.MaxDistance, 10, 1000);
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void FunnelOrder_StartRoomsFartherThanTheirPairZones()
     {
         AssertFarther(AreaType.ExamRoom, AreaType.Library);
@@ -32,7 +32,7 @@ public class SwarmPressureFieldTests
         AssertFarther(AreaType.StaffRoom, AreaType.Corridor);
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void PairZones_FartherThanCorridorTier()
     {
         // 쌍 구역은 복도보다 바깥 — 수축이 시작방 → 쌍 구역 → 복도 순서로 스친다.
@@ -40,7 +40,7 @@ public class SwarmPressureFieldTests
         AssertFarther(AreaType.Gym, AreaType.Corridor);
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void LockedBackDoors_DoNotShortenDistances()
     {
         // 서쪽창고는 운동장 직행 문(112)이 잠겨 있어 도서관 경유가 강제된다.

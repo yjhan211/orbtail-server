@@ -80,7 +80,7 @@ public class DodgeableProjectileResolverTests
             new[] { CreateAttack(107000010) },
             launchActors,
             now));
-        var blockedCell = new Cell(198, 93);
+        var blockedCell = new Cell(190, 64); // 강당(x164~187) 밖 공허 — 시야가 끊긴다
         var blockedActors = new[]
         {
             launchActors[0],
@@ -156,8 +156,9 @@ public class DodgeableProjectileResolverTests
 
     private static ProximityCombatActor[] CreateGymActors(float targetOffsetX)
     {
-        var attackerCell = new Cell(195, 93);
-        var targetCell = new Cell(191, 93);
+        // #219 클론 맵: 강당(13) = (164,52)~(179,75)
+        var attackerCell = new Cell(176, 64);
+        var targetCell = new Cell(172, 64);
         Vector3f attackerPosition = MapCoordinateConverter.CellToWorld(MapId.School, attackerCell);
         Vector3f targetPosition = MapCoordinateConverter.CellToWorld(MapId.School, targetCell);
         targetPosition = new Vector3f(

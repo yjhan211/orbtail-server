@@ -7,7 +7,7 @@ namespace demo_regression_tests;
 
 public class SurvivorPhaseManagerTests
 {
-    [Fact]
+    [Fact(Skip = "#219 클론 전환: 레거시 페이즈 머신·구역 폐쇄 — 클론은 M3 젬 헌트 타이머로 대체, 부활 시 재작성")]
     public void Initialize_OpensExactSixStartingRoomsAndCorridorStaysSafe()
     {
         DateTime now = new(2026, 8, 4, 0, 0, 0, DateTimeKind.Utc);
@@ -55,7 +55,7 @@ public class SurvivorPhaseManagerTests
         Assert.Empty(tick.Transitions);
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 전환: 레거시 페이즈 머신·구역 폐쇄 — 클론은 M3 젬 헌트 타이머로 대체, 부활 시 재작성")]
     public void CorridorPhases_ApplyProtectionCombatSelectionAndWarningWindows()
     {
         DateTime now = new(2026, 8, 4, 0, 0, 0, DateTimeKind.Utc);
@@ -87,7 +87,7 @@ public class SurvivorPhaseManagerTests
         Assert.Equal(5, warning.RemainingSeconds);
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 전환: 레거시 페이즈 머신·구역 폐쇄 — 클론은 M3 젬 헌트 타이머로 대체, 부활 시 재작성")]
     public void FullSchedule_UsesSixFourTwoRoomsThenGroundFinal()
     {
         DateTime now = new(2026, 8, 4, 0, 0, 0, DateTimeKind.Utc);
@@ -121,7 +121,7 @@ public class SurvivorPhaseManagerTests
         Assert.True(manager.IsPveAllowed(214004, AreaType.Ground));
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 전환: 레거시 페이즈 머신·구역 폐쇄 — 클론은 M3 젬 헌트 타이머로 대체, 부활 시 재작성")]
     public void Initialize_KeepsAllOccupiedStartingRoomsOpen()
     {
         DateTime now = new(2026, 8, 4, 0, 0, 0, DateTimeKind.Utc);
@@ -149,15 +149,7 @@ public class SurvivorPhaseManagerTests
         GameDataHelper.SetBasePath(FindNetworkBasePath());
         GameDataHelper.Initialize();
         long[] playerIds = Enumerable.Range(1, 6).Select(value => (long)value).ToArray();
-        HashSet<AreaType> expectedRooms =
-        [
-            AreaType.ExamRoom,
-            AreaType.Storage,
-            AreaType.Classroom2,
-            AreaType.Storage2,
-            AreaType.AdminOffice,
-            AreaType.StaffRoom
-        ];
+        var candidateRooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().ToHashSet();
 
         var assignments = SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(214007, playerIds);
         var cells = assignments.Values.ToArray();
@@ -173,8 +165,11 @@ public class SurvivorPhaseManagerTests
             Assert.NotEqual((0, 0), (cell.X, cell.Y));
             Assert.True(GameMapData.IsMoveablePosition(MapId.School, cell));
         });
-        Assert.Equal(expectedRooms.OrderBy(area => area), resolvedAreas.OrderBy(area => area));
-        Assert.DoesNotContain(AreaType.Gym, resolvedAreas);
+        // 6인은 포드 후보 10곳의 부분집합에 스폰한다. 광장·회랑 밴드는 금지.
+        Assert.All(resolvedAreas, area => Assert.Contains(area, candidateRooms));
+        Assert.DoesNotContain(AreaType.Ground, resolvedAreas);
+        Assert.DoesNotContain(AreaType.Corridor, resolvedAreas);
+        Assert.DoesNotContain(AreaType.Junkyard, resolvedAreas);
     }
 
     [Fact]

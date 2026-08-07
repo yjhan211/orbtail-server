@@ -52,7 +52,7 @@ public class AreaClosureManagerTests
             state.Waves[^1].Areas);
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 전환: 레거시 페이즈 머신·구역 폐쇄 — 클론은 M3 젬 헌트 타이머로 대체, 부활 시 재작성")]
     public void InitializeMatching_WithStartingRoomsClosesCorridorBeforeFirstPhaseTick()
     {
         var now = new DateTime(2026, 8, 4, 0, 0, 0, DateTimeKind.Utc);

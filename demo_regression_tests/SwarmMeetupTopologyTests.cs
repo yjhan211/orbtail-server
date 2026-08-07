@@ -5,7 +5,8 @@ using network.common.data.helpers;
 
 namespace demo_regression_tests;
 
-// #217 3쌍 조우 토폴로지: 스폰 방 → 조우 지점 도달성과 잠긴 문 우회를 고정한다.
+// #219 SB 클론 위상: 중앙 광장을 포드 10개와 상하 회랑 밴드가 포위한다.
+// 스폰 후보 전원이 광장에 닿고, 광장에서 어느 방으로든 되돌아갈 수 있어야 한다.
 public class SwarmMeetupTopologyTests
 {
     public SwarmMeetupTopologyTests()
@@ -15,50 +16,28 @@ public class SwarmMeetupTopologyTests
     }
 
     [Fact]
-    public void SpawnRooms_ReachTheirMeetingAreas()
+    public void EveryPod_ReachesTheGroundPlaza()
     {
-        AssertReachable(AreaType.ExamRoom, AreaType.Library);
-        AssertReachable(AreaType.Storage, AreaType.Library);
-        AssertReachable(AreaType.Classroom2, AreaType.Gym);
-        AssertReachable(AreaType.Storage2, AreaType.Gym);
-        AssertReachable(AreaType.AdminOffice, AreaType.Corridor);
-        AssertReachable(AreaType.StaffRoom, AreaType.Corridor);
+        foreach (AreaType pod in SurvivorRoyaleSpawnData.GetPhaseRoomCandidates())
+            AssertReachable(pod, AreaType.Ground);
     }
 
     [Fact]
-    public void LockedDoors_ForceDetourThroughMeetingAreas()
+    public void GroundPlaza_ReachesEveryPodAndBothBands()
     {
-        // 서쪽창고 → 운동장: 잠긴 112(창고↔운동장) 직행 대신 도서관 경유
-        var path = FindPath(AreaType.Storage, AreaType.Ground);
-        Assert.NotNull(path);
-        Assert.Contains(path!, step => step.Area == AreaType.Library);
+        foreach (AreaType pod in SurvivorRoyaleSpawnData.GetPhaseRoomCandidates())
+            AssertReachable(AreaType.Ground, pod);
 
-        // 동쪽창고 → 복도: 잠긴 114 대신 강당 경유
-        var viaGym = FindPath(AreaType.Storage2, AreaType.Corridor);
-        Assert.NotNull(viaGym);
-        Assert.Contains(viaGym!, step => step.Area == AreaType.Gym);
+        AssertReachable(AreaType.Ground, AreaType.Junkyard);
+        AssertReachable(AreaType.Ground, AreaType.Corridor);
     }
 
     [Fact]
-    public void FunnelDownstream_MeetingAreasReachCorridorTierAndGround()
+    public void DiagonalPods_ReachEachOtherAcrossTheMap()
     {
-        // 3단 깔때기 하류: 쌍 구역 → 복도층(교실 포함) → 운동장.
-        AssertReachable(AreaType.Library, AreaType.Corridor);
-        AssertReachable(AreaType.Gym, AreaType.Corridor);
-        AssertReachable(AreaType.Corridor, AreaType.Classroom3);
-        AssertReachable(AreaType.Corridor, AreaType.Classroom4);
-        AssertReachable(AreaType.Corridor, AreaType.Ground);
-        AssertReachable(AreaType.Library, AreaType.Ground);
-        AssertReachable(AreaType.Gym, AreaType.Ground);
-    }
-
-    [Fact]
-    public void Junkyards_AreUnreachable()
-    {
-        Assert.Null(FindPath(AreaType.AdminOffice, AreaType.Junkyard));
-        Assert.Null(FindPath(AreaType.StaffRoom, AreaType.Junkyard2));
-        Assert.Null(FindPath(AreaType.Corridor, AreaType.Junkyard));
-        Assert.Null(FindPath(AreaType.Corridor, AreaType.Junkyard2));
+        // 대각 횡단: 교실1(남서)↔교무실(북동), 행정실(북서)↔방송실(남동)
+        AssertReachable(AreaType.Classroom4, AreaType.StaffRoom);
+        AssertReachable(AreaType.AdminOffice, AreaType.BroadcastRoom);
     }
 
     private static void AssertReachable(AreaType from, AreaType to)

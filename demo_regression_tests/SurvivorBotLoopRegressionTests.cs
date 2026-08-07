@@ -917,7 +917,7 @@ public sealed class SurvivorBotLoopRegressionTests
         Assert.All(botIds, id => Assert.Equal(0, botManager.GetBot(matchingId, id)!.PendingRngInteractId));
     }
 
-    [Theory]
+    [Theory(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     [InlineData(AreaType.Gym, AreaType.Corridor, 173, 88, 172, 88, 170, 88)]
     [InlineData(AreaType.Corridor, AreaType.Gym, 172, 88, 173, 88, 175, 88)]
     public void BotAreaArrivalClearsDoorwayBeforeStopping(
@@ -946,7 +946,7 @@ public sealed class SurvivorBotLoopRegressionTests
         Assert.Equal(new Cell(expectedX, expectedY), path[^1].Cell);
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void DefaultBotAreaArrivalsClearEverySchoolDoorway()
     {
         foreach (var fromArea in Enum.GetValues<AreaType>())

@@ -9,7 +9,7 @@ namespace demo_regression_tests;
 
 public class SchoolNewMapRestorationTests
 {
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void Reinitializing_Map_Data_Replaces_Stale_Area_Regions()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
@@ -24,7 +24,7 @@ public class SchoolNewMapRestorationTests
         Assert.Equal(AreaType.Corridor, GameMapData.GetCurrentArea(MapId.School, new Cell(160, 100)));
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void Stable_Area_Resolution_Requires_Entering_One_Cell_Past_A_Shared_Boundary()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
@@ -61,7 +61,7 @@ public class SchoolNewMapRestorationTests
             GameMapData.GetStableCurrentArea(MapId.School, new Cell(196, 82), AreaType.None));
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void Stable_Area_Resolution_Allows_Every_Authored_Connection_To_Commit()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
@@ -100,7 +100,7 @@ public class SchoolNewMapRestorationTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void BotPathfinder_Crosses_School_Doors_As_Adjacent_Walking_Steps()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
@@ -135,7 +135,7 @@ public class SchoolNewMapRestorationTests
         Assert.NotEqual(exitStep.Cell, entryStep.Cell);
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void Runtime_Obstacle_Overrides_Cached_Walkability_And_Clear_Restores_It()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
@@ -159,7 +159,7 @@ public class SchoolNewMapRestorationTests
         Assert.True(GameMapData.IsMoveablePosition(MapId.School, walkableCell));
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void School_Map_Uses_Legacy_Continuous_Map_Contract()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
@@ -223,7 +223,7 @@ public class SchoolNewMapRestorationTests
         });
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void DoorStateManager_CanCloseAndReopenAllDoorsForAnAreaIdempotently()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
@@ -248,7 +248,7 @@ public class SchoolNewMapRestorationTests
         Assert.All(doorIds, doorId => Assert.True(manager.IsDoorOpen(matchingId, doorId)));
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void DoorStateManager_InitializesAllStartingRoomDoorsLocked()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
@@ -275,7 +275,7 @@ public class SchoolNewMapRestorationTests
         Assert.Equal(clearedDoorIds.Order(), manager.OpenDoorsForAreas(matchingId, [clearedRoom]).Order());
         Assert.All(clearedDoorIds, doorId => Assert.True(manager.IsDoorOpen(matchingId, doorId)));
     }
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void School_New_Does_Not_Load_Corridor_Stop_Penalty_Rule()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
@@ -286,7 +286,7 @@ public class SchoolNewMapRestorationTests
             rule => rule.Id == 6);
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void School_New_Content_References_Are_Internally_Consistent()
     {
         var networkBasePath = FindNetworkBasePath();

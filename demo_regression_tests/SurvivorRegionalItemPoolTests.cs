@@ -64,7 +64,7 @@ public sealed class SurvivorRegionalItemPoolTests
             Assert.Empty(GameInteractableData.GetItemPoolByArea((int)corridor));
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void EveryPlayableRegionStartsWithAtLeastOneOrb()
     {
         var playableAreas = GameMapData.GetAreas(MapId.School)

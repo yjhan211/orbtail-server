@@ -18,11 +18,16 @@ public partial class GameServer
 
     // P0-b 정지 공격 규칙(하드 컷): 이동 중에는 공격하지 않는다. 감쇠안(0.4)은 상대가
     // 읽을 수 없고 무빙 최적해를 남겨서 기각 — #217 기획 코멘트 참조.
-    private static readonly bool SwarmStopToAttackEnabled = false;
+    // #219 M1: 캠프 모드에서 부활 — 몹 개시권이 플레이어에게 있으면 정지는 형벌이 아니라 선택이다.
+    private static readonly bool SwarmStopToAttackEnabled = true;
     private const float SwarmMovingSpeedThreshold = 1.5f;
 
     // 정지를 이 시간 이상 유지해야 무장된다 — 끊어 걷기(스텝 샷)가 무료가 되지 않게.
     private const double SwarmStopAimSeconds = 0.3d;
+
+    // #219 M1 게이트: 자기장(보관), 유닛 낱개 체력(클론 전투 모델).
+    private static readonly bool SwarmFieldEnabled = false;
+    private static readonly bool SwarmOrbHealthEnabled = true;
 
     // 오브 CSV 수치는 구 잔상(고HP) 기준이라 유리 떼(HP 12)에는 너무 약하다.
     // 데미지 3배로 T1(4)도 원킬을 유지하고, 성장은 오브 수 = 처치 스트림 수로 체감시킨다.
@@ -41,6 +46,9 @@ public partial class GameServer
 
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmBotLastDamagedAtUtc = new();
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmBotNextRecoveryAtUtc = new();
+
+    // 유닛 낱개 체력의 PvP 피격 무적창 — 접촉 무적(0.8초)과 같은 리듬.
+    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmPvpOrbHitImmuneUntilUtc = new();
 
     /// <summary>
     ///     #217 8인 맵 역할 검증(M1). 매치 수명(탈락·최후 1인·타이머)은 기존 서바이버 로얄
@@ -70,7 +78,9 @@ public partial class GameServer
             ApplySwarmExploreSpotBudget(matchingId, sessions);
             LogSwarmPairZoneDistances(matchingId);
             // M4 자기장: 안전 거리 수축 시계는 스웜 개전과 함께 돈다.
-            _swarmFieldStartedAtUtc[matchingId] = DateTime.UtcNow;
+            // #219 M1: 클론에서는 자기장을 무장하지 않는다 — 수렴은 M3의 광산 각본이 담당한다.
+            if (SwarmFieldEnabled)
+                _swarmFieldStartedAtUtc[matchingId] = DateTime.UtcNow;
             logger.LogInformation(
                 "Swarm pressure field armed: MatchingId={MatchingId}, MaxDistance={MaxDistance}, " +
                 "HoldSeconds={Hold}, ShrinkSeconds={Shrink}",
@@ -84,6 +94,25 @@ public partial class GameServer
         {
             foreach (var session in sessions)
                 session.GrantSwarmArenaOrb(SwarmArenaWeaponItemId);
+
+            // 유닛 낱개 체력: 궤도가 곧 체력이라 시작 스쿼드 3기를 준다 (사람·봇 공통).
+            // 서로 다른 색이어야 자동 3머지가 시작 스쿼드를 합쳐버리지 않는다.
+            if (SwarmOrbHealthEnabled)
+            {
+                foreach (var session in sessions)
+                {
+                    session.GrantSwarmArenaOrb(107000020);
+                    session.GrantSwarmArenaOrb(107000030);
+                }
+
+                foreach (var bot in bots)
+                {
+                    foreach (int startingOrbItemId in (int[])[107000010, 107000020, 107000030])
+                        _inGameInventoryManager.TryAddItemWithCapacity(
+                            matchingId, bot.PlayerId, startingOrbItemId,
+                            Config.SWARM_ORB_CAPACITY, out _);
+                }
+            }
         }
 
         DateTime nowUtc = DateTime.UtcNow;
@@ -562,7 +591,18 @@ public partial class GameServer
                 new Vector3f(groundStone.PositionX, groundStone.PositionY, 0f));
         }
 
-        // 3) 시작방·복도는 공급이 마른다 — 무한 스폰 사냥터로 이주해 소환석을 번다.
+        // 3) 사냥 정지: 도주·개봉·줍기 용무가 없고 사거리 안에 몹이 있으면 제자리에 선다.
+        //    정지 공격 규칙에서 서야 쏘고, 캠프 모드에선 잠든 캠프 옆이 안전 사격 지점이다.
+        if (HasSwarmMonsterInBasicRange(matchingId, bot))
+        {
+            return new SpotArenaBotDirective(
+                SpotArenaBotMode.Escort,
+                bot.CurrentArea,
+                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, bot.Position),
+                bot.Position);
+        }
+
+        // 4) 시작방·복도는 공급이 마른다 — 무한 스폰 사냥터로 이주해 소환석을 번다.
         if (bot.CurrentArea == AreaType.Corridor ||
             SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().Contains(bot.CurrentArea))
         {
@@ -590,6 +630,22 @@ public partial class GameServer
         return directive;
     }
 
+    private bool HasSwarmMonsterInBasicRange(long matchingId, BotPlayerState bot)
+    {
+        const float rangeSquared = SwarmArenaBasicRange * SwarmArenaBasicRange;
+        foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
+        {
+            if (target.Area != bot.CurrentArea)
+                continue;
+            float dx = target.Position.X - bot.Position.X;
+            float dy = target.Position.Y - bot.Position.Y;
+            if (dx * dx + dy * dy <= rangeSquared)
+                return true;
+        }
+
+        return false;
+    }
+
     /// <summary>봇 개봉 비용 — 사람과 같은 장소 기준 비용(기본가 + 스팟 재개봉 가산)을 쓴다.</summary>
     private static int GetSwarmBotExploreCost(long matchingId, int interactId) =>
         Config.GetSwarmExploreCost(RngCollectCooldownStore.GetOpenCount(matchingId, interactId));
@@ -605,7 +661,13 @@ public partial class GameServer
             candidate.PlayerId == damage.TargetPlayerId);
         if (session != null)
         {
-            // 기존 잔상 피격 경로 — 오염 증가·피격 피드백·일반 탈락 흐름까지 담당한다.
+            if (SwarmOrbHealthEnabled)
+            {
+                ApplySwarmSquadOrbHit(matchingId, session, damage.MonsterId);
+                return;
+            }
+
+            // 레거시 오염 경로 — 오염 증가·피격 피드백·일반 탈락 흐름까지 담당한다.
             session.ApplyEmotionAfterimageMonsterHit(damage.MonsterId, damage.Damage);
             return;
         }
@@ -614,11 +676,76 @@ public partial class GameServer
         if (bot == null)
             return;
 
-        // 봇은 사람 수준의 마이크로 회피가 없어 같은 수치로는 조우 전에 녹는다 (계측:
-        // 첫 탈락 19초, 40초 반수 사망). 봇의 역할은 조우·경제 흐름 재현이므로 피격만 보정한다.
+        if (SwarmOrbHealthEnabled)
+        {
+            // 유닛 낱개 체력: 피격 1회 = 오브 1개 파괴. 마지막 유닛을 잃으면 그 타격이
+            // 곧 버스트 — 오염 만충으로 기존 탈락 파이프라인(순위·드롭)을 그대로 탄다.
+            if (!TryDestroyOneSquadOrb(matchingId, bot.PlayerId, out _) ||
+                !HasAnySquadOrb(matchingId, bot.PlayerId))
+                bot.Corruption = Config.SURVIVOR_MAX_CORRUPTION;
+            return;
+        }
+
         int botDamage = Math.Max(1, (int)(damage.Damage * SwarmBotContactDamageMultiplier));
         bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + botDamage);
         _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    ///     사람 피격 (유닛 낱개 체력): 오브 1개 파괴 + 인벤 동기화, 궤도가 비면 버스트.
+    ///     피격 연출·탈락은 기존 잔상 피격 경로를 재사용한다 (파괴 시 미미한 오염 1로 연출만 태움).
+    /// </summary>
+    private void ApplySwarmSquadOrbHit(long matchingId, GameClientSession session, int monsterId)
+    {
+        if (!session.PlayerId.HasValue)
+            return;
+
+        if (TryDestroyOneSquadOrb(matchingId, session.PlayerId.Value, out var destroyedItem))
+        {
+            if (destroyedItem != null)
+                session.SendInGameInventoryUpdate(destroyedItem);
+
+            // 마지막 유닛을 잃는 그 타격이 곧 버스트다 (SB: 스쿼드 전멸).
+            if (!HasAnySquadOrb(matchingId, session.PlayerId.Value))
+            {
+                session.ApplyEmotionAfterimageMonsterHit(monsterId, Config.SURVIVOR_MAX_CORRUPTION);
+                return;
+            }
+
+            session.ApplyEmotionAfterimageMonsterHit(monsterId, 1);
+            return;
+        }
+
+        session.ApplyEmotionAfterimageMonsterHit(monsterId, Config.SURVIVOR_MAX_CORRUPTION);
+    }
+
+    private bool HasAnySquadOrb(long matchingId, long playerId)
+    {
+        return _inGameInventoryManager.GetPlayerInventory(matchingId, playerId)
+            .GetAllItems()
+            .Any(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0);
+    }
+
+    /// <summary>낮은 티어부터 오브 1개 파괴. 파괴하면 true, 궤도가 비어 있으면 false.</summary>
+    private bool TryDestroyOneSquadOrb(long matchingId, long playerId, out InGameItemInfo destroyedItem)
+    {
+        destroyedItem = null;
+        var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
+        var lowestOrb = inventory.GetAllItems()
+            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
+            .OrderBy(item => GetSquadOrbTier(item.ItemId))
+            .ThenBy(item => item.ItemUid)
+            .FirstOrDefault();
+        if (lowestOrb == null)
+            return false;
+        return inventory.TryRemoveItem(lowestOrb.ItemUid, 1, out destroyedItem);
+    }
+
+    private static int GetSquadOrbTier(int itemId)
+    {
+        if (SurvivorOrbData.TryGetColorAndTier(itemId, out _, out int tier))
+            return tier;
+        return SurvivorOrbData.TryGetRecoveryTier(itemId, out int recoveryTier) ? recoveryTier : 0;
     }
 
     private void ApplySwarmPvpAttack(
@@ -629,6 +756,43 @@ public partial class GameServer
         List<GameClientSession> allSessions)
     {
         int damage = Math.Min(attack.Damage, SwarmArenaManager.PvpDamage);
+        if (SwarmOrbHealthEnabled)
+        {
+            // 유닛 낱개 체력의 PvP: 피격 무적창(0.8초)당 오브 1개 — 스쿼드 싸움이 수 초 안에
+            // 결판나되, 스트림 여러 발이 같은 순간에 궤도를 갈아버리지는 않게.
+            var immunityKey = (matchingId, attack.TargetPlayerId);
+            DateTime nowUtc = DateTime.UtcNow;
+            if (_swarmPvpOrbHitImmuneUntilUtc.TryGetValue(immunityKey, out var immuneUntil) &&
+                nowUtc < immuneUntil)
+                return;
+            _swarmPvpOrbHitImmuneUntilUtc[immunityKey] =
+                nowUtc.AddSeconds(SwarmArenaManager.ContactImmunitySeconds);
+
+            var pvpTargetSession = aliveSessions.FirstOrDefault(session =>
+                session.PlayerId == attack.TargetPlayerId);
+            if (pvpTargetSession != null)
+            {
+                ApplySwarmSquadOrbHit(matchingId, pvpTargetSession, monsterId: 0);
+            }
+            else
+            {
+                var pvpTargetBot = aliveBots.FirstOrDefault(candidate =>
+                    candidate.PlayerId == attack.TargetPlayerId);
+                if (pvpTargetBot == null)
+                    return;
+                pvpTargetBot.LastProximityAttackerPlayerId = attack.AttackerPlayerId;
+                if (!TryDestroyOneSquadOrb(matchingId, pvpTargetBot.PlayerId, out _) ||
+                    !HasAnySquadOrb(matchingId, pvpTargetBot.PlayerId))
+                    pvpTargetBot.Corruption = Config.SURVIVOR_MAX_CORRUPTION;
+            }
+
+            allSessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId)
+                ?.SendProximityAutoCombatAttackFeedback(
+                    attack.TargetPlayerId, attack.Area, attack.WeaponItemId, damage);
+            BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, allSessions);
+            return;
+        }
+
         var targetSession = aliveSessions.FirstOrDefault(session =>
             session.PlayerId == attack.TargetPlayerId);
         if (targetSession != null)
@@ -730,6 +894,8 @@ public partial class GameServer
         _swarmFieldStartedAtUtc.TryRemove(matchingId, out _);
         _swarmFieldWarnedAreas.Remove(matchingId);
         _swarmFieldOutsideAreas.Remove(matchingId);
+        foreach (var key in _swarmPvpOrbHitImmuneUntilUtc.Keys.Where(key => key.MatchingId == matchingId).ToList())
+            _swarmPvpOrbHitImmuneUntilUtc.Remove(key);
     }
 
     private List<ProximityCombatActor> BuildSwarmArenaCombatActors(
