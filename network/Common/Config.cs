@@ -144,9 +144,15 @@ namespace network.common
         /// <summary>궤도 오브 1개당 개봉 비용 가산 — SB "스쿼드 인원수 비례 상자 코인".</summary>
         public const int SWARM_EXPLORE_COST_PER_ORB = 2;
 
+        /// <summary>
+        ///     시작 스쿼드(서로 다른 색 3오브)는 비용 무료 허용량 — SB 첫 상자가 싼 것처럼
+        ///     첫 개봉은 기본가(5)에서 출발하고, 성장분에만 가산이 붙는다.
+        /// </summary>
+        public const int SWARM_STARTING_ORB_COUNT = 3;
+
         public static int GetSwarmExploreCost(int orbCount) =>
             SWARM_EXPLORE_COST_BASE +
-            SWARM_EXPLORE_COST_PER_ORB * (orbCount > 0 ? orbCount : 0);
+            SWARM_EXPLORE_COST_PER_ORB * Math.Max(0, orbCount - SWARM_STARTING_ORB_COUNT);
 
         /// <summary>
         ///     예산 초과 스팟의 선소진용 — 판보다 긴 쿨다운으로 영구 봉인을 표현한다.
