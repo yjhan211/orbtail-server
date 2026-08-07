@@ -85,6 +85,12 @@ namespace network.common.data
         public static float GetSwarmStatTierWeight(int tier) =>
             tier >= 3 ? 4f : tier == 2 ? 1.75f : 1f;
 
+        /// <summary>
+        ///     유닛 낱개 체력 (SB 클론): 티어별 오브 HP. 서버 정산(GameServer.SwarmArena)과
+        ///     클라 스쿼드 체력바 미러가 같은 값을 읽는다.
+        /// </summary>
+        public static int GetSquadOrbMaxHp(int tier) => tier >= 3 ? 60 : tier == 2 ? 28 : 12;
+
         /// <summary>궤도 전체의 색 스탯 합산 — 서버 판정과 클라 표시(링·이속)가 같은 값을 읽는다.</summary>
         public static (float AttackMultiplier, float MoveSpeedMultiplier, float RangeBonus)
             GetSwarmColorStats(IEnumerable<InGameItemInfo> items)

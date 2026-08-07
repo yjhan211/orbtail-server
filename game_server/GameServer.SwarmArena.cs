@@ -79,7 +79,8 @@ public partial class GameServer
         }
     }
 
-    private static int GetSquadOrbMaxHp(int tier) => tier switch { >= 3 => 60, 2 => 28, _ => 12 };
+    // 티어별 오브 HP는 Common(SurvivorOrbData.GetSquadOrbMaxHp)이 단일 출처 — 클라 체력바와 공유.
+    private static int GetSquadOrbMaxHp(int tier) => SurvivorOrbData.GetSquadOrbMaxHp(tier);
 
     /// <summary>
     ///     #217 8인 맵 역할 검증(M1). 매치 수명(탈락·최후 1인·타이머)은 기존 서바이버 로얄
