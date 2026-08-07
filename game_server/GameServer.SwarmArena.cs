@@ -58,7 +58,8 @@ public partial class GameServer
     {
         // 탐사 모드(SOLO_MAP_VALIDATION=1): 맵 검증용 1인 매치 — 캠프 몹·접촉 피해·
         // 전투·오브 스트림을 전부 끈다. 이동·문·탐색만 남는다.
-        if (MatchStartGate.IsSoloMapValidationEnabled)
+        // SOLO_MONSTERS=1을 얹으면 캠프 몹만 되살린다 (봇 없이 몹 상대 검증).
+        if (MatchStartGate.IsSoloMapValidationEnabled && !MatchStartGate.IsSoloMonstersEnabled)
             return;
 
         var sessions = activeSessions

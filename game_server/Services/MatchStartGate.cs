@@ -15,6 +15,10 @@ public static class MatchStartGate
     public static bool IsSoloMapValidationEnabled =>
         Environment.GetEnvironmentVariable("SOLO_MAP_VALIDATION") == "1";
 
+    /// <summary>탐사 모드에서 캠프 몹만 되살린다 — 봇 없이 몹 상대 검증용.</summary>
+    public static bool IsSoloMonstersEnabled =>
+        Environment.GetEnvironmentVariable("SOLO_MONSTERS") == "1";
+
     private static int MatchCapacity => IsSoloMapValidationEnabled
         ? 1
         : global::network.common.Config.SWARM_P0_ENABLED
