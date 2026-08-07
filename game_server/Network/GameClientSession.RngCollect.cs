@@ -31,9 +31,11 @@ public partial class GameClientSession
     private const int SwarmExploreCooldownSeconds = Config.SWARM_EXPLORE_REGEN_SECONDS;
 
     /// <summary>개봉 비용은 장소에 붙는다: 기본가 + 그 스팟의 재개봉 가산.</summary>
-    private int GetSwarmExploreCost(int interactId) =>
+    // 개봉 비용 = SB 크기 비례: 현재 궤도 오브 슬롯 수 기준. 장소별 재개봉 가산은 퇴역.
+    private int GetSwarmExploreCost() =>
         Config.GetSwarmExploreCost(
-            RngCollectCooldownStore.GetOpenCount(CurrentMapSubId, interactId));
+            _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId!.Value)
+                .GetAllItems().Count);
 
     /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — 매칭 단위 추적.
     /// FINISH 도착 시 이 set에 있어야 결과 산출 진행.</summary>
@@ -464,7 +466,7 @@ public partial class GameClientSession
 
         // 소환석 부족이면 게이지를 시작하지 않는다 — 헛 채널 방지.
         if (_summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId!.Value).StoneCount <
-            GetSwarmExploreCost(msg.InteractId))
+            GetSwarmExploreCost())
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.INSUFFICIENT_CURRENCY, 0);
             return Task.CompletedTask;
@@ -520,7 +522,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        var attempt = ExecuteOrbSummon(choiceIndex: 0, costOverride: GetSwarmExploreCost(msg.InteractId));
+        var attempt = ExecuteOrbSummon(choiceIndex: 0, costOverride: GetSwarmExploreCost());
         if (!attempt.Success)
         {
             // 소환 실패(석 부족·보드 포화) — 쿨다운을 풀어 나중에 다시 열 수 있게 한다.
@@ -531,11 +533,10 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        // 스팟은 소진되지 않는다 — 리젠 시간 뒤 재개봉 가산이 붙어 다시 나온다.
+        // 스팟은 소진되지 않는다 — 리젠 시간 뒤 다시 나온다 (비용은 궤도 크기가 결정).
         RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
         RngCollectCooldownStore.TryAcquireCooldown(
             CurrentMapSubId, msg.InteractId, SwarmExploreCooldownSeconds, out _);
-        RngCollectCooldownStore.IncrementOpenCount(CurrentMapSubId, msg.InteractId);
         BroadcastRngCollectCooldown(msg.InteractId, SwarmExploreCooldownSeconds);
         SendRngCollectResult(
             msg.InteractId, RngCollectItemResultType, attempt.ItemId, 0, SwarmExploreCooldownSeconds);

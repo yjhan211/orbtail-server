@@ -405,7 +405,7 @@ public partial class GameServer
                 distance > SwarmBotOpenRange)
                 continue;
 
-            int exploreCost = GetSwarmBotExploreCost(matchingId, spot.Id);
+            int exploreCost = GetSwarmBotExploreCost(matchingId, bot.PlayerId);
             if (_summonStoneManager.GetSnapshot(matchingId, bot.PlayerId).StoneCount < exploreCost)
                 continue;
 
@@ -434,7 +434,6 @@ public partial class GameServer
                 continue;
             }
 
-            RngCollectCooldownStore.IncrementOpenCount(matchingId, spot.Id);
             BroadcastSwarmExploreConsumed(spot.Id, Config.SWARM_EXPLORE_REGEN_SECONDS, sessions);
             // 봇도 자동 머지 — 사람과 같은 성장 규칙 (#217 자동 머지)
             _inGameInventoryManager.AutoMergeSurvivorOrbs(matchingId, bot.PlayerId, Random.Shared);
@@ -661,9 +660,10 @@ public partial class GameServer
         return false;
     }
 
-    /// <summary>봇 개봉 비용 — 사람과 같은 장소 기준 비용(기본가 + 스팟 재개봉 가산)을 쓴다.</summary>
-    private static int GetSwarmBotExploreCost(long matchingId, int interactId) =>
-        Config.GetSwarmExploreCost(RngCollectCooldownStore.GetOpenCount(matchingId, interactId));
+    /// <summary>봇 개봉 비용 — 사람과 같은 SB 크기 비례 비용(궤도 오브 슬롯 수 기준)을 쓴다.</summary>
+    private int GetSwarmBotExploreCost(long matchingId, long botPlayerId) =>
+        Config.GetSwarmExploreCost(
+            _inGameInventoryManager.GetPlayerInventory(matchingId, botPlayerId).GetAllItems().Count);
 
     private void ApplySwarmParticipantDamage(
         long matchingId,
