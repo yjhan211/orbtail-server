@@ -132,16 +132,14 @@ namespace network.common.data
 
         public static SurvivorOrbAttackPattern GetAttackPattern(int itemId)
         {
+            // #219 M2: 색 정체성이 스탯(태양=공격·바람=이속·파도=사거리)으로 옮겨가며
+            // 공격 문법은 전 색 유도 미사일로 통일 — 색은 시각과 스탯만 다르다. 회복 오브 제외.
             if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out _))
                 return SurvivorOrbAttackPattern.None;
 
-            return color switch
-            {
-                SurvivorOrbColor.Red => SurvivorOrbAttackPattern.HomingProjectile,
-                SurvivorOrbColor.Blue => SurvivorOrbAttackPattern.TargetArea,
-                SurvivorOrbColor.Green => SurvivorOrbAttackPattern.AttackerArea,
-                _ => SurvivorOrbAttackPattern.None
-            };
+            return color is SurvivorOrbColor.Red or SurvivorOrbColor.Green or SurvivorOrbColor.Blue
+                ? SurvivorOrbAttackPattern.HomingProjectile
+                : SurvivorOrbAttackPattern.None;
         }
 
         public static float GetWindPulseRadius(int itemId)
@@ -162,29 +160,15 @@ namespace network.common.data
 
         public static float GetPvpProjectileImpactDelaySeconds(int itemId, float distance)
         {
-            if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out _))
-                return MinimumProjectileImpactDelaySeconds;
-
-            if (color == SurvivorOrbColor.Blue)
-                return DespairImpactDelaySeconds;
-
-            float speed = color == SurvivorOrbColor.Green
-                ? ForgetProjectileSpeed
-                : HopeProjectileSpeed;
+            // 공격 문법 통일: 전 색 같은 미사일 속도. 색 분기(파도 고정 딜레이·바람 고속탄) 퇴역.
             return Math.Clamp(
-                Math.Max(0f, distance) / speed,
+                Math.Max(0f, distance) / HopeProjectileSpeed,
                 MinimumProjectileImpactDelaySeconds,
                 MaximumProjectileImpactDelaySeconds);
         }
 
         public static float GetPvpProjectileHitRadius(int itemId, float projectileWidth)
         {
-            if (TryGetColorAndTier(itemId, out SurvivorOrbColor color, out _) &&
-                color == SurvivorOrbColor.Blue)
-            {
-                return 0f;
-            }
-
             return Math.Max(0.55f, Math.Max(0f, projectileWidth) + ProjectileTargetBodyRadius);
         }
 

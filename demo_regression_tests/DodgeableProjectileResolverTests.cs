@@ -97,8 +97,9 @@ public class DodgeableProjectileResolverTests
         Assert.Empty(resolution.Hits);
     }
     [Fact]
-    public void DespairImpact_HitsEveryPlayerRemainingInsideTelegraphedArea()
+    public void BlueImpact_HitsOnlyItsTargetAfterPatternUnification()
     {
+        // #219 M2: 파도 광역 텔레그래프 퇴역 — 전 색 유도 미사일이라 단일 대상만 맞는다.
         InitializeGameData();
         var resolver = new DodgeableProjectileResolver();
         var now = new DateTime(2026, 8, 3, 0, 0, 0, DateTimeKind.Utc);
@@ -116,34 +117,29 @@ public class DodgeableProjectileResolverTests
             now));
 
         var resolution = Assert.Single(resolver.ResolveImpacts(704, actors, launch.ImpactAtUtc));
-        var hits = resolution.Hits;
 
         Assert.Equal("hit", resolution.Outcome);
-        Assert.Equal(new long[] { 2, 3 }, hits.Select(hit => hit.TargetPlayerId).ToArray());
-        Assert.False(hits[0].IsWaveAreaSecondary);
-        Assert.True(hits[1].IsWaveAreaSecondary);
+        var hit = Assert.Single(resolution.Hits);
+        Assert.Equal(2, hit.TargetPlayerId);
+        Assert.False(hit.IsWaveAreaSecondary);
     }
 
     [Fact]
-    public void WindPulse_DoesNotEnterProjectileQueue()
+    public void EveryOrbColor_QueuesHomingProjectile()
     {
+        // #219 M2: 색=스탯 전환으로 공격 문법은 전 색 유도 미사일 통일 (회복 오브 제외).
         InitializeGameData();
         var resolver = new DodgeableProjectileResolver();
         var actors = CreateGymActors(targetOffsetX: 0f);
+        var now = new DateTime(2026, 8, 3, 0, 0, 0, DateTimeKind.Utc);
 
-        var launches = resolver.Queue(
-            706,
-            new[] { CreateAttack(107000020) },
-            actors,
-            new DateTime(2026, 8, 3, 0, 0, 0, DateTimeKind.Utc));
-
-        Assert.Empty(launches);
-        Assert.Equal(SurvivorOrbAttackPattern.HomingProjectile,
-            SurvivorOrbData.GetAttackPattern(107000010));
-        Assert.Equal(SurvivorOrbAttackPattern.AttackerArea,
-            SurvivorOrbData.GetAttackPattern(107000020));
-        Assert.Equal(SurvivorOrbAttackPattern.TargetArea,
-            SurvivorOrbData.GetAttackPattern(107000030));
+        foreach (int itemId in (int[])[107000010, 107000020, 107000030])
+        {
+            var launches = resolver.Queue(706, new[] { CreateAttack(itemId) }, actors, now);
+            Assert.Single(launches);
+            Assert.Equal(SurvivorOrbAttackPattern.HomingProjectile,
+                SurvivorOrbData.GetAttackPattern(itemId));
+        }
     }
     private static ProximityCombatAttack CreateAttack(int itemId) => new(
         1,
