@@ -18,8 +18,10 @@ public partial class GameServer
 
     // P0-b 정지 공격 규칙(하드 컷): 이동 중에는 공격하지 않는다. 감쇠안(0.4)은 상대가
     // 읽을 수 없고 무빙 최적해를 남겨서 기각 — #217 기획 코멘트 참조.
-    // #219 M1: 캠프 모드에서 부활 — 몹 개시권이 플레이어에게 있으면 정지는 형벌이 아니라 선택이다.
-    private static readonly bool SwarmStopToAttackEnabled = true;
+    // #219 M1: 캠프 모드에서 부활 시도 → 두 번째 플레이 판정에서도 불쾌 (2026-08-07).
+    // SB 원형이지만 오브 궤도 연출은 정지 사격 자세가 없어 "멈추면 쏜다"가 읽히지 않는다.
+    // 이동 중 공격으로 확정하고, 정지 보너스류는 사거리·연출이 생긴 뒤 재검토.
+    private static readonly bool SwarmStopToAttackEnabled = false;
     private const float SwarmMovingSpeedThreshold = 1.5f;
 
     // 정지를 이 시간 이상 유지해야 무장된다 — 끊어 걷기(스텝 샷)가 무료가 되지 않게.
