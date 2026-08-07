@@ -90,7 +90,6 @@ public partial class GameServer
             GameClientSession.SwarmExploreNoiseCallback ??=
                 (noiseMatchingId, noisePlayerId) =>
                     _swarmArenaManager.AttractSwarm(noiseMatchingId, noisePlayerId);
-            ApplySwarmExploreSpotBudget(matchingId, sessions);
             LogSwarmPairZoneDistances(matchingId);
             // M4 자기장: 안전 거리 수축 시계는 스웜 개전과 함께 돈다.
             // #219 M1: 클론에서는 자기장을 무장하지 않는다 — 수렴은 M3의 광산 각본이 담당한다.
@@ -198,19 +197,8 @@ public partial class GameServer
     private const float SwarmBotOpenRange = 1.6f;
     private const float SwarmBotContactDamageMultiplier = 0.5f;
 
-    // 시작방 탐색 스팟 수는 스폰 운의 균등을 위해 방당 이 개수로 맞춘다.
-    private const int SwarmStartRoomSpotCount = 2;
-
-    // 전 맵 개봉 재고 예산 (성장곡선 v3): 시작방 6×2 + 도서관·강당 2씩 + 교실 1씩 +
-    // 운동장 3 = 21. 여기 없는 구역은 0 — 재고 고갈이 이동과 조우를 만들도록 총량을 조인다.
-    private static readonly Dictionary<AreaType, int> SwarmExploreSpotBudget = new()
-    {
-        [AreaType.Library] = 2,
-        [AreaType.Gym] = 2,
-        [AreaType.Classroom3] = 1,
-        [AreaType.Classroom4] = 1,
-        [AreaType.Ground] = 3
-    };
+    // 스팟 예산 선소진(#217 성장곡선 v3, 21개)은 퇴역 — SB에는 인위적 봉인이 없고,
+    // 희소성은 리젠(60초)과 크기 비례 비용이 담당한다. 배치된 스팟은 전부 살아 있다.
 
     // 자기장 스케줄 (M4 종반 수렴, 자기장 전환 2026-08-06): 60초 유예 후 안전 거리가
     // 최대 보행 거리에서 0까지 선형 수축한다 (5:30 완료, 운동장만 안전).
@@ -363,29 +351,6 @@ public partial class GameServer
             logger.LogInformation(
                 "Swarm pair distance: MatchingId={MatchingId}, StartRoom={StartRoom}, PairZone={PairZone}, Steps={Steps}",
                 matchingId, startRoom, pairZone, path?.Count ?? -1);
-        }
-    }
-
-    /// <summary>
-    ///     구역별 스팟 예산 적용: 예산 초과분을 매치 시작 시 선소진 처리한다.
-    ///     CSV·씬은 건드리지 않고 소진 쿨다운 저장소만 쓴다 (id 오름차순으로 앞의 N개 유지).
-    /// </summary>
-    private void ApplySwarmExploreSpotBudget(long matchingId, List<GameClientSession> sessions)
-    {
-        var startRooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().ToHashSet();
-        foreach (var group in GameInteractableData.GetAll()
-                     .Where(info => info.InteractionType == InteractionType.RNG_COLLECT)
-                     .GroupBy(info => (AreaType)info.ZoneId))
-        {
-            int budget = startRooms.Contains(group.Key)
-                ? SwarmStartRoomSpotCount
-                : SwarmExploreSpotBudget.GetValueOrDefault(group.Key);
-            foreach (var spot in group.OrderBy(info => info.Id).Skip(budget))
-            {
-                if (RngCollectCooldownStore.TryAcquireCooldown(
-                        matchingId, spot.Id, Config.SWARM_EXPLORE_CONSUME_SECONDS, out _))
-                    BroadcastSwarmExploreConsumed(spot.Id, Config.SWARM_EXPLORE_CONSUME_SECONDS, sessions);
-            }
         }
     }
 

@@ -14,7 +14,7 @@ job_title,part_id,part_name_kr,part_name_en,part_name_jp,part_tier,target_area,t
 2,206,인증 모듈,Authentication Module,認証モジュール,1,0,0,20,0,5,301000002,0,,,
 2,207,비밀 선물 전달,Secret Gift Delivery,秘密の贈り物を届ける,2,0,0,0,0,0,0,0,타겟에게 비밀 선물 전달하기,Deliver the secret gift to your target,ターゲットに秘密の贈り物を届ける
 4,401,등산용 로프 다발,Climbing Rope Bundle,登山用ロープの束,0,30,10,12,0,0,301000006,1,,,
-4,402,카라비너 세트,Carabiner Set,カラビナセット,0,14,6,12,3,0,301000021,2,,,
+4,402,카라비너 세트,Carabiner Set,カラビナセット,0,9,6,12,3,0,301000021,2,,,
 4,403,체육 일지,P.E. Log,体育日誌,0,12,4,12,0,0,202000002,1,,,
 4,404,매트 보호대,Mat Padding,マット保護パッド,0,20,12,12,0,0,501000001,2,,,
 4,405,등반 장비 세트,Climbing Gear Set,登攀装備セット,1,0,0,20,0,5,301000017,0,,,
