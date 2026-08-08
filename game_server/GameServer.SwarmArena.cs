@@ -463,8 +463,9 @@ public partial class GameServer
                     out var addedItem)
                     ? addedItem
                     : null,
-                SelectBotSummonChoice(matchingId, bot),
-                costOverride: exploreCost);
+                choiceIndex: 0,
+                costOverride: exploreCost,
+                exactItemId: ChooseBotDraftOrbItemId(matchingId, bot.PlayerId));
             if (!attempt.Success)
             {
                 RngCollectCooldownStore.ClearCooldown(matchingId, spot.Id);
@@ -490,6 +491,46 @@ public partial class GameServer
                 "Swarm bot explore: MatchingId={MatchingId}, BotId={BotId}, InteractId={InteractId}, ItemId={ItemId}, Cost={Cost}",
                 matchingId, bot.PlayerId, spot.Id, attempt.ItemId, exploreCost);
         }
+    }
+
+    /// <summary>
+    ///     봇의 드래프트 색 선택 (#219 M2) — 사람과 같은 규칙 공간에서 고른다:
+    ///     같은 색 T1 2개면 그 색(이번 픽이 3머지), 아니면 최다 보유 색(전문화), 빈손이면 랜덤.
+    /// </summary>
+    private int ChooseBotDraftOrbItemId(long matchingId, long botPlayerId)
+    {
+        var countsByColor = new Dictionary<SurvivorOrbColor, (int Total, int Tier1)>();
+        foreach (var item in _inGameInventoryManager.GetPlayerInventory(matchingId, botPlayerId).GetAllItems())
+        {
+            if (item.Count <= 0 ||
+                !SurvivorOrbData.TryGetColorAndTier(item.ItemId, out var color, out int tier))
+                continue;
+
+            var entry = countsByColor.TryGetValue(color, out var current) ? current : (0, 0);
+            countsByColor[color] = (entry.Item1 + item.Count, entry.Item2 + (tier == 1 ? item.Count : 0));
+        }
+
+        foreach (var (color, entry) in countsByColor)
+            if (entry.Tier1 >= 2 && TryGetDraftTier1ItemId(color, out int mergeItemId))
+                return mergeItemId;
+
+        var best = countsByColor.OrderByDescending(pair => pair.Value.Total).FirstOrDefault();
+        if (best.Value.Total > 0 && TryGetDraftTier1ItemId(best.Key, out int specializeItemId))
+            return specializeItemId;
+
+        return SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)];
+    }
+
+    private static bool TryGetDraftTier1ItemId(SurvivorOrbColor color, out int itemId)
+    {
+        itemId = color switch
+        {
+            SurvivorOrbColor.Red => 107000010,
+            SurvivorOrbColor.Green => 107000020,
+            SurvivorOrbColor.Blue => 107000030,
+            _ => 0
+        };
+        return itemId != 0;
     }
 
     private bool TryFindNearestAvailableExploreSpot(
@@ -603,7 +644,8 @@ public partial class GameServer
         if (TryFindNearestAvailableExploreSpot(
                 matchingId, area: null, bot.Position, out var spot, out _) &&
             _summonStoneManager.GetSnapshot(matchingId, botPlayerId).StoneCount >=
-            GetSwarmBotExploreCost(matchingId, spot.Id))
+            // 비용은 봇 자신의 궤도 크기 기준 — spot.Id를 넘기던 오배선(빈 인벤=0비용) 수리
+            GetSwarmBotExploreCost(matchingId, botPlayerId))
         {
             var spotArea = (AreaType)spot.ZoneId;
             Cell spotCell = new(spot.CellX, spot.CellY);
@@ -651,6 +693,34 @@ public partial class GameServer
                 bot.CurrentArea,
                 ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, bot.Position),
                 bot.Position);
+        }
+
+        // 3.5) 소환석 기근 (#219 시작 0석 체제): 다음 개봉 비용이 부족하면 열린 구역의
+        //      최근접 살아있는 몹(캠프)에게 걸어간다 — 접근하면 자동전투가 나머지를 한다.
+        //      빈손 봇은 개봉이 무료라 1)에서 이미 스팟 순례로 빠진다.
+        if (_summonStoneManager.GetSnapshot(matchingId, botPlayerId).StoneCount <
+            GetSwarmBotExploreCost(matchingId, botPlayerId) &&
+            HasAnySquadOrb(matchingId, botPlayerId))
+        {
+            var prey = _swarmArenaManager.GetVisualStates(matchingId)
+                .Where(monster => monster.IsAlive &&
+                                  !IsSwarmAreaOutside(matchingId, monster.AreaType))
+                .OrderBy(monster =>
+                {
+                    float dx = monster.PositionX - bot.Position.X;
+                    float dy = monster.PositionY - bot.Position.Y;
+                    return dx * dx + dy * dy;
+                })
+                .FirstOrDefault();
+            if (prey != null)
+            {
+                var preyPosition = new Vector3f(prey.PositionX, prey.PositionY, 0f);
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Escort,
+                    prey.AreaType,
+                    ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, preyPosition),
+                    preyPosition);
+            }
         }
 
         // 4) 시작방·복도는 공급이 마른다 — 무한 스폰 사냥터로 이주해 소환석을 번다.
@@ -751,8 +821,8 @@ public partial class GameServer
                 return;
             }
 
-            if (ApplySwarmOrbHpDamage(matchingId, bot.PlayerId, damage.Damage).Busted)
-                bot.Corruption = Config.SURVIVOR_MAX_CORRUPTION;
+            // 버스트 즉사 제거 (#219): 봇도 빈손 생존으로 전환 — 이후는 본체(오염) 피해 경로.
+            ApplySwarmOrbHpDamage(matchingId, bot.PlayerId, damage.Damage);
             return;
         }
 
@@ -785,13 +855,8 @@ public partial class GameServer
         if (hit.DestroyedItem != null)
             session.SendInGameInventoryUpdate(hit.DestroyedItem);
 
-        // 마지막 유닛을 잃는 그 타격이 곧 버스트다 (SB: 스쿼드 전멸).
-        if (hit.Busted)
-        {
-            session.ApplyEmotionAfterimageMonsterHit(monsterId, Config.SURVIVOR_MAX_CORRUPTION);
-            return;
-        }
-
+        // 버스트(마지막 유닛 파괴)는 즉사가 아니다 (#219 SB 이탈, 2026-08-08) —
+        // 빈손 생존으로 전환되고 이후 생존은 본체 HP(오염)가 결정한다. 재기 = 무료 개봉.
         session.ApplyEmotionAfterimageMonsterHit(monsterId, 1, damage);
     }
 
@@ -882,8 +947,11 @@ public partial class GameServer
                         pvpTargetBot.Corruption + damage * SwarmNakedCorruptionPerDamage);
                     _swarmBotLastDamagedAtUtc[(matchingId, pvpTargetBot.PlayerId)] = DateTime.UtcNow;
                 }
-                else if (ApplySwarmOrbHpDamage(matchingId, pvpTargetBot.PlayerId, damage).Busted)
-                    pvpTargetBot.Corruption = Config.SURVIVOR_MAX_CORRUPTION;
+                else
+                {
+                    // 버스트 즉사 제거 (#219): 빈손 전환 후는 본체 피해 경로가 결정한다.
+                    ApplySwarmOrbHpDamage(matchingId, pvpTargetBot.PlayerId, damage);
+                }
             }
 
             allSessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId)
