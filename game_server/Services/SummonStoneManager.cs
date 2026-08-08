@@ -29,8 +29,9 @@ public sealed class SummonStoneManager
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, PlayerSummonState>> _matchingStates = new();
 
     public IReadOnlyList<int> PoolItemIds => SummonPool;
-    // Players begin without an orb, but can pay the first two summon costs (2 + 3).
-    public static int InitialSummonStoneCount => GetCost(0) + GetCost(1);
+    // #219 M2: 시작 소환석 미지급 — 시작 화력은 랜덤 1오브가 담당하고,
+    // 소환석은 전부 몹 처치로 번다 (빈손이 되면 개봉 무료 규칙이 재기를 보장).
+    public static int InitialSummonStoneCount => 0;
 
     public SummonStoneSnapshot EnsureStartingStones(long matchingId, long playerId)
     {

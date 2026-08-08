@@ -16,6 +16,8 @@ public partial class GameServer
     private const float SwarmArenaBasicRange = Config.SWARM_ORB_ATTACK_RANGE;
     private const float SwarmArenaBasicAttackIntervalSeconds = 1f;
     private const int SwarmArenaWeaponItemId = 107000010;
+    private static readonly int[] SwarmStartingOrbPool = [107000010, 107000020, 107000030];
+    private readonly HashSet<long> _swarmStartingOrbGrantedMatchings = new();
 
     // P0-b 정지 공격 규칙(하드 컷): 이동 중에는 공격하지 않는다. 감쇠안(0.4)은 상대가
     // 읽을 수 없고 무빙 최적해를 남겨서 기각 — #217 기획 코멘트 참조.
@@ -126,8 +128,20 @@ public partial class GameServer
                 matchingId, sessions.Count, bots.Count);
         }
 
-        // 시작 오브 지급 퇴역 (#219 M2): 빈손 시작 — 첫 스팟 개봉이 무료(오브 0개 = 비용 0)라
-        // 첫 오브는 드래프트에서 얻는다. 전멸 후에도 같은 경로로 재기가 성립한다 (사람·봇 공통).
+        // #219 M2: 시작 스쿼드 = 랜덤 1오브 (사람·봇 공통) — 첫 캠프를 버틸 최소 화력만 주고
+        // 빌드는 드래프트가 만든다. 소환석은 미지급, 빈손이 되면 개봉 무료 규칙이 재기를 보장.
+        if (_swarmStartingOrbGrantedMatchings.Add(matchingId))
+        {
+            foreach (var session in sessions)
+                session.GrantSwarmArenaOrb(
+                    SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)]);
+
+            foreach (var bot in bots)
+                _inGameInventoryManager.TryAddItemWithCapacity(
+                    matchingId, bot.PlayerId,
+                    SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)],
+                    Config.SWARM_ORB_CAPACITY, out _);
+        }
 
         DateTime nowUtc = DateTime.UtcNow;
 
@@ -917,6 +931,7 @@ public partial class GameServer
 
     private void CleanupSwarmArenaState(long matchingId)
     {
+        _swarmStartingOrbGrantedMatchings.Remove(matchingId);
         _swarmArenaManager.RemoveMatching(matchingId);
         foreach (var key in _swarmMovementSamples.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmMovementSamples.Remove(key);
