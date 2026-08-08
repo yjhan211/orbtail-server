@@ -999,7 +999,9 @@ public partial class GameServer
         var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, spatial.PlayerId);
         if (!inventory.GetAllItems().Any(item => item.Count > 0))
         {
-            actors.Add(fallback);
+            // #219 M2 빈손 시작: 기본 공격 폴백 퇴역 — 빈손은 무기(가디언 오브 비주얼)도
+            // 화력도 없고 피격 대상으로만 존재한다. 첫 화력은 드래프트에서 나온다.
+            actors.Add(fallback with { WeaponItemId = 0, Damage = 0 });
             return;
         }
 
