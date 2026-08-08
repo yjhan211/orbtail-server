@@ -13,11 +13,8 @@ id,area_type,object_type,short_name_key,description_key,interaction_type,cell_x,
 701000027,12,4,interactable/701000027/name,interactable/701000027/desc,7,151,30
 701000028,12,4,interactable/701000028/name,interactable/701000028/desc,7,161,27
 701000032,10,4,interactable/701000032/name,interactable/701000032/desc,7,121,27
-701000034,1,4,interactable/701000034/name,interactable/701000034/desc,7,135,51
-701000035,1,12,interactable/701000035/name,interactable/701000035/desc,7,139,47
 701000038,9,12,interactable/701000038/name,interactable/701000038/desc,7,111,39
 701000039,22,3,interactable/701000039/name,interactable/701000039/desc,7,100,70
-701000040,22,7,interactable/701000040/name,interactable/701000040/desc,7,95,72
 701000044,22,12,interactable/701000044/name,interactable/701000044/desc,7,94,58
 701000045,9,12,interactable/701000045/name,interactable/701000045/desc,7,101,37
 701000050,20,5,interactable/701000050/name,interactable/701000050/desc,7,179,49
