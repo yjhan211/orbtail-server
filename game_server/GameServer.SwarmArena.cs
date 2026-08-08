@@ -39,7 +39,6 @@ public partial class GameServer
 
     private readonly Dictionary<(long MatchingId, long PlayerId),
         (Vector3f Position, DateTime At, bool Moving, DateTime StoppedAtUtc)> _swarmMovementSamples = new();
-    private readonly HashSet<long> _swarmOrbGrantedMatchings = new();
 
     // 봇 오염 자연 회복: 회복 오브 운에 기대지 않는 생존 바닥. 마지막 피격 후 유예가
     // 지나면 초당 일정량 회복한다 — "도망 성공"이 실제 생존이 되게 (계측: 매치 2223에서
@@ -127,30 +126,8 @@ public partial class GameServer
                 matchingId, sessions.Count, bots.Count);
         }
 
-        if (_swarmOrbGrantedMatchings.Add(matchingId))
-        {
-            foreach (var session in sessions)
-                session.GrantSwarmArenaOrb(SwarmArenaWeaponItemId);
-
-            // 유닛 낱개 체력: 궤도가 곧 체력이라 시작 스쿼드 3기를 준다 (사람·봇 공통).
-            // 서로 다른 색이어야 자동 3머지가 시작 스쿼드를 합쳐버리지 않는다.
-            if (SwarmOrbHealthEnabled)
-            {
-                foreach (var session in sessions)
-                {
-                    session.GrantSwarmArenaOrb(107000020);
-                    session.GrantSwarmArenaOrb(107000030);
-                }
-
-                foreach (var bot in bots)
-                {
-                    foreach (int startingOrbItemId in (int[])[107000010, 107000020, 107000030])
-                        _inGameInventoryManager.TryAddItemWithCapacity(
-                            matchingId, bot.PlayerId, startingOrbItemId,
-                            Config.SWARM_ORB_CAPACITY, out _);
-                }
-            }
-        }
+        // 시작 오브 지급 퇴역 (#219 M2): 빈손 시작 — 첫 스팟 개봉이 무료(오브 0개 = 비용 0)라
+        // 첫 오브는 드래프트에서 얻는다. 전멸 후에도 같은 경로로 재기가 성립한다 (사람·봇 공통).
 
         DateTime nowUtc = DateTime.UtcNow;
 
@@ -913,7 +890,6 @@ public partial class GameServer
     private void CleanupSwarmArenaState(long matchingId)
     {
         _swarmArenaManager.RemoveMatching(matchingId);
-        _swarmOrbGrantedMatchings.Remove(matchingId);
         foreach (var key in _swarmMovementSamples.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmMovementSamples.Remove(key);
         foreach (var key in _swarmBotLastDamagedAtUtc.Keys.Where(key => key.MatchingId == matchingId).ToList())

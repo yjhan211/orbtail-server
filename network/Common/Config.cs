@@ -145,14 +145,19 @@ namespace network.common
         public const int SWARM_EXPLORE_COST_PER_ORB = 2;
 
         /// <summary>
-        ///     시작 스쿼드(서로 다른 색 3오브)는 비용 무료 허용량 — SB 첫 상자가 싼 것처럼
-        ///     첫 개봉은 기본가(5)에서 출발하고, 성장분에만 가산이 붙는다.
+        ///     기본가 허용량 — 오브가 이 수 이하면 기본가(5)에서 출발하고, 성장분에만 가산이 붙는다.
+        ///     (#219 M2: 시작 오브 지급은 퇴역 — 이 값은 가격 곡선의 피벗으로만 남는다)
         /// </summary>
         public const int SWARM_STARTING_ORB_COUNT = 3;
 
+        /// <summary>
+        ///     빈손(오브 0개)은 개봉 무료 — 빈손 시작의 첫 오브와 전멸 후 재기가 같은 경로로 성립한다.
+        /// </summary>
         public static int GetSwarmExploreCost(int orbCount) =>
-            SWARM_EXPLORE_COST_BASE +
-            SWARM_EXPLORE_COST_PER_ORB * Math.Max(0, orbCount - SWARM_STARTING_ORB_COUNT);
+            orbCount <= 0
+                ? 0
+                : SWARM_EXPLORE_COST_BASE +
+                  SWARM_EXPLORE_COST_PER_ORB * Math.Max(0, orbCount - SWARM_STARTING_ORB_COUNT);
 
         /// <summary>
         ///     예산 초과 스팟의 선소진용 — 판보다 긴 쿨다운으로 영구 봉인을 표현한다.
