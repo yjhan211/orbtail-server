@@ -722,8 +722,10 @@ public partial class GameServer
             .OrderBy(item => GetSquadOrbTier(item.ItemId))
             .ThenBy(item => item.ItemUid)
             .FirstOrDefault();
+        // 빈손(#219 M2 빈손 시작)은 스쿼드가 없으니 스쿼드 피해도 버스트도 없다 —
+        // 버스트는 "마지막 유닛을 잃는 타격"에만 성립한다. 빈손 즉사 사고 방지.
         if (frontOrb == null)
-            return (null, true);
+            return (null, false);
 
         var key = (matchingId, playerId);
         int currentHp = _swarmFrontOrbHp.TryGetValue(key, out var stored) && stored.ItemId == frontOrb.ItemId
