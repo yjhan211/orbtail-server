@@ -17,7 +17,12 @@ public sealed class SummonStoneManager
     public const int PassiveIncomeAmount = 1;
 
     private const int BaseSummonCost = 2;
-    private static readonly int[] SummonPool = [107000010, 107000020, 107000030, 107000040];
+
+    // 회복 오브(107000040) 퇴역 (#219, 2026-08-08): 오브 HP 모델에서 오염 회복은 죽음과
+    // 무관해져 기능이 죽었고, "회복만 남는" 막다른 상태의 원천이었다. SB 문법대로 회복은
+    // 새 오브 영입(만피 새 몸)이 담당한다. 아이템 정의·연출·틱 코드는 게이트 보존 —
+    // 치유 클래스로 부활 검토 시 재사용 (이슈 #219 매핑 8번).
+    private static readonly int[] SummonPool = [107000010, 107000020, 107000030];
     private static readonly int[] OpeningAttackPool = SummonPool
         .Where(itemId => !SurvivorOrbData.IsRecoveryOrb(itemId))
         .ToArray();

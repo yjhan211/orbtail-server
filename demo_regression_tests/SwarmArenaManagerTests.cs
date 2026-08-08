@@ -95,12 +95,13 @@ public class SwarmArenaManagerTests
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager(() => now);
         Vector3f center = AreaCenter(AreaType.Ground);
-        manager.Tick(217001, Participants(center), now);
+        var damageEvents = new List<SpotArenaPlayerDamage>();
+        // 커스텀 앵커(CSV 저작)에서는 스폰 틱에도 중앙 접촉이 날 수 있다 — 첫 틱부터 수집한다.
+        damageEvents.AddRange(manager.Tick(217001, Participants(center), now).PlayerDamage);
 
         var monster = manager.GetVisualStates(217001).First(state => state.IsAlive);
         var onMonster = new Vector3f(monster.PositionX, monster.PositionY, 0f);
 
-        var damageEvents = new List<SpotArenaPlayerDamage>();
         for (double elapsed = 0.5d; elapsed <= 9d; elapsed += 0.25d)
         {
             now = StartUtc.AddSeconds(elapsed);
@@ -184,10 +185,36 @@ public class SwarmArenaManagerTests
         Vector3f center = AreaCenter(AreaType.Ground);
         manager.Tick(217001, Participants(center), now);
 
-        var sleeping = manager.GetVisualStates(217001).First(state => state.IsAlive);
+        // 스폰 틱의 중앙 참가자가 커스텀 앵커(CSV 저작) 캠프를 깨웠을 수 있다 —
+        // 관찰 대상은 "아직 안 깨어난" 몹으로 고른다.
+        var sleeping = manager.GetVisualStates(217001)
+            .First(state => state.IsAlive && state.ChaseTargetPlayerId == 0);
         var anchor = new Vector3f(sleeping.PositionX, sleeping.PositionY, 0f);
-        // 어그로 반경(2.5) 밖 관찰 지점 — 잠든 몹은 움직이지도 물지도 않는다.
-        var watchPoint = new Vector3f(anchor.X + 4f, anchor.Y, 0f);
+        // 관찰 지점은 모든 몹과 리쉬(5.5)+어그로 여유 밖(7) — 깨어난 몹도 추격을 끊고 귀환한다.
+        var aliveStates = manager.GetVisualStates(217001).Where(state => state.IsAlive).ToList();
+        Vector3f watchPoint = default;
+        bool watchPointFound = false;
+        foreach (var offset in new[]
+                 {
+                     (X: 7f, Y: 0f), (X: -7f, Y: 0f), (X: 0f, Y: 7f), (X: 0f, Y: -7f),
+                     (X: 9f, Y: 0f), (X: -9f, Y: 0f), (X: 0f, Y: 9f), (X: 0f, Y: -9f),
+                     (X: 7f, Y: 7f), (X: -7f, Y: -7f), (X: 11f, Y: 0f), (X: -11f, Y: 0f)
+                 })
+        {
+            var candidate = new Vector3f(anchor.X + offset.X, anchor.Y + offset.Y, 0f);
+            bool clearOfAll = aliveStates.All(state =>
+            {
+                float dx = state.PositionX - candidate.X;
+                float dy = state.PositionY - candidate.Y;
+                return dx * dx + dy * dy > 7f * 7f;
+            });
+            if (!clearOfAll) continue;
+            watchPoint = candidate;
+            watchPointFound = true;
+            break;
+        }
+
+        Assert.True(watchPointFound, "모든 몹과 7 이상 떨어진 관찰 지점을 찾지 못했다");
         for (double elapsed = 0.5d; elapsed <= 3d; elapsed += 0.25d)
         {
             now = StartUtc.AddSeconds(elapsed);
@@ -200,23 +227,25 @@ public class SwarmArenaManagerTests
         Assert.Equal(anchor.X, stillSleeping.PositionX, 1);
         Assert.Equal(anchor.Y, stillSleeping.PositionY, 1);
 
-        // 때리면 깨어나 쫓아온다.
+        // 때리면 깨어나 쫓아온다 — 추격 확인은 리쉬(5.5) 안쪽 지점에서 한다.
+        // (관찰 지점은 리쉬 밖이라 어그로가 걸려도 즉시 귀환하는 게 정상 동작이다.)
+        var chasePoint = new Vector3f(anchor.X + 4f, anchor.Y, 0f);
         var sleepingTarget = manager.GetCombatTargets(217001)
             .First(target => target.MonsterId == sleeping.MonsterId);
         manager.ApplyMonsterDamage(217001, sleepingTarget.CombatTargetId, attackerPlayerId: 1, damage: 1);
         for (double elapsed = 3.25d; elapsed <= 4.5d; elapsed += 0.25d)
         {
             now = StartUtc.AddSeconds(elapsed);
-            manager.Tick(217001, Participants(watchPoint), now);
+            manager.Tick(217001, Participants(chasePoint), now);
         }
 
         var chasing = manager.GetVisualStates(217001)
             .First(state => state.MonsterId == sleeping.MonsterId);
-        float chaseDx = chasing.PositionX - watchPoint.X;
-        float chaseDy = chasing.PositionY - watchPoint.Y;
-        float sleepDx = anchor.X - watchPoint.X;
+        float chaseDx = chasing.PositionX - chasePoint.X;
+        float chaseDy = chasing.PositionY - chasePoint.Y;
+        float sleepDx = anchor.X - chasePoint.X;
         Assert.True(chaseDx * chaseDx + chaseDy * chaseDy < sleepDx * sleepDx,
-            "어그로 후에는 관찰 지점 쪽으로 접근해야 한다");
+            "어그로 후에는 추격 지점 쪽으로 접근해야 한다");
 
         // 리쉬(7) 밖으로 도망치면 몹은 앵커로 귀환한다.
         var farAway = new Vector3f(anchor.X + 20f, anchor.Y, 0f);
