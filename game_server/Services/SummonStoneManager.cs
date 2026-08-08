@@ -91,7 +91,7 @@ public sealed class SummonStoneManager
     }
 
     public SummonOrbAttempt TrySummon(long matchingId, long playerId, Func<int, InGameItemInfo?> grantItem,
-        int choiceIndex = 0, int? costOverride = null)
+        int choiceIndex = 0, int? costOverride = null, int? exactItemId = null)
     {
         ArgumentNullException.ThrowIfNull(grantItem);
         var state = GetOrCreatePlayerState(matchingId, playerId);
@@ -102,8 +102,17 @@ public sealed class SummonStoneManager
             if (state.StoneCount < cost)
                 return SummonOrbAttempt.Failed(ErrorCode.INSUFFICIENT_CURRENCY, CreateSnapshot(state));
 
-            int[] candidates = ComputeSummonCandidates(matchingId, playerId, state.SuccessfulSummonCount);
-            int itemId = candidates[Math.Clamp(choiceIndex, 0, candidates.Length - 1)];
+            // exactItemId: #219 3택 드래프트 — 클라이언트가 고른 색을 그대로 지급한다.
+            int itemId;
+            if (exactItemId.HasValue)
+            {
+                itemId = exactItemId.Value;
+            }
+            else
+            {
+                int[] candidates = ComputeSummonCandidates(matchingId, playerId, state.SuccessfulSummonCount);
+                itemId = candidates[Math.Clamp(choiceIndex, 0, candidates.Length - 1)];
+            }
             InGameItemInfo? item = grantItem(itemId);
             if (item == null)
                 return SummonOrbAttempt.Failed(ErrorCode.INVENTORY_FULL, CreateSnapshot(state));

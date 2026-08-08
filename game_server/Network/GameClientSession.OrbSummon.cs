@@ -11,6 +11,11 @@ namespace game_server.network;
 
 public partial class GameClientSession
 {
+    // #219 3택 드래프트의 색 → 아이템 매핑. 클라 카드 순서(태양·파도·바람)와 일치해야 한다.
+    private const int DraftSunOrbItemId = 107000010;
+    private const int DraftWaveOrbItemId = 107000030;
+    private const int DraftWindOrbItemId = 107000020;
+
     private Task HandleSummonOrb(C_TO_G_SUMMON_ORB request)
     {
         if (!PlayerId.HasValue)
@@ -18,9 +23,31 @@ public partial class GameClientSession
 
         if (Config.SWARM_P0_ENABLED)
         {
-            // 스웜 P0-c: 소환은 수호물 오브젝트 개봉(장소 드래프트)으로만 일어난다.
-            SendSummonOrbResult(false, ErrorCode.INVALID_GAME_STATE, 0, 0,
-                _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value));
+            // #219 M2 3택 드래프트: 개봉(RNG_COLLECT_FINISH)이 연 드래프트에서만 소환한다.
+            // ChoiceIndex = 색 (0 태양, 1 파도, 2 바람). 비용은 개봉 시점에 확정된 값.
+            if (!_hasPendingOrbDraft)
+            {
+                SendSummonOrbResult(false, ErrorCode.INVALID_GAME_STATE, 0, 0,
+                    _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value));
+                return Task.CompletedTask;
+            }
+
+            int draftItemId = request.ChoiceIndex switch
+            {
+                1 => DraftWaveOrbItemId,
+                2 => DraftWindOrbItemId,
+                _ => DraftSunOrbItemId
+            };
+            var draftAttempt = ExecuteOrbSummon(
+                request.ChoiceIndex, costOverride: _pendingOrbDraftCost, exactItemId: draftItemId);
+            if (!draftAttempt.Success)
+                return Task.CompletedTask;
+
+            _hasPendingOrbDraft = false;
+            // 자동 머지: 드래프트로 같은 색·티어 3개가 되면 즉시 융합한다.
+            foreach (var mergedItem in _inGameInventoryManager.AutoMergeSurvivorOrbs(
+                         CurrentMapSubId, PlayerId.Value, Random.Shared))
+                SendInGameInventoryUpdate(mergedItem);
             return Task.CompletedTask;
         }
 
@@ -39,7 +66,7 @@ public partial class GameClientSession
     ///     소환 실행 코어. 버튼 소환과 수호물 오브젝트 개봉이 같은 경로(2택 후보·인벤토리
     ///     추가·결과 패킷·로그)를 쓴다. costOverride는 스웜 P0-c의 보유 오브 비례 비용.
     /// </summary>
-    internal SummonOrbAttempt ExecuteOrbSummon(int choiceIndex, int? costOverride)
+    internal SummonOrbAttempt ExecuteOrbSummon(int choiceIndex, int? costOverride, int? exactItemId = null)
     {
         long playerId = PlayerId!.Value;
         var attempt = _summonStoneManager.TrySummon(
@@ -54,7 +81,8 @@ public partial class GameClientSession
                 ? addedItem
                 : null,
             choiceIndex,
-            costOverride);
+            costOverride,
+            exactItemId);
 
         if (attempt.Success && attempt.AddedItem != null)
         {

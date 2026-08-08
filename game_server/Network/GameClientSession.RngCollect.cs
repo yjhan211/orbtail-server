@@ -25,6 +25,8 @@ public partial class GameClientSession
     private const int RngCollectGiftResultType = 5;
     private const int RngCollectEncounterResultType = 6;
     private const int RngCollectItemResultType = 2;
+    // #219 M2: 개봉 성공 = 3택 드래프트 개시 신호. 클라이언트 드래프트 패널이 이 타입으로 열린다.
+    private const int RngCollectDraftResultType = 7;
     private const int RngCollectStaminaCost = 5;
 
     // #217 P0-c: 스웜 아레나 탐색 스팟 — 비용·리젠 규칙은 봇과 공유하므로 Config에 있다.
@@ -522,10 +524,15 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        var attempt = ExecuteOrbSummon(choiceIndex: 0, costOverride: GetSwarmExploreCost());
-        if (!attempt.Success)
+        // #219 M2 3택 드래프트: 개봉은 드래프트 권리를 연다 — 오브 지급·비용 차감은
+        // 색 선택(C_TO_G_SUMMON_ORB)에서. 비용은 개봉 시점의 궤도 크기로 확정한다.
+        int exploreCost = GetSwarmExploreCost();
+        var stoneState = _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value);
+        bool boardFull = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value)
+            .GetAllItems().Count >= Config.SWARM_ORB_CAPACITY;
+        if (stoneState.StoneCount < exploreCost || boardFull)
         {
-            // 소환 실패(석 부족·보드 포화) — 쿨다운을 풀어 나중에 다시 열 수 있게 한다.
+            // 개봉 불가(석 부족·보드 포화) — 쿨다운을 풀어 나중에 다시 열 수 있게 한다.
             RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
             BroadcastRngCollectCooldown(msg.InteractId, 0);
             SendRngCollectResult(msg.InteractId, 0, 0, 0, 0);
@@ -533,22 +540,20 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        _hasPendingOrbDraft = true;
+        _pendingOrbDraftCost = exploreCost;
+
         // 스팟은 소진되지 않는다 — 리젠 시간 뒤 다시 나온다 (비용은 궤도 크기가 결정).
         RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
         RngCollectCooldownStore.TryAcquireCooldown(
             CurrentMapSubId, msg.InteractId, SwarmExploreCooldownSeconds, out _);
         BroadcastRngCollectCooldown(msg.InteractId, SwarmExploreCooldownSeconds);
         SendRngCollectResult(
-            msg.InteractId, RngCollectItemResultType, attempt.ItemId, 0, SwarmExploreCooldownSeconds);
+            msg.InteractId, RngCollectDraftResultType, 0, 0, SwarmExploreCooldownSeconds);
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
         Logger.LogInformation(
-            "Swarm explore summon: PlayerId={PlayerId}, InteractId={InteractId}, ItemId={ItemId}",
-            PlayerId, msg.InteractId, attempt.ItemId);
-
-        // 자동 머지: 개봉으로 쌍이 생기면 즉시 합성 — 보드 관리를 실시간에서 제거한다.
-        foreach (var mergedItem in _inGameInventoryManager.AutoMergeSurvivorOrbs(
-                     CurrentMapSubId, PlayerId.Value, Random.Shared))
-            SendInGameInventoryUpdate(mergedItem);
+            "Swarm explore draft opened: PlayerId={PlayerId}, InteractId={InteractId}, Cost={Cost}",
+            PlayerId, msg.InteractId, exploreCost);
 
         return Task.CompletedTask;
     }

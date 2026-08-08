@@ -101,6 +101,10 @@ public partial class GameClientSession : SessionBase
     private int _pendingRoomEntryEventId;
     private readonly object _roomEntryEventChoiceLock = new();
 
+    // #219 M2 3택 드래프트: 개봉이 연 드래프트 권리와 개봉 시점 확정 비용
+    private bool _hasPendingOrbDraft;
+    private int _pendingOrbDraftCost;
+
     private Timer? _periodicBuffTimer;
 
     /// <summary>
