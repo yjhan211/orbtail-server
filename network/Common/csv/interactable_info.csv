@@ -1,6 +1,7 @@
 id,area_type,object_type,short_name_key,description_key,interaction_type,cell_x,cell_y
 701000001,13,11,interactable/701000001/name,interactable/701000001/desc,7,184,67
 701000002,13,10,interactable/701000002/name,interactable/701000002/desc,7,179,61
+701000003,13,10,interactable/701000003/name,interactable/701000003/desc,7,180,64
 701000004,13,10,interactable/701000004/name,interactable/701000004/desc,7,169,71
 701000005,13,10,interactable/701000005/name,interactable/701000005/desc,7,183,72
 701000006,42,8,interactable/701000006/name,interactable/701000006/desc,7,159,96
@@ -50,3 +51,6 @@ id,area_type,object_type,short_name_key,description_key,interaction_type,cell_x,
 701000082,10,6,interactable/701000082/name,interactable/701000082/desc,7,125,27
 701000083,32,4,interactable/701000083/name,interactable/701000083/desc,7,115,88
 701000084,9,10,interactable/701000084/name,interactable/701000084/desc,7,98,47
+701000085,2,10,interactable/701000085/name,interactable/701000085/desc,7,148,67
+701000086,2,10,interactable/701000086/name,interactable/701000086/desc,7,133,63
+701000087,2,10,interactable/701000087/name,interactable/701000087/desc,7,162,64
