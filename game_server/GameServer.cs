@@ -1656,9 +1656,13 @@ public partial class GameServer(
             {
                 if (Config.SWARM_P0_ENABLED)
                 {
-                    // M4 종반 수렴: 스웜 모드는 페이즈 머신 없이 시간 웨이브로만 폐쇄한다.
+                    // #219 폐쇄 부활: 페이즈 머신 없이 시간 웨이브 스케줄로만 폐쇄한다.
+                    // (자기장 틱은 SwarmFieldEnabled 게이트에 그대로 보관)
                     if (GameClientSession.IsRoundActionPhase(matchingId))
+                    {
+                        ProcessSwarmScheduledClosureTick(matchingId);
                         ProcessSwarmClosureTick(matchingId);
+                    }
                     continue;
                 }
 

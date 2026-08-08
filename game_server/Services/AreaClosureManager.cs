@@ -14,14 +14,15 @@ public class AreaClosureManager
     public const int ClosureWarningSeconds = 15;
     public const int ResourceTickSeconds = 5;
 
+    // #219 폐쇄 부활 (2026-08-08): 클론 맵 기준 — 바깥 포드(교실1·교실2·창고·보건실) →
+    // 중간 포드(고사실·방송실·행정실·교무실) → 쌍 구역(도서관·강당) → 밴드(테라스·복도) 순.
+    // 운동장(Ground)은 스케줄에 없어 종착 안전지대로 남는다.
     private static readonly IReadOnlyList<ClosureWaveDefinition> DefaultP0Waves =
     [
-        new(105, [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.Classroom2], 4),
-        new(165, [AreaType.Classroom4, AreaType.Classroom3], 6),
-        new(215, [AreaType.Library, AreaType.Gym], 8),
-        new(255, [AreaType.Storage, AreaType.Junkyard, AreaType.AdminOffice], 10),
-        new(290, [AreaType.StaffRoom, AreaType.Junkyard2, AreaType.Storage2], 12),
-        new(320, [AreaType.Corridor], 14)
+        new(90, [AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2], 4),
+        new(150, [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.AdminOffice, AreaType.StaffRoom], 6),
+        new(210, [AreaType.Library, AreaType.Gym], 8),
+        new(270, [AreaType.Corridor, AreaType.Junkyard], 10)
     ];
 
     private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();

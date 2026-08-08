@@ -259,8 +259,9 @@ public partial class GameServer
         return (int)Math.Ceiling(SwarmPressureField.MaxDistance * (1d - progress));
     }
 
-    /// <summary>구역 전체가 현재 경계 밖인가 — 봇 대피·스팟 필터의 기준.</summary>
+    /// <summary>구역 전체가 현재 경계 밖(폐쇄·자기장)인가 — 봇 대피·스팟 필터의 기준.</summary>
     private bool IsSwarmAreaOutside(long matchingId, AreaType area) =>
+        _areaClosureManager.IsAreaClosed(matchingId, area) ||
         SwarmPressureField.GetAreaMinDistance(area) > GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
 
     /// <summary>자기장 오염 (리소스 틱당). 경계 안이면 0, 밖이면 기본 + 초과 거리 비례.</summary>
@@ -351,6 +352,48 @@ public partial class GameServer
                 ClosureAtUnixMs = DateTimeOffset.UtcNow.AddSeconds(secondsRemaining).ToUnixTimeMilliseconds()
             }));
             foreach (var session in sessions) session.Send(warningPacket);
+        }
+    }
+
+    /// <summary>
+    ///     #219 폐쇄 부활: 자기장 대신 시간 웨이브 스케줄(AreaClosureManager)로 구역을 닫는다.
+    ///     경고 15초 → 폐쇄 브로드캐스트. 폐쇄 오염은 정산 틱(GetClosedAreaCorruptionPerTick),
+    ///     신규 몹 스폰 정지는 캠프 리졸버, 봇·스팟 제외는 IsSwarmAreaOutside가 담당한다.
+    /// </summary>
+    private void ProcessSwarmScheduledClosureTick(long matchingId)
+    {
+        _areaClosureManager.InitializeMatching(matchingId);
+        var closureTick = _areaClosureManager.CheckClosureSchedule(matchingId);
+        if (closureTick.WarningAreas.Count == 0 && closureTick.ClosedAreas.Count == 0)
+            return;
+
+        var sessions = _clientSessions.Values
+            .Where(session => session.PlayerId.HasValue && session.CurrentMapSubId == matchingId)
+            .ToList();
+
+        foreach (var area in closureTick.WarningAreas)
+        {
+            using var warningPacket =
+                global::network.packets.Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
+            warningPacket.SetBody(MessagePack.MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
+            {
+                AreaType = area,
+                SecondsRemaining = closureTick.WarningSeconds,
+                ClosureAtUnixMs = closureTick.ClosureAtUnixMs
+            }));
+            foreach (var session in sessions) session.Send(warningPacket);
+        }
+
+        foreach (var area in closureTick.ClosedAreas)
+        {
+            _gameEventLogManager.LogClosure(matchingId, area.ToString());
+            using var packet = global::network.packets.Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
+            packet.SetBody(MessagePack.MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED
+            {
+                AreaType = area,
+                IsClosed = true
+            }));
+            foreach (var session in sessions) session.Send(packet);
         }
     }
 
