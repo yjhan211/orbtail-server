@@ -676,6 +676,15 @@ public partial class GameServer
         {
             // 유닛 낱개 체력: 접촉은 오브 HP를 깎는다. 마지막 유닛을 잃으면 그 타격이
             // 곧 버스트 — 오염 만충으로 기존 탈락 파이프라인(순위·드롭)을 그대로 탄다.
+            // 빈손 봇은 본체(오염)가 닳는다 — 사람과 같은 규칙.
+            if (!HasAnySquadOrb(matchingId, bot.PlayerId))
+            {
+                bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
+                    bot.Corruption + damage.Damage * SwarmNakedCorruptionPerDamage);
+                _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
+                return;
+            }
+
             if (ApplySwarmOrbHpDamage(matchingId, bot.PlayerId, damage.Damage).Busted)
                 bot.Corruption = Config.SURVIVOR_MAX_CORRUPTION;
             return;
@@ -686,14 +695,25 @@ public partial class GameServer
         _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
     }
 
+    // 빈손 본체 피해 스케일: 오염(만충 420)이 곧 플레이어 HP — 피해 1당 오염 30이면
+    // 유효 본체 HP ≈ 14 (해골 14방·탈주 3방), T1 오브 한 개(12)와 비슷한 맷집이다.
+    private const int SwarmNakedCorruptionPerDamage = 30;
+
     /// <summary>
     ///     사람 피격 (유닛 낱개 체력): 오브 HP 차감 → 0이면 파괴 + 인벤 동기화, 궤도가 비면 버스트.
+    ///     빈손이면 플레이어 본체(오염 게이지)가 닳고, 만충이면 기존 탈락 파이프라인을 탄다.
     ///     피격 연출·탈락은 기존 잔상 피격 경로를 재사용한다 (오염은 연출용 1, 표시는 실제 피해량).
     /// </summary>
     private void ApplySwarmSquadOrbHit(long matchingId, GameClientSession session, int monsterId, int damage)
     {
         if (!session.PlayerId.HasValue)
             return;
+
+        if (!HasAnySquadOrb(matchingId, session.PlayerId.Value))
+        {
+            session.ApplyEmotionAfterimageMonsterHit(monsterId, damage * SwarmNakedCorruptionPerDamage);
+            return;
+        }
 
         var hit = ApplySwarmOrbHpDamage(matchingId, session.PlayerId.Value, damage);
         if (hit.DestroyedItem != null)
@@ -790,7 +810,13 @@ public partial class GameServer
                 if (pvpTargetBot == null)
                     return;
                 pvpTargetBot.LastProximityAttackerPlayerId = attack.AttackerPlayerId;
-                if (ApplySwarmOrbHpDamage(matchingId, pvpTargetBot.PlayerId, damage).Busted)
+                if (!HasAnySquadOrb(matchingId, pvpTargetBot.PlayerId))
+                {
+                    pvpTargetBot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
+                        pvpTargetBot.Corruption + damage * SwarmNakedCorruptionPerDamage);
+                    _swarmBotLastDamagedAtUtc[(matchingId, pvpTargetBot.PlayerId)] = DateTime.UtcNow;
+                }
+                else if (ApplySwarmOrbHpDamage(matchingId, pvpTargetBot.PlayerId, damage).Busted)
                     pvpTargetBot.Corruption = Config.SURVIVOR_MAX_CORRUPTION;
             }
 
