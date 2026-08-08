@@ -659,6 +659,10 @@ public partial class GameServer
         Config.GetSwarmExploreCost(
             _inGameInventoryManager.GetPlayerInventory(matchingId, botPlayerId).GetAllItems().Count);
 
+    // #219 밸런스: 몹→참가자 피해 절반 (2026-08-08) — 시작 1오브 체제에서 몹 접촉이
+    // 과열돼 "계속 죽는" 판정. 해골(1)은 최소 1 유지, 다트 2→1 · 탈주 5→3 · 볼러 2→1.
+    private const float SwarmMonsterDamageTakenMultiplier = 0.5f;
+
     private void ApplySwarmParticipantDamage(
         long matchingId,
         SpotArenaPlayerDamage damage,
@@ -666,6 +670,11 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
+        damage = damage with
+        {
+            Damage = Math.Max(1,
+                (int)MathF.Round(damage.Damage * SwarmMonsterDamageTakenMultiplier))
+        };
         var session = aliveSessions.FirstOrDefault(candidate =>
             candidate.PlayerId == damage.TargetPlayerId);
         if (session != null)
