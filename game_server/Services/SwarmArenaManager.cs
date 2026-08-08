@@ -678,12 +678,24 @@ public sealed class SwarmArenaManager
     {
         var center = BotPlayerManager.CellToWorldPosition(
             MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
-        float campAngle = (float)(campIndex * Math.PI * 2d / CampsPerArea) +
-                          (float)(state.Rng.NextDouble() * 0.6d - 0.3d);
-        var campAnchor = ClampToAreaWalkable(new Vector3f(
-            center.X + MathF.Cos(campAngle) * CampAnchorRadius,
-            center.Y + MathF.Sin(campAngle) * CampAnchorRadius,
-            0f), center, area);
+        Vector3f campAnchor;
+        var customAnchorCell = GameMonsterCampData.GetAnchor(area, campIndex);
+        if (customAnchorCell != null)
+        {
+            // 커스텀 앵커 (#219): monster_camp_anchor.csv가 지정한 셀. 지터 없이 고정 —
+            // 저작한 위치가 곧 실배치다. walkable 클램프만 안전망으로 유지한다.
+            campAnchor = ClampToAreaWalkable(
+                BotPlayerManager.CellToWorldPosition(MapId.School, customAnchorCell), center, area);
+        }
+        else
+        {
+            float campAngle = (float)(campIndex * Math.PI * 2d / CampsPerArea) +
+                              (float)(state.Rng.NextDouble() * 0.6d - 0.3d);
+            campAnchor = ClampToAreaWalkable(new Vector3f(
+                center.X + MathF.Cos(campAngle) * CampAnchorRadius,
+                center.Y + MathF.Sin(campAngle) * CampAnchorRadius,
+                0f), center, area);
+        }
 
         // 캠프별 오브 색 유지 — 처치 보상 색이 캠프 단위로 읽힌다.
         var pattern = (SwarmPattern)(campIndex % 3);
