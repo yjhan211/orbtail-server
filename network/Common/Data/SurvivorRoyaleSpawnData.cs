@@ -103,18 +103,24 @@ namespace network.common.data
                 .ToDictionary(pair => pair.Key, pair => pair.Value);
         }
 
+        // #219 8인 전환: 스폰 풀 = 포드 10곳 중 도서관·강당 제외 8곳 — 쌍 구역(만남 지점)은
+        // 스폰이 아니라 동선의 목적지다. 8인 매치 = 8포드 전원 유니크 스폰.
+        private static readonly AreaType[] SwarmSpawnPodCandidates = PhaseRoomCandidates
+            .Where(area => area != AreaType.Library && area != AreaType.Gym)
+            .ToArray();
+
         public static IReadOnlyDictionary<long, Cell> CreatePhaseRoomAssignments(
             long matchingId,
             IEnumerable<long> playerIds)
         {
             var orderedPlayerIds = playerIds.Distinct().OrderBy(playerId => playerId).ToList();
-            if (orderedPlayerIds.Count > PhaseRoomCandidates.Length)
+            if (orderedPlayerIds.Count > SwarmSpawnPodCandidates.Length)
             {
                 throw new ArgumentOutOfRangeException(nameof(playerIds), orderedPlayerIds.Count,
-                    $"Survivor Royale supports at most {PhaseRoomCandidates.Length} players per match.");
+                    $"Survivor Royale supports at most {SwarmSpawnPodCandidates.Length} players per match.");
             }
 
-            var shuffledRooms = PhaseRoomCandidates.ToList();
+            var shuffledRooms = SwarmSpawnPodCandidates.ToList();
             var rng = new Random(GetDeterministicSeed(matchingId));
             for (int index = shuffledRooms.Count - 1; index > 0; index--)
             {

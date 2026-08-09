@@ -129,7 +129,8 @@ namespace network.common
         ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2, 3쌍 깔때기(성장곡선 v3)는 6.
         ///     사람은 항상 1명이고 나머지는 봇으로 채운다.
         /// </summary>
-        public static readonly int SWARM_PLAYERS_PER_MATCH = 6;
+        // #219 8인 전환 (2026-08-09): 스폰 포드 8곳(도서관·강당 제외)과 정원 일치 — 전원 유니크 스폰.
+        public static readonly int SWARM_PLAYERS_PER_MATCH = 8;
 
         /// <summary>
         ///     스웜 탐색 스팟 개봉 비용은 SB 상자 문법을 따른다: 스쿼드(궤도 오브)가 클수록
