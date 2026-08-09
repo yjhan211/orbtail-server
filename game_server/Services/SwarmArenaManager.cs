@@ -12,9 +12,10 @@ namespace game_server.services;
 /// </summary>
 public sealed class SwarmArenaManager
 {
-    // 성장 체감 재앵커 (2026-08-07): T1 오브 DPS 20 기준 SB ÷15 환산. 해골도 2대는 맞아야
-    // 하고, 탈주(100)는 시작 스쿼드론 5초+ — 오브가 늘수록 브루저가 눈에 띄게 빨리 녹는다.
-    public const int MonsterMaxHealth = 20;
+    // #219 초반 템포 하향 (2026-08-09): 시작 스쿼드가 오브 1개뿐이라 20(2방)도 캠프 하나에
+    // 14초가 걸렸다. 해골 = T1 한 방(12) — 초반 파밍이 사격 몇 번으로 끝나야 SB "코인 몹"
+    // 감각이 산다.
+    public const int MonsterMaxHealth = 12;
 
     // 실측(2026-08-05): 30 + 무적 0.6초 조합은 18초 생존으로 끝났다. 연속 접촉 기준
     // 최소 사망 시간이 충분히 길도록 24 × 0.8초를 유지한다.
@@ -68,9 +69,10 @@ public sealed class SwarmArenaManager
     public static (int MaxHp, int OrbDamage, float AttackRange, float AttackCooldownSeconds, int StoneReward)
         GetKindStats(SwarmMonsterKind kind) => kind switch
     {
-        SwarmMonsterKind.DartGoblin => (27, 2, 5f, 2f, 1),
-        SwarmMonsterKind.RunawayGoblin => (100, 5, ContactRange, 1.2f, 4),
-        SwarmMonsterKind.Bowler => (80, 2, 4.5f, 2.5f, 4),
+        // 피통 = 시작 T1 오브(발당 12) 발수 정렬: 다트 2방 · 탈주 5방 · 볼러 4방 (#219 초반 템포)
+        SwarmMonsterKind.DartGoblin => (18, 2, 5f, 2f, 1),
+        SwarmMonsterKind.RunawayGoblin => (60, 5, ContactRange, 1.2f, 4),
+        SwarmMonsterKind.Bowler => (48, 2, 4.5f, 2.5f, 4),
         _ => (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1)
     };
 

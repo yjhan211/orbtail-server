@@ -88,8 +88,10 @@ namespace network.common.data
         /// <summary>
         ///     유닛 낱개 체력 (SB 클론): 티어별 오브 HP. 서버 정산(GameServer.SwarmArena)과
         ///     클라 스쿼드 체력바 미러가 같은 값을 읽는다.
+        ///     2026-08-09: 몹 피통 하향(해골 1방 체제)과 함께 2배 상향(12/28/60 → 24/56/120) —
+        ///     몹은 빨리 녹고 오브는 오래 버텨야 교전이 즉사전이 아니라 소모전이 된다.
         /// </summary>
-        public static int GetSquadOrbMaxHp(int tier) => tier >= 3 ? 60 : tier == 2 ? 28 : 12;
+        public static int GetSquadOrbMaxHp(int tier) => tier >= 3 ? 120 : tier == 2 ? 56 : 24;
 
         /// <summary>궤도 전체의 색 스탯 합산 — 서버 판정과 클라 표시(링·이속)가 같은 값을 읽는다.</summary>
         public static (float AttackMultiplier, float MoveSpeedMultiplier, float RangeBonus)

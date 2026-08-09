@@ -103,6 +103,9 @@ namespace network.common.data.models
         [Key("weaponItemId")] public int WeaponItemId { get; set; }
         [Key("isActive")] public bool IsActive { get; set; }
         [Key("orbItemIds")] public List<int> OrbItemIds { get; set; } = new();
+
+        // 앞줄(최저 티어·선입) 오브의 현재 HP — 오브별 체력바 표시용 (#219). -1 = 만충 취급.
+        [Key("frontOrbHp")] public int FrontOrbHp { get; set; } = -1;
     }
 
     /// <summary>
