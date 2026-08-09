@@ -612,7 +612,8 @@ public partial class GameServer
 
         foreach (var observer in matchingSessions)
         {
-            if (!observer.PlayerId.HasValue || observer.IsEliminated)
+            // 탈락 관전자도 받는다 (#219): 오브 궤도·앞줄 HP가 관전 화면에서도 계속 갱신돼야 한다.
+            if (!observer.PlayerId.HasValue)
                 continue;
 
             foreach (var visualActor in visualActors)

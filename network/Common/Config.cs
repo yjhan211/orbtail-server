@@ -139,8 +139,9 @@ namespace network.common
         /// </summary>
         public const int SWARM_EXPLORE_COST_BASE = 5;
 
-        /// <summary>스팟 리젠 시간(초). 개봉된 스팟은 사라지지 않고 이 시간 뒤 다시 나온다.</summary>
-        public const int SWARM_EXPLORE_REGEN_SECONDS = 60;
+        /// <summary>스팟 리젠 시간(초). 개봉된 스팟은 사라지지 않고 이 시간 뒤 다시 나온다.
+        ///     60 → 30 (2026-08-09): 8인 전환으로 스팟 경합이 늘어 회전을 두 배로.</summary>
+        public const int SWARM_EXPLORE_REGEN_SECONDS = 30;
 
         /// <summary>궤도 오브 1개당 개봉 비용 가산 — SB "스쿼드 인원수 비례 상자 코인".</summary>
         public const int SWARM_EXPLORE_COST_PER_ORB = 2;

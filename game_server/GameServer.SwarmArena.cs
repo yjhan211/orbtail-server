@@ -1011,6 +1011,12 @@ public partial class GameServer
             _swarmPvpOrbHitImmuneUntilUtc[immunityKey] =
                 nowUtc.AddSeconds(SwarmArenaManager.ContactImmunitySeconds);
 
+            logger.LogDebug(
+                "Swarm PvP attack: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, " +
+                "Area={Area}, Weapon={Weapon}, Damage={Damage}",
+                matchingId, attack.AttackerPlayerId, attack.TargetPlayerId,
+                attack.Area, attack.WeaponItemId, damage);
+
             var pvpTargetSession = aliveSessions.FirstOrDefault(session =>
                 session.PlayerId == attack.TargetPlayerId);
             if (pvpTargetSession != null)
