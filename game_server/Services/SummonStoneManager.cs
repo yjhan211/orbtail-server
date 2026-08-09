@@ -29,9 +29,9 @@ public sealed class SummonStoneManager
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, PlayerSummonState>> _matchingStates = new();
 
     public IReadOnlyList<int> PoolItemIds => SummonPool;
-    // #219 M2: 시작 소환석 미지급 — 시작 화력은 랜덤 1오브가 담당하고,
-    // 소환석은 전부 몹 처치로 번다 (빈손이 되면 개봉 무료 규칙이 재기를 보장).
-    public static int InitialSummonStoneCount => 0;
+    // #219 M2: 시작 소환석 5 — 첫 개봉(비용 5) 한 번을 보장해 개전 직후 드래프트 맛을 먼저 보여준다.
+    // 이후 소환석은 몹 처치로 번다 (빈손이 되면 개봉 무료 규칙이 재기를 보장).
+    public static int InitialSummonStoneCount => 5;
 
     public SummonStoneSnapshot EnsureStartingStones(long matchingId, long playerId)
     {
