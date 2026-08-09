@@ -545,7 +545,7 @@ public sealed class SurvivorRegionalItemPoolTests
         }
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 전환: 레거시 지역 풀 공급 불변식 퇴역 — 스웜은 드래프트가 3색 상시 공급, 운동장 최종 폐쇄로 잔존 공급 구역 전제도 소멸")]
     public void EveryOrbColorHasAnOpenLegacySupplyRegionBeforeTheFinalRoomClosureWave()
     {
         var closure = new AreaClosureManager(NullLogger.Instance, new MatchingConfigService(null!, NullLogger.Instance));

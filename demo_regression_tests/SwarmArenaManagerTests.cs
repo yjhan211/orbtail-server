@@ -59,7 +59,7 @@ public class SwarmArenaManagerTests
     [Fact]
     public void PodArea_SpawnsSkeletonPackPlusDartAndBruiser()
     {
-        // #219 SB 몬스터 4종: 포드 방 = 해골 무리(20×3) + 다트(27) + 탈주(100)|볼러(80).
+        // #219 SB 몬스터 4종 (08-09 T1 발수 정렬): 해골 무리(12×3) + 다트(18) + 탈주(60)|볼러(48).
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager(() => now);
         Vector3f library = AreaCenter(AreaType.Library);
@@ -67,9 +67,9 @@ public class SwarmArenaManagerTests
         var tick = manager.Tick(217001, Participants(library, AreaType.Library), now);
 
         Assert.Equal(5, tick.SpawnedMonsters.Count);
-        Assert.Equal(3, tick.SpawnedMonsters.Count(monster => monster.MaxHealth == 20));
-        Assert.Equal(1, tick.SpawnedMonsters.Count(monster => monster.MaxHealth == 27));
-        Assert.Equal(1, tick.SpawnedMonsters.Count(monster => monster.MaxHealth is 100 or 80));
+        Assert.Equal(3, tick.SpawnedMonsters.Count(monster => monster.MaxHealth == 12));
+        Assert.Equal(1, tick.SpawnedMonsters.Count(monster => monster.MaxHealth == 18));
+        Assert.Equal(1, tick.SpawnedMonsters.Count(monster => monster.MaxHealth is 60 or 48));
     }
 
     [Fact]

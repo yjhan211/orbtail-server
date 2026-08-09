@@ -68,13 +68,13 @@ public sealed class SwarmArenaManager
 
     public static (int MaxHp, int OrbDamage, float AttackRange, float AttackCooldownSeconds, int StoneReward)
         GetKindStats(SwarmMonsterKind kind) => kind switch
-    {
-        // 피통 = 시작 T1 오브(발당 12) 발수 정렬: 다트 2방 · 탈주 5방 · 볼러 4방 (#219 초반 템포)
-        SwarmMonsterKind.DartGoblin => (18, 2, 5f, 2f, 1),
-        SwarmMonsterKind.RunawayGoblin => (60, 5, ContactRange, 1.2f, 4),
-        SwarmMonsterKind.Bowler => (48, 2, 4.5f, 2.5f, 4),
-        _ => (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1)
-    };
+        {
+            // 피통 = 시작 T1 오브(발당 12) 발수 정렬: 다트 2방 · 탈주 5방 · 볼러 4방 (#219 초반 템포)
+            SwarmMonsterKind.DartGoblin => (18, 2, 5f, 2f, 1),
+            SwarmMonsterKind.RunawayGoblin => (60, 5, ContactRange, 1.2f, 4),
+            SwarmMonsterKind.Bowler => (48, 2, 4.5f, 2.5f, 4),
+            _ => (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1)
+        };
 
     private const int FirstMonsterId = 7_000_000;
     private const long FirstCombatTargetId = -4_000_000_000_000_000_000L;
