@@ -612,7 +612,8 @@ public partial class GameServer
 
         foreach (var observer in matchingSessions)
         {
-            if (!observer.PlayerId.HasValue || observer.IsEliminated)
+            // 탈락 관전자도 받는다 (#219): 오브 궤도·앞줄 HP가 관전 화면에서도 계속 갱신돼야 한다.
+            if (!observer.PlayerId.HasValue)
                 continue;
 
             foreach (var visualActor in visualActors)
@@ -625,11 +626,14 @@ public partial class GameServer
                     continue;
                 }
 
+                // 앞줄 오브 HP를 시그니처에 포함 — 피해가 곧 상태 변화라 체력바 갱신이 전송된다.
+                int frontOrbHp = GetSwarmFrontOrbHp(matchingId, actor.PlayerId);
                 var state = new SurvivorOrbVisualState(
                     actor.Area,
                     actor.WeaponItemId,
                     actor.OrbEffectActive,
-                    visualActor.OrbItemSignature);
+                    visualActor.OrbItemSignature,
+                    frontOrbHp);
                 if (_survivorOrbVisualStates.TryGetValue(key, out var previousState) &&
                     previousState == state)
                 {
@@ -643,7 +647,8 @@ public partial class GameServer
                     PlayerId = actor.PlayerId,
                     WeaponItemId = actor.WeaponItemId,
                     IsActive = actor.OrbEffectActive,
-                    OrbItemIds = visualActor.OrbItemIds
+                    OrbItemIds = visualActor.OrbItemIds,
+                    FrontOrbHp = frontOrbHp
                 }));
                 observer.Send(packet);
             }
@@ -1070,6 +1075,7 @@ public partial class GameServer
         AreaType Area,
         int WeaponItemId,
         bool IsActive,
-        string OrbItemSignature);
+        string OrbItemSignature,
+        int FrontOrbHp);
 
 }

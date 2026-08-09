@@ -215,7 +215,10 @@ public class ProximityAutoCombatDataTests
             "bool playProjectilePresentation = EmotionAfterimagePveCombatRules.ShouldEmitWaveProjectilePresentation(isSplash);",
             serverSource);
         Assert.Contains("BroadcastObservedProximityAttackVfx(attack, matchingSessions);", serverSource);
-        Assert.Contains("if (packet.TargetPlayerId < 0)", mapSource);
+        // 봇 플레이어 ID도 음수라 플레이어 맵 우선 해석이 계약이다 (#219 봇전 연출 증발 수리)
+        Assert.Contains(
+            "if (packet.TargetPlayerId < 0 && !_playerMap.ContainsKey(packet.TargetPlayerId))",
+            mapSource);
         Assert.Contains("PlayObservedGuardianProjectileAtMonster(attacker, monster, packet.WeaponItemId);", mapSource);
     }
     [Fact]

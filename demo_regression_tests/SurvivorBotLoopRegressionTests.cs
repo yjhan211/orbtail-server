@@ -105,7 +105,7 @@ public sealed class SurvivorBotLoopRegressionTests
         Assert.True(bot.NextPveKiteRepathAt > DateTime.UtcNow);
         Assert.All(bot.Path.Skip(bot.PathIndex), step => Assert.Equal(AreaType.Classroom3, step.Area));
     }
-    [Fact]
+    [Fact(Skip = "#219 색 상성 퇴역: 배율이 전부 중립이라 상성 우선 라우팅 전제가 사라짐 — 봇 사냥 우선순위 재설계 시 재작성")]
     public void BotPveRouteUsesBoardAffinityBeforeLegacyWander()
     {
         const long matchingId = 1942005;
@@ -540,7 +540,7 @@ public sealed class SurvivorBotLoopRegressionTests
             new MatchingConfigService(null!, NullLogger.Instance),
             () => now);
         closure.InitializeMatching(matchingId);
-        now = now.AddSeconds(150); // Classroom3 closes in the second 15-second warning window.
+        now = now.AddSeconds(75); // Classroom3(교실2)는 첫 웨이브(90초) — 75초에 경고창이 열린다.
         closure.CheckClosureSchedule(matchingId);
         Assert.Contains(AreaType.Classroom3, closure.GetClientStateSnapshot(matchingId).WarningAreas);
 
@@ -917,7 +917,7 @@ public sealed class SurvivorBotLoopRegressionTests
         Assert.All(botIds, id => Assert.Equal(0, botManager.GetBot(matchingId, id)!.PendingRngInteractId));
     }
 
-    [Theory]
+    [Theory(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     [InlineData(AreaType.Gym, AreaType.Corridor, 173, 88, 172, 88, 170, 88)]
     [InlineData(AreaType.Corridor, AreaType.Gym, 172, 88, 173, 88, 175, 88)]
     public void BotAreaArrivalClearsDoorwayBeforeStopping(
@@ -946,7 +946,7 @@ public sealed class SurvivorBotLoopRegressionTests
         Assert.Equal(new Cell(expectedX, expectedY), path[^1].Cell);
     }
 
-    [Fact]
+    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
     public void DefaultBotAreaArrivalsClearEverySchoolDoorway()
     {
         foreach (var fromArea in Enum.GetValues<AreaType>())

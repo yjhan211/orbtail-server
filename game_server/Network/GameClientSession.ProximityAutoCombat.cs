@@ -74,7 +74,8 @@ public partial class GameClientSession
             weaponItemId, damage, monsterId);
         Send(packet);
     }
-    internal void ApplyEmotionAfterimageMonsterHit(int monsterId, int damage)
+    // displayDamage: 오브 HP 모델에서 오염 델타(연출용 1)와 클라 표시 피해량(실제 오브 피해)을 분리한다.
+    internal void ApplyEmotionAfterimageMonsterHit(int monsterId, int damage, int? displayDamage = null)
     {
         if (!PlayerId.HasValue || IsEliminated || monsterId <= 0 || damage <= 0)
             return;
@@ -106,7 +107,7 @@ public partial class GameClientSession
         ModifyStats(corruptionDelta: damage);
         // The encounter envelope carries the visual source (monster id) and the authoritative damage value.
         SendEncounterEvent(PlayerId.Value, CurrentArea, EmotionAfterimageMonsterAttackTakenEventType,
-            0, monsterId, damage);
+            0, monsterId, displayDamage ?? damage);
     }
 
     internal void SendSurvivorOrbResonanceFeedback(SurvivorOrbColor color)

@@ -261,6 +261,7 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Map.MapInfo],
                 loadedData[DataFiles.Map.MapRegion]
             );
+            GameMonsterCampData.Initialize(loadedData[DataFiles.Map.MonsterCampAnchor]);
 
             // Interactable object data
             GameInteractableData.Initialize(
@@ -700,8 +701,9 @@ namespace network.common.data.helpers
             {
                 public const string MapInfo = "map_info.csv";
                 public const string MapRegion = "map_region.csv";
+                public const string MonsterCampAnchor = "monster_camp_anchor.csv";
 
-                public static readonly string[] ALL = new[] { MapInfo, MapRegion };
+                public static readonly string[] ALL = new[] { MapInfo, MapRegion, MonsterCampAnchor };
             }
         }
     }

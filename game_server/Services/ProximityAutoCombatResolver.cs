@@ -312,6 +312,11 @@ public sealed class ProximityAutoCombatResolver
         if (priorityComparison != 0)
             return priorityComparison;
 
+        // SB 타겟 고정 (#219): 같은 우선순위면 거리보다 현재 타겟 유지가 먼저다 —
+        // 더 가까운 후보가 나타나도 안 바꾸고, 타겟이 사거리를 벗어나야 재탐색한다.
+        if (left.Actor.PlayerId == currentTargetPlayerId) return -1;
+        if (right.Actor.PlayerId == currentTargetPlayerId) return 1;
+
         int distanceComparison = left.DistanceSquared.CompareTo(right.DistanceSquared);
         return distanceComparison != 0
             ? distanceComparison

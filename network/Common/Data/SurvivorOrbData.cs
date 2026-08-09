@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using network.common.data.models;
 
 namespace network.common.data
 {
@@ -69,6 +70,52 @@ namespace network.common.data
         public const float MaximumProjectileImpactDelaySeconds = 1.4f;
         public const float ProjectileTargetBodyRadius = 0.4f;
 
+        // #219 M2: 색 = 스탯 축 (SB 유닛 선택의 압축). 태양(빨강)=공격력, 바람(초록)=이속,
+        // 파도(파랑)=사거리. 매 개봉의 색 선택이 빌드 결정이 된다.
+        public const float SunAttackBonusPerOrb = 0.15f;
+        public const float WindSpeedBonusPerOrb = 0.04f;
+        public const float WindSpeedBonusCap = 0.30f;
+        public const float WaveRangeBonusPerOrb = 0.4f;
+        public const float WaveRangeBonusCap = 3f;
+
+        /// <summary>
+        ///     스탯 티어 가중(1/1.75/4): 3머지는 슬롯·개봉비를 돌려주는 대신 스탯 합이
+        ///     약간 손해 — 전문화(머지) vs 분산(보유)의 트레이드가 SB 융합 문법이다.
+        /// </summary>
+        public static float GetSwarmStatTierWeight(int tier) =>
+            tier >= 3 ? 4f : tier == 2 ? 1.75f : 1f;
+
+        /// <summary>
+        ///     유닛 낱개 체력 (SB 클론): 티어별 오브 HP. 서버 정산(GameServer.SwarmArena)과
+        ///     클라 스쿼드 체력바 미러가 같은 값을 읽는다.
+        ///     2026-08-09: 몹 피통 하향(해골 1방 체제)과 함께 2배 상향(12/28/60 → 24/56/120) —
+        ///     몹은 빨리 녹고 오브는 오래 버텨야 교전이 즉사전이 아니라 소모전이 된다.
+        /// </summary>
+        public static int GetSquadOrbMaxHp(int tier) => tier >= 3 ? 120 : tier == 2 ? 56 : 24;
+
+        /// <summary>궤도 전체의 색 스탯 합산 — 서버 판정과 클라 표시(링·이속)가 같은 값을 읽는다.</summary>
+        public static (float AttackMultiplier, float MoveSpeedMultiplier, float RangeBonus)
+            GetSwarmColorStats(IEnumerable<InGameItemInfo> items)
+        {
+            float sun = 0f;
+            float wind = 0f;
+            float wave = 0f;
+            foreach (var item in items)
+            {
+                if (item == null || item.Count <= 0) continue;
+                if (!TryGetColorAndTier(item.ItemId, out SurvivorOrbColor color, out int tier)) continue;
+                float weight = GetSwarmStatTierWeight(tier) * item.Count;
+                if (color == SurvivorOrbColor.Red) sun += weight;
+                else if (color == SurvivorOrbColor.Green) wind += weight;
+                else if (color == SurvivorOrbColor.Blue) wave += weight;
+            }
+
+            return (
+                1f + sun * SunAttackBonusPerOrb,
+                1f + Math.Min(WindSpeedBonusCap, wind * WindSpeedBonusPerOrb),
+                Math.Min(WaveRangeBonusCap, wave * WaveRangeBonusPerOrb));
+        }
+
         private static readonly SurvivorOrbColor[] EvolutionColors =
             new[] { SurvivorOrbColor.Red, SurvivorOrbColor.Green, SurvivorOrbColor.Blue };
 
@@ -93,16 +140,14 @@ namespace network.common.data
 
         public static SurvivorOrbAttackPattern GetAttackPattern(int itemId)
         {
+            // #219 M2: 색 정체성이 스탯(태양=공격·바람=이속·파도=사거리)으로 옮겨가며
+            // 공격 문법은 전 색 유도 미사일로 통일 — 색은 시각과 스탯만 다르다. 회복 오브 제외.
             if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out _))
                 return SurvivorOrbAttackPattern.None;
 
-            return color switch
-            {
-                SurvivorOrbColor.Red => SurvivorOrbAttackPattern.HomingProjectile,
-                SurvivorOrbColor.Blue => SurvivorOrbAttackPattern.TargetArea,
-                SurvivorOrbColor.Green => SurvivorOrbAttackPattern.AttackerArea,
-                _ => SurvivorOrbAttackPattern.None
-            };
+            return color is SurvivorOrbColor.Red or SurvivorOrbColor.Green or SurvivorOrbColor.Blue
+                ? SurvivorOrbAttackPattern.HomingProjectile
+                : SurvivorOrbAttackPattern.None;
         }
 
         public static float GetWindPulseRadius(int itemId)
@@ -123,33 +168,22 @@ namespace network.common.data
 
         public static float GetPvpProjectileImpactDelaySeconds(int itemId, float distance)
         {
-            if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out _))
-                return MinimumProjectileImpactDelaySeconds;
-
-            if (color == SurvivorOrbColor.Blue)
-                return DespairImpactDelaySeconds;
-
-            float speed = color == SurvivorOrbColor.Green
-                ? ForgetProjectileSpeed
-                : HopeProjectileSpeed;
+            // 공격 문법 통일: 전 색 같은 미사일 속도. 색 분기(파도 고정 딜레이·바람 고속탄) 퇴역.
             return Math.Clamp(
-                Math.Max(0f, distance) / speed,
+                Math.Max(0f, distance) / HopeProjectileSpeed,
                 MinimumProjectileImpactDelaySeconds,
                 MaximumProjectileImpactDelaySeconds);
         }
 
         public static float GetPvpProjectileHitRadius(int itemId, float projectileWidth)
         {
-            if (TryGetColorAndTier(itemId, out SurvivorOrbColor color, out _) &&
-                color == SurvivorOrbColor.Blue)
-            {
-                return 0f;
-            }
-
             return Math.Max(0.55f, Math.Max(0f, projectileWidth) + ProjectileTargetBodyRadius);
         }
 
-        public static float GetBaseAttackIntervalMultiplier(SurvivorOrbColor color) => color switch
+        // #219 M2 공격 문법 통일: 색별 공속·데미지 차이 퇴역 — 색은 시각과 스탯 버프만.
+        public static float GetBaseAttackIntervalMultiplier(SurvivorOrbColor color) => 1f;
+
+        private static float LegacyBaseAttackIntervalMultiplier(SurvivorOrbColor color) => color switch
         {
             SurvivorOrbColor.Green => WindBaseAttackIntervalMultiplier,
             SurvivorOrbColor.Blue => WaveBaseAttackIntervalMultiplier,
@@ -158,12 +192,8 @@ namespace network.common.data
 
         public static int GetBaseAttackDamage(int baseDamage, SurvivorOrbColor color)
         {
-            if (baseDamage <= 0)
-                return 0;
-
-            return color == SurvivorOrbColor.Green
-                ? Math.Max(1, (int)Math.Floor(baseDamage * WindBaseDamageMultiplier))
-                : baseDamage;
+            // 통일: 바람 데미지 반감 퇴역 — 전 색 동일 기본 데미지.
+            return Math.Max(0, baseDamage);
         }
 
         public static float GetAttackIntervalMultiplier(int itemId) => itemId switch
@@ -192,20 +222,8 @@ namespace network.common.data
 
         public static float GetPveDamageMultiplier(SurvivorOrbColor attackerColor, SurvivorOrbColor targetColor)
         {
-            if (attackerColor is SurvivorOrbColor.None or SurvivorOrbColor.Recovery ||
-                targetColor is SurvivorOrbColor.None or SurvivorOrbColor.Recovery)
-                return PveNeutralDamageMultiplier;
-
-            return (attackerColor, targetColor) switch
-            {
-                (SurvivorOrbColor.Red, SurvivorOrbColor.Green) => PveAdvantageDamageMultiplier,
-                (SurvivorOrbColor.Green, SurvivorOrbColor.Blue) => PveAdvantageDamageMultiplier,
-                (SurvivorOrbColor.Blue, SurvivorOrbColor.Red) => PveAdvantageDamageMultiplier,
-                (SurvivorOrbColor.Red, SurvivorOrbColor.Blue) => PveDisadvantageDamageMultiplier,
-                (SurvivorOrbColor.Green, SurvivorOrbColor.Red) => PveDisadvantageDamageMultiplier,
-                (SurvivorOrbColor.Blue, SurvivorOrbColor.Green) => PveDisadvantageDamageMultiplier,
-                _ => PveNeutralDamageMultiplier
-            };
+            // 통일: 색 상성(1.5/0.5) 퇴역 — 클론 비목표(상성 금지). 항상 중립 배율.
+            return PveNeutralDamageMultiplier;
         }
 
         /// <summary>

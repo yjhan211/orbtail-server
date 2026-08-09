@@ -17,15 +17,21 @@ public sealed class SummonStoneManager
     public const int PassiveIncomeAmount = 1;
 
     private const int BaseSummonCost = 2;
-    private static readonly int[] SummonPool = [107000010, 107000020, 107000030, 107000040];
+
+    // 회복 오브(107000040) 퇴역 (#219, 2026-08-08): 오브 HP 모델에서 오염 회복은 죽음과
+    // 무관해져 기능이 죽었고, "회복만 남는" 막다른 상태의 원천이었다. SB 문법대로 회복은
+    // 새 오브 영입(만피 새 몸)이 담당한다. 아이템 정의·연출·틱 코드는 게이트 보존 —
+    // 치유 클래스로 부활 검토 시 재사용 (이슈 #219 매핑 8번).
+    private static readonly int[] SummonPool = [107000010, 107000020, 107000030];
     private static readonly int[] OpeningAttackPool = SummonPool
         .Where(itemId => !SurvivorOrbData.IsRecoveryOrb(itemId))
         .ToArray();
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, PlayerSummonState>> _matchingStates = new();
 
     public IReadOnlyList<int> PoolItemIds => SummonPool;
-    // Players begin without an orb, but can pay the first two summon costs (2 + 3).
-    public static int InitialSummonStoneCount => GetCost(0) + GetCost(1);
+    // #219 M2: 시작 소환석 5 — 첫 개봉(비용 5) 한 번을 보장해 개전 직후 드래프트 맛을 먼저 보여준다.
+    // 이후 소환석은 몹 처치로 번다 (빈손이 되면 개봉 무료 규칙이 재기를 보장).
+    public static int InitialSummonStoneCount => 5;
 
     public SummonStoneSnapshot EnsureStartingStones(long matchingId, long playerId)
     {
@@ -86,7 +92,7 @@ public sealed class SummonStoneManager
     }
 
     public SummonOrbAttempt TrySummon(long matchingId, long playerId, Func<int, InGameItemInfo?> grantItem,
-        int choiceIndex = 0, int? costOverride = null)
+        int choiceIndex = 0, int? costOverride = null, int? exactItemId = null)
     {
         ArgumentNullException.ThrowIfNull(grantItem);
         var state = GetOrCreatePlayerState(matchingId, playerId);
@@ -97,8 +103,17 @@ public sealed class SummonStoneManager
             if (state.StoneCount < cost)
                 return SummonOrbAttempt.Failed(ErrorCode.INSUFFICIENT_CURRENCY, CreateSnapshot(state));
 
-            int[] candidates = ComputeSummonCandidates(matchingId, playerId, state.SuccessfulSummonCount);
-            int itemId = candidates[Math.Clamp(choiceIndex, 0, candidates.Length - 1)];
+            // exactItemId: #219 3택 드래프트 — 클라이언트가 고른 색을 그대로 지급한다.
+            int itemId;
+            if (exactItemId.HasValue)
+            {
+                itemId = exactItemId.Value;
+            }
+            else
+            {
+                int[] candidates = ComputeSummonCandidates(matchingId, playerId, state.SuccessfulSummonCount);
+                itemId = candidates[Math.Clamp(choiceIndex, 0, candidates.Length - 1)];
+            }
             InGameItemInfo? item = grantItem(itemId);
             if (item == null)
                 return SummonOrbAttempt.Failed(ErrorCode.INVENTORY_FULL, CreateSnapshot(state));

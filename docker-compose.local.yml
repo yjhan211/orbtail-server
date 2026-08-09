@@ -52,6 +52,10 @@ services:
       - DISABLE_GAME_END=0
       # Survivor Royale 로컬: 실플레이어 1명 + 봇 7명 (1이면 실플레이어 2명 + 봇 6명)
       - TEST_TWO_PLAYER_MATCH=0
+      # 탐사 모드: 1이면 1인 매치 + 봇·몹 전부 비활성 (맵 검증용)
+      - SOLO_MAP_VALIDATION=${SOLO_MAP_VALIDATION:-0}
+      # 탐사 모드에서 캠프 몹만 되살림 (봇 없이 몹 상대 검증)
+      - SOLO_MONSTERS=${SOLO_MONSTERS:-0}
       - MATCH_SUMMARY_DIRECTORY=/App/match-summaries
       - MATCH_SUMMARY_MAX_FILES=50
     depends_on:
@@ -93,6 +97,8 @@ services:
       - FORCE_PLAYER_SPAWN_AREA=${FORCE_PLAYER_SPAWN_AREA:-}
       # Survivor Royale 로컬: 실플레이어 1명 + 봇 7명 (1이면 실플레이어 2명 + 봇 6명)
       - TEST_TWO_PLAYER_MATCH=0
+      # 탐사 모드: 1이면 1인 매치 + 봇·몹 전부 비활성 (맵 검증용)
+      - SOLO_MAP_VALIDATION=${SOLO_MAP_VALIDATION:-0}
     depends_on:
       redis:
         condition: service_healthy

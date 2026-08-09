@@ -10,13 +10,13 @@ area_type,name_kr,name_en,name_jp
 13,강당,Gym,講堂
 14,창고,Storage,倉庫
 15,쓰레기장,Dump,ゴミ捨て場
-20,보건실,Infirmary,保健室
+20,보건실,Nurse's Office,保健室
 21,2F,2F,2F
 22,도서관,Library,図書館
-30,3-2,3-2,3-2
+30,교실2,Classroom 2,教室2
 31,3F,3F,3F
 32,고사실,Exam Room,試験室
-40,3-1,3-1,3-1
+40,교실1,Classroom 1,教室1
 41,4F,4F,4F
 42,방송실,Broadcast Room,放送室
 100,캠프,Camp,キャンプ

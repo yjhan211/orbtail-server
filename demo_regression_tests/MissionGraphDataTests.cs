@@ -38,7 +38,8 @@ public class MissionGraphDataTests
             .Select(node => node.TargetAreaType)
             .Where(areaType => areaType > 0)
             .ToHashSet();
-        Assert.All(new[] { 2, 10, 12, 13, 14, 20, 22, 30, 32, 40, 42 },
+        // #219 클론 맵: 옛 서쪽창고(14) 스토리렛은 새 창고(9)로 이관됐다.
+        Assert.All(new[] { 2, 9, 10, 12, 13, 20, 22, 30, 32, 40, 42 },
             areaType => Assert.Contains(areaType, usedStoryletAreas));
         Assert.Equal("record/pool/WRITING_CART", GameMissionGraphData.GetNode(4201).EffectiveStoryletId);
         Assert.Equal("record/pool/BROADCAST_BOARD", GameMissionGraphData.GetNode(4211).EffectiveStoryletId);

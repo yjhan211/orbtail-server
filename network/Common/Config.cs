@@ -129,24 +129,37 @@ namespace network.common
         ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2, 3쌍 깔때기(성장곡선 v3)는 6.
         ///     사람은 항상 1명이고 나머지는 봇으로 채운다.
         /// </summary>
-        public static readonly int SWARM_PLAYERS_PER_MATCH = 6;
+        // #219 8인 전환 (2026-08-09): 스폰 포드 8곳(도서관·강당 제외)과 정원 일치 — 전원 유니크 스폰.
+        public static readonly int SWARM_PLAYERS_PER_MATCH = 8;
 
         /// <summary>
-        ///     스웜 탐색 스팟 개봉 비용은 장소에 붙는다: 처음 여는 스팟은 기본가, 이미 열린
-        ///     스팟은 리젠될 때마다 가산이 붙는다. 스팟마다 가격이 하나라 모든 플레이어에게
-        ///     같은 숫자로 읽힌다. 사람·봇 공통 (개봉 횟수 장부 공유).
+        ///     스웜 탐색 스팟 개봉 비용은 SB 상자 문법을 따른다: 스쿼드(궤도 오브)가 클수록
+        ///     다음 개봉이 비싸진다. 3머지가 오브 수를 줄이면 비용이 도로 내려간다 —
+        ///     슬롯 차단 대신 비용 곡선이 성장을 억제한다. 사람·봇 공통.
         /// </summary>
         public const int SWARM_EXPLORE_COST_BASE = 5;
 
-        /// <summary>스팟 리젠 시간(초). 개봉된 스팟은 사라지지 않고 이 시간 뒤 다시 나온다.</summary>
-        public const int SWARM_EXPLORE_REGEN_SECONDS = 60;
+        /// <summary>스팟 리젠 시간(초). 개봉된 스팟은 사라지지 않고 이 시간 뒤 다시 나온다.
+        ///     60 → 30 (2026-08-09): 8인 전환으로 스팟 경합이 늘어 회전을 두 배로.</summary>
+        public const int SWARM_EXPLORE_REGEN_SECONDS = 30;
 
-        /// <summary>같은 스팟이 다시 나올 때마다 요구 소환석 가산 — 리젠 눌러앉기 감속.</summary>
-        public const int SWARM_EXPLORE_REOPEN_SURCHARGE = 2;
+        /// <summary>궤도 오브 1개당 개봉 비용 가산 — SB "스쿼드 인원수 비례 상자 코인".</summary>
+        public const int SWARM_EXPLORE_COST_PER_ORB = 2;
 
-        public static int GetSwarmExploreCost(int spotOpenCount) =>
-            SWARM_EXPLORE_COST_BASE +
-            SWARM_EXPLORE_REOPEN_SURCHARGE * (spotOpenCount > 0 ? spotOpenCount : 0);
+        /// <summary>
+        ///     기본가 허용량 — 오브가 이 수 이하면 기본가(5)에서 출발하고, 성장분에만 가산이 붙는다.
+        ///     (#219 M2: 시작 오브 지급은 퇴역 — 이 값은 가격 곡선의 피벗으로만 남는다)
+        /// </summary>
+        public const int SWARM_STARTING_ORB_COUNT = 3;
+
+        /// <summary>
+        ///     빈손(오브 0개)은 개봉 무료 — 빈손 시작의 첫 오브와 전멸 후 재기가 같은 경로로 성립한다.
+        /// </summary>
+        public static int GetSwarmExploreCost(int orbCount) =>
+            orbCount <= 0
+                ? 0
+                : SWARM_EXPLORE_COST_BASE +
+                  SWARM_EXPLORE_COST_PER_ORB * Math.Max(0, orbCount - SWARM_STARTING_ORB_COUNT);
 
         /// <summary>
         ///     예산 초과 스팟의 선소진용 — 판보다 긴 쿨다운으로 영구 봉인을 표현한다.
@@ -157,13 +170,22 @@ namespace network.common
         /// <summary>
         ///     궤도 스쿼드(#217 오브 성장 개편): 6칸 보드를 폐지하고 궤도 오브 수가 곧 성장이다.
         ///     같은 색 3개가 모이면 자동으로 상위 티어(같은 색)로 합쳐진다 — SB 3머지 문법.
-        ///     상한은 클라 궤도 슬롯 수와 같아야 한다 (PlayerTool.MaxOrbSlots).
+        ///     SB에는 슬롯 하드캡이 없다 — 오브 수 비례 개봉 비용이 성장을 억제하고, 이 값은
+        ///     이상 상황 방지용 안전상한일 뿐이다. 클라 궤도 슬롯 수와 같아야 한다 (PlayerTool.MaxOrbSlots).
         /// </summary>
-        public const int SWARM_ORB_CAPACITY = 9;
+        public const int SWARM_ORB_CAPACITY = 30;
 
         /// <summary>현재 모드의 오브 보유 상한 — 스웜(궤도 스쿼드)은 9, 레거시 보드는 6.</summary>
         public static int GetOrbCapacity() =>
             SWARM_P0_ENABLED ? SWARM_ORB_CAPACITY : SURVIVOR_INVENTORY_SLOT_COUNT;
+
+        /// <summary>
+        ///     스웜 기본 오브 사거리. 서버 전투(GameServer.SwarmArena)와 클라 사거리 링
+        ///     (PlayerRangeRing)이 같은 값을 읽어야 표시와 판정이 일치한다.
+        ///     7 → … → 3 → 2.5 (2026-08-07): 좁은 시작이 파도(사거리 성장) 여지다.
+        ///     다트 고블린 사거리(5)의 절반 — 원거리 몹 접근엔 피격 감수가 전제.
+        /// </summary>
+        public const float SWARM_ORB_ATTACK_RANGE = 2.5f;
 
         /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.

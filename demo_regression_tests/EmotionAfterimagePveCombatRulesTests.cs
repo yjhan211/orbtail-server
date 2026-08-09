@@ -8,14 +8,12 @@ namespace demo_regression_tests;
 public class EmotionAfterimagePveCombatRulesTests
 {
     [Fact]
-    public void WaveOrb_UsesSlowerBaseAttackInterval()
+    public void AllColors_ShareTheSameBaseAttackInterval()
     {
-        Assert.Equal(1.25f,
-            SurvivorOrbData.GetBaseAttackIntervalMultiplier(SurvivorOrbColor.Blue));
-        Assert.Equal(1f,
-            SurvivorOrbData.GetBaseAttackIntervalMultiplier(SurvivorOrbColor.Red));
-        Assert.Equal(2.875f,
-            2.3f * SurvivorOrbData.GetBaseAttackIntervalMultiplier(SurvivorOrbColor.Blue), 3);
+        // #219 M2 공격 문법 통일: 색별 공속 차이 퇴역.
+        Assert.Equal(1f, SurvivorOrbData.GetBaseAttackIntervalMultiplier(SurvivorOrbColor.Blue));
+        Assert.Equal(1f, SurvivorOrbData.GetBaseAttackIntervalMultiplier(SurvivorOrbColor.Red));
+        Assert.Equal(1f, SurvivorOrbData.GetBaseAttackIntervalMultiplier(SurvivorOrbColor.Green));
     }
 
     [Fact]
@@ -28,30 +26,30 @@ public class EmotionAfterimagePveCombatRulesTests
     }
 
     [Theory]
-    [InlineData(107000010, 107000020, 1.5f)]
-    [InlineData(107000020, 107000030, 1.5f)]
-    [InlineData(107000030, 107000010, 1.5f)]
-    [InlineData(107000010, 107000030, 0.5f)]
-    [InlineData(107000020, 107000010, 0.5f)]
-    [InlineData(107000030, 107000020, 0.5f)]
-    [InlineData(107000010, 107000011, 1f)]
-    [InlineData(107000010, 107000040, 1f)]
-    public void PveAffinity_FollowsOrbColorCycle(int attackerItemId, int monsterRewardItemId,
-        float expectedMultiplier)
+    [InlineData(107000010, 107000020)]
+    [InlineData(107000020, 107000030)]
+    [InlineData(107000030, 107000010)]
+    [InlineData(107000010, 107000030)]
+    [InlineData(107000020, 107000010)]
+    [InlineData(107000030, 107000020)]
+    [InlineData(107000010, 107000011)]
+    [InlineData(107000010, 107000040)]
+    public void PveAffinity_IsAlwaysNeutralAfterUnification(int attackerItemId, int monsterRewardItemId)
     {
-        Assert.Equal(expectedMultiplier,
+        // 색 상성(1.5/0.5) 퇴역 — 클론 비목표(상성 금지).
+        Assert.Equal(1f,
             SurvivorOrbData.GetPveDamageMultiplier(attackerItemId, monsterRewardItemId));
     }
 
     [Fact]
-    public void WindOrb_HalvesDamageAndDoublesItsBaseCadence()
+    public void WindOrb_NoLongerModifiesDamageOrCadence()
     {
-        Assert.Equal(0.5f, SurvivorOrbData.WindBaseDamageMultiplier);
-        Assert.Equal(0.5f,
+        // 바람 반감·가속 퇴역 — 전 색 동일 데미지·공속.
+        Assert.Equal(1f,
             SurvivorOrbData.GetBaseAttackIntervalMultiplier(SurvivorOrbColor.Green));
-        Assert.Equal(2, SurvivorOrbData.GetBaseAttackDamage(4, SurvivorOrbColor.Green));
-        Assert.Equal(3, SurvivorOrbData.GetBaseAttackDamage(7, SurvivorOrbColor.Green));
-        Assert.Equal(5, SurvivorOrbData.GetBaseAttackDamage(10, SurvivorOrbColor.Green));
+        Assert.Equal(4, SurvivorOrbData.GetBaseAttackDamage(4, SurvivorOrbColor.Green));
+        Assert.Equal(7, SurvivorOrbData.GetBaseAttackDamage(7, SurvivorOrbColor.Green));
+        Assert.Equal(10, SurvivorOrbData.GetBaseAttackDamage(10, SurvivorOrbColor.Green));
     }
 
     [Fact]
@@ -141,7 +139,8 @@ public class EmotionAfterimagePveCombatRulesTests
             [107000010, 107000010, 107000010, 107000020], out var dominantColor));
 
         Assert.Equal(SurvivorOrbColor.Red, dominantColor);
-        Assert.Equal(1.5f, SurvivorOrbData.GetPveDamageMultiplier(dominantColor, 107000020));
-        Assert.Equal(6, SurvivorOrbData.CalculatePveDamage(dominantColor, 107000020, 4));
+        // 상성 퇴역: 지배색이어도 배율은 중립이다.
+        Assert.Equal(1f, SurvivorOrbData.GetPveDamageMultiplier(dominantColor, 107000020));
+        Assert.Equal(4, SurvivorOrbData.CalculatePveDamage(dominantColor, 107000020, 4));
     }
 }

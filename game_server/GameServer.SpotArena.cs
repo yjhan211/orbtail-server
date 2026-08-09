@@ -440,7 +440,8 @@ public partial class GameServer
     {
         foreach (var observer in sessions)
         {
-            if (!observer.PlayerId.HasValue || observer.IsEliminated ||
+            // 탈락자도 받는다 (#219): 관전 중에도 봇 전투 연출이 계속 보여야 한다.
+            if (!observer.PlayerId.HasValue ||
                 observer.PlayerId.Value == attack.AttackerPlayerId ||
                 observer.CurrentArea != attack.Area)
             {
