@@ -105,6 +105,12 @@ public partial class GameClientSession : SessionBase
     private bool _hasPendingOrbDraft;
     private int _pendingOrbDraftCost;
 
+    /// <summary>열쇠 (#222 M4): 무료 소환 충전 수 — 획득/소비는 GroundItem·OrbSummon partial.</summary>
+    public int FreeSummonCharges { get; internal set; }
+
+    /// <summary>잼 승점 지갑 (#222 M3) — 매치 단위, 소환석과 분리된 재화.</summary>
+    public int JamCount { get; private set; }
+
     private Timer? _periodicBuffTimer;
 
     /// <summary>
@@ -112,6 +118,12 @@ public partial class GameClientSession : SessionBase
     ///     초기화 시 배선한다 — 세션이 매니저를 직접 참조하지 않기 위한 최소 연결.
     /// </summary>
     internal static Action<long, long>? SwarmExploreNoiseCallback { get; set; }
+
+    /// <summary>
+    ///     하트 픽업 시 앞줄 오브 HP 회복 훅 (#222 M4) — 원작 하트는 스쿼드 유닛도 회복한다.
+    ///     GameServer가 스웜 매치 초기화 시 배선한다 (사람·봇 픽업 공통).
+    /// </summary>
+    internal static Action<long, long>? SwarmHeartPickupCallback { get; set; }
 
     public IReadOnlyCollection<int> ActiveBuffIds => _activeBuffIds;
 

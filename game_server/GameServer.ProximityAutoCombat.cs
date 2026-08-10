@@ -626,14 +626,16 @@ public partial class GameServer
                     continue;
                 }
 
-                // 앞줄 오브 HP를 시그니처에 포함 — 피해가 곧 상태 변화라 체력바 갱신이 전송된다.
+                // 앞줄 오브 HP·잼을 시그니처에 포함 — 값 변화가 곧 상태 변화라 갱신이 전송된다.
                 int frontOrbHp = GetSwarmFrontOrbHp(matchingId, actor.PlayerId);
+                int jamCount = GetSwarmJamCount(matchingId, actor.PlayerId, matchingSessions);
                 var state = new SurvivorOrbVisualState(
                     actor.Area,
                     actor.WeaponItemId,
                     actor.OrbEffectActive,
                     visualActor.OrbItemSignature,
-                    frontOrbHp);
+                    frontOrbHp,
+                    jamCount);
                 if (_survivorOrbVisualStates.TryGetValue(key, out var previousState) &&
                     previousState == state)
                 {
@@ -648,7 +650,8 @@ public partial class GameServer
                     WeaponItemId = actor.WeaponItemId,
                     IsActive = actor.OrbEffectActive,
                     OrbItemIds = visualActor.OrbItemIds,
-                    FrontOrbHp = frontOrbHp
+                    FrontOrbHp = frontOrbHp,
+                    JamCount = jamCount
                 }));
                 observer.Send(packet);
             }
@@ -1076,6 +1079,7 @@ public partial class GameServer
         int WeaponItemId,
         bool IsActive,
         string OrbItemSignature,
-        int FrontOrbHp);
+        int FrontOrbHp,
+        int JamCount);
 
 }

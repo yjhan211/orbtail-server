@@ -73,8 +73,11 @@ namespace network.common.data
         // #219 M2: 색 = 스탯 축 (SB 유닛 선택의 압축). 태양(빨강)=공격력, 바람(초록)=이속,
         // 파도(파랑)=사거리. 매 개봉의 색 선택이 빌드 결정이 된다.
         public const float SunAttackBonusPerOrb = 0.15f;
-        public const float WindSpeedBonusPerOrb = 0.04f;
-        public const float WindSpeedBonusCap = 0.30f;
+        // 바람 재정의 (#222 M4): 이속 → 공격속도. 부츠(이동 소모품)와 컨셉이 겹쳤고, 상시
+        // 이동 게임이라 이속 체감도 낮았다. 공속은 연사 리듬으로 즉시 읽힌다 — 태양(발당
+        // 무게)과 다른 체감 축. 기본 연사(RapidFireScale)를 늦춘 만큼 바람이 그 이상을 되돌린다.
+        public const float WindAttackSpeedBonusPerOrb = 0.08f;
+        public const float WindAttackSpeedBonusCap = 0.60f;
         public const float WaveRangeBonusPerOrb = 0.4f;
         public const float WaveRangeBonusCap = 3f;
 
@@ -85,6 +88,24 @@ namespace network.common.data
         public static float GetSwarmStatTierWeight(int tier) =>
             tier >= 3 ? 4f : tier == 2 ? 1.75f : 1f;
 
+        // 상자 시간 등급 (#222 M3, SB 커먼→레어→에픽): 개전 후 경과초가 드래프트 오브 티어를
+        // 정한다. 4분 매치 3등분 — 폐쇄 웨이브(80/160초)와 같은 박자로 판의 살림이 굵어진다.
+        public const int DraftTierTwoAtSeconds = 80;
+        public const int DraftTierThreeAtSeconds = 160;
+
+        public static int GetDraftTierByElapsed(double elapsedSeconds) =>
+            elapsedSeconds >= DraftTierThreeAtSeconds ? 3 :
+            elapsedSeconds >= DraftTierTwoAtSeconds ? 2 : 1;
+
+        /// <summary>색 T1 아이템 ID에 시간 등급 티어를 적용한다 (색 베이스 +0/+1/+2).</summary>
+        public static int ApplyDraftTier(int tierOneItemId, int tier)
+        {
+            if (!TryGetColorAndTier(tierOneItemId, out _, out int baseTier) || baseTier != 1)
+                return tierOneItemId;
+
+            return tierOneItemId + Math.Clamp(tier, 1, 3) - 1;
+        }
+
         /// <summary>
         ///     유닛 낱개 체력 (SB 클론): 티어별 오브 HP. 서버 정산(GameServer.SwarmArena)과
         ///     클라 스쿼드 체력바 미러가 같은 값을 읽는다.
@@ -93,8 +114,8 @@ namespace network.common.data
         /// </summary>
         public static int GetSquadOrbMaxHp(int tier) => tier >= 3 ? 120 : tier == 2 ? 56 : 24;
 
-        /// <summary>궤도 전체의 색 스탯 합산 — 서버 판정과 클라 표시(링·이속)가 같은 값을 읽는다.</summary>
-        public static (float AttackMultiplier, float MoveSpeedMultiplier, float RangeBonus)
+        /// <summary>궤도 전체의 색 스탯 합산 — 서버 판정과 클라 표시(링)가 같은 값을 읽는다.</summary>
+        public static (float AttackMultiplier, float AttackSpeedMultiplier, float RangeBonus)
             GetSwarmColorStats(IEnumerable<InGameItemInfo> items)
         {
             float sun = 0f;
@@ -112,7 +133,7 @@ namespace network.common.data
 
             return (
                 1f + sun * SunAttackBonusPerOrb,
-                1f + Math.Min(WindSpeedBonusCap, wind * WindSpeedBonusPerOrb),
+                1f + Math.Min(WindAttackSpeedBonusCap, wind * WindAttackSpeedBonusPerOrb),
                 Math.Min(WaveRangeBonusCap, wave * WaveRangeBonusPerOrb));
         }
 

@@ -396,14 +396,24 @@ public partial class GameServer
     private void SpawnSpotArenaSummonStone(
         long matchingId,
         MonsterRuntimeInfo defeatedWave,
-        IReadOnlyCollection<GameClientSession> sessions)
+        IReadOnlyCollection<GameClientSession> sessions,
+        int jamReward = 0,
+        int heartReward = 0,
+        int bootsReward = 0,
+        int keyReward = 0)
     {
-        if (defeatedWave.SummonStoneReward <= 0)
+        if (defeatedWave.SummonStoneReward <= 0 && jamReward <= 0 && heartReward <= 0 &&
+            bootsReward <= 0 && keyReward <= 0)
             return;
 
+        // 잼 (#222 M3)·하트·부츠·열쇠 (#222 M4): 소환석과 함께 흩어진다 — 픽업 경쟁 규칙 공유.
         var itemIds = Enumerable.Repeat(
-            Config.SUMMON_STONE_GROUND_ITEM_ID,
-            defeatedWave.SummonStoneReward).ToArray();
+                Config.SUMMON_STONE_GROUND_ITEM_ID, Math.Max(0, defeatedWave.SummonStoneReward))
+            .Concat(Enumerable.Repeat(Config.JAM_GROUND_ITEM_ID, Math.Max(0, jamReward)))
+            .Concat(Enumerable.Repeat(Config.HEART_GROUND_ITEM_ID, Math.Max(0, heartReward)))
+            .Concat(Enumerable.Repeat(Config.BOOTS_GROUND_ITEM_ID, Math.Max(0, bootsReward)))
+            .Concat(Enumerable.Repeat(Config.KEY_GROUND_ITEM_ID, Math.Max(0, keyReward)))
+            .ToArray();
         var spawned = _groundItemManager.SpawnItems(
             matchingId,
             defeatedWave.AreaType,
@@ -425,13 +435,19 @@ public partial class GameServer
                 isBot: false);
         }
 
+        // 드랍 개수가 늘어도 버퍼(2048)를 넘지 않게 청크로 나눠 보낸다 (#222).
         int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)defeatedWave.AreaType);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
-            (int)defeatedWave.AreaType,
-            remaining,
-            spawned);
-        foreach (var session in sessions.Where(session => session.CurrentArea == defeatedWave.AreaType))
-            session.Send(packet);
+        const int chunkSize = 8;
+        for (int offset = 0; offset < spawned.Count; offset += chunkSize)
+        {
+            var chunk = spawned.Skip(offset).Take(chunkSize).ToList();
+            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
+                (int)defeatedWave.AreaType,
+                remaining,
+                chunk);
+            foreach (var session in sessions.Where(session => session.CurrentArea == defeatedWave.AreaType))
+                session.Send(packet);
+        }
     }
 
     private static void BroadcastSpotArenaAttackVfxToTargetAndObservers(

@@ -257,6 +257,7 @@ public partial class BotPlayerManager
         var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
             ? PlayerState.SLEEP
             : bot.RngCollectProgressStartTime != DateTime.MinValue ||
+              bot.SwarmExploreStartedAtUtc != DateTime.MinValue ||
               Config.CHECKLIST_SYSTEM_ENABLED &&
               bot.ChecklistActivityProgressStartTime != DateTime.MinValue
                 ? PlayerState.EXPLORE_1
@@ -534,6 +535,28 @@ public class BotPlayerState
         TransitionPauseUntil = DateTime.MinValue;
     }
 
+    /// <summary>위협 감지 시 채집·상호작용 홀드를 즉시 끊는다 — 홀드 채로 맞다 죽는 사고 방지.</summary>
+    public void CancelInteractionHold()
+    {
+        IsInInteraction = false;
+        InteractionStayUntil = DateTime.MinValue;
+    }
+
+    /// <summary>마지막 피격 시각 (#222) — 피격 중에는 이동 계획 홀드를 무시하는 판단 입력.</summary>
+    public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;
+
+    // 유휴 감시 (#222): 6초 이상 제자리면 원인 진단 로그를 남긴다 — "가만히 서 있는 봇" 추적.
+    public Vector3f? IdleWatchLastPosition { get; set; }
+    public DateTime IdleWatchLastMovedAtUtc { get; set; } = DateTime.MinValue;
+    public DateTime IdleWatchLastLoggedAtUtc { get; set; } = DateTime.MinValue;
+
+    // 유휴 배회 (#222): 도착 대기(캠프 리스폰·사격 대기)로 서 있지 않게 주변을 서성인다.
+    public DateTime NextIdleWanderAtUtc { get; set; } = DateTime.MinValue;
+
+    // 부츠·열쇠 (#222 M4): 사람과 같은 규칙으로 봇도 쓴다.
+    public DateTime BootsSpeedUntilUtc { get; set; } = DateTime.MinValue;
+    public int FreeSummonCharges { get; set; }
+
     // === #134 RNG 梨꾩쭛 ?듯빀 ===
     /// <summary>遊뉗씠 walking?쇰줈 ?묎렐 以묒씤 InteractObject Id. 0?대㈃ ?놁쓬.
     /// ChooseNewWanderTarget?먯꽌 ?곸뿭 + ? ?좏깮 ???ㅼ젙, ?꾩갑 ??RNG 梨꾩쭛 ??0?쇰줈 clear.</summary>
@@ -570,4 +593,14 @@ public class BotPlayerState
 
     /// <summary>walking ?쒖옉 ??G_TO_C_EXPLORE_END broadcast媛 ?꾩슂?쒖? ??ChooseNewWanderTarget??set, ?ㅼ쓬 ProcessBotMovementTick?먯꽌 ?섏쭛 + reset.</summary>
     public bool PendingExploreEndBroadcast { get; set; }
+
+    /// <summary>잼 승점 지갑 (#222 M3) — 매치 단위, 소환석과 분리.</summary>
+    public int JamCount { get; set; }
+
+    // === #219 스웜 개봉 채집 채널 (레거시 RNG 필드와 분리 — 미션 틱 간섭 방지) ===
+    /// <summary>채집 중인 스웜 스팟 Id. 0이면 채널 없음.</summary>
+    public int SwarmExploreSpotId { get; set; }
+
+    /// <summary>스웜 채집 채널 시작 시각. MinValue면 채널 없음 — 시작 후 1.5초 경과 시 개봉 확정.</summary>
+    public DateTime SwarmExploreStartedAtUtc { get; set; } = DateTime.MinValue;
 }

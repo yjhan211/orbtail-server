@@ -51,7 +51,11 @@ public partial class BotPlayerManager
     private static float GetBotMovementSpeedMultiplier(BotPlayerState bot)
     {
         float wind = bot.WindResonanceActive ? SurvivorOrbData.WindMoveSpeedMultiplier : 1f;
-        return wind * GetBotWaveSlowMultiplier(bot);
+        // 부츠 (#222 M4): 사람과 같은 10초 이속 버프.
+        float boots = DateTime.UtcNow < bot.BootsSpeedUntilUtc
+            ? Config.BOOTS_MOVE_SPEED_MULTIPLIER
+            : 1f;
+        return wind * boots * GetBotWaveSlowMultiplier(bot);
     }
 
     private static float GetBotWaveSlowMultiplier(BotPlayerState bot)
@@ -361,9 +365,14 @@ public partial class BotPlayerManager
             }
 
             bool canPlanThisTick = bot.PlayerId == result.PlanningBotId;
+            // 피격 중에는 1.5초 모드 홀드를 무시하고 매 계획 차례마다 재계획한다 (#222) —
+            // 와리가리/도주 지시가 홀드에 씹혀 맞으면서 서 있던 현상(매치 2386 -182) 수리.
+            // 창은 판단 레이어(SwarmBotDamagedFleeSeconds)와 같은 6초.
+            bool underFire = (nowUtc - bot.LastDamagedAtUtc).TotalSeconds <= 6d;
             if (canPlanThisTick &&
                 (bot.SpotArenaMode == SpotArenaBotMode.None ||
-                 nowUtc >= bot.SpotArenaModeUntilUtc))
+                 nowUtc >= bot.SpotArenaModeUntilUtc ||
+                 underFire))
             {
                 bool changed = bot.SpotArenaMode != currentDirective.Mode;
                 bot.SpotArenaMode = currentDirective.Mode;
@@ -383,10 +392,18 @@ public partial class BotPlayerManager
                 bot.PathIndex = 0;
             }
 
+            TrackSwarmBotIdle(bot, currentDirective, nowUtc);
+
             if (bot.PathIndex >= bot.Path.Count)
             {
-                bot.LastWalkStepTime = nowUtc;
-                continue;
+                // 유휴 배회 (#222): 도착 대기(Return/Escort·경로 0) 상태로 수십 초 서 있던
+                // 현상(유휴 감시 실측) — 4초 이상 제자리면 주변 셀로 서성인다.
+                TryStartSwarmIdleWander(bot, matchingId, nowUtc);
+                if (bot.PathIndex >= bot.Path.Count)
+                {
+                    bot.LastWalkStepTime = nowUtc;
+                    continue;
+                }
             }
 
             var movement = WalkStep(
@@ -405,6 +422,72 @@ public partial class BotPlayerManager
 
         return result;
     }
+    /// <summary>
+    ///     유휴 감시 (#222): 6초 이상 제자리인 봇의 상태(모드·경로·홀드)를 10초에 한 번 남긴다.
+    ///     "가만히 서 있는 봇" 신고가 반복되는데 이동은 로그에 안 남아 원인 특정이 안 됐다.
+    /// </summary>
+    private void TrackSwarmBotIdle(BotPlayerState bot, SpotArenaBotDirective directive, DateTime nowUtc)
+    {
+        const float movedThresholdSquared = 0.01f;
+        if (bot.IdleWatchLastPosition == null ||
+            DistanceSquared(bot.IdleWatchLastPosition, bot.Position.X, bot.Position.Y) >
+            movedThresholdSquared)
+        {
+            bot.IdleWatchLastPosition = new Vector3f(bot.Position.X, bot.Position.Y, 0f);
+            bot.IdleWatchLastMovedAtUtc = nowUtc;
+            return;
+        }
+
+        if ((nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds < 6d ||
+            (nowUtc - bot.IdleWatchLastLoggedAtUtc).TotalSeconds < 10d)
+            return;
+
+        bot.IdleWatchLastLoggedAtUtc = nowUtc;
+        _logger.LogInformation(
+            "Swarm bot idle: BotId={BotId}, Area={Area}, IdleSeconds={IdleSeconds:F0}, " +
+            "Mode={Mode}, DirectiveArea={DirectiveArea}, PathRemaining={PathRemaining}, " +
+            "InInteraction={InInteraction}, ExploreSpot={ExploreSpot}",
+            bot.PlayerId,
+            bot.CurrentArea,
+            (nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds,
+            directive.Mode,
+            directive.DestinationArea,
+            Math.Max(0, bot.Path.Count - bot.PathIndex),
+            bot.IsInInteraction,
+            bot.SwarmExploreSpotId);
+    }
+
+    /// <summary>유휴 배회 (#222): 제자리 4초 이상이면 같은 구역 인근 셀로 짧은 산책 경로를 만든다.</summary>
+    private void TryStartSwarmIdleWander(BotPlayerState bot, long matchingId, DateTime nowUtc)
+    {
+        if (bot.IsInInteraction || bot.SwarmExploreSpotId != 0)
+            return;
+        if ((nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds < 4d || nowUtc < bot.NextIdleWanderAtUtc)
+            return;
+
+        bot.NextIdleWanderAtUtc = nowUtc.AddSeconds(3d);
+        MapId mapId = GetMatchingMapId(matchingId);
+        for (int attempt = 0; attempt < 6; attempt++)
+        {
+            var candidate = new Cell(
+                bot.Cell.X + Random.Shared.Next(-3, 4),
+                bot.Cell.Y + Random.Shared.Next(-3, 4));
+            if (candidate.X == bot.Cell.X && candidate.Y == bot.Cell.Y)
+                continue;
+            if (!GameMapData.IsMoveablePosition(mapId, candidate) ||
+                GameMapData.GetCurrentArea(mapId, candidate) != bot.CurrentArea)
+                continue;
+
+            var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, bot.CurrentArea, candidate);
+            if (path == null || path.Count == 0)
+                continue;
+
+            bot.Path = path;
+            bot.PathIndex = 0;
+            return;
+        }
+    }
+
     private long SelectMovementPlanningBot(long matchingId, IReadOnlyList<BotPlayerState> activeBots)
     {
         int cursor = _botMovementPlanningCursors.AddOrUpdate(
