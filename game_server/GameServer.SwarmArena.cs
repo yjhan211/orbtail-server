@@ -43,11 +43,11 @@ public partial class GameServer
     private const int SwarmOrbDamageMultiplier = 3;
     private const float SwarmOrbIntervalMultiplier = 1f;
 
-    // 연사화 (#222): 오브별 주기·발당 데미지를 함께 절반으로 — DPS 불변, 발사 밀도 2배.
-    // 소수 오브 구간(초반)의 "쏘고 한참 침묵" 루즈함을 없앤다. 오브가 많아지면 총 발사
-    // 간격이 최소 스페이싱(0.15초×오브 수) 밑으로 내려가지 않게 캡 — 캡이 걸리면 발당
-    // 데미지가 그 비율만큼 굵어져 DPS는 유지된다 (읽을 수 있는 탄막 상한 ≈ 초당 6.7발).
-    private const float SwarmOrbRapidFireScale = 0.5f;
+    // 연사화 (#222): 오브별 주기·발당 데미지를 함께 줄여 DPS 불변으로 발사 밀도를 올린다.
+    // 오브가 많아지면 총 발사 간격이 최소 스페이싱(0.15초×오브 수) 밑으로 내려가지 않게
+    // 캡 — 캡이 걸리면 발당 데미지가 그 비율만큼 굵어져 DPS는 유지된다.
+    // 0.6 (#222 M4): 바람이 공속 축이 되면서 기본 연사를 살짝 늦춰 바람의 여지를 만든다.
+    private const float SwarmOrbRapidFireScale = 0.6f;
     private const float SwarmOrbMinShotSpacingSeconds = 0.15f;
 
     private readonly Dictionary<(long MatchingId, long PlayerId),
@@ -108,7 +108,8 @@ public partial class GameServer
             // 비행 중 몬스터가 이미 죽었으면 조용히 소멸 — 이중 정산 없음.
             if (damageResult.Applied && damageResult.Killed && damageResult.MonsterState != null)
                 SpawnSpotArenaSummonStone(
-                    matchingId, damageResult.MonsterState, sessions, damageResult.JamReward);
+                    matchingId, damageResult.MonsterState, sessions, damageResult.JamReward,
+                    damageResult.HeartReward);
         }
     }
 
@@ -146,6 +147,15 @@ public partial class GameServer
             GameClientSession.SwarmExploreNoiseCallback ??=
                 (noiseMatchingId, noisePlayerId) =>
                     _swarmArenaManager.AttractSwarm(noiseMatchingId, noisePlayerId);
+            // 하트 = 본체 오염 + 앞줄 오브 HP 회복 (#222 M4, 원작 하트는 스쿼드도 회복).
+            // 엔트리 제거 = 만충 취급 — 다음 오브 비주얼 틱에 체력바·크랙이 함께 복구된다.
+            GameClientSession.SwarmHeartPickupCallback ??=
+                (healMatchingId, healPlayerId) =>
+                    _swarmFrontOrbHp.Remove((healMatchingId, healPlayerId));
+            // 하트 픽업 게이트: 앞줄 오브가 상했으면 오염 0이어도 줍는다 (원작 만피 게이트의 근사).
+            GroundItemPickupPolicy.FrontOrbDamagedResolver ??=
+                (gateMatchingId, gatePlayerId) =>
+                    _swarmFrontOrbHp.ContainsKey((gateMatchingId, gatePlayerId));
             LogSwarmPairZoneDistances(matchingId);
             // M4 자기장: 안전 거리 수축 시계는 스웜 개전과 함께 돈다.
             // #219 M1: 클론에서는 자기장을 무장하지 않는다 — 수렴은 M3의 광산 각본이 담당한다.
@@ -1950,11 +1960,14 @@ public partial class GameServer
             var actor = actors[index];
             float baseInterval = actor.AttackIntervalSeconds * SwarmOrbIntervalMultiplier;
             // 연사화 + 스팸 캡: 캡으로 주기가 달라져도 발당 데미지를 주기 비율로 맞춰
-            // 오브별 DPS(원 데미지/원 주기)를 정확히 보존한다.
+            // 오브별 DPS(원 데미지/원 주기)를 보존한다. 바람(공속)은 주기만 줄여 실DPS를
+            // 올린다 — dpsScale에 공속 배율을 곱해 "바람 = DPS 상승"이 캡에도 유지되게.
             float interval = MathF.Max(
-                baseInterval * SwarmOrbRapidFireScale,
+                baseInterval * SwarmOrbRapidFireScale / colorStats.AttackSpeedMultiplier,
                 orbActorCount * SwarmOrbMinShotSpacingSeconds);
-            float dpsScale = baseInterval > 0f ? interval / baseInterval : 1f;
+            float dpsScale = baseInterval > 0f
+                ? interval * colorStats.AttackSpeedMultiplier / baseInterval
+                : 1f;
             actors[index] = actor with
             {
                 Damage = armed

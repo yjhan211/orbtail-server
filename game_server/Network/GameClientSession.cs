@@ -116,6 +116,12 @@ public partial class GameClientSession : SessionBase
     /// </summary>
     internal static Action<long, long>? SwarmExploreNoiseCallback { get; set; }
 
+    /// <summary>
+    ///     하트 픽업 시 앞줄 오브 HP 회복 훅 (#222 M4) — 원작 하트는 스쿼드 유닛도 회복한다.
+    ///     GameServer가 스웜 매치 초기화 시 배선한다 (사람·봇 픽업 공통).
+    /// </summary>
+    internal static Action<long, long>? SwarmHeartPickupCallback { get; set; }
+
     public IReadOnlyCollection<int> ActiveBuffIds => _activeBuffIds;
 
     private void SetActiveBuffIds(IEnumerable<int>? activeBuffIds)

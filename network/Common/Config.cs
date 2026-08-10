@@ -106,6 +106,9 @@ namespace network.common
         /// </summary>
         public const int JAM_GROUND_ITEM_ID = 107000060;
 
+        /// <summary>하트 (#222 M4): 즉시 회복 픽업 — 고위험 몹(탈주·볼러) 처치가 유일 공급처.</summary>
+        public const int HEART_GROUND_ITEM_ID = 107000070;
+
         /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
         public const int SURVIVOR_MAX_CORRUPTION = 420;
 

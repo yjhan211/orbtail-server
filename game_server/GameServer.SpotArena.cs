@@ -397,15 +397,17 @@ public partial class GameServer
         long matchingId,
         MonsterRuntimeInfo defeatedWave,
         IReadOnlyCollection<GameClientSession> sessions,
-        int jamReward = 0)
+        int jamReward = 0,
+        int heartReward = 0)
     {
-        if (defeatedWave.SummonStoneReward <= 0 && jamReward <= 0)
+        if (defeatedWave.SummonStoneReward <= 0 && jamReward <= 0 && heartReward <= 0)
             return;
 
-        // 잼 (#222 M3): 소환석과 함께 흩어진다 — 픽업 경쟁·봇 반응 지연 규칙을 그대로 탄다.
+        // 잼 (#222 M3)·하트 (#222 M4): 소환석과 함께 흩어진다 — 픽업 경쟁 규칙을 그대로 탄다.
         var itemIds = Enumerable.Repeat(
                 Config.SUMMON_STONE_GROUND_ITEM_ID, Math.Max(0, defeatedWave.SummonStoneReward))
             .Concat(Enumerable.Repeat(Config.JAM_GROUND_ITEM_ID, Math.Max(0, jamReward)))
+            .Concat(Enumerable.Repeat(Config.HEART_GROUND_ITEM_ID, Math.Max(0, heartReward)))
             .ToArray();
         var spawned = _groundItemManager.SpawnItems(
             matchingId,

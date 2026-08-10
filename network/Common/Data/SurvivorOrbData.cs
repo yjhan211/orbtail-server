@@ -73,8 +73,11 @@ namespace network.common.data
         // #219 M2: 색 = 스탯 축 (SB 유닛 선택의 압축). 태양(빨강)=공격력, 바람(초록)=이속,
         // 파도(파랑)=사거리. 매 개봉의 색 선택이 빌드 결정이 된다.
         public const float SunAttackBonusPerOrb = 0.15f;
-        public const float WindSpeedBonusPerOrb = 0.04f;
-        public const float WindSpeedBonusCap = 0.30f;
+        // 바람 재정의 (#222 M4): 이속 → 공격속도. 부츠(이동 소모품)와 컨셉이 겹쳤고, 상시
+        // 이동 게임이라 이속 체감도 낮았다. 공속은 연사 리듬으로 즉시 읽힌다 — 태양(발당
+        // 무게)과 다른 체감 축. 기본 연사(RapidFireScale)를 늦춘 만큼 바람이 그 이상을 되돌린다.
+        public const float WindAttackSpeedBonusPerOrb = 0.08f;
+        public const float WindAttackSpeedBonusCap = 0.60f;
         public const float WaveRangeBonusPerOrb = 0.4f;
         public const float WaveRangeBonusCap = 3f;
 
@@ -111,8 +114,8 @@ namespace network.common.data
         /// </summary>
         public static int GetSquadOrbMaxHp(int tier) => tier >= 3 ? 120 : tier == 2 ? 56 : 24;
 
-        /// <summary>궤도 전체의 색 스탯 합산 — 서버 판정과 클라 표시(링·이속)가 같은 값을 읽는다.</summary>
-        public static (float AttackMultiplier, float MoveSpeedMultiplier, float RangeBonus)
+        /// <summary>궤도 전체의 색 스탯 합산 — 서버 판정과 클라 표시(링)가 같은 값을 읽는다.</summary>
+        public static (float AttackMultiplier, float AttackSpeedMultiplier, float RangeBonus)
             GetSwarmColorStats(IEnumerable<InGameItemInfo> items)
         {
             float sun = 0f;
@@ -130,7 +133,7 @@ namespace network.common.data
 
             return (
                 1f + sun * SunAttackBonusPerOrb,
-                1f + Math.Min(WindSpeedBonusCap, wind * WindSpeedBonusPerOrb),
+                1f + Math.Min(WindAttackSpeedBonusCap, wind * WindAttackSpeedBonusPerOrb),
                 Math.Min(WaveRangeBonusCap, wave * WaveRangeBonusPerOrb));
         }
 

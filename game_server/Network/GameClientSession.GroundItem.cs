@@ -57,7 +57,9 @@ public partial class GameClientSession
                     MaxStamina,
                     Corruption,
                     out staminaRecovery,
-                    out corruptionRecovery);
+                    out corruptionRecovery,
+                    CurrentMapSubId,
+                    PlayerId.Value);
                 if (disposition == GroundItemPickupDisposition.LeaveOnGround)
                 {
                     rejection = ErrorCode.ITEM_NOT_USABLE;
@@ -159,6 +161,9 @@ public partial class GameClientSession
             int requestedRecovery = staminaRecovery + corruptionRecovery;
             int effectiveRecovery = effectiveStaminaRecovery + effectiveCorruptionRecovery;
             ModifyStats(staminaDelta: staminaRecovery, corruptionDelta: -corruptionRecovery);
+            // 하트는 앞줄 오브 HP도 만충으로 (#222 M4) — 원작 하트의 스쿼드 회복.
+            if (claimedItem.ItemId == Config.HEART_GROUND_ITEM_ID)
+                SwarmHeartPickupCallback?.Invoke(CurrentMapSubId, PlayerId.Value);
             _gameEventLogManager.LogRecoveryUse(
                 CurrentMapSubId, PlayerId.Value, claimedItem.ItemId,
                 effectiveRecovery, source: "ground_auto_use", isBot: false);

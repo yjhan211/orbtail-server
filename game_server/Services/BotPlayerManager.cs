@@ -545,6 +545,11 @@ public class BotPlayerState
     /// <summary>마지막 피격 시각 (#222) — 피격 중에는 이동 계획 홀드를 무시하는 판단 입력.</summary>
     public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;
 
+    // 유휴 감시 (#222): 6초 이상 제자리면 원인 진단 로그를 남긴다 — "가만히 서 있는 봇" 추적.
+    public Vector3f? IdleWatchLastPosition { get; set; }
+    public DateTime IdleWatchLastMovedAtUtc { get; set; } = DateTime.MinValue;
+    public DateTime IdleWatchLastLoggedAtUtc { get; set; } = DateTime.MinValue;
+
     // === #134 RNG 梨꾩쭛 ?듯빀 ===
     /// <summary>遊뉗씠 walking?쇰줈 ?묎렐 以묒씤 InteractObject Id. 0?대㈃ ?놁쓬.
     /// ChooseNewWanderTarget?먯꽌 ?곸뿭 + ? ?좏깮 ???ㅼ젙, ?꾩갑 ??RNG 梨꾩쭛 ??0?쇰줈 clear.</summary>

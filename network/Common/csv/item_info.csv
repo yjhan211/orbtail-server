@@ -237,3 +237,4 @@ id,name_kr,name_en,name_jp,requirements,comment_kr,reusable
 800000804,응급 키트,Emergency Kit,救急キット,[],,1
 900000805,작성된 처방전,Filled Prescription,記入済み処方箋,[],,1
 900000806,통로 진입 도구,Passage Entry Tool,通路進入道具,[],,1
+107000070,하트,Heart,ハート,[],잃은 마음을 붙드는 온기,0

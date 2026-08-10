@@ -388,6 +388,8 @@ public partial class BotPlayerManager
                 bot.PathIndex = 0;
             }
 
+            TrackSwarmBotIdle(bot, currentDirective, nowUtc);
+
             if (bot.PathIndex >= bot.Path.Count)
             {
                 bot.LastWalkStepTime = nowUtc;
@@ -410,6 +412,41 @@ public partial class BotPlayerManager
 
         return result;
     }
+    /// <summary>
+    ///     유휴 감시 (#222): 6초 이상 제자리인 봇의 상태(모드·경로·홀드)를 10초에 한 번 남긴다.
+    ///     "가만히 서 있는 봇" 신고가 반복되는데 이동은 로그에 안 남아 원인 특정이 안 됐다.
+    /// </summary>
+    private void TrackSwarmBotIdle(BotPlayerState bot, SpotArenaBotDirective directive, DateTime nowUtc)
+    {
+        const float movedThresholdSquared = 0.01f;
+        if (bot.IdleWatchLastPosition == null ||
+            DistanceSquared(bot.IdleWatchLastPosition, bot.Position.X, bot.Position.Y) >
+            movedThresholdSquared)
+        {
+            bot.IdleWatchLastPosition = new Vector3f(bot.Position.X, bot.Position.Y, 0f);
+            bot.IdleWatchLastMovedAtUtc = nowUtc;
+            return;
+        }
+
+        if ((nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds < 6d ||
+            (nowUtc - bot.IdleWatchLastLoggedAtUtc).TotalSeconds < 10d)
+            return;
+
+        bot.IdleWatchLastLoggedAtUtc = nowUtc;
+        _logger.LogInformation(
+            "Swarm bot idle: BotId={BotId}, Area={Area}, IdleSeconds={IdleSeconds:F0}, " +
+            "Mode={Mode}, DirectiveArea={DirectiveArea}, PathRemaining={PathRemaining}, " +
+            "InInteraction={InInteraction}, ExploreSpot={ExploreSpot}",
+            bot.PlayerId,
+            bot.CurrentArea,
+            (nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds,
+            directive.Mode,
+            directive.DestinationArea,
+            Math.Max(0, bot.Path.Count - bot.PathIndex),
+            bot.IsInInteraction,
+            bot.SwarmExploreSpotId);
+    }
+
     private long SelectMovementPlanningBot(long matchingId, IReadOnlyList<BotPlayerState> activeBots)
     {
         int cursor = _botMovementPlanningCursors.AddOrUpdate(
