@@ -41,10 +41,21 @@ public partial class GameClientSession
                     _ => DraftSunOrbItemId
                 },
                 GetSwarmDraftTier());
+            // 열쇠 (#222 M4): 충전이 있으면 이번 소환 비용을 0으로 — 성공 시 1 소비.
+            int draftCost = _pendingOrbDraftCost;
+            bool useFreeSummon = FreeSummonCharges > 0 && draftCost > 0;
+            if (useFreeSummon)
+                draftCost = 0;
             var draftAttempt = ExecuteOrbSummon(
-                request.ChoiceIndex, costOverride: _pendingOrbDraftCost, exactItemId: draftItemId);
+                request.ChoiceIndex, costOverride: draftCost, exactItemId: draftItemId);
             if (!draftAttempt.Success)
                 return Task.CompletedTask;
+
+            if (useFreeSummon)
+            {
+                FreeSummonCharges = Math.Max(0, FreeSummonCharges - 1);
+                SendFreeSummonState();
+            }
 
             _hasPendingOrbDraft = false;
             // 자동 머지: 드래프트로 같은 색·티어 3개가 되면 즉시 융합한다.

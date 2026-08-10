@@ -118,6 +118,13 @@ namespace network.common.data.models
         [Key("jamCount")] public int JamCount { get; set; }
     }
 
+    /// <summary>열쇠 무료 소환 충전 상태 (#222 M4). 획득·소비 시 소유자에게 전송.</summary>
+    [MessagePackObject]
+    public class G_TO_C_FREE_SUMMON_STATE : IMessagePackObject
+    {
+        [Key("charges")] public int Charges { get; set; }
+    }
+
     /// <summary>
     ///     잼 리더보드 (#222 M3). 전 참가자를 잼 내림차순으로 정렬한 병렬 리스트다.
     ///     구역 게이트 없이 매치 전역으로 브로드캐스트 — 순위표(RankDisplay)의 단일 출처.

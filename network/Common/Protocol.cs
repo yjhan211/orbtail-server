@@ -233,6 +233,9 @@ namespace network.common
         G_TO_C_JAM_STATE,
         G_TO_C_JAM_RANKINGS,
 
+        // 열쇠 (#222 M4) — 무료 소환 충전 상태
+        G_TO_C_FREE_SUMMON_STATE,
+
         END
     }
 

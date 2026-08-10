@@ -51,7 +51,11 @@ public partial class BotPlayerManager
     private static float GetBotMovementSpeedMultiplier(BotPlayerState bot)
     {
         float wind = bot.WindResonanceActive ? SurvivorOrbData.WindMoveSpeedMultiplier : 1f;
-        return wind * GetBotWaveSlowMultiplier(bot);
+        // 부츠 (#222 M4): 사람과 같은 10초 이속 버프.
+        float boots = DateTime.UtcNow < bot.BootsSpeedUntilUtc
+            ? Config.BOOTS_MOVE_SPEED_MULTIPLIER
+            : 1f;
+        return wind * boots * GetBotWaveSlowMultiplier(bot);
     }
 
     private static float GetBotWaveSlowMultiplier(BotPlayerState bot)
@@ -392,8 +396,14 @@ public partial class BotPlayerManager
 
             if (bot.PathIndex >= bot.Path.Count)
             {
-                bot.LastWalkStepTime = nowUtc;
-                continue;
+                // 유휴 배회 (#222): 도착 대기(Return/Escort·경로 0) 상태로 수십 초 서 있던
+                // 현상(유휴 감시 실측) — 4초 이상 제자리면 주변 셀로 서성인다.
+                TryStartSwarmIdleWander(bot, matchingId, nowUtc);
+                if (bot.PathIndex >= bot.Path.Count)
+                {
+                    bot.LastWalkStepTime = nowUtc;
+                    continue;
+                }
             }
 
             var movement = WalkStep(
@@ -445,6 +455,37 @@ public partial class BotPlayerManager
             Math.Max(0, bot.Path.Count - bot.PathIndex),
             bot.IsInInteraction,
             bot.SwarmExploreSpotId);
+    }
+
+    /// <summary>유휴 배회 (#222): 제자리 4초 이상이면 같은 구역 인근 셀로 짧은 산책 경로를 만든다.</summary>
+    private void TryStartSwarmIdleWander(BotPlayerState bot, long matchingId, DateTime nowUtc)
+    {
+        if (bot.IsInInteraction || bot.SwarmExploreSpotId != 0)
+            return;
+        if ((nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds < 4d || nowUtc < bot.NextIdleWanderAtUtc)
+            return;
+
+        bot.NextIdleWanderAtUtc = nowUtc.AddSeconds(3d);
+        MapId mapId = GetMatchingMapId(matchingId);
+        for (int attempt = 0; attempt < 6; attempt++)
+        {
+            var candidate = new Cell(
+                bot.Cell.X + Random.Shared.Next(-3, 4),
+                bot.Cell.Y + Random.Shared.Next(-3, 4));
+            if (candidate.X == bot.Cell.X && candidate.Y == bot.Cell.Y)
+                continue;
+            if (!GameMapData.IsMoveablePosition(mapId, candidate) ||
+                GameMapData.GetCurrentArea(mapId, candidate) != bot.CurrentArea)
+                continue;
+
+            var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell, bot.CurrentArea, candidate);
+            if (path == null || path.Count == 0)
+                continue;
+
+            bot.Path = path;
+            bot.PathIndex = 0;
+            return;
+        }
     }
 
     private long SelectMovementPlanningBot(long matchingId, IReadOnlyList<BotPlayerState> activeBots)

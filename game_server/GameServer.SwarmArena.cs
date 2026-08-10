@@ -109,7 +109,7 @@ public partial class GameServer
             if (damageResult.Applied && damageResult.Killed && damageResult.MonsterState != null)
                 SpawnSpotArenaSummonStone(
                     matchingId, damageResult.MonsterState, sessions, damageResult.JamReward,
-                    damageResult.HeartReward);
+                    damageResult.HeartReward, damageResult.BootsReward, damageResult.KeyReward);
         }
     }
 
@@ -180,6 +180,7 @@ public partial class GameServer
 
             // 잼 지갑 리셋 (#222 M3) — 세션이 매치를 넘어 살아있으므로 시작 지급 시점에 초기화.
             session.ResetJam();
+            session.FreeSummonCharges = 0;
             session.GrantSwarmArenaOrb(
                 SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)]);
         }
@@ -531,7 +532,9 @@ public partial class GameServer
                 continue;
 
             int exploreCost = GetSwarmBotExploreCost(matchingId, bot.PlayerId);
-            if (_summonStoneManager.GetSnapshot(matchingId, bot.PlayerId).StoneCount < exploreCost)
+            // 열쇠 (#222 M4): 충전이 있으면 자금 없이도 개봉을 연다.
+            if (_summonStoneManager.GetSnapshot(matchingId, bot.PlayerId).StoneCount < exploreCost &&
+                bot.FreeSummonCharges <= 0)
                 continue;
 
             if (!RngCollectCooldownStore.TryAcquireCooldown(
@@ -558,6 +561,10 @@ public partial class GameServer
         // 궤도 스쿼드: 파괴(버리기)는 퇴역 — 궤도가 가득 차면 개봉이 실패할 뿐이다.
         // 3머지 자동 압축이 자리를 만들고, 상한 도달은 성장의 자연 종점이다.
         int exploreCost = GetSwarmBotExploreCost(matchingId, bot.PlayerId);
+        // 열쇠 (#222 M4): 충전이 있으면 이번 개봉 비용 0 — 성공 시 1 소비 (사람과 같은 규칙).
+        bool useFreeSummon = bot.FreeSummonCharges > 0 && exploreCost > 0;
+        if (useFreeSummon)
+            exploreCost = 0;
         var attempt = _summonStoneManager.TrySummon(
             matchingId,
             bot.PlayerId,
@@ -580,6 +587,8 @@ public partial class GameServer
             return;
         }
 
+        if (useFreeSummon)
+            bot.FreeSummonCharges = Math.Max(0, bot.FreeSummonCharges - 1);
         BroadcastSwarmExploreConsumed(spotId, Config.SWARM_EXPLORE_REGEN_SECONDS, sessions);
         // 봇도 자동 머지 — 사람과 같은 성장 규칙 (#217 자동 머지)
         _inGameInventoryManager.AutoMergeSurvivorOrbs(matchingId, bot.PlayerId, Random.Shared);
@@ -891,6 +900,21 @@ public partial class GameServer
                 weakerRival.Value.Position);
         }
 
+        // 0.7) 잼 회수 (#222): 승점이 바닥에 보이면 줍는 게 항상 이득 — 같은 구역 최근접 잼으로.
+        //      반응 지연(2.5초)을 지난 잼만 노린다: 사람 선점권 유지.
+        if (TryFindNearestSwarmJamItem(matchingId, bot, out Vector3f jamPosition))
+        {
+            Cell jamCell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, jamPosition);
+            if (GameMapData.IsMoveablePosition(MapId.School, jamCell))
+            {
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Escort,
+                    bot.CurrentArea,
+                    jamCell,
+                    BotPlayerManager.CellToWorldPosition(MapId.School, jamCell));
+            }
+        }
+
         // 1) 지갑이 차면 줍기보다 개봉이 먼저 — 열린 구역 중 가장 가까운 스팟으로 순례한다.
         //    줍기가 이 단계를 선점하면 봇이 수십 석을 들고도 개봉을 영영 미룬다 (매치 2221 계측).
         //    폐쇄 필터는 스팟 탐색 안에서 처리한다 — 최근접이 폐쇄라고 순례가 멈추면 안 된다.
@@ -1071,6 +1095,35 @@ public partial class GameServer
         }
 
         return null;
+    }
+
+    // 잼 회수 탐색 반경 — 같은 구역에서만.
+    private const float SwarmBotJamSeekRadius = 16f;
+
+    /// <summary>같은 구역의 반응 지연 지난 최근접 잼 — 봇 잼 회수 지시의 목적지.</summary>
+    private bool TryFindNearestSwarmJamItem(long matchingId, BotPlayerState bot, out Vector3f position)
+    {
+        position = null;
+        float bestDistanceSquared = SwarmBotJamSeekRadius * SwarmBotJamSeekRadius;
+        foreach (var item in _groundItemManager.GetSnapshot(matchingId, bot.CurrentArea))
+        {
+            if (item.ItemId != Config.JAM_GROUND_ITEM_ID)
+                continue;
+            if (_groundItemManager.IsYoungerThan(
+                    matchingId, item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
+                continue;
+
+            float dx = item.PositionX - bot.Position.X;
+            float dy = item.PositionY - bot.Position.Y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared >= bestDistanceSquared)
+                continue;
+
+            bestDistanceSquared = distanceSquared;
+            position = new Vector3f(item.PositionX, item.PositionY, 0f);
+        }
+
+        return position != null;
     }
 
     /// <summary>참가자(사람·봇) 위치 조회 — 피격 반응의 도주 기준점.</summary>

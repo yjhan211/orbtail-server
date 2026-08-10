@@ -23,6 +23,8 @@ public partial class GameClientSession
         bool autoEquipped = false;
         bool summonStonePickup = false;
         bool jamPickup = false;
+        bool bootsPickup = false;
+        bool keyPickup = false;
         int staminaRecovery = 0;
         int corruptionRecovery = 0;
         ErrorCode rejection = ErrorCode.INVENTORY_FULL;
@@ -48,6 +50,18 @@ public partial class GameClientSession
                 if (item.ItemId == Config.JAM_GROUND_ITEM_ID)
                 {
                     jamPickup = true;
+                    return true;
+                }
+
+                if (item.ItemId == Config.BOOTS_GROUND_ITEM_ID)
+                {
+                    bootsPickup = true;
+                    return true;
+                }
+
+                if (item.ItemId == Config.KEY_GROUND_ITEM_ID)
+                {
+                    keyPickup = true;
                     return true;
                 }
 
@@ -140,6 +154,15 @@ public partial class GameClientSession
         {
             AddJam(1);
         }
+        else if (bootsPickup)
+        {
+            // 부츠 (#222 M4): 이속은 클라 이동이 소유한다 — 서버는 픽업 결과만 확정.
+            // 클라가 픽업 결과(ItemId)로 10초 버프·HUD 타이머를 시작한다.
+        }
+        else if (keyPickup)
+        {
+            AddFreeSummonCharge(1);
+        }
         else if (summonStonePickup)
         {
             var summonState = _summonStoneManager.AddStones(CurrentMapSubId, PlayerId.Value, 1);
@@ -193,7 +216,7 @@ public partial class GameClientSession
             CurrentArea.ToString(),
             autoUsed,
             isBot: false);
-        if (!summonStonePickup && !jamPickup)
+        if (!summonStonePickup && !jamPickup && !bootsPickup && !keyPickup)
         {
             var boardAfterPickup = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
             _gameEventLogManager.LogSurvivorOrbBoardTransition(
@@ -213,6 +236,29 @@ public partial class GameClientSession
         JamCount += amount;
         using var packet = Packet.Create((int)Protocol.G_TO_C_JAM_STATE, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_JAM_STATE { JamCount = JamCount }));
+        Send(packet);
+    }
+
+    /// <summary>열쇠 (#222 M4): 무료 소환 충전 획득 — 상태를 소유자에게 즉시 동기한다.</summary>
+    internal void AddFreeSummonCharge(int amount)
+    {
+        if (!PlayerId.HasValue || amount <= 0)
+            return;
+
+        FreeSummonCharges += amount;
+        SendFreeSummonState();
+    }
+
+    internal void SendFreeSummonState()
+    {
+        if (!PlayerId.HasValue)
+            return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_FREE_SUMMON_STATE, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_FREE_SUMMON_STATE
+        {
+            Charges = FreeSummonCharges
+        }));
         Send(packet);
     }
 

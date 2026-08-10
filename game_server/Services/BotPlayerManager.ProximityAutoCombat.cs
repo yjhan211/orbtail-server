@@ -52,8 +52,11 @@ public partial class BotPlayerManager
             int corruptionRecovery = 0;
             bool summonStonePickup = candidate.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID;
             bool jamPickup = candidate.ItemId == Config.JAM_GROUND_ITEM_ID;
-            // 재화(소환석·잼)는 봇 반응 지연 공통 — 사람 선점권 (#222)
-            if ((summonStonePickup || jamPickup) && groundItemManager.IsYoungerThan(
+            bool bootsPickup = candidate.ItemId == Config.BOOTS_GROUND_ITEM_ID;
+            bool keyPickup = candidate.ItemId == Config.KEY_GROUND_ITEM_ID;
+            // 재화류(소환석·잼·부츠·열쇠)는 봇 반응 지연 공통 — 사람 선점권 (#222)
+            if ((summonStonePickup || jamPickup || bootsPickup || keyPickup) &&
+                groundItemManager.IsYoungerThan(
                     matchingId, candidate.GroundItemUid, SummonStoneBotReactionDelay))
                 continue;
             bool canStore = inventory.GetAllItems().Count < Config.GetOrbCapacity();
@@ -69,7 +72,8 @@ public partial class BotPlayerManager
                 bot.Position.Y,
                 item =>
                 {
-                    if (item.ItemId is Config.SUMMON_STONE_GROUND_ITEM_ID or Config.JAM_GROUND_ITEM_ID)
+                    if (item.ItemId is Config.SUMMON_STONE_GROUND_ITEM_ID or Config.JAM_GROUND_ITEM_ID
+                        or Config.BOOTS_GROUND_ITEM_ID or Config.KEY_GROUND_ITEM_ID)
                         return true;
 
                     disposition = GroundItemPickupPolicy.Resolve(
@@ -96,6 +100,15 @@ public partial class BotPlayerManager
             if (jamPickup)
             {
                 bot.JamCount += 1;
+            }
+            else if (bootsPickup)
+            {
+                bot.BootsSpeedUntilUtc =
+                    DateTime.UtcNow.AddSeconds(Config.BOOTS_SPEED_DURATION_SECONDS);
+            }
+            else if (keyPickup)
+            {
+                bot.FreeSummonCharges += 1;
             }
             else if (summonStonePickup)
             {

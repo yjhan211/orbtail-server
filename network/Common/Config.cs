@@ -109,6 +109,19 @@ namespace network.common
         /// <summary>하트 (#222 M4): 즉시 회복 픽업 — 고위험 몹(탈주·볼러) 처치가 유일 공급처.</summary>
         public const int HEART_GROUND_ITEM_ID = 107000070;
 
+        /// <summary>부츠 (#222 M4): 10초 이속 버프 픽업 — 다트 고블린 드랍. 사람 전용.</summary>
+        public const int BOOTS_GROUND_ITEM_ID = 107000080;
+        public const int BOOTS_SPEED_DURATION_SECONDS = 10;
+        // 1.5 (#222 3차): 1.4는 밋밋, 1.6은 과속 — 기본 5 → 7.5, 서버 검증 상한(10) 안.
+        public const float BOOTS_MOVE_SPEED_MULTIPLIER = 1.5f;
+
+        /// <summary>열쇠 (#222 M4): 무료 소환 1회 충전 — 탈주 고블린(미니보스) 드랍. 사람 전용.</summary>
+        public const int KEY_GROUND_ITEM_ID = 107000090;
+
+        // 상태 효과 표시 ID (status_effect_info.csv와 동기)
+        public const int BOOTS_STATUS_EFFECT_ID = 1101;
+        public const int KEY_STATUS_EFFECT_ID = 1102;
+
         /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
         public const int SURVIVOR_MAX_CORRUPTION = 420;
 

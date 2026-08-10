@@ -550,6 +550,13 @@ public class BotPlayerState
     public DateTime IdleWatchLastMovedAtUtc { get; set; } = DateTime.MinValue;
     public DateTime IdleWatchLastLoggedAtUtc { get; set; } = DateTime.MinValue;
 
+    // 유휴 배회 (#222): 도착 대기(캠프 리스폰·사격 대기)로 서 있지 않게 주변을 서성인다.
+    public DateTime NextIdleWanderAtUtc { get; set; } = DateTime.MinValue;
+
+    // 부츠·열쇠 (#222 M4): 사람과 같은 규칙으로 봇도 쓴다.
+    public DateTime BootsSpeedUntilUtc { get; set; } = DateTime.MinValue;
+    public int FreeSummonCharges { get; set; }
+
     // === #134 RNG 梨꾩쭛 ?듯빀 ===
     /// <summary>遊뉗씠 walking?쇰줈 ?묎렐 以묒씤 InteractObject Id. 0?대㈃ ?놁쓬.
     /// ChooseNewWanderTarget?먯꽌 ?곸뿭 + ? ?좏깮 ???ㅼ젙, ?꾩갑 ??RNG 梨꾩쭛 ??0?쇰줈 clear.</summary>
