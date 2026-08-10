@@ -761,6 +761,39 @@ public partial class GameServer
         bool hasSquadOrbs = squadPower > 0f;
         FindNearbySwarmRivals(matchingId, bot, squadPower, includeMonstersAsStronger: !hasSquadOrbs,
             out Vector3f strongerPosition, out (Vector3f Position, AreaType Area)? weakerRival);
+
+        // 피격 반응 (#222, 매치 2379 -131 · 2386 -182): 맞는 동안은 절대 서 있지 않는다.
+        // 열세·비등이면 그 방향에서 이탈(위협 승격), 우세면 싸우되 좌우 와리가리(스트레이프) —
+        // 이동 중 공격이 허용되므로 화력 손실 없이 피격 정지 현상만 사라진다.
+        bool recentlyDamaged =
+            _swarmBotLastDamagedAtUtc.TryGetValue((matchingId, botPlayerId), out var lastDamagedAtUtc) &&
+            (DateTime.UtcNow - lastDamagedAtUtc).TotalSeconds <= SwarmBotDamagedFleeSeconds;
+        Vector3f recentAttackerPosition = null;
+        if (recentlyDamaged && bot.LastProximityAttackerPlayerId != 0)
+            TryGetSwarmParticipantPosition(
+                matchingId, bot.LastProximityAttackerPlayerId, out recentAttackerPosition);
+        if (strongerPosition == null && recentAttackerPosition != null)
+        {
+            float attackerPower = GetSwarmSquadPower(matchingId, bot.LastProximityAttackerPlayerId);
+            if (squadPower < attackerPower * SwarmBotChasePowerAdvantage)
+            {
+                strongerPosition = recentAttackerPosition;
+            }
+            else
+            {
+                var strafeCell = ComputeSwarmStrafeCell(bot, recentAttackerPosition);
+                if (strafeCell != null &&
+                    GameMapData.GetCurrentArea(MapId.School, strafeCell) is var strafeArea &&
+                    strafeArea != AreaType.None)
+                {
+                    return new SpotArenaBotDirective(
+                        SpotArenaBotMode.Escort,
+                        strafeArea,
+                        strafeCell,
+                        BotPlayerManager.CellToWorldPosition(MapId.School, strafeCell));
+                }
+            }
+        }
         if (strongerPosition != null)
         {
             // 위협 앞에서는 채집 채널 홀드도 끊고 뛴다 — 홀드 채로 맞다 죽는 사고 방지 (매치 2372 봇 -78).
@@ -995,6 +1028,65 @@ public partial class GameServer
     // 추격 우위 임계: 내 전력이 상대의 이 배수 이상일 때만 붙는다. 그 이하(동수 포함)는 회피.
     private const float SwarmBotChasePowerAdvantage = 1.25f;
 
+    // 피격 반응 창: 이 시간 안에 맞았으면 중립 밴드 상대도 위협으로 승격한다.
+    private const double SwarmBotDamagedFleeSeconds = 3d;
+
+    // 피격 중 와리가리: 공격자 방향의 수직으로 이만큼 이동, 1초마다 좌우 반전.
+    private const float SwarmBotStrafeDistance = 2.5f;
+
+    /// <summary>피격 중 스트레이프 목적지 — 공격자 수직 방향, 매초 좌우 반전. 벽이면 반대편.</summary>
+    private static Cell ComputeSwarmStrafeCell(BotPlayerState bot, Vector3f attackerPosition)
+    {
+        float dx = attackerPosition.X - bot.Position.X;
+        float dy = attackerPosition.Y - bot.Position.Y;
+        float length = MathF.Sqrt(dx * dx + dy * dy);
+        if (length < 0.001f)
+        {
+            dx = 1f;
+            dy = 0f;
+            length = 1f;
+        }
+
+        float perpX = -dy / length;
+        float perpY = dx / length;
+        float side = DateTime.UtcNow.Second % 2 == 0 ? 1f : -1f;
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            var candidate = new Vector3f(
+                bot.Position.X + perpX * side * SwarmBotStrafeDistance,
+                bot.Position.Y + perpY * side * SwarmBotStrafeDistance,
+                0f);
+            var cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, candidate);
+            if (GameMapData.IsMoveablePosition(MapId.School, cell))
+                return cell;
+            side = -side;
+        }
+
+        return null;
+    }
+
+    /// <summary>참가자(사람·봇) 위치 조회 — 피격 반응의 도주 기준점.</summary>
+    private bool TryGetSwarmParticipantPosition(long matchingId, long playerId, out Vector3f position)
+    {
+        position = null;
+        foreach (var other in _botPlayerManager.GetBots(matchingId))
+        {
+            if (other.PlayerId != playerId || other.IsEliminated) continue;
+            position = other.Position;
+            return true;
+        }
+
+        foreach (var session in GetSessionsByInstance(MapId.School, matchingId))
+        {
+            if (session.PlayerId != playerId || session.IsEliminated ||
+                session.LastValidatedPosition == null) continue;
+            position = session.LastValidatedPosition;
+            return true;
+        }
+
+        return false;
+    }
+
     /// <summary>
     ///     반경 내 라이벌 탐색 — 티어 가중 전력 기준. 동수 이상인 최근접(강자)과 확실히 약한
     ///     (×1.25 우위) 최근접(약자)을 함께 찾는다. 빈손이면 살아있는 몹도 강자로 취급한다.
@@ -1219,6 +1311,9 @@ public partial class GameServer
                 bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
                     bot.Corruption + GetSwarmNakedCorruption(damage.Damage));
                 _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
+            bot.LastDamagedAtUtc = DateTime.UtcNow;
+        bot.LastDamagedAtUtc = DateTime.UtcNow;
+                bot.LastDamagedAtUtc = DateTime.UtcNow;
                 return;
             }
 
@@ -1624,11 +1719,13 @@ public partial class GameServer
                 if (pvpTargetBot == null)
                     return;
                 pvpTargetBot.LastProximityAttackerPlayerId = attack.AttackerPlayerId;
+                // 오브가 맞아도 "피격 중"이다 (#222, 매치 2379 -131) — 피격 반응 판단의 입력.
+                _swarmBotLastDamagedAtUtc[(matchingId, pvpTargetBot.PlayerId)] = DateTime.UtcNow;
+                pvpTargetBot.LastDamagedAtUtc = DateTime.UtcNow;
                 if (!HasAnySquadOrb(matchingId, pvpTargetBot.PlayerId))
                 {
                     pvpTargetBot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
                         pvpTargetBot.Corruption + GetSwarmNakedCorruption(damage));
-                    _swarmBotLastDamagedAtUtc[(matchingId, pvpTargetBot.PlayerId)] = DateTime.UtcNow;
                 }
                 else
                 {

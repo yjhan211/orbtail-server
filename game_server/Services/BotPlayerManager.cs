@@ -542,6 +542,9 @@ public class BotPlayerState
         InteractionStayUntil = DateTime.MinValue;
     }
 
+    /// <summary>마지막 피격 시각 (#222) — 피격 중에는 이동 계획 홀드를 무시하는 판단 입력.</summary>
+    public DateTime LastDamagedAtUtc { get; set; } = DateTime.MinValue;
+
     // === #134 RNG 梨꾩쭛 ?듯빀 ===
     /// <summary>遊뉗씠 walking?쇰줈 ?묎렐 以묒씤 InteractObject Id. 0?대㈃ ?놁쓬.
     /// ChooseNewWanderTarget?먯꽌 ?곸뿭 + ? ?좏깮 ???ㅼ젙, ?꾩갑 ??RNG 梨꾩쭛 ??0?쇰줈 clear.</summary>

@@ -70,10 +70,12 @@ public sealed class SwarmArenaManager
         int JamReward)
         GetKindStats(SwarmMonsterKind kind) => kind switch
         {
-            // 피통 = 시작 T1 오브(발당 12) 발수 정렬: 다트 2방 · 탈주 5방 · 볼러 4방 (#219 초반 템포)
+            // 피통 = 시작 T1 오브(발당 12) 발수 정렬: 다트 2방 · 볼러 4방 (#219 초반 템포)
             // 잼 (#222 M3): SB 코인/잼 이원 — 해골은 코인 몹(잼 0), 위험한 몹일수록 잼이 나온다.
+            // 탈주 120 (#222 연사화 후 상향): 스쿼드 DPS ~50에 60은 1초 컷 — 미니보스 체급 복원.
+            // 피통은 클라 종 식별자이기도 하다 — EmotionAfterimageMonsterDisplay 스위치와 동기 필수.
             SwarmMonsterKind.DartGoblin => (18, 2, 5f, 2f, 1, 1),
-            SwarmMonsterKind.RunawayGoblin => (60, 5, ContactRange, 1.2f, 4, 2),
+            SwarmMonsterKind.RunawayGoblin => (120, 5, ContactRange, 1.2f, 4, 2),
             SwarmMonsterKind.Bowler => (48, 2, 4.5f, 2.5f, 4, 2),
             _ => (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1, 0)
         };
