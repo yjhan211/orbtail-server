@@ -25,6 +25,12 @@ public partial class BotPlayerManager
             groundItemManager,
             new SummonStoneManager(),
             out pickup);
+    /// <summary>
+    ///     봇 소환석 반응 지연 (#222): 갓 떨어진 돌은 이 창이 지나야 봇이 반응한다 —
+    ///     사람의 눈·조작 시간을 흉내 내 낙수 선점권을 사람에게 준다.
+    /// </summary>
+    public static readonly TimeSpan SummonStoneBotReactionDelay = TimeSpan.FromSeconds(2.5);
+
     public bool TryAutoPickupGroundItem(
         BotPlayerState bot,
         long matchingId,
@@ -45,6 +51,9 @@ public partial class BotPlayerManager
             int staminaRecovery = 0;
             int corruptionRecovery = 0;
             bool summonStonePickup = candidate.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID;
+            if (summonStonePickup && groundItemManager.IsYoungerThan(
+                    matchingId, candidate.GroundItemUid, SummonStoneBotReactionDelay))
+                continue;
             bool canStore = inventory.GetAllItems().Count < Config.GetOrbCapacity();
 
             long discovererPlayerId = groundItemManager.GetDiscovererPlayerId(

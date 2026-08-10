@@ -16,15 +16,16 @@ public class AreaClosureManager
 
     // #219 폐쇄 부활 (2026-08-08): 클론 맵 기준 — 바깥 포드(교실1·교실2·창고·보건실) →
     // 중간 포드(고사실·방송실·행정실·교무실) → 쌍 구역(도서관·강당) → 밴드(테라스·복도) 순.
-    // 2026-08-09: 오염 3배 (오브 HP 2배와 함께 폐쇄가 실질 압력이 되도록) + 운동장 최종
-    // 폐쇄(330초) — 종반엔 어디도 안전하지 않다. 버티는 스쿼드가 승부를 가른다.
+    // 2026-08-09: 오염 3배 + 운동장 최종 폐쇄 — 종반엔 어디도 안전하지 않다.
+    // 2026-08-10: 전체 +30초 (첫 폐쇄 1:30 → 2:00) — 초반 파밍·드래프트 정착 시간 확보,
+    // 운동장 6:00 폐쇄로 판 길이 목표(5~7분) 안에 유지.
     private static readonly IReadOnlyList<ClosureWaveDefinition> DefaultP0Waves =
     [
-        new(90, [AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2], 12),
-        new(150, [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.AdminOffice, AreaType.StaffRoom], 18),
-        new(210, [AreaType.Library, AreaType.Gym], 24),
-        new(270, [AreaType.Corridor, AreaType.Junkyard], 30),
-        new(330, [AreaType.Ground], 36)
+        new(120, [AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2], 12),
+        new(180, [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.AdminOffice, AreaType.StaffRoom], 18),
+        new(240, [AreaType.Library, AreaType.Gym], 24),
+        new(300, [AreaType.Corridor, AreaType.Junkyard], 30),
+        new(360, [AreaType.Ground], 36)
     ];
 
     private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();

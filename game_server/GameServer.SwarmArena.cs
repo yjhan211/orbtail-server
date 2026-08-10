@@ -687,6 +687,59 @@ public partial class GameServer
                 BotPlayerManager.CellToWorldPosition(MapId.School, evacuationCell));
         }
 
+        // 0.5) 상대 전력 비교 (#222): 나보다 오브가 많은 상대는 피하고, 적은 상대에겐
+        //      달라붙는다 — 스쿼드 크기 = 위협 표시라는 SB 문법을 봇 판단으로 옮긴 것.
+        //      동수는 중립(하던 파밍 계속). 빈손은 화력이 0이라 몹도 강자로 취급해 피한다.
+        int squadOrbCount = CountSwarmSquadOrbs(matchingId, botPlayerId);
+        bool hasSquadOrbs = squadOrbCount > 0;
+        FindNearbySwarmRivals(matchingId, bot, squadOrbCount, includeMonstersAsStronger: !hasSquadOrbs,
+            out Vector3f strongerPosition, out (Vector3f Position, AreaType Area)? weakerRival);
+        if (strongerPosition != null)
+        {
+            float fleeDx = bot.Position.X - strongerPosition.X;
+            float fleeDy = bot.Position.Y - strongerPosition.Y;
+            float fleeLength = MathF.Sqrt(fleeDx * fleeDx + fleeDy * fleeDy);
+            if (fleeLength < 0.001f)
+            {
+                fleeDx = 1f;
+                fleeDy = 0f;
+                fleeLength = 1f;
+            }
+
+            // 도주 방향으로 앞선 가상 지점에서 최근접 스팟을 찾으면 "위협 반대편 스팟"이 된다.
+            var fleeProbe = new Vector3f(
+                bot.Position.X + fleeDx / fleeLength * SwarmBotFleeProbeDistance,
+                bot.Position.Y + fleeDy / fleeLength * SwarmBotFleeProbeDistance,
+                0f);
+            if (TryFindNearestAvailableExploreSpot(
+                    matchingId, area: null, fleeProbe, out var fleeSpot, out _))
+            {
+                var fleeArea = (AreaType)fleeSpot.ZoneId;
+                Cell fleeCell = new(fleeSpot.CellX, fleeSpot.CellY);
+                if (!GameMapData.IsMoveablePosition(MapId.School, fleeCell))
+                {
+                    fleeCell = fleeCell.GetAdjacentCells().FirstOrDefault(cell =>
+                        GameMapData.IsMoveablePosition(MapId.School, cell) &&
+                        GameMapData.GetCurrentArea(MapId.School, cell) == fleeArea) ?? fleeCell;
+                }
+
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Escort,
+                    fleeArea,
+                    fleeCell,
+                    BotPlayerManager.CellToWorldPosition(MapId.School, fleeCell));
+            }
+        }
+        else if (hasSquadOrbs && weakerRival.HasValue)
+        {
+            // 약자 추격: 접근하면 자동전투(오브 우선 타겟)가 나머지를 한다.
+            return new SpotArenaBotDirective(
+                SpotArenaBotMode.Escort,
+                weakerRival.Value.Area,
+                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, weakerRival.Value.Position),
+                weakerRival.Value.Position);
+        }
+
         // 1) 지갑이 차면 줍기보다 개봉이 먼저 — 열린 구역 중 가장 가까운 스팟으로 순례한다.
         //    줍기가 이 단계를 선점하면 봇이 수십 석을 들고도 개봉을 영영 미룬다 (매치 2221 계측).
         //    폐쇄 필터는 스팟 탐색 안에서 처리한다 — 최근접이 폐쇄라고 순례가 멈추면 안 된다.
@@ -712,9 +765,13 @@ public partial class GameServer
                 BotPlayerManager.CellToWorldPosition(MapId.School, spotCell));
         }
 
-        // 2) 같은 구역 바닥 소환석 — 걸어가면 자동 픽업 반경(1.75)이 줍는다.
+        // 2) 같은 구역 바닥 소환석 — 걸어가면 자동 픽업 반경이 줍는다.
+        //    반응 지연 (#222): 갓 떨어진 돌은 무시 — 사람이 먼저 주울 시간을 준다.
         var groundStone = _groundItemManager.GetSnapshot(matchingId, bot.CurrentArea)
-            .Where(item => item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
+            .Where(item => item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID &&
+                           !_groundItemManager.IsYoungerThan(
+                               matchingId, item.GroundItemUid,
+                               BotPlayerManager.SummonStoneBotReactionDelay))
             .OrderBy(item =>
             {
                 float dx = item.PositionX - bot.Position.X;
@@ -735,7 +792,8 @@ public partial class GameServer
 
         // 3) 사냥 정지: 도주·개봉·줍기 용무가 없고 사거리 안에 몹이 있으면 제자리에 선다.
         //    정지 공격 규칙에서 서야 쏘고, 캠프 모드에선 잠든 캠프 옆이 안전 사격 지점이다.
-        if (HasSwarmMonsterInBasicRange(matchingId, bot))
+        //    빈손은 제외 — 화력 없이 몹 옆에 서는 건 자살이다 (#222).
+        if (hasSquadOrbs && HasSwarmMonsterInBasicRange(matchingId, bot))
         {
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
@@ -750,7 +808,7 @@ public partial class GameServer
         //      빈손 봇은 개봉이 무료라 1)에서 이미 스팟 순례로 빠진다.
         if (_summonStoneManager.GetSnapshot(matchingId, botPlayerId).StoneCount <
             GetSwarmBotExploreCost(matchingId, botPlayerId) &&
-            HasAnySquadOrb(matchingId, botPlayerId) &&
+            hasSquadOrbs &&
             TryChooseSwarmBotCampTarget(matchingId, bot, out var campArea, out var campPosition))
         {
             return new SpotArenaBotDirective(
@@ -786,6 +844,92 @@ public partial class GameServer
         }
 
         return directive;
+    }
+
+    // 라이벌 스캔 반경: 이 안의 참가자와 오브 수를 비교해 회피/추격을 정한다.
+    private const float SwarmBotRivalScanRadius = 6f;
+
+    // 도주 방향 앞의 가상 지점 — 이 지점 기준 최근접 스팟이 "위협 반대편 재기 스팟"이 된다.
+    private const float SwarmBotFleeProbeDistance = 8f;
+
+    /// <summary>이 봇의 스쿼드 오브 총 개수 — 저성장(파밍 부족) 판정용.</summary>
+    private int CountSwarmSquadOrbs(long matchingId, long playerId)
+    {
+        return _inGameInventoryManager.GetPlayerInventory(matchingId, playerId)
+            .GetAllItems()
+            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
+            .Sum(item => item.Count);
+    }
+
+    /// <summary>
+    ///     반경 내 라이벌 탐색 — 나보다 오브가 많은 최근접(강자)과 적은 최근접(약자)을 함께
+    ///     찾는다. 빈손이면 살아있는 몹도 강자로 취급한다. 동수는 어느 쪽에도 없다.
+    /// </summary>
+    private void FindNearbySwarmRivals(
+        long matchingId,
+        BotPlayerState bot,
+        int myOrbCount,
+        bool includeMonstersAsStronger,
+        out Vector3f strongerPosition,
+        out (Vector3f Position, AreaType Area)? weakerRival)
+    {
+        float radiusSquared = SwarmBotRivalScanRadius * SwarmBotRivalScanRadius;
+        float bestStrongerDistanceSquared = radiusSquared;
+        float bestWeakerDistanceSquared = radiusSquared;
+        Vector3f nearestStronger = null;
+        (Vector3f Position, AreaType Area)? nearestWeaker = null;
+
+        void Consider(long rivalPlayerId, Vector3f position, AreaType area)
+        {
+            float dx = position.X - bot.Position.X;
+            float dy = position.Y - bot.Position.Y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared >= radiusSquared) return;
+
+            int rivalOrbCount = CountSwarmSquadOrbs(matchingId, rivalPlayerId);
+            if (rivalOrbCount > myOrbCount && distanceSquared < bestStrongerDistanceSquared)
+            {
+                bestStrongerDistanceSquared = distanceSquared;
+                nearestStronger = position;
+            }
+            else if (rivalOrbCount < myOrbCount && distanceSquared < bestWeakerDistanceSquared &&
+                     !IsSwarmAreaOutside(matchingId, area))
+            {
+                bestWeakerDistanceSquared = distanceSquared;
+                nearestWeaker = (position, area);
+            }
+        }
+
+        foreach (var other in _botPlayerManager.GetBots(matchingId))
+        {
+            if (other.PlayerId == bot.PlayerId || other.IsEliminated) continue;
+            Consider(other.PlayerId, other.Position, other.CurrentArea);
+        }
+
+        foreach (var session in GetSessionsByInstance(MapId.School, matchingId))
+        {
+            if (!session.PlayerId.HasValue || session.IsEliminated ||
+                session.LastValidatedPosition == null)
+                continue;
+            Consider(session.PlayerId.Value, session.LastValidatedPosition, session.CurrentArea);
+        }
+
+        if (includeMonstersAsStronger)
+        {
+            foreach (var monster in _swarmArenaManager.GetVisualStates(matchingId))
+            {
+                if (!monster.IsAlive) continue;
+                float dx = monster.PositionX - bot.Position.X;
+                float dy = monster.PositionY - bot.Position.Y;
+                float distanceSquared = dx * dx + dy * dy;
+                if (distanceSquared >= bestStrongerDistanceSquared) continue;
+                bestStrongerDistanceSquared = distanceSquared;
+                nearestStronger = new Vector3f(monster.PositionX, monster.PositionY, 0f);
+            }
+        }
+
+        strongerPosition = nearestStronger;
+        weakerRival = nearestWeaker;
     }
 
     // 빈 캠프 재방문 제외 시간 — 캠프 리스폰(45초)보다 짧게 잡아 순회가 한 바퀴 돌면 돌아온다.
@@ -918,7 +1062,7 @@ public partial class GameServer
             if (!HasAnySquadOrb(matchingId, bot.PlayerId))
             {
                 bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
-                    bot.Corruption + damage.Damage * SwarmNakedCorruptionPerDamage);
+                    bot.Corruption + GetSwarmNakedCorruption(damage.Damage));
                 _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
                 return;
             }
@@ -937,9 +1081,14 @@ public partial class GameServer
         _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
     }
 
-    // 빈손 본체 피해 스케일: 오염(만충 420)이 곧 플레이어 HP — 피해 1당 오염 30이면
-    // 유효 본체 HP ≈ 14 (해골 14방·탈주 3방), T1 오브 한 개(12)와 비슷한 맷집이다.
-    private const int SwarmNakedCorruptionPerDamage = 30;
+    // 빈손 본체 유효 HP = T1 오브(24)와 동급 (2026-08-10, T3 안에서 재하향): ×30(유효 14,
+    // PvP 5초 즉사)과 1:1(유효 420, 불사) 사이 — 만충 420 ÷ T1 HP가 피해당 오염 배율이다.
+    // 빈손은 "오브 하나 값"의 유예만 갖고, 생존은 도주 지시(0.5단계)와 무료 개봉이 만든다.
+    private static readonly float SwarmNakedCorruptionPerDamage =
+        Config.SURVIVOR_MAX_CORRUPTION / (float)SurvivorOrbData.GetSquadOrbMaxHp(1);
+
+    private static int GetSwarmNakedCorruption(int damage) =>
+        Math.Max(1, (int)MathF.Round(damage * SwarmNakedCorruptionPerDamage));
 
     /// <summary>
     ///     사람 피격 (유닛 낱개 체력): 오브 HP 차감 → 0이면 파괴 + 인벤 동기화, 궤도가 비면 버스트.
@@ -955,7 +1104,12 @@ public partial class GameServer
 
         if (!HasAnySquadOrb(matchingId, session.PlayerId.Value))
         {
-            session.ApplyEmotionAfterimageMonsterHit(monsterId, damage * SwarmNakedCorruptionPerDamage);
+            // PvP(monsterId=0)는 몬스터 피격 경로의 monsterId 가드에 걸려 증발했다 (#222 수리)
+            // — 오염만 직접 반영한다. 피격 연출은 PvP VFX 브로드캐스트가 이미 담당한다.
+            if (monsterId > 0)
+                session.ApplyEmotionAfterimageMonsterHit(monsterId, GetSwarmNakedCorruption(damage));
+            else
+                session.ModifyStats(corruptionDelta: GetSwarmNakedCorruption(damage));
             return;
         }
 
@@ -1119,7 +1273,7 @@ public partial class GameServer
                 if (!HasAnySquadOrb(matchingId, pvpTargetBot.PlayerId))
                 {
                     pvpTargetBot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
-                        pvpTargetBot.Corruption + damage * SwarmNakedCorruptionPerDamage);
+                        pvpTargetBot.Corruption + GetSwarmNakedCorruption(damage));
                     _swarmBotLastDamagedAtUtc[(matchingId, pvpTargetBot.PlayerId)] = DateTime.UtcNow;
                 }
                 else

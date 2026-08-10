@@ -67,6 +67,7 @@ public sealed class GroundItemManager
                     SourcePlayerId = sourcePlayerId
                 };
                 state.Items[item.GroundItemUid] = item;
+                state.SpawnedAtUtc[item.GroundItemUid] = _timeProvider.GetUtcNow();
                 if (discovererPlayerId != 0)
                     state.DiscovererPlayerIds[item.GroundItemUid] = discovererPlayerId;
                 if (discovererPlayerId != 0 &&
@@ -101,6 +102,18 @@ public sealed class GroundItemManager
             return false;
         lock (state.SyncRoot)
             return state.Items.ContainsKey(groundItemUid);
+    }
+
+    /// <summary>
+    ///     스폰 후 경과가 age 미만인지 — 봇 줍기 반응 지연(#222)용. 봇은 이 창이 지나야
+    ///     소환석에 반응한다. 사람의 눈·조작 시간을 흉내 내 낙수 선점권을 사람에게 준다.
+    /// </summary>
+    public bool IsYoungerThan(long matchingId, long groundItemUid, TimeSpan age)
+    {
+        if (!_matchingStates.TryGetValue(matchingId, out var state)) return false;
+        lock (state.SyncRoot)
+            return state.SpawnedAtUtc.TryGetValue(groundItemUid, out var spawnedAt) &&
+                   _timeProvider.GetUtcNow() - spawnedAt < age;
     }
 
     public GroundItemInfo? GetItem(long matchingId, long groundItemUid)
@@ -180,6 +193,7 @@ public sealed class GroundItemManager
             state.Items.Remove(groundItemUid);
             state.DiscovererPlayerIds.Remove(groundItemUid);
             state.ClaimReservations.Remove(groundItemUid);
+            state.SpawnedAtUtc.Remove(groundItemUid);
             claimedItem = Clone(item);
             return GroundItemClaimStatus.Success;
         }
@@ -323,6 +337,7 @@ public sealed class GroundItemManager
         public Dictionary<long, GroundItemInfo> Items { get; } = new();
         public Dictionary<long, GroundItemClaimReservation> ClaimReservations { get; } = new();
         public Dictionary<long, long> DiscovererPlayerIds { get; } = new();
+        public Dictionary<long, DateTimeOffset> SpawnedAtUtc { get; } = new();
         public long NextUid() => checked(matchingId * 1_000_000L + ++_sequence);
     }
 

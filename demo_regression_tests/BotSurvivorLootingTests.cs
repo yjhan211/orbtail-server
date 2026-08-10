@@ -148,19 +148,32 @@ public sealed class BotSurvivorLootingTests
         var fixture = CreateFixture(matchingId, botPlayerId, AreaType.Classroom3);
         var bot = fixture.BotManager.GetBot(matchingId, botPlayerId)!;
         var stones = new SummonStoneManager();
+        // 봇 반응 지연 (#222): 갓 떨어진 돌은 못 줍고, 지연 창이 지나야 반응한다.
+        var clock = new ManualTimeProvider(new DateTimeOffset(2026, 8, 10, 0, 0, 0, TimeSpan.Zero));
+        var groundItemManager = new GroundItemManager(clock);
+        groundItemManager.InitializeMatching(matchingId);
 
-        Assert.Single(fixture.GroundItemManager.SpawnItems(
+        Assert.Single(groundItemManager.SpawnItems(
             matchingId,
             bot.CurrentArea,
             bot.Position.X,
             bot.Position.Y,
             [Config.SUMMON_STONE_GROUND_ITEM_ID]));
 
+        Assert.False(fixture.BotManager.TryAutoPickupGroundItem(
+            bot,
+            matchingId,
+            fixture.InventoryManager,
+            groundItemManager,
+            stones,
+            out _));
+
+        clock.Advance(BotPlayerManager.SummonStoneBotReactionDelay);
         Assert.True(fixture.BotManager.TryAutoPickupGroundItem(
             bot,
             matchingId,
             fixture.InventoryManager,
-            fixture.GroundItemManager,
+            groundItemManager,
             stones,
             out BotGroundItemPickup? pickup));
         Assert.True(pickup.HasValue);
