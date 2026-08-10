@@ -19,15 +19,16 @@ public class AreaClosureManager
     // 2026-08-09: 오염 3배 + 운동장 최종 폐쇄 — 종반엔 어디도 안전하지 않다.
     // 2026-08-10 M3-2: 4분 매치(SWARM_MATCH_DURATION_SECONDS)에 맞춰 압축 —
     // 운동장 최종 폐쇄 = 타이머 만료(4:00) = 잼 최다 승리 판정이 한 시점에 겹친다.
-    // 오염 3배 상향(같은 날): 폐쇄 구역은 "즉시 나가야 하는" 치명 압박 — 첫 웨이브도
-    // 5초 체류당 180(만오염 420의 43%), 종반 웨이브는 한두 틱이면 탈락한다.
+    // 오염 재조정 (#222 08-10 2차): ×3은 한 틱 360~540 — 즉사 아니면 빈 바 생존만 남는
+    // 이분법이었다. 5초 틱 기준 첫 웨이브 5방(85), 종반 3방(145) 사망으로 완만화 —
+    // 여전히 "즉시 나가야 하는" 압박이되 체력바가 단계적으로 읽힌다.
     private static readonly IReadOnlyList<ClosureWaveDefinition> DefaultP0Waves =
     [
-        new(80, [AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2], 36),
-        new(120, [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.AdminOffice, AreaType.StaffRoom], 54),
-        new(160, [AreaType.Library, AreaType.Gym], 72),
-        new(200, [AreaType.Corridor, AreaType.Junkyard], 90),
-        new(240, [AreaType.Ground], 108)
+        new(80, [AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2], 17),
+        new(120, [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.AdminOffice, AreaType.StaffRoom], 20),
+        new(160, [AreaType.Library, AreaType.Gym], 23),
+        new(200, [AreaType.Corridor, AreaType.Junkyard], 26),
+        new(240, [AreaType.Ground], 29)
     ];
 
     private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();

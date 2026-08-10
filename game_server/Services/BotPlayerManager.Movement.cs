@@ -363,7 +363,8 @@ public partial class BotPlayerManager
             bool canPlanThisTick = bot.PlayerId == result.PlanningBotId;
             // 피격 중에는 1.5초 모드 홀드를 무시하고 매 계획 차례마다 재계획한다 (#222) —
             // 와리가리/도주 지시가 홀드에 씹혀 맞으면서 서 있던 현상(매치 2386 -182) 수리.
-            bool underFire = (nowUtc - bot.LastDamagedAtUtc).TotalSeconds <= 3d;
+            // 창은 판단 레이어(SwarmBotDamagedFleeSeconds)와 같은 6초.
+            bool underFire = (nowUtc - bot.LastDamagedAtUtc).TotalSeconds <= 6d;
             if (canPlanThisTick &&
                 (bot.SpotArenaMode == SpotArenaBotMode.None ||
                  nowUtc >= bot.SpotArenaModeUntilUtc ||

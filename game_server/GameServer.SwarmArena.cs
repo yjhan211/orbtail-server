@@ -1029,7 +1029,8 @@ public partial class GameServer
     private const float SwarmBotChasePowerAdvantage = 1.25f;
 
     // 피격 반응 창: 이 시간 안에 맞았으면 중립 밴드 상대도 위협으로 승격한다.
-    private const double SwarmBotDamagedFleeSeconds = 3d;
+    // 3초는 공격 간헐(조준·쿨다운·재접근)에 못 미쳐 와리가리↔정지가 번갈아 보였다 — 6초로.
+    private const double SwarmBotDamagedFleeSeconds = 6d;
 
     // 피격 중 와리가리: 공격자 방향의 수직으로 이만큼 이동, 1초마다 좌우 반전.
     private const float SwarmBotStrafeDistance = 2.5f;
