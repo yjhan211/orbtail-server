@@ -43,6 +43,13 @@ public partial class GameServer
     private const int SwarmOrbDamageMultiplier = 3;
     private const float SwarmOrbIntervalMultiplier = 1f;
 
+    // 연사화 (#222): 오브별 주기·발당 데미지를 함께 절반으로 — DPS 불변, 발사 밀도 2배.
+    // 소수 오브 구간(초반)의 "쏘고 한참 침묵" 루즈함을 없앤다. 오브가 많아지면 총 발사
+    // 간격이 최소 스페이싱(0.15초×오브 수) 밑으로 내려가지 않게 캡 — 캡이 걸리면 발당
+    // 데미지가 그 비율만큼 굵어져 DPS는 유지된다 (읽을 수 있는 탄막 상한 ≈ 초당 6.7발).
+    private const float SwarmOrbRapidFireScale = 0.5f;
+    private const float SwarmOrbMinShotSpacingSeconds = 0.15f;
+
     private readonly Dictionary<(long MatchingId, long PlayerId),
         (Vector3f Position, DateTime At, bool Moving, DateTime StoppedAtUtc)> _swarmMovementSamples = new();
 
@@ -528,7 +535,9 @@ public partial class GameServer
                 : null,
             choiceIndex: 0,
             costOverride: exploreCost,
-            exactItemId: ChooseBotDraftOrbItemId(matchingId, bot.PlayerId));
+            exactItemId: SurvivorOrbData.ApplyDraftTier(
+                ChooseBotDraftOrbItemId(matchingId, bot.PlayerId, GetSwarmDraftTier(matchingId)),
+                GetSwarmDraftTier(matchingId)));
         if (!attempt.Success)
         {
             RngCollectCooldownStore.ClearCooldown(matchingId, spotId);
@@ -557,11 +566,12 @@ public partial class GameServer
 
     /// <summary>
     ///     봇의 드래프트 색 선택 (#219 M2) — 사람과 같은 규칙 공간에서 고른다:
-    ///     같은 색 T1 2개면 그 색(이번 픽이 3머지), 아니면 최다 보유 색(전문화), 빈손이면 랜덤.
+    ///     현재 시간 등급 티어가 같은 색 2개면 그 색(이번 픽이 3머지), 아니면 최다 보유 색
+    ///     (전문화), 빈손이면 랜덤. 반환은 색 T1 베이스 ID — 티어는 호출부가 입힌다.
     /// </summary>
-    private int ChooseBotDraftOrbItemId(long matchingId, long botPlayerId)
+    private int ChooseBotDraftOrbItemId(long matchingId, long botPlayerId, int draftTier)
     {
-        var countsByColor = new Dictionary<SurvivorOrbColor, (int Total, int Tier1)>();
+        var countsByColor = new Dictionary<SurvivorOrbColor, (int Total, int AtDraftTier)>();
         foreach (var item in _inGameInventoryManager.GetPlayerInventory(matchingId, botPlayerId).GetAllItems())
         {
             if (item.Count <= 0 ||
@@ -569,11 +579,11 @@ public partial class GameServer
                 continue;
 
             var entry = countsByColor.TryGetValue(color, out var current) ? current : (0, 0);
-            countsByColor[color] = (entry.Item1 + item.Count, entry.Item2 + (tier == 1 ? item.Count : 0));
+            countsByColor[color] = (entry.Item1 + item.Count, entry.Item2 + (tier == draftTier ? item.Count : 0));
         }
 
         foreach (var (color, entry) in countsByColor)
-            if (entry.Tier1 >= 2 && TryGetDraftTier1ItemId(color, out int mergeItemId))
+            if (entry.AtDraftTier >= 2 && TryGetDraftTier1ItemId(color, out int mergeItemId))
                 return mergeItemId;
 
         var best = countsByColor.OrderByDescending(pair => pair.Value.Total).FirstOrDefault();
@@ -581,6 +591,19 @@ public partial class GameServer
             return specializeItemId;
 
         return SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)];
+    }
+
+    /// <summary>상자 시간 등급 (#222 M3): 개전 앵커(게이트, 봇 전용은 스웜 첫 틱) 경과로 티어 결정.</summary>
+    private int GetSwarmDraftTier(long matchingId)
+    {
+        var startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId);
+        if (startedAtUtc == null &&
+            _swarmMatchFallbackAnchorUtc.TryGetValue(matchingId, out var fallbackAnchor))
+            startedAtUtc = fallbackAnchor;
+        if (startedAtUtc == null)
+            return 1;
+
+        return SurvivorOrbData.GetDraftTierByElapsed((DateTime.UtcNow - startedAtUtc.Value).TotalSeconds);
     }
 
     private static bool TryGetDraftTier1ItemId(SurvivorOrbColor color, out int itemId)
@@ -1645,11 +1668,18 @@ public partial class GameServer
         for (int index = before; index < actors.Count; index++)
         {
             var actor = actors[index];
-            float interval = actor.AttackIntervalSeconds * SwarmOrbIntervalMultiplier;
+            float baseInterval = actor.AttackIntervalSeconds * SwarmOrbIntervalMultiplier;
+            // 연사화 + 스팸 캡: 캡으로 주기가 달라져도 발당 데미지를 주기 비율로 맞춰
+            // 오브별 DPS(원 데미지/원 주기)를 정확히 보존한다.
+            float interval = MathF.Max(
+                baseInterval * SwarmOrbRapidFireScale,
+                orbActorCount * SwarmOrbMinShotSpacingSeconds);
+            float dpsScale = baseInterval > 0f ? interval / baseInterval : 1f;
             actors[index] = actor with
             {
                 Damage = armed
-                    ? (int)MathF.Round(actor.Damage * SwarmOrbDamageMultiplier * colorStats.AttackMultiplier)
+                    ? (int)MathF.Round(
+                        actor.Damage * SwarmOrbDamageMultiplier * colorStats.AttackMultiplier * dpsScale)
                     : 0,
                 AttackIntervalSeconds = interval,
                 // SB 스태거: 오브들이 간격을 균등 분할해 엇박으로 쏜다 — 일제사격 금지.

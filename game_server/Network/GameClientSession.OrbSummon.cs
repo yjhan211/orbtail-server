@@ -32,12 +32,15 @@ public partial class GameClientSession
                 return Task.CompletedTask;
             }
 
-            int draftItemId = request.ChoiceIndex switch
-            {
-                1 => DraftWaveOrbItemId,
-                2 => DraftWindOrbItemId,
-                _ => DraftSunOrbItemId
-            };
+            // 상자 시간 등급 (#222 M3): 개전 후 80초/160초를 넘기면 같은 색의 T2/T3가 나온다.
+            int draftItemId = SurvivorOrbData.ApplyDraftTier(
+                request.ChoiceIndex switch
+                {
+                    1 => DraftWaveOrbItemId,
+                    2 => DraftWindOrbItemId,
+                    _ => DraftSunOrbItemId
+                },
+                GetSwarmDraftTier());
             var draftAttempt = ExecuteOrbSummon(
                 request.ChoiceIndex, costOverride: _pendingOrbDraftCost, exactItemId: draftItemId);
             if (!draftAttempt.Success)
@@ -60,6 +63,16 @@ public partial class GameClientSession
 
         ExecuteOrbSummon(request.ChoiceIndex, costOverride: null);
         return Task.CompletedTask;
+    }
+
+    /// <summary>상자 시간 등급 (#222 M3): 개전 앵커 경과로 드래프트 티어 결정. 게이트 전엔 T1.</summary>
+    private int GetSwarmDraftTier()
+    {
+        var startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(CurrentMapSubId);
+        if (startedAtUtc == null)
+            return 1;
+
+        return SurvivorOrbData.GetDraftTierByElapsed((DateTime.UtcNow - startedAtUtc.Value).TotalSeconds);
     }
 
     /// <summary>

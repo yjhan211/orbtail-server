@@ -85,6 +85,24 @@ namespace network.common.data
         public static float GetSwarmStatTierWeight(int tier) =>
             tier >= 3 ? 4f : tier == 2 ? 1.75f : 1f;
 
+        // 상자 시간 등급 (#222 M3, SB 커먼→레어→에픽): 개전 후 경과초가 드래프트 오브 티어를
+        // 정한다. 4분 매치 3등분 — 폐쇄 웨이브(80/160초)와 같은 박자로 판의 살림이 굵어진다.
+        public const int DraftTierTwoAtSeconds = 80;
+        public const int DraftTierThreeAtSeconds = 160;
+
+        public static int GetDraftTierByElapsed(double elapsedSeconds) =>
+            elapsedSeconds >= DraftTierThreeAtSeconds ? 3 :
+            elapsedSeconds >= DraftTierTwoAtSeconds ? 2 : 1;
+
+        /// <summary>색 T1 아이템 ID에 시간 등급 티어를 적용한다 (색 베이스 +0/+1/+2).</summary>
+        public static int ApplyDraftTier(int tierOneItemId, int tier)
+        {
+            if (!TryGetColorAndTier(tierOneItemId, out _, out int baseTier) || baseTier != 1)
+                return tierOneItemId;
+
+            return tierOneItemId + Math.Clamp(tier, 1, 3) - 1;
+        }
+
         /// <summary>
         ///     유닛 낱개 체력 (SB 클론): 티어별 오브 HP. 서버 정산(GameServer.SwarmArena)과
         ///     클라 스쿼드 체력바 미러가 같은 값을 읽는다.
