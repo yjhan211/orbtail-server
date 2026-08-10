@@ -17,15 +17,17 @@ public class AreaClosureManager
     // #219 폐쇄 부활 (2026-08-08): 클론 맵 기준 — 바깥 포드(교실1·교실2·창고·보건실) →
     // 중간 포드(고사실·방송실·행정실·교무실) → 쌍 구역(도서관·강당) → 밴드(테라스·복도) 순.
     // 2026-08-09: 오염 3배 + 운동장 최종 폐쇄 — 종반엔 어디도 안전하지 않다.
-    // 2026-08-10: 전체 +30초 (첫 폐쇄 1:30 → 2:00) — 초반 파밍·드래프트 정착 시간 확보,
-    // 운동장 6:00 폐쇄로 판 길이 목표(5~7분) 안에 유지.
+    // 2026-08-10 M3-2: 4분 매치(SWARM_MATCH_DURATION_SECONDS)에 맞춰 압축 —
+    // 운동장 최종 폐쇄 = 타이머 만료(4:00) = 잼 최다 승리 판정이 한 시점에 겹친다.
+    // 오염 3배 상향(같은 날): 폐쇄 구역은 "즉시 나가야 하는" 치명 압박 — 첫 웨이브도
+    // 5초 체류당 180(만오염 420의 43%), 종반 웨이브는 한두 틱이면 탈락한다.
     private static readonly IReadOnlyList<ClosureWaveDefinition> DefaultP0Waves =
     [
-        new(120, [AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2], 12),
-        new(180, [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.AdminOffice, AreaType.StaffRoom], 18),
-        new(240, [AreaType.Library, AreaType.Gym], 24),
-        new(300, [AreaType.Corridor, AreaType.Junkyard], 30),
-        new(360, [AreaType.Ground], 36)
+        new(80, [AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2], 36),
+        new(120, [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.AdminOffice, AreaType.StaffRoom], 54),
+        new(160, [AreaType.Library, AreaType.Gym], 72),
+        new(200, [AreaType.Corridor, AreaType.Junkyard], 90),
+        new(240, [AreaType.Ground], 108)
     ];
 
     private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();

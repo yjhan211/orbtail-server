@@ -66,14 +66,16 @@ public sealed class SwarmArenaManager
     // 해골: 무해한 코인 파밍 무리. 다트: 원거리 단발. 탈주: 접촉 강펀치 브루저. 볼러: 범위 투척.
     public const float BowlerSplashRadius = 1.5f;
 
-    public static (int MaxHp, int OrbDamage, float AttackRange, float AttackCooldownSeconds, int StoneReward)
+    public static (int MaxHp, int OrbDamage, float AttackRange, float AttackCooldownSeconds, int StoneReward,
+        int JamReward)
         GetKindStats(SwarmMonsterKind kind) => kind switch
         {
             // 피통 = 시작 T1 오브(발당 12) 발수 정렬: 다트 2방 · 탈주 5방 · 볼러 4방 (#219 초반 템포)
-            SwarmMonsterKind.DartGoblin => (18, 2, 5f, 2f, 1),
-            SwarmMonsterKind.RunawayGoblin => (60, 5, ContactRange, 1.2f, 4),
-            SwarmMonsterKind.Bowler => (48, 2, 4.5f, 2.5f, 4),
-            _ => (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1)
+            // 잼 (#222 M3): SB 코인/잼 이원 — 해골은 코인 몹(잼 0), 위험한 몹일수록 잼이 나온다.
+            SwarmMonsterKind.DartGoblin => (18, 2, 5f, 2f, 1, 1),
+            SwarmMonsterKind.RunawayGoblin => (60, 5, ContactRange, 1.2f, 4, 2),
+            SwarmMonsterKind.Bowler => (48, 2, 4.5f, 2.5f, 4, 2),
+            _ => (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1, 0)
         };
 
     private const int FirstMonsterId = 7_000_000;
@@ -371,7 +373,8 @@ public sealed class SwarmArenaManager
                     state.Kills++;
             }
 
-            return new SwarmArenaDamageResult(true, killed, monster.MonsterId, monster.ToMonsterRuntimeInfo());
+            return new SwarmArenaDamageResult(
+                true, killed, monster.MonsterId, monster.ToMonsterRuntimeInfo(), monster.JamReward);
         }
     }
 
@@ -726,6 +729,7 @@ public sealed class SwarmArenaManager
                 NextContactAtUtc = now,
                 ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
                 SummonStoneReward = stats.StoneReward,
+                JamReward = stats.JamReward,
                 ContactDamageValue = stats.OrbDamage,
                 Kind = kinds[index],
                 MaxHealthValue = stats.MaxHp,
@@ -1131,6 +1135,7 @@ public sealed class SwarmArenaManager
         public DateTime DiedAtUtc { get; set; }
         public float ScatterAngle { get; init; }
         public int SummonStoneReward { get; init; }
+        public int JamReward { get; init; }
         public int ContactDamageValue { get; init; }
         public long ChaseTargetPlayerId { get; set; }
 
@@ -1163,6 +1168,7 @@ public sealed class SwarmArenaManager
             },
             IsCore = false,
             SummonStoneReward = SummonStoneReward,
+            // 잼 보상은 패킷 모델에 싣지 않는다 — SwarmArenaDamageResult로 서버 내부 전달.
             ChaseTargetPlayerId = ChaseTargetPlayerId
         };
     }
@@ -1194,7 +1200,8 @@ public readonly record struct SwarmArenaDamageResult(
     bool Applied,
     bool Killed,
     int MonsterId,
-    MonsterRuntimeInfo? MonsterState)
+    MonsterRuntimeInfo? MonsterState,
+    int JamReward = 0)
 {
     public static SwarmArenaDamageResult None => new(false, false, 0, null);
 }

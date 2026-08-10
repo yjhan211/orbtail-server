@@ -22,6 +22,7 @@ public partial class GameClientSession
         bool autoUsed = false;
         bool autoEquipped = false;
         bool summonStonePickup = false;
+        bool jamPickup = false;
         int staminaRecovery = 0;
         int corruptionRecovery = 0;
         ErrorCode rejection = ErrorCode.INVENTORY_FULL;
@@ -41,6 +42,12 @@ public partial class GameClientSession
                 if (item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
                 {
                     summonStonePickup = true;
+                    return true;
+                }
+
+                if (item.ItemId == Config.JAM_GROUND_ITEM_ID)
+                {
+                    jamPickup = true;
                     return true;
                 }
 
@@ -127,7 +134,11 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        if (summonStonePickup)
+        if (jamPickup)
+        {
+            AddJam(1);
+        }
+        else if (summonStonePickup)
         {
             var summonState = _summonStoneManager.AddStones(CurrentMapSubId, PlayerId.Value, 1);
             SendSummonStoneState(1, claimedItem.PositionX, claimedItem.PositionY);
@@ -177,7 +188,7 @@ public partial class GameClientSession
             CurrentArea.ToString(),
             autoUsed,
             isBot: false);
-        if (!summonStonePickup)
+        if (!summonStonePickup && !jamPickup)
         {
             var boardAfterPickup = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
             _gameEventLogManager.LogSurvivorOrbBoardTransition(
@@ -186,6 +197,50 @@ public partial class GameClientSession
         }
         SendGroundItemPickupResult(claimedItem.GroundItemUid, claimedItem.ItemId, true, autoUsed, ErrorCode.SUCCESS);
         return Task.CompletedTask;
+    }
+
+    /// <summary>잼 획득 (#222 M3) — 지갑 가산 + 상태 전송. 매치 시작 시 ResetJam으로 초기화.</summary>
+    internal void AddJam(int amount)
+    {
+        if (!PlayerId.HasValue || amount <= 0)
+            return;
+
+        JamCount += amount;
+        using var packet = Packet.Create((int)Protocol.G_TO_C_JAM_STATE, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_JAM_STATE { JamCount = JamCount }));
+        Send(packet);
+    }
+
+    internal void ResetJam(bool notify = false)
+    {
+        JamCount = 0;
+        if (!notify || !PlayerId.HasValue)
+            return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_JAM_STATE, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_JAM_STATE { JamCount = 0 }));
+        Send(packet);
+    }
+
+    /// <summary>
+    ///     사망 잼 낙수 (#222 M3): 지갑 전량을 그 자리에 흩뿌린다 — SB 사망 드랍.
+    ///     한 패킷 초과(BUFFER SIZE) 방지를 위해 8개 단위로 나눠 스폰·브로드캐스트한다.
+    /// </summary>
+    private void ScatterJamOnElimination(int jamCount, AreaType area, float x, float y)
+    {
+        if (jamCount <= 0 || area == AreaType.None)
+            return;
+
+        const int chunkSize = 8;
+        for (int offset = 0; offset < jamCount; offset += chunkSize)
+        {
+            var jamIds = Enumerable
+                .Repeat(Config.JAM_GROUND_ITEM_ID, Math.Min(chunkSize, jamCount - offset))
+                .ToList();
+            var spawned = _groundItemManager.SpawnItems(
+                CurrentMapSubId, area, x, y, jamIds, mapId: CurrentMapId);
+            BroadcastGroundItemsSpawned(area, spawned);
+        }
     }
 
     private Task HandleDropGroundItem(C_TO_G_DROP_GROUND_ITEM msg)
@@ -199,6 +254,13 @@ public partial class GameClientSession
         if (!PlayerId.HasValue || _lastValidatedPosition == null || CurrentArea == AreaType.None) return;
 
         var position = _lastValidatedPosition;
+        // 잼 낙수는 오브 보유 여부와 무관하게 먼저 처리한다 — 빈손 사망도 잼은 떨군다.
+        if (JamCount > 0)
+        {
+            ScatterJamOnElimination(JamCount, CurrentArea, position.X, position.Y);
+            ResetJam(notify: true);
+        }
+
         var drop = EliminationInventoryDropper.DropAll(
             _inGameInventoryManager,
             _groundItemManager,
@@ -241,6 +303,12 @@ public partial class GameClientSession
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
         if (bot == null || bot.CurrentArea == AreaType.None)
             return;
+
+        if (bot.JamCount > 0)
+        {
+            ScatterJamOnElimination(bot.JamCount, bot.CurrentArea, bot.Position.X, bot.Position.Y);
+            bot.JamCount = 0;
+        }
 
         var drop = EliminationInventoryDropper.DropAll(
             _inGameInventoryManager,

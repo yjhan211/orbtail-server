@@ -51,7 +51,9 @@ public partial class BotPlayerManager
             int staminaRecovery = 0;
             int corruptionRecovery = 0;
             bool summonStonePickup = candidate.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID;
-            if (summonStonePickup && groundItemManager.IsYoungerThan(
+            bool jamPickup = candidate.ItemId == Config.JAM_GROUND_ITEM_ID;
+            // 재화(소환석·잼)는 봇 반응 지연 공통 — 사람 선점권 (#222)
+            if ((summonStonePickup || jamPickup) && groundItemManager.IsYoungerThan(
                     matchingId, candidate.GroundItemUid, SummonStoneBotReactionDelay))
                 continue;
             bool canStore = inventory.GetAllItems().Count < Config.GetOrbCapacity();
@@ -67,7 +69,7 @@ public partial class BotPlayerManager
                 bot.Position.Y,
                 item =>
                 {
-                    if (item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
+                    if (item.ItemId is Config.SUMMON_STONE_GROUND_ITEM_ID or Config.JAM_GROUND_ITEM_ID)
                         return true;
 
                     disposition = GroundItemPickupPolicy.Resolve(
@@ -89,7 +91,11 @@ public partial class BotPlayerManager
             int effectiveRecovery = 0;
             InGameItemInfo? addedItem = null;
             SummonStoneSnapshot summonStoneState = default;
-            if (summonStonePickup)
+            if (jamPickup)
+            {
+                bot.JamCount += 1;
+            }
+            else if (summonStonePickup)
             {
                 summonStoneState = summonStoneManager.AddStones(matchingId, bot.PlayerId, 1);
             }

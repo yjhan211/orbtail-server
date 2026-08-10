@@ -540,7 +540,7 @@ public sealed class SurvivorBotLoopRegressionTests
             new MatchingConfigService(null!, NullLogger.Instance),
             () => now);
         closure.InitializeMatching(matchingId);
-        now = now.AddSeconds(105); // Classroom3(교실2)는 첫 웨이브(120초) — 105초에 경고창이 열린다.
+        now = now.AddSeconds(65); // Classroom3(교실2)는 첫 웨이브(80초) — 65초에 경고창이 열린다.
         closure.CheckClosureSchedule(matchingId);
         Assert.Contains(AreaType.Classroom3, closure.GetClientStateSnapshot(matchingId).WarningAreas);
 

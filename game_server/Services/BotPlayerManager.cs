@@ -572,6 +572,9 @@ public class BotPlayerState
     /// <summary>walking ?쒖옉 ??G_TO_C_EXPLORE_END broadcast媛 ?꾩슂?쒖? ??ChooseNewWanderTarget??set, ?ㅼ쓬 ProcessBotMovementTick?먯꽌 ?섏쭛 + reset.</summary>
     public bool PendingExploreEndBroadcast { get; set; }
 
+    /// <summary>잼 승점 지갑 (#222 M3) — 매치 단위, 소환석과 분리.</summary>
+    public int JamCount { get; set; }
+
     // === #219 스웜 개봉 채집 채널 (레거시 RNG 필드와 분리 — 미션 틱 간섭 방지) ===
     /// <summary>채집 중인 스웜 스팟 Id. 0이면 채널 없음.</summary>
     public int SwarmExploreSpotId { get; set; }

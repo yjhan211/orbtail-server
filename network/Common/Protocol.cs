@@ -229,6 +229,10 @@ namespace network.common
         C_TO_G_DESTROY_ORB,
         G_TO_C_DESTROY_ORB_RESULT,
 
+        // 잼 승점 재화 (#222 M3) — 소환석과 분리된 지갑 상태
+        G_TO_C_JAM_STATE,
+        G_TO_C_JAM_RANKINGS,
+
         END
     }
 

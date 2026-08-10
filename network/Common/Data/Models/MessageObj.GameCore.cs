@@ -106,6 +106,27 @@ namespace network.common.data.models
 
         // 앞줄(최저 티어·선입) 오브의 현재 HP — 오브별 체력바 표시용 (#219). -1 = 만충 취급.
         [Key("frontOrbHp")] public int FrontOrbHp { get; set; } = -1;
+
+        // 잼 보유량 (#222 M3) — SB처럼 머리 위에 공개되는 점수. 같은 구역 관전자에게 동기화.
+        [Key("jamCount")] public int JamCount { get; set; }
+    }
+
+    /// <summary>잼(승점 재화) 지갑 상태 (#222 M3). 픽업·변동 시 소유자에게 전송.</summary>
+    [MessagePackObject]
+    public class G_TO_C_JAM_STATE : IMessagePackObject
+    {
+        [Key("jamCount")] public int JamCount { get; set; }
+    }
+
+    /// <summary>
+    ///     잼 리더보드 (#222 M3). 전 참가자를 잼 내림차순으로 정렬한 병렬 리스트다.
+    ///     구역 게이트 없이 매치 전역으로 브로드캐스트 — 순위표(RankDisplay)의 단일 출처.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_JAM_RANKINGS : IMessagePackObject
+    {
+        [Key("playerIds")] public List<long> PlayerIds { get; set; } = new();
+        [Key("jamCounts")] public List<int> JamCounts { get; set; } = new();
     }
 
     /// <summary>

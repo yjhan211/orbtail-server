@@ -105,6 +105,9 @@ public partial class GameClientSession : SessionBase
     private bool _hasPendingOrbDraft;
     private int _pendingOrbDraftCost;
 
+    /// <summary>잼 승점 지갑 (#222 M3) — 매치 단위, 소환석과 분리된 재화.</summary>
+    public int JamCount { get; private set; }
+
     private Timer? _periodicBuffTimer;
 
     /// <summary>

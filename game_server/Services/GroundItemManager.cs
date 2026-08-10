@@ -182,7 +182,9 @@ public sealed class GroundItemManager
 
             float dx = item.PositionX - playerX;
             float dy = item.PositionY - playerY;
-            float pickupRadius = item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID
+            // 잼도 소환석과 같은 자석 반경 (#222 M3) — 재화는 스치면 붙는다.
+            float pickupRadius = item.ItemId is Config.SUMMON_STONE_GROUND_ITEM_ID
+                or Config.JAM_GROUND_ITEM_ID
                 ? SummonStonePickupRadius
                 : PickupRadius;
             if (dx * dx + dy * dy > pickupRadius * pickupRadius)

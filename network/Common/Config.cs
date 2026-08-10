@@ -100,6 +100,12 @@ namespace network.common
         /// <summary>World pickup used to represent one summon stone.</summary>
         public const int SUMMON_STONE_GROUND_ITEM_ID = 107000050;
 
+        /// <summary>
+        ///     잼 지상 픽업 (#222 M3): 소환석(개봉 재화)과 분리된 승점 재화 — SB의 코인/잼
+        ///     이원 구조. 큰 몹·오브 파괴가 떨구고, 잼 최다가 승리를 가른다 (M3 승리 판정).
+        /// </summary>
+        public const int JAM_GROUND_ITEM_ID = 107000060;
+
         /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
         public const int SURVIVOR_MAX_CORRUPTION = 420;
 
@@ -131,6 +137,13 @@ namespace network.common
         /// </summary>
         // #219 8인 전환 (2026-08-09): 스폰 포드 8곳(도서관·강당 제외)과 정원 일치 — 전원 유니크 스폰.
         public static readonly int SWARM_PLAYERS_PER_MATCH = 8;
+
+        /// <summary>
+        ///     잼 헌트 매치 길이 (#222 M3-2) — SB 4분 문법. 개전(카운트다운 종료) 앵커 기준이며,
+        ///     만료 시 생존자 중 잼 최다 보유자가 승리한다. 클라 타이머(GameStatusDisplay)와
+        ///     폐쇄 시간표(AreaClosureManager 최종 웨이브)가 같은 값에 정렬된다.
+        /// </summary>
+        public const int SWARM_MATCH_DURATION_SECONDS = 240;
 
         /// <summary>
         ///     스웜 탐색 스팟 개봉 비용은 SB 상자 문법을 따른다: 스쿼드(궤도 오브)가 클수록
