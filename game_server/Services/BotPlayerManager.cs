@@ -257,6 +257,7 @@ public partial class BotPlayerManager
         var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
             ? PlayerState.SLEEP
             : bot.RngCollectProgressStartTime != DateTime.MinValue ||
+              bot.SwarmExploreStartedAtUtc != DateTime.MinValue ||
               Config.CHECKLIST_SYSTEM_ENABLED &&
               bot.ChecklistActivityProgressStartTime != DateTime.MinValue
                 ? PlayerState.EXPLORE_1
@@ -570,4 +571,11 @@ public class BotPlayerState
 
     /// <summary>walking ?쒖옉 ??G_TO_C_EXPLORE_END broadcast媛 ?꾩슂?쒖? ??ChooseNewWanderTarget??set, ?ㅼ쓬 ProcessBotMovementTick?먯꽌 ?섏쭛 + reset.</summary>
     public bool PendingExploreEndBroadcast { get; set; }
+
+    // === #219 스웜 개봉 채집 채널 (레거시 RNG 필드와 분리 — 미션 틱 간섭 방지) ===
+    /// <summary>채집 중인 스웜 스팟 Id. 0이면 채널 없음.</summary>
+    public int SwarmExploreSpotId { get; set; }
+
+    /// <summary>스웜 채집 채널 시작 시각. MinValue면 채널 없음 — 시작 후 1.5초 경과 시 개봉 확정.</summary>
+    public DateTime SwarmExploreStartedAtUtc { get; set; } = DateTime.MinValue;
 }

@@ -446,6 +446,10 @@ public partial class GameServer
     ///     봇의 스팟 개봉: 게이지 없이 반경 안에서 즉시 연다. 소진 스팟은 사람·봇 공용
     ///     쿨다운 저장소로 잠기므로, 유한 스팟을 둘러싼 경쟁이 성립한다.
     /// </summary>
+    // 봇 채집 채널 (#219 탐색 모션): 즉시 개봉은 모션도 없고 사람(1.5초 채집)보다 빨랐다.
+    // 사람 클라와 같은 1.5초 채널 동안 EXPLORE_1 상태로 서 있다가 개봉을 확정한다.
+    private const double SwarmBotExploreChannelSeconds = 1.5d;
+
     private void ProcessSwarmBotExplores(
         long matchingId,
         List<BotPlayerState> bots,
@@ -453,6 +457,18 @@ public partial class GameServer
     {
         foreach (var bot in bots)
         {
+            // (2) 채널 진행 중 — 1.5초가 지나면 개봉 확정
+            if (bot.SwarmExploreStartedAtUtc != DateTime.MinValue)
+            {
+                if ((DateTime.UtcNow - bot.SwarmExploreStartedAtUtc).TotalSeconds <
+                    SwarmBotExploreChannelSeconds)
+                    continue;
+
+                FinishSwarmBotExplore(matchingId, bot, sessions);
+                continue;
+            }
+
+            // (1) 채널 시작: 근접 + 자금 + 스팟 가용이면 쿨다운을 선점하고 채집 자세로 선다
             if (!TryFindNearestAvailableExploreSpot(
                     matchingId, bot.CurrentArea, bot.Position, out var spot, out float distance) ||
                 distance > SwarmBotOpenRange)
@@ -466,47 +482,64 @@ public partial class GameServer
                     matchingId, spot.Id, Config.SWARM_EXPLORE_REGEN_SECONDS, out _))
                 continue;
 
-            // 궤도 스쿼드: 파괴(버리기)는 퇴역 — 궤도가 가득 차면 개봉이 실패할 뿐이다.
-            // 3머지 자동 압축이 자리를 만들고, 상한 도달은 성장의 자연 종점이다.
-            var attempt = _summonStoneManager.TrySummon(
-                matchingId,
-                bot.PlayerId,
-                itemId => _inGameInventoryManager.TryAddItemWithCapacity(
-                    matchingId,
-                    bot.PlayerId,
-                    itemId,
-                    Config.SWARM_ORB_CAPACITY,
-                    out var addedItem)
-                    ? addedItem
-                    : null,
-                choiceIndex: 0,
-                costOverride: exploreCost,
-                exactItemId: ChooseBotDraftOrbItemId(matchingId, bot.PlayerId));
-            if (!attempt.Success)
-            {
-                RngCollectCooldownStore.ClearCooldown(matchingId, spot.Id);
-                continue;
-            }
-
-            BroadcastSwarmExploreConsumed(spot.Id, Config.SWARM_EXPLORE_REGEN_SECONDS, sessions);
-            // 봇도 자동 머지 — 사람과 같은 성장 규칙 (#217 자동 머지)
-            _inGameInventoryManager.AutoMergeSurvivorOrbs(matchingId, bot.PlayerId, Random.Shared);
-            // 요약 카운터(summonCount) 배선 — 봇 개봉이 매치 요약에서 0으로 잡히던 계측 구멍.
-            _gameEventLogManager.LogOrbSummonAttempt(
-                matchingId,
-                bot.PlayerId,
-                true,
-                ErrorCode.SUCCESS,
-                attempt.ItemId,
-                attempt.State.StoneCount,
-                attempt.State.NextCost,
-                attempt.State.SuccessfulSummonCount,
-                bot.CurrentArea.ToString(),
-                isBot: true);
-            logger.LogInformation(
-                "Swarm bot explore: MatchingId={MatchingId}, BotId={BotId}, InteractId={InteractId}, ItemId={ItemId}, Cost={Cost}",
-                matchingId, bot.PlayerId, spot.Id, attempt.ItemId, exploreCost);
+            bot.SwarmExploreSpotId = spot.Id;
+            bot.SwarmExploreStartedAtUtc = DateTime.UtcNow;
+            bot.HoldForInteraction(TimeSpan.FromSeconds(SwarmBotExploreChannelSeconds + 0.5d));
+            BroadcastBotExploreStarts(
+                matchingId, [(bot.PlayerId, spot.Id, bot.CurrentArea)], sessions);
         }
+    }
+
+    private void FinishSwarmBotExplore(long matchingId, BotPlayerState bot, List<GameClientSession> sessions)
+    {
+        int spotId = bot.SwarmExploreSpotId;
+        bot.SwarmExploreSpotId = 0;
+        bot.SwarmExploreStartedAtUtc = DateTime.MinValue;
+        BroadcastBotExploreEnds(matchingId, [(bot.PlayerId, bot.CurrentArea)], sessions);
+        if (spotId <= 0)
+            return;
+
+        // 궤도 스쿼드: 파괴(버리기)는 퇴역 — 궤도가 가득 차면 개봉이 실패할 뿐이다.
+        // 3머지 자동 압축이 자리를 만들고, 상한 도달은 성장의 자연 종점이다.
+        int exploreCost = GetSwarmBotExploreCost(matchingId, bot.PlayerId);
+        var attempt = _summonStoneManager.TrySummon(
+            matchingId,
+            bot.PlayerId,
+            itemId => _inGameInventoryManager.TryAddItemWithCapacity(
+                matchingId,
+                bot.PlayerId,
+                itemId,
+                Config.SWARM_ORB_CAPACITY,
+                out var addedItem)
+                ? addedItem
+                : null,
+            choiceIndex: 0,
+            costOverride: exploreCost,
+            exactItemId: ChooseBotDraftOrbItemId(matchingId, bot.PlayerId));
+        if (!attempt.Success)
+        {
+            RngCollectCooldownStore.ClearCooldown(matchingId, spotId);
+            return;
+        }
+
+        BroadcastSwarmExploreConsumed(spotId, Config.SWARM_EXPLORE_REGEN_SECONDS, sessions);
+        // 봇도 자동 머지 — 사람과 같은 성장 규칙 (#217 자동 머지)
+        _inGameInventoryManager.AutoMergeSurvivorOrbs(matchingId, bot.PlayerId, Random.Shared);
+        // 요약 카운터(summonCount) 배선 — 봇 개봉이 매치 요약에서 0으로 잡히던 계측 구멍.
+        _gameEventLogManager.LogOrbSummonAttempt(
+            matchingId,
+            bot.PlayerId,
+            true,
+            ErrorCode.SUCCESS,
+            attempt.ItemId,
+            attempt.State.StoneCount,
+            attempt.State.NextCost,
+            attempt.State.SuccessfulSummonCount,
+            bot.CurrentArea.ToString(),
+            isBot: true);
+        logger.LogInformation(
+            "Swarm bot explore: MatchingId={MatchingId}, BotId={BotId}, InteractId={InteractId}, ItemId={ItemId}, Cost={Cost}",
+            matchingId, bot.PlayerId, spotId, attempt.ItemId, exploreCost);
     }
 
     /// <summary>
@@ -711,32 +744,20 @@ public partial class GameServer
                 bot.Position);
         }
 
-        // 3.5) 소환석 기근 (#219 시작 0석 체제): 다음 개봉 비용이 부족하면 열린 구역의
-        //      최근접 살아있는 몹(캠프)에게 걸어간다 — 접근하면 자동전투가 나머지를 한다.
+        // 3.5) 소환석 기근 (#219): 다음 개봉 비용이 부족하면 캠프로 사냥을 나간다.
+        //      봇 전지 퇴역 — 봇은 캠프 '위치'만 알고(지도 지식) 생사는 모른다. 같은 구역에
+        //      들어와 눈으로 확인한 빈 캠프는 리스폰 주기만큼 제외하고 다음 캠프로 순회한다.
         //      빈손 봇은 개봉이 무료라 1)에서 이미 스팟 순례로 빠진다.
         if (_summonStoneManager.GetSnapshot(matchingId, botPlayerId).StoneCount <
             GetSwarmBotExploreCost(matchingId, botPlayerId) &&
-            HasAnySquadOrb(matchingId, botPlayerId))
+            HasAnySquadOrb(matchingId, botPlayerId) &&
+            TryChooseSwarmBotCampTarget(matchingId, bot, out var campArea, out var campPosition))
         {
-            var prey = _swarmArenaManager.GetVisualStates(matchingId)
-                .Where(monster => monster.IsAlive &&
-                                  !IsSwarmAreaOutside(matchingId, monster.AreaType))
-                .OrderBy(monster =>
-                {
-                    float dx = monster.PositionX - bot.Position.X;
-                    float dy = monster.PositionY - bot.Position.Y;
-                    return dx * dx + dy * dy;
-                })
-                .FirstOrDefault();
-            if (prey != null)
-            {
-                var preyPosition = new Vector3f(prey.PositionX, prey.PositionY, 0f);
-                return new SpotArenaBotDirective(
-                    SpotArenaBotMode.Escort,
-                    prey.AreaType,
-                    ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, preyPosition),
-                    preyPosition);
-            }
+            return new SpotArenaBotDirective(
+                SpotArenaBotMode.Escort,
+                campArea,
+                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, campPosition),
+                campPosition);
         }
 
         // 4) 시작방·복도는 공급이 마른다 — 무한 스폰 사냥터로 이주해 소환석을 번다.
@@ -765,6 +786,71 @@ public partial class GameServer
         }
 
         return directive;
+    }
+
+    // 빈 캠프 재방문 제외 시간 — 캠프 리스폰(45초)보다 짧게 잡아 순회가 한 바퀴 돌면 돌아온다.
+    private const double SwarmBotEmptyCampSkipSeconds = 30d;
+
+    // 캠프 생사 판정 반경 — 리쉬(5.5) 안에 살아있는 몹이 없으면 그 캠프는 비어 있는 것이다.
+    private const float SwarmBotCampAliveCheckRange = 5.5f;
+
+    private readonly Dictionary<(long MatchingId, long PlayerId, AreaType Area, int CampIndex), DateTime>
+        _swarmBotCampSkipUntilUtc = new();
+
+    /// <summary>
+    ///     봇의 캠프 순례 목적지 — 정적 앵커(지도 지식)에서 가까운 순으로 고른다. 같은 구역
+    ///     캠프는 시야로 생사를 확인할 수 있고, 비어 있으면 스킵 표시 후 다음 후보로 넘어간다.
+    ///     다른 구역 캠프는 생사를 모르니 일단 걸어간다 — 도착 후 다음 틱에 같은 규칙으로 판정된다.
+    /// </summary>
+    private bool TryChooseSwarmBotCampTarget(
+        long matchingId, BotPlayerState bot, out AreaType campArea, out Vector3f campPosition)
+    {
+        DateTime nowUtc = DateTime.UtcNow;
+        var visibleAliveMonsters = _swarmArenaManager.GetVisualStates(matchingId)
+            .Where(monster => monster.IsAlive && monster.AreaType == bot.CurrentArea)
+            .ToList();
+
+        var anchors = GameMonsterCampData.GetAllAnchors()
+            .Where(anchor => !IsSwarmAreaOutside(matchingId, anchor.Area))
+            .Select(anchor => (anchor.Area, anchor.CampIndex,
+                World: BotPlayerManager.CellToWorldPosition(MapId.School, anchor.Cell)))
+            .OrderBy(anchor =>
+            {
+                float dx = anchor.World.X - bot.Position.X;
+                float dy = anchor.World.Y - bot.Position.Y;
+                return dx * dx + dy * dy;
+            });
+
+        foreach (var anchor in anchors)
+        {
+            var skipKey = (matchingId, bot.PlayerId, anchor.Area, anchor.CampIndex);
+            if (_swarmBotCampSkipUntilUtc.TryGetValue(skipKey, out var skipUntil) && nowUtc < skipUntil)
+                continue;
+
+            if (anchor.Area == bot.CurrentArea)
+            {
+                bool campAlive = visibleAliveMonsters.Any(monster =>
+                {
+                    float dx = monster.PositionX - anchor.World.X;
+                    float dy = monster.PositionY - anchor.World.Y;
+                    return dx * dx + dy * dy <=
+                           SwarmBotCampAliveCheckRange * SwarmBotCampAliveCheckRange;
+                });
+                if (!campAlive)
+                {
+                    _swarmBotCampSkipUntilUtc[skipKey] = nowUtc.AddSeconds(SwarmBotEmptyCampSkipSeconds);
+                    continue;
+                }
+            }
+
+            campArea = anchor.Area;
+            campPosition = anchor.World;
+            return true;
+        }
+
+        campArea = AreaType.None;
+        campPosition = bot.Position;
+        return false;
     }
 
     private bool HasSwarmMonsterInBasicRange(long matchingId, BotPlayerState bot)
@@ -1147,6 +1233,9 @@ public partial class GameServer
         foreach (var key in _swarmStartingOrbGrantedPlayers
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmStartingOrbGrantedPlayers.Remove(key);
+        foreach (var key in _swarmBotCampSkipUntilUtc.Keys
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmBotCampSkipUntilUtc.Remove(key);
         _swarmArenaManager.RemoveMatching(matchingId);
         foreach (var key in _swarmMovementSamples.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmMovementSamples.Remove(key);
