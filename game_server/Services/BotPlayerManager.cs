@@ -535,6 +535,13 @@ public class BotPlayerState
         TransitionPauseUntil = DateTime.MinValue;
     }
 
+    /// <summary>위협 감지 시 채집·상호작용 홀드를 즉시 끊는다 — 홀드 채로 맞다 죽는 사고 방지.</summary>
+    public void CancelInteractionHold()
+    {
+        IsInInteraction = false;
+        InteractionStayUntil = DateTime.MinValue;
+    }
+
     // === #134 RNG 梨꾩쭛 ?듯빀 ===
     /// <summary>遊뉗씠 walking?쇰줈 ?묎렐 以묒씤 InteractObject Id. 0?대㈃ ?놁쓬.
     /// ChooseNewWanderTarget?먯꽌 ?곸뿭 + ? ?좏깮 ???ㅼ젙, ?꾩갑 ??RNG 梨꾩쭛 ??0?쇰줈 clear.</summary>

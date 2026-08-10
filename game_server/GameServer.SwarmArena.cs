@@ -80,6 +80,22 @@ public partial class GameServer
     private readonly HashSet<long> _swarmTimeoutEndedMatchings = new();
     private readonly Dictionary<long, DateTime> _swarmMatchFallbackAnchorUtc = new();
 
+    // 젬 광산 (#222 M3, SB 원작 각본): 개전 150초 개장(살포 시작) → 225초 폭발(대량 낙수 후 종료).
+    // SB는 잔여 0:57 가동 → 0:15 폭발("최대 젬 공급원, 차지하는 쪽이 이긴다") — 4분 매치로 환산.
+    // 클라 상주 이펙트·안내(GemMineDirector)와 같은 시각·지점 상수를 쓴다.
+    private const float GemMineOpenSeconds = 150f;
+    private const float GemMineExplodeSeconds = 225f;
+    private const float GemMineX = 39.34f;
+    private const float GemMineY = 49.97f;
+    private const int GemMineOpenBurstJam = 6;
+    private const int GemMineScatterJam = 2;
+    private const int GemMineExplosionJam = 20;
+    private const double GemMineScatterIntervalSeconds = 6d;
+
+    private readonly HashSet<long> _swarmGemMineOpenedMatchings = new();
+    private readonly HashSet<long> _swarmGemMineExplodedMatchings = new();
+    private readonly Dictionary<long, DateTime> _swarmGemMineNextScatterUtc = new();
+
     private void ProcessPendingSwarmMonsterHits(
         long matchingId, DateTime nowUtc, List<GameClientSession> sessions)
     {
@@ -200,6 +216,7 @@ public partial class GameServer
         var actors = BuildSwarmArenaCombatActors(matchingId, aliveSessions, aliveBots, nowUtc);
         ProcessSurvivorOrbRecovery(matchingId, actors, aliveSessions, aliveBots, nowUtc);
         BroadcastSurvivorOrbVisualStates(matchingId, actors, sessions);
+        ProcessSwarmGemMine(matchingId, nowUtc, sessions);
         BroadcastSwarmJamRankings(matchingId, sessions, bots);
         ProcessSwarmJamHuntTimeout(matchingId, nowUtc, sessions, aliveSessions, aliveBots);
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
@@ -209,10 +226,13 @@ public partial class GameServer
             matchingId,
             actors,
             nowUtc,
+            // PvP도 몬스터와 같은 타원(dy×2) 판정 (#222): 링 스프라이트가 아이소 타원이라
+            // 원형 판정은 세로 방향에서 보이는 링의 2배 거리까지 공격이 성립했다 —
+            // "링이 겹치기만 해도 공격"으로 읽히던 체감의 원인. 이제 표시가 곧 판정이다.
             (attacker, target) => !attacker.IsMonsterTarget &&
+                                  IsWithinSwarmOrbRange(attacker, target) &&
                                   (target.IsMonsterTarget
-                                      ? attacker.Area == target.Area &&
-                                        IsWithinSwarmOrbRange(attacker, target)
+                                      ? attacker.Area == target.Area
                                       : ProximityCombatLineOfSight.CanTarget(attacker, target)));
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
@@ -494,6 +514,15 @@ public partial class GameServer
                 distance > SwarmBotOpenRange)
                 continue;
 
+            // 위협 사거리 안에서는 채집을 열지 않는다 — 채널 홀드 채로 얻어맞는 사고 방지
+            // (매치 2376 봇 -108: 빈손으로 채집 반복하며 인지 밖 파도 사거리에 일방 피격).
+            float channelPower = GetSwarmSquadPower(matchingId, bot.PlayerId);
+            FindNearbySwarmRivals(matchingId, bot, channelPower,
+                includeMonstersAsStronger: channelPower <= 0f,
+                out var channelThreatPosition, out _);
+            if (channelThreatPosition != null)
+                continue;
+
             int exploreCost = GetSwarmBotExploreCost(matchingId, bot.PlayerId);
             if (_summonStoneManager.GetSnapshot(matchingId, bot.PlayerId).StoneCount < exploreCost)
                 continue;
@@ -734,6 +763,8 @@ public partial class GameServer
             out Vector3f strongerPosition, out (Vector3f Position, AreaType Area)? weakerRival);
         if (strongerPosition != null)
         {
+            // 위협 앞에서는 채집 채널 홀드도 끊고 뛴다 — 홀드 채로 맞다 죽는 사고 방지 (매치 2372 봇 -78).
+            bot.CancelInteractionHold();
             float fleeDx = bot.Position.X - strongerPosition.X;
             float fleeDy = bot.Position.Y - strongerPosition.Y;
             float fleeLength = MathF.Sqrt(fleeDx * fleeDx + fleeDy * fleeDy);
@@ -767,8 +798,50 @@ public partial class GameServer
                     fleeCell,
                     BotPlayerManager.CellToWorldPosition(MapId.School, fleeCell));
             }
+
+            // 폴백 (#222): 도주 방향에 열린 스팟이 없어도 무조건 이탈한다 — 스팟 부재로
+            // 지시 없이 낙하해 제자리에서 얻어맞던 구멍(매치 2372 봇 -78) 수리.
+            Cell fleeFallbackCell =
+                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, fleeProbe);
+            if (!GameMapData.IsMoveablePosition(MapId.School, fleeFallbackCell))
+            {
+                fleeFallbackCell = fleeFallbackCell.GetAdjacentCells()
+                    .FirstOrDefault(cell => GameMapData.IsMoveablePosition(MapId.School, cell));
+            }
+
+            if (fleeFallbackCell != null &&
+                GameMapData.GetCurrentArea(MapId.School, fleeFallbackCell) is var fleeFallbackArea &&
+                fleeFallbackArea != AreaType.None)
+            {
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Escort,
+                    fleeFallbackArea,
+                    fleeFallbackCell,
+                    BotPlayerManager.CellToWorldPosition(MapId.School, fleeFallbackCell));
+            }
+
+            // 벽 방향이면 위협 반대편에서 가장 가까운 열린 사냥 구역 스폰으로 물러난다.
+            AreaType fleeRetreatArea = SwarmHuntingAreas
+                .Where(area => !IsSwarmAreaOutside(matchingId, area))
+                .OrderBy(area =>
+                {
+                    var center = BotPlayerManager.CellToWorldPosition(
+                        MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
+                    float dx = center.X - fleeProbe.X;
+                    float dy = center.Y - fleeProbe.Y;
+                    return dx * dx + dy * dy;
+                })
+                .DefaultIfEmpty(AreaType.Ground)
+                .First();
+            Cell fleeRetreatCell = GameMapData.GetAreaSpawnCell(MapId.School, fleeRetreatArea);
+            return new SpotArenaBotDirective(
+                SpotArenaBotMode.Escort,
+                fleeRetreatArea,
+                fleeRetreatCell,
+                BotPlayerManager.CellToWorldPosition(MapId.School, fleeRetreatCell));
         }
-        else if (hasSquadOrbs && weakerRival.HasValue)
+
+        if (hasSquadOrbs && weakerRival.HasValue)
         {
             // 약자 추격: 접근하면 자동전투(오브 우선 타겟)가 나머지를 한다.
             return new SpotArenaBotDirective(
@@ -884,8 +957,10 @@ public partial class GameServer
         return directive;
     }
 
-    // 라이벌 스캔 반경: 이 안의 참가자와 오브 수를 비교해 회피/추격을 정한다.
-    private const float SwarmBotRivalScanRadius = 6f;
+    // 라이벌 스캔 반경: 이 안의 참가자와 전력을 비교해 회피/추격을 정한다.
+    // 최대 공격 사거리(기본 7 + 파도 가산 3)보다 넓어야 한다 — 6이던 시절, 파도 빌드가
+    // 봇의 인지 밖(6~10)에서 일방적으로 쏘는 사각이 있었다 (매치 2376 봇 -108).
+    private const float SwarmBotRivalScanRadius = 11f;
 
     // 도주 방향 앞의 가상 지점 — 이 지점 기준 최근접 스팟이 "위협 반대편 재기 스팟"이 된다.
     private const float SwarmBotFleeProbeDistance = 8f;
@@ -1300,6 +1375,77 @@ public partial class GameServer
     }
 
     /// <summary>
+    ///     젬 광산 살포 (#222 M3): 개막 버스트 후 주기적으로 잼을 광산 지점에 흩뿌린다.
+    ///     매치 만료(4:00)는 잼 헌트 타임아웃이 맡으므로 여기서는 살포만 반복한다.
+    /// </summary>
+    private void ProcessSwarmGemMine(long matchingId, DateTime nowUtc, List<GameClientSession> sessions)
+    {
+        var startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId);
+        if (startedAtUtc == null &&
+            _swarmMatchFallbackAnchorUtc.TryGetValue(matchingId, out var fallbackAnchor))
+            startedAtUtc = fallbackAnchor;
+        if (startedAtUtc == null ||
+            (nowUtc - startedAtUtc.Value).TotalSeconds < GemMineOpenSeconds)
+            return;
+
+        if (_swarmGemMineOpenedMatchings.Add(matchingId))
+        {
+            _swarmGemMineNextScatterUtc[matchingId] = nowUtc.AddSeconds(GemMineScatterIntervalSeconds);
+            ScatterGemMineJam(matchingId, GemMineOpenBurstJam, sessions);
+            logger.LogInformation(
+                "Gem mine opened: MatchingId={MatchingId}, Position=({X},{Y})",
+                matchingId, GemMineX, GemMineY);
+            return;
+        }
+
+        // 폭발 피날레 (SB 0:15 문법): 대량 낙수 한 방으로 종반 쟁탈전을 만들고 살포를 끝낸다.
+        if (_swarmGemMineExplodedMatchings.Contains(matchingId))
+            return;
+        if ((nowUtc - startedAtUtc.Value).TotalSeconds >= GemMineExplodeSeconds)
+        {
+            _swarmGemMineExplodedMatchings.Add(matchingId);
+            ScatterGemMineJam(matchingId, GemMineExplosionJam, sessions);
+            logger.LogInformation(
+                "Gem mine exploded: MatchingId={MatchingId}, Jam={Jam}", matchingId, GemMineExplosionJam);
+            return;
+        }
+
+        if (!_swarmGemMineNextScatterUtc.TryGetValue(matchingId, out var nextScatterUtc) ||
+            nowUtc < nextScatterUtc)
+            return;
+
+        _swarmGemMineNextScatterUtc[matchingId] = nowUtc.AddSeconds(GemMineScatterIntervalSeconds);
+        ScatterGemMineJam(matchingId, GemMineScatterJam, sessions);
+    }
+
+    private void ScatterGemMineJam(long matchingId, int jamCount, List<GameClientSession> sessions)
+    {
+        if (jamCount <= 0)
+            return;
+
+        var jamIds = Enumerable.Repeat(Config.JAM_GROUND_ITEM_ID, jamCount).ToList();
+        // 사망 낙수와 같은 원형 흩뿌림 — 한 점에 뭉치면 살포가 안 읽힌다 (#222 피드백).
+        var spawned = _groundItemManager.SpawnItems(
+            matchingId, AreaType.Ground, GemMineX, GemMineY, jamIds,
+            mapId: MapId.School,
+            layout: GroundItemSpawnLayout.EliminationScatter);
+        if (spawned.Count == 0)
+            return;
+
+        // 폭발 낙수(20개)는 한 패킷 버퍼(2048)를 넘는다 — 청크로 나눠 보낸다.
+        int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)AreaType.Ground);
+        const int chunkSize = 8;
+        for (int offset = 0; offset < spawned.Count; offset += chunkSize)
+        {
+            var chunk = spawned.Skip(offset).Take(chunkSize).ToList();
+            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)AreaType.Ground, remaining, chunk);
+            foreach (var session in sessions)
+                if (session.CurrentArea == AreaType.Ground)
+                    session.Send(packet);
+        }
+    }
+
+    /// <summary>
     ///     잼 리더보드 브로드캐스트 (#222 M3) — 전 참가자(탈락 포함) 잼 내림차순.
     ///     구역 게이트 없이 매치 전 세션에 보내며, 시그니처가 같으면 재전송하지 않는다.
     /// </summary>
@@ -1616,6 +1762,9 @@ public partial class GameServer
         _swarmJamRankingsSignature.Remove(matchingId);
         _swarmTimeoutEndedMatchings.Remove(matchingId);
         _swarmMatchFallbackAnchorUtc.Remove(matchingId);
+        _swarmGemMineOpenedMatchings.Remove(matchingId);
+        _swarmGemMineExplodedMatchings.Remove(matchingId);
+        _swarmGemMineNextScatterUtc.Remove(matchingId);
     }
 
     private List<ProximityCombatActor> BuildSwarmArenaCombatActors(
