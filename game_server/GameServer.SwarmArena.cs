@@ -62,9 +62,6 @@ public partial class GameServer
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmBotLastDamagedAtUtc = new();
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmBotNextRecoveryAtUtc = new();
 
-    // 유닛 낱개 체력의 PvP 피격 무적창 — 접촉 무적(0.8초)과 같은 리듬.
-    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmPvpOrbHitImmuneUntilUtc = new();
-
     // SB 유닛 개별 체력: 접촉·PvP는 오브 HP를 깎고, HP가 0이 된 오브만 파괴된다.
     // 최저 티어 오브가 항상 앞줄에서 맞는다 — 파괴 순서와 같은 규칙. 접촉 피해량은 몬스터 종이 결정.
     private readonly Dictionary<(long MatchingId, long PlayerId), (int ItemId, int Hp)> _swarmFrontOrbHp = new();
@@ -1688,19 +1685,13 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        int damage = Math.Min(attack.Damage, SwarmArenaManager.PvpDamage);
+        // PvP 전 발 적용 (#222 후반 루즈 수리): 캡 3 + 0.8초 무적창은 오브 상대 실효 DPS를
+        // 3.75로 고정해, 티어 HP(24/56/120)가 커지는 후반엔 아무도 못 죽는 관전 대치를 만들었다.
+        // 몬스터와 같은 규칙(발당 실데미지 전부 적용)으로 통일 — TTK가 공격 DPS vs 앞줄 HP의
+        // 대칭이 되고, 빈손 오염(×17.5)도 같은 앵커를 자동으로 따른다.
+        int damage = Math.Max(1, attack.Damage);
         if (SwarmOrbHealthEnabled)
         {
-            // 유닛 낱개 체력의 PvP: 피격 무적창(0.8초)당 오브 HP 피해 1회 — 스트림 여러 발이
-            // 같은 순간에 궤도를 갈아버리지는 않게. 티어가 높은 오브일수록 오래 버틴다.
-            var immunityKey = (matchingId, attack.TargetPlayerId);
-            DateTime nowUtc = DateTime.UtcNow;
-            if (_swarmPvpOrbHitImmuneUntilUtc.TryGetValue(immunityKey, out var immuneUntil) &&
-                nowUtc < immuneUntil)
-                return;
-            _swarmPvpOrbHitImmuneUntilUtc[immunityKey] =
-                nowUtc.AddSeconds(SwarmArenaManager.ContactImmunitySeconds);
-
             logger.LogDebug(
                 "Swarm PvP attack: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, " +
                 "Area={Area}, Weapon={Weapon}, Damage={Damage}",
@@ -1852,8 +1843,6 @@ public partial class GameServer
         _swarmFieldStartedAtUtc.TryRemove(matchingId, out _);
         _swarmFieldWarnedAreas.Remove(matchingId);
         _swarmFieldOutsideAreas.Remove(matchingId);
-        foreach (var key in _swarmPvpOrbHitImmuneUntilUtc.Keys.Where(key => key.MatchingId == matchingId).ToList())
-            _swarmPvpOrbHitImmuneUntilUtc.Remove(key);
         foreach (var key in _swarmFrontOrbHp.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmFrontOrbHp.Remove(key);
         _pendingSwarmMonsterHits.RemoveAll(hit => hit.MatchingId == matchingId);
