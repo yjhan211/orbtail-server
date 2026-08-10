@@ -723,12 +723,14 @@ public partial class GameServer
                 BotPlayerManager.CellToWorldPosition(MapId.School, evacuationCell));
         }
 
-        // 0.5) 상대 전력 비교 (#222): 나보다 오브가 많은 상대는 피하고, 적은 상대에겐
-        //      달라붙는다 — 스쿼드 크기 = 위협 표시라는 SB 문법을 봇 판단으로 옮긴 것.
-        //      동수는 중립(하던 파밍 계속). 빈손은 화력이 0이라 몹도 강자로 취급해 피한다.
-        int squadOrbCount = CountSwarmSquadOrbs(matchingId, botPlayerId);
-        bool hasSquadOrbs = squadOrbCount > 0;
-        FindNearbySwarmRivals(matchingId, bot, squadOrbCount, includeMonstersAsStronger: !hasSquadOrbs,
+        // 0.5) 상대 전력 비교 (#222): 티어 가중 전력(1/1.75/4)으로 비교한다.
+        //      "싸움을 건다 = 유리하다" — 확실히 우세(×1.25 이상)일 때만 추격하고,
+        //      동수 포함 그 이하는 회피한다. 동수 대치(뭉쳐서 수동 오브 소모전)가 성립하지
+        //      않게 하는 규칙. 임계 사이 구간(1.0~1.25)은 중립 밴드 = 판단 떨림 방지.
+        //      빈손은 화력이 0이라 몹도 강자로 취급해 피한다.
+        float squadPower = GetSwarmSquadPower(matchingId, botPlayerId);
+        bool hasSquadOrbs = squadPower > 0f;
+        FindNearbySwarmRivals(matchingId, bot, squadPower, includeMonstersAsStronger: !hasSquadOrbs,
             out Vector3f strongerPosition, out (Vector3f Position, AreaType Area)? weakerRival);
         if (strongerPosition != null)
         {
@@ -898,13 +900,34 @@ public partial class GameServer
     }
 
     /// <summary>
-    ///     반경 내 라이벌 탐색 — 나보다 오브가 많은 최근접(강자)과 적은 최근접(약자)을 함께
-    ///     찾는다. 빈손이면 살아있는 몹도 강자로 취급한다. 동수는 어느 쪽에도 없다.
+    ///     티어 가중 전력(1/1.75/4 합) — 개수 비교의 왜곡(T3 1개 = T1 1개 취급) 방지.
+    ///     상자 시간 등급 도입 후 회피/추격 판단의 단일 기준.
+    /// </summary>
+    private float GetSwarmSquadPower(long matchingId, long playerId)
+    {
+        float power = 0f;
+        foreach (var item in _inGameInventoryManager.GetPlayerInventory(matchingId, playerId).GetAllItems())
+        {
+            if (item.Count <= 0) continue;
+            int tier = GetSquadOrbTier(item.ItemId);
+            if (tier <= 0) continue;
+            power += SurvivorOrbData.GetSwarmStatTierWeight(tier) * item.Count;
+        }
+
+        return power;
+    }
+
+    // 추격 우위 임계: 내 전력이 상대의 이 배수 이상일 때만 붙는다. 그 이하(동수 포함)는 회피.
+    private const float SwarmBotChasePowerAdvantage = 1.25f;
+
+    /// <summary>
+    ///     반경 내 라이벌 탐색 — 티어 가중 전력 기준. 동수 이상인 최근접(강자)과 확실히 약한
+    ///     (×1.25 우위) 최근접(약자)을 함께 찾는다. 빈손이면 살아있는 몹도 강자로 취급한다.
     /// </summary>
     private void FindNearbySwarmRivals(
         long matchingId,
         BotPlayerState bot,
-        int myOrbCount,
+        float myPower,
         bool includeMonstersAsStronger,
         out Vector3f strongerPosition,
         out (Vector3f Position, AreaType Area)? weakerRival)
@@ -922,13 +945,15 @@ public partial class GameServer
             float distanceSquared = dx * dx + dy * dy;
             if (distanceSquared >= radiusSquared) return;
 
-            int rivalOrbCount = CountSwarmSquadOrbs(matchingId, rivalPlayerId);
-            if (rivalOrbCount > myOrbCount && distanceSquared < bestStrongerDistanceSquared)
+            float rivalPower = GetSwarmSquadPower(matchingId, rivalPlayerId);
+            // 동수는 강자 취급 — 서로가 서로를 피하며 대치가 해산된다.
+            if (rivalPower >= myPower && distanceSquared < bestStrongerDistanceSquared)
             {
                 bestStrongerDistanceSquared = distanceSquared;
                 nearestStronger = position;
             }
-            else if (rivalOrbCount < myOrbCount && distanceSquared < bestWeakerDistanceSquared &&
+            else if (myPower >= rivalPower * SwarmBotChasePowerAdvantage &&
+                     distanceSquared < bestWeakerDistanceSquared &&
                      !IsSwarmAreaOutside(matchingId, area))
             {
                 bestWeakerDistanceSquared = distanceSquared;
@@ -971,6 +996,10 @@ public partial class GameServer
     // 빈 캠프 재방문 제외 시간 — 캠프 리스폰(45초)보다 짧게 잡아 순회가 한 바퀴 돌면 돌아온다.
     private const double SwarmBotEmptyCampSkipSeconds = 30d;
 
+    // 캠프 혼잡 판정 반경과 초과 인원당 실효 거리 배율 (#222 봇 뭉침 해소).
+    private const float SwarmBotCampCrowdRadius = 7f;
+    private const float SwarmBotCampCrowdPenaltyPerBot = 1.5f;
+
     // 캠프 생사 판정 반경 — 리쉬(5.5) 안에 살아있는 몹이 없으면 그 캠프는 비어 있는 것이다.
     private const float SwarmBotCampAliveCheckRange = 5.5f;
 
@@ -990,6 +1019,13 @@ public partial class GameServer
             .Where(monster => monster.IsAlive && monster.AreaType == bot.CurrentArea)
             .ToList();
 
+        // 혼잡 페널티 (#222): 이미 다른 봇이 몰린 캠프는 실효 거리를 늘려 순위를 낮춘다.
+        // 1명까지는 경쟁 허용(선점 다툼도 재미), 2명째부터 뭉침으로 보고 흩어지게 한다.
+        var otherBotPositions = _botPlayerManager.GetBots(matchingId)
+            .Where(other => other.PlayerId != bot.PlayerId && !other.IsEliminated)
+            .Select(other => other.Position)
+            .ToList();
+
         var anchors = GameMonsterCampData.GetAllAnchors()
             .Where(anchor => !IsSwarmAreaOutside(matchingId, anchor.Area))
             .Select(anchor => (anchor.Area, anchor.CampIndex,
@@ -998,7 +1034,15 @@ public partial class GameServer
             {
                 float dx = anchor.World.X - bot.Position.X;
                 float dy = anchor.World.Y - bot.Position.Y;
-                return dx * dx + dy * dy;
+                int nearbyBots = otherBotPositions.Count(position =>
+                {
+                    float bx = position.X - anchor.World.X;
+                    float by = position.Y - anchor.World.Y;
+                    return bx * bx + by * by <=
+                           SwarmBotCampCrowdRadius * SwarmBotCampCrowdRadius;
+                });
+                return (dx * dx + dy * dy) *
+                       (1f + SwarmBotCampCrowdPenaltyPerBot * Math.Max(0, nearbyBots - 1));
             });
 
         foreach (var anchor in anchors)
