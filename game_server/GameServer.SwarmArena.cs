@@ -1372,8 +1372,8 @@ public partial class GameServer
                 bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
                     bot.Corruption + GetSwarmNakedCorruption(damage.Damage));
                 _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
-            bot.LastDamagedAtUtc = DateTime.UtcNow;
-        bot.LastDamagedAtUtc = DateTime.UtcNow;
+                bot.LastDamagedAtUtc = DateTime.UtcNow;
+                bot.LastDamagedAtUtc = DateTime.UtcNow;
                 bot.LastDamagedAtUtc = DateTime.UtcNow;
                 return;
             }
