@@ -125,7 +125,10 @@ namespace network.common.data.models
         [Key("charges")] public int Charges { get; set; }
     }
 
-    /// <summary>포위 사격 연출 (#226 B). 완성 순간 같은 구역에 브로드캐스트 — 링 중심·반경.</summary>
+    /// <summary>
+    ///     스웜 링 연출 (#226). 같은 구역에 브로드캐스트 — 링 중심·반경.
+    ///     Kind: 0=포위 완성, 1=절단 파열, 2=파도 물폭탄 — 클라가 색·효과음을 분기한다.
+    /// </summary>
     [MessagePackObject]
     public class G_TO_C_SWARM_ENCIRCLE_VFX : IMessagePackObject
     {
@@ -133,6 +136,7 @@ namespace network.common.data.models
         [Key("centerX")] public float CenterX { get; set; }
         [Key("centerY")] public float CenterY { get; set; }
         [Key("radius")] public float Radius { get; set; }
+        [Key("kind")] public int Kind { get; set; }
     }
 
     /// <summary>

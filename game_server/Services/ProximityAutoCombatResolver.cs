@@ -29,7 +29,9 @@ public readonly record struct ProximityCombatActor(
     float InitialAttackDelaySeconds = 0f,
     bool IsMonsterTarget = false,
     bool IsCoreMonsterTarget = false,
-    int TargetPriority = -1);
+    int TargetPriority = -1,
+    // #226 재개편: 발사 원점 전용 액터(오브) — 표적 후보에서 제외된다.
+    bool Untargetable = false);
 
 public readonly record struct ProximityCombatAttack(
     long AttackerPlayerId,
@@ -125,7 +127,8 @@ public sealed class ProximityAutoCombatResolver
 
             foreach (var candidate in actors)
             {
-                if (candidate.PlayerId == attacker.PlayerId || candidate.Area != attacker.Area)
+                if (candidate.Untargetable ||
+                    candidate.PlayerId == attacker.PlayerId || candidate.Area != attacker.Area)
                     continue;
 
                 float dx = attacker.Position.X - candidate.Position.X;

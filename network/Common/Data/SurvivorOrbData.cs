@@ -161,14 +161,18 @@ namespace network.common.data
 
         public static SurvivorOrbAttackPattern GetAttackPattern(int itemId)
         {
-            // #219 M2: 색 정체성이 스탯(태양=공격·바람=이속·파도=사거리)으로 옮겨가며
-            // 공격 문법은 전 색 유도 미사일로 통일 — 색은 시각과 스탯만 다르다. 회복 오브 제외.
+            // 색 = 무기 동사 (#226): 태양 = 전역 유도 미사일, 바람 = 공명·런지(투사체 없음),
+            // 파도 = 미사일 없음(물폭탄은 서버 별도 주기) — None이면 클라 투사체도 안 뜬다.
             if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out _))
                 return SurvivorOrbAttackPattern.None;
 
-            return color is SurvivorOrbColor.Red or SurvivorOrbColor.Green or SurvivorOrbColor.Blue
-                ? SurvivorOrbAttackPattern.HomingProjectile
-                : SurvivorOrbAttackPattern.None;
+            return color switch
+            {
+                SurvivorOrbColor.Red => SurvivorOrbAttackPattern.HomingProjectile,
+                SurvivorOrbColor.Green => SurvivorOrbAttackPattern.AttackerArea,
+                SurvivorOrbColor.Blue => SurvivorOrbAttackPattern.None,
+                _ => SurvivorOrbAttackPattern.None
+            };
         }
 
         public static float GetWindPulseRadius(int itemId)
