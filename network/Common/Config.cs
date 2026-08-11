@@ -164,8 +164,9 @@ namespace network.common
         ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2, 3쌍 깔때기(성장곡선 v3)는 6.
         ///     사람은 항상 1명이고 나머지는 봇으로 채운다.
         /// </summary>
-        // #219 8인 전환 (2026-08-09): 스폰 포드 8곳(도서관·강당 제외)과 정원 일치 — 전원 유니크 스폰.
-        public static readonly int SWARM_PLAYERS_PER_MATCH = 8;
+        // #223 10인 전환 (2026-08-11, M5): SB 정원 10 — 포드 10곳 전원 유니크 스폰
+        // (도서관·체육관도 스폰 풀에 편입).
+        public static readonly int SWARM_PLAYERS_PER_MATCH = 10;
 
         /// <summary>
         ///     잼 헌트 매치 길이 (#222 M3-2) — SB 4분 문법. 개전(카운트다운 종료) 앵커 기준이며,

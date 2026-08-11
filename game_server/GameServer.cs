@@ -2774,9 +2774,10 @@ public partial class GameServer(
         return ids.OrderBy(id => id).ToList();
     }
 
-    public InstanceSnapshot? CreateBotOnlyInstance(int botCount = 8)
+    public InstanceSnapshot? CreateBotOnlyInstance(int botCount = 10)
     {
-        botCount = Math.Clamp(botCount, 2, 8);
+        // 상한 = 매치 정원 (#223 10인 전환) — 스폰 포드 수와 일치.
+        botCount = Math.Clamp(botCount, 2, Config.SWARM_PLAYERS_PER_MATCH);
         long matchingId = System.Threading.Interlocked.Increment(ref _adminBotOnlyMatchingIdSeed);
         var jobs = BuildBotOnlyJobPool(botCount);
         var playerIds = Enumerable.Range(0, botCount)
@@ -2887,7 +2888,8 @@ public partial class GameServer(
             JobTitle.HEALTH_MEMBER
         };
 
-        return jobs.Take(botCount).ToList();
+        // 정원(10)이 잡 풀(8)보다 클 수 있다 (#223 10인 전환) — 순환 배정.
+        return Enumerable.Range(0, botCount).Select(index => jobs[index % jobs.Count]).ToList();
     }
 
     private ChecklistChainContext ResolveBotOnlyChecklistChainContext(long matchingId, long playerId)

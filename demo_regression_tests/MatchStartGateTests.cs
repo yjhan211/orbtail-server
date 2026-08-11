@@ -13,7 +13,9 @@ public sealed class MatchStartGateTests
 
         try
         {
-            MatchStartGate.RegisterHumanPlayer(matchingId, playerId, botCount: 7);
+            // 정원 - 1 = 봇 충원 수 (#223 10인 전환과 함께 움직인다).
+            MatchStartGate.RegisterHumanPlayer(matchingId, playerId,
+                botCount: Config.SWARM_PLAYERS_PER_MATCH - 1);
 
             Assert.False(MatchStartGate.IsGameplayActive(matchingId));
             Assert.Equal(-1, MatchStartGate.GetSnapshot(matchingId).RemainingSeconds);
