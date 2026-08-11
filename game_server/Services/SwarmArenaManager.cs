@@ -564,7 +564,6 @@ public sealed class SwarmArenaManager
             }
 
             Vector3f destination;
-            SpotArenaBotMode mode;
             if (threatCount > 0)
             {
                 float centroidX = threatX / threatCount;
@@ -579,11 +578,11 @@ public sealed class SwarmArenaManager
                     length = 1f;
                 }
 
-                destination = new Vector3f(
-                    bot.Position.X + awayX / length * BotFleeDistance,
-                    bot.Position.Y + awayY / length * BotFleeDistance,
-                    0f);
-                mode = SpotArenaBotMode.Return;
+                // 구석 수렴 방지 (#223): 위협 반대가 벽이면 클램프가 제자리를 돌려줘
+                // "몬스터 옆에 붙어 서 있는" 봇이 됐다 — 각도를 돌려가며 실제로 멀어지는
+                // 후보를 찾고, 전부 막히면 구역 스폰 지점으로 물러난다.
+                destination = ResolveThreatFleeDestination(
+                    bot, awayX / length, awayY / length);
             }
             else
             {
@@ -592,16 +591,50 @@ public sealed class SwarmArenaManager
                     bot.Position.X + MathF.Cos(angle) * BotRoamDistance,
                     bot.Position.Y + MathF.Sin(angle) * BotRoamDistance,
                     0f);
-                mode = SpotArenaBotMode.Escort;
+                destination = ClampToAreaWalkable(destination, bot.Position, bot.Area);
             }
 
-            destination = ClampToAreaWalkable(destination, bot.Position, bot.Area);
+            var mode = threatCount > 0 ? SpotArenaBotMode.Return : SpotArenaBotMode.Escort;
             return new SpotArenaBotDirective(
                 mode,
                 bot.Area,
                 MapCoordinateConverter.WorldToCell(MapId.School, destination),
                 destination);
         }
+    }
+
+    // 위협 회피 목적지 최소 거리 — 클램프 후 이보다 가까우면 그 각도는 벽이다.
+    private const float MinThreatFleeDistance = 2f;
+
+    /// <summary>
+    ///     위협 반대 방향부터 각도를 넓혀가며(±45°… 180°) 실제로 멀어지는 walkable 목적지를
+    ///     찾는다 (#223 구석 수렴 방지). 전부 벽이면 구역 스폰 지점 — 몬스터 옆 정지는 없다.
+    /// </summary>
+    private static Vector3f ResolveThreatFleeDestination(
+        SpotArenaPlayerSpatial bot, float directionX, float directionY)
+    {
+        ReadOnlySpan<float> angleOffsets = [0f, 45f, -45f, 90f, -90f, 135f, -135f, 180f];
+        foreach (float angleDegrees in angleOffsets)
+        {
+            float radians = angleDegrees * MathF.PI / 180f;
+            float cos = MathF.Cos(radians);
+            float sin = MathF.Sin(radians);
+            float rotatedX = directionX * cos - directionY * sin;
+            float rotatedY = directionX * sin + directionY * cos;
+            var candidate = ClampToAreaWalkable(new Vector3f(
+                bot.Position.X + rotatedX * BotFleeDistance,
+                bot.Position.Y + rotatedY * BotFleeDistance,
+                0f), bot.Position, bot.Area);
+            float dx = candidate.X - bot.Position.X;
+            float dy = candidate.Y - bot.Position.Y;
+            if (dx * dx + dy * dy >= MinThreatFleeDistance * MinThreatFleeDistance)
+                return candidate;
+        }
+
+        return ClampToAreaWalkable(
+            BotPlayerManager.CellToWorldPosition(
+                MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, bot.Area)),
+            bot.Position, bot.Area);
     }
 
     public IReadOnlyList<MonsterRuntimeInfo> GetVisualStates(long matchingId)
