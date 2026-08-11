@@ -775,6 +775,8 @@ public partial class GameServer
         //      빈손은 화력이 0이라 몹도 강자로 취급해 피한다.
         float squadPower = GetSwarmSquadPower(matchingId, botPlayerId);
         bool hasSquadOrbs = squadPower > 0f;
+        // 빈손 이속 (#223): 이동 배율이 읽는 플래그 — 판단 틱이 단일 갱신 지점이다.
+        bot.IsSwarmBareHanded = !hasSquadOrbs;
         FindNearbySwarmRivals(matchingId, bot, squadPower, includeMonstersAsStronger: !hasSquadOrbs,
             out Vector3f strongerPosition, out (Vector3f Position, AreaType Area)? weakerRival);
 
@@ -841,11 +843,11 @@ public partial class GameServer
                         GameMapData.GetCurrentArea(MapId.School, cell) == fleeArea) ?? fleeCell;
                 }
 
-                return new SpotArenaBotDirective(
-                    SpotArenaBotMode.Escort,
-                    fleeArea,
-                    fleeCell,
-                    BotPlayerManager.CellToWorldPosition(MapId.School, fleeCell));
+                var fleeWorld = BotPlayerManager.CellToWorldPosition(MapId.School, fleeCell);
+                // 도주지가 제자리면 도주가 아니다 (#223 구석 정지 수리) — 다음 폴백으로 넘긴다.
+                if (IsFarEnoughSwarmFleeTarget(bot, fleeWorld))
+                    return new SpotArenaBotDirective(
+                        SpotArenaBotMode.Escort, fleeArea, fleeCell, fleeWorld);
             }
 
             // 폴백 (#222): 도주 방향에 열린 스팟이 없어도 무조건 이탈한다 — 스팟 부재로
@@ -862,14 +864,15 @@ public partial class GameServer
                 GameMapData.GetCurrentArea(MapId.School, fleeFallbackCell) is var fleeFallbackArea &&
                 fleeFallbackArea != AreaType.None)
             {
-                return new SpotArenaBotDirective(
-                    SpotArenaBotMode.Escort,
-                    fleeFallbackArea,
-                    fleeFallbackCell,
-                    BotPlayerManager.CellToWorldPosition(MapId.School, fleeFallbackCell));
+                var fleeFallbackWorld = BotPlayerManager.CellToWorldPosition(MapId.School, fleeFallbackCell);
+                // 구석에서 벽에 막힌 probe는 제자리로 수렴한다 (#223) — 가까우면 구역 이탈로.
+                if (IsFarEnoughSwarmFleeTarget(bot, fleeFallbackWorld))
+                    return new SpotArenaBotDirective(
+                        SpotArenaBotMode.Escort, fleeFallbackArea, fleeFallbackCell, fleeFallbackWorld);
             }
 
-            // 벽 방향이면 위협 반대편에서 가장 가까운 열린 사냥 구역 스폰으로 물러난다.
+            // 벽 방향이거나 도주지가 제자리면 위협 반대편에서 가장 가까운 열린 사냥 구역
+            // 스폰으로 물러난다 — 구역을 아예 벗어나야 진짜 도주다 (#223 구석 정지 수리).
             AreaType fleeRetreatArea = SwarmHuntingAreas
                 .Where(area => !IsSwarmAreaOutside(matchingId, area))
                 .OrderBy(area =>
@@ -1028,6 +1031,18 @@ public partial class GameServer
 
     // 도주 방향 앞의 가상 지점 — 이 지점 기준 최근접 스팟이 "위협 반대편 재기 스팟"이 된다.
     private const float SwarmBotFleeProbeDistance = 8f;
+
+    // 도주지 최소 거리 (#223 구석 정지 수리): 구석에서 벽에 막힌 도주지는 제자리로
+    // 수렴한다 — 이보다 가까우면 도주가 아니므로 다음 폴백(구역 이탈)으로 넘긴다.
+    private const float SwarmBotMinFleeTargetDistance = 3f;
+
+    private static bool IsFarEnoughSwarmFleeTarget(BotPlayerState bot, Vector3f target)
+    {
+        float dx = target.X - bot.Position.X;
+        float dy = target.Y - bot.Position.Y;
+        return dx * dx + dy * dy >=
+               SwarmBotMinFleeTargetDistance * SwarmBotMinFleeTargetDistance;
+    }
 
     /// <summary>이 봇의 스쿼드 오브 총 개수 — 저성장(파밍 부족) 판정용.</summary>
     private int CountSwarmSquadOrbs(long matchingId, long playerId)
@@ -1342,6 +1357,25 @@ public partial class GameServer
             Damage = Math.Max(1,
                 (int)MathF.Round(damage.Damage * SwarmMonsterDamageTakenMultiplier))
         };
+
+        // 보스 공격 연출 (#223): 고정 포대의 원거리 타격은 투사체로 보여야 읽힌다 —
+        // 같은 구역 전원에게 공격 VFX를 쏘고, 클라가 보스 여부(피통)로 투사체를 그린다.
+        if (_swarmArenaManager.IsBossMonster(matchingId, damage.MonsterId))
+        {
+            using var vfxPacket = Packet.Create((int)Protocol.G_TO_C_MONSTER_ATTACK_VFX);
+            vfxPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_ATTACK_VFX
+            {
+                MonsterId = damage.MonsterId,
+                TargetPlayerId = damage.TargetPlayerId,
+                AreaType = damage.Area
+            }));
+            foreach (var vfxSession in allSessions)
+            {
+                if (!vfxSession.IsEliminated && vfxSession.CurrentArea == damage.Area)
+                    vfxSession.Send(vfxPacket);
+            }
+        }
+
         var session = aliveSessions.FirstOrDefault(candidate =>
             candidate.PlayerId == damage.TargetPlayerId);
         if (session != null)
@@ -1379,6 +1413,12 @@ public partial class GameServer
             }
 
             // 버스트 즉사 제거 (#219): 봇도 빈손 생존으로 전환 — 이후는 본체(오염) 피해 경로.
+            // 몹 피격도 "맞는 중"이다 (#223, 매치 2453 -90): 스탬프가 없으면 보스 링 안에서
+            // 채집을 계속하다 27초간 포격당한다 — 홀드를 풀어 몹 회피 반사(최우선)가 잡게 한다.
+            _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
+            bot.LastDamagedAtUtc = DateTime.UtcNow;
+            bot.CancelInteractionHold();
+
             var botHit = ApplySwarmOrbHpDamage(matchingId, bot.PlayerId, damage.Damage);
             if (botHit.DestroyedItem != null)
                 ScatterSwarmOrbBreakStones(
@@ -1392,11 +1432,12 @@ public partial class GameServer
         _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
     }
 
-    // 빈손 본체 유효 HP = T1 오브(24)와 동급 (2026-08-10, T3 안에서 재하향): ×30(유효 14,
-    // PvP 5초 즉사)과 1:1(유효 420, 불사) 사이 — 만충 420 ÷ T1 HP가 피해당 오염 배율이다.
-    // 빈손은 "오브 하나 값"의 유예만 갖고, 생존은 도주 지시(0.5단계)와 무료 개봉이 만든다.
+    // 빈손 본체 유효 HP = T1 오브 두 개 값 (#223 재상향): T1 한 개 값(×17.5)은 후반 T3
+    // 앞에서 2~3발 0.2초 증발이었다(매치 2403 +262×2 · 2404 +455 한 방) — 읽고 도망칠
+    // 시간이 없는 죽음은 전투를 관전으로 만든다. 두 개 값(×8.75)이면 빈손 도주 창이
+    // 2~3초 생기고, 재기는 여전히 도주 지시(0.5단계)·빈손 이속·무료 개봉이 만든다.
     private static readonly float SwarmNakedCorruptionPerDamage =
-        Config.SURVIVOR_MAX_CORRUPTION / (float)SurvivorOrbData.GetSquadOrbMaxHp(1);
+        Config.SURVIVOR_MAX_CORRUPTION / (float)(SurvivorOrbData.GetSquadOrbMaxHp(1) * 2);
 
     private static int GetSwarmNakedCorruption(int damage) =>
         Math.Max(1, (int)MathF.Round(damage * SwarmNakedCorruptionPerDamage));
@@ -1408,7 +1449,7 @@ public partial class GameServer
     /// </summary>
     private void ApplySwarmSquadOrbHit(
         long matchingId, GameClientSession session, int monsterId, int damage,
-        List<GameClientSession> allSessions)
+        List<GameClientSession> allSessions, long attackerPlayerId = 0)
     {
         if (!session.PlayerId.HasValue)
             return;
@@ -1417,10 +1458,12 @@ public partial class GameServer
         {
             // PvP(monsterId=0)는 몬스터 피격 경로의 monsterId 가드에 걸려 증발했다 (#222 수리)
             // — 오염만 직접 반영한다. 피격 연출은 PvP VFX 브로드캐스트가 이미 담당한다.
+            // 공격자 전달 (#223): 빈손 PvP 킬이 by=0 · src=mental로 남던 크레딧 증발 수리.
             if (monsterId > 0)
                 session.ApplyEmotionAfterimageMonsterHit(monsterId, GetSwarmNakedCorruption(damage));
             else
-                session.ModifyStats(corruptionDelta: GetSwarmNakedCorruption(damage));
+                session.ModifyStats(corruptionDelta: GetSwarmNakedCorruption(damage),
+                    attackerPlayerId: attackerPlayerId);
             return;
         }
 
@@ -1680,10 +1723,11 @@ public partial class GameServer
 
     /// <summary>
     ///     오브 파괴 낙수 (#219 SB): 깨진 오브는 소환석으로 흩어진다 — 승자의 전리품이자
-    ///     도망친 주인의 회수 기회. 개봉 원가의 일부만 돌려 킬 스노볼을 개봉 1~2회 수준으로
-    ///     제한한다 (해골 1 · 탈주 4석과 나란한 축).
+    ///     도망친 주인의 회수 기회. 개봉 원가의 일부만 돌려 킬 스노볼을 제한한다.
+    ///     #223 밸런싱: 2/5/10 절반으로 — 매치 2401에서 승자 98석 vs 2위 36석,
+    ///     "킬 = 전력 대박"이 스노우볼 동력이었다. 승점 대박(잼 낙수·사망 잼 전량)은 유지.
     /// </summary>
-    private static int GetSwarmOrbBreakStoneCount(int tier) => tier >= 3 ? 10 : tier == 2 ? 5 : 2;
+    private static int GetSwarmOrbBreakStoneCount(int tier) => tier >= 3 ? 5 : tier == 2 ? 3 : 1;
 
     /// <summary>오브 파괴 잼 (#222 M3): 버스트 전리품이 곧 승점 — 티어 1/3/6.</summary>
     private static int GetSwarmOrbBreakJamCount(int tier) => tier >= 3 ? 6 : tier == 2 ? 3 : 1;
@@ -1752,7 +1796,8 @@ public partial class GameServer
         // 3.75로 고정해, 티어 HP(24/56/120)가 커지는 후반엔 아무도 못 죽는 관전 대치를 만들었다.
         // 몬스터와 같은 규칙(발당 실데미지 전부 적용)으로 통일 — TTK가 공격 DPS vs 앞줄 HP의
         // 대칭이 되고, 빈손 오염(×17.5)도 같은 앵커를 자동으로 따른다.
-        int damage = Math.Max(1, attack.Damage);
+        // 발당 배율(#223)은 그 대칭을 유지한 채 PvP TTK만 늘린다 — 캡·무적창 재도입 금지.
+        int damage = Math.Max(1, (int)MathF.Round(attack.Damage * SwarmArenaManager.PvpDamageScale));
         if (SwarmOrbHealthEnabled)
         {
             logger.LogDebug(
@@ -1765,7 +1810,8 @@ public partial class GameServer
                 session.PlayerId == attack.TargetPlayerId);
             if (pvpTargetSession != null)
             {
-                ApplySwarmSquadOrbHit(matchingId, pvpTargetSession, monsterId: 0, damage, allSessions);
+                ApplySwarmSquadOrbHit(matchingId, pvpTargetSession, monsterId: 0, damage, allSessions,
+                    attackerPlayerId: attack.AttackerPlayerId);
             }
             else
             {

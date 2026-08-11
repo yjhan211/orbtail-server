@@ -55,7 +55,9 @@ public partial class BotPlayerManager
         float boots = DateTime.UtcNow < bot.BootsSpeedUntilUtc
             ? Config.BOOTS_MOVE_SPEED_MULTIPLIER
             : 1f;
-        return wind * boots * GetBotWaveSlowMultiplier(bot);
+        // 빈손 이속 (#223): 사람과 같은 규칙 — 오브를 다 잃으면 도주가 빨라진다.
+        float bare = bot.IsSwarmBareHanded ? Config.SWARM_BARE_MOVE_SPEED_MULTIPLIER : 1f;
+        return wind * boots * bare * GetBotWaveSlowMultiplier(bot);
     }
 
     private static float GetBotWaveSlowMultiplier(BotPlayerState bot)

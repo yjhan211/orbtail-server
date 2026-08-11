@@ -103,11 +103,9 @@ namespace network.common.data
                 .ToDictionary(pair => pair.Key, pair => pair.Value);
         }
 
-        // #219 8인 전환: 스폰 풀 = 포드 10곳 중 도서관·강당 제외 8곳 — 쌍 구역(만남 지점)은
-        // 스폰이 아니라 동선의 목적지다. 8인 매치 = 8포드 전원 유니크 스폰.
-        private static readonly AreaType[] SwarmSpawnPodCandidates = PhaseRoomCandidates
-            .Where(area => area != AreaType.Library && area != AreaType.Gym)
-            .ToArray();
+        // #223 10인 전환 (M5): 스폰 풀 = 포드 10곳 전부 — SB 정원 10과 일치, 전원 유니크 스폰.
+        // (#219의 도서관·체육관 제외는 8인 시절 규칙 — 10인은 쌍 구역도 스폰 포드가 된다.)
+        private static readonly AreaType[] SwarmSpawnPodCandidates = PhaseRoomCandidates.ToArray();
 
         public static IReadOnlyDictionary<long, Cell> CreatePhaseRoomAssignments(
             long matchingId,

@@ -115,12 +115,25 @@ namespace network.common
         // 1.5 (#222 3차): 1.4는 밋밋, 1.6은 과속 — 기본 5 → 7.5, 서버 검증 상한(10) 안.
         public const float BOOTS_MOVE_SPEED_MULTIPLIER = 1.5f;
 
+        /// <summary>
+        ///     빈손 이속 (#223, SB 정합: 스쿼드를 잃으면 빨라진다): 오브 0개 동안의 이동 배율.
+        ///     부츠 중첩 시 5 × 1.3 × 1.5 = 9.75 — 서버 검증 상한(10) 안.
+        /// </summary>
+        public const float SWARM_BARE_MOVE_SPEED_MULTIPLIER = 1.3f;
+
         /// <summary>열쇠 (#222 M4): 무료 소환 1회 충전 — 탈주 고블린(미니보스) 드랍. 사람 전용.</summary>
         public const int KEY_GROUND_ITEM_ID = 107000090;
 
         // 상태 효과 표시 ID (status_effect_info.csv와 동기)
         public const int BOOTS_STATUS_EFFECT_ID = 1101;
         public const int KEY_STATUS_EFFECT_ID = 1102;
+        public const int BARE_STATUS_EFFECT_ID = 1103;
+
+        /// <summary>
+        ///     보스 사거리 (#223): 파도 T3 오브급(기본 2.5 + 가중치 4 × 0.4) — 제자리 고정
+        ///     포대의 위협 반경. 서버 판정과 클라 범위 링이 이 값을 공유한다 (표시 = 판정).
+        /// </summary>
+        public const float SWARM_BOSS_ATTACK_RANGE = 4.1f;
 
         /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
         public const int SURVIVOR_MAX_CORRUPTION = 420;
@@ -151,8 +164,9 @@ namespace network.common
         ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2, 3쌍 깔때기(성장곡선 v3)는 6.
         ///     사람은 항상 1명이고 나머지는 봇으로 채운다.
         /// </summary>
-        // #219 8인 전환 (2026-08-09): 스폰 포드 8곳(도서관·강당 제외)과 정원 일치 — 전원 유니크 스폰.
-        public static readonly int SWARM_PLAYERS_PER_MATCH = 8;
+        // #223 10인 전환 (2026-08-11, M5): SB 정원 10 — 포드 10곳 전원 유니크 스폰
+        // (도서관·체육관도 스폰 풀에 편입).
+        public static readonly int SWARM_PLAYERS_PER_MATCH = 10;
 
         /// <summary>
         ///     잼 헌트 매치 길이 (#222 M3-2) — SB 4분 문법. 개전(카운트다운 종료) 앵커 기준이며,

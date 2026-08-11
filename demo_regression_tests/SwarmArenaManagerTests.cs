@@ -22,37 +22,43 @@ public class SwarmArenaManagerTests
     [Fact]
     public void FirstTick_SpawnsAreaCampsImmediately()
     {
-        // #219 M1 캠프 모드: 구역 최초 진입 틱에 캠프(3개×3기 = 9기)가 즉시 선다.
+        // #219 M1 캠프 모드: 구역 최초 진입 틱에 캠프가 즉시 선다.
+        // #223 보스: 운동장 캠프 0번 = 트리 자이언트(260) 단독 — 1 + 해골 3×2 = 7기.
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager(() => now);
         Vector3f center = AreaCenter(AreaType.Ground);
 
         var tick = manager.Tick(217001, Participants(center), now);
 
-        Assert.Equal(9, tick.SpawnedMonsters.Count);
+        Assert.Equal(7, tick.SpawnedMonsters.Count);
+        Assert.Equal(1, tick.SpawnedMonsters.Count(monster => monster.MaxHealth == 260));
+        Assert.Equal(6, tick.SpawnedMonsters.Count(
+            monster => monster.MaxHealth == SwarmArenaManager.MonsterMaxHealth));
         Assert.All(tick.SpawnedMonsters, monster =>
         {
-            Assert.Equal(SwarmArenaManager.MonsterMaxHealth, monster.CurrentHealth);
+            Assert.Equal(monster.MaxHealth, monster.CurrentHealth);
             Assert.True(monster.IsAlive);
             Assert.Equal(AreaType.Ground, monster.AreaType);
         });
 
         // 캠프 몹은 예고 없이 즉시 전투 대상이다 — 잠들어 있을 뿐 실체다.
         now = now.AddSeconds(0.1);
-        Assert.Equal(9, manager.GetCombatTargets(217001).Count);
+        Assert.Equal(7, manager.GetCombatTargets(217001).Count);
     }
 
     [Fact]
     public void CorridorBand_SpawnsCampsInCloneMap()
     {
         // SB 클론 균질 밀도: 회랑 밴드(테라스=Corridor)에도 캠프가 선다.
+        // #223 보스: 회랑 캠프 0번 = 베이비 드래곤(200) 단독 — 1 + 해골 3×2 = 7기.
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager(() => now);
         Vector3f corridor = AreaCenter(AreaType.Corridor);
 
         var tick = manager.Tick(217001, Participants(corridor, AreaType.Corridor), now);
 
-        Assert.Equal(9, tick.SpawnedMonsters.Count);
+        Assert.Equal(7, tick.SpawnedMonsters.Count);
+        Assert.Equal(1, tick.SpawnedMonsters.Count(monster => monster.MaxHealth == 200));
         Assert.All(tick.SpawnedMonsters, monster => Assert.Equal(AreaType.Corridor, monster.AreaType));
     }
 
@@ -99,7 +105,9 @@ public class SwarmArenaManagerTests
         // 커스텀 앵커(CSV 저작)에서는 스폰 틱에도 중앙 접촉이 날 수 있다 — 첫 틱부터 수집한다.
         damageEvents.AddRange(manager.Tick(217001, Participants(center), now).PlayerDamage);
 
-        var monster = manager.GetVisualStates(217001).First(state => state.IsAlive);
+        // #223 보스: 운동장에 트리 자이언트(접촉 6)가 상주한다 — 해골 위에 서서 검증한다.
+        var monster = manager.GetVisualStates(217001)
+            .First(state => state.IsAlive && state.MaxHealth == SwarmArenaManager.MonsterMaxHealth);
         var onMonster = new Vector3f(monster.PositionX, monster.PositionY, 0f);
 
         for (double elapsed = 0.5d; elapsed <= 9d; elapsed += 0.25d)
@@ -111,8 +119,8 @@ public class SwarmArenaManagerTests
         Assert.NotEmpty(damageEvents);
         Assert.All(damageEvents, damage =>
         {
-            // 운동장 캠프는 전원 해골 — 접촉 피해는 오브 HP 1이다 (SB: 잡몹은 거의 무해).
-            Assert.Equal(1, damage.Damage);
+            // 해골 접촉 1 (SB: 잡몹은 거의 무해). 첫 틱 중앙 접촉으로 트리 자이언트(6)가 섞일 수 있다.
+            Assert.Contains(damage.Damage, new[] { 1, 6 });
             Assert.Equal(1, damage.TargetPlayerId);
         });
         Assert.Equal(damageEvents.Count, manager.GetSummary(217001).HitsTaken);
@@ -133,7 +141,13 @@ public class SwarmArenaManagerTests
         now = StartUtc.AddSeconds(4.7);
         manager.Tick(217001, Participants(center), now);
 
-        var target = manager.GetCombatTargets(217001).First();
+        // #223 보스: 운동장 첫 타겟이 트리 자이언트(260)일 수 있다 — 해골을 골라 원킬을 검증한다.
+        var skeletonIds = manager.GetVisualStates(217001)
+            .Where(state => state.IsAlive && state.MaxHealth == SwarmArenaManager.MonsterMaxHealth)
+            .Select(state => state.MonsterId)
+            .ToHashSet();
+        var target = manager.GetCombatTargets(217001).First(candidate =>
+            skeletonIds.Contains(candidate.MonsterId));
         var result = manager.ApplyMonsterDamage(
             217001, target.CombatTargetId, attackerPlayerId: 1, SwarmArenaManager.MonsterMaxHealth);
 
@@ -186,9 +200,10 @@ public class SwarmArenaManagerTests
         manager.Tick(217001, Participants(center), now);
 
         // 스폰 틱의 중앙 참가자가 커스텀 앵커(CSV 저작) 캠프를 깨웠을 수 있다 —
-        // 관찰 대상은 "아직 안 깨어난" 몹으로 고른다.
+        // 관찰 대상은 "아직 안 깨어난" 몹으로 고른다. 보스(#223 고정 포대)는 추격이 없어 제외.
         var sleeping = manager.GetVisualStates(217001)
-            .First(state => state.IsAlive && state.ChaseTargetPlayerId == 0);
+            .First(state => state.IsAlive && state.ChaseTargetPlayerId == 0 &&
+                            state.MaxHealth == SwarmArenaManager.MonsterMaxHealth);
         var anchor = new Vector3f(sleeping.PositionX, sleeping.PositionY, 0f);
         // 관찰 지점은 모든 몹과 리쉬(5.5)+어그로 여유 밖(7) — 깨어난 몹도 추격을 끊고 귀환한다.
         var aliveStates = manager.GetVisualStates(217001).Where(state => state.IsAlive).ToList();

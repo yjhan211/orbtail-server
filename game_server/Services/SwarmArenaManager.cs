@@ -41,8 +41,11 @@ public sealed class SwarmArenaManager
     public const int RushSpawnCount = 8;
     public const int EncircleSpawnCount = 8;
 
-    // PvP는 압박·마무리 보조다. 킬의 주 경로는 스웜(접촉 24)이어야 한다.
-    public const int PvpDamage = 3;
+    // PvP 발당 데미지 배율 (#223 밸런싱): 전 발 적용(#222) 후 TTK가 너무 짧아
+    // 매치가 2:47에 전멸로 끝났다(매치 2401 — 첫 킬 42초, 사망 7건 전부 PvP).
+    // 몬스터전은 그대로 두고 PvP만 눌러 4분 타이머(잼 판정)까지 생존자가 남게 한다.
+    // 빈손 오염(데미지 ×17.5)도 이 배율을 자동으로 따른다.
+    public const float PvpDamageScale = 0.65f;
 
     // 개봉 소음 유인 반경: 채집을 시작하면 같은 구역 이 반경의 잔상이 개봉자에게 몰린다.
     public const float ExploreAttractRadius = 14f;
@@ -79,8 +82,55 @@ public sealed class SwarmArenaManager
             SwarmMonsterKind.DartGoblin => (18, 2, 5f, 2f, 1, 1, 0, 1, 0),
             SwarmMonsterKind.RunawayGoblin => (120, 5, ContactRange, 1.2f, 4, 2, 1, 0, 1),
             SwarmMonsterKind.Bowler => (48, 2, 4.5f, 2.5f, 4, 2, 1, 0, 0),
+            // 보스 (#223, SB 드롭 = 코인 11 + 젬 7): 피통은 클라 종 식별자 — 기존 값과 겹치면 안 된다.
+            // 전원 제자리 고정 포대 — 파도 T3급 사거리(Config 공유 = 클라 범위 링)로 투사체를 던진다.
+            // 골렘 = 광역 강타(볼러 스플래시 공유), 트리 자이언트 = 열쇠 확정 드롭.
+            // 데미지는 참가자 피해 절반 배율(0.5) 통과 후가 실효 — 골렘 12·드래곤 6·트리 9.
+            // T1 오브(24)가 골렘 두 방에 깨진다: 링 안 눌러앉기가 실제로 비싸야 위협이다 (#223).
+            SwarmMonsterKind.Golem => (240, 24, Config.SWARM_BOSS_ATTACK_RANGE, 2.8f, 11, 7, 0, 0, 0),
+            SwarmMonsterKind.BabyDragon => (200, 12, Config.SWARM_BOSS_ATTACK_RANGE, 2f, 11, 7, 0, 0, 0),
+            SwarmMonsterKind.TreeGiant => (260, 18, Config.SWARM_BOSS_ATTACK_RANGE, 2.2f, 8, 5, 0, 0, 1),
             _ => (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1, 0, 0, 0, 0)
         };
+
+    /// <summary>보스 판별 (#223): 고정 포대·리스폰 없음·타원 판정 공유의 스위치.</summary>
+    public static bool IsBossKind(SwarmMonsterKind kind) =>
+        kind is SwarmMonsterKind.Golem or SwarmMonsterKind.BabyDragon or SwarmMonsterKind.TreeGiant;
+
+    /// <summary>클라 보스 연출(투사체) 분기용 — 스웜 공격 VFX 브로드캐스트가 묻는다.</summary>
+    public bool IsBossMonster(long matchingId, int monsterId)
+    {
+        if (!_matches.TryGetValue(matchingId, out var state))
+            return false;
+        lock (state.SyncRoot)
+        {
+            return state.Monsters.TryGetValue(monsterId, out var monster) && IsBossKind(monster.Kind);
+        }
+    }
+
+    /// <summary>
+    ///     보스 상주 구역 (#223): 중간 지대 캠프 0번이 보스 단독 캠프가 된다.
+    ///     School 맵의 실존 중간 지대는 3곳뿐 — 북 밴드(정크장)·남 밴드(회랑)·운동장.
+    ///     트리 자이언트(열쇠)는 운동장 — 광산(150초 개장)과 같은 무대의 선주민 수호자.
+    /// </summary>
+    private static bool TryGetBossKind(AreaType area, out SwarmMonsterKind kind)
+    {
+        switch (area)
+        {
+            case AreaType.Junkyard:
+                kind = SwarmMonsterKind.Golem;
+                return true;
+            case AreaType.Corridor:
+                kind = SwarmMonsterKind.BabyDragon;
+                return true;
+            case AreaType.Ground:
+                kind = SwarmMonsterKind.TreeGiant;
+                return true;
+            default:
+                kind = SwarmMonsterKind.Skeleton;
+                return false;
+        }
+    }
 
     private const int FirstMonsterId = 7_000_000;
     private const long FirstCombatTargetId = -4_000_000_000_000_000_000L;
@@ -219,12 +269,15 @@ public sealed class SwarmArenaManager
 
                 // 잠든 원거리 몹은 저격하지 않는다 — 부딪힘(접촉 반경)만 개전이 된다.
                 float attackRange = monster.Aggro ? monster.AttackRangeValue : ContactRange;
+                // 보스 판정은 타원(dy×2) (#223): 범위 링 스프라이트가 아이소 타원이라
+                // 원형 판정이면 세로로 링 밖까지 맞는다 — PvP와 같은 규칙으로 표시 = 판정.
+                float verticalScale = IsBossKind(monster.Kind) ? 2f : 1f;
                 foreach (var participant in state.LastParticipants)
                 {
                     if (participant.Area != monster.Area)
                         continue;
                     float dx = monster.Position.X - participant.Position.X;
-                    float dy = monster.Position.Y - participant.Position.Y;
+                    float dy = (monster.Position.Y - participant.Position.Y) * verticalScale;
                     if (dx * dx + dy * dy > attackRange * attackRange)
                         continue;
                     if (state.ContactImmuneUntilUtc.TryGetValue(participant.PlayerId, out var immuneUntil) &&
@@ -254,7 +307,8 @@ public sealed class SwarmArenaManager
                         monster.ContactDamageValue));
 
                     // 볼러 스플래시: 주 대상 주변까지 함께 맞는다 — 뭉치기 견제.
-                    if (monster.Kind == SwarmMonsterKind.Bowler)
+                    // 골렘(#223)도 공유 — 광역 강타가 보스 접근전의 특수공격 근사다.
+                    if (monster.Kind is SwarmMonsterKind.Bowler or SwarmMonsterKind.Golem)
                     {
                         foreach (var splashed in state.LastParticipants)
                         {
@@ -278,7 +332,9 @@ public sealed class SwarmArenaManager
                         }
                     }
 
-                    break;
+                    // 보스 (#223): 범위 안 전원 동시 타격 — 고정 포대는 한 명씩 고르지 않는다.
+                    if (!IsBossKind(monster.Kind))
+                        break;
                 }
             }
 
@@ -508,7 +564,6 @@ public sealed class SwarmArenaManager
             }
 
             Vector3f destination;
-            SpotArenaBotMode mode;
             if (threatCount > 0)
             {
                 float centroidX = threatX / threatCount;
@@ -523,11 +578,11 @@ public sealed class SwarmArenaManager
                     length = 1f;
                 }
 
-                destination = new Vector3f(
-                    bot.Position.X + awayX / length * BotFleeDistance,
-                    bot.Position.Y + awayY / length * BotFleeDistance,
-                    0f);
-                mode = SpotArenaBotMode.Return;
+                // 구석 수렴 방지 (#223): 위협 반대가 벽이면 클램프가 제자리를 돌려줘
+                // "몬스터 옆에 붙어 서 있는" 봇이 됐다 — 각도를 돌려가며 실제로 멀어지는
+                // 후보를 찾고, 전부 막히면 구역 스폰 지점으로 물러난다.
+                destination = ResolveThreatFleeDestination(
+                    bot, awayX / length, awayY / length);
             }
             else
             {
@@ -536,16 +591,50 @@ public sealed class SwarmArenaManager
                     bot.Position.X + MathF.Cos(angle) * BotRoamDistance,
                     bot.Position.Y + MathF.Sin(angle) * BotRoamDistance,
                     0f);
-                mode = SpotArenaBotMode.Escort;
+                destination = ClampToAreaWalkable(destination, bot.Position, bot.Area);
             }
 
-            destination = ClampToAreaWalkable(destination, bot.Position, bot.Area);
+            var mode = threatCount > 0 ? SpotArenaBotMode.Return : SpotArenaBotMode.Escort;
             return new SpotArenaBotDirective(
                 mode,
                 bot.Area,
                 MapCoordinateConverter.WorldToCell(MapId.School, destination),
                 destination);
         }
+    }
+
+    // 위협 회피 목적지 최소 거리 — 클램프 후 이보다 가까우면 그 각도는 벽이다.
+    private const float MinThreatFleeDistance = 2f;
+
+    /// <summary>
+    ///     위협 반대 방향부터 각도를 넓혀가며(±45°… 180°) 실제로 멀어지는 walkable 목적지를
+    ///     찾는다 (#223 구석 수렴 방지). 전부 벽이면 구역 스폰 지점 — 몬스터 옆 정지는 없다.
+    /// </summary>
+    private static Vector3f ResolveThreatFleeDestination(
+        SpotArenaPlayerSpatial bot, float directionX, float directionY)
+    {
+        ReadOnlySpan<float> angleOffsets = [0f, 45f, -45f, 90f, -90f, 135f, -135f, 180f];
+        foreach (float angleDegrees in angleOffsets)
+        {
+            float radians = angleDegrees * MathF.PI / 180f;
+            float cos = MathF.Cos(radians);
+            float sin = MathF.Sin(radians);
+            float rotatedX = directionX * cos - directionY * sin;
+            float rotatedY = directionX * sin + directionY * cos;
+            var candidate = ClampToAreaWalkable(new Vector3f(
+                bot.Position.X + rotatedX * BotFleeDistance,
+                bot.Position.Y + rotatedY * BotFleeDistance,
+                0f), bot.Position, bot.Area);
+            float dx = candidate.X - bot.Position.X;
+            float dy = candidate.Y - bot.Position.Y;
+            if (dx * dx + dy * dy >= MinThreatFleeDistance * MinThreatFleeDistance)
+                return candidate;
+        }
+
+        return ClampToAreaWalkable(
+            BotPlayerManager.CellToWorldPosition(
+                MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, bot.Area)),
+            bot.Position, bot.Area);
     }
 
     public IReadOnlyList<MonsterRuntimeInfo> GetVisualStates(long matchingId)
@@ -641,6 +730,10 @@ public sealed class SwarmArenaManager
                 continue;
             }
 
+            // 보스는 리스폰하지 않는다 (#223): 11석+7잼 드롭이 45초마다 돌면 경제가 터진다.
+            if (!StartRooms.Contains(area) && campIndex == 0 && TryGetBossKind(area, out _))
+                continue;
+
             if (!state.CampRespawnAtUtc.TryGetValue((area, campIndex), out var respawnAtUtc))
             {
                 state.CampRespawnAtUtc[(area, campIndex)] = now.AddSeconds(CampRespawnSeconds);
@@ -674,7 +767,15 @@ public sealed class SwarmArenaManager
             };
         }
 
-        if (!StartRooms.Contains(area) || campIndex == 0)
+        if (!StartRooms.Contains(area))
+        {
+            // 보스 구역 (#223): 캠프 0번 = 보스 단독. 나머지 캠프는 해골 무리 유지.
+            if (campIndex == 0 && TryGetBossKind(area, out var bossKind))
+                return [bossKind];
+            return [SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton];
+        }
+
+        if (campIndex == 0)
             return [SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton];
         if (campIndex == 1)
             return [SwarmMonsterKind.DartGoblin];
@@ -720,6 +821,11 @@ public sealed class SwarmArenaManager
                 0f), campAnchor, area);
 
             var stats = GetKindStats(kinds[index]);
+            // 첫 캠프 경제 (#223): 시작방 첫 캠프(해골 3)는 마리당 2석 — 클리어 즉시
+            // 첫 상자(비용 5)가 열린다. 1석 몹 5마리 노가다(첫 소환 36초, 매치 2402)의 수리.
+            int stoneReward = stats.StoneReward;
+            if (campIndex == 0 && kinds[index] == SwarmMonsterKind.Skeleton && StartRooms.Contains(area))
+                stoneReward = 2;
             int serial = state.NextSerial++;
             var monster = new MonsterRuntime
             {
@@ -733,7 +839,7 @@ public sealed class SwarmArenaManager
                 ActivatesAtUtc = now,
                 NextContactAtUtc = now,
                 ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
-                SummonStoneReward = stats.StoneReward,
+                SummonStoneReward = stoneReward,
                 JamReward = stats.JamReward,
                 HeartReward = stats.HeartReward,
                 BootsReward = stats.BootsReward,
@@ -760,14 +866,19 @@ public sealed class SwarmArenaManager
     {
         if (!monster.Aggro)
         {
+            // 보스 (#223): 링 안 = 개전 — 어그로 반경이 곧 사거리(타원 dy×2)라 범위 링이
+            // 안전선으로 정직해진다. 일반 몹은 좁은 접근 반경(2.5) 유지.
+            bool isBoss = IsBossKind(monster.Kind);
+            float aggroRadius = isBoss ? monster.AttackRangeValue : CampAggroRadius;
+            float aggroVerticalScale = isBoss ? 2f : 1f;
             for (int index = 0; index < participants.Count; index++)
             {
                 var participant = participants[index];
                 if (participant.Area != monster.Area)
                     continue;
                 float aggroDx = participant.Position.X - monster.Position.X;
-                float aggroDy = participant.Position.Y - monster.Position.Y;
-                if (aggroDx * aggroDx + aggroDy * aggroDy > CampAggroRadius * CampAggroRadius)
+                float aggroDy = (participant.Position.Y - monster.Position.Y) * aggroVerticalScale;
+                if (aggroDx * aggroDx + aggroDy * aggroDy > aggroRadius * aggroRadius)
                     continue;
                 monster.Aggro = true;
                 monster.ChaseTargetPlayerId = participant.PlayerId;
@@ -777,6 +888,10 @@ public sealed class SwarmArenaManager
             if (!monster.Aggro)
                 return;
         }
+
+        // 보스는 고정 포대 (#223): 추격도 귀환도 없다 — 어그로만 켜지고 제자리에서 쏜다.
+        if (IsBossKind(monster.Kind))
+            return;
 
         // 추격 대상: 어그로 대상 우선, 구역을 떠났으면 같은 구역 최근접.
         bool found = false;
@@ -1198,7 +1313,12 @@ public enum SwarmMonsterKind
     Skeleton = 0,
     DartGoblin = 1,
     RunawayGoblin = 2,
-    Bowler = 3
+    Bowler = 3,
+
+    // 보스 (#223): 중간 지대 고정 캠프 1기, 리스폰 없음 — 맵의 유한 대형 콘텐츠.
+    Golem = 4,
+    BabyDragon = 5,
+    TreeGiant = 6
 }
 
 public sealed class SwarmArenaTickResult
