@@ -236,6 +236,9 @@ namespace network.common
         // 열쇠 (#222 M4) — 무료 소환 충전 상태
         G_TO_C_FREE_SUMMON_STATE,
 
+        // 포위 사격 연출 (#226 B) — 완성 순간 포위 링 표시
+        G_TO_C_SWARM_ENCIRCLE_VFX,
+
         END
     }
 

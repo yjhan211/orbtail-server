@@ -210,9 +210,10 @@ public partial class GameServer
 
         var tick = _swarmArenaManager.Tick(matchingId, participants, nowUtc);
 
-        // 오브열 (#226 α/β): 참가자 경로를 기록하고, 본체-상대 열 접촉을 판정한다.
+        // 오브열 (#226 α/C/B): 경로 기록 → 이동 선분의 상대 열 절단 → 고리 완성 포위 사격.
         UpdateSwarmOrbTrails(matchingId, participants);
-        ProcessSwarmTrailContacts(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+        ProcessSwarmTrailCuts(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+        ProcessSwarmEncirclements(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
 
         foreach (var damage in tick.PlayerDamage)
             ApplySwarmParticipantDamage(matchingId, damage, aliveSessions, aliveBots, sessions);
@@ -1060,10 +1061,17 @@ public partial class GameServer
 
     private const float SwarmTrailSampleMinDistance = 0.08f;
     private const float SwarmTrailTeleportResetDistance = 5f;
-    private const double SwarmTrailContactImmunitySeconds = 1.2d;
+
+    // 열 절단 (#226 C): 같은 (절단자, 소유자) 쌍 재절단 쿨다운 + 순간이동·좌표 보정 배제 상한.
+    private const double SwarmTrailCutPairCooldownSeconds = 0.8d;
+    private const float SwarmTrailCutMaxSegmentLength = 2f;
+    // 절단 파열 플래시 반경 — 포위 링과 같은 원형을 작게 띄운다.
+    private const float SwarmTrailCutFlashRadius = 0.7f;
 
     private readonly Dictionary<(long MatchingId, long PlayerId), List<Vector3f>> _swarmOrbTrails = new();
-    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmTrailContactImmuneUntilUtc = new();
+    private readonly Dictionary<(long MatchingId, long PlayerId), Vector3f> _swarmTrailLastTickPositions = new();
+    private readonly Dictionary<(long MatchingId, long CutterId, long OwnerId), DateTime> _swarmTrailCutCooldownUtc =
+        new();
 
     /// <summary>클라 PlayerTool.UpdateOrbTrail과 같은 규칙 — 정지하면 경로가 얼어 열이 남는다.</summary>
     private void UpdateSwarmOrbTrails(long matchingId, List<SpotArenaPlayerSpatial> participants)
@@ -1155,11 +1163,13 @@ public partial class GameServer
     }
 
     /// <summary>
-    ///     실험 β (#226): 본체(머리)-상대 오브열 접촉 — slither 비대칭의 번역.
-    ///     머리는 항상 취약하다: 접촉 오염은 오브 HP를 우회해 본체로 직행하고, 컷인(상대
-    ///     진로 앞을 가로지르는 이동)이 이동만으로 성립하는 공격 동사가 된다.
+    ///     열 절단 (#226 C): 본체 이동 선분이 상대 오브 링크(오브i-오브i+1)를 가로지르면
+    ///     링크의 꼬리 쪽 오브를 즉시 파괴한다. 접촉 오염(β)은 퇴역 — 이동이 곧 공격 동사라는
+    ///     문법은 유지하되, 비용이 "본체가 깎임"이 아니라 "상대 성장물이 끊김"으로 바뀐다.
+    ///     본체-첫 오브 링크는 절단 불가. 한 이동 선분당 가장 먼저 교차한 링크 하나만 처리한다.
+    ///     절단자 자해 없음(P0) — 적 화망 안으로 들어가는 위험이 비용이다.
     /// </summary>
-    private void ProcessSwarmTrailContacts(
+    private void ProcessSwarmTrailCuts(
         long matchingId,
         DateTime nowUtc,
         List<SpotArenaPlayerSpatial> participants,
@@ -1167,63 +1177,395 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        float contactRadius = Config.SWARM_ORB_TRAIL_CONTACT_RADIUS;
-        foreach (var victim in participants)
+        foreach (var cutter in participants)
         {
-            var immuneKey = (matchingId, victim.PlayerId);
-            if (_swarmTrailContactImmuneUntilUtc.TryGetValue(immuneKey, out var immuneUntil) &&
-                nowUtc < immuneUntil)
+            var positionKey = (matchingId, cutter.PlayerId);
+            bool hasPrevious = _swarmTrailLastTickPositions.TryGetValue(positionKey, out var previous);
+            _swarmTrailLastTickPositions[positionKey] =
+                new Vector3f(cutter.Position.X, cutter.Position.Y, 0f);
+            if (!hasPrevious)
                 continue;
 
-            long hitByPlayerId = 0;
+            float segmentDx = cutter.Position.X - previous.X;
+            float segmentDy = cutter.Position.Y - previous.Y;
+            float segmentLengthSquared = segmentDx * segmentDx + segmentDy * segmentDy;
+            // 제자리는 절단이 아니고, 큰 선분(순간이동·좌표 보정·구역 워프)은 오절단 방지로 배제.
+            if (segmentLengthSquared < 0.0004f ||
+                segmentLengthSquared > SwarmTrailCutMaxSegmentLength * SwarmTrailCutMaxSegmentLength)
+                continue;
+
+            long bestOwnerId = 0;
+            int bestTailOrdinal = -1;
+            float bestT = float.MaxValue;
+            Vector3f bestOrbPosition = null;
+            AreaType bestArea = AreaType.None;
             foreach (var owner in participants)
             {
-                if (owner.PlayerId == victim.PlayerId || owner.Area != victim.Area)
+                if (owner.PlayerId == cutter.PlayerId || owner.Area != cutter.Area)
+                    continue;
+                if (_swarmTrailCutCooldownUtc.TryGetValue(
+                        (matchingId, cutter.PlayerId, owner.PlayerId), out var cooldownUntil) &&
+                    nowUtc < cooldownUntil)
                     continue;
 
                 int orbCount = CountSwarmSquadOrbs(matchingId, owner.PlayerId);
-                if (orbCount <= 0)
+                if (orbCount < 2)
                     continue;
 
-                for (int ordinal = 0; ordinal < orbCount; ordinal++)
+                var linkStart = GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, 0, owner.Position);
+                for (int ordinal = 1; ordinal < orbCount; ordinal++)
                 {
-                    var orbPosition = GetSwarmOrbTrailPosition(
+                    var linkEnd = GetSwarmOrbTrailPosition(
                         matchingId, owner.PlayerId, ordinal, owner.Position);
-                    float dx = victim.Position.X - orbPosition.X;
-                    float dy = (victim.Position.Y - orbPosition.Y) * 2f;
-                    if (dx * dx + dy * dy > contactRadius * contactRadius)
+                    if (TrySegmentIntersection(previous, cutter.Position, linkStart, linkEnd, out float t) &&
+                        t < bestT)
+                    {
+                        bestT = t;
+                        bestOwnerId = owner.PlayerId;
+                        bestTailOrdinal = ordinal;
+                        bestOrbPosition = linkEnd;
+                        bestArea = owner.Area;
+                    }
+
+                    linkStart = linkEnd;
+                }
+            }
+
+            if (bestOwnerId == 0)
+                continue;
+
+            var destroyedItem = DestroySwarmOrbAtOrdinal(matchingId, bestOwnerId, bestTailOrdinal);
+            if (destroyedItem == null)
+                continue;
+
+            _swarmTrailCutCooldownUtc[(matchingId, cutter.PlayerId, bestOwnerId)] =
+                nowUtc.AddSeconds(SwarmTrailCutPairCooldownSeconds);
+            var ownerSession = aliveSessions.FirstOrDefault(session => session.PlayerId == bestOwnerId);
+            ownerSession?.SendInGameInventoryUpdate(destroyedItem);
+            // 절단 전리품: 오브 파괴 낙수(HP 파괴와 같은 규칙) — 파괴 위치에 석·잼이 흩어진다.
+            ScatterSwarmOrbBreakStones(
+                matchingId, destroyedItem.ItemId, bestArea,
+                bestOrbPosition.X, bestOrbPosition.Y, allSessions);
+            // 절단 파열 플래시: 링 연출 패킷 재사용 — "끊었다"가 화면에서 즉시 읽히게.
+            SendSwarmRingVfx(
+                bestArea, cutter.PlayerId, bestOrbPosition.X, bestOrbPosition.Y,
+                SwarmTrailCutFlashRadius, allSessions);
+
+            var ownerBot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == bestOwnerId);
+            if (ownerBot != null)
+            {
+                // 절단당한 봇은 피격 반응(도주 판단)으로 즉시 넘어간다.
+                ownerBot.LastProximityAttackerPlayerId = cutter.PlayerId;
+                ownerBot.LastDamagedAtUtc = nowUtc;
+                _swarmBotLastDamagedAtUtc[(matchingId, ownerBot.PlayerId)] = nowUtc;
+                ownerBot.CancelInteractionHold();
+            }
+
+            logger.LogInformation(
+                "Swarm trail cut: MatchingId={MatchingId}, CutterId={CutterId}, OwnerId={OwnerId}, TailOrdinal={TailOrdinal}, DestroyedItemId={DestroyedItemId}",
+                matchingId, cutter.PlayerId, bestOwnerId, bestTailOrdinal, destroyedItem.ItemId);
+        }
+    }
+
+    // ===== 포위 사격 (#226 B): 이동으로 고리를 완성하면 안쪽을 집중사격한다 =====
+    // 상한 99에서 "전체 열 참여"는 닫히지 않는다 — 머리쪽 연속 오브 0..K가 고리를 이루면
+    // (오브0-오브K 거리 ≤ 닫힘 임계) 성립하는 부분 고리로 재해석한다. 꼬리는 밖에 남는다.
+    private const int SwarmEncircleMinOrbs = 6;
+    private const float SwarmEncircleCloseDistance = 1.2f;
+    private const float SwarmEncircleMinNormalizedArea = 2f;
+    private const double SwarmEncircleHoldSeconds = 0.15d;
+    private const double SwarmEncircleCooldownSeconds = 2.5d;
+    private const float SwarmEncircleCorruptionCapRatio = 0.35f;
+    // 몬스터 포위 피해 (#226 B + 스펙 §6): 해골(12)·다트(18)는 일격, 볼러(48)는 반파.
+    private const int SwarmEncircleMonsterDamage = 35;
+
+    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmEncircleCandidateSinceUtc =
+        new();
+    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmEncircleCooldownUtc = new();
+
+    /// <summary>
+    ///     포위 판정·발사 (#226 B): 후보(고리 완성 + 내부 대상)를 0.15초 유지하면 내부 전원의
+    ///     본체에 직접 오염(최대 오염의 35%, 오브 보호 우회)을 가한다. 재무장은 P0에서 쿨다운
+    ///     2.5초로 근사한다(경로 소비·거리 조건은 후속). 연출은 클라 후속 — 서버 판정 먼저.
+    /// </summary>
+    private void ProcessSwarmEncirclements(
+        long matchingId,
+        DateTime nowUtc,
+        List<SpotArenaPlayerSpatial> participants,
+        List<GameClientSession> aliveSessions,
+        List<BotPlayerState> aliveBots,
+        List<GameClientSession> allSessions)
+    {
+        foreach (var owner in participants)
+        {
+            var ownerKey = (matchingId, owner.PlayerId);
+            if (_swarmEncircleCooldownUtc.TryGetValue(ownerKey, out var cooldownUntil) &&
+                nowUtc < cooldownUntil)
+            {
+                _swarmEncircleCandidateSinceUtc.Remove(ownerKey);
+                continue;
+            }
+
+            var polygon = TryBuildSwarmEncirclePolygon(matchingId, owner);
+            List<SpotArenaPlayerSpatial> victims = null;
+            List<SwarmArenaCombatTarget> monsterVictims = null;
+            if (polygon != null)
+            {
+                foreach (var victim in participants)
+                {
+                    if (victim.PlayerId == owner.PlayerId || victim.Area != owner.Area)
                         continue;
-                    hitByPlayerId = owner.PlayerId;
-                    break;
+                    if (!IsPointInsidePolygon(polygon, victim.Position))
+                        continue;
+                    victims ??= new List<SpotArenaPlayerSpatial>();
+                    victims.Add(victim);
                 }
 
-                if (hitByPlayerId != 0) break;
+                // 몬스터도 유효 대상 (스펙 §6) — 웨이브 몹을 가둬 일격하는 것이 첫 포위 경험이 된다.
+                foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
+                {
+                    if (target.Area != owner.Area || !IsPointInsidePolygon(polygon, target.Position))
+                        continue;
+                    monsterVictims ??= new List<SwarmArenaCombatTarget>();
+                    monsterVictims.Add(target);
+                }
             }
 
-            if (hitByPlayerId == 0)
-                continue;
-
-            _swarmTrailContactImmuneUntilUtc[immuneKey] = nowUtc.AddSeconds(SwarmTrailContactImmunitySeconds);
-            int contactCorruption = Config.SWARM_ORB_TRAIL_CONTACT_CORRUPTION;
-            var victimSession = aliveSessions.FirstOrDefault(session =>
-                session.PlayerId == victim.PlayerId);
-            if (victimSession != null)
+            if (victims == null && monsterVictims == null)
             {
-                victimSession.ModifyStats(corruptionDelta: contactCorruption,
-                    attackerPlayerId: hitByPlayerId);
+                _swarmEncircleCandidateSinceUtc.Remove(ownerKey);
                 continue;
             }
 
-            var victimBot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == victim.PlayerId);
-            if (victimBot == null)
+            if (!_swarmEncircleCandidateSinceUtc.TryGetValue(ownerKey, out var candidateSince))
+            {
+                _swarmEncircleCandidateSinceUtc[ownerKey] = nowUtc;
                 continue;
-            victimBot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
-                victimBot.Corruption + contactCorruption);
-            victimBot.LastProximityAttackerPlayerId = hitByPlayerId;
-            _swarmBotLastDamagedAtUtc[(matchingId, victimBot.PlayerId)] = nowUtc;
-            victimBot.LastDamagedAtUtc = nowUtc;
-            victimBot.CancelInteractionHold();
+            }
+
+            if ((nowUtc - candidateSince).TotalSeconds < SwarmEncircleHoldSeconds)
+                continue;
+
+            _swarmEncircleCandidateSinceUtc.Remove(ownerKey);
+            _swarmEncircleCooldownUtc[ownerKey] = nowUtc.AddSeconds(SwarmEncircleCooldownSeconds);
+            BroadcastSwarmEncircleVfx(owner, polygon, allSessions);
+            if (monsterVictims != null)
+            {
+                // 몬스터 피해는 지연 정산 파이프라인 재사용 — 킬 보상·상태 브로드캐스트가 따라온다.
+                foreach (var target in monsterVictims)
+                    _pendingSwarmMonsterHits.Add((matchingId, target.CombatTargetId, owner.PlayerId,
+                        SwarmEncircleMonsterDamage, nowUtc));
+                logger.LogInformation(
+                    "Swarm encirclement monster barrage: MatchingId={MatchingId}, OwnerId={OwnerId}, Monsters={MonsterCount}, PolygonOrbs={PolygonOrbs}",
+                    matchingId, owner.PlayerId, monsterVictims.Count, polygon.Count);
+            }
+
+            int barrageCorruption = Math.Max(1,
+                (int)(Config.SURVIVOR_MAX_CORRUPTION * SwarmEncircleCorruptionCapRatio));
+            foreach (var victim in victims ?? [])
+            {
+                var victimSession = aliveSessions.FirstOrDefault(session =>
+                    session.PlayerId == victim.PlayerId);
+                if (victimSession != null)
+                {
+                    victimSession.ModifyStats(corruptionDelta: barrageCorruption,
+                        attackerPlayerId: owner.PlayerId);
+                }
+                else
+                {
+                    var victimBot = aliveBots.FirstOrDefault(candidate =>
+                        candidate.PlayerId == victim.PlayerId);
+                    if (victimBot == null)
+                        continue;
+                    victimBot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
+                        victimBot.Corruption + barrageCorruption);
+                    victimBot.LastProximityAttackerPlayerId = owner.PlayerId;
+                    victimBot.LastDamagedAtUtc = nowUtc;
+                    _swarmBotLastDamagedAtUtc[(matchingId, victimBot.PlayerId)] = nowUtc;
+                    victimBot.CancelInteractionHold();
+                }
+
+                logger.LogInformation(
+                    "Swarm encirclement barrage: MatchingId={MatchingId}, OwnerId={OwnerId}, VictimId={VictimId}, Corruption={Corruption}, PolygonOrbs={PolygonOrbs}",
+                    matchingId, owner.PlayerId, victim.PlayerId, barrageCorruption, polygon.Count);
+            }
         }
+    }
+
+    /// <summary>
+    ///     포위 링 연출 브로드캐스트 (#226 B): 다각형의 중심과 정규화(dy×2) 최대 반경을 같은
+    ///     구역 세션에 보낸다 — 클라는 사거리 링 원형을 그 크기로 잠깐 띄운다.
+    /// </summary>
+    private void BroadcastSwarmEncircleVfx(
+        SpotArenaPlayerSpatial owner, List<Vector3f> polygon, List<GameClientSession> sessions)
+    {
+        float centerX = 0f, centerY = 0f;
+        foreach (var point in polygon)
+        {
+            centerX += point.X;
+            centerY += point.Y;
+        }
+
+        centerX /= polygon.Count;
+        centerY /= polygon.Count;
+        float radius = 0f;
+        foreach (var point in polygon)
+        {
+            float dx = point.X - centerX;
+            float dy = (point.Y - centerY) * 2f;
+            float distance = MathF.Sqrt(dx * dx + dy * dy);
+            if (distance > radius) radius = distance;
+        }
+
+        SendSwarmRingVfx(owner.Area, owner.PlayerId, centerX, centerY, radius, sessions);
+    }
+
+    /// <summary>링 연출 공용 전송 — 포위 완성(대형)과 절단 파열(소형)이 같은 원형을 쓴다.</summary>
+    private void SendSwarmRingVfx(
+        AreaType area, long ownerId, float centerX, float centerY, float radius,
+        List<GameClientSession> sessions)
+    {
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_ENCIRCLE_VFX);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_ENCIRCLE_VFX
+        {
+            OwnerPlayerId = ownerId,
+            CenterX = centerX,
+            CenterY = centerY,
+            Radius = radius
+        }));
+        foreach (var session in sessions)
+        {
+            if (session.PlayerId.HasValue && session.CurrentArea == area)
+                session.Send(packet);
+        }
+    }
+
+    /// <summary>
+    ///     머리쪽 부분 고리 탐색: 오브 0..K(K ≥ 최소-1)에서 오브0-오브K가 닫힘 거리 안이면
+    ///     그 구간을 다각형으로 만든다. 정규화 (x, y×2) 슈레이스 최소 면적과 자기 교차를
+    ///     검증한다. 벽·문 차폐 검증은 지형 통합(D)에서 붙인다.
+    /// </summary>
+    private List<Vector3f> TryBuildSwarmEncirclePolygon(long matchingId, SpotArenaPlayerSpatial owner)
+    {
+        int orbCount = CountSwarmSquadOrbs(matchingId, owner.PlayerId);
+        if (orbCount < SwarmEncircleMinOrbs)
+            return null;
+
+        var points = new List<Vector3f>(orbCount);
+        for (int ordinal = 0; ordinal < orbCount; ordinal++)
+            points.Add(GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position));
+
+        var head = points[0];
+        for (int closeIndex = SwarmEncircleMinOrbs - 1; closeIndex < points.Count; closeIndex++)
+        {
+            float dx = points[closeIndex].X - head.X;
+            float dy = points[closeIndex].Y - head.Y;
+            if (dx * dx + dy * dy > SwarmEncircleCloseDistance * SwarmEncircleCloseDistance)
+                continue;
+
+            var polygon = points.GetRange(0, closeIndex + 1);
+            if (ComputeNormalizedPolygonArea(polygon) < SwarmEncircleMinNormalizedArea)
+                return null;
+            return IsSimplePolygon(polygon) ? polygon : null;
+        }
+
+        return null;
+    }
+
+    /// <summary>정규화 (x, y×2) 슈레이스 면적 — 아이소 세로 압축 보정 후의 실질 포위 면적.</summary>
+    private static float ComputeNormalizedPolygonArea(List<Vector3f> polygon)
+    {
+        float doubledArea = 0f;
+        for (int index = 0; index < polygon.Count; index++)
+        {
+            var current = polygon[index];
+            var next = polygon[(index + 1) % polygon.Count];
+            doubledArea += current.X * (next.Y * 2f) - next.X * (current.Y * 2f);
+        }
+
+        return MathF.Abs(doubledArea) * 0.5f;
+    }
+
+    /// <summary>자기 교차 검증 — 인접(정점 공유) 변을 제외한 변끼리 교차하면 단순 다각형이 아니다.</summary>
+    private static bool IsSimplePolygon(List<Vector3f> polygon)
+    {
+        int count = polygon.Count;
+        for (int i = 0; i < count; i++)
+        {
+            var a1 = polygon[i];
+            var a2 = polygon[(i + 1) % count];
+            for (int j = i + 1; j < count; j++)
+            {
+                if (j == (i + 1) % count || (j + 1) % count == i)
+                    continue;
+                var b1 = polygon[j];
+                var b2 = polygon[(j + 1) % count];
+                if (TrySegmentIntersection(a1, a2, b1, b2, out _))
+                    return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>레이 캐스팅 내부 판정 — 균등 스케일이라 정규화 없이 원좌표로 충분하다.</summary>
+    private static bool IsPointInsidePolygon(List<Vector3f> polygon, Vector3f point)
+    {
+        bool inside = false;
+        for (int i = 0, j = polygon.Count - 1; i < polygon.Count; j = i++)
+        {
+            var a = polygon[i];
+            var b = polygon[j];
+            bool crosses = a.Y > point.Y != b.Y > point.Y &&
+                           point.X < (b.X - a.X) * (point.Y - a.Y) / (b.Y - a.Y) + a.X;
+            if (crosses)
+                inside = !inside;
+        }
+
+        return inside;
+    }
+
+    /// <summary>
+    ///     열 순번째 오브를 인벤토리에서 즉시 파괴한다. 순번 매핑은 전투 액터·클라 슬롯과 같은
+    ///     인벤토리 순서(스쿼드 오브 필터). 파괴된 오브가 앞줄이었다면 HP 추적을 리셋한다.
+    /// </summary>
+    private InGameItemInfo DestroySwarmOrbAtOrdinal(long matchingId, long playerId, int ordinal)
+    {
+        var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
+        var orbs = inventory.GetAllItems()
+            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
+            .ToList();
+        if (ordinal < 0 || ordinal >= orbs.Count)
+            return null;
+
+        var target = orbs[ordinal];
+        if (!inventory.TryRemoveItem(target.ItemUid, 1, out var destroyedItem) || destroyedItem == null)
+            return null;
+
+        var key = (matchingId, playerId);
+        if (_swarmFrontOrbHp.TryGetValue(key, out var stored) && stored.ItemId == target.ItemId)
+            _swarmFrontOrbHp.Remove(key);
+        return destroyedItem;
+    }
+
+    /// <summary>선분 교차 판정 — t는 절단자 선분 위의 교차 지점 비율(가장 이른 링크 선택 기준).</summary>
+    private static bool TrySegmentIntersection(
+        Vector3f a1, Vector3f a2, Vector3f b1, Vector3f b2, out float t)
+    {
+        t = 0f;
+        float rx = a2.X - a1.X;
+        float ry = a2.Y - a1.Y;
+        float sx = b2.X - b1.X;
+        float sy = b2.Y - b1.Y;
+        float denominator = rx * sy - ry * sx;
+        if (MathF.Abs(denominator) < 0.000001f)
+            return false;
+
+        float qpx = b1.X - a1.X;
+        float qpy = b1.Y - a1.Y;
+        t = (qpx * sy - qpy * sx) / denominator;
+        float u = (qpx * ry - qpy * rx) / denominator;
+        return t >= 0f && t <= 1f && u >= 0f && u <= 1f;
     }
 
     // 잼 회수 탐색 반경 — 같은 구역에서만.
@@ -2071,9 +2413,18 @@ public partial class GameServer
         _pendingSwarmMonsterHits.RemoveAll(hit => hit.MatchingId == matchingId);
         foreach (var key in _swarmOrbTrails.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmOrbTrails.Remove(key);
-        foreach (var key in _swarmTrailContactImmuneUntilUtc.Keys
+        foreach (var key in _swarmTrailLastTickPositions.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmTrailContactImmuneUntilUtc.Remove(key);
+            _swarmTrailLastTickPositions.Remove(key);
+        foreach (var key in _swarmTrailCutCooldownUtc.Keys
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmTrailCutCooldownUtc.Remove(key);
+        foreach (var key in _swarmEncircleCandidateSinceUtc.Keys
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmEncircleCandidateSinceUtc.Remove(key);
+        foreach (var key in _swarmEncircleCooldownUtc.Keys
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmEncircleCooldownUtc.Remove(key);
         _swarmJamRankingsSignature.Remove(matchingId);
         _swarmTimeoutEndedMatchings.Remove(matchingId);
         _swarmMatchFallbackAnchorUtc.Remove(matchingId);

@@ -197,11 +197,13 @@ namespace network.common
         ///     다음 개봉이 비싸진다. 3머지가 오브 수를 줄이면 비용이 도로 내려간다 —
         ///     슬롯 차단 대신 비용 곡선이 성장을 억제한다. 사람·봇 공통.
         /// </summary>
-        public const int SWARM_EXPLORE_COST_BASE = 5;
+        // 5 → 1 (#226 웨이브 전환): 상시 쫓기는 판에서 첫 소환이 5석이면 초반이 마른다 —
+        // 초반은 싸게, 성장 억제는 오브 수 비례 가산이 맡는다.
+        public const int SWARM_EXPLORE_COST_BASE = 1;
 
         /// <summary>스팟 리젠 시간(초). 개봉된 스팟은 사라지지 않고 이 시간 뒤 다시 나온다.
-        ///     60 → 30 (2026-08-09): 8인 전환으로 스팟 경합이 늘어 회전을 두 배로.</summary>
-        public const int SWARM_EXPLORE_REGEN_SECONDS = 30;
+        ///     30 → 0 (#226 웨이브 전환): 스팟 회전 대기 제거 — 소환 페이스는 석 수급이 조절한다.</summary>
+        public const int SWARM_EXPLORE_REGEN_SECONDS = 0;
 
         /// <summary>궤도 오브 1개당 개봉 비용 가산 — SB "스쿼드 인원수 비례 상자 코인".</summary>
         public const int SWARM_EXPLORE_COST_PER_ORB = 2;

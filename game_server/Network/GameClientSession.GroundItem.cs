@@ -393,7 +393,8 @@ public partial class GameClientSession
     }
 
     // 스냅샷 청크 크기: 패킷 버퍼(2048) 안에 안전히 들어가는 마릿수.
-    private const int GroundItemSnapshotChunkSize = 20;
+    // 20개도 초과했다(실측 2523바이트 — 개당 ~125바이트) — 10개면 여유 포함 절반 이하.
+    private const int GroundItemSnapshotChunkSize = 10;
 
     private void SendGroundItemSnapshot(AreaType area)
     {
