@@ -799,16 +799,25 @@ public partial class GameServer
             }
             else
             {
-                var strafeCell = ComputeSwarmStrafeCell(bot, recentAttackerPosition);
-                if (strafeCell != null &&
-                    GameMapData.GetCurrentArea(MapId.School, strafeCell) is var strafeArea &&
-                    strafeArea != AreaType.None)
+                // 우세 피격 반응 (#226 재수리): 수직 와리가리는 버킷을 늘려도 촐싹거렸다 —
+                // 이긴다고 판단한 봇은 공격자를 향해 압박 전진한다 (이동 중 공격이라 화력 손실 없음).
+                // 이미 붙어 있으면(1.5 이내) 지시 없이 통과 — 교전은 자동전투가 맡는다.
+                float pressDx = recentAttackerPosition.X - bot.Position.X;
+                float pressDy = recentAttackerPosition.Y - bot.Position.Y;
+                if (pressDx * pressDx + pressDy * pressDy > 2.25f)
                 {
-                    return new SpotArenaBotDirective(
-                        SpotArenaBotMode.Escort,
-                        strafeArea,
-                        strafeCell,
-                        BotPlayerManager.CellToWorldPosition(MapId.School, strafeCell));
+                    Cell pressCell = ProximityCombatLineOfSight.WorldPositionToCell(
+                        MapId.School, recentAttackerPosition);
+                    if (GameMapData.IsMoveablePosition(MapId.School, pressCell) &&
+                        GameMapData.GetCurrentArea(MapId.School, pressCell) is var pressArea &&
+                        pressArea != AreaType.None)
+                    {
+                        return new SpotArenaBotDirective(
+                            SpotArenaBotMode.Escort,
+                            pressArea,
+                            pressCell,
+                            BotPlayerManager.CellToWorldPosition(MapId.School, pressCell));
+                    }
                 }
             }
         }
@@ -1079,38 +1088,8 @@ public partial class GameServer
     private const double SwarmBotDamagedFleeSeconds = 6d;
 
     // 피격 중 와리가리: 공격자 방향의 수직으로 이만큼 이동, 1초마다 좌우 반전.
-    private const float SwarmBotStrafeDistance = 2.5f;
-
-    /// <summary>피격 중 스트레이프 목적지 — 공격자 수직 방향, 매초 좌우 반전. 벽이면 반대편.</summary>
-    private static Cell ComputeSwarmStrafeCell(BotPlayerState bot, Vector3f attackerPosition)
-    {
-        float dx = attackerPosition.X - bot.Position.X;
-        float dy = attackerPosition.Y - bot.Position.Y;
-        float length = MathF.Sqrt(dx * dx + dy * dy);
-        if (length < 0.001f)
-        {
-            dx = 1f;
-            dy = 0f;
-            length = 1f;
-        }
-
-        float perpX = -dy / length;
-        float perpY = dx / length;
-        float side = DateTime.UtcNow.Second % 2 == 0 ? 1f : -1f;
-        for (int attempt = 0; attempt < 2; attempt++)
-        {
-            var candidate = new Vector3f(
-                bot.Position.X + perpX * side * SwarmBotStrafeDistance,
-                bot.Position.Y + perpY * side * SwarmBotStrafeDistance,
-                0f);
-            var cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, candidate);
-            if (GameMapData.IsMoveablePosition(MapId.School, cell))
-                return cell;
-            side = -side;
-        }
-
-        return null;
-    }
+    // 스트레이프(수직 와리가리)는 퇴역 (#226): 1초 반전은 좌우 연타, 3초 버킷도 촐싹거림 —
+    // 우세 피격 반응은 압박 전진(ChooseSwarmBotDirective)으로 대체됐다.
 
     // 잼 회수 탐색 반경 — 같은 구역에서만.
     private const float SwarmBotJamSeekRadius = 16f;
