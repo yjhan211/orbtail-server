@@ -392,13 +392,25 @@ public partial class GameClientSession
         BroadcastGroundItemsSpawned(bot.CurrentArea, drop.SpawnedItems);
     }
 
+    // 스냅샷 청크 크기: 패킷 버퍼(2048) 안에 안전히 들어가는 마릿수.
+    private const int GroundItemSnapshotChunkSize = 20;
+
     private void SendGroundItemSnapshot(AreaType area)
     {
         if (CurrentMapSubId <= 0 || area == AreaType.None) return;
         var items = _groundItemManager.GetSnapshot(CurrentMapSubId, area);
         int remaining = _areaItemStockManager.GetRemainingCount(CurrentMapSubId, (int)area);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, remaining, items);
-        Send(packet);
+        // 버퍼 초과 방지 (#226): 웨이브 모드로 바닥 아이템이 수백 개까지 쌓여 단일 패킷이
+        // 2048을 넘었다(실측 9963). 첫 청크는 SNAPSHOT(클라: 구역 교체), 이후 청크는
+        // SPAWN(클라: 누적) — 기존 수신 의미를 그대로 이용해 프로토콜 변경 없이 나눈다.
+        for (int index = 0; index < items.Count || index == 0; index += GroundItemSnapshotChunkSize)
+        {
+            var chunk = items.Skip(index).Take(GroundItemSnapshotChunkSize).ToList();
+            using var packet = index == 0
+                ? PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, remaining, chunk)
+                : PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, chunk);
+            Send(packet);
+        }
     }
 
     private void SendSurvivorAreaStockStateSnapshot()

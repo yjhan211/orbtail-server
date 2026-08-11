@@ -54,6 +54,23 @@ public sealed class SwarmArenaManager
     // 맞았을 때만 리쉬 안에서 반격 추격하며, 리쉬를 벗어나면 캠프로 돌아가 잠든다.
     // 방은 조용하고 위험은 선택이다 — 켜면 추적 스웜 디렉터(패턴 스폰)는 쉰다.
     public static readonly bool CampModeEnabled = true;
+
+    // #226 웨이브 모드: 구역 캠프 대신 뱀서식 웨이브 — 참가자 주변에 주기마다 더 강한
+    // 편성이 밀려온다. 스폰 즉시 어그로: 방은 조용하지 않고, 위험의 축은 선택이 아니라 시간이다.
+    // 켜면 캠프(보스 포함)는 서지 않는다. 기각 시 false로 원복하면 캠프 모드(#219)가 살아난다.
+    public static bool WaveModeEnabled = true;
+    // 스폰 주기와 격화 밴드 분리 (#226 조정): 주기를 줄여도 강해지는 속도는 그대로 —
+    // 자주, 조금씩 밀려온다.
+    private const double WaveIntervalSeconds = 10d;
+    private const double WaveEscalationSeconds = 20d;
+    private const double FirstWaveDelaySeconds = 3d;
+    // 구역당 생존 상한: 같은 방에 참가자가 몰리면 웨이브가 겹치므로 총량으로 막는다.
+    private const int WaveAreaDensityCap = 20;
+    private const float WaveSpawnRadius = 9f;
+    private const float WaveTelegraphSeconds = 1f;
+    // 원거리 종(다트·볼러)은 사거리의 이 비율에서 멈춰 쏜다 — 근접 종만 몸으로 파고든다.
+    private const float RangedHoldRangeRatio = 0.8f;
+
     public const float CampAggroRadius = 2.5f;
     // 리쉬는 봇 사격 대역(5~7)보다 짧게 — 추격이 빨리 끊겨야 카이팅 사이클이 성립한다.
     public const float CampLeashRadius = 5.5f;
@@ -236,7 +253,12 @@ public sealed class SwarmArenaManager
                 ? deltaSeconds * EscalationStage2MoveSpeedMultiplier
                 : deltaSeconds;
 
-            if (CampModeEnabled)
+            if (WaveModeEnabled)
+            {
+                foreach (var participant in state.LastParticipants)
+                    SpawnDueWave(state, participant, now, result);
+            }
+            else if (CampModeEnabled)
             {
                 foreach (var participant in state.LastParticipants)
                     EnsureAreaCamps(state, participant.Area, now, result);
@@ -252,7 +274,11 @@ public sealed class SwarmArenaManager
                 if (!monster.Alive || now < monster.ActivatesAtUtc)
                     continue;
 
-                if (CampModeEnabled)
+                if (WaveModeEnabled)
+                {
+                    UpdateWaveMonsterMovement(monster, state.LastParticipants, moveDeltaSeconds);
+                }
+                else if (CampModeEnabled)
                 {
                     // 잠든 몹도 접촉 판정은 받는다 — 걸어 들어와 부딪히면 그게 개전이다.
                     UpdateCampMonsterMovement(monster, state.LastParticipants, moveDeltaSeconds);
@@ -408,7 +434,12 @@ public sealed class SwarmArenaManager
             if (monster == null)
                 return SwarmArenaDamageResult.None;
 
-            if (CampModeEnabled)
+            if (WaveModeEnabled)
+            {
+                // 웨이브 모드: 때린 사람에게 어그로 전환 — 재탐색 스티키니스 안에서 유지된다.
+                monster.ChaseTargetPlayerId = attackerPlayerId;
+            }
+            else if (CampModeEnabled)
             {
                 // 반격 개전: 맞은 몹과 같은 캠프 동료가 함께 깨어난다.
                 monster.Aggro = true;
@@ -486,7 +517,8 @@ public sealed class SwarmArenaManager
     public void AttractSwarm(long matchingId, long playerId)
     {
         // SB 클론: 개봉은 몹을 부르지 않는다 — 개봉의 리스크는 다른 플레이어다.
-        if (CampModeEnabled)
+        // 웨이브 모드도 동일 — 웨이브는 이미 전원을 쫓고 있어 유인이 무의미하다.
+        if (CampModeEnabled || WaveModeEnabled)
             return;
         if (!_matches.TryGetValue(matchingId, out var state))
             return;
@@ -566,6 +598,24 @@ public sealed class SwarmArenaManager
             Vector3f destination;
             if (threatCount > 0)
             {
+                // 도주 목적지 약속 (#226): 웨이브 몹이 상시 물어 피격 재계획이 계속 돌면
+                // 목적지가 매번 새로 뽑혀 방향이 뒤집혔다(뚝뚝 끊기는 이동). 유효 시간 안이고
+                // 아직 도착 전이면 같은 목적지를 유지한다.
+                if (state.BotFleeCommitments.TryGetValue(botPlayerId, out var commitment) &&
+                    (now - commitment.CommittedAtUtc).TotalSeconds < BotFleeCommitSeconds)
+                {
+                    float commitDx = commitment.Destination.X - bot.Position.X;
+                    float commitDy = commitment.Destination.Y - bot.Position.Y;
+                    if (commitDx * commitDx + commitDy * commitDy > 1f)
+                    {
+                        return new SpotArenaBotDirective(
+                            SpotArenaBotMode.Return,
+                            bot.Area,
+                            MapCoordinateConverter.WorldToCell(MapId.School, commitment.Destination),
+                            commitment.Destination);
+                    }
+                }
+
                 float centroidX = threatX / threatCount;
                 float centroidY = threatY / threatCount;
                 float awayX = bot.Position.X - centroidX;
@@ -583,9 +633,11 @@ public sealed class SwarmArenaManager
                 // 후보를 찾고, 전부 막히면 구역 스폰 지점으로 물러난다.
                 destination = ResolveThreatFleeDestination(
                     bot, awayX / length, awayY / length);
+                state.BotFleeCommitments[botPlayerId] = (destination, now);
             }
             else
             {
+                state.BotFleeCommitments.Remove(botPlayerId);
                 float angle = (float)(state.Rng.NextDouble() * Math.PI * 2d);
                 destination = new Vector3f(
                     bot.Position.X + MathF.Cos(angle) * BotRoamDistance,
@@ -605,6 +657,9 @@ public sealed class SwarmArenaManager
 
     // 위협 회피 목적지 최소 거리 — 클램프 후 이보다 가까우면 그 각도는 벽이다.
     private const float MinThreatFleeDistance = 2f;
+
+    // 도주 목적지 약속 유효 시간 (#226): 이 시간 안에는 같은 도주 목적지를 반환한다.
+    private const double BotFleeCommitSeconds = 2d;
 
     /// <summary>
     ///     위협 반대 방향부터 각도를 넓혀가며(±45°… 180°) 실제로 멀어지는 walkable 목적지를
@@ -948,6 +1003,198 @@ public sealed class SwarmArenaManager
         MoveTowardPlayer(monster, target.Position, deltaSeconds);
     }
 
+    /// <summary>
+    ///     웨이브 편성 (#226): 인덱스가 오를수록 마릿수와 위험 종이 늘어난다. 피통·데미지는
+    ///     불변 — 강해지는 축은 밀도와 종 구성이다 (M4 원칙: TTK가 아니라 페이스를 조인다).
+    ///     위험 종을 앞에 두어 구역 상한에 걸려 잘릴 때 해골부터 잘린다.
+    /// </summary>
+    private static SwarmMonsterKind[] GetWaveComposition(int waveIndex)
+    {
+        (int Runaways, int Bowlers, int Darts, int Skeletons) plan = waveIndex switch
+        {
+            0 => (0, 0, 0, 3),
+            1 => (0, 0, 1, 3),
+            2 => (0, 0, 1, 4),
+            3 => (0, 1, 1, 3),
+            4 => (0, 1, 1, 4),
+            5 => (1, 1, 2, 3),
+            _ => (1, 1, 2, 4)
+        };
+        var kinds = new List<SwarmMonsterKind>(
+            plan.Runaways + plan.Bowlers + plan.Darts + plan.Skeletons);
+        for (int index = 0; index < plan.Runaways; index++)
+            kinds.Add(SwarmMonsterKind.RunawayGoblin);
+        for (int index = 0; index < plan.Bowlers; index++)
+            kinds.Add(SwarmMonsterKind.Bowler);
+        for (int index = 0; index < plan.Darts; index++)
+            kinds.Add(SwarmMonsterKind.DartGoblin);
+        for (int index = 0; index < plan.Skeletons; index++)
+            kinds.Add(SwarmMonsterKind.Skeleton);
+        return kinds.ToArray();
+    }
+
+    private void SpawnDueWave(
+        MatchState state,
+        SpotArenaPlayerSpatial participant,
+        DateTime now,
+        SwarmArenaTickResult result)
+    {
+        if (IsAreaClosedResolver?.Invoke(state.MatchingId, participant.Area) == true)
+            return;
+
+        if (!state.PatternSchedules.TryGetValue(participant.PlayerId, out var schedule))
+        {
+            schedule = new PatternSchedule
+            {
+                NextPatternAtUtc = now.AddSeconds(FirstWaveDelaySeconds)
+            };
+            state.PatternSchedules[participant.PlayerId] = schedule;
+        }
+
+        if (now < schedule.NextPatternAtUtc)
+            return;
+        schedule.NextPatternAtUtc = now.AddSeconds(WaveIntervalSeconds);
+
+        int aliveInArea = state.Monsters.Values.Count(monster =>
+            monster.Alive && monster.Area == participant.Area);
+        if (aliveInArea >= WaveAreaDensityCap)
+            return;
+
+        // 웨이브 강도는 참가자별 스케줄이 아니라 매치 경과 시간이 정한다 —
+        // 늦게 진입한 구역에도 현재 시점의 위험이 밀려온다.
+        int waveIndex = (int)Math.Max(0d,
+            ((now - state.StartsAtUtc).TotalSeconds - FirstWaveDelaySeconds) / WaveEscalationSeconds);
+        var kinds = GetWaveComposition(waveIndex);
+        var pattern = schedule.NextPattern;
+        schedule.NextPattern = (SwarmPattern)(((int)pattern + 1) % 3);
+        int budget = WaveAreaDensityCap - aliveInArea;
+        for (int index = 0; index < kinds.Length && index < budget; index++)
+        {
+            float angle = (float)(index * Math.PI * 2d / kinds.Length) +
+                          (float)(state.Rng.NextDouble() * 0.4d - 0.2d);
+            var position = ClampToAreaWalkable(new Vector3f(
+                participant.Position.X + MathF.Cos(angle) * WaveSpawnRadius,
+                participant.Position.Y + MathF.Sin(angle) * WaveSpawnRadius,
+                0f), participant.Position, participant.Area);
+            SpawnWaveMonster(state, participant, kinds[index], pattern, position, now, result);
+        }
+    }
+
+    private static void SpawnWaveMonster(
+        MatchState state,
+        SpotArenaPlayerSpatial anchor,
+        SwarmMonsterKind kind,
+        SwarmPattern pattern,
+        Vector3f position,
+        DateTime now,
+        SwarmArenaTickResult result)
+    {
+        var stats = GetKindStats(kind);
+        int serial = state.NextSerial++;
+        var monster = new MonsterRuntime
+        {
+            MonsterId = FirstMonsterId + serial,
+            CombatTargetId = FirstCombatTargetId - serial,
+            Pattern = pattern,
+            Area = anchor.Area,
+            Position = position,
+            Health = stats.MaxHp,
+            Alive = true,
+            ActivatesAtUtc = now.AddSeconds(WaveTelegraphSeconds),
+            NextContactAtUtc = now,
+            ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
+            SummonStoneReward = stats.StoneReward,
+            JamReward = stats.JamReward,
+            HeartReward = stats.HeartReward,
+            BootsReward = stats.BootsReward,
+            KeyReward = stats.KeyReward,
+            ContactDamageValue = stats.OrbDamage,
+            Kind = kind,
+            MaxHealthValue = stats.MaxHp,
+            AttackRangeValue = stats.AttackRange,
+            AttackCooldownValue = stats.AttackCooldownSeconds,
+            // 웨이브 몹은 잠들지 않는다 — 스폰 순간부터 스폰 유발자를 쫓는다.
+            Aggro = true,
+            ChaseTargetPlayerId = anchor.PlayerId
+        };
+        state.Monsters[monster.MonsterId] = monster;
+        result.SpawnedMonsters.Add(monster.ToMonsterRuntimeInfo());
+    }
+
+    /// <summary>
+    ///     웨이브 몹 이동: 전 구역 최근접 추격 — 대상이 경계를 넘어도 얼어붙지 않는다
+    ///     (같은 구역 규칙은 캠프 시절 유산: 중앙에 몹이 쌓여 멈추던 현상의 원인).
+    ///     원거리 종은 사거리 안에서 멈춰 쏜다. 접촉·타격 판정이 구역 일치를 요구하므로
+    ///     이동한 위치의 실제 구역을 계속 반영한다.
+    /// </summary>
+    private static void UpdateWaveMonsterMovement(
+        MonsterRuntime monster,
+        IReadOnlyList<SpotArenaPlayerSpatial> participants,
+        double deltaSeconds)
+    {
+        if (!TryResolveWaveChaseTarget(monster, participants, out var target))
+            return;
+
+        if (monster.AttackRangeValue > ContactRange)
+        {
+            float holdDx = target.Position.X - monster.Position.X;
+            float holdDy = target.Position.Y - monster.Position.Y;
+            float holdRange = monster.AttackRangeValue * RangedHoldRangeRatio;
+            if (holdDx * holdDx + holdDy * holdDy <= holdRange * holdRange)
+                return;
+        }
+
+        MoveTowardPlayer(monster, target.Position, deltaSeconds);
+        var currentArea = GameMapData.GetCurrentArea(
+            MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, monster.Position));
+        if (currentArea != AreaType.None)
+            monster.Area = currentArea;
+    }
+
+    /// <summary>전 구역 최근접 + 유지 스티키니스(1.25배) — 구역 필터 없는 웨이브 전용 재탐색.</summary>
+    private static bool TryResolveWaveChaseTarget(
+        MonsterRuntime monster,
+        IReadOnlyList<SpotArenaPlayerSpatial> participants,
+        out SpotArenaPlayerSpatial target)
+    {
+        target = default;
+        int nearestIndex = -1;
+        float nearestSquared = float.MaxValue;
+        int currentIndex = -1;
+        float currentSquared = float.MaxValue;
+        for (int index = 0; index < participants.Count; index++)
+        {
+            var participant = participants[index];
+            float dx = participant.Position.X - monster.Position.X;
+            float dy = participant.Position.Y - monster.Position.Y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared < nearestSquared)
+            {
+                nearestSquared = distanceSquared;
+                nearestIndex = index;
+            }
+
+            if (participant.PlayerId == monster.ChaseTargetPlayerId)
+            {
+                currentIndex = index;
+                currentSquared = distanceSquared;
+            }
+        }
+
+        if (nearestIndex < 0)
+            return false;
+
+        if (currentIndex >= 0 && currentSquared <= nearestSquared * RetargetStickinessSquared)
+        {
+            target = participants[currentIndex];
+            return true;
+        }
+
+        target = participants[nearestIndex];
+        monster.ChaseTargetPlayerId = target.PlayerId;
+        return true;
+    }
+
     private void SpawnDueParticipantPattern(
         MatchState state,
         SpotArenaPlayerSpatial participant,
@@ -1242,6 +1489,10 @@ public sealed class SwarmArenaManager
         public Dictionary<SwarmPattern, int> PatternHits { get; } = new();
         public HashSet<AreaType> CampInitializedAreas { get; } = new();
         public Dictionary<(AreaType Area, int CampIndex), DateTime> CampRespawnAtUtc { get; } = new();
+
+        // 도주 목적지 약속 (#226): 봇별 최근 도주 목적지 — 재계획 폭주에도 방향을 유지한다.
+        public Dictionary<long, (Vector3f Destination, DateTime CommittedAtUtc)> BotFleeCommitments { get; } =
+            new();
     }
 
     private sealed class MonsterRuntime

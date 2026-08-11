@@ -17,6 +17,45 @@ public class SwarmArenaManagerTests
         GameDataHelper.Initialize();
         // 비주얼 확인용 임시 편성(고블린만)을 끄고 정규 편성을 검증한다.
         SwarmArenaManager.GoblinOnlySpawnForVisualCheck = false;
+        // 웨이브 실험(#226)을 끄고 캠프 정규 동작을 검증한다. 웨이브 테스트는 개별로 켠다.
+        SwarmArenaManager.WaveModeEnabled = false;
+    }
+
+    [Fact]
+    public void WaveMode_SpawnsEscalatingWavesThatChaseImmediately()
+    {
+        // #226 웨이브 모드: 캠프 대신 첫 웨이브(해골 5)가 3초 후 참가자 주변에 선다.
+        // 시간이 지나면 편성이 격화된다 — 5웨이브(103초+)에는 탈주(120)·볼러(48)가 섞인다.
+        SwarmArenaManager.WaveModeEnabled = true;
+        try
+        {
+            DateTime now = StartUtc.AddSeconds(0.25);
+            var manager = CreateManager(() => now);
+            Vector3f center = AreaCenter(AreaType.Ground);
+
+            // 첫 틱: 스케줄만 생기고 캠프(보스 포함 7기)는 서지 않는다.
+            var firstTick = manager.Tick(217001, Participants(center), now);
+            Assert.Empty(firstTick.SpawnedMonsters);
+
+            now = StartUtc.AddSeconds(3.5);
+            var waveTick = manager.Tick(217001, Participants(center), now);
+            Assert.Equal(3, waveTick.SpawnedMonsters.Count);
+            Assert.All(waveTick.SpawnedMonsters, monster =>
+            {
+                Assert.Equal(SwarmArenaManager.MonsterMaxHealth, monster.MaxHealth);
+                // 웨이브 몹은 잠들지 않는다 — 스폰 순간부터 스폰 유발자를 쫓는다.
+                Assert.Equal(1, monster.ChaseTargetPlayerId);
+            });
+
+            now = StartUtc.AddSeconds(110);
+            var lateTick = manager.Tick(217001, Participants(center), now);
+            Assert.Contains(lateTick.SpawnedMonsters, monster => monster.MaxHealth == 120);
+            Assert.Contains(lateTick.SpawnedMonsters, monster => monster.MaxHealth == 48);
+        }
+        finally
+        {
+            SwarmArenaManager.WaveModeEnabled = false;
+        }
     }
 
     [Fact]

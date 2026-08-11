@@ -32,36 +32,7 @@ public partial class GameClientSession
                 return Task.CompletedTask;
             }
 
-            // 상자 시간 등급 (#222 M3): 개전 후 80초/160초를 넘기면 같은 색의 T2/T3가 나온다.
-            int draftItemId = SurvivorOrbData.ApplyDraftTier(
-                request.ChoiceIndex switch
-                {
-                    1 => DraftWaveOrbItemId,
-                    2 => DraftWindOrbItemId,
-                    _ => DraftSunOrbItemId
-                },
-                GetSwarmDraftTier());
-            // 열쇠 (#222 M4): 충전이 있으면 이번 소환 비용을 0으로 — 성공 시 1 소비.
-            int draftCost = _pendingOrbDraftCost;
-            bool useFreeSummon = FreeSummonCharges > 0 && draftCost > 0;
-            if (useFreeSummon)
-                draftCost = 0;
-            var draftAttempt = ExecuteOrbSummon(
-                request.ChoiceIndex, costOverride: draftCost, exactItemId: draftItemId);
-            if (!draftAttempt.Success)
-                return Task.CompletedTask;
-
-            if (useFreeSummon)
-            {
-                FreeSummonCharges = Math.Max(0, FreeSummonCharges - 1);
-                SendFreeSummonState();
-            }
-
-            _hasPendingOrbDraft = false;
-            // 자동 머지: 드래프트로 같은 색·티어 3개가 되면 즉시 융합한다.
-            foreach (var mergedItem in _inGameInventoryManager.AutoMergeSurvivorOrbs(
-                         CurrentMapSubId, PlayerId.Value, Random.Shared))
-                SendInGameInventoryUpdate(mergedItem);
+            ExecuteDraftOrbSummon(request.ChoiceIndex);
             return Task.CompletedTask;
         }
 
@@ -74,6 +45,47 @@ public partial class GameClientSession
 
         ExecuteOrbSummon(request.ChoiceIndex, costOverride: null);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     드래프트 소환 실행 (#219 M2 → #226 자동화): 색 인덱스로 티어 적용 아이템을 뽑아
+    ///     소환한다. 열쇠 충전이 있으면 비용 0 + 성공 시 1 소비. 개봉 자동 소환과
+    ///     (레거시) 선택 소환이 같은 경로를 쓴다.
+    /// </summary>
+    internal bool ExecuteDraftOrbSummon(int choiceIndex)
+    {
+        // 상자 시간 등급 (#222 M3): 개전 후 80초/160초를 넘기면 같은 색의 T2/T3가 나온다.
+        int draftItemId = SurvivorOrbData.ApplyDraftTier(
+            choiceIndex switch
+            {
+                1 => DraftWaveOrbItemId,
+                2 => DraftWindOrbItemId,
+                _ => DraftSunOrbItemId
+            },
+            GetSwarmDraftTier());
+        // 열쇠 (#222 M4): 충전이 있으면 이번 소환 비용을 0으로 — 성공 시 1 소비.
+        int draftCost = _pendingOrbDraftCost;
+        bool useFreeSummon = FreeSummonCharges > 0 && draftCost > 0;
+        if (useFreeSummon)
+            draftCost = 0;
+        var draftAttempt = ExecuteOrbSummon(
+            choiceIndex, costOverride: draftCost, exactItemId: draftItemId);
+        if (!draftAttempt.Success)
+            return false;
+
+        if (useFreeSummon)
+        {
+            FreeSummonCharges = Math.Max(0, FreeSummonCharges - 1);
+            SendFreeSummonState();
+        }
+
+        _hasPendingOrbDraft = false;
+        // 자동 머지: 오브열 실험(#226)에서는 끈다 — 성장 = 열 길이, 압축은 그 언어와 싸운다.
+        if (Config.SWARM_ORB_MERGE_ENABLED)
+            foreach (var mergedItem in _inGameInventoryManager.AutoMergeSurvivorOrbs(
+                         CurrentMapSubId, PlayerId.Value, Random.Shared))
+                SendInGameInventoryUpdate(mergedItem);
+        return true;
     }
 
     /// <summary>상자 시간 등급 (#222 M3): 개전 앵커 경과로 드래프트 티어 결정. 게이트 전엔 T1.</summary>

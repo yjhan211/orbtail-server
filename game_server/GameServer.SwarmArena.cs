@@ -210,6 +210,10 @@ public partial class GameServer
 
         var tick = _swarmArenaManager.Tick(matchingId, participants, nowUtc);
 
+        // 오브열 (#226 α/β): 참가자 경로를 기록하고, 본체-상대 열 접촉을 판정한다.
+        UpdateSwarmOrbTrails(matchingId, participants);
+        ProcessSwarmTrailContacts(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+
         foreach (var damage in tick.PlayerDamage)
             ApplySwarmParticipantDamage(matchingId, damage, aliveSessions, aliveBots, sessions);
         ProcessSwarmBotRecovery(matchingId, aliveBots, nowUtc);
@@ -578,8 +582,9 @@ public partial class GameServer
                 : null,
             choiceIndex: 0,
             costOverride: exploreCost,
+            // #226: 사람과 같은 규칙 — 색 전문화 없이 랜덤 자동 소환.
             exactItemId: SurvivorOrbData.ApplyDraftTier(
-                ChooseBotDraftOrbItemId(matchingId, bot.PlayerId, GetSwarmDraftTier(matchingId)),
+                SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)],
                 GetSwarmDraftTier(matchingId)));
         if (!attempt.Success)
         {
@@ -590,8 +595,9 @@ public partial class GameServer
         if (useFreeSummon)
             bot.FreeSummonCharges = Math.Max(0, bot.FreeSummonCharges - 1);
         BroadcastSwarmExploreConsumed(spotId, Config.SWARM_EXPLORE_REGEN_SECONDS, sessions);
-        // 봇도 자동 머지 — 사람과 같은 성장 규칙 (#217 자동 머지)
-        _inGameInventoryManager.AutoMergeSurvivorOrbs(matchingId, bot.PlayerId, Random.Shared);
+        // 봇도 사람과 같은 규칙 — 오브열 실험(#226)에서는 머지 없이 열이 길어진다.
+        if (Config.SWARM_ORB_MERGE_ENABLED)
+            _inGameInventoryManager.AutoMergeSurvivorOrbs(matchingId, bot.PlayerId, Random.Shared);
         // 요약 카운터(summonCount) 배선 — 봇 개봉이 매치 요약에서 0으로 잡히던 계측 구멍.
         _gameEventLogManager.LogOrbSummonAttempt(
             matchingId,
@@ -609,35 +615,6 @@ public partial class GameServer
             matchingId, bot.PlayerId, spotId, attempt.ItemId, exploreCost);
     }
 
-    /// <summary>
-    ///     봇의 드래프트 색 선택 (#219 M2) — 사람과 같은 규칙 공간에서 고른다:
-    ///     현재 시간 등급 티어가 같은 색 2개면 그 색(이번 픽이 3머지), 아니면 최다 보유 색
-    ///     (전문화), 빈손이면 랜덤. 반환은 색 T1 베이스 ID — 티어는 호출부가 입힌다.
-    /// </summary>
-    private int ChooseBotDraftOrbItemId(long matchingId, long botPlayerId, int draftTier)
-    {
-        var countsByColor = new Dictionary<SurvivorOrbColor, (int Total, int AtDraftTier)>();
-        foreach (var item in _inGameInventoryManager.GetPlayerInventory(matchingId, botPlayerId).GetAllItems())
-        {
-            if (item.Count <= 0 ||
-                !SurvivorOrbData.TryGetColorAndTier(item.ItemId, out var color, out int tier))
-                continue;
-
-            var entry = countsByColor.TryGetValue(color, out var current) ? current : (0, 0);
-            countsByColor[color] = (entry.Item1 + item.Count, entry.Item2 + (tier == draftTier ? item.Count : 0));
-        }
-
-        foreach (var (color, entry) in countsByColor)
-            if (entry.AtDraftTier >= 2 && TryGetDraftTier1ItemId(color, out int mergeItemId))
-                return mergeItemId;
-
-        var best = countsByColor.OrderByDescending(pair => pair.Value.Total).FirstOrDefault();
-        if (best.Value.Total > 0 && TryGetDraftTier1ItemId(best.Key, out int specializeItemId))
-            return specializeItemId;
-
-        return SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)];
-    }
-
     /// <summary>상자 시간 등급 (#222 M3): 개전 앵커(게이트, 봇 전용은 스웜 첫 틱) 경과로 티어 결정.</summary>
     private int GetSwarmDraftTier(long matchingId)
     {
@@ -649,18 +626,6 @@ public partial class GameServer
             return 1;
 
         return SurvivorOrbData.GetDraftTierByElapsed((DateTime.UtcNow - startedAtUtc.Value).TotalSeconds);
-    }
-
-    private static bool TryGetDraftTier1ItemId(SurvivorOrbColor color, out int itemId)
-    {
-        itemId = color switch
-        {
-            SurvivorOrbColor.Red => 107000010,
-            SurvivorOrbColor.Green => 107000020,
-            SurvivorOrbColor.Blue => 107000030,
-            _ => 0
-        };
-        return itemId != 0;
     }
 
     private bool TryFindNearestAvailableExploreSpot(
@@ -1090,6 +1055,176 @@ public partial class GameServer
     // 피격 중 와리가리: 공격자 방향의 수직으로 이만큼 이동, 1초마다 좌우 반전.
     // 스트레이프(수직 와리가리)는 퇴역 (#226): 1초 반전은 좌우 연타, 3초 버킷도 촐싹거림 —
     // 우세 피격 반응은 압박 전진(ChooseSwarmBotDirective)으로 대체됐다.
+
+    // ===== 오브열 (#226 실험 α/β): 서버 경로 추적 — 오브별 공격 원점·본체 접촉 판정의 좌표 =====
+
+    private const float SwarmTrailSampleMinDistance = 0.08f;
+    private const float SwarmTrailTeleportResetDistance = 5f;
+    private const double SwarmTrailContactImmunitySeconds = 1.2d;
+
+    private readonly Dictionary<(long MatchingId, long PlayerId), List<Vector3f>> _swarmOrbTrails = new();
+    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmTrailContactImmuneUntilUtc = new();
+
+    /// <summary>클라 PlayerTool.UpdateOrbTrail과 같은 규칙 — 정지하면 경로가 얼어 열이 남는다.</summary>
+    private void UpdateSwarmOrbTrails(long matchingId, List<SpotArenaPlayerSpatial> participants)
+    {
+        foreach (var participant in participants)
+        {
+            var key = (matchingId, participant.PlayerId);
+            if (!_swarmOrbTrails.TryGetValue(key, out var points))
+            {
+                points = new List<Vector3f>();
+                _swarmOrbTrails[key] = points;
+            }
+
+            var center = participant.Position;
+            if (points.Count == 0)
+            {
+                points.Add(new Vector3f(center.X, center.Y, 0f));
+                continue;
+            }
+
+            float moved = Vector3f.Distance(center, points[0]);
+            if (moved >= SwarmTrailTeleportResetDistance)
+            {
+                points.Clear();
+                points.Add(new Vector3f(center.X, center.Y, 0f));
+                continue;
+            }
+
+            if (moved >= SwarmTrailSampleMinDistance)
+                points.Insert(0, new Vector3f(center.X, center.Y, 0f));
+
+            // 실제 오브 수 기준 트림 — 상한(99) 기준이면 참가자당 수천 포인트가 쌓인다.
+            int trailOrbCount = Math.Max(CountSwarmSquadOrbs(matchingId, participant.PlayerId) + 2, 4);
+            float neededLength = Config.SWARM_ORB_TRAIL_FIRST_OFFSET +
+                                 trailOrbCount * Config.SWARM_ORB_TRAIL_SPACING + 1f;
+            float accumulated = 0f;
+            for (int pointIndex = 1; pointIndex < points.Count; pointIndex++)
+            {
+                accumulated += Vector3f.Distance(points[pointIndex - 1], points[pointIndex]);
+                if (accumulated <= neededLength) continue;
+                points.RemoveRange(pointIndex + 1, points.Count - pointIndex - 1);
+                break;
+            }
+        }
+    }
+
+    /// <summary>순번째 오브의 열 좌표 — 경로를 순번 × 간격만큼 거슬러 올라간 지점 (클라와 동일 규칙).</summary>
+    private Vector3f GetSwarmOrbTrailPosition(long matchingId, long playerId, int ordinal, Vector3f anchor)
+    {
+        float targetDistance = Config.SWARM_ORB_TRAIL_FIRST_OFFSET +
+                               ordinal * Config.SWARM_ORB_TRAIL_SPACING;
+        if (!_swarmOrbTrails.TryGetValue((matchingId, playerId), out var points) || points.Count == 0)
+            return new Vector3f(anchor.X, anchor.Y - targetDistance * 0.2f, 0f);
+
+        Vector3f previous = anchor;
+        float accumulated = 0f;
+        foreach (var point in points)
+        {
+            float segment = Vector3f.Distance(previous, point);
+            if (segment > 0.0001f && accumulated + segment >= targetDistance)
+            {
+                float t = (targetDistance - accumulated) / segment;
+                return new Vector3f(
+                    previous.X + (point.X - previous.X) * t,
+                    previous.Y + (point.Y - previous.Y) * t,
+                    0f);
+            }
+
+            accumulated += segment;
+            previous = point;
+        }
+
+        Vector3f tailDirection = new(0f, -0.5f, 0f);
+        if (points.Count >= 2)
+        {
+            var last = points[^1];
+            var beforeLast = points[^2];
+            float dx = last.X - beforeLast.X;
+            float dy = last.Y - beforeLast.Y;
+            float length = MathF.Sqrt(dx * dx + dy * dy);
+            if (length > 0.0001f) tailDirection = new Vector3f(dx / length, dy / length, 0f);
+        }
+
+        float remaining = targetDistance - accumulated;
+        return new Vector3f(
+            previous.X + tailDirection.X * remaining,
+            previous.Y + tailDirection.Y * remaining,
+            0f);
+    }
+
+    /// <summary>
+    ///     실험 β (#226): 본체(머리)-상대 오브열 접촉 — slither 비대칭의 번역.
+    ///     머리는 항상 취약하다: 접촉 오염은 오브 HP를 우회해 본체로 직행하고, 컷인(상대
+    ///     진로 앞을 가로지르는 이동)이 이동만으로 성립하는 공격 동사가 된다.
+    /// </summary>
+    private void ProcessSwarmTrailContacts(
+        long matchingId,
+        DateTime nowUtc,
+        List<SpotArenaPlayerSpatial> participants,
+        List<GameClientSession> aliveSessions,
+        List<BotPlayerState> aliveBots,
+        List<GameClientSession> allSessions)
+    {
+        float contactRadius = Config.SWARM_ORB_TRAIL_CONTACT_RADIUS;
+        foreach (var victim in participants)
+        {
+            var immuneKey = (matchingId, victim.PlayerId);
+            if (_swarmTrailContactImmuneUntilUtc.TryGetValue(immuneKey, out var immuneUntil) &&
+                nowUtc < immuneUntil)
+                continue;
+
+            long hitByPlayerId = 0;
+            foreach (var owner in participants)
+            {
+                if (owner.PlayerId == victim.PlayerId || owner.Area != victim.Area)
+                    continue;
+
+                int orbCount = CountSwarmSquadOrbs(matchingId, owner.PlayerId);
+                if (orbCount <= 0)
+                    continue;
+
+                for (int ordinal = 0; ordinal < orbCount; ordinal++)
+                {
+                    var orbPosition = GetSwarmOrbTrailPosition(
+                        matchingId, owner.PlayerId, ordinal, owner.Position);
+                    float dx = victim.Position.X - orbPosition.X;
+                    float dy = (victim.Position.Y - orbPosition.Y) * 2f;
+                    if (dx * dx + dy * dy > contactRadius * contactRadius)
+                        continue;
+                    hitByPlayerId = owner.PlayerId;
+                    break;
+                }
+
+                if (hitByPlayerId != 0) break;
+            }
+
+            if (hitByPlayerId == 0)
+                continue;
+
+            _swarmTrailContactImmuneUntilUtc[immuneKey] = nowUtc.AddSeconds(SwarmTrailContactImmunitySeconds);
+            int contactCorruption = Config.SWARM_ORB_TRAIL_CONTACT_CORRUPTION;
+            var victimSession = aliveSessions.FirstOrDefault(session =>
+                session.PlayerId == victim.PlayerId);
+            if (victimSession != null)
+            {
+                victimSession.ModifyStats(corruptionDelta: contactCorruption,
+                    attackerPlayerId: hitByPlayerId);
+                continue;
+            }
+
+            var victimBot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == victim.PlayerId);
+            if (victimBot == null)
+                continue;
+            victimBot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
+                victimBot.Corruption + contactCorruption);
+            victimBot.LastProximityAttackerPlayerId = hitByPlayerId;
+            _swarmBotLastDamagedAtUtc[(matchingId, victimBot.PlayerId)] = nowUtc;
+            victimBot.LastDamagedAtUtc = nowUtc;
+            victimBot.CancelInteractionHold();
+        }
+    }
 
     // 잼 회수 탐색 반경 — 같은 구역에서만.
     private const float SwarmBotJamSeekRadius = 16f;
@@ -1934,6 +2069,11 @@ public partial class GameServer
         foreach (var key in _swarmFrontOrbHp.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmFrontOrbHp.Remove(key);
         _pendingSwarmMonsterHits.RemoveAll(hit => hit.MatchingId == matchingId);
+        foreach (var key in _swarmOrbTrails.Keys.Where(key => key.MatchingId == matchingId).ToList())
+            _swarmOrbTrails.Remove(key);
+        foreach (var key in _swarmTrailContactImmuneUntilUtc.Keys
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmTrailContactImmuneUntilUtc.Remove(key);
         _swarmJamRankingsSignature.Remove(matchingId);
         _swarmTimeoutEndedMatchings.Remove(matchingId);
         _swarmMatchFallbackAnchorUtc.Remove(matchingId);
@@ -2036,6 +2176,14 @@ public partial class GameServer
         for (int index = before; index < actors.Count; index++)
         {
             var actor = actors[index];
+            // 오브열 (#226 α+): 공격 원점·피격 위치 = 각 오브의 열 좌표 — 표시가 곧 판정.
+            var trailPosition = GetSwarmOrbTrailPosition(
+                matchingId, spatial.PlayerId, index - before, spatial.Position);
+            actor = actor with
+            {
+                Position = trailPosition,
+                Cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, trailPosition)
+            };
             float baseInterval = actor.AttackIntervalSeconds * SwarmOrbIntervalMultiplier;
             // 연사화 + 스팸 캡: 캡으로 주기가 달라져도 발당 데미지를 주기 비율로 맞춰
             // 오브별 DPS(원 데미지/원 주기)를 보존한다. 바람(공속)은 주기만 줄여 실DPS를

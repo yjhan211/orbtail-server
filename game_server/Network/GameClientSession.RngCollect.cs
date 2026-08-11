@@ -27,6 +27,8 @@ public partial class GameClientSession
     private const int RngCollectItemResultType = 2;
     // #219 M2: 개봉 성공 = 3택 드래프트 개시 신호. 클라이언트 드래프트 패널이 이 타입으로 열린다.
     private const int RngCollectDraftResultType = 7;
+    // #226: 개봉 즉시 랜덤 자동 소환 — 클라는 이 타입에서 팝업을 열지 않는다.
+    private const int RngCollectAutoSummonResultType = 8;
     private const int RngCollectStaminaCost = 5;
 
     // #217 P0-c: 스웜 아레나 탐색 스팟 — 비용·리젠 규칙은 봇과 공유하므로 Config에 있다.
@@ -543,8 +545,13 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        // #226: 선택 소환 폐지 — 개봉 즉시 랜덤 색 자동 소환. 팝업 없이 열에 합류한다.
         _hasPendingOrbDraft = true;
         _pendingOrbDraftCost = exploreCost;
+        int choiceIndex = Random.Shared.Next(3);
+        bool summoned = ExecuteDraftOrbSummon(choiceIndex);
+        // 실패해도 팝업이 없으니 드래프트 권리를 남기지 않는다 — 다음 개봉이 곧 재시도다.
+        _hasPendingOrbDraft = false;
 
         // 스팟은 소진되지 않는다 — 리젠 시간 뒤 다시 나온다 (비용은 궤도 크기가 결정).
         RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
@@ -552,11 +559,11 @@ public partial class GameClientSession
             CurrentMapSubId, msg.InteractId, SwarmExploreCooldownSeconds, out _);
         BroadcastRngCollectCooldown(msg.InteractId, SwarmExploreCooldownSeconds);
         SendRngCollectResult(
-            msg.InteractId, RngCollectDraftResultType, 0, 0, SwarmExploreCooldownSeconds);
+            msg.InteractId, RngCollectAutoSummonResultType, 0, 0, SwarmExploreCooldownSeconds);
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
         Logger.LogInformation(
-            "Swarm explore draft opened: PlayerId={PlayerId}, InteractId={InteractId}, Cost={Cost}",
-            PlayerId, msg.InteractId, exploreCost);
+            "Swarm explore auto summon: PlayerId={PlayerId}, InteractId={InteractId}, Cost={Cost}, Choice={Choice}, Success={Success}",
+            PlayerId, msg.InteractId, exploreCost, choiceIndex, summoned);
 
         return Task.CompletedTask;
     }

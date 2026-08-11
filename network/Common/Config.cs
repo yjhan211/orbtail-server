@@ -135,6 +135,23 @@ namespace network.common
         /// </summary>
         public const float SWARM_BOSS_ATTACK_RANGE = 4.1f;
 
+        /// <summary>
+        ///     3머지 비활성 (#226 오브열): 열 문법에서 성장 = 길이 — 같은 색 3개 압축(3→1)은
+        ///     그 언어와 싸운다. 소환마다 열이 길어지고, 티어는 상자 시간 등급이 공급한다.
+        /// </summary>
+        public static readonly bool SWARM_ORB_MERGE_ENABLED = false;
+
+        // 오브열 (#226 실험 α/β): 오브가 이동 경로를 따라오는 전투열 — 클라 배치와
+        // 서버 판정(오브별 공격 원점·본체 접촉)이 같은 값을 쓴다 (표시 = 판정).
+        public const float SWARM_ORB_TRAIL_SPACING = 0.9f;
+        public const float SWARM_ORB_TRAIL_FIRST_OFFSET = 0.9f;
+
+        /// <summary>본체(머리)-상대 오브열 접촉 반경 — P0-a 접촉 판정(0.45)보다 오브 몸집만큼 여유.</summary>
+        public const float SWARM_ORB_TRAIL_CONTACT_RADIUS = 0.6f;
+
+        /// <summary>열 접촉 오염 (slither 비대칭 번역): 머리는 항상 취약 — 오브 HP를 우회해 본체 직행.</summary>
+        public const int SWARM_ORB_TRAIL_CONTACT_CORRUPTION = 35;
+
         /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
         public const int SURVIVOR_MAX_CORRUPTION = 420;
 
@@ -216,7 +233,8 @@ namespace network.common
         ///     SB에는 슬롯 하드캡이 없다 — 오브 수 비례 개봉 비용이 성장을 억제하고, 이 값은
         ///     이상 상황 방지용 안전상한일 뿐이다. 클라 궤도 슬롯 수와 같아야 한다 (PlayerTool.MaxOrbSlots).
         /// </summary>
-        public const int SWARM_ORB_CAPACITY = 30;
+        // 30 → 99 (#226 오브열): 머지 폐지로 성장 = 열 길이 — 사실상 무제한, 비용 곡선이 억제자.
+        public const int SWARM_ORB_CAPACITY = 99;
 
         /// <summary>현재 모드의 오브 보유 상한 — 스웜(궤도 스쿼드)은 9, 레거시 보드는 6.</summary>
         public static int GetOrbCapacity() =>
