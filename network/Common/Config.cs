@@ -115,12 +115,19 @@ namespace network.common
         // 1.5 (#222 3차): 1.4는 밋밋, 1.6은 과속 — 기본 5 → 7.5, 서버 검증 상한(10) 안.
         public const float BOOTS_MOVE_SPEED_MULTIPLIER = 1.5f;
 
+        /// <summary>
+        ///     빈손 이속 (#223, SB 정합: 스쿼드를 잃으면 빨라진다): 오브 0개 동안의 이동 배율.
+        ///     부츠 중첩 시 5 × 1.3 × 1.5 = 9.75 — 서버 검증 상한(10) 안.
+        /// </summary>
+        public const float SWARM_BARE_MOVE_SPEED_MULTIPLIER = 1.3f;
+
         /// <summary>열쇠 (#222 M4): 무료 소환 1회 충전 — 탈주 고블린(미니보스) 드랍. 사람 전용.</summary>
         public const int KEY_GROUND_ITEM_ID = 107000090;
 
         // 상태 효과 표시 ID (status_effect_info.csv와 동기)
         public const int BOOTS_STATUS_EFFECT_ID = 1101;
         public const int KEY_STATUS_EFFECT_ID = 1102;
+        public const int BARE_STATUS_EFFECT_ID = 1103;
 
         /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
         public const int SURVIVOR_MAX_CORRUPTION = 420;

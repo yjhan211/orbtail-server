@@ -351,3 +351,5 @@ id,category,text_kr,text_en,text_jp
 "12241","7","10초 동안 이동 속도가 증가합니다.","Move speed increases for 10 seconds.","10秒間、移動速度が増加します。"
 "12242","7","여분의 열쇠","Spare Key","予備の鍵"
 "12243","7","{Num}번 무료로 소환할 수 있습니다.","You can summon {Num} time(s) for free.","{Num}回無料で召喚できます。"
+"12244","7","필사의 탈주","Desperate Escape","決死の脱走"
+"12245","7","보유한 오브가 없습니다.\n오브를 찾는 동안 이동 속도가 증가합니다.","You have no orbs.\nMove faster while searching for a new one.","所持オーブがありません。\nオーブを探す間、移動速度が増加します。"

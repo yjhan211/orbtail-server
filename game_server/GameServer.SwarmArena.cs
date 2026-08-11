@@ -775,6 +775,8 @@ public partial class GameServer
         //      빈손은 화력이 0이라 몹도 강자로 취급해 피한다.
         float squadPower = GetSwarmSquadPower(matchingId, botPlayerId);
         bool hasSquadOrbs = squadPower > 0f;
+        // 빈손 이속 (#223): 이동 배율이 읽는 플래그 — 판단 틱이 단일 갱신 지점이다.
+        bot.IsSwarmBareHanded = !hasSquadOrbs;
         FindNearbySwarmRivals(matchingId, bot, squadPower, includeMonstersAsStronger: !hasSquadOrbs,
             out Vector3f strongerPosition, out (Vector3f Position, AreaType Area)? weakerRival);
 
@@ -1392,11 +1394,12 @@ public partial class GameServer
         _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
     }
 
-    // 빈손 본체 유효 HP = T1 오브(24)와 동급 (2026-08-10, T3 안에서 재하향): ×30(유효 14,
-    // PvP 5초 즉사)과 1:1(유효 420, 불사) 사이 — 만충 420 ÷ T1 HP가 피해당 오염 배율이다.
-    // 빈손은 "오브 하나 값"의 유예만 갖고, 생존은 도주 지시(0.5단계)와 무료 개봉이 만든다.
+    // 빈손 본체 유효 HP = T1 오브 두 개 값 (#223 재상향): T1 한 개 값(×17.5)은 후반 T3
+    // 앞에서 2~3발 0.2초 증발이었다(매치 2403 +262×2 · 2404 +455 한 방) — 읽고 도망칠
+    // 시간이 없는 죽음은 전투를 관전으로 만든다. 두 개 값(×8.75)이면 빈손 도주 창이
+    // 2~3초 생기고, 재기는 여전히 도주 지시(0.5단계)·빈손 이속·무료 개봉이 만든다.
     private static readonly float SwarmNakedCorruptionPerDamage =
-        Config.SURVIVOR_MAX_CORRUPTION / (float)SurvivorOrbData.GetSquadOrbMaxHp(1);
+        Config.SURVIVOR_MAX_CORRUPTION / (float)(SurvivorOrbData.GetSquadOrbMaxHp(1) * 2);
 
     private static int GetSwarmNakedCorruption(int damage) =>
         Math.Max(1, (int)MathF.Round(damage * SwarmNakedCorruptionPerDamage));
@@ -1408,7 +1411,7 @@ public partial class GameServer
     /// </summary>
     private void ApplySwarmSquadOrbHit(
         long matchingId, GameClientSession session, int monsterId, int damage,
-        List<GameClientSession> allSessions)
+        List<GameClientSession> allSessions, long attackerPlayerId = 0)
     {
         if (!session.PlayerId.HasValue)
             return;
@@ -1417,10 +1420,12 @@ public partial class GameServer
         {
             // PvP(monsterId=0)는 몬스터 피격 경로의 monsterId 가드에 걸려 증발했다 (#222 수리)
             // — 오염만 직접 반영한다. 피격 연출은 PvP VFX 브로드캐스트가 이미 담당한다.
+            // 공격자 전달 (#223): 빈손 PvP 킬이 by=0 · src=mental로 남던 크레딧 증발 수리.
             if (monsterId > 0)
                 session.ApplyEmotionAfterimageMonsterHit(monsterId, GetSwarmNakedCorruption(damage));
             else
-                session.ModifyStats(corruptionDelta: GetSwarmNakedCorruption(damage));
+                session.ModifyStats(corruptionDelta: GetSwarmNakedCorruption(damage),
+                    attackerPlayerId: attackerPlayerId);
             return;
         }
 
@@ -1767,7 +1772,8 @@ public partial class GameServer
                 session.PlayerId == attack.TargetPlayerId);
             if (pvpTargetSession != null)
             {
-                ApplySwarmSquadOrbHit(matchingId, pvpTargetSession, monsterId: 0, damage, allSessions);
+                ApplySwarmSquadOrbHit(matchingId, pvpTargetSession, monsterId: 0, damage, allSessions,
+                    attackerPlayerId: attack.AttackerPlayerId);
             }
             else
             {
