@@ -899,6 +899,9 @@ namespace network.common.data.models
         [Key("isOvertimeElimination")] public bool IsOvertimeElimination { get; set; }
         [Key("rank")] public int Rank { get; set; }
         [Key("finalOrbTier")] public int FinalOrbTier { get; set; }
+
+        // 잼 집계 (#223 M5): 결과 화면의 승점 표시 — 탈락자는 사망 낙수로 0이 정상.
+        [Key("jamCount")] public int JamCount { get; set; }
     }
 
     [MessagePackObject]

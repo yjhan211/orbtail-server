@@ -438,6 +438,14 @@ public class MatchingManager : IMatchingManager
             _logger.LogInformation("吏곸콉 ? 遺議???臾댁옉?꾨줈 {Needed}媛?蹂댁땐", needed);
         }
 
+        // 직업 종수(8) < 정원(10)이면 전 직업을 써도 모자란다 — 순환 중복 배정 (#223 10인 전환).
+        if (jobs.Count < entries.Count)
+        {
+            int baseJobCount = jobs.Count;
+            for (int fillIndex = 0; jobs.Count < entries.Count; fillIndex++)
+                jobs.Add(jobs[fillIndex % baseJobCount]);
+        }
+
         // PlayerId ??쭅?ы솕
         var players = entries.Select(e => MessagePackSerializer.Deserialize<MatchingQueueData>(e)).ToList();
         ApplyForcedPlayerJob(players, jobs);

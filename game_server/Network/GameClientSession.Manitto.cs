@@ -1031,7 +1031,9 @@ public partial class GameClientSession
                         IsAreaClosureElimination = d.isAreaClosureElimination,
                         IsOvertimeElimination = d.isOvertimeElimination,
                         Rank = d.playerId == winnerId ? 1 : d.eliminationRank,
-                        FinalOrbTier = d.playerId == winnerId ? ResolveFinalOrbTier(matchingId, d.playerId) : d.finalOrbTier
+                        FinalOrbTier = d.playerId == winnerId ? ResolveFinalOrbTier(matchingId, d.playerId) : d.finalOrbTier,
+                        // 잼 집계 (#223 M5): 생존자의 최종 지갑 — 탈락자는 낙수로 0.
+                        JamCount = session?.JamCount ?? bot?.JamCount ?? 0
                     },
                     EliminatedAt = d.eliminatedAt
                 };

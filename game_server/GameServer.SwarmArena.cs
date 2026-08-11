@@ -1413,6 +1413,12 @@ public partial class GameServer
             }
 
             // 버스트 즉사 제거 (#219): 봇도 빈손 생존으로 전환 — 이후는 본체(오염) 피해 경로.
+            // 몹 피격도 "맞는 중"이다 (#223, 매치 2453 -90): 스탬프가 없으면 보스 링 안에서
+            // 채집을 계속하다 27초간 포격당한다 — 홀드를 풀어 몹 회피 반사(최우선)가 잡게 한다.
+            _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
+            bot.LastDamagedAtUtc = DateTime.UtcNow;
+            bot.CancelInteractionHold();
+
             var botHit = ApplySwarmOrbHpDamage(matchingId, bot.PlayerId, damage.Damage);
             if (botHit.DestroyedItem != null)
                 ScatterSwarmOrbBreakStones(
