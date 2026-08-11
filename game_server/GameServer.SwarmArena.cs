@@ -843,11 +843,11 @@ public partial class GameServer
                         GameMapData.GetCurrentArea(MapId.School, cell) == fleeArea) ?? fleeCell;
                 }
 
-                return new SpotArenaBotDirective(
-                    SpotArenaBotMode.Escort,
-                    fleeArea,
-                    fleeCell,
-                    BotPlayerManager.CellToWorldPosition(MapId.School, fleeCell));
+                var fleeWorld = BotPlayerManager.CellToWorldPosition(MapId.School, fleeCell);
+                // 도주지가 제자리면 도주가 아니다 (#223 구석 정지 수리) — 다음 폴백으로 넘긴다.
+                if (IsFarEnoughSwarmFleeTarget(bot, fleeWorld))
+                    return new SpotArenaBotDirective(
+                        SpotArenaBotMode.Escort, fleeArea, fleeCell, fleeWorld);
             }
 
             // 폴백 (#222): 도주 방향에 열린 스팟이 없어도 무조건 이탈한다 — 스팟 부재로
@@ -864,14 +864,15 @@ public partial class GameServer
                 GameMapData.GetCurrentArea(MapId.School, fleeFallbackCell) is var fleeFallbackArea &&
                 fleeFallbackArea != AreaType.None)
             {
-                return new SpotArenaBotDirective(
-                    SpotArenaBotMode.Escort,
-                    fleeFallbackArea,
-                    fleeFallbackCell,
-                    BotPlayerManager.CellToWorldPosition(MapId.School, fleeFallbackCell));
+                var fleeFallbackWorld = BotPlayerManager.CellToWorldPosition(MapId.School, fleeFallbackCell);
+                // 구석에서 벽에 막힌 probe는 제자리로 수렴한다 (#223) — 가까우면 구역 이탈로.
+                if (IsFarEnoughSwarmFleeTarget(bot, fleeFallbackWorld))
+                    return new SpotArenaBotDirective(
+                        SpotArenaBotMode.Escort, fleeFallbackArea, fleeFallbackCell, fleeFallbackWorld);
             }
 
-            // 벽 방향이면 위협 반대편에서 가장 가까운 열린 사냥 구역 스폰으로 물러난다.
+            // 벽 방향이거나 도주지가 제자리면 위협 반대편에서 가장 가까운 열린 사냥 구역
+            // 스폰으로 물러난다 — 구역을 아예 벗어나야 진짜 도주다 (#223 구석 정지 수리).
             AreaType fleeRetreatArea = SwarmHuntingAreas
                 .Where(area => !IsSwarmAreaOutside(matchingId, area))
                 .OrderBy(area =>
@@ -1030,6 +1031,18 @@ public partial class GameServer
 
     // 도주 방향 앞의 가상 지점 — 이 지점 기준 최근접 스팟이 "위협 반대편 재기 스팟"이 된다.
     private const float SwarmBotFleeProbeDistance = 8f;
+
+    // 도주지 최소 거리 (#223 구석 정지 수리): 구석에서 벽에 막힌 도주지는 제자리로
+    // 수렴한다 — 이보다 가까우면 도주가 아니므로 다음 폴백(구역 이탈)으로 넘긴다.
+    private const float SwarmBotMinFleeTargetDistance = 3f;
+
+    private static bool IsFarEnoughSwarmFleeTarget(BotPlayerState bot, Vector3f target)
+    {
+        float dx = target.X - bot.Position.X;
+        float dy = target.Y - bot.Position.Y;
+        return dx * dx + dy * dy >=
+               SwarmBotMinFleeTargetDistance * SwarmBotMinFleeTargetDistance;
+    }
 
     /// <summary>이 봇의 스쿼드 오브 총 개수 — 저성장(파밍 부족) 판정용.</summary>
     private int CountSwarmSquadOrbs(long matchingId, long playerId)
@@ -1344,6 +1357,25 @@ public partial class GameServer
             Damage = Math.Max(1,
                 (int)MathF.Round(damage.Damage * SwarmMonsterDamageTakenMultiplier))
         };
+
+        // 보스 공격 연출 (#223): 고정 포대의 원거리 타격은 투사체로 보여야 읽힌다 —
+        // 같은 구역 전원에게 공격 VFX를 쏘고, 클라가 보스 여부(피통)로 투사체를 그린다.
+        if (_swarmArenaManager.IsBossMonster(matchingId, damage.MonsterId))
+        {
+            using var vfxPacket = Packet.Create((int)Protocol.G_TO_C_MONSTER_ATTACK_VFX);
+            vfxPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_ATTACK_VFX
+            {
+                MonsterId = damage.MonsterId,
+                TargetPlayerId = damage.TargetPlayerId,
+                AreaType = damage.Area
+            }));
+            foreach (var vfxSession in allSessions)
+            {
+                if (!vfxSession.IsEliminated && vfxSession.CurrentArea == damage.Area)
+                    vfxSession.Send(vfxPacket);
+            }
+        }
+
         var session = aliveSessions.FirstOrDefault(candidate =>
             candidate.PlayerId == damage.TargetPlayerId);
         if (session != null)

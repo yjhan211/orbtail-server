@@ -129,6 +129,12 @@ namespace network.common
         public const int KEY_STATUS_EFFECT_ID = 1102;
         public const int BARE_STATUS_EFFECT_ID = 1103;
 
+        /// <summary>
+        ///     보스 사거리 (#223): 파도 T3 오브급(기본 2.5 + 가중치 4 × 0.4) — 제자리 고정
+        ///     포대의 위협 반경. 서버 판정과 클라 범위 링이 이 값을 공유한다 (표시 = 판정).
+        /// </summary>
+        public const float SWARM_BOSS_ATTACK_RANGE = 4.1f;
+
         /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
         public const int SURVIVOR_MAX_CORRUPTION = 420;
 

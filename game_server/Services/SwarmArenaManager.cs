@@ -83,13 +83,30 @@ public sealed class SwarmArenaManager
             SwarmMonsterKind.RunawayGoblin => (120, 5, ContactRange, 1.2f, 4, 2, 1, 0, 1),
             SwarmMonsterKind.Bowler => (48, 2, 4.5f, 2.5f, 4, 2, 1, 0, 0),
             // 보스 (#223, SB 드롭 = 코인 11 + 젬 7): 피통은 클라 종 식별자 — 기존 값과 겹치면 안 된다.
-            // 골렘 = 느리고 아픈 광역 강타(볼러 스플래시 공유), 드래곤 = 화염구 원거리(최장 사거리),
-            // 트리 자이언트 = 열쇠 확정 드롭(탈주와 나란한 공급처).
-            SwarmMonsterKind.Golem => (240, 8, ContactRange, 2.8f, 11, 7, 0, 0, 0),
-            SwarmMonsterKind.BabyDragon => (200, 4, 7f, 2f, 11, 7, 0, 0, 0),
-            SwarmMonsterKind.TreeGiant => (260, 6, ContactRange, 2.2f, 8, 5, 0, 0, 1),
+            // 전원 제자리 고정 포대 — 파도 T3급 사거리(Config 공유 = 클라 범위 링)로 투사체를 던진다.
+            // 골렘 = 광역 강타(볼러 스플래시 공유), 트리 자이언트 = 열쇠 확정 드롭.
+            // 데미지는 참가자 피해 절반 배율(0.5) 통과 후가 실효 — 골렘 12·드래곤 6·트리 9.
+            // T1 오브(24)가 골렘 두 방에 깨진다: 링 안 눌러앉기가 실제로 비싸야 위협이다 (#223).
+            SwarmMonsterKind.Golem => (240, 24, Config.SWARM_BOSS_ATTACK_RANGE, 2.8f, 11, 7, 0, 0, 0),
+            SwarmMonsterKind.BabyDragon => (200, 12, Config.SWARM_BOSS_ATTACK_RANGE, 2f, 11, 7, 0, 0, 0),
+            SwarmMonsterKind.TreeGiant => (260, 18, Config.SWARM_BOSS_ATTACK_RANGE, 2.2f, 8, 5, 0, 0, 1),
             _ => (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1, 0, 0, 0, 0)
         };
+
+    /// <summary>보스 판별 (#223): 고정 포대·리스폰 없음·타원 판정 공유의 스위치.</summary>
+    public static bool IsBossKind(SwarmMonsterKind kind) =>
+        kind is SwarmMonsterKind.Golem or SwarmMonsterKind.BabyDragon or SwarmMonsterKind.TreeGiant;
+
+    /// <summary>클라 보스 연출(투사체) 분기용 — 스웜 공격 VFX 브로드캐스트가 묻는다.</summary>
+    public bool IsBossMonster(long matchingId, int monsterId)
+    {
+        if (!_matches.TryGetValue(matchingId, out var state))
+            return false;
+        lock (state.SyncRoot)
+        {
+            return state.Monsters.TryGetValue(monsterId, out var monster) && IsBossKind(monster.Kind);
+        }
+    }
 
     /// <summary>
     ///     보스 상주 구역 (#223): 중간 지대 캠프 0번이 보스 단독 캠프가 된다.
@@ -252,12 +269,15 @@ public sealed class SwarmArenaManager
 
                 // 잠든 원거리 몹은 저격하지 않는다 — 부딪힘(접촉 반경)만 개전이 된다.
                 float attackRange = monster.Aggro ? monster.AttackRangeValue : ContactRange;
+                // 보스 판정은 타원(dy×2) (#223): 범위 링 스프라이트가 아이소 타원이라
+                // 원형 판정이면 세로로 링 밖까지 맞는다 — PvP와 같은 규칙으로 표시 = 판정.
+                float verticalScale = IsBossKind(monster.Kind) ? 2f : 1f;
                 foreach (var participant in state.LastParticipants)
                 {
                     if (participant.Area != monster.Area)
                         continue;
                     float dx = monster.Position.X - participant.Position.X;
-                    float dy = monster.Position.Y - participant.Position.Y;
+                    float dy = (monster.Position.Y - participant.Position.Y) * verticalScale;
                     if (dx * dx + dy * dy > attackRange * attackRange)
                         continue;
                     if (state.ContactImmuneUntilUtc.TryGetValue(participant.PlayerId, out var immuneUntil) &&
@@ -312,7 +332,9 @@ public sealed class SwarmArenaManager
                         }
                     }
 
-                    break;
+                    // 보스 (#223): 범위 안 전원 동시 타격 — 고정 포대는 한 명씩 고르지 않는다.
+                    if (!IsBossKind(monster.Kind))
+                        break;
                 }
             }
 
@@ -811,14 +833,19 @@ public sealed class SwarmArenaManager
     {
         if (!monster.Aggro)
         {
+            // 보스 (#223): 링 안 = 개전 — 어그로 반경이 곧 사거리(타원 dy×2)라 범위 링이
+            // 안전선으로 정직해진다. 일반 몹은 좁은 접근 반경(2.5) 유지.
+            bool isBoss = IsBossKind(monster.Kind);
+            float aggroRadius = isBoss ? monster.AttackRangeValue : CampAggroRadius;
+            float aggroVerticalScale = isBoss ? 2f : 1f;
             for (int index = 0; index < participants.Count; index++)
             {
                 var participant = participants[index];
                 if (participant.Area != monster.Area)
                     continue;
                 float aggroDx = participant.Position.X - monster.Position.X;
-                float aggroDy = participant.Position.Y - monster.Position.Y;
-                if (aggroDx * aggroDx + aggroDy * aggroDy > CampAggroRadius * CampAggroRadius)
+                float aggroDy = (participant.Position.Y - monster.Position.Y) * aggroVerticalScale;
+                if (aggroDx * aggroDx + aggroDy * aggroDy > aggroRadius * aggroRadius)
                     continue;
                 monster.Aggro = true;
                 monster.ChaseTargetPlayerId = participant.PlayerId;
@@ -828,6 +855,10 @@ public sealed class SwarmArenaManager
             if (!monster.Aggro)
                 return;
         }
+
+        // 보스는 고정 포대 (#223): 추격도 귀환도 없다 — 어그로만 켜지고 제자리에서 쏜다.
+        if (IsBossKind(monster.Kind))
+            return;
 
         // 추격 대상: 어그로 대상 우선, 구역을 떠났으면 같은 구역 최근접.
         bool found = false;

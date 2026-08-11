@@ -200,9 +200,10 @@ public class SwarmArenaManagerTests
         manager.Tick(217001, Participants(center), now);
 
         // 스폰 틱의 중앙 참가자가 커스텀 앵커(CSV 저작) 캠프를 깨웠을 수 있다 —
-        // 관찰 대상은 "아직 안 깨어난" 몹으로 고른다.
+        // 관찰 대상은 "아직 안 깨어난" 몹으로 고른다. 보스(#223 고정 포대)는 추격이 없어 제외.
         var sleeping = manager.GetVisualStates(217001)
-            .First(state => state.IsAlive && state.ChaseTargetPlayerId == 0);
+            .First(state => state.IsAlive && state.ChaseTargetPlayerId == 0 &&
+                            state.MaxHealth == SwarmArenaManager.MonsterMaxHealth);
         var anchor = new Vector3f(sleeping.PositionX, sleeping.PositionY, 0f);
         // 관찰 지점은 모든 몹과 리쉬(5.5)+어그로 여유 밖(7) — 깨어난 몹도 추격을 끊고 귀환한다.
         var aliveStates = manager.GetVisualStates(217001).Where(state => state.IsAlive).ToList();
