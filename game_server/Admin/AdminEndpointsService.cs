@@ -101,6 +101,11 @@ public static class AdminEndpoints
             return Results.Ok(snapshot);
         });
 
+        // POST /admin/swarm-cut-dummy — 절단 실험 더미 (#226): 매치의 봇 하나를 운동장 과녁으로.
+        // matchingId 생략 시 최신 활성 매치.
+        app.MapPost("/admin/swarm-cut-dummy", (long? matchingId) =>
+            Results.Ok(gameServer.SetupSwarmCutDummy(matchingId ?? 0)));
+
         app.MapGet("/admin/matching-config", async () =>
         {
             var snapshot = await matchingConfig.GetSnapshotAsync();

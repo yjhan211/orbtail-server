@@ -228,7 +228,30 @@ public partial class GameServer
                 new SpotArenaPlayerSpatial(bot.PlayerId, bot.CurrentArea, bot.Position)))
             .ToList();
 
-        var tick = _swarmArenaManager.Tick(matchingId, participants, nowUtc);
+        // 실험장 자동 세팅 (#226): 사람이 있는 매치는 첫 틱에 절단 더미가 자동으로 선다.
+        // 봇 전용 검증 매치는 제외 — 게이트 계측이 오염되지 않게.
+        if (SwarmCutDummyAutoSetup && aliveSessions.Count > 0 && aliveBots.Count > 0 &&
+            _swarmCutDummyAutoSetupDone.Add(matchingId))
+        {
+            SetupSwarmCutDummy(matchingId);
+        }
+
+        // 더미(#226 실험 과녁)는 웨이브 디렉터에서 제외 — 몹이 몰려들지 않아 실험장이 조용하다.
+        var dummyIds = aliveBots.Where(bot => bot.IsSwarmCutDummy)
+            .Select(bot => bot.PlayerId).ToHashSet();
+        var directorParticipants = dummyIds.Count == 0
+            ? participants
+            : participants.Where(participant => !dummyIds.Contains(participant.PlayerId)).ToList();
+        var tick = _swarmArenaManager.Tick(matchingId, directorParticipants, nowUtc);
+
+        // 절단 실험 더미 (#226): 불사 + 오브 10개 자동 리필 — 절단·포위 타격감 튜닝용 과녁.
+        foreach (var dummyBot in aliveBots)
+        {
+            if (!dummyBot.IsSwarmCutDummy)
+                continue;
+            dummyBot.Corruption = 0;
+            RefillSwarmCutDummyOrbs(matchingId, dummyBot);
+        }
 
         // 오브열 (#226 α/C/B): 경로 기록 → 이동 선분의 상대 열 절단 → 고리 완성 포위 사격.
         UpdateSwarmOrbTrails(matchingId, participants);
@@ -236,8 +259,10 @@ public partial class GameServer
         ProcessSwarmEncirclements(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
         ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
 
-        foreach (var damage in tick.PlayerDamage)
-            ApplySwarmParticipantDamage(matchingId, damage, aliveSessions, aliveBots, sessions);
+        // 실험장 (#226): 더미가 있는 매치는 몹 공격도 끈다 — 절단 튜닝 중 방해 금지.
+        if (dummyIds.Count == 0)
+            foreach (var damage in tick.PlayerDamage)
+                ApplySwarmParticipantDamage(matchingId, damage, aliveSessions, aliveBots, sessions);
         ProcessSwarmBotRecovery(matchingId, aliveBots, nowUtc);
 
         // 봇도 사람과 같은 규칙으로 성장한다: 소환석 5개 + 스팟 소진. 공짜 버튼 소환 없음.
@@ -1236,7 +1261,8 @@ public partial class GameServer
             if (!hasPrevious)
                 continue;
             TryPerformSwarmTrailCut(matchingId, monster.CombatTargetId, creditPlayerId: 0, monster.Area,
-                previous, monster.Position, chains, nowUtc, aliveSessions, aliveBots, allSessions);
+                previous, monster.Position, chains, nowUtc, aliveSessions, aliveBots, allSessions,
+                monsterCutter: true);
         }
     }
 
@@ -1251,7 +1277,8 @@ public partial class GameServer
         DateTime nowUtc,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
-        List<GameClientSession> allSessions)
+        List<GameClientSession> allSessions,
+        bool monsterCutter = false)
     {
         float segmentDx = current.X - previous.X;
         float segmentDy = current.Y - previous.Y;
@@ -1269,6 +1296,9 @@ public partial class GameServer
         foreach (var (ownerId, chain) in chains)
         {
             if (ownerId == cutterId || chain.Area != cutterArea)
+                continue;
+            // 실험 더미(#226)의 열은 몹이 끊지 않는다 — 절단 실험은 플레이어의 몫.
+            if (monsterCutter && IsSwarmCutDummyPlayer(matchingId, ownerId))
                 continue;
             if (_swarmTrailCutCooldownUtc.TryGetValue(
                     (matchingId, cutterId, ownerId), out var cooldownUntil) &&
@@ -1730,6 +1760,107 @@ public partial class GameServer
         }
 
         return inside;
+    }
+
+    // ===== 절단 실험 더미 (#226): 매치의 봇 하나를 운동장 과녁으로 바꾼다 —
+    // 정지·불사·오브 10개 일자 꼬리(자동 리필)·비무장·몹 절단 면제. 웨이브 디렉터 제외.
+    // 자동 세팅: 사람이 있는 매치는 첫 스웜 틱에 자동으로 선다 (실험 끝나면 false로 원복). =====
+    private static readonly bool SwarmCutDummyAutoSetup = true;
+    private const int SwarmCutDummyOrbCount = 10;
+    private readonly HashSet<long> _swarmCutDummyAutoSetupDone = new();
+
+    /// <summary>봇 플래그 조회 — 참가자 id가 더미인지. 사람(양수)은 항상 false.</summary>
+    private bool IsSwarmCutDummyPlayer(long matchingId, long playerId)
+    {
+        if (playerId >= 0)
+            return false;
+        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        {
+            if (bot.PlayerId == playerId)
+                return bot.IsSwarmCutDummy;
+        }
+
+        return false;
+    }
+
+    private void RefillSwarmCutDummyOrbs(long matchingId, BotPlayerState dummy)
+    {
+        for (int index = CountSwarmSquadOrbs(matchingId, dummy.PlayerId);
+             index < SwarmCutDummyOrbCount;
+             index++)
+            _inGameInventoryManager.TryAddItemWithCapacity(
+                matchingId, dummy.PlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out _);
+    }
+
+    /// <summary>
+    ///     절단 실험 더미 세팅 (어드민): 매치의 봇 하나를 운동장 중앙 동쪽에 고정하고
+    ///     서쪽으로 일자 꼬리를 심는다. 같은 봇에 재호출하면 위치·꼬리를 재정렬한다.
+    /// </summary>
+    public object SetupSwarmCutDummy(long matchingId)
+    {
+        if (matchingId <= 0)
+        {
+            // 사람이 있는 매치 우선 — 봇 전용 검증 매치(큰 id)가 최신을 가로채지 않게.
+            var activeIds = GetActiveInstanceIds().ToList();
+            var humanIds = activeIds.Where(id => GetSessionsByInstance(MapId.School, id)
+                .Any(session => session.PlayerId.HasValue)).ToList();
+            matchingId = (humanIds.Count > 0 ? humanIds : activeIds).DefaultIfEmpty(0).Max();
+        }
+
+        if (matchingId <= 0)
+            return new { error = "no active match" };
+
+        var bots = _botPlayerManager.GetBots(matchingId)
+            .Where(bot => !bot.IsEliminated).ToList();
+        var dummy = bots.FirstOrDefault(bot => bot.IsSwarmCutDummy) ?? bots.FirstOrDefault();
+        if (dummy == null)
+            return new { error = "no alive bot in match " + matchingId };
+
+        var groundCell = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Ground);
+        var center = BotPlayerManager.CellToWorldPosition(MapId.School, groundCell);
+        var fromArea = dummy.CurrentArea;
+        var fromCell = dummy.Cell;
+        dummy.IsSwarmCutDummy = true;
+        dummy.CurrentArea = AreaType.Ground;
+        dummy.Position = new Vector3f(center.X + 4f, center.Y, 0f);
+        dummy.Cell = MapCoordinateConverter.WorldToCell(MapId.School, dummy.Position);
+        dummy.Path.Clear();
+        dummy.PathIndex = 0;
+        dummy.Corruption = 0;
+
+        // 꼬리: 동→서 일자 경로를 미리 심는다 — points[0] = 현재 위치(최신).
+        var trailPoints = new List<Vector3f>();
+        for (float distance = 0f; distance <= 12f; distance += 0.3f)
+            trailPoints.Add(new Vector3f(dummy.Position.X - distance, dummy.Position.Y, 0f));
+        _swarmOrbTrails[(matchingId, dummy.PlayerId)] = trailPoints;
+        _swarmTrailLastTickPositions[(matchingId, dummy.PlayerId)] =
+            new Vector3f(dummy.Position.X, dummy.Position.Y, 0f);
+        RefillSwarmCutDummyOrbs(matchingId, dummy);
+
+        var sessions = GetSessionsByInstance(MapId.School, matchingId).ToList();
+        BroadcastBotMovement(matchingId, new BotMovementEvent
+        {
+            BotPlayerId = dummy.PlayerId,
+            FromArea = fromArea,
+            ToArea = AreaType.Ground,
+            FromCell = fromCell,
+            ToCell = dummy.Cell,
+            Position = dummy.Position,
+            Velocity = new Vector3f(0f, 0f, 0f),
+            Rotation = 0f,
+            IsAreaTransition = fromArea != AreaType.Ground
+        }, sessions);
+        logger.LogInformation(
+            "Swarm cut dummy ready: MatchingId={MatchingId}, DummyId={DummyId}, Position=({X},{Y})",
+            matchingId, dummy.PlayerId, dummy.Position.X, dummy.Position.Y);
+        return new
+        {
+            matchingId,
+            dummyId = dummy.PlayerId,
+            x = dummy.Position.X,
+            y = dummy.Position.Y,
+            orbs = SwarmCutDummyOrbCount
+        };
     }
 
     /// <summary>
@@ -2586,6 +2717,7 @@ public partial class GameServer
         foreach (var key in _swarmPvpCorruptionCarry.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmPvpCorruptionCarry.Remove(key);
+        _swarmCutDummyAutoSetupDone.Remove(matchingId);
         foreach (var key in _swarmTrailCutCooldownUtc.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmTrailCutCooldownUtc.Remove(key);
@@ -2668,7 +2800,8 @@ public partial class GameServer
         ProximityCombatActor spatial,
         DateTime nowUtc)
     {
-        bool armed = IsSwarmAttackArmed(matchingId, spatial.PlayerId, nowUtc);
+        bool armed = IsSwarmAttackArmed(matchingId, spatial.PlayerId, nowUtc) &&
+                     !IsSwarmCutDummyPlayer(matchingId, spatial.PlayerId);
         // #226 재개편: 본체 보호 퇴역 — 미사일은 항상 적 본체를 노린다(본체 1 > 몬스터 2).
         // 오브 액터는 발사 원점일 뿐 표적이 아니다(Untargetable).
         var fallback = CreateSwarmParticipantActor(spatial, armed) with
