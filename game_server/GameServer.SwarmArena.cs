@@ -1680,10 +1680,11 @@ public partial class GameServer
 
     /// <summary>
     ///     오브 파괴 낙수 (#219 SB): 깨진 오브는 소환석으로 흩어진다 — 승자의 전리품이자
-    ///     도망친 주인의 회수 기회. 개봉 원가의 일부만 돌려 킬 스노볼을 개봉 1~2회 수준으로
-    ///     제한한다 (해골 1 · 탈주 4석과 나란한 축).
+    ///     도망친 주인의 회수 기회. 개봉 원가의 일부만 돌려 킬 스노볼을 제한한다.
+    ///     #223 밸런싱: 2/5/10 절반으로 — 매치 2401에서 승자 98석 vs 2위 36석,
+    ///     "킬 = 전력 대박"이 스노우볼 동력이었다. 승점 대박(잼 낙수·사망 잼 전량)은 유지.
     /// </summary>
-    private static int GetSwarmOrbBreakStoneCount(int tier) => tier >= 3 ? 10 : tier == 2 ? 5 : 2;
+    private static int GetSwarmOrbBreakStoneCount(int tier) => tier >= 3 ? 5 : tier == 2 ? 3 : 1;
 
     /// <summary>오브 파괴 잼 (#222 M3): 버스트 전리품이 곧 승점 — 티어 1/3/6.</summary>
     private static int GetSwarmOrbBreakJamCount(int tier) => tier >= 3 ? 6 : tier == 2 ? 3 : 1;
@@ -1752,7 +1753,8 @@ public partial class GameServer
         // 3.75로 고정해, 티어 HP(24/56/120)가 커지는 후반엔 아무도 못 죽는 관전 대치를 만들었다.
         // 몬스터와 같은 규칙(발당 실데미지 전부 적용)으로 통일 — TTK가 공격 DPS vs 앞줄 HP의
         // 대칭이 되고, 빈손 오염(×17.5)도 같은 앵커를 자동으로 따른다.
-        int damage = Math.Max(1, attack.Damage);
+        // 발당 배율(#223)은 그 대칭을 유지한 채 PvP TTK만 늘린다 — 캡·무적창 재도입 금지.
+        int damage = Math.Max(1, (int)MathF.Round(attack.Damage * SwarmArenaManager.PvpDamageScale));
         if (SwarmOrbHealthEnabled)
         {
             logger.LogDebug(

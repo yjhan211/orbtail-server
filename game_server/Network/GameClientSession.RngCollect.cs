@@ -467,7 +467,9 @@ public partial class GameClientSession
         }
 
         // 소환석 부족이면 게이지를 시작하지 않는다 — 헛 채널 방지.
-        if (_summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId!.Value).StoneCount <
+        // 여분의 열쇠 (#222 M4): 보유 중엔 다음 개봉이 무료 — 석이 없어도 시작할 수 있다.
+        if (FreeSummonCharges <= 0 &&
+            _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId!.Value).StoneCount <
             GetSwarmExploreCost())
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.INSUFFICIENT_CURRENCY, 0);
@@ -530,7 +532,8 @@ public partial class GameClientSession
         var stoneState = _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value);
         bool boardFull = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value)
             .GetAllItems().Count >= Config.SWARM_ORB_CAPACITY;
-        if (stoneState.StoneCount < exploreCost || boardFull)
+        // 여분의 열쇠 (#222 M4): 보유 중엔 석 부족이어도 개봉 확정 — 실차감은 소환에서 0이 된다.
+        if ((FreeSummonCharges <= 0 && stoneState.StoneCount < exploreCost) || boardFull)
         {
             // 개봉 불가(석 부족·보드 포화) — 쿨다운을 풀어 나중에 다시 열 수 있게 한다.
             RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);

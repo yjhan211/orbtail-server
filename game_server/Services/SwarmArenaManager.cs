@@ -41,8 +41,11 @@ public sealed class SwarmArenaManager
     public const int RushSpawnCount = 8;
     public const int EncircleSpawnCount = 8;
 
-    // PvP는 압박·마무리 보조다. 킬의 주 경로는 스웜(접촉 24)이어야 한다.
-    public const int PvpDamage = 3;
+    // PvP 발당 데미지 배율 (#223 밸런싱): 전 발 적용(#222) 후 TTK가 너무 짧아
+    // 매치가 2:47에 전멸로 끝났다(매치 2401 — 첫 킬 42초, 사망 7건 전부 PvP).
+    // 몬스터전은 그대로 두고 PvP만 눌러 4분 타이머(잼 판정)까지 생존자가 남게 한다.
+    // 빈손 오염(데미지 ×17.5)도 이 배율을 자동으로 따른다.
+    public const float PvpDamageScale = 0.65f;
 
     // 개봉 소음 유인 반경: 채집을 시작하면 같은 구역 이 반경의 잔상이 개봉자에게 몰린다.
     public const float ExploreAttractRadius = 14f;
@@ -79,8 +82,38 @@ public sealed class SwarmArenaManager
             SwarmMonsterKind.DartGoblin => (18, 2, 5f, 2f, 1, 1, 0, 1, 0),
             SwarmMonsterKind.RunawayGoblin => (120, 5, ContactRange, 1.2f, 4, 2, 1, 0, 1),
             SwarmMonsterKind.Bowler => (48, 2, 4.5f, 2.5f, 4, 2, 1, 0, 0),
+            // 보스 (#223, SB 드롭 = 코인 11 + 젬 7): 피통은 클라 종 식별자 — 기존 값과 겹치면 안 된다.
+            // 골렘 = 느리고 아픈 광역 강타(볼러 스플래시 공유), 드래곤 = 화염구 원거리(최장 사거리),
+            // 트리 자이언트 = 열쇠 확정 드롭(탈주와 나란한 공급처).
+            SwarmMonsterKind.Golem => (240, 8, ContactRange, 2.8f, 11, 7, 0, 0, 0),
+            SwarmMonsterKind.BabyDragon => (200, 4, 7f, 2f, 11, 7, 0, 0, 0),
+            SwarmMonsterKind.TreeGiant => (260, 6, ContactRange, 2.2f, 8, 5, 0, 0, 1),
             _ => (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1, 0, 0, 0, 0)
         };
+
+    /// <summary>
+    ///     보스 상주 구역 (#223): 중간 지대 캠프 0번이 보스 단독 캠프가 된다.
+    ///     School 맵의 실존 중간 지대는 3곳뿐 — 북 밴드(정크장)·남 밴드(회랑)·운동장.
+    ///     트리 자이언트(열쇠)는 운동장 — 광산(150초 개장)과 같은 무대의 선주민 수호자.
+    /// </summary>
+    private static bool TryGetBossKind(AreaType area, out SwarmMonsterKind kind)
+    {
+        switch (area)
+        {
+            case AreaType.Junkyard:
+                kind = SwarmMonsterKind.Golem;
+                return true;
+            case AreaType.Corridor:
+                kind = SwarmMonsterKind.BabyDragon;
+                return true;
+            case AreaType.Ground:
+                kind = SwarmMonsterKind.TreeGiant;
+                return true;
+            default:
+                kind = SwarmMonsterKind.Skeleton;
+                return false;
+        }
+    }
 
     private const int FirstMonsterId = 7_000_000;
     private const long FirstCombatTargetId = -4_000_000_000_000_000_000L;
@@ -254,7 +287,8 @@ public sealed class SwarmArenaManager
                         monster.ContactDamageValue));
 
                     // 볼러 스플래시: 주 대상 주변까지 함께 맞는다 — 뭉치기 견제.
-                    if (monster.Kind == SwarmMonsterKind.Bowler)
+                    // 골렘(#223)도 공유 — 광역 강타가 보스 접근전의 특수공격 근사다.
+                    if (monster.Kind is SwarmMonsterKind.Bowler or SwarmMonsterKind.Golem)
                     {
                         foreach (var splashed in state.LastParticipants)
                         {
@@ -641,6 +675,10 @@ public sealed class SwarmArenaManager
                 continue;
             }
 
+            // 보스는 리스폰하지 않는다 (#223): 11석+7잼 드롭이 45초마다 돌면 경제가 터진다.
+            if (!StartRooms.Contains(area) && campIndex == 0 && TryGetBossKind(area, out _))
+                continue;
+
             if (!state.CampRespawnAtUtc.TryGetValue((area, campIndex), out var respawnAtUtc))
             {
                 state.CampRespawnAtUtc[(area, campIndex)] = now.AddSeconds(CampRespawnSeconds);
@@ -674,7 +712,15 @@ public sealed class SwarmArenaManager
             };
         }
 
-        if (!StartRooms.Contains(area) || campIndex == 0)
+        if (!StartRooms.Contains(area))
+        {
+            // 보스 구역 (#223): 캠프 0번 = 보스 단독. 나머지 캠프는 해골 무리 유지.
+            if (campIndex == 0 && TryGetBossKind(area, out var bossKind))
+                return [bossKind];
+            return [SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton];
+        }
+
+        if (campIndex == 0)
             return [SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton];
         if (campIndex == 1)
             return [SwarmMonsterKind.DartGoblin];
@@ -720,6 +766,11 @@ public sealed class SwarmArenaManager
                 0f), campAnchor, area);
 
             var stats = GetKindStats(kinds[index]);
+            // 첫 캠프 경제 (#223): 시작방 첫 캠프(해골 3)는 마리당 2석 — 클리어 즉시
+            // 첫 상자(비용 5)가 열린다. 1석 몹 5마리 노가다(첫 소환 36초, 매치 2402)의 수리.
+            int stoneReward = stats.StoneReward;
+            if (campIndex == 0 && kinds[index] == SwarmMonsterKind.Skeleton && StartRooms.Contains(area))
+                stoneReward = 2;
             int serial = state.NextSerial++;
             var monster = new MonsterRuntime
             {
@@ -733,7 +784,7 @@ public sealed class SwarmArenaManager
                 ActivatesAtUtc = now,
                 NextContactAtUtc = now,
                 ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
-                SummonStoneReward = stats.StoneReward,
+                SummonStoneReward = stoneReward,
                 JamReward = stats.JamReward,
                 HeartReward = stats.HeartReward,
                 BootsReward = stats.BootsReward,
@@ -1198,7 +1249,12 @@ public enum SwarmMonsterKind
     Skeleton = 0,
     DartGoblin = 1,
     RunawayGoblin = 2,
-    Bowler = 3
+    Bowler = 3,
+
+    // 보스 (#223): 중간 지대 고정 캠프 1기, 리스폰 없음 — 맵의 유한 대형 콘텐츠.
+    Golem = 4,
+    BabyDragon = 5,
+    TreeGiant = 6
 }
 
 public sealed class SwarmArenaTickResult
