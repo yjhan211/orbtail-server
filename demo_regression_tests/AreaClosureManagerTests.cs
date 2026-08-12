@@ -40,10 +40,10 @@ public class AreaClosureManagerTests
 
         var state = manager.InitializeMatching(195001);
 
-        // #222 M3-2 4분 압축: 바깥 포드 → 중간 포드 → 쌍 구역 → 밴드 → 운동장 최종(=타이머 만료).
+        // #226 단계 B 5분 재정렬: 바깥 포드 → 중간 포드 → 쌍 구역 → 밴드 → 운동장 최종(=타이머 만료).
         Assert.Empty(state.ClosedAreas);
         Assert.Equal(5, state.Waves.Count);
-        Assert.Equal([80, 120, 160, 200, 240], state.Waves.Select(wave => wave.ClosureAtSeconds));
+        Assert.Equal([100, 150, 200, 250, 300], state.Waves.Select(wave => wave.ClosureAtSeconds));
         Assert.Equal(AreaType.Ground, state.ClosureOrder[^1]);
         Assert.Equal(
             [AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2],
@@ -78,7 +78,7 @@ public class AreaClosureManagerTests
         const long matchingId = 195002;
         manager.InitializeMatching(matchingId);
 
-        now = now.AddSeconds(65);
+        now = now.AddSeconds(85);
         var warning = manager.CheckClosureSchedule(matchingId);
 
         Assert.Equal(15, warning.WarningSeconds);
@@ -108,17 +108,17 @@ public class AreaClosureManagerTests
         manager.InitializeMatching(matchingId);
 
         // #222 5방 사망 조정(08-10 2차): 웨이브 초당 오염 17/20/23/26/29 → 5초 틱 기준 검증.
-        now = now.AddSeconds(80);
+        now = now.AddSeconds(100);
         manager.CheckClosureSchedule(matchingId);
         Assert.Equal(85, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Classroom4));
         Assert.Equal(0, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Ground));
 
-        now = now.AddSeconds(120); // 3:20 — 운동장 전 웨이브(밴드까지)가 모두 닫힌 시점.
+        now = now.AddSeconds(150); // 4:10 — 운동장 전 웨이브(밴드까지)가 모두 닫힌 시점.
         manager.CheckClosureSchedule(matchingId);
         Assert.Equal(130, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Classroom4));
         Assert.Equal(0, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Ground));
 
-        now = now.AddSeconds(40); // 4:00 — 운동장 최종 폐쇄 + 오버타임 개시(+2/초).
+        now = now.AddSeconds(50); // 5:00 — 운동장 최종 폐쇄 + 오버타임 개시(+2/초).
         manager.CheckClosureSchedule(matchingId);
         Assert.Equal(155, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Classroom4));
         Assert.Equal(155, manager.GetEnvironmentalCorruptionDelta(matchingId, AreaType.Ground));
@@ -133,8 +133,8 @@ public class AreaClosureManagerTests
         const long matchingId = 198502;
         var state = manager.InitializeMatching(matchingId);
 
-        Assert.Equal(240, state.Waves[^1].ClosureAtSeconds);
-        now = now.AddSeconds(240);
+        Assert.Equal(300, state.Waves[^1].ClosureAtSeconds);
+        now = now.AddSeconds(300);
         manager.CheckClosureSchedule(matchingId);
         Assert.True(manager.IsAreaClosed(matchingId, AreaType.Ground));
         Assert.True(manager.IsOvertimeActive(matchingId));
@@ -151,10 +151,10 @@ public class AreaClosureManagerTests
         const long matchingId = 202001;
         manager.InitializeMatching(matchingId);
 
-        now = now.AddSeconds(170);
+        now = now.AddSeconds(220);
         manager.CheckClosureSchedule(matchingId);
 
-        now = now.AddSeconds(15); // 3:05 — 밴드(테라스·복도) 웨이브 경고창.
+        now = now.AddSeconds(15); // 3:55 — 밴드(테라스·복도) 웨이브 경고창.
         var warning = manager.CheckClosureSchedule(matchingId);
         Assert.Equal([AreaType.Corridor, AreaType.Junkyard], warning.WarningAreas);
         Assert.False(manager.CheckGlobalClosureSchedule(matchingId).HasTransition);

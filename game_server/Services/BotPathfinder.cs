@@ -58,6 +58,10 @@ public static class BotPathfinder
                 exitCell = FindReverseSpawnCell(mapId, forwardConn);
             if (exitCell == null)
                 exitCell = GameMapData.GetAreaSpawnCell(mapId, fromA); // 폴백
+            // 스폰 셀 안전망 (2026-08-12): 연결 데이터가 벽 셀을 가리키면 구역 내 BFS가
+            // 실패해 그 구간이 통째로 생략되고, 봇이 다음 구역 입구까지 직선 이동했다
+            // (교실2→강당 벽 관통 관측). 문 인접 보행 셀로 스냅해 데이터 오차를 흡수한다.
+            exitCell = SnapToWalkableInArea(mapId, fromA, exitCell);
 
             // 현재 셀 → 출구 셀 (영역 안에서 walk)
             var cellPath = BfsCellsInArea(mapId, fromA, currentCell, exitCell);
@@ -69,6 +73,7 @@ public static class BotPathfinder
 
             // 영역 경계 통과: 선택된 connection의 SpawnCell은 대상 영역 문어귀의 인접 보행 셀이다.
             Cell entryCell = forwardConn?.SpawnCell ?? GameMapData.GetAreaSpawnCell(mapId, toA);
+            entryCell = SnapToWalkableInArea(mapId, toA, entryCell);
             path.Add(new Step
             {
                 Cell = entryCell,
@@ -108,6 +113,35 @@ public static class BotPathfinder
         }
 
         return path;
+    }
+
+    /// <summary>
+    ///     스폰·출구 셀 스냅 (2026-08-12): 대상 셀이 해당 구역의 보행 셀이 아니면 인접
+    ///     4방(그 다음 8방)에서 보행+구역 일치 셀을 찾아 되돌린다. 전부 실패하면 원본 유지 —
+    ///     기존 폴백(BFS 실패 시 구간 생략)이 마지막 안전망으로 남는다.
+    /// </summary>
+    private static Cell SnapToWalkableInArea(MapId mapId, AreaType area, Cell cell)
+    {
+        bool IsGood(Cell candidate) =>
+            GameMapData.IsMoveablePosition(mapId, candidate) &&
+            GameMapData.GetCurrentArea(mapId, candidate) == area;
+
+        if (IsGood(cell))
+            return cell;
+
+        ReadOnlySpan<(int Dx, int Dy)> offsets =
+        [
+            (0, -1), (0, 1), (-1, 0), (1, 0),
+            (-1, -1), (1, -1), (-1, 1), (1, 1)
+        ];
+        foreach (var (dx, dy) in offsets)
+        {
+            var candidate = new Cell(cell.X + dx, cell.Y + dy);
+            if (IsGood(candidate))
+                return candidate;
+        }
+
+        return cell;
     }
 
     private static IReadOnlyList<Cell> FindDoorClearanceCells(
