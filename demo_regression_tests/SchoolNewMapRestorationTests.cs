@@ -528,6 +528,74 @@ public class SchoolNewMapRestorationTests
             $"School_New areas without an explicit item pool: {string.Join(", ", missingPoolAreas)}");
     }
 
+    [Fact]
+    public void BotPathfinder_AllSchoolConnections_ProduceContiguousWalkablePaths()
+    {
+        // 봇 벽 관통 회귀 방지 (#226): 모든 연결 쌍(양방향)의 경로가 인접 셀 연속이고
+        // 전 스텝이 보행 가능해야 한다 — 구간 생략(직선 이동)은 여기서 잡힌다.
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+
+        var failures = new List<string>();
+        foreach (AreaType from in Enum.GetValues<AreaType>())
+        {
+            var connections = GameAreaConnectionData.GetConnections(MapId.School, from);
+            if (connections == null)
+                continue;
+            foreach (var connection in connections)
+            {
+                var start = GameMapData.GetAreaSpawnCell(MapId.School, connection.FromArea);
+                var goal = GameMapData.GetAreaSpawnCell(MapId.School, connection.ToArea);
+                var path = BotPathfinder.FindPath(
+                    MapId.School, connection.FromArea, start, connection.ToArea, goal);
+                if (path == null || path.Count == 0)
+                {
+                    failures.Add($"{connection.FromArea}->{connection.ToArea}: 경로 없음");
+                    continue;
+                }
+
+                // 경로는 모퉁이 웨이포인트 압축 표현이다 — 벽 관통 판정은 웨이포인트 사이
+                // 직선 구간을 촘촘히 샘플링해 전 셀 보행 가능인지로 본다 (봇 WalkStep과 동일 보간).
+                var previous = start;
+                foreach (var step in path)
+                {
+                    // 구역 전환 스텝은 문턱(벽 밴드의 문 셀)을 건너는 공인 통과 — 검사 제외.
+                    if (step.IsAreaTransition)
+                    {
+                        previous = step.Cell;
+                        continue;
+                    }
+
+                    if (!GameMapData.IsMoveablePosition(MapId.School, step.Cell))
+                        failures.Add(
+                            $"{connection.FromArea}->{connection.ToArea}: 벽 웨이포인트 ({step.Cell.X},{step.Cell.Y})");
+
+                    float deltaX = step.Cell.X - previous.X;
+                    float deltaY = step.Cell.Y - previous.Y;
+                    int samples = (int)MathF.Ceiling(
+                        MathF.Max(MathF.Abs(deltaX), MathF.Abs(deltaY)) * 4f);
+                    for (int sample = 1; sample < samples; sample++)
+                    {
+                        float t = sample / (float)samples;
+                        var interpolated = new Cell(
+                            (int)MathF.Round(previous.X + deltaX * t),
+                            (int)MathF.Round(previous.Y + deltaY * t));
+                        if (!GameMapData.IsMoveablePosition(MapId.School, interpolated))
+                        {
+                            failures.Add(
+                                $"{connection.FromArea}->{connection.ToArea}: 벽 통과 ({previous.X},{previous.Y})->({step.Cell.X},{step.Cell.Y}) @({interpolated.X},{interpolated.Y})");
+                            break;
+                        }
+                    }
+
+                    previous = step.Cell;
+                }
+            }
+        }
+
+        Assert.True(failures.Count == 0, string.Join("\n", failures.Distinct().Take(30)));
+    }
+
     private static string FindNetworkBasePath()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

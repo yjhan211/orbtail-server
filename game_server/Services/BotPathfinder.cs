@@ -423,29 +423,29 @@ public static class BotPathfinder
     }
 
     /// <summary>
-    ///     Bresenham 라인 트레이싱으로 from → to 사이 모든 중간 셀이 walkable + 영역 안에 있는지 확인.
+    ///     from → to 직선의 통과 가능 판정. 브레젠험(칸당 1셀 얇은 선)은 벽 모서리를 스치는
+    ///     대각선을 통과시켜 봇이 벽 타일 위를 걷는 그림을 만들었다 (2026-08-12 벽 관통 신고) —
+    ///     봇 실이동(연속 보간)과 같은 촘촘한 샘플링으로 스치는 셀 전부를 검사한다.
     /// </summary>
     private static bool HasClearLine(MapId mapId, IReadOnlyList<GameMapData.AreaRegion> areaRegions, Cell from, Cell to)
     {
-        int dx = Math.Abs(to.X - from.X);
-        int dy = Math.Abs(to.Y - from.Y);
-        int sx = from.X < to.X ? 1 : -1;
-        int sy = from.Y < to.Y ? 1 : -1;
-        int err = dx - dy;
-        int x = from.X, y = from.Y;
-        const int maxSteps = 200; // 안전 상한
-        int steps = 0;
+        float deltaX = to.X - from.X;
+        float deltaY = to.Y - from.Y;
+        int samples = Math.Max(1, (int)MathF.Ceiling(
+            MathF.Max(MathF.Abs(deltaX), MathF.Abs(deltaY)) * 4f));
+        if (samples > 400)
+            return false; // 안전 상한 — 이 길이의 직선 병합은 애초에 과하다.
 
-        while (steps++ < maxSteps)
+        for (int sample = 0; sample <= samples; sample++)
         {
-            var c = new Cell(x, y);
-            if (!IsWithinArea(areaRegions, c)) return false;
-            if (!GameMapData.IsMoveablePosition(mapId, c)) return false;
-            if (x == to.X && y == to.Y) return true;
-            int e2 = 2 * err;
-            if (e2 > -dy) { err -= dy; x += sx; }
-            if (e2 < dx) { err += dx; y += sy; }
+            float t = sample / (float)samples;
+            var cell = new Cell(
+                (int)MathF.Round(from.X + deltaX * t),
+                (int)MathF.Round(from.Y + deltaY * t));
+            if (!IsWithinArea(areaRegions, cell)) return false;
+            if (!GameMapData.IsMoveablePosition(mapId, cell)) return false;
         }
-        return false;
+
+        return true;
     }
 }
