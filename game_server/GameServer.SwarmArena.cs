@@ -1695,10 +1695,10 @@ public partial class GameServer
     // 판정은 기폭 순간 위치 기준(타원 dy×2) — 표시가 곧 판정, 회피는 위치 판단이다. =====
     private const double SwarmWaveBombIntervalSeconds = 2.5d;
     private const double SwarmWaveBombFuseSeconds = 0.7d;
-    // 1.5 → 2.0 (2026-08-12): 근접 거부 반경이 좁아 존재감이 약했다 — 링 표시·판정 동시 확장.
-    private const float SwarmWaveBombRadius = 2.0f;
+    // 1.5 → 2.0 → 2.6 (2026-08-12 2차): 근접 거부 반경이 좁아 존재감이 약했다 — 표시·판정 동시 확장.
+    private const float SwarmWaveBombRadius = 2.6f;
     // 허공 투하 기각 (2026-08-12): 적(참가자·몹)이 이 반경 안에 있는 오브만 폭탄을 떨군다.
-    private const float SwarmWaveBombTriggerRadius = 2.5f;
+    private const float SwarmWaveBombTriggerRadius = 3.1f;
     // 판정 여유 (2026-08-12): 클라 링(오브 렌더 위치 정렬)과 서버 좌표의 오차 흡수 —
     // 링 안에 보이는데 안 맞는 억울함 방지. 표시 2.0 vs 판정 2.5.
     private const float SwarmWaveBombJudgeRadius = SwarmWaveBombRadius + 0.5f;
@@ -3428,6 +3428,9 @@ public partial class GameServer
     // 바람 = 발당 40% × 주기 40%(다발 총알). 사거리 30 = 구역 전체 커버
     // (교차 구역은 리졸버의 구역·시야 필터가 막는다).
     private const float SwarmSunAttackRange = 30f;
+    // 바람 사거리 (2026-08-12): 기본 2.5는 연사 정체성이 살기 전에 붙어야 했다 —
+    // 다트 고블린(5) 아래의 중거리 4.0으로 확장.
+    private const float SwarmWindAttackRange = 4f;
     // 1.75 → 2.5 (2026-08-12): 태양 = 무겁고 느린 한 방 — 바람(연사 소탄)과 리듬 대비.
     private const float SwarmSunHomingIntervalMultiplier = 2.5f;
     private const float SwarmSunBulletDamageMultiplier = 1.5f;
