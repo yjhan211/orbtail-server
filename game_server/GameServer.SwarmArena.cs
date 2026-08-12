@@ -3483,7 +3483,18 @@ public partial class GameServer
         // 색 = 무기 동사 (#226): 스탯 배율(태양 공격·바람 공속·파도 사거리)은 퇴역.
         // 태양=구역 전체 유도 단발(느림), 바람=약한 다발 총알(빠름, DPS는 태양 상회),
         // 파도=미사일 없음 — 물폭탄은 별도 주기 시스템(ProcessSwarmWaveBombs)이 맡는다.
-        int orbActorCount = Math.Max(1, actors.Count - before);
+        // 스팸 캡은 색별 오브 수 기준 (2026-08-12): 전체 수 기준이던 시절엔 태양을 들수록
+        // 바람 연사까지 느려졌다 — 색별 주기는 서로 독립이어야 한다.
+        int windActorCount = 0;
+        for (int index = before; index < actors.Count; index++)
+            if (SurvivorOrbData.TryGetColorAndTier(actors[index].WeaponItemId, out var countColor, out _) &&
+                countColor == SurvivorOrbColor.Green)
+                windActorCount++;
+        int sunActorCount = 0;
+        for (int index = before; index < actors.Count; index++)
+            if (SurvivorOrbData.TryGetColorAndTier(actors[index].WeaponItemId, out var countColor, out _) &&
+                countColor == SurvivorOrbColor.Red)
+                sunActorCount++;
         for (int index = before; index < actors.Count; index++)
         {
             var actor = actors[index];
@@ -3516,9 +3527,10 @@ public partial class GameServer
                 actor.AttackIntervalSeconds * SwarmOrbIntervalMultiplier * colorIntervalMultiplier;
             // 연사화 + 스팸 캡: 발당 데미지를 실제 주기 비율(interval/baseInterval)로 보정해
             // 오브별 DPS(원 데미지/원 주기 × 색 배율)를 보존한다 — 캡에 걸려도 유지.
+            int colorActorCount = Math.Max(1, isWind ? windActorCount : sunActorCount);
             float interval = MathF.Max(
                 baseInterval * SwarmOrbRapidFireScale,
-                orbActorCount * SwarmOrbMinShotSpacingSeconds);
+                colorActorCount * SwarmOrbMinShotSpacingSeconds);
             float dpsScale = baseInterval > 0f ? interval / baseInterval : 1f;
             actors[index] = actor with
             {
