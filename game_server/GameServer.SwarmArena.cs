@@ -321,7 +321,24 @@ public partial class GameServer
                                   IsWithinSwarmOrbRange(attacker, target) &&
                                   (target.IsMonsterTarget
                                       ? attacker.Area == target.Area
-                                      : ProximityCombatLineOfSight.CanTarget(attacker, target)));
+                                      : ProximityCombatLineOfSight.CanTarget(attacker, target)),
+            // PvP 조준 계측 (#226 진단): 획득이 없으면 필터, 획득만 있고 발사가 없으면 케이던스.
+            onTargetAcquired: targetEvent =>
+            {
+                if (targetEvent.TargetPlayerId > -1_000_000_000_000L)
+                    logger.LogInformation(
+                        "Swarm pvp aim acquired: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Weapon={Weapon}",
+                        matchingId, targetEvent.AttackerPlayerId, targetEvent.TargetPlayerId,
+                        targetEvent.WeaponItemId);
+            },
+            onTargetLost: targetEvent =>
+            {
+                if (targetEvent.TargetPlayerId > -1_000_000_000_000L)
+                    logger.LogInformation(
+                        "Swarm pvp aim lost: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Reason={Reason}",
+                        matchingId, targetEvent.AttackerPlayerId, targetEvent.TargetPlayerId,
+                        targetEvent.Reason);
+            });
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
         {
@@ -352,6 +369,11 @@ public partial class GameServer
                 continue;
             }
 
+            // 유령 발사 가드 (#226 진단): 같은 틱에 죽은 몬스터의 CombatTargetId(-4e18대)가
+            // 몬스터 분기(monsterId=0 조회)를 통과해 PvP 직선탄으로 새던 문제 — 음수 대역 차단.
+            if (attack.TargetPlayerId < -1_000_000_000_000L)
+                continue;
+
             // 태양·바람 (#226): 직선탄 — 착탄을 예약하고 발사 연출만 즉시. 이동 중이면 빗나간다.
             // "그 안에 있으면 맞는다"는 오브 사거리의 몫, 탄 회피는 상태(이동 중) 판단의 몫.
             if (SurvivorOrbData.TryGetColorAndTier(attack.WeaponItemId, out var pvpColor, out _) &&
@@ -359,6 +381,10 @@ public partial class GameServer
             {
                 _dodgeableProjectileResolver.Queue(matchingId, new[] { attack }, actors, nowUtc);
                 BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, sessions);
+                // PvP 발사 계측 (#226 진단): 유저 신고 "오브가 플레이어를 공격 안 함" 추적.
+                logger.LogInformation(
+                    "Swarm pvp launch: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Weapon={Weapon}",
+                    matchingId, attack.AttackerPlayerId, attack.TargetPlayerId, attack.WeaponItemId);
                 continue;
             }
 
@@ -3462,8 +3488,11 @@ public partial class GameServer
                     : 0,
                 AttackIntervalSeconds = interval,
                 // SB 스태거: 오브들이 간격을 균등 분할해 엇박으로 쏜다 — 일제사격 금지.
+                // 상한 1.2초 (#226 케이던스 수리): 태양(주기 3.45초)의 전체 분할 스태거는
+                // 조준 리셋마다 재지불되어 이동 조우에서 첫 발이 영영 안 나갔다.
                 InitialAttackDelaySeconds = actor.InitialAttackDelaySeconds +
-                                            interval * ((index - before) / (float)orbActorCount),
+                                            MathF.Min(1.2f,
+                                                interval * ((index - before) / (float)orbActorCount)),
                 // 태양의 전역성: 사거리 무시(구역 전체) — 대신 주기가 느리다(값 지불).
                 AttackRange = orbColor == SurvivorOrbColor.Red
                     ? SwarmSunAttackRange
