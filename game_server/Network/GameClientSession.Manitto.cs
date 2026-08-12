@@ -874,7 +874,10 @@ public partial class GameClientSession
         _gameEventLogManager.LogSystem(
             CurrentMapSubId,
             $"survivor_settlement winner={winnerId} criterion={criterion}");
-        SendGameResult(allSessions, winnerId, false, CurrentMapSubId, "overtime_settlement", criterion);
+        // 오브 점수 만료(#226 단계 B)는 요약 EndReason에도 그대로 남긴다 — 계측에서
+        // 연장전 정산과 섞이면 5분 판정 발화율을 셀 수 없다.
+        string endReason = criterion == "orb_score_timeout" ? criterion : "overtime_settlement";
+        SendGameResult(allSessions, winnerId, false, CurrentMapSubId, endReason, criterion);
     }
 
     private int ResolveFinalOrbTier(long matchingId, long playerId)
