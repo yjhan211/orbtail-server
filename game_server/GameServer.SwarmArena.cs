@@ -253,10 +253,8 @@ public partial class GameServer
         var directorParticipants = dummyIds.Count == 0
             ? participants
             : participants.Where(participant => !dummyIds.Contains(participant.PlayerId)).ToList();
-        // 실험장 (#226): 더미가 있으면 몹 디렉터를 아예 쉬게 한다 — 스폰·추격·공격 전부 정지.
-        var tick = dummyIds.Count > 0
-            ? new SwarmArenaTickResult()
-            : _swarmArenaManager.Tick(matchingId, directorParticipants, nowUtc);
+        // 실험장 (#226): 몹은 나오되(색 무기 과녁) 공격 피해만 아래 게이트에서 꺼진다.
+        var tick = _swarmArenaManager.Tick(matchingId, directorParticipants, nowUtc);
 
         // 절단 실험 더미 (#226): 불사 + 오브 리필 — 절단·포위 타격감 튜닝용 과녁.
         // 리필은 마지막 절단 후 3초 지연: 즉시 채우면 "끊어도 안 줄어드는" 것처럼 보인다.
@@ -297,6 +295,16 @@ public partial class GameServer
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
         ProcessPendingSwarmMonsterHits(matchingId, nowUtc, sessions);
 
+        // 태양 착탄 정산 (#226): 발사 시점 조준 위치 기준 — 이동해 벗어났으면 miss(회피 성립).
+        foreach (var resolution in _dodgeableProjectileResolver.ResolveImpacts(matchingId, actors, nowUtc))
+        {
+            if (resolution.Outcome != "hit")
+                continue;
+            foreach (var hitAttack in resolution.Hits)
+                ApplySwarmPvpAttack(matchingId, hitAttack, aliveSessions, aliveBots, sessions,
+                    broadcastVfx: false);
+        }
+
         var attacks = _proximityAutoCombatResolver.Resolve(
             matchingId,
             actors,
@@ -336,6 +344,16 @@ public partial class GameServer
                     SurvivorOrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
                 _pendingSwarmMonsterHits.Add((matchingId, attack.TargetPlayerId, attack.AttackerPlayerId,
                     attack.Damage, nowUtc.AddSeconds(delaySeconds)));
+                continue;
+            }
+
+            // 태양·바람 (#226): 직선탄 — 착탄을 예약하고 발사 연출만 즉시. 이동 중이면 빗나간다.
+            // "그 안에 있으면 맞는다"는 오브 사거리의 몫, 탄 회피는 상태(이동 중) 판단의 몫.
+            if (SurvivorOrbData.TryGetColorAndTier(attack.WeaponItemId, out var pvpColor, out _) &&
+                pvpColor is SurvivorOrbColor.Red or SurvivorOrbColor.Green)
+            {
+                _dodgeableProjectileResolver.Queue(matchingId, new[] { attack }, actors, nowUtc);
+                BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, sessions);
                 continue;
             }
 
@@ -1618,6 +1636,11 @@ public partial class GameServer
     private const double SwarmWaveBombFuseSeconds = 0.7d;
     // 1.5 → 2.0 (2026-08-12): 근접 거부 반경이 좁아 존재감이 약했다 — 링 표시·판정 동시 확장.
     private const float SwarmWaveBombRadius = 2.0f;
+    // 허공 투하 기각 (2026-08-12): 적(참가자·몹)이 이 반경 안에 있는 오브만 폭탄을 떨군다.
+    private const float SwarmWaveBombTriggerRadius = 2.5f;
+    // 판정 여유 (2026-08-12): 클라 링(오브 렌더 위치 정렬)과 서버 좌표의 오차 흡수 —
+    // 링 안에 보이는데 안 맞는 억울함 방지. 표시 2.0 vs 판정 2.5.
+    private const float SwarmWaveBombJudgeRadius = SwarmWaveBombRadius + 0.5f;
     private const int SwarmWaveBombDamage = 14;
 
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmWaveBombNextDropAtUtc =
@@ -1660,15 +1683,13 @@ public partial class GameServer
             if (!IsSwarmAttackArmed(matchingId, owner.PlayerId, nowUtc))
                 continue;
 
-            var blueOrdinals = GetSwarmBlueOrbOrdinals(matchingId, owner.PlayerId);
-            if (blueOrdinals.Count > 0)
-                logger.LogDebug(
-                    "Swarm wave bomb drop: MatchingId={MatchingId}, OwnerId={OwnerId}, Bombs={BombCount}",
-                    matchingId, owner.PlayerId, blueOrdinals.Count);
-            foreach (int ordinal in blueOrdinals)
+            foreach (int ordinal in GetSwarmBlueOrbOrdinals(matchingId, owner.PlayerId))
             {
                 var position = GetSwarmOrbTrailPosition(
                     matchingId, owner.PlayerId, ordinal, owner.Position);
+                // 허공 투하 기각: 그 오브 주변에 적이 있을 때만 떨군다.
+                if (!HasSwarmWaveBombTargetNear(matchingId, owner, position, participants))
+                    continue;
                 _pendingSwarmWaveBombs.Add((matchingId, owner.PlayerId, owner.Area, position,
                     nowUtc.AddSeconds(SwarmWaveBombFuseSeconds)));
                 // 소유자·순번 동봉 — 클라가 실제 렌더 슬롯 위치에 링·이펙트를 정렬한다.
@@ -1677,6 +1698,35 @@ public partial class GameServer
                     victimId: owner.PlayerId, fromOrdinal: ordinal);
             }
         }
+    }
+
+    /// <summary>물폭탄 투하 조건: 오브 반경 안(타원 dy×2)에 적 참가자 또는 몹이 있는가.</summary>
+    private bool HasSwarmWaveBombTargetNear(
+        long matchingId, SpotArenaPlayerSpatial owner, Vector3f position,
+        List<SpotArenaPlayerSpatial> participants)
+    {
+        float radiusSquared = SwarmWaveBombTriggerRadius * SwarmWaveBombTriggerRadius;
+        foreach (var enemy in participants)
+        {
+            if (enemy.PlayerId == owner.PlayerId || enemy.Area != owner.Area)
+                continue;
+            float dx = enemy.Position.X - position.X;
+            float dy = (enemy.Position.Y - position.Y) * 2f;
+            if (dx * dx + dy * dy <= radiusSquared)
+                return true;
+        }
+
+        foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
+        {
+            if (target.Area != owner.Area)
+                continue;
+            float dx = target.Position.X - position.X;
+            float dy = (target.Position.Y - position.Y) * 2f;
+            if (dx * dx + dy * dy <= radiusSquared)
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>액터 순번과 같은 인벤토리 순서에서 파도(파랑) 오브의 열 순번들을 뽑는다.</summary>
@@ -1708,7 +1758,7 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        float radiusSquared = SwarmWaveBombRadius * SwarmWaveBombRadius;
+        float radiusSquared = SwarmWaveBombJudgeRadius * SwarmWaveBombJudgeRadius;
         foreach (var victim in participants)
         {
             if (victim.PlayerId == ownerId || victim.Area != area)
@@ -2740,7 +2790,8 @@ public partial class GameServer
         ProximityCombatAttack attack,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
-        List<GameClientSession> allSessions)
+        List<GameClientSession> allSessions,
+        bool broadcastVfx = true)
     {
         int corruption = ConsumeSwarmPvpCorruption(matchingId, attack.TargetPlayerId, attack.Damage);
         var targetSession = aliveSessions.FirstOrDefault(session =>
@@ -2769,7 +2820,9 @@ public partial class GameServer
             allSessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId)
                 ?.SendProximityAutoCombatAttackFeedback(
                     attack.TargetPlayerId, attack.Area, attack.WeaponItemId, corruption);
-        BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, allSessions);
+        // 태양 착탄(#226)은 발사 시점에 이미 연출을 쐈다 — 이중 투사체 방지.
+        if (broadcastVfx)
+            BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, allSessions);
     }
 
     /// <summary>
@@ -3008,7 +3061,9 @@ public partial class GameServer
             }
 
             bool isWind = orbColor == SurvivorOrbColor.Green;
-            float colorDamageMultiplier = isWind ? SwarmWindBulletDamageMultiplier : 1f;
+            float colorDamageMultiplier = isWind
+                ? SwarmWindBulletDamageMultiplier
+                : SwarmSunBulletDamageMultiplier;
             float colorIntervalMultiplier = isWind
                 ? SwarmWindBulletIntervalMultiplier
                 : SwarmSunHomingIntervalMultiplier;
@@ -3038,13 +3093,16 @@ public partial class GameServer
         }
     }
 
-    // 색 무기 파라미터 (#226): 태양 = 현행 데미지 × 주기 1.75배(전역 유도의 값),
-    // 바람 = 발당 40% × 주기 40%(다발 총알, DPS = 현행 동급). 사거리 30 = 구역 전체 커버
+    // 색 무기 파라미터 (#226): 태양 = 느린 직선탄(회피 가능·정지 처벌 — 맞으면 아프게 1.5배),
+    // 바람 = 발당 40% × 주기 40%(다발 총알). 사거리 30 = 구역 전체 커버
     // (교차 구역은 리졸버의 구역·시야 필터가 막는다).
     private const float SwarmSunAttackRange = 30f;
-    private const float SwarmSunHomingIntervalMultiplier = 1.75f;
-    private const float SwarmWindBulletDamageMultiplier = 0.4f;
-    private const float SwarmWindBulletIntervalMultiplier = 0.4f;
+    // 1.75 → 2.5 (2026-08-12): 태양 = 무겁고 느린 한 방 — 바람(연사 소탄)과 리듬 대비.
+    private const float SwarmSunHomingIntervalMultiplier = 2.5f;
+    private const float SwarmSunBulletDamageMultiplier = 1.5f;
+    // 연사 2배 (2026-08-12): 주기·발당 절반 — DPS 불변, 탄막 밀도만 상승.
+    private const float SwarmWindBulletDamageMultiplier = 0.15f;
+    private const float SwarmWindBulletIntervalMultiplier = 0.14f;
 
     /// <summary>
     ///     아이소메트릭 타원 사거리: 이 맵의 월드 y는 셀 스케일이 x의 절반이라, 유클리드

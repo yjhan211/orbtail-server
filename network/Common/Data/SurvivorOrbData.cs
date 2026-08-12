@@ -168,8 +168,11 @@ namespace network.common.data
 
             return color switch
             {
-                SurvivorOrbColor.Red => SurvivorOrbAttackPattern.HomingProjectile,
-                SurvivorOrbColor.Green => SurvivorOrbAttackPattern.AttackerArea,
+                // 태양 (#226 개정): 유도 퇴역 — 발사 시점 위치로 느린 직선탄, 이동 중이면
+                // 자연 회피(반사신경이 아니라 "정지가 리스크"라는 상태 판단).
+                SurvivorOrbColor.Red => SurvivorOrbAttackPattern.TargetArea,
+                // 바람 (#226 개정): 런지 퇴역 — 유도 없는 직선탄(발사 시점 위치 고정, 다발 연출).
+                SurvivorOrbColor.Green => SurvivorOrbAttackPattern.TargetArea,
                 SurvivorOrbColor.Blue => SurvivorOrbAttackPattern.None,
                 _ => SurvivorOrbAttackPattern.None
             };

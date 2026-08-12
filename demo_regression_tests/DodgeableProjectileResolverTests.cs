@@ -26,8 +26,9 @@ public class DodgeableProjectileResolverTests
     }
 
     [Fact]
-    public void HopeImpact_HomesIntoTargetThatKeepsMovingInsideRange()
+    public void SunImpact_MissesTargetThatMovedAfterLaunch()
     {
+        // #226: 태양 = 발사 시점 조준 고정 직선탄 — 이동 중이면 자연 회피(정지가 리스크).
         InitializeGameData();
         var resolver = new DodgeableProjectileResolver();
         var now = new DateTime(2026, 8, 3, 0, 0, 0, DateTimeKind.Utc);
@@ -40,8 +41,8 @@ public class DodgeableProjectileResolverTests
         var movedActors = CreateGymActors(targetOffsetX: 2f);
 
         var resolution = Assert.Single(resolver.ResolveImpacts(702, movedActors, launch.ImpactAtUtc));
-        Assert.Equal("hit", resolution.Outcome);
-        Assert.Equal(2, Assert.Single(resolution.Hits).TargetPlayerId);
+        Assert.Equal("dodged", resolution.Outcome);
+        Assert.Empty(resolution.Hits);
         Assert.True(resolution.TargetDisplacement > 0f);
     }
 
@@ -99,12 +100,12 @@ public class DodgeableProjectileResolverTests
     [Fact]
     public void OrbColors_HaveWeaponVerbPatterns()
     {
-        // #226 색=무기 동사: 태양=유도 미사일, 바람=공명·런지(AttackerArea),
+        // #226 색=무기 동사: 태양=느린 직선탄(회피 가능·정지 처벌), 바람=직선 다발탄,
         // 파도=미사일 없음(None — 물폭탄은 서버 별도 주기).
         InitializeGameData();
-        Assert.Equal(SurvivorOrbAttackPattern.HomingProjectile,
+        Assert.Equal(SurvivorOrbAttackPattern.TargetArea,
             SurvivorOrbData.GetAttackPattern(107000010));
-        Assert.Equal(SurvivorOrbAttackPattern.AttackerArea,
+        Assert.Equal(SurvivorOrbAttackPattern.TargetArea,
             SurvivorOrbData.GetAttackPattern(107000020));
         Assert.Equal(SurvivorOrbAttackPattern.None,
             SurvivorOrbData.GetAttackPattern(107000030));
