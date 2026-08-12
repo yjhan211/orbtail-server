@@ -2831,8 +2831,11 @@ public partial class GameServer
         return orbs.Any(item => GetSquadOrbTier(item.ItemId) == 2) ? 2 : 0;
     }
 
+    // 방어 강화 대상은 순번 1부터 (2026-08-12 수리): 절단 판정이 순번 1+에서만 성립하므로
+    // 머리 오브(순번 0)의 외피는 영원히 발동하지 않는 죽은 카드였다.
     private bool HasSwarmArmorTarget(long matchingId, long playerId) =>
         GetSwarmTrailOrbs(matchingId, playerId)
+            .Skip(1)
             .Any(item => !_swarmOrbArmor.Contains((matchingId, playerId, item.ItemUid)));
 
     /// <summary>
@@ -2979,7 +2982,9 @@ public partial class GameServer
             }
             case SwarmGrowthCardArmor:
             {
+                // 순번 0 제외 — 머리 오브는 절단 대상이 아니라 외피가 발동할 수 없다.
                 var target = GetSwarmTrailOrbs(matchingId, playerId)
+                    .Skip(1)
                     .FirstOrDefault(item =>
                         !_swarmOrbArmor.Contains((matchingId, playerId, item.ItemUid)));
                 if (target == null)
