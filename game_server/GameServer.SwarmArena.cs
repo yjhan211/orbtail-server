@@ -44,7 +44,9 @@ public partial class GameServer
     // PvP 오염 환산 (#226 재개편): 본체 상시 피격 체제의 TTK 앵커. 0.15 = 혼성 6오브
     // 원시 DPS(~28)를 오염 ~4.2/s로 눌러 동급 정면 TTK ~24초(목표 22~28). PvE는 원시
     // 피해 유지(배율 분리). 소수 이월 누산으로 정수 반올림 왜곡(바람 최소 1 인플레)을 막는다.
-    private const float SwarmPvpCorruptionPerDamage = 0.15f;
+    // 0.15 → 0.35 (2026-08-12 유도탄 복귀 후 재보정): 게이지 420 기준 0.15는 풀히트로도
+    // TTK ~56초+자연회복 — "안 박히는" 체감의 수치적 실체. 0.35 = TTK 22~28초 목표 정렬.
+    private const float SwarmPvpCorruptionPerDamage = 0.35f;
     private readonly Dictionary<(long MatchingId, long PlayerId), float> _swarmPvpCorruptionCarry = new();
 
     /// <summary>PvP 피해 → 본체 오염 이월 누산. 반환 = 이번 타에 실제 적용할 오염(0 가능).</summary>
@@ -3520,9 +3522,9 @@ public partial class GameServer
     // 바람 = 발당 40% × 주기 40%(다발 총알). 사거리 30 = 구역 전체 커버
     // (교차 구역은 리졸버의 구역·시야 필터가 막는다).
     private const float SwarmSunAttackRange = 30f;
-    // 바람 사거리 (2026-08-12): 기본 2.5는 연사 정체성이 살기 전에 붙어야 했다 —
-    // 다트 고블린(5) 아래의 중거리 4.0으로 확장.
-    private const float SwarmWindAttackRange = 4f;
+    // 바람 사거리 (2026-08-12, 4.0 → 6.0 2차): 운동장급 교전 거리에서 4.0은 진입 전에
+    // 끝났다 — 다트(5) 위의 중거리 6.0으로 확장, 연사가 교전에 실제로 참여한다.
+    private const float SwarmWindAttackRange = 6f;
     // 1.75 → 2.5 (2026-08-12): 태양 = 무겁고 느린 한 방 — 바람(연사 소탄)과 리듬 대비.
     private const float SwarmSunHomingIntervalMultiplier = 2.5f;
     private const float SwarmSunBulletDamageMultiplier = 1.5f;
