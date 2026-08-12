@@ -109,6 +109,10 @@ namespace network.common.data.models
 
         // 잼 보유량 (#222 M3) — SB처럼 머리 위에 공개되는 점수. 같은 구역 관전자에게 동기화.
         [Key("jamCount")] public int JamCount { get; set; }
+
+        // 본체 오염 (#226 단계 B 가시화): 같은 구역 상대의 머리 위 게이지를 상시 구동한다 —
+        // "때리면 닳는 게 보인다". -1 = 미동기(표시 유지).
+        [Key("gauge")] public int BodyCorruption { get; set; } = -1;
     }
 
     /// <summary>잼(승점 재화) 지갑 상태 (#222 M3). 픽업·변동 시 소유자에게 전송.</summary>

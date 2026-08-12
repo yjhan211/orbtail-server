@@ -2633,6 +2633,25 @@ public partial class GameServer
         return 0;
     }
 
+    /// <summary>본체 오염 조회 (#226 가시화) — 세션·봇 공통. 못 찾으면 -1(클라 표시 유지).</summary>
+    private int GetSwarmBodyCorruption(
+        long matchingId, long playerId, IReadOnlyCollection<GameClientSession> matchingSessions)
+    {
+        foreach (var session in matchingSessions)
+        {
+            if (session.PlayerId == playerId)
+                return session.CurrentCorruption;
+        }
+
+        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        {
+            if (bot.PlayerId == playerId)
+                return bot.Corruption;
+        }
+
+        return -1;
+    }
+
     /// <summary>
     ///     5분 점수 만료 판정 (#226 단계 B): 개전 후 5분이 지나면 생존자 중 오브 최다
     ///     보유자가 승리한다. 동점은 총 티어 합 → (철갑, 단계 C 예정) → 본체 게이지(오염
