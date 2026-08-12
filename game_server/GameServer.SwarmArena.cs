@@ -1236,7 +1236,9 @@ public partial class GameServer
     // 열 절단 (#226 단계 A 정규화): 대상 오브(ItemUid)별 래치 — 0.12초 내부 중복 억제 +
     // 같은 오브를 다시 때리려면 판정 타원 밖으로 완전히 나갔다 와야 한다(이탈 재무장).
     // 서로 다른 오브 연속 타격은 자유 — 꼬리를 따라 달리면 순차로 금이 간다.
-    private const double SwarmTrailCutSameOrbDebounceSeconds = 0.12d;
+    // 0.12 → 0.7 (2026-08-12 내구 모델): 움직이는 열이 절단자를 스치면 오브가 타원을 벗어나며
+    // 매 틱 재무장돼 내구 2가 0.24초에 소진됐다 — 같은 오브 재타는 별개의 통과여야 한다.
+    private const double SwarmTrailCutSameOrbDebounceSeconds = 0.7d;
     private const float SwarmTrailCutMaxSegmentLength = 2f;
     // 절단(꼬리 상실) 직후 피해자 열 전체 면역 — 한 번의 돌파로 연쇄 전멸하지 않게.
     private const double SwarmTrailCutVictimImmunitySeconds = 1.2d;
@@ -1372,6 +1374,7 @@ public partial class GameServer
             var orbs = _inGameInventoryManager.GetPlayerInventory(matchingId, owner.PlayerId)
                 .GetAllItems()
                 .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
+                .OrderBy(item => item.ItemUid)
                 .ToList();
             if (orbs.Count == 0)
                 continue;
@@ -2160,6 +2163,7 @@ public partial class GameServer
         var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
         var orbs = inventory.GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
+            .OrderBy(item => item.ItemUid)
             .ToList();
         if (fromOrdinal < 0 || fromOrdinal >= orbs.Count)
             return destroyed;
@@ -2896,6 +2900,8 @@ public partial class GameServer
         _inGameInventoryManager.GetPlayerInventory(matchingId, playerId)
             .GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
+            // uid 오름차순 = 열 순번·링 마스크·카드 대상의 단일 정렬 (2026-08-12 통일)
+            .OrderBy(item => item.ItemUid)
             .ToList();
 
     /// <summary>강화 대상 티어: 선두 T1이 있으면 1(T1→T2), 없으면 선두 T2 기준 2, 전부 T3면 0.</summary>
@@ -2914,9 +2920,7 @@ public partial class GameServer
     private long GetSwarmArmorMask(long matchingId, long playerId)
     {
         long mask = 0;
-        var orbs = GetSwarmTrailOrbs(matchingId, playerId)
-            .OrderBy(item => item.ItemUid)
-            .ToList();
+        var orbs = GetSwarmTrailOrbs(matchingId, playerId);
         for (int ordinal = 0; ordinal < orbs.Count && ordinal < 64; ordinal++)
             if (_swarmOrbDurabilityBonus.ContainsKey((matchingId, playerId, orbs[ordinal].ItemUid)))
                 mask |= 1L << ordinal;
