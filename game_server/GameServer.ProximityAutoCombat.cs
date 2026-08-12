@@ -630,6 +630,7 @@ public partial class GameServer
                 int frontOrbHp = GetSwarmFrontOrbHp(matchingId, actor.PlayerId);
                 int jamCount = GetSwarmJamCount(matchingId, actor.PlayerId, matchingSessions);
                 int bodyCorruption = GetSwarmBodyCorruption(matchingId, actor.PlayerId, matchingSessions);
+                long armorMask = GetSwarmArmorMask(matchingId, actor.PlayerId);
                 var state = new SurvivorOrbVisualState(
                     actor.Area,
                     actor.WeaponItemId,
@@ -637,7 +638,8 @@ public partial class GameServer
                     visualActor.OrbItemSignature,
                     frontOrbHp,
                     jamCount,
-                    bodyCorruption);
+                    bodyCorruption,
+                    armorMask);
                 if (_survivorOrbVisualStates.TryGetValue(key, out var previousState) &&
                     previousState == state)
                 {
@@ -654,7 +656,8 @@ public partial class GameServer
                     OrbItemIds = visualActor.OrbItemIds,
                     FrontOrbHp = frontOrbHp,
                     JamCount = jamCount,
-                    BodyCorruption = bodyCorruption
+                    BodyCorruption = bodyCorruption,
+                    ArmorMask = armorMask
                 }));
                 observer.Send(packet);
             }
@@ -1084,6 +1087,7 @@ public partial class GameServer
         string OrbItemSignature,
         int FrontOrbHp,
         int JamCount,
-        int BodyCorruption);
+        int BodyCorruption,
+        long ArmorMask);
 
 }

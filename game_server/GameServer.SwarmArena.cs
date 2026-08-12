@@ -1476,22 +1476,16 @@ public partial class GameServer
 
         _swarmOrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
 
-        // 철갑 (#226 단계 C): 외피가 있으면 이번 교차를 1회 방어하고 소모된다 — 균열은 유지.
-        if (_swarmOrbArmor.Remove((matchingId, bestOwnerId, bestOrbUid)))
-        {
-            SendSwarmRingVfx(
-                bestArea, creditPlayerId, bestOrbPosition.X, bestOrbPosition.Y,
-                radius: 0.6f, allSessions, SwarmRingVfxKindArmorBreak,
-                victimId: bestOwnerId, fromOrdinal: bestTailOrdinal);
-            return;
-        }
-
-        // 5단계 파괴: 대상 오브(개체)에 금을 쌓고, 5번째 타격에만 실제로 끊는다.
+        // 방어 강화 = 내구 (#226, 2026-08-12): 오브별 파괴 필요 타격 수 = 기본 1 + 내구 보너스.
+        // 내구 2+ 오브는 아래 크랙 경로가 살아나 금이 가며 버틴다 — "금이 간다 = 두꺼운 유리였다".
         var crackKey = (matchingId, bestOwnerId, bestOrbUid);
         int crackCount = (_swarmOrbCutCracks.TryGetValue(crackKey, out int storedCracks)
             ? storedCracks
             : 0) + 1;
-        if (crackCount < SwarmTrailCutBreakHits)
+        int requiredHits = SwarmTrailCutBreakHits +
+                           _swarmOrbDurabilityBonus.GetValueOrDefault(
+                               (matchingId, bestOwnerId, bestOrbUid));
+        if (crackCount < requiredHits)
         {
             _swarmOrbCutCracks[crackKey] = crackCount;
             SendSwarmRingVfx(
@@ -1512,7 +1506,7 @@ public partial class GameServer
         foreach (var destroyedItem in destroyedItems)
         {
             _swarmOrbCutCracks.Remove((matchingId, bestOwnerId, destroyedItem.ItemUid));
-            _swarmOrbArmor.Remove((matchingId, bestOwnerId, destroyedItem.ItemUid));
+            _swarmOrbDurabilityBonus.Remove((matchingId, bestOwnerId, destroyedItem.ItemUid));
         }
         var ownerSession = aliveSessions.FirstOrDefault(session => session.PlayerId == bestOwnerId);
         var ownerChain = chains[bestOwnerId];
@@ -2701,7 +2695,11 @@ public partial class GameServer
             })
             .OrderByDescending(candidate => candidate.OrbCount)
             .ThenByDescending(candidate => candidate.TierSum)
-            // 철갑 수(단계 C)는 구현 시 여기 3차 키로 낀다.
+            // 철갑(내구 보너스 합) 3차 키 (#226): 같은 열이면 방어 투자한 쪽이 앞선다.
+            .ThenByDescending(candidate => _swarmOrbDurabilityBonus
+                .Where(pair => pair.Key.MatchingId == matchingId &&
+                               pair.Key.PlayerId == candidate.PlayerId)
+                .Sum(pair => pair.Value))
             .ThenBy(candidate => candidate.Corruption)
             .ThenBy(candidate => candidate.PlayerId)
             .ToList();
@@ -2886,8 +2884,11 @@ public partial class GameServer
     private readonly Dictionary<(long MatchingId, long PlayerId), SwarmGrowthOfferState>
         _swarmGrowthOffers = new();
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmGrowthNextOfferAtUtc = new();
-    // 오브 외피 상태: 절단 교차 1회 방어 후 소모. 파괴·매치 정리에서 함께 지운다.
-    private readonly HashSet<(long MatchingId, long PlayerId, long ItemUid)> _swarmOrbArmor = new();
+    // 오브 내구 보너스 (#226 방어 강화 = 내구 모델, 2026-08-12): 기본 내구 1 + 보너스.
+    // 내구 2+ 오브는 밟혀도 금만 가고(크랙 재활성), 내구만큼 밟혀야 절단된다.
+    // 파괴·매치 정리에서 함께 지운다. 크랙은 유지된다(방어 강화가 균열을 지우지 않는다).
+    private readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid), int>
+        _swarmOrbDurabilityBonus = new();
     private int _nextSwarmGrowthOfferId = 1;
 
     /// <summary>열 순서의 오브 목록 — 강화·철갑의 "가장 앞" 판정과 트레일 순번의 단일 출처.</summary>
@@ -2906,10 +2907,26 @@ public partial class GameServer
         return orbs.Any(item => GetSquadOrbTier(item.ItemId) == 2) ? 2 : 0;
     }
 
-    // 머리 보호 제거(단계 A 마감)로 순번 0도 절단 대상 — 외피는 전 오브가 유효 대상이다.
+    /// <summary>
+    ///     방어 강화(내구 2+) 오브 순번 마스크 — 클라 은백 링 표시용 (#226).
+    ///     순서는 비주얼 브로드캐스트의 OrbItemIds와 동일한 ItemUid 오름차순 — 슬롯 인덱스 정합.
+    /// </summary>
+    private long GetSwarmArmorMask(long matchingId, long playerId)
+    {
+        long mask = 0;
+        var orbs = GetSwarmTrailOrbs(matchingId, playerId)
+            .OrderBy(item => item.ItemUid)
+            .ToList();
+        for (int ordinal = 0; ordinal < orbs.Count && ordinal < 64; ordinal++)
+            if (_swarmOrbDurabilityBonus.ContainsKey((matchingId, playerId, orbs[ordinal].ItemUid)))
+                mask |= 1L << ordinal;
+        return mask;
+    }
+
+    // 방어 강화 유효 대상 = 미강화(내구 보너스 0) 오브 — 전부 강화 상태면 비활성.
     private bool HasSwarmArmorTarget(long matchingId, long playerId) =>
         GetSwarmTrailOrbs(matchingId, playerId)
-            .Any(item => !_swarmOrbArmor.Contains((matchingId, playerId, item.ItemUid)));
+            .Any(item => !_swarmOrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)));
 
     /// <summary>
     ///     성장 비용 3요소 (#226 C 잔여): 기본 = 3+floor(N/3), 할증 = 오브 수 구간,
@@ -2958,7 +2975,7 @@ public partial class GameServer
             SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)] + spawnTier - 1;
 
         int armorSlots = GetSwarmTrailOrbs(matchingId, playerId)
-            .Count(item => !_swarmOrbArmor.Contains((matchingId, playerId, item.ItemUid)));
+            .Count(item => !_swarmOrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)));
         int armorCount = armorSlots <= 0 ? 0 : 1;
         if (armorCount > 0 && armorSlots >= 2)
         {
@@ -3121,7 +3138,8 @@ public partial class GameServer
                 if (offer.ArmorCount <= 0)
                     return false;
                 var targets = GetSwarmTrailOrbs(matchingId, playerId)
-                    .Where(item => !_swarmOrbArmor.Contains((matchingId, playerId, item.ItemUid)))
+                    .Where(item =>
+                        !_swarmOrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)))
                     .Take(offer.ArmorCount)
                     .ToList();
                 if (targets.Count == 0)
@@ -3129,7 +3147,7 @@ public partial class GameServer
                 if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
                     return false;
                 foreach (var target in targets)
-                    _swarmOrbArmor.Add((matchingId, playerId, target.ItemUid));
+                    _swarmOrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] = 1;
                 return true;
             }
             default:
@@ -3395,9 +3413,9 @@ public partial class GameServer
         foreach (var key in _swarmGrowthNextOfferAtUtc.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmGrowthNextOfferAtUtc.Remove(key);
-        foreach (var key in _swarmOrbArmor
+        foreach (var key in _swarmOrbDurabilityBonus.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmOrbArmor.Remove(key);
+            _swarmOrbDurabilityBonus.Remove(key);
         foreach (var key in _swarmEncircleCandidateSinceUtc.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmEncircleCandidateSinceUtc.Remove(key);

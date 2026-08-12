@@ -113,6 +113,10 @@ namespace network.common.data.models
         // 본체 오염 (#226 단계 B 가시화): 같은 구역 상대의 머리 위 게이지를 상시 구동한다 —
         // "때리면 닳는 게 보인다". -1 = 미동기(표시 유지).
         [Key("gauge")] public int BodyCorruption { get; set; } = -1;
+
+        // 방어 강화(내구 2+) 오브 순번 비트마스크 (#226): 은백 링 표시의 단일 출처.
+        // OrbItemIds 순서 기준 — 64번째 이후 순번은 표시 생략(실전 상한 밖 안전 절단).
+        [Key("armorM")] public long ArmorMask { get; set; }
     }
 
     /// <summary>잼(승점 재화) 지갑 상태 (#222 M3). 픽업·변동 시 소유자에게 전송.</summary>
