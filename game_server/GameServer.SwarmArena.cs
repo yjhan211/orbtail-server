@@ -1319,14 +1319,16 @@ public partial class GameServer
     {
         // 소유자별 열 좌표·개체 uid는 틱당 1회만 계산한다.
         // 몹(잔상) 절단은 P0에서 비활성 (단계 A 확정) — 절단은 플레이어의 동사다.
-        var chains = new Dictionary<long, (AreaType Area, List<Vector3f> Points, List<long> Uids)>();
+        // 머리 보호 제거 (단계 A 마감): 첫 오브·본체-첫 오브 링크도 절단 대상 — 1오브 열도 잘린다.
+        var chains =
+            new Dictionary<long, (AreaType Area, Vector3f OwnerPosition, List<Vector3f> Points, List<long> Uids)>();
         foreach (var owner in participants)
         {
             var orbs = _inGameInventoryManager.GetPlayerInventory(matchingId, owner.PlayerId)
                 .GetAllItems()
                 .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
                 .ToList();
-            if (orbs.Count < 2)
+            if (orbs.Count == 0)
                 continue;
             var points = new List<Vector3f>(orbs.Count);
             var uids = new List<long>(orbs.Count);
@@ -1336,7 +1338,7 @@ public partial class GameServer
                 uids.Add(orbs[ordinal].ItemUid);
             }
 
-            chains[owner.PlayerId] = (owner.Area, points, uids);
+            chains[owner.PlayerId] = (owner.Area, owner.Position, points, uids);
         }
 
         foreach (var cutter in participants)
@@ -1359,7 +1361,7 @@ public partial class GameServer
         AreaType cutterArea,
         Vector3f previous,
         Vector3f current,
-        Dictionary<long, (AreaType Area, List<Vector3f> Points, List<long> Uids)> chains,
+        Dictionary<long, (AreaType Area, Vector3f OwnerPosition, List<Vector3f> Points, List<long> Uids)> chains,
         DateTime nowUtc,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
@@ -1389,8 +1391,9 @@ public partial class GameServer
                 continue;
 
             // 절단 판정: 오브 관통(반경 0.35, 중심 위 0.15) 또는 링크(오브 i-1 ↔ i)
-            // 가로지르기 — 둘 다 그 오브(i)에 귀속. 첫 오브·본체-첫 오브 링크는 제외(머리 보호).
-            for (int ordinal = 1; ordinal < chain.Points.Count; ordinal++)
+            // 가로지르기 — 둘 다 그 오브(i)에 귀속. 머리 보호 제거(단계 A 마감): 첫 오브도
+            // 대상이고, 순번 0의 링크는 본체-첫 오브 선분이다.
+            for (int ordinal = 0; ordinal < chain.Points.Count; ordinal++)
             {
                 var hitPoint = new Vector3f(
                     chain.Points[ordinal].X,
@@ -1407,8 +1410,11 @@ public partial class GameServer
 
                 bool hit = TrySegmentHitsPoint(previous, current, hitPoint, out float t);
                 if (!hit)
+                {
+                    var linkStart = ordinal == 0 ? chain.OwnerPosition : chain.Points[ordinal - 1];
                     hit = TrySegmentIntersection(
-                        previous, current, chain.Points[ordinal - 1], chain.Points[ordinal], out t);
+                        previous, current, linkStart, chain.Points[ordinal], out t);
+                }
                 if (!hit || t >= bestT)
                     continue;
                 bestT = t;
@@ -2808,7 +2814,11 @@ public partial class GameServer
     private const int SwarmGrowthCardEnhance = 1;
     private const int SwarmGrowthCardArmor = 2;
 
-    private readonly Dictionary<(long MatchingId, long PlayerId), (int OfferId, int Cost)>
+    /// <summary>오퍼 시점에 확정되는 카드 구성 (#226 C 등급): 픽은 이 서술자를 그대로 집행한다.</summary>
+    private readonly record struct SwarmGrowthOfferState(
+        int OfferId, int Cost, int SpawnItemId, int EnhanceTargetTier, int ArmorCount);
+
+    private readonly Dictionary<(long MatchingId, long PlayerId), SwarmGrowthOfferState>
         _swarmGrowthOffers = new();
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmGrowthNextOfferAtUtc = new();
     // 오브 외피 상태: 절단 교차 1회 방어 후 소모. 파괴·매치 정리에서 함께 지운다.
@@ -2831,12 +2841,47 @@ public partial class GameServer
         return orbs.Any(item => GetSquadOrbTier(item.ItemId) == 2) ? 2 : 0;
     }
 
-    // 방어 강화 대상은 순번 1부터 (2026-08-12 수리): 절단 판정이 순번 1+에서만 성립하므로
-    // 머리 오브(순번 0)의 외피는 영원히 발동하지 않는 죽은 카드였다.
+    // 머리 보호 제거(단계 A 마감)로 순번 0도 절단 대상 — 외피는 전 오브가 유효 대상이다.
     private bool HasSwarmArmorTarget(long matchingId, long playerId) =>
         GetSwarmTrailOrbs(matchingId, playerId)
-            .Skip(1)
             .Any(item => !_swarmOrbArmor.Contains((matchingId, playerId, item.ItemUid)));
+
+    /// <summary>
+    ///     오퍼 구성 확정 (#226 C 등급): 비용 구간이 높을수록 좋은 카드가 뽑힌다.
+    ///     오브 생성 = 색 균등 + 티어(5석+ T2 20% · 7석+ T2 35%/T3 10%),
+    ///     공격 강화 = 선두 유효 대상 티어(I=T1→T2, II=T2→T3),
+    ///     방어 강화 = 외피 장수(기본 1, 5석+ 15% · 7석+ 30% 확률로 2 — 무외피 수 캡).
+    /// </summary>
+    private SwarmGrowthOfferState GenerateSwarmGrowthOffer(long matchingId, long playerId, int cost)
+    {
+        int spawnTier = 1;
+        int tierRoll = Random.Shared.Next(100);
+        if (cost >= 7 && tierRoll < 10)
+            spawnTier = 3;
+        else if (cost >= 7 && tierRoll < 45)
+            spawnTier = 2;
+        else if (cost >= 5 && tierRoll < 20)
+            spawnTier = 2;
+        int spawnItemId =
+            SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)] + spawnTier - 1;
+
+        int armorSlots = GetSwarmTrailOrbs(matchingId, playerId)
+            .Count(item => !_swarmOrbArmor.Contains((matchingId, playerId, item.ItemUid)));
+        int armorCount = armorSlots <= 0 ? 0 : 1;
+        if (armorCount > 0 && armorSlots >= 2)
+        {
+            int armorRoll = Random.Shared.Next(100);
+            if (cost >= 7 && armorRoll < 30 || cost >= 5 && armorRoll < 15)
+                armorCount = 2;
+        }
+
+        return new SwarmGrowthOfferState(
+            _nextSwarmGrowthOfferId++,
+            cost,
+            spawnItemId,
+            GetSwarmEnhanceTargetTier(matchingId, playerId),
+            armorCount);
+    }
 
     /// <summary>
     ///     성장 오퍼 틱: 사람은 소환석이 비용에 닿는 즉시 오퍼 패킷(3택), 봇은 같은 규칙으로
@@ -2862,12 +2907,10 @@ public partial class GameServer
             if (_summonStoneManager.GetSnapshot(matchingId, playerId).StoneCount < cost)
                 continue;
 
-            int offerId = _nextSwarmGrowthOfferId++;
-            _swarmGrowthOffers[key] = (offerId, cost);
+            var offer = GenerateSwarmGrowthOffer(matchingId, playerId, cost);
+            _swarmGrowthOffers[key] = offer;
             session.SendSwarmGrowthOffer(
-                offerId, cost,
-                GetSwarmEnhanceTargetTier(matchingId, playerId),
-                HasSwarmArmorTarget(matchingId, playerId));
+                offer.OfferId, offer.Cost, offer.SpawnItemId, offer.EnhanceTargetTier, offer.ArmorCount);
         }
 
         foreach (var bot in aliveBots)
@@ -2883,8 +2926,9 @@ public partial class GameServer
             if (_summonStoneManager.GetSnapshot(matchingId, bot.PlayerId).StoneCount < cost)
                 continue;
 
-            int cardIndex = ChooseSwarmBotGrowthCard(matchingId, bot.PlayerId, orbCount);
-            bool applied = ApplySwarmGrowthCard(matchingId, bot.PlayerId, cardIndex, cost, session: null);
+            var offer = GenerateSwarmGrowthOffer(matchingId, bot.PlayerId, cost);
+            int cardIndex = ChooseSwarmBotGrowthCard(offer, orbCount);
+            bool applied = ApplySwarmGrowthCard(matchingId, bot.PlayerId, cardIndex, offer, session: null);
             _swarmGrowthNextOfferAtUtc[key] = nowUtc.AddSeconds(SwarmGrowthOfferCooldownSeconds);
             if (applied)
                 logger.LogInformation(
@@ -2894,10 +2938,10 @@ public partial class GameServer
     }
 
     /// <summary>
-    ///     봇 투자 정책: 초반(오브 5 미만)은 증식 고정 — 발사점·점수가 곧 생존이다.
-    ///     이후 증식 45 / 강화 30 / 철갑 25 가중 랜덤, 무효 카드는 증식으로 대체.
+    ///     봇 투자 정책: 초반(오브 5 미만)은 오브 생성 고정 — 발사점·점수가 곧 생존이다.
+    ///     이후 생성 45 / 공격 30 / 방어 25 가중 랜덤, 무효 카드는 생성으로 대체.
     /// </summary>
-    private int ChooseSwarmBotGrowthCard(long matchingId, long playerId, int orbCount)
+    private static int ChooseSwarmBotGrowthCard(SwarmGrowthOfferState offer, int orbCount)
     {
         if (orbCount < 5)
             return SwarmGrowthCardMultiply;
@@ -2906,12 +2950,8 @@ public partial class GameServer
         if (roll < 45)
             return SwarmGrowthCardMultiply;
         if (roll < 75)
-            return GetSwarmEnhanceTargetTier(matchingId, playerId) > 0
-                ? SwarmGrowthCardEnhance
-                : SwarmGrowthCardMultiply;
-        return HasSwarmArmorTarget(matchingId, playerId)
-            ? SwarmGrowthCardArmor
-            : SwarmGrowthCardMultiply;
+            return offer.EnhanceTargetTier > 0 ? SwarmGrowthCardEnhance : SwarmGrowthCardMultiply;
+        return offer.ArmorCount > 0 ? SwarmGrowthCardArmor : SwarmGrowthCardMultiply;
     }
 
     /// <summary>성장 카드 선택 처리 — 세션 라우팅 콜백의 종착지. 실패 시 오퍼는 유지된다.</summary>
@@ -2928,7 +2968,7 @@ public partial class GameServer
             return;
         }
 
-        bool success = ApplySwarmGrowthCard(matchingId, playerId, cardIndex, offer.Cost, session);
+        bool success = ApplySwarmGrowthCard(matchingId, playerId, cardIndex, offer, session);
         if (success)
         {
             _swarmGrowthOffers.Remove(key);
@@ -2943,12 +2983,14 @@ public partial class GameServer
     }
 
     /// <summary>
-    ///     카드 효과 적용 (사람·봇 공통): 비용 차감이 성립할 때만 효과가 나간다.
-    ///     강화·철갑은 "가장 앞의 유효 오브 1개" 자동 적용 — 카드만 보면 결과가 예측된다.
+    ///     카드 효과 적용 (사람·봇 공통): 오퍼 시점에 확정된 서술자를 그대로 집행한다.
+    ///     비용 차감이 성립할 때만 효과가 나가고, 픽 시점 재검증 실패면 오퍼가 유지된다.
     /// </summary>
     private bool ApplySwarmGrowthCard(
-        long matchingId, long playerId, int cardIndex, int cost, GameClientSession session)
+        long matchingId, long playerId, int cardIndex, SwarmGrowthOfferState offer,
+        GameClientSession session)
     {
+        int cost = offer.Cost;
         var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
         switch (cardIndex)
         {
@@ -2958,19 +3000,18 @@ public partial class GameServer
                     return false;
                 if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
                     return false;
-                int itemId = SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)];
                 if (session != null)
-                    session.GrantSwarmArenaOrb(itemId);
+                    session.GrantSwarmArenaOrb(offer.SpawnItemId);
                 else
-                    inventory.TryAddItemWithCapacity(itemId, Config.SWARM_ORB_CAPACITY, out _);
+                    inventory.TryAddItemWithCapacity(offer.SpawnItemId, Config.SWARM_ORB_CAPACITY, out _);
                 return true;
             }
             case SwarmGrowthCardEnhance:
             {
+                if (offer.EnhanceTargetTier is not (1 or 2))
+                    return false;
                 var target = GetSwarmTrailOrbs(matchingId, playerId)
-                    .FirstOrDefault(item => GetSquadOrbTier(item.ItemId) == 1)
-                    ?? GetSwarmTrailOrbs(matchingId, playerId)
-                        .FirstOrDefault(item => GetSquadOrbTier(item.ItemId) == 2);
+                    .FirstOrDefault(item => GetSquadOrbTier(item.ItemId) == offer.EnhanceTargetTier);
                 if (target == null)
                     return false;
                 if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
@@ -2982,16 +3023,18 @@ public partial class GameServer
             }
             case SwarmGrowthCardArmor:
             {
-                // 순번 0 제외 — 머리 오브는 절단 대상이 아니라 외피가 발동할 수 없다.
-                var target = GetSwarmTrailOrbs(matchingId, playerId)
-                    .Skip(1)
-                    .FirstOrDefault(item =>
-                        !_swarmOrbArmor.Contains((matchingId, playerId, item.ItemUid)));
-                if (target == null)
+                if (offer.ArmorCount <= 0)
+                    return false;
+                var targets = GetSwarmTrailOrbs(matchingId, playerId)
+                    .Where(item => !_swarmOrbArmor.Contains((matchingId, playerId, item.ItemUid)))
+                    .Take(offer.ArmorCount)
+                    .ToList();
+                if (targets.Count == 0)
                     return false;
                 if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
                     return false;
-                _swarmOrbArmor.Add((matchingId, playerId, target.ItemUid));
+                foreach (var target in targets)
+                    _swarmOrbArmor.Add((matchingId, playerId, target.ItemUid));
                 return true;
             }
             default:

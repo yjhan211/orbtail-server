@@ -135,16 +135,18 @@ namespace network.common.data.models
 
     /// <summary>
     ///     성장 카드 오퍼 (#226 단계 C). 소환석이 비용에 도달하면 서버가 내린다.
-    ///     EnhanceTargetTier: 0=강화 무효(대상 없음), 1=T1→T2, 2=T2→T3.
-    ///     ArmorValid: 철갑 카드 유효(외피 없는 오브 존재) 여부.
+    ///     SpawnItemId: 오브 생성 카드가 지급할 오브(색·티어 명시) — 픽 시 그대로 지급.
+    ///     EnhanceTargetTier: 0=공격 강화 무효(대상 없음), 1=T1→T2(등급 I), 2=T2→T3(등급 II).
+    ///     ArmorCount: 방어 강화가 부여할 외피 장수(0=무효) — 등급 = 장수.
     /// </summary>
     [MessagePackObject]
     public class G_TO_C_SWARM_GROWTH_OFFER : IMessagePackObject
     {
         [Key("offerId")] public int OfferId { get; set; }
         [Key("cost")] public int Cost { get; set; }
+        [Key("spawnId")] public int SpawnItemId { get; set; }
         [Key("enhTier")] public int EnhanceTargetTier { get; set; }
-        [Key("armorOk")] public bool ArmorValid { get; set; }
+        [Key("armorN")] public int ArmorCount { get; set; }
     }
 
     /// <summary>성장 카드 선택 (#226 단계 C). CardIndex: 0=증식, 1=강화, 2=철갑.</summary>

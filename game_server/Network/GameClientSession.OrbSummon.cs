@@ -181,7 +181,8 @@ public partial class GameClientSession
     }
 
     /// <summary>성장 카드 오퍼 전송 (#226 단계 C) — 소환석 임계 도달 순간 게임서버가 부른다.</summary>
-    internal void SendSwarmGrowthOffer(int offerId, int cost, int enhanceTargetTier, bool armorValid)
+    internal void SendSwarmGrowthOffer(
+        int offerId, int cost, int spawnItemId, int enhanceTargetTier, int armorCount)
     {
         if (!PlayerId.HasValue)
             return;
@@ -191,8 +192,9 @@ public partial class GameClientSession
         {
             OfferId = offerId,
             Cost = cost,
+            SpawnItemId = spawnItemId,
             EnhanceTargetTier = enhanceTargetTier,
-            ArmorValid = armorValid
+            ArmorCount = armorCount
         }));
         Send(packet);
     }
