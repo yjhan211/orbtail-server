@@ -288,10 +288,25 @@ public partial class GameClientSession
             return;
 
         var state = _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value);
+        var stateInfo = ToNetworkState(state);
+        // NextCost = 성장 카드 최종 비용 (#226 C 잔여): N 기반 기본 + 오브 수 점수 할증,
+        // 상한 10 — 클라 Mana 카운터가 이 서버 값을 그대로 표시한다(로컬 계산 퇴역).
+        int orbCount = 0;
+        foreach (var item in _inGameInventoryManager
+                     .GetPlayerInventory(CurrentMapSubId, PlayerId.Value).GetAllItems())
+        {
+            if (item.Count <= 0) continue;
+            if (SurvivorOrbData.TryGetColorAndTier(item.ItemId, out _, out _) ||
+                SurvivorOrbData.TryGetRecoveryTier(item.ItemId, out _))
+                orbCount += item.Count;
+        }
+
+        stateInfo.NextCost = Config.GetSwarmGrowthCardCost(
+            _summonStoneManager.GetGrowthSuccessCount(CurrentMapSubId, PlayerId.Value), orbCount);
         using var packet = Packet.Create((int)Protocol.G_TO_C_SUMMON_STONE_STATE, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SUMMON_STONE_STATE
         {
-            State = ToNetworkState(state),
+            State = stateInfo,
             AwardedStones = Math.Max(0, awardedStones),
             AwardSourceX = awardSourceX,
             AwardSourceY = awardSourceY

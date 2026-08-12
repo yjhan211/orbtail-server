@@ -91,6 +91,22 @@ public sealed class SummonStoneManager
             return CreateSnapshot(state);
     }
 
+    /// <summary>성장 성공 카운트 N 조회 (#226 C 잔여) — 비용 곡선·HUD 표시의 단일 출처.</summary>
+    public int GetGrowthSuccessCount(long matchingId, long playerId)
+    {
+        var state = GetOrCreatePlayerState(matchingId, playerId);
+        lock (state.SyncRoot)
+            return state.GrowthSuccessCount;
+    }
+
+    /// <summary>성장 카드 성공 적용 시 1회 호출 — N 누적 (#226 C 잔여).</summary>
+    public void RecordGrowthSuccess(long matchingId, long playerId)
+    {
+        var state = GetOrCreatePlayerState(matchingId, playerId);
+        lock (state.SyncRoot)
+            state.GrowthSuccessCount++;
+    }
+
     /// <summary>
     ///     소환 없이 소환석만 차감 (#226 단계 C): 성장 카드(강화·철갑)와 상자 개봉이 쓴다.
     ///     잔액 부족이면 아무것도 바꾸지 않는다.
@@ -217,6 +233,10 @@ public sealed class SummonStoneManager
         public int SuccessfulSummonCount { get; set; }
         public bool HasStartingStones { get; set; }
         public int PassiveIncomeElapsedSeconds { get; set; }
+
+        // 성장 카드 성공 선택 횟수 N (#226 C 잔여): 비용 곡선 3+floor(N/3)의 단일 출처.
+        // 오브가 잘려도 줄지 않는다 — 절단이 성장 시간을 초기화하지 못하게.
+        public int GrowthSuccessCount { get; set; }
     }
 }
 
