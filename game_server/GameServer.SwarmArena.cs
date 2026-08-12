@@ -3558,9 +3558,9 @@ public partial class GameServer
     // 바람 = 발당 40% × 주기 40%(다발 총알). 사거리 30 = 구역 전체 커버
     // (교차 구역은 리졸버의 구역·시야 필터가 막는다).
     private const float SwarmSunAttackRange = 30f;
-    // 바람 사거리 (2026-08-12, 4.0 → 6.0 2차): 운동장급 교전 거리에서 4.0은 진입 전에
-    // 끝났다 — 다트(5) 위의 중거리 6.0으로 확장, 연사가 교전에 실제로 참여한다.
-    private const float SwarmWindAttackRange = 6f;
+    // 바람 사거리 = 태양과 동일 (2026-08-12 유저 결정): 중거리 실험(4→6)도 교전 거리에
+    // 못 미쳤다 — 색 차이는 리듬(연사 vs 한 방)과 탄속이 만든다.
+    private const float SwarmWindAttackRange = SwarmSunAttackRange;
     // 1.75 → 2.5 (2026-08-12): 태양 = 무겁고 느린 한 방 — 바람(연사 소탄)과 리듬 대비.
     private const float SwarmSunHomingIntervalMultiplier = 2.5f;
     // 1.5 → 3.0 (2026-08-12 로그 실측): 발당 오염 ~3.8은 "안 박히는" 체감 — 두 배로 묵직하게.
