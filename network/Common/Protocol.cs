@@ -239,6 +239,9 @@ namespace network.common
         // 포위 사격 연출 (#226 B) — 완성 순간 포위 링 표시
         G_TO_C_SWARM_ENCIRCLE_VFX,
 
+        // 절단 실험 더미 조종 (#226 실험장, 개발용) — WASD 방향 전송
+        C_TO_G_DEV_DUMMY_MOVE,
+
         END
     }
 

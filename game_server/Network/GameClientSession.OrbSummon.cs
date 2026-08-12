@@ -164,6 +164,14 @@ public partial class GameClientSession
         return attempt;
     }
 
+    /// <summary>절단 실험 더미 조종 (#226 실험장, 개발용) — 게임서버 훅으로 위임.</summary>
+    private Task HandleDevDummyMove(C_TO_G_DEV_DUMMY_MOVE request)
+    {
+        if (PlayerId.HasValue && CurrentMapSubId > 0)
+            SwarmDummyMoveCallback?.Invoke(CurrentMapSubId, request.DirX, request.DirY);
+        return Task.CompletedTask;
+    }
+
     private Task HandleDestroyOrb(C_TO_G_DESTROY_ORB request)
     {
         if (!PlayerId.HasValue)

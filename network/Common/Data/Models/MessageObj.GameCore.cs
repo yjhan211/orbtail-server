@@ -125,6 +125,14 @@ namespace network.common.data.models
         [Key("charges")] public int Charges { get; set; }
     }
 
+    /// <summary>절단 실험 더미 조종 (#226 실험장, 개발용). WASD 방향 — 서버가 더미를 스텝 이동.</summary>
+    [MessagePackObject]
+    public class C_TO_G_DEV_DUMMY_MOVE : IMessagePackObject
+    {
+        [Key("dirX")] public float DirX { get; set; }
+        [Key("dirY")] public float DirY { get; set; }
+    }
+
     /// <summary>
     ///     스웜 링 연출 (#226). 같은 구역에 브로드캐스트 — 링 중심·반경.
     ///     Kind: 0=포위 완성, 1=절단 파열, 2=파도 물폭탄 — 클라가 색·효과음을 분기한다.
@@ -137,6 +145,10 @@ namespace network.common.data.models
         [Key("centerY")] public float CenterY { get; set; }
         [Key("radius")] public float Radius { get; set; }
         [Key("kind")] public int Kind { get; set; }
+
+        // 절단(kind 1) 전용: 잘린 열의 주인과 절단 시작 순번 — 클라가 꼬리 섬광을 그린다.
+        [Key("victimId")] public long VictimPlayerId { get; set; }
+        [Key("ord")] public int FromOrdinal { get; set; }
     }
 
     /// <summary>

@@ -167,6 +167,7 @@ public partial class GameServer
             GameClientSession.SwarmExploreNoiseCallback ??=
                 (noiseMatchingId, noisePlayerId) =>
                     _swarmArenaManager.AttractSwarm(noiseMatchingId, noisePlayerId);
+            GameClientSession.SwarmDummyMoveCallback ??= MoveSwarmCutDummy;
             // 하트 = 본체 오염 + 앞줄 오브 HP 회복 (#222 M4, 원작 하트는 스쿼드도 회복).
             // 엔트리 제거 = 만충 취급 — 다음 오브 비주얼 틱에 체력바·크랙이 함께 복구된다.
             GameClientSession.SwarmHeartPickupCallback ??=
@@ -234,6 +235,16 @@ public partial class GameServer
             _swarmCutDummyAutoSetupDone.Add(matchingId))
         {
             SetupSwarmCutDummy(matchingId);
+            // 실험장 격리: 더미 외 봇은 조용히 퇴장 — 순위·드롭 이벤트 없이 화면에서 사라진다.
+            foreach (var other in _botPlayerManager.GetBots(matchingId))
+            {
+                if (other.IsSwarmCutDummy || other.IsEliminated)
+                    continue;
+                other.IsEliminated = true;
+                using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(other.PlayerId);
+                foreach (var session in sessions)
+                    session.Send(leavePacket);
+            }
         }
 
         // 더미(#226 실험 과녁)는 웨이브 디렉터에서 제외 — 몹이 몰려들지 않아 실험장이 조용하다.
@@ -242,15 +253,20 @@ public partial class GameServer
         var directorParticipants = dummyIds.Count == 0
             ? participants
             : participants.Where(participant => !dummyIds.Contains(participant.PlayerId)).ToList();
-        var tick = _swarmArenaManager.Tick(matchingId, directorParticipants, nowUtc);
+        // 실험장 (#226): 더미가 있으면 몹 디렉터를 아예 쉬게 한다 — 스폰·추격·공격 전부 정지.
+        var tick = dummyIds.Count > 0
+            ? new SwarmArenaTickResult()
+            : _swarmArenaManager.Tick(matchingId, directorParticipants, nowUtc);
 
-        // 절단 실험 더미 (#226): 불사 + 오브 10개 자동 리필 — 절단·포위 타격감 튜닝용 과녁.
+        // 절단 실험 더미 (#226): 불사 + 오브 리필 — 절단·포위 타격감 튜닝용 과녁.
+        // 리필은 마지막 절단 후 3초 지연: 즉시 채우면 "끊어도 안 줄어드는" 것처럼 보인다.
         foreach (var dummyBot in aliveBots)
         {
             if (!dummyBot.IsSwarmCutDummy)
                 continue;
             dummyBot.Corruption = 0;
-            RefillSwarmCutDummyOrbs(matchingId, dummyBot);
+            if ((nowUtc - dummyBot.LastDamagedAtUtc).TotalSeconds >= 3d)
+                RefillSwarmCutDummyOrbs(matchingId, dummyBot);
         }
 
         // 오브열 (#226 α/C/B): 경로 기록 → 이동 선분의 상대 열 절단 → 고리 완성 포위 사격.
@@ -1109,8 +1125,16 @@ public partial class GameServer
     private const float SwarmTrailTeleportResetDistance = 5f;
 
     // 열 절단 (#226 C): 같은 (절단자, 소유자) 쌍 재절단 쿨다운 + 순간이동·좌표 보정 배제 상한.
-    private const double SwarmTrailCutPairCooldownSeconds = 0.8d;
+    // 쿨다운 0.8 → 0.15 (2026-08-12): 판정이 링크 접촉 → 오브 관통으로 좁아져 스팸 우려가
+    // 줄었고, 꼬리를 따라 밟으면 하나씩 순차로 터지는 리듬(이속 5 × 간격 0.9 ≈ 0.18초)을 살린다.
+    private const double SwarmTrailCutPairCooldownSeconds = 0.15d;
     private const float SwarmTrailCutMaxSegmentLength = 2f;
+    // 오브 관통 판정 (정규화 dy×2 공간): 링크 선을 스치는 게 아니라 오브를 밟아야 끊긴다.
+    // 반경 0.35 원형 + 판정 중심 위 오프셋 (2026-08-12 확정): 스프라이트가 떠 있어 위 접근이
+    // 짜던 문제는 중심 오프셋만으로 해결 — 반경을 키우면 옆 오브(간격 0.9)까지 문다.
+    private const float SwarmTrailCutOrbHitRadiusX = 0.35f;
+    private const float SwarmTrailCutOrbHitRadiusY = 0.35f;
+    private const float SwarmTrailCutOrbHitYOffset = 0.15f;
     // 절단 파열 플래시 반경 — 포위 링과 같은 원형을 작게 띄운다.
     private const float SwarmTrailCutFlashRadius = 0.7f;
 
@@ -1305,41 +1329,83 @@ public partial class GameServer
                 nowUtc < cooldownUntil)
                 continue;
 
+            // 절단 판정 (2026-08-12 확정): 오브 관통(반경 0.35, 중심 위 0.15) 또는
+            // 링크(오브 i-1 ↔ i) 가로지르기 — 둘 다 그 오브(i)부터 꼬리가 끊긴다.
+            // 첫 오브·본체-첫 오브 링크는 제외(머리 보호).
             for (int ordinal = 1; ordinal < chain.Points.Count; ordinal++)
             {
-                if (TrySegmentIntersection(
-                        previous, current, chain.Points[ordinal - 1], chain.Points[ordinal],
-                        out float t) &&
-                    t < bestT)
-                {
-                    bestT = t;
-                    bestOwnerId = ownerId;
-                    bestTailOrdinal = ordinal;
-                    bestOrbPosition = chain.Points[ordinal];
-                    bestArea = chain.Area;
-                }
+                var hitPoint = new Vector3f(
+                    chain.Points[ordinal].X,
+                    chain.Points[ordinal].Y + SwarmTrailCutOrbHitYOffset,
+                    0f);
+                bool hit = TrySegmentHitsPoint(previous, current, hitPoint, out float t);
+                if (!hit)
+                    hit = TrySegmentIntersection(
+                        previous, current, chain.Points[ordinal - 1], chain.Points[ordinal], out t);
+                if (!hit || t >= bestT)
+                    continue;
+                bestT = t;
+                bestOwnerId = ownerId;
+                bestTailOrdinal = ordinal;
+                bestOrbPosition = chain.Points[ordinal];
+                bestArea = chain.Area;
             }
         }
 
         if (bestOwnerId == 0)
             return;
 
-        var destroyedItem = DestroySwarmOrbAtOrdinal(matchingId, bestOwnerId, bestTailOrdinal);
-        if (destroyedItem == null)
-            return;
-
         _swarmTrailCutCooldownUtc[(matchingId, cutterId, bestOwnerId)] =
             nowUtc.AddSeconds(SwarmTrailCutPairCooldownSeconds);
+
+        // 5단계 파괴: 대상 오브(개체)에 금을 쌓고, 5번째 타격에만 실제로 끊는다.
+        var ownerOrbs = _inGameInventoryManager.GetPlayerInventory(matchingId, bestOwnerId)
+            .GetAllItems()
+            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
+            .ToList();
+        if (bestTailOrdinal >= ownerOrbs.Count)
+            return;
+        var crackKey = (matchingId, bestOwnerId, ownerOrbs[bestTailOrdinal].ItemUid);
+        int crackCount = (_swarmOrbCutCracks.TryGetValue(crackKey, out int storedCracks)
+            ? storedCracks
+            : 0) + 1;
+        if (crackCount < SwarmTrailCutBreakHits)
+        {
+            _swarmOrbCutCracks[crackKey] = crackCount;
+            SendSwarmRingVfx(
+                bestArea, creditPlayerId, bestOrbPosition.X, bestOrbPosition.Y,
+                radius: crackCount, allSessions, SwarmRingVfxKindCutCrack,
+                victimId: bestOwnerId, fromOrdinal: bestTailOrdinal);
+            return;
+        }
+
+        // 스네이크 문법 (2026-08-12): 끊긴 지점 이후 꼬리 전체가 잘려나간다 — 절단 지점이
+        // 머리에 가까울수록 손실이 크고, 잘린 오브들은 각자 자리에서 전리품으로 흩어진다.
+        var destroyedItems = DestroySwarmOrbsFromOrdinal(matchingId, bestOwnerId, bestTailOrdinal);
+        if (destroyedItems.Count == 0)
+            return;
+        foreach (var destroyedItem in destroyedItems)
+            _swarmOrbCutCracks.Remove((matchingId, bestOwnerId, destroyedItem.ItemUid));
         var ownerSession = aliveSessions.FirstOrDefault(session => session.PlayerId == bestOwnerId);
-        ownerSession?.SendInGameInventoryUpdate(destroyedItem);
-        // 절단 전리품: 오브 파괴 낙수 — 파괴 위치에 석·잼이 흩어진다.
-        ScatterSwarmOrbBreakStones(
-            matchingId, destroyedItem.ItemId, bestArea,
-            bestOrbPosition.X, bestOrbPosition.Y, allSessions);
-        // 절단 파열 플래시: 링 연출 패킷 재사용 — "끊었다"가 화면에서 즉시 읽히게.
+        var ownerChain = chains[bestOwnerId];
+        for (int index = 0; index < destroyedItems.Count; index++)
+        {
+            var destroyedItem = destroyedItems[index];
+            ownerSession?.SendInGameInventoryUpdate(destroyedItem);
+            int dropOrdinal = bestTailOrdinal + index;
+            var dropPosition = dropOrdinal < ownerChain.Points.Count
+                ? ownerChain.Points[dropOrdinal]
+                : bestOrbPosition;
+            ScatterSwarmOrbBreakStones(
+                matchingId, destroyedItem.ItemId, bestArea,
+                dropPosition.X, dropPosition.Y, allSessions);
+        }
+
+        // 절단 파열 플래시: 링 + 잘린 꼬리 오브 섬광 — "어디부터 끊겼다"가 화면에서 읽히게.
         SendSwarmRingVfx(
             bestArea, creditPlayerId, bestOrbPosition.X, bestOrbPosition.Y,
-            SwarmTrailCutFlashRadius, allSessions, SwarmRingVfxKindCut);
+            SwarmTrailCutFlashRadius, allSessions, SwarmRingVfxKindCut,
+            victimId: bestOwnerId, fromOrdinal: bestTailOrdinal);
 
         var ownerBot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == bestOwnerId);
         if (ownerBot != null)
@@ -1352,8 +1418,8 @@ public partial class GameServer
         }
 
         logger.LogInformation(
-            "Swarm trail cut: MatchingId={MatchingId}, CutterId={CutterId}, OwnerId={OwnerId}, TailOrdinal={TailOrdinal}, DestroyedItemId={DestroyedItemId}",
-            matchingId, cutterId, bestOwnerId, bestTailOrdinal, destroyedItem.ItemId);
+            "Swarm trail cut: MatchingId={MatchingId}, CutterId={CutterId}, OwnerId={OwnerId}, TailOrdinal={TailOrdinal}, DestroyedCount={DestroyedCount}",
+            matchingId, cutterId, bestOwnerId, bestTailOrdinal, destroyedItems.Count);
     }
 
     // ===== 포위 사격 (#226 B): 이동으로 고리를 완성하면 안쪽을 집중사격한다 =====
@@ -1509,15 +1575,23 @@ public partial class GameServer
         SendSwarmRingVfx(owner.Area, owner.PlayerId, centerX, centerY, radius, sessions);
     }
 
-    // 링 연출 종류: 클라가 색·효과음을 분기한다.
+    // 링 연출 종류: 클라가 색·효과음을 분기한다. 크랙(3)은 링 없이 슬롯 크랙 + 크랙음만 —
+    // Radius 필드에 단계(1~4)를 실어 보낸다.
     private const int SwarmRingVfxKindEncircle = 0;
     private const int SwarmRingVfxKindCut = 1;
     private const int SwarmRingVfxKindWaveBomb = 2;
+    private const int SwarmRingVfxKindCutCrack = 3;
+
+    // 5단계 파괴 (2026-08-12): 같은 오브를 5번 밟아야 깨진다 — 4번은 금이 가고(크랙 1~4),
+    // 5번째에 그 지점부터 꼬리가 끊긴다. 카운트는 오브 개체(ItemUid) 기준.
+    private const int SwarmTrailCutBreakHits = 5;
+    private readonly Dictionary<(long MatchingId, long OwnerId, long ItemUid), int> _swarmOrbCutCracks = new();
 
     /// <summary>링 연출 공용 전송 — 포위 완성(대형)·절단 파열(소형)·물폭탄(파랑)이 같은 원형을 쓴다.</summary>
     private void SendSwarmRingVfx(
         AreaType area, long ownerId, float centerX, float centerY, float radius,
-        List<GameClientSession> sessions, int kind = SwarmRingVfxKindEncircle)
+        List<GameClientSession> sessions, int kind = SwarmRingVfxKindEncircle,
+        long victimId = 0, int fromOrdinal = 0)
     {
         using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_ENCIRCLE_VFX);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_ENCIRCLE_VFX
@@ -1526,7 +1600,9 @@ public partial class GameServer
             CenterX = centerX,
             CenterY = centerY,
             Radius = radius,
-            Kind = kind
+            Kind = kind,
+            VictimPlayerId = victimId,
+            FromOrdinal = fromOrdinal
         }));
         foreach (var session in sessions)
         {
@@ -1822,7 +1898,7 @@ public partial class GameServer
         var fromCell = dummy.Cell;
         dummy.IsSwarmCutDummy = true;
         dummy.CurrentArea = AreaType.Ground;
-        dummy.Position = new Vector3f(center.X + 4f, center.Y, 0f);
+        dummy.Position = new Vector3f(center.X + 4f, center.Y + 3f, 0f);
         dummy.Cell = MapCoordinateConverter.WorldToCell(MapId.School, dummy.Position);
         dummy.Path.Clear();
         dummy.PathIndex = 0;
@@ -1864,26 +1940,98 @@ public partial class GameServer
     }
 
     /// <summary>
-    ///     열 순번째 오브를 인벤토리에서 즉시 파괴한다. 순번 매핑은 전투 액터·클라 슬롯과 같은
-    ///     인벤토리 순서(스쿼드 오브 필터). 파괴된 오브가 앞줄이었다면 HP 추적을 리셋한다.
+    ///     더미 WASD 조종 (#226 실험장): 클라 방향 입력을 스텝 이동으로 적용하고 걷기를
+    ///     브로드캐스트한다 — 더미가 움직여야 클라 열이 자연 간격(0.9)으로 펼쳐진다.
     /// </summary>
-    private InGameItemInfo DestroySwarmOrbAtOrdinal(long matchingId, long playerId, int ordinal)
+    private void MoveSwarmCutDummy(long matchingId, float dirX, float dirY)
     {
+        var dummy = _botPlayerManager.GetBots(matchingId)
+            .FirstOrDefault(bot => bot.IsSwarmCutDummy && !bot.IsEliminated);
+        if (dummy == null)
+            return;
+
+        float length = MathF.Sqrt(dirX * dirX + dirY * dirY);
+        if (length < 0.01f)
+            return;
+
+        // 10Hz 전송 기준 스텝 0.5 = 5u/s — 플레이어 달리기와 동급.
+        const float step = 0.5f;
+        var proposed = new Vector3f(
+            dummy.Position.X + dirX / length * step,
+            dummy.Position.Y + dirY / length * step,
+            0f);
+        var proposedCell = MapCoordinateConverter.WorldToCell(MapId.School, proposed);
+        if (!GameMapData.IsMoveablePosition(MapId.School, proposedCell))
+            return;
+
+        var fromArea = dummy.CurrentArea;
+        var fromCell = dummy.Cell;
+        dummy.Position = proposed;
+        dummy.Cell = proposedCell;
+        var currentArea = GameMapData.GetCurrentArea(MapId.School, proposedCell);
+        if (currentArea != AreaType.None)
+            dummy.CurrentArea = currentArea;
+
+        BroadcastBotMovement(matchingId, new BotMovementEvent
+        {
+            BotPlayerId = dummy.PlayerId,
+            FromArea = fromArea,
+            ToArea = dummy.CurrentArea,
+            FromCell = fromCell,
+            ToCell = proposedCell,
+            Position = proposed,
+            Velocity = new Vector3f(dirX / length * 5f, dirY / length * 5f, 0f),
+            Rotation = 0f,
+            IsAreaTransition = fromArea != dummy.CurrentArea
+        }, GetSessionsByInstance(MapId.School, matchingId).ToList());
+    }
+
+    /// <summary>
+    ///     열 순번부터 꼬리 끝까지 인벤토리에서 즉시 파괴한다 (스네이크 문법). 순번 매핑은
+    ///     전투 액터·클라 슬롯과 같은 인벤토리 순서(스쿼드 오브 필터).
+    /// </summary>
+    private List<InGameItemInfo> DestroySwarmOrbsFromOrdinal(long matchingId, long playerId, int fromOrdinal)
+    {
+        var destroyed = new List<InGameItemInfo>();
         var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
         var orbs = inventory.GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
             .ToList();
-        if (ordinal < 0 || ordinal >= orbs.Count)
-            return null;
+        if (fromOrdinal < 0 || fromOrdinal >= orbs.Count)
+            return destroyed;
 
-        var target = orbs[ordinal];
-        if (!inventory.TryRemoveItem(target.ItemUid, 1, out var destroyedItem) || destroyedItem == null)
-            return null;
+        for (int ordinal = fromOrdinal; ordinal < orbs.Count; ordinal++)
+        {
+            if (inventory.TryRemoveItem(orbs[ordinal].ItemUid, 1, out var destroyedItem) &&
+                destroyedItem != null)
+                destroyed.Add(destroyedItem);
+        }
 
-        var key = (matchingId, playerId);
-        if (_swarmFrontOrbHp.TryGetValue(key, out var stored) && stored.ItemId == target.ItemId)
-            _swarmFrontOrbHp.Remove(key);
-        return destroyedItem;
+        if (destroyed.Count > 0)
+            _swarmFrontOrbHp.Remove((matchingId, playerId));
+        return destroyed;
+    }
+
+    /// <summary>
+    ///     이동 선분이 오브(점)를 관통했는지 — 정규화(dy×2) 공간에서 최근접점을 구한 뒤
+    ///     가로 좁고 세로 후한 타원으로 판정한다 (이웃 오차 방지 + 부양 스프라이트 보정).
+    /// </summary>
+    private static bool TrySegmentHitsPoint(
+        Vector3f from, Vector3f to, Vector3f point, out float t)
+    {
+        float ax = from.X;
+        float ay = from.Y * 2f;
+        float abx = to.X - ax;
+        float aby = to.Y * 2f - ay;
+        float px = point.X;
+        float py = point.Y * 2f;
+        float lengthSquared = abx * abx + aby * aby;
+        t = lengthSquared > 0.000001f
+            ? Math.Clamp(((px - ax) * abx + (py - ay) * aby) / lengthSquared, 0f, 1f)
+            : 0f;
+        float dx = (ax + abx * t - px) / SwarmTrailCutOrbHitRadiusX;
+        float dy = (ay + aby * t - py) / SwarmTrailCutOrbHitRadiusY;
+        return dx * dx + dy * dy <= 1f;
     }
 
     /// <summary>선분 교차 판정 — t는 절단자 선분 위의 교차 지점 비율(가장 이른 링크 선택 기준).</summary>
@@ -2721,6 +2869,9 @@ public partial class GameServer
         foreach (var key in _swarmTrailCutCooldownUtc.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmTrailCutCooldownUtc.Remove(key);
+        foreach (var key in _swarmOrbCutCracks.Keys
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmOrbCutCracks.Remove(key);
         foreach (var key in _swarmEncircleCandidateSinceUtc.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmEncircleCandidateSinceUtc.Remove(key);
