@@ -1616,7 +1616,8 @@ public partial class GameServer
     // 판정은 기폭 순간 위치 기준(타원 dy×2) — 표시가 곧 판정, 회피는 위치 판단이다. =====
     private const double SwarmWaveBombIntervalSeconds = 2.5d;
     private const double SwarmWaveBombFuseSeconds = 0.7d;
-    private const float SwarmWaveBombRadius = 1.5f;
+    // 1.5 → 2.0 (2026-08-12): 근접 거부 반경이 좁아 존재감이 약했다 — 링 표시·판정 동시 확장.
+    private const float SwarmWaveBombRadius = 2.0f;
     private const int SwarmWaveBombDamage = 14;
 
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmWaveBombNextDropAtUtc =
@@ -1670,8 +1671,10 @@ public partial class GameServer
                     matchingId, owner.PlayerId, ordinal, owner.Position);
                 _pendingSwarmWaveBombs.Add((matchingId, owner.PlayerId, owner.Area, position,
                     nowUtc.AddSeconds(SwarmWaveBombFuseSeconds)));
+                // 소유자·순번 동봉 — 클라가 실제 렌더 슬롯 위치에 링·이펙트를 정렬한다.
                 SendSwarmRingVfx(owner.Area, owner.PlayerId, position.X, position.Y,
-                    SwarmWaveBombRadius, allSessions, SwarmRingVfxKindWaveBomb);
+                    SwarmWaveBombRadius, allSessions, SwarmRingVfxKindWaveBomb,
+                    victimId: owner.PlayerId, fromOrdinal: ordinal);
             }
         }
     }
