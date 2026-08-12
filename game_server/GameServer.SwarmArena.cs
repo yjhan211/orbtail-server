@@ -1744,8 +1744,9 @@ public partial class GameServer
     // ===== 파도 물폭탄 (#226 색 무기): 파도 오브는 미사일 대신 주기마다 자기 위치에
     // 물폭탄을 떨군다. 허공 주기 투하(대상 불요) — 링 텔레그래프 후 반경 내 적 피해.
     // 판정은 기폭 순간 위치 기준(타원 dy×2) — 표시가 곧 판정, 회피는 위치 판단이다. =====
-    private const double SwarmWaveBombIntervalSeconds = 2.5d;
-    private const double SwarmWaveBombFuseSeconds = 0.7d;
+    // 2.5 → 1.2 (2026-08-12): 파도 = 근접 거부 지뢰 — 깨러 접근한 절단자를 빠르게 처벌한다.
+    private const double SwarmWaveBombIntervalSeconds = 1.2d;
+    private const double SwarmWaveBombFuseSeconds = 0.45d;
     // 1.5 → 2.0 → 2.6 (2026-08-12 2차): 근접 거부 반경이 좁아 존재감이 약했다 — 표시·판정 동시 확장.
     private const float SwarmWaveBombRadius = 2.6f;
     // 허공 투하 기각 (2026-08-12): 적(참가자·몹)이 이 반경 안에 있는 오브만 폭탄을 떨군다.
@@ -1753,7 +1754,10 @@ public partial class GameServer
     // 판정 여유 (2026-08-12): 클라 링(오브 렌더 위치 정렬)과 서버 좌표의 오차 흡수 —
     // 링 안에 보이는데 안 맞는 억울함 방지. 표시 2.0 vs 판정 2.5.
     private const float SwarmWaveBombJudgeRadius = SwarmWaveBombRadius + 0.5f;
-    private const int SwarmWaveBombDamage = 14;
+    // PvP·몹 피해 분리 (2026-08-12): PvP는 치명급(오염 환산 0.35 경유 ≈ 105 — 게이지 420의
+    // 1/4, 눌러앉으면 연속 피폭) — 절단 접근의 실질 카운터. 몹은 원킬 학살 방지로 저피해 유지.
+    private const int SwarmWaveBombPvpDamage = 300;
+    private const int SwarmWaveBombMonsterDamage = 14;
 
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmWaveBombNextDropAtUtc =
         new();
@@ -1882,7 +1886,7 @@ public partial class GameServer
 
             // 본체 오염 직행 (#226 재개편) — 미사일과 같은 환산·이월 누산.
             int bombCorruption = ConsumeSwarmPvpCorruption(
-                matchingId, victim.PlayerId, SwarmWaveBombDamage);
+                matchingId, victim.PlayerId, SwarmWaveBombPvpDamage);
             var victimSession = aliveSessions.FirstOrDefault(session =>
                 session.PlayerId == victim.PlayerId);
             if (victimSession != null)
@@ -1914,7 +1918,7 @@ public partial class GameServer
             if (dx * dx + dy * dy > radiusSquared)
                 continue;
             _pendingSwarmMonsterHits.Add((matchingId, target.CombatTargetId, ownerId,
-                SwarmWaveBombDamage, nowUtc));
+                SwarmWaveBombMonsterDamage, nowUtc));
         }
     }
 
@@ -3559,7 +3563,8 @@ public partial class GameServer
     private const float SwarmWindAttackRange = 6f;
     // 1.75 → 2.5 (2026-08-12): 태양 = 무겁고 느린 한 방 — 바람(연사 소탄)과 리듬 대비.
     private const float SwarmSunHomingIntervalMultiplier = 2.5f;
-    private const float SwarmSunBulletDamageMultiplier = 1.5f;
+    // 1.5 → 3.0 (2026-08-12 로그 실측): 발당 오염 ~3.8은 "안 박히는" 체감 — 두 배로 묵직하게.
+    private const float SwarmSunBulletDamageMultiplier = 3f;
     // 연사 2배 (2026-08-12): 주기·발당 절반 — DPS 불변, 탄막 밀도만 상승.
     private const float SwarmWindBulletDamageMultiplier = 0.15f;
     private const float SwarmWindBulletIntervalMultiplier = 0.14f;
