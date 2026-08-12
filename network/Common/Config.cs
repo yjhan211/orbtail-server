@@ -203,8 +203,21 @@ namespace network.common
         public const int SWARM_EXPLORE_COST_BASE = 1;
 
         /// <summary>스팟 리젠 시간(초). 개봉된 스팟은 사라지지 않고 이 시간 뒤 다시 나온다.
-        ///     30 → 0 (#226 웨이브 전환): 스팟 회전 대기 제거 — 소환 페이스는 석 수급이 조절한다.</summary>
-        public const int SWARM_EXPLORE_REGEN_SECONDS = 0;
+        ///     0 → 30 (#226 단계 C): 상자 = 소모품(하트·부츠) 공급처 — 즉시 리젠이면 하트가 무한이다.</summary>
+        public const int SWARM_EXPLORE_REGEN_SECONDS = 30;
+
+        /// <summary>
+        ///     상자 개봉 비용 (#226 단계 C): 상자는 오브가 아니라 소모품(하트·부츠)을 준다 —
+        ///     소환석의 주 소비처는 성장 카드이므로 상자는 고정 저가.
+        /// </summary>
+        public const int SWARM_BOX_OPEN_COST = 1;
+
+        /// <summary>
+        ///     성장 카드 비용 (#226 단계 C): 소환석이 이 값에 도달하면 3택 카드가 즉시 뜬다.
+        ///     시작 3석(목업), 오브 수 비례 완만 상승 — 투자 간격 25~35초 목표의 억제 곡선.
+        /// </summary>
+        public static int GetSwarmGrowthCardCost(int orbCount) =>
+            Math.Max(3, 2 + orbCount / 3);
 
         /// <summary>궤도 오브 1개당 개봉 비용 가산 — SB "스쿼드 인원수 비례 상자 코인".</summary>
         public const int SWARM_EXPLORE_COST_PER_ORB = 2;

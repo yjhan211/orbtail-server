@@ -242,6 +242,12 @@ namespace network.common
         // 절단 실험 더미 조종 (#226 실험장, 개발용) — WASD 방향 전송
         C_TO_G_DEV_DUMMY_MOVE,
 
+        // 성장 카드 3택 (#226 단계 C) — 소환석 임계 도달 시 서버가 오퍼를 내리고,
+        // 선택은 서버 권위로 적용된다 (증식·강화·철갑, 강화·철갑은 선두 유효 오브 자동 적용)
+        G_TO_C_SWARM_GROWTH_OFFER,
+        C_TO_G_SWARM_GROWTH_PICK,
+        G_TO_C_SWARM_GROWTH_RESULT,
+
         END
     }
 

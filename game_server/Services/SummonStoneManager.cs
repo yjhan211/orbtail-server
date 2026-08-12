@@ -91,6 +91,27 @@ public sealed class SummonStoneManager
             return CreateSnapshot(state);
     }
 
+    /// <summary>
+    ///     소환 없이 소환석만 차감 (#226 단계 C): 성장 카드(강화·철갑)와 상자 개봉이 쓴다.
+    ///     잔액 부족이면 아무것도 바꾸지 않는다.
+    /// </summary>
+    public bool TrySpendStones(long matchingId, long playerId, int amount, out SummonStoneSnapshot snapshot)
+    {
+        var state = GetOrCreatePlayerState(matchingId, playerId);
+        lock (state.SyncRoot)
+        {
+            if (amount < 0 || state.StoneCount < amount)
+            {
+                snapshot = CreateSnapshot(state);
+                return false;
+            }
+
+            state.StoneCount -= amount;
+            snapshot = CreateSnapshot(state);
+            return true;
+        }
+    }
+
     public SummonOrbAttempt TrySummon(long matchingId, long playerId, Func<int, InGameItemInfo?> grantItem,
         int choiceIndex = 0, int? costOverride = null, int? exactItemId = null)
     {

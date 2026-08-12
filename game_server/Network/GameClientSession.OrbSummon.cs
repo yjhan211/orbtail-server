@@ -172,6 +172,49 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
+    /// <summary>성장 카드 선택 (#226 단계 C) — 오퍼 상태를 가진 게임서버 훅으로 위임.</summary>
+    private Task HandleSwarmGrowthPick(C_TO_G_SWARM_GROWTH_PICK request)
+    {
+        if (PlayerId.HasValue && CurrentMapSubId > 0)
+            SwarmGrowthPickCallback?.Invoke(this, CurrentMapSubId, request.OfferId, request.CardIndex);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>성장 카드 오퍼 전송 (#226 단계 C) — 소환석 임계 도달 순간 게임서버가 부른다.</summary>
+    internal void SendSwarmGrowthOffer(int offerId, int cost, int enhanceTargetTier, bool armorValid)
+    {
+        if (!PlayerId.HasValue)
+            return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_GROWTH_OFFER, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_GROWTH_OFFER
+        {
+            OfferId = offerId,
+            Cost = cost,
+            EnhanceTargetTier = enhanceTargetTier,
+            ArmorValid = armorValid
+        }));
+        Send(packet);
+    }
+
+    /// <summary>성장 카드 선택 결과 전송 (#226 단계 C). 실패 시 클라는 오퍼를 유지한다.</summary>
+    internal void SendSwarmGrowthResult(int offerId, int cardIndex, bool success)
+    {
+        if (!PlayerId.HasValue)
+            return;
+
+        int stones = _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value).StoneCount;
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_GROWTH_RESULT, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_GROWTH_RESULT
+        {
+            OfferId = offerId,
+            CardIndex = cardIndex,
+            Success = success,
+            StoneCount = stones
+        }));
+        Send(packet);
+    }
+
     private Task HandleDestroyOrb(C_TO_G_DESTROY_ORB request)
     {
         if (!PlayerId.HasValue)

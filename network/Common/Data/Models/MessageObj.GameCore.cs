@@ -134,6 +134,38 @@ namespace network.common.data.models
     }
 
     /// <summary>
+    ///     성장 카드 오퍼 (#226 단계 C). 소환석이 비용에 도달하면 서버가 내린다.
+    ///     EnhanceTargetTier: 0=강화 무효(대상 없음), 1=T1→T2, 2=T2→T3.
+    ///     ArmorValid: 철갑 카드 유효(외피 없는 오브 존재) 여부.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_SWARM_GROWTH_OFFER : IMessagePackObject
+    {
+        [Key("offerId")] public int OfferId { get; set; }
+        [Key("cost")] public int Cost { get; set; }
+        [Key("enhTier")] public int EnhanceTargetTier { get; set; }
+        [Key("armorOk")] public bool ArmorValid { get; set; }
+    }
+
+    /// <summary>성장 카드 선택 (#226 단계 C). CardIndex: 0=증식, 1=강화, 2=철갑.</summary>
+    [MessagePackObject]
+    public class C_TO_G_SWARM_GROWTH_PICK : IMessagePackObject
+    {
+        [Key("offerId")] public int OfferId { get; set; }
+        [Key("cardIndex")] public int CardIndex { get; set; }
+    }
+
+    /// <summary>성장 카드 선택 결과 (#226 단계 C). 실패 시 오퍼는 유지된다.</summary>
+    [MessagePackObject]
+    public class G_TO_C_SWARM_GROWTH_RESULT : IMessagePackObject
+    {
+        [Key("offerId")] public int OfferId { get; set; }
+        [Key("cardIndex")] public int CardIndex { get; set; }
+        [Key("success")] public bool Success { get; set; }
+        [Key("stones")] public int StoneCount { get; set; }
+    }
+
+    /// <summary>
     ///     스웜 링 연출 (#226). 같은 구역에 브로드캐스트 — 링 중심·반경.
     ///     Kind: 0=포위 완성, 1=절단 파열, 2=파도 물폭탄 — 클라가 색·효과음을 분기한다.
     /// </summary>

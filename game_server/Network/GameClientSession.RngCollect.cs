@@ -469,22 +469,11 @@ public partial class GameClientSession
         }
 
         // 소환석 부족이면 게이지를 시작하지 않는다 — 헛 채널 방지.
-        // 여분의 열쇠 (#222 M4): 보유 중엔 다음 개봉이 무료 — 석이 없어도 시작할 수 있다.
-        if (FreeSummonCharges <= 0 &&
-            _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId!.Value).StoneCount <
-            GetSwarmExploreCost())
+        // #226 단계 C: 상자 = 소모품 공급처(고정 저가) — 궤도 포화 게이트는 오브를 안 주므로 퇴역.
+        if (_summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId!.Value).StoneCount <
+            Config.SWARM_BOX_OPEN_COST)
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.INSUFFICIENT_CURRENCY, 0);
-            return Task.CompletedTask;
-        }
-
-        // 궤도 포화도 시작 전에 막는다 — FINISH의 소환 실패가 쿨다운을 되돌리는 설계와
-        // 클라 자동 수집이 맞물리면 1.5초 주기 무한 재수집 루프가 된다 (2026-08-07 보건실 관측).
-        // 판정은 TryAddItemWithCapacity와 동일한 슬롯 수 기준.
-        if (_inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value)
-                .GetAllItems().Count >= Config.SWARM_ORB_CAPACITY)
-        {
-            SendRngCollectAck(msg.InteractId, ErrorCode.INVENTORY_FULL, 0);
             return Task.CompletedTask;
         }
 
@@ -528,16 +517,12 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        // #219 M2 3택 드래프트: 개봉은 드래프트 권리를 연다 — 오브 지급·비용 차감은
-        // 색 선택(C_TO_G_SUMMON_ORB)에서. 비용은 개봉 시점의 궤도 크기로 확정한다.
-        int exploreCost = GetSwarmExploreCost();
-        var stoneState = _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value);
-        bool boardFull = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value)
-            .GetAllItems().Count >= Config.SWARM_ORB_CAPACITY;
-        // 여분의 열쇠 (#222 M4): 보유 중엔 석 부족이어도 개봉 확정 — 실차감은 소환에서 0이 된다.
-        if ((FreeSummonCharges <= 0 && stoneState.StoneCount < exploreCost) || boardFull)
+        // #226 단계 C: 상자 = 소모품 공급처 — 개봉하면 하트·부츠가 바닥에 터져 나온다.
+        // 오브 성장은 소환석 임계의 성장 카드 3택이 맡는다 (상자 개방 트리거·자동 소환 퇴역).
+        if (!_summonStoneManager.TrySpendStones(
+                CurrentMapSubId, PlayerId.Value, Config.SWARM_BOX_OPEN_COST, out _))
         {
-            // 개봉 불가(석 부족·보드 포화) — 쿨다운을 풀어 나중에 다시 열 수 있게 한다.
+            // 석 부족 — 쿨다운을 풀어 나중에 다시 열 수 있게 한다.
             RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
             BroadcastRngCollectCooldown(msg.InteractId, 0);
             SendRngCollectResult(msg.InteractId, 0, 0, 0, 0);
@@ -545,25 +530,31 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        // #226: 선택 소환 폐지 — 개봉 즉시 랜덤 색 자동 소환. 팝업 없이 열에 합류한다.
-        _hasPendingOrbDraft = true;
-        _pendingOrbDraftCost = exploreCost;
-        int choiceIndex = Random.Shared.Next(3);
-        bool summoned = ExecuteDraftOrbSummon(choiceIndex);
-        // 실패해도 팝업이 없으니 드래프트 권리를 남기지 않는다 — 다음 개봉이 곧 재시도다.
-        _hasPendingOrbDraft = false;
+        SendSummonStoneState();
+        // 드롭 테이블: 하트 60 / 부츠 40 — 즉시 회복과 기동이 상자의 정체성이다.
+        int dropItemId = Random.Shared.Next(100) < 60
+            ? Config.HEART_GROUND_ITEM_ID
+            : Config.BOOTS_GROUND_ITEM_ID;
+        var dropAnchor = LastValidatedPosition;
+        if (dropAnchor != null)
+        {
+            var spawned = _groundItemManager.SpawnItems(
+                CurrentMapSubId, CurrentArea, dropAnchor.X, dropAnchor.Y, [dropItemId],
+                mapId: MapId.School,
+                layout: GroundItemSpawnLayout.EliminationScatter);
+            BroadcastGroundItemsSpawned(CurrentArea, spawned);
+        }
 
-        // 스팟은 소진되지 않는다 — 리젠 시간 뒤 다시 나온다 (비용은 궤도 크기가 결정).
+        // 스팟은 소진되지 않는다 — 리젠 시간 뒤 다시 나온다.
         RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
         RngCollectCooldownStore.TryAcquireCooldown(
             CurrentMapSubId, msg.InteractId, SwarmExploreCooldownSeconds, out _);
         BroadcastRngCollectCooldown(msg.InteractId, SwarmExploreCooldownSeconds);
-        SendRngCollectResult(
-            msg.InteractId, RngCollectAutoSummonResultType, 0, 0, SwarmExploreCooldownSeconds);
+        SendRngCollectResult(msg.InteractId, 0, 0, 0, SwarmExploreCooldownSeconds);
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
         Logger.LogInformation(
-            "Swarm explore auto summon: PlayerId={PlayerId}, InteractId={InteractId}, Cost={Cost}, Choice={Choice}, Success={Success}",
-            PlayerId, msg.InteractId, exploreCost, choiceIndex, summoned);
+            "Swarm box consumable: PlayerId={PlayerId}, InteractId={InteractId}, Cost={Cost}, Drop={DropItemId}",
+            PlayerId, msg.InteractId, Config.SWARM_BOX_OPEN_COST, dropItemId);
 
         return Task.CompletedTask;
     }
