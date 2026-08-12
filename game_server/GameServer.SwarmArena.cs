@@ -1142,11 +1142,13 @@ public partial class GameServer
     private const float SwarmTrailSampleMinDistance = 0.08f;
     private const float SwarmTrailTeleportResetDistance = 5f;
 
-    // 열 절단 (#226 C): 같은 (절단자, 소유자) 쌍 재절단 쿨다운 + 순간이동·좌표 보정 배제 상한.
-    // 쿨다운 0.8 → 0.15 (2026-08-12): 판정이 링크 접촉 → 오브 관통으로 좁아져 스팸 우려가
-    // 줄었고, 꼬리를 따라 밟으면 하나씩 순차로 터지는 리듬(이속 5 × 간격 0.9 ≈ 0.18초)을 살린다.
-    private const double SwarmTrailCutPairCooldownSeconds = 0.15d;
+    // 열 절단 (#226 단계 A 정규화): 대상 오브(ItemUid)별 래치 — 0.12초 내부 중복 억제 +
+    // 같은 오브를 다시 때리려면 판정 타원 밖으로 완전히 나갔다 와야 한다(이탈 재무장).
+    // 서로 다른 오브 연속 타격은 자유 — 꼬리를 따라 달리면 순차로 금이 간다.
+    private const double SwarmTrailCutSameOrbDebounceSeconds = 0.12d;
     private const float SwarmTrailCutMaxSegmentLength = 2f;
+    // 절단(꼬리 상실) 직후 피해자 열 전체 면역 — 한 번의 돌파로 연쇄 전멸하지 않게.
+    private const double SwarmTrailCutVictimImmunitySeconds = 1.2d;
     // 오브 관통 판정 (정규화 dy×2 공간): 링크 선을 스치는 게 아니라 오브를 밟아야 끊긴다.
     // 반경 0.35 원형 + 판정 중심 위 오프셋 (2026-08-12 확정): 스프라이트가 떠 있어 위 접근이
     // 짜던 문제는 중심 오프셋만으로 해결 — 반경을 키우면 옆 오브(간격 0.9)까지 문다.
@@ -1158,9 +1160,11 @@ public partial class GameServer
 
     private readonly Dictionary<(long MatchingId, long PlayerId), List<Vector3f>> _swarmOrbTrails = new();
     private readonly Dictionary<(long MatchingId, long PlayerId), Vector3f> _swarmTrailLastTickPositions = new();
-    private readonly Dictionary<(long MatchingId, long CombatTargetId), Vector3f> _swarmMonsterLastTickPositions =
+    // ItemUid별 절단 래치 (단계 A): 마지막 타격 시각 — 중복 억제·이탈 재무장의 기준.
+    private readonly Dictionary<(long MatchingId, long CutterId, long ItemUid), DateTime> _swarmOrbCutLatches =
         new();
-    private readonly Dictionary<(long MatchingId, long CutterId, long OwnerId), DateTime> _swarmTrailCutCooldownUtc =
+    // 꼬리 상실 직후 피해자 면역 만료 시각.
+    private readonly Dictionary<(long MatchingId, long OwnerId), DateTime> _swarmCutVictimImmuneUntilUtc =
         new();
 
     /// <summary>클라 PlayerTool.UpdateOrbTrail과 같은 규칙 — 정지하면 경로가 얼어 열이 남는다.</summary>
@@ -1267,17 +1271,26 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        // 소유자별 열 좌표는 틱당 1회만 계산한다 — 몹 절단자 수백이 재계산하면 틱이 무겁다.
-        var chains = new Dictionary<long, (AreaType Area, List<Vector3f> Points)>();
+        // 소유자별 열 좌표·개체 uid는 틱당 1회만 계산한다.
+        // 몹(잔상) 절단은 P0에서 비활성 (단계 A 확정) — 절단은 플레이어의 동사다.
+        var chains = new Dictionary<long, (AreaType Area, List<Vector3f> Points, List<long> Uids)>();
         foreach (var owner in participants)
         {
-            int orbCount = CountSwarmSquadOrbs(matchingId, owner.PlayerId);
-            if (orbCount < 2)
+            var orbs = _inGameInventoryManager.GetPlayerInventory(matchingId, owner.PlayerId)
+                .GetAllItems()
+                .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
+                .ToList();
+            if (orbs.Count < 2)
                 continue;
-            var points = new List<Vector3f>(orbCount);
-            for (int ordinal = 0; ordinal < orbCount; ordinal++)
+            var points = new List<Vector3f>(orbs.Count);
+            var uids = new List<long>(orbs.Count);
+            for (int ordinal = 0; ordinal < orbs.Count; ordinal++)
+            {
                 points.Add(GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position));
-            chains[owner.PlayerId] = (owner.Area, points);
+                uids.Add(orbs[ordinal].ItemUid);
+            }
+
+            chains[owner.PlayerId] = (owner.Area, points, uids);
         }
 
         foreach (var cutter in participants)
@@ -1291,21 +1304,6 @@ public partial class GameServer
             TryPerformSwarmTrailCut(matchingId, cutter.PlayerId, cutter.PlayerId, cutter.Area,
                 previous, cutter.Position, chains, nowUtc, aliveSessions, aliveBots, allSessions);
         }
-
-        // 몹 절단 (#226): 웨이브 몹도 이동으로 열을 가로지르면 끊는다 — 몹 무리 사이로 열을
-        // 끌고 다니는 것 자체가 비용이 된다. 절단자 식별은 전투 대상 id(고유 음수).
-        foreach (var monster in _swarmArenaManager.GetCombatTargets(matchingId))
-        {
-            var monsterKey = (matchingId, monster.CombatTargetId);
-            bool hasPrevious = _swarmMonsterLastTickPositions.TryGetValue(monsterKey, out var previous);
-            _swarmMonsterLastTickPositions[monsterKey] =
-                new Vector3f(monster.Position.X, monster.Position.Y, 0f);
-            if (!hasPrevious)
-                continue;
-            TryPerformSwarmTrailCut(matchingId, monster.CombatTargetId, creditPlayerId: 0, monster.Area,
-                previous, monster.Position, chains, nowUtc, aliveSessions, aliveBots, allSessions,
-                monsterCutter: true);
-        }
     }
 
     private void TryPerformSwarmTrailCut(
@@ -1315,12 +1313,11 @@ public partial class GameServer
         AreaType cutterArea,
         Vector3f previous,
         Vector3f current,
-        Dictionary<long, (AreaType Area, List<Vector3f> Points)> chains,
+        Dictionary<long, (AreaType Area, List<Vector3f> Points, List<long> Uids)> chains,
         DateTime nowUtc,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
-        List<GameClientSession> allSessions,
-        bool monsterCutter = false)
+        List<GameClientSession> allSessions)
     {
         float segmentDx = current.X - previous.X;
         float segmentDy = current.Y - previous.Y;
@@ -1332,6 +1329,7 @@ public partial class GameServer
 
         long bestOwnerId = 0;
         int bestTailOrdinal = -1;
+        long bestOrbUid = 0;
         float bestT = float.MaxValue;
         Vector3f bestOrbPosition = null;
         AreaType bestArea = AreaType.None;
@@ -1339,23 +1337,28 @@ public partial class GameServer
         {
             if (ownerId == cutterId || chain.Area != cutterArea)
                 continue;
-            // 실험 더미(#226)의 열은 몹이 끊지 않는다 — 절단 실험은 플레이어의 몫.
-            if (monsterCutter && IsSwarmCutDummyPlayer(matchingId, ownerId))
-                continue;
-            if (_swarmTrailCutCooldownUtc.TryGetValue(
-                    (matchingId, cutterId, ownerId), out var cooldownUntil) &&
-                nowUtc < cooldownUntil)
+            // 절단(꼬리 상실) 직후 피해자 열 면역 — 한 돌파로 연쇄 전멸 방지.
+            if (_swarmCutVictimImmuneUntilUtc.TryGetValue((matchingId, ownerId), out var immuneUntil) &&
+                nowUtc < immuneUntil)
                 continue;
 
-            // 절단 판정 (2026-08-12 확정): 오브 관통(반경 0.35, 중심 위 0.15) 또는
-            // 링크(오브 i-1 ↔ i) 가로지르기 — 둘 다 그 오브(i)부터 꼬리가 끊긴다.
-            // 첫 오브·본체-첫 오브 링크는 제외(머리 보호).
+            // 절단 판정: 오브 관통(반경 0.35, 중심 위 0.15) 또는 링크(오브 i-1 ↔ i)
+            // 가로지르기 — 둘 다 그 오브(i)에 귀속. 첫 오브·본체-첫 오브 링크는 제외(머리 보호).
             for (int ordinal = 1; ordinal < chain.Points.Count; ordinal++)
             {
                 var hitPoint = new Vector3f(
                     chain.Points[ordinal].X,
                     chain.Points[ordinal].Y + SwarmTrailCutOrbHitYOffset,
                     0f);
+
+                // ItemUid별 래치 (단계 A): 0.12초 내부 중복 억제 + 이탈 재무장 —
+                // 선분 시작점이 아직 판정 타원 안이면(겹친 채 체류) 같은 오브 재타는 없다.
+                if (_swarmOrbCutLatches.TryGetValue(
+                        (matchingId, cutterId, chain.Uids[ordinal]), out var lastHitAtUtc) &&
+                    ((nowUtc - lastHitAtUtc).TotalSeconds < SwarmTrailCutSameOrbDebounceSeconds ||
+                     IsInsideOrbHitEllipse(previous, hitPoint)))
+                    continue;
+
                 bool hit = TrySegmentHitsPoint(previous, current, hitPoint, out float t);
                 if (!hit)
                     hit = TrySegmentIntersection(
@@ -1365,6 +1368,7 @@ public partial class GameServer
                 bestT = t;
                 bestOwnerId = ownerId;
                 bestTailOrdinal = ordinal;
+                bestOrbUid = chain.Uids[ordinal];
                 bestOrbPosition = chain.Points[ordinal];
                 bestArea = chain.Area;
             }
@@ -1373,17 +1377,10 @@ public partial class GameServer
         if (bestOwnerId == 0)
             return;
 
-        _swarmTrailCutCooldownUtc[(matchingId, cutterId, bestOwnerId)] =
-            nowUtc.AddSeconds(SwarmTrailCutPairCooldownSeconds);
+        _swarmOrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
 
         // 5단계 파괴: 대상 오브(개체)에 금을 쌓고, 5번째 타격에만 실제로 끊는다.
-        var ownerOrbs = _inGameInventoryManager.GetPlayerInventory(matchingId, bestOwnerId)
-            .GetAllItems()
-            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
-            .ToList();
-        if (bestTailOrdinal >= ownerOrbs.Count)
-            return;
-        var crackKey = (matchingId, bestOwnerId, ownerOrbs[bestTailOrdinal].ItemUid);
+        var crackKey = (matchingId, bestOwnerId, bestOrbUid);
         int crackCount = (_swarmOrbCutCracks.TryGetValue(crackKey, out int storedCracks)
             ? storedCracks
             : 0) + 1;
@@ -1402,6 +1399,9 @@ public partial class GameServer
         var destroyedItems = DestroySwarmOrbsFromOrdinal(matchingId, bestOwnerId, bestTailOrdinal);
         if (destroyedItems.Count == 0)
             return;
+        // 꼬리 상실 직후 면역 (단계 A) — 한 돌파로 남은 열까지 연쇄로 잃지 않는다.
+        _swarmCutVictimImmuneUntilUtc[(matchingId, bestOwnerId)] =
+            nowUtc.AddSeconds(SwarmTrailCutVictimImmunitySeconds);
         foreach (var destroyedItem in destroyedItems)
             _swarmOrbCutCracks.Remove((matchingId, bestOwnerId, destroyedItem.ItemUid));
         var ownerSession = aliveSessions.FirstOrDefault(session => session.PlayerId == bestOwnerId);
@@ -1893,8 +1893,9 @@ public partial class GameServer
 
     // ===== 절단 실험 더미 (#226): 매치의 봇 하나를 운동장 과녁으로 바꾼다 —
     // 정지·불사·오브 10개 일자 꼬리(자동 리필)·비무장·몹 절단 면제. 웨이브 디렉터 제외.
-    // 자동 세팅: 사람이 있는 매치는 첫 스웜 틱에 자동으로 선다 (실험 끝나면 false로 원복). =====
-    private static readonly bool SwarmCutDummyAutoSetup = true;
+    // 명시적 분리 (단계 0): DEV_CUT_DUMMY=1 환경변수 옵트인 — 일반 매치는 순정으로 돈다. =====
+    private static readonly bool SwarmCutDummyAutoSetup =
+        Environment.GetEnvironmentVariable("DEV_CUT_DUMMY") == "1";
     private const int SwarmCutDummyOrbCount = 10;
     private readonly HashSet<long> _swarmCutDummyAutoSetupDone = new();
 
@@ -2063,6 +2064,14 @@ public partial class GameServer
         if (destroyed.Count > 0)
             _swarmFrontOrbHp.Remove((matchingId, playerId));
         return destroyed;
+    }
+
+    /// <summary>점이 오브 판정 타원 안에 있는지 — 래치 이탈 재무장 판정.</summary>
+    private static bool IsInsideOrbHitEllipse(Vector3f point, Vector3f orbHitPoint)
+    {
+        float dx = (point.X - orbHitPoint.X) / SwarmTrailCutOrbHitRadiusX;
+        float dy = (point.Y * 2f - orbHitPoint.Y * 2f) / SwarmTrailCutOrbHitRadiusY;
+        return dx * dx + dy * dy <= 1f;
     }
 
     /// <summary>
@@ -2915,16 +2924,16 @@ public partial class GameServer
         foreach (var key in _swarmTrailLastTickPositions.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmTrailLastTickPositions.Remove(key);
-        foreach (var key in _swarmMonsterLastTickPositions.Keys
-                     .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmMonsterLastTickPositions.Remove(key);
         foreach (var key in _swarmPvpCorruptionCarry.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmPvpCorruptionCarry.Remove(key);
         _swarmCutDummyAutoSetupDone.Remove(matchingId);
-        foreach (var key in _swarmTrailCutCooldownUtc.Keys
+        foreach (var key in _swarmOrbCutLatches.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmTrailCutCooldownUtc.Remove(key);
+            _swarmOrbCutLatches.Remove(key);
+        foreach (var key in _swarmCutVictimImmuneUntilUtc.Keys
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmCutVictimImmuneUntilUtc.Remove(key);
         foreach (var key in _swarmOrbCutCracks.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmOrbCutCracks.Remove(key);
