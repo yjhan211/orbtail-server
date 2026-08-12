@@ -657,18 +657,8 @@ public sealed class SwarmArenaManager
             else
             {
                 state.BotFleeCommitments.Remove(botPlayerId);
-                // 지역 공급 (#226 단계 B): 위협이 없으면 몹이 남은 활성 공급 구역으로 향한다 —
-                // 웨이브가 배달되지 않으므로 봇도 사람처럼 파밍 구역을 찾아가야 성장한다.
-                if (RegionSupplyModeEnabled &&
-                    TryResolveSupplyFarmDestination(state, bot, out var farmDestination))
-                {
-                    return new SpotArenaBotDirective(
-                        SpotArenaBotMode.Return,
-                        bot.Area,
-                        MapCoordinateConverter.WorldToCell(MapId.School, farmDestination),
-                        farmDestination);
-                }
-
+                // 지역 공급 파밍 유도는 여기(Return)가 아니라 봇 파이프라인의 사냥 단계가 맡는다 —
+                // Return 지시는 개봉 채널 완료 로직을 단락시켜 봇이 채널을 문 채 얼었다 (2026-08-12).
                 float angle = (float)(state.Rng.NextDouble() * Math.PI * 2d);
                 destination = new Vector3f(
                     bot.Position.X + MathF.Cos(angle) * BotRoamDistance,
@@ -1232,64 +1222,6 @@ public sealed class SwarmArenaManager
         }
     }
 
-    /// <summary>
-    ///     봇 파밍 목적지: 현재 구역에 몹이 남았으면 그 옆(전투권 밖일 때만), 아니면 몹이
-    ///     살아있는 가장 가까운 활성 공급 구역 앵커로 향한다.
-    /// </summary>
-    private static bool TryResolveSupplyFarmDestination(
-        MatchState state, SpotArenaPlayerSpatial bot, out Vector3f destination)
-    {
-        destination = default;
-        MonsterRuntime nearestInArea = null;
-        float nearestSquared = float.MaxValue;
-        foreach (var monster in state.Monsters.Values)
-        {
-            if (!monster.Alive || monster.Area != bot.Area)
-                continue;
-            float dx = monster.Position.X - bot.Position.X;
-            float dy = monster.Position.Y - bot.Position.Y;
-            float distanceSquared = dx * dx + dy * dy;
-            if (distanceSquared < nearestSquared)
-            {
-                nearestSquared = distanceSquared;
-                nearestInArea = monster;
-            }
-        }
-
-        if (nearestInArea != null)
-        {
-            // 전투권(사거리+여유) 안이면 개입하지 않는다 — 교전은 전투 AI 몫.
-            if (nearestSquared <= 16f)
-                return false;
-            destination = ClampToAreaWalkable(
-                nearestInArea.Position, bot.Position, bot.Area);
-            return true;
-        }
-
-        AreaType bestZone = AreaType.None;
-        float bestSquared = float.MaxValue;
-        foreach (var zone in state.ActiveSupplyZones)
-        {
-            if (zone == bot.Area || CountAliveInArea(state, zone) == 0)
-                continue;
-            var anchor = BotPlayerManager.CellToWorldPosition(
-                MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, zone));
-            float dx = anchor.X - bot.Position.X;
-            float dy = anchor.Y - bot.Position.Y;
-            float distanceSquared = dx * dx + dy * dy;
-            if (distanceSquared < bestSquared)
-            {
-                bestSquared = distanceSquared;
-                bestZone = zone;
-            }
-        }
-
-        if (bestZone == AreaType.None)
-            return false;
-        destination = BotPlayerManager.CellToWorldPosition(
-            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, bestZone));
-        return true;
-    }
 
     /// <summary>
     ///     공급 몹 이동 (#226 단계 B): 잠듦 → (근접·피격·접촉) 개전 → 같은 구역 안에서만 추격.

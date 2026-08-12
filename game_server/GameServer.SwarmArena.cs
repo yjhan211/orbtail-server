@@ -1037,23 +1037,58 @@ public partial class GameServer
                 bot.Position);
         }
 
-        // 3.5) 소환석 기근 (#219): 다음 개봉 비용이 부족하면 캠프로 사냥을 나간다.
-        //      봇 전지 퇴역 — 봇은 캠프 '위치'만 알고(지도 지식) 생사는 모른다. 같은 구역에
-        //      들어와 눈으로 확인한 빈 캠프는 리스폰 주기만큼 제외하고 다음 캠프로 순회한다.
+        // 3.5) 소환석 기근 (#219): 다음 개봉 비용이 부족하면 사냥을 나간다.
+        //      지역 공급 (#226 단계 B): 몹이 남은 가장 가까운 공급 무리로 향한다 — 몹은
+        //      찾아가는 공유 자원이고, 미니맵 스냅샷으로 사람에게도 같은 정보가 보인다.
         //      빈손 봇은 개봉이 무료라 1)에서 이미 스팟 순례로 빠진다.
         if (_summonStoneManager.GetSnapshot(matchingId, botPlayerId).StoneCount <
             GetSwarmBotExploreCost(matchingId, botPlayerId) &&
-            hasSquadOrbs &&
-            TryChooseSwarmBotCampTarget(matchingId, bot, out var campArea, out var campPosition))
+            hasSquadOrbs)
         {
-            return new SpotArenaBotDirective(
-                SpotArenaBotMode.Escort,
-                campArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, campPosition),
-                campPosition);
+            if (SwarmArenaManager.RegionSupplyModeEnabled &&
+                TryFindNearestSwarmSupplyMonster(matchingId, bot, out var supplyArea,
+                    out var supplyPosition))
+            {
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Escort,
+                    supplyArea,
+                    ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, supplyPosition),
+                    supplyPosition);
+            }
+
+            // 캠프 모드 폴백: 봇은 캠프 '위치'만 알고(지도 지식) 생사는 모른다.
+            if (!SwarmArenaManager.RegionSupplyModeEnabled &&
+                TryChooseSwarmBotCampTarget(matchingId, bot, out var campArea, out var campPosition))
+            {
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Escort,
+                    campArea,
+                    ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, campPosition),
+                    campPosition);
+            }
         }
 
-        // 4) 시작방·복도는 공급이 마른다 — 무한 스폰 사냥터로 이주해 소환석을 번다.
+        // 4) 마른 방 탈출: 시작방·복도(또는 몹이 마른 지역 공급 구역)에서 사냥터로 이주한다.
+        if (SwarmArenaManager.RegionSupplyModeEnabled)
+        {
+            // 지역 공급: 현재 구역에 살아있는 몹도, 열 수 있는 스팟 용무도 없으면
+            // 몹이 남은 공급 구역으로 이주 — 스폰이 멈춘 종반에는 지시 없이 배회(디렉터 몫).
+            bool currentAreaHasSupply = _swarmArenaManager.GetVisualStates(matchingId)
+                .Any(monster => monster.IsAlive && monster.AreaType == bot.CurrentArea);
+            if (!currentAreaHasSupply &&
+                TryFindNearestSwarmSupplyMonster(matchingId, bot, out var migrateArea,
+                    out var migratePosition))
+            {
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Escort,
+                    migrateArea,
+                    ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, migratePosition),
+                    migratePosition);
+            }
+
+            return directive;
+        }
+
         if (bot.CurrentArea == AreaType.Corridor ||
             SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().Contains(bot.CurrentArea))
         {
@@ -1079,6 +1114,34 @@ public partial class GameServer
         }
 
         return directive;
+    }
+
+    /// <summary>
+    ///     지역 공급 사냥 목적지 (#226 단계 B): 폐쇄·경계 밖을 제외하고 살아있는 공급 몹 중
+    ///     가장 가까운 개체의 위치. 봇의 파밍 이동은 항상 Escort 모드로 나가야 개봉 채널
+    ///     완료 로직이 산다 (Return 단락 사고 2026-08-12).
+    /// </summary>
+    private bool TryFindNearestSwarmSupplyMonster(
+        long matchingId, BotPlayerState bot, out AreaType area, out Vector3f position)
+    {
+        area = AreaType.None;
+        position = null;
+        float bestSquared = float.MaxValue;
+        foreach (var monster in _swarmArenaManager.GetVisualStates(matchingId))
+        {
+            if (!monster.IsAlive || IsSwarmAreaOutside(matchingId, monster.AreaType))
+                continue;
+            float dx = monster.PositionX - bot.Position.X;
+            float dy = monster.PositionY - bot.Position.Y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared >= bestSquared)
+                continue;
+            bestSquared = distanceSquared;
+            area = monster.AreaType;
+            position = new Vector3f(monster.PositionX, monster.PositionY, 0f);
+        }
+
+        return position != null;
     }
 
     // 라이벌 스캔 반경: 이 안의 참가자와 전력을 비교해 회피/추격을 정한다.
@@ -3081,6 +3144,11 @@ public partial class GameServer
             actors.Add(fallback with { WeaponItemId = 0, Damage = 0 });
             return;
         }
+
+        // 본체 표적 액터 (#226 단계 B 수리): 오브 액터가 전원 Untargetable이 되면서, 오브
+        // 보유자는 표적 액터가 리스트에 없었다 — PvP 미사일이 쏠 대상이 0개(태양·바람 침묵).
+        // 본체는 무기 없는 순수 표적으로 항상 들어간다.
+        actors.Add(fallback with { WeaponItemId = 0, Damage = 0 });
 
         int before = actors.Count;
         AddInventoryCombatActors(
