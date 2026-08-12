@@ -3565,8 +3565,9 @@ public partial class GameServer
     private const float SwarmSunHomingIntervalMultiplier = 2.5f;
     // 1.5 → 3.0 (2026-08-12 로그 실측): 발당 오염 ~3.8은 "안 박히는" 체감 — 두 배로 묵직하게.
     private const float SwarmSunBulletDamageMultiplier = 3f;
-    // 연사 2배 (2026-08-12): 주기·발당 절반 — DPS 불변, 탄막 밀도만 상승.
-    private const float SwarmWindBulletDamageMultiplier = 0.15f;
+    // 0.15 → 0.35 (2026-08-12 2차): DPS 보정(0.6) 끝에 발당 1로 바닥 — 태양 2배 상향 후
+    // "바람 DPS가 태양을 상회한다(근접 리스크 프리미엄)" 정체성 복원. 발당 ~3, DPS 태양의 ~1.4배.
+    private const float SwarmWindBulletDamageMultiplier = 0.35f;
     private const float SwarmWindBulletIntervalMultiplier = 0.14f;
 
     /// <summary>
