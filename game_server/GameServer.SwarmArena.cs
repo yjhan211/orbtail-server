@@ -324,11 +324,13 @@ public partial class GameServer
             // PvP도 몬스터와 같은 타원(dy×2) 판정 (#222): 링 스프라이트가 아이소 타원이라
             // 원형 판정은 세로 방향에서 보이는 링의 2배 거리까지 공격이 성립했다 —
             // "링이 겹치기만 해도 공격"으로 읽히던 체감의 원인. 이제 표시가 곧 판정이다.
+            // 몹 = 같은 구역이면 사거리 무시 공격 (#226 유저 결정) — 파밍이 막히지 않는다.
+            // 플레이어는 색 사거리(타원)+시야 유지.
             (attacker, target) => !attacker.IsMonsterTarget &&
-                                  IsWithinSwarmOrbRange(attacker, target) &&
                                   (target.IsMonsterTarget
                                       ? attacker.Area == target.Area
-                                      : ProximityCombatLineOfSight.CanTarget(attacker, target)),
+                                      : IsWithinSwarmOrbRange(attacker, target) &&
+                                        ProximityCombatLineOfSight.CanTarget(attacker, target)),
             // PvP 조준 계측 (#226 진단): 획득이 없으면 필터, 획득만 있고 발사가 없으면 케이던스.
             onTargetAcquired: targetEvent =>
             {
@@ -345,7 +347,8 @@ public partial class GameServer
                         "Swarm pvp aim lost: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Reason={Reason}",
                         matchingId, targetEvent.AttackerPlayerId, targetEvent.TargetPlayerId,
                         targetEvent.Reason);
-            });
+            },
+            monstersIgnoreRange: true);
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
         {
@@ -3445,11 +3448,12 @@ public partial class GameServer
     {
         bool armed = IsSwarmAttackArmed(matchingId, spatial.PlayerId, nowUtc) &&
                      !IsSwarmCutDummyPlayer(matchingId, spatial.PlayerId);
-        // #226 재개편: 본체 보호 퇴역 — 미사일은 항상 적 본체를 노린다(본체 1 > 몬스터 2).
+        // #226 표적 정책: 본체와 몬스터는 동급(2) — 최근접 우선 + 타겟 고정. 본체(1) 우선이던
+        // 시절엔 구역에 적 플레이어가 있는 한 몹이 영영 표적이 안 돼 파밍이 죽었다.
         // 오브 액터는 발사 원점일 뿐 표적이 아니다(Untargetable).
         var fallback = CreateSwarmParticipantActor(spatial, armed) with
         {
-            TargetPriority = 1
+            TargetPriority = 2
         };
         var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, spatial.PlayerId);
         if (!inventory.GetAllItems().Any(item => item.Count > 0))
@@ -3523,12 +3527,9 @@ public partial class GameServer
                         actor.Damage * SwarmOrbDamageMultiplier * colorDamageMultiplier * dpsScale))
                     : 0,
                 AttackIntervalSeconds = interval,
-                // SB 스태거: 오브들이 간격을 균등 분할해 엇박으로 쏜다 — 일제사격 금지.
-                // 상한 1.2초 (#226 케이던스 수리): 태양(주기 3.45초)의 전체 분할 스태거는
-                // 조준 리셋마다 재지불되어 이동 조우에서 첫 발이 영영 안 나갔다.
-                InitialAttackDelaySeconds = actor.InitialAttackDelaySeconds +
-                                            MathF.Min(1.2f,
-                                                interval * ((index - before) / (float)orbActorCount)),
+                // 일제사격 (2026-08-12 유저 결정): 엇박 스태거 퇴역 — 전 오브가 같은 틱에
+                // 발사된다. 조준 리셋마다 스태거를 재지불하던 케이던스 손실도 함께 사라진다.
+                InitialAttackDelaySeconds = actor.InitialAttackDelaySeconds,
                 // 태양의 전역성: 사거리 무시(구역 전체) — 대신 주기가 느리다(값 지불).
                 AttackRange = orbColor == SurvivorOrbColor.Red
                     ? SwarmSunAttackRange

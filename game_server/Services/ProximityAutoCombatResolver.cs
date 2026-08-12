@@ -89,7 +89,8 @@ public sealed class ProximityAutoCombatResolver
         DateTime nowUtc,
         Func<ProximityCombatActor, ProximityCombatActor, bool>? hasLineOfSight = null,
         Action<ProximityCombatTargetEvent>? onTargetAcquired = null,
-        Action<ProximityCombatTargetEvent>? onTargetLost = null)
+        Action<ProximityCombatTargetEvent>? onTargetLost = null,
+        bool monstersIgnoreRange = false)
     {
         if (matchingId <= 0)
             return [];
@@ -134,7 +135,9 @@ public sealed class ProximityAutoCombatResolver
                 float dx = attacker.Position.X - candidate.Position.X;
                 float dy = attacker.Position.Y - candidate.Position.Y;
                 float distanceSquared = dx * dx + dy * dy;
-                if (distanceSquared > attackRangeSquared)
+                // 몹 사거리 무시 (#226): 같은 구역이면 공격 — 파밍이 사거리 재기에 막히지 않는다.
+                if (distanceSquared > attackRangeSquared &&
+                    !(monstersIgnoreRange && candidate.IsMonsterTarget))
                     continue;
                 if (hasLineOfSight != null && !hasLineOfSight(attacker, candidate))
                     continue;
