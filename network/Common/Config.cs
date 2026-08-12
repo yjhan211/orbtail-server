@@ -186,11 +186,12 @@ namespace network.common
         public static readonly int SWARM_PLAYERS_PER_MATCH = 10;
 
         /// <summary>
-        ///     잼 헌트 매치 길이 (#222 M3-2) — SB 4분 문법. 개전(카운트다운 종료) 앵커 기준이며,
-        ///     만료 시 생존자 중 잼 최다 보유자가 승리한다. 클라 타이머(GameStatusDisplay)와
-        ///     폐쇄 시간표(AreaClosureManager 최종 웨이브)가 같은 값에 정렬된다.
+        ///     매치 길이 (#226 단계 B) — 5분 오브 점수전. 개전(카운트다운 종료) 앵커 기준이며,
+        ///     만료 시 생존자 중 오브 최다 보유자가 승리한다(동점: 티어 합 → 철갑 → 본체 게이지).
+        ///     클라 타이머(GameStatusDisplay)와 폐쇄 시간표(AreaClosureManager 최종 웨이브)가
+        ///     같은 값에 정렬된다. 잼 승점·4분 잼 타임아웃(#222 M3-2)은 퇴역.
         /// </summary>
-        public const int SWARM_MATCH_DURATION_SECONDS = 240;
+        public const int SWARM_MATCH_DURATION_SECONDS = 300;
 
         /// <summary>
         ///     스웜 탐색 스팟 개봉 비용은 SB 상자 문법을 따른다: 스쿼드(궤도 오브)가 클수록

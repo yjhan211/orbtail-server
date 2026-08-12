@@ -191,8 +191,8 @@ public partial class GameServer
                 matchingId, sessions.Count, bots.Count);
         }
 
-        // #219 M2: 시작 스쿼드 = 랜덤 1오브 (사람·봇 공통) — 첫 캠프를 버틸 최소 화력만 주고
-        // 빌드는 드래프트가 만든다. 빈손이 되면 개봉 무료 규칙이 재기를 보장.
+        // #226 단계 B: 시작 스쿼드 = 랜덤 T1 오브 3개 (사람·봇 공통) — 시작부터 열이 보여야
+        // "오브 수 = 점수"가 첫 관전에서 읽힌다. 빈손이 되면 개봉 무료 규칙이 재기를 보장.
         foreach (var session in sessions)
         {
             if (!session.PlayerId.HasValue ||
@@ -202,8 +202,9 @@ public partial class GameServer
             // 잼 지갑 리셋 (#222 M3) — 세션이 매치를 넘어 살아있으므로 시작 지급 시점에 초기화.
             session.ResetJam();
             session.FreeSummonCharges = 0;
-            session.GrantSwarmArenaOrb(
-                SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)]);
+            for (int grant = 0; grant < Config.SWARM_STARTING_ORB_COUNT; grant++)
+                session.GrantSwarmArenaOrb(
+                    SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)]);
         }
 
         foreach (var bot in bots)
@@ -211,10 +212,11 @@ public partial class GameServer
             if (!_swarmStartingOrbGrantedPlayers.Add((matchingId, bot.PlayerId)))
                 continue;
 
-            _inGameInventoryManager.TryAddItemWithCapacity(
-                matchingId, bot.PlayerId,
-                SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)],
-                Config.SWARM_ORB_CAPACITY, out _);
+            for (int grant = 0; grant < Config.SWARM_STARTING_ORB_COUNT; grant++)
+                _inGameInventoryManager.TryAddItemWithCapacity(
+                    matchingId, bot.PlayerId,
+                    SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)],
+                    Config.SWARM_ORB_CAPACITY, out _);
         }
 
         DateTime nowUtc = DateTime.UtcNow;
@@ -290,8 +292,8 @@ public partial class GameServer
         ProcessSurvivorOrbRecovery(matchingId, actors, aliveSessions, aliveBots, nowUtc);
         BroadcastSurvivorOrbVisualStates(matchingId, actors, sessions);
         ProcessSwarmGemMine(matchingId, nowUtc, sessions);
-        BroadcastSwarmJamRankings(matchingId, sessions, bots);
-        ProcessSwarmJamHuntTimeout(matchingId, nowUtc, sessions, aliveSessions, aliveBots);
+        BroadcastSwarmOrbRankings(matchingId, sessions, bots);
+        ProcessSwarmScoreTimeout(matchingId, nowUtc, sessions, aliveSessions, aliveBots);
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
         ProcessPendingSwarmMonsterHits(matchingId, nowUtc, sessions);
 
@@ -2520,11 +2522,12 @@ public partial class GameServer
     }
 
     /// <summary>
-    ///     잼 헌트 만료 판정 (#222 M3-2): 개전(카운트다운 종료) 후 4분이 지나면 생존자 중
-    ///     잼 최다 보유자가 승리한다. 동률은 오염 낮은 쪽 → PlayerId 낮은 쪽.
-    ///     클라 타이머·운동장 최종 폐쇄와 같은 시점(SWARM_MATCH_DURATION_SECONDS)에 정렬.
+    ///     5분 점수 만료 판정 (#226 단계 B): 개전 후 5분이 지나면 생존자 중 오브 최다
+    ///     보유자가 승리한다. 동점은 총 티어 합 → (철갑, 단계 C 예정) → 본체 게이지(오염
+    ///     낮은 쪽) → PlayerId 낮은 쪽. 단독 생존 조기 종료와 같은 TryEndSurvivorMatch
+    ///     경로라 결과 화면도 같다. 잼 승점(#222 M3-2)은 퇴역.
     /// </summary>
-    private void ProcessSwarmJamHuntTimeout(
+    private void ProcessSwarmScoreTimeout(
         long matchingId,
         DateTime nowUtc,
         List<GameClientSession> sessions,
@@ -2553,23 +2556,33 @@ public partial class GameServer
             .Where(session => session.PlayerId.HasValue)
             .Select(session => (
                 PlayerId: session.PlayerId!.Value,
-                Jam: session.JamCount,
                 Corruption: session.CurrentCorruption))
-            .Concat(aliveBots.Select(bot => (bot.PlayerId, Jam: bot.JamCount, bot.Corruption)))
-            .OrderByDescending(candidate => candidate.Jam)
+            .Concat(aliveBots.Select(bot => (bot.PlayerId, bot.Corruption)))
+            .Select(candidate =>
+            {
+                var (orbCount, tierSum) = GetSwarmOrbScore(matchingId, candidate.PlayerId);
+                return (candidate.PlayerId, OrbCount: orbCount, TierSum: tierSum,
+                    candidate.Corruption);
+            })
+            .OrderByDescending(candidate => candidate.OrbCount)
+            .ThenByDescending(candidate => candidate.TierSum)
+            // 철갑 수(단계 C)는 구현 시 여기 3차 키로 낀다.
             .ThenBy(candidate => candidate.Corruption)
             .ThenBy(candidate => candidate.PlayerId)
             .ToList();
         long winnerId = candidates.Count > 0 ? candidates[0].PlayerId : 0;
         _swarmTimeoutEndedMatchings.Add(matchingId);
         logger.LogInformation(
-            "Swarm jam hunt timeout: MatchingId={MatchingId}, WinnerId={WinnerId}, WinnerJam={WinnerJam}, Alive={AliveCount}",
-            matchingId, winnerId, candidates.Count > 0 ? candidates[0].Jam : 0, candidates.Count);
+            "Swarm score timeout: MatchingId={MatchingId}, WinnerId={WinnerId}, WinnerOrbs={WinnerOrbs}, WinnerTierSum={WinnerTierSum}, Alive={AliveCount}",
+            matchingId, winnerId,
+            candidates.Count > 0 ? candidates[0].OrbCount : 0,
+            candidates.Count > 0 ? candidates[0].TierSum : 0,
+            candidates.Count);
 
         var resultHost = sessions.FirstOrDefault(session => !session.IsGameEnded);
         if (resultHost != null)
         {
-            resultHost.TryEndSurvivorMatch(winnerId, "jam_hunt_timeout");
+            resultHost.TryEndSurvivorMatch(winnerId, "orb_score_timeout");
             CleanupSurvivorSettlementState(matchingId);
             return;
         }
@@ -2652,20 +2665,56 @@ public partial class GameServer
     ///     잼 리더보드 브로드캐스트 (#222 M3) — 전 참가자(탈락 포함) 잼 내림차순.
     ///     구역 게이트 없이 매치 전 세션에 보내며, 시그니처가 같으면 재전송하지 않는다.
     /// </summary>
-    private void BroadcastSwarmJamRankings(
+    /// <summary>
+    ///     오브 점수 헬퍼 (#226 단계 B): 궤도 열의 오브 수와 총 티어 합. 사람·봇 공통
+    ///     (봇도 같은 인게임 인벤토리를 쓴다).
+    /// </summary>
+    private (int OrbCount, int TierSum) GetSwarmOrbScore(long matchingId, long playerId)
+    {
+        var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
+        int orbCount = 0;
+        int tierSum = 0;
+        foreach (var item in inventory.GetAllItems())
+        {
+            int tier = GetSquadOrbTier(item.ItemId);
+            if (item.Count <= 0 || tier <= 0)
+                continue;
+            orbCount++;
+            tierSum += tier;
+        }
+
+        return (orbCount, tierSum);
+    }
+
+    /// <summary>
+    ///     오브 순위 브로드캐스트 (#226 단계 B): 오브 수가 곧 점수다. 패킷은 잼 순위 시절의
+    ///     G_TO_C_JAM_RANKINGS를 그대로 쓰되 수치가 오브 수로 바뀌었다 — 클라 RankDisplay가
+    ///     이름·수치·본인 순위를 그대로 비춘다.
+    /// </summary>
+    private void BroadcastSwarmOrbRankings(
         long matchingId, List<GameClientSession> sessions, List<BotPlayerState> bots)
     {
         var entries = sessions
             .Where(session => session.PlayerId.HasValue)
-            .Select(session => (PlayerId: session.PlayerId!.Value, Jam: session.JamCount))
-            .Concat(bots.Select(bot => (bot.PlayerId, Jam: bot.JamCount)))
-            .OrderByDescending(entry => entry.Jam)
+            .Select(session => (PlayerId: session.PlayerId!.Value,
+                Eliminated: session.IsEliminated))
+            .Concat(bots.Select(bot => (bot.PlayerId, Eliminated: bot.IsEliminated)))
+            .Select(entry =>
+            {
+                var (orbCount, tierSum) = GetSwarmOrbScore(matchingId, entry.PlayerId);
+                // 탈락자는 0점 — 순위표에서 자연히 바닥으로 내려간다.
+                return (entry.PlayerId,
+                    Orbs: entry.Eliminated ? 0 : orbCount,
+                    TierSum: entry.Eliminated ? 0 : tierSum);
+            })
+            .OrderByDescending(entry => entry.Orbs)
+            .ThenByDescending(entry => entry.TierSum)
             .ThenBy(entry => entry.PlayerId)
             .ToList();
         if (entries.Count == 0 || sessions.Count == 0)
             return;
 
-        string signature = string.Join("|", entries.Select(entry => $"{entry.PlayerId}:{entry.Jam}"));
+        string signature = string.Join("|", entries.Select(entry => $"{entry.PlayerId}:{entry.Orbs}"));
         bool isFirstBroadcast = !_swarmJamRankingsSignature.TryGetValue(matchingId, out var previous);
         if (!isFirstBroadcast && previous == signature)
             return;
@@ -2673,12 +2722,12 @@ public partial class GameServer
         _swarmJamRankingsSignature[matchingId] = signature;
         if (isFirstBroadcast)
             logger.LogInformation(
-                "Jam rankings broadcast armed: MatchingId={MatchingId}, Participants={Count}, Sessions={Sessions}",
+                "Orb rankings broadcast armed: MatchingId={MatchingId}, Participants={Count}, Sessions={Sessions}",
                 matchingId, entries.Count, sessions.Count);
         var message = new G_TO_C_JAM_RANKINGS
         {
             PlayerIds = entries.Select(entry => entry.PlayerId).ToList(),
-            JamCounts = entries.Select(entry => entry.Jam).ToList()
+            JamCounts = entries.Select(entry => entry.Orbs).ToList()
         };
         using var packet = Packet.Create((int)Protocol.G_TO_C_JAM_RANKINGS);
         packet.SetBody(MessagePackSerializer.Serialize(message));

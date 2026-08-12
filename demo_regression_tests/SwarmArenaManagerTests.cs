@@ -17,44 +17,65 @@ public class SwarmArenaManagerTests
         GameDataHelper.Initialize();
         // 비주얼 확인용 임시 편성(고블린만)을 끄고 정규 편성을 검증한다.
         SwarmArenaManager.GoblinOnlySpawnForVisualCheck = false;
-        // 웨이브 실험(#226)을 끄고 캠프 정규 동작을 검증한다. 웨이브 테스트는 개별로 켠다.
-        SwarmArenaManager.WaveModeEnabled = false;
+        // 지역 공급(#226 단계 B)을 끄고 캠프 정규 동작을 검증한다. 공급 테스트는 개별로 켠다.
+        SwarmArenaManager.RegionSupplyModeEnabled = false;
     }
 
     [Fact]
-    public void WaveMode_SpawnsEscalatingWavesThatChaseImmediately()
+    public void RegionSupply_StartGiftOnceThenZonePacksThenLateSilence()
     {
-        // #226 웨이브 모드: 캠프 대신 첫 웨이브(해골 5)가 3초 후 참가자 주변에 선다.
-        // 시간이 지나면 편성이 격화된다 — 5웨이브(103초+)에는 탈주(120)·볼러(48)가 섞인다.
-        SwarmArenaManager.WaveModeEnabled = true;
+        // #226 단계 B 지역 공급: 시작 구역 일반 3마리 1회 → 15초부터 활성 구역 무리
+        // (일반 6 + 핵 1, 잠든 채 등장) → 4:00 이후 신규 스폰 중단.
+        SwarmArenaManager.RegionSupplyModeEnabled = true;
         try
         {
             DateTime now = StartUtc.AddSeconds(0.25);
             var manager = CreateManager(() => now);
-            Vector3f center = AreaCenter(AreaType.Ground);
+            var startRoom = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates()[0];
+            Vector3f startCenter = AreaCenter(startRoom);
 
-            // 첫 틱: 스케줄만 생기고 캠프(보스 포함 7기)는 서지 않는다.
-            var firstTick = manager.Tick(217001, Participants(center), now);
-            Assert.Empty(firstTick.SpawnedMonsters);
-
-            now = StartUtc.AddSeconds(3.5);
-            var waveTick = manager.Tick(217001, Participants(center), now);
-            Assert.Equal(3, waveTick.SpawnedMonsters.Count);
-            Assert.All(waveTick.SpawnedMonsters, monster =>
+            var giftTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
+            Assert.Equal(3, giftTick.SpawnedMonsters.Count);
+            Assert.All(giftTick.SpawnedMonsters, monster =>
             {
                 Assert.Equal(SwarmArenaManager.MonsterMaxHealth, monster.MaxHealth);
-                // 웨이브 몹은 잠들지 않는다 — 스폰 순간부터 스폰 유발자를 쫓는다.
-                Assert.Equal(1, monster.ChaseTargetPlayerId);
+                Assert.Equal(1, monster.SummonStoneReward);
+                // 공급 몹은 잠든 채 등장한다 — 개전은 근접·피격·접촉의 몫.
+                Assert.Equal(0, monster.ChaseTargetPlayerId);
             });
 
-            now = StartUtc.AddSeconds(110);
-            var lateTick = manager.Tick(217001, Participants(center), now);
-            Assert.Contains(lateTick.SpawnedMonsters, monster => monster.MaxHealth == 120);
-            Assert.Contains(lateTick.SpawnedMonsters, monster => monster.MaxHealth == 48);
+            now = StartUtc.AddSeconds(5);
+            var repeatTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
+            Assert.Empty(repeatTick.SpawnedMonsters);
+
+            // 15초: 활성 구역 4곳 개장(활성화 틱) → 다음 틱에 무리가 선다.
+            now = StartUtc.AddSeconds(15.5);
+            manager.Tick(217001, Participants(startCenter, startRoom), now);
+            now = StartUtc.AddSeconds(15.75);
+            var packTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
+
+            // 시작 선물이 살아있는 구역이 활성 구역으로 뽑히면 그 구역은 스폰을 쉰다 —
+            // 무리(7기) 단위 배수만 보장한다.
+            Assert.True(packTick.SpawnedMonsters.Count is 21 or 28,
+                $"무리 단위(7기×3~4)가 아니다: {packTick.SpawnedMonsters.Count}");
+            int cores = packTick.SpawnedMonsters.Count(monster => monster.MaxHealth == 120);
+            Assert.Equal(packTick.SpawnedMonsters.Count / 7, cores);
+            Assert.All(
+                packTick.SpawnedMonsters.Where(monster => monster.MaxHealth == 120),
+                core => Assert.Equal(3, core.SummonStoneReward));
+
+            // 4:00 이후: 신규 스폰 없음 — 남은 몹과 PvP만 남는다.
+            now = StartUtc.AddSeconds(250);
+            var lateManager = new SwarmArenaManager(() => now);
+            Assert.True(lateManager.InitializeMatching(217002, 1, StartUtc));
+            lateManager.Tick(217002, Participants(startCenter, startRoom), now);
+            now = StartUtc.AddSeconds(250.5);
+            var lateTick = lateManager.Tick(217002, Participants(startCenter, startRoom), now);
+            Assert.Empty(lateTick.SpawnedMonsters);
         }
         finally
         {
-            SwarmArenaManager.WaveModeEnabled = false;
+            SwarmArenaManager.RegionSupplyModeEnabled = false;
         }
     }
 

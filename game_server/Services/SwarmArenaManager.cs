@@ -55,19 +55,27 @@ public sealed class SwarmArenaManager
     // 방은 조용하고 위험은 선택이다 — 켜면 추적 스웜 디렉터(패턴 스폰)는 쉰다.
     public static readonly bool CampModeEnabled = true;
 
-    // #226 웨이브 모드: 구역 캠프 대신 뱀서식 웨이브 — 참가자 주변에 주기마다 더 강한
-    // 편성이 밀려온다. 스폰 즉시 어그로: 방은 조용하지 않고, 위험의 축은 선택이 아니라 시간이다.
-    // 켜면 캠프(보스 포함)는 서지 않는다. 기각 시 false로 원복하면 캠프 모드(#219)가 살아난다.
-    public static bool WaveModeEnabled = true;
-    // 스폰 주기와 격화 밴드 분리 (#226 조정): 주기를 줄여도 강해지는 속도는 그대로 —
-    // 자주, 조금씩 밀려온다.
-    private const double WaveIntervalSeconds = 10d;
-    private const double WaveEscalationSeconds = 20d;
-    private const double FirstWaveDelaySeconds = 3d;
-    // 구역당 생존 상한: 같은 방에 참가자가 몰리면 웨이브가 겹치므로 총량으로 막는다.
-    private const int WaveAreaDensityCap = 20;
-    private const float WaveSpawnRadius = 9f;
-    private const float WaveTelegraphSeconds = 1f;
+    // #226 단계 B 지역 공급: 플레이어별 웨이브(10초 주기 배달)를 퇴역하고, 몹을 활성 파밍
+    // 구역의 공유 자원으로 만든다. 활성 구역이 4→3→2로 줄면서 플레이어가 자연히 만나고,
+    // 마지막 60초는 신규 스폰 없이 절단·순위 역전이 주인공이다. 몹 체력은 시간에 따라
+    // 올리지 않는다 — 오브를 강화한 뒤 같은 무리를 더 빨리 쓸어버리는 성장 체감을 지킨다.
+    public static bool RegionSupplyModeEnabled = true;
+    // 시작 선물 창: 이 시간 안에 각 시작 구역에 일반 3마리(석 3)만 1회 등장한다.
+    private const double SupplyOpenSeconds = 15d;
+    // 활성 파밍 구역 수 축소 시각: 4곳 → 3곳(1:30) → 2곳(3:00) → 0곳(4:00, 신규 스폰 중단).
+    private const double SupplyShrink3AtSeconds = 90d;
+    private const double SupplyShrink2AtSeconds = 180d;
+    private const double SupplyStopAtSeconds = 240d;
+    private const int SupplyZoneCountInitial = 4;
+    // 표준 무리 = 일반 6(석 1) + 핵 1(석 3) = 9석. 완전 처치 후 한 번만 증원, 두 무리째
+    // 소진되면 구역 고갈 — 다음 공급지는 다른 안전 구역으로 이동한다.
+    private const int SupplyPackNormals = 6;
+    private const int SupplyPacksPerZone = 2;
+    private const double SupplyReinforceDelaySeconds = 19d;
+    private const int SupplyCoreStoneReward = 3;
+    private const float SupplyTelegraphSeconds = 1f;
+    private const float SupplyScatterRadius = 1.6f;
+    private const int StartGiftMonsters = 3;
     // 원거리 종(다트·볼러)은 사거리의 이 비율에서 멈춰 쏜다 — 근접 종만 몸으로 파고든다.
     private const float RangedHoldRangeRatio = 0.8f;
 
@@ -253,10 +261,9 @@ public sealed class SwarmArenaManager
                 ? deltaSeconds * EscalationStage2MoveSpeedMultiplier
                 : deltaSeconds;
 
-            if (WaveModeEnabled)
+            if (RegionSupplyModeEnabled)
             {
-                foreach (var participant in state.LastParticipants)
-                    SpawnDueWave(state, participant, now, result);
+                ProcessRegionSupply(state, now, result);
             }
             else if (CampModeEnabled)
             {
@@ -274,9 +281,9 @@ public sealed class SwarmArenaManager
                 if (!monster.Alive || now < monster.ActivatesAtUtc)
                     continue;
 
-                if (WaveModeEnabled)
+                if (RegionSupplyModeEnabled)
                 {
-                    UpdateWaveMonsterMovement(monster, state.LastParticipants, moveDeltaSeconds);
+                    UpdateSupplyMonsterMovement(monster, state.LastParticipants, moveDeltaSeconds);
                 }
                 else if (CampModeEnabled)
                 {
@@ -313,9 +320,9 @@ public sealed class SwarmArenaManager
                     monster.NextContactAtUtc = now.AddSeconds(monster.AttackCooldownValue);
                     state.ContactImmuneUntilUtc[participant.PlayerId] =
                         now.AddSeconds(ContactImmunitySeconds);
-                    if (CampModeEnabled)
+                    if (CampModeEnabled || RegionSupplyModeEnabled)
                     {
-                        // 부딪힘도 개전이다 — 맞은 캠프 몹이 깨어난다.
+                        // 부딪힘도 개전이다 — 맞은 캠프·공급 몹이 깨어난다.
                         monster.Aggro = true;
                         monster.ChaseTargetPlayerId = participant.PlayerId;
                     }
@@ -434,10 +441,18 @@ public sealed class SwarmArenaManager
             if (monster == null)
                 return SwarmArenaDamageResult.None;
 
-            if (WaveModeEnabled)
+            if (RegionSupplyModeEnabled)
             {
-                // 웨이브 모드: 때린 사람에게 어그로 전환 — 재탐색 스티키니스 안에서 유지된다.
+                // 반격 개전: 맞은 몹과 같은 구역 무리 전체가 함께 깨어난다 — 무리는 한 덩어리다.
+                monster.Aggro = true;
                 monster.ChaseTargetPlayerId = attackerPlayerId;
+                foreach (var mate in state.Monsters.Values)
+                {
+                    if (!mate.Alive || mate.Aggro || mate.Area != monster.Area)
+                        continue;
+                    mate.Aggro = true;
+                    mate.ChaseTargetPlayerId = attackerPlayerId;
+                }
             }
             else if (CampModeEnabled)
             {
@@ -506,6 +521,10 @@ public sealed class SwarmArenaManager
                 monster.ActivatesAtUtc = now.AddSeconds(EncircleTelegraphSeconds);
                 monster.NextContactAtUtc = monster.ActivatesAtUtc;
                 monster.ChaseTargetPlayerId = 0;
+                // 지역 공급 (#226 단계 B): 이주 후 복귀 앵커도 새 자리로 — 옛 구역으로 걸어가지 않는다.
+                monster.AnchorX = monster.Position.X;
+                monster.AnchorY = monster.Position.Y;
+                monster.Aggro = false;
                 moved.Add(monster.ToMonsterRuntimeInfo());
             }
         }
@@ -517,8 +536,8 @@ public sealed class SwarmArenaManager
     public void AttractSwarm(long matchingId, long playerId)
     {
         // SB 클론: 개봉은 몹을 부르지 않는다 — 개봉의 리스크는 다른 플레이어다.
-        // 웨이브 모드도 동일 — 웨이브는 이미 전원을 쫓고 있어 유인이 무의미하다.
-        if (CampModeEnabled || WaveModeEnabled)
+        // 지역 공급 모드도 동일 — 몹은 찾아가는 자원이지 배달되는 압박이 아니다.
+        if (CampModeEnabled || RegionSupplyModeEnabled)
             return;
         if (!_matches.TryGetValue(matchingId, out var state))
             return;
@@ -583,8 +602,8 @@ public sealed class SwarmArenaManager
             {
                 if (!monster.Alive || now < monster.ActivatesAtUtc || monster.Area != bot.Area)
                     continue;
-                // 캠프 모드: 잠든 몹은 위험이 아니다 — 깨어난(어그로) 몹만 피한다.
-                if (CampModeEnabled && !monster.Aggro)
+                // 캠프·지역 공급 모드: 잠든 몹은 위험이 아니다 — 깨어난(어그로) 몹만 피한다.
+                if ((CampModeEnabled || RegionSupplyModeEnabled) && !monster.Aggro)
                     continue;
                 float dx = monster.Position.X - bot.Position.X;
                 float dy = monster.Position.Y - bot.Position.Y;
@@ -638,6 +657,18 @@ public sealed class SwarmArenaManager
             else
             {
                 state.BotFleeCommitments.Remove(botPlayerId);
+                // 지역 공급 (#226 단계 B): 위협이 없으면 몹이 남은 활성 공급 구역으로 향한다 —
+                // 웨이브가 배달되지 않으므로 봇도 사람처럼 파밍 구역을 찾아가야 성장한다.
+                if (RegionSupplyModeEnabled &&
+                    TryResolveSupplyFarmDestination(state, bot, out var farmDestination))
+                {
+                    return new SpotArenaBotDirective(
+                        SpotArenaBotMode.Return,
+                        bot.Area,
+                        MapCoordinateConverter.WorldToCell(MapId.School, farmDestination),
+                        farmDestination);
+                }
+
                 float angle = (float)(state.Rng.NextDouble() * Math.PI * 2d);
                 destination = new Vector3f(
                     bot.Position.X + MathF.Cos(angle) * BotRoamDistance,
@@ -1004,137 +1035,338 @@ public sealed class SwarmArenaManager
     }
 
     /// <summary>
-    ///     웨이브 편성 (#226): 인덱스가 오를수록 마릿수와 위험 종이 늘어난다. 피통·데미지는
-    ///     불변 — 강해지는 축은 밀도와 종 구성이다 (M4 원칙: TTK가 아니라 페이스를 조인다).
-    ///     위험 종을 앞에 두어 구역 상한에 걸려 잘릴 때 해골부터 잘린다.
+    ///     지역 공급 디렉터 (#226 단계 B): 시작 선물(시작 구역 일반 3, 1회) → 활성 파밍 구역
+    ///     4→3→2곳(구역마다 일반 6 + 핵 1) → 4:00 이후 신규 스폰 중단. 무리 완전 처치 후
+    ///     한 번만 증원하고, 두 무리째 소진되면 구역이 고갈되어 다른 안전 구역으로 옮긴다.
     /// </summary>
-    private static SwarmMonsterKind[] GetWaveComposition(int waveIndex)
+    private void ProcessRegionSupply(MatchState state, DateTime now, SwarmArenaTickResult result)
     {
-        (int Runaways, int Bowlers, int Darts, int Skeletons) plan = waveIndex switch
+        double elapsed = (now - state.StartsAtUtc).TotalSeconds;
+        if (elapsed < SupplyOpenSeconds)
         {
-            0 => (0, 0, 0, 3),
-            1 => (0, 0, 1, 3),
-            2 => (0, 0, 1, 4),
-            3 => (0, 1, 1, 3),
-            4 => (0, 1, 1, 4),
-            5 => (1, 1, 2, 3),
-            _ => (1, 1, 2, 4)
-        };
-        var kinds = new List<SwarmMonsterKind>(
-            plan.Runaways + plan.Bowlers + plan.Darts + plan.Skeletons);
-        for (int index = 0; index < plan.Runaways; index++)
-            kinds.Add(SwarmMonsterKind.RunawayGoblin);
-        for (int index = 0; index < plan.Bowlers; index++)
-            kinds.Add(SwarmMonsterKind.Bowler);
-        for (int index = 0; index < plan.Darts; index++)
-            kinds.Add(SwarmMonsterKind.DartGoblin);
-        for (int index = 0; index < plan.Skeletons; index++)
-            kinds.Add(SwarmMonsterKind.Skeleton);
-        return kinds.ToArray();
-    }
-
-    private void SpawnDueWave(
-        MatchState state,
-        SpotArenaPlayerSpatial participant,
-        DateTime now,
-        SwarmArenaTickResult result)
-    {
-        if (IsAreaClosedResolver?.Invoke(state.MatchingId, participant.Area) == true)
-            return;
-
-        if (!state.PatternSchedules.TryGetValue(participant.PlayerId, out var schedule))
-        {
-            schedule = new PatternSchedule
+            // 시작 선물: 참가자가 서 있는 시작 구역마다 일반 3마리(석 3) — 첫 소환 여비.
+            foreach (var participant in state.LastParticipants)
             {
-                NextPatternAtUtc = now.AddSeconds(FirstWaveDelaySeconds)
-            };
-            state.PatternSchedules[participant.PlayerId] = schedule;
+                if (!StartRooms.Contains(participant.Area) ||
+                    !state.StartGiftAreas.Add(participant.Area))
+                    continue;
+                SpawnSupplyPack(state, participant.Area, StartGiftMonsters, includeCore: false,
+                    now, result);
+            }
+
+            return;
         }
 
-        if (now < schedule.NextPatternAtUtc)
-            return;
-        schedule.NextPatternAtUtc = now.AddSeconds(WaveIntervalSeconds);
+        int targetZones = elapsed < SupplyShrink3AtSeconds ? SupplyZoneCountInitial :
+            elapsed < SupplyShrink2AtSeconds ? 3 :
+            elapsed < SupplyStopAtSeconds ? 2 : 0;
 
-        int aliveInArea = state.Monsters.Values.Count(monster =>
-            monster.Alive && monster.Area == participant.Area);
-        if (aliveInArea >= WaveAreaDensityCap)
-            return;
+        // 폐쇄된 활성 구역은 즉시 은퇴 — 잔존 몹은 EvacuateArea가 옮긴다.
+        state.ActiveSupplyZones.RemoveAll(zone =>
+            IsAreaClosedResolver?.Invoke(state.MatchingId, zone) == true);
 
-        // 웨이브 강도는 참가자별 스케줄이 아니라 매치 경과 시간이 정한다 —
-        // 늦게 진입한 구역에도 현재 시점의 위험이 밀려온다.
-        int waveIndex = (int)Math.Max(0d,
-            ((now - state.StartsAtUtc).TotalSeconds - FirstWaveDelaySeconds) / WaveEscalationSeconds);
-        var kinds = GetWaveComposition(waveIndex);
-        var pattern = schedule.NextPattern;
-        schedule.NextPattern = (SwarmPattern)(((int)pattern + 1) % 3);
-        int budget = WaveAreaDensityCap - aliveInArea;
-        for (int index = 0; index < kinds.Length && index < budget; index++)
+        // 축소: 목표 초과분은 잔존 몹이 가장 적은 구역부터 은퇴한다 — 살아있는 몹은 남기되
+        // 증원은 끊는다. 자연 감소가 곧 플레이어 수렴이다.
+        while (state.ActiveSupplyZones.Count > targetZones)
         {
-            float angle = (float)(index * Math.PI * 2d / kinds.Length) +
-                          (float)(state.Rng.NextDouble() * 0.4d - 0.2d);
-            var position = ClampToAreaWalkable(new Vector3f(
-                participant.Position.X + MathF.Cos(angle) * WaveSpawnRadius,
-                participant.Position.Y + MathF.Sin(angle) * WaveSpawnRadius,
-                0f), participant.Position, participant.Area);
-            SpawnWaveMonster(state, participant, kinds[index], pattern, position, now, result);
+            AreaType retire = state.ActiveSupplyZones
+                .OrderBy(zone => CountAliveInArea(state, zone))
+                .First();
+            if (state.SupplyZones.TryGetValue(retire, out var retireState))
+                retireState.Retired = true;
+            state.ActiveSupplyZones.Remove(retire);
+        }
+
+        for (int index = state.ActiveSupplyZones.Count - 1; index >= 0; index--)
+        {
+            var zone = state.ActiveSupplyZones[index];
+            var zoneState = state.SupplyZones[zone];
+            if (CountAliveInArea(state, zone) > 0)
+            {
+                zoneState.NextPackAtUtc = null;
+                continue;
+            }
+
+            if (zoneState.PacksSpawned >= SupplyPacksPerZone)
+            {
+                // 두 무리째 소진 — 구역 고갈. 다음 충원 루프가 다른 안전 구역을 연다.
+                zoneState.Depleted = true;
+                state.ActiveSupplyZones.RemoveAt(index);
+                continue;
+            }
+
+            // 첫 무리는 즉시, 증원은 완전 처치 후 한 번만 지연 등장.
+            zoneState.NextPackAtUtc ??= zoneState.PacksSpawned == 0
+                ? now
+                : now.AddSeconds(SupplyReinforceDelaySeconds);
+            if (now < zoneState.NextPackAtUtc)
+                continue;
+            zoneState.NextPackAtUtc = null;
+            SpawnSupplyPack(state, zone, SupplyPackNormals, includeCore: true, now, result);
+            zoneState.PacksSpawned++;
+        }
+
+        while (state.ActiveSupplyZones.Count < targetZones &&
+               TryPickSupplyZone(state, out var opened))
+        {
+            state.ActiveSupplyZones.Add(opened);
+            if (!state.SupplyZones.TryGetValue(opened, out var openedState))
+            {
+                openedState = new SupplyZoneState();
+                state.SupplyZones[opened] = openedState;
+            }
+
+            openedState.Retired = false;
         }
     }
 
-    private static void SpawnWaveMonster(
-        MatchState state,
-        SpotArenaPlayerSpatial anchor,
-        SwarmMonsterKind kind,
-        SwarmPattern pattern,
-        Vector3f position,
-        DateTime now,
-        SwarmArenaTickResult result)
+    /// <summary>공급 후보 구역 = 시작 포드 + 정크장 + 운동장. 복도는 이동·조우 통로로 비워 둔다.</summary>
+    private static IEnumerable<AreaType> GetSupplyZoneCandidates() =>
+        StartRooms.Concat([AreaType.Junkyard, AreaType.Ground]);
+
+    private bool TryPickSupplyZone(MatchState state, out AreaType picked)
     {
-        var stats = GetKindStats(kind);
-        int serial = state.NextSerial++;
-        var monster = new MonsterRuntime
+        var candidates = GetSupplyZoneCandidates()
+            .Where(zone => !state.ActiveSupplyZones.Contains(zone))
+            .Where(zone => IsAreaClosedResolver?.Invoke(state.MatchingId, zone) != true)
+            .Where(zone => !state.SupplyZones.TryGetValue(zone, out var zoneState) ||
+                           (!zoneState.Depleted && !zoneState.Retired))
+            .ToList();
+        if (candidates.Count == 0)
         {
-            MonsterId = FirstMonsterId + serial,
-            CombatTargetId = FirstCombatTargetId - serial,
-            Pattern = pattern,
-            Area = anchor.Area,
-            Position = position,
-            Health = stats.MaxHp,
-            Alive = true,
-            ActivatesAtUtc = now.AddSeconds(WaveTelegraphSeconds),
-            NextContactAtUtc = now,
-            ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
-            SummonStoneReward = stats.StoneReward,
-            JamReward = stats.JamReward,
-            HeartReward = stats.HeartReward,
-            BootsReward = stats.BootsReward,
-            KeyReward = stats.KeyReward,
-            ContactDamageValue = stats.OrbDamage,
-            Kind = kind,
-            MaxHealthValue = stats.MaxHp,
-            AttackRangeValue = stats.AttackRange,
-            AttackCooldownValue = stats.AttackCooldownSeconds,
-            // 웨이브 몹은 잠들지 않는다 — 스폰 순간부터 스폰 유발자를 쫓는다.
-            Aggro = true,
-            ChaseTargetPlayerId = anchor.PlayerId
-        };
-        state.Monsters[monster.MonsterId] = monster;
-        result.SpawnedMonsters.Add(monster.ToMonsterRuntimeInfo());
+            // 미고갈 후보가 다 떨어지면 은퇴 구역부터 재개방한다 — 고갈 구역은 끝까지 마른다.
+            candidates = GetSupplyZoneCandidates()
+                .Where(zone => !state.ActiveSupplyZones.Contains(zone))
+                .Where(zone => IsAreaClosedResolver?.Invoke(state.MatchingId, zone) != true)
+                .Where(zone => state.SupplyZones.TryGetValue(zone, out var zoneState) &&
+                               !zoneState.Depleted)
+                .ToList();
+        }
+
+        if (candidates.Count == 0)
+        {
+            picked = AreaType.None;
+            return false;
+        }
+
+        picked = candidates[state.Rng.Next(candidates.Count)];
+        return true;
+    }
+
+    private static int CountAliveInArea(MatchState state, AreaType area) =>
+        state.Monsters.Values.Count(monster => monster.Alive && monster.Area == area);
+
+    /// <summary>
+    ///     공급 무리 스폰: 고정 앵커(캠프 앵커 CSV 우선) 주변 산개, 1초 예고 후 등장.
+    ///     잠든 채 서 있다 — 근접·피격·접촉이 개전이고, 구역 경계가 리쉬다.
+    /// </summary>
+    private static void SpawnSupplyPack(
+        MatchState state, AreaType area, int normals, bool includeCore,
+        DateTime now, SwarmArenaTickResult result)
+    {
+        var center = BotPlayerManager.CellToWorldPosition(
+            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
+        Vector3f packAnchor;
+        var customAnchorCell = GameMonsterCampData.GetAnchor(area, 0);
+        if (customAnchorCell != null)
+        {
+            packAnchor = ClampToAreaWalkable(
+                BotPlayerManager.CellToWorldPosition(MapId.School, customAnchorCell), center, area);
+        }
+        else
+        {
+            packAnchor = ClampToAreaWalkable(new Vector3f(
+                center.X + CampAnchorRadius * 0.6f, center.Y, 0f), center, area);
+        }
+
+        var kinds = new List<SwarmMonsterKind>(normals + 1);
+        if (includeCore)
+            kinds.Add(SwarmMonsterKind.RunawayGoblin);
+        for (int index = 0; index < normals; index++)
+            kinds.Add(SwarmMonsterKind.Skeleton);
+
+        var pattern = (SwarmPattern)(state.NextSupplyPackOrdinal++ % 3);
+        for (int index = 0; index < kinds.Count; index++)
+        {
+            float angle = (float)(index * Math.PI * 2d / kinds.Count) +
+                          (float)(state.Rng.NextDouble() * 0.5d - 0.25d);
+            var position = ClampToAreaWalkable(new Vector3f(
+                packAnchor.X + MathF.Cos(angle) * SupplyScatterRadius,
+                packAnchor.Y + MathF.Sin(angle) * SupplyScatterRadius,
+                0f), packAnchor, area);
+
+            var kind = kinds[index];
+            var stats = GetKindStats(kind);
+            // 핵 = 소환석 3 고정 (일반 6×1 + 핵 3 = 무리 9석). 종 스탯의 4석을 덮어쓴다.
+            int stoneReward = kind == SwarmMonsterKind.RunawayGoblin
+                ? SupplyCoreStoneReward
+                : stats.StoneReward;
+            int serial = state.NextSerial++;
+            var monster = new MonsterRuntime
+            {
+                MonsterId = FirstMonsterId + serial,
+                CombatTargetId = FirstCombatTargetId - serial,
+                Pattern = pattern,
+                Area = area,
+                Position = position,
+                Health = stats.MaxHp,
+                Alive = true,
+                ActivatesAtUtc = now.AddSeconds(SupplyTelegraphSeconds),
+                NextContactAtUtc = now,
+                ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
+                SummonStoneReward = stoneReward,
+                JamReward = stats.JamReward,
+                HeartReward = stats.HeartReward,
+                BootsReward = stats.BootsReward,
+                KeyReward = stats.KeyReward,
+                ContactDamageValue = stats.OrbDamage,
+                Kind = kind,
+                MaxHealthValue = stats.MaxHp,
+                AttackRangeValue = stats.AttackRange,
+                AttackCooldownValue = stats.AttackCooldownSeconds,
+                AnchorX = position.X,
+                AnchorY = position.Y
+            };
+            state.Monsters[monster.MonsterId] = monster;
+            result.SpawnedMonsters.Add(monster.ToMonsterRuntimeInfo());
+        }
     }
 
     /// <summary>
-    ///     웨이브 몹 이동: 전 구역 최근접 추격 — 대상이 경계를 넘어도 얼어붙지 않는다
-    ///     (같은 구역 규칙은 캠프 시절 유산: 중앙에 몹이 쌓여 멈추던 현상의 원인).
-    ///     원거리 종은 사거리 안에서 멈춰 쏜다. 접촉·타격 판정이 구역 일치를 요구하므로
-    ///     이동한 위치의 실제 구역을 계속 반영한다.
+    ///     봇 파밍 목적지: 현재 구역에 몹이 남았으면 그 옆(전투권 밖일 때만), 아니면 몹이
+    ///     살아있는 가장 가까운 활성 공급 구역 앵커로 향한다.
     /// </summary>
-    private static void UpdateWaveMonsterMovement(
+    private static bool TryResolveSupplyFarmDestination(
+        MatchState state, SpotArenaPlayerSpatial bot, out Vector3f destination)
+    {
+        destination = default;
+        MonsterRuntime nearestInArea = null;
+        float nearestSquared = float.MaxValue;
+        foreach (var monster in state.Monsters.Values)
+        {
+            if (!monster.Alive || monster.Area != bot.Area)
+                continue;
+            float dx = monster.Position.X - bot.Position.X;
+            float dy = monster.Position.Y - bot.Position.Y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared < nearestSquared)
+            {
+                nearestSquared = distanceSquared;
+                nearestInArea = monster;
+            }
+        }
+
+        if (nearestInArea != null)
+        {
+            // 전투권(사거리+여유) 안이면 개입하지 않는다 — 교전은 전투 AI 몫.
+            if (nearestSquared <= 16f)
+                return false;
+            destination = ClampToAreaWalkable(
+                nearestInArea.Position, bot.Position, bot.Area);
+            return true;
+        }
+
+        AreaType bestZone = AreaType.None;
+        float bestSquared = float.MaxValue;
+        foreach (var zone in state.ActiveSupplyZones)
+        {
+            if (zone == bot.Area || CountAliveInArea(state, zone) == 0)
+                continue;
+            var anchor = BotPlayerManager.CellToWorldPosition(
+                MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, zone));
+            float dx = anchor.X - bot.Position.X;
+            float dy = anchor.Y - bot.Position.Y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared < bestSquared)
+            {
+                bestSquared = distanceSquared;
+                bestZone = zone;
+            }
+        }
+
+        if (bestZone == AreaType.None)
+            return false;
+        destination = BotPlayerManager.CellToWorldPosition(
+            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, bestZone));
+        return true;
+    }
+
+    /// <summary>
+    ///     공급 몹 이동 (#226 단계 B): 잠듦 → (근접·피격·접촉) 개전 → 같은 구역 안에서만 추격.
+    ///     대상이 구역 경계(문)를 넘으면 앵커로 복귀해 다시 잠든다 — 문 밖 추격은 없다.
+    ///     원거리 종은 사거리 안에서 멈춰 쏜다.
+    /// </summary>
+    private static void UpdateSupplyMonsterMovement(
         MonsterRuntime monster,
         IReadOnlyList<SpotArenaPlayerSpatial> participants,
         double deltaSeconds)
     {
-        if (!TryResolveWaveChaseTarget(monster, participants, out var target))
-            return;
+        if (!monster.Aggro)
+        {
+            for (int index = 0; index < participants.Count; index++)
+            {
+                var participant = participants[index];
+                if (participant.Area != monster.Area)
+                    continue;
+                float aggroDx = participant.Position.X - monster.Position.X;
+                float aggroDy = participant.Position.Y - monster.Position.Y;
+                if (aggroDx * aggroDx + aggroDy * aggroDy > CampAggroRadius * CampAggroRadius)
+                    continue;
+                monster.Aggro = true;
+                monster.ChaseTargetPlayerId = participant.PlayerId;
+                break;
+            }
 
+            if (!monster.Aggro)
+                return;
+        }
+
+        // 추격 대상: 어그로 대상이 같은 구역이면 유지, 아니면 같은 구역 최근접.
+        bool found = false;
+        var target = default(SpotArenaPlayerSpatial);
+        float nearestSquared = float.MaxValue;
+        for (int index = 0; index < participants.Count; index++)
+        {
+            var participant = participants[index];
+            if (participant.Area != monster.Area)
+                continue;
+            if (participant.PlayerId == monster.ChaseTargetPlayerId)
+            {
+                target = participant;
+                found = true;
+                break;
+            }
+
+            float dx = participant.Position.X - monster.Position.X;
+            float dy = participant.Position.Y - monster.Position.Y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared < nearestSquared)
+            {
+                nearestSquared = distanceSquared;
+                target = participant;
+                found = true;
+            }
+        }
+
+        if (!found)
+        {
+            // 구역에 아무도 없다 — 앵커 복귀, 도착하면 다시 잠든다.
+            var anchor = new Vector3f(monster.AnchorX, monster.AnchorY, 0f);
+            float homeDx = anchor.X - monster.Position.X;
+            float homeDy = anchor.Y - monster.Position.Y;
+            if (homeDx * homeDx + homeDy * homeDy <=
+                CampReturnArriveDistance * CampReturnArriveDistance)
+            {
+                monster.Aggro = false;
+                monster.ChaseTargetPlayerId = 0;
+                return;
+            }
+
+            MoveTowardPlayer(monster, anchor, deltaSeconds);
+            return;
+        }
+
+        monster.ChaseTargetPlayerId = target.PlayerId;
         if (monster.AttackRangeValue > ContactRange)
         {
             float holdDx = target.Position.X - monster.Position.X;
@@ -1145,54 +1377,6 @@ public sealed class SwarmArenaManager
         }
 
         MoveTowardPlayer(monster, target.Position, deltaSeconds);
-        var currentArea = GameMapData.GetCurrentArea(
-            MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, monster.Position));
-        if (currentArea != AreaType.None)
-            monster.Area = currentArea;
-    }
-
-    /// <summary>전 구역 최근접 + 유지 스티키니스(1.25배) — 구역 필터 없는 웨이브 전용 재탐색.</summary>
-    private static bool TryResolveWaveChaseTarget(
-        MonsterRuntime monster,
-        IReadOnlyList<SpotArenaPlayerSpatial> participants,
-        out SpotArenaPlayerSpatial target)
-    {
-        target = default;
-        int nearestIndex = -1;
-        float nearestSquared = float.MaxValue;
-        int currentIndex = -1;
-        float currentSquared = float.MaxValue;
-        for (int index = 0; index < participants.Count; index++)
-        {
-            var participant = participants[index];
-            float dx = participant.Position.X - monster.Position.X;
-            float dy = participant.Position.Y - monster.Position.Y;
-            float distanceSquared = dx * dx + dy * dy;
-            if (distanceSquared < nearestSquared)
-            {
-                nearestSquared = distanceSquared;
-                nearestIndex = index;
-            }
-
-            if (participant.PlayerId == monster.ChaseTargetPlayerId)
-            {
-                currentIndex = index;
-                currentSquared = distanceSquared;
-            }
-        }
-
-        if (nearestIndex < 0)
-            return false;
-
-        if (currentIndex >= 0 && currentSquared <= nearestSquared * RetargetStickinessSquared)
-        {
-            target = participants[currentIndex];
-            return true;
-        }
-
-        target = participants[nearestIndex];
-        monster.ChaseTargetPlayerId = target.PlayerId;
-        return true;
     }
 
     private void SpawnDueParticipantPattern(
@@ -1493,6 +1677,21 @@ public sealed class SwarmArenaManager
         // 도주 목적지 약속 (#226): 봇별 최근 도주 목적지 — 재계획 폭주에도 방향을 유지한다.
         public Dictionary<long, (Vector3f Destination, DateTime CommittedAtUtc)> BotFleeCommitments { get; } =
             new();
+
+        // 지역 공급 (#226 단계 B): 시작 선물 지급 구역, 활성 파밍 구역, 구역별 공급 사이클.
+        public HashSet<AreaType> StartGiftAreas { get; } = new();
+        public List<AreaType> ActiveSupplyZones { get; } = new();
+        public Dictionary<AreaType, SupplyZoneState> SupplyZones { get; } = new();
+        public int NextSupplyPackOrdinal { get; set; }
+    }
+
+    /// <summary>공급 구역 사이클: 무리 2회(첫 무리 즉시 + 증원 1회) 뒤 고갈. 은퇴는 축소·폐쇄용.</summary>
+    private sealed class SupplyZoneState
+    {
+        public int PacksSpawned { get; set; }
+        public DateTime? NextPackAtUtc { get; set; }
+        public bool Depleted { get; set; }
+        public bool Retired { get; set; }
     }
 
     private sealed class MonsterRuntime
