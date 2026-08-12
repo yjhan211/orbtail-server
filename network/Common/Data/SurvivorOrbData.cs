@@ -168,11 +168,11 @@ namespace network.common.data
 
             return color switch
             {
-                // 태양 (#226 개정): 유도 퇴역 — 발사 시점 위치로 느린 직선탄, 이동 중이면
-                // 자연 회피(반사신경이 아니라 "정지가 리스크"라는 상태 판단).
-                SurvivorOrbColor.Red => SurvivorOrbAttackPattern.TargetArea,
-                // 바람 (#226 개정): 런지 퇴역 — 유도 없는 직선탄(발사 시점 위치 고정, 다발 연출).
-                SurvivorOrbColor.Green => SurvivorOrbAttackPattern.TargetArea,
+                // 유도탄 복귀 (2026-08-12 플레이 판정): 직선탄 회피 실험은 상시 이동 게임에서
+                // 상시 회피 = 유령 사격이 됐다(명중 전멸·루즈). 착탄 확정 유도탄으로 원복 —
+                // 위치 판단 축은 절단·물폭탄·사거리가 맡는다. 클라는 이 패턴이면 표적을 추적한다.
+                SurvivorOrbColor.Red => SurvivorOrbAttackPattern.HomingProjectile,
+                SurvivorOrbColor.Green => SurvivorOrbAttackPattern.HomingProjectile,
                 SurvivorOrbColor.Blue => SurvivorOrbAttackPattern.None,
                 _ => SurvivorOrbAttackPattern.None
             };

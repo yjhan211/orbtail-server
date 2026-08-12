@@ -25,10 +25,11 @@ public class DodgeableProjectileResolverTests
         Assert.Equal(attack, Assert.Single(resolution.Hits));
     }
 
-    [Fact]
+    [Fact(Skip = "유도탄 복귀(2026-08-12): 회피 패턴(TargetArea)을 쓰는 색이 없다 — 부활 시 재작성")]
     public void SunImpact_MissesTargetThatMovedAfterLaunch()
     {
-        // #226: 태양 = 발사 시점 조준 고정 직선탄 — 이동 중이면 자연 회피(정지가 리스크).
+        // 유도탄 복귀 (2026-08-12): 태양이 HomingProjectile로 돌아가 리졸버 안에서도 확정
+        // 명중이다 — 회피 문법(TargetArea)은 현재 어떤 색도 쓰지 않아 도달 불가. 부활 시 재작성.
         InitializeGameData();
         var resolver = new DodgeableProjectileResolver();
         var now = new DateTime(2026, 8, 3, 0, 0, 0, DateTimeKind.Utc);
@@ -100,12 +101,12 @@ public class DodgeableProjectileResolverTests
     [Fact]
     public void OrbColors_HaveWeaponVerbPatterns()
     {
-        // #226 색=무기 동사: 태양=느린 직선탄(회피 가능·정지 처벌), 바람=직선 다발탄,
+        // 유도탄 복귀 (2026-08-12): 태양·바람 = 착탄 확정 유도탄(클라 표적 추적),
         // 파도=미사일 없음(None — 물폭탄은 서버 별도 주기).
         InitializeGameData();
-        Assert.Equal(SurvivorOrbAttackPattern.TargetArea,
+        Assert.Equal(SurvivorOrbAttackPattern.HomingProjectile,
             SurvivorOrbData.GetAttackPattern(107000010));
-        Assert.Equal(SurvivorOrbAttackPattern.TargetArea,
+        Assert.Equal(SurvivorOrbAttackPattern.HomingProjectile,
             SurvivorOrbData.GetAttackPattern(107000020));
         Assert.Equal(SurvivorOrbAttackPattern.None,
             SurvivorOrbData.GetAttackPattern(107000030));

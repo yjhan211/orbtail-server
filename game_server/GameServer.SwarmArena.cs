@@ -90,6 +90,10 @@ public partial class GameServer
     private readonly List<(long MatchingId, long CombatTargetId, long AttackerId, int Damage, DateTime ApplyAtUtc)>
         _pendingSwarmMonsterHits = new();
 
+    // PvP 유도탄 착탄 지연 (2026-08-12 복귀): 발사 확정, 피해는 비행시간 뒤 — 회피 없음.
+    private readonly List<(long MatchingId, ProximityCombatAttack Attack, DateTime DueAtUtc)>
+        _pendingSwarmPvpHits = new();
+
     // 잼 리더보드 (#222 M3): 마지막 브로드캐스트 시그니처 — 변동이 없으면 재전송하지 않는다.
     private readonly Dictionary<long, string> _swarmJamRankingsSignature = new();
 
@@ -300,14 +304,15 @@ public partial class GameServer
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
         ProcessPendingSwarmMonsterHits(matchingId, nowUtc, sessions);
 
-        // 태양 착탄 정산 (#226): 발사 시점 조준 위치 기준 — 이동해 벗어났으면 miss(회피 성립).
-        foreach (var resolution in _dodgeableProjectileResolver.ResolveImpacts(matchingId, actors, nowUtc))
+        // PvP 유도탄 착탄 정산 (2026-08-12 복귀): 비행시간이 지난 발은 확정 명중이다.
+        for (int index = _pendingSwarmPvpHits.Count - 1; index >= 0; index--)
         {
-            if (resolution.Outcome != "hit")
+            var pending = _pendingSwarmPvpHits[index];
+            if (pending.MatchingId != matchingId || nowUtc < pending.DueAtUtc)
                 continue;
-            foreach (var hitAttack in resolution.Hits)
-                ApplySwarmPvpAttack(matchingId, hitAttack, aliveSessions, aliveBots, sessions,
-                    broadcastVfx: false);
+            _pendingSwarmPvpHits.RemoveAt(index);
+            ApplySwarmPvpAttack(matchingId, pending.Attack, aliveSessions, aliveBots, sessions,
+                broadcastVfx: false);
         }
 
         var attacks = _proximityAutoCombatResolver.Resolve(
@@ -370,17 +375,26 @@ public partial class GameServer
             }
 
             // 유령 발사 가드 (#226 진단): 같은 틱에 죽은 몬스터의 CombatTargetId(-4e18대)가
-            // 몬스터 분기(monsterId=0 조회)를 통과해 PvP 직선탄으로 새던 문제 — 음수 대역 차단.
+            // 몬스터 분기(monsterId=0 조회)를 통과해 PvP 분기로 새던 문제 — 음수 대역 차단.
             if (attack.TargetPlayerId < -1_000_000_000_000L)
                 continue;
 
-            // 태양·바람 (#226): 직선탄 — 착탄을 예약하고 발사 연출만 즉시. 이동 중이면 빗나간다.
-            // "그 안에 있으면 맞는다"는 오브 사거리의 몫, 탄 회피는 상태(이동 중) 판단의 몫.
+            // 태양·바람 유도탄 (2026-08-12 복귀): 발사 연출 즉시 + 비행시간 뒤 착탄 확정 —
+            // 직선탄 회피 실험은 상시 이동에서 유령 사격이 됐다. 클라 투사체는 표적을 추적한다.
             if (SurvivorOrbData.TryGetColorAndTier(attack.WeaponItemId, out var pvpColor, out _) &&
                 pvpColor is SurvivorOrbColor.Red or SurvivorOrbColor.Green)
             {
-                _dodgeableProjectileResolver.Queue(matchingId, new[] { attack }, actors, nowUtc);
                 BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, sessions);
+                actorById ??= actors
+                    .GroupBy(actor => actor.PlayerId)
+                    .ToDictionary(group => group.Key, group => group.First());
+                float pvpDistance = actorById.TryGetValue(attack.AttackerPlayerId, out var pvpAttacker) &&
+                                    actorById.TryGetValue(attack.TargetPlayerId, out var pvpTarget)
+                    ? Vector3f.Distance(pvpAttacker.Position, pvpTarget.Position)
+                    : Config.SWARM_ORB_ATTACK_RANGE;
+                double pvpDelaySeconds =
+                    SurvivorOrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, pvpDistance);
+                _pendingSwarmPvpHits.Add((matchingId, attack, nowUtc.AddSeconds(pvpDelaySeconds)));
                 // PvP 발사 계측 (#226 진단): 유저 신고 "오브가 플레이어를 공격 안 함" 추적.
                 logger.LogInformation(
                     "Swarm pvp launch: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Weapon={Weapon}",
@@ -3301,6 +3315,7 @@ public partial class GameServer
         foreach (var key in _swarmFrontOrbHp.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmFrontOrbHp.Remove(key);
         _pendingSwarmMonsterHits.RemoveAll(hit => hit.MatchingId == matchingId);
+        _pendingSwarmPvpHits.RemoveAll(hit => hit.MatchingId == matchingId);
         foreach (var key in _swarmOrbTrails.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmOrbTrails.Remove(key);
         foreach (var key in _swarmTrailLastTickPositions.Keys
