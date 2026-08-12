@@ -1600,9 +1600,9 @@ public partial class GameServer
     private const int SwarmRingVfxKindWaveBomb = 2;
     private const int SwarmRingVfxKindCutCrack = 3;
 
-    // 5단계 파괴 (2026-08-12): 같은 오브를 5번 밟아야 깨진다 — 4번은 금이 가고(크랙 1~4),
-    // 5번째에 그 지점부터 꼬리가 끊긴다. 카운트는 오브 개체(ItemUid) 기준.
-    private const int SwarmTrailCutBreakHits = 5;
+    // 5단계 → 즉시 절단 (2026-08-12): 밟으면 바로 그 지점부터 꼬리가 끊긴다.
+    // 크랙 단계 시스템(1~4 금 + 5타 파괴)은 값만 되돌리면 복원된다.
+    private const int SwarmTrailCutBreakHits = 1;
     private readonly Dictionary<(long MatchingId, long OwnerId, long ItemUid), int> _swarmOrbCutCracks = new();
 
     /// <summary>링 연출 공용 전송 — 포위 완성(대형)·절단 파열(소형)·물폭탄(파랑)이 같은 원형을 쓴다.</summary>
