@@ -236,6 +236,18 @@ namespace network.common
         // 열쇠 (#222 M4) — 무료 소환 충전 상태
         G_TO_C_FREE_SUMMON_STATE,
 
+        // 포위 사격 연출 (#226 B) — 완성 순간 포위 링 표시
+        G_TO_C_SWARM_ENCIRCLE_VFX,
+
+        // 절단 실험 더미 조종 (#226 실험장, 개발용) — WASD 방향 전송
+        C_TO_G_DEV_DUMMY_MOVE,
+
+        // 성장 카드 3택 (#226 단계 C) — 소환석 임계 도달 시 서버가 오퍼를 내리고,
+        // 선택은 서버 권위로 적용된다 (증식·강화·철갑, 강화·철갑은 선두 유효 오브 자동 적용)
+        G_TO_C_SWARM_GROWTH_OFFER,
+        C_TO_G_SWARM_GROWTH_PICK,
+        G_TO_C_SWARM_GROWTH_RESULT,
+
         END
     }
 

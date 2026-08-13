@@ -141,22 +141,7 @@ public sealed class DodgeableProjectileResolver
                 projectile.Attack.WeaponItemId);
             float hitRadius;
             IReadOnlyList<ProximityCombatAttack> hits;
-            if (attackPattern == SurvivorOrbAttackPattern.TargetArea)
-            {
-                hitRadius = EmotionAfterimagePveCombatRules.GetWaveSplashRadius(projectile.Attack.WeaponItemId);
-                hits = targets
-                    .Where(target => IsValidTarget(projectile, target) &&
-                                     IsWithinRadius(target.Position, projectile.AimPosition, hitRadius))
-                    .OrderBy(target => target.PlayerId)
-                    .Select(target => projectile.Attack with
-                    {
-                        TargetPlayerId = target.PlayerId,
-                        IsWaveAreaAttack = true,
-                        IsWaveAreaSecondary = target.PlayerId != projectile.Attack.TargetPlayerId
-                    })
-                    .ToList();
-            }
-            else if (attackPattern == SurvivorOrbAttackPattern.HomingProjectile)
+            if (attackPattern == SurvivorOrbAttackPattern.HomingProjectile)
             {
                 hitRadius = 0f;
                 var primaryTarget = targets.FirstOrDefault(target =>
@@ -167,6 +152,8 @@ public sealed class DodgeableProjectileResolver
             }
             else
             {
+                // 직선탄 (#226 재정의): 발사 시점 조준 위치 고정 — 단일 대상, 반경을 벗어나
+                // 이동했으면 dodged. (구 TargetArea = 파도 광역 스플래시는 물폭탄 전환으로 퇴역.)
                 hitRadius = SurvivorOrbData.GetPvpProjectileHitRadius(
                     projectile.Attack.WeaponItemId,
                     projectile.Attack.ProjectileWidth);

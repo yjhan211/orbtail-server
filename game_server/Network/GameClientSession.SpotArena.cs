@@ -101,7 +101,11 @@ public partial class GameClientSession
         if (!PlayerId.HasValue)
             return;
 
-        _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, 1);
+        // 개별 스택 강제 (#226 단계 C 수리): AddItem은 같은 색·티어를 한 항목으로 합쳐
+        // 오브별 ItemUid 정체성(열 순번·절단 래치·강화·철갑 대상)을 깨뜨렸다 — 봇 지급
+        // 경로(TryAddItemWithCapacity)와 같은 규칙으로 오브 1개 = 항목 1개를 보장한다.
+        _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value)
+            .TryAddItemWithCapacity(itemId, Config.SWARM_ORB_CAPACITY, out _);
         SendInGameInventoryList();
     }
 

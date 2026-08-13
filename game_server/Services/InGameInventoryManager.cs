@@ -57,6 +57,24 @@ public class PlayerInGameInventory(long matchingId)
     }
 
     /// <summary>
+    ///     오브 티어 상승 (#226 단계 C): ItemUid·열 순번을 유지한 채 ItemId만 다음 티어로
+    ///     교체한다 (티어 id는 연속: …10→11→12). 제거+추가로 구현하면 열 끝으로 밀린다.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryUpgradeSurvivorOrb(long itemUid, out InGameItemInfo? upgradedItem)
+    {
+        upgradedItem = null;
+        if (!_items.TryGetValue(itemUid, out var item) || item.Count <= 0)
+            return false;
+        if (!SurvivorOrbData.TryGetColorAndTier(item.ItemId, out _, out int tier) || tier is < 1 or > 2)
+            return false;
+
+        item.ItemId += 1;
+        upgradedItem = item;
+        return true;
+    }
+
+    /// <summary>
     ///     아이템 사용/제거
     /// </summary>
     /// <returns>성공 여부와 변경된 아이템 정보</returns>

@@ -626,16 +626,20 @@ public partial class GameServer
                     continue;
                 }
 
-                // 앞줄 오브 HP·잼을 시그니처에 포함 — 값 변화가 곧 상태 변화라 갱신이 전송된다.
+                // 앞줄 오브 HP·잼·본체 오염을 시그니처에 포함 — 값 변화가 곧 상태 변화라 갱신이 전송된다.
                 int frontOrbHp = GetSwarmFrontOrbHp(matchingId, actor.PlayerId);
                 int jamCount = GetSwarmJamCount(matchingId, actor.PlayerId, matchingSessions);
+                int bodyCorruption = GetSwarmBodyCorruption(matchingId, actor.PlayerId, matchingSessions);
+                long armorMask = GetSwarmArmorMask(matchingId, actor.PlayerId);
                 var state = new SurvivorOrbVisualState(
                     actor.Area,
                     actor.WeaponItemId,
                     actor.OrbEffectActive,
                     visualActor.OrbItemSignature,
                     frontOrbHp,
-                    jamCount);
+                    jamCount,
+                    bodyCorruption,
+                    armorMask);
                 if (_survivorOrbVisualStates.TryGetValue(key, out var previousState) &&
                     previousState == state)
                 {
@@ -651,7 +655,9 @@ public partial class GameServer
                     IsActive = actor.OrbEffectActive,
                     OrbItemIds = visualActor.OrbItemIds,
                     FrontOrbHp = frontOrbHp,
-                    JamCount = jamCount
+                    JamCount = jamCount,
+                    BodyCorruption = bodyCorruption,
+                    ArmorMask = armorMask
                 }));
                 observer.Send(packet);
             }
@@ -1080,6 +1086,8 @@ public partial class GameServer
         bool IsActive,
         string OrbItemSignature,
         int FrontOrbHp,
-        int JamCount);
+        int JamCount,
+        int BodyCorruption,
+        long ArmorMask);
 
 }

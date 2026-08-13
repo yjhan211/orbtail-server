@@ -372,6 +372,10 @@ public class BotPlayerState
 {
     public long PlayerId { get; set; }
     public long TargetPlayerId { get; set; }
+
+    /// <summary>절단 실험 더미 (#226): AI 정지·불사·오브 자동 리필 — 어드민이 지정한다.</summary>
+    public bool IsSwarmCutDummy { get; set; }
+
     public JobTitle MyJobTitle { get; set; }
     public JobTitle TargetJobTitle { get; set; }
     public AreaType CurrentArea { get; set; }

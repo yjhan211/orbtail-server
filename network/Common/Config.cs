@@ -135,6 +135,23 @@ namespace network.common
         /// </summary>
         public const float SWARM_BOSS_ATTACK_RANGE = 4.1f;
 
+        /// <summary>
+        ///     3머지 비활성 (#226 오브열): 열 문법에서 성장 = 길이 — 같은 색 3개 압축(3→1)은
+        ///     그 언어와 싸운다. 소환마다 열이 길어지고, 티어는 상자 시간 등급이 공급한다.
+        /// </summary>
+        public static readonly bool SWARM_ORB_MERGE_ENABLED = false;
+
+        // 오브열 (#226 실험 α/β): 오브가 이동 경로를 따라오는 전투열 — 클라 배치와
+        // 서버 판정(오브별 공격 원점·본체 접촉)이 같은 값을 쓴다 (표시 = 판정).
+        public const float SWARM_ORB_TRAIL_SPACING = 0.9f;
+        public const float SWARM_ORB_TRAIL_FIRST_OFFSET = 0.9f;
+
+        /// <summary>본체(머리)-상대 오브열 접촉 반경 — P0-a 접촉 판정(0.45)보다 오브 몸집만큼 여유.</summary>
+        public const float SWARM_ORB_TRAIL_CONTACT_RADIUS = 0.6f;
+
+        /// <summary>열 접촉 오염 (slither 비대칭 번역): 머리는 항상 취약 — 오브 HP를 우회해 본체 직행.</summary>
+        public const int SWARM_ORB_TRAIL_CONTACT_CORRUPTION = 35;
+
         /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
         public const int SURVIVOR_MAX_CORRUPTION = 420;
 
@@ -169,22 +186,58 @@ namespace network.common
         public static readonly int SWARM_PLAYERS_PER_MATCH = 10;
 
         /// <summary>
-        ///     잼 헌트 매치 길이 (#222 M3-2) — SB 4분 문법. 개전(카운트다운 종료) 앵커 기준이며,
-        ///     만료 시 생존자 중 잼 최다 보유자가 승리한다. 클라 타이머(GameStatusDisplay)와
-        ///     폐쇄 시간표(AreaClosureManager 최종 웨이브)가 같은 값에 정렬된다.
+        ///     매치 길이 (#226 단계 B) — 5분 오브 점수전. 개전(카운트다운 종료) 앵커 기준이며,
+        ///     만료 시 생존자 중 오브 최다 보유자가 승리한다(동점: 티어 합 → 철갑 → 본체 게이지).
+        ///     클라 타이머(GameStatusDisplay)와 폐쇄 시간표(AreaClosureManager 최종 웨이브)가
+        ///     같은 값에 정렬된다. 잼 승점·4분 잼 타임아웃(#222 M3-2)은 퇴역.
         /// </summary>
-        public const int SWARM_MATCH_DURATION_SECONDS = 240;
+        public const int SWARM_MATCH_DURATION_SECONDS = 300;
 
         /// <summary>
         ///     스웜 탐색 스팟 개봉 비용은 SB 상자 문법을 따른다: 스쿼드(궤도 오브)가 클수록
         ///     다음 개봉이 비싸진다. 3머지가 오브 수를 줄이면 비용이 도로 내려간다 —
         ///     슬롯 차단 대신 비용 곡선이 성장을 억제한다. 사람·봇 공통.
         /// </summary>
-        public const int SWARM_EXPLORE_COST_BASE = 5;
+        // 5 → 1 (#226 웨이브 전환): 상시 쫓기는 판에서 첫 소환이 5석이면 초반이 마른다 —
+        // 초반은 싸게, 성장 억제는 오브 수 비례 가산이 맡는다.
+        public const int SWARM_EXPLORE_COST_BASE = 1;
 
         /// <summary>스팟 리젠 시간(초). 개봉된 스팟은 사라지지 않고 이 시간 뒤 다시 나온다.
-        ///     60 → 30 (2026-08-09): 8인 전환으로 스팟 경합이 늘어 회전을 두 배로.</summary>
+        ///     0 → 30 (#226 단계 C): 상자 = 소모품(하트·부츠) 공급처 — 즉시 리젠이면 하트가 무한이다.</summary>
         public const int SWARM_EXPLORE_REGEN_SECONDS = 30;
+
+        /// <summary>
+        ///     상자 개봉 비용 (#226 단계 C): 상자는 오브가 아니라 소모품(하트·부츠)을 준다 —
+        ///     소환석의 주 소비처는 성장 카드이므로 상자는 고정 저가.
+        /// </summary>
+        public const int SWARM_BOX_OPEN_COST = 1;
+
+        /// <summary>
+        ///     성장 카드 기본 비용 (#226 C 잔여): 이번 판 성공한 성장 선택 횟수 N 기반 —
+        ///     오브가 잘려도 N은 줄지 않아 절단이 성장 시간을 초기화하지 못한다.
+        /// </summary>
+        public static int GetSwarmGrowthBaseCost(int growthSuccessCount) =>
+            3 + Math.Max(0, growthSuccessCount) / 3;
+
+        /// <summary>점수 할증 (#226 C 잔여): 보유 오브 수 구간 — 선두일수록 다음 투자가 비싸다.</summary>
+        public static int GetSwarmGrowthScoreSurcharge(int orbCount) =>
+            orbCount >= 16 ? 4 :
+            orbCount >= 13 ? 3 :
+            orbCount >= 10 ? 2 :
+            orbCount >= 7 ? 1 : 0;
+
+        /// <summary>성장 카드 상한 비용 (#226 C 잔여).</summary>
+        public const int SWARM_GROWTH_COST_CAP = 10;
+
+        /// <summary>
+        ///     성장 카드 최종 비용 = min(상한, 기본 + 점수 할증). 0오브는 비용 3의 T1 생성
+        ///     보장(재건 경로) — 카드 품질은 할증을 뺀 기본 비용으로만 계산한다.
+        /// </summary>
+        public static int GetSwarmGrowthCardCost(int growthSuccessCount, int orbCount) =>
+            orbCount <= 0
+                ? 3
+                : Math.Min(SWARM_GROWTH_COST_CAP,
+                    GetSwarmGrowthBaseCost(growthSuccessCount) + GetSwarmGrowthScoreSurcharge(orbCount));
 
         /// <summary>궤도 오브 1개당 개봉 비용 가산 — SB "스쿼드 인원수 비례 상자 코인".</summary>
         public const int SWARM_EXPLORE_COST_PER_ORB = 2;
@@ -216,7 +269,8 @@ namespace network.common
         ///     SB에는 슬롯 하드캡이 없다 — 오브 수 비례 개봉 비용이 성장을 억제하고, 이 값은
         ///     이상 상황 방지용 안전상한일 뿐이다. 클라 궤도 슬롯 수와 같아야 한다 (PlayerTool.MaxOrbSlots).
         /// </summary>
-        public const int SWARM_ORB_CAPACITY = 30;
+        // 30 → 99 (#226 오브열): 머지 폐지로 성장 = 열 길이 — 사실상 무제한, 비용 곡선이 억제자.
+        public const int SWARM_ORB_CAPACITY = 99;
 
         /// <summary>현재 모드의 오브 보유 상한 — 스웜(궤도 스쿼드)은 9, 레거시 보드는 6.</summary>
         public static int GetOrbCapacity() =>

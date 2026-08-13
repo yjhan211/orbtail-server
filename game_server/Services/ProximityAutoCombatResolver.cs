@@ -29,7 +29,9 @@ public readonly record struct ProximityCombatActor(
     float InitialAttackDelaySeconds = 0f,
     bool IsMonsterTarget = false,
     bool IsCoreMonsterTarget = false,
-    int TargetPriority = -1);
+    int TargetPriority = -1,
+    // #226 재개편: 발사 원점 전용 액터(오브) — 표적 후보에서 제외된다.
+    bool Untargetable = false);
 
 public readonly record struct ProximityCombatAttack(
     long AttackerPlayerId,
@@ -125,12 +127,15 @@ public sealed class ProximityAutoCombatResolver
 
             foreach (var candidate in actors)
             {
-                if (candidate.PlayerId == attacker.PlayerId || candidate.Area != attacker.Area)
+                if (candidate.Untargetable ||
+                    candidate.PlayerId == attacker.PlayerId || candidate.Area != attacker.Area)
                     continue;
 
                 float dx = attacker.Position.X - candidate.Position.X;
                 float dy = attacker.Position.Y - candidate.Position.Y;
                 float distanceSquared = dx * dx + dy * dy;
+                // 몹·플레이어 사거리 통일 (2026-08-13 유저 결정): 몹 사거리 무시 특례 퇴역 —
+                // 색 사거리 30 통일로 특례 없이도 구역 전체가 커버된다.
                 if (distanceSquared > attackRangeSquared)
                     continue;
                 if (hasLineOfSight != null && !hasLineOfSight(attacker, candidate))
@@ -283,20 +288,26 @@ public sealed class ProximityAutoCombatResolver
                 continue;
             if (_combatStates.TryRemove(key, out var previousState))
             {
+                // 유예 보존 (#226 케이던스 수리): 문 통과·구역 깜빡임으로 한두 틱 액터에서
+                // 빠졌다 돌아오면 조준을 이어간다 — 즉시 삭제는 태양의 발사 지연을 매번
+                // 처음부터 다시 지불하게 해 이동 조우에서 첫 발이 영영 안 나갔다.
+                _recentlyLostCombatStates[key] = new SuspendedCombatState(previousState, nowUtc);
                 onTargetLost?.Invoke(CreateTargetEvent(
                     key.PlayerId, previousState, nowUtc, "attacker_inactive"));
             }
             _burstRechargeReadyAtUtc.TryRemove(key, out _);
-            _recentlyLostCombatStates.TryRemove(key, out _);
         }
 
         foreach (var key in _recentlyLostCombatStates.Keys)
         {
-            if (key.MatchingId != matchingId ||
-                activeAttackers.Contains((key.PlayerId, key.ItemUid, key.StackIndex)))
+            if (key.MatchingId != matchingId)
                 continue;
 
-            _recentlyLostCombatStates.TryRemove(key, out _);
+            // 시간 기준 정리 (#226 케이던스 수리): 비활성 즉시 삭제는 위의 유예 보존을
+            // 무효화한다 — 재획득 유예(1.5초)를 넘긴 것만 지운다.
+            if (_recentlyLostCombatStates.TryGetValue(key, out var suspended) &&
+                nowUtc - suspended.LostAtUtc > TargetReacquireGraceDuration)
+                _recentlyLostCombatStates.TryRemove(key, out _);
         }
 
         return attacks;

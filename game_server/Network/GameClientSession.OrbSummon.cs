@@ -32,36 +32,7 @@ public partial class GameClientSession
                 return Task.CompletedTask;
             }
 
-            // 상자 시간 등급 (#222 M3): 개전 후 80초/160초를 넘기면 같은 색의 T2/T3가 나온다.
-            int draftItemId = SurvivorOrbData.ApplyDraftTier(
-                request.ChoiceIndex switch
-                {
-                    1 => DraftWaveOrbItemId,
-                    2 => DraftWindOrbItemId,
-                    _ => DraftSunOrbItemId
-                },
-                GetSwarmDraftTier());
-            // 열쇠 (#222 M4): 충전이 있으면 이번 소환 비용을 0으로 — 성공 시 1 소비.
-            int draftCost = _pendingOrbDraftCost;
-            bool useFreeSummon = FreeSummonCharges > 0 && draftCost > 0;
-            if (useFreeSummon)
-                draftCost = 0;
-            var draftAttempt = ExecuteOrbSummon(
-                request.ChoiceIndex, costOverride: draftCost, exactItemId: draftItemId);
-            if (!draftAttempt.Success)
-                return Task.CompletedTask;
-
-            if (useFreeSummon)
-            {
-                FreeSummonCharges = Math.Max(0, FreeSummonCharges - 1);
-                SendFreeSummonState();
-            }
-
-            _hasPendingOrbDraft = false;
-            // 자동 머지: 드래프트로 같은 색·티어 3개가 되면 즉시 융합한다.
-            foreach (var mergedItem in _inGameInventoryManager.AutoMergeSurvivorOrbs(
-                         CurrentMapSubId, PlayerId.Value, Random.Shared))
-                SendInGameInventoryUpdate(mergedItem);
+            ExecuteDraftOrbSummon(request.ChoiceIndex);
             return Task.CompletedTask;
         }
 
@@ -74,6 +45,47 @@ public partial class GameClientSession
 
         ExecuteOrbSummon(request.ChoiceIndex, costOverride: null);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     드래프트 소환 실행 (#219 M2 → #226 자동화): 색 인덱스로 티어 적용 아이템을 뽑아
+    ///     소환한다. 열쇠 충전이 있으면 비용 0 + 성공 시 1 소비. 개봉 자동 소환과
+    ///     (레거시) 선택 소환이 같은 경로를 쓴다.
+    /// </summary>
+    internal bool ExecuteDraftOrbSummon(int choiceIndex)
+    {
+        // 상자 시간 등급 (#222 M3): 개전 후 80초/160초를 넘기면 같은 색의 T2/T3가 나온다.
+        int draftItemId = SurvivorOrbData.ApplyDraftTier(
+            choiceIndex switch
+            {
+                1 => DraftWaveOrbItemId,
+                2 => DraftWindOrbItemId,
+                _ => DraftSunOrbItemId
+            },
+            GetSwarmDraftTier());
+        // 열쇠 (#222 M4): 충전이 있으면 이번 소환 비용을 0으로 — 성공 시 1 소비.
+        int draftCost = _pendingOrbDraftCost;
+        bool useFreeSummon = FreeSummonCharges > 0 && draftCost > 0;
+        if (useFreeSummon)
+            draftCost = 0;
+        var draftAttempt = ExecuteOrbSummon(
+            choiceIndex, costOverride: draftCost, exactItemId: draftItemId);
+        if (!draftAttempt.Success)
+            return false;
+
+        if (useFreeSummon)
+        {
+            FreeSummonCharges = Math.Max(0, FreeSummonCharges - 1);
+            SendFreeSummonState();
+        }
+
+        _hasPendingOrbDraft = false;
+        // 자동 머지: 오브열 실험(#226)에서는 끈다 — 성장 = 열 길이, 압축은 그 언어와 싸운다.
+        if (Config.SWARM_ORB_MERGE_ENABLED)
+            foreach (var mergedItem in _inGameInventoryManager.AutoMergeSurvivorOrbs(
+                         CurrentMapSubId, PlayerId.Value, Random.Shared))
+                SendInGameInventoryUpdate(mergedItem);
+        return true;
     }
 
     /// <summary>상자 시간 등급 (#222 M3): 개전 앵커 경과로 드래프트 티어 결정. 게이트 전엔 T1.</summary>
@@ -152,6 +164,59 @@ public partial class GameClientSession
         return attempt;
     }
 
+    /// <summary>절단 실험 더미 조종 (#226 실험장, 개발용) — 게임서버 훅으로 위임.</summary>
+    private Task HandleDevDummyMove(C_TO_G_DEV_DUMMY_MOVE request)
+    {
+        if (PlayerId.HasValue && CurrentMapSubId > 0)
+            SwarmDummyMoveCallback?.Invoke(CurrentMapSubId, request.DirX, request.DirY);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>성장 카드 선택 (#226 단계 C) — 오퍼 상태를 가진 게임서버 훅으로 위임.</summary>
+    private Task HandleSwarmGrowthPick(C_TO_G_SWARM_GROWTH_PICK request)
+    {
+        if (PlayerId.HasValue && CurrentMapSubId > 0)
+            SwarmGrowthPickCallback?.Invoke(this, CurrentMapSubId, request.OfferId, request.CardIndex);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>성장 카드 오퍼 전송 (#226 단계 C) — 소환석 임계 도달 순간 게임서버가 부른다.</summary>
+    internal void SendSwarmGrowthOffer(
+        int offerId, int cost, int spawnItemId, int enhanceTargetTier, int armorCount)
+    {
+        if (!PlayerId.HasValue)
+            return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_GROWTH_OFFER, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_GROWTH_OFFER
+        {
+            OfferId = offerId,
+            Cost = cost,
+            SpawnItemId = spawnItemId,
+            EnhanceTargetTier = enhanceTargetTier,
+            ArmorCount = armorCount
+        }));
+        Send(packet);
+    }
+
+    /// <summary>성장 카드 선택 결과 전송 (#226 단계 C). 실패 시 클라는 오퍼를 유지한다.</summary>
+    internal void SendSwarmGrowthResult(int offerId, int cardIndex, bool success)
+    {
+        if (!PlayerId.HasValue)
+            return;
+
+        int stones = _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value).StoneCount;
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_GROWTH_RESULT, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_GROWTH_RESULT
+        {
+            OfferId = offerId,
+            CardIndex = cardIndex,
+            Success = success,
+            StoneCount = stones
+        }));
+        Send(packet);
+    }
+
     private Task HandleDestroyOrb(C_TO_G_DESTROY_ORB request)
     {
         if (!PlayerId.HasValue)
@@ -223,10 +288,25 @@ public partial class GameClientSession
             return;
 
         var state = _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value);
+        var stateInfo = ToNetworkState(state);
+        // NextCost = 성장 카드 최종 비용 (#226 C 잔여): N 기반 기본 + 오브 수 점수 할증,
+        // 상한 10 — 클라 Mana 카운터가 이 서버 값을 그대로 표시한다(로컬 계산 퇴역).
+        int orbCount = 0;
+        foreach (var item in _inGameInventoryManager
+                     .GetPlayerInventory(CurrentMapSubId, PlayerId.Value).GetAllItems())
+        {
+            if (item.Count <= 0) continue;
+            if (SurvivorOrbData.TryGetColorAndTier(item.ItemId, out _, out _) ||
+                SurvivorOrbData.TryGetRecoveryTier(item.ItemId, out _))
+                orbCount += item.Count;
+        }
+
+        stateInfo.NextCost = Config.GetSwarmGrowthCardCost(
+            _summonStoneManager.GetGrowthSuccessCount(CurrentMapSubId, PlayerId.Value), orbCount);
         using var packet = Packet.Create((int)Protocol.G_TO_C_SUMMON_STONE_STATE, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SUMMON_STONE_STATE
         {
-            State = ToNetworkState(state),
+            State = stateInfo,
             AwardedStones = Math.Max(0, awardedStones),
             AwardSourceX = awardSourceX,
             AwardSourceY = awardSourceY

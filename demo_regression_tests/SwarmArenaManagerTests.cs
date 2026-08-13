@@ -17,6 +17,73 @@ public class SwarmArenaManagerTests
         GameDataHelper.Initialize();
         // 비주얼 확인용 임시 편성(고블린만)을 끄고 정규 편성을 검증한다.
         SwarmArenaManager.GoblinOnlySpawnForVisualCheck = false;
+        // 지역 공급(#226 단계 B)을 끄고 캠프 정규 동작을 검증한다. 공급 테스트는 개별로 켠다.
+        SwarmArenaManager.RegionSupplyModeEnabled = false;
+    }
+
+    [Fact]
+    public void RegionSupply_StartGiftOnceThenZonePacksThenLateSilence()
+    {
+        // #226 단계 E 지역 공급: 시작 구역 일반 3마리 1회 → 15초부터 활성 구역
+        // min(생존 절반 올림, 시간대별 상한) 곳에 무리(일반 8 + 핵 1 = 9기, 잠든 채 등장)
+        // → 전역 상한 8인 36마리 → 마지막 60초에도 공급지 2곳 유지(신규 스폰 계속).
+        SwarmArenaManager.RegionSupplyModeEnabled = true;
+        try
+        {
+            DateTime now = StartUtc.AddSeconds(0.25);
+            var manager = CreateManager(() => now);
+            var startRoom = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates()[0];
+            Vector3f startCenter = AreaCenter(startRoom);
+
+            var giftTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
+            Assert.Equal(3, giftTick.SpawnedMonsters.Count);
+            Assert.All(giftTick.SpawnedMonsters, monster =>
+            {
+                Assert.Equal(SwarmArenaManager.MonsterMaxHealth, monster.MaxHealth);
+                Assert.Equal(1, monster.SummonStoneReward);
+                // 공급 몹은 잠든 채 등장한다 — 개전은 근접·피격·접촉의 몫.
+                Assert.Equal(0, monster.ChaseTargetPlayerId);
+            });
+
+            now = StartUtc.AddSeconds(5);
+            var repeatTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
+            Assert.Empty(repeatTick.SpawnedMonsters);
+
+            // 15초: 8인 생존 → 활성 구역 min(5, 4) = 4곳 개장(활성화 틱) → 다음 틱에 무리.
+            now = StartUtc.AddSeconds(15.5);
+            manager.Tick(217001, ManyParticipants(8, startCenter, startRoom), now);
+            now = StartUtc.AddSeconds(15.75);
+            var packTick = manager.Tick(217001, ManyParticipants(8, startCenter, startRoom), now);
+
+            // 시작 선물 3기 + 전역 상한 36 → 이번 틱 무리는 3팩(27기)까지만 선다.
+            // 선물이 살아있는 구역이 활성 구역으로 뽑혀도 그 구역은 쉬므로 결과는 같다.
+            Assert.Equal(27, packTick.SpawnedMonsters.Count);
+            int cores = packTick.SpawnedMonsters.Count(monster => monster.MaxHealth == 120);
+            Assert.Equal(3, cores);
+            Assert.All(
+                packTick.SpawnedMonsters.Where(monster => monster.MaxHealth == 120),
+                core => Assert.Equal(3, core.SummonStoneReward));
+            // 계측 (#226 E): 무리 스폰이 공급지·마릿수·석 보상으로 기록된다 (9기 = 11석).
+            Assert.Equal(3, packTick.SupplyPackSpawns.Count);
+            Assert.All(packTick.SupplyPackSpawns, spawn =>
+            {
+                Assert.Equal(9, spawn.MonsterCount);
+                Assert.Equal(11, spawn.StoneTotal);
+            });
+
+            // 4:00 이후에도 공급지 2곳은 유지된다 — 스폰 중단 규칙 퇴역 (#226 E).
+            now = StartUtc.AddSeconds(250);
+            var lateManager = new SwarmArenaManager(() => now);
+            Assert.True(lateManager.InitializeMatching(217002, 1, StartUtc));
+            lateManager.Tick(217002, ManyParticipants(8, startCenter, startRoom), now);
+            now = StartUtc.AddSeconds(250.5);
+            var lateTick = lateManager.Tick(217002, ManyParticipants(8, startCenter, startRoom), now);
+            Assert.Equal(18, lateTick.SpawnedMonsters.Count);
+        }
+        finally
+        {
+            SwarmArenaManager.RegionSupplyModeEnabled = false;
+        }
     }
 
     [Fact]
@@ -282,6 +349,14 @@ public class SwarmArenaManagerTests
         Vector3f position,
         AreaType area = AreaType.Ground) =>
         [new SpotArenaPlayerSpatial(1, area, position)];
+
+    private static IReadOnlyCollection<SpotArenaPlayerSpatial> ManyParticipants(
+        int count,
+        Vector3f position,
+        AreaType area = AreaType.Ground) =>
+        Enumerable.Range(1, count)
+            .Select(id => new SpotArenaPlayerSpatial(id, area, position))
+            .ToList();
 
     private static SwarmArenaManager CreateManager(Func<DateTime> clock)
     {

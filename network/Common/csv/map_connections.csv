@@ -2,10 +2,10 @@ map_id,from_area,to_area,connection_type,stair_side,forward_spawn_x,forward_spaw
 1,10,1,door,none,129,45,129,44
 1,12,1,door,none,152,45,152,44
 1,20,1,door,none,163,50,164,50
-1,9,1,door,none,114,51,113,51
+1,9,1,door,none,114,51,113,50
 1,13,2,door,none,163,64,164,64
-1,9,22,door,none,111,52,111,51
-1,22,2,door,none,113,65,112,65
+1,9,22,door,none,111,52,111,50
+1,22,2,door,none,114,65,112,65
 1,30,7,door,none,163,81,164,81
 1,32,7,door,none,128,82,128,83
 1,7,2,door,none,121,75,121,76
@@ -14,10 +14,10 @@ map_id,from_area,to_area,connection_type,stair_side,forward_spawn_x,forward_spaw
 1,7,2,door,none,155,75,155,76
 1,9,10,door,none,114,34,113,34
 1,12,20,door,none,164,38,163,38
-1,13,20,door,none,174,51,174,52
-1,13,30,door,none,175,76,175,75
+1,13,20,door,none,174,50,174,52
+1,13,30,door,none,175,76,175,74
 1,30,42,door,none,163,94,164,94
 1,32,40,door,none,113,95,114,95
-1,22,40,door,none,105,76,105,75
+1,22,40,door,none,105,77,105,75
 1,1,2,door,none,120,52,120,51
 1,1,2,door,none,154,52,154,51

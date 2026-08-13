@@ -109,6 +109,14 @@ namespace network.common.data.models
 
         // 잼 보유량 (#222 M3) — SB처럼 머리 위에 공개되는 점수. 같은 구역 관전자에게 동기화.
         [Key("jamCount")] public int JamCount { get; set; }
+
+        // 본체 오염 (#226 단계 B 가시화): 같은 구역 상대의 머리 위 게이지를 상시 구동한다 —
+        // "때리면 닳는 게 보인다". -1 = 미동기(표시 유지).
+        [Key("gauge")] public int BodyCorruption { get; set; } = -1;
+
+        // 방어 강화(내구 2+) 오브 순번 비트마스크 (#226): 은백 링 표시의 단일 출처.
+        // OrbItemIds 순서 기준 — 64번째 이후 순번은 표시 생략(실전 상한 밖 안전 절단).
+        [Key("armorM")] public long ArmorMask { get; set; }
     }
 
     /// <summary>잼(승점 재화) 지갑 상태 (#222 M3). 픽업·변동 시 소유자에게 전송.</summary>
@@ -123,6 +131,66 @@ namespace network.common.data.models
     public class G_TO_C_FREE_SUMMON_STATE : IMessagePackObject
     {
         [Key("charges")] public int Charges { get; set; }
+    }
+
+    /// <summary>절단 실험 더미 조종 (#226 실험장, 개발용). WASD 방향 — 서버가 더미를 스텝 이동.</summary>
+    [MessagePackObject]
+    public class C_TO_G_DEV_DUMMY_MOVE : IMessagePackObject
+    {
+        [Key("dirX")] public float DirX { get; set; }
+        [Key("dirY")] public float DirY { get; set; }
+    }
+
+    /// <summary>
+    ///     성장 카드 오퍼 (#226 단계 C). 소환석이 비용에 도달하면 서버가 내린다.
+    ///     SpawnItemId: 오브 생성 카드가 지급할 오브(색·티어 명시) — 픽 시 그대로 지급.
+    ///     EnhanceTargetTier: 0=공격 강화 무효(대상 없음), 1=T1→T2(등급 I), 2=T2→T3(등급 II).
+    ///     ArmorCount: 방어 강화가 부여할 외피 장수(0=무효) — 등급 = 장수.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_SWARM_GROWTH_OFFER : IMessagePackObject
+    {
+        [Key("offerId")] public int OfferId { get; set; }
+        [Key("cost")] public int Cost { get; set; }
+        [Key("spawnId")] public int SpawnItemId { get; set; }
+        [Key("enhTier")] public int EnhanceTargetTier { get; set; }
+        [Key("armorN")] public int ArmorCount { get; set; }
+    }
+
+    /// <summary>성장 카드 선택 (#226 단계 C). CardIndex: 0=증식, 1=강화, 2=철갑.</summary>
+    [MessagePackObject]
+    public class C_TO_G_SWARM_GROWTH_PICK : IMessagePackObject
+    {
+        [Key("offerId")] public int OfferId { get; set; }
+        [Key("cardIndex")] public int CardIndex { get; set; }
+    }
+
+    /// <summary>성장 카드 선택 결과 (#226 단계 C). 실패 시 오퍼는 유지된다.</summary>
+    [MessagePackObject]
+    public class G_TO_C_SWARM_GROWTH_RESULT : IMessagePackObject
+    {
+        [Key("offerId")] public int OfferId { get; set; }
+        [Key("cardIndex")] public int CardIndex { get; set; }
+        [Key("success")] public bool Success { get; set; }
+        [Key("stones")] public int StoneCount { get; set; }
+    }
+
+    /// <summary>
+    ///     스웜 링 연출 (#226). 같은 구역에 브로드캐스트 — 링 중심·반경.
+    ///     Kind: 0=포위 완성, 1=절단 파열, 2=파도 물폭탄 — 클라가 색·효과음을 분기한다.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_SWARM_ENCIRCLE_VFX : IMessagePackObject
+    {
+        [Key("ownerId")] public long OwnerPlayerId { get; set; }
+        [Key("centerX")] public float CenterX { get; set; }
+        [Key("centerY")] public float CenterY { get; set; }
+        [Key("radius")] public float Radius { get; set; }
+        [Key("kind")] public int Kind { get; set; }
+
+        // 절단(kind 1) 전용: 잘린 열의 주인과 절단 시작 순번 — 클라가 꼬리 섬광을 그린다.
+        [Key("victimId")] public long VictimPlayerId { get; set; }
+        [Key("ord")] public int FromOrdinal { get; set; }
     }
 
     /// <summary>

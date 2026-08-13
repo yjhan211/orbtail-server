@@ -279,7 +279,8 @@ public class GameEventLogManager
         int damage,
         bool isLethal,
         bool isBot,
-        DateTimeOffset occurredAt)
+        DateTimeOffset occurredAt,
+        string? damageSourceType = null)
     {
         var state = _survivorCombatStates.GetOrAdd(matchingId, _ => new SurvivorCombatState());
         int weaponTier = BattleItemCombatData.Get(weaponItemId)?.Tier ?? 0;
@@ -356,6 +357,7 @@ public class GameEventLogManager
                 entry.PreviousHitGapMilliseconds = previousHitGapMilliseconds;
                 entry.HitCount = hitCount;
                 entry.Outcome = isLethal ? "eliminated" : "hit";
+                entry.DamageSourceType = damageSourceType;
                 entry.OccurredAtUnixMs = entry.TimestampUnixMs;
             });
 
@@ -402,6 +404,123 @@ public class GameEventLogManager
                 entry.KillCount = killCount;
                 entry.IsFirstMilestone = isFirstElimination;
                 entry.Outcome = "eliminated";
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
+
+    /// <summary>
+    ///     꼬리 절단 (#226 F 계측): 절단자·피해자·절단 지점·파괴 수 — 절단 압력과 점수 이동의
+    ///     단일 출처. 요약의 절단 지표가 이 이벤트만 읽는다.
+    /// </summary>
+    public void LogSwarmTrailCut(
+        long matchingId,
+        long cutterPlayerId,
+        long ownerPlayerId,
+        int tailOrdinal,
+        int destroyedOrbCount,
+        string area)
+    {
+        Append(
+            matchingId,
+            "ORB_SUFFIX_CUT",
+            cutterPlayerId,
+            BotPlayerManager.IsBotPlayerId(cutterPlayerId),
+            $"{FormatPlayer(cutterPlayerId)} cut {FormatPlayer(ownerPlayerId)} tail at ordinal {tailOrdinal}; destroyed={destroyedOrbCount}.",
+            entry =>
+            {
+                entry.TargetPlayerId = ownerPlayerId;
+                entry.Area = area;
+                entry.TailOrdinal = tailOrdinal;
+                entry.DestroyedOrbCount = destroyedOrbCount;
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
+
+    /// <summary>
+    ///     크랙 생존 (#226 F 계측): 방어 강화 오브가 유효 교차를 흡수한 순간 —
+    ///     "방어 강화가 실제로 몇 번의 절단을 막았나"의 근거.
+    /// </summary>
+    public void LogSwarmOrbCrackAdvanced(
+        long matchingId,
+        long cutterPlayerId,
+        long ownerPlayerId,
+        int crackCount,
+        int requiredHits,
+        string area)
+    {
+        Append(
+            matchingId,
+            "ORB_CRACK_ADVANCED",
+            cutterPlayerId,
+            BotPlayerManager.IsBotPlayerId(cutterPlayerId),
+            $"{FormatPlayer(cutterPlayerId)} cracked {FormatPlayer(ownerPlayerId)} orb: {crackCount}/{requiredHits}.",
+            entry =>
+            {
+                entry.TargetPlayerId = ownerPlayerId;
+                entry.Area = area;
+                entry.CrackCount = crackCount;
+                entry.RequiredHits = requiredHits;
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
+
+    /// <summary>성장 오퍼 제시 (#226 F 계측) — 오퍼→선택 지연·미선택 오퍼율의 근거.</summary>
+    public void LogSwarmGrowthOffered(
+        long matchingId,
+        long playerId,
+        bool isBot,
+        int baseCost,
+        int scoreSurcharge,
+        int finalCost,
+        int orbCount)
+    {
+        Append(
+            matchingId,
+            "ORB_GROWTH_CARDS_OFFERED",
+            playerId,
+            isBot,
+            $"{FormatPlayer(playerId)} offered growth cards; cost={finalCost} (base {baseCost} + surcharge {scoreSurcharge}), orbs={orbCount}.",
+            entry =>
+            {
+                entry.GrowthBaseCost = baseCost;
+                entry.GrowthScoreSurcharge = scoreSurcharge;
+                entry.GrowthFinalCost = finalCost;
+                entry.OrbCountBefore = orbCount;
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
+
+    /// <summary>
+    ///     성장 카드 선택 성공 (#226 F 계측): 역할·등급·비용 분해·선택 시점 상태를 남긴다 —
+    ///     선택 간격·비용 곡선·역할 분포 검증의 단일 출처. 실패한 픽은 남기지 않는다.
+    /// </summary>
+    public void LogSwarmGrowthSelected(
+        long matchingId,
+        long playerId,
+        bool isBot,
+        string cardRole,
+        int cardGrade,
+        int baseCost,
+        int scoreSurcharge,
+        int finalCost,
+        int successCountBefore,
+        int orbCountBefore)
+    {
+        Append(
+            matchingId,
+            "ORB_GROWTH_CARD_SELECTED",
+            playerId,
+            isBot,
+            $"{FormatPlayer(playerId)} picked {cardRole} grade {cardGrade}; cost={finalCost} (base {baseCost} + surcharge {scoreSurcharge}), n={successCountBefore}, orbs={orbCountBefore}.",
+            entry =>
+            {
+                entry.CardRole = cardRole;
+                entry.CardGrade = cardGrade;
+                entry.GrowthBaseCost = baseCost;
+                entry.GrowthScoreSurcharge = scoreSurcharge;
+                entry.GrowthFinalCost = finalCost;
+                entry.GrowthSuccessCountBefore = successCountBefore;
+                entry.OrbCountBefore = orbCountBefore;
                 entry.OccurredAtUnixMs = entry.TimestampUnixMs;
             });
     }
@@ -2163,6 +2282,19 @@ public class GameEventEntry
     public string? EndReason { get; set; }
     public string? TieBreakCriterion { get; set; }
     public List<SurvivorFinalPlayerStats>? FinalPlayerStats { get; set; }
+
+    // #226 F 계측 — 절단·크랙·성장 카드 전용 필드
+    public int? TailOrdinal { get; set; }
+    public int? DestroyedOrbCount { get; set; }
+    public int? CrackCount { get; set; }
+    public int? RequiredHits { get; set; }
+    public string? CardRole { get; set; }
+    public int? CardGrade { get; set; }
+    public int? GrowthBaseCost { get; set; }
+    public int? GrowthScoreSurcharge { get; set; }
+    public int? GrowthFinalCost { get; set; }
+    public int? GrowthSuccessCountBefore { get; set; }
+    public int? OrbCountBefore { get; set; }
 
     public long? StatementId { get; set; }
     public int? RoundId { get; set; }

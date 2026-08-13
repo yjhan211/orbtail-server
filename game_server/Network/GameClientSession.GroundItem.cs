@@ -273,27 +273,6 @@ public partial class GameClientSession
         Send(packet);
     }
 
-    /// <summary>
-    ///     사망 잼 낙수 (#222 M3): 지갑 전량을 그 자리에 흩뿌린다 — SB 사망 드랍.
-    ///     한 패킷 초과(BUFFER SIZE) 방지를 위해 8개 단위로 나눠 스폰·브로드캐스트한다.
-    /// </summary>
-    private void ScatterJamOnElimination(int jamCount, AreaType area, float x, float y)
-    {
-        if (jamCount <= 0 || area == AreaType.None)
-            return;
-
-        const int chunkSize = 8;
-        for (int offset = 0; offset < jamCount; offset += chunkSize)
-        {
-            var jamIds = Enumerable
-                .Repeat(Config.JAM_GROUND_ITEM_ID, Math.Min(chunkSize, jamCount - offset))
-                .ToList();
-            var spawned = _groundItemManager.SpawnItems(
-                CurrentMapSubId, area, x, y, jamIds, mapId: CurrentMapId);
-            BroadcastGroundItemsSpawned(area, spawned);
-        }
-    }
-
     private Task HandleDropGroundItem(C_TO_G_DROP_GROUND_ITEM msg)
     {
         // The six board slots are deliberate route pressure. Free floor drops would bypass that pressure.
@@ -305,13 +284,6 @@ public partial class GameClientSession
         if (!PlayerId.HasValue || _lastValidatedPosition == null || CurrentArea == AreaType.None) return;
 
         var position = _lastValidatedPosition;
-        // 잼 낙수는 오브 보유 여부와 무관하게 먼저 처리한다 — 빈손 사망도 잼은 떨군다.
-        if (JamCount > 0)
-        {
-            ScatterJamOnElimination(JamCount, CurrentArea, position.X, position.Y);
-            ResetJam(notify: true);
-        }
-
         var drop = EliminationInventoryDropper.DropAll(
             _inGameInventoryManager,
             _groundItemManager,
@@ -355,12 +327,6 @@ public partial class GameClientSession
         if (bot == null || bot.CurrentArea == AreaType.None)
             return;
 
-        if (bot.JamCount > 0)
-        {
-            ScatterJamOnElimination(bot.JamCount, bot.CurrentArea, bot.Position.X, bot.Position.Y);
-            bot.JamCount = 0;
-        }
-
         var drop = EliminationInventoryDropper.DropAll(
             _inGameInventoryManager,
             _groundItemManager,
@@ -392,13 +358,26 @@ public partial class GameClientSession
         BroadcastGroundItemsSpawned(bot.CurrentArea, drop.SpawnedItems);
     }
 
+    // 스냅샷 청크 크기: 패킷 버퍼(2048) 안에 안전히 들어가는 마릿수.
+    // 20개도 초과했다(실측 2523바이트 — 개당 ~125바이트) — 10개면 여유 포함 절반 이하.
+    private const int GroundItemSnapshotChunkSize = 10;
+
     private void SendGroundItemSnapshot(AreaType area)
     {
         if (CurrentMapSubId <= 0 || area == AreaType.None) return;
         var items = _groundItemManager.GetSnapshot(CurrentMapSubId, area);
         int remaining = _areaItemStockManager.GetRemainingCount(CurrentMapSubId, (int)area);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, remaining, items);
-        Send(packet);
+        // 버퍼 초과 방지 (#226): 웨이브 모드로 바닥 아이템이 수백 개까지 쌓여 단일 패킷이
+        // 2048을 넘었다(실측 9963). 첫 청크는 SNAPSHOT(클라: 구역 교체), 이후 청크는
+        // SPAWN(클라: 누적) — 기존 수신 의미를 그대로 이용해 프로토콜 변경 없이 나눈다.
+        for (int index = 0; index < items.Count || index == 0; index += GroundItemSnapshotChunkSize)
+        {
+            var chunk = items.Skip(index).Take(GroundItemSnapshotChunkSize).ToList();
+            using var packet = index == 0
+                ? PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, remaining, chunk)
+                : PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, chunk);
+            Send(packet);
+        }
     }
 
     private void SendSurvivorAreaStockStateSnapshot()

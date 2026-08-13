@@ -151,9 +151,10 @@ public sealed class MatchSummaryFileStore
                 stats?.TotalDamageDealt ?? 0,
                 stats?.TotalRecovery ?? 0,
                 elimination?.Description,
-                events.Count(entry => entry.PlayerId == playerId && entry.Type == "ORB_SUMMON_SUCCEEDED"),
-                events.Count(entry => entry.PlayerId == playerId && entry.Type == "SURVIVOR_ORB_BOARD_STATE" &&
-                                      IsOrbMergeOutcome(entry.Outcome)),
+                events.Count(entry => entry.PlayerId == playerId && entry.Type == "ORB_GROWTH_CARD_SELECTED"),
+                events.Count(entry => entry.PlayerId == playerId && entry.Type == "ORB_SUFFIX_CUT"),
+                events.Where(entry => entry.TargetPlayerId == playerId && entry.Type == "ORB_SUFFIX_CUT")
+                    .Sum(entry => entry.DestroyedOrbCount ?? 0),
                 stoneEvents.Sum(entry => entry.SummonStoneDelta ?? 0))
             {
                 RoomSummonStonesEarned = stoneEvents.Where(entry => !IsCorridorArea(entry.Area))
@@ -215,6 +216,27 @@ public sealed class MatchSummaryFileStore
 
         var stoneEvents = events.Where(entry => entry.Type == "SUMMON_STONE_AWARDED").ToList();
         var afterimageKillEvents = events.Where(entry => entry.Type == "AFTERIMAGE_KILLED").ToList();
+        // #226 F 계측: 절단·크랙·성장·물폭탄 — 오브 점수전의 핵심 루프 지표.
+        var trailCutEvents = events.Where(entry => entry.Type == "ORB_SUFFIX_CUT").ToList();
+        var crackEvents = events.Where(entry => entry.Type == "ORB_CRACK_ADVANCED").ToList();
+        var growthEvents = events.Where(entry => entry.Type == "ORB_GROWTH_CARD_SELECTED").ToList();
+        int waveBombHitCount = events.Count(entry => entry.Type == "SURVIVOR_HIT" &&
+            string.Equals(entry.DamageSourceType, "wave_bomb", StringComparison.OrdinalIgnoreCase));
+        var growthSelectedCounts = growthEvents
+            .GroupBy(entry => string.IsNullOrWhiteSpace(entry.CardRole) ? "unknown" : entry.CardRole!,
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+        // 성장 선택 간격 중앙값(초): 참가자별 연속 선택 사이 간격의 전체 중앙값 — 목표 25~35초 검증.
+        var growthIntervalSeconds = growthEvents
+            .GroupBy(entry => entry.PlayerId)
+            .SelectMany(group => group.OrderBy(entry => entry.TimestampUnixMs)
+                .Zip(group.OrderBy(entry => entry.TimestampUnixMs).Skip(1),
+                    (previous, next) => (next.TimestampUnixMs - previous.TimestampUnixMs) / 1000d))
+            .OrderBy(interval => interval)
+            .ToList();
+        double? growthIntervalMedian = growthIntervalSeconds.Count == 0
+            ? null
+            : growthIntervalSeconds[growthIntervalSeconds.Count / 2];
         var reinforcementReleaseEvents = events
             .Where(entry => entry.Type == "SURVIVOR_REINFORCEMENT_RELEASED").ToList();
         var densityEvents = events
@@ -295,11 +317,17 @@ public sealed class MatchSummaryFileStore
             MatchDurationSeconds = Math.Max(0d, (endedAtUtc - startedAtUtc).TotalSeconds),
             FirstTier2ElapsedMilliseconds = GetFirstElapsedMilliseconds(events, "SURVIVOR_FIRST_T2", startedAtUtc),
             FirstTier3ElapsedMilliseconds = GetFirstElapsedMilliseconds(events, "SURVIVOR_FIRST_T3", startedAtUtc),
-            FirstBoardFullElapsedMilliseconds = GetFirstElapsedMilliseconds(events, "SURVIVOR_ORB_BOARD_FULL", startedAtUtc),
             FirstEncounterElapsedMilliseconds = GetFirstElapsedMilliseconds(events, "SURVIVOR_ENCOUNTER_START", startedAtUtc),
             FirstEliminationElapsedMilliseconds = GetFirstElapsedMilliseconds(events, "SURVIVOR_FIRST_ELIMINATION", startedAtUtc),
             PvpEliminationCount = eliminationCounts["pvp"],
             EliminationCounts = eliminationCounts,
+            TrailCutCount = trailCutEvents.Count,
+            TrailCutOrbsDestroyed = trailCutEvents.Sum(entry => entry.DestroyedOrbCount ?? 0),
+            CrackAdvancedCount = crackEvents.Count,
+            WaveBombHitCount = waveBombHitCount,
+            GrowthSelectedCount = growthEvents.Count,
+            GrowthSelectedCounts = growthSelectedCounts,
+            GrowthSelectIntervalMedianSeconds = growthIntervalMedian,
             SummonStoneSources = stoneSources,
             CoreKillCount = afterimageKillEvents.Count(entry =>
                 string.Equals(entry.Outcome, "core", StringComparison.OrdinalIgnoreCase)),
@@ -607,14 +635,6 @@ public sealed class MatchSummaryFileStore
         }
     }
 
-    /// <summary>
-    ///     사람은 merge, 봇은 bot_merge로 보드 변경 사유를 남긴다.
-    ///     merge만 세면 봇 머지가 항상 0으로 집계된다.
-    /// </summary>
-    private static bool IsOrbMergeOutcome(string? outcome) =>
-        string.Equals(outcome, "merge", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(outcome, "bot_merge", StringComparison.OrdinalIgnoreCase);
-
     private void PruneOldFiles()
     {
         var files = new DirectoryInfo(_directory).EnumerateFiles("match-*.json")
@@ -671,8 +691,9 @@ public sealed record MatchSummaryParticipant(
     int TotalDamageDealt,
     int TotalRecovery,
     string? EliminationReason,
-    int SummonCount,
-    int MergeCount,
+    int GrowthSelectedCount,
+    int TrailCutsDealt,
+    int OrbsLostToCut,
     int SummonStonesEarned)
 {
     public int RoomSummonStonesEarned { get; init; }
@@ -696,12 +717,19 @@ public sealed record SurvivorMatchMetrics
     public double MatchDurationSeconds { get; init; }
     public long? FirstTier2ElapsedMilliseconds { get; init; }
     public long? FirstTier3ElapsedMilliseconds { get; init; }
-    public long? FirstBoardFullElapsedMilliseconds { get; init; }
     public long? FirstEncounterElapsedMilliseconds { get; init; }
     public long? FirstEliminationElapsedMilliseconds { get; init; }
     public int PvpEliminationCount { get; init; }
     public IReadOnlyDictionary<string, int> EliminationCounts { get; init; } =
         new Dictionary<string, int>();
+    public int TrailCutCount { get; init; }
+    public int TrailCutOrbsDestroyed { get; init; }
+    public int CrackAdvancedCount { get; init; }
+    public int WaveBombHitCount { get; init; }
+    public int GrowthSelectedCount { get; init; }
+    public IReadOnlyDictionary<string, int> GrowthSelectedCounts { get; init; } =
+        new Dictionary<string, int>();
+    public double? GrowthSelectIntervalMedianSeconds { get; init; }
     public IReadOnlyDictionary<string, int> SummonStoneSources { get; init; } =
         new Dictionary<string, int>();
     public int CoreKillCount { get; init; }
