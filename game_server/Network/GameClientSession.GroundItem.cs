@@ -273,27 +273,6 @@ public partial class GameClientSession
         Send(packet);
     }
 
-    /// <summary>
-    ///     사망 잼 낙수 (#222 M3): 지갑 전량을 그 자리에 흩뿌린다 — SB 사망 드랍.
-    ///     한 패킷 초과(BUFFER SIZE) 방지를 위해 8개 단위로 나눠 스폰·브로드캐스트한다.
-    /// </summary>
-    private void ScatterJamOnElimination(int jamCount, AreaType area, float x, float y)
-    {
-        if (jamCount <= 0 || area == AreaType.None)
-            return;
-
-        const int chunkSize = 8;
-        for (int offset = 0; offset < jamCount; offset += chunkSize)
-        {
-            var jamIds = Enumerable
-                .Repeat(Config.JAM_GROUND_ITEM_ID, Math.Min(chunkSize, jamCount - offset))
-                .ToList();
-            var spawned = _groundItemManager.SpawnItems(
-                CurrentMapSubId, area, x, y, jamIds, mapId: CurrentMapId);
-            BroadcastGroundItemsSpawned(area, spawned);
-        }
-    }
-
     private Task HandleDropGroundItem(C_TO_G_DROP_GROUND_ITEM msg)
     {
         // The six board slots are deliberate route pressure. Free floor drops would bypass that pressure.
@@ -305,13 +284,6 @@ public partial class GameClientSession
         if (!PlayerId.HasValue || _lastValidatedPosition == null || CurrentArea == AreaType.None) return;
 
         var position = _lastValidatedPosition;
-        // 잼 낙수는 오브 보유 여부와 무관하게 먼저 처리한다 — 빈손 사망도 잼은 떨군다.
-        if (JamCount > 0)
-        {
-            ScatterJamOnElimination(JamCount, CurrentArea, position.X, position.Y);
-            ResetJam(notify: true);
-        }
-
         var drop = EliminationInventoryDropper.DropAll(
             _inGameInventoryManager,
             _groundItemManager,
@@ -354,12 +326,6 @@ public partial class GameClientSession
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
         if (bot == null || bot.CurrentArea == AreaType.None)
             return;
-
-        if (bot.JamCount > 0)
-        {
-            ScatterJamOnElimination(bot.JamCount, bot.CurrentArea, bot.Position.X, bot.Position.Y);
-            bot.JamCount = 0;
-        }
 
         var drop = EliminationInventoryDropper.DropAll(
             _inGameInventoryManager,

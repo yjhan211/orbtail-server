@@ -95,27 +95,26 @@ public sealed class SwarmArenaManager
     public const float BowlerSplashRadius = 1.5f;
 
     public static (int MaxHp, int OrbDamage, float AttackRange, float AttackCooldownSeconds, int StoneReward,
-        int JamReward, int HeartReward, int BootsReward, int KeyReward)
+        int HeartReward, int BootsReward, int KeyReward)
         GetKindStats(SwarmMonsterKind kind) => kind switch
         {
             // 피통 = 시작 T1 오브(발당 12) 발수 정렬: 다트 2방 · 볼러 4방 (#219 초반 템포)
-            // 잼 (#222 M3): SB 코인/잼 이원 — 해골은 코인 몹(잼 0), 위험한 몹일수록 잼이 나온다.
             // 탈주 120 (#222 연사화 후 상향): 스쿼드 DPS ~50에 60은 1초 컷 — 미니보스 체급 복원.
             // 피통은 클라 종 식별자이기도 하다 — EmotionAfterimageMonsterDisplay 스위치와 동기 필수.
             // 하트 (#222 M4): 고위험 몹(탈주·볼러)만 확정 1 — 즉시 회복 픽업의 유일 공급처.
             // 부츠·열쇠 (#222 M4): 부츠 = 다트(저보상 몹의 아이덴티티), 열쇠 = 탈주(미니보스 확정 드롭).
-            SwarmMonsterKind.DartGoblin => (18, 2, 5f, 2f, 1, 1, 0, 1, 0),
-            SwarmMonsterKind.RunawayGoblin => (120, 5, ContactRange, 1.2f, 4, 2, 1, 0, 1),
-            SwarmMonsterKind.Bowler => (48, 2, 4.5f, 2.5f, 4, 2, 1, 0, 0),
+            SwarmMonsterKind.DartGoblin => (18, 2, 5f, 2f, 1, 0, 1, 0),
+            SwarmMonsterKind.RunawayGoblin => (120, 5, ContactRange, 1.2f, 4, 1, 0, 1),
+            SwarmMonsterKind.Bowler => (48, 2, 4.5f, 2.5f, 4, 1, 0, 0),
             // 보스 (#223, SB 드롭 = 코인 11 + 젬 7): 피통은 클라 종 식별자 — 기존 값과 겹치면 안 된다.
             // 전원 제자리 고정 포대 — 파도 T3급 사거리(Config 공유 = 클라 범위 링)로 투사체를 던진다.
             // 골렘 = 광역 강타(볼러 스플래시 공유), 트리 자이언트 = 열쇠 확정 드롭.
             // 데미지는 참가자 피해 절반 배율(0.5) 통과 후가 실효 — 골렘 12·드래곤 6·트리 9.
             // T1 오브(24)가 골렘 두 방에 깨진다: 링 안 눌러앉기가 실제로 비싸야 위협이다 (#223).
-            SwarmMonsterKind.Golem => (240, 24, Config.SWARM_BOSS_ATTACK_RANGE, 2.8f, 11, 7, 0, 0, 0),
-            SwarmMonsterKind.BabyDragon => (200, 12, Config.SWARM_BOSS_ATTACK_RANGE, 2f, 11, 7, 0, 0, 0),
-            SwarmMonsterKind.TreeGiant => (260, 18, Config.SWARM_BOSS_ATTACK_RANGE, 2.2f, 8, 5, 0, 0, 1),
-            _ => (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1, 0, 0, 0, 0)
+            SwarmMonsterKind.Golem => (240, 24, Config.SWARM_BOSS_ATTACK_RANGE, 2.8f, 11, 0, 0, 0),
+            SwarmMonsterKind.BabyDragon => (200, 12, Config.SWARM_BOSS_ATTACK_RANGE, 2f, 11, 0, 0, 0),
+            SwarmMonsterKind.TreeGiant => (260, 18, Config.SWARM_BOSS_ATTACK_RANGE, 2.2f, 8, 0, 0, 1),
+            _ => (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1, 0, 0, 0)
         };
 
     /// <summary>보스 판별 (#223): 고정 포대·리스폰 없음·타원 판정 공유의 스위치.</summary>
@@ -480,7 +479,7 @@ public sealed class SwarmArenaManager
             }
 
             return new SwarmArenaDamageResult(
-                true, killed, monster.MonsterId, monster.ToMonsterRuntimeInfo(), monster.JamReward,
+                true, killed, monster.MonsterId, monster.ToMonsterRuntimeInfo(),
                 monster.HeartReward, monster.BootsReward, monster.KeyReward);
         }
     }
@@ -916,7 +915,6 @@ public sealed class SwarmArenaManager
                 NextContactAtUtc = now,
                 ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
                 SummonStoneReward = stoneReward,
-                JamReward = stats.JamReward,
                 HeartReward = stats.HeartReward,
                 BootsReward = stats.BootsReward,
                 KeyReward = stats.KeyReward,
@@ -1205,7 +1203,6 @@ public sealed class SwarmArenaManager
                 NextContactAtUtc = now,
                 ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
                 SummonStoneReward = stoneReward,
-                JamReward = stats.JamReward,
                 HeartReward = stats.HeartReward,
                 BootsReward = stats.BootsReward,
                 KeyReward = stats.KeyReward,
@@ -1640,7 +1637,6 @@ public sealed class SwarmArenaManager
         public DateTime DiedAtUtc { get; set; }
         public float ScatterAngle { get; init; }
         public int SummonStoneReward { get; init; }
-        public int JamReward { get; init; }
         public int HeartReward { get; init; }
         public int BootsReward { get; init; }
         public int KeyReward { get; init; }
@@ -1714,7 +1710,6 @@ public readonly record struct SwarmArenaDamageResult(
     bool Killed,
     int MonsterId,
     MonsterRuntimeInfo? MonsterState,
-    int JamReward = 0,
     int HeartReward = 0,
     int BootsReward = 0,
     int KeyReward = 0)

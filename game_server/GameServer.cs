@@ -752,27 +752,6 @@ public partial class GameServer(
         if (bot == null || bot.CurrentArea == AreaType.None)
             return;
 
-        // 사망 잼 낙수 (#222 M3) — 오브 유무와 무관하게 지갑 전량을 떨군다. 8개 단위 청크 전송.
-        if (bot.JamCount > 0)
-        {
-            const int jamChunkSize = 8;
-            int jamRemaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)bot.CurrentArea);
-            for (int offset = 0; offset < bot.JamCount; offset += jamChunkSize)
-            {
-                var jamIds = Enumerable
-                    .Repeat(Config.JAM_GROUND_ITEM_ID, Math.Min(jamChunkSize, bot.JamCount - offset))
-                    .ToList();
-                var jamSpawned = _groundItemManager.SpawnItems(
-                    matchingId, bot.CurrentArea, bot.Position.X, bot.Position.Y, jamIds,
-                    mapId: _botPlayerManager.GetMatchingMapId(matchingId));
-                using var jamPacket = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
-                    (int)bot.CurrentArea, jamRemaining, jamSpawned.ToList());
-                foreach (var session in matchingSessions.Where(session => session.CurrentArea == bot.CurrentArea))
-                    session.Send(jamPacket);
-            }
-            bot.JamCount = 0;
-        }
-
         var drop = EliminationInventoryDropper.DropAll(
             _inGameInventoryManager,
             _groundItemManager,

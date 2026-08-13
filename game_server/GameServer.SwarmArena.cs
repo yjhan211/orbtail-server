@@ -99,25 +99,9 @@ public partial class GameServer
     // 잼 리더보드 (#222 M3): 마지막 브로드캐스트 시그니처 — 변동이 없으면 재전송하지 않는다.
     private readonly Dictionary<long, string> _swarmJamRankingsSignature = new();
 
-    // 잼 헌트 만료 판정 (#222 M3-2): 중복 정산 가드 + 게이트 없는 매치(봇 전용)의 대체 앵커.
+    // 만료 판정 (#222 M3-2): 중복 정산 가드 + 게이트 없는 매치(봇 전용)의 대체 앵커.
     private readonly HashSet<long> _swarmTimeoutEndedMatchings = new();
     private readonly Dictionary<long, DateTime> _swarmMatchFallbackAnchorUtc = new();
-
-    // 젬 광산 (#222 M3, SB 원작 각본): 개전 150초 개장(살포 시작) → 225초 폭발(대량 낙수 후 종료).
-    // SB는 잔여 0:57 가동 → 0:15 폭발("최대 젬 공급원, 차지하는 쪽이 이긴다") — 4분 매치로 환산.
-    // 클라 상주 이펙트·안내(GemMineDirector)와 같은 시각·지점 상수를 쓴다.
-    private const float GemMineOpenSeconds = 150f;
-    private const float GemMineExplodeSeconds = 225f;
-    private const float GemMineX = 39.34f;
-    private const float GemMineY = 49.97f;
-    private const int GemMineOpenBurstJam = 6;
-    private const int GemMineScatterJam = 2;
-    private const int GemMineExplosionJam = 20;
-    private const double GemMineScatterIntervalSeconds = 6d;
-
-    private readonly HashSet<long> _swarmGemMineOpenedMatchings = new();
-    private readonly HashSet<long> _swarmGemMineExplodedMatchings = new();
-    private readonly Dictionary<long, DateTime> _swarmGemMineNextScatterUtc = new();
 
     private void ProcessPendingSwarmMonsterHits(
         long matchingId, DateTime nowUtc, List<GameClientSession> sessions)
@@ -134,7 +118,7 @@ public partial class GameServer
             // 비행 중 몬스터가 이미 죽었으면 조용히 소멸 — 이중 정산 없음.
             if (damageResult.Applied && damageResult.Killed && damageResult.MonsterState != null)
                 SpawnSpotArenaSummonStone(
-                    matchingId, damageResult.MonsterState, sessions, damageResult.JamReward,
+                    matchingId, damageResult.MonsterState, sessions,
                     damageResult.HeartReward, damageResult.BootsReward, damageResult.KeyReward);
         }
     }
@@ -298,7 +282,6 @@ public partial class GameServer
         var actors = BuildSwarmArenaCombatActors(matchingId, aliveSessions, aliveBots, nowUtc);
         ProcessSurvivorOrbRecovery(matchingId, actors, aliveSessions, aliveBots, nowUtc);
         BroadcastSurvivorOrbVisualStates(matchingId, actors, sessions);
-        ProcessSwarmGemMine(matchingId, nowUtc, sessions);
         BroadcastSwarmOrbRankings(matchingId, sessions, bots);
         // 성장 카드 (#226 단계 C): 소환석이 비용에 닿는 즉시 3택 오퍼 — 상자 트리거 퇴역.
         ProcessSwarmGrowthOffers(matchingId, nowUtc, aliveSessions, aliveBots);
@@ -986,21 +969,6 @@ public partial class GameServer
                 weakerRival.Value.Position);
         }
 
-        // 0.7) 잼 회수 (#222): 승점이 바닥에 보이면 줍는 게 항상 이득 — 같은 구역 최근접 잼으로.
-        //      반응 지연(2.5초)을 지난 잼만 노린다: 사람 선점권 유지.
-        if (TryFindNearestSwarmJamItem(matchingId, bot, out Vector3f jamPosition))
-        {
-            Cell jamCell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, jamPosition);
-            if (GameMapData.IsMoveablePosition(MapId.School, jamCell))
-            {
-                return new SpotArenaBotDirective(
-                    SpotArenaBotMode.Escort,
-                    bot.CurrentArea,
-                    jamCell,
-                    BotPlayerManager.CellToWorldPosition(MapId.School, jamCell));
-            }
-        }
-
         // 1) 지갑이 차면 줍기보다 개봉이 먼저 — 열린 구역 중 가장 가까운 스팟으로 순례한다.
         //    줍기가 이 단계를 선점하면 봇이 수십 석을 들고도 개봉을 영영 미룬다 (매치 2221 계측).
         //    폐쇄 필터는 스팟 탐색 안에서 처리한다 — 최근접이 폐쇄라고 순례가 멈추면 안 된다.
@@ -1506,10 +1474,13 @@ public partial class GameServer
         // 꼬리 상실 직후 면역 (단계 A) — 한 돌파로 남은 열까지 연쇄로 잃지 않는다.
         _swarmCutVictimImmuneUntilUtc[(matchingId, bestOwnerId)] =
             nowUtc.AddSeconds(SwarmTrailCutVictimImmunitySeconds);
+        // 방어 강화 오브 낙수 보너스 (#226 D): 내구 투자분은 +1석으로 정산 — 제거 전에 기억한다.
+        var armoredUids = new HashSet<long>();
         foreach (var destroyedItem in destroyedItems)
         {
             _swarmOrbCutCracks.Remove((matchingId, bestOwnerId, destroyedItem.ItemUid));
-            _swarmOrbDurabilityBonus.Remove((matchingId, bestOwnerId, destroyedItem.ItemUid));
+            if (_swarmOrbDurabilityBonus.Remove((matchingId, bestOwnerId, destroyedItem.ItemUid)))
+                armoredUids.Add(destroyedItem.ItemUid);
         }
         var ownerSession = aliveSessions.FirstOrDefault(session => session.PlayerId == bestOwnerId);
         var ownerChain = chains[bestOwnerId];
@@ -1523,7 +1494,8 @@ public partial class GameServer
                 : bestOrbPosition;
             ScatterSwarmOrbBreakStones(
                 matchingId, destroyedItem.ItemId, bestArea,
-                dropPosition.X, dropPosition.Y, allSessions);
+                dropPosition.X, dropPosition.Y, allSessions,
+                hadDurabilityBonus: armoredUids.Contains(destroyedItem.ItemUid));
         }
 
         // 절단 파열 플래시: 링 + 잘린 꼬리 오브 섬광 — "어디부터 끊겼다"가 화면에서 읽히게.
@@ -2230,35 +2202,6 @@ public partial class GameServer
         return t >= 0f && t <= 1f && u >= 0f && u <= 1f;
     }
 
-    // 잼 회수 탐색 반경 — 같은 구역에서만.
-    private const float SwarmBotJamSeekRadius = 16f;
-
-    /// <summary>같은 구역의 반응 지연 지난 최근접 잼 — 봇 잼 회수 지시의 목적지.</summary>
-    private bool TryFindNearestSwarmJamItem(long matchingId, BotPlayerState bot, out Vector3f position)
-    {
-        position = null;
-        float bestDistanceSquared = SwarmBotJamSeekRadius * SwarmBotJamSeekRadius;
-        foreach (var item in _groundItemManager.GetSnapshot(matchingId, bot.CurrentArea))
-        {
-            if (item.ItemId != Config.JAM_GROUND_ITEM_ID)
-                continue;
-            if (_groundItemManager.IsYoungerThan(
-                    matchingId, item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
-                continue;
-
-            float dx = item.PositionX - bot.Position.X;
-            float dy = item.PositionY - bot.Position.Y;
-            float distanceSquared = dx * dx + dy * dy;
-            if (distanceSquared >= bestDistanceSquared)
-                continue;
-
-            bestDistanceSquared = distanceSquared;
-            position = new Vector3f(item.PositionX, item.PositionY, 0f);
-        }
-
-        return position != null;
-    }
-
     /// <summary>참가자(사람·봇) 위치 조회 — 피격 반응의 도주 기준점.</summary>
     private bool TryGetSwarmParticipantPosition(long matchingId, long playerId, out Vector3f position)
     {
@@ -2543,7 +2486,8 @@ public partial class GameServer
             if (botHit.DestroyedItem != null)
                 ScatterSwarmOrbBreakStones(
                     matchingId, botHit.DestroyedItem.ItemId, bot.CurrentArea,
-                    bot.Position.X, bot.Position.Y, allSessions);
+                    bot.Position.X, bot.Position.Y, allSessions,
+                    hadDurabilityBonus: botHit.HadDurabilityBonus);
             return;
         }
 
@@ -2593,7 +2537,8 @@ public partial class GameServer
             session.SendInGameInventoryUpdate(hit.DestroyedItem);
             ScatterSwarmOrbBreakStones(
                 matchingId, hit.DestroyedItem.ItemId, session.CurrentArea,
-                session.LastValidatedPosition.X, session.LastValidatedPosition.Y, allSessions);
+                session.LastValidatedPosition.X, session.LastValidatedPosition.Y, allSessions,
+                hadDurabilityBonus: hit.HadDurabilityBonus);
         }
 
         // 버스트(마지막 유닛 파괴)는 즉사가 아니다 (#219 SB 이탈, 2026-08-08) —
@@ -2727,81 +2672,6 @@ public partial class GameServer
         EndBotOnlyMatchIfSettled(matchingId, winnerId);
     }
 
-    /// <summary>
-    ///     젬 광산 살포 (#222 M3): 개막 버스트 후 주기적으로 잼을 광산 지점에 흩뿌린다.
-    ///     매치 만료(4:00)는 잼 헌트 타임아웃이 맡으므로 여기서는 살포만 반복한다.
-    /// </summary>
-    private void ProcessSwarmGemMine(long matchingId, DateTime nowUtc, List<GameClientSession> sessions)
-    {
-        var startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId);
-        if (startedAtUtc == null &&
-            _swarmMatchFallbackAnchorUtc.TryGetValue(matchingId, out var fallbackAnchor))
-            startedAtUtc = fallbackAnchor;
-        if (startedAtUtc == null ||
-            (nowUtc - startedAtUtc.Value).TotalSeconds < GemMineOpenSeconds)
-            return;
-
-        if (_swarmGemMineOpenedMatchings.Add(matchingId))
-        {
-            _swarmGemMineNextScatterUtc[matchingId] = nowUtc.AddSeconds(GemMineScatterIntervalSeconds);
-            ScatterGemMineJam(matchingId, GemMineOpenBurstJam, sessions);
-            logger.LogInformation(
-                "Gem mine opened: MatchingId={MatchingId}, Position=({X},{Y})",
-                matchingId, GemMineX, GemMineY);
-            return;
-        }
-
-        // 폭발 피날레 (SB 0:15 문법): 대량 낙수 한 방으로 종반 쟁탈전을 만들고 살포를 끝낸다.
-        if (_swarmGemMineExplodedMatchings.Contains(matchingId))
-            return;
-        if ((nowUtc - startedAtUtc.Value).TotalSeconds >= GemMineExplodeSeconds)
-        {
-            _swarmGemMineExplodedMatchings.Add(matchingId);
-            ScatterGemMineJam(matchingId, GemMineExplosionJam, sessions);
-            logger.LogInformation(
-                "Gem mine exploded: MatchingId={MatchingId}, Jam={Jam}", matchingId, GemMineExplosionJam);
-            return;
-        }
-
-        if (!_swarmGemMineNextScatterUtc.TryGetValue(matchingId, out var nextScatterUtc) ||
-            nowUtc < nextScatterUtc)
-            return;
-
-        _swarmGemMineNextScatterUtc[matchingId] = nowUtc.AddSeconds(GemMineScatterIntervalSeconds);
-        ScatterGemMineJam(matchingId, GemMineScatterJam, sessions);
-    }
-
-    private void ScatterGemMineJam(long matchingId, int jamCount, List<GameClientSession> sessions)
-    {
-        if (jamCount <= 0)
-            return;
-
-        var jamIds = Enumerable.Repeat(Config.JAM_GROUND_ITEM_ID, jamCount).ToList();
-        // 사망 낙수와 같은 원형 흩뿌림 — 한 점에 뭉치면 살포가 안 읽힌다 (#222 피드백).
-        var spawned = _groundItemManager.SpawnItems(
-            matchingId, AreaType.Ground, GemMineX, GemMineY, jamIds,
-            mapId: MapId.School,
-            layout: GroundItemSpawnLayout.EliminationScatter);
-        if (spawned.Count == 0)
-            return;
-
-        // 폭발 낙수(20개)는 한 패킷 버퍼(2048)를 넘는다 — 청크로 나눠 보낸다.
-        int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)AreaType.Ground);
-        const int chunkSize = 8;
-        for (int offset = 0; offset < spawned.Count; offset += chunkSize)
-        {
-            var chunk = spawned.Skip(offset).Take(chunkSize).ToList();
-            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)AreaType.Ground, remaining, chunk);
-            foreach (var session in sessions)
-                if (session.CurrentArea == AreaType.Ground)
-                    session.Send(packet);
-        }
-    }
-
-    /// <summary>
-    ///     잼 리더보드 브로드캐스트 (#222 M3) — 전 참가자(탈락 포함) 잼 내림차순.
-    ///     구역 게이트 없이 매치 전 세션에 보내며, 시그니처가 같으면 재전송하지 않는다.
-    /// </summary>
     /// <summary>
     ///     오브 점수 헬퍼 (#226 단계 B): 궤도 열의 오브 수와 총 티어 합. 사람·봇 공통
     ///     (봇도 같은 인게임 인벤토리를 쓴다).
@@ -3172,7 +3042,7 @@ public partial class GameServer
             : GetSquadOrbMaxHp(GetSquadOrbTier(frontOrb.ItemId));
     }
 
-    private (InGameItemInfo DestroyedItem, bool Busted) ApplySwarmOrbHpDamage(
+    private (InGameItemInfo DestroyedItem, bool Busted, bool HadDurabilityBonus) ApplySwarmOrbHpDamage(
         long matchingId, long playerId, int damage)
     {
         var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
@@ -3180,7 +3050,7 @@ public partial class GameServer
         // 빈손(#219 M2 빈손 시작)은 스쿼드가 없으니 스쿼드 피해도 버스트도 없다 —
         // 버스트는 "마지막 유닛을 잃는 타격"에만 성립한다. 빈손 즉사 사고 방지.
         if (frontOrb == null)
-            return (null, false);
+            return (null, false, false);
 
         var key = (matchingId, playerId);
         int currentHp = _swarmFrontOrbHp.TryGetValue(key, out var stored) && stored.ItemId == frontOrb.ItemId
@@ -3190,24 +3060,24 @@ public partial class GameServer
         if (currentHp > 0)
         {
             _swarmFrontOrbHp[key] = (frontOrb.ItemId, currentHp);
-            return (null, false);
+            return (null, false, false);
         }
 
         _swarmFrontOrbHp.Remove(key);
         inventory.TryRemoveItem(frontOrb.ItemUid, 1, out var destroyedItem);
-        return (destroyedItem, !HasAnySquadOrb(matchingId, playerId));
+        // 절단 외 파괴(몹 접촉)도 내구·크랙 상태를 함께 정리한다 — 방어 투자분은 낙수 +1로 정산.
+        _swarmOrbCutCracks.Remove((matchingId, playerId, frontOrb.ItemUid));
+        bool hadDurabilityBonus =
+            _swarmOrbDurabilityBonus.Remove((matchingId, playerId, frontOrb.ItemUid));
+        return (destroyedItem, !HasAnySquadOrb(matchingId, playerId), hadDurabilityBonus);
     }
 
     /// <summary>
-    ///     오브 파괴 낙수 (#219 SB): 깨진 오브는 소환석으로 흩어진다 — 승자의 전리품이자
-    ///     도망친 주인의 회수 기회. 개봉 원가의 일부만 돌려 킬 스노볼을 제한한다.
-    ///     #223 밸런싱: 2/5/10 절반으로 — 매치 2401에서 승자 98석 vs 2위 36석,
-    ///     "킬 = 전력 대박"이 스노우볼 동력이었다. 승점 대박(잼 낙수·사망 잼 전량)은 유지.
+    ///     오브 파괴 낙수 (#226 D 정산): 깨진 오브는 소환석으로만 흩어진다 — 승자의 전리품이자
+    ///     도망친 주인의 회수 기회. T1/2/3 = 1/2/3, 방어 강화(내구 2+) 오브는 +1.
+    ///     잼 낙수는 잼 승점 퇴역과 함께 제거 — 승점은 오브 수 하나로 통일한다.
     /// </summary>
-    private static int GetSwarmOrbBreakStoneCount(int tier) => tier >= 3 ? 5 : tier == 2 ? 3 : 1;
-
-    /// <summary>오브 파괴 잼 (#222 M3): 버스트 전리품이 곧 승점 — 티어 1/3/6.</summary>
-    private static int GetSwarmOrbBreakJamCount(int tier) => tier >= 3 ? 6 : tier == 2 ? 3 : 1;
+    private static int GetSwarmOrbBreakStoneCount(int tier) => Math.Clamp(tier, 1, 3);
 
     private void ScatterSwarmOrbBreakStones(
         long matchingId,
@@ -3215,16 +3085,15 @@ public partial class GameServer
         AreaType area,
         float x,
         float y,
-        List<GameClientSession> sessions)
+        List<GameClientSession> sessions,
+        bool hadDurabilityBonus = false)
     {
         int destroyedTier = GetSquadOrbTier(destroyedItemId);
-        int stoneCount = GetSwarmOrbBreakStoneCount(destroyedTier);
-        int jamCount = GetSwarmOrbBreakJamCount(destroyedTier);
-        if (stoneCount <= 0 && jamCount <= 0 || area == AreaType.None)
+        int stoneCount = GetSwarmOrbBreakStoneCount(destroyedTier) + (hadDurabilityBonus ? 1 : 0);
+        if (stoneCount <= 0 || area == AreaType.None)
             return;
 
         var itemIds = Enumerable.Repeat(Config.SUMMON_STONE_GROUND_ITEM_ID, stoneCount)
-            .Concat(Enumerable.Repeat(Config.JAM_GROUND_ITEM_ID, jamCount))
             .ToArray();
         var spawned = _groundItemManager.SpawnItems(
             matchingId, area, x, y, itemIds,
@@ -3233,18 +3102,12 @@ public partial class GameServer
         if (spawned.Count == 0)
             return;
 
-        // T3 낙수(석 10 + 잼 6)는 한 패킷 버퍼(2048)를 넘는다 — 청크로 나눠 보낸다 (#222).
         int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)area);
-        const int chunkSize = 8;
-        for (int offset = 0; offset < spawned.Count; offset += chunkSize)
+        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, spawned.ToList());
+        foreach (var session in sessions)
         {
-            var chunk = spawned.Skip(offset).Take(chunkSize).ToList();
-            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, chunk);
-            foreach (var session in sessions)
-            {
-                if (session.PlayerId.HasValue && session.CurrentArea == area)
-                    session.Send(packet);
-            }
+            if (session.PlayerId.HasValue && session.CurrentArea == area)
+                session.Send(packet);
         }
     }
 
@@ -3433,9 +3296,6 @@ public partial class GameServer
         _swarmJamRankingsSignature.Remove(matchingId);
         _swarmTimeoutEndedMatchings.Remove(matchingId);
         _swarmMatchFallbackAnchorUtc.Remove(matchingId);
-        _swarmGemMineOpenedMatchings.Remove(matchingId);
-        _swarmGemMineExplodedMatchings.Remove(matchingId);
-        _swarmGemMineNextScatterUtc.Remove(matchingId);
     }
 
     private List<ProximityCombatActor> BuildSwarmArenaCombatActors(
