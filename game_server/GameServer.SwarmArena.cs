@@ -117,9 +117,19 @@ public partial class GameServer
                 matchingId, hit.CombatTargetId, hit.AttackerId, hit.Damage);
             // 비행 중 몬스터가 이미 죽었으면 조용히 소멸 — 이중 정산 없음.
             if (damageResult.Applied && damageResult.Killed && damageResult.MonsterState != null)
+            {
+                // 처치 계측 (#226 E): 종·구역·처치자 — 요약의 몹 처치 지표가 이 이벤트를 읽는다.
+                _gameEventLogManager.LogEmotionAfterimageKilled(
+                    matchingId, damageResult.MonsterId,
+                    damageResult.MonsterState.AreaType.ToString(),
+                    isCore: damageResult.Kind == SwarmMonsterKind.RunawayGoblin,
+                    firstAttackerPlayerId: hit.AttackerId,
+                    lastAttackerPlayerId: hit.AttackerId,
+                    new Dictionary<long, int> { [hit.AttackerId] = hit.Damage });
                 SpawnSpotArenaSummonStone(
                     matchingId, damageResult.MonsterState, sessions,
                     damageResult.HeartReward, damageResult.BootsReward, damageResult.KeyReward);
+            }
         }
     }
 
@@ -248,6 +258,13 @@ public partial class GameServer
             : participants.Where(participant => !dummyIds.Contains(participant.PlayerId)).ToList();
         // 실험장 (#226): 몹은 나오되(색 무기 과녁) 공격 피해만 아래 게이트에서 꺼진다.
         var tick = _swarmArenaManager.Tick(matchingId, directorParticipants, nowUtc);
+
+        // 공급 스폰 계측 (#226 E): 공급지·무리 차수·마릿수·석 보상 기록.
+        foreach (var supplySpawn in tick.SupplyPackSpawns)
+            _gameEventLogManager.LogSystem(
+                matchingId,
+                $"supply_pack area={supplySpawn.Area} pack={supplySpawn.PackIndex} " +
+                $"monsters={supplySpawn.MonsterCount} stones={supplySpawn.StoneTotal}");
 
         // 절단 실험 더미 (#226): 불사 + 오브 리필 — 절단·포위 타격감 튜닝용 과녁.
         // 리필은 마지막 절단 후 3초 지연: 즉시 채우면 "끊어도 안 줄어드는" 것처럼 보인다.
@@ -576,6 +593,79 @@ public partial class GameServer
                 IsClosed = true
             }));
             foreach (var session in sessions) session.Send(packet);
+        }
+
+        if (closureTick.ClosedAreas.Count > 0)
+            DestroySwarmOrbsInClosedAreas(matchingId, closureTick.ClosedAreas, sessions);
+    }
+
+    /// <summary>
+    ///     폐쇄 잔류 오브 파괴 (#226 E): 폐쇄 완료 순간, 폐쇄 구역에 남아 있는 꼬리 접미를
+    ///     끝에서부터 무보상 파괴한다 — 소환석 낙수 없음. 긴 꼬리는 점수·화력이 높지만
+    ///     폐쇄 전에 더 일찍 철수해야 한다는 관리 비용이 여기서 성립한다.
+    /// </summary>
+    private void DestroySwarmOrbsInClosedAreas(
+        long matchingId, IReadOnlyCollection<AreaType> closedAreas, List<GameClientSession> sessions)
+    {
+        var closed = closedAreas.ToHashSet();
+        var owners = new List<(long PlayerId, Vector3f Position, GameClientSession Session)>();
+        foreach (var session in sessions)
+        {
+            if (session.PlayerId.HasValue && !session.IsEliminated &&
+                session.LastValidatedPosition != null)
+                owners.Add((session.PlayerId.Value, session.LastValidatedPosition, session));
+        }
+
+        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        {
+            if (!bot.IsEliminated && !bot.IsSwarmCutDummy)
+                owners.Add((bot.PlayerId, bot.Position, null));
+        }
+
+        foreach (var (playerId, ownerPosition, ownerSession) in owners)
+        {
+            int orbCount = CountSwarmSquadOrbs(matchingId, playerId);
+            if (orbCount == 0)
+                continue;
+
+            // 꼬리는 경로를 따르므로 폐쇄 구역 잔류분은 항상 접미다 — 끝에서부터 스캔한다.
+            int suffixStart = orbCount;
+            Vector3f suffixPosition = null;
+            for (int ordinal = orbCount - 1; ordinal >= 0; ordinal--)
+            {
+                var position = GetSwarmOrbTrailPosition(matchingId, playerId, ordinal, ownerPosition);
+                var cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, position);
+                if (!closed.Contains(GameMapData.GetCurrentArea(MapId.School, cell)))
+                    break;
+                suffixStart = ordinal;
+                suffixPosition = position;
+            }
+
+            if (suffixStart >= orbCount || suffixPosition == null)
+                continue;
+
+            var destroyed = DestroySwarmOrbsFromOrdinal(matchingId, playerId, suffixStart);
+            foreach (var destroyedItem in destroyed)
+            {
+                _swarmOrbCutCracks.Remove((matchingId, playerId, destroyedItem.ItemUid));
+                _swarmOrbDurabilityBonus.Remove((matchingId, playerId, destroyedItem.ItemUid));
+                ownerSession?.SendInGameInventoryUpdate(destroyedItem);
+            }
+
+            // 파열 연출은 절단 링 재사용 — 전리품은 흩뿌리지 않는다 (폐쇄 파괴 무보상).
+            var closedArea = GameMapData.GetCurrentArea(
+                MapId.School,
+                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, suffixPosition));
+            SendSwarmRingVfx(
+                closedArea, playerId, suffixPosition.X, suffixPosition.Y,
+                SwarmTrailCutFlashRadius, sessions, SwarmRingVfxKindCut,
+                victimId: playerId, fromOrdinal: suffixStart);
+            _gameEventLogManager.LogSystem(
+                matchingId,
+                $"closure_orb_destroyed player={playerId} from={suffixStart} count={destroyed.Count}");
+            logger.LogInformation(
+                "Swarm closure orb destruction: MatchingId={MatchingId}, PlayerId={PlayerId}, FromOrdinal={FromOrdinal}, Count={Count}",
+                matchingId, playerId, suffixStart, destroyed.Count);
         }
     }
 

@@ -24,8 +24,9 @@ public class SwarmArenaManagerTests
     [Fact]
     public void RegionSupply_StartGiftOnceThenZonePacksThenLateSilence()
     {
-        // #226 단계 B 지역 공급: 시작 구역 일반 3마리 1회 → 15초부터 활성 구역 무리
-        // (일반 6 + 핵 1, 잠든 채 등장) → 4:00 이후 신규 스폰 중단.
+        // #226 단계 E 지역 공급: 시작 구역 일반 3마리 1회 → 15초부터 활성 구역
+        // min(생존 절반 올림, 시간대별 상한) 곳에 무리(일반 8 + 핵 1 = 9기, 잠든 채 등장)
+        // → 전역 상한 8인 36마리 → 마지막 60초에도 공급지 2곳 유지(신규 스폰 계속).
         SwarmArenaManager.RegionSupplyModeEnabled = true;
         try
         {
@@ -48,30 +49,36 @@ public class SwarmArenaManagerTests
             var repeatTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
             Assert.Empty(repeatTick.SpawnedMonsters);
 
-            // 15초: 활성 구역 4곳 개장(활성화 틱) → 다음 틱에 무리가 선다.
+            // 15초: 8인 생존 → 활성 구역 min(5, 4) = 4곳 개장(활성화 틱) → 다음 틱에 무리.
             now = StartUtc.AddSeconds(15.5);
-            manager.Tick(217001, Participants(startCenter, startRoom), now);
+            manager.Tick(217001, ManyParticipants(8, startCenter, startRoom), now);
             now = StartUtc.AddSeconds(15.75);
-            var packTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
+            var packTick = manager.Tick(217001, ManyParticipants(8, startCenter, startRoom), now);
 
-            // 시작 선물이 살아있는 구역이 활성 구역으로 뽑히면 그 구역은 스폰을 쉰다 —
-            // 무리(7기) 단위 배수만 보장한다.
-            Assert.True(packTick.SpawnedMonsters.Count is 21 or 28,
-                $"무리 단위(7기×3~4)가 아니다: {packTick.SpawnedMonsters.Count}");
+            // 시작 선물 3기 + 전역 상한 36 → 이번 틱 무리는 3팩(27기)까지만 선다.
+            // 선물이 살아있는 구역이 활성 구역으로 뽑혀도 그 구역은 쉬므로 결과는 같다.
+            Assert.Equal(27, packTick.SpawnedMonsters.Count);
             int cores = packTick.SpawnedMonsters.Count(monster => monster.MaxHealth == 120);
-            Assert.Equal(packTick.SpawnedMonsters.Count / 7, cores);
+            Assert.Equal(3, cores);
             Assert.All(
                 packTick.SpawnedMonsters.Where(monster => monster.MaxHealth == 120),
                 core => Assert.Equal(3, core.SummonStoneReward));
+            // 계측 (#226 E): 무리 스폰이 공급지·마릿수·석 보상으로 기록된다 (9기 = 11석).
+            Assert.Equal(3, packTick.SupplyPackSpawns.Count);
+            Assert.All(packTick.SupplyPackSpawns, spawn =>
+            {
+                Assert.Equal(9, spawn.MonsterCount);
+                Assert.Equal(11, spawn.StoneTotal);
+            });
 
-            // 4:00 이후: 신규 스폰 없음 — 남은 몹과 PvP만 남는다.
+            // 4:00 이후에도 공급지 2곳은 유지된다 — 스폰 중단 규칙 퇴역 (#226 E).
             now = StartUtc.AddSeconds(250);
             var lateManager = new SwarmArenaManager(() => now);
             Assert.True(lateManager.InitializeMatching(217002, 1, StartUtc));
-            lateManager.Tick(217002, Participants(startCenter, startRoom), now);
+            lateManager.Tick(217002, ManyParticipants(8, startCenter, startRoom), now);
             now = StartUtc.AddSeconds(250.5);
-            var lateTick = lateManager.Tick(217002, Participants(startCenter, startRoom), now);
-            Assert.Empty(lateTick.SpawnedMonsters);
+            var lateTick = lateManager.Tick(217002, ManyParticipants(8, startCenter, startRoom), now);
+            Assert.Equal(18, lateTick.SpawnedMonsters.Count);
         }
         finally
         {
@@ -342,6 +349,14 @@ public class SwarmArenaManagerTests
         Vector3f position,
         AreaType area = AreaType.Ground) =>
         [new SpotArenaPlayerSpatial(1, area, position)];
+
+    private static IReadOnlyCollection<SpotArenaPlayerSpatial> ManyParticipants(
+        int count,
+        Vector3f position,
+        AreaType area = AreaType.Ground) =>
+        Enumerable.Range(1, count)
+            .Select(id => new SpotArenaPlayerSpatial(id, area, position))
+            .ToList();
 
     private static SwarmArenaManager CreateManager(Func<DateTime> clock)
     {
