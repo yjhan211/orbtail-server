@@ -2269,6 +2269,19 @@ public partial class GameServer
              index++)
             _inGameInventoryManager.TryAddItemWithCapacity(
                 matchingId, dummy.PlayerId, SwarmCutDummyOrbItemId, Config.SWARM_ORB_CAPACITY, out _);
+
+        // 실험 과녁 (#227): 머리쪽 절반은 방어 강화(5/5), 나머지 절반은 맨 오브(1/5) —
+        // 같은 열에서 두 내구를 나란히 밟아 비교할 수 있다.
+        var trailOrbs = GetSwarmTrailOrbs(matchingId, dummy.PlayerId);
+        int armoredCount = (trailOrbs.Count + 1) / 2;
+        for (int ordinal = 0; ordinal < trailOrbs.Count; ordinal++)
+        {
+            var key = (matchingId, dummy.PlayerId, trailOrbs[ordinal].ItemUid);
+            if (ordinal < armoredCount)
+                _swarmOrbDurabilityBonus[key] = SwarmArmorDurabilityBonus;
+            else
+                _swarmOrbDurabilityBonus.Remove(key);
+        }
     }
 
     /// <summary>
