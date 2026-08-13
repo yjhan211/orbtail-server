@@ -3347,49 +3347,49 @@ public partial class GameServer
         switch (cardIndex)
         {
             case SwarmGrowthCardMultiply:
-            {
-                if (inventory.GetAllItems().Count >= Config.SWARM_ORB_CAPACITY)
-                    return false;
-                if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
-                    return false;
-                if (session != null)
-                    session.GrantSwarmArenaOrb(offer.SpawnItemId);
-                else
-                    inventory.TryAddItemWithCapacity(offer.SpawnItemId, Config.SWARM_ORB_CAPACITY, out _);
-                return true;
-            }
+                {
+                    if (inventory.GetAllItems().Count >= Config.SWARM_ORB_CAPACITY)
+                        return false;
+                    if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
+                        return false;
+                    if (session != null)
+                        session.GrantSwarmArenaOrb(offer.SpawnItemId);
+                    else
+                        inventory.TryAddItemWithCapacity(offer.SpawnItemId, Config.SWARM_ORB_CAPACITY, out _);
+                    return true;
+                }
             case SwarmGrowthCardEnhance:
-            {
-                if (offer.EnhanceTargetTier is not (1 or 2))
-                    return false;
-                var target = GetSwarmTrailOrbs(matchingId, playerId)
-                    .FirstOrDefault(item => GetSquadOrbTier(item.ItemId) == offer.EnhanceTargetTier);
-                if (target == null)
-                    return false;
-                if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
-                    return false;
-                if (!inventory.TryUpgradeSurvivorOrb(target.ItemUid, out _))
-                    return false;
-                session?.SendInGameInventoryUpdate(target);
-                return true;
-            }
+                {
+                    if (offer.EnhanceTargetTier is not (1 or 2))
+                        return false;
+                    var target = GetSwarmTrailOrbs(matchingId, playerId)
+                        .FirstOrDefault(item => GetSquadOrbTier(item.ItemId) == offer.EnhanceTargetTier);
+                    if (target == null)
+                        return false;
+                    if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
+                        return false;
+                    if (!inventory.TryUpgradeSurvivorOrb(target.ItemUid, out _))
+                        return false;
+                    session?.SendInGameInventoryUpdate(target);
+                    return true;
+                }
             case SwarmGrowthCardArmor:
-            {
-                if (offer.ArmorCount <= 0)
-                    return false;
-                var targets = GetSwarmTrailOrbs(matchingId, playerId)
-                    .Where(item =>
-                        !_swarmOrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)))
-                    .Take(offer.ArmorCount)
-                    .ToList();
-                if (targets.Count == 0)
-                    return false;
-                if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
-                    return false;
-                foreach (var target in targets)
-                    _swarmOrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] = 1;
-                return true;
-            }
+                {
+                    if (offer.ArmorCount <= 0)
+                        return false;
+                    var targets = GetSwarmTrailOrbs(matchingId, playerId)
+                        .Where(item =>
+                            !_swarmOrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)))
+                        .Take(offer.ArmorCount)
+                        .ToList();
+                    if (targets.Count == 0)
+                        return false;
+                    if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
+                        return false;
+                    foreach (var target in targets)
+                        _swarmOrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] = 1;
+                    return true;
+                }
             default:
                 return false;
         }
