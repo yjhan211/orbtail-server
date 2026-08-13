@@ -1529,7 +1529,8 @@ public partial class GameServer
         // 몹(잔상) 절단은 P0에서 비활성 (단계 A 확정) — 절단은 플레이어의 동사다.
         // 머리 보호 제거 (단계 A 마감): 첫 오브·본체-첫 오브 링크도 절단 대상 — 1오브 열도 잘린다.
         var chains =
-            new Dictionary<long, (AreaType Area, Vector3f OwnerPosition, List<Vector3f> Points, List<long> Uids)>();
+            new Dictionary<long, (AreaType Area, Vector3f OwnerPosition, List<Vector3f> Points,
+                List<long> Uids, List<int> ItemIds)>();
         foreach (var owner in participants)
         {
             var orbs = _inGameInventoryManager.GetPlayerInventory(matchingId, owner.PlayerId)
@@ -1541,13 +1542,15 @@ public partial class GameServer
                 continue;
             var points = new List<Vector3f>(orbs.Count);
             var uids = new List<long>(orbs.Count);
+            var itemIds = new List<int>(orbs.Count);
             for (int ordinal = 0; ordinal < orbs.Count; ordinal++)
             {
                 points.Add(GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position));
                 uids.Add(orbs[ordinal].ItemUid);
+                itemIds.Add(orbs[ordinal].ItemId);
             }
 
-            chains[owner.PlayerId] = (owner.Area, owner.Position, points, uids);
+            chains[owner.PlayerId] = (owner.Area, owner.Position, points, uids, itemIds);
         }
 
         foreach (var cutter in participants)
@@ -1563,6 +1566,38 @@ public partial class GameServer
         }
     }
 
+    /// <summary>
+    ///     화망 밀도 (#227 6단계): 주어진 자리를 사거리 안에 두는 적 오브 수.
+    ///     사격하는 색(태양·바람)만 센다 — 파도는 미사일을 쏘지 않아 화망이 아니다.
+    ///     발사 원점은 본체가 아니라 각 오브의 열 좌표다. ownerFilter를 주면 그 소유자만 센다.
+    /// </summary>
+    private static int CountSwarmOrbGunsCovering(
+        Dictionary<long, (AreaType Area, Vector3f OwnerPosition, List<Vector3f> Points,
+            List<long> Uids, List<int> ItemIds)> chains,
+        long excludePlayerId,
+        AreaType area,
+        Vector3f position,
+        long? ownerFilter = null)
+    {
+        int count = 0;
+        foreach (var (ownerId, chain) in chains)
+        {
+            if (ownerId == excludePlayerId || chain.Area != area)
+                continue;
+            if (ownerFilter.HasValue && ownerId != ownerFilter.Value)
+                continue;
+
+            for (int ordinal = 0; ordinal < chain.Points.Count; ordinal++)
+            {
+                float range = GetSwarmOrbPvpRange(chain.ItemIds[ordinal]);
+                if (range > 0f && IsWithinSwarmOrbRange(chain.Points[ordinal], range, position))
+                    count++;
+            }
+        }
+
+        return count;
+    }
+
     private void TryPerformSwarmTrailCut(
         long matchingId,
         long cutterId,
@@ -1570,7 +1605,8 @@ public partial class GameServer
         AreaType cutterArea,
         Vector3f previous,
         Vector3f current,
-        Dictionary<long, (AreaType Area, Vector3f OwnerPosition, List<Vector3f> Points, List<long> Uids)> chains,
+        Dictionary<long, (AreaType Area, Vector3f OwnerPosition, List<Vector3f> Points,
+            List<long> Uids, List<int> ItemIds)> chains,
         DateTime nowUtc,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
@@ -1639,6 +1675,15 @@ public partial class GameServer
             return;
 
         _swarmOrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
+
+        // 국소 화망 계측 (#227 6단계): 절단자가 실제로 선 자리를 몇 개의 적 오브 사거리가
+        // 덮고 있었나. 후미 절단(적은 겹침)과 깊은 절단(많은 겹침)의 진입 피해를 이 수로 비교한다.
+        // 크랙만 나든 꼬리가 끊기든 '들어간 순간'은 같으므로 분기 전에 남긴다.
+        _gameEventLogManager.LogSwarmCutAttempt(
+            matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal,
+            CountSwarmOrbGunsCovering(chains, cutterId, cutterArea, current),
+            CountSwarmOrbGunsCovering(chains, cutterId, cutterArea, current, bestOwnerId),
+            bestArea.ToString());
 
         // 오브 체력 (#227): 최대 5칸 중 남은 칸이 곧 내구다. 소환 직후는 1/5(크랙 4단계),
         // 방어 강화는 5/5(크랙 0단계). 크랙 단계 = 5 - 남은 칸이라 표시가 곧 판정이다.
@@ -3919,11 +3964,14 @@ public partial class GameServer
     }
 
     // 색 무기 파라미터 (#226): 태양 = 느린 직선탄(회피 가능·정지 처벌 — 맞으면 아프게 1.5배),
-    // 바람 = 발당 40% × 주기 40%(다발 총알). 사거리 30 = 구역 전체 커버
-    // (교차 구역은 리졸버의 구역·시야 필터가 막는다).
-    private const float SwarmSunAttackRange = 30f;
-    // 바람 사거리 = 태양과 동일 (2026-08-12 유저 결정): 중거리 실험(4→6)도 교전 거리에
-    // 못 미쳤다 — 색 차이는 리듬(연사 vs 한 방)과 탄속이 만든다.
+    // 바람 = 발당 40% × 주기 40%(다발 총알).
+    //
+    // 국소 화망 (#227 6단계): 30 → 6.0. 사거리 30은 구역 전체를 덮어 후미 절단과 머리
+    // 절단의 위험이 같았다 — 어디를 자르든 상대의 모든 오브가 사정권이었기 때문이다.
+    // 6.0이면 각 오브가 자기 열 좌표 주변만 덮으므로, 깊게 자를수록 앞열 여러 오브의
+    // 사거리가 겹치는 자리로 들어가야 한다. 위험을 수치가 아니라 공간이 만든다.
+    private const float SwarmSunAttackRange = 6f;
+    // 바람 사거리 = 태양과 동일: 색 차이는 거리표가 아니라 리듬(연사 vs 한 방)과 탄속이 만든다.
     private const float SwarmWindAttackRange = SwarmSunAttackRange;
     // 1.75 → 2.5 (2026-08-12): 태양 = 무겁고 느린 한 방 — 바람(연사 소탄)과 리듬 대비.
     private const float SwarmSunHomingIntervalMultiplier = 2.5f;
@@ -3943,9 +3991,28 @@ public partial class GameServer
     {
         // 파도 사거리 가산이 액터에 실려 온다 — 없으면(0) 기본 사거리.
         float range = attacker.AttackRange > 0f ? attacker.AttackRange : Config.SWARM_ORB_ATTACK_RANGE;
-        float dx = target.Position.X - attacker.Position.X;
-        float dy = (target.Position.Y - attacker.Position.Y) * 2f;
+        return IsWithinSwarmOrbRange(attacker.Position, range, target.Position);
+    }
+
+    /// <summary>좌표판 — 화망 밀도 계측처럼 액터가 없는 자리에서도 같은 타원을 쓴다 (#227 6단계).</summary>
+    private static bool IsWithinSwarmOrbRange(Vector3f origin, float range, Vector3f target)
+    {
+        float dx = target.X - origin.X;
+        float dy = (target.Y - origin.Y) * 2f;
         return dx * dx + dy * dy <= range * range;
+    }
+
+    /// <summary>사격하는 오브(태양·바람)의 PvP 사거리 — 파도는 미사일을 쏘지 않아 0이다.</summary>
+    private static float GetSwarmOrbPvpRange(int itemId)
+    {
+        if (!SurvivorOrbData.TryGetColorAndTier(itemId, out var color, out _))
+            return 0f;
+        return color switch
+        {
+            SurvivorOrbColor.Red => SwarmSunAttackRange,
+            SurvivorOrbColor.Green => SwarmWindAttackRange,
+            _ => 0f
+        };
     }
 
     private ProximityCombatActor CreateSwarmParticipantActor(ProximityCombatActor spatial, bool armed)

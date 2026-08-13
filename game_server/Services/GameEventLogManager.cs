@@ -437,6 +437,38 @@ public class GameEventLogManager
     }
 
     /// <summary>
+    ///     절단 진입 (#227 6단계 계측): 절단이 성립한 그 순간 절단자가 선 자리를 몇 개의 적 오브
+    ///     사거리가 덮고 있었나. 결과(크랙/절단)와 무관하게 남는다 — "많이 자르려면 더 위험한
+    ///     곳으로 들어가야 한다"가 성립하는지 보는 단일 근거다.
+    ///     후미 절단(TailOrdinal 큼)은 겹침이 적고, 머리 절단(TailOrdinal 작음)은 많아야 한다.
+    /// </summary>
+    public void LogSwarmCutAttempt(
+        long matchingId,
+        long cutterPlayerId,
+        long ownerPlayerId,
+        int tailOrdinal,
+        int overlappingOrbRanges,
+        int victimOrbRanges,
+        string area)
+    {
+        Append(
+            matchingId,
+            "CUT_ATTEMPT",
+            cutterPlayerId,
+            BotPlayerManager.IsBotPlayerId(cutterPlayerId),
+            $"{FormatPlayer(cutterPlayerId)} entered {FormatPlayer(ownerPlayerId)} trail at ordinal {tailOrdinal}; guns={overlappingOrbRanges} (victim={victimOrbRanges}).",
+            entry =>
+            {
+                entry.TargetPlayerId = ownerPlayerId;
+                entry.Area = area;
+                entry.TailOrdinal = tailOrdinal;
+                entry.OverlappingOrbRanges = overlappingOrbRanges;
+                entry.VictimOrbRanges = victimOrbRanges;
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
+
+    /// <summary>
     ///     크랙 생존 (#226 F 계측): 방어 강화 오브가 유효 교차를 흡수한 순간 —
     ///     "방어 강화가 실제로 몇 번의 절단을 막았나"의 근거.
     /// </summary>
@@ -2288,6 +2320,10 @@ public class GameEventEntry
     public int? DestroyedOrbCount { get; set; }
     public int? CrackCount { get; set; }
     public int? RequiredHits { get; set; }
+
+    // #227 6단계 — 절단 진입 시 화망 밀도(그 자리를 덮는 적 오브 사거리 수)
+    public int? OverlappingOrbRanges { get; set; }
+    public int? VictimOrbRanges { get; set; }
     public string? CardRole { get; set; }
     public int? CardGrade { get; set; }
     public int? GrowthBaseCost { get; set; }
