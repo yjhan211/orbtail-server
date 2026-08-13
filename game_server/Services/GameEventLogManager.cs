@@ -464,6 +464,32 @@ public class GameEventLogManager
             });
     }
 
+    /// <summary>성장 오퍼 제시 (#226 F 계측) — 오퍼→선택 지연·미선택 오퍼율의 근거.</summary>
+    public void LogSwarmGrowthOffered(
+        long matchingId,
+        long playerId,
+        bool isBot,
+        int baseCost,
+        int scoreSurcharge,
+        int finalCost,
+        int orbCount)
+    {
+        Append(
+            matchingId,
+            "ORB_GROWTH_CARDS_OFFERED",
+            playerId,
+            isBot,
+            $"{FormatPlayer(playerId)} offered growth cards; cost={finalCost} (base {baseCost} + surcharge {scoreSurcharge}), orbs={orbCount}.",
+            entry =>
+            {
+                entry.GrowthBaseCost = baseCost;
+                entry.GrowthScoreSurcharge = scoreSurcharge;
+                entry.GrowthFinalCost = finalCost;
+                entry.OrbCountBefore = orbCount;
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
+
     /// <summary>
     ///     성장 카드 선택 성공 (#226 F 계측): 역할·등급·비용 분해·선택 시점 상태를 남긴다 —
     ///     선택 간격·비용 곡선·역할 분포 검증의 단일 출처. 실패한 픽은 남기지 않는다.

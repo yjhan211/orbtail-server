@@ -890,6 +890,15 @@ public partial class GameServer
     // 예외 창 안의 경제 지시(공급·순례) 복귀까지 전부 통과해 "맞음→도주→즉시 복귀" 사이클이 산다.
     private readonly HashSet<(long MatchingId, long PlayerId)> _swarmBotFleeDirective = new();
 
+    // 절단 후 회수 창 (#226 F): 이 시간 동안은 약자 추격보다 바닥 소환석 회수가 먼저다.
+    private const double SwarmBotPostCutLootSeconds = 5d;
+    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmBotLastTrailCutAtUtc = new();
+
+    // 폐쇄 조기 철수 (#226 F): 경고 잔여가 (기본 + 오브당 가산) 이하로 내려오면 나간다 —
+    // 긴 꼬리는 문 통과가 느리고, 폐쇄 잔류 꼬리는 무보상 파괴된다.
+    private const double SwarmBotClosureEvacuateBaseSeconds = 4d;
+    private const double SwarmBotClosureEvacuatePerOrbSeconds = 0.5d;
+
     private SpotArenaBotDirective ResolveSwarmBotDirective(long matchingId, long botPlayerId)
     {
         var directive = ResolveSwarmBotDirectiveCore(matchingId, botPlayerId);
@@ -968,6 +977,40 @@ public partial class GameServer
                 evacuationArea,
                 evacuationCell,
                 BotPlayerManager.CellToWorldPosition(MapId.School, evacuationCell));
+        }
+
+        // 0.3) 폐쇄 조기 철수 (#226 F): 경고 구역에서는 꼬리 길이에 비례해 일찍 나간다.
+        var closureSnapshot = _areaClosureManager.GetClientStateSnapshot(matchingId);
+        if (closureSnapshot.WarningAreas.Contains(bot.CurrentArea))
+        {
+            int trailOrbCount = CountSwarmSquadOrbs(matchingId, botPlayerId);
+            double evacuateLeadSeconds = SwarmBotClosureEvacuateBaseSeconds +
+                                         trailOrbCount * SwarmBotClosureEvacuatePerOrbSeconds;
+            if (closureSnapshot.WarningSeconds <= evacuateLeadSeconds)
+            {
+                // 대피는 도주 예외 — 왕복 억제를 우회해 어디로든 즉시 나간다.
+                _swarmBotFleeDirective.Add((matchingId, botPlayerId));
+                AreaType closureEvacuationArea = SwarmHuntingAreas
+                    .Where(area => !IsSwarmAreaOutside(matchingId, area) &&
+                                   !closureSnapshot.WarningAreas.Contains(area))
+                    .OrderBy(area =>
+                    {
+                        var center = BotPlayerManager.CellToWorldPosition(
+                            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
+                        float dx = center.X - bot.Position.X;
+                        float dy = center.Y - bot.Position.Y;
+                        return dx * dx + dy * dy;
+                    })
+                    .DefaultIfEmpty(AreaType.Ground)
+                    .First();
+                Cell closureEvacuationCell =
+                    GameMapData.GetAreaSpawnCell(MapId.School, closureEvacuationArea);
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Escort,
+                    closureEvacuationArea,
+                    closureEvacuationCell,
+                    BotPlayerManager.CellToWorldPosition(MapId.School, closureEvacuationCell));
+            }
         }
 
         // 0.5) 상대 전력 비교 (#222): 티어 가중 전력(1/1.75/4)으로 비교한다.
@@ -1105,7 +1148,22 @@ public partial class GameServer
                 BotPlayerManager.CellToWorldPosition(MapId.School, fleeRetreatCell));
         }
 
-        if (hasSquadOrbs && weakerRival.HasValue)
+        // 절단 직후 회수 (#226 F): 방금 끊은 전리품부터 줍는다 — 추격은 그 다음이다.
+        if (_swarmBotLastTrailCutAtUtc.TryGetValue((matchingId, botPlayerId), out var lastCutAtUtc) &&
+            (DateTime.UtcNow - lastCutAtUtc).TotalSeconds < SwarmBotPostCutLootSeconds &&
+            TryFindNearestSwarmGroundStone(matchingId, bot, out Vector3f lootPosition))
+        {
+            return new SpotArenaBotDirective(
+                SpotArenaBotMode.Escort,
+                bot.CurrentArea,
+                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, lootPosition),
+                lootPosition);
+        }
+
+        // 선두 점수 보존 (#226 F): 오브 선두는 약자 추격을 자제한다 — 이기고 있을 때
+        // 싸움은 절단(상대의 유일한 역전 수단)에 점수를 노출하는 행동이다.
+        if (hasSquadOrbs && weakerRival.HasValue &&
+            !IsSwarmOrbLeader(matchingId, botPlayerId))
         {
             // 약자 추격: 접근하면 자동전투(오브 우선 타겟)가 나머지를 한다.
             return new SpotArenaBotDirective(
@@ -1141,28 +1199,13 @@ public partial class GameServer
         }
 
         // 2) 같은 구역 바닥 소환석 — 걸어가면 자동 픽업 반경이 줍는다.
-        //    반응 지연 (#222): 갓 떨어진 돌은 무시 — 사람이 먼저 주울 시간을 준다.
-        var groundStone = _groundItemManager.GetSnapshot(matchingId, bot.CurrentArea)
-            .Where(item => item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID &&
-                           !_groundItemManager.IsYoungerThan(
-                               matchingId, item.GroundItemUid,
-                               BotPlayerManager.SummonStoneBotReactionDelay))
-            .OrderBy(item =>
-            {
-                float dx = item.PositionX - bot.Position.X;
-                float dy = item.PositionY - bot.Position.Y;
-                return dx * dx + dy * dy;
-            })
-            .FirstOrDefault();
-        if (groundStone != null)
+        if (TryFindNearestSwarmGroundStone(matchingId, bot, out Vector3f stonePosition))
         {
-            Cell stoneCell = ProximityCombatLineOfSight.WorldPositionToCell(
-                MapId.School, new Vector3f(groundStone.PositionX, groundStone.PositionY, 0f));
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 bot.CurrentArea,
-                stoneCell,
-                new Vector3f(groundStone.PositionX, groundStone.PositionY, 0f));
+                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, stonePosition),
+                stonePosition);
         }
 
         // 3) 사냥 정지: 도주·개봉·줍기 용무가 없고 사거리 안에 몹이 있으면 제자리에 선다.
@@ -1652,6 +1695,11 @@ public partial class GameServer
             bestArea, creditPlayerId, bestOrbPosition.X, bestOrbPosition.Y,
             SwarmTrailCutFlashRadius, allSessions, SwarmRingVfxKindCut,
             victimId: bestOwnerId, fromOrdinal: bestTailOrdinal);
+
+        // 절단 후 회수 (#226 F): 봇 절단자는 잠시 전리품 회수를 추격보다 앞세운다 —
+        // 방금 흩어진 소환석이 발밑에 있는데 추격부터 가면 제3자가 줍는다.
+        if (BotPlayerManager.IsBotPlayerId(creditPlayerId))
+            _swarmBotLastTrailCutAtUtc[(matchingId, creditPlayerId)] = nowUtc;
 
         var ownerBot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == bestOwnerId);
         if (ownerBot != null)
@@ -2373,6 +2421,42 @@ public partial class GameServer
         return t >= 0f && t <= 1f && u >= 0f && u <= 1f;
     }
 
+    /// <summary>
+    ///     같은 구역의 반응 지연 지난 최근접 바닥 소환석 — 봇 회수 지시의 목적지.
+    ///     반응 지연 (#222): 갓 떨어진 돌은 무시 — 사람이 먼저 주울 시간을 준다.
+    /// </summary>
+    private bool TryFindNearestSwarmGroundStone(
+        long matchingId, BotPlayerState bot, out Vector3f position)
+    {
+        position = null;
+        float bestDistanceSquared = float.MaxValue;
+        foreach (var item in _groundItemManager.GetSnapshot(matchingId, bot.CurrentArea))
+        {
+            if (item.ItemId != Config.SUMMON_STONE_GROUND_ITEM_ID ||
+                _groundItemManager.IsYoungerThan(
+                    matchingId, item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
+                continue;
+
+            float dx = item.PositionX - bot.Position.X;
+            float dy = item.PositionY - bot.Position.Y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared >= bestDistanceSquared)
+                continue;
+
+            bestDistanceSquared = distanceSquared;
+            position = new Vector3f(item.PositionX, item.PositionY, 0f);
+        }
+
+        return position != null;
+    }
+
+    /// <summary>오브 선두 판독 (#226 F): 내 오브 수가 생존자 최다와 같거나 크면 선두다.</summary>
+    private bool IsSwarmOrbLeader(long matchingId, long playerId)
+    {
+        int myOrbCount = GetSwarmOrbScore(matchingId, playerId).OrbCount;
+        return myOrbCount > 0 && myOrbCount >= GetSwarmTopOrbCount(matchingId);
+    }
+
     /// <summary>참가자(사람·봇) 위치 조회 — 피격 반응의 도주 기준점.</summary>
     private bool TryGetSwarmParticipantPosition(long matchingId, long playerId, out Vector3f position)
     {
@@ -2825,6 +2909,11 @@ public partial class GameServer
             .ToList();
         long winnerId = candidates.Count > 0 ? candidates[0].PlayerId : 0;
         _swarmTimeoutEndedMatchings.Add(matchingId);
+        // 최종 점수표 (#226 F 계측): 순위 순 pid:오브:티어합 — 300초 목표(1위 11~15) 검증 근거.
+        _gameEventLogManager.LogSystem(
+            matchingId,
+            "match_score_result " + string.Join(",", candidates.Select(candidate =>
+                $"{candidate.PlayerId}:{candidate.OrbCount}:{candidate.TierSum}")));
         logger.LogInformation(
             "Swarm score timeout: MatchingId={MatchingId}, WinnerId={WinnerId}, WinnerOrbs={WinnerOrbs}, WinnerTierSum={WinnerTierSum}, Alive={AliveCount}",
             matchingId, winnerId,
@@ -3056,12 +3145,15 @@ public partial class GameServer
             if (_swarmGrowthNextOfferAtUtc.TryGetValue(key, out var nextAtUtc) && nowUtc < nextAtUtc)
                 continue;
 
-            var (baseCost, _, finalCost, orbCount) = GetSwarmGrowthCostBreakdown(matchingId, playerId);
+            var (baseCost, surcharge, finalCost, orbCount) =
+                GetSwarmGrowthCostBreakdown(matchingId, playerId);
             if (_summonStoneManager.GetSnapshot(matchingId, playerId).StoneCount < finalCost)
                 continue;
 
             var offer = GenerateSwarmGrowthOffer(matchingId, playerId, finalCost, baseCost, orbCount);
             _swarmGrowthOffers[key] = offer;
+            _gameEventLogManager.LogSwarmGrowthOffered(
+                matchingId, playerId, isBot: false, baseCost, surcharge, finalCost, orbCount);
             session.SendSwarmGrowthOffer(
                 offer.OfferId, offer.Cost, offer.SpawnItemId, offer.EnhanceTargetTier, offer.ArmorCount);
         }
@@ -3080,7 +3172,8 @@ public partial class GameServer
                 continue;
 
             var offer = GenerateSwarmGrowthOffer(matchingId, bot.PlayerId, finalCost, baseCost, orbCount);
-            int cardIndex = ChooseSwarmBotGrowthCard(offer, orbCount);
+            int cardIndex = ChooseSwarmBotGrowthCard(
+                matchingId, bot, offer, orbCount, aliveSessions, aliveBots);
             bool applied = ApplySwarmGrowthCard(matchingId, bot.PlayerId, cardIndex, offer, session: null);
             _swarmGrowthNextOfferAtUtc[key] = nowUtc.AddSeconds(SwarmGrowthOfferCooldownSeconds);
             if (applied)
@@ -3099,20 +3192,82 @@ public partial class GameServer
     }
 
     /// <summary>
-    ///     봇 투자 정책: 초반(오브 5 미만)은 오브 생성 고정 — 발사점·점수가 곧 생존이다.
-    ///     이후 생성 45 / 공격 30 / 방어 25 가중 랜덤, 무효 카드는 생성으로 대체.
+    ///     봇 투자 정책 (#226 F 상황 판단): 큰 점수 열세(선두와 3+ 격차)는 생성 몰빵,
+    ///     선두는 방어(절단 = 상대의 유일한 역전 수단), 처치각(같은 구역 약자)은 공격 강화,
+    ///     그 외 기존 45/30/25. 무효 카드는 생성으로 대체. 초반(오브 5 미만)은 생성 고정 —
+    ///     발사점·점수가 곧 생존이다.
     /// </summary>
-    private static int ChooseSwarmBotGrowthCard(SwarmGrowthOfferState offer, int orbCount)
+    private int ChooseSwarmBotGrowthCard(
+        long matchingId, BotPlayerState bot, SwarmGrowthOfferState offer, int orbCount,
+        List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
     {
         if (orbCount < 5)
             return SwarmGrowthCardMultiply;
 
+        int topOrbCount = GetSwarmTopOrbCount(matchingId);
+        bool isLeader = orbCount >= topOrbCount;
+        int leaderGap = topOrbCount - orbCount;
+        bool hasPrey = HasSwarmPreyInArea(matchingId, bot, aliveSessions, aliveBots);
+
+        var (multiply, enhance) = leaderGap >= 3 ? (70, 20) :
+            isLeader ? (35, 20) :
+            hasPrey ? (35, 45) : (45, 30);
+
         int roll = Random.Shared.Next(100);
-        if (roll < 45)
+        if (roll < multiply)
             return SwarmGrowthCardMultiply;
-        if (roll < 75)
+        if (roll < multiply + enhance)
             return offer.EnhanceTargetTier > 0 ? SwarmGrowthCardEnhance : SwarmGrowthCardMultiply;
         return offer.ArmorCount > 0 ? SwarmGrowthCardArmor : SwarmGrowthCardMultiply;
+    }
+
+    /// <summary>생존자 최다 오브 수 — 봇 성장·추격 판단의 순위 기준.</summary>
+    private int GetSwarmTopOrbCount(long matchingId)
+    {
+        int top = 0;
+        foreach (var session in _clientSessions.Values)
+        {
+            if (session.PlayerId.HasValue && session.CurrentMapSubId == matchingId &&
+                !session.IsEliminated)
+                top = Math.Max(top, GetSwarmOrbScore(matchingId, session.PlayerId.Value).OrbCount);
+        }
+
+        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        {
+            if (!bot.IsEliminated && !bot.IsSwarmCutDummy)
+                top = Math.Max(top, GetSwarmOrbScore(matchingId, bot.PlayerId).OrbCount);
+        }
+
+        return top;
+    }
+
+    /// <summary>처치각 판독 (#226 F): 같은 구역에 확실히 약한(전력 ×1.25 미만) 적이 있는가.</summary>
+    private bool HasSwarmPreyInArea(
+        long matchingId, BotPlayerState bot,
+        List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
+    {
+        float myPower = GetSwarmSquadPower(matchingId, bot.PlayerId);
+        if (myPower <= 0f)
+            return false;
+
+        foreach (var session in aliveSessions)
+        {
+            if (session.PlayerId.HasValue && session.CurrentArea == bot.CurrentArea &&
+                GetSwarmSquadPower(matchingId, session.PlayerId.Value) *
+                SwarmBotChasePowerAdvantage <= myPower)
+                return true;
+        }
+
+        foreach (var other in aliveBots)
+        {
+            if (other.PlayerId != bot.PlayerId && !other.IsSwarmCutDummy &&
+                other.CurrentArea == bot.CurrentArea &&
+                GetSwarmSquadPower(matchingId, other.PlayerId) *
+                SwarmBotChasePowerAdvantage <= myPower)
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>계측용 카드 역할 라벨 (#226 F) — 요약의 역할 분포 집계가 이 문자열을 센다.</summary>
@@ -3510,6 +3665,9 @@ public partial class GameServer
         foreach (var key in _swarmBotFleeDirective
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmBotFleeDirective.Remove(key);
+        foreach (var key in _swarmBotLastTrailCutAtUtc.Keys
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmBotLastTrailCutAtUtc.Remove(key);
         foreach (var key in _swarmEncircleCandidateSinceUtc.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmEncircleCandidateSinceUtc.Remove(key);
