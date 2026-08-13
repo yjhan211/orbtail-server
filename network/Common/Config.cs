@@ -143,8 +143,9 @@ namespace network.common
 
         // 오브열 (#226 실험 α/β): 오브가 이동 경로를 따라오는 전투열 — 클라 배치와
         // 서버 판정(오브별 공격 원점·본체 접촉)이 같은 값을 쓴다 (표시 = 판정).
-        public const float SWARM_ORB_TRAIL_SPACING = 0.9f;
-        public const float SWARM_ORB_TRAIL_FIRST_OFFSET = 0.9f;
+        // 0.9→0.7 (#227): 꼬리를 촘촘하게 — 열 응집감 + 림 메타볼 연결 강화.
+        public const float SWARM_ORB_TRAIL_SPACING = 0.7f;
+        public const float SWARM_ORB_TRAIL_FIRST_OFFSET = 0.7f;
 
         /// <summary>본체(머리)-상대 오브열 접촉 반경 — P0-a 접촉 판정(0.45)보다 오브 몸집만큼 여유.</summary>
         public const float SWARM_ORB_TRAIL_CONTACT_RADIUS = 0.6f;
