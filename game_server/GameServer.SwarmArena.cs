@@ -347,8 +347,7 @@ public partial class GameServer
                         "Swarm pvp aim lost: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Reason={Reason}",
                         matchingId, targetEvent.AttackerPlayerId, targetEvent.TargetPlayerId,
                         targetEvent.Reason);
-            },
-            monstersIgnoreRange: true);
+            });
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
         {
