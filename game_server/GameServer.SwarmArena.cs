@@ -3683,10 +3683,12 @@ public partial class GameServer
                 // 일제사격 (2026-08-12 유저 결정): 엇박 스태거 퇴역 — 전 오브가 같은 틱에
                 // 발사된다. 조준 리셋마다 스태거를 재지불하던 케이던스 손실도 함께 사라진다.
                 InitialAttackDelaySeconds = actor.InitialAttackDelaySeconds,
-                // 태양의 전역성: 사거리 무시(구역 전체) — 대신 주기가 느리다(값 지불).
+                // 사거리 30 통일 (2026-08-12 유저 결정, 2026-08-13 수리): 바람이 Config
+                // 기본(2.5)에 남아 유저를 근접에서만 쏘던 배선 사고 — 몹은 사거리 무시라
+                // PvE만 정상이라 "바람이 유저 공격을 안 한다"로 나타났다.
                 AttackRange = orbColor == SurvivorOrbColor.Red
                     ? SwarmSunAttackRange
-                    : Config.SWARM_ORB_ATTACK_RANGE
+                    : SwarmWindAttackRange
             };
         }
     }
