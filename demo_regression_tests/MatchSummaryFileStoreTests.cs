@@ -54,8 +54,9 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
     }
 
     [Fact]
-    public void Save_CountsBotOrbMergesAlongsidePlayerMerges()
+    public void Save_BuildsSwarmCutCrackAndGrowthMetrics()
     {
+        // #226 F 계측: 절단·크랙·성장 카드·물폭탄이 요약 지표로 집계된다.
         long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var store = new MatchSummaryFileStore(_directory, 5);
         var events = new List<GameEventEntry>
@@ -63,26 +64,53 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
             new() { Seq = 1, TimestampUnixMs = now, Type = "MATCH_STARTED" },
             new()
             {
-                Seq = 2, TimestampUnixMs = now + 1_000, Type = "SURVIVOR_ORB_BOARD_STATE",
-                PlayerId = 10, Outcome = "merge"
+                Seq = 2, TimestampUnixMs = now + 10_000, Type = "ORB_GROWTH_CARD_SELECTED",
+                PlayerId = 10, CardRole = "multiply", CardGrade = 1,
+                GrowthBaseCost = 3, GrowthScoreSurcharge = 0, GrowthFinalCost = 3,
+                GrowthSuccessCountBefore = 0, OrbCountBefore = 3
             },
             new()
             {
-                Seq = 3, TimestampUnixMs = now + 2_000, Type = "SURVIVOR_ORB_BOARD_STATE",
-                PlayerId = -101, IsBot = true, Outcome = "bot_merge"
+                Seq = 3, TimestampUnixMs = now + 40_000, Type = "ORB_GROWTH_CARD_SELECTED",
+                PlayerId = 10, CardRole = "armor", CardGrade = 1,
+                GrowthBaseCost = 3, GrowthScoreSurcharge = 1, GrowthFinalCost = 4,
+                GrowthSuccessCountBefore = 1, OrbCountBefore = 7
             },
             new()
             {
-                Seq = 4, TimestampUnixMs = now + 3_000, Type = "SURVIVOR_ORB_BOARD_STATE",
-                PlayerId = -101, IsBot = true, Outcome = "bot_summon"
+                Seq = 4, TimestampUnixMs = now + 50_000, Type = "ORB_CRACK_ADVANCED",
+                PlayerId = -101, IsBot = true, TargetPlayerId = 10, CrackCount = 1, RequiredHits = 2
+            },
+            new()
+            {
+                Seq = 5, TimestampUnixMs = now + 60_000, Type = "ORB_SUFFIX_CUT",
+                PlayerId = -101, IsBot = true, TargetPlayerId = 10,
+                TailOrdinal = 2, DestroyedOrbCount = 5
+            },
+            new()
+            {
+                Seq = 6, TimestampUnixMs = now + 70_000, Type = "SURVIVOR_HIT",
+                PlayerId = 10, TargetPlayerId = -101, Damage = 105, DamageSourceType = "wave_bomb"
             }
         };
 
         var summary = store.Save(206003, "last_survivor", 10, events);
 
-        Assert.Equal(1, Assert.Single(summary.Participants, player => player.PlayerId == 10).MergeCount);
-        var bot = Assert.Single(summary.Participants, player => player.PlayerId == -101);
-        Assert.Equal(1, bot.MergeCount);
+        Assert.Equal(1, summary.Metrics.TrailCutCount);
+        Assert.Equal(5, summary.Metrics.TrailCutOrbsDestroyed);
+        Assert.Equal(1, summary.Metrics.CrackAdvancedCount);
+        Assert.Equal(1, summary.Metrics.WaveBombHitCount);
+        Assert.Equal(2, summary.Metrics.GrowthSelectedCount);
+        Assert.Equal(1, summary.Metrics.GrowthSelectedCounts["multiply"]);
+        Assert.Equal(1, summary.Metrics.GrowthSelectedCounts["armor"]);
+        Assert.Equal(30d, summary.Metrics.GrowthSelectIntervalMedianSeconds);
+
+        var player = Assert.Single(summary.Participants, participant => participant.PlayerId == 10);
+        Assert.Equal(2, player.GrowthSelectedCount);
+        Assert.Equal(0, player.TrailCutsDealt);
+        Assert.Equal(5, player.OrbsLostToCut);
+        var bot = Assert.Single(summary.Participants, participant => participant.PlayerId == -101);
+        Assert.Equal(1, bot.TrailCutsDealt);
     }
 
     [Fact]
@@ -230,7 +258,6 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
 
         Assert.Equal(60_000, summary.Metrics.FirstTier2ElapsedMilliseconds);
         Assert.Equal(100_000, summary.Metrics.FirstTier3ElapsedMilliseconds);
-        Assert.Equal(150_000, summary.Metrics.FirstBoardFullElapsedMilliseconds);
         Assert.Equal(1, summary.Metrics.PvpEliminationCount);
         Assert.Equal(2, summary.Metrics.PvpProjectileLaunchCount);
         Assert.Equal(2, summary.Metrics.PvpProjectileResolvedCount);

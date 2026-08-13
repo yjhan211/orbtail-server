@@ -790,8 +790,63 @@ public partial class GameServer
     ///     봇 이동 지시 라우팅: 도주(생존) > 바닥 소환석 줍기 > 전 구역 스팟 순례 >
     ///     마른 방 탈출(사냥터 이주) > 스웜 디렉터 배회.
     /// </summary>
+    // 왕복 억제 (#226 F): 방금 떠난 구역으로 수 초 내 복귀하는 지시는 판단 떨림이다 —
+    // 봇 매치 계측에서 2초 내 직전 구역 복귀가 112회 나왔다. 피격 도주·경계 대피는 예외.
+    private const double SwarmBotAreaReturnCooldownSeconds = 5d;
+
+    private readonly Dictionary<(long MatchingId, long PlayerId),
+        (AreaType Area, AreaType PreviousArea, DateTime LeftAtUtc)> _swarmBotAreaMemory = new();
+
+    // 이번 틱 지시가 도주·대피였는가 — 왕복 억제의 유일한 예외. 피격 시간 창을 예외로 쓰면
+    // 예외 창 안의 경제 지시(공급·순례) 복귀까지 전부 통과해 "맞음→도주→즉시 복귀" 사이클이 산다.
+    private readonly HashSet<(long MatchingId, long PlayerId)> _swarmBotFleeDirective = new();
+
     private SpotArenaBotDirective ResolveSwarmBotDirective(long matchingId, long botPlayerId)
     {
+        var directive = ResolveSwarmBotDirectiveCore(matchingId, botPlayerId);
+        var bot = _botPlayerManager.GetBots(matchingId)
+            .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
+        if (bot == null || bot.IsEliminated || bot.CurrentArea == AreaType.None)
+            return directive;
+
+        var key = (matchingId, botPlayerId);
+        if (!_swarmBotAreaMemory.TryGetValue(key, out var memory))
+        {
+            _swarmBotAreaMemory[key] = (bot.CurrentArea, AreaType.None, DateTime.MinValue);
+            return directive;
+        }
+
+        if (memory.Area != bot.CurrentArea)
+        {
+            memory = (bot.CurrentArea, memory.Area, DateTime.UtcNow);
+            _swarmBotAreaMemory[key] = memory;
+        }
+
+        if (directive.Mode != SpotArenaBotMode.Escort)
+            return directive;
+
+        // 도주·대피 지시는 어디로든 즉시 — 억제는 경제·추격 지시의 판단 떨림에만 건다.
+        if (_swarmBotFleeDirective.Contains(key))
+            return directive;
+
+        if (directive.DestinationArea == memory.PreviousArea &&
+            directive.DestinationArea != bot.CurrentArea &&
+            (DateTime.UtcNow - memory.LeftAtUtc).TotalSeconds < SwarmBotAreaReturnCooldownSeconds)
+        {
+            // 복귀 지시 강등: 쿨다운 동안 현 구역 제자리 — 자동 전투·픽업은 계속 돈다.
+            return new SpotArenaBotDirective(
+                SpotArenaBotMode.Escort,
+                bot.CurrentArea,
+                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, bot.Position),
+                bot.Position);
+        }
+
+        return directive;
+    }
+
+    private SpotArenaBotDirective ResolveSwarmBotDirectiveCore(long matchingId, long botPlayerId)
+    {
+        _swarmBotFleeDirective.Remove((matchingId, botPlayerId));
         var directive = _swarmArenaManager.GetBotDirective(matchingId, botPlayerId);
         if (directive.Mode != SpotArenaBotMode.Escort)
             return directive;
@@ -805,6 +860,7 @@ public partial class GameServer
         //    경계 안 사냥터 중 가장 가까운 곳으로, 전부 밖이면 종착지 운동장으로 향한다.
         if (IsSwarmAreaOutside(matchingId, bot.CurrentArea))
         {
+            _swarmBotFleeDirective.Add((matchingId, botPlayerId));
             AreaType evacuationArea = SwarmHuntingAreas
                 .Where(area => !IsSwarmAreaOutside(matchingId, area))
                 .OrderBy(area =>
@@ -881,6 +937,7 @@ public partial class GameServer
         if (strongerPosition != null)
         {
             // 위협 앞에서는 채집 채널 홀드도 끊고 뛴다 — 홀드 채로 맞다 죽는 사고 방지 (매치 2372 봇 -78).
+            _swarmBotFleeDirective.Add((matchingId, botPlayerId));
             bot.CancelInteractionHold();
             float fleeDx = bot.Position.X - strongerPosition.X;
             float fleeDy = bot.Position.Y - strongerPosition.Y;
@@ -1459,6 +1516,9 @@ public partial class GameServer
         if (crackCount < requiredHits)
         {
             _swarmOrbCutCracks[crackKey] = crackCount;
+            _gameEventLogManager.LogSwarmOrbCrackAdvanced(
+                matchingId, creditPlayerId, bestOwnerId, crackCount, requiredHits,
+                bestArea.ToString());
             SendSwarmRingVfx(
                 bestArea, creditPlayerId, bestOrbPosition.X, bestOrbPosition.Y,
                 radius: crackCount, allSessions, SwarmRingVfxKindCutCrack,
@@ -1514,6 +1574,9 @@ public partial class GameServer
             ownerBot.CancelInteractionHold();
         }
 
+        _gameEventLogManager.LogSwarmTrailCut(
+            matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal, destroyedItems.Count,
+            bestArea.ToString());
         logger.LogInformation(
             "Swarm trail cut: MatchingId={MatchingId}, CutterId={CutterId}, OwnerId={OwnerId}, TailOrdinal={TailOrdinal}, DestroyedCount={DestroyedCount}",
             matchingId, cutterId, bestOwnerId, bestTailOrdinal, destroyedItems.Count);
@@ -1861,8 +1924,19 @@ public partial class GameServer
             if (victimSession != null)
             {
                 if (bombCorruption > 0)
+                {
+                    // 물폭탄 계측 (#226 F): 미사일과 같은 피격 로그 + wave_bomb 태그 —
+                    // 근접 거부가 실제로 넣은 피해·킬이 요약에 잡힌다.
+                    _gameEventLogManager.LogSurvivorHit(
+                        matchingId, ownerId, victim.PlayerId, 0, bombCorruption,
+                        victimSession.CurrentCorruption < Config.SURVIVOR_MAX_CORRUPTION &&
+                        victimSession.CurrentCorruption + bombCorruption >=
+                        Config.SURVIVOR_MAX_CORRUPTION,
+                        BotPlayerManager.IsBotPlayerId(ownerId), DateTimeOffset.UtcNow,
+                        damageSourceType: "wave_bomb");
                     victimSession.ModifyStats(corruptionDelta: bombCorruption,
                         attackerPlayerId: ownerId);
+                }
                 continue;
             }
 
@@ -1873,8 +1947,16 @@ public partial class GameServer
             _swarmBotLastDamagedAtUtc[(matchingId, victimBot.PlayerId)] = nowUtc;
             victimBot.LastDamagedAtUtc = nowUtc;
             if (bombCorruption > 0)
+            {
+                _gameEventLogManager.LogSurvivorHit(
+                    matchingId, ownerId, victimBot.PlayerId, 0, bombCorruption,
+                    victimBot.Corruption < Config.SURVIVOR_MAX_CORRUPTION &&
+                    victimBot.Corruption + bombCorruption >= Config.SURVIVOR_MAX_CORRUPTION,
+                    BotPlayerManager.IsBotPlayerId(ownerId), DateTimeOffset.UtcNow,
+                    damageSourceType: "wave_bomb");
                 victimBot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
                     victimBot.Corruption + bombCorruption);
+            }
         }
 
         // 몹: 착탄 지연 정산 파이프라인 재사용 — 킬 보상·상태 브로드캐스트가 따라온다.
@@ -2913,11 +2995,17 @@ public partial class GameServer
             bool applied = ApplySwarmGrowthCard(matchingId, bot.PlayerId, cardIndex, offer, session: null);
             _swarmGrowthNextOfferAtUtc[key] = nowUtc.AddSeconds(SwarmGrowthOfferCooldownSeconds);
             if (applied)
+            {
+                int successCountBefore = _summonStoneManager.GetGrowthSuccessCount(matchingId, bot.PlayerId);
                 _summonStoneManager.RecordGrowthSuccess(matchingId, bot.PlayerId);
-            if (applied)
+                _gameEventLogManager.LogSwarmGrowthSelected(
+                    matchingId, bot.PlayerId, isBot: true,
+                    GetSwarmGrowthCardRole(cardIndex), GetSwarmGrowthCardGrade(cardIndex, offer),
+                    baseCost, surcharge, finalCost, successCountBefore, orbCount);
                 logger.LogInformation(
                     "Swarm bot growth: MatchingId={MatchingId}, BotId={BotId}, Card={Card}, Base={Base}, Surcharge={Surcharge}, Cost={Cost}, Orbs={Orbs}",
                     matchingId, bot.PlayerId, cardIndex, baseCost, surcharge, finalCost, orbCount);
+            }
         }
     }
 
@@ -2938,6 +3026,33 @@ public partial class GameServer
         return offer.ArmorCount > 0 ? SwarmGrowthCardArmor : SwarmGrowthCardMultiply;
     }
 
+    /// <summary>계측용 카드 역할 라벨 (#226 F) — 요약의 역할 분포 집계가 이 문자열을 센다.</summary>
+    private static string GetSwarmGrowthCardRole(int cardIndex) => cardIndex switch
+    {
+        SwarmGrowthCardMultiply => "multiply",
+        SwarmGrowthCardEnhance => "enhance",
+        SwarmGrowthCardArmor => "armor",
+        _ => "unknown"
+    };
+
+    /// <summary>계측용 카드 등급 (#226 F) — 생성=지급 티어, 공격=강화 대상 티어(I/II), 방어=내구 증가량(I/II).</summary>
+    private static int GetSwarmGrowthCardGrade(int cardIndex, SwarmGrowthOfferState offer)
+    {
+        switch (cardIndex)
+        {
+            case SwarmGrowthCardMultiply:
+                return SurvivorOrbData.TryGetColorAndTier(offer.SpawnItemId, out _, out int tier)
+                    ? tier
+                    : 1;
+            case SwarmGrowthCardEnhance:
+                return offer.EnhanceTargetTier;
+            case SwarmGrowthCardArmor:
+                return offer.ArmorCount;
+            default:
+                return 0;
+        }
+    }
+
     /// <summary>성장 카드 선택 처리 — 세션 라우팅 콜백의 종착지. 실패 시 오퍼는 유지된다.</summary>
     internal void HandleSwarmGrowthPick(GameClientSession session, long matchingId, int offerId, int cardIndex)
     {
@@ -2952,13 +3067,20 @@ public partial class GameServer
             return;
         }
 
+        // 선택 시점 상태 (#226 F 계측): 비용 분해·오브 수는 적용 전 값을 남긴다.
+        var (baseCost, surcharge, _, orbCountBefore) = GetSwarmGrowthCostBreakdown(matchingId, playerId);
         bool success = ApplySwarmGrowthCard(matchingId, playerId, cardIndex, offer, session);
         if (success)
         {
             _swarmGrowthOffers.Remove(key);
             _swarmGrowthNextOfferAtUtc[key] = DateTime.UtcNow.AddSeconds(SwarmGrowthOfferCooldownSeconds);
             // N 누적 (#226 C 잔여): 성공한 선택만 — 실패(재검증 탈락)는 비용 곡선을 밀지 않는다.
+            int successCountBefore = _summonStoneManager.GetGrowthSuccessCount(matchingId, playerId);
             _summonStoneManager.RecordGrowthSuccess(matchingId, playerId);
+            _gameEventLogManager.LogSwarmGrowthSelected(
+                matchingId, playerId, isBot: false,
+                GetSwarmGrowthCardRole(cardIndex), GetSwarmGrowthCardGrade(cardIndex, offer),
+                baseCost, surcharge, offer.Cost, successCountBefore, orbCountBefore);
         }
 
         session.SendSwarmGrowthResult(offerId, cardIndex, success);
@@ -3158,7 +3280,17 @@ public partial class GameServer
             _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
             bot.LastDamagedAtUtc = DateTime.UtcNow;
             if (corruption > 0)
+            {
+                // 킬 크레딧 (#226 F 계측): 봇 표적도 사람 표적과 같은 피격 로그를 남긴다 —
+                // 이게 빠지면 사람이 봇을 잡아도 killCount·totalDamageDealt가 0으로 남는다.
+                _gameEventLogManager.LogSurvivorHit(
+                    matchingId, attack.AttackerPlayerId, bot.PlayerId, attack.WeaponItemId,
+                    corruption,
+                    bot.Corruption < Config.SURVIVOR_MAX_CORRUPTION &&
+                    bot.Corruption + corruption >= Config.SURVIVOR_MAX_CORRUPTION,
+                    BotPlayerManager.IsBotPlayerId(attack.AttackerPlayerId), DateTimeOffset.UtcNow);
                 bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + corruption);
+            }
         }
 
         if (corruption > 0)
@@ -3283,6 +3415,12 @@ public partial class GameServer
         foreach (var key in _swarmOrbDurabilityBonus.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmOrbDurabilityBonus.Remove(key);
+        foreach (var key in _swarmBotAreaMemory.Keys
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmBotAreaMemory.Remove(key);
+        foreach (var key in _swarmBotFleeDirective
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmBotFleeDirective.Remove(key);
         foreach (var key in _swarmEncircleCandidateSinceUtc.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmEncircleCandidateSinceUtc.Remove(key);
