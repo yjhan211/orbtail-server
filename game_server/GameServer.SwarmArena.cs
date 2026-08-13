@@ -267,21 +267,25 @@ public partial class GameServer
                 $"monsters={supplySpawn.MonsterCount} stones={supplySpawn.StoneTotal}");
 
         // 절단 실험 더미 (#226): 불사 + 오브 리필 — 절단·포위 타격감 튜닝용 과녁.
-        // 리필은 마지막 절단 후 3초 지연: 즉시 채우면 "끊어도 안 줄어드는" 것처럼 보인다.
+        // 리필 기준은 피격 시각이 아니라 오브 수다 (#227 수리): 피격 스탬프는 PvP 미사일이
+        // 매 발 갱신해 3초 유예가 영영 지나지 않았다 — 끊어도 다시 안 차던 원인.
         foreach (var dummyBot in aliveBots)
         {
             if (!dummyBot.IsSwarmCutDummy)
                 continue;
             dummyBot.Corruption = 0;
-            if ((nowUtc - dummyBot.LastDamagedAtUtc).TotalSeconds >= 3d)
-                RefillSwarmCutDummyOrbs(matchingId, dummyBot);
+            ProcessSwarmCutDummyRefill(matchingId, dummyBot, nowUtc);
         }
 
         // 오브열 (#226 α/C/B): 경로 기록 → 이동 선분의 상대 열 절단 → 고리 완성 포위 사격.
         UpdateSwarmOrbTrails(matchingId, participants);
         ProcessSwarmTrailCuts(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
         ProcessSwarmEncirclements(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
-        ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+        // 실험장 (#227): 더미 매치에서는 물폭탄도 끈다 — 파도 오브가 계속 터지면
+        // 절단 궤적 실험이 폭발 연출·피해에 묻힌다. 미사일 비무장(AddSwarmParticipantCombatActors)과
+        // 같은 조건을 쓴다 — 옵트인 환경변수 자체가 실험장 스위치다.
+        if (!SwarmCutDummyAutoSetup && dummyIds.Count == 0)
+            ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
 
         // 실험장 (#226): 더미가 있는 매치는 몹 공격도 끈다 — 절단 튜닝 중 방해 금지.
         if (dummyIds.Count == 0)
@@ -2201,7 +2205,39 @@ public partial class GameServer
     private static readonly bool SwarmCutDummyAutoSetup =
         Environment.GetEnvironmentVariable("DEV_CUT_DUMMY") == "1";
     private const int SwarmCutDummyOrbCount = 10;
+    // 과녁 열은 단색 태양 T1 — 시작 지급의 무작위 색이 섞이면 파도(물폭탄)가 딸려 온다.
+    private const int SwarmCutDummyOrbItemId = 107000010;
+    // 절단 직후 3초는 비워 둔다 — 즉시 채우면 "끊어도 안 줄어드는" 것처럼 보인다.
+    private const double SwarmCutDummyRefillDelaySeconds = 3d;
     private readonly HashSet<long> _swarmCutDummyAutoSetupDone = new();
+    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmCutDummyRefillAtUtc = new();
+
+    /// <summary>
+    ///     더미 오브 리필 (#227 수리): 판단 기준은 오브 수 — 열이 줄어든 걸 본 시점부터
+    ///     3초를 세고 채운다. 피격 시각 기준이던 시절엔 PvP 미사일이 스탬프를 매 발 갱신해
+    ///     유예가 끝나지 않았다(리필 정지).
+    /// </summary>
+    private void ProcessSwarmCutDummyRefill(long matchingId, BotPlayerState dummy, DateTime nowUtc)
+    {
+        var key = (matchingId, dummy.PlayerId);
+        if (CountSwarmSquadOrbs(matchingId, dummy.PlayerId) >= SwarmCutDummyOrbCount)
+        {
+            _swarmCutDummyRefillAtUtc.Remove(key);
+            return;
+        }
+
+        if (!_swarmCutDummyRefillAtUtc.TryGetValue(key, out var refillAtUtc))
+        {
+            _swarmCutDummyRefillAtUtc[key] = nowUtc.AddSeconds(SwarmCutDummyRefillDelaySeconds);
+            return;
+        }
+
+        if (nowUtc < refillAtUtc)
+            return;
+
+        _swarmCutDummyRefillAtUtc.Remove(key);
+        RefillSwarmCutDummyOrbs(matchingId, dummy);
+    }
 
     /// <summary>봇 플래그 조회 — 참가자 id가 더미인지. 사람(양수)은 항상 false.</summary>
     private bool IsSwarmCutDummyPlayer(long matchingId, long playerId)
@@ -2223,7 +2259,7 @@ public partial class GameServer
              index < SwarmCutDummyOrbCount;
              index++)
             _inGameInventoryManager.TryAddItemWithCapacity(
-                matchingId, dummy.PlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out _);
+                matchingId, dummy.PlayerId, SwarmCutDummyOrbItemId, Config.SWARM_ORB_CAPACITY, out _);
     }
 
     /// <summary>
@@ -2269,6 +2305,9 @@ public partial class GameServer
         _swarmOrbTrails[(matchingId, dummy.PlayerId)] = trailPoints;
         _swarmTrailLastTickPositions[(matchingId, dummy.PlayerId)] =
             new Vector3f(dummy.Position.X, dummy.Position.Y, 0f);
+        // 시작 지급의 무작위 색(파도 포함)을 비우고 단색 태양 열로 재구성한다 (#227).
+        _inGameInventoryManager.TakeAllItems(matchingId, dummy.PlayerId);
+        _swarmCutDummyRefillAtUtc.Remove((matchingId, dummy.PlayerId));
         RefillSwarmCutDummyOrbs(matchingId, dummy);
 
         var sessions = GetSessionsByInstance(MapId.School, matchingId).ToList();
@@ -3641,6 +3680,9 @@ public partial class GameServer
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmPvpCorruptionCarry.Remove(key);
         _swarmCutDummyAutoSetupDone.Remove(matchingId);
+        foreach (var key in _swarmCutDummyRefillAtUtc.Keys
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmCutDummyRefillAtUtc.Remove(key);
         foreach (var key in _swarmOrbCutLatches.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmOrbCutLatches.Remove(key);
@@ -3744,7 +3786,10 @@ public partial class GameServer
         ProximityCombatActor spatial,
         DateTime nowUtc)
     {
-        bool armed = IsSwarmAttackArmed(matchingId, spatial.PlayerId, nowUtc) &&
+        // DEV_CUT_DUMMY 매치는 절단 궤적만 읽는 실험장이다. 서버에서 공격 액터를
+        // 비무장으로 만들어 태양·바람 미사일과 실제 피해가 함께 발생하지 않게 한다.
+        bool armed = !SwarmCutDummyAutoSetup &&
+                     IsSwarmAttackArmed(matchingId, spatial.PlayerId, nowUtc) &&
                      !IsSwarmCutDummyPlayer(matchingId, spatial.PlayerId);
         // #226 표적 정책: 본체와 몬스터는 동급(2) — 최근접 우선 + 타겟 고정. 본체(1) 우선이던
         // 시절엔 구역에 적 플레이어가 있는 한 몹이 영영 표적이 안 돼 파밍이 죽었다.
