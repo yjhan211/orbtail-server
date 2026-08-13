@@ -56,6 +56,8 @@ services:
       - SOLO_MAP_VALIDATION=${SOLO_MAP_VALIDATION:-0}
       # 탐사 모드에서 캠프 몹만 되살림 (봇 없이 몹 상대 검증)
       - SOLO_MONSTERS=${SOLO_MONSTERS:-0}
+      # 절단 가독성 실험: 1이면 운동장에 정지·불사 더미 1명을 자동 배치
+      - DEV_CUT_DUMMY=${DEV_CUT_DUMMY:-0}
       - MATCH_SUMMARY_DIRECTORY=/App/match-summaries
       - MATCH_SUMMARY_MAX_FILES=50
     depends_on:
