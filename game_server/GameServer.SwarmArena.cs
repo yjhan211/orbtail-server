@@ -1640,8 +1640,8 @@ public partial class GameServer
 
         _swarmOrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
 
-        // 방어 강화 = 내구 (#226, 2026-08-12): 오브별 파괴 필요 타격 수 = 기본 1 + 내구 보너스.
-        // 내구 2+ 오브는 아래 크랙 경로가 살아나 금이 가며 버틴다 — "금이 간다 = 두꺼운 유리였다".
+        // 오브 체력 (#227): 최대 5칸 중 남은 칸이 곧 내구다. 소환 직후는 1/5(크랙 4단계),
+        // 방어 강화는 5/5(크랙 0단계). 크랙 단계 = 5 - 남은 칸이라 표시가 곧 판정이다.
         var crackKey = (matchingId, bestOwnerId, bestOrbUid);
         int crackCount = (_swarmOrbCutCracks.TryGetValue(crackKey, out int storedCracks)
             ? storedCracks
@@ -1655,9 +1655,14 @@ public partial class GameServer
             _gameEventLogManager.LogSwarmOrbCrackAdvanced(
                 matchingId, creditPlayerId, bestOwnerId, crackCount, requiredHits,
                 bestArea.ToString());
+            // 클라에는 누적 타격 수가 아니라 표시할 크랙 단계를 보낸다 — 시작 단계가
+            // 오브마다 다르므로(1/5 vs 5/5) 절대값이어야 화면과 남은 칸이 일치한다.
+            int displayCrackStage = Math.Clamp(
+                SwarmOrbMaxDurability - requiredHits + crackCount,
+                0, SwarmOrbMaxDurability - 1);
             SendSwarmRingVfx(
                 bestArea, creditPlayerId, bestOrbPosition.X, bestOrbPosition.Y,
-                radius: crackCount, allSessions, SwarmRingVfxKindCutCrack,
+                radius: displayCrackStage, allSessions, SwarmRingVfxKindCutCrack,
                 victimId: bestOwnerId, fromOrdinal: bestTailOrdinal);
             return;
         }
@@ -1888,6 +1893,10 @@ public partial class GameServer
     // 5단계 → 즉시 절단 (2026-08-12): 밟으면 바로 그 지점부터 꼬리가 끊긴다.
     // 크랙 단계 시스템(1~4 금 + 5타 파괴)은 값만 되돌리면 복원된다.
     private const int SwarmTrailCutBreakHits = 1;
+    // 오브 체력 모델 (#227): 모든 오브의 최대 내구는 5칸이고, 소환 직후는 1/5로 시작한다.
+    // 방어 강화는 5/5로 채우는 카드다 — 크랙 5단계가 곧 남은 칸이라 표시가 곧 판정.
+    private const int SwarmOrbMaxDurability = 5;
+    private const int SwarmArmorDurabilityBonus = SwarmOrbMaxDurability - SwarmTrailCutBreakHits;
     private readonly Dictionary<(long MatchingId, long OwnerId, long ItemUid), int> _swarmOrbCutCracks = new();
 
     /// <summary>링 연출 공용 전송 — 포위 완성(대형)·절단 파열(소형)·물폭탄(파랑)이 같은 원형을 쓴다.</summary>
@@ -3426,7 +3435,8 @@ public partial class GameServer
                     if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
                         return false;
                     foreach (var target in targets)
-                        _swarmOrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] = 1;
+                        _swarmOrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] =
+                            SwarmArmorDurabilityBonus;
                     return true;
                 }
             default:
