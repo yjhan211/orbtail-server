@@ -33,6 +33,40 @@ public class AreaClosureManager
         new(300, [AreaType.Ground], 29)
     ];
 
+    // 순차 폐쇄 (#229): 한 웨이브가 네 구역을 동시에 닫으면 "문이 한꺼번에 내려온" 한 순간만
+    // 남고 어디로 갈지 고르는 시간이 사라진다. 구역을 하나씩 쪼개 원래 시각보다 앞당겨 흩는다 —
+    // 마지막 구역은 원래 시각 그대로라 매치 종료 봉투(최종 운동장 폐쇄 = 타이머 만료)는 안 밀린다.
+    // 순서는 매치마다 섞어 어떤 방이 일찍 닫힐지 미리 알 수 없게 한다.
+    private const int ClosureStaggerStepSeconds = 4;
+
+    private static List<ClosureWaveDefinition> StaggerWaveAreas(List<ClosureWaveDefinition> waves)
+    {
+        var rng = new Random();
+        var staggered = new List<ClosureWaveDefinition>();
+        foreach (var wave in waves)
+        {
+            if (wave.Areas.Count <= 1)
+            {
+                staggered.Add(wave);
+                continue;
+            }
+
+            var shuffled = wave.Areas.OrderBy(_ => rng.Next()).ToList();
+            for (int index = 0; index < shuffled.Count; index++)
+            {
+                // 마지막(index = Count-1)이 원래 시각, 앞선 것들이 그만큼 일찍.
+                int offset = (shuffled.Count - 1 - index) * ClosureStaggerStepSeconds;
+                staggered.Add(wave with
+                {
+                    ClosureAtSeconds = wave.ClosureAtSeconds - offset,
+                    Areas = [shuffled[index]]
+                });
+            }
+        }
+
+        return staggered.OrderBy(wave => wave.ClosureAtSeconds).ToList();
+    }
+
     private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();
     private readonly ILogger _logger;
     private readonly Func<DateTime> _utcNow;
@@ -70,6 +104,8 @@ public class AreaClosureManager
             })
             .Where(wave => wave.Areas.Count > 0)
             .ToList();
+        if (wavesOverride == null)
+            waves = StaggerWaveAreas(waves);
 
         var state = new MatchingClosureState
         {

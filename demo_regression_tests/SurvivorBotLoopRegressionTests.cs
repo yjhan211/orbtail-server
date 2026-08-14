@@ -539,8 +539,13 @@ public sealed class SurvivorBotLoopRegressionTests
             NullLogger.Instance,
             new MatchingConfigService(null!, NullLogger.Instance),
             () => now);
-        closure.InitializeMatching(matchingId);
-        now = now.AddSeconds(85); // Classroom3(교실2)는 첫 웨이브(100초) — 85초에 경고창이 열린다.
+        // #229 순차 폐쇄로 기본 웨이브는 구역별로 흩어지고 순서도 매치마다 섞인다.
+        // 이 테스트가 보려는 건 "경고를 받은 봇이 채집을 끊고 열린 방으로 가는가"뿐이므로
+        // 웨이브를 직접 지정해 폐쇄 시각을 고정한다 (지정 시 순차 분할은 적용되지 않는다).
+        closure.InitializeMatching(
+            matchingId,
+            wavesOverride: [new ClosureWaveDefinition(100, [AreaType.Classroom3], 17)]);
+        now = now.AddSeconds(85); // Classroom3(교실2)는 100초 폐쇄 — 85초에 경고창이 열린다.
         closure.CheckClosureSchedule(matchingId);
         Assert.Contains(AreaType.Classroom3, closure.GetClientStateSnapshot(matchingId).WarningAreas);
 
