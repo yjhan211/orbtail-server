@@ -3476,9 +3476,17 @@ public partial class GameServer
                 // "모으는 중"으로 읽힌다. OfferId 0 = 표시 전용, 고를 수 없음.
                 // 소환석 상태의 NextCost는 구 소환 곡선(삼각수)이라 이 값과 다르다 —
                 // 성장 게이트의 단일 출처는 GetSwarmGrowthCardCost뿐이다.
-                if (!_swarmGrowthPreviewCost.TryGetValue(key, out int shown) || shown != finalCost)
+                // 값이 바뀔 때만 보내면 UI가 늦게 붙었을 때 그 한 번을 놓치고 비용이 영영 비어
+                // 있다 — 서 있는 오퍼와 같은 주기로 다시 보내 표시가 스스로 복구되게 한다.
+                bool costChanged =
+                    !_swarmGrowthPreviewCost.TryGetValue(key, out int shown) || shown != finalCost;
+                bool resendDue =
+                    !_swarmGrowthOfferResentAtUtc.TryGetValue(key, out var previewSentAtUtc) ||
+                    (nowUtc - previewSentAtUtc).TotalSeconds >= SwarmGrowthOfferResendSeconds;
+                if (costChanged || resendDue)
                 {
                     _swarmGrowthPreviewCost[key] = finalCost;
+                    _swarmGrowthOfferResentAtUtc[key] = nowUtc;
                     session.SendSwarmGrowthOffer(0, finalCost, 0, 0, 0);
                 }
 
@@ -3486,6 +3494,7 @@ public partial class GameServer
             }
 
             _swarmGrowthPreviewCost.Remove(key);
+            _swarmGrowthOfferResentAtUtc.Remove(key);
             var offer = GenerateSwarmGrowthOffer(matchingId, playerId, finalCost, baseCost, orbCount);
             _swarmGrowthOffers[key] = offer;
             _gameEventLogManager.LogSwarmGrowthOffered(
