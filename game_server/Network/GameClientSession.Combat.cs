@@ -287,11 +287,11 @@ public partial class GameClientSession
         // 조건은 하나 — 가해·피해 뒤 3초가 지났는가. 회복량 정산은 아레나 틱이 센다.
         if (Config.SWARM_P0_ENABLED)
         {
+            // 교전 직후에는 조용히 무시한다 (#229): 실패 팝업을 띄우면 전투 중에 수면 버튼을
+            // 잘못 누를 때마다 "유효하지 않은 게임 상태" 창이 화면을 막는다. 버튼이 이미 클릭
+            // 피드백을 줬으므로 아무 일도 안 일어나는 것 자체가 답이다.
             if (!CanEnterSwarmSleep(DateTime.UtcNow))
-            {
-                SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Sleep is locked right after combat");
                 return;
-            }
 
             SwarmSleepStartedAtUtc = DateTime.MinValue;
             _swarmSleepRecoveryCarry = 0f;
