@@ -214,31 +214,26 @@ namespace network.common
         public const int SWARM_BOX_OPEN_COST = 1;
 
         /// <summary>
-        ///     성장 카드 기본 비용 (#226 C 잔여): 이번 판 성공한 성장 선택 횟수 N 기반 —
+        ///     성장 카드 기본 비용 (#229): 이번 판 성공한 성장 선택 횟수 N 기반 5+2N.
         ///     오브가 잘려도 N은 줄지 않아 절단이 성장 시간을 초기화하지 못한다.
         /// </summary>
         public static int GetSwarmGrowthBaseCost(int growthSuccessCount) =>
-            3 + Math.Max(0, growthSuccessCount) / 3;
+            5 + 2 * Math.Max(0, growthSuccessCount);
 
-        /// <summary>점수 할증 (#226 C 잔여): 보유 오브 수 구간 — 선두일수록 다음 투자가 비싸다.</summary>
-        public static int GetSwarmGrowthScoreSurcharge(int orbCount) =>
-            orbCount >= 16 ? 4 :
-            orbCount >= 13 ? 3 :
-            orbCount >= 10 ? 2 :
-            orbCount >= 7 ? 1 : 0;
+        /// <summary>#229에서는 보유 오브 수 할증을 쓰지 않는다. 로그 호환을 위해 0을 남긴다.</summary>
+        public static int GetSwarmGrowthScoreSurcharge(int orbCount) => 0;
 
-        /// <summary>성장 카드 상한 비용 (#226 C 잔여).</summary>
-        public const int SWARM_GROWTH_COST_CAP = 10;
+        /// <summary>5분 매치에서 후반 성장을 제한하는 성장 카드 상한 비용 (#229).</summary>
+        public const int SWARM_GROWTH_COST_CAP = 21;
 
         /// <summary>
-        ///     성장 카드 최종 비용 = min(상한, 기본 + 점수 할증). 0오브는 비용 3의 T1 생성
-        ///     보장(재건 경로) — 카드 품질은 할증을 뺀 기본 비용으로만 계산한다.
+        ///     성장 카드 최종 비용 = min(21, 5+2N). 0오브는 비용 3의 T1 생성 보장(재건 경로).
+        ///     보유 오브 수는 가격에 영향을 주지 않는다.
         /// </summary>
         public static int GetSwarmGrowthCardCost(int growthSuccessCount, int orbCount) =>
             orbCount <= 0
                 ? 3
-                : Math.Min(SWARM_GROWTH_COST_CAP,
-                    GetSwarmGrowthBaseCost(growthSuccessCount) + GetSwarmGrowthScoreSurcharge(orbCount));
+                : Math.Min(SWARM_GROWTH_COST_CAP, GetSwarmGrowthBaseCost(growthSuccessCount));
 
         /// <summary>궤도 오브 1개당 개봉 비용 가산 — SB "스쿼드 인원수 비례 상자 코인".</summary>
         public const int SWARM_EXPLORE_COST_PER_ORB = 2;

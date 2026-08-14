@@ -1,11 +1,45 @@
 using game_server.services;
 using network.common.data;
 using network.common.data.helpers;
+using network.common.data.models;
 
 namespace demo_regression_tests;
 
 public sealed class SurvivorOrbBoardTests
 {
+    [Theory]
+    [InlineData(107000010, 12, 1.4f)]
+    [InlineData(107000011, 21, 1.0f)]
+    [InlineData(107000012, 30, 0.7f)]
+    [InlineData(107000020, 12, 1.4f)]
+    [InlineData(107000021, 21, 1.0f)]
+    [InlineData(107000022, 30, 0.7f)]
+    public void SunAndWindUseTheSameTierAttackTable(int itemId, int damage, float interval)
+    {
+        Assert.Equal(damage, SurvivorOrbData.GetSwarmPveAttackDamage(itemId));
+        Assert.Equal(interval, SurvivorOrbData.GetSwarmPveAttackIntervalSeconds(itemId));
+    }
+
+    [Fact]
+    public void SunPassiveCountsLivingOrbsWithoutTierWeight()
+    {
+        Assert.Equal(1f, SurvivorOrbData.GetSunPveAttackMultiplier([]));
+        Assert.Equal(1.15f, SurvivorOrbData.GetSunPveAttackMultiplier(Items(107000012)));
+        Assert.Equal(1.20f, SurvivorOrbData.GetSunPveAttackMultiplier(Items(107000010, 107000012)));
+        Assert.Equal(1.40f, SurvivorOrbData.GetSunPveAttackMultiplier(
+            Items(107000010, 107000010, 107000010, 107000010, 107000010, 107000010, 107000010)));
+    }
+
+    [Fact]
+    public void WindPassiveCountsLivingOrbsWithoutTierWeight()
+    {
+        Assert.Equal(1f, SurvivorOrbData.GetWindMoveSpeedMultiplier([]));
+        Assert.Equal(1.06f, SurvivorOrbData.GetWindMoveSpeedMultiplier(Items(107000022)));
+        Assert.Equal(1.08f, SurvivorOrbData.GetWindMoveSpeedMultiplier(Items(107000020, 107000022)));
+        Assert.Equal(1.14f, SurvivorOrbData.GetWindMoveSpeedMultiplier(
+            Items(107000020, 107000020, 107000020, 107000020, 107000020, 107000020)));
+    }
+
     [Theory]
     [InlineData(107000010, SurvivorOrbColor.Red, 1)]
     [InlineData(107000011, SurvivorOrbColor.Red, 2)]
@@ -275,4 +309,12 @@ public sealed class SurvivorOrbBoardTests
         BattleItemCombatData.Initialize(CsvHelper.LoadCsv(Path.Combine(
             directory.FullName, "network", "Common", "csv", "battle_item_combat.csv")));
     }
+
+    private static IReadOnlyList<InGameItemInfo> Items(params int[] itemIds) =>
+        itemIds.Select((itemId, index) => new InGameItemInfo
+        {
+            ItemUid = index + 1,
+            ItemId = itemId,
+            Count = 1
+        }).ToList();
 }

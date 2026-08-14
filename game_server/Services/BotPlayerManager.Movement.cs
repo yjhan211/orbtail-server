@@ -40,17 +40,17 @@ public partial class BotPlayerManager
     ///     세로가 압축된 아이소메트릭 화면에서 어느 방향이든 타일 통과 속도가 BotWalkSpeed로 일정해진다
     ///     (플레이어 로컬 이동의 세로 보정과 동일 규칙).
     /// </summary>
-    private static float ScaledWalkSpeed(float dirX, float dirY, bool windResonanceActive = false)
+    private static float ScaledWalkSpeed(float dirX, float dirY, float movementMultiplier = 1f)
     {
         float tileY = dirY / IsoVerticalSpeedScale;
         float tileFactor = (float)Math.Sqrt(dirX * dirX + tileY * tileY);
-        float baseSpeed = BotWalkSpeed * (windResonanceActive ? SurvivorOrbData.WindMoveSpeedMultiplier : 1f);
+        float baseSpeed = BotWalkSpeed * Math.Max(0f, movementMultiplier);
         return tileFactor > 0.0001f ? baseSpeed / tileFactor : baseSpeed;
     }
 
     private static float GetBotMovementSpeedMultiplier(BotPlayerState bot)
     {
-        float wind = bot.WindResonanceActive ? SurvivorOrbData.WindMoveSpeedMultiplier : 1f;
+        float wind = Math.Max(1f, bot.WindMoveSpeedMultiplier);
         // 부츠 (#222 M4): 사람과 같은 10초 이속 버프.
         float boots = DateTime.UtcNow < bot.BootsSpeedUntilUtc
             ? Config.BOOTS_MOVE_SPEED_MULTIPLIER
@@ -66,9 +66,9 @@ public partial class BotPlayerManager
             ? SurvivorOrbData.WaveSlowMoveSpeedMultiplier
             : 1f;
     }
-    private static Vector3f ScaledWalkVelocity(float dirX, float dirY, bool windResonanceActive = false)
+    private static Vector3f ScaledWalkVelocity(float dirX, float dirY, float movementMultiplier = 1f)
     {
-        float speed = ScaledWalkSpeed(dirX, dirY, windResonanceActive);
+        float speed = ScaledWalkSpeed(dirX, dirY, movementMultiplier);
         return new Vector3f(dirX * speed, dirY * speed, 0f);
     }
 
@@ -244,6 +244,10 @@ public partial class BotPlayerManager
         bool hasOpenNonCorridorRefuge = HasOpenNonCorridorRefuge(matchingId, closureManager);
         foreach (var bot in activeBots)
         {
+            bot.WindMoveSpeedMultiplier = Config.SWARM_P0_ENABLED
+                ? SurvivorOrbData.GetWindMoveSpeedMultiplier(
+                    inventoryManager.GetPlayerInventory(matchingId, bot.PlayerId).GetAllItems())
+                : bot.WindMoveSpeedMultiplier;
             bool canPlanThisTick = bot.PlayerId == result.PlanningBotId;
             bool isEvacuating = bot.EvacuationDestination != AreaType.None &&
                                 bot.PathIndex < bot.Path.Count;
@@ -1236,7 +1240,7 @@ public partial class BotPlayerManager
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
         float maxDist = BotWalkSpeed * GetBotMovementSpeedMultiplier(bot) * deltaSec;
         if (dist >= 0.01f)
-            maxDist = ScaledWalkSpeed(dx / dist, dy / dist, bot.WindResonanceActive) * GetBotWaveSlowMultiplier(bot) * deltaSec;
+            maxDist = ScaledWalkSpeed(dx / dist, dy / dist, GetBotMovementSpeedMultiplier(bot)) * deltaSec;
 
         Vector3f newPosition;
         Vector3f velocity;
@@ -1258,7 +1262,10 @@ public partial class BotPlayerManager
                 float nextDist = (float)Math.Sqrt(nextDx * nextDx + nextDy * nextDy);
                 if (nextDist > 0.01f)
                 {
-                    velocity = ScaledWalkVelocity(nextDx / nextDist, nextDy / nextDist, bot.WindResonanceActive) * GetBotWaveSlowMultiplier(bot);
+                    velocity = ScaledWalkVelocity(
+                        nextDx / nextDist,
+                        nextDy / nextDist,
+                        GetBotMovementSpeedMultiplier(bot));
 
                     // 웨이포인트에 스냅하면 이번 틱에 갈 수 있었던 거리가 버려져 그 틱만 느려진다.
                     // 셀을 지날 때마다 반복되므로 이동이 움찔거려 보인다. 남은 몫을 다음
@@ -1284,7 +1291,7 @@ public partial class BotPlayerManager
                 bot.Position.X + dirX * maxDist,
                 bot.Position.Y + dirY * maxDist,
                 0f);
-            velocity = ScaledWalkVelocity(dirX, dirY, bot.WindResonanceActive) * GetBotWaveSlowMultiplier(bot);
+            velocity = ScaledWalkVelocity(dirX, dirY, GetBotMovementSpeedMultiplier(bot));
             bot.Position = newPosition;
         }
 
@@ -2502,4 +2509,3 @@ public class BotMovementEvent
     public float Rotation { get; set; }
     public bool IsAreaTransition { get; set; }
 }
-
