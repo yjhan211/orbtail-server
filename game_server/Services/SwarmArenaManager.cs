@@ -1761,7 +1761,9 @@ public sealed class SwarmArenaManager
             IsCore = false,
             SummonStoneReward = SummonStoneReward,
             // 잼 보상은 패킷 모델에 싣지 않는다 — SwarmArenaDamageResult로 서버 내부 전달.
-            ChaseTargetPlayerId = ChaseTargetPlayerId
+            ChaseTargetPlayerId = ChaseTargetPlayerId,
+            // 종을 따로 싣는다 (#229 4단계): 크기·몸체가 더 이상 피통에 묶이지 않는다.
+            Kind = (int)Kind
         };
     }
 }
