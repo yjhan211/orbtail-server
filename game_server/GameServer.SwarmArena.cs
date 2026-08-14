@@ -601,8 +601,21 @@ public partial class GameServer
             foreach (var session in sessions) session.Send(packet);
         }
 
-        if (closureTick.ClosedAreas.Count > 0)
-            DestroySwarmOrbsInClosedAreas(matchingId, closureTick.ClosedAreas, sessions);
+        if (closureTick.ClosedAreas.Count == 0)
+            return;
+
+        // 폐쇄 = 즉사 + 문 잠금 (#227): 지속 오염으로 서서히 죽는 구조는 "언제 나가야 하는가"의
+        // 판단을 흐렸다. 닫히는 순간 안에 있으면 죽고, 그 뒤로는 들어갈 수 없다.
+        // 문을 먼저 잠근다 — 죽는 순간에 남이 밀고 들어오면 규칙이 뒤집혀 보인다.
+        var lockedDoorIds = _doorStateManager.CloseDoorsForAreas(matchingId, closureTick.ClosedAreas);
+        BroadcastDoorStateChanges(sessions, lockedDoorIds, false, 0);
+
+        // 꼬리 파괴가 먼저다: 본인은 밖에 있고 꼬리만 남은 경우가 무보상 파괴 대상이고,
+        // 안에 있던 사람은 어차피 탈락 드롭으로 정산된다.
+        DestroySwarmOrbsInClosedAreas(matchingId, closureTick.ClosedAreas, sessions);
+        EliminateEveryoneInClosedAreas(
+            matchingId, closureTick.ClosedAreas, sessions,
+            _botPlayerManager.GetBots(matchingId).ToList());
     }
 
     /// <summary>
