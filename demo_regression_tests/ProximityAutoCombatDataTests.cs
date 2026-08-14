@@ -173,7 +173,7 @@ public class ProximityAutoCombatDataTests
             "if (session == null)\n" +
             "            {\n" +
             "                _gameEventLogManager.RecordSurvivorRecovery(\n" +
-            "                    matchingId, actor.PlayerId, effectiveRecovery);\n" +
+            "                    matchingId, playerId, effectiveRecovery);\n" +
             "            }",
             source);
     }

@@ -303,6 +303,8 @@ public partial class GameServer
 
         UpdateSwarmMovementSamples(matchingId, participants, nowUtc);
         var actors = BuildSwarmArenaCombatActors(matchingId, aliveSessions, aliveBots, nowUtc);
+        ProcessSwarmPvpAttackEvents(
+            matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
         ProcessSurvivorOrbRecovery(matchingId, actors, aliveSessions, aliveBots, nowUtc);
         BroadcastSurvivorOrbVisualStates(matchingId, actors, sessions);
         BroadcastSwarmOrbRankings(matchingId, sessions, bots);
@@ -332,11 +334,10 @@ public partial class GameServer
             // "링이 겹치기만 해도 공격"으로 읽히던 체감의 원인. 이제 표시가 곧 판정이다.
             // 몹 = 같은 구역이면 사거리 무시 공격 (#226 유저 결정) — 파밍이 막히지 않는다.
             // 플레이어는 색 사거리(타원)+시야 유지.
-            (attacker, target) => !attacker.IsMonsterTarget &&
-                                  (target.IsMonsterTarget
-                                      ? attacker.Area == target.Area
-                                      : IsWithinSwarmOrbRange(attacker, target) &&
-                                        ProximityCombatLineOfSight.CanTarget(attacker, target)),
+            // #227 6단계: 이 공용 리졸버는 스웜에서 PvE만 담당한다. PvP는 오브별 독립
+            // 연사가 아니라 ProcessSwarmPvpAttackEvents의 속성별 사건으로 정산한다.
+            (attacker, target) => !attacker.IsMonsterTarget && target.IsMonsterTarget &&
+                                  attacker.Area == target.Area,
             // PvP 조준 계측 (#226 진단): 획득이 없으면 필터, 획득만 있고 발사가 없으면 케이던스.
             onTargetAcquired: targetEvent =>
             {
@@ -2170,7 +2171,7 @@ public partial class GameServer
     // 판정은 기폭 순간 위치 기준(타원 dy×2) — 표시가 곧 판정, 회피는 위치 판단이다. =====
     // 2.5 → 1.2 (2026-08-12): 파도 = 근접 거부 지뢰 — 깨러 접근한 절단자를 빠르게 처벌한다.
     private const double SwarmWaveBombIntervalSeconds = 1.2d;
-    private const double SwarmWaveBombFuseSeconds = 0.45d;
+    private const double SwarmWaveBombFuseSeconds = 0.55d;
     // 1.5 → 2.0 → 2.6 (2026-08-12 2차): 근접 거부 반경이 좁아 존재감이 약했다 — 표시·판정 동시 확장.
     private const float SwarmWaveBombRadius = 2.6f;
     // 허공 투하 기각 (2026-08-12): 적(참가자·몹)이 이 반경 안에 있는 오브만 폭탄을 떨군다.
@@ -2246,17 +2247,10 @@ public partial class GameServer
         long matchingId, SpotArenaPlayerSpatial owner, Vector3f position,
         List<SpotArenaPlayerSpatial> participants)
     {
+        // #227 6단계: 기존 오브별 물폭탄은 PvE 전용으로 남긴다. 플레이어 대상 파도 공격은
+        // 속성별 한 번의 합산 이벤트가 담당하므로 참가자를 여기서 트리거로 쓰지 않는다.
+        _ = participants;
         float radiusSquared = SwarmWaveBombTriggerRadius * SwarmWaveBombTriggerRadius;
-        foreach (var enemy in participants)
-        {
-            if (enemy.PlayerId == owner.PlayerId || enemy.Area != owner.Area)
-                continue;
-            float dx = enemy.Position.X - position.X;
-            float dy = (enemy.Position.Y - position.Y) * 2f;
-            if (dx * dx + dy * dy <= radiusSquared)
-                return true;
-        }
-
         foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
         {
             if (target.Area != owner.Area)
@@ -2299,59 +2293,14 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
+        // PvP는 ProcessSwarmPvpAttackEvents의 단일 파도 사건이 담당한다. 이 레거시 경로는
+        // 잔상 PvE만 유지한다.
+        _ = participants;
+        _ = aliveSessions;
+        _ = aliveBots;
+        _ = allSessions;
+        _ = nowUtc;
         float radiusSquared = SwarmWaveBombJudgeRadius * SwarmWaveBombJudgeRadius;
-        foreach (var victim in participants)
-        {
-            if (victim.PlayerId == ownerId || victim.Area != area)
-                continue;
-            float dx = victim.Position.X - position.X;
-            float dy = (victim.Position.Y - position.Y) * 2f;
-            if (dx * dx + dy * dy > radiusSquared)
-                continue;
-
-            // 본체 오염 직행 (#226 재개편) — 미사일과 같은 환산·이월 누산.
-            int bombCorruption = ConsumeSwarmPvpCorruption(
-                matchingId, victim.PlayerId, SwarmWaveBombPvpDamage);
-            var victimSession = aliveSessions.FirstOrDefault(session =>
-                session.PlayerId == victim.PlayerId);
-            if (victimSession != null)
-            {
-                if (bombCorruption > 0)
-                {
-                    // 물폭탄 계측 (#226 F): 미사일과 같은 피격 로그 + wave_bomb 태그 —
-                    // 근접 거부가 실제로 넣은 피해·킬이 요약에 잡힌다.
-                    _gameEventLogManager.LogSurvivorHit(
-                        matchingId, ownerId, victim.PlayerId, 0, bombCorruption,
-                        victimSession.CurrentCorruption < Config.SURVIVOR_MAX_CORRUPTION &&
-                        victimSession.CurrentCorruption + bombCorruption >=
-                        Config.SURVIVOR_MAX_CORRUPTION,
-                        BotPlayerManager.IsBotPlayerId(ownerId), DateTimeOffset.UtcNow,
-                        damageSourceType: "wave_bomb");
-                    victimSession.ModifyStats(corruptionDelta: bombCorruption,
-                        attackerPlayerId: ownerId);
-                }
-                continue;
-            }
-
-            var victimBot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == victim.PlayerId);
-            if (victimBot == null)
-                continue;
-            victimBot.LastProximityAttackerPlayerId = ownerId;
-            _swarmBotLastDamagedAtUtc[(matchingId, victimBot.PlayerId)] = nowUtc;
-            victimBot.LastDamagedAtUtc = nowUtc;
-            if (bombCorruption > 0)
-            {
-                _gameEventLogManager.LogSurvivorHit(
-                    matchingId, ownerId, victimBot.PlayerId, 0, bombCorruption,
-                    victimBot.Corruption < Config.SURVIVOR_MAX_CORRUPTION &&
-                    victimBot.Corruption + bombCorruption >= Config.SURVIVOR_MAX_CORRUPTION,
-                    BotPlayerManager.IsBotPlayerId(ownerId), DateTimeOffset.UtcNow,
-                    damageSourceType: "wave_bomb");
-                victimBot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
-                    victimBot.Corruption + bombCorruption);
-            }
-        }
-
         // 몹: 착탄 지연 정산 파이프라인 재사용 — 킬 보상·상태 브로드캐스트가 따라온다.
         foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
         {
@@ -3803,13 +3752,15 @@ public partial class GameServer
     ///     환산(이월 누산)되어 직행한다. 오브 파괴는 열 절단 전용. PvpDamageScale(0.65)은
     ///     오염 환산 상수가 대체하므로 퇴역.
     /// </summary>
-    private void ApplySwarmPvpAttack(
+    private int ApplySwarmPvpAttack(
         long matchingId,
         ProximityCombatAttack attack,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions,
-        bool broadcastVfx = true)
+        bool broadcastVfx = true,
+        bool aggregateEventFeedback = false,
+        bool sendAttackerFeedback = true)
     {
         // 반격 보호 (#227 7단계): 방금 이 표적의 꼬리를 자른 공격자의 본체 피해는 통과하지 못한다.
         // 착탄 시점에 보므로 창이 열리기 '전에' 발사된 대기 투사체도 함께 걸린다.
@@ -3825,7 +3776,7 @@ public partial class GameServer
             SendSwarmRetaliationVfx(
                 attack.AttackerPlayerId, attack.TargetPlayerId, attack.Area,
                 SwarmRingVfxKindRetaliationBlocked, 0f, allSessions);
-            return;
+            return 0;
         }
 
         int corruption = ConsumeSwarmPvpCorruption(matchingId, attack.TargetPlayerId, attack.Damage);
@@ -3834,14 +3785,20 @@ public partial class GameServer
         if (targetSession != null)
         {
             if (corruption > 0)
-                targetSession.ApplyProximityAutoCombatHit(attack.AttackerPlayerId, attack.Area,
-                    attack.WeaponItemId, corruption);
+            {
+                if (aggregateEventFeedback)
+                    targetSession.ApplySwarmAttackEventHit(
+                        attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, corruption);
+                else
+                    targetSession.ApplyProximityAutoCombatHit(
+                        attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, corruption);
+            }
         }
         else
         {
             var bot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == attack.TargetPlayerId);
             if (bot == null)
-                return;
+                return 0;
 
             // 오염이 0으로 이월돼도 "피격 중" 스탬프는 매 발 — 피격 반응 판단의 입력.
             bot.LastProximityAttackerPlayerId = attack.AttackerPlayerId;
@@ -3861,13 +3818,21 @@ public partial class GameServer
             }
         }
 
-        if (corruption > 0)
-            allSessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId)
-                ?.SendProximityAutoCombatAttackFeedback(
+        if (corruption > 0 && sendAttackerFeedback)
+        {
+            var attackerSession = allSessions.FirstOrDefault(session =>
+                session.PlayerId == attack.AttackerPlayerId);
+            if (aggregateEventFeedback)
+                attackerSession?.SendSwarmAttackEventFeedback(
                     attack.TargetPlayerId, attack.Area, attack.WeaponItemId, corruption);
+            else
+                attackerSession?.SendProximityAutoCombatAttackFeedback(
+                    attack.TargetPlayerId, attack.Area, attack.WeaponItemId, corruption);
+        }
         // 태양 착탄(#226)은 발사 시점에 이미 연출을 쐈다 — 이중 투사체 방지.
         if (broadcastVfx)
             BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, allSessions);
+        return corruption;
     }
 
     /// <summary>
@@ -3956,6 +3921,7 @@ public partial class GameServer
             _swarmFrontOrbHp.Remove(key);
         _pendingSwarmMonsterHits.RemoveAll(hit => hit.MatchingId == matchingId);
         _pendingSwarmPvpHits.RemoveAll(hit => hit.MatchingId == matchingId);
+        CleanupSwarmPvpAttackEvents(matchingId);
         foreach (var key in _swarmOrbTrails.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmOrbTrails.Remove(key);
         foreach (var key in _swarmTrailLastTickPositions.Keys
@@ -4171,12 +4137,9 @@ public partial class GameServer
                 // 일제사격 (2026-08-12 유저 결정): 엇박 스태거 퇴역 — 전 오브가 같은 틱에
                 // 발사된다. 조준 리셋마다 스태거를 재지불하던 케이던스 손실도 함께 사라진다.
                 InitialAttackDelaySeconds = actor.InitialAttackDelaySeconds,
-                // 사거리 30 통일 (2026-08-12 유저 결정, 2026-08-13 수리): 바람이 Config
-                // 기본(2.5)에 남아 유저를 근접에서만 쏘던 배선 사고 — 몹은 사거리 무시라
-                // PvE만 정상이라 "바람이 유저 공격을 안 한다"로 나타났다.
-                AttackRange = orbColor == SurvivorOrbColor.Red
-                    ? SwarmSunAttackRange
-                    : SwarmWindAttackRange
+                // 이 공용 actor는 잔상 PvE에만 쓰인다. PvP 국소 사거리는 별도 공격 사건에서
+                // 오브별 원점을 기준으로 판정하므로, PvE의 같은 구역 사냥 범위는 유지한다.
+                AttackRange = SwarmPveSameAreaAttackRange
             };
         }
     }
@@ -4191,6 +4154,7 @@ public partial class GameServer
     private const float SwarmSunAttackRange = 6f;
     // 바람 사거리 = 태양과 동일: 색 차이는 거리표가 아니라 리듬(연사 vs 한 방)과 탄속이 만든다.
     private const float SwarmWindAttackRange = SwarmSunAttackRange;
+    private const float SwarmPveSameAreaAttackRange = 1000f;
     // 1.75 → 2.5 (2026-08-12): 태양 = 무겁고 느린 한 방 — 바람(연사 소탄)과 리듬 대비.
     private const float SwarmSunHomingIntervalMultiplier = 2.5f;
     // 1.5 → 3.0 (2026-08-12 로그 실측): 발당 오염 ~3.8은 "안 박히는" 체감 — 두 배로 묵직하게.

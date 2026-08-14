@@ -494,6 +494,7 @@ public partial class GameServer
         DateTime nowUtc)
     {
         var activeRecoveryKeys = new HashSet<(long PlayerId, long ItemUid, int StackIndex)>();
+        var dueRecoveryByPlayer = new Dictionary<long, List<(ProximityCombatActor Actor, int Amount)>>();
 
         foreach (var actor in actors)
         {
@@ -518,9 +519,27 @@ public partial class GameServer
             _survivorOrbRecoveryReadyAtUtc[stateKey] =
                 nowUtc.AddSeconds(SurvivorOrbData.RecoveryTickSeconds);
 
+            if (!dueRecoveryByPlayer.TryGetValue(actor.PlayerId, out var dueRecoveries))
+            {
+                dueRecoveries = new List<(ProximityCombatActor Actor, int Amount)>();
+                dueRecoveryByPlayer[actor.PlayerId] = dueRecoveries;
+            }
+            dueRecoveries.Add((actor, requestedRecovery));
+        }
+
+        // #227 6단계: 같은 서버 틱에 발동한 회복 오브는 실제 회복·숫자·효과음을 한 번으로
+        // 합친다. 개별 오브의 다음 발동 시각은 위에서 그대로 유지한다.
+        foreach (var (playerId, dueRecoveries) in dueRecoveryByPlayer)
+        {
+            int requestedRecovery = dueRecoveries.Sum(entry => entry.Amount);
+            var representative = dueRecoveries
+                .OrderByDescending(entry => entry.Amount)
+                .ThenBy(entry => entry.Actor.WeaponItemUid)
+                .First().Actor;
+
             int effectiveRecovery = 0;
             var session = matchingSessions.FirstOrDefault(candidate =>
-                candidate.PlayerId == actor.PlayerId && !candidate.IsEliminated);
+                candidate.PlayerId == playerId && !candidate.IsEliminated);
             if (session != null)
             {
                 int previousCorruption = session.CurrentCorruption;
@@ -533,7 +552,7 @@ public partial class GameServer
             else
             {
                 var bot = matchingBots.FirstOrDefault(candidate =>
-                    candidate.PlayerId == actor.PlayerId && !candidate.IsEliminated);
+                    candidate.PlayerId == playerId && !candidate.IsEliminated);
                 if (bot != null && bot.Corruption > 0)
                 {
                     int previousCorruption = bot.Corruption;
@@ -545,22 +564,22 @@ public partial class GameServer
             if (effectiveRecovery <= 0)
                 continue;
 
-            session?.SendSurvivorOrbRecoveryFeedback(actor.WeaponItemId, effectiveRecovery);
+            session?.SendSurvivorOrbRecoveryFeedback(representative.WeaponItemId, effectiveRecovery);
 
             // Human sessions already record effective recovery inside ModifyStats.
             // Bots mutate their state directly, so only that path needs explicit telemetry.
             if (session == null)
             {
                 _gameEventLogManager.RecordSurvivorRecovery(
-                    matchingId, actor.PlayerId, effectiveRecovery);
+                    matchingId, playerId, effectiveRecovery);
             }
             logger.LogDebug(
-                "Survivor recovery orb tick: MatchingId={MatchingId}, PlayerId={PlayerId}, ItemId={ItemId}, ItemUid={ItemUid}, StackIndex={StackIndex}, Recovery={Recovery}",
+                "Survivor recovery event tick: MatchingId={MatchingId}, PlayerId={PlayerId}, " +
+                "OrbCount={OrbCount}, ItemId={ItemId}, Recovery={Recovery}",
                 matchingId,
-                actor.PlayerId,
-                actor.WeaponItemId,
-                actor.WeaponItemUid,
-                actor.WeaponStackIndex,
+                playerId,
+                dueRecoveries.Count,
+                representative.WeaponItemId,
                 effectiveRecovery);
         }
 
