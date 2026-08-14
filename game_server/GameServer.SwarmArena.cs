@@ -364,8 +364,11 @@ public partial class GameServer
                 // 발사 연출은 즉시, 피해는 투사체 비행시간 뒤에 — 체력바와 폭발이 일치한다.
                 var attackerSession = sessions.FirstOrDefault(
                     session => session.PlayerId == attack.AttackerPlayerId);
-                // #229 6단계: 가해도 교전이다 — 쏘면서 눕는 것을 3초 잠금으로 막는다.
-                attackerSession?.BreakSwarmSleep(nowUtc, markCombat: true);
+                // 자동 공격은 교전 잠금을 찍지 않는다 (#229 6단계 수정): 오브는 사거리 안 잔상을
+                // 쉬지 않고 쏘므로, 이걸 "가해"로 세면 잔상이 한 마리라도 살아 있는 한 영영 눕지
+                // 못한다 — "수면은 잔상이 없는 상태를 요구하지 않는다"는 규칙과 정면으로 충돌하고,
+                // 전멸 뒤 4초 휴지 창도 3초를 잠금에 뺏겨 무의미해진다.
+                // 잠금은 내가 몸으로 지르는 절단과 피격에만 건다.
                 attackerSession?.SendEmotionAfterimageMonsterAttackFeedback(
                     monsterId, attack.Area, attack.WeaponItemId, monsterDamage, critical);
 
@@ -1904,6 +1907,11 @@ public partial class GameServer
             return;
 
         _swarmOrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
+
+        // #229 6단계: 절단은 내가 몸으로 지르는 가해다 — 자동 공격과 달리 여기엔 교전 잠금을
+        // 건다. 절단하고 바로 눕는 도주 회복을 막는다.
+        aliveSessions.FirstOrDefault(session => session.PlayerId == creditPlayerId)
+            ?.BreakSwarmSleep(nowUtc, markCombat: true);
 
         // 오브 체력 (#227): 최대 5칸 중 남은 칸이 곧 내구다. 소환 직후는 1/5(크랙 4단계),
         // 방어 강화는 5/5(크랙 0단계). 크랙 단계 = 5 - 남은 칸이라 표시가 곧 판정이다.
@@ -4040,6 +4048,10 @@ public partial class GameServer
         var actors = new List<ProximityCombatActor>();
         foreach (var session in aliveSessions)
         {
+            // #229 6단계: 수면 중에는 자동 공격이 멈춘다 — 누워서 쏘면 회복이 순수 이득이 된다.
+            if (session.IsSleeping)
+                continue;
+
             if (session.PlayerId.HasValue &&
                 session.LastValidatedPosition != null &&
                 TryCreateSpatialActor(
