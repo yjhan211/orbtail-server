@@ -63,14 +63,20 @@ public sealed class SwarmArenaManager
     public static bool RegionSupplyModeEnabled = true;
     // 폐쇄 단계별 웨이브 곡선 (#229 4단계 P0 확정). 접촉 피해는 원시 스탯이라
     // 참가자 피해 절반 배율(SwarmMonsterDamageTakenMultiplier)을 지나 1/1/1/1/2로 들어간다.
+    //
+    // 소환석 예산 3배 상향 (#229, 매치 9703595 실측): 원안 10/11/12/13/13은 150초에 인당
+    // 15석, 5분 완주 기준 ~30석뿐이라 성장 3회(누적 21석)에서 멈췄다. 몹은 석 1077개어치를
+    // 들고 죽었는데 예산이 그중 89%를 잘라내고 있었다. 성장 8회(누적 96석 · 곡선 5+2N)를
+    // 5분 안에 닿을 목표로 잡고 30/33/36/39/39로 올린다 — 예산은 여전히 몹 보유량보다
+    // 훨씬 낮아 "한 구역 무한 파밍" 차단이라는 원래 역할은 그대로다.
     private static readonly (double UntilSeconds, int ZoneTarget, int NormalHp, int ContactDamage,
         int CoreHp, int StoneBudget)[] SupplyPhases =
     [
-        (100d, 9, 12, 1, 48, 10), // 0:00~1:40 폐쇄 전
-        (150d, 12, 15, 1, 60, 11), // 1:40~2:30 1차
-        (200d, 15, 18, 2, 72, 12), // 2:30~3:20 2차
-        (250d, 18, 24, 2, 96, 13), // 3:20~4:10 3차
-        (double.MaxValue, 18, 30, 3, 120, 13) // 4:10~5:00 최종 수렴
+        (100d, 9, 12, 1, 48, 30), // 0:00~1:40 폐쇄 전
+        (150d, 12, 15, 1, 60, 33), // 1:40~2:30 1차
+        (200d, 15, 18, 2, 72, 36), // 2:30~3:20 2차
+        (250d, 18, 24, 2, 96, 39), // 3:20~4:10 3차
+        (double.MaxValue, 18, 30, 3, 120, 39) // 4:10~5:00 최종 수렴
     ];
 
     private static int GetSupplyPhaseIndex(double elapsedSeconds)

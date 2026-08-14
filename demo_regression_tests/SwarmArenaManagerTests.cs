@@ -149,8 +149,8 @@ public class SwarmArenaManagerTests
                     .Sum(spawn => spawn.StoneTotal);
             }
 
-            // 페이즈 0 예산 10 + 핵 1기 3 = 13이 상한이다.
-            Assert.True(stones <= 13, $"페이즈 0 구역 석 예산 13을 초과했다: {stones}");
+            // 페이즈 0 예산 30 + 핵 1기 3 = 33이 상한이다.
+            Assert.True(stones <= 33, $"페이즈 0 구역 석 예산 33을 초과했다: {stones}");
             Assert.True(stones > 0, "예산이 아예 지급되지 않았다");
         }
         finally
