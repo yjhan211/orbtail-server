@@ -3435,6 +3435,10 @@ public partial class GameServer
     // 비용 예고 중복 억제 (#229 7단계): 같은 값을 매 틱 보내지 않는다.
     private readonly Dictionary<(long MatchingId, long PlayerId), int> _swarmGrowthPreviewCost = new();
 
+    // 서 있는 오퍼 재전송 주기 (#229 7단계) — 놓친 오퍼로 버튼이 굳는 것을 스스로 푼다.
+    private const double SwarmGrowthOfferResendSeconds = 2d;
+    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmGrowthOfferResentAtUtc = new();
+
     private void ProcessSwarmGrowthOffers(
         long matchingId, DateTime nowUtc,
         List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
@@ -3445,8 +3449,22 @@ public partial class GameServer
                 continue;
             long playerId = session.PlayerId.Value;
             var key = (matchingId, playerId);
-            if (_swarmGrowthOffers.ContainsKey(key))
+            if (_swarmGrowthOffers.TryGetValue(key, out var standing))
+            {
+                // 서 있는 오퍼는 주기적으로 다시 보낸다 (#229 7단계): 오퍼는 한 번만 나가므로
+                // UI가 늦게 붙거나 그 한 패킷을 놓치면 버튼이 영영 "못 삼"으로 남는다.
+                // 오퍼가 곧 구매 가능 신호라 이 재전송이 버튼 색의 자가 복구다.
+                if (!_swarmGrowthOfferResentAtUtc.TryGetValue(key, out var lastSentAtUtc) ||
+                    (nowUtc - lastSentAtUtc).TotalSeconds >= SwarmGrowthOfferResendSeconds)
+                {
+                    _swarmGrowthOfferResentAtUtc[key] = nowUtc;
+                    session.SendSwarmGrowthOffer(
+                        standing.OfferId, standing.Cost, standing.SpawnItemId,
+                        standing.EnhanceTargetTier, standing.ArmorCount);
+                }
+
                 continue;
+            }
             if (_swarmGrowthNextOfferAtUtc.TryGetValue(key, out var nextAtUtc) && nowUtc < nextAtUtc)
                 continue;
 
@@ -3632,6 +3650,7 @@ public partial class GameServer
         if (success)
         {
             _swarmGrowthOffers.Remove(key);
+            _swarmGrowthOfferResentAtUtc.Remove(key);
             _swarmGrowthNextOfferAtUtc[key] = DateTime.UtcNow.AddSeconds(SwarmGrowthOfferCooldownSeconds);
             // N 누적 (#226 C 잔여): 성공한 선택만 — 실패(재검증 탈락)는 비용 곡선을 밀지 않는다.
             int successCountBefore = _summonStoneManager.GetGrowthSuccessCount(matchingId, playerId);
@@ -3984,6 +4003,9 @@ public partial class GameServer
         foreach (var key in _swarmGrowthPreviewCost.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmGrowthPreviewCost.Remove(key);
+        foreach (var key in _swarmGrowthOfferResentAtUtc.Keys
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmGrowthOfferResentAtUtc.Remove(key);
         CleanupSwarmPvpAttackEvents(matchingId);
         foreach (var key in _swarmOrbTrails.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmOrbTrails.Remove(key);
