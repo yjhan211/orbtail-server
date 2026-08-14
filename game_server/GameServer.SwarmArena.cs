@@ -3424,6 +3424,9 @@ public partial class GameServer
     ///     성장 오퍼 틱: 사람은 소환석이 비용에 닿는 즉시 오퍼 패킷(3택), 봇은 같은 규칙으로
     ///     즉시 자동 투자. 선택·적용 후 3초 쿨이 지나야 다음 오퍼가 뜬다.
     /// </summary>
+    // 비용 예고 중복 억제 (#229 7단계): 같은 값을 매 틱 보내지 않는다.
+    private readonly Dictionary<(long MatchingId, long PlayerId), int> _swarmGrowthPreviewCost = new();
+
     private void ProcessSwarmGrowthOffers(
         long matchingId, DateTime nowUtc,
         List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
@@ -3442,8 +3445,21 @@ public partial class GameServer
             var (baseCost, surcharge, finalCost, orbCount) =
                 GetSwarmGrowthCostBreakdown(matchingId, playerId);
             if (_summonStoneManager.GetSnapshot(matchingId, playerId).StoneCount < finalCost)
-                continue;
+            {
+                // 비용 예고 (#229 7단계): 아직 못 사도 얼마가 필요한지는 늘 보여야 버튼이
+                // "모으는 중"으로 읽힌다. OfferId 0 = 표시 전용, 고를 수 없음.
+                // 소환석 상태의 NextCost는 구 소환 곡선(삼각수)이라 이 값과 다르다 —
+                // 성장 게이트의 단일 출처는 GetSwarmGrowthCardCost뿐이다.
+                if (!_swarmGrowthPreviewCost.TryGetValue(key, out int shown) || shown != finalCost)
+                {
+                    _swarmGrowthPreviewCost[key] = finalCost;
+                    session.SendSwarmGrowthOffer(0, finalCost, 0, 0, 0);
+                }
 
+                continue;
+            }
+
+            _swarmGrowthPreviewCost.Remove(key);
             var offer = GenerateSwarmGrowthOffer(matchingId, playerId, finalCost, baseCost, orbCount);
             _swarmGrowthOffers[key] = offer;
             _gameEventLogManager.LogSwarmGrowthOffered(
@@ -3957,6 +3973,9 @@ public partial class GameServer
             _swarmFrontOrbHp.Remove(key);
         _pendingSwarmMonsterHits.RemoveAll(hit => hit.MatchingId == matchingId);
         _pendingSwarmPvpHits.RemoveAll(hit => hit.MatchingId == matchingId);
+        foreach (var key in _swarmGrowthPreviewCost.Keys
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmGrowthPreviewCost.Remove(key);
         CleanupSwarmPvpAttackEvents(matchingId);
         foreach (var key in _swarmOrbTrails.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmOrbTrails.Remove(key);
