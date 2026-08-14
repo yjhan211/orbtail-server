@@ -221,17 +221,29 @@ public class ProximityAutoCombatDataTests
             mapSource);
         Assert.Contains("PlayObservedGuardianProjectileAtMonster(attacker, monster, packet.WeaponItemId);", mapSource);
     }
+    // #229: 화면 구석 누적 표시(DamageComboDisplay)를 퇴역하고 숫자를 사건이 난 자리에 띄운다.
+    // 세 갈래가 색·부호로 갈려야 "누가 누구를"이 읽힌다 — 하나로 합치면 원래 문제로 돌아간다.
     [Fact]
-    public void LocalDamageDisplayPulsesInventoryDecoWhileTheTotalIsPresented()
+    public void FloatingValuePopup_SplitsDealtTakenAndRecovery()
     {
+        string root = FindRepositoryRoot();
         string source = ReadNormalizedSource(
-            FindRepositoryRoot(), "client", "Assets", "Scripts", "UserInterfaces", "InGame", "Display",
-            "DamageComboDisplay.cs");
+            root, "client", "Assets", "Scripts", "Components", "MapObject", "MonsterDamagePopup.cs");
 
-        Assert.Contains("InventoryDecoPath = \"InGameCanvas/Displays/Inventory/Deco\"", source);
-        Assert.Contains("PulseInventoryDeco();", source);
-        Assert.Contains("private IEnumerator PulseInventoryDecoRoutine()", source);
-        Assert.Contains("Time.unscaledDeltaTime", source);
+        Assert.Contains("public static void ShowDamageDealt(", source);
+        Assert.Contains("public static void ShowDamageTaken(", source);
+        Assert.Contains("public static void ShowRecovery(", source);
+        // 부호는 색맹 대비 축이다 — 색만으로 방향을 읽게 두지 않는다.
+        Assert.Contains("TakenColor, \"-\"", source);
+        Assert.Contains("RecoveryColor, \"+\"", source);
+        // 생김새는 프리팹이 소유한다 — 런타임 조립으로 되돌아가면 인스펙터 조절이 사라진다.
+        Assert.Contains("PrefabPath = \"Prefabs/MonsterDamagePopup\"", source);
+
+        Assert.False(
+            File.Exists(Path.Combine(
+                root, "client", "Assets", "Scripts", "UserInterfaces", "InGame", "Display",
+                "DamageComboDisplay.cs")),
+            "DamageComboDisplay가 되살아났다 — 피해 숫자는 사건이 난 자리에만 뜬다 (#229).");
     }
 
     private static string FindRepositoryRoot()

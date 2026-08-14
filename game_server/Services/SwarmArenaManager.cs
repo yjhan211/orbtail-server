@@ -498,16 +498,22 @@ public sealed class SwarmArenaManager
 
             monster.Health = Math.Max(0, monster.Health - damage);
             bool killed = monster.Health == 0;
+            var monsterInfo = monster.ToMonsterRuntimeInfo();
             if (killed)
             {
+                DateTime diedAtUtc = _utcNow();
                 monster.Alive = false;
-                monster.DiedAtUtc = _utcNow();
+                monster.DiedAtUtc = diedAtUtc;
                 if (attackerPlayerId == state.HumanPlayerId)
                     state.Kills++;
+                // 보상은 처치 시점에 구역·페이즈 예산에서 떼어 정한다 — 스폰 때 붙인 표기값이
+                // 아니라 이 값이 실제 드롭이다.
+                monsterInfo = monster.ToMonsterRuntimeInfo();
+                monsterInfo.SummonStoneReward = ConsumeSupplyStoneBudget(state, monster, diedAtUtc);
             }
 
             return new SwarmArenaDamageResult(
-                true, killed, monster.MonsterId, monster.ToMonsterRuntimeInfo(),
+                true, killed, monster.MonsterId, monsterInfo,
                 monster.HeartReward, monster.BootsReward, monster.KeyReward, monster.Kind);
         }
     }
@@ -1156,6 +1162,36 @@ public sealed class SwarmArenaManager
     private static int CountAliveGlobal(MatchState state) =>
         state.Monsters.Values.Count(monster => monster.Alive && !IsBossKind(monster.Kind));
 
+    /// <summary>
+    ///     소환석 보상 예산 정산 (#229 4단계). 잡은 몹이 실제로 줄 석을 구역·페이즈 예산에서
+    ///     떼어 준다 — 예산이 마르면 0을 돌려주고 몸만 남는다. 스폰이 아니라 처치에 물려야
+    ///     "이 구역에서 벌 수 있는 총량"이라는 원래 의도대로 작동한다: 스폰 시 차감은 죽지도
+    ///     않은 몹이 예산을 태워, 봇 매치 9690801에서 스폰 1296마리에 석 84개(마리당 0.06)까지
+    ///     떨어뜨렸다. 핵은 일반 예산과 섞지 않고 구역·페이즈당 1기까지만 준다 — 핵은 죽을
+    ///     때마다 다시 서므로 무제한이면 한 구역에 눌러앉는 것이 최적해가 된다.
+    /// </summary>
+    private static int ConsumeSupplyStoneBudget(MatchState state, MonsterRuntime monster, DateTime now)
+    {
+        int reward = monster.SummonStoneReward;
+        if (!RegionSupplyModeEnabled || reward <= 0)
+            return reward;
+
+        int phaseIndex = GetSupplyPhaseIndex((now - state.StartsAtUtc).TotalSeconds);
+        var budgetKey = (monster.Area, phaseIndex);
+        if (monster.Kind == SwarmMonsterKind.RunawayGoblin)
+            return state.SupplyCoreRewarded.Add(budgetKey) ? reward : 0;
+
+        if (!state.SupplyStoneBudget.TryGetValue(budgetKey, out int left))
+        {
+            left = SupplyPhases[phaseIndex].StoneBudget;
+            state.SupplyStoneBudget[budgetKey] = left;
+        }
+
+        int granted = Math.Min(reward, left);
+        state.SupplyStoneBudget[budgetKey] = left - granted;
+        return granted;
+    }
+
     /// <summary>구역에 살아있는 핵(탈주 고블린)이 있는지 — 핵은 구역당 1기만 유지한다.</summary>
     private static bool HasAliveCore(MatchState state, AreaType area) =>
         state.Monsters.Values.Any(monster =>
@@ -1239,24 +1275,10 @@ public sealed class SwarmArenaManager
             var stats = GetKindStats(kind);
             bool isCore = kind == SwarmMonsterKind.RunawayGoblin;
 
-            // 핵 보상은 일반 예산과 섞지 않고 별도 정산한다 (#229) — 구역·페이즈당 1기까지만
-            // 석 3을 주고, 그 뒤로 다시 서는 핵은 몸만 나온다. 핵은 죽을 때마다 다시 서므로
-            // 무제한으로 주면 한 구역에 눌러앉는 것이 최적해가 된다.
-            // 일반은 구역·페이즈 예산이 남아 있을 때만 석이 붙고, 소진되면 몸만 계속 나온다.
-            int stoneReward;
-            if (isCore)
-            {
-                stoneReward = state.SupplyCoreRewarded.Add(budgetKey) ? SupplyCoreStoneReward : 0;
-            }
-            else if (state.SupplyStoneBudget[budgetKey] >= stats.StoneReward)
-            {
-                stoneReward = stats.StoneReward;
-                state.SupplyStoneBudget[budgetKey] -= stats.StoneReward;
-            }
-            else
-            {
-                stoneReward = 0;
-            }
+            // 보상 표기는 종 기본값을 그대로 단다. 구역·페이즈 예산은 처치 시점에 깎는다
+            // (#229 수정): 스폰 때 깎으면 죽지도 않은 몹이 예산을 태워, 페이즈 시작 몇 초 만에
+            // 말라붙는다 — 봇 매치 9690801에서 스폰 1296마리에 석 84개(마리당 0.06)까지 떨어졌다.
+            int stoneReward = isCore ? SupplyCoreStoneReward : stats.StoneReward;
 
             // 페이즈 곡선: 일반은 HP·접촉 피해를, 핵은 HP를 덮어쓴다 (#229 4단계).
             // 종 정체는 Kind가 들고 있으므로 피통을 바꿔도 클라 표시는 흔들리지 않는다.

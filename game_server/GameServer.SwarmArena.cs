@@ -64,6 +64,22 @@ public partial class GameServer
     // 보존하지만 매치 루프에서는 무장하지 않는다.
     private static readonly bool SwarmPvpRangedAttackEnabled = false;
 
+    // 치명타 (#229 임시): PvE 전용. 성장 축이 오브 수·티어뿐이라 같은 몹을 같은 속도로 지우는
+    // 감각이 계속된다 — 가끔 크게 터지는 순간을 넣어 파밍에 리듬을 준다. 확률·배율은 임시값이고,
+    // 정식 축(뒤치기·처형 사거리 등 조건부)이 생기면 이 굴림을 그 조건으로 대체한다.
+    private const double SwarmCriticalChance = 0.15d;
+    private const float SwarmCriticalMultiplier = 2f;
+    private readonly Random _swarmCriticalRng = new();
+
+    /// <summary>PvE 치명타 굴림 — 적중이면 배율을 적용한 피해를 돌려준다.</summary>
+    private int RollSwarmCriticalDamage(int damage, out bool critical)
+    {
+        critical = _swarmCriticalRng.NextDouble() < SwarmCriticalChance;
+        return critical
+            ? Math.Max(damage + 1, (int)MathF.Round(damage * SwarmCriticalMultiplier))
+            : damage;
+    }
+
     private readonly Dictionary<(long MatchingId, long PlayerId),
         (Vector3f Position, DateTime At, bool Moving, DateTime StoppedAtUtc)> _swarmMovementSamples = new();
 
@@ -343,10 +359,11 @@ public partial class GameServer
             int monsterId = _swarmArenaManager.GetMonsterIdForCombatTarget(matchingId, attack.TargetPlayerId);
             if (monsterId > 0)
             {
+                int monsterDamage = RollSwarmCriticalDamage(attack.Damage, out bool critical);
                 // 발사 연출은 즉시, 피해는 투사체 비행시간 뒤에 — 체력바와 폭발이 일치한다.
                 sessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId)
                     ?.SendEmotionAfterimageMonsterAttackFeedback(
-                        monsterId, attack.Area, attack.WeaponItemId, attack.Damage);
+                        monsterId, attack.Area, attack.WeaponItemId, monsterDamage, critical);
 
                 // 관전자에게도 발사 연출 (#219): 공격자 피드백만으로는 봇의 사냥이 완전 무음이었다.
                 // 클라 관전 분기(TargetPlayerId < 0 → 몬스터)가 받는 음수 id로 실어 보낸다.
@@ -363,7 +380,7 @@ public partial class GameServer
                 double delaySeconds =
                     SurvivorOrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
                 _pendingSwarmMonsterHits.Add((matchingId, attack.TargetPlayerId, attack.AttackerPlayerId,
-                    attack.Damage, nowUtc.AddSeconds(delaySeconds)));
+                    monsterDamage, nowUtc.AddSeconds(delaySeconds)));
                 continue;
             }
 
@@ -2266,8 +2283,10 @@ public partial class GameServer
             float dy = (target.Position.Y - position.Y) * 2f;
             if (dx * dx + dy * dy > radiusSquared)
                 continue;
+            // 치명타는 몹 단위로 굴린다 — 한 폭발이 여러 마리를 쳐도 그중 일부만 크게 터진다.
+            int monsterDamage = RollSwarmCriticalDamage(damage, out bool critical);
             _pendingSwarmMonsterHits.Add((matchingId, target.CombatTargetId, ownerId,
-                damage, nowUtc));
+                monsterDamage, nowUtc));
             hitCount++;
 
             // 피해 숫자 (#229): 파도는 여기가 유일한 통보 지점이다 — 유도탄과 달리 리졸버를
@@ -2279,7 +2298,7 @@ public partial class GameServer
 
             notifiedCount++;
             ownerSession?.SendEmotionAfterimageMonsterAttackFeedback(
-                monsterId, area, sourceItemId, damage);
+                monsterId, area, sourceItemId, monsterDamage, critical);
         }
 
         if (hitCount > 0)
