@@ -727,6 +727,11 @@ public partial class GameServer
         List<BotPlayerState> bots,
         List<GameClientSession> sessions)
     {
+        // #229 5단계: 자동 탐색 임시 중단. 상자 앞에 걸어가 서 있는 봇이 남지 않게
+        // 채널 시작 자체를 막는다.
+        if (Config.IsSwarmExploreDisabled())
+            return;
+
         foreach (var bot in bots)
         {
             // (2) 채널 진행 중 — 1.5초가 지나면 개봉 확정
@@ -781,6 +786,13 @@ public partial class GameServer
         BroadcastBotExploreEnds(matchingId, [(bot.PlayerId, bot.CurrentArea)], sessions);
         if (spotId <= 0)
             return;
+
+        // #229 5단계: 봇도 사람과 같은 규칙 — 스웜에서는 상자를 열지 않는다.
+        if (Config.IsSwarmExploreDisabled())
+        {
+            RngCollectCooldownStore.ClearCooldown(matchingId, spotId);
+            return;
+        }
 
         // #226 단계 C: 상자 = 소모품 공급처 (사람과 같은 규칙) — 오브 성장은 성장 카드가 맡는다.
         if (!_summonStoneManager.TrySpendStones(

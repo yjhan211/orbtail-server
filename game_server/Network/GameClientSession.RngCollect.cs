@@ -449,6 +449,14 @@ public partial class GameClientSession
     /// </summary>
     private Task HandleSwarmRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
+        // #229 5단계: 스웜 탐색 임시 중단. 목록을 안 보내므로 정상 클라는 여기 오지 않지만,
+        // 남아 있는 자동 탐색·구버전 클라가 열지 못하게 서버에서도 막는다.
+        if (Config.IsSwarmExploreDisabled())
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+            return Task.CompletedTask;
+        }
+
         if (IsEliminated)
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);

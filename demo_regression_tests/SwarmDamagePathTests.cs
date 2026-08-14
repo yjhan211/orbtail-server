@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
 using game_server;
+using network.common;
 
 namespace demo_regression_tests;
 
@@ -49,6 +50,38 @@ public class SwarmDamagePathTests
         Assert.True(
             writes[0].Index > cutMethodStart,
             "절단 내구 대입이 절단 판정 밖에 있다 (#227 M2).");
+    }
+
+    /// <summary>
+    ///     #229 5단계: 스웜 탐색·소비품 임시 중단. 데이터·CSV·레거시 코드는 남기고 플래그로만
+    ///     끈다 — 이 게이트가 열리면 회복이 다시 랜덤 상자로 새고 부츠가 기동 축을 가져간다.
+    /// </summary>
+    [Fact]
+    public void SwarmExploreAndConsumables_StayDisabled()
+    {
+        Assert.True(
+            Config.IsSwarmExploreDisabled(),
+            "스웜 탐색·소비품이 다시 켜졌다 — 회복은 수면이, 기동력은 바람 오브가 맡는다 (#229 5단계).");
+
+        // 게이트가 실제로 물려 있어야 한다: 목록 전송·탐색 시작·봇 자동 탐색·소비품 드롭 네 곳.
+        foreach (var (file, marker) in new[]
+                 {
+                     (Path.Combine("game_server", "Network", "GameClientSession.Movement.cs"),
+                         "private void SendInteractableList"),
+                     (Path.Combine("game_server", "Network", "GameClientSession.RngCollect.cs"),
+                         "private Task HandleSwarmRngCollectStart"),
+                     (Path.Combine("game_server", "GameServer.SwarmArena.cs"),
+                         "private void ProcessSwarmBotExplores"),
+                     (Path.Combine("game_server", "GameServer.SpotArena.cs"),
+                         "private void SpawnSpotArenaSummonStone")
+                 })
+        {
+            string source = File.ReadAllText(Path.Combine(FindRepositoryRoot(), file));
+            int start = source.IndexOf(marker, StringComparison.Ordinal);
+            Assert.True(start >= 0, $"{marker}를 찾지 못했다");
+            string body = source.Substring(start, Math.Min(1400, source.Length - start));
+            Assert.Contains("Config.IsSwarmExploreDisabled()", body);
+        }
     }
 
     private static string FindRepositoryRoot()

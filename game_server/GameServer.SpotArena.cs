@@ -405,6 +405,18 @@ public partial class GameServer
             bootsReward <= 0 && keyReward <= 0)
             return;
 
+        // #229 5단계: 스웜에서는 회복(하트)·이동속도(부츠) 소비품을 떨구지 않는다.
+        // 회복은 수면이, 기동력은 바람 오브가 맡는다. 열쇠는 폐쇄 문을 여는 진행 아이템이라 남긴다.
+        if (Config.IsSwarmExploreDisabled())
+        {
+            heartReward = 0;
+            bootsReward = 0;
+        }
+
+        if (defeatedWave.SummonStoneReward <= 0 && heartReward <= 0 &&
+            bootsReward <= 0 && keyReward <= 0)
+            return;
+
         // 하트·부츠·열쇠 (#222 M4): 소환석과 함께 흩어진다 — 픽업 경쟁 규칙 공유.
         // 잼 낙수는 잼 승점 퇴역과 함께 제거 (#226 D).
         var itemIds = Enumerable.Repeat(

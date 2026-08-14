@@ -518,6 +518,11 @@ public partial class GameClientSession
 
     private void SendInteractableList(AreaType areaType)
     {
+        // #229 5단계: 스웜은 목록 자체를 보내지 않는다 — 마커도 빈 상호작용 UI도 뜰 일이 없다.
+        // 상태 관리자·CSV는 그대로라 플래그만 되돌리면 살아난다.
+        if (Config.IsSwarmExploreDisabled())
+            return;
+
         var objects = _interactableStateManager.GetAreaObjectStates(CurrentMapSubId, areaType);
         if (objects.Count == 0)
         {
