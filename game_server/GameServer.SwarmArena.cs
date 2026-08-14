@@ -337,24 +337,7 @@ public partial class GameServer
             // #227 6단계: 이 공용 리졸버는 스웜에서 PvE만 담당한다. PvP는 오브별 독립
             // 연사가 아니라 ProcessSwarmPvpAttackEvents의 속성별 사건으로 정산한다.
             (attacker, target) => !attacker.IsMonsterTarget && target.IsMonsterTarget &&
-                                  attacker.Area == target.Area,
-            // PvP 조준 계측 (#226 진단): 획득이 없으면 필터, 획득만 있고 발사가 없으면 케이던스.
-            onTargetAcquired: targetEvent =>
-            {
-                if (targetEvent.TargetPlayerId > -1_000_000_000_000L)
-                    logger.LogInformation(
-                        "Swarm pvp aim acquired: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Weapon={Weapon}",
-                        matchingId, targetEvent.AttackerPlayerId, targetEvent.TargetPlayerId,
-                        targetEvent.WeaponItemId);
-            },
-            onTargetLost: targetEvent =>
-            {
-                if (targetEvent.TargetPlayerId > -1_000_000_000_000L)
-                    logger.LogInformation(
-                        "Swarm pvp aim lost: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Reason={Reason}",
-                        matchingId, targetEvent.AttackerPlayerId, targetEvent.TargetPlayerId,
-                        targetEvent.Reason);
-            });
+                                  attacker.Area == target.Area);
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
         {
@@ -406,10 +389,6 @@ public partial class GameServer
                 double pvpDelaySeconds =
                     SurvivorOrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, pvpDistance);
                 _pendingSwarmPvpHits.Add((matchingId, attack, nowUtc.AddSeconds(pvpDelaySeconds)));
-                // PvP 발사 계측 (#226 진단): 유저 신고 "오브가 플레이어를 공격 안 함" 추적.
-                logger.LogInformation(
-                    "Swarm pvp launch: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Weapon={Weapon}",
-                    matchingId, attack.AttackerPlayerId, attack.TargetPlayerId, attack.WeaponItemId);
                 continue;
             }
 
@@ -3452,9 +3431,6 @@ public partial class GameServer
                     matchingId, bot.PlayerId, isBot: true,
                     GetSwarmGrowthCardRole(cardIndex), GetSwarmGrowthCardGrade(cardIndex, offer),
                     baseCost, surcharge, finalCost, successCountBefore, orbCount);
-                logger.LogInformation(
-                    "Swarm bot growth: MatchingId={MatchingId}, BotId={BotId}, Card={Card}, Base={Base}, Surcharge={Surcharge}, Cost={Cost}, Orbs={Orbs}",
-                    matchingId, bot.PlayerId, cardIndex, baseCost, surcharge, finalCost, orbCount);
             }
         }
     }
