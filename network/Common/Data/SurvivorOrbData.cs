@@ -114,6 +114,37 @@ namespace network.common.data
         /// </summary>
         public static int GetSquadOrbMaxHp(int tier) => tier >= 3 ? 120 : tier == 2 ? 56 : 24;
 
+        /// <summary>
+        ///     티어 크기 배율 — 티어 = 크기가 오브열의 문장 부호다. 클라 슬롯 스케일과
+        ///     열 간격이 같은 표를 읽어야 "커진 만큼 벌어진다"가 성립한다 (#227).
+        /// </summary>
+        public static float GetSwarmOrbTierScale(int tier) =>
+            tier >= 3 ? 1.7f : tier == 2 ? 1.35f : 1f;
+
+        /// <summary>
+        ///     열에서 ordinal번째 오브까지의 경로 거리 (#227): 간격이 이웃 두 오브의 크기
+        ///     평균에 비례한다 — 고정 간격에서는 티어가 오를수록 오브가 서로 파고들었다.
+        ///     서버 판정(발사 원점·절단 좌표)과 클라 표시가 이 함수 하나만 쓴다.
+        /// </summary>
+        public static float GetSwarmTrailDistance(IReadOnlyList<int> orderedTiers, int ordinal)
+        {
+            float distance = Config.SWARM_ORB_TRAIL_FIRST_OFFSET * TierScaleAt(orderedTiers, 0);
+            for (int index = 1; index <= ordinal; index++)
+            {
+                float previous = TierScaleAt(orderedTiers, index - 1);
+                float current = TierScaleAt(orderedTiers, index);
+                distance += Config.SWARM_ORB_TRAIL_SPACING * (previous + current) * 0.5f;
+            }
+
+            return distance;
+        }
+
+        /// <summary>목록이 짧거나 비어도 T1로 떨어져 서버·클라가 같은 값을 낸다.</summary>
+        private static float TierScaleAt(IReadOnlyList<int> orderedTiers, int index) =>
+            orderedTiers != null && index >= 0 && index < orderedTiers.Count
+                ? GetSwarmOrbTierScale(orderedTiers[index])
+                : 1f;
+
         /// <summary>궤도 전체의 색 스탯 합산 — 서버 판정과 클라 표시(링)가 같은 값을 읽는다.</summary>
         public static (float AttackMultiplier, float AttackSpeedMultiplier, float RangeBonus)
             GetSwarmColorStats(IEnumerable<InGameItemInfo> items)

@@ -632,13 +632,15 @@ public partial class GameServer
             int orbCount = CountSwarmSquadOrbs(matchingId, playerId);
             if (orbCount == 0)
                 continue;
+            var closureTiers = GetSwarmOrbTiersInOrder(matchingId, playerId);
 
             // 꼬리는 경로를 따르므로 폐쇄 구역 잔류분은 항상 접미다 — 끝에서부터 스캔한다.
             int suffixStart = orbCount;
             Vector3f suffixPosition = null;
             for (int ordinal = orbCount - 1; ordinal >= 0; ordinal--)
             {
-                var position = GetSwarmOrbTrailPosition(matchingId, playerId, ordinal, ownerPosition);
+                var position = GetSwarmOrbTrailPosition(
+                    matchingId, playerId, ordinal, ownerPosition, closureTiers);
                 var cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, position);
                 if (!closed.Contains(GameMapData.GetCurrentArea(MapId.School, cell)))
                     break;
@@ -1567,10 +1569,27 @@ public partial class GameServer
     }
 
     /// <summary>순번째 오브의 열 좌표 — 경로를 순번 × 간격만큼 거슬러 올라간 지점 (클라와 동일 규칙).</summary>
-    private Vector3f GetSwarmOrbTrailPosition(long matchingId, long playerId, int ordinal, Vector3f anchor)
+    /// <summary>
+    ///     열 순서대로의 티어 목록 — 간격이 오브 크기를 따르므로 좌표 계산의 입력이다 (#227).
+    ///     인벤토리 정렬(ItemUid 오름차순)은 절단 체인·전투 액터가 쓰는 순서와 같다.
+    /// </summary>
+    private List<int> GetSwarmOrbTiersInOrder(long matchingId, long playerId)
     {
-        float targetDistance = Config.SWARM_ORB_TRAIL_FIRST_OFFSET +
-                               ordinal * Config.SWARM_ORB_TRAIL_SPACING;
+        return _inGameInventoryManager.GetPlayerInventory(matchingId, playerId)
+            .GetAllItems()
+            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
+            .OrderBy(item => item.ItemUid)
+            .Select(item => GetSquadOrbTier(item.ItemId))
+            .ToList();
+    }
+
+    private Vector3f GetSwarmOrbTrailPosition(
+        long matchingId, long playerId, int ordinal, Vector3f anchor,
+        IReadOnlyList<int> orderedTiers = null)
+    {
+        // 호출부가 목록을 들고 있으면 그걸 쓴다 — 순번마다 인벤토리를 다시 훑지 않게.
+        float targetDistance = SurvivorOrbData.GetSwarmTrailDistance(
+            orderedTiers ?? GetSwarmOrbTiersInOrder(matchingId, playerId), ordinal);
         if (!_swarmOrbTrails.TryGetValue((matchingId, playerId), out var points) || points.Count == 0)
             return new Vector3f(anchor.X, anchor.Y - targetDistance * 0.2f, 0f);
 
@@ -1643,9 +1662,11 @@ public partial class GameServer
             var points = new List<Vector3f>(orbs.Count);
             var uids = new List<long>(orbs.Count);
             var itemIds = new List<int>(orbs.Count);
+            var chainTiers = orbs.Select(item => GetSquadOrbTier(item.ItemId)).ToList();
             for (int ordinal = 0; ordinal < orbs.Count; ordinal++)
             {
-                points.Add(GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position));
+                points.Add(GetSwarmOrbTrailPosition(
+                    matchingId, owner.PlayerId, ordinal, owner.Position, chainTiers));
                 uids.Add(orbs[ordinal].ItemUid);
                 itemIds.Add(orbs[ordinal].ItemId);
             }
@@ -2145,10 +2166,11 @@ public partial class GameServer
             if (!IsSwarmAttackArmed(matchingId, owner.PlayerId, nowUtc))
                 continue;
 
+            var bombTiers = GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
             foreach (int ordinal in GetSwarmBlueOrbOrdinals(matchingId, owner.PlayerId))
             {
                 var position = GetSwarmOrbTrailPosition(
-                    matchingId, owner.PlayerId, ordinal, owner.Position);
+                    matchingId, owner.PlayerId, ordinal, owner.Position, bombTiers);
                 // 허공 투하 기각: 그 오브 주변에 적이 있을 때만 떨군다.
                 if (!HasSwarmWaveBombTargetNear(matchingId, owner, position, participants))
                     continue;
@@ -2298,9 +2320,11 @@ public partial class GameServer
         if (orbCount < SwarmEncircleMinOrbs)
             return null;
 
+        var encircleTiers = GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
         var points = new List<Vector3f>(orbCount);
         for (int ordinal = 0; ordinal < orbCount; ordinal++)
-            points.Add(GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position));
+            points.Add(GetSwarmOrbTrailPosition(
+                matchingId, owner.PlayerId, ordinal, owner.Position, encircleTiers));
 
         var head = points[0];
         for (int closeIndex = SwarmEncircleMinOrbs - 1; closeIndex < points.Count; closeIndex++)
@@ -4042,12 +4066,13 @@ public partial class GameServer
             if (SurvivorOrbData.TryGetColorAndTier(actors[index].WeaponItemId, out var countColor, out _) &&
                 countColor == SurvivorOrbColor.Red)
                 sunActorCount++;
+        var actorTiers = GetSwarmOrbTiersInOrder(matchingId, spatial.PlayerId);
         for (int index = before; index < actors.Count; index++)
         {
             var actor = actors[index];
             // 오브열 (#226 α+): 공격 원점·피격 위치 = 각 오브의 열 좌표 — 표시가 곧 판정.
             var trailPosition = GetSwarmOrbTrailPosition(
-                matchingId, spatial.PlayerId, index - before, spatial.Position);
+                matchingId, spatial.PlayerId, index - before, spatial.Position, actorTiers);
             actor = actor with
             {
                 Position = trailPosition,
