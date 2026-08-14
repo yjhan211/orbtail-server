@@ -308,6 +308,7 @@ public partial class GameServer
             foreach (var damage in tick.PlayerDamage)
                 ApplySwarmParticipantDamage(matchingId, damage, aliveSessions, aliveBots, sessions);
         ProcessSwarmBotRecovery(matchingId, aliveBots, nowUtc);
+        ProcessSwarmSleepRecovery(aliveSessions, nowUtc);
 
         // 봇도 사람과 같은 규칙으로 성장한다: 소환석 5개 + 스팟 소진. 공짜 버튼 소환 없음.
         ProcessSwarmBotExplores(matchingId, aliveBots, sessions);
@@ -361,9 +362,12 @@ public partial class GameServer
             {
                 int monsterDamage = RollSwarmCriticalDamage(attack.Damage, out bool critical);
                 // 발사 연출은 즉시, 피해는 투사체 비행시간 뒤에 — 체력바와 폭발이 일치한다.
-                sessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId)
-                    ?.SendEmotionAfterimageMonsterAttackFeedback(
-                        monsterId, attack.Area, attack.WeaponItemId, monsterDamage, critical);
+                var attackerSession = sessions.FirstOrDefault(
+                    session => session.PlayerId == attack.AttackerPlayerId);
+                // #229 6단계: 가해도 교전이다 — 쏘면서 눕는 것을 3초 잠금으로 막는다.
+                attackerSession?.BreakSwarmSleep(nowUtc, markCombat: true);
+                attackerSession?.SendEmotionAfterimageMonsterAttackFeedback(
+                    monsterId, attack.Area, attack.WeaponItemId, monsterDamage, critical);
 
                 // 관전자에게도 발사 연출 (#219): 공격자 피드백만으로는 봇의 사냥이 완전 무음이었다.
                 // 클라 관전 분기(TargetPlayerId < 0 → 몬스터)가 받는 음수 id로 실어 보낸다.
@@ -601,6 +605,20 @@ public partial class GameServer
 
         // 폐쇄 = 즉사 + 문 잠금 (#227): 지속 오염으로 서서히 죽는 구조는 "언제 나가야 하는가"의
         // 판단을 흐렸다. 닫히는 순간 안에 있으면 죽고, 그 뒤로는 들어갈 수 없다.
+        // #229 6단계: 폐쇄가 걸린 구역에서는 수면을 강제로 깨운다 — 자다가 갇혀 죽으면
+        // "위치를 고르는 선택"이 아니라 사고가 된다. 경고 구역도 함께 깨운다.
+        var sleepBreakAreas = closureTick.ClosedAreas
+            .Concat(closureTick.WarningAreas ?? Array.Empty<AreaType>())
+            .ToHashSet();
+        if (sleepBreakAreas.Count > 0)
+        {
+            foreach (var sleeper in sessions)
+            {
+                if (sleeper.IsSleeping && sleepBreakAreas.Contains(sleeper.CurrentArea))
+                    sleeper.BreakSwarmSleep(DateTime.UtcNow, markCombat: false);
+            }
+        }
+
         // 문을 먼저 잠근다 — 죽는 순간에 남이 밀고 들어오면 규칙이 뒤집혀 보인다.
         var lockedDoorIds = _doorStateManager.CloseDoorsForAreas(matchingId, closureTick.ClosedAreas);
         BroadcastDoorStateChanges(sessions, lockedDoorIds, false, 0);
@@ -721,6 +739,17 @@ public partial class GameServer
     // 봇 채집 채널 (#219 탐색 모션): 즉시 개봉은 모션도 없고 사람(1.5초 채집)보다 빨랐다.
     // 사람 클라와 같은 1.5초 채널 동안 EXPLORE_1 상태로 서 있다가 개봉을 확정한다.
     private const double SwarmBotExploreChannelSeconds = 1.5d;
+
+    /// <summary>
+    ///     수면 회복 틱 (#229 6단계). 실제 정산은 세션이 소유한다 — 오염도·최대치가 세션 내부값이라
+    ///     밖에서 만지면 접근자를 열어야 하고, 그러면 다른 경로도 오염도를 직접 건드릴 수 있게 된다.
+    /// </summary>
+    private static void ProcessSwarmSleepRecovery(
+        List<GameClientSession> aliveSessions, DateTime nowUtc)
+    {
+        foreach (var session in aliveSessions)
+            session.TickSwarmSleepRecovery(nowUtc);
+    }
 
     private void ProcessSwarmBotExplores(
         long matchingId,
@@ -2962,6 +2991,8 @@ public partial class GameServer
             candidate.PlayerId == damage.TargetPlayerId);
         if (session != null)
         {
+            // #229 6단계: 본체 피격은 수면을 끊고 3초 진입 잠금을 건다 — 맞자마자 다시 눕지 못한다.
+            session.BreakSwarmSleep(DateTime.UtcNow, markCombat: true);
             if (SwarmOrbHealthEnabled)
             {
                 // 피해량은 몬스터 종이 결정한다 (해골 1 · 다트 2 · 탈주 5 · 볼러 2).

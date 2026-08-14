@@ -84,6 +84,40 @@ public class SwarmDamagePathTests
         }
     }
 
+    /// <summary>
+    ///     #229 6단계 수면 회복: 회복을 줍는 운이 아니라 위치 판단으로 바꾸는 규칙이다.
+    ///     준비 시간·교전 잠금·중단 조건 중 하나라도 빠지면 "눌러서 피해 무시"가 되어
+    ///     완료 조건(교전 중 수면으로 피해를 무시한 사례 0회)이 바로 깨진다.
+    /// </summary>
+    [Fact]
+    public void SwarmSleepRecovery_KeepsWarmupCombatLockAndBreakConditions()
+    {
+        string root = FindRepositoryRoot();
+        string combat = File.ReadAllText(
+            Path.Combine(root, "game_server", "Network", "GameClientSession.Combat.cs"));
+
+        // 수치 계약: 1.5초 준비 · 초당 최대 HP 5% · 가해·피해 뒤 3초 진입 잠금.
+        Assert.Contains("SwarmSleepWarmupSeconds = 1.5d", combat);
+        Assert.Contains("SwarmSleepRecoveryRatioPerSecond = 0.05f", combat);
+        Assert.Contains("SwarmSleepCombatLockSeconds = 3d", combat);
+        // 소수 이월이 없으면 짧은 아레나 틱에서 회복이 매번 0으로 잘린다.
+        Assert.Contains("_swarmSleepRecoveryCarry", combat);
+
+        // 중단 조건 세 갈래가 실제로 물려 있어야 한다.
+        string movement = File.ReadAllText(
+            Path.Combine(root, "game_server", "Network", "GameClientSession.Movement.cs"));
+        Assert.Contains("BreakSwarmSleep(DateTime.UtcNow, markCombat: false)", movement);
+
+        string arena = File.ReadAllText(
+            Path.Combine(root, "game_server", "GameServer.SwarmArena.cs"));
+        // 피격·가해는 교전 잠금을 함께 찍는다.
+        Assert.Contains("BreakSwarmSleep(DateTime.UtcNow, markCombat: true)", arena);
+        Assert.Contains("BreakSwarmSleep(nowUtc, markCombat: true)", arena);
+        // 폐쇄·경고 구역은 잠금 없이 깨우기만 한다.
+        Assert.Contains("sleepBreakAreas", arena);
+        Assert.Contains("ProcessSwarmSleepRecovery(aliveSessions, nowUtc)", arena);
+    }
+
     private static string FindRepositoryRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
