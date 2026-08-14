@@ -406,11 +406,14 @@ public partial class GameServer
             return;
 
         // #229 5단계: 스웜에서는 회복(하트)·이동속도(부츠) 소비품을 떨구지 않는다.
-        // 회복은 수면이, 기동력은 바람 오브가 맡는다. 열쇠는 폐쇄 문을 여는 진행 아이템이라 남긴다.
+        // 회복은 수면이, 기동력은 바람 오브가 맡는다.
+        // 열쇠도 뺀다 (#229): 폐쇄 문은 시간이 여닫는 것이라 열쇠로 뚫는 예외가 없다 —
+        // 몹이 떨구면 바닥에 쓰지 못하는 아이템만 쌓인다.
         if (Config.IsSwarmExploreDisabled())
         {
             heartReward = 0;
             bootsReward = 0;
+            keyReward = 0;
         }
 
         if (defeatedWave.SummonStoneReward <= 0 && heartReward <= 0 &&

@@ -1648,8 +1648,13 @@ public partial class GameServer
 
         Vector3f previous = anchor;
         float accumulated = 0f;
-        foreach (var point in points)
+        // 인덱스로 훑는다 (#229): 폐쇄 틱은 아레나 틱과 다른 스레드에서 돈다 — foreach로 열거하는
+        // 사이 아레나가 이 궤적에 점을 추가하면 "Collection was modified"로 폐쇄 정산이 통째로
+        // 죽는다. 순차 폐쇄로 폐쇄 횟수가 2회 → 8회로 늘면서 실제로 터졌다(매치 9703335).
+        // 길이 변화는 이번 프레임 계산에서만 무시하면 되고, 다음 틱이 새 값을 읽는다.
+        for (int index = 0; index < points.Count; index++)
         {
+            var point = points[index];
             float segment = Vector3f.Distance(previous, point);
             if (segment > 0.0001f && accumulated + segment >= targetDistance)
             {

@@ -97,6 +97,9 @@ public sealed class SwarmArenaManager
     private const double SupplyBlockedRetrySeconds = 1d;
     private const int SupplyCoreStoneReward = 3;
 
+    // 핵(큰 몹)이 처음 서는 페이즈 (#229): 0·1페이즈(0:00~2:30)는 작은 몹만 나온다.
+    private const int SupplyCoreFirstPhaseIndex = 2;
+
     // 추격 대상 유지 창 (#229): 이 시간이 지나야 최근접을 다시 고른다.
     private const double SupplyTargetHoldSeconds = 1d;
 
@@ -1132,7 +1135,11 @@ public sealed class SwarmArenaManager
                 continue;
 
             // 핵은 구역당 1기 유지 — 죽으면 다음 보충에 다시 선다. 핵도 상한을 쓴다.
-            bool includeCore = !HasAliveCore(state, zone) &&
+            // 초반 페이즈는 핵을 세우지 않는다 (#229): 시작 오브 하나로는 큰 몹(핵 2.4배)이
+            // 벽처럼 서서 파밍이 막힌다. 작은 몹 여럿을 빨리 지우는 리듬이 먼저고,
+            // 큰 몹은 오브가 붙기 시작하는 중반부터 나온다.
+            bool includeCore = phaseIndex >= SupplyCoreFirstPhaseIndex &&
+                               !HasAliveCore(state, zone) &&
                                aliveInZone < phase.ZoneTarget &&
                                aliveGlobal < SupplyGlobalAliveCap;
             int room = phase.ZoneTarget - aliveInZone - (includeCore ? 1 : 0);

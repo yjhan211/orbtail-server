@@ -36,18 +36,16 @@ public class SwarmArenaManagerTests
 
             // 첫 틱부터 보충이 돈다 — 시작 선물 15초 침묵(#226 E)은 퇴역했다.
             var firstTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
-            // 일반 2 + 핵 1 (핵은 구역당 1기, 죽어야 다시 선다).
-            Assert.Equal(3, firstTick.SpawnedMonsters.Count);
+            // 초반(페이즈 0)은 작은 몹만 나온다 (#229): 시작 오브 하나로는 핵이 벽처럼 서서
+            // 파밍이 막힌다. 보충 단위 그대로 일반 2마리.
+            Assert.Equal(2, firstTick.SpawnedMonsters.Count);
+            Assert.DoesNotContain(firstTick.SpawnedMonsters, monster => monster.Kind == 2);
             Assert.All(firstTick.SpawnedMonsters, monster =>
-                // 공급 몹은 잠든 채 등장한다 — 개전은 근접·피격·접촉의 몫.
-                Assert.Equal(0, monster.ChaseTargetPlayerId));
-            var core = Assert.Single(firstTick.SpawnedMonsters, monster => monster.Kind == 2);
-            Assert.Equal(48, core.MaxHealth); // 페이즈 0 핵 HP
-            Assert.Equal(3, core.SummonStoneReward); // 핵 보상은 예산 밖 별도 정산
-            Assert.All(firstTick.SpawnedMonsters.Where(monster => monster.Kind == 0), normal =>
             {
-                Assert.Equal(12, normal.MaxHealth); // 페이즈 0 일반 HP
-                Assert.Equal(1, normal.SummonStoneReward);
+                // 공급 몹은 잠든 채 등장한다 — 개전은 근접·피격·접촉의 몫.
+                Assert.Equal(0, monster.ChaseTargetPlayerId);
+                Assert.Equal(12, monster.MaxHealth); // 페이즈 0 일반 HP
+                Assert.Equal(1, monster.SummonStoneReward);
             });
 
             // 보충 간격 안에서는 조용하다.
