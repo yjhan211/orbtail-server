@@ -251,12 +251,18 @@ public partial class GameServer
         // 실험장 (#226): 몹은 나오되(색 무기 과녁) 공격 피해만 아래 게이트에서 꺼진다.
         var tick = _swarmArenaManager.Tick(matchingId, directorParticipants, nowUtc);
 
-        // 공급 스폰 계측 (#226 E): 공급지·무리 차수·마릿수·석 보상 기록.
-        foreach (var supplySpawn in tick.SupplyPackSpawns)
-            _gameEventLogManager.LogSystem(
-                matchingId,
-                $"supply_pack area={supplySpawn.Area} pack={supplySpawn.PackIndex} " +
-                $"monsters={supplySpawn.MonsterCount} stones={supplySpawn.StoneTotal}");
+        // 공급 스폰 계측 (#229 4단계): 공급지·페이즈·마릿수·석 보상 + 스폰 직후 전역 생존 수.
+        // alive는 상한 48 준수와 구역 목표 유지를 한 줄로 읽기 위한 값이다.
+        if (tick.SupplyPackSpawns.Count > 0)
+        {
+            int aliveAfter = _swarmArenaManager.GetVisualStates(matchingId).Count(state => state.IsAlive);
+            foreach (var supplySpawn in tick.SupplyPackSpawns)
+                _gameEventLogManager.LogSystem(
+                    matchingId,
+                    $"supply_pack area={supplySpawn.Area} phase={supplySpawn.PackIndex} " +
+                    $"monsters={supplySpawn.MonsterCount} stones={supplySpawn.StoneTotal} " +
+                    $"alive={aliveAfter}");
+        }
 
         // 절단 실험 더미 (#226): 불사 + 오브 리필 — 절단·포위 타격감 튜닝용 과녁.
         // 리필 기준은 피격 시각이 아니라 오브 수다 (#227 수리): 피격 스탬프는 PvP 미사일이

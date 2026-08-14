@@ -22,11 +22,10 @@ public class SwarmArenaManagerTests
     }
 
     [Fact]
-    public void RegionSupply_StartGiftOnceThenZonePacksThenLateSilence()
+    public void RegionSupply_HoldsZoneTargetWithTopUpsAndWipeRest()
     {
-        // #226 단계 E 지역 공급: 시작 구역 일반 3마리 1회 → 15초부터 활성 구역
-        // min(생존 절반 올림, 시간대별 상한) 곳에 무리(일반 8 + 핵 1 = 9기, 잠든 채 등장)
-        // → 전역 상한 8인 36마리 → 마지막 60초에도 공급지 2곳 유지(신규 스폰 계속).
+        // #229 4단계: 점유한 열린 구역마다 목표 수를 유지한다. 0초부터 1.5초마다 2마리씩
+        // 보충하고, 목표에 닿으면 멈춘다. 전멸시키면 4초 휴지 뒤 보충이 재개된다.
         SwarmArenaManager.RegionSupplyModeEnabled = true;
         try
         {
@@ -35,50 +34,126 @@ public class SwarmArenaManagerTests
             var startRoom = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates()[0];
             Vector3f startCenter = AreaCenter(startRoom);
 
-            var giftTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
-            Assert.Equal(3, giftTick.SpawnedMonsters.Count);
-            Assert.All(giftTick.SpawnedMonsters, monster =>
-            {
-                Assert.Equal(SwarmArenaManager.MonsterMaxHealth, monster.MaxHealth);
-                Assert.Equal(1, monster.SummonStoneReward);
+            // 첫 틱부터 보충이 돈다 — 시작 선물 15초 침묵(#226 E)은 퇴역했다.
+            var firstTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
+            // 일반 2 + 핵 1 (핵은 구역당 1기, 죽어야 다시 선다).
+            Assert.Equal(3, firstTick.SpawnedMonsters.Count);
+            Assert.All(firstTick.SpawnedMonsters, monster =>
                 // 공급 몹은 잠든 채 등장한다 — 개전은 근접·피격·접촉의 몫.
-                Assert.Equal(0, monster.ChaseTargetPlayerId);
-            });
-
-            now = StartUtc.AddSeconds(5);
-            var repeatTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
-            Assert.Empty(repeatTick.SpawnedMonsters);
-
-            // 15초: 8인 생존 → 활성 구역 min(5, 4) = 4곳 개장(활성화 틱) → 다음 틱에 무리.
-            now = StartUtc.AddSeconds(15.5);
-            manager.Tick(217001, ManyParticipants(8, startCenter, startRoom), now);
-            now = StartUtc.AddSeconds(15.75);
-            var packTick = manager.Tick(217001, ManyParticipants(8, startCenter, startRoom), now);
-
-            // 시작 선물 3기 + 전역 상한 36 → 이번 틱 무리는 3팩(27기)까지만 선다.
-            // 선물이 살아있는 구역이 활성 구역으로 뽑혀도 그 구역은 쉬므로 결과는 같다.
-            Assert.Equal(27, packTick.SpawnedMonsters.Count);
-            int cores = packTick.SpawnedMonsters.Count(monster => monster.MaxHealth == 120);
-            Assert.Equal(3, cores);
-            Assert.All(
-                packTick.SpawnedMonsters.Where(monster => monster.MaxHealth == 120),
-                core => Assert.Equal(3, core.SummonStoneReward));
-            // 계측 (#226 E): 무리 스폰이 공급지·마릿수·석 보상으로 기록된다 (9기 = 11석).
-            Assert.Equal(3, packTick.SupplyPackSpawns.Count);
-            Assert.All(packTick.SupplyPackSpawns, spawn =>
+                Assert.Equal(0, monster.ChaseTargetPlayerId));
+            var core = Assert.Single(firstTick.SpawnedMonsters, monster => monster.Kind == 2);
+            Assert.Equal(48, core.MaxHealth); // 페이즈 0 핵 HP
+            Assert.Equal(3, core.SummonStoneReward); // 핵 보상은 예산 밖 별도 정산
+            Assert.All(firstTick.SpawnedMonsters.Where(monster => monster.Kind == 0), normal =>
             {
-                Assert.Equal(9, spawn.MonsterCount);
-                Assert.Equal(11, spawn.StoneTotal);
+                Assert.Equal(12, normal.MaxHealth); // 페이즈 0 일반 HP
+                Assert.Equal(1, normal.SummonStoneReward);
             });
 
-            // 4:00 이후에도 공급지 2곳은 유지된다 — 스폰 중단 규칙 퇴역 (#226 E).
-            now = StartUtc.AddSeconds(250);
-            var lateManager = new SwarmArenaManager(() => now);
-            Assert.True(lateManager.InitializeMatching(217002, 1, StartUtc));
-            lateManager.Tick(217002, ManyParticipants(8, startCenter, startRoom), now);
-            now = StartUtc.AddSeconds(250.5);
-            var lateTick = lateManager.Tick(217002, ManyParticipants(8, startCenter, startRoom), now);
-            Assert.Equal(18, lateTick.SpawnedMonsters.Count);
+            // 보충 간격 안에서는 조용하다.
+            now = StartUtc.AddSeconds(1);
+            Assert.Empty(manager.Tick(217001, Participants(startCenter, startRoom), now).SpawnedMonsters);
+
+            // 목표 9까지 1.5초마다 2마리 — 도달하면 멈춘다.
+            for (double elapsed = 2d; elapsed <= 20d; elapsed += 0.25d)
+            {
+                now = StartUtc.AddSeconds(elapsed);
+                manager.Tick(217001, Participants(startCenter, startRoom), now);
+            }
+
+            int aliveInZone = manager.GetVisualStates(217001)
+                .Count(state => state.IsAlive && state.AreaType == startRoom);
+            Assert.Equal(9, aliveInZone);
+
+            // 전멸 → 4초 휴지 뒤 보충 재개.
+            foreach (var target in manager.GetCombatTargets(217001).ToList())
+                manager.ApplyMonsterDamage(217001, target.CombatTargetId, attackerPlayerId: 1, damage: 999);
+            Assert.Empty(manager.GetVisualStates(217001).Where(state => state.IsAlive));
+
+            now = StartUtc.AddSeconds(20.25);
+            manager.Tick(217001, Participants(startCenter, startRoom), now); // 휴지 시작
+            now = StartUtc.AddSeconds(23d);
+            Assert.Empty(manager.Tick(217001, Participants(startCenter, startRoom), now).SpawnedMonsters);
+            now = StartUtc.AddSeconds(24.5d);
+            Assert.NotEmpty(manager.Tick(217001, Participants(startCenter, startRoom), now).SpawnedMonsters);
+        }
+        finally
+        {
+            SwarmArenaManager.RegionSupplyModeEnabled = false;
+        }
+    }
+
+    [Fact]
+    public void RegionSupply_ScalesHealthByPhase_AndCapsGlobalAlive()
+    {
+        // #229 4단계 곡선: 최종 페이즈(4:10~)는 일반 30 · 핵 120 · 접촉 3.
+        // 전역 활성 잔상은 인원과 무관하게 48마리를 넘지 않는다.
+        SwarmArenaManager.RegionSupplyModeEnabled = true;
+        try
+        {
+            DateTime now = StartUtc.AddSeconds(255);
+            var manager = new SwarmArenaManager(() => now);
+            Assert.True(manager.InitializeMatching(217002, 1, StartUtc));
+
+            var lateTick = manager.Tick(217002, ManyParticipants(8, AreaCenter(AreaType.Ground)), now);
+            Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == 0),
+                normal => Assert.Equal(30, normal.MaxHealth));
+            Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == 2),
+                core => Assert.Equal(120, core.MaxHealth));
+
+            // 10인이 서로 다른 구역에 흩어져도 전역 상한 48을 넘지 않는다.
+            var rooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().Take(5).ToList();
+            for (double elapsed = 255.25d; elapsed <= 300d; elapsed += 0.25d)
+            {
+                now = StartUtc.AddSeconds(elapsed);
+                var spread = rooms
+                    .SelectMany((room, roomIndex) => Enumerable.Range(0, 2).Select(seat =>
+                        new SpotArenaPlayerSpatial(roomIndex * 2 + seat + 1, room, AreaCenter(room))))
+                    .ToList();
+                manager.Tick(217002, spread, now);
+                int alive = manager.GetVisualStates(217002).Count(state => state.IsAlive);
+                Assert.True(alive <= 48, $"전역 활성 잔상 상한 48을 초과했다: {alive}");
+            }
+        }
+        finally
+        {
+            SwarmArenaManager.RegionSupplyModeEnabled = false;
+        }
+    }
+
+    [Fact]
+    public void RegionSupply_StoneBudgetSurvivesZoneReentry()
+    {
+        // #229 4단계: 소환석 예산은 구역·페이즈 단위다. 봇처럼 구역을 들락날락해도
+        // 예산이 리셋되면 안 된다 — 실측(매치 9687066)에서 한 구역이 페이즈 1 예산 11석 대신
+        // 56석을 받았다. 보충 타이머는 버리되 예산 원장은 남긴다.
+        SwarmArenaManager.RegionSupplyModeEnabled = true;
+        try
+        {
+            DateTime now = StartUtc;
+            var manager = new SwarmArenaManager(() => now);
+            Assert.True(manager.InitializeMatching(217003, 1, StartUtc));
+            var room = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates()[0];
+            Vector3f roomCenter = AreaCenter(room);
+            Vector3f elsewhere = AreaCenter(AreaType.Ground);
+
+            int stones = 0;
+            // 이 구역에 머물다 나갔다를 반복한다 — 페이즈 0(0:00~1:40) 안에서만 논다.
+            for (double elapsed = 0.25d; elapsed <= 95d; elapsed += 0.25d)
+            {
+                now = StartUtc.AddSeconds(elapsed);
+                bool inRoom = (int)(elapsed / 5d) % 2 == 0;
+                var tick = manager.Tick(
+                    217003,
+                    inRoom ? Participants(roomCenter, room) : Participants(elsewhere),
+                    now);
+                stones += tick.SupplyPackSpawns.Where(spawn => spawn.Area == room)
+                    .Sum(spawn => spawn.StoneTotal);
+            }
+
+            // 페이즈 0 예산 10 + 핵 1기 3 = 13이 상한이다.
+            Assert.True(stones <= 13, $"페이즈 0 구역 석 예산 13을 초과했다: {stones}");
+            Assert.True(stones > 0, "예산이 아예 지급되지 않았다");
         }
         finally
         {

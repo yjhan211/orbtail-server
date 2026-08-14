@@ -55,40 +55,55 @@ public sealed class SwarmArenaManager
     // 방은 조용하고 위험은 선택이다 — 켜면 추적 스웜 디렉터(패턴 스폰)는 쉰다.
     public static readonly bool CampModeEnabled = true;
 
-    // #226 단계 B 지역 공급: 플레이어별 웨이브(10초 주기 배달)를 퇴역하고, 몹을 활성 파밍
-    // 구역의 공유 자원으로 만든다. 활성 구역이 4→3→2로 줄면서 플레이어가 자연히 만나고,
-    // 마지막 60초는 신규 스폰 없이 절단·순위 역전이 주인공이다. 몹 체력은 시간에 따라
-    // 올리지 않는다 — 오브를 강화한 뒤 같은 무리를 더 빨리 쓸어버리는 성장 체감을 지킨다.
+    // #229 4단계 점유 구역 지속 웨이브: 공급지가 돌아다니던 #226 E 모델(무리 2회 → 이전)을
+    // 퇴역하고, 플레이어가 서 있는 열린 구역마다 목표 개체 수를 유지한다. 오브는 쉬지 않고
+    // 쏘고, 폐쇄가 진행될수록 웨이브가 두꺼워진다 — 몹 체력을 시간에 따라 올려(#226 E는
+    // 고정이었다) 공격 강화가 "같은 웨이브를 더 빨리"가 아니라 "더 두꺼운 웨이브를 같은
+    // 속도로" 치우는 것으로 체감되게 한다. 서버 부하는 전역 상한 48로 잡는다.
     public static bool RegionSupplyModeEnabled = true;
-    // 시작 선물 창: 이 시간 안에 각 시작 구역에 일반 3마리(석 3)만 1회 등장한다.
-    private const double SupplyOpenSeconds = 15d;
-    // 시간대별 활성 공급지 상한 (#226 E 확정): 0:15~1:30 5곳 → 3:00 4곳 → 4:00 3곳 → 끝까지 2곳.
-    // 마지막 60초에도 2곳을 유지한다. 실제 활성 수 = min(생존자 절반 올림, 이 상한).
-    private const double SupplyCap4AtSeconds = 90d;
-    private const double SupplyCap3AtSeconds = 180d;
-    private const double SupplyCap2AtSeconds = 240d;
+    // 폐쇄 단계별 웨이브 곡선 (#229 4단계 P0 확정). 접촉 피해는 원시 스탯이라
+    // 참가자 피해 절반 배율(SwarmMonsterDamageTakenMultiplier)을 지나 1/1/1/1/2로 들어간다.
+    private static readonly (double UntilSeconds, int ZoneTarget, int NormalHp, int ContactDamage,
+        int CoreHp, int StoneBudget)[] SupplyPhases =
+    [
+        (100d, 9, 12, 1, 48, 10), // 0:00~1:40 폐쇄 전
+        (150d, 12, 15, 1, 60, 11), // 1:40~2:30 1차
+        (200d, 15, 18, 2, 72, 12), // 2:30~3:20 2차
+        (250d, 18, 24, 2, 96, 13), // 3:20~4:10 3차
+        (double.MaxValue, 18, 30, 3, 120, 13) // 4:10~5:00 최종 수렴
+    ];
 
-    private static int GetSupplyZoneTimeCap(double elapsedSeconds) =>
-        elapsedSeconds < SupplyCap4AtSeconds ? 5 :
-        elapsedSeconds < SupplyCap3AtSeconds ? 4 :
-        elapsedSeconds < SupplyCap2AtSeconds ? 3 : 2;
+    private static int GetSupplyPhaseIndex(double elapsedSeconds)
+    {
+        for (int index = 0; index < SupplyPhases.Length; index++)
+        {
+            if (elapsedSeconds < SupplyPhases[index].UntilSeconds)
+                return index;
+        }
 
-    // 표준 무리 = 일반 8(석 1) + 핵 1(석 3) = 11석 (#226 E 확정). 완전 처치 8초 뒤 한 번만
-    // 증원, 두 무리째 소진되면 공급지가 즉시 이전하고 기존 구역은 30초 휴식 뒤 후보로 복귀한다.
-    private const int SupplyPackNormals = 8;
-    private const int SupplyPacksPerZone = 2;
-    private const double SupplyReinforceDelaySeconds = 8d;
-    private const double SupplyZoneRestSeconds = 30d;
+        return SupplyPhases.Length - 1;
+    }
+
+    // 목표 수 아래면 1.5초마다 2마리씩 채운다 — 한 번에 몰아 넣으면 화면이 터지고,
+    // 한 마리씩이면 고DPS 플레이어의 공백이 길어진다.
+    private const double SupplyTopUpIntervalSeconds = 1.5d;
+    private const int SupplyTopUpCount = 2;
+    // 구역 전멸 뒤 휴지: 짧은 수면 창이 성장의 보상이다 (#229 완료 조건 2).
+    private const double SupplyWipeRestSeconds = 4d;
     // 플레이어 2.5m 안의 앵커에는 즉시 생성하지 않는다 — 전 앵커가 막히면 1초 뒤 재검사.
     private const float SupplySafeSpawnDistance = 2.5f;
+    // 화면 밖 등장 (#229): 이 거리 밖 앵커를 우선 고른다. 전부 가까우면 안전 이격만 지킨다.
+    private const float SupplyOffscreenDistance = 7f;
     private const double SupplyBlockedRetrySeconds = 1d;
     private const int SupplyCoreStoneReward = 3;
 
-    // 시작 선물 포함 전역 생존 상한 (#226 E): 8인 36마리, 10인 45마리.
-    private static int GetSupplyGlobalAliveCap(int playerCount) => playerCount > 8 ? 45 : 36;
+    // 추격 대상 유지 창 (#229): 이 시간이 지나야 최근접을 다시 고른다.
+    private const double SupplyTargetHoldSeconds = 1d;
+
+    // 전역 활성 잔상 상한 (#229 4단계): 인원 무관 48마리. 보스는 고정 콘텐츠라 제외한다.
+    private const int SupplyGlobalAliveCap = 48;
     private const float SupplyTelegraphSeconds = 1f;
     private const float SupplyScatterRadius = 1.6f;
-    private const int StartGiftMonsters = 3;
     // 원거리 종(다트·볼러)은 사거리의 이 비율에서 멈춰 쏜다 — 근접 종만 몸으로 파고든다.
     private const float RangedHoldRangeRatio = 0.8f;
 
@@ -295,7 +310,7 @@ public sealed class SwarmArenaManager
 
                 if (RegionSupplyModeEnabled)
                 {
-                    UpdateSupplyMonsterMovement(monster, state.LastParticipants, moveDeltaSeconds);
+                    UpdateSupplyMonsterMovement(monster, state.LastParticipants, now, moveDeltaSeconds);
                 }
                 else if (CampModeEnabled)
                 {
@@ -1042,114 +1057,98 @@ public sealed class SwarmArenaManager
     /// </summary>
     private void ProcessRegionSupply(MatchState state, DateTime now, SwarmArenaTickResult result)
     {
+        // 시작 선물 창(#226 E: 15초 침묵 후 무리 일괄 등장)은 퇴역했다 — 목표 수 유지 모델에서는
+        // 0초부터 보충이 돌아 오브가 첫 틱부터 쏠 것을 갖는다 (#229 완료 조건 1).
         double elapsed = (now - state.StartsAtUtc).TotalSeconds;
-        if (elapsed < SupplyOpenSeconds)
+        state.MaxParticipantCount = Math.Max(state.MaxParticipantCount, state.LastParticipants.Length);
+        int phaseIndex = GetSupplyPhaseIndex(elapsed);
+        var phase = SupplyPhases[phaseIndex];
+
+        // 점유 = 살아있는 참가자가 서 있는 구역. 폐쇄 구역은 즉시 제외한다 — 신규 스폰이
+        // 폐쇄 구역에 쌓이면 EvacuateArea가 옮기느라 상한만 갉아먹는다 (#229 완료 조건 4).
+        var occupied = new HashSet<AreaType>();
+        foreach (var participant in state.LastParticipants)
         {
-            // 시작 선물: 참가자가 서 있는 시작 구역마다 일반 3마리(석 3) — 첫 소환 여비.
-            foreach (var participant in state.LastParticipants)
+            if (participant.Area == AreaType.None ||
+                IsAreaClosedResolver?.Invoke(state.MatchingId, participant.Area) == true)
+                continue;
+            occupied.Add(participant.Area);
+        }
+
+        // 예산 회수 (#229): 비점유·폐쇄 구역은 공급 상태를 버린다. 잔존 몹은 그대로 두되
+        // 보충이 끊기고, 다시 점유되면 휴지 없이 처음부터 채운다.
+        foreach (var zone in state.SupplyZones.Keys.Where(zone => !occupied.Contains(zone)).ToList())
+            state.SupplyZones.Remove(zone);
+
+        // 전역 상한은 매 틱 새로 계산한다 — 여러 구역이 같은 틱에 채우면 합계가 넘칠 수 있다.
+        int aliveGlobal = CountAliveGlobal(state);
+
+        // 상한에 걸리면 뒤 구역이 굶는다 — 빈 구역부터 채워 공백을 고르게 나눈다.
+        // 10인이 5개 구역에 흩어지면 목표 합(18×5)이 상한 48을 넘으므로 실제로 자주 걸린다.
+        foreach (var zone in occupied.OrderBy(candidate => CountAliveInArea(state, candidate)))
+        {
+            if (aliveGlobal >= SupplyGlobalAliveCap)
+                break;
+
+            if (!state.SupplyZones.TryGetValue(zone, out var zoneState))
             {
-                // 참가자당 1회 (#226 E): 15초 창 안에 남의 시작방으로 이동해도 선물이
-                // 따라붙지 않는다 — "각 플레이어의 시작 구역에 한 번만".
-                if (!StartRooms.Contains(participant.Area) ||
-                    state.StartGiftPlayerIds.Contains(participant.PlayerId) ||
-                    !state.StartGiftAreas.Add(participant.Area))
-                    continue;
-                if (!SpawnSupplyPack(state, participant.Area, StartGiftMonsters, includeCore: false,
-                        now, result, packIndex: 0))
+                zoneState = new SupplyZoneState();
+                state.SupplyZones[zone] = zoneState;
+            }
+
+            int aliveInZone = CountAliveInArea(state, zone);
+            if (aliveInZone >= phase.ZoneTarget)
+            {
+                zoneState.NextTopUpAtUtc = null;
+                continue;
+            }
+
+            // 전멸 휴지: 한 번이라도 채운 구역이 0이 되면 4초 뒤부터 보충을 재개한다.
+            if (aliveInZone == 0 && zoneState.HasSpawned)
+            {
+                if (zoneState.WipeRestUntilUtc == null)
                 {
-                    state.StartGiftAreas.Remove(participant.Area);
-                    continue;
+                    zoneState.WipeRestUntilUtc = now.AddSeconds(SupplyWipeRestSeconds);
+                    zoneState.NextTopUpAtUtc = null;
                 }
 
-                state.StartGiftPlayerIds.Add(participant.PlayerId);
+                if (now < zoneState.WipeRestUntilUtc)
+                    continue;
             }
-
-            return;
-        }
-
-        // 활성 공급지 수 = min(생존자 절반 올림, 시간대별 상한) (#226 E).
-        int aliveCount = state.LastParticipants.Length;
-        state.MaxParticipantCount = Math.Max(state.MaxParticipantCount, aliveCount);
-        int targetZones = Math.Min(GetSupplyZoneTimeCap(elapsed), (aliveCount + 1) / 2);
-
-        // 폐쇄된 활성 구역은 즉시 은퇴 — 잔존 몹은 EvacuateArea가 옮긴다.
-        state.ActiveSupplyZones.RemoveAll(zone =>
-            IsAreaClosedResolver?.Invoke(state.MatchingId, zone) == true);
-
-        // 축소: 목표 초과분은 잔존 몹이 가장 적은 구역부터 은퇴한다 — 살아있는 몹은 남기되
-        // 증원은 끊는다. 자연 감소가 곧 플레이어 수렴이다.
-        while (state.ActiveSupplyZones.Count > targetZones)
-        {
-            AreaType retire = state.ActiveSupplyZones
-                .OrderBy(zone => CountAliveInArea(state, zone))
-                .First();
-            if (state.SupplyZones.TryGetValue(retire, out var retireState))
-                retireState.Retired = true;
-            state.ActiveSupplyZones.Remove(retire);
-        }
-
-        for (int index = state.ActiveSupplyZones.Count - 1; index >= 0; index--)
-        {
-            var zone = state.ActiveSupplyZones[index];
-            var zoneState = state.SupplyZones[zone];
-            if (CountAliveInArea(state, zone) > 0)
+            else if (aliveInZone > 0)
             {
-                zoneState.NextPackAtUtc = null;
-                continue;
+                zoneState.WipeRestUntilUtc = null;
             }
 
-            if (zoneState.PacksSpawned >= SupplyPacksPerZone)
-            {
-                // 두 무리째 소진 — 공급지 즉시 이전, 기존 구역은 30초 휴식 뒤 후보로 복귀 (#226 E).
-                zoneState.Depleted = true;
-                zoneState.RestUntilUtc = now.AddSeconds(SupplyZoneRestSeconds);
-                state.ActiveSupplyZones.RemoveAt(index);
-                continue;
-            }
-
-            // 첫 무리는 즉시, 증원은 완전 처치 8초 뒤 한 번만.
-            zoneState.NextPackAtUtc ??= zoneState.PacksSpawned == 0
-                ? now
-                : now.AddSeconds(SupplyReinforceDelaySeconds);
-            if (now < zoneState.NextPackAtUtc)
+            // 첫 보충은 즉시, 이후는 1.5초 간격.
+            zoneState.NextTopUpAtUtc ??= now;
+            if (now < zoneState.NextTopUpAtUtc)
                 continue;
 
-            // 전역 생존 상한 (#226 E): 상한을 넘길 무리는 다음 틱으로 미룬다.
-            if (CountAliveGlobal(state) + SupplyPackNormals + 1 >
-                GetSupplyGlobalAliveCap(state.MaxParticipantCount))
+            // 핵은 구역당 1기 유지 — 죽으면 다음 보충에 다시 선다. 핵도 상한을 쓴다.
+            bool includeCore = !HasAliveCore(state, zone) &&
+                               aliveInZone < phase.ZoneTarget &&
+                               aliveGlobal < SupplyGlobalAliveCap;
+            int room = phase.ZoneTarget - aliveInZone - (includeCore ? 1 : 0);
+            int want = Math.Min(SupplyTopUpCount, room);
+            want = Math.Min(want, SupplyGlobalAliveCap - aliveGlobal - (includeCore ? 1 : 0));
+            if (want <= 0 && !includeCore)
                 continue;
 
-            if (!SpawnSupplyPack(state, zone, SupplyPackNormals, includeCore: true, now, result,
-                    zoneState.PacksSpawned))
+            want = Math.Max(0, want);
+            int spawned = SpawnSupplyMonsters(
+                state, zone, want, includeCore, phaseIndex, now, result);
+            if (spawned == 0)
             {
                 // 전 앵커가 플레이어 2.5m 안 — 1초 뒤 재검사.
-                zoneState.NextPackAtUtc = now.AddSeconds(SupplyBlockedRetrySeconds);
+                zoneState.NextTopUpAtUtc = now.AddSeconds(SupplyBlockedRetrySeconds);
                 continue;
             }
 
-            zoneState.NextPackAtUtc = null;
-            zoneState.PacksSpawned++;
-        }
-
-        while (state.ActiveSupplyZones.Count < targetZones &&
-               TryPickSupplyZone(state, now, out var opened))
-        {
-            state.ActiveSupplyZones.Add(opened);
-            if (!state.SupplyZones.TryGetValue(opened, out var openedState))
-            {
-                openedState = new SupplyZoneState();
-                state.SupplyZones[opened] = openedState;
-            }
-
-            if (openedState.Depleted)
-            {
-                // 휴식을 마친 재개방 — 무리 사이클을 처음부터 다시 돈다.
-                openedState.Depleted = false;
-                openedState.PacksSpawned = 0;
-                openedState.NextPackAtUtc = null;
-            }
-
-            openedState.Retired = false;
+            aliveGlobal += spawned;
+            zoneState.HasSpawned = true;
+            zoneState.WipeRestUntilUtc = null;
+            zoneState.NextTopUpAtUtc = now.AddSeconds(SupplyTopUpIntervalSeconds);
         }
     }
 
@@ -1157,52 +1156,30 @@ public sealed class SwarmArenaManager
     private static int CountAliveGlobal(MatchState state) =>
         state.Monsters.Values.Count(monster => monster.Alive && !IsBossKind(monster.Kind));
 
-    /// <summary>공급 후보 구역 = 시작 포드 + 정크장 + 운동장. 복도는 이동·조우 통로로 비워 둔다.</summary>
-    private static IEnumerable<AreaType> GetSupplyZoneCandidates() =>
-        StartRooms.Concat([AreaType.Junkyard, AreaType.Ground]);
-
-    private bool TryPickSupplyZone(MatchState state, DateTime now, out AreaType picked)
-    {
-        var candidates = GetSupplyZoneCandidates()
-            .Where(zone => !state.ActiveSupplyZones.Contains(zone))
-            .Where(zone => IsAreaClosedResolver?.Invoke(state.MatchingId, zone) != true)
-            .Where(zone => !state.SupplyZones.TryGetValue(zone, out var zoneState) ||
-                           (!zoneState.Depleted && !zoneState.Retired))
-            .ToList();
-        if (candidates.Count == 0)
-        {
-            // 신선한 후보가 없으면 은퇴 구역과 30초 휴식을 마친 고갈 구역을 재개방한다 (#226 E).
-            candidates = GetSupplyZoneCandidates()
-                .Where(zone => !state.ActiveSupplyZones.Contains(zone))
-                .Where(zone => IsAreaClosedResolver?.Invoke(state.MatchingId, zone) != true)
-                .Where(zone => state.SupplyZones.TryGetValue(zone, out var zoneState) &&
-                               (!zoneState.Depleted || now >= zoneState.RestUntilUtc))
-                .ToList();
-        }
-
-        if (candidates.Count == 0)
-        {
-            picked = AreaType.None;
-            return false;
-        }
-
-        picked = candidates[state.Rng.Next(candidates.Count)];
-        return true;
-    }
+    /// <summary>구역에 살아있는 핵(탈주 고블린)이 있는지 — 핵은 구역당 1기만 유지한다.</summary>
+    private static bool HasAliveCore(MatchState state, AreaType area) =>
+        state.Monsters.Values.Any(monster =>
+            monster.Alive && monster.Area == area && monster.Kind == SwarmMonsterKind.RunawayGoblin);
 
     private static int CountAliveInArea(MatchState state, AreaType area) =>
         state.Monsters.Values.Count(monster => monster.Alive && monster.Area == area);
 
     /// <summary>
-    ///     공급 무리 스폰 (#226 E): 구역 앵커 3개(캠프 앵커 CSV 우선)에 일반 4/4 + 핵 1로
-    ///     나눠 산개, 1초 예고 후 등장. 플레이어 2.5m 안의 앵커는 피하고, 전 앵커가 막히면
-    ///     스폰하지 않고 false — 호출부가 1초 뒤 재검사한다. 잠든 채 서 있다 —
-    ///     근접·피격·접촉이 개전이고, 구역 경계가 리쉬다.
+    ///     공급 보충 스폰 (#229 4단계): 구역 앵커 3개(캠프 앵커 CSV 우선) 중 플레이어에게서
+    ///     가장 먼 곳에 산개, 1초 예고 후 등장한다. 7m 밖 앵커를 우선 골라 화면 안에서 튀어나오지
+    ///     않게 하고, 2.5m 안 앵커는 아예 제외한다 — 전 앵커가 막히면 0을 반환해 호출부가 1초 뒤
+    ///     재검사한다. 잠든 채 서 있다 — 근접·피격·접촉이 개전이고, 구역 경계가 리쉬다.
+    ///     HP·접촉 피해는 페이즈 곡선을 따르고, 소환석은 구역·페이즈 예산이 남아 있을 때만 붙는다.
     /// </summary>
-    private static bool SpawnSupplyPack(
+    /// <returns>실제로 세운 마릿수.</returns>
+    private static int SpawnSupplyMonsters(
         MatchState state, AreaType area, int normals, bool includeCore,
-        DateTime now, SwarmArenaTickResult result, int packIndex)
+        int phaseIndex, DateTime now, SwarmArenaTickResult result)
     {
+        var phase = SupplyPhases[phaseIndex];
+        var budgetKey = (area, phaseIndex);
+        if (!state.SupplyStoneBudget.ContainsKey(budgetKey))
+            state.SupplyStoneBudget[budgetKey] = phase.StoneBudget;
         var center = BotPlayerManager.CellToWorldPosition(
             MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
         var anchors = new List<Vector3f>(CampsPerArea);
@@ -1224,30 +1201,27 @@ public sealed class SwarmArenaManager
                 center.Y + CampAnchorRadius * 0.6f * MathF.Sin(anchorAngle), 0f), center, area));
         }
 
-        // 플레이어 안전 이격: 같은 구역 참가자 2.5m 안의 앵커는 이번 스폰에서 제외한다.
-        float safeDistanceSquared = SupplySafeSpawnDistance * SupplySafeSpawnDistance;
-        var freeAnchors = anchors.Where(anchor => state.LastParticipants.All(participant =>
-        {
-            if (participant.Area != area)
-                return true;
-            float dx = participant.Position.X - anchor.X;
-            float dy = participant.Position.Y - anchor.Y;
-            return dx * dx + dy * dy >= safeDistanceSquared;
-        })).ToList();
-        if (freeAnchors.Count == 0)
-            return false;
+        // 앵커별 최근접 플레이어 거리 — 안전 이격(2.5m) 미만은 제외하고, 화면 밖(7m)을 우선한다.
+        var ranked = anchors
+            .Select(anchor => (Anchor: anchor, Distance: NearestParticipantDistance(state, area, anchor)))
+            .Where(entry => entry.Distance >= SupplySafeSpawnDistance)
+            .OrderByDescending(entry => entry.Distance)
+            .ToList();
+        if (ranked.Count == 0)
+            return 0;
 
-        // 앵커별 그룹: 일반 절반 / 나머지 절반 / 핵 — 막힌 앵커의 몫은 열린 앵커로 넘어간다.
+        var offscreen = ranked.Where(entry => entry.Distance >= SupplyOffscreenDistance).ToList();
+        var freeAnchors = (offscreen.Count > 0 ? offscreen : ranked)
+            .Select(entry => entry.Anchor)
+            .ToList();
+
+        // 보충은 소수(2마리)라 앵커를 순회하며 흩는다 — 한 점에 뭉쳐 나오면 절단 한 번에 쓸린다.
         var spawnPlan = new List<(SwarmMonsterKind Kind, Vector3f Anchor)>(normals + 1);
-        int firstHalf = (normals + 1) / 2;
         for (int index = 0; index < normals; index++)
-        {
-            var groupAnchor = freeAnchors[(index < firstHalf ? 0 : 1) % freeAnchors.Count];
-            spawnPlan.Add((SwarmMonsterKind.Skeleton, groupAnchor));
-        }
+            spawnPlan.Add((SwarmMonsterKind.Skeleton, freeAnchors[index % freeAnchors.Count]));
 
         if (includeCore)
-            spawnPlan.Add((SwarmMonsterKind.RunawayGoblin, freeAnchors[2 % freeAnchors.Count]));
+            spawnPlan.Add((SwarmMonsterKind.RunawayGoblin, freeAnchors[^1]));
 
         int stoneTotal = 0;
         var pattern = (SwarmPattern)(state.NextSupplyPackOrdinal++ % 3);
@@ -1263,10 +1237,32 @@ public sealed class SwarmArenaManager
 
             var kind = spawnPlan[index].Kind;
             var stats = GetKindStats(kind);
-            // 핵 = 소환석 3 고정 (일반 8×1 + 핵 3 = 무리 11석). 종 스탯의 4석을 덮어쓴다.
-            int stoneReward = kind == SwarmMonsterKind.RunawayGoblin
-                ? SupplyCoreStoneReward
-                : stats.StoneReward;
+            bool isCore = kind == SwarmMonsterKind.RunawayGoblin;
+
+            // 핵 보상은 일반 예산과 섞지 않고 별도 정산한다 (#229) — 구역·페이즈당 1기까지만
+            // 석 3을 주고, 그 뒤로 다시 서는 핵은 몸만 나온다. 핵은 죽을 때마다 다시 서므로
+            // 무제한으로 주면 한 구역에 눌러앉는 것이 최적해가 된다.
+            // 일반은 구역·페이즈 예산이 남아 있을 때만 석이 붙고, 소진되면 몸만 계속 나온다.
+            int stoneReward;
+            if (isCore)
+            {
+                stoneReward = state.SupplyCoreRewarded.Add(budgetKey) ? SupplyCoreStoneReward : 0;
+            }
+            else if (state.SupplyStoneBudget[budgetKey] >= stats.StoneReward)
+            {
+                stoneReward = stats.StoneReward;
+                state.SupplyStoneBudget[budgetKey] -= stats.StoneReward;
+            }
+            else
+            {
+                stoneReward = 0;
+            }
+
+            // 페이즈 곡선: 일반은 HP·접촉 피해를, 핵은 HP를 덮어쓴다 (#229 4단계).
+            // 종 정체는 Kind가 들고 있으므로 피통을 바꿔도 클라 표시는 흔들리지 않는다.
+            int maxHp = isCore ? phase.CoreHp : phase.NormalHp;
+            int contactDamage = isCore ? stats.OrbDamage : phase.ContactDamage;
+
             stoneTotal += stoneReward;
             int serial = state.NextSerial++;
             var monster = new MonsterRuntime
@@ -1276,7 +1272,7 @@ public sealed class SwarmArenaManager
                 Pattern = pattern,
                 Area = area,
                 Position = position,
-                Health = stats.MaxHp,
+                Health = maxHp,
                 Alive = true,
                 ActivatesAtUtc = now.AddSeconds(SupplyTelegraphSeconds),
                 NextContactAtUtc = now,
@@ -1285,9 +1281,9 @@ public sealed class SwarmArenaManager
                 HeartReward = stats.HeartReward,
                 BootsReward = stats.BootsReward,
                 KeyReward = stats.KeyReward,
-                ContactDamageValue = stats.OrbDamage,
+                ContactDamageValue = contactDamage,
                 Kind = kind,
-                MaxHealthValue = stats.MaxHp,
+                MaxHealthValue = maxHp,
                 AttackRangeValue = stats.AttackRange,
                 AttackCooldownValue = stats.AttackCooldownSeconds,
                 AnchorX = position.X,
@@ -1297,10 +1293,26 @@ public sealed class SwarmArenaManager
             result.SpawnedMonsters.Add(monster.ToMonsterRuntimeInfo());
         }
 
-        // 공급 계측 (#226 E): 공급지·무리 차수·마릿수·석 보상을 매치 로그로 넘긴다.
+        // 공급 계측 (#229): 공급지·페이즈·마릿수·석 보상을 매치 로그로 넘긴다.
         result.SupplyPackSpawns.Add(new SupplyPackSpawnInfo(
-            area, packIndex, spawnPlan.Count, stoneTotal));
-        return true;
+            area, phaseIndex, spawnPlan.Count, stoneTotal));
+        return spawnPlan.Count;
+    }
+
+    /// <summary>같은 구역 참가자 중 앵커에서 가장 가까운 거리 — 아무도 없으면 무한대.</summary>
+    private static float NearestParticipantDistance(MatchState state, AreaType area, Vector3f anchor)
+    {
+        float nearestSquared = float.MaxValue;
+        foreach (var participant in state.LastParticipants)
+        {
+            if (participant.Area != area)
+                continue;
+            float dx = participant.Position.X - anchor.X;
+            float dy = participant.Position.Y - anchor.Y;
+            nearestSquared = Math.Min(nearestSquared, dx * dx + dy * dy);
+        }
+
+        return nearestSquared == float.MaxValue ? float.MaxValue : MathF.Sqrt(nearestSquared);
     }
 
 
@@ -1312,6 +1324,7 @@ public sealed class SwarmArenaManager
     private static void UpdateSupplyMonsterMovement(
         MonsterRuntime monster,
         IReadOnlyList<SpotArenaPlayerSpatial> participants,
+        DateTime now,
         double deltaSeconds)
     {
         if (!monster.Aggro)
@@ -1334,31 +1347,48 @@ public sealed class SwarmArenaManager
                 return;
         }
 
-        // 추격 대상: 어그로 대상이 같은 구역이면 유지, 아니면 같은 구역 최근접.
+        // 추격 대상 (#229 저주기 갱신): 들고 있는 대상이 같은 구역에 있으면 그대로 쫓는다.
+        // 재선정은 대상을 잃었거나 유지 창(1초)이 끝났을 때만 — 매 틱 최근접을 다시 고르면
+        // 두 사람 사이에서 방향이 떨리고, 무리 전체가 같은 사람에게 순간 쏠린다.
         bool found = false;
         var target = default(SpotArenaPlayerSpatial);
-        float nearestSquared = float.MaxValue;
-        for (int index = 0; index < participants.Count; index++)
+        for (int index = 0; index < participants.Count && monster.ChaseTargetPlayerId != 0; index++)
         {
             var participant = participants[index];
-            if (participant.Area != monster.Area)
+            if (participant.Area != monster.Area || participant.PlayerId != monster.ChaseTargetPlayerId)
                 continue;
-            if (participant.PlayerId == monster.ChaseTargetPlayerId)
-            {
-                target = participant;
-                found = true;
-                break;
-            }
+            target = participant;
+            found = true;
+            break;
+        }
 
-            float dx = participant.Position.X - monster.Position.X;
-            float dy = participant.Position.Y - monster.Position.Y;
-            float distanceSquared = dx * dx + dy * dy;
-            if (distanceSquared < nearestSquared)
+        if (found && now >= monster.NextTargetScanAtUtc)
+        {
+            monster.NextTargetScanAtUtc = now.AddSeconds(SupplyTargetHoldSeconds);
+            found = false;
+        }
+
+        if (!found)
+        {
+            // 재선정: 같은 구역 최근접.
+            float nearestSquared = float.MaxValue;
+            for (int index = 0; index < participants.Count; index++)
             {
+                var participant = participants[index];
+                if (participant.Area != monster.Area)
+                    continue;
+                float dx = participant.Position.X - monster.Position.X;
+                float dy = participant.Position.Y - monster.Position.Y;
+                float distanceSquared = dx * dx + dy * dy;
+                if (distanceSquared >= nearestSquared)
+                    continue;
                 nearestSquared = distanceSquared;
                 target = participant;
                 found = true;
             }
+
+            if (found)
+                monster.NextTargetScanAtUtc = now.AddSeconds(SupplyTargetHoldSeconds);
         }
 
         if (!found)
@@ -1691,11 +1721,15 @@ public sealed class SwarmArenaManager
         public Dictionary<long, (Vector3f Destination, DateTime CommittedAtUtc)> BotFleeCommitments { get; } =
             new();
 
-        // 지역 공급 (#226 단계 B): 시작 선물 지급 구역, 활성 파밍 구역, 구역별 공급 사이클.
-        public HashSet<AreaType> StartGiftAreas { get; } = new();
-        public HashSet<long> StartGiftPlayerIds { get; } = new();
-        public List<AreaType> ActiveSupplyZones { get; } = new();
+        // 점유 구역 공급 (#229 4단계): 점유 중인 열린 구역만 항목을 갖는다 — 비점유·폐쇄 시 삭제.
         public Dictionary<AreaType, SupplyZoneState> SupplyZones { get; } = new();
+
+        // 소환석 예산 원장 (#229 4단계): 구역·페이즈별 잔량. 보충 타이머(SupplyZones)와 달리
+        // 구역을 비웠다 돌아와도 살아남는다 — 들락날락으로 예산을 리셋하면 보상이 무제한이 된다.
+        public Dictionary<(AreaType Area, int PhaseIndex), int> SupplyStoneBudget { get; } = new();
+
+        // 핵 보상 정산 (#229 4단계): 석을 준 (구역, 페이즈) 조합 — 같은 칸에서 두 번째 핵부터는 몸만.
+        public HashSet<(AreaType Area, int PhaseIndex)> SupplyCoreRewarded { get; } = new();
         public int NextSupplyPackOrdinal { get; set; }
         // 전역 상한 기준 인원 (#226 E): 생존자 수가 아니라 매치 최대 참가 수로 8인/10인을 가른다.
         public int MaxParticipantCount { get; set; }
@@ -1704,11 +1738,9 @@ public sealed class SwarmArenaManager
     /// <summary>공급 구역 사이클: 무리 2회(첫 즉시 + 8초 증원) 뒤 고갈 → 30초 휴식 뒤 후보 복귀. 은퇴는 축소·폐쇄용.</summary>
     private sealed class SupplyZoneState
     {
-        public int PacksSpawned { get; set; }
-        public DateTime? NextPackAtUtc { get; set; }
-        public bool Depleted { get; set; }
-        public DateTime RestUntilUtc { get; set; }
-        public bool Retired { get; set; }
+        public DateTime? NextTopUpAtUtc { get; set; }
+        public DateTime? WipeRestUntilUtc { get; set; }
+        public bool HasSpawned { get; set; }
     }
 
     private sealed class MonsterRuntime
@@ -1739,6 +1771,7 @@ public sealed class SwarmArenaManager
 
         // 캠프 모드: 소속 캠프와 제자리(앵커), 어그로 상태.
         public int CampIndex { get; set; } = -1;
+        public DateTime NextTargetScanAtUtc { get; set; }
         public float AnchorX { get; set; }
         public float AnchorY { get; set; }
         public bool Aggro { get; set; }
