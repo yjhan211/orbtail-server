@@ -477,6 +477,44 @@ public class GameEventLogManager
     }
 
     /// <summary>
+    ///     반격 보호 창 결산 (#227 7단계): 절단자–피해자 쌍의 1.2초가 닫힐 때 한 번.
+    ///     차단한 피해·타격·추가 절단, 역절단 성립 여부, 양측 이탈 여부를 남긴다 —
+    ///     "깊은 절단 뒤 역절단률이 후미 절단보다 높은가"를 이 이벤트만으로 계산한다.
+    /// </summary>
+    public void LogSwarmRetaliationWindow(
+        long matchingId,
+        long cutterPlayerId,
+        long victimPlayerId,
+        int blockedDamage,
+        int blockedHits,
+        int blockedCuts,
+        bool retaliated,
+        bool bothDisengaged,
+        string area)
+    {
+        Append(
+            matchingId,
+            "CUT_RETALIATION_WINDOW",
+            victimPlayerId,
+            BotPlayerManager.IsBotPlayerId(victimPlayerId),
+            $"{FormatPlayer(victimPlayerId)} guarded from {FormatPlayer(cutterPlayerId)}; " +
+            $"blocked={blockedDamage} over {blockedHits} hits and {blockedCuts} cuts, " +
+            $"retaliated={retaliated}, disengaged={bothDisengaged}.",
+            entry =>
+            {
+                entry.TargetPlayerId = cutterPlayerId;
+                entry.Area = area;
+                entry.BlockedDamage = blockedDamage;
+                entry.BlockedHits = blockedHits;
+                entry.BlockedCuts = blockedCuts;
+                entry.Retaliated = retaliated;
+                entry.BothDisengaged = bothDisengaged;
+                entry.Outcome = retaliated ? "retaliated" : bothDisengaged ? "disengaged" : "held";
+                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
+            });
+    }
+
+    /// <summary>
     ///     크랙 생존 (#226 F 계측): 방어 강화 오브가 유효 교차를 흡수한 순간 —
     ///     "방어 강화가 실제로 몇 번의 절단을 막았나"의 근거.
     /// </summary>
@@ -2335,6 +2373,13 @@ public class GameEventEntry
     public int? VictimOrbRanges { get; set; }
     public int? DurabilityBeforeHit { get; set; }
     public int? ExpectedOrbLoss { get; set; }
+
+    // #227 7단계 — 절단자 한정 반격 보호 창의 결산
+    public int? BlockedDamage { get; set; }
+    public int? BlockedHits { get; set; }
+    public int? BlockedCuts { get; set; }
+    public bool? Retaliated { get; set; }
+    public bool? BothDisengaged { get; set; }
     public string? CardRole { get; set; }
     public int? CardGrade { get; set; }
     public int? GrowthBaseCost { get; set; }

@@ -280,6 +280,8 @@ public partial class GameServer
         // 오브열 (#226 α/C/B): 경로 기록 → 이동 선분의 상대 열 절단 → 고리 완성 포위 사격.
         UpdateSwarmOrbTrails(matchingId, participants);
         ProcessSwarmTrailCuts(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+        // 반격 보호 창 결산 (#227 7단계) — 만료된 쌍만 CUT_RETALIATION_WINDOW로 남긴다.
+        ProcessSwarmRetaliationWindows(matchingId, nowUtc, participants);
         ProcessSwarmEncirclements(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
         // 실험장 (#227): 더미 매치에서는 물폭탄도 끈다 — 파도 오브가 계속 터지면
         // 절단 궤적 실험이 폭발 연출·피해에 묻힌다. 미사일 비무장(AddSwarmParticipantCombatActors)과
@@ -1401,8 +1403,10 @@ public partial class GameServer
     // 매 틱 재무장돼 내구 2가 0.24초에 소진됐다 — 같은 오브 재타는 별개의 통과여야 한다.
     private const double SwarmTrailCutSameOrbDebounceSeconds = 0.7d;
     private const float SwarmTrailCutMaxSegmentLength = 2f;
-    // 절단(꼬리 상실) 직후 피해자 열 전체 면역 — 한 번의 돌파로 연쇄 전멸하지 않게.
-    private const double SwarmTrailCutVictimImmunitySeconds = 1.2d;
+    // 절단자 한정 반격 보호 (#227 7단계): 실제 꼬리 상실 순간부터 1.2초.
+    // 전역 무적이 아니라 '방금 내 꼬리를 자른 그 사람에게 되갚을 시간'이다 —
+    // 제3자·잔상·폐쇄 피해는 그대로 들어오고, 피해자는 이동·사격·역절단을 다 할 수 있다.
+    private const double SwarmCutRetaliationWindowSeconds = 1.2d;
     // 오브 관통 판정 (정규화 dy×2 공간): 링크 선을 스치는 게 아니라 오브를 밟아야 끊긴다.
     // 반경 0.35 원형 + 판정 중심 위 오프셋 (2026-08-12 확정): 스프라이트가 떠 있어 위 접근이
     // 짜던 문제는 중심 오프셋만으로 해결 — 반경을 키우면 옆 오브(간격 0.9)까지 문다.
@@ -1417,9 +1421,105 @@ public partial class GameServer
     // ItemUid별 절단 래치 (단계 A): 마지막 타격 시각 — 중복 억제·이탈 재무장의 기준.
     private readonly Dictionary<(long MatchingId, long CutterId, long ItemUid), DateTime> _swarmOrbCutLatches =
         new();
-    // 꼬리 상실 직후 피해자 면역 만료 시각.
-    private readonly Dictionary<(long MatchingId, long OwnerId), DateTime> _swarmCutVictimImmuneUntilUtc =
-        new();
+    /// <summary>
+    ///     반격 보호 창 (#227 7단계): 절단자–피해자 <b>쌍</b>으로 연다. 같은 키가 다시 열리면
+    ///     시간만 연장하고 집계는 이어간다 — 만료 시 CUT_RETALIATION_WINDOW로 결산한다.
+    /// </summary>
+    private sealed class SwarmRetaliationWindow
+    {
+        public DateTime OpenedAtUtc;
+        public DateTime ExpiresAtUtc;
+        public int BlockedDamage;
+        public int BlockedHits;
+        public int BlockedCuts;
+        public bool Retaliated;
+        public AreaType OpenedArea;
+    }
+
+    private readonly Dictionary<(long MatchingId, long CutterId, long VictimId), SwarmRetaliationWindow>
+        _swarmCutRetaliationWindows = new();
+
+    /// <summary>이 절단자가 이 피해자에게 손댈 수 없는 상태인가 — 절단·본체 피해 공통 관문.</summary>
+    private bool IsSwarmRetaliationGuarded(long matchingId, long cutterId, long victimId, DateTime nowUtc)
+    {
+        return _swarmCutRetaliationWindows.TryGetValue((matchingId, cutterId, victimId), out var window) &&
+               nowUtc < window.ExpiresAtUtc;
+    }
+
+    /// <summary>
+    ///     보호 창을 연다. 같은 쌍이 다시 열리면 시간만 연장하고 집계는 이어간다.
+    ///     반대 방향 창이 살아 있으면 = 방금 나를 자른 사람을 내가 잘랐다 = 역절단 성립이다.
+    /// </summary>
+    private void OpenSwarmRetaliationWindow(
+        long matchingId, long cutterId, long victimId, AreaType area, DateTime nowUtc,
+        List<GameClientSession> allSessions)
+    {
+        if (_swarmCutRetaliationWindows.TryGetValue((matchingId, victimId, cutterId), out var opposite) &&
+            nowUtc < opposite.ExpiresAtUtc)
+            opposite.Retaliated = true;
+
+        var key = (matchingId, cutterId, victimId);
+        if (!_swarmCutRetaliationWindows.TryGetValue(key, out var window))
+        {
+            window = new SwarmRetaliationWindow { OpenedAtUtc = nowUtc, OpenedArea = area };
+            _swarmCutRetaliationWindows[key] = window;
+        }
+
+        window.ExpiresAtUtc = nowUtc.AddSeconds(SwarmCutRetaliationWindowSeconds);
+
+        // 잔광은 피해자 본인과 그 절단자에게만 — 제3자는 정상 공격할 수 있으니 보지 않는다.
+        SendSwarmRetaliationVfx(
+            cutterId, victimId, area, SwarmRingVfxKindRetaliationGuard,
+            (float)SwarmCutRetaliationWindowSeconds, allSessions);
+    }
+
+    /// <summary>만료된 창을 결산해 CUT_RETALIATION_WINDOW로 남긴다 — 매 틱 호출.</summary>
+    private void ProcessSwarmRetaliationWindows(
+        long matchingId, DateTime nowUtc, List<SpotArenaPlayerSpatial> participants)
+    {
+        var expired = _swarmCutRetaliationWindows
+            .Where(pair => pair.Key.MatchingId == matchingId && nowUtc >= pair.Value.ExpiresAtUtc)
+            .ToList();
+        foreach (var (key, window) in expired)
+        {
+            _swarmCutRetaliationWindows.Remove(key);
+
+            // 양측 이탈: 창이 닫히는 시점에 둘이 같은 구역에 없다 = 싸움을 접고 갈라섰다.
+            var cutter = participants.FirstOrDefault(p => p.PlayerId == key.CutterId);
+            var victim = participants.FirstOrDefault(p => p.PlayerId == key.VictimId);
+            bool bothDisengaged = cutter == null || victim == null || cutter.Area != victim.Area;
+
+            _gameEventLogManager.LogSwarmRetaliationWindow(
+                matchingId, key.CutterId, key.VictimId,
+                window.BlockedDamage, window.BlockedHits, window.BlockedCuts,
+                window.Retaliated, bothDisengaged, window.OpenedArea.ToString());
+        }
+    }
+
+    /// <summary>보호 창 전용 연출 — 피해자와 그 절단자에게만 보낸다(제3자 제외).</summary>
+    private void SendSwarmRetaliationVfx(
+        long cutterId, long victimId, AreaType area, int kind, float seconds,
+        List<GameClientSession> allSessions)
+    {
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_ENCIRCLE_VFX);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_ENCIRCLE_VFX
+        {
+            OwnerPlayerId = cutterId,
+            CenterX = 0f,
+            CenterY = 0f,
+            Radius = seconds,
+            Kind = kind,
+            VictimPlayerId = victimId,
+            FromOrdinal = 0
+        }));
+        foreach (var session in allSessions)
+        {
+            if (!session.PlayerId.HasValue || session.CurrentArea != area)
+                continue;
+            if (session.PlayerId.Value == victimId || session.PlayerId.Value == cutterId)
+                session.Send(packet);
+        }
+    }
 
     /// <summary>클라 PlayerTool.UpdateOrbTrail과 같은 규칙 — 정지하면 경로가 얼어 열이 남는다.</summary>
     private void UpdateSwarmOrbTrails(long matchingId, List<SpotArenaPlayerSpatial> participants)
@@ -1630,10 +1730,10 @@ public partial class GameServer
         {
             if (ownerId == cutterId || chain.Area != cutterArea)
                 continue;
-            // 절단(꼬리 상실) 직후 피해자 열 면역 — 한 돌파로 연쇄 전멸 방지.
-            if (_swarmCutVictimImmuneUntilUtc.TryGetValue((matchingId, ownerId), out var immuneUntil) &&
-                nowUtc < immuneUntil)
-                continue;
+            // 반격 보호 (#227 7단계): 방금 이 피해자를 자른 '그 절단자'만 막힌다 —
+            // 제3자는 정상적으로 자를 수 있다(전역 면역 퇴역).
+            // 막힌 쪽도 교차 판정까지는 돌린다: 실제로 끊었을 교차만 세야 계측이 의미를 갖는다.
+            bool guarded = IsSwarmRetaliationGuarded(matchingId, cutterId, ownerId, nowUtc);
 
             // 절단 판정: 오브 관통(반경 0.35, 중심 위 0.15) 또는 링크(오브 i-1 ↔ i)
             // 가로지르기 — 둘 다 그 오브(i)에 귀속. 머리 보호 제거(단계 A 마감): 첫 오브도
@@ -1660,7 +1760,18 @@ public partial class GameServer
                     hit = TrySegmentIntersection(
                         previous, current, linkStart, chain.Points[ordinal], out t);
                 }
-                if (!hit || t >= bestT)
+                if (!hit)
+                    continue;
+                if (guarded)
+                {
+                    // 이 교차는 보호 창이 삼켰다 — 한 번의 통과당 1회만 센다.
+                    if (_swarmCutRetaliationWindows.TryGetValue(
+                            (matchingId, cutterId, ownerId), out var guardWindow))
+                        guardWindow.BlockedCuts++;
+                    break;
+                }
+
+                if (t >= bestT)
                     continue;
                 bestT = t;
                 bestOwnerId = ownerId;
@@ -1722,9 +1833,8 @@ public partial class GameServer
         var destroyedItems = DestroySwarmOrbsFromOrdinal(matchingId, bestOwnerId, bestTailOrdinal);
         if (destroyedItems.Count == 0)
             return;
-        // 꼬리 상실 직후 면역 (단계 A) — 한 돌파로 남은 열까지 연쇄로 잃지 않는다.
-        _swarmCutVictimImmuneUntilUtc[(matchingId, bestOwnerId)] =
-            nowUtc.AddSeconds(SwarmTrailCutVictimImmunitySeconds);
+        // 반격 보호 개시 (#227 7단계) — 크랙만 난 접촉은 여기까지 오지 않는다.
+        OpenSwarmRetaliationWindow(matchingId, creditPlayerId, bestOwnerId, bestArea, nowUtc, allSessions);
         // 방어 강화 오브 낙수 보너스 (#226 D): 내구 투자분은 +1석으로 정산 — 제거 전에 기억한다.
         var armoredUids = new HashSet<long>();
         foreach (var destroyedItem in destroyedItems)
@@ -1939,6 +2049,10 @@ public partial class GameServer
     private const int SwarmRingVfxKindCutCrack = 3;
     // 철갑 소모 (#226 단계 C): 외피가 절단을 1회 막고 깨질 때의 은색 파열 링.
     private const int SwarmRingVfxKindArmorBreak = 4;
+    // 반격 보호 (#227 7단계): 5 = 피해자 남은 꼬리의 유리 잔광 개시(Radius에 지속 초),
+    // 6 = 그 절단자의 투사체가 잔광 앞에서 깨짐(피해 숫자 없음).
+    private const int SwarmRingVfxKindRetaliationGuard = 5;
+    private const int SwarmRingVfxKindRetaliationBlocked = 6;
 
     // 5단계 → 즉시 절단 (2026-08-12): 밟으면 바로 그 지점부터 꼬리가 끊긴다.
     // 크랙 단계 시스템(1~4 금 + 5타 파괴)은 값만 되돌리면 복원된다.
@@ -3616,6 +3730,23 @@ public partial class GameServer
         List<GameClientSession> allSessions,
         bool broadcastVfx = true)
     {
+        // 반격 보호 (#227 7단계): 방금 이 표적의 꼬리를 자른 공격자의 본체 피해는 통과하지 못한다.
+        // 착탄 시점에 보므로 창이 열리기 '전에' 발사된 대기 투사체도 함께 걸린다.
+        // 제3자·잔상·폐쇄는 이 경로를 타지 않아 종전대로 들어간다.
+        var nowUtc = DateTime.UtcNow;
+        if (_swarmCutRetaliationWindows.TryGetValue(
+                (matchingId, attack.AttackerPlayerId, attack.TargetPlayerId), out var guardWindow) &&
+            nowUtc < guardWindow.ExpiresAtUtc)
+        {
+            guardWindow.BlockedHits++;
+            guardWindow.BlockedDamage += attack.Damage;
+            // 잔광 앞에서 짧게 깨지는 연출만 — 피해 숫자·피격 눌림·인카운터 배너는 만들지 않는다.
+            SendSwarmRetaliationVfx(
+                attack.AttackerPlayerId, attack.TargetPlayerId, attack.Area,
+                SwarmRingVfxKindRetaliationBlocked, 0f, allSessions);
+            return;
+        }
+
         int corruption = ConsumeSwarmPvpCorruption(matchingId, attack.TargetPlayerId, attack.Damage);
         var targetSession = aliveSessions.FirstOrDefault(session =>
             session.PlayerId == attack.TargetPlayerId);
@@ -3759,9 +3890,9 @@ public partial class GameServer
         foreach (var key in _swarmOrbCutLatches.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmOrbCutLatches.Remove(key);
-        foreach (var key in _swarmCutVictimImmuneUntilUtc.Keys
+        foreach (var key in _swarmCutRetaliationWindows.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmCutVictimImmuneUntilUtc.Remove(key);
+            _swarmCutRetaliationWindows.Remove(key);
         foreach (var key in _swarmOrbCutCracks.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmOrbCutCracks.Remove(key);
