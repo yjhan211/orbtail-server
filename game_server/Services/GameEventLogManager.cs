@@ -449,6 +449,9 @@ public class GameEventLogManager
         int tailOrdinal,
         int overlappingOrbRanges,
         int victimOrbRanges,
+        int durabilityBeforeHit,
+        int expectedOrbLoss,
+        bool breaksNow,
         string area)
     {
         Append(
@@ -456,7 +459,9 @@ public class GameEventLogManager
             "CUT_ATTEMPT",
             cutterPlayerId,
             BotPlayerManager.IsBotPlayerId(cutterPlayerId),
-            $"{FormatPlayer(cutterPlayerId)} entered {FormatPlayer(ownerPlayerId)} trail at ordinal {tailOrdinal}; guns={overlappingOrbRanges} (victim={victimOrbRanges}).",
+            $"{FormatPlayer(cutterPlayerId)} entered {FormatPlayer(ownerPlayerId)} trail at ordinal {tailOrdinal}; " +
+            $"durability={durabilityBeforeHit}, expectedLoss={expectedOrbLoss}, breaks={breaksNow}, " +
+            $"guns={overlappingOrbRanges} (victim={victimOrbRanges}).",
             entry =>
             {
                 entry.TargetPlayerId = ownerPlayerId;
@@ -464,6 +469,9 @@ public class GameEventLogManager
                 entry.TailOrdinal = tailOrdinal;
                 entry.OverlappingOrbRanges = overlappingOrbRanges;
                 entry.VictimOrbRanges = victimOrbRanges;
+                entry.DurabilityBeforeHit = durabilityBeforeHit;
+                entry.ExpectedOrbLoss = expectedOrbLoss;
+                entry.Outcome = breaksNow ? "cut" : "crack";
                 entry.OccurredAtUnixMs = entry.TimestampUnixMs;
             });
     }
@@ -2321,9 +2329,12 @@ public class GameEventEntry
     public int? CrackCount { get; set; }
     public int? RequiredHits { get; set; }
 
-    // #227 6단계 — 절단 진입 시 화망 밀도(그 자리를 덮는 적 오브 사거리 수)
+    // #227 3·6단계 — 절단 진입 시점의 판단 재료
+    // 화망 밀도(그 자리를 덮는 적 오브 사거리 수) + 맞기 직전 내구 + 끊었을 때의 손실
     public int? OverlappingOrbRanges { get; set; }
     public int? VictimOrbRanges { get; set; }
+    public int? DurabilityBeforeHit { get; set; }
+    public int? ExpectedOrbLoss { get; set; }
     public string? CardRole { get; set; }
     public int? CardGrade { get; set; }
     public int? GrowthBaseCost { get; set; }

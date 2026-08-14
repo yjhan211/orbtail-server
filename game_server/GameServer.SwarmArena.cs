@@ -1676,15 +1676,6 @@ public partial class GameServer
 
         _swarmOrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
 
-        // 국소 화망 계측 (#227 6단계): 절단자가 실제로 선 자리를 몇 개의 적 오브 사거리가
-        // 덮고 있었나. 후미 절단(적은 겹침)과 깊은 절단(많은 겹침)의 진입 피해를 이 수로 비교한다.
-        // 크랙만 나든 꼬리가 끊기든 '들어간 순간'은 같으므로 분기 전에 남긴다.
-        _gameEventLogManager.LogSwarmCutAttempt(
-            matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal,
-            CountSwarmOrbGunsCovering(chains, cutterId, cutterArea, current),
-            CountSwarmOrbGunsCovering(chains, cutterId, cutterArea, current, bestOwnerId),
-            bestArea.ToString());
-
         // 오브 체력 (#227): 최대 5칸 중 남은 칸이 곧 내구다. 소환 직후는 1/5(크랙 4단계),
         // 방어 강화는 5/5(크랙 0단계). 크랙 단계 = 5 - 남은 칸이라 표시가 곧 판정이다.
         var crackKey = (matchingId, bestOwnerId, bestOrbUid);
@@ -1694,6 +1685,20 @@ public partial class GameServer
         int requiredHits = SwarmTrailCutBreakHits +
                            _swarmOrbDurabilityBonus.GetValueOrDefault(
                                (matchingId, bestOwnerId, bestOrbUid));
+
+        // 절단 진입 계측 (#227 3·6단계): 들어간 순간의 판단 재료를 통째로 남긴다 —
+        // 공격자·피해자·후보 ordinal·맞기 직전 내구·이 교차가 끊었을 때의 손실,
+        // 그리고 그 자리를 덮던 적 오브 사거리 수(국소 화망).
+        // 크랙만 나든 꼬리가 끊기든 '들어간 순간'은 같으므로 분기 전에 남긴다.
+        _gameEventLogManager.LogSwarmCutAttempt(
+            matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal,
+            CountSwarmOrbGunsCovering(chains, cutterId, cutterArea, current),
+            CountSwarmOrbGunsCovering(chains, cutterId, cutterArea, current, bestOwnerId),
+            durabilityBeforeHit: requiredHits - crackCount + 1,
+            expectedOrbLoss: Math.Max(0, chains[bestOwnerId].Points.Count - bestTailOrdinal),
+            breaksNow: crackCount >= requiredHits,
+            area: bestArea.ToString());
+
         if (crackCount < requiredHits)
         {
             _swarmOrbCutCracks[crackKey] = crackCount;
