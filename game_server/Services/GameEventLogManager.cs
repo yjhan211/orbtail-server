@@ -418,6 +418,11 @@ public class GameEventLogManager
         long ownerPlayerId,
         int tailOrdinal,
         int destroyedOrbCount,
+        int orbCountBefore,
+        int orbCountAfter,
+        int attackOrbCountBefore,
+        int attackOrbCountAfter,
+        int rankAfter,
         string area)
     {
         Append(
@@ -425,13 +430,21 @@ public class GameEventLogManager
             "ORB_SUFFIX_CUT",
             cutterPlayerId,
             BotPlayerManager.IsBotPlayerId(cutterPlayerId),
-            $"{FormatPlayer(cutterPlayerId)} cut {FormatPlayer(ownerPlayerId)} tail at ordinal {tailOrdinal}; destroyed={destroyedOrbCount}.",
+            $"{FormatPlayer(cutterPlayerId)} cut {FormatPlayer(ownerPlayerId)} tail at ordinal {tailOrdinal}; " +
+            $"destroyed={destroyedOrbCount}, orbs {orbCountBefore}->{orbCountAfter}, " +
+            $"attackOrbs {attackOrbCountBefore}->{attackOrbCountAfter}, rankAfter={rankAfter}.",
             entry =>
             {
                 entry.TargetPlayerId = ownerPlayerId;
                 entry.Area = area;
                 entry.TailOrdinal = tailOrdinal;
                 entry.DestroyedOrbCount = destroyedOrbCount;
+                // 이 모드에서 오브 수 = 승리 점수다 — 점수를 따로 싣지 않는다.
+                entry.OrbCountBefore = orbCountBefore;
+                entry.OrbCountAfter = orbCountAfter;
+                entry.AttackOrbCountBefore = attackOrbCountBefore;
+                entry.AttackOrbCountAfter = attackOrbCountAfter;
+                entry.RankAfter = rankAfter;
                 entry.OccurredAtUnixMs = entry.TimestampUnixMs;
             });
     }
@@ -2387,6 +2400,12 @@ public class GameEventEntry
     public int? GrowthFinalCost { get; set; }
     public int? GrowthSuccessCountBefore { get; set; }
     public int? OrbCountBefore { get; set; }
+
+    // #227 5단계 — 절단 전후 대차대조 (오브 수 = 점수)
+    public int? OrbCountAfter { get; set; }
+    public int? AttackOrbCountBefore { get; set; }
+    public int? AttackOrbCountAfter { get; set; }
+    public int? RankAfter { get; set; }
 
     public long? StatementId { get; set; }
     public int? RoundId { get; set; }

@@ -1687,6 +1687,53 @@ public partial class GameServer
         }
     }
 
+    /// <summary>공격에 기여하는 오브 수 — 회복 오브는 사격에 참여하지 않아 뺀다 (#227 5단계).</summary>
+    private static int CountSwarmAttackOrbs(IReadOnlyList<int> orderedItemIds)
+    {
+        int count = 0;
+        foreach (int itemId in orderedItemIds)
+            if (SurvivorOrbData.TryGetColorAndTier(itemId, out _, out _))
+                count++;
+        return count;
+    }
+
+    /// <summary>열 순서대로의 아이템 ID — 절단 후 재조회용.</summary>
+    private List<int> GetSwarmOrbItemIdsInOrder(long matchingId, long playerId)
+    {
+        return _inGameInventoryManager.GetPlayerInventory(matchingId, playerId)
+            .GetAllItems()
+            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
+            .OrderBy(item => item.ItemUid)
+            .Select(item => item.ItemId)
+            .ToList();
+    }
+
+    /// <summary>
+    ///     현재 순위(1부터) — 리더보드 브로드캐스트와 같은 정렬(오브 수 → 티어 합 → id).
+    ///     절단 한 건당 1회만 부르므로 전수 조회를 그대로 쓴다.
+    /// </summary>
+    private int GetSwarmPlayerRank(
+        long matchingId, long playerId,
+        List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
+    {
+        var entries = aliveSessions
+            .Where(session => session.PlayerId.HasValue)
+            .Select(session => session.PlayerId!.Value)
+            .Concat(aliveBots.Select(bot => bot.PlayerId))
+            .Select(id =>
+            {
+                var (orbCount, tierSum) = GetSwarmOrbScore(matchingId, id);
+                return (Id: id, Orbs: orbCount, TierSum: tierSum);
+            })
+            .OrderByDescending(entry => entry.Orbs)
+            .ThenByDescending(entry => entry.TierSum)
+            .ThenBy(entry => entry.Id)
+            .ToList();
+
+        int index = entries.FindIndex(entry => entry.Id == playerId);
+        return index < 0 ? 0 : index + 1;
+    }
+
     /// <summary>
     ///     화망 밀도 (#227 6단계): 주어진 자리를 사거리 안에 두는 적 오브 수.
     ///     사격하는 색(태양·바람)만 센다 — 파도는 미사일을 쏘지 않아 화망이 아니다.
@@ -1901,8 +1948,18 @@ public partial class GameServer
             ownerBot.CancelInteractionHold();
         }
 
+        // 절단 전후 대차대조 (#227 5단계): 오브 수(=점수)·순위·공격 기여 수를 한 줄에 묶는다.
+        // "몇 개 잃음 → 순위가 바뀜 → 다음 화력이 줄었다"가 한 이벤트에서 확인돼야
+        // 전략이 먹혔는지 로그만으로 판정할 수 있다. 전은 파괴 직전 체인, 후는 재조회다.
+        int attackOrbsBefore = CountSwarmAttackOrbs(ownerChain.ItemIds);
+        int orbsBefore = ownerChain.ItemIds.Count;
+        int orbsAfter = CountSwarmSquadOrbs(matchingId, bestOwnerId);
+        int attackOrbsAfter = CountSwarmAttackOrbs(GetSwarmOrbItemIdsInOrder(matchingId, bestOwnerId));
+        int rankAfter = GetSwarmPlayerRank(matchingId, bestOwnerId, aliveSessions, aliveBots);
+
         _gameEventLogManager.LogSwarmTrailCut(
             matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal, destroyedItems.Count,
+            orbsBefore, orbsAfter, attackOrbsBefore, attackOrbsAfter, rankAfter,
             bestArea.ToString());
         logger.LogInformation(
             "Swarm trail cut: MatchingId={MatchingId}, CutterId={CutterId}, OwnerId={OwnerId}, TailOrdinal={TailOrdinal}, DestroyedCount={DestroyedCount}",
