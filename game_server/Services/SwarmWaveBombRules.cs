@@ -11,7 +11,8 @@ namespace game_server.services
         Vector3f Position,
         int Damage,
         float Radius,
-        int SourceOrdinal);
+        int SourceOrdinal,
+        int SourceItemId);
 
     /// <summary>
     ///     #229 fixed-position Wave bomb planning. Target order is supplied by the caller;
@@ -54,7 +55,8 @@ namespace game_server.services
                         target.Position,
                         damage,
                         radius,
-                        orb.Ordinal));
+                        orb.Ordinal,
+                        orb.ItemId));
                     continue;
                 }
 

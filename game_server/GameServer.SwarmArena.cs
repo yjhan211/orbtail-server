@@ -2125,7 +2125,7 @@ public partial class GameServer
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmWaveBombNextDropAtUtc =
         new();
     private readonly List<(long MatchingId, long OwnerId, AreaType Area, Vector3f Position, int Damage,
-        float Radius, DateTime ExplodeAtUtc)> _pendingSwarmWaveBombs = new();
+        float Radius, int SourceItemId, DateTime ExplodeAtUtc)> _pendingSwarmWaveBombs = new();
 
     private void ProcessSwarmWaveBombs(
         long matchingId,
@@ -2143,7 +2143,7 @@ public partial class GameServer
                 continue;
             _pendingSwarmWaveBombs.RemoveAt(index);
             ExplodeSwarmWaveBomb(matchingId, bomb.OwnerId, bomb.Area, bomb.Position,
-                bomb.Damage, bomb.Radius, nowUtc,
+                bomb.Damage, bomb.Radius, bomb.SourceItemId, nowUtc,
                 participants, aliveSessions, aliveBots, allSessions);
         }
 
@@ -2192,6 +2192,7 @@ public partial class GameServer
                     plan.Position,
                     plan.Damage,
                     plan.Radius,
+                    plan.SourceItemId,
                     nowUtc.AddSeconds(SwarmWaveBombFuseSeconds)));
                 SendSwarmRingVfx(owner.Area, owner.PlayerId, plan.Position.X, plan.Position.Y,
                     plan.Radius, allSessions, SwarmRingVfxKindWaveBomb,
@@ -2240,6 +2241,7 @@ public partial class GameServer
         Vector3f position,
         int damage,
         float radius,
+        int sourceItemId,
         DateTime nowUtc,
         List<SpotArenaPlayerSpatial> participants,
         List<GameClientSession> aliveSessions,
@@ -2250,9 +2252,11 @@ public partial class GameServer
         _ = participants;
         _ = aliveSessions;
         _ = aliveBots;
-        _ = allSessions;
         _ = nowUtc;
+        var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
         float radiusSquared = radius * radius;
+        int hitCount = 0;
+        int notifiedCount = 0;
         // 몹: 착탄 지연 정산 파이프라인 재사용 — 킬 보상·상태 브로드캐스트가 따라온다.
         foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
         {
@@ -2264,6 +2268,28 @@ public partial class GameServer
                 continue;
             _pendingSwarmMonsterHits.Add((matchingId, target.CombatTargetId, ownerId,
                 damage, nowUtc));
+            hitCount++;
+
+            // 피해 숫자 (#229): 파도는 여기가 유일한 통보 지점이다 — 유도탄과 달리 리졸버를
+            // 거치지 않아 지금까지 물폭탄 피해는 클라에 숫자로 전혀 뜨지 않았다.
+            // 몹 id를 실어 보내 몬스터 머리 위에 뜨게 하고, 투사체 재생은 클라가 색으로 거른다.
+            int monsterId = _swarmArenaManager.GetMonsterIdForCombatTarget(matchingId, target.CombatTargetId);
+            if (monsterId <= 0)
+                continue;
+
+            notifiedCount++;
+            ownerSession?.SendEmotionAfterimageMonsterAttackFeedback(
+                monsterId, area, sourceItemId, damage);
+        }
+
+        if (hitCount > 0)
+        {
+            // 계측 (#229): 폭발이 몇 마리를 집었고 그중 몇 마리가 몹 id로 해석돼 피해 숫자
+            // 통보까지 갔는지. notified < hits면 클라에 숫자가 빠진다.
+            _gameEventLogManager.LogSystem(
+                matchingId,
+                $"wave_bomb_hit owner={ownerId} area={area} hits={hitCount} " +
+                $"notified={notifiedCount} damage={damage} item={sourceItemId}");
         }
     }
 
