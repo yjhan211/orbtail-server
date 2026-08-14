@@ -284,14 +284,25 @@ public static class BotPathfinder
     /// </summary>
     private static Cell? FindReverseSpawnCell(MapId mapId, AreaConnectionInfo forwardConn)
     {
+        // 이중 문 짝 맞추기 (#227): 같은 (구역쌍, StairSide)에 문이 둘이면(운동장↔정크장·복도,
+        // 둘 다 stair_side=none) 첫 행이 아니라 forward 입구와 가장 가까운 문을 짝으로 삼는다.
+        // 첫 행 매칭은 서문 출구·동문 입구를 짝지어 전환 홉(직선)이 벽 밴드를 34셀 관통했다 —
+        // "봇이 문이 아니라 벽으로 다닌다"의 원인. 같은 문의 두 스폰 셀은 항상 인접(1~2셀)이다.
+        Cell? best = null;
+        int bestDistance = int.MaxValue;
         foreach (var rev in GameAreaConnectionData.GetConnections(mapId, forwardConn.ToArea))
         {
             if (rev.ToArea != forwardConn.FromArea) continue;
             if (rev.StairSide != forwardConn.StairSide) continue;
             if (rev.SpawnCell.X == 0 && rev.SpawnCell.Y == 0) continue;
-            return rev.SpawnCell;
+            int distance = Math.Abs(rev.SpawnCell.X - forwardConn.SpawnCell.X) +
+                           Math.Abs(rev.SpawnCell.Y - forwardConn.SpawnCell.Y);
+            if (distance >= bestDistance) continue;
+            bestDistance = distance;
+            best = rev.SpawnCell;
         }
-        return null;
+
+        return best;
     }
 
     /// <summary>

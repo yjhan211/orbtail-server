@@ -267,21 +267,27 @@ public partial class GameServer
                 $"monsters={supplySpawn.MonsterCount} stones={supplySpawn.StoneTotal}");
 
         // 절단 실험 더미 (#226): 불사 + 오브 리필 — 절단·포위 타격감 튜닝용 과녁.
-        // 리필은 마지막 절단 후 3초 지연: 즉시 채우면 "끊어도 안 줄어드는" 것처럼 보인다.
+        // 리필 기준은 피격 시각이 아니라 오브 수다 (#227 수리): 피격 스탬프는 PvP 미사일이
+        // 매 발 갱신해 3초 유예가 영영 지나지 않았다 — 끊어도 다시 안 차던 원인.
         foreach (var dummyBot in aliveBots)
         {
             if (!dummyBot.IsSwarmCutDummy)
                 continue;
             dummyBot.Corruption = 0;
-            if ((nowUtc - dummyBot.LastDamagedAtUtc).TotalSeconds >= 3d)
-                RefillSwarmCutDummyOrbs(matchingId, dummyBot);
+            ProcessSwarmCutDummyRefill(matchingId, dummyBot, nowUtc);
         }
 
         // 오브열 (#226 α/C/B): 경로 기록 → 이동 선분의 상대 열 절단 → 고리 완성 포위 사격.
         UpdateSwarmOrbTrails(matchingId, participants);
         ProcessSwarmTrailCuts(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+        // 반격 보호 창 결산 (#227 7단계) — 만료된 쌍만 CUT_RETALIATION_WINDOW로 남긴다.
+        ProcessSwarmRetaliationWindows(matchingId, nowUtc, participants);
         ProcessSwarmEncirclements(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
-        ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+        // 실험장 (#227): 더미 매치에서는 물폭탄도 끈다 — 파도 오브가 계속 터지면
+        // 절단 궤적 실험이 폭발 연출·피해에 묻힌다. 미사일 비무장(AddSwarmParticipantCombatActors)과
+        // 같은 조건을 쓴다 — 옵트인 환경변수 자체가 실험장 스위치다.
+        if (!SwarmCutDummyAutoSetup && dummyIds.Count == 0)
+            ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
 
         // 실험장 (#226): 더미가 있는 매치는 몹 공격도 끈다 — 절단 튜닝 중 방해 금지.
         if (dummyIds.Count == 0)
@@ -297,6 +303,8 @@ public partial class GameServer
 
         UpdateSwarmMovementSamples(matchingId, participants, nowUtc);
         var actors = BuildSwarmArenaCombatActors(matchingId, aliveSessions, aliveBots, nowUtc);
+        ProcessSwarmPvpAttackEvents(
+            matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
         ProcessSurvivorOrbRecovery(matchingId, actors, aliveSessions, aliveBots, nowUtc);
         BroadcastSurvivorOrbVisualStates(matchingId, actors, sessions);
         BroadcastSwarmOrbRankings(matchingId, sessions, bots);
@@ -326,28 +334,10 @@ public partial class GameServer
             // "링이 겹치기만 해도 공격"으로 읽히던 체감의 원인. 이제 표시가 곧 판정이다.
             // 몹 = 같은 구역이면 사거리 무시 공격 (#226 유저 결정) — 파밍이 막히지 않는다.
             // 플레이어는 색 사거리(타원)+시야 유지.
-            (attacker, target) => !attacker.IsMonsterTarget &&
-                                  (target.IsMonsterTarget
-                                      ? attacker.Area == target.Area
-                                      : IsWithinSwarmOrbRange(attacker, target) &&
-                                        ProximityCombatLineOfSight.CanTarget(attacker, target)),
-            // PvP 조준 계측 (#226 진단): 획득이 없으면 필터, 획득만 있고 발사가 없으면 케이던스.
-            onTargetAcquired: targetEvent =>
-            {
-                if (targetEvent.TargetPlayerId > -1_000_000_000_000L)
-                    logger.LogInformation(
-                        "Swarm pvp aim acquired: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Weapon={Weapon}",
-                        matchingId, targetEvent.AttackerPlayerId, targetEvent.TargetPlayerId,
-                        targetEvent.WeaponItemId);
-            },
-            onTargetLost: targetEvent =>
-            {
-                if (targetEvent.TargetPlayerId > -1_000_000_000_000L)
-                    logger.LogInformation(
-                        "Swarm pvp aim lost: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Reason={Reason}",
-                        matchingId, targetEvent.AttackerPlayerId, targetEvent.TargetPlayerId,
-                        targetEvent.Reason);
-            });
+            // #227 6단계: 이 공용 리졸버는 스웜에서 PvE만 담당한다. PvP는 오브별 독립
+            // 연사가 아니라 ProcessSwarmPvpAttackEvents의 속성별 사건으로 정산한다.
+            (attacker, target) => !attacker.IsMonsterTarget && target.IsMonsterTarget &&
+                                  attacker.Area == target.Area);
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
         {
@@ -399,10 +389,6 @@ public partial class GameServer
                 double pvpDelaySeconds =
                     SurvivorOrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, pvpDistance);
                 _pendingSwarmPvpHits.Add((matchingId, attack, nowUtc.AddSeconds(pvpDelaySeconds)));
-                // PvP 발사 계측 (#226 진단): 유저 신고 "오브가 플레이어를 공격 안 함" 추적.
-                logger.LogInformation(
-                    "Swarm pvp launch: MatchingId={MatchingId}, Attacker={Attacker}, Target={Target}, Weapon={Weapon}",
-                    matchingId, attack.AttackerPlayerId, attack.TargetPlayerId, attack.WeaponItemId);
                 continue;
             }
 
@@ -594,8 +580,21 @@ public partial class GameServer
             foreach (var session in sessions) session.Send(packet);
         }
 
-        if (closureTick.ClosedAreas.Count > 0)
-            DestroySwarmOrbsInClosedAreas(matchingId, closureTick.ClosedAreas, sessions);
+        if (closureTick.ClosedAreas.Count == 0)
+            return;
+
+        // 폐쇄 = 즉사 + 문 잠금 (#227): 지속 오염으로 서서히 죽는 구조는 "언제 나가야 하는가"의
+        // 판단을 흐렸다. 닫히는 순간 안에 있으면 죽고, 그 뒤로는 들어갈 수 없다.
+        // 문을 먼저 잠근다 — 죽는 순간에 남이 밀고 들어오면 규칙이 뒤집혀 보인다.
+        var lockedDoorIds = _doorStateManager.CloseDoorsForAreas(matchingId, closureTick.ClosedAreas);
+        BroadcastDoorStateChanges(sessions, lockedDoorIds, false, 0);
+
+        // 꼬리 파괴가 먼저다: 본인은 밖에 있고 꼬리만 남은 경우가 무보상 파괴 대상이고,
+        // 안에 있던 사람은 어차피 탈락 드롭으로 정산된다.
+        DestroySwarmOrbsInClosedAreas(matchingId, closureTick.ClosedAreas, sessions);
+        EliminateEveryoneInClosedAreas(
+            matchingId, closureTick.ClosedAreas, sessions,
+            _botPlayerManager.GetBots(matchingId).ToList());
     }
 
     /// <summary>
@@ -626,13 +625,15 @@ public partial class GameServer
             int orbCount = CountSwarmSquadOrbs(matchingId, playerId);
             if (orbCount == 0)
                 continue;
+            var closureTiers = GetSwarmOrbTiersInOrder(matchingId, playerId);
 
             // 꼬리는 경로를 따르므로 폐쇄 구역 잔류분은 항상 접미다 — 끝에서부터 스캔한다.
             int suffixStart = orbCount;
             Vector3f suffixPosition = null;
             for (int ordinal = orbCount - 1; ordinal >= 0; ordinal--)
             {
-                var position = GetSwarmOrbTrailPosition(matchingId, playerId, ordinal, ownerPosition);
+                var position = GetSwarmOrbTrailPosition(
+                    matchingId, playerId, ordinal, ownerPosition, closureTiers);
                 var cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, position);
                 if (!closed.Contains(GameMapData.GetCurrentArea(MapId.School, cell)))
                     break;
@@ -1397,8 +1398,10 @@ public partial class GameServer
     // 매 틱 재무장돼 내구 2가 0.24초에 소진됐다 — 같은 오브 재타는 별개의 통과여야 한다.
     private const double SwarmTrailCutSameOrbDebounceSeconds = 0.7d;
     private const float SwarmTrailCutMaxSegmentLength = 2f;
-    // 절단(꼬리 상실) 직후 피해자 열 전체 면역 — 한 번의 돌파로 연쇄 전멸하지 않게.
-    private const double SwarmTrailCutVictimImmunitySeconds = 1.2d;
+    // 절단자 한정 반격 보호 (#227 7단계): 실제 꼬리 상실 순간부터 1.2초.
+    // 전역 무적이 아니라 '방금 내 꼬리를 자른 그 사람에게 되갚을 시간'이다 —
+    // 제3자·잔상·폐쇄 피해는 그대로 들어오고, 피해자는 이동·사격·역절단을 다 할 수 있다.
+    private const double SwarmCutRetaliationWindowSeconds = 1.2d;
     // 오브 관통 판정 (정규화 dy×2 공간): 링크 선을 스치는 게 아니라 오브를 밟아야 끊긴다.
     // 반경 0.35 원형 + 판정 중심 위 오프셋 (2026-08-12 확정): 스프라이트가 떠 있어 위 접근이
     // 짜던 문제는 중심 오프셋만으로 해결 — 반경을 키우면 옆 오브(간격 0.9)까지 문다.
@@ -1413,9 +1416,105 @@ public partial class GameServer
     // ItemUid별 절단 래치 (단계 A): 마지막 타격 시각 — 중복 억제·이탈 재무장의 기준.
     private readonly Dictionary<(long MatchingId, long CutterId, long ItemUid), DateTime> _swarmOrbCutLatches =
         new();
-    // 꼬리 상실 직후 피해자 면역 만료 시각.
-    private readonly Dictionary<(long MatchingId, long OwnerId), DateTime> _swarmCutVictimImmuneUntilUtc =
-        new();
+    /// <summary>
+    ///     반격 보호 창 (#227 7단계): 절단자–피해자 <b>쌍</b>으로 연다. 같은 키가 다시 열리면
+    ///     시간만 연장하고 집계는 이어간다 — 만료 시 CUT_RETALIATION_WINDOW로 결산한다.
+    /// </summary>
+    private sealed class SwarmRetaliationWindow
+    {
+        public DateTime OpenedAtUtc;
+        public DateTime ExpiresAtUtc;
+        public int BlockedDamage;
+        public int BlockedHits;
+        public int BlockedCuts;
+        public bool Retaliated;
+        public AreaType OpenedArea;
+    }
+
+    private readonly Dictionary<(long MatchingId, long CutterId, long VictimId), SwarmRetaliationWindow>
+        _swarmCutRetaliationWindows = new();
+
+    /// <summary>이 절단자가 이 피해자에게 손댈 수 없는 상태인가 — 절단·본체 피해 공통 관문.</summary>
+    private bool IsSwarmRetaliationGuarded(long matchingId, long cutterId, long victimId, DateTime nowUtc)
+    {
+        return _swarmCutRetaliationWindows.TryGetValue((matchingId, cutterId, victimId), out var window) &&
+               nowUtc < window.ExpiresAtUtc;
+    }
+
+    /// <summary>
+    ///     보호 창을 연다. 같은 쌍이 다시 열리면 시간만 연장하고 집계는 이어간다.
+    ///     반대 방향 창이 살아 있으면 = 방금 나를 자른 사람을 내가 잘랐다 = 역절단 성립이다.
+    /// </summary>
+    private void OpenSwarmRetaliationWindow(
+        long matchingId, long cutterId, long victimId, AreaType area, DateTime nowUtc,
+        List<GameClientSession> allSessions)
+    {
+        if (_swarmCutRetaliationWindows.TryGetValue((matchingId, victimId, cutterId), out var opposite) &&
+            nowUtc < opposite.ExpiresAtUtc)
+            opposite.Retaliated = true;
+
+        var key = (matchingId, cutterId, victimId);
+        if (!_swarmCutRetaliationWindows.TryGetValue(key, out var window))
+        {
+            window = new SwarmRetaliationWindow { OpenedAtUtc = nowUtc, OpenedArea = area };
+            _swarmCutRetaliationWindows[key] = window;
+        }
+
+        window.ExpiresAtUtc = nowUtc.AddSeconds(SwarmCutRetaliationWindowSeconds);
+
+        // 잔광은 피해자 본인과 그 절단자에게만 — 제3자는 정상 공격할 수 있으니 보지 않는다.
+        SendSwarmRetaliationVfx(
+            cutterId, victimId, area, SwarmRingVfxKindRetaliationGuard,
+            (float)SwarmCutRetaliationWindowSeconds, allSessions);
+    }
+
+    /// <summary>만료된 창을 결산해 CUT_RETALIATION_WINDOW로 남긴다 — 매 틱 호출.</summary>
+    private void ProcessSwarmRetaliationWindows(
+        long matchingId, DateTime nowUtc, List<SpotArenaPlayerSpatial> participants)
+    {
+        var expired = _swarmCutRetaliationWindows
+            .Where(pair => pair.Key.MatchingId == matchingId && nowUtc >= pair.Value.ExpiresAtUtc)
+            .ToList();
+        foreach (var (key, window) in expired)
+        {
+            _swarmCutRetaliationWindows.Remove(key);
+
+            // 양측 이탈: 창이 닫히는 시점에 둘이 같은 구역에 없다 = 싸움을 접고 갈라섰다.
+            var cutter = participants.FirstOrDefault(p => p.PlayerId == key.CutterId);
+            var victim = participants.FirstOrDefault(p => p.PlayerId == key.VictimId);
+            bool bothDisengaged = cutter == null || victim == null || cutter.Area != victim.Area;
+
+            _gameEventLogManager.LogSwarmRetaliationWindow(
+                matchingId, key.CutterId, key.VictimId,
+                window.BlockedDamage, window.BlockedHits, window.BlockedCuts,
+                window.Retaliated, bothDisengaged, window.OpenedArea.ToString());
+        }
+    }
+
+    /// <summary>보호 창 전용 연출 — 피해자와 그 절단자에게만 보낸다(제3자 제외).</summary>
+    private void SendSwarmRetaliationVfx(
+        long cutterId, long victimId, AreaType area, int kind, float seconds,
+        List<GameClientSession> allSessions)
+    {
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_ENCIRCLE_VFX);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_ENCIRCLE_VFX
+        {
+            OwnerPlayerId = cutterId,
+            CenterX = 0f,
+            CenterY = 0f,
+            Radius = seconds,
+            Kind = kind,
+            VictimPlayerId = victimId,
+            FromOrdinal = 0
+        }));
+        foreach (var session in allSessions)
+        {
+            if (!session.PlayerId.HasValue || session.CurrentArea != area)
+                continue;
+            if (session.PlayerId.Value == victimId || session.PlayerId.Value == cutterId)
+                session.Send(packet);
+        }
+    }
 
     /// <summary>클라 PlayerTool.UpdateOrbTrail과 같은 규칙 — 정지하면 경로가 얼어 열이 남는다.</summary>
     private void UpdateSwarmOrbTrails(long matchingId, List<SpotArenaPlayerSpatial> participants)
@@ -1463,10 +1562,27 @@ public partial class GameServer
     }
 
     /// <summary>순번째 오브의 열 좌표 — 경로를 순번 × 간격만큼 거슬러 올라간 지점 (클라와 동일 규칙).</summary>
-    private Vector3f GetSwarmOrbTrailPosition(long matchingId, long playerId, int ordinal, Vector3f anchor)
+    /// <summary>
+    ///     열 순서대로의 티어 목록 — 간격이 오브 크기를 따르므로 좌표 계산의 입력이다 (#227).
+    ///     인벤토리 정렬(ItemUid 오름차순)은 절단 체인·전투 액터가 쓰는 순서와 같다.
+    /// </summary>
+    private List<int> GetSwarmOrbTiersInOrder(long matchingId, long playerId)
     {
-        float targetDistance = Config.SWARM_ORB_TRAIL_FIRST_OFFSET +
-                               ordinal * Config.SWARM_ORB_TRAIL_SPACING;
+        return _inGameInventoryManager.GetPlayerInventory(matchingId, playerId)
+            .GetAllItems()
+            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
+            .OrderBy(item => item.ItemUid)
+            .Select(item => GetSquadOrbTier(item.ItemId))
+            .ToList();
+    }
+
+    private Vector3f GetSwarmOrbTrailPosition(
+        long matchingId, long playerId, int ordinal, Vector3f anchor,
+        IReadOnlyList<int> orderedTiers = null)
+    {
+        // 호출부가 목록을 들고 있으면 그걸 쓴다 — 순번마다 인벤토리를 다시 훑지 않게.
+        float targetDistance = SurvivorOrbData.GetSwarmTrailDistance(
+            orderedTiers ?? GetSwarmOrbTiersInOrder(matchingId, playerId), ordinal);
         if (!_swarmOrbTrails.TryGetValue((matchingId, playerId), out var points) || points.Count == 0)
             return new Vector3f(anchor.X, anchor.Y - targetDistance * 0.2f, 0f);
 
@@ -1525,7 +1641,8 @@ public partial class GameServer
         // 몹(잔상) 절단은 P0에서 비활성 (단계 A 확정) — 절단은 플레이어의 동사다.
         // 머리 보호 제거 (단계 A 마감): 첫 오브·본체-첫 오브 링크도 절단 대상 — 1오브 열도 잘린다.
         var chains =
-            new Dictionary<long, (AreaType Area, Vector3f OwnerPosition, List<Vector3f> Points, List<long> Uids)>();
+            new Dictionary<long, (AreaType Area, Vector3f OwnerPosition, List<Vector3f> Points,
+                List<long> Uids, List<int> ItemIds)>();
         foreach (var owner in participants)
         {
             var orbs = _inGameInventoryManager.GetPlayerInventory(matchingId, owner.PlayerId)
@@ -1537,13 +1654,17 @@ public partial class GameServer
                 continue;
             var points = new List<Vector3f>(orbs.Count);
             var uids = new List<long>(orbs.Count);
+            var itemIds = new List<int>(orbs.Count);
+            var chainTiers = orbs.Select(item => GetSquadOrbTier(item.ItemId)).ToList();
             for (int ordinal = 0; ordinal < orbs.Count; ordinal++)
             {
-                points.Add(GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position));
+                points.Add(GetSwarmOrbTrailPosition(
+                    matchingId, owner.PlayerId, ordinal, owner.Position, chainTiers));
                 uids.Add(orbs[ordinal].ItemUid);
+                itemIds.Add(orbs[ordinal].ItemId);
             }
 
-            chains[owner.PlayerId] = (owner.Area, owner.Position, points, uids);
+            chains[owner.PlayerId] = (owner.Area, owner.Position, points, uids, itemIds);
         }
 
         foreach (var cutter in participants)
@@ -1559,6 +1680,85 @@ public partial class GameServer
         }
     }
 
+    /// <summary>공격에 기여하는 오브 수 — 회복 오브는 사격에 참여하지 않아 뺀다 (#227 5단계).</summary>
+    private static int CountSwarmAttackOrbs(IReadOnlyList<int> orderedItemIds)
+    {
+        int count = 0;
+        foreach (int itemId in orderedItemIds)
+            if (SurvivorOrbData.TryGetColorAndTier(itemId, out _, out _))
+                count++;
+        return count;
+    }
+
+    /// <summary>열 순서대로의 아이템 ID — 절단 후 재조회용.</summary>
+    private List<int> GetSwarmOrbItemIdsInOrder(long matchingId, long playerId)
+    {
+        return _inGameInventoryManager.GetPlayerInventory(matchingId, playerId)
+            .GetAllItems()
+            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
+            .OrderBy(item => item.ItemUid)
+            .Select(item => item.ItemId)
+            .ToList();
+    }
+
+    /// <summary>
+    ///     현재 순위(1부터) — 리더보드 브로드캐스트와 같은 정렬(오브 수 → 티어 합 → id).
+    ///     절단 한 건당 1회만 부르므로 전수 조회를 그대로 쓴다.
+    /// </summary>
+    private int GetSwarmPlayerRank(
+        long matchingId, long playerId,
+        List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
+    {
+        var entries = aliveSessions
+            .Where(session => session.PlayerId.HasValue)
+            .Select(session => session.PlayerId!.Value)
+            .Concat(aliveBots.Select(bot => bot.PlayerId))
+            .Select(id =>
+            {
+                var (orbCount, tierSum) = GetSwarmOrbScore(matchingId, id);
+                return (Id: id, Orbs: orbCount, TierSum: tierSum);
+            })
+            .OrderByDescending(entry => entry.Orbs)
+            .ThenByDescending(entry => entry.TierSum)
+            .ThenBy(entry => entry.Id)
+            .ToList();
+
+        int index = entries.FindIndex(entry => entry.Id == playerId);
+        return index < 0 ? 0 : index + 1;
+    }
+
+    /// <summary>
+    ///     화망 밀도 (#227 6단계): 주어진 자리를 사거리 안에 두는 적 오브 수.
+    ///     사격하는 색(태양·바람)만 센다 — 파도는 미사일을 쏘지 않아 화망이 아니다.
+    ///     발사 원점은 본체가 아니라 각 오브의 열 좌표다. ownerFilter를 주면 그 소유자만 센다.
+    /// </summary>
+    private static int CountSwarmOrbGunsCovering(
+        Dictionary<long, (AreaType Area, Vector3f OwnerPosition, List<Vector3f> Points,
+            List<long> Uids, List<int> ItemIds)> chains,
+        long excludePlayerId,
+        AreaType area,
+        Vector3f position,
+        long? ownerFilter = null)
+    {
+        int count = 0;
+        foreach (var (ownerId, chain) in chains)
+        {
+            if (ownerId == excludePlayerId || chain.Area != area)
+                continue;
+            if (ownerFilter.HasValue && ownerId != ownerFilter.Value)
+                continue;
+
+            for (int ordinal = 0; ordinal < chain.Points.Count; ordinal++)
+            {
+                float range = GetSwarmOrbPvpRange(chain.ItemIds[ordinal]);
+                if (range > 0f && IsWithinSwarmOrbRange(chain.Points[ordinal], range, position))
+                    count++;
+            }
+        }
+
+        return count;
+    }
+
     private void TryPerformSwarmTrailCut(
         long matchingId,
         long cutterId,
@@ -1566,7 +1766,8 @@ public partial class GameServer
         AreaType cutterArea,
         Vector3f previous,
         Vector3f current,
-        Dictionary<long, (AreaType Area, Vector3f OwnerPosition, List<Vector3f> Points, List<long> Uids)> chains,
+        Dictionary<long, (AreaType Area, Vector3f OwnerPosition, List<Vector3f> Points,
+            List<long> Uids, List<int> ItemIds)> chains,
         DateTime nowUtc,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
@@ -1590,10 +1791,10 @@ public partial class GameServer
         {
             if (ownerId == cutterId || chain.Area != cutterArea)
                 continue;
-            // 절단(꼬리 상실) 직후 피해자 열 면역 — 한 돌파로 연쇄 전멸 방지.
-            if (_swarmCutVictimImmuneUntilUtc.TryGetValue((matchingId, ownerId), out var immuneUntil) &&
-                nowUtc < immuneUntil)
-                continue;
+            // 반격 보호 (#227 7단계): 방금 이 피해자를 자른 '그 절단자'만 막힌다 —
+            // 제3자는 정상적으로 자를 수 있다(전역 면역 퇴역).
+            // 막힌 쪽도 교차 판정까지는 돌린다: 실제로 끊었을 교차만 세야 계측이 의미를 갖는다.
+            bool guarded = IsSwarmRetaliationGuarded(matchingId, cutterId, ownerId, nowUtc);
 
             // 절단 판정: 오브 관통(반경 0.35, 중심 위 0.15) 또는 링크(오브 i-1 ↔ i)
             // 가로지르기 — 둘 다 그 오브(i)에 귀속. 머리 보호 제거(단계 A 마감): 첫 오브도
@@ -1620,7 +1821,18 @@ public partial class GameServer
                     hit = TrySegmentIntersection(
                         previous, current, linkStart, chain.Points[ordinal], out t);
                 }
-                if (!hit || t >= bestT)
+                if (!hit)
+                    continue;
+                if (guarded)
+                {
+                    // 이 교차는 보호 창이 삼켰다 — 한 번의 통과당 1회만 센다.
+                    if (_swarmCutRetaliationWindows.TryGetValue(
+                            (matchingId, cutterId, ownerId), out var guardWindow))
+                        guardWindow.BlockedCuts++;
+                    break;
+                }
+
+                if (t >= bestT)
                     continue;
                 bestT = t;
                 bestOwnerId = ownerId;
@@ -1636,8 +1848,8 @@ public partial class GameServer
 
         _swarmOrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
 
-        // 방어 강화 = 내구 (#226, 2026-08-12): 오브별 파괴 필요 타격 수 = 기본 1 + 내구 보너스.
-        // 내구 2+ 오브는 아래 크랙 경로가 살아나 금이 가며 버틴다 — "금이 간다 = 두꺼운 유리였다".
+        // 오브 체력 (#227): 최대 5칸 중 남은 칸이 곧 내구다. 소환 직후는 1/5(크랙 4단계),
+        // 방어 강화는 5/5(크랙 0단계). 크랙 단계 = 5 - 남은 칸이라 표시가 곧 판정이다.
         var crackKey = (matchingId, bestOwnerId, bestOrbUid);
         int crackCount = (_swarmOrbCutCracks.TryGetValue(crackKey, out int storedCracks)
             ? storedCracks
@@ -1645,15 +1857,34 @@ public partial class GameServer
         int requiredHits = SwarmTrailCutBreakHits +
                            _swarmOrbDurabilityBonus.GetValueOrDefault(
                                (matchingId, bestOwnerId, bestOrbUid));
+
+        // 절단 진입 계측 (#227 3·6단계): 들어간 순간의 판단 재료를 통째로 남긴다 —
+        // 공격자·피해자·후보 ordinal·맞기 직전 내구·이 교차가 끊었을 때의 손실,
+        // 그리고 그 자리를 덮던 적 오브 사거리 수(국소 화망).
+        // 크랙만 나든 꼬리가 끊기든 '들어간 순간'은 같으므로 분기 전에 남긴다.
+        _gameEventLogManager.LogSwarmCutAttempt(
+            matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal,
+            CountSwarmOrbGunsCovering(chains, cutterId, cutterArea, current),
+            CountSwarmOrbGunsCovering(chains, cutterId, cutterArea, current, bestOwnerId),
+            durabilityBeforeHit: requiredHits - crackCount + 1,
+            expectedOrbLoss: Math.Max(0, chains[bestOwnerId].Points.Count - bestTailOrdinal),
+            breaksNow: crackCount >= requiredHits,
+            area: bestArea.ToString());
+
         if (crackCount < requiredHits)
         {
             _swarmOrbCutCracks[crackKey] = crackCount;
             _gameEventLogManager.LogSwarmOrbCrackAdvanced(
                 matchingId, creditPlayerId, bestOwnerId, crackCount, requiredHits,
                 bestArea.ToString());
+            // 클라에는 누적 타격 수가 아니라 표시할 크랙 단계를 보낸다 — 시작 단계가
+            // 오브마다 다르므로(1/5 vs 5/5) 절대값이어야 화면과 남은 칸이 일치한다.
+            int displayCrackStage = Math.Clamp(
+                SwarmOrbMaxDurability - requiredHits + crackCount,
+                0, SwarmOrbMaxDurability - 1);
             SendSwarmRingVfx(
                 bestArea, creditPlayerId, bestOrbPosition.X, bestOrbPosition.Y,
-                radius: crackCount, allSessions, SwarmRingVfxKindCutCrack,
+                radius: displayCrackStage, allSessions, SwarmRingVfxKindCutCrack,
                 victimId: bestOwnerId, fromOrdinal: bestTailOrdinal);
             return;
         }
@@ -1663,9 +1894,8 @@ public partial class GameServer
         var destroyedItems = DestroySwarmOrbsFromOrdinal(matchingId, bestOwnerId, bestTailOrdinal);
         if (destroyedItems.Count == 0)
             return;
-        // 꼬리 상실 직후 면역 (단계 A) — 한 돌파로 남은 열까지 연쇄로 잃지 않는다.
-        _swarmCutVictimImmuneUntilUtc[(matchingId, bestOwnerId)] =
-            nowUtc.AddSeconds(SwarmTrailCutVictimImmunitySeconds);
+        // 반격 보호 개시 (#227 7단계) — 크랙만 난 접촉은 여기까지 오지 않는다.
+        OpenSwarmRetaliationWindow(matchingId, creditPlayerId, bestOwnerId, bestArea, nowUtc, allSessions);
         // 방어 강화 오브 낙수 보너스 (#226 D): 내구 투자분은 +1석으로 정산 — 제거 전에 기억한다.
         var armoredUids = new HashSet<long>();
         foreach (var destroyedItem in destroyedItems)
@@ -1711,8 +1941,18 @@ public partial class GameServer
             ownerBot.CancelInteractionHold();
         }
 
+        // 절단 전후 대차대조 (#227 5단계): 오브 수(=점수)·순위·공격 기여 수를 한 줄에 묶는다.
+        // "몇 개 잃음 → 순위가 바뀜 → 다음 화력이 줄었다"가 한 이벤트에서 확인돼야
+        // 전략이 먹혔는지 로그만으로 판정할 수 있다. 전은 파괴 직전 체인, 후는 재조회다.
+        int attackOrbsBefore = CountSwarmAttackOrbs(ownerChain.ItemIds);
+        int orbsBefore = ownerChain.ItemIds.Count;
+        int orbsAfter = CountSwarmSquadOrbs(matchingId, bestOwnerId);
+        int attackOrbsAfter = CountSwarmAttackOrbs(GetSwarmOrbItemIdsInOrder(matchingId, bestOwnerId));
+        int rankAfter = GetSwarmPlayerRank(matchingId, bestOwnerId, aliveSessions, aliveBots);
+
         _gameEventLogManager.LogSwarmTrailCut(
             matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal, destroyedItems.Count,
+            orbsBefore, orbsAfter, attackOrbsBefore, attackOrbsAfter, rankAfter,
             bestArea.ToString());
         logger.LogInformation(
             "Swarm trail cut: MatchingId={MatchingId}, CutterId={CutterId}, OwnerId={OwnerId}, TailOrdinal={TailOrdinal}, DestroyedCount={DestroyedCount}",
@@ -1880,10 +2120,18 @@ public partial class GameServer
     private const int SwarmRingVfxKindCutCrack = 3;
     // 철갑 소모 (#226 단계 C): 외피가 절단을 1회 막고 깨질 때의 은색 파열 링.
     private const int SwarmRingVfxKindArmorBreak = 4;
+    // 반격 보호 (#227 7단계): 5 = 피해자 남은 꼬리의 유리 잔광 개시(Radius에 지속 초),
+    // 6 = 그 절단자의 투사체가 잔광 앞에서 깨짐(피해 숫자 없음).
+    private const int SwarmRingVfxKindRetaliationGuard = 5;
+    private const int SwarmRingVfxKindRetaliationBlocked = 6;
 
     // 5단계 → 즉시 절단 (2026-08-12): 밟으면 바로 그 지점부터 꼬리가 끊긴다.
     // 크랙 단계 시스템(1~4 금 + 5타 파괴)은 값만 되돌리면 복원된다.
     private const int SwarmTrailCutBreakHits = 1;
+    // 오브 체력 모델 (#227): 모든 오브의 최대 내구는 5칸이고, 소환 직후는 1/5로 시작한다.
+    // 방어 강화는 5/5로 채우는 카드다 — 크랙 5단계가 곧 남은 칸이라 표시가 곧 판정.
+    private const int SwarmOrbMaxDurability = 5;
+    private const int SwarmArmorDurabilityBonus = SwarmOrbMaxDurability - SwarmTrailCutBreakHits;
     private readonly Dictionary<(long MatchingId, long OwnerId, long ItemUid), int> _swarmOrbCutCracks = new();
 
     /// <summary>링 연출 공용 전송 — 포위 완성(대형)·절단 파열(소형)·물폭탄(파랑)이 같은 원형을 쓴다.</summary>
@@ -1915,7 +2163,7 @@ public partial class GameServer
     // 판정은 기폭 순간 위치 기준(타원 dy×2) — 표시가 곧 판정, 회피는 위치 판단이다. =====
     // 2.5 → 1.2 (2026-08-12): 파도 = 근접 거부 지뢰 — 깨러 접근한 절단자를 빠르게 처벌한다.
     private const double SwarmWaveBombIntervalSeconds = 1.2d;
-    private const double SwarmWaveBombFuseSeconds = 0.45d;
+    private const double SwarmWaveBombFuseSeconds = 0.55d;
     // 1.5 → 2.0 → 2.6 (2026-08-12 2차): 근접 거부 반경이 좁아 존재감이 약했다 — 표시·판정 동시 확장.
     private const float SwarmWaveBombRadius = 2.6f;
     // 허공 투하 기각 (2026-08-12): 적(참가자·몹)이 이 반경 안에 있는 오브만 폭탄을 떨군다.
@@ -1968,10 +2216,11 @@ public partial class GameServer
             if (!IsSwarmAttackArmed(matchingId, owner.PlayerId, nowUtc))
                 continue;
 
+            var bombTiers = GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
             foreach (int ordinal in GetSwarmBlueOrbOrdinals(matchingId, owner.PlayerId))
             {
                 var position = GetSwarmOrbTrailPosition(
-                    matchingId, owner.PlayerId, ordinal, owner.Position);
+                    matchingId, owner.PlayerId, ordinal, owner.Position, bombTiers);
                 // 허공 투하 기각: 그 오브 주변에 적이 있을 때만 떨군다.
                 if (!HasSwarmWaveBombTargetNear(matchingId, owner, position, participants))
                     continue;
@@ -1990,17 +2239,10 @@ public partial class GameServer
         long matchingId, SpotArenaPlayerSpatial owner, Vector3f position,
         List<SpotArenaPlayerSpatial> participants)
     {
+        // #227 6단계: 기존 오브별 물폭탄은 PvE 전용으로 남긴다. 플레이어 대상 파도 공격은
+        // 속성별 한 번의 합산 이벤트가 담당하므로 참가자를 여기서 트리거로 쓰지 않는다.
+        _ = participants;
         float radiusSquared = SwarmWaveBombTriggerRadius * SwarmWaveBombTriggerRadius;
-        foreach (var enemy in participants)
-        {
-            if (enemy.PlayerId == owner.PlayerId || enemy.Area != owner.Area)
-                continue;
-            float dx = enemy.Position.X - position.X;
-            float dy = (enemy.Position.Y - position.Y) * 2f;
-            if (dx * dx + dy * dy <= radiusSquared)
-                return true;
-        }
-
         foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
         {
             if (target.Area != owner.Area)
@@ -2043,59 +2285,14 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
+        // PvP는 ProcessSwarmPvpAttackEvents의 단일 파도 사건이 담당한다. 이 레거시 경로는
+        // 잔상 PvE만 유지한다.
+        _ = participants;
+        _ = aliveSessions;
+        _ = aliveBots;
+        _ = allSessions;
+        _ = nowUtc;
         float radiusSquared = SwarmWaveBombJudgeRadius * SwarmWaveBombJudgeRadius;
-        foreach (var victim in participants)
-        {
-            if (victim.PlayerId == ownerId || victim.Area != area)
-                continue;
-            float dx = victim.Position.X - position.X;
-            float dy = (victim.Position.Y - position.Y) * 2f;
-            if (dx * dx + dy * dy > radiusSquared)
-                continue;
-
-            // 본체 오염 직행 (#226 재개편) — 미사일과 같은 환산·이월 누산.
-            int bombCorruption = ConsumeSwarmPvpCorruption(
-                matchingId, victim.PlayerId, SwarmWaveBombPvpDamage);
-            var victimSession = aliveSessions.FirstOrDefault(session =>
-                session.PlayerId == victim.PlayerId);
-            if (victimSession != null)
-            {
-                if (bombCorruption > 0)
-                {
-                    // 물폭탄 계측 (#226 F): 미사일과 같은 피격 로그 + wave_bomb 태그 —
-                    // 근접 거부가 실제로 넣은 피해·킬이 요약에 잡힌다.
-                    _gameEventLogManager.LogSurvivorHit(
-                        matchingId, ownerId, victim.PlayerId, 0, bombCorruption,
-                        victimSession.CurrentCorruption < Config.SURVIVOR_MAX_CORRUPTION &&
-                        victimSession.CurrentCorruption + bombCorruption >=
-                        Config.SURVIVOR_MAX_CORRUPTION,
-                        BotPlayerManager.IsBotPlayerId(ownerId), DateTimeOffset.UtcNow,
-                        damageSourceType: "wave_bomb");
-                    victimSession.ModifyStats(corruptionDelta: bombCorruption,
-                        attackerPlayerId: ownerId);
-                }
-                continue;
-            }
-
-            var victimBot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == victim.PlayerId);
-            if (victimBot == null)
-                continue;
-            victimBot.LastProximityAttackerPlayerId = ownerId;
-            _swarmBotLastDamagedAtUtc[(matchingId, victimBot.PlayerId)] = nowUtc;
-            victimBot.LastDamagedAtUtc = nowUtc;
-            if (bombCorruption > 0)
-            {
-                _gameEventLogManager.LogSurvivorHit(
-                    matchingId, ownerId, victimBot.PlayerId, 0, bombCorruption,
-                    victimBot.Corruption < Config.SURVIVOR_MAX_CORRUPTION &&
-                    victimBot.Corruption + bombCorruption >= Config.SURVIVOR_MAX_CORRUPTION,
-                    BotPlayerManager.IsBotPlayerId(ownerId), DateTimeOffset.UtcNow,
-                    damageSourceType: "wave_bomb");
-                victimBot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
-                    victimBot.Corruption + bombCorruption);
-            }
-        }
-
         // 몹: 착탄 지연 정산 파이프라인 재사용 — 킬 보상·상태 브로드캐스트가 따라온다.
         foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
         {
@@ -2121,9 +2318,11 @@ public partial class GameServer
         if (orbCount < SwarmEncircleMinOrbs)
             return null;
 
+        var encircleTiers = GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
         var points = new List<Vector3f>(orbCount);
         for (int ordinal = 0; ordinal < orbCount; ordinal++)
-            points.Add(GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position));
+            points.Add(GetSwarmOrbTrailPosition(
+                matchingId, owner.PlayerId, ordinal, owner.Position, encircleTiers));
 
         var head = points[0];
         for (int closeIndex = SwarmEncircleMinOrbs - 1; closeIndex < points.Count; closeIndex++)
@@ -2201,7 +2400,39 @@ public partial class GameServer
     private static readonly bool SwarmCutDummyAutoSetup =
         Environment.GetEnvironmentVariable("DEV_CUT_DUMMY") == "1";
     private const int SwarmCutDummyOrbCount = 10;
+    // 과녁 열은 단색 태양 T1 — 시작 지급의 무작위 색이 섞이면 파도(물폭탄)가 딸려 온다.
+    private const int SwarmCutDummyOrbItemId = 107000010;
+    // 절단 직후 3초는 비워 둔다 — 즉시 채우면 "끊어도 안 줄어드는" 것처럼 보인다.
+    private const double SwarmCutDummyRefillDelaySeconds = 3d;
     private readonly HashSet<long> _swarmCutDummyAutoSetupDone = new();
+    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmCutDummyRefillAtUtc = new();
+
+    /// <summary>
+    ///     더미 오브 리필 (#227 수리): 판단 기준은 오브 수 — 열이 줄어든 걸 본 시점부터
+    ///     3초를 세고 채운다. 피격 시각 기준이던 시절엔 PvP 미사일이 스탬프를 매 발 갱신해
+    ///     유예가 끝나지 않았다(리필 정지).
+    /// </summary>
+    private void ProcessSwarmCutDummyRefill(long matchingId, BotPlayerState dummy, DateTime nowUtc)
+    {
+        var key = (matchingId, dummy.PlayerId);
+        if (CountSwarmSquadOrbs(matchingId, dummy.PlayerId) >= SwarmCutDummyOrbCount)
+        {
+            _swarmCutDummyRefillAtUtc.Remove(key);
+            return;
+        }
+
+        if (!_swarmCutDummyRefillAtUtc.TryGetValue(key, out var refillAtUtc))
+        {
+            _swarmCutDummyRefillAtUtc[key] = nowUtc.AddSeconds(SwarmCutDummyRefillDelaySeconds);
+            return;
+        }
+
+        if (nowUtc < refillAtUtc)
+            return;
+
+        _swarmCutDummyRefillAtUtc.Remove(key);
+        RefillSwarmCutDummyOrbs(matchingId, dummy);
+    }
 
     /// <summary>봇 플래그 조회 — 참가자 id가 더미인지. 사람(양수)은 항상 false.</summary>
     private bool IsSwarmCutDummyPlayer(long matchingId, long playerId)
@@ -2223,7 +2454,20 @@ public partial class GameServer
              index < SwarmCutDummyOrbCount;
              index++)
             _inGameInventoryManager.TryAddItemWithCapacity(
-                matchingId, dummy.PlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out _);
+                matchingId, dummy.PlayerId, SwarmCutDummyOrbItemId, Config.SWARM_ORB_CAPACITY, out _);
+
+        // 실험 과녁 (#227): 머리쪽 절반은 방어 강화(5/5), 나머지 절반은 맨 오브(1/5) —
+        // 같은 열에서 두 내구를 나란히 밟아 비교할 수 있다.
+        var trailOrbs = GetSwarmTrailOrbs(matchingId, dummy.PlayerId);
+        int armoredCount = (trailOrbs.Count + 1) / 2;
+        for (int ordinal = 0; ordinal < trailOrbs.Count; ordinal++)
+        {
+            var key = (matchingId, dummy.PlayerId, trailOrbs[ordinal].ItemUid);
+            if (ordinal < armoredCount)
+                _swarmOrbDurabilityBonus[key] = SwarmArmorDurabilityBonus;
+            else
+                _swarmOrbDurabilityBonus.Remove(key);
+        }
     }
 
     /// <summary>
@@ -2269,6 +2513,9 @@ public partial class GameServer
         _swarmOrbTrails[(matchingId, dummy.PlayerId)] = trailPoints;
         _swarmTrailLastTickPositions[(matchingId, dummy.PlayerId)] =
             new Vector3f(dummy.Position.X, dummy.Position.Y, 0f);
+        // 시작 지급의 무작위 색(파도 포함)을 비우고 단색 태양 열로 재구성한다 (#227).
+        _inGameInventoryManager.TakeAllItems(matchingId, dummy.PlayerId);
+        _swarmCutDummyRefillAtUtc.Remove((matchingId, dummy.PlayerId));
         RefillSwarmCutDummyOrbs(matchingId, dummy);
 
         var sessions = GetSessionsByInstance(MapId.School, matchingId).ToList();
@@ -3184,9 +3431,6 @@ public partial class GameServer
                     matchingId, bot.PlayerId, isBot: true,
                     GetSwarmGrowthCardRole(cardIndex), GetSwarmGrowthCardGrade(cardIndex, offer),
                     baseCost, surcharge, finalCost, successCountBefore, orbCount);
-                logger.LogInformation(
-                    "Swarm bot growth: MatchingId={MatchingId}, BotId={BotId}, Card={Card}, Base={Base}, Surcharge={Surcharge}, Cost={Cost}, Orbs={Orbs}",
-                    matchingId, bot.PlayerId, cardIndex, baseCost, surcharge, finalCost, orbCount);
             }
         }
     }
@@ -3387,7 +3631,8 @@ public partial class GameServer
                     if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
                         return false;
                     foreach (var target in targets)
-                        _swarmOrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] = 1;
+                        _swarmOrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] =
+                            SwarmArmorDurabilityBonus;
                     return true;
                 }
             default:
@@ -3496,28 +3741,53 @@ public partial class GameServer
     ///     환산(이월 누산)되어 직행한다. 오브 파괴는 열 절단 전용. PvpDamageScale(0.65)은
     ///     오염 환산 상수가 대체하므로 퇴역.
     /// </summary>
-    private void ApplySwarmPvpAttack(
+    private int ApplySwarmPvpAttack(
         long matchingId,
         ProximityCombatAttack attack,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions,
-        bool broadcastVfx = true)
+        bool broadcastVfx = true,
+        bool aggregateEventFeedback = false,
+        bool sendAttackerFeedback = true)
     {
+        // 반격 보호 (#227 7단계): 방금 이 표적의 꼬리를 자른 공격자의 본체 피해는 통과하지 못한다.
+        // 착탄 시점에 보므로 창이 열리기 '전에' 발사된 대기 투사체도 함께 걸린다.
+        // 제3자·잔상·폐쇄는 이 경로를 타지 않아 종전대로 들어간다.
+        var nowUtc = DateTime.UtcNow;
+        if (_swarmCutRetaliationWindows.TryGetValue(
+                (matchingId, attack.AttackerPlayerId, attack.TargetPlayerId), out var guardWindow) &&
+            nowUtc < guardWindow.ExpiresAtUtc)
+        {
+            guardWindow.BlockedHits++;
+            guardWindow.BlockedDamage += attack.Damage;
+            // 잔광 앞에서 짧게 깨지는 연출만 — 피해 숫자·피격 눌림·인카운터 배너는 만들지 않는다.
+            SendSwarmRetaliationVfx(
+                attack.AttackerPlayerId, attack.TargetPlayerId, attack.Area,
+                SwarmRingVfxKindRetaliationBlocked, 0f, allSessions);
+            return 0;
+        }
+
         int corruption = ConsumeSwarmPvpCorruption(matchingId, attack.TargetPlayerId, attack.Damage);
         var targetSession = aliveSessions.FirstOrDefault(session =>
             session.PlayerId == attack.TargetPlayerId);
         if (targetSession != null)
         {
             if (corruption > 0)
-                targetSession.ApplyProximityAutoCombatHit(attack.AttackerPlayerId, attack.Area,
-                    attack.WeaponItemId, corruption);
+            {
+                if (aggregateEventFeedback)
+                    targetSession.ApplySwarmAttackEventHit(
+                        attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, corruption);
+                else
+                    targetSession.ApplyProximityAutoCombatHit(
+                        attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, corruption);
+            }
         }
         else
         {
             var bot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == attack.TargetPlayerId);
             if (bot == null)
-                return;
+                return 0;
 
             // 오염이 0으로 이월돼도 "피격 중" 스탬프는 매 발 — 피격 반응 판단의 입력.
             bot.LastProximityAttackerPlayerId = attack.AttackerPlayerId;
@@ -3537,13 +3807,21 @@ public partial class GameServer
             }
         }
 
-        if (corruption > 0)
-            allSessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId)
-                ?.SendProximityAutoCombatAttackFeedback(
+        if (corruption > 0 && sendAttackerFeedback)
+        {
+            var attackerSession = allSessions.FirstOrDefault(session =>
+                session.PlayerId == attack.AttackerPlayerId);
+            if (aggregateEventFeedback)
+                attackerSession?.SendSwarmAttackEventFeedback(
                     attack.TargetPlayerId, attack.Area, attack.WeaponItemId, corruption);
+            else
+                attackerSession?.SendProximityAutoCombatAttackFeedback(
+                    attack.TargetPlayerId, attack.Area, attack.WeaponItemId, corruption);
+        }
         // 태양 착탄(#226)은 발사 시점에 이미 연출을 쐈다 — 이중 투사체 방지.
         if (broadcastVfx)
             BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, allSessions);
+        return corruption;
     }
 
     /// <summary>
@@ -3632,6 +3910,7 @@ public partial class GameServer
             _swarmFrontOrbHp.Remove(key);
         _pendingSwarmMonsterHits.RemoveAll(hit => hit.MatchingId == matchingId);
         _pendingSwarmPvpHits.RemoveAll(hit => hit.MatchingId == matchingId);
+        CleanupSwarmPvpAttackEvents(matchingId);
         foreach (var key in _swarmOrbTrails.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmOrbTrails.Remove(key);
         foreach (var key in _swarmTrailLastTickPositions.Keys
@@ -3641,12 +3920,15 @@ public partial class GameServer
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmPvpCorruptionCarry.Remove(key);
         _swarmCutDummyAutoSetupDone.Remove(matchingId);
+        foreach (var key in _swarmCutDummyRefillAtUtc.Keys
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmCutDummyRefillAtUtc.Remove(key);
         foreach (var key in _swarmOrbCutLatches.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmOrbCutLatches.Remove(key);
-        foreach (var key in _swarmCutVictimImmuneUntilUtc.Keys
+        foreach (var key in _swarmCutRetaliationWindows.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmCutVictimImmuneUntilUtc.Remove(key);
+            _swarmCutRetaliationWindows.Remove(key);
         foreach (var key in _swarmOrbCutCracks.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmOrbCutCracks.Remove(key);
@@ -3744,7 +4026,10 @@ public partial class GameServer
         ProximityCombatActor spatial,
         DateTime nowUtc)
     {
-        bool armed = IsSwarmAttackArmed(matchingId, spatial.PlayerId, nowUtc) &&
+        // DEV_CUT_DUMMY 매치는 절단 궤적만 읽는 실험장이다. 서버에서 공격 액터를
+        // 비무장으로 만들어 태양·바람 미사일과 실제 피해가 함께 발생하지 않게 한다.
+        bool armed = !SwarmCutDummyAutoSetup &&
+                     IsSwarmAttackArmed(matchingId, spatial.PlayerId, nowUtc) &&
                      !IsSwarmCutDummyPlayer(matchingId, spatial.PlayerId);
         // #226 표적 정책: 본체와 몬스터는 동급(2) — 최근접 우선 + 타겟 고정. 본체(1) 우선이던
         // 시절엔 구역에 적 플레이어가 있는 한 몹이 영영 표적이 안 돼 파밍이 죽었다.
@@ -3793,12 +4078,13 @@ public partial class GameServer
             if (SurvivorOrbData.TryGetColorAndTier(actors[index].WeaponItemId, out var countColor, out _) &&
                 countColor == SurvivorOrbColor.Red)
                 sunActorCount++;
+        var actorTiers = GetSwarmOrbTiersInOrder(matchingId, spatial.PlayerId);
         for (int index = before; index < actors.Count; index++)
         {
             var actor = actors[index];
             // 오브열 (#226 α+): 공격 원점·피격 위치 = 각 오브의 열 좌표 — 표시가 곧 판정.
             var trailPosition = GetSwarmOrbTrailPosition(
-                matchingId, spatial.PlayerId, index - before, spatial.Position);
+                matchingId, spatial.PlayerId, index - before, spatial.Position, actorTiers);
             actor = actor with
             {
                 Position = trailPosition,
@@ -3840,23 +4126,24 @@ public partial class GameServer
                 // 일제사격 (2026-08-12 유저 결정): 엇박 스태거 퇴역 — 전 오브가 같은 틱에
                 // 발사된다. 조준 리셋마다 스태거를 재지불하던 케이던스 손실도 함께 사라진다.
                 InitialAttackDelaySeconds = actor.InitialAttackDelaySeconds,
-                // 사거리 30 통일 (2026-08-12 유저 결정, 2026-08-13 수리): 바람이 Config
-                // 기본(2.5)에 남아 유저를 근접에서만 쏘던 배선 사고 — 몹은 사거리 무시라
-                // PvE만 정상이라 "바람이 유저 공격을 안 한다"로 나타났다.
-                AttackRange = orbColor == SurvivorOrbColor.Red
-                    ? SwarmSunAttackRange
-                    : SwarmWindAttackRange
+                // 이 공용 actor는 잔상 PvE에만 쓰인다. PvP 국소 사거리는 별도 공격 사건에서
+                // 오브별 원점을 기준으로 판정하므로, PvE의 같은 구역 사냥 범위는 유지한다.
+                AttackRange = SwarmPveSameAreaAttackRange
             };
         }
     }
 
     // 색 무기 파라미터 (#226): 태양 = 느린 직선탄(회피 가능·정지 처벌 — 맞으면 아프게 1.5배),
-    // 바람 = 발당 40% × 주기 40%(다발 총알). 사거리 30 = 구역 전체 커버
-    // (교차 구역은 리졸버의 구역·시야 필터가 막는다).
-    private const float SwarmSunAttackRange = 30f;
-    // 바람 사거리 = 태양과 동일 (2026-08-12 유저 결정): 중거리 실험(4→6)도 교전 거리에
-    // 못 미쳤다 — 색 차이는 리듬(연사 vs 한 방)과 탄속이 만든다.
+    // 바람 = 발당 40% × 주기 40%(다발 총알).
+    //
+    // 국소 화망 (#227 6단계): 30 → 6.0. 사거리 30은 구역 전체를 덮어 후미 절단과 머리
+    // 절단의 위험이 같았다 — 어디를 자르든 상대의 모든 오브가 사정권이었기 때문이다.
+    // 6.0이면 각 오브가 자기 열 좌표 주변만 덮으므로, 깊게 자를수록 앞열 여러 오브의
+    // 사거리가 겹치는 자리로 들어가야 한다. 위험을 수치가 아니라 공간이 만든다.
+    private const float SwarmSunAttackRange = 6f;
+    // 바람 사거리 = 태양과 동일: 색 차이는 거리표가 아니라 리듬(연사 vs 한 방)과 탄속이 만든다.
     private const float SwarmWindAttackRange = SwarmSunAttackRange;
+    private const float SwarmPveSameAreaAttackRange = 1000f;
     // 1.75 → 2.5 (2026-08-12): 태양 = 무겁고 느린 한 방 — 바람(연사 소탄)과 리듬 대비.
     private const float SwarmSunHomingIntervalMultiplier = 2.5f;
     // 1.5 → 3.0 (2026-08-12 로그 실측): 발당 오염 ~3.8은 "안 박히는" 체감 — 두 배로 묵직하게.
@@ -3875,9 +4162,28 @@ public partial class GameServer
     {
         // 파도 사거리 가산이 액터에 실려 온다 — 없으면(0) 기본 사거리.
         float range = attacker.AttackRange > 0f ? attacker.AttackRange : Config.SWARM_ORB_ATTACK_RANGE;
-        float dx = target.Position.X - attacker.Position.X;
-        float dy = (target.Position.Y - attacker.Position.Y) * 2f;
+        return IsWithinSwarmOrbRange(attacker.Position, range, target.Position);
+    }
+
+    /// <summary>좌표판 — 화망 밀도 계측처럼 액터가 없는 자리에서도 같은 타원을 쓴다 (#227 6단계).</summary>
+    private static bool IsWithinSwarmOrbRange(Vector3f origin, float range, Vector3f target)
+    {
+        float dx = target.X - origin.X;
+        float dy = (target.Y - origin.Y) * 2f;
         return dx * dx + dy * dy <= range * range;
+    }
+
+    /// <summary>사격하는 오브(태양·바람)의 PvP 사거리 — 파도는 미사일을 쏘지 않아 0이다.</summary>
+    private static float GetSwarmOrbPvpRange(int itemId)
+    {
+        if (!SurvivorOrbData.TryGetColorAndTier(itemId, out var color, out _))
+            return 0f;
+        return color switch
+        {
+            SurvivorOrbColor.Red => SwarmSunAttackRange,
+            SurvivorOrbColor.Green => SwarmWindAttackRange,
+            _ => 0f
+        };
     }
 
     private ProximityCombatActor CreateSwarmParticipantActor(ProximityCombatActor spatial, bool armed)

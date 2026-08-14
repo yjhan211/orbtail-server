@@ -17,6 +17,8 @@ public partial class GameClientSession
     internal const int SurvivorWaveResonanceEventType = 23;
     internal const int EmotionAfterimageMonsterAttackTakenEventType = 24;
     internal const int EmotionAfterimageMonsterAttackDealtEventType = 25;
+    internal const int SwarmAttackEventDealtEventType = 26;
+    internal const int SwarmAttackEventTakenEventType = 27;
 
     internal void ApplyProximityAutoCombatHit(long sourcePlayerId, AreaType area, int weaponItemId, int damage)
     {
@@ -62,6 +64,48 @@ public partial class GameClientSession
             weaponItemId,
             damage);
     }
+
+    /// <summary>#227 6단계: 속성별 공격 사건의 합산 피해를 한 번만 적용·표시한다.</summary>
+    internal void ApplySwarmAttackEventHit(long sourcePlayerId, AreaType area, int weaponItemId, int damage)
+    {
+        if (!PlayerId.HasValue || IsEliminated || damage <= 0)
+            return;
+
+        _gameEventLogManager.LogSurvivorHit(
+            CurrentMapSubId,
+            sourcePlayerId,
+            PlayerId.Value,
+            weaponItemId,
+            damage,
+            Corruption < MaxCorruption && Corruption + damage >= MaxCorruption,
+            BotPlayerManager.IsBotPlayerId(sourcePlayerId),
+            DateTimeOffset.UtcNow,
+            damageSourceType: "swarm_attack_event");
+        ModifyStats(corruptionDelta: damage, attackerPlayerId: sourcePlayerId);
+        SendEncounterEvent(
+            sourcePlayerId,
+            area,
+            SwarmAttackEventTakenEventType,
+            0,
+            weaponItemId,
+            damage);
+    }
+
+    internal void SendSwarmAttackEventFeedback(
+        long targetPlayerId,
+        AreaType area,
+        int weaponItemId,
+        int damage)
+    {
+        SendEncounterEvent(
+            targetPlayerId,
+            area,
+            SwarmAttackEventDealtEventType,
+            0,
+            weaponItemId,
+            damage);
+    }
+
     internal void SendEmotionAfterimageMonsterAttackFeedback(int monsterId, AreaType area, int weaponItemId, int damage)
     {
         if (!PlayerId.HasValue || IsEliminated || monsterId < 0 || weaponItemId <= 0 || damage <= 0)

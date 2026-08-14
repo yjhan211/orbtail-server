@@ -170,3 +170,11 @@ Build_*/
 # CSV files copied by BuildPreProcessor (원본: Scripts/Common/csv)
 client/Assets/StreamingAssets/Common/csv/
 client/Assets/Resources/Common/csv/
+
+# 대체 출력 경로·검증용 스크래치 빌드 (2026-08-14)
+# obj/ 밖에 있으면 MSBuild 기본 제외에 안 걸려 **/*.cs 글롭이 이 안의
+# AssemblyInfo.cs까지 컴파일한다 → CS0579 중복 속성으로 서버 빌드가 통째로 깨진다.
+obj_codex/
+.ci-fix-verify/
+.commit-verify/
+.door-distance-test/
