@@ -316,6 +316,7 @@ public partial class GameServer
 
         // 봇도 사람과 같은 규칙으로 성장한다: 소환석 5개 + 스팟 소진. 공짜 버튼 소환 없음.
         ProcessSwarmBotExplores(matchingId, aliveBots, sessions);
+        ProcessSwarmBotDoorUnlocks(matchingId, aliveBots, sessions, nowUtc);
 
         if (TryConsumeMonsterPositionBroadcastSlot(matchingId, nowUtc))
             BroadcastMonsterMinimapSnapshot(sessions, _swarmArenaManager.GetVisualStates(matchingId));
@@ -756,6 +757,80 @@ public partial class GameServer
     {
         foreach (var session in aliveSessions)
             session.TickSwarmSleepRecovery(nowUtc);
+    }
+
+    // 봇 문 잠금해제 (#229). 사람과 같은 규칙을 봇에도 건다 — 봇만 잠긴 문을 통과하면
+    // 폐쇄 압력이 봇에게만 무의미해지고, 봇 매치로 이 메카닉을 검증할 수도 없다.
+    private const double SwarmBotDoorUnlockChannelSeconds = 3d;
+    private const float SwarmBotDoorUnlockRange = 1.6f;
+
+    private void ProcessSwarmBotDoorUnlocks(
+        long matchingId,
+        List<BotPlayerState> bots,
+        List<GameClientSession> sessions,
+        DateTime nowUtc)
+    {
+        foreach (var bot in bots)
+        {
+            // 진행 중 — 맞았으면 풀리고, 다 채웠으면 열린다
+            if (bot.SwarmDoorUnlockDoorId > 0)
+            {
+                if (bot.LastDamagedAtUtc > bot.SwarmDoorUnlockStartedAtUtc)
+                {
+                    bot.SwarmDoorUnlockDoorId = 0;
+                    bot.SwarmDoorUnlockStartedAtUtc = DateTime.MinValue;
+                    continue;
+                }
+
+                if ((nowUtc - bot.SwarmDoorUnlockStartedAtUtc).TotalSeconds <
+                    SwarmBotDoorUnlockChannelSeconds)
+                    continue;
+
+                int doorId = bot.SwarmDoorUnlockDoorId;
+                bot.SwarmDoorUnlockDoorId = 0;
+                bot.SwarmDoorUnlockStartedAtUtc = DateTime.MinValue;
+                if (!_doorStateManager.OpenDoor(matchingId, doorId)) continue;
+
+                using var openPacket =
+                    PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, bot.PlayerId);
+                foreach (var session in sessions) session.Send(openPacket);
+                logger.LogInformation(
+                    "Swarm bot unlocked door: MatchingId={MatchingId}, BotId={BotId}, DoorId={DoorId}",
+                    matchingId, bot.PlayerId, doorId);
+                continue;
+            }
+
+            // 시작 — 내 구역의 잠긴 게이트 문 중 가장 가까운 것
+            if (!TryFindNearestLockedGaugeDoor(matchingId, bot, out int targetDoorId)) continue;
+
+            bot.SwarmDoorUnlockDoorId = targetDoorId;
+            bot.SwarmDoorUnlockStartedAtUtc = nowUtc;
+        }
+    }
+
+    private bool TryFindNearestLockedGaugeDoor(long matchingId, BotPlayerState bot, out int doorId)
+    {
+        doorId = 0;
+        float best = float.MaxValue;
+        foreach (var door in GameDoorData.GetByAreaType(bot.CurrentArea))
+        {
+            if (!GameInteractableData.IsGaugeGatedDoor(door.DoorId)) continue;
+            if (_doorStateManager.IsDoorOpen(matchingId, door.DoorId)) continue;
+
+            // door_info의 좌표는 셀 단위다 — 봇 위치(월드)와 직접 비교하면 절대 닿지 않는다.
+            var doorWorld = BotPlayerManager.CellToWorldPosition(
+                MapId.School, new Cell((int)door.PositionX, (int)door.PositionY));
+            float dx = doorWorld.X - bot.Position.X;
+            float dy = doorWorld.Y - bot.Position.Y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared > SwarmBotDoorUnlockRange * SwarmBotDoorUnlockRange) continue;
+            if (distanceSquared >= best) continue;
+
+            best = distanceSquared;
+            doorId = door.DoorId;
+        }
+
+        return doorId > 0;
     }
 
     private void ProcessSwarmBotExplores(
@@ -3010,6 +3085,8 @@ public partial class GameServer
         {
             // #229 6단계: 본체 피격은 수면을 끊고 3초 진입 잠금을 건다 — 맞자마자 다시 눕지 못한다.
             session.BreakSwarmSleep(DateTime.UtcNow, markCombat: true);
+            // #229: 문 게이지도 같이 끊는다 — 문 앞을 비우지 못하면 방을 못 연다.
+            session.BreakDoorUnlockGauge();
             if (SwarmOrbHealthEnabled)
             {
                 // 피해량은 몬스터 종이 결정한다 (해골 1 · 다트 2 · 탈주 5 · 볼러 2).

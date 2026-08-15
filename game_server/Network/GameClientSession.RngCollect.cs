@@ -447,16 +447,14 @@ public partial class GameClientSession
     ///     기존 자동탐색 UX(접근 → 게이지 → 완료)를 그대로 쓰고, 완료 시 오브를 소환한다.
     ///     스태미나·미션·선물·조우 등 레거시 채집 결과는 사용하지 않는다.
     /// </summary>
+    /// <summary>
+    ///     문 잠금해제 오브젝트인가 (#229). door_id가 붙은 행만 스웜에서 살아 있다.
+    /// </summary>
+    private static bool IsDoorUnlockInteractable(int interactId) =>
+        GameInteractableData.Get(interactId) is { DoorId: > 0 };
+
     private Task HandleSwarmRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
-        // #229 5단계: 스웜 탐색 임시 중단. 목록을 안 보내므로 정상 클라는 여기 오지 않지만,
-        // 남아 있는 자동 탐색·구버전 클라가 열지 못하게 서버에서도 막는다.
-        if (Config.IsSwarmExploreDisabled())
-        {
-            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
-            return Task.CompletedTask;
-        }
-
         if (IsEliminated)
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
@@ -470,11 +468,22 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        // #229 5단계: 스웜 상자 탐색은 중단 상태다. 문 잠금해제만 예외로 통과시킨다 —
+        // 방을 여는 유일한 수단이라 이게 막히면 폐쇄에 갇힌다.
+        if (Config.IsSwarmExploreDisabled() && info.DoorId <= 0)
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+            return Task.CompletedTask;
+        }
+
         if (info.ZoneId != (int)CurrentArea)
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.AREA_MISMATCH, 0);
             return Task.CompletedTask;
         }
+
+        if (info.DoorId > 0)
+            return HandleSwarmDoorUnlockStart(msg.InteractId, info.DoorId);
 
         // 소환석 부족이면 게이지를 시작하지 않는다 — 헛 채널 방지.
         // #226 단계 C: 상자 = 소모품 공급처(고정 저가) — 궤도 포화 게이트는 오브를 안 주므로 퇴역.
@@ -525,6 +534,9 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
+        if (GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } doorInfo)
+            return HandleSwarmDoorUnlockFinish(msg.InteractId, doorInfo.DoorId);
+
         // #226 단계 C: 상자 = 소모품 공급처 — 개봉하면 하트·부츠가 바닥에 터져 나온다.
         // 오브 성장은 소환석 임계의 성장 카드 3택이 맡는다 (상자 개방 트리거·자동 소환 퇴역).
         if (!_summonStoneManager.TrySpendStones(
@@ -565,6 +577,79 @@ public partial class GameClientSession
             PlayerId, msg.InteractId, Config.SWARM_BOX_OPEN_COST, dropItemId);
 
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     문 잠금해제 게이지 시작 (#229). 소환석을 받지 않는다 — 탈출은 성장의 결과지 구매가 아니다.
+    ///     대신 맞으면 풀린다: 문 앞을 비울 화력이 곧 탈출 조건이다.
+    /// </summary>
+    private Task HandleSwarmDoorUnlockStart(int interactId, int doorId)
+    {
+        if (_doorStateManager.IsDoorOpen(CurrentMapSubId, doorId))
+        {
+            SendRngCollectAck(interactId, ErrorCode.DOOR_ALREADY_OPEN, 0);
+            return Task.CompletedTask;
+        }
+
+        // 폐쇄된 구역의 문은 열리지 않는다 — 폐쇄 잠금이 게이지보다 위다.
+        var door = GameDoorData.Get(doorId);
+        if (door != null && _areaClosureManager != null &&
+            (_areaClosureManager.IsAreaClosed(CurrentMapSubId, door.AreaType) ||
+             _areaClosureManager.IsAreaClosed(CurrentMapSubId, door.AreaTypeB)))
+        {
+            SendRngCollectAck(interactId, ErrorCode.INVALID_GAME_STATE, 0);
+            return Task.CompletedTask;
+        }
+
+        _pendingFinish.Add(interactId);
+        _pendingDoorUnlockInteractId = interactId;
+        _gameEventLogManager.LogExploreStart(
+            CurrentMapSubId, PlayerId!.Value, interactId, CurrentArea.ToString(), isBot: false);
+        SendRngCollectAck(interactId, ErrorCode.SUCCESS, 0);
+
+        // 문을 흔드는 소음 — 주변 잔상이 몰린다. 게이지가 곧 리스크 창이다.
+        SwarmExploreNoiseCallback?.Invoke(CurrentMapSubId, PlayerId.Value);
+        return Task.CompletedTask;
+    }
+
+    private Task HandleSwarmDoorUnlockFinish(int interactId, int doorId)
+    {
+        _pendingDoorUnlockInteractId = null;
+
+        if (!_doorStateManager.OpenDoor(CurrentMapSubId, doorId))
+        {
+            SendRngCollectResult(interactId, 0, 0, 0, 0);
+            BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+            return Task.CompletedTask;
+        }
+
+        Logger.LogInformation(
+            "Swarm door unlocked by gauge: PlayerId={PlayerId}, DoorId={DoorId}, InteractId={InteractId}",
+            PlayerId, doorId, interactId);
+
+        using var updatePacket =
+            PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId!.Value);
+        foreach (var session in _getSessionsByInstance(CurrentMapId, CurrentMapSubId))
+            session.Send(updatePacket);
+
+        SendRngCollectResult(interactId, 0, 0, 0, 0);
+        BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     피격으로 문 게이지를 끊는다 (#229). 서버가 pending을 지우면 뒤늦게 온 FINISH도 무효가 된다.
+    /// </summary>
+    internal void BreakDoorUnlockGauge()
+    {
+        if (_pendingDoorUnlockInteractId is not { } interactId) return;
+
+        _pendingDoorUnlockInteractId = null;
+        _pendingFinish.Remove(interactId);
+        _gameEventLogManager.LogExploreCancelled(
+            CurrentMapSubId, PlayerId ?? 0, interactId, CurrentArea.ToString(), "door_unlock_hit",
+            isBot: false);
+        SendRngCollectAck(interactId, ErrorCode.INVALID_GAME_STATE, 0);
     }
 
     private void SendRngCollectAck(int interactId, ErrorCode errorCode, int cooldownRemain)

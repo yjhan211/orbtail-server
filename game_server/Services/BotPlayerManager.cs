@@ -610,4 +610,8 @@ public class BotPlayerState
 
     /// <summary>스웜 채집 채널 시작 시각. MinValue면 채널 없음 — 시작 후 1.5초 경과 시 개봉 확정.</summary>
     public DateTime SwarmExploreStartedAtUtc { get; set; } = DateTime.MinValue;
+
+    // #229: 문 잠금해제 게이지. 사람과 같은 규칙 — 맞으면 풀린다(LastDamagedAtUtc 참조).
+    public int SwarmDoorUnlockDoorId { get; set; }
+    public DateTime SwarmDoorUnlockStartedAtUtc { get; set; } = DateTime.MinValue;
 }

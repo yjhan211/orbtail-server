@@ -555,6 +555,17 @@ public partial class GameClientSession
                 return Task.CompletedTask;
             }
 
+            // 탐색 게이지가 붙은 문은 근접만으로 열리지 않는다 (#229). Door.CheckProximityAndRequestOpen이
+            // 사거리 안에 들면 자동으로 요청을 쏘기 때문에, 여기서 막지 않으면 게이지가 무의미해진다.
+            if (GameInteractableData.IsGaugeGatedDoor(doorId) &&
+                !_doorStateManager.IsDoorOpen(CurrentMapSubId, doorId))
+            {
+                using var gatedPacket =
+                    PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.DOOR_KEY_MISSING);
+                Send(gatedPacket);
+                return Task.CompletedTask;
+            }
+
             // 이미 열려있는지 확인
             if (_doorStateManager.IsDoorOpen(CurrentMapSubId, doorId))
             {

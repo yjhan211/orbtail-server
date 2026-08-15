@@ -89,6 +89,9 @@ public partial class GameClientSession : SessionBase
     private float _swarmSleepRecoveryCarry;
     private DateTime _lastHeartbeatTime = DateTime.UtcNow;
     private DateTime _lastInteractRejectTime = DateTime.MinValue;
+
+    // #229: 진행 중인 문 잠금해제 게이지. 맞으면 서버가 지워 뒤늦은 FINISH까지 무효로 만든다.
+    private int? _pendingDoorUnlockInteractId;
     private DateTime _lastMoveTime = DateTime.UtcNow;
 
     private DateTime _exploreMoveGraceUntil = DateTime.MinValue;

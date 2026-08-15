@@ -275,7 +275,13 @@ public static class BotPathfinder
         if (exit == null) return false;
 
         var door = GameDoorData.GetDoorForTransition(conn.FromArea, conn.ToArea, exit, conn.SpawnCell);
-        return door is { IsInitiallyOpen: false };
+        if (door == null) return false;
+
+        // #229: 탐색 게이지가 붙은 문은 영구 잠금이 아니다 — 누구나 열 수 있으므로 경로는 존재한다.
+        // 여기서 잘라내면 스폰 방 10곳이 통째로 그래프에서 떨어져 나가 봇이 방에 갇힌다.
+        if (GameInteractableData.IsGaugeGatedDoor(door.DoorId)) return false;
+
+        return !door.IsInitiallyOpen;
     }
 
     /// <summary>

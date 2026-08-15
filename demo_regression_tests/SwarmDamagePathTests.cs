@@ -178,4 +178,55 @@ public class SwarmDamagePathTests
 
         throw new InvalidOperationException("repository root not found");
     }
+
+    [Fact]
+    public void GaugeGatedDoors_LockEverySpawnRoomButKeepTheMapConnected()
+    {
+        // #229: 스폰 방 10곳은 문이 잠긴 채 시작하고, 여는 수단은 탐색 게이지뿐이다.
+        // 잠금이 빠지면 방을 탈출하는 목표 자체가 사라진다.
+        var spawnRooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates();
+        foreach (var room in spawnRooms)
+        {
+            var doors = GameDoorData.GetByAreaType(room).ToList();
+            Assert.NotEmpty(doors);
+            Assert.All(doors, door =>
+            {
+                Assert.False(door.IsInitiallyOpen,
+                    $"{room}의 문 {door.DoorId}이 열린 채 시작한다 — 탈출 목표가 사라진다");
+                Assert.True(GameInteractableData.IsGaugeGatedDoor(door.DoorId),
+                    $"문 {door.DoorId}에 게이지가 없다 — 잠기기만 하고 열 수단이 없다");
+            });
+        }
+
+        // 게이트 문은 영구 잠금이 아니다 — 봇 경로 그래프에서 잘라내면 방이 통째로 떨어져 나간다.
+        Assert.All(GameDoorData.GetAll().Where(door => GameInteractableData.IsGaugeGatedDoor(door.DoorId)),
+            door => Assert.Equal(0, door.RequiredItemId));
+    }
+
+    [Fact]
+    public void EveryGaugeGatedDoor_HasAnUnlockObjectOnItsRoomSideOnly()
+    {
+        // 문은 안에서만 연다 (#229): 복도·운동장·쓰레기장 쪽에는 잠금해제 오브젝트가 없다.
+        var spawnRooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().ToHashSet();
+        var unlockSides = new HashSet<(int DoorId, int Zone)>();
+        foreach (var zone in Enum.GetValues<AreaType>())
+        {
+            foreach (var info in GameInteractableData.GetByZone((int)zone))
+            {
+                if (info.DoorId <= 0) continue;
+                unlockSides.Add((info.DoorId, (int)zone));
+                Assert.Contains((AreaType)zone, spawnRooms);
+            }
+        }
+
+        foreach (var door in GameDoorData.GetAll())
+        {
+            if (!GameInteractableData.IsGaugeGatedDoor(door.DoorId)) continue;
+            foreach (var side in new[] { door.AreaType, door.AreaTypeB })
+            {
+                if (!spawnRooms.Contains(side)) continue;
+                Assert.Contains((door.DoorId, (int)side), unlockSides);
+            }
+        }
+    }
 }
