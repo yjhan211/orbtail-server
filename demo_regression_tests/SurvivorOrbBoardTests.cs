@@ -7,13 +7,16 @@ namespace demo_regression_tests;
 
 public sealed class SurvivorOrbBoardTests
 {
+    // 주기는 #229에서 당겨졌다(1.4/1.0/0.7 → 0.8/0.55/0.4): 시작 오브 하나의 초당 처치가
+    // 구역 보충(초당 1.33마리)에 한참 못 미쳐 초반에 길이 안 열렸다. 태양·바람이 같은 표를
+    // 쓴다는 계약이 이 테스트의 요지이고, 수치는 그 계약을 잠그는 값이다.
     [Theory]
-    [InlineData(107000010, 12, 1.4f)]
-    [InlineData(107000011, 21, 1.0f)]
-    [InlineData(107000012, 30, 0.7f)]
-    [InlineData(107000020, 12, 1.4f)]
-    [InlineData(107000021, 21, 1.0f)]
-    [InlineData(107000022, 30, 0.7f)]
+    [InlineData(107000010, 12, 0.8f)]
+    [InlineData(107000011, 21, 0.55f)]
+    [InlineData(107000012, 30, 0.4f)]
+    [InlineData(107000020, 12, 0.8f)]
+    [InlineData(107000021, 21, 0.55f)]
+    [InlineData(107000022, 30, 0.4f)]
     public void SunAndWindUseTheSameTierAttackTable(int itemId, int damage, float interval)
     {
         Assert.Equal(damage, SurvivorOrbData.GetSwarmPveAttackDamage(itemId));

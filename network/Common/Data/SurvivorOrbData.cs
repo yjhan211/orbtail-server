@@ -87,12 +87,21 @@ namespace network.common.data
             return tier >= 3 ? 30 : tier == 2 ? 21 : 12;
         }
 
+        /// <summary>
+        ///     PvE 공격 주기 (#229 상향): 초반에 몹이 안 죽어 문까지 가지 못한다는 실플레이 판정.
+        ///     페이즈 0 기준 잔상 HP 12 · T1 발당 12라 한 발이 한 마리인데, 주기 1.4초면 초당
+        ///     0.71마리다. 구역 보충은 1.5초에 2마리(초당 1.33)라 시작 오브 하나로는 수가 절대
+        ///     줄지 않고 목표치 9에 눌러앉는다 — 길이 안 열린다.
+        ///     0.8초로 당겨 초당 1.25마리까지 올린다. 여전히 보충보다 근소하게 낮지만 두 번째
+        ///     오브가 붙는 순간 역전되므로, 초반 벽은 사라지고 성장 동기는 남는다.
+        ///     티어 값어치는 속도가 아니라 발당 피해(12·21·30)와 사거리가 계속 진다.
+        /// </summary>
         public static float GetSwarmPveAttackIntervalSeconds(int itemId)
         {
             if (!TryGetColorAndTier(itemId, out _, out int tier))
                 return 0f;
 
-            return tier >= 3 ? 0.7f : tier == 2 ? 1f : 1.4f;
+            return tier >= 3 ? 0.4f : tier == 2 ? 0.55f : 0.8f;
         }
 
         public static float GetSwarmWaveBombRadius(int itemId)
