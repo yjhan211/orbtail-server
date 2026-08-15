@@ -349,6 +349,13 @@ public partial class GameServer
         }
     }
 
+    /// <summary>
+    ///     구역별 전송 (#229 4단계-보정). 청크는 원래부터 구역으로 나뉘어 있었는데 전부를
+    ///     전원에게 보내고 있었다. 밀도를 올리면 여기가 먼저 터진다 — 구역당 60마리 × 12구역이면
+    ///     한 틱에 720상태를 10명 전원에게 미는 셈이다.
+    ///     몹은 같은 구역만 추격하고 클라도 자기 구역만 그리므로 내 구역 것만 보낸다.
+    ///     이게 "서버 시뮬 개체와 클라 동기화 개체 분리"의 실체다 — 시뮬은 전역, 동기화는 구역.
+    /// </summary>
     private static void BroadcastMonsterMinimapSnapshot(
         IReadOnlyCollection<GameClientSession> sessions, IEnumerable<MonsterRuntimeInfo> states)
     {
@@ -361,7 +368,11 @@ public partial class GameServer
             }));
 
             foreach (var session in sessions)
+            {
+                if (session.CurrentArea != monsterChunk.Area)
+                    continue;
                 session.Send(packet);
+            }
         }
     }
 

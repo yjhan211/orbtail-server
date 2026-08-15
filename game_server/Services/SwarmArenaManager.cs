@@ -69,14 +69,23 @@ public sealed class SwarmArenaManager
     // 들고 죽었는데 예산이 그중 89%를 잘라내고 있었다. 성장 8회(누적 96석 · 곡선 5+2N)를
     // 5분 안에 닿을 목표로 잡고 30/33/36/39/39로 올린다 — 예산은 여전히 몹 보유량보다
     // 훨씬 낮아 "한 구역 무한 파밍" 차단이라는 원래 역할은 그대로다.
+    //
+    // 밀도 램프와 HP 하향 (#229 4단계-보정): 원안(목표 9→18 · HP 12→30)은 두 가지가 틀렸다.
+    // 첫째, 목표가 전역 상한 48에 가려 한 번도 도달하지 못해 5분 내내 구역당 4~6마리였다 —
+    // 동시 적 수 배수 ×1.0, 장르 기준(×10~20)의 바깥이다. 목표를 8→60으로 올린다.
+    // 둘째, HP 배수(×2.5)가 오브 발당 피해 배수(12→30 = ×2.5)와 정확히 같아 타격 수가
+    // 개선되지 않았다. T1은 오히려 1방에서 3방으로 역주행했다.
+    // HP를 16/17/19/21/22로 눕혀 T1은 전 구간 2방으로 고정하고, T2(발당 21)를 얻는 순간이
+    // 곧 "한 방이 되는 순간"이 되게 한다. 핵 HP 곡선은 유지한다 — 핵은 "아직 한 방이 아닌 것"의
+    // 눈금자다.
     private static readonly (double UntilSeconds, int ZoneTarget, int NormalHp, int ContactDamage,
         int CoreHp, int StoneBudget)[] SupplyPhases =
     [
-        (100d, 9, 12, 1, 48, 30), // 0:00~1:40 폐쇄 전
-        (150d, 12, 15, 1, 60, 33), // 1:40~2:30 1차
-        (200d, 15, 18, 2, 72, 36), // 2:30~3:20 2차
-        (250d, 18, 24, 2, 96, 39), // 3:20~4:10 3차
-        (double.MaxValue, 18, 30, 3, 120, 39) // 4:10~5:00 최종 수렴
+        (100d, 8, 16, 1, 48, 30), // 0:00~1:40 폐쇄 전
+        (150d, 16, 17, 1, 60, 33), // 1:40~2:30 1차
+        (200d, 28, 19, 2, 72, 36), // 2:30~3:20 2차
+        (250d, 44, 21, 2, 96, 39), // 3:20~4:10 3차
+        (double.MaxValue, 60, 22, 3, 120, 39) // 4:10~5:00 최종 수렴
     ];
 
     private static int GetSupplyPhaseIndex(double elapsedSeconds)
@@ -90,10 +99,11 @@ public sealed class SwarmArenaManager
         return SupplyPhases.Length - 1;
     }
 
-    // 목표 수 아래면 1.5초마다 2마리씩 채운다 — 한 번에 몰아 넣으면 화면이 터지고,
-    // 한 마리씩이면 고DPS 플레이어의 공백이 길어진다.
-    private const double SupplyTopUpIntervalSeconds = 1.5d;
-    private const int SupplyTopUpCount = 2;
+    // 보충률은 처치율 위에 둔다 (#229 4단계-보정). 원안 2마리/1.5초 = 1.33마리/초는
+    // 실측 처치율 3.2~5.2마리/초의 3분의 1이라 방이 항상 비어 있었다 — 플레이어가 보는 건
+    // 벽이 아니라 간헐적 소규모 청소였다. 6마리/0.6초 = 10마리/초로 처치율을 넘긴다.
+    private const double SupplyTopUpIntervalSeconds = 0.6d;
+    private const int SupplyTopUpCount = 6;
     // 구역 전멸 뒤 휴지: 짧은 수면 창이 성장의 보상이다 (#229 완료 조건 2).
     private const double SupplyWipeRestSeconds = 4d;
     // 플레이어 2.5m 안의 앵커에는 즉시 생성하지 않는다 — 전 앵커가 막히면 1초 뒤 재검사.
@@ -109,9 +119,17 @@ public sealed class SwarmArenaManager
     // 추격 대상 유지 창 (#229): 이 시간이 지나야 최근접을 다시 고른다.
     private const double SupplyTargetHoldSeconds = 1d;
 
-    // 전역 활성 잔상 상한 (#229 4단계): 인원 무관 48마리. 보스는 고정 콘텐츠라 제외한다.
-    private const int SupplyGlobalAliveCap = 48;
-    private const float SupplyTelegraphSeconds = 1f;
+    // 전역 활성 잔상 상한 (#229 4단계-보정): 고정 48은 개전 3초에 물려 밀도 램프를 통째로
+    // 가렸다. 점유 구역 수 × 페이즈 목표로 풀되 서버 안전 천장을 둔다.
+    // 클라 부하는 스냅샷을 구역별로만 보내는 것으로 분리했다(BroadcastMonsterMinimapSnapshot) —
+    // 시뮬은 전역, 동기화는 내 구역뿐이라 한 사람이 받는 양은 구역 목표를 넘지 않는다.
+    private const int SupplyGlobalAliveHardCap = 420;
+
+    private static int GetSupplyGlobalAliveCap(int occupiedZoneCount, int zoneTarget) =>
+        Math.Min(SupplyGlobalAliveHardCap, Math.Max(zoneTarget, occupiedZoneCount * zoneTarget));
+    // 1초 예고는 밀도 램프에서 실질 병목이 된다 — 초당 10마리를 채우는데 전부 1초를 서 있으면
+    // 화면에 "아직 안 깨어난 몹"만 쌓인다 (#229 4단계-보정).
+    private const float SupplyTelegraphSeconds = 0.4f;
     private const float SupplyScatterRadius = 1.6f;
     // 원거리 종(다트·볼러)은 사거리의 이 비율에서 멈춰 쏜다 — 근접 종만 몸으로 파고든다.
     private const float RangedHoldRangeRatio = 0.8f;
@@ -1053,12 +1071,13 @@ public sealed class SwarmArenaManager
 
         // 전역 상한은 매 틱 새로 계산한다 — 여러 구역이 같은 틱에 채우면 합계가 넘칠 수 있다.
         int aliveGlobal = CountAliveGlobal(state);
+        // 점유 구역이 줄면 상한도 함께 줄어 남은 전장에 몰리지 않는다 (#229 4단계-보정).
+        int globalCap = GetSupplyGlobalAliveCap(occupied.Count, phase.ZoneTarget);
 
         // 상한에 걸리면 뒤 구역이 굶는다 — 빈 구역부터 채워 공백을 고르게 나눈다.
-        // 10인이 5개 구역에 흩어지면 목표 합(18×5)이 상한 48을 넘으므로 실제로 자주 걸린다.
         foreach (var zone in occupied.OrderBy(candidate => CountAliveInArea(state, candidate)))
         {
-            if (aliveGlobal >= SupplyGlobalAliveCap)
+            if (aliveGlobal >= globalCap)
                 break;
 
             if (!state.SupplyZones.TryGetValue(zone, out var zoneState))
@@ -1103,10 +1122,10 @@ public sealed class SwarmArenaManager
             bool includeCore = phaseIndex >= SupplyCoreFirstPhaseIndex &&
                                !HasAliveCore(state, zone) &&
                                aliveInZone < phase.ZoneTarget &&
-                               aliveGlobal < SupplyGlobalAliveCap;
+                               aliveGlobal < globalCap;
             int room = phase.ZoneTarget - aliveInZone - (includeCore ? 1 : 0);
             int want = Math.Min(SupplyTopUpCount, room);
-            want = Math.Min(want, SupplyGlobalAliveCap - aliveGlobal - (includeCore ? 1 : 0));
+            want = Math.Min(want, globalCap - aliveGlobal - (includeCore ? 1 : 0));
             if (want <= 0 && !includeCore)
                 continue;
 

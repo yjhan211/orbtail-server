@@ -37,22 +37,22 @@ public class SwarmArenaManagerTests
             // 첫 틱부터 보충이 돈다 — 시작 선물 15초 침묵(#226 E)은 퇴역했다.
             var firstTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
             // 초반(페이즈 0)은 작은 몹만 나온다 (#229): 시작 오브 하나로는 핵이 벽처럼 서서
-            // 파밍이 막힌다. 보충 단위 그대로 일반 2마리.
-            Assert.Equal(2, firstTick.SpawnedMonsters.Count);
+            // 파밍이 막힌다. 보충 단위 그대로 일반 6마리 (#229 4단계-보정: 처치율 위로 올렸다).
+            Assert.Equal(6, firstTick.SpawnedMonsters.Count);
             Assert.DoesNotContain(firstTick.SpawnedMonsters, monster => monster.Kind == 2);
             Assert.All(firstTick.SpawnedMonsters, monster =>
             {
                 // 공급 몹은 잠든 채 등장한다 — 개전은 근접·피격·접촉의 몫.
                 Assert.Equal(0, monster.ChaseTargetPlayerId);
-                Assert.Equal(12, monster.MaxHealth); // 페이즈 0 일반 HP
+                Assert.Equal(16, monster.MaxHealth); // 페이즈 0 일반 HP
                 Assert.Equal(1, monster.SummonStoneReward);
             });
 
-            // 보충 간격 안에서는 조용하다.
-            now = StartUtc.AddSeconds(1);
+            // 보충 간격(0.6초) 안에서는 조용하다.
+            now = StartUtc.AddSeconds(0.5);
             Assert.Empty(manager.Tick(217001, Participants(startCenter, startRoom), now).SpawnedMonsters);
 
-            // 목표 9까지 1.5초마다 2마리 — 도달하면 멈춘다.
+            // 목표 8까지 0.6초마다 6마리 — 도달하면 멈춘다.
             for (double elapsed = 2d; elapsed <= 20d; elapsed += 0.25d)
             {
                 now = StartUtc.AddSeconds(elapsed);
@@ -61,7 +61,7 @@ public class SwarmArenaManagerTests
 
             int aliveInZone = manager.GetVisualStates(217001)
                 .Count(state => state.IsAlive && state.AreaType == startRoom);
-            Assert.Equal(9, aliveInZone);
+            Assert.Equal(8, aliveInZone);
 
             // 전멸 → 4초 휴지 뒤 보충 재개.
             foreach (var target in manager.GetCombatTargets(217001).ToList())
@@ -84,8 +84,8 @@ public class SwarmArenaManagerTests
     [Fact]
     public void RegionSupply_ScalesHealthByPhase_AndCapsGlobalAlive()
     {
-        // #229 4단계 곡선: 최종 페이즈(4:10~)는 일반 30 · 핵 120 · 접촉 3.
-        // 전역 활성 잔상은 인원과 무관하게 48마리를 넘지 않는다.
+        // #229 4단계-보정 곡선: 최종 페이즈(4:10~)는 일반 22 · 핵 120 · 접촉 3.
+        // 전역 상한은 점유 구역 수 × 페이즈 목표(60)로 풀리되 서버 천장 420을 넘지 않는다.
         SwarmArenaManager.RegionSupplyModeEnabled = true;
         try
         {
@@ -95,7 +95,7 @@ public class SwarmArenaManagerTests
 
             var lateTick = manager.Tick(217002, ManyParticipants(8, AreaCenter(AreaType.Ground)), now);
             Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == 0),
-                normal => Assert.Equal(30, normal.MaxHealth));
+                normal => Assert.Equal(22, normal.MaxHealth));
             Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == 2),
                 core => Assert.Equal(120, core.MaxHealth));
 
@@ -110,7 +110,8 @@ public class SwarmArenaManagerTests
                     .ToList();
                 manager.Tick(217002, spread, now);
                 int alive = manager.GetVisualStates(217002).Count(state => state.IsAlive);
-                Assert.True(alive <= 48, $"전역 활성 잔상 상한 48을 초과했다: {alive}");
+                // 점유 5구역 × 목표 60 = 300, 서버 천장 420 이하.
+                Assert.True(alive <= 300, $"점유 구역 비례 상한 300을 초과했다: {alive}");
             }
         }
         finally
