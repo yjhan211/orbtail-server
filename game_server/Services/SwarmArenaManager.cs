@@ -1226,15 +1226,40 @@ public sealed class SwarmArenaManager
         if (monster.Kind == SwarmMonsterKind.RunawayGoblin)
             return state.SupplyCoreRewarded.Add(budgetKey) ? reward : 0;
 
-        if (!state.SupplyStoneBudget.TryGetValue(budgetKey, out int left))
-        {
-            left = SupplyPhases[phaseIndex].StoneBudget;
-            state.SupplyStoneBudget[budgetKey] = left;
-        }
+        // 토큰 버킷 (#229 4단계-보정): 고정 풀을 초당 충전으로 바꾼다. 총량은 그대로 두고
+        // 분포만 고른다 — 밀도를 4배로 올리자 소진 속도만 4배가 되어 "20초 반짝 뒤 40초 가뭄"이
+        // 됐다(매치 9761789: 0~20초 킬당 0.34석 → 40~60초 0.01석). 예산은 "이 구역에서 벌 수
+        // 있는 총량"이지 "먼저 죽인 20초가 다 가져간다"가 아니다.
+        if (!state.SupplyStoneBucket.TryGetValue(budgetKey, out var bucket))
+            bucket = (SupplyStoneBucketBurst, now);
 
-        int granted = Math.Min(reward, left);
-        state.SupplyStoneBudget[budgetKey] = left - granted;
+        double refillPerSecond = GetSupplyStoneRefillPerSecond(phaseIndex);
+        double elapsedSeconds = Math.Max(0d, (now - bucket.RefilledAtUtc).TotalSeconds);
+        double available = Math.Min(
+            SupplyStoneBucketBurst, bucket.Available + elapsedSeconds * refillPerSecond);
+
+        int granted = Math.Min(reward, (int)Math.Floor(available));
+        state.SupplyStoneBucket[budgetKey] = (available - granted, now);
         return granted;
+    }
+
+    // 버킷 상한 (#229 4단계-보정): 마른 뒤 몰아 받는 폭을 제한한다. 낮을수록 촘촘하게 떨어지고
+    // 높을수록 뭉쳐 나온다. 5면 가뭄이 최대 몇 초로 끝난다.
+    private const double SupplyStoneBucketBurst = 5d;
+
+    /// <summary>
+    ///     페이즈 예산을 그 페이즈 길이로 나눈 초당 충전량 (#229 4단계-보정).
+    ///     총 지급량은 고정 풀 시절과 같고, 언제 나오는지만 고르게 편다.
+    /// </summary>
+    private static double GetSupplyStoneRefillPerSecond(int phaseIndex)
+    {
+        double until = SupplyPhases[phaseIndex].UntilSeconds;
+        double from = phaseIndex == 0 ? 0d : SupplyPhases[phaseIndex - 1].UntilSeconds;
+        // 마지막 페이즈는 UntilSeconds가 무한이라 매치 잔여로 잡는다.
+        double durationSeconds = until > Config.SWARM_MATCH_DURATION_SECONDS
+            ? Math.Max(1d, Config.SWARM_MATCH_DURATION_SECONDS - from)
+            : Math.Max(1d, until - from);
+        return SupplyPhases[phaseIndex].StoneBudget / durationSeconds;
     }
 
     /// <summary>구역에 살아있는 핵(탈주 고블린)이 있는지 — 핵은 구역당 1기만 유지한다.</summary>
@@ -1259,8 +1284,6 @@ public sealed class SwarmArenaManager
     {
         var phase = SupplyPhases[phaseIndex];
         var budgetKey = (area, phaseIndex);
-        if (!state.SupplyStoneBudget.ContainsKey(budgetKey))
-            state.SupplyStoneBudget[budgetKey] = phase.StoneBudget;
         var center = BotPlayerManager.CellToWorldPosition(
             MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
         var anchors = new List<Vector3f>(CampsPerArea);
@@ -1825,9 +1848,11 @@ public sealed class SwarmArenaManager
         // 구역이 빈 시각 (#229 4단계-보정): 좌초 잔상 회수 유예를 재는 기준. 다시 점유되면 지운다.
         public Dictionary<AreaType, DateTime> ZoneVacatedAtUtc { get; } = new();
 
-        // 소환석 예산 원장 (#229 4단계): 구역·페이즈별 잔량. 보충 타이머(SupplyZones)와 달리
-        // 구역을 비웠다 돌아와도 살아남는다 — 들락날락으로 예산을 리셋하면 보상이 무제한이 된다.
-        public Dictionary<(AreaType Area, int PhaseIndex), int> SupplyStoneBudget { get; } = new();
+        // 소환석 토큰 버킷 (#229 4단계-보정): 구역·페이즈별 (잔량, 마지막 충전 시각).
+        // 구역을 비웠다 돌아와도 살아남는다 — 들락날락으로 리셋되면 보상이 무제한이 된다.
+        // 고정 풀에서 초당 충전으로 바뀌었다: 총량은 같고 분포만 고르다.
+        public Dictionary<(AreaType Area, int PhaseIndex), (double Available, DateTime RefilledAtUtc)>
+            SupplyStoneBucket { get; } = new();
 
         // 핵 보상 정산 (#229 4단계): 석을 준 (구역, 페이즈) 조합 — 같은 칸에서 두 번째 핵부터는 몸만.
         public HashSet<(AreaType Area, int PhaseIndex)> SupplyCoreRewarded { get; } = new();
