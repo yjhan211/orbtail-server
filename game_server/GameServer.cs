@@ -189,7 +189,7 @@ public partial class GameServer(
 
         // MatchingConfigService 의존 — _matchingConfigService 필드 초기화 후 생성
         _areaClosureManager = new AreaClosureManager(logger, _matchingConfigService);
-        // M4: 폐쇄 구역은 스웜 신규 스폰을 멈춘다 (잔존 몹은 EvacuateArea가 밀어냄)
+        // M4: 폐쇄 구역은 스웜 신규 스폰을 멈춘다 (잔존 몹은 ReclaimStrandedMonsters가 걷어냄)
         _swarmArenaManager.IsAreaClosedResolver =
             (matchingId, area) => _areaClosureManager.IsAreaClosed(matchingId, area);
 

@@ -119,6 +119,59 @@ public class SwarmArenaManagerTests
         }
     }
 
+    // #229 4단계-보정: 전역 상한은 하나뿐이라 아무도 없는 구역의 잔상이 살아 있는 전장의
+    // 몫을 영구히 먹는다. 폐쇄 구역은 도달조차 못 하므로 순수 낭비다 — 폐쇄가 누적되면
+    // 최악에는 전 구역 스폰이 0으로 굳었다. 걷어내는 규칙을 잠근다.
+    [Fact]
+    public void RegionSupply_ReclaimsStrandedMonstersAfterZoneIsVacated()
+    {
+        SwarmArenaManager.RegionSupplyModeEnabled = true;
+        try
+        {
+            DateTime now = StartUtc;
+            var manager = new SwarmArenaManager(() => now);
+            Assert.True(manager.InitializeMatching(217004, 1, StartUtc));
+            var room = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates()[0];
+            Vector3f roomCenter = AreaCenter(room);
+            Vector3f elsewhere = AreaCenter(AreaType.Ground);
+
+            // 방을 채운다.
+            for (double elapsed = 0.25d; elapsed <= 12d; elapsed += 0.25d)
+            {
+                now = StartUtc.AddSeconds(elapsed);
+                manager.Tick(217004, Participants(roomCenter, room), now);
+            }
+
+            int filled = manager.GetVisualStates(217004)
+                .Count(state => state.IsAlive && state.AreaType == room);
+            Assert.True(filled > 0, "방이 채워지지 않았다");
+
+            // 방을 비운다 — 유예(6초) 안에는 남아 있어야 한다. 나서자마자 뒤에서 사라지면 눈에 띈다.
+            now = StartUtc.AddSeconds(14d);
+            manager.Tick(217004, Participants(elsewhere), now);
+            now = StartUtc.AddSeconds(17d);
+            manager.Tick(217004, Participants(elsewhere), now);
+            Assert.True(
+                manager.GetVisualStates(217004).Any(state => state.IsAlive && state.AreaType == room),
+                "유예 안에 잔상이 사라졌다");
+
+            // 유예가 지나면 걷힌다.
+            for (double elapsed = 21d; elapsed <= 24d; elapsed += 0.25d)
+            {
+                now = StartUtc.AddSeconds(elapsed);
+                manager.Tick(217004, Participants(elsewhere), now);
+            }
+
+            Assert.DoesNotContain(
+                manager.GetVisualStates(217004),
+                state => state.IsAlive && state.AreaType == room);
+        }
+        finally
+        {
+            SwarmArenaManager.RegionSupplyModeEnabled = false;
+        }
+    }
+
     [Fact]
     public void RegionSupply_StoneBudgetSurvivesZoneReentry()
     {

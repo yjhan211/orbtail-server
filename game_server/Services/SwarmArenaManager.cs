@@ -527,53 +527,6 @@ public sealed class SwarmArenaManager
         }
     }
 
-    /// <summary>
-    ///     M4 폐쇄 이주: 폐쇄된 구역의 잔존 스웜을 다음 구역으로 재배치한다.
-    ///     추적이 아니라 디렉터의 재배치다 — 목적지에서 스폰 텔레그래프를 다시 거치고,
-    ///     추적 대상도 초기화된다. "같은 구역만 추적" 규칙은 불변.
-    /// </summary>
-    public IReadOnlyList<MonsterRuntimeInfo> EvacuateArea(
-        long matchingId,
-        AreaType from,
-        AreaType to,
-        DateTime? nowUtc = null)
-    {
-        if (!_matches.TryGetValue(matchingId, out var state))
-            return Array.Empty<MonsterRuntimeInfo>();
-
-        DateTime now = nowUtc ?? _utcNow();
-        var moved = new List<MonsterRuntimeInfo>();
-        lock (state.SyncRoot)
-        {
-            var anchorCell = GameMapData.GetAreaSpawnCell(MapId.School, to);
-            var anchor = MapCoordinateConverter.CellToWorld(MapId.School, anchorCell);
-            foreach (var monster in state.Monsters.Values)
-            {
-                if (!monster.Alive || monster.Area != from)
-                    continue;
-
-                float angle = (float)(state.Rng.NextDouble() * Math.PI * 2d);
-                float radius = 1f + (float)state.Rng.NextDouble() * 2.5f;
-                var candidate = new Vector3f(
-                    anchor.X + MathF.Cos(angle) * radius,
-                    anchor.Y + MathF.Sin(angle) * radius,
-                    0f);
-                monster.Area = to;
-                monster.Position = ClampToAreaWalkable(candidate, anchor, to);
-                monster.ActivatesAtUtc = now.AddSeconds(EncircleTelegraphSeconds);
-                monster.NextContactAtUtc = monster.ActivatesAtUtc;
-                monster.ChaseTargetPlayerId = 0;
-                // 지역 공급 (#226 단계 B): 이주 후 복귀 앵커도 새 자리로 — 옛 구역으로 걸어가지 않는다.
-                monster.AnchorX = monster.Position.X;
-                monster.AnchorY = monster.Position.Y;
-                monster.Aggro = false;
-                moved.Add(monster.ToMonsterRuntimeInfo());
-            }
-        }
-
-        return moved;
-    }
-
     /// <summary>개봉 소음: 같은 구역 반경 안 잔상이 개봉자를 새 추적 목표로 삼는다.</summary>
     public void AttractSwarm(long matchingId, long playerId)
     {
@@ -1079,8 +1032,8 @@ public sealed class SwarmArenaManager
         int phaseIndex = GetSupplyPhaseIndex(elapsed);
         var phase = SupplyPhases[phaseIndex];
 
-        // 점유 = 살아있는 참가자가 서 있는 구역. 폐쇄 구역은 즉시 제외한다 — 신규 스폰이
-        // 폐쇄 구역에 쌓이면 EvacuateArea가 옮기느라 상한만 갉아먹는다 (#229 완료 조건 4).
+        // 점유 = 살아있는 참가자가 서 있는 구역. 폐쇄 구역은 즉시 제외한다 — 폐쇄 구역에
+        // 쌓인 잔상은 도달조차 못 하면서 전역 상한만 갉아먹는다 (#229 완료 조건 4).
         var occupied = new HashSet<AreaType>();
         foreach (var participant in state.LastParticipants)
         {
@@ -1090,10 +1043,13 @@ public sealed class SwarmArenaManager
             occupied.Add(participant.Area);
         }
 
-        // 예산 회수 (#229): 비점유·폐쇄 구역은 공급 상태를 버린다. 잔존 몹은 그대로 두되
-        // 보충이 끊기고, 다시 점유되면 휴지 없이 처음부터 채운다.
+        // 예산 회수 (#229): 비점유·폐쇄 구역은 공급 상태를 버린다. 다시 점유되면 휴지 없이
+        // 처음부터 채운다.
         foreach (var zone in state.SupplyZones.Keys.Where(zone => !occupied.Contains(zone)).ToList())
             state.SupplyZones.Remove(zone);
+
+        // 좌초 잔상 회수 (#229 4단계-보정): 잔존 몹까지 걷어내야 예산 회수가 완결된다.
+        ReclaimStrandedMonsters(state, occupied, now);
 
         // 전역 상한은 매 틱 새로 계산한다 — 여러 구역이 같은 틱에 채우면 합계가 넘칠 수 있다.
         int aliveGlobal = CountAliveGlobal(state);
@@ -1168,6 +1124,48 @@ public sealed class SwarmArenaManager
             zoneState.HasSpawned = true;
             zoneState.WipeRestUntilUtc = null;
             zoneState.NextTopUpAtUtc = now.AddSeconds(SupplyTopUpIntervalSeconds);
+        }
+    }
+
+    // 비점유 열린 구역의 잔상을 걷어내기까지의 유예 (#229 4단계-보정): 방을 나서자마자
+    // 뒤에서 사라지면 눈에 띈다. 폐쇄 구역은 유예 없이 즉시 걷는다 — 문이 잠겨 도달 불가다.
+    private const double StrandedMonsterGraceSeconds = 6d;
+
+    /// <summary>
+    ///     좌초 잔상 회수 (#229 4단계-보정). 전역 상한은 하나뿐이라, 아무도 없는 구역에 남은
+    ///     잔상이 살아 있는 전장의 몫을 영구히 먹는다. 폐쇄 구역은 문이 잠겨 도달조차 못 하므로
+    ///     순수 낭비다 — 폐쇄가 13곳을 닫고 나면 최악에는 전 구역 스폰이 0으로 굳었다.
+    ///     원래 설계는 EvacuateArea로 옆 구역에 밀어넣는 것이었으나 그 함수는 호출부가 없는
+    ///     죽은 코드였고(주석 세 곳만 그렇게 적고 있었다), 밀어넣기는 받는 구역의 목표 수를
+    ///     넘겨 밀도 설계를 흐린다. 그래서 옮기지 않고 회수한다.
+    ///     보상은 처치 경로(ApplyMonsterDamage)에만 붙어 있어 이 회수로 소환석이 새지 않는다.
+    ///     보스는 애초에 상한에서 제외되므로 건드리지 않는다.
+    /// </summary>
+    private void ReclaimStrandedMonsters(MatchState state, HashSet<AreaType> occupied, DateTime now)
+    {
+        foreach (var zone in occupied)
+            state.ZoneVacatedAtUtc.Remove(zone);
+
+        foreach (var monster in state.Monsters.Values)
+        {
+            if (!monster.Alive || IsBossKind(monster.Kind) || occupied.Contains(monster.Area))
+                continue;
+
+            if (IsAreaClosedResolver?.Invoke(state.MatchingId, monster.Area) != true)
+            {
+                if (!state.ZoneVacatedAtUtc.TryGetValue(monster.Area, out var vacatedAtUtc))
+                {
+                    state.ZoneVacatedAtUtc[monster.Area] = now;
+                    continue;
+                }
+
+                if ((now - vacatedAtUtc).TotalSeconds < StrandedMonsterGraceSeconds)
+                    continue;
+            }
+
+            // 사망 경로를 그대로 쓴다 — 클라가 이미 처리할 줄 알고, PruneDeadMonsters가 치운다.
+            monster.Alive = false;
+            monster.DiedAtUtc = now;
         }
     }
 
@@ -1467,7 +1465,7 @@ public sealed class SwarmArenaManager
         if (densityCap <= 0)
             return;
 
-        // 폐쇄 구역은 신규 스폰 정지 — 잔존 몹은 EvacuateArea가 다음 구역으로 밀어낸다.
+        // 폐쇄 구역은 신규 스폰 정지 — 잔존 몹은 ReclaimStrandedMonsters가 걷어낸다.
         if (IsAreaClosedResolver?.Invoke(state.MatchingId, participant.Area) == true)
             return;
 
@@ -1758,6 +1756,9 @@ public sealed class SwarmArenaManager
 
         // 점유 구역 공급 (#229 4단계): 점유 중인 열린 구역만 항목을 갖는다 — 비점유·폐쇄 시 삭제.
         public Dictionary<AreaType, SupplyZoneState> SupplyZones { get; } = new();
+
+        // 구역이 빈 시각 (#229 4단계-보정): 좌초 잔상 회수 유예를 재는 기준. 다시 점유되면 지운다.
+        public Dictionary<AreaType, DateTime> ZoneVacatedAtUtc { get; } = new();
 
         // 소환석 예산 원장 (#229 4단계): 구역·페이즈별 잔량. 보충 타이머(SupplyZones)와 달리
         // 구역을 비웠다 돌아와도 살아남는다 — 들락날락으로 예산을 리셋하면 보상이 무제한이 된다.
