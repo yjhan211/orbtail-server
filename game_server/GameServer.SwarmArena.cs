@@ -86,8 +86,12 @@ public partial class GameServer
     // 봇 오염 자연 회복: 회복 오브 운에 기대지 않는 생존 바닥. 마지막 피격 후 유예가
     // 지나면 초당 일정량 회복한다 — "도망 성공"이 실제 생존이 되게 (계측: 매치 2223에서
     // 봇 오염이 단조 증가해 85초 전멸). 사람은 위로 오브가 같은 역할을 하므로 제외.
-    private const double SwarmBotRecoveryGraceSeconds = 4d;
-    private const int SwarmBotRecoveryPerSecond = 4;
+    // 봇 수동 회복 (#229 4단계-보정 하향): 4초 유예 뒤 초당 4는 접촉 피해 최대치(1.25~2.5/초)를
+    // 앞질러, 봇이 잔상에게 수학적으로 죽을 수 없었다 — 매치 9761085에서 탈락 9건이 전부
+    // 폐쇄사이고 몹 사망 0건인 이유다. 사람은 이만한 수동 회복이 없다(수면은 정지·무피격을
+    // 요구하고 맞으면 끊긴다). 유예를 늘리고 속도를 낮춰 같은 압력을 받게 한다.
+    private const double SwarmBotRecoveryGraceSeconds = 6d;
+    private const int SwarmBotRecoveryPerSecond = 2;
 
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmBotLastDamagedAtUtc = new();
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmBotNextRecoveryAtUtc = new();
@@ -3054,7 +3058,9 @@ public partial class GameServer
             return;
         }
 
-        int botDamage = Math.Max(1, (int)(damage.Damage * SwarmBotContactDamageMultiplier));
+        // 반올림으로 맞춘다 (#229 4단계-보정): 잘라내기라 raw 6(배율 통과 3)이 1로, raw 8(4)이
+        // 2로 뭉개져 페이즈별 접촉 곡선이 봇에게는 통째로 평평했다. 사람 경로는 Round를 쓴다.
+        int botDamage = Math.Max(1, (int)MathF.Round(damage.Damage * SwarmBotContactDamageMultiplier));
         bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + botDamage);
         _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
     }
@@ -3343,12 +3349,24 @@ public partial class GameServer
             .ToList();
 
     /// <summary>강화 대상 티어: 선두 T1이 있으면 1(T1→T2), 없으면 선두 T2 기준 2, 전부 T3면 0.</summary>
+    // T2가 이만큼 쌓이면 T3 승급을 먼저 노린다 (#229 4단계-보정, 진단서 5번).
+    private const int SwarmEnhanceT3PriorityT2Count = 3;
+
+    /// <summary>
+    ///     강화 대상 티어 (#229). T1이 하나라도 남으면 무조건 T1→T2를 돌려주던 규칙은,
+    ///     증식 카드가 T1을 계속 주입하는 구조와 맞물려 T2→T3를 사실상 봉쇄했다 —
+    ///     5분 시점 기대 T3 보유량이 0.37개였다. T2가 3개 이상 쌓이면 승급을 먼저 준다.
+    ///     T3는 발당 30·주기 0.7초로 T1의 5배 DPS라, 이 경로가 열려야 후반 화력이 성립한다.
+    /// </summary>
     private int GetSwarmEnhanceTargetTier(long matchingId, long playerId)
     {
         var orbs = GetSwarmTrailOrbs(matchingId, playerId);
+        int tier2Count = orbs.Count(item => GetSquadOrbTier(item.ItemId) == 2);
+        if (tier2Count >= SwarmEnhanceT3PriorityT2Count)
+            return 2;
         if (orbs.Any(item => GetSquadOrbTier(item.ItemId) == 1))
             return 1;
-        return orbs.Any(item => GetSquadOrbTier(item.ItemId) == 2) ? 2 : 0;
+        return tier2Count > 0 ? 2 : 0;
     }
 
     /// <summary>

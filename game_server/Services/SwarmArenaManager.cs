@@ -26,8 +26,13 @@ public sealed class SwarmArenaManager
     public const int StartRoomContactDamage = 12;
 
     // 몬스터별 쿨다운만 있으면 무리에 겹칠 때 마릿수만큼 중첩 피격되어 1~2초 만에 죽는다.
-    // 뱀서 표준대로 참가자 측 피격 무적을 둔다: 한 입은 아프게, 무리는 초당 한 입만.
-    public const float ContactImmunitySeconds = 0.8f;
+    // 뱀서 표준대로 참가자 측 피격 무적을 둔다: 한 입은 아프게, 무리는 초당 몇 입만.
+    //
+    // 0.8 → 0.4 (#229 4단계-보정, 진단서 4번): 이 창이 플레이어당 전역이라 몇 마리가 붙어도
+    // 초당 1.25대가 상한이었다 — 밀도를 4배로 올려도 위협은 그대로였고, 25마리 한가운데가
+    // 1마리와 같았다. 절반으로 줄여 둘러싸임이 실제로 아프게 만든다.
+    // 이게 뱀서 후반 위협의 정체다: TTK가 아니라 둘러싸임.
+    public const float ContactImmunitySeconds = 0.4f;
 
     // 접촉은 실제 겹침 수준에서만 성립해야 한다. 서버 위치는 클라이언트 예측보다
     // 늦으므로 회피자에게 후한 쪽이 맞다.
@@ -62,7 +67,13 @@ public sealed class SwarmArenaManager
     // 속도로" 치우는 것으로 체감되게 한다. 서버 부하는 전역 상한 48로 잡는다.
     public static bool RegionSupplyModeEnabled = true;
     // 폐쇄 단계별 웨이브 곡선 (#229 4단계 P0 확정). 접촉 피해는 원시 스탯이라
-    // 참가자 피해 절반 배율(SwarmMonsterDamageTakenMultiplier)을 지나 1/1/1/1/2로 들어간다.
+    // 참가자 피해 절반 배율(SwarmMonsterDamageTakenMultiplier)을 지난 값이 실효다.
+    //
+    // 접촉 피해 상향 (#229 4단계-보정, 진단서 4번): 원안 1/1/2/2/3은 배율 통과 후 1/1/1/1/2라
+    // 오염 상한 420 기준 상시 접촉 사망까지 336초가 걸렸다 — 매치 300초보다 길어 몹이 사람을
+    // 수학적으로 못 죽였다. 봇 10인 매치에서 180초 동안 탈락 0건이 그 증거다.
+    // 2/3/4/6/8로 올리면 실효 1/2/2/3/4가 되어 상시 접촉 사망이 140초 근처로 들어온다.
+    // 밀도를 올려도 무적창(0.8초)이 플레이어당 전역이라 위협은 마릿수가 아니라 이 값이 정한다.
     //
     // 소환석 예산 3배 상향 (#229, 매치 9703595 실측): 원안 10/11/12/13/13은 150초에 인당
     // 15석, 5분 완주 기준 ~30석뿐이라 성장 3회(누적 21석)에서 멈췄다. 몹은 석 1077개어치를
@@ -81,11 +92,11 @@ public sealed class SwarmArenaManager
     private static readonly (double UntilSeconds, int ZoneTarget, int NormalHp, int ContactDamage,
         int CoreHp, int StoneBudget)[] SupplyPhases =
     [
-        (100d, 8, 16, 1, 48, 30), // 0:00~1:40 폐쇄 전
-        (150d, 16, 17, 1, 60, 33), // 1:40~2:30 1차
-        (200d, 28, 19, 2, 72, 36), // 2:30~3:20 2차
-        (250d, 44, 21, 2, 96, 39), // 3:20~4:10 3차
-        (double.MaxValue, 60, 22, 3, 120, 39) // 4:10~5:00 최종 수렴
+        (100d, 8, 16, 2, 48, 30), // 0:00~1:40 폐쇄 전
+        (150d, 16, 17, 3, 60, 33), // 1:40~2:30 1차
+        (200d, 28, 19, 4, 72, 36), // 2:30~3:20 2차
+        (250d, 44, 21, 6, 96, 39), // 3:20~4:10 3차
+        (double.MaxValue, 60, 22, 8, 120, 39) // 4:10~5:00 최종 수렴
     ];
 
     private static int GetSupplyPhaseIndex(double elapsedSeconds)
@@ -110,6 +121,10 @@ public sealed class SwarmArenaManager
     private const float SupplySafeSpawnDistance = 2.5f;
     // 화면 밖 등장 (#229): 이 거리 밖 앵커를 우선 고른다. 전부 가까우면 안전 이격만 지킨다.
     private const float SupplyOffscreenDistance = 7f;
+
+    // 안쪽(운동장) 편향 (#229 4단계-보정): 잔상이 중앙에서 번져 나오는 것처럼 보이게 한다.
+    private const AreaType SwarmInwardOriginArea = AreaType.Ground;
+    private const float SupplyInwardBias = 2.2f;
     private const double SupplyBlockedRetrySeconds = 1d;
     private const int SupplyCoreStoneReward = 3;
 
@@ -1268,18 +1283,25 @@ public sealed class SwarmArenaManager
         }
 
         // 앵커별 최근접 플레이어 거리 — 안전 이격(2.5m) 미만은 제외하고, 화면 밖(7m)을 우선한다.
+        // 같은 조건이면 운동장 쪽 앵커를 먼저 쓴다 (#229 4단계-보정): 잔상이 중앙에서 번져
+        // 나오는 것처럼 읽혀야 폐쇄의 방향(바깥 → 중앙)과 정면으로 마주 본다.
+        // 개체를 실제로 걷게 하지는 않는다 — 확산시키면 초반 외곽이 비어 성장 시작이 통째로
+        // 밀리고, 폐쇄 구역으로 흘러든 몹이 상한을 다시 먹는다. 위치만 안쪽으로 준다.
+        var inward = GetInwardDirection(area);
         var ranked = anchors
-            .Select(anchor => (Anchor: anchor, Distance: NearestParticipantDistance(state, area, anchor)))
+            .Select(anchor => (
+                Anchor: anchor,
+                Distance: NearestParticipantDistance(state, area, anchor),
+                Inwardness: (anchor.X - center.X) * inward.X + (anchor.Y - center.Y) * inward.Y))
             .Where(entry => entry.Distance >= SupplySafeSpawnDistance)
-            .OrderByDescending(entry => entry.Distance)
+            .OrderByDescending(entry => entry.Distance >= SupplyOffscreenDistance)
+            .ThenByDescending(entry => entry.Inwardness)
+            .ThenByDescending(entry => entry.Distance)
             .ToList();
         if (ranked.Count == 0)
             return 0;
 
-        var offscreen = ranked.Where(entry => entry.Distance >= SupplyOffscreenDistance).ToList();
-        var freeAnchors = (offscreen.Count > 0 ? offscreen : ranked)
-            .Select(entry => entry.Anchor)
-            .ToList();
+        var freeAnchors = ranked.Select(entry => entry.Anchor).ToList();
 
         // 보충은 소수(2마리)라 앵커를 순회하며 흩는다 — 한 점에 뭉쳐 나오면 절단 한 번에 쓸린다.
         var spawnPlan = new List<(SwarmMonsterKind Kind, Vector3f Anchor)>(normals + 1);
@@ -1296,9 +1318,10 @@ public sealed class SwarmArenaManager
             var packAnchor = spawnPlan[index].Anchor;
             float angle = (float)(index * Math.PI * 2d / spawnPlan.Count) +
                           (float)(state.Rng.NextDouble() * 0.5d - 0.25d);
+            // 산개도 안쪽으로 한 뼘 민다 — 앵커가 셋뿐이라 편향이 앵커 선택만으로는 약하다.
             var position = ClampToAreaWalkable(new Vector3f(
-                packAnchor.X + MathF.Cos(angle) * SupplyScatterRadius,
-                packAnchor.Y + MathF.Sin(angle) * SupplyScatterRadius,
+                packAnchor.X + MathF.Cos(angle) * SupplyScatterRadius + inward.X * SupplyInwardBias,
+                packAnchor.Y + MathF.Sin(angle) * SupplyScatterRadius + inward.Y * SupplyInwardBias,
                 0f), packAnchor, area);
 
             var kind = spawnPlan[index].Kind;
@@ -1349,6 +1372,29 @@ public sealed class SwarmArenaManager
         result.SupplyPackSpawns.Add(new SupplyPackSpawnInfo(
             area, phaseIndex, spawnPlan.Count, stoneTotal));
         return spawnPlan.Count;
+    }
+
+    /// <summary>
+    ///     구역 중심에서 운동장(최종 폐쇄 구역) 쪽으로 향하는 단위 벡터 (#229 4단계-보정).
+    ///     폐쇄는 먼 방부터 닫혀 플레이어를 중앙으로 민다. 잔상이 그 반대편에서 나오면 두 흐름이
+    ///     엇갈려 읽히므로, 잔상은 플레이어가 밀려갈 방향에서 나오게 한다.
+    ///     운동장 자신은 발원지라 편향이 없다.
+    /// </summary>
+    private static Vector3f GetInwardDirection(AreaType area)
+    {
+        if (area == SwarmInwardOriginArea)
+            return new Vector3f(0f, 0f, 0f);
+
+        var center = BotPlayerManager.CellToWorldPosition(
+            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
+        var origin = BotPlayerManager.CellToWorldPosition(
+            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, SwarmInwardOriginArea));
+        float dx = origin.X - center.X;
+        float dy = origin.Y - center.Y;
+        float length = MathF.Sqrt(dx * dx + dy * dy);
+        return length < 0.001f
+            ? new Vector3f(0f, 0f, 0f)
+            : new Vector3f(dx / length, dy / length, 0f);
     }
 
     /// <summary>같은 구역 참가자 중 앵커에서 가장 가까운 거리 — 아무도 없으면 무한대.</summary>

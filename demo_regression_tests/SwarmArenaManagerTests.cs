@@ -318,8 +318,8 @@ public class SwarmArenaManagerTests
             Assert.Equal(1, damage.TargetPlayerId);
         });
         Assert.Equal(damageEvents.Count, manager.GetSummary(217001).HitsTaken);
-        // 무적창(0.8초)보다 촘촘히 맞을 수 없다.
-        Assert.InRange(damageEvents.Count, 1, 12);
+        // 무적창(0.4초)보다 촘촘히 맞을 수 없다 — 8.5초 관찰이면 상한 22대다 (#229 4단계-보정).
+        Assert.InRange(damageEvents.Count, 1, 22);
     }
 
     [Fact]
