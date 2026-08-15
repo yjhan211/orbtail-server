@@ -77,4 +77,20 @@ public sealed class GameResultRankingResolverTests
             Rank = rank
         };
     }
+
+    [Fact]
+    public void OrbCount_BreaksTiesAmongPlayersWithTheSameRank()
+    {
+        // #229: 인게임 순위가 오브 수로 매겨지는데 결과표는 처치·피해·회복만 봤다.
+        // 스웜에서 그 셋은 상시 0이라 동순위가 PlayerId 순으로 잘렸다.
+        var result = GameResultRankingResolver.Resolve(new[]
+        {
+            new GameResultPlayerInfo { PlayerId = 1, Rank = 0, OrbCount = 3, SurvivalTimeSeconds = 200 },
+            new GameResultPlayerInfo { PlayerId = 2, Rank = 0, OrbCount = 8, SurvivalTimeSeconds = 200 },
+            new GameResultPlayerInfo { PlayerId = 3, Rank = 0, OrbCount = 5, SurvivalTimeSeconds = 200 }
+        });
+
+        Assert.Equal(new long[] { 2, 3, 1 }, result.Select(player => player.PlayerId).ToArray());
+        Assert.Equal(new[] { 1, 2, 3 }, result.Select(player => player.Rank).ToArray());
+    }
 }

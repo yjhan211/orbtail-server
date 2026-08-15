@@ -2668,7 +2668,10 @@ public partial class GameServer(
                         Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
                         stats.KillCount,
                         stats.TotalDamageDealt,
-                        stats.TotalRecovery);
+                        stats.TotalRecovery,
+                        // 승점 (#229): 사람이 나간 매치도 오브 수를 남긴다 — 봇 매치가 유일한
+                        // 자동 검증 창구라 여기서 빠지면 결과 집계를 로그로 확인할 수 없다.
+                        GetSwarmOrbScore(matchingId, row.playerId).OrbCount);
                 })
                 .ToList();
             _gameEventLogManager.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);

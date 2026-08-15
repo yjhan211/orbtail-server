@@ -918,7 +918,8 @@ public partial class GameClientSession
                 player.SurvivalTimeSeconds,
                 player.KillCount,
                 player.TotalDamageDealt,
-                player.TotalRecovery)).ToList());
+                player.TotalRecovery,
+                player.OrbCount)).ToList());
         PersistMatchSummary(matchingId, endReason, winnerId);
 
         var resultChunks = GameResultPacketChunker.CreateGameResultChunks(winnerId, isTimeout, players);
@@ -1005,6 +1006,7 @@ public partial class GameClientSession
                 var session = allSessions.FirstOrDefault(s => s.PlayerId == d.playerId);
                 var bot = _botPlayerManager.GetBot(matchingId, d.playerId);
                 var stats = _gameEventLogManager.GetSurvivorResultStats(matchingId, d.playerId);
+                var orbScore = ResolveResultOrbScore(matchingId, d.playerId);
                 DateTime survivalEndUtc = d.eliminatedAt ?? endedAtUtc;
                 int survivalSeconds = Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds));
 
@@ -1035,8 +1037,8 @@ public partial class GameClientSession
                         IsOvertimeElimination = d.isOvertimeElimination,
                         Rank = d.playerId == winnerId ? 1 : d.eliminationRank,
                         FinalOrbTier = d.playerId == winnerId ? ResolveFinalOrbTier(matchingId, d.playerId) : d.finalOrbTier,
-                        // 잼 집계 (#223 M5): 생존자의 최종 지갑 — 탈락자는 낙수로 0.
-                        JamCount = session?.JamCount ?? bot?.JamCount ?? 0
+                        // 결과 승점은 오브 수 (#229): 인게임 순위와 같은 눈금을 쓴다.
+                        OrbCount = orbScore.OrbCount
                     },
                     EliminatedAt = d.eliminatedAt
                 };
@@ -1045,6 +1047,32 @@ public partial class GameClientSession
 
         return GameResultRankingResolver.Resolve(rows.Select(row => row.Info), winnerId);
     }
+    /// <summary>
+    ///     결과 화면 승점 (#229). 인게임 오브 순위(GetSwarmOrbScore)와 같은 계산이다 —
+    ///     한쪽만 바뀌면 5분 내내 보던 순위와 결과표가 어긋난다.
+    ///     탈락자는 인벤토리가 비어 자연히 0이 된다.
+    /// </summary>
+    private (int OrbCount, int TierSum) ResolveResultOrbScore(long matchingId, long playerId)
+    {
+        var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
+        int orbCount = 0;
+        int tierSum = 0;
+        foreach (var item in inventory.GetAllItems())
+        {
+            if (item.Count <= 0) continue;
+            if (!SurvivorOrbData.TryGetColorAndTier(item.ItemId, out _, out int tier) &&
+                !SurvivorOrbData.TryGetRecoveryTier(item.ItemId, out tier))
+                continue;
+            if (tier <= 0) continue;
+
+            // 레거시 스택(같은 색·티어가 한 항목) 호환 — 항목이 아니라 수량이 오브 수다.
+            orbCount += item.Count;
+            tierSum += tier * item.Count;
+        }
+
+        return (orbCount, tierSum);
+    }
+
     private PlayerInfo? ResolveResultPlayerInfo(long matchingId, long playerId)
     {
         if (BotPlayerManager.IsBotPlayerId(playerId))

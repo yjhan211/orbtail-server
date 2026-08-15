@@ -12,6 +12,9 @@ public static class GameResultRankingResolver
             // Elimination rank is assigned at the server-authoritative death event.
             // A rank of zero means the player is still alive in an interim result packet.
             .ThenBy(player => player.Rank > 0 ? player.Rank : 0)
+            // 오브 수가 승점이다 (#229): 인게임 순위표와 같은 눈금으로 동순위를 가른다.
+            // 아래 세 지표(처치·피해·회복)는 스웜에서 상시 0이라 사실상 탈락 순서만 남아 있었다.
+            .ThenByDescending(player => player.OrbCount)
             .ThenByDescending(player => player.SurvivalTimeSeconds)
             .ThenByDescending(player => player.KillCount)
             .ThenByDescending(player => player.TotalDamageDealt)

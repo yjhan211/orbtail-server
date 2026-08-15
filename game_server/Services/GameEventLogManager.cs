@@ -2432,7 +2432,10 @@ public sealed record SurvivorFinalPlayerStats(
     int SurvivalTimeSeconds,
     int KillCount,
     int TotalDamageDealt,
-    int TotalRecovery);
+    int TotalRecovery,
+    // 승점 (#229): 결과 화면과 같은 오브 수. 이게 없으면 매치 로그만 보고는
+    // 누가 왜 이겼는지 되짚을 수 없다 — 나머지 세 지표는 스웜에서 상시 0이다.
+    int OrbCount = 0);
 
 public sealed record EliminationDroppedItem(
     long GroundItemUid,
