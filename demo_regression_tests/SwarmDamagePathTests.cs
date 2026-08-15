@@ -2,6 +2,8 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using game_server;
 using network.common;
+using network.common.data;
+using network.common.data.helpers;
 
 namespace demo_regression_tests;
 
@@ -116,6 +118,52 @@ public class SwarmDamagePathTests
         // 폐쇄·경고 구역은 잠금 없이 깨우기만 한다.
         Assert.Contains("sleepBreakAreas", arena);
         Assert.Contains("ProcessSwarmSleepRecovery(aliveSessions, nowUtc)", arena);
+    }
+
+    /// <summary>
+    ///     #229: 문은 두 구역의 간선인데 door_info.csv에 area_type이 하나뿐이라 폐쇄 잠금이
+    ///     소유 구역 한쪽만 봤다 — 교실1(40)이 닫혀도 고사실(32) 소속인 door 21은 안 잠겼다.
+    ///     통행 판정은 원래부터 양쪽을 인정하므로 잠금만 반쪽이었다.
+    ///     상대편이 먼저 닫히는 문 다섯(16·17·19·21·22)이 같은 원인이었다.
+    /// </summary>
+    [Fact]
+    public void ClosureLock_CoversBothSidesOfEveryDoor()
+    {
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+
+        var doors = GameDoorData.GetAll().ToList();
+        Assert.NotEmpty(doors);
+
+        // 모든 문이 반대편 구역을 들고 있어야 한다 — 없으면 그 문은 다시 반쪽 잠금이 된다.
+        Assert.All(doors, door => Assert.NotEqual(AreaType.None, door.AreaTypeB));
+        Assert.All(doors, door => Assert.NotEqual(door.AreaType, door.AreaTypeB));
+
+        // 신고 건: 교실1(Classroom4=40) 폐쇄 목록에 고사실 소속 door 21이 들어와야 한다.
+        var classroom1Doors = GameDoorData.GetByAreaType(AreaType.Classroom4).ToList();
+        Assert.Contains(classroom1Doors, door => door.DoorId == 21);
+        Assert.Contains(classroom1Doors, door => door.DoorId == 22);
+
+        // 어느 문이든 양쪽 구역 각각으로 조회했을 때 잡혀야 한다.
+        foreach (var door in doors)
+        {
+            Assert.Contains(GameDoorData.GetByAreaType(door.AreaType), found => found.DoorId == door.DoorId);
+            Assert.Contains(GameDoorData.GetByAreaType(door.AreaTypeB), found => found.DoorId == door.DoorId);
+        }
+    }
+
+    private static string FindNetworkBasePath()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null)
+        {
+            string candidate = Path.Combine(directory.FullName, "network", "Common", "csv");
+            if (Directory.Exists(candidate))
+                return Path.Combine(directory.FullName, "network");
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("network/Common/csv 를 찾지 못했다");
     }
 
     private static string FindRepositoryRoot()

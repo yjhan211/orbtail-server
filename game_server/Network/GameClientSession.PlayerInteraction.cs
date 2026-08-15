@@ -542,6 +542,19 @@ public partial class GameClientSession
                 return Task.CompletedTask;
             }
 
+            // 폐쇄 구역 문은 다시 열 수 없다 (#229): 모든 문이 required_item_id=0이라, 폐쇄로
+            // 잠근 문을 상호작용 한 번으로 되열 수 있었다 — 잠금이 사실상 없는 것과 같았다.
+            // 양쪽 중 한쪽이라도 닫혔으면 거절한다(간선이므로 한쪽만 닫혀도 통행이 막혀야 한다).
+            if (_areaClosureManager != null &&
+                (_areaClosureManager.IsAreaClosed(CurrentMapSubId, doorInfo.AreaType) ||
+                 _areaClosureManager.IsAreaClosed(CurrentMapSubId, doorInfo.AreaTypeB)))
+            {
+                using var closedAreaPacket =
+                    PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.INVALID_GAME_STATE);
+                Send(closedAreaPacket);
+                return Task.CompletedTask;
+            }
+
             // 이미 열려있는지 확인
             if (_doorStateManager.IsDoorOpen(CurrentMapSubId, doorId))
             {
