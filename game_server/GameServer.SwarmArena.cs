@@ -127,6 +127,15 @@ public partial class GameServer
             _pendingSwarmMonsterHits.RemoveAt(index);
             var damageResult = _swarmArenaManager.ApplyMonsterDamage(
                 matchingId, hit.CombatTargetId, hit.AttackerId, hit.Damage);
+
+            // 결과 집계 (#229): 스웜 전투는 전부 여기를 지난다. 여기서 안 세면
+            // 결과 화면이 수백 킬을 "처치 0회"로 표시한다.
+            if (damageResult.Applied)
+            {
+                _gameEventLogManager.RecordSurvivorMonsterHit(
+                    matchingId, hit.AttackerId, hit.Damage, damageResult.Killed);
+            }
+
             // 비행 중 몬스터가 이미 죽었으면 조용히 소멸 — 이중 정산 없음.
             if (damageResult.Applied && damageResult.Killed && damageResult.MonsterState != null)
             {

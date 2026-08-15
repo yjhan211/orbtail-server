@@ -1028,8 +1028,10 @@ public partial class GameClientSession
                             : new List<int>(),
                         SurvivalTimeSeconds = survivalSeconds,
                         // 실제 탈락 결과를 기준으로 집계해 전투 로그 누락/중복과 무관하게 결과표를 맞춘다.
-                        KillCount = killCountsByPlayerId.TryGetValue(d.playerId, out int killCount) ? killCount : 0,
-                        TotalDamageDealt = stats.TotalDamageDealt,
+                        // 스웜은 여기에 몹 처치를 더한다 (#229) — 플레이어가 죽인 건 거의 전부 몹이다.
+                        KillCount = (killCountsByPlayerId.TryGetValue(d.playerId, out int killCount) ? killCount : 0)
+                                    + stats.MonsterKillCount,
+                        TotalDamageDealt = stats.TotalDamageDealt + stats.MonsterDamageDealt,
                         TotalRecovery = stats.TotalRecovery,
                         AttackerPlayerId = d.attackerPlayerId,
                         EliminatedArea = d.eliminatedArea,

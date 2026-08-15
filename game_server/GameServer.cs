@@ -2666,8 +2666,8 @@ public partial class GameServer(
                         row.playerId,
                         row.eliminationRank,
                         Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
-                        stats.KillCount,
-                        stats.TotalDamageDealt,
+                        stats.KillCount + stats.MonsterKillCount,
+                        stats.TotalDamageDealt + stats.MonsterDamageDealt,
                         stats.TotalRecovery,
                         // 승점 (#229): 사람이 나간 매치도 오브 수를 남긴다 — 봇 매치가 유일한
                         // 자동 검증 창구라 여기서 빠지면 결과 집계를 로그로 확인할 수 없다.
@@ -3273,9 +3273,10 @@ public partial class GameServer(
                         row.playerId,
                         row.playerId == winnerId ? 1 : row.eliminationRank,
                         Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
-                        stats.KillCount,
-                        stats.TotalDamageDealt,
-                        stats.TotalRecovery);
+                        stats.KillCount + stats.MonsterKillCount,
+                        stats.TotalDamageDealt + stats.MonsterDamageDealt,
+                        stats.TotalRecovery,
+                        GetSwarmOrbScore(matchingId, row.playerId).OrbCount);
                 })
                 .ToList();
             string endReason = isGameOver ? "last_survivor" : "round_limit";

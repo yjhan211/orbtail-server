@@ -1776,6 +1776,33 @@ public class GameEventLogManager
         }
     }
 
+    /// <summary>
+    ///     몹 피해·처치 누적 (#229). 스웜의 플레이어 전투는 전부 몹 상대인데 어떤 카운터에도
+    ///     쌓이지 않아 결과 화면이 531킬을 "처치 0회"로 표시했다.
+    ///     ProcessPendingSwarmMonsterHits 한 곳이 유일한 진입점이라 여기서만 부른다.
+    /// </summary>
+    public void RecordSurvivorMonsterHit(long matchingId, long playerId, int damage, bool killed)
+    {
+        if (playerId == 0)
+            return;
+
+        var state = _survivorCombatStates.GetOrAdd(matchingId, _ => new SurvivorCombatState());
+        lock (state.SyncRoot)
+        {
+            state.KnownPlayerIds.Add(playerId);
+            if (damage > 0)
+            {
+                state.MonsterDamageByPlayer.TryGetValue(playerId, out int previousDamage);
+                state.MonsterDamageByPlayer[playerId] = previousDamage + damage;
+            }
+
+            if (!killed) return;
+
+            state.MonsterKillsByPlayer.TryGetValue(playerId, out int previousKills);
+            state.MonsterKillsByPlayer[playerId] = previousKills + 1;
+        }
+    }
+
     public SurvivorResultStats GetSurvivorResultStats(long matchingId, long playerId)
     {
         if (!_survivorCombatStates.TryGetValue(matchingId, out var state))
@@ -1786,7 +1813,9 @@ public class GameEventLogManager
             state.KillCountsByPlayer.TryGetValue(playerId, out int kills);
             state.DamageDealtByPlayer.TryGetValue(playerId, out int damage);
             state.RecoveryByPlayer.TryGetValue(playerId, out int recovery);
-            return new SurvivorResultStats(kills, damage, recovery);
+            state.MonsterKillsByPlayer.TryGetValue(playerId, out int monsterKills);
+            state.MonsterDamageByPlayer.TryGetValue(playerId, out int monsterDamage);
+            return new SurvivorResultStats(kills, damage, recovery, monsterKills, monsterDamage);
         }
     }
 
@@ -1800,6 +1829,11 @@ public class GameEventLogManager
         public HashSet<long> KnownPlayerIds { get; } = new();
         public Dictionary<long, int> KillCountsByPlayer { get; } = new();
         public Dictionary<long, int> DamageDealtByPlayer { get; } = new();
+
+        // 몹 처치·피해는 PvP와 따로 센다 (#229). DamageDealtByPlayer는 동시 탈락 시
+        // 생존자를 가르는 기준(SurvivorSettlementResolver)이라 의미를 섞으면 판정이 바뀐다.
+        public Dictionary<long, int> MonsterKillsByPlayer { get; } = new();
+        public Dictionary<long, int> MonsterDamageByPlayer { get; } = new();
         public Dictionary<long, int> RecoveryByPlayer { get; } = new();
         public Dictionary<long, SurvivorCombatEngagement> EngagementsByAttacker { get; } = new();
     }
@@ -1892,7 +1926,12 @@ public class GameEventLogManager
         public int AdditionalExploreCount { get; set; }
     }
 
-    public readonly record struct SurvivorResultStats(int KillCount, int TotalDamageDealt, int TotalRecovery);
+    public readonly record struct SurvivorResultStats(
+        int KillCount,
+        int TotalDamageDealt,
+        int TotalRecovery,
+        int MonsterKillCount = 0,
+        int MonsterDamageDealt = 0);
 
     private sealed class SurvivorCombatEngagement
     {

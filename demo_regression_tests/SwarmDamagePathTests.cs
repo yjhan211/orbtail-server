@@ -229,4 +229,27 @@ public class SwarmDamagePathTests
             }
         }
     }
+
+    [Fact]
+    public void MonsterHits_AccumulateSeparatelyFromPvpDamage()
+    {
+        // #229: 스웜 전투는 전부 몹 상대인데 어떤 카운터에도 안 쌓여 결과가 "처치 0회"였다.
+        // 단 PvP 피해와 같은 칸에 넣으면 안 된다 — 그 칸은 동시 탈락 시 생존자를 가르는
+        // 기준(SurvivorSettlementResolver)이라 의미가 섞이면 판정이 바뀐다.
+        var manager = new game_server.services.GameEventLogManager();
+        const long matchingId = 771001;
+        const long playerId = 4242;
+
+        manager.RecordSurvivorMonsterHit(matchingId, playerId, 12, killed: false);
+        manager.RecordSurvivorMonsterHit(matchingId, playerId, 12, killed: true);
+        manager.RecordSurvivorMonsterHit(matchingId, playerId, 21, killed: true);
+
+        var stats = manager.GetSurvivorResultStats(matchingId, playerId);
+        Assert.Equal(2, stats.MonsterKillCount);
+        Assert.Equal(45, stats.MonsterDamageDealt);
+
+        // PvP 칸은 건드리지 않는다.
+        Assert.Equal(0, stats.KillCount);
+        Assert.Equal(0, stats.TotalDamageDealt);
+    }
 }
