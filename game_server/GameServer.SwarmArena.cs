@@ -1095,13 +1095,18 @@ public partial class GameServer
     {
         _swarmBotFleeDirective.Remove((matchingId, botPlayerId));
         var directive = _swarmArenaManager.GetBotDirective(matchingId, botPlayerId);
-        if (directive.Mode != SpotArenaBotMode.Escort)
-            return directive;
 
         var bot = _botPlayerManager.GetBots(matchingId)
             .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
         if (bot == null || bot.IsEliminated)
             return directive;
+
+        // 폐쇄·경계 탈출은 위협 판정보다 위다 (#229 8단계). GetBotDirective는 내 구역에 깨어난
+        // 몹이 하나라도 있으면 Return을 준다. 밀도 램프 이후 구역당 7~15마리라 이 조건이 상시
+        // 참이 됐고, 아래의 대피·전력 비교·추격이 통째로 죽어 있었다. 봇 매치 9772501에서
+        // 10명 중 9명이 스폰 방을 한 번도 안 나가고 그 방이 닫힐 때 죽었다 —
+        // 폐쇄가 수렴 장치가 아니라 타이머 처형으로 동작했다.
+        // 몹은 도망칠 수 있고 폐쇄는 못 도망친다. 순서가 그대로 우선순위다.
 
         // 0) 경계 밖 탈출 최우선 — 자기장에서는 안쪽으로 걷는 것 자체가 대피 경로다.
         //    경계 안 사냥터 중 가장 가까운 곳으로, 전부 밖이면 종착지 운동장으로 향한다.
@@ -1139,9 +1144,15 @@ public partial class GameServer
             {
                 // 대피는 도주 예외 — 왕복 억제를 우회해 어디로든 즉시 나간다.
                 _swarmBotFleeDirective.Add((matchingId, botPlayerId));
-                AreaType closureEvacuationArea = SwarmHuntingAreas
-                    .Where(area => !IsSwarmAreaOutside(matchingId, area) &&
-                                   !closureSnapshot.WarningAreas.Contains(area))
+                // 대피처는 사냥터 5곳이 아니라 열린 전 구역이다 (#229 8단계). 사냥터로 좁히면
+                // 후반에 후보가 운동장 하나로 줄어 경로가 길어지고, 결국 못 나가고 죽는다.
+                AreaType closureEvacuationArea = GameMapData.GetAreas(MapId.School)
+                    .Select(region => region.AreaType)
+                    .Distinct()
+                    .Where(area => area != AreaType.None && area != bot.CurrentArea &&
+                                   !closureSnapshot.ClosedAreas.Contains(area) &&
+                                   !closureSnapshot.WarningAreas.Contains(area) &&
+                                   !IsSwarmAreaOutside(matchingId, area))
                     .OrderBy(area =>
                     {
                         var center = BotPlayerManager.CellToWorldPosition(
@@ -1162,6 +1173,10 @@ public partial class GameServer
             }
         }
 
+        // 여기부터는 대피가 필요 없는 상태 — 위협이 있으면 원래 지시(Return)를 따른다.
+        if (directive.Mode != SpotArenaBotMode.Escort)
+            return directive;
+
         // 0.5) 상대 전력 비교 (#222): 티어 가중 전력(1/1.75/4)으로 비교한다.
         //      "싸움을 건다 = 유리하다" — 확실히 우세(×1.25 이상)일 때만 추격하고,
         //      동수 포함 그 이하는 회피한다. 동수 대치(뭉쳐서 수동 오브 소모전)가 성립하지
@@ -1172,7 +1187,8 @@ public partial class GameServer
         // 빈손 이속 (#223): 이동 배율이 읽는 플래그 — 판단 틱이 단일 갱신 지점이다.
         bot.IsSwarmBareHanded = !hasSquadOrbs;
         FindNearbySwarmRivals(matchingId, bot, squadPower, includeMonstersAsStronger: !hasSquadOrbs,
-            out Vector3f strongerPosition, out (Vector3f Position, AreaType Area)? weakerRival);
+            out Vector3f strongerPosition,
+            out (Vector3f Position, AreaType Area, long PlayerId)? weakerRival);
 
         // 피격 반응 (#222, 매치 2379 -131 · 2386 -182): 맞는 동안은 절대 서 있지 않는다.
         // 열세·비등이면 그 방향에서 이탈(위협 승격), 우세면 싸우되 좌우 와리가리(스트레이프) —
@@ -1314,12 +1330,26 @@ public partial class GameServer
         if (hasSquadOrbs && weakerRival.HasValue &&
             !IsSwarmOrbLeader(matchingId, botPlayerId))
         {
-            // 약자 추격: 접근하면 자동전투(오브 우선 타겟)가 나머지를 한다.
+            // 약자 추격은 본체가 아니라 오브열을 겨눈다 (#229 8단계). 코어 동사가 "몸으로 상대
+            // 오브열을 자른다"인데 본체로 직진하면 꼬리를 지나칠 수 있다 — 봇 매치 9774851에서
+            // 조우 29건에 절단 0건이었다. 꼬리 중간을 목표로 삼으면 접근 경로가 열을 가로지른다.
+            var chaseTarget = ResolveSwarmTrailChasePoint(
+                matchingId, weakerRival.Value.PlayerId, weakerRival.Value.Position);
+            // 추격 계측 (#229 8단계): 조우는 나는데 절단이 0건인 원인을 가르려면 "추격이
+            // 발동은 했는가"와 "발동하고도 못 잘랐는가"를 구분해야 한다. 매치 요약에 남긴다.
+            LogSwarmChaseIssued(matchingId, botPlayerId, weakerRival.Value.PlayerId, chaseTarget);
+            var chaseCell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, chaseTarget);
+            var chaseArea = GameMapData.GetCurrentArea(MapId.School, chaseCell);
+            bool chaseCellUsable = chaseArea != AreaType.None &&
+                                   GameMapData.IsMoveablePosition(MapId.School, chaseCell);
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
-                weakerRival.Value.Area,
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, weakerRival.Value.Position),
-                weakerRival.Value.Position);
+                chaseCellUsable ? chaseArea : weakerRival.Value.Area,
+                chaseCellUsable
+                    ? chaseCell
+                    : ProximityCombatLineOfSight.WorldPositionToCell(
+                        MapId.School, weakerRival.Value.Position),
+                chaseCellUsable ? chaseTarget : weakerRival.Value.Position);
         }
 
         // 1) 지갑이 차면 줍기보다 개봉이 먼저 — 열린 구역 중 가장 가까운 스팟으로 순례한다.
@@ -2877,19 +2907,55 @@ public partial class GameServer
     ///     반경 내 라이벌 탐색 — 티어 가중 전력 기준. 동수 이상인 최근접(강자)과 확실히 약한
     ///     (×1.25 우위) 최근접(약자)을 함께 찾는다. 빈손이면 살아있는 몹도 강자로 취급한다.
     /// </summary>
+    // 추격 로그 스로틀 — 같은 쌍은 3초에 한 번만 남긴다. 판단은 50ms마다 돈다.
+    private readonly Dictionary<(long MatchingId, long ChaserId, long TargetId), DateTime>
+        _swarmChaseLogThrottle = new();
+
+    private void LogSwarmChaseIssued(long matchingId, long chaserId, long targetId, Vector3f aimPoint)
+    {
+        var now = DateTime.UtcNow;
+        var key = (matchingId, chaserId, targetId);
+        if (_swarmChaseLogThrottle.TryGetValue(key, out var lastAtUtc) &&
+            (now - lastAtUtc).TotalSeconds < 3d)
+            return;
+
+        _swarmChaseLogThrottle[key] = now;
+        _gameEventLogManager.LogSystem(matchingId,
+            $"swarm_chase chaser={chaserId} target={targetId} " +
+            $"targetOrbs={CountSwarmSquadOrbs(matchingId, targetId)} " +
+            $"aim=({aimPoint.X:F1},{aimPoint.Y:F1})");
+    }
+
+    /// <summary>
+    ///     추격 조준점 (#229 8단계)    /// <summary>
+    ///     추격 조준점 (#229 8단계): 상대 오브열의 중간 지점. 열이 없으면 본체를 그대로 돌려준다.
+    ///     본체를 겨누면 꼬리를 지나치지 않고 옆으로 붙어 서기만 한다 — 절단이 성립하지 않는다.
+    /// </summary>
+    private Vector3f ResolveSwarmTrailChasePoint(long matchingId, long targetPlayerId, Vector3f targetPosition)
+    {
+        int orbCount = CountSwarmSquadOrbs(matchingId, targetPlayerId);
+        if (orbCount <= 0)
+            return targetPosition;
+
+        // 중간 순번을 노린다 — 꼬리 끝은 손실이 적고, 머리 바로 뒤는 도달 전에 흔들린다.
+        int aimOrdinal = Math.Max(1, orbCount / 2);
+        return GetSwarmOrbTrailPosition(matchingId, targetPlayerId, aimOrdinal, targetPosition)
+               ?? targetPosition;
+    }
+
     private void FindNearbySwarmRivals(
         long matchingId,
         BotPlayerState bot,
         float myPower,
         bool includeMonstersAsStronger,
         out Vector3f strongerPosition,
-        out (Vector3f Position, AreaType Area)? weakerRival)
+        out (Vector3f Position, AreaType Area, long PlayerId)? weakerRival)
     {
         float radiusSquared = SwarmBotRivalScanRadius * SwarmBotRivalScanRadius;
         float bestStrongerDistanceSquared = radiusSquared;
         float bestWeakerDistanceSquared = radiusSquared;
         Vector3f nearestStronger = null;
-        (Vector3f Position, AreaType Area)? nearestWeaker = null;
+        (Vector3f Position, AreaType Area, long PlayerId)? nearestWeaker = null;
 
         void Consider(long rivalPlayerId, Vector3f position, AreaType area)
         {
@@ -2910,7 +2976,7 @@ public partial class GameServer
                      !IsSwarmAreaOutside(matchingId, area))
             {
                 bestWeakerDistanceSquared = distanceSquared;
-                nearestWeaker = (position, area);
+                nearestWeaker = (position, area, rivalPlayerId);
             }
         }
 

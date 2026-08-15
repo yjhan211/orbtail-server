@@ -210,17 +210,30 @@ public class AreaClosureManager
             if (state.NextClosureIndex >= state.Waves.Count)
                 return new ClosureClientStateSnapshot(closedAreas, [], 0, 0, 0, 0);
 
-            var nextWave = state.Waves[state.NextClosureIndex];
-            double warningAtSeconds = nextWave.ClosureAtSeconds - ClosureWarningSeconds;
-            bool isWarningActive = elapsedSeconds >= warningAtSeconds &&
-                                   elapsedSeconds < nextWave.ClosureAtSeconds;
+            // 경고는 15초 창 안의 모든 웨이브를 담는다 (#229). 순차 폐쇄로 웨이브가 4초 간격이
+            // 되면서, 다음 한 건만 보면 스태거 그룹의 두 번째 이후 구역은 4초짜리 경고만 받는다.
+            // 봇 대피와 클라 경고가 같이 이 스냅샷을 읽으므로 여기서 한 번에 고친다.
+            var warningWaveList = new List<AreaType>();
+            double earliestWarnedClosureAtSeconds = double.MaxValue;
+            for (int index = state.NextClosureIndex; index < state.Waves.Count; index++)
+            {
+                var wave = state.Waves[index];
+                if (elapsedSeconds < wave.ClosureAtSeconds - ClosureWarningSeconds) break;
+                if (elapsedSeconds >= wave.ClosureAtSeconds) continue;
 
-            var warningAreas = isWarningActive ? nextWave.Areas.ToArray() : [];
+                warningWaveList.AddRange(wave.Areas);
+                earliestWarnedClosureAtSeconds =
+                    Math.Min(earliestWarnedClosureAtSeconds, wave.ClosureAtSeconds);
+            }
+
+            bool isWarningActive = warningWaveList.Count > 0;
+            var warningAreas = warningWaveList.Distinct().ToArray();
             int warningSeconds = isWarningActive
-                ? Math.Max(1, (int)Math.Ceiling(nextWave.ClosureAtSeconds - elapsedSeconds))
+                ? Math.Max(1, (int)Math.Ceiling(earliestWarnedClosureAtSeconds - elapsedSeconds))
                 : 0;
             long closureAtUnixMs = isWarningActive
-                ? ((DateTimeOffset)state.GameStartTime.AddSeconds(nextWave.ClosureAtSeconds)).ToUnixTimeMilliseconds()
+                ? ((DateTimeOffset)state.GameStartTime.AddSeconds(earliestWarnedClosureAtSeconds))
+                    .ToUnixTimeMilliseconds()
                 : 0;
 
             // 현재 경보가 진행 중이면 그 다음 웨이브, 아니면 아직 시작되지 않은 현재 웨이브의
