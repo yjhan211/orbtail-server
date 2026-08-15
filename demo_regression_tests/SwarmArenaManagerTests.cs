@@ -318,8 +318,26 @@ public class SwarmArenaManagerTests
             Assert.Equal(1, damage.TargetPlayerId);
         });
         Assert.Equal(damageEvents.Count, manager.GetSummary(217001).HitsTaken);
-        // 무적창(0.4초)보다 촘촘히 맞을 수 없다 — 8.5초 관찰이면 상한 22대다 (#229 4단계-보정).
-        Assert.InRange(damageEvents.Count, 1, 22);
+        // 무적창(0.6초)보다 촘촘히 맞을 수 없다 — 8.5초 관찰이면 상한 15대다 (#229).
+        Assert.InRange(damageEvents.Count, 1, 15);
+    }
+
+    [Fact]
+    public void ContactRadius_FollowsClientKindScaleLadder()
+    {
+        // 판정 = 보이는 몸통 (#229). 클라 ResolveKindScale과 같은 사다리라
+        // 한쪽만 바뀌면 스프라이트와 판정이 어긋난다 — 여기서 잠근다.
+        Assert.Equal(SwarmArenaManager.ContactRange,
+            SwarmArenaManager.GetContactRadius(SwarmMonsterKind.Skeleton), 3);
+        Assert.Equal(SwarmArenaManager.ContactRange * 1.4f,
+            SwarmArenaManager.GetContactRadius(SwarmMonsterKind.DartGoblin), 3);
+        Assert.Equal(SwarmArenaManager.ContactRange * 2.4f,
+            SwarmArenaManager.GetContactRadius(SwarmMonsterKind.RunawayGoblin), 3);
+        Assert.Equal(SwarmArenaManager.ContactRange * 1.8f,
+            SwarmArenaManager.GetContactRadius(SwarmMonsterKind.TreeGiant), 3);
+
+        // 해골 반경은 몸통 반폭(0.31, 클라 실측)을 넘지 않는다.
+        Assert.True(SwarmArenaManager.GetContactRadius(SwarmMonsterKind.Skeleton) <= 0.32f);
     }
 
     [Fact]

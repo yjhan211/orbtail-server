@@ -30,13 +30,18 @@ public sealed class SwarmArenaManager
     //
     // 0.8 → 0.4 (#229 4단계-보정, 진단서 4번): 이 창이 플레이어당 전역이라 몇 마리가 붙어도
     // 초당 1.25대가 상한이었다 — 밀도를 4배로 올려도 위협은 그대로였고, 25마리 한가운데가
-    // 1마리와 같았다. 절반으로 줄여 둘러싸임이 실제로 아프게 만든다.
-    // 이게 뱀서 후반 위협의 정체다: TTK가 아니라 둘러싸임.
-    public const float ContactImmunitySeconds = 0.4f;
+    // 1마리와 같았다. 이게 뱀서 후반 위협의 정체다: TTK가 아니라 둘러싸임.
+    //
+    // 0.4 → 0.6 재조정 (사람 매치 2694 실측): 접촉 피해 상향과 겹쳐 과했다. 초당 1.1회 피격 ·
+    // 피격당 오염 1~2로 오염이 초당 1.93씩 차, 4분이면 아무것도 안 해도 만충이었다.
+    // 0.6이면 초당 상한 1.67회로 5분 매치 끝에 위험해지는 수준이 된다 — 수면으로 회복하면 산다.
+    public const float ContactImmunitySeconds = 0.6f;
 
-    // 접촉은 실제 겹침 수준에서만 성립해야 한다. 서버 위치는 클라이언트 예측보다
-    // 늦으므로 회피자에게 후한 쪽이 맞다.
-    public const float ContactRange = 0.45f;
+    // 접촉 반경 = 보이는 몸통 (#229, 클라 실측): 해골 몸통 스프라이트는 폭 0.62 · 반폭 0.31인데
+    // 판정은 전 종 고정 0.45였다 — 스프라이트보다 45% 큰 원이라 옆을 스쳐도 맞았다.
+    // 반폭에 맞춰 눕히고, 종별 크기는 GetContactRadius가 클라 ResolveKindScale과 같은 사다리로 따라간다.
+    // 서버 위치는 클라 예측보다 늦으므로 회피자에게 후한 쪽이 맞다.
+    public const float ContactRange = 0.32f;
     public const float ContactCooldownSeconds = 1f;
     public const float MonsterMoveSpeed = 4.2f;
     public const float RingTelegraphSeconds = 1f;
@@ -194,6 +199,21 @@ public sealed class SwarmArenaManager
         };
 
     /// <summary>보스 판별 (#223): 고정 포대·리스폰 없음·타원 판정 공유의 스위치.</summary>
+    /// <summary>
+    ///     종별 접촉 반경 (#229). 클라 ResolveKindScale과 같은 사다리를 쓴다 — 보이는 몸통이 판정이다.
+    ///     원거리 몹의 사거리(AttackRangeValue)는 별개다. 이건 부딪힘 반경만 정한다.
+    /// </summary>
+    public static float GetContactRadius(SwarmMonsterKind kind) => ContactRange * (kind switch
+    {
+        SwarmMonsterKind.RunawayGoblin => 2.4f,
+        SwarmMonsterKind.Bowler => 1.8f,
+        SwarmMonsterKind.TreeGiant => 1.8f,
+        SwarmMonsterKind.Golem => 1.7f,
+        SwarmMonsterKind.BabyDragon => 1.5f,
+        SwarmMonsterKind.DartGoblin => 1.4f,
+        _ => 1f
+    });
+
     public static bool IsBossKind(SwarmMonsterKind kind) =>
         kind is SwarmMonsterKind.Golem or SwarmMonsterKind.BabyDragon or SwarmMonsterKind.TreeGiant;
 
@@ -376,10 +396,13 @@ public sealed class SwarmArenaManager
                     continue;
 
                 // 잠든 원거리 몹은 저격하지 않는다 — 부딪힘(접촉 반경)만 개전이 된다.
-                float attackRange = monster.Aggro ? monster.AttackRangeValue : ContactRange;
-                // 보스 판정은 타원(dy×2) (#223): 범위 링 스프라이트가 아이소 타원이라
-                // 원형 판정이면 세로로 링 밖까지 맞는다 — PvP와 같은 규칙으로 표시 = 판정.
-                float verticalScale = IsBossKind(monster.Kind) ? 2f : 1f;
+                float attackRange = monster.Aggro && monster.AttackRangeValue > ContactRange
+                    ? monster.AttackRangeValue
+                    : GetContactRadius(monster.Kind);
+                // 접촉 판정도 타원(dy×2) (#229): 보스만 쓰던 아이소 보정을 전 종에 적용한다.
+                // 오브-플레이어 판정(IsInsideOrbHitEllipse)이 이미 쓰는 문법과 같다 —
+                // 화면 세로가 절반으로 압축돼 있어 정원 판정은 세로로 스프라이트 밖까지 맞는다.
+                const float verticalScale = 2f;
                 foreach (var participant in state.LastParticipants)
                 {
                     if (participant.Area != monster.Area)
