@@ -2731,7 +2731,8 @@ public sealed class SwarmArenaManager
         // 구역을 비웠다 돌아와도 살아남는다 — 들락날락으로 리셋되면 보상이 무제한이 된다.
         // 고정 풀에서 초당 충전으로 바뀌었다: 총량은 같고 분포만 고르다.
         public Dictionary<(AreaType Area, int PhaseIndex), (double Available, DateTime RefilledAtUtc)>
-            SupplyStoneBucket { get; } = new();
+            SupplyStoneBucket
+        { get; } = new();
 
         // 핵 보상 정산 (#229 4단계): 석을 준 (구역, 페이즈) 조합 — 같은 칸에서 두 번째 핵부터는 몸만.
         public HashSet<(AreaType Area, int PhaseIndex)> SupplyCoreRewarded { get; } = new();

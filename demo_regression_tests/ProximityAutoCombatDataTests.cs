@@ -227,8 +227,10 @@ public class ProximityAutoCombatDataTests
     public void FloatingValuePopup_SplitsDealtTakenAndRecovery()
     {
         string root = FindRepositoryRoot();
+        // 클래스·파일명은 MonsterDamageLabel로 바뀌었다 (CI의 ~Popup 네이밍 금지).
+        // 프리팹 에셋 경로는 그대로 두었으므로 아래 PrefabPath 단언은 유지한다.
         string source = ReadNormalizedSource(
-            root, "client", "Assets", "Scripts", "Components", "MapObject", "MonsterDamagePopup.cs");
+            root, "client", "Assets", "Scripts", "Components", "MapObject", "MonsterDamageLabel.cs");
 
         Assert.Contains("public static void ShowDamageDealt(", source);
         Assert.Contains("public static void ShowDamageTaken(", source);
