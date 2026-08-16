@@ -4439,15 +4439,31 @@ public partial class GameServer
                         SurvivorOrbData.GetSwarmPveAttackDamage(actor.WeaponItemId) *
                         sunAttackMultiplier))
                     : 0,
+                // 오브마다 제 박자를 준다 (2026-08-16 유저 판정: 일제사가 어색하다).
+                // 전 오브가 같은 주기를 쓰면 한 번에 쏘고 한 번에 쉬는 호흡이 되어, 서로 다른
+                // 시기에 붙은 오브들이 한 몸처럼 읽힌다. 슬롯마다 주기를 ±12% 흔들어
+                // 몇 발 만에 위상이 벌어지게 한다 — 평균 주기는 그대로라 화력 총량은 불변이고,
+                // 표적이 죽어 재조준이 겹쳐도 다시 흩어진다.
+                // 초기 지연으로 어긋내지 않는 이유: 재조준마다 그 지연을 다시 물어 DPS가 깎인다.
                 AttackIntervalSeconds = SurvivorOrbData.GetSwarmPveAttackIntervalSeconds(
-                    actor.WeaponItemId),
-                // 같은 발사 틱에는 전 오브가 함께 나가 성장한 일제사 화력을 읽게 한다.
+                    actor.WeaponItemId) * ResolveSwarmOrbCadenceJitter(index - before),
                 InitialAttackDelaySeconds = 0f,
                 // 이 공용 actor는 잔상 PvE에만 쓰인다. PvP 국소 사거리는 별도 공격 사건에서
                 // 오브별 원점을 기준으로 판정하므로, PvE의 같은 구역 사냥 범위는 유지한다.
                 AttackRange = SwarmPveSameAreaAttackRange
             };
         }
+    }
+
+    /// <summary>
+    ///     슬롯별 주기 배율 (0.88~1.12). 황금비 계단으로 흩어 몇 개가 붙든 값이 뭉치지 않게 한다.
+    ///     슬롯 인덱스만 보므로 같은 자리의 오브는 판 내내 같은 박자를 유지한다.
+    /// </summary>
+    private static float ResolveSwarmOrbCadenceJitter(int slotIndex)
+    {
+        float phase = slotIndex * 0.6180339f;
+        phase -= MathF.Floor(phase);
+        return 0.88f + phase * 0.24f;
     }
 
     // 국소 화망 (#227 6단계): 30 → 6.0. 사거리 30은 구역 전체를 덮어 후미 절단과 머리
