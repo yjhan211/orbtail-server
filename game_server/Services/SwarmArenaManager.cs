@@ -329,6 +329,12 @@ public sealed class SwarmArenaManager
     /// <summary>폐쇄된 구역은 신규 스폰을 멈춘다 — 잔존 몹은 이주로 처리된다.</summary>
     public Func<long, AreaType, bool>? IsAreaClosedResolver { get; set; }
 
+    /// <summary>
+    ///     문이 전부 닫혀 걸어 들어갈 수 없는 구역인가 (#229). 침투 스폰만 이 값을 본다 —
+    ///     운동장에서 출발한 잔상이 잠긴 문 앞에 줄지어 쌓이는 것을 막는다.
+    /// </summary>
+    public Func<long, AreaType, bool>? IsAreaSealedResolver { get; set; }
+
     /// <summary>매치가 시작됐는가. 없으면 시작된 것으로 본다 — 봇 전용 매치는 게이트가 없다.</summary>
     public Func<long, bool>? IsGameplayActiveResolver { get; set; }
 
@@ -1289,7 +1295,9 @@ public sealed class SwarmArenaManager
             // 공백은 카운트다운이 메운다 — 게이트 전에도 디렉터가 돌아 5초를 미리 걷는다.
             int spawned = SpawnSupplyMonsters(
                 state, zone, want, includeCore, phaseIndex, now, result,
-                candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true);
+                candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true,
+                isAreaSealed: candidate =>
+                    IsAreaSealedResolver?.Invoke(state.MatchingId, candidate) == true);
             if (spawned == 0)
             {
                 // 전 앵커가 플레이어 2.5m 안 — 1초 뒤 재검사.
@@ -1426,12 +1434,16 @@ public sealed class SwarmArenaManager
     private static int SpawnSupplyMonsters(
         MatchState state, AreaType area, int normals, bool includeCore,
         int phaseIndex, DateTime now, SwarmArenaTickResult result,
-        Func<AreaType, bool>? isAreaBlocked = null, bool infiltrate = true)
+        Func<AreaType, bool>? isAreaBlocked = null, bool infiltrate = true,
+        Func<AreaType, bool>? isAreaSealed = null)
     {
         var phase = SupplyPhases[phaseIndex];
         // 운동장 밖 구역은 침투로 채운다 — 발원은 운동장 중심, 아래 앵커는 도착지가 된다.
-        // 운동장 자신과 구역의 첫 무리는 제자리에 선다.
         infiltrate = infiltrate && area != SwarmInwardOriginArea;
+        // 문이 전부 잠긴 방에는 걸어 들어갈 수 없다 (#229): 경로는 성립하는데(게이지 문은
+        // 정적 잠금이 아니다) 실제 통행이 막혀 있어, 침투를 그대로 두면 문 앞에 줄이 쌓인다.
+        // 제자리 스폰으로 되돌린다 — 공급이 멎는 것보다 낫다.
+        infiltrate = infiltrate && !(isAreaSealed?.Invoke(area) ?? false);
         var center = BotPlayerManager.CellToWorldPosition(
             MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
         var anchors = new List<Vector3f>(CampsPerArea);
