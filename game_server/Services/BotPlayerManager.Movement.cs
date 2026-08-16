@@ -1245,6 +1245,20 @@ public partial class BotPlayerManager
         Vector3f newPosition;
         Vector3f velocity;
 
+        // 벽 판정 (2026-08-16 유저 제보: 봇이 문이 아니라 벽으로 넘어다닌다).
+        // WalkStep은 웨이포인트로 직선 이동만 했다 — 경로가 한 칸이라도 어긋나면 그대로 통과한다.
+        // 다음 웨이포인트가 비보행이면 그 경로는 이미 틀린 것이므로 버리고 다시 짠다.
+        // 이미 벽 안에 서 있는 개체는 막지 않는다 — 막으면 영영 못 빠져나온다.
+        if (!GameMapData.IsMoveablePosition(mapId, nextStep.Cell) &&
+            GameMapData.IsMoveablePosition(mapId, bot.Cell))
+        {
+            bot.Path.Clear();
+            bot.PathIndex = 0;
+            bot.MovementDestination = AreaType.None;
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.4, 0.9);
+            return null;
+        }
+
         if (dist <= maxDist || dist < 0.01f)
         {
             // 도달 → 다음 인덱스
