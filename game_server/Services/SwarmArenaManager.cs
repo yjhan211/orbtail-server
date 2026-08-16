@@ -1441,8 +1441,9 @@ public sealed class SwarmArenaManager
             if (customAnchorCell != null)
             {
                 anchors.Add(ClampToAreaWalkable(
-                    BotPlayerManager.CellToWorldPosition(MapId.School, customAnchorCell), center,
-                    area));
+                    BotPlayerManager.CellToWorldPosition(
+                        MapId.School, InsetAnchorFromAreaEdge(customAnchorCell, area)),
+                    center, area));
                 continue;
             }
 
@@ -2144,6 +2145,38 @@ public sealed class SwarmArenaManager
         if (GameMapData.IsMoveablePosition(
                 MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, slideY)))
             monster.Position = slideY;
+    }
+
+    /// <summary>
+    ///     방 벽에서 최소 여유 (#229). 구역 박스의 테두리 = 벽선인데 map_region.csv에는 방 둘레가
+    ///     obstacle로 적혀 있지 않다(행정실은 16×20 방에 obstacle 2줄뿐). 그래서 테두리 셀이
+    ///     "통행 가능"으로 통과하고, 거기서 태어난 잔상이 벽에 낀 채로 선다.
+    ///     저작 데이터를 고쳐도 다음에 앵커를 옮기면 또 나므로 코드에서 막는다.
+    /// </summary>
+    private const int AnchorAreaEdgeMargin = 3;
+
+    /// <summary>
+    ///     앵커를 구역 박스 안쪽으로 민다 (#229). 정상 저작된 방은 여유가 3~6칸이라
+    ///     이 보정이 아무 일도 하지 않는다 — 경계에 붙은 앵커만 걸린다.
+    /// </summary>
+    public static Cell InsetAnchorFromAreaEdge(Cell cell, AreaType area)
+    {
+        var region = GameMapData.GetAreas(MapId.School)
+            .FirstOrDefault(candidate => candidate.AreaType == area);
+        if (region == null)
+            return cell;
+
+        // 방이 여유의 두 배보다 좁으면 밀 자리가 없다 — 중앙만 남기고 포기한다.
+        int minX = region.Start.X + AnchorAreaEdgeMargin;
+        int maxX = region.End.X - AnchorAreaEdgeMargin;
+        int minY = region.Start.Y + AnchorAreaEdgeMargin;
+        int maxY = region.End.Y - AnchorAreaEdgeMargin;
+        if (minX > maxX || minY > maxY)
+            return cell;
+
+        int insetX = Math.Clamp(cell.X, minX, maxX);
+        int insetY = Math.Clamp(cell.Y, minY, maxY);
+        return insetX == cell.X && insetY == cell.Y ? cell : new Cell(insetX, insetY);
     }
 
     private static bool IsWalkableInArea(Vector3f position, AreaType area)

@@ -527,4 +527,33 @@ public class SwarmArenaManagerTests
 
         throw new DirectoryNotFoundException("Could not locate network/Common/csv.");
     }
+
+    [Fact]
+    public void CampAnchors_StayClearOfAreaWalls()
+    {
+        // #229: 구역 박스의 테두리가 곧 벽선인데 map_region.csv에는 방 둘레가 obstacle로
+        // 적혀 있지 않다. 그래서 테두리 앵커가 "통행 가능"으로 통과하고 잔상이 벽에 낀 채로 선다
+        // (행정실: 앵커 3개가 전부 경계 1칸 이내, 그중 둘은 경계선 위).
+        const int margin = 3;
+        foreach (var region in GameMapData.GetAreas(MapId.School))
+        {
+            if (region.End.X - region.Start.X < margin * 2 ||
+                region.End.Y - region.Start.Y < margin * 2)
+                continue;
+
+            for (int campIndex = 0; campIndex < 3; campIndex++)
+            {
+                var authored = GameMonsterCampData.GetAnchor(region.AreaType, campIndex);
+                if (authored == null) continue;
+
+                var inset = SwarmArenaManager.InsetAnchorFromAreaEdge(authored, region.AreaType);
+                int clearance = Math.Min(
+                    Math.Min(inset.X - region.Start.X, region.End.X - inset.X),
+                    Math.Min(inset.Y - region.Start.Y, region.End.Y - inset.Y));
+                Assert.True(clearance >= margin,
+                    $"{region.AreaType} 캠프 {campIndex} 앵커가 벽에 붙었다: " +
+                    $"({inset.X},{inset.Y}) 여유 {clearance}");
+            }
+        }
+    }
 }
