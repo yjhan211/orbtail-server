@@ -1764,11 +1764,20 @@ public sealed class SwarmArenaManager
                 monster.HomeArea)
                 return;
 
-            // 걸음에는 벽 판정을 걸지 않는다 (2026-08-16 유저 판정: 행정실에 못 들어온다).
-            // 문 셀은 정적 지도에서 비보행이라, 여기서 막으면 문틀 앞에서 웨이포인트를 버리다
-            // 경로를 다 태우고 걷힌다 — 계획 단계에서만 문틀을 통과로 봐 준 것이 반쪽이었다.
-            // 벽 관통은 TryPlanRoute가 이미 막는다: 문 한 칸 남짓을 넘는 비보행 구간이 있는
-            // 경로는 계획 단계에서 폐기되므로, 여기까지 온 경로는 걸어도 되는 경로다.
+            // 문틀은 밀고 지나되 벽 안에 멈추지는 않는다 (2026-08-16 유저 판정: 모서리에 끼는
+            // 몹이 많다). 벽 판정을 통째로 걷었더니 직선 이동이 구조물 안으로 파고들었고,
+            // 도착 후 충돌 판정이 있는 추격 이동이 그 자리에 몹을 붙여 놓았다.
+            // 비보행 칸을 밟는 것은 목표 웨이포인트가 보행 가능할 때만 허용한다 — 그러면
+            // 다음 틱에 반드시 빠져나온다. 웨이포인트 자체가 구조물 안이면 그 점을 버린다.
+            if (!GameMapData.IsMoveablePosition(
+                    MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, proposed)) &&
+                !GameMapData.IsMoveablePosition(
+                    MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, waypoint)))
+            {
+                monster.MarchIndex++;
+                continue;
+            }
+
             monster.Position = proposed;
             remaining -= step;
         }
@@ -1804,6 +1813,16 @@ public sealed class SwarmArenaManager
     /// <summary>침투 종료 — 도착 지점을 앵커로 삼고 그대로 교전에 들어간다.</summary>
     private static void ArriveFromInfiltration(MonsterRuntime monster)
     {
+        // 문틀을 밟은 채로 도착할 수 있다. 그대로 두면 충돌 판정이 있는 추격 이동이 갇히므로
+        // 보행 가능한 자리로 당겨 놓는다 (2026-08-16).
+        if (!GameMapData.IsMoveablePosition(
+                MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, monster.Position)))
+        {
+            var areaCenter = BotPlayerManager.CellToWorldPosition(
+                MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, monster.Area));
+            monster.Position = ClampToAreaWalkable(monster.Position, areaCenter, monster.Area);
+        }
+
         monster.Infiltrating = false;
         monster.MarchIsPursuit = false;
         monster.MarchWaypoints.Clear();
