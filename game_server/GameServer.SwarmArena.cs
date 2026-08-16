@@ -3478,8 +3478,21 @@ public partial class GameServer
     private const int SwarmGrowthCardArmor = 2;
 
     /// <summary>오퍼 시점에 확정되는 카드 구성 (#226 C 등급): 픽은 이 서술자를 그대로 집행한다.</summary>
+    // Cost는 대표값(가장 싼 카드)이고, 실제 차감·표시는 카드별 비용이 한다 (#229).
     private readonly record struct SwarmGrowthOfferState(
-        int OfferId, int Cost, int SpawnItemId, int EnhanceTargetTier, int ArmorCount);
+        int OfferId, int Cost, int SpawnItemId, int EnhanceTargetTier, int ArmorCount,
+        int CostSummon, int CostAttack, int CostDefense)
+    {
+        public int GetCost(int cardIndex) => cardIndex switch
+        {
+            SwarmGrowthCardMultiply => CostSummon,
+            SwarmGrowthCardEnhance => CostAttack,
+            SwarmGrowthCardArmor => CostDefense,
+            _ => Cost
+        };
+
+        public IReadOnlyList<int> CostList => new[] { CostSummon, CostAttack, CostDefense };
+    }
 
     private readonly Dictionary<(long MatchingId, long PlayerId), SwarmGrowthOfferState>
         _swarmGrowthOffers = new();
@@ -3544,16 +3557,31 @@ public partial class GameServer
     ///     성장 비용 (#229): 기본 = 5+2N, 오브 수 할증 없음, 최종 = min(21, 기본).
     ///     0오브는 최종 3으로 T1 재건을 보장한다.
     /// </summary>
-    private (int BaseCost, int Surcharge, int FinalCost, int OrbCount) GetSwarmGrowthCostBreakdown(
+    /// <summary>
+    ///     카드별 비용 (#229): 소환·공격 강화·방어 강화가 각자 자기 성공 횟수로 값을 매긴다.
+    ///     예전엔 셋이 한 카운터를 공유해 오브를 늘릴수록 강화가 비싸지고 그 반대도 됐다 —
+    ///     한 축에 투자하면 다른 축이 벌을 받는 구조라 빌드를 고르는 의미가 사라진다.
+    ///     BaseCost·Surcharge·FinalCost는 계측 호환을 위해 가장 싼 카드 기준으로 남긴다.
+    /// </summary>
+    private (int BaseCost, int Surcharge, int FinalCost, int OrbCount,
+        int CostSummon, int CostAttack, int CostDefense) GetSwarmGrowthCostBreakdown(
         long matchingId, long playerId)
     {
         var (orbCount, _) = GetSwarmOrbScore(matchingId, playerId);
+        int CardCost(int cardIndex) => Config.GetSwarmGrowthCardCost(
+            _summonStoneManager.GetGrowthSuccessCount(matchingId, playerId, cardIndex), orbCount);
+
+        int summon = CardCost(SwarmGrowthCardMultiply);
+        int attack = CardCost(SwarmGrowthCardEnhance);
+        int defense = CardCost(SwarmGrowthCardArmor);
+        int cheapest = Math.Min(summon, Math.Min(attack, defense));
         int growthCount = _summonStoneManager.GetGrowthSuccessCount(matchingId, playerId);
         return (
             Config.GetSwarmGrowthBaseCost(growthCount),
             Config.GetSwarmGrowthScoreSurcharge(orbCount),
-            Config.GetSwarmGrowthCardCost(growthCount, orbCount),
-            orbCount);
+            cheapest,
+            orbCount,
+            summon, attack, defense);
     }
 
     /// <summary>
@@ -3564,14 +3592,16 @@ public partial class GameServer
     ///     0오브(재건 보장): 비용 3의 T1 생성만 유효 — 이 재건도 N에 포함된다.
     /// </summary>
     private SwarmGrowthOfferState GenerateSwarmGrowthOffer(
-        long matchingId, long playerId, int finalCost, int qualityCost, int orbCount)
+        long matchingId, long playerId, int finalCost, int qualityCost, int orbCount,
+        int costSummon, int costAttack, int costDefense)
     {
         if (orbCount <= 0)
         {
             int rebuildItemId = SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)];
             return new SwarmGrowthOfferState(
                 _nextSwarmGrowthOfferId++, finalCost, rebuildItemId,
-                EnhanceTargetTier: 0, ArmorCount: 0);
+                EnhanceTargetTier: 0, ArmorCount: 0,
+                CostSummon: costSummon, CostAttack: costAttack, CostDefense: costDefense);
         }
 
         int spawnTier = 1;
@@ -3600,7 +3630,10 @@ public partial class GameServer
             finalCost,
             spawnItemId,
             GetSwarmEnhanceTargetTier(matchingId, playerId),
-            armorCount);
+            armorCount,
+            costSummon,
+            costAttack,
+            costDefense);
     }
 
     /// <summary>
@@ -3635,7 +3668,8 @@ public partial class GameServer
                     _swarmGrowthOfferResentAtUtc[key] = nowUtc;
                     session.SendSwarmGrowthOffer(
                         standing.OfferId, standing.Cost, standing.SpawnItemId,
-                        standing.EnhanceTargetTier, standing.ArmorCount);
+                        standing.EnhanceTargetTier, standing.ArmorCount,
+                        standing.CostSummon, standing.CostAttack, standing.CostDefense);
                 }
 
                 continue;
@@ -3643,7 +3677,7 @@ public partial class GameServer
             if (_swarmGrowthNextOfferAtUtc.TryGetValue(key, out var nextAtUtc) && nowUtc < nextAtUtc)
                 continue;
 
-            var (baseCost, surcharge, finalCost, orbCount) =
+            var (baseCost, surcharge, finalCost, orbCount, costSummon, costAttack, costDefense) =
                 GetSwarmGrowthCostBreakdown(matchingId, playerId);
             if (_summonStoneManager.GetSnapshot(matchingId, playerId).StoneCount < finalCost)
             {
@@ -3662,7 +3696,8 @@ public partial class GameServer
                 {
                     _swarmGrowthPreviewCost[key] = finalCost;
                     _swarmGrowthOfferResentAtUtc[key] = nowUtc;
-                    session.SendSwarmGrowthOffer(0, finalCost, 0, 0, 0);
+                    session.SendSwarmGrowthOffer(
+                        0, finalCost, 0, 0, 0, costSummon, costAttack, costDefense);
                 }
 
                 continue;
@@ -3670,12 +3705,15 @@ public partial class GameServer
 
             _swarmGrowthPreviewCost.Remove(key);
             _swarmGrowthOfferResentAtUtc.Remove(key);
-            var offer = GenerateSwarmGrowthOffer(matchingId, playerId, finalCost, baseCost, orbCount);
+            var offer = GenerateSwarmGrowthOffer(
+                matchingId, playerId, finalCost, baseCost, orbCount,
+                costSummon, costAttack, costDefense);
             _swarmGrowthOffers[key] = offer;
             _gameEventLogManager.LogSwarmGrowthOffered(
                 matchingId, playerId, isBot: false, baseCost, surcharge, finalCost, orbCount);
             session.SendSwarmGrowthOffer(
-                offer.OfferId, offer.Cost, offer.SpawnItemId, offer.EnhanceTargetTier, offer.ArmorCount);
+                offer.OfferId, offer.Cost, offer.SpawnItemId, offer.EnhanceTargetTier, offer.ArmorCount,
+                offer.CostSummon, offer.CostAttack, offer.CostDefense);
         }
 
         foreach (var bot in aliveBots)
@@ -3686,12 +3724,14 @@ public partial class GameServer
             if (_swarmGrowthNextOfferAtUtc.TryGetValue(key, out var nextAtUtc) && nowUtc < nextAtUtc)
                 continue;
 
-            var (baseCost, surcharge, finalCost, orbCount) =
+            var (baseCost, surcharge, finalCost, orbCount, costSummon, costAttack, costDefense) =
                 GetSwarmGrowthCostBreakdown(matchingId, bot.PlayerId);
             if (_summonStoneManager.GetSnapshot(matchingId, bot.PlayerId).StoneCount < finalCost)
                 continue;
 
-            var offer = GenerateSwarmGrowthOffer(matchingId, bot.PlayerId, finalCost, baseCost, orbCount);
+            var offer = GenerateSwarmGrowthOffer(
+                matchingId, bot.PlayerId, finalCost, baseCost, orbCount,
+                costSummon, costAttack, costDefense);
             int cardIndex = ChooseSwarmBotGrowthCard(
                 matchingId, bot, offer, orbCount, aliveSessions, aliveBots);
             bool applied = ApplySwarmGrowthCard(matchingId, bot.PlayerId, cardIndex, offer, session: null);
@@ -3699,11 +3739,13 @@ public partial class GameServer
             if (applied)
             {
                 int successCountBefore = _summonStoneManager.GetGrowthSuccessCount(matchingId, bot.PlayerId);
-                _summonStoneManager.RecordGrowthSuccess(matchingId, bot.PlayerId);
+                // 카드별 카운터는 봇도 함께 민다 (#229) — 안 그러면 봇만 값이 안 올라
+                // 사람보다 싸게 무한 성장하고, 봇 매치로 곡선을 검증할 수도 없다.
+                _summonStoneManager.RecordGrowthSuccess(matchingId, bot.PlayerId, cardIndex);
                 _gameEventLogManager.LogSwarmGrowthSelected(
                     matchingId, bot.PlayerId, isBot: true,
                     GetSwarmGrowthCardRole(cardIndex), GetSwarmGrowthCardGrade(cardIndex, offer),
-                    baseCost, surcharge, finalCost, successCountBefore, orbCount);
+                    baseCost, surcharge, offer.GetCost(cardIndex), successCountBefore, orbCount);
             }
         }
     }
@@ -3829,7 +3871,8 @@ public partial class GameServer
         }
 
         // 선택 시점 상태 (#226 F 계측): 비용 분해·오브 수는 적용 전 값을 남긴다.
-        var (baseCost, surcharge, _, orbCountBefore) = GetSwarmGrowthCostBreakdown(matchingId, playerId);
+        var (baseCost, surcharge, _, orbCountBefore, _, _, _) =
+            GetSwarmGrowthCostBreakdown(matchingId, playerId);
         bool success = ApplySwarmGrowthCard(matchingId, playerId, cardIndex, offer, session);
         if (success)
         {
@@ -3838,18 +3881,18 @@ public partial class GameServer
             _swarmGrowthNextOfferAtUtc[key] = DateTime.UtcNow.AddSeconds(SwarmGrowthOfferCooldownSeconds);
             // N 누적 (#226 C 잔여): 성공한 선택만 — 실패(재검증 탈락)는 비용 곡선을 밀지 않는다.
             int successCountBefore = _summonStoneManager.GetGrowthSuccessCount(matchingId, playerId);
-            _summonStoneManager.RecordGrowthSuccess(matchingId, playerId);
+            _summonStoneManager.RecordGrowthSuccess(matchingId, playerId, cardIndex);
             _gameEventLogManager.LogSwarmGrowthSelected(
                 matchingId, playerId, isBot: false,
                 GetSwarmGrowthCardRole(cardIndex), GetSwarmGrowthCardGrade(cardIndex, offer),
-                baseCost, surcharge, offer.Cost, successCountBefore, orbCountBefore);
+                baseCost, surcharge, offer.GetCost(cardIndex), successCountBefore, orbCountBefore);
         }
 
         session.SendSwarmGrowthResult(offerId, cardIndex, success);
         session.SendSummonStoneState();
         logger.LogInformation(
             "Swarm growth pick: MatchingId={MatchingId}, PlayerId={PlayerId}, Card={Card}, Cost={Cost}, Success={Success}",
-            matchingId, playerId, cardIndex, offer.Cost, success);
+            matchingId, playerId, cardIndex, offer.GetCost(cardIndex), success);
     }
 
     /// <summary>
@@ -3860,7 +3903,8 @@ public partial class GameServer
         long matchingId, long playerId, int cardIndex, SwarmGrowthOfferState offer,
         GameClientSession session)
     {
-        int cost = offer.Cost;
+        // 차감은 고른 카드의 값으로 (#229): 세 카드가 각자 자기 곡선을 탄다.
+        int cost = offer.GetCost(cardIndex);
         var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
         switch (cardIndex)
         {

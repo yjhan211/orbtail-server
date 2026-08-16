@@ -99,12 +99,29 @@ public sealed class SummonStoneManager
             return state.GrowthSuccessCount;
     }
 
-    /// <summary>성장 카드 성공 적용 시 1회 호출 — N 누적 (#226 C 잔여).</summary>
-    public void RecordGrowthSuccess(long matchingId, long playerId)
+    /// <summary>
+    ///     카드별 성장 성공 카운트 (#229): 소환·공격 강화·방어 강화가 각자 자기 곡선을 탄다.
+    ///     하나로 묶으면 오브를 늘릴수록 강화가 비싸지고 강화할수록 소환이 비싸져,
+    ///     세 선택이 서로의 값을 밀어 올리는 경제가 된다.
+    /// </summary>
+    public int GetGrowthSuccessCount(long matchingId, long playerId, int cardIndex)
     {
         var state = GetOrCreatePlayerState(matchingId, playerId);
         lock (state.SyncRoot)
+            return state.GrowthSuccessByCard.GetValueOrDefault(cardIndex);
+    }
+
+    /// <summary>성장 카드 성공 적용 시 1회 호출 — 전체 N과 카드별 N을 함께 누적한다.</summary>
+    public void RecordGrowthSuccess(long matchingId, long playerId, int cardIndex = -1)
+    {
+        var state = GetOrCreatePlayerState(matchingId, playerId);
+        lock (state.SyncRoot)
+        {
             state.GrowthSuccessCount++;
+            if (cardIndex >= 0)
+                state.GrowthSuccessByCard[cardIndex] =
+                    state.GrowthSuccessByCard.GetValueOrDefault(cardIndex) + 1;
+        }
     }
 
     /// <summary>
@@ -237,6 +254,9 @@ public sealed class SummonStoneManager
         // 성장 카드 성공 선택 횟수 N (#226 C 잔여): 비용 곡선 3+floor(N/3)의 단일 출처.
         // 오브가 잘려도 줄지 않는다 — 절단이 성장 시간을 초기화하지 못하게.
         public int GrowthSuccessCount { get; set; }
+
+        // 카드별 성장 성공 수 (#229): 0 소환 · 1 공격 강화 · 2 방어 강화.
+        public Dictionary<int, int> GrowthSuccessByCard { get; } = new();
     }
 }
 
