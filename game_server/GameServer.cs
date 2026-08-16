@@ -192,6 +192,9 @@ public partial class GameServer(
         // M4: 폐쇄 구역은 스웜 신규 스폰을 멈춘다 (잔존 몹은 ReclaimStrandedMonsters가 걷어냄)
         _swarmArenaManager.IsAreaClosedResolver =
             (matchingId, area) => _areaClosureManager.IsAreaClosed(matchingId, area);
+        // 인트로 산개 (2026-08-16): 카운트다운 동안에는 전 방을 공급 대상으로 열어
+        // 운동장에서 열 방향으로 실제 몹이 뻗어 나가게 한다.
+        _swarmArenaManager.IsGameplayActiveResolver = MatchStartGate.IsGameplayActive;
 
         try
         {

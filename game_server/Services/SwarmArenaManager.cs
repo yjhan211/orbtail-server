@@ -329,6 +329,9 @@ public sealed class SwarmArenaManager
     /// <summary>폐쇄된 구역은 신규 스폰을 멈춘다 — 잔존 몹은 이주로 처리된다.</summary>
     public Func<long, AreaType, bool>? IsAreaClosedResolver { get; set; }
 
+    /// <summary>매치가 시작됐는가. 없으면 시작된 것으로 본다 — 봇 전용 매치는 게이트가 없다.</summary>
+    public Func<long, bool>? IsGameplayActiveResolver { get; set; }
+
     private static int GetEscalationStage(double elapsedSeconds) =>
         elapsedSeconds >= EscalationStage2AtSeconds ? 2 :
         elapsedSeconds >= EscalationStage1AtSeconds ? 1 : 0;
@@ -1194,6 +1197,20 @@ public sealed class SwarmArenaManager
             occupied.Add(participant.Area);
         }
 
+        // 인트로 산개 (2026-08-16 유저 결정): 매치 시작 전에는 열린 방 전부를 공급 대상으로 본다.
+        // 점유 구역만 채우면 발원지에서 나가는 줄기가 플레이어가 선 방 하나뿐이라 "운동장에서
+        // 열 방향으로 뻗어 나간다"가 성립하지 않는다. 게이트가 풀리면 점유 규칙으로 돌아가고,
+        // 아무도 없는 방의 몹은 좌초 회수가 유예 뒤에 걷는다.
+        if (IsGameplayActiveResolver?.Invoke(state.MatchingId) == false)
+        {
+            foreach (var room in SurvivorRoyaleSpawnData.GetPhaseRoomCandidates())
+            {
+                if (IsAreaClosedResolver?.Invoke(state.MatchingId, room) == true)
+                    continue;
+                occupied.Add(room);
+            }
+        }
+
         // 예산 회수 (#229): 비점유·폐쇄 구역은 공급 상태를 버린다. 다시 점유되면 휴지 없이
         // 처음부터 채운다.
         foreach (var zone in state.SupplyZones.Keys.Where(zone => !occupied.Contains(zone)).ToList())
@@ -1263,14 +1280,12 @@ public sealed class SwarmArenaManager
                 continue;
 
             want = Math.Max(0, want);
-            // 첫 무리는 구역 안에 바로 세운다 (2026-08-16 실플레이 판정: 초반에 몹이 안 보인다).
-            // 침투는 운동장에서 걸어 들어오는 데 5~10초가 걸리는데, 그 시간이 판이 열리는 구간과
-            // 겹치면 방이 통째로 비어 성장 시작이 밀린다. 증원부터 운동장에서 밀려오게 한다 —
-            // "저기서 온다"는 읽기는 두 번째 파도부터 성립해도 충분하다.
+            // 첫 무리도 운동장에서 걸어 들어온다 (2026-08-16 유저 결정). 제자리 스폰으로 초반
+            // 공백을 메우려 했지만, 그러면 "운동장에서 각 방으로 나간다"는 그림 자체가 사라진다.
+            // 공백은 카운트다운이 메운다 — 게이트 전에도 디렉터가 돌아 5초를 미리 걷는다.
             int spawned = SpawnSupplyMonsters(
                 state, zone, want, includeCore, phaseIndex, now, result,
-                candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true,
-                infiltrate: zoneState.HasSpawned);
+                candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true);
             if (spawned == 0)
             {
                 // 전 앵커가 플레이어 2.5m 안 — 1초 뒤 재검사.
