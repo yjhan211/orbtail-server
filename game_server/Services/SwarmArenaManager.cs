@@ -1601,8 +1601,27 @@ public sealed class SwarmArenaManager
                 originCenter.Y + MathF.Sin(angle) * InfiltrationOriginRadius, 0f),
             originCenter, SwarmInwardOriginArea);
 
+        // 방을 통로로 쓰지 않는다 (2026-08-16 유저 판정). 구역 그래프에는 방끼리 붙은 간선이
+        // 있어(도서관→교실4, 도서관→창고2, 체육관→교실2 …) BFS가 최단 홉만 보고 방을 관통하는
+        // 경로를 고른다. 그러면 무리가 도서관에 들어갔다가 거기서 갈라지고, 방 안쪽 문에서 막힌다.
+        // 목적지 외의 방을 막으면 남는 길은 운동장·복도·정크장 같은 통로뿐이다 —
+        // 전 방이 그 길로 도달 가능한 것은 확인했다(행정실·교무실·창고2는 정크장 경유).
+        var rooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates();
+        bool RouteBlocked(AreaType candidate)
+        {
+            if (isAreaBlocked?.Invoke(candidate) == true)
+                return true;
+            if (candidate == destinationArea)
+                return false;
+
+            for (int index = 0; index < rooms.Count; index++)
+                if (rooms[index] == candidate)
+                    return true;
+            return false;
+        }
+
         return TryPlanRoute(
-            SwarmInwardOriginArea, origin, destinationArea, destination, isAreaBlocked, out route);
+            SwarmInwardOriginArea, origin, destinationArea, destination, RouteBlocked, out route);
     }
 
     /// <summary>

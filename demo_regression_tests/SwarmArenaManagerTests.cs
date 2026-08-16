@@ -53,7 +53,11 @@ public class SwarmArenaManagerTests
             Assert.Empty(manager.Tick(217001, Participants(startCenter, startRoom), now).SpawnedMonsters);
 
             // 목표 8을 유지한다 — 2초마다 부족분만큼 한 번에 붓고 쉰다.
-            for (double elapsed = 2d; elapsed <= 20d; elapsed += 0.25d)
+            // 창은 40초다 (2026-08-16): 공급이 운동장 발원 침투로 바뀐 뒤로 "구역에 서 있는 수"는
+            // 행군 시간만큼 뒤따라온다. 방을 통로로 쓰지 않게 되면서(도서관 관통 금지) 경로가
+            // 통로를 도는 만큼 길어져 20초 창에는 절반만 도착했다 — 목표 유지 자체는 성립하므로
+            // 도착까지 재는 창으로 넓힌다.
+            for (double elapsed = 2d; elapsed <= 40d; elapsed += 0.25d)
             {
                 now = StartUtc.AddSeconds(elapsed);
                 manager.Tick(217001, Participants(startCenter, startRoom), now);
