@@ -1693,9 +1693,10 @@ public sealed class SwarmArenaManager
     private static void AdvanceInfiltration(
         MonsterRuntime monster, double deltaSeconds, DateTime now, bool holdAtThreshold = false)
     {
-        // 인트로 예열: 배정 구역에 닿아도 들어가지 않고 문턱에 선다 (2026-08-16 유저 판정).
-        // "운동장에서 흩어지는 것이 시작"인데 카운트다운이 끝나기도 전에 각 방에 몹이 서 있으면
-        // 어디서 왔는지가 안 읽힌다. 매치가 열리는 순간 문이 터지듯 들이닥치게 남겨 둔다.
+        // 인트로 예열: 배정 구역 밖에서 멈춘다 (2026-08-16 유저 판정).
+        // "운동장에서 흩어지는 것이 시작"인데 카운트다운이 끝나기도 전에 방 안에 몹이 서 있으면
+        // 어디서 왔는지가 안 읽힌다. 방에 들어간 뒤 멈추면 플레이어 코앞에 뭉치기까지 한다 —
+        // 문턱을 넘기 직전에 세워, 매치가 열리는 순간 문을 통해 들이닥치게 한다.
         if (holdAtThreshold && monster.Area == monster.HomeArea)
             return;
 
@@ -1718,6 +1719,13 @@ public sealed class SwarmArenaManager
             var proposed = new Vector3f(
                 monster.Position.X + dx / distance * step,
                 monster.Position.Y + dy / distance * step, 0f);
+
+            // 예열 중에는 문턱을 넘지 않는다 — 한 발 앞이 배정 구역이면 거기서 선다.
+            if (holdAtThreshold &&
+                GameMapData.GetCurrentArea(
+                    MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, proposed)) ==
+                monster.HomeArea)
+                return;
 
             // 벽은 통과하지 않는다 (#229 침투 수리): 경로 중간 구간이 끊기면 BotPathfinder가
             // 그 구간을 통째로 생략하고 다음 문어귀 셀로 건너뛴다. 그대로 직선 이동하면 몹이
