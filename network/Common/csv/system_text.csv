@@ -375,3 +375,7 @@ id,category,text_kr,text_en,text_jp
 "12269","7","영구 레벨은 PvE 피해만 강화합니다.","Permanent levels increase PvE damage only.","永続レベルはPvEダメージのみ強化します。"
 "12270","7","출전 중","Active","出撃中"
 "12271","7","잠김","Locked","ロック中"
+"12272","7","소환석이 부족합니다.","Not enough summon stones.","召喚石が足りません。"
+"12273","7","강화할 오브가 없습니다.","No orb to enhance.","強化できるオーブがありません。"
+"12274","7","외피를 씌울 오브가 없습니다.","No orb to armor.","外皮を付けられるオーブがありません。"
+"12275","7","아직 성장할 수 없습니다.","Growth is not available yet.","まだ成長できません。"
