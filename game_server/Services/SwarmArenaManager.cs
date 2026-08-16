@@ -197,6 +197,16 @@ public sealed class SwarmArenaManager
     // 해골: 무해한 코인 파밍 무리. 다트: 원거리 단발. 탈주: 접촉 강펀치 브루저. 볼러: 범위 투척.
     public const float BowlerSplashRadius = 1.5f;
 
+    // 파도 문양 몹 (2026-08-16 유저 결정): 몸통박치기 대신 거리를 두고 플레이어 주변을
+    // 때린다 — 보드의 파도 오브(물폭탄)와 같은 문법이라, 문양이 곧 그 몹의 공격 방식이 된다.
+    // 사거리를 두면 이동 로직의 원거리 분기(RangedHoldRangeRatio)가 그대로 붙어 파고들지 않는다.
+    public const float WavePatternAttackRange = 3.2f;
+    public const float WavePatternSplashRadius = 2.2f;
+    private const float WavePatternAttackCooldownSeconds = 2.2f;
+
+    /// <summary>파도 문양(Encircle 패턴) 몹인가 — 표기 문양과 공격 방식이 같은 근거를 쓴다.</summary>
+    public static bool IsWavePatternMonster(SwarmPattern pattern) => pattern == SwarmPattern.Encircle;
+
     public static (int MaxHp, int OrbDamage, float AttackRange, float AttackCooldownSeconds, int StoneReward,
         int HeartReward, int BootsReward, int KeyReward)
         GetKindStats(SwarmMonsterKind kind) => kind switch
@@ -247,6 +257,18 @@ public sealed class SwarmArenaManager
         lock (state.SyncRoot)
         {
             return state.Monsters.TryGetValue(monsterId, out var monster) && IsBossKind(monster.Kind);
+        }
+    }
+
+    /// <summary>파도 문양 몹인가 — 원거리 범위공격이라 공격 연출을 따로 보내야 읽힌다.</summary>
+    public bool IsWavePatternMonster(long matchingId, int monsterId)
+    {
+        if (!_matches.TryGetValue(matchingId, out var state))
+            return false;
+        lock (state.SyncRoot)
+        {
+            return state.Monsters.TryGetValue(monsterId, out var monster) &&
+                   !IsBossKind(monster.Kind) && IsWavePatternMonster(monster.Pattern);
         }
     }
 
@@ -461,8 +483,13 @@ public sealed class SwarmArenaManager
 
                     // 볼러 스플래시: 주 대상 주변까지 함께 맞는다 — 뭉치기 견제.
                     // 골렘(#223)도 공유 — 광역 강타가 보스 접근전의 특수공격 근사다.
-                    if (monster.Kind is SwarmMonsterKind.Bowler or SwarmMonsterKind.Golem)
+                    // 파도 문양 몹도 같은 경로를 쓰되 반경이 더 넓다 — 물폭탄이 플레이어 발밑에서
+                    // 터지는 그림이라, 붙어 있는 사람이 같이 맞는 것이 규칙이다.
+                    bool wavePattern = IsWavePatternMonster(monster.Pattern) && !IsBossKind(monster.Kind);
+                    if (wavePattern ||
+                        monster.Kind is SwarmMonsterKind.Bowler or SwarmMonsterKind.Golem)
                     {
+                        float splashRadius = wavePattern ? WavePatternSplashRadius : BowlerSplashRadius;
                         foreach (var splashed in state.LastParticipants)
                         {
                             if (splashed.PlayerId == participant.PlayerId ||
@@ -470,7 +497,7 @@ public sealed class SwarmArenaManager
                                 continue;
                             float sx = splashed.Position.X - participant.Position.X;
                             float sy = splashed.Position.Y - participant.Position.Y;
-                            if (sx * sx + sy * sy > BowlerSplashRadius * BowlerSplashRadius)
+                            if (sx * sx + sy * sy > splashRadius * splashRadius)
                                 continue;
                             if (state.ContactImmuneUntilUtc.TryGetValue(splashed.PlayerId, out var splashImmune) &&
                                 now < splashImmune)
@@ -1497,8 +1524,12 @@ public sealed class SwarmArenaManager
                 ContactDamageValue = contactDamage,
                 Kind = kind,
                 MaxHealthValue = maxHp,
-                AttackRangeValue = stats.AttackRange,
-                AttackCooldownValue = stats.AttackCooldownSeconds,
+                AttackRangeValue = IsWavePatternMonster(pattern) && !isCore
+                    ? WavePatternAttackRange
+                    : stats.AttackRange,
+                AttackCooldownValue = IsWavePatternMonster(pattern) && !isCore
+                    ? WavePatternAttackCooldownSeconds
+                    : stats.AttackCooldownSeconds,
                 AnchorX = position.X,
                 AnchorY = position.Y
             };

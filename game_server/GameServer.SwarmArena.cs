@@ -3152,7 +3152,10 @@ public partial class GameServer
 
         // 보스 공격 연출 (#223): 고정 포대의 원거리 타격은 투사체로 보여야 읽힌다 —
         // 같은 구역 전원에게 공격 VFX를 쏘고, 클라가 보스 여부(피통)로 투사체를 그린다.
-        if (_swarmArenaManager.IsBossMonster(matchingId, damage.MonsterId))
+        // 파도 문양 몹도 같다 (2026-08-16): 붙지 않고 거리에서 때리므로, 연출이 없으면
+        // 어디서 맞았는지 읽히지 않는다.
+        if (_swarmArenaManager.IsBossMonster(matchingId, damage.MonsterId) ||
+            _swarmArenaManager.IsWavePatternMonster(matchingId, damage.MonsterId))
         {
             using var vfxPacket = Packet.Create((int)Protocol.G_TO_C_MONSTER_ATTACK_VFX);
             vfxPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_ATTACK_VFX
