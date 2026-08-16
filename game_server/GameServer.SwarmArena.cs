@@ -400,24 +400,48 @@ public partial class GameServer
                 broadcastVfx: false);
         }
 
+        // 본체 위치 사전 — PvP 사거리를 본체 기준으로 재기 위한 조회표.
+        // 본체 액터는 무기 없는 순수 표적이다(WeaponItemId == 0).
+        var swarmBodyPositions = new Dictionary<long, Vector3f>();
+        foreach (var actor in actors)
+        {
+            if (actor.WeaponItemId == 0 && !actor.IsMonsterTarget)
+                swarmBodyPositions[actor.PlayerId] = actor.Position;
+        }
+
         var attacks = _proximityAutoCombatResolver.Resolve(
             matchingId,
             actors,
             nowUtc,
             // 유저간 공격도 같은 리졸버가 담당한다 (2026-08-16 유저 결정: 몹이랑 똑같이
             // 유도탄으로). 아래 루프의 태양·바람 분기가 몹 사격과 같은 발사 연출
-            // (BroadcastSpotArenaAttackVfxToTargetAndObservers)과 비행시간 착탄을 쓰므로,
-            // 필터만 넓히면 사람 표적도 같은 유도탄으로 나간다.
+            // (BroadcastSpotArenaAttackVfxToTargetAndObservers)과 비행시간 착탄을 쓴다.
             //
-            // 판정도 PvE와 완전히 같게 둔다 (2026-08-16 유저 판정: 사거리가 너무 좁다).
-            // 처음엔 사람 표적에만 오브별 PvP 사거리(6)와 등거리 타원을 얹었는데, 그 타원은
-            // dy를 2배로 보정하므로 세로 유효 사거리가 절반(3)이다 — 리졸버가 평범한
-            // 유클리드로 재는 PvE 7과 비교하면 훨씬 좁은 판정이었다. 사거리는 리졸버가
-            // 액터 AttackRange(7)로 일괄 판정하고, 여기서는 구역만 본다.
-            // 파도는 액터 Damage가 0이라 리졸버가 공격자에서 제외한다 — 별도 배제 불필요.
-            // 표적 우선순위는 이미 본체·몹 동급(2)이라 최근접이 이긴다 — 적이 있다고 파밍이
-            // 죽지 않는다(#226 표적 정책).
-            (attacker, target) => !attacker.IsMonsterTarget && attacker.Area == target.Area);
+            // PvP 제한 (2026-08-16 유저 명세): 자동 공격과 절단이 서로 다른 것을 건드려야
+            // 한다. 자동 공격은 본체를 서서히 압박하고, 오브 손실은 충돌 절단으로만 난다
+            // (오브 HP 전투는 SwarmOrbHealthEnabled=false로 이미 퇴역).
+            // 전체 오브가 사람을 쏘면 20개 꼬리가 3개 꼬리를 그대로 녹인다 — 앞열 3개로
+            // 끊어, 오브 수는 PvE 성장과 절단 위험만 키우고 원거리 PvP 화력은 상한을 갖는다.
+            // 사거리도 PvE(7)보다 짧은 5로 둔다 — 붙어야 싸운다.
+            (attacker, target) =>
+            {
+                if (attacker.IsMonsterTarget || attacker.Area != target.Area)
+                    return false;
+                if (target.IsMonsterTarget)
+                    return true;
+                if (attacker.TrailOrdinal >= Config.SWARM_PVP_ORB_COUNT)
+                    return false;
+
+                // 사거리는 오브가 아니라 본체 기준이다 (2026-08-16 유저 요청: 사거리 표시).
+                // 오브별 원점으로 재면 꼬리가 길수록 사정권이 늘어 "오브 수는 PvP 화력을
+                // 키우지 않는다"는 규칙과 어긋나고, 링 하나로 표시할 수도 없다.
+                if (!swarmBodyPositions.TryGetValue(attacker.PlayerId, out var attackerBody))
+                    attackerBody = attacker.Position;
+                float dx = target.Position.X - attackerBody.X;
+                float dy = target.Position.Y - attackerBody.Y;
+                return dx * dx + dy * dy <=
+                       Config.SWARM_PVP_ATTACK_RANGE * Config.SWARM_PVP_ATTACK_RANGE;
+            });
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
         {
@@ -1917,6 +1941,13 @@ public partial class GameServer
             _swarmTrailLastTickPositions[positionKey] =
                 new Vector3f(cutter.Position.X, cutter.Position.Y, 0f);
             if (!hasPrevious)
+                continue;
+            // 무오브는 절단할 수 없다 (2026-08-16 유저 명세). 자동 공격도 절단도 못 하는
+            // 상태라야 "살아 있지만 전투력을 잃어 재건에 집중하는 패배 직전"이 성립한다 —
+            // 지금은 빈손으로 남의 꼬리만 끊고 다니는 무적 훼방꾼이 될 수 있다.
+            // 위치 기록은 위에서 이미 갱신했다 — 재건 직후 첫 틱부터 다시 자를 수 있다.
+            // chains는 오브가 있는 사람만 담으므로 이 검사가 곧 보유 검사다.
+            if (!chains.ContainsKey(cutter.PlayerId))
                 continue;
             TryPerformSwarmTrailCut(matchingId, cutter.PlayerId, cutter.PlayerId, cutter.Area,
                 previous, cutter.Position, chains, nowUtc, aliveSessions, aliveBots, allSessions);
@@ -4494,7 +4525,9 @@ public partial class GameServer
             actor = actor with
             {
                 Position = trailPosition,
-                Cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, trailPosition)
+                Cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, trailPosition),
+                // 열 순번을 실어 보낸다 — PvP 참여 오브를 앞열 N개로 끊는 근거.
+                TrailOrdinal = index - before
             };
             // 오브는 표적이 아니다 (#226 재개편): 발사 원점으로만 존재 — 파괴는 절단 전용.
             actor = actor with { Untargetable = true };

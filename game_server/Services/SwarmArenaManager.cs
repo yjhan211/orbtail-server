@@ -374,6 +374,17 @@ public sealed class SwarmArenaManager
     /// <summary>매치가 시작됐는가. 없으면 시작된 것으로 본다 — 봇 전용 매치는 게이트가 없다.</summary>
     public Func<long, bool>? IsGameplayActiveResolver { get; set; }
 
+    /// <summary>
+    ///     오브가 하나도 없는가 (2026-08-16 유저 명세: 무오브는 잔상의 우선 표적).
+    ///     무오브는 자동 공격도 절단도 못 하므로, 잔상까지 남을 쫓으면 구석에서 재건하는
+    ///     동안 아무 압력도 안 받는다 — 그러면 무오브가 안전지대가 된다.
+    ///     주인 배정·재배정에서 무오브를 먼저 채운다.
+    /// </summary>
+    public Func<long, long, bool>? IsPlayerOrblessResolver { get; set; }
+
+    private bool IsOrbless(long matchingId, long playerId) =>
+        IsPlayerOrblessResolver?.Invoke(matchingId, playerId) == true;
+
     private static int GetEscalationStage(double elapsedSeconds) =>
         elapsedSeconds >= EscalationStage2AtSeconds ? 2 :
         elapsedSeconds >= EscalationStage1AtSeconds ? 1 : 0;
@@ -475,7 +486,8 @@ public sealed class SwarmArenaManager
                 if (RegionSupplyModeEnabled)
                 {
                     UpdateSupplyMonsterMovement(
-                        state, monster, state.LastParticipants, now, moveDeltaSeconds, preMatch);
+                        state, monster, state.LastParticipants, now, moveDeltaSeconds, preMatch,
+                        playerId => IsOrbless(state.MatchingId, playerId));
                     // 벽 탈출 안전망 (2026-08-16 유저 제보: 운동장에 벽에 낀 몹이 많다).
                     // 스폰·행군·추격 어느 경로로 들어갔든, 비보행 칸에 선 개체는 매 틱
                     // 보행 가능한 자리로 당긴다 — 원인을 하나 놓쳐도 화면에는 남지 않는다.
@@ -1213,10 +1225,12 @@ public sealed class SwarmArenaManager
     ///     탈락했을 때 몹을 넘길 곳을 고른다.
     /// </summary>
     private static long ClaimLeastLoadedOwner(
-        MatchState state, AreaType area, IReadOnlyList<SpotArenaPlayerSpatial> participants)
+        MatchState state, AreaType area, IReadOnlyList<SpotArenaPlayerSpatial> participants,
+        Func<long, bool>? isOrbless)
     {
         long chosen = 0;
         int least = int.MaxValue;
+        bool chosenOrbless = false;
         for (int index = 0; index < participants.Count; index++)
         {
             var participant = participants[index];
@@ -1228,6 +1242,18 @@ public sealed class SwarmArenaManager
             {
                 if (candidate.Alive && candidate.OwnerPlayerId == participant.PlayerId)
                     load++;
+            }
+
+            // 무오브 우선 (2026-08-16 유저 명세).
+            bool orbless = isOrbless?.Invoke(participant.PlayerId) == true;
+            if (chosenOrbless && !orbless)
+                continue;
+            if (orbless && !chosenOrbless)
+            {
+                chosenOrbless = true;
+                least = load;
+                chosen = participant.PlayerId;
+                continue;
             }
 
             if (load >= least)
@@ -1471,7 +1497,8 @@ public sealed class SwarmArenaManager
                 state, zone, want, includeCore, phaseIndex, now, result,
                 candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true,
                 infiltrate: true,
-                roster: roster);
+                roster: roster,
+                isOrbless: playerId => IsOrbless(state.MatchingId, playerId));
             if (spawned == 0)
             {
                 // 전 앵커가 플레이어 2.5m 안 — 1초 뒤 재검사.
@@ -1613,7 +1640,7 @@ public sealed class SwarmArenaManager
         MatchState state, AreaType area, int normals, bool includeCore,
         int phaseIndex, DateTime now, SwarmArenaTickResult result,
         Func<AreaType, bool>? isAreaBlocked = null, bool infiltrate = true,
-        IReadOnlyList<long>? roster = null)
+        IReadOnlyList<long>? roster = null, Func<long, bool>? isOrbless = null)
     {
         var phase = SupplyPhases[phaseIndex];
         // 주인 배정 준비 (2026-08-16): 이 구역 사람들의 현재 담당 수를 세어 둔다. 스폰할 때마다
@@ -1637,10 +1664,24 @@ public sealed class SwarmArenaManager
             if (ownerLoad.Count == 0)
                 return 0;
 
+            // 무오브 우선 (2026-08-16 유저 명세): 무오브는 자동 공격도 절단도 못 하므로,
+            // 잔상까지 남을 쫓으면 구석에서 재건하는 동안 아무 압력도 안 받는다.
             long chosen = 0;
             int least = int.MaxValue;
+            bool chosenOrbless = false;
             foreach (var (playerId, load) in ownerLoad)
             {
+                bool orbless = isOrbless?.Invoke(playerId) == true;
+                if (chosenOrbless && !orbless)
+                    continue;
+                if (orbless && !chosenOrbless)
+                {
+                    chosenOrbless = true;
+                    least = load;
+                    chosen = playerId;
+                    continue;
+                }
+
                 if (load >= least)
                     continue;
                 least = load;
@@ -2187,7 +2228,8 @@ public sealed class SwarmArenaManager
         IReadOnlyList<SpotArenaPlayerSpatial> participants,
         DateTime now,
         double deltaSeconds,
-        bool holdAtThreshold = false)
+        bool holdAtThreshold = false,
+        Func<long, bool>? isOrbless = null)
     {
         // 침투 행군 (#229): 배정 구역에 닿기 전까지는 경로를 따라 걷는다. 도중에 어그로 반경 안
         // 참가자를 만나면 거기서 멈추고 붙는다 — 지나는 길목이 곧 전장이다.
@@ -2243,7 +2285,7 @@ public sealed class SwarmArenaManager
         if (!found && monster.OwnerPlayerId != 0)
         {
             monster.OwnerPlayerId = 0;
-            long reassigned = ClaimLeastLoadedOwner(state, monster.Area, participants);
+            long reassigned = ClaimLeastLoadedOwner(state, monster.Area, participants, isOrbless);
             if (reassigned != 0)
             {
                 monster.OwnerPlayerId = reassigned;

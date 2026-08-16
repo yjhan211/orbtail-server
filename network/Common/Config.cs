@@ -308,6 +308,21 @@ namespace network.common
         public const float SWARM_ORB_ATTACK_RANGE = 2.5f;
 
         /// <summary>
+        ///     유저간 사격 사거리 (2026-08-16 유저 명세). PvE(7)보다 짧게 — 붙어야 싸운다.
+        ///     플레이어 본체 기준으로 잰다: 오브별 원점으로 재면 꼬리가 길수록 사정권이
+        ///     늘어나 "오브 수는 PvP 화력을 키우지 않는다"는 규칙과 어긋나고, 링 하나로
+        ///     표시할 수도 없다. 클라 표시(PlayerRangeRing)가 같은 값을 읽는다.
+        /// </summary>
+        public const float SWARM_PVP_ATTACK_RANGE = 5f;
+
+        /// <summary>
+        ///     유저간 사격에 참여하는 오브 수 = 앞열 이만큼 (2026-08-16 유저 명세).
+        ///     전체 오브가 사람을 쏘면 20개 꼬리가 3개 꼬리를 그대로 녹인다. 상한을 두면
+        ///     오브 수는 PvE 성장과 절단 위험만 키우는 축이 된다.
+        /// </summary>
+        public const int SWARM_PVP_ORB_COUNT = 3;
+
+        /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.
         /// 데이터와 프로토콜은 보존하므로 레거시 모드가 다시 분리되면 이 게이트로 복구할 수 있다.
         /// </summary>

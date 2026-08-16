@@ -195,6 +195,11 @@ public partial class GameServer(
         // 인트로 산개 (2026-08-16): 카운트다운 동안에는 전 방을 공급 대상으로 열어
         // 운동장에서 열 방향으로 실제 몹이 뻗어 나가게 한다.
         _swarmArenaManager.IsGameplayActiveResolver = MatchStartGate.IsGameplayActive;
+        // 무오브 우선 표적 (2026-08-16 유저 명세): 잔상 주인 배정·재배정이 이걸 본다.
+        // 무오브는 자동 공격도 절단도 못 하므로, 잔상까지 남을 쫓으면 재건하는 동안
+        // 아무 압력도 안 받아 무오브가 안전지대가 된다.
+        _swarmArenaManager.IsPlayerOrblessResolver =
+            (matchingId, playerId) => !HasAnySquadOrb(matchingId, playerId);
 
         try
         {
