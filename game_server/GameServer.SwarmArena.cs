@@ -3143,9 +3143,6 @@ public partial class GameServer
     private int GetSwarmBotExploreCost(long matchingId, long botPlayerId) =>
         GetSwarmGrowthCostBreakdown(matchingId, botPlayerId).FinalCost + Config.SWARM_BOX_OPEN_COST;
 
-    // #219 밸런스: 몹→참가자 피해 절반 (2026-08-08) — 시작 1오브 체제에서 몹 접촉이
-    // 과열돼 "계속 죽는" 판정. 해골(1)은 최소 1 유지, 다트 2→1 · 탈주 5→3 · 볼러 2→1.
-    private const float SwarmMonsterDamageTakenMultiplier = 0.5f;
 
     private void ApplySwarmParticipantDamage(
         long matchingId,
@@ -3154,11 +3151,11 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        damage = damage with
-        {
-            Damage = Math.Max(1,
-                (int)MathF.Round(damage.Damage * SwarmMonsterDamageTakenMultiplier))
-        };
+        // 피해 반감은 퇴역했다 (2026-08-16 유저 판정: 몹이 위협적이지 않다).
+        // 2026-08-08의 절반 감쇠는 "시작 1오브 + 앵커에 잠든 몹" 체제에 맞춘 값이었다.
+        // 지금은 몹이 운동장에서 걸어와 구역 전체를 쫓으므로 접촉 빈도 자체가 다르다 —
+        // 감쇠를 걷어 페이즈 곡선(접촉 2/3/4/6/8)이 위협을 그대로 소유하게 한다.
+        // T1 오브(24) 기준 연속 접촉 파괴까지 7.2초 → 1.8초로 판이 갈수록 조여든다.
 
         // 보스 공격 연출 (#223): 고정 포대의 원거리 타격은 투사체로 보여야 읽힌다 —
         // 같은 구역 전원에게 공격 VFX를 쏘고, 클라가 보스 여부(피통)로 투사체를 그린다.

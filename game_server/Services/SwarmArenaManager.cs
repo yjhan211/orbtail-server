@@ -133,6 +133,10 @@ public sealed class SwarmArenaManager
     // 목표치가, 후반에는 이 값이 한 웨이브 크기를 정한다.
     private const double SupplyTopUpIntervalSeconds = 2d;
     private const int SupplyTopUpCount = 20;
+    // 일반 몹 하트 드롭 확률 (2026-08-16). 처치율 2~3/초 기준 12~20초에 하나꼴 —
+    // 흐름이 끊기지 않을 만큼만이고, 몰아 잡을수록 회복도 몰린다.
+    private const double SupplyHeartDropChance = 0.03d;
+
     // 구역 전멸 뒤 휴지: 짧은 수면 창이 성장의 보상이다 (#229 완료 조건 2).
     private const double SupplyWipeRestSeconds = 4d;
     // 플레이어 2.5m 안의 앵커에는 즉시 생성하지 않는다 — 전 앵커가 막히면 1초 뒤 재검사.
@@ -1550,7 +1554,15 @@ public sealed class SwarmArenaManager
                 NextContactAtUtc = now,
                 ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
                 SummonStoneReward = stoneReward,
-                HeartReward = stats.HeartReward,
+                // 회복 공급 (2026-08-16 유저 결정: 회복이 수면밖에 없다). 종 기본값으로는
+                // 하트가 핵(탈주)에서만 나오고 핵은 페이즈 2부터라, 초중반에 회복 수단이 없다.
+                // 일반 몹에 낮은 확률로 얹어 판 내내 흘러나오게 한다 — 상자 탐색이 꺼진 뒤로는
+                // 이 경로가 유일한 즉시 회복 공급처다.
+                HeartReward = stats.HeartReward > 0
+                    ? stats.HeartReward
+                    : state.Rng.NextDouble() < SupplyHeartDropChance
+                        ? 1
+                        : 0,
                 BootsReward = stats.BootsReward,
                 KeyReward = stats.KeyReward,
                 ContactDamageValue = contactDamage,
