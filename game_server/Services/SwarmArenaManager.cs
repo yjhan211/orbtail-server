@@ -100,7 +100,15 @@ public sealed class SwarmArenaManager
     // HP를 16/17/19/21/22로 눕혀 T1은 전 구간 2방으로 고정하고, T2(발당 21)를 얻는 순간이
     // 곧 "한 방이 되는 순간"이 되게 한다. 핵 HP 곡선은 유지한다 — 핵은 "아직 한 방이 아닌 것"의
     // 눈금자다.
-    private static readonly (double UntilSeconds, int ZoneTarget, int NormalHp, int ContactDamage,
+    // 목표는 구역이 아니라 사람 단위다 (2026-08-16 유저 판정: 몹 곡선이 거꾸로 간다).
+    // 구역 절대값이던 시절, 목표는 그 방에 몇 명이 서 있든 같았다 — 초반 교실에 혼자면 8마리를
+    // 독차지하지만 후반 운동장에 8명이 모이면 28마리를 나눠 3.5마리가 됐다. 폐쇄로 방이 줄고
+    // 사람이 겹칠수록 1인당 밀도가 떨어지는 구조라, 매치 2749에서 처치가 1121→344로 반토막
+    // 나고 소환석도 585→122로 말랐다. 뱀서라이크는 시간이 갈수록 감당이 안 되는 게 전부인데
+    // 정확히 반대로 갔다.
+    // 인당 목표로 바꾸면 혼자 있을 때의 체감은 그대로고(1명 × 목표 = 예전 구역 목표),
+    // 모일수록 총량이 따라 붙어 밀도가 유지된다.
+    private static readonly (double UntilSeconds, int PerPlayerTarget, int NormalHp, int ContactDamage,
         int CoreHp, int StoneBudget)[] SupplyPhases =
     [
         // 곡선 (2026-08-16 유저 판정: 몹이 너무 약하고 너무 많이 나온다).
@@ -174,8 +182,18 @@ public sealed class SwarmArenaManager
     // 시뮬은 전역, 동기화는 내 구역뿐이라 한 사람이 받는 양은 구역 목표를 넘지 않는다.
     private const int SupplyGlobalAliveHardCap = 420;
 
-    private static int GetSupplyGlobalAliveCap(int occupiedZoneCount, int zoneTarget) =>
-        Math.Min(SupplyGlobalAliveHardCap, Math.Max(zoneTarget, occupiedZoneCount * zoneTarget));
+    // 한 구역이 인당 목표의 몇 명분까지 부풀 수 있는지 (2026-08-16). 인당 비례를 그대로 두면
+    // 최종 페이즈에 8명이 운동장에 모일 때 224마리가 한 화면에 서고, 클라 렌더 부하가 검증된
+    // 적이 없다. 4명분에서 끊어 두면 그래도 1인당 14마리로 지금(3.5마리)의 4배다.
+    private const int SupplyZoneCrowdCap = 4;
+
+    /// <summary>
+    ///     구역 목표 = 인당 목표 × 그 구역에 선 사람 수. 최소 1명분은 항상 준다 —
+    ///     인트로 산개는 아무도 없는 방을 대상으로 돌고, 사람이 막 빠져나간 방도 다음 틱까지는
+    ///     채워져 있어야 한다.
+    /// </summary>
+    private static int GetSupplyZoneTarget(int perPlayerTarget, int playersInZone) =>
+        perPlayerTarget * Math.Clamp(playersInZone, 1, SupplyZoneCrowdCap);
     // 1초 예고는 밀도 램프에서 실질 병목이 된다 — 초당 10마리를 채우는데 전부 1초를 서 있으면
     // 화면에 "아직 안 깨어난 몹"만 쌓인다 (#229 4단계-보정).
     private const float SupplyTelegraphSeconds = 0.4f;
@@ -1297,13 +1315,15 @@ public sealed class SwarmArenaManager
 
         // 점유 = 살아있는 참가자가 서 있는 구역. 폐쇄 구역은 즉시 제외한다 — 폐쇄 구역에
         // 쌓인 잔상은 도달조차 못 하면서 전역 상한만 갉아먹는다 (#229 완료 조건 4).
-        var occupied = new HashSet<AreaType>();
+        // 구역별 인원까지 센다 (2026-08-16): 목표가 인당이라 몇 명이 서 있는지가 곧 목표다.
+        var occupied = new Dictionary<AreaType, int>();
         foreach (var participant in state.LastParticipants)
         {
             if (participant.Area == AreaType.None ||
                 IsAreaClosedResolver?.Invoke(state.MatchingId, participant.Area) == true)
                 continue;
-            occupied.Add(participant.Area);
+            occupied.TryGetValue(participant.Area, out int playerCount);
+            occupied[participant.Area] = playerCount + 1;
         }
 
         bool preMatch = IsGameplayActiveResolver?.Invoke(state.MatchingId) == false;
@@ -1318,13 +1338,13 @@ public sealed class SwarmArenaManager
             {
                 if (IsAreaClosedResolver?.Invoke(state.MatchingId, room) == true)
                     continue;
-                occupied.Add(room);
+                occupied.TryAdd(room, 0);
             }
         }
 
         // 예산 회수 (#229): 비점유·폐쇄 구역은 공급 상태를 버린다. 다시 점유되면 휴지 없이
         // 처음부터 채운다.
-        foreach (var zone in state.SupplyZones.Keys.Where(zone => !occupied.Contains(zone)).ToList())
+        foreach (var zone in state.SupplyZones.Keys.Where(zone => !occupied.ContainsKey(zone)).ToList())
             state.SupplyZones.Remove(zone);
 
         // 좌초 잔상 회수 (#229 4단계-보정): 잔존 몹까지 걷어내야 예산 회수가 완결된다.
@@ -1332,12 +1352,16 @@ public sealed class SwarmArenaManager
 
         // 전역 상한은 매 틱 새로 계산한다 — 여러 구역이 같은 틱에 채우면 합계가 넘칠 수 있다.
         int aliveGlobal = CountAliveGlobal(state);
-        // 점유 구역이 줄면 상한도 함께 줄어 남은 전장에 몰리지 않는다 (#229 4단계-보정).
-        int globalCap = GetSupplyGlobalAliveCap(occupied.Count, phase.ZoneTarget);
+        // 상한은 구역 목표의 합이다 (2026-08-16). 점유 구역 수 × 목표로 잡던 시절에는
+        // 사람이 몰려 구역이 줄면 상한도 같이 줄어 남은 전장이 오히려 한산해졌다.
+        int globalCap = Math.Min(
+            SupplyGlobalAliveHardCap,
+            occupied.Values.Sum(playerCount => GetSupplyZoneTarget(phase.PerPlayerTarget, playerCount)));
 
         // 상한에 걸리면 뒤 구역이 굶는다 — 빈 구역부터 채워 공백을 고르게 나눈다.
-        foreach (var zone in occupied.OrderBy(candidate => CountAliveInArea(state, candidate)))
+        foreach (var (zone, playersInZone) in occupied.OrderBy(pair => CountAliveInArea(state, pair.Key)))
         {
+            int zoneTarget = GetSupplyZoneTarget(phase.PerPlayerTarget, playersInZone);
             if (aliveGlobal >= globalCap)
                 break;
 
@@ -1348,7 +1372,7 @@ public sealed class SwarmArenaManager
             }
 
             int aliveInZone = CountAliveInArea(state, zone);
-            if (aliveInZone >= phase.ZoneTarget)
+            if (aliveInZone >= zoneTarget)
             {
                 zoneState.NextTopUpAtUtc = null;
                 continue;
@@ -1382,9 +1406,9 @@ public sealed class SwarmArenaManager
             // 큰 몹은 오브가 붙기 시작하는 중반부터 나온다.
             bool includeCore = phaseIndex >= SupplyCoreFirstPhaseIndex &&
                                !HasAliveCore(state, zone) &&
-                               aliveInZone < phase.ZoneTarget &&
+                               aliveInZone < zoneTarget &&
                                aliveGlobal < globalCap;
-            int room = phase.ZoneTarget - aliveInZone - (includeCore ? 1 : 0);
+            int room = zoneTarget - aliveInZone - (includeCore ? 1 : 0);
             int want = Math.Min(SupplyTopUpCount, room);
             want = Math.Min(want, globalCap - aliveGlobal - (includeCore ? 1 : 0));
             if (want <= 0 && !includeCore)
@@ -1425,14 +1449,14 @@ public sealed class SwarmArenaManager
     ///     보상은 처치 경로(ApplyMonsterDamage)에만 붙어 있어 이 회수로 소환석이 새지 않는다.
     ///     보스는 애초에 상한에서 제외되므로 건드리지 않는다.
     /// </summary>
-    private void ReclaimStrandedMonsters(MatchState state, HashSet<AreaType> occupied, DateTime now)
+    private void ReclaimStrandedMonsters(MatchState state, Dictionary<AreaType, int> occupied, DateTime now)
     {
-        foreach (var zone in occupied)
+        foreach (var zone in occupied.Keys)
             state.ZoneVacatedAtUtc.Remove(zone);
 
         foreach (var monster in state.Monsters.Values)
         {
-            if (!monster.Alive || IsBossKind(monster.Kind) || occupied.Contains(monster.HomeArea))
+            if (!monster.Alive || IsBossKind(monster.Kind) || occupied.ContainsKey(monster.HomeArea))
                 continue;
             // 추격 중인 개체는 남의 구역을 지나는 중이다 — 걷어내면 쫓다 말고 사라진다.
             if (monster.Infiltrating && monster.MarchIsPursuit)
