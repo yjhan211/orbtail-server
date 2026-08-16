@@ -37,27 +37,27 @@ public class SwarmArenaManagerTests
             // 첫 틱부터 보충이 돈다 — 시작 선물 15초 침묵(#226 E)은 퇴역했다.
             var firstTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
             // 초반(페이즈 0)은 작은 몹만 나온다 (#229): 시작 오브 하나로는 핵이 벽처럼 서서
-            // 파밍이 막힌다. 웨이브 보충(20마리/2초)은 구역 목표에 잘리므로 첫 웨이브는 목표치 8.
+            // 파밍이 막힌다. 웨이브 보충(30마리/12초)은 구역 목표에 잘리므로 첫 웨이브는 목표치 8.
             Assert.Equal(8, firstTick.SpawnedMonsters.Count);
             Assert.DoesNotContain(firstTick.SpawnedMonsters, monster => monster.Kind == 2);
             Assert.All(firstTick.SpawnedMonsters, monster =>
             {
                 // 공급 몹은 잠든 채 등장한다 — 개전은 근접·피격·접촉의 몫.
                 Assert.Equal(0, monster.ChaseTargetPlayerId);
-                Assert.Equal(16, monster.MaxHealth); // 페이즈 0 일반 HP
+                Assert.Equal(24, monster.MaxHealth); // 페이즈 0 일반 HP (2026-08-16 상향)
                 Assert.Equal(1, monster.SummonStoneReward);
             });
 
-            // 보충 간격(2초) 안에서는 조용하다 — 웨이브 사이가 곧 정리하는 창이다.
+            // 웨이브 간격(12초) 안에서는 조용하다 — 웨이브 사이가 곧 정리하는 창이다.
             now = StartUtc.AddSeconds(1.5);
             Assert.Empty(manager.Tick(217001, Participants(startCenter, startRoom), now).SpawnedMonsters);
 
             // 목표 8을 유지한다 — 2초마다 부족분만큼 한 번에 붓고 쉰다.
-            // 창은 40초다 (2026-08-16): 공급이 운동장 발원 침투로 바뀐 뒤로 "구역에 서 있는 수"는
+            // 창은 60초다 (2026-08-16): 공급이 운동장 발원 침투로 바뀐 뒤로 "구역에 서 있는 수"는
             // 행군 시간만큼 뒤따라온다. 방을 통로로 쓰지 않게 되면서(도서관 관통 금지) 경로가
             // 통로를 도는 만큼 길어져 20초 창에는 절반만 도착했다 — 목표 유지 자체는 성립하므로
             // 도착까지 재는 창으로 넓힌다.
-            for (double elapsed = 2d; elapsed <= 40d; elapsed += 0.25d)
+            for (double elapsed = 2d; elapsed <= 60d; elapsed += 0.25d)
             {
                 now = StartUtc.AddSeconds(elapsed);
                 manager.Tick(217001, Participants(startCenter, startRoom), now);
@@ -67,16 +67,16 @@ public class SwarmArenaManagerTests
                 .Count(state => state.IsAlive && state.AreaType == startRoom);
             Assert.Equal(8, aliveInZone);
 
-            // 전멸 → 4초 휴지 뒤 보충 재개.
+            // 전멸 → 2초 휴지 뒤 보충 재개 (2026-08-16: 웨이브 간격이 12초라 전멸 휴지는 짧게).
             foreach (var target in manager.GetCombatTargets(217001).ToList())
                 manager.ApplyMonsterDamage(217001, target.CombatTargetId, attackerPlayerId: 1, damage: 999);
             Assert.Empty(manager.GetVisualStates(217001).Where(state => state.IsAlive));
 
-            now = StartUtc.AddSeconds(20.25);
+            now = StartUtc.AddSeconds(60.25);
             manager.Tick(217001, Participants(startCenter, startRoom), now); // 휴지 시작
-            now = StartUtc.AddSeconds(23d);
+            now = StartUtc.AddSeconds(61.5d);
             Assert.Empty(manager.Tick(217001, Participants(startCenter, startRoom), now).SpawnedMonsters);
-            now = StartUtc.AddSeconds(24.5d);
+            now = StartUtc.AddSeconds(63d);
             Assert.NotEmpty(manager.Tick(217001, Participants(startCenter, startRoom), now).SpawnedMonsters);
         }
         finally
@@ -88,7 +88,8 @@ public class SwarmArenaManagerTests
     [Fact]
     public void RegionSupply_ScalesHealthByPhase_AndCapsGlobalAlive()
     {
-        // #229 4단계-보정 곡선: 최종 페이즈(4:10~)는 일반 22 · 핵 120 · 접촉 3.
+        // 곡선 (2026-08-16 상향): 최종 페이즈(4:10~)는 일반 64 · 핵 160 · 접촉 16.
+        // 한 마리를 단단하게 만들어 회전율을 낮춘다 — 나오는 족족 녹던 구조를 끊는다.
         // 전역 상한은 점유 구역 수 × 페이즈 목표(60)로 풀리되 서버 천장 420을 넘지 않는다.
         SwarmArenaManager.RegionSupplyModeEnabled = true;
         try
@@ -99,9 +100,9 @@ public class SwarmArenaManagerTests
 
             var lateTick = manager.Tick(217002, ManyParticipants(8, AreaCenter(AreaType.Ground)), now);
             Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == 0),
-                normal => Assert.Equal(22, normal.MaxHealth));
+                normal => Assert.Equal(64, normal.MaxHealth));
             Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == 2),
-                core => Assert.Equal(120, core.MaxHealth));
+                core => Assert.Equal(160, core.MaxHealth));
 
             // 10인이 서로 다른 구역에 흩어져도 전역 상한 48을 넘지 않는다.
             var rooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().Take(5).ToList();

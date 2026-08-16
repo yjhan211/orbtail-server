@@ -103,14 +103,17 @@ public sealed class SwarmArenaManager
     private static readonly (double UntilSeconds, int ZoneTarget, int NormalHp, int ContactDamage,
         int CoreHp, int StoneBudget)[] SupplyPhases =
     [
-        // 접촉 피해 2배 (2026-08-16 유저 판정: 위협적이지 않다). 봇 매치 9865146에서
-        // 100초 동안 봇 6명 탈락 0건 — 오염 상한 420에 접촉 2~3이면 죽을 수가 없다.
-        // 접촉 면역 0.6초가 초당 1.67회로 이미 빈도를 묶고 있으므로, 세기로 올린다.
-        (100d, 8, 16, 4, 48, 90), // 0:00~1:40 폐쇄 전
-        (150d, 12, 17, 6, 60, 100), // 1:40~2:30 1차
-        (200d, 16, 19, 8, 72, 110), // 2:30~3:20 2차
-        (250d, 22, 21, 12, 96, 120), // 3:20~4:10 3차
-        (double.MaxValue, 28, 22, 16, 120, 120) // 4:10~5:00 최종 수렴
+        // 곡선 (2026-08-16 유저 판정: 몹이 너무 약하고 너무 많이 나온다).
+        // 밀도는 그대로 두고 한 마리를 단단하게 만든다 — 회전율이 내려가면 화면이 차분해지고,
+        // 화력을 키우면 다시 빨라지는 성장 체감이 산다. 봇 매치 9866517 실측에서 처치 간격
+        // 중앙값 0.100초, 동시처치 70%였다. 나오는 족족 녹고 있었다.
+        // T1 12뎀 기준 필요 발수: 2 / 3 / 4 / 5 / 6방 (예전 2/2/2/2/2방)
+        // 접촉 피해는 직전 2배값을 유지한다.
+        (100d, 8, 24, 4, 60, 90), // 0:00~1:40 폐쇄 전
+        (150d, 12, 32, 6, 80, 100), // 1:40~2:30 1차
+        (200d, 16, 40, 8, 100, 110), // 2:30~3:20 2차
+        (250d, 22, 52, 12, 130, 120), // 3:20~4:10 3차
+        (double.MaxValue, 28, 64, 16, 160, 120) // 4:10~5:00 최종 수렴
     ];
 
     private static int GetSupplyPhaseIndex(double elapsedSeconds)
@@ -134,14 +137,20 @@ public sealed class SwarmArenaManager
     // 20마리/2초 = 10마리/초 — 처치율 대비 총량은 그대로 두고 리듬만 바꾼다.
     // 실제 투입량은 구역 목표에 다시 잘리므로(want = min(count, 목표 - 생존)) 초반에는
     // 목표치가, 후반에는 이 값이 한 웨이브 크기를 정한다.
-    private const double SupplyTopUpIntervalSeconds = 2d;
-    private const int SupplyTopUpCount = 20;
+    // 웨이브 간격 (2026-08-16 유저 요구: 리젠이 수치로 정해져야 한다).
+    // 2초마다 부족분을 채우는 "인구 유지" 모델은 웨이브가 아니라 끊임없는 졸졸 흐름이었다.
+    // 12초에 한 번, 구역 목표까지 한 번에 붓는다 — 그 사이가 정리하고 숨 돌리는 창이다.
+    // 한 웨이브 크기 = 구역 목표 - 생존 수 (상한 SupplyTopUpCount).
+    private const double SupplyTopUpIntervalSeconds = 12d;
+    private const int SupplyTopUpCount = 30;
     // 일반 몹 하트 드롭 확률 (2026-08-16). 처치율 2~3/초 기준 12~20초에 하나꼴 —
     // 흐름이 끊기지 않을 만큼만이고, 몰아 잡을수록 회복도 몰린다.
     private const double SupplyHeartDropChance = 0.03d;
 
     // 구역 전멸 뒤 휴지: 짧은 수면 창이 성장의 보상이다 (#229 완료 조건 2).
-    private const double SupplyWipeRestSeconds = 4d;
+    // 웨이브 간격(12초)이 이미 창을 만들므로 전멸 휴지는 짧게만 둔다 — 다 지운 뒤에도
+    // 12초를 더 기다리면 방이 너무 오래 빈다.
+    private const double SupplyWipeRestSeconds = 2d;
     // 플레이어 2.5m 안의 앵커에는 즉시 생성하지 않는다 — 전 앵커가 막히면 1초 뒤 재검사.
     private const float SupplySafeSpawnDistance = 2.5f;
     // 화면 밖 등장 (#229): 이 거리 밖 앵커를 우선 고른다. 전부 가까우면 안전 이격만 지킨다.
