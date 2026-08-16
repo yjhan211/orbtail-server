@@ -103,11 +103,11 @@ public sealed class SwarmArenaManager
     private static readonly (double UntilSeconds, int ZoneTarget, int NormalHp, int ContactDamage,
         int CoreHp, int StoneBudget)[] SupplyPhases =
     [
-        (100d, 8, 16, 2, 48, 45), // 0:00~1:40 폐쇄 전
-        (150d, 12, 17, 3, 60, 50), // 1:40~2:30 1차
-        (200d, 16, 19, 4, 72, 55), // 2:30~3:20 2차
-        (250d, 22, 21, 6, 96, 60), // 3:20~4:10 3차
-        (double.MaxValue, 28, 22, 8, 120, 60) // 4:10~5:00 최종 수렴
+        (100d, 8, 16, 2, 48, 90), // 0:00~1:40 폐쇄 전
+        (150d, 12, 17, 3, 60, 100), // 1:40~2:30 1차
+        (200d, 16, 19, 4, 72, 110), // 2:30~3:20 2차
+        (250d, 22, 21, 6, 96, 120), // 3:20~4:10 3차
+        (double.MaxValue, 28, 22, 8, 120, 120) // 4:10~5:00 최종 수렴
     ];
 
     private static int GetSupplyPhaseIndex(double elapsedSeconds)
