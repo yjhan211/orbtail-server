@@ -440,6 +440,10 @@ public sealed class SwarmArenaManager
                 {
                     UpdateSupplyMonsterMovement(
                         monster, state.LastParticipants, now, moveDeltaSeconds, preMatch);
+                    // 벽 탈출 안전망 (2026-08-16 유저 제보: 운동장에 벽에 낀 몹이 많다).
+                    // 스폰·행군·추격 어느 경로로 들어갔든, 비보행 칸에 선 개체는 매 틱
+                    // 보행 가능한 자리로 당긴다 — 원인을 하나 놓쳐도 화면에는 남지 않는다.
+                    RescueMonsterFromBlockedCell(monster);
                 }
                 else if (CampModeEnabled)
                 {
@@ -1820,6 +1824,32 @@ public sealed class SwarmArenaManager
 
         monster.Alive = false;
         monster.DiedAtUtc = now;
+    }
+
+    /// <summary>
+    ///     비보행 칸에 선 몹을 보행 가능한 자리로 당긴다. 구역 중심 쪽으로 당기되, 구역 판정이
+    ///     서지 않으면(문틀·경계) 전역 보행 기준으로 되돌린다.
+    /// </summary>
+    private static void RescueMonsterFromBlockedCell(MonsterRuntime monster)
+    {
+        // 행군 중에는 건드리지 않는다 (2026-08-16 수리): 침투는 문틀(비보행 셀)을 일부러
+        // 밟고 지나는데, 여기서 매 틱 구역 중심으로 당기면 문을 영영 못 넘는다 —
+        // 실측에서 배정 구역이 아닌 몹 580마리가 운동장에서 죽었다(매치 9857526).
+        if (monster.Infiltrating)
+            return;
+
+        if (GameMapData.IsMoveablePosition(
+                MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, monster.Position)))
+            return;
+
+        var areaCenter = BotPlayerManager.CellToWorldPosition(
+            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, monster.Area));
+        var rescued = ClampToAreaWalkable(monster.Position, areaCenter, monster.Area);
+        if (!GameMapData.IsMoveablePosition(
+                MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, rescued)))
+            rescued = ClampToWalkable(monster.Position, areaCenter);
+
+        monster.Position = rescued;
     }
 
     /// <summary>침투 종료 — 도착 지점을 앵커로 삼고 그대로 교전에 들어간다.</summary>
