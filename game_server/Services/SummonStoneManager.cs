@@ -125,6 +125,26 @@ public sealed class SummonStoneManager
     }
 
     /// <summary>
+    ///     오브를 잃은 만큼 소환 카운터를 되돌린다 (#229). 소환 비용은 "내가 몇 개 샀는가"를
+    ///     따라가는 값이라, 잘려 나간 오브가 값에 그대로 남으면 뒤처진 사람이 재건조차 못 한다.
+    ///     잃은 개수만큼만 내린다 — 한 개만 잃어도 곡선이 0으로 리셋되면 싼 오브를 일부러
+    ///     내주고 값을 초기화하는 수가 최적해가 된다.
+    /// </summary>
+    public void RefundGrowthSuccess(long matchingId, long playerId, int cardIndex, int count)
+    {
+        if (count <= 0)
+            return;
+
+        var state = GetOrCreatePlayerState(matchingId, playerId);
+        lock (state.SyncRoot)
+        {
+            int current = state.GrowthSuccessByCard.GetValueOrDefault(cardIndex);
+            state.GrowthSuccessByCard[cardIndex] = Math.Max(0, current - count);
+            state.GrowthSuccessCount = Math.Max(0, state.GrowthSuccessCount - Math.Min(count, current));
+        }
+    }
+
+    /// <summary>
     ///     소환 없이 소환석만 차감 (#226 단계 C): 성장 카드(강화·철갑)와 상자 개봉이 쓴다.
     ///     잔액 부족이면 아무것도 바꾸지 않는다.
     /// </summary>
