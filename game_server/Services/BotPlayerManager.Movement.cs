@@ -1233,6 +1233,34 @@ public partial class BotPlayerManager
             return null;
         }
 
+        // 잠긴 문 통과 차단 (2026-08-16 유저 제보: 봇이 문 열리기 전에 들어온다).
+        // 위의 잠긴 방 검사는 구형 ROOM_COMBAT 페이즈 전용이라 군집 모드에서는 비어 있었다.
+        // 사람과 같은 판정을 쓴다 — 이 전이를 관장하는 문 하나만 보고, 그 문이 닫혀 있으면 버린다.
+        if (nextStep.Area != bot.CurrentArea)
+        {
+            var transitionDoor = GameDoorData.GetDoorForTransition(
+                bot.CurrentArea, nextStep.Area, bot.Cell, nextStep.Cell);
+            if (transitionDoor != null && !IsDoorOpenForBot(matchingId, transitionDoor.DoorId))
+            {
+                bot.Path.Clear();
+                bot.PathIndex = 0;
+                bot.MovementDestination = AreaType.None;
+                bot.EvacuationDestination = AreaType.None;
+                // 문 앞에서 기다린다 — 해제 채널링(ProcessSwarmBotDoorUnlocks)이 돌 시간을 준다.
+                bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.4);
+                if (bot.LastLockedDoorBlockArea != nextStep.Area)
+                {
+                    bot.LastLockedDoorBlockArea = nextStep.Area;
+                    _logger.LogInformation(
+                        "Bot blocked at closed door: MatchingId={MatchingId}, BotId={BotId}, " +
+                        "From={From}, To={To}, DoorId={DoorId}",
+                        matchingId, bot.PlayerId, bot.CurrentArea, nextStep.Area, transitionDoor.DoorId);
+                }
+
+                return null;
+            }
+        }
+
         // Walk every waypoint at the same speed. An area transition is just the adjacent cell across a door.
         var targetPos = CellToWorldPosition(mapId, nextStep.Cell);
         float dx = targetPos.X - bot.Position.X;

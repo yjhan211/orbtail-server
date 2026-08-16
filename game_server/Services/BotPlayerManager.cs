@@ -26,6 +26,20 @@ public partial class BotPlayerManager
     public void SetLockedRoomAreasProvider(Func<long, IReadOnlyCollection<AreaType>> provider) =>
         _lockedRoomAreasProvider = provider ?? throw new ArgumentNullException(nameof(provider));
 
+    /// <summary>
+    ///     문 개방 여부 조회 (2026-08-16 유저 제보: 봇이 문 열리기 전에 들어온다).
+    ///     위의 잠긴 방 목록은 구형 ROOM_COMBAT 페이즈에서만 채워져 군집 모드에서는 항상 비었다 —
+    ///     사람은 GameClientSession.Movement가 문 상태로 막는데 봇만 그냥 지나다녔다.
+    ///     봇도 잠긴 문은 3초 채널링(ProcessSwarmBotDoorUnlocks)으로 열 수 있으므로 막아도 갇히지 않는다.
+    /// </summary>
+    private Func<long, int, bool>? _doorOpenResolver;
+
+    public void SetDoorOpenResolver(Func<long, int, bool> resolver) =>
+        _doorOpenResolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
+
+    private bool IsDoorOpenForBot(long matchingId, int doorId) =>
+        _doorOpenResolver?.Invoke(matchingId, doorId) ?? true;
+
     // ?꾨줈??0: ?쒖꽦 怨듦컙 = 3쨌4痢?6援ъ뿭(1쨌2痢??대룞??李⑤떒, 3??留??대룞).
     //   諛??뺤떊???뚮났 媛??: Classroom3(2-1)/ExamRoom(怨좎궗??/Classroom4(3-1)/BroadcastRoom(諛⑹넚??
     //   蹂듬룄(transit, ?뚮났 ?놁쓬 + ?κ린 泥대쪟 ???몄젒 諛?媛뺤젣 ?좊룄): Corridor

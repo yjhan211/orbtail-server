@@ -44,7 +44,8 @@ public class SwarmArenaManagerTests
             {
                 // 공급 몹은 잠든 채 등장한다 — 개전은 근접·피격·접촉의 몫.
                 Assert.Equal(0, monster.ChaseTargetPlayerId);
-                Assert.Equal(24, monster.MaxHealth); // 페이즈 0 일반 HP (2026-08-16 상향)
+                // 페이즈 0 일반 HP — 상향분 원복 (2026-08-16 유저 결정: 잘 죽되 맞으면 치명적)
+                Assert.Equal(16, monster.MaxHealth);
                 Assert.Equal(1, monster.SummonStoneReward);
             });
 
@@ -88,9 +89,9 @@ public class SwarmArenaManagerTests
     [Fact]
     public void RegionSupply_ScalesHealthByPhase_AndCapsGlobalAlive()
     {
-        // 곡선 (2026-08-16 상향): 최종 페이즈(4:10~)는 일반 64 · 핵 160 · 접촉 16.
-        // 한 마리를 단단하게 만들어 회전율을 낮춘다 — 나오는 족족 녹던 구조를 끊는다.
-        // 전역 상한은 점유 구역 수 × 페이즈 목표(60)로 풀리되 서버 천장 420을 넘지 않는다.
+        // 곡선 (2026-08-16 유저 결정: 잘 죽되 맞으면 치명적): 최종 페이즈(4:10~)는
+        // 일반 22 · 핵 120 · 접촉 40. 단단하게 만드는 방향은 되돌리고 위협은 접촉이 진다.
+        // 전역 상한은 구역 목표(= 인당 목표 × 구역 인원)의 합이되 서버 천장 420을 넘지 않는다.
         SwarmArenaManager.RegionSupplyModeEnabled = true;
         try
         {
@@ -100,9 +101,9 @@ public class SwarmArenaManagerTests
 
             var lateTick = manager.Tick(217002, ManyParticipants(8, AreaCenter(AreaType.Ground)), now);
             Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == 0),
-                normal => Assert.Equal(64, normal.MaxHealth));
+                normal => Assert.Equal(22, normal.MaxHealth));
             Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == 2),
-                core => Assert.Equal(160, core.MaxHealth));
+                core => Assert.Equal(120, core.MaxHealth));
 
             // 10인이 서로 다른 구역에 흩어져도 전역 상한 48을 넘지 않는다.
             var rooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().Take(5).ToList();
@@ -115,8 +116,8 @@ public class SwarmArenaManagerTests
                     .ToList();
                 manager.Tick(217002, spread, now);
                 int alive = manager.GetVisualStates(217002).Count(state => state.IsAlive);
-                // 점유 5구역 × 목표 60 = 300, 서버 천장 420 이하.
-                Assert.True(alive <= 300, $"점유 구역 비례 상한 300을 초과했다: {alive}");
+                // 점유 5구역 × 2명 × 인당 목표 28 = 280, 서버 천장 420 이하.
+                Assert.True(alive <= 300, $"구역 목표 합 상한 300을 초과했다: {alive}");
             }
         }
         finally

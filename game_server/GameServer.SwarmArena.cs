@@ -2143,12 +2143,15 @@ public partial class GameServer
             var dropPosition = dropOrdinal < ownerChain.Points.Count
                 ? ownerChain.Points[dropOrdinal]
                 : bestOrbPosition;
-            // 절단 낙수는 오브 그대로 떨어진다 (#229). 소환석으로 환원하면 T3 하나가 3석이 되어
-            // 성장 비용(5~21석) 앞에 되찾을 가치가 없고, 작은 알갱이라 "무엇을 잃었는지"도 안 보인다.
-            // 티어를 보존해 판돈을 점수 단위로 올린다 — 오브 수가 곧 승점이다.
-            DropSwarmCutOrb(
-                matchingId, bestOwnerId, destroyedItem.ItemId, bestArea,
-                dropPosition.X, dropPosition.Y, allSessions);
+            // 절단 낙수는 소환석으로 흩어진다 (2026-08-16 유저 결정: 원복).
+            // 오브를 그대로 떨구던 동안 잘린 오브의 88%가 다시 주워졌다(매치 2749 실측) —
+            // 총량이 보존된 채 사람들 사이를 순환하기만 해서 절단이 약화가 아니라
+            // 잠깐의 불편이 됐다. 소환석으로 환원하면 잃은 것은 확실히 사라진다.
+            // 몹 접촉 파괴(ScatterSwarmOrbBreakStones)와도 같은 문법으로 통일된다.
+            ScatterSwarmOrbBreakStones(
+                matchingId, destroyedItem.ItemId, bestArea,
+                dropPosition.X, dropPosition.Y, allSessions,
+                armoredUids.Contains(destroyedItem.ItemUid));
         }
 
         // 절단 파열 플래시: 링 + 잘린 꼬리 오브 섬광 — "어디부터 끊겼다"가 화면에서 읽히게.
@@ -4076,41 +4079,6 @@ public partial class GameServer
     /// </summary>
     private static int GetSwarmOrbBreakStoneCount(int tier) => Math.Clamp(tier, 1, 3);
 
-    // 절단 낙수 수명 (#229): 짧게 잡아야 회수 경쟁이 성립한다. 길면 후반에 바닥이
-    // 오브밭이 되어 "지금 주울까 도망갈까"가 사라진다.
-    private static readonly TimeSpan SwarmCutOrbLifetime = TimeSpan.FromSeconds(12);
-
-    /// <summary>
-    ///     잘린 오브를 티어 그대로 바닥에 떨군다 (#229). sourcePlayerId에 피해자를 넣어
-    ///     기존 SourceBlocked가 걸리게 한다 — 피해자는 그 자리에서 즉시 되줍지 못하고
-    ///     1.4유닛 물러났다 돌아와야 한다(ReleaseSourcePickupBlocks). 절단자가 위치 우위를 갖되
-    ///     자동 지급은 아니라서, 줍는 동안 반격 창에 노출된다.
-    /// </summary>
-    private void DropSwarmCutOrb(
-        long matchingId, long victimPlayerId, int orbItemId, AreaType area,
-        float x, float y, List<GameClientSession> sessions)
-    {
-        if (area == AreaType.None)
-            return;
-
-        var spawned = _groundItemManager.SpawnItems(
-            matchingId, area, x, y, [orbItemId],
-            sourcePlayerId: victimPlayerId,
-            mapId: MapId.School,
-            lifetime: SwarmCutOrbLifetime,
-            layout: GroundItemSpawnLayout.EliminationScatter);
-        if (spawned.Count == 0)
-            return;
-
-        int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)area);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, spawned.ToList());
-        foreach (var session in sessions)
-        {
-            if (session.PlayerId.HasValue && session.CurrentArea == area)
-                session.Send(packet);
-        }
-    }
-
     private void ScatterSwarmOrbBreakStones(
         long matchingId,
         int destroyedItemId,
@@ -4554,7 +4522,14 @@ public partial class GameServer
     private const float SwarmSunAttackRange = 6f;
     // 바람 사거리 = 태양과 동일: 색 차이는 거리표가 아니라 리듬(연사 vs 한 방)과 탄속이 만든다.
     private const float SwarmWindAttackRange = SwarmSunAttackRange;
-    private const float SwarmPveSameAreaAttackRange = 1000f;
+    // PvE 사거리 국소화 (2026-08-16 유저 판정: 몹이 위협적이지 않다). 1000은 구역 전체를
+    // 덮어, 화면 밖 7m에 선 몹이 등장하는 순간부터 계속 맞으며 걸어왔다 — 도착하기 전에
+    // 죽으니 접촉이 성립하지 않는다. 봇 매치 9871477 실측: 1인당 처치 1.5회/초 대 피격
+    // 0.15회/초, 10대 1. 몹은 위협이 아니라 자원 자판기였다.
+    // 등장 거리(SupplyOffscreenDistance 7)에 맞춘다 — 뱀서라이크의 무기가 그렇듯 화면에
+    // 들어온 것만 친다. 그러면 걸어오는 1.6초가 화망을 통과하는 시간이 되고, 페이즈가
+    // 올라 HP가 24→64로 두꺼워질수록 실제로 도달하는 몹이 늘어난다.
+    private const float SwarmPveSameAreaAttackRange = 7f;
     /// <summary>
     ///     아이소메트릭 타원 사거리: 이 맵의 월드 y는 셀 스케일이 x의 절반이라, 유클리드
     ///     원은 화면상 위아래로 과하게 길다. dy를 2배 보정한 타원(= 셀 공간 등거리)이
