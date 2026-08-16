@@ -60,9 +60,12 @@ public partial class GameServer
         return whole;
     }
 
-    // #229: 스웜 PvP는 충돌·절단만 사용한다. 속성별 원거리 PvP 사건 코드는 롤백을 위해
-    // 보존하지만 매치 루프에서는 무장하지 않는다.
-    private static readonly bool SwarmPvpRangedAttackEnabled = false;
+    // 유저간 공격 재개 (2026-08-16 유저 결정). #229에서 충돌·절단만 남기고 꺼 두었던
+    // 속성별 원거리 PvP 사건(#227 6단계)을 다시 무장한다 — 규칙·VFX·클라 처리는
+    // 그대로 보존돼 있었다: 사거리 6(파도 참여 3.1), 예고 0.22~0.55초 뒤 발사,
+    // 색별 간격 2.4/1.6/2.8초, 피해는 본체 오염으로 환산(× 0.35, 이월 누산).
+    // 껐던 이유가 "공격하면 너무 난잡해진다"였으므로, 켠 뒤 난잡함을 다시 재는 게 검증 항목이다.
+    private static readonly bool SwarmPvpRangedAttackEnabled = true;
 
     // 치명타 (#229 임시): PvE 전용. 성장 축이 오브 수·티어뿐이라 같은 몹을 같은 속도로 지우는
     // 감각이 계속된다 — 가끔 크게 터지는 순간을 넣어 파밍에 리듬을 준다. 확률·배율은 임시값이고,
