@@ -3489,7 +3489,11 @@ public partial class GameServer
     // ===== 성장 카드 3택 (#226 단계 C) =====
     // 소환석이 카드 비용에 도달하면 즉시 오퍼가 뜬다 (상자 개방 트리거 퇴역).
     // 카드: 0=증식(무작위 T1 +1) · 1=강화(선두 T1→T2, 없으면 T2→T3) · 2=철갑(선두 무외피 오브).
-    private const double SwarmGrowthOfferCooldownSeconds = 3d;
+    // 성장 직후 오퍼 휴지 (2026-08-16 축소): 3초는 카드 3택 시절의 페이싱이었다. 성장이 상시
+    // 버튼이 된 뒤로는 석이 남아 있는데도 그 3초 동안 오퍼가 서지 않아, 버튼이 "아직 성장할 수
+    // 없습니다"로 답한다 — 시작 지급을 소환석 19개로 바꾼 뒤로는 판을 여는 3연속 소환이 통째로
+    // 막혔다. 연타 이중 차감만 막을 만큼으로 줄인다.
+    private const double SwarmGrowthOfferCooldownSeconds = 0.35d;
     private const int SwarmGrowthCardMultiply = 0;
     private const int SwarmGrowthCardEnhance = 1;
     private const int SwarmGrowthCardArmor = 2;
