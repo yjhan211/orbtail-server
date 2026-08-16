@@ -545,6 +545,28 @@ public sealed class SwarmArenaManager
         return true;
     }
 
+    /// <summary>
+    ///     착탄 예약 (#229 과잉 사격 방지). 발사 시점에 피해를 미리 물려 두고 정산 때 푼다.
+    ///     예약분만으로 이미 죽는 몹은 GetCombatTargets가 후보에서 빼므로, 다음 오브는 아직
+    ///     살아남을 몹을 고른다. 화력이 곧 처치 수가 된다.
+    /// </summary>
+    public void ReserveMonsterDamage(long matchingId, long combatTargetId, int damage)
+    {
+        if (damage <= 0 || !_matches.TryGetValue(matchingId, out var state))
+            return;
+
+        lock (state.SyncRoot)
+        {
+            var monster = FindAliveByCombatTarget(state, combatTargetId);
+            if (monster != null)
+                monster.PendingDamage += damage;
+        }
+    }
+
+    private static MonsterRuntime? FindAliveByCombatTarget(MatchState state, long combatTargetId) =>
+        state.Monsters.Values.FirstOrDefault(candidate =>
+            candidate.CombatTargetId == combatTargetId && candidate.Alive);
+
     public SwarmArenaDamageResult ApplyMonsterDamage(
         long matchingId,
         long combatTargetId,
@@ -557,8 +579,11 @@ public sealed class SwarmArenaManager
         lock (state.SyncRoot)
         {
             var monster = state.Monsters.Values.FirstOrDefault(candidate =>
-                candidate.CombatTargetId == combatTargetId && candidate.Alive);
-            if (monster == null)
+                candidate.CombatTargetId == combatTargetId);
+            // 예약은 생사와 무관하게 푼다 — 남겨 두면 살아 있는 몹이 영영 표적에서 빠진다.
+            if (monster != null)
+                monster.PendingDamage = Math.Max(0, monster.PendingDamage - damage);
+            if (monster is not { Alive: true })
                 return SwarmArenaDamageResult.None;
 
             if (RegionSupplyModeEnabled)
@@ -810,7 +835,8 @@ public sealed class SwarmArenaManager
         {
             DateTime now = _utcNow();
             return state.Monsters.Values
-                .Where(monster => monster.Alive && now >= monster.ActivatesAtUtc)
+                .Where(monster => monster.Alive && now >= monster.ActivatesAtUtc &&
+                                  monster.Health > monster.PendingDamage)
                 .Select(monster => new SwarmArenaCombatTarget(
                     monster.CombatTargetId,
                     monster.Area,
@@ -2138,6 +2164,11 @@ public sealed class SwarmArenaManager
         // 행군 중인 개체가 목표 수에서 빠지면 디렉터가 파이프라인을 두 번 채워 폭주한다.
         // Area는 물리 위치의 구역이라 행군 중에는 운동장·복도로 바뀐다 (클라 컬링·전투 판정 기준).
         public AreaType HomeArea { get; set; }
+
+        // 착탄 예약 (#229 과잉 사격 방지): 발사 시점에 물려 둔 미착탄 피해 합.
+        // 오브는 착탄이 지연되므로, 예약을 안 세면 전 오브가 같은 몹에 몰려 쏘고 그중
+        // 한 발만 유효하다 — 오브를 늘려도 한 사격에 한 마리씩만 죽던 원인이다.
+        public int PendingDamage { get; set; }
         public bool Infiltrating { get; set; }
         public List<Vector3f> MarchWaypoints { get; } = new();
         public int MarchIndex { get; set; }

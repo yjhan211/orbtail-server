@@ -615,6 +615,7 @@ public partial class GameClientSession
     private Task HandleSwarmDoorUnlockFinish(int interactId, int doorId)
     {
         _pendingDoorUnlockInteractId = null;
+        _swarmDoorUnlockCount++;
 
         if (!_doorStateManager.OpenDoor(CurrentMapSubId, doorId))
         {
@@ -639,10 +640,14 @@ public partial class GameClientSession
 
     /// <summary>
     ///     피격으로 문 게이지를 끊는다 (#229). 서버가 pending을 지우면 뒤늦게 온 FINISH도 무효가 된다.
+    ///     단 첫 문은 끊지 않는다 (2026-08-16 유저 판정): 침투로 몹이 상시 붙게 되면서 시작 화력으로는
+    ///     3초를 비울 수 없어 시작 구역에서 아예 못 나가는 상태가 됐다. 첫 문은 성장 이전의 관문이라
+    ///     화력을 조건으로 걸 수 없다 — 두 번째 문부터 리스크 창이 돌아온다.
     /// </summary>
     internal void BreakDoorUnlockGauge()
     {
         if (_pendingDoorUnlockInteractId is not { } interactId) return;
+        if (_swarmDoorUnlockCount == 0) return;
 
         _pendingDoorUnlockInteractId = null;
         _pendingFinish.Remove(interactId);

@@ -92,6 +92,9 @@ public partial class GameClientSession : SessionBase
 
     // #229: 진행 중인 문 잠금해제 게이지. 맞으면 서버가 지워 뒤늦은 FINISH까지 무효로 만든다.
     private int? _pendingDoorUnlockInteractId;
+
+    // 이 매치에서 연 문 수 — 첫 문은 피격으로 게이지가 끊기지 않는다 (2026-08-16).
+    private int _swarmDoorUnlockCount;
     private DateTime _lastMoveTime = DateTime.UtcNow;
 
     private DateTime _exploreMoveGraceUntil = DateTime.MinValue;

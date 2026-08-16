@@ -400,6 +400,10 @@ public partial class GameServer
                     : Config.SWARM_ORB_ATTACK_RANGE;
                 double delaySeconds =
                     SurvivorOrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
+                // 발사 즉시 예약 (#229): 착탄까지 기다리면 그 사이 다른 오브가 같은 몹을 또
+                // 고른다. 예약분으로 이미 죽는 몹은 표적 후보에서 빠지므로 사격이 흩어진다.
+                _swarmArenaManager.ReserveMonsterDamage(
+                    matchingId, attack.TargetPlayerId, monsterDamage);
                 _pendingSwarmMonsterHits.Add((matchingId, attack.TargetPlayerId, attack.AttackerPlayerId,
                     monsterDamage, nowUtc.AddSeconds(delaySeconds)));
                 continue;
@@ -2229,8 +2233,12 @@ public partial class GameServer
             {
                 // 몬스터 피해는 지연 정산 파이프라인 재사용 — 킬 보상·상태 브로드캐스트가 따라온다.
                 foreach (var target in monsterVictims)
+                {
+                    _swarmArenaManager.ReserveMonsterDamage(
+                        matchingId, target.CombatTargetId, SwarmEncircleMonsterDamage);
                     _pendingSwarmMonsterHits.Add((matchingId, target.CombatTargetId, owner.PlayerId,
                         SwarmEncircleMonsterDamage, nowUtc));
+                }
                 logger.LogInformation(
                     "Swarm encirclement monster barrage: MatchingId={MatchingId}, OwnerId={OwnerId}, Monsters={MonsterCount}, PolygonOrbs={PolygonOrbs}",
                     matchingId, owner.PlayerId, monsterVictims.Count, polygon.Count);
@@ -2464,6 +2472,7 @@ public partial class GameServer
                 continue;
             // 치명타는 몹 단위로 굴린다 — 한 폭발이 여러 마리를 쳐도 그중 일부만 크게 터진다.
             int monsterDamage = RollSwarmCriticalDamage(damage, out bool critical);
+            _swarmArenaManager.ReserveMonsterDamage(matchingId, target.CombatTargetId, monsterDamage);
             _pendingSwarmMonsterHits.Add((matchingId, target.CombatTargetId, ownerId,
                 monsterDamage, nowUtc));
             hitCount++;
