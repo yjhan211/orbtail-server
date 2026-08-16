@@ -71,7 +71,7 @@ public class SwarmArenaManagerTests
             // 전멸 → 2초 휴지 뒤 보충 재개 (2026-08-16: 웨이브 간격이 12초라 전멸 휴지는 짧게).
             foreach (var target in manager.GetCombatTargets(217001).ToList())
                 manager.ApplyMonsterDamage(217001, target.CombatTargetId, attackerPlayerId: 1, damage: 999);
-            Assert.Empty(manager.GetVisualStates(217001).Where(state => state.IsAlive));
+            Assert.DoesNotContain(manager.GetVisualStates(217001), state => state.IsAlive);
 
             now = StartUtc.AddSeconds(60.25);
             manager.Tick(217001, Participants(startCenter, startRoom), now); // 휴지 시작
