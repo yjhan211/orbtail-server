@@ -178,6 +178,20 @@ public sealed class SwarmArenaManager
     private const double CampRespawnSeconds = 45d;
     private const float CampReturnArriveDistance = 0.4f;
 
+    // ===== 침투 (#229) =====
+    // 웨이브는 구역 안에서 솟지 않는다. 운동장(최종 폐쇄 구역) 중심에서 태어나 배정 구역까지
+    // 걸어 들어간다 — 발원지가 폐쇄의 종착점이라 "중앙에서 번져 나와 바깥을 밀고 들어간다"는
+    // 흐름이 폐쇄 방향과 정면으로 마주 본다.
+    // 이 구조가 필요한 실측 근거: 앵커에 잠들어 붙박인 모델에서는 처치율이 오브 수와 무관하게
+    // ZoneTarget만 따라갔다 (봇 매치 9840982, 199초 931킬 — 페이즈 0/1/2에서 1.85·2.6·3.2/s로
+    // ZoneTarget 8/12/16에 정비례, 성장 구성이 다른 두 봇의 처치율이 동일). 마주치는 수가
+    // 앵커 하나 분량에 고정되니 화력을 올려도 살 게 없었다.
+    private const float InfiltrationOriginRadius = 3.5f;
+    private const float MarchWaypointArriveDistance = 0.6f;
+    // 행군 제한: 경로가 길수록 넉넉히 주되, 막히면 낭비 없이 걷어낸다. 웨이포인트 수 × 계수.
+    private const double MarchBudgetSecondsPerWaypoint = 1.2d;
+    private const double MarchBudgetMinimumSeconds = 8d;
+
     // #219 SB 몬스터 4종 (원작 스펙 ÷25 환산, 잼 보류 — 보상은 소환석만).
     // 해골: 무해한 코인 파밍 무리. 다트: 원거리 단발. 탈주: 접촉 강펀치 브루저. 볼러: 범위 투척.
     public const float BowlerSplashRadius = 1.5f;
@@ -973,6 +987,7 @@ public sealed class SwarmArenaManager
                 CombatTargetId = FirstCombatTargetId - serial,
                 Pattern = pattern,
                 Area = area,
+                HomeArea = area,
                 Position = position,
                 Health = stats.MaxHp,
                 Alive = true,
@@ -997,36 +1012,46 @@ public sealed class SwarmArenaManager
         }
     }
 
-    /// <summary>캠프 몹 이동: 잠듦 → (근접·피격·접촉) 어그로 → 리쉬 안 추격 → 이탈 시 앵커 귀환.</summary>
+    /// <summary>
+    ///     어그로 반경 안에 같은 구역 참가자가 있는가. 있으면 그 대상으로 개전하고 true.
+    ///     보스 (#223): 링 안 = 개전 — 어그로 반경이 곧 사거리(타원 dy×2)라 범위 링이 안전선으로
+    ///     정직해진다. 일반 몹은 좁은 접근 반경(2.5) 유지.
+    /// </summary>
+    private static bool HasParticipantWithinAggro(
+        MonsterRuntime monster, IReadOnlyList<SpotArenaPlayerSpatial> participants)
+    {
+        bool isBoss = IsBossKind(monster.Kind);
+        float aggroRadius = isBoss ? monster.AttackRangeValue : CampAggroRadius;
+        float aggroVerticalScale = isBoss ? 2f : 1f;
+        for (int index = 0; index < participants.Count; index++)
+        {
+            var participant = participants[index];
+            if (participant.Area != monster.Area)
+                continue;
+
+            float aggroDx = participant.Position.X - monster.Position.X;
+            float aggroDy = (participant.Position.Y - monster.Position.Y) * aggroVerticalScale;
+            if (aggroDx * aggroDx + aggroDy * aggroDy > aggroRadius * aggroRadius)
+                continue;
+
+            monster.Aggro = true;
+            monster.ChaseTargetPlayerId = participant.PlayerId;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    ///     캠프 몹 이동: 잠듦 → (근접·피격·접촉) 어그로 → 리쉬 안 추격 → 이탈 시 앵커 귀환.
+    /// </summary>
     private static void UpdateCampMonsterMovement(
         MonsterRuntime monster,
         IReadOnlyList<SpotArenaPlayerSpatial> participants,
         double deltaSeconds)
     {
-        if (!monster.Aggro)
-        {
-            // 보스 (#223): 링 안 = 개전 — 어그로 반경이 곧 사거리(타원 dy×2)라 범위 링이
-            // 안전선으로 정직해진다. 일반 몹은 좁은 접근 반경(2.5) 유지.
-            bool isBoss = IsBossKind(monster.Kind);
-            float aggroRadius = isBoss ? monster.AttackRangeValue : CampAggroRadius;
-            float aggroVerticalScale = isBoss ? 2f : 1f;
-            for (int index = 0; index < participants.Count; index++)
-            {
-                var participant = participants[index];
-                if (participant.Area != monster.Area)
-                    continue;
-                float aggroDx = participant.Position.X - monster.Position.X;
-                float aggroDy = (participant.Position.Y - monster.Position.Y) * aggroVerticalScale;
-                if (aggroDx * aggroDx + aggroDy * aggroDy > aggroRadius * aggroRadius)
-                    continue;
-                monster.Aggro = true;
-                monster.ChaseTargetPlayerId = participant.PlayerId;
-                break;
-            }
-
-            if (!monster.Aggro)
-                return;
-        }
+        if (!monster.Aggro && !HasParticipantWithinAggro(monster, participants))
+            return;
 
         // 보스는 고정 포대 (#223): 추격도 귀환도 없다 — 어그로만 켜지고 제자리에서 쏜다.
         if (IsBossKind(monster.Kind))
@@ -1060,8 +1085,11 @@ public sealed class SwarmArenaManager
         }
 
         // 대상이 없거나 리쉬(앵커 기준) 밖이면 귀환 — 도주는 언제나 성립한다.
+        // 공급 몹에는 앵커 리쉬가 없다 (#229 침투): 걸어 들어온 개체가 5.5m 줄에 묶이면 구역
+        // 어디에 서든 마주치는 수가 앵커 하나 분량으로 고정돼, 화력을 올려도 잡을 게 늘지 않는다.
+        // 구역 경계가 리쉬다 — 위 루프가 이미 같은 구역 참가자만 후보로 본다.
         bool returnToAnchor = !found;
-        if (found)
+        if (found && !monster.IsSupplyUnit)
         {
             float leashDx = target.Position.X - monster.AnchorX;
             float leashDy = target.Position.Y - monster.AnchorY;
@@ -1182,7 +1210,8 @@ public sealed class SwarmArenaManager
 
             want = Math.Max(0, want);
             int spawned = SpawnSupplyMonsters(
-                state, zone, want, includeCore, phaseIndex, now, result);
+                state, zone, want, includeCore, phaseIndex, now, result,
+                candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true);
             if (spawned == 0)
             {
                 // 전 앵커가 플레이어 2.5m 안 — 1초 뒤 재검사.
@@ -1218,14 +1247,14 @@ public sealed class SwarmArenaManager
 
         foreach (var monster in state.Monsters.Values)
         {
-            if (!monster.Alive || IsBossKind(monster.Kind) || occupied.Contains(monster.Area))
+            if (!monster.Alive || IsBossKind(monster.Kind) || occupied.Contains(monster.HomeArea))
                 continue;
 
-            if (IsAreaClosedResolver?.Invoke(state.MatchingId, monster.Area) != true)
+            if (IsAreaClosedResolver?.Invoke(state.MatchingId, monster.HomeArea) != true)
             {
-                if (!state.ZoneVacatedAtUtc.TryGetValue(monster.Area, out var vacatedAtUtc))
+                if (!state.ZoneVacatedAtUtc.TryGetValue(monster.HomeArea, out var vacatedAtUtc))
                 {
-                    state.ZoneVacatedAtUtc[monster.Area] = now;
+                    state.ZoneVacatedAtUtc[monster.HomeArea] = now;
                     continue;
                 }
 
@@ -1258,7 +1287,7 @@ public sealed class SwarmArenaManager
             return reward;
 
         int phaseIndex = GetSupplyPhaseIndex((now - state.StartsAtUtc).TotalSeconds);
-        var budgetKey = (monster.Area, phaseIndex);
+        var budgetKey = (monster.HomeArea, phaseIndex);
         if (monster.Kind == SwarmMonsterKind.RunawayGoblin)
             return state.SupplyCoreRewarded.Add(budgetKey) ? reward : 0;
 
@@ -1301,10 +1330,12 @@ public sealed class SwarmArenaManager
     /// <summary>구역에 살아있는 핵(탈주 고블린)이 있는지 — 핵은 구역당 1기만 유지한다.</summary>
     private static bool HasAliveCore(MatchState state, AreaType area) =>
         state.Monsters.Values.Any(monster =>
-            monster.Alive && monster.Area == area && monster.Kind == SwarmMonsterKind.RunawayGoblin);
+            monster.Alive && monster.HomeArea == area && monster.Kind == SwarmMonsterKind.RunawayGoblin);
 
+    // 배정 구역 기준 (#229 침투): 행군 중인 개체도 그 구역의 몫으로 센다 — 물리 위치로 세면
+    // 파이프라인에 있는 만큼 디렉터가 한 번 더 채워 상한이 두 배로 부푼다.
     private static int CountAliveInArea(MatchState state, AreaType area) =>
-        state.Monsters.Values.Count(monster => monster.Alive && monster.Area == area);
+        state.Monsters.Values.Count(monster => monster.Alive && monster.HomeArea == area);
 
     /// <summary>
     ///     공급 보충 스폰 (#229 4단계): 구역 앵커 3개(캠프 앵커 CSV 우선) 중 플레이어에게서
@@ -1316,9 +1347,12 @@ public sealed class SwarmArenaManager
     /// <returns>실제로 세운 마릿수.</returns>
     private static int SpawnSupplyMonsters(
         MatchState state, AreaType area, int normals, bool includeCore,
-        int phaseIndex, DateTime now, SwarmArenaTickResult result)
+        int phaseIndex, DateTime now, SwarmArenaTickResult result,
+        Func<AreaType, bool>? isAreaBlocked = null)
     {
         var phase = SupplyPhases[phaseIndex];
+        // 운동장 밖 구역은 침투로 채운다 — 발원은 운동장 중심, 아래 앵커는 도착지가 된다.
+        bool infiltrate = area != SwarmInwardOriginArea;
         var budgetKey = (area, phaseIndex);
         var center = BotPlayerManager.CellToWorldPosition(
             MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
@@ -1344,15 +1378,15 @@ public sealed class SwarmArenaManager
         // 앵커별 최근접 플레이어 거리 — 안전 이격(2.5m) 미만은 제외하고, 화면 밖(7m)을 우선한다.
         // 같은 조건이면 운동장 쪽 앵커를 먼저 쓴다 (#229 4단계-보정): 잔상이 중앙에서 번져
         // 나오는 것처럼 읽혀야 폐쇄의 방향(바깥 → 중앙)과 정면으로 마주 본다.
-        // 개체를 실제로 걷게 하지는 않는다 — 확산시키면 초반 외곽이 비어 성장 시작이 통째로
-        // 밀리고, 폐쇄 구역으로 흘러든 몹이 상한을 다시 먹는다. 위치만 안쪽으로 준다.
+        // 침투에서는 이 앵커가 스폰 지점이 아니라 행군 도착지다 — 플레이어 코앞에서 솟는 일이
+        // 애초에 없으므로 안전 이격 필터를 걸지 않는다. 전 앵커가 막혀 공급이 멎던 경로도 함께 사라진다.
         var inward = GetInwardDirection(area);
         var ranked = anchors
             .Select(anchor => (
                 Anchor: anchor,
                 Distance: NearestParticipantDistance(state, area, anchor),
                 Inwardness: (anchor.X - center.X) * inward.X + (anchor.Y - center.Y) * inward.Y))
-            .Where(entry => entry.Distance >= SupplySafeSpawnDistance)
+            .Where(entry => infiltrate || entry.Distance >= SupplySafeSpawnDistance)
             .OrderByDescending(entry => entry.Distance >= SupplyOffscreenDistance)
             .ThenByDescending(entry => entry.Inwardness)
             .ThenByDescending(entry => entry.Distance)
@@ -1378,10 +1412,23 @@ public sealed class SwarmArenaManager
             float angle = (float)(index * Math.PI * 2d / spawnPlan.Count) +
                           (float)(state.Rng.NextDouble() * 0.5d - 0.25d);
             // 산개도 안쪽으로 한 뼘 민다 — 앵커가 셋뿐이라 편향이 앵커 선택만으로는 약하다.
-            var position = ClampToAreaWalkable(new Vector3f(
+            var destination = ClampToAreaWalkable(new Vector3f(
                 packAnchor.X + MathF.Cos(angle) * SupplyScatterRadius + inward.X * SupplyInwardBias,
                 packAnchor.Y + MathF.Sin(angle) * SupplyScatterRadius + inward.Y * SupplyInwardBias,
                 0f), packAnchor, area);
+
+            // 침투: 운동장에서 태어나 도착지까지 걷는다. 경로가 없으면(문이 잠겼거나 그래프가
+            // 끊겼으면) 구역 안 스폰으로 되돌린다 — 공급이 통째로 멎는 것보다 낫다.
+            var position = destination;
+            var spawnArea = area;
+            List<Vector3f>? route = null;
+            if (infiltrate &&
+                TryPlanInfiltration(state, area, destination, isAreaBlocked, out var origin, out var planned))
+            {
+                position = origin;
+                spawnArea = SwarmInwardOriginArea;
+                route = planned;
+            }
 
             var kind = spawnPlan[index].Kind;
             var stats = GetKindStats(kind);
@@ -1404,10 +1451,14 @@ public sealed class SwarmArenaManager
                 MonsterId = FirstMonsterId + serial,
                 CombatTargetId = FirstCombatTargetId - serial,
                 Pattern = pattern,
-                Area = area,
+                Area = spawnArea,
+                HomeArea = area,
                 Position = position,
                 Health = maxHp,
                 Alive = true,
+                // 공급 몹은 잠들지 않는다 (#229): 사냥하러 걸어 들어온 개체가 방에서 다시 잠들면
+                // "플레이어가 앵커를 순회하며 깨우는" 예전 구조로 되돌아간다.
+                Aggro = true,
                 ActivatesAtUtc = now.AddSeconds(SupplyTelegraphSeconds),
                 NextContactAtUtc = now,
                 ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
@@ -1423,6 +1474,14 @@ public sealed class SwarmArenaManager
                 AnchorX = position.X,
                 AnchorY = position.Y
             };
+            if (route != null)
+            {
+                monster.Infiltrating = true;
+                monster.MarchWaypoints.AddRange(route);
+                monster.MarchBudgetSeconds = Math.Max(
+                    MarchBudgetMinimumSeconds, route.Count * MarchBudgetSecondsPerWaypoint);
+            }
+
             state.Monsters[monster.MonsterId] = monster;
             result.SpawnedMonsters.Add(monster.ToMonsterRuntimeInfo());
         }
@@ -1431,6 +1490,98 @@ public sealed class SwarmArenaManager
         result.SupplyPackSpawns.Add(new SupplyPackSpawnInfo(
             area, phaseIndex, spawnPlan.Count, stoneTotal));
         return spawnPlan.Count;
+    }
+
+    /// <summary>
+    ///     침투 경로 계획 (#229). 운동장 중심 주변에서 발원점을 잡고 목적지까지의 통로를 미리 깐다.
+    ///     폐쇄된 구역은 경로에서 배제한다 — 잠긴 문 앞에 줄을 서면 그대로 상한만 먹는다.
+    ///     경로가 없으면 false를 돌려 호출부가 구역 안 스폰으로 되돌아가게 한다.
+    /// </summary>
+    private static bool TryPlanInfiltration(
+        MatchState state, AreaType destinationArea, Vector3f destination,
+        Func<AreaType, bool>? isAreaBlocked, out Vector3f origin, out List<Vector3f> route)
+    {
+        route = null!;
+        var originCenter = BotPlayerManager.CellToWorldPosition(
+            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, SwarmInwardOriginArea));
+        float angle = (float)(state.Rng.NextDouble() * Math.PI * 2d);
+        origin = ClampToAreaWalkable(new Vector3f(
+                originCenter.X + MathF.Cos(angle) * InfiltrationOriginRadius,
+                originCenter.Y + MathF.Sin(angle) * InfiltrationOriginRadius, 0f),
+            originCenter, SwarmInwardOriginArea);
+
+        var steps = BotPathfinder.FindPath(
+            MapId.School, SwarmInwardOriginArea,
+            MapCoordinateConverter.WorldToCell(MapId.School, origin),
+            destinationArea, MapCoordinateConverter.WorldToCell(MapId.School, destination),
+            isAreaBlocked);
+        if (steps == null || steps.Count == 0)
+            return false;
+
+        route = new List<Vector3f>(steps.Count + 1);
+        foreach (var step in steps)
+            route.Add(BotPlayerManager.CellToWorldPosition(MapId.School, step.Cell));
+        route.Add(destination);
+        return true;
+    }
+
+    /// <summary>
+    ///     침투 행군 한 틱. 경로를 따라 걷고 물리 구역을 갱신한다 — 행군 중에는 운동장·복도
+    ///     소속이라 그 구역에 선 누구에게든 보이고 맞는다.
+    ///     도착 판정은 물리 구역이 한다: 문턱을 넘는 순간 사냥이 시작된다.
+    ///     제한시간을 넘겨도 배정 구역에 못 들어갔으면 걷어낸다 — 복도에 낀 개체가 배정 구역의
+    ///     목표 수를 영구히 차지하면 그 구역 공급이 그대로 멎는다.
+    /// </summary>
+    private static void AdvanceInfiltration(
+        MonsterRuntime monster, double deltaSeconds, DateTime now)
+    {
+        monster.MarchBudgetSeconds -= deltaSeconds;
+        while (monster.MarchIndex < monster.MarchWaypoints.Count)
+        {
+            var waypoint = monster.MarchWaypoints[monster.MarchIndex];
+            float dx = waypoint.X - monster.Position.X;
+            float dy = waypoint.Y - monster.Position.Y;
+            float distance = MathF.Sqrt(dx * dx + dy * dy);
+            if (distance <= MarchWaypointArriveDistance)
+            {
+                monster.MarchIndex++;
+                continue;
+            }
+
+            float step = (float)(MonsterMoveSpeed * deltaSeconds);
+            if (step > distance)
+                step = distance;
+            monster.Position = new Vector3f(
+                monster.Position.X + dx / distance * step,
+                monster.Position.Y + dy / distance * step, 0f);
+            break;
+        }
+
+        monster.Area = GameMapData.GetCurrentArea(
+            MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, monster.Position));
+
+        if (monster.Area == monster.HomeArea || monster.MarchIndex >= monster.MarchWaypoints.Count)
+        {
+            ArriveFromInfiltration(monster);
+            return;
+        }
+
+        if (monster.MarchBudgetSeconds > 0d)
+            return;
+
+        monster.Alive = false;
+        monster.DiedAtUtc = now;
+    }
+
+    /// <summary>침투 종료 — 도착 지점을 앵커로 삼고 그대로 교전에 들어간다.</summary>
+    private static void ArriveFromInfiltration(MonsterRuntime monster)
+    {
+        monster.Infiltrating = false;
+        monster.MarchWaypoints.Clear();
+        monster.MarchIndex = 0;
+        monster.AnchorX = monster.Position.X;
+        monster.AnchorY = monster.Position.Y;
+        monster.Aggro = true;
     }
 
     /// <summary>
@@ -1484,25 +1635,21 @@ public sealed class SwarmArenaManager
         DateTime now,
         double deltaSeconds)
     {
-        if (!monster.Aggro)
+        // 침투 행군 (#229): 배정 구역에 닿기 전까지는 경로를 따라 걷는다. 도중에 어그로 반경 안
+        // 참가자를 만나면 거기서 멈추고 붙는다 — 지나는 길목이 곧 전장이다.
+        if (monster.Infiltrating)
         {
-            for (int index = 0; index < participants.Count; index++)
+            if (!HasParticipantWithinAggro(monster, participants))
             {
-                var participant = participants[index];
-                if (participant.Area != monster.Area)
-                    continue;
-                float aggroDx = participant.Position.X - monster.Position.X;
-                float aggroDy = participant.Position.Y - monster.Position.Y;
-                if (aggroDx * aggroDx + aggroDy * aggroDy > CampAggroRadius * CampAggroRadius)
-                    continue;
-                monster.Aggro = true;
-                monster.ChaseTargetPlayerId = participant.PlayerId;
-                break;
+                AdvanceInfiltration(monster, deltaSeconds, now);
+                return;
             }
 
-            if (!monster.Aggro)
-                return;
+            ArriveFromInfiltration(monster);
         }
+
+        if (!monster.Aggro && !HasParticipantWithinAggro(monster, participants))
+            return;
 
         // 추격 대상 (#229 저주기 갱신): 들고 있는 대상이 같은 구역에 있으면 그대로 쫓는다.
         // 재선정은 대상을 잃었거나 유지 창(1초)이 끝났을 때만 — 매 틱 최근접을 다시 고르면
@@ -1550,14 +1697,15 @@ public sealed class SwarmArenaManager
 
         if (!found)
         {
-            // 구역에 아무도 없다 — 앵커 복귀, 도착하면 다시 잠든다.
+            // 구역에 아무도 없다 — 앵커로 물러선다. 다시 잠들지는 않는다 (#229 침투):
+            // 사냥하러 걸어 들어온 개체가 잠들면 플레이어가 2.5m까지 붙어 깨워야 하고,
+            // 그러면 마주치는 수가 다시 접근 반경에 갇힌다.
             var anchor = new Vector3f(monster.AnchorX, monster.AnchorY, 0f);
             float homeDx = anchor.X - monster.Position.X;
             float homeDy = anchor.Y - monster.Position.Y;
             if (homeDx * homeDx + homeDy * homeDy <=
                 CampReturnArriveDistance * CampReturnArriveDistance)
             {
-                monster.Aggro = false;
                 monster.ChaseTargetPlayerId = 0;
                 return;
             }
@@ -1730,6 +1878,7 @@ public sealed class SwarmArenaManager
             CombatTargetId = FirstCombatTargetId - serial,
             Pattern = pattern,
             Area = anchor.Area,
+            HomeArea = anchor.Area,
             Position = position,
             Health = MonsterMaxHealth,
             Alive = true,
@@ -1937,6 +2086,19 @@ public sealed class SwarmArenaManager
         public float AnchorX { get; set; }
         public float AnchorY { get; set; }
         public bool Aggro { get; set; }
+
+        // 침투 (#229): 공급 몹은 운동장 중심에서 태어나 배정 구역까지 행군한 뒤 사냥에 들어간다.
+        // HomeArea = 배정 구역. 공급 회계(구역 목표·석 예산·좌초 회수)는 전부 이 값을 본다 —
+        // 행군 중인 개체가 목표 수에서 빠지면 디렉터가 파이프라인을 두 번 채워 폭주한다.
+        // Area는 물리 위치의 구역이라 행군 중에는 운동장·복도로 바뀐다 (클라 컬링·전투 판정 기준).
+        public AreaType HomeArea { get; set; }
+        public bool Infiltrating { get; set; }
+        public List<Vector3f> MarchWaypoints { get; } = new();
+        public int MarchIndex { get; set; }
+        public double MarchBudgetSeconds { get; set; }
+
+        /// <summary>캠프 몹은 앵커에 묶이고, 공급 몹은 구역 자체가 리쉬다.</summary>
+        public bool IsSupplyUnit => CampIndex < 0;
 
         public MonsterRuntimeInfo ToMonsterRuntimeInfo() => new()
         {
