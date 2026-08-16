@@ -3489,11 +3489,12 @@ public partial class GameServer
     // ===== 성장 카드 3택 (#226 단계 C) =====
     // 소환석이 카드 비용에 도달하면 즉시 오퍼가 뜬다 (상자 개방 트리거 퇴역).
     // 카드: 0=증식(무작위 T1 +1) · 1=강화(선두 T1→T2, 없으면 T2→T3) · 2=철갑(선두 무외피 오브).
-    // 성장 직후 오퍼 휴지 (2026-08-16 축소): 3초는 카드 3택 시절의 페이싱이었다. 성장이 상시
-    // 버튼이 된 뒤로는 석이 남아 있는데도 그 3초 동안 오퍼가 서지 않아, 버튼이 "아직 성장할 수
-    // 없습니다"로 답한다 — 시작 지급을 소환석 19개로 바꾼 뒤로는 판을 여는 3연속 소환이 통째로
-    // 막혔다. 연타 이중 차감만 막을 만큼으로 줄인다.
-    private const double SwarmGrowthOfferCooldownSeconds = 0.35d;
+    // 성장 직후 오퍼 휴지는 퇴역했다 (2026-08-16 유저 결정). 카드 3택 시절의 페이싱이었고,
+    // 성장이 상시 버튼이 된 뒤로는 석이 남아 있는데도 오퍼가 서지 않아 버튼이 "아직 성장할 수
+    // 없습니다"로 답하는 벽이었다. 성장 속도는 소환석 수입과 비용 곡선(5+2N)이 정한다 —
+    // 시간 잠금이 하나 더 있을 이유가 없다.
+    // 이중 차감은 오퍼 소유권이 막는다: 픽이 성립하면 오퍼가 사라지고, 같은 OfferId로 온 두 번째
+    // 요청은 대조에서 걸러진다. 클라도 응답 전까지 입력을 잠근다.
     private const int SwarmGrowthCardMultiply = 0;
     private const int SwarmGrowthCardEnhance = 1;
     private const int SwarmGrowthCardArmor = 2;
@@ -3517,7 +3518,6 @@ public partial class GameServer
 
     private readonly Dictionary<(long MatchingId, long PlayerId), SwarmGrowthOfferState>
         _swarmGrowthOffers = new();
-    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmGrowthNextOfferAtUtc = new();
     // 오브 내구 보너스 (#226 방어 강화 = 내구 모델, 2026-08-12): 기본 내구 1 + 보너스.
     // 내구 2+ 오브는 밟혀도 금만 가고(크랙 재활성), 내구만큼 밟혀야 절단된다.
     // 파괴·매치 정리에서 함께 지운다. 크랙은 유지된다(방어 강화가 균열을 지우지 않는다).
@@ -3695,9 +3695,6 @@ public partial class GameServer
 
                 continue;
             }
-            if (_swarmGrowthNextOfferAtUtc.TryGetValue(key, out var nextAtUtc) && nowUtc < nextAtUtc)
-                continue;
-
             var (baseCost, surcharge, finalCost, orbCount, costSummon, costAttack, costDefense) =
                 GetSwarmGrowthCostBreakdown(matchingId, playerId);
             if (_summonStoneManager.GetSnapshot(matchingId, playerId).StoneCount < finalCost)
@@ -3741,10 +3738,6 @@ public partial class GameServer
         {
             if (bot.IsSwarmCutDummy)
                 continue;
-            var key = (matchingId, bot.PlayerId);
-            if (_swarmGrowthNextOfferAtUtc.TryGetValue(key, out var nextAtUtc) && nowUtc < nextAtUtc)
-                continue;
-
             var (baseCost, surcharge, finalCost, orbCount, costSummon, costAttack, costDefense) =
                 GetSwarmGrowthCostBreakdown(matchingId, bot.PlayerId);
             if (_summonStoneManager.GetSnapshot(matchingId, bot.PlayerId).StoneCount < finalCost)
@@ -3756,7 +3749,6 @@ public partial class GameServer
             int cardIndex = ChooseSwarmBotGrowthCard(
                 matchingId, bot, offer, orbCount, aliveSessions, aliveBots);
             bool applied = ApplySwarmGrowthCard(matchingId, bot.PlayerId, cardIndex, offer, session: null);
-            _swarmGrowthNextOfferAtUtc[key] = nowUtc.AddSeconds(SwarmGrowthOfferCooldownSeconds);
             if (applied)
             {
                 int successCountBefore = _summonStoneManager.GetGrowthSuccessCount(matchingId, bot.PlayerId);
@@ -3899,7 +3891,6 @@ public partial class GameServer
         {
             _swarmGrowthOffers.Remove(key);
             _swarmGrowthOfferResentAtUtc.Remove(key);
-            _swarmGrowthNextOfferAtUtc[key] = DateTime.UtcNow.AddSeconds(SwarmGrowthOfferCooldownSeconds);
             // N 누적 (#226 C 잔여): 성공한 선택만 — 실패(재검증 탈락)는 비용 곡선을 밀지 않는다.
             int successCountBefore = _summonStoneManager.GetGrowthSuccessCount(matchingId, playerId);
             _summonStoneManager.RecordGrowthSuccess(matchingId, playerId, cardIndex);
@@ -4276,9 +4267,6 @@ public partial class GameServer
         foreach (var key in _swarmGrowthOffers.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmGrowthOffers.Remove(key);
-        foreach (var key in _swarmGrowthNextOfferAtUtc.Keys
-                     .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmGrowthNextOfferAtUtc.Remove(key);
         foreach (var key in _swarmOrbDurabilityBonus.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmOrbDurabilityBonus.Remove(key);

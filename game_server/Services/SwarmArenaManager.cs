@@ -1407,7 +1407,6 @@ public sealed class SwarmArenaManager
         var phase = SupplyPhases[phaseIndex];
         // 운동장 밖 구역은 침투로 채운다 — 발원은 운동장 중심, 아래 앵커는 도착지가 된다.
         bool infiltrate = area != SwarmInwardOriginArea;
-        var budgetKey = (area, phaseIndex);
         var center = BotPlayerManager.CellToWorldPosition(
             MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
         var anchors = new List<Vector3f>(CampsPerArea);
