@@ -1263,9 +1263,14 @@ public sealed class SwarmArenaManager
                 continue;
 
             want = Math.Max(0, want);
+            // 첫 무리는 구역 안에 바로 세운다 (2026-08-16 실플레이 판정: 초반에 몹이 안 보인다).
+            // 침투는 운동장에서 걸어 들어오는 데 5~10초가 걸리는데, 그 시간이 판이 열리는 구간과
+            // 겹치면 방이 통째로 비어 성장 시작이 밀린다. 증원부터 운동장에서 밀려오게 한다 —
+            // "저기서 온다"는 읽기는 두 번째 파도부터 성립해도 충분하다.
             int spawned = SpawnSupplyMonsters(
                 state, zone, want, includeCore, phaseIndex, now, result,
-                candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true);
+                candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true,
+                infiltrate: zoneState.HasSpawned);
             if (spawned == 0)
             {
                 // 전 앵커가 플레이어 2.5m 안 — 1초 뒤 재검사.
@@ -1402,11 +1407,12 @@ public sealed class SwarmArenaManager
     private static int SpawnSupplyMonsters(
         MatchState state, AreaType area, int normals, bool includeCore,
         int phaseIndex, DateTime now, SwarmArenaTickResult result,
-        Func<AreaType, bool>? isAreaBlocked = null)
+        Func<AreaType, bool>? isAreaBlocked = null, bool infiltrate = true)
     {
         var phase = SupplyPhases[phaseIndex];
         // 운동장 밖 구역은 침투로 채운다 — 발원은 운동장 중심, 아래 앵커는 도착지가 된다.
-        bool infiltrate = area != SwarmInwardOriginArea;
+        // 운동장 자신과 구역의 첫 무리는 제자리에 선다.
+        infiltrate = infiltrate && area != SwarmInwardOriginArea;
         var center = BotPlayerManager.CellToWorldPosition(
             MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
         var anchors = new List<Vector3f>(CampsPerArea);
