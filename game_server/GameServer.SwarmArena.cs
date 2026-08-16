@@ -46,7 +46,14 @@ public partial class GameServer
     // 피해 유지(배율 분리). 소수 이월 누산으로 정수 반올림 왜곡(바람 최소 1 인플레)을 막는다.
     // 0.15 → 0.35 (2026-08-12 유도탄 복귀 후 재보정): 게이지 420 기준 0.15는 풀히트로도
     // TTK ~56초+자연회복 — "안 박히는" 체감의 수치적 실체. 0.35 = TTK 22~28초 목표 정렬.
-    private const float SwarmPvpCorruptionPerDamage = 0.35f;
+    //
+    // 0.35 → 0.12 (2026-08-16): 0.35는 PvP가 주 킬 경로일 때 잡힌 값이라 지금 설계와
+    // 어긋난다. 지금은 몹이 사형집행자고 사람은 서로를 몹 앞에 밀어넣는 구조다.
+    // 봇 매치 9875558에서 PvP를 살리자마자 매치가 170초에 끝났다 — 첫 탈락 28.8초,
+    // 몹 피격은 초당 2.17에서 1.19로 반토막, 절단은 142회에서 25회로 죽었다.
+    // 원거리로 처리되니 몸으로 파고들 이유가 사라진 것이다.
+    // 0.12면 TTK가 60초대로 늘어 사격은 깎는 수단이 되고, 마무리는 몹과 절단이 가져간다.
+    private const float SwarmPvpCorruptionPerDamage = 0.12f;
     private readonly Dictionary<(long MatchingId, long PlayerId), float> _swarmPvpCorruptionCarry = new();
 
     /// <summary>PvP 피해 → 본체 오염 이월 누산. 반환 = 이번 타에 실제 적용할 오염(0 가능).</summary>
