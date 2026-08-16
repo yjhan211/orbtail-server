@@ -434,8 +434,13 @@ public sealed class SwarmArenaManager
 
                 if (RegionSupplyModeEnabled)
                 {
+                    // 문이 잠긴 방으로 가던 개체도 문턱 밖에서 기다린다 (2026-08-16):
+                    // 잠긴 문에 부딪히면 웨이포인트를 버리다 제한시간에 걸려 사라진다.
+                    // 문 앞에 서 있게 두면 플레이어가 문을 여는 순간 그대로 들이닥친다.
                     UpdateSupplyMonsterMovement(
-                        monster, state.LastParticipants, now, moveDeltaSeconds, preMatch);
+                        monster, state.LastParticipants, now, moveDeltaSeconds,
+                        preMatch ||
+                        IsAreaSealedResolver?.Invoke(matchingId, monster.HomeArea) == true);
                 }
                 else if (CampModeEnabled)
                 {
@@ -1207,11 +1212,13 @@ public sealed class SwarmArenaManager
             occupied.Add(participant.Area);
         }
 
+        bool preMatch = IsGameplayActiveResolver?.Invoke(state.MatchingId) == false;
+
         // 인트로 산개 (2026-08-16 유저 결정): 매치 시작 전에는 열린 방 전부를 공급 대상으로 본다.
         // 점유 구역만 채우면 발원지에서 나가는 줄기가 플레이어가 선 방 하나뿐이라 "운동장에서
         // 열 방향으로 뻗어 나간다"가 성립하지 않는다. 게이트가 풀리면 점유 규칙으로 돌아가고,
         // 아무도 없는 방의 몹은 좌초 회수가 유예 뒤에 걷는다.
-        if (IsGameplayActiveResolver?.Invoke(state.MatchingId) == false)
+        if (preMatch)
         {
             foreach (var room in SurvivorRoyaleSpawnData.GetPhaseRoomCandidates())
             {
@@ -1296,8 +1303,14 @@ public sealed class SwarmArenaManager
             int spawned = SpawnSupplyMonsters(
                 state, zone, want, includeCore, phaseIndex, now, result,
                 candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true,
-                isAreaSealed: candidate =>
-                    IsAreaSealedResolver?.Invoke(state.MatchingId, candidate) == true);
+                // 인트로 예열 구간에서는 봉인을 보지 않는다 (2026-08-16 유저 판정): 매치 시작
+                // 시점에는 모든 방문이 잠겨 있어 전 구역이 봉인으로 잡히고, 그러면 침투가 통째로
+                // 제자리 스폰으로 떨어져 "운동장에서 흩어진다"가 사라진다 — 플레이어 방에 몹이
+                // 바로 뭉쳐 있는 것도 같은 원인이다.
+                // 예열 중 행군은 어차피 문턱 밖에서 멈추므로 잠긴 문에 부딪히지 않는다.
+                isAreaSealed: preMatch
+                    ? null
+                    : candidate => IsAreaSealedResolver?.Invoke(state.MatchingId, candidate) == true);
             if (spawned == 0)
             {
                 // 전 앵커가 플레이어 2.5m 안 — 1초 뒤 재검사.
