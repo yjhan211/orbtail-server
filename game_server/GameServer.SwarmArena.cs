@@ -400,21 +400,16 @@ public partial class GameServer
             // 유도탄으로). 아래 루프의 태양·바람 분기가 몹 사격과 같은 발사 연출
             // (BroadcastSpotArenaAttackVfxToTargetAndObservers)과 비행시간 착탄을 쓰므로,
             // 필터만 넓히면 사람 표적도 같은 유도탄으로 나간다.
-            // 사거리는 둘이 다르다: 몹은 액터 사거리(PvE 7), 사람은 오브별 PvP 사거리(6).
-            // 파도는 GetSwarmOrbPvpRange가 0이라 사람에게는 미사일을 쏘지 않는다 — 물폭탄 담당.
+            //
+            // 판정도 PvE와 완전히 같게 둔다 (2026-08-16 유저 판정: 사거리가 너무 좁다).
+            // 처음엔 사람 표적에만 오브별 PvP 사거리(6)와 등거리 타원을 얹었는데, 그 타원은
+            // dy를 2배로 보정하므로 세로 유효 사거리가 절반(3)이다 — 리졸버가 평범한
+            // 유클리드로 재는 PvE 7과 비교하면 훨씬 좁은 판정이었다. 사거리는 리졸버가
+            // 액터 AttackRange(7)로 일괄 판정하고, 여기서는 구역만 본다.
+            // 파도는 액터 Damage가 0이라 리졸버가 공격자에서 제외한다 — 별도 배제 불필요.
             // 표적 우선순위는 이미 본체·몹 동급(2)이라 최근접이 이긴다 — 적이 있다고 파밍이
             // 죽지 않는다(#226 표적 정책).
-            (attacker, target) =>
-            {
-                if (attacker.IsMonsterTarget || attacker.Area != target.Area)
-                    return false;
-                if (target.IsMonsterTarget)
-                    return true;
-
-                float pvpRange = GetSwarmOrbPvpRange(attacker.WeaponItemId);
-                return pvpRange > 0f &&
-                       IsWithinSwarmOrbRange(attacker.Position, pvpRange, target.Position);
-            });
+            (attacker, target) => !attacker.IsMonsterTarget && attacker.Area == target.Area);
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
         {
