@@ -4434,12 +4434,18 @@ public partial class GameServer
         bool armed = !SwarmCutDummyAutoSetup &&
                      IsSwarmAttackArmed(matchingId, spatial.PlayerId, nowUtc) &&
                      !IsSwarmCutDummyPlayer(matchingId, spatial.PlayerId);
-        // #226 표적 정책: 본체와 몬스터는 동급(2) — 최근접 우선 + 타겟 고정. 본체(1) 우선이던
-        // 시절엔 구역에 적 플레이어가 있는 한 몹이 영영 표적이 안 돼 파밍이 죽었다.
+        // 본체 우선(1)으로 되돌린다 (2026-08-16 유저 제보: 내 캐릭터가 봇을 안 때린다).
+        // 동급(2)이면 최근접이 이기는데, 밀도 램프 이후 구역당 몹이 8~28마리라 항상 몹이
+        // 더 가깝다 — 게다가 표적 고정이 걸려 죽으면 또 다음 몹을 문다. 봇 매치 9873914에서
+        // PvP 피격(SURVIVOR_HIT)이 300초 동안 0건이었다. 사람은 표적이 될 기회조차 없었다.
+        //
+        // #226에서 동급으로 내린 이유("적 플레이어가 있는 한 몹이 영영 표적이 안 돼 파밍이
+        // 죽는다")는 지금은 성립하지 않는다. 그때 PvP 사거리는 30이라 구역 전체를 덮었지만
+        // 지금은 7이다 — 적이 코앞에 붙었을 때만 우선권을 가져간다. 그건 오히려 맞는 동작이다.
         // 오브 액터는 발사 원점일 뿐 표적이 아니다(Untargetable).
         var fallback = CreateSwarmParticipantActor(spatial, armed) with
         {
-            TargetPriority = 2
+            TargetPriority = 1
         };
         var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, spatial.PlayerId);
         var inventoryItems = inventory.GetAllItems().Where(item => item.Count > 0).ToList();
