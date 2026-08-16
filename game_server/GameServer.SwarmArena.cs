@@ -443,17 +443,12 @@ public partial class GameServer
                     Config.SWARM_PVP_ATTACK_RANGE * Config.SWARM_PVP_ATTACK_RANGE)
                     return false;
 
-                // 시야 (#229 12단계: 시야 밖 플레이어는 표적으로 잡지 않는다). 이 람다가
-                // 리졸버의 hasLineOfSight 자리를 쓰므로, 여기서 직접 부르지 않으면 실제
-                // 시야 판정이 아예 없다 — 같은 구역이면 벽 너머 상대도 사정권에 들어
-                // 구역 안 장애물이 엄폐가 되지 않았다.
-                // 몹(PvE)에는 걸지 않는다: 잔상은 벽을 통과하지 않고 걸어오므로 이미 시야
-                // 안이고, 판정을 얹으면 문틈·모서리에서 사격이 끊겨 파밍 리듬만 망가진다.
-                var sightFrom = ProximityCombatLineOfSight.WorldPositionToCell(
-                    MapId.School, attackerBody);
-                return target.Cell is not null &&
-                       ProximityCombatLineOfSight.HasClearPath(
-                           MapId.School, sightFrom, target.Cell);
+                // 시야 판정은 걷어냈다 (2026-08-16 유저 판정: 범위 안이면 사람 먼저 무조건).
+                // 봇 매치 9879171 실측 — 조우 69회에 절단 47회가 났는데도(즉 몸이 서로
+                // 붙어 있었는데도) PvP는 0건이었다. 오브는 궤도를 돌며 벽·소품 위를 자주
+                // 지나고 HasClearPath는 출발 셀이 불투명하면 즉시 false다.
+                // 사거리 안에 붙어 있는데 조준이 안 서는 쪽이 훨씬 나쁘다.
+                return true;
             });
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
@@ -4501,7 +4496,9 @@ public partial class GameServer
         // 오브 액터는 발사 원점일 뿐 표적이 아니다(Untargetable).
         var fallback = CreateSwarmParticipantActor(spatial, armed) with
         {
-            TargetPriority = 1
+            // 0 = 최상위 (2026-08-16 유저 판정: 범위 안이면 사람 먼저 무조건).
+            // 사거리 판정을 이미 필터가 하므로, 후보에 올라온 사람은 곧 사정권 안이다.
+            TargetPriority = 0
         };
         var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, spatial.PlayerId);
         var inventoryItems = inventory.GetAllItems().Where(item => item.Count > 0).ToList();
