@@ -448,9 +448,17 @@ public partial class GameClientSession
         int remaining = _areaItemStockManager.GetRemainingCount(CurrentMapSubId, (int)area);
         var sessions = GetSessionsInArea(
             _getSessionsByInstance(CurrentMapId, CurrentMapSubId), area, excludeSelf: false);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, spawned.ToList());
-        foreach (var session in sessions) session.Send(packet);
+        // 청크로 나눠 보낸다 (#229): 드롭 개수가 열려 있어 단일 패킷이 버퍼 2048을 넘길 수 있다.
+        // 넘기면 예외가 호출부까지 올라가 드롭 처리 전체가 죽는다 — 봇 탈락에서 실제로 났다.
+        for (int offset = 0; offset < spawned.Count; offset += GroundItemSpawnBroadcastChunkSize)
+        {
+            var chunk = spawned.Skip(offset).Take(GroundItemSpawnBroadcastChunkSize).ToList();
+            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, chunk);
+            foreach (var session in sessions) session.Send(packet);
+        }
     }
+
+    private const int GroundItemSpawnBroadcastChunkSize = 8;
 
     private void BroadcastGroundItemRemoved(GroundItemInfo item, bool autoUsed)
     {

@@ -4031,13 +4031,9 @@ public partial class GameServer
         if (spawned.Count == 0)
             return;
 
-        int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)area);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, spawned.ToList());
-        foreach (var session in sessions)
-        {
-            if (session.PlayerId.HasValue && session.CurrentArea == area)
-                session.Send(packet);
-        }
+        BroadcastGroundItemSpawnChunked(
+            matchingId, area, spawned.ToList(),
+            sessions.Where(session => session.PlayerId.HasValue && session.CurrentArea == area));
     }
 
     private bool HasAnySquadOrb(long matchingId, long playerId)
