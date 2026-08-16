@@ -1581,10 +1581,12 @@ public partial class GameServer
     // 제3자·잔상·폐쇄 피해는 그대로 들어오고, 피해자는 이동·사격·역절단을 다 할 수 있다.
     private const double SwarmCutRetaliationWindowSeconds = 1.2d;
     // 오브 관통 판정 (정규화 dy×2 공간): 링크 선을 스치는 게 아니라 오브를 밟아야 끊긴다.
-    // 반경 0.35 원형 + 판정 중심 위 오프셋 (2026-08-12 확정): 스프라이트가 떠 있어 위 접근이
-    // 짜던 문제는 중심 오프셋만으로 해결 — 반경을 키우면 옆 오브(간격 0.9)까지 문다.
-    private const float SwarmTrailCutOrbHitRadiusX = 0.35f;
-    private const float SwarmTrailCutOrbHitRadiusY = 0.35f;
+    // 판정 중심 위 오프셋 (2026-08-12): 스프라이트가 떠 있어 위 접근이 짜던 문제를 해결한다.
+    // 반경 0.35 → 0.42 (#229 실플레이 판정: "붙어도 안 깨진다"). 오브 간격이 0.9라
+    // 0.45가 옆 오브와 맞닿는 선이다 — 그 아래로만 키운다. 넘기면 판정 원이 겹쳐
+    // 의도보다 앞선 순번이 잡히고, 절단은 그 순번부터 뒤를 전부 날리므로 손실이 과해진다.
+    private const float SwarmTrailCutOrbHitRadiusX = 0.42f;
+    private const float SwarmTrailCutOrbHitRadiusY = 0.42f;
     private const float SwarmTrailCutOrbHitYOffset = 0.15f;
     // 절단 파열 플래시 반경 — 포위 링과 같은 원형을 작게 띄운다.
     private const float SwarmTrailCutFlashRadius = 0.7f;

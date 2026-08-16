@@ -123,9 +123,16 @@ public sealed class SwarmArenaManager
 
     // 보충률은 처치율 위에 둔다 (#229 4단계-보정). 원안 2마리/1.5초 = 1.33마리/초는
     // 실측 처치율 3.2~5.2마리/초의 3분의 1이라 방이 항상 비어 있었다 — 플레이어가 보는 건
-    // 벽이 아니라 간헐적 소규모 청소였다. 6마리/0.6초 = 10마리/초로 처치율을 넘긴다.
-    private const double SupplyTopUpIntervalSeconds = 0.6d;
-    private const int SupplyTopUpCount = 6;
+    // 벽이 아니라 간헐적 소규모 청소였다.
+    //
+    // 웨이브로 끊는다 (#229 실플레이 판정): 6마리/0.6초는 총량은 맞지만 끊임없이 졸졸
+    // 흘러 "밀려온다"가 아니라 "계속 있다"로 읽혔다. 한 번에 크게 붓고 쉬어야 밀려오는
+    // 파도가 되고, 그 사이가 곧 정리하고 숨 돌리는 창이다.
+    // 20마리/2초 = 10마리/초 — 처치율 대비 총량은 그대로 두고 리듬만 바꾼다.
+    // 실제 투입량은 구역 목표에 다시 잘리므로(want = min(count, 목표 - 생존)) 초반에는
+    // 목표치가, 후반에는 이 값이 한 웨이브 크기를 정한다.
+    private const double SupplyTopUpIntervalSeconds = 2d;
+    private const int SupplyTopUpCount = 20;
     // 구역 전멸 뒤 휴지: 짧은 수면 창이 성장의 보상이다 (#229 완료 조건 2).
     private const double SupplyWipeRestSeconds = 4d;
     // 플레이어 2.5m 안의 앵커에는 즉시 생성하지 않는다 — 전 앵커가 막히면 1초 뒤 재검사.

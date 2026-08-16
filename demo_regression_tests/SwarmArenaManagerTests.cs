@@ -37,8 +37,8 @@ public class SwarmArenaManagerTests
             // 첫 틱부터 보충이 돈다 — 시작 선물 15초 침묵(#226 E)은 퇴역했다.
             var firstTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
             // 초반(페이즈 0)은 작은 몹만 나온다 (#229): 시작 오브 하나로는 핵이 벽처럼 서서
-            // 파밍이 막힌다. 보충 단위 그대로 일반 6마리 (#229 4단계-보정: 처치율 위로 올렸다).
-            Assert.Equal(6, firstTick.SpawnedMonsters.Count);
+            // 파밍이 막힌다. 웨이브 보충(20마리/2초)은 구역 목표에 잘리므로 첫 웨이브는 목표치 8.
+            Assert.Equal(8, firstTick.SpawnedMonsters.Count);
             Assert.DoesNotContain(firstTick.SpawnedMonsters, monster => monster.Kind == 2);
             Assert.All(firstTick.SpawnedMonsters, monster =>
             {
@@ -48,11 +48,11 @@ public class SwarmArenaManagerTests
                 Assert.Equal(1, monster.SummonStoneReward);
             });
 
-            // 보충 간격(0.6초) 안에서는 조용하다.
-            now = StartUtc.AddSeconds(0.5);
+            // 보충 간격(2초) 안에서는 조용하다 — 웨이브 사이가 곧 정리하는 창이다.
+            now = StartUtc.AddSeconds(1.5);
             Assert.Empty(manager.Tick(217001, Participants(startCenter, startRoom), now).SpawnedMonsters);
 
-            // 목표 8까지 0.6초마다 6마리 — 도달하면 멈춘다.
+            // 목표 8을 유지한다 — 2초마다 부족분만큼 한 번에 붓고 쉰다.
             for (double elapsed = 2d; elapsed <= 20d; elapsed += 0.25d)
             {
                 now = StartUtc.AddSeconds(elapsed);
