@@ -1344,6 +1344,9 @@ public sealed class SwarmArenaManager
         {
             if (!monster.Alive || IsBossKind(monster.Kind) || occupied.Contains(monster.HomeArea))
                 continue;
+            // 추격 중인 개체는 남의 구역을 지나는 중이다 — 걷어내면 쫓다 말고 사라진다.
+            if (monster.Infiltrating && monster.MarchIsPursuit)
+                continue;
 
             if (IsAreaClosedResolver?.Invoke(state.MatchingId, monster.HomeArea) != true)
             {
@@ -1696,7 +1699,6 @@ public sealed class SwarmArenaManager
 
             monster.Infiltrating = true;
             monster.MarchIsPursuit = true;
-            monster.HomeArea = participant.Area;
             monster.MarchWaypoints.Clear();
             monster.MarchWaypoints.AddRange(route);
             monster.MarchIndex = 0;
@@ -1827,10 +1829,9 @@ public sealed class SwarmArenaManager
         monster.DiedAtUtc = now;
     }
 
-    // 추격 우회 (2026-08-16): 이만큼 움직이지 못한 시간이 쌓이면 직선 조향을 접고 경로를 깐다.
-    // 벽에 붙어 미끄러지는 것도 "못 움직인" 것으로 친다 — 한 틱 이동량 기준.
-    private const double ChaseRepathSeconds = 1.2d;
-    private const float ChaseProgressThresholdSquared = 0.0009f;
+    // 추격 경로 판정 주기 (2026-08-16). 직선이 뚫렸는지 확인하는 데 전 구간 샘플링이 들어가므로
+    // 개체마다 이 간격으로만 다시 본다 — 매 틱 돌리면 몹 수백 마리에서 비용이 터진다.
+    private const double ChasePlanIntervalSeconds = 0.4d;
 
     // 정지 감시 (2026-08-16): 8초 이상 제자리인 개체를 한 번 보고한다. "구석에 껴서 아무것도
     // 안 하는 몹" 류는 원인이 여러 층(경로·충돌·앵커·맵 데이터)에 걸쳐 있어 추측으로는 안 잡힌다.
@@ -2060,37 +2061,34 @@ public sealed class SwarmArenaManager
                 return;
         }
 
-        // 추격은 경로탐색 없는 직선 조향이다 — 상대가 벽 너머에 있으면 벽을 따라 미끄러지며
-        // 제자리를 맴돈다 (2026-08-16 유저 제보: 방·테라스 타일 끝에 몹이 껴 있다).
-        // 위치가 거의 안 움직인 시간이 쌓이면 경로를 깔아 문으로 돌아 들어가게 한다.
-        var beforeMove = monster.Position;
-        MoveTowardPlayer(monster, target.Position, deltaSeconds);
-
-        float movedX = monster.Position.X - beforeMove.X;
-        float movedY = monster.Position.Y - beforeMove.Y;
-        if (movedX * movedX + movedY * movedY >= ChaseProgressThresholdSquared)
+        // 추격 이동 선택 (2026-08-16 유저 결정: 경로탐색을 적용한다).
+        // 직선이 뚫려 있으면 조향으로 쫓는다 — 반응이 빠르고 무리가 자연스럽게 퍼진다.
+        // 막혀 있으면 그 자리에서 바로 경로를 깐다. 막힌 뒤에 뒤늦게 전환하면 그 사이 벽에
+        // 붙어 미끄러지는 구간이 눈에 남는다("타일 끝에 껴 있는 몹").
+        // 판정은 개체마다 0.4초에 한 번만 — 매 틱 전 구간을 훑으면 몹 수백 마리에서 비용이 터진다.
+        if (now >= monster.NextChasePlanAtUtc)
         {
-            monster.ChaseBlockedSeconds = 0d;
-            return;
+            monster.NextChasePlanAtUtc = now.AddSeconds(ChasePlanIntervalSeconds);
+            bool direct = IsSegmentWalkable(monster.Position, target.Position);
+            if (!direct &&
+                TryPlanRoute(monster.Area, monster.Position, target.Area, target.Position,
+                    null, out var detour))
+            {
+                // 배정 구역은 그대로 둔다 (2026-08-16): 추격할 때마다 HomeArea를 목표 구역으로
+                // 옮기면 공급 회계가 사람이 몰린 구역으로 쏠린다 — 실측에서 운동장 처치 비중이
+                // 64% -> 80%로 올랐다. 좌초 회수는 추격 중인 개체를 건드리지 않는 것으로 푼다.
+                monster.Infiltrating = true;
+                monster.MarchIsPursuit = true;
+                monster.MarchWaypoints.Clear();
+                monster.MarchWaypoints.AddRange(detour);
+                monster.MarchIndex = 0;
+                monster.MarchBudgetSeconds = Math.Max(
+                    MarchBudgetMinimumSeconds, detour.Count * MarchBudgetSecondsPerWaypoint);
+                return;
+            }
         }
 
-        monster.ChaseBlockedSeconds += deltaSeconds;
-        if (monster.ChaseBlockedSeconds < ChaseRepathSeconds)
-            return;
-
-        monster.ChaseBlockedSeconds = 0d;
-        if (!TryPlanRoute(monster.Area, monster.Position, target.Area, target.Position,
-                null, out var detour))
-            return;
-
-        monster.Infiltrating = true;
-        monster.MarchIsPursuit = true;
-        monster.HomeArea = target.Area;
-        monster.MarchWaypoints.Clear();
-        monster.MarchWaypoints.AddRange(detour);
-        monster.MarchIndex = 0;
-        monster.MarchBudgetSeconds = Math.Max(
-            MarchBudgetMinimumSeconds, detour.Count * MarchBudgetSecondsPerWaypoint);
+        MoveTowardPlayer(monster, target.Position, deltaSeconds);
     }
 
     private void SpawnDueParticipantPattern(
@@ -2507,7 +2505,7 @@ public sealed class SwarmArenaManager
         public int MarchIndex { get; set; }
         public double MarchBudgetSeconds { get; set; }
 
-        public double ChaseBlockedSeconds { get; set; }
+        public DateTime NextChasePlanAtUtc { get; set; }
 
         // 정지 감시용
         public float StuckWatchX { get; set; }
