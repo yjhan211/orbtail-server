@@ -278,6 +278,10 @@ public partial class GameServer
         // 실험장 (#226): 몹은 나오되(색 무기 과녁) 공격 피해만 아래 게이트에서 꺼진다.
         var tick = _swarmArenaManager.Tick(matchingId, directorParticipants, nowUtc);
 
+        // 정지 감시: 8초 이상 제자리인 몹을 매치 로그로 남긴다 — 회귀 감지선.
+        foreach (string report in tick.StuckReports)
+            _gameEventLogManager.LogSystem(matchingId, report);
+
         // 공급 스폰 계측 (#229 4단계): 공급지·페이즈·마릿수·석 보상 + 스폰 직후 전역 생존 수.
         // alive는 상한 48 준수와 구역 목표 유지를 한 줄로 읽기 위한 값이다.
         if (tick.SupplyPackSpawns.Count > 0)

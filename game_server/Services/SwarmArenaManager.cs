@@ -444,6 +444,7 @@ public sealed class SwarmArenaManager
                     // 스폰·행군·추격 어느 경로로 들어갔든, 비보행 칸에 선 개체는 매 틱
                     // 보행 가능한 자리로 당긴다 — 원인을 하나 놓쳐도 화면에는 남지 않는다.
                     RescueMonsterFromBlockedCell(monster);
+                    TrackStuckMonster(monster, now, result);
                 }
                 else if (CampModeEnabled)
                 {
@@ -1826,6 +1827,38 @@ public sealed class SwarmArenaManager
         monster.DiedAtUtc = now;
     }
 
+    // 정지 감시 (2026-08-16): 8초 이상 제자리인 개체를 한 번 보고한다. "구석에 껴서 아무것도
+    // 안 하는 몹" 류는 원인이 여러 층(경로·충돌·앵커·맵 데이터)에 걸쳐 있어 추측으로는 안 잡힌다.
+    // 봇 매치 로그에서 이 줄이 0인지만 보면 회귀를 즉시 안다.
+    private const double StuckReportSeconds = 8d;
+    private const float StuckMoveThresholdSquared = 0.04f;
+
+    private static void TrackStuckMonster(
+        MonsterRuntime monster, DateTime now, SwarmArenaTickResult result)
+    {
+        float dx = monster.Position.X - monster.StuckWatchX;
+        float dy = monster.Position.Y - monster.StuckWatchY;
+        if (dx * dx + dy * dy > StuckMoveThresholdSquared)
+        {
+            monster.StuckWatchX = monster.Position.X;
+            monster.StuckWatchY = monster.Position.Y;
+            monster.StuckSinceUtc = now;
+            monster.StuckReported = false;
+            return;
+        }
+
+        if (monster.StuckReported || (now - monster.StuckSinceUtc).TotalSeconds < StuckReportSeconds)
+            return;
+
+        monster.StuckReported = true;
+        result.StuckReports.Add(
+            $"stuck monster={monster.MonsterId} kind={monster.Kind} area={monster.Area} " +
+            $"home={monster.HomeArea} infiltrating={monster.Infiltrating} aggro={monster.Aggro} " +
+            $"chase={monster.ChaseTargetPlayerId} marchIndex={monster.MarchIndex}/{monster.MarchWaypoints.Count} " +
+            $"budget={monster.MarchBudgetSeconds:F1} pos=({monster.Position.X:F1},{monster.Position.Y:F1}) " +
+            $"anchor=({monster.AnchorX:F1},{monster.AnchorY:F1})");
+    }
+
     /// <summary>
     ///     비보행 칸에 선 몹을 보행 가능한 자리로 당긴다. 구역 중심 쪽으로 당기되, 구역 판정이
     ///     서지 않으면(문틀·경계) 전역 보행 기준으로 되돌린다.
@@ -2439,6 +2472,12 @@ public sealed class SwarmArenaManager
         public int MarchIndex { get; set; }
         public double MarchBudgetSeconds { get; set; }
 
+        // 정지 감시용
+        public float StuckWatchX { get; set; }
+        public float StuckWatchY { get; set; }
+        public DateTime StuckSinceUtc { get; set; }
+        public bool StuckReported { get; set; }
+
         /// <summary>캠프 몹은 앵커에 묶이고, 공급 몹은 구역 자체가 리쉬다.</summary>
         public bool IsSupplyUnit => CampIndex < 0;
 
@@ -2494,6 +2533,9 @@ public sealed class SwarmArenaTickResult
     public List<SpotArenaPlayerDamage> PlayerDamage { get; } = new();
     public List<MonsterRuntimeInfo> SpawnedMonsters { get; } = new();
     public List<SupplyPackSpawnInfo> SupplyPackSpawns { get; } = new();
+
+    /// <summary>정지 감시 보고 (임시 진단) — GameServer가 로그로 옮겨 적는다.</summary>
+    public List<string> StuckReports { get; } = new();
 }
 
 /// <summary>공급 무리 스폰 계측 (#226 E) — GameServer가 매치 이벤트 로그로 옮겨 적는다.</summary>
