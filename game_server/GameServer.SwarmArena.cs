@@ -213,8 +213,11 @@ public partial class GameServer
                 matchingId, sessions.Count, bots.Count);
         }
 
-        // #226 단계 B: 시작 스쿼드 = 랜덤 T1 오브 3개 (사람·봇 공통) — 시작부터 열이 보여야
-        // "오브 수 = 점수"가 첫 관전에서 읽힌다. 빈손이 되면 개봉 무료 규칙이 재기를 보장.
+        // 시작 지급 = 오브가 아니라 소환석 (2026-08-16 유저 결정). 랜덤 T1 오브 3개를 들려
+        // 보내면 첫 화력 구성이 주사위로 정해지고, 플레이어의 첫 결정이 사라진다. 같은 값어치의
+        // 소환석으로 시작해 소환·공격강화·방어강화 중 무엇을 먼저 세울지부터 판이 열리게 한다.
+        // 빈손 규칙(0오브 개봉 무료 · 보장가 3)이 그대로 첫 오브를 보장한다.
+        int startingStones = Config.GetSwarmStartingStoneGrant();
         foreach (var session in sessions)
         {
             if (!session.PlayerId.HasValue ||
@@ -224,9 +227,8 @@ public partial class GameServer
             // 잼 지갑 리셋 (#222 M3) — 세션이 매치를 넘어 살아있으므로 시작 지급 시점에 초기화.
             session.ResetJam();
             session.FreeSummonCharges = 0;
-            for (int grant = 0; grant < Config.SWARM_STARTING_ORB_COUNT; grant++)
-                session.GrantSwarmArenaOrb(
-                    SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)]);
+            _summonStoneManager.AddStones(matchingId, session.PlayerId.Value, startingStones);
+            session.SendSummonStoneState();
         }
 
         foreach (var bot in bots)
@@ -234,11 +236,7 @@ public partial class GameServer
             if (!_swarmStartingOrbGrantedPlayers.Add((matchingId, bot.PlayerId)))
                 continue;
 
-            for (int grant = 0; grant < Config.SWARM_STARTING_ORB_COUNT; grant++)
-                _inGameInventoryManager.TryAddItemWithCapacity(
-                    matchingId, bot.PlayerId,
-                    SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)],
-                    Config.SWARM_ORB_CAPACITY, out _);
+            _summonStoneManager.AddStones(matchingId, bot.PlayerId, startingStones);
         }
 
         DateTime nowUtc = DateTime.UtcNow;
