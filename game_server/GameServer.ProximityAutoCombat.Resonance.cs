@@ -48,7 +48,9 @@ public partial class GameServer
                 bot.Position,
                 inventory.GetAllItems(),
                 nowUtc);
-            bot.WindResonanceActive = snapshot.WindActive;
+            bot.WindMoveSpeedMultiplier = Config.SWARM_P0_ENABLED
+                ? SurvivorOrbData.GetWindMoveSpeedMultiplier(inventory.GetAllItems())
+                : snapshot.WindActive ? 1.2f : 1f;
             snapshots[bot.PlayerId] = snapshot;
         }
 

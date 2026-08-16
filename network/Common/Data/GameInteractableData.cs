@@ -25,6 +25,9 @@ namespace network.common.data
         /// </summary>
         private static readonly Dictionary<string, List<InteractableActionData>> _actionGroups = new();
 
+        /// <summary>탐색 게이지가 붙은 문 id 집합 (#229). Initialize에서 채운다.</summary>
+        private static readonly HashSet<int> _gaugeGatedDoorIds = new();
+
         /// <summary>
         ///     #135 — 영역(AreaType) 단위 ItemPool. 자기 풀 외 사물 RNG 채집 시 영역 풀에서 추출.
         /// </summary>
@@ -65,6 +68,7 @@ namespace network.common.data
             // 기존 데이터 클리어
             _infos.Clear();
             _infosByZone.Clear();
+            _gaugeGatedDoorIds.Clear();
 
             // 공통 액션 풀 데이터를 object_type별로 그룹화 (GDD §2.4.2 — 통합 풀)
             var actionsByObjectType = actionData
@@ -100,6 +104,7 @@ namespace network.common.data
                     _infosByZone[info.ZoneId] = list;
                 }
                 list.Add(info);
+                if (info.DoorId > 0) _gaugeGatedDoorIds.Add(info.DoorId);
             }
         }
 
@@ -123,6 +128,13 @@ namespace network.common.data
         {
             return new HashSet<int>(_itemPools.Keys);
         }
+
+        /// <summary>
+        ///     탐색 게이지로만 열리는 문 (#229). interactable_info.csv의 door_id에서 유도한다 —
+        ///     이 문은 근접 자동 개방(Door.CheckProximityAndRequestOpen)으로 열려선 안 된다.
+        /// </summary>
+        public static bool IsGaugeGatedDoor(int doorId) =>
+            doorId > 0 && _gaugeGatedDoorIds.Contains(doorId);
 
         public static InteractableInfoData Get(int id)
         {
@@ -177,6 +189,13 @@ namespace network.common.data
         public InteractionType InteractionType { get; private set; }
         public int CellX { get; private set; }
         public int CellY { get; private set; }
+
+        /// <summary>
+        ///     이 오브젝트가 여는 문 (#229). InteractionType.DOOR_UNLOCK일 때만 유효하다.
+        ///     한 문의 양쪽 방에 각각 오브젝트를 두므로 door_id는 여러 행에서 겹칠 수 있다.
+        /// </summary>
+        public int DoorId { get; private set; }
+
         public List<InteractableActionData> Actions { get; private set; }
 
         public static InteractableInfoData CreateFromData(
@@ -208,6 +227,7 @@ namespace network.common.data
                 InteractionType = row.ContainsKey("interaction_type") ? (InteractionType)int.Parse(row["interaction_type"]) : InteractionType.EXPLORE,
                 CellX = row.ContainsKey("cell_x") && int.TryParse(row["cell_x"], out int cx) ? cx : 0,
                 CellY = row.ContainsKey("cell_y") && int.TryParse(row["cell_y"], out int cy) ? cy : 0,
+                DoorId = row.ContainsKey("door_id") && int.TryParse(row["door_id"], out int doorId) ? doorId : 0,
                 Actions = actions
             };
         }

@@ -397,4 +397,36 @@ public sealed class BotSurvivorLootingTests
         InGameInventoryManager InventoryManager,
         GroundItemManager GroundItemManager,
         ChecklistManager ChecklistManager);
+
+    [Fact]
+    public void CutOrbDrops_ExpireAfterTheirLifetime()
+    {
+        // #229: 절단 낙수는 오브 그대로 떨어지고 짧은 수명을 갖는다. 수명이 없으면
+        // 후반에 바닥이 오브밭이 되어 "지금 주울까 도망갈까"가 사라진다.
+        const long matchingId = 194130;
+        var clock = new ManualTimeProvider(new DateTimeOffset(2026, 8, 16, 0, 0, 0, TimeSpan.Zero));
+        var manager = new GroundItemManager(clock);
+        manager.InitializeMatching(matchingId);
+
+        var withLifetime = manager.SpawnItems(
+            matchingId, AreaType.Gym, 10f, 10f, [Config.SUMMON_STONE_GROUND_ITEM_ID],
+            lifetime: TimeSpan.FromSeconds(12));
+        var forever = manager.SpawnItems(
+            matchingId, AreaType.Gym, 12f, 12f, [Config.SUMMON_STONE_GROUND_ITEM_ID]);
+        Assert.Single(withLifetime);
+        Assert.Single(forever);
+
+        // 수명 전에는 아무것도 안 사라진다.
+        clock.Advance(TimeSpan.FromSeconds(11));
+        Assert.Empty(manager.ExpireGroundItems(matchingId));
+        Assert.True(manager.Exists(matchingId, withLifetime[0].GroundItemUid));
+
+        // 수명이 지나면 그것만 사라지고, 수명 없는 낙수는 남는다.
+        clock.Advance(TimeSpan.FromSeconds(2));
+        var expired = manager.ExpireGroundItems(matchingId);
+        Assert.Single(expired);
+        Assert.Equal(withLifetime[0].GroundItemUid, expired[0].GroundItemUid);
+        Assert.False(manager.Exists(matchingId, withLifetime[0].GroundItemUid));
+        Assert.True(manager.Exists(matchingId, forever[0].GroundItemUid));
+    }
 }

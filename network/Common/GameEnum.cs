@@ -227,6 +227,10 @@ namespace network.common
         EXPLORE_1,
         MAKE,
         SLEEP,
+
+        // #229 7단계: 성장(제작·강화) 자세. 애니메이터 character_basic_Controller의 tool 상태와
+        // 짝이다 — 값을 바꾸면 컨트롤러 전이 조건(PlayerState Equals 7)도 함께 고쳐야 한다.
+        TOOL,
     }
 
     public enum QuestType : short

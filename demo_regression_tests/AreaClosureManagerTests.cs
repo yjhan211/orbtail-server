@@ -41,13 +41,24 @@ public class AreaClosureManagerTests
         var state = manager.InitializeMatching(195001);
 
         // #226 단계 B 5분 재정렬: 바깥 포드 → 중간 포드 → 쌍 구역 → 밴드 → 운동장 최종(=타이머 만료).
+        // #229 순차 폐쇄: 웨이브가 구역 하나씩으로 쪼개져 4초 간격으로 앞당겨 배치된다 —
+        // 5묶음(4+4+2+2+1) = 13개. 각 묶음의 마지막 구역은 원래 시각 그대로다.
         Assert.Empty(state.ClosedAreas);
-        Assert.Equal(5, state.Waves.Count);
-        Assert.Equal([100, 150, 200, 250, 300], state.Waves.Select(wave => wave.ClosureAtSeconds));
+        Assert.Equal(13, state.Waves.Count);
+        Assert.All(state.Waves, wave => Assert.Single(wave.Areas));
         Assert.Equal(AreaType.Ground, state.ClosureOrder[^1]);
+        // 원래 웨이브 시각은 모두 남아 있고, 종료 봉투(운동장 300초)는 밀리지 않는다.
+        var closureTimes = state.Waves.Select(wave => wave.ClosureAtSeconds).ToList();
+        foreach (int original in new[] { 100, 150, 200, 250, 300 })
+            Assert.Contains(original, closureTimes);
+        Assert.Equal(300, closureTimes.Max());
+        Assert.Equal(88, closureTimes.Min());
+        // 첫 묶음의 네 구역이 88~100초에 하나씩 배치된다 (순서는 매치마다 섞인다).
         Assert.Equal(
-            [AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2],
-            state.Waves[0].Areas);
+            new[] { AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2 }
+                .OrderBy(area => area),
+            state.Waves.Where(wave => wave.ClosureAtSeconds <= 100)
+                .SelectMany(wave => wave.Areas).OrderBy(area => area));
         Assert.Equal(
             [AreaType.Ground],
             state.Waves[^1].Areas);
@@ -71,31 +82,36 @@ public class AreaClosureManagerTests
         Assert.Contains(AreaType.Library, clientState.ClosedAreas);
     }
     [Fact]
-    public void CheckClosureSchedule_WarnsForEveryAreaThenClosesTheWholeWave()
+    // #229 순차 폐쇄: 한 웨이브의 구역들이 한꺼번에 닫히지 않고 4초 간격으로 하나씩 닫힌다.
+    // 마지막 구역은 원래 웨이브 시각(100초) 그대로라 종료 봉투는 밀리지 않는다.
+    // 순서는 매치마다 섞이므로 "어떤 방"이 아니라 "몇 개씩, 언제"를 검사한다.
+    public void CheckClosureSchedule_ClosesWaveAreasOneByOneEndingAtTheOriginalTime()
     {
         var now = new DateTime(2026, 7, 20, 0, 0, 0, DateTimeKind.Utc);
         var manager = CreateManager(() => now);
         const long matchingId = 195002;
         manager.InitializeMatching(matchingId);
 
-        now = now.AddSeconds(85);
-        var warning = manager.CheckClosureSchedule(matchingId);
+        var firstWave = new[]
+        {
+            AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2
+        };
+        var closedAt = new Dictionary<AreaType, int>();
+        for (int second = 1; second <= 100; second++)
+        {
+            now = now.AddSeconds(1);
+            foreach (var area in manager.CheckClosureSchedule(matchingId).ClosedAreas)
+                closedAt[area] = second;
+        }
 
-        Assert.Equal(15, warning.WarningSeconds);
-        Assert.Equal(
-            [AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2],
-            warning.WarningAreas);
-        Assert.Empty(warning.ClosedAreas);
-
-        now = now.AddSeconds(15);
-        var closure = manager.CheckClosureSchedule(matchingId);
-
-        Assert.Empty(closure.WarningAreas);
-        Assert.Equal(
-            [AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2],
-            closure.ClosedAreas);
-        Assert.True(manager.IsAreaClosed(matchingId, AreaType.Classroom4));
-        Assert.True(manager.IsAreaClosed(matchingId, AreaType.Storage2));
+        // 네 구역 전부 100초까지 닫힌다.
+        Assert.Equal(firstWave.OrderBy(area => area), closedAt.Keys.OrderBy(area => area));
+        // 한꺼번에 닫히지 않는다 — 서로 다른 시각이 최소 3개는 나온다.
+        Assert.True(closedAt.Values.Distinct().Count() >= 3,
+            $"동시 폐쇄로 되돌아갔다: {string.Join(",", closedAt.Select(pair => $"{pair.Key}@{pair.Value}"))}");
+        // 마지막은 원래 웨이브 시각. 가장 이른 것도 4초 간격 안에 있다.
+        Assert.Equal(100, closedAt.Values.Max());
+        Assert.Equal(88, closedAt.Values.Min());
         Assert.False(manager.IsAreaClosed(matchingId, AreaType.Corridor));
     }
 
@@ -154,15 +170,19 @@ public class AreaClosureManagerTests
         now = now.AddSeconds(220);
         manager.CheckClosureSchedule(matchingId);
 
-        now = now.AddSeconds(15); // 3:55 — 밴드(테라스·복도) 웨이브 경고창.
-        var warning = manager.CheckClosureSchedule(matchingId);
-        Assert.Equal([AreaType.Corridor, AreaType.Junkyard], warning.WarningAreas);
-        Assert.False(manager.CheckGlobalClosureSchedule(matchingId).HasTransition);
-        Assert.False(manager.GetGlobalClosureClientState(matchingId).IsKnown);
+        // #229 순차 폐쇄: 밴드 두 구역이 4초 간격으로 하나씩 닫힌다(246초·250초).
+        // 전역 폐쇄가 꺼져 있다는 계약만 검사하므로 "둘 다 닫혔는가"로 본다.
+        var bandClosed = new List<AreaType>();
+        for (int second = 0; second < 60; second++)
+        {
+            now = now.AddSeconds(1);
+            bandClosed.AddRange(manager.CheckClosureSchedule(matchingId).ClosedAreas);
+            Assert.False(manager.CheckGlobalClosureSchedule(matchingId).HasTransition);
+            Assert.False(manager.GetGlobalClosureClientState(matchingId).IsKnown);
+        }
 
-        now = now.AddSeconds(15);
-        var closure = manager.CheckClosureSchedule(matchingId);
-        Assert.Equal([AreaType.Corridor, AreaType.Junkyard], closure.ClosedAreas);
+        Assert.Contains(AreaType.Corridor, bandClosed);
+        Assert.Contains(AreaType.Junkyard, bandClosed);
         Assert.True(manager.IsAreaClosed(matchingId, AreaType.Corridor));
         Assert.False(manager.CheckGlobalClosureSchedule(matchingId).HasTransition);
     }

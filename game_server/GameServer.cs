@@ -189,9 +189,17 @@ public partial class GameServer(
 
         // MatchingConfigService 의존 — _matchingConfigService 필드 초기화 후 생성
         _areaClosureManager = new AreaClosureManager(logger, _matchingConfigService);
-        // M4: 폐쇄 구역은 스웜 신규 스폰을 멈춘다 (잔존 몹은 EvacuateArea가 밀어냄)
+        // M4: 폐쇄 구역은 스웜 신규 스폰을 멈춘다 (잔존 몹은 ReclaimStrandedMonsters가 걷어냄)
         _swarmArenaManager.IsAreaClosedResolver =
             (matchingId, area) => _areaClosureManager.IsAreaClosed(matchingId, area);
+        // 인트로 산개 (2026-08-16): 카운트다운 동안에는 전 방을 공급 대상으로 열어
+        // 운동장에서 열 방향으로 실제 몹이 뻗어 나가게 한다.
+        _swarmArenaManager.IsGameplayActiveResolver = MatchStartGate.IsGameplayActive;
+        // 무오브 우선 표적 (2026-08-16 유저 명세): 잔상 주인 배정·재배정이 이걸 본다.
+        // 무오브는 자동 공격도 절단도 못 하므로, 잔상까지 남을 쫓으면 재건하는 동안
+        // 아무 압력도 안 받아 무오브가 안전지대가 된다.
+        _swarmArenaManager.IsPlayerOrblessResolver =
+            (matchingId, playerId) => !HasAnySquadOrb(matchingId, playerId);
 
         try
         {
@@ -222,6 +230,9 @@ public partial class GameServer(
                     ? snapshot.CurrentRooms
                     : Array.Empty<AreaType>();
             });
+            // 문 상태는 페이즈와 별개다 (2026-08-16). 위 제공자는 ROOM_COMBAT에서만 채워져
+            // 군집 모드에서는 항상 비었고, 그래서 봇이 잠긴 문을 그냥 통과했다.
+            _botPlayerManager.SetDoorOpenResolver(_doorStateManager.IsDoorOpen);
             _interactableStateManager.Initialize(log);
             _inGameInventoryManager.Initialize(log);
             _areaRuleManager.Initialize(log);
@@ -853,16 +864,41 @@ public partial class GameServer(
             GameEventLogManager.CalculateDropRecoveryTotal(drop.DroppedItemIds),
             isBot: true);
 
-        int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)bot.CurrentArea);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
-            (int)bot.CurrentArea, remaining, drop.SpawnedItems);
-        foreach (var session in matchingSessions.Where(session => session.CurrentArea == bot.CurrentArea))
-            session.Send(packet);
+        BroadcastGroundItemSpawnChunked(
+            matchingId, bot.CurrentArea, drop.SpawnedItems,
+            matchingSessions.Where(session => session.CurrentArea == bot.CurrentArea));
 
         logger.LogInformation(
             "Bot elimination inventory scattered: MatchingId={MatchingId}, BotId={BotId}, Area={Area}, ItemCount={ItemCount}",
             matchingId, botPlayerId, bot.CurrentArea, drop.DroppedItemIds.Count);
     }
+    // 바닥 아이템 스폰 브로드캐스트는 반드시 청크로 나눈다 (#229).
+    // 단일 패킷은 버퍼 2048에 묶여 있는데 탈락 드롭은 개수가 열려 있다 — 오브 상한이 99로
+    // 오르고 소환석 예산이 커지면서 실제로 넘겼다(실측 2091, 봇 탈락 처리 전체가 예외로 죽어
+    // 드롭이 통째로 사라졌다). SpotArena가 #222에서 같은 이유로 8개씩 나눈 전례를 따른다.
+    private const int GroundItemSpawnBroadcastChunkSize = 8;
+
+    private void BroadcastGroundItemSpawnChunked(
+        long matchingId, AreaType area, IReadOnlyList<GroundItemInfo> spawned,
+        IEnumerable<GameClientSession> targets)
+    {
+        if (spawned == null || spawned.Count == 0 || area == AreaType.None)
+            return;
+
+        var receivers = targets.ToList();
+        if (receivers.Count == 0)
+            return;
+
+        int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)area);
+        for (int offset = 0; offset < spawned.Count; offset += GroundItemSpawnBroadcastChunkSize)
+        {
+            var chunk = spawned.Skip(offset).Take(GroundItemSpawnBroadcastChunkSize).ToList();
+            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, chunk);
+            foreach (var session in receivers)
+                session.Send(packet);
+        }
+    }
+
     /// <summary>
     ///     #26: 봇 미션 시뮬 — 부품 회수 + 자동 결합. 최종 결합 시 즉시 게임 종료.
     /// </summary>
@@ -1871,6 +1907,19 @@ public partial class GameServer(
                     }
                 }
 
+                // 수명이 다한 낙수를 걷어낸다 (#229 절단 낙수). 같은 구역 인원에게만 알린다.
+                foreach (var expiredItem in _groundItemManager.ExpireGroundItems(matchingId))
+                {
+                    using var removedPacket = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(
+                        expiredItem.GroundItemUid, 0, false);
+                    foreach (var session in GetSessionsByInstance(MapId.School, matchingId))
+                    {
+                        if (session.PlayerId.HasValue &&
+                            session.CurrentArea == (AreaType)expiredItem.AreaType)
+                            session.Send(removedPacket);
+                    }
+                }
+
                 foreach (var expired in _groundItemManager.ExpireClaimReservations(matchingId))
                     _gameEventLogManager.LogGroundItemPriorityExpired(
                         matchingId,
@@ -1972,7 +2021,7 @@ public partial class GameServer(
                 if (monsterPhaseStates.Count > 0)
                 {
                     BroadcastMonsterSnapshot(matchingId, sessions, monsterPhaseStates.Values);
-                    BroadcastMonsterMinimapSnapshot(sessions, monsterPhaseStates.Values);
+                    BroadcastMonsterMinimapSnapshot(matchingId, sessions, monsterPhaseStates.Values);
                 }
                 if (closureTick.ClosedAreas.Count > 0)
                 {
@@ -2666,9 +2715,12 @@ public partial class GameServer(
                         row.playerId,
                         row.eliminationRank,
                         Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
-                        stats.KillCount,
-                        stats.TotalDamageDealt,
-                        stats.TotalRecovery);
+                        stats.KillCount + stats.MonsterKillCount,
+                        stats.TotalDamageDealt + stats.MonsterDamageDealt,
+                        stats.TotalRecovery,
+                        // 승점 (#229): 사람이 나간 매치도 오브 수를 남긴다 — 봇 매치가 유일한
+                        // 자동 검증 창구라 여기서 빠지면 결과 집계를 로그로 확인할 수 없다.
+                        GetSwarmOrbScore(matchingId, row.playerId).OrbCount);
                 })
                 .ToList();
             _gameEventLogManager.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);
@@ -3270,9 +3322,10 @@ public partial class GameServer(
                         row.playerId,
                         row.playerId == winnerId ? 1 : row.eliminationRank,
                         Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
-                        stats.KillCount,
-                        stats.TotalDamageDealt,
-                        stats.TotalRecovery);
+                        stats.KillCount + stats.MonsterKillCount,
+                        stats.TotalDamageDealt + stats.MonsterDamageDealt,
+                        stats.TotalRecovery,
+                        GetSwarmOrbScore(matchingId, row.playerId).OrbCount);
                 })
                 .ToList();
             string endReason = isGameOver ? "last_survivor" : "round_limit";

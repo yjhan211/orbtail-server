@@ -121,13 +121,35 @@ namespace network.common
         /// </summary>
         public const float SWARM_BARE_MOVE_SPEED_MULTIPLIER = 1.3f;
 
+        /// <summary>
+        ///     빈손 이속 유지 시간 (#229 12단계). 빈손인 내내 빠르면 "패배 직전"이 아니라
+        ///     도주 특화 상태가 된다 — 마지막 오브를 잃은 직후 이 시간만 가속하고 원복한다.
+        ///     그 뒤의 빈손은 잔상의 우선 표적이 되어 재건에 쫓긴다.
+        /// </summary>
+        public const float SWARM_BARE_MOVE_SPEED_SECONDS = 2f;
+
         /// <summary>열쇠 (#222 M4): 무료 소환 1회 충전 — 탈주 고블린(미니보스) 드랍. 사람 전용.</summary>
         public const int KEY_GROUND_ITEM_ID = 107000090;
 
         // 상태 효과 표시 ID (status_effect_info.csv와 동기)
         public const int BOOTS_STATUS_EFFECT_ID = 1101;
         public const int KEY_STATUS_EFFECT_ID = 1102;
+
+        /// <summary>
+        ///     무방비 (2026-08-16 유저 결정, 구 "필사의 탈주"): 오브 0개 상태의 시각화.
+        ///     새 능력이 아니라 이미 있는 현상을 읽히게 한 것이다 — 공격·절단 불가에
+        ///     잔상 우선 표적까지 걸린 상태이므로, 이름과 설명을 그 규칙으로 갈아 끼운다.
+        ///     이속 가속은 2초만 유지되므로(SWARM_BARE_MOVE_SPEED_SECONDS) 더는
+        ///     "탈주 버프"가 아니다.
+        /// </summary>
         public const int BARE_STATUS_EFFECT_ID = 1103;
+
+        /// <summary>
+        ///     필사의 저항 (2026-08-16 유저 결정): 절단당한 직후 반격 보호 창의 시각화.
+        ///     내 꼬리를 자른 상대의 본체 공격만 무효가 된다(#227 7단계) — 제3자·잔상은
+        ///     그대로 들어온다. 서버가 잔광 VFX와 같은 시점·지속으로 보낸다.
+        /// </summary>
+        public const int RETALIATION_STATUS_EFFECT_ID = 1104;
 
         /// <summary>
         ///     보스 사거리 (#223): 파도 T3 오브급(기본 2.5 + 가중치 4 × 0.4) — 제자리 고정
@@ -179,6 +201,18 @@ namespace network.common
         public static readonly bool SWARM_P0_ENABLED = true;
 
         /// <summary>
+        ///     #229 5단계: 스웜에서 탐색(상자)과 소비품(하트·부츠)을 임시로 끈다.
+        ///     회복은 수면이, 기동력은 바람 오브가 맡는다 — 랜덤 상자가 그 자리를 대신하면
+        ///     빌드로 읽혀야 할 것이 운으로 읽힌다. 데이터·CSV·프리팹·레거시 코드는 남긴다:
+        ///     이 플래그만 되돌리면 다른 모드와 함께 그대로 살아난다.
+        /// </summary>
+        public static readonly bool SWARM_EXPLORE_AND_CONSUMABLES_ENABLED = false;
+
+        /// <summary>스웜에서 탐색·소비품이 꺼졌는지 — 호출부가 매번 두 플래그를 조합하지 않게 한다.</summary>
+        public static bool IsSwarmExploreDisabled() =>
+            SWARM_P0_ENABLED && !SWARM_EXPLORE_AND_CONSUMABLES_ENABLED;
+
+        /// <summary>
         ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2, 3쌍 깔때기(성장곡선 v3)는 6.
         ///     사람은 항상 1명이고 나머지는 봇으로 채운다.
         /// </summary>
@@ -214,31 +248,41 @@ namespace network.common
         public const int SWARM_BOX_OPEN_COST = 1;
 
         /// <summary>
-        ///     성장 카드 기본 비용 (#226 C 잔여): 이번 판 성공한 성장 선택 횟수 N 기반 —
+        ///     성장 카드 기본 비용 (#229): 이번 판 성공한 성장 선택 횟수 N 기반 5+2N.
         ///     오브가 잘려도 N은 줄지 않아 절단이 성장 시간을 초기화하지 못한다.
         /// </summary>
         public static int GetSwarmGrowthBaseCost(int growthSuccessCount) =>
-            3 + Math.Max(0, growthSuccessCount) / 3;
+            5 + 2 * Math.Max(0, growthSuccessCount);
 
-        /// <summary>점수 할증 (#226 C 잔여): 보유 오브 수 구간 — 선두일수록 다음 투자가 비싸다.</summary>
-        public static int GetSwarmGrowthScoreSurcharge(int orbCount) =>
-            orbCount >= 16 ? 4 :
-            orbCount >= 13 ? 3 :
-            orbCount >= 10 ? 2 :
-            orbCount >= 7 ? 1 : 0;
+        /// <summary>#229에서는 보유 오브 수 할증을 쓰지 않는다. 로그 호환을 위해 0을 남긴다.</summary>
+        public static int GetSwarmGrowthScoreSurcharge(int orbCount) => 0;
 
-        /// <summary>성장 카드 상한 비용 (#226 C 잔여).</summary>
-        public const int SWARM_GROWTH_COST_CAP = 10;
+        /// <summary>5분 매치에서 후반 성장을 제한하는 성장 카드 상한 비용 (#229).</summary>
+        public const int SWARM_GROWTH_COST_CAP = 21;
 
         /// <summary>
-        ///     성장 카드 최종 비용 = min(상한, 기본 + 점수 할증). 0오브는 비용 3의 T1 생성
-        ///     보장(재건 경로) — 카드 품질은 할증을 뺀 기본 비용으로만 계산한다.
+        ///     성장 카드 최종 비용 = min(21, 5+2N). 0오브는 비용 3의 T1 생성 보장(재건 경로).
+        ///     보유 오브 수는 가격에 영향을 주지 않는다.
         /// </summary>
         public static int GetSwarmGrowthCardCost(int growthSuccessCount, int orbCount) =>
             orbCount <= 0
                 ? 3
-                : Math.Min(SWARM_GROWTH_COST_CAP,
-                    GetSwarmGrowthBaseCost(growthSuccessCount) + GetSwarmGrowthScoreSurcharge(orbCount));
+                : Math.Min(SWARM_GROWTH_COST_CAP, GetSwarmGrowthBaseCost(growthSuccessCount));
+
+        /// <summary>
+        ///     시작 지급 소환석 (2026-08-16 유저 결정). 오브를 들려 주는 대신, 오브 3개를 살 수
+        ///     있는 만큼의 소환석으로 시작한다 — 첫 성장을 플레이어가 직접 고르게 해서 판이
+        ///     선택으로 열리고, 소환·공격강화·방어강화 중 무엇을 먼저 세울지가 갈린다.
+        ///     같은 곡선으로 계산하므로 비용 곡선을 바꾸면 지급량이 따라온다.
+        ///     현재 값 = 3(0오브 보장가) + 7(N=1) + 9(N=2) = 19.
+        /// </summary>
+        public static int GetSwarmStartingStoneGrant()
+        {
+            int total = 0;
+            for (int purchased = 0; purchased < SWARM_STARTING_ORB_COUNT; purchased++)
+                total += GetSwarmGrowthCardCost(purchased, purchased);
+            return total;
+        }
 
         /// <summary>궤도 오브 1개당 개봉 비용 가산 — SB "스쿼드 인원수 비례 상자 코인".</summary>
         public const int SWARM_EXPLORE_COST_PER_ORB = 2;
@@ -284,6 +328,21 @@ namespace network.common
         ///     다트 고블린 사거리(5)의 절반 — 원거리 몹 접근엔 피격 감수가 전제.
         /// </summary>
         public const float SWARM_ORB_ATTACK_RANGE = 2.5f;
+
+        /// <summary>
+        ///     유저간 사격 사거리 (2026-08-16 유저 명세). PvE(7)보다 짧게 — 붙어야 싸운다.
+        ///     플레이어 본체 기준으로 잰다: 오브별 원점으로 재면 꼬리가 길수록 사정권이
+        ///     늘어나 "오브 수는 PvP 화력을 키우지 않는다"는 규칙과 어긋나고, 링 하나로
+        ///     표시할 수도 없다. 클라 표시(PlayerRangeRing)가 같은 값을 읽는다.
+        /// </summary>
+        public const float SWARM_PVP_ATTACK_RANGE = 5f;
+
+        /// <summary>
+        ///     유저간 사격에 참여하는 오브 수 = 앞열 이만큼 (2026-08-16 유저 명세).
+        ///     전체 오브가 사람을 쏘면 20개 꼬리가 3개 꼬리를 그대로 녹인다. 상한을 두면
+        ///     오브 수는 PvE 성장과 절단 위험만 키우는 축이 된다.
+        /// </summary>
+        public const int SWARM_PVP_ORB_COUNT = 3;
 
         /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.

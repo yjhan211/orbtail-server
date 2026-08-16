@@ -1,11 +1,48 @@
 using game_server.services;
 using network.common.data;
 using network.common.data.helpers;
+using network.common.data.models;
 
 namespace demo_regression_tests;
 
 public sealed class SurvivorOrbBoardTests
 {
+    // 주기는 #229에서 당겨졌다(1.4/1.0/0.7 → 0.8/0.55/0.4): 시작 오브 하나의 초당 처치가
+    // 구역 보충(초당 1.33마리)에 한참 못 미쳐 초반에 길이 안 열렸다. 태양·바람이 같은 표를
+    // 쓴다는 계약이 이 테스트의 요지이고, 수치는 그 계약을 잠그는 값이다.
+    [Theory]
+    [InlineData(107000010, 12, 0.8f)]
+    [InlineData(107000011, 21, 0.55f)]
+    [InlineData(107000012, 30, 0.4f)]
+    [InlineData(107000020, 12, 0.8f)]
+    [InlineData(107000021, 21, 0.55f)]
+    [InlineData(107000022, 30, 0.4f)]
+    public void SunAndWindUseTheSameTierAttackTable(int itemId, int damage, float interval)
+    {
+        Assert.Equal(damage, SurvivorOrbData.GetSwarmPveAttackDamage(itemId));
+        Assert.Equal(interval, SurvivorOrbData.GetSwarmPveAttackIntervalSeconds(itemId));
+    }
+
+    [Fact]
+    public void SunPassiveCountsLivingOrbsWithoutTierWeight()
+    {
+        Assert.Equal(1f, SurvivorOrbData.GetSunPveAttackMultiplier([]));
+        Assert.Equal(1.15f, SurvivorOrbData.GetSunPveAttackMultiplier(Items(107000012)));
+        Assert.Equal(1.20f, SurvivorOrbData.GetSunPveAttackMultiplier(Items(107000010, 107000012)));
+        Assert.Equal(1.40f, SurvivorOrbData.GetSunPveAttackMultiplier(
+            Items(107000010, 107000010, 107000010, 107000010, 107000010, 107000010, 107000010)));
+    }
+
+    [Fact]
+    public void WindPassiveCountsLivingOrbsWithoutTierWeight()
+    {
+        Assert.Equal(1f, SurvivorOrbData.GetWindMoveSpeedMultiplier([]));
+        Assert.Equal(1.06f, SurvivorOrbData.GetWindMoveSpeedMultiplier(Items(107000022)));
+        Assert.Equal(1.08f, SurvivorOrbData.GetWindMoveSpeedMultiplier(Items(107000020, 107000022)));
+        Assert.Equal(1.14f, SurvivorOrbData.GetWindMoveSpeedMultiplier(
+            Items(107000020, 107000020, 107000020, 107000020, 107000020, 107000020)));
+    }
+
     [Theory]
     [InlineData(107000010, SurvivorOrbColor.Red, 1)]
     [InlineData(107000011, SurvivorOrbColor.Red, 2)]
@@ -275,4 +312,12 @@ public sealed class SurvivorOrbBoardTests
         BattleItemCombatData.Initialize(CsvHelper.LoadCsv(Path.Combine(
             directory.FullName, "network", "Common", "csv", "battle_item_combat.csv")));
     }
+
+    private static IReadOnlyList<InGameItemInfo> Items(params int[] itemIds) =>
+        itemIds.Select((itemId, index) => new InGameItemInfo
+        {
+            ItemUid = index + 1,
+            ItemId = itemId,
+            Count = 1
+        }).ToList();
 }

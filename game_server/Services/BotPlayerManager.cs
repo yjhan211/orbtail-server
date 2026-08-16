@@ -26,6 +26,20 @@ public partial class BotPlayerManager
     public void SetLockedRoomAreasProvider(Func<long, IReadOnlyCollection<AreaType>> provider) =>
         _lockedRoomAreasProvider = provider ?? throw new ArgumentNullException(nameof(provider));
 
+    /// <summary>
+    ///     문 개방 여부 조회 (2026-08-16 유저 제보: 봇이 문 열리기 전에 들어온다).
+    ///     위의 잠긴 방 목록은 구형 ROOM_COMBAT 페이즈에서만 채워져 군집 모드에서는 항상 비었다 —
+    ///     사람은 GameClientSession.Movement가 문 상태로 막는데 봇만 그냥 지나다녔다.
+    ///     봇도 잠긴 문은 3초 채널링(ProcessSwarmBotDoorUnlocks)으로 열 수 있으므로 막아도 갇히지 않는다.
+    /// </summary>
+    private Func<long, int, bool>? _doorOpenResolver;
+
+    public void SetDoorOpenResolver(Func<long, int, bool> resolver) =>
+        _doorOpenResolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
+
+    private bool IsDoorOpenForBot(long matchingId, int doorId) =>
+        _doorOpenResolver?.Invoke(matchingId, doorId) ?? true;
+
     // ?꾨줈??0: ?쒖꽦 怨듦컙 = 3쨌4痢?6援ъ뿭(1쨌2痢??대룞??李⑤떒, 3??留??대룞).
     //   諛??뺤떊???뚮났 媛??: Classroom3(2-1)/ExamRoom(怨좎궗??/Classroom4(3-1)/BroadcastRoom(諛⑹넚??
     //   蹂듬룄(transit, ?뚮났 ?놁쓬 + ?κ린 泥대쪟 ???몄젒 諛?媛뺤젣 ?좊룄): Corridor
@@ -564,6 +578,10 @@ public class BotPlayerState
     // 빈손 이속 (#223): 지시 판단 틱이 갱신 — 사람과 같은 배율로 도주가 성립하게.
     public bool IsSwarmBareHanded { get; set; }
 
+    // 빈손 가속 만료 (#229 12단계): 마지막 오브를 잃은 직후 2초만 빨라진다.
+    // 빈손인 내내 빠르면 "패배 직전"이 아니라 도주 특화 상태가 된다.
+    public DateTime SwarmBareSpeedUntilUtc { get; set; } = DateTime.MinValue;
+
     // === #134 RNG 梨꾩쭛 ?듯빀 ===
     /// <summary>遊뉗씠 walking?쇰줈 ?묎렐 以묒씤 InteractObject Id. 0?대㈃ ?놁쓬.
     /// ChooseNewWanderTarget?먯꽌 ?곸뿭 + ? ?좏깮 ???ㅼ젙, ?꾩갑 ??RNG 梨꾩쭛 ??0?쇰줈 clear.</summary>
@@ -588,8 +606,8 @@ public class BotPlayerState
     /// <summary>Current equipped battle tool, used to synchronize remote bot visuals.</summary>
     public int EquippedBattleItemId { get; set; }
 
-    /// <summary>Server-authoritative wind resonance movement state.</summary>
-    public bool WindResonanceActive { get; set; }
+    /// <summary>Server-authoritative movement multiplier from currently living Wind orbs.</summary>
+    public float WindMoveSpeedMultiplier { get; set; } = 1f;
 
     /// <summary>Temporary movement slow applied by a wave counter.</summary>
     public DateTime WaveSlowUntilUtc { get; set; }
@@ -610,4 +628,8 @@ public class BotPlayerState
 
     /// <summary>스웜 채집 채널 시작 시각. MinValue면 채널 없음 — 시작 후 1.5초 경과 시 개봉 확정.</summary>
     public DateTime SwarmExploreStartedAtUtc { get; set; } = DateTime.MinValue;
+
+    // #229: 문 잠금해제 게이지. 사람과 같은 규칙 — 맞으면 풀린다(LastDamagedAtUtc 참조).
+    public int SwarmDoorUnlockDoorId { get; set; }
+    public DateTime SwarmDoorUnlockStartedAtUtc { get; set; } = DateTime.MinValue;
 }

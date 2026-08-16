@@ -71,7 +71,7 @@ public partial class GameServer
             // Spot Arena monsters cross room boundaries. Every participant must receive
             // every area chunk so a monster is removed from its previous room and appears
             // in its destination room on the same snapshot tick.
-            BroadcastMonsterMinimapSnapshot(sessions, _spotArenaManager.GetVisualStates(matchingId));
+            BroadcastMonsterMinimapSnapshot(matchingId, sessions, _spotArenaManager.GetVisualStates(matchingId));
         }
 
         BroadcastSpotArenaState(matchingId, sessions);
@@ -401,6 +401,22 @@ public partial class GameServer
         int bootsReward = 0,
         int keyReward = 0)
     {
+        if (defeatedWave.SummonStoneReward <= 0 && heartReward <= 0 &&
+            bootsReward <= 0 && keyReward <= 0)
+            return;
+
+        // #229 5단계: 스웜에서는 이동속도(부츠)·열쇠를 떨구지 않는다. 기동력은 바람 오브가
+        // 맡고, 폐쇄 문은 시간이 여닫는 것이라 열쇠로 뚫는 예외가 없다 — 몹이 떨구면 바닥에
+        // 쓰지 못하는 아이템만 쌓인다.
+        // 하트는 되살린다 (2026-08-16 유저 결정: 회복이 수면밖에 없다). 상자 탐색을 끈 뒤로
+        // 즉시 회복 공급처가 통째로 사라졌고, 일반 몹 3% 드롭을 붙였는데도 이 게이트가
+        // 스폰 직전에 지워 매치 2744에서 처치 2,895마리에 하트 0개가 나왔다.
+        if (Config.IsSwarmExploreDisabled())
+        {
+            bootsReward = 0;
+            keyReward = 0;
+        }
+
         if (defeatedWave.SummonStoneReward <= 0 && heartReward <= 0 &&
             bootsReward <= 0 && keyReward <= 0)
             return;

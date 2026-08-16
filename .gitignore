@@ -178,3 +178,6 @@ obj_codex/
 .ci-fix-verify/
 .commit-verify/
 .door-distance-test/
+
+# 커밋 이력 덤프 — 로컬 작업 산출물이라 추적하지 않는다.
+log.txt

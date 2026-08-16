@@ -31,7 +31,10 @@ public readonly record struct ProximityCombatActor(
     bool IsCoreMonsterTarget = false,
     int TargetPriority = -1,
     // #226 재개편: 발사 원점 전용 액터(오브) — 표적 후보에서 제외된다.
-    bool Untargetable = false);
+    bool Untargetable = false,
+    // 오브열에서 몇 번째인가 (0 = 머리). 스웜 PvP가 "앞열 N개만 사람을 쏜다"를
+    // 판정하는 근거 — WeaponStackIndex는 인벤토리 스택 순번이라 열 순서와 다르다.
+    int TrailOrdinal = 0);
 
 public readonly record struct ProximityCombatAttack(
     long AttackerPlayerId,

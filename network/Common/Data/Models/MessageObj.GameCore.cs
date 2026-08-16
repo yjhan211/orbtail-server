@@ -151,7 +151,14 @@ namespace network.common.data.models
     public class G_TO_C_SWARM_GROWTH_OFFER : IMessagePackObject
     {
         [Key("offerId")] public int OfferId { get; set; }
+        /// <summary>대표 비용(가장 싼 카드). 실제 차감·표시는 Costs가 한다 — 구 클라 호환용.</summary>
         [Key("cost")] public int Cost { get; set; }
+        /// <summary>
+        ///     카드별 비용 (#229): [0]=소환 · [1]=공격 강화 · [2]=방어 강화.
+        ///     셋이 한 곡선을 공유하면 오브를 늘릴수록 강화가 비싸지고 그 반대도 된다 —
+        ///     한 축에 투자하면 다른 축이 벌을 받는 구조라 빌드 선택의 의미가 사라진다.
+        /// </summary>
+        [Key("costs")] public List<int> Costs { get; set; } = new();
         [Key("spawnId")] public int SpawnItemId { get; set; }
         [Key("enhTier")] public int EnhanceTargetTier { get; set; }
         [Key("armorN")] public int ArmorCount { get; set; }

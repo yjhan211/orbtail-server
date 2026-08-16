@@ -130,6 +130,9 @@ public partial class GameClientSession
 
             // 잠긴 문 검증이 끝난 뒤 위치를 게시한다. 폐쇄 구역도 문이 열려 있으면
             // 진입할 수 있으며, 체류 페널티는 ResourceTick에서 서버 권위로 적용한다.
+            // #229 6단계: 이동 입력이 곧 수면 해제다 — 누워서 도망칠 수 없다.
+            if (_isSleeping)
+                BreakSwarmSleep(DateTime.UtcNow, markCombat: false);
             _lastValidatedPosition = validatedPosition;
             _groundItemManager.ReleaseSourcePickupBlocks(CurrentMapSubId, PlayerId.Value,
                 newArea == AreaType.None ? CurrentArea : newArea, validatedPosition.X, validatedPosition.Y);
@@ -519,6 +522,17 @@ public partial class GameClientSession
     private void SendInteractableList(AreaType areaType)
     {
         var objects = _interactableStateManager.GetAreaObjectStates(CurrentMapSubId, areaType);
+
+        // #229 5단계: 스웜은 상자 탐색을 보내지 않는다 — 마커도 빈 상호작용 UI도 뜰 일이 없다.
+        // 단 문 잠금해제(door_id > 0)는 예외다. 방을 여는 유일한 수단이라 스웜의 핵심 조작이다.
+        if (Config.IsSwarmExploreDisabled())
+            objects = objects.Where(state => IsDoorUnlockInteractable(state.InteractId)).ToList();
+
+        // 이미 열린 문의 마커는 보내지 않는다 — 열린 문 앞에서 게이지가 도는 그림은 거짓말이다.
+        objects = objects
+            .Where(state => GameInteractableData.Get(state.InteractId) is not { DoorId: > 0 } info ||
+                            !_doorStateManager.IsDoorOpen(CurrentMapSubId, info.DoorId))
+            .ToList();
         if (objects.Count == 0)
         {
             Logger.LogDebug("No interactable objects in area {AreaType}", areaType);

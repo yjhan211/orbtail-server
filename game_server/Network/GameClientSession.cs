@@ -79,8 +79,22 @@ public partial class GameClientSession : SessionBase
     private CancellationTokenSource? _interactTimeoutCts;
     private CancellationTokenSource? _botInteractTimeoutCts;
     private bool _isSleeping;
+
+    // #229 6단계 수면 회복: 스웜에서 수면은 본체 HP 회복 행동이다. 진입 시각(준비 1.5초)과
+    // 마지막 교전 시각(가해·피해 뒤 3초 진입 잠금)을 세션이 들고, 회복 정산은 아레나 틱이 돈다.
+    internal DateTime SwarmSleepStartedAtUtc { get; set; } = DateTime.MinValue;
+    internal DateTime SwarmSleepLastTickUtc { get; set; } = DateTime.MinValue;
+    internal DateTime SwarmLastCombatAtUtc { get; set; } = DateTime.MinValue;
+    internal bool IsSleeping => _isSleeping;
+    private float _swarmSleepRecoveryCarry;
     private DateTime _lastHeartbeatTime = DateTime.UtcNow;
     private DateTime _lastInteractRejectTime = DateTime.MinValue;
+
+    // #229: 진행 중인 문 잠금해제 게이지. 맞으면 서버가 지워 뒤늦은 FINISH까지 무효로 만든다.
+    private int? _pendingDoorUnlockInteractId;
+
+    // 이 매치에서 연 문 수 — 첫 문은 피격으로 게이지가 끊기지 않는다 (2026-08-16).
+    private int _swarmDoorUnlockCount;
     private DateTime _lastMoveTime = DateTime.UtcNow;
 
     private DateTime _exploreMoveGraceUntil = DateTime.MinValue;

@@ -30,7 +30,6 @@ namespace network.common.data
     {
         public const float RecoveryTickSeconds = 5f;
         public const float WindChargeSeconds = 2f;
-        public const float WindMoveSpeedMultiplier = 1.2f;
         public const float WindAttackRangeMultiplier = 1.2f;
         public const float WindAttackIntervalMultiplier = 0.85f;
         public const float WindBaseDamageMultiplier = 0.5f;
@@ -70,16 +69,52 @@ namespace network.common.data
         public const float MaximumProjectileImpactDelaySeconds = 1.4f;
         public const float ProjectileTargetBodyRadius = 0.4f;
 
-        // #219 M2: 색 = 스탯 축 (SB 유닛 선택의 압축). 태양(빨강)=공격력, 바람(초록)=이속,
-        // 파도(파랑)=사거리. 매 개봉의 색 선택이 빌드 결정이 된다.
-        public const float SunAttackBonusPerOrb = 0.15f;
-        // 바람 재정의 (#222 M4): 이속 → 공격속도. 부츠(이동 소모품)와 컨셉이 겹쳤고, 상시
-        // 이동 게임이라 이속 체감도 낮았다. 공속은 연사 리듬으로 즉시 읽힌다 — 태양(발당
-        // 무게)과 다른 체감 축. 기본 연사(RapidFireScale)를 늦춘 만큼 바람이 그 이상을 되돌린다.
-        public const float WindAttackSpeedBonusPerOrb = 0.08f;
-        public const float WindAttackSpeedBonusCap = 0.60f;
-        public const float WaveRangeBonusPerOrb = 0.4f;
-        public const float WaveRangeBonusCap = 3f;
+        // #229: 태양과 바람은 같은 유도탄을 사용하고 보드 패시브만 다르다. 패시브는
+        // 티어 가중치가 아니라 살아 있는 오브 개수만 본다. 티어는 해당 오브의 공격만 강화한다.
+        public const float SunFirstAttackBonus = 0.15f;
+        public const float SunAdditionalAttackBonus = 0.05f;
+        public const float SunAttackBonusCap = 0.40f;
+        public const float WindFirstMoveSpeedBonus = 0.06f;
+        public const float WindAdditionalMoveSpeedBonus = 0.02f;
+        public const float WindMoveSpeedBonusCap = 0.14f;
+
+        // #229 P0 PvE 실효값. 태양·바람 유도탄과 파도 물폭탄이 같은 티어 피해표를 쓴다.
+        public static int GetSwarmPveAttackDamage(int itemId)
+        {
+            if (!TryGetColorAndTier(itemId, out _, out int tier))
+                return 0;
+
+            return tier >= 3 ? 30 : tier == 2 ? 21 : 12;
+        }
+
+        /// <summary>
+        ///     PvE 공격 주기 (#229 상향): 초반에 몹이 안 죽어 문까지 가지 못한다는 실플레이 판정.
+        ///     페이즈 0 기준 잔상 HP 12 · T1 발당 12라 한 발이 한 마리인데, 주기 1.4초면 초당
+        ///     0.71마리다. 구역 보충은 1.5초에 2마리(초당 1.33)라 시작 오브 하나로는 수가 절대
+        ///     줄지 않고 목표치 9에 눌러앉는다 — 길이 안 열린다.
+        ///     0.8초로 당겨 초당 1.25마리까지 올린다. 여전히 보충보다 근소하게 낮지만 두 번째
+        ///     오브가 붙는 순간 역전되므로, 초반 벽은 사라지고 성장 동기는 남는다.
+        ///     티어 값어치는 속도가 아니라 발당 피해(12·21·30)와 사거리가 계속 진다.
+        /// </summary>
+        public static float GetSwarmPveAttackIntervalSeconds(int itemId)
+        {
+            if (!TryGetColorAndTier(itemId, out _, out int tier))
+                return 0f;
+
+            return tier >= 3 ? 0.4f : tier == 2 ? 0.55f : 0.8f;
+        }
+
+        public static float GetSwarmWaveBombRadius(int itemId)
+        {
+            if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out int tier) ||
+                color != SurvivorOrbColor.Blue)
+            {
+                return 0f;
+            }
+
+            return tier >= 3 ? WaveTierThreeSplashRadius :
+                tier == 2 ? WaveTierTwoSplashRadius : WaveSplashRadius;
+        }
 
         /// <summary>
         ///     스탯 티어 가중(1/1.75/4): 3머지는 슬롯·개봉비를 돌려주는 대신 스탯 합이
@@ -145,27 +180,47 @@ namespace network.common.data
                 ? GetSwarmOrbTierScale(orderedTiers[index])
                 : 1f;
 
-        /// <summary>궤도 전체의 색 스탯 합산 — 서버 판정과 클라 표시(링)가 같은 값을 읽는다.</summary>
-        public static (float AttackMultiplier, float AttackSpeedMultiplier, float RangeBonus)
-            GetSwarmColorStats(IEnumerable<InGameItemInfo> items)
+        public static int CountLivingOrbs(
+            IEnumerable<InGameItemInfo> items,
+            SurvivorOrbColor color)
         {
-            float sun = 0f;
-            float wind = 0f;
-            float wave = 0f;
+            if (items == null)
+                return 0;
+
+            int count = 0;
             foreach (var item in items)
             {
-                if (item == null || item.Count <= 0) continue;
-                if (!TryGetColorAndTier(item.ItemId, out SurvivorOrbColor color, out int tier)) continue;
-                float weight = GetSwarmStatTierWeight(tier) * item.Count;
-                if (color == SurvivorOrbColor.Red) sun += weight;
-                else if (color == SurvivorOrbColor.Green) wind += weight;
-                else if (color == SurvivorOrbColor.Blue) wave += weight;
+                if (item == null || item.Count <= 0 ||
+                    !TryGetColorAndTier(item.ItemId, out SurvivorOrbColor itemColor, out _) ||
+                    itemColor != color)
+                {
+                    continue;
+                }
+
+                count += item.Count;
             }
 
-            return (
-                1f + sun * SunAttackBonusPerOrb,
-                1f + Math.Min(WindAttackSpeedBonusCap, wind * WindAttackSpeedBonusPerOrb),
-                Math.Min(WaveRangeBonusCap, wave * WaveRangeBonusPerOrb));
+            return count;
+        }
+
+        public static float GetSunPveAttackMultiplier(IEnumerable<InGameItemInfo> items)
+        {
+            int count = CountLivingOrbs(items, SurvivorOrbColor.Red);
+            if (count <= 0)
+                return 1f;
+
+            float bonus = SunFirstAttackBonus + (count - 1) * SunAdditionalAttackBonus;
+            return 1f + Math.Min(SunAttackBonusCap, bonus);
+        }
+
+        public static float GetWindMoveSpeedMultiplier(IEnumerable<InGameItemInfo> items)
+        {
+            int count = CountLivingOrbs(items, SurvivorOrbColor.Green);
+            if (count <= 0)
+                return 1f;
+
+            float bonus = WindFirstMoveSpeedBonus + (count - 1) * WindAdditionalMoveSpeedBonus;
+            return 1f + Math.Min(WindMoveSpeedBonusCap, bonus);
         }
 
         private static readonly SurvivorOrbColor[] EvolutionColors =

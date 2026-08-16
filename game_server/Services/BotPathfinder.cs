@@ -64,12 +64,16 @@ public static class BotPathfinder
             exitCell = SnapToWalkableInArea(mapId, fromA, exitCell);
 
             // 현재 셀 → 출구 셀 (영역 안에서 walk)
+            // 구멍 난 경로는 경로가 아니다 (2026-08-16 유저 제보: 봇이 문이 아니라 벽으로
+            // 넘어다닌다). 이 구간이 실패했는데 그냥 건너뛰면 다음 문어귀 셀이 바로 이어져,
+            // 추종자는 그 사이를 직선으로 지난다 — 봇 WalkStep도 잔상 행군도 벽 판정이 없다.
+            // 실패는 실패로 돌려 호출부가 다른 목적지를 고르게 한다.
             var cellPath = BfsCellsInArea(mapId, fromA, currentCell, exitCell);
-            if (cellPath != null)
-            {
-                foreach (var c in cellPath.Skip(1)) // 시작 셀(현재 위치) 제외
-                    path.Add(new Step { Cell = c, Area = fromA, IsAreaTransition = false });
-            }
+            if (cellPath == null)
+                return null;
+
+            foreach (var c in cellPath.Skip(1)) // 시작 셀(현재 위치) 제외
+                path.Add(new Step { Cell = c, Area = fromA, IsAreaTransition = false });
 
             // 영역 경계 통과: 선택된 connection의 SpawnCell은 대상 영역 문어귀의 인접 보행 셀이다.
             Cell entryCell = forwardConn?.SpawnCell ?? GameMapData.GetAreaSpawnCell(mapId, toA);
@@ -106,11 +110,11 @@ public static class BotPathfinder
 
         // 3) 마지막 영역 안에서 toCell까지 walk
         var finalPath = BfsCellsInArea(mapId, toArea, currentCell, toCell);
-        if (finalPath != null)
-        {
-            foreach (var c in finalPath.Skip(1))
-                path.Add(new Step { Cell = c, Area = toArea, IsAreaTransition = false });
-        }
+        if (finalPath == null)
+            return null;
+
+        foreach (var c in finalPath.Skip(1))
+            path.Add(new Step { Cell = c, Area = toArea, IsAreaTransition = false });
 
         return path;
     }
@@ -275,7 +279,13 @@ public static class BotPathfinder
         if (exit == null) return false;
 
         var door = GameDoorData.GetDoorForTransition(conn.FromArea, conn.ToArea, exit, conn.SpawnCell);
-        return door is { IsInitiallyOpen: false };
+        if (door == null) return false;
+
+        // #229: 탐색 게이지가 붙은 문은 영구 잠금이 아니다 — 누구나 열 수 있으므로 경로는 존재한다.
+        // 여기서 잘라내면 스폰 방 10곳이 통째로 그래프에서 떨어져 나가 봇이 방에 갇힌다.
+        if (GameInteractableData.IsGaugeGatedDoor(door.DoorId)) return false;
+
+        return !door.IsInitiallyOpen;
     }
 
     /// <summary>

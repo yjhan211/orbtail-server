@@ -28,6 +28,13 @@ public sealed class GroundItemManager
 
     // 소환석 자석 흡수 (#219): 접촉이 아니라 근처를 지나가면 딸려온다 — SB 코인 흡수 문법.
     public const float SummonStonePickupRadius = 3.5f;
+
+    /// <summary>
+    ///     낙수 수명 (#229). 지금까지는 바닥 아이템이 매치 끝까지 남았다 — 절단 낙수를 오브
+    ///     그대로 떨어뜨리면 후반에 바닥이 오브밭이 되어 회수 경쟁이 사라진다.
+    ///     수명을 지정한 아이템만 만료 대상이고, 나머지는 종전대로 남는다.
+    /// </summary>
+    private readonly Dictionary<long, Dictionary<long, DateTimeOffset>> _itemExpiries = new();
     public static readonly TimeSpan DiscovererPickupWindow = TimeSpan.FromSeconds(1);
     private readonly ConcurrentDictionary<long, MatchingGroundItemState> _matchingStates = new();
     private readonly TimeProvider _timeProvider;
@@ -42,6 +49,7 @@ public sealed class GroundItemManager
 
     public List<GroundItemInfo> SpawnItems(long matchingId, AreaType area, float originX, float originY,
         IReadOnlyList<int> itemIds, long sourcePlayerId = 0, MapId mapId = MapId.School,
+        TimeSpan? lifetime = null,
         long discovererPlayerId = 0, TimeSpan? discovererPickupWindow = null,
         GroundItemSpawnLayout layout = GroundItemSpawnLayout.Default)
     {
@@ -68,6 +76,12 @@ public sealed class GroundItemManager
                 };
                 state.Items[item.GroundItemUid] = item;
                 state.SpawnedAtUtc[item.GroundItemUid] = _timeProvider.GetUtcNow();
+                if (lifetime is { } span && span > TimeSpan.Zero)
+                {
+                    if (!_itemExpiries.TryGetValue(matchingId, out var expiries))
+                        _itemExpiries[matchingId] = expiries = new Dictionary<long, DateTimeOffset>();
+                    expiries[item.GroundItemUid] = _timeProvider.GetUtcNow() + span;
+                }
                 if (discovererPlayerId != 0)
                     state.DiscovererPlayerIds[item.GroundItemUid] = discovererPlayerId;
                 if (discovererPlayerId != 0 &&
@@ -128,6 +142,37 @@ public sealed class GroundItemManager
         if (!_matchingStates.TryGetValue(matchingId, out var state)) return 0;
         lock (state.SyncRoot)
             return state.DiscovererPlayerIds.GetValueOrDefault(groundItemUid);
+    }
+
+    /// <summary>
+    ///     수명이 다한 낙수를 걷어낸다 (#229). 반환값은 사라진 아이템들 — 호출부가
+    ///     G_TO_C_GROUND_ITEM_REMOVED로 알린다.
+    /// </summary>
+    public List<GroundItemInfo> ExpireGroundItems(long matchingId)
+    {
+        var removed = new List<GroundItemInfo>();
+        if (!_itemExpiries.TryGetValue(matchingId, out var expiries) || expiries.Count == 0)
+            return removed;
+        if (!_matchingStates.TryGetValue(matchingId, out var state))
+            return removed;
+
+        var now = _timeProvider.GetUtcNow();
+        lock (state.SyncRoot)
+        {
+            var due = expiries.Where(entry => entry.Value <= now).Select(entry => entry.Key).ToList();
+            foreach (long uid in due)
+            {
+                expiries.Remove(uid);
+                if (!state.Items.Remove(uid, out var item)) continue;
+
+                state.SpawnedAtUtc.Remove(uid);
+                state.DiscovererPlayerIds.Remove(uid);
+                state.ClaimReservations.Remove(uid);
+                removed.Add(item);
+            }
+        }
+
+        return removed;
     }
 
     public List<ExpiredGroundItemReservation> ExpireClaimReservations(long matchingId)

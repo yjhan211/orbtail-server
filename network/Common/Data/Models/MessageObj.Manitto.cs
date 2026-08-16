@@ -900,8 +900,9 @@ namespace network.common.data.models
         [Key("rank")] public int Rank { get; set; }
         [Key("finalOrbTier")] public int FinalOrbTier { get; set; }
 
-        // 잼 집계 (#223 M5): 결과 화면의 승점 표시 — 탈락자는 사망 낙수로 0이 정상.
-        [Key("jamCount")] public int JamCount { get; set; }
+        // 결과 화면 승점 (#229): 오브 수. 인게임 순위가 오브로 매겨지는데 결과표만 잼 지갑을
+        // 읽고 있었다 — 잼은 #226에서 퇴역해 스포너가 없어 10명 전원 0으로 떴다.
+        [Key("orbCount")] public int OrbCount { get; set; }
     }
 
     [MessagePackObject]

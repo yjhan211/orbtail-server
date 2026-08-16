@@ -106,15 +106,17 @@ public partial class GameClientSession
             damage);
     }
 
-    internal void SendEmotionAfterimageMonsterAttackFeedback(int monsterId, AreaType area, int weaponItemId, int damage)
+    internal void SendEmotionAfterimageMonsterAttackFeedback(
+        int monsterId, AreaType area, int weaponItemId, int damage, bool critical = false)
     {
         if (!PlayerId.HasValue || IsEliminated || monsterId < 0 || weaponItemId <= 0 || damage <= 0)
             return;
 
         // targetCorruption is event-specific metadata here: zero means a Wave splash hit,
         // so the client preserves its damage feedback without replaying the projectile.
+        // cooldownSeconds는 이 이벤트에서 안 쓰는 자리라 치명타 플래그로 빌려 쓴다 (#229 임시).
         using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(
-            PlayerId.Value, area, EmotionAfterimageMonsterAttackDealtEventType, 0,
+            PlayerId.Value, area, EmotionAfterimageMonsterAttackDealtEventType, critical ? 1 : 0,
             weaponItemId, damage, monsterId);
         Send(packet);
     }

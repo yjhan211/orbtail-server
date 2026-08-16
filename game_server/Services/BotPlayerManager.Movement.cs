@@ -40,23 +40,26 @@ public partial class BotPlayerManager
     ///     세로가 압축된 아이소메트릭 화면에서 어느 방향이든 타일 통과 속도가 BotWalkSpeed로 일정해진다
     ///     (플레이어 로컬 이동의 세로 보정과 동일 규칙).
     /// </summary>
-    private static float ScaledWalkSpeed(float dirX, float dirY, bool windResonanceActive = false)
+    private static float ScaledWalkSpeed(float dirX, float dirY, float movementMultiplier = 1f)
     {
         float tileY = dirY / IsoVerticalSpeedScale;
         float tileFactor = (float)Math.Sqrt(dirX * dirX + tileY * tileY);
-        float baseSpeed = BotWalkSpeed * (windResonanceActive ? SurvivorOrbData.WindMoveSpeedMultiplier : 1f);
+        float baseSpeed = BotWalkSpeed * Math.Max(0f, movementMultiplier);
         return tileFactor > 0.0001f ? baseSpeed / tileFactor : baseSpeed;
     }
 
     private static float GetBotMovementSpeedMultiplier(BotPlayerState bot)
     {
-        float wind = bot.WindResonanceActive ? SurvivorOrbData.WindMoveSpeedMultiplier : 1f;
+        float wind = Math.Max(1f, bot.WindMoveSpeedMultiplier);
         // 부츠 (#222 M4): 사람과 같은 10초 이속 버프.
         float boots = DateTime.UtcNow < bot.BootsSpeedUntilUtc
             ? Config.BOOTS_MOVE_SPEED_MULTIPLIER
             : 1f;
-        // 빈손 이속 (#223): 사람과 같은 규칙 — 오브를 다 잃으면 도주가 빨라진다.
-        float bare = bot.IsSwarmBareHanded ? Config.SWARM_BARE_MOVE_SPEED_MULTIPLIER : 1f;
+        // 빈손 이속 (#223 → #229 12단계): 사람과 같은 규칙 — 마지막 오브를 잃은 직후
+        // 2초만 빨라지고 원복한다. 유예가 끝난 빈손은 잔상의 우선 표적이 되어 재건에 쫓긴다.
+        float bare = bot.IsSwarmBareHanded && DateTime.UtcNow < bot.SwarmBareSpeedUntilUtc
+            ? Config.SWARM_BARE_MOVE_SPEED_MULTIPLIER
+            : 1f;
         return wind * boots * bare * GetBotWaveSlowMultiplier(bot);
     }
 
@@ -66,9 +69,9 @@ public partial class BotPlayerManager
             ? SurvivorOrbData.WaveSlowMoveSpeedMultiplier
             : 1f;
     }
-    private static Vector3f ScaledWalkVelocity(float dirX, float dirY, bool windResonanceActive = false)
+    private static Vector3f ScaledWalkVelocity(float dirX, float dirY, float movementMultiplier = 1f)
     {
-        float speed = ScaledWalkSpeed(dirX, dirY, windResonanceActive);
+        float speed = ScaledWalkSpeed(dirX, dirY, movementMultiplier);
         return new Vector3f(dirX * speed, dirY * speed, 0f);
     }
 
@@ -244,6 +247,10 @@ public partial class BotPlayerManager
         bool hasOpenNonCorridorRefuge = HasOpenNonCorridorRefuge(matchingId, closureManager);
         foreach (var bot in activeBots)
         {
+            bot.WindMoveSpeedMultiplier = Config.SWARM_P0_ENABLED
+                ? SurvivorOrbData.GetWindMoveSpeedMultiplier(
+                    inventoryManager.GetPlayerInventory(matchingId, bot.PlayerId).GetAllItems())
+                : bot.WindMoveSpeedMultiplier;
             bool canPlanThisTick = bot.PlayerId == result.PlanningBotId;
             bool isEvacuating = bot.EvacuationDestination != AreaType.None &&
                                 bot.PathIndex < bot.Path.Count;
@@ -1229,6 +1236,34 @@ public partial class BotPlayerManager
             return null;
         }
 
+        // 잠긴 문 통과 차단 (2026-08-16 유저 제보: 봇이 문 열리기 전에 들어온다).
+        // 위의 잠긴 방 검사는 구형 ROOM_COMBAT 페이즈 전용이라 군집 모드에서는 비어 있었다.
+        // 사람과 같은 판정을 쓴다 — 이 전이를 관장하는 문 하나만 보고, 그 문이 닫혀 있으면 버린다.
+        if (nextStep.Area != bot.CurrentArea)
+        {
+            var transitionDoor = GameDoorData.GetDoorForTransition(
+                bot.CurrentArea, nextStep.Area, bot.Cell, nextStep.Cell);
+            if (transitionDoor != null && !IsDoorOpenForBot(matchingId, transitionDoor.DoorId))
+            {
+                bot.Path.Clear();
+                bot.PathIndex = 0;
+                bot.MovementDestination = AreaType.None;
+                bot.EvacuationDestination = AreaType.None;
+                // 문 앞에서 기다린다 — 해제 채널링(ProcessSwarmBotDoorUnlocks)이 돌 시간을 준다.
+                bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.4);
+                if (bot.LastLockedDoorBlockArea != nextStep.Area)
+                {
+                    bot.LastLockedDoorBlockArea = nextStep.Area;
+                    _logger.LogInformation(
+                        "Bot blocked at closed door: MatchingId={MatchingId}, BotId={BotId}, " +
+                        "From={From}, To={To}, DoorId={DoorId}",
+                        matchingId, bot.PlayerId, bot.CurrentArea, nextStep.Area, transitionDoor.DoorId);
+                }
+
+                return null;
+            }
+        }
+
         // Walk every waypoint at the same speed. An area transition is just the adjacent cell across a door.
         var targetPos = CellToWorldPosition(mapId, nextStep.Cell);
         float dx = targetPos.X - bot.Position.X;
@@ -1236,10 +1271,24 @@ public partial class BotPlayerManager
         float dist = (float)Math.Sqrt(dx * dx + dy * dy);
         float maxDist = BotWalkSpeed * GetBotMovementSpeedMultiplier(bot) * deltaSec;
         if (dist >= 0.01f)
-            maxDist = ScaledWalkSpeed(dx / dist, dy / dist, bot.WindResonanceActive) * GetBotWaveSlowMultiplier(bot) * deltaSec;
+            maxDist = ScaledWalkSpeed(dx / dist, dy / dist, GetBotMovementSpeedMultiplier(bot)) * deltaSec;
 
         Vector3f newPosition;
         Vector3f velocity;
+
+        // 벽 판정 (2026-08-16 유저 제보: 봇이 문이 아니라 벽으로 넘어다닌다).
+        // WalkStep은 웨이포인트로 직선 이동만 했다 — 경로가 한 칸이라도 어긋나면 그대로 통과한다.
+        // 다음 웨이포인트가 비보행이면 그 경로는 이미 틀린 것이므로 버리고 다시 짠다.
+        // 이미 벽 안에 서 있는 개체는 막지 않는다 — 막으면 영영 못 빠져나온다.
+        if (!GameMapData.IsMoveablePosition(mapId, nextStep.Cell) &&
+            GameMapData.IsMoveablePosition(mapId, bot.Cell))
+        {
+            bot.Path.Clear();
+            bot.PathIndex = 0;
+            bot.MovementDestination = AreaType.None;
+            bot.LoopWaitUntil = RandomizedDelayFromNow(0.4, 0.9);
+            return null;
+        }
 
         if (dist <= maxDist || dist < 0.01f)
         {
@@ -1258,7 +1307,10 @@ public partial class BotPlayerManager
                 float nextDist = (float)Math.Sqrt(nextDx * nextDx + nextDy * nextDy);
                 if (nextDist > 0.01f)
                 {
-                    velocity = ScaledWalkVelocity(nextDx / nextDist, nextDy / nextDist, bot.WindResonanceActive) * GetBotWaveSlowMultiplier(bot);
+                    velocity = ScaledWalkVelocity(
+                        nextDx / nextDist,
+                        nextDy / nextDist,
+                        GetBotMovementSpeedMultiplier(bot));
 
                     // 웨이포인트에 스냅하면 이번 틱에 갈 수 있었던 거리가 버려져 그 틱만 느려진다.
                     // 셀을 지날 때마다 반복되므로 이동이 움찔거려 보인다. 남은 몫을 다음
@@ -1284,7 +1336,7 @@ public partial class BotPlayerManager
                 bot.Position.X + dirX * maxDist,
                 bot.Position.Y + dirY * maxDist,
                 0f);
-            velocity = ScaledWalkVelocity(dirX, dirY, bot.WindResonanceActive) * GetBotWaveSlowMultiplier(bot);
+            velocity = ScaledWalkVelocity(dirX, dirY, GetBotMovementSpeedMultiplier(bot));
             bot.Position = newPosition;
         }
 
@@ -2502,4 +2554,3 @@ public class BotMovementEvent
     public float Rotation { get; set; }
     public bool IsAreaTransition { get; set; }
 }
-

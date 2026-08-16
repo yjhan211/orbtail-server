@@ -33,6 +33,40 @@ public class AreaClosureManager
         new(300, [AreaType.Ground], 29)
     ];
 
+    // 순차 폐쇄 (#229): 한 웨이브가 네 구역을 동시에 닫으면 "문이 한꺼번에 내려온" 한 순간만
+    // 남고 어디로 갈지 고르는 시간이 사라진다. 구역을 하나씩 쪼개 원래 시각보다 앞당겨 흩는다 —
+    // 마지막 구역은 원래 시각 그대로라 매치 종료 봉투(최종 운동장 폐쇄 = 타이머 만료)는 안 밀린다.
+    // 순서는 매치마다 섞어 어떤 방이 일찍 닫힐지 미리 알 수 없게 한다.
+    private const int ClosureStaggerStepSeconds = 4;
+
+    private static List<ClosureWaveDefinition> StaggerWaveAreas(List<ClosureWaveDefinition> waves)
+    {
+        var rng = new Random();
+        var staggered = new List<ClosureWaveDefinition>();
+        foreach (var wave in waves)
+        {
+            if (wave.Areas.Count <= 1)
+            {
+                staggered.Add(wave);
+                continue;
+            }
+
+            var shuffled = wave.Areas.OrderBy(_ => rng.Next()).ToList();
+            for (int index = 0; index < shuffled.Count; index++)
+            {
+                // 마지막(index = Count-1)이 원래 시각, 앞선 것들이 그만큼 일찍.
+                int offset = (shuffled.Count - 1 - index) * ClosureStaggerStepSeconds;
+                staggered.Add(wave with
+                {
+                    ClosureAtSeconds = wave.ClosureAtSeconds - offset,
+                    Areas = [shuffled[index]]
+                });
+            }
+        }
+
+        return staggered.OrderBy(wave => wave.ClosureAtSeconds).ToList();
+    }
+
     private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();
     private readonly ILogger _logger;
     private readonly Func<DateTime> _utcNow;
@@ -70,6 +104,8 @@ public class AreaClosureManager
             })
             .Where(wave => wave.Areas.Count > 0)
             .ToList();
+        if (wavesOverride == null)
+            waves = StaggerWaveAreas(waves);
 
         var state = new MatchingClosureState
         {
@@ -174,17 +210,30 @@ public class AreaClosureManager
             if (state.NextClosureIndex >= state.Waves.Count)
                 return new ClosureClientStateSnapshot(closedAreas, [], 0, 0, 0, 0);
 
-            var nextWave = state.Waves[state.NextClosureIndex];
-            double warningAtSeconds = nextWave.ClosureAtSeconds - ClosureWarningSeconds;
-            bool isWarningActive = elapsedSeconds >= warningAtSeconds &&
-                                   elapsedSeconds < nextWave.ClosureAtSeconds;
+            // 경고는 15초 창 안의 모든 웨이브를 담는다 (#229). 순차 폐쇄로 웨이브가 4초 간격이
+            // 되면서, 다음 한 건만 보면 스태거 그룹의 두 번째 이후 구역은 4초짜리 경고만 받는다.
+            // 봇 대피와 클라 경고가 같이 이 스냅샷을 읽으므로 여기서 한 번에 고친다.
+            var warningWaveList = new List<AreaType>();
+            double earliestWarnedClosureAtSeconds = double.MaxValue;
+            for (int index = state.NextClosureIndex; index < state.Waves.Count; index++)
+            {
+                var wave = state.Waves[index];
+                if (elapsedSeconds < wave.ClosureAtSeconds - ClosureWarningSeconds) break;
+                if (elapsedSeconds >= wave.ClosureAtSeconds) continue;
 
-            var warningAreas = isWarningActive ? nextWave.Areas.ToArray() : [];
+                warningWaveList.AddRange(wave.Areas);
+                earliestWarnedClosureAtSeconds =
+                    Math.Min(earliestWarnedClosureAtSeconds, wave.ClosureAtSeconds);
+            }
+
+            bool isWarningActive = warningWaveList.Count > 0;
+            var warningAreas = warningWaveList.Distinct().ToArray();
             int warningSeconds = isWarningActive
-                ? Math.Max(1, (int)Math.Ceiling(nextWave.ClosureAtSeconds - elapsedSeconds))
+                ? Math.Max(1, (int)Math.Ceiling(earliestWarnedClosureAtSeconds - elapsedSeconds))
                 : 0;
             long closureAtUnixMs = isWarningActive
-                ? ((DateTimeOffset)state.GameStartTime.AddSeconds(nextWave.ClosureAtSeconds)).ToUnixTimeMilliseconds()
+                ? ((DateTimeOffset)state.GameStartTime.AddSeconds(earliestWarnedClosureAtSeconds))
+                    .ToUnixTimeMilliseconds()
                 : 0;
 
             // 현재 경보가 진행 중이면 그 다음 웨이브, 아니면 아직 시작되지 않은 현재 웨이브의
@@ -243,18 +292,35 @@ public class AreaClosureManager
             if (state.NextClosureIndex >= state.Waves.Count)
                 return ClosureScheduleTick.Empty;
 
-            var nextWave = state.Waves[state.NextClosureIndex];
-            double warningAtSeconds = nextWave.ClosureAtSeconds - ClosureWarningSeconds;
-            if (elapsedSeconds < warningAtSeconds || !state.WarningsSent.Add(state.NextClosureIndex))
+            // 경고는 "다음 하나"가 아니라 경고창에 들어온 모든 웨이브를 함께 낸다 (#229 수리).
+            // 순차 폐쇄로 웨이브 간격이 4초가 되면서, 앞 구역이 닫힌 뒤에야 다음 경고가 나가
+            // 남은 시간이 3초로 찍혔다 — 묶음의 첫 구역만 15초를 받고 나머지는 사실상 무경고였다.
+            // 각 구역은 자기 폐쇄 15초 전에 경고를 받아야 하고, 그 창들은 겹쳐도 된다.
+            var warnAreas = new List<AreaType>();
+            double earliestClosureAtSeconds = double.MaxValue;
+            for (int index = state.NextClosureIndex; index < state.Waves.Count; index++)
+            {
+                var wave = state.Waves[index];
+                if (elapsedSeconds < wave.ClosureAtSeconds - ClosureWarningSeconds)
+                    break;
+                if (!state.WarningsSent.Add(index))
+                    continue;
+
+                warnAreas.AddRange(wave.Areas);
+                earliestClosureAtSeconds = Math.Min(earliestClosureAtSeconds, wave.ClosureAtSeconds);
+            }
+
+            if (warnAreas.Count == 0)
                 return ClosureScheduleTick.Empty;
 
-            int remainingSeconds = Math.Max(1, (int)Math.Ceiling(nextWave.ClosureAtSeconds - elapsedSeconds));
-            long closureAtUnixMs = ((DateTimeOffset)state.GameStartTime.AddSeconds(nextWave.ClosureAtSeconds))
+            // 남은 시간·시각은 이번에 경고한 것들 중 가장 이른 폐쇄 기준이다.
+            int remainingSeconds = Math.Max(1, (int)Math.Ceiling(earliestClosureAtSeconds - elapsedSeconds));
+            long closureAtUnixMs = ((DateTimeOffset)state.GameStartTime.AddSeconds(earliestClosureAtSeconds))
                 .ToUnixTimeMilliseconds();
             _logger.LogInformation(
                 "Survivor Royale closure warning: MatchingId={MatchingId}, CloseAt={CloseAt}s, Areas={Areas}, Remaining={Remaining}s",
-                matchingId, nextWave.ClosureAtSeconds, string.Join(',', nextWave.Areas), remainingSeconds);
-            return new ClosureScheduleTick(nextWave.Areas, remainingSeconds, closureAtUnixMs, []);
+                matchingId, earliestClosureAtSeconds, string.Join(',', warnAreas), remainingSeconds);
+            return new ClosureScheduleTick(warnAreas, remainingSeconds, closureAtUnixMs, []);
         }
     }
 
