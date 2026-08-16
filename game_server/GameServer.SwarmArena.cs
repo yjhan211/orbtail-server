@@ -378,10 +378,11 @@ public partial class GameServer
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
         ProcessPendingSwarmMonsterHits(matchingId, nowUtc, sessions);
 
-        // 핫 리로드 전 예약된 PvP 탄도 남기지 않는다. 새 스웜 공격은 아래 PvE 전용
-        // 리졸버에서 잔상만 대상으로 삼는다.
-        if (!SwarmPvpRangedAttackEnabled)
-            _pendingSwarmPvpHits.RemoveAll(hit => hit.MatchingId == matchingId);
+        // 비행 중인 PvP 탄을 매 틱 지우던 줄을 걷어낸다 (2026-08-16 유저 제보: 플레이어
+        // 오브가 봇을 안 때린다). "리졸버는 PvE 전용"이라는 전제로 쓰인 청소인데, 리졸버가
+        // 사람 표적도 내보내게 바뀐 뒤로는 방금 발사한 태양·바람 유도탄을 다음 틱에 통째로
+        // 삭제하고 있었다 — 청소가 착탄 처리보다 앞이라 큐가 늘 비어 있었고, 쏘는 색이
+        // 정확히 그 둘이라 PvP가 한 발도 착탄하지 못했다(봇 매치 9873914: SURVIVOR_HIT 0건).
         for (int index = _pendingSwarmPvpHits.Count - 1; index >= 0; index--)
         {
             var pending = _pendingSwarmPvpHits[index];

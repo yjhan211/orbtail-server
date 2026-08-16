@@ -475,7 +475,7 @@ public sealed class SwarmArenaManager
                 if (RegionSupplyModeEnabled)
                 {
                     UpdateSupplyMonsterMovement(
-                        monster, state.LastParticipants, now, moveDeltaSeconds, preMatch);
+                        state, monster, state.LastParticipants, now, moveDeltaSeconds, preMatch);
                     // 벽 탈출 안전망 (2026-08-16 유저 제보: 운동장에 벽에 낀 몹이 많다).
                     // 스폰·행군·추격 어느 경로로 들어갔든, 비보행 칸에 선 개체는 매 틱
                     // 보행 가능한 자리로 당긴다 — 원인을 하나 놓쳐도 화면에는 남지 않는다.
@@ -718,14 +718,19 @@ public sealed class SwarmArenaManager
             if (RegionSupplyModeEnabled)
             {
                 // 반격 개전: 맞은 몹과 같은 구역 무리 전체가 함께 깨어난다 — 무리는 한 덩어리다.
+                // 다만 주인이 있는 개체는 표적을 넘기지 않는다 (2026-08-16): 오브는 사거리 안
+                // 잔상을 쉬지 않고 쏘므로, 피격으로 표적이 넘어가면 남의 담당 몹이 통째로
+                // 사격자에게 쏠려 "각자 할당"이 첫 발에 무너진다. 깨우기만 하고 표적은 둔다.
                 monster.Aggro = true;
-                monster.ChaseTargetPlayerId = attackerPlayerId;
+                if (monster.OwnerPlayerId == 0)
+                    monster.ChaseTargetPlayerId = attackerPlayerId;
                 foreach (var mate in state.Monsters.Values)
                 {
                     if (!mate.Alive || mate.Aggro || mate.Area != monster.Area)
                         continue;
                     mate.Aggro = true;
-                    mate.ChaseTargetPlayerId = attackerPlayerId;
+                    if (mate.OwnerPlayerId == 0)
+                        mate.ChaseTargetPlayerId = attackerPlayerId;
                 }
             }
             else if (CampModeEnabled)
@@ -1203,6 +1208,37 @@ public sealed class SwarmArenaManager
     ///     보스 (#223): 링 안 = 개전 — 어그로 반경이 곧 사거리(타원 dy×2)라 범위 링이 안전선으로
     ///     정직해진다. 일반 몹은 좁은 접근 반경(2.5) 유지.
     /// </summary>
+    /// <summary>
+    ///     구역에 남은 사람 중 담당 몹이 가장 적은 사람 (2026-08-16). 주인이 구역을 떠났거나
+    ///     탈락했을 때 몹을 넘길 곳을 고른다.
+    /// </summary>
+    private static long ClaimLeastLoadedOwner(
+        MatchState state, AreaType area, IReadOnlyList<SpotArenaPlayerSpatial> participants)
+    {
+        long chosen = 0;
+        int least = int.MaxValue;
+        for (int index = 0; index < participants.Count; index++)
+        {
+            var participant = participants[index];
+            if (participant.Area != area)
+                continue;
+
+            int load = 0;
+            foreach (var candidate in state.Monsters.Values)
+            {
+                if (candidate.Alive && candidate.OwnerPlayerId == participant.PlayerId)
+                    load++;
+            }
+
+            if (load >= least)
+                continue;
+            least = load;
+            chosen = participant.PlayerId;
+        }
+
+        return chosen;
+    }
+
     private static bool HasParticipantWithinAggro(
         MonsterRuntime monster, IReadOnlyList<SpotArenaPlayerSpatial> participants)
     {
@@ -1218,6 +1254,11 @@ public sealed class SwarmArenaManager
             float aggroDx = participant.Position.X - monster.Position.X;
             float aggroDy = (participant.Position.Y - monster.Position.Y) * aggroVerticalScale;
             if (aggroDx * aggroDx + aggroDy * aggroDy > aggroRadius * aggroRadius)
+                continue;
+
+            // 주인이 있으면 주인만 깨운다 (2026-08-16): 남이 스쳐 지나가는 것만으로
+            // 표적이 넘어가면 "각자 할당"이 성립하지 않는다.
+            if (monster.OwnerPlayerId != 0 && monster.OwnerPlayerId != participant.PlayerId)
                 continue;
 
             monster.Aggro = true;
@@ -1317,15 +1358,21 @@ public sealed class SwarmArenaManager
 
         // 점유 = 살아있는 참가자가 서 있는 구역. 폐쇄 구역은 즉시 제외한다 — 폐쇄 구역에
         // 쌓인 잔상은 도달조차 못 하면서 전역 상한만 갉아먹는다 (#229 완료 조건 4).
-        // 구역별 인원까지 센다 (2026-08-16): 목표가 인당이라 몇 명이 서 있는지가 곧 목표다.
-        var occupied = new Dictionary<AreaType, int>();
+        // 구역별 참가자 명단까지 든다 (2026-08-16): 목표가 인당이라 몇 명이 서 있는지가 곧
+        // 목표이고, 스폰한 몹의 주인도 이 명단에서 고른다.
+        var occupied = new Dictionary<AreaType, List<long>>();
         foreach (var participant in state.LastParticipants)
         {
             if (participant.Area == AreaType.None ||
                 IsAreaClosedResolver?.Invoke(state.MatchingId, participant.Area) == true)
                 continue;
-            occupied.TryGetValue(participant.Area, out int playerCount);
-            occupied[participant.Area] = playerCount + 1;
+            if (!occupied.TryGetValue(participant.Area, out var roster))
+            {
+                roster = new List<long>();
+                occupied[participant.Area] = roster;
+            }
+
+            roster.Add(participant.PlayerId);
         }
 
         bool preMatch = IsGameplayActiveResolver?.Invoke(state.MatchingId) == false;
@@ -1340,7 +1387,7 @@ public sealed class SwarmArenaManager
             {
                 if (IsAreaClosedResolver?.Invoke(state.MatchingId, room) == true)
                     continue;
-                occupied.TryAdd(room, 0);
+                occupied.TryAdd(room, new List<long>());
             }
         }
 
@@ -1358,12 +1405,12 @@ public sealed class SwarmArenaManager
         // 사람이 몰려 구역이 줄면 상한도 같이 줄어 남은 전장이 오히려 한산해졌다.
         int globalCap = Math.Min(
             SupplyGlobalAliveHardCap,
-            occupied.Values.Sum(playerCount => GetSupplyZoneTarget(phase.PerPlayerTarget, playerCount)));
+            occupied.Values.Sum(roster => GetSupplyZoneTarget(phase.PerPlayerTarget, roster.Count)));
 
         // 상한에 걸리면 뒤 구역이 굶는다 — 빈 구역부터 채워 공백을 고르게 나눈다.
-        foreach (var (zone, playersInZone) in occupied.OrderBy(pair => CountAliveInArea(state, pair.Key)))
+        foreach (var (zone, roster) in occupied.OrderBy(pair => CountAliveInArea(state, pair.Key)))
         {
-            int zoneTarget = GetSupplyZoneTarget(phase.PerPlayerTarget, playersInZone);
+            int zoneTarget = GetSupplyZoneTarget(phase.PerPlayerTarget, roster.Count);
             if (aliveGlobal >= globalCap)
                 break;
 
@@ -1422,7 +1469,9 @@ public sealed class SwarmArenaManager
             // 공백은 카운트다운이 메운다 — 게이트 전에도 디렉터가 돌아 5초를 미리 걷는다.
             int spawned = SpawnSupplyMonsters(
                 state, zone, want, includeCore, phaseIndex, now, result,
-                candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true);
+                candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true,
+                infiltrate: true,
+                roster: roster);
             if (spawned == 0)
             {
                 // 전 앵커가 플레이어 2.5m 안 — 1초 뒤 재검사.
@@ -1451,7 +1500,8 @@ public sealed class SwarmArenaManager
     ///     보상은 처치 경로(ApplyMonsterDamage)에만 붙어 있어 이 회수로 소환석이 새지 않는다.
     ///     보스는 애초에 상한에서 제외되므로 건드리지 않는다.
     /// </summary>
-    private void ReclaimStrandedMonsters(MatchState state, Dictionary<AreaType, int> occupied, DateTime now)
+    private void ReclaimStrandedMonsters(
+        MatchState state, Dictionary<AreaType, List<long>> occupied, DateTime now)
     {
         foreach (var zone in occupied.Keys)
             state.ZoneVacatedAtUtc.Remove(zone);
@@ -1562,9 +1612,46 @@ public sealed class SwarmArenaManager
     private static int SpawnSupplyMonsters(
         MatchState state, AreaType area, int normals, bool includeCore,
         int phaseIndex, DateTime now, SwarmArenaTickResult result,
-        Func<AreaType, bool>? isAreaBlocked = null, bool infiltrate = true)
+        Func<AreaType, bool>? isAreaBlocked = null, bool infiltrate = true,
+        IReadOnlyList<long>? roster = null)
     {
         var phase = SupplyPhases[phaseIndex];
+        // 주인 배정 준비 (2026-08-16): 이 구역 사람들의 현재 담당 수를 세어 둔다. 스폰할 때마다
+        // 가장 적게 든 사람에게 붙여, 구역 목표(인당 × 인원)가 실제로 균등하게 나뉘게 한다.
+        var ownerLoad = new Dictionary<long, int>();
+        if (roster is { Count: > 0 })
+        {
+            foreach (long playerId in roster)
+                ownerLoad[playerId] = 0;
+            foreach (var candidate in state.Monsters.Values)
+            {
+                if (!candidate.Alive || candidate.OwnerPlayerId == 0)
+                    continue;
+                if (ownerLoad.ContainsKey(candidate.OwnerPlayerId))
+                    ownerLoad[candidate.OwnerPlayerId]++;
+            }
+        }
+
+        long ClaimOwner()
+        {
+            if (ownerLoad.Count == 0)
+                return 0;
+
+            long chosen = 0;
+            int least = int.MaxValue;
+            foreach (var (playerId, load) in ownerLoad)
+            {
+                if (load >= least)
+                    continue;
+                least = load;
+                chosen = playerId;
+            }
+
+            if (chosen != 0)
+                ownerLoad[chosen] = least + 1;
+            return chosen;
+        }
+
         // 운동장 밖 구역은 침투로 채운다 — 발원은 운동장 중심, 아래 앵커는 도착지가 된다.
         infiltrate = infiltrate && area != SwarmInwardOriginArea;
         var center = BotPlayerManager.CellToWorldPosition(
@@ -1699,7 +1786,9 @@ public sealed class SwarmArenaManager
                     ? WavePatternAttackCooldownSeconds
                     : stats.AttackCooldownSeconds,
                 AnchorX = position.X,
-                AnchorY = position.Y
+                AnchorY = position.Y,
+                // 주인 배정 (2026-08-16 유저 결정): 이 몹은 배정 구역의 특정 한 사람만 쫓는다.
+                OwnerPlayerId = ClaimOwner()
             };
             if (route != null)
             {
@@ -2093,6 +2182,7 @@ public sealed class SwarmArenaManager
     ///     원거리 종은 사거리 안에서 멈춰 쏜다.
     /// </summary>
     private static void UpdateSupplyMonsterMovement(
+        MatchState state,
         MonsterRuntime monster,
         IReadOnlyList<SpotArenaPlayerSpatial> participants,
         DateTime now,
@@ -2131,30 +2221,46 @@ public sealed class SwarmArenaManager
         if (!monster.Aggro && !HasParticipantWithinAggro(monster, participants))
             return;
 
-        // 추격 대상 (#229 저주기 갱신): 들고 있는 대상이 같은 구역에 있으면 그대로 쫓는다.
-        // 재선정은 대상을 잃었거나 유지 창(1초)이 끝났을 때만 — 매 틱 최근접을 다시 고르면
-        // 두 사람 사이에서 방향이 떨리고, 무리 전체가 같은 사람에게 순간 쏠린다.
+        // 추격 대상 = 주인 (2026-08-16 유저 결정: 플레이어별로 추격 몹이 각자 할당되고
+        // 그 몹만 쫓는다). 예전에는 1초마다 같은 구역 최근접을 다시 골랐다 — 그러면 한 사람이
+        // 지나갈 때마다 무리가 통째로 그쪽으로 쏠려, 구역 목표를 인당으로 잡아 둔 몫이
+        // 실제로는 한 사람에게 몰렸다.
         bool found = false;
         var target = default(SpotArenaPlayerSpatial);
-        for (int index = 0; index < participants.Count && monster.ChaseTargetPlayerId != 0; index++)
+        long chaseId = monster.OwnerPlayerId != 0 ? monster.OwnerPlayerId : monster.ChaseTargetPlayerId;
+        for (int index = 0; index < participants.Count && chaseId != 0; index++)
         {
             var participant = participants[index];
-            if (participant.Area != monster.Area || participant.PlayerId != monster.ChaseTargetPlayerId)
+            if (participant.Area != monster.Area || participant.PlayerId != chaseId)
                 continue;
             target = participant;
             found = true;
             break;
         }
 
-        if (found && now >= monster.NextTargetScanAtUtc)
+        // 주인이 이 구역에 없으면 재배정한다 — 나갔거나 탈락했다. 남은 사람 중 담당이 가장
+        // 적은 쪽으로 넘겨야 한 사람에게 두 몫이 쌓이지 않는다.
+        if (!found && monster.OwnerPlayerId != 0)
         {
-            monster.NextTargetScanAtUtc = now.AddSeconds(SupplyTargetHoldSeconds);
-            found = false;
+            monster.OwnerPlayerId = 0;
+            long reassigned = ClaimLeastLoadedOwner(state, monster.Area, participants);
+            if (reassigned != 0)
+            {
+                monster.OwnerPlayerId = reassigned;
+                for (int index = 0; index < participants.Count; index++)
+                {
+                    if (participants[index].PlayerId != reassigned)
+                        continue;
+                    target = participants[index];
+                    found = true;
+                    break;
+                }
+            }
         }
 
-        if (!found)
+        // 주인 없는 구형 개체(캠프·보스)는 종전대로 같은 구역 최근접을 쫓는다.
+        if (!found && monster.OwnerPlayerId == 0)
         {
-            // 재선정: 같은 구역 최근접.
             float nearestSquared = float.MaxValue;
             for (int index = 0; index < participants.Count; index++)
             {
@@ -2642,6 +2748,13 @@ public sealed class SwarmArenaManager
 
         // 스폰 시점 공급 페이즈 (2026-08-16): 클라가 몸집·문양으로 "세졌다"를 읽는 근거.
         public int PhaseTier { get; set; }
+
+        // 추격 주인 (2026-08-16 유저 결정: 플레이어별로 추격 몹이 각자 할당되고 그 몹만 쫓는다).
+        // 스폰 시 배정 구역의 참가자 중 담당이 가장 적은 사람에게 붙는다 — 구역 목표가 이미
+        // 인당(PerPlayerTarget × 인원)이므로, 주인을 나눠야 그 몫이 실제로 각자에게 간다.
+        // 0이면 주인 없음(캠프·보스 등 구형 경로) — 그때는 종전대로 최근접을 쫓는다.
+        // 주인이 구역을 떠나거나 탈락하면 0으로 풀려 같은 구역의 다른 사람에게 재배정된다.
+        public long OwnerPlayerId { get; set; }
 
         // 착탄 예약 (#229 과잉 사격 방지): 발사 시점에 물려 둔 미착탄 피해 합.
         // 오브는 착탄이 지연되므로, 예약을 안 세면 전 오브가 같은 몹에 몰려 쏘고 그중
