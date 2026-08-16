@@ -1827,6 +1827,11 @@ public sealed class SwarmArenaManager
         monster.DiedAtUtc = now;
     }
 
+    // 추격 우회 (2026-08-16): 이만큼 움직이지 못한 시간이 쌓이면 직선 조향을 접고 경로를 깐다.
+    // 벽에 붙어 미끄러지는 것도 "못 움직인" 것으로 친다 — 한 틱 이동량 기준.
+    private const double ChaseRepathSeconds = 1.2d;
+    private const float ChaseProgressThresholdSquared = 0.0009f;
+
     // 정지 감시 (2026-08-16): 8초 이상 제자리인 개체를 한 번 보고한다. "구석에 껴서 아무것도
     // 안 하는 몹" 류는 원인이 여러 층(경로·충돌·앵커·맵 데이터)에 걸쳐 있어 추측으로는 안 잡힌다.
     // 봇 매치 로그에서 이 줄이 0인지만 보면 회귀를 즉시 안다.
@@ -2055,7 +2060,37 @@ public sealed class SwarmArenaManager
                 return;
         }
 
+        // 추격은 경로탐색 없는 직선 조향이다 — 상대가 벽 너머에 있으면 벽을 따라 미끄러지며
+        // 제자리를 맴돈다 (2026-08-16 유저 제보: 방·테라스 타일 끝에 몹이 껴 있다).
+        // 위치가 거의 안 움직인 시간이 쌓이면 경로를 깔아 문으로 돌아 들어가게 한다.
+        var beforeMove = monster.Position;
         MoveTowardPlayer(monster, target.Position, deltaSeconds);
+
+        float movedX = monster.Position.X - beforeMove.X;
+        float movedY = monster.Position.Y - beforeMove.Y;
+        if (movedX * movedX + movedY * movedY >= ChaseProgressThresholdSquared)
+        {
+            monster.ChaseBlockedSeconds = 0d;
+            return;
+        }
+
+        monster.ChaseBlockedSeconds += deltaSeconds;
+        if (monster.ChaseBlockedSeconds < ChaseRepathSeconds)
+            return;
+
+        monster.ChaseBlockedSeconds = 0d;
+        if (!TryPlanRoute(monster.Area, monster.Position, target.Area, target.Position,
+                null, out var detour))
+            return;
+
+        monster.Infiltrating = true;
+        monster.MarchIsPursuit = true;
+        monster.HomeArea = target.Area;
+        monster.MarchWaypoints.Clear();
+        monster.MarchWaypoints.AddRange(detour);
+        monster.MarchIndex = 0;
+        monster.MarchBudgetSeconds = Math.Max(
+            MarchBudgetMinimumSeconds, detour.Count * MarchBudgetSecondsPerWaypoint);
     }
 
     private void SpawnDueParticipantPattern(
@@ -2471,6 +2506,8 @@ public sealed class SwarmArenaManager
         public List<Vector3f> MarchWaypoints { get; } = new();
         public int MarchIndex { get; set; }
         public double MarchBudgetSeconds { get; set; }
+
+        public double ChaseBlockedSeconds { get; set; }
 
         // 정지 감시용
         public float StuckWatchX { get; set; }
