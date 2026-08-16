@@ -326,7 +326,7 @@ public partial class GameServer
         ProcessSwarmBotDoorUnlocks(matchingId, aliveBots, sessions, nowUtc);
 
         if (TryConsumeMonsterPositionBroadcastSlot(matchingId, nowUtc))
-            BroadcastMonsterMinimapSnapshot(sessions, _swarmArenaManager.GetVisualStates(matchingId));
+            BroadcastMonsterMinimapSnapshot(matchingId, sessions, _swarmArenaManager.GetVisualStates(matchingId));
 
         UpdateSwarmMovementSamples(matchingId, participants, nowUtc);
         var actors = BuildSwarmArenaCombatActors(matchingId, aliveSessions, aliveBots, nowUtc);

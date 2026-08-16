@@ -71,7 +71,7 @@ public partial class GameServer
             // Spot Arena monsters cross room boundaries. Every participant must receive
             // every area chunk so a monster is removed from its previous room and appears
             // in its destination room on the same snapshot tick.
-            BroadcastMonsterMinimapSnapshot(sessions, _spotArenaManager.GetVisualStates(matchingId));
+            BroadcastMonsterMinimapSnapshot(matchingId, sessions, _spotArenaManager.GetVisualStates(matchingId));
         }
 
         BroadcastSpotArenaState(matchingId, sessions);

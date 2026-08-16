@@ -28,7 +28,7 @@ public partial class GameServer
             BroadcastMonsterSnapshot(matchingId, matchingSessions, monsterTick.ChangedStates);
         if (monsterTick.SpawnedStates.Count > 0)
         {
-            BroadcastMonsterMinimapSnapshot(matchingSessions, monsterTick.SpawnedStates);
+            BroadcastMonsterMinimapSnapshot(matchingId, matchingSessions, monsterTick.SpawnedStates);
             _gameEventLogManager.LogRewardAreaSnapshot(
                 matchingId,
                 _emotionAfterimageMonsterManager.GetRewardAreaSnapshot(matchingId),
@@ -120,7 +120,7 @@ public partial class GameServer
         {
             var finalStates = finalMonsterStates.GetFinalStates();
             BroadcastMonsterSnapshot(matchingId, matchingSessions, finalStates);
-            BroadcastMonsterMinimapSnapshot(matchingSessions, finalStates.Where(state => !state.IsAlive));
+            BroadcastMonsterMinimapSnapshot(matchingId, matchingSessions, finalStates.Where(state => !state.IsAlive));
         }
     }
     private static ProximityCombatActor CreateMonsterTargetActor(MonsterCombatTarget monster)
@@ -335,7 +335,10 @@ public partial class GameServer
         var snapshotStates = states ?? _emotionAfterimageMonsterManager.GetSnapshot(matchingId);
         foreach (var monsterChunk in MonsterSnapshotBatcher.CreateAreaChunks(snapshotStates))
         {
-            var observers = sessions.Where(session => session.CurrentArea == monsterChunk.Area).ToList();
+            // 인트로 구간은 전원에게 — 카메라가 남의 구역을 비추므로 (2026-08-16).
+            var observers = MatchStartGate.IsGameplayActive(matchingId)
+                ? sessions.Where(session => session.CurrentArea == monsterChunk.Area).ToList()
+                : sessions.ToList();
             if (observers.Count == 0)
                 continue;
 
@@ -357,8 +360,13 @@ public partial class GameServer
     ///     이게 "서버 시뮬 개체와 클라 동기화 개체 분리"의 실체다 — 시뮬은 전역, 동기화는 구역.
     /// </summary>
     private static void BroadcastMonsterMinimapSnapshot(
+        long matchingId,
         IReadOnlyCollection<GameClientSession> sessions, IEnumerable<MonsterRuntimeInfo> states)
     {
+        // 인트로 구간은 구역 필터를 걷는다 (2026-08-16 유저 결정): 카메라가 운동장에서 열리고
+        // 플레이어의 방까지 훑는데, 내 구역 것만 보내면 클라는 그릴 데이터를 아예 못 받는다 —
+        // 발원지에서 나가는 몹이 안 보이던 원인이 여기였다. 카운트다운 5초 동안만이다.
+        bool preMatch = !MatchStartGate.IsGameplayActive(matchingId);
         foreach (var monsterChunk in MonsterSnapshotBatcher.CreateAreaChunks(states))
         {
             using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
@@ -369,7 +377,7 @@ public partial class GameServer
 
             foreach (var session in sessions)
             {
-                if (session.CurrentArea != monsterChunk.Area)
+                if (!preMatch && session.CurrentArea != monsterChunk.Area)
                     continue;
                 session.Send(packet);
             }

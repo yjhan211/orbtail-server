@@ -2000,7 +2000,7 @@ public partial class GameServer(
                 if (monsterPhaseStates.Count > 0)
                 {
                     BroadcastMonsterSnapshot(matchingId, sessions, monsterPhaseStates.Values);
-                    BroadcastMonsterMinimapSnapshot(sessions, monsterPhaseStates.Values);
+                    BroadcastMonsterMinimapSnapshot(matchingId, sessions, monsterPhaseStates.Values);
                 }
                 if (closureTick.ClosedAreas.Count > 0)
                 {
