@@ -2143,10 +2143,12 @@ public partial class GameServer
             var dropPosition = dropOrdinal < ownerChain.Points.Count
                 ? ownerChain.Points[dropOrdinal]
                 : bestOrbPosition;
-            ScatterSwarmOrbBreakStones(
-                matchingId, destroyedItem.ItemId, bestArea,
-                dropPosition.X, dropPosition.Y, allSessions,
-                hadDurabilityBonus: armoredUids.Contains(destroyedItem.ItemUid));
+            // 절단 낙수는 오브 그대로 떨어진다 (#229). 소환석으로 환원하면 T3 하나가 3석이 되어
+            // 성장 비용(5~21석) 앞에 되찾을 가치가 없고, 작은 알갱이라 "무엇을 잃었는지"도 안 보인다.
+            // 티어를 보존해 판돈을 점수 단위로 올린다 — 오브 수가 곧 승점이다.
+            DropSwarmCutOrb(
+                matchingId, bestOwnerId, destroyedItem.ItemId, bestArea,
+                dropPosition.X, dropPosition.Y, allSessions);
         }
 
         // 절단 파열 플래시: 링 + 잘린 꼬리 오브 섬광 — "어디부터 끊겼다"가 화면에서 읽히게.
@@ -4073,6 +4075,41 @@ public partial class GameServer
     ///     잼 낙수는 잼 승점 퇴역과 함께 제거 — 승점은 오브 수 하나로 통일한다.
     /// </summary>
     private static int GetSwarmOrbBreakStoneCount(int tier) => Math.Clamp(tier, 1, 3);
+
+    // 절단 낙수 수명 (#229): 짧게 잡아야 회수 경쟁이 성립한다. 길면 후반에 바닥이
+    // 오브밭이 되어 "지금 주울까 도망갈까"가 사라진다.
+    private static readonly TimeSpan SwarmCutOrbLifetime = TimeSpan.FromSeconds(12);
+
+    /// <summary>
+    ///     잘린 오브를 티어 그대로 바닥에 떨군다 (#229). sourcePlayerId에 피해자를 넣어
+    ///     기존 SourceBlocked가 걸리게 한다 — 피해자는 그 자리에서 즉시 되줍지 못하고
+    ///     1.4유닛 물러났다 돌아와야 한다(ReleaseSourcePickupBlocks). 절단자가 위치 우위를 갖되
+    ///     자동 지급은 아니라서, 줍는 동안 반격 창에 노출된다.
+    /// </summary>
+    private void DropSwarmCutOrb(
+        long matchingId, long victimPlayerId, int orbItemId, AreaType area,
+        float x, float y, List<GameClientSession> sessions)
+    {
+        if (area == AreaType.None)
+            return;
+
+        var spawned = _groundItemManager.SpawnItems(
+            matchingId, area, x, y, [orbItemId],
+            sourcePlayerId: victimPlayerId,
+            mapId: MapId.School,
+            lifetime: SwarmCutOrbLifetime,
+            layout: GroundItemSpawnLayout.EliminationScatter);
+        if (spawned.Count == 0)
+            return;
+
+        int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)area);
+        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, spawned.ToList());
+        foreach (var session in sessions)
+        {
+            if (session.PlayerId.HasValue && session.CurrentArea == area)
+                session.Send(packet);
+        }
+    }
 
     private void ScatterSwarmOrbBreakStones(
         long matchingId,

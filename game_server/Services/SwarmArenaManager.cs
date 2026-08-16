@@ -103,11 +103,14 @@ public sealed class SwarmArenaManager
     private static readonly (double UntilSeconds, int ZoneTarget, int NormalHp, int ContactDamage,
         int CoreHp, int StoneBudget)[] SupplyPhases =
     [
-        (100d, 8, 16, 2, 48, 90), // 0:00~1:40 폐쇄 전
-        (150d, 12, 17, 3, 60, 100), // 1:40~2:30 1차
-        (200d, 16, 19, 4, 72, 110), // 2:30~3:20 2차
-        (250d, 22, 21, 6, 96, 120), // 3:20~4:10 3차
-        (double.MaxValue, 28, 22, 8, 120, 120) // 4:10~5:00 최종 수렴
+        // 접촉 피해 2배 (2026-08-16 유저 판정: 위협적이지 않다). 봇 매치 9865146에서
+        // 100초 동안 봇 6명 탈락 0건 — 오염 상한 420에 접촉 2~3이면 죽을 수가 없다.
+        // 접촉 면역 0.6초가 초당 1.67회로 이미 빈도를 묶고 있으므로, 세기로 올린다.
+        (100d, 8, 16, 4, 48, 90), // 0:00~1:40 폐쇄 전
+        (150d, 12, 17, 6, 60, 100), // 1:40~2:30 1차
+        (200d, 16, 19, 8, 72, 110), // 2:30~3:20 2차
+        (250d, 22, 21, 12, 96, 120), // 3:20~4:10 3차
+        (double.MaxValue, 28, 22, 16, 120, 120) // 4:10~5:00 최종 수렴
     ];
 
     private static int GetSupplyPhaseIndex(double elapsedSeconds)
@@ -1882,6 +1885,10 @@ public sealed class SwarmArenaManager
         monster.Area = GameMapData.GetCurrentArea(
             MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, monster.Position));
 
+        // 도착은 문턱을 넘는 순간이다. "경로를 다 걸어야 도착"으로 바꿨더니 제한시간에 걸린
+        // 개체가 방 밖에서 대량으로 걷혀 방 처치가 0이 됐다(봇 매치 9866042, 운동장 비중 100%).
+        // 문 앞에 서는 문제는 도착 시점이 아니라 앵커 위치가 원인이므로 그쪽에서 푼다 —
+        // ArriveFromInfiltration이 경로의 마지막 점(배정된 캠프 앵커)을 앵커로 잡는다.
         if (monster.Area == monster.HomeArea)
         {
             if (!holdAtThreshold)
@@ -1982,12 +1989,26 @@ public sealed class SwarmArenaManager
             monster.Position = ClampToAreaWalkable(monster.Position, areaCenter, monster.Area);
         }
 
+        // 앵커는 경로의 마지막 점 — 배정된 캠프 앵커다 (2026-08-16 유저 제보: 몹이 방에
+        // 안 들어가고 문 앞에 서 있다). 도착 지점(문턱)을 앵커로 잡으면, 방에 아무도 없을 때
+        // 몹이 문간으로 되돌아가 선다. 방 안쪽 앵커를 주면 그리로 걸어 들어간다.
+        // 추격 행군은 목표가 사람이라 그 좌표를 앵커로 삼지 않는다 — 선 자리를 그대로 쓴다.
+        if (!monster.MarchIsPursuit && monster.MarchWaypoints.Count > 0)
+        {
+            var destination = monster.MarchWaypoints[^1];
+            monster.AnchorX = destination.X;
+            monster.AnchorY = destination.Y;
+        }
+        else
+        {
+            monster.AnchorX = monster.Position.X;
+            monster.AnchorY = monster.Position.Y;
+        }
+
         monster.Infiltrating = false;
         monster.MarchIsPursuit = false;
         monster.MarchWaypoints.Clear();
         monster.MarchIndex = 0;
-        monster.AnchorX = monster.Position.X;
-        monster.AnchorY = monster.Position.Y;
         monster.Aggro = true;
     }
 
@@ -2054,9 +2075,15 @@ public sealed class SwarmArenaManager
             // (b)가 없으면 추격 재계획이 몹을 계속 행군 상태로 되돌리고, 그 상태는 2.5m
             // 안에 들어와야만 풀리므로 몹이 영영 붙지 못한다 — 봇 매치 9864125에서
             // 어그로 36/36인데 추격 대상은 10/36, 최근접 3.98, 접촉 0이었다.
+            // 직선 탈출은 추격 행군에만 준다 (2026-08-16 수리). 공급 행군에까지 주면
+            // 운동장을 지나던 몹이 거기 있는 봇을 보고 그 자리에 눌러앉아 배정된 방까지
+            // 가지 않는다 — 봇 매치 9866292에서 운동장 처치 비중 100%, 방 처치 0이 됐다.
+            // 공급 행군은 어그로 반경(2.5m)에 들어와야만 멈춘다: 지나가다 부딪히면 싸우고,
+            // 멀리 보이는 것에는 흔들리지 않는다.
             bool leaveMarch = !holdAtThreshold &&
                               (HasParticipantWithinAggro(monster, participants) ||
-                               HasDirectLineToParticipant(monster, participants));
+                               (monster.MarchIsPursuit &&
+                                HasDirectLineToParticipant(monster, participants)));
             if (!leaveMarch)
             {
                 AdvanceInfiltration(monster, deltaSeconds, now, holdAtThreshold);

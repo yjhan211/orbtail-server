@@ -1899,6 +1899,19 @@ public partial class GameServer(
                     }
                 }
 
+                // 수명이 다한 낙수를 걷어낸다 (#229 절단 낙수). 같은 구역 인원에게만 알린다.
+                foreach (var expiredItem in _groundItemManager.ExpireGroundItems(matchingId))
+                {
+                    using var removedPacket = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(
+                        expiredItem.GroundItemUid, 0, false);
+                    foreach (var session in GetSessionsByInstance(MapId.School, matchingId))
+                    {
+                        if (session.PlayerId.HasValue &&
+                            session.CurrentArea == (AreaType)expiredItem.AreaType)
+                            session.Send(removedPacket);
+                    }
+                }
+
                 foreach (var expired in _groundItemManager.ExpireClaimReservations(matchingId))
                     _gameEventLogManager.LogGroundItemPriorityExpired(
                         matchingId,
