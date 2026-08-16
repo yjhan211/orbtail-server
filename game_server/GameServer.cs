@@ -192,20 +192,6 @@ public partial class GameServer(
         // M4: 폐쇄 구역은 스웜 신규 스폰을 멈춘다 (잔존 몹은 ReclaimStrandedMonsters가 걷어냄)
         _swarmArenaManager.IsAreaClosedResolver =
             (matchingId, area) => _areaClosureManager.IsAreaClosed(matchingId, area);
-        // 문이 전부 잠긴 방은 걸어 들어갈 수 없다 (#229): 방 잠금(10단계)과 운동장 침투가
-        // 정면으로 부딪혀 잠긴 문 앞에 잔상이 줄지어 쌓였다. 침투 대신 제자리 스폰으로 되돌린다.
-        _swarmArenaManager.IsAreaSealedResolver = (matchingId, area) =>
-        {
-            bool hasDoor = false;
-            foreach (var door in GameDoorData.GetByAreaType(area))
-            {
-                hasDoor = true;
-                if (_doorStateManager.IsDoorOpen(matchingId, door.DoorId))
-                    return false;
-            }
-
-            return hasDoor;
-        };
         // 인트로 산개 (2026-08-16): 카운트다운 동안에는 전 방을 공급 대상으로 열어
         // 운동장에서 열 방향으로 실제 몹이 뻗어 나가게 한다.
         _swarmArenaManager.IsGameplayActiveResolver = MatchStartGate.IsGameplayActive;

@@ -189,6 +189,8 @@ public sealed class SwarmArenaManager
     private const float InfiltrationOriginRadius = 3.5f;
     private const float MarchWaypointArriveDistance = 0.6f;
     private const float RouteSampleStep = 0.35f;
+    // 문 한 칸(가로 1 · 세로 0.5) 남짓만 눈감는다 — 벽 관통은 여전히 걸러야 한다.
+    private const int DoorwayBlockedSampleTolerance = 4;
     // 행군 제한: 경로가 길수록 넉넉히 주되, 막히면 낭비 없이 걷어낸다. 웨이포인트 수 × 계수.
     private const double MarchBudgetSecondsPerWaypoint = 1.2d;
     private const double MarchBudgetMinimumSeconds = 8d;
@@ -329,12 +331,6 @@ public sealed class SwarmArenaManager
     /// <summary>폐쇄된 구역은 신규 스폰을 멈춘다 — 잔존 몹은 이주로 처리된다.</summary>
     public Func<long, AreaType, bool>? IsAreaClosedResolver { get; set; }
 
-    /// <summary>
-    ///     문이 전부 닫혀 걸어 들어갈 수 없는 구역인가 (#229). 침투 스폰만 이 값을 본다 —
-    ///     운동장에서 출발한 잔상이 잠긴 문 앞에 줄지어 쌓이는 것을 막는다.
-    /// </summary>
-    public Func<long, AreaType, bool>? IsAreaSealedResolver { get; set; }
-
     /// <summary>매치가 시작됐는가. 없으면 시작된 것으로 본다 — 봇 전용 매치는 게이트가 없다.</summary>
     public Func<long, bool>? IsGameplayActiveResolver { get; set; }
 
@@ -434,13 +430,8 @@ public sealed class SwarmArenaManager
 
                 if (RegionSupplyModeEnabled)
                 {
-                    // 문이 잠긴 방으로 가던 개체도 문턱 밖에서 기다린다 (2026-08-16):
-                    // 잠긴 문에 부딪히면 웨이포인트를 버리다 제한시간에 걸려 사라진다.
-                    // 문 앞에 서 있게 두면 플레이어가 문을 여는 순간 그대로 들이닥친다.
                     UpdateSupplyMonsterMovement(
-                        monster, state.LastParticipants, now, moveDeltaSeconds,
-                        preMatch ||
-                        IsAreaSealedResolver?.Invoke(matchingId, monster.HomeArea) == true);
+                        monster, state.LastParticipants, now, moveDeltaSeconds, preMatch);
                 }
                 else if (CampModeEnabled)
                 {
@@ -1302,15 +1293,7 @@ public sealed class SwarmArenaManager
             // 공백은 카운트다운이 메운다 — 게이트 전에도 디렉터가 돌아 5초를 미리 걷는다.
             int spawned = SpawnSupplyMonsters(
                 state, zone, want, includeCore, phaseIndex, now, result,
-                candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true,
-                // 인트로 예열 구간에서는 봉인을 보지 않는다 (2026-08-16 유저 판정): 매치 시작
-                // 시점에는 모든 방문이 잠겨 있어 전 구역이 봉인으로 잡히고, 그러면 침투가 통째로
-                // 제자리 스폰으로 떨어져 "운동장에서 흩어진다"가 사라진다 — 플레이어 방에 몹이
-                // 바로 뭉쳐 있는 것도 같은 원인이다.
-                // 예열 중 행군은 어차피 문턱 밖에서 멈추므로 잠긴 문에 부딪히지 않는다.
-                isAreaSealed: preMatch
-                    ? null
-                    : candidate => IsAreaSealedResolver?.Invoke(state.MatchingId, candidate) == true);
+                candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true);
             if (spawned == 0)
             {
                 // 전 앵커가 플레이어 2.5m 안 — 1초 뒤 재검사.
@@ -1447,16 +1430,11 @@ public sealed class SwarmArenaManager
     private static int SpawnSupplyMonsters(
         MatchState state, AreaType area, int normals, bool includeCore,
         int phaseIndex, DateTime now, SwarmArenaTickResult result,
-        Func<AreaType, bool>? isAreaBlocked = null, bool infiltrate = true,
-        Func<AreaType, bool>? isAreaSealed = null)
+        Func<AreaType, bool>? isAreaBlocked = null, bool infiltrate = true)
     {
         var phase = SupplyPhases[phaseIndex];
         // 운동장 밖 구역은 침투로 채운다 — 발원은 운동장 중심, 아래 앵커는 도착지가 된다.
         infiltrate = infiltrate && area != SwarmInwardOriginArea;
-        // 문이 전부 잠긴 방에는 걸어 들어갈 수 없다 (#229): 경로는 성립하는데(게이지 문은
-        // 정적 잠금이 아니다) 실제 통행이 막혀 있어, 침투를 그대로 두면 문 앞에 줄이 쌓인다.
-        // 제자리 스폰으로 되돌린다 — 공급이 멎는 것보다 낫다.
-        infiltrate = infiltrate && !(isAreaSealed?.Invoke(area) ?? false);
         var center = BotPlayerManager.CellToWorldPosition(
             MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
         var anchors = new List<Vector3f>(CampsPerArea);
@@ -1697,12 +1675,22 @@ public sealed class SwarmArenaManager
         float dy = to.Y - from.Y;
         float distance = MathF.Sqrt(dx * dx + dy * dy);
         int samples = Math.Max(1, (int)MathF.Ceiling(distance / RouteSampleStep));
+        int blockedRun = 0;
         for (int index = 1; index <= samples; index++)
         {
             float t = index / (float)samples;
             var point = new Vector3f(from.X + dx * t, from.Y + dy * t, 0f);
-            if (!GameMapData.IsMoveablePosition(
+            if (GameMapData.IsMoveablePosition(
                     MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, point)))
+            {
+                blockedRun = 0;
+                continue;
+            }
+
+            // 문틀은 지난다 (2026-08-16 유저 결정: 몹은 잠긴 문을 무시한다). 문 셀은 정적
+            // 지도에서 비보행이라, 한 칸도 허용 안 하면 방으로 가는 경로가 통째로 폐기되고
+            // 침투가 제자리 스폰으로 떨어진다. 벽을 가로지르는 긴 구간만 거른다.
+            if (++blockedRun > DoorwayBlockedSampleTolerance)
                 return false;
         }
 
