@@ -578,6 +578,10 @@ public class BotPlayerState
     // 빈손 이속 (#223): 지시 판단 틱이 갱신 — 사람과 같은 배율로 도주가 성립하게.
     public bool IsSwarmBareHanded { get; set; }
 
+    // 빈손 가속 만료 (#229 12단계): 마지막 오브를 잃은 직후 2초만 빨라진다.
+    // 빈손인 내내 빠르면 "패배 직전"이 아니라 도주 특화 상태가 된다.
+    public DateTime SwarmBareSpeedUntilUtc { get; set; } = DateTime.MinValue;
+
     // === #134 RNG 梨꾩쭛 ?듯빀 ===
     /// <summary>遊뉗씠 walking?쇰줈 ?묎렐 以묒씤 InteractObject Id. 0?대㈃ ?놁쓬.
     /// ChooseNewWanderTarget?먯꽌 ?곸뿭 + ? ?좏깮 ???ㅼ젙, ?꾩갑 ??RNG 梨꾩쭛 ??0?쇰줈 clear.</summary>

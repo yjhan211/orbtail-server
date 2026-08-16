@@ -121,6 +121,13 @@ namespace network.common
         /// </summary>
         public const float SWARM_BARE_MOVE_SPEED_MULTIPLIER = 1.3f;
 
+        /// <summary>
+        ///     빈손 이속 유지 시간 (#229 12단계). 빈손인 내내 빠르면 "패배 직전"이 아니라
+        ///     도주 특화 상태가 된다 — 마지막 오브를 잃은 직후 이 시간만 가속하고 원복한다.
+        ///     그 뒤의 빈손은 잔상의 우선 표적이 되어 재건에 쫓긴다.
+        /// </summary>
+        public const float SWARM_BARE_MOVE_SPEED_SECONDS = 2f;
+
         /// <summary>열쇠 (#222 M4): 무료 소환 1회 충전 — 탈주 고블린(미니보스) 드랍. 사람 전용.</summary>
         public const int KEY_GROUND_ITEM_ID = 107000090;
 

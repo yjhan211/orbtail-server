@@ -439,8 +439,21 @@ public partial class GameServer
                     attackerBody = attacker.Position;
                 float dx = target.Position.X - attackerBody.X;
                 float dy = target.Position.Y - attackerBody.Y;
-                return dx * dx + dy * dy <=
-                       Config.SWARM_PVP_ATTACK_RANGE * Config.SWARM_PVP_ATTACK_RANGE;
+                if (dx * dx + dy * dy >
+                    Config.SWARM_PVP_ATTACK_RANGE * Config.SWARM_PVP_ATTACK_RANGE)
+                    return false;
+
+                // 시야 (#229 12단계: 시야 밖 플레이어는 표적으로 잡지 않는다). 이 람다가
+                // 리졸버의 hasLineOfSight 자리를 쓰므로, 여기서 직접 부르지 않으면 실제
+                // 시야 판정이 아예 없다 — 같은 구역이면 벽 너머 상대도 사정권에 들어
+                // 구역 안 장애물이 엄폐가 되지 않았다.
+                // 몹(PvE)에는 걸지 않는다: 잔상은 벽을 통과하지 않고 걸어오므로 이미 시야
+                // 안이고, 판정을 얹으면 문틈·모서리에서 사격이 끊겨 파밍 리듬만 망가진다.
+                var sightFrom = ProximityCombatLineOfSight.WorldPositionToCell(
+                    MapId.School, attackerBody);
+                return target.Cell is not null &&
+                       ProximityCombatLineOfSight.HasClearPath(
+                           MapId.School, sightFrom, target.Cell);
             });
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
@@ -1267,6 +1280,10 @@ public partial class GameServer
         float squadPower = GetSwarmSquadPower(matchingId, botPlayerId);
         bool hasSquadOrbs = squadPower > 0f;
         // 빈손 이속 (#223): 이동 배율이 읽는 플래그 — 판단 틱이 단일 갱신 지점이다.
+        // 빈손으로 막 전이한 순간에만 가속 유예를 연다 (#229 12단계).
+        if (!hasSquadOrbs && !bot.IsSwarmBareHanded)
+            bot.SwarmBareSpeedUntilUtc =
+                DateTime.UtcNow.AddSeconds(Config.SWARM_BARE_MOVE_SPEED_SECONDS);
         bot.IsSwarmBareHanded = !hasSquadOrbs;
         FindNearbySwarmRivals(matchingId, bot, squadPower, includeMonstersAsStronger: !hasSquadOrbs,
             out Vector3f strongerPosition,

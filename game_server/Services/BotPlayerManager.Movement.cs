@@ -55,8 +55,11 @@ public partial class BotPlayerManager
         float boots = DateTime.UtcNow < bot.BootsSpeedUntilUtc
             ? Config.BOOTS_MOVE_SPEED_MULTIPLIER
             : 1f;
-        // 빈손 이속 (#223): 사람과 같은 규칙 — 오브를 다 잃으면 도주가 빨라진다.
-        float bare = bot.IsSwarmBareHanded ? Config.SWARM_BARE_MOVE_SPEED_MULTIPLIER : 1f;
+        // 빈손 이속 (#223 → #229 12단계): 사람과 같은 규칙 — 마지막 오브를 잃은 직후
+        // 2초만 빨라지고 원복한다. 유예가 끝난 빈손은 잔상의 우선 표적이 되어 재건에 쫓긴다.
+        float bare = bot.IsSwarmBareHanded && DateTime.UtcNow < bot.SwarmBareSpeedUntilUtc
+            ? Config.SWARM_BARE_MOVE_SPEED_MULTIPLIER
+            : 1f;
         return wind * boots * bare * GetBotWaveSlowMultiplier(bot);
     }
 
