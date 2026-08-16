@@ -432,7 +432,8 @@ public sealed class SwarmArenaManager
             }
 
             int probeAlive = 0, probeAggro = 0, probeChasing = 0, probeSameArea = 0, probeCooldown = 0;
-            int probeInRange = 0, probeImmuneBlocked = 0;
+            int probeInRange = 0, probeImmuneBlocked = 0, probeWithinOne = 0;
+            float probeDistanceSum = 0f;
             float probeNearest = 9999f;
             foreach (var monster in state.Monsters.Values)
             {
@@ -464,14 +465,21 @@ public sealed class SwarmArenaManager
                 probeAlive++;
                 if (monster.Aggro) probeAggro++;
                 if (monster.ChaseTargetPlayerId != 0) probeChasing++;
+                // 추격 대상 기준으로 잰다 — 같은 구역 아무나 기준으로 재면 엉뚱한 사람까지의
+                // 거리가 섞여 "안 붙는다"가 잘못 읽힌다 (2026-08-16 계측 수리).
                 foreach (var probeParticipant in state.LastParticipants)
                 {
                     if (probeParticipant.Area != monster.Area) continue;
+                    if (monster.ChaseTargetPlayerId != 0 &&
+                        probeParticipant.PlayerId != monster.ChaseTargetPlayerId) continue;
+
                     float pdx = probeParticipant.Position.X - monster.Position.X;
                     float pdy = (probeParticipant.Position.Y - monster.Position.Y) * 2f;
                     float pd = MathF.Sqrt(pdx * pdx + pdy * pdy);
                     if (pd < probeNearest) probeNearest = pd;
                     probeSameArea++;
+                    probeDistanceSum += pd;
+                    if (pd <= 1f) probeWithinOne++;
                     if (pd <= GetContactRadius(monster.Kind))
                     {
                         probeInRange++;
@@ -574,7 +582,8 @@ public sealed class SwarmArenaManager
                 result.StuckReports.Add(
                     $"contact_detail alive={probeAlive} aggro={probeAggro} chasing={probeChasing} " +
                     $"sameAreaAsSomeone={probeSameArea} onCooldown={probeCooldown} " +
-                    $"inRange={probeInRange} immuneBlocked={probeImmuneBlocked} " +
+                    $"inRange={probeInRange} within1={probeWithinOne} immuneBlocked={probeImmuneBlocked} " +
+                    $"avgDist={(probeSameArea > 0 ? probeDistanceSum / probeSameArea : -1f):F2} " +
                     $"nearest={(probeNearest > 9000f ? -1f : probeNearest):F2} " +
                     $"damage={result.PlayerDamage.Count}");
             }

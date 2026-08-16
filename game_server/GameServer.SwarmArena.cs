@@ -331,8 +331,8 @@ public partial class GameServer
         if (!SwarmCutDummyAutoSetup && dummyIds.Count == 0)
             ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
 
-        // 접촉 계측 (2026-08-16 임시): 봇이 접촉 피해를 받는지 층별로 확인한다.
-        // 봇 피격 로그를 붙였는데도 0건이라, 피해가 여기까지 오는지부터 봐야 한다.
+        // 접촉 계측 (2026-08-16): 접촉이 성립하는지 층별로 남긴다. 이 줄들이 "봇은 접촉 피해를
+        // 안 받는다"는 오독을 두 번 걷어냈다 — 실제로는 로깅이 없었고, 그다음엔 배율이 깎고 있었다.
         if (tick.PlayerDamage.Count > 0 && _swarmContactProbeAtUtc.TryGetValue(matchingId, out var probeAt)
                 ? nowUtc >= probeAt
                 : true)
@@ -480,7 +480,11 @@ public partial class GameServer
     }
 
     private const float SwarmBotOpenRange = 1.6f;
-    private const float SwarmBotContactDamageMultiplier = 0.5f;
+    // 봇 접촉 피해 배율은 퇴역했다 (2026-08-16). 사람 쪽 반감(SwarmMonsterDamageTakenMultiplier)을
+    // 걷을 때 이 쌍둥이를 놓쳐, 사람만 설계값 2/3/4/6/8을 받고 봇은 절반을 받고 있었다 —
+    // 봇 매치 9864958에서 피격 85건의 피해가 1(77건)·2(8건)뿐이었다(round(2*0.5)=1, round(3*0.5)=2).
+    // 같은 규칙을 받아야 봇 매치로 위협도를 잴 수 있다.
+    private const float SwarmBotContactDamageMultiplier = 1f;
 
     // 스팟 예산 선소진(#217 성장곡선 v3, 21개)은 퇴역 — SB에는 인위적 봉인이 없고,
     // 희소성은 리젠(60초)과 크기 비례 비용이 담당한다. 배치된 스팟은 전부 살아 있다.
