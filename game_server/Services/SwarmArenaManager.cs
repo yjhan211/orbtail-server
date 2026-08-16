@@ -431,6 +431,8 @@ public sealed class SwarmArenaManager
                     SpawnDueParticipantPattern(state, participant, now, result);
             }
 
+            int probeAlive = 0, probeAggro = 0, probeChasing = 0, probeSameArea = 0, probeCooldown = 0;
+            float probeNearest = 9999f;
             foreach (var monster in state.Monsters.Values)
             {
                 if (!monster.Alive || now < monster.ActivatesAtUtc)
@@ -458,8 +460,25 @@ public sealed class SwarmArenaManager
                     MoveTowardPlayer(monster, chaseTarget.Position, moveDeltaSeconds);
                 }
 
+                probeAlive++;
+                if (monster.Aggro) probeAggro++;
+                if (monster.ChaseTargetPlayerId != 0) probeChasing++;
+                foreach (var probeParticipant in state.LastParticipants)
+                {
+                    if (probeParticipant.Area != monster.Area) continue;
+                    float pdx = probeParticipant.Position.X - monster.Position.X;
+                    float pdy = (probeParticipant.Position.Y - monster.Position.Y) * 2f;
+                    float pd = MathF.Sqrt(pdx * pdx + pdy * pdy);
+                    if (pd < probeNearest) probeNearest = pd;
+                    probeSameArea++;
+                    break;
+                }
+
                 if (now < monster.NextContactAtUtc)
+                {
+                    probeCooldown++;
                     continue;
+                }
 
                 // 잠든 원거리 몹은 저격하지 않는다 — 부딪힘(접촉 반경)만 개전이 된다.
                 float attackRange = monster.Aggro && monster.AttackRangeValue > ContactRange
@@ -538,6 +557,16 @@ public sealed class SwarmArenaManager
                     if (!IsBossKind(monster.Kind))
                         break;
                 }
+            }
+
+            if (now >= state.ContactProbeAtUtc)
+            {
+                state.ContactProbeAtUtc = now.AddSeconds(10);
+                result.StuckReports.Add(
+                    $"contact_detail alive={probeAlive} aggro={probeAggro} chasing={probeChasing} " +
+                    $"sameAreaAsSomeone={probeSameArea} onCooldown={probeCooldown} " +
+                    $"nearest={(probeNearest > 9000f ? -1f : probeNearest):F2} " +
+                    $"damage={result.PlayerDamage.Count}");
             }
 
             PruneDeadMonsters(state, now);
@@ -2437,6 +2466,7 @@ public sealed class SwarmArenaManager
 
         // 핵 보상 정산 (#229 4단계): 석을 준 (구역, 페이즈) 조합 — 같은 칸에서 두 번째 핵부터는 몸만.
         public HashSet<(AreaType Area, int PhaseIndex)> SupplyCoreRewarded { get; } = new();
+        public DateTime ContactProbeAtUtc { get; set; }
         public int NextSupplyPackOrdinal { get; set; }
         // 전역 상한 기준 인원 (#226 E): 생존자 수가 아니라 매치 최대 참가 수로 8인/10인을 가른다.
         public int MaxParticipantCount { get; set; }

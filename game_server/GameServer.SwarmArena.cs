@@ -115,6 +115,9 @@ public partial class GameServer
     private readonly HashSet<long> _swarmTimeoutEndedMatchings = new();
     private readonly Dictionary<long, DateTime> _swarmMatchFallbackAnchorUtc = new();
 
+    // 접촉 계측 (2026-08-16 임시): 매치당 10초에 한 줄만 남긴다.
+    private readonly Dictionary<long, DateTime> _swarmContactProbeAtUtc = new();
+
     private void ProcessPendingSwarmMonsterHits(
         long matchingId, DateTime nowUtc, List<GameClientSession> sessions)
     {
@@ -327,6 +330,22 @@ public partial class GameServer
         // 같은 조건을 쓴다 — 옵트인 환경변수 자체가 실험장 스위치다.
         if (!SwarmCutDummyAutoSetup && dummyIds.Count == 0)
             ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+
+        // 접촉 계측 (2026-08-16 임시): 봇이 접촉 피해를 받는지 층별로 확인한다.
+        // 봇 피격 로그를 붙였는데도 0건이라, 피해가 여기까지 오는지부터 봐야 한다.
+        if (tick.PlayerDamage.Count > 0 && _swarmContactProbeAtUtc.TryGetValue(matchingId, out var probeAt)
+                ? nowUtc >= probeAt
+                : true)
+        {
+            _swarmContactProbeAtUtc[matchingId] = nowUtc.AddSeconds(10);
+            int toBots = tick.PlayerDamage.Count(entry => entry.TargetPlayerId < 0);
+            int toHumans = tick.PlayerDamage.Count - toBots;
+            _gameEventLogManager.LogSystem(
+                matchingId,
+                $"contact_probe damage={tick.PlayerDamage.Count} toBots={toBots} toHumans={toHumans} " +
+                $"dummies={dummyIds.Count} aliveBots={aliveBots.Count} aliveSessions={aliveSessions.Count} " +
+                $"participants={participants.Count}");
+        }
 
         // 실험장 (#226): 더미가 있는 매치는 몹 공격도 끈다 — 절단 튜닝 중 방해 금지.
         if (dummyIds.Count == 0)
@@ -3213,12 +3232,20 @@ public partial class GameServer
             // 빈손 봇은 본체(오염)가 닳는다 — 사람과 같은 규칙.
             if (!HasAnySquadOrb(matchingId, bot.PlayerId))
             {
+                int nakedBefore = bot.Corruption;
                 bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
                     bot.Corruption + GetSwarmNakedCorruption(damage.Damage));
                 _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
                 bot.LastDamagedAtUtc = DateTime.UtcNow;
-                bot.LastDamagedAtUtc = DateTime.UtcNow;
-                bot.LastDamagedAtUtc = DateTime.UtcNow;
+                // 봇 피격도 남긴다 (2026-08-16): 사람 경로만 로그를 남겨, 매치 2744에서
+                // AFTERIMAGE_HIT 114건이 전부 사람 대상으로 잡혔다 — "봇은 접촉 피해를
+                // 안 받는다"로 읽혔지만 실제로는 피해가 보이지 않았던 것이다.
+                // 봇 매치로 위협도를 재려면 이 줄이 있어야 한다.
+                _gameEventLogManager.LogEmotionAfterimageHit(
+                    matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
+                    damage.Damage, nakedBefore, bot.Corruption,
+                    bot.Corruption >= Config.SURVIVOR_MAX_CORRUPTION, isBot: true,
+                    DateTimeOffset.UtcNow);
                 return;
             }
 
@@ -3228,6 +3255,11 @@ public partial class GameServer
             _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
             bot.LastDamagedAtUtc = DateTime.UtcNow;
             bot.CancelInteractionHold();
+
+            _gameEventLogManager.LogEmotionAfterimageHit(
+                matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
+                damage.Damage, bot.Corruption, bot.Corruption,
+                isLethal: false, isBot: true, DateTimeOffset.UtcNow);
 
             var botHit = ApplySwarmOrbHpDamage(matchingId, bot.PlayerId, damage.Damage);
             if (botHit.DestroyedItem != null)
