@@ -30,6 +30,10 @@ namespace network.common.data.models
         // 값은 서버 SwarmMonsterKind와 같다: 0 해골 · 1 다트 · 2 탈주 · 3 볼러
         // · 4 골렘 · 5 베이비드래곤 · 6 트리자이언트.
         [Key("kind")] public int Kind { get; set; }
+
+        // 공급 페이즈 (2026-08-16): 0~4. 페이즈가 오를수록 몹이 세진다(HP 16/17/19/21/22,
+        // 접촉 2/3/4/6/8). 클라는 이 값으로 몸집과 문양 수를 올려 "세졌다"를 눈으로 읽힌다.
+        [Key("phase")] public int Phase { get; set; }
     }
 
     [MessagePackObject]

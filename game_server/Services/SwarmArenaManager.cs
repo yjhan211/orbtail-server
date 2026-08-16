@@ -1486,6 +1486,7 @@ public sealed class SwarmArenaManager
                 // 공급 몹은 잠들지 않는다 (#229): 사냥하러 걸어 들어온 개체가 방에서 다시 잠들면
                 // "플레이어가 앵커를 순회하며 깨우는" 예전 구조로 되돌아간다.
                 Aggro = true,
+                PhaseTier = phaseIndex,
                 ActivatesAtUtc = now.AddSeconds(SupplyTelegraphSeconds),
                 NextContactAtUtc = now,
                 ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
@@ -1537,29 +1538,75 @@ public sealed class SwarmArenaManager
                 originCenter.Y + MathF.Sin(angle) * InfiltrationOriginRadius, 0f),
             originCenter, SwarmInwardOriginArea);
 
+        return TryPlanRoute(
+            SwarmInwardOriginArea, origin, destinationArea, destination, isAreaBlocked, out route);
+    }
+
+    /// <summary>
+    ///     두 지점 사이 행군 경로. BotPathfinder는 구역 내 BFS가 실패한 구간을 통째로 생략하고
+    ///     다음 문어귀 셀로 건너뛰므로, 여기서 전 구간 보행 가능 여부를 확인하고 끊긴 경로는 버린다 —
+    ///     그대로 주면 몹이 벽을 뚫고 들어가 방 안쪽 벽에 박힌다 (#229 침투 수리).
+    /// </summary>
+    private static bool TryPlanRoute(
+        AreaType fromArea, Vector3f from, AreaType toArea, Vector3f to,
+        Func<AreaType, bool>? isAreaBlocked, out List<Vector3f> route)
+    {
+        route = null!;
         var steps = BotPathfinder.FindPath(
-            MapId.School, SwarmInwardOriginArea,
-            MapCoordinateConverter.WorldToCell(MapId.School, origin),
-            destinationArea, MapCoordinateConverter.WorldToCell(MapId.School, destination),
-            isAreaBlocked);
+            MapId.School, fromArea, MapCoordinateConverter.WorldToCell(MapId.School, from),
+            toArea, MapCoordinateConverter.WorldToCell(MapId.School, to), isAreaBlocked);
         if (steps == null || steps.Count == 0)
             return false;
 
-        route = new List<Vector3f>(steps.Count + 2) { origin };
+        var planned = new List<Vector3f>(steps.Count + 2) { from };
         foreach (var step in steps)
-            route.Add(BotPlayerManager.CellToWorldPosition(MapId.School, step.Cell));
-        route.Add(destination);
+            planned.Add(BotPlayerManager.CellToWorldPosition(MapId.School, step.Cell));
+        planned.Add(to);
 
-        // 경로 검증 (#229 침투 수리): BotPathfinder는 구역 내 BFS가 실패한 구간을 통째로
-        // 생략하고 다음 문어귀 셀로 건너뛴다. 그 경로를 그대로 주면 몹이 벽을 뚫고 들어가
-        // 방 안쪽 벽에 박힌다. 끊긴 경로는 여기서 버리고 호출부가 구역 안 스폰으로 되돌린다 —
-        // 걷어내는 것보다 공급을 유지하는 쪽이 낫다.
-        for (int index = 1; index < route.Count; index++)
-            if (!IsSegmentWalkable(route[index - 1], route[index]))
+        for (int index = 1; index < planned.Count; index++)
+            if (!IsSegmentWalkable(planned[index - 1], planned[index]))
                 return false;
 
-        route.RemoveAt(0);
+        planned.RemoveAt(0);
+        route = planned;
         return true;
+    }
+
+    /// <summary>
+    ///     영역 넘김 추격 (2026-08-16 유저 결정). 이미 나를 쫓던 몹은 문을 넘어도 따라온다.
+    ///     상대가 구역을 떠나면 그쪽으로 새 경로를 깔아 뒤를 쫓는다 — 구역 경계가 도주선이던
+    ///     구조가 사라져, 무리를 달고 다니는 것이 실제 부담이 된다.
+    ///     쫓아간 구역이 그 몹의 새 배정 구역이 되므로 공급 회계도 따라 옮겨간다.
+    /// </summary>
+    private static bool TryStartCrossAreaPursuit(
+        MonsterRuntime monster, IReadOnlyList<SpotArenaPlayerSpatial> participants)
+    {
+        if (monster.ChaseTargetPlayerId == 0 || monster.Infiltrating)
+            return false;
+
+        for (int index = 0; index < participants.Count; index++)
+        {
+            var participant = participants[index];
+            if (participant.PlayerId != monster.ChaseTargetPlayerId ||
+                participant.Area == AreaType.None || participant.Area == monster.Area)
+                continue;
+
+            if (!TryPlanRoute(monster.Area, monster.Position, participant.Area,
+                    participant.Position, null, out var route))
+                return false;
+
+            monster.Infiltrating = true;
+            monster.MarchIsPursuit = true;
+            monster.HomeArea = participant.Area;
+            monster.MarchWaypoints.Clear();
+            monster.MarchWaypoints.AddRange(route);
+            monster.MarchIndex = 0;
+            monster.MarchBudgetSeconds = Math.Max(
+                MarchBudgetMinimumSeconds, route.Count * MarchBudgetSecondsPerWaypoint);
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>두 점을 잇는 직선이 전 구간 보행 가능한가 — 셀 반 칸 간격으로 훑는다.</summary>
@@ -1641,6 +1688,13 @@ public sealed class SwarmArenaManager
         if (monster.MarchIndex < monster.MarchWaypoints.Count && monster.MarchBudgetSeconds > 0d)
             return;
 
+        // 추격은 사라지지 않는다 — 못 따라잡으면 그 자리에서 멈춰 다시 주변을 사냥한다.
+        if (monster.MarchIsPursuit)
+        {
+            ArriveFromInfiltration(monster);
+            return;
+        }
+
         monster.Alive = false;
         monster.DiedAtUtc = now;
     }
@@ -1649,6 +1703,7 @@ public sealed class SwarmArenaManager
     private static void ArriveFromInfiltration(MonsterRuntime monster)
     {
         monster.Infiltrating = false;
+        monster.MarchIsPursuit = false;
         monster.MarchWaypoints.Clear();
         monster.MarchIndex = 0;
         monster.AnchorX = monster.Position.X;
@@ -1765,6 +1820,13 @@ public sealed class SwarmArenaManager
 
             if (found)
                 monster.NextTargetScanAtUtc = now.AddSeconds(SupplyTargetHoldSeconds);
+        }
+
+        // 같은 구역에서 놓쳤다면 문 너머로 쫓는다. 실패해야 앵커로 물러선다.
+        if (!found && TryStartCrossAreaPursuit(monster, participants))
+        {
+            AdvanceInfiltration(monster, deltaSeconds, now);
+            return;
         }
 
         if (!found)
@@ -2165,11 +2227,18 @@ public sealed class SwarmArenaManager
         // Area는 물리 위치의 구역이라 행군 중에는 운동장·복도로 바뀐다 (클라 컬링·전투 판정 기준).
         public AreaType HomeArea { get; set; }
 
+        // 스폰 시점 공급 페이즈 (2026-08-16): 클라가 몸집·문양으로 "세졌다"를 읽는 근거.
+        public int PhaseTier { get; set; }
+
         // 착탄 예약 (#229 과잉 사격 방지): 발사 시점에 물려 둔 미착탄 피해 합.
         // 오브는 착탄이 지연되므로, 예약을 안 세면 전 오브가 같은 몹에 몰려 쏘고 그중
         // 한 발만 유효하다 — 오브를 늘려도 한 사격에 한 마리씩만 죽던 원인이다.
         public int PendingDamage { get; set; }
         public bool Infiltrating { get; set; }
+
+        // 추격 행군인가 (2026-08-16): 초기 침투는 못 뚫으면 걷어내지만, 이미 나를 쫓던
+        // 몹의 추격은 제자리에서 멈출 뿐 사라지지 않는다.
+        public bool MarchIsPursuit { get; set; }
         public List<Vector3f> MarchWaypoints { get; } = new();
         public int MarchIndex { get; set; }
         public double MarchBudgetSeconds { get; set; }
@@ -2193,6 +2262,7 @@ public sealed class SwarmArenaManager
                 _ => 107000030
             },
             IsCore = false,
+            Phase = PhaseTier,
             SummonStoneReward = SummonStoneReward,
             // 잼 보상은 패킷 모델에 싣지 않는다 — SwarmArenaDamageResult로 서버 내부 전달.
             ChaseTargetPlayerId = ChaseTargetPlayerId,
