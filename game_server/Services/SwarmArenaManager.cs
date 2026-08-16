@@ -188,6 +188,7 @@ public sealed class SwarmArenaManager
     // 앵커 하나 분량에 고정되니 화력을 올려도 살 게 없었다.
     private const float InfiltrationOriginRadius = 3.5f;
     private const float MarchWaypointArriveDistance = 0.6f;
+    private const float RouteSampleStep = 0.35f;
     // 행군 제한: 경로가 길수록 넉넉히 주되, 막히면 낭비 없이 걷어낸다. 웨이포인트 수 × 계수.
     private const double MarchBudgetSecondsPerWaypoint = 1.2d;
     private const double MarchBudgetMinimumSeconds = 8d;
@@ -1518,10 +1519,39 @@ public sealed class SwarmArenaManager
         if (steps == null || steps.Count == 0)
             return false;
 
-        route = new List<Vector3f>(steps.Count + 1);
+        route = new List<Vector3f>(steps.Count + 2) { origin };
         foreach (var step in steps)
             route.Add(BotPlayerManager.CellToWorldPosition(MapId.School, step.Cell));
         route.Add(destination);
+
+        // 경로 검증 (#229 침투 수리): BotPathfinder는 구역 내 BFS가 실패한 구간을 통째로
+        // 생략하고 다음 문어귀 셀로 건너뛴다. 그 경로를 그대로 주면 몹이 벽을 뚫고 들어가
+        // 방 안쪽 벽에 박힌다. 끊긴 경로는 여기서 버리고 호출부가 구역 안 스폰으로 되돌린다 —
+        // 걷어내는 것보다 공급을 유지하는 쪽이 낫다.
+        for (int index = 1; index < route.Count; index++)
+            if (!IsSegmentWalkable(route[index - 1], route[index]))
+                return false;
+
+        route.RemoveAt(0);
+        return true;
+    }
+
+    /// <summary>두 점을 잇는 직선이 전 구간 보행 가능한가 — 셀 반 칸 간격으로 훑는다.</summary>
+    private static bool IsSegmentWalkable(Vector3f from, Vector3f to)
+    {
+        float dx = to.X - from.X;
+        float dy = to.Y - from.Y;
+        float distance = MathF.Sqrt(dx * dx + dy * dy);
+        int samples = Math.Max(1, (int)MathF.Ceiling(distance / RouteSampleStep));
+        for (int index = 1; index <= samples; index++)
+        {
+            float t = index / (float)samples;
+            var point = new Vector3f(from.X + dx * t, from.Y + dy * t, 0f);
+            if (!GameMapData.IsMoveablePosition(
+                    MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, point)))
+                return false;
+        }
+
         return true;
     }
 
@@ -1536,7 +1566,9 @@ public sealed class SwarmArenaManager
         MonsterRuntime monster, double deltaSeconds, DateTime now)
     {
         monster.MarchBudgetSeconds -= deltaSeconds;
-        while (monster.MarchIndex < monster.MarchWaypoints.Count)
+        float remaining = (float)(MonsterMoveSpeed * deltaSeconds);
+        // 경로는 셀 단위라 한 틱에 웨이포인트를 여러 개 지난다. 남은 이동량을 다 쓸 때까지 돈다.
+        while (remaining > 0f && monster.MarchIndex < monster.MarchWaypoints.Count)
         {
             var waypoint = monster.MarchWaypoints[monster.MarchIndex];
             float dx = waypoint.X - monster.Position.X;
@@ -1548,25 +1580,39 @@ public sealed class SwarmArenaManager
                 continue;
             }
 
-            float step = (float)(MonsterMoveSpeed * deltaSeconds);
-            if (step > distance)
-                step = distance;
-            monster.Position = new Vector3f(
+            float step = Math.Min(remaining, distance);
+            var proposed = new Vector3f(
                 monster.Position.X + dx / distance * step,
                 monster.Position.Y + dy / distance * step, 0f);
-            break;
+
+            // 벽은 통과하지 않는다 (#229 침투 수리): 경로 중간 구간이 끊기면 BotPathfinder가
+            // 그 구간을 통째로 생략하고 다음 문어귀 셀로 건너뛴다. 그대로 직선 이동하면 몹이
+            // 벽을 뚫고 방 안쪽에 박히고, 도착 후에는 충돌 판정이 있는 추격 이동이 그 자리에
+            // 몹을 붙여 놓는다 — 실플레이에서 "몹이 벽에 붙어 문으로 안 들어온다"로 나왔다.
+            // 막히면 그 웨이포인트를 버리고 다음을 노린다. 끝까지 못 뚫으면 아래에서 걷어낸다.
+            if (!GameMapData.IsMoveablePosition(
+                    MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, proposed)))
+            {
+                monster.MarchIndex++;
+                continue;
+            }
+
+            monster.Position = proposed;
+            remaining -= step;
         }
 
         monster.Area = GameMapData.GetCurrentArea(
             MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, monster.Position));
 
-        if (monster.Area == monster.HomeArea || monster.MarchIndex >= monster.MarchWaypoints.Count)
+        if (monster.Area == monster.HomeArea)
         {
             ArriveFromInfiltration(monster);
             return;
         }
 
-        if (monster.MarchBudgetSeconds > 0d)
+        // 경로를 다 썼는데도 배정 구역 밖이면 벽에 막힌 것이다. 그 자리에 세워 두면 문 앞이
+        // 아니라 벽에 몹이 쌓이므로 걷어낸다 — 디렉터가 다음 보충에서 다시 보낸다.
+        if (monster.MarchIndex < monster.MarchWaypoints.Count && monster.MarchBudgetSeconds > 0d)
             return;
 
         monster.Alive = false;
