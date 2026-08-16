@@ -134,7 +134,22 @@ namespace network.common
         // 상태 효과 표시 ID (status_effect_info.csv와 동기)
         public const int BOOTS_STATUS_EFFECT_ID = 1101;
         public const int KEY_STATUS_EFFECT_ID = 1102;
+
+        /// <summary>
+        ///     무방비 (2026-08-16 유저 결정, 구 "필사의 탈주"): 오브 0개 상태의 시각화.
+        ///     새 능력이 아니라 이미 있는 현상을 읽히게 한 것이다 — 공격·절단 불가에
+        ///     잔상 우선 표적까지 걸린 상태이므로, 이름과 설명을 그 규칙으로 갈아 끼운다.
+        ///     이속 가속은 2초만 유지되므로(SWARM_BARE_MOVE_SPEED_SECONDS) 더는
+        ///     "탈주 버프"가 아니다.
+        /// </summary>
         public const int BARE_STATUS_EFFECT_ID = 1103;
+
+        /// <summary>
+        ///     필사의 저항 (2026-08-16 유저 결정): 절단당한 직후 반격 보호 창의 시각화.
+        ///     내 꼬리를 자른 상대의 본체 공격만 무효가 된다(#227 7단계) — 제3자·잔상은
+        ///     그대로 들어온다. 서버가 잔광 VFX와 같은 시점·지속으로 보낸다.
+        /// </summary>
+        public const int RETALIATION_STATUS_EFFECT_ID = 1104;
 
         /// <summary>
         ///     보스 사거리 (#223): 파도 T3 오브급(기본 2.5 + 가중치 4 × 0.4) — 제자리 고정
