@@ -398,6 +398,9 @@ public sealed class SwarmArenaManager
             state.LastTickAtUtc = now;
             state.LastParticipants = participants.ToArray();
 
+            // 인트로 예열 구간인가 — 침투가 문턱에서 멈춘다 (2026-08-16 유저 판정).
+            bool preMatch = IsGameplayActiveResolver?.Invoke(matchingId) == false;
+
             // 격화 2단계: 이속만 소폭 상승 — 접촉 데미지는 불변 (M4).
             double moveDeltaSeconds = GetEscalationStage((now - state.StartsAtUtc).TotalSeconds) >= 2
                 ? deltaSeconds * EscalationStage2MoveSpeedMultiplier
@@ -425,7 +428,8 @@ public sealed class SwarmArenaManager
 
                 if (RegionSupplyModeEnabled)
                 {
-                    UpdateSupplyMonsterMovement(monster, state.LastParticipants, now, moveDeltaSeconds);
+                    UpdateSupplyMonsterMovement(
+                        monster, state.LastParticipants, now, moveDeltaSeconds, preMatch);
                 }
                 else if (CampModeEnabled)
                 {
@@ -1687,8 +1691,14 @@ public sealed class SwarmArenaManager
     ///     목표 수를 영구히 차지하면 그 구역 공급이 그대로 멎는다.
     /// </summary>
     private static void AdvanceInfiltration(
-        MonsterRuntime monster, double deltaSeconds, DateTime now)
+        MonsterRuntime monster, double deltaSeconds, DateTime now, bool holdAtThreshold = false)
     {
+        // 인트로 예열: 배정 구역에 닿아도 들어가지 않고 문턱에 선다 (2026-08-16 유저 판정).
+        // "운동장에서 흩어지는 것이 시작"인데 카운트다운이 끝나기도 전에 각 방에 몹이 서 있으면
+        // 어디서 왔는지가 안 읽힌다. 매치가 열리는 순간 문이 터지듯 들이닥치게 남겨 둔다.
+        if (holdAtThreshold && monster.Area == monster.HomeArea)
+            return;
+
         monster.MarchBudgetSeconds -= deltaSeconds;
         float remaining = (float)(MonsterMoveSpeed * deltaSeconds);
         // 경로는 셀 단위라 한 틱에 웨이포인트를 여러 개 지난다. 남은 이동량을 다 쓸 때까지 돈다.
@@ -1730,13 +1740,16 @@ public sealed class SwarmArenaManager
 
         if (monster.Area == monster.HomeArea)
         {
-            ArriveFromInfiltration(monster);
+            if (!holdAtThreshold)
+                ArriveFromInfiltration(monster);
             return;
         }
 
         // 경로를 다 썼는데도 배정 구역 밖이면 벽에 막힌 것이다. 그 자리에 세워 두면 문 앞이
         // 아니라 벽에 몹이 쌓이므로 걷어낸다 — 디렉터가 다음 보충에서 다시 보낸다.
-        if (monster.MarchIndex < monster.MarchWaypoints.Count && monster.MarchBudgetSeconds > 0d)
+        // 예열 중에는 걷어내지 않는다: 아직 판이 열리지도 않았는데 줄이 사라지면 안 된다.
+        if (holdAtThreshold ||
+            (monster.MarchIndex < monster.MarchWaypoints.Count && monster.MarchBudgetSeconds > 0d))
             return;
 
         // 추격은 사라지지 않는다 — 못 따라잡으면 그 자리에서 멈춰 다시 주변을 사냥한다.
@@ -1811,15 +1824,16 @@ public sealed class SwarmArenaManager
         MonsterRuntime monster,
         IReadOnlyList<SpotArenaPlayerSpatial> participants,
         DateTime now,
-        double deltaSeconds)
+        double deltaSeconds,
+        bool holdAtThreshold = false)
     {
         // 침투 행군 (#229): 배정 구역에 닿기 전까지는 경로를 따라 걷는다. 도중에 어그로 반경 안
         // 참가자를 만나면 거기서 멈추고 붙는다 — 지나는 길목이 곧 전장이다.
         if (monster.Infiltrating)
         {
-            if (!HasParticipantWithinAggro(monster, participants))
+            if (holdAtThreshold || !HasParticipantWithinAggro(monster, participants))
             {
-                AdvanceInfiltration(monster, deltaSeconds, now);
+                AdvanceInfiltration(monster, deltaSeconds, now, holdAtThreshold);
                 return;
             }
 
