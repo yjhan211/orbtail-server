@@ -60,12 +60,10 @@ public partial class GameServer
         return whole;
     }
 
-    // 유저간 공격 재개 (2026-08-16 유저 결정). #229에서 충돌·절단만 남기고 꺼 두었던
-    // 속성별 원거리 PvP 사건(#227 6단계)을 다시 무장한다 — 규칙·VFX·클라 처리는
-    // 그대로 보존돼 있었다: 사거리 6(파도 참여 3.1), 예고 0.22~0.55초 뒤 발사,
-    // 색별 간격 2.4/1.6/2.8초, 피해는 본체 오염으로 환산(× 0.35, 이월 누산).
-    // 껐던 이유가 "공격하면 너무 난잡해진다"였으므로, 켠 뒤 난잡함을 다시 재는 게 검증 항목이다.
-    private static readonly bool SwarmPvpRangedAttackEnabled = true;
+    // 속성별 공격 사건(#227 6단계)은 계속 무장하지 않는다 (2026-08-16 유저 판정: 이상하다).
+    // 한 번 켜 봤지만 충전 링 + 속성별 일제 발사라 몹 사격(오브별 유도탄)과 문법이 달라
+    // 화면에서 따로 놀았다. 유저간 공격은 아래 공용 리졸버가 몹과 똑같은 유도탄으로 처리한다.
+    private static readonly bool SwarmPvpRangedAttackEnabled = false;
 
     // 치명타 (#229 임시): PvE 전용. 성장 축이 오브 수·티어뿐이라 같은 몹을 같은 속도로 지우는
     // 감각이 계속된다 — 가끔 크게 터지는 순간을 넣어 파밍에 리듬을 준다. 확률·배율은 임시값이고,
@@ -398,10 +396,25 @@ public partial class GameServer
             matchingId,
             actors,
             nowUtc,
-            // #229: 공용 리졸버는 스웜에서 PvE만 담당한다. 몹은 같은 구역이면 사거리를
-            // 무시해 파밍이 막히지 않는다. 플레이어 간 전력 손실은 이동 충돌 절단만 담당한다.
-            (attacker, target) => !attacker.IsMonsterTarget && target.IsMonsterTarget &&
-                                  attacker.Area == target.Area);
+            // 유저간 공격도 같은 리졸버가 담당한다 (2026-08-16 유저 결정: 몹이랑 똑같이
+            // 유도탄으로). 아래 루프의 태양·바람 분기가 몹 사격과 같은 발사 연출
+            // (BroadcastSpotArenaAttackVfxToTargetAndObservers)과 비행시간 착탄을 쓰므로,
+            // 필터만 넓히면 사람 표적도 같은 유도탄으로 나간다.
+            // 사거리는 둘이 다르다: 몹은 액터 사거리(PvE 7), 사람은 오브별 PvP 사거리(6).
+            // 파도는 GetSwarmOrbPvpRange가 0이라 사람에게는 미사일을 쏘지 않는다 — 물폭탄 담당.
+            // 표적 우선순위는 이미 본체·몹 동급(2)이라 최근접이 이긴다 — 적이 있다고 파밍이
+            // 죽지 않는다(#226 표적 정책).
+            (attacker, target) =>
+            {
+                if (attacker.IsMonsterTarget || attacker.Area != target.Area)
+                    return false;
+                if (target.IsMonsterTarget)
+                    return true;
+
+                float pvpRange = GetSwarmOrbPvpRange(attacker.WeaponItemId);
+                return pvpRange > 0f &&
+                       IsWithinSwarmOrbRange(attacker.Position, pvpRange, target.Position);
+            });
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
         {
