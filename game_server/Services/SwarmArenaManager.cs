@@ -189,8 +189,12 @@ public sealed class SwarmArenaManager
     private const float InfiltrationOriginRadius = 3.5f;
     private const float MarchWaypointArriveDistance = 0.6f;
     private const float RouteSampleStep = 0.35f;
-    // 문 한 칸(가로 1 · 세로 0.5) 남짓만 눈감는다 — 벽 관통은 여전히 걸러야 한다.
-    private const int DoorwayBlockedSampleTolerance = 4;
+    // 문어귀 통과 허용 길이 (2026-08-16 실측 보정). 4샘플(1.4)로는 좁았다 — 봇 매치
+    // 9855085에서 행정실만 몹 55마리 배정에 처치 0으로, 그 방 경로가 통째로 폐기되고 있었다.
+    // BotPathfinder의 문 통과는 근측 보행 셀 → 원측 보행 셀 한 번의 도약이라 문틀 + 양쪽
+    // 여유까지 걸치고, 아이소메트릭 대각이면 더 길어진다. 10샘플(3.5) — 벽 한 장은 이보다
+    // 훨씬 길므로 관통 방지는 유지된다.
+    private const int DoorwayBlockedSampleTolerance = 10;
     // 행군 제한: 경로가 길수록 넉넉히 주되, 막히면 낭비 없이 걷어낸다. 웨이포인트 수 × 계수.
     private const double MarchBudgetSecondsPerWaypoint = 1.2d;
     private const double MarchBudgetMinimumSeconds = 8d;
@@ -1741,18 +1745,11 @@ public sealed class SwarmArenaManager
                 monster.HomeArea)
                 return;
 
-            // 벽은 통과하지 않는다 (#229 침투 수리): 경로 중간 구간이 끊기면 BotPathfinder가
-            // 그 구간을 통째로 생략하고 다음 문어귀 셀로 건너뛴다. 그대로 직선 이동하면 몹이
-            // 벽을 뚫고 방 안쪽에 박히고, 도착 후에는 충돌 판정이 있는 추격 이동이 그 자리에
-            // 몹을 붙여 놓는다 — 실플레이에서 "몹이 벽에 붙어 문으로 안 들어온다"로 나왔다.
-            // 막히면 그 웨이포인트를 버리고 다음을 노린다. 끝까지 못 뚫으면 아래에서 걷어낸다.
-            if (!GameMapData.IsMoveablePosition(
-                    MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, proposed)))
-            {
-                monster.MarchIndex++;
-                continue;
-            }
-
+            // 걸음에는 벽 판정을 걸지 않는다 (2026-08-16 유저 판정: 행정실에 못 들어온다).
+            // 문 셀은 정적 지도에서 비보행이라, 여기서 막으면 문틀 앞에서 웨이포인트를 버리다
+            // 경로를 다 태우고 걷힌다 — 계획 단계에서만 문틀을 통과로 봐 준 것이 반쪽이었다.
+            // 벽 관통은 TryPlanRoute가 이미 막는다: 문 한 칸 남짓을 넘는 비보행 구간이 있는
+            // 경로는 계획 단계에서 폐기되므로, 여기까지 온 경로는 걸어도 되는 경로다.
             monster.Position = proposed;
             remaining -= step;
         }
