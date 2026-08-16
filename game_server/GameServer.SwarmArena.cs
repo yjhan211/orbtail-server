@@ -291,6 +291,16 @@ public partial class GameServer
                     $"alive={aliveAfter}");
         }
 
+        // 인트로 예열은 여기서 끝난다 (2026-08-16): 공급 디렉터와 몹 이동만 돌리고
+        // 전투·절단·포위·물폭탄·접촉 피해는 매치가 시작된 뒤에 붙는다. 카운트다운 동안
+        // 운동장에서 각 방으로 걸어 나가는 그림만 만들면 되고, 그 사이 누가 맞아서는 안 된다.
+        if (!MatchStartGate.IsGameplayActive(matchingId))
+        {
+            BroadcastMonsterMinimapSnapshot(
+                matchingId, sessions, _swarmArenaManager.GetVisualStates(matchingId));
+            return;
+        }
+
         // 절단 실험 더미 (#226): 불사 + 오브 리필 — 절단·포위 타격감 튜닝용 과녁.
         // 리필 기준은 피격 시각이 아니라 오브 수다 (#227 수리): 피격 스탬프는 PvP 미사일이
         // 매 발 갱신해 3초 유예가 영영 지나지 않았다 — 끊어도 다시 안 차던 원인.
