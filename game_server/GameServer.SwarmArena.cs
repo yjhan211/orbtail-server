@@ -3273,8 +3273,15 @@ public partial class GameServer
         // 반올림으로 맞춘다 (#229 4단계-보정): 잘라내기라 raw 6(배율 통과 3)이 1로, raw 8(4)이
         // 2로 뭉개져 페이즈별 접촉 곡선이 봇에게는 통째로 평평했다. 사람 경로는 Round를 쓴다.
         int botDamage = Math.Max(1, (int)MathF.Round(damage.Damage * SwarmBotContactDamageMultiplier));
+        int legacyBefore = bot.Corruption;
         bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + botDamage);
         _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
+        // 세 번째 봇 경로도 남긴다 — 앞의 두 경로만 로그를 붙여 놓으면 여기로 빠진 피해가
+        // 그대로 안 보인다 (2026-08-16).
+        _gameEventLogManager.LogEmotionAfterimageHit(
+            matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
+            botDamage, legacyBefore, bot.Corruption,
+            bot.Corruption >= Config.SURVIVOR_MAX_CORRUPTION, isBot: true, DateTimeOffset.UtcNow);
     }
 
     // 빈손 본체 유효 HP = T1 오브 두 개 값 (#223 재상향): T1 한 개 값(×17.5)은 후반 T3

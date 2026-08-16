@@ -432,6 +432,7 @@ public sealed class SwarmArenaManager
             }
 
             int probeAlive = 0, probeAggro = 0, probeChasing = 0, probeSameArea = 0, probeCooldown = 0;
+            int probeInRange = 0, probeImmuneBlocked = 0;
             float probeNearest = 9999f;
             foreach (var monster in state.Monsters.Values)
             {
@@ -471,6 +472,14 @@ public sealed class SwarmArenaManager
                     float pd = MathF.Sqrt(pdx * pdx + pdy * pdy);
                     if (pd < probeNearest) probeNearest = pd;
                     probeSameArea++;
+                    if (pd <= GetContactRadius(monster.Kind))
+                    {
+                        probeInRange++;
+                        if (state.ContactImmuneUntilUtc.TryGetValue(
+                                probeParticipant.PlayerId, out var probeImmune) && now < probeImmune)
+                            probeImmuneBlocked++;
+                    }
+
                     break;
                 }
 
@@ -565,6 +574,7 @@ public sealed class SwarmArenaManager
                 result.StuckReports.Add(
                     $"contact_detail alive={probeAlive} aggro={probeAggro} chasing={probeChasing} " +
                     $"sameAreaAsSomeone={probeSameArea} onCooldown={probeCooldown} " +
+                    $"inRange={probeInRange} immuneBlocked={probeImmuneBlocked} " +
                     $"nearest={(probeNearest > 9000f ? -1f : probeNearest):F2} " +
                     $"damage={result.PlayerDamage.Count}");
             }
@@ -1115,6 +1125,36 @@ public sealed class SwarmArenaManager
             state.Monsters[monster.MonsterId] = monster;
             result.SpawnedMonsters.Add(monster.ToMonsterRuntimeInfo());
         }
+    }
+
+    /// <summary>
+    ///     같은 구역 참가자에게 직선이 뚫려 있는가 — 뚫렸으면 경로를 탈 이유가 없다.
+    ///     가장 가까운 한 명만 본다. 전 인원을 훑으면 몹 수백 마리에서 비용이 터진다.
+    /// </summary>
+    private static bool HasDirectLineToParticipant(
+        MonsterRuntime monster, IReadOnlyList<SpotArenaPlayerSpatial> participants)
+    {
+        var nearest = default(SpotArenaPlayerSpatial);
+        float nearestSquared = float.MaxValue;
+        bool found = false;
+        for (int index = 0; index < participants.Count; index++)
+        {
+            var participant = participants[index];
+            if (participant.Area != monster.Area)
+                continue;
+
+            float dx = participant.Position.X - monster.Position.X;
+            float dy = participant.Position.Y - monster.Position.Y;
+            float distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared >= nearestSquared)
+                continue;
+
+            nearestSquared = distanceSquared;
+            nearest = participant;
+            found = true;
+        }
+
+        return found && IsSegmentWalkable(monster.Position, nearest.Position);
     }
 
     /// <summary>
@@ -1998,7 +2038,17 @@ public sealed class SwarmArenaManager
         // 참가자를 만나면 거기서 멈추고 붙는다 — 지나는 길목이 곧 전장이다.
         if (monster.Infiltrating)
         {
-            if (holdAtThreshold || !HasParticipantWithinAggro(monster, participants))
+            // 행군에서 빠져나오는 조건 (2026-08-16 계측 수리).
+            // 예열 중이면 무조건 행군 — 문턱 밖에서 기다리는 것이 연출이다.
+            // 그 밖에는 (a) 어그로 반경 안에 누가 있거나, (b) 같은 구역 참가자에게 직선이
+            // 뚫렸으면 행군을 접고 추격으로 넘어간다.
+            // (b)가 없으면 추격 재계획이 몹을 계속 행군 상태로 되돌리고, 그 상태는 2.5m
+            // 안에 들어와야만 풀리므로 몹이 영영 붙지 못한다 — 봇 매치 9864125에서
+            // 어그로 36/36인데 추격 대상은 10/36, 최근접 3.98, 접촉 0이었다.
+            bool leaveMarch = !holdAtThreshold &&
+                              (HasParticipantWithinAggro(monster, participants) ||
+                               HasDirectLineToParticipant(monster, participants));
+            if (!leaveMarch)
             {
                 AdvanceInfiltration(monster, deltaSeconds, now, holdAtThreshold);
                 return;
