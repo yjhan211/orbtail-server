@@ -85,6 +85,8 @@ public partial class GameClientSession : SessionBase
     // (가해·피해 뒤 3초 진입 잠금)을 세션이 들고, 회복 정산(1초 틱)은 아레나 틱이 돈다.
     internal DateTime SwarmSleepStartedAtUtc { get; set; } = DateTime.MinValue;
     internal DateTime SwarmLastCombatAtUtc { get; set; } = DateTime.MinValue;
+    // 단일 절단 치명상 (#232): 성공 뒤 8초는 수면 진입·회복 틱이 막힌다.
+    internal DateTime SwarmHealLockUntilUtc { get; set; } = DateTime.MinValue;
     internal bool IsSleeping => _isSleeping;
     private int _swarmSleepGrantedTicks;
     private DateTime _lastHeartbeatTime = DateTime.UtcNow;

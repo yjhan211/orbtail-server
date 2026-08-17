@@ -31,27 +31,41 @@ public class SwarmDamagePathTests
     }
 
     /// <summary>
-    ///     절단 내구(_swarmOrbCutCracks)에 값을 쓰는 곳은 절단 판정 하나뿐이어야 한다.
-    ///     제거(Remove)는 파괴·정리 경로라 대상이 아니고, 증가 대입만 센다.
+    ///     고위험 단일 절단 계약 (#232, 2026-08-17): 크랙 5칸·방어 장갑은 퇴역 — 절단 내구에 값을
+    ///     쓰는 곳이 하나라도 남으면 "유효 교차 한 번 = 오브 정확히 하나"가 무너진다.
+    ///     절단은 켜져 있고, 한 교차는 오브 하나만 지우며(접미 삭제 아님), 낙수를 흩지 않고,
+    ///     공격자는 +35 선결 검사 뒤 같은 사건으로 치명상과 8초 회복 차단을 받는다.
     /// </summary>
     [Fact]
-    public void OrbCutDurability_IsWrittenOnlyByTrailCut()
+    public void SingleCut_RemovesOneOrbAndChargesAttacker()
     {
         string source = File.ReadAllText(
             Path.Combine(FindRepositoryRoot(), "game_server", "GameServer.SwarmArena.cs"));
 
-        var writes = Regex.Matches(source, @"_swarmOrbCutCracks\[[^\]]+\]\s*=");
+        Assert.Contains("SwarmTrailCutEnabled = true", source);
+        var crackWrites = Regex.Matches(source, @"_swarmOrbCutCracks\[[^\]]+\]\s*=");
         Assert.True(
-            writes.Count == 1,
-            $"절단 내구 대입 지점이 {writes.Count}곳이다 — 절단 외의 경로가 오브 내구를 깎으면 " +
-            "원거리 공격으로 크랙이 생겨 두 피해 경로가 뒤섞인다 (#227 M2).");
+            crackWrites.Count == 0,
+            $"절단 내구 대입 지점이 {crackWrites.Count}곳 남았다 — 단일 절단은 크랙 시스템을 쓰지 않는다 (#232).");
 
-        // 그 한 곳이 실제로 절단 판정 안인지 확인한다.
         int cutMethodStart = source.IndexOf("private void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
         Assert.True(cutMethodStart >= 0, "TryPerformSwarmTrailCut를 찾지 못했다");
-        Assert.True(
-            writes[0].Index > cutMethodStart,
-            "절단 내구 대입이 절단 판정 밖에 있다 (#227 M2).");
+        int cutMethodEnd = source.IndexOf("// ===== 포위 사격", cutMethodStart, StringComparison.Ordinal);
+        Assert.True(cutMethodEnd > cutMethodStart, "절단 판정 메서드의 끝을 찾지 못했다");
+        string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
+
+        // 한 교차 = 오브 하나. 접미 통째 삭제·낙수 흩기는 절단 경로에 없어야 한다.
+        Assert.Contains("DestroySwarmOrbAtOrdinal(matchingId, bestOwnerId, bestTailOrdinal)", cutBody);
+        Assert.DoesNotContain("DestroySwarmOrbsFromOrdinal", cutBody);
+        Assert.DoesNotContain("ScatterSwarmOrbBreakStones", cutBody);
+        // 공격자 비용: 선결 검사 → 치명상 → 회복 차단이 같은 사건 안에 있다.
+        Assert.Contains("SwarmSingleCutCorruptionCost = 35", source);
+        Assert.Contains("SwarmSingleCutHealLockSeconds = 8d", source);
+        Assert.Contains("ORB_SINGLE_CUT_REFUSED", cutBody);
+        Assert.Contains("SwarmHealLockUntilUtc = healLockUntil", cutBody);
+        Assert.Contains("ORB_SINGLE_CUT ", cutBody);
+        // 0.8초 재접촉 억제 시작값.
+        Assert.Contains("SwarmTrailCutSameOrbDebounceSeconds = 0.8d", source);
     }
 
     /// <summary>

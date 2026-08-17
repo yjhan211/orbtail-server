@@ -420,6 +420,13 @@ public partial class GameClientSession
         if (asleepSeconds < SwarmSleepWarmupSeconds)
             return;
 
+        // 절단 치명상 회복 차단 (#232): 8초 동안은 틱이 지나도 회복이 없다 — 지난 틱은 소멸한다.
+        if (nowUtc < SwarmHealLockUntilUtc)
+        {
+            _swarmSleepGrantedTicks = (int)Math.Floor(asleepSeconds - SwarmSleepWarmupSeconds) + 1;
+            return;
+        }
+
         // 1초에 한 번 — 준비가 끝나는 순간이 첫 회복이다. 아레나 틱이 밀렸으면 한 번에 정산한다.
         int dueTicks = (int)Math.Floor(asleepSeconds - SwarmSleepWarmupSeconds) + 1;
         int pendingTicks = dueTicks - _swarmSleepGrantedTicks;
@@ -437,10 +444,14 @@ public partial class GameClientSession
         SendEncounterEvent(PlayerId ?? 0, CurrentArea, SwarmSleepRecoveryEventType, 0, 0, recovered);
     }
 
-    /// <summary>수면 진입 가능 여부 (#229 6단계) — 가해·피해 뒤 3초는 눕지 못한다.</summary>
+    /// <summary>
+    ///     수면 진입 가능 여부 (#229 6단계) — 가해·피해 뒤 3초는 눕지 못한다.
+    ///     절단 치명상(#232) 8초 회복 차단 중에도 눕지 못한다 — 누워도 회복이 없다.
+    /// </summary>
     internal bool CanEnterSwarmSleep(DateTime nowUtc) =>
         !Config.SWARM_P0_ENABLED ||
-        (nowUtc - SwarmLastCombatAtUtc).TotalSeconds >= SwarmSleepCombatLockSeconds;
+        ((nowUtc - SwarmLastCombatAtUtc).TotalSeconds >= SwarmSleepCombatLockSeconds &&
+         nowUtc >= SwarmHealLockUntilUtc);
 
     /// <summary>
     ///     수면 중단 (2026-08-17 재조정): 부르는 곳은 이동뿐이다 — 누워서 도망칠 수 없다.
