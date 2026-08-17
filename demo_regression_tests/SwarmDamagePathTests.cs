@@ -196,6 +196,10 @@ public class SwarmDamagePathTests
     [Fact]
     public void GaugeGatedDoors_LockEverySpawnRoomButKeepTheMapConnected()
     {
+        // 실행 순서 무관하게 데이터가 있어야 한다 — 단독 실행에서 문 목록이 비어 실패했다 (2026-08-17).
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+
         // #229: 스폰 방 10곳은 문이 잠긴 채 시작하고, 여는 수단은 탐색 게이지뿐이다.
         // 잠금이 빠지면 방을 탈출하는 목표 자체가 사라진다.
         var spawnRooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates();
