@@ -51,11 +51,11 @@ public partial class GameServer
     private static readonly bool SwarmEncircleEnabled = false;
     private static readonly bool SwarmOrbTargetsPlayersEnabled = false;
 
-    // 궤도 복귀 (#232 2026-08-17 유저 지시): 오브가 SB 클론처럼 플레이어 주위를 돈다.
-    // 궤도 위상은 이동 거리 적산의 공유 식(SwarmOrbOrbit)이라 서버가 각 오브의 자리를 안다 —
-    // 사격·교차사격 원점과 표적 선정은 오브 자리, 폐쇄 판정은 본체 위치를 쓴다.
-    // 오브열로 되돌리려면 이 값과 클라 PlayerTool.OrbTrailLayoutEnabled를 함께 바꾼다.
-    private static readonly bool SwarmOrbOrbitLayout = true;
+    // 오브열 (2026-08-17 유저 지시 "오브열 꼬리 형태로 원복"): 오브가 이동 경로를 따라오는 전투열.
+    // 사격·교차사격 원점과 표적 선정은 오브별 열 좌표(10Hz 이동 표본), 폐쇄 잔류 파괴도 산다.
+    // 궤도(SwarmOrbOrbit — 이동 거리 적산 위상, 08-17 오전)로 되돌리려면 이 값을 true,
+    // 클라 PlayerTool.OrbTrailLayoutEnabled를 false로 함께 바꾼다.
+    private static readonly bool SwarmOrbOrbitLayout = false;
 
     // PvP 오염 환산 (#226 재개편): 본체 상시 피격 체제의 TTK 앵커. 0.15 = 혼성 6오브
     // 원시 DPS(~28)를 오염 ~4.2/s로 눌러 동급 정면 TTK ~24초(목표 22~28). PvE는 원시
