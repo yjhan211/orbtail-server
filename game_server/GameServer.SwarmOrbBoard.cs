@@ -19,8 +19,8 @@ namespace game_server;
 /// </summary>
 public partial class GameServer
 {
-    // 샌드박스 고정 시작 세트 (#232 P0-A): 태양·파도 (2026-08-17 저녁 유저 지시 — 파도 검증 시작). 바람은 뒤에.
-    private static readonly int[] SwarmSandboxStartingOrbs = [107000010, 107000030, 107000010];
+    // 샌드박스 고정 시작 세트 (#232 P0-A): 태양·바람·파도 한 개씩 — 세 모양이 다 보이게 (2026-08-17 저녁).
+    private static readonly int[] SwarmSandboxStartingOrbs = [107000010, 107000020, 107000030];
 
     private static readonly SurvivorOrbColor[] SwarmFamilyColors =
         [SurvivorOrbColor.Red, SurvivorOrbColor.Green, SurvivorOrbColor.Blue];

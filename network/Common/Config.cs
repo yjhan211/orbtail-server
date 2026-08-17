@@ -411,6 +411,16 @@ namespace network.common
         public static readonly float[] SWARM_CROSSFIRE_SUN_RANGE_BY_TIER = { 4f, 5.5f, 7f };
 
         /// <summary>
+        ///     바람 관통 칼날 (2026-08-17 저녁 유저 결정): 오브에서 표적 방향으로 가늘고 빠른 직선이 티어 사거리 끝까지
+        ///     날아가며 닿는 몬스터·플레이어를 전부 관통(각 1회 피해·충격). 끝까지 가면 소멸. 유도는 없다 — 태양처럼
+        ///     피할 수 있어야 공평하다. 한 발은 가볍고(피해·주기 그대로) 줄을 세우면 다 맞는다 — 태양(첫 표적에서
+        ///     폭발)의 반대. 폭·사거리는 바닥면 단위.
+        /// </summary>
+        public const float SWARM_CROSSFIRE_WIND_SPEED = 12f;
+        public static readonly float[] SWARM_CROSSFIRE_WIND_WIDTH_BY_TIER = { 0.5f, 0.55f, 0.6f };
+        public static readonly float[] SWARM_CROSSFIRE_WIND_RANGE_BY_TIER = { 5f, 6.5f, 8f };
+
+        /// <summary>
         ///     태양 폭발 반경(T1/T2/T3, 바닥면 단위) — 첫 표적에 닿아 터지는 순간 이 안의 몬스터 전부 PvE 피해,
         ///     플레이어 전부 충격(면역·상한은 그대로). 물폭탄(1.8/2.2/2.6)보다 작게 — 직선이 먼저 좁히고 폭발이 마무리.
         /// </summary>

@@ -17,9 +17,9 @@ public partial class GameServer
     private const float SwarmArenaBasicRange = Config.SWARM_ORB_ATTACK_RANGE;
     private const float SwarmArenaBasicAttackIntervalSeconds = 1f;
     private const int SwarmArenaWeaponItemId = 107000010;
-    // P0-A 태양·파도 (#232, 2026-08-17 저녁 유저 지시): 태양 직선이 통과했으니 파도를 되돌린다 —
-    // 소환·시작·재건 풀. 바람(107000020)은 파도가 통과한 뒤 되돌린다.
-    private static readonly int[] SwarmStartingOrbPool = [107000010, 107000030];
+    // P0-A 세 색 복귀 (#232, 2026-08-17 저녁 유저 지시): 태양(폭발 투사체)·파도(물폭탄)·바람(관통 칼날) —
+    // 소환·시작·재건 풀.
+    private static readonly int[] SwarmStartingOrbPool = [107000010, 107000020, 107000030];
 
     // 플레이어 단위 지급 (2026-08-09): 매칭 단위 1회 지급은 지급 틱에 아직 접속 전인
     // 사람을 영영 빈손으로 만들었다 — 늦게 합류해도 첫 등장 틱에 각자 1회 받는다.
@@ -544,7 +544,8 @@ public partial class GameServer
             // 통과해 PvP 분기로 새던 문제 — 음수 대역 차단. 태양 분기보다 먼저 건다.
             if (monsterId <= 0 && attack.TargetPlayerId < -1_000_000_000_000L)
                 continue;
-            // 태양은 표적이 몬스터든 플레이어든 교차사격 투사체다 (2026-08-17 유저 지시: 오브가 사람도 조준).
+            // 태양·바람은 표적이 몬스터든 플레이어든 교차사격 투사체다 (2026-08-17 유저 지시: 오브가 사람도 조준).
+            // 태양 = 첫 표적에서 폭발, 바람 = 관통 칼날.
             if (IsSwarmCrossfireWeapon(attack.WeaponItemId))
             {
                 // 태양 = 교차사격 직선 (#232 2단계, 2026-08-17): 유도탄이 아니라 예고 뒤 쓸고 지나가는
@@ -849,19 +850,8 @@ public partial class GameServer
 
         // 폐쇄 = 즉사 + 문 잠금 (#227): 지속 오염으로 서서히 죽는 구조는 "언제 나가야 하는가"의
         // 판단을 흐렸다. 닫히는 순간 안에 있으면 죽고, 그 뒤로는 들어갈 수 없다.
-        // #229 6단계: 폐쇄가 걸린 구역에서는 수면을 강제로 깨운다 — 자다가 갇혀 죽으면
-        // "위치를 고르는 선택"이 아니라 사고가 된다. 경고 구역도 함께 깨운다.
-        var sleepBreakAreas = closureTick.ClosedAreas
-            .Concat(closureTick.WarningAreas ?? Array.Empty<AreaType>())
-            .ToHashSet();
-        if (sleepBreakAreas.Count > 0)
-        {
-            foreach (var sleeper in sessions)
-            {
-                if (sleeper.IsSleeping && sleepBreakAreas.Contains(sleeper.CurrentArea))
-                    sleeper.BreakSwarmSleep(DateTime.UtcNow, markCombat: false);
-            }
-        }
+        // 2026-08-17 재조정: 폐쇄·경고도 수면을 깨우지 않는다 — 수면 중단은 이동뿐이다.
+        // 자는 자리는 스스로 골랐다. 경고를 읽고 일어나는 것까지가 위치 판단이다.
 
         // 문을 먼저 잠근다 — 죽는 순간에 남이 밀고 들어오면 규칙이 뒤집혀 보인다.
         var lockedDoorIds = _doorStateManager.CloseDoorsForAreas(matchingId, closureTick.ClosedAreas);
@@ -2276,10 +2266,10 @@ public partial class GameServer
 
         _swarmOrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
 
-        // #229 6단계: 절단은 내가 몸으로 지르는 가해다 — 자동 공격과 달리 여기엔 교전 잠금을
-        // 건다. 절단하고 바로 눕는 도주 회복을 막는다.
+        // #229 6단계: 절단은 내가 몸으로 지르는 가해다 — 교전 잠금을 찍어 절단하고 바로 눕는
+        // 도주 회복을 막는다. 수면 해제는 안 건다 — 절단하러 움직인 순간 이동이 이미 깨웠다.
         aliveSessions.FirstOrDefault(session => session.PlayerId == creditPlayerId)
-            ?.BreakSwarmSleep(nowUtc, markCombat: true);
+            ?.MarkSwarmCombat(nowUtc);
 
         // 오브 체력 (#227): 최대 5칸 중 남은 칸이 곧 내구다. 소환 직후는 1/5(크랙 4단계),
         // 방어 강화는 5/5(크랙 0단계). 크랙 단계 = 5 - 남은 칸이라 표시가 곧 판정이다.
@@ -3436,8 +3426,9 @@ public partial class GameServer
             candidate.PlayerId == damage.TargetPlayerId);
         if (session != null)
         {
-            // #229 6단계: 본체 피격은 수면을 끊고 3초 진입 잠금을 건다 — 맞자마자 다시 눕지 못한다.
-            session.BreakSwarmSleep(DateTime.UtcNow, markCombat: true);
+            // 2026-08-17 재조정: 피격은 수면을 깨지 않는다 — 자면서 맞는 건 본인의 선택이다.
+            // 3초 진입 잠금만 찍어 맞자마자 새로 눕는 것은 계속 막는다.
+            session.MarkSwarmCombat(DateTime.UtcNow);
             // #229: 문 게이지도 같이 끊는다 — 문 앞을 비우지 못하면 방을 못 연다.
             session.BreakDoorUnlockGauge();
             if (SwarmOrbHealthEnabled)
@@ -4734,14 +4725,19 @@ public partial class GameServer
 
             // 태양 = 큰 공격 한 번 (#232 2단계): 유도탄 두 발 몫을 한 번에 — 주기 ×2, 피해 ×2.
             // 총 화력은 같고, 예고 → 쓸기 한 사이클이 유도탄 연사보다 읽히는 무게를 갖는다.
-            bool crossfireSun = IsSwarmCrossfireWeapon(actor.WeaponItemId);
+            // 바람 관통 칼날은 피해·주기 그대로 — 가볍고 빠르게, 줄을 세우면 다 맞는다.
+            bool crossfireSun = IsSwarmCrossfireSun(actor.WeaponItemId);
+            bool crossfireWind = IsSwarmCrossfireWind(actor.WeaponItemId);
             float crossfireDamageMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER : 1f;
             float crossfireCadenceMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER : 1f;
             SurvivorOrbData.TryGetColorAndTier(actor.WeaponItemId, out _, out int actorTier);
-            // 태양 사거리 = 티어 사거리(투사체가 나는 길이) — 더 먼 표적을 잡으면 투사체가 못 닿고 소멸한다.
+            // 태양·바람 사거리 = 티어 사거리(투사체가 나는 길이) — 더 먼 표적을 잡으면 투사체가 못 닿고 소멸한다.
+            int actorTierIndex = Math.Clamp(actorTier, 1, 3) - 1;
             float actorAttackRange = crossfireSun
-                ? Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER[Math.Clamp(actorTier, 1, 3) - 1]
-                : SwarmPveSameAreaAttackRange;
+                ? Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER[actorTierIndex]
+                : crossfireWind
+                    ? Config.SWARM_CROSSFIRE_WIND_RANGE_BY_TIER[actorTierIndex]
+                    : SwarmPveSameAreaAttackRange;
             actors[index] = actor with
             {
                 Damage = armed
