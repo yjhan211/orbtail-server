@@ -17,9 +17,9 @@ public partial class GameServer
     private const float SwarmArenaBasicRange = Config.SWARM_ORB_ATTACK_RANGE;
     private const float SwarmArenaBasicAttackIntervalSeconds = 1f;
     private const int SwarmArenaWeaponItemId = 107000010;
-    // P0-A 태양만 (#232, 2026-08-17 유저 지시): 태양 직선이 읽히기 전까지 소환·시작·재건 풀을
-    // 태양 하나로 좁힌다. 바람·파도는 직선이 통과한 뒤 되돌린다 — [107000010, 107000020, 107000030].
-    private static readonly int[] SwarmStartingOrbPool = [107000010];
+    // P0-A 태양·파도 (#232, 2026-08-17 저녁 유저 지시): 태양 직선이 통과했으니 파도를 되돌린다 —
+    // 소환·시작·재건 풀. 바람(107000020)은 파도가 통과한 뒤 되돌린다.
+    private static readonly int[] SwarmStartingOrbPool = [107000010, 107000030];
 
     // 플레이어 단위 지급 (2026-08-09): 매칭 단위 1회 지급은 지급 틱에 아직 접속 전인
     // 사람을 영영 빈손으로 만들었다 — 늦게 합류해도 첫 등장 틱에 각자 1회 받는다.
@@ -389,10 +389,11 @@ public partial class GameServer
 
         if (SwarmEncircleEnabled)
             ProcessSwarmEncirclements(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
-        // 실험장 (#227): 더미 매치에서는 물폭탄도 끈다 — 파도 오브가 계속 터지면
+        // 실험장 (#227): 절단 더미 매치에서는 물폭탄도 끈다 — 파도 오브가 계속 터지면
         // 절단 궤적 실험이 폭발 연출·피해에 묻힌다. 미사일 비무장(AddSwarmParticipantCombatActors)과
         // 같은 조건을 쓴다 — 옵트인 환경변수 자체가 실험장 스위치다.
-        if (!SwarmCutDummyAutoSetup && dummyIds.Count == 0)
+        // 교차사격 샌드박스(#232)는 켠다 — 파도가 실험 대상이다 (2026-08-17 저녁 유저 지시).
+        if (!SwarmCutDummyAutoSetup && (dummyIds.Count == 0 || SwarmCrossfireSandbox))
             ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
 
         // 접촉 계측 (2026-08-16): 접촉이 성립하는지 층별로 남긴다. 이 줄들이 "봇은 접촉 피해를
