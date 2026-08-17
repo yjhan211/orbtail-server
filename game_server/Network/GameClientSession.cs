@@ -139,6 +139,9 @@ public partial class GameClientSession : SessionBase
     /// <summary>성장 카드 선택 훅 (#226 단계 C) — (session, matchingId, offerId, cardIndex).</summary>
     internal static Action<GameClientSession, long, int, int>? SwarmGrowthPickCallback { get; set; }
 
+    /// <summary>6칸 빌드 결정 훅 (#232 4단계) — (session, matchingId, action, targetUid, secondUid).</summary>
+    internal static Action<GameClientSession, long, int, long, long>? SwarmOrbDecisionCallback { get; set; }
+
     /// <summary>
     ///     하트 픽업 시 앞줄 오브 HP 회복 훅 (#222 M4) — 원작 하트는 스쿼드 유닛도 회복한다.
     ///     GameServer가 스웜 매치 초기화 시 배선한다 (사람·봇 픽업 공통).
@@ -455,6 +458,8 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_DEV_DUMMY_MOVE>(bytes, HandleDevDummyMove));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SWARM_GROWTH_PICK,
             async bytes => await HandleMessage<C_TO_G_SWARM_GROWTH_PICK>(bytes, HandleSwarmGrowthPick));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SWARM_ORB_DECISION,
+            async bytes => await HandleMessage<C_TO_G_SWARM_ORB_DECISION>(bytes, HandleSwarmOrbDecision));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT,
             async bytes => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,

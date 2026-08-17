@@ -180,6 +180,54 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
+    /// <summary>6칸 빌드 결정 (#232 4단계): 합성·예비 오브 교체·분해 — 게임서버가 판정한다.</summary>
+    private Task HandleSwarmOrbDecision(C_TO_G_SWARM_ORB_DECISION request)
+    {
+        if (PlayerId.HasValue && CurrentMapSubId > 0)
+            SwarmOrbDecisionCallback?.Invoke(
+                this, CurrentMapSubId, request.Action, request.TargetItemUid, request.SecondItemUid);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>계열 공유 레벨 전송 (#232 4단계). 시작·강화·오브 증감 때 게임서버가 부른다.</summary>
+    internal void SendSwarmFamilyLevels(
+        int sunLevel, int windLevel, int waveLevel, int sunCost, int windCost, int waveCost)
+    {
+        if (!PlayerId.HasValue)
+            return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_FAMILY_LEVELS, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_FAMILY_LEVELS
+        {
+            SunLevel = sunLevel,
+            WindLevel = windLevel,
+            WaveLevel = waveLevel,
+            SunCost = sunCost,
+            WindCost = windCost,
+            WaveCost = waveCost
+        }));
+        Send(packet);
+    }
+
+    /// <summary>6칸 빌드 결정 결과 (#232 4단계).</summary>
+    internal void SendSwarmOrbDecisionResult(int action, bool success, int resultItemId, long targetItemUid)
+    {
+        if (!PlayerId.HasValue)
+            return;
+
+        int stones = _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value).StoneCount;
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_ORB_DECISION_RESULT, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_ORB_DECISION_RESULT
+        {
+            Action = action,
+            Success = success,
+            ResultItemId = resultItemId,
+            TargetItemUid = targetItemUid,
+            StoneCount = stones
+        }));
+        Send(packet);
+    }
+
     /// <summary>성장 카드 오퍼 전송 (#226 단계 C) — 소환석 임계 도달 순간 게임서버가 부른다.</summary>
     internal void SendSwarmGrowthOffer(
         int offerId, int cost, int spawnItemId, int enhanceTargetTier, int armorCount,
@@ -261,7 +309,9 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        int refundedStones = Math.Clamp(tier, 1, 3);
+        // 스웜 (#232 4단계): 계열 공유 레벨이 플레이어 귀속이라 표시 티어와 무관하게 1로 고정 —
+        // 강화한 오브를 부숴도 레벨은 남으므로 티어 환급이면 강화-파괴 재판매가 성립한다.
+        int refundedStones = Config.SWARM_P0_ENABLED ? Config.SWARM_ORB_DESTROY_REFUND_STONES : Math.Clamp(tier, 1, 3);
         var state = _summonStoneManager.AddStones(CurrentMapSubId, playerId, refundedStones);
         SendInGameInventoryUpdate(removedItem);
         SendDestroyOrbResult(true, ErrorCode.SUCCESS, request.ItemUid, refundedStones, state);

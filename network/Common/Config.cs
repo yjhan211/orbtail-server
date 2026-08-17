@@ -389,6 +389,23 @@ namespace network.common
         /// <summary>교차사격 모양 종류 — 패킷·로그·클라 렌더가 공유하는 식별자.</summary>
         public const int SWARM_CROSSFIRE_SHAPE_LINE = 1;
 
+        // ===== 6칸 빌드 (#232 4단계) =====
+        /// <summary>
+        ///     시작 지급 (#232 4단계, 2026-08-17): 무작위 T1 공격 오브 3개 + 소환석 5. 첫 화력을 들고
+        ///     시작하고, 첫 판단은 유지·계열 강화·파괴로 옮긴다. 08-16의 "소환석 19로 시작"은 되돌린다.
+        /// </summary>
+        public const int SWARM_STARTING_ORB_GRANT_COUNT = 3;
+        public const int SWARM_STARTING_STONE_GRANT = 5;
+
+        /// <summary>
+        ///     오브 파괴 환급 (#232 4단계): 계열 공유 레벨은 플레이어에게 귀속되므로 표시 티어와
+        ///     무관하게 오브 한 개당 소환석 1로 고정한다 — 강화한 오브를 부숴도 레벨은 남는다.
+        /// </summary>
+        public const int SWARM_ORB_DESTROY_REFUND_STONES = 1;
+
+        /// <summary>결정 패킷 액션 — 클라·서버·로그 공유. TargetItemUid = SurvivorOrbColor 값.</summary>
+        public const int SWARM_ORB_DECISION_FAMILY_UPGRADE = 1;
+
         /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.
         /// 데이터와 프로토콜은 보존하므로 레거시 모드가 다시 분리되면 이 게이트로 복구할 수 있다.

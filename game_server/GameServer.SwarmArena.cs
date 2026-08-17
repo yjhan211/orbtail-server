@@ -239,6 +239,7 @@ public partial class GameServer
                     _swarmArenaManager.AttractSwarm(noiseMatchingId, noisePlayerId);
             GameClientSession.SwarmDummyMoveCallback ??= MoveSwarmCutDummy;
             GameClientSession.SwarmGrowthPickCallback ??= HandleSwarmGrowthPick;
+            GameClientSession.SwarmOrbDecisionCallback ??= HandleSwarmOrbDecision;
             // 하트 = 본체 오염 + 앞줄 오브 HP 회복 (#222 M4, 원작 하트는 스쿼드도 회복).
             // 엔트리 제거 = 만충 취급 — 다음 오브 비주얼 틱에 체력바·크랙이 함께 복구된다.
             GameClientSession.SwarmHeartPickupCallback ??=
@@ -262,11 +263,10 @@ public partial class GameServer
                 matchingId, sessions.Count, bots.Count);
         }
 
-        // 시작 지급 = 오브가 아니라 소환석 (2026-08-16 유저 결정). 랜덤 T1 오브 3개를 들려
-        // 보내면 첫 화력 구성이 주사위로 정해지고, 플레이어의 첫 결정이 사라진다. 같은 값어치의
-        // 소환석으로 시작해 소환·공격강화·방어강화 중 무엇을 먼저 세울지부터 판이 열리게 한다.
-        // 빈손 규칙(0오브 개봉 무료 · 보장가 3)이 그대로 첫 오브를 보장한다.
-        int startingStones = Config.GetSwarmStartingStoneGrant();
+        // 시작 지급 (#232 4단계, 2026-08-17): 무작위 T1 공격 오브 3개 + 소환석 5. 08-16의
+        // "소환석 19로 시작"은 되돌린다 — 6칸 빌드에서 첫 판단은 무엇을 살지가 아니라 들고 시작한
+        // 셋을 유지·합성·교체할지다. 샌드박스 사람은 태양·바람·파도 한 개씩 고정(P0-A).
+        int startingStones = Config.SWARM_STARTING_STONE_GRANT;
         foreach (var session in sessions)
         {
             if (!session.PlayerId.HasValue ||
@@ -276,6 +276,7 @@ public partial class GameServer
             // 잼 지갑 리셋 (#222 M3) — 세션이 매치를 넘어 살아있으므로 시작 지급 시점에 초기화.
             session.ResetJam();
             session.FreeSummonCharges = 0;
+            GrantSwarmStartingOrbs(matchingId, session.PlayerId.Value, session);
             _summonStoneManager.AddStones(matchingId, session.PlayerId.Value, startingStones);
             session.SendSummonStoneState();
         }
@@ -285,6 +286,7 @@ public partial class GameServer
             if (!_swarmStartingOrbGrantedPlayers.Add((matchingId, bot.PlayerId)))
                 continue;
 
+            GrantSwarmStartingOrbs(matchingId, bot.PlayerId, session: null);
             _summonStoneManager.AddStones(matchingId, bot.PlayerId, startingStones);
         }
 
@@ -3858,16 +3860,11 @@ public partial class GameServer
                 CostSummon: costSummon, CostAttack: costAttack, CostDefense: costDefense);
         }
 
-        int spawnTier = 1;
-        int tierRoll = Random.Shared.Next(100);
-        if (qualityCost >= 7 && tierRoll < 10)
-            spawnTier = 3;
-        else if (qualityCost >= 7 && tierRoll < 45)
-            spawnTier = 2;
-        else if (qualityCost >= 5 && tierRoll < 20)
-            spawnTier = 2;
-        int spawnItemId =
-            SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)] + spawnTier - 1;
+        // 소환 티어 = 그 계열의 공유 레벨 (#232 4단계). 품질 티어 RNG는 퇴역 — 티어는 계열 강화가 만든다.
+        _ = qualityCost;
+        int spawnItemId = ApplySwarmFamilyLevelToItem(
+            matchingId, playerId,
+            SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)]);
 
         int armorSlots = GetSwarmTrailOrbs(matchingId, playerId)
             .Count(item => !_swarmOrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)));
@@ -3879,11 +3876,16 @@ public partial class GameServer
                 armorCount = 2;
         }
 
+        // 6/6 포화 (#232 4단계): 소환 카드가 닫힌다 — 파괴로 빈칸을 만들어야 다시 열린다.
+        if (GetSwarmTrailOrbs(matchingId, playerId).Count >= Config.SWARM_ORB_CAPACITY)
+            spawnItemId = 0;
+
         return new SwarmGrowthOfferState(
             _nextSwarmGrowthOfferId++,
             finalCost,
             spawnItemId,
-            GetSwarmEnhanceTargetTier(matchingId, playerId),
+            // 개별 강화 퇴역 (#232 4단계) — 계열 강화 버튼이 대신한다.
+            EnhanceTargetTier: 0,
             armorCount,
             costSummon,
             costAttack,
@@ -3979,8 +3981,21 @@ public partial class GameServer
             var offer = GenerateSwarmGrowthOffer(
                 matchingId, bot.PlayerId, finalCost, baseCost, orbCount,
                 costSummon, costAttack, costDefense);
+            // 계열 강화 (#232 4단계): 6/6 포화면 소환이 닫히므로 강화가 봇의 주 지출이 된다.
+            // 그 전에도 오브 4개 이상이면 셋에 한 번은 강화를 시도한다 — 카드 정책의 공격 강화
+            // 자리를 잇는 셈이다 (개별 강화 카드는 퇴역).
+            bool preferFamilyUpgrade = orbCount >= Config.SWARM_ORB_CAPACITY ||
+                                       (orbCount >= 4 && Random.Shared.Next(3) == 0);
+            if (preferFamilyUpgrade && TryUpgradeSwarmFamilyForBot(matchingId, bot.PlayerId))
+                continue;
+
             int cardIndex = ChooseSwarmBotGrowthCard(
                 matchingId, bot, offer, orbCount, aliveSessions, aliveBots);
+            if (cardIndex == SwarmGrowthCardEnhance)
+            {
+                TryUpgradeSwarmFamilyForBot(matchingId, bot.PlayerId);
+                continue;
+            }
             bool applied = ApplySwarmGrowthCard(matchingId, bot.PlayerId, cardIndex, offer, session: null);
             if (applied)
             {
@@ -4155,31 +4170,24 @@ public partial class GameServer
         {
             case SwarmGrowthCardMultiply:
                 {
+                    // 6/6 포화 (#232 4단계): 소환 불가 — 기존 5회 탭 파괴로 빈칸을 만든 뒤 다시 소환한다.
                     if (inventory.GetAllItems().Count >= Config.SWARM_ORB_CAPACITY)
                         return false;
                     if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
                         return false;
+                    // 계열 공유 레벨 적용 (#232 4단계): 강화한 계열은 새 소환도 그 레벨로 등장한다.
+                    int leveledItemId = ApplySwarmFamilyLevelToItem(matchingId, playerId, offer.SpawnItemId);
                     if (session != null)
-                        session.GrantSwarmArenaOrb(offer.SpawnItemId);
+                        session.GrantSwarmArenaOrb(leveledItemId);
                     else
-                        inventory.TryAddItemWithCapacity(offer.SpawnItemId, Config.SWARM_ORB_CAPACITY, out _);
+                        inventory.TryAddItemWithCapacity(leveledItemId, Config.SWARM_ORB_CAPACITY, out _);
+                    SendSwarmFamilyLevels(matchingId, playerId, session);
                     return true;
                 }
             case SwarmGrowthCardEnhance:
-                {
-                    if (offer.EnhanceTargetTier is not (1 or 2))
-                        return false;
-                    var target = GetSwarmTrailOrbs(matchingId, playerId)
-                        .FirstOrDefault(item => GetSquadOrbTier(item.ItemId) == offer.EnhanceTargetTier);
-                    if (target == null)
-                        return false;
-                    if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
-                        return false;
-                    if (!inventory.TryUpgradeSurvivorOrb(target.ItemUid, out _))
-                        return false;
-                    session?.SendInGameInventoryUpdate(target);
-                    return true;
-                }
+                // 개별 오브 공격 강화 퇴역 (#232 4단계): 강화는 계열 공유 레벨(태양·바람·파도 직접
+                // 버튼 → C_TO_G_SWARM_ORB_DECISION)이 맡는다. 오퍼도 EnhanceTargetTier 0으로 나간다.
+                return false;
             case SwarmGrowthCardArmor:
                 {
                     if (offer.ArmorCount <= 0)
@@ -4472,6 +4480,7 @@ public partial class GameServer
         _swarmAnchorOrphanCount.Remove(matchingId);
         _swarmAnchorProbeAtUtc.Remove(matchingId);
         ClearSwarmCrossfireState(matchingId);
+        ClearSwarmOrbBoardState(matchingId);
         foreach (var key in _swarmGrowthPreviewCost.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmGrowthPreviewCost.Remove(key);

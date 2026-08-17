@@ -503,7 +503,7 @@ public partial class GameClientSession
     /// <summary>
     ///     인게임 인벤토리 전체 목록 전송
     /// </summary>
-    private void SendInGameInventoryList()
+    internal void SendInGameInventoryList()
     {
         if (!PlayerId.HasValue) return;
 

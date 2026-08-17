@@ -228,6 +228,44 @@ namespace network.common.data.models
     }
 
     /// <summary>
+    ///     계열 공유 레벨 (#232 4단계). 플레이어별 태양·바람·파도 T1~T3와 다음 강화 비용.
+    ///     보유하지 않은 계열의 비용은 0(강화 불가)이다. 시작·강화·오브 증감 때 보낸다.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_SWARM_FAMILY_LEVELS : IMessagePackObject
+    {
+        [Key("sun")] public int SunLevel { get; set; }
+        [Key("wind")] public int WindLevel { get; set; }
+        [Key("wave")] public int WaveLevel { get; set; }
+        [Key("sunCost")] public int SunCost { get; set; }
+        [Key("windCost")] public int WindCost { get; set; }
+        [Key("waveCost")] public int WaveCost { get; set; }
+    }
+
+    /// <summary>
+    ///     6칸 빌드 결정 (#232 4단계). Action 1 = 계열 강화, TargetItemUid = SurvivorOrbColor 값.
+    ///     서버 권위 — 미보유 계열·T3·소환석 부족이면 거절.
+    /// </summary>
+    [MessagePackObject]
+    public class C_TO_G_SWARM_ORB_DECISION : IMessagePackObject
+    {
+        [Key("action")] public int Action { get; set; }
+        [Key("targetUid")] public long TargetItemUid { get; set; }
+        [Key("secondUid")] public long SecondItemUid { get; set; }
+    }
+
+    /// <summary>결정 결과 (#232 4단계). ResultItemId: 강화된 계열의 새 레벨 대표 오브.</summary>
+    [MessagePackObject]
+    public class G_TO_C_SWARM_ORB_DECISION_RESULT : IMessagePackObject
+    {
+        [Key("action")] public int Action { get; set; }
+        [Key("success")] public bool Success { get; set; }
+        [Key("resultItemId")] public int ResultItemId { get; set; }
+        [Key("targetUid")] public long TargetItemUid { get; set; }
+        [Key("stones")] public int StoneCount { get; set; }
+    }
+
+    /// <summary>
     ///     잼 리더보드 (#222 M3). 전 참가자를 잼 내림차순으로 정렬한 병렬 리스트다.
     ///     구역 게이트 없이 매치 전역으로 브로드캐스트 — 순위표(RankDisplay)의 단일 출처.
     /// </summary>
