@@ -87,9 +87,9 @@ public class SwarmDamagePathTests
     }
 
     /// <summary>
-    ///     #229 6단계 수면 회복: 회복을 줍는 운이 아니라 위치 판단으로 바꾸는 규칙이다.
-    ///     준비 시간·교전 잠금·중단 조건 중 하나라도 빠지면 "눌러서 피해 무시"가 되어
-    ///     완료 조건(교전 중 수면으로 피해를 무시한 사례 0회)이 바로 깨진다.
+    ///     수면 계약 (2026-08-17 재조정): 준비 1초 · 1초마다 최대 HP 5% 회복 · 가해·피해 뒤
+    ///     3초 진입 잠금. 중단은 이동뿐이다 — 피격·폐쇄가 다시 깨우기 시작하면
+    ///     "움직이지 않으면 안 깬다"는 유저 결정이 소리 없이 뒤집힌다.
     /// </summary>
     [Fact]
     public void SwarmSleepRecovery_KeepsWarmupCombatLockAndBreakConditions()
@@ -98,25 +98,25 @@ public class SwarmDamagePathTests
         string combat = File.ReadAllText(
             Path.Combine(root, "game_server", "Network", "GameClientSession.Combat.cs"));
 
-        // 수치 계약: 1.5초 준비 · 초당 최대 HP 5% · 가해·피해 뒤 3초 진입 잠금.
-        Assert.Contains("SwarmSleepWarmupSeconds = 1.5d", combat);
+        // 수치 계약: 1초 준비 · 1초 틱당 최대 HP 5% · 가해·피해 뒤 3초 진입 잠금.
+        Assert.Contains("SwarmSleepWarmupSeconds = 1d", combat);
         Assert.Contains("SwarmSleepRecoveryRatioPerSecond = 0.05f", combat);
         Assert.Contains("SwarmSleepCombatLockSeconds = 3d", combat);
-        // 소수 이월이 없으면 짧은 아레나 틱에서 회복이 매번 0으로 잘린다.
-        Assert.Contains("_swarmSleepRecoveryCarry", combat);
+        // 회복은 연속 이월이 아니라 1초 단위 틱으로 센다.
+        Assert.Contains("_swarmSleepGrantedTicks", combat);
 
-        // 중단 조건 세 갈래가 실제로 물려 있어야 한다.
+        // 중단 경로는 이동 하나뿐이다.
         string movement = File.ReadAllText(
             Path.Combine(root, "game_server", "Network", "GameClientSession.Movement.cs"));
-        Assert.Contains("BreakSwarmSleep(DateTime.UtcNow, markCombat: false)", movement);
+        Assert.Contains("BreakSwarmSleep()", movement);
 
         string arena = File.ReadAllText(
             Path.Combine(root, "game_server", "GameServer.SwarmArena.cs"));
-        // 피격·가해는 교전 잠금을 함께 찍는다.
-        Assert.Contains("BreakSwarmSleep(DateTime.UtcNow, markCombat: true)", arena);
-        Assert.Contains("BreakSwarmSleep(nowUtc, markCombat: true)", arena);
-        // 폐쇄·경고 구역은 잠금 없이 깨우기만 한다.
-        Assert.Contains("sleepBreakAreas", arena);
+        // 피격·절단 가해는 수면을 깨지 않고 교전 잠금만 찍는다.
+        Assert.Contains("MarkSwarmCombat(DateTime.UtcNow)", arena);
+        Assert.Contains("MarkSwarmCombat(nowUtc)", arena);
+        // 아레나에서 수면을 깨우는 호출이 되살아나면 계약 위반이다 (폐쇄·경고 깨우기 퇴역).
+        Assert.DoesNotContain("BreakSwarmSleep", arena);
         Assert.Contains("ProcessSwarmSleepRecovery(aliveSessions, nowUtc)", arena);
     }
 

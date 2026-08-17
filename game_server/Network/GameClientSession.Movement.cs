@@ -131,8 +131,9 @@ public partial class GameClientSession
             // 잠긴 문 검증이 끝난 뒤 위치를 게시한다. 폐쇄 구역도 문이 열려 있으면
             // 진입할 수 있으며, 체류 페널티는 ResourceTick에서 서버 권위로 적용한다.
             // #229 6단계: 이동 입력이 곧 수면 해제다 — 누워서 도망칠 수 없다.
+            // 2026-08-17 재조정: 수면을 깨우는 건 이 이동뿐이다 (피격·폐쇄는 깨우지 않는다).
             if (_isSleeping)
-                BreakSwarmSleep(DateTime.UtcNow, markCombat: false);
+                BreakSwarmSleep();
             // 오브 궤도 (#232): 검증된 이동 거리만큼 돈다 — 멈추면 이동 패킷이 없으니 저절로 선다.
             if (_lastValidatedPosition != null)
                 AdvanceOrbOrbit(_lastValidatedPosition, validatedPosition);
