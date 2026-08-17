@@ -392,9 +392,12 @@ public partial class GameServer
         // 실험장 (#227): 절단 더미 매치에서는 물폭탄도 끈다 — 파도 오브가 계속 터지면
         // 절단 궤적 실험이 폭발 연출·피해에 묻힌다. 미사일 비무장(AddSwarmParticipantCombatActors)과
         // 같은 조건을 쓴다 — 옵트인 환경변수 자체가 실험장 스위치다.
-        // 교차사격 샌드박스(#232)는 켠다 — 파도가 실험 대상이다 (2026-08-17 저녁 유저 지시).
+        // 교차사격 샌드박스(#232)는 켠다 — 파도·바람이 실험 대상이다 (2026-08-17 저녁 유저 지시).
         if (!SwarmCutDummyAutoSetup && (dummyIds.Count == 0 || SwarmCrossfireSandbox))
+        {
             ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+            ProcessSwarmWindSlashes(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+        }
 
         // 접촉 계측 (2026-08-16): 접촉이 성립하는지 층별로 남긴다. 이 줄들이 "봇은 접촉 피해를
         // 안 받는다"는 오독을 두 번 걷어냈다 — 실제로는 로깅이 없었고, 그다음엔 배율이 깎고 있었다.
@@ -544,8 +547,8 @@ public partial class GameServer
             // 통과해 PvP 분기로 새던 문제 — 음수 대역 차단. 태양 분기보다 먼저 건다.
             if (monsterId <= 0 && attack.TargetPlayerId < -1_000_000_000_000L)
                 continue;
-            // 태양·바람은 표적이 몬스터든 플레이어든 교차사격 투사체다 (2026-08-17 유저 지시: 오브가 사람도 조준).
-            // 태양 = 첫 표적에서 폭발, 바람 = 관통 칼날.
+            // 태양은 표적이 몬스터든 플레이어든 교차사격 투사체다 (2026-08-17 유저 지시: 오브가 사람도 조준) —
+            // 첫 표적에서 폭발. 바람은 조준하지 않는다(회전 칼날), 파도는 물폭탄.
             if (IsSwarmCrossfireWeapon(attack.WeaponItemId))
             {
                 // 태양 = 교차사격 직선 (#232 2단계, 2026-08-17): 유도탄이 아니라 예고 뒤 쓸고 지나가는
@@ -4517,6 +4520,7 @@ public partial class GameServer
         _swarmAnchorOrphanCount.Remove(matchingId);
         _swarmAnchorProbeAtUtc.Remove(matchingId);
         ClearSwarmCrossfireState(matchingId);
+        ClearSwarmWindSlashState(matchingId);
         ClearSwarmOrbBoardState(matchingId);
         foreach (var key in _swarmGrowthPreviewCost.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
@@ -4716,28 +4720,24 @@ public partial class GameServer
             // 오브는 표적이 아니다 (#226 재개편): 발사 원점으로만 존재 — 파괴는 절단 전용.
             actor = actor with { Untargetable = true };
             SurvivorOrbData.TryGetColorAndTier(actor.WeaponItemId, out var orbColor, out _);
-            if (orbColor == SurvivorOrbColor.Blue)
+            if (orbColor is SurvivorOrbColor.Blue or SurvivorOrbColor.Green)
             {
                 // 파도: 미사일을 쏘지 않는다 — 물폭탄(별도 주기)이 화력이다.
+                // 바람: 조준하지 않는다 — 회전 칼날(별도 주기, ProcessSwarmWindSlashes)이 화력이다.
                 actors[index] = actor with { Damage = 0 };
                 continue;
             }
 
             // 태양 = 큰 공격 한 번 (#232 2단계): 유도탄 두 발 몫을 한 번에 — 주기 ×2, 피해 ×2.
             // 총 화력은 같고, 예고 → 쓸기 한 사이클이 유도탄 연사보다 읽히는 무게를 갖는다.
-            // 바람 관통 칼날은 피해·주기 그대로 — 가볍고 빠르게, 줄을 세우면 다 맞는다.
             bool crossfireSun = IsSwarmCrossfireSun(actor.WeaponItemId);
-            bool crossfireWind = IsSwarmCrossfireWind(actor.WeaponItemId);
             float crossfireDamageMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER : 1f;
             float crossfireCadenceMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER : 1f;
             SurvivorOrbData.TryGetColorAndTier(actor.WeaponItemId, out _, out int actorTier);
-            // 태양·바람 사거리 = 티어 사거리(투사체가 나는 길이) — 더 먼 표적을 잡으면 투사체가 못 닿고 소멸한다.
-            int actorTierIndex = Math.Clamp(actorTier, 1, 3) - 1;
+            // 태양 사거리 = 티어 사거리(투사체가 나는 길이) — 더 먼 표적을 잡으면 투사체가 못 닿고 소멸한다.
             float actorAttackRange = crossfireSun
-                ? Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER[actorTierIndex]
-                : crossfireWind
-                    ? Config.SWARM_CROSSFIRE_WIND_RANGE_BY_TIER[actorTierIndex]
-                    : SwarmPveSameAreaAttackRange;
+                ? Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER[Math.Clamp(actorTier, 1, 3) - 1]
+                : SwarmPveSameAreaAttackRange;
             actors[index] = actor with
             {
                 Damage = armed

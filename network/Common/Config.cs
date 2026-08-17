@@ -411,14 +411,14 @@ namespace network.common
         public static readonly float[] SWARM_CROSSFIRE_SUN_RANGE_BY_TIER = { 4f, 5.5f, 7f };
 
         /// <summary>
-        ///     바람 관통 칼날 (2026-08-17 저녁 유저 결정): 오브에서 표적 방향으로 가늘고 빠른 직선이 티어 사거리 끝까지
-        ///     날아가며 닿는 몬스터·플레이어를 전부 관통(각 1회 피해·충격). 끝까지 가면 소멸. 유도는 없다 — 태양처럼
-        ///     피할 수 있어야 공평하다. 한 발은 가볍고(피해·주기 그대로) 줄을 세우면 다 맞는다 — 태양(첫 표적에서
-        ///     폭발)의 반대. 폭·사거리는 바닥면 단위.
+        ///     바람 회전 칼날 (2026-08-17 저녁 유저 결정): 조준하지 않는다. 바람 오브가 제자리(열 좌표)에서 오브를 따라
+        ///     움직이며 주기마다 반경 안의 몬스터·플레이어를 한 번에 벤다 — 파도가 자리에 깔리는 고정 범위 공격이라면
+        ///     바람은 오브에 붙어 다니는 이동 범위 공격. 반경은 바닥면 단위, 강화될수록 넓다. 피해 = 바람 PvE 피해 × 배수
+        ///     (유도탄 연사보다 느린 박자라 한 번을 조금 무겁게). 관통 칼날(직선 투사체)은 "너무 타겟팅"이라 퇴역.
         /// </summary>
-        public const float SWARM_CROSSFIRE_WIND_SPEED = 12f;
-        public static readonly float[] SWARM_CROSSFIRE_WIND_WIDTH_BY_TIER = { 0.5f, 0.55f, 0.6f };
-        public static readonly float[] SWARM_CROSSFIRE_WIND_RANGE_BY_TIER = { 5f, 6.5f, 8f };
+        public const float SWARM_WIND_SLASH_INTERVAL_SECONDS = 0.8f;
+        public static readonly float[] SWARM_WIND_SLASH_RADIUS_BY_TIER = { 1.3f, 1.55f, 1.8f };
+        public const float SWARM_WIND_SLASH_DAMAGE_MULTIPLIER = 1.5f;
 
         /// <summary>
         ///     태양 폭발 반경(T1/T2/T3, 바닥면 단위) — 첫 표적에 닿아 터지는 순간 이 안의 몬스터 전부 PvE 피해,
