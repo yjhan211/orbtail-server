@@ -209,8 +209,9 @@ public partial class GameClientSession
         Send(packet);
     }
 
-    /// <summary>6칸 빌드 결정 결과 (#232 4단계).</summary>
-    internal void SendSwarmOrbDecisionResult(int action, bool success, int resultItemId, long targetItemUid)
+    /// <summary>6칸 빌드 결정 결과 (#232 4단계). targetOrdinal = 강화된 오브의 열 순번(없으면 -1).</summary>
+    internal void SendSwarmOrbDecisionResult(
+        int action, bool success, int resultItemId, long targetItemUid, int targetOrdinal = -1)
     {
         if (!PlayerId.HasValue)
             return;
@@ -223,7 +224,8 @@ public partial class GameClientSession
             Success = success,
             ResultItemId = resultItemId,
             TargetItemUid = targetItemUid,
-            StoneCount = stones
+            StoneCount = stones,
+            TargetOrdinal = targetOrdinal
         }));
         Send(packet);
     }

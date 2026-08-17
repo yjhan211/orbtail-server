@@ -245,8 +245,9 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    ///     6칸 빌드 결정 (#232 4단계). Action 1 = 계열 강화, TargetItemUid = SurvivorOrbColor 값.
-    ///     서버 권위 — 미보유 계열·T3·소환석 부족이면 거절.
+    ///     6칸 빌드 결정 (#232 4단계). Action 1 = 오브 강화, TargetItemUid = SurvivorOrbColor 값 —
+    ///     그 계열에서 몸체에 가장 가까운 T3 미만 오브 하나가 한 티어 오른다 (2026-08-18, 구 계열 일괄 강화).
+    ///     서버 권위 — 강화할 오브 없음·소환석 부족이면 거절.
     /// </summary>
     [MessagePackObject]
     public class C_TO_G_SWARM_ORB_DECISION : IMessagePackObject
@@ -256,7 +257,10 @@ namespace network.common.data.models
         [Key("secondUid")] public long SecondItemUid { get; set; }
     }
 
-    /// <summary>결정 결과 (#232 4단계). ResultItemId: 강화된 계열의 새 레벨 대표 오브.</summary>
+    /// <summary>
+    ///     결정 결과 (#232 4단계). ResultItemId: 강화된 오브의 새 아이템, TargetOrdinal: 그 오브의 열 순번
+    ///     (0 = 몸체 바로 뒤; 실패·해당 없음 -1) — 클라가 강화 이펙트를 그 오브 위에 띄운다.
+    /// </summary>
     [MessagePackObject]
     public class G_TO_C_SWARM_ORB_DECISION_RESULT : IMessagePackObject
     {
@@ -265,6 +269,7 @@ namespace network.common.data.models
         [Key("resultItemId")] public int ResultItemId { get; set; }
         [Key("targetUid")] public long TargetItemUid { get; set; }
         [Key("stones")] public int StoneCount { get; set; }
+        [Key("ordinal")] public int TargetOrdinal { get; set; } = -1;
     }
 
     /// <summary>

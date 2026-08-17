@@ -3934,11 +3934,10 @@ public partial class GameServer
                 CostSummon: costSummon, CostAttack: costAttack, CostDefense: costDefense);
         }
 
-        // 소환 티어 = 그 계열의 공유 레벨 (#232 4단계). 품질 티어 RNG는 퇴역 — 티어는 계열 강화가 만든다.
+        // 소환은 늘 T1 (2026-08-18): 티어는 오브마다 계열 버튼으로 따로 산다 — 공유 레벨 상속은 퇴역.
+        // 품질 티어 RNG도 퇴역.
         _ = qualityCost;
-        int spawnItemId = ApplySwarmFamilyLevelToItem(
-            matchingId, playerId,
-            SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)]);
+        int spawnItemId = SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)];
 
         int armorSlots = GetSwarmTrailOrbs(matchingId, playerId)
             .Count(item => !_swarmOrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)));
@@ -4249,12 +4248,11 @@ public partial class GameServer
                         return false;
                     if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
                         return false;
-                    // 계열 공유 레벨 적용 (#232 4단계): 강화한 계열은 새 소환도 그 레벨로 등장한다.
-                    int leveledItemId = ApplySwarmFamilyLevelToItem(matchingId, playerId, offer.SpawnItemId);
+                    // 소환은 T1 그대로 (2026-08-18): 티어는 오브마다 따로 산다 — 공유 레벨 상속은 퇴역.
                     if (session != null)
-                        session.GrantSwarmArenaOrb(leveledItemId);
+                        session.GrantSwarmArenaOrb(offer.SpawnItemId);
                     else
-                        inventory.TryAddItemWithCapacity(leveledItemId, Config.SWARM_ORB_CAPACITY, out _);
+                        inventory.TryAddItemWithCapacity(offer.SpawnItemId, Config.SWARM_ORB_CAPACITY, out _);
                     SendSwarmFamilyLevels(matchingId, playerId, session);
                     return true;
                 }
