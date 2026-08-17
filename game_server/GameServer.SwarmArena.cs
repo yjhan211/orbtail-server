@@ -52,9 +52,9 @@ public partial class GameServer
     private static readonly bool SwarmOrbTargetsPlayersEnabled = false;
 
     // 궤도 복귀 (#232 2026-08-17 유저 지시): 오브가 SB 클론처럼 플레이어 주위를 돈다.
-    // 궤도는 클라 애니메이션(공전 위상)이라 서버가 각 오브의 정확한 자리를 모른다 —
-    // 사격·교차사격 원점과 폐쇄 판정은 본체 위치를 쓴다. 오브열로 되돌리려면 이 값과
-    // 클라 PlayerTool.OrbTrailLayoutEnabled를 함께 바꾼다.
+    // 궤도 위상은 서버 시각의 공유 식(SwarmOrbOrbit)이라 서버가 각 오브의 자리를 안다 —
+    // 사격·교차사격 원점과 표적 선정은 오브 자리, 폐쇄 판정은 본체 위치를 쓴다.
+    // 오브열로 되돌리려면 이 값과 클라 PlayerTool.OrbTrailLayoutEnabled를 함께 바꾼다.
     private static readonly bool SwarmOrbOrbitLayout = true;
 
     // PvP 오염 환산 (#226 재개편): 본체 상시 피격 체제의 TTK 앵커. 0.15 = 혼성 6오브
@@ -465,6 +465,14 @@ public partial class GameServer
                 swarmBodyPositions[actor.PlayerId] = actor.Position;
         }
 
+        // 교차사격 예고 상한 (#232, 명세 "동시 예고 최대 2개"): 상한에 닿은 소유자의 태양 오브는
+        // 이번 틱에 표적을 잡지 않는다 — 리졸버가 조준을 유예하고, 자리가 나면 곧 쏜다.
+        // 발을 버리지 않으면서 예고 수를 묶는 유일한 자리 (발사 뒤엔 이미 쿨다운이 소모돼 있다).
+        var crossfireCappedOwners = CollectSwarmCrossfireCappedOwners(matchingId, nowUtc);
+        // 표적 분산 (#232): 내 살아 있는 모양이 이미 겨눈 몹은 내 다른 태양 오브의 후보에서 뺀다 —
+        // 오브마다 제 자리에서 "아직 아무도 안 겨눈" 가장 가까운 몹을 고른다.
+        var crossfireAnchoredTargets = CollectSwarmCrossfireAnchoredTargets(matchingId);
+
         var attacks = _proximityAutoCombatResolver.Resolve(
             matchingId,
             actors,
@@ -487,6 +495,14 @@ public partial class GameServer
             {
                 if (attacker.IsMonsterTarget || attacker.Area != target.Area)
                     return false;
+                if (IsSwarmCrossfireWeapon(attacker.WeaponItemId))
+                {
+                    if (crossfireCappedOwners.Contains(attacker.PlayerId))
+                        return false;
+                    if (target.IsMonsterTarget &&
+                        crossfireAnchoredTargets.Contains((attacker.PlayerId, target.PlayerId)))
+                        return false;
+                }
                 if (target.IsMonsterTarget)
                     return true;
                 if (!SwarmOrbTargetsPlayersEnabled)
@@ -520,7 +536,9 @@ public partial class GameServer
             {
                 // 태양 = 교차사격 직선 (#232 2단계, 2026-08-17): 유도탄이 아니라 예고 뒤 쓸고 지나가는
                 // 큰 공격이다. 미사일 연출·비행시간 착탄·예약을 타지 않고 모양 하나를 잠근다.
-                // 소유자 동시 예고 상한을 넘으면 모양 없이 기준 몬스터만 즉시 때린다(화력 보존).
+                // 모양을 못 잠그면(같은 틱에 여러 오브가 함께 준비돼 예고 상한을 넘김) 그 발은 환불한다 —
+                // 쿨다운을 되돌려 다음 틱에 다시 시도한다. 모양 없이 때리던 옛 폴백은 "안 맞은 몹이 죽는"
+                // 보이지 않는 피해였다 (2026-08-17 유저 제보). 표시 = 판정: 화면에 없는 공격은 없다.
                 actorById ??= actors
                     .GroupBy(actor => actor.PlayerId)
                     .ToDictionary(group => group.Key, group => group.First());
@@ -532,15 +550,17 @@ public partial class GameServer
                                 (actorById.TryGetValue(attack.TargetPlayerId, out var sunTarget)
                                     ? sunTarget.Position
                                     : null);
-                if (TryScheduleSwarmCrossfire(
+                // 표적 분산의 같은 틱 구멍: 리졸버 필터는 틱 시작의 모양만 봤으니, 같은 틱에 준비된
+                // 두 오브가 같은 몹을 고를 수 있다 — 뒤 오브는 환불하고 다음 틱에 다른 몹을 고르게 한다.
+                bool anchoredThisTick = !crossfireAnchoredTargets.Add((attack.AttackerPlayerId, attack.TargetPlayerId));
+                if (anchoredThisTick ||
+                    !TryScheduleSwarmCrossfire(
                         matchingId, attack, sunOrigin, sunAnchor, monsterId, attack.Damage, nowUtc, sessions))
-                    continue;
-
-                int fallbackDamage = RollSwarmCriticalDamage(attack.Damage, out bool fallbackCritical);
-                _swarmArenaManager.RecordMonsterAttackEvent(matchingId, attack.TargetPlayerId);
-                ApplySwarmMonsterHitNow(
-                    matchingId, attack.TargetPlayerId, monsterId, attack.AttackerPlayerId,
-                    attack.WeaponItemId, attack.Area, fallbackDamage, fallbackCritical, sessions);
+                {
+                    // 로그는 남기지 않는다 — 상한이 찬 동안 매 틱 되풀이되는 정상 대기라 이벤트 흐름만 메운다.
+                    _proximityAutoCombatResolver.RefundAttack(
+                        matchingId, attack.AttackerPlayerId, attack.AttackerItemUid, nowUtc);
+                }
                 continue;
             }
 
@@ -4668,13 +4688,16 @@ public partial class GameServer
         // 패시브뿐이며, 태양 보너스는 모든 PvE 공격에 적용된다. 파도는 별도 물폭탄 시스템.
         float sunAttackMultiplier = SurvivorOrbData.GetSunPveAttackMultiplier(inventoryItems);
         var actorTiers = GetSwarmOrbTiersInOrder(matchingId, spatial.PlayerId);
+        int orbCount = actors.Count - before;
+        long nowUnixMs = (long)(nowUtc - DateTime.UnixEpoch).TotalMilliseconds;
         for (int index = before; index < actors.Count; index++)
         {
             var actor = actors[index];
             // 오브열 (#226 α+): 공격 원점·피격 위치 = 각 오브의 열 좌표 — 표시가 곧 판정.
-            // 궤도 배치(#232)에서는 본체 위치 — 궤도 위상은 클라 연출이라 서버가 모른다.
+            // 궤도 배치(#232): 서버 시각의 함수인 궤도 자리(SwarmOrbOrbit) — 클라가 그리는 자리와
+            // 같다. 오브마다 제 자리에서 가장 가까운 몹을 고르고, 예고선은 그 오브에서 나간다.
             var trailPosition = SwarmOrbOrbitLayout
-                ? spatial.Position
+                ? ResolveSwarmOrbOrbitPosition(spatial.Position, spatial.PlayerId, nowUnixMs, index - before, orbCount)
                 : GetSwarmOrbTrailPosition(
                     matchingId, spatial.PlayerId, index - before, spatial.Position, actorTiers);
             actor = actor with
@@ -4721,6 +4744,34 @@ public partial class GameServer
                 AttackRange = SwarmPveSameAreaAttackRange
             };
         }
+
+        // 발사 순서 공평화 (#232 교차사격 예고 상한): 리졸버는 목록 순서로 공격자를 돌아 자리를
+        // 배정하므로, 상한이 찬 동안 앞 순번 오브만 계속 쏘고 뒤 순번은 굶는다(봇 매치 실측:
+        // 순번 0·1이 3·4의 3~7배). 순번·자리는 이미 박혔으니 목록 순서만 틱마다 돌린다.
+        if (orbCount > 1)
+        {
+            int rotation = (int)(nowUnixMs / 50 % orbCount);
+            if (rotation > 0)
+            {
+                var rotated = new ProximityCombatActor[orbCount];
+                for (int offset = 0; offset < orbCount; offset++)
+                    rotated[offset] = actors[before + (offset + rotation) % orbCount];
+                for (int offset = 0; offset < orbCount; offset++)
+                    actors[before + offset] = rotated[offset];
+            }
+        }
+    }
+
+    /// <summary>
+    ///     궤도 자리 (#232): 본체 위치 + 공유 식(SwarmOrbOrbit). 순번·개수는 클라 슬롯 배정
+    ///     (AssignOrbRingLayout: 보이는 오브를 360/N 균등)과 같은 규칙이라 같은 자리가 나온다.
+    /// </summary>
+    private static Vector3f ResolveSwarmOrbOrbitPosition(
+        Vector3f bodyPosition, long ownerPlayerId, long nowUnixMs, int ordinal, int count)
+    {
+        SwarmOrbOrbit.SlotPosition(
+            bodyPosition.X, bodyPosition.Y, ownerPlayerId, nowUnixMs, ordinal, count, out float x, out float y);
+        return new Vector3f(x, y, bodyPosition.Z);
     }
 
     /// <summary>

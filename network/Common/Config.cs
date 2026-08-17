@@ -333,6 +333,17 @@ namespace network.common
         public const float SWARM_ORB_ATTACK_RANGE = 2.5f;
 
         /// <summary>
+        ///     오브 궤도 (#232, 2026-08-17 서버 공유): 오브는 본체 주위 타원 궤도를 일정 각속도로
+        ///     돈다. 위상은 서버 시각의 함수(SwarmOrbOrbit)라 서버·모든 클라가 같은 자리를 계산한다 —
+        ///     서버는 그 자리를 오브별 발사 원점·표적 선정 기준으로 쓰고, 클라는 그 자리에 그린다.
+        ///     반지름 = 사거리 × 배수, 아이소 타원(y 절반), 궤도 중심 = 본체 + Y 오프셋.
+        /// </summary>
+        public const float SWARM_ORB_ORBIT_DEGREES_PER_SECOND = 54f;
+        public const float SWARM_ORB_ORBIT_RADIUS_MULTIPLIER = 0.8f;
+        public const float SWARM_ORB_ORBIT_ISO_Y_SCALE = 0.5f;
+        public const float SWARM_ORB_ORBIT_CENTER_OFFSET_Y = 0.8f;
+
+        /// <summary>
         ///     유저간 사격 사거리 (2026-08-16 유저 명세). PvE(7)보다 짧게 — 붙어야 싸운다.
         ///     플레이어 본체 기준으로 잰다: 오브별 원점으로 재면 꼬리가 길수록 사정권이
         ///     늘어나 "오브 수는 PvP 화력을 키우지 않는다"는 규칙과 어긋나고, 링 하나로
@@ -362,10 +373,13 @@ namespace network.common
         public const float SWARM_CROSSFIRE_OWNER_HIT_INTERVAL_SECONDS = 1f;
 
         /// <summary>
-        ///     한 플레이어가 동시에 유지할 수 있는 교차사격 예고 수. 태양 오브 셋이 각자 한 줄씩 —
-        ///     넘치는 발은 모양 없이 기준 몬스터만 때린다(화력 보존, 화면 포화 방지).
+        ///     한 플레이어가 동시에 유지할 수 있는 교차사격 예고 수 (명세 "동시 예고 최대 2개"). 예고(시전)
+        ///     중인 모양만 센다 — 발동 뒤 날아가는 투사체는 예고가 아니다. 상한에 닿은 소유자의 태양은
+        ///     표적을 잡지 않고 기다렸다가(리졸버 필터) 자리가 나면 쏜다 — 버리지 않는다.
+        ///     모양 없이 때리던 옛 폴백은 "안 맞은 몹이 죽는" 보이지 않는 피해였다 (2026-08-17 유저 제보:
+        ///     봇 매치에서 예고 594건에 폴백 1293건). 표시 = 판정: 화면에 없는 공격은 없다.
         /// </summary>
-        public const int SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER = 3;
+        public const int SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER = 2;
 
         /// <summary>
         ///     태양 직선 (2026-08-17 유저 판정: 미사일이 아니라 "경고색이 깜빡인 뒤 큰 공격이 한 번에

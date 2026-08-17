@@ -416,6 +416,23 @@ public sealed class ProximityAutoCombatResolver
             : left.WeaponStackIndex.CompareTo(right.WeaponStackIndex);
     }
 
+    /// <summary>
+    ///     발사 환불 (#232 교차사격 예고 상한): 이번 틱에 뽑힌 공격을 호출부가 실행하지 못했을 때
+    ///     (같은 틱에 여러 오브가 함께 준비돼 예고 상한을 넘김) 그 오브의 다음 발사 시각을 지금으로
+    ///     되돌린다 — 쿨다운을 소모하지 않고 다음 틱에 다시 시도한다(필터가 자리를 열어 줄 때까지).
+    ///     조준·표적은 유지한다. 같은 무기 uid의 모든 스택에 적용한다.
+    /// </summary>
+    public void RefundAttack(long matchingId, long playerId, long itemUid, DateTime nowUtc)
+    {
+        foreach (var key in _combatStates.Keys)
+        {
+            if (key.MatchingId != matchingId || key.PlayerId != playerId || key.ItemUid != itemUid)
+                continue;
+            if (_combatStates.TryGetValue(key, out var state))
+                _combatStates[key] = state with { NextAttackAtUtc = nowUtc };
+        }
+    }
+
     private readonly record struct CombatState(
         long TargetPlayerId,
         int WeaponItemId,

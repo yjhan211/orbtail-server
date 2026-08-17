@@ -25,6 +25,9 @@ public partial class GameServer
     private const float SwarmGroundYScale = 2f;
     // 몬스터 몸통 여유 — 앞머리가 몸 가장자리를 스쳐도 맞는다 (접촉 반경 0.32와 같은 급).
     private const float SwarmCrossfireMonsterRadius = 0.3f;
+    // 플레이어 몸통 여유 — 중심점만 재면 캡슐 가장자리가 몸을 스치는 장면에서 "지나갔는데 안 맞는다"
+    // (2026-08-17 유저 제보). 몸 폭의 절반쯤.
+    private const float SwarmCrossfirePlayerRadius = 0.25f;
 
     private sealed class SwarmCrossfireShape
     {
@@ -42,6 +45,8 @@ public partial class GameServer
         public DateTime ArmedAtUtc { get; init; }
         public DateTime ExpiresAtUtc { get; init; }
         public int AnchorMonsterId { get; init; }
+        // 기준 몬스터의 전투 표적 id — 리졸버 후보(PlayerId 자리)와 같은 값. 표적 분산 필터가 비교한다.
+        public long AnchorCombatTargetId { get; init; }
         // 앞머리가 지난 축 위치(바닥면 단위, 원점 = 0). 캡 반폭 앞에서 시작한다.
         public float LastFront { get; set; }
         public HashSet<long> HitVictims { get; } = new();
@@ -60,8 +65,68 @@ public partial class GameServer
         color == SurvivorOrbColor.Red;
 
     /// <summary>
-    ///     발사 순간 직선을 잠근다. 소유자당 동시 예고 상한을 넘으면 false — 호출부가 기준 몬스터에
-    ///     모양 없이 직접 피해를 준다(화력 보존, 화면 포화 방지).
+    ///     소유자가 지금 예고(시전) 중인 모양 수 — 발동 뒤 쓸고 있는 모양은 세지 않는다.
+    ///     리졸버 필터(상한이면 태양이 표적을 잡지 않음)와 예약 가드가 같은 수를 본다.
+    /// </summary>
+    private int CountSwarmCrossfireTelegraphing(long matchingId, long ownerId, DateTime nowUtc)
+    {
+        int count = 0;
+        foreach (var shape in _swarmCrossfireShapes)
+        {
+            if (shape.MatchingId == matchingId && shape.OwnerId == ownerId && nowUtc < shape.ArmedAtUtc)
+                count++;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    ///     표적 분산 (#232, 2026-08-17 유저 지시 "한번에 같은 걸 겨냥하지 말 것"): 소유자의 살아 있는
+    ///     모양이 이미 기준으로 잡은 몬스터 쌍. 리졸버 필터가 같은 소유자의 다른 태양 오브에게 이 몹을
+    ///     후보에서 빼 준다 — 다음으로 가까운 몹을 고르므로 오브마다 다른 자리를 겨눈다.
+    ///     모양이 쓸고 끝나면(제거) 다시 후보가 된다. 예약(PendingDamage) 대신 이 필터를 쓰는 이유:
+    ///     쓸기가 빗나가도 풀어 줄 게 없다 — 모양의 수명이 곧 배제 기간이다.
+    /// </summary>
+    private HashSet<(long OwnerId, long CombatTargetId)> CollectSwarmCrossfireAnchoredTargets(long matchingId)
+    {
+        var anchored = new HashSet<(long, long)>();
+        foreach (var shape in _swarmCrossfireShapes)
+        {
+            if (shape.MatchingId == matchingId)
+                anchored.Add((shape.OwnerId, shape.AnchorCombatTargetId));
+        }
+
+        return anchored;
+    }
+
+    /// <summary>
+    ///     이번 틱에 예고 상한에 닿은 소유자들 — 리졸버 필터가 이들의 태양 오브 조준을 유예한다.
+    ///     틱마다 한 번 만든다 (필터는 공격자×표적 쌍마다 불린다).
+    /// </summary>
+    private HashSet<long> CollectSwarmCrossfireCappedOwners(long matchingId, DateTime nowUtc)
+    {
+        var telegraphingByOwner = new Dictionary<long, int>();
+        foreach (var shape in _swarmCrossfireShapes)
+        {
+            if (shape.MatchingId != matchingId || nowUtc >= shape.ArmedAtUtc)
+                continue;
+            telegraphingByOwner[shape.OwnerId] = telegraphingByOwner.GetValueOrDefault(shape.OwnerId) + 1;
+        }
+
+        var capped = new HashSet<long>();
+        foreach (var (ownerId, count) in telegraphingByOwner)
+        {
+            if (count >= Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
+                capped.Add(ownerId);
+        }
+
+        return capped;
+    }
+
+    /// <summary>
+    ///     발사 순간 직선을 잠근다. 소유자당 동시 예고 상한에 닿아 있으면 false — 호출부는 그 발을
+    ///     버린다(모양 없는 피해는 없다). 보통은 리졸버 필터가 먼저 막아 여기까지 안 온다 — 같은 틱에
+    ///     여러 오브가 함께 준비된 경우만 걸린다.
     /// </summary>
     private bool TryScheduleSwarmCrossfire(
         long matchingId,
@@ -77,14 +142,8 @@ public partial class GameServer
             return false;
         SurvivorOrbData.TryGetColorAndTier(attack.WeaponItemId, out _, out int tier);
 
-        int activeForOwner = 0;
-        foreach (var shape in _swarmCrossfireShapes)
-        {
-            if (shape.MatchingId == matchingId && shape.OwnerId == attack.AttackerPlayerId)
-                activeForOwner++;
-        }
-
-        if (activeForOwner >= Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
+        if (CountSwarmCrossfireTelegraphing(matchingId, attack.AttackerPlayerId, nowUtc) >=
+            Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
             return false;
 
         // 바닥면 기하 (2026-08-17 유저 판정: 범위가 타일을 따라가야 한다). 이 맵은 아이소 타일이라
@@ -125,6 +184,7 @@ public partial class GameServer
             ArmedAtUtc = armedAt,
             ExpiresAtUtc = armedAt.AddSeconds(sweepSeconds),
             AnchorMonsterId = anchorMonsterId,
+            AnchorCombatTargetId = attack.TargetPlayerId,
             LastFront = -halfWidth
         });
 
@@ -134,6 +194,7 @@ public partial class GameServer
         _gameEventLogManager.LogSystem(
             matchingId,
             $"ORB_CROSSFIRE_TELEGRAPH event={eventId} owner={attack.AttackerPlayerId} " +
+            $"ordinal={attack.AttackerTrailOrdinal} " +
             $"weapon={attack.WeaponItemId} tier={tier} shape=line anchor={anchorMonsterId} " +
             $"area={attack.Area} origin=({origin.X:F2},{origin.Y:F2}) end=({end.X:F2},{end.Y:F2}) " +
             $"width={width:F2} groundLength={groundLength:F2} damage={damage} " +
@@ -243,7 +304,7 @@ public partial class GameServer
                         (matchingId, shape.OwnerId), out var ownerLastHit) &&
                     (nowUtc - ownerLastHit).TotalSeconds < Config.SWARM_CROSSFIRE_OWNER_HIT_INTERVAL_SECONDS)
                     continue;
-                if (!IsPointSweptBySwarmCrossfire(shape, participant.Position, lastFront, front, 0f))
+                if (!IsPointSweptBySwarmCrossfire(shape, participant.Position, lastFront, front, SwarmCrossfirePlayerRadius))
                     continue;
 
                 shape.HitVictims.Add(participant.PlayerId);
@@ -287,7 +348,7 @@ public partial class GameServer
     }
 
     /// <summary>
-    ///     즉시 몬스터 타격 (교차사격 쓸기·상한 초과 폴백 공용). 착탄 지연 큐와 같은 정산 —
+    ///     즉시 몬스터 타격 (교차사격 쓸기). 착탄 지연 큐와 같은 정산 —
     ///     결과 집계, 처치 계측(monster_lifetime), 처치 로그, 소환석 드롭. 공격자 화면엔 숫자만
     ///     띄운다(투사체 없음).
     /// </summary>
