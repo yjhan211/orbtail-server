@@ -15,7 +15,8 @@ namespace game_server;
 /// </summary>
 public partial class GameServer
 {
-    private const int SwarmRingVfxKindWindSlash = 7;
+    // 7~15는 공격 사건 VFX(SwarmAttackEvents: 태양 시전 7 …)가 쓴다 — 겹치면 클라가 그쪽으로 삼킨다.
+    private const int SwarmRingVfxKindWindSlash = 16;
     // 몸통 여유 — 교차사격과 같은 값.
     private const float SwarmWindSlashMonsterRadius = 0.3f;
     private const float SwarmWindSlashPlayerRadius = 0.25f;
