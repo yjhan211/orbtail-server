@@ -43,7 +43,9 @@ public sealed class SwarmArenaManager
     // 서버 위치는 클라 예측보다 늦으므로 회피자에게 후한 쪽이 맞다.
     public const float ContactRange = 0.32f;
     public const float ContactCooldownSeconds = 1f;
-    public const float MonsterMoveSpeed = 4.2f;
+    // 4.2 → 3.2 (#232 2026-08-17 유저 지시: 몹이 너무 빠르다). 플레이어 5의 64% — 걷기만으로
+    // 거리가 벌어지고, 태양 쓸기(4.5u/s)가 몹을 확실히 추월해 "지나가며 쓸어 담는" 그림이 성립한다.
+    public const float MonsterMoveSpeed = 3.2f;
     public const float RingTelegraphSeconds = 1f;
     public const float RushTelegraphSeconds = 1f;
     public const float EncircleTelegraphSeconds = 1.5f;
@@ -247,9 +249,28 @@ public sealed class SwarmArenaManager
     // 여유까지 걸치고, 아이소메트릭 대각이면 더 길어진다. 10샘플(3.5) — 벽 한 장은 이보다
     // 훨씬 길므로 관통 방지는 유지된다.
     private const int DoorwayBlockedSampleTolerance = 10;
-    // 행군 제한: 경로가 길수록 넉넉히 주되, 막히면 낭비 없이 걷어낸다. 웨이포인트 수 × 계수.
-    private const double MarchBudgetSecondsPerWaypoint = 1.2d;
+    // 행군 제한: 경로가 길수록 넉넉히 주되, 막히면 낭비 없이 걷어낸다.
+    // 웨이포인트 수 × 고정 계수는 폐기 (2026-08-17): 웨이포인트 간격이 균일하지 않아 긴 경로가
+    // 계수 추정을 넘고, 이속을 4.2 → 3.2로 내리자 정상 행군까지 예산 초과로 12초마다 걷히고
+    // 다시 스폰되는 순환이 생겼다(실측). 실제 경로 길이 / 이속 × 여유로 계산한다.
+    private const double MarchBudgetSlackMultiplier = 1.8d;
     private const double MarchBudgetMinimumSeconds = 8d;
+
+    /// <summary>행군 예산 = 경로 실거리 기준 소요 시간 × 여유. 최소 8초.</summary>
+    private static double ComputeMarchBudgetSeconds(Vector3f start, IReadOnlyList<Vector3f> route)
+    {
+        double length = 0d;
+        var previous = start;
+        for (int index = 0; index < route.Count; index++)
+        {
+            float dx = route[index].X - previous.X;
+            float dy = route[index].Y - previous.Y;
+            length += MathF.Sqrt(dx * dx + dy * dy);
+            previous = route[index];
+        }
+
+        return Math.Max(MarchBudgetMinimumSeconds, length / MonsterMoveSpeed * MarchBudgetSlackMultiplier);
+    }
 
     // #219 SB 몬스터 4종 (원작 스펙 ÷25 환산, 잼 보류 — 보상은 소환석만).
     // 해골: 무해한 코인 파밍 무리. 다트: 원거리 단발. 탈주: 접촉 강펀치 브루저. 볼러: 범위 투척.
@@ -360,7 +381,14 @@ public sealed class SwarmArenaManager
     private const float RushDistance = 11f;
     private const float RushLateralSpread = 1.6f;
     private const float EncircleRadius = 4.5f;
-    private const float ScatterRadius = 0.2f;
+    // 포위 오프셋 (#232 2026-08-17 유저 결정: 몹이 뭉쳐 따라오지 말고 축이 될 만큼 산재).
+    // 접근 목표 = 플레이어 + 개체 고유 각도의 오프셋. 반경은 추격하는 동안 줄어들어 결국 접촉한다 —
+    // 사방에서 조여드는 흩어진 고리가 되고, 교차사격 기준점이 여러 방위에 선다.
+    // 바닥면은 아이소라 Y 오프셋은 절반(dy×2 정규화의 역).
+    private const float SurroundStartRadius = 3.5f;
+    private const float SurroundShrinkPerSecond = 0.35f;
+    // 반경 0 이후 이만큼 더 감쇠하는 동안 플레이어를 직격한다(접촉 창 ≈ 1.7초), 그 뒤 고리로 복귀.
+    private const float SurroundLungeDepth = 0.6f;
     private const float RetargetStickinessSquared = 1.5625f;
     // 아이소 월드 스케일에서 방의 세로 폭은 ~2.5유닛에 불과하다. 이동 목표가 방을
     // 벗어나면 구역 클램프로 제자리 회귀해 봇이 서 있는 것처럼 보인다 — 짧게 잡는다.
@@ -1402,6 +1430,7 @@ public sealed class SwarmArenaManager
             return;
         }
 
+        // 캠프(레거시)는 포위 없이 직진 — 잠깨는 순간의 접촉 리듬(무적창 테스트)이 이 직진에 기댄다.
         MoveTowardPlayer(monster, target.Position, deltaSeconds);
     }
 
@@ -1875,8 +1904,7 @@ public sealed class SwarmArenaManager
             {
                 monster.Infiltrating = true;
                 monster.MarchWaypoints.AddRange(route);
-                monster.MarchBudgetSeconds = Math.Max(
-                    MarchBudgetMinimumSeconds, route.Count * MarchBudgetSecondsPerWaypoint);
+                monster.MarchBudgetSeconds = ComputeMarchBudgetSeconds(position, route);
             }
 
             state.Monsters[monster.MonsterId] = monster;
@@ -1988,8 +2016,7 @@ public sealed class SwarmArenaManager
             monster.MarchWaypoints.Clear();
             monster.MarchWaypoints.AddRange(route);
             monster.MarchIndex = 0;
-            monster.MarchBudgetSeconds = Math.Max(
-                MarchBudgetMinimumSeconds, route.Count * MarchBudgetSecondsPerWaypoint);
+            monster.MarchBudgetSeconds = ComputeMarchBudgetSeconds(monster.Position, route);
             return true;
         }
 
@@ -2400,6 +2427,8 @@ public sealed class SwarmArenaManager
         }
 
         // 추격 이동 선택 (2026-08-16 유저 결정: 경로탐색을 적용한다).
+        // (아래 직선 판정은 포위 오프셋 이전의 본체 좌표 기준 — 오프셋 목표가 벽이면
+        //  MoveTowardPlayer의 축별 미끄러짐이 처리한다.)
         // 직선이 뚫려 있으면 조향으로 쫓는다 — 반응이 빠르고 무리가 자연스럽게 퍼진다.
         // 막혀 있으면 그 자리에서 바로 경로를 깐다. 막힌 뒤에 뒤늦게 전환하면 그 사이 벽에
         // 붙어 미끄러지는 구간이 눈에 남는다("타일 끝에 껴 있는 몹").
@@ -2420,13 +2449,12 @@ public sealed class SwarmArenaManager
                 monster.MarchWaypoints.Clear();
                 monster.MarchWaypoints.AddRange(detour);
                 monster.MarchIndex = 0;
-                monster.MarchBudgetSeconds = Math.Max(
-                    MarchBudgetMinimumSeconds, detour.Count * MarchBudgetSecondsPerWaypoint);
+                monster.MarchBudgetSeconds = ComputeMarchBudgetSeconds(monster.Position, detour);
                 return;
             }
         }
 
-        MoveTowardPlayer(monster, target.Position, deltaSeconds);
+        MoveTowardPlayer(monster, target.Position, deltaSeconds, surround: true);
     }
 
     private void SpawnDueParticipantPattern(
@@ -2599,13 +2627,39 @@ public sealed class SwarmArenaManager
         result.SpawnedMonsters.Add(monster.ToMonsterRuntimeInfo());
     }
 
-    private static void MoveTowardPlayer(MonsterRuntime monster, Vector3f playerPosition, double deltaSeconds)
+    private static void MoveTowardPlayer(
+        MonsterRuntime monster, Vector3f playerPosition, double deltaSeconds, bool surround = false)
     {
-        // 개체별 산포 오프셋으로 플레이어 주변을 둘러싸게 한다. 열 형성 방지.
+        // 포위 오프셋 (#232): 개체 고유 각도의 접근 목표 — 사방에서 조여드는 흩어진 고리.
+        // 반경은 추격하는 동안만 줄어들고, 현재 거리로 캡한다 — 이미 붙은 몹이 오프셋 지점으로
+        // 멀어지면 접촉이 영영 안 난다. 앵커 복귀(surround=false)는 오프셋 없이 정확히 간다.
+        float radius = 0f;
+        // 플레이어와 같은 구역에 들어온 뒤부터 포위한다 — 문·복도의 몹이 오프셋 각도 때문에
+        // 문을 못 찾고 겉돌면 구역 목표 수가 영영 안 찬다. 밖에서는 오프셋 없이 직진.
+        var playerArea = GameMapData.GetCurrentArea(
+            MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, playerPosition));
+        if (surround && monster.Area == playerArea)
+        {
+            // 숨쉬는 포위 (#232): 반경이 0에 머물면 전원이 플레이어 위로 수렴한다 — 그게
+            // "뭉쳐 따라옴"이다. 사이클을 돈다: 고리 접근 → 조임 → 반경 0 구간(접촉 창, 음수로
+            // 계속 감쇠) → 시작 반경으로 리셋해 다시 걸어 나온다. 리셋 폭을 개체 각도로 흔들어
+            // 위상이 갈라진다. 거리 캡은 두지 않는다 — 붙은 몹이 min(반경, 거리 0)에 갇혀
+            // 안 움직이면 정지 감시가 걷어가 구역 수가 출렁였다(실측).
+            monster.SurroundRadius -= (float)(SurroundShrinkPerSecond * deltaSeconds);
+            if (monster.SurroundRadius <= -SurroundLungeDepth)
+                monster.SurroundRadius = SurroundStartRadius *
+                                         (0.7f + 0.3f * (MathF.Sin(monster.ScatterAngle * 3.7f) + 1f) * 0.5f);
+            radius = MathF.Max(0f, monster.SurroundRadius);
+        }
+
         var target = new Vector3f(
-            playerPosition.X + MathF.Cos(monster.ScatterAngle) * ScatterRadius,
-            playerPosition.Y + MathF.Sin(monster.ScatterAngle) * ScatterRadius,
+            playerPosition.X + MathF.Cos(monster.ScatterAngle) * radius,
+            playerPosition.Y + MathF.Sin(monster.ScatterAngle) * radius * 0.5f,
             0f);
+        // 좁은 방에서는 오프셋 목표가 방 밖(복도)으로 새 구역 인원이 흘러나간다 —
+        // 플레이어가 선 구역 안으로 눌러 담는다 (밖이면 플레이어 쪽으로 줄인다).
+        if (radius > 0.05f && playerArea != AreaType.None)
+            target = ClampToAreaWalkable(target, playerPosition, playerArea);
         float dx = target.X - monster.Position.X;
         float dy = target.Y - monster.Position.Y;
         float distance = MathF.Sqrt(dx * dx + dy * dy);
@@ -2810,6 +2864,9 @@ public sealed class SwarmArenaManager
         public DateTime SpawnedAtUtc { get; set; }
         public int AttackEventCount { get; set; }
         public float ScatterAngle { get; init; }
+
+        // 포위 반경 (#232): 추격 중 매 틱 줄어든다. 스폰 시 SurroundStartRadius로 시작.
+        public float SurroundRadius { get; set; } = SurroundStartRadius;
         public int SummonStoneReward { get; init; }
         public int HeartReward { get; init; }
         public int BootsReward { get; init; }
