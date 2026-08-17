@@ -69,18 +69,21 @@ public partial class GameServer
         if (activeForOwner >= Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
             return;
 
-        float dx = anchor.X - origin.X;
-        float dy = anchor.Y - origin.Y;
-        float length = MathF.Sqrt(dx * dx + dy * dy);
-        if (length < 0.05f)
+        // 바닥면 기하 (2026-08-17 유저 판정: 범위가 타일을 따라가야 한다). 이 맵은 아이소 타일이라
+        // 월드 Y가 화면 세로로 절반 눌려 있다 — 접촉·물폭탄과 같은 정규화(dy×2)로 바닥면에서
+        // 방향·연장·폭을 재고, 월드로 되돌려 보낸다. 클라도 같은 면(Y 0.5 스케일)에 그린다.
+        float gx = anchor.X - origin.X;
+        float gy = (anchor.Y - origin.Y) * SwarmGroundYScale;
+        float groundLength = MathF.Sqrt(gx * gx + gy * gy);
+        if (groundLength < 0.05f)
             return;
 
         int tierIndex = Math.Clamp(tier, 1, 3) - 1;
         float extend = Config.SWARM_CROSSFIRE_SUN_EXTEND_BY_TIER[tierIndex];
         float width = Config.SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER[tierIndex];
         var end = new Vector3f(
-            anchor.X + dx / length * extend,
-            anchor.Y + dy / length * extend,
+            anchor.X + gx / groundLength * extend,
+            anchor.Y + gy / groundLength * extend / SwarmGroundYScale,
             0f);
 
         long eventId = ++_swarmCrossfireEventSeq;
@@ -195,18 +198,25 @@ public partial class GameServer
         }
     }
 
-    /// <summary>캡슐 판정: 점과 선분의 최단 거리가 반폭 이하. 클라 LineRenderer(둥근 캡)와 같은 기하.</summary>
+    // 아이소 바닥면 정규화 계수 — 접촉 판정·물폭탄 반경과 같은 dy×2.
+    private const float SwarmGroundYScale = 2f;
+
+    /// <summary>
+    ///     캡슐 판정 (바닥면): 점과 선분의 최단 거리가 반폭 이하 — 월드 Y를 2배로 편 정규화
+    ///     공간에서 잰다. 클라 캡슐 스프라이트(Y 0.5 스케일 부모 아래 회전)와 같은 기하다.
+    /// </summary>
     private static bool IsPointInsideSwarmCrossfireLine(SwarmCrossfireShape shape, Vector3f point)
     {
-        float ax = shape.Origin.X, ay = shape.Origin.Y;
-        float bx = shape.End.X, by = shape.End.Y;
+        float ax = shape.Origin.X, ay = shape.Origin.Y * SwarmGroundYScale;
+        float bx = shape.End.X, by = shape.End.Y * SwarmGroundYScale;
+        float px = point.X, py = point.Y * SwarmGroundYScale;
         float abx = bx - ax, aby = by - ay;
         float lengthSquared = abx * abx + aby * aby;
         float t = lengthSquared <= 0f
             ? 0f
-            : Math.Clamp(((point.X - ax) * abx + (point.Y - ay) * aby) / lengthSquared, 0f, 1f);
+            : Math.Clamp(((px - ax) * abx + (py - ay) * aby) / lengthSquared, 0f, 1f);
         float cx = ax + abx * t, cy = ay + aby * t;
-        float dx = point.X - cx, dy = point.Y - cy;
+        float dx = px - cx, dy = py - cy;
         return dx * dx + dy * dy <= shape.HalfWidth * shape.HalfWidth;
     }
 
