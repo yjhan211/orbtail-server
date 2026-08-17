@@ -321,7 +321,7 @@ public partial class GameServer
 
         // 실험장 자동 세팅 (#226): 사람이 있는 매치는 첫 틱에 절단 더미가 자동으로 선다.
         // 봇 전용 검증 매치는 제외 — 게이트 계측이 오염되지 않게.
-        if (SwarmCutDummyAutoSetup && aliveSessions.Count > 0 && aliveBots.Count > 0 &&
+        if (SwarmDummySandboxActive && aliveSessions.Count > 0 && aliveBots.Count > 0 &&
             _swarmCutDummyAutoSetupDone.Add(matchingId))
         {
             SetupSwarmCutDummy(matchingId);
@@ -447,6 +447,8 @@ public partial class GameServer
         ProcessSwarmScoreTimeout(matchingId, nowUtc, sessions, aliveSessions, aliveBots);
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
         ProcessPendingSwarmMonsterHits(matchingId, nowUtc, sessions);
+        // 교차사격 판정 (#232 2단계): 예고가 끝난 모양을 이번 틱 위치로 판정한다.
+        ProcessSwarmCrossfires(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
 
         // 비행 중인 PvP 탄을 매 틱 지우던 줄을 걷어낸다 (2026-08-16 유저 제보: 플레이어
         // 오브가 봇을 안 때린다). "리졸버는 PvE 전용"이라는 전제로 쓰인 청소인데, 리졸버가
@@ -571,6 +573,9 @@ public partial class GameServer
                     matchingId, attack.TargetPlayerId, attack.AttackerPlayerId,
                     monsterDamage, nowUtc.AddSeconds(delaySeconds),
                     attack.WeaponItemId, attack.AttackerItemUid, origin, anchor));
+                // 교차사격 (#232 2단계): 같은 발사가 사람에게 닿는 유일한 경로 — 원점→기준점
+                // 직선을 잠그고 예고를 뿌린다. PvE 피해와 독립이라 몹이 먼저 죽어도 모양은 남는다.
+                TryScheduleSwarmCrossfire(matchingId, attack, origin, anchor, monsterId, nowUtc, sessions);
                 continue;
             }
 
@@ -2781,7 +2786,17 @@ public partial class GameServer
     // 명시적 분리 (단계 0): DEV_CUT_DUMMY=1 환경변수 옵트인 — 일반 매치는 순정으로 돈다. =====
     private static readonly bool SwarmCutDummyAutoSetup =
         Environment.GetEnvironmentVariable("DEV_CUT_DUMMY") == "1";
+
+    // 교차사격 샌드박스 (#232 2단계): DEV_CROSSFIRE_SANDBOX=1 — 절단 실험장과 같은 격리
+    // (운동장 더미 하나 + 나머지 봇 퇴장 + 몹 접촉 무해)를 쓰되, 더미는 태양 T1 3개·철갑
+    // 없음·무장(몹을 쏜다)이다. 사람 오브도 무장 — 실험 대상이 절단 궤적이 아니라
+    // 몹을 향한 사격이 만드는 직선이기 때문이다. user_server 같은 env가 전원을 운동장에 스폰한다.
+    private static readonly bool SwarmCrossfireSandbox =
+        Environment.GetEnvironmentVariable("DEV_CROSSFIRE_SANDBOX") == "1";
+    private static bool SwarmDummySandboxActive => SwarmCutDummyAutoSetup || SwarmCrossfireSandbox;
     private const int SwarmCutDummyOrbCount = 10;
+    private const int SwarmCrossfireDummyOrbCount = 3;
+    private static int SwarmDummyOrbCount => SwarmCrossfireSandbox ? SwarmCrossfireDummyOrbCount : SwarmCutDummyOrbCount;
     // 과녁 열은 단색 태양 T1 — 시작 지급의 무작위 색이 섞이면 파도(물폭탄)가 딸려 온다.
     private const int SwarmCutDummyOrbItemId = 107000010;
     // 절단 직후 3초는 비워 둔다 — 즉시 채우면 "끊어도 안 줄어드는" 것처럼 보인다.
@@ -2797,7 +2812,7 @@ public partial class GameServer
     private void ProcessSwarmCutDummyRefill(long matchingId, BotPlayerState dummy, DateTime nowUtc)
     {
         var key = (matchingId, dummy.PlayerId);
-        if (CountSwarmSquadOrbs(matchingId, dummy.PlayerId) >= SwarmCutDummyOrbCount)
+        if (CountSwarmSquadOrbs(matchingId, dummy.PlayerId) >= SwarmDummyOrbCount)
         {
             _swarmCutDummyRefillAtUtc.Remove(key);
             return;
@@ -2833,10 +2848,14 @@ public partial class GameServer
     private void RefillSwarmCutDummyOrbs(long matchingId, BotPlayerState dummy)
     {
         for (int index = CountSwarmSquadOrbs(matchingId, dummy.PlayerId);
-             index < SwarmCutDummyOrbCount;
+             index < SwarmDummyOrbCount;
              index++)
             _inGameInventoryManager.TryAddItemWithCapacity(
                 matchingId, dummy.PlayerId, SwarmCutDummyOrbItemId, Config.SWARM_ORB_CAPACITY, out _);
+
+        // 교차사격 샌드박스는 철갑을 안 씌운다 — 절단이 꺼져 있어 내구는 의미가 없다.
+        if (SwarmCrossfireSandbox)
+            return;
 
         // 실험 과녁 (#227): 머리쪽 절반은 방어 강화(5/5), 나머지 절반은 맨 오브(1/5) —
         // 같은 열에서 두 내구를 나란히 밟아 비교할 수 있다.
@@ -2922,7 +2941,7 @@ public partial class GameServer
             dummyId = dummy.PlayerId,
             x = dummy.Position.X,
             y = dummy.Position.Y,
-            orbs = SwarmCutDummyOrbCount
+            orbs = SwarmDummyOrbCount
         };
     }
 
@@ -4446,6 +4465,7 @@ public partial class GameServer
         _pendingSwarmPvpHits.RemoveAll(hit => hit.MatchingId == matchingId);
         _swarmAnchorOrphanCount.Remove(matchingId);
         _swarmAnchorProbeAtUtc.Remove(matchingId);
+        ClearSwarmCrossfireState(matchingId);
         foreach (var key in _swarmGrowthPreviewCost.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmGrowthPreviewCost.Remove(key);
@@ -4571,9 +4591,10 @@ public partial class GameServer
     {
         // DEV_CUT_DUMMY 매치는 절단 궤적만 읽는 실험장이다. 서버에서 공격 액터를
         // 비무장으로 만들어 태양·바람 미사일과 실제 피해가 함께 발생하지 않게 한다.
+        // 교차사격 샌드박스(#232)는 반대다 — 더미도 몹을 쏴야 그 직선이 나를 지나는 장면이 나온다.
         bool armed = !SwarmCutDummyAutoSetup &&
                      IsSwarmAttackArmed(matchingId, spatial.PlayerId, nowUtc) &&
-                     !IsSwarmCutDummyPlayer(matchingId, spatial.PlayerId);
+                     (SwarmCrossfireSandbox || !IsSwarmCutDummyPlayer(matchingId, spatial.PlayerId));
         // 본체 우선(1)으로 되돌린다 (2026-08-16 유저 제보: 내 캐릭터가 봇을 안 때린다).
         // 동급(2)이면 최근접이 이기는데, 밀도 램프 이후 구역당 몹이 8~28마리라 항상 몹이
         // 더 가깝다 — 게다가 표적 고정이 걸려 죽으면 또 다음 몹을 문다. 봇 매치 9873914에서

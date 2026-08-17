@@ -496,11 +496,19 @@ public class MatchingManager : IMatchingManager
                 ? SurvivorRoyaleSpawnData.CreateSpotArenaAssignments(matchingId, playerIds)
                 : SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
 
+        // 교차사격 샌드박스 (#232 2단계): DEV_CROSSFIRE_SANDBOX=1 이면 전원 운동장 스폰 —
+        // 게임서버가 첫 틱에 봇 하나를 더미로 세우고 나머지를 퇴장시킨다. 방 문이 잠긴 채
+        // 시작하는 정식 흐름에서는 사람이 운동장까지 나오는 데 100초가 걸린다.
+        bool crossfireSandbox = Environment.GetEnvironmentVariable("DEV_CROSSFIRE_SANDBOX") == "1";
+        Cell? sandboxCell = crossfireSandbox
+            ? GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Ground)
+            : null;
+
         foreach (var link in chain)
         {
             var playerId = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry).PlayerId;
             link.Persona = PersonaType.None;
-            link.SpawnCell = Cell.Clone(assignments[playerId]);
+            link.SpawnCell = Cell.Clone(sandboxCell ?? assignments[playerId]);
             link.StartArea = GameMapData.GetCurrentArea(MapId.School, link.SpawnCell);
 
             _logger.LogInformation(

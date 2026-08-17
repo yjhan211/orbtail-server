@@ -52,6 +52,8 @@ services:
       - DISABLE_GAME_END=${DISABLE_GAME_END:-0}
       # Survivor Royale 로컬: 실플레이어 1명 + 봇 7명 (1이면 실플레이어 2명 + 봇 6명)
       - TEST_TWO_PLAYER_MATCH=${TEST_TWO_PLAYER_MATCH:-0}
+      # 교차사격 샌드박스 (#232): 1이면 전원 운동장 스폰 + 더미 봇 1 + 나머지 봇 퇴장 + 몹 접촉 무해
+      - DEV_CROSSFIRE_SANDBOX=${DEV_CROSSFIRE_SANDBOX:-0}
       # 탐사 모드: 1이면 1인 매치 + 봇·몹 전부 비활성 (맵 검증용)
       - SOLO_MAP_VALIDATION=${SOLO_MAP_VALIDATION:-0}
       # 탐사 모드에서 캠프 몹만 되살림 (봇 없이 몹 상대 검증)
@@ -99,6 +101,8 @@ services:
       - FORCE_PLAYER_SPAWN_AREA=${FORCE_PLAYER_SPAWN_AREA:-}
       # Survivor Royale 로컬: 실플레이어 1명 + 봇 7명 (1이면 실플레이어 2명 + 봇 6명)
       - TEST_TWO_PLAYER_MATCH=${TEST_TWO_PLAYER_MATCH:-0}
+      # 교차사격 샌드박스 (#232): 1이면 전원 운동장 스폰 + 더미 봇 1 + 나머지 봇 퇴장 + 몹 접촉 무해
+      - DEV_CROSSFIRE_SANDBOX=${DEV_CROSSFIRE_SANDBOX:-0}
       # 탐사 모드: 1이면 1인 매치 + 봇·몹 전부 비활성 (맵 검증용)
       - SOLO_MAP_VALIDATION=${SOLO_MAP_VALIDATION:-0}
     depends_on:

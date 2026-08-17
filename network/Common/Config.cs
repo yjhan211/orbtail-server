@@ -347,6 +347,34 @@ namespace network.common
         /// </summary>
         public const int SWARM_PVP_ORB_COUNT = 3;
 
+        // ===== 교차사격 (#232 2단계) =====
+        // 오브는 몬스터만 쏜다. 그 공격이 만드는 모양(태양 = 직선)에 다른 플레이어가 들어오면
+        // 고정 충격을 받는다. 티어는 모양의 크기만 키우고 충격값은 안 키운다.
+        // 서버 판정과 클라 예고 표시가 같은 값을 읽어야 "표시 = 판정"이 성립한다.
+
+        /// <summary>교차사격 충격 1회의 정신오염. 티어·공격 강화와 무관한 고정값.</summary>
+        public const int SWARM_CROSSFIRE_SHOCK_CORRUPTION = 50;
+
+        /// <summary>같은 피해자는 공격자와 무관하게 이 시간 동안 추가 충격을 받지 않는다.</summary>
+        public const float SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS = 0.9f;
+
+        /// <summary>한 공격자가 다른 플레이어에게 만드는 유효 충격 상한 — 초당 1회.</summary>
+        public const float SWARM_CROSSFIRE_OWNER_HIT_INTERVAL_SECONDS = 1f;
+
+        /// <summary>한 플레이어가 동시에 유지할 수 있는 교차사격 예고 수.</summary>
+        public const int SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER = 2;
+
+        /// <summary>태양 직선: 예고 시간(발사 → 판정 시작)과 판정 창.</summary>
+        public const float SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS = 0.55f;
+        public const float SWARM_CROSSFIRE_SUN_ACTIVE_SECONDS = 0.12f;
+
+        /// <summary>태양 직선의 전체 폭(T1/T2/T3)과 기준 몬스터 너머 연장 길이(T1/T2/T3).</summary>
+        public static readonly float[] SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER = { 0.5f, 0.6f, 0.7f };
+        public static readonly float[] SWARM_CROSSFIRE_SUN_EXTEND_BY_TIER = { 2.5f, 3f, 3.5f };
+
+        /// <summary>교차사격 모양 종류 — 패킷·로그·클라 렌더가 공유하는 식별자.</summary>
+        public const int SWARM_CROSSFIRE_SHAPE_LINE = 1;
+
         /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.
         /// 데이터와 프로토콜은 보존하므로 레거시 모드가 다시 분리되면 이 게이트로 복구할 수 있다.

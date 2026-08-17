@@ -248,6 +248,10 @@ namespace network.common
         C_TO_G_SWARM_GROWTH_PICK,
         G_TO_C_SWARM_GROWTH_RESULT,
 
+        // 교차사격 예고 (#232 2단계) — 몬스터를 향한 오브 공격이 만드는 모양(직선 등)의
+        // 원점·끝·폭·예고/판정 시간. 같은 구역 전원에게 브로드캐스트, 표시 = 판정.
+        G_TO_C_SWARM_CROSSFIRE_TELEGRAPH,
+
         END
     }
 

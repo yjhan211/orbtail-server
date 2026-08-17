@@ -201,6 +201,29 @@ namespace network.common.data.models
     }
 
     /// <summary>
+    ///     교차사격 예고 (#232 2단계). 오브가 몬스터를 향해 쏘는 순간 서버가 모양을 잠그고
+    ///     같은 구역 전원에게 보낸다. Shape 1 = 직선(태양): Origin→End 선분에 폭 Width의 캡슐.
+    ///     클라는 TelegraphSeconds 동안 예고색으로 그리다 ActiveSeconds 동안 판정색으로 바꾼다.
+    ///     서버 판정은 같은 좌표·같은 시간을 쓴다 — 표시 = 판정.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_SWARM_CROSSFIRE_TELEGRAPH : IMessagePackObject
+    {
+        [Key("eventId")] public long EventId { get; set; }
+        [Key("ownerId")] public long OwnerPlayerId { get; set; }
+        [Key("weaponItemId")] public int WeaponItemId { get; set; }
+        [Key("shape")] public int Shape { get; set; }
+        [Key("originX")] public float OriginX { get; set; }
+        [Key("originY")] public float OriginY { get; set; }
+        [Key("endX")] public float EndX { get; set; }
+        [Key("endY")] public float EndY { get; set; }
+        [Key("width")] public float Width { get; set; }
+        [Key("telegraphSeconds")] public float TelegraphSeconds { get; set; }
+        [Key("activeSeconds")] public float ActiveSeconds { get; set; }
+        [Key("anchorMonsterId")] public int AnchorMonsterId { get; set; }
+    }
+
+    /// <summary>
     ///     잼 리더보드 (#222 M3). 전 참가자를 잼 내림차순으로 정렬한 병렬 리스트다.
     ///     구역 게이트 없이 매치 전역으로 브로드캐스트 — 순위표(RankDisplay)의 단일 출처.
     /// </summary>
