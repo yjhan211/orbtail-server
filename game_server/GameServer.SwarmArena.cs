@@ -41,6 +41,14 @@ public partial class GameServer
     // 오브 파괴는 열 절단(+폐쇄) 전용이라야 절단이 독립 전투 동사로 산다.
     private static readonly bool SwarmOrbHealthEnabled = false;
 
+    // #232 교차사격 코어 (2026-08-17): 꼬리는 6칸 빌드의 월드 표시이자 발사 원점이지 약점이
+    // 아니다. 몸으로 꼬리를 가로지르는 절단, 고리 포위, 오브의 플레이어 직접 조준을 전부 끈다.
+    // 사람에게 닿는 유일한 경로는 몬스터를 향한 공격 모양(2단계 교차사격)이어야 한다.
+    // 코드는 남긴다 — #226·#229 절단 실측을 되짚을 때 플래그만 켜면 된다.
+    private static readonly bool SwarmTrailCutEnabled = false;
+    private static readonly bool SwarmEncircleEnabled = false;
+    private static readonly bool SwarmOrbTargetsPlayersEnabled = false;
+
     // PvP 오염 환산 (#226 재개편): 본체 상시 피격 체제의 TTK 앵커. 0.15 = 혼성 6오브
     // 원시 DPS(~28)를 오염 ~4.2/s로 눌러 동급 정면 TTK ~24초(목표 22~28). PvE는 원시
     // 피해 유지(배율 분리). 소수 이월 누산으로 정수 반올림 왜곡(바람 최소 1 인플레)을 막는다.
@@ -109,8 +117,25 @@ public partial class GameServer
     private readonly Dictionary<(long MatchingId, long PlayerId), (int ItemId, int Hp)> _swarmFrontOrbHp = new();
 
     // 몬스터 착탄 지연: 발사 즉시 판정하되 피해는 투사체 비행시간 뒤에 정산한다.
-    private readonly List<(long MatchingId, long CombatTargetId, long AttackerId, int Damage, DateTime ApplyAtUtc)>
-        _pendingSwarmMonsterHits = new();
+    // #232 1단계 기준점 잠금: 발사 순간의 원점(오브 월드 좌표)·기준 위치(몹)·무기를 함께 박제한다.
+    // 비행 중 몹이 죽어도 사건은 잠근 위치에서 끝까지 처리된다 — 지금은 계측만 하고,
+    // 2단계 교차사격 모양이 이 스냅샷 위에 붙는다. 포위·물폭탄 경로는 원점 없이 종전대로 든다.
+    private readonly record struct PendingSwarmMonsterHit(
+        long MatchingId,
+        long CombatTargetId,
+        long AttackerId,
+        int Damage,
+        DateTime ApplyAtUtc,
+        int WeaponItemId = 0,
+        long AttackerItemUid = 0,
+        Vector3f? Origin = null,
+        Vector3f? AnchorPosition = null);
+
+    private readonly List<PendingSwarmMonsterHit> _pendingSwarmMonsterHits = new();
+
+    // 기준점 계측 (#232 1단계): 비행 중 표적이 죽어 잠근 위치에서 끝난 사건 수. 10초마다 한 줄.
+    private readonly Dictionary<long, int> _swarmAnchorOrphanCount = new();
+    private readonly Dictionary<long, DateTime> _swarmAnchorProbeAtUtc = new();
 
     // PvP 유도탄 착탄 지연 (2026-08-12 복귀): 발사 확정, 피해는 비행시간 뒤 — 회피 없음.
     private readonly List<(long MatchingId, ProximityCombatAttack Attack, DateTime DueAtUtc)>
@@ -147,9 +172,22 @@ public partial class GameServer
                     matchingId, hit.AttackerId, hit.Damage, damageResult.Killed);
             }
 
-            // 비행 중 몬스터가 이미 죽었으면 조용히 소멸 — 이중 정산 없음.
+            // 기준점 잠금 (#232 1단계): 비행 중 몬스터가 이미 죽었어도 사건은 소멸하지 않는다 —
+            // 발사 순간 잠근 위치에서 끝까지 처리한다. 피해는 없지만(이중 정산 없음) 2단계
+            // 교차사격 모양은 여기서 그대로 터져야 "예고 뒤 몹이 죽어도 모양은 남는다"가 참이 된다.
+            if (!damageResult.Applied && hit.AnchorPosition != null)
+                ResolveSwarmAttackAtLockedAnchor(matchingId, hit, nowUtc);
+
             if (damageResult.Applied && damageResult.Killed && damageResult.MonsterState != null)
             {
+                // 기준점 계측 (#232 1단계): 종·생존초·살아 있는 동안 받은 공격 사건 수. 완료 조건
+                // "몬스터당 공격 모양 평균 2회 이상"과 "즉시 지워져 기준점이 못 되는 몹"을 여기서 잰다.
+                _gameEventLogManager.LogSystem(
+                    matchingId,
+                    $"monster_lifetime kind={damageResult.Kind} area={damageResult.MonsterState.AreaType} " +
+                    $"aliveSeconds={damageResult.AliveSeconds:F1} attackEvents={damageResult.AttackEventCount} " +
+                    $"killer={hit.AttackerId}");
+
                 // 처치 계측 (#226 E): 종·구역·처치자 — 요약의 몹 처치 지표가 이 이벤트를 읽는다.
                 _gameEventLogManager.LogEmotionAfterimageKilled(
                     matchingId, damageResult.MonsterId,
@@ -163,6 +201,25 @@ public partial class GameServer
                     damageResult.HeartReward, damageResult.BootsReward, damageResult.KeyReward);
             }
         }
+    }
+
+    /// <summary>
+    ///     기준점 잠금 완료 (#232 1단계): 비행 중 표적 몹이 죽은 사건을 잠근 원점·기준 위치에서
+    ///     마무리한다. 지금은 계측만 남긴다 — 2단계 교차사격은 이 자리에서 잠긴 방향·크기의
+    ///     모양을 그대로 판정해야 한다("예고 시작 뒤 기준점·방향·크기는 바꾸지 않는다").
+    /// </summary>
+    private void ResolveSwarmAttackAtLockedAnchor(long matchingId, PendingSwarmMonsterHit hit, DateTime nowUtc)
+    {
+        _ = hit;
+        _swarmAnchorOrphanCount[matchingId] =
+            (_swarmAnchorOrphanCount.TryGetValue(matchingId, out int count) ? count : 0) + 1;
+
+        if (_swarmAnchorProbeAtUtc.TryGetValue(matchingId, out var probeAt) && nowUtc < probeAt)
+            return;
+        _swarmAnchorProbeAtUtc[matchingId] = nowUtc.AddSeconds(10);
+        _gameEventLogManager.LogSystem(
+            matchingId,
+            $"anchor_probe orphanResolved={_swarmAnchorOrphanCount[matchingId]}");
     }
 
     // 티어별 오브 HP는 Common(SurvivorOrbData.GetSquadOrbMaxHp)이 단일 출처 — 클라 체력바와 공유.
@@ -328,11 +385,17 @@ public partial class GameServer
         }
 
         // 오브열 (#226 α/C/B): 경로 기록 → 이동 선분의 상대 열 절단 → 고리 완성 포위 사격.
+        // 경로 기록은 #232에서도 산다 — 꼬리 오브의 월드 좌표가 곧 각 공격의 발사 원점이다.
         UpdateSwarmOrbTrails(matchingId, participants);
-        ProcessSwarmTrailCuts(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
-        // 반격 보호 창 결산 (#227 7단계) — 만료된 쌍만 CUT_RETALIATION_WINDOW로 남긴다.
-        ProcessSwarmRetaliationWindows(matchingId, nowUtc, participants);
-        ProcessSwarmEncirclements(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+        if (SwarmTrailCutEnabled)
+        {
+            ProcessSwarmTrailCuts(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+            // 반격 보호 창 결산 (#227 7단계) — 만료된 쌍만 CUT_RETALIATION_WINDOW로 남긴다.
+            ProcessSwarmRetaliationWindows(matchingId, nowUtc, participants);
+        }
+
+        if (SwarmEncircleEnabled)
+            ProcessSwarmEncirclements(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
         // 실험장 (#227): 더미 매치에서는 물폭탄도 끈다 — 파도 오브가 계속 터지면
         // 절단 궤적 실험이 폭발 연출·피해에 묻힌다. 미사일 비무장(AddSwarmParticipantCombatActors)과
         // 같은 조건을 쓴다 — 옵트인 환경변수 자체가 실험장 스위치다.
@@ -423,12 +486,18 @@ public partial class GameServer
             // 전체 오브가 사람을 쏘면 20개 꼬리가 3개 꼬리를 그대로 녹인다 — 앞열 3개로
             // 끊어, 오브 수는 PvE 성장과 절단 위험만 키우고 원거리 PvP 화력은 상한을 갖는다.
             // 사거리도 PvE(7)보다 짧은 5로 둔다 — 붙어야 싸운다.
+            //
+            // #232 1단계 (2026-08-17): 오브는 몬스터만 조준한다. 사람은 표적 후보에서 아예
+            // 빠진다 — 사람에게 닿는 유일한 경로는 몬스터를 향한 공격 모양(2단계 교차사격)이다.
+            // 아래 PvP 사거리·앞열 규칙은 SwarmOrbTargetsPlayersEnabled를 켤 때만 산다.
             (attacker, target) =>
             {
                 if (attacker.IsMonsterTarget || attacker.Area != target.Area)
                     return false;
                 if (target.IsMonsterTarget)
                     return true;
+                if (!SwarmOrbTargetsPlayersEnabled)
+                    return false;
                 if (attacker.TrailOrdinal >= Config.SWARM_PVP_ORB_COUNT)
                     return false;
 
@@ -476,9 +545,18 @@ public partial class GameServer
                 actorById ??= actors
                     .GroupBy(actor => actor.PlayerId)
                     .ToDictionary(group => group.Key, group => group.First());
-                float distance = actorById.TryGetValue(attack.AttackerPlayerId, out var attackerActor) &&
-                                 actorById.TryGetValue(attack.TargetPlayerId, out var targetActor)
-                    ? Vector3f.Distance(attackerActor.Position, targetActor.Position)
+                // 비행시간은 실제 발사 원점(오브)에서 잠근 기준 위치까지다 (#232 1단계). 리졸버가
+                // 원점을 안 실어 주는 레거시 경로만 본체 대표 액터로 폴백한다.
+                var origin = attack.Origin ??
+                             (actorById.TryGetValue(attack.AttackerPlayerId, out var attackerActor)
+                                 ? attackerActor.Position
+                                 : null);
+                var anchor = attack.AnchorPosition ??
+                             (actorById.TryGetValue(attack.TargetPlayerId, out var targetActor)
+                                 ? targetActor.Position
+                                 : null);
+                float distance = origin != null && anchor != null
+                    ? Vector3f.Distance(origin, anchor)
                     : Config.SWARM_ORB_ATTACK_RANGE;
                 double delaySeconds =
                     SurvivorOrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
@@ -486,8 +564,13 @@ public partial class GameServer
                 // 고른다. 예약분으로 이미 죽는 몹은 표적 후보에서 빠지므로 사격이 흩어진다.
                 _swarmArenaManager.ReserveMonsterDamage(
                     matchingId, attack.TargetPlayerId, monsterDamage);
-                _pendingSwarmMonsterHits.Add((matchingId, attack.TargetPlayerId, attack.AttackerPlayerId,
-                    monsterDamage, nowUtc.AddSeconds(delaySeconds)));
+                // 기준점 계측 + 잠금 (#232 1단계): 발사 순간 몹의 공격 사건 수를 올리고,
+                // 원점·기준 위치·무기를 박제해 착탄 정산까지 들고 간다.
+                _swarmArenaManager.RecordMonsterAttackEvent(matchingId, attack.TargetPlayerId);
+                _pendingSwarmMonsterHits.Add(new PendingSwarmMonsterHit(
+                    matchingId, attack.TargetPlayerId, attack.AttackerPlayerId,
+                    monsterDamage, nowUtc.AddSeconds(delaySeconds),
+                    attack.WeaponItemId, attack.AttackerItemUid, origin, anchor));
                 continue;
             }
 
@@ -2338,7 +2421,8 @@ public partial class GameServer
                 {
                     _swarmArenaManager.ReserveMonsterDamage(
                         matchingId, target.CombatTargetId, SwarmEncircleMonsterDamage);
-                    _pendingSwarmMonsterHits.Add((matchingId, target.CombatTargetId, owner.PlayerId,
+                    _pendingSwarmMonsterHits.Add(new PendingSwarmMonsterHit(
+                        matchingId, target.CombatTargetId, owner.PlayerId,
                         SwarmEncircleMonsterDamage, nowUtc));
                 }
                 logger.LogInformation(
@@ -2575,8 +2659,11 @@ public partial class GameServer
             // 치명타는 몹 단위로 굴린다 — 한 폭발이 여러 마리를 쳐도 그중 일부만 크게 터진다.
             int monsterDamage = RollSwarmCriticalDamage(damage, out bool critical);
             _swarmArenaManager.ReserveMonsterDamage(matchingId, target.CombatTargetId, monsterDamage);
-            _pendingSwarmMonsterHits.Add((matchingId, target.CombatTargetId, ownerId,
-                monsterDamage, nowUtc));
+            // 물폭탄은 예고 시점에 이미 위치가 잠겨 있고 여기서 터진 것이다 (#232 1단계) — 기준점
+            // 계측만 올리고 착탄 큐에는 원점 없이 든다. 잠금 완료 훅은 유도탄 전용이다.
+            _swarmArenaManager.RecordMonsterAttackEvent(matchingId, target.CombatTargetId);
+            _pendingSwarmMonsterHits.Add(new PendingSwarmMonsterHit(
+                matchingId, target.CombatTargetId, ownerId, monsterDamage, nowUtc));
             hitCount++;
 
             // 피해 숫자 (#229): 파도는 여기가 유일한 통보 지점이다 — 유도탄과 달리 리졸버를
@@ -4357,6 +4444,8 @@ public partial class GameServer
             _swarmFrontOrbHp.Remove(key);
         _pendingSwarmMonsterHits.RemoveAll(hit => hit.MatchingId == matchingId);
         _pendingSwarmPvpHits.RemoveAll(hit => hit.MatchingId == matchingId);
+        _swarmAnchorOrphanCount.Remove(matchingId);
+        _swarmAnchorProbeAtUtc.Remove(matchingId);
         foreach (var key in _swarmGrowthPreviewCost.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmGrowthPreviewCost.Remove(key);

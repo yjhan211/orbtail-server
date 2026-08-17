@@ -51,7 +51,13 @@ public readonly record struct ProximityCombatAttack(
     bool IsWaveAreaAttack = false,
     bool IsWaveAreaSecondary = false,
     bool IsWindAreaAttack = false,
-    bool IsWindAreaSecondary = false);
+    bool IsWindAreaSecondary = false,
+    // #232 1단계 기준점 잠금: 발사 순간의 발사 원점(오브 월드 좌표)과 표적 위치를 박제한다.
+    // 교차사격(2단계) 모양은 이 두 점으로 방향·크기를 정하고, 예고 뒤 몬스터가 죽어도
+    // 잠근 위치에서 끝까지 처리한다. 레거시 생성 경로는 null이라 종전과 같다.
+    long AttackerItemUid = 0,
+    Vector3f? Origin = null,
+    Vector3f? AnchorPosition = null);
 
 public readonly record struct ProximityCombatTargetEvent(
     long AttackerPlayerId,
@@ -265,7 +271,10 @@ public sealed class ProximityAutoCombatResolver
                     attacker.EffectDurationSeconds,
                     eligibleTargets.Count,
                     attacker.SunResonanceStage,
-                    attacker.WaveResonanceArmed));
+                    attacker.WaveResonanceArmed,
+                    AttackerItemUid: attacker.WeaponItemUid,
+                    Origin: attacker.Position,
+                    AnchorPosition: eligibleTargets[i].Actor.Position));
             }
 
             // A burst of N attacks has N - 1 shortened gaps between those attacks.

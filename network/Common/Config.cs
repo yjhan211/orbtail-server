@@ -315,7 +315,10 @@ namespace network.common
         ///     이상 상황 방지용 안전상한일 뿐이다. 클라 궤도 슬롯 수와 같아야 한다 (PlayerTool.MaxOrbSlots).
         /// </summary>
         // 30 → 99 (#226 오브열): 머지 폐지로 성장 = 열 길이 — 사실상 무제한, 비용 곡선이 억제자.
-        public const int SWARM_ORB_CAPACITY = 99;
+        // 99 → 6 (#232 1절): 꼬리는 6칸 빌드판이다. 성장은 길이가 아니라 유지·합성·교체로 돈다.
+        // 매치 2749 실측 최대 43개에서는 상대가 어떤 오브를 왜 들고 있는지 읽히지 않았다.
+        // 클라 PlayerTool.MaxOrbSlots(99)는 배열 크기 상한이라 그대로 두어도 6개만 채워진다.
+        public const int SWARM_ORB_CAPACITY = 6;
 
         /// <summary>현재 모드의 오브 보유 상한 — 스웜(궤도 스쿼드)은 9, 레거시 보드는 6.</summary>
         public static int GetOrbCapacity() =>

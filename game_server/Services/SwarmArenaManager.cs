@@ -161,6 +161,9 @@ public sealed class SwarmArenaManager
     // 웨이브 간격(12초)이 이미 창을 만들므로 전멸 휴지는 짧게만 둔다 — 다 지운 뒤에도
     // 12초를 더 기다리면 방이 너무 오래 빈다.
     private const double SupplyWipeRestSeconds = 2d;
+    // 최종 수렴 페이즈에는 휴지가 없다 (#232 1단계): 몬스터는 교차사격의 기준점이라 마지막
+    // 구역에서 몹이 비면 PvP도 같이 멎는다. 완료 조건 "최종 30초 기준점 부재 3초 이하".
+    private const double SupplyWipeRestSecondsFinalPhase = 0d;
     // 플레이어 2.5m 안의 앵커에는 즉시 생성하지 않는다 — 전 앵커가 막히면 1초 뒤 재검사.
     private const float SupplySafeSpawnDistance = 2.5f;
     // 화면 밖 등장 (#229): 이 거리 밖 앵커를 우선 고른다. 전부 가까우면 안전 이격만 지킨다.
@@ -189,13 +192,26 @@ public sealed class SwarmArenaManager
     // 적이 없다. 4명분에서 끊어 두면 그래도 1인당 14마리로 지금(3.5마리)의 4배다.
     private const int SupplyZoneCrowdCap = 4;
 
+    // 세 번째 사람부터는 인당 증가량의 절반만 더한다 (#232 1단계 확정 규칙: "사람 수에 비례해
+    // 몬스터를 선형으로 늘리지 않는다. 3명 이상이 모였을 때 추가 공급은 기본 증가량의 50%부터").
+    // 몬스터가 교차사격 기준점이 된 뒤로는 사람이 몰린 방의 몹 수가 곧 예고 밀도라, 선형이면
+    // 4인 방에서 화면이 예고로 덮인다. 1인 T · 2인 2T · 3인 2.5T · 4인 3T.
+    private const double SupplyCrowdExtraRatio = 0.5d;
+    private const int SupplyCrowdLinearPlayers = 2;
+
     /// <summary>
     ///     구역 목표 = 인당 목표 × 그 구역에 선 사람 수. 최소 1명분은 항상 준다 —
     ///     인트로 산개는 아무도 없는 방을 대상으로 돌고, 사람이 막 빠져나간 방도 다음 틱까지는
-    ///     채워져 있어야 한다.
+    ///     채워져 있어야 한다. 셋째 사람부터는 절반 비율로 는다(SupplyCrowdExtraRatio).
     /// </summary>
-    private static int GetSupplyZoneTarget(int perPlayerTarget, int playersInZone) =>
-        perPlayerTarget * Math.Clamp(playersInZone, 1, SupplyZoneCrowdCap);
+    private static int GetSupplyZoneTarget(int perPlayerTarget, int playersInZone)
+    {
+        int players = Math.Clamp(playersInZone, 1, SupplyZoneCrowdCap);
+        int linearPlayers = Math.Min(players, SupplyCrowdLinearPlayers);
+        int crowdPlayers = players - linearPlayers;
+        return perPlayerTarget * linearPlayers +
+               (int)Math.Round(perPlayerTarget * SupplyCrowdExtraRatio * crowdPlayers);
+    }
     // 1초 예고는 밀도 램프에서 실질 병목이 된다 — 초당 10마리를 채우는데 전부 1초를 서 있으면
     // 화면에 "아직 안 깨어난 몹"만 쌓인다 (#229 4단계-보정).
     private const float SupplyTelegraphSeconds = 0.4f;
@@ -708,6 +724,24 @@ public sealed class SwarmArenaManager
         state.Monsters.Values.FirstOrDefault(candidate =>
             candidate.CombatTargetId == combatTargetId && candidate.Alive);
 
+    /// <summary>
+    ///     기준점 계측 (#232 1단계): 오브가 이 몹을 향해 공격 사건을 만든 순간 센다 — 착탄이
+    ///     아니라 발사 기준이다. 교차사격 모양은 발사 순간 잠긴 기준점에서 생기므로, 몹이 몇 번의
+    ///     모양을 만들고 죽는지는 이 수로 읽는다.
+    /// </summary>
+    public void RecordMonsterAttackEvent(long matchingId, long combatTargetId)
+    {
+        if (!_matches.TryGetValue(matchingId, out var state))
+            return;
+        lock (state.SyncRoot)
+        {
+            var monster = state.Monsters.Values.FirstOrDefault(candidate =>
+                candidate.CombatTargetId == combatTargetId);
+            if (monster is { Alive: true })
+                monster.AttackEventCount++;
+        }
+    }
+
     public SwarmArenaDamageResult ApplyMonsterDamage(
         long matchingId,
         long combatTargetId,
@@ -778,7 +812,9 @@ public sealed class SwarmArenaManager
 
             return new SwarmArenaDamageResult(
                 true, killed, monster.MonsterId, monsterInfo,
-                monster.HeartReward, monster.BootsReward, monster.KeyReward, monster.Kind);
+                monster.HeartReward, monster.BootsReward, monster.KeyReward, monster.Kind,
+                AliveSeconds: killed ? (monster.DiedAtUtc - monster.SpawnedAtUtc).TotalSeconds : 0d,
+                AttackEventCount: monster.AttackEventCount);
         }
     }
 
@@ -1165,6 +1201,7 @@ public sealed class SwarmArenaManager
                 Health = stats.MaxHp,
                 Alive = true,
                 ActivatesAtUtc = now,
+                SpawnedAtUtc = now,
                 NextContactAtUtc = now,
                 ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
                 SummonStoneReward = stoneReward,
@@ -1458,7 +1495,9 @@ public sealed class SwarmArenaManager
             {
                 if (zoneState.WipeRestUntilUtc == null)
                 {
-                    zoneState.WipeRestUntilUtc = now.AddSeconds(SupplyWipeRestSeconds);
+                    bool finalPhase = phaseIndex == SupplyPhases.Length - 1;
+                    zoneState.WipeRestUntilUtc = now.AddSeconds(
+                        finalPhase ? SupplyWipeRestSecondsFinalPhase : SupplyWipeRestSeconds);
                     zoneState.NextTopUpAtUtc = null;
                 }
 
@@ -1803,6 +1842,7 @@ public sealed class SwarmArenaManager
                 Aggro = true,
                 PhaseTier = phaseIndex,
                 ActivatesAtUtc = now.AddSeconds(SupplyTelegraphSeconds),
+                SpawnedAtUtc = now,
                 NextContactAtUtc = now,
                 ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
                 SummonStoneReward = stoneReward,
@@ -2545,6 +2585,7 @@ public sealed class SwarmArenaManager
             Health = MonsterMaxHealth,
             Alive = true,
             ActivatesAtUtc = now.AddSeconds(telegraphSeconds),
+            SpawnedAtUtc = now,
             NextContactAtUtc = now,
             ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
             // 매 킬 1석: 시작방 선지급 10마리 = 방 스팟 2개(10석)를 정확히 커버한다.
@@ -2762,6 +2803,12 @@ public sealed class SwarmArenaManager
         public DateTime ActivatesAtUtc { get; set; }
         public DateTime NextContactAtUtc { get; set; }
         public DateTime DiedAtUtc { get; set; }
+
+        // 기준점 계측 (#232 1단계): 스폰 시각과 살아 있는 동안 받은 오브 공격 사건 수.
+        // 완료 조건 "한 몬스터가 살아 있는 동안 평균 2회 이상의 공격 모양"의 근거다.
+        // 즉시 사라지는 몹은 교차사격 기준점이 못 된다 — 종별 생존시간을 이 둘로 잰다.
+        public DateTime SpawnedAtUtc { get; set; }
+        public int AttackEventCount { get; set; }
         public float ScatterAngle { get; init; }
         public int SummonStoneReward { get; init; }
         public int HeartReward { get; init; }
@@ -2892,7 +2939,10 @@ public readonly record struct SwarmArenaDamageResult(
     int HeartReward = 0,
     int BootsReward = 0,
     int KeyReward = 0,
-    SwarmMonsterKind Kind = SwarmMonsterKind.Skeleton)
+    SwarmMonsterKind Kind = SwarmMonsterKind.Skeleton,
+    // 기준점 계측 (#232 1단계): 처치 시점의 생존초와 살아 있는 동안 받은 공격 사건 수.
+    double AliveSeconds = 0d,
+    int AttackEventCount = 0)
 {
     public static SwarmArenaDamageResult None => new(false, false, 0, null);
 }
