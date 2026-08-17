@@ -17,7 +17,9 @@ public partial class GameServer
     private const float SwarmArenaBasicRange = Config.SWARM_ORB_ATTACK_RANGE;
     private const float SwarmArenaBasicAttackIntervalSeconds = 1f;
     private const int SwarmArenaWeaponItemId = 107000010;
-    private static readonly int[] SwarmStartingOrbPool = [107000010, 107000020, 107000030];
+    // P0-A 태양만 (#232, 2026-08-17 유저 지시): 태양 직선이 읽히기 전까지 소환·시작·재건 풀을
+    // 태양 하나로 좁힌다. 바람·파도는 직선이 통과한 뒤 되돌린다 — [107000010, 107000020, 107000030].
+    private static readonly int[] SwarmStartingOrbPool = [107000010];
 
     // 플레이어 단위 지급 (2026-08-09): 매칭 단위 1회 지급은 지급 틱에 아직 접속 전인
     // 사람을 영영 빈손으로 만들었다 — 늦게 합류해도 첫 등장 틱에 각자 1회 받는다.
@@ -48,6 +50,12 @@ public partial class GameServer
     private static readonly bool SwarmTrailCutEnabled = false;
     private static readonly bool SwarmEncircleEnabled = false;
     private static readonly bool SwarmOrbTargetsPlayersEnabled = false;
+
+    // 궤도 복귀 (#232 2026-08-17 유저 지시): 오브가 SB 클론처럼 플레이어 주위를 돈다.
+    // 궤도는 클라 애니메이션(공전 위상)이라 서버가 각 오브의 정확한 자리를 모른다 —
+    // 사격·교차사격 원점과 폐쇄 판정은 본체 위치를 쓴다. 오브열로 되돌리려면 이 값과
+    // 클라 PlayerTool.OrbTrailLayoutEnabled를 함께 바꾼다.
+    private static readonly bool SwarmOrbOrbitLayout = true;
 
     // PvP 오염 환산 (#226 재개편): 본체 상시 피격 체제의 TTK 앵커. 0.15 = 혼성 6오브
     // 원시 DPS(~28)를 오염 ~4.2/s로 눌러 동급 정면 TTK ~24초(목표 22~28). PvE는 원시
@@ -842,6 +850,11 @@ public partial class GameServer
     private void DestroySwarmOrbsInClosedAreas(
         long matchingId, IReadOnlyCollection<AreaType> closedAreas, List<GameClientSession> sessions)
     {
+        // 궤도 배치 (#232): 오브가 본체 곁을 돌아 꼬리가 폐쇄 구역에 남는 상황 자체가 없다 —
+        // 본체가 폐쇄에 남으면 본체 탈락(EliminateEveryoneInClosedAreas)이 처리한다.
+        if (SwarmOrbOrbitLayout)
+            return;
+
         var closed = closedAreas.ToHashSet();
         var owners = new List<(long PlayerId, Vector3f Position, GameClientSession Session)>();
         foreach (var session in sessions)
@@ -4659,8 +4672,11 @@ public partial class GameServer
         {
             var actor = actors[index];
             // 오브열 (#226 α+): 공격 원점·피격 위치 = 각 오브의 열 좌표 — 표시가 곧 판정.
-            var trailPosition = GetSwarmOrbTrailPosition(
-                matchingId, spatial.PlayerId, index - before, spatial.Position, actorTiers);
+            // 궤도 배치(#232)에서는 본체 위치 — 궤도 위상은 클라 연출이라 서버가 모른다.
+            var trailPosition = SwarmOrbOrbitLayout
+                ? spatial.Position
+                : GetSwarmOrbTrailPosition(
+                    matchingId, spatial.PlayerId, index - before, spatial.Position, actorTiers);
             actor = actor with
             {
                 Position = trailPosition,
