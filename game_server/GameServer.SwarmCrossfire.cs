@@ -12,10 +12,11 @@ namespace game_server;
 /// <summary>
 ///     교차사격 (#232 2단계). 오브는 몬스터만 조준하지만, 태양의 공격은 유도탄이 아니라
 ///     "경고색이 깜빡인 뒤 큰 공격이 한 번에 천천히 지나가는" 직선이다 (2026-08-17 유저 판정).
-///     발사 순간 원점(오브)·기준점(몬스터)으로 직선을 잠그고, 예고 시간 뒤 판정 앞머리가
-///     원점에서 끝까지 일정 속도로 쓸고 지나간다 — 지나간 자리의 몬스터는 PvE 피해(관통),
-///     다른 플레이어는 고정 충격 1회. 예고 뒤 몬스터가 죽어도 모양은 잠근 위치를 끝까지 쓴다.
-///     P0-A는 태양만 — 바람 유도탄·파도 물폭탄은 종전대로.
+///     발사 순간 원점(오브)·기준점(몬스터)으로 직선을 잠그고, 예고 시간 뒤 큰 투사체가 원점에서
+///     끝으로 일정 속도로 날아간다 — 선상의 첫 표적(몬스터·다른 플레이어)에 닿는 순간 거기서 폭발,
+///     폭발 반경 안 몬스터 전부 PvE 피해·플레이어 전부 충격 1회 (2026-08-17 유저 결정: "폭발하는
+///     시점이 피해 시점"). 아무것도 안 닿으면 끝점에서 폭발. 예고 뒤 몬스터가 죽어도 모양은 잠근
+///     위치를 끝까지 쓴다. P0-A는 태양만 — 바람 유도탄·파도 물폭탄은 종전대로.
 /// </summary>
 public partial class GameServer
 {
@@ -42,6 +43,8 @@ public partial class GameServer
         public Vector3f End { get; init; } = new(0f, 0f, 0f);
         public float GroundLength { get; init; }
         public float HalfWidth { get; init; }
+        // 폭발 반경(바닥면) — 첫 표적에 닿아 터지는 순간의 판정 원.
+        public float BlastRadius { get; init; }
         public DateTime ArmedAtUtc { get; init; }
         public DateTime ExpiresAtUtc { get; init; }
         public int AnchorMonsterId { get; init; }
@@ -50,7 +53,6 @@ public partial class GameServer
         // 앞머리가 지난 축 위치(바닥면 단위, 원점 = 0). 캡 반폭 앞에서 시작한다.
         public float LastFront { get; set; }
         public HashSet<long> HitVictims { get; } = new();
-        public HashSet<long> HitMonsters { get; } = new();
     }
 
     private readonly List<SwarmCrossfireShape> _swarmCrossfireShapes = new();
@@ -158,6 +160,7 @@ public partial class GameServer
         int tierIndex = Math.Clamp(tier, 1, 3) - 1;
         float extend = Config.SWARM_CROSSFIRE_SUN_EXTEND_BY_TIER[tierIndex];
         float width = Config.SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER[tierIndex];
+        float blastRadius = Config.SWARM_CROSSFIRE_SUN_BLAST_RADIUS_BY_TIER[tierIndex];
         float groundLength = anchorDistance + extend;
         var end = new Vector3f(
             anchor.X + gx / anchorDistance * extend,
@@ -181,6 +184,7 @@ public partial class GameServer
             End = end,
             GroundLength = groundLength,
             HalfWidth = halfWidth,
+            BlastRadius = blastRadius,
             ArmedAtUtc = armedAt,
             ExpiresAtUtc = armedAt.AddSeconds(sweepSeconds),
             AnchorMonsterId = anchorMonsterId,
@@ -197,7 +201,7 @@ public partial class GameServer
             $"ordinal={attack.AttackerTrailOrdinal} " +
             $"weapon={attack.WeaponItemId} tier={tier} shape=line anchor={anchorMonsterId} " +
             $"area={attack.Area} origin=({origin.X:F2},{origin.Y:F2}) end=({end.X:F2},{end.Y:F2}) " +
-            $"width={width:F2} groundLength={groundLength:F2} damage={damage} " +
+            $"width={width:F2} blast={blastRadius:F2} groundLength={groundLength:F2} damage={damage} " +
             $"telegraph={Config.SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS:F2} sweep={sweepSeconds:F2}");
         return true;
     }
@@ -239,9 +243,10 @@ public partial class GameServer
     }
 
     /// <summary>
-    ///     예고가 끝난 모양의 앞머리를 전진시키며 판정한다. 이번 틱에 앞머리가 지난 축 구간
-    ///     [지난 앞머리, 현재 앞머리] × 반폭 안에 있는 몬스터는 PvE 피해(관통, 사건당 1회),
-    ///     소유자 아닌 플레이어는 충격 1회 — 피해자는 전역 면역, 소유자는 초당 1회 상한.
+    ///     예고가 끝난 모양의 투사체 앞머리를 전진시키며, 이번 틱에 앞머리가 지난 축 구간
+    ///     [지난 앞머리, 현재 앞머리] × 반폭 안에 처음 들어오는 표적(몬스터·소유자 아닌 플레이어)을 찾는다.
+    ///     있으면 그 자리에서 폭발 — 반경 안 몬스터 전부 PvE 피해, 플레이어 전부 충격(면역·상한 그대로).
+    ///     없이 끝까지 가면 끝점에서 폭발. 폭발한 모양은 즉시 끝난다.
     /// </summary>
     private void ProcessSwarmCrossfires(
         long matchingId,
@@ -272,60 +277,166 @@ public partial class GameServer
             float lastFront = shape.LastFront;
             shape.LastFront = front;
 
-            // 몬스터 — 관통. 같은 구역, 사건당 한 번.
+            // 이번 틱 구간에서 가장 먼저(원점에 가까운 축 위치) 닿는 표적을 고른다.
             monsters ??= _swarmArenaManager.GetCombatTargets(matchingId);
+            float? triggerAlong = null;
             foreach (var monster in monsters)
             {
-                if (monster.Area != shape.Area || shape.HitMonsters.Contains(monster.CombatTargetId))
+                if (monster.Area != shape.Area)
                     continue;
-                if (!IsPointSweptBySwarmCrossfire(shape, monster.Position, lastFront, front, SwarmCrossfireMonsterRadius))
+                if (!TryGetSwarmCrossfireSweptAlong(
+                        shape, monster.Position, lastFront, front, SwarmCrossfireMonsterRadius, out float along))
                     continue;
-
-                shape.HitMonsters.Add(monster.CombatTargetId);
-                _swarmArenaManager.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
-                int monsterDamage = RollSwarmCriticalDamage(shape.Damage, out bool critical);
-                ApplySwarmMonsterHitNow(
-                    matchingId, monster.CombatTargetId, monster.MonsterId, shape.OwnerId,
-                    shape.WeaponItemId, shape.Area, monsterDamage, critical, allSessions);
+                if (triggerAlong == null || along < triggerAlong.Value)
+                    triggerAlong = along;
             }
 
-            // 플레이어 — 충격.
             foreach (var participant in participants)
             {
                 if (participant.PlayerId == shape.OwnerId || participant.Area != shape.Area)
                     continue;
-                if (shape.HitVictims.Contains(participant.PlayerId))
+                if (!TryGetSwarmCrossfireSweptAlong(
+                        shape, participant.Position, lastFront, front, SwarmCrossfirePlayerRadius, out float along))
                     continue;
-                if (_swarmCrossfireVictimImmuneUntilUtc.TryGetValue(
-                        (matchingId, participant.PlayerId), out var immuneUntil) &&
-                    nowUtc < immuneUntil)
-                    continue;
-                if (_swarmCrossfireOwnerLastHitAtUtc.TryGetValue(
-                        (matchingId, shape.OwnerId), out var ownerLastHit) &&
-                    (nowUtc - ownerLastHit).TotalSeconds < Config.SWARM_CROSSFIRE_OWNER_HIT_INTERVAL_SECONDS)
-                    continue;
-                if (!IsPointSweptBySwarmCrossfire(shape, participant.Position, lastFront, front, SwarmCrossfirePlayerRadius))
-                    continue;
-
-                shape.HitVictims.Add(participant.PlayerId);
-                _swarmCrossfireVictimImmuneUntilUtc[(matchingId, participant.PlayerId)] =
-                    nowUtc.AddSeconds(Config.SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS);
-                _swarmCrossfireOwnerLastHitAtUtc[(matchingId, shape.OwnerId)] = nowUtc;
-                ApplySwarmCrossfireShock(matchingId, shape, participant.PlayerId, aliveSessions, aliveBots, allSessions);
+                if (triggerAlong == null || along < triggerAlong.Value)
+                    triggerAlong = along;
             }
 
-            if (front >= sweepEnd)
-                _swarmCrossfireShapes.RemoveAt(index);
+            if (triggerAlong == null && front < sweepEnd)
+                continue;
+
+            // 폭발 지점: 표적에 닿은 축 위치(선분 안으로 클램프), 없으면 끝점.
+            float detonateAlong = Math.Clamp(triggerAlong ?? shape.GroundLength, 0f, shape.GroundLength);
+            var detonation = ResolveSwarmCrossfireAxisPoint(shape, detonateAlong);
+            _swarmCrossfireShapes.RemoveAt(index);
+            DetonateSwarmCrossfire(
+                matchingId, shape, detonation, triggerAlong != null, nowUtc,
+                monsters, participants, aliveSessions, aliveBots, allSessions);
         }
     }
 
     /// <summary>
-    ///     쓸기 판정 (바닥면): 점을 축에 사영한 위치가 이번 틱 앞머리 구간 안이고, 축에서의
-    ///     수직 거리가 반폭(+여유) 이하. 캡슐 양 끝은 캡 반폭만큼 축 구간을 늘려 판정한다.
+    ///     폭발 판정·연출: 반경 안(바닥면 거리) 몬스터 전부 PvE 피해(각각 치명 굴림), 소유자 아닌 플레이어
+    ///     전부 충격(피해자 면역·소유자 초당 1회 상한은 그대로). 같은 구역 전원에게 폭발 지점·반경을 보낸다 —
+    ///     클라는 날아가던 투사체를 그 자리에서 터뜨린다 (표시 = 판정).
     /// </summary>
-    private static bool IsPointSweptBySwarmCrossfire(
-        SwarmCrossfireShape shape, Vector3f point, float fromFront, float toFront, float radiusPadding)
+    private void DetonateSwarmCrossfire(
+        long matchingId,
+        SwarmCrossfireShape shape,
+        Vector3f detonation,
+        bool hitTarget,
+        DateTime nowUtc,
+        IReadOnlyList<SwarmArenaCombatTarget> monsters,
+        List<SpotArenaPlayerSpatial> participants,
+        List<GameClientSession> aliveSessions,
+        List<BotPlayerState> aliveBots,
+        List<GameClientSession> allSessions)
     {
+        BroadcastSwarmCrossfireDetonation(shape, detonation, allSessions);
+
+        int monsterHits = 0;
+        foreach (var monster in monsters)
+        {
+            if (monster.Area != shape.Area)
+                continue;
+            if (!IsWithinSwarmGroundRadius(detonation, monster.Position, shape.BlastRadius + SwarmCrossfireMonsterRadius))
+                continue;
+
+            monsterHits++;
+            _swarmArenaManager.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
+            int monsterDamage = RollSwarmCriticalDamage(shape.Damage, out bool critical);
+            ApplySwarmMonsterHitNow(
+                matchingId, monster.CombatTargetId, monster.MonsterId, shape.OwnerId,
+                shape.WeaponItemId, shape.Area, monsterDamage, critical, allSessions);
+        }
+
+        int shocks = 0;
+        foreach (var participant in participants)
+        {
+            if (participant.PlayerId == shape.OwnerId || participant.Area != shape.Area)
+                continue;
+            if (shape.HitVictims.Contains(participant.PlayerId))
+                continue;
+            if (!IsWithinSwarmGroundRadius(detonation, participant.Position, shape.BlastRadius + SwarmCrossfirePlayerRadius))
+                continue;
+            if (_swarmCrossfireVictimImmuneUntilUtc.TryGetValue(
+                    (matchingId, participant.PlayerId), out var immuneUntil) &&
+                nowUtc < immuneUntil)
+                continue;
+            if (_swarmCrossfireOwnerLastHitAtUtc.TryGetValue(
+                    (matchingId, shape.OwnerId), out var ownerLastHit) &&
+                (nowUtc - ownerLastHit).TotalSeconds < Config.SWARM_CROSSFIRE_OWNER_HIT_INTERVAL_SECONDS)
+                continue;
+
+            shocks++;
+            shape.HitVictims.Add(participant.PlayerId);
+            _swarmCrossfireVictimImmuneUntilUtc[(matchingId, participant.PlayerId)] =
+                nowUtc.AddSeconds(Config.SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS);
+            _swarmCrossfireOwnerLastHitAtUtc[(matchingId, shape.OwnerId)] = nowUtc;
+            ApplySwarmCrossfireShock(matchingId, shape, participant.PlayerId, aliveSessions, aliveBots, allSessions);
+        }
+
+        _gameEventLogManager.LogSystem(
+            matchingId,
+            $"ORB_CROSSFIRE_DETONATE event={shape.EventId} owner={shape.OwnerId} " +
+            $"at=({detonation.X:F2},{detonation.Y:F2}) radius={shape.BlastRadius:F2} " +
+            $"trigger={(hitTarget ? "target" : "end")} monsters={monsterHits} shocks={shocks}");
+    }
+
+    private static void BroadcastSwarmCrossfireDetonation(
+        SwarmCrossfireShape shape, Vector3f detonation, List<GameClientSession> allSessions)
+    {
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_CROSSFIRE_TELEGRAPH);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_CROSSFIRE_TELEGRAPH
+        {
+            EventId = shape.EventId,
+            OwnerPlayerId = shape.OwnerId,
+            WeaponItemId = shape.WeaponItemId,
+            Shape = Config.SWARM_CROSSFIRE_SHAPE_DETONATE,
+            OriginX = detonation.X,
+            OriginY = detonation.Y,
+            EndX = detonation.X,
+            EndY = detonation.Y,
+            Width = shape.BlastRadius,
+            TelegraphSeconds = 0f,
+            ActiveSeconds = 0f,
+            AnchorMonsterId = shape.AnchorMonsterId,
+            OwnerOrbOrdinal = 0
+        }));
+        foreach (var session in allSessions)
+        {
+            if (session.PlayerId.HasValue && !session.IsEliminated && session.CurrentArea == shape.Area)
+                session.Send(packet);
+        }
+    }
+
+    /// <summary>축 위 위치(바닥면 거리)를 월드 좌표로 — 폭발 지점.</summary>
+    private static Vector3f ResolveSwarmCrossfireAxisPoint(SwarmCrossfireShape shape, float along)
+    {
+        float ax = shape.Origin.X, ay = shape.Origin.Y * SwarmGroundYScale;
+        float bx = shape.End.X, by = shape.End.Y * SwarmGroundYScale;
+        float length = MathF.Max(shape.GroundLength, 1e-4f);
+        float ux = (bx - ax) / length, uy = (by - ay) / length;
+        return new Vector3f(ax + ux * along, (ay + uy * along) / SwarmGroundYScale, 0f);
+    }
+
+    /// <summary>바닥면(dy×2) 거리로 반경 안인가 — 물폭탄·접촉과 같은 공간.</summary>
+    private static bool IsWithinSwarmGroundRadius(Vector3f center, Vector3f point, float radius)
+    {
+        float dx = point.X - center.X;
+        float dy = (point.Y - center.Y) * SwarmGroundYScale;
+        return dx * dx + dy * dy <= radius * radius;
+    }
+
+    /// <summary>
+    ///     쓸기 판정 (바닥면): 점을 축에 사영한 위치가 이번 틱 앞머리 구간 안이고, 축에서의 수직 거리가
+    ///     반폭(+여유) 이하이면 그 축 위치를 돌려준다. 캡슐 양 끝은 캡 반폭만큼 축 구간을 늘려 판정한다.
+    /// </summary>
+    private static bool TryGetSwarmCrossfireSweptAlong(
+        SwarmCrossfireShape shape, Vector3f point, float fromFront, float toFront, float radiusPadding,
+        out float along)
+    {
+        along = 0f;
         float ax = shape.Origin.X, ay = shape.Origin.Y * SwarmGroundYScale;
         float bx = shape.End.X, by = shape.End.Y * SwarmGroundYScale;
         float px = point.X, py = point.Y * SwarmGroundYScale;
@@ -334,7 +445,7 @@ public partial class GameServer
         if (length <= 0f)
             return false;
         float ux = abx / length, uy = aby / length;
-        float along = (px - ax) * ux + (py - ay) * uy;
+        along = (px - ax) * ux + (py - ay) * uy;
         float perpendicular = MathF.Abs((px - ax) * uy - (py - ay) * ux);
         float reach = shape.HalfWidth + radiusPadding;
         if (perpendicular > reach)

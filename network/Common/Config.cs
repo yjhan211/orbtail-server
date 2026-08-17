@@ -387,8 +387,10 @@ namespace network.common
 
         /// <summary>
         ///     태양 직선 (2026-08-17 유저 판정: 미사일이 아니라 "경고색이 깜빡인 뒤 큰 공격이 한 번에
-        ///     천천히 지나간다"). 예고 시간 동안 깜빡이고, 그 뒤 판정 앞머리가 원점에서 끝까지 이 속도로
-        ///     쓸고 지나간다. 지나간 자리의 몬스터는 PvE 피해(관통), 플레이어는 충격 1회.
+        ///     천천히 지나간다"). 예고 시간 동안 깜빡이고, 그 뒤 큰 투사체가 원점에서 이 속도로 날아간다.
+        ///     선상의 첫 표적(몬스터·플레이어)에 닿는 순간 거기서 폭발 — 폭발 반경 안 전부 피해
+        ///     (2026-08-17 유저 결정: "폭발하는 시점이 피해 시점"). 아무것도 안 닿으면 끝점에서 폭발한다.
+        ///     관통 쓸기는 퇴역 — 예고선은 날아갈 길이고, 폭발이 곧 판정이다.
         /// </summary>
         public const float SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS = 0.55f;
         public const float SWARM_CROSSFIRE_SUN_SWEEP_SPEED = 4.5f;
@@ -404,8 +406,20 @@ namespace network.common
         public static readonly float[] SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER = { 0.7f, 0.85f, 1f };
         public static readonly float[] SWARM_CROSSFIRE_SUN_EXTEND_BY_TIER = { 2.5f, 3f, 3.5f };
 
+        /// <summary>
+        ///     태양 폭발 반경(T1/T2/T3, 바닥면 단위) — 첫 표적에 닿아 터지는 순간 이 안의 몬스터 전부 PvE 피해,
+        ///     플레이어 전부 충격(면역·상한은 그대로). 물폭탄(1.8/2.2/2.6)보다 작게 — 직선이 먼저 좁히고 폭발이 마무리.
+        /// </summary>
+        public static readonly float[] SWARM_CROSSFIRE_SUN_BLAST_RADIUS_BY_TIER = { 1.1f, 1.3f, 1.5f };
+
         /// <summary>교차사격 모양 종류 — 패킷·로그·클라 렌더가 공유하는 식별자.</summary>
         public const int SWARM_CROSSFIRE_SHAPE_LINE = 1;
+
+        /// <summary>
+        ///     교차사격 폭발 통지 — 같은 패킷(G_TO_C_SWARM_CROSSFIRE_TELEGRAPH)을 재사용한다: EventId = 터진 모양,
+        ///     OriginX/Y = 폭발 지점(월드), Width = 폭발 반경(바닥면). 클라는 날아가던 투사체를 그 자리에서 터뜨린다.
+        /// </summary>
+        public const int SWARM_CROSSFIRE_SHAPE_DETONATE = 2;
 
         // ===== 6칸 빌드 (#232 4단계) =====
         /// <summary>
