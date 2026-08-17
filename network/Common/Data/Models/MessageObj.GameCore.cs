@@ -221,6 +221,10 @@ namespace network.common.data.models
         [Key("telegraphSeconds")] public float TelegraphSeconds { get; set; }
         [Key("activeSeconds")] public float ActiveSeconds { get; set; }
         [Key("anchorMonsterId")] public int AnchorMonsterId { get; set; }
+
+        // 발사한 오브의 열 순번 — 클라는 서버 원점 대신 자기가 그리는 그 슬롯 위치에서 선을 시작한다
+        // (서버 꼬리 좌표와 클라 슬롯이 어긋나 "오브가 아닌 곳에서 나가는" 것처럼 보이던 문제).
+        [Key("ownerOrbOrdinal")] public int OwnerOrbOrdinal { get; set; }
     }
 
     /// <summary>

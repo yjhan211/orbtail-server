@@ -57,7 +57,9 @@ public readonly record struct ProximityCombatAttack(
     // 잠근 위치에서 끝까지 처리한다. 레거시 생성 경로는 null이라 종전과 같다.
     long AttackerItemUid = 0,
     Vector3f? Origin = null,
-    Vector3f? AnchorPosition = null);
+    Vector3f? AnchorPosition = null,
+    // 발사한 오브의 열 순번 — 클라가 실제로 그리는 오브 슬롯에 예고의 시작점을 붙이는 근거.
+    int AttackerTrailOrdinal = 0);
 
 public readonly record struct ProximityCombatTargetEvent(
     long AttackerPlayerId,
@@ -274,7 +276,8 @@ public sealed class ProximityAutoCombatResolver
                     attacker.WaveResonanceArmed,
                     AttackerItemUid: attacker.WeaponItemUid,
                     Origin: attacker.Position,
-                    AnchorPosition: eligibleTargets[i].Actor.Position));
+                    AnchorPosition: eligibleTargets[i].Actor.Position,
+                    AttackerTrailOrdinal: attacker.TrailOrdinal));
             }
 
             // A burst of N attacks has N - 1 shortened gaps between those attacks.

@@ -132,7 +132,8 @@ public partial class GameServer
             Width = width,
             TelegraphSeconds = Config.SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS,
             ActiveSeconds = Config.SWARM_CROSSFIRE_SUN_ACTIVE_SECONDS,
-            AnchorMonsterId = anchorMonsterId
+            AnchorMonsterId = anchorMonsterId,
+            OwnerOrbOrdinal = attack.AttackerTrailOrdinal
         }));
         // 같은 구역 전원 — 소유자도 받는다. 자기 모양이 어디 생겼는지 봐야 다음 자리를 고른다.
         foreach (var session in allSessions)
