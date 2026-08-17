@@ -361,15 +361,29 @@ namespace network.common
         /// <summary>한 공격자가 다른 플레이어에게 만드는 유효 충격 상한 — 초당 1회.</summary>
         public const float SWARM_CROSSFIRE_OWNER_HIT_INTERVAL_SECONDS = 1f;
 
-        /// <summary>한 플레이어가 동시에 유지할 수 있는 교차사격 예고 수.</summary>
-        public const int SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER = 2;
+        /// <summary>
+        ///     한 플레이어가 동시에 유지할 수 있는 교차사격 예고 수. 태양 오브 셋이 각자 한 줄씩 —
+        ///     넘치는 발은 모양 없이 기준 몬스터만 때린다(화력 보존, 화면 포화 방지).
+        /// </summary>
+        public const int SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER = 3;
 
-        /// <summary>태양 직선: 예고 시간(발사 → 판정 시작)과 판정 창.</summary>
+        /// <summary>
+        ///     태양 직선 (2026-08-17 유저 판정: 미사일이 아니라 "경고색이 깜빡인 뒤 큰 공격이 한 번에
+        ///     천천히 지나간다"). 예고 시간 동안 깜빡이고, 그 뒤 판정 앞머리가 원점에서 끝까지 이 속도로
+        ///     쓸고 지나간다. 지나간 자리의 몬스터는 PvE 피해(관통), 플레이어는 충격 1회.
+        /// </summary>
         public const float SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS = 0.55f;
-        public const float SWARM_CROSSFIRE_SUN_ACTIVE_SECONDS = 0.12f;
+        public const float SWARM_CROSSFIRE_SUN_SWEEP_SPEED = 4.5f;
 
-        /// <summary>태양 직선의 전체 폭(T1/T2/T3)과 기준 몬스터 너머 연장 길이(T1/T2/T3).</summary>
-        public static readonly float[] SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER = { 0.5f, 0.6f, 0.7f };
+        /// <summary>
+        ///     큰 공격 한 번 = 유도탄 두 발 몫. 주기 ×2, 피해 ×2 — 총 화력은 같고 한 번의 무게가 커진다.
+        ///     T1 24는 일반 몹(16~22)을 한 방에 지우고 관통하므로 실측 뒤 조정 대상이다.
+        /// </summary>
+        public const float SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER = 2f;
+        public const float SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER = 2f;
+
+        /// <summary>태양 직선의 전체 폭(T1/T2/T3)과 기준 몬스터 너머 연장 길이(T1/T2/T3). 폭은 바닥면 단위.</summary>
+        public static readonly float[] SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER = { 0.7f, 0.85f, 1f };
         public static readonly float[] SWARM_CROSSFIRE_SUN_EXTEND_BY_TIER = { 2.5f, 3f, 3.5f };
 
         /// <summary>교차사격 모양 종류 — 패킷·로그·클라 렌더가 공유하는 식별자.</summary>

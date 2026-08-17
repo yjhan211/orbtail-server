@@ -107,16 +107,20 @@ public partial class GameClientSession
     }
 
     internal void SendEmotionAfterimageMonsterAttackFeedback(
-        int monsterId, AreaType area, int weaponItemId, int damage, bool critical = false)
+        int monsterId, AreaType area, int weaponItemId, int damage, bool critical = false,
+        bool noProjectile = false)
     {
         if (!PlayerId.HasValue || IsEliminated || monsterId < 0 || weaponItemId <= 0 || damage <= 0)
             return;
 
         // targetCorruption is event-specific metadata here: zero means a Wave splash hit,
         // so the client preserves its damage feedback without replaying the projectile.
-        // cooldownSeconds는 이 이벤트에서 안 쓰는 자리라 치명타 플래그로 빌려 쓴다 (#229 임시).
+        // cooldownSeconds는 이 이벤트에서 안 쓰는 자리라 플래그 비트로 빌려 쓴다 (#229 임시):
+        // bit0 = 치명타, bit1 = 투사체 없음(#232 교차사격 쓸기 — 모양이 이미 그 자리를 지나갔다,
+        // 숫자만 띄운다).
+        int flags = (critical ? 1 : 0) | (noProjectile ? 2 : 0);
         using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(
-            PlayerId.Value, area, EmotionAfterimageMonsterAttackDealtEventType, critical ? 1 : 0,
+            PlayerId.Value, area, EmotionAfterimageMonsterAttackDealtEventType, flags,
             weaponItemId, damage, monsterId);
         Send(packet);
     }

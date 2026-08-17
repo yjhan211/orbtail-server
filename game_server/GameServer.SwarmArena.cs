@@ -178,28 +178,9 @@ public partial class GameServer
             if (!damageResult.Applied && hit.AnchorPosition != null)
                 ResolveSwarmAttackAtLockedAnchor(matchingId, hit, nowUtc);
 
+            // 처치 정산은 교차사격 즉시 타격과 같은 경로 — 계측·처치 로그·소환석 드롭.
             if (damageResult.Applied && damageResult.Killed && damageResult.MonsterState != null)
-            {
-                // 기준점 계측 (#232 1단계): 종·생존초·살아 있는 동안 받은 공격 사건 수. 완료 조건
-                // "몬스터당 공격 모양 평균 2회 이상"과 "즉시 지워져 기준점이 못 되는 몹"을 여기서 잰다.
-                _gameEventLogManager.LogSystem(
-                    matchingId,
-                    $"monster_lifetime kind={damageResult.Kind} area={damageResult.MonsterState.AreaType} " +
-                    $"aliveSeconds={damageResult.AliveSeconds:F1} attackEvents={damageResult.AttackEventCount} " +
-                    $"killer={hit.AttackerId}");
-
-                // 처치 계측 (#226 E): 종·구역·처치자 — 요약의 몹 처치 지표가 이 이벤트를 읽는다.
-                _gameEventLogManager.LogEmotionAfterimageKilled(
-                    matchingId, damageResult.MonsterId,
-                    damageResult.MonsterState.AreaType.ToString(),
-                    isCore: damageResult.Kind == SwarmMonsterKind.RunawayGoblin,
-                    firstAttackerPlayerId: hit.AttackerId,
-                    lastAttackerPlayerId: hit.AttackerId,
-                    new Dictionary<long, int> { [hit.AttackerId] = hit.Damage });
-                SpawnSpotArenaSummonStone(
-                    matchingId, damageResult.MonsterState, sessions,
-                    damageResult.HeartReward, damageResult.BootsReward, damageResult.KeyReward);
-            }
+                SettleSwarmMonsterKill(matchingId, damageResult, hit.AttackerId, hit.Damage, sessions);
         }
     }
 
@@ -525,6 +506,34 @@ public partial class GameServer
         foreach (var attack in attacks)
         {
             int monsterId = _swarmArenaManager.GetMonsterIdForCombatTarget(matchingId, attack.TargetPlayerId);
+            if (monsterId > 0 && IsSwarmCrossfireWeapon(attack.WeaponItemId))
+            {
+                // 태양 = 교차사격 직선 (#232 2단계, 2026-08-17): 유도탄이 아니라 예고 뒤 쓸고 지나가는
+                // 큰 공격이다. 미사일 연출·비행시간 착탄·예약을 타지 않고 모양 하나를 잠근다.
+                // 소유자 동시 예고 상한을 넘으면 모양 없이 기준 몬스터만 즉시 때린다(화력 보존).
+                actorById ??= actors
+                    .GroupBy(actor => actor.PlayerId)
+                    .ToDictionary(group => group.Key, group => group.First());
+                var sunOrigin = attack.Origin ??
+                                (actorById.TryGetValue(attack.AttackerPlayerId, out var sunAttacker)
+                                    ? sunAttacker.Position
+                                    : null);
+                var sunAnchor = attack.AnchorPosition ??
+                                (actorById.TryGetValue(attack.TargetPlayerId, out var sunTarget)
+                                    ? sunTarget.Position
+                                    : null);
+                if (TryScheduleSwarmCrossfire(
+                        matchingId, attack, sunOrigin, sunAnchor, monsterId, attack.Damage, nowUtc, sessions))
+                    continue;
+
+                int fallbackDamage = RollSwarmCriticalDamage(attack.Damage, out bool fallbackCritical);
+                _swarmArenaManager.RecordMonsterAttackEvent(matchingId, attack.TargetPlayerId);
+                ApplySwarmMonsterHitNow(
+                    matchingId, attack.TargetPlayerId, monsterId, attack.AttackerPlayerId,
+                    attack.WeaponItemId, attack.Area, fallbackDamage, fallbackCritical, sessions);
+                continue;
+            }
+
             if (monsterId > 0)
             {
                 int monsterDamage = RollSwarmCriticalDamage(attack.Damage, out bool critical);
@@ -573,9 +582,6 @@ public partial class GameServer
                     matchingId, attack.TargetPlayerId, attack.AttackerPlayerId,
                     monsterDamage, nowUtc.AddSeconds(delaySeconds),
                     attack.WeaponItemId, attack.AttackerItemUid, origin, anchor));
-                // 교차사격 (#232 2단계): 같은 발사가 사람에게 닿는 유일한 경로 — 원점→기준점
-                // 직선을 잠그고 예고를 뿌린다. PvE 피해와 독립이라 몹이 먼저 죽어도 모양은 남는다.
-                TryScheduleSwarmCrossfire(matchingId, attack, origin, anchor, monsterId, nowUtc, sessions);
                 continue;
             }
 
@@ -4663,12 +4669,17 @@ public partial class GameServer
                 continue;
             }
 
+            // 태양 = 큰 공격 한 번 (#232 2단계): 유도탄 두 발 몫을 한 번에 — 주기 ×2, 피해 ×2.
+            // 총 화력은 같고, 예고 → 쓸기 한 사이클이 유도탄 연사보다 읽히는 무게를 갖는다.
+            bool crossfireSun = IsSwarmCrossfireWeapon(actor.WeaponItemId);
+            float crossfireDamageMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER : 1f;
+            float crossfireCadenceMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER : 1f;
             actors[index] = actor with
             {
                 Damage = armed
                     ? Math.Max(1, (int)MathF.Round(
                         SurvivorOrbData.GetSwarmPveAttackDamage(actor.WeaponItemId) *
-                        sunAttackMultiplier))
+                        sunAttackMultiplier * crossfireDamageMultiplier))
                     : 0,
                 // 오브마다 제 박자를 준다 (2026-08-16 유저 판정: 일제사가 어색하다).
                 // 전 오브가 같은 주기를 쓰면 한 번에 쏘고 한 번에 쉬는 호흡이 되어, 서로 다른
@@ -4677,7 +4688,8 @@ public partial class GameServer
                 // 표적이 죽어 재조준이 겹쳐도 다시 흩어진다.
                 // 초기 지연으로 어긋내지 않는 이유: 재조준마다 그 지연을 다시 물어 DPS가 깎인다.
                 AttackIntervalSeconds = SurvivorOrbData.GetSwarmPveAttackIntervalSeconds(
-                    actor.WeaponItemId) * ResolveSwarmOrbCadenceJitter(index - before),
+                    actor.WeaponItemId) * ResolveSwarmOrbCadenceJitter(index - before) *
+                    crossfireCadenceMultiplier,
                 InitialAttackDelaySeconds = 0f,
                 // 이 공용 actor는 잔상 PvE에만 쓰인다. PvP 국소 사거리는 별도 공격 사건에서
                 // 오브별 원점을 기준으로 판정하므로, PvE의 같은 구역 사냥 범위는 유지한다.
