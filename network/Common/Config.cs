@@ -390,9 +390,10 @@ namespace network.common
         ///     태양 투사체 (2026-08-17 유저 판정 누적): 큰 투사체 하나가 오브에서 표적 방향으로 티어 사거리
         ///     끝까지 이 속도로 날아간다. 선상의 첫 표적(몬스터·플레이어)에 닿는 순간 거기서 폭발 — 폭발 반경
         ///     안 전부 피해("폭발하는 시점이 피해 시점"). 끝까지 아무것도 안 닿으면 폭발 없이 소멸.
-        ///     예고선·예고 시간은 퇴역(0) — 발사 즉시 날아간다.
+        ///     예고선은 퇴역. 예고 시간 0.25초는 선 없이 오브 조준 발광(표적 쪽으로 돌아서며 부풂)만 —
+        ///     "조준됐다"가 발사 직전 읽히게 (2026-08-17 유저 지시).
         /// </summary>
-        public const float SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS = 0f;
+        public const float SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS = 0.25f;
         public const float SWARM_CROSSFIRE_SUN_SWEEP_SPEED = 4.5f;
 
         /// <summary>
