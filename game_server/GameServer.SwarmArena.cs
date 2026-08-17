@@ -396,7 +396,7 @@ public partial class GameServer
         if (!SwarmCutDummyAutoSetup && (dummyIds.Count == 0 || SwarmCrossfireSandbox))
         {
             ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
-            ProcessSwarmWindSlashes(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+            ProcessSwarmWindSlams(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
         }
 
         // 접촉 계측 (2026-08-16): 접촉이 성립하는지 층별로 남긴다. 이 줄들이 "봇은 접촉 피해를
@@ -4520,7 +4520,7 @@ public partial class GameServer
         _swarmAnchorOrphanCount.Remove(matchingId);
         _swarmAnchorProbeAtUtc.Remove(matchingId);
         ClearSwarmCrossfireState(matchingId);
-        ClearSwarmWindSlashState(matchingId);
+        ClearSwarmWindSlamState(matchingId);
         ClearSwarmOrbBoardState(matchingId);
         foreach (var key in _swarmGrowthPreviewCost.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
@@ -4723,7 +4723,7 @@ public partial class GameServer
             if (orbColor is SurvivorOrbColor.Blue or SurvivorOrbColor.Green)
             {
                 // 파도: 미사일을 쏘지 않는다 — 물폭탄(별도 주기)이 화력이다.
-                // 바람: 조준하지 않는다 — 회전 칼날(별도 주기, ProcessSwarmWindSlashes)이 화력이다.
+                // 바람: 조준 투사체가 없다 — 몸통박치기(감지·쿨다운, ProcessSwarmWindSlams)가 화력이다.
                 actors[index] = actor with { Damage = 0 };
                 continue;
             }

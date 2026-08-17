@@ -411,14 +411,18 @@ namespace network.common
         public static readonly float[] SWARM_CROSSFIRE_SUN_RANGE_BY_TIER = { 4f, 5.5f, 7f };
 
         /// <summary>
-        ///     바람 회전 칼날 (2026-08-17 저녁 유저 결정): 조준하지 않는다. 바람 오브가 제자리(열 좌표)에서 오브를 따라
-        ///     움직이며 주기마다 반경 안의 몬스터·플레이어를 한 번에 벤다 — 파도가 자리에 깔리는 고정 범위 공격이라면
-        ///     바람은 오브에 붙어 다니는 이동 범위 공격. 반경은 바닥면 단위, 강화될수록 넓다. 피해 = 바람 PvE 피해 × 배수
-        ///     (유도탄 연사보다 느린 박자라 한 번을 조금 무겁게). 관통 칼날(직선 투사체)은 "너무 타겟팅"이라 퇴역.
+        ///     바람 몸통박치기 (2026-08-17 저녁 유저 결정): 조준 투사체가 아니다. 바람 오브는 제자리(열 좌표)에 있다가
+        ///     감지 반경(티어별, 바닥면) 안에 누가 오면 그쪽으로 한 번 몸을 던진다 — 예비 동작(뒤로 당김) → 돌진 → 착지.
+        ///     착지 반경 안 몬스터 PvE 피해(× 배수), 플레이어 충격. 아무도 없으면 가만히. 오브당 쿨다운.
+        ///     판정은 발동 뒤 예비+돌진 시간에 착지점(발동 순간 잠금)에서 — 클라 연출과 같은 시간표.
+        ///     주기 공격(회전 칼날)은 "아무도 없을 때 혼자 도는 게 이상하다"로 퇴역.
         /// </summary>
-        public const float SWARM_WIND_SLASH_INTERVAL_SECONDS = 0.8f;
-        public static readonly float[] SWARM_WIND_SLASH_RADIUS_BY_TIER = { 1.3f, 1.55f, 1.8f };
-        public const float SWARM_WIND_SLASH_DAMAGE_MULTIPLIER = 1.5f;
+        public const float SWARM_WIND_SLAM_COOLDOWN_SECONDS = 1.4f;
+        public static readonly float[] SWARM_WIND_SLAM_TRIGGER_RADIUS_BY_TIER = { 1.4f, 1.65f, 1.9f };
+        public const float SWARM_WIND_SLAM_HIT_RADIUS = 0.6f;
+        public const float SWARM_WIND_SLAM_WINDUP_SECONDS = 0.2f;
+        public const float SWARM_WIND_SLAM_LUNGE_SECONDS = 0.12f;
+        public const float SWARM_WIND_SLAM_DAMAGE_MULTIPLIER = 1.5f;
 
         /// <summary>
         ///     태양 폭발 반경(T1/T2/T3, 바닥면 단위) — 첫 표적에 닿아 터지는 순간 이 안의 몬스터 전부 PvE 피해,
