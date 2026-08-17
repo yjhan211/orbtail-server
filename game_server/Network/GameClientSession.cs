@@ -3,6 +3,7 @@ using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 using network.core;
 using network.helpers;
@@ -103,6 +104,8 @@ public partial class GameClientSession : SessionBase
     private Cell? _lastValidCell;
 
     private float _lastValidatedRotation;
+    // 오브 궤도 위상 (#232): 검증 이동 거리로 적산한 권위값 — 시드는 PlayerId. null = 아직 시드 전.
+    private float? _orbOrbitPhaseDegrees;
     // Stopwatch ticks: client timestamps are telemetry only and never extend movement authority.
     private long _lastMoveReceiptTimestamp;
     private long _lastMoveAcknowledgementTimestamp;
@@ -408,6 +411,22 @@ public partial class GameClientSession : SessionBase
 
     /// <summary>마지막 검증된 월드 좌표 — 근접 전투와 체크리스트 거리 판정용.</summary>
     public Vector3f? LastValidatedPosition => _lastValidatedPosition;
+
+    /// <summary>
+    ///     오브 궤도 위상 (#232): 이동할 때 돌고 멈추면 선다 — 검증 이동 거리를 적산한다.
+    ///     서버 전투가 오브별 자리(SwarmOrbOrbit)를 계산하는 근거이자, G_TO_C_MOVE로 클라에 보내는 보정값.
+    /// </summary>
+    public float OrbOrbitPhaseDegrees =>
+        _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(PlayerId ?? 0L);
+
+    /// <summary>검증된 이동만큼 궤도를 돌린다 (텔레포트급 점프는 SwarmOrbOrbit이 무시한다).</summary>
+    private void AdvanceOrbOrbit(Vector3f from, Vector3f to)
+    {
+        float dx = to.X - from.X;
+        float dy = to.Y - from.Y;
+        _orbOrbitPhaseDegrees = SwarmOrbOrbit.AdvancePhase(
+            OrbOrbitPhaseDegrees, MathF.Sqrt(dx * dx + dy * dy));
+    }
 
     // 마니또 체인 정보
     public long TargetPlayerId { get; private set; }

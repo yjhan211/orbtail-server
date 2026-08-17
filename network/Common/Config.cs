@@ -333,12 +333,16 @@ namespace network.common
         public const float SWARM_ORB_ATTACK_RANGE = 2.5f;
 
         /// <summary>
-        ///     오브 궤도 (#232, 2026-08-17 서버 공유): 오브는 본체 주위 타원 궤도를 일정 각속도로
-        ///     돈다. 위상은 서버 시각의 함수(SwarmOrbOrbit)라 서버·모든 클라가 같은 자리를 계산한다 —
-        ///     서버는 그 자리를 오브별 발사 원점·표적 선정 기준으로 쓰고, 클라는 그 자리에 그린다.
+        ///     오브 궤도 (#232, 2026-08-17 서버 공유): 오브는 본체 주위 타원 궤도를 돈다 — 이동한 거리만큼
+        ///     (2026-08-17 유저 지시: 이동할 때 돌고 멈추면 선다). 위상 = 시드 + 이동 거리 × 도/단위.
+        ///     서버가 검증 이동으로 적산해 G_TO_C_MOVE에 실어 보내고(권위), 클라는 자기 트랜스폼 이동으로
+        ///     같은 식을 적산하다 그 값으로 보정한다 — 서버는 그 자리를 오브별 발사 원점·표적 선정 기준으로
+        ///     쓰고, 클라는 그 자리에 그린다. 9도/단위 = 걷기 속도 6에서 54도/초.
+        ///     텔레포트(구역 이동)만큼의 점프는 적산하지 않는다.
         ///     반지름 = 사거리 × 배수, 아이소 타원(y 절반), 궤도 중심 = 본체 + Y 오프셋.
         /// </summary>
-        public const float SWARM_ORB_ORBIT_DEGREES_PER_SECOND = 54f;
+        public const float SWARM_ORB_ORBIT_DEGREES_PER_UNIT = 9f;
+        public const float SWARM_ORB_ORBIT_TELEPORT_DISTANCE = 3f;
         public const float SWARM_ORB_ORBIT_RADIUS_MULTIPLIER = 0.8f;
         public const float SWARM_ORB_ORBIT_ISO_Y_SCALE = 0.5f;
         public const float SWARM_ORB_ORBIT_CENTER_OFFSET_Y = 0.8f;

@@ -53,6 +53,8 @@ namespace network.common.data.models
         [Key("cell")] public Cell Cell { get; set; }
         [Key("lastProcessedInput")] public uint LastProcessedInput { get; set; }
         [Key("serverTime")] public long ServerTimestamp { get; set; }
+        // 오브 궤도 위상 (#232): 서버가 검증 이동으로 적산한 권위값 — 클라는 자기 적산을 이 값으로 보정한다.
+        [Key("orbPhase")] public float OrbOrbitPhaseDegrees { get; set; }
     }
 
     [MessagePackObject]

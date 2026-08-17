@@ -420,6 +420,28 @@ public class BotPlayerState
     /// <summary>遊?濡쒗뀒?댁뀡 (?ㅼ젣 ?뚮젅?댁뼱 ObjectInfo.Rotation ?숇벑).</summary>
     public float Rotation { get; set; }
 
+    // 오브 궤도 위상 (#232): 사람 세션과 같은 규칙 — 이동한 거리만큼 돈다. null = 아직 시드 전.
+    private float? _orbOrbitPhaseDegrees;
+    private Vector3f? _orbOrbitLastPosition;
+
+    /// <summary>오브 궤도 위상 — 서버 전투의 오브별 자리 근거이자 G_TO_C_MOVE 보정값.</summary>
+    public float OrbOrbitPhaseDegrees =>
+        _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(PlayerId);
+
+    /// <summary>이동 이벤트마다 호출 — 직전 이벤트 위치에서 이번 위치까지 거리만큼 돈다(텔레포트급은 무시).</summary>
+    public void AdvanceOrbOrbit(Vector3f newPosition)
+    {
+        if (_orbOrbitLastPosition != null)
+        {
+            float dx = newPosition.X - _orbOrbitLastPosition.X;
+            float dy = newPosition.Y - _orbOrbitLastPosition.Y;
+            _orbOrbitPhaseDegrees = SwarmOrbOrbit.AdvancePhase(
+                OrbOrbitPhaseDegrees, MathF.Sqrt(dx * dx + dy * dy));
+        }
+
+        _orbOrbitLastPosition = new Vector3f(newPosition.X, newPosition.Y, newPosition.Z);
+    }
+
     /// <summary>留덉?留?? wander(?곸뿭 ???대룞) ?쒓컖. Phase 2 ???곸뿭 ???먯뿰 ?대룞.</summary>
     public DateTime LastCellWanderTime { get; set; } = DateTime.UtcNow;
 

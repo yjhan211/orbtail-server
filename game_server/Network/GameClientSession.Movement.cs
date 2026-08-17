@@ -133,6 +133,9 @@ public partial class GameClientSession
             // #229 6단계: 이동 입력이 곧 수면 해제다 — 누워서 도망칠 수 없다.
             if (_isSleeping)
                 BreakSwarmSleep(DateTime.UtcNow, markCombat: false);
+            // 오브 궤도 (#232): 검증된 이동 거리만큼 돈다 — 멈추면 이동 패킷이 없으니 저절로 선다.
+            if (_lastValidatedPosition != null)
+                AdvanceOrbOrbit(_lastValidatedPosition, validatedPosition);
             _lastValidatedPosition = validatedPosition;
             _groundItemManager.ReleaseSourcePickupBlocks(CurrentMapSubId, PlayerId.Value,
                 newArea == AreaType.None ? CurrentArea : newArea, validatedPosition.X, validatedPosition.Y);
@@ -172,7 +175,8 @@ public partial class GameClientSession
                 msg.Rotation,
                 currentCell,
                 msg.InputSequence,
-                serverTimestamp
+                serverTimestamp,
+                OrbOrbitPhaseDegrees
             );
 
             var otherSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
@@ -363,7 +367,8 @@ public partial class GameClientSession
             _lastValidatedRotation,
             cell,
             inputSequence,
-            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            OrbOrbitPhaseDegrees);
         Send(packet);
         _lastMoveAcknowledgementTimestamp = Stopwatch.GetTimestamp();
     }

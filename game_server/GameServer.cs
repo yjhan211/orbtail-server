@@ -1619,6 +1619,8 @@ public partial class GameServer(
         }
 
         // 3) 새 영역의 인간들에게 MOVE (텔레포트 또는 wander)
+        float orbOrbitPhase = _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.OrbOrbitPhaseDegrees
+                              ?? SwarmOrbOrbit.InitialPhaseDegrees(ev.BotPlayerId);
         using var movePacket = PacketMaker.G_TO_C_MOVE(
             ev.BotPlayerId,
             ev.Position,
@@ -1626,7 +1628,8 @@ public partial class GameServer(
             ev.Rotation,
             ev.ToCell,
             lastProcessedInput: 0u,
-            serverTimestamp);
+            serverTimestamp,
+            orbOrbitPhase);
         foreach (var session in matchingSessions)
         {
             if (session.CurrentArea != ev.ToArea) continue;
@@ -2240,7 +2243,11 @@ public partial class GameServer(
 
                 long broadcastStartedAt = Stopwatch.GetTimestamp();
                 foreach (var ev in movementResult.Movements)
+                {
+                    // 오브 궤도 (#232): 봇도 이동한 거리만큼 돈다 — 사람 세션의 검증 이동 적산과 같은 규칙.
+                    _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.AdvanceOrbOrbit(ev.Position);
                     BroadcastBotMovement(matchingId, ev, activeSessions);
+                }
                 if (movementResult.ExploreEnds.Count > 0)
                 {
                     BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);

@@ -52,7 +52,7 @@ public partial class GameServer
     private static readonly bool SwarmOrbTargetsPlayersEnabled = false;
 
     // 궤도 복귀 (#232 2026-08-17 유저 지시): 오브가 SB 클론처럼 플레이어 주위를 돈다.
-    // 궤도 위상은 서버 시각의 공유 식(SwarmOrbOrbit)이라 서버가 각 오브의 자리를 안다 —
+    // 궤도 위상은 이동 거리 적산의 공유 식(SwarmOrbOrbit)이라 서버가 각 오브의 자리를 안다 —
     // 사격·교차사격 원점과 표적 선정은 오브 자리, 폐쇄 판정은 본체 위치를 쓴다.
     // 오브열로 되돌리려면 이 값과 클라 PlayerTool.OrbTrailLayoutEnabled를 함께 바꾼다.
     private static readonly bool SwarmOrbOrbitLayout = true;
@@ -4594,7 +4594,8 @@ public partial class GameServer
                     session.LastValidatedPosition,
                     out var spatial))
             {
-                AddSwarmParticipantCombatActors(actors, matchingId, spatial, nowUtc);
+                AddSwarmParticipantCombatActors(
+                    actors, matchingId, spatial, nowUtc, session.OrbOrbitPhaseDegrees);
             }
         }
 
@@ -4602,7 +4603,7 @@ public partial class GameServer
         foreach (var bot in aliveBots)
         {
             if (TryCreateSpatialActor(bot.PlayerId, botMapId, bot.CurrentArea, bot.Position, out var botSpatial))
-                AddSwarmParticipantCombatActors(actors, matchingId, botSpatial, nowUtc);
+                AddSwarmParticipantCombatActors(actors, matchingId, botSpatial, nowUtc, bot.OrbOrbitPhaseDegrees);
         }
 
         foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
@@ -4635,7 +4636,8 @@ public partial class GameServer
         List<ProximityCombatActor> actors,
         long matchingId,
         ProximityCombatActor spatial,
-        DateTime nowUtc)
+        DateTime nowUtc,
+        float orbOrbitPhaseDegrees)
     {
         // DEV_CUT_DUMMY 매치는 절단 궤적만 읽는 실험장이다. 서버에서 공격 액터를
         // 비무장으로 만들어 태양·바람 미사일과 실제 피해가 함께 발생하지 않게 한다.
@@ -4694,10 +4696,10 @@ public partial class GameServer
         {
             var actor = actors[index];
             // 오브열 (#226 α+): 공격 원점·피격 위치 = 각 오브의 열 좌표 — 표시가 곧 판정.
-            // 궤도 배치(#232): 서버 시각의 함수인 궤도 자리(SwarmOrbOrbit) — 클라가 그리는 자리와
+            // 궤도 배치(#232): 이동 거리로 적산한 위상의 궤도 자리(SwarmOrbOrbit) — 클라가 그리는 자리와
             // 같다. 오브마다 제 자리에서 가장 가까운 몹을 고르고, 예고선은 그 오브에서 나간다.
             var trailPosition = SwarmOrbOrbitLayout
-                ? ResolveSwarmOrbOrbitPosition(spatial.Position, spatial.PlayerId, nowUnixMs, index - before, orbCount)
+                ? ResolveSwarmOrbOrbitPosition(spatial.Position, orbOrbitPhaseDegrees, index - before, orbCount)
                 : GetSwarmOrbTrailPosition(
                     matchingId, spatial.PlayerId, index - before, spatial.Position, actorTiers);
             actor = actor with
@@ -4767,10 +4769,10 @@ public partial class GameServer
     ///     (AssignOrbRingLayout: 보이는 오브를 360/N 균등)과 같은 규칙이라 같은 자리가 나온다.
     /// </summary>
     private static Vector3f ResolveSwarmOrbOrbitPosition(
-        Vector3f bodyPosition, long ownerPlayerId, long nowUnixMs, int ordinal, int count)
+        Vector3f bodyPosition, float phaseDegrees, int ordinal, int count)
     {
         SwarmOrbOrbit.SlotPosition(
-            bodyPosition.X, bodyPosition.Y, ownerPlayerId, nowUnixMs, ordinal, count, out float x, out float y);
+            bodyPosition.X, bodyPosition.Y, phaseDegrees, ordinal, count, out float x, out float y);
         return new Vector3f(x, y, bodyPosition.Z);
     }
 
