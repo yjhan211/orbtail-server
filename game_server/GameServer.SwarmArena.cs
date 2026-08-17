@@ -2686,11 +2686,8 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        // #229 물폭탄은 잔상 PvE 전용이다. 플레이어와 플레이어 오브는 판정 대상이 아니다.
-        _ = participants;
-        _ = aliveSessions;
-        _ = aliveBots;
-        _ = nowUtc;
+        // #229는 잔상 PvE 전용이었다. 2026-08-17 유저 지시: 플레이어도 몹과 같은 반경으로 맞는다 —
+        // 소유자 아닌 플레이어는 충격(고정 50, 태양·바람과 공용 창: 피해자 0.9초 면역·소유자 초당 1회).
         var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
         float radiusSquared = radius * radius;
         int hitCount = 0;
@@ -2726,14 +2723,35 @@ public partial class GameServer
                 monsterId, area, sourceItemId, monsterDamage, critical);
         }
 
-        if (hitCount > 0)
+        // 플레이어: 같은 반경(바닥면 타원) + 몸통 여유. 소유자 제외.
+        int shocks = 0;
+        float nearestPlayer = float.MaxValue;
+        foreach (var participant in participants)
+        {
+            if (participant.PlayerId == ownerId || participant.Area != area || participant.Position == null)
+                continue;
+            float pdx = participant.Position.X - position.X;
+            float pdy = (participant.Position.Y - position.Y) * 2f;
+            nearestPlayer = MathF.Min(nearestPlayer, MathF.Sqrt(pdx * pdx + pdy * pdy));
+            if (!IsWithinSwarmGroundRadius(position, participant.Position, radius + SwarmCrossfirePlayerRadius))
+                continue;
+            if (!TryClaimSwarmShockWindow(matchingId, ownerId, participant.PlayerId, nowUtc))
+                continue;
+
+            shocks++;
+            ApplySwarmShock(matchingId, ownerId, sourceItemId, area, participant.PlayerId,
+                "WAVE_BOMB_HIT", aliveSessions, aliveBots, allSessions);
+        }
+
+        if (hitCount > 0 || shocks > 0)
         {
             // 계측 (#229): 폭발이 몇 마리를 집었고 그중 몇 마리가 몹 id로 해석돼 피해 숫자
             // 통보까지 갔는지. notified < hits면 클라에 숫자가 빠진다.
             _gameEventLogManager.LogSystem(
                 matchingId,
                 $"wave_bomb_hit owner={ownerId} area={area} hits={hitCount} " +
-                $"notified={notifiedCount} damage={damage} item={sourceItemId}");
+                $"notified={notifiedCount} shocks={shocks} nearestPlayer={(nearestPlayer < float.MaxValue ? nearestPlayer : -1f):F2} " +
+                $"damage={damage} item={sourceItemId}");
         }
     }
 
