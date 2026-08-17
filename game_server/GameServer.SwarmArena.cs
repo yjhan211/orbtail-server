@@ -411,8 +411,10 @@ public partial class GameServer
                 $"participants={participants.Count}");
         }
 
-        // 실험장 (#226): 더미가 있는 매치는 몹 공격도 끈다 — 절단 튜닝 중 방해 금지.
-        if (dummyIds.Count == 0)
+        // 실험장 (#226): 절단 더미 매치는 몹 공격도 끈다 — 절단 튜닝 중 방해 금지.
+        // 교차사격 샌드박스(#232)는 켠다 — 몹이 달려들어 부딪히는 것까지가 실험 대상이다
+        // (2026-08-17 저녁 유저 제보 "몹이 데미지를 안 입힌다": 이 게이트가 막고 있었다).
+        if (dummyIds.Count == 0 || SwarmCrossfireSandbox)
             foreach (var damage in tick.PlayerDamage)
                 ApplySwarmParticipantDamage(matchingId, damage, aliveSessions, aliveBots, sessions);
         ProcessSwarmBotRecovery(matchingId, aliveBots, nowUtc);
@@ -2839,7 +2841,7 @@ public partial class GameServer
         Environment.GetEnvironmentVariable("DEV_CUT_DUMMY") == "1";
 
     // 교차사격 샌드박스 (#232 2단계): DEV_CROSSFIRE_SANDBOX=1 — 절단 실험장과 같은 격리
-    // (운동장 더미 하나 + 나머지 봇 퇴장 + 몹 접촉 무해)를 쓰되, 더미는 태양 T1 3개·철갑
+    // (운동장 더미 하나 + 나머지 봇 퇴장)를 쓰되(몹 접촉 피해는 켜 둔다), 더미는 태양 T1 3개·철갑
     // 없음·무장(몹을 쏜다)이다. 사람 오브도 무장 — 실험 대상이 절단 궤적이 아니라
     // 몹을 향한 사격이 만드는 직선이기 때문이다. user_server 같은 env가 전원을 운동장에 스폰한다.
     private static readonly bool SwarmCrossfireSandbox =

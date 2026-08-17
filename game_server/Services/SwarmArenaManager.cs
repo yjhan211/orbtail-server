@@ -43,9 +43,9 @@ public sealed class SwarmArenaManager
     // 서버 위치는 클라 예측보다 늦으므로 회피자에게 후한 쪽이 맞다.
     public const float ContactRange = 0.32f;
     public const float ContactCooldownSeconds = 1f;
-    // 4.2 → 3.2 (#232 2026-08-17 유저 지시: 몹이 너무 빠르다). 플레이어 5의 64% — 걷기만으로
-    // 거리가 벌어지고, 태양 쓸기(4.5u/s)가 몹을 확실히 추월해 "지나가며 쓸어 담는" 그림이 성립한다.
-    public const float MonsterMoveSpeed = 3.2f;
+    // 4.2 → 3.2(08-17 오후, "몹이 너무 빠르다") → 4.2 복구 (08-17 저녁 유저 결정: 몹이 달려들어
+    // 부딪혀야 한다 — 숨쉬는 포위와 함께 내렸던 이속을 직진 추격 복귀와 함께 되돌린다).
+    public const float MonsterMoveSpeed = 4.2f;
     public const float RingTelegraphSeconds = 1f;
     public const float RushTelegraphSeconds = 1f;
     public const float EncircleTelegraphSeconds = 1.5f;
@@ -385,6 +385,9 @@ public sealed class SwarmArenaManager
     // 접근 목표 = 플레이어 + 개체 고유 각도의 오프셋. 반경은 추격하는 동안 줄어들어 결국 접촉한다 —
     // 사방에서 조여드는 흩어진 고리가 되고, 교차사격 기준점이 여러 방위에 선다.
     // 바닥면은 아이소라 Y 오프셋은 절반(dy×2 정규화의 역).
+    // 포위 스위치 (2026-08-17 저녁 유저 결정: 몹이 플레이어에게 달려들어 부딪혀야 한다 — 숨쉬는 포위는
+    // 사람 매치 로그에서 몹 접촉 피해 0건). 끄면 직진 추격. 코드는 남긴다 — 켜면 산재 고리로 돌아간다.
+    private const bool SurroundEnabled = false;
     private const float SurroundStartRadius = 3.5f;
     private const float SurroundShrinkPerSecond = 0.35f;
     // 반경 0 이후 이만큼 더 감쇠하는 동안 플레이어를 직격한다(접촉 창 ≈ 1.7초), 그 뒤 고리로 복귀.
@@ -2454,7 +2457,7 @@ public sealed class SwarmArenaManager
             }
         }
 
-        MoveTowardPlayer(monster, target.Position, deltaSeconds, surround: true);
+        MoveTowardPlayer(monster, target.Position, deltaSeconds, surround: SurroundEnabled);
     }
 
     private void SpawnDueParticipantPattern(
