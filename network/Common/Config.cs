@@ -378,21 +378,20 @@ namespace network.common
 
         /// <summary>
         ///     한 플레이어가 동시에 유지할 수 있는 교차사격 예고 수 (명세 "동시 예고 최대 2개"). 예고(시전)
-        ///     중인 모양만 센다 — 발동 뒤 날아가는 투사체는 예고가 아니다. 상한에 닿은 소유자의 태양은
-        ///     표적을 잡지 않고 기다렸다가(리졸버 필터) 자리가 나면 쏜다 — 버리지 않는다.
-        ///     모양 없이 때리던 옛 폴백은 "안 맞은 몹이 죽는" 보이지 않는 피해였다 (2026-08-17 유저 제보:
-        ///     봇 매치에서 예고 594건에 폴백 1293건). 표시 = 판정: 화면에 없는 공격은 없다.
+        ///     중인 모양만 센다 — 예고 시간이 0인 지금은 사실상 안 걸리고, 예고를 되살릴 때를 위해 남긴다.
+        ///     상한에 닿은 소유자의 태양은 표적을 잡지 않고 기다렸다가(리졸버 필터) 자리가 나면 쏜다 —
+        ///     버리지 않는다. 모양 없이 때리던 옛 폴백은 "안 맞은 몹이 죽는" 보이지 않는 피해였다
+        ///     (2026-08-17 유저 제보: 봇 매치에서 예고 594건에 폴백 1293건). 표시 = 판정.
         /// </summary>
         public const int SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER = 2;
 
         /// <summary>
-        ///     태양 직선 (2026-08-17 유저 판정: 미사일이 아니라 "경고색이 깜빡인 뒤 큰 공격이 한 번에
-        ///     천천히 지나간다"). 예고 시간 동안 깜빡이고, 그 뒤 큰 투사체가 원점에서 이 속도로 날아간다.
-        ///     선상의 첫 표적(몬스터·플레이어)에 닿는 순간 거기서 폭발 — 폭발 반경 안 전부 피해
-        ///     (2026-08-17 유저 결정: "폭발하는 시점이 피해 시점"). 아무것도 안 닿으면 끝점에서 폭발한다.
-        ///     관통 쓸기는 퇴역 — 예고선은 날아갈 길이고, 폭발이 곧 판정이다.
+        ///     태양 투사체 (2026-08-17 유저 판정 누적): 큰 투사체 하나가 오브에서 표적 방향으로 티어 사거리
+        ///     끝까지 이 속도로 날아간다. 선상의 첫 표적(몬스터·플레이어)에 닿는 순간 거기서 폭발 — 폭발 반경
+        ///     안 전부 피해("폭발하는 시점이 피해 시점"). 끝까지 아무것도 안 닿으면 폭발 없이 소멸.
+        ///     예고선·예고 시간은 퇴역(0) — 발사 즉시 날아간다.
         /// </summary>
-        public const float SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS = 0.55f;
+        public const float SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS = 0f;
         public const float SWARM_CROSSFIRE_SUN_SWEEP_SPEED = 4.5f;
 
         /// <summary>
@@ -402,9 +401,14 @@ namespace network.common
         public const float SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER = 2f;
         public const float SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER = 2f;
 
-        /// <summary>태양 직선의 전체 폭(T1/T2/T3)과 기준 몬스터 너머 연장 길이(T1/T2/T3). 폭은 바닥면 단위.</summary>
+        /// <summary>태양 투사체의 판정 폭(T1/T2/T3, 바닥면 단위) — 이 안에 몸이 걸리면 닿은 것.</summary>
         public static readonly float[] SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER = { 0.7f, 0.85f, 1f };
-        public static readonly float[] SWARM_CROSSFIRE_SUN_EXTEND_BY_TIER = { 2.5f, 3f, 3.5f };
+
+        /// <summary>
+        ///     태양 사거리(T1/T2/T3, 바닥면 단위) — 투사체가 날아가는 고정 길이이자 태양 오브의 표적 획득 거리.
+        ///     강화(계열 공유 레벨)될수록 길어진다 (2026-08-17 유저 지시). 표적 거리와 무관하게 이 길이를 다 난다.
+        /// </summary>
+        public static readonly float[] SWARM_CROSSFIRE_SUN_RANGE_BY_TIER = { 4f, 5.5f, 7f };
 
         /// <summary>
         ///     태양 폭발 반경(T1/T2/T3, 바닥면 단위) — 첫 표적에 닿아 터지는 순간 이 안의 몬스터 전부 PvE 피해,

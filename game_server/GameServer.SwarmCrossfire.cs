@@ -12,11 +12,11 @@ namespace game_server;
 /// <summary>
 ///     교차사격 (#232 2단계). 오브는 몬스터만 조준하지만, 태양의 공격은 유도탄이 아니라
 ///     "경고색이 깜빡인 뒤 큰 공격이 한 번에 천천히 지나가는" 직선이다 (2026-08-17 유저 판정).
-///     발사 순간 원점(오브)·기준점(몬스터)으로 직선을 잠그고, 예고 시간 뒤 큰 투사체가 원점에서
-///     끝으로 일정 속도로 날아간다 — 선상의 첫 표적(몬스터·다른 플레이어)에 닿는 순간 거기서 폭발,
+///     발사 순간 원점(오브)에서 표적(몬스터·플레이어) 방향으로 티어 사거리만큼의 직선을 잠그고, 큰 투사체가
+///     원점에서 끝으로 일정 속도로 날아간다 — 선상의 첫 표적(몬스터·다른 플레이어)에 닿는 순간 거기서 폭발,
 ///     폭발 반경 안 몬스터 전부 PvE 피해·플레이어 전부 충격 1회 (2026-08-17 유저 결정: "폭발하는
-///     시점이 피해 시점"). 아무것도 안 닿으면 끝점에서 폭발. 예고 뒤 몬스터가 죽어도 모양은 잠근
-///     위치를 끝까지 쓴다. P0-A는 태양만 — 바람 유도탄·파도 물폭탄은 종전대로.
+///     시점이 피해 시점"). 끝까지 아무것도 안 닿으면 폭발 없이 소멸(유저 지시). 발사 뒤 표적이 죽거나
+///     움직여도 모양은 잠근 직선을 끝까지 쓴다. 예고선·예고 시간은 퇴역. P0-A는 태양만.
 /// </summary>
 public partial class GameServer
 {
@@ -158,13 +158,13 @@ public partial class GameServer
             return false;
 
         int tierIndex = Math.Clamp(tier, 1, 3) - 1;
-        float extend = Config.SWARM_CROSSFIRE_SUN_EXTEND_BY_TIER[tierIndex];
         float width = Config.SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER[tierIndex];
         float blastRadius = Config.SWARM_CROSSFIRE_SUN_BLAST_RADIUS_BY_TIER[tierIndex];
-        float groundLength = anchorDistance + extend;
+        // 길이는 표적 거리와 무관한 티어 사거리 — 강화될수록 멀리 간다. 표적은 방향만 준다.
+        float groundLength = Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER[tierIndex];
         var end = new Vector3f(
-            anchor.X + gx / anchorDistance * extend,
-            anchor.Y + gy / anchorDistance * extend / SwarmGroundYScale,
+            origin.X + gx / anchorDistance * groundLength,
+            origin.Y + gy / anchorDistance * groundLength / SwarmGroundYScale,
             0f);
 
         // 앞머리는 원점 앞 캡(반폭)에서 출발해 끝 너머 캡까지 간다 — 캡슐 전체를 한 번 쓴다.
@@ -246,7 +246,7 @@ public partial class GameServer
     ///     예고가 끝난 모양의 투사체 앞머리를 전진시키며, 이번 틱에 앞머리가 지난 축 구간
     ///     [지난 앞머리, 현재 앞머리] × 반폭 안에 처음 들어오는 표적(몬스터·소유자 아닌 플레이어)을 찾는다.
     ///     있으면 그 자리에서 폭발 — 반경 안 몬스터 전부 PvE 피해, 플레이어 전부 충격(면역·상한 그대로).
-    ///     없이 끝까지 가면 끝점에서 폭발. 폭발한 모양은 즉시 끝난다.
+    ///     없이 끝까지 가면 폭발 없이 소멸. 폭발한 모양은 즉시 끝난다.
     /// </summary>
     private void ProcessSwarmCrossfires(
         long matchingId,
@@ -302,15 +302,25 @@ public partial class GameServer
                     triggerAlong = along;
             }
 
-            if (triggerAlong == null && front < sweepEnd)
+            if (triggerAlong == null)
+            {
+                // 사거리 끝까지 아무것도 못 맞혔다 — 폭발 없이 소멸 (2026-08-17 유저 지시). 클라 투사체도
+                // 같은 시간에 끝에 닿아 스스로 사라지므로 통지는 없다.
+                if (front >= sweepEnd)
+                {
+                    _swarmCrossfireShapes.RemoveAt(index);
+                    _gameEventLogManager.LogSystem(
+                        matchingId, $"ORB_CROSSFIRE_VANISH event={shape.EventId} owner={shape.OwnerId}");
+                }
                 continue;
+            }
 
-            // 폭발 지점: 표적에 닿은 축 위치(선분 안으로 클램프), 없으면 끝점.
-            float detonateAlong = Math.Clamp(triggerAlong ?? shape.GroundLength, 0f, shape.GroundLength);
+            // 폭발 지점: 표적에 닿은 축 위치(선분 안으로 클램프).
+            float detonateAlong = Math.Clamp(triggerAlong.Value, 0f, shape.GroundLength);
             var detonation = ResolveSwarmCrossfireAxisPoint(shape, detonateAlong);
             _swarmCrossfireShapes.RemoveAt(index);
             DetonateSwarmCrossfire(
-                matchingId, shape, detonation, triggerAlong != null, nowUtc,
+                matchingId, shape, detonation, nowUtc,
                 monsters, participants, aliveSessions, aliveBots, allSessions);
         }
     }
@@ -324,7 +334,6 @@ public partial class GameServer
         long matchingId,
         SwarmCrossfireShape shape,
         Vector3f detonation,
-        bool hitTarget,
         DateTime nowUtc,
         IReadOnlyList<SwarmArenaCombatTarget> monsters,
         List<SpotArenaPlayerSpatial> participants,
@@ -380,7 +389,7 @@ public partial class GameServer
             matchingId,
             $"ORB_CROSSFIRE_DETONATE event={shape.EventId} owner={shape.OwnerId} " +
             $"at=({detonation.X:F2},{detonation.Y:F2}) radius={shape.BlastRadius:F2} " +
-            $"trigger={(hitTarget ? "target" : "end")} monsters={monsterHits} shocks={shocks}");
+            $"monsters={monsterHits} shocks={shocks}");
     }
 
     private static void BroadcastSwarmCrossfireDetonation(

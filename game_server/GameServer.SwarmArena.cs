@@ -49,7 +49,9 @@ public partial class GameServer
     // 코드는 남긴다 — #226·#229 절단 실측을 되짚을 때 플래그만 켜면 된다.
     private static readonly bool SwarmTrailCutEnabled = false;
     private static readonly bool SwarmEncircleEnabled = false;
-    private static readonly bool SwarmOrbTargetsPlayersEnabled = false;
+    // 오브의 플레이어 직접 조준 복귀 (2026-08-17 유저 지시 "오브가 플레이어(봇)도 타겟팅"): 태양은 교차사격
+    // 투사체(첫 표적 폭발)로, 바람은 유도탄으로 사람을 쏜다. 아래 PvP 사거리·앞열 규칙이 산다.
+    private static readonly bool SwarmOrbTargetsPlayersEnabled = true;
 
     // 오브열 (2026-08-17 유저 지시 "오브열 꼬리 형태로 원복"): 오브가 이동 경로를 따라오는 전투열.
     // 사격·교차사격 원점과 표적 선정은 오브별 열 좌표(10Hz 이동 표본), 폐쇄 잔류 파괴도 산다.
@@ -499,8 +501,11 @@ public partial class GameServer
                 {
                     if (crossfireCappedOwners.Contains(attacker.PlayerId))
                         return false;
-                    if (target.IsMonsterTarget &&
-                        crossfireAnchoredTargets.Contains((attacker.PlayerId, target.PlayerId)))
+                    if (crossfireAnchoredTargets.Contains((attacker.PlayerId, target.PlayerId)))
+                        return false;
+                    // 투사체가 실제로 닿는 거리(티어 사거리, 바닥면 타원) 안이어야 쏜다 — 리졸버의 유클리드
+                    // 사거리는 세로로 느슨해, 그대로 두면 위아래 표적에 못 닿을 발이 나간다.
+                    if (!IsWithinSwarmOrbRange(attacker, target))
                         return false;
                 }
                 if (target.IsMonsterTarget)
@@ -532,7 +537,12 @@ public partial class GameServer
         foreach (var attack in attacks)
         {
             int monsterId = _swarmArenaManager.GetMonsterIdForCombatTarget(matchingId, attack.TargetPlayerId);
-            if (monsterId > 0 && IsSwarmCrossfireWeapon(attack.WeaponItemId))
+            // 유령 발사 가드 (#226 진단): 같은 틱에 죽은 몬스터의 CombatTargetId(-4e18대)가 몬스터 분기를
+            // 통과해 PvP 분기로 새던 문제 — 음수 대역 차단. 태양 분기보다 먼저 건다.
+            if (monsterId <= 0 && attack.TargetPlayerId < -1_000_000_000_000L)
+                continue;
+            // 태양은 표적이 몬스터든 플레이어든 교차사격 투사체다 (2026-08-17 유저 지시: 오브가 사람도 조준).
+            if (IsSwarmCrossfireWeapon(attack.WeaponItemId))
             {
                 // 태양 = 교차사격 직선 (#232 2단계, 2026-08-17): 유도탄이 아니라 예고 뒤 쓸고 지나가는
                 // 큰 공격이다. 미사일 연출·비행시간 착탄·예약을 타지 않고 모양 하나를 잠근다.
@@ -4724,6 +4734,11 @@ public partial class GameServer
             bool crossfireSun = IsSwarmCrossfireWeapon(actor.WeaponItemId);
             float crossfireDamageMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER : 1f;
             float crossfireCadenceMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER : 1f;
+            SurvivorOrbData.TryGetColorAndTier(actor.WeaponItemId, out _, out int actorTier);
+            // 태양 사거리 = 티어 사거리(투사체가 나는 길이) — 더 먼 표적을 잡으면 투사체가 못 닿고 소멸한다.
+            float actorAttackRange = crossfireSun
+                ? Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER[Math.Clamp(actorTier, 1, 3) - 1]
+                : SwarmPveSameAreaAttackRange;
             actors[index] = actor with
             {
                 Damage = armed
@@ -4743,7 +4758,7 @@ public partial class GameServer
                 InitialAttackDelaySeconds = 0f,
                 // 이 공용 actor는 잔상 PvE에만 쓰인다. PvP 국소 사거리는 별도 공격 사건에서
                 // 오브별 원점을 기준으로 판정하므로, PvE의 같은 구역 사냥 범위는 유지한다.
-                AttackRange = SwarmPveSameAreaAttackRange
+                AttackRange = actorAttackRange
             };
         }
 
