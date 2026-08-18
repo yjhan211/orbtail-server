@@ -35,10 +35,24 @@ public partial class GameServer
     // 상대하고, 절단할 표적이 판 초반부터 있다.
     private const int SwarmBotStartingOrbCount = 10;
 
-    /// <summary>시작 오브 지급 — 사람 3개(샌드박스는 고정 세트), 봇 10개.</summary>
+    /// <summary>
+    ///     시작 지급 — 사람은 오브 0개 + 그 값만큼의 소환석(2026-08-18 유저 지시 "오브 0개로 시작하고 그만큼
+    ///     소환석"): 시작 3오브에 해당하는 소환 비용(5+7+9=21)을 석으로 준다. 첫 판단이 "무엇을 소환할까"가 된다.
+    ///     샌드박스 사람은 고정 세트 그대로, 봇은 10개.
+    /// </summary>
     private void GrantSwarmStartingOrbs(long matchingId, long playerId, GameClientSession? session)
     {
         bool fixedSet = SwarmCrossfireSandbox && session != null;
+        if (session != null && !fixedSet)
+        {
+            int stonesInsteadOfOrbs = 0;
+            for (int index = 0; index < Config.SWARM_STARTING_ORB_GRANT_COUNT; index++)
+                stonesInsteadOfOrbs += Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(index));
+            _summonStoneManager.AddStones(matchingId, playerId, stonesInsteadOfOrbs);
+            SendSwarmFamilyLevels(matchingId, playerId, session);
+            return;
+        }
+
         int grantCount = session != null ? Config.SWARM_STARTING_ORB_GRANT_COUNT : SwarmBotStartingOrbCount;
         for (int index = 0; index < grantCount; index++)
         {
