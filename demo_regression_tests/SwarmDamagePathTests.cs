@@ -101,6 +101,42 @@ public class SwarmDamagePathTests
     }
 
     /// <summary>
+    ///     봇 교전 튜닝 계약 (2026-08-18 촬영 튜닝, 봇 매치 9126059 → 9133549 → 9134053):
+    ///     ① 봇 절단 자제 — 오염 절반 아래 + 6초 쿨다운일 때만 자르고, 사람에게는 걸지 않는다.
+    ///     ② 도주 임계 ×1.5 — 동수·소폭 열세는 중립(피하지도 붙지도 않음).
+    ///     ③ 치명상 이탈 — 60% 진입 · 45% 해제, 치명상이면 전력 비교 없이 물러난다.
+    ///     셋 중 하나라도 조용히 빠지면 봇이 다시 자해로 죽거나(①), 카메라 앞에서 등만 보이거나(②),
+    ///     죽을 때까지 맞붙어 후반 판이 빈다(③).
+    /// </summary>
+    [Fact]
+    public void SwarmBotEngagement_KeepsCutRestraintNeutralBandAndWoundedRetreat()
+    {
+        string source = File.ReadAllText(
+            Path.Combine(FindRepositoryRoot(), "game_server", "GameServer.SwarmArena.cs"));
+
+        // ① 절단 자제: 봇 전용, 래치 앞에서 걸린다.
+        Assert.Contains("SwarmBotCutMaxCorruptionRatio = 0.5f", source);
+        Assert.Contains("SwarmBotCutCooldownSeconds = 6d", source);
+        int cutMethodStart = source.IndexOf("private void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
+        int cutMethodEnd = source.IndexOf("// ===== 포위 사격", cutMethodStart, StringComparison.Ordinal);
+        string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
+        Assert.Contains("cutterBot != null && !IsSwarmBotCutAllowed(", cutBody);
+        Assert.Contains("_swarmBotLastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc", cutBody);
+        // 사람 절단은 자제 규칙을 타지 않는다 — 봇 분기 안에서만 호출된다.
+        Assert.Equal(1, Regex.Matches(cutBody, @"IsSwarmBotCutAllowed\(").Count);
+
+        // ② 도주 임계: 강자 판정과 피격 반응 둘 다 ×1.5를 쓴다.
+        Assert.Contains("SwarmBotFleePowerRatio = 1.5f", source);
+        Assert.Contains("rivalPower >= myPower * SwarmBotFleePowerRatio", source);
+        Assert.Contains("wounded || attackerPower >= squadPower * SwarmBotFleePowerRatio", source);
+
+        // ③ 치명상 이탈: 히스테리시스 + 전력 0으로 스캔.
+        Assert.Contains("SwarmBotWoundedEnterRatio = 0.6f", source);
+        Assert.Contains("SwarmBotWoundedExitRatio = 0.45f", source);
+        Assert.Contains("wounded ? 0f : squadPower", source);
+    }
+
+    /// <summary>
     ///     수면 계약 (2026-08-17 재조정): 준비 1초 · 1초마다 최대 HP 5% 회복 · 가해·피해 뒤
     ///     3초 진입 잠금. 중단은 이동뿐이다 — 피격·폐쇄가 다시 깨우기 시작하면
     ///     "움직이지 않으면 안 깬다"는 유저 결정이 소리 없이 뒤집힌다.

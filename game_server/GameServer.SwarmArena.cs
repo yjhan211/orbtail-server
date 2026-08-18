@@ -1428,7 +1428,13 @@ public partial class GameServer
             bot.SwarmBareSpeedUntilUtc =
                 DateTime.UtcNow.AddSeconds(Config.SWARM_BARE_MOVE_SPEED_SECONDS);
         bot.IsSwarmBareHanded = !hasSquadOrbs;
-        FindNearbySwarmRivals(matchingId, bot, squadPower, includeMonstersAsStronger: !hasSquadOrbs,
+        // 치명상 이탈 (2026-08-18 촬영 튜닝): 오염이 60%를 넘긴 봇은 전력 비교 없이 모든 상대를 강자로 보고
+        // 물러나며(추격도 압박도 없음), 45% 아래로 회복해야 다시 싸운다. 도주 임계를 넓힌 뒤 봇 매치 9133549에서
+        // 봇들이 죽을 때까지 맞붙어 2:44에 2마리만 남았다 — 다친 쪽이 등을 보이고 성한 쪽이 쫓는 그림이
+        // 카메라에 남아야 하고, 후반까지 살아 있는 봇이 있어야 폐쇄 수렴전이 선다.
+        bool wounded = UpdateSwarmBotWoundedState(matchingId, bot);
+        FindNearbySwarmRivals(matchingId, bot, wounded ? 0f : squadPower,
+            includeMonstersAsStronger: !hasSquadOrbs,
             out Vector3f strongerPosition,
             out (Vector3f Position, AreaType Area, long PlayerId)? weakerRival);
 
@@ -1445,7 +1451,10 @@ public partial class GameServer
         if (strongerPosition == null && recentAttackerPosition != null)
         {
             float attackerPower = GetSwarmSquadPower(matchingId, bot.LastProximityAttackerPlayerId);
-            if (squadPower < attackerPower * SwarmBotChasePowerAdvantage)
+            // 확실한 강자(×1.5 이상)에게 맞았을 때만 이탈 — 동수·소폭 열세 공격자에게는 압박 전진한다
+            // (2026-08-18 촬영 튜닝, SwarmBotFleePowerRatio 주석). 맞고 바로 등을 보이던 봇이 붙어 싸운다.
+            // 치명상이면 상대 전력과 무관하게 이탈한다.
+            if (wounded || attackerPower >= squadPower * SwarmBotFleePowerRatio)
             {
                 strongerPosition = recentAttackerPosition;
             }
@@ -1795,8 +1804,42 @@ public partial class GameServer
         return power;
     }
 
-    // 추격 우위 임계: 내 전력이 상대의 이 배수 이상일 때만 붙는다. 그 이하(동수 포함)는 회피.
+    // 추격 우위 임계: 내 전력이 상대의 이 배수 이상일 때만 붙는다.
     private const float SwarmBotChasePowerAdvantage = 1.25f;
+
+    // 도주 임계 (2026-08-18 촬영 튜닝): 상대 전력이 내 전력의 이 배수 이상일 때만 피한다. 그 사이(동수·소폭
+    // 열세, 1/1.5 ~ 1.25배)는 중립 — 피하지도 붙지도 않고 하던 일을 한다.
+    // 동수 도주(#222 "동수는 강자 취급")는 오브 HP 소모전 시절 "뭉쳐서 대치"를 막던 규칙인데, 오브 손실이 절단
+    // 전용이 된 뒤로는 동수 대치가 서로의 꼬리 주위를 도는 코어 동사다. 사람 카메라 앞에서 봇이 늘 등을 보이며
+    // 흩어지던 원인이라 넓힌다. 빈손(전력 0)은 여전히 모두를 강자로 본다.
+    private const float SwarmBotFleePowerRatio = 1.5f;
+
+    // 치명상 이탈 (2026-08-18 촬영 튜닝): 오염이 최대의 60%(252)에 닿으면 치명상, 45%(189) 아래로 내려와야
+    // 해제 — 회복 1틱에 상태가 뒤집혀 "도망↔복귀"가 떨리지 않게 히스테리시스를 둔다.
+    private const float SwarmBotWoundedEnterRatio = 0.6f;
+    private const float SwarmBotWoundedExitRatio = 0.45f;
+    private readonly HashSet<(long MatchingId, long PlayerId)> _swarmBotWounded = new();
+
+    /// <summary>봇의 치명상 상태를 갱신하고 돌려준다 — 진입 60%, 해제 45%.</summary>
+    private bool UpdateSwarmBotWoundedState(long matchingId, BotPlayerState bot)
+    {
+        var key = (matchingId, bot.PlayerId);
+        bool wounded = _swarmBotWounded.Contains(key);
+        float ratio = bot.Corruption / (float)Config.SURVIVOR_MAX_CORRUPTION;
+        if (!wounded && ratio >= SwarmBotWoundedEnterRatio)
+        {
+            _swarmBotWounded.Add(key);
+            return true;
+        }
+
+        if (wounded && ratio <= SwarmBotWoundedExitRatio)
+        {
+            _swarmBotWounded.Remove(key);
+            return false;
+        }
+
+        return wounded;
+    }
 
     // 피격 반응 창: 이 시간 안에 맞았으면 중립 밴드 상대도 위협으로 승격한다.
     // 3초는 공격 간헐(조준·쿨다운·재접근)에 못 미쳐 와리가리↔정지가 번갈아 보였다 — 6초로.
@@ -1823,6 +1866,23 @@ public partial class GameServer
     // 비용을 감당할 수 없으면(만충으로 탈락) 절단도 비용도 발생하지 않는다.
     private const int SwarmSingleCutCorruptionCost = 35;
     private const double SwarmSingleCutHealLockSeconds = 8d;
+    // 봇 절단 자제 (2026-08-18 촬영 튜닝): 절단 뒤 오염이 이 비율(최대 420의 절반 = 210)을 넘으면 봇은 자르지
+    // 않고, 자른 뒤 이 시간 동안은 다시 자르지 않는다. 사람에게는 적용하지 않는다.
+    private const float SwarmBotCutMaxCorruptionRatio = 0.5f;
+    private const double SwarmBotCutCooldownSeconds = 6d;
+
+    /// <summary>
+    ///     봇이 지금 절단을 질러도 되는가 — 비용을 내고도 오염 절반 아래이고, 직전 절단에서 쿨다운이 지났는가.
+    ///     사람 판정이 아니다: 사람의 절단은 만충 탈락만 아니면 언제나 성립한다.
+    /// </summary>
+    private bool IsSwarmBotCutAllowed(long matchingId, long botPlayerId, int corruptionBefore, DateTime nowUtc)
+    {
+        if (corruptionBefore + SwarmSingleCutCorruptionCost >
+            Config.SURVIVOR_MAX_CORRUPTION * SwarmBotCutMaxCorruptionRatio)
+            return false;
+        return !_swarmBotLastTrailCutAtUtc.TryGetValue((matchingId, botPlayerId), out var lastCutAtUtc) ||
+               (nowUtc - lastCutAtUtc).TotalSeconds >= SwarmBotCutCooldownSeconds;
+    }
     // 절단자 한정 반격 보호 (#227 7단계): 실제 꼬리 상실 순간부터 1.2초.
     // 전역 무적이 아니라 '방금 내 꼬리를 자른 그 사람에게 되갚을 시간'이다 —
     // 제3자·잔상·폐쇄 피해는 그대로 들어오고, 피해자는 이동·사격·역절단을 다 할 수 있다.
@@ -2301,6 +2361,17 @@ public partial class GameServer
             return;
         }
 
+        // 봇 절단 자제 (2026-08-18 촬영 튜닝): 봇은 오염이 절반 아래일 때, 봇 1인당 6초에 한 번만 자른다.
+        // 봇 매치 9126059 실측 — 66회 절단 중 39회가 머리(순번 0) 절단으로 꼬리 통째였고, 두 봇이 3초 간격으로
+        // 서로 자르며 오염 74→332까지 자해해 7마리가 죽었다. 사람 카메라에 남는 봇은 긴 꼬리를 끌고 다녀야
+        // 표적이 되고, 봇의 절단은 '한 번 지르는 사건'으로 읽혀야 한다. 거절된 통과는 래치를 찍어 같은 오브를
+        // 이번 통과에서 다시 판정하지 않는다 — 사람의 절단은 이 규칙과 무관하다.
+        if (cutterBot != null && !IsSwarmBotCutAllowed(matchingId, cutterId, cutterCorruptionBefore, nowUtc))
+        {
+            _swarmOrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
+            return;
+        }
+
         _swarmOrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
 
         // #229 6단계: 절단은 내가 몸으로 지르는 가해다 — 교전 잠금을 찍어 절단하고 바로 눕는
@@ -2359,6 +2430,8 @@ public partial class GameServer
                 Config.SURVIVOR_MAX_CORRUPTION, cutterBot.Corruption + SwarmSingleCutCorruptionCost);
             cutterBot.LastDamagedAtUtc = nowUtc;
             _swarmBotLastDamagedAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
+            // 봇 절단 시각 — 절단 자제 쿨다운(IsSwarmBotCutAllowed)과 절단 후 회수 창이 읽는다.
+            _swarmBotLastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
             cutterCorruptionAfter = cutterBot.Corruption;
         }
         else
@@ -3278,8 +3351,9 @@ public partial class GameServer
             if (distanceSquared >= radiusSquared) return;
 
             float rivalPower = GetSwarmSquadPower(matchingId, rivalPlayerId);
-            // 동수는 강자 취급 — 서로가 서로를 피하며 대치가 해산된다.
-            if (rivalPower >= myPower && distanceSquared < bestStrongerDistanceSquared)
+            // 확실한 강자(×1.5 이상)만 피한다 — 동수·소폭 열세는 중립 (SwarmBotFleePowerRatio 주석).
+            // 빈손(myPower 0)은 전력 있는 모두가 강자다.
+            if (rivalPower >= myPower * SwarmBotFleePowerRatio && distanceSquared < bestStrongerDistanceSquared)
             {
                 bestStrongerDistanceSquared = distanceSquared;
                 nearestStronger = position;
@@ -4604,6 +4678,7 @@ public partial class GameServer
         foreach (var key in _swarmBotLastTrailCutAtUtc.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmBotLastTrailCutAtUtc.Remove(key);
+        _swarmBotWounded.RemoveWhere(key => key.MatchingId == matchingId);
         foreach (var key in _swarmEncircleCandidateSinceUtc.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmEncircleCandidateSinceUtc.Remove(key);
