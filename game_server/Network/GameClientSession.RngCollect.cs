@@ -591,11 +591,13 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        // 폐쇄된 구역의 문은 열리지 않는다 — 폐쇄 잠금이 게이지보다 위다.
+        // 폐쇄된 구역의 문은 밖에서는 열리지 않는다 — 폐쇄 잠금이 게이지보다 위다.
+        // 단 내가 그 폐쇄 구역 안에 있으면 연다 (2026-08-18 유저 결정: 갇히면 틱 오염을 받으며 문을 따고 나간다).
         var door = GameDoorData.Get(doorId);
         if (door != null && _areaClosureManager != null &&
             (_areaClosureManager.IsAreaClosed(CurrentMapSubId, door.AreaType) ||
-             _areaClosureManager.IsAreaClosed(CurrentMapSubId, door.AreaTypeB)))
+             _areaClosureManager.IsAreaClosed(CurrentMapSubId, door.AreaTypeB)) &&
+            !_areaClosureManager.IsAreaClosed(CurrentMapSubId, CurrentArea))
         {
             SendRngCollectAck(interactId, ErrorCode.INVALID_GAME_STATE, 0);
             return Task.CompletedTask;

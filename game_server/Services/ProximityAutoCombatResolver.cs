@@ -51,7 +51,15 @@ public readonly record struct ProximityCombatAttack(
     bool IsWaveAreaAttack = false,
     bool IsWaveAreaSecondary = false,
     bool IsWindAreaAttack = false,
-    bool IsWindAreaSecondary = false);
+    bool IsWindAreaSecondary = false,
+    // #232 1단계 기준점 잠금: 발사 순간의 발사 원점(오브 월드 좌표)과 표적 위치를 박제한다.
+    // 교차사격(2단계) 모양은 이 두 점으로 방향·크기를 정하고, 예고 뒤 몬스터가 죽어도
+    // 잠근 위치에서 끝까지 처리한다. 레거시 생성 경로는 null이라 종전과 같다.
+    long AttackerItemUid = 0,
+    Vector3f? Origin = null,
+    Vector3f? AnchorPosition = null,
+    // 발사한 오브의 열 순번 — 클라가 실제로 그리는 오브 슬롯에 예고의 시작점을 붙이는 근거.
+    int AttackerTrailOrdinal = 0);
 
 public readonly record struct ProximityCombatTargetEvent(
     long AttackerPlayerId,
@@ -265,7 +273,11 @@ public sealed class ProximityAutoCombatResolver
                     attacker.EffectDurationSeconds,
                     eligibleTargets.Count,
                     attacker.SunResonanceStage,
-                    attacker.WaveResonanceArmed));
+                    attacker.WaveResonanceArmed,
+                    AttackerItemUid: attacker.WeaponItemUid,
+                    Origin: attacker.Position,
+                    AnchorPosition: eligibleTargets[i].Actor.Position,
+                    AttackerTrailOrdinal: attacker.TrailOrdinal));
             }
 
             // A burst of N attacks has N - 1 shortened gaps between those attacks.
@@ -402,6 +414,23 @@ public sealed class ProximityAutoCombatResolver
         return uidComparison != 0
             ? uidComparison
             : left.WeaponStackIndex.CompareTo(right.WeaponStackIndex);
+    }
+
+    /// <summary>
+    ///     발사 환불 (#232 교차사격 예고 상한): 이번 틱에 뽑힌 공격을 호출부가 실행하지 못했을 때
+    ///     (같은 틱에 여러 오브가 함께 준비돼 예고 상한을 넘김) 그 오브의 다음 발사 시각을 지금으로
+    ///     되돌린다 — 쿨다운을 소모하지 않고 다음 틱에 다시 시도한다(필터가 자리를 열어 줄 때까지).
+    ///     조준·표적은 유지한다. 같은 무기 uid의 모든 스택에 적용한다.
+    /// </summary>
+    public void RefundAttack(long matchingId, long playerId, long itemUid, DateTime nowUtc)
+    {
+        foreach (var key in _combatStates.Keys)
+        {
+            if (key.MatchingId != matchingId || key.PlayerId != playerId || key.ItemUid != itemUid)
+                continue;
+            if (_combatStates.TryGetValue(key, out var state))
+                _combatStates[key] = state with { NextAttackAtUtc = nowUtc };
+        }
     }
 
     private readonly record struct CombatState(

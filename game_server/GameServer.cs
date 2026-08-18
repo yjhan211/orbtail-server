@@ -233,6 +233,8 @@ public partial class GameServer(
             // 문 상태는 페이즈와 별개다 (2026-08-16). 위 제공자는 ROOM_COMBAT에서만 채워져
             // 군집 모드에서는 항상 비었고, 그래서 봇이 잠긴 문을 그냥 통과했다.
             _botPlayerManager.SetDoorOpenResolver(_doorStateManager.IsDoorOpen);
+            // 투사체 회피 반사 (#232 §9): 봇 걸음마다 교차사격 스냅샷을 물어 비켜설 방향을 받는다.
+            _botPlayerManager.SetSwarmDodgeResolver(ResolveSwarmBotDodgeDirection);
             _interactableStateManager.Initialize(log);
             _inGameInventoryManager.Initialize(log);
             _areaRuleManager.Initialize(log);
@@ -661,78 +663,6 @@ public partial class GameServer(
     ///     #26: 봇 자원 고갈 탈락 시 체인 단절 처리 + 게임 종료 판정.
     ///     ManittoChainManager.EliminatePlayer로 체인 단절 (마니또 시한부 / 타겟 해방 등) 일괄 적용.
     /// </summary>
-    /// <summary>
-    ///     폐쇄 확정 순간 그 구역 안에 있던 전원을 즉시 탈락시킨다 (#227).
-    ///     등수는 강제하지 않는다 — 체인 매니저가 남은 생존 수로 매기고, 같은 틱에 다른
-    ///     사유로 이미 탈락했다면 중복 정산은 그쪽 멱등 가드가 막는다.
-    /// </summary>
-    private void EliminateEveryoneInClosedAreas(
-        long matchingId,
-        IReadOnlyCollection<AreaType> closedAreas,
-        List<GameClientSession> sessions,
-        List<BotPlayerState> bots)
-    {
-        if (closedAreas.Count == 0)
-            return;
-
-        bool eliminatedAny = false;
-        foreach (var session in sessions)
-        {
-            if (!session.PlayerId.HasValue || session.IsEliminated ||
-                !closedAreas.Contains(session.CurrentArea))
-                continue;
-
-            logger.LogInformation(
-                "폐쇄 즉사: MatchingId={MatchingId}, PlayerId={PlayerId}, Area={Area}",
-                matchingId, session.PlayerId.Value, session.CurrentArea);
-            session.EliminateForSettlement(
-                session.PlayerId.Value,
-                isAreaClosureElimination: true,
-                isOvertimeElimination: false,
-                forcedRank: 0);
-            eliminatedAny = true;
-        }
-
-        foreach (var bot in bots)
-        {
-            if (bot.IsEliminated || !closedAreas.Contains(bot.CurrentArea))
-                continue;
-
-            logger.LogInformation(
-                "폐쇄 즉사(봇): MatchingId={MatchingId}, BotId={BotId}, Area={Area}",
-                matchingId, bot.PlayerId, bot.CurrentArea);
-            ProcessBotElimination(
-                matchingId,
-                bot.PlayerId,
-                EliminationReason.MENTAL_ZERO,
-                sessions,
-                isAreaClosureElimination: true,
-                deferGameOver: true);
-            eliminatedAny = true;
-        }
-
-        if (!eliminatedAny)
-            return;
-
-        // 루프 안에서는 종료 판정을 미룬다 — 첫 명이 매치를 끝내면 남은 사람이 정산에서 빠진다.
-        // 다 죽인 뒤 한 번만 본다. 이게 없으면 폐쇄로 최후 1인이 갈려도 판이 안 끝난다.
-        var (isGameOver, winnerId) = _manittoChainManager.CheckGameOver(matchingId);
-        if (!isGameOver || !winnerId.HasValue)
-            return;
-
-        var resultHost = _clientSessions.Values.FirstOrDefault(session =>
-            session.PlayerId.HasValue &&
-            session.CurrentMapSubId == matchingId &&
-            !session.IsGameEnded);
-        if (resultHost == null)
-            return;
-
-        logger.LogInformation(
-            "게임 종료(폐쇄 즉사 후): MatchingId={MatchingId}, Winner={WinnerId}", matchingId, winnerId);
-        resultHost.TryEndSurvivorMatch(winnerId.Value, "area_closure");
-        CleanupSurvivorSettlementState(matchingId);
-    }
-
     private void ProcessBotElimination(long matchingId, long botId, EliminationReason reason,
         List<GameClientSession> activeSessions, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false, bool deferGameOver = false, int forcedRank = 0)
@@ -1619,6 +1549,8 @@ public partial class GameServer(
         }
 
         // 3) 새 영역의 인간들에게 MOVE (텔레포트 또는 wander)
+        float orbOrbitPhase = _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.OrbOrbitPhaseDegrees
+                              ?? SwarmOrbOrbit.InitialPhaseDegrees(ev.BotPlayerId);
         using var movePacket = PacketMaker.G_TO_C_MOVE(
             ev.BotPlayerId,
             ev.Position,
@@ -1626,7 +1558,8 @@ public partial class GameServer(
             ev.Rotation,
             ev.ToCell,
             lastProcessedInput: 0u,
-            serverTimestamp);
+            serverTimestamp,
+            orbOrbitPhase);
         foreach (var session in matchingSessions)
         {
             if (session.CurrentArea != ev.ToArea) continue;
@@ -2044,15 +1977,13 @@ public partial class GameServer(
                     packet.SetBody(MessagePackSerializer.Serialize(msg));
                     foreach (var session in sessions) session.Send(packet);
                 }
-                // 폐쇄 = 즉사 + 문 잠금 (#227): 지속 오염으로 서서히 죽는 구조는 "언제 나가야
-                // 하는가"의 판단을 흐린다. 닫히는 순간 안에 있으면 죽고, 그 뒤로는 못 들어간다.
-                // 문을 먼저 잠근다 — 죽는 순간에 남이 밀고 들어오면 규칙이 뒤집혀 보인다.
+                // 폐쇄 = 문 잠금 + 틱 오염 (2026-08-18 유저 결정, #227 즉사 퇴역): 닫히면 문이 잠기고
+                // 안에 남은 사람은 정산 틱 오염을 받으며 자기 구역 문을 게이지로 따고 나갈 수 있다.
                 if (closureTick.ClosedAreas.Count > 0)
                 {
                     var lockedDoorIds = _doorStateManager.CloseDoorsForAreas(
                         matchingId, closureTick.ClosedAreas);
                     BroadcastDoorStateChanges(sessions, lockedDoorIds, false, 0);
-                    EliminateEveryoneInClosedAreas(matchingId, closureTick.ClosedAreas, sessions, bots);
                 }
 
                 if (globalClosureTick.HasTransition)
@@ -2240,7 +2171,11 @@ public partial class GameServer(
 
                 long broadcastStartedAt = Stopwatch.GetTimestamp();
                 foreach (var ev in movementResult.Movements)
+                {
+                    // 오브 궤도 (#232): 봇도 이동한 거리만큼 돈다 — 사람 세션의 검증 이동 적산과 같은 규칙.
+                    _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.AdvanceOrbOrbit(ev.Position);
                     BroadcastBotMovement(matchingId, ev, activeSessions);
+                }
                 if (movementResult.ExploreEnds.Count > 0)
                 {
                     BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);

@@ -894,7 +894,12 @@ public partial class BotPlayerManager
         awayX /= awayLength;
         awayY /= awayLength;
 
-        int weaveSide = ((Math.Abs(bot.PlayerId) + (long)(now - DateTime.UnixEpoch).TotalSeconds) & 1) == 0 ? 1 : -1;
+        // 접선 방향은 봇마다 한쪽으로 고정한다 (2026-08-18 유저 지시 "제자리 좌우 와리가리 금지").
+        // 초마다 좌우를 바꾸던 이전 규칙은 무리 주위를 2m씩 좌·우로 왕복하는 그림이었다 — 이제는 한 방향으로
+        // 돌며, 그쪽이 막혀 경로가 안 나올 때만 뒤집는다.
+        if (bot.PveKiteWeaveSide == 0)
+            bot.PveKiteWeaveSide = (Math.Abs(bot.PlayerId) & 1) == 0 ? 1 : -1;
+        int weaveSide = bot.PveKiteWeaveSide;
         float tangentX = -awayY * weaveSide;
         float tangentY = awayX * weaveSide;
         float directionX = awayX * 0.45f + tangentX * 0.9f;
@@ -941,6 +946,8 @@ public partial class BotPlayerManager
             return true;
         }
 
+        // 이쪽으로는 길이 없다 — 다음엔 반대로 돈다.
+        bot.PveKiteWeaveSide = -bot.PveKiteWeaveSide;
         bot.NextPveKiteRepathAt = now.AddMilliseconds(
             GetPveKiteRepathDelayMilliseconds(bot.PlayerId, 400));
         return false;
@@ -1153,6 +1160,12 @@ public partial class BotPlayerManager
                 return null;
             }
         }
+
+        // 투사체 회피 반사 (#232 §9, 2026-08-18): 경로·휴식·대기보다 먼저 — 이 자리를 지나갈 태양 투사체가
+        // 있으면 그 직선의 수직으로 한 걸음 비켜선다. 경로는 버리지 않는다: 다음 틱에 비켜선 자리에서
+        // 다음 웨이포인트로 이어 걷는다. 상호작용(채널링) 중만 예외 — 사람도 채널링 중엔 못 움직인다.
+        if (TryDodgeStep(bot, matchingId, now, deltaSec, out var dodgeMovement))
+            return dodgeMovement;
 
         if (now < bot.RestUntil)
         {
@@ -1374,6 +1387,113 @@ public partial class BotPlayerManager
             Rotation = bot.Rotation,
             IsAreaTransition = areaChanged
         };
+    }
+
+    /// <summary>
+    ///     투사체 회피 (#232 §9, 2026-08-18 "제자리 좌우 와리가리 금지"): 위협이 있으면 리졸버가 준 방향으로
+    ///     한 걸음 비켜서고 그 방향을 위협이 지나갈 때까지 커밋한다. 커밋 중에 띠 밖으로 나가 위협이 사라지면
+    ///     원래 경로로 되돌아가지 않고 제자리에 선다 — 되돌아가면 다시 띠에 들어가 다시 비켜서는 떨림이 된다.
+    ///     비켜선 칸이 벽이거나 다른 구역이면 반대쪽을 시도하고, 둘 다 막히면 회피 없이 원래 걸음.
+    ///     경로·경로 인덱스는 손대지 않는다.
+    /// </summary>
+    /// <returns>true면 이번 틱은 회피 층이 처리했다(경로 걸음 없음). movement는 보낼 이벤트, 없으면 null.</returns>
+    private bool TryDodgeStep(
+        BotPlayerState bot, long matchingId, DateTime now, float deltaSec, out BotMovementEvent? movement)
+    {
+        movement = null;
+        if (!Config.SWARM_P0_ENABLED || _swarmDodgeResolver == null || bot.CurrentArea == AreaType.None)
+            return false;
+
+        bool committed = now < bot.SwarmDodgeHoldUntilUtc;
+        var advice = _swarmDodgeResolver(matchingId, bot.PlayerId, bot.Position, bot.CurrentArea, now);
+        if (advice == null)
+        {
+            if (!committed)
+                return false;
+            // 띠 밖, 위협은 아직 안 지남 — 서서 기다린다. 걷기 패킷을 한 번 0으로 끊어 발소리·걷기 애니를 멈춘다.
+            if (bot.WalkVelocity.X != 0f || bot.WalkVelocity.Y != 0f)
+            {
+                bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
+                movement = new BotMovementEvent
+                {
+                    BotPlayerId = bot.PlayerId,
+                    FromArea = bot.CurrentArea,
+                    ToArea = bot.CurrentArea,
+                    FromCell = bot.Cell,
+                    ToCell = bot.Cell,
+                    Position = bot.Position,
+                    Velocity = bot.WalkVelocity,
+                    Rotation = bot.Rotation,
+                    IsAreaTransition = false
+                };
+            }
+            return true;
+        }
+
+        // 커밋 방향 우선 — 새 조언이 반대쪽이 아니면 원래 방향을 유지한다(중간에 방향을 뒤집으면 그것도 떨림).
+        float adviceX = advice.Value.DirectionX;
+        float adviceY = advice.Value.DirectionY;
+        float dirX0 = adviceX;
+        float dirY0 = adviceY;
+        if (committed && bot.SwarmDodgeDirectionX * adviceX + bot.SwarmDodgeDirectionY * adviceY > 0f)
+        {
+            dirX0 = bot.SwarmDodgeDirectionX;
+            dirY0 = bot.SwarmDodgeDirectionY;
+        }
+        else
+        {
+            bot.SwarmDodgeDirectionX = adviceX;
+            bot.SwarmDodgeDirectionY = adviceY;
+        }
+        var holdUntil = now.AddSeconds(advice.Value.HoldSeconds);
+        if (holdUntil > bot.SwarmDodgeHoldUntilUtc)
+            bot.SwarmDodgeHoldUntilUtc = holdUntil;
+
+        var mapId = GetMatchingMapId(matchingId);
+        float multiplier = GetBotMovementSpeedMultiplier(bot);
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            float sign = attempt == 0 ? 1f : -1f;
+            float dirX = dirX0 * sign;
+            float dirY = dirY0 * sign;
+            if (attempt == 1)
+            {
+                // 반대쪽으로 갈 수밖에 없으면 커밋도 그쪽으로 바꾼다.
+                bot.SwarmDodgeDirectionX = dirX;
+                bot.SwarmDodgeDirectionY = dirY;
+            }
+            float step = ScaledWalkSpeed(dirX, dirY, multiplier) * deltaSec;
+            var candidate = new Vector3f(bot.Position.X + dirX * step, bot.Position.Y + dirY * step, 0f);
+            var candidateCell = WorldToCell(candidate);
+            if (!GameMapData.IsMoveablePosition(mapId, candidateCell) ||
+                GameMapData.GetCurrentArea(mapId, candidateCell) != bot.CurrentArea)
+                continue;
+
+            var fromCell = bot.Cell;
+            bot.Position = candidate;
+            bot.Cell = candidateCell;
+            var velocity = ScaledWalkVelocity(dirX, dirY, multiplier);
+            bot.WalkVelocity = velocity;
+            if (velocity.X > 0.1f) bot.Rotation = 180f;
+            else if (velocity.X < -0.1f) bot.Rotation = 0f;
+            movement = new BotMovementEvent
+            {
+                BotPlayerId = bot.PlayerId,
+                FromArea = bot.CurrentArea,
+                ToArea = bot.CurrentArea,
+                FromCell = fromCell,
+                ToCell = candidateCell,
+                Position = candidate,
+                Velocity = velocity,
+                Rotation = bot.Rotation,
+                IsAreaTransition = false
+            };
+            return true;
+        }
+
+        // 양쪽 다 막혔다 — 커밋을 풀고 원래 걸음으로 돌아간다.
+        bot.SwarmDodgeHoldUntilUtc = DateTime.MinValue;
+        return false;
     }
 
     /// <summary>봇 도착 후 다음 영역으로 출발 전 대기 시간 (자연스러운 휴식).</summary>

@@ -53,6 +53,8 @@ namespace network.common.data.models
         [Key("cell")] public Cell Cell { get; set; }
         [Key("lastProcessedInput")] public uint LastProcessedInput { get; set; }
         [Key("serverTime")] public long ServerTimestamp { get; set; }
+        // 오브 궤도 위상 (#232): 서버가 검증 이동으로 적산한 권위값 — 클라는 자기 적산을 이 값으로 보정한다.
+        [Key("orbPhase")] public float OrbOrbitPhaseDegrees { get; set; }
     }
 
     [MessagePackObject]
@@ -198,6 +200,76 @@ namespace network.common.data.models
         // 절단(kind 1) 전용: 잘린 열의 주인과 절단 시작 순번 — 클라가 꼬리 섬광을 그린다.
         [Key("victimId")] public long VictimPlayerId { get; set; }
         [Key("ord")] public int FromOrdinal { get; set; }
+    }
+
+    /// <summary>
+    ///     교차사격 예고 (#232 2단계). 오브가 몬스터를 향해 쏘는 순간 서버가 모양을 잠그고
+    ///     같은 구역 전원에게 보낸다. Shape 1 = 직선(태양): Origin→End 선분에 폭 Width의 캡슐.
+    ///     클라는 TelegraphSeconds 동안 예고색으로 그리다 ActiveSeconds 동안 판정색으로 바꾼다.
+    ///     서버 판정은 같은 좌표·같은 시간을 쓴다 — 표시 = 판정.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_SWARM_CROSSFIRE_TELEGRAPH : IMessagePackObject
+    {
+        [Key("eventId")] public long EventId { get; set; }
+        [Key("ownerId")] public long OwnerPlayerId { get; set; }
+        [Key("weaponItemId")] public int WeaponItemId { get; set; }
+        [Key("shape")] public int Shape { get; set; }
+        [Key("originX")] public float OriginX { get; set; }
+        [Key("originY")] public float OriginY { get; set; }
+        [Key("endX")] public float EndX { get; set; }
+        [Key("endY")] public float EndY { get; set; }
+        [Key("width")] public float Width { get; set; }
+        [Key("telegraphSeconds")] public float TelegraphSeconds { get; set; }
+        [Key("activeSeconds")] public float ActiveSeconds { get; set; }
+        [Key("anchorMonsterId")] public int AnchorMonsterId { get; set; }
+
+        // 발사한 오브의 열 순번 — 클라는 서버 원점 대신 자기가 그리는 그 슬롯 위치에서 선을 시작한다
+        // (서버 꼬리 좌표와 클라 슬롯이 어긋나 "오브가 아닌 곳에서 나가는" 것처럼 보이던 문제).
+        [Key("ownerOrbOrdinal")] public int OwnerOrbOrdinal { get; set; }
+    }
+
+    /// <summary>
+    ///     계열 공유 레벨 (#232 4단계). 플레이어별 태양·바람·파도 T1~T3와 다음 강화 비용.
+    ///     보유하지 않은 계열의 비용은 0(강화 불가)이다. 시작·강화·오브 증감 때 보낸다.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_SWARM_FAMILY_LEVELS : IMessagePackObject
+    {
+        [Key("sun")] public int SunLevel { get; set; }
+        [Key("wind")] public int WindLevel { get; set; }
+        [Key("wave")] public int WaveLevel { get; set; }
+        [Key("sunCost")] public int SunCost { get; set; }
+        [Key("windCost")] public int WindCost { get; set; }
+        [Key("waveCost")] public int WaveCost { get; set; }
+    }
+
+    /// <summary>
+    ///     6칸 빌드 결정 (#232 4단계). Action 1 = 오브 강화, TargetItemUid = SurvivorOrbColor 값 —
+    ///     그 계열에서 몸체에 가장 가까운 T3 미만 오브 하나가 한 티어 오른다 (2026-08-18, 구 계열 일괄 강화).
+    ///     서버 권위 — 강화할 오브 없음·소환석 부족이면 거절.
+    /// </summary>
+    [MessagePackObject]
+    public class C_TO_G_SWARM_ORB_DECISION : IMessagePackObject
+    {
+        [Key("action")] public int Action { get; set; }
+        [Key("targetUid")] public long TargetItemUid { get; set; }
+        [Key("secondUid")] public long SecondItemUid { get; set; }
+    }
+
+    /// <summary>
+    ///     결정 결과 (#232 4단계). ResultItemId: 강화된 오브의 새 아이템, TargetOrdinal: 그 오브의 열 순번
+    ///     (0 = 몸체 바로 뒤; 실패·해당 없음 -1) — 클라가 강화 이펙트를 그 오브 위에 띄운다.
+    /// </summary>
+    [MessagePackObject]
+    public class G_TO_C_SWARM_ORB_DECISION_RESULT : IMessagePackObject
+    {
+        [Key("action")] public int Action { get; set; }
+        [Key("success")] public bool Success { get; set; }
+        [Key("resultItemId")] public int ResultItemId { get; set; }
+        [Key("targetUid")] public long TargetItemUid { get; set; }
+        [Key("stones")] public int StoneCount { get; set; }
+        [Key("ordinal")] public int TargetOrdinal { get; set; } = -1;
     }
 
     /// <summary>

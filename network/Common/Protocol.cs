@@ -248,6 +248,16 @@ namespace network.common
         C_TO_G_SWARM_GROWTH_PICK,
         G_TO_C_SWARM_GROWTH_RESULT,
 
+        // 교차사격 예고 (#232 2단계) — 몬스터를 향한 오브 공격이 만드는 모양(직선 등)의
+        // 원점·끝·폭·예고/판정 시간. 같은 구역 전원에게 브로드캐스트, 표시 = 판정.
+        G_TO_C_SWARM_CROSSFIRE_TELEGRAPH,
+
+        // 6칸 빌드 (#232 4단계) — 계열 공유 레벨(태양·바람·파도 T1~T3)과 직접 강화.
+        // 6/6 포화는 소환 불가, 기존 5회 탭 파괴로 빈칸을 만든다.
+        G_TO_C_SWARM_FAMILY_LEVELS,
+        C_TO_G_SWARM_ORB_DECISION,
+        G_TO_C_SWARM_ORB_DECISION_RESULT,
+
         END
     }
 

@@ -8,6 +8,12 @@ using network.helpers;
 namespace game_server.services;
 
 /// <summary>
+///     투사체 회피 조언 (#232 §9): 비켜설 월드 방향과, 그 위협의 앞머리가 이 봇을 지나갈 때까지의 시간.
+///     봇은 이 시간 동안 회피를 커밋한다 — 띠 밖으로 나가면 서서 기다리고, 원래 경로로 되돌아가지 않는다.
+/// </summary>
+public readonly record struct SwarmBotDodgeAdvice(float DirectionX, float DirectionY, float HoldSeconds);
+
+/// <summary>
 ///     遊??뚮젅?댁뼱 ?곹깭 愿由? v0.2.0 遺??寃고빀 ?쒖뒪???뺥빀 (#26).
 ///     - 留ㅼ묶 遊?梨꾩? ???앹꽦??遊뉗쓽 ?멸쾶???곹깭 異붿쟻 + ?됰룞 AI ?쒓났.
 ///     - ?듭떖 ?숈옉? partial ?뚯씪濡?遺꾨━:
@@ -39,6 +45,15 @@ public partial class BotPlayerManager
 
     private bool IsDoorOpenForBot(long matchingId, int doorId) =>
         _doorOpenResolver?.Invoke(matchingId, doorId) ?? true;
+
+    /// <summary>
+    ///     투사체 회피 반사 (#232 §9): (matchingId, botId, position, area, now) → 지금 비켜설 월드 방향과
+    ///     그 위협이 지나갈 때까지의 시간. null이면 위협 없음. 게임서버가 교차사격 모양 스냅샷으로 답한다.
+    /// </summary>
+    private Func<long, long, Vector3f, AreaType, DateTime, SwarmBotDodgeAdvice?>? _swarmDodgeResolver;
+
+    public void SetSwarmDodgeResolver(Func<long, long, Vector3f, AreaType, DateTime, SwarmBotDodgeAdvice?> resolver) =>
+        _swarmDodgeResolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
 
     // ?꾨줈??0: ?쒖꽦 怨듦컙 = 3쨌4痢?6援ъ뿭(1쨌2痢??대룞??李⑤떒, 3??留??대룞).
     //   諛??뺤떊???뚮났 媛??: Classroom3(2-1)/ExamRoom(怨좎궗??/Classroom4(3-1)/BroadcastRoom(諛⑹넚??
@@ -420,6 +435,28 @@ public class BotPlayerState
     /// <summary>遊?濡쒗뀒?댁뀡 (?ㅼ젣 ?뚮젅?댁뼱 ObjectInfo.Rotation ?숇벑).</summary>
     public float Rotation { get; set; }
 
+    // 오브 궤도 위상 (#232): 사람 세션과 같은 규칙 — 이동한 거리만큼 돈다. null = 아직 시드 전.
+    private float? _orbOrbitPhaseDegrees;
+    private Vector3f? _orbOrbitLastPosition;
+
+    /// <summary>오브 궤도 위상 — 서버 전투의 오브별 자리 근거이자 G_TO_C_MOVE 보정값.</summary>
+    public float OrbOrbitPhaseDegrees =>
+        _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(PlayerId);
+
+    /// <summary>이동 이벤트마다 호출 — 직전 이벤트 위치에서 이번 위치까지 거리만큼 돈다(텔레포트급은 무시).</summary>
+    public void AdvanceOrbOrbit(Vector3f newPosition)
+    {
+        if (_orbOrbitLastPosition != null)
+        {
+            float dx = newPosition.X - _orbOrbitLastPosition.X;
+            float dy = newPosition.Y - _orbOrbitLastPosition.Y;
+            _orbOrbitPhaseDegrees = SwarmOrbOrbit.AdvancePhase(
+                OrbOrbitPhaseDegrees, MathF.Sqrt(dx * dx + dy * dy));
+        }
+
+        _orbOrbitLastPosition = new Vector3f(newPosition.X, newPosition.Y, newPosition.Z);
+    }
+
     /// <summary>留덉?留?? wander(?곸뿭 ???대룞) ?쒓컖. Phase 2 ???곸뿭 ???먯뿰 ?대룞.</summary>
     public DateTime LastCellWanderTime { get; set; } = DateTime.UtcNow;
 
@@ -489,6 +526,16 @@ public class BotPlayerState
 
     /// <summary>Next time the bot may re-plan a short lateral path around nearby afterimages.</summary>
     public DateTime NextPveKiteRepathAt { get; set; } = DateTime.MinValue;
+
+    // 카이팅 접선 방향 (2026-08-18 유저 지시 "제자리 좌우 와리가리 금지"): 초마다 좌우를 바꾸던 것을
+    // 봇마다 한쪽으로 고정한다 — 그쪽이 막혔을 때만 뒤집는다. 0이면 미정(봇 id 홀짝으로 정한다).
+    public int PveKiteWeaveSide { get; set; }
+
+    // 투사체 회피 커밋 (2026-08-18): 한 번 비켜서기 시작한 방향과 유지 시각. 유지 중에는 띠 밖에 나가도
+    // 원래 경로로 되돌아가지 않고 제자리에 선다 — 띠 가장자리에서 들락거리는 떨림을 없앤다.
+    public float SwarmDodgeDirectionX { get; set; }
+    public float SwarmDodgeDirectionY { get; set; }
+    public DateTime SwarmDodgeHoldUntilUtc { get; set; } = DateTime.MinValue;
 
     /// <summary>Safe room retained while the bot is travelling out of a warned area.</summary>
     public AreaType EvacuationDestination { get; set; } = AreaType.None;

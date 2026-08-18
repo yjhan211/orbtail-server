@@ -75,6 +75,24 @@ public class PlayerInGameInventory(long matchingId)
     }
 
     /// <summary>
+    ///     오브 갈아끼우기 (#232 4단계): ItemUid·열 순번은 그대로 두고 ItemId만 바꾼다 — 합성 결과가
+    ///     첫 원본 슬롯에, 예비 오브가 고른 슬롯에 들어간다. 제거+추가로 하면 열 끝으로 밀린다.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryReplaceSurvivorOrb(long itemUid, int newItemId, out InGameItemInfo? replacedItem)
+    {
+        replacedItem = null;
+        if (!_items.TryGetValue(itemUid, out var item) || item.Count <= 0)
+            return false;
+        if (!SurvivorOrbData.IsSurvivorOrb(newItemId))
+            return false;
+
+        item.ItemId = newItemId;
+        replacedItem = item;
+        return true;
+    }
+
+    /// <summary>
     ///     아이템 사용/제거
     /// </summary>
     /// <returns>성공 여부와 변경된 아이템 정보</returns>

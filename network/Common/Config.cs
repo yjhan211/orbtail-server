@@ -315,6 +315,10 @@ namespace network.common
         ///     이상 상황 방지용 안전상한일 뿐이다. 클라 궤도 슬롯 수와 같아야 한다 (PlayerTool.MaxOrbSlots).
         /// </summary>
         // 30 → 99 (#226 오브열): 머지 폐지로 성장 = 열 길이 — 사실상 무제한, 비용 곡선이 억제자.
+        // 99 → 6 (#232 1절): 꼬리는 6칸 빌드판이다. 성장은 길이가 아니라 유지·합성·교체로 돈다.
+        // 6 → 99 (#232 무한 꼬리, 2026-08-17): 플레이어에게 보이는 상한은 없다. 이 값은 정상 5분
+        // 매치에서 닿지 않는 내부 안전장치일 뿐이고, 포화 상태·포화 해소 UI는 쓰지 않는다.
+        // 클라 PlayerTool.MaxOrbSlots(99)와 같아야 한다.
         public const int SWARM_ORB_CAPACITY = 99;
 
         /// <summary>현재 모드의 오브 보유 상한 — 스웜(궤도 스쿼드)은 9, 레거시 보드는 6.</summary>
@@ -330,6 +334,21 @@ namespace network.common
         public const float SWARM_ORB_ATTACK_RANGE = 2.5f;
 
         /// <summary>
+        ///     오브 궤도 (#232, 2026-08-17 서버 공유): 오브는 본체 주위 타원 궤도를 돈다 — 이동한 거리만큼
+        ///     (2026-08-17 유저 지시: 이동할 때 돌고 멈추면 선다). 위상 = 시드 + 이동 거리 × 도/단위.
+        ///     서버가 검증 이동으로 적산해 G_TO_C_MOVE에 실어 보내고(권위), 클라는 자기 트랜스폼 이동으로
+        ///     같은 식을 적산하다 그 값으로 보정한다 — 서버는 그 자리를 오브별 발사 원점·표적 선정 기준으로
+        ///     쓰고, 클라는 그 자리에 그린다. 9도/단위 = 걷기 속도 6에서 54도/초.
+        ///     텔레포트(구역 이동)만큼의 점프는 적산하지 않는다.
+        ///     반지름 = 사거리 × 배수, 아이소 타원(y 절반), 궤도 중심 = 본체 + Y 오프셋.
+        /// </summary>
+        public const float SWARM_ORB_ORBIT_DEGREES_PER_UNIT = 9f;
+        public const float SWARM_ORB_ORBIT_TELEPORT_DISTANCE = 3f;
+        public const float SWARM_ORB_ORBIT_RADIUS_MULTIPLIER = 0.8f;
+        public const float SWARM_ORB_ORBIT_ISO_Y_SCALE = 0.5f;
+        public const float SWARM_ORB_ORBIT_CENTER_OFFSET_Y = 0.8f;
+
+        /// <summary>
         ///     유저간 사격 사거리 (2026-08-16 유저 명세). PvE(7)보다 짧게 — 붙어야 싸운다.
         ///     플레이어 본체 기준으로 잰다: 오브별 원점으로 재면 꼬리가 길수록 사정권이
         ///     늘어나 "오브 수는 PvP 화력을 키우지 않는다"는 규칙과 어긋나고, 링 하나로
@@ -343,6 +362,115 @@ namespace network.common
         ///     오브 수는 PvE 성장과 절단 위험만 키우는 축이 된다.
         /// </summary>
         public const int SWARM_PVP_ORB_COUNT = 3;
+
+        // ===== 교차사격 (#232 2단계) =====
+        // 오브는 몬스터만 쏜다. 그 공격이 만드는 모양(태양 = 직선)에 다른 플레이어가 들어오면
+        // 고정 충격을 받는다. 티어는 모양의 크기만 키우고 충격값은 안 키운다.
+        // 서버 판정과 클라 예고 표시가 같은 값을 읽어야 "표시 = 판정"이 성립한다.
+
+        /// <summary>교차사격 충격 1회의 정신오염. 티어·공격 강화와 무관한 고정값.</summary>
+        public const int SWARM_CROSSFIRE_SHOCK_CORRUPTION = 50;
+
+        /// <summary>
+        ///     받는 피해 배율 (2026-08-18 유저 지시 "봇·플레이어 전부 지금의 1/3만 받게"): 사람·봇 공통,
+        ///     PvP 충격(태양·바람·파도)과 잔상 접촉·원거리 피해에 곱한다. 절단 자해(+35)와 폐쇄 즉사는 대상 아님.
+        ///     최솟값 1 — 0이 되면 "맞았는데 안 닳는" 피격이 생긴다.
+        /// </summary>
+        public const float SWARM_DAMAGE_TAKEN_MULTIPLIER = 1f / 3f;
+
+        /// <summary>받는 피해에 배율을 적용한 정수값 — 반올림, 최솟값 1.</summary>
+        public static int ScaleSwarmDamageTaken(int damage) =>
+            damage <= 0 ? damage : Math.Max(1, (int)Math.Round(damage * SWARM_DAMAGE_TAKEN_MULTIPLIER));
+
+        /// <summary>같은 피해자는 공격자와 무관하게 이 시간 동안 추가 충격을 받지 않는다.</summary>
+        public const float SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS = 0.9f;
+
+        /// <summary>한 공격자가 다른 플레이어에게 만드는 유효 충격 상한 — 초당 1회.</summary>
+        public const float SWARM_CROSSFIRE_OWNER_HIT_INTERVAL_SECONDS = 1f;
+
+        /// <summary>
+        ///     한 플레이어가 동시에 유지할 수 있는 교차사격 예고 수 (명세 "동시 예고 최대 2개"). 예고(시전)
+        ///     중인 모양만 센다 — 예고 시간이 0인 지금은 사실상 안 걸리고, 예고를 되살릴 때를 위해 남긴다.
+        ///     상한에 닿은 소유자의 태양은 표적을 잡지 않고 기다렸다가(리졸버 필터) 자리가 나면 쏜다 —
+        ///     버리지 않는다. 모양 없이 때리던 옛 폴백은 "안 맞은 몹이 죽는" 보이지 않는 피해였다
+        ///     (2026-08-17 유저 제보: 봇 매치에서 예고 594건에 폴백 1293건). 표시 = 판정.
+        /// </summary>
+        public const int SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER = 2;
+
+        /// <summary>
+        ///     태양 투사체 (2026-08-17 유저 판정 누적): 큰 투사체 하나가 오브에서 표적 방향으로 티어 사거리
+        ///     끝까지 이 속도로 날아간다. 선상의 첫 표적(몬스터·플레이어)에 닿는 순간 거기서 폭발 — 폭발 반경
+        ///     안 전부 피해("폭발하는 시점이 피해 시점"). 끝까지 아무것도 안 닿으면 폭발 없이 소멸.
+        ///     예고선은 퇴역. 예고 시간 0.25초는 선 없이 오브 조준 발광(표적 쪽으로 돌아서며 부풂)만 —
+        ///     "조준됐다"가 발사 직전 읽히게 (2026-08-17 유저 지시).
+        /// </summary>
+        public const float SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS = 0.25f;
+        // 4.5 → 7.5 (2026-08-18 유저 지시 "태양 발사 속도를 높여보자"): 느린 비행은 예고선 없이는 "천천히
+        // 지나가는 큰 공격"이 아니라 그냥 늦게 오는 탄으로 읽혔다. 사거리 6이면 0.8초 만에 끝까지 간다.
+        // 클라 투사체는 패킷의 ActiveSeconds(= 사거리/속도)를 그대로 쓰므로 여기만 바꾸면 표시 = 판정.
+        public const float SWARM_CROSSFIRE_SUN_SWEEP_SPEED = 7.5f;
+
+        /// <summary>
+        ///     큰 공격 한 번 = 유도탄 두 발 몫. 주기 ×2, 피해 ×2 — 총 화력은 같고 한 번의 무게가 커진다.
+        ///     T1 24는 일반 몹(16~22)을 한 방에 지우고 관통하므로 실측 뒤 조정 대상이다.
+        /// </summary>
+        public const float SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER = 2f;
+        public const float SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER = 2f;
+
+        /// <summary>태양 투사체의 판정 폭(T1/T2/T3, 바닥면 단위) — 이 안에 몸이 걸리면 닿은 것.</summary>
+        public static readonly float[] SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER = { 0.7f, 0.85f, 1f };
+
+        /// <summary>
+        ///     태양 사거리(T1/T2/T3, 바닥면 단위) — 투사체가 날아가는 고정 길이이자 태양 오브의 표적 획득 거리.
+        ///     강화(계열 공유 레벨)될수록 길어진다 (2026-08-17 유저 지시). 표적 거리와 무관하게 이 길이를 다 난다.
+        /// </summary>
+        public static readonly float[] SWARM_CROSSFIRE_SUN_RANGE_BY_TIER = { 4f, 5.5f, 7f };
+
+        /// <summary>
+        ///     바람 몸통박치기 (2026-08-17 저녁 유저 결정): 조준 투사체가 아니다. 바람 오브는 제자리(열 좌표)에 있다가
+        ///     감지 반경(티어별, 바닥면) 안에 누가 오면 그쪽으로 한 번 몸을 던진다 — 예비 동작(뒤로 당김) → 돌진 → 착지.
+        ///     착지 반경 안 몬스터 PvE 피해(× 배수), 플레이어 충격. 아무도 없으면 가만히. 오브당 쿨다운.
+        ///     판정은 발동 뒤 예비+돌진 시간에 착지점(발동 순간 잠금)에서 — 클라 연출과 같은 시간표.
+        ///     주기 공격(회전 칼날)은 "아무도 없을 때 혼자 도는 게 이상하다"로 퇴역.
+        /// </summary>
+        public const float SWARM_WIND_SLAM_COOLDOWN_SECONDS = 1.4f;
+        public static readonly float[] SWARM_WIND_SLAM_TRIGGER_RADIUS_BY_TIER = { 1.4f, 1.65f, 1.9f };
+        public const float SWARM_WIND_SLAM_HIT_RADIUS = 0.6f;
+        public const float SWARM_WIND_SLAM_WINDUP_SECONDS = 0.2f;
+        public const float SWARM_WIND_SLAM_LUNGE_SECONDS = 0.12f;
+        public const float SWARM_WIND_SLAM_DAMAGE_MULTIPLIER = 1.5f;
+
+        /// <summary>
+        ///     태양 폭발 반경(T1/T2/T3, 바닥면 단위) — 첫 표적에 닿아 터지는 순간 이 안의 몬스터 전부 PvE 피해,
+        ///     플레이어 전부 충격(면역·상한은 그대로). 물폭탄(1.8/2.2/2.6)보다 작게 — 직선이 먼저 좁히고 폭발이 마무리.
+        /// </summary>
+        public static readonly float[] SWARM_CROSSFIRE_SUN_BLAST_RADIUS_BY_TIER = { 1.1f, 1.3f, 1.5f };
+
+        /// <summary>교차사격 모양 종류 — 패킷·로그·클라 렌더가 공유하는 식별자.</summary>
+        public const int SWARM_CROSSFIRE_SHAPE_LINE = 1;
+
+        /// <summary>
+        ///     교차사격 폭발 통지 — 같은 패킷(G_TO_C_SWARM_CROSSFIRE_TELEGRAPH)을 재사용한다: EventId = 터진 모양,
+        ///     OriginX/Y = 폭발 지점(월드), Width = 폭발 반경(바닥면). 클라는 날아가던 투사체를 그 자리에서 터뜨린다.
+        /// </summary>
+        public const int SWARM_CROSSFIRE_SHAPE_DETONATE = 2;
+
+        // ===== 6칸 빌드 (#232 4단계) =====
+        /// <summary>
+        ///     시작 지급 (#232 4단계, 2026-08-17): 무작위 T1 공격 오브 3개 + 소환석 5. 첫 화력을 들고
+        ///     시작하고, 첫 판단은 유지·계열 강화·파괴로 옮긴다. 08-16의 "소환석 19로 시작"은 되돌린다.
+        /// </summary>
+        public const int SWARM_STARTING_ORB_GRANT_COUNT = 3;
+        public const int SWARM_STARTING_STONE_GRANT = 5;
+
+        /// <summary>
+        ///     오브 파괴 환급 (#232 4단계): 계열 공유 레벨은 플레이어에게 귀속되므로 표시 티어와
+        ///     무관하게 오브 한 개당 소환석 1로 고정한다 — 강화한 오브를 부숴도 레벨은 남는다.
+        /// </summary>
+        public const int SWARM_ORB_DESTROY_REFUND_STONES = 1;
+
+        /// <summary>결정 패킷 액션 — 클라·서버·로그 공유. TargetItemUid = SurvivorOrbColor 값.</summary>
+        public const int SWARM_ORB_DECISION_FAMILY_UPGRADE = 1;
 
         /// <summary>
         /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.

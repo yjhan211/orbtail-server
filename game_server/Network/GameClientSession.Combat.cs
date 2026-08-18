@@ -294,7 +294,7 @@ public partial class GameClientSession
                 return;
 
             SwarmSleepStartedAtUtc = DateTime.MinValue;
-            _swarmSleepRecoveryCarry = 0f;
+            _swarmSleepGrantedTicks = 0;
             await BroadcastSleepState(true);
             return;
         }
@@ -388,79 +388,87 @@ public partial class GameClientSession
         }
     }
 
-    // #229 6단계 수면 회복: 회복을 줍는 운이 아니라 "지금 여기서 쉬어도 되는가"라는 위치 판단으로
-    // 바꾼다. 무리를 빨리 지운 사람이 짧은 창을 벌고, 그동안 남에게 읽히는 표적이 된다.
-    private const double SwarmSleepWarmupSeconds = 1.5d;
+    // #229 6단계 수면 회복 → 2026-08-17 재조정: 준비 1초, 회복은 1초에 한 번.
+    // 중단은 이동뿐이다 — 움직이지 않는 한 피격·폐쇄로는 깨지 않는다.
+    private const double SwarmSleepWarmupSeconds = 1d;
     private const double SwarmSleepCombatLockSeconds = 3d;
     private const float SwarmSleepRecoveryRatioPerSecond = 0.05f;
     private const int SwarmSleepRecoveryEventType = 28;
 
     /// <summary>
-    ///     수면 중 본체 HP 회복 (#229 6단계). 진입 1.5초 뒤부터 초당 최대 HP 5%.
-    ///     중단(이동·피격·폐쇄)은 BreakSwarmSleep이 맡고 여기서는 회복만 센다.
+    ///     수면 중 본체 HP 회복. 진입 1초 뒤 첫 회복, 이후 1초마다 최대 HP 5%씩.
+    ///     중단(이동)은 BreakSwarmSleep이 맡고 여기서는 회복만 센다.
     /// </summary>
     internal void TickSwarmSleepRecovery(DateTime nowUtc)
     {
         if (!Config.SWARM_P0_ENABLED || IsEliminated || !_isSleeping)
         {
             SwarmSleepStartedAtUtc = DateTime.MinValue;
-            _swarmSleepRecoveryCarry = 0f;
+            _swarmSleepGrantedTicks = 0;
             return;
         }
 
         if (SwarmSleepStartedAtUtc == DateTime.MinValue)
         {
             SwarmSleepStartedAtUtc = nowUtc;
-            SwarmSleepLastTickUtc = nowUtc;
-            _swarmSleepRecoveryCarry = 0f;
+            _swarmSleepGrantedTicks = 0;
             return;
         }
 
-        // 준비 시간: 눌렀다 떼는 것만으로 피해를 무시할 수 없어야 한다.
-        if ((nowUtc - SwarmSleepStartedAtUtc).TotalSeconds < SwarmSleepWarmupSeconds)
+        // 준비 1초: 눌렀다 떼는 것만으로 피해를 무시할 수 없어야 한다.
+        double asleepSeconds = (nowUtc - SwarmSleepStartedAtUtc).TotalSeconds;
+        if (asleepSeconds < SwarmSleepWarmupSeconds)
+            return;
+
+        // 절단 치명상 회복 차단 (#232): 8초 동안은 틱이 지나도 회복이 없다 — 지난 틱은 소멸한다.
+        if (nowUtc < SwarmHealLockUntilUtc)
         {
-            SwarmSleepLastTickUtc = nowUtc;
+            _swarmSleepGrantedTicks = (int)Math.Floor(asleepSeconds - SwarmSleepWarmupSeconds) + 1;
             return;
         }
 
-        double delta = (nowUtc - SwarmSleepLastTickUtc).TotalSeconds;
-        SwarmSleepLastTickUtc = nowUtc;
-        if (delta <= 0 || Corruption <= 0)
+        // 1초에 한 번 — 준비가 끝나는 순간이 첫 회복이다. 아레나 틱이 밀렸으면 한 번에 정산한다.
+        int dueTicks = (int)Math.Floor(asleepSeconds - SwarmSleepWarmupSeconds) + 1;
+        int pendingTicks = dueTicks - _swarmSleepGrantedTicks;
+        if (pendingTicks <= 0)
             return;
 
-        // 아레나 틱이 짧아 매번 정수로 자르면 회복이 영영 0이 된다 — 소수분을 이월한다.
-        _swarmSleepRecoveryCarry += (float)(MaxCorruption * SwarmSleepRecoveryRatioPerSecond * delta);
-        int recovered = (int)MathF.Floor(_swarmSleepRecoveryCarry);
-        if (recovered <= 0)
+        _swarmSleepGrantedTicks = dueTicks;
+        if (Corruption <= 0)
             return;
 
-        _swarmSleepRecoveryCarry -= recovered;
-        recovered = Math.Min(recovered, Corruption);
+        int perTick = Math.Max(1, (int)MathF.Round(MaxCorruption * SwarmSleepRecoveryRatioPerSecond));
+        int recovered = Math.Min(perTick * pendingTicks, Corruption);
         ModifyStats(corruptionDelta: -recovered);
         // 회복량은 본인과 같은 구역 사람 모두 읽는다 — 수면은 남에게 보이는 표적이어야 한다.
         SendEncounterEvent(PlayerId ?? 0, CurrentArea, SwarmSleepRecoveryEventType, 0, 0, recovered);
     }
 
-    /// <summary>수면 진입 가능 여부 (#229 6단계) — 가해·피해 뒤 3초는 눕지 못한다.</summary>
+    /// <summary>
+    ///     수면 진입 가능 여부 (#229 6단계) — 가해·피해 뒤 3초는 눕지 못한다.
+    ///     절단 치명상(#232) 8초 회복 차단 중에도 눕지 못한다 — 누워도 회복이 없다.
+    /// </summary>
     internal bool CanEnterSwarmSleep(DateTime nowUtc) =>
         !Config.SWARM_P0_ENABLED ||
-        (nowUtc - SwarmLastCombatAtUtc).TotalSeconds >= SwarmSleepCombatLockSeconds;
+        ((nowUtc - SwarmLastCombatAtUtc).TotalSeconds >= SwarmSleepCombatLockSeconds &&
+         nowUtc >= SwarmHealLockUntilUtc);
 
     /// <summary>
-    ///     수면 중단 (#229 6단계): 이동·피격·폐쇄 경고가 부른다.
-    ///     markCombat이면 교전 잠금 시각도 찍어 맞자마자 다시 눕는 것을 막는다.
+    ///     수면 중단 (2026-08-17 재조정): 부르는 곳은 이동뿐이다 — 누워서 도망칠 수 없다.
+    ///     피격·폐쇄는 깨우지 않는다. 움직이지 않는 수면은 스스로 깨지 않는다.
     /// </summary>
-    internal void BreakSwarmSleep(DateTime nowUtc, bool markCombat)
+    internal void BreakSwarmSleep()
     {
-        if (markCombat)
-            SwarmLastCombatAtUtc = nowUtc;
         if (!_isSleeping)
             return;
 
         SwarmSleepStartedAtUtc = DateTime.MinValue;
-        _swarmSleepRecoveryCarry = 0f;
+        _swarmSleepGrantedTicks = 0;
         _ = BroadcastSleepState(false);
     }
+
+    /// <summary>교전 시각 기록 — 가해·피격 뒤 3초 수면 진입 잠금의 기준. 수면 자체는 깨지 않는다.</summary>
+    internal void MarkSwarmCombat(DateTime nowUtc) => SwarmLastCombatAtUtc = nowUtc;
 
     private void StopAllPeriodicBuffs()
     {
@@ -503,7 +511,7 @@ public partial class GameClientSession
     /// <summary>
     ///     인게임 인벤토리 전체 목록 전송
     /// </summary>
-    private void SendInGameInventoryList()
+    internal void SendInGameInventoryList()
     {
         if (!PlayerId.HasValue) return;
 

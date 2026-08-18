@@ -31,27 +31,41 @@ public class SwarmDamagePathTests
     }
 
     /// <summary>
-    ///     절단 내구(_swarmOrbCutCracks)에 값을 쓰는 곳은 절단 판정 하나뿐이어야 한다.
-    ///     제거(Remove)는 파괴·정리 경로라 대상이 아니고, 증가 대입만 센다.
+    ///     고위험 절단 계약 (#232, 2026-08-18 유저 결정 "오브 절단면 다 깨지게"): 크랙 5칸·방어 장갑은 퇴역 —
+    ///     절단 내구에 값을 쓰는 곳이 하나라도 남으면 "유효 교차 한 번 = 즉시 절단"이 무너진다.
+    ///     절단은 켜져 있고, 한 교차는 밟은 지점부터 꼬리 끝까지 지우며(스네이크 접미), 낙수를 흩지 않고,
+    ///     공격자는 +35 선결 검사 뒤 같은 사건으로 치명상과 8초 회복 차단을 받는다.
     /// </summary>
     [Fact]
-    public void OrbCutDurability_IsWrittenOnlyByTrailCut()
+    public void TailCut_RemovesSuffixAndChargesAttacker()
     {
         string source = File.ReadAllText(
             Path.Combine(FindRepositoryRoot(), "game_server", "GameServer.SwarmArena.cs"));
 
-        var writes = Regex.Matches(source, @"_swarmOrbCutCracks\[[^\]]+\]\s*=");
+        Assert.Contains("SwarmTrailCutEnabled = true", source);
+        var crackWrites = Regex.Matches(source, @"_swarmOrbCutCracks\[[^\]]+\]\s*=");
         Assert.True(
-            writes.Count == 1,
-            $"절단 내구 대입 지점이 {writes.Count}곳이다 — 절단 외의 경로가 오브 내구를 깎으면 " +
-            "원거리 공격으로 크랙이 생겨 두 피해 경로가 뒤섞인다 (#227 M2).");
+            crackWrites.Count == 0,
+            $"절단 내구 대입 지점이 {crackWrites.Count}곳 남았다 — 절단은 크랙 시스템을 쓰지 않는다 (#232).");
 
-        // 그 한 곳이 실제로 절단 판정 안인지 확인한다.
         int cutMethodStart = source.IndexOf("private void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
         Assert.True(cutMethodStart >= 0, "TryPerformSwarmTrailCut를 찾지 못했다");
-        Assert.True(
-            writes[0].Index > cutMethodStart,
-            "절단 내구 대입이 절단 판정 밖에 있다 (#227 M2).");
+        int cutMethodEnd = source.IndexOf("// ===== 포위 사격", cutMethodStart, StringComparison.Ordinal);
+        Assert.True(cutMethodEnd > cutMethodStart, "절단 판정 메서드의 끝을 찾지 못했다");
+        string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
+
+        // 한 교차 = 밟은 순번부터 꼬리 끝까지. 낙수 흩기는 절단 경로에 없어야 한다.
+        Assert.Contains("DestroySwarmOrbsFromOrdinal(matchingId, bestOwnerId, bestTailOrdinal)", cutBody);
+        Assert.DoesNotContain("DestroySwarmOrbAtOrdinal", source);
+        Assert.DoesNotContain("ScatterSwarmOrbBreakStones", cutBody);
+        // 공격자 비용: 선결 검사 → 치명상 → 회복 차단이 같은 사건 안에 있다.
+        Assert.Contains("SwarmSingleCutCorruptionCost = 35", source);
+        Assert.Contains("SwarmSingleCutHealLockSeconds = 8d", source);
+        Assert.Contains("ORB_SINGLE_CUT_REFUSED", cutBody);
+        Assert.Contains("SwarmHealLockUntilUtc = healLockUntil", cutBody);
+        Assert.Contains("ORB_TAIL_CUT ", cutBody);
+        // 0.8초 재접촉 억제 시작값.
+        Assert.Contains("SwarmTrailCutSameOrbDebounceSeconds = 0.8d", source);
     }
 
     /// <summary>
@@ -87,9 +101,45 @@ public class SwarmDamagePathTests
     }
 
     /// <summary>
-    ///     #229 6단계 수면 회복: 회복을 줍는 운이 아니라 위치 판단으로 바꾸는 규칙이다.
-    ///     준비 시간·교전 잠금·중단 조건 중 하나라도 빠지면 "눌러서 피해 무시"가 되어
-    ///     완료 조건(교전 중 수면으로 피해를 무시한 사례 0회)이 바로 깨진다.
+    ///     봇 교전 튜닝 계약 (2026-08-18 촬영 튜닝, 봇 매치 9126059 → 9133549 → 9134053):
+    ///     ① 봇 절단 자제 — 오염 절반 아래 + 6초 쿨다운일 때만 자르고, 사람에게는 걸지 않는다.
+    ///     ② 도주 임계 ×1.5 — 동수·소폭 열세는 중립(피하지도 붙지도 않음).
+    ///     ③ 치명상 이탈 — 60% 진입 · 45% 해제, 치명상이면 전력 비교 없이 물러난다.
+    ///     셋 중 하나라도 조용히 빠지면 봇이 다시 자해로 죽거나(①), 카메라 앞에서 등만 보이거나(②),
+    ///     죽을 때까지 맞붙어 후반 판이 빈다(③).
+    /// </summary>
+    [Fact]
+    public void SwarmBotEngagement_KeepsCutRestraintNeutralBandAndWoundedRetreat()
+    {
+        string source = File.ReadAllText(
+            Path.Combine(FindRepositoryRoot(), "game_server", "GameServer.SwarmArena.cs"));
+
+        // ① 절단 자제: 봇 전용, 래치 앞에서 걸린다.
+        Assert.Contains("SwarmBotCutMaxCorruptionRatio = 0.5f", source);
+        Assert.Contains("SwarmBotCutCooldownSeconds = 6d", source);
+        int cutMethodStart = source.IndexOf("private void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
+        int cutMethodEnd = source.IndexOf("// ===== 포위 사격", cutMethodStart, StringComparison.Ordinal);
+        string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
+        Assert.Contains("cutterBot != null && !IsSwarmBotCutAllowed(", cutBody);
+        Assert.Contains("_swarmBotLastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc", cutBody);
+        // 사람 절단은 자제 규칙을 타지 않는다 — 봇 분기 안에서만 호출된다.
+        Assert.Single(Regex.Matches(cutBody, @"IsSwarmBotCutAllowed\("));
+
+        // ② 도주 임계: 강자 판정과 피격 반응 둘 다 ×1.5를 쓴다.
+        Assert.Contains("SwarmBotFleePowerRatio = 1.5f", source);
+        Assert.Contains("rivalPower >= myPower * SwarmBotFleePowerRatio", source);
+        Assert.Contains("wounded || attackerPower >= squadPower * SwarmBotFleePowerRatio", source);
+
+        // ③ 치명상 이탈: 히스테리시스 + 전력 0으로 스캔.
+        Assert.Contains("SwarmBotWoundedEnterRatio = 0.6f", source);
+        Assert.Contains("SwarmBotWoundedExitRatio = 0.45f", source);
+        Assert.Contains("wounded ? 0f : squadPower", source);
+    }
+
+    /// <summary>
+    ///     수면 계약 (2026-08-17 재조정): 준비 1초 · 1초마다 최대 HP 5% 회복 · 가해·피해 뒤
+    ///     3초 진입 잠금. 중단은 이동뿐이다 — 피격·폐쇄가 다시 깨우기 시작하면
+    ///     "움직이지 않으면 안 깬다"는 유저 결정이 소리 없이 뒤집힌다.
     /// </summary>
     [Fact]
     public void SwarmSleepRecovery_KeepsWarmupCombatLockAndBreakConditions()
@@ -98,25 +148,25 @@ public class SwarmDamagePathTests
         string combat = File.ReadAllText(
             Path.Combine(root, "game_server", "Network", "GameClientSession.Combat.cs"));
 
-        // 수치 계약: 1.5초 준비 · 초당 최대 HP 5% · 가해·피해 뒤 3초 진입 잠금.
-        Assert.Contains("SwarmSleepWarmupSeconds = 1.5d", combat);
+        // 수치 계약: 1초 준비 · 1초 틱당 최대 HP 5% · 가해·피해 뒤 3초 진입 잠금.
+        Assert.Contains("SwarmSleepWarmupSeconds = 1d", combat);
         Assert.Contains("SwarmSleepRecoveryRatioPerSecond = 0.05f", combat);
         Assert.Contains("SwarmSleepCombatLockSeconds = 3d", combat);
-        // 소수 이월이 없으면 짧은 아레나 틱에서 회복이 매번 0으로 잘린다.
-        Assert.Contains("_swarmSleepRecoveryCarry", combat);
+        // 회복은 연속 이월이 아니라 1초 단위 틱으로 센다.
+        Assert.Contains("_swarmSleepGrantedTicks", combat);
 
-        // 중단 조건 세 갈래가 실제로 물려 있어야 한다.
+        // 중단 경로는 이동 하나뿐이다.
         string movement = File.ReadAllText(
             Path.Combine(root, "game_server", "Network", "GameClientSession.Movement.cs"));
-        Assert.Contains("BreakSwarmSleep(DateTime.UtcNow, markCombat: false)", movement);
+        Assert.Contains("BreakSwarmSleep()", movement);
 
         string arena = File.ReadAllText(
             Path.Combine(root, "game_server", "GameServer.SwarmArena.cs"));
-        // 피격·가해는 교전 잠금을 함께 찍는다.
-        Assert.Contains("BreakSwarmSleep(DateTime.UtcNow, markCombat: true)", arena);
-        Assert.Contains("BreakSwarmSleep(nowUtc, markCombat: true)", arena);
-        // 폐쇄·경고 구역은 잠금 없이 깨우기만 한다.
-        Assert.Contains("sleepBreakAreas", arena);
+        // 피격·절단 가해는 수면을 깨지 않고 교전 잠금만 찍는다.
+        Assert.Contains("MarkSwarmCombat(DateTime.UtcNow)", arena);
+        Assert.Contains("MarkSwarmCombat(nowUtc)", arena);
+        // 아레나에서 수면을 깨우는 호출이 되살아나면 계약 위반이다 (폐쇄·경고 깨우기 퇴역).
+        Assert.DoesNotContain("BreakSwarmSleep", arena);
         Assert.Contains("ProcessSwarmSleepRecovery(aliveSessions, nowUtc)", arena);
     }
 
@@ -182,6 +232,10 @@ public class SwarmDamagePathTests
     [Fact]
     public void GaugeGatedDoors_LockEverySpawnRoomButKeepTheMapConnected()
     {
+        // 실행 순서 무관하게 데이터가 있어야 한다 — 단독 실행에서 문 목록이 비어 실패했다 (2026-08-17).
+        GameDataHelper.SetBasePath(FindNetworkBasePath());
+        GameDataHelper.Initialize();
+
         // #229: 스폰 방 10곳은 문이 잠긴 채 시작하고, 여는 수단은 탐색 게이지뿐이다.
         // 잠금이 빠지면 방을 탈출하는 목표 자체가 사라진다.
         var spawnRooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates();

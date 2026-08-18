@@ -43,6 +43,8 @@ public sealed class SwarmArenaManager
     // 서버 위치는 클라 예측보다 늦으므로 회피자에게 후한 쪽이 맞다.
     public const float ContactRange = 0.32f;
     public const float ContactCooldownSeconds = 1f;
+    // 4.2 → 3.2(08-17 오후, "몹이 너무 빠르다") → 4.2 복구 (08-17 저녁 유저 결정: 몹이 달려들어
+    // 부딪혀야 한다 — 숨쉬는 포위와 함께 내렸던 이속을 직진 추격 복귀와 함께 되돌린다).
     public const float MonsterMoveSpeed = 4.2f;
     public const float RingTelegraphSeconds = 1f;
     public const float RushTelegraphSeconds = 1f;
@@ -161,6 +163,9 @@ public sealed class SwarmArenaManager
     // 웨이브 간격(12초)이 이미 창을 만들므로 전멸 휴지는 짧게만 둔다 — 다 지운 뒤에도
     // 12초를 더 기다리면 방이 너무 오래 빈다.
     private const double SupplyWipeRestSeconds = 2d;
+    // 최종 수렴 페이즈에는 휴지가 없다 (#232 1단계): 몬스터는 교차사격의 기준점이라 마지막
+    // 구역에서 몹이 비면 PvP도 같이 멎는다. 완료 조건 "최종 30초 기준점 부재 3초 이하".
+    private const double SupplyWipeRestSecondsFinalPhase = 0d;
     // 플레이어 2.5m 안의 앵커에는 즉시 생성하지 않는다 — 전 앵커가 막히면 1초 뒤 재검사.
     private const float SupplySafeSpawnDistance = 2.5f;
     // 화면 밖 등장 (#229): 이 거리 밖 앵커를 우선 고른다. 전부 가까우면 안전 이격만 지킨다.
@@ -189,13 +194,26 @@ public sealed class SwarmArenaManager
     // 적이 없다. 4명분에서 끊어 두면 그래도 1인당 14마리로 지금(3.5마리)의 4배다.
     private const int SupplyZoneCrowdCap = 4;
 
+    // 세 번째 사람부터는 인당 증가량의 절반만 더한다 (#232 1단계 확정 규칙: "사람 수에 비례해
+    // 몬스터를 선형으로 늘리지 않는다. 3명 이상이 모였을 때 추가 공급은 기본 증가량의 50%부터").
+    // 몬스터가 교차사격 기준점이 된 뒤로는 사람이 몰린 방의 몹 수가 곧 예고 밀도라, 선형이면
+    // 4인 방에서 화면이 예고로 덮인다. 1인 T · 2인 2T · 3인 2.5T · 4인 3T.
+    private const double SupplyCrowdExtraRatio = 0.5d;
+    private const int SupplyCrowdLinearPlayers = 2;
+
     /// <summary>
     ///     구역 목표 = 인당 목표 × 그 구역에 선 사람 수. 최소 1명분은 항상 준다 —
     ///     인트로 산개는 아무도 없는 방을 대상으로 돌고, 사람이 막 빠져나간 방도 다음 틱까지는
-    ///     채워져 있어야 한다.
+    ///     채워져 있어야 한다. 셋째 사람부터는 절반 비율로 는다(SupplyCrowdExtraRatio).
     /// </summary>
-    private static int GetSupplyZoneTarget(int perPlayerTarget, int playersInZone) =>
-        perPlayerTarget * Math.Clamp(playersInZone, 1, SupplyZoneCrowdCap);
+    private static int GetSupplyZoneTarget(int perPlayerTarget, int playersInZone)
+    {
+        int players = Math.Clamp(playersInZone, 1, SupplyZoneCrowdCap);
+        int linearPlayers = Math.Min(players, SupplyCrowdLinearPlayers);
+        int crowdPlayers = players - linearPlayers;
+        return perPlayerTarget * linearPlayers +
+               (int)Math.Round(perPlayerTarget * SupplyCrowdExtraRatio * crowdPlayers);
+    }
     // 1초 예고는 밀도 램프에서 실질 병목이 된다 — 초당 10마리를 채우는데 전부 1초를 서 있으면
     // 화면에 "아직 안 깨어난 몹"만 쌓인다 (#229 4단계-보정).
     private const float SupplyTelegraphSeconds = 0.4f;
@@ -223,6 +241,14 @@ public sealed class SwarmArenaManager
     // ZoneTarget 8/12/16에 정비례, 성장 구성이 다른 두 봇의 처치율이 동일). 마주치는 수가
     // 앵커 하나 분량에 고정되니 화력을 올려도 살 게 없었다.
     private const float InfiltrationOriginRadius = 3.5f;
+    // 원형 산개 (#232, 2026-08-17): 발원 각도 = 목적지 방향 ± 50°(황금각 수열 지터), 첫 웨이포인트는
+    // 방사 2.0m 바깥. 같은 경로 위에서는 레인 ±0.4·속도 0.9~1.1×로 한 줄이 아니라 띠로 걷는다.
+    private const double InfiltrationGoldenAngle = 0.6180339887498949d;
+    private const float InfiltrationOriginJitterRadians = 1.3963f;
+    private const float InfiltrationBurstDistance = 2.0f;
+    private const float MarchLaneOffsetMax = 0.4f;
+    private const float MarchSpeedJitter = 0.1f;
+    private const double InfiltrationDepartureJitterSeconds = 0.4d;
     private const float MarchWaypointArriveDistance = 0.6f;
     private const float RouteSampleStep = 0.35f;
     // 문어귀 통과 허용 길이 (2026-08-16 실측 보정). 4샘플(1.4)로는 좁았다 — 봇 매치
@@ -231,9 +257,28 @@ public sealed class SwarmArenaManager
     // 여유까지 걸치고, 아이소메트릭 대각이면 더 길어진다. 10샘플(3.5) — 벽 한 장은 이보다
     // 훨씬 길므로 관통 방지는 유지된다.
     private const int DoorwayBlockedSampleTolerance = 10;
-    // 행군 제한: 경로가 길수록 넉넉히 주되, 막히면 낭비 없이 걷어낸다. 웨이포인트 수 × 계수.
-    private const double MarchBudgetSecondsPerWaypoint = 1.2d;
+    // 행군 제한: 경로가 길수록 넉넉히 주되, 막히면 낭비 없이 걷어낸다.
+    // 웨이포인트 수 × 고정 계수는 폐기 (2026-08-17): 웨이포인트 간격이 균일하지 않아 긴 경로가
+    // 계수 추정을 넘고, 이속을 4.2 → 3.2로 내리자 정상 행군까지 예산 초과로 12초마다 걷히고
+    // 다시 스폰되는 순환이 생겼다(실측). 실제 경로 길이 / 이속 × 여유로 계산한다.
+    private const double MarchBudgetSlackMultiplier = 1.8d;
     private const double MarchBudgetMinimumSeconds = 8d;
+
+    /// <summary>행군 예산 = 경로 실거리 기준 소요 시간 × 여유. 최소 8초.</summary>
+    private static double ComputeMarchBudgetSeconds(Vector3f start, IReadOnlyList<Vector3f> route)
+    {
+        double length = 0d;
+        var previous = start;
+        for (int index = 0; index < route.Count; index++)
+        {
+            float dx = route[index].X - previous.X;
+            float dy = route[index].Y - previous.Y;
+            length += MathF.Sqrt(dx * dx + dy * dy);
+            previous = route[index];
+        }
+
+        return Math.Max(MarchBudgetMinimumSeconds, length / MonsterMoveSpeed * MarchBudgetSlackMultiplier);
+    }
 
     // #219 SB 몬스터 4종 (원작 스펙 ÷25 환산, 잼 보류 — 보상은 소환석만).
     // 해골: 무해한 코인 파밍 무리. 다트: 원거리 단발. 탈주: 접촉 강펀치 브루저. 볼러: 범위 투척.
@@ -344,7 +389,17 @@ public sealed class SwarmArenaManager
     private const float RushDistance = 11f;
     private const float RushLateralSpread = 1.6f;
     private const float EncircleRadius = 4.5f;
-    private const float ScatterRadius = 0.2f;
+    // 포위 오프셋 (#232 2026-08-17 유저 결정: 몹이 뭉쳐 따라오지 말고 축이 될 만큼 산재).
+    // 접근 목표 = 플레이어 + 개체 고유 각도의 오프셋. 반경은 추격하는 동안 줄어들어 결국 접촉한다 —
+    // 사방에서 조여드는 흩어진 고리가 되고, 교차사격 기준점이 여러 방위에 선다.
+    // 바닥면은 아이소라 Y 오프셋은 절반(dy×2 정규화의 역).
+    // 포위 스위치 (2026-08-17 저녁 유저 결정: 몹이 플레이어에게 달려들어 부딪혀야 한다 — 숨쉬는 포위는
+    // 사람 매치 로그에서 몹 접촉 피해 0건). 끄면 직진 추격. 코드는 남긴다 — 켜면 산재 고리로 돌아간다.
+    private const bool SurroundEnabled = false;
+    private const float SurroundStartRadius = 3.5f;
+    private const float SurroundShrinkPerSecond = 0.35f;
+    // 반경 0 이후 이만큼 더 감쇠하는 동안 플레이어를 직격한다(접촉 창 ≈ 1.7초), 그 뒤 고리로 복귀.
+    private const float SurroundLungeDepth = 0.6f;
     private const float RetargetStickinessSquared = 1.5625f;
     // 아이소 월드 스케일에서 방의 세로 폭은 ~2.5유닛에 불과하다. 이동 목표가 방을
     // 벗어나면 구역 클램프로 제자리 회귀해 봇이 서 있는 것처럼 보인다 — 짧게 잡는다.
@@ -367,6 +422,13 @@ public sealed class SwarmArenaManager
     private const double EscalationStage1AtSeconds = 120d;
     private const double EscalationStage2AtSeconds = 230d;
     private const float EscalationStage2MoveSpeedMultiplier = 1.1f;
+
+    /// <summary>
+    ///     몹 스폰 스위치 (2026-08-18 촬영용): DEV_NO_MONSTERS=1이면 어떤 경로로도 잔상을 세우지 않는다.
+    ///     compose 환경변수라 켜고 끄기는 컨테이너 재생성. 테스트는 기본값(켬)을 본다.
+    /// </summary>
+    public static bool MonsterSpawnEnabled { get; set; } =
+        Environment.GetEnvironmentVariable("DEV_NO_MONSTERS") != "1";
 
     /// <summary>폐쇄된 구역은 신규 스폰을 멈춘다 — 잔존 몹은 이주로 처리된다.</summary>
     public Func<long, AreaType, bool>? IsAreaClosedResolver { get; set; }
@@ -459,7 +521,13 @@ public sealed class SwarmArenaManager
                 ? deltaSeconds * EscalationStage2MoveSpeedMultiplier
                 : deltaSeconds;
 
-            if (RegionSupplyModeEnabled)
+            // 몹 스폰 끄기 (DEV_NO_MONSTERS=1, 2026-08-18 촬영용): 공급·캠프·레거시 어느 경로도 세우지 않는다.
+            // 봇·전투·폐쇄는 그대로 돈다 — 잔상 없는 판이 필요할 때(영상·PvP만 검증) 쓴다.
+            if (!MonsterSpawnEnabled)
+            {
+                // 아무것도 안 함
+            }
+            else if (RegionSupplyModeEnabled)
             {
                 ProcessRegionSupply(state, now, result);
             }
@@ -708,6 +776,24 @@ public sealed class SwarmArenaManager
         state.Monsters.Values.FirstOrDefault(candidate =>
             candidate.CombatTargetId == combatTargetId && candidate.Alive);
 
+    /// <summary>
+    ///     기준점 계측 (#232 1단계): 오브가 이 몹을 향해 공격 사건을 만든 순간 센다 — 착탄이
+    ///     아니라 발사 기준이다. 교차사격 모양은 발사 순간 잠긴 기준점에서 생기므로, 몹이 몇 번의
+    ///     모양을 만들고 죽는지는 이 수로 읽는다.
+    /// </summary>
+    public void RecordMonsterAttackEvent(long matchingId, long combatTargetId)
+    {
+        if (!_matches.TryGetValue(matchingId, out var state))
+            return;
+        lock (state.SyncRoot)
+        {
+            var monster = state.Monsters.Values.FirstOrDefault(candidate =>
+                candidate.CombatTargetId == combatTargetId);
+            if (monster is { Alive: true })
+                monster.AttackEventCount++;
+        }
+    }
+
     public SwarmArenaDamageResult ApplyMonsterDamage(
         long matchingId,
         long combatTargetId,
@@ -778,7 +864,9 @@ public sealed class SwarmArenaManager
 
             return new SwarmArenaDamageResult(
                 true, killed, monster.MonsterId, monsterInfo,
-                monster.HeartReward, monster.BootsReward, monster.KeyReward, monster.Kind);
+                monster.HeartReward, monster.BootsReward, monster.KeyReward, monster.Kind,
+                AliveSeconds: killed ? (monster.DiedAtUtc - monster.SpawnedAtUtc).TotalSeconds : 0d,
+                AttackEventCount: monster.AttackEventCount);
         }
     }
 
@@ -1165,6 +1253,7 @@ public sealed class SwarmArenaManager
                 Health = stats.MaxHp,
                 Alive = true,
                 ActivatesAtUtc = now,
+                SpawnedAtUtc = now,
                 NextContactAtUtc = now,
                 ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
                 SummonStoneReward = stoneReward,
@@ -1365,6 +1454,7 @@ public sealed class SwarmArenaManager
             return;
         }
 
+        // 캠프(레거시)는 포위 없이 직진 — 잠깨는 순간의 접촉 리듬(무적창 테스트)이 이 직진에 기댄다.
         MoveTowardPlayer(monster, target.Position, deltaSeconds);
     }
 
@@ -1458,7 +1548,9 @@ public sealed class SwarmArenaManager
             {
                 if (zoneState.WipeRestUntilUtc == null)
                 {
-                    zoneState.WipeRestUntilUtc = now.AddSeconds(SupplyWipeRestSeconds);
+                    bool finalPhase = phaseIndex == SupplyPhases.Length - 1;
+                    zoneState.WipeRestUntilUtc = now.AddSeconds(
+                        finalPhase ? SupplyWipeRestSecondsFinalPhase : SupplyWipeRestSeconds);
                     zoneState.NextTopUpAtUtc = null;
                 }
 
@@ -1802,7 +1894,10 @@ public sealed class SwarmArenaManager
                 // "플레이어가 앵커를 순회하며 깨우는" 예전 구조로 되돌아간다.
                 Aggro = true,
                 PhaseTier = phaseIndex,
-                ActivatesAtUtc = now.AddSeconds(SupplyTelegraphSeconds),
+                // 출발 지터 (#232 원형 산개): 같은 틱에 세운 무리가 한 덩어리로 출발하지 않고 파문처럼 번진다.
+                ActivatesAtUtc = now.AddSeconds(
+                    SupplyTelegraphSeconds + state.Rng.NextDouble() * InfiltrationDepartureJitterSeconds),
+                SpawnedAtUtc = now,
                 NextContactAtUtc = now,
                 ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
                 SummonStoneReward = stoneReward,
@@ -1835,8 +1930,10 @@ public sealed class SwarmArenaManager
             {
                 monster.Infiltrating = true;
                 monster.MarchWaypoints.AddRange(route);
-                monster.MarchBudgetSeconds = Math.Max(
-                    MarchBudgetMinimumSeconds, route.Count * MarchBudgetSecondsPerWaypoint);
+                monster.MarchBudgetSeconds = ComputeMarchBudgetSeconds(position, route);
+                // 레인·속도 지터 (#232 원형 산개): 같은 문으로 가는 몹이 한 줄로 포개지지 않는다.
+                monster.MarchLaneOffset = (float)(state.Rng.NextDouble() * 2d - 1d) * MarchLaneOffsetMax;
+                monster.MarchSpeedScale = 1f + (float)(state.Rng.NextDouble() * 2d - 1d) * MarchSpeedJitter;
             }
 
             state.Monsters[monster.MonsterId] = monster;
@@ -1861,33 +1958,91 @@ public sealed class SwarmArenaManager
         route = null!;
         var originCenter = BotPlayerManager.CellToWorldPosition(
             MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, SwarmInwardOriginArea));
-        float angle = (float)(state.Rng.NextDouble() * Math.PI * 2d);
+
+        // 원형 산개 (#232, 2026-08-17 유저 지시 "줄지어서가 아니라 원형으로"): 발원 각도를 무작위가
+        // 아니라 "그 방으로 나가는 출구 방향" ± 지터로 잡는다. 목적지가 사방에 있으니 링은 고르게
+        // 채워지고, 각자의 첫걸음이 이미 자기 경로 쪽이라 링 안쪽을 되짚어 건너는 줄이 안 생긴다.
+        // 방 중심 방향이 아니라 출구 방향인 이유: 행정실처럼 방은 -60°인데 문은 정크장 쪽 -120°인
+        // 경우, 방 방향으로 태어난 몹이 곧장 옆으로 꺾여 링을 가로질렀다. 지터는 황금각 수열이라
+        // 같은 방으로 가는 연속 스폰끼리도 각도가 겹치지 않는다.
+        float baseAngle = ResolveInfiltrationExitBearing(destinationArea, destination, originCenter, isAreaBlocked);
+        double golden = (state.NextInfiltrationOriginOrdinal++ * InfiltrationGoldenAngle) % 1d;
+        float angle = baseAngle + (float)((golden - 0.5d) * 2d) * InfiltrationOriginJitterRadians;
         origin = ClampToAreaWalkable(new Vector3f(
                 originCenter.X + MathF.Cos(angle) * InfiltrationOriginRadius,
                 originCenter.Y + MathF.Sin(angle) * InfiltrationOriginRadius, 0f),
             originCenter, SwarmInwardOriginArea);
 
-        // 방을 통로로 쓰지 않는다 (2026-08-16 유저 판정). 구역 그래프에는 방끼리 붙은 간선이
-        // 있어(도서관→교실4, 도서관→창고2, 체육관→교실2 …) BFS가 최단 홉만 보고 방을 관통하는
-        // 경로를 고른다. 그러면 무리가 도서관에 들어갔다가 거기서 갈라지고, 방 안쪽 문에서 막힌다.
-        // 목적지 외의 방을 막으면 남는 길은 운동장·복도·정크장 같은 통로뿐이다 —
-        // 전 방이 그 길로 도달 가능한 것은 확인했다(행정실·교무실·창고2는 정크장 경유).
-        var rooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates();
-        bool RouteBlocked(AreaType candidate)
+        // 방사 버스트: 태어난 방향 그대로 한 뼘 더 밀려나는 점을 첫 웨이포인트로 둔다 — 링이 한 번
+        // 부풀어 오른 뒤에야 각자 문 쪽으로 꺾인다. BFS 첫 셀이 옆으로 틀어져 있어도 첫 0.5초는 방사다.
+        var burst = ClampToAreaWalkable(new Vector3f(
+                origin.X + MathF.Cos(angle) * InfiltrationBurstDistance,
+                origin.Y + MathF.Sin(angle) * InfiltrationBurstDistance, 0f),
+            originCenter, SwarmInwardOriginArea);
+        if (IsSegmentWalkable(origin, burst) &&
+            TryPlanRoute(SwarmInwardOriginArea, burst, destinationArea, destination,
+                candidate => IsInfiltrationRouteBlocked(candidate, destinationArea, isAreaBlocked), out route))
         {
-            if (isAreaBlocked?.Invoke(candidate) == true)
-                return true;
-            if (candidate == destinationArea)
-                return false;
-
-            for (int index = 0; index < rooms.Count; index++)
-                if (rooms[index] == candidate)
-                    return true;
-            return false;
+            route.Insert(0, burst);
+            return true;
         }
 
         return TryPlanRoute(
-            SwarmInwardOriginArea, origin, destinationArea, destination, RouteBlocked, out route);
+            SwarmInwardOriginArea, origin, destinationArea, destination,
+            candidate => IsInfiltrationRouteBlocked(candidate, destinationArea, isAreaBlocked), out route);
+    }
+
+    // 목적지별 출구 방위 캐시 (#232 원형 산개): 운동장 중심에서 그 방으로 가는 경로가 발원 링을
+    // 벗어나는 지점의 방위. 폐쇄로 경로가 바뀌어도 출구 방향은 거의 같아 매치 간 공유해도 된다.
+    private static readonly ConcurrentDictionary<AreaType, float> InfiltrationExitBearings = new();
+
+    private static float ResolveInfiltrationExitBearing(
+        AreaType destinationArea, Vector3f destination, Vector3f originCenter, Func<AreaType, bool>? isAreaBlocked)
+    {
+        if (InfiltrationExitBearings.TryGetValue(destinationArea, out float cached))
+            return cached;
+
+        float fallback = MathF.Atan2(destination.Y - originCenter.Y, destination.X - originCenter.X);
+        if (!TryPlanRoute(SwarmInwardOriginArea, originCenter, destinationArea, destination,
+                candidate => IsInfiltrationRouteBlocked(candidate, destinationArea, isAreaBlocked), out var probe))
+            return fallback;
+
+        float exitRadius = InfiltrationOriginRadius + InfiltrationBurstDistance;
+        foreach (var point in probe)
+        {
+            float dx = point.X - originCenter.X;
+            float dy = point.Y - originCenter.Y;
+            if (dx * dx + dy * dy < exitRadius * exitRadius)
+                continue;
+            float bearing = MathF.Atan2(dy, dx);
+            InfiltrationExitBearings[destinationArea] = bearing;
+            return bearing;
+        }
+
+        InfiltrationExitBearings[destinationArea] = fallback;
+        return fallback;
+    }
+
+    /// <summary>
+    ///     방을 통로로 쓰지 않는다 (2026-08-16 유저 판정). 구역 그래프에는 방끼리 붙은 간선이
+    ///     있어(도서관→교실4, 도서관→창고2, 체육관→교실2 …) BFS가 최단 홉만 보고 방을 관통하는
+    ///     경로를 고른다. 그러면 무리가 도서관에 들어갔다가 거기서 갈라지고, 방 안쪽 문에서 막힌다.
+    ///     목적지 외의 방을 막으면 남는 길은 운동장·복도·정크장 같은 통로뿐이다 —
+    ///     전 방이 그 길로 도달 가능한 것은 확인했다(행정실·교무실·창고2는 정크장 경유).
+    /// </summary>
+    private static bool IsInfiltrationRouteBlocked(
+        AreaType candidate, AreaType destinationArea, Func<AreaType, bool>? isAreaBlocked)
+    {
+        if (isAreaBlocked?.Invoke(candidate) == true)
+            return true;
+        if (candidate == destinationArea)
+            return false;
+
+        var rooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates();
+        for (int index = 0; index < rooms.Count; index++)
+            if (rooms[index] == candidate)
+                return true;
+        return false;
     }
 
     /// <summary>
@@ -1948,8 +2103,7 @@ public sealed class SwarmArenaManager
             monster.MarchWaypoints.Clear();
             monster.MarchWaypoints.AddRange(route);
             monster.MarchIndex = 0;
-            monster.MarchBudgetSeconds = Math.Max(
-                MarchBudgetMinimumSeconds, route.Count * MarchBudgetSecondsPerWaypoint);
+            monster.MarchBudgetSeconds = ComputeMarchBudgetSeconds(monster.Position, route);
             return true;
         }
 
@@ -2003,11 +2157,11 @@ public sealed class SwarmArenaManager
             return;
 
         monster.MarchBudgetSeconds -= deltaSeconds;
-        float remaining = (float)(MonsterMoveSpeed * deltaSeconds);
+        float remaining = (float)(MonsterMoveSpeed * monster.MarchSpeedScale * deltaSeconds);
         // 경로는 셀 단위라 한 틱에 웨이포인트를 여러 개 지난다. 남은 이동량을 다 쓸 때까지 돈다.
         while (remaining > 0f && monster.MarchIndex < monster.MarchWaypoints.Count)
         {
-            var waypoint = monster.MarchWaypoints[monster.MarchIndex];
+            var waypoint = ResolveLaneWaypoint(monster);
             float dx = waypoint.X - monster.Position.X;
             float dy = waypoint.Y - monster.Position.Y;
             float distance = MathF.Sqrt(dx * dx + dy * dy);
@@ -2139,6 +2293,34 @@ public sealed class SwarmArenaManager
             rescued = ClampToWalkable(monster.Position, areaCenter);
 
         monster.Position = rescued;
+    }
+
+    /// <summary>
+    ///     레인 웨이포인트 (#232 원형 산개): 현재 웨이포인트를 진행 방향의 수직으로 몹별 오프셋만큼
+    ///     비켜 잡는다. 마지막 점(배정 앵커)은 그대로 — 산개 반경이 이미 흩어 두었다. 비켜 잡은
+    ///     칸이 벽이면(문어귀·모서리) 원래 점을 쓴다 — 레인은 넓은 곳에서만 살고 좁은 곳에서는 접힌다.
+    /// </summary>
+    private static Vector3f ResolveLaneWaypoint(MonsterRuntime monster)
+    {
+        var waypoint = monster.MarchWaypoints[monster.MarchIndex];
+        if (MathF.Abs(monster.MarchLaneOffset) < 0.01f ||
+            monster.MarchIndex >= monster.MarchWaypoints.Count - 1)
+            return waypoint;
+
+        var from = monster.MarchIndex == 0 ? monster.Position : monster.MarchWaypoints[monster.MarchIndex - 1];
+        float dx = waypoint.X - from.X;
+        float dy = waypoint.Y - from.Y;
+        float length = MathF.Sqrt(dx * dx + dy * dy);
+        if (length < 0.05f)
+            return waypoint;
+
+        var offset = new Vector3f(
+            waypoint.X - dy / length * monster.MarchLaneOffset,
+            waypoint.Y + dx / length * monster.MarchLaneOffset, 0f);
+        return GameMapData.IsMoveablePosition(
+            MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, offset))
+            ? offset
+            : waypoint;
     }
 
     /// <summary>침투 종료 — 도착 지점을 앵커로 삼고 그대로 교전에 들어간다.</summary>
@@ -2360,6 +2542,8 @@ public sealed class SwarmArenaManager
         }
 
         // 추격 이동 선택 (2026-08-16 유저 결정: 경로탐색을 적용한다).
+        // (아래 직선 판정은 포위 오프셋 이전의 본체 좌표 기준 — 오프셋 목표가 벽이면
+        //  MoveTowardPlayer의 축별 미끄러짐이 처리한다.)
         // 직선이 뚫려 있으면 조향으로 쫓는다 — 반응이 빠르고 무리가 자연스럽게 퍼진다.
         // 막혀 있으면 그 자리에서 바로 경로를 깐다. 막힌 뒤에 뒤늦게 전환하면 그 사이 벽에
         // 붙어 미끄러지는 구간이 눈에 남는다("타일 끝에 껴 있는 몹").
@@ -2380,13 +2564,12 @@ public sealed class SwarmArenaManager
                 monster.MarchWaypoints.Clear();
                 monster.MarchWaypoints.AddRange(detour);
                 monster.MarchIndex = 0;
-                monster.MarchBudgetSeconds = Math.Max(
-                    MarchBudgetMinimumSeconds, detour.Count * MarchBudgetSecondsPerWaypoint);
+                monster.MarchBudgetSeconds = ComputeMarchBudgetSeconds(monster.Position, detour);
                 return;
             }
         }
 
-        MoveTowardPlayer(monster, target.Position, deltaSeconds);
+        MoveTowardPlayer(monster, target.Position, deltaSeconds, surround: SurroundEnabled);
     }
 
     private void SpawnDueParticipantPattern(
@@ -2545,6 +2728,7 @@ public sealed class SwarmArenaManager
             Health = MonsterMaxHealth,
             Alive = true,
             ActivatesAtUtc = now.AddSeconds(telegraphSeconds),
+            SpawnedAtUtc = now,
             NextContactAtUtc = now,
             ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
             // 매 킬 1석: 시작방 선지급 10마리 = 방 스팟 2개(10석)를 정확히 커버한다.
@@ -2558,13 +2742,39 @@ public sealed class SwarmArenaManager
         result.SpawnedMonsters.Add(monster.ToMonsterRuntimeInfo());
     }
 
-    private static void MoveTowardPlayer(MonsterRuntime monster, Vector3f playerPosition, double deltaSeconds)
+    private static void MoveTowardPlayer(
+        MonsterRuntime monster, Vector3f playerPosition, double deltaSeconds, bool surround = false)
     {
-        // 개체별 산포 오프셋으로 플레이어 주변을 둘러싸게 한다. 열 형성 방지.
+        // 포위 오프셋 (#232): 개체 고유 각도의 접근 목표 — 사방에서 조여드는 흩어진 고리.
+        // 반경은 추격하는 동안만 줄어들고, 현재 거리로 캡한다 — 이미 붙은 몹이 오프셋 지점으로
+        // 멀어지면 접촉이 영영 안 난다. 앵커 복귀(surround=false)는 오프셋 없이 정확히 간다.
+        float radius = 0f;
+        // 플레이어와 같은 구역에 들어온 뒤부터 포위한다 — 문·복도의 몹이 오프셋 각도 때문에
+        // 문을 못 찾고 겉돌면 구역 목표 수가 영영 안 찬다. 밖에서는 오프셋 없이 직진.
+        var playerArea = GameMapData.GetCurrentArea(
+            MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, playerPosition));
+        if (surround && monster.Area == playerArea)
+        {
+            // 숨쉬는 포위 (#232): 반경이 0에 머물면 전원이 플레이어 위로 수렴한다 — 그게
+            // "뭉쳐 따라옴"이다. 사이클을 돈다: 고리 접근 → 조임 → 반경 0 구간(접촉 창, 음수로
+            // 계속 감쇠) → 시작 반경으로 리셋해 다시 걸어 나온다. 리셋 폭을 개체 각도로 흔들어
+            // 위상이 갈라진다. 거리 캡은 두지 않는다 — 붙은 몹이 min(반경, 거리 0)에 갇혀
+            // 안 움직이면 정지 감시가 걷어가 구역 수가 출렁였다(실측).
+            monster.SurroundRadius -= (float)(SurroundShrinkPerSecond * deltaSeconds);
+            if (monster.SurroundRadius <= -SurroundLungeDepth)
+                monster.SurroundRadius = SurroundStartRadius *
+                                         (0.7f + 0.3f * (MathF.Sin(monster.ScatterAngle * 3.7f) + 1f) * 0.5f);
+            radius = MathF.Max(0f, monster.SurroundRadius);
+        }
+
         var target = new Vector3f(
-            playerPosition.X + MathF.Cos(monster.ScatterAngle) * ScatterRadius,
-            playerPosition.Y + MathF.Sin(monster.ScatterAngle) * ScatterRadius,
+            playerPosition.X + MathF.Cos(monster.ScatterAngle) * radius,
+            playerPosition.Y + MathF.Sin(monster.ScatterAngle) * radius * 0.5f,
             0f);
+        // 좁은 방에서는 오프셋 목표가 방 밖(복도)으로 새 구역 인원이 흘러나간다 —
+        // 플레이어가 선 구역 안으로 눌러 담는다 (밖이면 플레이어 쪽으로 줄인다).
+        if (radius > 0.05f && playerArea != AreaType.None)
+            target = ClampToAreaWalkable(target, playerPosition, playerArea);
         float dx = target.X - monster.Position.X;
         float dy = target.Y - monster.Position.Y;
         float distance = MathF.Sqrt(dx * dx + dy * dy);
@@ -2738,6 +2948,8 @@ public sealed class SwarmArenaManager
         public HashSet<(AreaType Area, int PhaseIndex)> SupplyCoreRewarded { get; } = new();
         public DateTime ContactProbeAtUtc { get; set; }
         public int NextSupplyPackOrdinal { get; set; }
+        // 침투 발원 순번 (#232 원형 산개): 황금각 수열의 인덱스 — 연속 스폰의 각도 지터가 고르게 퍼진다.
+        public int NextInfiltrationOriginOrdinal { get; set; }
         // 전역 상한 기준 인원 (#226 E): 생존자 수가 아니라 매치 최대 참가 수로 8인/10인을 가른다.
         public int MaxParticipantCount { get; set; }
     }
@@ -2762,7 +2974,16 @@ public sealed class SwarmArenaManager
         public DateTime ActivatesAtUtc { get; set; }
         public DateTime NextContactAtUtc { get; set; }
         public DateTime DiedAtUtc { get; set; }
+
+        // 기준점 계측 (#232 1단계): 스폰 시각과 살아 있는 동안 받은 오브 공격 사건 수.
+        // 완료 조건 "한 몬스터가 살아 있는 동안 평균 2회 이상의 공격 모양"의 근거다.
+        // 즉시 사라지는 몹은 교차사격 기준점이 못 된다 — 종별 생존시간을 이 둘로 잰다.
+        public DateTime SpawnedAtUtc { get; set; }
+        public int AttackEventCount { get; set; }
         public float ScatterAngle { get; init; }
+
+        // 포위 반경 (#232): 추격 중 매 틱 줄어든다. 스폰 시 SurroundStartRadius로 시작.
+        public float SurroundRadius { get; set; } = SurroundStartRadius;
         public int SummonStoneReward { get; init; }
         public int HeartReward { get; init; }
         public int BootsReward { get; init; }
@@ -2811,6 +3032,11 @@ public sealed class SwarmArenaManager
         public List<Vector3f> MarchWaypoints { get; } = new();
         public int MarchIndex { get; set; }
         public double MarchBudgetSeconds { get; set; }
+
+        // 행군 레인 (#232 원형 산개): 같은 경로를 걷는 몹이 한 줄로 겹치지 않게, 웨이포인트를
+        // 진행 방향의 수직으로 이만큼 비켜 걷고 속도도 조금씩 다르다. 스폰 시 한 번 정한다.
+        public float MarchLaneOffset { get; set; }
+        public float MarchSpeedScale { get; set; } = 1f;
 
         public DateTime NextChasePlanAtUtc { get; set; }
 
@@ -2892,7 +3118,10 @@ public readonly record struct SwarmArenaDamageResult(
     int HeartReward = 0,
     int BootsReward = 0,
     int KeyReward = 0,
-    SwarmMonsterKind Kind = SwarmMonsterKind.Skeleton)
+    SwarmMonsterKind Kind = SwarmMonsterKind.Skeleton,
+    // 기준점 계측 (#232 1단계): 처치 시점의 생존초와 살아 있는 동안 받은 공격 사건 수.
+    double AliveSeconds = 0d,
+    int AttackEventCount = 0)
 {
     public static SwarmArenaDamageResult None => new(false, false, 0, null);
 }

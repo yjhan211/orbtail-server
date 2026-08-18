@@ -3,6 +3,7 @@ using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 using network.core;
 using network.helpers;
@@ -80,13 +81,14 @@ public partial class GameClientSession : SessionBase
     private CancellationTokenSource? _botInteractTimeoutCts;
     private bool _isSleeping;
 
-    // #229 6단계 수면 회복: 스웜에서 수면은 본체 HP 회복 행동이다. 진입 시각(준비 1.5초)과
-    // 마지막 교전 시각(가해·피해 뒤 3초 진입 잠금)을 세션이 들고, 회복 정산은 아레나 틱이 돈다.
+    // #229 6단계 수면 회복 → 2026-08-17 재조정: 진입 시각(준비 1초)과 마지막 교전 시각
+    // (가해·피해 뒤 3초 진입 잠금)을 세션이 들고, 회복 정산(1초 틱)은 아레나 틱이 돈다.
     internal DateTime SwarmSleepStartedAtUtc { get; set; } = DateTime.MinValue;
-    internal DateTime SwarmSleepLastTickUtc { get; set; } = DateTime.MinValue;
     internal DateTime SwarmLastCombatAtUtc { get; set; } = DateTime.MinValue;
+    // 단일 절단 치명상 (#232): 성공 뒤 8초는 수면 진입·회복 틱이 막힌다.
+    internal DateTime SwarmHealLockUntilUtc { get; set; } = DateTime.MinValue;
     internal bool IsSleeping => _isSleeping;
-    private float _swarmSleepRecoveryCarry;
+    private int _swarmSleepGrantedTicks;
     private DateTime _lastHeartbeatTime = DateTime.UtcNow;
     private DateTime _lastInteractRejectTime = DateTime.MinValue;
 
@@ -103,6 +105,8 @@ public partial class GameClientSession : SessionBase
     private Cell? _lastValidCell;
 
     private float _lastValidatedRotation;
+    // 오브 궤도 위상 (#232): 검증 이동 거리로 적산한 권위값 — 시드는 PlayerId. null = 아직 시드 전.
+    private float? _orbOrbitPhaseDegrees;
     // Stopwatch ticks: client timestamps are telemetry only and never extend movement authority.
     private long _lastMoveReceiptTimestamp;
     private long _lastMoveAcknowledgementTimestamp;
@@ -138,6 +142,9 @@ public partial class GameClientSession : SessionBase
 
     /// <summary>성장 카드 선택 훅 (#226 단계 C) — (session, matchingId, offerId, cardIndex).</summary>
     internal static Action<GameClientSession, long, int, int>? SwarmGrowthPickCallback { get; set; }
+
+    /// <summary>6칸 빌드 결정 훅 (#232 4단계) — (session, matchingId, action, targetUid, secondUid).</summary>
+    internal static Action<GameClientSession, long, int, long, long>? SwarmOrbDecisionCallback { get; set; }
 
     /// <summary>
     ///     하트 픽업 시 앞줄 오브 HP 회복 훅 (#222 M4) — 원작 하트는 스쿼드 유닛도 회복한다.
@@ -406,6 +413,22 @@ public partial class GameClientSession : SessionBase
     /// <summary>마지막 검증된 월드 좌표 — 근접 전투와 체크리스트 거리 판정용.</summary>
     public Vector3f? LastValidatedPosition => _lastValidatedPosition;
 
+    /// <summary>
+    ///     오브 궤도 위상 (#232): 이동할 때 돌고 멈추면 선다 — 검증 이동 거리를 적산한다.
+    ///     서버 전투가 오브별 자리(SwarmOrbOrbit)를 계산하는 근거이자, G_TO_C_MOVE로 클라에 보내는 보정값.
+    /// </summary>
+    public float OrbOrbitPhaseDegrees =>
+        _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(PlayerId ?? 0L);
+
+    /// <summary>검증된 이동만큼 궤도를 돌린다 (텔레포트급 점프는 SwarmOrbOrbit이 무시한다).</summary>
+    private void AdvanceOrbOrbit(Vector3f from, Vector3f to)
+    {
+        float dx = to.X - from.X;
+        float dy = to.Y - from.Y;
+        _orbOrbitPhaseDegrees = SwarmOrbOrbit.AdvancePhase(
+            OrbOrbitPhaseDegrees, MathF.Sqrt(dx * dx + dy * dy));
+    }
+
     // 마니또 체인 정보
     public long TargetPlayerId { get; private set; }
     public long PresenceBookmarkPlayerId { get; private set; }
@@ -455,6 +478,8 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_DEV_DUMMY_MOVE>(bytes, HandleDevDummyMove));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SWARM_GROWTH_PICK,
             async bytes => await HandleMessage<C_TO_G_SWARM_GROWTH_PICK>(bytes, HandleSwarmGrowthPick));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SWARM_ORB_DECISION,
+            async bytes => await HandleMessage<C_TO_G_SWARM_ORB_DECISION>(bytes, HandleSwarmOrbDecision));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT,
             async bytes => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,

@@ -160,7 +160,8 @@ public partial class GameClientSession
             rotation,
             spawnCell,
             lastProcessedInput: 0u,
-            serverTimestamp);
+            serverTimestamp,
+            OrbOrbitPhaseDegrees);
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var sameAreaSessions = GetSessionsInArea(allSessions, msg.TargetArea);
