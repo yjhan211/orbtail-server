@@ -24,11 +24,13 @@ public class AreaClosureManager
     // 여전히 "즉시 나가야 하는" 압박이되 체력바가 단계적으로 읽힌다.
     // #226 단계 B: 5분(300초) 오브 점수전으로 재정렬 — 공급 축소(1:30/3:00/4:00)와 맞물려
     // 마지막 60초는 신규 스폰 없이 절단·순위 역전만 남는다.
+    // 행정실·교무실은 한 웨이브 뒤로 (2026-08-18 유저 지시): 두 방은 정크장 경유라 출구가 멀다 —
+    // 도서관·강당과 같은 200초 웨이브로 옮겨 시간을 준다. 250초 이후는 통로뿐이라 그대로.
     private static readonly IReadOnlyList<ClosureWaveDefinition> DefaultP0Waves =
     [
         new(100, [AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2], 17),
-        new(150, [AreaType.ExamRoom, AreaType.BroadcastRoom, AreaType.AdminOffice, AreaType.StaffRoom], 20),
-        new(200, [AreaType.Library, AreaType.Gym], 23),
+        new(150, [AreaType.ExamRoom, AreaType.BroadcastRoom], 20),
+        new(200, [AreaType.Library, AreaType.Gym, AreaType.AdminOffice, AreaType.StaffRoom], 23),
         new(250, [AreaType.Corridor, AreaType.Junkyard], 26),
         new(300, [AreaType.Ground], 29)
     ];
