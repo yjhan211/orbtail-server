@@ -123,7 +123,7 @@ public class SwarmDamagePathTests
         Assert.Contains("cutterBot != null && !IsSwarmBotCutAllowed(", cutBody);
         Assert.Contains("_swarmBotLastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc", cutBody);
         // 사람 절단은 자제 규칙을 타지 않는다 — 봇 분기 안에서만 호출된다.
-        Assert.Equal(1, Regex.Matches(cutBody, @"IsSwarmBotCutAllowed\(").Count);
+        Assert.Single(Regex.Matches(cutBody, @"IsSwarmBotCutAllowed\("));
 
         // ② 도주 임계: 강자 판정과 피격 반응 둘 다 ×1.5를 쓴다.
         Assert.Contains("SwarmBotFleePowerRatio = 1.5f", source);
