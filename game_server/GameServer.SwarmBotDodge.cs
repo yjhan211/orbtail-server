@@ -1,3 +1,4 @@
+using game_server.services;
 using network.common;
 using network.common.data.models;
 
@@ -19,6 +20,8 @@ public partial class GameServer
     private const float SwarmBotDodgeHorizonSeconds = 1.5f;
     // 판정 띠 밖으로 이만큼 여유를 더 벌린다 — 띠 가장자리에서 멈추면 몸통 반경만큼 다시 맞는다.
     private const float SwarmBotDodgeMargin = 0.2f;
+    // 회피 커밋 여유 — 앞머리가 지난 뒤 이만큼 더 선 자리에 있다가 경로로 돌아간다.
+    private const float SwarmBotDodgeHoldSlackSeconds = 0.15f;
 
     public readonly record struct SwarmCrossfireDodgeThreat(
         long MatchingId,
@@ -61,12 +64,12 @@ public partial class GameServer
     ///     이 봇이 지금 비켜서야 할 방향(월드 단위 벡터). 위협이 없으면 null.
     ///     가장 먼저 닿을 투사체 하나만 본다 — 여러 개가 겹치면 다음 틱에 다시 묻는다.
     /// </summary>
-    internal Vector3f? ResolveSwarmBotDodgeDirection(
+    internal SwarmBotDodgeAdvice? ResolveSwarmBotDodgeDirection(
         long matchingId, long botPlayerId, Vector3f position, AreaType area, DateTime nowUtc) =>
         ResolveSwarmBotDodgeDirection(_swarmCrossfireDodgeSnapshot, matchingId, botPlayerId, position, area, nowUtc);
 
     /// <summary>순수 기하 — 스냅샷을 인자로 받아 테스트에서 그대로 검증한다.</summary>
-    public static Vector3f? ResolveSwarmBotDodgeDirection(
+    public static SwarmBotDodgeAdvice? ResolveSwarmBotDodgeDirection(
         IReadOnlyList<SwarmCrossfireDodgeThreat> threats,
         long matchingId, long botPlayerId, Vector3f position, AreaType area, DateTime nowUtc)
     {
@@ -74,7 +77,7 @@ public partial class GameServer
             return null;
 
         float bestTime = float.MaxValue;
-        Vector3f? bestDirection = null;
+        SwarmBotDodgeAdvice? bestDirection = null;
         foreach (var threat in threats)
         {
             if (threat.MatchingId != matchingId || threat.Area != area || threat.OwnerId == botPlayerId)
@@ -116,7 +119,11 @@ public partial class GameServer
             float wl = MathF.Sqrt(wx * wx + wy * wy);
             if (wl < 0.001f)
                 continue;
-            bestDirection = new Vector3f(wx / wl, wy / wl, 0f);
+            // 유지 시간 = 앞머리가 내 자리를 지나 몸 반경만큼 더 간 뒤 한 박자. 그동안은 띠 밖에 서서 기다린다.
+            float holdSeconds = timeToHit +
+                                (2f * SwarmCrossfirePlayerRadius) / Math.Max(0.01f, threat.SweepSpeed) +
+                                SwarmBotDodgeHoldSlackSeconds;
+            bestDirection = new SwarmBotDodgeAdvice(wx / wl, wy / wl, holdSeconds);
         }
 
         return bestDirection;

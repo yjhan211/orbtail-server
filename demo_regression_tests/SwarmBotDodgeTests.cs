@@ -1,4 +1,5 @@
 using game_server;
+using game_server.services;
 using network.common;
 using network.common.data.models;
 
@@ -28,8 +29,19 @@ public class SwarmBotDodgeTests
             threats, 217001, -900000001, new Vector3f(2f, 0.05f, 0f), AreaType.Ground, Now);
 
         Assert.NotNull(direction);
-        Assert.Equal(0f, direction!.X, 3);
-        Assert.True(direction.Y > 0.99f, $"수직(+Y)으로 비켜서야 한다: {direction.Y}");
+        Assert.Equal(0f, direction!.Value.DirectionX, 3);
+        Assert.True(direction.Value.DirectionY > 0.99f, $"수직(+Y)으로 비켜서야 한다: {direction.Value.DirectionY}");
+    }
+
+    [Fact]
+    public void HoldLastsUntilTheFrontHasPassed()
+    {
+        // 예고 0.55 + (축 2 - 앞머리 -0.35)/4.5 = 1.07초 뒤 착탄, 몸통 두 배(0.5/4.5)와 여유 0.15를 더한 만큼 커밋.
+        var advice = GameServer.ResolveSwarmBotDodgeDirection(
+            new[] { LineAlongX() }, 217001, -900000001, new Vector3f(2f, 0.05f, 0f), AreaType.Ground, Now);
+
+        Assert.NotNull(advice);
+        Assert.InRange(advice!.Value.HoldSeconds, 1.3f, 1.4f);
     }
 
     [Fact]
@@ -40,7 +52,7 @@ public class SwarmBotDodgeTests
             threats, 217001, -900000001, new Vector3f(2f, -0.05f, 0f), AreaType.Ground, Now);
 
         Assert.NotNull(direction);
-        Assert.True(direction!.Y < -0.99f, $"아래로 비켜서야 한다: {direction.Y}");
+        Assert.True(direction!.Value.DirectionY < -0.99f, $"아래로 비켜서야 한다: {direction.Value.DirectionY}");
     }
 
     [Fact]
@@ -93,7 +105,7 @@ public class SwarmBotDodgeTests
             new[] { threat }, 217001, -900000002, new Vector3f(0.98f, 0.52f, 0f), AreaType.Ground, Now);
 
         Assert.NotNull(direction);
-        Assert.Equal(-0.894f, direction!.X, 2);
-        Assert.Equal(0.447f, direction.Y, 2);
+        Assert.Equal(-0.894f, direction!.Value.DirectionX, 2);
+        Assert.Equal(0.447f, direction.Value.DirectionY, 2);
     }
 }
