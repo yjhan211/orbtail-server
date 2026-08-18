@@ -40,6 +40,15 @@ public partial class BotPlayerManager
     private bool IsDoorOpenForBot(long matchingId, int doorId) =>
         _doorOpenResolver?.Invoke(matchingId, doorId) ?? true;
 
+    /// <summary>
+    ///     투사체 회피 반사 (#232 §9): (matchingId, botId, position, area, now) → 지금 비켜설 월드 방향.
+    ///     null이면 위협 없음. 게임서버가 교차사격 모양 스냅샷으로 답한다 (GameServer.SwarmBotDodge).
+    /// </summary>
+    private Func<long, long, Vector3f, AreaType, DateTime, Vector3f?>? _swarmDodgeResolver;
+
+    public void SetSwarmDodgeResolver(Func<long, long, Vector3f, AreaType, DateTime, Vector3f?> resolver) =>
+        _swarmDodgeResolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
+
     // ?꾨줈??0: ?쒖꽦 怨듦컙 = 3쨌4痢?6援ъ뿭(1쨌2痢??대룞??李⑤떒, 3??留??대룞).
     //   諛??뺤떊???뚮났 媛??: Classroom3(2-1)/ExamRoom(怨좎궗??/Classroom4(3-1)/BroadcastRoom(諛⑹넚??
     //   蹂듬룄(transit, ?뚮났 ?놁쓬 + ?κ린 泥대쪟 ???몄젒 諛?媛뺤젣 ?좊룄): Corridor

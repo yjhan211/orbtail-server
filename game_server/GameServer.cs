@@ -233,6 +233,8 @@ public partial class GameServer(
             // 문 상태는 페이즈와 별개다 (2026-08-16). 위 제공자는 ROOM_COMBAT에서만 채워져
             // 군집 모드에서는 항상 비었고, 그래서 봇이 잠긴 문을 그냥 통과했다.
             _botPlayerManager.SetDoorOpenResolver(_doorStateManager.IsDoorOpen);
+            // 투사체 회피 반사 (#232 §9): 봇 걸음마다 교차사격 스냅샷을 물어 비켜설 방향을 받는다.
+            _botPlayerManager.SetSwarmDodgeResolver(ResolveSwarmBotDodgeDirection);
             _interactableStateManager.Initialize(log);
             _inGameInventoryManager.Initialize(log);
             _areaRuleManager.Initialize(log);

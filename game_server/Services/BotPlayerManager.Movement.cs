@@ -1154,6 +1154,13 @@ public partial class BotPlayerManager
             }
         }
 
+        // 투사체 회피 반사 (#232 §9, 2026-08-18): 경로·휴식·대기보다 먼저 — 이 자리를 지나갈 태양 투사체가
+        // 있으면 그 직선의 수직으로 한 걸음 비켜선다. 경로는 버리지 않는다: 다음 틱에 비켜선 자리에서
+        // 다음 웨이포인트로 이어 걷는다. 상호작용(채널링) 중만 예외 — 사람도 채널링 중엔 못 움직인다.
+        var dodge = TryDodgeStep(bot, matchingId, now, deltaSec);
+        if (dodge != null)
+            return dodge;
+
         if (now < bot.RestUntil)
         {
             if (bot.WalkVelocity.X != 0f || bot.WalkVelocity.Y != 0f)
@@ -1374,6 +1381,58 @@ public partial class BotPlayerManager
             Rotation = bot.Rotation,
             IsAreaTransition = areaChanged
         };
+    }
+
+    /// <summary>
+    ///     투사체 회피 한 걸음 (#232 §9). 게임서버 리졸버가 준 방향으로 이번 틱 이동량만큼 옮긴다.
+    ///     비켜선 칸이 벽이거나 다른 구역이면 반대쪽을 시도하고, 둘 다 막히면 회피 없이 원래 걸음.
+    ///     경로·경로 인덱스는 손대지 않는다.
+    /// </summary>
+    private BotMovementEvent? TryDodgeStep(BotPlayerState bot, long matchingId, DateTime now, float deltaSec)
+    {
+        if (!Config.SWARM_P0_ENABLED || _swarmDodgeResolver == null || bot.CurrentArea == AreaType.None)
+            return null;
+
+        var direction = _swarmDodgeResolver(matchingId, bot.PlayerId, bot.Position, bot.CurrentArea, now);
+        if (direction == null)
+            return null;
+
+        var mapId = GetMatchingMapId(matchingId);
+        float multiplier = GetBotMovementSpeedMultiplier(bot);
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            float sign = attempt == 0 ? 1f : -1f;
+            float dirX = direction.X * sign;
+            float dirY = direction.Y * sign;
+            float step = ScaledWalkSpeed(dirX, dirY, multiplier) * deltaSec;
+            var candidate = new Vector3f(bot.Position.X + dirX * step, bot.Position.Y + dirY * step, 0f);
+            var candidateCell = WorldToCell(candidate);
+            if (!GameMapData.IsMoveablePosition(mapId, candidateCell) ||
+                GameMapData.GetCurrentArea(mapId, candidateCell) != bot.CurrentArea)
+                continue;
+
+            var fromCell = bot.Cell;
+            bot.Position = candidate;
+            bot.Cell = candidateCell;
+            var velocity = ScaledWalkVelocity(dirX, dirY, multiplier);
+            bot.WalkVelocity = velocity;
+            if (velocity.X > 0.1f) bot.Rotation = 180f;
+            else if (velocity.X < -0.1f) bot.Rotation = 0f;
+            return new BotMovementEvent
+            {
+                BotPlayerId = bot.PlayerId,
+                FromArea = bot.CurrentArea,
+                ToArea = bot.CurrentArea,
+                FromCell = fromCell,
+                ToCell = candidateCell,
+                Position = candidate,
+                Velocity = velocity,
+                Rotation = bot.Rotation,
+                IsAreaTransition = false
+            };
+        }
+
+        return null;
     }
 
     /// <summary>봇 도착 후 다음 영역으로 출발 전 대기 시간 (자연스러운 휴식).</summary>

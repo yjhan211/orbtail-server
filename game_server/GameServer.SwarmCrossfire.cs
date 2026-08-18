@@ -198,6 +198,7 @@ public partial class GameServer
             AnchorCombatTargetId = attack.TargetPlayerId,
             LastFront = -halfWidth
         });
+        PublishSwarmCrossfireDodgeSnapshot();
 
         BroadcastSwarmCrossfireTelegraph(
             eventId, attack, origin, end, width, sweepSeconds, anchorMonsterId, allSessions);
@@ -267,6 +268,7 @@ public partial class GameServer
             return;
 
         IReadOnlyList<SwarmArenaCombatTarget>? monsters = null;
+        int shapesBefore = _swarmCrossfireShapes.Count;
         for (int index = _swarmCrossfireShapes.Count - 1; index >= 0; index--)
         {
             var shape = _swarmCrossfireShapes[index];
@@ -330,6 +332,10 @@ public partial class GameServer
                 matchingId, shape, detonation, nowUtc,
                 monsters, participants, aliveSessions, aliveBots, allSessions);
         }
+
+        // 봇 회피 스냅샷 — 이번 틱에 소멸·폭발로 줄었으면 다시 발행한다.
+        if (_swarmCrossfireShapes.Count != shapesBefore)
+            PublishSwarmCrossfireDodgeSnapshot();
     }
 
     /// <summary>
@@ -604,6 +610,7 @@ public partial class GameServer
     private void ClearSwarmCrossfireState(long matchingId)
     {
         _swarmCrossfireShapes.RemoveAll(shape => shape.MatchingId == matchingId);
+        PublishSwarmCrossfireDodgeSnapshot();
         foreach (var key in _swarmCrossfireVictimImmuneUntilUtc.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmCrossfireVictimImmuneUntilUtc.Remove(key);
