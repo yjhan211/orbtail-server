@@ -119,7 +119,10 @@ public partial class GameServer
         }
     }
 
-    /// <summary>감지 반경 안(바닥면 타원) 가장 가까운 몬스터 또는 소유자 아닌 플레이어. 없으면 false.</summary>
+    /// <summary>
+    ///     감지 반경 안(바닥면 타원) 표적 — 소유자 아닌 플레이어가 하나라도 있으면 그중 가장 가까운 사람,
+    ///     없으면 가장 가까운 몬스터 (2026-08-18 유저 지시 "반경 내 다른 플레이어가 있으면 최우선"). 없으면 false.
+    /// </summary>
     private static bool TryFindSwarmWindSlamTarget(
         SpotArenaPlayerSpatial owner,
         Vector3f origin,
@@ -137,19 +140,6 @@ public partial class GameServer
         targetMonsterId = 0;
         float best = float.MaxValue;
         float radiusSquared = triggerRadius * triggerRadius;
-        foreach (var monster in monsters)
-        {
-            if (monster.Area != owner.Area)
-                continue;
-            float d = SwarmGroundDistanceSquared(origin, monster.Position);
-            if (d > radiusSquared || d >= best)
-                continue;
-            best = d;
-            targetPoint = monster.Position;
-            targetCombatTargetId = monster.CombatTargetId;
-            targetMonsterId = monster.MonsterId;
-            targetPlayerId = 0;
-        }
 
         foreach (var participant in participants)
         {
@@ -163,6 +153,24 @@ public partial class GameServer
             targetCombatTargetId = 0;
             targetMonsterId = 0;
             targetPlayerId = participant.PlayerId;
+        }
+
+        // 사람이 반경 안에 있으면 몬스터는 보지 않는다.
+        if (best < float.MaxValue)
+            return true;
+
+        foreach (var monster in monsters)
+        {
+            if (monster.Area != owner.Area)
+                continue;
+            float d = SwarmGroundDistanceSquared(origin, monster.Position);
+            if (d > radiusSquared || d >= best)
+                continue;
+            best = d;
+            targetPoint = monster.Position;
+            targetCombatTargetId = monster.CombatTargetId;
+            targetMonsterId = monster.MonsterId;
+            targetPlayerId = 0;
         }
 
         return best < float.MaxValue;

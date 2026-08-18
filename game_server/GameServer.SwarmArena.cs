@@ -518,6 +518,11 @@ public partial class GameServer
                     return true;
                 if (!SwarmOrbTargetsPlayersEnabled)
                     return false;
+                // 플레이어 최우선 (2026-08-18 유저 지시 "반경 내에 다른 플레이어가 있으면 최우선"): 태양은
+                // 앞열 3개 제한·본체 기준 5u 사거리를 걷고, 티어 사거리(위 IsWithinSwarmOrbRange) 안이면
+                // 어느 오브든 사람을 후보에 올린다. 우선순위 0(사람) < 2(몹)이라 후보에 오르면 곧 최우선이다.
+                if (IsSwarmCrossfireWeapon(attacker.WeaponItemId))
+                    return true;
                 if (attacker.TrailOrdinal >= Config.SWARM_PVP_ORB_COUNT)
                     return false;
 
@@ -851,21 +856,17 @@ public partial class GameServer
         if (closureTick.ClosedAreas.Count == 0)
             return;
 
-        // 폐쇄 = 즉사 + 문 잠금 (#227): 지속 오염으로 서서히 죽는 구조는 "언제 나가야 하는가"의
-        // 판단을 흐렸다. 닫히는 순간 안에 있으면 죽고, 그 뒤로는 들어갈 수 없다.
+        // 폐쇄 = 문 잠금 + 틱 오염 (2026-08-18 유저 결정, #227 즉사 퇴역): 닫히는 순간 안에 있어도 죽지
+        // 않는다. 정산 틱(GetClosedAreaCorruptionPerTick)이 5초마다 오염을 얹고, 안에 있는 사람은 자기 구역
+        // 문을 게이지로 따고 나갈 수 있다(밖에서 들어오는 문 따기는 여전히 거절). 자기 구역 문이 잠기는 것은
+        // 그대로다 — "지금 나가야 하는가"의 판단은 경고 15초와 잠긴 문이 만든다.
         // 2026-08-17 재조정: 폐쇄·경고도 수면을 깨우지 않는다 — 수면 중단은 이동뿐이다.
-        // 자는 자리는 스스로 골랐다. 경고를 읽고 일어나는 것까지가 위치 판단이다.
-
-        // 문을 먼저 잠근다 — 죽는 순간에 남이 밀고 들어오면 규칙이 뒤집혀 보인다.
         var lockedDoorIds = _doorStateManager.CloseDoorsForAreas(matchingId, closureTick.ClosedAreas);
         BroadcastDoorStateChanges(sessions, lockedDoorIds, false, 0);
 
-        // 꼬리 파괴가 먼저다: 본인은 밖에 있고 꼬리만 남은 경우가 무보상 파괴 대상이고,
-        // 안에 있던 사람은 어차피 탈락 드롭으로 정산된다.
+        // 꼬리 파괴: 본인은 밖에 있고 꼬리만 남은 경우가 무보상 파괴 대상이다. 안에 있는 사람의 꼬리는
+        // 본인과 함께 남는다 — 틱 오염이 그 사람의 비용이다.
         DestroySwarmOrbsInClosedAreas(matchingId, closureTick.ClosedAreas, sessions);
-        EliminateEveryoneInClosedAreas(
-            matchingId, closureTick.ClosedAreas, sessions,
-            _botPlayerManager.GetBots(matchingId).ToList());
     }
 
     /// <summary>
@@ -876,8 +877,7 @@ public partial class GameServer
     private void DestroySwarmOrbsInClosedAreas(
         long matchingId, IReadOnlyCollection<AreaType> closedAreas, List<GameClientSession> sessions)
     {
-        // 궤도 배치 (#232): 오브가 본체 곁을 돌아 꼬리가 폐쇄 구역에 남는 상황 자체가 없다 —
-        // 본체가 폐쇄에 남으면 본체 탈락(EliminateEveryoneInClosedAreas)이 처리한다.
+        // 궤도 배치 (#232): 오브가 본체 곁을 돌아 꼬리가 폐쇄 구역에 남는 상황 자체가 없다.
         if (SwarmOrbOrbitLayout)
             return;
 
@@ -898,6 +898,12 @@ public partial class GameServer
 
         foreach (var (playerId, ownerPosition, ownerSession) in owners)
         {
+            // 본인이 폐쇄 구역 안이면 꼬리는 그대로 둔다 (2026-08-18): 즉사가 퇴역해 본인은 틱 오염을 받으며
+            // 문을 따고 나가는 중이다 — 여기서 꼬리까지 지우면 나가도 빈손이라 살아남을 이유가 없다.
+            var ownerCell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, ownerPosition);
+            if (closed.Contains(GameMapData.GetCurrentArea(MapId.School, ownerCell)))
+                continue;
+
             int orbCount = CountSwarmSquadOrbs(matchingId, playerId);
             if (orbCount == 0)
                 continue;
@@ -1046,10 +1052,17 @@ public partial class GameServer
     {
         doorId = 0;
         float best = float.MaxValue;
+        // 폐쇄 문 규칙은 사람과 같다 (2026-08-18): 밖에서 폐쇄 구역으로 들어가는 문은 못 따고,
+        // 내가 폐쇄 구역 안이면 어느 문이든 따서 나간다.
+        bool insideClosed = _areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea);
         foreach (var door in GameDoorData.GetByAreaType(bot.CurrentArea))
         {
             if (!GameInteractableData.IsGaugeGatedDoor(door.DoorId)) continue;
             if (_doorStateManager.IsDoorOpen(matchingId, door.DoorId)) continue;
+            if (!insideClosed &&
+                (_areaClosureManager.IsAreaClosed(matchingId, door.AreaType) ||
+                 _areaClosureManager.IsAreaClosed(matchingId, door.AreaTypeB)))
+                continue;
 
             // door_info의 좌표는 셀 단위다 — 봇 위치(월드)와 직접 비교하면 절대 닿지 않는다.
             var doorWorld = BotPlayerManager.CellToWorldPosition(
@@ -2562,6 +2575,8 @@ public partial class GameServer
     // 텔레그래프를 남긴다. 표적을 따라가지 않아 이동한 잔상에게는 빗나갈 수 있다. =====
     private const double SwarmWaveBombIntervalSeconds = 2d;
     private const double SwarmWaveBombFuseSeconds = 0.65d;
+    // 플레이어 우선 표적 반경 (바닥면, 2026-08-18): 이 안의 사람이 몬스터보다 먼저 물폭탄을 받는다.
+    private const float SwarmWaveBombPlayerTargetRange = 6f;
 
     private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmWaveBombNextDropAtUtc =
         new();
@@ -2614,11 +2629,21 @@ public partial class GameServer
             if (waveOrbs.Count == 0)
                 continue;
 
-            var targets = _swarmArenaManager.GetCombatTargets(matchingId)
-                .Where(target => target.Area == owner.Area)
-                .OrderBy(target => GetSwarmNormalizedDistanceSquared(owner.Position, target.Position))
-                .ThenBy(target => target.CombatTargetId)
-                .Select(target => new SwarmWaveBombTarget(target.CombatTargetId, target.Position))
+            // 플레이어 최우선 (2026-08-18 유저 지시): 반경 안에 소유자 아닌 사람이 있으면 그 자리에 먼저 떨어진다 —
+            // 목록 앞에 사람을 세우면 BuildPlans가 오브마다 앞에서부터 표적을 잡으므로 사람이 먼저 맞고, 남는
+            // 오브만 몬스터로 간다. 사람이 없으면 종전대로 몬스터.
+            float playerRangeSquared = SwarmWaveBombPlayerTargetRange * SwarmWaveBombPlayerTargetRange;
+            var targets = participants
+                .Where(participant => participant.PlayerId != owner.PlayerId && participant.Area == owner.Area &&
+                                      GetSwarmNormalizedDistanceSquared(owner.Position, participant.Position) <=
+                                      playerRangeSquared)
+                .OrderBy(participant => GetSwarmNormalizedDistanceSquared(owner.Position, participant.Position))
+                .Select(participant => new SwarmWaveBombTarget(participant.PlayerId, participant.Position))
+                .Concat(_swarmArenaManager.GetCombatTargets(matchingId)
+                    .Where(target => target.Area == owner.Area)
+                    .OrderBy(target => GetSwarmNormalizedDistanceSquared(owner.Position, target.Position))
+                    .ThenBy(target => target.CombatTargetId)
+                    .Select(target => new SwarmWaveBombTarget(target.CombatTargetId, target.Position)))
                 .ToList();
             var plans = SwarmWaveBombRules.BuildPlans(
                 waveOrbs,
