@@ -31,11 +31,16 @@ public partial class GameServer
     private readonly Dictionary<(long MatchingId, long PlayerId, SurvivorOrbColor Color), int>
         _swarmFamilyUpgradeCounts = new();
 
-    /// <summary>시작 오브 지급 — 사람·봇 공통. 샌드박스 사람만 고정 세트.</summary>
+    // 봇 시작 오브 (2026-08-18 유저 지시): 사람은 3개, 봇은 10개로 시작한다 — 사람이 처음부터 긴 꼬리를
+    // 상대하고, 절단할 표적이 판 초반부터 있다.
+    private const int SwarmBotStartingOrbCount = 10;
+
+    /// <summary>시작 오브 지급 — 사람 3개(샌드박스는 고정 세트), 봇 10개.</summary>
     private void GrantSwarmStartingOrbs(long matchingId, long playerId, GameClientSession? session)
     {
         bool fixedSet = SwarmCrossfireSandbox && session != null;
-        for (int index = 0; index < Config.SWARM_STARTING_ORB_GRANT_COUNT; index++)
+        int grantCount = session != null ? Config.SWARM_STARTING_ORB_GRANT_COUNT : SwarmBotStartingOrbCount;
+        for (int index = 0; index < grantCount; index++)
         {
             int itemId = fixedSet
                 ? SwarmSandboxStartingOrbs[index % SwarmSandboxStartingOrbs.Length]

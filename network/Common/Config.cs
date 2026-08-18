@@ -371,6 +371,17 @@ namespace network.common
         /// <summary>교차사격 충격 1회의 정신오염. 티어·공격 강화와 무관한 고정값.</summary>
         public const int SWARM_CROSSFIRE_SHOCK_CORRUPTION = 50;
 
+        /// <summary>
+        ///     받는 피해 배율 (2026-08-18 유저 지시 "봇·플레이어 전부 지금의 1/3만 받게"): 사람·봇 공통,
+        ///     PvP 충격(태양·바람·파도)과 잔상 접촉·원거리 피해에 곱한다. 절단 자해(+35)와 폐쇄 즉사는 대상 아님.
+        ///     최솟값 1 — 0이 되면 "맞았는데 안 닳는" 피격이 생긴다.
+        /// </summary>
+        public const float SWARM_DAMAGE_TAKEN_MULTIPLIER = 1f / 3f;
+
+        /// <summary>받는 피해에 배율을 적용한 정수값 — 반올림, 최솟값 1.</summary>
+        public static int ScaleSwarmDamageTaken(int damage) =>
+            damage <= 0 ? damage : Math.Max(1, (int)Math.Round(damage * SWARM_DAMAGE_TAKEN_MULTIPLIER));
+
         /// <summary>같은 피해자는 공격자와 무관하게 이 시간 동안 추가 충격을 받지 않는다.</summary>
         public const float SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS = 0.9f;
 

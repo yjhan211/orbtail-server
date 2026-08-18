@@ -568,7 +568,8 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        int shock = Config.SWARM_CROSSFIRE_SHOCK_CORRUPTION;
+        // 받는 피해 배율 (2026-08-18): 고정 50 × 1/3 → 17. 태양·바람·파도 충격이 전부 이 한 곳을 지난다.
+        int shock = Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_CORRUPTION);
         int corruptionBefore;
         int corruptionAfter;
 
