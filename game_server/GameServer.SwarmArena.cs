@@ -43,9 +43,9 @@ public partial class GameServer
     // 오브 파괴는 열 절단(+폐쇄) 전용이라야 절단이 독립 전투 동사로 산다.
     private static readonly bool SwarmOrbHealthEnabled = false;
 
-    // 고위험 단일 절단 복귀 (#232 무한 꼬리, 2026-08-17 저녁 유저 지시 "절단은 되살려야 해"):
-    // 몸으로 상대 꼬리를 유효하게 가로지르면 상대 오브 하나가 깨지고 나는 정신오염 +35를 낸다.
-    // 크랙 5칸·방어 장갑·꼬리 접미 통째 삭제·절단 낙수는 쓰지 않는다 (TryPerformSwarmTrailCut).
+    // 고위험 절단 복귀 (#232 무한 꼬리, 2026-08-17 저녁 유저 지시 "절단은 되살려야 해"):
+    // 몸으로 상대 꼬리를 유효하게 가로지르면 밟은 지점부터 꼬리 끝까지 깨지고(2026-08-18 유저 결정: 접미
+    // 전체) 나는 정신오염 +35를 낸다. 크랙 5칸·방어 장갑·절단 낙수는 쓰지 않는다 (TryPerformSwarmTrailCut).
     // 고리 포위는 계속 끈다.
     private static readonly bool SwarmTrailCutEnabled = true;
     private static readonly bool SwarmEncircleEnabled = false;
@@ -2295,32 +2295,35 @@ public partial class GameServer
         cutterSession?.MarkSwarmCombat(nowUtc);
 
         // 절단 진입 계측 (#227 3·6단계): 공격자·피해자·후보 ordinal·그 자리를 덮던 적 오브
-        // 사거리 수(국소 화망). 단일 절단이라 내구 1·손실 1·즉시 파괴로 고정이다.
+        // 사거리 수(국소 화망). 내구 1·즉시 파괴, 손실 = 후보 순번부터 꼬리 끝까지.
         _gameEventLogManager.LogSwarmCutAttempt(
             matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal,
             CountSwarmOrbGunsCovering(chains, cutterId, cutterArea, current),
             CountSwarmOrbGunsCovering(chains, cutterId, cutterArea, current, bestOwnerId),
             durabilityBeforeHit: 1,
-            expectedOrbLoss: 1,
+            expectedOrbLoss: Math.Max(0, chains[bestOwnerId].Points.Count - bestTailOrdinal),
             breaksNow: true,
             area: bestArea.ToString());
 
-        // 단일 제거 (#232): 밟힌 오브(몸체) 또는 링크 뒤쪽 첫 오브 하나만 사라진다. 뒤 꼬리는
-        // 순번이 당겨져 앞쪽에 다시 붙는다 — 열 좌표는 순번으로 재계산되므로 별도 재연결이 없다.
-        var destroyedItem = DestroySwarmOrbAtOrdinal(matchingId, bestOwnerId, bestTailOrdinal);
-        if (destroyedItem == null)
+        // 접미 절단 (스네이크 문법 복귀, 2026-08-18 유저 결정 "오브 절단면 다 깨지게"): 밟힌 오브(몸체) 또는
+        // 링크 뒤쪽 첫 오브부터 꼬리 끝까지 전부 사라진다. 절단 지점이 머리에 가까울수록 손실이 크다.
+        var destroyedItems = DestroySwarmOrbsFromOrdinal(matchingId, bestOwnerId, bestTailOrdinal);
+        if (destroyedItems.Count == 0)
             return;
-        // 반격 보호 개시 (#227 7단계): 방금 자른 그 사람은 1.2초 동안 이 피해자를 다시 못 자른다 —
-        // 접촉을 유지한 채 꼬리를 따라 달리며 연속으로 지우는 것을 여기서 막는다.
+        var destroyedItem = destroyedItems[0];
+        // 반격 보호 개시 (#227 7단계): 방금 자른 그 사람은 1.2초 동안 이 피해자를 다시 못 자른다.
         OpenSwarmRetaliationWindow(matchingId, creditPlayerId, bestOwnerId, bestArea, nowUtc, allSessions);
-        _swarmOrbCutCracks.Remove((matchingId, bestOwnerId, destroyedItem.ItemUid));
-        _swarmOrbDurabilityBonus.Remove((matchingId, bestOwnerId, destroyedItem.ItemUid));
         var ownerSession = aliveSessions.FirstOrDefault(session => session.PlayerId == bestOwnerId);
         var ownerChain = chains[bestOwnerId];
-        ownerSession?.SendInGameInventoryUpdate(destroyedItem);
+        foreach (var lost in destroyedItems)
+        {
+            _swarmOrbCutCracks.Remove((matchingId, bestOwnerId, lost.ItemUid));
+            _swarmOrbDurabilityBonus.Remove((matchingId, bestOwnerId, lost.ItemUid));
+            ownerSession?.SendInGameInventoryUpdate(lost);
+        }
         // 절단 낙수 없음 (#232): 소환석·드롭·점수·웨이브 기여를 지급하지 않는다. 잃은 것은 그냥 사라진다.
 
-        // 절단 파열 플래시: 링 + 잘린 오브 한 개 섬광 — "어느 오브가 깨졌다"가 화면에서 읽히게.
+        // 절단 파열 플래시: 링 + 잘린 꼬리 오브 섬광 — "어디부터 끊겼다"가 화면에서 읽히게.
         SendSwarmRingVfx(
             bestArea, creditPlayerId, bestOrbPosition.X, bestOrbPosition.Y,
             SwarmTrailCutFlashRadius, allSessions, SwarmRingVfxKindCut,
@@ -2372,22 +2375,22 @@ public partial class GameServer
         // 잃은 만큼 소환 비용을 되돌린다 (#229): 오브 수가 곧 소환 카운터라, 잘려 나간 몫이
         // 값에 남으면 절단당한 쪽이 재건 비용까지 떠안아 격차가 한 방향으로만 벌어진다.
         _summonStoneManager.RefundGrowthSuccess(
-            matchingId, bestOwnerId, SwarmGrowthCardMultiply, 1);
+            matchingId, bestOwnerId, SwarmGrowthCardMultiply, destroyedItems.Count);
 
         _gameEventLogManager.LogSwarmTrailCut(
-            matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal, 1,
+            matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal, destroyedItems.Count,
             orbsBefore, orbsAfter, attackOrbsBefore, attackOrbsAfter, rankAfter,
             bestArea.ToString());
-        // 필수 로그 (#232 §11): 절단 한 건 = 공격자·피해자·대상 오브·순번·공격자 오염 전후·회복 차단 만료.
+        // 필수 로그 (#232 §11): 절단 한 건 = 공격자·피해자·절단 순번·잃은 수·공격자 오염 전후·회복 차단 만료.
         _gameEventLogManager.LogSystem(
             matchingId,
-            $"ORB_SINGLE_CUT attacker={creditPlayerId} victim={bestOwnerId} targetOrbUid={destroyedItem.ItemUid} " +
-            $"targetIndex={bestTailOrdinal} attackerCorruptionBefore={cutterCorruptionBefore} " +
-            $"attackerCorruptionAfter={cutterCorruptionAfter} healLockUntil={healLockUntil:O} " +
-            $"victimOrbsBefore={orbsBefore} victimOrbsAfter={orbsAfter} area={bestArea}");
+            $"ORB_TAIL_CUT attacker={creditPlayerId} victim={bestOwnerId} cutIndex={bestTailOrdinal} " +
+            $"lostOrbs={destroyedItems.Count} firstOrbUid={destroyedItem.ItemUid} " +
+            $"attackerCorruptionBefore={cutterCorruptionBefore} attackerCorruptionAfter={cutterCorruptionAfter} " +
+            $"healLockUntil={healLockUntil:O} victimOrbsBefore={orbsBefore} victimOrbsAfter={orbsAfter} area={bestArea}");
         logger.LogInformation(
-            "Swarm single cut: MatchingId={MatchingId}, CutterId={CutterId}, OwnerId={OwnerId}, TailOrdinal={TailOrdinal}, OrbUid={OrbUid}, AttackerCorruption={Before}->{After}",
-            matchingId, cutterId, bestOwnerId, bestTailOrdinal, destroyedItem.ItemUid,
+            "Swarm tail cut: MatchingId={MatchingId}, CutterId={CutterId}, OwnerId={OwnerId}, TailOrdinal={TailOrdinal}, Lost={Lost}, AttackerCorruption={Before}->{After}",
+            matchingId, cutterId, bestOwnerId, bestTailOrdinal, destroyedItems.Count,
             cutterCorruptionBefore, cutterCorruptionAfter);
     }
 
@@ -3078,26 +3081,6 @@ public partial class GameServer
         if (destroyed.Count > 0)
             _swarmFrontOrbHp.Remove((matchingId, playerId));
         return destroyed;
-    }
-
-    /// <summary>
-    ///     열 순번의 오브 하나만 파괴한다 (#232 단일 절단). 뒤 꼬리는 순번이 당겨져 앞쪽에 붙는다 —
-    ///     열 좌표·전투 액터·클라 슬롯 모두 인벤토리 순서에서 다시 세므로 별도 재연결이 없다.
-    /// </summary>
-    private InGameItemInfo? DestroySwarmOrbAtOrdinal(long matchingId, long playerId, int ordinal)
-    {
-        var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
-        var orbs = inventory.GetAllItems()
-            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
-            .OrderBy(item => item.ItemUid)
-            .ToList();
-        if (ordinal < 0 || ordinal >= orbs.Count)
-            return null;
-        if (!inventory.TryRemoveItem(orbs[ordinal].ItemUid, 1, out var destroyedItem) || destroyedItem == null)
-            return null;
-        if (ordinal == 0)
-            _swarmFrontOrbHp.Remove((matchingId, playerId));
-        return destroyedItem;
     }
 
     /// <summary>점이 오브 판정 타원 안에 있는지 — 래치 이탈 재무장 판정.</summary>
