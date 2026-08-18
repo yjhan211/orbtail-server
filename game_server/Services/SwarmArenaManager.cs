@@ -423,6 +423,13 @@ public sealed class SwarmArenaManager
     private const double EscalationStage2AtSeconds = 230d;
     private const float EscalationStage2MoveSpeedMultiplier = 1.1f;
 
+    /// <summary>
+    ///     몹 스폰 스위치 (2026-08-18 촬영용): DEV_NO_MONSTERS=1이면 어떤 경로로도 잔상을 세우지 않는다.
+    ///     compose 환경변수라 켜고 끄기는 컨테이너 재생성. 테스트는 기본값(켬)을 본다.
+    /// </summary>
+    public static bool MonsterSpawnEnabled { get; set; } =
+        Environment.GetEnvironmentVariable("DEV_NO_MONSTERS") != "1";
+
     /// <summary>폐쇄된 구역은 신규 스폰을 멈춘다 — 잔존 몹은 이주로 처리된다.</summary>
     public Func<long, AreaType, bool>? IsAreaClosedResolver { get; set; }
 
@@ -514,7 +521,13 @@ public sealed class SwarmArenaManager
                 ? deltaSeconds * EscalationStage2MoveSpeedMultiplier
                 : deltaSeconds;
 
-            if (RegionSupplyModeEnabled)
+            // 몹 스폰 끄기 (DEV_NO_MONSTERS=1, 2026-08-18 촬영용): 공급·캠프·레거시 어느 경로도 세우지 않는다.
+            // 봇·전투·폐쇄는 그대로 돈다 — 잔상 없는 판이 필요할 때(영상·PvP만 검증) 쓴다.
+            if (!MonsterSpawnEnabled)
+            {
+                // 아무것도 안 함
+            }
+            else if (RegionSupplyModeEnabled)
             {
                 ProcessRegionSupply(state, now, result);
             }
