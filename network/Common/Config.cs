@@ -405,7 +405,10 @@ namespace network.common
         ///     "조준됐다"가 발사 직전 읽히게 (2026-08-17 유저 지시).
         /// </summary>
         public const float SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS = 0.25f;
-        public const float SWARM_CROSSFIRE_SUN_SWEEP_SPEED = 4.5f;
+        // 4.5 → 7.5 (2026-08-18 유저 지시 "태양 발사 속도를 높여보자"): 느린 비행은 예고선 없이는 "천천히
+        // 지나가는 큰 공격"이 아니라 그냥 늦게 오는 탄으로 읽혔다. 사거리 6이면 0.8초 만에 끝까지 간다.
+        // 클라 투사체는 패킷의 ActiveSeconds(= 사거리/속도)를 그대로 쓰므로 여기만 바꾸면 표시 = 판정.
+        public const float SWARM_CROSSFIRE_SUN_SWEEP_SPEED = 7.5f;
 
         /// <summary>
         ///     큰 공격 한 번 = 유도탄 두 발 몫. 주기 ×2, 피해 ×2 — 총 화력은 같고 한 번의 무게가 커진다.
