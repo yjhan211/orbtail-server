@@ -88,7 +88,7 @@ public class SwarmDamagePathTests
                          "private Task HandleSwarmRngCollectStart"),
                      (Path.Combine("game_server", "GameServer.SwarmArena.cs"),
                          "private void ProcessSwarmBotExplores"),
-                     (Path.Combine("game_server", "GameServer.SpotArena.cs"),
+                     (Path.Combine("game_server", "GameServer.SwarmArena.cs"),
                          "private void SpawnSpotArenaSummonStone")
                  })
         {
