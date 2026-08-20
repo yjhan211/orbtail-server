@@ -114,7 +114,6 @@ public partial class BotPlayerManager
 
     private const int BotMoveIntervalSeconds = 12;
     private const int BotMissionTickIntervalSeconds = 1;
-    private const int DetectScoreThreshold = 18;          // ?됱텧 ?대━?ㅽ떛 ?꾧퀎媛????⑥젙 ?붿쟻 諛쒓껄 ?꾩쟻 ?먯닔
     private const int InitialStamina = 100;
     private const int InitialCorruption = 0;
 
@@ -562,7 +561,6 @@ public class BotPlayerState
     public int JobAreaQueueIndex { get; set; }
 
     /// <summary>遊뉗씠 ?대? ?됱텧 ?쒕룄?덈뒗吏 (1???쒖젙)</summary>
-    public bool HasUsedDetection { get; set; }
 
     /// <summary>遊뉗씠 留덉?留됱쑝濡??붿쟻 ?⑥젙??諛곗튂???쒓컖 ???덈Т ?먯＜ ??源붾룄濡?荑⑤떎??/summary>
     public DateTime LastTracePlaceTime { get; set; } = DateTime.MinValue;
@@ -571,10 +569,8 @@ public class BotPlayerState
     public bool HasPlacedDemoTrapTrace { get; set; }
 
     /// <summary>遊뉗씠 留덉?留됱쑝濡??щ낫?二쇰? ?쒕룄???쒓컖 ???쒗븳遺 吏꾩엯 ??荑⑤떎??/summary>
-    public DateTime LastSabotageTryTime { get; set; } = DateTime.MinValue;
 
     /// <summary>?됱텧 ?대━?ㅽ떛 ?꾩쟻 ?먯닔 ??留덈땲???꾨낫 異붾━??(?먭린 race 吏꾪뻾 諛⑺빐 ?붿쟻 ??</summary>
-    public int DetectionUrgency { get; set; }
 
     /// <summary>遊뉗씠 留덉?留됱쑝濡?1:1 ?묐떟???곷? (?먭린 ?먯떊怨??숈씪 PlayerId硫??묐떟 X)</summary>
     public long LastInteractRespondedTo { get; set; }

@@ -51,7 +51,6 @@ public partial class GameServer(
     private readonly SpotArenaManager _spotArenaManager = new();
     private readonly SwarmArenaManager _swarmArenaManager = new();
     private readonly SummonStoneManager _summonStoneManager = new();
-    private readonly SabotageManager _sabotageManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();
     private readonly ManittoChainManager _manittoChainManager = new(logger);
     private readonly MissionManager _missionManager = new(logger);
@@ -59,7 +58,6 @@ public partial class GameServer(
     private readonly MatchingConfigService _matchingConfigService = new(cacheHelper, logger);
     // _areaClosureManager은 InitializeServices()에서 _matchingConfigService 생성 후 초기화
     private AreaClosureManager _areaClosureManager = null!;
-    private readonly TraceManager _traceManager = new();
     private readonly BotPlayerManager _botPlayerManager = new(logger);
     private readonly GameEventLogManager _gameEventLogManager = new();
     private readonly MatchSummaryFileStore _matchSummaryFileStore = new(
@@ -108,8 +106,6 @@ public partial class GameServer(
     private const int ClosedAreaStatusEffectId = 1003;  // status_effect_info: 폐쇄 구역
     private const int TerminalDecayAmount = 5;          // 시한부 추가 감소량 (5초당 오염도 +5)
     // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
-    internal const int TraceFoundManittoRecovery = 15;   // 흔적 발견 시 마니또 정신력 회복량
-    internal const int TraceFoundTargetDecay = 10;       // 흔적 발견 시 타겟 오염도 증가량
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -240,9 +236,6 @@ public partial class GameServer(
             _areaRuleManager.Initialize(log);
             _itemPoolManager.Initialize(log);
             _checklistManager.Initialize(log);
-            _sabotageManager.Initialize(log);
-            _sabotageManager.SetStateChangeCallback(OnSabotageStateChange);
-            _sabotageManager.SetTimeoutCallback(OnSabotageTimeout);
         }
         catch (Exception ex)
         {
@@ -377,9 +370,6 @@ public partial class GameServer(
                 ProcessPassiveSummonStoneIncomeForMatching(matchingId, activeSessions);
 
                 // 봇 미션 처리(부품 회수/결합/RNG 채집)는 별도 1초 타이머(ProcessBotMission)에서 수행.
-
-                // #26: 시한부 봇 사보타주 + 색출 시뮬
-                ProcessBotTerminalActionsForMatching(matchingId, activeSessions);
 
             }
 
@@ -1049,120 +1039,6 @@ public partial class GameServer(
         }
     }
     /// <summary>
-    ///     #26: 시한부 봇 사보타주 + 색출 시뮬.
-    /// </summary>
-    private void ProcessBotTerminalActionsForMatching(long matchingId, List<GameClientSession> activeSessions)
-    {
-        try
-        {
-            // 1) 시한부 봇 사보타주 — 살아있는 사람 PlayerId(세션 + 다른 봇) 후보 목록
-            var sessionPlayerIds = activeSessions
-                .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
-                .Select(s => s.PlayerId!.Value);
-            var aliveBotIds = _botPlayerManager.GetBots(matchingId)
-                .Where(b => !b.IsEliminated)
-                .Select(b => b.PlayerId);
-            var aliveCandidates = sessionPlayerIds.Concat(aliveBotIds).Distinct().ToList();
-
-            var sabotaged = _botPlayerManager.ProcessTerminalSabotage(matchingId, _missionManager, aliveCandidates);
-            foreach (var (botId, victim, partId) in sabotaged)
-            {
-                if (!partId.HasValue) continue;
-                var part = GameMissionData.GetPart(partId.Value);
-                var victimSession = _clientSessions.Values.FirstOrDefault(s => s.PlayerId == victim);
-                if (victimSession == null) continue;
-
-                using var packet = Packet.Create(
-                    (int)Protocol.G_TO_C_PART_INVALIDATED, victim);
-                var msg = new G_TO_C_PART_INVALIDATED
-                {
-                    PartId = partId.Value,
-                    PartNameKr = part?.PartNameKr ?? "",
-                    PartTier = part != null ? (int)part.PartTier : 0,
-                    TargetPlayerId = victim
-                };
-                packet.SetBody(MessagePackSerializer.Serialize(msg));
-                victimSession.Send(packet);
-                logger.LogInformation("봇 사보타주 알림 송신: VictimSession={V}, PartId={Part}", victim, partId.Value);
-            }
-
-            // 2) 색출 시도 — 봇별로 자기 마니또(자기를 타겟으로 가진 사람) 후보 추리
-            var attempts = _botPlayerManager.CollectDetectionAttempts(matchingId, botId =>
-            {
-                // 봇의 마니또 = 봇을 TargetPlayerId로 가진 링크 (봇/세션 모두 가능)
-                var manittoLink = _manittoChainManager.GetLink(matchingId, botId);
-                if (manittoLink == null) return null;
-                // ManittoChainManager 내부에서 자기 마니또(=자기를 타겟으로 가진) 찾기
-                // RegisterLink로 모든 링크 등록되어 있으므로 검색 가능
-                return FindManittoOf(matchingId, botId);
-            });
-
-            foreach (var (detecterBotId, candidate) in attempts)
-            {
-                var (isCorrect, _) = _manittoChainManager.TryDetect(matchingId, detecterBotId, candidate);
-                logger.LogInformation("봇 색출 결과: BotId={B}, Cand={C}, Correct={R}",
-                    detecterBotId, candidate, isCorrect);
-
-                BroadcastDetectionAnnounce(matchingId, activeSessions, detecterBotId, candidate, isCorrect);
-
-                if (!isCorrect) continue;
-
-                // 적중 — 부품 전이 + 마니또 탈락
-                int? stolen = _missionManager.StealHighestPart(matchingId, candidate, detecterBotId);
-                _traceManager.InvalidateTracesByPlacer(matchingId, candidate);
-                logger.LogInformation("봇 색출 적중: BotId={B}, Manitto={M}, StolenPart={P}",
-                    detecterBotId, candidate, stolen);
-
-                // 마니또 탈락 — 세션 중 임의를 통해 ProcessElimination
-                var anySession = activeSessions.FirstOrDefault(s => s.CurrentMapSubId == matchingId);
-                anySession?.ProcessBotDetectedElimination(candidate, detecterBotId);
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "봇 시한부/색출 처리 중 오류: MatchingId={MatchingId}", matchingId);
-        }
-    }
-
-    /// <summary>
-    ///     색출 시도를 매칭 내 모든 활성 세션에 브로드캐스트 — 영상 cut 시각화용.
-    ///     봇 detecter는 ChainLink로 직책 조회. 시도 결과(isCorrect) 포함.
-    /// </summary>
-    private void BroadcastDetectionAnnounce(long matchingId, List<GameClientSession> activeSessions,
-        long detecterId, long targetId, bool isCorrect)
-    {
-        var detecterLink = _manittoChainManager.GetLink(matchingId, detecterId);
-        var targetLink = _manittoChainManager.GetLink(matchingId, targetId);
-        if (detecterLink == null || targetLink == null) return;
-
-        var msg = new G_TO_C_DETECTION_ANNOUNCE
-        {
-            DetecterPlayerId = detecterId,
-            DetecterJobTitle = detecterLink.MyJobTitle,
-            TargetPlayerId = targetId,
-            TargetJobTitle = targetLink.MyJobTitle,
-            IsCorrect = isCorrect
-        };
-        byte[] body = MessagePackSerializer.Serialize(msg);
-
-        foreach (var session in activeSessions)
-        {
-            if (session.CurrentMapSubId != matchingId) continue;
-            if (session.IsEliminated) continue;
-            using var packet = Packet.Create((int)Protocol.G_TO_C_DETECTION_ANNOUNCE);
-            packet.SetBody(body);
-            session.Send(packet);
-        }
-
-        logger.LogInformation("색출 broadcast: Detecter={D}({DJ}), Target={T}({TJ}), Correct={R}",
-            detecterId, detecterLink.MyJobTitle, targetId, targetLink.MyJobTitle, isCorrect);
-    }
-
-    /// <summary>
-    ///     흔적 배치를 매칭 내 모든 활성 세션에 브로드캐스트 — 영상 cut 시각화용.
-    ///     봇 placer는 ChainLink로 직책 조회. 발견자 본인 효과는 기존 TRACE_CREATED 흐름 유지(본 패킷은 cut 신호만).
-    /// </summary>
-    /// <summary>
     ///     #134 — 봇 RNG progress 시작을 같은 영역 인간 세션에 G_TO_C_EXPLORE_START broadcast.
     ///     클라가 봇 캐릭터를 EXPLORE_1 상태로 설정 → 탐색 애니메이션 + 사운드 자동 재생.
     /// </summary>
@@ -1646,26 +1522,6 @@ public partial class GameServer(
 
             session.TrySendRoomEncounterEventForObservedPlayer(ev.BotPlayerId, ev.Position);
         }
-    }
-
-    /// <summary>
-    ///     매칭 내에서 botId의 마니또(=botId를 타겟으로 가진 링크)를 찾는다.
-    /// </summary>
-    private long? FindManittoOf(long matchingId, long botId)
-    {
-        // ChainLink 직접 순회 — ManittoChainManager에 헬퍼가 없으므로 BuildGameResult 활용은 무거움.
-        // Reflection 우회 대신 단순 GetLink 순회로 대체 — 매칭 인원 5명 안팎이라 비용 무시 가능.
-        // 모든 PlayerId 후보(세션 + 봇)에서 TargetPlayerId == botId인 링크 찾기
-        var sessionIds = _clientSessions.Values
-            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
-            .Select(s => s.PlayerId!.Value);
-        var botIds = _botPlayerManager.GetBots(matchingId).Select(b => b.PlayerId);
-        foreach (long candidateId in sessionIds.Concat(botIds))
-        {
-            var link = _manittoChainManager.GetLink(matchingId, candidateId);
-            if (link != null && link.TargetPlayerId == botId) return candidateId;
-        }
-        return null;
     }
 
     // ===== 구역 폐쇄 틱 =====
@@ -2553,12 +2409,10 @@ public partial class GameServer(
                 _emotionAfterimageMonsterManager,
                 _summonStoneManager,
                 _doorStateManager,
-                _sabotageManager,
                 _manittoChainManager,
                 _missionManager,
                 _checklistManager,
                 _areaClosureManager,
-                _traceManager,
                 new InteractionChoiceService(_interactionLogManager, _manittoChainManager, _gameEventLogManager),
                 _botPlayerManager,
                 _gameEventLogManager,
@@ -2677,10 +2531,8 @@ public partial class GameServer(
         _areaRuleManager.RemoveMatchingState(matchingId);
         _itemPoolManager.RemoveMatchingState(matchingId);
         _doorStateManager.ClearMatching(matchingId);
-        _sabotageManager.RemoveMatchingState(matchingId);
         _manittoChainManager.CleanupMatching(matchingId);
         _missionManager.CleanupMatching(matchingId);
-        _traceManager.CleanupMatching(matchingId);
         _interactionLogManager.CleanupMatching(matchingId);
         _gameEventLogManager.Clear(matchingId);
         _encounterRevealManager.CleanupMatching(matchingId);
@@ -2736,49 +2588,6 @@ public partial class GameServer(
         return _clientSessions.Values
             .Where(s => s.CurrentMapId == mapId && s.CurrentMapSubId == mapSubId)
             .ToList();
-    }
-
-    /// <summary>
-    ///     사보타주 상태 변경 콜백 - InteractableState 업데이트 및 브로드캐스트
-    /// </summary>
-    private void OnSabotageStateChange(long matchingId, int interactId, int newState, AreaType triggerArea)
-    {
-        logger.LogInformation(
-            "Sabotage state change: MatchingId={MatchingId}, InteractId={InteractId}, NewState={NewState}, TriggerArea={TriggerArea}",
-            matchingId, interactId, newState, triggerArea);
-
-        // InteractableStateManager 상태 업데이트
-        _interactableStateManager.SetInteractableState(matchingId, interactId, newState);
-
-        // 해당 매칭의 해당 Area에 있는 모든 플레이어에게 브로드캐스트
-        var sessionsInArea = _clientSessions.Values
-            .Where(s => s.CurrentMapSubId == matchingId && s.CurrentArea == triggerArea && s.PlayerId.HasValue)
-            .ToList();
-
-        using var packet = PacketMaker.G_TO_C_INTERACTABLE_STATE_CHANGE(interactId, newState);
-        foreach (var session in sessionsInArea) session.Send(packet);
-
-        logger.LogInformation("Broadcasted INTERACTABLE_STATE_CHANGE to {Count} players in Area {Area}",
-            sessionsInArea.Count, triggerArea);
-    }
-
-    /// <summary>
-    ///     사보타주 타임아웃 콜백 - 해당 매칭의 모든 플레이어에게 정신오염도 증가
-    /// </summary>
-    private void OnSabotageTimeout(long matchingId, AreaType triggerArea, int corruptionDelta)
-    {
-        logger.LogInformation("Sabotage timeout: MatchingId={MatchingId}, Area={Area}, Corruption +{Delta}",
-            matchingId, triggerArea, corruptionDelta);
-
-        // 해당 매칭의 모든 플레이어에게 정신오염도 증가
-        var matchingSessions = _clientSessions.Values
-            .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
-            .ToList();
-
-        foreach (var session in matchingSessions) session.ModifyStats(corruptionDelta: corruptionDelta);
-
-        logger.LogInformation("Applied corruption +{Delta} to {Count} players in MatchingId={MatchingId}",
-            corruptionDelta, matchingSessions.Count, matchingId);
     }
 
     // MMO 로그아웃 프로토콜 제거됨 - 세션 기반 게임에서는 불필요

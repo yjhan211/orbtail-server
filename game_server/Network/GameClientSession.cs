@@ -53,12 +53,10 @@ public partial class GameClientSession : SessionBase
     private readonly Action<long, GameClientSession> _registerSessionCallback;
     private readonly Action<long> _recordLeavePenalty;
     private readonly Action<long> _recordGameCompletion;
-    private readonly SabotageManager _sabotageManager;
     private readonly ManittoChainManager _manittoChainManager;
     private readonly MissionManager _missionManager;
     private readonly ChecklistManager _checklistManager;
     private readonly AreaClosureManager _areaClosureManager;
-    private readonly TraceManager _traceManager;
     private readonly InteractionChoiceService _interactionChoiceService;
     private readonly BotPlayerManager _botPlayerManager;
     private readonly GameEventLogManager _gameEventLogManager;
@@ -191,12 +189,10 @@ public partial class GameClientSession : SessionBase
         EmotionAfterimageMonsterManager emotionAfterimageMonsterManager,
         SummonStoneManager summonStoneManager,
         DoorStateManager doorStateManager,
-        SabotageManager sabotageManager,
         ManittoChainManager manittoChainManager,
         MissionManager missionManager,
         ChecklistManager checklistManager,
         AreaClosureManager areaClosureManager,
-        TraceManager traceManager,
         InteractionChoiceService interactionChoiceService,
         BotPlayerManager botPlayerManager,
         GameEventLogManager gameEventLogManager,
@@ -218,12 +214,10 @@ public partial class GameClientSession : SessionBase
         _emotionAfterimageMonsterManager = emotionAfterimageMonsterManager;
         _summonStoneManager = summonStoneManager;
         _doorStateManager = doorStateManager;
-        _sabotageManager = sabotageManager;
         _manittoChainManager = manittoChainManager;
         _missionManager = missionManager;
         _checklistManager = checklistManager;
         _areaClosureManager = areaClosureManager;
-        _traceManager = traceManager;
         _interactionChoiceService = interactionChoiceService;
         _botPlayerManager = botPlayerManager;
         _gameEventLogManager = gameEventLogManager;
@@ -513,20 +507,14 @@ public partial class GameClientSession : SessionBase
         // 레거시 동작(색출 탈락, 부품 무효화 등)을 현행 매치에서 실행할 수 없다.
         if (!Config.SWARM_P0_ENABLED)
         {
-            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DETECT_MANITTO,
-                async bytes => await HandleMessage<C_TO_G_DETECT_MANITTO>(bytes, HandleDetectManitto));
             ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SETTLEMENT_NOMINATE,
                 async bytes => await HandleMessage<C_TO_G_SETTLEMENT_NOMINATE>(bytes, HandleSettlementNominate));
             ProtocolRouter.RegisterHandler(Protocol.C_TO_G_BOOKMARK_PRESENCE,
                 async bytes => await HandleMessage<C_TO_G_BOOKMARK_PRESENCE>(bytes, HandleBookmarkPresence));
-            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLACE_TRACE,
-                async bytes => await HandleMessage<C_TO_G_PLACE_TRACE>(bytes, HandlePlaceTrace));
             ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLACE_GIFT,
                 async bytes => await HandleMessage<C_TO_G_PLACE_GIFT>(bytes, HandlePlaceGift));
             ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RECALL_GIFT,
                 async bytes => await HandleMessage<C_TO_G_RECALL_GIFT>(bytes, HandleRecallGift));
-            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SABOTAGE_MISSION,
-                async bytes => await HandleMessage<C_TO_G_SABOTAGE_MISSION>(bytes, HandleSabotageMission));
             ProtocolRouter.RegisterHandler(Protocol.C_TO_G_COMBINE_PARTS,
                 async bytes => await HandleMessage<C_TO_G_COMBINE_PARTS>(bytes, HandleCombineParts));
             ProtocolRouter.RegisterHandler(Protocol.C_TO_G_MISSION_NODE_EXECUTE,

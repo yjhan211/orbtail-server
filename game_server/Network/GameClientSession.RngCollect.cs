@@ -119,11 +119,6 @@ public partial class GameClientSession
         // stamina 차감 (즉시) — 정신력 1:2 변환은 ModifyStats가 처리
         ModifyStats(-staminaCost);
 
-        // 사보타주 상태 자동 복구
-        var currentState = _interactableStateManager.GetInteractableState(CurrentMapSubId, msg.InteractId);
-        if (currentState == (int)InteractableStateType.SABOTAGE)
-            _sabotageManager.OnActionCompleted(CurrentMapSubId, msg.InteractId, 0);
-
         SnapshotRoomEncounterStartCandidates(msg.InteractId, info);
         _pendingFinish.Add(msg.InteractId);
         MarkRngCollectPendingEncounterBlock();
@@ -258,9 +253,6 @@ public partial class GameClientSession
 
             _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
                 $"RNG 부품 회수: {outcome.CollectedPart.PartNameKr} (체력+{outcome.StaminaReward})", isBot: false);
-
-            StoreTrace((AreaType)info.ZoneId, msg.InteractId,
-                GetMissionCollectTraceDescription(outcome.CompletedMissionNodeIds), true);
         }
 
         foreach (var extraCollectResult in outcome.ExtraCollectedParts)
@@ -292,9 +284,6 @@ public partial class GameClientSession
 
             _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
                 $"RNG 추가 부품 회수: {extraCollectResult.Part.PartNameKr}", isBot: false);
-
-            StoreTrace((AreaType)info.ZoneId, msg.InteractId,
-                GetMissionCollectTraceDescription(extraCollectResult.CompletedMissionNodeIds), true);
         }
 
         int clientResultType = outcome.ResultType;

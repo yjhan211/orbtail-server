@@ -61,9 +61,6 @@ public partial class GameClientSession
         if (!result.Success || result.Node == null)
             return Task.CompletedTask;
 
-        if (msg.InteractId > 0)
-            StoreTrace(area, msg.InteractId, result.Node.VisibleTrace.Kr, true);
-
         _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
             $"미션 노드 실행: {result.Node.Title.Kr} ({result.Node.NodeKey})",
             isBot: false);

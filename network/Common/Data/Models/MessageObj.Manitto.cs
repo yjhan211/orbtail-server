@@ -485,42 +485,6 @@ namespace network.common.data.models
     // ===== 흔적 =====
 
     [MessagePackObject]
-    public class TraceInfo : IMessagePackObject
-    {
-        [Key("traceId")] public long TraceId { get; set; }
-        [Key("areaType")] public AreaType AreaType { get; set; }
-        [Key("interactId")] public int InteractId { get; set; }
-        [Key("description")] public string Description { get; set; }
-        [Key("placedByPlayerId")] public long PlacedByPlayerId { get; set; }
-        [Key("isMissionTrace")] public bool IsMissionTrace { get; set; } // 미션 흔적 vs 마니또 배치 흔적
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_TRACE_CREATED : IMessagePackObject
-    {
-        [Key("trace")] public TraceInfo Trace { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_TRACE_LIST : IMessagePackObject
-    {
-        [Key("traces")] public List<TraceInfo> Traces { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_G_PLACE_TRACE : IMessagePackObject
-    {
-        [Key("interactId")] public int InteractId { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_PLACE_TRACE_RESULT : IMessagePackObject
-    {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("staminaCost")] public int StaminaCost { get; set; }
-    }
-
-    [MessagePackObject]
     public class C_TO_G_PLACE_GIFT : IMessagePackObject
     {
         [Key("itemUid")] public long ItemUid { get; set; }
@@ -579,52 +543,7 @@ namespace network.common.data.models
         [Key("hasPlacedGiftInArea")] public bool HasPlacedGiftInArea { get; set; }
     }
 
-    /// <summary>
-    ///     흔적 배치 발생 전체 브로드캐스트 — 모든 생존 클라이언트가 누가 어디에 흔적을 깔았는지 시각화 (영상 cut용).
-    ///     09:30 BR 도서관 함정 흔적 비트가 대표 사례. 통상 플레이에서도 흔적 배치가
-    ///     외부에 노출되는지 여부는 기획 결정 사안이며, 본 패킷은 시연 시나리오 cut 보장이 1차 용도.
-    ///     발견자 본인 효과(정신력 변동)는 기존 G_TO_C_TRACE_CREATED 흐름 유지 — 본 패킷은 시각 cut 신호만.
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_TRACE_PLACED_ANNOUNCE : IMessagePackObject
-    {
-        [Key("placerPlayerId")] public long PlacerPlayerId { get; set; }
-        [Key("placerJobTitle")] public JobTitle PlacerJobTitle { get; set; }
-        [Key("areaType")] public AreaType AreaType { get; set; }
-        [Key("interactId")] public int InteractId { get; set; }
-        [Key("description")] public string Description { get; set; } = "";
-    }
-
     // ===== 색출 =====
-
-    [MessagePackObject]
-    public class C_TO_G_DETECT_MANITTO : IMessagePackObject
-    {
-        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_DETECT_RESULT : IMessagePackObject
-    {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("isCorrect")] public bool IsCorrect { get; set; }
-        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-    }
-
-    /// <summary>
-    ///     색출 시도 전체 브로드캐스트 — 모든 생존 클라이언트가 누가 누구를 색출했는지 시각화 (영상 cut용).
-    ///     06:40 SC→DC 비트가 대표 사례. 통상 플레이에서도 색출 시도가 외부에 노출되는지 여부는
-    ///     기획 결정 사안이며, 본 패킷은 시연 시나리오 cut 보장이 1차 용도.
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_DETECTION_ANNOUNCE : IMessagePackObject
-    {
-        [Key("detecterPlayerId")] public long DetecterPlayerId { get; set; }
-        [Key("detecterJobTitle")] public JobTitle DetecterJobTitle { get; set; }
-        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-        [Key("targetJobTitle")] public JobTitle TargetJobTitle { get; set; }
-        [Key("isCorrect")] public bool IsCorrect { get; set; }
-    }
 
     [MessagePackObject]
     public class C_TO_G_SETTLEMENT_NOMINATE : IMessagePackObject
@@ -827,26 +746,6 @@ namespace network.common.data.models
     // ===== 시한부 사보타주 =====
 
     /// <summary>
-    ///     시한부 전용: 사보타주 요청 (패키지 Y 4B 개선, #24)
-    ///     대상 1명 지정 → 다음 미션 단계 무효화 + ▓▓ 위치 5초 공개
-    /// </summary>
-    [MessagePackObject]
-    public class C_TO_G_SABOTAGE_MISSION : IMessagePackObject
-    {
-        /// <summary>사보타주 대상 플레이어 ID (생존자 중 1명)</summary>
-        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-        /// <summary>레거시 호환 (interactId 기반 재설정, 미사용)</summary>
-        [Key("interactId")] public int InteractId { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_SABOTAGE_RESULT : IMessagePackObject
-    {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("staminaCost")] public int StaminaCost { get; set; }
-    }
-
-    /// <summary>
     ///     훼손으로 미션 목적지가 재설정된 플레이어에게 전송
     /// </summary>
     [MessagePackObject]
@@ -856,22 +755,6 @@ namespace network.common.data.models
         [Key("newTargetArea")] public int NewTargetArea { get; set; }
         [Key("newTargetInteractId")] public int NewTargetInteractId { get; set; }
         [Key("newTargetActionId")] public int NewTargetActionId { get; set; }
-    }
-
-    /// <summary>
-    ///     사보타주 4B: ▓▓(타겟) 위치를 모든 생존자에게 5초간 공개 (패키지 Y, #24)
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_SABOTAGE_TARGET_EXPOSED : IMessagePackObject
-    {
-        /// <summary>사보타주를 발동한 시한부 플레이어 ID</summary>
-        [Key("terminalPlayerId")] public long TerminalPlayerId { get; set; }
-        /// <summary>시한부의 타겟(▓▓) 플레이어 ID</summary>
-        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-        /// <summary>타겟이 현재 위치한 구역</summary>
-        [Key("targetAreaType")] public AreaType TargetAreaType { get; set; }
-        /// <summary>위치 공개 지속 시간 (초)</summary>
-        [Key("exposeDurationSeconds")] public int ExposeDurationSeconds { get; set; }
     }
 
     // ===== 게임 결과 =====

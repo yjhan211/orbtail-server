@@ -168,7 +168,6 @@ public class MatchingInteractableState
     private static bool IsRepeatableInteraction(InteractionType interactionType)
     {
         return interactionType is InteractionType.WRITING
-            or InteractionType.SABOTAGE
             or InteractionType.VENT
             or InteractionType.MEETING
             or InteractionType.RNG_COLLECT;
