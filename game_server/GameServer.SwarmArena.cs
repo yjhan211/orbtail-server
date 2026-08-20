@@ -4975,4 +4975,103 @@ public partial class GameServer
             TargetPriority = 0
         };
     }
+
+    // #238: 스팟 아레나 파셜 퇴역 시 현행 스웜이 실사용하던 헬퍼 2종을 이관.
+    private static void BroadcastSpotArenaAttackVfxToTargetAndObservers(
+        ProximityCombatAttack attack,
+        IReadOnlyCollection<GameClientSession> sessions)
+    {
+        foreach (var observer in sessions)
+        {
+            // 탈락자도 받는다 (#219): 관전 중에도 봇 전투 연출이 계속 보여야 한다.
+            if (!observer.PlayerId.HasValue ||
+                observer.PlayerId.Value == attack.AttackerPlayerId ||
+                observer.CurrentArea != attack.Area)
+            {
+                continue;
+            }
+
+            using var packet = Packet.Create((int)Protocol.G_TO_C_PROXIMITY_ATTACK_VFX);
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_PROXIMITY_ATTACK_VFX
+            {
+                AttackerPlayerId = attack.AttackerPlayerId,
+                TargetPlayerId = attack.TargetPlayerId,
+                AreaType = attack.Area,
+                WeaponItemId = attack.WeaponItemId
+            }));
+            observer.Send(packet);
+        }
+    }
+
+    private void SpawnSpotArenaSummonStone(
+        long matchingId,
+        MonsterRuntimeInfo defeatedWave,
+        IReadOnlyCollection<GameClientSession> sessions,
+        int heartReward = 0,
+        int bootsReward = 0,
+        int keyReward = 0)
+    {
+        if (defeatedWave.SummonStoneReward <= 0 && heartReward <= 0 &&
+            bootsReward <= 0 && keyReward <= 0)
+            return;
+
+        // #229 5단계: 스웜에서는 이동속도(부츠)·열쇠를 떨구지 않는다. 기동력은 바람 오브가
+        // 맡고, 폐쇄 문은 시간이 여닫는 것이라 열쇠로 뚫는 예외가 없다 — 몹이 떨구면 바닥에
+        // 쓰지 못하는 아이템만 쌓인다.
+        // 하트는 되살린다 (2026-08-16 유저 결정: 회복이 수면밖에 없다). 상자 탐색을 끈 뒤로
+        // 즉시 회복 공급처가 통째로 사라졌고, 일반 몹 3% 드롭을 붙였는데도 이 게이트가
+        // 스폰 직전에 지워 매치 2744에서 처치 2,895마리에 하트 0개가 나왔다.
+        if (Config.IsSwarmExploreDisabled())
+        {
+            bootsReward = 0;
+            keyReward = 0;
+        }
+
+        if (defeatedWave.SummonStoneReward <= 0 && heartReward <= 0 &&
+            bootsReward <= 0 && keyReward <= 0)
+            return;
+
+        // 하트·부츠·열쇠 (#222 M4): 소환석과 함께 흩어진다 — 픽업 경쟁 규칙 공유.
+        // 잼 낙수는 잼 승점 퇴역과 함께 제거 (#226 D).
+        var itemIds = Enumerable.Repeat(
+                Config.SUMMON_STONE_GROUND_ITEM_ID, Math.Max(0, defeatedWave.SummonStoneReward))
+            .Concat(Enumerable.Repeat(Config.HEART_GROUND_ITEM_ID, Math.Max(0, heartReward)))
+            .Concat(Enumerable.Repeat(Config.BOOTS_GROUND_ITEM_ID, Math.Max(0, bootsReward)))
+            .Concat(Enumerable.Repeat(Config.KEY_GROUND_ITEM_ID, Math.Max(0, keyReward)))
+            .ToArray();
+        var spawned = _groundItemManager.SpawnItems(
+            matchingId,
+            defeatedWave.AreaType,
+            defeatedWave.PositionX,
+            defeatedWave.PositionY,
+            itemIds,
+            mapId: MapId.School,
+            layout: GroundItemSpawnLayout.EliminationScatter);
+
+        foreach (var item in spawned)
+        {
+            _gameEventLogManager.LogGroundItemSpawned(
+                matchingId,
+                0,
+                item.GroundItemUid,
+                item.ItemId,
+                defeatedWave.AreaType.ToString(),
+                0,
+                isBot: false);
+        }
+
+        // 드랍 개수가 늘어도 버퍼(2048)를 넘지 않게 청크로 나눠 보낸다 (#222).
+        int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)defeatedWave.AreaType);
+        const int chunkSize = 8;
+        for (int offset = 0; offset < spawned.Count; offset += chunkSize)
+        {
+            var chunk = spawned.Skip(offset).Take(chunkSize).ToList();
+            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
+                (int)defeatedWave.AreaType,
+                remaining,
+                chunk);
+            foreach (var session in sessions.Where(session => session.CurrentArea == defeatedWave.AreaType))
+                session.Send(packet);
+        }
+    }
 }
