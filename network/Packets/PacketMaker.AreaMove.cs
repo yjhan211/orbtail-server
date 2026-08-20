@@ -25,14 +25,4 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_ROOM_ENTRY_EVENT(int eventId)
-    {
-        var packet = Packet.Create((int)Protocol.G_TO_C_ROOM_ENTRY_EVENT);
-        G_TO_C_ROOM_ENTRY_EVENT body = new()
-        {
-            EventId = eventId
-        };
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
 }

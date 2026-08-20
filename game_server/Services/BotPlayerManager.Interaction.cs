@@ -15,14 +15,6 @@ namespace game_server.services;
 public partial class BotPlayerManager
 {
     /// <summary>
-    ///     직책별 총 부품 수 (소재 4 + 중간재 2 + 최종 1 = 7).
-    /// </summary>
-    private static int GameProgressTotal(short jobTitle)
-    {
-        return GameMissionData.GetTotalParts(jobTitle);
-    }
-
-    /// <summary>
     ///     봇이 질문자일 때 무작위 질문 카테고리 선택.
     ///     4 카테고리: JOB(직책추궁) / MOVEMENT(동선추궁) / CROSS_VERIFY(교차검증) / TRACE(흔적추궁).
     ///     테스트 데이터 다양성을 위해 균등 분포.

@@ -504,12 +504,6 @@ public class SchoolNewMapRestorationTests
             new Cell(120, 95),
             new Cell(120, 94)));
 
-        Assert.Equal(new[] { AreaType.BroadcastRoom }, GameRoomEventData.Get(188003)!.AreaTypes);
-        Assert.Equal(new[] { AreaType.ExamRoom }, GameRoomEventData.Get(188004)!.AreaTypes);
-        Assert.DoesNotContain(
-            GameRoomEventData.GetByArea(AreaType.Corridor),
-            roomEvent => roomEvent.EventId is 188003 or 188004);
-
         var poolAreas = File
             .ReadLines(Path.Combine(csvDirectory, "area_item_pool.csv"))
             .Skip(1)

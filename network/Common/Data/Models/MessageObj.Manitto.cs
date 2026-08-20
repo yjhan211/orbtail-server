@@ -8,37 +8,6 @@ namespace network.common.data.models
 {
     // ===== 미션 =====
 
-    /// <summary>
-    ///     v0.2.0 — 게임 시작 시 직책 + 부품 진행 정보 전달.
-    ///     CurrentStep / TotalSteps는 회수+결합 결과 부품 수 기반(호환).
-    ///     TargetArea / TargetInteractId / TargetActionId는 v0.2.0에서 의미 없음(0 송신).
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_MISSION_INFO : IMessagePackObject
-    {
-        [Key("jobTitle")] public JobTitle JobTitle { get; set; }
-        [Key("currentStep")] public int CurrentStep { get; set; }
-        [Key("totalSteps")] public int TotalSteps { get; set; }
-        [Key("targetArea")] public int TargetArea { get; set; }
-        [Key("targetInteractId")] public int TargetInteractId { get; set; }
-        [Key("targetActionId")] public int TargetActionId { get; set; }
-        [Key("chunkIndex")] public int ChunkIndex { get; set; }
-        [Key("isEnd")] public bool IsEnd { get; set; } = true;
-        /// <summary>v0.2.0 — 직책별 모든 부품(소재 4 + 중간재 2 + 최종 1) 메타데이터</summary>
-        [Key("parts")] public List<MissionPartInfo> Parts { get; set; }
-        /// <summary>#143 — 미션 그래프 노드 진행 상태. 구 클라이언트는 무시 가능.</summary>
-        [Key("graphNodes")] public List<MissionGraphNodeProgressInfo> GraphNodes { get; set; } = new();
-        /// <summary>#143 — 현재 활성/대기 중인 단기 보상 상태.</summary>
-        [Key("shortRewards")] public List<MissionShortRewardInfo> ShortRewards { get; set; } = new();
-        [Key("discoveredStoryletIds")] public List<string> DiscoveredStoryletIds { get; set; } = new();
-        [Key("trackedStoryletIds")] public List<string> TrackedStoryletIds { get; set; } = new();
-        [Key("claimedStoryletIds")] public List<string> ClaimedStoryletIds { get; set; } = new();
-        [Key("lostStoryletIds")] public List<string> LostStoryletIds { get; set; } = new();
-        [Key("ownedClueTags")] public List<string> OwnedClueTags { get; set; } = new();
-        [Key("craftedFunctionItemIds")] public List<int> CraftedFunctionItemIds { get; set; } = new();
-        [Key("visibleVictoryTraceIds")] public List<int> VisibleVictoryTraceIds { get; set; } = new();
-    }
-
     [MessagePackObject]
     public class ChecklistTaskInfo : IMessagePackObject
     {
@@ -153,36 +122,7 @@ namespace network.common.data.models
         [Key("isLost")] public bool IsLost { get; set; }
     }
 
-    [MessagePackObject]
-    public class G_TO_C_MISSION_STEP_COMPLETE : IMessagePackObject
-    {
-        [Key("completedStep")] public int CompletedStep { get; set; }
-        [Key("staminaReward")] public int StaminaReward { get; set; }
-        // 다음 단계 정보 (null이면 전체 완료)
-        [Key("nextTargetArea")] public int NextTargetArea { get; set; }
-        [Key("nextTargetInteractId")] public int NextTargetInteractId { get; set; }
-        [Key("nextTargetActionId")] public int NextTargetActionId { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_MISSION_ALL_COMPLETE : IMessagePackObject
-    {
-        [Key("jobTitle")] public JobTitle JobTitle { get; set; }
-    }
-
     // ===== 부품 결합 시스템 (v0.2.0 — 이슈 #38) =====
-
-    /// <summary>
-    ///     부품 회수 알림 (소재 회수). object_action result_type=1 액션 선택 → 직책 발견 풀 매칭 시 송신.
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_PART_COLLECTED : IMessagePackObject
-    {
-        [Key("partId")] public int PartId { get; set; }
-        [Key("partNameKr")] public string PartNameKr { get; set; }
-        [Key("partTier")] public int PartTier { get; set; }
-        [Key("staminaReward")] public int StaminaReward { get; set; }
-    }
 
     /// <summary>
     ///     부품 결합 결과. 중간재(IsRaceComplete=false) 또는 최종(IsRaceComplete=true).
@@ -212,21 +152,6 @@ namespace network.common.data.models
         [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
     }
 
-    /// <summary>
-    ///     #143 — 기능 아이템으로 열린 업무 선택지 실행 요청.
-    ///     interactId가 있으면 서버가 interactable CSV에서 area/objectType을 재확인한다.
-    /// </summary>
-    [MessagePackObject]
-    public class C_TO_G_MISSION_NODE_EXECUTE : IMessagePackObject
-    {
-        [Key("nodeId")] public int NodeId { get; set; }
-        [Key("interactId")] public int InteractId { get; set; }
-        [Key("areaType")] public AreaType AreaType { get; set; }
-        [Key("objectType")] public int ObjectType { get; set; }
-        /// <summary>클라이언트 선택지 실행 시작 시각 (UTC Unix ms). 최종 업무 동시성 가드용.</summary>
-        [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
-    }
-
     [MessagePackObject]
     public class MissionShortRewardInfo : IMessagePackObject
     {
@@ -235,51 +160,6 @@ namespace network.common.data.models
         [Key("valuePercent")] public int ValuePercent { get; set; }
         [Key("durationSeconds")] public int DurationSeconds { get; set; }
         [Key("expiresAtUnixMs")] public long ExpiresAtUnixMs { get; set; }
-    }
-
-    /// <summary>
-    ///     #143 — 업무 선택지 실행 결과. UI는 completed/unlocked node와 granted reward를 반영한다.
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_MISSION_NODE_EXECUTE_RESULT : IMessagePackObject
-    {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("nodeId")] public int NodeId { get; set; }
-        [Key("nodeKey")] public string NodeKey { get; set; } = "";
-        [Key("storyletId")] public string StoryletId { get; set; } = "";
-        [Key("outputPartId")] public int OutputPartId { get; set; }
-        [Key("completedNodeIds")] public List<int> CompletedNodeIds { get; set; } = new();
-        [Key("unlockedNodeIds")] public List<int> UnlockedNodeIds { get; set; } = new();
-        [Key("claimedStoryletIds")] public List<string> ClaimedStoryletIds { get; set; } = new();
-        [Key("lostStoryletIds")] public List<string> LostStoryletIds { get; set; } = new();
-        [Key("alternateRouteNodeIds")] public List<int> AlternateRouteNodeIds { get; set; } = new();
-        [Key("visibleTraceTextId")] public int VisibleTraceTextId { get; set; }
-        [Key("claimedByPlayerId")] public long ClaimedByPlayerId { get; set; }
-        [Key("isMissionComplete")] public bool IsMissionComplete { get; set; }
-        [Key("grantedShortReward")] public MissionShortRewardInfo GrantedShortReward { get; set; } = new();
-    }
-
-    /// <summary>
-    ///     선행 아이템 회수 알림. (장갑/드라이버/로프/걸레/결재 잉크 등 share_group 1~5)
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_PREREQUISITE_COLLECTED : IMessagePackObject
-    {
-        [Key("shareGroup")] public int ShareGroup { get; set; }
-        [Key("itemNameKr")] public string ItemNameKr { get; set; }
-        [Key("staminaReward")] public int StaminaReward { get; set; }
-    }
-
-    /// <summary>
-    ///     v0.2.1 (#79) — RNG 채집 요청. 클라가 1.5초 progress 시작 시 송신.
-    ///     서버는 RNG 풀(50/15/25/10 자기 풀 또는 60/40 외부 풀) 결정 후 G_TO_C_RNG_COLLECT_RESULT 응답.
-    /// </summary>
-    [MessagePackObject]
-    public class C_TO_G_RNG_COLLECT : IMessagePackObject
-    {
-        [Key("interactId")] public int InteractId { get; set; }
-        /// <summary>클라 채집 액션 시작 시각 (UTC Unix ms). 동시성/쿨타임 가드용. 미지원 클라는 0.</summary>
-        [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
     }
 
     /// <summary>
@@ -359,34 +239,6 @@ namespace network.common.data.models
     {
         [Key("interactId")] public int InteractId { get; set; }
         [Key("encounterCheckOnly")] public bool EncounterCheckOnly { get; set; }
-    }
-
-    /// <summary>
-    ///     색출 적중 시 부품 전이 알림. 마니또(피탈자) → 색출자(획득자)로 가장 가치 높은 부품 1개 이동.
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_PART_STOLEN : IMessagePackObject
-    {
-        [Key("partId")] public int PartId { get; set; }
-        [Key("partNameKr")] public string PartNameKr { get; set; }
-        [Key("partTier")] public int PartTier { get; set; }
-        /// <summary>피탈자(마니또) 플레이어 ID</summary>
-        [Key("fromPlayerId")] public long FromPlayerId { get; set; }
-        /// <summary>획득자(색출자) 플레이어 ID</summary>
-        [Key("toPlayerId")] public long ToPlayerId { get; set; }
-    }
-
-    /// <summary>
-    ///     사보타주 부품 무효화 알림. 대상의 가장 가치 높은 부품 1개 인벤토리에서 제거(재회수 불가).
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_PART_INVALIDATED : IMessagePackObject
-    {
-        [Key("partId")] public int PartId { get; set; }
-        [Key("partNameKr")] public string PartNameKr { get; set; }
-        [Key("partTier")] public int PartTier { get; set; }
-        /// <summary>무효화 대상 플레이어 ID</summary>
-        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
     }
 
     // ===== 구역 폐쇄 =====
@@ -484,65 +336,6 @@ namespace network.common.data.models
 
     // ===== 흔적 =====
 
-    [MessagePackObject]
-    public class C_TO_G_PLACE_GIFT : IMessagePackObject
-    {
-        [Key("itemUid")] public long ItemUid { get; set; }
-        [Key("itemId")] public int ItemId { get; set; }
-        [Key("interactId")] public int InteractId { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_PLACE_GIFT_RESULT : IMessagePackObject
-    {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("itemUid")] public long ItemUid { get; set; }
-        [Key("itemId")] public int ItemId { get; set; }
-        [Key("interactId")] public int InteractId { get; set; }
-        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-        [Key("areaType")] public AreaType AreaType { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_G_RECALL_GIFT : IMessagePackObject
-    {
-        [Key("interactId")] public int InteractId { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_RECALL_GIFT_RESULT : IMessagePackObject
-    {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("itemUid")] public long ItemUid { get; set; }
-        [Key("itemId")] public int ItemId { get; set; }
-        [Key("interactId")] public int InteractId { get; set; }
-        [Key("areaType")] public AreaType AreaType { get; set; }
-        [Key("hasPlacedGiftAtInteract")] public bool HasPlacedGiftAtInteract { get; set; }
-        [Key("hasPlacedGiftInArea")] public bool HasPlacedGiftInArea { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_GIFT_DISCOVERED : IMessagePackObject
-    {
-        [Key("discoveryType")] public GiftDiscoveryType DiscoveryType { get; set; }
-        [Key("interactId")] public int InteractId { get; set; }
-        [Key("itemId")] public int ItemId { get; set; }
-        [Key("corruptionDelta")] public int CorruptionDelta { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_GIFT_PROGRESS : IMessagePackObject
-    {
-        [Key("deliveredCount")] public int DeliveredCount { get; set; }
-        [Key("requiredCount")] public int RequiredCount { get; set; }
-        [Key("finalPartId")] public int FinalPartId { get; set; }
-        [Key("isRaceComplete")] public bool IsRaceComplete { get; set; }
-        [Key("interactId")] public int InteractId { get; set; }
-        [Key("areaType")] public AreaType AreaType { get; set; }
-        [Key("hasPlacedGiftAtInteract")] public bool HasPlacedGiftAtInteract { get; set; }
-        [Key("hasPlacedGiftInArea")] public bool HasPlacedGiftInArea { get; set; }
-    }
-
     // ===== 색출 =====
 
     [MessagePackObject]
@@ -611,13 +404,6 @@ namespace network.common.data.models
         [Key("eliminatedPlayerId")] public long EliminatedPlayerId { get; set; }
         // 영향받는 플레이어에게만 전송됨
         [Key("newStatus")] public ManittoStatus NewStatus { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_PLAYER_STATUS_CHANGE : IMessagePackObject
-    {
-        [Key("playerId")] public long PlayerId { get; set; }
-        [Key("status")] public ManittoStatus Status { get; set; }
     }
 
     // ===== 1:1 상호작용 선택지 =====
@@ -744,18 +530,6 @@ namespace network.common.data.models
     }
 
     // ===== 시한부 사보타주 =====
-
-    /// <summary>
-    ///     훼손으로 미션 목적지가 재설정된 플레이어에게 전송
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_MISSION_REDIRECTED : IMessagePackObject
-    {
-        [Key("currentStep")] public int CurrentStep { get; set; }
-        [Key("newTargetArea")] public int NewTargetArea { get; set; }
-        [Key("newTargetInteractId")] public int NewTargetInteractId { get; set; }
-        [Key("newTargetActionId")] public int NewTargetActionId { get; set; }
-    }
 
     // ===== 게임 결과 =====
 

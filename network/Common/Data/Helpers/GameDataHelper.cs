@@ -32,13 +32,10 @@ namespace network.common.data.helpers
                     validate: GameAreaNameData.Validate),
                 (fileName: DataFiles.AreaRule, init: GameAreaRuleData.Initialize,
                     validate: GameAreaRuleData.Validate),
-                (fileName: DataFiles.RoomEntryEvent, init: GameRoomEntryEventData.Initialize, validate: null),
                 (fileName: DataFiles.SystemText, init: GameSystemTextData.Initialize, validate: null),
                 (fileName: DataFiles.StatusEffectInfo, init: GameStatusEffectData.Initialize, validate: null),
                 (fileName: DataFiles.DoorInfo, init: GameDoorData.Initialize, validate: null),
                 (fileName: DataFiles.AreaConnection, init: GameAreaConnectionData.Initialize, validate: null),
-                (fileName: DataFiles.CorruptionText, init: GameCorruptionTextData.Initialize,
-                    validate: GameCorruptionTextData.Validate),
                 (fileName: DataFiles.ErrorMessage, init: GameErrorMessageData.Initialize, validate: null)
             };
 
@@ -110,22 +107,6 @@ namespace network.common.data.helpers
             {
                 var filePath = GetCsvFilePath(fileName);
                 Log($"[GameDataHelper] Loading: {filePath}");
-                try
-                {
-                    loadedData[fileName] = CsvHelper.LoadCsv(filePath);
-                    Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
-                }
-                catch (Exception ex)
-                {
-                    LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
-                    throw;
-                }
-            }
-
-            // 반복 방 사건 데이터 로드
-            foreach (var fileName in DataFiles.RoomEvent.ALL)
-            {
-                var filePath = GetCsvFilePath(fileName);
                 try
                 {
                     loadedData[fileName] = CsvHelper.LoadCsv(filePath);
@@ -237,12 +218,6 @@ namespace network.common.data.helpers
                 init(loadedData[fileName]);
             }
 
-            GameRoomEventData.Initialize(
-                loadedData[DataFiles.RoomEvent.Master],
-                loadedData[DataFiles.RoomEvent.Choice]);
-            GameRoomEventResponseItemData.Initialize(
-                loadedData[DataFiles.RoomEvent.ResponseItem]);
-
             // Buff data
             GameBuffData.Initialize(loadedData[DataFiles.BuffInfo]);
 
@@ -275,12 +250,6 @@ namespace network.common.data.helpers
             GameMissionData.Initialize(loadedData[DataFiles.Mission.Step]);
             PartRecipeData.Initialize(loadedData[DataFiles.Mission.PartRecipe]);
             PrerequisiteItemData.Initialize(loadedData[DataFiles.Mission.PrerequisiteItem]);
-            GameMissionGraphData.Initialize(
-                loadedData[DataFiles.Mission.GraphNode],
-                loadedData[DataFiles.Mission.GraphRecipe],
-                loadedData[DataFiles.Mission.StoryletStart],
-                loadedData[DataFiles.Mission.StoryletPool]);
-
             GameChecklistData.Initialize(
                 loadedData[DataFiles.Checklist.Rule],
                 loadedData[DataFiles.Checklist.TaskPool],
@@ -456,167 +425,6 @@ namespace network.common.data.helpers
                 }
             }
 
-            foreach (var node in GameMissionGraphData.GetAllNodes())
-            {
-                bool isSharedStoryletNode = node.JobTitle == 0 && node.HasStoryletMetadata;
-
-                if (!isSharedStoryletNode && !Enum.IsDefined(typeof(JobTitle), (JobTitle)node.JobTitle))
-                    errors.Add($"mission_graph_node [{node.NodeId}]: job_title={node.JobTitle} invalid");
-
-                if (!Enum.IsDefined(typeof(MissionGraphNodeKind), node.NodeKind))
-                    errors.Add($"mission_graph_node [{node.NodeId}]: node_kind={node.NodeKind} invalid");
-
-                if (node.AreaType > 0 && !Enum.IsDefined(typeof(AreaType), (AreaType)node.AreaType))
-                    errors.Add($"mission_graph_node [{node.NodeId}]: area_type={node.AreaType} invalid");
-
-                if (node.ObjectType > 0 && !Enum.IsDefined(typeof(InteractableObjectType), (InteractableObjectType)node.ObjectType))
-                    errors.Add($"mission_graph_node [{node.NodeId}]: object_type={node.ObjectType} invalid");
-
-                if (node.InteractId > 0)
-                {
-                    var interactable = interactables.FirstOrDefault(info => info.Id == node.InteractId);
-                    if (interactable == null)
-                    {
-                        errors.Add($"mission_graph_node [{node.NodeId}]: interact_id={node.InteractId} not found");
-                    }
-                    else
-                    {
-                        if (node.AreaType > 0 && interactable.ZoneId != node.AreaType)
-                            errors.Add(
-                                $"mission_graph_node [{node.NodeId}]: interact_id={node.InteractId} area mismatch ({interactable.ZoneId} != {node.AreaType})");
-
-                        if (node.ObjectType > 0 && (int)interactable.ObjectType != node.ObjectType)
-                            errors.Add(
-                                $"mission_graph_node [{node.NodeId}]: interact_id={node.InteractId} object mismatch ({(int)interactable.ObjectType} != {node.ObjectType})");
-                    }
-                }
-                else if (node.AreaType > 0 && node.ObjectType > 0)
-                {
-                    bool hasTarget = interactables.Any(info =>
-                        info.ZoneId == node.AreaType && (int)info.ObjectType == node.ObjectType);
-                    if (!hasTarget)
-                    {
-                        errors.Add(
-                            $"mission_graph_node [{node.NodeId}]: no interactable for area={node.AreaType}, object_type={node.ObjectType}");
-                    }
-                }
-
-                foreach (var partId in node.RequiredPartIds)
-                {
-                    var part = GameMissionData.GetPart(partId);
-                    if (part == null)
-                        errors.Add($"mission_graph_node [{node.NodeId}]: required_part_id={partId} not found");
-                    else if (!isSharedStoryletNode && part.JobTitle != node.JobTitle)
-                        errors.Add($"mission_graph_node [{node.NodeId}]: required_part_id={partId} job mismatch");
-                }
-
-                foreach (var itemId in node.RequiredItemIds)
-                {
-                    if (!itemIds.Contains(itemId))
-                        errors.Add($"mission_graph_node [{node.NodeId}]: required_item_id={itemId} not found in item_info");
-                }
-
-                foreach (var requiredNodeId in node.RequiredNodeIds)
-                {
-                    var requiredNode = GameMissionGraphData.GetNode(requiredNodeId);
-                    if (requiredNode == null)
-                        errors.Add($"mission_graph_node [{node.NodeId}]: required_node_id={requiredNodeId} not found");
-                    else if (!isSharedStoryletNode && requiredNode.JobTitle != node.JobTitle)
-                        errors.Add($"mission_graph_node [{node.NodeId}]: required_node_id={requiredNodeId} job mismatch");
-                }
-
-                foreach (var unlockNodeId in node.UnlockNodeIds)
-                {
-                    var unlockNode = GameMissionGraphData.GetNode(unlockNodeId);
-                    if (unlockNode == null)
-                        errors.Add($"mission_graph_node [{node.NodeId}]: unlock_node_id={unlockNodeId} not found");
-                    else if (!isSharedStoryletNode && unlockNode.JobTitle != node.JobTitle)
-                        errors.Add($"mission_graph_node [{node.NodeId}]: unlock_node_id={unlockNodeId} job mismatch");
-                }
-
-                if (node.OutputPartId > 0)
-                {
-                    var outputPart = GameMissionData.GetPart(node.OutputPartId);
-                    if (outputPart == null)
-                        errors.Add($"mission_graph_node [{node.NodeId}]: output_part_id={node.OutputPartId} not found");
-                    else if (!isSharedStoryletNode && outputPart.JobTitle != node.JobTitle)
-                        errors.Add($"mission_graph_node [{node.NodeId}]: output_part_id={node.OutputPartId} job mismatch");
-                }
-
-                if (node.TargetAreaType > 0 && !Enum.IsDefined(typeof(AreaType), (AreaType)node.TargetAreaType))
-                    errors.Add($"mission_graph_node [{node.NodeId}]: target_area_type={node.TargetAreaType} invalid");
-
-                if (node.TargetObjectType > 0 &&
-                    !Enum.IsDefined(typeof(InteractableObjectType), (InteractableObjectType)node.TargetObjectType))
-                    errors.Add($"mission_graph_node [{node.NodeId}]: target_object_type={node.TargetObjectType} invalid");
-
-                if (node.TargetAreaType > 0 && node.TargetObjectType > 0)
-                {
-                    bool hasTarget = interactables.Any(info =>
-                        info.ZoneId == node.TargetAreaType && (int)info.ObjectType == node.TargetObjectType);
-                    if (!hasTarget)
-                    {
-                        errors.Add(
-                            $"mission_graph_node [{node.NodeId}]: no target interactable for target_area={node.TargetAreaType}, target_object_type={node.TargetObjectType}");
-                    }
-                }
-
-                if (node.RequiredOutputItemId > 0 &&
-                    GameMissionData.GetPart(node.RequiredOutputItemId) == null &&
-                    !itemIds.Contains(node.RequiredOutputItemId))
-                {
-                    errors.Add(
-                        $"mission_graph_node [{node.NodeId}]: required_output_item_id={node.RequiredOutputItemId} not found in mission_step or item_info");
-                }
-
-                if (node.RecipeId > 0 && GameMissionGraphData.GetRecipe(node.RecipeId) == null)
-                    errors.Add($"mission_graph_node [{node.NodeId}]: recipe_id={node.RecipeId} not found");
-            }
-
-            foreach (var recipe in GameMissionGraphData.GetAllRecipes())
-            {
-                if (!Enum.IsDefined(typeof(JobTitle), (JobTitle)recipe.JobTitle))
-                    errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: job_title={recipe.JobTitle} invalid");
-
-                if (recipe.InputPartIds.Count < 2)
-                    errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: input_part_ids must contain at least 2 parts");
-
-                foreach (var inputPartId in recipe.InputPartIds)
-                {
-                    var inputPart = GameMissionData.GetPart(inputPartId);
-                    if (inputPart == null)
-                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: input_part_id={inputPartId} not found");
-                    else if (inputPart.JobTitle != recipe.JobTitle)
-                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: input_part_id={inputPartId} job mismatch");
-                }
-
-                if (recipe.OutputPartId > 0)
-                {
-                    var outputPart = GameMissionData.GetPart(recipe.OutputPartId);
-                    if (outputPart == null)
-                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: output_part_id={recipe.OutputPartId} not found");
-                    else if (outputPart.JobTitle != recipe.JobTitle)
-                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: output_part_id={recipe.OutputPartId} job mismatch");
-                }
-
-                foreach (var requiredNodeId in recipe.RequiredNodeIds)
-                {
-                    var requiredNode = GameMissionGraphData.GetNode(requiredNodeId);
-                    if (requiredNode == null)
-                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: required_node_id={requiredNodeId} not found");
-                    else if (requiredNode.JobTitle != recipe.JobTitle)
-                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: required_node_id={requiredNodeId} job mismatch");
-                }
-
-                foreach (var unlockNodeId in recipe.UnlockNodeIds)
-                {
-                    var unlockNode = GameMissionGraphData.GetNode(unlockNodeId);
-                    if (unlockNode == null)
-                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: unlock_node_id={unlockNodeId} not found");
-                    else if (unlockNode.JobTitle != recipe.JobTitle)
-                        errors.Add($"mission_graph_recipe [{recipe.RecipeId}]: unlock_node_id={unlockNodeId} job mismatch");
-                }
-            }
         }
 
         private static class DataFiles
@@ -625,20 +433,10 @@ namespace network.common.data.helpers
             public const string LoadingText = "loading_text.csv";
             public const string AreaName = "area_name.csv";
             public const string AreaRule = "area_rule.csv";
-            public const string RoomEntryEvent = "room_entry_event.csv";
-            public static class RoomEvent
-            {
-                public const string Master = "room_event_master.csv";
-                public const string Choice = "room_event_choice.csv";
-                public const string ResponseItem = "room_event_response_item.csv";
-
-                public static readonly string[] ALL = new[] { Master, Choice, ResponseItem };
-            }
             public const string SystemText = "system_text.csv";
             public const string StatusEffectInfo = "status_effect_info.csv";
             public const string DoorInfo = "door_info.csv";
             public const string AreaConnection = "map_connections.csv";
-            public const string CorruptionText = "corruption_text.csv";
             public const string ErrorMessage = "error_message.csv";
             public const string LocalizationText = "localization.csv";
 
@@ -659,20 +457,12 @@ namespace network.common.data.helpers
                 public const string Step = "mission_step.csv";
                 public const string PartRecipe = "part_recipe.csv";
                 public const string PrerequisiteItem = "prerequisite_item.csv";
-                public const string GraphNode = "mission_graph_node.csv";
-                public const string GraphRecipe = "mission_graph_recipe.csv";
-                public const string StoryletStart = "mission_storylet_start.csv";
-                public const string StoryletPool = "mission_storylet_pool.csv";
 
                 public static readonly string[] ALL = new[]
                 {
                     Step,
                     PartRecipe,
-                    PrerequisiteItem,
-                    GraphNode,
-                    GraphRecipe,
-                    StoryletStart,
-                    StoryletPool
+                    PrerequisiteItem
                 };
             }
 
