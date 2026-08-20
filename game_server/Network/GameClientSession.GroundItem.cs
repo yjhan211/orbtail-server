@@ -416,32 +416,6 @@ public partial class GameClientSession
         };
     }
 
-    private void SpawnGroundItemsFromExplore(InteractableInfoData info, RngCollectOutcome outcome)
-    {
-        if (outcome.DroppedItemIds.Count == 0) return;
-
-        var origin = CellToWorldPosition(new Cell(info.CellX, info.CellY));
-        var area = (AreaType)info.ZoneId;
-        var spawned = _groundItemManager.SpawnItems(CurrentMapSubId, area,
-            origin.X, origin.Y, outcome.DroppedItemIds,
-            mapId: CurrentMapId,
-            discovererPlayerId: PlayerId.GetValueOrDefault(),
-            discovererPickupWindow: GroundItemManager.DiscovererPickupWindow);
-        BroadcastGroundItemsSpawned(area, spawned);
-        long priorityExpiresAtUnixMs = DateTimeOffset.UtcNow
-            .Add(GroundItemManager.DiscovererPickupWindow)
-            .ToUnixTimeMilliseconds();
-        foreach (var item in spawned)
-            _gameEventLogManager.LogGroundItemSpawned(
-                CurrentMapSubId,
-                PlayerId.GetValueOrDefault(),
-                item.GroundItemUid,
-                item.ItemId,
-                area.ToString(),
-                priorityExpiresAtUnixMs,
-                isBot: false);
-    }
-
     private void BroadcastGroundItemsSpawned(AreaType area, IReadOnlyList<GroundItemInfo> spawned)
     {
         if (spawned.Count == 0) return;

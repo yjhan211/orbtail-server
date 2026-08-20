@@ -17,7 +17,6 @@ namespace game_server.network;
 /// </summary>
 public partial class GameClientSession
 {
-    private const int GiftRecallStaminaCost = 5;
     private const int ManittoTargetAnswerIndexOffset = 100000;
     private const int ManittoTargetAnswerTextId = 11044;
 
@@ -25,53 +24,7 @@ public partial class GameClientSession
     // 따라가기와 공유 자원이라 의심에 쓸수록 따라갈 여력이 준다. 끄기는 무료, 재진입이 비싸 마이크로 토글도 막힌다. 튜닝 노브.
     private const int BookmarkActivationStaminaCost = 15;
 
-    private static readonly int MissionInfoPacketBudget = Config.BUFFER_SIZE - Config.HEADER_SIZE - 4 - 8 - 128;
     private readonly HashSet<int> _pendingChecklistActivityFinish = new();
-
-    /// <summary>
-    ///     v0.2.0 — 미션 정보 전송 (게임 접속 시). 직책별 7부품 메타데이터 전체 송신.
-    /// </summary>
-    private void SendMissionInfo()
-    {
-        if (!PlayerId.HasValue) return;
-
-        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
-        if (state == null) return;
-
-        var allParts = GameMissionData.GetPartsIncludingShared((short)MyJobTitle);
-        var partInfos = allParts.Select(p => new MissionPartInfo
-        {
-            PartId = p.PartId,
-            PartNameKr = p.PartNameKr,
-            PartTier = (int)p.PartTier,
-            TargetArea = p.TargetArea,
-            TargetObjectType = p.TargetObjectType,
-            PrerequisiteShareGroup = p.PrerequisiteShareGroup,
-            IsCollected = state.CollectedParts.Contains(p.PartId),
-            NarrativeKr = p.NarrativeKr ?? "",
-            NarrativeEn = p.NarrativeEn ?? "",
-            NarrativeJp = p.NarrativeJp ?? ""
-        }).ToList();
-
-        var graphNodes = BuildMissionGraphNodeProgress(state);
-        var shortRewards = BuildMissionShortRewardInfoList(state);
-        var chunks = BuildMissionInfoChunks(state, allParts.Count, partInfos, graphNodes, shortRewards);
-
-        for (int i = 0; i < chunks.Count; i++)
-        {
-            var chunkMsg = chunks[i];
-            chunkMsg.ChunkIndex = i;
-            chunkMsg.IsEnd = i == chunks.Count - 1;
-
-            using var chunkPacket = Packet.Create((int)Protocol.G_TO_C_MISSION_INFO, PlayerId.Value);
-            chunkPacket.SetBody(MessagePackSerializer.Serialize(chunkMsg));
-            Send(chunkPacket);
-        }
-
-        Logger.LogDebug(
-            "Sent mission info to PlayerId={PlayerId} in {ChunkCount} packets: Parts={PartCount}, Nodes={NodeCount}, Rewards={RewardCount}",
-            PlayerId, chunks.Count, partInfos.Count, graphNodes.Count, shortRewards.Count);
-    }
 
     private void SendChecklistInfo()
     {
@@ -237,8 +190,6 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        CancelPendingRoomEncounterTurnsForCurrentPlayer("ChecklistActivityStart");
-
         var info = GameInteractableData.Get(msg.InteractId);
         if (info == null)
         {
@@ -256,7 +207,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        int staminaCost = ApplyDutyStaminaSaverToCost(Math.Max(0, task.StaminaCost));
+        int staminaCost = Math.Max(0, task.StaminaCost); // 업무 체력 보존(미션 단서 보상)은 미션 스택과 함께 퇴역 (#238)
         if (staminaCost > 0)
             ModifyStats(-staminaCost);
 
@@ -312,7 +263,6 @@ public partial class GameClientSession
 
         SendChecklistActivityResult(msg.InteractId, errorCode, awardedScore, awardedContribution);
         BroadcastPlayerState(global::network.common.PlayerState.IDLE);
-        ResolvePendingRoomDiscoveriesAfterExploreFinished(info != null ? (AreaType)info.ZoneId : CurrentArea);
         return Task.CompletedTask;
     }
 
@@ -353,89 +303,8 @@ public partial class GameClientSession
         Send(packet);
     }
 
-    private List<G_TO_C_MISSION_INFO> BuildMissionInfoChunks(
-        PlayerPartState state,
-        int totalSteps,
-        List<MissionPartInfo> parts,
-        List<MissionGraphNodeProgressInfo> graphNodes,
-        List<MissionShortRewardInfo> shortRewards)
-    {
-        var chunks = new List<G_TO_C_MISSION_INFO>();
-        var current = CreateMissionInfoChunk(state, totalSteps, includeStoryletSnapshot: true);
-
-        void CommitCurrent()
-        {
-            chunks.Add(current);
-            current = CreateMissionInfoChunk(state, totalSteps, includeStoryletSnapshot: false);
-        }
-
-        void AddItem<T>(
-            T item,
-            Action<G_TO_C_MISSION_INFO, T> add,
-            Action<G_TO_C_MISSION_INFO, T> remove)
-        {
-            add(current, item);
-            if (GetMissionInfoPayloadSize(current) <= MissionInfoPacketBudget) return;
-
-            remove(current, item);
-            if (!IsMissionInfoChunkEmpty(current)) CommitCurrent();
-
-            add(current, item);
-            int payloadSize = GetMissionInfoPayloadSize(current);
-            if (payloadSize > MissionInfoPacketBudget)
-            {
-                Logger.LogWarning(
-                    "Single mission info entry exceeds packet budget: PlayerId={PlayerId}, Size={Size}, Budget={Budget}",
-                    PlayerId, payloadSize, MissionInfoPacketBudget);
-            }
-        }
-
-        foreach (var part in parts)
-            AddItem(part, (msg, item) => msg.Parts.Add(item), (msg, item) => msg.Parts.Remove(item));
-
-        foreach (var node in graphNodes)
-            AddItem(node, (msg, item) => msg.GraphNodes.Add(item), (msg, item) => msg.GraphNodes.Remove(item));
-
-        foreach (var reward in shortRewards)
-            AddItem(reward, (msg, item) => msg.ShortRewards.Add(item), (msg, item) => msg.ShortRewards.Remove(item));
-
-        if (!IsMissionInfoChunkEmpty(current) || chunks.Count == 0) chunks.Add(current);
-        return chunks;
-    }
-
-    private G_TO_C_MISSION_INFO CreateMissionInfoChunk(PlayerPartState state, int totalSteps, bool includeStoryletSnapshot)
-    {
-        var msg = new G_TO_C_MISSION_INFO
-        {
-            JobTitle = MyJobTitle,
-            CurrentStep = state.CollectedParts.Count,
-            TotalSteps = totalSteps,
-            TargetArea = 0,
-            TargetInteractId = 0,
-            TargetActionId = 0,
-            Parts = [],
-            GraphNodes = [],
-            ShortRewards = []
-        };
-
-        if (!includeStoryletSnapshot) return msg;
-
-        lock (state.SyncRoot)
-        {
-            msg.DiscoveredStoryletIds = state.DiscoveredStoryletIds.ToList();
-            msg.TrackedStoryletIds = state.TrackedStoryletIds.ToList();
-            msg.ClaimedStoryletIds = state.ClaimedStoryletIds.ToList();
-            msg.LostStoryletIds = state.LostStoryletIds.ToList();
-            msg.OwnedClueTags = state.OwnedClueTags.ToList();
-            msg.CraftedFunctionItemIds = state.CraftedFunctionItems.ToList();
-            msg.VisibleVictoryTraceIds = state.VisibleVictoryTraceIds.ToList();
-        }
-
-        return msg;
-    }
-
     private static int GetMissionInfoPayloadSize(G_TO_C_MISSION_INFO msg) =>
-        MessagePackSerializer.Serialize(msg).Length;
+MessagePackSerializer.Serialize(msg).Length;
 
     private static bool IsMissionInfoChunkEmpty(G_TO_C_MISSION_INFO msg) =>
         msg.Parts.Count == 0 &&
@@ -448,67 +317,6 @@ public partial class GameClientSession
         msg.OwnedClueTags.Count == 0 &&
         msg.CraftedFunctionItemIds.Count == 0 &&
         msg.VisibleVictoryTraceIds.Count == 0;
-
-    private Task HandleRecallGift(C_TO_G_RECALL_GIFT msg)
-    {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (IsRoundActionLocked(out _))
-        {
-            SendRecallGiftResult(ErrorCode.INVALID_GAME_STATE, new RecallGiftResult
-            {
-                InteractId = msg.InteractId
-            });
-            return Task.CompletedTask;
-        }
-
-        var result = _missionManager.TryRecallGift(CurrentMapSubId, PlayerId.Value, msg.InteractId);
-        if (!result.Success)
-        {
-            SendRecallGiftResult(result.ErrorCode, result);
-            return Task.CompletedTask;
-        }
-
-        var updatedItem = _inGameInventoryManager.AddItem(
-            CurrentMapSubId,
-            PlayerId.Value,
-            result.ItemId,
-            1,
-            GiftState.Prepared);
-
-        using (var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE([updatedItem]))
-        {
-            Send(inventoryPacket);
-        }
-
-        result.ItemUid = updatedItem.ItemUid;
-        ModifyStats(staminaDelta: -GiftRecallStaminaCost);
-        SendRecallGiftResult(ErrorCode.SUCCESS, result);
-
-        _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
-            $"비밀 선물 회수: ItemId={result.ItemId}, InteractId={result.InteractId}, Target={result.TargetPlayerId}",
-            isBot: false);
-
-        return Task.CompletedTask;
-    }
-
-    private void SendRecallGiftResult(ErrorCode errorCode, RecallGiftResult result)
-    {
-        if (!PlayerId.HasValue) return;
-
-        using var packet = Packet.Create((int)Protocol.G_TO_C_RECALL_GIFT_RESULT, PlayerId.Value);
-        var msg = new G_TO_C_RECALL_GIFT_RESULT
-        {
-            ErrorCode = errorCode,
-            ItemUid = result.ItemUid,
-            ItemId = result.ItemId,
-            InteractId = result.InteractId,
-            AreaType = result.AreaType,
-            HasPlacedGiftAtInteract = result.HasPlacedGiftAtInteract,
-            HasPlacedGiftInArea = result.HasPlacedGiftInArea
-        };
-        packet.SetBody(MessagePackSerializer.Serialize(msg));
-        Send(packet);
-    }
 
     private Task HandleSettlementNominate(C_TO_G_SETTLEMENT_NOMINATE msg)
     {
@@ -754,7 +562,6 @@ public partial class GameClientSession
         foreach (var (playerId, newStatus) in affected)
         {
             if (newStatus != ManittoStatus.TERMINAL) continue;
-            _missionManager.NotifyTargetLost(CurrentMapSubId, playerId, eliminatedPlayerId, reason, causePlayerId);
         }
 
         // 2. 영향받는 플레이어에게 개별 상태 변경 알림
@@ -905,7 +712,6 @@ public partial class GameClientSession
         _areaRuleManager.RemoveMatchingState(matchingId);
         _itemPoolManager.RemoveMatchingState(matchingId);
         _doorStateManager.ClearMatching(matchingId);
-        _missionManager.CleanupMatching(matchingId);
         _interactionChoiceService.CleanupMatching(matchingId);
         _encounterRevealManager.CleanupMatching(matchingId);
         _manittoChainManager.CleanupMatching(matchingId);
@@ -1057,102 +863,6 @@ public partial class GameClientSession
         }
     }
 
-    private Task HandlePlaceGift(C_TO_G_PLACE_GIFT msg)
-    {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (IsRoundActionLocked(out _))
-        {
-            SendPlaceGiftResult(ErrorCode.INVALID_GAME_STATE, msg, CurrentArea, TargetPlayerId);
-            return Task.CompletedTask;
-        }
-
-        var inventoryItem = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value)
-            .GetItem(msg.ItemUid);
-        bool canPlaceGiftItem = inventoryItem != null &&
-                                (inventoryItem.GiftState == GiftState.Prepared ||
-                                 GameItemData.GetItemType(inventoryItem.ItemId) == ItemType.CONSUMABLE);
-        if (inventoryItem == null || inventoryItem.ItemId != msg.ItemId || inventoryItem.Count <= 0 ||
-            !canPlaceGiftItem)
-        {
-            SendPlaceGiftResult(ErrorCode.ITEM_NOT_FOUND, msg, CurrentArea, TargetPlayerId);
-            return Task.CompletedTask;
-        }
-
-        var result = _missionManager.TryPlaceGift(
-            CurrentMapSubId,
-            PlayerId.Value,
-            TargetPlayerId,
-            msg.ItemUid,
-            msg.ItemId,
-            CurrentArea,
-            msg.InteractId);
-
-        if (!result.Success)
-        {
-            SendPlaceGiftResult(result.ErrorCode, msg, result.AreaType, result.TargetPlayerId);
-            return Task.CompletedTask;
-        }
-
-        if (!_inGameInventoryManager.TryRemoveItem(CurrentMapSubId, PlayerId.Value, msg.ItemUid, 1,
-                out var updatedItem) || updatedItem == null)
-        {
-            _missionManager.RollbackPlacedGift(CurrentMapSubId, PlayerId.Value, msg.ItemUid);
-            SendPlaceGiftResult(ErrorCode.ITEM_NOT_FOUND, msg, result.AreaType, result.TargetPlayerId);
-            return Task.CompletedTask;
-        }
-
-        using (var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE([updatedItem]))
-        {
-            Send(inventoryPacket);
-        }
-
-        SendPlaceGiftResult(ErrorCode.SUCCESS, msg, result.AreaType, result.TargetPlayerId);
-        RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
-        BroadcastRngCollectCooldown(msg.InteractId, 0);
-        SendTargetBotToPlacedGift(result.TargetPlayerId, result.AreaType, result.InteractId);
-
-        _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
-            $"비밀 선물 설치: ItemId={msg.ItemId}, InteractId={msg.InteractId}, Target={TargetPlayerId}",
-            isBot: false);
-
-        return Task.CompletedTask;
-    }
-
-    private void SendTargetBotToPlacedGift(long targetPlayerId, AreaType areaType, int interactId)
-    {
-        if (!BotPlayerManager.IsBotPlayerId(targetPlayerId)) return;
-
-        bool started = _botPlayerManager.TrySendBotToInteract(
-            CurrentMapSubId,
-            targetPlayerId,
-            areaType,
-            interactId,
-            _areaClosureManager);
-
-        if (started)
-            Logger.LogInformation("선물 설치 후 타겟 봇 회수 이동: BotId={Bot}, InteractId={InteractId}",
-                targetPlayerId, interactId);
-    }
-
-    private void SendPlaceGiftResult(ErrorCode errorCode, C_TO_G_PLACE_GIFT request, AreaType areaType,
-        long targetPlayerId)
-    {
-        if (!PlayerId.HasValue) return;
-
-        using var packet = Packet.Create((int)Protocol.G_TO_C_PLACE_GIFT_RESULT, PlayerId.Value);
-        var msg = new G_TO_C_PLACE_GIFT_RESULT
-        {
-            ErrorCode = errorCode,
-            ItemUid = request.ItemUid,
-            ItemId = request.ItemId,
-            InteractId = request.InteractId,
-            TargetPlayerId = targetPlayerId,
-            AreaType = areaType
-        };
-        packet.SetBody(MessagePackSerializer.Serialize(msg));
-        Send(packet);
-    }
-
     /// <summary>
     ///     마니또 → 타겟 구역 위치 전송
     /// </summary>
@@ -1248,153 +958,6 @@ public partial class GameClientSession
     ///     #87: 블러프 우회(off-pool 오브젝트 사용) 시 추가 스태미나 비용. 기본 액션 비용에 더한다.
     ///     기존 -3 또는 0 → 총 -8이 되도록 추가량을 산정.
     /// </summary>
-    private const int BluffBypassExtraStaminaCost = 5;
-
-    /// <summary>
-    ///     v0.2.0 — 탐색 완료 시 부품/선행 아이템 회수 체크.
-    ///     object_action.csv의 result_type=1 (REWARD_POOL) 액션 선택 시 호출됨.
-    ///     1) 자기 직책 발견 풀 매칭 → 부품 회수 (G_TO_C_PART_COLLECTED)
-    ///     2) prerequisite_item.csv 매칭 → 선행 아이템 회수 (G_TO_C_PREREQUISITE_COLLECTED)
-    ///     3) 둘 다 매칭 안되면 일반 탐색 — 미션 진행 없음
-    ///         #87: 자기 직책 발견 풀에 없는 오브젝트 사용 시 우회 비용 -5 스태미나 추가 차감(N11).
-    /// </summary>
-    public void CheckMissionProgress(AreaType area, int interactId, int actionId)
-    {
-        if (!PlayerId.HasValue) return;
-
-        // object_type 매핑 — interactId 기반으로 GameInteractableData에서 object_type 조회
-        var interactable = GameInteractableData.Get(interactId);
-        if (interactable == null) return;
-        int objectType = (int)interactable.ObjectType;
-
-        // 1. 부품 회수 시도 (자기 직책 소재 풀 매칭)
-        var collectResult = _missionManager.TryCollectPart(CurrentMapSubId, PlayerId.Value, area, objectType, interactId);
-        if (collectResult != null && collectResult.Success && collectResult.Part != null)
-        {
-            // 부품 회수 stamina 보상 제거 (#135)
-
-            using var partPacket = Packet.Create((int)Protocol.G_TO_C_PART_COLLECTED, PlayerId.Value);
-            var partMsg = new G_TO_C_PART_COLLECTED
-            {
-                PartId = collectResult.Part.PartId,
-                PartNameKr = collectResult.Part.PartNameKr,
-                PartTier = (int)collectResult.Part.PartTier,
-                StaminaReward = 0
-            };
-            partPacket.SetBody(MessagePackSerializer.Serialize(partMsg));
-            Send(partPacket);
-
-            _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
-                $"부품 회수: {collectResult.Part.PartNameKr} (체력+{collectResult.StaminaReward})", isBot: false);
-
-            // 호환: 단계 완료 패킷도 송신 (구 클라이언트 호환용)
-            using var legacyPacket = Packet.Create((int)Protocol.G_TO_C_MISSION_STEP_COMPLETE, PlayerId.Value);
-            var legacyMsg = new G_TO_C_MISSION_STEP_COMPLETE
-            {
-                CompletedStep = collectResult.Part.PartId,
-                StaminaReward = collectResult.StaminaReward,
-                NextTargetArea = 0,
-                NextTargetInteractId = 0,
-                NextTargetActionId = 0
-            };
-            legacyPacket.SetBody(MessagePackSerializer.Serialize(legacyMsg));
-            Send(legacyPacket);
-            return;
-        }
-
-        // 2. 선행 아이템 회수 시도 (장갑/드라이버 등 share_group)
-        if (TryCollectPrerequisiteWithNotice(area, objectType))
-            return;
-
-        // 3. 블러프 우회(off-pool) 비용 적용 (#87 N11)
-        ApplyBluffBypassCost(area, objectType);
-    }
-
-    /// <summary>
-    ///     #87: off-pool 오브젝트 탐색 시 추가 스태미나 차감.
-    ///     자기 직책 1단계 발견 풀(소재 + 선행 아이템) 어느 것도 매칭되지 않은 (area, objectType) 사용에 적용.
-    /// </summary>
-    private void ApplyBluffBypassCost(AreaType area, int objectType)
-    {
-        if (!PlayerId.HasValue) return;
-
-        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
-        if (state == null) return;
-
-        // 자기 직책의 모든 소재(Tier 0) (area, object_type) 풀 검사
-        var materials = GameMissionData.GetMaterials((short)state.JobTitle);
-        bool inMaterialPool = materials.Any(p =>
-            p.TargetArea == (int)area && p.TargetObjectType == objectType);
-        if (inMaterialPool) return;
-
-        // 자기 직책의 선행 아이템 위치 풀 검사
-        bool inPrereqPool = false;
-        foreach (var part in materials)
-        {
-            if (part.PrerequisiteShareGroup <= 0) continue;
-            var prereq = PrerequisiteItemData.GetForPart(part.PartId);
-            if (prereq == null) continue;
-            if (prereq.LocationArea == (int)area && prereq.LocationObjectType == objectType)
-            {
-                inPrereqPool = true;
-                break;
-            }
-        }
-        if (inPrereqPool) return;
-
-        // 우회 비용 차감 + 클라이언트 동기화
-        int prevStamina = Stamina;
-        ModifyStats(staminaDelta: -BluffBypassExtraStaminaCost);
-        int delta = Stamina - prevStamina;
-        Logger.LogInformation(
-            "블러프 우회 비용: PlayerId={PlayerId}, Area={Area}, ObjType={ObjType}, -{Cost}=({Delta})",
-            PlayerId, area, objectType, BluffBypassExtraStaminaCost, delta);
-    }
-
-    /// <summary>
-    ///     선행 아이템 회수 시도 + 클라이언트 알림. 매칭 시 true.
-    /// </summary>
-    private bool TryCollectPrerequisiteWithNotice(AreaType area, int objectType)
-    {
-        if (!PlayerId.HasValue) return false;
-
-        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
-        if (state == null) return false;
-
-        // 매칭 prereq 직접 찾기 (이름/share_group 알림용)
-        var materials = GameMissionData.GetMaterials((short)state.JobTitle);
-        PrerequisiteItem? matchedPrereq = null;
-        foreach (var part in materials)
-        {
-            if (part.PrerequisiteShareGroup <= 0) continue;
-            var prereq = PrerequisiteItemData.GetForPart(part.PartId);
-            if (prereq == null) continue;
-            if (prereq.LocationArea == (int)area && prereq.LocationObjectType == objectType)
-            {
-                matchedPrereq = prereq;
-                break;
-            }
-        }
-        if (matchedPrereq == null) return false;
-
-        bool success = _missionManager.TryCollectPrerequisite(CurrentMapSubId, PlayerId.Value, area, objectType);
-        if (!success) return false;
-
-        // 선행 아이템 회수 stamina 보상 제거 (#135)
-        const int prerequisiteStaminaReward = 0;
-
-        using var packet = Packet.Create((int)Protocol.G_TO_C_PREREQUISITE_COLLECTED, PlayerId.Value);
-        var msg = new G_TO_C_PREREQUISITE_COLLECTED
-        {
-            ShareGroup = matchedPrereq.ShareGroup,
-            ItemNameKr = matchedPrereq.ItemNameKr,
-            StaminaReward = prerequisiteStaminaReward
-        };
-        packet.SetBody(MessagePackSerializer.Serialize(msg));
-        Send(packet);
-
-        return true;
-    }
 
     private Task HandleBotInteractResponse(long botPlayerId, bool accepted)
     {
@@ -1598,57 +1161,7 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     스태미나 보상 적용 + 클라이언트 동기화.
-    /// </summary>
-    private void ApplyStaminaReward(int reward)
-    {
-        if (reward <= 0) return;
-        int prevStamina = Stamina;
-        Stamina = Math.Min(Stamina + reward, MaxStamina);
-        int staminaDelta = Stamina - prevStamina;
-        using var statsPacket = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(Stamina, staminaDelta, Corruption, 0);
-        Send(statsPacket);
-    }
-
-    /// <summary>
-    ///     #135 — 결합 후 인벤토리 sync: input 부품 제거(Count=0 알림) + output 부품 추가 한 번에 broadcast.
-    /// </summary>
-    private void SyncInventoryAfterCombine(int inputA, int inputB, int outputPartId)
-    {
-        if (!PlayerId.HasValue) return;
-
-        var items = new List<InGameItemInfo>();
-
-        foreach (int input in new[] { inputA, inputB })
-        {
-            int inputItemId = GameMissionData.GetPartItemId(input);
-            if (inputItemId == 0) continue;
-
-            var removed = _inGameInventoryManager.RemoveItemByItemId(CurrentMapSubId, PlayerId.Value, inputItemId);
-            if (removed != null)
-                items.Add(new InGameItemInfo { ItemUid = removed.ItemUid, ItemId = removed.ItemId, Count = 0 });
-        }
-
-        if (outputPartId > 0)
-        {
-            int outputItemId = GameMissionData.GetPartItemId(outputPartId);
-            if (outputItemId == 0) return;
-
-            var added = _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, outputItemId, 1,
-                GiftState.Prepared);
-            items.Add(added);
-        }
-
-        if (items.Count > 0)
-        {
-            using var packet = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(items);
-            Send(packet);
-        }
-    }
-
-    /// <summary>
-    ///     v0.2.0 — 부품 결합 요청 처리. 두 부품 결합 시도 → 결과 송신.
-    ///     #87: 최종 결합(IsRaceComplete) 시 즉시 게임 종료 — 다른 생존자 RACE_LOST 처리.
+    ///     조합 요청 처리 — 미션 부품 결합은 퇴역(#238), 배틀 아이템 조합만 남긴다 (차기 아이템 조합 축 재사용 대비).
     /// </summary>
     private Task HandleCombineParts(C_TO_G_COMBINE_PARTS msg)
     {
@@ -1658,74 +1171,12 @@ public partial class GameClientSession
             SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INVALID_GAME_STATE);
             return Task.CompletedTask;
         }
-        if (!HasInGamePartItem(msg.PartA) || !HasInGamePartItem(msg.PartB))
-        {
-            if (TryHandleBattleItemCombine(msg))
-                return Task.CompletedTask;
 
-            SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INSUFFICIENT_ITEM);
+        if (TryHandleBattleItemCombine(msg))
             return Task.CompletedTask;
-        }
 
-        var result = _missionManager.TryCombineParts(
-            CurrentMapSubId, PlayerId.Value, msg.PartA, msg.PartB, msg.ClientStartUnixMs,
-            requireCollectedParts: false);
-        if (!result.Success)
-        {
-            SendCombinePartsFailure(msg.PartA, msg.PartB, result.ErrorCode);
-            return Task.CompletedTask;
-        }
-
-        // 결합 stamina 보상 제거 (#135)
-
-        // 결합 결과 송신
-        using var packet = Packet.Create((int)Protocol.G_TO_C_PART_COMBINED, PlayerId.Value);
-        var combinedMsg = new G_TO_C_PART_COMBINED
-        {
-            RecipeId = result.Recipe?.Id ?? 0,
-            InputPartA = msg.PartA,
-            InputPartB = msg.PartB,
-            OutputPartId = result.OutputPart?.PartId ?? 0,
-            OutputPartNameKr = result.OutputPart?.PartNameKr ?? "",
-            StaminaReward = result.StaminaReward,
-            IsRaceComplete = result.IsRaceComplete
-        };
-        packet.SetBody(MessagePackSerializer.Serialize(combinedMsg));
-        Send(packet);
-
-        // #135 — 인벤토리 동기화: input 부품 제거 + output 선물 파트 추가
-        SyncInventoryAfterCombine(msg.PartA, msg.PartB, result.OutputPart?.PartId ?? 0);
-
-        _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
-            result.IsRaceComplete
-                ? $"최종 결합 완성! ({result.OutputPart?.PartNameKr ?? ""}) — race 완주"
-                : $"부품 결합: {result.OutputPart?.PartNameKr ?? ""} (체력+{result.StaminaReward})",
-            isBot: false);
-
-        // 호환: 최종 결합 시 ALL_COMPLETE 패킷 송신 (구 클라이언트 호환)
-        if (result.IsRaceComplete)
-        {
-            using var allCompletePacket = Packet.Create((int)Protocol.G_TO_C_MISSION_ALL_COMPLETE, PlayerId.Value);
-            var allCompleteMsg = new G_TO_C_MISSION_ALL_COMPLETE { JobTitle = MyJobTitle };
-            allCompletePacket.SetBody(MessagePackSerializer.Serialize(allCompleteMsg));
-            Send(allCompletePacket);
-
-            Logger.LogInformation("race 완주: PlayerId={PlayerId}, 직책={Job} — 즉시 게임 종료", PlayerId, MyJobTitle);
-
-            // #87: 30초 봉쇄 폐기 — race 완주 즉시 게임 종료
-            EndGameByRaceCompletion(PlayerId.Value);
-        }
-
+        SendCombinePartsFailure(msg.PartA, msg.PartB, ErrorCode.INSUFFICIENT_ITEM);
         return Task.CompletedTask;
-    }
-
-    private bool HasInGamePartItem(int partId)
-    {
-        int itemId = GameMissionData.GetPartItemId(partId);
-        if (itemId == 0) return false;
-
-        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId!.Value);
-        return inventory.GetItemCount(itemId) > 0;
     }
 
     private bool TryHandleBattleItemCombine(C_TO_G_COMBINE_PARTS msg)
@@ -1872,14 +1323,6 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     #26: 봇 race 완주 시 게임 즉시 종료. 임의 세션에서 호출되어 winner는 봇 PlayerId.
-    /// </summary>
-    public void EndGameByBotRaceCompletion(long botWinnerId)
-    {
-        EndGameByRaceCompletion(botWinnerId);
-    }
-
-    /// <summary>
     ///     #26: 봇 탈락에 의한 체인 단절 영향을 본 세션에 반영.
     ///     ManittoStatus 갱신 + ELIMINATED가 아닌 경우 G_TO_C_CHAIN_BREAK 송신.
     /// </summary>
@@ -1902,107 +1345,6 @@ public partial class GameClientSession
         Send(chainPacket);
     }
 
-    /// <summary>
-    ///     #87: race 완주에 의한 게임 즉시 종료.
-    ///     완주자를 winner로 하고, 그 외 모든 생존자를 RACE_LOST 사유로 탈락 처리한 뒤 결과 패킷을 전송한다.
-    /// </summary>
-    private void EndGameByRaceCompletion(long winnerId)
-    {
-        if (DevFlags.DisableGameEnd)
-        {
-            Logger.LogWarning("[DEV] 게임 종료 차단됨 (DISABLE_GAME_END=1): EndGameByRaceCompletion winner={Winner}",
-                winnerId);
-            return;
-        }
-
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-
-        // 완주자 외 모든 생존자 탈락 (RACE_LOST)
-        foreach (var session in allSessions)
-        {
-            if (!session.PlayerId.HasValue) continue;
-            if (session.PlayerId.Value == winnerId) continue;
-            if (session.IsEliminated) continue;
-
-            // 체인 매니저에 탈락 등록 (chain break 브로드캐스트는 생략 — 어차피 즉시 게임 종료)
-            _ = ProcessElimination(
-                session.PlayerId.Value,
-                EliminationReason.RACE_LOST,
-                causePlayerId: winnerId,
-                deferGameOver: true);
-        }
-
-        // 완주자 본인은 ELIMINATED가 아니므로 별도 처리 없음 (BuildGameResult에서 정상 노출)
-        Logger.LogInformation("게임 즉시 종료(race 완주): MatchingId={MatchingId}, Winner={WinnerId}",
-            CurrentMapSubId, winnerId);
-
-        SendGameResult(allSessions, winnerId, isTimeout: false, CurrentMapSubId, "race_completion");
-    }
-
-    private const int GiftFoundCorruptionDelta = 30;
-
-    public void CheckGiftDiscovery(int interactId)
-    {
-        if (!PlayerId.HasValue) return;
-        if (!_missionManager.TryDiscoverGift(CurrentMapSubId, PlayerId.Value, interactId, out var result)) return;
-
-        if (result.DiscoveryType == GiftDiscoveryType.Other)
-        {
-            SendGiftDiscovered(result, 0);
-            return;
-        }
-
-        ModifyStats(corruptionDelta: GiftFoundCorruptionDelta);
-        SendGiftDiscovered(result, GiftFoundCorruptionDelta);
-        SendGiftProgressToOwner(result);
-
-        CheckResourceElimination();
-    }
-
-    private void SendGiftDiscovered(GiftDiscoveryResult result, int corruptionDelta)
-    {
-        if (!PlayerId.HasValue) return;
-
-        using var packet = Packet.Create((int)Protocol.G_TO_C_GIFT_DISCOVERED, PlayerId.Value);
-        var msg = new G_TO_C_GIFT_DISCOVERED
-        {
-            DiscoveryType = result.DiscoveryType,
-            InteractId = result.InteractId,
-            ItemId = result.ItemId,
-            CorruptionDelta = corruptionDelta
-        };
-        packet.SetBody(MessagePackSerializer.Serialize(msg));
-        Send(packet);
-    }
-
-    private void SendGiftProgressToOwner(GiftDiscoveryResult result)
-    {
-        var sessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-        var ownerSession = sessions.FirstOrDefault(s => s.PlayerId == result.OwnerPlayerId);
-        if (ownerSession == null)
-        {
-            if (BotPlayerManager.IsBotPlayerId(result.OwnerPlayerId))
-                _checklistManager.TryCompleteTargetGiftTask(CurrentMapSubId, result.OwnerPlayerId);
-            return;
-        }
-
-        ownerSession.CompleteTargetGiftChecklist();
-
-        using var packet = Packet.Create((int)Protocol.G_TO_C_GIFT_PROGRESS, result.OwnerPlayerId);
-        var msg = new G_TO_C_GIFT_PROGRESS
-        {
-            DeliveredCount = result.DeliveredCount,
-            RequiredCount = result.RequiredCount,
-            FinalPartId = result.FinalPartId,
-            IsRaceComplete = result.IsRaceComplete,
-            InteractId = result.InteractId,
-            AreaType = result.AreaType,
-            HasPlacedGiftAtInteract = result.HasPlacedGiftAtInteract,
-            HasPlacedGiftInArea = result.HasPlacedGiftInArea
-        };
-        packet.SetBody(MessagePackSerializer.Serialize(msg));
-        ownerSession.Send(packet);
-    }
 
     /// <summary>
     ///     정신력 100 도달 시 탈락 체크. 권고안 B(2026-05-05): Stamina 0 단독으로는 탈락 트리거 안 됨

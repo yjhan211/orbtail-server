@@ -21,15 +21,11 @@ namespace game_server.network;
 /// </summary>
 public partial class GameClientSession
 {
-    private static readonly bool MissionActionCollectBlockingEnabled = false;
-    private const int RngCollectGiftResultType = 5;
-    private const int RngCollectEncounterResultType = 6;
     private const int RngCollectItemResultType = 2;
     // #219 M2: 개봉 성공 = 3택 드래프트 개시 신호. 클라이언트 드래프트 패널이 이 타입으로 열린다.
     private const int RngCollectDraftResultType = 7;
     // #226: 개봉 즉시 랜덤 자동 소환 — 클라는 이 타입에서 팝업을 열지 않는다.
     private const int RngCollectAutoSummonResultType = 8;
-    private const int RngCollectStaminaCost = 5;
 
     // #217 P0-c: 스웜 아레나 탐색 스팟 — 비용·리젠 규칙은 봇과 공유하므로 Config에 있다.
     private const int SwarmExploreCooldownSeconds = Config.SWARM_EXPLORE_REGEN_SECONDS;
@@ -43,9 +39,7 @@ public partial class GameClientSession
 
     /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — 매칭 단위 추적.
     /// FINISH 도착 시 이 set에 있어야 결과 산출 진행.</summary>
-    private static readonly TimeSpan RngCollectPendingEncounterBlockDuration = TimeSpan.FromSeconds(10);
     private readonly HashSet<int> _pendingFinish = new();
-    private DateTime _rngCollectPendingEncounterBlockUntilUtc = DateTime.MinValue;
 
     private Task HandleRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
@@ -57,78 +51,8 @@ public partial class GameClientSession
             SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
             return Task.CompletedTask;
         }
-        if (IsEliminated)
-        {
-            SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
-            return Task.CompletedTask;
-        }
-        if (IsRoundActionLocked(out _))
-        {
-            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
-            return Task.CompletedTask;
-        }
-        if (_pendingRoomEntryEventId != 0)
-        {
-            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
-            ResendPendingRoomEntryEvent("RngCollectStartBlocked");
-            return Task.CompletedTask;
-        }
 
-        CancelPendingRoomEncounterTurnsForCurrentPlayer("RngCollectStart");
-
-        var info = GameInteractableData.Get(msg.InteractId);
-        if (info == null)
-        {
-            ClearRoomEncounterStartCandidates(msg.InteractId);
-            Logger.LogWarning("RNG START InteractId 미존재: {InteractId}", msg.InteractId);
-            SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
-            return Task.CompletedTask;
-        }
-
-        if (info.ZoneId != (int)CurrentArea)
-        {
-            SendRngCollectAck(msg.InteractId, ErrorCode.AREA_MISMATCH, 0);
-            return Task.CompletedTask;
-        }
-
-        if (!_areaItemStockManager.HasRemaining(CurrentMapSubId, info.ZoneId))
-        {
-            SendRngCollectAck(msg.InteractId, ErrorCode.INTERACTABLE_NOT_AVAILABLE, 0);
-            return Task.CompletedTask;
-        }
-        if (MissionActionCollectBlockingEnabled && HasAvailableMissionActionTarget(info))
-        {
-            Logger.LogDebug("RNG START mission action target blocked: PlayerId={PlayerId}, InteractId={InteractId}",
-                PlayerId, msg.InteractId);
-            SendRngCollectAck(msg.InteractId, ErrorCode.INTERACTABLE_NOT_AVAILABLE, 0);
-            return Task.CompletedTask;
-        }
-
-        if (!RngCollectCooldownStore.TryAcquireCooldown(
-                CurrentMapSubId, msg.InteractId, RngCollectCooldownStore.DefaultCooldownSeconds, out int remaining))
-        {
-            Logger.LogDebug(
-                "RNG START cooldown rejected: PlayerId={PlayerId}, InteractId={InteractId}, Remaining={Remaining}s",
-                PlayerId, msg.InteractId, remaining);
-            SendRngCollectAck(msg.InteractId, ErrorCode.ACTION_ALREADY_EXPLORED, remaining);
-            return Task.CompletedTask;
-        }
-
-        int staminaCost = ApplyDutyStaminaSaverToCost(RngCollectStaminaCost);
-
-        // stamina 차감 (즉시) — 정신력 1:2 변환은 ModifyStats가 처리
-        ModifyStats(-staminaCost);
-
-        SnapshotRoomEncounterStartCandidates(msg.InteractId, info);
-        _pendingFinish.Add(msg.InteractId);
-        MarkRngCollectPendingEncounterBlock();
-
-        Logger.LogInformation("RNG collect START: PlayerId={PlayerId}, InteractId={InteractId}",
-            PlayerId, msg.InteractId);
-        _gameEventLogManager.LogExploreStart(
-            CurrentMapSubId, PlayerId.Value, msg.InteractId, CurrentArea.ToString(), isBot: false);
-
-        SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
+        // 레거시(서바이버 로얄) 채집 경로 퇴역 (#238) — 현행은 위 스웜 분기만 사용한다.
         return Task.CompletedTask;
     }
 
@@ -138,278 +62,9 @@ public partial class GameClientSession
         if (Config.SWARM_P0_ENABLED)
             return HandleSwarmRngCollectFinish(msg);
         if (Config.SPOT_ARENA_P0_ENABLED) return Task.CompletedTask;
-        if (IsEliminated) return Task.CompletedTask;
 
-        if (msg.EncounterCheckOnly)
-        {
-            if (!_pendingFinish.Contains(msg.InteractId))
-            {
-                ClearRoomEncounterStartCandidates(msg.InteractId);
-                Logger.LogWarning(
-                    "RNG encounter check without START or duplicated: PlayerId={PlayerId}, InteractId={InteractId}",
-                    PlayerId, msg.InteractId);
-                SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
-                return Task.CompletedTask;
-            }
-
-            var checkInfo = GameInteractableData.Get(msg.InteractId);
-            if (checkInfo == null)
-            {
-                _pendingFinish.Remove(msg.InteractId);
-                ClearRngCollectPendingEncounterBlockIfIdle();
-                ClearRoomEncounterStartCandidates(msg.InteractId);
-                Logger.LogWarning("RNG encounter check InteractId missing: {InteractId}", msg.InteractId);
-                SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
-                return Task.CompletedTask;
-            }
-
-            if (TryHandleRoomEncounterFromExploreSpot(msg.InteractId, checkInfo))
-            {
-                _pendingFinish.Remove(msg.InteractId);
-                ClearRngCollectPendingEncounterBlockIfIdle();
-                Logger.LogInformation(
-                    "RNG arrival room encounter resolved at explore spot: PlayerId={PlayerId}, InteractId={InteractId}",
-                    PlayerId, msg.InteractId);
-                return Task.CompletedTask;
-            }
-
-            SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
-            return Task.CompletedTask;
-        }
-
-        if (!_pendingFinish.Remove(msg.InteractId))
-        {
-            ClearRoomEncounterStartCandidates(msg.InteractId);
-            Logger.LogWarning(
-                "RNG FINISH without START or duplicated: PlayerId={PlayerId}, InteractId={InteractId}",
-                PlayerId, msg.InteractId);
-            // 무응답으로 두면 클라이언트가 EXPLORE_1 채집 상태에 박제된다 — 에러 ACK로 정리를 유도
-            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
-            return Task.CompletedTask;
-        }
-
-        ClearRngCollectPendingEncounterBlockIfIdle();
-
-        var info = GameInteractableData.Get(msg.InteractId);
-        if (info == null)
-        {
-            ClearRoomEncounterStartCandidates(msg.InteractId);
-            Logger.LogWarning("RNG FINISH InteractId missing: {InteractId}", msg.InteractId);
-            SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
-            return Task.CompletedTask;
-        }
-
-        ClearRoomEncounterStartCandidates(msg.InteractId);
-
-        if (TryStartRoomExploreEvent((AreaType)info.ZoneId, msg.InteractId))
-            return Task.CompletedTask;
-
-        bool allowGiftDiscovery = AllowsGiftDiscoveryOnCollect(info, CurrentArea);
-        GiftDiscoveryResult? otherGiftDiscovery = null;
-        if (allowGiftDiscovery && TryHandleGiftDiscoveryBeforeCollect(msg.InteractId, out otherGiftDiscovery))
-            return Task.CompletedTask;
-
-        var outcome = RngCollectCore.Resolve(
-            matchingId: CurrentMapSubId,
-            playerId: PlayerId.Value,
-            jobTitle: MyJobTitle,
-            info: info,
-            missionManager: _missionManager,
-            inventoryManager: _inGameInventoryManager,
-            itemPoolManager: _itemPoolManager,
-            areaItemStockManager: _areaItemStockManager,
-            isBot: false,
-            bonusItemChancePercent: PassiveBuffUtility.GetValuePercent(
-                ActiveBuffIds,
-                BuffSubType.ITEM_GAIN_CHANCE_ADD));
-
-        // 부품 회수 시 패킷 송신
-        if (outcome is { ResultType: 3, CollectedPart: not null })
-        {
-            ApplyStaminaReward(outcome.StaminaReward);
-
-            using var partPacket = Packet.Create((int)Protocol.G_TO_C_PART_COLLECTED, PlayerId.Value);
-            var partMsg = new G_TO_C_PART_COLLECTED
-            {
-                PartId = outcome.CollectedPart.PartId,
-                PartNameKr = outcome.CollectedPart.PartNameKr,
-                PartTier = (int)outcome.CollectedPart.PartTier,
-                StaminaReward = outcome.StaminaReward
-            };
-            partPacket.SetBody(MessagePackSerializer.Serialize(partMsg));
-            Send(partPacket);
-
-            using var stepPacket = Packet.Create((int)Protocol.G_TO_C_MISSION_STEP_COMPLETE, PlayerId.Value);
-            var stepMsg = new G_TO_C_MISSION_STEP_COMPLETE
-            {
-                CompletedStep = outcome.CollectedPart.PartId,
-                StaminaReward = outcome.StaminaReward,
-                NextTargetArea = 0,
-                NextTargetInteractId = 0,
-                NextTargetActionId = 0
-            };
-            stepPacket.SetBody(MessagePackSerializer.Serialize(stepMsg));
-            Send(stepPacket);
-
-            _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
-                $"RNG 부품 회수: {outcome.CollectedPart.PartNameKr} (체력+{outcome.StaminaReward})", isBot: false);
-        }
-
-        foreach (var extraCollectResult in outcome.ExtraCollectedParts)
-        {
-            if (extraCollectResult.Part == null) continue;
-
-            using var partPacket = Packet.Create((int)Protocol.G_TO_C_PART_COLLECTED, PlayerId.Value);
-            var partMsg = new G_TO_C_PART_COLLECTED
-            {
-                PartId = extraCollectResult.Part.PartId,
-                PartNameKr = extraCollectResult.Part.PartNameKr,
-                PartTier = (int)extraCollectResult.Part.PartTier,
-                StaminaReward = extraCollectResult.StaminaReward
-            };
-            partPacket.SetBody(MessagePackSerializer.Serialize(partMsg));
-            Send(partPacket);
-
-            using var stepPacket = Packet.Create((int)Protocol.G_TO_C_MISSION_STEP_COMPLETE, PlayerId.Value);
-            var stepMsg = new G_TO_C_MISSION_STEP_COMPLETE
-            {
-                CompletedStep = extraCollectResult.Part.PartId,
-                StaminaReward = extraCollectResult.StaminaReward,
-                NextTargetArea = 0,
-                NextTargetInteractId = 0,
-                NextTargetActionId = 0
-            };
-            stepPacket.SetBody(MessagePackSerializer.Serialize(stepMsg));
-            Send(stepPacket);
-
-            _gameEventLogManager.LogMission(CurrentMapSubId, PlayerId.Value,
-                $"RNG 추가 부품 회수: {extraCollectResult.Part.PartNameKr}", isBot: false);
-        }
-
-        int clientResultType = outcome.ResultType;
-        int clientItemId = outcome.ItemId;
-        if (IsEmptyRngCollectResult(clientResultType) && outcome.BonusItemId > 0)
-        {
-            clientResultType = RngCollectItemResultType;
-            clientItemId = outcome.BonusItemId;
-        }
-
-        Logger.LogInformation(
-            "RNG 채집 FINISH: PlayerId={PlayerId}, InteractId={InteractId}, ResultType={Type}, ClientResultType={ClientType}, ItemId={ItemId}, ClientItemId={ClientItemId}, BonusItemId={BonusItemId}",
-            PlayerId, msg.InteractId, outcome.ResultType, clientResultType, outcome.ItemId, clientItemId, outcome.BonusItemId);
-
-        SendRngCollectResult(msg.InteractId, clientResultType, clientItemId,
-            outcome.StaminaReward, outcome.CooldownSeconds);
-        SpawnGroundItemsFromExplore(info, outcome);
-        BroadcastSurvivorAreaStockState();
-
-        _gameEventLogManager.LogExploreCompleted(
-            CurrentMapSubId,
-            PlayerId.Value,
-            msg.InteractId,
-            CurrentArea.ToString(),
-            outcome.DroppedItemIds,
-            _areaItemStockManager.GetRemainingCount(CurrentMapSubId, (int)CurrentArea),
-            isBot: false);
-        if (outcome.AddedInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedInventoryItem);
-        foreach (var extraInventoryItem in outcome.AddedExtraInventoryItems)
-            SendInGameInventoryUpdate(extraInventoryItem);
-        if (outcome.AddedBonusInventoryItem != null) SendInGameInventoryUpdate(outcome.AddedBonusInventoryItem);
-        TryCompleteInteractObjectChecklist(info);
-
-        if (allowGiftDiscovery)
-        {
-            if (otherGiftDiscovery != null)
-                SendGiftDiscovered(otherGiftDiscovery, 0);
-            else
-                CheckGiftDiscovery(msg.InteractId);
-        }
-
-        // FINISH 시점에 30초 cooldown 갱신 broadcast (RngCollectCore.Resolve 내부에서 SetCooldown 30 호출됨)
-        BroadcastRngCollectCooldown(msg.InteractId, outcome.CooldownSeconds);
-        // IDLE 상태 broadcast — 같은 영역 모든 클라(본인 포함)가 받아 Player.Info.State 갱신.
-        BroadcastPlayerState(global::network.common.PlayerState.IDLE);
-        ResolvePendingRoomDiscoveriesAfterExploreFinished((AreaType)info.ZoneId);
+        // 레거시(서바이버 로얄) 채집 정산 퇴역 (#238) — 현행은 위 스웜 분기만 사용한다.
         return Task.CompletedTask;
-    }
-
-    private int ApplyDutyStaminaSaverToCost(int baseCost)
-    {
-        if (!PlayerId.HasValue || baseCost <= 0) return baseCost;
-        if (!_missionManager.TryConsumeShortRewardUse(
-                CurrentMapSubId,
-                PlayerId.Value,
-                MissionShortRewardType.DutyStaminaSaver,
-                out var reward) || reward == null)
-        {
-            return baseCost;
-        }
-
-        int reduction = Math.Max(1, (int)Math.Ceiling(baseCost * reward.ValuePercent / 100.0));
-        int adjustedCost = Math.Max(0, baseCost - reduction);
-
-        Logger.LogInformation(
-            "업무 체력 보존 적용: PlayerId={PlayerId}, BaseCost={BaseCost}, AdjustedCost={AdjustedCost}, RemainingUses={RemainingUses}",
-            PlayerId, baseCost, adjustedCost, reward.RemainingUses);
-
-        return adjustedCost;
-    }
-
-    private bool HasAvailableMissionActionTarget(InteractableInfoData info)
-    {
-        if (!PlayerId.HasValue) return false;
-
-        var state = _missionManager.GetState(CurrentMapSubId, PlayerId.Value);
-        if (state == null || state.IsCompleted) return false;
-
-        lock (state.SyncRoot)
-        {
-            return GameMissionGraphData.GetAvailableNodes(
-                    (short)state.JobTitle,
-                    state.CollectedParts,
-                    state.CompletedMissionNodeIds,
-                    state.OwnedClueTags,
-                    state.HasLostTarget)
-                .Any(node =>
-                    node.NodeKind != MissionGraphNodeKind.CollectPart &&
-                    !state.CompletedMissionNodeIds.Contains(node.NodeId) &&
-                    !IsStoryletLost(state, node) &&
-                    node.MatchesInteractable(info.ZoneId, (int)info.ObjectType, info.Id));
-        }
-    }
-
-    private static bool IsStoryletLost(PlayerPartState state, MissionGraphNodeData node) =>
-        node.HasStoryletMetadata &&
-        !string.IsNullOrWhiteSpace(node.EffectiveStoryletId) &&
-        state.LostStoryletIds.Contains(node.EffectiveStoryletId);
-
-    private bool TryHandleGiftDiscoveryBeforeCollect(int interactId, out GiftDiscoveryResult? otherGiftDiscovery)
-    {
-        otherGiftDiscovery = null;
-        if (!PlayerId.HasValue) return false;
-        if (!_missionManager.TryDiscoverGift(CurrentMapSubId, PlayerId.Value, interactId, out var result)) return false;
-
-        if (result.DiscoveryType == GiftDiscoveryType.Other)
-        {
-            otherGiftDiscovery = result;
-            return false;
-        }
-
-        var receivedGift = _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, result.ItemId, 1,
-            GiftState.Received);
-
-        ModifyStats(corruptionDelta: GiftFoundCorruptionDelta);
-        SendRngCollectResult(interactId, RngCollectGiftResultType, result.ItemId, 0, 0);
-        SendInGameInventoryUpdate(receivedGift);
-        SendGiftDiscovered(result, GiftFoundCorruptionDelta);
-        SendGiftProgressToOwner(result);
-        RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, interactId);
-        BroadcastRngCollectCooldown(interactId, 0);
-        BroadcastPlayerState(global::network.common.PlayerState.IDLE);
-        ResolvePendingRoomDiscoveriesAfterExploreFinished(CurrentArea);
-
-        CheckResourceElimination();
-        return true;
     }
 
     /// <summary>
@@ -664,17 +319,6 @@ public partial class GameClientSession
         Send(packet);
     }
 
-    private void MarkRngCollectPendingEncounterBlock()
-    {
-        _rngCollectPendingEncounterBlockUntilUtc = DateTime.UtcNow + RngCollectPendingEncounterBlockDuration;
-    }
-
-    private void ClearRngCollectPendingEncounterBlockIfIdle()
-    {
-        if (_pendingFinish.Count == 0)
-            _rngCollectPendingEncounterBlockUntilUtc = DateTime.MinValue;
-    }
-
     private void CancelPendingRngCollect(string reason)
     {
         if (_pendingFinish.Count == 0)
@@ -684,7 +328,6 @@ public partial class GameClientSession
         {
             _gameEventLogManager.LogExploreCancelled(
                 CurrentMapSubId, PlayerId.GetValueOrDefault(), interactId, CurrentArea.ToString(), reason, isBot: false);
-            ClearRoomEncounterStartCandidates(interactId);
             RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, interactId);
             BroadcastRngCollectCooldown(interactId, 0);
         }
@@ -693,16 +336,8 @@ public partial class GameClientSession
             "RNG collect pending cancelled: PlayerId={PlayerId}, Count={Count}, Reason={Reason}",
             PlayerId, _pendingFinish.Count, reason);
         _pendingFinish.Clear();
-        ClearRngCollectPendingEncounterBlockIfIdle();
     }
 
-    private bool HasPendingRngCollectEncounterBlock(DateTime now)
-    {
-        return _pendingFinish.Count > 0 && now <= _rngCollectPendingEncounterBlockUntilUtc;
-    }
-    /// <summary>
-    ///     같은 매칭 인스턴스의 모든 플레이어 클라에게 InteractId + cooldown broadcast.
-    /// </summary>
     private void BroadcastRngCollectCooldown(int interactId, int cooldownSeconds)
     {
         var sessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
@@ -764,15 +399,5 @@ public partial class GameClientSession
         using var packet = Packet.Create((int)Protocol.G_TO_C_RNG_COLLECT_RESULT, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(msg));
         Send(packet);
-    }
-
-    private static bool IsEmptyRngCollectResult(int resultType)
-    {
-        return resultType == 0 || resultType == 1;
-    }
-
-    private static bool AllowsGiftDiscoveryOnCollect(InteractableInfoData info, AreaType currentArea)
-    {
-        return currentArea != AreaType.BroadcastRoom && (AreaType)info.ZoneId != AreaType.BroadcastRoom;
     }
 }

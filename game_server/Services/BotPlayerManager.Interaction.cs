@@ -55,25 +55,6 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     봇이 직책을 자발적으로 밝힐지 결정. 자기 race 진행이 50% 미만이면 50% 진실, 50% 블러프.
-    ///     50% 이상이면 침묵 우선(밝히지 않음).
-    /// </summary>
-    public BotJobReveal DecideRevealJob(long matchingId, long botPlayerId, MissionManager missionManager)
-    {
-        var bot = GetBot(matchingId, botPlayerId);
-        if (bot == null) return BotJobReveal.Silent;
-
-        var state = missionManager.GetState(matchingId, botPlayerId);
-        int collected = state?.CollectedParts.Count ?? 0;
-        int total = GameProgressTotal((short)bot.MyJobTitle);
-
-        if (total > 0 && collected * 100 / total >= 50) return BotJobReveal.Silent;
-
-        // 50% 진실 / 50% 블러프
-        return _rng.Next(100) < 50 ? BotJobReveal.Truth : BotJobReveal.Bluff;
-    }
-
-    /// <summary>
     ///     봇이 마지막으로 응답한 상대 기록 (동일 상대 연속 응답 방지)
     /// </summary>
     public void NoteRespondedTo(long matchingId, long botPlayerId, long requesterPlayerId)
