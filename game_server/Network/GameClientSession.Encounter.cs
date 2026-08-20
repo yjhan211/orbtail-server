@@ -65,6 +65,8 @@ public partial class GameClientSession
 
     private void TrySendCorridorEncounterEvents(Vector3f actorPosition)
     {
+        // 복도 조우는 프로토0 레거시 — 스웜 모드에서는 발화하지 않는다 (#236)
+        if (Config.SWARM_P0_ENABLED) return;
         if (!PlayerId.HasValue || CurrentArea == AreaType.None || !CurrentArea.IsCorridor())
             return;
 
