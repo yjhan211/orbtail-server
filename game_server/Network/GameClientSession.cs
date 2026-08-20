@@ -54,7 +54,6 @@ public partial class GameClientSession : SessionBase
     private readonly Action<long> _recordLeavePenalty;
     private readonly Action<long> _recordGameCompletion;
     private readonly ManittoChainManager _manittoChainManager;
-    private readonly MissionManager _missionManager;
     private readonly ChecklistManager _checklistManager;
     private readonly AreaClosureManager _areaClosureManager;
     private readonly InteractionChoiceService _interactionChoiceService;
@@ -114,7 +113,6 @@ public partial class GameClientSession : SessionBase
     // 플레이어 상호작용 요청 상태
     private long? _pendingInteractPlayerId;
     private long? _pendingBotRequesterPlayerId;
-    private int _pendingRoomEntryEventId;
     private readonly object _roomEntryEventChoiceLock = new();
 
     // #219 M2 3택 드래프트: 개봉이 연 드래프트 권리와 개봉 시점 확정 비용
@@ -190,7 +188,6 @@ public partial class GameClientSession : SessionBase
         SummonStoneManager summonStoneManager,
         DoorStateManager doorStateManager,
         ManittoChainManager manittoChainManager,
-        MissionManager missionManager,
         ChecklistManager checklistManager,
         AreaClosureManager areaClosureManager,
         InteractionChoiceService interactionChoiceService,
@@ -215,7 +212,6 @@ public partial class GameClientSession : SessionBase
         _summonStoneManager = summonStoneManager;
         _doorStateManager = doorStateManager;
         _manittoChainManager = manittoChainManager;
-        _missionManager = missionManager;
         _checklistManager = checklistManager;
         _areaClosureManager = areaClosureManager;
         _interactionChoiceService = interactionChoiceService;
@@ -511,14 +507,6 @@ public partial class GameClientSession : SessionBase
                 async bytes => await HandleMessage<C_TO_G_SETTLEMENT_NOMINATE>(bytes, HandleSettlementNominate));
             ProtocolRouter.RegisterHandler(Protocol.C_TO_G_BOOKMARK_PRESENCE,
                 async bytes => await HandleMessage<C_TO_G_BOOKMARK_PRESENCE>(bytes, HandleBookmarkPresence));
-            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLACE_GIFT,
-                async bytes => await HandleMessage<C_TO_G_PLACE_GIFT>(bytes, HandlePlaceGift));
-            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RECALL_GIFT,
-                async bytes => await HandleMessage<C_TO_G_RECALL_GIFT>(bytes, HandleRecallGift));
-            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_COMBINE_PARTS,
-                async bytes => await HandleMessage<C_TO_G_COMBINE_PARTS>(bytes, HandleCombineParts));
-            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_MISSION_NODE_EXECUTE,
-                async bytes => await HandleMessage<C_TO_G_MISSION_NODE_EXECUTE>(bytes, HandleMissionNodeExecute));
             ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CHECKLIST_ACTIVITY_START,
                 async bytes => await HandleMessage<C_TO_G_CHECKLIST_ACTIVITY_START>(bytes,
                     HandleChecklistActivityStart));
@@ -534,11 +522,6 @@ public partial class GameClientSession : SessionBase
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RNG_COLLECT_FINISH,
             async bytes => await HandleMessage<C_TO_G_RNG_COLLECT_FINISH>(bytes, HandleRngCollectFinish));
 
-        // 방 조우 회피 — 방 조우 상태기계는 레거시 전용이므로 스웜 모드에서는 등록하지 않는다 (#236)
-        if (!Config.SWARM_P0_ENABLED)
-            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_ROOM_ENCOUNTER_AVOID,
-                async bytes => await HandleMessage<C_TO_G_ROOM_ENCOUNTER_AVOID>(bytes, HandleRoomEncounterAvoid));
-
         // 상호작용 선택지 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ASK,
             async bytes => await HandleMessage<C_TO_G_INTERACTION_ASK>(bytes, HandleInteractionAsk));
@@ -548,11 +531,6 @@ public partial class GameClientSession : SessionBase
         // 구역 이동 프로토콜 (GDD v0.0.8: 문/계단 마커 방식)
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_AREA_MOVE,
             async bytes => await HandleMessage<C_TO_G_AREA_MOVE>(bytes, HandleAreaMove));
-
-        // 방 사건 선택 — 방 사건(RoomEvent)은 레거시 전용이므로 스웜 모드에서는 등록하지 않는다 (#236)
-        if (!Config.SWARM_P0_ENABLED)
-            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_ROOM_ENTRY_EVENT_CHOICE,
-                async bytes => await HandleMessage<C_TO_G_ROOM_ENTRY_EVENT_CHOICE>(bytes, HandleRoomEntryEventChoice));
 
         // 소셜 액션 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SOCIAL_ACTION,

@@ -46,9 +46,7 @@ public partial class GameClientSession
             });
 
             // 誘몄뀡 珥덇린??
-            _missionManager.InitializePlayer(msg.MatchingId, msg.PlayerId, msg.MyJobTitle);
-            RestoreActiveBuffIdsFromMissionState(msg.MatchingId, msg.PlayerId);
-            _missionManager.EnsureBroadcastTransmitterGift(msg.MatchingId, msg.PlayerId, msg.TargetPlayerId);
+            SetActiveBuffIds([]); // 방 사건 특성 버프 퇴역 (#238) — 접속 시 버프 없음
 
             // 遊?濡쒕뱶 (留ㅼ묶??理쒖큹 1?? ???먯뇙 珥덇린???꾩뿉 濡쒕뱶??吏곸콉 ????뺤젙 (#87)
             await LoadBotsIfNeeded(msg.MatchingId, CurrentMapId);
@@ -73,7 +71,6 @@ public partial class GameClientSession
                         MyJobTitle = MyJobTitle,
                         TargetJobTitle = TargetJobTitle
                     });
-                    _missionManager.EnsureBroadcastTransmitterGift(msg.MatchingId, msg.PlayerId, TargetPlayerId);
                 }
                 else
                 {
@@ -218,7 +215,6 @@ public partial class GameClientSession
             SendDoorStateList();
 
             // 誘몄뀡 ?뺣낫 ?꾩넚
-            SendMissionInfo();
             SendRoundStateSnapshot(msg.MatchingId);
             // 스웜 모드(M4)는 시간 웨이브 폐쇄를 쓰므로 폐쇄 스냅샷을 복원해야 한다.
             if (!Config.SPOT_ARENA_P0_ENABLED || Config.SWARM_P0_ENABLED)
@@ -259,23 +255,6 @@ public partial class GameClientSession
             };
             packet.SetBody(MessagePackSerializer.Serialize(response));
             Send(packet);
-        }
-    }
-
-    private void RestoreActiveBuffIdsFromMissionState(long matchingId, long playerId)
-    {
-        var state = _missionManager.GetState(matchingId, playerId);
-        if (state == null)
-        {
-            SetActiveBuffIds([]);
-            return;
-        }
-
-        lock (state.SyncRoot)
-        {
-            SetActiveBuffIds(state.OwnedClueTags
-                .Select(ResolveInitialRoomEntryTraitBuffId)
-                .Where(buffId => buffId > 0));
         }
     }
 
@@ -499,8 +478,6 @@ public partial class GameClientSession
                 });
 
                 // 遊?遺???곹깭 珥덇린?????먭린 吏곸콉 諛쒓껄 ? 湲곗?
-                _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
-                _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
 
                 if (!Config.SPOT_ARENA_P0_ENABLED)
                     _summonStoneManager.EnsureStartingStones(matchingId, bot.PlayerId);
@@ -1223,7 +1200,6 @@ public partial class GameClientSession
         foreach (var (affectedId, newStatus) in affected)
         {
             if (newStatus != ManittoStatus.TERMINAL) continue;
-            _missionManager.NotifyTargetLost(matchingId, affectedId, botId, reason);
         }
     }
 

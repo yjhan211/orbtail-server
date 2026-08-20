@@ -53,7 +53,6 @@ public partial class GameServer(
     private readonly SummonStoneManager _summonStoneManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();
     private readonly ManittoChainManager _manittoChainManager = new(logger);
-    private readonly MissionManager _missionManager = new(logger);
     private readonly ChecklistManager _checklistManager = new(logger);
     private readonly MatchingConfigService _matchingConfigService = new(cacheHelper, logger);
     // _areaClosureManager은 InitializeServices()에서 _matchingConfigService 생성 후 초기화
@@ -82,7 +81,6 @@ public partial class GameServer(
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
     private Timer? _botMovementTimer;         // #127 봇 walking step (250ms)
-    private Timer? _botMissionTimer;          // #134 봇 미션 처리 (RNG 채집/결합 — 1초 주기)
     private Timer? _checklistProgressTickTimer;
 
     // 자원 틱 설정 (GDD v0.0.5 확정 수치)
@@ -127,7 +125,6 @@ public partial class GameServer(
             StartAreaClosureTickTimer();
             StartTargetLocationTimer();
             StartBotMovementTimer();
-            StartBotMissionTimer();
             StartChecklistProgressTickTimer();
             if (Config.PROXIMITY_AUTO_COMBAT_P0_ENABLED)
                 StartProximityAutoCombatTimer();
@@ -164,7 +161,6 @@ public partial class GameServer(
         if (_areaClosureTickTimer != null) { await _areaClosureTickTimer.DisposeAsync(); _areaClosureTickTimer = null; }
         if (_targetLocationTimer != null) { await _targetLocationTimer.DisposeAsync(); _targetLocationTimer = null; }
         if (_botMovementTimer != null) { await _botMovementTimer.DisposeAsync(); _botMovementTimer = null; }
-        if (_botMissionTimer != null) { await _botMissionTimer.DisposeAsync(); _botMissionTimer = null; }
         if (_checklistProgressTickTimer != null) { await _checklistProgressTickTimer.DisposeAsync(); _checklistProgressTickTimer = null; }
         if (_proximityAutoCombatTimer != null) { await _proximityAutoCombatTimer.DisposeAsync(); _proximityAutoCombatTimer = null; }
         foreach (var timer in _headlessRoundTimers.Values)
@@ -520,54 +516,7 @@ public partial class GameServer(
                     matchingId, bot.PlayerId, progress.Completion.CompletedTask.TaskId);
             }
 
-            TryPlaceBotGiftNearTarget(matchingId, bot);
         }
-    }
-
-    private bool TryPlaceBotGiftNearTarget(long matchingId, BotPlayerState bot)
-    {
-        bool hasGiftTask = _checklistManager.GetActiveTasks(matchingId, bot.PlayerId)
-            .Any(task => task.TaskKey.Equals("MANITTO_TARGET_DISCOVERS_GIFT", StringComparison.OrdinalIgnoreCase));
-        if (!hasGiftTask) return false;
-        if (_missionManager.TryGetNextPlacedGift(matchingId, bot.PlayerId, bot.TargetPlayerId, out _))
-            return false;
-
-        var giftItem = _inGameInventoryManager.GetAllItems(matchingId, bot.PlayerId)
-            .Where(item => item.Count > 0 &&
-                           item.ItemId != 401000003 &&
-                           GameItemData.GetItemType(item.ItemId) == ItemType.CONSUMABLE)
-            .OrderBy(_ => Random.Shared.Next())
-            .FirstOrDefault();
-        if (giftItem == null) return false;
-
-        var interact = GameInteractableData.GetByZone((int)bot.CurrentArea)
-            .Where(info => info.CellX != 0 || info.CellY != 0)
-            .OrderBy(_ => Random.Shared.Next())
-            .FirstOrDefault();
-        if (interact == null) return false;
-
-        var placeResult = _missionManager.TryPlaceGift(
-            matchingId,
-            bot.PlayerId,
-            bot.TargetPlayerId,
-            giftItem.ItemUid,
-            giftItem.ItemId,
-            bot.CurrentArea,
-            interact.Id);
-        if (!placeResult.Success) return false;
-
-        if (!_inGameInventoryManager.TryRemoveItem(matchingId, bot.PlayerId, giftItem.ItemUid, 1, out _))
-        {
-            _missionManager.RollbackPlacedGift(matchingId, bot.PlayerId, giftItem.ItemUid);
-            return false;
-        }
-
-        RngCollectCooldownStore.ClearCooldown(matchingId, interact.Id);
-        BroadcastBotRngCooldowns(matchingId, [(interact.Id, 0)]);
-        logger.LogInformation(
-            "Bot gift placed: MatchingId={MatchingId}, BotId={BotId}, Target={Target}, ItemId={ItemId}, InteractId={InteractId}",
-            matchingId, bot.PlayerId, bot.TargetPlayerId, giftItem.ItemId, interact.Id);
-        return true;
     }
 
     /// <summary>타겟 근접 체크리스트 판정용 평면 거리 확인.</summary>
@@ -613,40 +562,6 @@ public partial class GameServer(
             BuffSubType.CORRUPTION_DOWN => -magnitude,
             _ => 0
         };
-    }
-
-    private int ApplyClosedAreaResistance(GameClientSession session, int basePenalty)
-    {
-        if (!session.PlayerId.HasValue || basePenalty <= 0) return basePenalty;
-
-        if (!_missionManager.TryGetActiveShortReward(
-                session.CurrentMapSubId,
-                session.PlayerId.Value,
-                MissionShortRewardType.ClosedAreaResistance,
-                out var reward) || reward == null)
-        {
-            if (!_missionManager.TryActivateTimedShortReward(
-                    session.CurrentMapSubId,
-                    session.PlayerId.Value,
-                    MissionShortRewardType.ClosedAreaResistance,
-                    out reward) || reward == null)
-            {
-                return basePenalty;
-            }
-
-            logger.LogInformation(
-                "폐쇄구역 대응 발동: PlayerId={PlayerId}, DurationSeconds={DurationSeconds}, ExpiresAt={ExpiresAt}",
-                session.PlayerId, reward.DurationSeconds, reward.ExpiresAt);
-        }
-
-        int reduction = Math.Max(1, (int)Math.Ceiling(basePenalty * reward.ValuePercent / 100.0));
-        int adjustedPenalty = Math.Max(0, basePenalty - reduction);
-
-        logger.LogInformation(
-            "폐쇄구역 대응 적용: PlayerId={PlayerId}, BasePenalty={BasePenalty}, AdjustedPenalty={AdjustedPenalty}",
-            session.PlayerId, basePenalty, adjustedPenalty);
-
-        return adjustedPenalty;
     }
 
     /// <summary>
@@ -725,11 +640,6 @@ public partial class GameServer(
                 }
             }
 
-            foreach (var (affectedId, newStatus) in affected)
-            {
-                if (newStatus != ManittoStatus.TERMINAL) continue;
-                _missionManager.NotifyTargetLost(matchingId, affectedId, botId, reason);
-            }
 
             // 3) 게임 종료 판정 — 봇 탈락으로 최후 1인 결정 가능
             var (isGameOver, winnerId) = _manittoChainManager.CheckGameOver(matchingId);
@@ -819,195 +729,6 @@ public partial class GameServer(
         }
     }
 
-    /// <summary>
-    ///     #26: 봇 미션 시뮬 — 부품 회수 + 자동 결합. 최종 결합 시 즉시 게임 종료.
-    /// </summary>
-    private void ProcessBotMissionForMatching(long matchingId, List<GameClientSession> activeSessions)
-    {
-        try
-        {
-            ProcessBotOrbSummons(matchingId);
-            var missionResult = _botPlayerManager.ProcessBotMissionTick(
-                matchingId, _missionManager, _inGameInventoryManager, _itemPoolManager, _areaItemStockManager, _groundItemManager, _checklistManager);
-
-            foreach (var (botId, itemId, amount) in missionResult.CorruptionRecoveries)
-            {
-                _gameEventLogManager.RecordSurvivorRecovery(matchingId, botId, amount);
-                _gameEventLogManager.LogRecoveryUse(matchingId, botId, itemId, amount, "bot_auto_use", isBot: true);
-            }
-
-            // 운영툴 진행 로그 — 봇 부품 회수/선행/결합 이벤트
-            foreach (var (botId, partId) in missionResult.CollectedParts)
-            {
-                var part = GameMissionData.GetPart(partId);
-                _gameEventLogManager.LogMission(matchingId, botId,
-                    $"부품 회수: {part?.PartNameKr ?? partId.ToString()}", isBot: true);
-            }
-            foreach (var (botId, shareGroup) in missionResult.CollectedPrereqs)
-                _gameEventLogManager.LogMission(matchingId, botId,
-                    $"선행 아이템 회수 (그룹 {shareGroup})", isBot: true);
-            foreach (var (botId, outputPartId, isRace) in missionResult.Combined)
-            {
-                var part = GameMissionData.GetPart(outputPartId);
-                _gameEventLogManager.LogMission(matchingId, botId,
-                    isRace
-                        ? $"최종 결합 완성! ({part?.PartNameKr ?? outputPartId.ToString()}) — race 완주"
-                        : $"부품 결합: {part?.PartNameKr ?? outputPartId.ToString()}",
-                    isBot: true);
-            }
-
-            foreach (var (botId, itemId) in missionResult.ConsumableMerges)
-            {
-                _gameEventLogManager.LogMission(
-                    matchingId,
-                    botId,
-                    $"Consumable merge: Item{itemId}",
-                    isBot: true);
-            }
-
-            foreach (var (botId, itemId) in missionResult.BattleItemCombines)
-            {
-                var combatData = BattleItemCombatData.Get(itemId);
-                _gameEventLogManager.LogMission(
-                    matchingId,
-                    botId,
-                    $"Guardian orb awakening: Item{itemId}, T{combatData?.Tier ?? 0}",
-                    isBot: true);
-                _gameEventLogManager.LogSurvivorTierReached(
-                    matchingId, botId, itemId, combatData?.Tier ?? 0, isBot: true);
-            }
-
-            foreach (var merge in missionResult.SurvivorOrbMerges)
-            {
-                var botInventory = _inGameInventoryManager.GetPlayerInventory(matchingId, merge.BotPlayerId);
-                _gameEventLogManager.LogSurvivorOrbBoardTransition(
-                    matchingId, merge.BotPlayerId, botInventory.GetAllItems(),
-                    botInventory.GetEquippedBattleItem()?.ItemId ?? 0,
-                    _botPlayerManager.GetBot(matchingId, merge.BotPlayerId)?.CurrentArea.ToString() ?? "None",
-                    "bot_merge", isBot: true);
-                SurvivorOrbData.TryGetColorAndTier(merge.OutputItemId, out SurvivorOrbColor outputColor,
-                    out int outputTier);
-                _gameEventLogManager.LogMission(
-                    matchingId,
-                    merge.BotPlayerId,
-                    $"SURVIVOR_ORB_MERGE inputs=[{merge.InputItemId},{merge.InputItemId}] " +
-                    $"output={merge.OutputItemId} outputColor={outputColor} outputTier={outputTier} " +
-                    $"resonanceBefore={merge.PreviousResonanceColor}/T{merge.PreviousSupportTier} " +
-                    $"resonanceAfter={merge.ResonanceColor}/T{merge.SupportTier}",
-                    isBot: true);
-            }
-
-            foreach (var (botId, itemId) in missionResult.BattleItemEquips)
-            {
-                var combatData = BattleItemCombatData.Get(itemId);
-                _gameEventLogManager.LogSurvivorTierReached(
-                    matchingId, botId, itemId, combatData?.Tier ?? 0, isBot: true);
-            }
-
-            // #134 — 봇 RNG progress 시작/종료 → 같은 영역 인간 세션에 EXPLORE_START/END (봇 EXPLORE_1 애니 동기화)
-            foreach (var (botId, taskId, interactId, area) in missionResult.StartedChecklistActivities)
-            {
-                var task = GameChecklistData.GetTask(taskId);
-                _gameEventLogManager.LogSchoolActivityStart(matchingId, botId, taskId,
-                    area.ToString(), interactId, task?.TitleKr ?? "", isBot: true);
-            }
-
-            foreach (var (botId, taskId, interactId, area, awardedScore, awardedContribution) in missionResult.CompletedChecklistActivities)
-            {
-                var task = GameChecklistData.GetTask(taskId);
-                _gameEventLogManager.LogSchoolActivityComplete(matchingId, botId, taskId,
-                    area.ToString(), interactId, awardedScore, awardedContribution,
-                    task?.TitleKr ?? "", isBot: true);
-            }
-
-            foreach (var (botId, interactId, area) in missionResult.BotExploreStarts)
-                _gameEventLogManager.LogExploreStart(
-                    matchingId, botId, interactId, area.ToString(), isBot: true);
-
-            foreach (var (botId, interactId, area, generatedItemIds, areaRemainingStock, outcome)
-                     in missionResult.RngExploreCompletions)
-            {
-                if (outcome == "cancelled")
-                    _gameEventLogManager.LogExploreCancelled(
-                        matchingId, botId, interactId, area.ToString(), outcome, isBot: true);
-                else
-                    _gameEventLogManager.LogExploreCompleted(
-                        matchingId, botId, interactId, area.ToString(),
-                        generatedItemIds, areaRemainingStock, isBot: true);
-            }
-
-            long botPriorityExpiresAtUnixMs = DateTimeOffset.UtcNow
-                .Add(GroundItemManager.DiscovererPickupWindow)
-                .ToUnixTimeMilliseconds();
-            foreach (var item in missionResult.GroundItemSpawns)
-            {
-                long discovererPlayerId = _groundItemManager.GetDiscovererPlayerId(
-                    matchingId, item.GroundItemUid);
-                _gameEventLogManager.LogGroundItemSpawned(
-                    matchingId,
-                    discovererPlayerId,
-                    item.GroundItemUid,
-                    item.ItemId,
-                    ((AreaType)item.AreaType).ToString(),
-                    botPriorityExpiresAtUnixMs,
-                    isBot: true);
-            }
-
-            if (missionResult.BotExploreStarts.Count > 0)
-                BroadcastBotExploreStarts(matchingId, missionResult.BotExploreStarts, activeSessions);
-            if (missionResult.BotExploreEnds.Count > 0)
-            {
-                BroadcastBotExploreEnds(matchingId, missionResult.BotExploreEnds, activeSessions);
-                ResolvePendingRoomDiscoveriesForBotExploreEnds(matchingId, missionResult.BotExploreEnds,
-                    activeSessions);
-            }
-            if (missionResult.BotRestStarts.Count > 0)
-                BroadcastBotPlayerStates(matchingId, missionResult.BotRestStarts,
-                    global::network.common.PlayerState.SLEEP, activeSessions);
-            if (missionResult.BotRestEnds.Count > 0)
-                BroadcastBotPlayerStates(matchingId, missionResult.BotRestEnds,
-                    global::network.common.PlayerState.IDLE, activeSessions);
-
-            foreach (var group in missionResult.GroundItemSpawns.GroupBy(item => item.AreaType))
-            {
-                var area = (AreaType)group.Key;
-                int remaining = _areaItemStockManager.GetRemainingCount(matchingId, group.Key);
-                using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(group.Key, remaining, group.ToList());
-                foreach (var session in activeSessions.Where(session => session.CurrentArea == area))
-                    session.Send(packet);
-            }
-            if (missionResult.RngExploreCompletions.Count > 0)
-                BroadcastSurvivorAreaStockState(matchingId, activeSessions);
-            // #134 — 봇 RNG 채집으로 발생한 인스턴스 쿨타임 broadcast
-            if (missionResult.BattleItemEquips.Count > 0)
-                BroadcastBotBattleItemEquips(matchingId, missionResult.BattleItemEquips, activeSessions);
-
-            if (missionResult.RngCooldownBroadcasts.Count > 0)
-                BroadcastBotRngCooldowns(matchingId, missionResult.RngCooldownBroadcasts);
-
-            if (missionResult.GiftDiscoveries.Count > 0)
-                SendBotGiftProgress(matchingId, missionResult.GiftDiscoveries, activeSessions);
-
-            // race 완주 발생 — 즉시 게임 종료 처리 (#87 정합)
-            if (missionResult.RaceWinnerPlayerId == 0) return;
-
-            long winnerPlayerId = missionResult.RaceWinnerPlayerId;
-            var sessions = _clientSessions.Values
-                .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
-                .ToList();
-            if (sessions.Count == 0) return;
-
-            logger.LogInformation("race 완주: MatchingId={MatchingId}, WinnerId={Winner}", matchingId, winnerPlayerId);
-
-            // 임의 세션을 통해 게임 종료 트리거
-            sessions[0].EndGameByBotRaceCompletion(winnerPlayerId);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "봇 미션 틱 처리 중 오류: MatchingId={MatchingId}", matchingId);
-        }
-    }
-
     private void BroadcastSurvivorAreaStockState(long matchingId, List<GameClientSession> sessions)
     {
         var message = new G_TO_C_SURVIVOR_AREA_STOCK_STATE
@@ -1088,80 +809,9 @@ public partial class GameServer(
         }
     }
 
-    private void ResolvePendingRoomDiscoveriesForBotExploreEnds(long matchingId,
-        List<(long botId, AreaType area)> ends,
-        List<GameClientSession> activeSessions)
-    {
-        foreach (var (botId, area) in ends)
-            TryResolveBotRoomEncounterAfterExplore(matchingId, botId, area, activeSessions);
-    }
-
-    private void TryResolveBotRoomEncounterAfterExplore(long matchingId, long botId, AreaType area,
-        List<GameClientSession> activeSessions)
-    {
-        if (area == AreaType.None || area.IsCorridor())
-            return;
-
-        var bot = _botPlayerManager.GetBot(matchingId, botId);
-        if (bot is not { IsEliminated: false } || bot.CurrentArea != area)
-            return;
-
-        var candidateSessions = activeSessions
-            .Where(session =>
-                session.PlayerId.HasValue &&
-                !session.IsEliminated &&
-                session.CurrentMapSubId == matchingId &&
-                session.CurrentArea == area &&
-                session.LastValidatedPosition != null &&
-                IsAtSameRoomExploreSpot(bot.Position, session.LastValidatedPosition))
-            .ToList();
-        if (candidateSessions.Count == 0)
-            return;
-
-        if (!_encounterRevealManager.TryResolveRoomEncounter(
-                matchingId,
-                bot.PlayerId,
-                area,
-                candidateSessions.Select(session => session.PlayerId!.Value),
-                out long targetPlayerId,
-                riskEventChanceDownPercent: 0,
-                escapeChanceAddPercent: 0))
-        {
-            return;
-        }
-
-        var targetSession = candidateSessions.FirstOrDefault(session => session.PlayerId == targetPlayerId);
-        if (targetSession == null)
-            return;
-
-        _gameEventLogManager.LogRoomEncounterReveal(matchingId, bot.PlayerId, targetPlayerId,
-            area.ToString(), 0, isBot: true);
-        _gameEventLogManager.LogInteraction(matchingId, bot.PlayerId,
-            $"Bot room encounter reveal: Target={targetPlayerId}, Area={area}", isBot: true);
-
-        const int actionType = EncounterRevealManager.RoomEncounterActionLeave;
-        logger.LogInformation(
-            "Bot room encounter resolved without item use: Matching={MatchingId}, Bot={Bot}, Target={Target}, Area={Area}, ActionType={ActionType}",
-            matchingId,
-            bot.PlayerId,
-            targetPlayerId,
-            area,
-            actionType);
-    }
-
-    private static bool IsAtSameRoomExploreSpot(Vector3f botPosition, Vector3f? playerPosition)
-    {
-        if (playerPosition == null)
-            return false;
-
-        float dx = botPosition.X - playerPosition.X;
-        float dy = botPosition.Y - playerPosition.Y;
-        return dx * dx + dy * dy <= RoomExploreSpotOccupancyDistance * RoomExploreSpotOccupancyDistance;
-    }
-
     private void BroadcastBotBattleItemEquips(long matchingId,
-        IReadOnlyCollection<(long botPlayerId, int itemId)> equips,
-        IReadOnlyCollection<GameClientSession> activeSessions)
+IReadOnlyCollection<(long botPlayerId, int itemId)> equips,
+IReadOnlyCollection<GameClientSession> activeSessions)
     {
         foreach (var (botPlayerId, _) in equips)
         {
@@ -1181,125 +831,6 @@ public partial class GameServer(
                 session.Send(packet);
         }
     }
-    private void BroadcastBotPlayerStates(long matchingId,
-        List<(long botId, AreaType area)> states, global::network.common.PlayerState playerState,
-        List<GameClientSession> activeSessions)
-    {
-        foreach (var (botId, area) in states)
-        {
-            var sameAreaSessions = activeSessions
-                .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId && s.CurrentArea == area)
-                .ToList();
-            if (sameAreaSessions.Count == 0) continue;
-
-            using var packet = PacketMaker.G_TO_C_PLAYER_STATE(botId, playerState);
-            foreach (var session in sameAreaSessions)
-                session.Send(packet);
-        }
-    }
-
-    private void SendBotGiftProgress(long matchingId, List<GiftDiscoveryResult> discoveries,
-        List<GameClientSession> activeSessions)
-    {
-        foreach (var discovery in discoveries)
-        {
-            var ownerSession = activeSessions.FirstOrDefault(s =>
-                s.PlayerId == discovery.OwnerPlayerId && s.CurrentMapSubId == matchingId && !s.IsEliminated);
-            if (ownerSession == null)
-            {
-                if (BotPlayerManager.IsBotPlayerId(discovery.OwnerPlayerId) &&
-                    _checklistManager.TryCompleteTargetGiftTask(matchingId, discovery.OwnerPlayerId))
-                {
-                    logger.LogInformation(
-                        "Bot target gift checklist completed: MatchingId={MatchingId}, BotId={BotId}, Discoverer={Discoverer}",
-                        matchingId, discovery.OwnerPlayerId, discovery.DiscovererPlayerId);
-                }
-
-                SendBotToNextPlacedGift(matchingId, discovery);
-                continue;
-            }
-
-            ownerSession.CompleteTargetGiftChecklist();
-
-            var msg = new G_TO_C_GIFT_PROGRESS
-            {
-                DeliveredCount = discovery.DeliveredCount,
-                RequiredCount = discovery.RequiredCount,
-                FinalPartId = discovery.FinalPartId,
-                IsRaceComplete = discovery.IsRaceComplete,
-                InteractId = discovery.InteractId,
-                AreaType = discovery.AreaType,
-                HasPlacedGiftAtInteract = discovery.HasPlacedGiftAtInteract,
-                HasPlacedGiftInArea = discovery.HasPlacedGiftInArea
-            };
-            var body = MessagePackSerializer.Serialize(msg);
-            using var packet = Packet.Create((int)Protocol.G_TO_C_GIFT_PROGRESS, discovery.OwnerPlayerId);
-            packet.SetBody(body);
-            ownerSession.Send(packet);
-
-            logger.LogInformation(
-                "봇 선물 발견 진행도 전송: MatchingId={MatchingId}, Owner={Owner}, BotTarget={Bot}, Delivered={Delivered}/{Required}",
-                matchingId, discovery.OwnerPlayerId, discovery.DiscovererPlayerId,
-                discovery.DeliveredCount, discovery.RequiredCount);
-            SendBotToNextPlacedGift(matchingId, discovery);
-        }
-    }
-
-    private void SendBotToNextPlacedGift(long matchingId, GiftDiscoveryResult discovery)
-    {
-        if (!BotPlayerManager.IsBotPlayerId(discovery.DiscovererPlayerId)) return;
-        if (!_missionManager.TryGetNextPlacedGift(
-                matchingId,
-                discovery.OwnerPlayerId,
-                discovery.DiscovererPlayerId,
-                out var nextGift) || nextGift == null)
-            return;
-
-        bool started = _botPlayerManager.TrySendBotToInteract(
-            matchingId,
-            discovery.DiscovererPlayerId,
-            nextGift.AreaType,
-            nextGift.InteractId,
-            _areaClosureManager);
-
-        if (started)
-            logger.LogInformation(
-                "봇 다음 선물 회수 이동: MatchingId={MatchingId}, BotId={BotId}, InteractId={InteractId}",
-                matchingId, discovery.DiscovererPlayerId, nextGift.InteractId);
-    }
-
-    /// <summary>
-    ///     #134 — 봇이 RNG 채집한 InteractObject 쿨타임을 같은 매칭 모든 클라에 broadcast.
-    ///     플레이어 회수 시 GameClientSession.BroadcastRngCollectCooldown과 동일한 패킷.
-    ///     결과 정보(직책 매칭 여부)는 포함 X — 노출 방지.
-    /// </summary>
-    private void BroadcastBotRngCooldowns(long matchingId, List<(int interactId, int cooldownSeconds)> broadcasts)
-    {
-        var sessions = _clientSessions.Values
-            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
-            .ToList();
-        if (sessions.Count == 0) return;
-
-        foreach (var (interactId, cooldown) in broadcasts)
-        {
-            var msg = new G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST
-            {
-                InteractId = interactId,
-                CooldownSeconds = cooldown
-            };
-            var body = MessagePackSerializer.Serialize(msg);
-            foreach (var session in sessions)
-            {
-                using var packet = Packet.Create((int)Protocol.G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST,
-                    session.PlayerId!.Value);
-                packet.SetBody(body);
-                session.Send(packet);
-            }
-            logger.LogInformation("봇 RNG 쿨타임 broadcast: MatchingId={Mid}, InteractId={Iid}, Cooldown={Sec}s",
-                matchingId, interactId, cooldown);
-        }
-    }
-
     /// <summary>
     ///     #125: 봇 이동 이벤트를 같은 매칭의 영향권 인간 세션에 패킷 브로드캐스트.
     ///     - 영역 전환: G_TO_C_AREA_PLAYER_LEAVE(이전 영역) + G_TO_C_AREA_PLAYER_ENTER(새 영역) + G_TO_C_MOVE(텔레포트)
@@ -1520,7 +1051,6 @@ public partial class GameServer(
                 continue;
             }
 
-            session.TrySendRoomEncounterEventForObservedPlayer(ev.BotPlayerId, ev.Position);
         }
     }
 
@@ -1896,7 +1426,6 @@ public partial class GameServer(
             foreach (var session in activeSessions)
             {
                 session.SendTargetLocation();
-                session.TrySendRoomEncounterEventsFromCurrentVision();
             }
         }
         catch (Exception ex)
@@ -1915,40 +1444,6 @@ public partial class GameServer(
             TimeSpan.FromMilliseconds(BotMovementTickIntervalMs),
             TimeSpan.FromMilliseconds(BotMovementTickIntervalMs));
         logger.LogInformation("봇 walking 타이머 시작 ({Ms}ms 간격)", BotMovementTickIntervalMs);
-    }
-
-    private const int BotMissionTickIntervalMs = 1000; // #134 봇 미션 처리(RNG 채집/결합) 주기
-
-    private void StartBotMissionTimer()
-    {
-        _botMissionTimer = new Timer(ProcessBotMission, null,
-            TimeSpan.FromMilliseconds(BotMissionTickIntervalMs),
-            TimeSpan.FromMilliseconds(BotMissionTickIntervalMs));
-        logger.LogInformation("봇 미션 타이머 시작 ({Ms}ms 간격)", BotMissionTickIntervalMs);
-    }
-
-    private void ProcessBotMission(object? state)
-    {
-        try
-        {
-            var activeSessions = _clientSessions.Values
-                .Where(s => s.PlayerId.HasValue)
-                .ToList();
-            var matchingIds = GetActiveMatchingIds();
-
-            foreach (long matchingId in matchingIds)
-            {
-                if (Config.SPOT_ARENA_P0_ENABLED) continue;
-                if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
-                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
-                if (!_botPlayerManager.HasBots(matchingId)) continue;
-                ProcessBotMissionForMatching(matchingId, activeSessions);
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "봇 미션 틱 처리 중 오류");
-        }
     }
 
     private void ProcessBotMovement(object? state)
@@ -2033,11 +1528,7 @@ public partial class GameServer(
                     BroadcastBotMovement(matchingId, ev, activeSessions);
                 }
                 if (movementResult.ExploreEnds.Count > 0)
-                {
                     BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);
-                    ResolvePendingRoomDiscoveriesForBotExploreEnds(matchingId, movementResult.ExploreEnds,
-                        activeSessions);
-                }
                 if (movementResult.GroundItemPickups.Count > 0)
                     BroadcastBotGroundItemPickups(matchingId, movementResult.GroundItemPickups, activeSessions);
                 StartTargetBotInterrogations(matchingId, activeSessions);
@@ -2410,7 +1901,6 @@ public partial class GameServer(
                 _summonStoneManager,
                 _doorStateManager,
                 _manittoChainManager,
-                _missionManager,
                 _checklistManager,
                 _areaClosureManager,
                 new InteractionChoiceService(_interactionLogManager, _manittoChainManager, _gameEventLogManager),
@@ -2532,7 +2022,6 @@ public partial class GameServer(
         _itemPoolManager.RemoveMatchingState(matchingId);
         _doorStateManager.ClearMatching(matchingId);
         _manittoChainManager.CleanupMatching(matchingId);
-        _missionManager.CleanupMatching(matchingId);
         _interactionLogManager.CleanupMatching(matchingId);
         _gameEventLogManager.Clear(matchingId);
         _encounterRevealManager.CleanupMatching(matchingId);
@@ -2686,8 +2175,6 @@ public partial class GameServer(
                 TargetJobTitle = bot.TargetJobTitle
             });
 
-            _missionManager.InitializePlayer(matchingId, bot.PlayerId, bot.MyJobTitle);
-            _missionManager.EnsureBroadcastTransmitterGift(matchingId, bot.PlayerId, bot.TargetPlayerId);
 
             if (!Config.SPOT_ARENA_P0_ENABLED)
                 _summonStoneManager.EnsureStartingStones(matchingId, bot.PlayerId);
