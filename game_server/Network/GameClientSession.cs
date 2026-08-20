@@ -508,29 +508,36 @@ public partial class GameClientSession : SessionBase
             async bytes =>
                 await HandleMessage<C_TO_G_PLAYER_INTERACT_SHARE_RULE>(bytes, HandlePlayerInteractShareRule));
 
-        // 마니또 프로토콜
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DETECT_MANITTO,
-            async bytes => await HandleMessage<C_TO_G_DETECT_MANITTO>(bytes, HandleDetectManitto));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SETTLEMENT_NOMINATE,
-            async bytes => await HandleMessage<C_TO_G_SETTLEMENT_NOMINATE>(bytes, HandleSettlementNominate));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_BOOKMARK_PRESENCE,
-            async bytes => await HandleMessage<C_TO_G_BOOKMARK_PRESENCE>(bytes, HandleBookmarkPresence));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLACE_TRACE,
-            async bytes => await HandleMessage<C_TO_G_PLACE_TRACE>(bytes, HandlePlaceTrace));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLACE_GIFT,
-            async bytes => await HandleMessage<C_TO_G_PLACE_GIFT>(bytes, HandlePlaceGift));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RECALL_GIFT,
-            async bytes => await HandleMessage<C_TO_G_RECALL_GIFT>(bytes, HandleRecallGift));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SABOTAGE_MISSION,
-            async bytes => await HandleMessage<C_TO_G_SABOTAGE_MISSION>(bytes, HandleSabotageMission));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_COMBINE_PARTS,
-            async bytes => await HandleMessage<C_TO_G_COMBINE_PARTS>(bytes, HandleCombineParts));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_MISSION_NODE_EXECUTE,
-            async bytes => await HandleMessage<C_TO_G_MISSION_NODE_EXECUTE>(bytes, HandleMissionNodeExecute));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CHECKLIST_ACTIVITY_START,
-            async bytes => await HandleMessage<C_TO_G_CHECKLIST_ACTIVITY_START>(bytes, HandleChecklistActivityStart));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CHECKLIST_ACTIVITY_FINISH,
-            async bytes => await HandleMessage<C_TO_G_CHECKLIST_ACTIVITY_FINISH>(bytes, HandleChecklistActivityFinish));
+        // 마니또 프로토콜 — 스웜 모드에서는 등록하지 않는다 (#236).
+        // 미등록 프로토콜은 SessionBase가 에러 응답으로 차단하므로, 조작된 클라이언트가
+        // 레거시 동작(색출 탈락, 부품 무효화 등)을 현행 매치에서 실행할 수 없다.
+        if (!Config.SWARM_P0_ENABLED)
+        {
+            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DETECT_MANITTO,
+                async bytes => await HandleMessage<C_TO_G_DETECT_MANITTO>(bytes, HandleDetectManitto));
+            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SETTLEMENT_NOMINATE,
+                async bytes => await HandleMessage<C_TO_G_SETTLEMENT_NOMINATE>(bytes, HandleSettlementNominate));
+            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_BOOKMARK_PRESENCE,
+                async bytes => await HandleMessage<C_TO_G_BOOKMARK_PRESENCE>(bytes, HandleBookmarkPresence));
+            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLACE_TRACE,
+                async bytes => await HandleMessage<C_TO_G_PLACE_TRACE>(bytes, HandlePlaceTrace));
+            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLACE_GIFT,
+                async bytes => await HandleMessage<C_TO_G_PLACE_GIFT>(bytes, HandlePlaceGift));
+            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RECALL_GIFT,
+                async bytes => await HandleMessage<C_TO_G_RECALL_GIFT>(bytes, HandleRecallGift));
+            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SABOTAGE_MISSION,
+                async bytes => await HandleMessage<C_TO_G_SABOTAGE_MISSION>(bytes, HandleSabotageMission));
+            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_COMBINE_PARTS,
+                async bytes => await HandleMessage<C_TO_G_COMBINE_PARTS>(bytes, HandleCombineParts));
+            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_MISSION_NODE_EXECUTE,
+                async bytes => await HandleMessage<C_TO_G_MISSION_NODE_EXECUTE>(bytes, HandleMissionNodeExecute));
+            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CHECKLIST_ACTIVITY_START,
+                async bytes => await HandleMessage<C_TO_G_CHECKLIST_ACTIVITY_START>(bytes,
+                    HandleChecklistActivityStart));
+            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CHECKLIST_ACTIVITY_FINISH,
+                async bytes => await HandleMessage<C_TO_G_CHECKLIST_ACTIVITY_FINISH>(bytes,
+                    HandleChecklistActivityFinish));
+        }
 
         // RNG 채집 프로토콜 (v0.2.1, #79)
         // RNG 채집 2단계 프로토콜 (#134)
@@ -539,10 +546,12 @@ public partial class GameClientSession : SessionBase
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RNG_COLLECT_FINISH,
             async bytes => await HandleMessage<C_TO_G_RNG_COLLECT_FINISH>(bytes, HandleRngCollectFinish));
 
-        // 상호작용 선택지 프로토콜
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_ROOM_ENCOUNTER_AVOID,
-            async bytes => await HandleMessage<C_TO_G_ROOM_ENCOUNTER_AVOID>(bytes, HandleRoomEncounterAvoid));
+        // 방 조우 회피 — 방 조우 상태기계는 레거시 전용이므로 스웜 모드에서는 등록하지 않는다 (#236)
+        if (!Config.SWARM_P0_ENABLED)
+            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_ROOM_ENCOUNTER_AVOID,
+                async bytes => await HandleMessage<C_TO_G_ROOM_ENCOUNTER_AVOID>(bytes, HandleRoomEncounterAvoid));
 
+        // 상호작용 선택지 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ASK,
             async bytes => await HandleMessage<C_TO_G_INTERACTION_ASK>(bytes, HandleInteractionAsk));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ANSWER,
@@ -551,8 +560,11 @@ public partial class GameClientSession : SessionBase
         // 구역 이동 프로토콜 (GDD v0.0.8: 문/계단 마커 방식)
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_AREA_MOVE,
             async bytes => await HandleMessage<C_TO_G_AREA_MOVE>(bytes, HandleAreaMove));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_ROOM_ENTRY_EVENT_CHOICE,
-            async bytes => await HandleMessage<C_TO_G_ROOM_ENTRY_EVENT_CHOICE>(bytes, HandleRoomEntryEventChoice));
+
+        // 방 사건 선택 — 방 사건(RoomEvent)은 레거시 전용이므로 스웜 모드에서는 등록하지 않는다 (#236)
+        if (!Config.SWARM_P0_ENABLED)
+            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_ROOM_ENTRY_EVENT_CHOICE,
+                async bytes => await HandleMessage<C_TO_G_ROOM_ENTRY_EVENT_CHOICE>(bytes, HandleRoomEntryEventChoice));
 
         // 소셜 액션 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SOCIAL_ACTION,
