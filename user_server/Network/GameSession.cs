@@ -51,25 +51,11 @@ public sealed class GameSession : SessionBase
             async bytes => await HandleMessage<C_TO_U_WEAR_ITEM>(bytes, WearItem));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_U_USE_ITEM,
             async bytes => await HandleMessage<C_TO_U_USE_ITEM>(bytes, UseItem));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_MSG,
-            async bytes => await HandleMessage<C_TO_U_CHAT_MSG>(bytes, AppendChat));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_CHAT_LOG, async _ => await SendChatHistory(ChatType.ALL));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_SET_NAME,
-            async bytes => await HandleMessage<C_TO_U_SET_NAME>(bytes, SetName));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_QUEST_INCREASE,
-            async bytes => await HandleMessage<C_TO_U_QUEST_INCREASE>(bytes, IncreaseQuestCount));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_QUEST_SUCCESS,
-            async bytes => await HandleMessage<C_TO_U_QUEST_SUCCESS>(bytes, CompleteQuest));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_MAIL_LIST, async _ => await SendMailList());
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_U_MAIL_RECEIVE,
-            async bytes => await HandleMessage<C_TO_U_MAIL_RECEIVE>(bytes, ReceiveMail));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_U_MATCHING,
             async bytes => await HandleMessage<C_TO_U_MATCHING>(bytes, HandleMatching));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_U_MATCHING_CANCEL, async _ => await HandleMatchingCancel());
 
         // 구독 프로토콜
-        _subscribeRouter.RegisterHandler(Protocol.U_TO_C_CHAT_MSG,
-            bytes => HandleMessage<U_TO_C_CHAT_MSG>(bytes, SubscribeChatMsg));
         _subscribeRouter.RegisterHandler(Protocol.U_TO_U_DUPLICATE, _ =>
         {
             ReceiveDuplicate();
@@ -301,111 +287,7 @@ public sealed class GameSession : SessionBase
         }
     }
 
-    private async Task SetName(C_TO_U_SET_NAME msg)
-    {
-        if (PlayerId == null) return;
-
-        var (errorCode, playerInfo) = await _playerService.SetName(PlayerId.Value, msg);
-
-        if (playerInfo != null)
-        {
-            using var packet = PacketMaker.U_TO_C_SET_NAME(errorCode, playerInfo);
-            Send(packet);
-        }
-        else
-        {
-            SendErrorResponse(errorCode, "이름 변경 실패");
-        }
-    }
-
-    private async Task IncreaseQuestCount(C_TO_U_QUEST_INCREASE msg)
-    {
-        if (PlayerId == null) return;
-
-        var errorCode = await _playerService.IncreaseQuestCount(PlayerId.Value, msg);
-        // 응답 프로토콜 미정의 — 실패 시 에러 응답만 전송
-        if (errorCode != ErrorCode.SUCCESS)
-            SendErrorResponse(errorCode, "퀘스트 카운트 증가 실패");
-    }
-
-    private async Task CompleteQuest(C_TO_U_QUEST_SUCCESS msg)
-    {
-        if (PlayerId == null) return;
-
-        var (errorCode, playerInfo) = await _playerService.CompleteQuest(PlayerId.Value, msg);
-
-        if (playerInfo != null)
-        {
-            using var packet = PacketMaker.U_TO_C_QUEST_SUCCESS(msg.QuestId, errorCode);
-            Send(packet);
-        }
-        else
-        {
-            SendErrorResponse(errorCode, "퀘스트 완료 실패");
-        }
-    }
-
-    private async Task SendMailList()
-    {
-        if (PlayerId == null) return;
-
-        var (errorCode, mailDict) = await _playerService.GetMailList(PlayerId.Value);
-
-        if (errorCode == ErrorCode.SUCCESS && mailDict != null)
-        {
-            using var packet = PacketMaker.U_TO_C_MAIL_LIST(mailDict, true);
-            Send(packet);
-        }
-        else
-        {
-            SendErrorResponse(errorCode, "메일 목록 조회 실패");
-        }
-    }
-
-    private async Task ReceiveMail(C_TO_U_MAIL_RECEIVE msg)
-    {
-        if (PlayerId == null) return;
-
-        var (errorCode, playerInfo) = await _playerService.ReceiveMail(PlayerId.Value, msg);
-
-        if (playerInfo != null)
-        {
-            using var packet = PacketMaker.U_TO_C_MAIL_RECEIVE(msg.MailUid, errorCode);
-            Send(packet);
-        }
-        else
-        {
-            SendErrorResponse(errorCode, "메일 수신 실패");
-        }
-    }
-
     // ========== 채팅 ==========
-
-    private async Task AppendChat(C_TO_U_CHAT_MSG msg)
-    {
-        if (PlayerId == null || PlayerInfo == null) return;
-
-        Logger.LogInformation($"Chat from {PlayerId}: {msg.ChatMessage}");
-
-        // TODO: SubjectHelper에 GetChatSubject 추가 필요, GameObjectInfo에서 이름 필드 확인 필요
-        // var chatSubject = SubjectHelper.GetChatSubject(ChatType.ALL);
-        // var chatPacket = PacketMaker.U_TO_C_CHAT_MSG(ChatType.ALL, PlayerId.Value, PlayerInfo.ObjectInfo.Name, msg.ChatMessage);
-        // _natsClient.Publish(chatSubject, MessagePackSerializer.Serialize((Protocol.U_TO_C_CHAT_MSG, chatPacket.ToBytes())));
-        await Task.CompletedTask;
-    }
-
-    private Task SubscribeChatMsg(U_TO_C_CHAT_MSG msg)
-    {
-        using var packet = PacketMaker.U_TO_C_CHAT_MSG(msg.ChatType, msg.PlayerId, msg.Name, msg.ChatMessage);
-        Send(packet);
-        return Task.CompletedTask;
-    }
-
-    private Task SendChatHistory(ChatType _)
-    {
-        // 채팅 히스토리 미구현 — 빈 응답
-        return Task.CompletedTask;
-    }
 
     // ========== 매칭 ==========
 

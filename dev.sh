@@ -60,8 +60,6 @@ Commands:
     clean           Stop and remove all containers and volumes
     status          Show status of all services
     shell [service] Open a shell in a service container
-    deploy          Deploy to Kubernetes cluster
-    k-logs          Show Kubernetes pod logs (interactive)
     help            Show this help message
 
 Local Mode (default — 개발자 PC용):
@@ -78,7 +76,6 @@ Prod-like Mode (외부 dev/prod 환경 검증용):
 Examples:
     ./dev.sh start                    # Start with hot reload (local mode)
     ./dev.sh logs game_server         # View game server logs
-    ./dev.sh k-logs                   # Interactive K8s log viewer
     COMPOSE_FILE=docker-compose.prod.yml ./dev.sh start  # Prod-like mode
 EOF
 }
@@ -202,59 +199,6 @@ function open_shell() {
     $DOCKER_COMPOSE exec "$service" /bin/sh
 }
 
-function deploy_k8s() {
-    print_header "Deploying to Kubernetes"
-    ./deploy.sh
-}
-
-function k8s_logs() {
-    print_header "Kubernetes Pod Logs"
-
-    # Get namespace
-    NAMESPACE=${1:-app}
-
-    # List all pods
-    echo "Available pods in namespace '$NAMESPACE':"
-    kubectl get pods -n "$NAMESPACE" --no-headers | nl
-    echo ""
-
-    # Interactive selection
-    read -p "Select pod number (or 'q' to quit): " pod_num
-
-    if [ "$pod_num" = "q" ]; then
-        exit 0
-    fi
-
-    POD_NAME=$(kubectl get pods -n "$NAMESPACE" --no-headers | sed -n "${pod_num}p" | awk '{print $1}')
-
-    if [ -z "$POD_NAME" ]; then
-        print_error "Invalid selection"
-        exit 1
-    fi
-
-    print_header "Showing logs for: $POD_NAME"
-
-    # Check if pod has multiple containers
-    CONTAINER_COUNT=$(kubectl get pod "$POD_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.containers[*].name}' | wc -w)
-
-    if [ "$CONTAINER_COUNT" -gt 1 ]; then
-        echo "Multiple containers found:"
-        kubectl get pod "$POD_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.containers[*].name}' | tr ' ' '\n' | nl
-        echo ""
-        read -p "Select container number: " container_num
-        CONTAINER_NAME=$(kubectl get pod "$POD_NAME" -n "$NAMESPACE" -o jsonpath='{.spec.containers[*].name}' | tr ' ' '\n' | sed -n "${container_num}p")
-
-        if [ -z "$CONTAINER_NAME" ]; then
-            print_error "Invalid selection"
-            exit 1
-        fi
-
-        kubectl logs -f "$POD_NAME" -n "$NAMESPACE" -c "$CONTAINER_NAME" --tail=100
-    else
-        kubectl logs -f "$POD_NAME" -n "$NAMESPACE" --tail=100
-    fi
-}
-
 # Main command handler
 case "${1:-help}" in
     start)
@@ -280,12 +224,6 @@ case "${1:-help}" in
         ;;
     shell)
         open_shell "$2"
-        ;;
-    deploy)
-        deploy_k8s
-        ;;
-    k-logs)
-        k8s_logs "$2"
         ;;
     help|--help|-h)
         show_help

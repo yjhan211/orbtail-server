@@ -31,15 +31,6 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_SET_NAME(ErrorCode errorCode, PlayerInfo playerInfo)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_SET_NAME);
-        U_TO_C_SET_NAME body = new() { ErrorCode = errorCode, PlayerInfo = playerInfo };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
     public static Packet U_TO_C_INVENTORY_ITEM_LIST(Dictionary<long, ItemInfo> itemDict, bool isEnd)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_INVENTORY_ITEM_LIST);
@@ -58,24 +49,6 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_CHAT_MSG(ChatType chatType, long playerId, string name, string chatMessage)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_CHAT_MSG);
-        U_TO_C_CHAT_MSG body = new() { ChatType = chatType, PlayerId = playerId, Name = name, ChatMessage = chatMessage };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_PLAYER_INFO(List<PlayerInfo> playerInfoList)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_PLAYER_INFO);
-        U_TO_C_PLAYER_INFO body = new() { PlayerInfoList = playerInfoList };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
     public static Packet U_TO_C_WEAR_ITEM(PlayerInfo playerInfo)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_WEAR_ITEM);
@@ -89,42 +62,6 @@ public static partial class PacketMaker
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_USE_ITEM);
         U_TO_C_USE_ITEM body = new() { PlayerInfo = playerInfo };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_QUEST_UPDATE(QuestInfo questInfo)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_QUEST_UPDATE);
-        U_TO_C_QUEST_UPDATE body = new() { QuestInfo = questInfo };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_QUEST_SUCCESS(int questId, ErrorCode errorCode)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_QUEST_SUCCESS);
-        U_TO_C_QUEST_SUCCESS body = new() { QuestId = questId, ErrorCode = errorCode };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_MAIL_LIST(Dictionary<long, MailInfo> mailDict, bool isEnd)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_MAIL_LIST);
-        U_TO_C_MAIL_LIST body = new() { MailDict = mailDict, IsEnd = isEnd };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
-    public static Packet U_TO_C_MAIL_RECEIVE(long mailUid, ErrorCode errorCode)
-    {
-        var packet = Packet.Create((int)Protocol.U_TO_C_MAIL_RECEIVE);
-        U_TO_C_MAIL_RECEIVE body = new() { MailUid = mailUid, ErrorCode = errorCode };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

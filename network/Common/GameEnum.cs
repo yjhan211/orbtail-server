@@ -206,13 +206,6 @@ namespace network.common
         CLUB
     }
 
-    public enum ChatType : byte
-    {
-        ALL,
-        NORMAL,
-        GUILD
-    }
-
     public enum LoginType
     {
         GUEST

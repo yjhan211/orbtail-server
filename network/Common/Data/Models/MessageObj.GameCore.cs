@@ -334,41 +334,9 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class G_TO_U_SPAWN : IMessagePackObject
-    {
-        [Key("objectKeyList")] public List<string> ObjectKeyList { get; set; }
-        [Key("cellsToRemove")] public List<Cell> CellsToRemove { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_U_DESTROY : IMessagePackObject
-    {
-        [Key("objectKey")] public string ObjectKey { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_SPAWN : IMessagePackObject
-    {
-        [Key("objectKeyList")] public List<string> ObjectKeyList { get; set; }
-        [Key("cellsToRemove")] public List<Cell> CellsToRemove { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_DESTROY : IMessagePackObject
-    {
-        [Key("objectKey")] public string ObjectKey { get; set; }
-    }
-
-    [MessagePackObject]
     public class G_TO_C_PLAYER_INFO : IMessagePackObject
     {
         [Key("playerInfoList")] public List<PlayerInfo> PlayerInfoList { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_U_PLAYER_INFO : IMessagePackObject
-    {
-        [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
     }
 
     [MessagePackObject]
