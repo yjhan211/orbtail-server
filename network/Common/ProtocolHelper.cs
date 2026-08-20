@@ -37,8 +37,6 @@ namespace network.common
             Protocol.U_TO_C_HEART_BEAT,
             Protocol.C_TO_U_LOGIN,
             Protocol.U_TO_C_LOGIN,
-            Protocol.C_TO_U_SET_NAME,
-            Protocol.U_TO_C_SET_NAME,
 
             // 인벤토리
             Protocol.U_TO_C_INVENTORY_ITEM_LIST,
@@ -49,20 +47,10 @@ namespace network.common
             Protocol.U_TO_C_USE_ITEM,
 
             // 플레이어 정보
-            Protocol.C_TO_U_PLAYER_INFO,
-            Protocol.U_TO_C_PLAYER_INFO,
 
             // 퀘스트
-            Protocol.C_TO_U_QUEST_INCREASE,
-            Protocol.U_TO_C_QUEST_UPDATE,
-            Protocol.C_TO_U_QUEST_SUCCESS,
-            Protocol.U_TO_C_QUEST_SUCCESS,
 
             // 우편함
-            Protocol.C_TO_U_MAIL_LIST,
-            Protocol.U_TO_C_MAIL_LIST,
-            Protocol.C_TO_U_MAIL_RECEIVE,
-            Protocol.U_TO_C_MAIL_RECEIVE,
 
             // 매칭
             Protocol.C_TO_U_MATCHING,
@@ -73,9 +61,6 @@ namespace network.common
             Protocol.U_TO_C_MATCHING_FAILED,
 
             // 채팅
-            Protocol.C_TO_U_CHAT_MSG,
-            Protocol.U_TO_C_CHAT_MSG,
-            Protocol.C_TO_U_CHAT_LOG,
 
             // 중복 로그인
             Protocol.U_TO_U_DUPLICATE,
