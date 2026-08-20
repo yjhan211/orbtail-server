@@ -94,6 +94,7 @@ public partial class GameClientSession : SessionBase
 
     // 이 매치에서 연 문 수 — 첫 문은 피격으로 게이지가 끊기지 않는다 (2026-08-16).
     private int _swarmDoorUnlockCount;
+    private int _pendingOrbDraftCost;
     private DateTime _lastMoveTime = DateTime.UtcNow;
 
     private DateTime _exploreMoveGraceUntil = DateTime.MinValue;
@@ -117,7 +118,6 @@ public partial class GameClientSession : SessionBase
 
     // #219 M2 3택 드래프트: 개봉이 연 드래프트 권리와 개봉 시점 확정 비용
     private bool _hasPendingOrbDraft;
-    private int _pendingOrbDraftCost;
 
     /// <summary>열쇠 (#222 M4): 무료 소환 충전 수 — 획득/소비는 GroundItem·OrbSummon partial.</summary>
     public int FreeSummonCharges { get; internal set; }
@@ -470,6 +470,9 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_SWARM_GROWTH_PICK>(bytes, HandleSwarmGrowthPick));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SWARM_ORB_DECISION,
             async bytes => await HandleMessage<C_TO_G_SWARM_ORB_DECISION>(bytes, HandleSwarmOrbDecision));
+        // 오브/배틀아이템 조합 — 이름은 부품 결합이지만 현행 오브 머지가 쓰는 프로토콜 (#238에서 게이트 밖으로 복구)
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_COMBINE_PARTS,
+            async bytes => await HandleMessage<C_TO_G_COMBINE_PARTS>(bytes, HandleCombineParts));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT,
             async bytes => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,

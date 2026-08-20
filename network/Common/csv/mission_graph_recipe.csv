@@ -1,6 +1,0 @@
-recipe_id,job_title,recipe_key,input_part_ids,output_part_id,required_node_ids,unlock_node_ids,craft_duration_seconds,stamina_cost,suspicion_tag,title_key,alibi_claim_key,visible_trace_key,success_text_key
-3001,0,REC-RECORD-WRITING,"[301,302]",305,[],[],5,5,,recipe/3001/title,,recipe/3001/trace,recipe/3001/success
-3002,0,REC-RECORD-BROADCAST,"[303,304]",306,[],[],5,5,,recipe/3002/title,,recipe/3002/trace,recipe/3002/success
-3003,0,REC-RECORD-ATTENDANCE,"[308,309]",315,[],[],5,5,,recipe/3003/title,,recipe/3003/trace,recipe/3003/success
-3004,0,REC-RECORD-CONFISCATED,"[310,311]",316,[],[],5,5,,recipe/3004/title,,recipe/3004/trace,recipe/3004/success
-3005,0,REC-RECORD-ROLLCALL,"[312,313]",317,[],[],5,5,,recipe/3005/title,,recipe/3005/trace,recipe/3005/success

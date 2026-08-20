@@ -80,7 +80,6 @@ namespace network.common
         G_TO_C_DOOR_STATE_LIST, // 입장 시 열린 문 목록
 
         // 복도 규칙 프로토콜
-        G_TO_C_CORRIDOR_BELL, // 복도 종소리 이벤트
 
         // 플레이어 상호작용 프로토콜
         C_TO_G_PLAYER_INTERACT_REQUEST,   // A→서버: 상호작용 요청
@@ -95,15 +94,8 @@ namespace network.common
         G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT,  // 상호작용 중 수칙 공유 결과
 
         // 미션 프로토콜 (v0.2.0 — 부품 결합 시스템)
-        G_TO_C_MISSION_INFO,          // 게임 시작 시 미션 정보 전달 (직책 + 부품 진행)
-        G_TO_C_MISSION_STEP_COMPLETE, // 레거시 호환: 소재 1개 회수 알림 (G_TO_C_PART_COLLECTED 권장)
-        G_TO_C_MISSION_ALL_COMPLETE,  // race 완주 알림 (G_TO_C_PART_COMBINED.IsRaceComplete 권장)
-        G_TO_C_PART_COLLECTED,        // 부품 회수 알림 (소재)
         G_TO_C_PART_COMBINED,         // 부품 결합 결과 (중간재 또는 최종)
         C_TO_G_COMBINE_PARTS,         // 부품 결합 요청
-        G_TO_C_PREREQUISITE_COLLECTED, // 선행 아이템 회수 알림
-        G_TO_C_PART_STOLEN,           // 색출 적중 시 부품 전이 알림
-        G_TO_C_PART_INVALIDATED,      // 사보타주 부품 무효화 알림
 
         // 구역 폐쇄 프로토콜
         G_TO_C_AREA_CLOSURE_WARNING,  // 폐쇄 30초 전 경고
@@ -127,7 +119,6 @@ namespace network.common
         // 탈락 & 체인 프로토콜
         G_TO_C_PLAYER_ELIMINATED,     // 플레이어 탈락 알림 (전체 브로드캐스트)
         G_TO_C_CHAIN_BREAK,           // 체인 단절 → 시한부/해방 상태 알림
-        G_TO_C_PLAYER_STATUS_CHANGE,  // 플레이어 상태 변경 (시한부, 해방 등)
 
         // 마니또 전용: 흔적 배치 프로토콜
 
@@ -139,7 +130,6 @@ namespace network.common
         G_TO_C_INTERACTION_RESULT,    // 양쪽: 상호작용 결과 (주장 직책, 로그 기록 등)
 
         // 시한부 사보타주 프로토콜
-        G_TO_C_MISSION_REDIRECTED,    // 미션 목적지 재설정 알림 (훼손 피해자)
 
         // 게임 결과 프로토콜
         G_TO_C_GAME_RESULT,           // 게임 종료 시 전체 결과 (체인 공개)
@@ -157,7 +147,6 @@ namespace network.common
         G_TO_C_ERROR, // GameServer 범용 에러 응답
 
         // RNG 채집 프로토콜 (v0.2.1, #79 — 단일 패킷, deprecated)
-        C_TO_G_RNG_COLLECT,            // [deprecated] 단일 요청 — START/FINISH로 분리됨
         G_TO_C_RNG_COLLECT_RESULT,     // RNG 결과 (부품/선행/디코이/빈손/소모품) — FINISH 응답
         G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST, // 인스턴스 단위 쿨타임 broadcast — 매칭 내 모든 클라가 마커 숨김 (#134)
         G_TO_C_INTERACT_COOLDOWN_SNAPSHOT, // 합류/리커넥트 시 현재 InteractObject 쿨타임 snapshot (#137)
@@ -168,17 +157,9 @@ namespace network.common
         C_TO_G_RNG_COLLECT_FINISH,     // progress 완료 — 결과 산출 요청
 
         // 비밀 선물 프로토콜 (#129)
-        C_TO_G_PLACE_GIFT,             // 충전 완료 선물 설치 요청
-        G_TO_C_PLACE_GIFT_RESULT,      // 선물 설치 결과
-        G_TO_C_GIFT_DISCOVERED,        // 선물 발견 알림
-        G_TO_C_GIFT_PROGRESS,          // 설치자의 전달 진행도 갱신
 
-        C_TO_G_RECALL_GIFT,            // 배치한 선물 회수 요청
-        G_TO_C_RECALL_GIFT_RESULT,     // 선물 회수 결과
 
         // 미션 그래프 선택지 프로토콜 (#143)
-        C_TO_G_MISSION_NODE_EXECUTE,    // 기능 아이템/업무 선택지 실행 요청
-        G_TO_C_MISSION_NODE_EXECUTE_RESULT, // 기능 아이템/업무 선택지 실행 결과
 
         // 기척 프로토콜 (프로토 0, #159)
         G_TO_C_PRESENCE_UPDATE,         // 타겟 제외 후보별 최근 25초 조우 강도(0~5) 주기 전송
@@ -190,8 +171,6 @@ namespace network.common
         G_TO_C_ROUND_STATE,
         G_TO_C_ENCOUNTER_REVEAL,
         C_TO_G_ROOM_ENCOUNTER_AVOID,
-        G_TO_C_ROOM_ENTRY_EVENT,
-        C_TO_G_ROOM_ENTRY_EVENT_CHOICE,
 
         // 서버 권위 바닥 아이템
         G_TO_C_GROUND_ITEM_SNAPSHOT,

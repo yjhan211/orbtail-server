@@ -16,7 +16,6 @@ builder.Services.AddHttpClient<GameServerClient>(client =>
     client.BaseAddress = new Uri(gameServerBaseUrl);
     client.Timeout = TimeSpan.FromSeconds(5);
 });
-builder.Services.AddSingleton<StoryletCsvService>();
 
 // ─── 앱 빌드 ──────────────────────────────────────────────────────────────
 
@@ -93,64 +92,6 @@ app.MapPost("/api/matching-config/closure", async (System.Text.Json.JsonElement 
         : Results.Ok(result);
 });
 
-
-// 기록 Storylet CSV 조회
-app.MapGet("/api/storylets", (StoryletCsvService service) => Results.Ok(service.Load()));
-
-// 기록 Storylet 시작점 저장
-app.MapPut("/api/storylets/start/{nodeId}", (string nodeId, Dictionary<string, string?> body, StoryletCsvService service) =>
-{
-    var result = service.UpdateStart(nodeId, body);
-    return result.Success
-        ? Results.Ok(new { result.Message, data = service.Load() })
-        : Results.NotFound(new { result.Message });
-});
-
-// 기록 Storylet 후보 풀 저장
-app.MapPut("/api/storylets/pool/{nodeId}", (string nodeId, Dictionary<string, string?> body, StoryletCsvService service) =>
-{
-    var result = service.UpdatePool(nodeId, body);
-    return result.Success
-        ? Results.Ok(new { result.Message, data = service.Load() })
-        : Results.NotFound(new { result.Message });
-});
-
-// 상호작용 오브젝트 기본 본문 저장
-app.MapPut("/api/storylets/interactable/{id}", (string id, Dictionary<string, string?> body, StoryletCsvService service) =>
-{
-    var result = service.UpdateInteractable(id, body);
-    return result.Success
-        ? Results.Ok(new { result.Message, data = service.Load() })
-        : Results.NotFound(new { result.Message });
-});
-
-// 아이템 이름 저장
-app.MapPut("/api/storylets/item/{id}", (string id, Dictionary<string, string?> body, StoryletCsvService service) =>
-{
-    var result = service.UpdateItem(id, body);
-    return result.Success
-        ? Results.Ok(new { result.Message, data = service.Load() })
-        : Results.NotFound(new { result.Message });
-});
-
-// 조합 레시피 저장
-app.MapPut("/api/storylets/recipe/{recipeId}",
-    (string recipeId, Dictionary<string, string?> body, StoryletCsvService service) =>
-    {
-        var result = service.UpdateRecipe(recipeId, body);
-        return result.Success
-            ? Results.Ok(new { result.Message, data = service.Load() })
-            : Results.NotFound(new { result.Message });
-    });
-
-app.MapPut("/api/storylets/object-action/{actionGroupKey}/{actionId}",
-    (string actionGroupKey, string actionId, Dictionary<string, string?> body, StoryletCsvService service) =>
-    {
-        var result = service.UpdateObjectAction(actionGroupKey, actionId, body);
-        return result.Success
-            ? Results.Ok(new { result.Message, data = service.Load() })
-            : Results.NotFound(new { result.Message });
-    });
 
 // ops_server 헬스
 app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));

@@ -303,21 +303,6 @@ public partial class GameClientSession
         Send(packet);
     }
 
-    private static int GetMissionInfoPayloadSize(G_TO_C_MISSION_INFO msg) =>
-MessagePackSerializer.Serialize(msg).Length;
-
-    private static bool IsMissionInfoChunkEmpty(G_TO_C_MISSION_INFO msg) =>
-        msg.Parts.Count == 0 &&
-        msg.GraphNodes.Count == 0 &&
-        msg.ShortRewards.Count == 0 &&
-        msg.DiscoveredStoryletIds.Count == 0 &&
-        msg.TrackedStoryletIds.Count == 0 &&
-        msg.ClaimedStoryletIds.Count == 0 &&
-        msg.LostStoryletIds.Count == 0 &&
-        msg.OwnedClueTags.Count == 0 &&
-        msg.CraftedFunctionItemIds.Count == 0 &&
-        msg.VisibleVictoryTraceIds.Count == 0;
-
     private Task HandleSettlementNominate(C_TO_G_SETTLEMENT_NOMINATE msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
