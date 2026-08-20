@@ -260,10 +260,6 @@ public partial class GameClientSession
         if (staminaCost > 0)
             ModifyStats(-staminaCost);
 
-        var currentState = _interactableStateManager.GetInteractableState(CurrentMapSubId, msg.InteractId);
-        if (currentState == (int)InteractableStateType.SABOTAGE)
-            _sabotageManager.OnActionCompleted(CurrentMapSubId, msg.InteractId, 0);
-
         _pendingChecklistActivityFinish.Add(msg.InteractId);
         _gameEventLogManager.LogSchoolActivityStart(
             CurrentMapSubId,
@@ -512,57 +508,6 @@ public partial class GameClientSession
         };
         packet.SetBody(MessagePackSerializer.Serialize(msg));
         Send(packet);
-    }
-
-    /// <summary>
-    ///     색출 요청 처리 (1회 한정)
-    /// </summary>
-    private Task HandleDetectManitto(C_TO_G_DETECT_MANITTO msg)
-    {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (IsRoundActionLocked(out _))
-        {
-            using var lockedPacket = Packet.Create((int)Protocol.G_TO_C_DETECT_RESULT, PlayerId.Value);
-            var lockedResult = new G_TO_C_DETECT_RESULT
-            {
-                ErrorCode = ErrorCode.INVALID_GAME_STATE,
-                IsCorrect = false,
-                TargetPlayerId = msg.TargetPlayerId
-            };
-            lockedPacket.SetBody(MessagePackSerializer.Serialize(lockedResult));
-            Send(lockedPacket);
-            return Task.CompletedTask;
-        }
-
-        var (isCorrect, errorCode) = _manittoChainManager.TryDetect(CurrentMapSubId, PlayerId.Value, msg.TargetPlayerId);
-
-        // 결과 전송
-        using var packet = Packet.Create((int)Protocol.G_TO_C_DETECT_RESULT, PlayerId.Value);
-        var result = new G_TO_C_DETECT_RESULT
-        {
-            ErrorCode = errorCode,
-            IsCorrect = isCorrect,
-            TargetPlayerId = msg.TargetPlayerId
-        };
-        packet.SetBody(MessagePackSerializer.Serialize(result));
-        Send(packet);
-
-        // 지목을 실제로 소비한 경우만 결과를 판정한다(SUCCESS). ALREADY_USED/NOT_AVAILABLE 등은 막기만 하고 페널티 없음.
-        if (errorCode != ErrorCode.SUCCESS) return Task.CompletedTask;
-
-        // 적중 — 내 마니또(스토커)를 즉시 탈락시킨다. 프로토 0은 정신력 모델이라 v0.2.0 부품 전이는 적용하지 않는다.
-        if (isCorrect)
-        {
-            // 마니또의 모든 흔적 함정 무효화 (§2.5.1)
-            _traceManager.InvalidateTracesByPlacer(CurrentMapSubId, msg.TargetPlayerId);
-
-            _ = ProcessElimination(msg.TargetPlayerId, EliminationReason.DETECTED, PlayerId.Value);
-            return Task.CompletedTask;
-        }
-
-        Logger.LogInformation("색출 오발: DetecterId={PlayerId}, Target={Target}", PlayerId, msg.TargetPlayerId);
-
-        return Task.CompletedTask;
     }
 
     private Task HandleSettlementNominate(C_TO_G_SETTLEMENT_NOMINATE msg)
@@ -960,9 +905,7 @@ public partial class GameClientSession
         _areaRuleManager.RemoveMatchingState(matchingId);
         _itemPoolManager.RemoveMatchingState(matchingId);
         _doorStateManager.ClearMatching(matchingId);
-        _sabotageManager.RemoveMatchingState(matchingId);
         _missionManager.CleanupMatching(matchingId);
-        _traceManager.CleanupMatching(matchingId);
         _interactionChoiceService.CleanupMatching(matchingId);
         _encounterRevealManager.CleanupMatching(matchingId);
         _manittoChainManager.CleanupMatching(matchingId);
@@ -1112,46 +1055,6 @@ public partial class GameClientSession
         {
             Logger.LogWarning(ex, "Redis matching handoff 정리 실패: MatchingId={MatchingId}", matchingId);
         }
-    }
-
-    /// <summary>
-    ///     흔적 배치 요청 처리 (마니또 전용)
-    /// </summary>
-    private Task HandlePlaceTrace(C_TO_G_PLACE_TRACE msg)
-    {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (IsRoundActionLocked(out _))
-        {
-            using var lockedPacket = Packet.Create((int)Protocol.G_TO_C_PLACE_TRACE_RESULT, PlayerId.Value);
-            var lockedResult = new G_TO_C_PLACE_TRACE_RESULT
-            {
-                ErrorCode = ErrorCode.INVALID_GAME_STATE,
-                StaminaCost = 0
-            };
-            lockedPacket.SetBody(MessagePackSerializer.Serialize(lockedResult));
-            Send(lockedPacket);
-            return Task.CompletedTask;
-        }
-
-        const int placeTraceCost = 5; // 스태미나 소모 (패키지 Y: -10 → -5, #24)
-
-        // 권고안 B 2026-05-05: Stamina 부족해도 ModifyStats가 Cor 1:2 변환 — 사전 차단 제거.
-        ModifyStats(staminaDelta: -placeTraceCost);
-
-        // 성공 응답
-        using var packet = Packet.Create((int)Protocol.G_TO_C_PLACE_TRACE_RESULT, PlayerId.Value);
-        var result = new G_TO_C_PLACE_TRACE_RESULT
-        {
-            ErrorCode = ErrorCode.SUCCESS,
-            StaminaCost = placeTraceCost
-        };
-        packet.SetBody(MessagePackSerializer.Serialize(result));
-        Send(packet);
-
-        // 흔적 저장 (탐색 시 발견됨)
-        StoreTrace(CurrentArea, msg.InteractId, "누군가 무언가를 남겼다...", false);
-
-        return Task.CompletedTask;
     }
 
     private Task HandlePlaceGift(C_TO_G_PLACE_GIFT msg)
@@ -1396,9 +1299,6 @@ public partial class GameClientSession
             };
             legacyPacket.SetBody(MessagePackSerializer.Serialize(legacyMsg));
             Send(legacyPacket);
-
-            // 미션 흔적 저장 (탐색 시 다른 플레이어가 발견 가능)
-            StoreTrace(area, interactId, GetMissionCollectTraceDescription(collectResult.CompletedMissionNodeIds), true);
             return;
         }
 
@@ -1408,19 +1308,6 @@ public partial class GameClientSession
 
         // 3. 블러프 우회(off-pool) 비용 적용 (#87 N11)
         ApplyBluffBypassCost(area, objectType);
-    }
-
-    private string GetMissionCollectTraceDescription(IEnumerable<int> completedMissionNodeIds)
-    {
-        foreach (int nodeId in completedMissionNodeIds)
-        {
-            var node = GameMissionGraphData.GetNode(nodeId);
-            string trace = node?.VisibleTrace?.Kr ?? "";
-            if (!string.IsNullOrWhiteSpace(trace))
-                return trace;
-        }
-
-        return "여기서 무언가 회수된 흔적이 남아있다.";
     }
 
     /// <summary>
@@ -2016,14 +1903,6 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     #26: 봇 색출 적중 시 마니또(피탈자) 탈락 처리. 임의 세션이 트리거 역할만 수행.
-    /// </summary>
-    public void ProcessBotDetectedElimination(long manittoPlayerId, long? detecterBotId = null)
-    {
-        _ = ProcessElimination(manittoPlayerId, EliminationReason.DETECTED, detecterBotId);
-    }
-
-    /// <summary>
     ///     #87: race 완주에 의한 게임 즉시 종료.
     ///     완주자를 winner로 하고, 그 외 모든 생존자를 RACE_LOST 사유로 탈락 처리한 뒤 결과 패킷을 전송한다.
     /// </summary>
@@ -2058,75 +1937,6 @@ public partial class GameClientSession
             CurrentMapSubId, winnerId);
 
         SendGameResult(allSessions, winnerId, isTimeout: false, CurrentMapSubId, "race_completion");
-    }
-
-    /// <summary>
-    ///     흔적 저장 (TraceManager에 등록, 오브젝트 탐색 시 발견됨)
-    /// </summary>
-    private void StoreTrace(AreaType area, int interactId, string description, bool isMissionTrace)
-    {
-        if (!PlayerId.HasValue) return;
-
-        _traceManager.AddTrace(CurrentMapSubId, area, interactId, description, PlayerId.Value, isMissionTrace);
-        Logger.LogInformation("흔적 저장: PlayerId={PlayerId}, Area={Area}, InteractId={InteractId}, Mission={IsMission}",
-            PlayerId, area, interactId, isMissionTrace);
-    }
-
-    /// <summary>
-    ///     오브젝트 탐색 시 흔적 발견 체크.
-    ///     해당 오브젝트에 미발견 흔적이 있으면 발견 처리 + 정신력 효과 적용.
-    /// </summary>
-    public void CheckTraceDiscovery(int interactId)
-    {
-        if (!PlayerId.HasValue) return;
-
-        var undiscovered = _traceManager.GetUndiscoveredTraces(CurrentMapSubId, interactId, PlayerId.Value);
-        if (undiscovered.Count == 0) return;
-
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-
-        foreach (var stored in undiscovered)
-        {
-            _traceManager.MarkDiscovered(CurrentMapSubId, interactId, PlayerId.Value, stored.TraceId);
-
-            // 발견자에게 흔적 알림
-            var traceInfo = new TraceInfo
-            {
-                TraceId = stored.TraceId,
-                AreaType = stored.AreaType,
-                InteractId = stored.InteractId,
-                Description = stored.Description,
-                PlacedByPlayerId = stored.PlacedByPlayerId,
-                IsMissionTrace = stored.IsMissionTrace
-            };
-
-            using var packet = Packet.Create((int)Protocol.G_TO_C_TRACE_CREATED);
-            var msg = new G_TO_C_TRACE_CREATED { Trace = traceInfo };
-            packet.SetBody(MessagePackSerializer.Serialize(msg));
-            Send(packet);
-
-            // 마니또 배치 흔적만 정신력 효과 적용 (미션 흔적은 단서 역할만)
-            if (!stored.IsMissionTrace)
-            {
-                // GDD 2.3.2: 마니또(배치자) 정신력 회복
-                var placerSession = allSessions.FirstOrDefault(s => s.PlayerId == stored.PlacedByPlayerId);
-                if (placerSession != null)
-                {
-                    placerSession.ModifyStats(corruptionDelta: -GameServer.TraceFoundManittoRecovery);
-                    Logger.LogInformation("흔적 발견 → 마니또 회복: PlayerId={Placer}, -오염도{Amount}",
-                        stored.PlacedByPlayerId, GameServer.TraceFoundManittoRecovery);
-                }
-
-                // GDD 2.3.2: 발견자(▓▓) 오염도 증가 ("누군가 당신을 지켜보고 있습니다")
-                ModifyStats(corruptionDelta: GameServer.TraceFoundTargetDecay);
-                Logger.LogInformation("흔적 발견 → 발견자 오염도 증가: PlayerId={Discoverer}, +오염도{Amount}",
-                    PlayerId, GameServer.TraceFoundTargetDecay);
-                CheckResourceElimination();
-            }
-
-            Logger.LogInformation("흔적 발견: PlayerId={Discoverer}, TraceId={TraceId}, 배치자={Placer}",
-                PlayerId, stored.TraceId, stored.PlacedByPlayerId);
-        }
     }
 
     private const int GiftFoundCorruptionDelta = 30;
@@ -2210,125 +2020,6 @@ public partial class GameClientSession
         _ = ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO,
             attackerPlayerId: attackerPlayerId, isAreaClosureElimination: isAreaClosureElimination,
             isOvertimeElimination: isOvertimeElimination);
-    }
-
-    // ===== 시한부 사보타주 (GDD 2.5.4, 패키지 Y 4B, #24) =====
-
-    private const int SabotageStaminaCost = 25; // 스태미나 소모 (-25, GDD 확정)
-    private const int SabotageExposeSeconds = 5; // ▓▓ 위치 공개 지속 시간 (4B 옵션)
-
-    /// <summary>
-    ///     시한부 전용: 사보타주 처리 (패키지 Y 4B).
-    ///     대상 1명 지정 → 현재 미션 단계 무효화(보상 없음) + ▓▓ 위치를 모든 생존자에게 5초 공개.
-    ///     GDD 2.5.4: "단계 무효화 + ▓▓ 위치 5초 공개"
-    /// </summary>
-    private Task HandleSabotageMission(C_TO_G_SABOTAGE_MISSION msg)
-    {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (IsRoundActionLocked(out _))
-        {
-            SendSabotageResult(ErrorCode.INVALID_GAME_STATE, 0);
-            return Task.CompletedTask;
-        }
-
-        // 시한부만 사보타주 가능
-        if (ManittoStatus != ManittoStatus.TERMINAL)
-        {
-            SendSabotageResult(ErrorCode.SABOTAGE_NOT_TERMINAL, SabotageStaminaCost);
-            return Task.CompletedTask;
-        }
-
-        // 권고안 B 2026-05-05: 시한부 사보타주도 Cor 1:2 변환 허용 (-25 → +50 cor = 자가 탈락 위험으로 자연 균형).
-
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
-
-        // 대상 세션 확인 (targetPlayerId가 없으면 레거시 interactId 모드로 폴백)
-        GameClientSession? targetSession = null;
-        if (msg.TargetPlayerId != 0)
-            targetSession = allSessions.FirstOrDefault(s => s.PlayerId == msg.TargetPlayerId);
-
-        // E3 사전 체크: 대상이 이미 미션을 완료한 경우 스태미나 미차감 + 실패 응답 (GDD §2.5.4, #56)
-        if (targetSession?.PlayerId.HasValue == true)
-        {
-            var targetState = _missionManager.GetState(CurrentMapSubId, targetSession.PlayerId.Value);
-            if (targetState?.IsCompleted == true)
-            {
-                SendSabotageResult(ErrorCode.MISSION_ALREADY_COMPLETED, SabotageStaminaCost);
-                return Task.CompletedTask;
-            }
-        }
-
-        // 스태미나 차감
-        ModifyStats(staminaDelta: -SabotageStaminaCost);
-
-        // 성공 응답 (요청자에게)
-        SendSabotageResult(ErrorCode.SUCCESS, SabotageStaminaCost);
-
-        // === v0.2.0: 대상의 가장 가치 높은 부품 1개 무효화 ===
-        if (targetSession != null && targetSession.PlayerId.HasValue)
-        {
-            int? invalidatedPartId = _missionManager.InvalidateHighestPart(
-                CurrentMapSubId, targetSession.PlayerId.Value);
-
-            if (invalidatedPartId.HasValue)
-            {
-                var part = GameMissionData.GetPart(invalidatedPartId.Value);
-                using var invalidatedPacket = Packet.Create(
-                    (int)Protocol.G_TO_C_PART_INVALIDATED, targetSession.PlayerId.Value);
-                var invalidatedMsg = new G_TO_C_PART_INVALIDATED
-                {
-                    PartId = invalidatedPartId.Value,
-                    PartNameKr = part?.PartNameKr ?? "",
-                    PartTier = part != null ? (int)part.PartTier : 0,
-                    TargetPlayerId = targetSession.PlayerId.Value
-                };
-                invalidatedPacket.SetBody(MessagePackSerializer.Serialize(invalidatedMsg));
-                targetSession.Send(invalidatedPacket);
-
-                Logger.LogInformation("사보타주 부품 무효화: Terminal={Terminal}, Target={Target}, PartId={PartId}",
-                    PlayerId, targetSession.PlayerId, invalidatedPartId.Value);
-            }
-        }
-
-        // === 4B Step 2: ▓▓ 위치를 모든 생존자에게 5초 공개 ===
-        // 시한부 본인의 타겟(▓▓) 위치 공개
-        var myTargetSession = allSessions.FirstOrDefault(s => s.PlayerId == TargetPlayerId);
-        if (myTargetSession != null)
-        {
-            using var exposePacket = Packet.Create((int)Protocol.G_TO_C_SABOTAGE_TARGET_EXPOSED);
-            var exposeMsg = new G_TO_C_SABOTAGE_TARGET_EXPOSED
-            {
-                TerminalPlayerId = PlayerId.Value,
-                TargetPlayerId = TargetPlayerId,
-                TargetAreaType = myTargetSession.CurrentArea,
-                ExposeDurationSeconds = SabotageExposeSeconds
-            };
-            exposePacket.SetBody(MessagePackSerializer.Serialize(exposeMsg));
-            // 모든 생존자에게 브로드캐스트
-            foreach (var s in allSessions.Where(s => !s.IsEliminated))
-                s.Send(exposePacket);
-
-            Logger.LogInformation(
-                "사보타주 4B — ▓▓ 위치 공개: Terminal={PlayerId}, Target={Target}, Area={Area}, {Sec}초",
-                PlayerId, TargetPlayerId, myTargetSession.CurrentArea, SabotageExposeSeconds);
-        }
-
-        Logger.LogInformation("사보타주: PlayerId={PlayerId}, TargetPlayerId={Target}, InteractId={InteractId}",
-            PlayerId, msg.TargetPlayerId, msg.InteractId);
-
-        // 사보타주 후 스태미나 탈락 체크
-        CheckResourceElimination();
-
-        return Task.CompletedTask;
-    }
-
-    private void SendSabotageResult(ErrorCode errorCode, int cost)
-    {
-        if (!PlayerId.HasValue) return;
-        using var packet = Packet.Create((int)Protocol.G_TO_C_SABOTAGE_RESULT, PlayerId.Value);
-        var msg = new G_TO_C_SABOTAGE_RESULT { ErrorCode = errorCode, StaminaCost = cost };
-        packet.SetBody(MessagePackSerializer.Serialize(msg));
-        Send(packet);
     }
 
     // ===== 상호작용 선택지 =====

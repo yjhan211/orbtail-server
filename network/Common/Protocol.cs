@@ -57,11 +57,7 @@ namespace network.common
         G_TO_C_AREA_EXIT_BLOCKED, // Area 퇴장 조건 미충족 시 이동 차단 알림
 
         // 탐색 프로토콜
-        C_TO_G_EXPLORE_START, // 탐색 시작 요청
         G_TO_C_EXPLORE_START, // 탐색 시작 브로드캐스트 (애니메이션 동기화)
-        C_TO_G_EXPLORE_SELECT, // 선택지 선택
-        G_TO_C_EXPLORE_RESULT, // 탐색 결과 (보상 등)
-        C_TO_G_EXPLORE_END, // 탐색 종료 요청 (UI 닫기)
         G_TO_C_EXPLORE_END, // 탐색 종료 브로드캐스트
         G_TO_C_INTERACTABLE_STATE_CHANGE, // Interactable state 변경 알림 (사보타주 등)
 
@@ -117,13 +113,8 @@ namespace network.common
         G_TO_C_TARGET_LOCATION,       // 마니또 → 타겟 구역 위치
 
         // 흔적 프로토콜
-        G_TO_C_TRACE_CREATED,         // 흔적 생성 알림
-        G_TO_C_TRACE_LIST,            // 현재 구역 흔적 목록
 
         // 색출 프로토콜
-        C_TO_G_DETECT_MANITTO,        // 마니또 지목 요청
-        G_TO_C_DETECT_RESULT,         // 지목 결과 (성공/실패)
-        G_TO_C_DETECTION_ANNOUNCE,    // 색출 시도 전체 브로드캐스트 (영상 cut 시각화 — 06:40 SC→DC)
         C_TO_G_SETTLEMENT_NOMINATE,   // 정산 지목 요청
         G_TO_C_SETTLEMENT_NOMINATION_RESULT, // 정산 지목 결과
         G_TO_C_SETTLEMENT_CONTRIBUTION_RESULT, // 정산 기여도 공개 결과
@@ -139,9 +130,6 @@ namespace network.common
         G_TO_C_PLAYER_STATUS_CHANGE,  // 플레이어 상태 변경 (시한부, 해방 등)
 
         // 마니또 전용: 흔적 배치 프로토콜
-        C_TO_G_PLACE_TRACE,           // 흔적 배치 요청
-        G_TO_C_PLACE_TRACE_RESULT,    // 흔적 배치 결과
-        G_TO_C_TRACE_PLACED_ANNOUNCE, // 흔적 배치 발생 전체 브로드캐스트 (영상 cut 시각화 — 09:30 BR 도서관)
 
         // 1:1 상호작용 선택지 프로토콜 (마니또)
         G_TO_C_INTERACTION_CHOICES,   // 대화 수락 시 질문/답변 선택지 전송
@@ -151,10 +139,7 @@ namespace network.common
         G_TO_C_INTERACTION_RESULT,    // 양쪽: 상호작용 결과 (주장 직책, 로그 기록 등)
 
         // 시한부 사보타주 프로토콜
-        C_TO_G_SABOTAGE_MISSION,      // 시한부: 미션 오브젝트 훼손 요청
-        G_TO_C_SABOTAGE_RESULT,       // 훼손 결과 (성공/실패)
         G_TO_C_MISSION_REDIRECTED,    // 미션 목적지 재설정 알림 (훼손 피해자)
-        G_TO_C_SABOTAGE_TARGET_EXPOSED, // 4B: 사보타주 발동 시 ▓▓ 위치 5초 공개 (전체 브로드캐스트, 패키지 Y #24)
 
         // 게임 결과 프로토콜
         G_TO_C_GAME_RESULT,           // 게임 종료 시 전체 결과 (체인 공개)
@@ -345,14 +330,9 @@ namespace network.common
         INSUFFICIENT_ITEM = 755,        // v0.2.0 — 결합 입력 부품 미보유
 
         // 색출 (850~899)
-        DETECT_ALREADY_USED = 850,
         DETECT_TARGET_NOT_FOUND = 851,
-        DETECT_NOT_AVAILABLE = 852,  // 최종 2인 등 비활성 상황
 
         // 사보타주 (860~869)
-        SABOTAGE_NOT_TERMINAL = 860,       // 시한부가 아님
-        SABOTAGE_INVALID_TARGET = 861,     // 훼손 대상 없음
-        SABOTAGE_AREA_MISMATCH = 862,      // 해당 구역에 없음
 
         // 레거시 호환 (900~)
         ALREADY_HAS_JOB = 900,

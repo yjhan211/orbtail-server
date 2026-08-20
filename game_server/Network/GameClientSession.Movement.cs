@@ -514,9 +514,6 @@ public partial class GameClientSession
                 SendInteractableList(newArea);
                 SendGroundItemSnapshot(newArea);
                 SendMonsterSnapshot(newArea);
-
-                // 6. 사보타주 이벤트 트리거 (해당 Area 최초 진입 시)
-                _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, newArea);
             }
         }
         catch (Exception ex)

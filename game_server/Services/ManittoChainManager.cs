@@ -45,7 +45,6 @@ public class ManittoChainManager
                 existing.MyJobTitle = link.MyJobTitle;
                 existing.TargetJobTitle = link.TargetJobTitle;
                 existing.Status = link.Status;
-                existing.HasUsedDetection = link.HasUsedDetection;
                 existing.EliminationReason = link.EliminationReason;
                 existing.EliminatedAt = link.EliminatedAt;
                 existing.AttackerPlayerId = link.AttackerPlayerId;
@@ -100,46 +99,6 @@ public class ManittoChainManager
     {
         if (!_states.TryGetValue(matchingId, out var state)) return new();
         return state.Links.Values.Select(l => l.MyJobTitle).Distinct().ToList();
-    }
-
-    /// <summary>
-    ///     색출 시도. 1회 한정.
-    ///     반환: (성공 여부, 에러코드)
-    /// </summary>
-    public (bool isCorrect, ErrorCode errorCode) TryDetect(long matchingId, long detecterId, long targetPlayerId)
-    {
-        if (!_states.TryGetValue(matchingId, out var state))
-            return (false, ErrorCode.GAME_NOT_STARTED);
-
-        if (!state.Links.TryGetValue(detecterId, out var detecterLink))
-            return (false, ErrorCode.PLAYER_NOT_FOUND);
-
-        // 이미 색출 사용했으면 거절
-        if (detecterLink.HasUsedDetection)
-            return (false, ErrorCode.DETECT_ALREADY_USED);
-
-        // 최종 2인이면 비활성화
-        if (state.AliveCount <= 2)
-            return (false, ErrorCode.DETECT_NOT_AVAILABLE);
-
-        // 생존 플레이어는 마니또 생존 여부를 모르므로 색출 시도 자체는 허용한다.
-        if (!IsAliveLink(detecterLink))
-            return (false, ErrorCode.DETECT_NOT_AVAILABLE);
-
-        detecterLink.HasUsedDetection = true;
-
-        // 지목한 대상이 실제로 내 마니또(스토커)인지 확인
-        // 내 마니또 = 나를 타겟으로 가진 플레이어
-        var myManitto = state.Links.Values.FirstOrDefault(l => l.TargetPlayerId == detecterId);
-        bool isCorrect = myManitto != null
-                         && myManitto.PlayerId == targetPlayerId
-                         && IsAliveLink(myManitto);
-
-        // H3 시연 모드 — SC가 DC를 지목하는 케이스는 narrative상 강제 빗나감 ("단 한 번의 무게" cut)
-        _logger.LogInformation("색출 시도: DetecterId={Detecter}, Target={Target}, 실제마니또={Manitto}, 결과={Result}",
-    detecterId, targetPlayerId, myManitto?.PlayerId, isCorrect ? "적중" : "실패");
-
-        return (isCorrect, ErrorCode.SUCCESS);
     }
 
     private static bool IsAliveLink(ChainLink? link)
@@ -334,7 +293,6 @@ public class ChainLink
     public JobTitle MyJobTitle { get; set; }
     public JobTitle TargetJobTitle { get; set; }
     public ManittoStatus Status { get; set; } = ManittoStatus.ACTIVE;
-    public bool HasUsedDetection { get; set; }
     public EliminationReason EliminationReason { get; set; } = EliminationReason.NONE;
     public DateTime? EliminatedAt { get; set; }
     public long AttackerPlayerId { get; set; }

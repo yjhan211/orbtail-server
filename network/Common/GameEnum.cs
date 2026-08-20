@@ -356,7 +356,6 @@ namespace network.common
         EXPLORE = 1,
         SINGLE = 2,
         WRITING = 3,
-        SABOTAGE = 4,
         VENT = 5,
         MEETING = 6,
         RNG_COLLECT = 7,
@@ -380,7 +379,6 @@ namespace network.common
     public enum InteractableStateType : short
     {
         DEFAULT = 0,        // 湲곕낯 ?곹깭
-        SABOTAGE = 1,       // ?щ낫?二??곹깭 (?꾪솕踰??몃┝ ??
     }
 
     /// <summary>

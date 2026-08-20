@@ -66,12 +66,7 @@ code,message_kr,message_en,message_jp
 800,메일을 찾을 수 없습니다.,Mail not found.,メールが見つかりません。
 801,이미 수령한 메일입니다.,You have already received this mail.,既に受け取ったメールです。
 802,만료된 메일입니다.,This mail has expired.,期限切れのメールです。
-850,이미 색출 기회를 사용했습니다.,You have already used your detection attempt.,既に見破る機会を使用しました。
 851,색출 대상을 찾을 수 없습니다.,Could not find the detection target.,見破る対象が見つかりません。
-852,지금은 색출할 수 없습니다.,Detection is not available right now.,今は見破ることができません。
-860,지금은 방해할 수 없습니다.,You cannot sabotage right now.,今は妨害できません。
-861,방해 대상을 찾을 수 없습니다.,Could not find the sabotage target.,妨害対象が見つかりません。
-862,해당 구역에서만 방해할 수 있습니다.,You can sabotage only in the target area.,対象エリアでのみ妨害できます。
 900,이미 직책이 배정되었습니다.,A role has already been assigned.,既に役職が割り当てられています。
 901,다른 스킬을 사용 중입니다.,Another skill is already in use.,他のスキルを使用中です。
 999,치명적인 오류가 발생했습니다.,A fatal error occurred.,致命的なエラーが発生しました。
