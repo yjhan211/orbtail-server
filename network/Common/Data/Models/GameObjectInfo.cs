@@ -109,7 +109,7 @@ namespace network.common.data.models
         public void UpdateCellFromPosition()
         {
             // Keep this identical to the server movement validator and the
-            // School_New Tilemap, including the authored Grid transform.
+            // School Tilemap, including the authored Grid transform.
             Cell = MapCoordinateConverter.WorldToCell(MapId, Position);
         }
 
