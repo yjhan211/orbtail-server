@@ -30,11 +30,7 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return;
 
-        int roundNumber = !Config.ROUND_SYSTEM_ENABLED
-            ? 1
-            : GameRoundStates.TryGetValue(CurrentMapSubId, out var roundState)
-            ? roundState.RoundNumber
-            : 0;
+        const int roundNumber = 1; // 라운드 시스템 퇴역(#246) — 상시 단일 라운드
         var contribution = _checklistManager.GetPlayerContributions(CurrentMapSubId, new[] { PlayerId.Value })
             .FirstOrDefault();
         var msg = new G_TO_C_CHECKLIST_INFO
@@ -301,51 +297,6 @@ public partial class GameClientSession
         using var packet = Packet.Create((int)Protocol.G_TO_C_CHECKLIST_ACTIVITY_RESULT, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(msg));
         Send(packet);
-    }
-
-    private Task HandleSettlementNominate(C_TO_G_SETTLEMENT_NOMINATE msg)
-    {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (CurrentMapSubId <= 0 || !GameRoundStates.TryGetValue(CurrentMapSubId, out var state))
-        {
-            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement is not active");
-            return Task.CompletedTask;
-        }
-
-        lock (state.SyncRoot)
-        {
-            if (state.IsSessionEnded || state.Phase != RoundPhase.SettlementNomination)
-            {
-                SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round nomination phase is not active");
-                return Task.CompletedTask;
-            }
-
-            if (!IsSettlementNominationTargetAvailable(CurrentMapSubId, msg.TargetPlayerId))
-            {
-                SendErrorResponse(ErrorCode.DETECT_TARGET_NOT_FOUND, "Settlement nomination target not found");
-                return Task.CompletedTask;
-            }
-
-            state.SettlementNominations[PlayerId.Value] = msg.TargetPlayerId;
-        }
-
-        Logger.LogInformation("Settlement nomination saved: MatchingId={MatchingId}, Nominator={Nominator}, Target={Target}",
-            CurrentMapSubId, PlayerId.Value, msg.TargetPlayerId);
-        return Task.CompletedTask;
-    }
-
-    private bool IsSettlementNominationTargetAvailable(long matchingId, long targetPlayerId)
-    {
-        if (!PlayerId.HasValue || targetPlayerId == 0 || targetPlayerId == PlayerId.Value)
-            return false;
-
-        var targetSession = _getSessionsByInstance(CurrentMapId, matchingId)
-            .FirstOrDefault(session => session.PlayerId == targetPlayerId);
-        if (targetSession != null)
-            return !targetSession.IsEliminated && targetSession.ManittoStatus != ManittoStatus.SPECTATING;
-
-        var bot = _botPlayerManager.GetBot(matchingId, targetPlayerId);
-        return bot != null && !bot.IsEliminated && bot.ManittoStatus != ManittoStatus.SPECTATING;
     }
 
     private Task HandleBookmarkPresence(C_TO_G_BOOKMARK_PRESENCE msg)
@@ -681,7 +632,6 @@ public partial class GameClientSession
         // 게임 타이머 정리 — race 완주/색출로 종료되었을 때 타임아웃이 후행 발사되지 않도록 (#87)
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
-        GameRoundStates.TryRemove(matchingId, out _);
         _areaClosureManager.CleanupMatching(matchingId);
         _survivorPhaseManager?.CleanupMatching(matchingId);
         _presenceTracker?.Remove(matchingId);
@@ -1715,9 +1665,7 @@ public partial class GameClientSession
                 StringComparison.Ordinal))
             return;
 
-        int roundId = GameRoundStates.TryGetValue(CurrentMapSubId, out var roundState)
-            ? roundState.RoundNumber
-            : 0;
+        const int roundId = 1; // 라운드 시스템 퇴역(#246)
         var statement = _gameEventLogManager.LogStatement(
             CurrentMapSubId,
             roundId,

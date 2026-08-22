@@ -335,17 +335,6 @@ public sealed class ChecklistManager(ILogger logger)
         }
     }
 
-    public List<SettlementContributionEntry> BuildSettlementContributionEntries(long matchingId, IEnumerable<long> playerIds)
-    {
-        return GetPlayerContributions(matchingId, playerIds)
-            .Select(contribution => new SettlementContributionEntry
-            {
-                PlayerId = contribution.PlayerId,
-                Contribution = Math.Max(0, contribution.Contribution)
-            })
-            .ToList();
-    }
-
     public void RemoveMatchingState(long matchingId)
     {
         if (_states.TryRemove(matchingId, out _))

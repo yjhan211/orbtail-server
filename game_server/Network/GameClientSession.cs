@@ -31,7 +31,6 @@ public partial class GameClientSession : SessionBase
     private static readonly TimeSpan InteractCooldown = TimeSpan.FromSeconds(5);
     private static readonly ConcurrentDictionary<long, Timer> GameTimers = new();
     private static readonly object _roundSessionStartLock = new();
-    internal static readonly ConcurrentDictionary<long, RoundRuntimeState> GameRoundStates = new();
     private static Proto0PresenceTracker? _presenceTracker;
     private static SurvivorPhaseManager? _survivorPhaseManager;
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
@@ -227,27 +226,6 @@ public partial class GameClientSession : SessionBase
         Logger.LogInformation("GameClientSession created");
     }
 
-    internal sealed class RoundRuntimeState
-    {
-        public object SyncRoot { get; } = new();
-        public int RoundNumber { get; set; } = 1;
-        public RoundPhase Phase { get; set; } = RoundPhase.Action;
-        public DateTime PhaseEndsAtUtc { get; set; }
-        public int PhaseDurationSeconds { get; set; } = Config.ROUND_ACTION_SECONDS;
-        public bool SettlementEliminationApplied { get; set; }
-        public bool IsSessionEnded { get; set; }
-        public Dictionary<long, long> SettlementNominations { get; } = new();
-        public bool BotNominationsInjected { get; set; }
-        public List<SettlementContributionEntry> SettlementContributionEntries { get; } = new();
-        public long SettlementContributionTopPlayerId { get; set; }
-        public long SettlementContributionLowestPlayerId { get; set; }
-        public int SettlementContributionTopValue { get; set; }
-        public int SettlementContributionLowestValue { get; set; }
-        public long SettlementContributionDecisiveTargetPlayerId { get; set; }
-        public bool SettlementContributionNominationSuccess { get; set; }
-        public long SettlementContributionEliminatedPlayerId { get; set; }
-    }
-
     internal static void SetPresenceTracker(Proto0PresenceTracker presenceTracker)
     {
         _presenceTracker = presenceTracker;
@@ -256,32 +234,10 @@ public partial class GameClientSession : SessionBase
     internal static void CleanupAbandonedMatchingRuntime(long matchingId)
     {
         MatchStartGate.RemoveMatching(matchingId);
-        GameRoundStates.TryRemove(matchingId, out _);
         _presenceTracker?.Remove(matchingId);
         RngCollectCooldownStore.ClearMatching(matchingId);
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
-    }
-
-    internal static (int RoundNumber, int TotalRounds, string Phase, int RemainingSeconds, int PhaseDurationSeconds,
-        bool IsSessionEnded)? GetRoundSnapshot(long matchingId)
-    {
-        if (!Config.ROUND_SYSTEM_ENABLED)
-            return null;
-
-        if (!GameRoundStates.TryGetValue(matchingId, out var state))
-            return null;
-
-        lock (state.SyncRoot)
-        {
-            return (
-                state.RoundNumber,
-                Config.ROUND_TOTAL_COUNT,
-                state.Phase.ToString(),
-                GetRoundRemainingSeconds(state),
-                state.PhaseDurationSeconds,
-                state.IsSessionEnded);
-        }
     }
 
     internal static void SetSurvivorPhaseManager(SurvivorPhaseManager manager)
@@ -304,34 +260,7 @@ public partial class GameClientSession : SessionBase
         if (!MatchStartGate.IsGameplayActive(matchingId))
             return false;
 
-        if (!Config.ROUND_SYSTEM_ENABLED)
-            return true;
-
-        if (!GameRoundStates.TryGetValue(matchingId, out var state))
-            return true;
-
-        lock (state.SyncRoot)
-        {
-            return !state.IsSessionEnded && state.Phase == RoundPhase.Action;
-        }
-    }
-
-    internal static bool TryStartHeadlessActionRound(long matchingId)
-    {
-        if (!Config.ROUND_SYSTEM_ENABLED)
-            return false;
-
-        var state = new RoundRuntimeState
-        {
-            RoundNumber = 1,
-            Phase = RoundPhase.Action,
-            PhaseDurationSeconds = Config.ROUND_ACTION_SECONDS,
-            PhaseEndsAtUtc = DateTime.UtcNow.AddSeconds(Config.ROUND_ACTION_SECONDS),
-            SettlementEliminationApplied = false,
-            IsSessionEnded = false
-        };
-
-        return GameRoundStates.TryAdd(matchingId, state);
+        return true; // 라운드 시스템 퇴역(#246) — 게이트는 MatchStartGate만 남는다
     }
 
     private bool IsRoundActionLocked(out RoundPhase phase)
@@ -369,29 +298,7 @@ public partial class GameClientSession : SessionBase
             return true;
         }
 
-        if (!Config.ROUND_SYSTEM_ENABLED)
-            return false;
-
-        if (CurrentMapSubId <= 0 || !GameRoundStates.TryGetValue(CurrentMapSubId, out var state))
-            return false;
-
-        lock (state.SyncRoot)
-        {
-            phase = state.Phase;
-            if (state.IsSessionEnded)
-            {
-                reason = "Round session has ended";
-                return true;
-            }
-
-            if (state.Phase != RoundPhase.Action)
-            {
-                reason = "Round settlement in progress";
-                return true;
-            }
-
-            return false;
-        }
+        return false; // 라운드 시스템 퇴역(#246)
     }
 
     public new long? PlayerId { get; private set; }
@@ -506,8 +413,6 @@ public partial class GameClientSession : SessionBase
         // 레거시 동작(색출 탈락, 부품 무효화 등)을 현행 매치에서 실행할 수 없다.
         if (!Config.SWARM_P0_ENABLED)
         {
-            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SETTLEMENT_NOMINATE,
-                async bytes => await HandleMessage<C_TO_G_SETTLEMENT_NOMINATE>(bytes, HandleSettlementNominate));
             ProtocolRouter.RegisterHandler(Protocol.C_TO_G_BOOKMARK_PRESENCE,
                 async bytes => await HandleMessage<C_TO_G_BOOKMARK_PRESENCE>(bytes, HandleBookmarkPresence));
             ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CHECKLIST_ACTIVITY_START,

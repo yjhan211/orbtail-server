@@ -372,7 +372,7 @@ public partial class GameServer(
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 var playerAreas = BuildPlayerAreas(matchingId, activeSessions);
                 _presenceTracker.Tick(matchingId, playerAreas);
-                int roundNumber = GameClientSession.GetRoundSnapshot(matchingId)?.RoundNumber ?? 0;
+                int roundNumber = 0 /* 라운드 시스템 퇴역(#246) */;
 
                 foreach (var session in activeSessions)
                 {
@@ -1793,7 +1793,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         var answerContext = answerSet.Contexts.ElementAtOrDefault(answerIndex);
         if (answerContext == null) return false;
 
-        int roundId = GameClientSession.GetRoundSnapshot(matchingId)?.RoundNumber ?? 0;
+        int roundId = 0 /* 라운드 시스템 퇴역(#246) */;
         var statement = _gameEventLogManager.LogStatement(
             matchingId,
             roundId,
@@ -2271,7 +2271,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         int aliveCount = sessions.Count(s => !s.IsEliminated) + bots.Count(b => !b.IsEliminated);
         string mapId = sessions.FirstOrDefault()?.CurrentMapId.ToString()
                        ?? _botPlayerManager.GetMatchingMapId(matchingId).ToString();
-        var round = GameClientSession.GetRoundSnapshot(matchingId);
 
         return new InstanceSummary
         {
@@ -2280,12 +2279,12 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             PlayerCount = sessions.Count + bots.Count,
             AliveCount = aliveCount,
             ElapsedSeconds = Math.Round(elapsed, 1),
-            RoundNumber = round?.RoundNumber ?? 0,
-            TotalRounds = round?.TotalRounds ?? 0,
-            RoundPhase = round?.Phase ?? "",
-            RoundRemainingSeconds = round?.RemainingSeconds ?? 0,
-            RoundPhaseDurationSeconds = round?.PhaseDurationSeconds ?? 0,
-            RoundSessionEnded = round?.IsSessionEnded ?? false,
+            RoundNumber = 0, // 라운드 시스템 퇴역(#246)
+            TotalRounds = 0,
+            RoundPhase = "",
+            RoundRemainingSeconds = 0,
+            RoundPhaseDurationSeconds = 0,
+            RoundSessionEnded = false,
             ClosedAreas = closedAreas
         };
     }
@@ -2395,7 +2394,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         int aliveCount = sessions.Count(s => !s.IsEliminated) + bots.Count(b => !b.IsEliminated);
         string mapId = sessions.FirstOrDefault()?.CurrentMapId.ToString()
                        ?? _botPlayerManager.GetMatchingMapId(matchingId).ToString();
-        var round = GameClientSession.GetRoundSnapshot(matchingId);
 
         return new InstanceSnapshot
         {
@@ -2404,12 +2402,12 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             PlayerCount = sessions.Count + bots.Count,
             AliveCount = aliveCount,
             ElapsedSeconds = Math.Round(elapsed, 1),
-            RoundNumber = round?.RoundNumber ?? 0,
-            TotalRounds = round?.TotalRounds ?? 0,
-            RoundPhase = round?.Phase ?? "",
-            RoundRemainingSeconds = round?.RemainingSeconds ?? 0,
-            RoundPhaseDurationSeconds = round?.PhaseDurationSeconds ?? 0,
-            RoundSessionEnded = round?.IsSessionEnded ?? false,
+            RoundNumber = 0, // 라운드 시스템 퇴역(#246)
+            TotalRounds = 0,
+            RoundPhase = "",
+            RoundRemainingSeconds = 0,
+            RoundPhaseDurationSeconds = 0,
+            RoundSessionEnded = false,
             ClosedAreas = closedAreas,
             Players = playerSnapshots
         };
