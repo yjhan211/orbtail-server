@@ -92,9 +92,6 @@ namespace network.common
         // 흔적 프로토콜
 
         // 색출 프로토콜
-        C_TO_G_SETTLEMENT_NOMINATE,   // 정산 지목 요청
-        G_TO_C_SETTLEMENT_NOMINATION_RESULT, // 정산 지목 결과
-        G_TO_C_SETTLEMENT_CONTRIBUTION_RESULT, // 정산 기여도 공개 결과
         G_TO_C_CHECKLIST_INFO,        // 라운드 체크리스트 과제 목록
         C_TO_G_CHECKLIST_ACTIVITY_START, // 교내 활동 시작 요청 (RNG 보상 없이 체크리스트 진행)
         G_TO_C_CHECKLIST_ACTIVITY_ACK,   // 교내 활동 시작 승인/거부 응답
@@ -294,7 +291,6 @@ namespace network.common
         INSUFFICIENT_ITEM = 755,        // v0.2.0 — 결합 입력 부품 미보유
 
         // 색출 (850~899)
-        DETECT_TARGET_NOT_FOUND = 851,
 
         // 사보타주 (860~869)
 
