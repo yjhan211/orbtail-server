@@ -66,7 +66,7 @@ public class PlayerInGameInventory(long matchingId)
         upgradedItem = null;
         if (!_items.TryGetValue(itemUid, out var item) || item.Count <= 0)
             return false;
-        if (!SurvivorOrbData.TryGetColorAndTier(item.ItemId, out _, out int tier) || tier is < 1 or > 2)
+        if (!OrbData.TryGetColorAndTier(item.ItemId, out _, out int tier) || tier is < 1 or > 2)
             return false;
 
         item.ItemId += 1;
@@ -84,7 +84,7 @@ public class PlayerInGameInventory(long matchingId)
         replacedItem = null;
         if (!_items.TryGetValue(itemUid, out var item) || item.Count <= 0)
             return false;
-        if (!SurvivorOrbData.IsSurvivorOrb(newItemId))
+        if (!OrbData.IsSurvivorOrb(newItemId))
             return false;
 
         item.ItemId = newItemId;
@@ -135,7 +135,7 @@ public class PlayerInGameInventory(long matchingId)
         addedItem = null;
         if (maxSlots <= 0 || _items.Count >= maxSlots) return false;
         addedItem = AddItem(itemId, 1, giftState, forceSeparateStack: true);
-        if (_equippedBattleItemUid == 0 && SurvivorOrbData.IsSurvivorOrb(itemId))
+        if (_equippedBattleItemUid == 0 && OrbData.IsSurvivorOrb(itemId))
             _equippedBattleItemUid = addedItem.ItemUid;
         return true;
     }
@@ -187,7 +187,7 @@ public class PlayerInGameInventory(long matchingId)
     {
         outputItemId = 0;
         changedItems = new List<InGameItemInfo>();
-        if (!SurvivorOrbData.TryGetRandomMergeOutput(inputA, inputB, random, out outputItemId))
+        if (!OrbData.TryGetRandomMergeOutput(inputA, inputB, random, out outputItemId))
             return false;
 
         return TryCombineItems([inputA, inputB], outputItemId, out changedItems);
@@ -243,21 +243,21 @@ public class PlayerInGameInventory(long matchingId)
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryGetActiveSurvivorOrbPair(out SurvivorOrbColor color, out int pairTier)
+    public bool TryGetActiveSurvivorOrbPair(out OrbColor color, out int pairTier)
     {
         var boardItemIds = _items.Values
             .Where(item => item.Count > 0)
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count));
-        return SurvivorOrbData.TryGetActivePair(boardItemIds, out color, out pairTier);
+        return OrbData.TryGetActivePair(boardItemIds, out color, out pairTier);
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool HasActiveSurvivorOrbPair(SurvivorOrbColor color, out int pairTier)
+    public bool HasActiveSurvivorOrbPair(OrbColor color, out int pairTier)
     {
         var boardItemIds = _items.Values
             .Where(item => item.Count > 0)
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count));
-        return SurvivorOrbData.HasActivePair(boardItemIds, color, out pairTier);
+        return OrbData.HasActivePair(boardItemIds, color, out pairTier);
     }
 
     /// <summary>
@@ -465,7 +465,7 @@ public class InGameInventoryManager
     private static bool TryGetTripleMergeOutput(int itemId, out int outputItemId)
     {
         outputItemId = 0;
-        if (SurvivorOrbData.TryGetRecoveryTier(itemId, out int recoveryTier))
+        if (OrbData.TryGetRecoveryTier(itemId, out int recoveryTier))
         {
             outputItemId = recoveryTier switch
             {
@@ -476,9 +476,9 @@ public class InGameInventoryManager
             return outputItemId > 0;
         }
 
-        return SurvivorOrbData.TryGetColorAndTier(itemId, out var color, out int tier) &&
+        return OrbData.TryGetColorAndTier(itemId, out var color, out int tier) &&
                tier < 3 &&
-               SurvivorOrbData.TryGetItemId(color, tier + 1, out outputItemId);
+               OrbData.TryGetItemId(color, tier + 1, out outputItemId);
     }
     public bool TryEquipBattleItem(long matchingId, long playerId, long itemUid,
         out InGameItemInfo? equippedItem)

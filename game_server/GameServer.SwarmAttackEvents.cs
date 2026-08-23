@@ -39,7 +39,7 @@ public partial class GameServer
         public long AttackerId;
         public long TargetId;
         public AreaType Area;
-        public SurvivorOrbColor Color;
+        public OrbColor Color;
         public DateTime StartedAtUtc;
         public DateTime LaunchAtUtc;
         public int SnapshotDamageBudget;
@@ -52,7 +52,7 @@ public partial class GameServer
         long AttackerId,
         long TargetId,
         AreaType Area,
-        SurvivorOrbColor Color,
+        OrbColor Color,
         int Kind,
         int Ordinal,
         int Tier,
@@ -67,10 +67,10 @@ public partial class GameServer
         IReadOnlyList<ProximityCombatAttack> Attacks,
         DateTime DueAtUtc);
 
-    private readonly Dictionary<(long MatchingId, long AttackerId, SurvivorOrbColor Color),
+    private readonly Dictionary<(long MatchingId, long AttackerId, OrbColor Color),
         SwarmPvpAttackEvent> _swarmActiveAttackEvents = new();
 
-    private readonly Dictionary<(long MatchingId, long AttackerId, SurvivorOrbColor Color), DateTime>
+    private readonly Dictionary<(long MatchingId, long AttackerId, OrbColor Color), DateTime>
         _swarmAttackNextReadyAtUtc = new();
 
     private readonly Dictionary<(long MatchingId, long AttackerId), DateTime>
@@ -115,11 +115,11 @@ public partial class GameServer
                 continue;
             }
 
-            foreach (SurvivorOrbColor color in new[]
+            foreach (OrbColor color in new[]
                      {
-                         SurvivorOrbColor.Red,
-                         SurvivorOrbColor.Green,
-                         SurvivorOrbColor.Blue
+                         OrbColor.Red,
+                         OrbColor.Green,
+                         OrbColor.Blue
                      })
             {
                 var eventKey = (matchingId, owner.PlayerId, color);
@@ -177,7 +177,7 @@ public partial class GameServer
     private SpotArenaPlayerSpatial? ResolveSwarmAttackTarget(
         long matchingId,
         SpotArenaPlayerSpatial owner,
-        SurvivorOrbColor color,
+        OrbColor color,
         List<SpotArenaPlayerSpatial> participants)
     {
         var ownerKey = (matchingId, owner.PlayerId);
@@ -227,7 +227,7 @@ public partial class GameServer
         long matchingId,
         SpotArenaPlayerSpatial owner,
         SpotArenaPlayerSpatial target,
-        SurvivorOrbColor color)
+        OrbColor color)
     {
         var orderedItems = _inGameInventoryManager.GetPlayerInventory(matchingId, owner.PlayerId)
             .GetAllItems()
@@ -236,14 +236,14 @@ public partial class GameServer
             .ToList();
         var tiers = orderedItems.Select(item => GetSquadOrbTier(item.ItemId)).ToList();
         var result = new List<SwarmAttackParticipantSnapshot>();
-        float range = color == SurvivorOrbColor.Blue
+        float range = color == OrbColor.Blue
             ? SwarmPvpAttackEventRules.WaveParticipationRange
             : SwarmPvpAttackEventRules.SunWindRange;
 
         for (int ordinal = 0; ordinal < orderedItems.Count; ordinal++)
         {
             var item = orderedItems[ordinal];
-            if (!SurvivorOrbData.TryGetColorAndTier(item.ItemId, out var itemColor, out int tier) ||
+            if (!OrbData.TryGetColorAndTier(item.ItemId, out var itemColor, out int tier) ||
                 itemColor != color)
             {
                 continue;
@@ -284,7 +284,7 @@ public partial class GameServer
             .ToList();
         var tiers = orderedItems.Select(item => GetSquadOrbTier(item.ItemId)).ToList();
         var result = new List<SwarmAttackParticipantSnapshot>();
-        float range = attackEvent.Color == SurvivorOrbColor.Blue
+        float range = attackEvent.Color == OrbColor.Blue
             ? SwarmPvpAttackEventRules.WaveParticipationRange
             : SwarmPvpAttackEventRules.SunWindRange;
 
@@ -293,7 +293,7 @@ public partial class GameServer
             var item = orderedItems[ordinal];
             if (!snapshotByUid.TryGetValue(item.ItemUid, out var snapshot))
                 continue;
-            if (!SurvivorOrbData.TryGetColorAndTier(item.ItemId, out var color, out _) ||
+            if (!OrbData.TryGetColorAndTier(item.ItemId, out var color, out _) ||
                 color != attackEvent.Color)
             {
                 continue;
@@ -351,10 +351,10 @@ public partial class GameServer
             int damage = SwarmPvpAttackEventRules.CapDamage(
                 attackEvent.Color, survivors.Sum(snapshot => snapshot.Damage));
             int highestTier = survivors.Max(snapshot => snapshot.Tier);
-            SurvivorOrbData.TryGetItemId(attackEvent.Color, highestTier, out int representativeItemId);
+            OrbData.TryGetItemId(attackEvent.Color, highestTier, out int representativeItemId);
             DateTime impactAtUtc = QueueSwarmAttackEventPresentation(
                 attackEvent, survivors, target, nowUtc);
-            IReadOnlyList<ProximityCombatAttack> attacks = attackEvent.Color == SurvivorOrbColor.Blue
+            IReadOnlyList<ProximityCombatAttack> attacks = attackEvent.Color == OrbColor.Blue
                 ? BuildWaveAttackTargets(
                     attackEvent, survivors, participants, representativeItemId, damage)
                 :
@@ -416,7 +416,7 @@ public partial class GameServer
         SpotArenaPlayerSpatial target,
         DateTime nowUtc)
     {
-        if (attackEvent.Color == SurvivorOrbColor.Blue)
+        if (attackEvent.Color == OrbColor.Blue)
         {
             var foremost = participants.OrderBy(snapshot => snapshot.CurrentOrdinal).First();
             float radius = SwarmPvpAttackEventRules.GetWaveRadius(
@@ -437,12 +437,12 @@ public partial class GameServer
             return nowUtc.AddMilliseconds(20);
         }
 
-        int kind = attackEvent.Color == SurvivorOrbColor.Red
+        int kind = attackEvent.Color == OrbColor.Red
             ? SwarmVfxSunLaunch
             : SwarmVfxWindLaunch;
         double spacing = SwarmPvpAttackEventRules.GetLaunchSpacingSeconds(attackEvent.Color);
         var visualSequence = new List<SwarmAttackParticipantSnapshot>();
-        if (attackEvent.Color == SurvivorOrbColor.Green)
+        if (attackEvent.Color == OrbColor.Green)
         {
             for (int burst = 0; burst < 3; burst++)
                 visualSequence.AddRange(participants.OrderBy(snapshot => snapshot.CurrentOrdinal));
@@ -475,7 +475,7 @@ public partial class GameServer
 
             float distance = GetSwarmNormalizedDistance(participant.Origin, target.Position);
             DateTime impactAtUtc = visualAtUtc.AddSeconds(
-                SurvivorOrbData.GetPvpProjectileImpactDelaySeconds(participant.ItemId, distance));
+                OrbData.GetPvpProjectileImpactDelaySeconds(participant.ItemId, distance));
             if (impactAtUtc > latestImpactAtUtc)
                 latestImpactAtUtc = impactAtUtc;
         }
@@ -586,15 +586,15 @@ public partial class GameServer
     {
         int kind = attackEvent.Color switch
         {
-            SurvivorOrbColor.Red => SwarmVfxSunCharge,
-            SurvivorOrbColor.Green => SwarmVfxWindCharge,
-            SurvivorOrbColor.Blue => SwarmVfxWaveCharge,
+            OrbColor.Red => SwarmVfxSunCharge,
+            OrbColor.Green => SwarmVfxWindCharge,
+            OrbColor.Blue => SwarmVfxWaveCharge,
             _ => 0
         };
         if (kind == 0)
             return;
 
-        if (attackEvent.Color == SurvivorOrbColor.Blue)
+        if (attackEvent.Color == OrbColor.Blue)
         {
             var foremost = attackEvent.Participants
                 .OrderBy(snapshot => snapshot.SnapshotOrdinal)
@@ -643,15 +643,15 @@ public partial class GameServer
     {
         int kind = attackEvent.Color switch
         {
-            SurvivorOrbColor.Red => SwarmVfxSunCancel,
-            SurvivorOrbColor.Green => SwarmVfxWindCancel,
-            SurvivorOrbColor.Blue => SwarmVfxWaveCancel,
+            OrbColor.Red => SwarmVfxSunCancel,
+            OrbColor.Green => SwarmVfxWindCancel,
+            OrbColor.Blue => SwarmVfxWaveCancel,
             _ => 0
         };
         if (kind == 0)
             return;
 
-        if (attackEvent.Color == SurvivorOrbColor.Blue)
+        if (attackEvent.Color == OrbColor.Blue)
         {
             var foremost = attackEvent.Participants
                 .OrderBy(snapshot => snapshot.SnapshotOrdinal)

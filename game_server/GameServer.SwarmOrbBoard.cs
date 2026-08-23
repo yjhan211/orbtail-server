@@ -24,11 +24,11 @@ public partial class GameServer
     // 샌드박스 고정 시작 세트 (#232 P0-A): 태양·바람·파도 한 개씩 — 세 모양이 다 보이게 (2026-08-17 저녁).
     private static readonly int[] SwarmSandboxStartingOrbs = [107000010, 107000020, 107000030];
 
-    private static readonly SurvivorOrbColor[] SwarmFamilyColors =
-        [SurvivorOrbColor.Red, SurvivorOrbColor.Green, SurvivorOrbColor.Blue];
+    private static readonly OrbColor[] SwarmFamilyColors =
+        [OrbColor.Red, OrbColor.Green, OrbColor.Blue];
 
     // 계열별 강화 구매 횟수 — 비용 곡선(min(21, 5+2N))의 N. 소환 카드 곡선과 독립이다.
-    private readonly Dictionary<(long MatchingId, long PlayerId, SurvivorOrbColor Color), int>
+    private readonly Dictionary<(long MatchingId, long PlayerId, OrbColor Color), int>
         _swarmFamilyUpgradeCounts = new();
 
     // 봇 시작 오브 (2026-08-18 유저 지시): 사람은 3개, 봇은 10개로 시작한다 — 사람이 처음부터 긴 꼬리를
@@ -73,12 +73,12 @@ public partial class GameServer
     ///     계열 대표 레벨 = 보유 오브 중 최고 티어(없으면 1). 표시용 — 구매하는 "공유 레벨"은 퇴역했고
     ///     티어는 오브마다 따로 오른다.
     /// </summary>
-    private int GetSwarmFamilyLevel(long matchingId, long playerId, SurvivorOrbColor color)
+    private int GetSwarmFamilyLevel(long matchingId, long playerId, OrbColor color)
     {
         int best = 1;
         foreach (var item in GetSwarmTrailOrbs(matchingId, playerId))
         {
-            if (SurvivorOrbData.TryGetColorAndTier(item.ItemId, out var itemColor, out int tier) &&
+            if (OrbData.TryGetColorAndTier(item.ItemId, out var itemColor, out int tier) &&
                 itemColor == color && tier > best)
                 best = tier;
         }
@@ -91,12 +91,12 @@ public partial class GameServer
     ///     순서(ItemUid 오름차순) — 클라 슬롯 순번·예고 패킷의 OwnerOrbOrdinal과 같은 자다. 없으면 -1.
     /// </summary>
     private int FindSwarmUpgradeTargetOrdinal(
-        long matchingId, long playerId, SurvivorOrbColor color, out InGameItemInfo? target)
+        long matchingId, long playerId, OrbColor color, out InGameItemInfo? target)
     {
         var orbs = GetSwarmTrailOrbs(matchingId, playerId);
         for (int ordinal = 0; ordinal < orbs.Count; ordinal++)
         {
-            if (!SurvivorOrbData.TryGetColorAndTier(orbs[ordinal].ItemId, out var itemColor, out int tier) ||
+            if (!OrbData.TryGetColorAndTier(orbs[ordinal].ItemId, out var itemColor, out int tier) ||
                 itemColor != color || tier >= 3)
                 continue;
             target = orbs[ordinal];
@@ -108,7 +108,7 @@ public partial class GameServer
     }
 
     /// <summary>이 계열의 다음 강화 비용. 강화할 오브(T3 미만)가 없으면 0(강화 불가).</summary>
-    private int GetSwarmFamilyUpgradeCost(long matchingId, long playerId, SurvivorOrbColor color)
+    private int GetSwarmFamilyUpgradeCost(long matchingId, long playerId, OrbColor color)
     {
         if (FindSwarmUpgradeTargetOrdinal(matchingId, playerId, color, out _) < 0)
             return 0;
@@ -124,7 +124,7 @@ public partial class GameServer
     ///     targetOrdinal = 오른 오브의 열 순번 — 클라가 그 오브 위에 강화 이펙트를 띄운다.
     /// </summary>
     private bool TryUpgradeSwarmFamily(
-        long matchingId, long playerId, SurvivorOrbColor color, GameClientSession? session,
+        long matchingId, long playerId, OrbColor color, GameClientSession? session,
         out int resultItemId, out int targetOrdinal)
     {
         resultItemId = 0;
@@ -138,8 +138,8 @@ public partial class GameServer
         int cost = GetSwarmFamilyUpgradeCost(matchingId, playerId, color);
         if (cost <= 0)
             return false;
-        if (!SurvivorOrbData.TryGetColorAndTier(target.ItemId, out _, out int tier) ||
-            !SurvivorOrbData.TryGetItemId(color, tier + 1, out int upgradedItemId))
+        if (!OrbData.TryGetColorAndTier(target.ItemId, out _, out int tier) ||
+            !OrbData.TryGetItemId(color, tier + 1, out int upgradedItemId))
             return false;
         if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
             return false;
@@ -165,12 +165,12 @@ public partial class GameServer
     private void SendSwarmFamilyLevels(long matchingId, long playerId, GameClientSession? session)
     {
         session?.SendSwarmFamilyLevels(
-            GetSwarmFamilyLevel(matchingId, playerId, SurvivorOrbColor.Red),
-            GetSwarmFamilyLevel(matchingId, playerId, SurvivorOrbColor.Green),
-            GetSwarmFamilyLevel(matchingId, playerId, SurvivorOrbColor.Blue),
-            GetSwarmFamilyUpgradeCost(matchingId, playerId, SurvivorOrbColor.Red),
-            GetSwarmFamilyUpgradeCost(matchingId, playerId, SurvivorOrbColor.Green),
-            GetSwarmFamilyUpgradeCost(matchingId, playerId, SurvivorOrbColor.Blue));
+            GetSwarmFamilyLevel(matchingId, playerId, OrbColor.Red),
+            GetSwarmFamilyLevel(matchingId, playerId, OrbColor.Green),
+            GetSwarmFamilyLevel(matchingId, playerId, OrbColor.Blue),
+            GetSwarmFamilyUpgradeCost(matchingId, playerId, OrbColor.Red),
+            GetSwarmFamilyUpgradeCost(matchingId, playerId, OrbColor.Green),
+            GetSwarmFamilyUpgradeCost(matchingId, playerId, OrbColor.Blue));
     }
 
     /// <summary>클라 결정 요청 (사람 전용). 결과는 항상 응답한다 — 거절이면 Success=false.</summary>
@@ -187,7 +187,7 @@ public partial class GameServer
         int targetOrdinal = -1;
         if (action == Config.SWARM_ORB_DECISION_FAMILY_UPGRADE)
             success = TryUpgradeSwarmFamily(
-                matchingId, playerId, (SurvivorOrbColor)targetUid, session, out resultItemId, out targetOrdinal);
+                matchingId, playerId, (OrbColor)targetUid, session, out resultItemId, out targetOrdinal);
 
         session.SendSwarmOrbDecisionResult(action, success, resultItemId, targetUid, targetOrdinal);
         logger.LogInformation(
@@ -202,15 +202,15 @@ public partial class GameServer
     private bool TryUpgradeSwarmFamilyForBot(long matchingId, long playerId)
     {
         var favorite = GetSwarmTrailOrbs(matchingId, playerId)
-            .Select(item => SurvivorOrbData.TryGetColorAndTier(item.ItemId, out var color, out _)
+            .Select(item => OrbData.TryGetColorAndTier(item.ItemId, out var color, out _)
                 ? color
-                : SurvivorOrbColor.None)
-            .Where(color => color != SurvivorOrbColor.None)
+                : OrbColor.None)
+            .Where(color => color != OrbColor.None)
             .GroupBy(color => color)
             .OrderByDescending(group => group.Count())
             .Select(group => group.Key)
             .FirstOrDefault();
-        if (favorite == SurvivorOrbColor.None)
+        if (favorite == OrbColor.None)
             return false;
 
         // 최다 보유 계열이 전부 T3이면 강화 가능한 다른 계열을 찾는다.
@@ -218,7 +218,7 @@ public partial class GameServer
         {
             favorite = SwarmFamilyColors.FirstOrDefault(color =>
                 GetSwarmFamilyUpgradeCost(matchingId, playerId, color) > 0);
-            if (favorite == SurvivorOrbColor.None)
+            if (favorite == OrbColor.None)
                 return false;
         }
 

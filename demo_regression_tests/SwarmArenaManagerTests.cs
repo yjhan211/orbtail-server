@@ -31,7 +31,7 @@ public class SwarmArenaManagerTests
         {
             DateTime now = StartUtc.AddSeconds(0.25);
             var manager = CreateManager(() => now);
-            var startRoom = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates()[0];
+            var startRoom = MatchSpawnData.GetPhaseRoomCandidates()[0];
             Vector3f startCenter = AreaCenter(startRoom);
 
             // 첫 틱부터 보충이 돈다 — 시작 선물 15초 침묵(#226 E)은 퇴역했다.
@@ -106,7 +106,7 @@ public class SwarmArenaManagerTests
                 core => Assert.Equal(120, core.MaxHealth));
 
             // 10인이 서로 다른 구역에 흩어져도 전역 상한 48을 넘지 않는다.
-            var rooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().Take(5).ToList();
+            var rooms = MatchSpawnData.GetPhaseRoomCandidates().Take(5).ToList();
             for (double elapsed = 255.25d; elapsed <= 300d; elapsed += 0.25d)
             {
                 now = StartUtc.AddSeconds(elapsed);
@@ -138,7 +138,7 @@ public class SwarmArenaManagerTests
             DateTime now = StartUtc;
             var manager = new SwarmArenaManager(() => now);
             Assert.True(manager.InitializeMatching(217004, 1, StartUtc));
-            var room = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates()[0];
+            var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
             Vector3f roomCenter = AreaCenter(room);
             Vector3f elsewhere = AreaCenter(AreaType.Ground);
 
@@ -191,7 +191,7 @@ public class SwarmArenaManagerTests
             DateTime now = StartUtc;
             var manager = new SwarmArenaManager(() => now);
             Assert.True(manager.InitializeMatching(217003, 1, StartUtc));
-            var room = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates()[0];
+            var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
             Vector3f roomCenter = AreaCenter(room);
             Vector3f elsewhere = AreaCenter(AreaType.Ground);
 

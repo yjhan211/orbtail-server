@@ -13,56 +13,56 @@ namespace game_server.services
         public const double CrossAttributeGapSeconds = 0.35d;
         public const int MaxProjectileVisuals = 12;
 
-        public static double GetIntervalSeconds(SurvivorOrbColor color)
+        public static double GetIntervalSeconds(OrbColor color)
         {
             return color switch
             {
-                SurvivorOrbColor.Red => 2.4d,
-                SurvivorOrbColor.Green => 1.6d,
-                SurvivorOrbColor.Blue => 2.8d,
+                OrbColor.Red => 2.4d,
+                OrbColor.Green => 1.6d,
+                OrbColor.Blue => 2.8d,
                 _ => double.PositiveInfinity
             };
         }
 
-        public static double GetTelegraphSeconds(SurvivorOrbColor color)
+        public static double GetTelegraphSeconds(OrbColor color)
         {
             return color switch
             {
-                SurvivorOrbColor.Red => 0.45d,
-                SurvivorOrbColor.Green => 0.22d,
-                SurvivorOrbColor.Blue => 0.55d,
+                OrbColor.Red => 0.45d,
+                OrbColor.Green => 0.22d,
+                OrbColor.Blue => 0.55d,
                 _ => 0d
             };
         }
 
-        public static double GetLaunchSpacingSeconds(SurvivorOrbColor color)
+        public static double GetLaunchSpacingSeconds(OrbColor color)
         {
             return color switch
             {
-                SurvivorOrbColor.Red => 0.08d,
-                SurvivorOrbColor.Green => 0.06d,
+                OrbColor.Red => 0.08d,
+                OrbColor.Green => 0.06d,
                 _ => 0d
             };
         }
 
-        public static int GetPerOrbEventDamage(SurvivorOrbColor color, int tier)
+        public static int GetPerOrbEventDamage(OrbColor color, int tier)
         {
             int clampedTier = Math.Clamp(tier, 1, 3);
             return color switch
             {
-                SurvivorOrbColor.Red => clampedTier switch { 1 => 8, 2 => 14, _ => 20 },
-                SurvivorOrbColor.Green => clampedTier switch { 1 => 5, 2 => 9, _ => 13 },
-                SurvivorOrbColor.Blue => clampedTier switch { 1 => 10, 2 => 17, _ => 24 },
+                OrbColor.Red => clampedTier switch { 1 => 8, 2 => 14, _ => 20 },
+                OrbColor.Green => clampedTier switch { 1 => 5, 2 => 9, _ => 13 },
+                OrbColor.Blue => clampedTier switch { 1 => 10, 2 => 17, _ => 24 },
                 _ => 0
             };
         }
 
-        public static int GetDamageCap(SurvivorOrbColor color)
+        public static int GetDamageCap(OrbColor color)
         {
-            return color == SurvivorOrbColor.Blue ? 126 : 105;
+            return color == OrbColor.Blue ? 126 : 105;
         }
 
-        public static int CapDamage(SurvivorOrbColor color, int damage)
+        public static int CapDamage(OrbColor color, int damage)
         {
             return Math.Clamp(damage, 0, GetDamageCap(color));
         }
@@ -82,9 +82,9 @@ namespace game_server.services
             };
         }
 
-        public static int GetVisualProjectileCount(SurvivorOrbColor color, int participatingOrbCount)
+        public static int GetVisualProjectileCount(OrbColor color, int participatingOrbCount)
         {
-            int projectilesPerOrb = color == SurvivorOrbColor.Green ? 3 : 1;
+            int projectilesPerOrb = color == OrbColor.Green ? 3 : 1;
             return Math.Min(MaxProjectileVisuals, Math.Max(0, participatingOrbCount) * projectilesPerOrb);
         }
     }

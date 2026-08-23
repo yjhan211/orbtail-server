@@ -1117,10 +1117,10 @@ public class GameEventLogManager
     {
         var itemIds = items.Where(item => item.Count > 0)
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count)).ToList();
-        bool resonance = SurvivorOrbData.TryGetActivePair(itemIds, out SurvivorOrbColor color, out int supportTier);
+        bool resonance = OrbData.TryGetActivePair(itemIds, out OrbColor color, out int supportTier);
         var transition = TrackOrbTelemetry(matchingId, playerId, itemIds, equippedItemId, resonance, color);
         Append(matchingId, "SURVIVOR_ORB_BOARD_STATE", playerId, isBot,
-            $"Orb board: reason={reason}, equipped={equippedItemId}, resonance={(resonance ? color : SurvivorOrbColor.None)}.", entry =>
+            $"Orb board: reason={reason}, equipped={equippedItemId}, resonance={(resonance ? color : OrbColor.None)}.", entry =>
             {
                 entry.Area = area;
                 entry.Outcome = reason;
@@ -1133,10 +1133,10 @@ public class GameEventLogManager
                 entry.PreviousEquippedColor = transition.PreviousEquippedColor.ToString();
                 entry.WeaponTier = resonance ? supportTier : 0;
                 entry.ResonanceActive = resonance;
-                entry.ResonanceColor = resonance ? color.ToString() : SurvivorOrbColor.None.ToString();
+                entry.ResonanceColor = resonance ? color.ToString() : OrbColor.None.ToString();
                 entry.PreviousResonanceActive = transition.PreviousResonanceActive;
                 entry.PreviousResonanceColor = transition.PreviousResonanceColor.ToString();
-                entry.ResonanceProfile = GetResonanceProfile(resonance ? color : SurvivorOrbColor.None);
+                entry.ResonanceProfile = GetResonanceProfile(resonance ? color : OrbColor.None);
                 entry.MergeCandidateDurationSeconds = transition.EndedMergeCandidateDurationSeconds;
             });
 
@@ -1186,7 +1186,7 @@ public class GameEventLogManager
                 });
 
         if (transition.PreviousResonanceActive != resonance ||
-            transition.PreviousResonanceColor != (resonance ? color : SurvivorOrbColor.None))
+            transition.PreviousResonanceColor != (resonance ? color : OrbColor.None))
         {
             string type = resonance ? "SURVIVOR_ORB_RESONANCE_APPLIED" : "SURVIVOR_ORB_RESONANCE_REMOVED";
             var eventColor = resonance ? color : transition.PreviousResonanceColor;
@@ -1274,7 +1274,7 @@ public class GameEventLogManager
         IReadOnlyCollection<InGameItemInfo> items,
         bool isBot)
     {
-        if (!SurvivorOrbData.IsSurvivorOrb(itemId) && !SurvivorOrbData.IsRecoveryOrb(itemId))
+        if (!OrbData.IsSurvivorOrb(itemId) && !OrbData.IsRecoveryOrb(itemId))
             return;
 
         var boardItemIds = items.Where(item => item.Count > 0)
@@ -1294,11 +1294,11 @@ public class GameEventLogManager
 
     public void LogSurvivorOrbAttackTargets(long matchingId, IReadOnlyCollection<ProximityCombatAttack> attacks,
         IReadOnlyCollection<ProximityCombatAttack> actualHits,
-        IReadOnlyDictionary<long, SurvivorOrbColor> activeOrbColors)
+        IReadOnlyDictionary<long, OrbColor> activeOrbColors)
     {
         foreach (var attackerAttacks in attacks.GroupBy(attack => attack.AttackerPlayerId))
         {
-            if (!activeOrbColors.TryGetValue(attackerAttacks.Key, out var color) || color == SurvivorOrbColor.None)
+            if (!activeOrbColors.TryGetValue(attackerAttacks.Key, out var color) || color == OrbColor.None)
                 continue;
 
             var volley = attackerAttacks.ToList();
@@ -1393,7 +1393,7 @@ public class GameEventLogManager
         }
     }
     private OrbTransitionSnapshot TrackOrbTelemetry(long matchingId, long playerId, IReadOnlyList<int> itemIds,
-        int equippedItemId, bool active, SurvivorOrbColor color)
+        int equippedItemId, bool active, OrbColor color)
     {
         var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
         var now = DateTimeOffset.UtcNow;
@@ -1404,11 +1404,11 @@ public class GameEventLogManager
             var previousBoard = telemetry.BoardItemIds.ToList();
             int previousEquippedItemId = telemetry.EquippedItemId;
             bool previousActive = telemetry.Active;
-            SurvivorOrbColor previousActiveColor = telemetry.ActiveColor;
-            SurvivorOrbColor previousEquippedColor = telemetry.EquippedColor;
-            var equippedColor = SurvivorOrbData.TryGetColorAndTier(equippedItemId, out var resolvedColor, out _)
-                ? resolvedColor : SurvivorOrbColor.None;
-            if (telemetry.EquippedColor != SurvivorOrbColor.None && equippedColor != SurvivorOrbColor.None && telemetry.EquippedColor != equippedColor)
+            OrbColor previousActiveColor = telemetry.ActiveColor;
+            OrbColor previousEquippedColor = telemetry.EquippedColor;
+            var equippedColor = OrbData.TryGetColorAndTier(equippedItemId, out var resolvedColor, out _)
+                ? resolvedColor : OrbColor.None;
+            if (telemetry.EquippedColor != OrbColor.None && equippedColor != OrbColor.None && telemetry.EquippedColor != equippedColor)
                 telemetry.EquipChanges++;
             telemetry.EquippedColor = equippedColor;
             telemetry.EquippedItemId = equippedItemId;
@@ -1422,7 +1422,7 @@ public class GameEventLogManager
             if (active && (!telemetry.Active || telemetry.ActiveColor != color))
                 telemetry.ActiveSince = now;
             telemetry.Active = active;
-            telemetry.ActiveColor = active ? color : SurvivorOrbColor.None;
+            telemetry.ActiveColor = active ? color : OrbColor.None;
 
             bool hasMergeCandidate = HasMergeCandidate(itemIds);
             bool mergeCandidateBecameAvailable = !telemetry.HasMergeCandidate && hasMergeCandidate;
@@ -1490,7 +1490,7 @@ public class GameEventLogManager
                     $"Orb summary: active={active:F1}s, rate={rate:P0}, colorChanges={telemetry.EquipChanges}.", entry =>
                     { entry.DurationSeconds = active; entry.ScoreDelta = (float)rate; entry.ContributionDelta = telemetry.EquipChanges; });
 
-                foreach (var color in new[] { SurvivorOrbColor.Red, SurvivorOrbColor.Green, SurvivorOrbColor.Blue })
+                foreach (var color in new[] { OrbColor.Red, OrbColor.Green, OrbColor.Blue })
                 {
                     secondsByColor.TryGetValue(color, out double colorActive);
                     double colorRate = player.SurvivalTimeSeconds <= 0 ? 0d : colorActive / player.SurvivalTimeSeconds;
@@ -1509,16 +1509,16 @@ public class GameEventLogManager
     }
 
     private static bool HasMergeCandidate(IEnumerable<int> itemIds) =>
-        itemIds.GroupBy(itemId => itemId).Any(group => group.Count() >= 2 && SurvivorOrbData.CanMerge(group.Key, group.Key));
+        itemIds.GroupBy(itemId => itemId).Any(group => group.Count() >= 2 && OrbData.CanMerge(group.Key, group.Key));
 
     private static int CountBoardOrbs(IEnumerable<int> itemIds) =>
-        itemIds.Count(itemId => SurvivorOrbData.IsSurvivorOrb(itemId) || SurvivorOrbData.IsRecoveryOrb(itemId));
+        itemIds.Count(itemId => OrbData.IsSurvivorOrb(itemId) || OrbData.IsRecoveryOrb(itemId));
 
-    private static string GetResonanceProfile(SurvivorOrbColor color) => color switch
+    private static string GetResonanceProfile(OrbColor color) => color switch
     {
-        SurvivorOrbColor.Red => "sun_single_target",
-        SurvivorOrbColor.Green => "wind_multi_target",
-        SurvivorOrbColor.Blue => "wave_burst",
+        OrbColor.Red => "sun_single_target",
+        OrbColor.Green => "wind_multi_target",
+        OrbColor.Blue => "wave_burst",
         _ => "none"
     };
     public void LogOvertimeStageChanged(long matchingId, int stage, int corruptionPerSecond)
@@ -1813,7 +1813,7 @@ public class GameEventLogManager
         public Dictionary<long, int> DamageDealtByPlayer { get; } = new();
 
         // 몹 처치·피해는 PvP와 따로 센다 (#229). DamageDealtByPlayer는 동시 탈락 시
-        // 생존자를 가르는 기준(SurvivorSettlementResolver)이라 의미를 섞으면 판정이 바뀐다.
+        // 생존자를 가르는 기준(MatchSettlementResolver)이라 의미를 섞으면 판정이 바뀐다.
         public Dictionary<long, int> MonsterKillsByPlayer { get; } = new();
         public Dictionary<long, int> MonsterDamageByPlayer { get; } = new();
         public Dictionary<long, int> RecoveryByPlayer { get; } = new();
@@ -1871,11 +1871,11 @@ public class GameEventLogManager
     private sealed class OrbTelemetry
     {
         public bool Active;
-        public SurvivorOrbColor ActiveColor;
+        public OrbColor ActiveColor;
         public DateTimeOffset ActiveSince;
         public double ActiveSeconds;
-        public Dictionary<SurvivorOrbColor, double> ActiveSecondsByColor { get; } = new();
-        public SurvivorOrbColor EquippedColor;
+        public Dictionary<OrbColor, double> ActiveSecondsByColor { get; } = new();
+        public OrbColor EquippedColor;
         public int EquippedItemId;
         public int EquipChanges;
         public List<int> BoardItemIds { get; set; } = new();
@@ -1888,10 +1888,10 @@ public class GameEventLogManager
     private readonly record struct OrbTransitionSnapshot(
         List<int> PreviousBoardItemIds,
         int PreviousEquippedItemId,
-        SurvivorOrbColor PreviousEquippedColor,
+        OrbColor PreviousEquippedColor,
         bool PreviousResonanceActive,
-        SurvivorOrbColor PreviousResonanceColor,
-        SurvivorOrbColor EquippedColor,
+        OrbColor PreviousResonanceColor,
+        OrbColor EquippedColor,
         bool MergeCandidateBecameAvailable,
         double? EndedMergeCandidateDurationSeconds,
         bool FirstOrbPickup,
@@ -2469,7 +2469,7 @@ public sealed record EliminationDroppedItem(
 {
     public static EliminationDroppedItem FromGroundItem(GroundItemInfo item)
     {
-        bool isOrb = SurvivorOrbData.TryGetColorAndTier(item.ItemId, out SurvivorOrbColor color, out int tier);
+        bool isOrb = OrbData.TryGetColorAndTier(item.ItemId, out OrbColor color, out int tier);
         float dx = item.PositionX - item.SpawnOriginX;
         float dy = item.PositionY - item.SpawnOriginY;
         return new EliminationDroppedItem(

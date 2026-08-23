@@ -238,7 +238,7 @@ public class SwarmDamagePathTests
 
         // #229: 스폰 방 10곳은 문이 잠긴 채 시작하고, 여는 수단은 탐색 게이지뿐이다.
         // 잠금이 빠지면 방을 탈출하는 목표 자체가 사라진다.
-        var spawnRooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates();
+        var spawnRooms = MatchSpawnData.GetPhaseRoomCandidates();
         foreach (var room in spawnRooms)
         {
             var doors = GameDoorData.GetByAreaType(room).ToList();
@@ -261,7 +261,7 @@ public class SwarmDamagePathTests
     public void EveryGaugeGatedDoor_HasAnUnlockObjectOnItsRoomSideOnly()
     {
         // 문은 안에서만 연다 (#229): 복도·운동장·쓰레기장 쪽에는 잠금해제 오브젝트가 없다.
-        var spawnRooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().ToHashSet();
+        var spawnRooms = MatchSpawnData.GetPhaseRoomCandidates().ToHashSet();
         var unlockSides = new HashSet<(int DoorId, int Zone)>();
         foreach (var zone in Enum.GetValues<AreaType>())
         {
@@ -289,7 +289,7 @@ public class SwarmDamagePathTests
     {
         // #229: 스웜 전투는 전부 몹 상대인데 어떤 카운터에도 안 쌓여 결과가 "처치 0회"였다.
         // 단 PvP 피해와 같은 칸에 넣으면 안 된다 — 그 칸은 동시 탈락 시 생존자를 가르는
-        // 기준(SurvivorSettlementResolver)이라 의미가 섞이면 판정이 바뀐다.
+        // 기준(MatchSettlementResolver)이라 의미가 섞이면 판정이 바뀐다.
         var manager = new game_server.services.GameEventLogManager();
         const long matchingId = 771001;
         const long playerId = 4242;

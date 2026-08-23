@@ -49,10 +49,10 @@ public sealed class DodgeableProjectileResolver
 
         foreach (var attack in attacks)
         {
-            SurvivorOrbAttackPattern attackPattern = SurvivorOrbData.GetAttackPattern(attack.WeaponItemId);
+            OrbAttackPattern attackPattern = OrbData.GetAttackPattern(attack.WeaponItemId);
             if (attack.IsResonanceProc ||
-                attackPattern is not (SurvivorOrbAttackPattern.HomingProjectile or
-                    SurvivorOrbAttackPattern.TargetArea) ||
+                attackPattern is not (OrbAttackPattern.HomingProjectile or
+                    OrbAttackPattern.TargetArea) ||
                 !spatialActors.TryGetValue(attack.AttackerPlayerId, out var attacker) ||
                 !spatialActors.TryGetValue(attack.TargetPlayerId, out var target) ||
                 attacker.Area != attack.Area || target.Area != attack.Area ||
@@ -63,7 +63,7 @@ public sealed class DodgeableProjectileResolver
             }
 
             float distance = Distance(attacker.Position, target.Position);
-            float delaySeconds = SurvivorOrbData.GetPvpProjectileImpactDelaySeconds(
+            float delaySeconds = OrbData.GetPvpProjectileImpactDelaySeconds(
                 attack.WeaponItemId,
                 distance);
             launches.Add(new DodgeableProjectileLaunch(
@@ -137,11 +137,11 @@ public sealed class DodgeableProjectileResolver
                 continue;
             }
 
-            SurvivorOrbAttackPattern attackPattern = SurvivorOrbData.GetAttackPattern(
+            OrbAttackPattern attackPattern = OrbData.GetAttackPattern(
                 projectile.Attack.WeaponItemId);
             float hitRadius;
             IReadOnlyList<ProximityCombatAttack> hits;
-            if (attackPattern == SurvivorOrbAttackPattern.HomingProjectile)
+            if (attackPattern == OrbAttackPattern.HomingProjectile)
             {
                 hitRadius = 0f;
                 var primaryTarget = targets.FirstOrDefault(target =>
@@ -154,7 +154,7 @@ public sealed class DodgeableProjectileResolver
             {
                 // 직선탄 (#226 재정의): 발사 시점 조준 위치 고정 — 단일 대상, 반경을 벗어나
                 // 이동했으면 dodged. (구 TargetArea = 파도 광역 스플래시는 물폭탄 전환으로 퇴역.)
-                hitRadius = SurvivorOrbData.GetPvpProjectileHitRadius(
+                hitRadius = OrbData.GetPvpProjectileHitRadius(
                     projectile.Attack.WeaponItemId,
                     projectile.Attack.ProjectileWidth);
                 var primaryTarget = targets.FirstOrDefault(target =>
@@ -215,7 +215,7 @@ public sealed class DodgeableProjectileResolver
         DodgeableProjectileLaunch projectile,
         ProximityCombatActor target,
         IReadOnlySet<long> combatReadyPlayerIds,
-        SurvivorOrbAttackPattern attackPattern,
+        OrbAttackPattern attackPattern,
         float displacement,
         float hitRadius)
     {
@@ -231,12 +231,12 @@ public sealed class DodgeableProjectileResolver
             return "target_not_combat_ready";
         if (!ProximityCombatLineOfSight.HasClearPath(projectile.MapId, projectile.OriginCell, target.Cell))
             return "line_of_sight_blocked";
-        if (attackPattern == SurvivorOrbAttackPattern.HomingProjectile &&
+        if (attackPattern == OrbAttackPattern.HomingProjectile &&
             Distance(projectile.Origin, target.Position) > projectile.MaxRange)
         {
             return "target_out_of_range";
         }
-        if (attackPattern != SurvivorOrbAttackPattern.HomingProjectile && displacement > hitRadius)
+        if (attackPattern != OrbAttackPattern.HomingProjectile && displacement > hitRadius)
             return "dodged";
 
         return "unresolved_miss";

@@ -448,7 +448,7 @@ namespace network.common
         /// </summary>
         public const int SWARM_ORB_DESTROY_REFUND_STONES = 1;
 
-        /// <summary>결정 패킷 액션 — 클라·서버·로그 공유. TargetItemUid = SurvivorOrbColor 값.</summary>
+        /// <summary>결정 패킷 액션 — 클라·서버·로그 공유. TargetItemUid = OrbColor 값.</summary>
         public const int SWARM_ORB_DECISION_FAMILY_UPGRADE = 1;
 
         /// <summary>

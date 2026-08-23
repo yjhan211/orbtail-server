@@ -62,7 +62,7 @@ public partial class BotPlayerManager
     private static float GetBotWaveSlowMultiplier(BotPlayerState bot)
     {
         return DateTime.UtcNow < bot.WaveSlowUntilUtc
-            ? SurvivorOrbData.WaveSlowMoveSpeedMultiplier
+            ? OrbData.WaveSlowMoveSpeedMultiplier
             : 1f;
     }
     private static Vector3f ScaledWalkVelocity(float dirX, float dirY, float movementMultiplier = 1f)
@@ -1138,13 +1138,13 @@ public partial class BotPlayerManager
         float score = 0f;
         foreach (int itemId in boardItemIds)
         {
-            if (SurvivorOrbData.TryGetColorAndTier(itemId, out SurvivorOrbColor color, out int tier))
+            if (OrbData.TryGetColorAndTier(itemId, out OrbColor color, out int tier))
             {
-                score += tier * SurvivorOrbData.GetPveDamageMultiplier(color, monsterRewardItemId);
+                score += tier * OrbData.GetPveDamageMultiplier(color, monsterRewardItemId);
                 continue;
             }
 
-            if (SurvivorOrbData.TryGetRecoveryTier(itemId, out int recoveryTier))
+            if (OrbData.TryGetRecoveryTier(itemId, out int recoveryTier))
                 score += recoveryTier * 0.25f;
         }
 

@@ -26,9 +26,9 @@ public static class BotBattleItemLoadout
         var boardItemIds = items
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
             .ToList();
-        bool hasDominantColor = SurvivorOrbData.TryGetDominantPveColor(
+        bool hasDominantColor = OrbData.TryGetDominantPveColor(
             boardItemIds,
-            out SurvivorOrbColor dominantColor);
+            out OrbColor dominantColor);
         float corruptionRatio = maxCorruption > 0
             ? Math.Clamp((float)corruption / maxCorruption, 0f, 1f)
             : 0f;
@@ -37,7 +37,7 @@ public static class BotBattleItemLoadout
             .Select(item => CreateDestroyDecision(
                 item,
                 boardItemIds,
-                hasDominantColor ? dominantColor : SurvivorOrbColor.None,
+                hasDominantColor ? dominantColor : OrbColor.None,
                 corruptionRatio))
             .Where(decision => decision != null)
             .Select(decision => decision!)
@@ -69,11 +69,11 @@ public static class BotBattleItemLoadout
                 .Select(item => item.ItemId)
                 .Where(IsOrb)
                 .GroupBy(itemId => itemId)
-                .Where(group => group.Count() >= 2 && SurvivorOrbData.CanMerge(group.Key, group.Key))
+                .Where(group => group.Count() >= 2 && OrbData.CanMerge(group.Key, group.Key))
                 .OrderBy(group => ConsumesLastEquippedResonanceSupport(group.Key, inventory) ? 1 : 0)
                 .ThenByDescending(group =>
                 {
-                    SurvivorOrbData.TryGetColorAndTier(group.Key, out _, out int tier);
+                    OrbData.TryGetColorAndTier(group.Key, out _, out int tier);
                     return tier;
                 })
                 .Select(group => group.Key)
@@ -145,16 +145,16 @@ public static class BotBattleItemLoadout
     private static BotOrbDestroyDecision? CreateDestroyDecision(
         InGameItemInfo item,
         IReadOnlyCollection<int> boardItemIds,
-        SurvivorOrbColor dominantColor,
+        OrbColor dominantColor,
         float corruptionRatio)
     {
-        SurvivorOrbColor color;
+        OrbColor color;
         int tier;
-        if (!SurvivorOrbData.TryGetColorAndTier(item.ItemId, out color, out tier))
+        if (!OrbData.TryGetColorAndTier(item.ItemId, out color, out tier))
         {
-            if (!SurvivorOrbData.TryGetRecoveryTier(item.ItemId, out tier))
+            if (!OrbData.TryGetRecoveryTier(item.ItemId, out tier))
                 return null;
-            color = SurvivorOrbColor.Recovery;
+            color = OrbColor.Recovery;
         }
 
         int keepScore = tier * 100;
@@ -165,7 +165,7 @@ public static class BotBattleItemLoadout
             _ => 0
         };
 
-        if (color == SurvivorOrbColor.Recovery)
+        if (color == OrbColor.Recovery)
         {
             keepScore += (int)Math.Round(corruptionRatio * 300f);
             if (corruptionRatio < 0.2f)
@@ -176,7 +176,7 @@ public static class BotBattleItemLoadout
             keepScore += 20;
             keepScore += boardItemIds.Count(itemId =>
             {
-                return SurvivorOrbData.TryGetColorAndTier(itemId, out SurvivorOrbColor otherColor, out _) &&
+                return OrbData.TryGetColorAndTier(itemId, out OrbColor otherColor, out _) &&
                        otherColor == color;
             }) * 12;
 
@@ -198,7 +198,7 @@ public static class BotBattleItemLoadout
         return items
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
             .GroupBy(itemId => itemId)
-            .Any(group => group.Count() >= 3 && SurvivorOrbData.CanMerge(group.Key, group.Key));
+            .Any(group => group.Count() >= 3 && OrbData.CanMerge(group.Key, group.Key));
     }
 
     private static bool HasValidMerge(IReadOnlyCollection<InGameItemInfo> items)
@@ -208,7 +208,7 @@ public static class BotBattleItemLoadout
             .ToList();
         if (itemIds
             .GroupBy(itemId => itemId)
-            .Any(group => group.Count() >= 2 && SurvivorOrbData.CanMerge(group.Key, group.Key)))
+            .Any(group => group.Count() >= 2 && OrbData.CanMerge(group.Key, group.Key)))
         {
             return true;
         }
@@ -219,31 +219,31 @@ public static class BotBattleItemLoadout
     }
 
     private static bool IsOrb(int itemId) =>
-        SurvivorOrbData.IsSurvivorOrb(itemId) || SurvivorOrbData.IsRecoveryOrb(itemId);
+        OrbData.IsSurvivorOrb(itemId) || OrbData.IsRecoveryOrb(itemId);
 
     private static bool ConsumesLastEquippedResonanceSupport(int inputItemId, PlayerInGameInventory inventory)
     {
         var equipped = inventory.GetEquippedBattleItem();
         if (equipped == null ||
-            !SurvivorOrbData.TryGetColorAndTier(equipped.ItemId, out SurvivorOrbColor equippedColor, out _) ||
-            !SurvivorOrbData.TryGetColorAndTier(inputItemId, out SurvivorOrbColor inputColor, out _))
+            !OrbData.TryGetColorAndTier(equipped.ItemId, out OrbColor equippedColor, out _) ||
+            !OrbData.TryGetColorAndTier(inputItemId, out OrbColor inputColor, out _))
             return false;
 
         if (inputColor != equippedColor)
             return false;
 
         return inventory.GetAllItems().Count(item => item.Count > 0 &&
-            SurvivorOrbData.TryGetColorAndTier(item.ItemId, out SurvivorOrbColor color, out _) &&
+            OrbData.TryGetColorAndTier(item.ItemId, out OrbColor color, out _) &&
             color == equippedColor) <= 2;
     }
 
     private static bool HasSameColorSupport(InGameItemInfo item, IReadOnlyCollection<InGameItemInfo> allItems)
     {
-        if (!SurvivorOrbData.TryGetColorAndTier(item.ItemId, out SurvivorOrbColor color, out _))
+        if (!OrbData.TryGetColorAndTier(item.ItemId, out OrbColor color, out _))
             return false;
 
         return allItems.Any(other => other.ItemUid != item.ItemUid && other.Count > 0 &&
-                                     SurvivorOrbData.TryGetColorAndTier(other.ItemId, out SurvivorOrbColor otherColor,
+                                     OrbData.TryGetColorAndTier(other.ItemId, out OrbColor otherColor,
                                          out _) && otherColor == color);
     }
 
@@ -273,5 +273,5 @@ public sealed record BotOrbDestroyDecision(
     long ItemUid,
     int ItemId,
     int Tier,
-    SurvivorOrbColor Color,
+    OrbColor Color,
     int KeepScore);

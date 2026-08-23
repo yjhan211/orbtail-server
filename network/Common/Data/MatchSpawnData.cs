@@ -10,7 +10,7 @@ namespace network.common.data
     /// Fixed Survivor Royale opening anchors.  A match seed permutes anchors, never players,
     /// so every roster member receives one unique corridor position regardless of join order.
     /// </summary>
-    public static class SurvivorRoyaleSpawnData
+    public static class MatchSpawnData
     {
         private static readonly Cell[] CorridorAnchors =
         {

@@ -19,43 +19,43 @@ public sealed class SurvivorOrbBoardTests
     [InlineData(107000022, 30, 0.4f)]
     public void SunAndWindUseTheSameTierAttackTable(int itemId, int damage, float interval)
     {
-        Assert.Equal(damage, SurvivorOrbData.GetSwarmPveAttackDamage(itemId));
-        Assert.Equal(interval, SurvivorOrbData.GetSwarmPveAttackIntervalSeconds(itemId));
+        Assert.Equal(damage, OrbData.GetSwarmPveAttackDamage(itemId));
+        Assert.Equal(interval, OrbData.GetSwarmPveAttackIntervalSeconds(itemId));
     }
 
     [Fact]
     public void SunPassiveCountsLivingOrbsWithoutTierWeight()
     {
-        Assert.Equal(1f, SurvivorOrbData.GetSunPveAttackMultiplier([]));
-        Assert.Equal(1.15f, SurvivorOrbData.GetSunPveAttackMultiplier(Items(107000012)));
-        Assert.Equal(1.20f, SurvivorOrbData.GetSunPveAttackMultiplier(Items(107000010, 107000012)));
-        Assert.Equal(1.40f, SurvivorOrbData.GetSunPveAttackMultiplier(
+        Assert.Equal(1f, OrbData.GetSunPveAttackMultiplier([]));
+        Assert.Equal(1.15f, OrbData.GetSunPveAttackMultiplier(Items(107000012)));
+        Assert.Equal(1.20f, OrbData.GetSunPveAttackMultiplier(Items(107000010, 107000012)));
+        Assert.Equal(1.40f, OrbData.GetSunPveAttackMultiplier(
             Items(107000010, 107000010, 107000010, 107000010, 107000010, 107000010, 107000010)));
     }
 
     [Fact]
     public void WindPassiveCountsLivingOrbsWithoutTierWeight()
     {
-        Assert.Equal(1f, SurvivorOrbData.GetWindMoveSpeedMultiplier([]));
-        Assert.Equal(1.06f, SurvivorOrbData.GetWindMoveSpeedMultiplier(Items(107000022)));
-        Assert.Equal(1.08f, SurvivorOrbData.GetWindMoveSpeedMultiplier(Items(107000020, 107000022)));
-        Assert.Equal(1.14f, SurvivorOrbData.GetWindMoveSpeedMultiplier(
+        Assert.Equal(1f, OrbData.GetWindMoveSpeedMultiplier([]));
+        Assert.Equal(1.06f, OrbData.GetWindMoveSpeedMultiplier(Items(107000022)));
+        Assert.Equal(1.08f, OrbData.GetWindMoveSpeedMultiplier(Items(107000020, 107000022)));
+        Assert.Equal(1.14f, OrbData.GetWindMoveSpeedMultiplier(
             Items(107000020, 107000020, 107000020, 107000020, 107000020, 107000020)));
     }
 
     [Theory]
-    [InlineData(107000010, SurvivorOrbColor.Red, 1)]
-    [InlineData(107000011, SurvivorOrbColor.Red, 2)]
-    [InlineData(107000012, SurvivorOrbColor.Red, 3)]
-    [InlineData(107000020, SurvivorOrbColor.Green, 1)]
-    [InlineData(107000021, SurvivorOrbColor.Green, 2)]
-    [InlineData(107000022, SurvivorOrbColor.Green, 3)]
-    [InlineData(107000030, SurvivorOrbColor.Blue, 1)]
-    [InlineData(107000031, SurvivorOrbColor.Blue, 2)]
-    [InlineData(107000032, SurvivorOrbColor.Blue, 3)]
-    public void ColoredOrbIdsMapToStableColorAndTier(int itemId, SurvivorOrbColor expectedColor, int expectedTier)
+    [InlineData(107000010, OrbColor.Red, 1)]
+    [InlineData(107000011, OrbColor.Red, 2)]
+    [InlineData(107000012, OrbColor.Red, 3)]
+    [InlineData(107000020, OrbColor.Green, 1)]
+    [InlineData(107000021, OrbColor.Green, 2)]
+    [InlineData(107000022, OrbColor.Green, 3)]
+    [InlineData(107000030, OrbColor.Blue, 1)]
+    [InlineData(107000031, OrbColor.Blue, 2)]
+    [InlineData(107000032, OrbColor.Blue, 3)]
+    public void ColoredOrbIdsMapToStableColorAndTier(int itemId, OrbColor expectedColor, int expectedTier)
     {
-        Assert.True(SurvivorOrbData.TryGetColorAndTier(itemId, out var color, out int tier));
+        Assert.True(OrbData.TryGetColorAndTier(itemId, out var color, out int tier));
         Assert.Equal(expectedColor, color);
         Assert.Equal(expectedTier, tier);
     }
@@ -68,11 +68,11 @@ public sealed class SurvivorOrbBoardTests
         int expectedTier,
         int expectedRecovery)
     {
-        Assert.Equal(5f, SurvivorOrbData.RecoveryTickSeconds);
-        Assert.True(SurvivorOrbData.TryGetRecoveryTier(itemId, out int tier));
+        Assert.Equal(5f, OrbData.RecoveryTickSeconds);
+        Assert.True(OrbData.TryGetRecoveryTier(itemId, out int tier));
         Assert.Equal(expectedTier, tier);
-        Assert.Equal(expectedRecovery, SurvivorOrbData.GetRecoveryAmount(itemId));
-        Assert.False(SurvivorOrbData.IsSurvivorOrb(itemId));
+        Assert.Equal(expectedRecovery, OrbData.GetRecoveryAmount(itemId));
+        Assert.False(OrbData.IsSurvivorOrb(itemId));
     }
 
     [Theory]
@@ -88,14 +88,14 @@ public sealed class SurvivorOrbBoardTests
         var outputs = new HashSet<int>();
         for (int i = 0; i < 50; i++)
         {
-            Assert.True(SurvivorOrbData.TryGetRandomMergeOutput(inputA, inputB, random, out int output));
-            Assert.True(SurvivorOrbData.TryGetColorAndTier(inputA, out _, out int inputTier));
-            Assert.True(SurvivorOrbData.TryGetColorAndTier(output, out _, out int outputTier));
+            Assert.True(OrbData.TryGetRandomMergeOutput(inputA, inputB, random, out int output));
+            Assert.True(OrbData.TryGetColorAndTier(inputA, out _, out int inputTier));
+            Assert.True(OrbData.TryGetColorAndTier(output, out _, out int outputTier));
             Assert.Equal(inputTier + 1, outputTier);
             outputs.Add(output);
         }
 
-        Assert.All(outputs, output => Assert.True(SurvivorOrbData.IsSurvivorOrb(output)));
+        Assert.All(outputs, output => Assert.True(OrbData.IsSurvivorOrb(output)));
         Assert.True(outputs.Count > 1);
     }
 
@@ -104,8 +104,8 @@ public sealed class SurvivorOrbBoardTests
     [InlineData(107000041, 107000042)]
     public void SameTierRecoveryOrbsMergeToTheNextRecoveryTier(int input, int expectedOutput)
     {
-        Assert.True(SurvivorOrbData.CanMerge(input, input));
-        Assert.True(SurvivorOrbData.TryGetRandomMergeOutput(input, input, new Random(198), out int output));
+        Assert.True(OrbData.CanMerge(input, input));
+        Assert.True(OrbData.TryGetRandomMergeOutput(input, input, new Random(198), out int output));
         Assert.Equal(expectedOutput, output);
     }
 
@@ -115,8 +115,8 @@ public sealed class SurvivorOrbBoardTests
     [InlineData(107000012, 107000012)]
     public void DifferentColorDifferentTierOrTierThreeCannotMerge(int inputA, int inputB)
     {
-        Assert.False(SurvivorOrbData.CanMerge(inputA, inputB));
-        Assert.False(SurvivorOrbData.TryGetRandomMergeOutput(inputA, inputB, new Random(1), out _));
+        Assert.False(OrbData.CanMerge(inputA, inputB));
+        Assert.False(OrbData.TryGetRandomMergeOutput(inputA, inputB, new Random(1), out _));
     }
 
     [Theory]
@@ -129,60 +129,60 @@ public sealed class SurvivorOrbBoardTests
     [InlineData(6, 5)]
     public void SunResonanceUsesOneThreeFiveBoardStages(int sunCount, int expectedStage)
     {
-        Assert.Equal(expectedStage, SurvivorOrbData.GetSunResonanceStage(sunCount));
+        Assert.Equal(expectedStage, OrbData.GetSunResonanceStage(sunCount));
     }
     [Fact]
     public void LegacyGuardianOrbDoesNotEnterColoredBoardRules()
     {
-        Assert.False(SurvivorOrbData.TryGetColorAndTier(107000003, out var color, out int tier));
-        Assert.Equal(SurvivorOrbColor.None, color);
+        Assert.False(OrbData.TryGetColorAndTier(107000003, out var color, out int tier));
+        Assert.Equal(OrbColor.None, color);
         Assert.Equal(0, tier);
     }
 
     [Fact]
     public void ResonanceUsesEquippedColorAndAnyOtherTier()
     {
-        Assert.True(SurvivorOrbData.TryGetActivePair(107000010, [107000021, 107000012], out var color,
+        Assert.True(OrbData.TryGetActivePair(107000010, [107000021, 107000012], out var color,
             out int supportTier));
-        Assert.Equal(SurvivorOrbColor.Red, color);
+        Assert.Equal(OrbColor.Red, color);
         Assert.Equal(3, supportTier);
 
-        Assert.False(SurvivorOrbData.TryGetActivePair(107000010, [], out color, out supportTier));
-        Assert.Equal(SurvivorOrbColor.Red, color);
+        Assert.False(OrbData.TryGetActivePair(107000010, [], out color, out supportTier));
+        Assert.Equal(OrbColor.Red, color);
         Assert.Equal(0, supportTier);
     }
 
     [Fact]
     public void MultiplePairsStillResolveOnlyTheEquippedColorAndNoCrossColorFallback()
     {
-        Assert.True(SurvivorOrbData.TryGetActivePair(107000010,
+        Assert.True(OrbData.TryGetActivePair(107000010,
             [107000011, 107000020, 107000021, 107000030, 107000031], out var color, out int supportTier));
-        Assert.Equal(SurvivorOrbColor.Red, color);
+        Assert.Equal(OrbColor.Red, color);
         Assert.Equal(2, supportTier);
 
-        Assert.False(SurvivorOrbData.TryGetActivePair(107000010,
+        Assert.False(OrbData.TryGetActivePair(107000010,
             [107000020, 107000021, 107000030, 107000031], out color, out supportTier));
-        Assert.Equal(SurvivorOrbColor.Red, color);
+        Assert.Equal(OrbColor.Red, color);
         Assert.Equal(0, supportTier);
     }
 
     [Fact]
     public void BoardResonanceDoesNotRequireAnEquippedOrb()
     {
-        Assert.True(SurvivorOrbData.TryGetActivePair(
+        Assert.True(OrbData.TryGetActivePair(
             [107000010, 107000020, 107000021],
             out var color,
             out int supportTier));
-        Assert.Equal(SurvivorOrbColor.Green, color);
+        Assert.Equal(OrbColor.Green, color);
         Assert.Equal(2, supportTier);
 
-        Assert.False(SurvivorOrbData.HasActivePair(
+        Assert.False(OrbData.HasActivePair(
             [107000010, 107000020, 107000021],
-            SurvivorOrbColor.Red,
+            OrbColor.Red,
             out _));
-        Assert.True(SurvivorOrbData.HasActivePair(
+        Assert.True(OrbData.HasActivePair(
             [107000010, 107000020, 107000021],
-            SurvivorOrbColor.Green,
+            OrbColor.Green,
             out supportTier));
         Assert.Equal(2, supportTier);
     }
@@ -192,9 +192,9 @@ public sealed class SurvivorOrbBoardTests
     {
         int[] board = [107000010, 107000011, 107000020, 107000021, 107000030, 107000031];
 
-        Assert.True(SurvivorOrbData.HasActivePair(board, SurvivorOrbColor.Red, out int redTier));
-        Assert.True(SurvivorOrbData.HasActivePair(board, SurvivorOrbColor.Green, out int greenTier));
-        Assert.True(SurvivorOrbData.HasActivePair(board, SurvivorOrbColor.Blue, out int blueTier));
+        Assert.True(OrbData.HasActivePair(board, OrbColor.Red, out int redTier));
+        Assert.True(OrbData.HasActivePair(board, OrbColor.Green, out int greenTier));
+        Assert.True(OrbData.HasActivePair(board, OrbColor.Blue, out int blueTier));
         Assert.Equal(2, redTier);
         Assert.Equal(2, greenTier);
         Assert.Equal(2, blueTier);
@@ -209,7 +209,7 @@ public sealed class SurvivorOrbBoardTests
 
         Assert.Null(inventory.GetEquippedBattleItem());
         Assert.True(inventory.TryGetActiveSurvivorOrbPair(out var color, out int supportTier));
-        Assert.Equal(SurvivorOrbColor.Blue, color);
+        Assert.Equal(OrbColor.Blue, color);
         Assert.Equal(3, supportTier);
     }
 
@@ -237,7 +237,7 @@ public sealed class SurvivorOrbBoardTests
 
         Assert.True(inventory.TryEquipBattleItem(equippedOrb.ItemUid, out _));
         Assert.True(inventory.TryGetActiveSurvivorOrbPair(out var color, out int supportTier));
-        Assert.Equal(SurvivorOrbColor.Red, color);
+        Assert.Equal(OrbColor.Red, color);
         Assert.Equal(1, supportTier);
 
         Assert.True(inventory.TryCombineSurvivorOrbs(107000010, 107000010, new Random(1), out int output, out _));
@@ -258,7 +258,7 @@ public sealed class SurvivorOrbBoardTests
 
         var reconnectedInventory = manager.GetPlayerInventory(198, 101);
         Assert.True(reconnectedInventory.TryGetActiveSurvivorOrbPair(out var color, out int supportTier));
-        Assert.Equal(SurvivorOrbColor.Red, color);
+        Assert.Equal(OrbColor.Red, color);
         Assert.Equal(1, supportTier);
     }
     [Fact]

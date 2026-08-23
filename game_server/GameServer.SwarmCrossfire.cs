@@ -68,8 +68,8 @@ public partial class GameServer
     /// <summary>태양: 첫 표적에서 폭발하는 큰 투사체.</summary>
     private static bool IsSwarmCrossfireSun(int weaponItemId) =>
         SwarmCrossfireEnabled &&
-        SurvivorOrbData.TryGetColorAndTier(weaponItemId, out var color, out _) &&
-        color == SurvivorOrbColor.Red;
+        OrbData.TryGetColorAndTier(weaponItemId, out var color, out _) &&
+        color == OrbColor.Red;
 
     /// <summary>
     ///     소유자가 지금 예고(시전) 중인 모양 수 — 발동 뒤 쓸고 있는 모양은 세지 않는다.
@@ -147,7 +147,7 @@ public partial class GameServer
     {
         if (origin == null || anchor == null || !IsSwarmCrossfireWeapon(attack.WeaponItemId))
             return false;
-        SurvivorOrbData.TryGetColorAndTier(attack.WeaponItemId, out _, out int tier);
+        OrbData.TryGetColorAndTier(attack.WeaponItemId, out _, out int tier);
 
         if (CountSwarmCrossfireTelegraphing(matchingId, attack.AttackerPlayerId, nowUtc) >=
             Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)

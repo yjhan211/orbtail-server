@@ -40,12 +40,12 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return false;
 
-        bool isSurvivorOrbRequest = SurvivorOrbData.IsSurvivorOrb(msg.ItemA) ||
-                                    SurvivorOrbData.IsSurvivorOrb(msg.ItemB);
+        bool isSurvivorOrbRequest = OrbData.IsSurvivorOrb(msg.ItemA) ||
+                                    OrbData.IsSurvivorOrb(msg.ItemB);
         if (isSurvivorOrbRequest)
         {
             var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
-            bool hadResonance = inventory.TryGetActiveSurvivorOrbPair(out SurvivorOrbColor previousResonanceColor,
+            bool hadResonance = inventory.TryGetActiveSurvivorOrbPair(out OrbColor previousResonanceColor,
                 out int previousSupportTier);
             if (!_inGameInventoryManager.TryCombineSurvivorOrbs(
                     CurrentMapSubId,
@@ -62,9 +62,9 @@ public partial class GameClientSession
 
             SendBattleItemCombineResult(msg, outputItemId, changedItems, recipeId: 0);
 
-            bool resonanceActive = inventory.TryGetActiveSurvivorOrbPair(out SurvivorOrbColor resonanceColor,
+            bool resonanceActive = inventory.TryGetActiveSurvivorOrbPair(out OrbColor resonanceColor,
                 out int supportTier);
-            SurvivorOrbData.TryGetColorAndTier(outputItemId, out SurvivorOrbColor outputColor, out int outputTier);
+            OrbData.TryGetColorAndTier(outputItemId, out OrbColor outputColor, out int outputTier);
             _gameEventLogManager.LogSurvivorOrbBoardTransition(
                 CurrentMapSubId, PlayerId.Value, inventory.GetAllItems(),
                 inventory.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "merge", isBot: false);

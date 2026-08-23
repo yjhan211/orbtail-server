@@ -57,7 +57,7 @@ public partial class GameClientSession
     private async Task HandlePlayerState(C_TO_G_PLAYER_STATE msg)
     {
         if (!PlayerId.HasValue) return;
-        if (IsRoundActionLocked(out _, out string lockReason))
+        if (IsRoundActionLocked(out string lockReason))
         {
             // EXPLORE_1 is a collection-side state sync. The following collection ACK reports
             // the actionable result, so do not surface a second generic alert to the player.

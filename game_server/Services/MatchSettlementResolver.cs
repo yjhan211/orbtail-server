@@ -1,21 +1,21 @@
 namespace game_server.services;
 
-public readonly record struct SurvivorSettlementCandidate(
+public readonly record struct MatchSettlementCandidate(
     long PlayerId,
     int PreDamageCorruption,
     int TotalPvpDamage);
 
-public sealed class SurvivorSettlementResolution
+public sealed class MatchSettlementResolution
 {
-    public required IReadOnlyList<SurvivorSettlementCandidate> BestToWorst { get; init; }
+    public required IReadOnlyList<MatchSettlementCandidate> BestToWorst { get; init; }
     public required string DecisiveCriterion { get; init; }
 }
 
-public static class SurvivorSettlementResolver
+public static class MatchSettlementResolver
 {
-    public static SurvivorSettlementResolution Resolve(
+    public static MatchSettlementResolution Resolve(
         long matchingId,
-        IEnumerable<SurvivorSettlementCandidate> candidates)
+        IEnumerable<MatchSettlementCandidate> candidates)
     {
         var ordered = candidates
             .DistinctBy(candidate => candidate.PlayerId)
@@ -37,7 +37,7 @@ public static class SurvivorSettlementResolver
                     : "match_seed_priority";
         }
 
-        return new SurvivorSettlementResolution
+        return new MatchSettlementResolution
         {
             BestToWorst = ordered,
             DecisiveCriterion = criterion

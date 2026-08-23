@@ -134,9 +134,9 @@ public sealed class AreaItemStockManager
     /// Server-only routing query for bots. The minimap intentionally exposes only depletion,
     /// while bots need to know whether a route can still rebuild their active orb resonance.
     /// </summary>
-    public bool HasRemainingOrbColor(long matchingId, int areaType, SurvivorOrbColor color)
+    public bool HasRemainingOrbColor(long matchingId, int areaType, OrbColor color)
     {
-        if (!_naturalExploreLootEnabled || color == SurvivorOrbColor.None) return false;
+        if (!_naturalExploreLootEnabled || color == OrbColor.None) return false;
 
         var stock = _matchingStocks.GetOrAdd(matchingId, _ => new MatchingAreaItemStock());
         lock (stock.SyncRoot)
@@ -162,14 +162,14 @@ public sealed class AreaItemStockManager
     /// <summary>
     /// 공개 미니맵용 상태다. 남은 개수는 서버에만 두고, 색상별 소진 여부까지만 반환한다.
     /// </summary>
-    public IReadOnlyList<(AreaType AreaType, bool IsDepleted, List<SurvivorOrbColor> AvailableOrbColors)>
+    public IReadOnlyList<(AreaType AreaType, bool IsDepleted, List<OrbColor> AvailableOrbColors)>
         GetPublicDepletionSnapshot(long matchingId)
     {
         if (!_naturalExploreLootEnabled)
         {
             return Enum.GetValues<AreaType>()
                 .Where(area => area != AreaType.None)
-                .Select(area => (area, true, new List<SurvivorOrbColor>()))
+                .Select(area => (area, true, new List<OrbColor>()))
                 .ToList();
         }
 
@@ -191,9 +191,9 @@ public sealed class AreaItemStockManager
         }
     }
 
-    private static HashSet<SurvivorOrbColor> GetOrbColors(IEnumerable<int> itemIds)
+    private static HashSet<OrbColor> GetOrbColors(IEnumerable<int> itemIds)
     {
-        var colors = new HashSet<SurvivorOrbColor>();
+        var colors = new HashSet<OrbColor>();
         foreach (int itemId in itemIds)
             if (TryGetOrbMapColor(itemId, out var color))
                 colors.Add(color);
@@ -208,16 +208,16 @@ public sealed class AreaItemStockManager
         return colors.Count <= MaxOrbTypesPerArea;
     }
 
-    private static bool TryGetOrbMapColor(int itemId, out SurvivorOrbColor color)
+    private static bool TryGetOrbMapColor(int itemId, out OrbColor color)
     {
-        if (SurvivorOrbData.TryGetColorAndTier(itemId, out color, out _)) return true;
-        if (SurvivorOrbData.IsRecoveryOrb(itemId))
+        if (OrbData.TryGetColorAndTier(itemId, out color, out _)) return true;
+        if (OrbData.IsRecoveryOrb(itemId))
         {
-            color = SurvivorOrbColor.Recovery;
+            color = OrbColor.Recovery;
             return true;
         }
 
-        color = SurvivorOrbColor.None;
+        color = OrbColor.None;
         return false;
     }
 

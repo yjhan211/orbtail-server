@@ -13,7 +13,6 @@ public class MatchRosterManager
 {
     // Survivor Royale replaces the legacy chain-break aftermath with combat and loot progression.
     // Keep link registration for compatibility, but do not propagate FREED/TERMINAL states.
-    private static readonly bool ChainBreakConsequencesEnabled = false;
     // matchingId → 체인 상태
     private readonly ConcurrentDictionary<long, MatchRosterState> _states = new();
     private readonly ILogger _logger;
@@ -78,18 +77,18 @@ public class MatchRosterManager
         return state.Entries.GetValueOrDefault(playerId);
     }
 
-    public RosterEntry? FindManittoOf(long matchingId, long playerId)
+    public RosterEntry? FindWatcherOf(long matchingId, long playerId)
     {
         if (!_states.TryGetValue(matchingId, out var state)) return null;
         return state.Entries.Values.FirstOrDefault(l => l.TargetPlayerId == playerId);
     }
 
-    public bool IsAliveManittoOf(long matchingId, long playerId, long candidatePlayerId)
+    public bool IsAliveWatcherOf(long matchingId, long playerId, long candidatePlayerId)
     {
-        var myManitto = FindManittoOf(matchingId, playerId);
-        return myManitto != null
-               && myManitto.PlayerId == candidatePlayerId
-               && IsAliveLink(myManitto);
+        var myWatcher = FindWatcherOf(matchingId, playerId);
+        return myWatcher != null
+               && myWatcher.PlayerId == candidatePlayerId
+               && IsAliveLink(myWatcher);
     }
 
     /// <summary>
@@ -147,28 +146,6 @@ public class MatchRosterManager
 
         affected[playerId] = PlayerMatchStatus.ELIMINATED;
 
-        if (!ChainBreakConsequencesEnabled)
-            return new PlayerEliminationTransition(true, affected);
-
-        // 1) 탈락자의 타겟(▓▓) → 마니또(스토커)로부터 해방
-        long freedPlayerId = link.TargetPlayerId;
-        if (state.Entries.TryGetValue(freedPlayerId, out var freedLink) &&
-            freedLink.Status == PlayerMatchStatus.ACTIVE)
-        {
-            freedLink.Status = PlayerMatchStatus.FREED;
-            affected[freedPlayerId] = PlayerMatchStatus.FREED;
-            _logger.LogInformation("해방: PlayerId={PlayerId} (마니또 {Manitto} 탈락)", freedPlayerId, playerId);
-        }
-
-        // 2) 탈락자의 마니또 → 시한부 진입 (타겟 상실)
-        var manittoLink = state.Entries.Values.FirstOrDefault(l => l.TargetPlayerId == playerId);
-        if (manittoLink != null && manittoLink.Status == PlayerMatchStatus.ACTIVE)
-        {
-            manittoLink.Status = PlayerMatchStatus.TERMINAL;
-            affected[manittoLink.PlayerId] = PlayerMatchStatus.TERMINAL;
-            _logger.LogInformation("시한부: PlayerId={PlayerId} (타겟 {Target} 탈락)", manittoLink.PlayerId, playerId);
-        }
-
         return new PlayerEliminationTransition(true, affected);
     }
 
@@ -192,20 +169,6 @@ public class MatchRosterManager
         }
 
         return (false, null);
-    }
-
-    /// <summary>
-    ///     시한부 플레이어 조회 (정신력 감소 틱 대상)
-    /// </summary>
-    public List<long> GetTerminalPlayers(long matchingId)
-    {
-        if (!_states.TryGetValue(matchingId, out var state))
-            return new List<long>();
-
-        return state.Entries.Values
-            .Where(l => l.Status == PlayerMatchStatus.TERMINAL)
-            .Select(l => l.PlayerId)
-            .ToList();
     }
 
     /// <summary>

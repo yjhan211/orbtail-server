@@ -42,7 +42,7 @@ public partial class GameClientSession
     internal bool ExecuteDraftOrbSummon(int choiceIndex)
     {
         // 상자 시간 등급 (#222 M3): 개전 후 80초/160초를 넘기면 같은 색의 T2/T3가 나온다.
-        int draftItemId = SurvivorOrbData.ApplyDraftTier(
+        int draftItemId = OrbData.ApplyDraftTier(
             choiceIndex switch
             {
                 1 => DraftWaveOrbItemId,
@@ -82,7 +82,7 @@ public partial class GameClientSession
         if (startedAtUtc == null)
             return 1;
 
-        return SurvivorOrbData.GetDraftTierByElapsed((DateTime.UtcNow - startedAtUtc.Value).TotalSeconds);
+        return OrbData.GetDraftTierByElapsed((DateTime.UtcNow - startedAtUtc.Value).TotalSeconds);
     }
 
     /// <summary>
@@ -280,8 +280,8 @@ public partial class GameClientSession
 
         int tier;
         bool isDestroyableOrb =
-            SurvivorOrbData.TryGetColorAndTier(item.ItemId, out _, out tier) ||
-            SurvivorOrbData.TryGetRecoveryTier(item.ItemId, out tier);
+            OrbData.TryGetColorAndTier(item.ItemId, out _, out tier) ||
+            OrbData.TryGetRecoveryTier(item.ItemId, out tier);
         if (!isDestroyableOrb)
         {
             SendDestroyOrbResult(false, ErrorCode.ITEM_NOT_USABLE, request.ItemUid, 0,
@@ -337,8 +337,8 @@ public partial class GameClientSession
                      .GetPlayerInventory(CurrentMapSubId, PlayerId.Value).GetAllItems())
         {
             if (item.Count <= 0) continue;
-            if (SurvivorOrbData.TryGetColorAndTier(item.ItemId, out _, out _) ||
-                SurvivorOrbData.TryGetRecoveryTier(item.ItemId, out _))
+            if (OrbData.TryGetColorAndTier(item.ItemId, out _, out _) ||
+                OrbData.TryGetRecoveryTier(item.ItemId, out _))
                 orbCount += item.Count;
         }
 

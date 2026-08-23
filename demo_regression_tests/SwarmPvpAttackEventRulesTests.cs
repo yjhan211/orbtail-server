@@ -6,17 +6,17 @@ namespace demo_regression_tests;
 public sealed class SwarmPvpAttackEventRulesTests
 {
     [Theory]
-    [InlineData(SurvivorOrbColor.Red, 1, 8)]
-    [InlineData(SurvivorOrbColor.Red, 2, 14)]
-    [InlineData(SurvivorOrbColor.Red, 3, 20)]
-    [InlineData(SurvivorOrbColor.Green, 1, 5)]
-    [InlineData(SurvivorOrbColor.Green, 2, 9)]
-    [InlineData(SurvivorOrbColor.Green, 3, 13)]
-    [InlineData(SurvivorOrbColor.Blue, 1, 10)]
-    [InlineData(SurvivorOrbColor.Blue, 2, 17)]
-    [InlineData(SurvivorOrbColor.Blue, 3, 24)]
+    [InlineData(OrbColor.Red, 1, 8)]
+    [InlineData(OrbColor.Red, 2, 14)]
+    [InlineData(OrbColor.Red, 3, 20)]
+    [InlineData(OrbColor.Green, 1, 5)]
+    [InlineData(OrbColor.Green, 2, 9)]
+    [InlineData(OrbColor.Green, 3, 13)]
+    [InlineData(OrbColor.Blue, 1, 10)]
+    [InlineData(OrbColor.Blue, 2, 17)]
+    [InlineData(OrbColor.Blue, 3, 24)]
     public void PerOrbDamageMatchesStageSixTable(
-        SurvivorOrbColor color,
+        OrbColor color,
         int tier,
         int expected)
     {
@@ -26,17 +26,17 @@ public sealed class SwarmPvpAttackEventRulesTests
     [Fact]
     public void DamageCapsAreAppliedPerAttributeEvent()
     {
-        Assert.Equal(105, SwarmPvpAttackEventRules.CapDamage(SurvivorOrbColor.Red, 999));
-        Assert.Equal(105, SwarmPvpAttackEventRules.CapDamage(SurvivorOrbColor.Green, 999));
-        Assert.Equal(126, SwarmPvpAttackEventRules.CapDamage(SurvivorOrbColor.Blue, 999));
+        Assert.Equal(105, SwarmPvpAttackEventRules.CapDamage(OrbColor.Red, 999));
+        Assert.Equal(105, SwarmPvpAttackEventRules.CapDamage(OrbColor.Green, 999));
+        Assert.Equal(126, SwarmPvpAttackEventRules.CapDamage(OrbColor.Blue, 999));
     }
 
     [Fact]
     public void TierDoesNotChangeEventFrequency()
     {
-        Assert.Equal(2.4d, SwarmPvpAttackEventRules.GetIntervalSeconds(SurvivorOrbColor.Red));
-        Assert.Equal(1.6d, SwarmPvpAttackEventRules.GetIntervalSeconds(SurvivorOrbColor.Green));
-        Assert.Equal(2.8d, SwarmPvpAttackEventRules.GetIntervalSeconds(SurvivorOrbColor.Blue));
+        Assert.Equal(2.4d, SwarmPvpAttackEventRules.GetIntervalSeconds(OrbColor.Red));
+        Assert.Equal(1.6d, SwarmPvpAttackEventRules.GetIntervalSeconds(OrbColor.Green));
+        Assert.Equal(2.8d, SwarmPvpAttackEventRules.GetIntervalSeconds(OrbColor.Blue));
     }
 
     [Theory]
@@ -52,10 +52,10 @@ public sealed class SwarmPvpAttackEventRulesTests
     public void ProjectilePresentationNeverExceedsTwelveVisuals()
     {
         Assert.Equal(12,
-            SwarmPvpAttackEventRules.GetVisualProjectileCount(SurvivorOrbColor.Red, 30));
+            SwarmPvpAttackEventRules.GetVisualProjectileCount(OrbColor.Red, 30));
         Assert.Equal(12,
-            SwarmPvpAttackEventRules.GetVisualProjectileCount(SurvivorOrbColor.Green, 30));
+            SwarmPvpAttackEventRules.GetVisualProjectileCount(OrbColor.Green, 30));
         Assert.Equal(6,
-            SwarmPvpAttackEventRules.GetVisualProjectileCount(SurvivorOrbColor.Green, 2));
+            SwarmPvpAttackEventRules.GetVisualProjectileCount(OrbColor.Green, 2));
     }
 }

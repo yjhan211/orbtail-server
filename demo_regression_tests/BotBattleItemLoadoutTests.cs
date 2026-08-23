@@ -64,8 +64,8 @@ public sealed class BotBattleItemLoadoutTests
         Assert.Empty(result.SurvivorOrbMerges);
         Assert.Equal(2, inventory.GetPlayerInventory(matchingId, botPlayerId).GetItemCount(107000010));
         Assert.True(inventory.GetPlayerInventory(matchingId, botPlayerId)
-            .TryGetActiveSurvivorOrbPair(out SurvivorOrbColor color, out _));
-        Assert.Equal(SurvivorOrbColor.Red, color);
+            .TryGetActiveSurvivorOrbPair(out OrbColor color, out _));
+        Assert.Equal(OrbColor.Red, color);
     }
     [Fact]
     public void BotRandomlyEvolvesSurvivorOrbsAndPivotsToTheBestAvailableOrb()
@@ -81,7 +81,7 @@ public sealed class BotBattleItemLoadoutTests
         var result = BotBattleItemLoadout.CombineAndEquip(inventory, matchingId, botPlayerId, new Random(198));
 
         int output = Assert.Single(result.CombinedItemIds);
-        Assert.True(SurvivorOrbData.TryGetColorAndTier(output, out _, out int tier));
+        Assert.True(OrbData.TryGetColorAndTier(output, out _, out int tier));
         Assert.Equal(2, tier);
         Assert.Equal(output, result.EquippedItemId);
         Assert.Equal(output, inventory.GetEquippedBattleItem(matchingId, botPlayerId)!.ItemId);
@@ -134,7 +134,7 @@ public sealed class BotBattleItemLoadoutTests
 
         Assert.NotNull(decision);
         Assert.Equal(107000040, decision.ItemId);
-        Assert.Equal(SurvivorOrbColor.Recovery, decision.Color);
+        Assert.Equal(OrbColor.Recovery, decision.Color);
     }
 
     [Fact]
@@ -158,7 +158,7 @@ public sealed class BotBattleItemLoadoutTests
             maxCorruption: 420);
 
         Assert.NotNull(decision);
-        Assert.NotEqual(SurvivorOrbColor.Recovery, decision.Color);
+        Assert.NotEqual(OrbColor.Recovery, decision.Color);
     }
 
     [Fact]
@@ -182,7 +182,7 @@ public sealed class BotBattleItemLoadoutTests
             maxCorruption: 420);
 
         Assert.NotNull(decision);
-        Assert.NotEqual(SurvivorOrbColor.Red, decision.Color);
+        Assert.NotEqual(OrbColor.Red, decision.Color);
     }
 
     private static InGameInventoryManager CreateFullOrbBoard(

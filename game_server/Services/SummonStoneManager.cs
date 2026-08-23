@@ -24,7 +24,7 @@ public sealed class SummonStoneManager
     // 치유 클래스로 부활 검토 시 재사용 (이슈 #219 매핑 8번).
     private static readonly int[] SummonPool = [107000010, 107000020, 107000030];
     private static readonly int[] OpeningAttackPool = SummonPool
-        .Where(itemId => !SurvivorOrbData.IsRecoveryOrb(itemId))
+        .Where(itemId => !OrbData.IsRecoveryOrb(itemId))
         .ToArray();
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, PlayerSummonState>> _matchingStates = new();
 

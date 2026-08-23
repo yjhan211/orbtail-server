@@ -248,12 +248,12 @@ public partial class GameClientSession
         Logger.LogInformation("[STATEMENT] {Description}", statement.Description);
     }
 
-    private bool TryCreateManittoTargetAnswer(int encodedAnswerIndex, out InteractionAnswer? selectedAnswer)
+    private bool TryCreateTargetPlayerAnswer(int encodedAnswerIndex, out InteractionAnswer? selectedAnswer)
     {
         selectedAnswer = null;
         if (!PlayerId.HasValue) return false;
 
-        int targetIndex = encodedAnswerIndex - ManittoTargetAnswerIndexOffset;
+        int targetIndex = encodedAnswerIndex - TargetPlayerAnswerIndexOffset;
         if (targetIndex < 0) return false;
 
         var candidates = GetInteractionPlayerCandidates();
@@ -267,7 +267,7 @@ public partial class GameClientSession
         {
             IsTrue = isTrue,
             ClaimedJob = JobTitle.NONE,
-            TextId = ManittoTargetAnswerTextId,
+            TextId = TargetPlayerAnswerTextId,
             Args = new List<TextArg>
             {
                 new() { Type = TextArgType.RAW_STRING, StringValue = candidate.name }
@@ -323,9 +323,9 @@ public partial class GameClientSession
         long askerPlayerId = _activeConversationPlayerId.Value;
         InteractionAnswer selectedAnswer;
         InteractionAnswerContext? selectedAnswerContext = null;
-        if (msg.AnswerIndex >= ManittoTargetAnswerIndexOffset)
+        if (msg.AnswerIndex >= TargetPlayerAnswerIndexOffset)
         {
-            if (!TryCreateManittoTargetAnswer(msg.AnswerIndex, out var manittoTargetAnswer) || manittoTargetAnswer == null)
+            if (!TryCreateTargetPlayerAnswer(msg.AnswerIndex, out var manittoTargetAnswer) || manittoTargetAnswer == null)
                 return Task.CompletedTask;
             selectedAnswer = manittoTargetAnswer;
         }

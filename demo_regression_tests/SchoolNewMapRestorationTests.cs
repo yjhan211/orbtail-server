@@ -256,7 +256,7 @@ public class SchoolNewMapRestorationTests
 
         const long matchingId = 193002;
         var manager = new DoorStateManager();
-        var startingRooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates();
+        var startingRooms = MatchSpawnData.GetPhaseRoomCandidates();
         manager.InitializeMatching(matchingId, startingRooms);
 
         var startingDoorIds = startingRooms

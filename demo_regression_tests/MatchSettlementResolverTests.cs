@@ -2,15 +2,15 @@ using game_server.services;
 
 namespace demo_regression_tests;
 
-public sealed class SurvivorSettlementResolverTests
+public sealed class MatchSettlementResolverTests
 {
     [Fact]
     public void Resolve_PrefersLowerPreDamageCorruption()
     {
-        var result = SurvivorSettlementResolver.Resolve(195001, new[]
+        var result = MatchSettlementResolver.Resolve(195001, new[]
         {
-            new SurvivorSettlementCandidate(1, 70, 500),
-            new SurvivorSettlementCandidate(2, 60, 10)
+            new MatchSettlementCandidate(1, 70, 500),
+            new MatchSettlementCandidate(2, 60, 10)
         });
 
         Assert.Equal(2, result.BestToWorst[0].PlayerId);
@@ -20,10 +20,10 @@ public sealed class SurvivorSettlementResolverTests
     [Fact]
     public void Resolve_PrefersHigherPvpDamageWhenCorruptionMatches()
     {
-        var result = SurvivorSettlementResolver.Resolve(195002, new[]
+        var result = MatchSettlementResolver.Resolve(195002, new[]
         {
-            new SurvivorSettlementCandidate(1, 80, 100),
-            new SurvivorSettlementCandidate(2, 80, 200)
+            new MatchSettlementCandidate(1, 80, 100),
+            new MatchSettlementCandidate(2, 80, 200)
         });
 
         Assert.Equal(2, result.BestToWorst[0].PlayerId);
@@ -35,13 +35,13 @@ public sealed class SurvivorSettlementResolverTests
     {
         var candidates = new[]
         {
-            new SurvivorSettlementCandidate(11, 90, 300),
-            new SurvivorSettlementCandidate(12, 90, 300),
-            new SurvivorSettlementCandidate(13, 90, 300)
+            new MatchSettlementCandidate(11, 90, 300),
+            new MatchSettlementCandidate(12, 90, 300),
+            new MatchSettlementCandidate(13, 90, 300)
         };
 
-        var first = SurvivorSettlementResolver.Resolve(195003, candidates);
-        var second = SurvivorSettlementResolver.Resolve(195003, candidates.Reverse());
+        var first = MatchSettlementResolver.Resolve(195003, candidates);
+        var second = MatchSettlementResolver.Resolve(195003, candidates.Reverse());
 
         Assert.Equal("match_seed_priority", first.DecisiveCriterion);
         Assert.Equal(

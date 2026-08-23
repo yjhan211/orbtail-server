@@ -213,8 +213,8 @@ public partial class GameServer
             $"anchor_probe orphanResolved={_swarmAnchorOrphanCount[matchingId]}");
     }
 
-    // 티어별 오브 HP는 Common(SurvivorOrbData.GetSquadOrbMaxHp)이 단일 출처 — 클라 체력바와 공유.
-    private static int GetSquadOrbMaxHp(int tier) => SurvivorOrbData.GetSquadOrbMaxHp(tier);
+    // 티어별 오브 HP는 Common(OrbData.GetSquadOrbMaxHp)이 단일 출처 — 클라 체력바와 공유.
+    private static int GetSquadOrbMaxHp(int tier) => OrbData.GetSquadOrbMaxHp(tier);
 
     /// <summary>
     ///     #217 8인 맵 역할 검증(M1). 매치 수명(탈락·최후 1인·타이머)은 기존 서바이버 로얄
@@ -622,7 +622,7 @@ public partial class GameServer
                     ? Vector3f.Distance(origin, anchor)
                     : Config.SWARM_ORB_ATTACK_RANGE;
                 double delaySeconds =
-                    SurvivorOrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
+                    OrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
                 // 발사 즉시 예약 (#229): 착탄까지 기다리면 그 사이 다른 오브가 같은 몹을 또
                 // 고른다. 예약분으로 이미 죽는 몹은 표적 후보에서 빠지므로 사격이 흩어진다.
                 _swarmArenaManager.ReserveMonsterDamage(
@@ -644,8 +644,8 @@ public partial class GameServer
 
             // 태양·바람 유도탄 (2026-08-12 복귀): 발사 연출 즉시 + 비행시간 뒤 착탄 확정 —
             // 직선탄 회피 실험은 상시 이동에서 유령 사격이 됐다. 클라 투사체는 표적을 추적한다.
-            if (SurvivorOrbData.TryGetColorAndTier(attack.WeaponItemId, out var pvpColor, out _) &&
-                pvpColor is SurvivorOrbColor.Red or SurvivorOrbColor.Green)
+            if (OrbData.TryGetColorAndTier(attack.WeaponItemId, out var pvpColor, out _) &&
+                pvpColor is OrbColor.Red or OrbColor.Green)
             {
                 BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, sessions);
                 actorById ??= actors
@@ -656,7 +656,7 @@ public partial class GameServer
                     ? Vector3f.Distance(pvpAttacker.Position, pvpTarget.Position)
                     : Config.SWARM_ORB_ATTACK_RANGE;
                 double pvpDelaySeconds =
-                    SurvivorOrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, pvpDistance);
+                    OrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, pvpDistance);
                 _pendingSwarmPvpHits.Add((matchingId, attack, nowUtc.AddSeconds(pvpDelaySeconds)));
                 continue;
             }
@@ -1193,7 +1193,7 @@ public partial class GameServer
         if (startedAtUtc == null)
             return 1;
 
-        return SurvivorOrbData.GetDraftTierByElapsed((DateTime.UtcNow - startedAtUtc.Value).TotalSeconds);
+        return OrbData.GetDraftTierByElapsed((DateTime.UtcNow - startedAtUtc.Value).TotalSeconds);
     }
 
     private bool TryFindNearestAvailableExploreSpot(
@@ -1703,7 +1703,7 @@ public partial class GameServer
         }
 
         if (bot.CurrentArea == AreaType.Corridor ||
-            SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().Contains(bot.CurrentArea))
+            MatchSpawnData.GetPhaseRoomCandidates().Contains(bot.CurrentArea))
         {
             // 경계 밖 사냥터는 제외 — 전부 밖이면 종착지 운동장으로 (운동장은 항상 안이다).
             AreaType huntingArea = SwarmHuntingAreas
@@ -1798,7 +1798,7 @@ public partial class GameServer
             if (item.Count <= 0) continue;
             int tier = GetSquadOrbTier(item.ItemId);
             if (tier <= 0) continue;
-            power += SurvivorOrbData.GetSwarmStatTierWeight(tier) * item.Count;
+            power += OrbData.GetSwarmStatTierWeight(tier) * item.Count;
         }
 
         return power;
@@ -2068,7 +2068,7 @@ public partial class GameServer
         IReadOnlyList<int> orderedTiers = null)
     {
         // 호출부가 목록을 들고 있으면 그걸 쓴다 — 순번마다 인벤토리를 다시 훑지 않게.
-        float targetDistance = SurvivorOrbData.GetSwarmTrailDistance(
+        float targetDistance = OrbData.GetSwarmTrailDistance(
             orderedTiers ?? GetSwarmOrbTiersInOrder(matchingId, playerId), ordinal);
         if (!_swarmOrbTrails.TryGetValue((matchingId, playerId), out var points) || points.Count == 0)
             return new Vector3f(anchor.X, anchor.Y - targetDistance * 0.2f, 0f);
@@ -2184,7 +2184,7 @@ public partial class GameServer
     {
         int count = 0;
         foreach (int itemId in orderedItemIds)
-            if (SurvivorOrbData.TryGetColorAndTier(itemId, out _, out _))
+            if (OrbData.TryGetColorAndTier(itemId, out _, out _))
                 count++;
         return count;
     }
@@ -2718,7 +2718,7 @@ public partial class GameServer
             var plans = SwarmWaveBombRules.BuildPlans(
                 waveOrbs,
                 targets,
-                SurvivorOrbData.GetSunPveAttackMultiplier(inventoryItems));
+                OrbData.GetSunPveAttackMultiplier(inventoryItems));
             foreach (var plan in plans)
             {
                 _pendingSwarmWaveBombs.Add((
@@ -2758,8 +2758,8 @@ public partial class GameServer
             int copies = Math.Max(0, item.Count);
             for (int copy = 0; copy < copies; copy++)
             {
-                if (SurvivorOrbData.TryGetColorAndTier(item.ItemId, out var color, out _) &&
-                    color == SurvivorOrbColor.Blue)
+                if (OrbData.TryGetColorAndTier(item.ItemId, out var color, out _) &&
+                    color == OrbColor.Blue)
                 {
                     contributions.Add(new SwarmWaveOrbContribution(ordinal, item.ItemId));
                 }
@@ -3626,7 +3626,7 @@ public partial class GameServer
     // 시간이 없는 죽음은 전투를 관전으로 만든다. 두 개 값(×8.75)이면 빈손 도주 창이
     // 2~3초 생기고, 재기는 여전히 도주 지시(0.5단계)·빈손 이속·무료 개봉이 만든다.
     private static readonly float SwarmNakedCorruptionPerDamage =
-        Config.SURVIVOR_MAX_CORRUPTION / (float)(SurvivorOrbData.GetSquadOrbMaxHp(1) * 2);
+        Config.SURVIVOR_MAX_CORRUPTION / (float)(OrbData.GetSquadOrbMaxHp(1) * 2);
 
     private static int GetSwarmNakedCorruption(int damage) =>
         Math.Max(1, (int)MathF.Round(damage * SwarmNakedCorruptionPerDamage));
@@ -4230,7 +4230,7 @@ public partial class GameServer
         switch (cardIndex)
         {
             case SwarmGrowthCardMultiply:
-                return SurvivorOrbData.TryGetColorAndTier(offer.SpawnItemId, out _, out int tier)
+                return OrbData.TryGetColorAndTier(offer.SpawnItemId, out _, out int tier)
                     ? tier
                     : 1;
             case SwarmGrowthCardEnhance:
@@ -4422,9 +4422,9 @@ public partial class GameServer
 
     private static int GetSquadOrbTier(int itemId)
     {
-        if (SurvivorOrbData.TryGetColorAndTier(itemId, out _, out int tier))
+        if (OrbData.TryGetColorAndTier(itemId, out _, out int tier))
             return tier;
-        return SurvivorOrbData.TryGetRecoveryTier(itemId, out int recoveryTier) ? recoveryTier : 0;
+        return OrbData.TryGetRecoveryTier(itemId, out int recoveryTier) ? recoveryTier : 0;
     }
 
     /// <summary>
@@ -4781,7 +4781,7 @@ public partial class GameServer
             resonanceState: default);
         // #229: 태양·바람은 티어별 원시 피해·주기·탄속이 같은 유도탄이다. 차이는 보드
         // 패시브뿐이며, 태양 보너스는 모든 PvE 공격에 적용된다. 파도는 별도 물폭탄 시스템.
-        float sunAttackMultiplier = SurvivorOrbData.GetSunPveAttackMultiplier(inventoryItems);
+        float sunAttackMultiplier = OrbData.GetSunPveAttackMultiplier(inventoryItems);
         var actorTiers = GetSwarmOrbTiersInOrder(matchingId, spatial.PlayerId);
         int orbCount = actors.Count - before;
         long nowUnixMs = (long)(nowUtc - DateTime.UnixEpoch).TotalMilliseconds;
@@ -4804,8 +4804,8 @@ public partial class GameServer
             };
             // 오브는 표적이 아니다 (#226 재개편): 발사 원점으로만 존재 — 파괴는 절단 전용.
             actor = actor with { Untargetable = true };
-            SurvivorOrbData.TryGetColorAndTier(actor.WeaponItemId, out var orbColor, out _);
-            if (orbColor is SurvivorOrbColor.Blue or SurvivorOrbColor.Green)
+            OrbData.TryGetColorAndTier(actor.WeaponItemId, out var orbColor, out _);
+            if (orbColor is OrbColor.Blue or OrbColor.Green)
             {
                 // 파도: 미사일을 쏘지 않는다 — 물폭탄(별도 주기)이 화력이다.
                 // 바람: 조준 투사체가 없다 — 몸통박치기(감지·쿨다운, ProcessSwarmWindSlams)가 화력이다.
@@ -4818,7 +4818,7 @@ public partial class GameServer
             bool crossfireSun = IsSwarmCrossfireSun(actor.WeaponItemId);
             float crossfireDamageMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER : 1f;
             float crossfireCadenceMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER : 1f;
-            SurvivorOrbData.TryGetColorAndTier(actor.WeaponItemId, out _, out int actorTier);
+            OrbData.TryGetColorAndTier(actor.WeaponItemId, out _, out int actorTier);
             // 태양 사거리 = 티어 사거리(투사체가 나는 길이) — 더 먼 표적을 잡으면 투사체가 못 닿고 소멸한다.
             float actorAttackRange = crossfireSun
                 ? Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER[Math.Clamp(actorTier, 1, 3) - 1]
@@ -4827,7 +4827,7 @@ public partial class GameServer
             {
                 Damage = armed
                     ? Math.Max(1, (int)MathF.Round(
-                        SurvivorOrbData.GetSwarmPveAttackDamage(actor.WeaponItemId) *
+                        OrbData.GetSwarmPveAttackDamage(actor.WeaponItemId) *
                         sunAttackMultiplier * crossfireDamageMultiplier))
                     : 0,
                 // 오브마다 제 박자를 준다 (2026-08-16 유저 판정: 일제사가 어색하다).
@@ -4836,7 +4836,7 @@ public partial class GameServer
                 // 몇 발 만에 위상이 벌어지게 한다 — 평균 주기는 그대로라 화력 총량은 불변이고,
                 // 표적이 죽어 재조준이 겹쳐도 다시 흩어진다.
                 // 초기 지연으로 어긋내지 않는 이유: 재조준마다 그 지연을 다시 물어 DPS가 깎인다.
-                AttackIntervalSeconds = SurvivorOrbData.GetSwarmPveAttackIntervalSeconds(
+                AttackIntervalSeconds = OrbData.GetSwarmPveAttackIntervalSeconds(
                     actor.WeaponItemId) * ResolveSwarmOrbCadenceJitter(index - before) *
                     crossfireCadenceMultiplier,
                 InitialAttackDelaySeconds = 0f,
@@ -4924,12 +4924,12 @@ public partial class GameServer
     /// <summary>사격하는 오브(태양·바람)의 PvP 사거리 — 파도는 미사일을 쏘지 않아 0이다.</summary>
     private static float GetSwarmOrbPvpRange(int itemId)
     {
-        if (!SurvivorOrbData.TryGetColorAndTier(itemId, out var color, out _))
+        if (!OrbData.TryGetColorAndTier(itemId, out var color, out _))
             return 0f;
         return color switch
         {
-            SurvivorOrbColor.Red => SwarmSunAttackRange,
-            SurvivorOrbColor.Green => SwarmWindAttackRange,
+            OrbColor.Red => SwarmSunAttackRange,
+            OrbColor.Green => SwarmWindAttackRange,
             _ => 0f
         };
     }

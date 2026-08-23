@@ -21,8 +21,8 @@ public enum PlayerState
 public partial class GameClientSession : SessionBase
 {
     // ---- GameClientSession.Manitto.cs 파셜에서 이동한 필드 (필드는 메인 파일에만) ----
-    private const int ManittoTargetAnswerIndexOffset = 100000;
-    private const int ManittoTargetAnswerTextId = 11044;
+    private const int TargetPlayerAnswerIndexOffset = 100000;
+    private const int TargetPlayerAnswerTextId = 11044;
     // #159/#158: 핀(경계)을 켤 때 1회 소모하는 스태미나. 켤 때마다 큰 비용이라 같은 방 무료 스팸을 차단한다.
     // 따라가기와 공유 자원이라 의심에 쓸수록 따라갈 여력이 준다. 끄기는 무료, 재진입이 비싸 마이크로 토글도 막힌다. 튜닝 노브.
     private const int BookmarkActivationStaminaCost = 15;
@@ -246,14 +246,8 @@ public partial class GameClientSession : SessionBase
         return true; // 라운드 시스템 퇴역(#246) — 게이트는 MatchStartGate만 남는다
     }
 
-    private bool IsRoundActionLocked(out RoundPhase phase)
+    private bool IsRoundActionLocked(out string reason)
     {
-        return IsRoundActionLocked(out phase, out _);
-    }
-
-    private bool IsRoundActionLocked(out RoundPhase phase, out string reason)
-    {
-        phase = RoundPhase.Action;
         reason = string.Empty;
 
         if (IsEliminated)

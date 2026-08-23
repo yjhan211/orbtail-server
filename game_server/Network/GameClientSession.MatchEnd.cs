@@ -140,29 +140,6 @@ public partial class GameClientSession
                 session.Send(leavePacket);
         }
 
-        foreach (var (playerId, newStatus) in affected)
-        {
-            if (newStatus != PlayerMatchStatus.TERMINAL) continue;
-        }
-
-        // 2. 영향받는 플레이어에게 개별 상태 변경 알림
-        foreach (var (playerId, newStatus) in affected)
-        {
-            if (newStatus == PlayerMatchStatus.ELIMINATED) continue; // 탈락자 본인은 이미 알림됨
-
-            var targetSession = allSessions.FirstOrDefault(s => s.PlayerId == playerId);
-            if (targetSession == null) continue;
-
-            using var chainPacket = Packet.Create((int)Protocol.G_TO_C_ROSTER_STATUS, playerId);
-            var chainMsg = new G_TO_C_ROSTER_STATUS
-            {
-                EliminatedPlayerId = eliminatedPlayerId,
-                NewStatus = newStatus
-            };
-            chainPacket.SetBody(MessagePackSerializer.Serialize(chainMsg));
-            targetSession.Send(chainPacket);
-        }
-
         // 3. 게임 종료 판정
         var (isGameOver, winnerId) = _matchRosterManager.CheckGameOver(CurrentMapSubId);
         if (!deferGameOver && isGameOver)
@@ -392,8 +369,8 @@ public partial class GameClientSession
         foreach (var item in inventory.GetAllItems())
         {
             if (item.Count <= 0) continue;
-            if (!SurvivorOrbData.TryGetColorAndTier(item.ItemId, out _, out int tier) &&
-                !SurvivorOrbData.TryGetRecoveryTier(item.ItemId, out tier))
+            if (!OrbData.TryGetColorAndTier(item.ItemId, out _, out int tier) &&
+                !OrbData.TryGetRecoveryTier(item.ItemId, out tier))
                 continue;
             if (tier <= 0) continue;
 
@@ -442,29 +419,6 @@ public partial class GameClientSession
         {
             Logger.LogWarning(ex, "Redis matching handoff 정리 실패: MatchingId={MatchingId}", matchingId);
         }
-    }
-
-    /// <summary>
-    ///     #26: 봇 탈락에 의한 체인 단절 영향을 본 세션에 반영.
-    ///     PlayerMatchStatus 갱신 + ELIMINATED가 아닌 경우 G_TO_C_ROSTER_STATUS 송신.
-    /// </summary>
-    public void ApplyRosterStatus(PlayerMatchStatus newStatus, long eliminatedPlayerId)
-    {
-        PlayerMatchStatus = newStatus == PlayerMatchStatus.ELIMINATED
-            ? PlayerMatchStatus.SPECTATING
-            : newStatus;
-
-        if (newStatus == PlayerMatchStatus.ELIMINATED) return;
-        if (!PlayerId.HasValue) return;
-
-        using var chainPacket = Packet.Create((int)Protocol.G_TO_C_ROSTER_STATUS, PlayerId.Value);
-        var chainMsg = new G_TO_C_ROSTER_STATUS
-        {
-            EliminatedPlayerId = eliminatedPlayerId,
-            NewStatus = newStatus
-        };
-        chainPacket.SetBody(MessagePackSerializer.Serialize(chainMsg));
-        Send(chainPacket);
     }
 
     /// <summary>
