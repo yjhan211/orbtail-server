@@ -12,13 +12,6 @@ namespace game_server;
 public partial class GameServer
 {
     private const int ProximityAutoCombatTickIntervalMs = 50;
-    private static readonly TimeSpan ProximityCombatAreaEntryGrace = TimeSpan.FromSeconds(1);
-
-    /// <summary>
-    ///     이 시간 안에 직전 구역으로 되돌아오면 진입 유예를 다시 주지 않는다.
-    ///     문턱 왕복으로 무적이 되는 것을 막는다.
-    /// </summary>
-    private static readonly TimeSpan ProximityCombatAreaReentryWindow = TimeSpan.FromSeconds(5);
 
     private readonly ProximityAutoCombatResolver _proximityAutoCombatResolver = new();
     private readonly DodgeableProjectileResolver _dodgeableProjectileResolver = new();
@@ -64,8 +57,7 @@ public partial class GameServer
                 // 운동장에서 각 방으로 나가는 몹이 그 5초의 볼거리이기 때문이다.
                 // IsRoundActionPhase는 매치 시작 게이트를 포함하므로 여기서 막히면 몹이
                 // 아예 태어나지 않는다. 스웜 경로만 예외로 열고, 전투는 그 안에서 막는다.
-                bool swarmWarmup = Config.SWARM_P0_ENABLED &&
-                                   !MatchStartGate.IsGameplayActive(matchingId);
+                bool swarmWarmup = !MatchStartGate.IsGameplayActive(matchingId);
                 if (!swarmWarmup && !GameClientSession.IsRoundActionPhase(matchingId))
                     continue;
 
@@ -110,13 +102,7 @@ public partial class GameServer
         long matchingId,
         List<GameClientSession> activeSessions)
     {
-        if (Config.SWARM_P0_ENABLED)
-        {
-            ProcessSwarmArenaForMatching(matchingId, activeSessions);
-            return;
-        }
-
-        // 레거시(스팟/서바이버) 근접전투 경로 퇴역 (#238) — 현행은 위 스웜 분기만 사용한다.
+        ProcessSwarmArenaForMatching(matchingId, activeSessions);
     }
     private static void AddInventoryCombatActors(
 ICollection<ProximityCombatActor> actors,

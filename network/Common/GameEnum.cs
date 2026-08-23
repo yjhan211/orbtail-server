@@ -332,7 +332,7 @@ namespace network.common
         SpotArena = 30,
     }
 
-    public enum ManittoStatus : short
+    public enum PlayerMatchStatus : short
     {
         ACTIVE = 0,
         ELIMINATED = 1,

@@ -19,8 +19,7 @@ public partial class GameServer
         lock (GetSurvivorSettlementLock(matchingId))
         {
             // Combat always settles before environmental damage in the same server resource tick.
-            if (Config.PROXIMITY_AUTO_COMBAT_P0_ENABLED)
-                ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
+            ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
 
             var humans = activeSessions
                 .Where(session =>
@@ -188,7 +187,7 @@ public partial class GameServer
                 rank--;
             }
 
-            var (isGameOver, winnerId) = _manittoChainManager.CheckGameOver(matchingId);
+            var (isGameOver, winnerId) = _matchRosterManager.CheckGameOver(matchingId);
             var resultHost = _clientSessions.Values.FirstOrDefault(session =>
                 session.PlayerId.HasValue &&
                 session.CurrentMapSubId == matchingId &&

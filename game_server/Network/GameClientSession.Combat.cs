@@ -26,13 +26,8 @@ public partial class GameClientSession
         if (!PlayerId.HasValue || msg == null)
             return Task.CompletedTask;
 
-        if (Config.PROXIMITY_AUTO_COMBAT_P0_ENABLED)
-        {
-            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Manual attack is disabled during proximity auto combat P0");
-            return Task.CompletedTask;
-        }
-
-        // 분필 조우 공격 퇴역 (#238): 근접 자동전투 P0에서 수동 공격은 상시 차단이라 아래 경로는 도달 불가였음.
+        // 근접 자동전투: 수동 공격은 상시 차단 (분필 조우 공격 퇴역 #238)
+        SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Manual attack is disabled during proximity auto combat P0");
         return Task.CompletedTask;
     }
 
@@ -127,36 +122,16 @@ public partial class GameClientSession
 
         // #229 6단계: 스웜 수면은 스태미나 0 휴식이 아니라 본체 HP 회복 행동이다.
         // 조건은 하나 — 가해·피해 뒤 3초가 지났는가. 회복량 정산은 아레나 틱이 센다.
-        if (Config.SWARM_P0_ENABLED)
-        {
-            // 교전 직후에는 조용히 무시한다 (#229): 실패 팝업을 띄우면 전투 중에 수면 버튼을
-            // 잘못 누를 때마다 "유효하지 않은 게임 상태" 창이 화면을 막는다. 버튼이 이미 클릭
-            // 피드백을 줬으므로 아무 일도 안 일어나는 것 자체가 답이다.
-            if (!CanEnterSwarmSleep(DateTime.UtcNow))
-                return;
-
-            SwarmSleepStartedAtUtc = DateTime.MinValue;
-            _swarmSleepGrantedTicks = 0;
-            await BroadcastSleepState(true);
+        // 교전 직후에는 조용히 무시한다 (#229): 실패 팝업을 띄우면 전투 중에 수면 버튼을
+        // 잘못 누를 때마다 "유효하지 않은 게임 상태" 창이 화면을 막는다. 버튼이 이미 클릭
+        // 피드백을 줬으므로 아무 일도 안 일어나는 것 자체가 답이다.
+        if (!CanEnterSwarmSleep(DateTime.UtcNow))
             return;
-        }
 
-        if (Stamina > 0)
-        {
-            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Rest is only available at zero stamina");
-            return;
-        }
-
-        bool hasPeriodicBuff = ApplyItemBuffs(CatPillowItemId);
-        if (!hasPeriodicBuff)
-        {
-            SendErrorResponse(ErrorCode.FATAL, "Rest buff data is missing");
-            Logger.LogWarning("Player {PlayerId} failed to rest: rest buff data missing", PlayerId);
-            return;
-        }
-
+        SwarmSleepStartedAtUtc = DateTime.MinValue;
+        _swarmSleepGrantedTicks = 0;
         await BroadcastSleepState(true);
-        Logger.LogInformation("Player {PlayerId} started zero-stamina rest", PlayerId);
+        return;
     }
 
     private void AddPeriodicBuff(BuffSubType subType, int value, int intervalSeconds, int durationSeconds = 0)
@@ -243,7 +218,7 @@ public partial class GameClientSession
     /// </summary>
     internal void TickSwarmSleepRecovery(DateTime nowUtc)
     {
-        if (!Config.SWARM_P0_ENABLED || IsEliminated || !_isSleeping)
+        if (IsEliminated || !_isSleeping)
         {
             SwarmSleepStartedAtUtc = DateTime.MinValue;
             _swarmSleepGrantedTicks = 0;
@@ -291,9 +266,8 @@ public partial class GameClientSession
     ///     절단 치명상(#232) 8초 회복 차단 중에도 눕지 못한다 — 누워도 회복이 없다.
     /// </summary>
     internal bool CanEnterSwarmSleep(DateTime nowUtc) =>
-        !Config.SWARM_P0_ENABLED ||
-        ((nowUtc - SwarmLastCombatAtUtc).TotalSeconds >= SwarmSleepCombatLockSeconds &&
-         nowUtc >= SwarmHealLockUntilUtc);
+        (nowUtc - SwarmLastCombatAtUtc).TotalSeconds >= SwarmSleepCombatLockSeconds &&
+        nowUtc >= SwarmHealLockUntilUtc;
 
     /// <summary>
     ///     수면 중단 (2026-08-17 재조정): 부르는 곳은 이동뿐이다 — 누워서 도망칠 수 없다.
@@ -383,17 +357,6 @@ public partial class GameClientSession
         Logger.LogDebug(
             "Sent InGameInventory update to PlayerId={PlayerId}, ItemUid={ItemUid}, ItemId={ItemId}, Count={Count}",
             PlayerId, item.ItemUid, item.ItemId, item.Count);
-    }
-
-    /// <summary>
-    ///     인게임 아이템 추가 (탐색 보상 등)
-    /// </summary>
-    private void AddInGameItem(int itemId, int count = 1)
-    {
-        if (!PlayerId.HasValue) return;
-
-        var item = _inGameInventoryManager.AddItem(CurrentMapSubId, PlayerId.Value, itemId, count);
-        SendInGameInventoryUpdate(item);
     }
 
     /// <summary>

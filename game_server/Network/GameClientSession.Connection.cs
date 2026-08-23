@@ -37,7 +37,7 @@ public partial class GameClientSession
                 PlayerId, TargetPlayerId, MyJobTitle, TargetJobTitle);
 
             // 泥댁씤 留ㅻ땲???留곹겕 ?깅줉 (媛??뚮젅?댁뼱媛 ?묒냽???뚮쭏???꾩쟻)
-            _manittoChainManager.RegisterLink(msg.MatchingId, new ChainLink
+            _matchRosterManager.RegisterEntry(msg.MatchingId, new RosterEntry
             {
                 PlayerId = msg.PlayerId,
                 TargetPlayerId = msg.TargetPlayerId,
@@ -64,7 +64,7 @@ public partial class GameClientSession
                         "Recovered missing human target from bot chain: MatchingId={MatchingId}, PlayerId={PlayerId}, Target={TargetPlayerId}, TargetJob={TargetJobTitle}",
                         msg.MatchingId, msg.PlayerId, TargetPlayerId, TargetJobTitle);
 
-                    _manittoChainManager.RegisterLink(msg.MatchingId, new ChainLink
+                    _matchRosterManager.RegisterEntry(msg.MatchingId, new RosterEntry
                     {
                         PlayerId = msg.PlayerId,
                         TargetPlayerId = TargetPlayerId,
@@ -90,26 +90,11 @@ public partial class GameClientSession
 
             // 援ъ뿭 ?먯뇙 珥덇린??(留ㅼ묶??理쒖큹 1??
             // #87: 留ㅼ묶??吏곸콉 ????뷀뵆 ?곗꽑?쒖쐞??諛섏쁺 (5遺?1?④퀎 蹂댁옣 + 吏곸콉蹂??꾩닚??
-            var jobPool = _manittoChainManager.GetMatchingJobs(msg.MatchingId);
-            if (!Config.SPOT_ARENA_P0_ENABLED)
-            {
-                _areaClosureManager.InitializeMatching(
-                    msg.MatchingId,
-                    jobPool,
-                    SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
-            }
+            var jobPool = _matchRosterManager.GetMatchingJobs(msg.MatchingId);
             _areaItemStockManager.InitializeMatching(msg.MatchingId);
             _groundItemManager.InitializeMatching(msg.MatchingId);
             int matchSeed = SurvivorRoyaleSpawnData.GetDeterministicSeed(msg.MatchingId);
             _gameEventLogManager.BeginMatch(msg.MatchingId, matchSeed);
-            if (!Config.SPOT_ARENA_P0_ENABLED)
-            {
-                _emotionAfterimageMonsterManager.InitializeMatching(msg.MatchingId);
-                _gameEventLogManager.LogRewardAreaSnapshot(
-                    msg.MatchingId,
-                    _emotionAfterimageMonsterManager.GetRewardAreaSnapshot(msg.MatchingId),
-                    "initial");
-            }
             foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
             {
                 _gameEventLogManager.LogSpawnAssignment(
@@ -196,9 +181,6 @@ public partial class GameClientSession
             Logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
 
 
-            if (!Config.SPOT_ARENA_P0_ENABLED)
-                _summonStoneManager.EnsureStartingStones(CurrentMapSubId, PlayerId.Value);
-
             SendInGameInventoryList();
             SendSummonStoneState();
             var connectionBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
@@ -207,20 +189,13 @@ public partial class GameClientSession
                 connectionBoard.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
 
             // 臾?珥덇린 ?곹깭 ?ㅼ젙 諛??대┛ 臾?紐⑸줉 ?꾩넚
-            _doorStateManager.InitializeMatching(
-                CurrentMapSubId,
-                Config.SPOT_ARENA_P0_ENABLED
-                    ? Array.Empty<AreaType>()
-                    : SurvivorRoyaleSpawnData.GetPhaseRoomCandidates());
+            _doorStateManager.InitializeMatching(CurrentMapSubId, Array.Empty<AreaType>());
             SendDoorStateList();
 
             // 誘몄뀡 ?뺣낫 ?꾩넚
             // 스웜 모드(M4)는 시간 웨이브 폐쇄를 쓰므로 폐쇄 스냅샷을 복원해야 한다.
-            if (!Config.SPOT_ARENA_P0_ENABLED || Config.SWARM_P0_ENABLED)
-                SendAreaClosureStateSnapshot();
+            SendAreaClosureStateSnapshot();
             SendSurvivorAreaStockStateSnapshot();
-            if (!Config.SPOT_ARENA_P0_ENABLED)
-                SendMonsterSnapshot();
             SendChecklistInfo();
 
             // ?ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚 & ???뺣낫 釉뚮줈?쒖틦?ㅽ듃
@@ -229,11 +204,7 @@ public partial class GameClientSession
             // The standalone submission client is only ready after the full initial snapshot
             // has been sent. Starting the countdown earlier lets bots consume finite room stock
             // while the human client is still loading the match.
-            int expectedBotCount = Config.SWARM_P0_ENABLED
-                ? Config.SWARM_PLAYERS_PER_MATCH - 1
-                : Config.SPOT_ARENA_P0_ENABLED
-                    ? 3
-                    : 7;
+            int expectedBotCount = Config.SWARM_PLAYERS_PER_MATCH - 1;
             if (connectedBotCount == expectedBotCount || MatchStartGate.IsSoloMapValidationEnabled)
             {
                 MatchStartGate.MarkHumanReady(msg.MatchingId, PlayerId.Value);
@@ -468,7 +439,7 @@ public partial class GameClientSession
             // 遊뉖룄 泥댁씤 留ㅻ땲? + 誘몄뀡 留ㅻ땲????깅줉 (#26: 遊?遺???뚯닔/寃고빀 ?쒕???
             foreach (var bot in botInfoList)
             {
-                _manittoChainManager.RegisterLink(matchingId, new ChainLink
+                _matchRosterManager.RegisterEntry(matchingId, new RosterEntry
                 {
                     PlayerId = bot.PlayerId,
                     TargetPlayerId = bot.TargetPlayerId,
@@ -477,9 +448,6 @@ public partial class GameClientSession
                 });
 
                 // 遊?遺???곹깭 珥덇린?????먭린 吏곸콉 諛쒓껄 ? 湲곗?
-
-                if (!Config.SPOT_ARENA_P0_ENABLED)
-                    _summonStoneManager.EnsureStartingStones(matchingId, bot.PlayerId);
             }
         }
         catch (Exception ex)
@@ -493,7 +461,7 @@ public partial class GameClientSession
         var bots = _botPlayerManager.GetBots(matchingId)
             .Where(b => !b.IsEliminated)
             .ToList();
-        int expectedBotCount = Config.SPOT_ARENA_P0_ENABLED ? 3 : 4;
+        int expectedBotCount = 3;
         if (bots.Count != expectedBotCount || bots.All(b => b.TargetPlayerId != humanPlayerId)) return 0;
 
         var botIds = bots.Select(b => b.PlayerId).ToHashSet();
@@ -512,22 +480,6 @@ public partial class GameClientSession
             "Could not infer human target from bot chain: MatchingId={MatchingId}, PlayerId={PlayerId}, Candidates=[{Candidates}]",
             matchingId, humanPlayerId, string.Join(",", candidates));
         return 0;
-    }
-
-    private static bool IsSameBotChain(List<BotPlayerState> existingBots, List<BotMatchingInfo> botInfoList)
-    {
-        if (existingBots.Count != botInfoList.Count) return false;
-
-        var existingById = existingBots.ToDictionary(b => b.PlayerId);
-        foreach (var botInfo in botInfoList)
-        {
-            if (!existingById.TryGetValue(botInfo.PlayerId, out var existing)) return false;
-            if (existing.TargetPlayerId != botInfo.TargetPlayerId) return false;
-            if (existing.MyJobTitle != botInfo.MyJobTitle) return false;
-            if (existing.TargetJobTitle != botInfo.TargetJobTitle) return false;
-        }
-
-        return true;
     }
 
     /// <summary>
@@ -576,7 +528,7 @@ public partial class GameClientSession
         foreach (var session in _getSessionsByInstance(CurrentMapId, matchingId))
         {
             if (!session.PlayerId.HasValue || session.IsEliminated ||
-                session.ManittoStatus == ManittoStatus.SPECTATING)
+                session.PlayerMatchStatus == PlayerMatchStatus.SPECTATING)
                 continue;
 
             result.Add(session.PlayerId.Value);
@@ -584,7 +536,7 @@ public partial class GameClientSession
 
         foreach (var bot in _botPlayerManager.GetBots(matchingId))
         {
-            if (bot.IsEliminated || bot.ManittoStatus == ManittoStatus.SPECTATING)
+            if (bot.IsEliminated || bot.PlayerMatchStatus == PlayerMatchStatus.SPECTATING)
                 continue;
 
             result.Add(bot.PlayerId);
@@ -603,7 +555,7 @@ public partial class GameClientSession
         if (CurrentMapSubId == matchingId
             && PlayerId.HasValue
             && !IsEliminated
-            && ManittoStatus != ManittoStatus.SPECTATING)
+            && PlayerMatchStatus != PlayerMatchStatus.SPECTATING)
         {
             playerIds.Add(PlayerId.Value);
         }
@@ -616,24 +568,24 @@ public partial class GameClientSession
 
     private ChecklistChainContext ResolveChecklistChainContext(long matchingId, long playerId)
     {
-        var myLink = _manittoChainManager.GetLink(matchingId, playerId);
+        var myLink = _matchRosterManager.GetEntry(matchingId, playerId);
         bool targetAlive = myLink != null && IsAliveChainPlayer(matchingId, myLink.TargetPlayerId);
-        var manittoLink = _manittoChainManager.FindManittoOf(matchingId, playerId);
+        var manittoLink = _matchRosterManager.FindManittoOf(matchingId, playerId);
         bool manittoAlive = IsAliveChainLink(manittoLink);
         return new ChecklistChainContext(targetAlive, manittoAlive);
     }
 
     private bool IsAliveChainPlayer(long matchingId, long playerId)
     {
-        var link = _manittoChainManager.GetLink(matchingId, playerId);
+        var link = _matchRosterManager.GetEntry(matchingId, playerId);
         return IsAliveChainLink(link);
     }
 
-    private static bool IsAliveChainLink(ChainLink? link)
+    private static bool IsAliveChainLink(RosterEntry? link)
     {
         return link != null
-               && link.Status != ManittoStatus.ELIMINATED
-               && link.Status != ManittoStatus.SPECTATING;
+               && link.Status != PlayerMatchStatus.ELIMINATED
+               && link.Status != PlayerMatchStatus.SPECTATING;
     }
 
     /// <summary>

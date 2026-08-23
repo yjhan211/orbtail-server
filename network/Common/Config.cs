@@ -61,9 +61,6 @@ namespace network.common
         /// <summary>게임 세션 지속 시간 (초)</summary>
         public static readonly int GAME_DURATION_SECONDS = GAME_DURATION_MINUTES * 60;
 
-        /// <summary>Round/settlement loop toggle. Disabled for the current continuous-session prototype.</summary>
-        public static readonly bool ROUND_SYSTEM_ENABLED = false;
-
         /// <summary>Round system: total round count (#168).</summary>
         public const int ROUND_TOTAL_COUNT = 4;
 
@@ -177,27 +174,11 @@ namespace network.common
         /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
         public const int SURVIVOR_MAX_CORRUPTION = 420;
 
-        /// <summary>근접 자동전투 P0. 활성화 중에는 기존 수동 분필 공격 진입을 숨긴다.</summary>
-        public static readonly bool PROXIMITY_AUTO_COMBAT_P0_ENABLED = true;
-
         /// <summary>
         /// Survivor Royale #202 uses monster rewards as summon currency instead of direct orb exploration loot.
         /// Legacy area pools stay loadable for data validation and isolated regression tests.
         /// </summary>
         public static readonly bool MONSTER_SUMMON_ECONOMY_ENABLED = true;
-
-        /// <summary>
-        /// Issue #216 vertical slice: four linked home spots, marching waves, and respawning players.
-        /// This branch intentionally bypasses the orb economy and the #214 room phase machine.
-        /// </summary>
-        public static readonly bool SPOT_ARENA_P0_ENABLED = true;
-
-        /// <summary>
-        ///     Issue #217 스웜 회피 P0-a: 사람 1명 + 패턴 스폰 잔상 스웜. 잔상은 공급이 아니라
-        ///     회피해야 하는 압력이다. 켜지면 스팟 아레나 대신 스웜 아레나가 매치를 소유한다.
-        ///     SPOT_ARENA_P0_ENABLED는 레거시 시스템(폐쇄·오브 경제·페이즈)을 끄는 게이트로 유지한다.
-        /// </summary>
-        public static readonly bool SWARM_P0_ENABLED = true;
 
         /// <summary>
         ///     #229 5단계: 스웜에서 탐색(상자)과 소비품(하트·부츠)을 임시로 끈다.
@@ -208,8 +189,7 @@ namespace network.common
         public static readonly bool SWARM_EXPLORE_AND_CONSUMABLES_ENABLED = false;
 
         /// <summary>스웜에서 탐색·소비품이 꺼졌는지 — 호출부가 매번 두 플래그를 조합하지 않게 한다.</summary>
-        public static bool IsSwarmExploreDisabled() =>
-            SWARM_P0_ENABLED && !SWARM_EXPLORE_AND_CONSUMABLES_ENABLED;
+        public static bool IsSwarmExploreDisabled() => !SWARM_EXPLORE_AND_CONSUMABLES_ENABLED;
 
         /// <summary>
         ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2, 3쌍 깔때기(성장곡선 v3)는 6.
@@ -322,7 +302,7 @@ namespace network.common
 
         /// <summary>현재 모드의 오브 보유 상한 — 스웜(궤도 스쿼드)은 9, 레거시 보드는 6.</summary>
         public static int GetOrbCapacity() =>
-            SWARM_P0_ENABLED ? SWARM_ORB_CAPACITY : SURVIVOR_INVENTORY_SLOT_COUNT;
+            SWARM_ORB_CAPACITY;
 
         /// <summary>
         ///     스웜 기본 오브 사거리. 서버 전투(GameServer.SwarmArena)와 클라 사거리 링
@@ -476,5 +456,11 @@ namespace network.common
         /// 데이터와 프로토콜은 보존하므로 레거시 모드가 다시 분리되면 이 게이트로 복구할 수 있다.
         /// </summary>
         public static readonly bool CHECKLIST_SYSTEM_ENABLED = false;
+
+        /// <summary>
+        ///     프레즌스(기척 카드·북마크·노트북) 동결 플래그 — 차기 재사용 보존 결정(2026-08-20).
+        ///     꺼져 있으면 서버 프레즌스 틱과 북마크 핸들러 등록을 건너뛴다. 데이터·프로토콜·클라 수신은 보존.
+        /// </summary>
+        public static readonly bool PRESENCE_SYSTEM_ENABLED = false;
     }
 }

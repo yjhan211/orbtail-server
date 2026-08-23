@@ -128,13 +128,13 @@ namespace network.common.data.models
     ///     부품 결합 결과. 중간재(IsRaceComplete=false) 또는 최종(IsRaceComplete=true).
     /// </summary>
     [MessagePackObject]
-    public class G_TO_C_PART_COMBINED : IMessagePackObject
+    public class G_TO_C_ITEMS_COMBINED : IMessagePackObject
     {
         [Key("recipeId")] public int RecipeId { get; set; }
-        [Key("inputPartA")] public int InputPartA { get; set; }
-        [Key("inputPartB")] public int InputPartB { get; set; }
-        [Key("outputPartId")] public int OutputPartId { get; set; }
-        [Key("outputPartNameKr")] public string OutputPartNameKr { get; set; }
+        [Key("inputPartA")] public int InputItemA { get; set; }
+        [Key("inputPartB")] public int InputItemB { get; set; }
+        [Key("outputPartId")] public int OutputItemId { get; set; }
+        [Key("outputPartNameKr")] public string OutputItemName { get; set; }
         [Key("staminaReward")] public int StaminaReward { get; set; }
         [Key("isRaceComplete")] public bool IsRaceComplete { get; set; }
     }
@@ -144,10 +144,10 @@ namespace network.common.data.models
     ///     #87 N12: 동시 race 완주 시 결합 시작 시각이 빠른 쪽이 우선. 0이면 서버는 패킷 도착 시각으로 폴백.
     /// </summary>
     [MessagePackObject]
-    public class C_TO_G_COMBINE_PARTS : IMessagePackObject
+    public class C_TO_G_COMBINE_ITEMS : IMessagePackObject
     {
-        [Key("partA")] public int PartA { get; set; }
-        [Key("partB")] public int PartB { get; set; }
+        [Key("partA")] public int ItemA { get; set; }
+        [Key("partB")] public int ItemB { get; set; }
         /// <summary>클라이언트 결합 액션 시작 시각 (UTC Unix ms). #87 동시성 가드용. 미지원 클라는 0.</summary>
         [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
     }
@@ -359,11 +359,11 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class G_TO_C_CHAIN_BREAK : IMessagePackObject
+    public class G_TO_C_ROSTER_STATUS : IMessagePackObject
     {
         [Key("eliminatedPlayerId")] public long EliminatedPlayerId { get; set; }
         // 영향받는 플레이어에게만 전송됨
-        [Key("newStatus")] public ManittoStatus NewStatus { get; set; }
+        [Key("newStatus")] public PlayerMatchStatus NewStatus { get; set; }
     }
 
     // ===== 1:1 상호작용 선택지 =====
@@ -503,7 +503,7 @@ namespace network.common.data.models
         [Key("manittoPlayerId")] public long ManittoPlayerId { get; set; }
         [Key("eliminationReason")] public EliminationReason EliminationReason { get; set; }
         [Key("survivalTimeSeconds")] public int SurvivalTimeSeconds { get; set; }
-        [Key("finalStatus")] public ManittoStatus FinalStatus { get; set; }
+        [Key("finalStatus")] public PlayerMatchStatus FinalStatus { get; set; }
         [Key("corruption")] public int Corruption { get; set; }
         [Key("maxCorruption")] public int MaxCorruption { get; set; }
         [Key("wearItemIdList")] public List<int> WearItemIdList { get; set; } = new();

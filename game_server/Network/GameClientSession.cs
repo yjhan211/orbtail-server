@@ -20,6 +20,14 @@ public enum PlayerState
 
 public partial class GameClientSession : SessionBase
 {
+    // ---- GameClientSession.Manitto.cs 파셜에서 이동한 필드 (필드는 메인 파일에만) ----
+    private const int ManittoTargetAnswerIndexOffset = 100000;
+    private const int ManittoTargetAnswerTextId = 11044;
+    // #159/#158: 핀(경계)을 켤 때 1회 소모하는 스태미나. 켤 때마다 큰 비용이라 같은 방 무료 스팸을 차단한다.
+    // 따라가기와 공유 자원이라 의심에 쓸수록 따라갈 여력이 준다. 끄기는 무료, 재진입이 비싸 마이크로 토글도 막힌다. 튜닝 노브.
+    private const int BookmarkActivationStaminaCost = 15;
+    private readonly HashSet<int> _pendingChecklistActivityFinish = new();
+
     private const int MaxStamina = 100;
     private const int MaxCorruption = Config.SURVIVOR_MAX_CORRUPTION;
     private const int InitialStamina = MaxStamina;
@@ -52,7 +60,7 @@ public partial class GameClientSession : SessionBase
     private readonly Action<long, GameClientSession> _registerSessionCallback;
     private readonly Action<long> _recordLeavePenalty;
     private readonly Action<long> _recordGameCompletion;
-    private readonly ManittoChainManager _manittoChainManager;
+    private readonly MatchRosterManager _matchRosterManager;
     private readonly ChecklistManager _checklistManager;
     private readonly AreaClosureManager _areaClosureManager;
     private readonly InteractionChoiceService _interactionChoiceService;
@@ -113,7 +121,6 @@ public partial class GameClientSession : SessionBase
     // 플레이어 상호작용 요청 상태
     private long? _pendingInteractPlayerId;
     private long? _pendingBotRequesterPlayerId;
-    private readonly object _roomEntryEventChoiceLock = new();
 
     // #219 M2 3택 드래프트: 개봉이 연 드래프트 권리와 개봉 시점 확정 비용
     private bool _hasPendingOrbDraft;
@@ -161,14 +168,6 @@ public partial class GameClientSession : SessionBase
         }
     }
 
-    private bool AddActiveBuffId(int buffId)
-    {
-        if (buffId <= 0 || _activeBuffIds.Contains(buffId)) return false;
-
-        _activeBuffIds.Add(buffId);
-        return true;
-    }
-
     public GameClientSession(
         UserToken token,
         IRedLockFactory redLock,
@@ -186,7 +185,7 @@ public partial class GameClientSession : SessionBase
         EmotionAfterimageMonsterManager emotionAfterimageMonsterManager,
         SummonStoneManager summonStoneManager,
         DoorStateManager doorStateManager,
-        ManittoChainManager manittoChainManager,
+        MatchRosterManager matchRosterManager,
         ChecklistManager checklistManager,
         AreaClosureManager areaClosureManager,
         InteractionChoiceService interactionChoiceService,
@@ -210,7 +209,7 @@ public partial class GameClientSession : SessionBase
         _emotionAfterimageMonsterManager = emotionAfterimageMonsterManager;
         _summonStoneManager = summonStoneManager;
         _doorStateManager = doorStateManager;
-        _manittoChainManager = manittoChainManager;
+        _matchRosterManager = matchRosterManager;
         _checklistManager = checklistManager;
         _areaClosureManager = areaClosureManager;
         _interactionChoiceService = interactionChoiceService;
@@ -245,16 +244,6 @@ public partial class GameClientSession : SessionBase
         _survivorPhaseManager = manager;
     }
 
-    private bool IsSurvivorBoardActionLocked()
-    {
-        if (Config.SPOT_ARENA_P0_ENABLED)
-            return false;
-
-        return CurrentMapSubId > 0 &&
-               _survivorPhaseManager is { } manager &&
-               manager.HasMatching(CurrentMapSubId) &&
-               !manager.AreOrbBoardActionsAllowed(CurrentMapSubId, CurrentArea);
-    }
     internal static bool IsRoundActionPhase(long matchingId)
     {
         if (!MatchStartGate.IsGameplayActive(matchingId))
@@ -272,13 +261,6 @@ public partial class GameClientSession : SessionBase
     {
         phase = RoundPhase.Action;
         reason = string.Empty;
-
-        if (Config.SPOT_ARENA_P0_ENABLED && _spotArenaRespawning)
-        {
-            phase = RoundPhase.SpotArena;
-            reason = "Waiting for spot respawn";
-            return true;
-        }
 
         if (IsEliminated)
         {
@@ -331,21 +313,20 @@ public partial class GameClientSession : SessionBase
     public long PresenceBookmarkPlayerId { get; private set; }
     private JobTitle MyJobTitle { get; set; }
     private JobTitle TargetJobTitle { get; set; }
-    public ManittoStatus ManittoStatus { get; private set; } = ManittoStatus.ACTIVE;
+    public PlayerMatchStatus PlayerMatchStatus { get; private set; } = PlayerMatchStatus.ACTIVE;
 
     // 이탈 페널티 면제 플래그
     /// <summary>게임 결과 화면 이후 퇴장: 페널티 면제</summary>
     private bool _isGameEnded;
     /// <summary>서버 셧다운/크래시로 인한 종료: 페널티 면제</summary>
     private bool _isServerInitiatedDisconnect;
-    private bool _spotArenaRespawning;
 
     /// <summary>
     ///     탈락/관전 상태에서 행동 가능한지 체크
     /// </summary>
     internal bool IsGameEnded => _isGameEnded;
     internal int CurrentCorruption => Corruption;
-    public bool IsEliminated => ManittoStatus == ManittoStatus.ELIMINATED || ManittoStatus == ManittoStatus.SPECTATING;
+    public bool IsEliminated => PlayerMatchStatus == PlayerMatchStatus.ELIMINATED || PlayerMatchStatus == PlayerMatchStatus.SPECTATING;
     private int? CurrentExploringInteractId { get; set; }
 
     // 인게임 스탯 (게임 종료 시 초기화)
@@ -378,8 +359,8 @@ public partial class GameClientSession : SessionBase
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SWARM_ORB_DECISION,
             async bytes => await HandleMessage<C_TO_G_SWARM_ORB_DECISION>(bytes, HandleSwarmOrbDecision));
         // 오브/배틀아이템 조합 — 이름은 부품 결합이지만 현행 오브 머지가 쓰는 프로토콜 (#238에서 게이트 밖으로 복구)
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_COMBINE_PARTS,
-            async bytes => await HandleMessage<C_TO_G_COMBINE_PARTS>(bytes, HandleCombineParts));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_COMBINE_ITEMS,
+            async bytes => await HandleMessage<C_TO_G_COMBINE_ITEMS>(bytes, HandleCombineItems));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT,
             async bytes => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,
@@ -408,13 +389,16 @@ public partial class GameClientSession : SessionBase
             async bytes =>
                 await HandleMessage<C_TO_G_PLAYER_INTERACT_SHARE_RULE>(bytes, HandlePlayerInteractShareRule));
 
-        // 마니또 프로토콜 — 스웜 모드에서는 등록하지 않는다 (#236).
-        // 미등록 프로토콜은 SessionBase가 에러 응답으로 차단하므로, 조작된 클라이언트가
-        // 레거시 동작(색출 탈락, 부품 무효화 등)을 현행 매치에서 실행할 수 없다.
-        if (!Config.SWARM_P0_ENABLED)
+        // 프레즌스·체크리스트 — 차기 재사용 보존(2026-08-20). 동결 플래그가 꺼진 동안은 등록하지
+        // 않는다: 미등록 프로토콜은 SessionBase가 에러 응답으로 차단한다.
+        if (Config.PRESENCE_SYSTEM_ENABLED)
         {
             ProtocolRouter.RegisterHandler(Protocol.C_TO_G_BOOKMARK_PRESENCE,
                 async bytes => await HandleMessage<C_TO_G_BOOKMARK_PRESENCE>(bytes, HandleBookmarkPresence));
+        }
+
+        if (Config.CHECKLIST_SYSTEM_ENABLED)
+        {
             ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CHECKLIST_ACTIVITY_START,
                 async bytes => await HandleMessage<C_TO_G_CHECKLIST_ACTIVITY_START>(bytes,
                     HandleChecklistActivityStart));

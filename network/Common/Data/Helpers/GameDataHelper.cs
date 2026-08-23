@@ -370,14 +370,14 @@ namespace network.common.data.helpers
 
             foreach (var recipe in PartRecipeData.GetAllRecipes())
             {
-                var inputA = GameMissionData.GetPart(recipe.InputPartA);
-                var inputB = GameMissionData.GetPart(recipe.InputPartB);
+                var inputA = GameMissionData.GetPart(recipe.InputItemA);
+                var inputB = GameMissionData.GetPart(recipe.InputItemB);
                 var output = GameMissionData.GetPart(recipe.OutputPart);
 
                 if (inputA == null)
-                    errors.Add($"part_recipe [{recipe.Id}]: input_part_a={recipe.InputPartA} not found in mission_step");
+                    errors.Add($"part_recipe [{recipe.Id}]: input_part_a={recipe.InputItemA} not found in mission_step");
                 if (inputB == null)
-                    errors.Add($"part_recipe [{recipe.Id}]: input_part_b={recipe.InputPartB} not found in mission_step");
+                    errors.Add($"part_recipe [{recipe.Id}]: input_part_b={recipe.InputItemB} not found in mission_step");
                 if (output == null)
                     errors.Add($"part_recipe [{recipe.Id}]: output_part={recipe.OutputPart} not found in mission_step");
 

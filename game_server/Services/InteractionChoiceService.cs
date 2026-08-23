@@ -88,16 +88,16 @@ public class InteractionChoiceService
     };
 
     private readonly InteractionLogManager _logManager;
-    private readonly ManittoChainManager _chainManager;
+    private readonly MatchRosterManager _rosterManager;
     private readonly GameEventLogManager? _eventLogManager;
 
     public InteractionChoiceService(
         InteractionLogManager logManager,
-        ManittoChainManager chainManager,
+        MatchRosterManager rosterManager,
         GameEventLogManager? eventLogManager = null)
     {
         _logManager = logManager;
-        _chainManager = chainManager;
+        _rosterManager = rosterManager;
         _eventLogManager = eventLogManager;
     }
 
@@ -156,64 +156,6 @@ public class InteractionChoiceService
     public List<InteractionQuestion> GenerateDemoQuestions(AreaType currentArea)
     {
         return BuildLocationQuestionList(currentArea, DemoQuestionTextId);
-    }
-
-    private List<InteractionQuestion> BuildStandardQuestionList(
-        long matchingId,
-        long askerPlayerId,
-        long answererPlayerId,
-        AreaType currentArea)
-    {
-        var questions = new List<InteractionQuestion>
-        {
-            new()
-            {
-                QuestionType = InteractionQuestionType.ASK_LOCATION,
-                TextId = 11020,
-                Args = new List<TextArg> { new() { Type = TextArgType.AREA_TYPE, IntValue = (int)currentArea } },
-                ReferenceArea = currentArea
-            },
-            new()
-            {
-                QuestionType = InteractionQuestionType.ASK_JOB,
-                TextId = 11021
-            }
-        };
-
-        var askerLogs = _logManager.GetLogs(matchingId, askerPlayerId);
-        var answererPreviousClaim = askerLogs
-            .Where(l => l.OtherPlayerId == answererPlayerId)
-            .OrderByDescending(l => l.Timestamp)
-            .FirstOrDefault();
-
-        if (answererPreviousClaim != null)
-        {
-            var sameClaim = askerLogs
-                .FirstOrDefault(l => l.OtherPlayerId != answererPlayerId &&
-                                     l.ClaimedJobTitle == answererPreviousClaim.ClaimedJobTitle);
-
-            var jobArg = new TextArg
-            {
-                Type = TextArgType.JOB_TITLE,
-                IntValue = (int)answererPreviousClaim.ClaimedJobTitle
-            };
-
-            questions.Add(new InteractionQuestion
-            {
-                QuestionType = InteractionQuestionType.CROSS_CHECK,
-                TextId = sameClaim != null ? 11022 : 11023,
-                Args = new List<TextArg> { jobArg },
-                ReferencePlayerId = sameClaim?.OtherPlayerId ?? 0
-            });
-        }
-
-        questions.Add(new InteractionQuestion
-        {
-            QuestionType = InteractionQuestionType.ASK_TRACE,
-            TextId = 11024
-        });
-
-        return questions;
     }
 
     private static List<InteractionQuestion> BuildLocationQuestionList(AreaType currentArea, int textId = 11020)
@@ -594,16 +536,6 @@ public class InteractionChoiceService
 
     private static bool IsEncounterEvidenceLog(GameEventEntry entry) =>
         entry.Type == "ENCOUNTER" || entry.Type == "ROOM_ENCOUNTER_REVEAL";
-
-    private static TextArg CreateAreaLootItemArg(AreaType currentArea)
-    {
-        var areaLootItemId = GameInteractableData.GetItemPoolByArea((int)currentArea)
-            .FirstOrDefault(itemId => GameItemData.Get(itemId) != null);
-
-        return areaLootItemId > 0
-            ? new TextArg { Type = TextArgType.ITEM_NAME, IntValue = areaLootItemId }
-            : new TextArg { Type = TextArgType.RAW_STRING, StringValue = "단서" };
-    }
 
     public (bool isFakeDetected, int conflictTextId, List<TextArg> conflictArgs) ProcessAnswer(
         long matchingId,

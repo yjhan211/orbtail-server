@@ -9,16 +9,16 @@ namespace game_server.services;
 ///     인스턴스별 마니또 체인 관리.
 ///     탈락, 체인 단절, 시한부/해방 상태, 색출, 게임 종료 판정.
 /// </summary>
-public class ManittoChainManager
+public class MatchRosterManager
 {
     // Survivor Royale replaces the legacy chain-break aftermath with combat and loot progression.
     // Keep link registration for compatibility, but do not propagate FREED/TERMINAL states.
     private static readonly bool ChainBreakConsequencesEnabled = false;
     // matchingId → 체인 상태
-    private readonly ConcurrentDictionary<long, MatchingChainState> _states = new();
+    private readonly ConcurrentDictionary<long, MatchRosterState> _states = new();
     private readonly ILogger _logger;
 
-    public ManittoChainManager(ILogger logger)
+    public MatchRosterManager(ILogger logger)
     {
         _logger = logger;
     }
@@ -26,11 +26,11 @@ public class ManittoChainManager
     /// <summary>
     ///     플레이어 접속 시 링크 등록 (누적)
     /// </summary>
-    public void RegisterLink(long matchingId, ChainLink link)
+    public void RegisterEntry(long matchingId, RosterEntry link)
     {
-        var state = _states.GetOrAdd(matchingId, _ => new MatchingChainState { MatchingId = matchingId });
+        var state = _states.GetOrAdd(matchingId, _ => new MatchRosterState { MatchingId = matchingId });
 
-        if (state.Links.TryGetValue(link.PlayerId, out var existing))
+        if (state.Entries.TryGetValue(link.PlayerId, out var existing))
         {
             if (existing.TargetPlayerId != link.TargetPlayerId
                 || existing.MyJobTitle != link.MyJobTitle
@@ -63,8 +63,8 @@ public class ManittoChainManager
             return;
         }
 
-        state.Links[link.PlayerId] = link;
-        state.AliveCount = state.Links.Count;
+        state.Entries[link.PlayerId] = link;
+        state.AliveCount = state.Entries.Count;
         _logger.LogInformation("마니또 체인 링크 등록: MatchingId={MatchingId}, PlayerId={PlayerId}, 현재 {Count}명",
             matchingId, link.PlayerId, state.AliveCount);
     }
@@ -72,16 +72,16 @@ public class ManittoChainManager
     /// <summary>
     ///     플레이어의 체인 링크 조회
     /// </summary>
-    public ChainLink? GetLink(long matchingId, long playerId)
+    public RosterEntry? GetEntry(long matchingId, long playerId)
     {
         if (!_states.TryGetValue(matchingId, out var state)) return null;
-        return state.Links.GetValueOrDefault(playerId);
+        return state.Entries.GetValueOrDefault(playerId);
     }
 
-    public ChainLink? FindManittoOf(long matchingId, long playerId)
+    public RosterEntry? FindManittoOf(long matchingId, long playerId)
     {
         if (!_states.TryGetValue(matchingId, out var state)) return null;
-        return state.Links.Values.FirstOrDefault(l => l.TargetPlayerId == playerId);
+        return state.Entries.Values.FirstOrDefault(l => l.TargetPlayerId == playerId);
     }
 
     public bool IsAliveManittoOf(long matchingId, long playerId, long candidatePlayerId)
@@ -98,21 +98,21 @@ public class ManittoChainManager
     public List<JobTitle> GetMatchingJobs(long matchingId)
     {
         if (!_states.TryGetValue(matchingId, out var state)) return new();
-        return state.Links.Values.Select(l => l.MyJobTitle).Distinct().ToList();
+        return state.Entries.Values.Select(l => l.MyJobTitle).Distinct().ToList();
     }
 
-    private static bool IsAliveLink(ChainLink? link)
+    private static bool IsAliveLink(RosterEntry? link)
     {
         return link != null
-               && link.Status != ManittoStatus.ELIMINATED
-               && link.Status != ManittoStatus.SPECTATING;
+               && link.Status != PlayerMatchStatus.ELIMINATED
+               && link.Status != PlayerMatchStatus.SPECTATING;
     }
 
     /// <summary>
     ///     플레이어 탈락 처리. 체인 단절 + 영향받는 플레이어 상태 변경.
     ///     반환: 영향받는 플레이어 목록 (playerId → 새 상태)
     /// </summary>
-    public Dictionary<long, ManittoStatus> EliminatePlayer(long matchingId, long playerId, EliminationReason reason,
+    public Dictionary<long, PlayerMatchStatus> EliminatePlayer(long matchingId, long playerId, EliminationReason reason,
         long attackerPlayerId = 0, AreaType eliminatedArea = AreaType.None, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false, int forcedRank = 0, int finalOrbTier = 0)
     {
@@ -125,13 +125,13 @@ public class ManittoChainManager
         long attackerPlayerId = 0, AreaType eliminatedArea = AreaType.None, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false, int forcedRank = 0, int finalOrbTier = 0)
     {
-        var affected = new Dictionary<long, ManittoStatus>();
+        var affected = new Dictionary<long, PlayerMatchStatus>();
 
         if (!_states.TryGetValue(matchingId, out var state)) return new PlayerEliminationTransition(false, affected);
-        if (!state.Links.TryGetValue(playerId, out var link)) return new PlayerEliminationTransition(false, affected);
-        if (link.Status == ManittoStatus.ELIMINATED) return new PlayerEliminationTransition(false, affected);
+        if (!state.Entries.TryGetValue(playerId, out var link)) return new PlayerEliminationTransition(false, affected);
+        if (link.Status == PlayerMatchStatus.ELIMINATED) return new PlayerEliminationTransition(false, affected);
 
-        link.Status = ManittoStatus.ELIMINATED;
+        link.Status = PlayerMatchStatus.ELIMINATED;
         link.EliminationReason = reason;
         link.EliminatedAt = DateTime.UtcNow;
         link.AttackerPlayerId = attackerPlayerId;
@@ -145,27 +145,27 @@ public class ManittoChainManager
         _logger.LogInformation("플레이어 탈락: MatchingId={MatchingId}, PlayerId={PlayerId}, 사유={Reason}, 생존={Alive}",
             matchingId, playerId, reason, state.AliveCount);
 
-        affected[playerId] = ManittoStatus.ELIMINATED;
+        affected[playerId] = PlayerMatchStatus.ELIMINATED;
 
         if (!ChainBreakConsequencesEnabled)
             return new PlayerEliminationTransition(true, affected);
 
         // 1) 탈락자의 타겟(▓▓) → 마니또(스토커)로부터 해방
         long freedPlayerId = link.TargetPlayerId;
-        if (state.Links.TryGetValue(freedPlayerId, out var freedLink) &&
-            freedLink.Status == ManittoStatus.ACTIVE)
+        if (state.Entries.TryGetValue(freedPlayerId, out var freedLink) &&
+            freedLink.Status == PlayerMatchStatus.ACTIVE)
         {
-            freedLink.Status = ManittoStatus.FREED;
-            affected[freedPlayerId] = ManittoStatus.FREED;
+            freedLink.Status = PlayerMatchStatus.FREED;
+            affected[freedPlayerId] = PlayerMatchStatus.FREED;
             _logger.LogInformation("해방: PlayerId={PlayerId} (마니또 {Manitto} 탈락)", freedPlayerId, playerId);
         }
 
         // 2) 탈락자의 마니또 → 시한부 진입 (타겟 상실)
-        var manittoLink = state.Links.Values.FirstOrDefault(l => l.TargetPlayerId == playerId);
-        if (manittoLink != null && manittoLink.Status == ManittoStatus.ACTIVE)
+        var manittoLink = state.Entries.Values.FirstOrDefault(l => l.TargetPlayerId == playerId);
+        if (manittoLink != null && manittoLink.Status == PlayerMatchStatus.ACTIVE)
         {
-            manittoLink.Status = ManittoStatus.TERMINAL;
-            affected[manittoLink.PlayerId] = ManittoStatus.TERMINAL;
+            manittoLink.Status = PlayerMatchStatus.TERMINAL;
+            affected[manittoLink.PlayerId] = PlayerMatchStatus.TERMINAL;
             _logger.LogInformation("시한부: PlayerId={PlayerId} (타겟 {Target} 탈락)", manittoLink.PlayerId, playerId);
         }
 
@@ -181,8 +181,8 @@ public class ManittoChainManager
         if (!_states.TryGetValue(matchingId, out var state))
             return (false, null);
 
-        var activePlayers = state.Links.Values
-            .Where(l => l.Status != ManittoStatus.ELIMINATED && l.Status != ManittoStatus.SPECTATING)
+        var activePlayers = state.Entries.Values
+            .Where(l => l.Status != PlayerMatchStatus.ELIMINATED && l.Status != PlayerMatchStatus.SPECTATING)
             .ToList();
 
         if (activePlayers.Count <= 1)
@@ -202,8 +202,8 @@ public class ManittoChainManager
         if (!_states.TryGetValue(matchingId, out var state))
             return new List<long>();
 
-        return state.Links.Values
-            .Where(l => l.Status == ManittoStatus.TERMINAL)
+        return state.Entries.Values
+            .Where(l => l.Status == PlayerMatchStatus.TERMINAL)
             .Select(l => l.PlayerId)
             .ToList();
     }
@@ -216,8 +216,8 @@ public class ManittoChainManager
     {
         if (!_states.TryGetValue(matchingId, out var state)) return null;
 
-        var alive = state.Links.Values
-            .Where(l => l.Status != ManittoStatus.ELIMINATED && l.Status != ManittoStatus.SPECTATING)
+        var alive = state.Entries.Values
+            .Where(l => l.Status != PlayerMatchStatus.ELIMINATED && l.Status != PlayerMatchStatus.SPECTATING)
             .ToList();
 
         if (alive.Count == 0) return null;
@@ -241,15 +241,15 @@ public class ManittoChainManager
     /// </summary>
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.Synchronized)]
     public List<(long playerId, JobTitle job, long targetId, long manittoId,
-        EliminationReason reason, ManittoStatus finalStatus, DateTime? eliminatedAt,
+        EliminationReason reason, PlayerMatchStatus finalStatus, DateTime? eliminatedAt,
         long attackerPlayerId, AreaType eliminatedArea, bool isAreaClosureElimination,
         bool isOvertimeElimination, int eliminationRank, int finalOrbTier)> BuildGameResult(long matchingId)
     {
         if (!_states.TryGetValue(matchingId, out var state))
             return new();
 
-        var links = state.Links.Values.ToList();
-        var result = new List<(long, JobTitle, long, long, EliminationReason, ManittoStatus, DateTime?, long,
+        var links = state.Entries.Values.ToList();
+        var result = new List<(long, JobTitle, long, long, EliminationReason, PlayerMatchStatus, DateTime?, long,
             AreaType, bool, bool, int, int)>();
 
         foreach (var link in links)
@@ -276,23 +276,23 @@ public class ManittoChainManager
 
 public sealed record PlayerEliminationTransition(
     bool Applied,
-    Dictionary<long, ManittoStatus> AffectedPlayers);
+    Dictionary<long, PlayerMatchStatus> AffectedPlayers);
 
-public class MatchingChainState
+public class MatchRosterState
 {
     public object SyncRoot { get; } = new();
     public long MatchingId { get; set; }
-    public ConcurrentDictionary<long, ChainLink> Links { get; set; } = new();
+    public ConcurrentDictionary<long, RosterEntry> Entries { get; set; } = new();
     public int AliveCount { get; set; }
 }
 
-public class ChainLink
+public class RosterEntry
 {
     public long PlayerId { get; set; }
     public long TargetPlayerId { get; set; }  // 내가 돌봐야 하는 ▓▓
     public JobTitle MyJobTitle { get; set; }
     public JobTitle TargetJobTitle { get; set; }
-    public ManittoStatus Status { get; set; } = ManittoStatus.ACTIVE;
+    public PlayerMatchStatus Status { get; set; } = PlayerMatchStatus.ACTIVE;
     public EliminationReason EliminationReason { get; set; } = EliminationReason.NONE;
     public DateTime? EliminatedAt { get; set; }
     public long AttackerPlayerId { get; set; }

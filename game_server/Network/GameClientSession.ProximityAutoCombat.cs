@@ -11,10 +11,6 @@ public partial class GameClientSession
     internal const int ProximityAutoAttackDealtEventType = 17;
     internal const int ProximityAutoAttackTakenEventType = 18;
     internal const int SurvivorOrbRecoveryEventType = 19;
-    internal const int SurvivorWaveSlowEventType = 20;
-    internal const int SurvivorSunResonanceEventType = 21;
-    internal const int SurvivorWindResonanceEventType = 22;
-    internal const int SurvivorWaveResonanceEventType = 23;
     internal const int EmotionAfterimageMonsterAttackTakenEventType = 24;
     internal const int EmotionAfterimageMonsterAttackDealtEventType = 25;
     internal const int SwarmAttackEventDealtEventType = 26;
@@ -158,39 +154,6 @@ public partial class GameClientSession
         // The encounter envelope carries the visual source (monster id) and the authoritative damage value.
         SendEncounterEvent(PlayerId.Value, CurrentArea, EmotionAfterimageMonsterAttackTakenEventType,
             0, monsterId, displayDamage ?? damage);
-    }
-
-    internal void SendSurvivorOrbResonanceFeedback(SurvivorOrbColor color)
-    {
-        if (!PlayerId.HasValue || IsEliminated)
-            return;
-
-        int eventType = color switch
-        {
-            SurvivorOrbColor.Red => SurvivorSunResonanceEventType,
-            SurvivorOrbColor.Green => SurvivorWindResonanceEventType,
-            SurvivorOrbColor.Blue => SurvivorWaveResonanceEventType,
-            _ => 0
-        };
-        if (eventType == 0)
-            return;
-
-        SendEncounterEvent(PlayerId.Value, CurrentArea, eventType, 0, 0, 0);
-    }
-
-    internal void SendSurvivorWaveSlowFeedback(long sourcePlayerId, int durationMilliseconds)
-    {
-        if (!PlayerId.HasValue || IsEliminated || durationMilliseconds <= 0)
-            return;
-
-        _ = sourcePlayerId;
-        SendEncounterEvent(
-            PlayerId.Value,
-            CurrentArea,
-            SurvivorWaveSlowEventType,
-            durationMilliseconds,
-            0,
-            0);
     }
 
     internal void SendSurvivorOrbRecoveryFeedback(int itemId, int recoveryAmount)

@@ -9,10 +9,10 @@ public class PlayerSnapshot
     public string Area { get; set; } = "";
     public int Stamina { get; set; }
     public int Corruption { get; set; }
-    public string ManittoStatus { get; set; } = "";
+    public string PlayerMatchStatus { get; set; } = "";
     public long TargetPlayerId { get; set; }
     public bool IsBot { get; set; }
     public bool IsEliminated { get; set; }
     public long? ManittoOfMe { get; set; }       // 나를 타겟으로 가진 플레이어 (마니또)
-    public string ChainStatus { get; set; } = ""; // ChainLink.Status 문자열
+    public string ChainStatus { get; set; } = ""; // RosterEntry.Status 문자열
 }

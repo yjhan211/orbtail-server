@@ -724,7 +724,7 @@ public partial class GameServer
     /// <summary>자기장 오염 (리소스 틱당). 경계 안이면 0, 밖이면 기본 + 초과 거리 비례.</summary>
     private int GetSwarmFieldCorruptionPerTick(long matchingId, Vector3f worldPosition)
     {
-        if (!Config.SWARM_P0_ENABLED || worldPosition == null)
+        if (worldPosition == null)
             return 0;
 
         int safeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
@@ -2603,9 +2603,6 @@ public partial class GameServer
     private const int SwarmRingVfxKindEncircle = 0;
     private const int SwarmRingVfxKindCut = 1;
     private const int SwarmRingVfxKindWaveBomb = 2;
-    private const int SwarmRingVfxKindCutCrack = 3;
-    // 철갑 소모 (#226 단계 C): 외피가 절단을 1회 막고 깨질 때의 은색 파열 링.
-    private const int SwarmRingVfxKindArmorBreak = 4;
     // 반격 보호 (#227 7단계): 5 = 피해자 남은 꼬리의 유리 잔광 개시(Radius에 지속 초),
     // 6 = 그 절단자의 투사체가 잔광 앞에서 깨짐(피해 숫자 없음).
     private const int SwarmRingVfxKindRetaliationGuard = 5;
@@ -3924,27 +3921,6 @@ public partial class GameServer
             .OrderBy(item => item.ItemUid)
             .ToList();
 
-    /// <summary>강화 대상 티어: 선두 T1이 있으면 1(T1→T2), 없으면 선두 T2 기준 2, 전부 T3면 0.</summary>
-    // T2가 이만큼 쌓이면 T3 승급을 먼저 노린다 (#229 4단계-보정, 진단서 5번).
-    private const int SwarmEnhanceT3PriorityT2Count = 3;
-
-    /// <summary>
-    ///     강화 대상 티어 (#229). T1이 하나라도 남으면 무조건 T1→T2를 돌려주던 규칙은,
-    ///     증식 카드가 T1을 계속 주입하는 구조와 맞물려 T2→T3를 사실상 봉쇄했다 —
-    ///     5분 시점 기대 T3 보유량이 0.37개였다. T2가 3개 이상 쌓이면 승급을 먼저 준다.
-    ///     T3는 발당 30·주기 0.7초로 T1의 5배 DPS라, 이 경로가 열려야 후반 화력이 성립한다.
-    /// </summary>
-    private int GetSwarmEnhanceTargetTier(long matchingId, long playerId)
-    {
-        var orbs = GetSwarmTrailOrbs(matchingId, playerId);
-        int tier2Count = orbs.Count(item => GetSquadOrbTier(item.ItemId) == 2);
-        if (tier2Count >= SwarmEnhanceT3PriorityT2Count)
-            return 2;
-        if (orbs.Any(item => GetSquadOrbTier(item.ItemId) == 1))
-            return 1;
-        return tier2Count > 0 ? 2 : 0;
-    }
-
     /// <summary>
     ///     방어 강화(내구 2+) 오브 순번 마스크 — 클라 은백 링 표시용 (#226).
     ///     순서는 비주얼 브로드캐스트의 OrbItemIds와 동일한 ItemUid 오름차순 — 슬롯 인덱스 정합.
@@ -3958,11 +3934,6 @@ public partial class GameServer
                 mask |= 1L << ordinal;
         return mask;
     }
-
-    // 방어 강화 유효 대상 = 미강화(내구 보너스 0) 오브 — 전부 강화 상태면 비활성.
-    private bool HasSwarmArmorTarget(long matchingId, long playerId) =>
-        GetSwarmTrailOrbs(matchingId, playerId)
-            .Any(item => !_swarmOrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)));
 
     /// <summary>
     ///     성장 비용 (#229): 기본 = 5+2N, 오브 수 할증 없음, 최종 = min(21, 기본).
