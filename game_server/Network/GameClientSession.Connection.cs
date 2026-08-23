@@ -330,7 +330,7 @@ public partial class GameClientSession
             return;
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN, PlayerId ?? 0);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ROUND_STATE
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
         {
             MatchingId = matchingId,
             RoundNumber = 0,

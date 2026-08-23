@@ -359,7 +359,7 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class G_TO_C_ROUND_STATE : IMessagePackObject
+    public class G_TO_C_MATCH_START_COUNTDOWN : IMessagePackObject
     {
         [Key("matchingId")] public long MatchingId { get; set; }
         [Key("roundNumber")] public int RoundNumber { get; set; }
