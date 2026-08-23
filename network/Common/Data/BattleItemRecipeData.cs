@@ -12,7 +12,7 @@ namespace network.common.data
 {
     /// <summary>
     ///     #185 - Battle Royale style item recipes.
-    ///     This is separate from PartRecipeData because it combines item IDs directly,
+    ///     Combines item IDs directly (옛 부품 레시피 레이어와 무관),
     ///     not mission parts.
     /// </summary>
     public static class BattleItemRecipeData
