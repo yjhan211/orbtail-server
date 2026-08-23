@@ -18,14 +18,14 @@ public class SwarmMeetupTopologyTests
     [Fact]
     public void EveryPod_ReachesTheGroundPlaza()
     {
-        foreach (AreaType pod in SurvivorRoyaleSpawnData.GetPhaseRoomCandidates())
+        foreach (AreaType pod in MatchSpawnData.GetPhaseRoomCandidates())
             AssertReachable(pod, AreaType.Ground);
     }
 
     [Fact]
     public void GroundPlaza_ReachesEveryPodAndBothBands()
     {
-        foreach (AreaType pod in SurvivorRoyaleSpawnData.GetPhaseRoomCandidates())
+        foreach (AreaType pod in MatchSpawnData.GetPhaseRoomCandidates())
             AssertReachable(AreaType.Ground, pod);
 
         AssertReachable(AreaType.Ground, AreaType.Junkyard);

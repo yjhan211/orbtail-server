@@ -12,12 +12,12 @@ public sealed class SurvivorTelemetryTests
     {
         const long matchingId = 195001;
         var log = new GameEventLogManager();
-        int seed = SurvivorRoyaleSpawnData.GetDeterministicSeed(matchingId);
-        var anchor = SurvivorRoyaleSpawnData.GetCorridorAnchors()[0];
+        int seed = MatchSpawnData.GetDeterministicSeed(matchingId);
+        var anchor = MatchSpawnData.GetCorridorAnchors()[0];
 
         log.BeginMatch(matchingId, seed);
         log.LogSpawnAssignment(
-            matchingId, 101, seed, SurvivorRoyaleSpawnData.GetAnchorIndex(anchor),
+            matchingId, 101, seed, MatchSpawnData.GetAnchorIndex(anchor),
             anchor.X, anchor.Y, "Corridor1F", isBot: false);
         log.LogExploreStart(matchingId, 101, 77, "Library", isBot: false);
         log.LogExploreCompleted(matchingId, 101, 77, "Library", [107000003], 6, isBot: false);
@@ -200,7 +200,7 @@ public sealed class SurvivorTelemetryTests
             [new InGameItemInfo { ItemId = 107000031, Count = 1 }], 107000031, "Gym", "merge", false);
         var volley = new ProximityCombatAttack(playerId, 402, AreaType.Gym, 107000020, 6, 0.2f, 1f, 3);
         log.LogSurvivorOrbAttackTargets(matchingId, [volley], [volley],
-            new Dictionary<long, SurvivorOrbColor> { [playerId] = SurvivorOrbColor.Green });
+            new Dictionary<long, OrbColor> { [playerId] = OrbColor.Green });
         log.LogPelletPickupOutcome(matchingId, playerId, 201000008, 15, 15, "effective", false);
         log.LogPelletPickupOutcome(matchingId, playerId, 201000008, 15, 0, "wasted", false);
         log.LogPelletPickupOutcome(matchingId, playerId, 201000008, 15, 0, "denied_reserved", false);

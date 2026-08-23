@@ -358,14 +358,6 @@ namespace network.common.data.models
         [Key("isResultEnd")] public bool IsResultEnd { get; set; } = true;
     }
 
-    [MessagePackObject]
-    public class G_TO_C_ROSTER_STATUS : IMessagePackObject
-    {
-        [Key("eliminatedPlayerId")] public long EliminatedPlayerId { get; set; }
-        // 영향받는 플레이어에게만 전송됨
-        [Key("newStatus")] public PlayerMatchStatus NewStatus { get; set; }
-    }
-
     // ===== 1:1 상호작용 선택지 =====
 
     /// <summary>

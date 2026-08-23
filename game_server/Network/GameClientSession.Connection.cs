@@ -64,7 +64,7 @@ public partial class GameClientSession
             var jobPool = _matchRosterManager.GetMatchingJobs(msg.MatchingId);
             _areaItemStockManager.InitializeMatching(msg.MatchingId);
             _groundItemManager.InitializeMatching(msg.MatchingId);
-            int matchSeed = SurvivorRoyaleSpawnData.GetDeterministicSeed(msg.MatchingId);
+            int matchSeed = MatchSpawnData.GetDeterministicSeed(msg.MatchingId);
             _gameEventLogManager.BeginMatch(msg.MatchingId, matchSeed);
             foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
             {
@@ -72,7 +72,7 @@ public partial class GameClientSession
                     msg.MatchingId,
                     bot.PlayerId,
                     matchSeed,
-                    SurvivorRoyaleSpawnData.GetAnchorIndex(bot.Cell),
+                    MatchSpawnData.GetAnchorIndex(bot.Cell),
                     bot.Cell.X,
                     bot.Cell.Y,
                     bot.CurrentArea.ToString(),
@@ -116,8 +116,8 @@ public partial class GameClientSession
                     _gameEventLogManager.LogSpawnAssignment(
                         CurrentMapSubId,
                         PlayerId.Value,
-                        SurvivorRoyaleSpawnData.GetDeterministicSeed(CurrentMapSubId),
-                        SurvivorRoyaleSpawnData.GetAnchorIndex(_lastValidCell),
+                        MatchSpawnData.GetDeterministicSeed(CurrentMapSubId),
+                        MatchSpawnData.GetAnchorIndex(_lastValidCell),
                         _lastValidCell.X,
                         _lastValidCell.Y,
                         CurrentArea.ToString(),
@@ -335,7 +335,6 @@ public partial class GameClientSession
             MatchingId = matchingId,
             RoundNumber = 0,
             TotalRounds = 0,
-            Phase = RoundPhase.Action,
             RemainingSeconds = snapshot.RemainingSeconds,
             PhaseDurationSeconds = 5,
             ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
@@ -515,8 +514,8 @@ public partial class GameClientSession
     {
         var myLink = _matchRosterManager.GetEntry(matchingId, playerId);
         bool targetAlive = myLink != null && IsAliveChainPlayer(matchingId, myLink.TargetPlayerId);
-        var manittoLink = _matchRosterManager.FindManittoOf(matchingId, playerId);
-        bool manittoAlive = IsAliveChainLink(manittoLink);
+        var watcherEntry = _matchRosterManager.FindWatcherOf(matchingId, playerId);
+        bool manittoAlive = IsAliveChainLink(watcherEntry);
         return new ChecklistChainContext(targetAlive, manittoAlive);
     }
 

@@ -7,8 +7,8 @@ namespace game_server.services;
 public static class EmotionAfterimagePveCombatRules
 {
     public static bool IsWaveOrb(int weaponItemId) =>
-        SurvivorOrbData.TryGetColorAndTier(weaponItemId, out SurvivorOrbColor color, out _) &&
-        color == SurvivorOrbColor.Blue;
+        OrbData.TryGetColorAndTier(weaponItemId, out OrbColor color, out _) &&
+        color == OrbColor.Blue;
 
     public static bool ShouldApplyWaveAreaAttack(int weaponItemId, bool isResonanceProc) =>
         !isResonanceProc && IsWaveOrb(weaponItemId);
@@ -18,17 +18,17 @@ public static class EmotionAfterimagePveCombatRules
 
     public static float GetWaveSplashRadius(int weaponItemId)
     {
-        if (!SurvivorOrbData.TryGetColorAndTier(weaponItemId, out SurvivorOrbColor color, out int tier) ||
-            color != SurvivorOrbColor.Blue)
+        if (!OrbData.TryGetColorAndTier(weaponItemId, out OrbColor color, out int tier) ||
+            color != OrbColor.Blue)
         {
-            return SurvivorOrbData.WaveSplashRadius;
+            return OrbData.WaveSplashRadius;
         }
 
         return tier switch
         {
-            >= 3 => SurvivorOrbData.WaveTierThreeSplashRadius,
-            2 => SurvivorOrbData.WaveTierTwoSplashRadius,
-            _ => SurvivorOrbData.WaveSplashRadius
+            >= 3 => OrbData.WaveTierThreeSplashRadius,
+            2 => OrbData.WaveTierTwoSplashRadius,
+            _ => OrbData.WaveSplashRadius
         };
     }
 

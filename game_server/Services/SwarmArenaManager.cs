@@ -414,7 +414,7 @@ public sealed class SwarmArenaManager
     private const double DeadPruneAfterSeconds = 3d;
 
     private static readonly HashSet<AreaType> StartRooms =
-        SurvivorRoyaleSpawnData.GetPhaseRoomCandidates().ToHashSet();
+        MatchSpawnData.GetPhaseRoomCandidates().ToHashSet();
 
     // M4 격화: 폐쇄 웨이브와 동기화된 시간 단계. 접촉 데미지는 올리지 않는다 —
     // TTK가 아니라 밀도·페이스·이속만 조인다 (결정 브리프 2026-08-06).
@@ -1498,7 +1498,7 @@ public sealed class SwarmArenaManager
         // 아무도 없는 방의 몹은 좌초 회수가 유예 뒤에 걷는다.
         if (preMatch)
         {
-            foreach (var room in SurvivorRoyaleSpawnData.GetPhaseRoomCandidates())
+            foreach (var room in MatchSpawnData.GetPhaseRoomCandidates())
             {
                 if (IsAreaClosedResolver?.Invoke(state.MatchingId, room) == true)
                     continue;
@@ -2037,7 +2037,7 @@ public sealed class SwarmArenaManager
         if (candidate == destinationArea)
             return false;
 
-        var rooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates();
+        var rooms = MatchSpawnData.GetPhaseRoomCandidates();
         for (int index = 0; index < rooms.Count; index++)
             if (rooms[index] == candidate)
                 return true;

@@ -42,8 +42,8 @@ namespace game_server.services
             for (int index = 0; index < orbs.Count; index++)
             {
                 var orb = orbs[index];
-                int baseDamage = SurvivorOrbData.GetSwarmPveAttackDamage(orb.ItemId);
-                float radius = SurvivorOrbData.GetSwarmWaveBombRadius(orb.ItemId);
+                int baseDamage = OrbData.GetSwarmPveAttackDamage(orb.ItemId);
+                float radius = OrbData.GetSwarmWaveBombRadius(orb.ItemId);
                 if (baseDamage <= 0 || radius <= 0f)
                     continue;
 

@@ -74,8 +74,8 @@ public partial class GameServer
             for (int ordinal = 0; ordinal < trailOrbs.Count; ordinal++)
             {
                 var item = trailOrbs[ordinal];
-                if (!SurvivorOrbData.TryGetColorAndTier(item.ItemId, out var color, out int tier) ||
-                    color != SurvivorOrbColor.Green)
+                if (!OrbData.TryGetColorAndTier(item.ItemId, out var color, out int tier) ||
+                    color != OrbColor.Green)
                     continue;
 
                 var key = (matchingId, owner.PlayerId, item.ItemUid);
@@ -98,9 +98,9 @@ public partial class GameServer
                     continue;
 
                 if (sunMultiplier < 0f)
-                    sunMultiplier = SurvivorOrbData.GetSunPveAttackMultiplier(trailOrbs);
+                    sunMultiplier = OrbData.GetSunPveAttackMultiplier(trailOrbs);
                 int damage = Math.Max(1, (int)MathF.Round(
-                    SurvivorOrbData.GetSwarmPveAttackDamage(item.ItemId) * sunMultiplier *
+                    OrbData.GetSwarmPveAttackDamage(item.ItemId) * sunMultiplier *
                     Config.SWARM_WIND_SLAM_DAMAGE_MULTIPLIER));
                 _swarmWindSlamReadyAtUtc[key] = nowUtc.AddSeconds(Config.SWARM_WIND_SLAM_COOLDOWN_SECONDS);
                 _pendingSwarmWindSlams.Add(new PendingSwarmWindSlam(

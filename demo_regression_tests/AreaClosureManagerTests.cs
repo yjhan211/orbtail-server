@@ -19,13 +19,13 @@ public class AreaClosureManagerTests
     {
         long[] playerIds = [101, 202, -1, -2, -3, -4, -5, -6];
 
-        var first = SurvivorRoyaleSpawnData.CreateAssignments(195004, playerIds);
-        var second = SurvivorRoyaleSpawnData.CreateAssignments(195004, playerIds.Reverse());
+        var first = MatchSpawnData.CreateAssignments(195004, playerIds);
+        var second = MatchSpawnData.CreateAssignments(195004, playerIds.Reverse());
 
         Assert.Equal(8, first.Count);
         Assert.Equal(8, first.Values.Distinct().Count());
         Assert.Equal(
-            SurvivorRoyaleSpawnData.GetCorridorAnchors().OrderBy(cell => cell.X).ThenBy(cell => cell.Y),
+            MatchSpawnData.GetCorridorAnchors().OrderBy(cell => cell.X).ThenBy(cell => cell.Y),
             first.Values.OrderBy(cell => cell.X).ThenBy(cell => cell.Y));
         foreach (var playerId in playerIds)
         {
@@ -69,7 +69,7 @@ public class AreaClosureManagerTests
     {
         var now = new DateTime(2026, 8, 4, 0, 0, 0, DateTimeKind.Utc);
         var manager = CreateManager(() => now);
-        var startingRooms = SurvivorRoyaleSpawnData.GetPhaseRoomCandidates();
+        var startingRooms = MatchSpawnData.GetPhaseRoomCandidates();
 
         var state = manager.InitializeMatching(214101, initiallyOpenAreas: startingRooms);
         var clientState = manager.GetClientStateSnapshot(214101);

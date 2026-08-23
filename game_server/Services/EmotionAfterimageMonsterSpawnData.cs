@@ -81,7 +81,7 @@ internal static class EmotionAfterimageMonsterSpawnData
             .ToList();
         var affinityByPack = new Dictionary<int, int>(packs.Count);
         var affinityOrder = AllAffinityItemIds.ToArray();
-        var random = new Random(SurvivorRoyaleSpawnData.GetDeterministicSeed(matchingId) ^ unchecked((int)0x4A9D_202));
+        var random = new Random(MatchSpawnData.GetDeterministicSeed(matchingId) ^ unchecked((int)0x4A9D_202));
         Shuffle(affinityOrder, random);
 
         int areaIndex = 0;

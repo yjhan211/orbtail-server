@@ -52,7 +52,7 @@ public partial class GameServer
     }
 
     private readonly record struct SurvivorOrbResonanceSnapshot(
-        SurvivorOrbColor ActiveColor,
+        OrbColor ActiveColor,
         int SunStage,
         bool WindActive,
         bool WindJustActivated,

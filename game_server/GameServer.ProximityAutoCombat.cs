@@ -118,7 +118,7 @@ SurvivorOrbResonanceSnapshot resonanceState)
                      .Where(item => item.Count > 0)
                      .OrderBy(item => item.ItemUid))
         {
-            if (SurvivorOrbData.IsRecoveryOrb(item.ItemId))
+            if (OrbData.IsRecoveryOrb(item.ItemId))
             {
                 for (int stackIndex = 0; stackIndex < item.Count; stackIndex++)
                 {
@@ -133,7 +133,7 @@ SurvivorOrbResonanceSnapshot resonanceState)
                 continue;
             }
 
-            if (!SurvivorOrbData.TryGetColorAndTier(item.ItemId, out var orbColor, out _))
+            if (!OrbData.TryGetColorAndTier(item.ItemId, out var orbColor, out _))
                 continue;
 
             var combatData = BattleItemCombatData.Get(item.ItemId);
@@ -150,16 +150,16 @@ SurvivorOrbResonanceSnapshot resonanceState)
                 actors.Add(spatialActor with
                 {
                     WeaponItemId = item.ItemId,
-                    AttackRange = SurvivorOrbData.GetAttackPattern(item.ItemId) ==
-                                  SurvivorOrbAttackPattern.AttackerArea
-                        ? SurvivorOrbData.GetWindPulseRadius(item.ItemId)
+                    AttackRange = OrbData.GetAttackPattern(item.ItemId) ==
+                                  OrbAttackPattern.AttackerArea
+                        ? OrbData.GetWindPulseRadius(item.ItemId)
                         : combatData.AttackRange *
-                          (windActive ? SurvivorOrbData.WindAttackRangeMultiplier : 1f),
-                    Damage = SurvivorOrbData.GetBaseAttackDamage(combatData.Damage, orbColor),
+                          (windActive ? OrbData.WindAttackRangeMultiplier : 1f),
+                    Damage = OrbData.GetBaseAttackDamage(combatData.Damage, orbColor),
                     AttackIntervalSeconds = combatData.AttackIntervalSeconds *
-                                            SurvivorOrbData.GetAttackIntervalMultiplier(item.ItemId) *
-                                            SurvivorOrbData.GetBaseAttackIntervalMultiplier(orbColor) *
-                                            (windActive ? SurvivorOrbData.WindAttackIntervalMultiplier : 1f),
+                                            OrbData.GetAttackIntervalMultiplier(item.ItemId) *
+                                            OrbData.GetBaseAttackIntervalMultiplier(orbColor) *
+                                            (windActive ? OrbData.WindAttackIntervalMultiplier : 1f),
                     ProjectileWidth = combatData.ProjectileWidth,
                     EffectDurationSeconds = combatData.EffectDurationSeconds,
                     MaxTargets = 1,
@@ -193,7 +193,7 @@ SurvivorOrbResonanceSnapshot resonanceState)
                 AttackRange = legacyCombatData.AttackRange,
                 Damage = legacyCombatData.Damage,
                 AttackIntervalSeconds = legacyCombatData.AttackIntervalSeconds *
-                                        SurvivorOrbData.GetAttackIntervalMultiplier(equippedItem.ItemId),
+                                        OrbData.GetAttackIntervalMultiplier(equippedItem.ItemId),
                 ProjectileWidth = legacyCombatData.ProjectileWidth,
                 EffectDurationSeconds = legacyCombatData.EffectDurationSeconds,
                 WeaponItemUid = equippedItem.ItemUid
@@ -215,7 +215,7 @@ SurvivorOrbResonanceSnapshot resonanceState)
 
         foreach (var actor in actors)
         {
-            int requestedRecovery = SurvivorOrbData.GetRecoveryAmount(actor.WeaponItemId);
+            int requestedRecovery = OrbData.GetRecoveryAmount(actor.WeaponItemId);
             if (requestedRecovery <= 0)
                 continue;
 
@@ -226,7 +226,7 @@ SurvivorOrbResonanceSnapshot resonanceState)
             if (!_survivorOrbRecoveryReadyAtUtc.TryGetValue(stateKey, out var readyAtUtc))
             {
                 _survivorOrbRecoveryReadyAtUtc[stateKey] =
-                    nowUtc.AddSeconds(SurvivorOrbData.RecoveryTickSeconds);
+                    nowUtc.AddSeconds(OrbData.RecoveryTickSeconds);
                 continue;
             }
 
@@ -234,7 +234,7 @@ SurvivorOrbResonanceSnapshot resonanceState)
                 continue;
 
             _survivorOrbRecoveryReadyAtUtc[stateKey] =
-                nowUtc.AddSeconds(SurvivorOrbData.RecoveryTickSeconds);
+                nowUtc.AddSeconds(OrbData.RecoveryTickSeconds);
 
             if (!dueRecoveryByPlayer.TryGetValue(actor.PlayerId, out var dueRecoveries))
             {
@@ -322,15 +322,15 @@ SurvivorOrbResonanceSnapshot resonanceState)
             {
                 var orbActors = group
                     .Where(actor =>
-                        SurvivorOrbData.IsSurvivorOrb(actor.WeaponItemId) ||
-                        SurvivorOrbData.IsRecoveryOrb(actor.WeaponItemId))
+                        OrbData.IsSurvivorOrb(actor.WeaponItemId) ||
+                        OrbData.IsRecoveryOrb(actor.WeaponItemId))
                     .OrderBy(actor => actor.WeaponItemUid)
                     .ThenBy(actor => actor.WeaponStackIndex)
                     .ToList();
                 var primaryActor = orbActors.FirstOrDefault(actor =>
                     actor.OrbEffectActive &&
-                    SurvivorOrbData.TryGetColorAndTier(actor.WeaponItemId, out var color, out _) &&
-                    color == SurvivorOrbColor.Green);
+                    OrbData.TryGetColorAndTier(actor.WeaponItemId, out var color, out _) &&
+                    color == OrbColor.Green);
                 if (primaryActor.PlayerId == 0)
                     primaryActor = orbActors.FirstOrDefault(actor => actor.OrbEffectActive);
                 if (primaryActor.PlayerId == 0)

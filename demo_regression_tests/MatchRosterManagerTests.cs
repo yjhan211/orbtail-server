@@ -22,7 +22,6 @@ public sealed class MatchRosterManagerTests
         Assert.Equal(PlayerMatchStatus.ELIMINATED, affected[2]);
         Assert.Equal(PlayerMatchStatus.ACTIVE, manager.GetEntry(matchingId, 1)!.Status);
         Assert.Equal(PlayerMatchStatus.ACTIVE, manager.GetEntry(matchingId, 3)!.Status);
-        Assert.Empty(manager.GetTerminalPlayers(matchingId));
     }
 
     [Fact]

@@ -9,7 +9,7 @@ namespace network.common.data
     /// Shared color and tier rules for the three Survivor Royale orb lines added by #198.
     /// Legacy guardian orbs (107000003/004/006) intentionally remain outside this board rule.
     /// </summary>
-    public enum SurvivorOrbColor
+    public enum OrbColor
     {
         None = 0,
         Red = 1,
@@ -18,7 +18,7 @@ namespace network.common.data
         Recovery = 4
     }
 
-    public enum SurvivorOrbAttackPattern
+    public enum OrbAttackPattern
     {
         None = 0,
         HomingProjectile = 1,
@@ -26,7 +26,7 @@ namespace network.common.data
         AttackerArea = 3
     }
 
-    public static class SurvivorOrbData
+    public static class OrbData
     {
         public const float RecoveryTickSeconds = 5f;
         public const float WindChargeSeconds = 2f;
@@ -106,8 +106,8 @@ namespace network.common.data
 
         public static float GetSwarmWaveBombRadius(int itemId)
         {
-            if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out int tier) ||
-                color != SurvivorOrbColor.Blue)
+            if (!TryGetColorAndTier(itemId, out OrbColor color, out int tier) ||
+                color != OrbColor.Blue)
             {
                 return 0f;
             }
@@ -182,7 +182,7 @@ namespace network.common.data
 
         public static int CountLivingOrbs(
             IEnumerable<InGameItemInfo> items,
-            SurvivorOrbColor color)
+            OrbColor color)
         {
             if (items == null)
                 return 0;
@@ -191,7 +191,7 @@ namespace network.common.data
             foreach (var item in items)
             {
                 if (item == null || item.Count <= 0 ||
-                    !TryGetColorAndTier(item.ItemId, out SurvivorOrbColor itemColor, out _) ||
+                    !TryGetColorAndTier(item.ItemId, out OrbColor itemColor, out _) ||
                     itemColor != color)
                 {
                     continue;
@@ -205,7 +205,7 @@ namespace network.common.data
 
         public static float GetSunPveAttackMultiplier(IEnumerable<InGameItemInfo> items)
         {
-            int count = CountLivingOrbs(items, SurvivorOrbColor.Red);
+            int count = CountLivingOrbs(items, OrbColor.Red);
             if (count <= 0)
                 return 1f;
 
@@ -215,7 +215,7 @@ namespace network.common.data
 
         public static float GetWindMoveSpeedMultiplier(IEnumerable<InGameItemInfo> items)
         {
-            int count = CountLivingOrbs(items, SurvivorOrbColor.Green);
+            int count = CountLivingOrbs(items, OrbColor.Green);
             if (count <= 0)
                 return 1f;
 
@@ -223,51 +223,51 @@ namespace network.common.data
             return 1f + Math.Min(WindMoveSpeedBonusCap, bonus);
         }
 
-        private static readonly SurvivorOrbColor[] EvolutionColors =
-            new[] { SurvivorOrbColor.Red, SurvivorOrbColor.Green, SurvivorOrbColor.Blue };
+        private static readonly OrbColor[] EvolutionColors =
+            new[] { OrbColor.Red, OrbColor.Green, OrbColor.Blue };
 
-        public static bool TryGetColorAndTier(int itemId, out SurvivorOrbColor color, out int tier)
+        public static bool TryGetColorAndTier(int itemId, out OrbColor color, out int tier)
         {
             switch (itemId)
             {
-                case 107000010: color = SurvivorOrbColor.Red; tier = 1; return true;
-                case 107000011: color = SurvivorOrbColor.Red; tier = 2; return true;
-                case 107000012: color = SurvivorOrbColor.Red; tier = 3; return true;
-                case 107000020: color = SurvivorOrbColor.Green; tier = 1; return true;
-                case 107000021: color = SurvivorOrbColor.Green; tier = 2; return true;
-                case 107000022: color = SurvivorOrbColor.Green; tier = 3; return true;
-                case 107000030: color = SurvivorOrbColor.Blue; tier = 1; return true;
-                case 107000031: color = SurvivorOrbColor.Blue; tier = 2; return true;
-                case 107000032: color = SurvivorOrbColor.Blue; tier = 3; return true;
-                default: color = SurvivorOrbColor.None; tier = 0; return false;
+                case 107000010: color = OrbColor.Red; tier = 1; return true;
+                case 107000011: color = OrbColor.Red; tier = 2; return true;
+                case 107000012: color = OrbColor.Red; tier = 3; return true;
+                case 107000020: color = OrbColor.Green; tier = 1; return true;
+                case 107000021: color = OrbColor.Green; tier = 2; return true;
+                case 107000022: color = OrbColor.Green; tier = 3; return true;
+                case 107000030: color = OrbColor.Blue; tier = 1; return true;
+                case 107000031: color = OrbColor.Blue; tier = 2; return true;
+                case 107000032: color = OrbColor.Blue; tier = 3; return true;
+                default: color = OrbColor.None; tier = 0; return false;
             }
         }
 
         public static bool IsSurvivorOrb(int itemId) => TryGetColorAndTier(itemId, out _, out _);
 
-        public static SurvivorOrbAttackPattern GetAttackPattern(int itemId)
+        public static OrbAttackPattern GetAttackPattern(int itemId)
         {
             // 색 = 무기 동사 (#226): 태양 = 전역 유도 미사일, 바람 = 공명·런지(투사체 없음),
             // 파도 = 미사일 없음(물폭탄은 서버 별도 주기) — None이면 클라 투사체도 안 뜬다.
-            if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out _))
-                return SurvivorOrbAttackPattern.None;
+            if (!TryGetColorAndTier(itemId, out OrbColor color, out _))
+                return OrbAttackPattern.None;
 
             return color switch
             {
                 // 유도탄 복귀 (2026-08-12 플레이 판정): 직선탄 회피 실험은 상시 이동 게임에서
                 // 상시 회피 = 유령 사격이 됐다(명중 전멸·루즈). 착탄 확정 유도탄으로 원복 —
                 // 위치 판단 축은 절단·물폭탄·사거리가 맡는다. 클라는 이 패턴이면 표적을 추적한다.
-                SurvivorOrbColor.Red => SurvivorOrbAttackPattern.HomingProjectile,
-                SurvivorOrbColor.Green => SurvivorOrbAttackPattern.HomingProjectile,
-                SurvivorOrbColor.Blue => SurvivorOrbAttackPattern.None,
-                _ => SurvivorOrbAttackPattern.None
+                OrbColor.Red => OrbAttackPattern.HomingProjectile,
+                OrbColor.Green => OrbAttackPattern.HomingProjectile,
+                OrbColor.Blue => OrbAttackPattern.None,
+                _ => OrbAttackPattern.None
             };
         }
 
         public static float GetWindPulseRadius(int itemId)
         {
-            if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out int tier) ||
-                color != SurvivorOrbColor.Green)
+            if (!TryGetColorAndTier(itemId, out OrbColor color, out int tier) ||
+                color != OrbColor.Green)
             {
                 return WindPulseRadius;
             }
@@ -295,16 +295,16 @@ namespace network.common.data
         }
 
         // #219 M2 공격 문법 통일: 색별 공속·데미지 차이 퇴역 — 색은 시각과 스탯 버프만.
-        public static float GetBaseAttackIntervalMultiplier(SurvivorOrbColor color) => 1f;
+        public static float GetBaseAttackIntervalMultiplier(OrbColor color) => 1f;
 
-        private static float LegacyBaseAttackIntervalMultiplier(SurvivorOrbColor color) => color switch
+        private static float LegacyBaseAttackIntervalMultiplier(OrbColor color) => color switch
         {
-            SurvivorOrbColor.Green => WindBaseAttackIntervalMultiplier,
-            SurvivorOrbColor.Blue => WaveBaseAttackIntervalMultiplier,
+            OrbColor.Green => WindBaseAttackIntervalMultiplier,
+            OrbColor.Blue => WaveBaseAttackIntervalMultiplier,
             _ => 1f
         };
 
-        public static int GetBaseAttackDamage(int baseDamage, SurvivorOrbColor color)
+        public static int GetBaseAttackDamage(int baseDamage, OrbColor color)
         {
             // 통일: 바람 데미지 반감 퇴역 — 전 색 동일 기본 데미지.
             return Math.Max(0, baseDamage);
@@ -319,22 +319,22 @@ namespace network.common.data
 
         public static float GetPveDamageMultiplier(int attackerItemId, int monsterRewardItemId)
         {
-            if (!TryGetColorAndTier(attackerItemId, out SurvivorOrbColor attackerColor, out _) ||
-                !TryGetColorAndTier(monsterRewardItemId, out SurvivorOrbColor targetColor, out _))
+            if (!TryGetColorAndTier(attackerItemId, out OrbColor attackerColor, out _) ||
+                !TryGetColorAndTier(monsterRewardItemId, out OrbColor targetColor, out _))
                 return PveNeutralDamageMultiplier;
 
             return GetPveDamageMultiplier(attackerColor, targetColor);
         }
 
-        public static float GetPveDamageMultiplier(SurvivorOrbColor attackerColor, int monsterRewardItemId)
+        public static float GetPveDamageMultiplier(OrbColor attackerColor, int monsterRewardItemId)
         {
-            if (!TryGetColorAndTier(monsterRewardItemId, out SurvivorOrbColor targetColor, out _))
+            if (!TryGetColorAndTier(monsterRewardItemId, out OrbColor targetColor, out _))
                 return PveNeutralDamageMultiplier;
 
             return GetPveDamageMultiplier(attackerColor, targetColor);
         }
 
-        public static float GetPveDamageMultiplier(SurvivorOrbColor attackerColor, SurvivorOrbColor targetColor)
+        public static float GetPveDamageMultiplier(OrbColor attackerColor, OrbColor targetColor)
         {
             // 통일: 색 상성(1.5/0.5) 퇴역 — 클론 비목표(상성 금지). 항상 중립 배율.
             return PveNeutralDamageMultiplier;
@@ -347,16 +347,16 @@ namespace network.common.data
         /// </summary>
         public static bool TryGetDominantPveColor(
             IEnumerable<int> boardItemIds,
-            out SurvivorOrbColor dominantColor)
+            out OrbColor dominantColor)
         {
             if (boardItemIds == null)
                 throw new ArgumentNullException(nameof(boardItemIds));
 
-            var orbCounts = new Dictionary<SurvivorOrbColor, int>
+            var orbCounts = new Dictionary<OrbColor, int>
             {
-                [SurvivorOrbColor.Red] = 0,
-                [SurvivorOrbColor.Green] = 0,
-                [SurvivorOrbColor.Blue] = 0
+                [OrbColor.Red] = 0,
+                [OrbColor.Green] = 0,
+                [OrbColor.Blue] = 0
             };
             int occupiedOrbCount = 0;
 
@@ -368,7 +368,7 @@ namespace network.common.data
                     continue;
                 }
 
-                if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out _) ||
+                if (!TryGetColorAndTier(itemId, out OrbColor color, out _) ||
                     !orbCounts.ContainsKey(color))
                 {
                     continue;
@@ -380,7 +380,7 @@ namespace network.common.data
 
             if (occupiedOrbCount < 2)
             {
-                dominantColor = SurvivorOrbColor.None;
+                dominantColor = OrbColor.None;
                 return false;
             }
 
@@ -394,7 +394,7 @@ namespace network.common.data
                 return true;
             }
 
-            dominantColor = SurvivorOrbColor.None;
+            dominantColor = OrbColor.None;
             return false;
         }
 
@@ -413,7 +413,7 @@ namespace network.common.data
         }
 
         public static int CalculatePveDamage(
-            SurvivorOrbColor attackerColor,
+            OrbColor attackerColor,
             int monsterRewardItemId,
             int baseDamage,
             float hitDamageMultiplier = 1f)
@@ -462,8 +462,8 @@ namespace network.common.data
                 return recoveryTierA == recoveryTierB && recoveryTierA < 3;
             }
 
-            return TryGetColorAndTier(inputA, out SurvivorOrbColor colorA, out int tierA) &&
-                   TryGetColorAndTier(inputB, out SurvivorOrbColor colorB, out int tierB) &&
+            return TryGetColorAndTier(inputA, out OrbColor colorA, out int tierA) &&
+                   TryGetColorAndTier(inputB, out OrbColor colorB, out int tierB) &&
                    colorA == colorB && tierA == tierB && tierA < 3;
         }
 
@@ -491,19 +491,19 @@ namespace network.common.data
             return TryGetItemId(EvolutionColors[random.Next(EvolutionColors.Length)], tier + 1, out outputItemId);
         }
 
-        public static bool TryGetItemId(SurvivorOrbColor color, int tier, out int itemId)
+        public static bool TryGetItemId(OrbColor color, int tier, out int itemId)
         {
             itemId = (color, tier) switch
             {
-                (SurvivorOrbColor.Red, 1) => 107000010,
-                (SurvivorOrbColor.Red, 2) => 107000011,
-                (SurvivorOrbColor.Red, 3) => 107000012,
-                (SurvivorOrbColor.Green, 1) => 107000020,
-                (SurvivorOrbColor.Green, 2) => 107000021,
-                (SurvivorOrbColor.Green, 3) => 107000022,
-                (SurvivorOrbColor.Blue, 1) => 107000030,
-                (SurvivorOrbColor.Blue, 2) => 107000031,
-                (SurvivorOrbColor.Blue, 3) => 107000032,
+                (OrbColor.Red, 1) => 107000010,
+                (OrbColor.Red, 2) => 107000011,
+                (OrbColor.Red, 3) => 107000012,
+                (OrbColor.Green, 1) => 107000020,
+                (OrbColor.Green, 2) => 107000021,
+                (OrbColor.Green, 3) => 107000022,
+                (OrbColor.Blue, 1) => 107000030,
+                (OrbColor.Blue, 2) => 107000031,
+                (OrbColor.Blue, 3) => 107000032,
                 _ => 0
             };
             return itemId > 0;
@@ -517,14 +517,14 @@ namespace network.common.data
         }
         public static bool TryGetActivePair(
             IEnumerable<int> boardItemIds,
-            out SurvivorOrbColor color,
+            out OrbColor color,
             out int pairTier)
         {
             if (boardItemIds == null)
                 throw new ArgumentNullException(nameof(boardItemIds));
 
             var itemIds = boardItemIds.ToList();
-            foreach (SurvivorOrbColor candidateColor in EvolutionColors)
+            foreach (OrbColor candidateColor in EvolutionColors)
             {
                 if (!HasActivePair(itemIds, candidateColor, out pairTier))
                     continue;
@@ -533,14 +533,14 @@ namespace network.common.data
                 return true;
             }
 
-            color = SurvivorOrbColor.None;
+            color = OrbColor.None;
             pairTier = 0;
             return false;
         }
 
         public static bool HasActivePair(
             IEnumerable<int> boardItemIds,
-            SurvivorOrbColor targetColor,
+            OrbColor targetColor,
             out int pairTier)
         {
             if (boardItemIds == null)
@@ -550,7 +550,7 @@ namespace network.common.data
             pairTier = 0;
             foreach (int itemId in boardItemIds)
             {
-                if (!TryGetColorAndTier(itemId, out SurvivorOrbColor color, out int tier) ||
+                if (!TryGetColorAndTier(itemId, out OrbColor color, out int tier) ||
                     color != targetColor)
                     continue;
 
@@ -571,7 +571,7 @@ namespace network.common.data
         public static bool TryGetActivePair(
             int equippedItemId,
             IEnumerable<int> otherBoardItemIds,
-            out SurvivorOrbColor color,
+            out OrbColor color,
             out int pairTier)
         {
             if (otherBoardItemIds == null)
@@ -583,7 +583,7 @@ namespace network.common.data
 
             foreach (int itemId in otherBoardItemIds)
             {
-                if (!TryGetColorAndTier(itemId, out SurvivorOrbColor candidateColor, out int candidateTier) ||
+                if (!TryGetColorAndTier(itemId, out OrbColor candidateColor, out int candidateTier) ||
                     candidateColor != color)
                 {
                     continue;

@@ -308,36 +308,10 @@ namespace network.common
         SETTLEMENT_LOW_CONTRIBUTION = 5, // ?뺤궛 湲곗뿬??理쒗븯?꾨줈 ?덈씫
     }
 
-    /// <summary>
-    ///     留덈땲??泥댁씤 ???뚮젅?댁뼱 ?곹깭
-    /// </summary>
-    public enum RoundPhase : short
-    {
-        None = 0,
-        Action = 1,
-        SettlementNomination = 2,
-        Settlement = SettlementNomination,
-        SettlementResult = 3,
-        SettlementContributionReveal = 4,
-        SettlementDetectionResultReveal = 5,
-        SettlementEliminationReveal = 6,
-        Ended = 7,
-        SurvivorRoomCombat = 20,
-        SurvivorRoomClosureWarning = 21,
-        SurvivorCorridorEntry = 22,
-        SurvivorCorridorCombat = 23,
-        SurvivorRoomSelection = 24,
-        SurvivorCorridorClosureWarning = 25,
-        SurvivorFinal = 26,
-        SpotArena = 30,
-    }
-
     public enum PlayerMatchStatus : short
     {
         ACTIVE = 0,
         ELIMINATED = 1,
-        TERMINAL = 2,
-        FREED = 3,
         SPECTATING = 4,
     }
 

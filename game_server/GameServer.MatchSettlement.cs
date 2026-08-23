@@ -122,14 +122,14 @@ public partial class GameServer
             if (eliminatedTargets.Count == 0)
                 return;
 
-            var resolution = SurvivorSettlementResolver.Resolve(
+            var resolution = MatchSettlementResolver.Resolve(
                 matchingId,
                 eliminatedTargets.Select(target =>
                 {
                     int damage = _gameEventLogManager
                         .GetSurvivorResultStats(matchingId, target.PlayerId)
                         .TotalDamageDealt;
-                    return new SurvivorSettlementCandidate(
+                    return new MatchSettlementCandidate(
                         target.PlayerId,
                         target.PreDamageCorruption,
                         damage);

@@ -11,18 +11,18 @@ public class EmotionAfterimagePveCombatRulesTests
     public void AllColors_ShareTheSameBaseAttackInterval()
     {
         // #219 M2 공격 문법 통일: 색별 공속 차이 퇴역.
-        Assert.Equal(1f, SurvivorOrbData.GetBaseAttackIntervalMultiplier(SurvivorOrbColor.Blue));
-        Assert.Equal(1f, SurvivorOrbData.GetBaseAttackIntervalMultiplier(SurvivorOrbColor.Red));
-        Assert.Equal(1f, SurvivorOrbData.GetBaseAttackIntervalMultiplier(SurvivorOrbColor.Green));
+        Assert.Equal(1f, OrbData.GetBaseAttackIntervalMultiplier(OrbColor.Blue));
+        Assert.Equal(1f, OrbData.GetBaseAttackIntervalMultiplier(OrbColor.Red));
+        Assert.Equal(1f, OrbData.GetBaseAttackIntervalMultiplier(OrbColor.Green));
     }
 
     [Fact]
     public void AllOrbLines_FireAtTwiceThePreviousRate()
     {
-        Assert.Equal(0.5f, SurvivorOrbData.GetAttackIntervalMultiplier(107000003));
-        Assert.Equal(0.5f, SurvivorOrbData.GetAttackIntervalMultiplier(107000010));
-        Assert.Equal(0.5f, SurvivorOrbData.GetAttackIntervalMultiplier(107000030));
-        Assert.Equal(1f, SurvivorOrbData.GetAttackIntervalMultiplier(201000015));
+        Assert.Equal(0.5f, OrbData.GetAttackIntervalMultiplier(107000003));
+        Assert.Equal(0.5f, OrbData.GetAttackIntervalMultiplier(107000010));
+        Assert.Equal(0.5f, OrbData.GetAttackIntervalMultiplier(107000030));
+        Assert.Equal(1f, OrbData.GetAttackIntervalMultiplier(201000015));
     }
 
     [Theory]
@@ -38,7 +38,7 @@ public class EmotionAfterimagePveCombatRulesTests
     {
         // 색 상성(1.5/0.5) 퇴역 — 클론 비목표(상성 금지).
         Assert.Equal(1f,
-            SurvivorOrbData.GetPveDamageMultiplier(attackerItemId, monsterRewardItemId));
+            OrbData.GetPveDamageMultiplier(attackerItemId, monsterRewardItemId));
     }
 
     [Fact]
@@ -46,10 +46,10 @@ public class EmotionAfterimagePveCombatRulesTests
     {
         // 바람 반감·가속 퇴역 — 전 색 동일 데미지·공속.
         Assert.Equal(1f,
-            SurvivorOrbData.GetBaseAttackIntervalMultiplier(SurvivorOrbColor.Green));
-        Assert.Equal(4, SurvivorOrbData.GetBaseAttackDamage(4, SurvivorOrbColor.Green));
-        Assert.Equal(7, SurvivorOrbData.GetBaseAttackDamage(7, SurvivorOrbColor.Green));
-        Assert.Equal(10, SurvivorOrbData.GetBaseAttackDamage(10, SurvivorOrbColor.Green));
+            OrbData.GetBaseAttackIntervalMultiplier(OrbColor.Green));
+        Assert.Equal(4, OrbData.GetBaseAttackDamage(4, OrbColor.Green));
+        Assert.Equal(7, OrbData.GetBaseAttackDamage(7, OrbColor.Green));
+        Assert.Equal(10, OrbData.GetBaseAttackDamage(10, OrbColor.Green));
     }
 
     [Fact]
@@ -104,43 +104,43 @@ public class EmotionAfterimagePveCombatRulesTests
     [Fact]
     public void DominantPveColor_UsesStrictOrbCountMajorityAcrossTheWholeBoard()
     {
-        Assert.True(SurvivorOrbData.TryGetDominantPveColor(
+        Assert.True(OrbData.TryGetDominantPveColor(
             [107000010, 107000010, 107000032], out var dominantColor));
 
-        Assert.Equal(SurvivorOrbColor.Red, dominantColor);
+        Assert.Equal(OrbColor.Red, dominantColor);
     }
 
     [Fact]
     public void DominantPveColor_ActivatesWhenOneColourOwnsMoreThanHalfTheBoard()
     {
-        Assert.True(SurvivorOrbData.TryGetDominantPveColor(
+        Assert.True(OrbData.TryGetDominantPveColor(
             [107000010, 107000010, 107000010, 107000032], out var dominantColor));
 
-        Assert.Equal(SurvivorOrbColor.Red, dominantColor);
+        Assert.Equal(OrbColor.Red, dominantColor);
     }
 
     [Fact]
     public void DominantPveColor_StaysNeutralWhenTopTierAndResonanceBothTie()
     {
-        Assert.False(SurvivorOrbData.TryGetDominantPveColor(
+        Assert.False(OrbData.TryGetDominantPveColor(
             [107000010, 107000010, 107000010, 107000020, 107000020, 107000020], out _));
     }
 
     [Fact]
     public void DominantPveColor_RequiresAMajorityAcrossRecoverySlotsToo()
     {
-        Assert.False(SurvivorOrbData.TryGetDominantPveColor(
+        Assert.False(OrbData.TryGetDominantPveColor(
             [107000010, 107000010, 107000020, 107000040, 107000040], out _));
     }
     [Fact]
     public void BoardWidePveAffinity_AppliesToEveryOrbAttack()
     {
-        Assert.True(SurvivorOrbData.TryGetDominantPveColor(
+        Assert.True(OrbData.TryGetDominantPveColor(
             [107000010, 107000010, 107000010, 107000020], out var dominantColor));
 
-        Assert.Equal(SurvivorOrbColor.Red, dominantColor);
+        Assert.Equal(OrbColor.Red, dominantColor);
         // 상성 퇴역: 지배색이어도 배율은 중립이다.
-        Assert.Equal(1f, SurvivorOrbData.GetPveDamageMultiplier(dominantColor, 107000020));
-        Assert.Equal(4, SurvivorOrbData.CalculatePveDamage(dominantColor, 107000020, 4));
+        Assert.Equal(1f, OrbData.GetPveDamageMultiplier(dominantColor, 107000020));
+        Assert.Equal(4, OrbData.CalculatePveDamage(dominantColor, 107000020, 4));
     }
 }

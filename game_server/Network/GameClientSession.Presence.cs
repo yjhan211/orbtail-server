@@ -27,10 +27,10 @@ public partial class GameClientSession
         }
 
         long previousBookmarkPlayerId = PresenceBookmarkPlayerId;
-        var myManitto = _matchRosterManager.FindManittoOf(CurrentMapSubId, PlayerId.Value);
+        var myWatcher = _matchRosterManager.FindWatcherOf(CurrentMapSubId, PlayerId.Value);
         long newBookmarkPlayerId = msg.TargetPlayerId;
         if (previousBookmarkPlayerId != 0 && previousBookmarkPlayerId != newBookmarkPlayerId &&
-            myManitto?.PlayerId == previousBookmarkPlayerId)
+            myWatcher?.PlayerId == previousBookmarkPlayerId)
         {
             SendSharpGazeMarkUpdate(previousBookmarkPlayerId, false);
         }
@@ -38,7 +38,7 @@ public partial class GameClientSession
         bool shouldConsumeActivationCost =
             ShouldConsumePresenceBookmarkActivationCost(previousBookmarkPlayerId, newBookmarkPlayerId);
         PresenceBookmarkPlayerId = newBookmarkPlayerId;
-        bool isManitto = PresenceBookmarkPlayerId != 0 && myManitto?.PlayerId == PresenceBookmarkPlayerId;
+        bool isManitto = PresenceBookmarkPlayerId != 0 && myWatcher?.PlayerId == PresenceBookmarkPlayerId;
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_BOOKMARK_PRESENCE_RESULT, PlayerId.Value);
         var result = new G_TO_C_BOOKMARK_PRESENCE_RESULT

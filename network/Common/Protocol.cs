@@ -100,7 +100,6 @@ namespace network.common
 
         // 탈락 & 체인 프로토콜
         G_TO_C_PLAYER_ELIMINATED,     // 플레이어 탈락 알림 (전체 브로드캐스트)
-        G_TO_C_ROSTER_STATUS,           // 체인 단절 → 시한부/해방 상태 알림
 
         // 마니또 전용: 흔적 배치 프로토콜
 

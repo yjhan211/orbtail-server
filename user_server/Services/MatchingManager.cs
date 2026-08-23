@@ -486,7 +486,7 @@ public class MatchingManager : IMatchingManager
             .ToList();
         // 스웜: 시작방 분산 스폰을 그대로 쓴다.
         IReadOnlyDictionary<long, Cell> assignments =
-            SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
+            MatchSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
 
         // 교차사격 샌드박스 (#232 2단계): DEV_CROSSFIRE_SANDBOX=1 이면 전원 운동장 스폰 —
         // 게임서버가 첫 틱에 봇 하나를 더미로 세우고 나머지를 퇴장시킨다. 방 문이 잠긴 채

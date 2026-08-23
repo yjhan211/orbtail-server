@@ -67,7 +67,7 @@ public class SummonStoneManagerTests
         for (long playerId = 1; playerId <= 40; playerId++)
         {
             var candidates = manager.GetSummonCandidates(214, playerId);
-            Assert.All(candidates, itemId => Assert.False(SurvivorOrbData.IsRecoveryOrb(itemId)));
+            Assert.All(candidates, itemId => Assert.False(OrbData.IsRecoveryOrb(itemId)));
         }
     }
 
@@ -84,7 +84,7 @@ public class SummonStoneManagerTests
                     itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
 
                 Assert.True(summon.Success);
-                Assert.False(SurvivorOrbData.IsRecoveryOrb(summon.ItemId));
+                Assert.False(OrbData.IsRecoveryOrb(summon.ItemId));
             }
     }
 

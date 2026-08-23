@@ -516,13 +516,6 @@ public partial class GameServer(
             // 2) 영향받는 봇/세션 상태 동기화 + 체인 단절 알림
             foreach (var (affectedId, newStatus) in affected)
             {
-                var session = matchingSessions.FirstOrDefault(s => s.PlayerId == affectedId);
-                if (session != null)
-                {
-                    session.ApplyRosterStatus(newStatus, botId);
-                    continue;
-                }
-
                 // 봇 영향
                 var bot = _botPlayerManager.GetBot(matchingId, affectedId);
                 if (bot == null) continue;
@@ -1255,7 +1248,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 MatchingId = matchingId,
                 RoundNumber = 0,
                 TotalRounds = 0,
-                Phase = RoundPhase.Action,
                 RemainingSeconds = snapshot.RemainingSeconds,
                 PhaseDurationSeconds = 5,
                 ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
@@ -1723,12 +1715,12 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             });
         }
 
-        var spawnAssignments = SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
+        var spawnAssignments = MatchSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
         foreach (var botInfo in botInfoList)
             botInfo.SpawnCell = Cell.Clone(spawnAssignments[botInfo.PlayerId]);
 
         _botPlayerManager.RegisterBots(matchingId, MapId.School, botInfoList);
-        int matchSeed = SurvivorRoyaleSpawnData.GetDeterministicSeed(matchingId);
+        int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
         _gameEventLogManager.BeginMatch(matchingId, matchSeed);
         foreach (var bot in _botPlayerManager.GetBots(matchingId))
         {
@@ -1736,7 +1728,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 matchingId,
                 bot.PlayerId,
                 matchSeed,
-                SurvivorRoyaleSpawnData.GetAnchorIndex(bot.Cell),
+                MatchSpawnData.GetAnchorIndex(bot.Cell),
                 bot.Cell.X,
                 bot.Cell.Y,
                 bot.CurrentArea.ToString(),
@@ -1793,10 +1785,10 @@ IReadOnlyCollection<GameClientSession> activeSessions)
     {
         var myLink = _matchRosterManager.GetEntry(matchingId, playerId);
         bool targetAlive = myLink != null && IsBotOnlyChainPlayerActive(matchingId, myLink.TargetPlayerId);
-        var manittoLink = _matchRosterManager.FindManittoOf(matchingId, playerId);
-        bool manittoAlive = manittoLink != null
-                            && manittoLink.Status != PlayerMatchStatus.ELIMINATED
-                            && manittoLink.Status != PlayerMatchStatus.SPECTATING;
+        var watcherEntry = _matchRosterManager.FindWatcherOf(matchingId, playerId);
+        bool manittoAlive = watcherEntry != null
+                            && watcherEntry.Status != PlayerMatchStatus.ELIMINATED
+                            && watcherEntry.Status != PlayerMatchStatus.SPECTATING;
         return new ChecklistChainContext(targetAlive, manittoAlive);
     }
 
@@ -1903,13 +1895,13 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             .Select(a => a.ToString())
             .ToList() ?? [];
 
-        // 모든 PlayerId(인간+봇)에 대한 RosterEntry 조회 → ManittoOfMe 역방향 매핑
+        // 모든 PlayerId(인간+봇)에 대한 RosterEntry 조회 → WatcherOfMe 역방향 매핑
         var allPlayerIds = sessions.Select(s => s.PlayerId!.Value).Concat(bots.Select(b => b.PlayerId)).ToList();
         var allLinks = allPlayerIds
             .Select(id => _matchRosterManager.GetEntry(matchingId, id))
             .Where(l => l != null)
             .ToList();
-        long? FindManittoOf(long playerId) =>
+        long? FindWatcherOf(long playerId) =>
             allLinks.FirstOrDefault(l => l!.TargetPlayerId == playerId)?.PlayerId;
 
         var playerSnapshots = new List<PlayerSnapshot>();
@@ -1928,7 +1920,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 TargetPlayerId = s.TargetPlayerId,
                 IsBot = s.IsBot,
                 IsEliminated = s.IsEliminated,
-                ManittoOfMe = FindManittoOf(s.PlayerId!.Value),
+                WatcherOfMe = FindWatcherOf(s.PlayerId!.Value),
                 ChainStatus = chainLink?.Status.ToString() ?? ""
             });
         }
@@ -1947,7 +1939,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 TargetPlayerId = bot.TargetPlayerId,
                 IsBot = true,
                 IsEliminated = bot.IsEliminated,
-                ManittoOfMe = FindManittoOf(bot.PlayerId),
+                WatcherOfMe = FindWatcherOf(bot.PlayerId),
                 ChainStatus = chainLink?.Status.ToString() ?? ""
             });
         }

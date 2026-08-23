@@ -165,7 +165,7 @@ public class PlayerSnapshot
     public long TargetPlayerId { get; set; }
     public bool IsBot { get; set; }
     public bool IsEliminated { get; set; }
-    public long? ManittoOfMe { get; set; }
+    public long? WatcherOfMe { get; set; }
     public string ChainStatus { get; set; } = "";
 }
 

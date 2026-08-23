@@ -104,12 +104,12 @@ public class DodgeableProjectileResolverTests
         // 유도탄 복귀 (2026-08-12): 태양·바람 = 착탄 확정 유도탄(클라 표적 추적),
         // 파도=미사일 없음(None — 물폭탄은 서버 별도 주기).
         InitializeGameData();
-        Assert.Equal(SurvivorOrbAttackPattern.HomingProjectile,
-            SurvivorOrbData.GetAttackPattern(107000010));
-        Assert.Equal(SurvivorOrbAttackPattern.HomingProjectile,
-            SurvivorOrbData.GetAttackPattern(107000020));
-        Assert.Equal(SurvivorOrbAttackPattern.None,
-            SurvivorOrbData.GetAttackPattern(107000030));
+        Assert.Equal(OrbAttackPattern.HomingProjectile,
+            OrbData.GetAttackPattern(107000010));
+        Assert.Equal(OrbAttackPattern.HomingProjectile,
+            OrbData.GetAttackPattern(107000020));
+        Assert.Equal(OrbAttackPattern.None,
+            OrbData.GetAttackPattern(107000030));
     }
 
     [Fact]

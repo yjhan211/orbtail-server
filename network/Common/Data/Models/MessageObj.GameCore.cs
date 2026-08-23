@@ -245,7 +245,7 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    ///     6칸 빌드 결정 (#232 4단계). Action 1 = 오브 강화, TargetItemUid = SurvivorOrbColor 값 —
+    ///     6칸 빌드 결정 (#232 4단계). Action 1 = 오브 강화, TargetItemUid = OrbColor 값 —
     ///     그 계열에서 몸체에 가장 가까운 T3 미만 오브 하나가 한 티어 오른다 (2026-08-18, 구 계열 일괄 강화).
     ///     서버 권위 — 강화할 오브 없음·소환석 부족이면 거절.
     /// </summary>
@@ -292,7 +292,7 @@ namespace network.common.data.models
         [Key("areaType")] public AreaType AreaType { get; set; }
         [Key("isDepleted")] public bool IsDepleted { get; set; }
         // 공개 정보는 색상별 소진 여부까지만이다. 정확한 남은 개수는 서버에만 둔다.
-        [Key("availableOrbColors")] public List<SurvivorOrbColor> AvailableOrbColors { get; set; } = new();
+        [Key("availableOrbColors")] public List<OrbColor> AvailableOrbColors { get; set; } = new();
     }
 
     [MessagePackObject]
@@ -364,7 +364,6 @@ namespace network.common.data.models
         [Key("matchingId")] public long MatchingId { get; set; }
         [Key("roundNumber")] public int RoundNumber { get; set; }
         [Key("totalRounds")] public int TotalRounds { get; set; }
-        [Key("phase")] public RoundPhase Phase { get; set; }
         [Key("remainingSeconds")] public int RemainingSeconds { get; set; }
         [Key("phaseDurationSeconds")] public int PhaseDurationSeconds { get; set; }
         [Key("serverUnixMs")] public long ServerUnixMs { get; set; }
