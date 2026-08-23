@@ -140,36 +140,6 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_ROUND_STATE(
-        long matchingId,
-        int roundNumber,
-        int totalRounds,
-        RoundPhase phase,
-        int remainingSeconds,
-        int phaseDurationSeconds,
-        bool isSessionEnded,
-        int[] survivorNextRoomAreaTypes = null,
-        int[] survivorNextRoomOccupancies = null)
-    {
-        var packet = Packet.Create((int)Protocol.G_TO_C_ROUND_STATE);
-        G_TO_C_ROUND_STATE body = new()
-        {
-            MatchingId = matchingId,
-            RoundNumber = roundNumber,
-            TotalRounds = totalRounds,
-            Phase = phase,
-            RemainingSeconds = remainingSeconds,
-            PhaseDurationSeconds = phaseDurationSeconds,
-            ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            IsSessionEnded = isSessionEnded,
-            SurvivorNextRoomAreaTypes = survivorNextRoomAreaTypes ?? [],
-            SurvivorNextRoomOccupancies = survivorNextRoomOccupancies ?? []
-        };
-
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
-
     public static Packet G_TO_C_GAME_END(long matchingId, bool isEscaped)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_GAME_END);
