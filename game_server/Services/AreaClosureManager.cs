@@ -143,45 +143,6 @@ public class AreaClosureManager
         return state;
     }
 
-    /// <summary>
-    /// 접속·재접속한 클라이언트가 즉시 복원해야 하는 공개 폐쇄 상태다.
-    /// 미래 웨이브 대상은 노출하지 않고, 현재 방송 중인 대상 묶음만 제공한다.
-    /// </summary>
-    public PhaseAreaStateDelta ApplyPhaseSnapshot(long matchingId, SurvivorPhaseSnapshot snapshot)
-    {
-        if (!_states.TryGetValue(matchingId, out var state))
-            state = InitializeMatching(matchingId);
-
-        lock (state.SyncRoot)
-        {
-            var managedAreas = GameMapData.GetAreas(MapId.School)
-                .Select(region => region.AreaType)
-                .Where(area => area != AreaType.None)
-                .ToHashSet();
-            var desiredClosedAreas = managedAreas
-                .Where(area => !snapshot.OpenAreas.Contains(area))
-                .ToHashSet();
-            var newlyClosedAreas = desiredClosedAreas.Except(state.ClosedAreas).OrderBy(area => area).ToArray();
-            var reopenedAreas = state.ClosedAreas.Except(desiredClosedAreas).OrderBy(area => area).ToArray();
-            bool warningChanged = !state.PhaseWarningAreas.SetEquals(snapshot.WarningAreas);
-
-            state.PhaseDriven = true;
-            state.ClosedAreas = desiredClosedAreas;
-            state.PhaseWarningAreas = snapshot.WarningAreas.ToHashSet();
-            state.PhaseWarningEndsAtUtc = snapshot.WarningAreas.Count > 0
-                ? snapshot.PhaseEndsAtUtc
-                : DateTime.MinValue;
-
-            return new PhaseAreaStateDelta(
-                newlyClosedAreas,
-                reopenedAreas,
-                warningChanged ? snapshot.WarningAreas.ToArray() : [],
-                snapshot.RemainingSeconds,
-                snapshot.PhaseEndsAtUtc == DateTime.MaxValue
-                    ? 0
-                    : new DateTimeOffset(snapshot.PhaseEndsAtUtc).ToUnixTimeMilliseconds());
-        }
-    }
     public ClosureClientStateSnapshot GetClientStateSnapshot(long matchingId)
     {
         if (!_states.TryGetValue(matchingId, out var state))
@@ -474,12 +435,6 @@ public sealed record ClosureScheduleTick(
     public static readonly ClosureScheduleTick Empty = new([], 0, 0, []);
 }
 
-public sealed record PhaseAreaStateDelta(
-    IReadOnlyList<AreaType> ClosedAreas,
-    IReadOnlyList<AreaType> ReopenedAreas,
-    IReadOnlyList<AreaType> WarningAreas,
-    int WarningSeconds,
-    long TransitionAtUnixMs);
 public sealed record ClosureClientStateSnapshot(
     IReadOnlyList<AreaType> ClosedAreas,
     IReadOnlyList<AreaType> WarningAreas,

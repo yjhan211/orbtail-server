@@ -176,7 +176,7 @@ public sealed class ConsumableInventoryMergeTests
             "bool supportsDirectUse = itemData != null && (itemData.IsConsumable || itemData.IsInstallation);",
             source);
         Assert.Contains(
-            "if (IsMergeChargeMaterial || (IsBattleMergeMaterial && !supportsDirectUse))",
+            "if (IsBattleMergeMaterial && !supportsDirectUse)",
             source);
     }
 
@@ -189,7 +189,7 @@ public sealed class ConsumableInventoryMergeTests
         Assert.Contains("BuffSubType.CORRUPTION_DOWN", source);
         Assert.DoesNotContain("ConsumableBuffList[0]", source);
         Assert.Contains("SetSlotVisuals(isCondition, isCorruption, showWear);", source);
-        Assert.Contains("bool showCorruption = isCorruption || isReceivedGift;", source);
+        Assert.Contains("SetSlotVisuals(isCondition, isCorruption, false);", source); // 선물 부품(PART_GIFT) 시각 분기는 part 레이어와 함께 삭제(#255)
     }
 
     private static string FindRepositoryRoot()

@@ -40,7 +40,6 @@ public partial class GameClientSession : SessionBase
     private static readonly ConcurrentDictionary<long, Timer> GameTimers = new();
     private static readonly object _roundSessionStartLock = new();
     private static Proto0PresenceTracker? _presenceTracker;
-    private static SurvivorPhaseManager? _survivorPhaseManager;
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly List<int> _activeBuffIds = new();
     private readonly AreaRuleManager _areaRuleManager;
@@ -237,11 +236,6 @@ public partial class GameClientSession : SessionBase
         RngCollectCooldownStore.ClearMatching(matchingId);
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
-    }
-
-    internal static void SetSurvivorPhaseManager(SurvivorPhaseManager manager)
-    {
-        _survivorPhaseManager = manager;
     }
 
     internal static bool IsRoundActionPhase(long matchingId)

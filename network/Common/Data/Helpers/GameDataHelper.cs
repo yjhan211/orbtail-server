@@ -182,21 +182,6 @@ namespace network.common.data.helpers
                 }
             }
 
-            // 미션 관련 파일 로드
-            foreach (var fileName in DataFiles.Mission.ALL)
-            {
-                var filePath = GetCsvFilePath(fileName);
-                try
-                {
-                    loadedData[fileName] = CsvHelper.LoadCsv(filePath);
-                    Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
-                }
-                catch (Exception ex)
-                {
-                    LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
-                    throw;
-                }
-            }
             // Checklist data files
             foreach (var fileName in DataFiles.Checklist.ALL)
             {
@@ -246,10 +231,6 @@ namespace network.common.data.helpers
             );
             GameInteractableData.InitializeAreaItemPool(loadedData[DataFiles.Interactable.AreaItemPool]);
 
-            // 미션 데이터 초기화 (v0.2.0 — 부품 결합 시스템)
-            GameMissionData.Initialize(loadedData[DataFiles.Mission.Step]);
-            PartRecipeData.Initialize(loadedData[DataFiles.Mission.PartRecipe]);
-            PrerequisiteItemData.Initialize(loadedData[DataFiles.Mission.PrerequisiteItem]);
             GameChecklistData.Initialize(
                 loadedData[DataFiles.Checklist.Rule],
                 loadedData[DataFiles.Checklist.TaskPool],
@@ -320,7 +301,6 @@ namespace network.common.data.helpers
                 }
             }
 
-            ValidateMissionReferentialIntegrity(errors, itemIds);
             BattleItemRecipeData.ValidateReferentialIntegrity(errors, itemIds);
             GameChecklistData.ValidateReferentialIntegrity(errors, itemIds);
 
@@ -335,96 +315,6 @@ namespace network.common.data.helpers
             }
 
             Log($"[GameDataHelper] Referential integrity validation passed!");
-        }
-
-        private static void ValidateMissionReferentialIntegrity(List<string> errors, HashSet<int> itemIds)
-        {
-            var partIds = new HashSet<int>(GameMissionData.GetAllParts().Select(part => part.PartId));
-            var interactables = GameInteractableData.GetAll();
-
-            foreach (var part in GameMissionData.GetAllParts())
-            {
-                if (!Enum.IsDefined(typeof(PartTier), part.PartTier))
-                    errors.Add($"mission_step [{part.PartId}]: part_tier={part.PartTier} invalid");
-
-                if (part.SpriteItemId > 0 && !itemIds.Contains(part.SpriteItemId))
-                    errors.Add($"mission_step [{part.PartId}]: sprite_item_id={part.SpriteItemId} not found in item_info");
-
-                if (part.TargetArea > 0 && !Enum.IsDefined(typeof(AreaType), part.TargetArea))
-                    errors.Add($"mission_step [{part.PartId}]: target_area={part.TargetArea} invalid");
-
-                if (part.TargetObjectType > 0 && !Enum.IsDefined(typeof(InteractableObjectType), part.TargetObjectType))
-                    errors.Add($"mission_step [{part.PartId}]: target_object_type={part.TargetObjectType} invalid");
-
-                if (part.TargetArea > 0 && part.TargetObjectType > 0)
-                {
-                    bool hasTarget = interactables.Any(info =>
-                        info.ZoneId == part.TargetArea && (int)info.ObjectType == part.TargetObjectType);
-                    if (!hasTarget)
-                    {
-                        errors.Add(
-                            $"mission_step [{part.PartId}]: no interactable for area={part.TargetArea}, object_type={part.TargetObjectType}");
-                    }
-                }
-            }
-
-            foreach (var recipe in PartRecipeData.GetAllRecipes())
-            {
-                var inputA = GameMissionData.GetPart(recipe.InputItemA);
-                var inputB = GameMissionData.GetPart(recipe.InputItemB);
-                var output = GameMissionData.GetPart(recipe.OutputPart);
-
-                if (inputA == null)
-                    errors.Add($"part_recipe [{recipe.Id}]: input_part_a={recipe.InputItemA} not found in mission_step");
-                if (inputB == null)
-                    errors.Add($"part_recipe [{recipe.Id}]: input_part_b={recipe.InputItemB} not found in mission_step");
-                if (output == null)
-                    errors.Add($"part_recipe [{recipe.Id}]: output_part={recipe.OutputPart} not found in mission_step");
-
-                if (inputA != null && inputA.JobTitle != recipe.JobTitle)
-                    errors.Add($"part_recipe [{recipe.Id}]: input_part_a job mismatch ({inputA.JobTitle} != {recipe.JobTitle})");
-                if (inputB != null && inputB.JobTitle != recipe.JobTitle)
-                    errors.Add($"part_recipe [{recipe.Id}]: input_part_b job mismatch ({inputB.JobTitle} != {recipe.JobTitle})");
-                if (output != null && output.JobTitle != recipe.JobTitle)
-                    errors.Add($"part_recipe [{recipe.Id}]: output_part job mismatch ({output.JobTitle} != {recipe.JobTitle})");
-            }
-
-            foreach (var prerequisite in PrerequisiteItemData.GetAll())
-            {
-                if (!partIds.Contains(prerequisite.TargetPartId))
-                {
-                    errors.Add(
-                        $"prerequisite_item [target_part_id={prerequisite.TargetPartId}]: target part not found in mission_step");
-                }
-
-                if (prerequisite.LocationArea > 0 && !Enum.IsDefined(typeof(AreaType), prerequisite.LocationArea))
-                    errors.Add(
-                        $"prerequisite_item [target_part_id={prerequisite.TargetPartId}]: location_area={prerequisite.LocationArea} invalid");
-
-                if (prerequisite.LocationObjectType > 0 &&
-                    !Enum.IsDefined(typeof(InteractableObjectType), prerequisite.LocationObjectType))
-                    errors.Add(
-                        $"prerequisite_item [target_part_id={prerequisite.TargetPartId}]: location_object_type={prerequisite.LocationObjectType} invalid");
-
-                if (prerequisite.LocationArea > 0 && prerequisite.LocationObjectType > 0)
-                {
-                    bool hasTarget = interactables.Any(info =>
-                        info.ZoneId == prerequisite.LocationArea &&
-                        (int)info.ObjectType == prerequisite.LocationObjectType);
-                    if (!hasTarget)
-                    {
-                        errors.Add(
-                            $"prerequisite_item [target_part_id={prerequisite.TargetPartId}]: no interactable for area={prerequisite.LocationArea}, object_type={prerequisite.LocationObjectType}");
-                    }
-                }
-
-                if (prerequisite.SpriteItemId > 0 && !itemIds.Contains(prerequisite.SpriteItemId))
-                {
-                    errors.Add(
-                        $"prerequisite_item [target_part_id={prerequisite.TargetPartId}]: sprite_item_id={prerequisite.SpriteItemId} not found in item_info");
-                }
-            }
-
         }
 
         private static class DataFiles
@@ -450,20 +340,6 @@ namespace network.common.data.helpers
                 public const string AreaItemPool = "area_item_pool.csv";  // #135 — 영역 단위 ItemPool
 
                 public static readonly string[] ALL = new[] { Info, Action, ItemPool, AreaItemPool };
-            }
-
-            public static class Mission
-            {
-                public const string Step = "mission_step.csv";
-                public const string PartRecipe = "part_recipe.csv";
-                public const string PrerequisiteItem = "prerequisite_item.csv";
-
-                public static readonly string[] ALL = new[]
-                {
-                    Step,
-                    PartRecipe,
-                    PrerequisiteItem
-                };
             }
 
             public static class Checklist

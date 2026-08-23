@@ -46,8 +46,6 @@ public partial class GameServer(
     private readonly GroundItemManager _groundItemManager = new();
     private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager =
         new(ambientCorridorEnabled: false);
-    private readonly SurvivorPhaseManager _survivorPhaseManager = new();
-    private readonly SpotArenaManager _spotArenaManager = new();
     private readonly SwarmArenaManager _swarmArenaManager = new();
     private readonly SummonStoneManager _summonStoneManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();
@@ -107,7 +105,6 @@ public partial class GameServer(
         {
             logger.LogInformation("Game server starting...");
             GameClientSession.SetPresenceTracker(_presenceTracker);
-            GameClientSession.SetSurvivorPhaseManager(_survivorPhaseManager);
 
             InitializeServices();
             InitializeControllers();
@@ -201,19 +198,6 @@ public partial class GameServer(
             Action<string> log = msg => logger.LogInformation(msg);
             _emotionAfterimageMonsterManager.SetMatchingStateRemovedCallback(
                 CleanupEmotionAfterimageMonsterRuntime);
-            // 방 전투 페이즈 동안 봇의 방 진입을 통제한다. 클리어 전 방은 문이 잠겨 있고,
-            // 클리어된 방은 페이즈 규칙이 봇을 복도로 내보내는 공간이다 — 무한 리필로 잔상이
-            // 남아 있어 사냥 AI가 되들어가면 페이즈 이동과 0.7초 왕복 루프가 생긴다
-            // (2026-08-04 match-2157: 봇당 문턱 왕복 최대 40회). 그래서 현재 스테이지 방
-            // 전체를 봇 경로에서 차단한다. 자기 방(현재 위치)은 게이트가 항상 예외로 둔다.
-            // 폐쇄 예고부터는 대피를 위해 전 문이 열리므로 ROOM_COMBAT에서만 적용한다.
-            _botPlayerManager.SetLockedRoomAreasProvider(matchingId =>
-            {
-                var snapshot = _survivorPhaseManager.GetSnapshot(matchingId);
-                return snapshot.Phase == SurvivorMatchPhase.ROOM_COMBAT
-                    ? snapshot.CurrentRooms
-                    : Array.Empty<AreaType>();
-            });
             // 문 상태는 페이즈와 별개다 (2026-08-16). 위 제공자는 ROOM_COMBAT에서만 채워져
             // 군집 모드에서는 항상 비었고, 그래서 봇이 잠긴 문을 그냥 통과했다.
             _botPlayerManager.SetDoorOpenResolver(_doorStateManager.IsDoorOpen);
@@ -1112,7 +1096,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                     _groundItemManager,
                     combatTargets,
                     pveTargets,
-                    _survivorPhaseManager,
                     ResolveSwarmBotDirective,
                     _summonStoneManager);
                 planningElapsedMilliseconds += movementResult.PlanningElapsedMilliseconds;
@@ -1267,7 +1250,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 continue;
 
             using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ROUND_STATE
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
             {
                 MatchingId = matchingId,
                 RoundNumber = 0,
@@ -1606,7 +1589,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
 
         GameClientSession.CleanupAbandonedMatchingRuntime(matchingId);
         _areaClosureManager.CleanupMatching(matchingId);
-        _survivorPhaseManager.CleanupMatching(matchingId);
         _botPlayerManager.CleanupMatching(matchingId);
         _presenceTracker.Remove(matchingId);
         _checklistManager.RemoveMatchingState(matchingId);
@@ -1623,7 +1605,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         _interactionLogManager.CleanupMatching(matchingId);
         _gameEventLogManager.Clear(matchingId);
         _encounterRevealManager.CleanupMatching(matchingId);
-        _spotArenaManager.RemoveMatching(matchingId);
         _proximityAutoCombatResolver.RemoveMatching(matchingId);
         CleanupSurvivorSettlementState(matchingId);
         _ = CleanupAbandonedMatchingRedisAsync(matchingId);

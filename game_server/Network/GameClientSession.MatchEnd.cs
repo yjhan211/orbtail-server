@@ -279,7 +279,6 @@ public partial class GameClientSession
         if (GameTimers.TryRemove(matchingId, out var timer))
             timer.Dispose();
         _areaClosureManager.CleanupMatching(matchingId);
-        _survivorPhaseManager?.CleanupMatching(matchingId);
         _presenceTracker?.Remove(matchingId);
 
         MatchStartGate.RemoveMatching(matchingId);
