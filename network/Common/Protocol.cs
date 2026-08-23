@@ -79,8 +79,8 @@ namespace network.common
         G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT,  // 상호작용 중 수칙 공유 결과
 
         // 미션 프로토콜 (v0.2.0 — 부품 결합 시스템)
-        G_TO_C_PART_COMBINED,         // 부품 결합 결과 (중간재 또는 최종)
-        C_TO_G_COMBINE_PARTS,         // 부품 결합 요청
+        G_TO_C_ITEMS_COMBINED,         // 부품 결합 결과 (중간재 또는 최종)
+        C_TO_G_COMBINE_ITEMS,         // 부품 결합 요청
 
         // 구역 폐쇄 프로토콜
         G_TO_C_AREA_CLOSURE_WARNING,  // 폐쇄 30초 전 경고
@@ -100,7 +100,7 @@ namespace network.common
 
         // 탈락 & 체인 프로토콜
         G_TO_C_PLAYER_ELIMINATED,     // 플레이어 탈락 알림 (전체 브로드캐스트)
-        G_TO_C_CHAIN_BREAK,           // 체인 단절 → 시한부/해방 상태 알림
+        G_TO_C_ROSTER_STATUS,           // 체인 단절 → 시한부/해방 상태 알림
 
         // 마니또 전용: 흔적 배치 프로토콜
 

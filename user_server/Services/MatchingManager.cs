@@ -29,16 +29,11 @@ public class MatchingManager : IMatchingManager
     private const int PenaltyDecayIntervalHours = 24;
     private const int DefaultPlayersPerMatch = 1;
     private const int DefaultGamePlayersPerMatch = 8;
-    private const int SpotArenaPlayersPerMatch = 4;
 
     private static int PlayersPerMatch => IsSoloMapValidation ? 1 : IsTwoPlayerTestMatch ? 2 : DefaultPlayersPerMatch;
     private static int GamePlayersPerMatch => IsSoloMapValidation
         ? DefaultPlayersPerMatch
-        : Config.SWARM_P0_ENABLED
-            ? Config.SWARM_PLAYERS_PER_MATCH
-            : Config.SPOT_ARENA_P0_ENABLED
-                ? SpotArenaPlayersPerMatch
-                : DefaultGamePlayersPerMatch;
+        : Config.SWARM_PLAYERS_PER_MATCH;
 
     private static bool IsTwoPlayerTestMatch => Environment.GetEnvironmentVariable("TEST_TWO_PLAYER_MATCH") == "1";
     private static bool IsSoloMapValidation =>
@@ -489,12 +484,9 @@ public class MatchingManager : IMatchingManager
         var playerIds = chain
             .Select(link => MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry).PlayerId)
             .ToList();
-        // 스웜 8인(M1): 기존 시작방 8곳 분산 스폰을 그대로 쓴다.
-        IReadOnlyDictionary<long, Cell> assignments = Config.SWARM_P0_ENABLED
-            ? SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds)
-            : Config.SPOT_ARENA_P0_ENABLED
-                ? SurvivorRoyaleSpawnData.CreateSpotArenaAssignments(matchingId, playerIds)
-                : SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
+        // 스웜: 시작방 분산 스폰을 그대로 쓴다.
+        IReadOnlyDictionary<long, Cell> assignments =
+            SurvivorRoyaleSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
 
         // 교차사격 샌드박스 (#232 2단계): DEV_CROSSFIRE_SANDBOX=1 이면 전원 운동장 스폰 —
         // 게임서버가 첫 틱에 봇 하나를 더미로 세우고 나머지를 퇴장시킨다. 방 문이 잠긴 채

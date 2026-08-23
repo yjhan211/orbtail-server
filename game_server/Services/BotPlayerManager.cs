@@ -55,18 +55,6 @@ public partial class BotPlayerManager
     public void SetSwarmDodgeResolver(Func<long, long, Vector3f, AreaType, DateTime, SwarmBotDodgeAdvice?> resolver) =>
         _swarmDodgeResolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
 
-    // ?꾨줈??0: ?쒖꽦 怨듦컙 = 3쨌4痢?6援ъ뿭(1쨌2痢??대룞??李⑤떒, 3??留??대룞).
-    //   諛??뺤떊???뚮났 媛??: Classroom3(2-1)/ExamRoom(怨좎궗??/Classroom4(3-1)/BroadcastRoom(諛⑹넚??
-    //   蹂듬룄(transit, ?뚮났 ?놁쓬 + ?κ린 泥대쪟 ???몄젒 諛?媛뺤젣 ?좊룄): Corridor
-    // ?뚮났???쇱뼱?섎뒗 "諛?(蹂듬룄 ?쒖쇅). ?寃?異붿쟻/?좊낫湲?湲곗쿃??湲곗? 援ъ뿭.
-    private static readonly AreaType[] Proto0Rooms =
-    {
-        AreaType.Classroom3,
-        AreaType.ExamRoom,
-        AreaType.Classroom4,
-        AreaType.BroadcastRoom,
-    };
-
     private static readonly AreaType[] Proto0SpawnAreas =
     {
         AreaType.AdminOffice,
@@ -112,7 +100,6 @@ public partial class BotPlayerManager
     private const double Proto0ProbeCooldownSeconds = 15;
     private const int Proto0CrowdedRoomThreshold = 3;
 
-    private const int BotMoveIntervalSeconds = 12;
     private const int BotMissionTickIntervalSeconds = 1;
     private const int InitialStamina = 100;
     private const int InitialCorruption = 0;
@@ -181,7 +168,7 @@ public partial class BotPlayerManager
                 Proto0Profile = Proto0Profiles[index % Proto0Profiles.Length],
                 Stamina = InitialStamina,
                 Corruption = InitialCorruption,
-                ManittoStatus = ManittoStatus.ACTIVE,
+                PlayerMatchStatus = PlayerMatchStatus.ACTIVE,
                 LastMoveTime = now,
                 LastMissionTickTime = now.AddMilliseconds(-_rng.Next(BotMissionTickIntervalSeconds * 1000)),
                 LastCellWanderTime = now,
@@ -354,11 +341,11 @@ public partial class BotPlayerManager
     /// <summary>
     ///     遊뉗쓽 留덈땲???곹깭 蹂寃?(泥댁씤 ?⑥젅 / ?쒗븳遺 吏꾩엯 ??
     /// </summary>
-    public void SetBotManittoStatus(long matchingId, long botPlayerId, ManittoStatus status)
+    public void SetBotManittoStatus(long matchingId, long botPlayerId, PlayerMatchStatus status)
     {
         var bot = GetBot(matchingId, botPlayerId);
         if (bot == null) return;
-        bot.ManittoStatus = status;
+        bot.PlayerMatchStatus = status;
         _logger.LogInformation("遊?留덈땲???곹깭 蹂寃? BotId={BotId}, Status={Status}", botPlayerId, status);
     }
 
@@ -377,11 +364,6 @@ public partial class BotPlayerManager
     /// </summary>
     public static bool IsBotPlayerId(long playerId) => playerId < 0;
 
-    /// <summary>
-    ///     ?덈씫?섏? ?딆? 遊뉖쭔 諛섑솚
-    /// </summary>
-    private static IEnumerable<BotPlayerState> GetActiveBots(IEnumerable<BotPlayerState> bots)
-        => bots.Where(b => !b.IsEliminated);
 }
 
 /// <summary>
@@ -412,7 +394,7 @@ public class BotPlayerState
     public long LastProximityAttackerPlayerId { get; set; }
     public bool IsForcedFollowActive { get; set; }
     public bool IsEliminated { get; set; }
-    public ManittoStatus ManittoStatus { get; set; } = ManittoStatus.ACTIVE;
+    public PlayerMatchStatus PlayerMatchStatus { get; set; } = PlayerMatchStatus.ACTIVE;
     public DateTime LastMoveTime { get; set; } = DateTime.UtcNow;
     public PersonaType Persona { get; set; } = PersonaType.None;
     public List<int> ActiveBuffIds { get; set; } = new();

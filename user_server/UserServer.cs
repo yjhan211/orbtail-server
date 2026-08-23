@@ -145,13 +145,6 @@ public class UserServer(
         return session;
     }
 
-    // TODO 로그아웃
-    // ReSharper disable once UnusedMember.Local
-    private void EnqueueUserLeave(GameSession user)
-    {
-        _leaveUserQueue.Enqueue(user);
-    }
-
     private async Task LeaveUser(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)

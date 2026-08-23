@@ -21,29 +21,16 @@ public partial class GameClientSession
         if (!PlayerId.HasValue)
             return Task.CompletedTask;
 
-        if (Config.SWARM_P0_ENABLED)
-        {
-            // #219 M2 3택 드래프트: 개봉(RNG_COLLECT_FINISH)이 연 드래프트에서만 소환한다.
-            // ChoiceIndex = 색 (0 태양, 1 파도, 2 바람). 비용은 개봉 시점에 확정된 값.
-            if (!_hasPendingOrbDraft)
-            {
-                SendSummonOrbResult(false, ErrorCode.INVALID_GAME_STATE, 0, 0,
-                    _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value));
-                return Task.CompletedTask;
-            }
-
-            ExecuteDraftOrbSummon(request.ChoiceIndex);
-            return Task.CompletedTask;
-        }
-
-        if (IsRoundActionLocked(out _) || IsSurvivorBoardActionLocked())
+        // #219 M2 3택 드래프트: 개봉(RNG_COLLECT_FINISH)이 연 드래프트에서만 소환한다.
+        // ChoiceIndex = 색 (0 태양, 1 파도, 2 바람). 비용은 개봉 시점에 확정된 값.
+        if (!_hasPendingOrbDraft)
         {
             SendSummonOrbResult(false, ErrorCode.INVALID_GAME_STATE, 0, 0,
                 _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value));
             return Task.CompletedTask;
         }
 
-        ExecuteOrbSummon(request.ChoiceIndex, costOverride: null);
+        ExecuteDraftOrbSummon(request.ChoiceIndex);
         return Task.CompletedTask;
     }
 
@@ -112,7 +99,7 @@ public partial class GameClientSession
                 CurrentMapSubId,
                 playerId,
                 itemId,
-                Config.SWARM_P0_ENABLED ? Config.SWARM_ORB_CAPACITY : Config.SURVIVOR_INVENTORY_SLOT_COUNT,
+                Config.SWARM_ORB_CAPACITY,
                 out var addedItem)
                 ? addedItem
                 : null,
@@ -275,7 +262,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
 
         long playerId = PlayerId.Value;
-        if (IsRoundActionLocked(out _) || IsSurvivorBoardActionLocked())
+        if (IsRoundActionLocked(out _))
         {
             SendDestroyOrbResult(false, ErrorCode.INVALID_GAME_STATE, request.ItemUid, 0,
                 _summonStoneManager.GetSnapshot(CurrentMapSubId, playerId));
@@ -313,7 +300,7 @@ public partial class GameClientSession
 
         // 스웜 (#232 4단계): 계열 공유 레벨이 플레이어 귀속이라 표시 티어와 무관하게 1로 고정 —
         // 강화한 오브를 부숴도 레벨은 남으므로 티어 환급이면 강화-파괴 재판매가 성립한다.
-        int refundedStones = Config.SWARM_P0_ENABLED ? Config.SWARM_ORB_DESTROY_REFUND_STONES : Math.Clamp(tier, 1, 3);
+        int refundedStones = Config.SWARM_ORB_DESTROY_REFUND_STONES;
         var state = _summonStoneManager.AddStones(CurrentMapSubId, playerId, refundedStones);
         SendInGameInventoryUpdate(removedItem);
         SendDestroyOrbResult(true, ErrorCode.SUCCESS, request.ItemUid, refundedStones, state);
@@ -408,4 +395,17 @@ public partial class GameClientSession
             ? _summonStoneManager.GetSummonCandidates(CurrentMapSubId, PlayerId.Value).ToList()
             : []
     };
+
+    internal void GrantSwarmArenaOrb(int itemId)
+    {
+        if (!PlayerId.HasValue)
+            return;
+
+        // 개별 스택 강제 (#226 단계 C 수리): AddItem은 같은 색·티어를 한 항목으로 합쳐
+        // 오브별 ItemUid 정체성(열 순번·절단 래치·강화·철갑 대상)을 깨뜨렸다 — 봇 지급
+        // 경로(TryAddItemWithCapacity)와 같은 규칙으로 오브 1개 = 항목 1개를 보장한다.
+        _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value)
+            .TryAddItemWithCapacity(itemId, Config.SWARM_ORB_CAPACITY, out _);
+        SendInGameInventoryList();
+    }
 }

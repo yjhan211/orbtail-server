@@ -126,7 +126,6 @@ public partial class GameClientSession
         LogContestedCoreEntry(msg.TargetArea);
 
         await HandleAreaChange(oldArea, msg.TargetArea);
-        TrySendCorridorEncounterEvents(spawnPos);
 
         // 9. 응답 (요청자에게만 — 다른 플레이어는 G_TO_C_MOVE 브로드캐스트로 위치 동기화)
         using var resultPacket = PacketMaker.G_TO_C_AREA_MOVE_RESULT(

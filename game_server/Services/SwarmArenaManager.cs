@@ -225,7 +225,6 @@ public sealed class SwarmArenaManager
     // 리쉬는 봇 사격 대역(5~7)보다 짧게 — 추격이 빨리 끊겨야 카이팅 사이클이 성립한다.
     public const float CampLeashRadius = 5.5f;
     private const int CampsPerArea = 3;
-    private const int CampMonstersPerCamp = 3;
     // 스폰 셀(방 중앙)과 캠프 사이 안전 이격 — 스폰 포켓은 SB처럼 비워 둔다.
     private const float CampAnchorRadius = 6f;
     private const float CampScatterRadius = 1.2f;

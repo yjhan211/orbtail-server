@@ -161,7 +161,7 @@ public class PlayerSnapshot
     public string Area { get; set; } = "";
     public int Stamina { get; set; }
     public int Corruption { get; set; }
-    public string ManittoStatus { get; set; } = "";
+    public string PlayerMatchStatus { get; set; } = "";
     public long TargetPlayerId { get; set; }
     public bool IsBot { get; set; }
     public bool IsEliminated { get; set; }

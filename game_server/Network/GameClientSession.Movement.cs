@@ -165,7 +165,6 @@ public partial class GameClientSession
             }
 
 
-            TrySendCorridorEncounterEvents(validatedPosition);
 
             // 5. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
             using var packet = PacketMaker.G_TO_C_MOVE(

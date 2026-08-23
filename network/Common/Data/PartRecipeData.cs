@@ -31,15 +31,15 @@ namespace network.common.data
                 {
                     Id = int.Parse(row["id"]),
                     JobTitle = short.Parse(row["job_title"]),
-                    InputPartA = int.Parse(row["input_part_a"]),
-                    InputPartB = int.Parse(row["input_part_b"]),
+                    InputItemA = int.Parse(row["input_part_a"]),
+                    InputItemB = int.Parse(row["input_part_b"]),
                     OutputPart = int.Parse(row["output_part"]),
                     CombineDurationSeconds = int.Parse(row["combine_duration_seconds"])
                 };
 
                 // 양방향 매핑 (A+B와 B+A 모두 동일 결과)
-                _recipesByInputs[(recipe.InputPartA, recipe.InputPartB)] = recipe;
-                _recipesByInputs[(recipe.InputPartB, recipe.InputPartA)] = recipe;
+                _recipesByInputs[(recipe.InputItemA, recipe.InputItemB)] = recipe;
+                _recipesByInputs[(recipe.InputItemB, recipe.InputItemA)] = recipe;
 
                 if (!_recipesByJob.ContainsKey(recipe.JobTitle))
                     _recipesByJob[recipe.JobTitle] = new List<PartRecipe>();
@@ -67,7 +67,7 @@ namespace network.common.data
         /// </summary>
         public static List<PartRecipe> GetRecipesUsingInput(int partId) =>
             _recipesByJob.Values.SelectMany(recipes => recipes)
-                .Where(recipe => recipe.InputPartA == partId || recipe.InputPartB == partId)
+                .Where(recipe => recipe.InputItemA == partId || recipe.InputItemB == partId)
                 .ToList();
 
         private static List<PartRecipe> GetSharedAndJobRecipes(short jobTitle)
@@ -101,8 +101,8 @@ namespace network.common.data
     {
         public int Id { get; set; }
         public short JobTitle { get; set; }
-        public int InputPartA { get; set; }
-        public int InputPartB { get; set; }
+        public int InputItemA { get; set; }
+        public int InputItemB { get; set; }
         public int OutputPart { get; set; }
         public int CombineDurationSeconds { get; set; }
     }

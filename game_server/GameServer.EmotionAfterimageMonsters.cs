@@ -24,31 +24,6 @@ public partial class GameServer
         return true;
     }
 
-    private void BroadcastMonsterSnapshot(long matchingId, IReadOnlyCollection<GameClientSession> sessions,
-        IEnumerable<MonsterRuntimeInfo>? states = null)
-    {
-        // Initial/area-entry syncs are sent directly to one session. Runtime deltas and
-        // closure syncs are routed only to observers currently occupying each monster area.
-        var snapshotStates = states ?? _emotionAfterimageMonsterManager.GetSnapshot(matchingId);
-        foreach (var monsterChunk in MonsterSnapshotBatcher.CreateAreaChunks(snapshotStates))
-        {
-            // 인트로 구간은 전원에게 — 카메라가 남의 구역을 비추므로 (2026-08-16).
-            var observers = MatchStartGate.IsGameplayActive(matchingId)
-                ? sessions.Where(session => session.CurrentArea == monsterChunk.Area).ToList()
-                : sessions.ToList();
-            if (observers.Count == 0)
-                continue;
-
-            using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT
-            {
-                Monsters = monsterChunk.Monsters
-            }));
-            foreach (var session in observers)
-                session.Send(packet);
-        }
-    }
-
     /// <summary>
     ///     구역별 전송 (#229 4단계-보정). 청크는 원래부터 구역으로 나뉘어 있었는데 전부를
     ///     전원에게 보내고 있었다. 밀도를 올리면 여기가 먼저 터진다 — 구역당 60마리 × 12구역이면

@@ -8,8 +8,6 @@ namespace game_server.services;
 /// </summary>
 public static class MatchStartGate
 {
-    private const int DefaultMatchCapacity = 8;
-    private const int SpotArenaMatchCapacity = 4;
     private static readonly ConcurrentDictionary<long, State> States = new();
 
     public static bool IsSoloMapValidationEnabled =>
@@ -21,11 +19,7 @@ public static class MatchStartGate
 
     private static int MatchCapacity => IsSoloMapValidationEnabled
         ? 1
-        : global::network.common.Config.SWARM_P0_ENABLED
-            ? global::network.common.Config.SWARM_PLAYERS_PER_MATCH
-            : global::network.common.Config.SPOT_ARENA_P0_ENABLED
-                ? SpotArenaMatchCapacity
-                : DefaultMatchCapacity;
+        : global::network.common.Config.SWARM_PLAYERS_PER_MATCH;
 
     public static void RegisterHumanPlayer(long matchingId, long playerId, int botCount)
     {

@@ -4,24 +4,24 @@ using network.common;
 
 namespace demo_regression_tests;
 
-public sealed class LegacyManittoChainEffectsTests
+public sealed class MatchRosterManagerTests
 {
     [Fact]
     public void Elimination_OnlyChangesTheEliminatedPlayer_WhenLegacyChainEffectsAreDisabled()
     {
         const long matchingId = 194001;
-        var manager = new ManittoChainManager(NullLogger.Instance);
+        var manager = new MatchRosterManager(NullLogger.Instance);
 
-        manager.RegisterLink(matchingId, CreateLink(1, 2));
-        manager.RegisterLink(matchingId, CreateLink(2, 3));
-        manager.RegisterLink(matchingId, CreateLink(3, 1));
+        manager.RegisterEntry(matchingId, CreateLink(1, 2));
+        manager.RegisterEntry(matchingId, CreateLink(2, 3));
+        manager.RegisterEntry(matchingId, CreateLink(3, 1));
 
         var affected = manager.EliminatePlayer(matchingId, 2, EliminationReason.MENTAL_ZERO);
 
         Assert.Equal(new[] { 2L }, affected.Keys);
-        Assert.Equal(ManittoStatus.ELIMINATED, affected[2]);
-        Assert.Equal(ManittoStatus.ACTIVE, manager.GetLink(matchingId, 1)!.Status);
-        Assert.Equal(ManittoStatus.ACTIVE, manager.GetLink(matchingId, 3)!.Status);
+        Assert.Equal(PlayerMatchStatus.ELIMINATED, affected[2]);
+        Assert.Equal(PlayerMatchStatus.ACTIVE, manager.GetEntry(matchingId, 1)!.Status);
+        Assert.Equal(PlayerMatchStatus.ACTIVE, manager.GetEntry(matchingId, 3)!.Status);
         Assert.Empty(manager.GetTerminalPlayers(matchingId));
     }
 
@@ -29,10 +29,10 @@ public sealed class LegacyManittoChainEffectsTests
     public void Elimination_PreservesAttackerAndClosureContextInGameResult()
     {
         const long matchingId = 194002;
-        var manager = new ManittoChainManager(NullLogger.Instance);
+        var manager = new MatchRosterManager(NullLogger.Instance);
 
-        manager.RegisterLink(matchingId, CreateLink(1, 2));
-        manager.RegisterLink(matchingId, CreateLink(2, 1));
+        manager.RegisterEntry(matchingId, CreateLink(1, 2));
+        manager.RegisterEntry(matchingId, CreateLink(2, 1));
 
         manager.EliminatePlayer(matchingId, 2, EliminationReason.MENTAL_ZERO,
             attackerPlayerId: 1, eliminatedArea: AreaType.Library, isAreaClosureElimination: true);
@@ -47,11 +47,11 @@ public sealed class LegacyManittoChainEffectsTests
     public void Elimination_FixesRankTierAndEnvironmentalCauseAtEliminationTime()
     {
         const long matchingId = 194003;
-        var manager = new ManittoChainManager(NullLogger.Instance);
+        var manager = new MatchRosterManager(NullLogger.Instance);
 
-        manager.RegisterLink(matchingId, CreateLink(1, 2));
-        manager.RegisterLink(matchingId, CreateLink(2, 3));
-        manager.RegisterLink(matchingId, CreateLink(3, 1));
+        manager.RegisterEntry(matchingId, CreateLink(1, 2));
+        manager.RegisterEntry(matchingId, CreateLink(2, 3));
+        manager.RegisterEntry(matchingId, CreateLink(3, 1));
 
         manager.EliminatePlayer(
             matchingId,
@@ -71,11 +71,11 @@ public sealed class LegacyManittoChainEffectsTests
     public void Elimination_AppliesOnlyOnceAndPreservesTheFirstResult()
     {
         const long matchingId = 194004;
-        var manager = new ManittoChainManager(NullLogger.Instance);
+        var manager = new MatchRosterManager(NullLogger.Instance);
 
-        manager.RegisterLink(matchingId, CreateLink(1, 2));
-        manager.RegisterLink(matchingId, CreateLink(2, 3));
-        manager.RegisterLink(matchingId, CreateLink(3, 1));
+        manager.RegisterEntry(matchingId, CreateLink(1, 2));
+        manager.RegisterEntry(matchingId, CreateLink(2, 3));
+        manager.RegisterEntry(matchingId, CreateLink(3, 1));
 
         var first = manager.TryEliminatePlayer(
             matchingId, 2, EliminationReason.MENTAL_ZERO,
@@ -102,11 +102,11 @@ public sealed class LegacyManittoChainEffectsTests
     public void Elimination_SameTickCollision_DecrementsAliveCountOnce()
     {
         const long matchingId = 227001;
-        var manager = new ManittoChainManager(NullLogger.Instance);
+        var manager = new MatchRosterManager(NullLogger.Instance);
 
-        manager.RegisterLink(matchingId, CreateLink(1, 2));
-        manager.RegisterLink(matchingId, CreateLink(2, 3));
-        manager.RegisterLink(matchingId, CreateLink(3, 1));
+        manager.RegisterEntry(matchingId, CreateLink(1, 2));
+        manager.RegisterEntry(matchingId, CreateLink(2, 3));
+        manager.RegisterEntry(matchingId, CreateLink(3, 1));
 
         // 본체 HP 0 — 첫 확정.
         var byBodyHp = manager.TryEliminatePlayer(
@@ -132,7 +132,7 @@ public sealed class LegacyManittoChainEffectsTests
         Assert.Equal(2, Assert.Single(results, row => row.playerId == 3).eliminationRank);
     }
 
-    private static ChainLink CreateLink(long playerId, long targetPlayerId) => new()
+    private static RosterEntry CreateLink(long playerId, long targetPlayerId) => new()
     {
         PlayerId = playerId,
         TargetPlayerId = targetPlayerId,

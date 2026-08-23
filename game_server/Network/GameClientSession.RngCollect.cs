@@ -21,11 +21,6 @@ namespace game_server.network;
 /// </summary>
 public partial class GameClientSession
 {
-    private const int RngCollectItemResultType = 2;
-    // #219 M2: 개봉 성공 = 3택 드래프트 개시 신호. 클라이언트 드래프트 패널이 이 타입으로 열린다.
-    private const int RngCollectDraftResultType = 7;
-    // #226: 개봉 즉시 랜덤 자동 소환 — 클라는 이 타입에서 팝업을 열지 않는다.
-    private const int RngCollectAutoSummonResultType = 8;
 
     // #217 P0-c: 스웜 아레나 탐색 스팟 — 비용·리젠 규칙은 봇과 공유하므로 Config에 있다.
     private const int SwarmExploreCooldownSeconds = Config.SWARM_EXPLORE_REGEN_SECONDS;
@@ -44,27 +39,13 @@ public partial class GameClientSession
     private Task HandleRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (Config.SWARM_P0_ENABLED)
-            return HandleSwarmRngCollectStart(msg);
-        if (Config.SPOT_ARENA_P0_ENABLED)
-        {
-            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
-            return Task.CompletedTask;
-        }
-
-        // 레거시(서바이버 로얄) 채집 경로 퇴역 (#238) — 현행은 위 스웜 분기만 사용한다.
-        return Task.CompletedTask;
+        return HandleSwarmRngCollectStart(msg);
     }
 
     private Task HandleRngCollectFinish(C_TO_G_RNG_COLLECT_FINISH msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (Config.SWARM_P0_ENABLED)
-            return HandleSwarmRngCollectFinish(msg);
-        if (Config.SPOT_ARENA_P0_ENABLED) return Task.CompletedTask;
-
-        // 레거시(서바이버 로얄) 채집 정산 퇴역 (#238) — 현행은 위 스웜 분기만 사용한다.
-        return Task.CompletedTask;
+        return HandleSwarmRngCollectFinish(msg);
     }
 
     /// <summary>
