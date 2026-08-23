@@ -5,7 +5,7 @@ using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public sealed class SurvivorTelemetryTests
+public sealed class MatchTelemetryTests
 {
     [Fact]
     public void MatchTelemetrySurvivesCleanupWithSeedExploreRecoveryAndFinalStats()
@@ -21,14 +21,14 @@ public sealed class SurvivorTelemetryTests
             anchor.X, anchor.Y, "Corridor1F", isBot: false);
         log.LogExploreStart(matchingId, 101, 77, "Library", isBot: false);
         log.LogExploreCompleted(matchingId, 101, 77, "Library", [107000003], 6, isBot: false);
-        log.RecordSurvivorRecovery(matchingId, 101, 15);
+        log.RecordRecovery(matchingId, 101, 15);
         log.LogRecoveryUse(matchingId, 101, 201000008, 15, "inventory_consumable", isBot: false);
         log.LogMatchEnded(
             matchingId,
             101,
             "last_survivor",
             "not_required",
-            [new SurvivorFinalPlayerStats(101, 1, 301, 2, 45, 15)]);
+            [new MatchFinalPlayerStats(101, 1, 301, 2, 45, 15)]);
 
         log.Clear(matchingId);
 
@@ -92,13 +92,13 @@ public sealed class SurvivorTelemetryTests
         var now = DateTimeOffset.UtcNow;
         var log = new GameEventLogManager();
 
-        log.LogSurvivorTargetAcquired(matchingId, 301, 302, "Gym", 107000003, 107000004, false, now);
-        log.LogSurvivorTierReached(matchingId, 301, 107000004, 2, false, now.AddSeconds(1));
-        log.LogSurvivorTierReached(matchingId, 301, 107000005, 3, false, now.AddSeconds(2));
-        log.LogSurvivorHit(matchingId, 301, 302, 107000005, 20, true, false, now.AddSeconds(3));
+        log.LogTargetAcquired(matchingId, 301, 302, "Gym", 107000003, 107000004, false, now);
+        log.LogTierReached(matchingId, 301, 107000004, 2, false, now.AddSeconds(1));
+        log.LogTierReached(matchingId, 301, 107000005, 3, false, now.AddSeconds(2));
+        log.LogHit(matchingId, 301, 302, 107000005, 20, true, false, now.AddSeconds(3));
         log.LogOvertimeStageChanged(matchingId, 2, 2);
         log.LogMatchEnded(matchingId, 301, "overtime_settlement", "survival>kills>damage>recovery",
-            [new SurvivorFinalPlayerStats(301, 1, 330, 1, 20, 0)]);
+            [new MatchFinalPlayerStats(301, 1, 330, 1, 20, 0)]);
 
         var events = log.GetRecent(matchingId, 5_000);
         Assert.Contains(events, entry => entry.Type == "SURVIVOR_ENCOUNTER_START" && entry.IsFirstMilestone == true);
@@ -194,18 +194,18 @@ public sealed class SurvivorTelemetryTests
             new InGameItemInfo { ItemId = 107000010, Count = 1 }
         };
 
-        log.LogSurvivorOrbBoardTransition(matchingId, playerId, redPair, 107000010, "Library", "pickup", false);
+        log.LogOrbBoardTransition(matchingId, playerId, redPair, 107000010, "Library", "pickup", false);
         Thread.Sleep(10);
-        log.LogSurvivorOrbBoardTransition(matchingId, playerId,
+        log.LogOrbBoardTransition(matchingId, playerId,
             [new InGameItemInfo { ItemId = 107000031, Count = 1 }], 107000031, "Gym", "merge", false);
         var volley = new ProximityCombatAttack(playerId, 402, AreaType.Gym, 107000020, 6, 0.2f, 1f, 3);
-        log.LogSurvivorOrbAttackTargets(matchingId, [volley], [volley],
+        log.LogOrbAttackTargets(matchingId, [volley], [volley],
             new Dictionary<long, OrbColor> { [playerId] = OrbColor.Green });
         log.LogPelletPickupOutcome(matchingId, playerId, 201000008, 15, 15, "effective", false);
         log.LogPelletPickupOutcome(matchingId, playerId, 201000008, 15, 0, "wasted", false);
         log.LogPelletPickupOutcome(matchingId, playerId, 201000008, 15, 0, "denied_reserved", false);
         log.LogMatchEnded(matchingId, playerId, "last_survivor", "not_required",
-            [new SurvivorFinalPlayerStats(playerId, 1, 30, 0, 0, 0)]);
+            [new MatchFinalPlayerStats(playerId, 1, 30, 0, 0, 0)]);
 
         var events = log.GetRecent(matchingId, 500);
         var merge = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" && entry.Outcome == "merge");
@@ -237,7 +237,7 @@ public sealed class SurvivorTelemetryTests
         var log = new GameEventLogManager();
         log.BeginMatch(matchingId, seed: 200);
 
-        log.LogSurvivorOrbBoardTransition(
+        log.LogOrbBoardTransition(
             matchingId,
             playerId,
             [new InGameItemInfo { ItemId = 107000010, Count = 1 }],
@@ -254,8 +254,8 @@ public sealed class SurvivorTelemetryTests
             new InGameItemInfo { ItemId = 107000010, Count = 1 },
             new InGameItemInfo { ItemId = 107000020, Count = 1 }
         };
-        log.LogSurvivorOrbBoardTransition(matchingId, playerId, fullBoard, 107000010, "Gym", "pickup", false);
-        log.LogSurvivorOrbPickupBlockedFull(matchingId, playerId, 107000030, "Gym", fullBoard, false);
+        log.LogOrbBoardTransition(matchingId, playerId, fullBoard, 107000010, "Gym", "pickup", false);
+        log.LogOrbPickupBlockedFull(matchingId, playerId, 107000030, "Gym", fullBoard, false);
 
         var events = log.GetRecent(matchingId, 100);
         var first = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_FIRST_PICKUP");

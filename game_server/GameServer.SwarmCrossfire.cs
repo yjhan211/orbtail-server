@@ -493,7 +493,7 @@ public partial class GameServer
         if (!damageResult.Applied)
             return;
 
-        _gameEventLogManager.RecordSurvivorMonsterHit(matchingId, attackerId, damage, damageResult.Killed);
+        _gameEventLogManager.RecordMonsterHit(matchingId, attackerId, damage, damageResult.Killed);
         var attackerSession = allSessions.FirstOrDefault(session => session.PlayerId == attackerId);
         attackerSession?.SendEmotionAfterimageMonsterAttackFeedback(
             monsterId, area, weaponItemId, damage, critical, noProjectile: true);
@@ -590,12 +590,12 @@ public partial class GameServer
             bot.LastProximityAttackerPlayerId = ownerId;
             _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
             bot.LastDamagedAtUtc = DateTime.UtcNow;
-            _gameEventLogManager.LogSurvivorHit(
+            _gameEventLogManager.LogHit(
                 matchingId, ownerId, bot.PlayerId, weaponItemId, shock,
-                bot.Corruption < Config.SURVIVOR_MAX_CORRUPTION &&
-                bot.Corruption + shock >= Config.SURVIVOR_MAX_CORRUPTION,
+                bot.Corruption < Config.MAX_CORRUPTION &&
+                bot.Corruption + shock >= Config.MAX_CORRUPTION,
                 BotPlayerManager.IsBotPlayerId(ownerId), DateTimeOffset.UtcNow);
-            bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + shock);
+            bot.Corruption = Math.Min(Config.MAX_CORRUPTION, bot.Corruption + shock);
             corruptionAfter = bot.Corruption;
         }
 

@@ -59,16 +59,16 @@ public sealed class BotBattleItemLoadoutTests
         inventory.AddItem(matchingId, botPlayerId, 107000010);
 
         var result = BotBattleItemLoadout.CombineAndEquip(
-            inventory, matchingId, botPlayerId, new Random(199), allowSurvivorOrbMerges: false);
+            inventory, matchingId, botPlayerId, new Random(199), allowOrbMerges: false);
 
-        Assert.Empty(result.SurvivorOrbMerges);
+        Assert.Empty(result.OrbMerges);
         Assert.Equal(2, inventory.GetPlayerInventory(matchingId, botPlayerId).GetItemCount(107000010));
         Assert.True(inventory.GetPlayerInventory(matchingId, botPlayerId)
-            .TryGetActiveSurvivorOrbPair(out OrbColor color, out _));
+            .TryGetActiveOrbPair(out OrbColor color, out _));
         Assert.Equal(OrbColor.Red, color);
     }
     [Fact]
-    public void BotRandomlyEvolvesSurvivorOrbsAndPivotsToTheBestAvailableOrb()
+    public void BotRandomlyEvolvesOrbsAndPivotsToTheBestAvailableOrb()
     {
         const long matchingId = 198;
         const long botPlayerId = -19801;
@@ -85,7 +85,7 @@ public sealed class BotBattleItemLoadoutTests
         Assert.Equal(2, tier);
         Assert.Equal(output, result.EquippedItemId);
         Assert.Equal(output, inventory.GetEquippedBattleItem(matchingId, botPlayerId)!.ItemId);
-        var merge = Assert.Single(result.SurvivorOrbMerges);
+        var merge = Assert.Single(result.OrbMerges);
         Assert.Equal(107000010, merge.InputItemId);
         Assert.Equal(output, merge.OutputItemId);
     }

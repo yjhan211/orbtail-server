@@ -18,8 +18,8 @@ public class GameEventLogManager
     private readonly ConcurrentDictionary<long, MatchingEventLog> _logs = new();
     private readonly ConcurrentDictionary<long, MatchingEventLog> _archivedLogs = new();
     private readonly ConcurrentDictionary<long, byte> _finalizedMatchings = new();
-    private readonly ConcurrentDictionary<long, SurvivorCombatState> _survivorCombatStates = new();
-    private readonly ConcurrentDictionary<long, SurvivorTelemetryState> _telemetryStates = new();
+    private readonly ConcurrentDictionary<long, MatchCombatState> _matchCombatStates = new();
+    private readonly ConcurrentDictionary<long, MatchTelemetryState> _telemetryStates = new();
     private readonly Queue<long> _archivedMatchingIds = new();
     private readonly object _archiveLock = new();
     private long _nextSeq;
@@ -107,7 +107,7 @@ public class GameEventLogManager
         bool isOvertimeElimination = false)
     {
         var occurredAt = DateTimeOffset.UtcNow;
-        LogFirstSurvivorElimination(matchingId, playerId, reason, isBot, occurredAt);
+        LogFirstElimination(matchingId, playerId, reason, isBot, occurredAt);
         string sourceType = isAreaClosureElimination || isOvertimeElimination
             ? "closure"
             : attackerPlayerId != 0
@@ -124,7 +124,7 @@ public class GameEventLogManager
         });
     }
 
-    public void LogSurvivorTierReached(
+    public void LogTierReached(
         long matchingId,
         long playerId,
         int itemId,
@@ -136,7 +136,7 @@ public class GameEventLogManager
             return;
 
         var timestamp = occurredAt ?? DateTimeOffset.UtcNow;
-        var state = _survivorCombatStates.GetOrAdd(matchingId, _ => new SurvivorCombatState());
+        var state = _matchCombatStates.GetOrAdd(matchingId, _ => new MatchCombatState());
         lock (state.SyncRoot)
         {
             state.KnownPlayerIds.Add(playerId);
@@ -170,7 +170,7 @@ public class GameEventLogManager
             });
     }
 
-    public void LogSurvivorTargetAcquired(
+    public void LogTargetAcquired(
         long matchingId,
         long attackerPlayerId,
         long targetPlayerId,
@@ -182,7 +182,7 @@ public class GameEventLogManager
     {
         int weaponTier = BattleItemCombatData.Get(weaponItemId)?.Tier ?? 0;
         int targetWeaponTier = BattleItemCombatData.Get(targetWeaponItemId)?.Tier ?? 0;
-        var state = _survivorCombatStates.GetOrAdd(matchingId, _ => new SurvivorCombatState());
+        var state = _matchCombatStates.GetOrAdd(matchingId, _ => new MatchCombatState());
         bool isFirstEncounter;
         lock (state.SyncRoot)
         {
@@ -192,7 +192,7 @@ public class GameEventLogManager
             if (isFirstEncounter)
                 state.FirstEncounterAtUnixMs = occurredAt.ToUnixTimeMilliseconds();
 
-            state.EngagementsByAttacker[attackerPlayerId] = new SurvivorCombatEngagement(
+            state.EngagementsByAttacker[attackerPlayerId] = new MatchCombatEngagement(
                 targetPlayerId,
                 area,
                 weaponItemId,
@@ -222,7 +222,7 @@ public class GameEventLogManager
             });
     }
 
-    public void LogSurvivorTargetLost(
+    public void LogTargetLost(
         long matchingId,
         long attackerPlayerId,
         long targetPlayerId,
@@ -230,10 +230,10 @@ public class GameEventLogManager
         bool isBot,
         DateTimeOffset occurredAt)
     {
-        if (!_survivorCombatStates.TryGetValue(matchingId, out var state))
+        if (!_matchCombatStates.TryGetValue(matchingId, out var state))
             return;
 
-        SurvivorCombatEngagement engagement;
+        MatchCombatEngagement engagement;
         lock (state.SyncRoot)
         {
             if (!state.EngagementsByAttacker.TryGetValue(attackerPlayerId, out engagement!) ||
@@ -271,7 +271,7 @@ public class GameEventLogManager
             });
     }
 
-    public void LogSurvivorHit(
+    public void LogHit(
         long matchingId,
         long attackerPlayerId,
         long targetPlayerId,
@@ -282,7 +282,7 @@ public class GameEventLogManager
         DateTimeOffset occurredAt,
         string? damageSourceType = null)
     {
-        var state = _survivorCombatStates.GetOrAdd(matchingId, _ => new SurvivorCombatState());
+        var state = _matchCombatStates.GetOrAdd(matchingId, _ => new MatchCombatState());
         int weaponTier = BattleItemCombatData.Get(weaponItemId)?.Tier ?? 0;
         int targetWeaponTier;
         int hitCount;
@@ -300,7 +300,7 @@ public class GameEventLogManager
             if (!state.EngagementsByAttacker.TryGetValue(attackerPlayerId, out var engagement) ||
                 engagement.TargetPlayerId != targetPlayerId)
             {
-                engagement = new SurvivorCombatEngagement(
+                engagement = new MatchCombatEngagement(
                     targetPlayerId,
                     "",
                     weaponItemId,
@@ -686,7 +686,7 @@ public class GameEventLogManager
         string signature = string.Join(";", snapshot.Areas
             .OrderBy(area => area.Area)
             .Select(area => $"{area.Area}:{area.AliveMonsterCount}:{area.AliveCoreCount}:{area.RemainingSummonStoneReward}"));
-        var telemetry = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        var telemetry = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
         lock (telemetry.SyncRoot)
         {
             if (telemetry.RewardAreaSignaturesByPhase.TryGetValue(snapshot.PhaseIndex, out string? previous) &&
@@ -878,7 +878,7 @@ public class GameEventLogManager
     {
         if (matchingId <= 0) return;
         _archivedLogs.TryRemove(matchingId, out _);
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
         var startedAt = DateTimeOffset.UtcNow;
         lock (state.SyncRoot)
         {
@@ -899,7 +899,7 @@ public class GameEventLogManager
     public void LogSpawnAssignment(long matchingId, long playerId, int seed, int anchorIndex, int cellX, int cellY,
         string area, bool isBot)
     {
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
         lock (state.SyncRoot)
         {
             if (!state.SpawnLoggedPlayerIds.Add(playerId)) return;
@@ -919,7 +919,7 @@ public class GameEventLogManager
     public void LogExploreStart(long matchingId, long playerId, int interactId, string area, bool isBot)
     {
         var now = DateTimeOffset.UtcNow;
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
         lock (state.SyncRoot)
         {
             state.ExploreStarts[(playerId, interactId)] = now;
@@ -997,7 +997,7 @@ public class GameEventLogManager
         int areaRemainingStock, long closureAtUnixMs, bool isBot)
     {
         var now = DateTimeOffset.UtcNow;
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
         lock (state.SyncRoot)
         {
             foreach (string warningArea in warningAreas)
@@ -1067,7 +1067,7 @@ public class GameEventLogManager
         if (droppedItems.Count == 0)
             return;
 
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
         lock (state.SyncRoot)
             state.PendingEliminationDrops.Add(new PendingEliminationDrop(
                 playerId, area, isBot, now.AddSeconds(3), droppedItems));
@@ -1112,7 +1112,7 @@ public class GameEventLogManager
             _ => 0
         });
 
-    public void LogSurvivorOrbBoardTransition(long matchingId, long playerId,
+    public void LogOrbBoardTransition(long matchingId, long playerId,
         IReadOnlyCollection<InGameItemInfo> items, int equippedItemId, string area, string reason, bool isBot)
     {
         var itemIds = items.Where(item => item.Count > 0)
@@ -1163,25 +1163,25 @@ public class GameEventLogManager
 
         if (transition.FirstOrbPickup)
             Append(matchingId, "SURVIVOR_ORB_FIRST_PICKUP", playerId, isBot,
-                $"First orb pickup: slots={transition.BoardItemCount}/{Config.SURVIVOR_INVENTORY_SLOT_COUNT}.", entry =>
+                $"First orb pickup: slots={transition.BoardItemCount}/{Config.LEGACY_INVENTORY_SLOT_COUNT}.", entry =>
                 {
                     entry.Area = area;
                     entry.Outcome = reason;
                     entry.BoardItemIds = itemIds;
                     entry.InventorySlotsUsed = transition.BoardItemCount;
-                    entry.InventorySlotCapacity = Config.SURVIVOR_INVENTORY_SLOT_COUNT;
+                    entry.InventorySlotCapacity = Config.LEGACY_INVENTORY_SLOT_COUNT;
                     entry.ElapsedMilliseconds = transition.MatchElapsedMilliseconds;
                 });
 
         if (transition.BoardReachedCapacity)
             Append(matchingId, "SURVIVOR_ORB_BOARD_FULL", playerId, isBot,
-                $"Orb board reached capacity: slots={transition.BoardItemCount}/{Config.SURVIVOR_INVENTORY_SLOT_COUNT}.", entry =>
+                $"Orb board reached capacity: slots={transition.BoardItemCount}/{Config.LEGACY_INVENTORY_SLOT_COUNT}.", entry =>
                 {
                     entry.Area = area;
                     entry.Outcome = reason;
                     entry.BoardItemIds = itemIds;
                     entry.InventorySlotsUsed = transition.BoardItemCount;
-                    entry.InventorySlotCapacity = Config.SURVIVOR_INVENTORY_SLOT_COUNT;
+                    entry.InventorySlotCapacity = Config.LEGACY_INVENTORY_SLOT_COUNT;
                     entry.ElapsedMilliseconds = transition.MatchElapsedMilliseconds;
                 });
 
@@ -1210,7 +1210,7 @@ public class GameEventLogManager
         if (amount <= 0) return;
 
         var now = DateTimeOffset.UtcNow;
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
         bool firstStone;
         long? elapsedMilliseconds;
         lock (state.SyncRoot)
@@ -1239,7 +1239,7 @@ public class GameEventLogManager
         int summonedItemId, int stoneBalance, int nextCost, int successfulSummonCount, string area, bool isBot)
     {
         var now = DateTimeOffset.UtcNow;
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
         bool firstSuccessfulSummon = false;
         long? elapsedMilliseconds;
         lock (state.SyncRoot)
@@ -1266,7 +1266,7 @@ public class GameEventLogManager
                 entry.ElapsedMilliseconds = elapsedMilliseconds;
             });
     }
-    public void LogSurvivorOrbPickupBlockedFull(
+    public void LogOrbPickupBlockedFull(
         long matchingId,
         long playerId,
         int itemId,
@@ -1274,7 +1274,7 @@ public class GameEventLogManager
         IReadOnlyCollection<InGameItemInfo> items,
         bool isBot)
     {
-        if (!OrbData.IsSurvivorOrb(itemId) && !OrbData.IsRecoveryOrb(itemId))
+        if (!OrbData.IsOrbItem(itemId) && !OrbData.IsRecoveryOrb(itemId))
             return;
 
         var boardItemIds = items.Where(item => item.Count > 0)
@@ -1282,17 +1282,17 @@ public class GameEventLogManager
             .ToList();
         int boardItemCount = CountBoardOrbs(boardItemIds);
         Append(matchingId, "SURVIVOR_ORB_PICKUP_BLOCKED_FULL", playerId, isBot,
-            $"Orb pickup blocked: item={itemId}, slots={boardItemCount}/{Config.SURVIVOR_INVENTORY_SLOT_COUNT}.", entry =>
+            $"Orb pickup blocked: item={itemId}, slots={boardItemCount}/{Config.LEGACY_INVENTORY_SLOT_COUNT}.", entry =>
             {
                 entry.Area = area;
                 entry.ItemId = itemId;
                 entry.BoardItemIds = boardItemIds;
                 entry.InventorySlotsUsed = boardItemCount;
-                entry.InventorySlotCapacity = Config.SURVIVOR_INVENTORY_SLOT_COUNT;
+                entry.InventorySlotCapacity = Config.LEGACY_INVENTORY_SLOT_COUNT;
             });
     }
 
-    public void LogSurvivorOrbAttackTargets(long matchingId, IReadOnlyCollection<ProximityCombatAttack> attacks,
+    public void LogOrbAttackTargets(long matchingId, IReadOnlyCollection<ProximityCombatAttack> attacks,
         IReadOnlyCollection<ProximityCombatAttack> actualHits,
         IReadOnlyDictionary<long, OrbColor> activeOrbColors)
     {
@@ -1395,7 +1395,7 @@ public class GameEventLogManager
     private OrbTransitionSnapshot TrackOrbTelemetry(long matchingId, long playerId, IReadOnlyList<int> itemIds,
         int equippedItemId, bool active, OrbColor color)
     {
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
         var now = DateTimeOffset.UtcNow;
         lock (state.SyncRoot)
         {
@@ -1437,8 +1437,8 @@ public class GameEventLogManager
             bool firstOrbPickup = previousBoardItemCount == 0 && boardItemCount > 0 && !telemetry.FirstOrbPickupLogged;
             if (firstOrbPickup)
                 telemetry.FirstOrbPickupLogged = true;
-            bool boardReachedCapacity = previousBoardItemCount < Config.SURVIVOR_INVENTORY_SLOT_COUNT &&
-                                        boardItemCount >= Config.SURVIVOR_INVENTORY_SLOT_COUNT &&
+            bool boardReachedCapacity = previousBoardItemCount < Config.LEGACY_INVENTORY_SLOT_COUNT &&
+                                        boardItemCount >= Config.LEGACY_INVENTORY_SLOT_COUNT &&
                                         !telemetry.BoardFullLogged;
             if (boardReachedCapacity)
                 telemetry.BoardFullLogged = true;
@@ -1464,7 +1464,7 @@ public class GameEventLogManager
         }
     }
 
-    private void LogOrbTelemetrySummaries(long matchingId, IReadOnlyCollection<SurvivorFinalPlayerStats> players)
+    private void LogOrbTelemetrySummaries(long matchingId, IReadOnlyCollection<MatchFinalPlayerStats> players)
     {
         if (!_telemetryStates.TryGetValue(matchingId, out var state)) return;
         var now = DateTimeOffset.UtcNow;
@@ -1512,7 +1512,7 @@ public class GameEventLogManager
         itemIds.GroupBy(itemId => itemId).Any(group => group.Count() >= 2 && OrbData.CanMerge(group.Key, group.Key));
 
     private static int CountBoardOrbs(IEnumerable<int> itemIds) =>
-        itemIds.Count(itemId => OrbData.IsSurvivorOrb(itemId) || OrbData.IsRecoveryOrb(itemId));
+        itemIds.Count(itemId => OrbData.IsOrbItem(itemId) || OrbData.IsRecoveryOrb(itemId));
 
     private static string GetResonanceProfile(OrbColor color) => color switch
     {
@@ -1524,7 +1524,7 @@ public class GameEventLogManager
     public void LogOvertimeStageChanged(long matchingId, int stage, int corruptionPerSecond)
     {
         if (stage <= 0 || corruptionPerSecond <= 0) return;
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
         lock (state.SyncRoot)
         {
             if (state.OvertimeStage >= stage) return;
@@ -1540,7 +1540,7 @@ public class GameEventLogManager
     }
 
     public void LogMatchEnded(long matchingId, long winnerPlayerId, string endReason, string tieBreakCriterion,
-        IReadOnlyCollection<SurvivorFinalPlayerStats> players)
+        IReadOnlyCollection<MatchFinalPlayerStats> players)
     {
         Append(matchingId, "MATCH_ENDED", winnerPlayerId, BotPlayerManager.IsBotPlayerId(winnerPlayerId),
             $"Match ended: winner={winnerPlayerId}, reason={endReason}, tieBreak={tieBreakCriterion}.", entry =>
@@ -1555,7 +1555,7 @@ public class GameEventLogManager
     }
 
     public void LogMatchAbandoned(long matchingId, string endReason,
-        IReadOnlyCollection<SurvivorFinalPlayerStats>? players = null)
+        IReadOnlyCollection<MatchFinalPlayerStats>? players = null)
     {
         Append(matchingId, "MATCH_ABANDONED", 0, false,
             $"Match abandoned: reason={endReason}.", entry =>
@@ -1602,7 +1602,7 @@ public class GameEventLogManager
                 }
             }
         }
-        _survivorCombatStates.TryRemove(matchingId, out _);
+        _matchCombatStates.TryRemove(matchingId, out _);
         _telemetryStates.TryRemove(matchingId, out _);
     }
 
@@ -1611,7 +1611,7 @@ public class GameEventLogManager
     {
         var now = DateTimeOffset.UtcNow;
         DateTimeOffset? startedAt = null;
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new SurvivorTelemetryState());
+        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
         lock (state.SyncRoot)
             if (state.ExploreStarts.Remove((playerId, interactId), out var value)) startedAt = value;
 
@@ -1701,14 +1701,14 @@ public class GameEventLogManager
         return entry;
     }
 
-    private void LogFirstSurvivorElimination(
+    private void LogFirstElimination(
         long matchingId,
         long playerId,
         string reason,
         bool isBot,
         DateTimeOffset occurredAt)
     {
-        var state = _survivorCombatStates.GetOrAdd(matchingId, _ => new SurvivorCombatState());
+        var state = _matchCombatStates.GetOrAdd(matchingId, _ => new MatchCombatState());
         bool isFirstElimination;
         lock (state.SyncRoot)
         {
@@ -1744,12 +1744,12 @@ public class GameEventLogManager
     }
 
 
-    public void RecordSurvivorRecovery(long matchingId, long playerId, int amount)
+    public void RecordRecovery(long matchingId, long playerId, int amount)
     {
         if (playerId == 0 || amount <= 0)
             return;
 
-        var state = _survivorCombatStates.GetOrAdd(matchingId, _ => new SurvivorCombatState());
+        var state = _matchCombatStates.GetOrAdd(matchingId, _ => new MatchCombatState());
         lock (state.SyncRoot)
         {
             state.KnownPlayerIds.Add(playerId);
@@ -1763,12 +1763,12 @@ public class GameEventLogManager
     ///     쌓이지 않아 결과 화면이 531킬을 "처치 0회"로 표시했다.
     ///     ProcessPendingSwarmMonsterHits 한 곳이 유일한 진입점이라 여기서만 부른다.
     /// </summary>
-    public void RecordSurvivorMonsterHit(long matchingId, long playerId, int damage, bool killed)
+    public void RecordMonsterHit(long matchingId, long playerId, int damage, bool killed)
     {
         if (playerId == 0)
             return;
 
-        var state = _survivorCombatStates.GetOrAdd(matchingId, _ => new SurvivorCombatState());
+        var state = _matchCombatStates.GetOrAdd(matchingId, _ => new MatchCombatState());
         lock (state.SyncRoot)
         {
             state.KnownPlayerIds.Add(playerId);
@@ -1785,9 +1785,9 @@ public class GameEventLogManager
         }
     }
 
-    public SurvivorResultStats GetSurvivorResultStats(long matchingId, long playerId)
+    public ResultStats GetResultStats(long matchingId, long playerId)
     {
-        if (!_survivorCombatStates.TryGetValue(matchingId, out var state))
+        if (!_matchCombatStates.TryGetValue(matchingId, out var state))
             return default;
 
         lock (state.SyncRoot)
@@ -1797,11 +1797,11 @@ public class GameEventLogManager
             state.RecoveryByPlayer.TryGetValue(playerId, out int recovery);
             state.MonsterKillsByPlayer.TryGetValue(playerId, out int monsterKills);
             state.MonsterDamageByPlayer.TryGetValue(playerId, out int monsterDamage);
-            return new SurvivorResultStats(kills, damage, recovery, monsterKills, monsterDamage);
+            return new ResultStats(kills, damage, recovery, monsterKills, monsterDamage);
         }
     }
 
-    private sealed class SurvivorCombatState
+    private sealed class MatchCombatState
     {
         public object SyncRoot { get; } = new();
         public long? FirstEncounterAtUnixMs { get; set; }
@@ -1817,10 +1817,10 @@ public class GameEventLogManager
         public Dictionary<long, int> MonsterKillsByPlayer { get; } = new();
         public Dictionary<long, int> MonsterDamageByPlayer { get; } = new();
         public Dictionary<long, int> RecoveryByPlayer { get; } = new();
-        public Dictionary<long, SurvivorCombatEngagement> EngagementsByAttacker { get; } = new();
+        public Dictionary<long, MatchCombatEngagement> EngagementsByAttacker { get; } = new();
     }
 
-    private sealed class SurvivorTelemetryState
+    private sealed class MatchTelemetryState
     {
         public object SyncRoot { get; } = new();
         public bool MatchStarted { get; set; }
@@ -1908,16 +1908,16 @@ public class GameEventLogManager
         public int AdditionalExploreCount { get; set; }
     }
 
-    public readonly record struct SurvivorResultStats(
+    public readonly record struct ResultStats(
         int KillCount,
         int TotalDamageDealt,
         int TotalRecovery,
         int MonsterKillCount = 0,
         int MonsterDamageDealt = 0);
 
-    private sealed class SurvivorCombatEngagement
+    private sealed class MatchCombatEngagement
     {
-        public SurvivorCombatEngagement(
+        public MatchCombatEngagement(
             long targetPlayerId,
             string area,
             int weaponItemId,
@@ -2393,7 +2393,7 @@ public class GameEventEntry
     public long? WinnerPlayerId { get; set; }
     public string? EndReason { get; set; }
     public string? TieBreakCriterion { get; set; }
-    public List<SurvivorFinalPlayerStats>? FinalPlayerStats { get; set; }
+    public List<MatchFinalPlayerStats>? FinalPlayerStats { get; set; }
 
     // #226 F 계측 — 절단·크랙·성장 카드 전용 필드
     public int? TailOrdinal { get; set; }
@@ -2447,7 +2447,7 @@ public sealed record MonsterRewardAreaTelemetry(
     int AliveMonsterCount,
     int AliveCoreCount,
     int RemainingSummonStoneReward);
-public sealed record SurvivorFinalPlayerStats(
+public sealed record MatchFinalPlayerStats(
     long PlayerId,
     int Rank,
     int SurvivalTimeSeconds,

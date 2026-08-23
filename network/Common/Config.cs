@@ -91,7 +91,7 @@ namespace network.common
         public const float TARGET_PROXIMITY_DISTANCE = 3f;
 
         /// <summary>Survivor Royale inventory slot capacity shared by clients, bots, and the game server.</summary>
-        public const int SURVIVOR_INVENTORY_SLOT_COUNT = 6;
+        public const int LEGACY_INVENTORY_SLOT_COUNT = 6;
 
         /// <summary>World pickup used to represent one summon stone.</summary>
         public const int SUMMON_STONE_GROUND_ITEM_ID = 107000050;
@@ -172,7 +172,7 @@ namespace network.common
         public const int SWARM_ORB_TRAIL_CONTACT_CORRUPTION = 35;
 
         /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
-        public const int SURVIVOR_MAX_CORRUPTION = 420;
+        public const int MAX_CORRUPTION = 420;
 
         /// <summary>
         /// Survivor Royale #202 uses monster rewards as summon currency instead of direct orb exploration loot.

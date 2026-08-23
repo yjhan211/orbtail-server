@@ -243,7 +243,7 @@ namespace network.common.data
             }
         }
 
-        public static bool IsSurvivorOrb(int itemId) => TryGetColorAndTier(itemId, out _, out _);
+        public static bool IsOrbItem(int itemId) => TryGetColorAndTier(itemId, out _, out _);
 
         public static OrbAttackPattern GetAttackPattern(int itemId)
         {
@@ -313,7 +313,7 @@ namespace network.common.data
         public static float GetAttackIntervalMultiplier(int itemId) => itemId switch
         {
             107000003 or 107000004 or 107000006 => OrbAttackIntervalMultiplier,
-            _ when IsSurvivorOrb(itemId) => OrbAttackIntervalMultiplier,
+            _ when IsOrbItem(itemId) => OrbAttackIntervalMultiplier,
             _ => 1f
         };
 

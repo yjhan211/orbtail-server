@@ -138,7 +138,7 @@ public partial class GameClientSession
             if (attemptedItem != null && error == ErrorCode.INVENTORY_FULL)
             {
                 var board = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
-                _gameEventLogManager.LogSurvivorOrbPickupBlockedFull(
+                _gameEventLogManager.LogOrbPickupBlockedFull(
                     CurrentMapSubId,
                     PlayerId.Value,
                     attemptedItem.ItemId,
@@ -219,7 +219,7 @@ public partial class GameClientSession
         if (!summonStonePickup && !jamPickup && !bootsPickup && !keyPickup)
         {
             var boardAfterPickup = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
-            _gameEventLogManager.LogSurvivorOrbBoardTransition(
+            _gameEventLogManager.LogOrbBoardTransition(
                 CurrentMapSubId, PlayerId.Value, boardAfterPickup.GetAllItems(),
                 boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "pickup", isBot: false);
         }
@@ -296,7 +296,7 @@ public partial class GameClientSession
         if (drop.RemovedItems.Count == 0) return;
 
         var emptyBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
-        _gameEventLogManager.LogSurvivorOrbBoardTransition(
+        _gameEventLogManager.LogOrbBoardTransition(
             CurrentMapSubId, PlayerId.Value, emptyBoard.GetAllItems(), 0, CurrentArea.ToString(), "elimination_drop",
             isBot: false);
         foreach (var item in drop.RemovedItems)
@@ -340,7 +340,7 @@ public partial class GameClientSession
             return;
 
         var emptyBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, botPlayerId);
-        _gameEventLogManager.LogSurvivorOrbBoardTransition(
+        _gameEventLogManager.LogOrbBoardTransition(
             CurrentMapSubId, botPlayerId, emptyBoard.GetAllItems(), 0, bot.CurrentArea.ToString(), "elimination_drop",
             isBot: true);
 
@@ -380,33 +380,33 @@ public partial class GameClientSession
         }
     }
 
-    private void SendSurvivorAreaStockStateSnapshot()
+    private void SendAreaStockStateSnapshot()
     {
         if (CurrentMapSubId <= 0) return;
 
-        var message = BuildSurvivorAreaStockStateMessage();
-        using var packet = Packet.Create((int)Protocol.G_TO_C_SURVIVOR_AREA_STOCK_STATE);
+        var message = BuildAreaStockStateMessage();
+        using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_STOCK_STATE);
         packet.SetBody(MessagePackSerializer.Serialize(message));
         Send(packet);
     }
 
-    private void BroadcastSurvivorAreaStockState()
+    private void BroadcastAreaStockState()
     {
         if (CurrentMapSubId <= 0) return;
 
-        var message = BuildSurvivorAreaStockStateMessage();
-        using var packet = Packet.Create((int)Protocol.G_TO_C_SURVIVOR_AREA_STOCK_STATE);
+        var message = BuildAreaStockStateMessage();
+        using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_STOCK_STATE);
         packet.SetBody(MessagePackSerializer.Serialize(message));
         foreach (var session in _getSessionsByInstance(CurrentMapId, CurrentMapSubId))
             session.Send(packet);
     }
 
-    private G_TO_C_SURVIVOR_AREA_STOCK_STATE BuildSurvivorAreaStockStateMessage()
+    private G_TO_C_AREA_STOCK_STATE BuildAreaStockStateMessage()
     {
-        return new G_TO_C_SURVIVOR_AREA_STOCK_STATE
+        return new G_TO_C_AREA_STOCK_STATE
         {
             Areas = _areaItemStockManager.GetPublicDepletionSnapshot(CurrentMapSubId)
-                .Select(state => new SurvivorAreaNaturalStockState
+                .Select(state => new AreaNaturalStockState
                 {
                     AreaType = state.AreaType,
                     IsDepleted = state.IsDepleted,

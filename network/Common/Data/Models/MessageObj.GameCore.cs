@@ -99,7 +99,7 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class G_TO_C_SURVIVOR_ORB_EFFECT_STATE : IMessagePackObject
+    public class G_TO_C_ORB_EFFECT_STATE : IMessagePackObject
     {
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("weaponItemId")] public int WeaponItemId { get; set; }
@@ -287,7 +287,7 @@ namespace network.common.data.models
     /// 공개 미니맵용 지역 자연 재고 상태다. 정확한 잔여 수량은 전송하지 않는다.
     /// </summary>
     [MessagePackObject]
-    public class SurvivorAreaNaturalStockState : IMessagePackObject
+    public class AreaNaturalStockState : IMessagePackObject
     {
         [Key("areaType")] public AreaType AreaType { get; set; }
         [Key("isDepleted")] public bool IsDepleted { get; set; }
@@ -296,9 +296,9 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class G_TO_C_SURVIVOR_AREA_STOCK_STATE : IMessagePackObject
+    public class G_TO_C_AREA_STOCK_STATE : IMessagePackObject
     {
-        [Key("areas")] public List<SurvivorAreaNaturalStockState> Areas { get; set; } = new();
+        [Key("areas")] public List<AreaNaturalStockState> Areas { get; set; } = new();
     }
 
     [MessagePackObject]
@@ -362,14 +362,8 @@ namespace network.common.data.models
     public class G_TO_C_MATCH_START_COUNTDOWN : IMessagePackObject
     {
         [Key("matchingId")] public long MatchingId { get; set; }
-        [Key("roundNumber")] public int RoundNumber { get; set; }
-        [Key("totalRounds")] public int TotalRounds { get; set; }
         [Key("remainingSeconds")] public int RemainingSeconds { get; set; }
-        [Key("phaseDurationSeconds")] public int PhaseDurationSeconds { get; set; }
         [Key("serverUnixMs")] public long ServerUnixMs { get; set; }
-        [Key("isSessionEnded")] public bool IsSessionEnded { get; set; }
-        [Key("survivorNextRoomAreaTypes")] public int[] SurvivorNextRoomAreaTypes { get; set; } = Array.Empty<int>();
-        [Key("survivorNextRoomOccupancies")] public int[] SurvivorNextRoomOccupancies { get; set; } = Array.Empty<int>();
     }
 
     [MessagePackObject]

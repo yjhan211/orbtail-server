@@ -10,7 +10,7 @@ public partial class GameClientSession
 {
     internal const int ProximityAutoAttackDealtEventType = 17;
     internal const int ProximityAutoAttackTakenEventType = 18;
-    internal const int SurvivorOrbRecoveryEventType = 19;
+    internal const int OrbRecoveryEventType = 19;
     internal const int EmotionAfterimageMonsterAttackTakenEventType = 24;
     internal const int EmotionAfterimageMonsterAttackDealtEventType = 25;
     internal const int SwarmAttackEventDealtEventType = 26;
@@ -24,7 +24,7 @@ public partial class GameClientSession
         if (damage <= 0)
             return;
 
-        _gameEventLogManager.LogSurvivorHit(
+        _gameEventLogManager.LogHit(
             CurrentMapSubId,
             sourcePlayerId,
             PlayerId.Value,
@@ -67,7 +67,7 @@ public partial class GameClientSession
         if (!PlayerId.HasValue || IsEliminated || damage <= 0)
             return;
 
-        _gameEventLogManager.LogSurvivorHit(
+        _gameEventLogManager.LogHit(
             CurrentMapSubId,
             sourcePlayerId,
             PlayerId.Value,
@@ -156,7 +156,7 @@ public partial class GameClientSession
             0, monsterId, displayDamage ?? damage);
     }
 
-    internal void SendSurvivorOrbRecoveryFeedback(int itemId, int recoveryAmount)
+    internal void SendOrbRecoveryFeedback(int itemId, int recoveryAmount)
     {
         if (!PlayerId.HasValue || IsEliminated || itemId <= 0 || recoveryAmount <= 0)
             return;
@@ -166,7 +166,7 @@ public partial class GameClientSession
         SendEncounterEvent(
             PlayerId.Value,
             CurrentArea,
-            SurvivorOrbRecoveryEventType,
+            OrbRecoveryEventType,
             0,
             itemId,
             recoveryAmount);

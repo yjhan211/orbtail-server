@@ -9,14 +9,14 @@ namespace game_server;
 
 public partial class GameServer
 {
-    private object GetSurvivorSettlementLock(long matchingId) =>
-        _survivorSettlementLocks.GetOrAdd(matchingId, _ => new object());
+    private object GetMatchSettlementLock(long matchingId) =>
+        _matchSettlementLocks.GetOrAdd(matchingId, _ => new object());
 
-    private void ProcessSurvivorResourceTickForMatching(
+    private void ProcessResourceTickForMatching(
         long matchingId,
         List<GameClientSession> activeSessions)
     {
-        lock (GetSurvivorSettlementLock(matchingId))
+        lock (GetMatchSettlementLock(matchingId))
         {
             // Combat always settles before environmental damage in the same server resource tick.
             ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
@@ -40,8 +40,8 @@ public partial class GameServer
 
                 if (aliveCount == 1 && humans.Count > 0)
                 {
-                    humans[0].TryEndSurvivorMatch(humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
-                    CleanupSurvivorSettlementState(matchingId);
+                    humans[0].TryEndMatch(humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
+                    CleanupMatchSettlementState(matchingId);
                     return;
                 }
 
@@ -51,7 +51,7 @@ public partial class GameServer
                 if (humans.Count == 0)
                 {
                     long winnerPlayerId = bots.Count == 1 ? bots[0].PlayerId : 0;
-                    CleanupSurvivorSettlementState(matchingId);
+                    CleanupMatchSettlementState(matchingId);
                     EndBotOnlyMatchIfSettled(matchingId, winnerPlayerId);
                 }
 
@@ -117,7 +117,7 @@ public partial class GameServer
             }
 
             var eliminatedTargets = targets
-                .Where(target => target.PreDamageCorruption + target.ClosureDelta + target.OvertimeDelta >= Config.SURVIVOR_MAX_CORRUPTION)
+                .Where(target => target.PreDamageCorruption + target.ClosureDelta + target.OvertimeDelta >= Config.MAX_CORRUPTION)
                 .ToList();
             if (eliminatedTargets.Count == 0)
                 return;
@@ -127,7 +127,7 @@ public partial class GameServer
                 eliminatedTargets.Select(target =>
                 {
                     int damage = _gameEventLogManager
-                        .GetSurvivorResultStats(matchingId, target.PlayerId)
+                        .GetResultStats(matchingId, target.PlayerId)
                         .TotalDamageDealt;
                     return new MatchSettlementCandidate(
                         target.PlayerId,
@@ -160,7 +160,7 @@ public partial class GameServer
                 var target = eliminatedTargets.First(entry => entry.PlayerId == candidate.PlayerId);
                 bool closureElimination =
                     target.ClosureDelta > 0 &&
-                    target.PreDamageCorruption + target.ClosureDelta >= Config.SURVIVOR_MAX_CORRUPTION;
+                    target.PreDamageCorruption + target.ClosureDelta >= Config.MAX_CORRUPTION;
                 bool overtimeElimination = !closureElimination && target.OvertimeDelta > 0;
 
                 if (target.Session != null)
@@ -194,17 +194,17 @@ public partial class GameServer
                 !session.IsGameEnded);
             if (isGameOver && winnerId.HasValue && resultHost != null)
             {
-                resultHost.TryEndSurvivorMatch(winnerId.Value, resolution.DecisiveCriterion);
-                CleanupSurvivorSettlementState(matchingId);
+                resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);
+                CleanupMatchSettlementState(matchingId);
             }
         }
     }
 
-    private void CleanupSurvivorSettlementState(long matchingId)
+    private void CleanupMatchSettlementState(long matchingId)
     {
         _proximityAutoCombatResolver.RemoveMatching(matchingId);
-        RemoveSurvivorOrbVisualStates(matchingId);
-        _survivorSettlementLocks.TryRemove(matchingId, out _);
+        RemoveOrbVisualStates(matchingId);
+        _matchSettlementLocks.TryRemove(matchingId, out _);
     }
 
     private int ResolveFinalOrbTier(long matchingId, long playerId)

@@ -29,7 +29,7 @@ public partial class GameClientSession : SessionBase
     private readonly HashSet<int> _pendingChecklistActivityFinish = new();
 
     private const int MaxStamina = 100;
-    private const int MaxCorruption = Config.SURVIVOR_MAX_CORRUPTION;
+    private const int MaxCorruption = Config.MAX_CORRUPTION;
     private const int InitialStamina = MaxStamina;
     private const int InitialCorruption = 0;
     private static readonly TimeSpan ExploreMoveGracePeriod = TimeSpan.FromMilliseconds(750);

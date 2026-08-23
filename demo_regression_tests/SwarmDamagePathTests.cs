@@ -294,11 +294,11 @@ public class SwarmDamagePathTests
         const long matchingId = 771001;
         const long playerId = 4242;
 
-        manager.RecordSurvivorMonsterHit(matchingId, playerId, 12, killed: false);
-        manager.RecordSurvivorMonsterHit(matchingId, playerId, 12, killed: true);
-        manager.RecordSurvivorMonsterHit(matchingId, playerId, 21, killed: true);
+        manager.RecordMonsterHit(matchingId, playerId, 12, killed: false);
+        manager.RecordMonsterHit(matchingId, playerId, 12, killed: true);
+        manager.RecordMonsterHit(matchingId, playerId, 21, killed: true);
 
-        var stats = manager.GetSurvivorResultStats(matchingId, playerId);
+        var stats = manager.GetResultStats(matchingId, playerId);
         Assert.Equal(2, stats.MonsterKillCount);
         Assert.Equal(45, stats.MonsterDamageDealt);
 

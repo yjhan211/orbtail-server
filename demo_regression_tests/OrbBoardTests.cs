@@ -5,7 +5,7 @@ using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public sealed class SurvivorOrbBoardTests
+public sealed class OrbBoardTests
 {
     // 주기는 #229에서 당겨졌다(1.4/1.0/0.7 → 0.8/0.55/0.4): 시작 오브 하나의 초당 처치가
     // 구역 보충(초당 1.33마리)에 한참 못 미쳐 초반에 길이 안 열렸다. 태양·바람이 같은 표를
@@ -72,7 +72,7 @@ public sealed class SurvivorOrbBoardTests
         Assert.True(OrbData.TryGetRecoveryTier(itemId, out int tier));
         Assert.Equal(expectedTier, tier);
         Assert.Equal(expectedRecovery, OrbData.GetRecoveryAmount(itemId));
-        Assert.False(OrbData.IsSurvivorOrb(itemId));
+        Assert.False(OrbData.IsOrbItem(itemId));
     }
 
     [Theory]
@@ -95,7 +95,7 @@ public sealed class SurvivorOrbBoardTests
             outputs.Add(output);
         }
 
-        Assert.All(outputs, output => Assert.True(OrbData.IsSurvivorOrb(output)));
+        Assert.All(outputs, output => Assert.True(OrbData.IsOrbItem(output)));
         Assert.True(outputs.Count > 1);
     }
 
@@ -208,7 +208,7 @@ public sealed class SurvivorOrbBoardTests
         inventory.AddItem(107000032, forceSeparateStack: true);
 
         Assert.Null(inventory.GetEquippedBattleItem());
-        Assert.True(inventory.TryGetActiveSurvivorOrbPair(out var color, out int supportTier));
+        Assert.True(inventory.TryGetActiveOrbPair(out var color, out int supportTier));
         Assert.Equal(OrbColor.Blue, color);
         Assert.Equal(3, supportTier);
     }
@@ -236,13 +236,13 @@ public sealed class SurvivorOrbBoardTests
         inventory.AddItem(107000010, forceSeparateStack: true);
 
         Assert.True(inventory.TryEquipBattleItem(equippedOrb.ItemUid, out _));
-        Assert.True(inventory.TryGetActiveSurvivorOrbPair(out var color, out int supportTier));
+        Assert.True(inventory.TryGetActiveOrbPair(out var color, out int supportTier));
         Assert.Equal(OrbColor.Red, color);
         Assert.Equal(1, supportTier);
 
-        Assert.True(inventory.TryCombineSurvivorOrbs(107000010, 107000010, new Random(1), out int output, out _));
+        Assert.True(inventory.TryCombineOrbs(107000010, 107000010, new Random(1), out int output, out _));
         Assert.Equal(output, inventory.GetEquippedBattleItem()!.ItemId);
-        Assert.False(inventory.TryGetActiveSurvivorOrbPair(out color, out supportTier));
+        Assert.False(inventory.TryGetActiveOrbPair(out color, out supportTier));
     }
 
     [Fact]
@@ -257,7 +257,7 @@ public sealed class SurvivorOrbBoardTests
         Assert.True(manager.TryAddItemWithCapacity(198, 101, 107000020, 6, out _));
 
         var reconnectedInventory = manager.GetPlayerInventory(198, 101);
-        Assert.True(reconnectedInventory.TryGetActiveSurvivorOrbPair(out var color, out int supportTier));
+        Assert.True(reconnectedInventory.TryGetActiveOrbPair(out var color, out int supportTier));
         Assert.Equal(OrbColor.Red, color);
         Assert.Equal(1, supportTier);
     }
@@ -271,8 +271,8 @@ public sealed class SurvivorOrbBoardTests
         manager.AddItem(10, 100, 107000010);
 
         var attempts = await Task.WhenAll(
-            Task.Run(() => manager.TryCombineSurvivorOrbs(10, 100, 107000010, 107000010, new Random(1), out _, out _)),
-            Task.Run(() => manager.TryCombineSurvivorOrbs(10, 100, 107000010, 107000010, new Random(2), out _, out _)));
+            Task.Run(() => manager.TryCombineOrbs(10, 100, 107000010, 107000010, new Random(1), out _, out _)),
+            Task.Run(() => manager.TryCombineOrbs(10, 100, 107000010, 107000010, new Random(2), out _, out _)));
 
         Assert.Single(attempts, success => success);
         Assert.Single(attempts, success => !success);
@@ -288,7 +288,7 @@ public sealed class SurvivorOrbBoardTests
         manager.AddItem(198, 100, 107000010);
         manager.AddItem(198, 100, 107000010);
 
-        Assert.True(manager.TryCombineSurvivorOrbs(198, 100, 107000010, 107000010,
+        Assert.True(manager.TryCombineOrbs(198, 100, 107000010, 107000010,
             new Random(198), out int outputItemId, out _));
 
         // A new session retrieves the same matching/player inventory; it must not replay the merge.
@@ -296,7 +296,7 @@ public sealed class SurvivorOrbBoardTests
         var output = Assert.Single(reconnectedInventory.GetAllItems());
         Assert.Equal(outputItemId, output.ItemId);
         Assert.Equal(1, output.Count);
-        Assert.False(manager.TryCombineSurvivorOrbs(198, 100, 107000010, 107000010,
+        Assert.False(manager.TryCombineOrbs(198, 100, 107000010, 107000010,
             new Random(199), out _, out _));
     }
 

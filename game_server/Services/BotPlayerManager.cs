@@ -341,7 +341,7 @@ public partial class BotPlayerManager
     /// <summary>
     ///     遊뉗쓽 留덈땲???곹깭 蹂寃?(泥댁씤 ?⑥젅 / ?쒗븳遺 吏꾩엯 ??
     /// </summary>
-    public void SetBotManittoStatus(long matchingId, long botPlayerId, PlayerMatchStatus status)
+    public void SetBotRosterStatus(long matchingId, long botPlayerId, PlayerMatchStatus status)
     {
         var bot = GetBot(matchingId, botPlayerId);
         if (bot == null) return;

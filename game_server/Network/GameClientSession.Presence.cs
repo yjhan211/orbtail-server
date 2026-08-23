@@ -38,7 +38,7 @@ public partial class GameClientSession
         bool shouldConsumeActivationCost =
             ShouldConsumePresenceBookmarkActivationCost(previousBookmarkPlayerId, newBookmarkPlayerId);
         PresenceBookmarkPlayerId = newBookmarkPlayerId;
-        bool isManitto = PresenceBookmarkPlayerId != 0 && myWatcher?.PlayerId == PresenceBookmarkPlayerId;
+        bool isWatcher = PresenceBookmarkPlayerId != 0 && myWatcher?.PlayerId == PresenceBookmarkPlayerId;
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_BOOKMARK_PRESENCE_RESULT, PlayerId.Value);
         var result = new G_TO_C_BOOKMARK_PRESENCE_RESULT
@@ -52,11 +52,11 @@ public partial class GameClientSession
         // 맞든 틀리든 동일 소모라 정답을 누설하지 않고, 스태미나 고갈 시 ModifyStats가 정신력으로 1:2 전환한다.
         if (shouldConsumeActivationCost) ConsumePresenceBookmarkActivationCost(PresenceBookmarkPlayerId);
 
-        if (isManitto) SendSharpGazeMarkUpdate(PresenceBookmarkPlayerId, true);
+        if (isWatcher) SendSharpGazeMarkUpdate(PresenceBookmarkPlayerId, true);
 
         Logger.LogInformation(
             "Presence bookmark updated: PlayerId={PlayerId}, Bookmark={Bookmark}, IsManitto={IsManitto}",
-            PlayerId, PresenceBookmarkPlayerId, isManitto);
+            PlayerId, PresenceBookmarkPlayerId, isWatcher);
 
         return Task.CompletedTask;
     }

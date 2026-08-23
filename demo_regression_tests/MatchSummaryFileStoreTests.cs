@@ -33,8 +33,8 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
                 EndReason = "last_survivor",
                 FinalPlayerStats =
                 [
-                    new SurvivorFinalPlayerStats(10, 1, 120, 2, 400, 20),
-                    new SurvivorFinalPlayerStats(-101, 2, 110, 1, 250, 0)
+                    new MatchFinalPlayerStats(10, 1, 120, 2, 400, 20),
+                    new MatchFinalPlayerStats(-101, 2, 110, 1, 250, 0)
                 ]
             }
         };

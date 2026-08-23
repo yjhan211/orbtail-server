@@ -61,7 +61,7 @@ public class PlayerInGameInventory(long matchingId)
     ///     교체한다 (티어 id는 연속: …10→11→12). 제거+추가로 구현하면 열 끝으로 밀린다.
     /// </summary>
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryUpgradeSurvivorOrb(long itemUid, out InGameItemInfo? upgradedItem)
+    public bool TryUpgradeOrb(long itemUid, out InGameItemInfo? upgradedItem)
     {
         upgradedItem = null;
         if (!_items.TryGetValue(itemUid, out var item) || item.Count <= 0)
@@ -79,12 +79,12 @@ public class PlayerInGameInventory(long matchingId)
     ///     첫 원본 슬롯에, 예비 오브가 고른 슬롯에 들어간다. 제거+추가로 하면 열 끝으로 밀린다.
     /// </summary>
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryReplaceSurvivorOrb(long itemUid, int newItemId, out InGameItemInfo? replacedItem)
+    public bool TryReplaceOrb(long itemUid, int newItemId, out InGameItemInfo? replacedItem)
     {
         replacedItem = null;
         if (!_items.TryGetValue(itemUid, out var item) || item.Count <= 0)
             return false;
-        if (!OrbData.IsSurvivorOrb(newItemId))
+        if (!OrbData.IsOrbItem(newItemId))
             return false;
 
         item.ItemId = newItemId;
@@ -135,7 +135,7 @@ public class PlayerInGameInventory(long matchingId)
         addedItem = null;
         if (maxSlots <= 0 || _items.Count >= maxSlots) return false;
         addedItem = AddItem(itemId, 1, giftState, forceSeparateStack: true);
-        if (_equippedBattleItemUid == 0 && OrbData.IsSurvivorOrb(itemId))
+        if (_equippedBattleItemUid == 0 && OrbData.IsOrbItem(itemId))
             _equippedBattleItemUid = addedItem.ItemUid;
         return true;
     }
@@ -182,7 +182,7 @@ public class PlayerInGameInventory(long matchingId)
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryCombineSurvivorOrbs(int inputA, int inputB, Random random,
+    public bool TryCombineOrbs(int inputA, int inputB, Random random,
         out int outputItemId, out List<InGameItemInfo> changedItems)
     {
         outputItemId = 0;
@@ -243,7 +243,7 @@ public class PlayerInGameInventory(long matchingId)
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryGetActiveSurvivorOrbPair(out OrbColor color, out int pairTier)
+    public bool TryGetActiveOrbPair(out OrbColor color, out int pairTier)
     {
         var boardItemIds = _items.Values
             .Where(item => item.Count > 0)
@@ -252,7 +252,7 @@ public class PlayerInGameInventory(long matchingId)
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool HasActiveSurvivorOrbPair(OrbColor color, out int pairTier)
+    public bool HasActiveOrbPair(OrbColor color, out int pairTier)
     {
         var boardItemIds = _items.Values
             .Where(item => item.Count > 0)
@@ -417,11 +417,11 @@ public class InGameInventoryManager
         return result;
     }
 
-    public bool TryCombineSurvivorOrbs(long matchingId, long playerId, int inputA, int inputB,
+    public bool TryCombineOrbs(long matchingId, long playerId, int inputA, int inputB,
         Random random, out int outputItemId, out List<InGameItemInfo> changedItems)
     {
         var inventory = GetPlayerInventory(matchingId, playerId);
-        bool result = inventory.TryCombineSurvivorOrbs(inputA, inputB, random, out outputItemId, out changedItems);
+        bool result = inventory.TryCombineOrbs(inputA, inputB, random, out outputItemId, out changedItems);
         if (result)
             _logAction?.Invoke(
                 $"InGameInventoryManager: Random Survivor orb merge (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{inputA},{inputB}], Output={outputItemId})");
@@ -433,7 +433,7 @@ public class InGameInventoryManager
     ///     즉시 합성한다 (SB 3머지 문법). 보드 관리를 실시간 태스크에서 제거하고,
     ///     드래프트(무슨 색을 쌓나)는 개봉 선택에 남는다. 반환은 변경 목록(클라 전송용).
     /// </summary>
-    public List<InGameItemInfo> AutoMergeSurvivorOrbs(long matchingId, long playerId, Random random)
+    public List<InGameItemInfo> AutoMergeOrbs(long matchingId, long playerId, Random random)
     {
         _ = random; // 랜덤 진화(2머지)를 대체 — 시그니처는 호출부 호환을 위해 유지.
         var allChanged = new List<InGameItemInfo>();

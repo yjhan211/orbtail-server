@@ -148,7 +148,7 @@ public partial class GameServer
             (_swarmFamilyUpgradeCounts.TryGetValue((matchingId, playerId, color), out int count) ? count : 0) + 1;
 
         var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
-        bool replaced = inventory.TryReplaceSurvivorOrb(target.ItemUid, upgradedItemId, out _);
+        bool replaced = inventory.TryReplaceOrb(target.ItemUid, upgradedItemId, out _);
         resultItemId = upgradedItemId;
         targetOrdinal = ordinal;
 

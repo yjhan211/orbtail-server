@@ -178,7 +178,7 @@ public partial class GameServer
             // 결과 화면이 수백 킬을 "처치 0회"로 표시한다.
             if (damageResult.Applied)
             {
-                _gameEventLogManager.RecordSurvivorMonsterHit(
+                _gameEventLogManager.RecordMonsterHit(
                     matchingId, hit.AttackerId, hit.Damage, damageResult.Killed);
             }
 
@@ -438,8 +438,8 @@ public partial class GameServer
             ProcessSwarmPvpAttackEvents(
                 matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
         }
-        ProcessSurvivorOrbRecovery(matchingId, actors, aliveSessions, aliveBots, nowUtc);
-        BroadcastSurvivorOrbVisualStates(matchingId, actors, sessions);
+        ProcessOrbRecovery(matchingId, actors, aliveSessions, aliveBots, nowUtc);
+        BroadcastOrbVisualStates(matchingId, actors, sessions);
         BroadcastSwarmOrbRankings(matchingId, sessions, bots);
         // 성장 카드 (#226 단계 C): 소환석이 비용에 닿는 즉시 3택 오퍼 — 상자 트리거 퇴역.
         ProcessSwarmGrowthOffers(matchingId, nowUtc, aliveSessions, aliveBots);
@@ -1825,7 +1825,7 @@ public partial class GameServer
     {
         var key = (matchingId, bot.PlayerId);
         bool wounded = _swarmBotWounded.Contains(key);
-        float ratio = bot.Corruption / (float)Config.SURVIVOR_MAX_CORRUPTION;
+        float ratio = bot.Corruption / (float)Config.MAX_CORRUPTION;
         if (!wounded && ratio >= SwarmBotWoundedEnterRatio)
         {
             _swarmBotWounded.Add(key);
@@ -1878,7 +1878,7 @@ public partial class GameServer
     private bool IsSwarmBotCutAllowed(long matchingId, long botPlayerId, int corruptionBefore, DateTime nowUtc)
     {
         if (corruptionBefore + SwarmSingleCutCorruptionCost >
-            Config.SURVIVOR_MAX_CORRUPTION * SwarmBotCutMaxCorruptionRatio)
+            Config.MAX_CORRUPTION * SwarmBotCutMaxCorruptionRatio)
             return false;
         return !_swarmBotLastTrailCutAtUtc.TryGetValue((matchingId, botPlayerId), out var lastCutAtUtc) ||
                (nowUtc - lastCutAtUtc).TotalSeconds >= SwarmBotCutCooldownSeconds;
@@ -2352,7 +2352,7 @@ public partial class GameServer
             ? aliveBots.FirstOrDefault(candidate => candidate.PlayerId == cutterId)
             : null;
         int cutterCorruptionBefore = cutterSession?.CurrentCorruption ?? cutterBot?.Corruption ?? int.MaxValue;
-        if (cutterCorruptionBefore + SwarmSingleCutCorruptionCost >= Config.SURVIVOR_MAX_CORRUPTION)
+        if (cutterCorruptionBefore + SwarmSingleCutCorruptionCost >= Config.MAX_CORRUPTION)
         {
             _gameEventLogManager.LogSystem(
                 matchingId,
@@ -2427,7 +2427,7 @@ public partial class GameServer
         else if (cutterBot != null)
         {
             cutterBot.Corruption = Math.Min(
-                Config.SURVIVOR_MAX_CORRUPTION, cutterBot.Corruption + SwarmSingleCutCorruptionCost);
+                Config.MAX_CORRUPTION, cutterBot.Corruption + SwarmSingleCutCorruptionCost);
             cutterBot.LastDamagedAtUtc = nowUtc;
             _swarmBotLastDamagedAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
             // 봇 절단 시각 — 절단 자제 쿨다운(IsSwarmBotCutAllowed)과 절단 후 회수 창이 읽는다.
@@ -3570,7 +3570,7 @@ public partial class GameServer
             if (!HasAnySquadOrb(matchingId, bot.PlayerId))
             {
                 int nakedBefore = bot.Corruption;
-                bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION,
+                bot.Corruption = Math.Min(Config.MAX_CORRUPTION,
                     bot.Corruption + GetSwarmNakedCorruption(damage.Damage));
                 _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
                 bot.LastDamagedAtUtc = DateTime.UtcNow;
@@ -3581,7 +3581,7 @@ public partial class GameServer
                 _gameEventLogManager.LogEmotionAfterimageHit(
                     matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
                     damage.Damage, nakedBefore, bot.Corruption,
-                    bot.Corruption >= Config.SURVIVOR_MAX_CORRUPTION, isBot: true,
+                    bot.Corruption >= Config.MAX_CORRUPTION, isBot: true,
                     DateTimeOffset.UtcNow);
                 return;
             }
@@ -3611,14 +3611,14 @@ public partial class GameServer
         // 2로 뭉개져 페이즈별 접촉 곡선이 봇에게는 통째로 평평했다. 사람 경로는 Round를 쓴다.
         int botDamage = Math.Max(1, (int)MathF.Round(damage.Damage * SwarmBotContactDamageMultiplier));
         int legacyBefore = bot.Corruption;
-        bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + botDamage);
+        bot.Corruption = Math.Min(Config.MAX_CORRUPTION, bot.Corruption + botDamage);
         _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
         // 세 번째 봇 경로도 남긴다 — 앞의 두 경로만 로그를 붙여 놓으면 여기로 빠진 피해가
         // 그대로 안 보인다 (2026-08-16).
         _gameEventLogManager.LogEmotionAfterimageHit(
             matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
             botDamage, legacyBefore, bot.Corruption,
-            bot.Corruption >= Config.SURVIVOR_MAX_CORRUPTION, isBot: true, DateTimeOffset.UtcNow);
+            bot.Corruption >= Config.MAX_CORRUPTION, isBot: true, DateTimeOffset.UtcNow);
     }
 
     // 빈손 본체 유효 HP = T1 오브 두 개 값 (#223 재상향): T1 한 개 값(×17.5)은 후반 T3
@@ -3626,7 +3626,7 @@ public partial class GameServer
     // 시간이 없는 죽음은 전투를 관전으로 만든다. 두 개 값(×8.75)이면 빈손 도주 창이
     // 2~3초 생기고, 재기는 여전히 도주 지시(0.5단계)·빈손 이속·무료 개봉이 만든다.
     private static readonly float SwarmNakedCorruptionPerDamage =
-        Config.SURVIVOR_MAX_CORRUPTION / (float)(OrbData.GetSquadOrbMaxHp(1) * 2);
+        Config.MAX_CORRUPTION / (float)(OrbData.GetSquadOrbMaxHp(1) * 2);
 
     private static int GetSwarmNakedCorruption(int damage) =>
         Math.Max(1, (int)MathF.Round(damage * SwarmNakedCorruptionPerDamage));
@@ -3727,7 +3727,7 @@ public partial class GameServer
     /// <summary>
     ///     5분 점수 만료 판정 (#226 단계 B): 개전 후 5분이 지나면 생존자 중 오브 최다
     ///     보유자가 승리한다. 동점은 총 티어 합 → (철갑, 단계 C 예정) → 본체 게이지(오염
-    ///     낮은 쪽) → PlayerId 낮은 쪽. 단독 생존 조기 종료와 같은 TryEndSurvivorMatch
+    ///     낮은 쪽) → PlayerId 낮은 쪽. 단독 생존 조기 종료와 같은 TryEndMatch
     ///     경로라 결과 화면도 같다. 잼 승점(#222 M3-2)은 퇴역.
     /// </summary>
     private void ProcessSwarmScoreTimeout(
@@ -3794,8 +3794,8 @@ public partial class GameServer
         var resultHost = sessions.FirstOrDefault(session => !session.IsGameEnded);
         if (resultHost != null)
         {
-            resultHost.TryEndSurvivorMatch(winnerId, "orb_score_timeout");
-            CleanupSurvivorSettlementState(matchingId);
+            resultHost.TryEndMatch(winnerId, "orb_score_timeout");
+            CleanupMatchSettlementState(matchingId);
             return;
         }
 
@@ -4488,13 +4488,13 @@ public partial class GameServer
             {
                 // 킬 크레딧 (#226 F 계측): 봇 표적도 사람 표적과 같은 피격 로그를 남긴다 —
                 // 이게 빠지면 사람이 봇을 잡아도 killCount·totalDamageDealt가 0으로 남는다.
-                _gameEventLogManager.LogSurvivorHit(
+                _gameEventLogManager.LogHit(
                     matchingId, attack.AttackerPlayerId, bot.PlayerId, attack.WeaponItemId,
                     corruption,
-                    bot.Corruption < Config.SURVIVOR_MAX_CORRUPTION &&
-                    bot.Corruption + corruption >= Config.SURVIVOR_MAX_CORRUPTION,
+                    bot.Corruption < Config.MAX_CORRUPTION &&
+                    bot.Corruption + corruption >= Config.MAX_CORRUPTION,
                     BotPlayerManager.IsBotPlayerId(attack.AttackerPlayerId), DateTimeOffset.UtcNow);
-                bot.Corruption = Math.Min(Config.SURVIVOR_MAX_CORRUPTION, bot.Corruption + corruption);
+                bot.Corruption = Math.Min(Config.MAX_CORRUPTION, bot.Corruption + corruption);
             }
         }
 

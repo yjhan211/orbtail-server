@@ -170,7 +170,7 @@ public class ProximityAutoCombatDataTests
         Assert.Contains(
             "if (session == null)\n" +
             "            {\n" +
-            "                _gameEventLogManager.RecordSurvivorRecovery(\n" +
+            "                _gameEventLogManager.RecordRecovery(\n" +
             "                    matchingId, playerId, effectiveRecovery);\n" +
             "            }",
             source);
@@ -195,7 +195,7 @@ public class ProximityAutoCombatDataTests
         Assert.Contains("targetPlayer.IsEncounterVisualVisible", source);
         Assert.Contains("return IsRemotePlayerInCurrentArea(targetPlayer);", source);
         Assert.Contains("PruneOutOfAreaPlayerAffinityEncounterStates();", source);
-        Assert.Contains("_survivorOrbEffectStates.Remove(playerId);", source);
+        Assert.Contains("_orbEffectStates.Remove(playerId);", source);
     }
 
     [Fact]

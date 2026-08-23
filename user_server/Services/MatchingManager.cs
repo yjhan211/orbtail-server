@@ -211,8 +211,8 @@ public class MatchingManager : IMatchingManager
                             matchingId, groupEntries.Length, botsNeeded);
 
                 // ?먰삎 泥댁씤 ?앹꽦: ?뷀뵆 ??A?묪?묬?묭?묮?묨 (?붿궡??= 留덈땲??愿怨?
-                var chain = await BuildManittoChain(allGroupEntries.ToArray());
-                ApplySurvivorRoyaleSpawnAssignments(matchingId, chain);
+                var chain = await BuildRosterChain(allGroupEntries.ToArray());
+                ApplySpawnAssignments(matchingId, chain);
                 await ApplyTwoPlayerTestTargetOutfitAsync(chain);
                 var playerRoster = await BuildPlayerRosterAsync(chain);
 
@@ -309,8 +309,8 @@ public class MatchingManager : IMatchingManager
         _logger.LogInformation("Bot-filled matching: MatchingId={MatchingId}, Real={Real}, Bots={Bot}",
             matchingId, longWaitEntries.Length, botsNeeded);
 
-        var chain = await BuildManittoChain(allEntries.ToArray());
-        ApplySurvivorRoyaleSpawnAssignments(matchingId, chain);
+        var chain = await BuildRosterChain(allEntries.ToArray());
+        ApplySpawnAssignments(matchingId, chain);
         var playerRoster = await BuildPlayerRosterAsync(chain);
 
         // 遊??뺣낫瑜?Redis?????(game_server?먯꽌 濡쒕뱶). ?먰삎 泥댁씤 ?뺥빀 ??遊??寃잛? 泥댁씤 ?ㅼ쓬 ?몃뱶.
@@ -367,10 +367,10 @@ public class MatchingManager : IMatchingManager
     ///     吏곸콉(JobTitle)??臾댁옉??諛곗젙. Redis 吏곸콉 ? 媛뺤젣 吏?뺤씠 ?덉쑝硫??곗꽑 ?ъ슜.
     ///     ?쒖꽦 ???쒖뿰??遊?紐?BR/DC/SC/HE) 泥댁씤 媛뺤젣 ???뷀뵆 ?놁쓬.
     /// </summary>
-    private async Task<List<ManittoChainLink>> BuildManittoChain(byte[][] groupEntries)
+    private async Task<List<RosterChainLink>> BuildRosterChain(byte[][] groupEntries)
     {
         if (IsTwoPlayerTestMatch && groupEntries.Length == DefaultGamePlayersPerMatch)
-            return BuildTwoPlayerTestManittoChain(groupEntries);
+            return BuildTwoPlayerTestRosterChain(groupEntries);
 
 
         // ?뷀뵆
@@ -445,11 +445,11 @@ public class MatchingManager : IMatchingManager
         var players = entries.Select(e => MessagePackSerializer.Deserialize<MatchingQueueData>(e)).ToList();
         ApplyForcedPlayerJob(players, jobs);
 
-        var chain = new List<ManittoChainLink>();
+        var chain = new List<RosterChainLink>();
         for (int i = 0; i < entries.Count; i++)
         {
             int targetIndex = (i + 1) % entries.Count;
-            chain.Add(new ManittoChainLink
+            chain.Add(new RosterChainLink
             {
                 Entry = entries[i],
                 TargetPlayerId = players[targetIndex].PlayerId,
@@ -477,7 +477,7 @@ public class MatchingManager : IMatchingManager
             : null;
     }
 
-    private void ApplySurvivorRoyaleSpawnAssignments(long matchingId, List<ManittoChainLink> chain)
+    private void ApplySpawnAssignments(long matchingId, List<RosterChainLink> chain)
     {
         if (chain.Count == 0) return;
 
@@ -526,7 +526,7 @@ public class MatchingManager : IMatchingManager
             players[playerIndex].PlayerId, forcedJob.Value);
     }
 
-    private async Task ApplyTwoPlayerTestTargetOutfitAsync(List<ManittoChainLink> chain)
+    private async Task ApplyTwoPlayerTestTargetOutfitAsync(List<RosterChainLink> chain)
     {
         if (!IsTwoPlayerTestMatch) return;
 
@@ -601,7 +601,7 @@ public class MatchingManager : IMatchingManager
             .ToArray();
     }
 
-    private List<ManittoChainLink> BuildTwoPlayerTestManittoChain(byte[][] groupEntries)
+    private List<RosterChainLink> BuildTwoPlayerTestRosterChain(byte[][] groupEntries)
     {
         var entries = groupEntries
             .Select(entry => new
@@ -645,11 +645,11 @@ public class MatchingManager : IMatchingManager
             JobTitle.CLEANING_MEMBER
         };
 
-        var chain = new List<ManittoChainLink>();
+        var chain = new List<RosterChainLink>();
         for (int i = 0; i < ordered.Count; i++)
         {
             int targetIndex = (i + 1) % ordered.Count;
-            chain.Add(new ManittoChainLink
+            chain.Add(new RosterChainLink
             {
                 Entry = ordered[i].Entry,
                 TargetPlayerId = players[targetIndex].PlayerId,
@@ -665,7 +665,7 @@ public class MatchingManager : IMatchingManager
         return chain;
     }
 
-    private async Task<List<PlayerInfo>> BuildPlayerRosterAsync(List<ManittoChainLink> chain)
+    private async Task<List<PlayerInfo>> BuildPlayerRosterAsync(List<RosterChainLink> chain)
     {
         var roster = new List<PlayerInfo>();
 
@@ -961,7 +961,7 @@ public class MatchingQueueData
 /// <summary>
 ///     ?먰삎 泥댁씤????留곹겕: ?뚮젅?댁뼱 ???寃?愿怨?+ 吏곸콉
 /// </summary>
-public class ManittoChainLink
+public class RosterChainLink
 {
     public byte[] Entry { get; set; } = Array.Empty<byte>();
     public long TargetPlayerId { get; set; }

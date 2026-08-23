@@ -112,7 +112,7 @@ public partial class BotPlayerManager
                 resourceTickSeconds);
 
             if (totalCorruptionDelta != 0)
-                bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, Config.SURVIVOR_MAX_CORRUPTION);
+                bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, Config.MAX_CORRUPTION);
 
             if (TryQueueBotMentalElimination(bot, matchingId, result))
                 continue;
@@ -133,7 +133,7 @@ public partial class BotPlayerManager
         if (bot.IsEliminated || corruptionDelta == 0)
             return;
 
-        bot.Corruption = Math.Clamp(bot.Corruption + corruptionDelta, 0, Config.SURVIVOR_MAX_CORRUPTION);
+        bot.Corruption = Math.Clamp(bot.Corruption + corruptionDelta, 0, Config.MAX_CORRUPTION);
     }
 
     public void MarkEnvironmentalEliminated(BotPlayerState bot, long matchingId)
@@ -159,7 +159,7 @@ public partial class BotPlayerManager
     }
     private bool TryQueueBotMentalElimination(BotPlayerState bot, long matchingId, BotTickResult result)
     {
-        if (bot.Corruption < Config.SURVIVOR_MAX_CORRUPTION) return false;
+        if (bot.Corruption < Config.MAX_CORRUPTION) return false;
 
         bot.IsEliminated = true;
         bot.IsForcedFollowActive = false;

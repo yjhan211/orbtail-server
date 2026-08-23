@@ -69,7 +69,7 @@ public partial class GameClientSession
         _hasPendingOrbDraft = false;
         // 자동 머지: 오브열 실험(#226)에서는 끈다 — 성장 = 열 길이, 압축은 그 언어와 싸운다.
         if (Config.SWARM_ORB_MERGE_ENABLED)
-            foreach (var mergedItem in _inGameInventoryManager.AutoMergeSurvivorOrbs(
+            foreach (var mergedItem in _inGameInventoryManager.AutoMergeOrbs(
                          CurrentMapSubId, PlayerId.Value, Random.Shared))
                 SendInGameInventoryUpdate(mergedItem);
         return true;
@@ -111,7 +111,7 @@ public partial class GameClientSession
         {
             SendInGameInventoryUpdate(attempt.AddedItem);
             var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, playerId);
-            _gameEventLogManager.LogSurvivorOrbBoardTransition(
+            _gameEventLogManager.LogOrbBoardTransition(
                 CurrentMapSubId,
                 playerId,
                 inventory.GetAllItems(),
@@ -305,7 +305,7 @@ public partial class GameClientSession
         SendInGameInventoryUpdate(removedItem);
         SendDestroyOrbResult(true, ErrorCode.SUCCESS, request.ItemUid, refundedStones, state);
 
-        _gameEventLogManager.LogSurvivorOrbBoardTransition(
+        _gameEventLogManager.LogOrbBoardTransition(
             CurrentMapSubId,
             playerId,
             inventory.GetAllItems(),
