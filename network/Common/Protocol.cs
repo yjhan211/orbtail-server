@@ -150,7 +150,6 @@ namespace network.common
         G_TO_C_BOOKMARK_PRESENCE_RESULT, // 기척 HUD 수동 북마크 결과
         G_TO_C_SHARP_GAZE_MARK_UPDATE,  // 내 타겟이 나를 마니또로 북마크했는지 여부
 
-        G_TO_C_ROUND_STATE,
         G_TO_C_ENCOUNTER_REVEAL,
         C_TO_G_ROOM_ENCOUNTER_AVOID,
 

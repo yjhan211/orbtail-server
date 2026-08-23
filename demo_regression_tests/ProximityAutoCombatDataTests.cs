@@ -142,8 +142,7 @@ public class ProximityAutoCombatDataTests
             repoRoot, "game_server", "GameServer.SwarmArena.cs");
         string sessionSource = ReadNormalizedSource(
             repoRoot, "game_server", "Network", "GameClientSession.ProximityAutoCombat.cs");
-        string mapSource = ReadNormalizedSource(
-            repoRoot, "client", "Assets", "Scripts", "Managers", "Map", "MapManager.PlayerVisibility.cs");
+        string mapSource = ReadMapManagerSources(repoRoot);
         string playerSource = ReadNormalizedSource(
             repoRoot, "client", "Assets", "Scripts", "Components", "Player", "Player.cs");
 
@@ -158,7 +157,7 @@ public class ProximityAutoCombatDataTests
             "int damageValue = authoritativeDamageValue > 0\n" +
             "                ? authoritativeDamageValue",
             mapSource);
-        Assert.Contains("_guardianHitDisplay.Play(Mathf.Max(1, damageValue), damageColor", playerSource);
+        // 수치 팝업은 MonsterDamageLabel/DamageComboDisplay 경로가 맡는다 (Player.ShowGuardianHitDisplay는 호출자 0으로 #252에서 삭제).
         Assert.DoesNotContain("오염 +", playerSource);
     }
 
@@ -190,8 +189,7 @@ public class ProximityAutoCombatDataTests
     [Fact]
     public void PlayerAffinityEncounterRequiresAVisibleTargetInTheCurrentArea()
     {
-        string source = ReadNormalizedSource(
-            FindRepositoryRoot(), "client", "Assets", "Scripts", "Managers", "Map", "MapManager.PlayerVisibility.cs");
+        string source = ReadMapManagerSources(FindRepositoryRoot());
 
         Assert.Contains("!IsPlayerAffinityEncounterVisible(targetPlayerId, out _)", source);
         Assert.Contains("targetPlayer.IsEncounterVisualVisible", source);
@@ -204,8 +202,7 @@ public class ProximityAutoCombatDataTests
     public void ObserversSeeBotOrbProjectilesWhenTheTargetIsAnAfterimageMonster()
     {
         string repoRoot = FindRepositoryRoot();
-        string mapSource = ReadNormalizedSource(
-            repoRoot, "client", "Assets", "Scripts", "Managers", "Map", "MapManager.PlayerVisibility.cs");
+        string mapSource = ReadMapManagerSources(repoRoot);
 
         // #238: 레거시 잔상 공격 파이프라인 퇴역 — 현행 스웜의 몬스터 공격 피드백 계약을 검사한다.
         string swarmSource = ReadNormalizedSource(repoRoot, "game_server", "GameServer.SwarmArena.cs");
@@ -254,6 +251,16 @@ public class ProximityAutoCombatDataTests
         }
 
         throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
+    }
+
+    /// <summary>MapManager 파셜 전체를 이어 붙여 읽는다 (#252 분할 후 책임별 파셜에 흩어져 있다).</summary>
+    private static string ReadMapManagerSources(string repoRoot)
+    {
+        string dir = Path.Combine(repoRoot, "client", "Assets", "Scripts", "Managers", "Map");
+        var builder = new System.Text.StringBuilder();
+        foreach (string file in Directory.GetFiles(dir, "MapManager*.cs"))
+            builder.AppendLine(File.ReadAllText(file).Replace("\r\n", "\n"));
+        return builder.ToString();
     }
 
     private static string ReadNormalizedSource(string repositoryRoot, params string[] pathParts)
