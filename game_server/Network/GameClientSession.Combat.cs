@@ -399,14 +399,14 @@ public partial class GameClientSession
             using var resultPacket =
                 PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, equippedItem!.ItemUid, ErrorCode.SUCCESS);
             Send(resultPacket);
-            _gameEventLogManager.LogSurvivorOrbBoardTransition(
+            _gameEventLogManager.LogOrbBoardTransition(
                 CurrentMapSubId, PlayerId.Value, inventory.GetAllItems(), equippedItem.ItemId,
                 CurrentArea.ToString(), "equip", isBot: false);
             Logger.LogInformation(
                 "Player {PlayerId} equipped battle item: ItemUid={ItemUid}, ItemId={ItemId}",
                 PlayerId, equippedItem.ItemUid, equippedItem.ItemId);
             var equippedCombatData = BattleItemCombatData.Get(equippedItem.ItemId);
-            _gameEventLogManager.LogSurvivorTierReached(
+            _gameEventLogManager.LogTierReached(
                 CurrentMapSubId, PlayerId.Value, equippedItem.ItemId, equippedCombatData?.Tier ?? 0, isBot: false);
             return;
         }
@@ -612,7 +612,7 @@ public partial class GameClientSession
         {
             int recoveredCorruption = Math.Max(0, oldCorruption - Corruption);
             if (recoveredCorruption > 0)
-                _gameEventLogManager.RecordSurvivorRecovery(CurrentMapSubId, PlayerId.Value, recoveredCorruption);
+                _gameEventLogManager.RecordRecovery(CurrentMapSubId, PlayerId.Value, recoveredCorruption);
 
             _gameEventLogManager.LogResource(CurrentMapSubId, PlayerId.Value,
                 staminaDelta, totalCorDelta, Stamina, Corruption,

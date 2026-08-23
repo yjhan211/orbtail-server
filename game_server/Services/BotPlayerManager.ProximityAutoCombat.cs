@@ -207,9 +207,9 @@ public partial class BotPlayerManager
                         targetCombatData.AttackRange > ownCombatData.AttackRange);
         float preferredDistance = ownCombatData.AttackRange * 0.72f;
 
-        bool survivalRisk = bot.Corruption >= Config.SURVIVOR_MAX_CORRUPTION * BotRetreatCorruptionRatio;
+        bool survivalRisk = bot.Corruption >= Config.MAX_CORRUPTION * BotRetreatCorruptionRatio;
         bool targetNearElimination = nearest.Corruption >=
-                                     Config.SURVIVOR_MAX_CORRUPTION * BotFinishTargetCorruptionRatio;
+                                     Config.MAX_CORRUPTION * BotFinishTargetCorruptionRatio;
 
         // A planned loot route is the default. Immediate survival and a visible
         // finishing opportunity are the only combat reasons to abandon it.
@@ -356,14 +356,14 @@ public partial class BotPlayerManager
             return;
 
         int previousCorruption = bot.Corruption;
-        bot.Corruption = Math.Clamp(bot.Corruption + damage, 0, Config.SURVIVOR_MAX_CORRUPTION);
-        if (previousCorruption < Config.SURVIVOR_MAX_CORRUPTION && bot.Corruption >= Config.SURVIVOR_MAX_CORRUPTION)
+        bot.Corruption = Math.Clamp(bot.Corruption + damage, 0, Config.MAX_CORRUPTION);
+        if (previousCorruption < Config.MAX_CORRUPTION && bot.Corruption >= Config.MAX_CORRUPTION)
             bot.LastProximityAttackerPlayerId = attackerPlayerId;
     }
 
     public bool TryFinalizeProximityAutoCombatElimination(BotPlayerState bot, long matchingId)
     {
-        if (bot.IsEliminated || bot.Corruption < Config.SURVIVOR_MAX_CORRUPTION)
+        if (bot.IsEliminated || bot.Corruption < Config.MAX_CORRUPTION)
             return false;
 
         bot.IsEliminated = true;

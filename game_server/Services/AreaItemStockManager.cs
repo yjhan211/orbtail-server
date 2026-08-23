@@ -237,13 +237,13 @@ public sealed class AreaItemStockManager
             if (_areaStocks.TryGetValue(areaType, out var stock)) return stock;
 
             stock = GameInteractableData.GetItemPoolByArea(areaType)
-                .Where(IsSurvivorLootItem)
+                .Where(IsLootItem)
                 .ToList();
             _areaStocks[areaType] = stock;
             return stock;
         }
 
-        private static bool IsSurvivorLootItem(int itemId)
+        private static bool IsLootItem(int itemId)
         {
             var item = GameItemData.Get(itemId);
             return item != null && !BattleItemRecipeData.IsRecipeOutputItem(itemId) &&

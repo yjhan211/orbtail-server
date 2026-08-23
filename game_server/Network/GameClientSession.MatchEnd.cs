@@ -13,7 +13,7 @@ using network.packets;
 namespace game_server.network;
 
 /// <summary>
-///     매치 종료 파이프라인: 탈락 처리(ProcessElimination) → 생존자 승리 판정(TryEndSurvivorMatch) → 결과 전송(SendGameResult)·요약 영속·Redis 정리, 로스터 상태 브로드캐스트.
+///     매치 종료 파이프라인: 탈락 처리(ProcessElimination) → 생존자 승리 판정(TryEndMatch) → 결과 전송(SendGameResult)·요약 영속·Redis 정리, 로스터 상태 브로드캐스트.
 /// </summary>
 public partial class GameClientSession
 {
@@ -166,12 +166,12 @@ public partial class GameClientSession
             forcedRank: forcedRank);
     }
 
-    internal void TryEndSurvivorMatch(long winnerId, string criterion)
+    internal void TryEndMatch(long winnerId, string criterion)
     {
         if (DevFlags.DisableGameEnd)
         {
             Logger.LogWarning(
-                "[DEV] 게임 종료 차단됨 (DISABLE_GAME_END=1): TryEndSurvivorMatch winner={WinnerId}, criterion={Criterion}",
+                "[DEV] 게임 종료 차단됨 (DISABLE_GAME_END=1): TryEndMatch winner={WinnerId}, criterion={Criterion}",
                 winnerId, criterion);
             return;
         }
@@ -223,7 +223,7 @@ public partial class GameClientSession
             winnerId,
             endReason,
             tieBreakCriterion,
-            players.Select(player => new SurvivorFinalPlayerStats(
+            players.Select(player => new MatchFinalPlayerStats(
                 player.PlayerId,
                 player.Rank,
                 player.SurvivalTimeSeconds,
@@ -311,7 +311,7 @@ public partial class GameClientSession
                 var playerInfo = ResolveResultPlayerInfo(matchingId, d.playerId);
                 var session = allSessions.FirstOrDefault(s => s.PlayerId == d.playerId);
                 var bot = _botPlayerManager.GetBot(matchingId, d.playerId);
-                var stats = _gameEventLogManager.GetSurvivorResultStats(matchingId, d.playerId);
+                var stats = _gameEventLogManager.GetResultStats(matchingId, d.playerId);
                 var orbScore = ResolveResultOrbScore(matchingId, d.playerId);
                 DateTime survivalEndUtc = d.eliminatedAt ?? endedAtUtc;
                 int survivalSeconds = Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds));
@@ -324,7 +324,7 @@ public partial class GameClientSession
                         Name = ResolveResultPlayerName(d.playerId, playerInfo, bot),
                         JobTitle = d.job,
                         TargetPlayerId = d.targetId,
-                        ManittoPlayerId = d.manittoId,
+                        WatcherPlayerId = d.watcherId,
                         EliminationReason = d.reason,
                         FinalStatus = d.finalStatus,
                         Corruption = session?.Corruption ?? bot?.Corruption ?? 0,

@@ -40,14 +40,14 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return false;
 
-        bool isSurvivorOrbRequest = OrbData.IsSurvivorOrb(msg.ItemA) ||
-                                    OrbData.IsSurvivorOrb(msg.ItemB);
-        if (isSurvivorOrbRequest)
+        bool isOrbRequest = OrbData.IsOrbItem(msg.ItemA) ||
+                                    OrbData.IsOrbItem(msg.ItemB);
+        if (isOrbRequest)
         {
             var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
-            bool hadResonance = inventory.TryGetActiveSurvivorOrbPair(out OrbColor previousResonanceColor,
+            bool hadResonance = inventory.TryGetActiveOrbPair(out OrbColor previousResonanceColor,
                 out int previousSupportTier);
-            if (!_inGameInventoryManager.TryCombineSurvivorOrbs(
+            if (!_inGameInventoryManager.TryCombineOrbs(
                     CurrentMapSubId,
                     PlayerId.Value,
                     msg.ItemA,
@@ -62,10 +62,10 @@ public partial class GameClientSession
 
             SendBattleItemCombineResult(msg, outputItemId, changedItems, recipeId: 0);
 
-            bool resonanceActive = inventory.TryGetActiveSurvivorOrbPair(out OrbColor resonanceColor,
+            bool resonanceActive = inventory.TryGetActiveOrbPair(out OrbColor resonanceColor,
                 out int supportTier);
             OrbData.TryGetColorAndTier(outputItemId, out OrbColor outputColor, out int outputTier);
-            _gameEventLogManager.LogSurvivorOrbBoardTransition(
+            _gameEventLogManager.LogOrbBoardTransition(
                 CurrentMapSubId, PlayerId.Value, inventory.GetAllItems(),
                 inventory.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "merge", isBot: false);
             _gameEventLogManager.LogMission(
@@ -79,7 +79,7 @@ public partial class GameClientSession
                 isBot: false);
 
             var outputCombatData = BattleItemCombatData.Get(outputItemId);
-            _gameEventLogManager.LogSurvivorTierReached(
+            _gameEventLogManager.LogTierReached(
                 CurrentMapSubId,
                 PlayerId.Value,
                 outputItemId,
@@ -112,7 +112,7 @@ public partial class GameClientSession
             isBot: false);
 
         var combinedCombatData = BattleItemCombatData.Get(recipe.OutputItemId);
-        _gameEventLogManager.LogSurvivorTierReached(
+        _gameEventLogManager.LogTierReached(
             CurrentMapSubId,
             PlayerId.Value,
             recipe.OutputItemId,

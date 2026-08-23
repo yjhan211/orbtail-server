@@ -325,9 +325,9 @@ public partial class GameClientSession
         InteractionAnswerContext? selectedAnswerContext = null;
         if (msg.AnswerIndex >= TargetPlayerAnswerIndexOffset)
         {
-            if (!TryCreateTargetPlayerAnswer(msg.AnswerIndex, out var manittoTargetAnswer) || manittoTargetAnswer == null)
+            if (!TryCreateTargetPlayerAnswer(msg.AnswerIndex, out var targetPlayerAnswer) || targetPlayerAnswer == null)
                 return Task.CompletedTask;
-            selectedAnswer = manittoTargetAnswer;
+            selectedAnswer = targetPlayerAnswer;
         }
         else
         {

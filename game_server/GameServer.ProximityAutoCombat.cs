@@ -16,9 +16,9 @@ public partial class GameServer
     private readonly ProximityAutoCombatResolver _proximityAutoCombatResolver = new();
     private readonly DodgeableProjectileResolver _dodgeableProjectileResolver = new();
     private readonly Dictionary<(long MatchingId, long ObserverPlayerId, long ActorPlayerId),
-        SurvivorOrbVisualState> _survivorOrbVisualStates = new();
+        OrbVisualState> _orbVisualStates = new();
     private readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex), DateTime>
-        _survivorOrbRecoveryReadyAtUtc = new();
+        _orbRecoveryReadyAtUtc = new();
     private readonly Dictionary<(long MatchingId, long PlayerId), ProximityCombatAreaEntryState>
         _proximityCombatAreaEntryStates = new();
     private Timer? _proximityAutoCombatTimer;
@@ -61,14 +61,14 @@ public partial class GameServer
                 if (!swarmWarmup && !GameClientSession.IsRoundActionPhase(matchingId))
                     continue;
 
-                lock (GetSurvivorSettlementLock(matchingId))
+                lock (GetMatchSettlementLock(matchingId))
                 {
                     ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
                     if (!HasProximityAutoCombatMatchingEnded(matchingId)) continue;
                     _proximityAutoCombatResolver.RemoveMatching(matchingId);
-                    RemoveSurvivorOrbVisualStates(matchingId);
+                    RemoveOrbVisualStates(matchingId);
                     CleanupSwarmArenaState(matchingId);
-                    _survivorSettlementLocks.TryRemove(matchingId, out _);
+                    _matchSettlementLocks.TryRemove(matchingId, out _);
                 }
             }
         }
@@ -108,7 +108,7 @@ public partial class GameServer
 ICollection<ProximityCombatActor> actors,
 ProximityCombatActor spatialActor,
 PlayerInGameInventory inventory,
-SurvivorOrbResonanceSnapshot resonanceState)
+OrbResonanceSnapshot resonanceState)
     {
         var equippedItem = inventory.GetEquippedBattleItem();
         bool addedBoardOrb = false;
@@ -203,7 +203,7 @@ SurvivorOrbResonanceSnapshot resonanceState)
 
         actors.Add(spatialActor);
     }
-    private void ProcessSurvivorOrbRecovery(
+    private void ProcessOrbRecovery(
         long matchingId,
         IReadOnlyCollection<ProximityCombatActor> actors,
         IReadOnlyCollection<GameClientSession> matchingSessions,
@@ -223,9 +223,9 @@ SurvivorOrbResonanceSnapshot resonanceState)
             var stateKey = (matchingId, actor.PlayerId, actor.WeaponItemUid, actor.WeaponStackIndex);
             activeRecoveryKeys.Add(actorKey);
 
-            if (!_survivorOrbRecoveryReadyAtUtc.TryGetValue(stateKey, out var readyAtUtc))
+            if (!_orbRecoveryReadyAtUtc.TryGetValue(stateKey, out var readyAtUtc))
             {
-                _survivorOrbRecoveryReadyAtUtc[stateKey] =
+                _orbRecoveryReadyAtUtc[stateKey] =
                     nowUtc.AddSeconds(OrbData.RecoveryTickSeconds);
                 continue;
             }
@@ -233,7 +233,7 @@ SurvivorOrbResonanceSnapshot resonanceState)
             if (nowUtc < readyAtUtc)
                 continue;
 
-            _survivorOrbRecoveryReadyAtUtc[stateKey] =
+            _orbRecoveryReadyAtUtc[stateKey] =
                 nowUtc.AddSeconds(OrbData.RecoveryTickSeconds);
 
             if (!dueRecoveryByPlayer.TryGetValue(actor.PlayerId, out var dueRecoveries))
@@ -281,13 +281,13 @@ SurvivorOrbResonanceSnapshot resonanceState)
             if (effectiveRecovery <= 0)
                 continue;
 
-            session?.SendSurvivorOrbRecoveryFeedback(representative.WeaponItemId, effectiveRecovery);
+            session?.SendOrbRecoveryFeedback(representative.WeaponItemId, effectiveRecovery);
 
             // Human sessions already record effective recovery inside ModifyStats.
             // Bots mutate their state directly, so only that path needs explicit telemetry.
             if (session == null)
             {
-                _gameEventLogManager.RecordSurvivorRecovery(
+                _gameEventLogManager.RecordRecovery(
                     matchingId, playerId, effectiveRecovery);
             }
             logger.LogDebug(
@@ -300,18 +300,18 @@ SurvivorOrbResonanceSnapshot resonanceState)
                 effectiveRecovery);
         }
 
-        foreach (var key in _survivorOrbRecoveryReadyAtUtc.Keys
+        foreach (var key in _orbRecoveryReadyAtUtc.Keys
                      .Where(key => key.MatchingId == matchingId)
                      .ToArray())
         {
             if (activeRecoveryKeys.Contains((key.PlayerId, key.ItemUid, key.StackIndex)))
                 continue;
 
-            _survivorOrbRecoveryReadyAtUtc.Remove(key);
+            _orbRecoveryReadyAtUtc.Remove(key);
         }
     }
 
-    private void BroadcastSurvivorOrbVisualStates(
+    private void BroadcastOrbVisualStates(
         long matchingId,
         IReadOnlyCollection<ProximityCombatActor> actors,
         IReadOnlyCollection<GameClientSession> matchingSessions)
@@ -322,7 +322,7 @@ SurvivorOrbResonanceSnapshot resonanceState)
             {
                 var orbActors = group
                     .Where(actor =>
-                        OrbData.IsSurvivorOrb(actor.WeaponItemId) ||
+                        OrbData.IsOrbItem(actor.WeaponItemId) ||
                         OrbData.IsRecoveryOrb(actor.WeaponItemId))
                     .OrderBy(actor => actor.WeaponItemUid)
                     .ThenBy(actor => actor.WeaponStackIndex)
@@ -358,7 +358,7 @@ SurvivorOrbResonanceSnapshot resonanceState)
                 var key = (matchingId, observer.PlayerId.Value, actor.PlayerId);
                 if (observer.CurrentArea != actor.Area)
                 {
-                    _survivorOrbVisualStates.Remove(key);
+                    _orbVisualStates.Remove(key);
                     continue;
                 }
 
@@ -367,7 +367,7 @@ SurvivorOrbResonanceSnapshot resonanceState)
                 int jamCount = GetSwarmJamCount(matchingId, actor.PlayerId, matchingSessions);
                 int bodyCorruption = GetSwarmBodyCorruption(matchingId, actor.PlayerId, matchingSessions);
                 long armorMask = GetSwarmArmorMask(matchingId, actor.PlayerId);
-                var state = new SurvivorOrbVisualState(
+                var state = new OrbVisualState(
                     actor.Area,
                     actor.WeaponItemId,
                     actor.OrbEffectActive,
@@ -376,15 +376,15 @@ SurvivorOrbResonanceSnapshot resonanceState)
                     jamCount,
                     bodyCorruption,
                     armorMask);
-                if (_survivorOrbVisualStates.TryGetValue(key, out var previousState) &&
+                if (_orbVisualStates.TryGetValue(key, out var previousState) &&
                     previousState == state)
                 {
                     continue;
                 }
 
-                _survivorOrbVisualStates[key] = state;
-                using var packet = Packet.Create((int)Protocol.G_TO_C_SURVIVOR_ORB_EFFECT_STATE);
-                packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SURVIVOR_ORB_EFFECT_STATE
+                _orbVisualStates[key] = state;
+                using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE);
+                packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_EFFECT_STATE
                 {
                     PlayerId = actor.PlayerId,
                     WeaponItemId = actor.WeaponItemId,
@@ -400,19 +400,19 @@ SurvivorOrbResonanceSnapshot resonanceState)
         }
     }
 
-    private void RemoveSurvivorOrbVisualStates(long matchingId)
+    private void RemoveOrbVisualStates(long matchingId)
     {
-        foreach (var key in _survivorOrbVisualStates.Keys
+        foreach (var key in _orbVisualStates.Keys
                      .Where(key => key.MatchingId == matchingId)
                      .ToArray())
         {
-            _survivorOrbVisualStates.Remove(key);
+            _orbVisualStates.Remove(key);
         }
-        foreach (var key in _survivorOrbRecoveryReadyAtUtc.Keys
+        foreach (var key in _orbRecoveryReadyAtUtc.Keys
                      .Where(key => key.MatchingId == matchingId)
                      .ToArray())
         {
-            _survivorOrbRecoveryReadyAtUtc.Remove(key);
+            _orbRecoveryReadyAtUtc.Remove(key);
         }
         foreach (var key in _proximityCombatAreaEntryStates.Keys
                      .Where(key => key.MatchingId == matchingId)
@@ -421,7 +421,7 @@ SurvivorOrbResonanceSnapshot resonanceState)
             _proximityCombatAreaEntryStates.Remove(key);
         }
 
-        RemoveSurvivorOrbResonanceStates(matchingId);
+        RemoveOrbResonanceStates(matchingId);
         _dodgeableProjectileResolver.RemoveMatching(matchingId);
     }
 
@@ -465,7 +465,7 @@ out ProximityCombatActor actor)
         AreaType PreviousArea,
         DateTime PreviousAreaLeftAtUtc);
 
-    private readonly record struct SurvivorOrbVisualState(
+    private readonly record struct OrbVisualState(
         AreaType Area,
         int WeaponItemId,
         bool IsActive,

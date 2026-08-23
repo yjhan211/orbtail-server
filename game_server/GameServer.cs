@@ -62,7 +62,7 @@ public partial class GameServer(
     private readonly EncounterRevealManager _encounterRevealManager = new();
     private readonly Proto0PresenceTracker _presenceTracker = new();
     private readonly ConcurrentDictionary<long, int> _lastMatchStartCountdownBroadcast = new();
-    private readonly ConcurrentDictionary<long, object> _survivorSettlementLocks = new();
+    private readonly ConcurrentDictionary<long, object> _matchSettlementLocks = new();
     // 재시작해도 되감기지 않도록 기동 시각을 섞는다. 고정 시드로 시작하면 서버를 다시
     // 올릴 때마다 같은 matchingId가 나오고, 매치 요약 파일이 같은 이름을 만나
     // 저장이 통째로 건너뛰어진다(기존 파일 우선 규칙).
@@ -327,7 +327,7 @@ public partial class GameServer(
             {
                 // #222 M3-2: 폐쇄·오버타임 오염은 이 정산 틱이 적용한다.
                 if (GameClientSession.IsRoundActionPhase(matchingId))
-                    ProcessSurvivorResourceTickForMatching(matchingId, activeSessions);
+                    ProcessResourceTickForMatching(matchingId, activeSessions);
             }
 
             // 7. 프로토 0 기척 틱 (#159) — 5초 조우 강도 계산 후 인간 세션에 전송
@@ -537,7 +537,7 @@ public partial class GameServer(
             {
                 logger.LogInformation("게임 종료(봇 탈락 후): MatchingId={MatchingId}, Winner={WinnerId}",
                     matchingId, winnerId);
-                matchingSessions[0].TryEndSurvivorMatch(winnerId ?? 0, "last_survivor_after_combat");
+                matchingSessions[0].TryEndMatch(winnerId ?? 0, "last_survivor_after_combat");
             }
         }
         catch (Exception ex)
@@ -568,7 +568,7 @@ public partial class GameServer(
             return;
 
         var emptyBoard = _inGameInventoryManager.GetPlayerInventory(matchingId, botPlayerId);
-        _gameEventLogManager.LogSurvivorOrbBoardTransition(
+        _gameEventLogManager.LogOrbBoardTransition(
             matchingId, botPlayerId, emptyBoard.GetAllItems(), 0, bot.CurrentArea.ToString(), "elimination_drop",
             isBot: true);
 
@@ -619,12 +619,12 @@ public partial class GameServer(
         }
     }
 
-    private void BroadcastSurvivorAreaStockState(long matchingId, List<GameClientSession> sessions)
+    private void BroadcastAreaStockState(long matchingId, List<GameClientSession> sessions)
     {
-        var message = new G_TO_C_SURVIVOR_AREA_STOCK_STATE
+        var message = new G_TO_C_AREA_STOCK_STATE
         {
             Areas = _areaItemStockManager.GetPublicDepletionSnapshot(matchingId)
-                .Select(state => new SurvivorAreaNaturalStockState
+                .Select(state => new AreaNaturalStockState
                 {
                     AreaType = state.AreaType,
                     IsDepleted = state.IsDepleted,
@@ -632,7 +632,7 @@ public partial class GameServer(
                 })
                 .ToList()
         };
-        using var packet = Packet.Create((int)Protocol.G_TO_C_SURVIVOR_AREA_STOCK_STATE);
+        using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_STOCK_STATE);
         packet.SetBody(MessagePackSerializer.Serialize(message));
         foreach (var session in sessions.Where(session => session.CurrentMapSubId == matchingId))
             session.Send(packet);
@@ -723,7 +723,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         foreach (var pickup in pickups)
         {
             if (pickup.CorruptionRecovery > 0)
-                _gameEventLogManager.RecordSurvivorRecovery(matchingId, pickup.BotPlayerId, pickup.CorruptionRecovery);
+                _gameEventLogManager.RecordRecovery(matchingId, pickup.BotPlayerId, pickup.CorruptionRecovery);
             if (pickup.AutoUsed)
             {
                 _gameEventLogManager.LogRecoveryUse(
@@ -761,7 +761,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             else
             {
                 var boardAfterPickup = _inGameInventoryManager.GetPlayerInventory(matchingId, pickup.BotPlayerId);
-                _gameEventLogManager.LogSurvivorOrbBoardTransition(
+                _gameEventLogManager.LogOrbBoardTransition(
                     matchingId, pickup.BotPlayerId, boardAfterPickup.GetAllItems(),
                     boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, area.ToString(), "pickup", isBot: true);
             }
@@ -1246,12 +1246,8 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
             {
                 MatchingId = matchingId,
-                RoundNumber = 0,
-                TotalRounds = 0,
                 RemainingSeconds = snapshot.RemainingSeconds,
-                PhaseDurationSeconds = 5,
-                ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                IsSessionEnded = false
+                ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
             }));
 
             foreach (var session in matchingSessions)
@@ -1561,9 +1557,9 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             var finalPlayerStats = _matchRosterManager.BuildGameResult(matchingId)
                 .Select(row =>
                 {
-                    var stats = _gameEventLogManager.GetSurvivorResultStats(matchingId, row.playerId);
+                    var stats = _gameEventLogManager.GetResultStats(matchingId, row.playerId);
                     DateTime survivalEndUtc = row.eliminatedAt ?? endedAtUtc;
-                    return new SurvivorFinalPlayerStats(
+                    return new MatchFinalPlayerStats(
                         row.playerId,
                         row.eliminationRank,
                         Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
@@ -1598,7 +1594,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         _gameEventLogManager.Clear(matchingId);
         _encounterRevealManager.CleanupMatching(matchingId);
         _proximityAutoCombatResolver.RemoveMatching(matchingId);
-        CleanupSurvivorSettlementState(matchingId);
+        CleanupMatchSettlementState(matchingId);
         _ = CleanupAbandonedMatchingRedisAsync(matchingId);
 
         logger.LogInformation(

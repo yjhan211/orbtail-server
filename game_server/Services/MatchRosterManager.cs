@@ -203,7 +203,7 @@ public class MatchRosterManager
     ///     게임 결과 데이터 생성 (체인 전체 공개)
     /// </summary>
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.Synchronized)]
-    public List<(long playerId, JobTitle job, long targetId, long manittoId,
+    public List<(long playerId, JobTitle job, long targetId, long watcherId,
         EliminationReason reason, PlayerMatchStatus finalStatus, DateTime? eliminatedAt,
         long attackerPlayerId, AreaType eliminatedArea, bool isAreaClosureElimination,
         bool isOvertimeElimination, int eliminationRank, int finalOrbTier)> BuildGameResult(long matchingId)
@@ -218,8 +218,8 @@ public class MatchRosterManager
         foreach (var link in links)
         {
             // 이 플레이어의 마니또 = 이 플레이어를 타겟으로 가진 링크
-            long manittoId = links.FirstOrDefault(l => l.TargetPlayerId == link.PlayerId)?.PlayerId ?? 0;
-            result.Add((link.PlayerId, link.MyJobTitle, link.TargetPlayerId, manittoId,
+            long watcherId = links.FirstOrDefault(l => l.TargetPlayerId == link.PlayerId)?.PlayerId ?? 0;
+            result.Add((link.PlayerId, link.MyJobTitle, link.TargetPlayerId, watcherId,
                 link.EliminationReason, link.Status, link.EliminatedAt, link.AttackerPlayerId,
                 link.EliminatedArea, link.IsAreaClosureElimination, link.IsOvertimeElimination,
                 link.EliminationRank, link.FinalOrbTier));

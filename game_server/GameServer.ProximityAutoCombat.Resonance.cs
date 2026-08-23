@@ -8,15 +8,15 @@ namespace game_server;
 
 public partial class GameServer
 {
-    private readonly Dictionary<(long MatchingId, long PlayerId), SurvivorOrbResonanceRuntimeState>
-        _survivorOrbResonanceStates = new();
+    private readonly Dictionary<(long MatchingId, long PlayerId), OrbResonanceRuntimeState>
+        _orbResonanceStates = new();
     private readonly Dictionary<(long MatchingId, long AttackerPlayerId, long TargetPlayerId), SunLightMarkState>
         _sunLightMarks = new();
 
-    private void RemoveSurvivorOrbResonanceStates(long matchingId)
+    private void RemoveOrbResonanceStates(long matchingId)
     {
-        foreach (var key in _survivorOrbResonanceStates.Keys.Where(key => key.MatchingId == matchingId).ToArray())
-            _survivorOrbResonanceStates.Remove(key);
+        foreach (var key in _orbResonanceStates.Keys.Where(key => key.MatchingId == matchingId).ToArray())
+            _orbResonanceStates.Remove(key);
         foreach (var key in _sunLightMarks.Keys.Where(key => key.MatchingId == matchingId).ToArray())
             _sunLightMarks.Remove(key);
     }
@@ -28,7 +28,7 @@ public partial class GameServer
         return dx * dx + dy * dy;
     }
 
-    private sealed class SurvivorOrbResonanceRuntimeState
+    private sealed class OrbResonanceRuntimeState
     {
         public Vector3f? LastPosition { get; set; }
         public DateTime LastMovementAtUtc { get; set; }
@@ -51,7 +51,7 @@ public partial class GameServer
         public DateTime LastAppliedAtUtc { get; set; }
     }
 
-    private readonly record struct SurvivorOrbResonanceSnapshot(
+    private readonly record struct OrbResonanceSnapshot(
         OrbColor ActiveColor,
         int SunStage,
         bool WindActive,

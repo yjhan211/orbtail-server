@@ -199,7 +199,7 @@ public sealed class MatchSummaryFileStore
     private static int CountTypes(IEnumerable<GameEventEntry> events, string type) =>
         events.Count(entry => string.Equals(entry.Type, type, StringComparison.OrdinalIgnoreCase));
 
-    private static SurvivorMatchMetrics BuildMetrics(
+    private static MatchMetrics BuildMetrics(
         IReadOnlyList<GameEventEntry> events,
         DateTimeOffset startedAtUtc,
         DateTimeOffset endedAtUtc)
@@ -312,7 +312,7 @@ public sealed class MatchSummaryFileStore
             .Select(entry => entry.BotMovementMaxConsecutiveSkipCount ?? 0).DefaultIfEmpty(0).Max();
 
 
-        return new SurvivorMatchMetrics
+        return new MatchMetrics
         {
             MatchDurationSeconds = Math.Max(0d, (endedAtUtc - startedAtUtc).TotalSeconds),
             FirstTier2ElapsedMilliseconds = GetFirstElapsedMilliseconds(events, "SURVIVOR_FIRST_T2", startedAtUtc),
@@ -680,7 +680,7 @@ public sealed record MatchSummaryDocument(
 {
     public int RawEventCount { get; init; }
     public string? RawEventsFile { get; init; }
-    public SurvivorMatchMetrics Metrics { get; init; } = new();
+    public MatchMetrics Metrics { get; init; } = new();
 }
 
 public sealed record MatchSummaryParticipant(
@@ -712,7 +712,7 @@ public sealed record ProjectileActorMetrics
     public IReadOnlyDictionary<string, int> OutcomeCounts { get; init; } = new Dictionary<string, int>();
 }
 
-public sealed record SurvivorMatchMetrics
+public sealed record MatchMetrics
 {
     public double MatchDurationSeconds { get; init; }
     public long? FirstTier2ElapsedMilliseconds { get; init; }

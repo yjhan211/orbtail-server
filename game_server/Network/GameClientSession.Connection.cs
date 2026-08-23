@@ -155,7 +155,7 @@ public partial class GameClientSession
             SendInGameInventoryList();
             SendSummonStoneState();
             var connectionBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
-            _gameEventLogManager.LogSurvivorOrbBoardTransition(
+            _gameEventLogManager.LogOrbBoardTransition(
                 CurrentMapSubId, PlayerId.Value, connectionBoard.GetAllItems(),
                 connectionBoard.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
 
@@ -166,7 +166,7 @@ public partial class GameClientSession
             // 誘몄뀡 ?뺣낫 ?꾩넚
             // 스웜 모드(M4)는 시간 웨이브 폐쇄를 쓰므로 폐쇄 스냅샷을 복원해야 한다.
             SendAreaClosureStateSnapshot();
-            SendSurvivorAreaStockStateSnapshot();
+            SendAreaStockStateSnapshot();
             SendChecklistInfo();
 
             // ?ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚 & ???뺣낫 釉뚮줈?쒖틦?ㅽ듃
@@ -333,12 +333,8 @@ public partial class GameClientSession
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
         {
             MatchingId = matchingId,
-            RoundNumber = 0,
-            TotalRounds = 0,
             RemainingSeconds = snapshot.RemainingSeconds,
-            PhaseDurationSeconds = 5,
-            ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            IsSessionEnded = false
+            ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         }));
         Send(packet);
     }

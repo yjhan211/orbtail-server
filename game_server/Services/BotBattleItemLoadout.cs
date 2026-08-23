@@ -52,13 +52,13 @@ public static class BotBattleItemLoadout
         long matchingId,
         long playerId,
         Random random,
-        bool allowSurvivorOrbMerges = true)
+        bool allowOrbMerges = true)
     {
         ArgumentNullException.ThrowIfNull(inventoryManager);
         ArgumentNullException.ThrowIfNull(random);
 
         var combinedItemIds = new List<int>();
-        var survivorOrbMerges = new List<BotSurvivorOrbMerge>();
+        var orbMerges = new List<BotOrbMerge>();
         var inventory = inventoryManager.GetPlayerInventory(matchingId, playerId);
 
         // At most three merges can turn four T1 orbs into one T3 orb.
@@ -82,11 +82,11 @@ public static class BotBattleItemLoadout
             if (survivorInputs.Count > 0)
             {
                 // During the resonance hold, do not let a legacy recipe consume the same orb pair.
-                if (!allowSurvivorOrbMerges)
+                if (!allowOrbMerges)
                     break;
 
                 int inputItemId = survivorInputs[random.Next(survivorInputs.Count)];
-                if (!inventoryManager.TryCombineSurvivorOrbs(
+                if (!inventoryManager.TryCombineOrbs(
                         matchingId, playerId, inputItemId, inputItemId, random,
                         out int outputItemId, out _))
                 {
@@ -94,7 +94,7 @@ public static class BotBattleItemLoadout
                 }
 
                 combinedItemIds.Add(outputItemId);
-                survivorOrbMerges.Add(new BotSurvivorOrbMerge(inputItemId, outputItemId));
+                orbMerges.Add(new BotOrbMerge(inputItemId, outputItemId));
                 continue;
             }
 
@@ -139,7 +139,7 @@ public static class BotBattleItemLoadout
         if (bestItem != null && (equippedItem == null || equippedItem.ItemUid != bestItem.ItemUid))
             inventoryManager.TryEquipBattleItem(matchingId, playerId, bestItem.ItemUid, out equippedItem);
 
-        return new BotBattleItemLoadoutResult(combinedItemIds, equippedItem?.ItemId ?? 0, survivorOrbMerges);
+        return new BotBattleItemLoadoutResult(combinedItemIds, equippedItem?.ItemId ?? 0, orbMerges);
     }
 
     private static BotOrbDestroyDecision? CreateDestroyDecision(
@@ -219,7 +219,7 @@ public static class BotBattleItemLoadout
     }
 
     private static bool IsOrb(int itemId) =>
-        OrbData.IsSurvivorOrb(itemId) || OrbData.IsRecoveryOrb(itemId);
+        OrbData.IsOrbItem(itemId) || OrbData.IsRecoveryOrb(itemId);
 
     private static bool ConsumesLastEquippedResonanceSupport(int inputItemId, PlayerInGameInventory inventory)
     {
@@ -265,9 +265,9 @@ public static class BotBattleItemLoadout
 public sealed record BotBattleItemLoadoutResult(
     IReadOnlyList<int> CombinedItemIds,
     int EquippedItemId,
-    IReadOnlyList<BotSurvivorOrbMerge> SurvivorOrbMerges);
+    IReadOnlyList<BotOrbMerge> OrbMerges);
 
-public sealed record BotSurvivorOrbMerge(int InputItemId, int OutputItemId);
+public sealed record BotOrbMerge(int InputItemId, int OutputItemId);
 
 public sealed record BotOrbDestroyDecision(
     long ItemUid,
