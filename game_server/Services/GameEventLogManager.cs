@@ -992,24 +992,6 @@ public class GameEventLogManager
             });
     }
 
-    public void LogSurvivorPhaseTransition(
-        long matchingId,
-        SurvivorPhaseSnapshot before,
-        SurvivorPhaseSnapshot after)
-    {
-        Append(matchingId, "SURVIVOR_PHASE_TRANSITION", 0, false,
-            $"Survivor phase: {before.Phase}->{after.Phase}, stage={after.StageIndex}, open={string.Join(',', after.OpenAreas)}.",
-            entry =>
-            {
-                entry.FromArea = before.Phase.ToString();
-                entry.ToArea = after.Phase.ToString();
-                entry.PhaseIndex = after.StageIndex;
-                entry.Outcome = after.Phase.ToString();
-                entry.OpenAreas = after.OpenAreas.Select(area => area.ToString()).ToList();
-                entry.DurationSeconds = SurvivorPhaseManager.GetPhaseDurationSeconds(after.Phase);
-            });
-    }
-
     public void LogClosureWarningSnapshot(long matchingId, long playerId, IReadOnlyCollection<string> warningAreas,
         string currentArea, int corruption, int inventorySlotsUsed, int inventorySlotCapacity,
         int areaRemainingStock, long closureAtUnixMs, bool isBot)

@@ -50,35 +50,6 @@ public partial class GameClientSession
 
             // 遊?濡쒕뱶 (留ㅼ묶??理쒖큹 1?? ???먯뇙 珥덇린???꾩뿉 濡쒕뱶??吏곸콉 ????뺤젙 (#87)
             await LoadBotsIfNeeded(msg.MatchingId, CurrentMapId);
-            if (TargetPlayerId == 0)
-            {
-                long recoveredTargetPlayerId = ResolveHumanTargetFromLoadedBotChain(msg.MatchingId, msg.PlayerId);
-                if (recoveredTargetPlayerId != 0)
-                {
-                    TargetPlayerId = recoveredTargetPlayerId;
-                    var targetBot = _botPlayerManager.GetBot(msg.MatchingId, recoveredTargetPlayerId);
-                    if (targetBot != null)
-                        TargetJobTitle = targetBot.MyJobTitle;
-
-                    Logger.LogWarning(
-                        "Recovered missing human target from bot chain: MatchingId={MatchingId}, PlayerId={PlayerId}, Target={TargetPlayerId}, TargetJob={TargetJobTitle}",
-                        msg.MatchingId, msg.PlayerId, TargetPlayerId, TargetJobTitle);
-
-                    _matchRosterManager.RegisterEntry(msg.MatchingId, new RosterEntry
-                    {
-                        PlayerId = msg.PlayerId,
-                        TargetPlayerId = TargetPlayerId,
-                        MyJobTitle = MyJobTitle,
-                        TargetJobTitle = TargetJobTitle
-                    });
-                }
-                else
-                {
-                    Logger.LogWarning(
-                        "C_TO_G_CONNECT missing target and recovery failed: MatchingId={MatchingId}, PlayerId={PlayerId}",
-                        msg.MatchingId, msg.PlayerId);
-                }
-            }
 
             foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
                 if (!bot.IsEliminated)
@@ -454,32 +425,6 @@ public partial class GameClientSession
         {
             Logger.LogWarning(ex, "遊??뺣낫 濡쒕뱶 ?ㅽ뙣: MatchingId={MatchingId}", matchingId);
         }
-    }
-
-    private long ResolveHumanTargetFromLoadedBotChain(long matchingId, long humanPlayerId)
-    {
-        var bots = _botPlayerManager.GetBots(matchingId)
-            .Where(b => !b.IsEliminated)
-            .ToList();
-        int expectedBotCount = 3;
-        if (bots.Count != expectedBotCount || bots.All(b => b.TargetPlayerId != humanPlayerId)) return 0;
-
-        var botIds = bots.Select(b => b.PlayerId).ToHashSet();
-        var targetedBotIds = bots
-            .Where(b => b.TargetPlayerId != humanPlayerId && botIds.Contains(b.TargetPlayerId))
-            .Select(b => b.TargetPlayerId)
-            .ToHashSet();
-
-        var candidates = botIds
-            .Where(botId => !targetedBotIds.Contains(botId))
-            .ToList();
-
-        if (candidates.Count == 1) return candidates[0];
-
-        Logger.LogWarning(
-            "Could not infer human target from bot chain: MatchingId={MatchingId}, PlayerId={PlayerId}, Candidates=[{Candidates}]",
-            matchingId, humanPlayerId, string.Join(",", candidates));
-        return 0;
     }
 
     /// <summary>

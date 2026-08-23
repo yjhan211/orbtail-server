@@ -87,23 +87,6 @@ public partial class GameClientSession
             // — 일시적 None 상태에서 마커 클릭 시 IsAdjacent(None, X) = false로 INVALID_AREA 거절되는 문제 방지
             if (newArea != CurrentArea && newArea != AreaType.None)
             {
-                var survivorPhase = _survivorPhaseManager?.GetSnapshot(CurrentMapSubId)
-                                    ?? SurvivorPhaseSnapshot.Empty;
-                if (survivorPhase.Phase == SurvivorMatchPhase.ROOM_COMBAT &&
-                    survivorPhase.CurrentRooms.Contains(CurrentArea) &&
-                    !survivorPhase.ClearedRooms.Contains(CurrentArea))
-                {
-                    var fallbackCell = _lastValidatedPosition != null
-                        ? WorldPositionToCell(_lastValidatedPosition)
-                        : currentCell;
-                    Logger.LogDebug(
-                        "Player {PlayerId} cannot leave uncleared survivor room {Area}",
-                        PlayerId,
-                        CurrentArea);
-                    SendAreaExitBlocked(newArea, fallbackCell);
-                    return;
-                }
-
                 // 이 전이를 관장하는 문 기준으로 잠김 체크 (클라이언트 IsAreaExitBlocked와 동일 판정).
                 // "영역의 가장 가까운 문" 휴리스틱은 열린 문과 잠긴 문이 공존하는 방에서
                 // 열린 문 통과까지 오차단한다 (예: 창고1의 열린 111 옆 잠긴 113).
