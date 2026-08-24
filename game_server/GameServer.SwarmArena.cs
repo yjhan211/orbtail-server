@@ -312,12 +312,16 @@ public partial class GameServer
                 new SpotArenaPlayerSpatial(bot.PlayerId, bot.CurrentArea, bot.Position)))
             .ToList();
 
-        // 실험장 자동 세팅 (#226): 사람이 있는 매치는 첫 틱에 절단 더미가 자동으로 선다.
+        // 실험장 자동 세팅 (#226): 사람이 있는 매치는 첫 틱에 실험장이 자동으로 차려진다.
         // 봇 전용 검증 매치는 제외 — 게이트 계측이 오염되지 않게.
         if (SwarmDummySandboxActive && aliveSessions.Count > 0 && aliveBots.Count > 0 &&
             _swarmCutDummyAutoSetupDone.Add(matchingId))
         {
-            SetupSwarmCutDummy(matchingId);
+            // 무장 과녁은 절단 실험장(DEV_CUT_DUMMY)에만 세운다. 교차사격 샌드박스는 더미 없이
+            // 사람 + 몹만 남긴다 (2026-08-24 유저 지시 "더미 유저 없애줘") — 단독 생존 종료는
+            // 정산 쪽 샌드박스 게이트가 막는다.
+            if (SwarmCutDummyAutoSetup)
+                SetupSwarmCutDummy(matchingId);
             // 실험장 격리: 더미 외 봇은 조용히 퇴장 — 순위·드롭 이벤트 없이 화면에서 사라진다.
             foreach (var other in _botPlayerManager.GetBots(matchingId))
             {

@@ -35,7 +35,9 @@ public partial class GameServer
             if (aliveCount <= 1)
             {
                 // 맵 이동 검증에서는 단독 생존을 승리 상태로 정산하지 않는다.
-                if (DevFlags.DisableGameEnd)
+                // 실험장(절단·교차사격 샌드박스)도 같다 (2026-08-24): 교차사격 샌드박스가 더미 없이
+                // 봇 전원을 퇴장시키므로, 이 게이트가 없으면 매치가 첫 틱에 단독 생존 승리로 끝난다.
+                if (DevFlags.DisableGameEnd || SwarmDummySandboxActive)
                     return;
 
                 if (aliveCount == 1 && humans.Count > 0)
