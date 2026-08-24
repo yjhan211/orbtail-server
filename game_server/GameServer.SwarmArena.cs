@@ -513,13 +513,12 @@ public partial class GameServer
                         return false;
                     if (crossfireAnchoredTargets.Contains((attacker.PlayerId, target.PlayerId)))
                         return false;
-                    // 투사체가 실제로 닿는 거리(티어 사거리, 바닥면 타원) 안이어야 쏜다 — 리졸버의 유클리드
-                    // 사거리는 세로로 느슨해, 그대로 두면 위아래 표적에 못 닿을 발이 나간다.
+                    // 사거리(티어, 바닥면 타원) 안에 표적이 있으면 쏜다 — 축 정렬 조건은 퇴역
+                    // (2026-08-24 유저 결정 개정: 축이 맞는 표적을 기다리면 태양이 아예 공격을 안
+                    // 하는 구간이 생긴다). 발사 방향은 표적이 아니라 이동 방향의 수직 타일 축이
+                    // 정하므로(TryScheduleSwarmCrossfire), 이 표적은 "쏠 이유"일 뿐 "조준점"이 아니다 —
+                    // 선이 이 표적을 못 맞혀도 발사한다. 논타게팅.
                     if (!IsWithinSwarmOrbRange(attacker, target))
-                        return false;
-                    // 태양은 아이소 타일의 X축 또는 Y축을 공유하는 적만 조준한다.
-                    // 임의 각도 직선은 만들지 않는다 — 셀 축이 곧 공격축이다.
-                    if (!IsAlignedOnSwarmTileAxis(attacker, target))
                         return false;
                 }
                 if (target.IsMonsterTarget)
@@ -4909,17 +4908,6 @@ public partial class GameServer
     // 들어온 것만 친다. 그러면 걸어오는 1.6초가 화망을 통과하는 시간이 되고, 페이즈가
     // 올라 HP가 24→64로 두꺼워질수록 실제로 도달하는 몹이 늘어난다.
     private const float SwarmPveSameAreaAttackRange = 7f;
-    /// <summary>태양 직선 표적: 오브 셀과 적 셀이 타일 X축 또는 Y축을 공유해야 한다.</summary>
-    private static bool IsAlignedOnSwarmTileAxis(
-        ProximityCombatActor attacker,
-        ProximityCombatActor target)
-    {
-        var attackerCell = attacker.Cell;
-        var targetCell = target.Cell;
-        if (attackerCell is null || targetCell is null)
-            return false;
-        return attackerCell.X == targetCell.X || attackerCell.Y == targetCell.Y;
-    }
 
     /// <summary>
     ///     아이소메트릭 타원 사거리: 이 맵의 월드 y는 셀 스케일이 x의 절반이라, 유클리드

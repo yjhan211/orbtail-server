@@ -157,29 +157,68 @@ public partial class GameServer
             Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
             return false;
 
-        // 같은 타일 X/Y축 표적만 후보로 들어온다. 아이소 월드에서 해당 축을 4방향 단위 벡터로
-        // 잠가 서버 판정선과 클라이언트 바닥 경로선이 같은 타일 축을 사용하게 한다.
+        // 현측 사격 (2026-08-24 유저 결정, 같은 날 개정 A안 → 꼬리 현 기준): 발사 축은 표적이
+        // 아니라 "꼬리가 펼쳐진 방향"(꼬리 끝→머리 현의 지배 타일 축)에 수직인 타일 축이다 —
+        // 내 태양 전부가 같은 축으로 쏘아 평행 빗살이 되고, 축이 화면에 보이는 물체(꼬리)에
+        // 묶여 읽힌다. 이동 heading 기준은 기각 (같은 날 유저 제보: 직선 꼬리에서 살짝 옆걸음만
+        // 해도 빗살 전체가 홱 돈다) — 꼬리 현은 새 방향으로 걸어 꼬리가 다시 깔리는 속도만큼만
+        // 서서히 돈다. 표적은 좌우 어느 쪽으로 쏠지의 부호만 정한다 — 선이 그 표적을 못 맞혀도
+        // 발사한다(논타게팅). 꼬리가 아직 안 펼쳐졌으면 표적 방향의 지배 축 스냅으로 폴백한다.
         float groundDx = anchor.X - origin.X;
         float groundDy = (anchor.Y - origin.Y) * SwarmGroundYScale;
         if (groundDx * groundDx + groundDy * groundDy < 0.0025f)
             return false;
         const float diagonalUnit = 0.70710677f;
-        // 타일 X축 = 바닥면 (+1,+1)/√2, 타일 Y축 = (-1,+1)/√2 — 사영이 큰 축을 고른다.
-        float xAxisProjection = groundDx + groundDy;
-        float yAxisProjection = -groundDx + groundDy;
-        float unitX;
-        float unitY;
-        if (MathF.Abs(xAxisProjection) >= MathF.Abs(yAxisProjection))
+        // 타일 X축 = 바닥면 (+1,+1)/√2, 타일 Y축 = (-1,+1)/√2.
+        float unitX = 0f;
+        float unitY = 0f;
+        bool axisResolved = false;
+        if (_swarmOrbTrails.TryGetValue((matchingId, attack.AttackerPlayerId), out var trailPoints) &&
+            trailPoints.Count >= 2)
         {
-            float sign = xAxisProjection >= 0f ? 1f : -1f;
-            unitX = diagonalUnit * sign;
-            unitY = diagonalUnit * sign;
+            var trailHead = trailPoints[0];
+            var trailEnd = trailPoints[^1];
+            float tailDx = trailHead.X - trailEnd.X;
+            float tailDy = (trailHead.Y - trailEnd.Y) * SwarmGroundYScale;
+            // 바닥면 0.3 이상 펼쳐진 꼬리만 축 기준이 된다 — 뭉친 꼬리의 현은 잡음이다.
+            if (tailDx * tailDx + tailDy * tailDy > 0.09f)
+            {
+                bool tailOnTileX = MathF.Abs(tailDx + tailDy) >= MathF.Abs(-tailDx + tailDy);
+                if (tailOnTileX)
+                {
+                    // 꼬리가 타일 X축 → 발사는 Y축 (-1,+1)/√2, 부호는 표적이 기운 쪽.
+                    float sign = -groundDx + groundDy >= 0f ? 1f : -1f;
+                    unitX = -diagonalUnit * sign;
+                    unitY = diagonalUnit * sign;
+                }
+                else
+                {
+                    float sign = groundDx + groundDy >= 0f ? 1f : -1f;
+                    unitX = diagonalUnit * sign;
+                    unitY = diagonalUnit * sign;
+                }
+
+                axisResolved = true;
+            }
         }
-        else
+
+        if (!axisResolved)
         {
-            float sign = yAxisProjection >= 0f ? 1f : -1f;
-            unitX = -diagonalUnit * sign;
-            unitY = diagonalUnit * sign;
+            // 폴백: 표적 방향의 사영이 큰 축을 고른다 (구 스냅 문법).
+            float xAxisProjection = groundDx + groundDy;
+            float yAxisProjection = -groundDx + groundDy;
+            if (MathF.Abs(xAxisProjection) >= MathF.Abs(yAxisProjection))
+            {
+                float sign = xAxisProjection >= 0f ? 1f : -1f;
+                unitX = diagonalUnit * sign;
+                unitY = diagonalUnit * sign;
+            }
+            else
+            {
+                float sign = yAxisProjection >= 0f ? 1f : -1f;
+                unitX = -diagonalUnit * sign;
+                unitY = diagonalUnit * sign;
+            }
         }
 
         int tierIndex = Math.Clamp(tier, 1, 3) - 1;
