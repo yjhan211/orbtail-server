@@ -517,6 +517,10 @@ public partial class GameServer
                     // 사거리는 세로로 느슨해, 그대로 두면 위아래 표적에 못 닿을 발이 나간다.
                     if (!IsWithinSwarmOrbRange(attacker, target))
                         return false;
+                    // 태양은 아이소 타일의 X축 또는 Y축을 공유하는 적만 조준한다.
+                    // 임의 각도 직선은 만들지 않는다 — 셀 축이 곧 공격축이다.
+                    if (!IsAlignedOnSwarmTileAxis(attacker, target))
+                        return false;
                 }
                 if (target.IsMonsterTarget)
                     return true;
@@ -4823,7 +4827,7 @@ public partial class GameServer
             float crossfireDamageMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER : 1f;
             float crossfireCadenceMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER : 1f;
             OrbData.TryGetColorAndTier(actor.WeaponItemId, out _, out int actorTier);
-            // 태양 사거리 = 티어 사거리(투사체가 나는 길이) — 더 먼 표적을 잡으면 투사체가 못 닿고 소멸한다.
+            // 태양 티어 사거리는 표적 획득에만 쓴다. 발사된 직선은 구역 경계(벽)까지 진행한다.
             float actorAttackRange = crossfireSun
                 ? Config.SWARM_CROSSFIRE_SUN_RANGE_BY_TIER[Math.Clamp(actorTier, 1, 3) - 1]
                 : SwarmPveSameAreaAttackRange;
@@ -4905,6 +4909,18 @@ public partial class GameServer
     // 들어온 것만 친다. 그러면 걸어오는 1.6초가 화망을 통과하는 시간이 되고, 페이즈가
     // 올라 HP가 24→64로 두꺼워질수록 실제로 도달하는 몹이 늘어난다.
     private const float SwarmPveSameAreaAttackRange = 7f;
+    /// <summary>태양 직선 표적: 오브 셀과 적 셀이 타일 X축 또는 Y축을 공유해야 한다.</summary>
+    private static bool IsAlignedOnSwarmTileAxis(
+        ProximityCombatActor attacker,
+        ProximityCombatActor target)
+    {
+        var attackerCell = attacker.Cell;
+        var targetCell = target.Cell;
+        if (attackerCell is null || targetCell is null)
+            return false;
+        return attackerCell.X == targetCell.X || attackerCell.Y == targetCell.Y;
+    }
+
     /// <summary>
     ///     아이소메트릭 타원 사거리: 이 맵의 월드 y는 셀 스케일이 x의 절반이라, 유클리드
     ///     원은 화면상 위아래로 과하게 길다. dy를 2배 보정한 타원(= 셀 공간 등거리)이

@@ -106,6 +106,38 @@ public class ProximityAutoCombatResolverTests
         Assert.Equal(3, attack.TargetPlayerId);
     }
 
+    /// <summary>
+    ///     쿨다운 승계 2 (2026-08-24 연사 수리 2탄): 표적이 전멸해 상태가 유예로 빠진 뒤 "다른"
+    ///     표적으로 복귀해도 무기 쿨다운은 이어진다. 승계 전에는 스폰 스트림에서 발마다 표적
+    ///     고갈·재등장이 반복되며 조준 시간(0.1초) 연발이 났다 (실측 0.2~0.3초 간격 3연발).
+    /// </summary>
+    [Fact]
+    public void Resolve_TargetDroughtThenNewTargetInheritsPendingCooldown()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
+        var attacker = Actor(1, 0f, 0f, weaponItemId: 107000003);
+        var first = Actor(2, 1f, 0f);
+
+        Assert.Empty(resolver.Resolve(100, [attacker, first], now));
+        var firstShotAtUtc = now.AddMilliseconds(AimMs);
+        Assert.Single(resolver.Resolve(100, [attacker, first], firstShotAtUtc));
+
+        // 첫 발 직후 표적 전멸 — 상태가 유예로 빠진다.
+        Assert.Empty(resolver.Resolve(100, [attacker], firstShotAtUtc.AddMilliseconds(100)));
+
+        // 0.3초 뒤 '다른' 표적 등장 — 스폰 스트림 재현. 조준이 끝나도 이전 발의 주기가 남아 있다.
+        var second = Actor(3, 1f, 0f);
+        var reappearAtUtc = firstShotAtUtc.AddMilliseconds(300);
+        Assert.Empty(resolver.Resolve(100, [attacker, second], reappearAtUtc));
+        Assert.Empty(resolver.Resolve(100, [attacker, second], reappearAtUtc.AddMilliseconds(AimMs)));
+        Assert.Empty(resolver.Resolve(100, [attacker, second], firstShotAtUtc.AddMilliseconds(1499)));
+
+        var attack = Assert.Single(
+            resolver.Resolve(100, [attacker, second], firstShotAtUtc.AddMilliseconds(1500)));
+        Assert.Equal(3, attack.TargetPlayerId);
+    }
+
     [Fact]
     public void Resolve_UsesPlayerIdAsDeterministicTieBreaker()
     {
