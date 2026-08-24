@@ -157,13 +157,13 @@ public partial class GameServer
             Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
             return false;
 
-        // 현측 사격 (2026-08-24 유저 결정, 같은 날 개정 A안 → 꼬리 현 기준): 발사 축은 표적이
-        // 아니라 "꼬리가 펼쳐진 방향"(꼬리 끝→머리 현의 지배 타일 축)에 수직인 타일 축이다 —
-        // 내 태양 전부가 같은 축으로 쏘아 평행 빗살이 되고, 축이 화면에 보이는 물체(꼬리)에
-        // 묶여 읽힌다. 이동 heading 기준은 기각 (같은 날 유저 제보: 직선 꼬리에서 살짝 옆걸음만
-        // 해도 빗살 전체가 홱 돈다) — 꼬리 현은 새 방향으로 걸어 꼬리가 다시 깔리는 속도만큼만
-        // 서서히 돈다. 표적은 좌우 어느 쪽으로 쏠지의 부호만 정한다 — 선이 그 표적을 못 맞혀도
-        // 발사한다(논타게팅). 꼬리가 아직 안 펼쳐졌으면 표적 방향의 지배 축 스냅으로 폴백한다.
+        // 현측 사격 (2026-08-24 유저 결정, 같은 날 개정: 전역 현 → 국소 창): 발사 축은 표적이
+        // 아니라 이 오브 자리에서 "꼬리가 펼쳐진 방향"에 수직인 타일 축이다. 기준은 이웃 창 —
+        // 앞 2번째(순번 n-2, 없으면 본체) → 뒤 2번째(순번 n+2, 상한은 마지막 오브) 좌표의 현.
+        // ㄱ자로 꺾인 꼬리는 팔마다 축이 달라 화망이 두 방향 부채로 갈라진다 — 꼬리 모양이
+        // 곧 화망 설계다(포탑이 선체를 따라 돈다). 이웃 창이 안 펼쳐졌으면 꼬리 전체 현으로,
+        // 그것도 안 펼쳐졌으면 표적 방향 스냅으로 폴백한다. 표적은 좌우 어느 쪽으로 쏠지의
+        // 부호만 정한다 — 선이 그 표적을 못 맞혀도 발사한다(논타게팅).
         float groundDx = anchor.X - origin.X;
         float groundDy = (anchor.Y - origin.Y) * SwarmGroundYScale;
         if (groundDx * groundDx + groundDy * groundDy < 0.0025f)
@@ -173,32 +173,59 @@ public partial class GameServer
         float unitX = 0f;
         float unitY = 0f;
         bool axisResolved = false;
+
+        // 꼬리 방향(바닥면 벡터)이 축이 될 만큼(0.3) 펼쳐져 있으면 그 수직 타일 축을 잠근다.
+        bool TryResolveBroadsideAxis(float tailDx, float tailDy)
+        {
+            if (tailDx * tailDx + tailDy * tailDy <= 0.09f)
+                return false;
+            bool tailOnTileX = MathF.Abs(tailDx + tailDy) >= MathF.Abs(-tailDx + tailDy);
+            if (tailOnTileX)
+            {
+                // 꼬리가 타일 X축 → 발사는 Y축 (-1,+1)/√2, 부호는 표적이 기운 쪽.
+                float sign = -groundDx + groundDy >= 0f ? 1f : -1f;
+                unitX = -diagonalUnit * sign;
+                unitY = diagonalUnit * sign;
+            }
+            else
+            {
+                float sign = groundDx + groundDy >= 0f ? 1f : -1f;
+                unitX = diagonalUnit * sign;
+                unitY = diagonalUnit * sign;
+            }
+
+            return true;
+        }
+
         if (_swarmOrbTrails.TryGetValue((matchingId, attack.AttackerPlayerId), out var trailPoints) &&
             trailPoints.Count >= 2)
         {
             var trailHead = trailPoints[0];
-            var trailEnd = trailPoints[^1];
-            float tailDx = trailHead.X - trailEnd.X;
-            float tailDy = (trailHead.Y - trailEnd.Y) * SwarmGroundYScale;
-            // 바닥면 0.3 이상 펼쳐진 꼬리만 축 기준이 된다 — 뭉친 꼬리의 현은 잡음이다.
-            if (tailDx * tailDx + tailDy * tailDy > 0.09f)
+            var orbTiers = GetSwarmOrbTiersInOrder(matchingId, attack.AttackerPlayerId);
+            if (orbTiers.Count > 0)
             {
-                bool tailOnTileX = MathF.Abs(tailDx + tailDy) >= MathF.Abs(-tailDx + tailDy);
-                if (tailOnTileX)
-                {
-                    // 꼬리가 타일 X축 → 발사는 Y축 (-1,+1)/√2, 부호는 표적이 기운 쪽.
-                    float sign = -groundDx + groundDy >= 0f ? 1f : -1f;
-                    unitX = -diagonalUnit * sign;
-                    unitY = diagonalUnit * sign;
-                }
-                else
-                {
-                    float sign = groundDx + groundDy >= 0f ? 1f : -1f;
-                    unitX = diagonalUnit * sign;
-                    unitY = diagonalUnit * sign;
-                }
+                int lastOrdinal = orbTiers.Count - 1;
+                int ordinal = Math.Clamp(attack.AttackerTrailOrdinal, 0, lastOrdinal);
+                int frontOrdinal = ordinal - 2;
+                int backOrdinal = Math.Min(ordinal + 2, lastOrdinal);
+                var frontPoint = frontOrdinal < 0
+                    ? trailHead
+                    : GetSwarmOrbTrailPosition(
+                        matchingId, attack.AttackerPlayerId, frontOrdinal, trailHead, orbTiers);
+                var backPoint = GetSwarmOrbTrailPosition(
+                    matchingId, attack.AttackerPlayerId, backOrdinal, trailHead, orbTiers);
+                axisResolved = TryResolveBroadsideAxis(
+                    frontPoint.X - backPoint.X,
+                    (frontPoint.Y - backPoint.Y) * SwarmGroundYScale);
+            }
 
-                axisResolved = true;
+            if (!axisResolved)
+            {
+                // 이웃 창이 뭉쳐 있으면 꼬리 전체 현 — 뭉친 꼬리의 국소 현은 잡음이다.
+                var trailEnd = trailPoints[^1];
+                axisResolved = TryResolveBroadsideAxis(
+                    trailHead.X - trailEnd.X,
+                    (trailHead.Y - trailEnd.Y) * SwarmGroundYScale);
             }
         }
 
