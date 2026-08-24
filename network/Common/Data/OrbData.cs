@@ -86,20 +86,18 @@ namespace network.common.data
         }
 
         /// <summary>
-        ///     PvE 공격 주기 (#229 상향): 초반에 몹이 안 죽어 문까지 가지 못한다는 실플레이 판정.
-        ///     페이즈 0 기준 잔상 HP 12 · T1 발당 12라 한 발이 한 마리인데, 주기 1.4초면 초당
-        ///     0.71마리다. 구역 보충은 1.5초에 2마리(초당 1.33)라 시작 오브 하나로는 수가 절대
-        ///     줄지 않고 목표치 9에 눌러앉는다 — 길이 안 열린다.
-        ///     0.8초로 당겨 초당 1.25마리까지 올린다. 여전히 보충보다 근소하게 낮지만 두 번째
-        ///     오브가 붙는 순간 역전되므로, 초반 벽은 사라지고 성장 동기는 남는다.
-        ///     티어 값어치는 속도가 아니라 발당 피해(12·21·30)와 사거리가 계속 진다.
+        ///     PvE 공격 주기 — 전 티어 고정 (2026-08-24 유저 결정, #268): 티어 주기 단축(0.8/0.55/0.4)을
+        ///     퇴역한다. 발사량은 오브 개수가 이미 늘리므로 티어까지 주기를 당기면 이중 가속이고,
+        ///     바람(쿨 1.4s)·파도(2s)는 주기가 고정이라 태양만 티어 DPS가 5배로 벌어졌다.
+        ///     티어 값어치는 발당 피해(12·21·30)와 사거리만 진다 — 세 색 모두 티어 스케일 2.5배로 정렬.
+        ///     기저 0.8초는 #229 상향값 그대로 (초반 구역 보충 초당 1.33마리를 열 수 있는 최소 박자).
         /// </summary>
         public static float GetSwarmPveAttackIntervalSeconds(int itemId)
         {
-            if (!TryGetColorAndTier(itemId, out _, out int tier))
+            if (!TryGetColorAndTier(itemId, out _, out _))
                 return 0f;
 
-            return tier >= 3 ? 0.4f : tier == 2 ? 0.55f : 0.8f;
+            return 0.8f;
         }
 
         public static float GetSwarmWaveBombRadius(int itemId)

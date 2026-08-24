@@ -280,13 +280,13 @@ public sealed class SwarmArenaManager
     }
 
     // #219 SB 몬스터 4종 (원작 스펙 ÷25 환산, 잼 보류 — 보상은 소환석만).
-    // 해골: 무해한 코인 파밍 무리. 다트: 원거리 단발. 탈주: 접촉 강펀치 브루저. 볼러: 범위 투척.
+    // 해골: 무해한 코인 파밍 무리. 다트: 접촉 단발(부츠 드롭). 탈주: 접촉 강펀치 브루저.
+    // 볼러: 접촉 범위 강타. 일반 몹 원거리 타격은 퇴역 (2026-08-24 유저 지시: 몹 외형이 전부
+    // 근거리라 서서 때리는 원거리가 이상해 보임) — 원거리는 고정 포대인 보스만 남는다.
     public const float BowlerSplashRadius = 1.5f;
 
-    // 파도 문양 몹 (2026-08-16 유저 결정): 몸통박치기 대신 거리를 두고 플레이어 주변을
-    // 때린다 — 보드의 파도 오브(물폭탄)와 같은 문법이라, 문양이 곧 그 몹의 공격 방식이 된다.
-    // 사거리를 두면 이동 로직의 원거리 분기(RangedHoldRangeRatio)가 그대로 붙어 파고들지 않는다.
-    public const float WavePatternAttackRange = 3.2f;
+    // 파도 문양 몹: 접촉 강타가 주변까지 튄다 — 보드의 파도 오브(물폭탄 스플래시)와 같은 문법.
+    // 원거리 유지 사거리(3.2)는 2026-08-24 원거리 퇴역과 함께 제거 — 문양의 정체는 스플래시가 진다.
     public const float WavePatternSplashRadius = 2.2f;
     private const float WavePatternAttackCooldownSeconds = 2.2f;
 
@@ -302,9 +302,10 @@ public sealed class SwarmArenaManager
             // 피통은 클라 종 식별자이기도 하다 — EmotionAfterimageMonsterDisplay 스위치와 동기 필수.
             // 하트 (#222 M4): 고위험 몹(탈주·볼러)만 확정 1 — 즉시 회복 픽업의 유일 공급처.
             // 부츠·열쇠 (#222 M4): 부츠 = 다트(저보상 몹의 아이덴티티), 열쇠 = 탈주(미니보스 확정 드롭).
-            SwarmMonsterKind.DartGoblin => (18, 2, 5f, 2f, 1, 0, 1, 0),
+            // 다트·볼러 원거리(5/4.5) 퇴역 (2026-08-24): 접촉 반경(종별 몸통 배율)으로 부딪혀야 때린다.
+            SwarmMonsterKind.DartGoblin => (18, 2, ContactRange, 2f, 1, 0, 1, 0),
             SwarmMonsterKind.RunawayGoblin => (120, 5, ContactRange, 1.2f, 4, 1, 0, 1),
-            SwarmMonsterKind.Bowler => (48, 2, 4.5f, 2.5f, 4, 1, 0, 0),
+            SwarmMonsterKind.Bowler => (48, 2, ContactRange, 2.5f, 4, 1, 0, 0),
             // 보스 (#223, SB 드롭 = 코인 11 + 젬 7): 피통은 클라 종 식별자 — 기존 값과 겹치면 안 된다.
             // 전원 제자리 고정 포대 — 파도 T3급 사거리(Config 공유 = 클라 범위 링)로 투사체를 던진다.
             // 골렘 = 광역 강타(볼러 스플래시 공유), 트리 자이언트 = 열쇠 확정 드롭.
@@ -346,7 +347,7 @@ public sealed class SwarmArenaManager
         }
     }
 
-    /// <summary>파도 문양 몹인가 — 원거리 범위공격이라 공격 연출을 따로 보내야 읽힌다.</summary>
+    /// <summary>파도 문양 몹인가 — 접촉 강타가 스플래시로 튀므로 공격 연출을 따로 보내야 읽힌다.</summary>
     public bool IsWavePatternMonster(long matchingId, int monsterId)
     {
         if (!_matches.TryGetValue(matchingId, out var state))
@@ -1914,9 +1915,9 @@ public sealed class SwarmArenaManager
                 ContactDamageValue = contactDamage,
                 Kind = kind,
                 MaxHealthValue = maxHp,
-                AttackRangeValue = IsWavePatternMonster(pattern) && !isCore
-                    ? WavePatternAttackRange
-                    : stats.AttackRange,
+                // 파도 문양 원거리 사거리(3.2) 퇴역 (2026-08-24 유저 지시): 접촉으로 때리되
+                // 스플래시(WavePatternSplashRadius)가 문양의 정체를 진다. 쿨다운만 문양 값 유지.
+                AttackRangeValue = stats.AttackRange,
                 AttackCooldownValue = IsWavePatternMonster(pattern) && !isCore
                     ? WavePatternAttackCooldownSeconds
                     : stats.AttackCooldownSeconds,
@@ -2533,8 +2534,11 @@ public sealed class SwarmArenaManager
         monster.ChaseTargetPlayerId = target.PlayerId;
         if (monster.AttackRangeValue > ContactRange)
         {
+            // 정지 판정도 공격 판정과 같은 타원(dy×2)으로 잰다 (2026-08-24 유저 제보 "접근 다
+            // 안 했는데 멈춰 있다": 평면 원으로 재면 세로 접근 개체가 타원 사거리(dy ≤ 사거리/2)
+            // 밖에서 멈춰 영영 공격을 못 하고 서 있었다).
             float holdDx = target.Position.X - monster.Position.X;
-            float holdDy = target.Position.Y - monster.Position.Y;
+            float holdDy = (target.Position.Y - monster.Position.Y) * 2f;
             float holdRange = monster.AttackRangeValue * RangedHoldRangeRatio;
             if (holdDx * holdDx + holdDy * holdDy <= holdRange * holdRange)
                 return;
