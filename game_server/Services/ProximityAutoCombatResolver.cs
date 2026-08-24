@@ -232,13 +232,20 @@ public sealed class ProximityAutoCombatResolver
                         _burstRechargeReadyAtUtc[stateKey] = DateTime.MaxValue;
                     }
 
+                    // 쿨다운 승계 (2026-08-24 연사 수리): 표적·무기 교체가 NextAttackAtUtc를
+                    // 조준 시간(0.1초)으로 갈아치우면, 한 발이 한 마리인 태양은 몹 무리 앞에서
+                    // 매 발 표적이 바뀌며 티어 주기(0.8~1.6초) 대신 0.1초 연사가 된다 —
+                    // 같은 오브의 진행 중 쿨다운은 새 표적에도 그대로 이어받는다.
+                    var nextAttackAtUtc = hasCombatState && combatState.NextAttackAtUtc > aimReadyAtUtc
+                        ? combatState.NextAttackAtUtc
+                        : aimReadyAtUtc;
                     nextCombatState = new CombatState(
                         nearestTarget.PlayerId,
                         attacker.WeaponItemId,
                         nearestTarget.WeaponItemId,
                         attacker.Area,
                         aimReadyAtUtc,
-                        aimReadyAtUtc,
+                        nextAttackAtUtc,
                         initialBurstAttackCount);
                 }
 

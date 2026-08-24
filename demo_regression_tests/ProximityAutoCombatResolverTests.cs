@@ -73,6 +73,39 @@ public class ProximityAutoCombatResolverTests
         Assert.Single(resolver.Resolve(100, actors, now.AddMilliseconds(AimMs + 1500)));
     }
 
+    /// <summary>
+    ///     쿨다운 승계 (2026-08-24 연사 수리): 표적이 바뀌어도 같은 오브의 진행 중 쿨다운은
+    ///     이어진다. 승계 전에는 표적 교체가 NextAttackAtUtc를 조준 시간(0.1초)으로 갈아치워,
+    ///     한 발이 한 마리인 태양이 몹 무리 앞에서 티어 주기 대신 0.1초 연사를 했다.
+    /// </summary>
+    [Fact]
+    public void Resolve_TargetSwitchInheritsPendingAttackCooldown()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000003),
+            Actor(2, 1f, 0f)
+        };
+
+        Assert.Empty(resolver.Resolve(100, actors, now));
+        var firstShotAtUtc = now.AddMilliseconds(AimMs);
+        Assert.Single(resolver.Resolve(100, actors, firstShotAtUtc));
+
+        // 첫 발 직후 표적이 죽고 더 가까운 새 표적이 나타난다 — 표적 교체.
+        actors[1] = Actor(3, 0.5f, 0f);
+        var retargetAtUtc = firstShotAtUtc.AddMilliseconds(50);
+        Assert.Empty(resolver.Resolve(100, actors, retargetAtUtc));
+
+        // 조준(0.1초)이 끝나도 이전 발의 주기(1.5초)가 남아 있으면 쏘지 않는다.
+        Assert.Empty(resolver.Resolve(100, actors, retargetAtUtc.AddMilliseconds(AimMs)));
+        Assert.Empty(resolver.Resolve(100, actors, firstShotAtUtc.AddMilliseconds(1499)));
+
+        var attack = Assert.Single(resolver.Resolve(100, actors, firstShotAtUtc.AddMilliseconds(1500)));
+        Assert.Equal(3, attack.TargetPlayerId);
+    }
+
     [Fact]
     public void Resolve_UsesPlayerIdAsDeterministicTieBreaker()
     {
@@ -156,10 +189,16 @@ public class ProximityAutoCombatResolverTests
             211,
             [attacker, normal, core, enemyPlayer],
             now.AddMilliseconds(750)));
-        var playerAttack = Assert.Single(resolver.Resolve(
+        // 쿨다운 승계 (2026-08-24 연사 수리): 표적이 플레이어로 바뀌어도 첫 발(0.1초)의
+        // 주기 1.5초가 이어진다 — 발사는 1.6초부터. 우선순위 검증(플레이어 선점)은 그대로다.
+        Assert.Empty(resolver.Resolve(
             211,
             [attacker, normal, core, enemyPlayer],
             now.AddMilliseconds(1250)));
+        var playerAttack = Assert.Single(resolver.Resolve(
+            211,
+            [attacker, normal, core, enemyPlayer],
+            now.Add(ProximityAutoCombatResolver.AimDuration).AddMilliseconds(1500)));
 
         Assert.Equal(enemyPlayer.PlayerId, playerAttack.TargetPlayerId);
     }

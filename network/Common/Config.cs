@@ -361,11 +361,12 @@ namespace network.common
         public static int ScaleSwarmDamageTaken(int damage) =>
             damage <= 0 ? damage : Math.Max(1, (int)Math.Round(damage * SWARM_DAMAGE_TAKEN_MULTIPLIER));
 
-        /// <summary>같은 피해자는 공격자와 무관하게 이 시간 동안 추가 충격을 받지 않는다.</summary>
+        /// <summary>
+        ///     같은 피해자는 공격자와 무관하게 이 시간 동안 추가 충격을 받지 않는다.
+        ///     소유자 초당 1회 상한(OWNER_HIT_INTERVAL)은 2026-08-24 퇴역 — 이 면역과 이중
+        ///     게이트라 지나가는 발의 절반이 소리 없이 무효였다. PvP 피격 리듬은 이 창 하나가 정한다.
+        /// </summary>
         public const float SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS = 0.9f;
-
-        /// <summary>한 공격자가 다른 플레이어에게 만드는 유효 충격 상한 — 초당 1회.</summary>
-        public const float SWARM_CROSSFIRE_OWNER_HIT_INTERVAL_SECONDS = 1f;
 
         /// <summary>
         ///     한 플레이어가 동시에 유지할 수 있는 교차사격 예고 수 (명세 "동시 예고 최대 2개"). 예고(시전)
@@ -380,8 +381,9 @@ namespace network.common
         ///     태양 투사체 (2026-08-17 유저 판정 누적): 큰 투사체 하나가 오브에서 표적 방향으로 티어 사거리
         ///     끝까지 이 속도로 날아간다. 선상의 첫 표적(몬스터·플레이어)에 닿는 순간 거기서 폭발 — 폭발 반경
         ///     안 전부 피해("폭발하는 시점이 피해 시점"). 끝까지 아무것도 안 닿으면 폭발 없이 소멸.
-        ///     예고선은 퇴역. 예고 시간 0.25초는 선 없이 오브 조준 발광(표적 쪽으로 돌아서며 부풂)만 —
-        ///     "조준됐다"가 발사 직전 읽히게 (2026-08-17 유저 지시).
+        ///     예고선은 두 번 기각됐다 (2026-08-17 퇴역 → 2026-08-24 응축선 재시도 후 유저 기각:
+        ///     오브별 선이 어지럽고 적아 구분이 안 된다). 확정 문법은 뱀서식 — 예고 시간은 오브 조준
+        ///     발광("조준됐다")만 담당하고, 궤도 정보는 발동 투사체의 트레일이 말한다 (2026-08-24 유저 결정).
         /// </summary>
         public const float SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS = 0.25f;
         // 4.5 → 7.5 (2026-08-18 유저 지시 "태양 발사 속도를 높여보자"): 느린 비행은 예고선 없이는 "천천히
@@ -400,8 +402,8 @@ namespace network.common
         public static readonly float[] SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER = { 0.7f, 0.85f, 1f };
 
         /// <summary>
-        ///     태양 사거리(T1/T2/T3, 바닥면 단위) — 투사체가 날아가는 고정 길이이자 태양 오브의 표적 획득 거리.
-        ///     강화(계열 공유 레벨)될수록 길어진다 (2026-08-17 유저 지시). 표적 거리와 무관하게 이 길이를 다 난다.
+        ///     태양 표적 획득 거리(T1/T2/T3, 바닥면 단위). 투사체 길이로는 더 안 쓴다 (2026-08-24 유저
+        ///     결정: 투사체는 항상 구역 경계까지 난다) — 강화는 조준이 걸리는 거리만 늘린다.
         /// </summary>
         public static readonly float[] SWARM_CROSSFIRE_SUN_RANGE_BY_TIER = { 4f, 5.5f, 7f };
 

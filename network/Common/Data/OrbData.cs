@@ -65,8 +65,6 @@ namespace network.common.data
         public const float HopeProjectileSpeed = 6f;
         public const float ForgetProjectileSpeed = 9f;
         public const float DespairImpactDelaySeconds = 0.8f;
-        public const float MinimumProjectileImpactDelaySeconds = 0.45f;
-        public const float MaximumProjectileImpactDelaySeconds = 1.4f;
         public const float ProjectileTargetBodyRadius = 0.4f;
 
         // #229: 태양과 바람은 같은 유도탄을 사용하고 보드 패시브만 다르다. 패시브는
@@ -283,10 +281,10 @@ namespace network.common.data
         public static float GetPvpProjectileImpactDelaySeconds(int itemId, float distance)
         {
             // 공격 문법 통일: 전 색 같은 미사일 속도. 색 분기(파도 고정 딜레이·바람 고속탄) 퇴역.
-            return Math.Clamp(
-                Math.Max(0f, distance) / HopeProjectileSpeed,
-                MinimumProjectileImpactDelaySeconds,
-                MaximumProjectileImpactDelaySeconds);
+            // 등속 (2026-08-24 유저 결정): 상·하한 클램프 퇴역 — 상한(1.4초)은 먼 표적일수록 탄을
+            // 빠르게, 하한(0.45초)은 가까운 표적일수록 느리게 보이게 했다. 거리/속도 그대로 쓰고,
+            // 하한 0.08초는 제로 프레임 착탄(순간이동처럼 보임) 방지용 최소치다.
+            return Math.Max(0.08f, Math.Max(0f, distance) / HopeProjectileSpeed);
         }
 
         public static float GetPvpProjectileHitRadius(int itemId, float projectileWidth)
