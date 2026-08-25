@@ -24,6 +24,10 @@ public partial class GameServer
     private readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid), DateTime>
         _swarmWindBladeNextTickAtUtc = new();
 
+    // 교전 시작 시각 — 시동 게이트(SPINUP_SECONDS)의 기준. 반경이 비면 지워져 다시 시동한다.
+    private readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid), DateTime>
+        _swarmWindBladeEngagedAtUtc = new();
+
     private void ProcessSwarmWindBlades(
         long matchingId,
         DateTime nowUtc,
@@ -85,10 +89,22 @@ public partial class GameServer
                     (playersInRadius ??= new List<SpotArenaPlayerSpatial>()).Add(participant);
                 }
 
-                // 시동 게이트는 퇴역 (2026-08-25 유저 정정 "돌면 그냥 데미지"): 서버 0.9초 게이트 +
-                // 틱 정렬(0.7초)이 겹쳐 체감 1.4초 지연이었다 — 회전 시동은 클라 연출만 지고,
-                // 판정은 반경 안에 표적이 있으면 즉시 틱이 나간다.
+                // 짧은 시동 게이트 (2026-08-25 재조정): 옛 0.9초 게이트(체감 1.4초)는 퇴역했지만,
+                // "즉시 틱"은 오브가 돌기도 전에 피해가 들어가 어색했다(유저 제보) — 표적이 반경에
+                // 든 순간부터 클라 회전 20% 도달에 맞춘 0.2초만 기다린다. 반경이 비면 리셋.
                 if (monstersInRadius == null && playersInRadius == null)
+                {
+                    _swarmWindBladeEngagedAtUtc.Remove(key);
+                    continue;
+                }
+
+                if (!_swarmWindBladeEngagedAtUtc.TryGetValue(key, out var engagedAtUtc))
+                {
+                    engagedAtUtc = nowUtc;
+                    _swarmWindBladeEngagedAtUtc[key] = engagedAtUtc;
+                }
+
+                if ((nowUtc - engagedAtUtc).TotalSeconds < Config.SWARM_WIND_BLADE_SPINUP_SECONDS)
                     continue;
 
                 if (sunMultiplier < 0f)
@@ -141,5 +157,7 @@ public partial class GameServer
     {
         foreach (var key in _swarmWindBladeNextTickAtUtc.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmWindBladeNextTickAtUtc.Remove(key);
+        foreach (var key in _swarmWindBladeEngagedAtUtc.Keys.Where(key => key.MatchingId == matchingId).ToList())
+            _swarmWindBladeEngagedAtUtc.Remove(key);
     }
 }

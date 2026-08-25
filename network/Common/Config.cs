@@ -432,6 +432,10 @@ namespace network.common
         // 타격 빈도만 두 배로. "믹서기에 갈린다"는 잘게 자주 맞아야 읽힌다 (유저 지시).
         public const float SWARM_WIND_BLADE_TICK_SECONDS = 0.35f;
         public const float SWARM_WIND_BLADE_DAMAGE_MULTIPLIER = 0.375f;
+        // 시동 게이트 (2026-08-25 유저 지시 "회전 한 20퍼는 돼야 데미지"): 표적이 반경에 든
+        // 순간부터 이 시간은 피해가 없다 — 클라 감지 폴링(0.15초)+가속 20% 도달(0.09초)에 맞춘
+        // 값. 반경이 비면 리셋된다(클라 감속과 대칭). 옛 0.9초 게이트(체감 1.4초)와 혼동 금지.
+        public const float SWARM_WIND_BLADE_SPINUP_SECONDS = 0.2f;
 
 
         /// <summary>
