@@ -46,8 +46,12 @@ public class SummonStoneManagerTests
         Assert.Equal(candidates, manager.GetSummonCandidates(214, 10));
         Assert.Equal(2, candidates.Length);
 
-        // 같은 오브 두 개는 선택이 아니다.
-        Assert.NotEqual(candidates[0], candidates[1]);
+        // 같은 오브 두 개는 선택이 아니다 — 단, 공급 차단 토글로 풀이 1색이면 성립 불가.
+        int enabledPoolSize = (Config.SWARM_SUN_ORB_ENABLED ? 1 : 0) +
+                              (Config.SWARM_WIND_ORB_ENABLED ? 1 : 0) +
+                              (Config.SWARM_WAVE_ORB_ENABLED ? 1 : 0);
+        if (enabledPoolSize > 1)
+            Assert.NotEqual(candidates[0], candidates[1]);
 
         // 선택 인덱스 1이 실제로 두 번째 후보를 지급한다.
         var summon = manager.TrySummon(214, 10,
@@ -56,8 +60,9 @@ public class SummonStoneManagerTests
         Assert.True(summon.Success);
         Assert.Equal(candidates[1], summon.ItemId);
 
-        // 소환 후에는 다음 소환 횟수 기준의 새 후보가 나온다.
-        Assert.NotEqual(candidates, manager.GetSummonCandidates(214, 10));
+        // 소환 후에는 다음 소환 횟수 기준의 새 후보가 나온다 (풀 1색이면 같을 수밖에 없다).
+        if (enabledPoolSize > 1)
+            Assert.NotEqual(candidates, manager.GetSummonCandidates(214, 10));
     }
 
     [Fact]

@@ -147,6 +147,15 @@ namespace network.common
         /// </summary>
         public const int RETALIATION_STATUS_EFFECT_ID = 1104;
 
+        /// <summary>침수 (#268, 2026-08-25): 파도 소용돌이 피격 — 5초 이동 감속 디버프.</summary>
+        public const int WAVE_SOAKED_STATUS_EFFECT_ID = 1105;
+
+        /// <summary>화상 (#268, 2026-08-25): 태양 미사일 피격 — 3초 틱 피해 디버프.</summary>
+        public const int SUN_BURN_STATUS_EFFECT_ID = 1106;
+
+        /// <summary>상처 (#268, 2026-08-25): 바람 칼날 피격 — 5초간 치명타 피격 확률 증가 디버프.</summary>
+        public const int WIND_WOUND_STATUS_EFFECT_ID = 1107;
+
         /// <summary>
         ///     보스 사거리 (#223): 파도 T3 오브급(기본 2.5 + 가중치 4 × 0.4) — 제자리 고정
         ///     포대의 위협 반경. 서버 판정과 클라 범위 링이 이 값을 공유한다 (표시 = 판정).
@@ -158,6 +167,18 @@ namespace network.common
         ///     그 언어와 싸운다. 소환마다 열이 길어지고, 티어는 상자 시간 등급이 공급한다.
         /// </summary>
         public static readonly bool SWARM_ORB_MERGE_ENABLED = false;
+
+        /// <summary>파도(Blue) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.</summary>
+        public static readonly bool SWARM_WAVE_ORB_ENABLED = true;
+
+        /// <summary>태양(Red) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.</summary>
+        public static readonly bool SWARM_SUN_ORB_ENABLED = true;
+
+        /// <summary>
+        ///     바람(Green) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.
+        ///     세 토글을 전부 끄면 공급 풀이 비므로 최소 하나는 켜 둘 것.
+        /// </summary>
+        public static readonly bool SWARM_WIND_ORB_ENABLED = true;
 
         // 오브열 (#226 실험 α/β): 오브가 이동 경로를 따라오는 전투열 — 클라 배치와
         // 서버 판정(오브별 공격 원점·본체 접촉)이 같은 값을 쓴다 (표시 = 판정).
@@ -361,11 +382,29 @@ namespace network.common
         public static int ScaleSwarmDamageTaken(int damage) =>
             damage <= 0 ? damage : Math.Max(1, (int)Math.Round(damage * SWARM_DAMAGE_TAKEN_MULTIPLIER));
 
-        /// <summary>같은 피해자는 공격자와 무관하게 이 시간 동안 추가 충격을 받지 않는다.</summary>
+        /// <summary>
+        ///     같은 피해자는 공격자와 무관하게 이 시간 동안 추가 충격을 받지 않는다.
+        ///     소유자 초당 1회 상한(OWNER_HIT_INTERVAL)은 2026-08-24 퇴역 — 이 면역과 이중
+        ///     게이트라 지나가는 발의 절반이 소리 없이 무효였다. PvP 피격 리듬은 이 창 하나가 정한다.
+        /// </summary>
         public const float SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS = 0.9f;
 
-        /// <summary>한 공격자가 다른 플레이어에게 만드는 유효 충격 상한 — 초당 1회.</summary>
-        public const float SWARM_CROSSFIRE_OWNER_HIT_INTERVAL_SECONDS = 1f;
+        /// <summary>
+        ///     화상 (#268, 2026-08-25): 태양 미사일 충격에 맞으면 3초간 매초 틱 피해 —
+        ///     틱당 = 충격의 0.2배(≈3). 재피격 시 지속이 갱신된다(중첩 없음). 몹은 제외 —
+        ///     태양 PvE 화력은 이미 직격이 정점이다.
+        /// </summary>
+        public const float SWARM_SUN_BURN_SECONDS = 3f;
+        public const float SWARM_SUN_BURN_TICK_INTERVAL_SECONDS = 1f;
+        public const float SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER = 0.2f;
+
+        /// <summary>
+        ///     상처 (#268, 2026-08-25): 바람 칼날 충격에 맞으면 5초간, 이후 받는 PvP 충격이
+        ///     이 확률로 치명타(PvE와 같은 2배)가 된다. 평시 PvP 충격은 치명타가 없다 —
+        ///     상처가 그 문을 연다. 재피격 시 지속 갱신(중첩 없음).
+        /// </summary>
+        public const float SWARM_WIND_WOUND_SECONDS = 5f;
+        public const float SWARM_WIND_WOUND_CRIT_CHANCE = 0.35f;
 
         /// <summary>
         ///     한 플레이어가 동시에 유지할 수 있는 교차사격 예고 수 (명세 "동시 예고 최대 2개"). 예고(시전)
@@ -377,16 +416,14 @@ namespace network.common
         public const int SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER = 2;
 
         /// <summary>
-        ///     태양 투사체 (2026-08-17 유저 판정 누적): 큰 투사체 하나가 오브에서 표적 방향으로 티어 사거리
-        ///     끝까지 이 속도로 날아간다. 선상의 첫 표적(몬스터·플레이어)에 닿는 순간 거기서 폭발 — 폭발 반경
-        ///     안 전부 피해("폭발하는 시점이 피해 시점"). 끝까지 아무것도 안 닿으면 폭발 없이 소멸.
-        ///     예고선은 퇴역. 예고 시간 0.25초는 선 없이 오브 조준 발광(표적 쪽으로 돌아서며 부풂)만 —
-        ///     "조준됐다"가 발사 직전 읽히게 (2026-08-17 유저 지시).
+        ///     태양 투사체 (2026-08-24 최종): 같은 타일 X/Y축 표적을 향해 큰 구체 하나가 직진하며
+        ///     선상의 몬스터·플레이어를 대상당 한 번 관통 타격한다. 벽에서는 피해 없는 시각 폭발,
+        ///     벽 없는 끝점에서는 폭발 없이 소멸한다. 예고 시간에는 고정된 시안색 바닥 경로선이
+        ///     차오르고, 발사 순간 0.22초 점멸·페이드한 뒤 비행은 꼬리 없는 태양 구체가 전달한다.
         /// </summary>
         public const float SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS = 0.25f;
-        // 4.5 → 7.5 (2026-08-18 유저 지시 "태양 발사 속도를 높여보자"): 느린 비행은 예고선 없이는 "천천히
-        // 지나가는 큰 공격"이 아니라 그냥 늦게 오는 탄으로 읽혔다. 사거리 6이면 0.8초 만에 끝까지 간다.
-        // 클라 투사체는 패킷의 ActiveSeconds(= 사거리/속도)를 그대로 쓰므로 여기만 바꾸면 표시 = 판정.
+        // 서버 앞머리 속도. 클라 투사체는 패킷의 ActiveSeconds(= 실제 벽까지 거리/속도)를 그대로 써
+        // 표시와 판정의 도착 시간을 맞춘다.
         public const float SWARM_CROSSFIRE_SUN_SWEEP_SPEED = 7.5f;
 
         /// <summary>
@@ -400,28 +437,45 @@ namespace network.common
         public static readonly float[] SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER = { 0.7f, 0.85f, 1f };
 
         /// <summary>
-        ///     태양 사거리(T1/T2/T3, 바닥면 단위) — 투사체가 날아가는 고정 길이이자 태양 오브의 표적 획득 거리.
-        ///     강화(계열 공유 레벨)될수록 길어진다 (2026-08-17 유저 지시). 표적 거리와 무관하게 이 길이를 다 난다.
+        ///     태양 표적 획득 거리(T1/T2/T3, 바닥면 단위). 투사체 길이로는 더 안 쓴다 (2026-08-24 유저
+        ///     결정: 투사체는 항상 구역 경계까지 난다) — 강화는 조준이 걸리는 거리만 늘린다.
         /// </summary>
         public static readonly float[] SWARM_CROSSFIRE_SUN_RANGE_BY_TIER = { 4f, 5.5f, 7f };
 
         /// <summary>
-        ///     바람 몸통박치기 (2026-08-17 저녁 유저 결정): 조준 투사체가 아니다. 바람 오브는 제자리(열 좌표)에 있다가
-        ///     감지 반경(티어별, 바닥면) 안에 누가 오면 그쪽으로 한 번 몸을 던진다 — 예비 동작(뒤로 당김) → 돌진 → 착지.
-        ///     착지 반경 안 몬스터 PvE 피해(× 배수), 플레이어 충격. 아무도 없으면 가만히. 오브당 쿨다운.
-        ///     판정은 발동 뒤 예비+돌진 시간에 착지점(발동 순간 잠금)에서 — 클라 연출과 같은 시간표.
-        ///     주기 공격(회전 칼날)은 "아무도 없을 때 혼자 도는 게 이상하다"로 퇴역.
+        ///     바람 = 회전 칼날 (2026-08-25 유저 결정, #268): 오브가 제자리에서 돌며 반경(티어별, 바닥면) 안
+        ///     전원을 주기 틱으로 간다 — 믹서기. 몬스터는 틱 PvE 피해, 소유자 아닌 플레이어는 충격(공용 면역 창).
+        ///     몸통박치기(2026-08-17 결정: 감지→돌진→착지)는 퇴역 — 감지 대기가 병목이라 실효 간격 3.5초였고,
+        ///     3박자 연출로도 직관적으로 읽히지 않았다. 이전에 회전 칼날을 기각했던 근거("아무도 없을 때
+        ///     혼자 도는 게 이상하다")는 평시 저속 자전 → 적 감지 시 가속·발광 연출로 해소한다.
+        ///     틱당 피해 = 발당 피해 × 0.75 — 슬램(× 1.5, 쿨 1.4초)과 단일 대상 DPS 동률(0.7초 틱 × 절반).
+        ///     반경에 붙어야 갈리는 무기라 밀집 실효 화력 상승은 접근 리스크가 값을 치른다 (유저 판정).
         /// </summary>
-        public const float SWARM_WIND_SLAM_COOLDOWN_SECONDS = 1.4f;
-        public static readonly float[] SWARM_WIND_SLAM_TRIGGER_RADIUS_BY_TIER = { 1.4f, 1.65f, 1.9f };
-        public const float SWARM_WIND_SLAM_HIT_RADIUS = 0.6f;
-        public const float SWARM_WIND_SLAM_WINDUP_SECONDS = 0.2f;
-        public const float SWARM_WIND_SLAM_LUNGE_SECONDS = 0.12f;
-        public const float SWARM_WIND_SLAM_DAMAGE_MULTIPLIER = 1.5f;
+        public static readonly float[] SWARM_WIND_BLADE_RADIUS_BY_TIER = { 1.4f, 1.65f, 1.9f };
+        // 틱 0.35초 × 배율 0.375 (2026-08-25 2차: 0.7초 × 0.75에서 반분) — DPS는 그대로 두고
+        // 타격 빈도만 두 배로. "믹서기에 갈린다"는 잘게 자주 맞아야 읽힌다 (유저 지시).
+        public const float SWARM_WIND_BLADE_TICK_SECONDS = 0.35f;
+        public const float SWARM_WIND_BLADE_DAMAGE_MULTIPLIER = 0.375f;
+        // 시동 게이트 (2026-08-25 유저 지시 "회전 한 20퍼는 돼야 데미지"): 표적이 반경에 든
+        // 순간부터 이 시간은 피해가 없다 — 클라 감지 폴링(0.15초)+가속 20% 도달(0.09초)에 맞춘
+        // 값. 반경이 비면 리셋된다(클라 감속과 대칭). 옛 0.9초 게이트(체감 1.4초)와 혼동 금지.
+        public const float SWARM_WIND_BLADE_SPINUP_SECONDS = 0.2f;
 
         /// <summary>
-        ///     태양 폭발 반경(T1/T2/T3, 바닥면 단위) — 첫 표적에 닿아 터지는 순간 이 안의 몬스터 전부 PvE 피해,
-        ///     플레이어 전부 충격(면역·상한은 그대로). 물폭탄(1.8/2.2/2.6)보다 작게 — 직선이 먼저 좁히고 폭발이 마무리.
+        ///     파도 = 소용돌이 (#268, 2026-08-25 유저 결정, 3차 "오브 위치 기준"). 물폭탄(표적
+        ///     스냅샷 낙하)과 합산 소용돌이(이동 거리 게이트 + 꼬리 끝 뒤 1개)는 퇴역: 파도 오브
+        ///     각각이 주기(2초)마다 자기 열 위치에 소용돌이를 깐다 — 오브가 곧 무기 위치(바람
+        ///     칼날과 같은 문법). 예고(0.65초 림 링) 후 반경 안 전원(몹·플레이어 동일)을 중심으로
+        ///     당기고 잠깐 늦춘다 — 피해는 타격 피드백 수준. 플레이어는 충격 면역 창(0.9초)이
+        ///     연쇄 당김을 막는다.
+        /// </summary>
+        // 변위(당김·밀침·원 밖 축출) 실험은 전부 기각 (2026-08-25 유저 판정) — 효과는
+        // "침수" 디버프(5초 25% 감속, WAVE_SOAKED_STATUS_EFFECT_ID)와 타격 피드백 피해만.
+        public const float SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER = 0.25f; // 현행 물폭탄 피해의 1/4
+
+
+        /// <summary>
+        ///     태양 벽 충돌 시각 폭발 크기(T1/T2/T3, 바닥면 단위). 추가 피해·충격 판정은 없다.
         /// </summary>
         public static readonly float[] SWARM_CROSSFIRE_SUN_BLAST_RADIUS_BY_TIER = { 1.1f, 1.3f, 1.5f };
 

@@ -199,8 +199,12 @@ public sealed class ProximityAutoCombatResolver
                 }
 
                 CombatState nextCombatState;
-                if (!hasCombatState &&
-                    _recentlyLostCombatStates.TryRemove(stateKey, out var suspendedState) &&
+                // 유예 엔트리는 조건과 무관하게 한 번만 꺼낸다 — 조건문 안의 TryRemove는 복원
+                // 실패(다른 표적)에도 엔트리를 소비해, 아래 쿨다운 승계가 읽을 것을 지워버렸다.
+                SuspendedCombatState suspendedState = default;
+                bool hadSuspendedState = !hasCombatState &&
+                    _recentlyLostCombatStates.TryRemove(stateKey, out suspendedState);
+                if (hadSuspendedState &&
                     suspendedState.State.TargetPlayerId == nearestTarget.PlayerId &&
                     suspendedState.State.WeaponItemId == attacker.WeaponItemId &&
                     nowUtc >= suspendedState.LostAtUtc &&
@@ -217,8 +221,6 @@ public sealed class ProximityAutoCombatResolver
                 }
                 else
                 {
-                    _recentlyLostCombatStates.TryRemove(stateKey, out _);
-
                     var aimReadyAtUtc = nowUtc.Add(AimDuration).AddSeconds(
                         Math.Max(0f, attacker.InitialAttackDelaySeconds));
                     int initialBurstAttackCount = 0;
@@ -232,13 +234,29 @@ public sealed class ProximityAutoCombatResolver
                         _burstRechargeReadyAtUtc[stateKey] = DateTime.MaxValue;
                     }
 
+                    // 쿨다운 승계 (2026-08-24 연사 수리): 표적·무기 교체가 NextAttackAtUtc를
+                    // 조준 시간(0.1초)으로 갈아치우면, 한 발이 한 마리인 태양은 몹 무리 앞에서
+                    // 매 발 표적이 바뀌며 티어 주기(0.8~1.6초) 대신 0.1초 연사가 된다 —
+                    // 같은 오브의 진행 중 쿨다운은 새 표적에도 그대로 이어받는다.
+                    var nextAttackAtUtc = hasCombatState && combatState.NextAttackAtUtc > aimReadyAtUtc
+                        ? combatState.NextAttackAtUtc
+                        : aimReadyAtUtc;
+                    // 쿨다운 승계 2 (2026-08-24 연사 수리 2탄): 표적이 완전히 비면 상태가 유예로
+                    // 빠지는데, 유예 복원은 같은 표적일 때만 붙는다 — 스폰 스트림에서는 발마다
+                    // "표적 고갈 → 새 몹 등장(다른 표적) → 새 상태"가 반복되며 조준 시간(0.1초)
+                    // 연사가 됐다(실측: 0.2~0.3초 간격 3연발). 무기 쿨다운은 표적과 무관하게
+                    // 이어진다 — 유예 중에도 시간은 흘렀으므로 시프트 없이 그대로 쓴다.
+                    if (hadSuspendedState &&
+                        suspendedState.State.NextAttackAtUtc > nextAttackAtUtc &&
+                        nowUtc - suspendedState.LostAtUtc <= TargetReacquireGraceDuration)
+                        nextAttackAtUtc = suspendedState.State.NextAttackAtUtc;
                     nextCombatState = new CombatState(
                         nearestTarget.PlayerId,
                         attacker.WeaponItemId,
                         nearestTarget.WeaponItemId,
                         attacker.Area,
                         aimReadyAtUtc,
-                        aimReadyAtUtc,
+                        nextAttackAtUtc,
                         initialBurstAttackCount);
                 }
 

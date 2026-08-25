@@ -22,7 +22,17 @@ public sealed class SummonStoneManager
     // 무관해져 기능이 죽었고, "회복만 남는" 막다른 상태의 원천이었다. SB 문법대로 회복은
     // 새 오브 영입(만피 새 몸)이 담당한다. 아이템 정의·연출·틱 코드는 게이트 보존 —
     // 치유 클래스로 부활 검토 시 재사용 (이슈 #219 매핑 8번).
-    private static readonly int[] SummonPool = [107000010, 107000020, 107000030];
+    // 공급 차단 토글(SWARM_SUN/WAVE_ORB_ENABLED=false)이면 소환 풀에서 그 색이 빠진다.
+    private static readonly int[] SummonPool = BuildSummonPool();
+
+    private static int[] BuildSummonPool()
+    {
+        var pool = new List<int>();
+        if (Config.SWARM_SUN_ORB_ENABLED) pool.Add(107000010);
+        if (Config.SWARM_WIND_ORB_ENABLED) pool.Add(107000020);
+        if (Config.SWARM_WAVE_ORB_ENABLED) pool.Add(107000030);
+        return pool.ToArray();
+    }
     private static readonly int[] OpeningAttackPool = SummonPool
         .Where(itemId => !OrbData.IsRecoveryOrb(itemId))
         .ToArray();

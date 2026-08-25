@@ -73,6 +73,71 @@ public class ProximityAutoCombatResolverTests
         Assert.Single(resolver.Resolve(100, actors, now.AddMilliseconds(AimMs + 1500)));
     }
 
+    /// <summary>
+    ///     쿨다운 승계 (2026-08-24 연사 수리): 표적이 바뀌어도 같은 오브의 진행 중 쿨다운은
+    ///     이어진다. 승계 전에는 표적 교체가 NextAttackAtUtc를 조준 시간(0.1초)으로 갈아치워,
+    ///     한 발이 한 마리인 태양이 몹 무리 앞에서 티어 주기 대신 0.1초 연사를 했다.
+    /// </summary>
+    [Fact]
+    public void Resolve_TargetSwitchInheritsPendingAttackCooldown()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
+        var actors = new[]
+        {
+            Actor(1, 0f, 0f, weaponItemId: 107000003),
+            Actor(2, 1f, 0f)
+        };
+
+        Assert.Empty(resolver.Resolve(100, actors, now));
+        var firstShotAtUtc = now.AddMilliseconds(AimMs);
+        Assert.Single(resolver.Resolve(100, actors, firstShotAtUtc));
+
+        // 첫 발 직후 표적이 죽고 더 가까운 새 표적이 나타난다 — 표적 교체.
+        actors[1] = Actor(3, 0.5f, 0f);
+        var retargetAtUtc = firstShotAtUtc.AddMilliseconds(50);
+        Assert.Empty(resolver.Resolve(100, actors, retargetAtUtc));
+
+        // 조준(0.1초)이 끝나도 이전 발의 주기(1.5초)가 남아 있으면 쏘지 않는다.
+        Assert.Empty(resolver.Resolve(100, actors, retargetAtUtc.AddMilliseconds(AimMs)));
+        Assert.Empty(resolver.Resolve(100, actors, firstShotAtUtc.AddMilliseconds(1499)));
+
+        var attack = Assert.Single(resolver.Resolve(100, actors, firstShotAtUtc.AddMilliseconds(1500)));
+        Assert.Equal(3, attack.TargetPlayerId);
+    }
+
+    /// <summary>
+    ///     쿨다운 승계 2 (2026-08-24 연사 수리 2탄): 표적이 전멸해 상태가 유예로 빠진 뒤 "다른"
+    ///     표적으로 복귀해도 무기 쿨다운은 이어진다. 승계 전에는 스폰 스트림에서 발마다 표적
+    ///     고갈·재등장이 반복되며 조준 시간(0.1초) 연발이 났다 (실측 0.2~0.3초 간격 3연발).
+    /// </summary>
+    [Fact]
+    public void Resolve_TargetDroughtThenNewTargetInheritsPendingCooldown()
+    {
+        var resolver = new ProximityAutoCombatResolver();
+        var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
+        var attacker = Actor(1, 0f, 0f, weaponItemId: 107000003);
+        var first = Actor(2, 1f, 0f);
+
+        Assert.Empty(resolver.Resolve(100, [attacker, first], now));
+        var firstShotAtUtc = now.AddMilliseconds(AimMs);
+        Assert.Single(resolver.Resolve(100, [attacker, first], firstShotAtUtc));
+
+        // 첫 발 직후 표적 전멸 — 상태가 유예로 빠진다.
+        Assert.Empty(resolver.Resolve(100, [attacker], firstShotAtUtc.AddMilliseconds(100)));
+
+        // 0.3초 뒤 '다른' 표적 등장 — 스폰 스트림 재현. 조준이 끝나도 이전 발의 주기가 남아 있다.
+        var second = Actor(3, 1f, 0f);
+        var reappearAtUtc = firstShotAtUtc.AddMilliseconds(300);
+        Assert.Empty(resolver.Resolve(100, [attacker, second], reappearAtUtc));
+        Assert.Empty(resolver.Resolve(100, [attacker, second], reappearAtUtc.AddMilliseconds(AimMs)));
+        Assert.Empty(resolver.Resolve(100, [attacker, second], firstShotAtUtc.AddMilliseconds(1499)));
+
+        var attack = Assert.Single(
+            resolver.Resolve(100, [attacker, second], firstShotAtUtc.AddMilliseconds(1500)));
+        Assert.Equal(3, attack.TargetPlayerId);
+    }
+
     [Fact]
     public void Resolve_UsesPlayerIdAsDeterministicTieBreaker()
     {
@@ -156,10 +221,16 @@ public class ProximityAutoCombatResolverTests
             211,
             [attacker, normal, core, enemyPlayer],
             now.AddMilliseconds(750)));
-        var playerAttack = Assert.Single(resolver.Resolve(
+        // 쿨다운 승계 (2026-08-24 연사 수리): 표적이 플레이어로 바뀌어도 첫 발(0.1초)의
+        // 주기 1.5초가 이어진다 — 발사는 1.6초부터. 우선순위 검증(플레이어 선점)은 그대로다.
+        Assert.Empty(resolver.Resolve(
             211,
             [attacker, normal, core, enemyPlayer],
             now.AddMilliseconds(1250)));
+        var playerAttack = Assert.Single(resolver.Resolve(
+            211,
+            [attacker, normal, core, enemyPlayer],
+            now.Add(ProximityAutoCombatResolver.AimDuration).AddMilliseconds(1500)));
 
         Assert.Equal(enemyPlayer.PlayerId, playerAttack.TargetPlayerId);
     }

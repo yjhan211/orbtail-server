@@ -44,8 +44,9 @@ namespace network.common.data
         public const float WaveHitWindowSeconds = 1.5f;
         public const float WaveCounterCooldownSeconds = 6f;
         public const float WaveCounterDamageMultiplier = 1.25f;
-        public const float WaveSlowSeconds = 1.5f;
-        public const float WaveSlowMoveSpeedMultiplier = 0.65f;
+        // 침수 (#268, 2026-08-25): 소용돌이 피격 시 5초 25% 감속 — 서버(봇·몹)·클라 공용.
+        public const float WaveSlowSeconds = 5f;
+        public const float WaveSlowMoveSpeedMultiplier = 0.75f;
         public const float WaveBaseAttackIntervalMultiplier = 1.25f;
         // The current room-horde pace needs each orb to fire twice as often.
         public const float OrbAttackIntervalMultiplier = 0.5f;
@@ -65,8 +66,6 @@ namespace network.common.data
         public const float HopeProjectileSpeed = 6f;
         public const float ForgetProjectileSpeed = 9f;
         public const float DespairImpactDelaySeconds = 0.8f;
-        public const float MinimumProjectileImpactDelaySeconds = 0.45f;
-        public const float MaximumProjectileImpactDelaySeconds = 1.4f;
         public const float ProjectileTargetBodyRadius = 0.4f;
 
         // #229: 태양과 바람은 같은 유도탄을 사용하고 보드 패시브만 다르다. 패시브는
@@ -88,20 +87,18 @@ namespace network.common.data
         }
 
         /// <summary>
-        ///     PvE 공격 주기 (#229 상향): 초반에 몹이 안 죽어 문까지 가지 못한다는 실플레이 판정.
-        ///     페이즈 0 기준 잔상 HP 12 · T1 발당 12라 한 발이 한 마리인데, 주기 1.4초면 초당
-        ///     0.71마리다. 구역 보충은 1.5초에 2마리(초당 1.33)라 시작 오브 하나로는 수가 절대
-        ///     줄지 않고 목표치 9에 눌러앉는다 — 길이 안 열린다.
-        ///     0.8초로 당겨 초당 1.25마리까지 올린다. 여전히 보충보다 근소하게 낮지만 두 번째
-        ///     오브가 붙는 순간 역전되므로, 초반 벽은 사라지고 성장 동기는 남는다.
-        ///     티어 값어치는 속도가 아니라 발당 피해(12·21·30)와 사거리가 계속 진다.
+        ///     PvE 공격 주기 — 전 티어 고정 (2026-08-24 유저 결정, #268): 티어 주기 단축(0.8/0.55/0.4)을
+        ///     퇴역한다. 발사량은 오브 개수가 이미 늘리므로 티어까지 주기를 당기면 이중 가속이고,
+        ///     바람(쿨 1.4s)·파도(2s)는 주기가 고정이라 태양만 티어 DPS가 5배로 벌어졌다.
+        ///     티어 값어치는 발당 피해(12·21·30)와 사거리만 진다 — 세 색 모두 티어 스케일 2.5배로 정렬.
+        ///     기저 0.8초는 #229 상향값 그대로 (초반 구역 보충 초당 1.33마리를 열 수 있는 최소 박자).
         /// </summary>
         public static float GetSwarmPveAttackIntervalSeconds(int itemId)
         {
-            if (!TryGetColorAndTier(itemId, out _, out int tier))
+            if (!TryGetColorAndTier(itemId, out _, out _))
                 return 0f;
 
-            return tier >= 3 ? 0.4f : tier == 2 ? 0.55f : 0.8f;
+            return 0.8f;
         }
 
         public static float GetSwarmWaveBombRadius(int itemId)
@@ -223,8 +220,21 @@ namespace network.common.data
             return 1f + Math.Min(WindMoveSpeedBonusCap, bonus);
         }
 
+        // 공명 판정·색 순회가 같이 쓴다 — 파도 공급 차단과 무관하게 전 색 유지 (보유 중인 파도의
+        // 공명·판정은 계속 살아야 한다). 파도 차단은 머지 출력 풀에만 건다.
         private static readonly OrbColor[] EvolutionColors =
             new[] { OrbColor.Red, OrbColor.Green, OrbColor.Blue };
+
+        private static readonly OrbColor[] MergeOutputColors = BuildMergeOutputColors();
+
+        private static OrbColor[] BuildMergeOutputColors()
+        {
+            var colors = new List<OrbColor>();
+            if (Config.SWARM_SUN_ORB_ENABLED) colors.Add(OrbColor.Red);
+            if (Config.SWARM_WIND_ORB_ENABLED) colors.Add(OrbColor.Green);
+            if (Config.SWARM_WAVE_ORB_ENABLED) colors.Add(OrbColor.Blue);
+            return colors.ToArray();
+        }
 
         public static bool TryGetColorAndTier(int itemId, out OrbColor color, out int tier)
         {
@@ -283,10 +293,10 @@ namespace network.common.data
         public static float GetPvpProjectileImpactDelaySeconds(int itemId, float distance)
         {
             // 공격 문법 통일: 전 색 같은 미사일 속도. 색 분기(파도 고정 딜레이·바람 고속탄) 퇴역.
-            return Math.Clamp(
-                Math.Max(0f, distance) / HopeProjectileSpeed,
-                MinimumProjectileImpactDelaySeconds,
-                MaximumProjectileImpactDelaySeconds);
+            // 등속 (2026-08-24 유저 결정): 상·하한 클램프 퇴역 — 상한(1.4초)은 먼 표적일수록 탄을
+            // 빠르게, 하한(0.45초)은 가까운 표적일수록 느리게 보이게 했다. 거리/속도 그대로 쓰고,
+            // 하한 0.08초는 제로 프레임 착탄(순간이동처럼 보임) 방지용 최소치다.
+            return Math.Max(0.08f, Math.Max(0f, distance) / HopeProjectileSpeed);
         }
 
         public static float GetPvpProjectileHitRadius(int itemId, float projectileWidth)
@@ -488,7 +498,7 @@ namespace network.common.data
             if (!TryGetColorAndTier(inputA, out _, out int tier))
                 return false;
 
-            return TryGetItemId(EvolutionColors[random.Next(EvolutionColors.Length)], tier + 1, out outputItemId);
+            return TryGetItemId(MergeOutputColors[random.Next(MergeOutputColors.Length)], tier + 1, out outputItemId);
         }
 
         public static bool TryGetItemId(OrbColor color, int tier, out int itemId)

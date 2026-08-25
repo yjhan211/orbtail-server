@@ -18,3 +18,6 @@ id,buff_id,kind,name_text_id,desc_text_id
 1102,0,buff,12242,12243
 1103,0,buff,12244,12245
 1104,0,buff,12246,12247
+1105,0,debuff,12276,12277
+1106,0,debuff,12278,12279
+1107,0,debuff,12280,12281
