@@ -1,4 +1,4 @@
-id,category,text_kr,text_en,text_jp
+﻿id,category,text_kr,text_en,text_jp
 "11060","6","어떻게 대응할까요?","How will you respond?","どう対応しますか？"
 "11061","6","아이템 사용 [- {0}]","Use item [- {0}]","アイテム使用 [- {0}]"
 "11062","6","상대방의 행동에 대비하기","Prepare for the other person's action","相手の行動に備える"
@@ -382,3 +382,9 @@ id,category,text_kr,text_en,text_jp
 "12273","7","강화할 오브가 없습니다.","No orb to enhance.","強化できるオーブがありません。"
 "12274","7","외피를 씌울 오브가 없습니다.","No orb to armor.","外皮を付けられるオーブがありません。"
 "12275","7","아직 성장할 수 없습니다.","Growth is not available yet.","まだ成長できません。"
+"12276","7","침수","Soaked","浸水"
+"12277","7","5초 동안 이동 속도가 감소합니다.","Move speed decreases for 5 seconds.","5秒間、移動速度が減少します。"
+"12278","7","화상","Burned","火傷"
+"12279","7","3초 동안 매초 피해를 입습니다.","Takes damage every second for 3 seconds.","3秒間、毎秒ダメージを受けます。"
+"12280","7","상처","Wounded","傷"
+"12281","7","5초 동안 치명상을 입을 확률이 증가합니다.","Chance to take critical wounds increases for 5 seconds.","5秒間、致命傷を受ける確率が増加します。"

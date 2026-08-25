@@ -97,16 +97,17 @@ public sealed class OrbBoardTests
         }
 
         Assert.All(outputs, output => Assert.True(OrbData.IsOrbItem(output)));
-        // 공급 차단 토글(SWARM_SUN/WAVE_ORB_ENABLED)이 꺼진 색은 머지 출력에도 안 나온다 —
+        // 공급 차단 토글(SWARM_SUN/WIND/WAVE_ORB_ENABLED)이 꺼진 색은 머지 출력에도 안 나온다 —
         // 켜진 색이 하나뿐이면 출력 다양성 검증은 성립하지 않는다.
-        int enabledColorCount = 1 + (Config.SWARM_SUN_ORB_ENABLED ? 1 : 0) +
+        int enabledColorCount = (Config.SWARM_SUN_ORB_ENABLED ? 1 : 0) +
+                                (Config.SWARM_WIND_ORB_ENABLED ? 1 : 0) +
                                 (Config.SWARM_WAVE_ORB_ENABLED ? 1 : 0);
         Assert.All(outputs, output =>
         {
             Assert.True(OrbData.TryGetColorAndTier(output, out OrbColor outputColor, out _));
             Assert.True(outputColor switch
             {
-                OrbColor.Green => true,
+                OrbColor.Green => Config.SWARM_WIND_ORB_ENABLED,
                 OrbColor.Red => Config.SWARM_SUN_ORB_ENABLED,
                 OrbColor.Blue => Config.SWARM_WAVE_ORB_ENABLED,
                 _ => false

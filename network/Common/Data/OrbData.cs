@@ -44,8 +44,9 @@ namespace network.common.data
         public const float WaveHitWindowSeconds = 1.5f;
         public const float WaveCounterCooldownSeconds = 6f;
         public const float WaveCounterDamageMultiplier = 1.25f;
-        public const float WaveSlowSeconds = 1.5f;
-        public const float WaveSlowMoveSpeedMultiplier = 0.65f;
+        // 침수 (#268, 2026-08-25): 소용돌이 피격 시 5초 25% 감속 — 서버(봇·몹)·클라 공용.
+        public const float WaveSlowSeconds = 5f;
+        public const float WaveSlowMoveSpeedMultiplier = 0.75f;
         public const float WaveBaseAttackIntervalMultiplier = 1.25f;
         // The current room-horde pace needs each orb to fire twice as often.
         public const float OrbAttackIntervalMultiplier = 0.5f;
@@ -230,7 +231,7 @@ namespace network.common.data
         {
             var colors = new List<OrbColor>();
             if (Config.SWARM_SUN_ORB_ENABLED) colors.Add(OrbColor.Red);
-            colors.Add(OrbColor.Green);
+            if (Config.SWARM_WIND_ORB_ENABLED) colors.Add(OrbColor.Green);
             if (Config.SWARM_WAVE_ORB_ENABLED) colors.Add(OrbColor.Blue);
             return colors.ToArray();
         }

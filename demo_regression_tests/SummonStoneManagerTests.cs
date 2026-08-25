@@ -47,7 +47,8 @@ public class SummonStoneManagerTests
         Assert.Equal(2, candidates.Length);
 
         // 같은 오브 두 개는 선택이 아니다 — 단, 공급 차단 토글로 풀이 1색이면 성립 불가.
-        int enabledPoolSize = 1 + (Config.SWARM_SUN_ORB_ENABLED ? 1 : 0) +
+        int enabledPoolSize = (Config.SWARM_SUN_ORB_ENABLED ? 1 : 0) +
+                              (Config.SWARM_WIND_ORB_ENABLED ? 1 : 0) +
                               (Config.SWARM_WAVE_ORB_ENABLED ? 1 : 0);
         if (enabledPoolSize > 1)
             Assert.NotEqual(candidates[0], candidates[1]);

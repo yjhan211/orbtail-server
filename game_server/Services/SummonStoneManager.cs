@@ -29,7 +29,7 @@ public sealed class SummonStoneManager
     {
         var pool = new List<int>();
         if (Config.SWARM_SUN_ORB_ENABLED) pool.Add(107000010);
-        pool.Add(107000020);
+        if (Config.SWARM_WIND_ORB_ENABLED) pool.Add(107000020);
         if (Config.SWARM_WAVE_ORB_ENABLED) pool.Add(107000030);
         return pool.ToArray();
     }

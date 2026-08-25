@@ -1093,6 +1093,26 @@ public sealed class SwarmArenaManager
         }
     }
 
+    /// <summary>
+    ///     침수 (#268, 2026-08-25): 소용돌이 피격 몹의 이동 감속. 변위(당김·밀침·축출) 실험은
+    ///     전부 기각 — 체감이 없거나 과했다. 감속은 행군·추격 이동 양쪽에 적용된다.
+    /// </summary>
+    public bool TrySlowMonster(long matchingId, long combatTargetId, float slowSeconds, DateTime nowUtc)
+    {
+        if (!_matches.TryGetValue(matchingId, out var state))
+            return false;
+        lock (state.SyncRoot)
+        {
+            var monster = state.Monsters.Values.FirstOrDefault(candidate =>
+                candidate.CombatTargetId == combatTargetId && candidate.Alive);
+            if (monster == null)
+                return false;
+
+            monster.WaveSlowUntilUtc = nowUtc.AddSeconds(Math.Max(0f, slowSeconds));
+            return true;
+        }
+    }
+
     public SwarmArenaSummary GetSummary(long matchingId)
     {
         if (!_matches.TryGetValue(matchingId, out var state))
@@ -2157,7 +2177,8 @@ public sealed class SwarmArenaManager
             return;
 
         monster.MarchBudgetSeconds -= deltaSeconds;
-        float remaining = (float)(MonsterMoveSpeed * monster.MarchSpeedScale * deltaSeconds);
+        float remaining = (float)(MonsterMoveSpeed * monster.MarchSpeedScale *
+                                  GetMonsterWaveSlowMultiplier(monster) * deltaSeconds);
         // 경로는 셀 단위라 한 틱에 웨이포인트를 여러 개 지난다. 남은 이동량을 다 쓸 때까지 돈다.
         while (remaining > 0f && monster.MarchIndex < monster.MarchWaypoints.Count)
         {
@@ -2242,6 +2263,14 @@ public sealed class SwarmArenaManager
     // 봇 매치 로그에서 이 줄이 0인지만 보면 회귀를 즉시 안다.
     private const double StuckReportSeconds = 8d;
     private const float StuckMoveThresholdSquared = 0.04f;
+
+    /// <summary>후류 소용돌이 감속 (#268): 봇(GetBotWaveSlowMultiplier)과 같은 값·같은 시계.</summary>
+    private static float GetMonsterWaveSlowMultiplier(MonsterRuntime monster)
+    {
+        return DateTime.UtcNow < monster.WaveSlowUntilUtc
+            ? OrbData.WaveSlowMoveSpeedMultiplier
+            : 1f;
+    }
 
     private static void TrackStuckMonster(
         MonsterRuntime monster, DateTime now, SwarmArenaTickResult result)
@@ -2784,7 +2813,7 @@ public sealed class SwarmArenaManager
         if (distance < 0.05f)
             return;
 
-        float step = (float)(MonsterMoveSpeed * deltaSeconds);
+        float step = (float)(MonsterMoveSpeed * GetMonsterWaveSlowMultiplier(monster) * deltaSeconds);
         if (step > distance)
             step = distance;
         var proposed = new Vector3f(
@@ -2984,6 +3013,9 @@ public sealed class SwarmArenaManager
         public DateTime SpawnedAtUtc { get; set; }
         public int AttackEventCount { get; set; }
         public float ScatterAngle { get; init; }
+
+        // 후류 소용돌이 감속 (#268): 당김 직후 잠깐 늦는다 — 봇 WaveSlowUntilUtc와 대칭.
+        public DateTime WaveSlowUntilUtc { get; set; }
 
         // 포위 반경 (#232): 추격 중 매 틱 줄어든다. 스폰 시 SurroundStartRadius로 시작.
         public float SurroundRadius { get; set; } = SurroundStartRadius;

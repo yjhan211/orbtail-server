@@ -15,6 +15,41 @@ public partial class GameClientSession
     internal const int EmotionAfterimageMonsterAttackDealtEventType = 25;
     internal const int SwarmAttackEventDealtEventType = 26;
     internal const int SwarmAttackEventTakenEventType = 27;
+    // 파도 침수 감속 (#268): 20 — 클라 MapManager.PlayerVisibility의 EncounterEventWaveSlow와 짝.
+    internal const int WaveSlowEventType = 20;
+
+    /// <summary>
+    ///     침수 통지 (#268, 2026-08-25): 피해자 클라가 이동 감속(RevealDelayMs = 지속 ms)을
+    ///     걸고 디버프 창에 침수를 띄운다. 변위(당김·밀침) 실험은 기각 — 감속만 남는다.
+    /// </summary>
+    public void SendSwarmWaveSlow(long ownerPlayerId, AreaType area, int durationMs)
+    {
+        SendEncounterEvent(ownerPlayerId, area, WaveSlowEventType,
+            cooldownSeconds: 0,
+            revealDelayMs: durationMs);
+    }
+
+    // 화상 (#268): 29 — 클라 MapManager.PlayerVisibility의 EncounterEventSunBurn과 짝.
+    internal const int SunBurnEventType = 29;
+
+    /// <summary>화상 통지 (#268, 2026-08-25): 디버프 창 표시용 — 틱 피해는 서버가 정산한다.</summary>
+    public void SendSwarmSunBurn(long ownerPlayerId, AreaType area, int durationMs)
+    {
+        SendEncounterEvent(ownerPlayerId, area, SunBurnEventType,
+            cooldownSeconds: 0,
+            revealDelayMs: durationMs);
+    }
+
+    // 상처 (#268): 30 — 클라 MapManager.PlayerVisibility의 EncounterEventWindWound와 짝.
+    internal const int WindWoundEventType = 30;
+
+    /// <summary>상처 통지 (#268, 2026-08-25): 디버프 창 표시용 — 치명타 굴림은 서버가 한다.</summary>
+    public void SendSwarmWindWound(long ownerPlayerId, AreaType area, int durationMs)
+    {
+        SendEncounterEvent(ownerPlayerId, area, WindWoundEventType,
+            cooldownSeconds: 0,
+            revealDelayMs: durationMs);
+    }
 
     internal void ApplyProximityAutoCombatHit(long sourcePlayerId, AreaType area, int weaponItemId, int damage)
     {

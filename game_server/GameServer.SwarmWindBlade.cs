@@ -136,8 +136,12 @@ public partial class GameServer
                             continue;
 
                         shocks++;
+                        // 충격 먼저, 상처는 그다음 — 상처를 낸 그 틱이 자기 충격에 치명타를 걸지 않게.
                         ApplySwarmShock(matchingId, owner.PlayerId, item.ItemId, owner.Area, participant.PlayerId,
                             $"WIND_BLADE_HIT ordinal={ordinal}", aliveSessions, aliveBots, allSessions);
+                        ApplySwarmWindWound(
+                            matchingId, owner.PlayerId, owner.Area, participant.PlayerId,
+                            nowUtc, aliveSessions);
                     }
                 }
 
@@ -159,5 +163,6 @@ public partial class GameServer
             _swarmWindBladeNextTickAtUtc.Remove(key);
         foreach (var key in _swarmWindBladeEngagedAtUtc.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmWindBladeEngagedAtUtc.Remove(key);
+        ClearSwarmWindWoundState(matchingId);
     }
 }

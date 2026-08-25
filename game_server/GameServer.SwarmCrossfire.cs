@@ -444,6 +444,9 @@ public partial class GameServer
                     matchingId, shape.OwnerId, shape.WeaponItemId, shape.Area, participant.PlayerId,
                     $"ORB_CROSSFIRE_HIT event={shape.EventId} shape=pierce anchor={shape.AnchorMonsterId}",
                     aliveSessions, aliveBots, allSessions);
+                ApplySwarmSunBurn(
+                    matchingId, shape.OwnerId, shape.WeaponItemId, shape.Area,
+                    participant.PlayerId, nowUtc, aliveSessions);
             }
 
             if (front < sweepEnd)
@@ -669,6 +672,93 @@ public partial class GameServer
         return true;
     }
 
+    // 화상 (#268, 2026-08-25 유저 결정): 태양 충격 피격자에게 3초 틱 피해. 재피격은 지속 갱신.
+    private readonly Dictionary<(long MatchingId, long VictimId),
+        (long OwnerId, int WeaponItemId, AreaType Area, DateTime UntilUtc, DateTime NextTickAtUtc)>
+        _swarmSunBurns = new();
+
+    /// <summary>화상 부여·갱신 — 첫 틱은 1초 뒤(직격과 같은 프레임에 겹치지 않게). HUD 통지 포함.</summary>
+    private void ApplySwarmSunBurn(
+        long matchingId, long ownerId, int weaponItemId, AreaType area, long victimId,
+        DateTime nowUtc, List<GameClientSession> aliveSessions)
+    {
+        _swarmSunBurns[(matchingId, victimId)] = (
+            ownerId, weaponItemId, area,
+            nowUtc.AddSeconds(Config.SWARM_SUN_BURN_SECONDS),
+            nowUtc.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS));
+        aliveSessions.FirstOrDefault(session => session.PlayerId == victimId)
+            ?.SendSwarmSunBurn(ownerId, area, (int)(Config.SWARM_SUN_BURN_SECONDS * 1000f));
+    }
+
+    /// <summary>화상 틱 정산 — 초당 한 번, 충격의 0.2배. 지속이 끝나면 걷는다.</summary>
+    private void ProcessSwarmSunBurns(
+        long matchingId,
+        DateTime nowUtc,
+        List<GameClientSession> aliveSessions,
+        List<BotPlayerState> aliveBots,
+        List<GameClientSession> allSessions)
+    {
+        List<(long, long)> expired = null;
+        foreach (var pair in _swarmSunBurns)
+        {
+            if (pair.Key.MatchingId != matchingId)
+                continue;
+            var burn = pair.Value;
+            if (nowUtc >= burn.NextTickAtUtc)
+            {
+                ApplySwarmShock(matchingId, burn.OwnerId, burn.WeaponItemId, burn.Area,
+                    pair.Key.VictimId, "SUN_BURN_TICK", aliveSessions, aliveBots, allSessions,
+                    Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER);
+                _swarmSunBurns[pair.Key] = burn with
+                {
+                    NextTickAtUtc = burn.NextTickAtUtc.AddSeconds(
+                        Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS)
+                };
+            }
+
+            if (nowUtc >= burn.UntilUtc)
+                (expired ??= new List<(long, long)>()).Add(pair.Key);
+        }
+
+        if (expired == null)
+            return;
+        foreach (var key in expired)
+            _swarmSunBurns.Remove(key);
+    }
+
+    private void ClearSwarmSunBurnState(long matchingId)
+    {
+        foreach (var key in _swarmSunBurns.Keys.Where(key => key.MatchingId == matchingId).ToList())
+            _swarmSunBurns.Remove(key);
+    }
+
+    // 상처 (#268, 2026-08-25 유저 결정): 바람 칼날 피격자는 5초간 PvP 충격 치명타가 열린다.
+    private readonly Dictionary<(long MatchingId, long VictimId), DateTime> _swarmWindWoundsUntilUtc = new();
+
+    /// <summary>상처 부여·갱신 — HUD 통지 포함. 효과는 ApplySwarmShock의 치명타 굴림이 읽는다.</summary>
+    private void ApplySwarmWindWound(
+        long matchingId, long ownerId, AreaType area, long victimId,
+        DateTime nowUtc, List<GameClientSession> aliveSessions)
+    {
+        _swarmWindWoundsUntilUtc[(matchingId, victimId)] =
+            nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS);
+        aliveSessions.FirstOrDefault(session => session.PlayerId == victimId)
+            ?.SendSwarmWindWound(ownerId, area, (int)(Config.SWARM_WIND_WOUND_SECONDS * 1000f));
+    }
+
+    private bool IsSwarmWounded(long matchingId, long victimId)
+    {
+        return _swarmWindWoundsUntilUtc.TryGetValue((matchingId, victimId), out var untilUtc) &&
+               DateTime.UtcNow < untilUtc;
+    }
+
+    private void ClearSwarmWindWoundState(long matchingId)
+    {
+        foreach (var key in _swarmWindWoundsUntilUtc.Keys
+                     .Where(key => key.MatchingId == matchingId).ToList())
+            _swarmWindWoundsUntilUtc.Remove(key);
+    }
+
     /// <summary>
     ///     플레이어 충격 (고정값, 티어 무관): 사격 피격 경로를 재사용해 오염 증가·피격 숫자·탈락 흐름이 그대로
     ///     따라온다. 봇도 같은 값. 소유자 화면에는 사격 피드백을 보낸다. label은 로그용(어느 모양이 때렸나).
@@ -682,10 +772,17 @@ public partial class GameServer
         string label,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
-        List<GameClientSession> allSessions)
+        List<GameClientSession> allSessions,
+        float damageScale = 1f)
     {
         // 받는 피해 배율 (2026-08-18): 고정 50 × 1/3 → 17. 태양·바람·파도 충격이 전부 이 한 곳을 지난다.
-        int shock = Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_CORRUPTION);
+        // damageScale: 파도 소용돌이(#268)는 당김이 본체라 피해를 타격 피드백 수준(1/4)으로 줄인다.
+        int shock = Math.Max(1, (int)MathF.Round(
+            Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_CORRUPTION) * damageScale));
+        // 상처 (#268): 상처 입은 피해자만 PvP 충격 치명타가 열린다 — PvE와 같은 2배.
+        if (IsSwarmWounded(matchingId, victimId) &&
+            _swarmCriticalRng.NextDouble() < Config.SWARM_WIND_WOUND_CRIT_CHANCE)
+            shock = Math.Max(shock + 1, (int)MathF.Round(shock * SwarmCriticalMultiplier));
         int corruptionBefore;
         int corruptionAfter;
 
@@ -798,5 +895,6 @@ public partial class GameServer
         foreach (var key in _swarmCrossfireConvergeWindows.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmCrossfireConvergeWindows.Remove(key);
+        ClearSwarmSunBurnState(matchingId);
     }
 }

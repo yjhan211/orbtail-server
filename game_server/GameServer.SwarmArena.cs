@@ -26,7 +26,7 @@ public partial class GameServer
     {
         var pool = new List<int>();
         if (Config.SWARM_SUN_ORB_ENABLED) pool.Add(107000010);
-        pool.Add(107000020);
+        if (Config.SWARM_WIND_ORB_ENABLED) pool.Add(107000020);
         if (Config.SWARM_WAVE_ORB_ENABLED) pool.Add(107000030);
         return pool.ToArray();
     }
@@ -412,6 +412,9 @@ public partial class GameServer
             ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
             ProcessSwarmWindBlades(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
         }
+
+        // 화상 틱 (#268): 교차사격 충격이 남긴 도트 — 발생원이 위 블록과 무관하게 항상 정산한다.
+        ProcessSwarmSunBurns(matchingId, nowUtc, aliveSessions, aliveBots, sessions);
 
         // 접촉 계측 (2026-08-16): 접촉이 성립하는지 층별로 남긴다. 이 줄들이 "봇은 접촉 피해를
         // 안 받는다"는 오독을 두 번 걷어냈다 — 실제로는 로깅이 없었고, 그다음엔 배율이 깎고 있었다.
@@ -2087,6 +2090,13 @@ public partial class GameServer
         // 호출부가 목록을 들고 있으면 그걸 쓴다 — 순번마다 인벤토리를 다시 훑지 않게.
         float targetDistance = OrbData.GetSwarmTrailDistance(
             orderedTiers ?? GetSwarmOrbTiersInOrder(matchingId, playerId), ordinal);
+        return GetSwarmTrailPositionAtDistance(matchingId, playerId, targetDistance, anchor);
+    }
+
+    /// <summary>경로를 지정 거리만큼 거슬러 올라간 지점 — 오브 열 좌표와 소용돌이 스폰이 공용.</summary>
+    private Vector3f GetSwarmTrailPositionAtDistance(
+        long matchingId, long playerId, float targetDistance, Vector3f anchor)
+    {
         if (!_swarmOrbTrails.TryGetValue((matchingId, playerId), out var points) || points.Count == 0)
             return new Vector3f(anchor.X, anchor.Y - targetDistance * 0.2f, 0f);
 
@@ -2658,15 +2668,19 @@ public partial class GameServer
         }
     }
 
-    // ===== 파도 물폭탄 (#229): 같은 구역 잔상의 현재 위치를 스냅샷으로 잡고 고정된
-    // 텔레그래프를 남긴다. 표적을 따라가지 않아 이동한 잔상에게는 빗나갈 수 있다. =====
+    // ===== 파도 = 소용돌이 (#268, 2026-08-25 유저 결정, 3차 개정 "오브 위치 기준"): 표적
+    // 스냅샷 낙하(물폭탄, #229)와 합산 소용돌이(꼬리 끝 뒤 1개)는 퇴역 — 파도 오브 각각이
+    // 주기(2초)마다 자기 열 위치에 소용돌이를 깐다. 오브가 곧 무기 위치라는 점에서 바람
+    // 회전 칼날과 같은 문법. 예고(0.65초 림 링) 후 반경 안 전원을 중심으로 당기고 잠깐
+    // 늦춘다 — 피해는 타격 피드백 수준(현행의 1/4). 예고 원점은 스폰 순간 고정. =====
     private const double SwarmWaveBombIntervalSeconds = 2d;
     private const double SwarmWaveBombFuseSeconds = 0.65d;
-    // 플레이어 우선 표적 반경 (바닥면, 2026-08-18): 이 안의 사람이 몬스터보다 먼저 물폭탄을 받는다.
-    private const float SwarmWaveBombPlayerTargetRange = 6f;
 
-    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmWaveBombNextDropAtUtc =
-        new();
+    // 오브별 독립 시계 (2026-08-25 유저 제보 "다같이 터지는 게 어색"): 플레이어 단위 시계
+    // 하나면 전 오브가 일제히 깔리고 일제히 터진다 — 오브 uid 기반 고유 위상으로 첫 발동을
+    // 흩뿌려, 꼬리를 따라 각자 다른 박자로 소용돌이가 돈다.
+    private readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid), DateTime>
+        _swarmWaveBombNextDropAtUtc = new();
     private readonly List<(long MatchingId, long OwnerId, AreaType Area, Vector3f Position, int Damage,
         float Radius, int SourceItemId, DateTime ExplodeAtUtc)> _pendingSwarmWaveBombs = new();
 
@@ -2678,87 +2692,117 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        // 1) 기폭: 예약된 폭탄 정산.
+        // 1) 기폭: 예약된 소용돌이 정산.
         for (int index = _pendingSwarmWaveBombs.Count - 1; index >= 0; index--)
         {
-            var bomb = _pendingSwarmWaveBombs[index];
-            if (bomb.MatchingId != matchingId || nowUtc < bomb.ExplodeAtUtc)
+            var vortex = _pendingSwarmWaveBombs[index];
+            if (vortex.MatchingId != matchingId || nowUtc < vortex.ExplodeAtUtc)
                 continue;
             _pendingSwarmWaveBombs.RemoveAt(index);
-            ExplodeSwarmWaveBomb(matchingId, bomb.OwnerId, bomb.Area, bomb.Position,
-                bomb.Damage, bomb.Radius, bomb.SourceItemId, nowUtc,
+            DetonateSwarmWaveVortex(matchingId, vortex.OwnerId, vortex.Area, vortex.Position,
+                vortex.Damage, vortex.Radius, vortex.SourceItemId, nowUtc,
                 participants, aliveSessions, aliveBots, allSessions);
         }
 
-        // 2) 투하: 파도 오브 보유 참가자별 주기. 비무장(소환·채집 중)은 쉰다 — 미사일과 같은 규칙.
+        // 2) 생성: 파도 오브 각각이 자기 시계(2초)로 자기 열 위치에 소용돌이를 깐다.
+        // 오브 uid 기반 위상으로 첫 발동이 흩어져 일제사가 되지 않는다. 비무장은 쉰다.
+        IReadOnlyList<SwarmArenaCombatTarget> vortexTargets = null;
         foreach (var owner in participants)
         {
-            var key = (matchingId, owner.PlayerId);
-            if (!_swarmWaveBombNextDropAtUtc.TryGetValue(key, out var nextDropAtUtc))
+            var trailOrbs = GetSwarmTrailOrbs(matchingId, owner.PlayerId);
+            if (trailOrbs.Count == 0)
+                continue;
+
+            float sunMultiplier = -1f;
+            List<int> tiers = null;
+            bool? armed = null;
+            for (int ordinal = 0; ordinal < trailOrbs.Count; ordinal++)
             {
-                _swarmWaveBombNextDropAtUtc[key] = nowUtc.AddSeconds(SwarmWaveBombIntervalSeconds);
-                continue;
-            }
+                var item = trailOrbs[ordinal];
+                if (!OrbData.TryGetColorAndTier(item.ItemId, out var color, out _) ||
+                    color != OrbColor.Blue)
+                    continue;
 
-            if (nowUtc < nextDropAtUtc)
-                continue;
-            _swarmWaveBombNextDropAtUtc[key] = nowUtc.AddSeconds(SwarmWaveBombIntervalSeconds);
-            if (!IsSwarmAttackArmed(matchingId, owner.PlayerId, nowUtc))
-                continue;
+                var orbKey = (matchingId, owner.PlayerId, item.ItemUid);
+                if (!_swarmWaveBombNextDropAtUtc.TryGetValue(orbKey, out var nextDropAtUtc))
+                {
+                    // 고유 위상: 첫 발동을 0.5~1.5주기 사이에 흩뿌린다 — uid라 재접속에도 안정.
+                    double phase = 0.5d + item.ItemUid % 977 / 977d;
+                    _swarmWaveBombNextDropAtUtc[orbKey] =
+                        nowUtc.AddSeconds(SwarmWaveBombIntervalSeconds * phase);
+                    continue;
+                }
 
-            var inventoryItems = _inGameInventoryManager
-                .GetPlayerInventory(matchingId, owner.PlayerId)
-                .GetAllItems()
-                .Where(item => item.Count > 0)
-                .OrderBy(item => item.ItemUid)
-                .ToList();
-            var waveOrbs = GetSwarmWaveOrbContributions(inventoryItems);
-            if (waveOrbs.Count == 0)
-                continue;
+                if (nowUtc < nextDropAtUtc)
+                    continue;
 
-            // 플레이어 최우선 (2026-08-18 유저 지시): 반경 안에 소유자 아닌 사람이 있으면 그 자리에 먼저 떨어진다 —
-            // 목록 앞에 사람을 세우면 BuildPlans가 오브마다 앞에서부터 표적을 잡으므로 사람이 먼저 맞고, 남는
-            // 오브만 몬스터로 간다. 사람이 없으면 종전대로 몬스터.
-            float playerRangeSquared = SwarmWaveBombPlayerTargetRange * SwarmWaveBombPlayerTargetRange;
-            var targets = participants
-                .Where(participant => participant.PlayerId != owner.PlayerId && participant.Area == owner.Area &&
-                                      GetSwarmNormalizedDistanceSquared(owner.Position, participant.Position) <=
-                                      playerRangeSquared)
-                .OrderBy(participant => GetSwarmNormalizedDistanceSquared(owner.Position, participant.Position))
-                .Select(participant => new SwarmWaveBombTarget(participant.PlayerId, participant.Position))
-                .Concat(_swarmArenaManager.GetCombatTargets(matchingId)
-                    .Where(target => target.Area == owner.Area)
-                    .OrderBy(target => GetSwarmNormalizedDistanceSquared(owner.Position, target.Position))
-                    .ThenBy(target => target.CombatTargetId)
-                    .Select(target => new SwarmWaveBombTarget(target.CombatTargetId, target.Position)))
-                .ToList();
-            var plans = SwarmWaveBombRules.BuildPlans(
-                waveOrbs,
-                targets,
-                OrbData.GetSunPveAttackMultiplier(inventoryItems));
-            foreach (var plan in plans)
-            {
+                float radius = OrbData.GetSwarmWaveBombRadius(item.ItemId);
+                int baseDamage = OrbData.GetSwarmPveAttackDamage(item.ItemId);
+                if (radius <= 0f || baseDamage <= 0)
+                    continue;
+
+                // 사거리 게이트 (2026-08-25 유저 결정, 태양·바람과 동일): 소용돌이 반경 안에
+                // 표적(몹 또는 소유자 아닌 플레이어)이 있어야 깐다. 없으면 시계를 소모하지 않고
+                // 대기 — 표적이 들어오는 순간 바로 발동한다.
+                tiers ??= GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
+                var orbPosition = GetSwarmOrbTrailPosition(
+                    matchingId, owner.PlayerId, ordinal, owner.Position, tiers);
+                vortexTargets ??= _swarmArenaManager.GetCombatTargets(matchingId);
+                bool hasTarget = false;
+                foreach (var target in vortexTargets)
+                {
+                    if (target.Area != owner.Area ||
+                        !IsWithinSwarmGroundRadius(
+                            orbPosition, target.Position, radius + SwarmWindBladeMonsterRadius))
+                        continue;
+                    hasTarget = true;
+                    break;
+                }
+
+                if (!hasTarget)
+                {
+                    foreach (var participant in participants)
+                    {
+                        if (participant.PlayerId == owner.PlayerId || participant.Area != owner.Area ||
+                            !IsWithinSwarmGroundRadius(
+                                orbPosition, participant.Position, radius + SwarmCrossfirePlayerRadius))
+                            continue;
+                        hasTarget = true;
+                        break;
+                    }
+                }
+
+                if (!hasTarget)
+                    continue;
+
+                // 비무장(소환·채집 중)이어도 시계는 돈다 — 칼날·미사일과 같은 규칙.
+                _swarmWaveBombNextDropAtUtc[orbKey] = nowUtc.AddSeconds(SwarmWaveBombIntervalSeconds);
+                armed ??= IsSwarmAttackArmed(matchingId, owner.PlayerId, nowUtc);
+                if (armed != true)
+                    continue;
+
+                if (sunMultiplier < 0f)
+                    sunMultiplier = OrbData.GetSunPveAttackMultiplier(trailOrbs);
+                int damage = Math.Max(1, (int)MathF.Round(
+                    baseDamage * sunMultiplier * Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER));
+
+                // 스폰 = 그 오브의 현재 열 좌표(사거리 게이트가 계산한 그 지점) — 스폰 순간 고정.
                 _pendingSwarmWaveBombs.Add((
                     matchingId,
                     owner.PlayerId,
                     owner.Area,
-                    plan.Position,
-                    plan.Damage,
-                    plan.Radius,
-                    plan.SourceItemId,
+                    orbPosition,
+                    damage,
+                    radius,
+                    item.ItemId,
                     nowUtc.AddSeconds(SwarmWaveBombFuseSeconds)));
-                SendSwarmRingVfx(owner.Area, owner.PlayerId, plan.Position.X, plan.Position.Y,
-                    plan.Radius, allSessions, SwarmRingVfxKindWaveBomb,
-                    victimId: 0, fromOrdinal: plan.SourceOrdinal);
-            }
-
-            if (plans.Count > 0)
-            {
+                SendSwarmRingVfx(owner.Area, owner.PlayerId, orbPosition.X, orbPosition.Y,
+                    radius, allSessions, SwarmRingVfxKindWaveBomb,
+                    victimId: 0, fromOrdinal: ordinal);
                 _gameEventLogManager.LogSystem(
                     matchingId,
-                    $"wave_bomb_salvo owner={owner.PlayerId} orbs={waveOrbs.Count} " +
-                    $"targets={targets.Count} telegraphs={plans.Count} " +
-                    $"damage={plans.Sum(plan => plan.Damage)}");
+                    $"wave_vortex_spawn owner={owner.PlayerId} ordinal={ordinal} " +
+                    $"at=({orbPosition.X:F2},{orbPosition.Y:F2}) radius={radius:F2} damage={damage}");
             }
         }
     }
@@ -2787,7 +2831,13 @@ public partial class GameServer
         return contributions;
     }
 
-    private void ExplodeSwarmWaveBomb(
+    /// <summary>
+    ///     소용돌이 기폭 (#268): 반경 안 전원(몹·플레이어 동일)에게 타격 피드백 수준의 피해와
+    ///     "침수"(5초 25% 감속) 디버프를 준다. 변위(당김·밀침·원 밖 축출) 실험은 전부
+    ///     기각(2026-08-25 유저 판정). 플레이어는 충격 면역 창(0.9초)이 연쇄 피격을 막는다 —
+    ///     면역이면 감속·피해 전부 없음.
+    /// </summary>
+    private void DetonateSwarmWaveVortex(
         long matchingId,
         long ownerId,
         AreaType area,
@@ -2801,13 +2851,12 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        // #229는 잔상 PvE 전용이었다. 2026-08-17 유저 지시: 플레이어도 몹과 같은 반경으로 맞는다 —
-        // 소유자 아닌 플레이어는 충격(고정 50, 태양·바람과 공용 창: 피해자 0.9초 면역·소유자 초당 1회).
         var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
         float radiusSquared = radius * radius;
         int hitCount = 0;
         int notifiedCount = 0;
         // 몹: 착탄 지연 정산 파이프라인 재사용 — 킬 보상·상태 브로드캐스트가 따라온다.
+        // 당김은 서버 위치를 즉시 옮긴다 — 클라 표시가 SmoothDamp로 따라가며 당김으로 읽힌다.
         foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
         {
             if (target.Area != area)
@@ -2816,56 +2865,61 @@ public partial class GameServer
             float dy = (target.Position.Y - position.Y) * 2f;
             if (dx * dx + dy * dy > radiusSquared)
                 continue;
-            // 치명타는 몹 단위로 굴린다 — 한 폭발이 여러 마리를 쳐도 그중 일부만 크게 터진다.
             int monsterDamage = RollSwarmCriticalDamage(damage, out bool critical);
             _swarmArenaManager.ReserveMonsterDamage(matchingId, target.CombatTargetId, monsterDamage);
-            // 물폭탄은 예고 시점에 이미 위치가 잠겨 있고 여기서 터진 것이다 (#232 1단계) — 기준점
-            // 계측만 올리고 착탄 큐에는 원점 없이 든다. 잠금 완료 훅은 유도탄 전용이다.
             _swarmArenaManager.RecordMonsterAttackEvent(matchingId, target.CombatTargetId);
             _pendingSwarmMonsterHits.Add(new PendingSwarmMonsterHit(
                 matchingId, target.CombatTargetId, ownerId, monsterDamage, nowUtc));
+            _swarmArenaManager.TrySlowMonster(
+                matchingId, target.CombatTargetId, OrbData.WaveSlowSeconds, nowUtc);
             hitCount++;
 
-            // 피해 숫자 (#229): 파도는 여기가 유일한 통보 지점이다 — 유도탄과 달리 리졸버를
-            // 거치지 않아 지금까지 물폭탄 피해는 클라에 숫자로 전혀 뜨지 않았다.
-            // 몹 id를 실어 보내 몬스터 머리 위에 뜨게 하고, 투사체 재생은 클라가 색으로 거른다.
             int monsterId = _swarmArenaManager.GetMonsterIdForCombatTarget(matchingId, target.CombatTargetId);
             if (monsterId <= 0)
                 continue;
 
             notifiedCount++;
             ownerSession?.SendEmotionAfterimageMonsterAttackFeedback(
-                monsterId, area, sourceItemId, monsterDamage, critical);
+                monsterId, area, sourceItemId, monsterDamage, critical, noProjectile: true);
         }
 
-        // 플레이어: 같은 반경(바닥면 타원) + 몸통 여유. 소유자 제외.
-        int shocks = 0;
-        float nearestPlayer = float.MaxValue;
+        // 플레이어: 같은 반경(바닥면 타원) + 몸통 여유. 소유자 제외 — 침수 디버프 + 피해.
+        int soaked = 0;
         foreach (var participant in participants)
         {
             if (participant.PlayerId == ownerId || participant.Area != area || participant.Position == null)
                 continue;
-            float pdx = participant.Position.X - position.X;
-            float pdy = (participant.Position.Y - position.Y) * 2f;
-            nearestPlayer = MathF.Min(nearestPlayer, MathF.Sqrt(pdx * pdx + pdy * pdy));
             if (!IsWithinSwarmGroundRadius(position, participant.Position, radius + SwarmCrossfirePlayerRadius))
                 continue;
             if (!TryClaimSwarmShockWindow(matchingId, ownerId, participant.PlayerId, nowUtc))
                 continue;
 
-            shocks++;
+            soaked++;
             ApplySwarmShock(matchingId, ownerId, sourceItemId, area, participant.PlayerId,
-                "WAVE_BOMB_HIT", aliveSessions, aliveBots, allSessions);
+                "WAVE_VORTEX_HIT", aliveSessions, aliveBots, allSessions,
+                Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
+
+            var victimSession = aliveSessions.FirstOrDefault(
+                session => session.PlayerId == participant.PlayerId);
+            if (victimSession != null)
+            {
+                // 사람: 클라가 감속을 적용하고 디버프 창에 침수를 띄운다.
+                victimSession.SendSwarmWaveSlow(
+                    ownerId, area, (int)(OrbData.WaveSlowSeconds * 1000f));
+                continue;
+            }
+
+            var bot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == participant.PlayerId);
+            if (bot != null)
+                bot.WaveSlowUntilUtc = nowUtc.AddSeconds(OrbData.WaveSlowSeconds);
         }
 
-        if (hitCount > 0 || shocks > 0)
+        if (hitCount > 0 || soaked > 0)
         {
-            // 계측 (#229): 폭발이 몇 마리를 집었고 그중 몇 마리가 몹 id로 해석돼 피해 숫자
-            // 통보까지 갔는지. notified < hits면 클라에 숫자가 빠진다.
             _gameEventLogManager.LogSystem(
                 matchingId,
-                $"wave_bomb_hit owner={ownerId} area={area} hits={hitCount} " +
-                $"notified={notifiedCount} shocks={shocks} nearestPlayer={(nearestPlayer < float.MaxValue ? nearestPlayer : -1f):F2} " +
+                $"wave_vortex_hit owner={ownerId} area={area} monsters={hitCount} " +
+                $"notified={notifiedCount} playersSoaked={soaked} radius={radius:F2} " +
                 $"damage={damage} item={sourceItemId}");
         }
     }

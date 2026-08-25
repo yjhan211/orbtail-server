@@ -147,6 +147,15 @@ namespace network.common
         /// </summary>
         public const int RETALIATION_STATUS_EFFECT_ID = 1104;
 
+        /// <summary>침수 (#268, 2026-08-25): 파도 소용돌이 피격 — 5초 이동 감속 디버프.</summary>
+        public const int WAVE_SOAKED_STATUS_EFFECT_ID = 1105;
+
+        /// <summary>화상 (#268, 2026-08-25): 태양 미사일 피격 — 3초 틱 피해 디버프.</summary>
+        public const int SUN_BURN_STATUS_EFFECT_ID = 1106;
+
+        /// <summary>상처 (#268, 2026-08-25): 바람 칼날 피격 — 5초간 치명타 피격 확률 증가 디버프.</summary>
+        public const int WIND_WOUND_STATUS_EFFECT_ID = 1107;
+
         /// <summary>
         ///     보스 사거리 (#223): 파도 T3 오브급(기본 2.5 + 가중치 4 × 0.4) — 제자리 고정
         ///     포대의 위협 반경. 서버 판정과 클라 범위 링이 이 값을 공유한다 (표시 = 판정).
@@ -160,11 +169,10 @@ namespace network.common
         public static readonly bool SWARM_ORB_MERGE_ENABLED = false;
 
         /// <summary>
-        ///     파도(Blue) 오브 공급 차단 (2026-08-25 유저 지시 "파도 오브 안 나오게"): 소환 풀·시작
-        ///     지급·머지 진화에서 파도를 뺀다 — 바람 회전 칼날 개편을 검증하는 동안 물폭탄 소음을
-        ///     치우는 실험. 판정·연출·물폭탄 코드는 전부 보존 — 되살리려면 true로 되돌리면 끝이다.
+        ///     파도(Blue) 오브 공급 (2026-08-25 후류 소용돌이 리뉴얼과 함께 복원): 리뉴얼 검증을
+        ///     위해 소환 풀·시작 지급에 파도를 되살린다. 차단하려면 false.
         /// </summary>
-        public static readonly bool SWARM_WAVE_ORB_ENABLED = false;
+        public static readonly bool SWARM_WAVE_ORB_ENABLED = true;
 
         /// <summary>
         ///     태양(Red) 오브 공급 차단 (2026-08-25 유저 지시 "바람만 나오게"): 회전 칼날 검증 동안
@@ -172,6 +180,13 @@ namespace network.common
         ///     되살리려면 true로 되돌리면 끝이다.
         /// </summary>
         public static readonly bool SWARM_SUN_ORB_ENABLED = false;
+
+        /// <summary>
+        ///     바람(Green) 오브 공급 차단 (2026-08-25 유저 지시 "파도만 나오게"): 후류 소용돌이
+        ///     검증 동안 바람을 뺀다. 판정·연출 코드는 전부 보존 — 되살리려면 true.
+        ///     세 토글을 전부 끄면 공급 풀이 비므로 최소 하나는 켜 둘 것.
+        /// </summary>
+        public static readonly bool SWARM_WIND_ORB_ENABLED = false;
 
         // 오브열 (#226 실험 α/β): 오브가 이동 경로를 따라오는 전투열 — 클라 배치와
         // 서버 판정(오브별 공격 원점·본체 접촉)이 같은 값을 쓴다 (표시 = 판정).
@@ -383,6 +398,23 @@ namespace network.common
         public const float SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS = 0.9f;
 
         /// <summary>
+        ///     화상 (#268, 2026-08-25): 태양 미사일 충격에 맞으면 3초간 매초 틱 피해 —
+        ///     틱당 = 충격의 0.2배(≈3). 재피격 시 지속이 갱신된다(중첩 없음). 몹은 제외 —
+        ///     태양 PvE 화력은 이미 직격이 정점이다.
+        /// </summary>
+        public const float SWARM_SUN_BURN_SECONDS = 3f;
+        public const float SWARM_SUN_BURN_TICK_INTERVAL_SECONDS = 1f;
+        public const float SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER = 0.2f;
+
+        /// <summary>
+        ///     상처 (#268, 2026-08-25): 바람 칼날 충격에 맞으면 5초간, 이후 받는 PvP 충격이
+        ///     이 확률로 치명타(PvE와 같은 2배)가 된다. 평시 PvP 충격은 치명타가 없다 —
+        ///     상처가 그 문을 연다. 재피격 시 지속 갱신(중첩 없음).
+        /// </summary>
+        public const float SWARM_WIND_WOUND_SECONDS = 5f;
+        public const float SWARM_WIND_WOUND_CRIT_CHANCE = 0.35f;
+
+        /// <summary>
         ///     한 플레이어가 동시에 유지할 수 있는 교차사격 예고 수 (명세 "동시 예고 최대 2개"). 예고(시전)
         ///     중인 모양만 센다 — 예고 시간이 0인 지금은 사실상 안 걸리고, 예고를 되살릴 때를 위해 남긴다.
         ///     상한에 닿은 소유자의 태양은 표적을 잡지 않고 기다렸다가(리졸버 필터) 자리가 나면 쏜다 —
@@ -436,6 +468,18 @@ namespace network.common
         // 순간부터 이 시간은 피해가 없다 — 클라 감지 폴링(0.15초)+가속 20% 도달(0.09초)에 맞춘
         // 값. 반경이 비면 리셋된다(클라 감속과 대칭). 옛 0.9초 게이트(체감 1.4초)와 혼동 금지.
         public const float SWARM_WIND_BLADE_SPINUP_SECONDS = 0.2f;
+
+        /// <summary>
+        ///     파도 = 소용돌이 (#268, 2026-08-25 유저 결정, 3차 "오브 위치 기준"). 물폭탄(표적
+        ///     스냅샷 낙하)과 합산 소용돌이(이동 거리 게이트 + 꼬리 끝 뒤 1개)는 퇴역: 파도 오브
+        ///     각각이 주기(2초)마다 자기 열 위치에 소용돌이를 깐다 — 오브가 곧 무기 위치(바람
+        ///     칼날과 같은 문법). 예고(0.65초 림 링) 후 반경 안 전원(몹·플레이어 동일)을 중심으로
+        ///     당기고 잠깐 늦춘다 — 피해는 타격 피드백 수준. 플레이어는 충격 면역 창(0.9초)이
+        ///     연쇄 당김을 막는다.
+        /// </summary>
+        // 변위(당김·밀침·원 밖 축출) 실험은 전부 기각 (2026-08-25 유저 판정) — 효과는
+        // "침수" 디버프(5초 25% 감속, WAVE_SOAKED_STATUS_EFFECT_ID)와 타격 피드백 피해만.
+        public const float SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER = 0.25f; // 현행 물폭탄 피해의 1/4
 
 
         /// <summary>
