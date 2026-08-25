@@ -19,7 +19,9 @@ public partial class GameServer
     private const int SwarmArenaWeaponItemId = 107000010;
     // P0-A 세 색 복귀 (#232, 2026-08-17 저녁 유저 지시): 태양(폭발 투사체)·파도(물폭탄)·바람(관통 칼날) —
     // 소환·시작·재건 풀.
-    private static readonly int[] SwarmStartingOrbPool = [107000010, 107000020, 107000030];
+    private static readonly int[] SwarmStartingOrbPool = Config.SWARM_WAVE_ORB_ENABLED
+        ? [107000010, 107000020, 107000030]
+        : [107000010, 107000020];
 
     // 플레이어 단위 지급 (2026-08-09): 매칭 단위 1회 지급은 지급 틱에 아직 접속 전인
     // 사람을 영영 빈손으로 만들었다 — 늦게 합류해도 첫 등장 틱에 각자 1회 받는다.
@@ -400,7 +402,7 @@ public partial class GameServer
         if (!SwarmCutDummyAutoSetup && (dummyIds.Count == 0 || SwarmCrossfireSandbox))
         {
             ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
-            ProcessSwarmWindSlams(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+            ProcessSwarmWindBlades(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
         }
 
         // 접촉 계측 (2026-08-16): 접촉이 성립하는지 층별로 남긴다. 이 줄들이 "봇은 접촉 피해를
@@ -4611,7 +4613,7 @@ public partial class GameServer
         _swarmAnchorOrphanCount.Remove(matchingId);
         _swarmAnchorProbeAtUtc.Remove(matchingId);
         ClearSwarmCrossfireState(matchingId);
-        ClearSwarmWindSlamState(matchingId);
+        ClearSwarmWindBladeState(matchingId);
         ClearSwarmOrbBoardState(matchingId);
         foreach (var key in _swarmGrowthPreviewCost.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
@@ -4815,7 +4817,7 @@ public partial class GameServer
             if (orbColor is OrbColor.Blue or OrbColor.Green)
             {
                 // 파도: 미사일을 쏘지 않는다 — 물폭탄(별도 주기)이 화력이다.
-                // 바람: 조준 투사체가 없다 — 몸통박치기(감지·쿨다운, ProcessSwarmWindSlams)가 화력이다.
+                // 바람: 조준 투사체가 없다 — 회전 칼날(반경 주기 틱, ProcessSwarmWindBlades)이 화력이다.
                 actors[index] = actor with { Damage = 0 };
                 continue;
             }

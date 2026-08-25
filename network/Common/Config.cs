@@ -159,6 +159,13 @@ namespace network.common
         /// </summary>
         public static readonly bool SWARM_ORB_MERGE_ENABLED = false;
 
+        /// <summary>
+        ///     파도(Blue) 오브 공급 차단 (2026-08-25 유저 지시 "파도 오브 안 나오게"): 소환 풀·시작
+        ///     지급·머지 진화에서 파도를 뺀다 — 바람 회전 칼날 개편을 검증하는 동안 물폭탄 소음을
+        ///     치우는 실험. 판정·연출·물폭탄 코드는 전부 보존 — 되살리려면 true로 되돌리면 끝이다.
+        /// </summary>
+        public static readonly bool SWARM_WAVE_ORB_ENABLED = false;
+
         // 오브열 (#226 실험 α/β): 오브가 이동 경로를 따라오는 전투열 — 클라 배치와
         // 서버 판정(오브별 공격 원점·본체 접촉)이 같은 값을 쓴다 (표시 = 판정).
         // 0.9→0.7 (#227): 꼬리를 촘촘하게 — 열 응집감 + 림 메타볼 연결 강화.
@@ -405,18 +412,17 @@ namespace network.common
         public static readonly float[] SWARM_CROSSFIRE_SUN_RANGE_BY_TIER = { 4f, 5.5f, 7f };
 
         /// <summary>
-        ///     바람 몸통박치기 (2026-08-17 저녁 유저 결정): 조준 투사체가 아니다. 바람 오브는 제자리(열 좌표)에 있다가
-        ///     감지 반경(티어별, 바닥면) 안에 누가 오면 그쪽으로 한 번 몸을 던진다 — 예비 동작(뒤로 당김) → 돌진 → 착지.
-        ///     착지 반경 안 몬스터 PvE 피해(× 배수), 플레이어 충격. 아무도 없으면 가만히. 오브당 쿨다운.
-        ///     판정은 발동 뒤 예비+돌진 시간에 착지점(발동 순간 잠금)에서 — 클라 연출과 같은 시간표.
-        ///     주기 공격(회전 칼날)은 "아무도 없을 때 혼자 도는 게 이상하다"로 퇴역.
+        ///     바람 = 회전 칼날 (2026-08-25 유저 결정, #268): 오브가 제자리에서 돌며 반경(티어별, 바닥면) 안
+        ///     전원을 주기 틱으로 간다 — 믹서기. 몬스터는 틱 PvE 피해, 소유자 아닌 플레이어는 충격(공용 면역 창).
+        ///     몸통박치기(2026-08-17 결정: 감지→돌진→착지)는 퇴역 — 감지 대기가 병목이라 실효 간격 3.5초였고,
+        ///     3박자 연출로도 직관적으로 읽히지 않았다. 이전에 회전 칼날을 기각했던 근거("아무도 없을 때
+        ///     혼자 도는 게 이상하다")는 평시 저속 자전 → 적 감지 시 가속·발광 연출로 해소한다.
+        ///     틱당 피해 = 발당 피해 × 0.75 — 슬램(× 1.5, 쿨 1.4초)과 단일 대상 DPS 동률(0.7초 틱 × 절반).
+        ///     반경에 붙어야 갈리는 무기라 밀집 실효 화력 상승은 접근 리스크가 값을 치른다 (유저 판정).
         /// </summary>
-        public const float SWARM_WIND_SLAM_COOLDOWN_SECONDS = 1.4f;
-        public static readonly float[] SWARM_WIND_SLAM_TRIGGER_RADIUS_BY_TIER = { 1.4f, 1.65f, 1.9f };
-        public const float SWARM_WIND_SLAM_HIT_RADIUS = 0.6f;
-        public const float SWARM_WIND_SLAM_WINDUP_SECONDS = 0.2f;
-        public const float SWARM_WIND_SLAM_LUNGE_SECONDS = 0.12f;
-        public const float SWARM_WIND_SLAM_DAMAGE_MULTIPLIER = 1.5f;
+        public static readonly float[] SWARM_WIND_BLADE_RADIUS_BY_TIER = { 1.4f, 1.65f, 1.9f };
+        public const float SWARM_WIND_BLADE_TICK_SECONDS = 0.7f;
+        public const float SWARM_WIND_BLADE_DAMAGE_MULTIPLIER = 0.75f;
 
         /// <summary>
         ///     태양 벽 충돌 시각 폭발 크기(T1/T2/T3, 바닥면 단위). 추가 피해·충격 판정은 없다.

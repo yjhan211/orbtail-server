@@ -219,8 +219,14 @@ namespace network.common.data
             return 1f + Math.Min(WindMoveSpeedBonusCap, bonus);
         }
 
+        // 공명 판정·색 순회가 같이 쓴다 — 파도 공급 차단과 무관하게 전 색 유지 (보유 중인 파도의
+        // 공명·판정은 계속 살아야 한다). 파도 차단은 머지 출력 풀에만 건다.
         private static readonly OrbColor[] EvolutionColors =
             new[] { OrbColor.Red, OrbColor.Green, OrbColor.Blue };
+
+        private static readonly OrbColor[] MergeOutputColors = Config.SWARM_WAVE_ORB_ENABLED
+            ? new[] { OrbColor.Red, OrbColor.Green, OrbColor.Blue }
+            : new[] { OrbColor.Red, OrbColor.Green };
 
         public static bool TryGetColorAndTier(int itemId, out OrbColor color, out int tier)
         {
@@ -484,7 +490,7 @@ namespace network.common.data
             if (!TryGetColorAndTier(inputA, out _, out int tier))
                 return false;
 
-            return TryGetItemId(EvolutionColors[random.Next(EvolutionColors.Length)], tier + 1, out outputItemId);
+            return TryGetItemId(MergeOutputColors[random.Next(MergeOutputColors.Length)], tier + 1, out outputItemId);
         }
 
         public static bool TryGetItemId(OrbColor color, int tier, out int itemId)
