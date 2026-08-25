@@ -168,25 +168,17 @@ namespace network.common
         /// </summary>
         public static readonly bool SWARM_ORB_MERGE_ENABLED = false;
 
-        /// <summary>
-        ///     파도(Blue) 오브 공급 (2026-08-25 후류 소용돌이 리뉴얼과 함께 복원): 리뉴얼 검증을
-        ///     위해 소환 풀·시작 지급에 파도를 되살린다. 차단하려면 false.
-        /// </summary>
+        /// <summary>파도(Blue) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.</summary>
         public static readonly bool SWARM_WAVE_ORB_ENABLED = true;
 
-        /// <summary>
-        ///     태양(Red) 오브 공급 차단 (2026-08-25 유저 지시 "바람만 나오게"): 회전 칼날 검증 동안
-        ///     소환 풀·시작 지급·머지 진화에서 태양을 뺀다. 판정·연출 코드는 전부 보존 —
-        ///     되살리려면 true로 되돌리면 끝이다.
-        /// </summary>
-        public static readonly bool SWARM_SUN_ORB_ENABLED = false;
+        /// <summary>태양(Red) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.</summary>
+        public static readonly bool SWARM_SUN_ORB_ENABLED = true;
 
         /// <summary>
-        ///     바람(Green) 오브 공급 차단 (2026-08-25 유저 지시 "파도만 나오게"): 후류 소용돌이
-        ///     검증 동안 바람을 뺀다. 판정·연출 코드는 전부 보존 — 되살리려면 true.
+        ///     바람(Green) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.
         ///     세 토글을 전부 끄면 공급 풀이 비므로 최소 하나는 켜 둘 것.
         /// </summary>
-        public static readonly bool SWARM_WIND_ORB_ENABLED = false;
+        public static readonly bool SWARM_WIND_ORB_ENABLED = true;
 
         // 오브열 (#226 실험 α/β): 오브가 이동 경로를 따라오는 전투열 — 클라 배치와
         // 서버 판정(오브별 공격 원점·본체 접촉)이 같은 값을 쓴다 (표시 = 판정).
