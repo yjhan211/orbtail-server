@@ -19,9 +19,17 @@ public partial class GameServer
     private const int SwarmArenaWeaponItemId = 107000010;
     // P0-A 세 색 복귀 (#232, 2026-08-17 저녁 유저 지시): 태양(폭발 투사체)·파도(물폭탄)·바람(관통 칼날) —
     // 소환·시작·재건 풀.
-    private static readonly int[] SwarmStartingOrbPool = Config.SWARM_WAVE_ORB_ENABLED
-        ? [107000010, 107000020, 107000030]
-        : [107000010, 107000020];
+    private static readonly int[] SwarmStartingOrbPool = BuildSwarmSupplyOrbPool();
+
+    /// <summary>공급 차단 토글을 반영한 색 풀 — 소환·시작 지급·샌드박스 세트가 공유한다.</summary>
+    private static int[] BuildSwarmSupplyOrbPool()
+    {
+        var pool = new List<int>();
+        if (Config.SWARM_SUN_ORB_ENABLED) pool.Add(107000010);
+        pool.Add(107000020);
+        if (Config.SWARM_WAVE_ORB_ENABLED) pool.Add(107000030);
+        return pool.ToArray();
+    }
 
     // 플레이어 단위 지급 (2026-08-09): 매칭 단위 1회 지급은 지급 틱에 아직 접속 전인
     // 사람을 영영 빈손으로 만들었다 — 늦게 합류해도 첫 등장 틱에 각자 1회 받는다.

@@ -166,6 +166,13 @@ namespace network.common
         /// </summary>
         public static readonly bool SWARM_WAVE_ORB_ENABLED = false;
 
+        /// <summary>
+        ///     태양(Red) 오브 공급 차단 (2026-08-25 유저 지시 "바람만 나오게"): 회전 칼날 검증 동안
+        ///     소환 풀·시작 지급·머지 진화에서 태양을 뺀다. 판정·연출 코드는 전부 보존 —
+        ///     되살리려면 true로 되돌리면 끝이다.
+        /// </summary>
+        public static readonly bool SWARM_SUN_ORB_ENABLED = false;
+
         // 오브열 (#226 실험 α/β): 오브가 이동 경로를 따라오는 전투열 — 클라 배치와
         // 서버 판정(오브별 공격 원점·본체 접촉)이 같은 값을 쓴다 (표시 = 판정).
         // 0.9→0.7 (#227): 꼬리를 촘촘하게 — 열 응집감 + 림 메타볼 연결 강화.
@@ -421,8 +428,11 @@ namespace network.common
         ///     반경에 붙어야 갈리는 무기라 밀집 실효 화력 상승은 접근 리스크가 값을 치른다 (유저 판정).
         /// </summary>
         public static readonly float[] SWARM_WIND_BLADE_RADIUS_BY_TIER = { 1.4f, 1.65f, 1.9f };
-        public const float SWARM_WIND_BLADE_TICK_SECONDS = 0.7f;
-        public const float SWARM_WIND_BLADE_DAMAGE_MULTIPLIER = 0.75f;
+        // 틱 0.35초 × 배율 0.375 (2026-08-25 2차: 0.7초 × 0.75에서 반분) — DPS는 그대로 두고
+        // 타격 빈도만 두 배로. "믹서기에 갈린다"는 잘게 자주 맞아야 읽힌다 (유저 지시).
+        public const float SWARM_WIND_BLADE_TICK_SECONDS = 0.35f;
+        public const float SWARM_WIND_BLADE_DAMAGE_MULTIPLIER = 0.375f;
+
 
         /// <summary>
         ///     태양 벽 충돌 시각 폭발 크기(T1/T2/T3, 바닥면 단위). 추가 피해·충격 판정은 없다.

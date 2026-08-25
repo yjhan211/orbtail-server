@@ -224,9 +224,16 @@ namespace network.common.data
         private static readonly OrbColor[] EvolutionColors =
             new[] { OrbColor.Red, OrbColor.Green, OrbColor.Blue };
 
-        private static readonly OrbColor[] MergeOutputColors = Config.SWARM_WAVE_ORB_ENABLED
-            ? new[] { OrbColor.Red, OrbColor.Green, OrbColor.Blue }
-            : new[] { OrbColor.Red, OrbColor.Green };
+        private static readonly OrbColor[] MergeOutputColors = BuildMergeOutputColors();
+
+        private static OrbColor[] BuildMergeOutputColors()
+        {
+            var colors = new List<OrbColor>();
+            if (Config.SWARM_SUN_ORB_ENABLED) colors.Add(OrbColor.Red);
+            colors.Add(OrbColor.Green);
+            if (Config.SWARM_WAVE_ORB_ENABLED) colors.Add(OrbColor.Blue);
+            return colors.ToArray();
+        }
 
         public static bool TryGetColorAndTier(int itemId, out OrbColor color, out int tier)
         {

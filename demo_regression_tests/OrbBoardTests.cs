@@ -1,4 +1,5 @@
 using game_server.services;
+using network.common;
 using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
@@ -96,7 +97,22 @@ public sealed class OrbBoardTests
         }
 
         Assert.All(outputs, output => Assert.True(OrbData.IsOrbItem(output)));
-        Assert.True(outputs.Count > 1);
+        // 공급 차단 토글(SWARM_SUN/WAVE_ORB_ENABLED)이 꺼진 색은 머지 출력에도 안 나온다 —
+        // 켜진 색이 하나뿐이면 출력 다양성 검증은 성립하지 않는다.
+        int enabledColorCount = 1 + (Config.SWARM_SUN_ORB_ENABLED ? 1 : 0) +
+                                (Config.SWARM_WAVE_ORB_ENABLED ? 1 : 0);
+        Assert.All(outputs, output =>
+        {
+            Assert.True(OrbData.TryGetColorAndTier(output, out OrbColor outputColor, out _));
+            Assert.True(outputColor switch
+            {
+                OrbColor.Green => true,
+                OrbColor.Red => Config.SWARM_SUN_ORB_ENABLED,
+                OrbColor.Blue => Config.SWARM_WAVE_ORB_ENABLED,
+                _ => false
+            });
+        });
+        Assert.Equal(enabledColorCount > 1, outputs.Count > 1);
     }
 
     [Theory]

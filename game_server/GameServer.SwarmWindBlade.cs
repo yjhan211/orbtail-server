@@ -62,13 +62,8 @@ public partial class GameServer
                 float radius = Config.SWARM_WIND_BLADE_RADIUS_BY_TIER[Math.Clamp(tier, 1, 3) - 1];
                 monsters ??= _swarmArenaManager.GetCombatTargets(matchingId);
 
-                if (sunMultiplier < 0f)
-                    sunMultiplier = OrbData.GetSunPveAttackMultiplier(trailOrbs);
-                int damage = Math.Max(1, (int)MathF.Round(
-                    OrbData.GetSwarmPveAttackDamage(item.ItemId) * sunMultiplier *
-                    Config.SWARM_WIND_BLADE_DAMAGE_MULTIPLIER));
-
-                int monsterHits = 0;
+                // 판정 전에 반경 안 표적부터 수집한다 — 시동 게이트가 표적 유무를 먼저 물어야 한다.
+                List<SwarmArenaCombatTarget>? monstersInRadius = null;
                 foreach (var monster in monsters)
                 {
                     if (monster.Area != owner.Area)
@@ -76,16 +71,10 @@ public partial class GameServer
                     if (!IsWithinSwarmGroundRadius(
                             origin, monster.Position, radius + SwarmWindBladeMonsterRadius))
                         continue;
-
-                    monsterHits++;
-                    _swarmArenaManager.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
-                    int monsterDamage = RollSwarmCriticalDamage(damage, out bool critical);
-                    ApplySwarmMonsterHitNow(
-                        matchingId, monster.CombatTargetId, monster.MonsterId, owner.PlayerId,
-                        item.ItemId, owner.Area, monsterDamage, critical, allSessions);
+                    (monstersInRadius ??= new List<SwarmArenaCombatTarget>()).Add(monster);
                 }
 
-                int shocks = 0;
+                List<SpotArenaPlayerSpatial>? playersInRadius = null;
                 foreach (var participant in participants)
                 {
                     if (participant.PlayerId == owner.PlayerId || participant.Area != owner.Area)
@@ -93,12 +82,47 @@ public partial class GameServer
                     if (!IsWithinSwarmGroundRadius(
                             origin, participant.Position, radius + SwarmWindBladePlayerRadius))
                         continue;
-                    if (!TryClaimSwarmShockWindow(matchingId, owner.PlayerId, participant.PlayerId, nowUtc))
-                        continue;
+                    (playersInRadius ??= new List<SpotArenaPlayerSpatial>()).Add(participant);
+                }
 
-                    shocks++;
-                    ApplySwarmShock(matchingId, owner.PlayerId, item.ItemId, owner.Area, participant.PlayerId,
-                        $"WIND_BLADE_HIT ordinal={ordinal}", aliveSessions, aliveBots, allSessions);
+                // 시동 게이트는 퇴역 (2026-08-25 유저 정정 "돌면 그냥 데미지"): 서버 0.9초 게이트 +
+                // 틱 정렬(0.7초)이 겹쳐 체감 1.4초 지연이었다 — 회전 시동은 클라 연출만 지고,
+                // 판정은 반경 안에 표적이 있으면 즉시 틱이 나간다.
+                if (monstersInRadius == null && playersInRadius == null)
+                    continue;
+
+                if (sunMultiplier < 0f)
+                    sunMultiplier = OrbData.GetSunPveAttackMultiplier(trailOrbs);
+                int damage = Math.Max(1, (int)MathF.Round(
+                    OrbData.GetSwarmPveAttackDamage(item.ItemId) * sunMultiplier *
+                    Config.SWARM_WIND_BLADE_DAMAGE_MULTIPLIER));
+
+                int monsterHits = 0;
+                if (monstersInRadius != null)
+                {
+                    foreach (var monster in monstersInRadius)
+                    {
+                        monsterHits++;
+                        _swarmArenaManager.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
+                        int monsterDamage = RollSwarmCriticalDamage(damage, out bool critical);
+                        ApplySwarmMonsterHitNow(
+                            matchingId, monster.CombatTargetId, monster.MonsterId, owner.PlayerId,
+                            item.ItemId, owner.Area, monsterDamage, critical, allSessions);
+                    }
+                }
+
+                int shocks = 0;
+                if (playersInRadius != null)
+                {
+                    foreach (var participant in playersInRadius)
+                    {
+                        if (!TryClaimSwarmShockWindow(matchingId, owner.PlayerId, participant.PlayerId, nowUtc))
+                            continue;
+
+                        shocks++;
+                        ApplySwarmShock(matchingId, owner.PlayerId, item.ItemId, owner.Area, participant.PlayerId,
+                            $"WIND_BLADE_HIT ordinal={ordinal}", aliveSessions, aliveBots, allSessions);
+                    }
                 }
 
                 // 빈 틱은 남기지 않는다 — 상시 무기라 매 틱 로그를 남기면 이벤트 흐름이 이것으로 찬다.
