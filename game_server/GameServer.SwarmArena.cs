@@ -716,9 +716,10 @@ public partial class GameServer
 
     // 경계 밖 오염 (리소스 틱 5초당): 기본 + 초과 셀당 가산. 문턱에서 즉사가 아니라
     // "슬슬 따가움 → 깊을수록 아픔"의 경사 — 외곽 마지막 개봉 도박이 성립해야 한다.
-    // #272 재조정: 구 웨이브 폐쇄 오염(85~145/틱)을 퇴역시키고 이 경사가 압박을 전담한다 —
-    // 경계 스침은 84초 생존(25/틱), 깊이 20셀 방치는 약 17초 사망(125/틱)으로 맞춘다.
-    private const int SwarmFieldBaseCorruptionPerTick = 25;
+    // #272 재조정: 구 웨이브 폐쇄 오염(85~145/틱)을 퇴역시키고 이 경사가 압박을 전담한다.
+    // 기본 25→12 (봇 매치 9831482 실측): 유예 제거로 상시 노출 시간이 급증해 이동 중 마모만으로
+    // 갈려나갔다 — 경계 스침 175초 생존(12/틱), 깊이 20셀 방치는 약 19초 사망(112/틱).
+    private const int SwarmFieldBaseCorruptionPerTick = 12;
     private const int SwarmFieldCorruptionPerExtraCell = 5;
 
     /// <summary>현재 안전 반경. 수축 전에는 double.MaxValue(전 맵 안전). 폐쇄 시계(GameStartTime)와
@@ -1346,6 +1347,9 @@ public partial class GameServer
     // 경계 속도(초당 약 0.17셀) 기준 재발동은 약 18초에 한 번 — 와리가리하지 않는다.
     private const int SwarmBotFieldEvacuateMarginCells = 3;
 
+    // 방 마감 선제 탈출 리드 (초): 문 잠금 전에 방을 비우는 여유 — 큰 방 횡단 + 문 경유 시간.
+    private const double SwarmBotAreaExitLeadSeconds = 25d;
+
     /// <summary>
     ///     자기장 안쪽 대피 목적지 (#272, 매치 3030 실측 수리): 옛 후보(SwarmHuntingAreas =
     ///     외곽 사냥방)는 원형 자기장에서 다음 희생양이라, 대피한 봇들이 바깥 방으로 몰려가
@@ -1461,6 +1465,24 @@ public partial class GameServer
         double fieldSafeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
         if (fieldSafeDistance < double.MaxValue)
         {
+            // 0.15) 방 마감 선제 탈출 (#272, 봇 매치 9831482 실측: 3-2교실 폐쇄 39초 뒤에도 봇이
+            //       남아 420 사망): 경고(15초 전) 기반 철수는 큰 방·문 경유 이동에 너무 늦다 —
+            //       내 구역이 잠기기까지 25초 안이면 지금 나간다. 수축은 선형이라 시각이 정확하다.
+            double shrinkRatePerSecond = SwarmPressureField.MaxDistance / SwarmFieldShrinkSeconds;
+            int currentAreaMinDistance = SwarmPressureField.GetAreaMinDistance(bot.CurrentArea);
+            double secondsUntilAreaOutside =
+                (fieldSafeDistance - currentAreaMinDistance) / shrinkRatePerSecond;
+            if (secondsUntilAreaOutside < SwarmBotAreaExitLeadSeconds)
+            {
+                _swarmBotFleeDirective.Add((matchingId, botPlayerId));
+                var (exitArea, exitCell) = ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Escort,
+                    exitArea,
+                    exitCell,
+                    BotPlayerManager.CellToWorldPosition(MapId.School, exitCell));
+            }
+
             var botCell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, bot.Position);
             if (SwarmPressureField.GetDistance(botCell) >
                 fieldSafeDistance - SwarmBotFieldEvacuateMarginCells)
