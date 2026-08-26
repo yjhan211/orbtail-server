@@ -1892,13 +1892,23 @@ public sealed class SwarmArenaManager
                 packAnchor.Y + MathF.Sin(angle) * SupplyScatterRadius + inward.Y * SupplyInwardBias,
                 0f), packAnchor, area);
 
-            // 침투: 운동장에서 태어나 도착지까지 걷는다. 경로가 없으면(문이 잠겼거나 그래프가
-            // 끊겼으면) 구역 안 스폰으로 되돌린다 — 공급이 통째로 멎는 것보다 낫다.
+            // #272 경계 토출 (2026-08-26 유저 결정): 운동장 발원 침투를 자기장 발원으로 교체 —
+            // 잔상은 그 구역의 바깥 띠(경계 관통 중이면 경계 밖 빨간 띠, 아직 안전하면 가장
+            // 바깥 띠)에서 태어나 배정 앵커 쪽으로 걸어 들어온다. 리졸버 미주입(자기장 모드
+            // 밖)이면 기존 운동장 침투가 폴백이다.
             var position = destination;
             var spawnArea = area;
             List<Vector3f>? route = null;
-            if (infiltrate &&
-                TryPlanInfiltration(state, area, destination, isAreaBlocked, out var origin, out var planned))
+            var fieldSpawn = FieldSpawnCellResolver?.Invoke(state.MatchingId, area);
+            if (fieldSpawn != null)
+            {
+                position = ClampToAreaWalkable(
+                    BotPlayerManager.CellToWorldPosition(MapId.School, fieldSpawn.Value.Spawn),
+                    packAnchor, area);
+            }
+            else if (infiltrate &&
+                     TryPlanInfiltration(state, area, destination, isAreaBlocked, out var origin,
+                         out var planned))
             {
                 position = origin;
                 spawnArea = SwarmInwardOriginArea;
@@ -1962,8 +1972,9 @@ public sealed class SwarmArenaManager
                 AttackCooldownValue = IsWavePatternMonster(pattern) && !isCore
                     ? WavePatternAttackCooldownSeconds
                     : stats.AttackCooldownSeconds,
-                AnchorX = position.X,
-                AnchorY = position.Y,
+                // 경계 토출이면 앵커는 방 안쪽 도착지 — 쫓을 대상이 없어도 안쪽으로 걸어 들어온다.
+                AnchorX = fieldSpawn != null ? destination.X : position.X,
+                AnchorY = fieldSpawn != null ? destination.Y : position.Y,
                 // 주인 배정 (2026-08-16 유저 결정): 이 몹은 배정 구역의 특정 한 사람만 쫓는다.
                 OwnerPlayerId = ClaimOwner()
             };
