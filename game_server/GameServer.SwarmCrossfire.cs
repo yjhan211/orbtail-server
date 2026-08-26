@@ -200,7 +200,13 @@ public partial class GameServer
             CountSwarmCrossfireLineTargets(
                 combatTargets, attack.Area, origin, directionX[direction], directionY[direction],
                 candidateLength, halfWidth, out int hits, out float nearest);
-            if (hits > bestHits || (hits == bestHits && hits > 0 && nearest < bestNearest))
+            // 거리 우선 (2026-08-26 2차: 몹 수 → 거리에서 뒤집음): 몹 수 우선은 긴 축이 항상
+            // 이겨 좁은 복도의 세로 발사가 죽었다 — 코앞 표적 쪽으로 응사하고, 같은 거리면 많은 쪽.
+            bool better = hits > 0 &&
+                          (!resolvedByHits ||
+                           nearest < bestNearest - 0.001f ||
+                           (MathF.Abs(nearest - bestNearest) <= 0.001f && hits > bestHits));
+            if (better)
             {
                 bestHits = hits;
                 bestNearest = nearest;
@@ -683,7 +689,7 @@ public partial class GameServer
             {
                 ApplySwarmShock(matchingId, burn.OwnerId, burn.WeaponItemId, burn.Area,
                     pair.Key.VictimId, "SUN_BURN_TICK", aliveSessions, aliveBots, allSessions,
-                    Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER);
+                    Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER, dotTick: true);
                 _swarmSunBurns[pair.Key] = burn with
                 {
                     NextTickAtUtc = burn.NextTickAtUtc.AddSeconds(
@@ -748,7 +754,8 @@ public partial class GameServer
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions,
-        float damageScale = 1f)
+        float damageScale = 1f,
+        bool dotTick = false)
     {
         // 받는 피해 배율 (2026-08-18): 고정 50 × 1/3 → 17. 태양·바람·파도 충격이 전부 이 한 곳을 지난다.
         // damageScale: 파도 소용돌이(#268)는 당김이 본체라 피해를 타격 피드백 수준(1/4)으로 줄인다.
@@ -766,7 +773,7 @@ public partial class GameServer
         {
             corruptionBefore = victimSession.CurrentCorruption;
             // 사격 피격 경로 재사용 — 오염 증가·피격 숫자·탈락 흐름이 그대로 따라온다.
-            victimSession.ApplyProximityAutoCombatHit(ownerId, area, weaponItemId, shock);
+            victimSession.ApplyProximityAutoCombatHit(ownerId, area, weaponItemId, shock, dotTick);
             corruptionAfter = victimSession.CurrentCorruption;
         }
         else
@@ -788,7 +795,7 @@ public partial class GameServer
         }
 
         var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
-        ownerSession?.SendProximityAutoCombatAttackFeedback(victimId, area, weaponItemId, shock);
+        ownerSession?.SendProximityAutoCombatAttackFeedback(victimId, area, weaponItemId, shock, dotTick);
 
         _gameEventLogManager.LogSystem(
             matchingId,
@@ -811,25 +818,33 @@ public partial class GameServer
         hitCount = 0;
         nearestAlong = float.MaxValue;
         float reach = halfWidth + SwarmCrossfireMonsterRadius;
-        // 화면 정합 (2026-08-26): 실제 명중은 몸통 표본(-부양 ~ 몸높이-부양)으로 재므로,
-        // 조준 카운트도 그 중앙(-부양 + 몸높이/2)으로 옮겨 "겨눈 몹 = 맞는 몹"을 유지한다.
-        float bodySampleCenterY =
-            (SwarmCrossfireMonsterBodyHeight * 0.5f - Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y) *
-            SwarmGroundYScale;
+        // 화면 정합 (2026-08-26, 같은 날 2차: 중앙 1점 → 명중과 같은 몸통 표본): 중앙 1점만
+        // 세면 대각 축의 수직 성분(0.7)이 도달 반경(0.65)을 넘어, 실제로 맞을 몹이 카운트에서
+        // 빠졌다 — 좁은 복도의 세로 후보가 0마리로 집계돼 선택되지 않던 원인.
+        float bodyStart = -Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
+        float bodyEnd = SwarmCrossfireMonsterBodyHeight - Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
         foreach (var target in combatTargets)
         {
             if (target.Area != area)
                 continue;
-            float relX = target.Position.X - origin.X;
-            float relY = (target.Position.Y - origin.Y) * SwarmGroundYScale + bodySampleCenterY;
-            float along = relX * unitX + relY * unitY;
-            if (along < 0f || along > groundLength)
-                continue;
-            if (MathF.Abs(relX * unitY - relY * unitX) > reach)
+            float bestAlong = float.MaxValue;
+            for (float bodyY = bodyStart; bodyY <= bodyEnd + 0.001f; bodyY += 0.45f)
+            {
+                float relX = target.Position.X - origin.X;
+                float relY = (target.Position.Y + bodyY - origin.Y) * SwarmGroundYScale;
+                float along = relX * unitX + relY * unitY;
+                if (along < 0f || along > groundLength)
+                    continue;
+                if (MathF.Abs(relX * unitY - relY * unitX) > reach)
+                    continue;
+                bestAlong = MathF.Min(bestAlong, along);
+            }
+
+            if (bestAlong >= float.MaxValue)
                 continue;
             hitCount++;
-            if (along < nearestAlong)
-                nearestAlong = along;
+            if (bestAlong < nearestAlong)
+                nearestAlong = bestAlong;
         }
     }
 

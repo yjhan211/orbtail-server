@@ -51,7 +51,12 @@ public partial class GameClientSession
             revealDelayMs: durationMs);
     }
 
-    internal void ApplyProximityAutoCombatHit(long sourcePlayerId, AreaType area, int weaponItemId, int damage)
+    // 도트 틱 플래그 (#268 화상, 2026-08-26): 17/18 이벤트의 cooldownSeconds는 빈 자리라
+    // 플래그 비트로 빌려 쓴다 — bit0 = 도트 틱(직격과 다른 연출: 작은 주황 숫자, 피격 연출 없음).
+    internal const int ProximityHitFlagDotTick = 1;
+
+    internal void ApplyProximityAutoCombatHit(
+        long sourcePlayerId, AreaType area, int weaponItemId, int damage, bool dotTick = false)
     {
         if (!PlayerId.HasValue || IsEliminated)
             return;
@@ -76,7 +81,7 @@ public partial class GameClientSession
             sourcePlayerId,
             area,
             ProximityAutoAttackTakenEventType,
-            0,
+            dotTick ? ProximityHitFlagDotTick : 0,
             weaponItemId,
             damage);
     }
@@ -85,13 +90,14 @@ public partial class GameClientSession
         long targetPlayerId,
         AreaType area,
         int weaponItemId,
-        int damage)
+        int damage,
+        bool dotTick = false)
     {
         SendEncounterEvent(
             targetPlayerId,
             area,
             ProximityAutoAttackDealtEventType,
-            0,
+            dotTick ? ProximityHitFlagDotTick : 0,
             weaponItemId,
             damage);
     }

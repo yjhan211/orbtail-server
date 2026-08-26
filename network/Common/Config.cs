@@ -168,11 +168,11 @@ namespace network.common
         /// </summary>
         public static readonly bool SWARM_ORB_MERGE_ENABLED = false;
 
-        /// <summary>파도(Blue) 오브 공급 — 단색 검증이 필요하면 false로 차단한다. (2026-08-26 태양 단색 검증으로 차단)</summary>
-        public static readonly bool SWARM_WAVE_ORB_ENABLED = false;
+        /// <summary>파도(Blue) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.</summary>
+        public static readonly bool SWARM_WAVE_ORB_ENABLED = true;
 
-        /// <summary>태양(Red) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.</summary>
-        public static readonly bool SWARM_SUN_ORB_ENABLED = true;
+        /// <summary>태양(Red) 오브 공급 — 단색 검증이 필요하면 false로 차단한다. (2026-08-26 파도 단색 검증으로 차단)</summary>
+        public static readonly bool SWARM_SUN_ORB_ENABLED = false;
 
         /// <summary>
         ///     바람(Green) 오브 공급 — 단색 검증이 필요하면 false로 차단한다. (2026-08-26 파도 단색 검증으로 차단)
