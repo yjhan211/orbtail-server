@@ -72,7 +72,7 @@ public partial class GameServer
                     matchingId,
                     session.CurrentArea,
                     ResourceTickIntervalSeconds);
-                // 스웜 자기장: 구역이 아니라 참가자 셀의 보행 거리 기준 연속 압박.
+                // 스웜 자기장: 구역이 아니라 참가자 셀의 중심 거리 기준 연속 압박.
                 if (session.LastValidatedPosition != null)
                     closureDelta += GetSwarmFieldCorruptionPerTick(matchingId, session.LastValidatedPosition);
                 targets.Add(new EnvironmentalTarget(

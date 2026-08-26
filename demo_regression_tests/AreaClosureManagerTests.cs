@@ -64,7 +64,7 @@ public class AreaClosureManagerTests
             state.Waves[^1].Areas);
     }
 
-    // #272 자기장 파생 웨이브: 실전 폐쇄 시간표가 자기장(보행 거리 필드)에서 나온다 —
+    // #272 자기장 파생 웨이브: 실전 폐쇄 시간표가 자기장(운동장 중심 원형 필드)에서 나온다 —
     // 깔때기 순서·종료 봉투·오염 0(압박은 자기장 경사 전담)을 잠근다.
     [Fact]
     public void BuildSwarmFieldWaves_DerivesFunnelScheduleEndingAtMatchExpiry()

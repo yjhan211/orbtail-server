@@ -46,7 +46,7 @@ public partial class GameServer
     // 정지를 이 시간 이상 유지해야 무장된다 — 끊어 걷기(스텝 샷)가 무료가 되지 않게.
     private const double SwarmStopAimSeconds = 0.3d;
 
-    // #272 자기장 재무장: 보행 거리 필드가 폐쇄 시간표의 단일 원천 — 구역 웨이브는 필드에서
+    // #272 자기장 재무장: 원형 수축 필드가 폐쇄 시간표의 단일 원천 — 구역 웨이브는 필드에서
     // 파생한다(GetSwarmFieldWaves). 토글은 클라 경계 렌더와 공유하므로 Config가 단일 출처.
     private static readonly bool SwarmFieldEnabled = Config.SWARM_PRESSURE_FIELD_ENABLED;
 
@@ -705,9 +705,9 @@ public partial class GameServer
     // 스팟 예산 선소진(#217 성장곡선 v3, 21개)은 퇴역 — SB에는 인위적 봉인이 없고,
     // 희소성은 리젠(60초)과 크기 비례 비용이 담당한다. 배치된 스팟은 전부 살아 있다.
 
-    // 자기장 스케줄 (#272 재무장): 유예 후 안전 보행 거리가 최대치에서 0까지 선형 수축한다 —
-    // 매치 종료(SWARM_MATCH_DURATION_SECONDS)에 운동장만 안전, 최종 폐쇄 = 타이머 만료 = 오버타임 개시.
-    // 깔때기 순서(외곽 방 → 쌍 구역 → 복도)는 보행 거리가 먼 순서로 자연 재현된다.
+    // 자기장 스케줄 (#272 재무장, 원형): 유예 후 안전 반경이 최대치에서 0까지 선형 수축한다 —
+    // 매치 종료(SWARM_MATCH_DURATION_SECONDS)에 운동장 중심만 안전, 최종 폐쇄 = 타이머 만료 = 오버타임 개시.
+    // 깔때기 순서(외곽 방 → 복도 밴드 → 운동장)는 중심 거리가 먼 순서로 자연 재현된다.
     private const double SwarmFieldHoldSeconds = Config.SWARM_FIELD_HOLD_SECONDS;
     private const double SwarmFieldShrinkSeconds =
         Config.SWARM_MATCH_DURATION_SECONDS - Config.SWARM_FIELD_HOLD_SECONDS;

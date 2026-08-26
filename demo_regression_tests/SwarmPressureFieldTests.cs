@@ -4,7 +4,8 @@ using network.common.data.helpers;
 
 namespace demo_regression_tests;
 
-// #217 자기장: 보행 거리 필드가 깔때기 순서(시작방 > 쌍 구역 > 운동장)를 재현하는지 고정한다.
+// #272 자기장(원형): 운동장 중심 유클리드 필드의 기본 성질을 고정한다 —
+// 중심은 운동장 안, 운동장 거리 0, 원이 방보다 복도 밴드를 늦게 먹는 깔때기.
 public class SwarmPressureFieldTests
 {
     public SwarmPressureFieldTests()
@@ -20,11 +21,9 @@ public class SwarmPressureFieldTests
         Assert.InRange(SwarmPressureField.MaxDistance, 10, 1000);
     }
 
-    // #272 클론 맵 재작성: 옛 맵 3쌍 조우 토폴로지 전제 테스트(시작방>쌍구역, 잠긴 뒷문)를
-    // 퇴역시키고, 클론 맵의 실제 깔때기(방 > 복도·도서관·강당 밴드 > 운동장)를 잠근다.
-    // 문은 전부 게이지로 여는 통로라 벽 취급하지 않는다 — SwarmPressureField 주석 참조.
+    // #272 원형 전환: 모든 구역이 거리 필드에 있어야 파생 폐쇄 시간표가 전 구역을 덮는다.
     [Fact]
-    public void AllMapAreas_AreReachableFromGround()
+    public void AllMapAreas_HaveFieldDistances()
     {
         var mapAreas = GameMapData.GetAreas(MapId.School)
             .Select(region => region.AreaType)
@@ -32,34 +31,34 @@ public class SwarmPressureFieldTests
         foreach (var area in mapAreas)
         {
             Assert.True(SwarmPressureField.GetAreaMinDistance(area) < int.MaxValue,
-                $"{area} 도달 불가 — 문 데이터가 BFS 위상에서 빠졌는지 확인");
+                $"{area} 거리 없음 — 구역 rect 안에 이동 가능 셀이 없는지 확인");
         }
     }
 
     [Fact]
-    public void FunnelOrder_RoomsFartherThanInnerBand()
+    public void CenterCell_IsInsideGround()
     {
-        // 방은 복도·도서관·강당(운동장 인접 밴드)보다 멀다 — 수축이 방부터 스친다.
+        var (centerX, centerY) = SwarmPressureField.CenterCell;
+        var centerArea = GameMapData.GetCurrentArea(
+            MapId.School,
+            new network.common.data.models.Cell(
+                (int)Math.Round(centerX), (int)Math.Round(centerY)));
+        Assert.Equal(AreaType.Ground, centerArea);
+    }
+
+    [Fact]
+    public void CircleFunnel_RoomsFartherThanCorridor()
+    {
+        // 원은 바깥 방을 먼저 먹고 운동장을 감싼 복도 밴드를 마지막에 먹는다.
         foreach (var room in new[]
                  {
                      AreaType.Classroom2, AreaType.Classroom3, AreaType.Classroom4,
                      AreaType.Storage2, AreaType.ExamRoom, AreaType.BroadcastRoom,
-                     AreaType.AdminOffice, AreaType.StaffRoom
+                     AreaType.AdminOffice, AreaType.StaffRoom, AreaType.Library, AreaType.Gym
                  })
         {
             AssertFarther(room, AreaType.Corridor);
-            AssertFarther(room, AreaType.Library);
-            AssertFarther(room, AreaType.Gym);
         }
-    }
-
-    [Fact]
-    public void JunkyardPodRooms_AreTheFarthest()
-    {
-        // 행정실·교무실은 정크장 경유라 출구가 가장 멀다 (#229의 수동 조정 근거를 필드가 재현).
-        AssertFarther(AreaType.AdminOffice, AreaType.Junkyard);
-        AssertFarther(AreaType.StaffRoom, AreaType.Junkyard);
-        AssertFarther(AreaType.Junkyard, AreaType.Corridor);
     }
 
     private static void AssertFarther(AreaType outer, AreaType inner)
