@@ -46,8 +46,9 @@ public partial class GameServer
     // 정지를 이 시간 이상 유지해야 무장된다 — 끊어 걷기(스텝 샷)가 무료가 되지 않게.
     private const double SwarmStopAimSeconds = 0.3d;
 
-    // #219 M1 게이트: 자기장(보관), 유닛 낱개 체력(클론 전투 모델).
-    private static readonly bool SwarmFieldEnabled = false;
+    // #272 자기장 재무장: 보행 거리 필드가 폐쇄 시간표의 단일 원천 — 구역 웨이브는 필드에서
+    // 파생한다(GetSwarmFieldWaves). 토글은 클라 경계 렌더와 공유하므로 Config가 단일 출처.
+    private static readonly bool SwarmFieldEnabled = Config.SWARM_PRESSURE_FIELD_ENABLED;
 
     // 오브 HP 전투 퇴역 (#226 재개편): 미사일·물폭탄·몹 공격은 전부 본체 오염 직행 —
     // 오브 파괴는 열 절단(+폐쇄) 전용이라야 절단이 독립 전투 동사로 산다.
@@ -270,10 +271,8 @@ public partial class GameServer
                 (gateMatchingId, gatePlayerId) =>
                     _swarmFrontOrbHp.ContainsKey((gateMatchingId, gatePlayerId));
             LogSwarmPairZoneDistances(matchingId);
-            // M4 자기장: 안전 거리 수축 시계는 스웜 개전과 함께 돈다.
-            // #219 M1: 클론에서는 자기장을 무장하지 않는다 — 수렴은 M3의 광산 각본이 담당한다.
-            if (SwarmFieldEnabled)
-                _swarmFieldStartedAtUtc[matchingId] = DateTime.UtcNow;
+            // #272 자기장: 수축 시계는 폐쇄 시계와 같은 앵커(AreaClosureManager.GameStartTime)를 쓴다 —
+            // 무장은 폐쇄 틱(ProcessSwarmScheduledClosureTick)의 최초 InitializeMatching이 담당한다.
             logger.LogInformation(
                 "Swarm pressure field armed: MatchingId={MatchingId}, MaxDistance={MaxDistance}, " +
                 "HoldSeconds={Hold}, ShrinkSeconds={Shrink}",
@@ -706,30 +705,31 @@ public partial class GameServer
     // 스팟 예산 선소진(#217 성장곡선 v3, 21개)은 퇴역 — SB에는 인위적 봉인이 없고,
     // 희소성은 리젠(60초)과 크기 비례 비용이 담당한다. 배치된 스팟은 전부 살아 있다.
 
-    // 자기장 스케줄 (M4 종반 수렴, 자기장 전환 2026-08-06): 60초 유예 후 안전 거리가
-    // 최대 보행 거리에서 0까지 선형 수축한다 (5:30 완료, 운동장만 안전).
-    // 깔때기 순서(시작방 → 쌍 구역 → 복도)는 보행 거리가 먼 순서로 자연 재현된다.
-    private const double SwarmFieldHoldSeconds = 60d;
-    private const double SwarmFieldShrinkSeconds = 270d;
-    private const int SwarmFieldWarningLeadSeconds = 15;
+    // 자기장 스케줄 (#272 재무장): 유예 후 안전 보행 거리가 최대치에서 0까지 선형 수축한다 —
+    // 매치 종료(SWARM_MATCH_DURATION_SECONDS)에 운동장만 안전, 최종 폐쇄 = 타이머 만료 = 오버타임 개시.
+    // 깔때기 순서(외곽 방 → 쌍 구역 → 복도)는 보행 거리가 먼 순서로 자연 재현된다.
+    private const double SwarmFieldHoldSeconds = Config.SWARM_FIELD_HOLD_SECONDS;
+    private const double SwarmFieldShrinkSeconds =
+        Config.SWARM_MATCH_DURATION_SECONDS - Config.SWARM_FIELD_HOLD_SECONDS;
 
-    // 경계 밖 오염 (리소스 틱 5초당): 기본 + 초과 거리 6셀당 1. 문턱에서 즉사가 아니라
+    // 경계 밖 오염 (리소스 틱 5초당): 기본 + 초과 셀당 가산. 문턱에서 즉사가 아니라
     // "슬슬 따가움 → 깊을수록 아픔"의 경사 — 외곽 마지막 개봉 도박이 성립해야 한다.
-    private const int SwarmFieldBaseCorruptionPerTick = 2;
-    private const int SwarmFieldDistancePerExtraCorruption = 6;
+    // #272 재조정: 구 웨이브 폐쇄 오염(85~145/틱)을 퇴역시키고 이 경사가 압박을 전담한다 —
+    // 경계 스침은 84초 생존(25/틱), 깊이 20셀 방치는 약 17초 사망(125/틱)으로 맞춘다.
+    private const int SwarmFieldBaseCorruptionPerTick = 25;
+    private const int SwarmFieldCorruptionPerExtraCell = 5;
 
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<long, DateTime>
-        _swarmFieldStartedAtUtc = new();
-    private readonly Dictionary<long, HashSet<AreaType>> _swarmFieldWarnedAreas = new();
-    private readonly Dictionary<long, HashSet<AreaType>> _swarmFieldOutsideAreas = new();
-
-    /// <summary>현재 안전 거리. 수축 전에는 int.MaxValue(전 맵 안전).</summary>
+    /// <summary>현재 안전 거리. 수축 전에는 int.MaxValue(전 맵 안전). 폐쇄 시계(GameStartTime)와
+    ///     같은 앵커를 쓴다 — 파생 웨이브의 구역 완전-밖 시각과 필드 오염이 어긋나지 않는다.</summary>
     private int GetSwarmSafeDistance(long matchingId, DateTime nowUtc)
     {
-        if (!_swarmFieldStartedAtUtc.TryGetValue(matchingId, out var startedAtUtc))
+        if (!SwarmFieldEnabled)
+            return int.MaxValue;
+        var closureState = _areaClosureManager.GetMatchingState(matchingId);
+        if (closureState == null)
             return int.MaxValue;
 
-        double shrinkElapsed = (nowUtc - startedAtUtc).TotalSeconds - SwarmFieldHoldSeconds;
+        double shrinkElapsed = (nowUtc - closureState.GameStartTime).TotalSeconds - SwarmFieldHoldSeconds;
         if (shrinkElapsed <= 0) return int.MaxValue;
 
         double progress = Math.Min(1d, shrinkElapsed / SwarmFieldShrinkSeconds);
@@ -754,92 +754,54 @@ public partial class GameServer
         var cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, worldPosition);
         int over = SwarmPressureField.GetDistance(cell) - safeDistance;
         if (over <= 0) return 0;
-        return SwarmFieldBaseCorruptionPerTick + over / SwarmFieldDistancePerExtraCorruption;
+        return SwarmFieldBaseCorruptionPerTick + over * SwarmFieldCorruptionPerExtraCell;
     }
 
-    /// <summary>구역 전체가 경계 밖이 되는 시각까지 남은 초.</summary>
-    private int GetSecondsUntilAreaOutside(long matchingId, int areaMinDistance, DateTime nowUtc)
+    // 자기장 파생 웨이브 (#272): 계산은 AreaClosureManager.BuildSwarmFieldWaves가 담당한다.
+    // 거리 필드·상수가 프로세스 수명 동안 불변이라 한 번만 계산해 캐시한다.
+    private static IReadOnlyList<ClosureWaveDefinition>? _swarmFieldDerivedWaves;
+
+    private static IReadOnlyList<ClosureWaveDefinition> GetSwarmFieldWaves()
     {
-        if (!_swarmFieldStartedAtUtc.TryGetValue(matchingId, out var startedAtUtc))
-            return int.MaxValue;
-
-        double outsideElapsed = SwarmFieldHoldSeconds + SwarmFieldShrinkSeconds *
-            (1d - (double)areaMinDistance / SwarmPressureField.MaxDistance);
-        return (int)Math.Max(0d, (startedAtUtc.AddSeconds(outsideElapsed) - nowUtc).TotalSeconds);
+        return _swarmFieldDerivedWaves ??=
+            AreaClosureManager.BuildSwarmFieldWaves(SwarmFieldHoldSeconds, SwarmFieldShrinkSeconds);
     }
+
+    // 자기장 상태 패킷은 매칭당 개전 1회 브로드캐스트 (재접속은 스냅샷이 복원). 폐쇄 틱 단일
+    // 스레드(Timer 콜백 직렬)만 쓰고 손다 — 잠금 불필요.
+    private readonly HashSet<long> _swarmFieldStateAnnounced = new();
 
     /// <summary>
-    ///     스웜 자기장 틱 (1초): 안전 거리를 수축시키며, 구역이 곧 완전히 밖이 되면 경고를,
-    ///     완전히 밖이 되면 폐쇄를 한 번씩 브로드캐스트한다 — 미니맵은 기존 폐쇄 표시를 재사용한다.
-    ///     실제 압박(오염)은 구역이 아니라 참가자 셀의 보행 거리 기준으로 리소스 틱이 준다.
+    ///     #272 자기장 시계 브로드캐스트: 클라 경계 렌더의 유일한 입력. 유예·수축 길이·거리
+    ///     필드는 Common(Config·SwarmPressureField)에서 양쪽이 같은 값을 계산하므로 시작
+    ///     시각만 나른다 — 표시 = 판정.
     /// </summary>
-    private void ProcessSwarmClosureTick(long matchingId)
+    private void BroadcastSwarmFieldState(long matchingId, DateTime fieldStartedAtUtc)
     {
-        if (!_swarmArenaManager.HasMatching(matchingId))
-            return;
-        if (!_swarmFieldStartedAtUtc.ContainsKey(matchingId))
-            return;
-
-        DateTime nowUtc = DateTime.UtcNow;
-        int safeNow = GetSwarmSafeDistance(matchingId, nowUtc);
-        int safeAtLead = GetSwarmSafeDistance(matchingId, nowUtc.AddSeconds(SwarmFieldWarningLeadSeconds));
-        if (safeAtLead == int.MaxValue)
-            return;
-
         var sessions = _clientSessions.Values
             .Where(session => session.PlayerId.HasValue && session.CurrentMapSubId == matchingId)
             .ToList();
-        if (!_swarmFieldWarnedAreas.TryGetValue(matchingId, out var warned))
-            _swarmFieldWarnedAreas[matchingId] = warned = new HashSet<AreaType>();
-        if (!_swarmFieldOutsideAreas.TryGetValue(matchingId, out var outside))
-            _swarmFieldOutsideAreas[matchingId] = outside = new HashSet<AreaType>();
-
-        foreach (var area in SwarmPressureField.GetKnownAreas())
+        using var packet = global::network.packets.Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);
+        packet.SetBody(MessagePack.MessagePackSerializer.Serialize(new G_TO_C_SWARM_FIELD_STATE
         {
-            int minDistance = SwarmPressureField.GetAreaMinDistance(area);
-            if (minDistance <= 0)
-                continue;
-
-            if (minDistance > safeNow)
-            {
-                if (!outside.Add(area))
-                    continue;
-
-                _gameEventLogManager.LogClosure(matchingId, area.ToString());
-                using var packet = global::network.packets.Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
-                packet.SetBody(MessagePack.MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED
-                {
-                    AreaType = area,
-                    IsClosed = true
-                }));
-                foreach (var session in sessions) session.Send(packet);
-                continue;
-            }
-
-            if (minDistance <= safeAtLead || !warned.Add(area))
-                continue;
-
-            int secondsRemaining = GetSecondsUntilAreaOutside(matchingId, minDistance, nowUtc);
-            using var warningPacket =
-                global::network.packets.Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
-            warningPacket.SetBody(MessagePack.MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
-            {
-                AreaType = area,
-                SecondsRemaining = secondsRemaining,
-                ClosureAtUnixMs = DateTimeOffset.UtcNow.AddSeconds(secondsRemaining).ToUnixTimeMilliseconds()
-            }));
-            foreach (var session in sessions) session.Send(warningPacket);
-        }
+            StartedAtUnixMs = new DateTimeOffset(fieldStartedAtUtc).ToUnixTimeMilliseconds()
+        }));
+        foreach (var session in sessions) session.Send(packet);
     }
 
     /// <summary>
-    ///     #219 폐쇄 부활: 자기장 대신 시간 웨이브 스케줄(AreaClosureManager)로 구역을 닫는다.
-    ///     경고 15초 → 폐쇄 브로드캐스트. 폐쇄 오염은 정산 틱(GetClosedAreaCorruptionPerTick),
-    ///     신규 몹 스폰 정지는 캠프 리졸버, 봇·스팟 제외는 IsSwarmAreaOutside가 담당한다.
+    ///     #272 자기장 폐쇄: 구역 웨이브는 자기장에서 파생한 시간표로 닫는다 (SwarmFieldEnabled=false면
+    ///     고정 DefaultP0Waves로 복귀). 경고 15초 → 폐쇄 브로드캐스트. 폐쇄 구역 오염은 자기장
+    ///     경사(정산 틱의 GetSwarmFieldCorruptionPerTick)가 전담하고, 신규 몹 스폰 정지는 캠프
+    ///     리졸버, 봇·스팟 제외는 IsSwarmAreaOutside가 담당한다.
     /// </summary>
     private void ProcessSwarmScheduledClosureTick(long matchingId)
     {
-        _areaClosureManager.InitializeMatching(matchingId);
+        var closureState = _areaClosureManager.InitializeMatching(
+            matchingId,
+            wavesOverride: SwarmFieldEnabled ? GetSwarmFieldWaves() : null);
+        if (SwarmFieldEnabled && _swarmFieldStateAnnounced.Add(matchingId))
+            BroadcastSwarmFieldState(matchingId, closureState.GameStartTime);
         var closureTick = _areaClosureManager.CheckClosureSchedule(matchingId);
         if (closureTick.WarningAreas.Count == 0 && closureTick.ClosedAreas.Count == 0)
             return;
@@ -4664,9 +4626,7 @@ public partial class GameServer
             _swarmBotLastDamagedAtUtc.Remove(key);
         foreach (var key in _swarmBotNextRecoveryAtUtc.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmBotNextRecoveryAtUtc.Remove(key);
-        _swarmFieldStartedAtUtc.TryRemove(matchingId, out _);
-        _swarmFieldWarnedAreas.Remove(matchingId);
-        _swarmFieldOutsideAreas.Remove(matchingId);
+        _swarmFieldStateAnnounced.Remove(matchingId);
         foreach (var key in _swarmFrontOrbHp.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmFrontOrbHp.Remove(key);
         _pendingSwarmMonsterHits.RemoveAll(hit => hit.MatchingId == matchingId);

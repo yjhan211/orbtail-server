@@ -1,4 +1,3 @@
-using game_server.services;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
@@ -21,33 +20,46 @@ public class SwarmPressureFieldTests
         Assert.InRange(SwarmPressureField.MaxDistance, 10, 1000);
     }
 
-    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
-    public void FunnelOrder_StartRoomsFartherThanTheirPairZones()
+    // #272 클론 맵 재작성: 옛 맵 3쌍 조우 토폴로지 전제 테스트(시작방>쌍구역, 잠긴 뒷문)를
+    // 퇴역시키고, 클론 맵의 실제 깔때기(방 > 복도·도서관·강당 밴드 > 운동장)를 잠근다.
+    // 문은 전부 게이지로 여는 통로라 벽 취급하지 않는다 — SwarmPressureField 주석 참조.
+    [Fact]
+    public void AllMapAreas_AreReachableFromGround()
     {
-        AssertFarther(AreaType.ExamRoom, AreaType.Library);
-        AssertFarther(AreaType.Storage, AreaType.Library);
-        AssertFarther(AreaType.Classroom2, AreaType.Gym);
-        AssertFarther(AreaType.Storage2, AreaType.Gym);
-        AssertFarther(AreaType.AdminOffice, AreaType.Corridor);
-        AssertFarther(AreaType.StaffRoom, AreaType.Corridor);
+        var mapAreas = GameMapData.GetAreas(MapId.School)
+            .Select(region => region.AreaType)
+            .Distinct();
+        foreach (var area in mapAreas)
+        {
+            Assert.True(SwarmPressureField.GetAreaMinDistance(area) < int.MaxValue,
+                $"{area} 도달 불가 — 문 데이터가 BFS 위상에서 빠졌는지 확인");
+        }
     }
 
-    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
-    public void PairZones_FartherThanCorridorTier()
+    [Fact]
+    public void FunnelOrder_RoomsFartherThanInnerBand()
     {
-        // 쌍 구역은 복도보다 바깥 — 수축이 시작방 → 쌍 구역 → 복도 순서로 스친다.
-        AssertFarther(AreaType.Library, AreaType.Corridor);
-        AssertFarther(AreaType.Gym, AreaType.Corridor);
+        // 방은 복도·도서관·강당(운동장 인접 밴드)보다 멀다 — 수축이 방부터 스친다.
+        foreach (var room in new[]
+                 {
+                     AreaType.Classroom2, AreaType.Classroom3, AreaType.Classroom4,
+                     AreaType.Storage2, AreaType.ExamRoom, AreaType.BroadcastRoom,
+                     AreaType.AdminOffice, AreaType.StaffRoom
+                 })
+        {
+            AssertFarther(room, AreaType.Corridor);
+            AssertFarther(room, AreaType.Library);
+            AssertFarther(room, AreaType.Gym);
+        }
     }
 
-    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
-    public void LockedBackDoors_DoNotShortenDistances()
+    [Fact]
+    public void JunkyardPodRooms_AreTheFarthest()
     {
-        // 서쪽창고는 운동장 직행 문(112)이 잠겨 있어 도서관 경유가 강제된다.
-        // 문이 벽 취급되지 않으면 창고가 도서관보다 가까워져 깔때기가 깨진다.
-        Assert.True(
-            SwarmPressureField.GetAreaMinDistance(AreaType.Storage) >
-            SwarmPressureField.GetAreaMinDistance(AreaType.Library));
+        // 행정실·교무실은 정크장 경유라 출구가 가장 멀다 (#229의 수동 조정 근거를 필드가 재현).
+        AssertFarther(AreaType.AdminOffice, AreaType.Junkyard);
+        AssertFarther(AreaType.StaffRoom, AreaType.Junkyard);
+        AssertFarther(AreaType.Junkyard, AreaType.Corridor);
     }
 
     private static void AssertFarther(AreaType outer, AreaType inner)

@@ -64,6 +64,55 @@ public class AreaClosureManagerTests
             state.Waves[^1].Areas);
     }
 
+    // #272 자기장 파생 웨이브: 실전 폐쇄 시간표가 자기장(보행 거리 필드)에서 나온다 —
+    // 깔때기 순서·종료 봉투·오염 0(압박은 자기장 경사 전담)을 잠근다.
+    [Fact]
+    public void BuildSwarmFieldWaves_DerivesFunnelScheduleEndingAtMatchExpiry()
+    {
+        double hold = Config.SWARM_FIELD_HOLD_SECONDS;
+        double shrink = Config.SWARM_MATCH_DURATION_SECONDS - hold;
+
+        var waves = AreaClosureManager.BuildSwarmFieldWaves(hold, shrink);
+
+        // 맵 전 구역이 정확히 한 번씩 닫힌다.
+        var mapAreas = GameMapData.GetAreas(MapId.School)
+            .Select(region => region.AreaType)
+            .Distinct()
+            .OrderBy(area => area)
+            .ToList();
+        var waveAreas = waves.SelectMany(wave => wave.Areas).ToList();
+        Assert.Equal(waveAreas.Count, waveAreas.Distinct().Count());
+        Assert.Equal(mapAreas, waveAreas.OrderBy(area => area));
+
+        // 오름차순 스케줄, 유예(HOLD) 동안은 폐쇄 없음, 운동장 최종 폐쇄 = 타이머 만료.
+        Assert.Equal(waves.Select(wave => wave.ClosureAtSeconds).OrderBy(t => t),
+            waves.Select(wave => wave.ClosureAtSeconds));
+        Assert.True(waves[0].ClosureAtSeconds > hold);
+        Assert.Equal([AreaType.Ground], waves[^1].Areas);
+        Assert.Equal(Config.SWARM_MATCH_DURATION_SECONDS, waves[^1].ClosureAtSeconds);
+
+        // 폐쇄 구역 틱 오염은 0 — 오염은 자기장 초과 거리 비례가 전담한다.
+        Assert.All(waves, wave => Assert.Equal(0, wave.ClosedAreaCorruptionPerSecond));
+    }
+
+    [Fact]
+    public void InitializeMatching_WithSwarmFieldWavesKeepsDerivedScheduleUnstaggered()
+    {
+        var now = new DateTime(2026, 8, 26, 0, 0, 0, DateTimeKind.Utc);
+        var manager = CreateManager(() => now);
+        var waves = AreaClosureManager.BuildSwarmFieldWaves(
+            Config.SWARM_FIELD_HOLD_SECONDS,
+            Config.SWARM_MATCH_DURATION_SECONDS - Config.SWARM_FIELD_HOLD_SECONDS);
+
+        var state = manager.InitializeMatching(272001, wavesOverride: waves);
+
+        // wavesOverride는 셔플·스태거 없이 그대로 쓴다 — 파생 시각이 곧 폐쇄 시각이다.
+        Assert.Equal(waves.Select(wave => wave.ClosureAtSeconds),
+            state.Waves.Select(wave => wave.ClosureAtSeconds));
+        Assert.Equal(AreaType.Ground, state.ClosureOrder[^1]);
+        Assert.Empty(state.ClosedAreas);
+    }
+
     [Fact(Skip = "#219 클론 전환: 레거시 페이즈 머신·구역 폐쇄 — 클론은 M3 젬 헌트 타이머로 대체, 부활 시 재작성")]
     public void InitializeMatching_WithStartingRoomsClosesCorridorBeforeFirstPhaseTick()
     {

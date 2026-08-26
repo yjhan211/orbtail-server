@@ -583,6 +583,19 @@ public partial class GameClientSession
             ClosureAtUnixMs = snapshot.NextWarningAtUnixMs
         }));
         Send(countdownPacket);
+
+        // #272 자기장: 수축 시계를 복원한다 — 클라 경계 렌더의 유일한 입력. 폐쇄 시계와
+        // 같은 앵커(GameStartTime)라 별도 상태가 없다.
+        var closureState = _areaClosureManager.GetMatchingState(CurrentMapSubId);
+        if (Config.SWARM_PRESSURE_FIELD_ENABLED && closureState != null)
+        {
+            using var fieldPacket = Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);
+            fieldPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_FIELD_STATE
+            {
+                StartedAtUnixMs = new DateTimeOffset(closureState.GameStartTime).ToUnixTimeMilliseconds()
+            }));
+            Send(fieldPacket);
+        }
     }
 
 }
