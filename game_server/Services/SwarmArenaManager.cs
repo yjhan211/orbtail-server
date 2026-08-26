@@ -1249,9 +1249,10 @@ public sealed class SwarmArenaManager
                 0f), center, area);
         }
 
-        // #272 경계 토출 스폰 (2026-08-26 유저 결정): 자기장 경계가 이 구역을 관통 중이면
-        // 캠프는 저작 앵커 대신 경계 밖(빨간 지대)에서 태어나, 경계 안쪽 앵커로 걸어 들어온다 —
-        // 오염이 잔상을 토해내는 그림. 사냥하려면 경계 근처로 가야 해 위험·보상이 겹친다.
+        // #272 경계 토출 스폰 (2026-08-26 유저 결정, 같은 날 2차 "안전 구역 예외 제거"): 캠프는
+        // 항상 바깥(자기장이 올 방향)에서 태어나 안쪽 앵커로 걸어 들어온다 — 경계 관통 중이면
+        // 빨간 띠, 아직 안전한 구역이면 그 구역의 가장 바깥 띠. 저작 앵커는 자기장 모드 밖(리졸버
+        // 미주입·null)에서만 쓴다. 오염이 잔상을 토해내는 그림 — 사냥터가 바깥 쪽이라 위험·보상이 겹친다.
         Vector3f fieldHomeAnchor = null;
         var fieldSpawn = FieldSpawnCellResolver?.Invoke(state.MatchingId, area);
         if (fieldSpawn != null)

@@ -793,37 +793,42 @@ public partial class GameServer
     private const int SwarmFieldSpawnBandCells = 6;
 
     /// <summary>
-    ///     #272 경계 토출 스폰 (2026-08-26 유저 결정): 자기장 경계가 구역을 관통 중이면 캠프
-    ///     신규 스폰을 (경계 밖 빨간 띠, 경계 안 앵커 띠)로 옮긴다 — 오염이 잔상을 토해내는 그림.
-    ///     구역이 온전히 안전하면 null(저작 캠프 앵커 유지), 온전히 밖이면 폐쇄 스폰 정지 규칙이
-    ///     이미 막는다. 유예 0(개전 즉시 수축)이라 경계는 처음부터 존재한다.
+    ///     #272 경계 토출 스폰 (2026-08-26 유저 결정, 같은 날 2차 "안전 구역 예외 제거"): 캠프
+    ///     신규 스폰은 항상 바깥(자기장이 올 방향)에서 태어나 안쪽 앵커로 걸어 들어온다 —
+    ///     경계가 구역을 관통 중이면 경계 밖 빨간 띠, 아직 온전히 안전한 구역이면 그 구역의
+    ///     가장 바깥 띠. 저작 캠프 앵커는 자기장 모드에서 쓰지 않는다 (단일 문법).
+    ///     온전히 밖인 구역은 폐쇄 스폰 정지 규칙이 이미 막는다.
     /// </summary>
     private (Cell Spawn, Cell Anchor)? ResolveSwarmFieldSpawn(long matchingId, AreaType area)
     {
         if (!SwarmFieldEnabled) return null;
         double safeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
-        if (safeDistance >= double.MaxValue) return null;
 
         var cells = GetSwarmAreaCellsByDistance(area);
-        if (cells.Count == 0 || cells[^1].Distance <= safeDistance) return null;
+        if (cells.Count == 0) return null;
 
-        var redBand = cells
-            .Where(entry => entry.Distance > safeDistance &&
-                            entry.Distance <= safeDistance + SwarmFieldSpawnBandCells)
-            .ToList();
-        if (redBand.Count == 0)
-            redBand = cells.Where(entry => entry.Distance > safeDistance).ToList();
+        bool boundaryCrossing = safeDistance < cells[^1].Distance;
+        double spawnMin = boundaryCrossing ? safeDistance : cells[^1].Distance - SwarmFieldSpawnBandCells;
+        double spawnMax = boundaryCrossing ? safeDistance + SwarmFieldSpawnBandCells : cells[^1].Distance;
 
-        var safeBand = cells
-            .Where(entry => entry.Distance <= safeDistance &&
-                            entry.Distance > safeDistance - SwarmFieldSpawnBandCells)
+        var spawnBand = cells
+            .Where(entry => entry.Distance > spawnMin && entry.Distance <= spawnMax)
             .ToList();
-        if (safeBand.Count == 0)
-            safeBand = [cells[0]];
+        if (spawnBand.Count == 0)
+            spawnBand = boundaryCrossing
+                ? cells.Where(entry => entry.Distance > safeDistance).ToList()
+                : [cells[^1]];
+
+        var anchorBand = cells
+            .Where(entry => entry.Distance <= spawnMin &&
+                            entry.Distance > spawnMin - SwarmFieldSpawnBandCells)
+            .ToList();
+        if (anchorBand.Count == 0)
+            anchorBand = [cells[0]];
 
         return (
-            redBand[Random.Shared.Next(redBand.Count)].Cell,
-            safeBand[Random.Shared.Next(safeBand.Count)].Cell);
+            spawnBand[Random.Shared.Next(spawnBand.Count)].Cell,
+            anchorBand[Random.Shared.Next(anchorBand.Count)].Cell);
     }
 
     // 자기장 파생 웨이브 (#272): 계산은 AreaClosureManager.BuildSwarmFieldWaves가 담당한다.
