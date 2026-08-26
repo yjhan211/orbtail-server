@@ -132,9 +132,7 @@ public partial class GameServer
                 {
                     foreach (var participant in playersInRadius)
                     {
-                        if (!TryClaimSwarmShockWindow(matchingId, owner.PlayerId, participant.PlayerId, nowUtc))
-                            continue;
-
+                        // 충격 면역 퇴역 (2026-08-26): 반경 안이면 매 틱 맞는다 — 붙어 있는 대가.
                         shocks++;
                         // 충격 먼저, 상처는 그다음 — 상처를 낸 그 틱이 자기 충격에 치명타를 걸지 않게.
                         ApplySwarmShock(matchingId, owner.PlayerId, item.ItemId, owner.Area, participant.PlayerId,

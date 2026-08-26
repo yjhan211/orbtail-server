@@ -168,17 +168,17 @@ namespace network.common
         /// </summary>
         public static readonly bool SWARM_ORB_MERGE_ENABLED = false;
 
-        /// <summary>파도(Blue) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.</summary>
-        public static readonly bool SWARM_WAVE_ORB_ENABLED = true;
+        /// <summary>파도(Blue) 오브 공급 — 단색 검증이 필요하면 false로 차단한다. (2026-08-26 태양 단색 검증으로 차단)</summary>
+        public static readonly bool SWARM_WAVE_ORB_ENABLED = false;
 
         /// <summary>태양(Red) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.</summary>
         public static readonly bool SWARM_SUN_ORB_ENABLED = true;
 
         /// <summary>
-        ///     바람(Green) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.
+        ///     바람(Green) 오브 공급 — 단색 검증이 필요하면 false로 차단한다. (2026-08-26 파도 단색 검증으로 차단)
         ///     세 토글을 전부 끄면 공급 풀이 비므로 최소 하나는 켜 둘 것.
         /// </summary>
-        public static readonly bool SWARM_WIND_ORB_ENABLED = true;
+        public static readonly bool SWARM_WIND_ORB_ENABLED = false;
 
         // 오브열 (#226 실험 α/β): 오브가 이동 경로를 따라오는 전투열 — 클라 배치와
         // 서버 판정(오브별 공격 원점·본체 접촉)이 같은 값을 쓴다 (표시 = 판정).
@@ -382,12 +382,9 @@ namespace network.common
         public static int ScaleSwarmDamageTaken(int damage) =>
             damage <= 0 ? damage : Math.Max(1, (int)Math.Round(damage * SWARM_DAMAGE_TAKEN_MULTIPLIER));
 
-        /// <summary>
-        ///     같은 피해자는 공격자와 무관하게 이 시간 동안 추가 충격을 받지 않는다.
-        ///     소유자 초당 1회 상한(OWNER_HIT_INTERVAL)은 2026-08-24 퇴역 — 이 면역과 이중
-        ///     게이트라 지나가는 발의 절반이 소리 없이 무효였다. PvP 피격 리듬은 이 창 하나가 정한다.
-        /// </summary>
-        public const float SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS = 0.9f;
+        // 충격 면역 퇴역 이력: 소유자 초당 1회 상한(2026-08-24) → 피해자 0.9초 면역
+        // (SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS)도 2026-08-26 퇴역 — 태양 다발 화망에서
+        // 첫 발 이후가 소리 없이 관통해 "안 맞는" 오독을 만들었다. 지나간 발은 다 맞는다.
 
         /// <summary>
         ///     화상 (#268, 2026-08-25): 태양 미사일 충격에 맞으면 3초간 매초 틱 피해 —
@@ -433,7 +430,11 @@ namespace network.common
         public const float SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER = 2f;
         public const float SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER = 2f;
 
-        /// <summary>태양 투사체의 판정 폭(T1/T2/T3, 바닥면 단위) — 이 안에 몸이 걸리면 닿은 것.</summary>
+        /// <summary>
+        ///     태양 투사체의 판정 폭(T1/T2/T3, 바닥면 단위) — 이 안에 몸이 걸리면 닿은 것.
+        ///     2026-08-26 ×2 실험은 같은 날 원복 (유저 제보 "허공에서 맞는다"): "안 맞는" 체감의
+        ///     원인은 폭이 아니라 세로 축이었다 — 몸통 캡슐 판정이 그걸 풀었으니 폭은 원래대로.
+        /// </summary>
         public static readonly float[] SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER = { 0.7f, 0.85f, 1f };
 
         /// <summary>

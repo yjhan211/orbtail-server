@@ -2891,9 +2891,8 @@ public partial class GameServer
                 continue;
             if (!IsWithinSwarmGroundRadius(position, participant.Position, radius + SwarmCrossfirePlayerRadius))
                 continue;
-            if (!TryClaimSwarmShockWindow(matchingId, ownerId, participant.PlayerId, nowUtc))
-                continue;
 
+            // 충격 면역 퇴역 (2026-08-26): 겹친 링에 다 맞는다 — 침수는 지속 갱신이라 중첩 무해.
             soaked++;
             ApplySwarmShock(matchingId, ownerId, sourceItemId, area, participant.PlayerId,
                 "WAVE_VORTEX_HIT", aliveSessions, aliveBots, allSessions,
