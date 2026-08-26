@@ -719,21 +719,23 @@ public partial class GameServer
     private const int SwarmFieldBaseCorruptionPerTick = 25;
     private const int SwarmFieldCorruptionPerExtraCell = 5;
 
-    /// <summary>현재 안전 거리. 수축 전에는 int.MaxValue(전 맵 안전). 폐쇄 시계(GameStartTime)와
-    ///     같은 앵커를 쓴다 — 파생 웨이브의 구역 완전-밖 시각과 필드 오염이 어긋나지 않는다.</summary>
-    private int GetSwarmSafeDistance(long matchingId, DateTime nowUtc)
+    /// <summary>현재 안전 반경. 수축 전에는 double.MaxValue(전 맵 안전). 폐쇄 시계(GameStartTime)와
+    ///     같은 앵커를 쓴다 — 파생 웨이브의 구역 완전-밖 시각과 필드 오염이 어긋나지 않는다.
+    ///     양자화 없는 연속식(2026-08-26 유저 결정: 주기 단위가 아니라 계속 줄어드는 원) —
+    ///     클라 경계 렌더(ClosureFieldOverlay.ComputeSafeDistance)와 같은 식이다.</summary>
+    private double GetSwarmSafeDistance(long matchingId, DateTime nowUtc)
     {
         if (!SwarmFieldEnabled)
-            return int.MaxValue;
+            return double.MaxValue;
         var closureState = _areaClosureManager.GetMatchingState(matchingId);
         if (closureState == null)
-            return int.MaxValue;
+            return double.MaxValue;
 
         double shrinkElapsed = (nowUtc - closureState.GameStartTime).TotalSeconds - SwarmFieldHoldSeconds;
-        if (shrinkElapsed <= 0) return int.MaxValue;
+        if (shrinkElapsed <= 0) return double.MaxValue;
 
         double progress = Math.Min(1d, shrinkElapsed / SwarmFieldShrinkSeconds);
-        return (int)Math.Ceiling(SwarmPressureField.MaxDistance * (1d - progress));
+        return SwarmPressureField.MaxDistance * (1d - progress);
     }
 
     /// <summary>구역 전체가 현재 경계 밖(폐쇄·자기장)인가 — 봇 대피·스팟 필터의 기준.</summary>
@@ -747,14 +749,14 @@ public partial class GameServer
         if (worldPosition == null)
             return 0;
 
-        int safeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
-        if (safeDistance == int.MaxValue)
+        double safeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
+        if (safeDistance >= double.MaxValue)
             return 0;
 
         var cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, worldPosition);
-        int over = SwarmPressureField.GetDistance(cell) - safeDistance;
+        double over = SwarmPressureField.GetDistance(cell) - safeDistance;
         if (over <= 0) return 0;
-        return SwarmFieldBaseCorruptionPerTick + over * SwarmFieldCorruptionPerExtraCell;
+        return SwarmFieldBaseCorruptionPerTick + (int)(over * SwarmFieldCorruptionPerExtraCell);
     }
 
     // 자기장 파생 웨이브 (#272): 계산은 AreaClosureManager.BuildSwarmFieldWaves가 담당한다.
