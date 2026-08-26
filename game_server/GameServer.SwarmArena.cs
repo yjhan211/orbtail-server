@@ -1346,6 +1346,40 @@ public partial class GameServer
     // 경계 속도(초당 약 0.17셀) 기준 재발동은 약 18초에 한 번 — 와리가리하지 않는다.
     private const int SwarmBotFieldEvacuateMarginCells = 3;
 
+    /// <summary>
+    ///     자기장 안쪽 대피 목적지 (#272, 매치 3030 실측 수리): 옛 후보(SwarmHuntingAreas =
+    ///     외곽 사냥방)는 원형 자기장에서 다음 희생양이라, 대피한 봇들이 바깥 방으로 몰려가
+    ///     절반이 자기장에 죽었다. 여유(6셀)까지 안전한 셀을 가진 구역 중 안쪽 셀이 봇에서
+    ///     가장 가까운 곳으로 보낸다 — 목적지 셀은 그 구역의 가장 안쪽 셀이다.
+    /// </summary>
+    private (AreaType Area, Cell Cell) ResolveSwarmFieldEvacuationTarget(long matchingId, Vector3f botPosition)
+    {
+        double safeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
+        AreaType bestArea = AreaType.Ground;
+        Cell bestCell = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Ground);
+        float bestSq = float.MaxValue;
+        foreach (var region in GameMapData.GetAreas(MapId.School))
+        {
+            var area = region.AreaType;
+            if (area == AreaType.None) continue;
+            var cells = GetSwarmAreaCellsByDistance(area);
+            if (cells.Count == 0 ||
+                cells[0].Distance > safeDistance - SwarmBotFieldEvacuateMarginCells * 2)
+                continue;
+
+            var innermost = BotPlayerManager.CellToWorldPosition(MapId.School, cells[0].Cell);
+            float dx = innermost.X - botPosition.X;
+            float dy = innermost.Y - botPosition.Y;
+            float distanceSq = dx * dx + dy * dy;
+            if (distanceSq >= bestSq) continue;
+            bestSq = distanceSq;
+            bestArea = area;
+            bestCell = cells[0].Cell;
+        }
+
+        return (bestArea, bestCell);
+    }
+
     private SpotArenaBotDirective ResolveSwarmBotDirective(long matchingId, long botPlayerId)
     {
         var directive = ResolveSwarmBotDirectiveCore(matchingId, botPlayerId);
@@ -1407,23 +1441,12 @@ public partial class GameServer
         // 몹은 도망칠 수 있고 폐쇄는 못 도망친다. 순서가 그대로 우선순위다.
 
         // 0) 경계 밖 탈출 최우선 — 자기장에서는 안쪽으로 걷는 것 자체가 대피 경로다.
-        //    경계 안 사냥터 중 가장 가까운 곳으로, 전부 밖이면 종착지 운동장으로 향한다.
+        //    목적지는 자기장 안쪽 대피 구역 (#272 수리: 옛 사냥터 후보는 외곽 방이라 다음 희생양).
         if (IsSwarmAreaOutside(matchingId, bot.CurrentArea))
         {
             _swarmBotFleeDirective.Add((matchingId, botPlayerId));
-            AreaType evacuationArea = SwarmHuntingAreas
-                .Where(area => !IsSwarmAreaOutside(matchingId, area))
-                .OrderBy(area =>
-                {
-                    var center = BotPlayerManager.CellToWorldPosition(
-                        MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
-                    float dx = center.X - bot.Position.X;
-                    float dy = center.Y - bot.Position.Y;
-                    return dx * dx + dy * dy;
-                })
-                .DefaultIfEmpty(AreaType.Ground)
-                .First();
-            Cell evacuationCell = GameMapData.GetAreaSpawnCell(MapId.School, evacuationArea);
+            var (evacuationArea, evacuationCell) =
+                ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 evacuationArea,
@@ -1468,20 +1491,9 @@ public partial class GameServer
                         retreatCell,
                         BotPlayerManager.CellToWorldPosition(MapId.School, retreatCell));
 
-                // 이 방엔 이제 설 자리가 없다 — 경계 안 이웃 구역으로 (0)과 같은 후보 규칙.
-                AreaType fieldEvacuationArea = SwarmHuntingAreas
-                    .Where(area => !IsSwarmAreaOutside(matchingId, area))
-                    .OrderBy(area =>
-                    {
-                        var center = BotPlayerManager.CellToWorldPosition(
-                            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
-                        float dx = center.X - bot.Position.X;
-                        float dy = center.Y - bot.Position.Y;
-                        return dx * dx + dy * dy;
-                    })
-                    .DefaultIfEmpty(AreaType.Ground)
-                    .First();
-                Cell fieldEvacuationCell = GameMapData.GetAreaSpawnCell(MapId.School, fieldEvacuationArea);
+                // 이 방엔 이제 설 자리가 없다 — 자기장 안쪽 대피 구역으로.
+                var (fieldEvacuationArea, fieldEvacuationCell) =
+                    ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
                 return new SpotArenaBotDirective(
                     SpotArenaBotMode.Escort,
                     fieldEvacuationArea,
@@ -1501,27 +1513,10 @@ public partial class GameServer
             {
                 // 대피는 도주 예외 — 왕복 억제를 우회해 어디로든 즉시 나간다.
                 _swarmBotFleeDirective.Add((matchingId, botPlayerId));
-                // 대피처는 사냥터 5곳이 아니라 열린 전 구역이다 (#229 8단계). 사냥터로 좁히면
-                // 후반에 후보가 운동장 하나로 줄어 경로가 길어지고, 결국 못 나가고 죽는다.
-                AreaType closureEvacuationArea = GameMapData.GetAreas(MapId.School)
-                    .Select(region => region.AreaType)
-                    .Distinct()
-                    .Where(area => area != AreaType.None && area != bot.CurrentArea &&
-                                   !closureSnapshot.ClosedAreas.Contains(area) &&
-                                   !closureSnapshot.WarningAreas.Contains(area) &&
-                                   !IsSwarmAreaOutside(matchingId, area))
-                    .OrderBy(area =>
-                    {
-                        var center = BotPlayerManager.CellToWorldPosition(
-                            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
-                        float dx = center.X - bot.Position.X;
-                        float dy = center.Y - bot.Position.Y;
-                        return dx * dx + dy * dy;
-                    })
-                    .DefaultIfEmpty(AreaType.Ground)
-                    .First();
-                Cell closureEvacuationCell =
-                    GameMapData.GetAreaSpawnCell(MapId.School, closureEvacuationArea);
+                // 목적지는 자기장 안쪽 대피 구역 (#272 수리): 전 구역 최근접 후보는 곧 경고가
+                // 뜰 바깥 방을 고를 수 있다 — 원형 자기장에서 안전은 항상 안쪽이다.
+                var (closureEvacuationArea, closureEvacuationCell) =
+                    ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
                 return new SpotArenaBotDirective(
                     SpotArenaBotMode.Escort,
                     closureEvacuationArea,
