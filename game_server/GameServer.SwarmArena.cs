@@ -1342,6 +1342,10 @@ public partial class GameServer
     private const double SwarmBotClosureEvacuateBaseSeconds = 4d;
     private const double SwarmBotClosureEvacuatePerOrbSeconds = 0.5d;
 
+    // 자기장 대피 여유 (셀, #272): 경계에 이만큼 다가서면 미리 물러나고, 두 배 안쪽까지 들어간다.
+    // 경계 속도(초당 약 0.17셀) 기준 재발동은 약 18초에 한 번 — 와리가리하지 않는다.
+    private const int SwarmBotFieldEvacuateMarginCells = 3;
+
     private SpotArenaBotDirective ResolveSwarmBotDirective(long matchingId, long botPlayerId)
     {
         var directive = ResolveSwarmBotDirectiveCore(matchingId, botPlayerId);
@@ -1425,6 +1429,65 @@ public partial class GameServer
                 evacuationArea,
                 evacuationCell,
                 BotPlayerManager.CellToWorldPosition(MapId.School, evacuationCell));
+        }
+
+        // 0.2) 자기장 셀 대피 (#272, 2026-08-26 유저 제보 "봇이 자기장을 무시한다"): 구역 단위
+        //      신호(완전-밖·경고)만 보면 경계가 방을 관통하는 동안 빨간 쪽에 선 봇이 오염을
+        //      그대로 마신다. 내 셀이 경계 밖이거나 여유(3셀) 안이면 같은 구역의 안쪽 셀로
+        //      물러나고, 구역에 안전 셀이 없으면 경계 안 이웃 구역으로 나간다.
+        double fieldSafeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
+        if (fieldSafeDistance < double.MaxValue)
+        {
+            var botCell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, bot.Position);
+            if (SwarmPressureField.GetDistance(botCell) >
+                fieldSafeDistance - SwarmBotFieldEvacuateMarginCells)
+            {
+                // 대피는 도주 예외 — 왕복 억제를 우회해 즉시 물러난다.
+                _swarmBotFleeDirective.Add((matchingId, botPlayerId));
+
+                // 같은 구역에서 여유 두 배(6셀)까지 안전한 셀 중 가장 가까운 곳으로.
+                Cell retreatCell = null;
+                float retreatBestSq = float.MaxValue;
+                foreach (var entry in GetSwarmAreaCellsByDistance(bot.CurrentArea))
+                {
+                    if (entry.Distance > fieldSafeDistance - SwarmBotFieldEvacuateMarginCells * 2)
+                        break;
+                    var candidate = BotPlayerManager.CellToWorldPosition(MapId.School, entry.Cell);
+                    float candidateDx = candidate.X - bot.Position.X;
+                    float candidateDy = candidate.Y - bot.Position.Y;
+                    float candidateSq = candidateDx * candidateDx + candidateDy * candidateDy;
+                    if (candidateSq >= retreatBestSq) continue;
+                    retreatBestSq = candidateSq;
+                    retreatCell = entry.Cell;
+                }
+
+                if (retreatCell != null)
+                    return new SpotArenaBotDirective(
+                        SpotArenaBotMode.Escort,
+                        bot.CurrentArea,
+                        retreatCell,
+                        BotPlayerManager.CellToWorldPosition(MapId.School, retreatCell));
+
+                // 이 방엔 이제 설 자리가 없다 — 경계 안 이웃 구역으로 (0)과 같은 후보 규칙.
+                AreaType fieldEvacuationArea = SwarmHuntingAreas
+                    .Where(area => !IsSwarmAreaOutside(matchingId, area))
+                    .OrderBy(area =>
+                    {
+                        var center = BotPlayerManager.CellToWorldPosition(
+                            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
+                        float dx = center.X - bot.Position.X;
+                        float dy = center.Y - bot.Position.Y;
+                        return dx * dx + dy * dy;
+                    })
+                    .DefaultIfEmpty(AreaType.Ground)
+                    .First();
+                Cell fieldEvacuationCell = GameMapData.GetAreaSpawnCell(MapId.School, fieldEvacuationArea);
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Escort,
+                    fieldEvacuationArea,
+                    fieldEvacuationCell,
+                    BotPlayerManager.CellToWorldPosition(MapId.School, fieldEvacuationCell));
+            }
         }
 
         // 0.3) 폐쇄 조기 철수 (#226 F): 경고 구역에서는 꼬리 길이에 비례해 일찍 나간다.
