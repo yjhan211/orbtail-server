@@ -430,6 +430,12 @@ public sealed class SwarmArenaManager
     public static bool MonsterSpawnEnabled { get; set; } =
         Environment.GetEnvironmentVariable("DEV_NO_MONSTERS") != "1";
 
+    /// <summary>
+    ///     #272 경계 토출 스폰 리졸버 — GameServer가 주입한다. 자기장 경계가 구역을 관통 중이면
+    ///     (스폰 셀 = 경계 밖 빨간 띠, 앵커 셀 = 경계 안 띠)를 주고, 구역이 온전히 안전하면 null.
+    /// </summary>
+    public static Func<long, AreaType, (Cell Spawn, Cell Anchor)?>? FieldSpawnCellResolver { get; set; }
+
     /// <summary>폐쇄된 구역은 신규 스폰을 멈춘다 — 잔존 몹은 이주로 처리된다.</summary>
     public Func<long, AreaType, bool>? IsAreaClosedResolver { get; set; }
 
@@ -1243,6 +1249,19 @@ public sealed class SwarmArenaManager
                 0f), center, area);
         }
 
+        // #272 경계 토출 스폰 (2026-08-26 유저 결정): 자기장 경계가 이 구역을 관통 중이면
+        // 캠프는 저작 앵커 대신 경계 밖(빨간 지대)에서 태어나, 경계 안쪽 앵커로 걸어 들어온다 —
+        // 오염이 잔상을 토해내는 그림. 사냥하려면 경계 근처로 가야 해 위험·보상이 겹친다.
+        Vector3f fieldHomeAnchor = null;
+        var fieldSpawn = FieldSpawnCellResolver?.Invoke(state.MatchingId, area);
+        if (fieldSpawn != null)
+        {
+            campAnchor = ClampToAreaWalkable(
+                BotPlayerManager.CellToWorldPosition(MapId.School, fieldSpawn.Value.Spawn), center, area);
+            fieldHomeAnchor = ClampToAreaWalkable(
+                BotPlayerManager.CellToWorldPosition(MapId.School, fieldSpawn.Value.Anchor), center, area);
+        }
+
         // 캠프별 오브 색 유지 — 처치 보상 색이 캠프 단위로 읽힌다.
         var pattern = (SwarmPattern)(campIndex % 3);
         var kinds = GetCampComposition(state, area, campIndex);
@@ -1286,8 +1305,9 @@ public sealed class SwarmArenaManager
                 AttackRangeValue = stats.AttackRange,
                 AttackCooldownValue = stats.AttackCooldownSeconds,
                 CampIndex = campIndex,
-                AnchorX = position.X,
-                AnchorY = position.Y
+                // 경계 토출이면 앵커는 경계 안쪽 — 구역이 비어 있으면 이 앵커로 걸어 들어온다.
+                AnchorX = fieldHomeAnchor != null ? fieldHomeAnchor.X : position.X,
+                AnchorY = fieldHomeAnchor != null ? fieldHomeAnchor.Y : position.Y
             };
             state.Monsters[monster.MonsterId] = monster;
             result.SpawnedMonsters.Add(monster.ToMonsterRuntimeInfo());

@@ -261,6 +261,8 @@ public partial class GameServer
             GameClientSession.SwarmDummyMoveCallback ??= MoveSwarmCutDummy;
             GameClientSession.SwarmGrowthPickCallback ??= HandleSwarmGrowthPick;
             GameClientSession.SwarmOrbDecisionCallback ??= HandleSwarmOrbDecision;
+            // #272 경계 토출 스폰: 자기장 경계가 관통 중인 구역의 캠프는 빨간 지대에서 태어난다.
+            SwarmArenaManager.FieldSpawnCellResolver ??= ResolveSwarmFieldSpawn;
             // 하트 = 본체 오염 + 앞줄 오브 HP 회복 (#222 M4, 원작 하트는 스쿼드도 회복).
             // 엔트리 제거 = 만충 취급 — 다음 오브 비주얼 틱에 체력바·크랙이 함께 복구된다.
             GameClientSession.SwarmHeartPickupCallback ??=
@@ -757,6 +759,71 @@ public partial class GameServer
         double over = SwarmPressureField.GetDistance(cell) - safeDistance;
         if (over <= 0) return 0;
         return SwarmFieldBaseCorruptionPerTick + (int)(over * SwarmFieldCorruptionPerExtraCell);
+    }
+
+    // #272 경계 토출 스폰: 구역별 walkable 셀을 중심 거리 오름차순으로 캐시 — 리졸버가 띠를 자른다.
+    private static Dictionary<AreaType, List<(Cell Cell, int Distance)>>? _swarmAreaCellsByDistance;
+
+    private static List<(Cell Cell, int Distance)> GetSwarmAreaCellsByDistance(AreaType area)
+    {
+        if (_swarmAreaCellsByDistance == null)
+        {
+            var byArea = new Dictionary<AreaType, List<(Cell Cell, int Distance)>>();
+            foreach (var pair in SwarmPressureField.DistancesByCell)
+            {
+                var cell = new Cell(pair.Key.X, pair.Key.Y);
+                var cellArea = GameMapData.GetCurrentArea(MapId.School, cell);
+                if (cellArea == AreaType.None) continue;
+                if (!byArea.TryGetValue(cellArea, out var list))
+                    byArea[cellArea] = list = new List<(Cell, int)>();
+                list.Add((cell, pair.Value));
+            }
+
+            foreach (var list in byArea.Values)
+                list.Sort((left, right) => left.Distance.CompareTo(right.Distance));
+            _swarmAreaCellsByDistance = byArea;
+        }
+
+        return _swarmAreaCellsByDistance.TryGetValue(area, out var cells)
+            ? cells
+            : [];
+    }
+
+    // 경계 토출 띠 폭 (셀): 스폰은 경계 바로 밖, 복귀 앵커는 경계 바로 안 — 태어나서 걸어 들어온다.
+    private const int SwarmFieldSpawnBandCells = 6;
+
+    /// <summary>
+    ///     #272 경계 토출 스폰 (2026-08-26 유저 결정): 자기장 경계가 구역을 관통 중이면 캠프
+    ///     신규 스폰을 (경계 밖 빨간 띠, 경계 안 앵커 띠)로 옮긴다 — 오염이 잔상을 토해내는 그림.
+    ///     구역이 온전히 안전하면 null(저작 캠프 앵커 유지), 온전히 밖이면 폐쇄 스폰 정지 규칙이
+    ///     이미 막는다. 유예 0(개전 즉시 수축)이라 경계는 처음부터 존재한다.
+    /// </summary>
+    private (Cell Spawn, Cell Anchor)? ResolveSwarmFieldSpawn(long matchingId, AreaType area)
+    {
+        if (!SwarmFieldEnabled) return null;
+        double safeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
+        if (safeDistance >= double.MaxValue) return null;
+
+        var cells = GetSwarmAreaCellsByDistance(area);
+        if (cells.Count == 0 || cells[^1].Distance <= safeDistance) return null;
+
+        var redBand = cells
+            .Where(entry => entry.Distance > safeDistance &&
+                            entry.Distance <= safeDistance + SwarmFieldSpawnBandCells)
+            .ToList();
+        if (redBand.Count == 0)
+            redBand = cells.Where(entry => entry.Distance > safeDistance).ToList();
+
+        var safeBand = cells
+            .Where(entry => entry.Distance <= safeDistance &&
+                            entry.Distance > safeDistance - SwarmFieldSpawnBandCells)
+            .ToList();
+        if (safeBand.Count == 0)
+            safeBand = [cells[0]];
+
+        return (
+            redBand[Random.Shared.Next(redBand.Count)].Cell,
+            safeBand[Random.Shared.Next(safeBand.Count)].Cell);
     }
 
     // 자기장 파생 웨이브 (#272): 계산은 AreaClosureManager.BuildSwarmFieldWaves가 담당한다.
