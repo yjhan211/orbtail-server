@@ -216,10 +216,12 @@ namespace network.common.data.helpers
             BattleItemRecipeData.Initialize(loadedData[DataFiles.Item.BattleRecipe]);
             BattleItemCombatData.Initialize(loadedData[DataFiles.Item.BattleCombat]);
 
-            // Map data
+            // Map data — 신맵(School2) 리전은 별도 파일이라 병합해 넘긴다 (행에 map_id가 있어 안전).
             GameMapData.Initialize(
                 loadedData[DataFiles.Map.MapInfo],
                 loadedData[DataFiles.Map.MapRegion]
+                    .Concat(loadedData[DataFiles.Map.MapRegionSchool2])
+                    .ToList()
             );
             GameMonsterCampData.Initialize(loadedData[DataFiles.Map.MonsterCampAnchor]);
 
@@ -367,9 +369,11 @@ namespace network.common.data.helpers
             {
                 public const string MapInfo = "map_info.csv";
                 public const string MapRegion = "map_region.csv";
+                // #272 신맵(School2) 전용 리전 — 씬 내보내기가 기존 School 행을 덮지 않게 파일 분리.
+                public const string MapRegionSchool2 = "map_region_school2.csv";
                 public const string MonsterCampAnchor = "monster_camp_anchor.csv";
 
-                public static readonly string[] ALL = new[] { MapInfo, MapRegion, MonsterCampAnchor };
+                public static readonly string[] ALL = new[] { MapInfo, MapRegion, MapRegionSchool2, MonsterCampAnchor };
             }
         }
     }

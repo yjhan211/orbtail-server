@@ -6,6 +6,9 @@ namespace network.common
         None = 0,
         School,
         Camp,
+        // #272 8인 4세트 신맵 (2026-08-27): 구역 데이터는 map_region_school2.csv 별도 파일 —
+        // 씬 내보내기가 기존 School 행을 덮지 않게 분리한다.
+        School2,
     }
 
     /// <summary>
