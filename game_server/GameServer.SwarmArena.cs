@@ -1346,8 +1346,10 @@ public partial class GameServer
     private const double SwarmBotClosureEvacuatePerOrbSeconds = 0.5d;
 
     // 자기장 대피 여유 (셀, #272): 경계에 이만큼 다가서면 미리 물러나고, 두 배 안쪽까지 들어간다.
-    // 경계 속도(초당 약 0.17셀) 기준 재발동은 약 18초에 한 번 — 와리가리하지 않는다.
-    private const int SwarmBotFieldEvacuateMarginCells = 3;
+    // 3 → 5 (School2 실측 9006207): 반경이 커진 신맵은 경계가 초당 약 0.28셀로 60% 빨라
+    // 3셀 마진이 11초에 불과했다 — 합류→통로 이송 중 봇 5/8이 오염사. 5셀 = 약 18초로
+    // School 시절 여유를 복원한다. 재발동 간격도 같은 비율이라 와리가리하지 않는다.
+    private const int SwarmBotFieldEvacuateMarginCells = 5;
 
     // 방 마감 선제 탈출 리드 (초): 문 잠금 전에 방을 비우는 여유 — 큰 방 횡단 + 문 경유 시간.
     private const double SwarmBotAreaExitLeadSeconds = 25d;
