@@ -10,14 +10,14 @@
         <ProjectReference Include="..\network\network.csproj"/>
     </ItemGroup>
     <ItemGroup>
-        <PackageReference Include="MessagePack" Version="3.1.4" />
-        <PackageReference Include="MessagePackAnalyzer" Version="3.1.4">
+        <PackageReference Include="MessagePack" Version="3.1.8" />
+        <PackageReference Include="MessagePackAnalyzer" Version="3.1.8">
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="MessagePack.ReactiveProperty" Version="3.1.4" />
-        <PackageReference Include="MessagePack.UnityShims" Version="3.1.4" />
-        <PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.4" />
+        <PackageReference Include="MessagePack.ReactiveProperty" Version="3.1.8" />
+        <PackageReference Include="MessagePack.UnityShims" Version="3.1.8" />
+        <PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.8" />
         <PackageReference Include="NATS.Client" Version="1.1.7" />
         <PackageReference Include="StackExchange.Redis" Version="2.8.24" />
         <PackageReference Include="RedLock" Version="9.0.2" />
