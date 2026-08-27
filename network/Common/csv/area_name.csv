@@ -19,4 +19,27 @@ area_type,name_kr,name_en,name_jp
 40,교실1,Classroom 1,教室1
 41,4F,4F,4F
 42,방송실,Broadcast Room,放送室
+50,교실1,Classroom 1,教室1
+51,교실2,Classroom 2,教室2
+52,고사실,Exam Room,試験室
+53,방송실,Broadcast Room,放送室
+54,창고,Storage,倉庫
+55,보건실,Nurse's Office,保健室
+56,행정실1,Admin Office 1,事務室1
+57,행정실2,Admin Office 2,事務室2
+60,서쪽 도서관,West Library,西図書館
+61,동쪽 도서관,East Library,東図書館
+62,서쪽 강당,West Gym,西講堂
+63,동쪽 강당,East Gym,東講堂
+64,복도,Corridor,廊下
+65,복도,Corridor,廊下
+66,복도,Corridor,廊下
+67,복도,Corridor,廊下
+68,복도,Corridor,廊下
+69,복도,Corridor,廊下
+70,복도,Corridor,廊下
+71,복도,Corridor,廊下
+72,복도,Corridor,廊下
+73,복도,Corridor,廊下
+74,운동장,Schoolyard,グラウンド
 100,캠프,Camp,キャンプ
