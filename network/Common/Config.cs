@@ -278,10 +278,14 @@ namespace network.common
         /// </summary>
         public const float SWARM_JOIN_DOOR_GAUGE_SECONDS = 12f;
 
-        /// <summary>#272 School2 문 등급: 합류 문(211~222)은 듀얼 관문 게이지를 쓴다.</summary>
+        /// <summary>
+        ///     #272 School2 문 등급: 합류→중앙 J 문(213·216·219·222)만 듀얼 관문 게이지.
+        ///     복도→합류 진입 문(211·212·214·215·217·218·220·221)은 싸울 상대가 아직 없는
+        ///     통과 문이라 짧다 (2026-08-27 플레이 피드백 "복도에서 도서관 가는 문 너무 길다").
+        /// </summary>
         public static float GetSwarmDoorGaugeSeconds(int doorId)
         {
-            return doorId is >= 211 and <= 222
+            return doorId is 213 or 216 or 219 or 222
                 ? SWARM_JOIN_DOOR_GAUGE_SECONDS
                 : SWARM_DOOR_GAUGE_SECONDS;
         }
