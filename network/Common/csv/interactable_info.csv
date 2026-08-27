@@ -77,4 +77,12 @@ id,area_type,object_type,short_name_key,description_key,interaction_type,cell_x,
 702000023,32,11,interactable/702000023/name,interactable/702000023/desc,7,114,95,21
 702000024,40,11,interactable/702000024/name,interactable/702000024/desc,7,114,95,21
 702000025,22,11,interactable/702000025/name,interactable/702000025/desc,7,100,76,22
+702000101,50,11,interactable/702000101/name,interactable/702000101/desc,7,113,78,201
+702000102,51,11,interactable/702000102/name,interactable/702000102/desc,7,164,80,202
+702000103,52,11,interactable/702000103/name,interactable/702000103/desc,7,83,47,203
+702000104,53,11,interactable/702000104/name,interactable/702000104/desc,7,83,-1,204
+702000105,54,11,interactable/702000105/name,interactable/702000105/desc,7,113,-32,205
+702000106,55,11,interactable/702000106/name,interactable/702000106/desc,7,195,-1,206
+702000107,56,11,interactable/702000107/name,interactable/702000107/desc,7,194,47,207
+702000108,57,11,interactable/702000108/name,interactable/702000108/desc,7,164,-33,208
 702000026,40,11,interactable/702000026/name,interactable/702000026/desc,7,100,76,22
