@@ -38,3 +38,5 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 3,area,121,8,121,38,74
 3,area,156,8,156,38,74
 3,area,95,-20,182,66,72
+3,area,95,-20,182,66,73
+3,area,95,-20,182,66,74
