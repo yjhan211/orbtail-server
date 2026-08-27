@@ -8,20 +8,24 @@ namespace network.common.data
 
     /// <summary>
     /// Fixed Survivor Royale opening anchors.  A match seed permutes anchors, never players,
-    /// so every roster member receives one unique corridor position regardless of join order.
+    /// so every roster member receives one unique position regardless of join order.
     /// </summary>
     public static class MatchSpawnData
     {
+        // #272 School2 재지정 (2026-08-27): School 복도 앵커 좌표 → S2 시작방 8곳의 실스폰 셀
+        // (GetAreaSpawnCell = rect 중심과 동일). 실전 배정은 CreatePhaseRoomAssignments지만,
+        // 이 배열이 텔레메트리 앵커 인덱스(GetAnchorIndex)·씬 스폰 기즈모의 원천이라
+        // 실스폰과 일치해야 한다. 순서 = PhaseRoomCandidates와 동일.
         private static readonly Cell[] CorridorAnchors =
         {
-        new(140, 70),
-        new(160, 108),
-        new(112, 108),
-        new(145, 108),
-        new(178, 73),
-        new(109, 85),
-        new(139, 93),
-        new(165, 85)
+        new(105, 85),
+        new(172, 85),
+        new(77, 56),
+        new(78, -10),
+        new(105, -39),
+        new(199, -10),
+        new(199, 56),
+        new(172, -39)
     };
 
         // #272 School2 8인 전환 — 스폰 포드 = 1인 전용 시작방 8곳 (외곽 링).
