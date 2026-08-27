@@ -57,14 +57,12 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 3,obstacle,126,67,140,67,0
 3,obstacle,126,76,126,76,0
 3,obstacle,126,80,126,82,0
-3,obstacle,128,-36,128,-33,0
 3,obstacle,128,-30,128,-30,0
-3,obstacle,128,-21,136,-21,0
+3,obstacle,128,-21,133,-21,0
 3,obstacle,139,-21,151,-21,0
 3,obstacle,143,67,149,67,0
 3,obstacle,149,76,149,76,0
 3,obstacle,149,79,149,82,0
-3,obstacle,151,-36,151,-33,0
 3,obstacle,151,-30,151,-30,0
 3,obstacle,164,-36,164,-34,0
 3,obstacle,164,-31,164,-30,0
@@ -80,3 +78,6 @@ map_id,region_type,start_x,start_y,end_x,end_y,area
 3,obstacle,196,47,197,47,0
 3,obstacle,197,-1,198,-1,0
 3,obstacle,198,12,198,12,0
+3,obstacle,151,-33,151,-31,0
+3,obstacle,137,-21,138,-21,0
+3,obstacle,128,-32,128,-31,0
