@@ -497,8 +497,8 @@ public partial class GameServer
                 origin.X + unitX * along,
                 origin.Y + unitY * along / SwarmGroundYScale,
                 0f);
-            var cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, probe);
-            if (GameMapData.GetCurrentArea(MapId.School, cell) != area)
+            var cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, probe);
+            if (GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) != area)
                 return along;
         }
 

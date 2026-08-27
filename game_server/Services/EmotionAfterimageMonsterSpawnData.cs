@@ -20,12 +20,13 @@ internal static class EmotionAfterimageMonsterSpawnData
     // Recovery remains a player-board option, but it has no combat identity for
     // afterimages. Monster packs only spawn the three attack affinities.
     private static readonly int[] AllAffinityItemIds = [HopeT1, ForgetT1, DespairT1];
+    // #272 School2: 개전 핵 핫스팟 = 합류 구역 4곳 (동서남북 분산 — 공용 프리미엄 표적).
     private static readonly AreaType[] InitialHotspotAreas =
     [
-        AreaType.Classroom4,
-        AreaType.Library,
-        AreaType.AdminOffice,
-        AreaType.Ground
+        AreaType.S2Library1,
+        AreaType.S2Library2,
+        AreaType.S2Gym1,
+        AreaType.S2Gym2
     ];
 
     public static readonly MonsterDefinition[] Definitions = CreateDefinitions();
@@ -139,24 +140,25 @@ internal static class EmotionAfterimageMonsterSpawnData
         int id = EmotionAfterimageMonsterManager.FirstMonsterId;
         int nextPackId = 1;
 
-        // The first Classroom4 pack retains 202001 so the placed MonsterT1 template
-        // and the server's first stable identity continue to agree.
-        AddRoomPacks(AreaType.Classroom4, 4, [(127, 95), (120, 91), (117, 99)]);
-        AddRoomPacks(AreaType.ExamRoom, 1, [(113, 121), (118, 126)]);
-        AddRoomPacks(AreaType.BroadcastRoom, 2, [(145, 121), (150, 126)]);
-        AddRoomPacks(AreaType.Classroom2, 3, [(177, 121), (182, 126)]);
-        AddRoomPacks(AreaType.Classroom3, 5, [(151, 94), (147, 89), (156, 99)]);
+        // #272 School2 이식 — 셀은 map_region_school2.csv rect에서 역산 (방 중심 부근 2~6점).
+        // 시작방 8곳: 팩 1개(9마리)씩 — 개인 파밍 88초 분량.
+        AddRoomPacks(AreaType.S2Classroom1, 1, [(103, 82), (107, 88)]);
+        AddRoomPacks(AreaType.S2Classroom2, 2, [(170, 82), (174, 88)]);
+        AddRoomPacks(AreaType.S2ExamRoom, 3, [(75, 53), (80, 60)]);
+        AddRoomPacks(AreaType.S2BroadcastRoom, 4, [(75, -14), (80, -7)]);
+        AddRoomPacks(AreaType.S2Storage, 5, [(103, -43), (107, -36)]);
+        AddRoomPacks(AreaType.S2NurseOffice, 6, [(197, -14), (202, -7)]);
+        AddRoomPacks(AreaType.S2AdminOffice1, 7, [(196, 53), (201, 60)]);
+        AddRoomPacks(AreaType.S2AdminOffice2, 8, [(170, -43), (174, -36)]);
 
-        AddRoomPacks(AreaType.Library, 6, [(92, 86), (96, 91), (90, 96), (97, 101)]);
-        AddRoomPacks(AreaType.Gym, 7, [(180, 86), (188, 90), (180, 97), (190, 99)]);
+        // 합류 구역 4곳: 팩 2개 — 1:1 조우 무대의 공용 사냥터.
+        AddRoomPacks(AreaType.S2Library1, 9, [(131, 72), (137, 78), (143, 84), (133, 86)]);
+        AddRoomPacks(AreaType.S2Library2, 10, [(133, -39), (139, -33), (145, -27), (135, -25)]);
+        AddRoomPacks(AreaType.S2Gym1, 11, [(77, 17), (83, 23), (89, 29), (79, 31)]);
+        AddRoomPacks(AreaType.S2Gym2, 12, [(188, 17), (194, 23), (200, 29), (190, 31)]);
 
-        AddRoomPacks(AreaType.Storage, 8, [(87, 62), (93, 67)]);
-        AddRoomPacks(AreaType.Junkyard, 9, [(103, 69), (112, 72)]);
-        AddRoomPacks(AreaType.AdminOffice, 10, [(121, 63), (128, 69)]);
-        AddRoomPacks(AreaType.StaffRoom, 11, [(149, 63), (160, 70)]);
-        AddRoomPacks(AreaType.Junkyard2, 12, [(179, 72), (190, 75)]);
-        AddRoomPacks(AreaType.Storage2, 13, [(201, 73), (208, 79)]);
-        AddRoomPacks(AreaType.Ground, 14, [(92, 28), (104, 35), (118, 42), (130, 49), (112, 24), (136, 30)]);
+        // 운동장(풋살 코트): 종반 수렴 무대 — 팩 2개.
+        AddRoomPacks(AreaType.S2Ground, 13, [(128, 11), (134, 17), (140, 23), (146, 29), (150, 34), (132, 32)]);
 
         AddCorridorAnchors();
         return definitions.ToArray();
@@ -174,10 +176,11 @@ internal static class EmotionAfterimageMonsterSpawnData
                     // Preserve the authored cells as separate homes. Using only their
                     // average made all nine bodies appear to spawn from one point before
                     // the formation logic could spread them.
-                    Vector3f memberHome = CellToWorld(MapId.School, packCells[memberIndex % packCells.Count].x,
+                    Vector3f memberHome = CellToWorld(Config.SWARM_MATCH_MAP,
+                        packCells[memberIndex % packCells.Count].x,
                         packCells[memberIndex % packCells.Count].y);
                     definitions.Add(new MonsterDefinition(
-                        id++, MapId.School, area, memberHome,
+                        id++, Config.SWARM_MATCH_MAP, area, memberHome,
                         MaxHealth: isCore ? 48 : 12,
                         AttackDamage: isCore ? 8 : 1,
                         AttackRange: 0.65f,
@@ -203,7 +206,7 @@ internal static class EmotionAfterimageMonsterSpawnData
             {
                 var cell = cells[memberIndex % cells.Count];
                 definitions.Add(new MonsterDefinition(
-                    id++, MapId.School, area, CellToWorld(MapId.School, cell.x, cell.y),
+                    id++, Config.SWARM_MATCH_MAP, area, CellToWorld(Config.SWARM_MATCH_MAP, cell.x, cell.y),
                     MaxHealth: 12,
                     AttackDamage: 1,
                     AttackRange: 0.65f,
@@ -228,17 +231,18 @@ internal static class EmotionAfterimageMonsterSpawnData
 
         void AddCorridorAnchors()
         {
-            // Generic Corridor is the active School_New corridor area in map_region.csv.
+            // #272 School2: 상시 배회 앵커 = 1차 연결 통로(Corridor9) 랩 밴드 8점 (대칭 배치).
             // These nodes never enter the closure refill economy.
             foreach (var cell in new[]
                      {
-                         (140, 70), (174, 108), (112, 108), (145, 108),
-                         (178, 73), (109, 85), (139, 93), (165, 85)
+                         (99, -16), (138, -16), (178, -16), (99, 23),
+                         (178, 23), (99, 62), (139, 62), (178, 62)
                      })
             {
                 int anchorId = nextPackId++;
                 definitions.Add(new MonsterDefinition(
-                    id++, MapId.School, AreaType.Corridor, CellToWorld(MapId.School, cell.Item1, cell.Item2),
+                    id++, Config.SWARM_MATCH_MAP, AreaType.S2Corridor9,
+                    CellToWorld(Config.SWARM_MATCH_MAP, cell.Item1, cell.Item2),
                     MaxHealth: 12,
                     AttackDamage: 1,
                     AttackRange: 0.65f,

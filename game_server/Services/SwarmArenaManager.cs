@@ -172,7 +172,7 @@ public sealed class SwarmArenaManager
     private const float SupplyOffscreenDistance = 7f;
 
     // 안쪽(운동장) 편향 (#229 4단계-보정): 잔상이 중앙에서 번져 나오는 것처럼 보이게 한다.
-    private const AreaType SwarmInwardOriginArea = AreaType.Ground;
+    private static readonly AreaType SwarmInwardOriginArea = Config.SWARM_MATCH_GROUND_AREA;
     private const float SupplyInwardBias = 2.2f;
     private const double SupplyBlockedRetrySeconds = 1d;
     private const int SupplyCoreStoneReward = 3;
@@ -368,13 +368,18 @@ public sealed class SwarmArenaManager
     {
         switch (area)
         {
+            // #272 School2 중간 지대 3곳: 1차 통로(랩 밴드)·테라스 링·운동장.
+            // School 세대(정크장·회랑·운동장) 케이스는 데이터·테스트 보존용으로 남긴다.
             case AreaType.Junkyard:
+            case AreaType.S2Corridor9:
                 kind = SwarmMonsterKind.Golem;
                 return true;
             case AreaType.Corridor:
+            case AreaType.S2Terrace:
                 kind = SwarmMonsterKind.BabyDragon;
                 return true;
             case AreaType.Ground:
+            case AreaType.S2Ground:
                 kind = SwarmMonsterKind.TreeGiant;
                 return true;
             default:
@@ -492,9 +497,11 @@ public sealed class SwarmArenaManager
     {
         // SB 클론(캠프 모드): 균질 밀도 — 회랑 밴드(테라스=Corridor)에도 캠프가 선다.
         // 원본 맵의 링·광장 주변에도 몹 수풀이 고르게 깔려 있다 (역기획서 철학 ④).
-        if (area == AreaType.Corridor)
+        // #272 School2: 복도(연결로 9종)는 무스폰 통로, 테라스는 대형 공간(기본 프로파일).
+        if (area == AreaType.Corridor ||
+            (area >= AreaType.S2Corridor1 && area <= AreaType.S2Corridor9))
             return CampModeEnabled ? (12, 9d) : (0, 0d);
-        if (area == AreaType.Ground)
+        if (area == AreaType.Ground || area == Config.SWARM_MATCH_GROUND_AREA)
             return (14, 9d);
         // 시작방은 정확히 2팩(개전 1.5초 + 약 13초)만 주고 완전히 마른다 — 방은 유한
         // 콘텐츠고, 두 팩(약 18킬 = 18석)이면 방 스팟 2개를 열고 떠날 여비까지 나온다.
@@ -974,7 +981,7 @@ public sealed class SwarmArenaManager
                         return new SpotArenaBotDirective(
                             SpotArenaBotMode.Return,
                             bot.Area,
-                            MapCoordinateConverter.WorldToCell(MapId.School, commitment.Destination),
+                            MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, commitment.Destination),
                             commitment.Destination);
                     }
                 }
@@ -1015,7 +1022,7 @@ public sealed class SwarmArenaManager
             return new SpotArenaBotDirective(
                 mode,
                 bot.Area,
-                MapCoordinateConverter.WorldToCell(MapId.School, destination),
+                MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, destination),
                 destination);
         }
     }
@@ -1053,7 +1060,7 @@ public sealed class SwarmArenaManager
 
         return ClampToAreaWalkable(
             BotPlayerManager.CellToWorldPosition(
-                MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, bot.Area)),
+                Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, bot.Area)),
             bot.Position, bot.Area);
     }
 
@@ -1229,7 +1236,7 @@ public sealed class SwarmArenaManager
         MatchState state, AreaType area, int campIndex, DateTime now, SwarmArenaTickResult result)
     {
         var center = BotPlayerManager.CellToWorldPosition(
-            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
+            Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
         Vector3f campAnchor;
         var customAnchorCell = GameMonsterCampData.GetAnchor(area, campIndex);
         if (customAnchorCell != null)
@@ -1237,7 +1244,7 @@ public sealed class SwarmArenaManager
             // 커스텀 앵커 (#219): monster_camp_anchor.csv가 지정한 셀. 지터 없이 고정 —
             // 저작한 위치가 곧 실배치다. walkable 클램프만 안전망으로 유지한다.
             campAnchor = ClampToAreaWalkable(
-                BotPlayerManager.CellToWorldPosition(MapId.School, customAnchorCell), center, area);
+                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, customAnchorCell), center, area);
         }
         else
         {
@@ -1258,9 +1265,9 @@ public sealed class SwarmArenaManager
         if (fieldSpawn != null)
         {
             campAnchor = ClampToAreaWalkable(
-                BotPlayerManager.CellToWorldPosition(MapId.School, fieldSpawn.Value.Spawn), center, area);
+                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Spawn), center, area);
             fieldHomeAnchor = ClampToAreaWalkable(
-                BotPlayerManager.CellToWorldPosition(MapId.School, fieldSpawn.Value.Anchor), center, area);
+                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Anchor), center, area);
         }
 
         // 캠프별 오브 색 유지 — 처치 보상 색이 캠프 단위로 읽힌다.
@@ -1829,7 +1836,7 @@ public sealed class SwarmArenaManager
         // 운동장 밖 구역은 침투로 채운다 — 발원은 운동장 중심, 아래 앵커는 도착지가 된다.
         infiltrate = infiltrate && area != SwarmInwardOriginArea;
         var center = BotPlayerManager.CellToWorldPosition(
-            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
+            Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
         var anchors = new List<Vector3f>(CampsPerArea);
         for (int anchorIndex = 0; anchorIndex < CampsPerArea; anchorIndex++)
         {
@@ -1838,7 +1845,7 @@ public sealed class SwarmArenaManager
             {
                 anchors.Add(ClampToAreaWalkable(
                     BotPlayerManager.CellToWorldPosition(
-                        MapId.School, InsetAnchorFromAreaEdge(customAnchorCell, area)),
+                        Config.SWARM_MATCH_MAP, InsetAnchorFromAreaEdge(customAnchorCell, area)),
                     center, area));
                 continue;
             }
@@ -1903,7 +1910,7 @@ public sealed class SwarmArenaManager
             if (fieldSpawn != null)
             {
                 position = ClampToAreaWalkable(
-                    BotPlayerManager.CellToWorldPosition(MapId.School, fieldSpawn.Value.Spawn),
+                    BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Spawn),
                     packAnchor, area);
             }
             else if (infiltrate &&
@@ -2009,7 +2016,7 @@ public sealed class SwarmArenaManager
     {
         route = null!;
         var originCenter = BotPlayerManager.CellToWorldPosition(
-            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, SwarmInwardOriginArea));
+            Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, SwarmInwardOriginArea));
 
         // 원형 산개 (#232, 2026-08-17 유저 지시 "줄지어서가 아니라 원형으로"): 발원 각도를 무작위가
         // 아니라 "그 방으로 나가는 출구 방향" ± 지터로 잡는다. 목적지가 사방에 있으니 링은 고르게
@@ -2108,14 +2115,14 @@ public sealed class SwarmArenaManager
     {
         route = null!;
         var steps = BotPathfinder.FindPath(
-            MapId.School, fromArea, MapCoordinateConverter.WorldToCell(MapId.School, from),
-            toArea, MapCoordinateConverter.WorldToCell(MapId.School, to), isAreaBlocked);
+            Config.SWARM_MATCH_MAP, fromArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, from),
+            toArea, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, to), isAreaBlocked);
         if (steps == null || steps.Count == 0)
             return false;
 
         var planned = new List<Vector3f>(steps.Count + 2) { from };
         foreach (var step in steps)
-            planned.Add(BotPlayerManager.CellToWorldPosition(MapId.School, step.Cell));
+            planned.Add(BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, step.Cell));
         planned.Add(to);
 
         for (int index = 1; index < planned.Count; index++)
@@ -2175,7 +2182,7 @@ public sealed class SwarmArenaManager
             float t = index / (float)samples;
             var point = new Vector3f(from.X + dx * t, from.Y + dy * t, 0f);
             if (GameMapData.IsMoveablePosition(
-                    MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, point)))
+                    Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, point)))
             {
                 blockedRun = 0;
                 continue;
@@ -2232,7 +2239,7 @@ public sealed class SwarmArenaManager
             // 예열 중에는 문턱을 넘지 않는다 — 한 발 앞이 배정 구역이면 거기서 선다.
             if (holdAtThreshold &&
                 GameMapData.GetCurrentArea(
-                    MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, proposed)) ==
+                    Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, proposed)) ==
                 monster.HomeArea)
                 return;
 
@@ -2242,9 +2249,9 @@ public sealed class SwarmArenaManager
             // 비보행 칸을 밟는 것은 목표 웨이포인트가 보행 가능할 때만 허용한다 — 그러면
             // 다음 틱에 반드시 빠져나온다. 웨이포인트 자체가 구조물 안이면 그 점을 버린다.
             if (!GameMapData.IsMoveablePosition(
-                    MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, proposed)) &&
+                    Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, proposed)) &&
                 !GameMapData.IsMoveablePosition(
-                    MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, waypoint)))
+                    Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, waypoint)))
             {
                 monster.MarchIndex++;
                 continue;
@@ -2255,7 +2262,7 @@ public sealed class SwarmArenaManager
         }
 
         monster.Area = GameMapData.GetCurrentArea(
-            MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, monster.Position));
+            Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, monster.Position));
 
         // 도착은 문턱을 넘는 순간이다. "경로를 다 걸어야 도착"으로 바꿨더니 제한시간에 걸린
         // 개체가 방 밖에서 대량으로 걷혀 방 처치가 0이 됐다(봇 매치 9866042, 운동장 비중 100%).
@@ -2343,14 +2350,14 @@ public sealed class SwarmArenaManager
             return;
 
         if (GameMapData.IsMoveablePosition(
-                MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, monster.Position)))
+                Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, monster.Position)))
             return;
 
         var areaCenter = BotPlayerManager.CellToWorldPosition(
-            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, monster.Area));
+            Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, monster.Area));
         var rescued = ClampToAreaWalkable(monster.Position, areaCenter, monster.Area);
         if (!GameMapData.IsMoveablePosition(
-                MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, rescued)))
+                Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, rescued)))
             rescued = ClampToWalkable(monster.Position, areaCenter);
 
         monster.Position = rescued;
@@ -2379,7 +2386,7 @@ public sealed class SwarmArenaManager
             waypoint.X - dy / length * monster.MarchLaneOffset,
             waypoint.Y + dx / length * monster.MarchLaneOffset, 0f);
         return GameMapData.IsMoveablePosition(
-            MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, offset))
+            Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, offset))
             ? offset
             : waypoint;
     }
@@ -2390,10 +2397,10 @@ public sealed class SwarmArenaManager
         // 문틀을 밟은 채로 도착할 수 있다. 그대로 두면 충돌 판정이 있는 추격 이동이 갇히므로
         // 보행 가능한 자리로 당겨 놓는다 (2026-08-16).
         if (!GameMapData.IsMoveablePosition(
-                MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, monster.Position)))
+                Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, monster.Position)))
         {
             var areaCenter = BotPlayerManager.CellToWorldPosition(
-                MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, monster.Area));
+                Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, monster.Area));
             monster.Position = ClampToAreaWalkable(monster.Position, areaCenter, monster.Area);
         }
 
@@ -2432,9 +2439,9 @@ public sealed class SwarmArenaManager
             return new Vector3f(0f, 0f, 0f);
 
         var center = BotPlayerManager.CellToWorldPosition(
-            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
+            Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
         var origin = BotPlayerManager.CellToWorldPosition(
-            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, SwarmInwardOriginArea));
+            Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, SwarmInwardOriginArea));
         float dx = origin.X - center.X;
         float dy = origin.Y - center.Y;
         float length = MathF.Sqrt(dx * dx + dy * dy);
@@ -2816,7 +2823,7 @@ public sealed class SwarmArenaManager
         // 플레이어와 같은 구역에 들어온 뒤부터 포위한다 — 문·복도의 몹이 오프셋 각도 때문에
         // 문을 못 찾고 겉돌면 구역 목표 수가 영영 안 찬다. 밖에서는 오프셋 없이 직진.
         var playerArea = GameMapData.GetCurrentArea(
-            MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, playerPosition));
+            Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, playerPosition));
         if (surround && monster.Area == playerArea)
         {
             // 숨쉬는 포위 (#232): 반경이 0에 머물면 전원이 플레이어 위로 수렴한다 — 그게
@@ -2853,8 +2860,8 @@ public sealed class SwarmArenaManager
             monster.Position.Y + dy / distance * step,
             0f);
 
-        Cell proposedCell = MapCoordinateConverter.WorldToCell(MapId.School, proposed);
-        if (GameMapData.IsMoveablePosition(MapId.School, proposedCell))
+        Cell proposedCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, proposed);
+        if (GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, proposedCell))
         {
             monster.Position = proposed;
             return;
@@ -2863,7 +2870,7 @@ public sealed class SwarmArenaManager
         // 벽이면 축별로 미끄러진다.
         var slideX = new Vector3f(proposed.X, monster.Position.Y, 0f);
         if (GameMapData.IsMoveablePosition(
-                MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, slideX)))
+                Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, slideX)))
         {
             monster.Position = slideX;
             return;
@@ -2871,7 +2878,7 @@ public sealed class SwarmArenaManager
 
         var slideY = new Vector3f(monster.Position.X, proposed.Y, 0f);
         if (GameMapData.IsMoveablePosition(
-                MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, slideY)))
+                Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, slideY)))
             monster.Position = slideY;
     }
 
@@ -2889,7 +2896,7 @@ public sealed class SwarmArenaManager
     /// </summary>
     public static Cell InsetAnchorFromAreaEdge(Cell cell, AreaType area)
     {
-        var region = GameMapData.GetAreas(MapId.School)
+        var region = GameMapData.GetAreas(Config.SWARM_MATCH_MAP)
             .FirstOrDefault(candidate => candidate.AreaType == area);
         if (region == null)
             return cell;
@@ -2909,9 +2916,9 @@ public sealed class SwarmArenaManager
 
     private static bool IsWalkableInArea(Vector3f position, AreaType area)
     {
-        Cell cell = MapCoordinateConverter.WorldToCell(MapId.School, position);
-        return GameMapData.IsMoveablePosition(MapId.School, cell) &&
-               GameMapData.GetCurrentArea(MapId.School, cell) == area;
+        Cell cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, position);
+        return GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell) &&
+               GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == area;
     }
 
     private static Vector3f ClampToAreaWalkable(Vector3f position, Vector3f center, AreaType area)
@@ -2935,7 +2942,7 @@ public sealed class SwarmArenaManager
     private static Vector3f ClampToWalkable(Vector3f position, Vector3f center)
     {
         if (GameMapData.IsMoveablePosition(
-                MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, position)))
+                Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, position)))
             return position;
 
         // 스폰 위치가 보행 불가면 기준점 쪽으로 당기며 첫 보행 가능 지점을 찾는다.
@@ -2946,7 +2953,7 @@ public sealed class SwarmArenaManager
                 position.Y + (center.Y - position.Y) * t,
                 0f);
             if (GameMapData.IsMoveablePosition(
-                    MapId.School, MapCoordinateConverter.WorldToCell(MapId.School, candidate)))
+                    Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, candidate)))
                 return candidate;
         }
 

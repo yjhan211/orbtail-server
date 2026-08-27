@@ -5,8 +5,8 @@ using network.common.data.helpers;
 
 namespace demo_regression_tests;
 
-// #219 SB 클론 위상: 중앙 광장을 포드 10개와 상하 회랑 밴드가 포위한다.
-// 스폰 후보 전원이 광장에 닿고, 광장에서 어느 방으로든 되돌아갈 수 있어야 한다.
+// #272 School2 위상: 시작방 8 → 복도 → 합류 4 → 1차 통로 → 운동장 동심원.
+// 스폰 후보 전원이 운동장에 닿고, 운동장에서 어느 방으로든 되돌아갈 수 있어야 한다.
 public class SwarmMeetupTopologyTests
 {
     public SwarmMeetupTopologyTests()
@@ -19,25 +19,25 @@ public class SwarmMeetupTopologyTests
     public void EveryPod_ReachesTheGroundPlaza()
     {
         foreach (AreaType pod in MatchSpawnData.GetPhaseRoomCandidates())
-            AssertReachable(pod, AreaType.Ground);
+            AssertReachable(pod, Config.SWARM_MATCH_GROUND_AREA);
     }
 
     [Fact]
     public void GroundPlaza_ReachesEveryPodAndBothBands()
     {
         foreach (AreaType pod in MatchSpawnData.GetPhaseRoomCandidates())
-            AssertReachable(AreaType.Ground, pod);
+            AssertReachable(Config.SWARM_MATCH_GROUND_AREA, pod);
 
-        AssertReachable(AreaType.Ground, AreaType.Junkyard);
-        AssertReachable(AreaType.Ground, AreaType.Corridor);
+        AssertReachable(Config.SWARM_MATCH_GROUND_AREA, AreaType.S2Terrace);
+        AssertReachable(Config.SWARM_MATCH_GROUND_AREA, AreaType.S2Corridor9);
     }
 
     [Fact]
     public void DiagonalPods_ReachEachOtherAcrossTheMap()
     {
-        // 대각 횡단: 교실1(남서)↔교무실(북동), 행정실(북서)↔방송실(남동)
-        AssertReachable(AreaType.Classroom4, AreaType.StaffRoom);
-        AssertReachable(AreaType.AdminOffice, AreaType.BroadcastRoom);
+        // 대각 횡단: 교실1(북서)↔행정실2(남동), 교실2(북동)↔창고(남서)
+        AssertReachable(AreaType.S2Classroom1, AreaType.S2AdminOffice2);
+        AssertReachable(AreaType.S2Classroom2, AreaType.S2Storage);
     }
 
     private static void AssertReachable(AreaType from, AreaType to)
@@ -49,8 +49,9 @@ public class SwarmMeetupTopologyTests
     private static List<BotPathfinder.Step>? FindPath(AreaType from, AreaType to)
     {
         return BotPathfinder.FindPath(
-            MapId.School, from, GameMapData.GetAreaSpawnCell(MapId.School, from),
-            to, GameMapData.GetAreaSpawnCell(MapId.School, to));
+            Config.SWARM_MATCH_MAP, from,
+            GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, from),
+            to, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, to));
     }
 
     private static string FindNetworkBasePath()

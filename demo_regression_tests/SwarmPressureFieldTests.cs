@@ -17,7 +17,7 @@ public class SwarmPressureFieldTests
     [Fact]
     public void Ground_IsZeroAndMaxDistanceIsSane()
     {
-        Assert.Equal(0, SwarmPressureField.GetAreaMinDistance(AreaType.Ground));
+        Assert.Equal(0, SwarmPressureField.GetAreaMinDistance(Config.SWARM_MATCH_GROUND_AREA));
         Assert.InRange(SwarmPressureField.MaxDistance, 10, 1000);
     }
 
@@ -25,7 +25,7 @@ public class SwarmPressureFieldTests
     [Fact]
     public void AllMapAreas_HaveFieldDistances()
     {
-        var mapAreas = GameMapData.GetAreas(MapId.School)
+        var mapAreas = GameMapData.GetAreas(Config.SWARM_MATCH_MAP)
             .Select(region => region.AreaType)
             .Distinct();
         foreach (var area in mapAreas)
@@ -40,24 +40,19 @@ public class SwarmPressureFieldTests
     {
         var (centerX, centerY) = SwarmPressureField.CenterCell;
         var centerArea = GameMapData.GetCurrentArea(
-            MapId.School,
+            Config.SWARM_MATCH_MAP,
             new network.common.data.models.Cell(
                 (int)Math.Round(centerX), (int)Math.Round(centerY)));
-        Assert.Equal(AreaType.Ground, centerArea);
+        Assert.Equal(Config.SWARM_MATCH_GROUND_AREA, centerArea);
     }
 
     [Fact]
     public void CircleFunnel_RoomsFartherThanCorridor()
     {
-        // 원은 바깥 방을 먼저 먹고 운동장을 감싼 복도 밴드를 마지막에 먹는다.
-        foreach (var room in new[]
-                 {
-                     AreaType.Classroom2, AreaType.Classroom3, AreaType.Classroom4,
-                     AreaType.Storage2, AreaType.ExamRoom, AreaType.BroadcastRoom,
-                     AreaType.AdminOffice, AreaType.StaffRoom, AreaType.Library, AreaType.Gym
-                 })
+        // 원은 바깥 시작방을 먼저 먹고 운동장을 감싼 랩 밴드(1차 통로)를 마지막에 먹는다.
+        foreach (var room in MatchSpawnData.GetPhaseRoomCandidates())
         {
-            AssertFarther(room, AreaType.Corridor);
+            AssertFarther(room, AreaType.S2Corridor9);
         }
     }
 

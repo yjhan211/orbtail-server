@@ -521,7 +521,7 @@ public sealed class EmotionAfterimageMonsterManager
                 if (_closedAreas.Contains(area) || !_reinforcements.TryGetValue(area, out var reinforcement))
                     continue;
 
-                if (!targetsByArea.TryGetValue((MapId.School, area), out var areaTargets) || areaTargets.Count == 0)
+                if (!targetsByArea.TryGetValue((Config.SWARM_MATCH_MAP, area), out var areaTargets) || areaTargets.Count == 0)
                 {
                     reinforcement.PendingReleaseAtUtc = null;
                     continue;
@@ -696,7 +696,8 @@ public sealed class EmotionAfterimageMonsterManager
                 return 0;
 
             var corridorTargets = possibleTargets
-                .Where(target => target.MapId == MapId.School && target.Area == AreaType.Corridor)
+                // #272 School2: 복도 계열 전체가 압박 트리거 — 앵커는 랩 밴드(Corridor9)에 있다.
+                .Where(target => target.MapId == Config.SWARM_MATCH_MAP && target.Area.IsCorridor())
                 .ToList();
             if (corridorTargets.Count == 0)
                 return 0;

@@ -206,18 +206,22 @@ public partial class BotPlayerManager
         if (area == AreaType.None || area.IsCorridor())
             return false;
 
-        return area is not (AreaType.Ground or AreaType.Gym or AreaType.Storage) &&
+        // #272 School2: 대형 개방 구역(운동장·테라스·1차 통로·합류 4곳)은 은둔 파밍처가 아니다.
+        return area is not (AreaType.Ground or AreaType.Gym or AreaType.Storage
+                   or AreaType.S2Ground or AreaType.S2Terrace or AreaType.S2Corridor9
+                   or AreaType.S2Library1 or AreaType.S2Library2
+                   or AreaType.S2Gym1 or AreaType.S2Gym2) &&
                GameMapData.GetAreas(mapId).Any(region => region.AreaType == area);
     }
 
 
 
     /// <summary>
-    ///     留ㅼ묶?먯꽌 ?ъ슜 以묒씤 MapId 議고쉶. ?깅줉?섏? ?딆? 留ㅼ묶?대㈃ MapId.School ?대갚.
+    ///     留ㅼ묶?먯꽌 ?ъ슜 以묒씤 MapId 議고쉶. ?깅줉?섏? ?딆? 留ㅼ묶?대㈃ Config.SWARM_MATCH_MAP ?대갚.
     /// </summary>
     public MapId GetMatchingMapId(long matchingId)
     {
-        return _botMapIds.TryGetValue(matchingId, out var mapId) ? mapId : MapId.School;
+        return _botMapIds.TryGetValue(matchingId, out var mapId) ? mapId : Config.SWARM_MATCH_MAP;
     }
 
     /// <summary>

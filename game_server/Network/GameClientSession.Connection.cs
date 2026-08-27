@@ -25,7 +25,7 @@ public partial class GameClientSession
             // 吏湲덉? 媛꾨떒?섍쾶 PlayerId留??ㅼ젙
 
             PlayerId = msg.PlayerId;
-            CurrentMapId = MapId.School; // TODO: 留ㅼ묶 ?뺣낫?먯꽌 媛?몄삤湲?
+            CurrentMapId = Config.SWARM_MATCH_MAP; // TODO: 留ㅼ묶 ?뺣낫?먯꽌 媛?몄삤湲?
             CurrentMapSubId = msg.MatchingId;
 
             // 留덈땲??泥댁씤 ?뺣낫 ???

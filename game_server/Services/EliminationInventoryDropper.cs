@@ -22,8 +22,9 @@ public static class EliminationInventoryDropper
         AreaType area,
         float originX,
         float originY,
-        MapId mapId = MapId.School)
+        MapId? mapId = null)
     {
+        mapId ??= Config.SWARM_MATCH_MAP;
         var removedItems = inventoryManager.TakeAllItems(matchingId, playerId);
         var droppedItemIds = removedItems
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
@@ -35,7 +36,7 @@ public static class EliminationInventoryDropper
             originX,
             originY,
             droppedItemIds,
-            mapId: mapId,
+            mapId: mapId.Value,
             layout: GroundItemSpawnLayout.EliminationScatter);
 
         return new EliminationInventoryDropResult(removedItems, droppedItemIds, spawnedItems);

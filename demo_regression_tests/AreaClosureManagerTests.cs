@@ -32,7 +32,7 @@ public class AreaClosureManagerTests
             Assert.Equal(first[playerId], second[playerId]);
         }
     }
-    [Fact]
+    [Fact(Skip = "#272 School2 전환: DefaultP0Waves는 School 세대 고정 웨이브 — 매치 맵(School2)에서 필터돼 빈다. 자기장이 유일 시간표라 롤백 경로 부활 시 재작성")]
     public void InitializeMatching_UsesFixedP0WavesAndClosesGroundLast()
     {
         var now = new DateTime(2026, 7, 20, 0, 0, 0, DateTimeKind.Utc);
@@ -75,7 +75,7 @@ public class AreaClosureManagerTests
         var waves = AreaClosureManager.BuildSwarmFieldWaves(hold, shrink);
 
         // 맵 전 구역이 정확히 한 번씩 닫힌다.
-        var mapAreas = GameMapData.GetAreas(MapId.School)
+        var mapAreas = GameMapData.GetAreas(Config.SWARM_MATCH_MAP)
             .Select(region => region.AreaType)
             .Distinct()
             .OrderBy(area => area)
@@ -88,7 +88,7 @@ public class AreaClosureManagerTests
         Assert.Equal(waves.Select(wave => wave.ClosureAtSeconds).OrderBy(t => t),
             waves.Select(wave => wave.ClosureAtSeconds));
         Assert.True(waves[0].ClosureAtSeconds > hold);
-        Assert.Equal([AreaType.Ground], waves[^1].Areas);
+        Assert.Equal([Config.SWARM_MATCH_GROUND_AREA], waves[^1].Areas);
         Assert.Equal(Config.SWARM_MATCH_DURATION_SECONDS, waves[^1].ClosureAtSeconds);
 
         // 폐쇄 구역 틱 오염은 0 — 오염은 자기장 초과 거리 비례가 전담한다.
@@ -109,7 +109,7 @@ public class AreaClosureManagerTests
         // wavesOverride는 셔플·스태거 없이 그대로 쓴다 — 파생 시각이 곧 폐쇄 시각이다.
         Assert.Equal(waves.Select(wave => wave.ClosureAtSeconds),
             state.Waves.Select(wave => wave.ClosureAtSeconds));
-        Assert.Equal(AreaType.Ground, state.ClosureOrder[^1]);
+        Assert.Equal(Config.SWARM_MATCH_GROUND_AREA, state.ClosureOrder[^1]);
         Assert.Empty(state.ClosedAreas);
     }
 
@@ -130,7 +130,7 @@ public class AreaClosureManagerTests
         Assert.Contains(AreaType.Gym, clientState.ClosedAreas);
         Assert.Contains(AreaType.Library, clientState.ClosedAreas);
     }
-    [Fact]
+    [Fact(Skip = "#272 School2 전환: School 고정 웨이브 전용 — 자기장 파생 웨이브가 유일 시간표. 롤백 경로 부활 시 재작성")]
     // #229 순차 폐쇄: 한 웨이브의 구역들이 한꺼번에 닫히지 않고 4초 간격으로 하나씩 닫힌다.
     // 마지막 구역은 원래 웨이브 시각(100초) 그대로라 종료 봉투는 밀리지 않는다.
     // 순서는 매치마다 섞이므로 "어떤 방"이 아니라 "몇 개씩, 언제"를 검사한다.
@@ -164,7 +164,7 @@ public class AreaClosureManagerTests
         Assert.False(manager.IsAreaClosed(matchingId, AreaType.Corridor));
     }
 
-    [Fact]
+    [Fact(Skip = "#272 School2 전환: School 고정 웨이브의 오염 단계(17~29/초) 전용 — 자기장 모드는 폐쇄 오염 0. 롤백 경로 부활 시 재작성")]
     public void EnvironmentalDamage_UsesLatestClosedWaveRateAndAddsOvertime()
     {
         var now = new DateTime(2026, 7, 20, 0, 0, 0, DateTimeKind.Utc);
@@ -193,15 +193,19 @@ public class AreaClosureManagerTests
     [Fact]
     public void ClosureAndOvertimeReachTheFiveToSevenMinuteTerminationEnvelope()
     {
+        // #272 School2: 실전 경로 = 자기장 파생 웨이브 — 운동장 최종 폐쇄(300초) 후 오버타임.
         var now = new DateTime(2026, 7, 24, 0, 0, 0, DateTimeKind.Utc);
         var manager = CreateManager(() => now);
         const long matchingId = 198502;
-        var state = manager.InitializeMatching(matchingId);
+        var waves = AreaClosureManager.BuildSwarmFieldWaves(
+            Config.SWARM_FIELD_HOLD_SECONDS,
+            Config.SWARM_MATCH_DURATION_SECONDS - Config.SWARM_FIELD_HOLD_SECONDS);
+        var state = manager.InitializeMatching(matchingId, wavesOverride: waves);
 
         Assert.Equal(300, state.Waves[^1].ClosureAtSeconds);
         now = now.AddSeconds(300);
         manager.CheckClosureSchedule(matchingId);
-        Assert.True(manager.IsAreaClosed(matchingId, AreaType.Ground));
+        Assert.True(manager.IsAreaClosed(matchingId, Config.SWARM_MATCH_GROUND_AREA));
         Assert.True(manager.IsOvertimeActive(matchingId));
         Assert.Equal((1, 2), manager.GetOvertimeStatus(matchingId));
 
@@ -211,28 +215,27 @@ public class AreaClosureManagerTests
     [Fact]
     public void GlobalClosureSchedule_RemainsDisabledWhenCorridorCloses()
     {
+        // #272 School2: 파생 웨이브로 중간 지대(테라스)가 닫히는 동안에도 전역 폐쇄는 꺼진 채다.
         var now = new DateTime(2026, 7, 24, 0, 0, 0, DateTimeKind.Utc);
         var manager = CreateManager(() => now);
         const long matchingId = 202001;
-        manager.InitializeMatching(matchingId);
+        var waves = AreaClosureManager.BuildSwarmFieldWaves(
+            Config.SWARM_FIELD_HOLD_SECONDS,
+            Config.SWARM_MATCH_DURATION_SECONDS - Config.SWARM_FIELD_HOLD_SECONDS);
+        manager.InitializeMatching(matchingId, wavesOverride: waves);
 
-        now = now.AddSeconds(220);
-        manager.CheckClosureSchedule(matchingId);
-
-        // #229 순차 폐쇄: 밴드 두 구역이 4초 간격으로 하나씩 닫힌다(246초·250초).
-        // 전역 폐쇄가 꺼져 있다는 계약만 검사하므로 "둘 다 닫혔는가"로 본다.
-        var bandClosed = new List<AreaType>();
-        for (int second = 0; second < 60; second++)
+        var closedDuringWatch = new List<AreaType>();
+        for (int second = 0; second < 300; second++)
         {
             now = now.AddSeconds(1);
-            bandClosed.AddRange(manager.CheckClosureSchedule(matchingId).ClosedAreas);
+            closedDuringWatch.AddRange(manager.CheckClosureSchedule(matchingId).ClosedAreas);
             Assert.False(manager.CheckGlobalClosureSchedule(matchingId).HasTransition);
             Assert.False(manager.GetGlobalClosureClientState(matchingId).IsKnown);
         }
 
-        Assert.Contains(AreaType.Corridor, bandClosed);
-        Assert.Contains(AreaType.Junkyard, bandClosed);
-        Assert.True(manager.IsAreaClosed(matchingId, AreaType.Corridor));
+        Assert.Contains(AreaType.S2Terrace, closedDuringWatch);
+        Assert.Contains(AreaType.S2Corridor9, closedDuringWatch);
+        Assert.True(manager.IsAreaClosed(matchingId, AreaType.S2Terrace));
         Assert.False(manager.CheckGlobalClosureSchedule(matchingId).HasTransition);
     }
 

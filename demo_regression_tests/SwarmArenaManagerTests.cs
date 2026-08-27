@@ -99,7 +99,7 @@ public class SwarmArenaManagerTests
             var manager = new SwarmArenaManager(() => now);
             Assert.True(manager.InitializeMatching(217002, 1, StartUtc));
 
-            var lateTick = manager.Tick(217002, ManyParticipants(8, AreaCenter(AreaType.Ground)), now);
+            var lateTick = manager.Tick(217002, ManyParticipants(8, AreaCenter(Config.SWARM_MATCH_GROUND_AREA)), now);
             Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == 0),
                 normal => Assert.Equal(22, normal.MaxHealth));
             Assert.All(lateTick.SpawnedMonsters.Where(monster => monster.Kind == 2),
@@ -140,10 +140,11 @@ public class SwarmArenaManagerTests
             Assert.True(manager.InitializeMatching(217004, 1, StartUtc));
             var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
             Vector3f roomCenter = AreaCenter(room);
-            Vector3f elsewhere = AreaCenter(AreaType.Ground);
+            Vector3f elsewhere = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
 
-            // 방을 채운다.
-            for (double elapsed = 0.25d; elapsed <= 12d; elapsed += 0.25d)
+            // 방을 채운다 — #272 School2: 운동장 발원 침투의 행군 거리가 길어져(외곽 시작방)
+            // 도착까지 재는 창을 40초로 넓힌다 (RegionSupply_Holds의 60초 창과 같은 이유).
+            for (double elapsed = 0.25d; elapsed <= 40d; elapsed += 0.25d)
             {
                 now = StartUtc.AddSeconds(elapsed);
                 manager.Tick(217004, Participants(roomCenter, room), now);
@@ -154,16 +155,16 @@ public class SwarmArenaManagerTests
             Assert.True(filled > 0, "방이 채워지지 않았다");
 
             // 방을 비운다 — 유예(6초) 안에는 남아 있어야 한다. 나서자마자 뒤에서 사라지면 눈에 띈다.
-            now = StartUtc.AddSeconds(14d);
+            now = StartUtc.AddSeconds(42d);
             manager.Tick(217004, Participants(elsewhere), now);
-            now = StartUtc.AddSeconds(17d);
+            now = StartUtc.AddSeconds(45d);
             manager.Tick(217004, Participants(elsewhere), now);
             Assert.True(
                 manager.GetVisualStates(217004).Any(state => state.IsAlive && state.AreaType == room),
                 "유예 안에 잔상이 사라졌다");
 
             // 유예가 지나면 걷힌다.
-            for (double elapsed = 21d; elapsed <= 24d; elapsed += 0.25d)
+            for (double elapsed = 49d; elapsed <= 52d; elapsed += 0.25d)
             {
                 now = StartUtc.AddSeconds(elapsed);
                 manager.Tick(217004, Participants(elsewhere), now);
@@ -193,7 +194,7 @@ public class SwarmArenaManagerTests
             Assert.True(manager.InitializeMatching(217003, 1, StartUtc));
             var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
             Vector3f roomCenter = AreaCenter(room);
-            Vector3f elsewhere = AreaCenter(AreaType.Ground);
+            Vector3f elsewhere = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
 
             int stones = 0;
             // 이 구역에 머물다 나갔다를 반복한다 — 페이즈 0(0:00~1:40) 안에서만 논다.
@@ -226,7 +227,7 @@ public class SwarmArenaManagerTests
         // #223 보스: 운동장 캠프 0번 = 트리 자이언트(260) 단독 — 1 + 해골 3×2 = 7기.
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager(() => now);
-        Vector3f center = AreaCenter(AreaType.Ground);
+        Vector3f center = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
 
         var tick = manager.Tick(217001, Participants(center), now);
 
@@ -238,7 +239,7 @@ public class SwarmArenaManagerTests
         {
             Assert.Equal(monster.MaxHealth, monster.CurrentHealth);
             Assert.True(monster.IsAlive);
-            Assert.Equal(AreaType.Ground, monster.AreaType);
+            Assert.Equal(Config.SWARM_MATCH_GROUND_AREA, monster.AreaType);
         });
 
         // 캠프 몹은 예고 없이 즉시 전투 대상이다 — 잠들어 있을 뿐 실체다.
@@ -249,17 +250,17 @@ public class SwarmArenaManagerTests
     [Fact]
     public void CorridorBand_SpawnsCampsInCloneMap()
     {
-        // SB 클론 균질 밀도: 회랑 밴드(테라스=Corridor)에도 캠프가 선다.
-        // #223 보스: 회랑 캠프 0번 = 베이비 드래곤(200) 단독 — 1 + 해골 3×2 = 7기.
+        // SB 클론 균질 밀도: 중간 지대(#272 School2: 테라스 링)에도 캠프가 선다.
+        // #223 보스: 테라스 캠프 0번 = 베이비 드래곤(200) 단독 — 1 + 해골 3×2 = 7기.
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager(() => now);
-        Vector3f corridor = AreaCenter(AreaType.Corridor);
+        Vector3f terrace = AreaCenter(AreaType.S2Terrace);
 
-        var tick = manager.Tick(217001, Participants(corridor, AreaType.Corridor), now);
+        var tick = manager.Tick(217001, Participants(terrace, AreaType.S2Terrace), now);
 
         Assert.Equal(7, tick.SpawnedMonsters.Count);
         Assert.Equal(1, tick.SpawnedMonsters.Count(monster => monster.MaxHealth == 200));
-        Assert.All(tick.SpawnedMonsters, monster => Assert.Equal(AreaType.Corridor, monster.AreaType));
+        Assert.All(tick.SpawnedMonsters, monster => Assert.Equal(AreaType.S2Terrace, monster.AreaType));
     }
 
     [Fact]
@@ -268,9 +269,11 @@ public class SwarmArenaManagerTests
         // #219 SB 몬스터 4종 (08-09 T1 발수 정렬): 해골 무리(12×3) + 다트(18) + 탈주(60)|볼러(48).
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager(() => now);
-        Vector3f library = AreaCenter(AreaType.Library);
+        // #272 School2: 포드 = 시작방 8곳 (합류 구역은 포드가 아니다).
+        var pod = MatchSpawnData.GetPhaseRoomCandidates()[0];
+        Vector3f podCenter = AreaCenter(pod);
 
-        var tick = manager.Tick(217001, Participants(library, AreaType.Library), now);
+        var tick = manager.Tick(217001, Participants(podCenter, pod), now);
 
         Assert.Equal(5, tick.SpawnedMonsters.Count);
         Assert.Equal(3, tick.SpawnedMonsters.Count(monster => monster.MaxHealth == 12));
@@ -283,7 +286,7 @@ public class SwarmArenaManagerTests
     {
         DateTime now = StartUtc;
         var manager = CreateManager(() => now);
-        Vector3f center = AreaCenter(AreaType.Ground);
+        Vector3f center = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
 
         for (double elapsed = 0.25d; elapsed <= 40d; elapsed += 0.25d)
         {
@@ -300,7 +303,7 @@ public class SwarmArenaManagerTests
         // 잠든 캠프 몹도 부딪히면 문다 — 접촉이 곧 개전이고, 무적창 리듬은 유지된다.
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager(() => now);
-        Vector3f center = AreaCenter(AreaType.Ground);
+        Vector3f center = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
         var damageEvents = new List<SpotArenaPlayerDamage>();
         // 커스텀 앵커(CSV 저작)에서는 스폰 틱에도 중앙 접촉이 날 수 있다 — 첫 틱부터 수집한다.
         damageEvents.AddRange(manager.Tick(217001, Participants(center), now).PlayerDamage);
@@ -351,7 +354,7 @@ public class SwarmArenaManagerTests
     {
         DateTime now = StartUtc;
         var manager = CreateManager(() => now);
-        Vector3f center = AreaCenter(AreaType.Ground);
+        Vector3f center = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
 
         manager.Tick(217001, Participants(center), StartUtc.AddSeconds(0.25));
         now = StartUtc.AddSeconds(3.5);
@@ -383,9 +386,10 @@ public class SwarmArenaManagerTests
     {
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager(() => now);
-        // 복도 밴드 서쪽 끝 — 중앙 캠프(반경 4 + 산포)에서 충분히 떨어진 지점.
-        Vector3f corridor = MapCoordinateConverter.CellToWorld(MapId.School, new Cell(116, 79));
-        manager.Tick(217001, [new SpotArenaPlayerSpatial(1, AreaType.Ground, AreaCenter(AreaType.Ground))], now);
+        // 랩 밴드(1차 통로) 남쪽 — 운동장 캠프와 밴드 자체 캠프 앵커(스폰 셀 부근 98,27)
+        // 양쪽에서 충분히 떨어진 지점.
+        Vector3f corridor = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, new Cell(138, -16));
+        manager.Tick(217001, [new SpotArenaPlayerSpatial(1, Config.SWARM_MATCH_GROUND_AREA, AreaCenter(Config.SWARM_MATCH_GROUND_AREA))], now);
 
         var monster = manager.GetVisualStates(217001).First(state => state.IsAlive);
         var onMonster = new Vector3f(monster.PositionX, monster.PositionY, 0f);
@@ -396,8 +400,8 @@ public class SwarmArenaManagerTests
             now = StartUtc.AddSeconds(elapsed);
             var participants = new[]
             {
-                new SpotArenaPlayerSpatial(1, AreaType.Ground, onMonster),
-                new SpotArenaPlayerSpatial(2, AreaType.Corridor, corridor)
+                new SpotArenaPlayerSpatial(1, Config.SWARM_MATCH_GROUND_AREA, onMonster),
+                new SpotArenaPlayerSpatial(2, AreaType.S2Corridor9, corridor)
             };
             damageEvents.AddRange(manager.Tick(217001, participants, now).PlayerDamage);
         }
@@ -414,7 +418,7 @@ public class SwarmArenaManagerTests
         // 리쉬 밖으로 도망치면 앵커로 돌아가 다시 잠든다.
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager(() => now);
-        Vector3f center = AreaCenter(AreaType.Ground);
+        Vector3f center = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
         manager.Tick(217001, Participants(center), now);
 
         // 스폰 틱의 중앙 참가자가 커스텀 앵커(CSV 저작) 캠프를 깨웠을 수 있다 —
@@ -498,16 +502,20 @@ public class SwarmArenaManagerTests
 
     private static IReadOnlyCollection<SpotArenaPlayerSpatial> Participants(
         Vector3f position,
-        AreaType area = AreaType.Ground) =>
-        [new SpotArenaPlayerSpatial(1, area, position)];
+        AreaType area = AreaType.None) =>
+        [new SpotArenaPlayerSpatial(1, ResolveArea(area), position)];
 
     private static IReadOnlyCollection<SpotArenaPlayerSpatial> ManyParticipants(
         int count,
         Vector3f position,
-        AreaType area = AreaType.Ground) =>
+        AreaType area = AreaType.None) =>
         Enumerable.Range(1, count)
-            .Select(id => new SpotArenaPlayerSpatial(id, area, position))
+            .Select(id => new SpotArenaPlayerSpatial(id, ResolveArea(area), position))
             .ToList();
+
+    // 기본 구역 = 매치 맵 운동장 (기본 매개변수는 컴파일 상수만 허용 — None을 센티널로 쓴다).
+    private static AreaType ResolveArea(AreaType area) =>
+        area == AreaType.None ? Config.SWARM_MATCH_GROUND_AREA : area;
 
     private static SwarmArenaManager CreateManager(Func<DateTime> clock)
     {
@@ -518,7 +526,7 @@ public class SwarmArenaManagerTests
 
     private static Vector3f AreaCenter(AreaType area) =>
         MapCoordinateConverter.CellToWorld(
-            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
+            Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
 
     private static string FindNetworkBasePath()
     {
@@ -541,7 +549,7 @@ public class SwarmArenaManagerTests
         // 적혀 있지 않다. 그래서 테두리 앵커가 "통행 가능"으로 통과하고 잔상이 벽에 낀 채로 선다
         // (행정실: 앵커 3개가 전부 경계 1칸 이내, 그중 둘은 경계선 위).
         const int margin = 3;
-        foreach (var region in GameMapData.GetAreas(MapId.School))
+        foreach (var region in GameMapData.GetAreas(Config.SWARM_MATCH_MAP))
         {
             if (region.End.X - region.Start.X < margin * 2 ||
                 region.End.Y - region.Start.Y < margin * 2)

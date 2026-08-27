@@ -90,7 +90,8 @@ namespace network.common
         /// </summary>
         public static bool IsCorridor(this AreaType area) =>
             area is AreaType.Corridor or AreaType.Corridor1F or AreaType.Corridor2F or AreaType.Corridor3F or
-                AreaType.Corridor4F;
+                AreaType.Corridor4F ||
+            (area >= AreaType.S2Corridor1 && area <= AreaType.S2Corridor9);
 
         /// <summary>
         ///     援ъ뿭??痢?踰덊샇 (0~4). None?대㈃ -1

@@ -116,7 +116,7 @@ public class AreaClosureManager
         if (_states.TryGetValue(matchingId, out var existingState))
             return existingState;
 
-        var mapAreas = GameMapData.GetAreas(MapId.School)
+        var mapAreas = GameMapData.GetAreas(Config.SWARM_MATCH_MAP)
             .Select(region => region.AreaType)
             .ToHashSet();
         var waves = (wavesOverride ?? DefaultP0Waves)

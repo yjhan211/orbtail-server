@@ -493,7 +493,7 @@ public class MatchingManager : IMatchingManager
         // 시작하는 정식 흐름에서는 사람이 운동장까지 나오는 데 100초가 걸린다.
         bool crossfireSandbox = Environment.GetEnvironmentVariable("DEV_CROSSFIRE_SANDBOX") == "1";
         Cell? sandboxCell = crossfireSandbox
-            ? GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Ground)
+            ? GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA)
             : null;
 
         foreach (var link in chain)
@@ -501,7 +501,7 @@ public class MatchingManager : IMatchingManager
             var playerId = MessagePackSerializer.Deserialize<MatchingQueueData>(link.Entry).PlayerId;
             link.Persona = PersonaType.None;
             link.SpawnCell = Cell.Clone(sandboxCell ?? assignments[playerId]);
-            link.StartArea = GameMapData.GetCurrentArea(MapId.School, link.SpawnCell);
+            link.StartArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, link.SpawnCell);
 
             _logger.LogInformation(
                 "Survivor Royale spawn assigned: MatchingId={MatchingId}, PlayerId={PlayerId}, Area={Area}, Cell=({X},{Y})",
@@ -751,7 +751,7 @@ public class MatchingManager : IMatchingManager
             return;
         }
 
-        const MapId mapId = MapId.School;
+        MapId mapId = Config.SWARM_MATCH_MAP;
         var spawnPosition = Cell.Clone(spawnCell);
         if (spawnPosition.X == 0 && spawnPosition.Y == 0)
         {

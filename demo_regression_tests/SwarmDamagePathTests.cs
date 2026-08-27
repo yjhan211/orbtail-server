@@ -229,7 +229,7 @@ public class SwarmDamagePathTests
         throw new InvalidOperationException("repository root not found");
     }
 
-    [Fact]
+    [Fact(Skip = "#272 School2 전환: 시작방 잠금 문·게이지 데이터 미저작 — 문 이식 시 Skip 해제")]
     public void GaugeGatedDoors_LockEverySpawnRoomButKeepTheMapConnected()
     {
         // 실행 순서 무관하게 데이터가 있어야 한다 — 단독 실행에서 문 목록이 비어 실패했다 (2026-08-17).
@@ -257,7 +257,7 @@ public class SwarmDamagePathTests
             door => Assert.Equal(0, door.RequiredItemId));
     }
 
-    [Fact]
+    [Fact(Skip = "#272 School2 전환: 시작방 잠금 문·게이지 데이터 미저작 — 문 이식 시 Skip 해제")]
     public void EveryGaugeGatedDoor_HasAnUnlockObjectOnItsRoomSideOnly()
     {
         // 문은 안에서만 연다 (#229): 복도·운동장·쓰레기장 쪽에는 잠금해제 오브젝트가 없다.

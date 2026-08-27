@@ -24,21 +24,18 @@ namespace network.common.data
         new(165, 85)
     };
 
-        // #219 SB 클론 맵 — 중앙 광장(Ground)을 포드 10개가 직접 포위한다.
-        // 스폰 후보 = 포드 10곳 (기존 방 enum 재사용). Ground(광장)와 상하 회랑 밴드
-        // (Junkyard=1, Corridor=7)는 스폰 금지. 6인 매치는 이 중 6곳을 뽑는다.
+        // #272 School2 8인 전환 — 스폰 포드 = 1인 전용 시작방 8곳 (외곽 링).
+        // (#219~#223 School 포드 10곳 세대는 이 배열 교체로 퇴역 — School 데이터는 CSV에 남는다.)
         private static readonly AreaType[] PhaseRoomCandidates =
         {
-            AreaType.Storage2,
-            AreaType.AdminOffice,
-            AreaType.StaffRoom,
-            AreaType.Gym,
-            AreaType.Classroom2,
-            AreaType.Library,
-            AreaType.Classroom3,
-            AreaType.ExamRoom,
-            AreaType.Classroom4,
-            AreaType.BroadcastRoom
+            AreaType.S2Classroom1,
+            AreaType.S2Classroom2,
+            AreaType.S2ExamRoom,
+            AreaType.S2BroadcastRoom,
+            AreaType.S2Storage,
+            AreaType.S2NurseOffice,
+            AreaType.S2AdminOffice1,
+            AreaType.S2AdminOffice2
         };
 
         private static readonly AreaType[] SpotArenaCandidates =
@@ -100,8 +97,7 @@ namespace network.common.data
                 .ToDictionary(pair => pair.Key, pair => pair.Value);
         }
 
-        // #223 10인 전환 (M5): 스폰 풀 = 포드 10곳 전부 — SB 정원 10과 일치, 전원 유니크 스폰.
-        // (#219의 도서관·체육관 제외는 8인 시절 규칙 — 10인은 쌍 구역도 스폰 포드가 된다.)
+        // #272 8인: 스폰 풀 = 시작방 8곳 전부 — 정원과 일치, 전원 유니크 스폰.
         private static readonly AreaType[] SwarmSpawnPodCandidates = PhaseRoomCandidates.ToArray();
 
         public static IReadOnlyDictionary<long, Cell> CreatePhaseRoomAssignments(
@@ -127,7 +123,7 @@ namespace network.common.data
             return orderedPlayerIds
                 .Select((playerId, index) => new KeyValuePair<long, Cell>(
                     playerId,
-                    Cell.Clone(GameMapData.GetAreaSpawnCell(MapId.School, shuffledRooms[index]))))
+                    Cell.Clone(GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, shuffledRooms[index]))))
                 .ToDictionary(pair => pair.Key, pair => pair.Value);
         }
 

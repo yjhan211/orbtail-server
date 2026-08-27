@@ -84,10 +84,11 @@ namespace network.common.data
             {
                 if (_distanceByCell != null) return;
 
-                var areas = GameMapData.GetAreas(MapId.School);
+                var areas = GameMapData.GetAreas(Config.SWARM_MATCH_MAP);
 
                 // 원 중심 = 운동장 사각(들)의 경계 상자 중심. 셀은 끝값 포함이라 중심은 (Start+End)/2.
-                var groundRects = areas.Where(region => region.AreaType == AreaType.Ground).ToList();
+                var groundRects = areas
+                    .Where(region => region.AreaType == Config.SWARM_MATCH_GROUND_AREA).ToList();
                 if (groundRects.Count > 0)
                 {
                     int groundMinX = groundRects.Min(region => Math.Min(region.Start.X, region.End.X));
@@ -119,7 +120,7 @@ namespace network.common.data
                     for (int x = minX; x <= maxX; x++)
                     {
                         var cell = new Cell(x, y);
-                        if (!GameMapData.IsMoveablePosition(MapId.School, cell)) continue;
+                        if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell)) continue;
 
                         float dx = x - _centerX;
                         float dy = y - _centerY;
@@ -127,7 +128,7 @@ namespace network.common.data
                         distances[(x, y)] = distance;
                         if (distance > maxDistance) maxDistance = distance;
 
-                        var area = GameMapData.GetCurrentArea(MapId.School, cell);
+                        var area = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
                         if (area == AreaType.None) continue;
                         if (!minByArea.TryGetValue(area, out int currentMin) || distance < currentMin)
                             minByArea[area] = distance;

@@ -756,7 +756,7 @@ public partial class GameServer
         if (safeDistance >= double.MaxValue)
             return 0;
 
-        var cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, worldPosition);
+        var cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, worldPosition);
         double over = SwarmPressureField.GetDistance(cell) - safeDistance;
         if (over <= 0) return 0;
         return SwarmFieldBaseCorruptionPerTick + (int)(over * SwarmFieldCorruptionPerExtraCell);
@@ -773,7 +773,7 @@ public partial class GameServer
             foreach (var pair in SwarmPressureField.DistancesByCell)
             {
                 var cell = new Cell(pair.Key.X, pair.Key.Y);
-                var cellArea = GameMapData.GetCurrentArea(MapId.School, cell);
+                var cellArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
                 if (cellArea == AreaType.None) continue;
                 if (!byArea.TryGetValue(cellArea, out var list))
                     byArea[cellArea] = list = new List<(Cell, int)>();
@@ -957,8 +957,8 @@ public partial class GameServer
         {
             // 본인이 폐쇄 구역 안이면 꼬리는 그대로 둔다 (2026-08-18): 즉사가 퇴역해 본인은 틱 오염을 받으며
             // 문을 따고 나가는 중이다 — 여기서 꼬리까지 지우면 나가도 빈손이라 살아남을 이유가 없다.
-            var ownerCell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, ownerPosition);
-            if (closed.Contains(GameMapData.GetCurrentArea(MapId.School, ownerCell)))
+            var ownerCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, ownerPosition);
+            if (closed.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, ownerCell)))
                 continue;
 
             int orbCount = CountSwarmSquadOrbs(matchingId, playerId);
@@ -973,8 +973,8 @@ public partial class GameServer
             {
                 var position = GetSwarmOrbTrailPosition(
                     matchingId, playerId, ordinal, ownerPosition, closureTiers);
-                var cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, position);
-                if (!closed.Contains(GameMapData.GetCurrentArea(MapId.School, cell)))
+                var cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, position);
+                if (!closed.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell)))
                     break;
                 suffixStart = ordinal;
                 suffixPosition = position;
@@ -993,8 +993,8 @@ public partial class GameServer
 
             // 파열 연출은 절단 링 재사용 — 전리품은 흩뿌리지 않는다 (폐쇄 파괴 무보상).
             var closedArea = GameMapData.GetCurrentArea(
-                MapId.School,
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, suffixPosition));
+                Config.SWARM_MATCH_MAP,
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, suffixPosition));
             SendSwarmRingVfx(
                 closedArea, playerId, suffixPosition.X, suffixPosition.Y,
                 SwarmTrailCutFlashRadius, sessions, SwarmRingVfxKindCut,
@@ -1009,14 +1009,17 @@ public partial class GameServer
     }
 
     // 쌍 깔때기: 시작방 → 만남 구역. 거리 편차의 보정값(잔상 스폰 시점)은 이 로그를 계측한 뒤 정한다.
+    // #272 School2: 복도 연결 정의(2026-08-27 유저)와 1:1 — 시작방 2곳이 합류 1곳을 공유한다.
     private static readonly (AreaType StartRoom, AreaType PairZone)[] SwarmPairZones =
     [
-        (AreaType.ExamRoom, AreaType.Library),
-        (AreaType.Storage, AreaType.Library),
-        (AreaType.Classroom2, AreaType.Gym),
-        (AreaType.Storage2, AreaType.Gym),
-        (AreaType.AdminOffice, AreaType.Corridor),
-        (AreaType.StaffRoom, AreaType.Corridor)
+        (AreaType.S2Classroom1, AreaType.S2Library1),
+        (AreaType.S2Classroom2, AreaType.S2Library1),
+        (AreaType.S2ExamRoom, AreaType.S2Gym1),
+        (AreaType.S2BroadcastRoom, AreaType.S2Gym1),
+        (AreaType.S2Storage, AreaType.S2Library2),
+        (AreaType.S2AdminOffice2, AreaType.S2Library2),
+        (AreaType.S2AdminOffice1, AreaType.S2Gym2),
+        (AreaType.S2NurseOffice, AreaType.S2Gym2)
     ];
 
     /// <summary>
@@ -1028,9 +1031,9 @@ public partial class GameServer
         foreach (var (startRoom, pairZone) in SwarmPairZones)
         {
             var path = BotPathfinder.FindPath(
-                MapId.School,
-                startRoom, GameMapData.GetAreaSpawnCell(MapId.School, startRoom),
-                pairZone, GameMapData.GetAreaSpawnCell(MapId.School, pairZone));
+                Config.SWARM_MATCH_MAP,
+                startRoom, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, startRoom),
+                pairZone, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, pairZone));
             logger.LogInformation(
                 "Swarm pair distance: MatchingId={MatchingId}, StartRoom={StartRoom}, PairZone={PairZone}, Steps={Steps}",
                 matchingId, startRoom, pairZone, path?.Count ?? -1);
@@ -1123,7 +1126,7 @@ public partial class GameServer
 
             // door_info의 좌표는 셀 단위다 — 봇 위치(월드)와 직접 비교하면 절대 닿지 않는다.
             var doorWorld = BotPlayerManager.CellToWorldPosition(
-                MapId.School, new Cell((int)door.PositionX, (int)door.PositionY));
+                Config.SWARM_MATCH_MAP, new Cell((int)door.PositionX, (int)door.PositionY));
             float dx = doorWorld.X - bot.Position.X;
             float dy = doorWorld.Y - bot.Position.Y;
             float distanceSquared = dx * dx + dy * dy;
@@ -1222,7 +1225,7 @@ public partial class GameServer
             : Config.BOOTS_GROUND_ITEM_ID;
         var dropped = _groundItemManager.SpawnItems(
             matchingId, bot.CurrentArea, bot.Position.X, bot.Position.Y, [dropItemId],
-            mapId: MapId.School,
+            mapId: Config.SWARM_MATCH_MAP,
             layout: GroundItemSpawnLayout.EliminationScatter);
         if (dropped.Count > 0)
         {
@@ -1277,7 +1280,7 @@ public partial class GameServer
                 continue;
 
             var world = BotPlayerManager.CellToWorldPosition(
-                MapId.School, new Cell(info.CellX, info.CellY));
+                Config.SWARM_MATCH_MAP, new Cell(info.CellX, info.CellY));
             float dx = world.X - position.X;
             float dy = world.Y - position.Y;
             float candidateDistance = MathF.Sqrt(dx * dx + dy * dy);
@@ -1311,12 +1314,11 @@ public partial class GameServer
     }
 
     // 시작방 팩이 마르면 봇이 이주할 무한 스폰 사냥터.
-    // 쓰레기장은 문 잠금(113·114·118·119)으로 도달 불가.
-    // 6인 깔때기: 쌍 구역(도서관·강당)과 복도층 교실(3-2·4-2)·운동장이 순례 목적지.
+    // #272 School2: 합류 구역 4곳 + 운동장 — 순례 목적지가 곧 수렴 동선이다.
     private static readonly AreaType[] SwarmHuntingAreas =
     [
-        AreaType.Ground, AreaType.Gym, AreaType.Library,
-        AreaType.Classroom3, AreaType.Classroom4
+        Config.SWARM_MATCH_GROUND_AREA, AreaType.S2Library1, AreaType.S2Library2,
+        AreaType.S2Gym1, AreaType.S2Gym2
     ];
 
     /// <summary>
@@ -1359,10 +1361,10 @@ public partial class GameServer
     private (AreaType Area, Cell Cell) ResolveSwarmFieldEvacuationTarget(long matchingId, Vector3f botPosition)
     {
         double safeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
-        AreaType bestArea = AreaType.Ground;
-        Cell bestCell = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Ground);
+        AreaType bestArea = Config.SWARM_MATCH_GROUND_AREA;
+        Cell bestCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA);
         float bestSq = float.MaxValue;
-        foreach (var region in GameMapData.GetAreas(MapId.School))
+        foreach (var region in GameMapData.GetAreas(Config.SWARM_MATCH_MAP))
         {
             var area = region.AreaType;
             if (area == AreaType.None) continue;
@@ -1371,7 +1373,7 @@ public partial class GameServer
                 cells[0].Distance > safeDistance - SwarmBotFieldEvacuateMarginCells * 2)
                 continue;
 
-            var innermost = BotPlayerManager.CellToWorldPosition(MapId.School, cells[0].Cell);
+            var innermost = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, cells[0].Cell);
             float dx = innermost.X - botPosition.X;
             float dy = innermost.Y - botPosition.Y;
             float distanceSq = dx * dx + dy * dy;
@@ -1420,7 +1422,7 @@ public partial class GameServer
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 bot.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, bot.Position),
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Position),
                 bot.Position);
         }
 
@@ -1455,7 +1457,7 @@ public partial class GameServer
                 SpotArenaBotMode.Escort,
                 evacuationArea,
                 evacuationCell,
-                BotPlayerManager.CellToWorldPosition(MapId.School, evacuationCell));
+                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, evacuationCell));
         }
 
         // 0.2) 자기장 셀 대피 (#272, 2026-08-26 유저 제보 "봇이 자기장을 무시한다"): 구역 단위
@@ -1480,10 +1482,10 @@ public partial class GameServer
                     SpotArenaBotMode.Escort,
                     exitArea,
                     exitCell,
-                    BotPlayerManager.CellToWorldPosition(MapId.School, exitCell));
+                    BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, exitCell));
             }
 
-            var botCell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, bot.Position);
+            var botCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Position);
             if (SwarmPressureField.GetDistance(botCell) >
                 fieldSafeDistance - SwarmBotFieldEvacuateMarginCells)
             {
@@ -1497,7 +1499,7 @@ public partial class GameServer
                 {
                     if (entry.Distance > fieldSafeDistance - SwarmBotFieldEvacuateMarginCells * 2)
                         break;
-                    var candidate = BotPlayerManager.CellToWorldPosition(MapId.School, entry.Cell);
+                    var candidate = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, entry.Cell);
                     float candidateDx = candidate.X - bot.Position.X;
                     float candidateDy = candidate.Y - bot.Position.Y;
                     float candidateSq = candidateDx * candidateDx + candidateDy * candidateDy;
@@ -1511,7 +1513,7 @@ public partial class GameServer
                         SpotArenaBotMode.Escort,
                         bot.CurrentArea,
                         retreatCell,
-                        BotPlayerManager.CellToWorldPosition(MapId.School, retreatCell));
+                        BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, retreatCell));
 
                 // 이 방엔 이제 설 자리가 없다 — 자기장 안쪽 대피 구역으로.
                 var (fieldEvacuationArea, fieldEvacuationCell) =
@@ -1520,7 +1522,7 @@ public partial class GameServer
                     SpotArenaBotMode.Escort,
                     fieldEvacuationArea,
                     fieldEvacuationCell,
-                    BotPlayerManager.CellToWorldPosition(MapId.School, fieldEvacuationCell));
+                    BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldEvacuationCell));
             }
         }
 
@@ -1543,7 +1545,7 @@ public partial class GameServer
                     SpotArenaBotMode.Escort,
                     closureEvacuationArea,
                     closureEvacuationCell,
-                    BotPlayerManager.CellToWorldPosition(MapId.School, closureEvacuationCell));
+                    BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, closureEvacuationCell));
             }
         }
 
@@ -1604,16 +1606,16 @@ public partial class GameServer
                 if (pressDx * pressDx + pressDy * pressDy > 2.25f)
                 {
                     Cell pressCell = ProximityCombatLineOfSight.WorldPositionToCell(
-                        MapId.School, recentAttackerPosition);
-                    if (GameMapData.IsMoveablePosition(MapId.School, pressCell) &&
-                        GameMapData.GetCurrentArea(MapId.School, pressCell) is var pressArea &&
+                        Config.SWARM_MATCH_MAP, recentAttackerPosition);
+                    if (GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, pressCell) &&
+                        GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, pressCell) is var pressArea &&
                         pressArea != AreaType.None)
                     {
                         return new SpotArenaBotDirective(
                             SpotArenaBotMode.Escort,
                             pressArea,
                             pressCell,
-                            BotPlayerManager.CellToWorldPosition(MapId.School, pressCell));
+                            BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, pressCell));
                     }
                 }
             }
@@ -1643,14 +1645,14 @@ public partial class GameServer
             {
                 var fleeArea = (AreaType)fleeSpot.ZoneId;
                 Cell fleeCell = new(fleeSpot.CellX, fleeSpot.CellY);
-                if (!GameMapData.IsMoveablePosition(MapId.School, fleeCell))
+                if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, fleeCell))
                 {
                     fleeCell = fleeCell.GetAdjacentCells().FirstOrDefault(cell =>
-                        GameMapData.IsMoveablePosition(MapId.School, cell) &&
-                        GameMapData.GetCurrentArea(MapId.School, cell) == fleeArea) ?? fleeCell;
+                        GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell) &&
+                        GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == fleeArea) ?? fleeCell;
                 }
 
-                var fleeWorld = BotPlayerManager.CellToWorldPosition(MapId.School, fleeCell);
+                var fleeWorld = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fleeCell);
                 // 도주지가 제자리면 도주가 아니다 (#223 구석 정지 수리) — 다음 폴백으로 넘긴다.
                 if (IsFarEnoughSwarmFleeTarget(bot, fleeWorld))
                     return new SpotArenaBotDirective(
@@ -1660,18 +1662,18 @@ public partial class GameServer
             // 폴백 (#222): 도주 방향에 열린 스팟이 없어도 무조건 이탈한다 — 스팟 부재로
             // 지시 없이 낙하해 제자리에서 얻어맞던 구멍(매치 2372 봇 -78) 수리.
             Cell fleeFallbackCell =
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, fleeProbe);
-            if (!GameMapData.IsMoveablePosition(MapId.School, fleeFallbackCell))
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, fleeProbe);
+            if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, fleeFallbackCell))
             {
                 fleeFallbackCell = fleeFallbackCell.GetAdjacentCells()
-                    .FirstOrDefault(cell => GameMapData.IsMoveablePosition(MapId.School, cell));
+                    .FirstOrDefault(cell => GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell));
             }
 
             if (fleeFallbackCell != null &&
-                GameMapData.GetCurrentArea(MapId.School, fleeFallbackCell) is var fleeFallbackArea &&
+                GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, fleeFallbackCell) is var fleeFallbackArea &&
                 fleeFallbackArea != AreaType.None)
             {
-                var fleeFallbackWorld = BotPlayerManager.CellToWorldPosition(MapId.School, fleeFallbackCell);
+                var fleeFallbackWorld = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fleeFallbackCell);
                 // 구석에서 벽에 막힌 probe는 제자리로 수렴한다 (#223) — 가까우면 구역 이탈로.
                 if (IsFarEnoughSwarmFleeTarget(bot, fleeFallbackWorld))
                     return new SpotArenaBotDirective(
@@ -1685,19 +1687,19 @@ public partial class GameServer
                 .OrderBy(area =>
                 {
                     var center = BotPlayerManager.CellToWorldPosition(
-                        MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
+                        Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
                     float dx = center.X - fleeProbe.X;
                     float dy = center.Y - fleeProbe.Y;
                     return dx * dx + dy * dy;
                 })
-                .DefaultIfEmpty(AreaType.Ground)
+                .DefaultIfEmpty(Config.SWARM_MATCH_GROUND_AREA)
                 .First();
-            Cell fleeRetreatCell = GameMapData.GetAreaSpawnCell(MapId.School, fleeRetreatArea);
+            Cell fleeRetreatCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, fleeRetreatArea);
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 fleeRetreatArea,
                 fleeRetreatCell,
-                BotPlayerManager.CellToWorldPosition(MapId.School, fleeRetreatCell));
+                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fleeRetreatCell));
         }
 
         // 절단 직후 회수 (#226 F): 방금 끊은 전리품부터 줍는다 — 추격은 그 다음이다.
@@ -1708,7 +1710,7 @@ public partial class GameServer
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 bot.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, lootPosition),
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, lootPosition),
                 lootPosition);
         }
 
@@ -1725,17 +1727,17 @@ public partial class GameServer
             // 추격 계측 (#229 8단계): 조우는 나는데 절단이 0건인 원인을 가르려면 "추격이
             // 발동은 했는가"와 "발동하고도 못 잘랐는가"를 구분해야 한다. 매치 요약에 남긴다.
             LogSwarmChaseIssued(matchingId, botPlayerId, weakerRival.Value.PlayerId, chaseTarget);
-            var chaseCell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, chaseTarget);
-            var chaseArea = GameMapData.GetCurrentArea(MapId.School, chaseCell);
+            var chaseCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, chaseTarget);
+            var chaseArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, chaseCell);
             bool chaseCellUsable = chaseArea != AreaType.None &&
-                                   GameMapData.IsMoveablePosition(MapId.School, chaseCell);
+                                   GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, chaseCell);
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 chaseCellUsable ? chaseArea : weakerRival.Value.Area,
                 chaseCellUsable
                     ? chaseCell
                     : ProximityCombatLineOfSight.WorldPositionToCell(
-                        MapId.School, weakerRival.Value.Position),
+                        Config.SWARM_MATCH_MAP, weakerRival.Value.Position),
                 chaseCellUsable ? chaseTarget : weakerRival.Value.Position);
         }
 
@@ -1750,18 +1752,18 @@ public partial class GameServer
         {
             var spotArea = (AreaType)spot.ZoneId;
             Cell spotCell = new(spot.CellX, spot.CellY);
-            if (!GameMapData.IsMoveablePosition(MapId.School, spotCell))
+            if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, spotCell))
             {
                 spotCell = spotCell.GetAdjacentCells().FirstOrDefault(cell =>
-                    GameMapData.IsMoveablePosition(MapId.School, cell) &&
-                    GameMapData.GetCurrentArea(MapId.School, cell) == spotArea) ?? spotCell;
+                    GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell) &&
+                    GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == spotArea) ?? spotCell;
             }
 
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 spotArea,
                 spotCell,
-                BotPlayerManager.CellToWorldPosition(MapId.School, spotCell));
+                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, spotCell));
         }
 
         // 2) 같은 구역 바닥 소환석 — 걸어가면 자동 픽업 반경이 줍는다.
@@ -1770,7 +1772,7 @@ public partial class GameServer
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 bot.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, stonePosition),
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, stonePosition),
                 stonePosition);
         }
 
@@ -1782,7 +1784,7 @@ public partial class GameServer
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 bot.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, bot.Position),
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Position),
                 bot.Position);
         }
 
@@ -1801,7 +1803,7 @@ public partial class GameServer
                 return new SpotArenaBotDirective(
                     SpotArenaBotMode.Escort,
                     supplyArea,
-                    ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, supplyPosition),
+                    ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, supplyPosition),
                     supplyPosition);
             }
 
@@ -1812,7 +1814,7 @@ public partial class GameServer
                 return new SpotArenaBotDirective(
                     SpotArenaBotMode.Escort,
                     campArea,
-                    ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, campPosition),
+                    ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, campPosition),
                     campPosition);
             }
         }
@@ -1831,7 +1833,7 @@ public partial class GameServer
                 return new SpotArenaBotDirective(
                     SpotArenaBotMode.Escort,
                     migrateArea,
-                    ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, migratePosition),
+                    ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, migratePosition),
                     migratePosition);
             }
 
@@ -1847,19 +1849,19 @@ public partial class GameServer
                 .OrderBy(area =>
                 {
                     var center = BotPlayerManager.CellToWorldPosition(
-                        MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
+                        Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
                     float dx = center.X - bot.Position.X;
                     float dy = center.Y - bot.Position.Y;
                     return dx * dx + dy * dy;
                 })
-                .DefaultIfEmpty(AreaType.Ground)
+                .DefaultIfEmpty(Config.SWARM_MATCH_GROUND_AREA)
                 .First();
-            Cell huntingCell = GameMapData.GetAreaSpawnCell(MapId.School, huntingArea);
+            Cell huntingCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, huntingArea);
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 huntingArea,
                 huntingCell,
-                BotPlayerManager.CellToWorldPosition(MapId.School, huntingCell));
+                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, huntingCell));
         }
 
         return directive;
@@ -3226,7 +3228,7 @@ public partial class GameServer
         {
             // 사람이 있는 매치 우선 — 봇 전용 검증 매치(큰 id)가 최신을 가로채지 않게.
             var activeIds = GetActiveInstanceIds().ToList();
-            var humanIds = activeIds.Where(id => GetSessionsByInstance(MapId.School, id)
+            var humanIds = activeIds.Where(id => GetSessionsByInstance(Config.SWARM_MATCH_MAP, id)
                 .Any(session => session.PlayerId.HasValue)).ToList();
             matchingId = (humanIds.Count > 0 ? humanIds : activeIds).DefaultIfEmpty(0).Max();
         }
@@ -3240,14 +3242,14 @@ public partial class GameServer
         if (dummy == null)
             return new { error = "no alive bot in match " + matchingId };
 
-        var groundCell = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Ground);
-        var center = BotPlayerManager.CellToWorldPosition(MapId.School, groundCell);
+        var groundCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA);
+        var center = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, groundCell);
         var fromArea = dummy.CurrentArea;
         var fromCell = dummy.Cell;
         dummy.IsSwarmCutDummy = true;
-        dummy.CurrentArea = AreaType.Ground;
+        dummy.CurrentArea = Config.SWARM_MATCH_GROUND_AREA;
         dummy.Position = new Vector3f(center.X + 4f, center.Y + 3f, 0f);
-        dummy.Cell = MapCoordinateConverter.WorldToCell(MapId.School, dummy.Position);
+        dummy.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, dummy.Position);
         dummy.Path.Clear();
         dummy.PathIndex = 0;
         dummy.Corruption = 0;
@@ -3264,18 +3266,18 @@ public partial class GameServer
         _swarmCutDummyRefillAtUtc.Remove((matchingId, dummy.PlayerId));
         RefillSwarmCutDummyOrbs(matchingId, dummy);
 
-        var sessions = GetSessionsByInstance(MapId.School, matchingId).ToList();
+        var sessions = GetSessionsByInstance(Config.SWARM_MATCH_MAP, matchingId).ToList();
         BroadcastBotMovement(matchingId, new BotMovementEvent
         {
             BotPlayerId = dummy.PlayerId,
             FromArea = fromArea,
-            ToArea = AreaType.Ground,
+            ToArea = Config.SWARM_MATCH_GROUND_AREA,
             FromCell = fromCell,
             ToCell = dummy.Cell,
             Position = dummy.Position,
             Velocity = new Vector3f(0f, 0f, 0f),
             Rotation = 0f,
-            IsAreaTransition = fromArea != AreaType.Ground
+            IsAreaTransition = fromArea != Config.SWARM_MATCH_GROUND_AREA
         }, sessions);
         logger.LogInformation(
             "Swarm cut dummy ready: MatchingId={MatchingId}, DummyId={DummyId}, Position=({X},{Y})",
@@ -3311,15 +3313,15 @@ public partial class GameServer
             dummy.Position.X + dirX / length * step,
             dummy.Position.Y + dirY / length * step,
             0f);
-        var proposedCell = MapCoordinateConverter.WorldToCell(MapId.School, proposed);
-        if (!GameMapData.IsMoveablePosition(MapId.School, proposedCell))
+        var proposedCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, proposed);
+        if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, proposedCell))
             return;
 
         var fromArea = dummy.CurrentArea;
         var fromCell = dummy.Cell;
         dummy.Position = proposed;
         dummy.Cell = proposedCell;
-        var currentArea = GameMapData.GetCurrentArea(MapId.School, proposedCell);
+        var currentArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, proposedCell);
         if (currentArea != AreaType.None)
             dummy.CurrentArea = currentArea;
 
@@ -3334,7 +3336,7 @@ public partial class GameServer
             Velocity = new Vector3f(dirX / length * 5f, dirY / length * 5f, 0f),
             Rotation = 0f,
             IsAreaTransition = fromArea != dummy.CurrentArea
-        }, GetSessionsByInstance(MapId.School, matchingId).ToList());
+        }, GetSessionsByInstance(Config.SWARM_MATCH_MAP, matchingId).ToList());
     }
 
     /// <summary>
@@ -3461,7 +3463,7 @@ public partial class GameServer
             return true;
         }
 
-        foreach (var session in GetSessionsByInstance(MapId.School, matchingId))
+        foreach (var session in GetSessionsByInstance(Config.SWARM_MATCH_MAP, matchingId))
         {
             if (session.PlayerId != playerId || session.IsEliminated ||
                 session.LastValidatedPosition == null) continue;
@@ -3556,7 +3558,7 @@ public partial class GameServer
             Consider(other.PlayerId, other.Position, other.CurrentArea);
         }
 
-        foreach (var session in GetSessionsByInstance(MapId.School, matchingId))
+        foreach (var session in GetSessionsByInstance(Config.SWARM_MATCH_MAP, matchingId))
         {
             if (!session.PlayerId.HasValue || session.IsEliminated ||
                 session.LastValidatedPosition == null)
@@ -3618,7 +3620,7 @@ public partial class GameServer
         var anchors = GameMonsterCampData.GetAllAnchors()
             .Where(anchor => !IsSwarmAreaOutside(matchingId, anchor.Area))
             .Select(anchor => (anchor.Area, anchor.CampIndex,
-                World: BotPlayerManager.CellToWorldPosition(MapId.School, anchor.Cell)))
+                World: BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, anchor.Cell)))
             .OrderBy(anchor =>
             {
                 float dx = anchor.World.X - bot.Position.X;
@@ -4589,7 +4591,7 @@ public partial class GameServer
             .ToArray();
         var spawned = _groundItemManager.SpawnItems(
             matchingId, area, x, y, itemIds,
-            mapId: MapId.School,
+            mapId: Config.SWARM_MATCH_MAP,
             layout: GroundItemSpawnLayout.EliminationScatter);
         if (spawned.Count == 0)
             return;
@@ -4893,8 +4895,8 @@ public partial class GameServer
                 0f,
                 0,
                 0f,
-                MapId: MapId.School,
-                Cell: ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, target.Position),
+                MapId: Config.SWARM_MATCH_MAP,
+                Cell: ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, target.Position),
                 IsMonsterTarget: true,
                 // SB 타겟 규칙 (#219): 적 오브(0) > 적 본체(1) > 몬스터(2)
                 TargetPriority: 2));
@@ -4982,7 +4984,7 @@ public partial class GameServer
             actor = actor with
             {
                 Position = trailPosition,
-                Cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, trailPosition),
+                Cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, trailPosition),
                 // 열 순번을 실어 보낸다 — PvP 참여 오브를 앞열 N개로 끊는 근거.
                 TrailOrdinal = index - before
             };
@@ -5201,7 +5203,7 @@ public partial class GameServer
             defeatedWave.PositionX,
             defeatedWave.PositionY,
             itemIds,
-            mapId: MapId.School,
+            mapId: Config.SWARM_MATCH_MAP,
             layout: GroundItemSpawnLayout.EliminationScatter);
 
         foreach (var item in spawned)

@@ -1,4 +1,4 @@
-// ReSharper disable All
+﻿// ReSharper disable All
 using System;
 
 namespace network.common
@@ -216,9 +216,18 @@ namespace network.common
         ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2, 3쌍 깔때기(성장곡선 v3)는 6.
         ///     사람은 항상 1명이고 나머지는 봇으로 채운다.
         /// </summary>
-        // #223 10인 전환 (2026-08-11, M5): SB 정원 10 — 포드 10곳 전원 유니크 스폰
-        // (도서관·체육관도 스폰 풀에 편입).
-        public static readonly int SWARM_PLAYERS_PER_MATCH = 10;
+        // #223 10인 전환 (2026-08-11, M5) → #272 8인 전환 (2026-08-27): School2 신맵은
+        // 1인 시작방 8곳 × 합류 4세트 동심원 구조 — 정원 = 시작방 수.
+        public static readonly int SWARM_PLAYERS_PER_MATCH = 8;
+
+        /// <summary>
+        ///     #272 매치 맵 단일 원천 — 스웜 매치가 도는 맵. 매치 경로의 모든 맵 참조는
+        ///     MapId.School 하드코딩 대신 이 상수를 본다 (School은 데이터·테스트로 보존).
+        /// </summary>
+        public static readonly MapId SWARM_MATCH_MAP = MapId.School2;
+
+        /// <summary>매치 맵의 중앙 수렴 구역 (자기장 중심·보스 무대·교차사격 샌드박스 스폰).</summary>
+        public static readonly AreaType SWARM_MATCH_GROUND_AREA = AreaType.S2Ground;
 
         /// <summary>
         ///     매치 길이 (#226 단계 B) — 5분 오브 점수전. 개전(카운트다운 종료) 앵커 기준이며,

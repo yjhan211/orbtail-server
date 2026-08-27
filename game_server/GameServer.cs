@@ -1714,7 +1714,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         foreach (var botInfo in botInfoList)
             botInfo.SpawnCell = Cell.Clone(spawnAssignments[botInfo.PlayerId]);
 
-        _botPlayerManager.RegisterBots(matchingId, MapId.School, botInfoList);
+        _botPlayerManager.RegisterBots(matchingId, Config.SWARM_MATCH_MAP, botInfoList);
         int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
         _gameEventLogManager.BeginMatch(matchingId, matchSeed);
         foreach (var bot in _botPlayerManager.GetBots(matchingId))
