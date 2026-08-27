@@ -88,10 +88,11 @@ namespace network.common
         /// <summary>
         ///     蹂듬룄 援ъ뿭 ?щ? (1~4痢듬났??
         /// </summary>
+        // S2Corridor9는 #272 가운데 병합(테라스·운동장 흡수) 후 광장 정체성이라 복도가 아니다.
         public static bool IsCorridor(this AreaType area) =>
             area is AreaType.Corridor or AreaType.Corridor1F or AreaType.Corridor2F or AreaType.Corridor3F or
                 AreaType.Corridor4F ||
-            (area >= AreaType.S2Corridor1 && area <= AreaType.S2Corridor9);
+            (area >= AreaType.S2Corridor1 && area <= AreaType.S2Corridor8);
 
         /// <summary>
         ///     援ъ뿭??痢?踰덊샇 (0~4). None?대㈃ -1

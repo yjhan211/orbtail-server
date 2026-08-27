@@ -368,18 +368,16 @@ public sealed class SwarmArenaManager
     {
         switch (area)
         {
-            // #272 School2 중간 지대 3곳: 1차 통로(랩 밴드)·테라스 링·운동장.
-            // School 세대(정크장·회랑·운동장) 케이스는 데이터·테스트 보존용으로 남긴다.
+            // #272 School2: 가운데 병합(1차 통로·테라스·운동장 = S2Corridor9) 후 중간 지대는
+            // 하나 — 수렴 무대의 선주민은 트리 자이언트다. School 세대 케이스는 보존.
             case AreaType.Junkyard:
-            case AreaType.S2Corridor9:
                 kind = SwarmMonsterKind.Golem;
                 return true;
             case AreaType.Corridor:
-            case AreaType.S2Terrace:
                 kind = SwarmMonsterKind.BabyDragon;
                 return true;
             case AreaType.Ground:
-            case AreaType.S2Ground:
+            case AreaType.S2Corridor9:
                 kind = SwarmMonsterKind.TreeGiant;
                 return true;
             default:
@@ -497,9 +495,10 @@ public sealed class SwarmArenaManager
     {
         // SB 클론(캠프 모드): 균질 밀도 — 회랑 밴드(테라스=Corridor)에도 캠프가 선다.
         // 원본 맵의 링·광장 주변에도 몹 수풀이 고르게 깔려 있다 (역기획서 철학 ④).
-        // #272 School2: 복도(연결로 9종)는 무스폰 통로, 테라스는 대형 공간(기본 프로파일).
+        // #272 School2: 복도(연결로 1~8)는 무스폰 통로 — 병합된 가운데(S2Corridor9)는
+        // 운동장 프로파일(아래 Config 그라운드 분기)을 탄다.
         if (area == AreaType.Corridor ||
-            (area >= AreaType.S2Corridor1 && area <= AreaType.S2Corridor9))
+            (area >= AreaType.S2Corridor1 && area <= AreaType.S2Corridor8))
             return CampModeEnabled ? (12, 9d) : (0, 0d);
         if (area == AreaType.Ground || area == Config.SWARM_MATCH_GROUND_AREA)
             return (14, 9d);

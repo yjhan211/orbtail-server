@@ -25,11 +25,9 @@ public class SwarmMeetupTopologyTests
     [Fact]
     public void GroundPlaza_ReachesEveryPodAndBothBands()
     {
+        // #272 가운데 병합: 밴드·테라스가 운동장(S2Corridor9)과 한 구역이라 별도 왕복 검증이 없다.
         foreach (AreaType pod in MatchSpawnData.GetPhaseRoomCandidates())
             AssertReachable(Config.SWARM_MATCH_GROUND_AREA, pod);
-
-        AssertReachable(Config.SWARM_MATCH_GROUND_AREA, AreaType.S2Terrace);
-        AssertReachable(Config.SWARM_MATCH_GROUND_AREA, AreaType.S2Corridor9);
     }
 
     [Fact]

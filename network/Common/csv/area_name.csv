@@ -1,4 +1,4 @@
-area_type,name_kr,name_en,name_jp
+﻿area_type,name_kr,name_en,name_jp
 0,없음,None,なし
 1,쓰레기장,Dump,ゴミ捨て場
 2,운동장,Schoolyard,グラウンド
@@ -39,7 +39,7 @@ area_type,name_kr,name_en,name_jp
 69,복도,Corridor,廊下
 70,복도,Corridor,廊下
 71,복도,Corridor,廊下
-72,복도,Corridor,廊下
+72,운동장,Schoolyard,グラウンド
 73,복도,Corridor,廊下
 74,운동장,Schoolyard,グラウンド
 100,캠프,Camp,キャンプ

@@ -1,4 +1,4 @@
-using game_server.services;
+﻿using game_server.services;
 using network.common;
 using network.common.data.models;
 
@@ -15,9 +15,9 @@ public class EmotionAfterimageMonsterManagerTests
         var manager = CreateManager();
 
         var snapshot = manager.GetSnapshot(MatchingId);
-        Assert.Equal(300, snapshot.Count);
+        Assert.Equal(308, snapshot.Count);
         Assert.Equal(108, snapshot.Count(info => info.IsAlive));
-        Assert.DoesNotContain(snapshot, info => info.AreaType == AreaType.S2Corridor9 && info.IsAlive);
+        Assert.DoesNotContain(snapshot, info => info.AreaType.IsCorridor() && info.IsAlive);
 
         var activeByArea = snapshot
             .Where(info => info.IsAlive && !info.AreaType.IsCorridor())
@@ -564,11 +564,11 @@ public class EmotionAfterimageMonsterManagerTests
     public void CorridorPressure_SpawnsAwayFromPlayers_AwardsBaseStone_AndDespawnsAfterFourSeconds()
     {
         var manager = CreateManager();
-        var corridorTarget = new MonsterSpatialTarget(10, Config.SWARM_MATCH_MAP, AreaType.S2Corridor9, new Vector3f(35f, 52.5f, 0f));
+        var corridorTarget = new MonsterSpatialTarget(10, Config.SWARM_MATCH_MAP, AreaType.S2Corridor1, new Vector3f(35f, 52.5f, 0f));
 
         var spawned = manager.Tick(MatchingId, [corridorTarget], StartedAt);
-        var neutral = Assert.Single(spawned.ChangedStates, info => info.AreaType == AreaType.S2Corridor9);
-        Assert.Equal(AreaType.S2Corridor9, neutral.AreaType);
+        var neutral = Assert.Single(spawned.ChangedStates, info => info.AreaType == AreaType.S2Corridor1 && info.RewardItemId == 0);
+        Assert.Equal(AreaType.S2Corridor1, neutral.AreaType);
         Assert.True(neutral.IsAlive);
         Assert.Equal(0, neutral.RewardItemId);
         Assert.False(neutral.IsCore);
@@ -581,7 +581,7 @@ public class EmotionAfterimageMonsterManagerTests
 
         // Spawn another pressure monster, then verify the no-target timeout removes it.
         var respawned = manager.Tick(MatchingId, [corridorTarget], StartedAt.AddSeconds(4));
-        var second = Assert.Single(respawned.ChangedStates, info => info.AreaType == AreaType.S2Corridor9 && info.IsAlive);
+        var second = Assert.Single(respawned.ChangedStates, info => info.AreaType == AreaType.S2Corridor1 && info.IsAlive && info.RewardItemId == 0);
         var despawned = manager.Tick(MatchingId, [], StartedAt.AddSeconds(8.1));
         var removed = Assert.Single(despawned.ChangedStates, info => info.MonsterId == second.MonsterId);
         Assert.False(removed.IsAlive);
@@ -592,13 +592,14 @@ public class EmotionAfterimageMonsterManagerTests
     {
         var manager = CreateManager();
         var corridorTarget = new MonsterSpatialTarget(
-            10, Config.SWARM_MATCH_MAP, AreaType.S2Corridor9, new Vector3f(0f, 0f, 0f));
+            10, Config.SWARM_MATCH_MAP, AreaType.S2Corridor1, new Vector3f(0f, 0f, 0f));
 
         for (int index = 0; index < 7; index++)
             manager.Tick(MatchingId, [corridorTarget], StartedAt.AddSeconds(index * 4));
 
-        Assert.Equal(6, manager.GetSnapshot(MatchingId)
-            .Count(info => info.AreaType == AreaType.S2Corridor9 && info.IsAlive));
+        // #272 가운데 병합: 앵커가 복도당 2점으로 재배치 — 한 복도의 동시 압박 상한은 2다.
+        Assert.Equal(2, manager.GetSnapshot(MatchingId)
+            .Count(info => info.AreaType == AreaType.S2Corridor1 && info.IsAlive && info.RewardItemId == 0));
     }
 
     [Fact]
@@ -606,11 +607,11 @@ public class EmotionAfterimageMonsterManagerTests
     {
         var manager = CreateManager();
         var corridorTarget = new MonsterSpatialTarget(
-            10, Config.SWARM_MATCH_MAP, AreaType.S2Corridor9, new Vector3f(0f, 0f, 0f));
+            10, Config.SWARM_MATCH_MAP, AreaType.S2Corridor1, new Vector3f(0f, 0f, 0f));
 
         manager.Tick(MatchingId, [corridorTarget], StartedAt);
         var corridorMonster = manager.GetSnapshot(MatchingId)
-            .Single(info => info.AreaType == AreaType.S2Corridor9 && info.IsAlive);
+            .Single(info => info.AreaType == AreaType.S2Corridor1 && info.IsAlive && info.RewardItemId == 0);
         var atMonster = corridorTarget with
         {
             Position = new Vector3f(corridorMonster.PositionX, corridorMonster.PositionY, 0f)

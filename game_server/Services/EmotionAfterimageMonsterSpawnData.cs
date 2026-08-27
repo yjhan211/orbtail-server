@@ -157,8 +157,8 @@ internal static class EmotionAfterimageMonsterSpawnData
         AddRoomPacks(AreaType.S2Gym1, 11, [(77, 17), (83, 23), (89, 29), (79, 31)]);
         AddRoomPacks(AreaType.S2Gym2, 12, [(188, 17), (194, 23), (200, 29), (190, 31)]);
 
-        // 운동장(풋살 코트): 종반 수렴 무대 — 팩 2개.
-        AddRoomPacks(AreaType.S2Ground, 13, [(128, 11), (134, 17), (140, 23), (146, 29), (150, 34), (132, 32)]);
+        // 운동장(풋살 코트, 병합 후 S2Corridor9 소속): 종반 수렴 무대 — 팩 2개.
+        AddRoomPacks(AreaType.S2Corridor9, 13, [(128, 11), (134, 17), (140, 23), (146, 29), (150, 34), (132, 32)]);
 
         AddCorridorAnchors();
         return definitions.ToArray();
@@ -231,18 +231,25 @@ internal static class EmotionAfterimageMonsterSpawnData
 
         void AddCorridorAnchors()
         {
-            // #272 School2: 상시 배회 앵커 = 1차 연결 통로(Corridor9) 랩 밴드 8점 (대칭 배치).
+            // #272 School2 (가운데 병합 후 재배치): 압박 앵커는 복도 1~8에 2점씩 — 압박 몹은
+            // 타깃과 같은 구역이어야 유지되는데, 병합된 가운데는 복도가 아니라 캠프·보스가 맡는다.
             // These nodes never enter the closure refill economy.
-            foreach (var cell in new[]
+            foreach (var anchor in new[]
                      {
-                         (99, -16), (138, -16), (178, -16), (99, 23),
-                         (178, 23), (99, 62), (139, 62), (178, 62)
+                         (AreaType.S2Corridor1, 116, 78), (AreaType.S2Corridor1, 123, 80),
+                         (AreaType.S2Corridor2, 152, 80), (AreaType.S2Corridor2, 161, 78),
+                         (AreaType.S2Corridor3, 81, 37), (AreaType.S2Corridor3, 84, 44),
+                         (AreaType.S2Corridor4, 82, 2), (AreaType.S2Corridor4, 85, 9),
+                         (AreaType.S2Corridor5, 116, -32), (AreaType.S2Corridor5, 125, -34),
+                         (AreaType.S2Corridor6, 154, -34), (AreaType.S2Corridor6, 161, -32),
+                         (AreaType.S2Corridor7, 192, 37), (AreaType.S2Corridor7, 196, 44),
+                         (AreaType.S2Corridor8, 193, 2), (AreaType.S2Corridor8, 197, 9)
                      })
             {
                 int anchorId = nextPackId++;
                 definitions.Add(new MonsterDefinition(
-                    id++, Config.SWARM_MATCH_MAP, AreaType.S2Corridor9,
-                    CellToWorld(Config.SWARM_MATCH_MAP, cell.Item1, cell.Item2),
+                    id++, Config.SWARM_MATCH_MAP, anchor.Item1,
+                    CellToWorld(Config.SWARM_MATCH_MAP, anchor.Item2, anchor.Item3),
                     MaxHealth: 12,
                     AttackDamage: 1,
                     AttackRange: 0.65f,

@@ -1,4 +1,4 @@
-using game_server.services;
+﻿using game_server.services;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
@@ -247,21 +247,9 @@ public class SwarmArenaManagerTests
         Assert.Equal(7, manager.GetCombatTargets(217001).Count);
     }
 
-    [Fact]
-    public void CorridorBand_SpawnsCampsInCloneMap()
-    {
-        // SB 클론 균질 밀도: 중간 지대(#272 School2: 테라스 링)에도 캠프가 선다.
-        // #223 보스: 테라스 캠프 0번 = 베이비 드래곤(200) 단독 — 1 + 해골 3×2 = 7기.
-        DateTime now = StartUtc.AddSeconds(0.25);
-        var manager = CreateManager(() => now);
-        Vector3f terrace = AreaCenter(AreaType.S2Terrace);
-
-        var tick = manager.Tick(217001, Participants(terrace, AreaType.S2Terrace), now);
-
-        Assert.Equal(7, tick.SpawnedMonsters.Count);
-        Assert.Equal(1, tick.SpawnedMonsters.Count(monster => monster.MaxHealth == 200));
-        Assert.All(tick.SpawnedMonsters, monster => Assert.Equal(AreaType.S2Terrace, monster.AreaType));
-    }
+    // CorridorBand_SpawnsCampsInCloneMap 퇴역 (#272 가운데 병합): 테라스·1차 통로·운동장이
+    // S2Corridor9 하나가 되면서 별도 중간 밴드 캠프가 사라졌다 — 병합 구역의 캠프(트리 자이언트
+    // 260 + 해골)는 아래 운동장 캠프 테스트들이 잠근다.
 
     [Fact]
     public void PodArea_SpawnsSkeletonPackPlusDartAndBruiser()
@@ -386,9 +374,9 @@ public class SwarmArenaManagerTests
     {
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager(() => now);
-        // 랩 밴드(1차 통로) 남쪽 — 운동장 캠프와 밴드 자체 캠프 앵커(스폰 셀 부근 98,27)
-        // 양쪽에서 충분히 떨어진 지점.
-        Vector3f corridor = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, new Cell(138, -16));
+        // #272 가운데 병합: 밴드가 운동장과 같은 구역이 됐다 — 다른 구역 참가자는 도서관1의
+        // 먼 구석에 세운다 (좁은 복도는 캠프 앵커와 겹쳐 물린다).
+        Vector3f corridor = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, new Cell(126, 90));
         manager.Tick(217001, [new SpotArenaPlayerSpatial(1, Config.SWARM_MATCH_GROUND_AREA, AreaCenter(Config.SWARM_MATCH_GROUND_AREA))], now);
 
         var monster = manager.GetVisualStates(217001).First(state => state.IsAlive);
@@ -401,7 +389,7 @@ public class SwarmArenaManagerTests
             var participants = new[]
             {
                 new SpotArenaPlayerSpatial(1, Config.SWARM_MATCH_GROUND_AREA, onMonster),
-                new SpotArenaPlayerSpatial(2, AreaType.S2Corridor9, corridor)
+                new SpotArenaPlayerSpatial(2, AreaType.S2Library1, corridor)
             };
             damageEvents.AddRange(manager.Tick(217001, participants, now).PlayerDamage);
         }

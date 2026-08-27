@@ -696,7 +696,7 @@ public sealed class EmotionAfterimageMonsterManager
                 return 0;
 
             var corridorTargets = possibleTargets
-                // #272 School2: 복도 계열 전체가 압박 트리거 — 앵커는 랩 밴드(Corridor9)에 있다.
+                // #272 School2: 복도(1~8)에 있는 플레이어가 압박 트리거다.
                 .Where(target => target.MapId == Config.SWARM_MATCH_MAP && target.Area.IsCorridor())
                 .ToList();
             if (corridorTargets.Count == 0)
@@ -706,8 +706,13 @@ public sealed class EmotionAfterimageMonsterManager
             if (aliveCount >= GetAmbientCorridorAliveLimit(_waveIndex))
                 return 0;
 
+            // #272 School2: 앵커는 타깃이 있는 복도의 것만 후보다 — 압박 몹은 같은 구역 타깃이
+            // 있어야 유지되는데(무타깃 4초 소멸), School의 단일 회랑과 달리 복도가 8개로 나뉘어
+            // 다른 복도 앵커는 스폰 즉시 헛돌았다.
+            var targetAreas = new HashSet<AreaType>(corridorTargets.Select(target => target.Area));
             var candidate = _monsters.Values
-                .Where(state => !state.IsAlive && state.Definition.IsAmbientCorridor)
+                .Where(state => !state.IsAlive && state.Definition.IsAmbientCorridor &&
+                                targetAreas.Contains(state.Definition.Area))
                 .OrderBy(state => state.Definition.MonsterId)
                 .FirstOrDefault(state => corridorTargets.All(target =>
                     DistanceSquared(state.Definition.Position, target.Position) >=

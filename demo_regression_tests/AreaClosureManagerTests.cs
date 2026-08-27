@@ -233,9 +233,9 @@ public class AreaClosureManagerTests
             Assert.False(manager.GetGlobalClosureClientState(matchingId).IsKnown);
         }
 
-        Assert.Contains(AreaType.S2Terrace, closedDuringWatch);
+        // #272 가운데 병합: 테라스·운동장이 S2Corridor9 하나가 됐다 — 최종 폐쇄 구역만 남는다.
         Assert.Contains(AreaType.S2Corridor9, closedDuringWatch);
-        Assert.True(manager.IsAreaClosed(matchingId, AreaType.S2Terrace));
+        Assert.True(manager.IsAreaClosed(matchingId, AreaType.S2Corridor9));
         Assert.False(manager.CheckGlobalClosureSchedule(matchingId).HasTransition);
     }
 

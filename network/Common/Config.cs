@@ -226,8 +226,13 @@ namespace network.common
         /// </summary>
         public static readonly MapId SWARM_MATCH_MAP = MapId.School2;
 
-        /// <summary>매치 맵의 중앙 수렴 구역 (자기장 중심·보스 무대·교차사격 샌드박스 스폰).</summary>
-        public static readonly AreaType SWARM_MATCH_GROUND_AREA = AreaType.S2Ground;
+        /// <summary>
+        ///     매치 맵의 중앙 수렴 구역 (자기장 중심·보스 무대·교차사격 샌드박스 스폰).
+        ///     #272 가운데 병합 (2026-08-27 유저 지시): 1차 통로·테라스·운동장을 S2Corridor9
+        ///     하나로 묶었다 — 구역 단위 프랍 가시성이 광장 내부에서 토글되지 않게. 자기장
+        ///     중심은 이 구역 rect들의 경계 상자 중심(138.5, 23)이라 병합 전과 동일하다.
+        /// </summary>
+        public static readonly AreaType SWARM_MATCH_GROUND_AREA = AreaType.S2Corridor9;
 
         /// <summary>
         ///     매치 길이 (#226 단계 B) — 5분 오브 점수전. 개전(카운트다운 종료) 앵커 기준이며,
