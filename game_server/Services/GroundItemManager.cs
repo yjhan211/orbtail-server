@@ -48,11 +48,12 @@ public sealed class GroundItemManager
         _matchingStates.GetOrAdd(matchingId, _ => new MatchingGroundItemState(matchingId));
 
     public List<GroundItemInfo> SpawnItems(long matchingId, AreaType area, float originX, float originY,
-        IReadOnlyList<int> itemIds, long sourcePlayerId = 0, MapId mapId = MapId.School,
+        IReadOnlyList<int> itemIds, long sourcePlayerId = 0, MapId? mapId = null,
         TimeSpan? lifetime = null,
         long discovererPlayerId = 0, TimeSpan? discovererPickupWindow = null,
         GroundItemSpawnLayout layout = GroundItemSpawnLayout.Default)
     {
+        mapId ??= Config.SWARM_MATCH_MAP;
         if (matchingId <= 0 || area == AreaType.None || itemIds.Count == 0)
             return new List<GroundItemInfo>();
 
@@ -62,7 +63,7 @@ public sealed class GroundItemManager
             var spawned = new List<GroundItemInfo>(itemIds.Count);
             for (int i = 0; i < itemIds.Count; i++)
             {
-                var landing = ResolveLandingPosition(mapId, area, originX, originY, i, itemIds.Count, layout);
+                var landing = ResolveLandingPosition(mapId.Value, area, originX, originY, i, itemIds.Count, layout);
                 var item = new GroundItemInfo
                 {
                     GroundItemUid = state.NextUid(),

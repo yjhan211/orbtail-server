@@ -63,7 +63,6 @@ public partial class GameServer
     }
 
     private readonly List<SwarmCrossfireShape> _swarmCrossfireShapes = new();
-    private readonly Dictionary<(long MatchingId, long PlayerId), DateTime> _swarmCrossfireVictimImmuneUntilUtc = new();
     private long _swarmCrossfireEventSeq;
 
     /// <summary>이 발사가 교차사격 모양(태양 폭발 투사체)으로 처리되는가 — 유도탄 경로를 대체한다.</summary>
@@ -157,13 +156,12 @@ public partial class GameServer
             Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
             return false;
 
-        // 현측 사격 (2026-08-24 유저 결정, 같은 날 개정: 국소 창 + 좌우 실측 선택): 발사 축은
-        // 표적이 아니라 이 오브 자리에서 "꼬리가 펼쳐진 방향"에 수직인 타일 축이다. 기준은 이웃
-        // 창의 가중 접선(순번 n±1 가중 1 · n±2 가중 2, 앞은 본체·뒤는 꼬리 끝 클램프) — 직선에서는
-        // 단순 현과 같고, 꺾임에서는 몇 오브에 걸쳐 자연스럽게 돌며, 오브 하나가 어긋나도 덜 튄다.
-        // ㄱ자 꼬리는 팔마다 축이 달라 화망이 두 방향 부채로 갈라진다 — 꼬리 모양이 곧 화망
-        // 설계다. 좌우는 반구 사영이 아니라 실제 후보 선(벽까지 잘린 선분) 위의 몹 수로 고른다 —
-        // 사영만 보면 빗나갈 쪽으로 쏠 수 있다. 폴백: 이웃 창 뭉침 → 꼬리 전체 현 → 표적 스냅.
+        // 조준 개편 (2026-08-26 유저 결정 "가로/세로 축 나누기 폐지"): 꼬리 접선 기반 축
+        // 잠금(2026-08-24 국소 창 가중 접선)은 퇴역 — 오브 위치·꼬리 모양과 무관하게 타일
+        // 4방향(가로 ±, 세로 ±) 후보 선을 전부 벽까지 만들어, 실제 선분 위에 표적이 있는
+        // 방향을 우선 조준한다 (몹 수 → 첫 적중 거리). 어느 선에도 표적이 없으면 발사 사유였던
+        // 기준 표적 쪽 사영이 가장 큰 방향으로 쏜다. 유효한 방향(벽 여유 0.3)이 없으면 생략
+        // (환불 — 벽에 붙은 태양 공이 제자리 폭발하는 것보다 자연스럽다).
         float groundDx = anchor.X - origin.X;
         float groundDy = (anchor.Y - origin.Y) * SwarmGroundYScale;
         if (groundDx * groundDx + groundDy * groundDy < 0.0025f)
@@ -176,119 +174,64 @@ public partial class GameServer
         float sweepSpeed = Config.SWARM_CROSSFIRE_SUN_SWEEP_SPEED;
 
         const float diagonalUnit = 0.70710677f;
-        // 타일 X축 = 바닥면 (+1,+1)/√2, 타일 Y축 = (-1,+1)/√2. axisUnit은 부호 없는 기준 방향.
-        float axisUnitX = 0f;
-        float axisUnitY = 0f;
-        bool axisResolved = false;
+        // 타일 X축 = 바닥면 (+1,+1)/√2, 타일 Y축 = (-1,+1)/√2 — 부호까지 4방향.
+        ReadOnlySpan<float> directionX = stackalloc float[]
+            { diagonalUnit, -diagonalUnit, -diagonalUnit, diagonalUnit };
+        ReadOnlySpan<float> directionY = stackalloc float[]
+            { diagonalUnit, -diagonalUnit, diagonalUnit, -diagonalUnit };
 
-        // 꼬리 방향(바닥면 벡터)이 문턱 이상 펼쳐져 있으면 그 수직 타일 축을 기준으로 잠근다.
-        bool TryResolveAxisFromTail(float tailDx, float tailDy, float minLengthSquared)
+        var combatTargets = _swarmArenaManager.GetCombatTargets(matchingId);
+        float unitX = 0f;
+        float unitY = 0f;
+        float groundLength = 0f;
+        int bestHits = 0;
+        float bestNearest = float.MaxValue;
+        float fallbackProjection = float.MinValue;
+        bool resolved = false;
+        bool resolvedByHits = false;
+        for (int direction = 0; direction < 4; direction++)
         {
-            if (tailDx * tailDx + tailDy * tailDy <= minLengthSquared)
-                return false;
-            bool tailOnTileX = MathF.Abs(tailDx + tailDy) >= MathF.Abs(-tailDx + tailDy);
-            axisUnitX = tailOnTileX ? -diagonalUnit : diagonalUnit;
-            axisUnitY = diagonalUnit;
-            return true;
-        }
-
-        if (_swarmOrbTrails.TryGetValue((matchingId, attack.AttackerPlayerId), out var trailPoints) &&
-            trailPoints.Count >= 2)
-        {
-            var trailHead = trailPoints[0];
-            var orbTiers = GetSwarmOrbTiersInOrder(matchingId, attack.AttackerPlayerId);
-            if (orbTiers.Count > 0)
-            {
-                int lastOrdinal = orbTiers.Count - 1;
-                int ordinal = Math.Clamp(attack.AttackerTrailOrdinal, 0, lastOrdinal);
-                Vector3f NeighborPoint(int neighborOrdinal) => neighborOrdinal < 0
-                    ? trailHead
-                    : GetSwarmOrbTrailPosition(
-                        matchingId, attack.AttackerPlayerId,
-                        Math.Min(neighborOrdinal, lastOrdinal), trailHead, orbTiers);
-                var front2 = NeighborPoint(ordinal - 2);
-                var front1 = NeighborPoint(ordinal - 1);
-                var back1 = NeighborPoint(ordinal + 1);
-                var back2 = NeighborPoint(ordinal + 2);
-                // 가중 접선: 직선 꼬리(간격 s)에서 크기 10s — 단순 현(4s)의 2.5배라 문턱도 2.5배(0.75).
-                float tangentDx = 2f * (front2.X - back2.X) + (front1.X - back1.X);
-                float tangentDy = (2f * (front2.Y - back2.Y) + (front1.Y - back1.Y)) * SwarmGroundYScale;
-                axisResolved = TryResolveAxisFromTail(tangentDx, tangentDy, 0.5625f);
-            }
-
-            if (!axisResolved)
-            {
-                // 이웃 창이 뭉쳐 있으면 꼬리 전체 현(펼쳐짐 0.3) — 뭉친 꼬리의 국소 현은 잡음이다.
-                var trailEnd = trailPoints[^1];
-                axisResolved = TryResolveAxisFromTail(
-                    trailHead.X - trailEnd.X,
-                    (trailHead.Y - trailEnd.Y) * SwarmGroundYScale, 0.09f);
-            }
-        }
-
-        float unitX;
-        float unitY;
-        float groundLength;
-        if (axisResolved)
-        {
-            // 좌우 선택: +축·-축 후보 선을 벽까지 만들어 실제 선분 위 몹 수 → 첫 적중 거리 →
-            // 표적 사영 부호 → +축 순으로 고른다. 벽에 붙어 양쪽 다 짧으면 이 발은 생략한다
-            // (환불 — 벽에 붙은 태양 공이 제자리 폭발하는 것보다 자연스럽다).
-            var combatTargets = _swarmArenaManager.GetCombatTargets(matchingId);
-            float plusLength = FindSwarmCrossfireWallDistance(
-                origin, axisUnitX, axisUnitY, SwarmCrossfireMaxGroundLength, attack.Area);
-            float minusLength = FindSwarmCrossfireWallDistance(
-                origin, -axisUnitX, -axisUnitY, SwarmCrossfireMaxGroundLength, attack.Area);
-            bool plusValid = plusLength >= 0.3f;
-            bool minusValid = minusLength >= 0.3f;
-            if (!plusValid && !minusValid)
-                return false;
+            float candidateLength = FindSwarmCrossfireWallDistance(
+                origin, directionX[direction], directionY[direction],
+                SwarmCrossfireMaxGroundLength, attack.Area);
+            if (candidateLength < 0.3f)
+                continue;
 
             CountSwarmCrossfireLineTargets(
-                combatTargets, attack.Area, origin, axisUnitX, axisUnitY, plusLength, halfWidth,
-                out int plusHits, out float plusNearest);
-            CountSwarmCrossfireLineTargets(
-                combatTargets, attack.Area, origin, -axisUnitX, -axisUnitY, minusLength, halfWidth,
-                out int minusHits, out float minusNearest);
-
-            bool choosePlus;
-            if (plusValid != minusValid)
-                choosePlus = plusValid;
-            else if (plusHits != minusHits)
-                choosePlus = plusHits > minusHits;
-            else if (MathF.Abs(plusNearest - minusNearest) > 0.001f)
-                choosePlus = plusNearest < minusNearest;
-            else
-                choosePlus = groundDx * axisUnitX + groundDy * axisUnitY >= 0f;
-
-            unitX = choosePlus ? axisUnitX : -axisUnitX;
-            unitY = choosePlus ? axisUnitY : -axisUnitY;
-            groundLength = choosePlus ? plusLength : minusLength;
-        }
-        else
-        {
-            // 폴백: 표적 방향의 사영이 큰 축을 고른다 (구 스냅 문법).
-            float xAxisProjection = groundDx + groundDy;
-            float yAxisProjection = -groundDx + groundDy;
-            if (MathF.Abs(xAxisProjection) >= MathF.Abs(yAxisProjection))
+                combatTargets, attack.Area, origin, directionX[direction], directionY[direction],
+                candidateLength, halfWidth, out int hits, out float nearest);
+            // 거리 우선 (2026-08-26 2차: 몹 수 → 거리에서 뒤집음): 몹 수 우선은 긴 축이 항상
+            // 이겨 좁은 복도의 세로 발사가 죽었다 — 코앞 표적 쪽으로 응사하고, 같은 거리면 많은 쪽.
+            bool better = hits > 0 &&
+                          (!resolvedByHits ||
+                           nearest < bestNearest - 0.001f ||
+                           (MathF.Abs(nearest - bestNearest) <= 0.001f && hits > bestHits));
+            if (better)
             {
-                float sign = xAxisProjection >= 0f ? 1f : -1f;
-                unitX = diagonalUnit * sign;
-                unitY = diagonalUnit * sign;
-            }
-            else
-            {
-                float sign = yAxisProjection >= 0f ? 1f : -1f;
-                unitX = -diagonalUnit * sign;
-                unitY = diagonalUnit * sign;
+                bestHits = hits;
+                bestNearest = nearest;
+                unitX = directionX[direction];
+                unitY = directionY[direction];
+                groundLength = candidateLength;
+                resolved = true;
+                resolvedByHits = true;
             }
 
-            // 길이 = 구역 경계(벽)까지 — 티어 사거리 캡 없음 (2026-08-24 유저 결정 "영역 끝까지").
-            groundLength = FindSwarmCrossfireWallDistance(
-                origin, unitX, unitY, SwarmCrossfireMaxGroundLength, attack.Area);
-            if (groundLength < 0.3f)
-                return false;
+            if (resolvedByHits)
+                continue;
+            float projection = groundDx * directionX[direction] + groundDy * directionY[direction];
+            if (projection > fallbackProjection)
+            {
+                fallbackProjection = projection;
+                unitX = directionX[direction];
+                unitY = directionY[direction];
+                groundLength = candidateLength;
+                resolved = true;
+            }
         }
+
+        if (!resolved)
+            return false;
 
         bool detonateAtWall = groundLength < SwarmCrossfireMaxGroundLength - 0.01f;
         var end = new Vector3f(
@@ -415,8 +358,8 @@ public partial class GameServer
             {
                 if (monster.Area != shape.Area || shape.HitMonsters.Contains(monster.CombatTargetId))
                     continue;
-                if (!TryGetSwarmCrossfireSweptAlong(
-                        shape, monster.Position, lastFront, front, SwarmCrossfireMonsterRadius, out _))
+                if (!TryGetSwarmCrossfireSweptMonsterBody(
+                        shape, monster.Position, lastFront, front, out _))
                     continue;
 
                 shape.HitMonsters.Add(monster.CombatTargetId);
@@ -433,10 +376,8 @@ public partial class GameServer
                 if (participant.PlayerId == shape.OwnerId || participant.Area != shape.Area ||
                     shape.HitVictims.Contains(participant.PlayerId))
                     continue;
-                if (!TryGetSwarmCrossfireSweptAlong(
-                        shape, participant.Position, lastFront, front, SwarmCrossfirePlayerRadius, out _))
-                    continue;
-                if (!TryClaimSwarmShockWindow(matchingId, shape.OwnerId, participant.PlayerId, nowUtc))
+                if (!TryGetSwarmCrossfireSweptPlayerBody(
+                        shape, participant.Position, lastFront, front, out _))
                     continue;
 
                 shape.HitVictims.Add(participant.PlayerId);
@@ -556,8 +497,8 @@ public partial class GameServer
                 origin.X + unitX * along,
                 origin.Y + unitY * along / SwarmGroundYScale,
                 0f);
-            var cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, probe);
-            if (GameMapData.GetCurrentArea(MapId.School, cell) != area)
+            var cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, probe);
+            if (GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) != area)
                 return along;
         }
 
@@ -592,6 +533,58 @@ public partial class GameServer
         if (dxToSegment * dxToSegment + perpendicular * perpendicular > reach * reach)
             return false;
         return along > fromFront && along <= toFront + radiusPadding;
+    }
+
+    // 플레이어 몸통 캡슐 (2026-08-26 유저 결정 "큰 캡슐", 같은 날 화면 정합 보정): 판정
+    // 기준점(발 피벗) 하나로는 투사체가 화면에서 몸을 겹쳐 지나가도 미스였다 — 지면 타원(dy×2)이
+    // 세로 화면 거리를 반으로 치기 때문. 표본 범위는 "화면에서 공이 몸(발~머리 0.9)과 겹치는"
+    // 차선 범위다: 클라가 선·공을 부양된 오브 높이(+SWARM_ORB_ORBIT_CENTER_OFFSET_Y)에 그리므로,
+    // 지면 판정 차선 기준으로는 발 아래 -부양 ~ 머리 +0.1이 그 범위가 된다 (표시 = 판정).
+    private const float SwarmCrossfirePlayerBodyHeight = 0.9f;
+
+    private static bool TryGetSwarmCrossfireSweptPlayerBody(
+        SwarmCrossfireShape shape, Vector3f position, float fromFront, float toFront, out float along)
+    {
+        return TryGetSwarmCrossfireSweptBody(
+            shape, position, fromFront, toFront,
+            SwarmCrossfirePlayerRadius, SwarmCrossfirePlayerBodyHeight, out along);
+    }
+
+    // 몹 몸통 (2026-08-26 유저 제보 "몹은 충돌하면 안 맞고 비껴가면 맞는다"): 표시 차선이
+    // 부양(+0.8) 높이라 지면 판정 그대로면 화면 겹침과 판정이 반전된다 — 플레이어와 같은
+    // 화면 정합 표본을 쓴다. 몸 높이는 소형 몹 기준 0.6.
+    private const float SwarmCrossfireMonsterBodyHeight = 0.6f;
+
+    private static bool TryGetSwarmCrossfireSweptMonsterBody(
+        SwarmCrossfireShape shape, Vector3f position, float fromFront, float toFront, out float along)
+    {
+        return TryGetSwarmCrossfireSweptBody(
+            shape, position, fromFront, toFront,
+            SwarmCrossfireMonsterRadius, SwarmCrossfireMonsterBodyHeight, out along);
+    }
+
+    /// <summary>
+    ///     화면 정합 몸통 표본: 클라가 선·공을 부양 높이(+SWARM_ORB_ORBIT_CENTER_OFFSET_Y)에
+    ///     그리므로, 지면 판정 차선 기준으로 "화면에서 공이 몸(발~bodyHeight)과 겹치는" 범위는
+    ///     발 아래 -부양 ~ (bodyHeight - 부양)이다. 그 구간을 0.45 간격(지면 0.9 — 도달 반경보다
+    ///     촘촘)으로 표본해 하나라도 걸리면 명중.
+    /// </summary>
+    private static bool TryGetSwarmCrossfireSweptBody(
+        SwarmCrossfireShape shape, Vector3f position, float fromFront, float toFront,
+        float radiusPadding, float bodyHeight, out float along)
+    {
+        float bodyStart = -Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
+        float bodyEnd = bodyHeight - Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
+        for (float bodyY = bodyStart; bodyY <= bodyEnd + 0.001f; bodyY += 0.45f)
+        {
+            var sample = new Vector3f(position.X, position.Y + bodyY, 0f);
+            if (TryGetSwarmCrossfireSweptAlong(
+                    shape, sample, fromFront, toFront, radiusPadding, out along))
+                return true;
+        }
+
+        along = 0f;
+        return false;
     }
 
     /// <summary>
@@ -655,22 +648,10 @@ public partial class GameServer
             damageResult.HeartReward, damageResult.BootsReward, damageResult.KeyReward);
     }
 
-    /// <summary>
-    ///     충격 창: 피해자는 공격자와 무관하게 0.9초 면역 — 교차사격 폭발·관통·바람 회전 칼날이 같은 창을 쓴다.
-    ///     소유자 초당 1회 상한은 퇴역 (2026-08-24 유저 제보 "투사체가 지나갔는데 피해가 없다"):
-    ///     피해자 면역과 이중 게이트라 지나가는 발의 절반이 소리 없이 무효였고, 여러 명을 꿰는
-    ///     관통선이 첫 피해자 이후를 전부 삼켰다. 표시 = 판정: 지나간 발은 면역이 아닌 한 맞는다.
-    /// </summary>
-    private bool TryClaimSwarmShockWindow(long matchingId, long ownerId, long victimId, DateTime nowUtc)
-    {
-        if (_swarmCrossfireVictimImmuneUntilUtc.TryGetValue((matchingId, victimId), out var immuneUntil) &&
-            nowUtc < immuneUntil)
-            return false;
-
-        _swarmCrossfireVictimImmuneUntilUtc[(matchingId, victimId)] =
-            nowUtc.AddSeconds(Config.SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS);
-        return true;
-    }
+    // 충격 면역 퇴역 이력: 소유자 초당 1회 상한(2026-08-24)에 이어 피해자 0.9초 면역도
+    // 퇴역(2026-08-26 유저 결정 "충격 면역 아예 없애자") — 태양 다발 화망에서 첫 발 이후가
+    // 소리 없이 관통해 "피격박스가 안 맞는" 오독을 만들었다. 표시 = 판정: 지나간 발은 다 맞는다.
+    // 한 발이 같은 사람을 두 번 치는 것은 발 단위 HitVictims(교차사격)·틱 주기(칼날)가 막는다.
 
     // 화상 (#268, 2026-08-25 유저 결정): 태양 충격 피격자에게 3초 틱 피해. 재피격은 지속 갱신.
     private readonly Dictionary<(long MatchingId, long VictimId),
@@ -708,7 +689,7 @@ public partial class GameServer
             {
                 ApplySwarmShock(matchingId, burn.OwnerId, burn.WeaponItemId, burn.Area,
                     pair.Key.VictimId, "SUN_BURN_TICK", aliveSessions, aliveBots, allSessions,
-                    Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER);
+                    Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER, dotTick: true);
                 _swarmSunBurns[pair.Key] = burn with
                 {
                     NextTickAtUtc = burn.NextTickAtUtc.AddSeconds(
@@ -773,7 +754,8 @@ public partial class GameServer
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions,
-        float damageScale = 1f)
+        float damageScale = 1f,
+        bool dotTick = false)
     {
         // 받는 피해 배율 (2026-08-18): 고정 50 × 1/3 → 17. 태양·바람·파도 충격이 전부 이 한 곳을 지난다.
         // damageScale: 파도 소용돌이(#268)는 당김이 본체라 피해를 타격 피드백 수준(1/4)으로 줄인다.
@@ -791,7 +773,7 @@ public partial class GameServer
         {
             corruptionBefore = victimSession.CurrentCorruption;
             // 사격 피격 경로 재사용 — 오염 증가·피격 숫자·탈락 흐름이 그대로 따라온다.
-            victimSession.ApplyProximityAutoCombatHit(ownerId, area, weaponItemId, shock);
+            victimSession.ApplyProximityAutoCombatHit(ownerId, area, weaponItemId, shock, dotTick);
             corruptionAfter = victimSession.CurrentCorruption;
         }
         else
@@ -813,7 +795,7 @@ public partial class GameServer
         }
 
         var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
-        ownerSession?.SendProximityAutoCombatAttackFeedback(victimId, area, weaponItemId, shock);
+        ownerSession?.SendProximityAutoCombatAttackFeedback(victimId, area, weaponItemId, shock, dotTick);
 
         _gameEventLogManager.LogSystem(
             matchingId,
@@ -836,20 +818,33 @@ public partial class GameServer
         hitCount = 0;
         nearestAlong = float.MaxValue;
         float reach = halfWidth + SwarmCrossfireMonsterRadius;
+        // 화면 정합 (2026-08-26, 같은 날 2차: 중앙 1점 → 명중과 같은 몸통 표본): 중앙 1점만
+        // 세면 대각 축의 수직 성분(0.7)이 도달 반경(0.65)을 넘어, 실제로 맞을 몹이 카운트에서
+        // 빠졌다 — 좁은 복도의 세로 후보가 0마리로 집계돼 선택되지 않던 원인.
+        float bodyStart = -Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
+        float bodyEnd = SwarmCrossfireMonsterBodyHeight - Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
         foreach (var target in combatTargets)
         {
             if (target.Area != area)
                 continue;
-            float relX = target.Position.X - origin.X;
-            float relY = (target.Position.Y - origin.Y) * SwarmGroundYScale;
-            float along = relX * unitX + relY * unitY;
-            if (along < 0f || along > groundLength)
-                continue;
-            if (MathF.Abs(relX * unitY - relY * unitX) > reach)
+            float bestAlong = float.MaxValue;
+            for (float bodyY = bodyStart; bodyY <= bodyEnd + 0.001f; bodyY += 0.45f)
+            {
+                float relX = target.Position.X - origin.X;
+                float relY = (target.Position.Y + bodyY - origin.Y) * SwarmGroundYScale;
+                float along = relX * unitX + relY * unitY;
+                if (along < 0f || along > groundLength)
+                    continue;
+                if (MathF.Abs(relX * unitY - relY * unitX) > reach)
+                    continue;
+                bestAlong = MathF.Min(bestAlong, along);
+            }
+
+            if (bestAlong >= float.MaxValue)
                 continue;
             hitCount++;
-            if (along < nearestAlong)
-                nearestAlong = along;
+            if (bestAlong < nearestAlong)
+                nearestAlong = bestAlong;
         }
     }
 
@@ -889,9 +884,6 @@ public partial class GameServer
     {
         _swarmCrossfireShapes.RemoveAll(shape => shape.MatchingId == matchingId);
         PublishSwarmCrossfireDodgeSnapshot();
-        foreach (var key in _swarmCrossfireVictimImmuneUntilUtc.Keys
-                     .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmCrossfireVictimImmuneUntilUtc.Remove(key);
         foreach (var key in _swarmCrossfireConvergeWindows.Keys
                      .Where(key => key.MatchingId == matchingId).ToList())
             _swarmCrossfireConvergeWindows.Remove(key);

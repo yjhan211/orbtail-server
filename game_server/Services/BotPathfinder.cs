@@ -331,7 +331,9 @@ public static class BotPathfinder
         var queue = new Queue<Cell>();
         queue.Enqueue(fromCell);
 
-        const int maxIterations = 5000; // 영역 셀 수 안전 상한
+        // 영역 셀 수 안전 상한 — #272 School2 랩 밴드(Corridor9)의 랩 rect가 7,656셀이라
+        // 남북 종단 BFS가 5,000에서 잘렸다 (운동장→시작방 역방향 경로 없음의 원인).
+        const int maxIterations = 20000;
         int iter = 0;
 
         while (queue.Count > 0 && iter < maxIterations)

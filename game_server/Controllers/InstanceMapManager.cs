@@ -77,6 +77,7 @@ public sealed class InstanceMapManager(
                         break;
 
                     case MapId.School:
+                    case MapId.School2:
                         StartGameTimer(instanceKey, mapSubId);
                         break;
                 }

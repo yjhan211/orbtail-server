@@ -202,6 +202,10 @@ namespace network.common
         C_TO_G_SWARM_ORB_DECISION,
         G_TO_C_SWARM_ORB_DECISION_RESULT,
 
+        // 자기장 시계 (#272) — 수축 시작 시각. 유예·수축 길이·거리 필드는 Common이
+        // 단일 출처라 클라가 같은 값으로 경계를 보간한다 (표시 = 판정).
+        G_TO_C_SWARM_FIELD_STATE,
+
         END
     }
 

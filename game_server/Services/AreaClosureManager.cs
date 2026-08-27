@@ -69,6 +69,27 @@ public class AreaClosureManager
         return staggered.OrderBy(wave => wave.ClosureAtSeconds).ToList();
     }
 
+    /// <summary>
+    ///     #272 자기장 파생 웨이브: 구역별 완전-밖 시각(안전 반경이 구역 최근접 셀 거리
+    ///     아래로 내려가는 순간)을 폐쇄 시각으로 삼는다 — 기존 웨이브 배선(경고 15초·문 잠금·
+    ///     꼬리 파괴·봇 대피·재접속 스냅샷)이 그대로 소비한다. 폐쇄 구역 틱 오염은 0 —
+    ///     압박은 자기장 경사(경계 초과 거리 비례)가 전담한다.
+    ///     운동장(중심 거리 0)은 수축 완료 시각에 닫힌다 — 최종 폐쇄 = 타이머 만료 = 오버타임 개시.
+    /// </summary>
+    public static List<ClosureWaveDefinition> BuildSwarmFieldWaves(double holdSeconds, double shrinkSeconds)
+    {
+        // 폐쇄 시각 = 수축 곡선의 역함수 (#272 ease-in) — 경계 판정·렌더와 같은 곡선.
+        return SwarmPressureField.GetKnownAreas()
+            .Select(area => (Area: area, MinDistance: SwarmPressureField.GetAreaMinDistance(area)))
+            .Select(pair => new ClosureWaveDefinition(
+                (int)Math.Ceiling(holdSeconds + shrinkSeconds *
+                                  SwarmPressureField.GetProgressAtSafeDistance(pair.MinDistance)),
+                [pair.Area],
+                0))
+            .OrderBy(wave => wave.ClosureAtSeconds)
+            .ToList();
+    }
+
     private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();
     private readonly ILogger _logger;
     private readonly Func<DateTime> _utcNow;
@@ -96,7 +117,7 @@ public class AreaClosureManager
         if (_states.TryGetValue(matchingId, out var existingState))
             return existingState;
 
-        var mapAreas = GameMapData.GetAreas(MapId.School)
+        var mapAreas = GameMapData.GetAreas(Config.SWARM_MATCH_MAP)
             .Select(region => region.AreaType)
             .ToHashSet();
         var waves = (wavesOverride ?? DefaultP0Waves)

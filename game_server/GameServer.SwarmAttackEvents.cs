@@ -727,8 +727,8 @@ public partial class GameServer
             0f,
             0,
             0f,
-            MapId: MapId.School,
-            Cell: ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, origin));
+            MapId: Config.SWARM_MATCH_MAP,
+            Cell: ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, origin));
         var targetActor = new ProximityCombatActor(
             target.PlayerId,
             target.Area,
@@ -737,8 +737,8 @@ public partial class GameServer
             0f,
             0,
             0f,
-            MapId: MapId.School,
-            Cell: ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, target.Position));
+            MapId: Config.SWARM_MATCH_MAP,
+            Cell: ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, target.Position));
         return ProximityCombatLineOfSight.CanTarget(sourceActor, targetActor);
     }
 

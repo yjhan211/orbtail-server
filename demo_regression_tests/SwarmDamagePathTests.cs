@@ -42,7 +42,8 @@ public class SwarmDamagePathTests
         string source = File.ReadAllText(
             Path.Combine(FindRepositoryRoot(), "game_server", "GameServer.SwarmArena.cs"));
 
-        Assert.Contains("SwarmTrailCutEnabled = true", source);
+        // 일단 비활성 (2026-08-27 유저 지시) — 절단 재무장 시 true 어서션으로 되돌린다.
+        Assert.Contains("SwarmTrailCutEnabled = false", source);
         var crackWrites = Regex.Matches(source, @"_swarmOrbCutCracks\[[^\]]+\]\s*=");
         Assert.True(
             crackWrites.Count == 0,
@@ -236,8 +237,8 @@ public class SwarmDamagePathTests
         GameDataHelper.SetBasePath(FindNetworkBasePath());
         GameDataHelper.Initialize();
 
-        // #229: 스폰 방 10곳은 문이 잠긴 채 시작하고, 여는 수단은 탐색 게이지뿐이다.
-        // 잠금이 빠지면 방을 탈출하는 목표 자체가 사라진다.
+        // #229 → #272 School2(문 201~208): 시작방 8곳은 문이 잠긴 채 시작하고, 여는 수단은
+        // 탐색 게이지뿐이다. 잠금이 빠지면 방을 탈출하는 목표 자체가 사라진다.
         var spawnRooms = MatchSpawnData.GetPhaseRoomCandidates();
         foreach (var room in spawnRooms)
         {
@@ -260,8 +261,14 @@ public class SwarmDamagePathTests
     [Fact]
     public void EveryGaugeGatedDoor_HasAnUnlockObjectOnItsRoomSideOnly()
     {
-        // 문은 안에서만 연다 (#229): 복도·운동장·쓰레기장 쪽에는 잠금해제 오브젝트가 없다.
+        // 문은 안에서만 연다 (#229 → #272 School2): 복도·통로 쪽에는 잠금해제 오브젝트가 없다.
+        // School 세대 데이터(문 1~22)는 보존돼 함께 로드되므로, 검사는 현행 매치 맵의
+        // 시작방 문들(스폰 방 소속 door_id)로 한정한다.
         var spawnRooms = MatchSpawnData.GetPhaseRoomCandidates().ToHashSet();
+        var spawnRoomDoorIds = GameDoorData.GetAll()
+            .Where(door => spawnRooms.Contains(door.AreaType) || spawnRooms.Contains(door.AreaTypeB))
+            .Select(door => door.DoorId)
+            .ToHashSet();
         var unlockSides = new HashSet<(int DoorId, int Zone)>();
         foreach (var zone in Enum.GetValues<AreaType>())
         {
@@ -269,6 +276,7 @@ public class SwarmDamagePathTests
             {
                 if (info.DoorId <= 0) continue;
                 unlockSides.Add((info.DoorId, (int)zone));
+                if (!spawnRoomDoorIds.Contains(info.DoorId)) continue;
                 Assert.Contains((AreaType)zone, spawnRooms);
             }
         }

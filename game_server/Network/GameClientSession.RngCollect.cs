@@ -185,7 +185,7 @@ public partial class GameClientSession
         {
             var spawned = _groundItemManager.SpawnItems(
                 CurrentMapSubId, CurrentArea, dropAnchor.X, dropAnchor.Y, [dropItemId],
-                mapId: MapId.School,
+                mapId: Config.SWARM_MATCH_MAP,
                 layout: GroundItemSpawnLayout.EliminationScatter);
             BroadcastGroundItemsSpawned(CurrentArea, spawned);
         }

@@ -46,8 +46,9 @@ public partial class GameServer
     // 정지를 이 시간 이상 유지해야 무장된다 — 끊어 걷기(스텝 샷)가 무료가 되지 않게.
     private const double SwarmStopAimSeconds = 0.3d;
 
-    // #219 M1 게이트: 자기장(보관), 유닛 낱개 체력(클론 전투 모델).
-    private static readonly bool SwarmFieldEnabled = false;
+    // #272 자기장 재무장: 원형 수축 필드가 폐쇄 시간표의 단일 원천 — 구역 웨이브는 필드에서
+    // 파생한다(GetSwarmFieldWaves). 토글은 클라 경계 렌더와 공유하므로 Config가 단일 출처.
+    private static readonly bool SwarmFieldEnabled = Config.SWARM_PRESSURE_FIELD_ENABLED;
 
     // 오브 HP 전투 퇴역 (#226 재개편): 미사일·물폭탄·몹 공격은 전부 본체 오염 직행 —
     // 오브 파괴는 열 절단(+폐쇄) 전용이라야 절단이 독립 전투 동사로 산다.
@@ -57,7 +58,9 @@ public partial class GameServer
     // 몸으로 상대 꼬리를 유효하게 가로지르면 밟은 지점부터 꼬리 끝까지 깨지고(2026-08-18 유저 결정: 접미
     // 전체) 나는 정신오염 +35를 낸다. 크랙 5칸·방어 장갑·절단 낙수는 쓰지 않는다 (TryPerformSwarmTrailCut).
     // 고리 포위는 계속 끈다.
-    private static readonly bool SwarmTrailCutEnabled = true;
+    // 일단 비활성 (2026-08-27 유저 지시, School2 플레이테스트) — 되돌리면 절단 계약 테스트
+    // (SwarmDamagePathTests.TailCut_RemovesSuffixAndChargesAttacker)의 플래그 어서션도 같이 되돌린다.
+    private static readonly bool SwarmTrailCutEnabled = false;
     private static readonly bool SwarmEncircleEnabled = false;
     // 오브의 플레이어 직접 조준 복귀 (2026-08-17 유저 지시 "오브가 플레이어(봇)도 타겟팅"): 태양은 교차사격
     // 투사체(첫 표적 폭발)로, 바람은 유도탄으로 사람을 쏜다. 아래 PvP 사거리·앞열 규칙이 산다.
@@ -260,6 +263,8 @@ public partial class GameServer
             GameClientSession.SwarmDummyMoveCallback ??= MoveSwarmCutDummy;
             GameClientSession.SwarmGrowthPickCallback ??= HandleSwarmGrowthPick;
             GameClientSession.SwarmOrbDecisionCallback ??= HandleSwarmOrbDecision;
+            // #272 경계 토출 스폰: 자기장 경계가 관통 중인 구역의 캠프는 빨간 지대에서 태어난다.
+            SwarmArenaManager.FieldSpawnCellResolver ??= ResolveSwarmFieldSpawn;
             // 하트 = 본체 오염 + 앞줄 오브 HP 회복 (#222 M4, 원작 하트는 스쿼드도 회복).
             // 엔트리 제거 = 만충 취급 — 다음 오브 비주얼 틱에 체력바·크랙이 함께 복구된다.
             GameClientSession.SwarmHeartPickupCallback ??=
@@ -270,10 +275,8 @@ public partial class GameServer
                 (gateMatchingId, gatePlayerId) =>
                     _swarmFrontOrbHp.ContainsKey((gateMatchingId, gatePlayerId));
             LogSwarmPairZoneDistances(matchingId);
-            // M4 자기장: 안전 거리 수축 시계는 스웜 개전과 함께 돈다.
-            // #219 M1: 클론에서는 자기장을 무장하지 않는다 — 수렴은 M3의 광산 각본이 담당한다.
-            if (SwarmFieldEnabled)
-                _swarmFieldStartedAtUtc[matchingId] = DateTime.UtcNow;
+            // #272 자기장: 수축 시계는 폐쇄 시계와 같은 앵커(AreaClosureManager.GameStartTime)를 쓴다 —
+            // 무장은 폐쇄 틱(ProcessSwarmScheduledClosureTick)의 최초 InitializeMatching이 담당한다.
             logger.LogInformation(
                 "Swarm pressure field armed: MatchingId={MatchingId}, MaxDistance={MaxDistance}, " +
                 "HoldSeconds={Hold}, ShrinkSeconds={Shrink}",
@@ -706,34 +709,38 @@ public partial class GameServer
     // 스팟 예산 선소진(#217 성장곡선 v3, 21개)은 퇴역 — SB에는 인위적 봉인이 없고,
     // 희소성은 리젠(60초)과 크기 비례 비용이 담당한다. 배치된 스팟은 전부 살아 있다.
 
-    // 자기장 스케줄 (M4 종반 수렴, 자기장 전환 2026-08-06): 60초 유예 후 안전 거리가
-    // 최대 보행 거리에서 0까지 선형 수축한다 (5:30 완료, 운동장만 안전).
-    // 깔때기 순서(시작방 → 쌍 구역 → 복도)는 보행 거리가 먼 순서로 자연 재현된다.
-    private const double SwarmFieldHoldSeconds = 60d;
-    private const double SwarmFieldShrinkSeconds = 270d;
-    private const int SwarmFieldWarningLeadSeconds = 15;
+    // 자기장 스케줄 (#272 재무장, 원형): 유예 후 안전 반경이 최대치에서 0까지 선형 수축한다 —
+    // 매치 종료(SWARM_MATCH_DURATION_SECONDS)에 운동장 중심만 안전, 최종 폐쇄 = 타이머 만료 = 오버타임 개시.
+    // 깔때기 순서(외곽 방 → 복도 밴드 → 운동장)는 중심 거리가 먼 순서로 자연 재현된다.
+    private const double SwarmFieldHoldSeconds = Config.SWARM_FIELD_HOLD_SECONDS;
+    private const double SwarmFieldShrinkSeconds =
+        Config.SWARM_MATCH_DURATION_SECONDS - Config.SWARM_FIELD_HOLD_SECONDS;
 
-    // 경계 밖 오염 (리소스 틱 5초당): 기본 + 초과 거리 6셀당 1. 문턱에서 즉사가 아니라
+    // 경계 밖 오염 (리소스 틱 5초당): 기본 + 초과 셀당 가산. 문턱에서 즉사가 아니라
     // "슬슬 따가움 → 깊을수록 아픔"의 경사 — 외곽 마지막 개봉 도박이 성립해야 한다.
-    private const int SwarmFieldBaseCorruptionPerTick = 2;
-    private const int SwarmFieldDistancePerExtraCorruption = 6;
+    // #272 재조정: 구 웨이브 폐쇄 오염(85~145/틱)을 퇴역시키고 이 경사가 압박을 전담한다.
+    // 기본 25→12 (봇 매치 9831482 실측): 유예 제거로 상시 노출 시간이 급증해 이동 중 마모만으로
+    // 갈려나갔다 — 경계 스침 175초 생존(12/틱), 깊이 20셀 방치는 약 19초 사망(112/틱).
+    private const int SwarmFieldBaseCorruptionPerTick = 12;
+    private const int SwarmFieldCorruptionPerExtraCell = 5;
 
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<long, DateTime>
-        _swarmFieldStartedAtUtc = new();
-    private readonly Dictionary<long, HashSet<AreaType>> _swarmFieldWarnedAreas = new();
-    private readonly Dictionary<long, HashSet<AreaType>> _swarmFieldOutsideAreas = new();
-
-    /// <summary>현재 안전 거리. 수축 전에는 int.MaxValue(전 맵 안전).</summary>
-    private int GetSwarmSafeDistance(long matchingId, DateTime nowUtc)
+    /// <summary>현재 안전 반경. 수축 전에는 double.MaxValue(전 맵 안전). 폐쇄 시계(GameStartTime)와
+    ///     같은 앵커를 쓴다 — 파생 웨이브의 구역 완전-밖 시각과 필드 오염이 어긋나지 않는다.
+    ///     양자화 없는 연속식(2026-08-26 유저 결정: 주기 단위가 아니라 계속 줄어드는 원) —
+    ///     클라 경계 렌더(ClosureFieldOverlay.ComputeSafeDistance)와 같은 식이다.</summary>
+    private double GetSwarmSafeDistance(long matchingId, DateTime nowUtc)
     {
-        if (!_swarmFieldStartedAtUtc.TryGetValue(matchingId, out var startedAtUtc))
-            return int.MaxValue;
+        if (!SwarmFieldEnabled)
+            return double.MaxValue;
+        var closureState = _areaClosureManager.GetMatchingState(matchingId);
+        if (closureState == null)
+            return double.MaxValue;
 
-        double shrinkElapsed = (nowUtc - startedAtUtc).TotalSeconds - SwarmFieldHoldSeconds;
-        if (shrinkElapsed <= 0) return int.MaxValue;
+        double shrinkElapsed = (nowUtc - closureState.GameStartTime).TotalSeconds - SwarmFieldHoldSeconds;
+        if (shrinkElapsed <= 0) return double.MaxValue;
 
         double progress = Math.Min(1d, shrinkElapsed / SwarmFieldShrinkSeconds);
-        return (int)Math.Ceiling(SwarmPressureField.MaxDistance * (1d - progress));
+        return SwarmPressureField.GetSafeDistanceAtProgress(progress);
     }
 
     /// <summary>구역 전체가 현재 경계 밖(폐쇄·자기장)인가 — 봇 대피·스팟 필터의 기준.</summary>
@@ -747,99 +754,131 @@ public partial class GameServer
         if (worldPosition == null)
             return 0;
 
-        int safeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
-        if (safeDistance == int.MaxValue)
+        double safeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
+        if (safeDistance >= double.MaxValue)
             return 0;
 
-        var cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, worldPosition);
-        int over = SwarmPressureField.GetDistance(cell) - safeDistance;
+        var cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, worldPosition);
+        double over = SwarmPressureField.GetDistance(cell) - safeDistance;
         if (over <= 0) return 0;
-        return SwarmFieldBaseCorruptionPerTick + over / SwarmFieldDistancePerExtraCorruption;
+        return SwarmFieldBaseCorruptionPerTick + (int)(over * SwarmFieldCorruptionPerExtraCell);
     }
 
-    /// <summary>구역 전체가 경계 밖이 되는 시각까지 남은 초.</summary>
-    private int GetSecondsUntilAreaOutside(long matchingId, int areaMinDistance, DateTime nowUtc)
+    // #272 경계 토출 스폰: 구역별 walkable 셀을 중심 거리 오름차순으로 캐시 — 리졸버가 띠를 자른다.
+    private static Dictionary<AreaType, List<(Cell Cell, int Distance)>>? _swarmAreaCellsByDistance;
+
+    private static List<(Cell Cell, int Distance)> GetSwarmAreaCellsByDistance(AreaType area)
     {
-        if (!_swarmFieldStartedAtUtc.TryGetValue(matchingId, out var startedAtUtc))
-            return int.MaxValue;
+        if (_swarmAreaCellsByDistance == null)
+        {
+            var byArea = new Dictionary<AreaType, List<(Cell Cell, int Distance)>>();
+            foreach (var pair in SwarmPressureField.DistancesByCell)
+            {
+                var cell = new Cell(pair.Key.X, pair.Key.Y);
+                var cellArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
+                if (cellArea == AreaType.None) continue;
+                if (!byArea.TryGetValue(cellArea, out var list))
+                    byArea[cellArea] = list = new List<(Cell, int)>();
+                list.Add((cell, pair.Value));
+            }
 
-        double outsideElapsed = SwarmFieldHoldSeconds + SwarmFieldShrinkSeconds *
-            (1d - (double)areaMinDistance / SwarmPressureField.MaxDistance);
-        return (int)Math.Max(0d, (startedAtUtc.AddSeconds(outsideElapsed) - nowUtc).TotalSeconds);
+            foreach (var list in byArea.Values)
+                list.Sort((left, right) => left.Distance.CompareTo(right.Distance));
+            _swarmAreaCellsByDistance = byArea;
+        }
+
+        return _swarmAreaCellsByDistance.TryGetValue(area, out var cells)
+            ? cells
+            : [];
     }
+
+    // 경계 토출 띠 폭 (셀): 스폰은 경계 바로 밖, 복귀 앵커는 경계 바로 안 — 태어나서 걸어 들어온다.
+    private const int SwarmFieldSpawnBandCells = 6;
 
     /// <summary>
-    ///     스웜 자기장 틱 (1초): 안전 거리를 수축시키며, 구역이 곧 완전히 밖이 되면 경고를,
-    ///     완전히 밖이 되면 폐쇄를 한 번씩 브로드캐스트한다 — 미니맵은 기존 폐쇄 표시를 재사용한다.
-    ///     실제 압박(오염)은 구역이 아니라 참가자 셀의 보행 거리 기준으로 리소스 틱이 준다.
+    ///     #272 경계 토출 스폰 (2026-08-26 유저 결정, 같은 날 2차 "안전 구역 예외 제거"): 캠프
+    ///     신규 스폰은 항상 바깥(자기장이 올 방향)에서 태어나 안쪽 앵커로 걸어 들어온다 —
+    ///     경계가 구역을 관통 중이면 경계 밖 빨간 띠, 아직 온전히 안전한 구역이면 그 구역의
+    ///     가장 바깥 띠. 저작 캠프 앵커는 자기장 모드에서 쓰지 않는다 (단일 문법).
+    ///     온전히 밖인 구역은 폐쇄 스폰 정지 규칙이 이미 막는다.
     /// </summary>
-    private void ProcessSwarmClosureTick(long matchingId)
+    private (Cell Spawn, Cell Anchor)? ResolveSwarmFieldSpawn(long matchingId, AreaType area)
     {
-        if (!_swarmArenaManager.HasMatching(matchingId))
-            return;
-        if (!_swarmFieldStartedAtUtc.ContainsKey(matchingId))
-            return;
+        if (!SwarmFieldEnabled) return null;
+        double safeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
 
-        DateTime nowUtc = DateTime.UtcNow;
-        int safeNow = GetSwarmSafeDistance(matchingId, nowUtc);
-        int safeAtLead = GetSwarmSafeDistance(matchingId, nowUtc.AddSeconds(SwarmFieldWarningLeadSeconds));
-        if (safeAtLead == int.MaxValue)
-            return;
+        var cells = GetSwarmAreaCellsByDistance(area);
+        if (cells.Count == 0) return null;
 
+        bool boundaryCrossing = safeDistance < cells[^1].Distance;
+        double spawnMin = boundaryCrossing ? safeDistance : cells[^1].Distance - SwarmFieldSpawnBandCells;
+        double spawnMax = boundaryCrossing ? safeDistance + SwarmFieldSpawnBandCells : cells[^1].Distance;
+
+        var spawnBand = cells
+            .Where(entry => entry.Distance > spawnMin && entry.Distance <= spawnMax)
+            .ToList();
+        if (spawnBand.Count == 0)
+            spawnBand = boundaryCrossing
+                ? cells.Where(entry => entry.Distance > safeDistance).ToList()
+                : [cells[^1]];
+
+        var anchorBand = cells
+            .Where(entry => entry.Distance <= spawnMin &&
+                            entry.Distance > spawnMin - SwarmFieldSpawnBandCells)
+            .ToList();
+        if (anchorBand.Count == 0)
+            anchorBand = [cells[0]];
+
+        return (
+            spawnBand[Random.Shared.Next(spawnBand.Count)].Cell,
+            anchorBand[Random.Shared.Next(anchorBand.Count)].Cell);
+    }
+
+    // 자기장 파생 웨이브 (#272): 계산은 AreaClosureManager.BuildSwarmFieldWaves가 담당한다.
+    // 거리 필드·상수가 프로세스 수명 동안 불변이라 한 번만 계산해 캐시한다.
+    private static IReadOnlyList<ClosureWaveDefinition>? _swarmFieldDerivedWaves;
+
+    private static IReadOnlyList<ClosureWaveDefinition> GetSwarmFieldWaves()
+    {
+        return _swarmFieldDerivedWaves ??=
+            AreaClosureManager.BuildSwarmFieldWaves(SwarmFieldHoldSeconds, SwarmFieldShrinkSeconds);
+    }
+
+    // 자기장 상태 패킷은 매칭당 개전 1회 브로드캐스트 (재접속은 스냅샷이 복원). 폐쇄 틱 단일
+    // 스레드(Timer 콜백 직렬)만 쓰고 손다 — 잠금 불필요.
+    private readonly HashSet<long> _swarmFieldStateAnnounced = new();
+
+    /// <summary>
+    ///     #272 자기장 시계 브로드캐스트: 클라 경계 렌더의 유일한 입력. 유예·수축 길이·거리
+    ///     필드는 Common(Config·SwarmPressureField)에서 양쪽이 같은 값을 계산하므로 시작
+    ///     시각만 나른다 — 표시 = 판정.
+    /// </summary>
+    private void BroadcastSwarmFieldState(long matchingId, DateTime fieldStartedAtUtc)
+    {
         var sessions = _clientSessions.Values
             .Where(session => session.PlayerId.HasValue && session.CurrentMapSubId == matchingId)
             .ToList();
-        if (!_swarmFieldWarnedAreas.TryGetValue(matchingId, out var warned))
-            _swarmFieldWarnedAreas[matchingId] = warned = new HashSet<AreaType>();
-        if (!_swarmFieldOutsideAreas.TryGetValue(matchingId, out var outside))
-            _swarmFieldOutsideAreas[matchingId] = outside = new HashSet<AreaType>();
-
-        foreach (var area in SwarmPressureField.GetKnownAreas())
+        using var packet = global::network.packets.Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);
+        packet.SetBody(MessagePack.MessagePackSerializer.Serialize(new G_TO_C_SWARM_FIELD_STATE
         {
-            int minDistance = SwarmPressureField.GetAreaMinDistance(area);
-            if (minDistance <= 0)
-                continue;
-
-            if (minDistance > safeNow)
-            {
-                if (!outside.Add(area))
-                    continue;
-
-                _gameEventLogManager.LogClosure(matchingId, area.ToString());
-                using var packet = global::network.packets.Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
-                packet.SetBody(MessagePack.MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED
-                {
-                    AreaType = area,
-                    IsClosed = true
-                }));
-                foreach (var session in sessions) session.Send(packet);
-                continue;
-            }
-
-            if (minDistance <= safeAtLead || !warned.Add(area))
-                continue;
-
-            int secondsRemaining = GetSecondsUntilAreaOutside(matchingId, minDistance, nowUtc);
-            using var warningPacket =
-                global::network.packets.Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
-            warningPacket.SetBody(MessagePack.MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
-            {
-                AreaType = area,
-                SecondsRemaining = secondsRemaining,
-                ClosureAtUnixMs = DateTimeOffset.UtcNow.AddSeconds(secondsRemaining).ToUnixTimeMilliseconds()
-            }));
-            foreach (var session in sessions) session.Send(warningPacket);
-        }
+            StartedAtUnixMs = new DateTimeOffset(fieldStartedAtUtc).ToUnixTimeMilliseconds()
+        }));
+        foreach (var session in sessions) session.Send(packet);
     }
 
     /// <summary>
-    ///     #219 폐쇄 부활: 자기장 대신 시간 웨이브 스케줄(AreaClosureManager)로 구역을 닫는다.
-    ///     경고 15초 → 폐쇄 브로드캐스트. 폐쇄 오염은 정산 틱(GetClosedAreaCorruptionPerTick),
-    ///     신규 몹 스폰 정지는 캠프 리졸버, 봇·스팟 제외는 IsSwarmAreaOutside가 담당한다.
+    ///     #272 자기장 폐쇄: 구역 웨이브는 자기장에서 파생한 시간표로 닫는다 (SwarmFieldEnabled=false면
+    ///     고정 DefaultP0Waves로 복귀). 경고 15초 → 폐쇄 브로드캐스트. 폐쇄 구역 오염은 자기장
+    ///     경사(정산 틱의 GetSwarmFieldCorruptionPerTick)가 전담하고, 신규 몹 스폰 정지는 캠프
+    ///     리졸버, 봇·스팟 제외는 IsSwarmAreaOutside가 담당한다.
     /// </summary>
     private void ProcessSwarmScheduledClosureTick(long matchingId)
     {
-        _areaClosureManager.InitializeMatching(matchingId);
+        var closureState = _areaClosureManager.InitializeMatching(
+            matchingId,
+            wavesOverride: SwarmFieldEnabled ? GetSwarmFieldWaves() : null);
+        if (SwarmFieldEnabled && _swarmFieldStateAnnounced.Add(matchingId))
+            BroadcastSwarmFieldState(matchingId, closureState.GameStartTime);
         var closureTick = _areaClosureManager.CheckClosureSchedule(matchingId);
         if (closureTick.WarningAreas.Count == 0 && closureTick.ClosedAreas.Count == 0)
             return;
@@ -920,8 +959,8 @@ public partial class GameServer
         {
             // 본인이 폐쇄 구역 안이면 꼬리는 그대로 둔다 (2026-08-18): 즉사가 퇴역해 본인은 틱 오염을 받으며
             // 문을 따고 나가는 중이다 — 여기서 꼬리까지 지우면 나가도 빈손이라 살아남을 이유가 없다.
-            var ownerCell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, ownerPosition);
-            if (closed.Contains(GameMapData.GetCurrentArea(MapId.School, ownerCell)))
+            var ownerCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, ownerPosition);
+            if (closed.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, ownerCell)))
                 continue;
 
             int orbCount = CountSwarmSquadOrbs(matchingId, playerId);
@@ -936,8 +975,8 @@ public partial class GameServer
             {
                 var position = GetSwarmOrbTrailPosition(
                     matchingId, playerId, ordinal, ownerPosition, closureTiers);
-                var cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, position);
-                if (!closed.Contains(GameMapData.GetCurrentArea(MapId.School, cell)))
+                var cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, position);
+                if (!closed.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell)))
                     break;
                 suffixStart = ordinal;
                 suffixPosition = position;
@@ -956,8 +995,8 @@ public partial class GameServer
 
             // 파열 연출은 절단 링 재사용 — 전리품은 흩뿌리지 않는다 (폐쇄 파괴 무보상).
             var closedArea = GameMapData.GetCurrentArea(
-                MapId.School,
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, suffixPosition));
+                Config.SWARM_MATCH_MAP,
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, suffixPosition));
             SendSwarmRingVfx(
                 closedArea, playerId, suffixPosition.X, suffixPosition.Y,
                 SwarmTrailCutFlashRadius, sessions, SwarmRingVfxKindCut,
@@ -972,14 +1011,17 @@ public partial class GameServer
     }
 
     // 쌍 깔때기: 시작방 → 만남 구역. 거리 편차의 보정값(잔상 스폰 시점)은 이 로그를 계측한 뒤 정한다.
+    // #272 School2: 복도 연결 정의(2026-08-27 유저)와 1:1 — 시작방 2곳이 합류 1곳을 공유한다.
     private static readonly (AreaType StartRoom, AreaType PairZone)[] SwarmPairZones =
     [
-        (AreaType.ExamRoom, AreaType.Library),
-        (AreaType.Storage, AreaType.Library),
-        (AreaType.Classroom2, AreaType.Gym),
-        (AreaType.Storage2, AreaType.Gym),
-        (AreaType.AdminOffice, AreaType.Corridor),
-        (AreaType.StaffRoom, AreaType.Corridor)
+        (AreaType.S2Classroom1, AreaType.S2Library1),
+        (AreaType.S2Classroom2, AreaType.S2Library1),
+        (AreaType.S2ExamRoom, AreaType.S2Gym1),
+        (AreaType.S2BroadcastRoom, AreaType.S2Gym1),
+        (AreaType.S2Storage, AreaType.S2Library2),
+        (AreaType.S2AdminOffice2, AreaType.S2Library2),
+        (AreaType.S2AdminOffice1, AreaType.S2Gym2),
+        (AreaType.S2NurseOffice, AreaType.S2Gym2)
     ];
 
     /// <summary>
@@ -991,9 +1033,9 @@ public partial class GameServer
         foreach (var (startRoom, pairZone) in SwarmPairZones)
         {
             var path = BotPathfinder.FindPath(
-                MapId.School,
-                startRoom, GameMapData.GetAreaSpawnCell(MapId.School, startRoom),
-                pairZone, GameMapData.GetAreaSpawnCell(MapId.School, pairZone));
+                Config.SWARM_MATCH_MAP,
+                startRoom, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, startRoom),
+                pairZone, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, pairZone));
             logger.LogInformation(
                 "Swarm pair distance: MatchingId={MatchingId}, StartRoom={StartRoom}, PairZone={PairZone}, Steps={Steps}",
                 matchingId, startRoom, pairZone, path?.Count ?? -1);
@@ -1021,7 +1063,7 @@ public partial class GameServer
 
     // 봇 문 잠금해제 (#229). 사람과 같은 규칙을 봇에도 건다 — 봇만 잠긴 문을 통과하면
     // 폐쇄 압력이 봇에게만 무의미해지고, 봇 매치로 이 메카닉을 검증할 수도 없다.
-    private const double SwarmBotDoorUnlockChannelSeconds = 3d;
+    // #272: 채널 길이는 사람 게이지와 같은 Config 문 등급 값을 쓴다 (합류 문 = 듀얼 관문 12초).
     private const float SwarmBotDoorUnlockRange = 1.6f;
 
     private void ProcessSwarmBotDoorUnlocks(
@@ -1043,7 +1085,7 @@ public partial class GameServer
                 }
 
                 if ((nowUtc - bot.SwarmDoorUnlockStartedAtUtc).TotalSeconds <
-                    SwarmBotDoorUnlockChannelSeconds)
+                    Config.GetSwarmDoorGaugeSeconds(bot.SwarmDoorUnlockDoorId))
                     continue;
 
                 int doorId = bot.SwarmDoorUnlockDoorId;
@@ -1086,7 +1128,7 @@ public partial class GameServer
 
             // door_info의 좌표는 셀 단위다 — 봇 위치(월드)와 직접 비교하면 절대 닿지 않는다.
             var doorWorld = BotPlayerManager.CellToWorldPosition(
-                MapId.School, new Cell((int)door.PositionX, (int)door.PositionY));
+                Config.SWARM_MATCH_MAP, new Cell((int)door.PositionX, (int)door.PositionY));
             float dx = doorWorld.X - bot.Position.X;
             float dy = doorWorld.Y - bot.Position.Y;
             float distanceSquared = dx * dx + dy * dy;
@@ -1185,7 +1227,7 @@ public partial class GameServer
             : Config.BOOTS_GROUND_ITEM_ID;
         var dropped = _groundItemManager.SpawnItems(
             matchingId, bot.CurrentArea, bot.Position.X, bot.Position.Y, [dropItemId],
-            mapId: MapId.School,
+            mapId: Config.SWARM_MATCH_MAP,
             layout: GroundItemSpawnLayout.EliminationScatter);
         if (dropped.Count > 0)
         {
@@ -1240,7 +1282,7 @@ public partial class GameServer
                 continue;
 
             var world = BotPlayerManager.CellToWorldPosition(
-                MapId.School, new Cell(info.CellX, info.CellY));
+                Config.SWARM_MATCH_MAP, new Cell(info.CellX, info.CellY));
             float dx = world.X - position.X;
             float dy = world.Y - position.Y;
             float candidateDistance = MathF.Sqrt(dx * dx + dy * dy);
@@ -1274,12 +1316,11 @@ public partial class GameServer
     }
 
     // 시작방 팩이 마르면 봇이 이주할 무한 스폰 사냥터.
-    // 쓰레기장은 문 잠금(113·114·118·119)으로 도달 불가.
-    // 6인 깔때기: 쌍 구역(도서관·강당)과 복도층 교실(3-2·4-2)·운동장이 순례 목적지.
+    // #272 School2: 합류 구역 4곳 + 운동장 — 순례 목적지가 곧 수렴 동선이다.
     private static readonly AreaType[] SwarmHuntingAreas =
     [
-        AreaType.Ground, AreaType.Gym, AreaType.Library,
-        AreaType.Classroom3, AreaType.Classroom4
+        Config.SWARM_MATCH_GROUND_AREA, AreaType.S2Library1, AreaType.S2Library2,
+        AreaType.S2Gym1, AreaType.S2Gym2
     ];
 
     /// <summary>
@@ -1305,6 +1346,49 @@ public partial class GameServer
     // 긴 꼬리는 문 통과가 느리고, 폐쇄 잔류 꼬리는 무보상 파괴된다.
     private const double SwarmBotClosureEvacuateBaseSeconds = 4d;
     private const double SwarmBotClosureEvacuatePerOrbSeconds = 0.5d;
+
+    // 자기장 대피 여유 (셀, #272): 경계에 이만큼 다가서면 미리 물러나고, 두 배 안쪽까지 들어간다.
+    // 3 → 5 (School2 실측 9006207): 반경이 커진 신맵은 경계가 초당 약 0.28셀로 60% 빨라
+    // 3셀 마진이 11초에 불과했다 — 합류→통로 이송 중 봇 5/8이 오염사. 5셀 = 약 18초로
+    // School 시절 여유를 복원한다. 재발동 간격도 같은 비율이라 와리가리하지 않는다.
+    private const int SwarmBotFieldEvacuateMarginCells = 5;
+
+    // 방 마감 선제 탈출 리드 (초): 문 잠금 전에 방을 비우는 여유 — 큰 방 횡단 + 문 경유 시간.
+    private const double SwarmBotAreaExitLeadSeconds = 25d;
+
+    /// <summary>
+    ///     자기장 안쪽 대피 목적지 (#272, 매치 3030 실측 수리): 옛 후보(SwarmHuntingAreas =
+    ///     외곽 사냥방)는 원형 자기장에서 다음 희생양이라, 대피한 봇들이 바깥 방으로 몰려가
+    ///     절반이 자기장에 죽었다. 여유(6셀)까지 안전한 셀을 가진 구역 중 안쪽 셀이 봇에서
+    ///     가장 가까운 곳으로 보낸다 — 목적지 셀은 그 구역의 가장 안쪽 셀이다.
+    /// </summary>
+    private (AreaType Area, Cell Cell) ResolveSwarmFieldEvacuationTarget(long matchingId, Vector3f botPosition)
+    {
+        double safeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
+        AreaType bestArea = Config.SWARM_MATCH_GROUND_AREA;
+        Cell bestCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA);
+        float bestSq = float.MaxValue;
+        foreach (var region in GameMapData.GetAreas(Config.SWARM_MATCH_MAP))
+        {
+            var area = region.AreaType;
+            if (area == AreaType.None) continue;
+            var cells = GetSwarmAreaCellsByDistance(area);
+            if (cells.Count == 0 ||
+                cells[0].Distance > safeDistance - SwarmBotFieldEvacuateMarginCells * 2)
+                continue;
+
+            var innermost = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, cells[0].Cell);
+            float dx = innermost.X - botPosition.X;
+            float dy = innermost.Y - botPosition.Y;
+            float distanceSq = dx * dx + dy * dy;
+            if (distanceSq >= bestSq) continue;
+            bestSq = distanceSq;
+            bestArea = area;
+            bestCell = cells[0].Cell;
+        }
+
+        return (bestArea, bestCell);
+    }
 
     private SpotArenaBotDirective ResolveSwarmBotDirective(long matchingId, long botPlayerId)
     {
@@ -1342,7 +1426,7 @@ public partial class GameServer
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 bot.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, bot.Position),
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Position),
                 bot.Position);
         }
 
@@ -1367,28 +1451,83 @@ public partial class GameServer
         // 몹은 도망칠 수 있고 폐쇄는 못 도망친다. 순서가 그대로 우선순위다.
 
         // 0) 경계 밖 탈출 최우선 — 자기장에서는 안쪽으로 걷는 것 자체가 대피 경로다.
-        //    경계 안 사냥터 중 가장 가까운 곳으로, 전부 밖이면 종착지 운동장으로 향한다.
+        //    목적지는 자기장 안쪽 대피 구역 (#272 수리: 옛 사냥터 후보는 외곽 방이라 다음 희생양).
         if (IsSwarmAreaOutside(matchingId, bot.CurrentArea))
         {
             _swarmBotFleeDirective.Add((matchingId, botPlayerId));
-            AreaType evacuationArea = SwarmHuntingAreas
-                .Where(area => !IsSwarmAreaOutside(matchingId, area))
-                .OrderBy(area =>
-                {
-                    var center = BotPlayerManager.CellToWorldPosition(
-                        MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
-                    float dx = center.X - bot.Position.X;
-                    float dy = center.Y - bot.Position.Y;
-                    return dx * dx + dy * dy;
-                })
-                .DefaultIfEmpty(AreaType.Ground)
-                .First();
-            Cell evacuationCell = GameMapData.GetAreaSpawnCell(MapId.School, evacuationArea);
+            var (evacuationArea, evacuationCell) =
+                ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 evacuationArea,
                 evacuationCell,
-                BotPlayerManager.CellToWorldPosition(MapId.School, evacuationCell));
+                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, evacuationCell));
+        }
+
+        // 0.2) 자기장 셀 대피 (#272, 2026-08-26 유저 제보 "봇이 자기장을 무시한다"): 구역 단위
+        //      신호(완전-밖·경고)만 보면 경계가 방을 관통하는 동안 빨간 쪽에 선 봇이 오염을
+        //      그대로 마신다. 내 셀이 경계 밖이거나 여유(3셀) 안이면 같은 구역의 안쪽 셀로
+        //      물러나고, 구역에 안전 셀이 없으면 경계 안 이웃 구역으로 나간다.
+        double fieldSafeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
+        if (fieldSafeDistance < double.MaxValue)
+        {
+            // 0.15) 방 마감 선제 탈출 (#272, 봇 매치 9831482 실측: 3-2교실 폐쇄 39초 뒤에도 봇이
+            //       남아 420 사망): 경고(15초 전) 기반 철수는 큰 방·문 경유 이동에 너무 늦다 —
+            //       내 구역이 잠기기까지 25초 안이면 지금 나간다. 수축은 선형이라 시각이 정확하다.
+            double shrinkRatePerSecond = SwarmPressureField.MaxDistance / SwarmFieldShrinkSeconds;
+            int currentAreaMinDistance = SwarmPressureField.GetAreaMinDistance(bot.CurrentArea);
+            double secondsUntilAreaOutside =
+                (fieldSafeDistance - currentAreaMinDistance) / shrinkRatePerSecond;
+            if (secondsUntilAreaOutside < SwarmBotAreaExitLeadSeconds)
+            {
+                _swarmBotFleeDirective.Add((matchingId, botPlayerId));
+                var (exitArea, exitCell) = ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Escort,
+                    exitArea,
+                    exitCell,
+                    BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, exitCell));
+            }
+
+            var botCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Position);
+            if (SwarmPressureField.GetDistance(botCell) >
+                fieldSafeDistance - SwarmBotFieldEvacuateMarginCells)
+            {
+                // 대피는 도주 예외 — 왕복 억제를 우회해 즉시 물러난다.
+                _swarmBotFleeDirective.Add((matchingId, botPlayerId));
+
+                // 같은 구역에서 여유 두 배(6셀)까지 안전한 셀 중 가장 가까운 곳으로.
+                Cell retreatCell = null;
+                float retreatBestSq = float.MaxValue;
+                foreach (var entry in GetSwarmAreaCellsByDistance(bot.CurrentArea))
+                {
+                    if (entry.Distance > fieldSafeDistance - SwarmBotFieldEvacuateMarginCells * 2)
+                        break;
+                    var candidate = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, entry.Cell);
+                    float candidateDx = candidate.X - bot.Position.X;
+                    float candidateDy = candidate.Y - bot.Position.Y;
+                    float candidateSq = candidateDx * candidateDx + candidateDy * candidateDy;
+                    if (candidateSq >= retreatBestSq) continue;
+                    retreatBestSq = candidateSq;
+                    retreatCell = entry.Cell;
+                }
+
+                if (retreatCell != null)
+                    return new SpotArenaBotDirective(
+                        SpotArenaBotMode.Escort,
+                        bot.CurrentArea,
+                        retreatCell,
+                        BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, retreatCell));
+
+                // 이 방엔 이제 설 자리가 없다 — 자기장 안쪽 대피 구역으로.
+                var (fieldEvacuationArea, fieldEvacuationCell) =
+                    ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
+                return new SpotArenaBotDirective(
+                    SpotArenaBotMode.Escort,
+                    fieldEvacuationArea,
+                    fieldEvacuationCell,
+                    BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldEvacuationCell));
+            }
         }
 
         // 0.3) 폐쇄 조기 철수 (#226 F): 경고 구역에서는 꼬리 길이에 비례해 일찍 나간다.
@@ -1402,32 +1541,15 @@ public partial class GameServer
             {
                 // 대피는 도주 예외 — 왕복 억제를 우회해 어디로든 즉시 나간다.
                 _swarmBotFleeDirective.Add((matchingId, botPlayerId));
-                // 대피처는 사냥터 5곳이 아니라 열린 전 구역이다 (#229 8단계). 사냥터로 좁히면
-                // 후반에 후보가 운동장 하나로 줄어 경로가 길어지고, 결국 못 나가고 죽는다.
-                AreaType closureEvacuationArea = GameMapData.GetAreas(MapId.School)
-                    .Select(region => region.AreaType)
-                    .Distinct()
-                    .Where(area => area != AreaType.None && area != bot.CurrentArea &&
-                                   !closureSnapshot.ClosedAreas.Contains(area) &&
-                                   !closureSnapshot.WarningAreas.Contains(area) &&
-                                   !IsSwarmAreaOutside(matchingId, area))
-                    .OrderBy(area =>
-                    {
-                        var center = BotPlayerManager.CellToWorldPosition(
-                            MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
-                        float dx = center.X - bot.Position.X;
-                        float dy = center.Y - bot.Position.Y;
-                        return dx * dx + dy * dy;
-                    })
-                    .DefaultIfEmpty(AreaType.Ground)
-                    .First();
-                Cell closureEvacuationCell =
-                    GameMapData.GetAreaSpawnCell(MapId.School, closureEvacuationArea);
+                // 목적지는 자기장 안쪽 대피 구역 (#272 수리): 전 구역 최근접 후보는 곧 경고가
+                // 뜰 바깥 방을 고를 수 있다 — 원형 자기장에서 안전은 항상 안쪽이다.
+                var (closureEvacuationArea, closureEvacuationCell) =
+                    ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
                 return new SpotArenaBotDirective(
                     SpotArenaBotMode.Escort,
                     closureEvacuationArea,
                     closureEvacuationCell,
-                    BotPlayerManager.CellToWorldPosition(MapId.School, closureEvacuationCell));
+                    BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, closureEvacuationCell));
             }
         }
 
@@ -1488,16 +1610,16 @@ public partial class GameServer
                 if (pressDx * pressDx + pressDy * pressDy > 2.25f)
                 {
                     Cell pressCell = ProximityCombatLineOfSight.WorldPositionToCell(
-                        MapId.School, recentAttackerPosition);
-                    if (GameMapData.IsMoveablePosition(MapId.School, pressCell) &&
-                        GameMapData.GetCurrentArea(MapId.School, pressCell) is var pressArea &&
+                        Config.SWARM_MATCH_MAP, recentAttackerPosition);
+                    if (GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, pressCell) &&
+                        GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, pressCell) is var pressArea &&
                         pressArea != AreaType.None)
                     {
                         return new SpotArenaBotDirective(
                             SpotArenaBotMode.Escort,
                             pressArea,
                             pressCell,
-                            BotPlayerManager.CellToWorldPosition(MapId.School, pressCell));
+                            BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, pressCell));
                     }
                 }
             }
@@ -1527,14 +1649,14 @@ public partial class GameServer
             {
                 var fleeArea = (AreaType)fleeSpot.ZoneId;
                 Cell fleeCell = new(fleeSpot.CellX, fleeSpot.CellY);
-                if (!GameMapData.IsMoveablePosition(MapId.School, fleeCell))
+                if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, fleeCell))
                 {
                     fleeCell = fleeCell.GetAdjacentCells().FirstOrDefault(cell =>
-                        GameMapData.IsMoveablePosition(MapId.School, cell) &&
-                        GameMapData.GetCurrentArea(MapId.School, cell) == fleeArea) ?? fleeCell;
+                        GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell) &&
+                        GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == fleeArea) ?? fleeCell;
                 }
 
-                var fleeWorld = BotPlayerManager.CellToWorldPosition(MapId.School, fleeCell);
+                var fleeWorld = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fleeCell);
                 // 도주지가 제자리면 도주가 아니다 (#223 구석 정지 수리) — 다음 폴백으로 넘긴다.
                 if (IsFarEnoughSwarmFleeTarget(bot, fleeWorld))
                     return new SpotArenaBotDirective(
@@ -1544,18 +1666,18 @@ public partial class GameServer
             // 폴백 (#222): 도주 방향에 열린 스팟이 없어도 무조건 이탈한다 — 스팟 부재로
             // 지시 없이 낙하해 제자리에서 얻어맞던 구멍(매치 2372 봇 -78) 수리.
             Cell fleeFallbackCell =
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, fleeProbe);
-            if (!GameMapData.IsMoveablePosition(MapId.School, fleeFallbackCell))
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, fleeProbe);
+            if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, fleeFallbackCell))
             {
                 fleeFallbackCell = fleeFallbackCell.GetAdjacentCells()
-                    .FirstOrDefault(cell => GameMapData.IsMoveablePosition(MapId.School, cell));
+                    .FirstOrDefault(cell => GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell));
             }
 
             if (fleeFallbackCell != null &&
-                GameMapData.GetCurrentArea(MapId.School, fleeFallbackCell) is var fleeFallbackArea &&
+                GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, fleeFallbackCell) is var fleeFallbackArea &&
                 fleeFallbackArea != AreaType.None)
             {
-                var fleeFallbackWorld = BotPlayerManager.CellToWorldPosition(MapId.School, fleeFallbackCell);
+                var fleeFallbackWorld = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fleeFallbackCell);
                 // 구석에서 벽에 막힌 probe는 제자리로 수렴한다 (#223) — 가까우면 구역 이탈로.
                 if (IsFarEnoughSwarmFleeTarget(bot, fleeFallbackWorld))
                     return new SpotArenaBotDirective(
@@ -1569,19 +1691,19 @@ public partial class GameServer
                 .OrderBy(area =>
                 {
                     var center = BotPlayerManager.CellToWorldPosition(
-                        MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
+                        Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
                     float dx = center.X - fleeProbe.X;
                     float dy = center.Y - fleeProbe.Y;
                     return dx * dx + dy * dy;
                 })
-                .DefaultIfEmpty(AreaType.Ground)
+                .DefaultIfEmpty(Config.SWARM_MATCH_GROUND_AREA)
                 .First();
-            Cell fleeRetreatCell = GameMapData.GetAreaSpawnCell(MapId.School, fleeRetreatArea);
+            Cell fleeRetreatCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, fleeRetreatArea);
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 fleeRetreatArea,
                 fleeRetreatCell,
-                BotPlayerManager.CellToWorldPosition(MapId.School, fleeRetreatCell));
+                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fleeRetreatCell));
         }
 
         // 절단 직후 회수 (#226 F): 방금 끊은 전리품부터 줍는다 — 추격은 그 다음이다.
@@ -1592,7 +1714,7 @@ public partial class GameServer
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 bot.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, lootPosition),
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, lootPosition),
                 lootPosition);
         }
 
@@ -1609,17 +1731,17 @@ public partial class GameServer
             // 추격 계측 (#229 8단계): 조우는 나는데 절단이 0건인 원인을 가르려면 "추격이
             // 발동은 했는가"와 "발동하고도 못 잘랐는가"를 구분해야 한다. 매치 요약에 남긴다.
             LogSwarmChaseIssued(matchingId, botPlayerId, weakerRival.Value.PlayerId, chaseTarget);
-            var chaseCell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, chaseTarget);
-            var chaseArea = GameMapData.GetCurrentArea(MapId.School, chaseCell);
+            var chaseCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, chaseTarget);
+            var chaseArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, chaseCell);
             bool chaseCellUsable = chaseArea != AreaType.None &&
-                                   GameMapData.IsMoveablePosition(MapId.School, chaseCell);
+                                   GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, chaseCell);
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 chaseCellUsable ? chaseArea : weakerRival.Value.Area,
                 chaseCellUsable
                     ? chaseCell
                     : ProximityCombatLineOfSight.WorldPositionToCell(
-                        MapId.School, weakerRival.Value.Position),
+                        Config.SWARM_MATCH_MAP, weakerRival.Value.Position),
                 chaseCellUsable ? chaseTarget : weakerRival.Value.Position);
         }
 
@@ -1634,18 +1756,18 @@ public partial class GameServer
         {
             var spotArea = (AreaType)spot.ZoneId;
             Cell spotCell = new(spot.CellX, spot.CellY);
-            if (!GameMapData.IsMoveablePosition(MapId.School, spotCell))
+            if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, spotCell))
             {
                 spotCell = spotCell.GetAdjacentCells().FirstOrDefault(cell =>
-                    GameMapData.IsMoveablePosition(MapId.School, cell) &&
-                    GameMapData.GetCurrentArea(MapId.School, cell) == spotArea) ?? spotCell;
+                    GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell) &&
+                    GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == spotArea) ?? spotCell;
             }
 
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 spotArea,
                 spotCell,
-                BotPlayerManager.CellToWorldPosition(MapId.School, spotCell));
+                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, spotCell));
         }
 
         // 2) 같은 구역 바닥 소환석 — 걸어가면 자동 픽업 반경이 줍는다.
@@ -1654,7 +1776,7 @@ public partial class GameServer
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 bot.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, stonePosition),
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, stonePosition),
                 stonePosition);
         }
 
@@ -1666,7 +1788,7 @@ public partial class GameServer
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 bot.CurrentArea,
-                ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, bot.Position),
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Position),
                 bot.Position);
         }
 
@@ -1685,7 +1807,7 @@ public partial class GameServer
                 return new SpotArenaBotDirective(
                     SpotArenaBotMode.Escort,
                     supplyArea,
-                    ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, supplyPosition),
+                    ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, supplyPosition),
                     supplyPosition);
             }
 
@@ -1696,7 +1818,7 @@ public partial class GameServer
                 return new SpotArenaBotDirective(
                     SpotArenaBotMode.Escort,
                     campArea,
-                    ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, campPosition),
+                    ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, campPosition),
                     campPosition);
             }
         }
@@ -1715,7 +1837,7 @@ public partial class GameServer
                 return new SpotArenaBotDirective(
                     SpotArenaBotMode.Escort,
                     migrateArea,
-                    ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, migratePosition),
+                    ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, migratePosition),
                     migratePosition);
             }
 
@@ -1731,19 +1853,19 @@ public partial class GameServer
                 .OrderBy(area =>
                 {
                     var center = BotPlayerManager.CellToWorldPosition(
-                        MapId.School, GameMapData.GetAreaSpawnCell(MapId.School, area));
+                        Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
                     float dx = center.X - bot.Position.X;
                     float dy = center.Y - bot.Position.Y;
                     return dx * dx + dy * dy;
                 })
-                .DefaultIfEmpty(AreaType.Ground)
+                .DefaultIfEmpty(Config.SWARM_MATCH_GROUND_AREA)
                 .First();
-            Cell huntingCell = GameMapData.GetAreaSpawnCell(MapId.School, huntingArea);
+            Cell huntingCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, huntingArea);
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
                 huntingArea,
                 huntingCell,
-                BotPlayerManager.CellToWorldPosition(MapId.School, huntingCell));
+                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, huntingCell));
         }
 
         return directive;
@@ -2891,9 +3013,8 @@ public partial class GameServer
                 continue;
             if (!IsWithinSwarmGroundRadius(position, participant.Position, radius + SwarmCrossfirePlayerRadius))
                 continue;
-            if (!TryClaimSwarmShockWindow(matchingId, ownerId, participant.PlayerId, nowUtc))
-                continue;
 
+            // 충격 면역 퇴역 (2026-08-26): 겹친 링에 다 맞는다 — 침수는 지속 갱신이라 중첩 무해.
             soaked++;
             ApplySwarmShock(matchingId, ownerId, sourceItemId, area, participant.PlayerId,
                 "WAVE_VORTEX_HIT", aliveSessions, aliveBots, allSessions,
@@ -3111,7 +3232,7 @@ public partial class GameServer
         {
             // 사람이 있는 매치 우선 — 봇 전용 검증 매치(큰 id)가 최신을 가로채지 않게.
             var activeIds = GetActiveInstanceIds().ToList();
-            var humanIds = activeIds.Where(id => GetSessionsByInstance(MapId.School, id)
+            var humanIds = activeIds.Where(id => GetSessionsByInstance(Config.SWARM_MATCH_MAP, id)
                 .Any(session => session.PlayerId.HasValue)).ToList();
             matchingId = (humanIds.Count > 0 ? humanIds : activeIds).DefaultIfEmpty(0).Max();
         }
@@ -3125,14 +3246,14 @@ public partial class GameServer
         if (dummy == null)
             return new { error = "no alive bot in match " + matchingId };
 
-        var groundCell = GameMapData.GetAreaSpawnCell(MapId.School, AreaType.Ground);
-        var center = BotPlayerManager.CellToWorldPosition(MapId.School, groundCell);
+        var groundCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA);
+        var center = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, groundCell);
         var fromArea = dummy.CurrentArea;
         var fromCell = dummy.Cell;
         dummy.IsSwarmCutDummy = true;
-        dummy.CurrentArea = AreaType.Ground;
+        dummy.CurrentArea = Config.SWARM_MATCH_GROUND_AREA;
         dummy.Position = new Vector3f(center.X + 4f, center.Y + 3f, 0f);
-        dummy.Cell = MapCoordinateConverter.WorldToCell(MapId.School, dummy.Position);
+        dummy.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, dummy.Position);
         dummy.Path.Clear();
         dummy.PathIndex = 0;
         dummy.Corruption = 0;
@@ -3149,18 +3270,18 @@ public partial class GameServer
         _swarmCutDummyRefillAtUtc.Remove((matchingId, dummy.PlayerId));
         RefillSwarmCutDummyOrbs(matchingId, dummy);
 
-        var sessions = GetSessionsByInstance(MapId.School, matchingId).ToList();
+        var sessions = GetSessionsByInstance(Config.SWARM_MATCH_MAP, matchingId).ToList();
         BroadcastBotMovement(matchingId, new BotMovementEvent
         {
             BotPlayerId = dummy.PlayerId,
             FromArea = fromArea,
-            ToArea = AreaType.Ground,
+            ToArea = Config.SWARM_MATCH_GROUND_AREA,
             FromCell = fromCell,
             ToCell = dummy.Cell,
             Position = dummy.Position,
             Velocity = new Vector3f(0f, 0f, 0f),
             Rotation = 0f,
-            IsAreaTransition = fromArea != AreaType.Ground
+            IsAreaTransition = fromArea != Config.SWARM_MATCH_GROUND_AREA
         }, sessions);
         logger.LogInformation(
             "Swarm cut dummy ready: MatchingId={MatchingId}, DummyId={DummyId}, Position=({X},{Y})",
@@ -3196,15 +3317,15 @@ public partial class GameServer
             dummy.Position.X + dirX / length * step,
             dummy.Position.Y + dirY / length * step,
             0f);
-        var proposedCell = MapCoordinateConverter.WorldToCell(MapId.School, proposed);
-        if (!GameMapData.IsMoveablePosition(MapId.School, proposedCell))
+        var proposedCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, proposed);
+        if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, proposedCell))
             return;
 
         var fromArea = dummy.CurrentArea;
         var fromCell = dummy.Cell;
         dummy.Position = proposed;
         dummy.Cell = proposedCell;
-        var currentArea = GameMapData.GetCurrentArea(MapId.School, proposedCell);
+        var currentArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, proposedCell);
         if (currentArea != AreaType.None)
             dummy.CurrentArea = currentArea;
 
@@ -3219,7 +3340,7 @@ public partial class GameServer
             Velocity = new Vector3f(dirX / length * 5f, dirY / length * 5f, 0f),
             Rotation = 0f,
             IsAreaTransition = fromArea != dummy.CurrentArea
-        }, GetSessionsByInstance(MapId.School, matchingId).ToList());
+        }, GetSessionsByInstance(Config.SWARM_MATCH_MAP, matchingId).ToList());
     }
 
     /// <summary>
@@ -3346,7 +3467,7 @@ public partial class GameServer
             return true;
         }
 
-        foreach (var session in GetSessionsByInstance(MapId.School, matchingId))
+        foreach (var session in GetSessionsByInstance(Config.SWARM_MATCH_MAP, matchingId))
         {
             if (session.PlayerId != playerId || session.IsEliminated ||
                 session.LastValidatedPosition == null) continue;
@@ -3441,7 +3562,7 @@ public partial class GameServer
             Consider(other.PlayerId, other.Position, other.CurrentArea);
         }
 
-        foreach (var session in GetSessionsByInstance(MapId.School, matchingId))
+        foreach (var session in GetSessionsByInstance(Config.SWARM_MATCH_MAP, matchingId))
         {
             if (!session.PlayerId.HasValue || session.IsEliminated ||
                 session.LastValidatedPosition == null)
@@ -3503,7 +3624,7 @@ public partial class GameServer
         var anchors = GameMonsterCampData.GetAllAnchors()
             .Where(anchor => !IsSwarmAreaOutside(matchingId, anchor.Area))
             .Select(anchor => (anchor.Area, anchor.CampIndex,
-                World: BotPlayerManager.CellToWorldPosition(MapId.School, anchor.Cell)))
+                World: BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, anchor.Cell)))
             .OrderBy(anchor =>
             {
                 float dx = anchor.World.X - bot.Position.X;
@@ -4474,7 +4595,7 @@ public partial class GameServer
             .ToArray();
         var spawned = _groundItemManager.SpawnItems(
             matchingId, area, x, y, itemIds,
-            mapId: MapId.School,
+            mapId: Config.SWARM_MATCH_MAP,
             layout: GroundItemSpawnLayout.EliminationScatter);
         if (spawned.Count == 0)
             return;
@@ -4665,9 +4786,7 @@ public partial class GameServer
             _swarmBotLastDamagedAtUtc.Remove(key);
         foreach (var key in _swarmBotNextRecoveryAtUtc.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmBotNextRecoveryAtUtc.Remove(key);
-        _swarmFieldStartedAtUtc.TryRemove(matchingId, out _);
-        _swarmFieldWarnedAreas.Remove(matchingId);
-        _swarmFieldOutsideAreas.Remove(matchingId);
+        _swarmFieldStateAnnounced.Remove(matchingId);
         foreach (var key in _swarmFrontOrbHp.Keys.Where(key => key.MatchingId == matchingId).ToList())
             _swarmFrontOrbHp.Remove(key);
         _pendingSwarmMonsterHits.RemoveAll(hit => hit.MatchingId == matchingId);
@@ -4780,8 +4899,8 @@ public partial class GameServer
                 0f,
                 0,
                 0f,
-                MapId: MapId.School,
-                Cell: ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, target.Position),
+                MapId: Config.SWARM_MATCH_MAP,
+                Cell: ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, target.Position),
                 IsMonsterTarget: true,
                 // SB 타겟 규칙 (#219): 적 오브(0) > 적 본체(1) > 몬스터(2)
                 TargetPriority: 2));
@@ -4869,7 +4988,7 @@ public partial class GameServer
             actor = actor with
             {
                 Position = trailPosition,
-                Cell = ProximityCombatLineOfSight.WorldPositionToCell(MapId.School, trailPosition),
+                Cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, trailPosition),
                 // 열 순번을 실어 보낸다 — PvP 참여 오브를 앞열 N개로 끊는 근거.
                 TrailOrdinal = index - before
             };
@@ -5088,7 +5207,7 @@ public partial class GameServer
             defeatedWave.PositionX,
             defeatedWave.PositionY,
             itemIds,
-            mapId: MapId.School,
+            mapId: Config.SWARM_MATCH_MAP,
             layout: GroundItemSpawnLayout.EliminationScatter);
 
         foreach (var item in spawned)

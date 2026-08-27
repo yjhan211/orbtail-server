@@ -6,6 +6,9 @@ namespace network.common
         None = 0,
         School,
         Camp,
+        // #272 8인 4세트 신맵 (2026-08-27): 구역 데이터는 map_region_school2.csv 별도 파일 —
+        // 씬 내보내기가 기존 School 행을 덮지 않게 분리한다.
+        School2,
     }
 
     /// <summary>
@@ -33,6 +36,40 @@ namespace network.common
         Classroom4 = 40,
         Corridor4F = 41,
         BroadcastRoom = 42,
+
+        // #272 School2 (8인 4세트 신맵, 2026-08-27) — 50번대 블록. 기존 School 이름과 겹쳐
+        // S2 접두어를 쓴다 (층×10 규약은 이 맵에 해당 없음). 씬 Structure 루트 이름과 1:1.
+        // 시작방 8
+        S2Classroom1 = 50,
+        S2Classroom2 = 51,
+        S2ExamRoom = 52,
+        S2BroadcastRoom = 53,
+        S2Storage = 54,
+        S2NurseOffice = 55,
+        S2AdminOffice1 = 56,
+        S2AdminOffice2 = 57,
+        // 합류 구역 4
+        S2Library1 = 60,
+        S2Library2 = 61,
+        S2Gym1 = 62,
+        S2Gym2 = 63,
+        // 복도 8: 시작방↔합류 1:1 연결 (2026-08-27 유저 정의)
+        // 1=교실1↔도서관1, 2=교실2↔도서관1, 3=고사실↔강당1, 4=방송실↔강당1,
+        // 5=창고↔도서관2, 6=행정실2↔도서관2, 7=행정실1↔강당2, 8=보건실↔강당2
+        S2Corridor1 = 64,
+        S2Corridor2 = 65,
+        S2Corridor3 = 66,
+        S2Corridor4 = 67,
+        S2Corridor5 = 68,
+        S2Corridor6 = 69,
+        S2Corridor7 = 70,
+        S2Corridor8 = 71,
+        // 1차 연결 통로 (씬 Corridor9)
+        S2Corridor9 = 72,
+        // 테라스 링 · 중앙 운동장
+        S2Terrace = 73,
+        S2Ground = 74,
+
         Camp = 100,
     }
 
@@ -51,9 +88,11 @@ namespace network.common
         /// <summary>
         ///     蹂듬룄 援ъ뿭 ?щ? (1~4痢듬났??
         /// </summary>
+        // S2Corridor9는 #272 가운데 병합(테라스·운동장 흡수) 후 광장 정체성이라 복도가 아니다.
         public static bool IsCorridor(this AreaType area) =>
             area is AreaType.Corridor or AreaType.Corridor1F or AreaType.Corridor2F or AreaType.Corridor3F or
-                AreaType.Corridor4F;
+                AreaType.Corridor4F ||
+            (area >= AreaType.S2Corridor1 && area <= AreaType.S2Corridor8);
 
         /// <summary>
         ///     援ъ뿭??痢?踰덊샇 (0~4). None?대㈃ -1

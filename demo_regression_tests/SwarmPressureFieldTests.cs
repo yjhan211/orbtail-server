@@ -1,11 +1,11 @@
-using game_server.services;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
 
 namespace demo_regression_tests;
 
-// #217 자기장: 보행 거리 필드가 깔때기 순서(시작방 > 쌍 구역 > 운동장)를 재현하는지 고정한다.
+// #272 자기장(원형): 운동장 중심 유클리드 필드의 기본 성질을 고정한다 —
+// 중심은 운동장 안, 운동장 거리 0, 원이 방보다 복도 밴드를 늦게 먹는 깔때기.
 public class SwarmPressureFieldTests
 {
     public SwarmPressureFieldTests()
@@ -17,37 +17,43 @@ public class SwarmPressureFieldTests
     [Fact]
     public void Ground_IsZeroAndMaxDistanceIsSane()
     {
-        Assert.Equal(0, SwarmPressureField.GetAreaMinDistance(AreaType.Ground));
+        Assert.Equal(0, SwarmPressureField.GetAreaMinDistance(Config.SWARM_MATCH_GROUND_AREA));
         Assert.InRange(SwarmPressureField.MaxDistance, 10, 1000);
     }
 
-    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
-    public void FunnelOrder_StartRoomsFartherThanTheirPairZones()
+    // #272 원형 전환: 모든 구역이 거리 필드에 있어야 파생 폐쇄 시간표가 전 구역을 덮는다.
+    [Fact]
+    public void AllMapAreas_HaveFieldDistances()
     {
-        AssertFarther(AreaType.ExamRoom, AreaType.Library);
-        AssertFarther(AreaType.Storage, AreaType.Library);
-        AssertFarther(AreaType.Classroom2, AreaType.Gym);
-        AssertFarther(AreaType.Storage2, AreaType.Gym);
-        AssertFarther(AreaType.AdminOffice, AreaType.Corridor);
-        AssertFarther(AreaType.StaffRoom, AreaType.Corridor);
+        var mapAreas = GameMapData.GetAreas(Config.SWARM_MATCH_MAP)
+            .Select(region => region.AreaType)
+            .Distinct();
+        foreach (var area in mapAreas)
+        {
+            Assert.True(SwarmPressureField.GetAreaMinDistance(area) < int.MaxValue,
+                $"{area} 거리 없음 — 구역 rect 안에 이동 가능 셀이 없는지 확인");
+        }
     }
 
-    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
-    public void PairZones_FartherThanCorridorTier()
+    [Fact]
+    public void CenterCell_IsInsideGround()
     {
-        // 쌍 구역은 복도보다 바깥 — 수축이 시작방 → 쌍 구역 → 복도 순서로 스친다.
-        AssertFarther(AreaType.Library, AreaType.Corridor);
-        AssertFarther(AreaType.Gym, AreaType.Corridor);
+        var (centerX, centerY) = SwarmPressureField.CenterCell;
+        var centerArea = GameMapData.GetCurrentArea(
+            Config.SWARM_MATCH_MAP,
+            new network.common.data.models.Cell(
+                (int)Math.Round(centerX), (int)Math.Round(centerY)));
+        Assert.Equal(Config.SWARM_MATCH_GROUND_AREA, centerArea);
     }
 
-    [Fact(Skip = "#219 클론 맵 전환: 옛 학교 지형 전제 — 클론 데이터 스택(벽·연결·문) 완성 후 재작성")]
-    public void LockedBackDoors_DoNotShortenDistances()
+    [Fact]
+    public void CircleFunnel_RoomsFartherThanCorridor()
     {
-        // 서쪽창고는 운동장 직행 문(112)이 잠겨 있어 도서관 경유가 강제된다.
-        // 문이 벽 취급되지 않으면 창고가 도서관보다 가까워져 깔때기가 깨진다.
-        Assert.True(
-            SwarmPressureField.GetAreaMinDistance(AreaType.Storage) >
-            SwarmPressureField.GetAreaMinDistance(AreaType.Library));
+        // 원은 바깥 시작방을 먼저 먹고 운동장을 감싼 랩 밴드(1차 통로)를 마지막에 먹는다.
+        foreach (var room in MatchSpawnData.GetPhaseRoomCandidates())
+        {
+            AssertFarther(room, AreaType.S2Corridor9);
+        }
     }
 
     private static void AssertFarther(AreaType outer, AreaType inner)

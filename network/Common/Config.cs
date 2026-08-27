@@ -216,9 +216,23 @@ namespace network.common
         ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2, 3쌍 깔때기(성장곡선 v3)는 6.
         ///     사람은 항상 1명이고 나머지는 봇으로 채운다.
         /// </summary>
-        // #223 10인 전환 (2026-08-11, M5): SB 정원 10 — 포드 10곳 전원 유니크 스폰
-        // (도서관·체육관도 스폰 풀에 편입).
-        public static readonly int SWARM_PLAYERS_PER_MATCH = 10;
+        // #223 10인 전환 (2026-08-11, M5) → #272 8인 전환 (2026-08-27): School2 신맵은
+        // 1인 시작방 8곳 × 합류 4세트 동심원 구조 — 정원 = 시작방 수.
+        public static readonly int SWARM_PLAYERS_PER_MATCH = 8;
+
+        /// <summary>
+        ///     #272 매치 맵 단일 원천 — 스웜 매치가 도는 맵. 매치 경로의 모든 맵 참조는
+        ///     MapId.School 하드코딩 대신 이 상수를 본다 (School은 데이터·테스트로 보존).
+        /// </summary>
+        public static readonly MapId SWARM_MATCH_MAP = MapId.School2;
+
+        /// <summary>
+        ///     매치 맵의 중앙 수렴 구역 (자기장 중심·보스 무대·교차사격 샌드박스 스폰).
+        ///     #272 가운데 병합 (2026-08-27 유저 지시): 1차 통로·테라스·운동장을 S2Corridor9
+        ///     하나로 묶었다 — 구역 단위 프랍 가시성이 광장 내부에서 토글되지 않게. 자기장
+        ///     중심은 이 구역 rect들의 경계 상자 중심(138.5, 23)이라 병합 전과 동일하다.
+        /// </summary>
+        public static readonly AreaType SWARM_MATCH_GROUND_AREA = AreaType.S2Corridor9;
 
         /// <summary>
         ///     매치 길이 (#226 단계 B) — 5분 오브 점수전. 개전(카운트다운 종료) 앵커 기준이며,
@@ -227,6 +241,54 @@ namespace network.common
         ///     같은 값에 정렬된다. 잼 승점·4분 잼 타임아웃(#222 M3-2)은 퇴역.
         /// </summary>
         public const int SWARM_MATCH_DURATION_SECONDS = 300;
+
+        /// <summary>
+        ///     #272 자기장 폐쇄 — 운동장 중심 원형 수축 필드(SwarmPressureField)가 폐쇄 시간표의
+        ///     단일 원천. 구역 폐쇄 이벤트(경고·문 잠금·꼬리 파괴)는 필드에서 파생한 구역별
+        ///     완전-밖 시각을 쓰고, 오염은 경계 초과 거리 비례가 전담한다. false 롤백은 School
+        ///     세대 고정 웨이브(DefaultP0Waves)로의 복귀라 School2 매치 맵에서는 무의미하다(#272) —
+        ///     자기장이 유일 시간표다. 끄면 클라 경계 렌더·자기장 오염이 함께 꺼진다.
+        /// </summary>
+        public static readonly bool SWARM_PRESSURE_FIELD_ENABLED = true;
+
+        /// <summary>
+        ///     자기장 수축 유예(초) — 개전 후 이 시간 동안 전 맵 안전, 이후 매치 종료까지 안전
+        ///     반경이 최대치에서 0으로 선형 수축한다 (종료 시 운동장 중심만 안전). 서버 판정과
+        ///     클라 경계 렌더가 같은 값으로 보간한다.
+        ///     60 → 0 (2026-08-26 유저 결정): 개전 즉시 매치 전체 길이에 걸쳐 천천히 조인다 —
+        ///     경계가 처음부터 존재해야 경계 토출 몹 스폰의 원천이 마르지 않는다.
+        /// </summary>
+        public const int SWARM_FIELD_HOLD_SECONDS = 0;
+
+        /// <summary>
+        ///     자기장 수축 곡선 지수 (#272, 2026-08-27 유저 결정 "방이 짧고 운동장이 길다"):
+        ///     1 = 선형, 커질수록 초반 느리고 후반 빠르다 (안전 반경 = Max×(1−진행률^지수)).
+        ///     1.4 기준 시작방 폐쇄 87→약 124초, 합류 141→약 175초, 종반 압축. 서버 판정·클라
+        ///     경계 렌더·파생 시간표가 SwarmPressureField의 같은 곡선 함수를 쓴다.
+        /// </summary>
+        public const double SWARM_FIELD_SHRINK_EXPONENT = 1.4d;
+
+        /// <summary>문 게이지 시간(초) — 시작방 문: 혼자 여는 관문이라 짧다. 봇 채널도 같은 값.</summary>
+        public const float SWARM_DOOR_GAUGE_SECONDS = 3f;
+
+        /// <summary>
+        ///     합류→중앙 문 게이지(초) (#272, 2026-08-27 유저 결정 "J에서 둘이 싸우게"):
+        ///     길게 잡아 선착자도 후착자 도착 전까지 못 나가고, 두 번째 문부터는 피격이 게이지를
+        ///     리셋하므로 "문을 열려면 상대를 먼저 처리해야 한다"가 규칙에서 나온다.
+        /// </summary>
+        public const float SWARM_JOIN_DOOR_GAUGE_SECONDS = 12f;
+
+        /// <summary>
+        ///     #272 School2 문 등급: 합류→중앙 J 문(213·216·219·222)만 듀얼 관문 게이지.
+        ///     복도→합류 진입 문(211·212·214·215·217·218·220·221)은 싸울 상대가 아직 없는
+        ///     통과 문이라 짧다 (2026-08-27 플레이 피드백 "복도에서 도서관 가는 문 너무 길다").
+        /// </summary>
+        public static float GetSwarmDoorGaugeSeconds(int doorId)
+        {
+            return doorId is 213 or 216 or 219 or 222
+                ? SWARM_JOIN_DOOR_GAUGE_SECONDS
+                : SWARM_DOOR_GAUGE_SECONDS;
+        }
 
         /// <summary>
         ///     스웜 탐색 스팟 개봉 비용은 SB 상자 문법을 따른다: 스쿼드(궤도 오브)가 클수록
@@ -382,12 +444,9 @@ namespace network.common
         public static int ScaleSwarmDamageTaken(int damage) =>
             damage <= 0 ? damage : Math.Max(1, (int)Math.Round(damage * SWARM_DAMAGE_TAKEN_MULTIPLIER));
 
-        /// <summary>
-        ///     같은 피해자는 공격자와 무관하게 이 시간 동안 추가 충격을 받지 않는다.
-        ///     소유자 초당 1회 상한(OWNER_HIT_INTERVAL)은 2026-08-24 퇴역 — 이 면역과 이중
-        ///     게이트라 지나가는 발의 절반이 소리 없이 무효였다. PvP 피격 리듬은 이 창 하나가 정한다.
-        /// </summary>
-        public const float SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS = 0.9f;
+        // 충격 면역 퇴역 이력: 소유자 초당 1회 상한(2026-08-24) → 피해자 0.9초 면역
+        // (SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS)도 2026-08-26 퇴역 — 태양 다발 화망에서
+        // 첫 발 이후가 소리 없이 관통해 "안 맞는" 오독을 만들었다. 지나간 발은 다 맞는다.
 
         /// <summary>
         ///     화상 (#268, 2026-08-25): 태양 미사일 충격에 맞으면 3초간 매초 틱 피해 —
@@ -433,7 +492,11 @@ namespace network.common
         public const float SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER = 2f;
         public const float SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER = 2f;
 
-        /// <summary>태양 투사체의 판정 폭(T1/T2/T3, 바닥면 단위) — 이 안에 몸이 걸리면 닿은 것.</summary>
+        /// <summary>
+        ///     태양 투사체의 판정 폭(T1/T2/T3, 바닥면 단위) — 이 안에 몸이 걸리면 닿은 것.
+        ///     2026-08-26 ×2 실험은 같은 날 원복 (유저 제보 "허공에서 맞는다"): "안 맞는" 체감의
+        ///     원인은 폭이 아니라 세로 축이었다 — 몸통 캡슐 판정이 그걸 풀었으니 폭은 원래대로.
+        /// </summary>
         public static readonly float[] SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER = { 0.7f, 0.85f, 1f };
 
         /// <summary>

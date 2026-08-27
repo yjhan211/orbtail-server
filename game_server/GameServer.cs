@@ -970,11 +970,10 @@ IReadOnlyCollection<GameClientSession> activeSessions)
 
             foreach (long matchingId in matchingIds)
             {
-                // #219 폐쇄 부활: 페이즈 머신 없이 시간 웨이브 스케줄로만 폐쇄한다.
-                // (자기장 틱은 SwarmFieldEnabled 게이트에 그대로 보관)
+                // #272 자기장 폐쇄: 자기장에서 파생한 구역 시간표 하나로만 닫는다 —
+                // 필드 오염은 정산 리소스 틱(GetSwarmFieldCorruptionPerTick)이 준다.
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 ProcessSwarmScheduledClosureTick(matchingId);
-                ProcessSwarmClosureTick(matchingId);
             }
         }
         catch (Exception ex)
@@ -1715,7 +1714,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         foreach (var botInfo in botInfoList)
             botInfo.SpawnCell = Cell.Clone(spawnAssignments[botInfo.PlayerId]);
 
-        _botPlayerManager.RegisterBots(matchingId, MapId.School, botInfoList);
+        _botPlayerManager.RegisterBots(matchingId, Config.SWARM_MATCH_MAP, botInfoList);
         int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
         _gameEventLogManager.BeginMatch(matchingId, matchSeed);
         foreach (var bot in _botPlayerManager.GetBots(matchingId))

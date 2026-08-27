@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <OutputType>Library</OutputType>
         <TargetFramework>net8.0</TargetFramework>
@@ -7,14 +7,14 @@
         <PlatformTarget>x64</PlatformTarget>
     </PropertyGroup>
     <ItemGroup>
-        <PackageReference Include="MessagePack" Version="3.1.4" />
-        <PackageReference Include="MessagePackAnalyzer" Version="3.1.4">
+        <PackageReference Include="MessagePack" Version="3.1.8" />
+        <PackageReference Include="MessagePackAnalyzer" Version="3.1.8">
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="MessagePack.ReactiveProperty" Version="3.1.4" />
-        <PackageReference Include="MessagePack.UnityShims" Version="3.1.4" />
-        <PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.4" />
+        <PackageReference Include="MessagePack.ReactiveProperty" Version="3.1.8" />
+        <PackageReference Include="MessagePack.UnityShims" Version="3.1.8" />
+        <PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.8" />
         <PackageReference Include="log4net" Version="3.3.1" />
         <PackageReference Include="NATS.Client" Version="1.1.7" />
         <PackageReference Include="Newtonsoft.Json" Version="13.0.3"/>

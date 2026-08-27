@@ -285,7 +285,8 @@ public partial class BotPlayerManager
             })
             .Where(entry => entry.Path is { Count: > 0 })
             .OrderBy(entry => CountAreaPressure(matchingId, entry.Area))
-            .ThenBy(entry => entry.Area == AreaType.Ground ? 1 : 0)
+            .ThenBy(entry =>
+                entry.Area == AreaType.Ground || entry.Area == Config.SWARM_MATCH_GROUND_AREA ? 1 : 0)
             .ThenBy(entry => entry.Path!.Count)
             .FirstOrDefault();
         if (escape?.Path != null)
