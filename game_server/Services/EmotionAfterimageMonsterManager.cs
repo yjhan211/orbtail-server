@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace game_server.services;
@@ -142,6 +143,13 @@ public sealed class EmotionAfterimageMonsterManager
             var materialized = definitions.ToList();
             _monsters = materialized.ToDictionary(definition => definition.MonsterId,
                 definition => new MonsterState(definition));
+            // #272 경계 토출 워크인: 개전 활성 팩도 구역 바깥 띠에서 홈으로 걸어 들어온다.
+            foreach (var state in _monsters.Values)
+            {
+                if (state.IsAlive && !state.Definition.IsAmbientCorridor)
+                    state.PlaceAtFieldEntry();
+            }
+
             foreach (AreaType area in materialized
                          .Where(definition => definition.StartsActive && definition.IsCore)
                          .Select(definition => definition.Area)
@@ -821,9 +829,12 @@ public sealed class EmotionAfterimageMonsterManager
 
             // Escorts keep their own small patrol loops around distinct home slots.
             // This reads as a guard line rather than nine copies idling on one point.
-            float seconds = (float)(nowUtc - DateTime.UnixEpoch).TotalSeconds;
-            float angle = seconds * (0.85f + state.Definition.ClusterMemberIndex * 0.03f) +
-                          state.Definition.ClusterId * 0.73f + state.Definition.ClusterMemberIndex * 1.17f;
+            // 유닉스 초를 float로 바로 쓰면 2026년대(~1.8e9초)의 해상도가 약 128초라 순찰 시계가 멈춘다
+            // — double로 누적한 뒤 2π로 접어서 float 정밀도 안으로 가져온다.
+            double totalSeconds = (nowUtc - DateTime.UnixEpoch).TotalSeconds;
+            double rawAngle = totalSeconds * (0.85d + state.Definition.ClusterMemberIndex * 0.03d) +
+                              state.Definition.ClusterId * 0.73d + state.Definition.ClusterMemberIndex * 1.17d;
+            float angle = (float)(rawAngle % (2d * Math.PI));
             float radius = 0.13f + (state.Definition.ClusterMemberIndex % 3) * 0.025f;
             return new Vector3f(
                 home.X + MathF.Cos(angle) * radius,
@@ -860,6 +871,55 @@ public sealed class EmotionAfterimageMonsterManager
                 state.Position.Z);
             return true;
         }
+    }
+
+    // #272 경계 토출 워크인 (2026-08-27 유저 결정 "잔상 팩도 자기장에서 나오게"): 팩·증원의
+    // 활성화 위치 = 그 구역에서 자기장 중심으로부터 가장 먼 띠(경계가 올 방향)의 한 점.
+    // 유휴 이동이 홈 슬롯으로 걷는 기존 로직이 그대로 워크인 연출이 된다. 같은 클러스터는
+    // 같은 진입점(clusterId 결정적)이라 무리가 한 덩어리로 걸어 들어온다.
+    private const double FieldEntryBandCells = 3d;
+    private static readonly Dictionary<AreaType, List<Vector3f>> FieldEntryBandCache = new();
+
+    private static Vector3f ResolveActivatePosition(MonsterDefinition definition)
+    {
+        var home = new Vector3f(
+            definition.Position.X + definition.FormationOffset.X,
+            definition.Position.Y + definition.FormationOffset.Y,
+            definition.Position.Z);
+        // 복도 배회 앵커는 제자리 등장 유지 — 진입 연출 대상이 아니다.
+        if (definition.IsAmbientCorridor) return home;
+
+        List<Vector3f>? band;
+        lock (FieldEntryBandCache)
+        {
+            if (!FieldEntryBandCache.TryGetValue(definition.Area, out band))
+            {
+                double maxDistance = 0d;
+                var areaCells = new List<((int X, int Y) Cell, int Distance)>();
+                foreach (var entry in SwarmPressureField.DistancesByCell)
+                {
+                    var cell = new Cell(entry.Key.X, entry.Key.Y);
+                    if (GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) != definition.Area)
+                        continue;
+                    areaCells.Add((entry.Key, entry.Value));
+                    if (entry.Value > maxDistance) maxDistance = entry.Value;
+                }
+
+                band = areaCells
+                    .Where(pair => pair.Distance > maxDistance - FieldEntryBandCells)
+                    .Select(pair => MapCoordinateConverter.CellToWorld(
+                        Config.SWARM_MATCH_MAP, new Cell(pair.Cell.X, pair.Cell.Y)))
+                    .ToList();
+                FieldEntryBandCache[definition.Area] = band;
+            }
+        }
+
+        if (band.Count == 0) return home;
+        var entryPoint = band[Math.Abs(definition.ClusterId * 31) % band.Count];
+        return new Vector3f(
+            entryPoint.X + definition.FormationOffset.X,
+            entryPoint.Y + definition.FormationOffset.Y,
+            entryPoint.Z);
     }
 
     private static bool IsWithinRange(Vector3f left, Vector3f right, float range) =>
@@ -906,10 +966,8 @@ public sealed class EmotionAfterimageMonsterManager
                 : Definition.AttackDamage + tier;
             SummonStoneReward = Definition.SummonStoneReward + coreStrengthTier * 2;
             AppliedAmbientCorridorPhase = -1;
-            Position = new Vector3f(
-                Definition.Position.X + Definition.FormationOffset.X,
-                Definition.Position.Y + Definition.FormationOffset.Y,
-                Definition.Position.Z);
+            // #272 경계 토출 워크인: 자기장이 올 방향의 구역 바깥 띠에서 등장해 홈으로 걷는다.
+            Position = ResolveActivatePosition(Definition);
             CurrentHealth = MaxHealth;
             IsAlive = true;
             FirstAttackerPlayerId = 0;
@@ -919,6 +977,12 @@ public sealed class EmotionAfterimageMonsterManager
             LastUpdatedAtUtc = DateTime.MinValue;
             LastTargetSeenAtUtc = DateTime.MinValue;
             DamageByPlayer.Clear();
+        }
+
+        /// <summary>개전 활성 개체의 경계 진입 배치 — ActivateAtHome을 거치지 않는 생성자 경로용.</summary>
+        public void PlaceAtFieldEntry()
+        {
+            Position = ResolveActivatePosition(Definition);
         }
 
         public void ActivateAmbientCorridor(int closurePhase)

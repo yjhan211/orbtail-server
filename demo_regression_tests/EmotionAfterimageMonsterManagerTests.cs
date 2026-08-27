@@ -1,4 +1,4 @@
-﻿using game_server.services;
+using game_server.services;
 using network.common;
 using network.common.data.models;
 
@@ -492,6 +492,11 @@ public class EmotionAfterimageMonsterManagerTests
                              target.ClusterMemberIndex < target.ClusterSize - 3)
             .Select(target => target.MonsterId)
             .ToHashSet();
+
+        // #272 경계 토출 워크인: 팩이 구역 바깥 띠에서 홈으로 걸어 들어오므로,
+        // 정찰(홈 슬롯 주변 소회전) 검증은 도착이 끝난 뒤부터 잰다.
+        Advance(manager, [], StartedAt, 600);
+
         var initialEscorts = manager.GetSnapshot(MatchingId, AreaType.S2Library1)
             .Where(info => escortIds.Contains(info.MonsterId))
             .ToList();
@@ -501,7 +506,7 @@ public class EmotionAfterimageMonsterManagerTests
         Assert.True(initialEscorts.Max(info => info.PositionX) - initialEscorts.Min(info => info.PositionX) > 1f);
         Assert.True(initialEscorts.Max(info => info.PositionY) - initialEscorts.Min(info => info.PositionY) > 1f);
 
-        var idleTick = manager.Tick(MatchingId, [], StartedAt.AddSeconds(1));
+        var idleTick = manager.Tick(MatchingId, [], StartedAt.AddSeconds(61));
         var patrolUpdates = idleTick.ChangedStates
             .Where(info => initialEscorts.Any(escort => escort.MonsterId == info.MonsterId))
             .ToList();

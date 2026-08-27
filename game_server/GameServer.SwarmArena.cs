@@ -740,7 +740,7 @@ public partial class GameServer
         if (shrinkElapsed <= 0) return double.MaxValue;
 
         double progress = Math.Min(1d, shrinkElapsed / SwarmFieldShrinkSeconds);
-        return SwarmPressureField.MaxDistance * (1d - progress);
+        return SwarmPressureField.GetSafeDistanceAtProgress(progress);
     }
 
     /// <summary>구역 전체가 현재 경계 밖(폐쇄·자기장)인가 — 봇 대피·스팟 필터의 기준.</summary>
@@ -1063,7 +1063,7 @@ public partial class GameServer
 
     // 봇 문 잠금해제 (#229). 사람과 같은 규칙을 봇에도 건다 — 봇만 잠긴 문을 통과하면
     // 폐쇄 압력이 봇에게만 무의미해지고, 봇 매치로 이 메카닉을 검증할 수도 없다.
-    private const double SwarmBotDoorUnlockChannelSeconds = 3d;
+    // #272: 채널 길이는 사람 게이지와 같은 Config 문 등급 값을 쓴다 (합류 문 = 듀얼 관문 12초).
     private const float SwarmBotDoorUnlockRange = 1.6f;
 
     private void ProcessSwarmBotDoorUnlocks(
@@ -1085,7 +1085,7 @@ public partial class GameServer
                 }
 
                 if ((nowUtc - bot.SwarmDoorUnlockStartedAtUtc).TotalSeconds <
-                    SwarmBotDoorUnlockChannelSeconds)
+                    Config.GetSwarmDoorGaugeSeconds(bot.SwarmDoorUnlockDoorId))
                     continue;
 
                 int doorId = bot.SwarmDoorUnlockDoorId;

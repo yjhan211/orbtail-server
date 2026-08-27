@@ -261,6 +261,32 @@ namespace network.common
         public const int SWARM_FIELD_HOLD_SECONDS = 0;
 
         /// <summary>
+        ///     자기장 수축 곡선 지수 (#272, 2026-08-27 유저 결정 "방이 짧고 운동장이 길다"):
+        ///     1 = 선형, 커질수록 초반 느리고 후반 빠르다 (안전 반경 = Max×(1−진행률^지수)).
+        ///     1.4 기준 시작방 폐쇄 87→약 124초, 합류 141→약 175초, 종반 압축. 서버 판정·클라
+        ///     경계 렌더·파생 시간표가 SwarmPressureField의 같은 곡선 함수를 쓴다.
+        /// </summary>
+        public const double SWARM_FIELD_SHRINK_EXPONENT = 1.4d;
+
+        /// <summary>문 게이지 시간(초) — 시작방 문: 혼자 여는 관문이라 짧다. 봇 채널도 같은 값.</summary>
+        public const float SWARM_DOOR_GAUGE_SECONDS = 3f;
+
+        /// <summary>
+        ///     합류→중앙 문 게이지(초) (#272, 2026-08-27 유저 결정 "J에서 둘이 싸우게"):
+        ///     길게 잡아 선착자도 후착자 도착 전까지 못 나가고, 두 번째 문부터는 피격이 게이지를
+        ///     리셋하므로 "문을 열려면 상대를 먼저 처리해야 한다"가 규칙에서 나온다.
+        /// </summary>
+        public const float SWARM_JOIN_DOOR_GAUGE_SECONDS = 12f;
+
+        /// <summary>#272 School2 문 등급: 합류 문(211~222)은 듀얼 관문 게이지를 쓴다.</summary>
+        public static float GetSwarmDoorGaugeSeconds(int doorId)
+        {
+            return doorId is >= 211 and <= 222
+                ? SWARM_JOIN_DOOR_GAUGE_SECONDS
+                : SWARM_DOOR_GAUGE_SECONDS;
+        }
+
+        /// <summary>
         ///     스웜 탐색 스팟 개봉 비용은 SB 상자 문법을 따른다: 스쿼드(궤도 오브)가 클수록
         ///     다음 개봉이 비싸진다. 3머지가 오브 수를 줄이면 비용이 도로 내려간다 —
         ///     슬롯 차단 대신 비용 곡선이 성장을 억제한다. 사람·봇 공통.

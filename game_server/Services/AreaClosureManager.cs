@@ -78,11 +78,12 @@ public class AreaClosureManager
     /// </summary>
     public static List<ClosureWaveDefinition> BuildSwarmFieldWaves(double holdSeconds, double shrinkSeconds)
     {
+        // 폐쇄 시각 = 수축 곡선의 역함수 (#272 ease-in) — 경계 판정·렌더와 같은 곡선.
         return SwarmPressureField.GetKnownAreas()
             .Select(area => (Area: area, MinDistance: SwarmPressureField.GetAreaMinDistance(area)))
             .Select(pair => new ClosureWaveDefinition(
                 (int)Math.Ceiling(holdSeconds + shrinkSeconds *
-                                  (1d - (double)pair.MinDistance / SwarmPressureField.MaxDistance)),
+                                  SwarmPressureField.GetProgressAtSafeDistance(pair.MinDistance)),
                 [pair.Area],
                 0))
             .OrderBy(wave => wave.ClosureAtSeconds)

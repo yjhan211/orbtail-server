@@ -61,6 +61,23 @@ namespace network.common.data
             return _minDistanceByArea.GetValueOrDefault(area, int.MaxValue);
         }
 
+        /// <summary>
+        ///     수축 진행률(0~1) → 안전 반경. ease-in 곡선(#272): 초반 느리고 후반 빠르다 —
+        ///     서버 오염 판정·클라 경계 렌더·파생 폐쇄 시간표가 전부 이 함수 하나를 쓴다.
+        /// </summary>
+        public static double GetSafeDistanceAtProgress(double progress)
+        {
+            double clamped = Math.Clamp(progress, 0d, 1d);
+            return MaxDistance * (1d - Math.Pow(clamped, Config.SWARM_FIELD_SHRINK_EXPONENT));
+        }
+
+        /// <summary>역함수: 이 거리가 경계에 먹히는 수축 진행률(0~1) — 파생 폐쇄 시각 계산용.</summary>
+        public static double GetProgressAtSafeDistance(double distance)
+        {
+            double ratio = Math.Clamp(1d - distance / MaxDistance, 0d, 1d);
+            return Math.Pow(ratio, 1d / Config.SWARM_FIELD_SHRINK_EXPONENT);
+        }
+
         public static IReadOnlyCollection<AreaType> GetKnownAreas()
         {
             EnsureInitialized();
@@ -85,6 +102,10 @@ namespace network.common.data
                 if (_distanceByCell != null) return;
 
                 var areas = GameMapData.GetAreas(Config.SWARM_MATCH_MAP);
+
+                // 맵 CSV가 아직 로드되기 전이면 빈 거리장을 영구 캐시하게 된다(테스트 병렬 순서 플레이크)
+                // — 캐시하지 않고 다음 호출에서 재시도한다.
+                if (areas == null || areas.Count == 0) return;
 
                 // 원 중심 = 운동장 사각(들)의 경계 상자 중심. 셀은 끝값 포함이라 중심은 (Start+End)/2.
                 var groundRects = areas
