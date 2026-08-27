@@ -1,4 +1,4 @@
-﻿// ReSharper disable All
+// ReSharper disable All
 using System;
 
 namespace network.common
@@ -171,12 +171,12 @@ namespace network.common
         /// <summary>파도(Blue) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.</summary>
         public static readonly bool SWARM_WAVE_ORB_ENABLED = true;
 
-        /// <summary>태양(Red) 오브 공급 — 단색 검증이 필요하면 false로 차단한다. (2026-08-26 파도 단색 검증으로 차단)</summary>
+        /// <summary>태양(Red) 오브 공급 — 단색 검증이 필요하면 false로 차단한다. (2026-08-27 파도 단색 — 유저 지시)</summary>
         public static readonly bool SWARM_SUN_ORB_ENABLED = false;
 
         /// <summary>
-        ///     바람(Green) 오브 공급 — 단색 검증이 필요하면 false로 차단한다. (2026-08-26 파도 단색 검증으로 차단)
-        ///     세 토글을 전부 끄면 공급 풀이 비므로 최소 하나는 켜 둘 것.
+        ///     바람(Green) 오브 공급 — 단색 검증이 필요하면 false로 차단한다.
+        ///     세 토글을 전부 끄면 공급 풀이 비므로 최소 하나는 켜 둘 것. (2026-08-27 파도 단색 — 유저 지시)
         /// </summary>
         public static readonly bool SWARM_WIND_ORB_ENABLED = false;
 
