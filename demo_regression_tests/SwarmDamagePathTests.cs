@@ -42,7 +42,8 @@ public class SwarmDamagePathTests
         string source = File.ReadAllText(
             Path.Combine(FindRepositoryRoot(), "game_server", "GameServer.SwarmArena.cs"));
 
-        Assert.Contains("SwarmTrailCutEnabled = true", source);
+        // 일단 비활성 (2026-08-27 유저 지시) — 절단 재무장 시 true 어서션으로 되돌린다.
+        Assert.Contains("SwarmTrailCutEnabled = false", source);
         var crackWrites = Regex.Matches(source, @"_swarmOrbCutCracks\[[^\]]+\]\s*=");
         Assert.True(
             crackWrites.Count == 0,

@@ -58,7 +58,9 @@ public partial class GameServer
     // 몸으로 상대 꼬리를 유효하게 가로지르면 밟은 지점부터 꼬리 끝까지 깨지고(2026-08-18 유저 결정: 접미
     // 전체) 나는 정신오염 +35를 낸다. 크랙 5칸·방어 장갑·절단 낙수는 쓰지 않는다 (TryPerformSwarmTrailCut).
     // 고리 포위는 계속 끈다.
-    private static readonly bool SwarmTrailCutEnabled = true;
+    // 일단 비활성 (2026-08-27 유저 지시, School2 플레이테스트) — 되돌리면 절단 계약 테스트
+    // (SwarmDamagePathTests.TailCut_RemovesSuffixAndChargesAttacker)의 플래그 어서션도 같이 되돌린다.
+    private static readonly bool SwarmTrailCutEnabled = false;
     private static readonly bool SwarmEncircleEnabled = false;
     // 오브의 플레이어 직접 조준 복귀 (2026-08-17 유저 지시 "오브가 플레이어(봇)도 타겟팅"): 태양은 교차사격
     // 투사체(첫 표적 폭발)로, 바람은 유도탄으로 사람을 쏜다. 아래 PvP 사거리·앞열 규칙이 산다.
