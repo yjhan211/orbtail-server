@@ -1567,10 +1567,10 @@ public sealed class SwarmArenaManager
             spawned > 0 ? FieldStreamIntervalSeconds : SupplyBlockedRetrySeconds);
     }
 
-    // 지속 스트림 리듬 (#269): 1.5초마다 최대 8마리 — 8인 기준 초당 ~5마리로 목표까지
-    // 차오르고, 이후에는 죽는 만큼만 경계에서 스며나온다.
+    // 지속 스트림 리듬 (#269): 1.5초마다 최대 12마리 — 8인 처치율을 이겨야 흐름이 마르지
+    // 않는다 (2026-08-28 제보 2차: 배치 8은 처치율에 비겨 생존 30~40에 정체).
     private const double FieldStreamIntervalSeconds = 1.5d;
-    private const int FieldStreamBatchCount = 8;
+    private const int FieldStreamBatchCount = 12;
 
     // 핵(큰 몹)의 전역 동시 상한 (#269 링 스폰): 구역당 1기 규칙의 후신 — 흐름 전체에서
     // 몇 기가 걸어 다니는지로 관리한다.
@@ -1616,7 +1616,11 @@ public sealed class SwarmArenaManager
             FieldSafeDistanceResolver?.Invoke(state.MatchingId) ?? double.MaxValue,
             cells[^1].Distance);
 
+        // 시작방은 스폰 후보에서 상시 제외 (2026-08-28 제보 "몹이 너무 없어" 2차): 문이 열린
+        // 방이 최외곽 링에 걸리면 방 안 즉시 젠으로 되돌아간다 — 몹은 통로 공간(복도·합류·
+        // 가운데)의 링에서만 태어나고, 방에는 어그로 추격으로만 들어간다.
         bool SpawnableArea(AreaType area) =>
+            !StartRooms.Contains(area) &&
             IsAreaClosedResolver?.Invoke(state.MatchingId, area) != true &&
             SealedAreaResolver?.Invoke(state.MatchingId, area) != true;
 
@@ -1680,14 +1684,19 @@ public sealed class SwarmArenaManager
             var entry = band[state.Rng.Next(band.Count)];
             var position = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, entry.Cell);
 
-            // 목적지 = 가운데. 닫힌 문(봉인 구역)은 경로에서 배제한다 — 경로가 없으면(문이 아직
-            // 다 닫힌 초반 복도 등) 갈 수 있는 데까지만 가고, 그 자리가 사냥 지대가 된다.
+            // 목적지 = 가운데. 닫힌 문(봉인 구역)은 경로에서 배제한다. 경로가 없으면(가운데로
+            // 가는 문이 아직 닫힌 초반) 자기 구역의 가장 안쪽 셀을 앵커로 잡고 걸어 들어간다 —
+            // 스폰 자리 붙박이(2026-08-28 제보 원인)를 없애고, 통로를 가로지르는 흐름이
+            // 플레이어 동선과 마주치게 한다.
             List<Vector3f>? route = null;
             if (entry.Area != SwarmInwardOriginArea)
                 TryPlanRoute(entry.Area, position, SwarmInwardOriginArea, centerWorld,
                     blocked => IsAreaClosedResolver?.Invoke(state.MatchingId, blocked) == true ||
                                SealedAreaResolver?.Invoke(state.MatchingId, blocked) == true,
                     out route);
+            var fallbackAnchor = route == null && entry.Area != SwarmInwardOriginArea
+                ? GetFieldInnermostWorld(entry.Area)
+                : position;
 
             var stats = GetKindStats(kind);
             bool isCore = kind == SwarmMonsterKind.RunawayGoblin;
@@ -1729,8 +1738,8 @@ public sealed class SwarmArenaManager
                 AttackCooldownValue = IsWavePatternMonster(pattern) && !isCore
                     ? WavePatternAttackCooldownSeconds
                     : stats.AttackCooldownSeconds,
-                AnchorX = position.X,
-                AnchorY = position.Y
+                AnchorX = fallbackAnchor.X,
+                AnchorY = fallbackAnchor.Y
             };
             if (route != null)
             {
@@ -1754,6 +1763,22 @@ public sealed class SwarmArenaManager
 
     // 링 스폰 밴드 폭 (#269): 경계에서 이만큼의 두께 안 셀이 스폰 후보다.
     private const int SupplyFieldRingBandCells = 4;
+
+    // 구역별 가장 안쪽(자기장 거리 최소) 셀 — 가운데로 가는 문이 닫혔을 때의 행군 폴백 앵커.
+    private static Dictionary<AreaType, Vector3f>? _fieldInnermostWorldByArea;
+
+    private static Vector3f GetFieldInnermostWorld(AreaType area)
+    {
+        _fieldInnermostWorldByArea ??= GetFieldCellsByDistance()
+            .GroupBy(entry => entry.Area)
+            .ToDictionary(
+                group => group.Key,
+                group => BotPlayerManager.CellToWorldPosition(
+                    Config.SWARM_MATCH_MAP, group.OrderBy(entry => entry.Distance).First().Cell));
+        return _fieldInnermostWorldByArea.TryGetValue(area, out var world)
+            ? world
+            : new Vector3f(0f, 0f, 0f);
+    }
 
     // 비점유 열린 구역의 잔상을 걷어내기까지의 유예 (#229 4단계-보정): 방을 나서자마자
     // 뒤에서 사라지면 눈에 띈다. 폐쇄 구역은 유예 없이 즉시 걷는다 — 문이 잠겨 도달 불가다.

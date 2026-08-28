@@ -133,53 +133,43 @@ public class SwarmArenaManagerTests
         }
     }
 
-    // #229 4단계-보정: 전역 상한은 하나뿐이라 아무도 없는 구역의 잔상이 살아 있는 전장의
-    // 몫을 영구히 먹는다. 폐쇄 구역은 도달조차 못 하므로 순수 낭비다 — 폐쇄가 누적되면
-    // 최악에는 전 구역 스폰이 0으로 굳었다. 걷어내는 규칙을 잠근다.
+    // #269 링 스폰: 좌초 회수(비점유 구역 걷기)는 퇴역했다 — 몹은 전역 흐름이라 좌초가 없다.
+    // 남은 계약은 폐쇄 회수: 폐쇄 구역에 서 있는 몹은 도달 불가라 즉시 걷힌다.
     [Fact]
-    public void RegionSupply_ReclaimsStrandedMonstersAfterZoneIsVacated()
+    public void RegionSupply_ReclaimsMonstersInClosedAreas()
     {
         SwarmArenaManager.RegionSupplyModeEnabled = true;
+        var closedAreas = new HashSet<AreaType>();
         try
         {
             DateTime now = StartUtc;
             var manager = new SwarmArenaManager(() => now);
+            manager.IsAreaClosedResolver = (_, area) => closedAreas.Contains(area);
             Assert.True(manager.InitializeMatching(217004, 1, StartUtc));
-            var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
-            Vector3f roomCenter = AreaCenter(room);
-            Vector3f elsewhere = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
+            Vector3f center = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
 
-            // 방을 채운다 — #272 School2: 운동장 발원 침투의 행군 거리가 길어져(외곽 시작방)
-            // 도착까지 재는 창을 40초로 넓힌다 (RegionSupply_Holds의 60초 창과 같은 이유).
-            for (double elapsed = 0.25d; elapsed <= 40d; elapsed += 0.25d)
+            // 스트림이 링에 몹을 세울 때까지 진행한다.
+            for (double elapsed = 0.25d; elapsed <= 20d; elapsed += 0.25d)
             {
                 now = StartUtc.AddSeconds(elapsed);
-                manager.Tick(217004, Participants(roomCenter, room), now);
+                manager.Tick(217004, Participants(center), now);
             }
 
-            int filled = manager.GetVisualStates(217004)
-                .Count(state => state.IsAlive && state.AreaType == room);
-            Assert.True(filled > 0, "방이 채워지지 않았다");
+            // 행군 중 개체는 폐쇄 회수에서 면제라, 도착해 서 있는 개체(가운데)로 고른다.
+            var standing = manager.GetVisualStates(217004)
+                .FirstOrDefault(state =>
+                    state.IsAlive && state.AreaType == Config.SWARM_MATCH_GROUND_AREA);
+            Assert.True(standing != null, "링 스트림 몹이 가운데에 도착하지 않았다");
 
-            // 방을 비운다 — 유예(6초) 안에는 남아 있어야 한다. 나서자마자 뒤에서 사라지면 눈에 띈다.
-            now = StartUtc.AddSeconds(42d);
-            manager.Tick(217004, Participants(elsewhere), now);
-            now = StartUtc.AddSeconds(45d);
-            manager.Tick(217004, Participants(elsewhere), now);
-            Assert.True(
-                manager.GetVisualStates(217004).Any(state => state.IsAlive && state.AreaType == room),
-                "유예 안에 잔상이 사라졌다");
-
-            // 유예가 지나면 걷힌다.
-            for (double elapsed = 49d; elapsed <= 52d; elapsed += 0.25d)
-            {
-                now = StartUtc.AddSeconds(elapsed);
-                manager.Tick(217004, Participants(elsewhere), now);
-            }
+            // 그 몹이 선 구역을 폐쇄하면 다음 틱에 걷힌다.
+            closedAreas.Add((AreaType)standing.AreaType);
+            now = now.AddSeconds(0.25);
+            manager.Tick(217004, Participants(center), now);
 
             Assert.DoesNotContain(
                 manager.GetVisualStates(217004),
-                state => state.IsAlive && state.AreaType == room);
+                state => state.IsAlive && state.AreaType == (AreaType)standing.AreaType &&
+                         state.MonsterId == standing.MonsterId);
         }
         finally
         {
@@ -533,46 +523,37 @@ public class SwarmArenaManagerTests
         {
             DateTime now = StartUtc.AddSeconds(0.25);
             var manager = CreateManager(() => now);
-            var startRoom = MatchSpawnData.GetPhaseRoomCandidates()[0];
-            Vector3f roomCenter = AreaCenter(startRoom);
-
-            for (double elapsed = 0.25d; elapsed <= 40d; elapsed += 0.25d)
+            // #269 링 스폰: 몹은 가운데로 흐른다 — 가운데에 서서 몹을 모으고, 하나를 때려
+            // 추격 표적을 확정한 뒤 옆 구역으로 빠진다. 쫓던 몹은 문 너머로 따라와야 한다.
+            Vector3f center = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
+            for (double elapsed = 0.25d; elapsed <= 30d; elapsed += 0.25d)
             {
                 now = StartUtc.AddSeconds(elapsed);
-                manager.Tick(217001, Participants(roomCenter, startRoom), now);
+                manager.Tick(217001, Participants(center), now);
             }
 
-            var roomMonsterIds = manager.GetVisualStates(217001)
-                .Where(state => state.IsAlive && state.AreaType == startRoom)
-                .Select(state => state.MonsterId)
-                .ToHashSet();
-            Assert.True(roomMonsterIds.Count > 0, "40초 안에 방에 몹이 도착해야 한다");
+            var chased = manager.GetVisualStates(217001)
+                .FirstOrDefault(state =>
+                    state.IsAlive && state.AreaType == Config.SWARM_MATCH_GROUND_AREA);
+            Assert.True(chased != null, "가운데에 몹이 모이지 않았다");
+            var chasedTarget = manager.GetCombatTargets(217001)
+                .First(target => target.MonsterId == chased.MonsterId);
+            manager.ApplyMonsterDamage(217001, chasedTarget.CombatTargetId, attackerPlayerId: 1, damage: 1);
 
-            // 방을 나가 복도로 — 새 공급분과 섞이지 않게 "방에 있던 몹"의 ID로만 판정한다.
-            var corridor = AreaType.S2Corridor1;
-            Vector3f corridorCenter = AreaCenter(corridor);
-            for (double elapsed = 40.25d; elapsed <= 42d; elapsed += 0.25d)
+            // 옆 구역(합류)으로 빠진다 — 테스트에는 봉인 리졸버가 없어 문은 모두 열린 취급이다.
+            var nextArea = AreaType.S2Library1;
+            Vector3f nextCenter = AreaCenter(nextArea);
+            for (double elapsed = 30.25d; elapsed <= 55d; elapsed += 0.25d)
             {
                 now = StartUtc.AddSeconds(elapsed);
-                manager.Tick(217001, Participants(corridorCenter, corridor), now);
+                manager.Tick(217001, Participants(nextCenter, nextArea), now);
             }
 
-            for (double elapsed = 42.25d; elapsed <= 70d; elapsed += 0.25d)
-            {
-                now = StartUtc.AddSeconds(elapsed);
-                manager.Tick(217001, Participants(corridorCenter, corridor), now);
-            }
-
-            var pursuerCount = manager.GetVisualStates(217001)
-                .Count(state => state.IsAlive && roomMonsterIds.Contains(state.MonsterId) &&
-                                state.AreaType == corridor);
-            Assert.True(pursuerCount > 0,
-                "방에서 나를 담당하던 몹이 문 너머 복도로 따라와야 한다 — " +
-                string.Join(", ", manager.GetVisualStates(217001)
-                    .Where(state => state.IsAlive && roomMonsterIds.Contains(state.MonsterId))
-                    .Take(4)
-                    .Select(state =>
-                        $"{state.MonsterId}@{state.AreaType}({state.PositionX:F1},{state.PositionY:F1}) chase={state.ChaseTargetPlayerId}")));
+            var pursuer = manager.GetVisualStates(217001)
+                .FirstOrDefault(state => state.MonsterId == chased.MonsterId);
+            Assert.True(pursuer is { IsAlive: true } && (AreaType)pursuer.AreaType == nextArea,
+                $"쫓던 몹이 문 너머로 따라와야 한다 — {pursuer?.MonsterId}@{pursuer?.AreaType} " +
+                $"chase={pursuer?.ChaseTargetPlayerId}");
         }
         finally
         {
