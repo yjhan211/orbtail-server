@@ -2524,8 +2524,29 @@ public sealed class SwarmArenaManager
         // 실제로는 한 사람에게 몰렸다.
         bool found = false;
         var target = default(SpotArenaPlayerSpatial);
+
+        // 근접 난입 (2026-08-28 플레이 제보 "복도 몹들이 나를 무시하고 대기"): 인당 할당
+        // 원칙(주인만 쫓는다)은 유지하되, 남이라도 어그로 반경 안까지 들어오면 그 순간의
+        // 표적이 된다 — 좁은 복도에서 남의 몫 몹 무리가 코앞 사람을 무시하고 서 있는
+        // "장식 몹"을 없앤다. 반경을 벗어나면 다음 표적 판정에서 주인 추격으로 돌아간다.
+        float intruderNearestSquared = CampAggroRadius * CampAggroRadius;
+        for (int index = 0; index < participants.Count; index++)
+        {
+            var participant = participants[index];
+            if (participant.Area != monster.Area)
+                continue;
+            float intruderDx = participant.Position.X - monster.Position.X;
+            float intruderDy = participant.Position.Y - monster.Position.Y;
+            float intruderSquared = intruderDx * intruderDx + intruderDy * intruderDy;
+            if (intruderSquared >= intruderNearestSquared)
+                continue;
+            intruderNearestSquared = intruderSquared;
+            target = participant;
+            found = true;
+        }
+
         long chaseId = monster.OwnerPlayerId != 0 ? monster.OwnerPlayerId : monster.ChaseTargetPlayerId;
-        for (int index = 0; index < participants.Count && chaseId != 0; index++)
+        for (int index = 0; index < participants.Count && !found && chaseId != 0; index++)
         {
             var participant = participants[index];
             if (participant.Area != monster.Area || participant.PlayerId != chaseId)
