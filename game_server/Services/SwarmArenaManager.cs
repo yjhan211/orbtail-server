@@ -221,9 +221,7 @@ public sealed class SwarmArenaManager
     // 원거리 종(다트·볼러)은 사거리의 이 비율에서 멈춰 쏜다 — 근접 종만 몸으로 파고든다.
     private const float RangedHoldRangeRatio = 0.8f;
 
-    // 2.5 → 4 (#269 링 스폰): 몹이 흐름으로 지나가는 모델에서는 어그로 반경이 곧 방·복도의
-    // 공급 반경이다 — 좁으면 옆을 스쳐도 안 물려 파밍 공급이 마른다.
-    public const float CampAggroRadius = 4f;
+    public const float CampAggroRadius = 2.5f;
     // 리쉬는 봇 사격 대역(5~7)보다 짧게 — 추격이 빨리 끊겨야 카이팅 사이클이 성립한다.
     public const float CampLeashRadius = 5.5f;
     private const int CampsPerArea = 3;
@@ -440,19 +438,6 @@ public sealed class SwarmArenaManager
     ///     (스폰 셀 = 경계 밖 빨간 띠, 앵커 셀 = 경계 안 띠)를 주고, 구역이 온전히 안전하면 null.
     /// </summary>
     public static Func<long, AreaType, (Cell Spawn, Cell Anchor)?>? FieldSpawnCellResolver { get; set; }
-
-    /// <summary>
-    ///     현재 자기장 안전 반경 (#269 링 스폰) — GameServer가 주입한다. 미주입이면 거리장의
-    ///     최대 거리(수축 전 최외곽 링)로 본다 — 테스트가 리졸버 없이도 링 스폰을 돈다.
-    /// </summary>
-    public static Func<long, double>? FieldSafeDistanceResolver { get; set; }
-
-    /// <summary>
-    ///     봉인 구역 (#269, 유저 결정 "닫힌 문 뚫지 않고"): 게이지 문이 전부 닫혀 있어 몹이
-    ///     들어갈 수 없는 구역. 스폰 후보·행군 경로·문 너머 추격이 전부 이 구역을 피한다.
-    ///     미주입이면 봉인 없음으로 본다.
-    /// </summary>
-    public static Func<long, AreaType, bool>? SealedAreaResolver { get; set; }
 
     /// <summary>폐쇄된 구역은 신규 스폰을 멈춘다 — 잔존 몹은 이주로 처리된다.</summary>
     public Func<long, AreaType, bool>? IsAreaClosedResolver { get; set; }
@@ -1527,292 +1512,144 @@ public sealed class SwarmArenaManager
     /// </summary>
     private void ProcessRegionSupply(MatchState state, DateTime now, SwarmArenaTickResult result)
     {
-        // #269 링 스폰 개편 (2026-08-28 유저 결정): 구역별 공급·유저별 할당 젠을 퇴역하고,
-        // 잔상은 자기장 경계 링에서 주기적으로 태어나 열린 경로로 가운데를 향해 흐른다.
-        // 근처(어그로 반경) 플레이어를 만나면 거기서 사냥이 시작된다. 닫힌 문(봉인 구역)은
-        // 뚫지 않는다 — 방 안은 문을 열기 전까지 안전하고, 문을 여는 순간 흐름과 만난다.
+        // 시작 선물 창(#226 E: 15초 침묵 후 무리 일괄 등장)은 퇴역했다 — 목표 수 유지 모델에서는
+        // 0초부터 보충이 돌아 오브가 첫 틱부터 쏠 것을 갖는다 (#229 완료 조건 1).
         double elapsed = (now - state.StartsAtUtc).TotalSeconds;
         state.MaxParticipantCount = Math.Max(state.MaxParticipantCount, state.LastParticipants.Length);
         int phaseIndex = GetSupplyPhaseIndex(elapsed);
         var phase = SupplyPhases[phaseIndex];
 
-        // 폐쇄 구역 잔존 몹 회수 — 도달 불가 개체가 전역 상한을 갉아먹지 않게 즉시 걷는다.
-        ReclaimClosedAreaMonsters(state, now);
-
-        // 시작방 팩 (2026-08-28 제보 "방송실에 몹이 안 생긴다"): 링은 통로만 채우므로, 문이
-        // 닫힌 시작방에는 유한 팩을 따로 준다 — 방마다 2팩, 전멸해야 다음 팩. 문이 열리면
-        // 방 공급은 끝나고 링 흐름과 어그로 추격이 그 방의 몫을 잇는다.
-        SpawnStartRoomPacks(state, phaseIndex, now, result);
-
-        // 전역 목표 = 인당 목표 × 생존 참가자 수 (서버 안전 천장 유지). 구역 점유와 무관하게
-        // 판 전체의 흐름 총량이 페이즈 곡선을 따른다.
-        int globalCap = Math.Min(
-            SupplyGlobalAliveHardCap,
-            phase.PerPlayerTarget * Math.Max(1, state.LastParticipants.Length));
-
-        // 시작방 팩은 유한 콘텐츠라 전역 상한 밖이다 — 방 팩이 상한을 잡아먹으면 링 스트림이
-        // 굶는다. 방 밖으로 따라나온 개체부터 흐름 몫으로 센다.
-        int aliveGlobal = state.Monsters.Values.Count(monster =>
-            monster.Alive && !IsBossKind(monster.Kind) && !StartRooms.Contains(monster.Area));
-        if (aliveGlobal >= globalCap)
-            return;
-
-        // 지속 스트림 (2026-08-28 유저 결정 "원 경계선 부분에서 지속적으로 나오게"): 12초
-        // 몰아붓기 대신 1.5초마다 소량씩 스며나온다 — 죽는 만큼 경계에서 끊임없이 흘러들어
-        // 흐름이 마르지 않는다. 총량은 전역 목표가 그대로 상한이다.
-        state.NextFieldWaveAtUtc ??= now;
-        if (now < state.NextFieldWaveAtUtc)
-            return;
-
-        bool includeCore = phaseIndex >= SupplyCoreFirstPhaseIndex &&
-                           CountAliveCores(state) < FieldGlobalCoreCap;
-        int want = Math.Min(FieldStreamBatchCount, globalCap - aliveGlobal - (includeCore ? 1 : 0));
-        if (want <= 0 && !includeCore)
-            return;
-
-        int spawned = SpawnFieldRingMonsters(state, Math.Max(0, want), includeCore, phaseIndex, now, result);
-        state.NextFieldWaveAtUtc = now.AddSeconds(
-            spawned > 0 ? FieldStreamIntervalSeconds : SupplyBlockedRetrySeconds);
-    }
-
-    // 지속 스트림 리듬 (#269): 1.5초마다 최대 12마리 — 8인 처치율을 이겨야 흐름이 마르지
-    // 않는다 (2026-08-28 제보 2차: 배치 8은 처치율에 비겨 생존 30~40에 정체).
-    private const double FieldStreamIntervalSeconds = 1.5d;
-    private const int FieldStreamBatchCount = 12;
-
-    // 시작방 팩 크기 (#269): 페이즈 0 인당 목표와 같은 8 — 첫 팩으로 첫 스팟 개봉 여비가 나온다.
-    private const int StartRoomPackSize = 8;
-
-    private void SpawnStartRoomPacks(MatchState state, int phaseIndex, DateTime now, SwarmArenaTickResult result)
-    {
+        // 점유 = 살아있는 참가자가 서 있는 구역. 폐쇄 구역은 즉시 제외한다 — 폐쇄 구역에
+        // 쌓인 잔상은 도달조차 못 하면서 전역 상한만 갉아먹는다 (#229 완료 조건 4).
+        // 구역별 참가자 명단까지 든다 (2026-08-16): 목표가 인당이라 몇 명이 서 있는지가 곧
+        // 목표이고, 스폰한 몹의 주인도 이 명단에서 고른다.
+        var occupied = new Dictionary<AreaType, List<long>>();
         foreach (var participant in state.LastParticipants)
         {
-            var area = participant.Area;
-            if (!StartRooms.Contains(area))
+            if (participant.Area == AreaType.None ||
+                IsAreaClosedResolver?.Invoke(state.MatchingId, participant.Area) == true)
                 continue;
-            // 봉인이 풀린 방(문 열림)은 방 공급이 끝난다 — 리졸버 미주입(테스트)도 스폰 없음.
-            if (SealedAreaResolver?.Invoke(state.MatchingId, area) != true)
+            if (!occupied.TryGetValue(participant.Area, out var roster))
+            {
+                roster = new List<long>();
+                occupied[participant.Area] = roster;
+            }
+
+            roster.Add(participant.PlayerId);
+        }
+
+        bool preMatch = IsGameplayActiveResolver?.Invoke(state.MatchingId) == false;
+
+        // 인트로 산개 (2026-08-16 유저 결정): 매치 시작 전에는 열린 방 전부를 공급 대상으로 본다.
+        // 점유 구역만 채우면 발원지에서 나가는 줄기가 플레이어가 선 방 하나뿐이라 "운동장에서
+        // 열 방향으로 뻗어 나간다"가 성립하지 않는다. 게이트가 풀리면 점유 규칙으로 돌아가고,
+        // 아무도 없는 방의 몹은 좌초 회수가 유예 뒤에 걷는다.
+        if (preMatch)
+        {
+            foreach (var room in MatchSpawnData.GetPhaseRoomCandidates())
+            {
+                if (IsAreaClosedResolver?.Invoke(state.MatchingId, room) == true)
+                    continue;
+                occupied.TryAdd(room, new List<long>());
+            }
+        }
+
+        // 예산 회수 (#229): 비점유·폐쇄 구역은 공급 상태를 버린다. 다시 점유되면 휴지 없이
+        // 처음부터 채운다.
+        foreach (var zone in state.SupplyZones.Keys.Where(zone => !occupied.ContainsKey(zone)).ToList())
+            state.SupplyZones.Remove(zone);
+
+        // 좌초 잔상 회수 (#229 4단계-보정): 잔존 몹까지 걷어내야 예산 회수가 완결된다.
+        ReclaimStrandedMonsters(state, occupied, now);
+
+        // 전역 상한은 매 틱 새로 계산한다 — 여러 구역이 같은 틱에 채우면 합계가 넘칠 수 있다.
+        int aliveGlobal = CountAliveGlobal(state);
+        // 상한은 구역 목표의 합이다 (2026-08-16). 점유 구역 수 × 목표로 잡던 시절에는
+        // 사람이 몰려 구역이 줄면 상한도 같이 줄어 남은 전장이 오히려 한산해졌다.
+        int globalCap = Math.Min(
+            SupplyGlobalAliveHardCap,
+            occupied.Values.Sum(roster => GetSupplyZoneTarget(phase.PerPlayerTarget, roster.Count)));
+
+        // 상한에 걸리면 뒤 구역이 굶는다 — 빈 구역부터 채워 공백을 고르게 나눈다.
+        foreach (var (zone, roster) in occupied.OrderBy(pair => CountAliveInArea(state, pair.Key)))
+        {
+            int zoneTarget = GetSupplyZoneTarget(phase.PerPlayerTarget, roster.Count);
+            if (aliveGlobal >= globalCap)
+                break;
+
+            if (!state.SupplyZones.TryGetValue(zone, out var zoneState))
+            {
+                zoneState = new SupplyZoneState();
+                state.SupplyZones[zone] = zoneState;
+            }
+
+            int aliveInZone = CountAliveInArea(state, zone);
+            if (aliveInZone >= zoneTarget)
+            {
+                zoneState.NextTopUpAtUtc = null;
                 continue;
-            int packs = state.StartRoomPacksSpawned.GetValueOrDefault(area);
-            if (packs >= StartRoomPackLimit)
-                continue;
-            if (state.Monsters.Values.Any(monster => monster.Alive && monster.Area == area))
+            }
+
+            // 전멸 휴지: 한 번이라도 채운 구역이 0이 되면 4초 뒤부터 보충을 재개한다.
+            if (aliveInZone == 0 && zoneState.HasSpawned)
+            {
+                if (zoneState.WipeRestUntilUtc == null)
+                {
+                    bool finalPhase = phaseIndex == SupplyPhases.Length - 1;
+                    zoneState.WipeRestUntilUtc = now.AddSeconds(
+                        finalPhase ? SupplyWipeRestSecondsFinalPhase : SupplyWipeRestSeconds);
+                    zoneState.NextTopUpAtUtc = null;
+                }
+
+                if (now < zoneState.WipeRestUntilUtc)
+                    continue;
+            }
+            else if (aliveInZone > 0)
+            {
+                zoneState.WipeRestUntilUtc = null;
+            }
+
+            // 첫 보충은 즉시, 이후는 1.5초 간격.
+            zoneState.NextTopUpAtUtc ??= now;
+            if (now < zoneState.NextTopUpAtUtc)
                 continue;
 
+            // 핵은 구역당 1기 유지 — 죽으면 다음 보충에 다시 선다. 핵도 상한을 쓴다.
+            // 초반 페이즈는 핵을 세우지 않는다 (#229): 시작 오브 하나로는 큰 몹(핵 2.4배)이
+            // 벽처럼 서서 파밍이 막힌다. 작은 몹 여럿을 빨리 지우는 리듬이 먼저고,
+            // 큰 몹은 오브가 붙기 시작하는 중반부터 나온다.
+            bool includeCore = phaseIndex >= SupplyCoreFirstPhaseIndex &&
+                               !HasAliveCore(state, zone) &&
+                               aliveInZone < zoneTarget &&
+                               aliveGlobal < globalCap;
+            int room = zoneTarget - aliveInZone - (includeCore ? 1 : 0);
+            int want = Math.Min(SupplyTopUpCount, room);
+            want = Math.Min(want, globalCap - aliveGlobal - (includeCore ? 1 : 0));
+            if (want <= 0 && !includeCore)
+                continue;
+
+            want = Math.Max(0, want);
+            // 첫 무리도 운동장에서 걸어 들어온다 (2026-08-16 유저 결정). 제자리 스폰으로 초반
+            // 공백을 메우려 했지만, 그러면 "운동장에서 각 방으로 나간다"는 그림 자체가 사라진다.
+            // 공백은 카운트다운이 메운다 — 게이트 전에도 디렉터가 돌아 5초를 미리 걷는다.
             int spawned = SpawnSupplyMonsters(
-                state, area, StartRoomPackSize, includeCore: false, phaseIndex, now, result,
-                infiltrate: false);
-            if (spawned > 0)
-                state.StartRoomPacksSpawned[area] = packs + 1;
-        }
-    }
-
-    // 핵(큰 몹)의 전역 동시 상한 (#269 링 스폰): 구역당 1기 규칙의 후신 — 흐름 전체에서
-    // 몇 기가 걸어 다니는지로 관리한다.
-    private const int FieldGlobalCoreCap = 3;
-
-    private static int CountAliveCores(MatchState state) =>
-        state.Monsters.Values.Count(monster =>
-            monster.Alive && monster.Kind == SwarmMonsterKind.RunawayGoblin);
-
-    // 전맵 보행 셀의 자기장 거리표 (#269 링 스폰) — 거리장·구역 판정이 프로세스 수명 동안
-    // 불변이라 한 번만 계산해 캐시한다.
-    private static List<(Cell Cell, AreaType Area, int Distance)>? _fieldCellsByDistance;
-
-    private static List<(Cell Cell, AreaType Area, int Distance)> GetFieldCellsByDistance()
-    {
-        return _fieldCellsByDistance ??= SwarmPressureField.DistancesByCell
-            .Select(pair =>
+                state, zone, want, includeCore, phaseIndex, now, result,
+                candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true,
+                infiltrate: true,
+                roster: roster,
+                isOrbless: playerId => IsOrbless(state.MatchingId, playerId));
+            if (spawned == 0)
             {
-                var cell = new Cell(pair.Key.X, pair.Key.Y);
-                return (Cell: cell,
-                    Area: GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell),
-                    Distance: pair.Value);
-            })
-            .Where(entry => entry.Area != AreaType.None)
-            .OrderBy(entry => entry.Distance)
-            .ToList();
-    }
-
-    /// <summary>
-    ///     링 스폰 (#269): 현재 안전 반경 경계의 밴드 셀에서 태어나, 열린 경로로 가운데를 향해
-    ///     행군한다. 후보는 경계 밖(빨간 지대) 밴드 우선 — 수축 전(경계 = 최외곽)에는 경계 안
-    ///     밴드를 쓴다. 폐쇄 구역·봉인 구역(닫힌 문 안)·플레이어 코앞은 후보에서 제외한다.
-    /// </summary>
-    private int SpawnFieldRingMonsters(
-        MatchState state, int normals, bool includeCore, int phaseIndex, DateTime now,
-        SwarmArenaTickResult result)
-    {
-        var cells = GetFieldCellsByDistance();
-        if (cells.Count == 0)
-            return 0;
-
-        double safeDistance = Math.Min(
-            FieldSafeDistanceResolver?.Invoke(state.MatchingId) ?? double.MaxValue,
-            cells[^1].Distance);
-
-        // 시작방은 스폰 후보에서 상시 제외 (2026-08-28 제보 "몹이 너무 없어" 2차): 문이 열린
-        // 방이 최외곽 링에 걸리면 방 안 즉시 젠으로 되돌아간다 — 몹은 통로 공간(복도·합류·
-        // 가운데)의 링에서만 태어나고, 방에는 어그로 추격으로만 들어간다.
-        bool SpawnableArea(AreaType area) =>
-            !StartRooms.Contains(area) &&
-            IsAreaClosedResolver?.Invoke(state.MatchingId, area) != true &&
-            SealedAreaResolver?.Invoke(state.MatchingId, area) != true;
-
-        // 스폰 가능(폐쇄·봉인 제외) 셀만 남긴 뒤 밴드를 잡는다 — 초반엔 최외곽 링이 전부
-        // 닫힌 방 안이라, 필터 후 기준으로 잡아야 "열린 지역의 가장 바깥 링"이 나온다.
-        var spawnable = cells.Where(entry => SpawnableArea(entry.Area)).ToList();
-        if (spawnable.Count == 0)
-            return 0;
-
-        // 빨간 지대(경계 밖) 우선 — 수축 전이거나 빨간 지대에 열린 셀이 없으면 열린 셀 중
-        // 가장 바깥 밴드를 쓴다.
-        var band = spawnable
-            .Where(entry => entry.Distance > safeDistance &&
-                            entry.Distance <= safeDistance + SupplyFieldRingBandCells)
-            .ToList();
-        if (band.Count == 0)
-        {
-            double outerMost = Math.Min(safeDistance, spawnable[^1].Distance);
-            band = spawnable
-                .Where(entry => entry.Distance > outerMost - SupplyFieldRingBandCells &&
-                                entry.Distance <= outerMost)
-                .ToList();
-        }
-
-        if (band.Count == 0)
-            return 0;
-
-        // 플레이어 코앞 젠 금지 — 링 셀 중 안전 이격을 지키는 것만 남긴다. 전부 막히면 이번
-        // 웨이브를 건너뛴다 (1초 뒤 재검사).
-        band = band.Where(entry =>
-        {
-            var world = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, entry.Cell);
-            foreach (var participant in state.LastParticipants)
-            {
-                float dx = participant.Position.X - world.X;
-                float dy = participant.Position.Y - world.Y;
-                if (dx * dx + dy * dy < SupplySafeSpawnDistance * SupplySafeSpawnDistance)
-                    return false;
+                // 전 앵커가 플레이어 2.5m 안 — 1초 뒤 재검사.
+                zoneState.NextTopUpAtUtc = now.AddSeconds(SupplyBlockedRetrySeconds);
+                continue;
             }
 
-            return true;
-        }).ToList();
-        if (band.Count == 0)
-            return 0;
-
-        var centerWorld = BotPlayerManager.CellToWorldPosition(
-            Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, SwarmInwardOriginArea));
-        var phase = SupplyPhases[phaseIndex];
-
-        var spawnPlan = new List<SwarmMonsterKind>(normals + 1);
-        for (int index = 0; index < normals; index++)
-            spawnPlan.Add(SwarmMonsterKind.Skeleton);
-        if (includeCore)
-            spawnPlan.Add(SwarmMonsterKind.RunawayGoblin);
-
-        int stoneTotal = 0;
-        var pattern = (SwarmPattern)(state.NextSupplyPackOrdinal++ % 3);
-        int spawnedCount = 0;
-        foreach (var kind in spawnPlan)
-        {
-            var entry = band[state.Rng.Next(band.Count)];
-            var position = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, entry.Cell);
-
-            // 목적지 = 가운데. 닫힌 문(봉인 구역)은 경로에서 배제한다. 경로가 없으면(가운데로
-            // 가는 문이 아직 닫힌 초반) 자기 구역의 가장 안쪽 셀을 앵커로 잡고 걸어 들어간다 —
-            // 스폰 자리 붙박이(2026-08-28 제보 원인)를 없애고, 통로를 가로지르는 흐름이
-            // 플레이어 동선과 마주치게 한다.
-            List<Vector3f>? route = null;
-            if (entry.Area != SwarmInwardOriginArea)
-                TryPlanRoute(entry.Area, position, SwarmInwardOriginArea, centerWorld,
-                    blocked => IsAreaClosedResolver?.Invoke(state.MatchingId, blocked) == true ||
-                               SealedAreaResolver?.Invoke(state.MatchingId, blocked) == true,
-                    out route);
-            var fallbackAnchor = route == null && entry.Area != SwarmInwardOriginArea
-                ? GetFieldInnermostWorld(entry.Area)
-                : position;
-
-            var stats = GetKindStats(kind);
-            bool isCore = kind == SwarmMonsterKind.RunawayGoblin;
-            int stoneReward = isCore ? SupplyCoreStoneReward : stats.StoneReward;
-            int maxHp = isCore ? phase.CoreHp : phase.NormalHp;
-            int contactDamage = isCore ? stats.OrbDamage : phase.ContactDamage;
-
-            stoneTotal += stoneReward;
-            int serial = state.NextSerial++;
-            var monster = new MonsterRuntime
-            {
-                MonsterId = FirstMonsterId + serial,
-                CombatTargetId = FirstCombatTargetId - serial,
-                Pattern = pattern,
-                Area = entry.Area,
-                HomeArea = route != null ? SwarmInwardOriginArea : entry.Area,
-                Position = position,
-                Health = maxHp,
-                Alive = true,
-                Aggro = true,
-                PhaseTier = phaseIndex,
-                ActivatesAtUtc = now.AddSeconds(
-                    SupplyTelegraphSeconds + state.Rng.NextDouble() * InfiltrationDepartureJitterSeconds),
-                SpawnedAtUtc = now,
-                NextContactAtUtc = now,
-                ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
-                SummonStoneReward = stoneReward,
-                HeartReward = stats.HeartReward > 0
-                    ? stats.HeartReward
-                    : state.Rng.NextDouble() < SupplyHeartDropChance
-                        ? 1
-                        : 0,
-                BootsReward = stats.BootsReward,
-                KeyReward = stats.KeyReward,
-                ContactDamageValue = contactDamage,
-                Kind = kind,
-                MaxHealthValue = maxHp,
-                AttackRangeValue = stats.AttackRange,
-                AttackCooldownValue = IsWavePatternMonster(pattern) && !isCore
-                    ? WavePatternAttackCooldownSeconds
-                    : stats.AttackCooldownSeconds,
-                AnchorX = fallbackAnchor.X,
-                AnchorY = fallbackAnchor.Y
-            };
-            if (route != null)
-            {
-                monster.Infiltrating = true;
-                monster.MarchWaypoints.AddRange(route);
-                monster.MarchBudgetSeconds = ComputeMarchBudgetSeconds(position, route);
-                monster.MarchLaneOffset = (float)(state.Rng.NextDouble() * 2d - 1d) * MarchLaneOffsetMax;
-                monster.MarchSpeedScale = 1f + (float)(state.Rng.NextDouble() * 2d - 1d) * MarchSpeedJitter;
-            }
-
-            state.Monsters[monster.MonsterId] = monster;
-            result.SpawnedMonsters.Add(monster.ToMonsterRuntimeInfo());
-            spawnedCount++;
+            aliveGlobal += spawned;
+            zoneState.HasSpawned = true;
+            zoneState.WipeRestUntilUtc = null;
+            zoneState.NextTopUpAtUtc = now.AddSeconds(SupplyTopUpIntervalSeconds);
         }
-
-        if (spawnedCount > 0)
-            result.SupplyPackSpawns.Add(new SupplyPackSpawnInfo(
-                AreaType.None, phaseIndex, spawnedCount, stoneTotal));
-        return spawnedCount;
-    }
-
-    // 링 스폰 밴드 폭 (#269): 경계에서 이만큼의 두께 안 셀이 스폰 후보다.
-    private const int SupplyFieldRingBandCells = 4;
-
-    // 구역별 가장 안쪽(자기장 거리 최소) 셀 — 가운데로 가는 문이 닫혔을 때의 행군 폴백 앵커.
-    private static Dictionary<AreaType, Vector3f>? _fieldInnermostWorldByArea;
-
-    private static Vector3f GetFieldInnermostWorld(AreaType area)
-    {
-        _fieldInnermostWorldByArea ??= GetFieldCellsByDistance()
-            .GroupBy(entry => entry.Area)
-            .ToDictionary(
-                group => group.Key,
-                group => BotPlayerManager.CellToWorldPosition(
-                    Config.SWARM_MATCH_MAP, group.OrderBy(entry => entry.Distance).First().Cell));
-        return _fieldInnermostWorldByArea.TryGetValue(area, out var world)
-            ? world
-            : new Vector3f(0f, 0f, 0f);
     }
 
     // 비점유 열린 구역의 잔상을 걷어내기까지의 유예 (#229 4단계-보정): 방을 나서자마자
@@ -1829,17 +1666,31 @@ public sealed class SwarmArenaManager
     ///     보상은 처치 경로(ApplyMonsterDamage)에만 붙어 있어 이 회수로 소환석이 새지 않는다.
     ///     보스는 애초에 상한에서 제외되므로 건드리지 않는다.
     /// </summary>
-    private void ReclaimClosedAreaMonsters(MatchState state, DateTime now)
+    private void ReclaimStrandedMonsters(
+        MatchState state, Dictionary<AreaType, List<long>> occupied, DateTime now)
     {
-        // #269 링 스폰 개편: 좌초 회수(비점유 구역 걷기)는 구역 배정과 함께 퇴역 — 몹은 전역
-        // 흐름이라 좌초가 없다. 폐쇄 구역에 서 있는 개체만 걷는다(도달 불가·상한 낭비).
-        // 행군 중 개체는 지나는 중일 뿐이라 면제한다.
+        foreach (var zone in occupied.Keys)
+            state.ZoneVacatedAtUtc.Remove(zone);
+
         foreach (var monster in state.Monsters.Values)
         {
-            if (!monster.Alive || IsBossKind(monster.Kind) || monster.Infiltrating)
+            if (!monster.Alive || IsBossKind(monster.Kind) || occupied.ContainsKey(monster.HomeArea))
                 continue;
-            if (IsAreaClosedResolver?.Invoke(state.MatchingId, monster.Area) != true)
+            // 추격 중인 개체는 남의 구역을 지나는 중이다 — 걷어내면 쫓다 말고 사라진다.
+            if (monster.Infiltrating && monster.MarchIsPursuit)
                 continue;
+
+            if (IsAreaClosedResolver?.Invoke(state.MatchingId, monster.HomeArea) != true)
+            {
+                if (!state.ZoneVacatedAtUtc.TryGetValue(monster.HomeArea, out var vacatedAtUtc))
+                {
+                    state.ZoneVacatedAtUtc[monster.HomeArea] = now;
+                    continue;
+                }
+
+                if ((now - vacatedAtUtc).TotalSeconds < StrandedMonsterGraceSeconds)
+                    continue;
+            }
 
             // 사망 경로를 그대로 쓴다 — 클라가 이미 처리할 줄 알고, PruneDeadMonsters가 치운다.
             monster.Alive = false;
@@ -1866,9 +1717,7 @@ public sealed class SwarmArenaManager
             return reward;
 
         int phaseIndex = GetSupplyPhaseIndex((now - state.StartsAtUtc).TotalSeconds);
-        // #269 링 스폰: 예산 키는 죽은 구역(물리 위치) — 배정 구역 개념이 퇴역해도 "이 구역에서
-        // 벌 수 있는 총량"이라는 원래 의도가 유지된다.
-        var budgetKey = (monster.Area, phaseIndex);
+        var budgetKey = (monster.HomeArea, phaseIndex);
         if (monster.Kind == SwarmMonsterKind.RunawayGoblin)
             return state.SupplyCoreRewarded.Add(budgetKey) ? reward : 0;
 
@@ -2291,7 +2140,7 @@ public sealed class SwarmArenaManager
     ///     쫓아간 구역이 그 몹의 새 배정 구역이 되므로 공급 회계도 따라 옮겨간다.
     /// </summary>
     private static bool TryStartCrossAreaPursuit(
-        long matchingId, MonsterRuntime monster, IReadOnlyList<SpotArenaPlayerSpatial> participants)
+        MonsterRuntime monster, IReadOnlyList<SpotArenaPlayerSpatial> participants)
     {
         if (monster.ChaseTargetPlayerId == 0 || monster.Infiltrating)
             return false;
@@ -2303,12 +2152,8 @@ public sealed class SwarmArenaManager
                 participant.Area == AreaType.None || participant.Area == monster.Area)
                 continue;
 
-            // 닫힌 문은 뚫지 않는다 (#269 유저 결정): 봉인 구역은 추격 경로에서도 배제된다 —
-            // 문이 닫힌 방으로 도망치면 몹은 문 앞까지만 온다.
             if (!TryPlanRoute(monster.Area, monster.Position, participant.Area,
-                    participant.Position,
-                    blocked => SealedAreaResolver?.Invoke(matchingId, blocked) == true,
-                    out var route))
+                    participant.Position, null, out var route))
                 return false;
 
             monster.Infiltrating = true;
@@ -2765,7 +2610,7 @@ public sealed class SwarmArenaManager
         }
 
         // 같은 구역에서 놓쳤다면 문 너머로 쫓는다. 실패해야 앵커로 물러선다.
-        if (!found && TryStartCrossAreaPursuit(state.MatchingId, monster, participants))
+        if (!found && TryStartCrossAreaPursuit(monster, participants))
         {
             AdvanceInfiltration(monster, deltaSeconds, now);
             return;
@@ -3198,12 +3043,6 @@ public sealed class SwarmArenaManager
 
         // 구역이 빈 시각 (#229 4단계-보정): 좌초 잔상 회수 유예를 재는 기준. 다시 점유되면 지운다.
         public Dictionary<AreaType, DateTime> ZoneVacatedAtUtc { get; } = new();
-
-        // #269 링 스폰: 다음 전역 웨이브 시각. 첫 웨이브는 즉시.
-        public DateTime? NextFieldWaveAtUtc { get; set; }
-
-        // #269 시작방 팩: 방마다 몇 팩을 세웠는지 — 상한 StartRoomPackLimit(2).
-        public Dictionary<AreaType, int> StartRoomPacksSpawned { get; } = new();
 
         // 소환석 토큰 버킷 (#229 4단계-보정): 구역·페이즈별 (잔량, 마지막 충전 시각).
         // 구역을 비웠다 돌아와도 살아남는다 — 들락날락으로 리셋되면 보상이 무제한이 된다.

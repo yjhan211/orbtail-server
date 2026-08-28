@@ -265,11 +265,6 @@ public partial class GameServer
             GameClientSession.SwarmOrbDecisionCallback ??= HandleSwarmOrbDecision;
             // #272 경계 토출 스폰: 자기장 경계가 관통 중인 구역의 캠프는 빨간 지대에서 태어난다.
             SwarmArenaManager.FieldSpawnCellResolver ??= ResolveSwarmFieldSpawn;
-            // #269 링 스폰: 현재 안전 반경과 봉인 구역(게이지 문 전부 닫힘) 판정을 잇는다 —
-            // 잔상은 자기장 링에서 태어나 열린 경로로만 흐르고, 닫힌 문은 뚫지 않는다.
-            SwarmArenaManager.FieldSafeDistanceResolver ??=
-                fieldMatchingId => GetSwarmSafeDistance(fieldMatchingId, DateTime.UtcNow);
-            SwarmArenaManager.SealedAreaResolver ??= IsSwarmSealedArea;
             // 하트 = 본체 오염 + 앞줄 오브 HP 회복 (#222 M4, 원작 하트는 스쿼드도 회복).
             // 엔트리 제거 = 만충 취급 — 다음 오브 비주얼 틱에 체력바·크랙이 함께 복구된다.
             GameClientSession.SwarmHeartPickupCallback ??=
@@ -807,23 +802,6 @@ public partial class GameServer
     ///     가장 바깥 띠. 저작 캠프 앵커는 자기장 모드에서 쓰지 않는다 (단일 문법).
     ///     온전히 밖인 구역은 폐쇄 스폰 정지 규칙이 이미 막는다.
     /// </summary>
-    /// <summary>
-    ///     봉인 구역 (#269 유저 결정 "닫힌 문 뚫지 않고"): 그 구역에 면한 게이지 문이 하나라도
-    ///     있고 전부 닫혀 있으면 몹이 들어갈 수 없다. 문 없는 구역(복도·가운데)은 항상 열림.
-    /// </summary>
-    private bool IsSwarmSealedArea(long matchingId, AreaType area)
-    {
-        bool hasGaugeDoor = false;
-        foreach (var door in GameDoorData.GetByAreaType(area))
-        {
-            if (!GameInteractableData.IsGaugeGatedDoor(door.DoorId)) continue;
-            hasGaugeDoor = true;
-            if (_doorStateManager.IsDoorOpen(matchingId, door.DoorId)) return false;
-        }
-
-        return hasGaugeDoor;
-    }
-
     private (Cell Spawn, Cell Anchor)? ResolveSwarmFieldSpawn(long matchingId, AreaType area)
     {
         if (!SwarmFieldEnabled) return null;
@@ -832,22 +810,17 @@ public partial class GameServer
         var cells = GetSwarmAreaCellsByDistance(area);
         if (cells.Count == 0) return null;
 
-        // 경계가 구역을 관통 중일 때만 토출한다 (2026-08-28 플레이 제보 "자기장이 아니라 복도에서
-        // 젠되는 느낌"): 안전한 구역까지 바깥 띠에 즉시 젠하면 걸어 들어오는 그림이 통째로
-        // 사라진다 — null을 돌려 침투(가운데 발원 행군) 폴백이 워크인을 그리게 한다.
         bool boundaryCrossing = safeDistance < cells[^1].Distance;
-        if (!boundaryCrossing) return null;
-
-        double spawnMin = safeDistance;
-        double spawnMax = safeDistance + SwarmFieldSpawnBandCells;
+        double spawnMin = boundaryCrossing ? safeDistance : cells[^1].Distance - SwarmFieldSpawnBandCells;
+        double spawnMax = boundaryCrossing ? safeDistance + SwarmFieldSpawnBandCells : cells[^1].Distance;
 
         var spawnBand = cells
             .Where(entry => entry.Distance > spawnMin && entry.Distance <= spawnMax)
             .ToList();
         if (spawnBand.Count == 0)
-            spawnBand = cells.Where(entry => entry.Distance > safeDistance).ToList();
-        if (spawnBand.Count == 0)
-            spawnBand = [cells[^1]];
+            spawnBand = boundaryCrossing
+                ? cells.Where(entry => entry.Distance > safeDistance).ToList()
+                : [cells[^1]];
 
         var anchorBand = cells
             .Where(entry => entry.Distance <= spawnMin &&
