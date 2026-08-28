@@ -1121,6 +1121,12 @@ public partial class GameServer
         {
             if (!GameInteractableData.IsGaugeGatedDoor(door.DoorId)) continue;
             if (_doorStateManager.IsDoorOpen(matchingId, door.DoorId)) continue;
+            // 단방향 문 (2026-08-28 플레이 제보 "봇이 바깥에서 문을 따고 들어온다"): 게이지가
+            // 놓인 쪽(안쪽)에서만 딴다 — 사람은 게이지 노출 규칙이 이미 막고 있고, 봇도 같은
+            // 표를 따른다. 폐쇄 구역 탈출은 예외 (사람 규칙과 동일).
+            if (!insideClosed &&
+                !GameInteractableData.IsGaugeDoorOperableFrom(door.DoorId, (int)bot.CurrentArea))
+                continue;
             if (!insideClosed &&
                 (_areaClosureManager.IsAreaClosed(matchingId, door.AreaType) ||
                  _areaClosureManager.IsAreaClosed(matchingId, door.AreaTypeB)))

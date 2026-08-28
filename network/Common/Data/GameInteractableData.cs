@@ -29,6 +29,13 @@ namespace network.common.data
         private static readonly HashSet<int> _gaugeGatedDoorIds = new();
 
         /// <summary>
+        ///     게이지 문을 조작할 수 있는 구역 (#272 단방향 문): 게이지가 놓인 구역에서만 열린다.
+        ///     사람은 게이지가 소속 구역에서만 보여 자연히 단방향이고, 봇 채널도 이 표를 따라야
+        ///     바깥에서 문을 따고 들어오는 역주행이 막힌다.
+        /// </summary>
+        private static readonly Dictionary<int, HashSet<int>> _gaugeDoorZones = new();
+
+        /// <summary>
         ///     #135 — 영역(AreaType) 단위 ItemPool. 자기 풀 외 사물 RNG 채집 시 영역 풀에서 추출.
         /// </summary>
         public static void InitializeAreaItemPool(List<CsvRow> areaItemPoolData)
@@ -69,6 +76,7 @@ namespace network.common.data
             _infos.Clear();
             _infosByZone.Clear();
             _gaugeGatedDoorIds.Clear();
+            _gaugeDoorZones.Clear();
 
             // 공통 액션 풀 데이터를 object_type별로 그룹화 (GDD §2.4.2 — 통합 풀)
             var actionsByObjectType = actionData
@@ -104,7 +112,16 @@ namespace network.common.data
                     _infosByZone[info.ZoneId] = list;
                 }
                 list.Add(info);
-                if (info.DoorId > 0) _gaugeGatedDoorIds.Add(info.DoorId);
+                if (info.DoorId > 0)
+                {
+                    _gaugeGatedDoorIds.Add(info.DoorId);
+                    if (!_gaugeDoorZones.TryGetValue(info.DoorId, out var zones))
+                    {
+                        zones = new HashSet<int>();
+                        _gaugeDoorZones[info.DoorId] = zones;
+                    }
+                    zones.Add(info.ZoneId);
+                }
             }
         }
 
@@ -135,6 +152,10 @@ namespace network.common.data
         /// </summary>
         public static bool IsGaugeGatedDoor(int doorId) =>
             doorId > 0 && _gaugeGatedDoorIds.Contains(doorId);
+
+        /// <summary>이 구역에서 이 게이지 문을 열 수 있는가 — 게이지가 놓인 쪽(안쪽)만 참.</summary>
+        public static bool IsGaugeDoorOperableFrom(int doorId, int zoneId) =>
+            _gaugeDoorZones.TryGetValue(doorId, out var zones) && zones.Contains(zoneId);
 
         public static InteractableInfoData Get(int id)
         {
