@@ -810,17 +810,22 @@ public partial class GameServer
         var cells = GetSwarmAreaCellsByDistance(area);
         if (cells.Count == 0) return null;
 
+        // 경계가 구역을 관통 중일 때만 토출한다 (2026-08-28 플레이 제보 "자기장이 아니라 복도에서
+        // 젠되는 느낌"): 안전한 구역까지 바깥 띠에 즉시 젠하면 걸어 들어오는 그림이 통째로
+        // 사라진다 — null을 돌려 침투(가운데 발원 행군) 폴백이 워크인을 그리게 한다.
         bool boundaryCrossing = safeDistance < cells[^1].Distance;
-        double spawnMin = boundaryCrossing ? safeDistance : cells[^1].Distance - SwarmFieldSpawnBandCells;
-        double spawnMax = boundaryCrossing ? safeDistance + SwarmFieldSpawnBandCells : cells[^1].Distance;
+        if (!boundaryCrossing) return null;
+
+        double spawnMin = safeDistance;
+        double spawnMax = safeDistance + SwarmFieldSpawnBandCells;
 
         var spawnBand = cells
             .Where(entry => entry.Distance > spawnMin && entry.Distance <= spawnMax)
             .ToList();
         if (spawnBand.Count == 0)
-            spawnBand = boundaryCrossing
-                ? cells.Where(entry => entry.Distance > safeDistance).ToList()
-                : [cells[^1]];
+            spawnBand = cells.Where(entry => entry.Distance > safeDistance).ToList();
+        if (spawnBand.Count == 0)
+            spawnBand = [cells[^1]];
 
         var anchorBand = cells
             .Where(entry => entry.Distance <= spawnMin &&
