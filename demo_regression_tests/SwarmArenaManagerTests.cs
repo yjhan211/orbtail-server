@@ -505,6 +505,63 @@ public class SwarmArenaManagerTests
     private static AreaType ResolveArea(AreaType area) =>
         area == AreaType.None ? Config.SWARM_MATCH_GROUND_AREA : area;
 
+    [Fact]
+    public void RegionSupply_MonsterPursuesOwnerAcrossDoor()
+    {
+        // 문 너머 추격 (2026-08-16 유저 결정, 2026-08-28 플레이 제보 "몹이 문 너머로 안 따라온다"):
+        // 방에서 나를 담당하던(주인) 몹은 내가 복도로 나가면 문을 넘어 따라와야 한다.
+        SwarmArenaManager.RegionSupplyModeEnabled = true;
+        try
+        {
+            DateTime now = StartUtc.AddSeconds(0.25);
+            var manager = CreateManager(() => now);
+            var startRoom = MatchSpawnData.GetPhaseRoomCandidates()[0];
+            Vector3f roomCenter = AreaCenter(startRoom);
+
+            for (double elapsed = 0.25d; elapsed <= 40d; elapsed += 0.25d)
+            {
+                now = StartUtc.AddSeconds(elapsed);
+                manager.Tick(217001, Participants(roomCenter, startRoom), now);
+            }
+
+            var roomMonsterIds = manager.GetVisualStates(217001)
+                .Where(state => state.IsAlive && state.AreaType == startRoom)
+                .Select(state => state.MonsterId)
+                .ToHashSet();
+            Assert.True(roomMonsterIds.Count > 0, "40초 안에 방에 몹이 도착해야 한다");
+
+            // 방을 나가 복도로 — 새 공급분과 섞이지 않게 "방에 있던 몹"의 ID로만 판정한다.
+            var corridor = AreaType.S2Corridor1;
+            Vector3f corridorCenter = AreaCenter(corridor);
+            for (double elapsed = 40.25d; elapsed <= 42d; elapsed += 0.25d)
+            {
+                now = StartUtc.AddSeconds(elapsed);
+                manager.Tick(217001, Participants(corridorCenter, corridor), now);
+            }
+
+            for (double elapsed = 42.25d; elapsed <= 70d; elapsed += 0.25d)
+            {
+                now = StartUtc.AddSeconds(elapsed);
+                manager.Tick(217001, Participants(corridorCenter, corridor), now);
+            }
+
+            var pursuerCount = manager.GetVisualStates(217001)
+                .Count(state => state.IsAlive && roomMonsterIds.Contains(state.MonsterId) &&
+                                state.AreaType == corridor);
+            Assert.True(pursuerCount > 0,
+                "방에서 나를 담당하던 몹이 문 너머 복도로 따라와야 한다 — " +
+                string.Join(", ", manager.GetVisualStates(217001)
+                    .Where(state => state.IsAlive && roomMonsterIds.Contains(state.MonsterId))
+                    .Take(4)
+                    .Select(state =>
+                        $"{state.MonsterId}@{state.AreaType}({state.PositionX:F1},{state.PositionY:F1}) chase={state.ChaseTargetPlayerId}")));
+        }
+        finally
+        {
+            SwarmArenaManager.RegionSupplyModeEnabled = false;
+        }
+    }
+
     private static SwarmArenaManager CreateManager(Func<DateTime> clock)
     {
         var manager = new SwarmArenaManager(clock);

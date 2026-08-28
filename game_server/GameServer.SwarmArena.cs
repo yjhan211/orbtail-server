@@ -5171,7 +5171,9 @@ public partial class GameServer
         IReadOnlyCollection<GameClientSession> sessions,
         int heartReward = 0,
         int bootsReward = 0,
-        int keyReward = 0)
+        int keyReward = 0,
+        long killerPlayerId = 0,
+        bool isCore = false)
     {
         if (defeatedWave.SummonStoneReward <= 0 && heartReward <= 0 &&
             bootsReward <= 0 && keyReward <= 0)
@@ -5189,14 +5191,38 @@ public partial class GameServer
             keyReward = 0;
         }
 
-        if (defeatedWave.SummonStoneReward <= 0 && heartReward <= 0 &&
+        // 몹 소환석 자동 습득 (2026-08-28 유저 결정 "잡으면 몸으로 끌려와 자동 습득"): 처치
+        // 보상 소환석은 바닥을 거치지 않고 처치자에게 즉시 귀속된다 — 원거리 오브 처치가
+        // 표준이라 드랍 자리까지 걸어가 줍는 동선이 전투 리듬을 끊었다. 클라는 몬스터
+        // 위치(AwardSource)에서 몸으로 빨려오는 흡수 연출로 같은 사실을 그린다.
+        // 하트·부츠·열쇠는 기존 픽업 경쟁 규칙 그대로 바닥에 흩어진다.
+        int groundStoneReward = defeatedWave.SummonStoneReward;
+        if (groundStoneReward > 0 && killerPlayerId != 0)
+        {
+            var summonState = _summonStoneManager.AddStones(matchingId, killerPlayerId, groundStoneReward);
+            var killerSession = sessions.FirstOrDefault(session => session.PlayerId == killerPlayerId);
+            killerSession?.SendSummonStoneState(
+                groundStoneReward, defeatedWave.PositionX, defeatedWave.PositionY);
+            _gameEventLogManager.LogSummonStoneAward(
+                matchingId,
+                killerPlayerId,
+                defeatedWave.MonsterId,
+                groundStoneReward,
+                summonState.StoneCount,
+                defeatedWave.AreaType.ToString(),
+                isCore,
+                isBot: killerSession == null);
+            groundStoneReward = 0;
+        }
+
+        if (groundStoneReward <= 0 && heartReward <= 0 &&
             bootsReward <= 0 && keyReward <= 0)
             return;
 
         // 하트·부츠·열쇠 (#222 M4): 소환석과 함께 흩어진다 — 픽업 경쟁 규칙 공유.
         // 잼 낙수는 잼 승점 퇴역과 함께 제거 (#226 D).
         var itemIds = Enumerable.Repeat(
-                Config.SUMMON_STONE_GROUND_ITEM_ID, Math.Max(0, defeatedWave.SummonStoneReward))
+                Config.SUMMON_STONE_GROUND_ITEM_ID, Math.Max(0, groundStoneReward))
             .Concat(Enumerable.Repeat(Config.HEART_GROUND_ITEM_ID, Math.Max(0, heartReward)))
             .Concat(Enumerable.Repeat(Config.BOOTS_GROUND_ITEM_ID, Math.Max(0, bootsReward)))
             .Concat(Enumerable.Repeat(Config.KEY_GROUND_ITEM_ID, Math.Max(0, keyReward)))

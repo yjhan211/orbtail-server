@@ -2419,6 +2419,12 @@ public sealed class SwarmArenaManager
             monster.AnchorY = monster.Position.Y;
         }
 
+        // 쫓아간 구역이 새 배정 구역이 된다 (2026-08-16 결정의 미구현분, 2026-08-28 수리):
+        // HomeArea가 옛 방에 남으면 그 방이 비는 순간 좌초 회수가 추격 도착분까지 걷어가
+        // "문을 넘어 따라온 몹이 몇 초 뒤 증발"했다. 공급 회계도 주석대로 함께 옮겨간다.
+        if (monster.MarchIsPursuit)
+            monster.HomeArea = monster.Area;
+
         monster.Infiltrating = false;
         monster.MarchIsPursuit = false;
         monster.MarchWaypoints.Clear();
@@ -2533,6 +2539,7 @@ public sealed class SwarmArenaManager
         // 적은 쪽으로 넘겨야 한 사람에게 두 몫이 쌓이지 않는다.
         if (!found && monster.OwnerPlayerId != 0)
         {
+            long departedOwnerId = monster.OwnerPlayerId;
             monster.OwnerPlayerId = 0;
             long reassigned = ClaimLeastLoadedOwner(state, monster.Area, participants, isOrbless);
             if (reassigned != 0)
@@ -2546,6 +2553,15 @@ public sealed class SwarmArenaManager
                     found = true;
                     break;
                 }
+            }
+            else if (monster.Aggro)
+            {
+                // 문 너머 추격 수리 (2026-08-28 플레이 제보 "몹이 문 너머로 안 따라온다"):
+                // 주인 추격은 ChaseTargetPlayerId에 남지 않아 아래 TryStartCrossAreaPursuit가
+                // 평시 주인 몹에게 한 번도 발동하지 않았고, 구역이 비면 6초 뒤 좌초 회수가
+                // 몹을 통째로 걷어갔다. 구역이 통째로 비었을 때만 떠난 주인을 추격 표적으로
+                // 승격한다 — 남은 사람이 있으면 재배정(구역 몹은 구역 사람 몫)이 우선이다.
+                monster.ChaseTargetPlayerId = departedOwnerId;
             }
         }
 
