@@ -24,8 +24,8 @@ public class SwarmArenaManagerTests
     [Fact]
     public void RegionSupply_FieldRingWaveSpawnsAtBoundary_AndKeepsWaveRhythm()
     {
-        // #269 링 스폰 (2026-08-28 유저 결정): 잔상은 자기장 경계 링에서 주기(12초) 웨이브로
-        // 태어나 열린 경로로 가운데를 향해 흐른다. 전역 목표 = 인당 목표 × 참가자 수.
+        // #269 링 스폰 (2026-08-28 유저 결정): 잔상은 자기장 경계 링에서 지속 스트림(1.5초
+        // 주기)으로 태어나 열린 경로로 가운데를 향해 흐른다. 전역 목표 = 인당 목표 × 참가자 수.
         // 봉인 구역(게이지 문 전부 닫힘)에는 태어나지도, 들어가지도 않는다.
         SwarmArenaManager.RegionSupplyModeEnabled = true;
         var sealedRooms = MatchSpawnData.GetPhaseRoomCandidates().ToHashSet();
@@ -60,11 +60,11 @@ public class SwarmArenaManagerTests
                     $"링 밴드 밖 스폰: dist={SwarmPressureField.GetDistance(cell)} openMax={openMaxDistance}");
             });
 
-            // 웨이브 간격(12초) 안에서는 조용하다 — 웨이브 사이가 곧 정리하는 창이다.
+            // 스트림 주기(1.5초) 안에서는 조용하다.
             now = StartUtc.AddSeconds(1.5);
             Assert.Empty(manager.Tick(217001, Participants(startCenter, startRoom), now).SpawnedMonsters);
 
-            // 전역 목표에 도달해 있으면 다음 웨이브도 침묵한다.
+            // 전역 목표에 도달해 있으면 스트림도 침묵한다 — 죽는 만큼만 스며나온다.
             for (double elapsed = 2d; elapsed <= 30d; elapsed += 0.25d)
             {
                 now = StartUtc.AddSeconds(elapsed);

@@ -1549,22 +1549,28 @@ public sealed class SwarmArenaManager
         if (aliveGlobal >= globalCap)
             return;
 
-        // 웨이브 리듬 유지 (2026-08-16 유저 요구 "리젠이 수치로 정해져야 한다"): 12초에 한 번
-        // 크게 붓고 쉰다 — 그 사이가 정리하고 숨 돌리는 창이다.
+        // 지속 스트림 (2026-08-28 유저 결정 "원 경계선 부분에서 지속적으로 나오게"): 12초
+        // 몰아붓기 대신 1.5초마다 소량씩 스며나온다 — 죽는 만큼 경계에서 끊임없이 흘러들어
+        // 흐름이 마르지 않는다. 총량은 전역 목표가 그대로 상한이다.
         state.NextFieldWaveAtUtc ??= now;
         if (now < state.NextFieldWaveAtUtc)
             return;
 
         bool includeCore = phaseIndex >= SupplyCoreFirstPhaseIndex &&
                            CountAliveCores(state) < FieldGlobalCoreCap;
-        int want = Math.Min(SupplyTopUpCount, globalCap - aliveGlobal - (includeCore ? 1 : 0));
+        int want = Math.Min(FieldStreamBatchCount, globalCap - aliveGlobal - (includeCore ? 1 : 0));
         if (want <= 0 && !includeCore)
             return;
 
         int spawned = SpawnFieldRingMonsters(state, Math.Max(0, want), includeCore, phaseIndex, now, result);
         state.NextFieldWaveAtUtc = now.AddSeconds(
-            spawned > 0 ? SupplyTopUpIntervalSeconds : SupplyBlockedRetrySeconds);
+            spawned > 0 ? FieldStreamIntervalSeconds : SupplyBlockedRetrySeconds);
     }
+
+    // 지속 스트림 리듬 (#269): 1.5초마다 최대 8마리 — 8인 기준 초당 ~5마리로 목표까지
+    // 차오르고, 이후에는 죽는 만큼만 경계에서 스며나온다.
+    private const double FieldStreamIntervalSeconds = 1.5d;
+    private const int FieldStreamBatchCount = 8;
 
     // 핵(큰 몹)의 전역 동시 상한 (#269 링 스폰): 구역당 1기 규칙의 후신 — 흐름 전체에서
     // 몇 기가 걸어 다니는지로 관리한다.
