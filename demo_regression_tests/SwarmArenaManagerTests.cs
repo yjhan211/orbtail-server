@@ -34,8 +34,9 @@ public class SwarmArenaManagerTests
         {
             DateTime now = StartUtc.AddSeconds(0.25);
             var manager = CreateManager(() => now);
-            var startRoom = MatchSpawnData.GetPhaseRoomCandidates()[0];
-            Vector3f startCenter = AreaCenter(startRoom);
+            // 참가자는 가운데 — 시작방에 서면 방 팩(전역 상한 밖 유한 콘텐츠)이 따로 선다.
+            Vector3f startCenter = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
+            var startRoom = Config.SWARM_MATCH_GROUND_AREA;
 
             // 첫 틱부터 웨이브가 돈다 — 페이즈 0 전역 목표 = 인당 8 × 1인.
             var firstTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
@@ -558,6 +559,61 @@ public class SwarmArenaManagerTests
         finally
         {
             SwarmArenaManager.RegionSupplyModeEnabled = false;
+        }
+    }
+
+    [Fact]
+    public void RegionSupply_SealedStartRoomGetsFinitePacks()
+    {
+        // #269 시작방 팩 (2026-08-28 제보 "방송실에 몹이 안 생긴다"): 링은 통로만 채우므로
+        // 문이 닫힌 시작방에는 유한 팩(2회)을 따로 준다 — 전멸해야 다음 팩, 두 팩이 끝이다.
+        SwarmArenaManager.RegionSupplyModeEnabled = true;
+        var startRoom = MatchSpawnData.GetPhaseRoomCandidates()[0];
+        SwarmArenaManager.SealedAreaResolver = (_, area) => area == startRoom;
+        try
+        {
+            DateTime now = StartUtc.AddSeconds(0.25);
+            var manager = CreateManager(() => now);
+            Vector3f roomCenter = AreaCenter(startRoom);
+
+            int CountRoomAlive() => manager.GetVisualStates(217001)
+                .Count(state => state.IsAlive && state.AreaType == startRoom);
+
+            void WipeRoom()
+            {
+                foreach (var target in manager.GetCombatTargets(217001).ToList())
+                {
+                    var visual = manager.GetVisualStates(217001)
+                        .First(state => state.MonsterId == target.MonsterId);
+                    if ((AreaType)visual.AreaType == startRoom)
+                        manager.ApplyMonsterDamage(217001, target.CombatTargetId, attackerPlayerId: 1, damage: 999);
+                }
+            }
+
+            manager.Tick(217001, Participants(roomCenter, startRoom), now);
+            Assert.Equal(8, CountRoomAlive());
+
+            // 방을 비워야 다음 팩이 선다.
+            WipeRoom();
+            now = StartUtc.AddSeconds(1d);
+            manager.Tick(217001, Participants(roomCenter, startRoom), now);
+            Assert.Equal(8, CountRoomAlive());
+
+            // 두 팩이 끝 — 세 번째 팩은 서지 않는다. (링 흐름 몹이 방 경계 셀을 스치는 것은
+            // 별개라, 새로 '스폰'되는 몹이 방에 없는 것으로 잰다.)
+            WipeRoom();
+            for (double elapsed = 1.25d; elapsed <= 10d; elapsed += 0.25d)
+            {
+                now = StartUtc.AddSeconds(elapsed);
+                var tick = manager.Tick(217001, Participants(roomCenter, startRoom), now);
+                Assert.DoesNotContain(tick.SpawnedMonsters,
+                    monster => (AreaType)monster.AreaType == startRoom);
+            }
+        }
+        finally
+        {
+            SwarmArenaManager.RegionSupplyModeEnabled = false;
+            SwarmArenaManager.SealedAreaResolver = null;
         }
     }
 

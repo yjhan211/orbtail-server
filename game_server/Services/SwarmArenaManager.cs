@@ -1539,13 +1539,21 @@ public sealed class SwarmArenaManager
         // 폐쇄 구역 잔존 몹 회수 — 도달 불가 개체가 전역 상한을 갉아먹지 않게 즉시 걷는다.
         ReclaimClosedAreaMonsters(state, now);
 
+        // 시작방 팩 (2026-08-28 제보 "방송실에 몹이 안 생긴다"): 링은 통로만 채우므로, 문이
+        // 닫힌 시작방에는 유한 팩을 따로 준다 — 방마다 2팩, 전멸해야 다음 팩. 문이 열리면
+        // 방 공급은 끝나고 링 흐름과 어그로 추격이 그 방의 몫을 잇는다.
+        SpawnStartRoomPacks(state, phaseIndex, now, result);
+
         // 전역 목표 = 인당 목표 × 생존 참가자 수 (서버 안전 천장 유지). 구역 점유와 무관하게
         // 판 전체의 흐름 총량이 페이즈 곡선을 따른다.
         int globalCap = Math.Min(
             SupplyGlobalAliveHardCap,
             phase.PerPlayerTarget * Math.Max(1, state.LastParticipants.Length));
 
-        int aliveGlobal = CountAliveGlobal(state);
+        // 시작방 팩은 유한 콘텐츠라 전역 상한 밖이다 — 방 팩이 상한을 잡아먹으면 링 스트림이
+        // 굶는다. 방 밖으로 따라나온 개체부터 흐름 몫으로 센다.
+        int aliveGlobal = state.Monsters.Values.Count(monster =>
+            monster.Alive && !IsBossKind(monster.Kind) && !StartRooms.Contains(monster.Area));
         if (aliveGlobal >= globalCap)
             return;
 
@@ -1571,6 +1579,33 @@ public sealed class SwarmArenaManager
     // 않는다 (2026-08-28 제보 2차: 배치 8은 처치율에 비겨 생존 30~40에 정체).
     private const double FieldStreamIntervalSeconds = 1.5d;
     private const int FieldStreamBatchCount = 12;
+
+    // 시작방 팩 크기 (#269): 페이즈 0 인당 목표와 같은 8 — 첫 팩으로 첫 스팟 개봉 여비가 나온다.
+    private const int StartRoomPackSize = 8;
+
+    private void SpawnStartRoomPacks(MatchState state, int phaseIndex, DateTime now, SwarmArenaTickResult result)
+    {
+        foreach (var participant in state.LastParticipants)
+        {
+            var area = participant.Area;
+            if (!StartRooms.Contains(area))
+                continue;
+            // 봉인이 풀린 방(문 열림)은 방 공급이 끝난다 — 리졸버 미주입(테스트)도 스폰 없음.
+            if (SealedAreaResolver?.Invoke(state.MatchingId, area) != true)
+                continue;
+            int packs = state.StartRoomPacksSpawned.GetValueOrDefault(area);
+            if (packs >= StartRoomPackLimit)
+                continue;
+            if (state.Monsters.Values.Any(monster => monster.Alive && monster.Area == area))
+                continue;
+
+            int spawned = SpawnSupplyMonsters(
+                state, area, StartRoomPackSize, includeCore: false, phaseIndex, now, result,
+                infiltrate: false);
+            if (spawned > 0)
+                state.StartRoomPacksSpawned[area] = packs + 1;
+        }
+    }
 
     // 핵(큰 몹)의 전역 동시 상한 (#269 링 스폰): 구역당 1기 규칙의 후신 — 흐름 전체에서
     // 몇 기가 걸어 다니는지로 관리한다.
@@ -3166,6 +3201,9 @@ public sealed class SwarmArenaManager
 
         // #269 링 스폰: 다음 전역 웨이브 시각. 첫 웨이브는 즉시.
         public DateTime? NextFieldWaveAtUtc { get; set; }
+
+        // #269 시작방 팩: 방마다 몇 팩을 세웠는지 — 상한 StartRoomPackLimit(2).
+        public Dictionary<AreaType, int> StartRoomPacksSpawned { get; } = new();
 
         // 소환석 토큰 버킷 (#229 4단계-보정): 구역·페이즈별 (잔량, 마지막 충전 시각).
         // 구역을 비웠다 돌아와도 살아남는다 — 들락날락으로 리셋되면 보상이 무제한이 된다.
