@@ -822,9 +822,11 @@ public partial class GameServer
                 ? cells.Where(entry => entry.Distance > safeDistance).ToList()
                 : [cells[^1]];
 
+        // 앵커(도착지)는 구역에서 자기장 중심에 가장 가까운 띠 (#269-A, 2026-08-28 유저 승인):
+        // 스폰 띠 바로 안쪽으로 잡으면 복도처럼 좁은 구역에서 스폰과 도착이 사실상 같은 자리라
+        // "즉시 젠 후 제자리"로 읽힌다 — 구역을 최대로 가로질러 걸어 들어오게 한다.
         var anchorBand = cells
-            .Where(entry => entry.Distance <= spawnMin &&
-                            entry.Distance > spawnMin - SwarmFieldSpawnBandCells)
+            .Where(entry => entry.Distance < cells[0].Distance + SwarmFieldSpawnBandCells)
             .ToList();
         if (anchorBand.Count == 0)
             anchorBand = [cells[0]];

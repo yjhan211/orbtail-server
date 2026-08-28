@@ -183,6 +183,10 @@ public sealed class SwarmArenaManager
     // 추격 대상 유지 창 (#229): 이 시간이 지나야 최근접을 다시 고른다.
     private const double SupplyTargetHoldSeconds = 1d;
 
+    // 유휴 순찰 (#269-B): 주인 잃은 몹의 앵커 주변 배회 — 반경·각속도(호속 ≈ 1.1/s).
+    private const float SupplyIdlePatrolRadius = 2.2f;
+    private const double SupplyIdlePatrolAngularSpeed = 0.5d;
+
     // 전역 활성 잔상 상한 (#229 4단계-보정): 고정 48은 개전 3초에 물려 밀도 램프를 통째로
     // 가렸다. 점유 구역 수 × 페이즈 목표로 풀되 서버 안전 천장을 둔다.
     // 클라 부하는 스냅샷을 구역별로만 보내는 것으로 분리했다(BroadcastMonsterMinimapSnapshot) —
@@ -1911,6 +1915,15 @@ public sealed class SwarmArenaManager
                 position = ClampToAreaWalkable(
                     BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Spawn),
                     packAnchor, area);
+                // 도착지도 리졸버의 안쪽 띠 셀로 (#269-A, 2026-08-28 유저 승인): 캠프 앵커
+                // 산개점은 복도처럼 좁은 구역에서 스폰 띠와 몇 셀 차이라 "즉시 젠 후 제자리"로
+                // 읽혔다 — 구역을 최대로 가로질러 걸어 들어오게 한다. 산개 지터는 유지.
+                var fieldAnchorWorld = BotPlayerManager.CellToWorldPosition(
+                    Config.SWARM_MATCH_MAP, fieldSpawn.Value.Anchor);
+                destination = ClampToAreaWalkable(new Vector3f(
+                    fieldAnchorWorld.X + MathF.Cos(angle) * SupplyScatterRadius,
+                    fieldAnchorWorld.Y + MathF.Sin(angle) * SupplyScatterRadius,
+                    0f), fieldAnchorWorld, area);
             }
             else if (infiltrate &&
                      TryPlanInfiltration(state, area, destination, isAreaBlocked, out var origin,
@@ -2618,16 +2631,28 @@ public sealed class SwarmArenaManager
 
         if (!found)
         {
-            // 구역에 아무도 없다 — 앵커로 물러선다. 다시 잠들지는 않는다 (#229 침투):
-            // 사냥하러 걸어 들어온 개체가 잠들면 플레이어가 2.5m까지 붙어 깨워야 하고,
-            // 그러면 마주치는 수가 다시 접근 반경에 갇힌다.
+            // 구역에 아무도 없다 — 앵커로 물러서되 서 있지 않는다 (#269-B, 2026-08-28 유저
+            // 승인 "정지 대신 순찰"): 앵커 주변을 시간 위상 원운동으로 배회한다 — 주인을 잃고
+            // 얼어붙은 몹이 "장식"으로 읽히던 것을 없애고, 지나는 사람 눈에 살아 있는 위협으로
+            // 남는다. 다시 잠들지는 않는다 (#229 침투).
             var anchor = new Vector3f(monster.AnchorX, monster.AnchorY, 0f);
             float homeDx = anchor.X - monster.Position.X;
             float homeDy = anchor.Y - monster.Position.Y;
             if (homeDx * homeDx + homeDy * homeDy <=
-                CampReturnArriveDistance * CampReturnArriveDistance)
+                SupplyIdlePatrolRadius * SupplyIdlePatrolRadius * 4f)
             {
                 monster.ChaseTargetPlayerId = 0;
+                double patrolSeconds = (now - monster.SpawnedAtUtc).TotalSeconds;
+                float patrolAngle = monster.ScatterAngle +
+                                    (float)(patrolSeconds * SupplyIdlePatrolAngularSpeed);
+                var patrolPoint = new Vector3f(
+                    anchor.X + MathF.Cos(patrolAngle) * SupplyIdlePatrolRadius,
+                    anchor.Y + MathF.Sin(patrolAngle) * SupplyIdlePatrolRadius, 0f);
+                if (!GameMapData.IsMoveablePosition(
+                        Config.SWARM_MATCH_MAP,
+                        MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, patrolPoint)))
+                    patrolPoint = anchor;
+                MoveTowardPlayer(monster, patrolPoint, deltaSeconds);
                 return;
             }
 
