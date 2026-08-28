@@ -22,11 +22,14 @@ public class SwarmArenaManagerTests
     }
 
     [Fact]
-    public void RegionSupply_HoldsZoneTargetWithTopUpsAndWipeRest()
+    public void RegionSupply_FieldRingWaveSpawnsAtBoundary_AndKeepsWaveRhythm()
     {
-        // #229 4단계: 점유한 열린 구역마다 목표 수를 유지한다. 0초부터 1.5초마다 2마리씩
-        // 보충하고, 목표에 닿으면 멈춘다. 전멸시키면 4초 휴지 뒤 보충이 재개된다.
+        // #269 링 스폰 (2026-08-28 유저 결정): 잔상은 자기장 경계 링에서 주기(12초) 웨이브로
+        // 태어나 열린 경로로 가운데를 향해 흐른다. 전역 목표 = 인당 목표 × 참가자 수.
+        // 봉인 구역(게이지 문 전부 닫힘)에는 태어나지도, 들어가지도 않는다.
         SwarmArenaManager.RegionSupplyModeEnabled = true;
+        var sealedRooms = MatchSpawnData.GetPhaseRoomCandidates().ToHashSet();
+        SwarmArenaManager.SealedAreaResolver = (_, area) => sealedRooms.Contains(area);
         try
         {
             DateTime now = StartUtc.AddSeconds(0.25);
@@ -34,55 +37,59 @@ public class SwarmArenaManagerTests
             var startRoom = MatchSpawnData.GetPhaseRoomCandidates()[0];
             Vector3f startCenter = AreaCenter(startRoom);
 
-            // 첫 틱부터 보충이 돈다 — 시작 선물 15초 침묵(#226 E)은 퇴역했다.
+            // 첫 틱부터 웨이브가 돈다 — 페이즈 0 전역 목표 = 인당 8 × 1인.
             var firstTick = manager.Tick(217001, Participants(startCenter, startRoom), now);
-            // 초반(페이즈 0)은 작은 몹만 나온다 (#229): 시작 오브 하나로는 핵이 벽처럼 서서
-            // 파밍이 막힌다. 웨이브 보충(30마리/12초)은 구역 목표에 잘리므로 첫 웨이브는 목표치 8.
             Assert.Equal(8, firstTick.SpawnedMonsters.Count);
             Assert.DoesNotContain(firstTick.SpawnedMonsters, monster => monster.Kind == 2);
+            // 수축 전 링 = 열린(비봉인) 셀 중 최외곽 밴드 — 초반 최외곽은 닫힌 방 안이라,
+            // 스폰 거리는 열린 셀 최대 거리를 기준으로 잰다.
+            int openMaxDistance = SwarmPressureField.DistancesByCell
+                .Where(pair => !sealedRooms.Contains(GameMapData.GetCurrentArea(
+                    Config.SWARM_MATCH_MAP, new Cell(pair.Key.X, pair.Key.Y))))
+                .Max(pair => pair.Value);
             Assert.All(firstTick.SpawnedMonsters, monster =>
             {
-                // 공급 몹은 잠든 채 등장한다 — 개전은 근접·피격·접촉의 몫.
-                Assert.Equal(0, monster.ChaseTargetPlayerId);
                 // 페이즈 0 일반 HP — 상향분 원복 (2026-08-16 유저 결정: 잘 죽되 맞으면 치명적)
                 Assert.Equal(16, monster.MaxHealth);
                 Assert.Equal(1, monster.SummonStoneReward);
+                // 봉인 구역(닫힌 방)에서는 태어나지 않는다.
+                Assert.DoesNotContain((AreaType)monster.AreaType, sealedRooms);
+                var cell = MapCoordinateConverter.WorldToCell(
+                    Config.SWARM_MATCH_MAP, new Vector3f(monster.PositionX, monster.PositionY, 0f));
+                Assert.True(SwarmPressureField.GetDistance(cell) > openMaxDistance - 8,
+                    $"링 밴드 밖 스폰: dist={SwarmPressureField.GetDistance(cell)} openMax={openMaxDistance}");
             });
 
             // 웨이브 간격(12초) 안에서는 조용하다 — 웨이브 사이가 곧 정리하는 창이다.
             now = StartUtc.AddSeconds(1.5);
             Assert.Empty(manager.Tick(217001, Participants(startCenter, startRoom), now).SpawnedMonsters);
 
-            // 목표 8을 유지한다 — 2초마다 부족분만큼 한 번에 붓고 쉰다.
-            // 창은 60초다 (2026-08-16): 공급이 운동장 발원 침투로 바뀐 뒤로 "구역에 서 있는 수"는
-            // 행군 시간만큼 뒤따라온다. 방을 통로로 쓰지 않게 되면서(도서관 관통 금지) 경로가
-            // 통로를 도는 만큼 길어져 20초 창에는 절반만 도착했다 — 목표 유지 자체는 성립하므로
-            // 도착까지 재는 창으로 넓힌다.
-            for (double elapsed = 2d; elapsed <= 60d; elapsed += 0.25d)
+            // 전역 목표에 도달해 있으면 다음 웨이브도 침묵한다.
+            for (double elapsed = 2d; elapsed <= 30d; elapsed += 0.25d)
             {
                 now = StartUtc.AddSeconds(elapsed);
-                manager.Tick(217001, Participants(startCenter, startRoom), now);
+                Assert.Empty(manager.Tick(217001, Participants(startCenter, startRoom), now).SpawnedMonsters);
             }
 
-            int aliveInZone = manager.GetVisualStates(217001)
-                .Count(state => state.IsAlive && state.AreaType == startRoom);
-            Assert.Equal(8, aliveInZone);
-
-            // 전멸 → 2초 휴지 뒤 보충 재개 (2026-08-16: 웨이브 간격이 12초라 전멸 휴지는 짧게).
+            // 전멸 → 다음 웨이브 주기에 재보충된다.
             foreach (var target in manager.GetCombatTargets(217001).ToList())
                 manager.ApplyMonsterDamage(217001, target.CombatTargetId, attackerPlayerId: 1, damage: 999);
             Assert.DoesNotContain(manager.GetVisualStates(217001), state => state.IsAlive);
 
-            now = StartUtc.AddSeconds(60.25);
-            manager.Tick(217001, Participants(startCenter, startRoom), now); // 휴지 시작
-            now = StartUtc.AddSeconds(61.5d);
-            Assert.Empty(manager.Tick(217001, Participants(startCenter, startRoom), now).SpawnedMonsters);
-            now = StartUtc.AddSeconds(63d);
-            Assert.NotEmpty(manager.Tick(217001, Participants(startCenter, startRoom), now).SpawnedMonsters);
+            bool respawned = false;
+            for (double elapsed = 30.25d; elapsed <= 45d && !respawned; elapsed += 0.25d)
+            {
+                now = StartUtc.AddSeconds(elapsed);
+                respawned = manager.Tick(217001, Participants(startCenter, startRoom), now)
+                    .SpawnedMonsters.Count > 0;
+            }
+
+            Assert.True(respawned, "전멸 후 다음 웨이브 주기에 재보충되지 않았다");
         }
         finally
         {
             SwarmArenaManager.RegionSupplyModeEnabled = false;
+            SwarmArenaManager.SealedAreaResolver = null;
         }
     }
 
@@ -196,23 +203,34 @@ public class SwarmArenaManagerTests
             Vector3f roomCenter = AreaCenter(room);
             Vector3f elsewhere = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
 
-            int stones = 0;
-            // 이 구역에 머물다 나갔다를 반복한다 — 페이즈 0(0:00~1:40) 안에서만 논다.
+            // #269 링 스폰: 예산은 스폰이 아니라 처치 시점에, 죽은 구역 기준으로 차감된다.
+            // 페이즈 0(0:00~1:40) 동안 나오는 몹을 즉시 전멸시키기를 반복하며, 구역별 실지급
+            // 합이 구역·페이즈 예산(90 + 핵 3 = 93)을 넘지 않는지 잰다.
+            var stonesByArea = new Dictionary<AreaType, int>();
             for (double elapsed = 0.25d; elapsed <= 95d; elapsed += 0.25d)
             {
                 now = StartUtc.AddSeconds(elapsed);
                 bool inRoom = (int)(elapsed / 5d) % 2 == 0;
-                var tick = manager.Tick(
+                manager.Tick(
                     217003,
                     inRoom ? Participants(roomCenter, room) : Participants(elsewhere),
                     now);
-                stones += tick.SupplyPackSpawns.Where(spawn => spawn.Area == room)
-                    .Sum(spawn => spawn.StoneTotal);
+                foreach (var target in manager.GetCombatTargets(217003).ToList())
+                {
+                    var damageResult = manager.ApplyMonsterDamage(
+                        217003, target.CombatTargetId, attackerPlayerId: 1, damage: 999);
+                    if (damageResult is { Killed: true, MonsterState: not null })
+                    {
+                        var area = damageResult.MonsterState.AreaType;
+                        stonesByArea[area] = stonesByArea.GetValueOrDefault(area) +
+                                             damageResult.MonsterState.SummonStoneReward;
+                    }
+                }
             }
 
-            // 페이즈 0 예산 90 + 핵 1기 3 = 93이 상한이다.
-            Assert.True(stones <= 93, $"페이즈 0 구역 석 예산 93을 초과했다: {stones}");
-            Assert.True(stones > 0, "예산이 아예 지급되지 않았다");
+            Assert.True(stonesByArea.Values.Sum() > 0, "예산이 아예 지급되지 않았다");
+            foreach (var (area, stones) in stonesByArea)
+                Assert.True(stones <= 93, $"페이즈 0 구역 석 예산 93을 초과했다: {area}={stones}");
         }
         finally
         {
