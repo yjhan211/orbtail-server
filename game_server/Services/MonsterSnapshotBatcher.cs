@@ -41,21 +41,4 @@ public static class MonsterSnapshotBatcher
     }
 }
 
-public sealed class MonsterSnapshotAccumulator
-{
-    private readonly Dictionary<int, MonsterRuntimeInfo> _finalStatesByMonsterId = new();
-
-    public int Count => _finalStatesByMonsterId.Count;
-
-    public void Record(MonsterRuntimeInfo state)
-    {
-        ArgumentNullException.ThrowIfNull(state);
-        if (state.MonsterId <= 0) return;
-        _finalStatesByMonsterId[state.MonsterId] = state;
-    }
-
-    public IReadOnlyList<MonsterRuntimeInfo> GetFinalStates() =>
-        _finalStatesByMonsterId.Values.OrderBy(state => state.MonsterId).ToList();
-}
-
 public readonly record struct MonsterAreaSnapshotChunk(AreaType Area, List<MonsterRuntimeInfo> Monsters);

@@ -2988,30 +2988,6 @@ public partial class GameServer
         }
     }
 
-    private static List<SwarmWaveOrbContribution> GetSwarmWaveOrbContributions(
-        IReadOnlyList<InGameItemInfo> orderedItems)
-    {
-        var contributions = new List<SwarmWaveOrbContribution>();
-        int ordinal = 0;
-        foreach (var item in orderedItems)
-        {
-            if (GetSquadOrbTier(item.ItemId) <= 0)
-                continue;
-            int copies = Math.Max(0, item.Count);
-            for (int copy = 0; copy < copies; copy++)
-            {
-                if (OrbData.TryGetColorAndTier(item.ItemId, out var color, out _) &&
-                    color == OrbColor.Blue)
-                {
-                    contributions.Add(new SwarmWaveOrbContribution(ordinal, item.ItemId));
-                }
-                ordinal++;
-            }
-        }
-
-        return contributions;
-    }
-
     /// <summary>
     ///     소용돌이 기폭 (#268): 반경 안 전원(몹·플레이어 동일)에게 타격 피드백 수준의 피해와
     ///     "침수"(5초 25% 감속) 디버프를 준다. 변위(당김·밀침·원 밖 축출) 실험은 전부

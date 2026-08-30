@@ -83,28 +83,6 @@ public sealed class ConsumableInventoryMergeTests
         Assert.All(outputs, item => Assert.Equal(1, item.Count));
     }
 
-    [Fact]
-    public void BotBattleLoadoutDoesNotAutoMergeConsumables()
-    {
-        const long matchingId = 1943;
-        const long botPlayerId = -19431;
-        var inventoryManager = new InGameInventoryManager();
-        inventoryManager.Initialize();
-        inventoryManager.AddItem(matchingId, botPlayerId, BandageItemId);
-        inventoryManager.AddItem(matchingId, botPlayerId, BandageItemId);
-
-        var result = BotBattleItemLoadout.CombineAndEquip(
-            inventoryManager,
-            matchingId,
-            botPlayerId,
-            new Random(1943));
-
-        Assert.Empty(result.CombinedItemIds);
-        Assert.Equal(0, result.EquippedItemId);
-        Assert.Equal(2, inventoryManager.GetPlayerInventory(matchingId, botPlayerId)
-            .GetItemCount(BandageItemId));
-    }
-
     [Theory]
     [InlineData(BandageItemId, 3, 15)]
     [InlineData(CannedCoffeeItemId, 1, 15)]

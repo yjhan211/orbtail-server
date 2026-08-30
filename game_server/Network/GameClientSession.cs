@@ -56,7 +56,6 @@ public partial class GameClientSession : SessionBase
     private readonly AreaItemStockManager _areaItemStockManager;
     private readonly GroundItemManager _groundItemManager;
     private readonly Func<string?, Task<GameHandoffContext?>> _consumeGameHandoffTicket;
-    private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager;
     private readonly SummonStoneManager _summonStoneManager;
     private readonly Action<GameClientSession> _onLeaveCallback;
     private readonly Action<long> _cleanupMatchRuntime;
@@ -198,7 +197,6 @@ public partial class GameClientSession : SessionBase
         ItemPoolManager itemPoolManager,
         AreaItemStockManager areaItemStockManager,
         GroundItemManager groundItemManager,
-        EmotionAfterimageMonsterManager emotionAfterimageMonsterManager,
         SummonStoneManager summonStoneManager,
         DoorStateManager doorStateManager,
         MatchRosterManager matchRosterManager,
@@ -230,7 +228,6 @@ public partial class GameClientSession : SessionBase
         _itemPoolManager = itemPoolManager;
         _areaItemStockManager = areaItemStockManager;
         _groundItemManager = groundItemManager;
-        _emotionAfterimageMonsterManager = emotionAfterimageMonsterManager;
         _summonStoneManager = summonStoneManager;
         _doorStateManager = doorStateManager;
         _matchRosterManager = matchRosterManager;

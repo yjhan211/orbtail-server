@@ -136,18 +136,6 @@ public sealed class OrbBoardTests
         Assert.False(OrbData.TryGetRandomMergeOutput(inputA, inputB, new Random(1), out _));
     }
 
-    [Theory]
-    [InlineData(0, 0)]
-    [InlineData(1, 1)]
-    [InlineData(2, 1)]
-    [InlineData(3, 3)]
-    [InlineData(4, 3)]
-    [InlineData(5, 5)]
-    [InlineData(6, 5)]
-    public void SunResonanceUsesOneThreeFiveBoardStages(int sunCount, int expectedStage)
-    {
-        Assert.Equal(expectedStage, OrbData.GetSunResonanceStage(sunCount));
-    }
     [Fact]
     public void LegacyGuardianOrbDoesNotEnterColoredBoardRules()
     {

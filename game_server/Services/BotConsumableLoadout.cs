@@ -5,8 +5,7 @@ namespace game_server.services;
 
 /// <summary>
 /// Applies only the explicit consumable-merge recipes to bot inventory. Combat-item awakening
-/// remains owned by <see cref="BotBattleItemLoadout"/>, so the two decisions cannot consume each
-/// other's materials.
+/// is granted at spawn time, so this pass never consumes battle-item materials.
 /// </summary>
 public static class BotConsumableLoadout
 {

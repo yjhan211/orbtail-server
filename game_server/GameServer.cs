@@ -61,8 +61,6 @@ public partial class GameServer(
     private readonly AreaItemStockManager _areaItemStockManager =
         new(naturalExploreLootEnabled: !Config.MONSTER_SUMMON_ECONOMY_ENABLED);
     private readonly GroundItemManager _groundItemManager = new();
-    private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager =
-        new(ambientCorridorEnabled: false);
     private readonly SwarmArenaManager _swarmArenaManager = new();
     private readonly SummonStoneManager _summonStoneManager = new();
     private readonly InteractionLogManager _interactionLogManager = new();
@@ -484,8 +482,6 @@ public partial class GameServer(
             GameDataHelper.Initialize();
             MapHelper.Initialize(serverConfig.GameServerNum);
             Action<string> log = msg => logger.LogInformation(msg);
-            _emotionAfterimageMonsterManager.SetMatchingStateRemovedCallback(
-                CleanupEmotionAfterimageMonsterRuntime);
             // 문 상태는 페이즈와 별개다 (2026-08-16). 위 제공자는 ROOM_COMBAT에서만 채워져
             // 군집 모드에서는 항상 비었고, 그래서 봇이 잠긴 문을 그냥 통과했다.
             _botPlayerManager.SetDoorOpenResolver(_doorStateManager.IsDoorOpen);
@@ -1095,14 +1091,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
 
             _gameEventLogManager.LogMove(matchingId, ev.BotPlayerId,
                 ev.FromArea.ToString(), ev.ToArea.ToString(), isBot: true);
-            var core = _emotionAfterimageMonsterManager.GetSnapshot(matchingId, ev.ToArea)
-                .FirstOrDefault(monster => monster.IsAlive && monster.IsCore);
-            _gameEventLogManager.LogCoreContestedEntry(
-                matchingId,
-                ev.BotPlayerId,
-                ev.ToArea.ToString(),
-                core,
-                isBot: true);
 
             if (matchingSessions.Count == 0) return;
 
@@ -1376,7 +1364,9 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                                 _inGameInventoryManager.GetEquippedBattleItem(matchingId, bot.PlayerId)?.ItemId ?? 0,
                                 bot.Corruption)))
                         .ToList();
-                    var pveTargets = _emotionAfterimageMonsterManager.GetAliveTargets(matchingId);
+                    // 잔상 사냥 경로(MONSTER_SUMMON_ECONOMY_ENABLED 동결)의 공급원이던
+                    // EmotionAfterimageMonsterManager는 #274에서 삭제 — 플래그 부활 시 SwarmArenaManager에서 공급할 것.
+                    IReadOnlyCollection<MonsterCombatTarget> pveTargets = [];
                     snapshotElapsedMilliseconds += Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
 
                     var movementResult = _botPlayerManager.ProcessBotMovementTick(
@@ -2357,7 +2347,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 _itemPoolManager,
                 _areaItemStockManager,
                 _groundItemManager,
-                _emotionAfterimageMonsterManager,
                 _summonStoneManager,
                 _doorStateManager,
                 _matchRosterManager,
@@ -2635,8 +2624,8 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                     () => _groundItemManager.RemoveMatchingState(matchingId));
                 CleanupMatchComponent(
                     matchingId,
-                    "afterimage monsters",
-                    () => _emotionAfterimageMonsterManager.RemoveMatchingState(matchingId));
+                    "monster broadcast slots",
+                    () => CleanupEmotionAfterimageMonsterRuntime(matchingId));
                 CleanupMatchComponent(
                     matchingId,
                     "summon stones",

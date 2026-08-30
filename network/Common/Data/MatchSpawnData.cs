@@ -77,30 +77,6 @@ namespace network.common.data
             return spawnCell is null ? anchor : Cell.Clone(spawnCell);
         }
 
-        public static IReadOnlyDictionary<long, Cell> CreateAssignments(long matchingId, IEnumerable<long> playerIds)
-        {
-            var orderedPlayerIds = playerIds.Distinct().OrderBy(playerId => playerId).ToList();
-            if (orderedPlayerIds.Count > CorridorAnchors.Length)
-            {
-                throw new ArgumentOutOfRangeException(nameof(playerIds), orderedPlayerIds.Count,
-                    $"Survivor Royale supports at most {CorridorAnchors.Length} players per match.");
-            }
-
-            var shuffledAnchors = Enumerable.Range(0, CorridorAnchors.Length).ToList();
-            var rng = new Random(GetDeterministicSeed(matchingId));
-            for (var index = shuffledAnchors.Count - 1; index > 0; index--)
-            {
-                var swapIndex = rng.Next(index + 1);
-                (shuffledAnchors[index], shuffledAnchors[swapIndex]) =
-                    (shuffledAnchors[swapIndex], shuffledAnchors[index]);
-            }
-
-            return orderedPlayerIds
-                .Select((playerId, index) => new KeyValuePair<long, Cell>(
-                    playerId, Cell.Clone(CorridorAnchors[shuffledAnchors[index]])))
-                .ToDictionary(pair => pair.Key, pair => pair.Value);
-        }
-
         // #272 8인: 스폰 풀 = 시작방 8곳 전부 — 정원과 일치, 전원 유니크 스폰.
         private static readonly AreaType[] SwarmSpawnPodCandidates = PhaseRoomCandidates.ToArray();
 

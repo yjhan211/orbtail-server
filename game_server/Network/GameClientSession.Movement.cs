@@ -143,7 +143,6 @@ public partial class GameClientSession
                     countAsEntry: true);
                 _gameEventLogManager.LogMove(CurrentMapSubId, PlayerId.Value,
                     oldArea.ToString(), newArea.ToString(), isBot: false);
-                LogContestedCoreEntry(newArea);
                 await HandleAreaChange(oldArea, newArea);
             }
 
@@ -494,7 +493,6 @@ public partial class GameClientSession
                 // 5. 나에게 새 Area의 Interactable 목록 전송
                 SendInteractableList(newArea);
                 SendGroundItemSnapshot(newArea);
-                SendMonsterSnapshot(newArea);
             }
         }
         catch (Exception ex)

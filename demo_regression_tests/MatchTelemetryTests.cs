@@ -20,7 +20,6 @@ public sealed class MatchTelemetryTests
             matchingId, 101, seed, MatchSpawnData.GetAnchorIndex(anchor),
             anchor.X, anchor.Y, "Corridor1F", isBot: false);
         log.LogExploreStart(matchingId, 101, 77, "Library", isBot: false);
-        log.LogExploreCompleted(matchingId, 101, 77, "Library", [107000003], 6, isBot: false);
         log.RecordRecovery(matchingId, 101, 15);
         log.LogRecoveryUse(matchingId, 101, 201000008, 15, "inventory_consumable", isBot: false);
         log.LogMatchEnded(
@@ -37,10 +36,6 @@ public sealed class MatchTelemetryTests
             entry.Type == "MATCH_STARTED" && entry.MatchSeed == seed);
         Assert.Contains(events, entry =>
             entry.Type == "SPAWN_ASSIGNMENT" && entry.SpawnAnchorIndex == 1);
-        Assert.Contains(events, entry =>
-            entry.Type == "EXPLORE_COMPLETED" &&
-            entry.GeneratedItemIds!.SequenceEqual([107000003]) &&
-            entry.AreaRemainingStock == 6);
         Assert.Contains(events, entry =>
             entry.Type == "RECOVERY_USED" && entry.RecoveryAmount == 15);
         var ended = Assert.Single(events, entry => entry.Type == "MATCH_ENDED");
@@ -142,45 +137,6 @@ public sealed class MatchTelemetryTests
         Assert.Equal(100, hit.CorruptionAfter);
         Assert.Equal("eliminated", hit.Outcome);
         Assert.False(hit.IsBot);
-    }
-    [Fact]
-    public void DodgeableProjectileTelemetryPairsLaunchAndResolutionWithMissReason()
-    {
-        const long matchingId = 198400;
-        var log = new GameEventLogManager();
-        var now = new DateTime(2026, 8, 4, 0, 0, 0, DateTimeKind.Utc);
-        var attack = new ProximityCombatAttack(401, 402, AreaType.Gym, 107000010, 4, 0.25f, 0f, 3);
-        var launch = new DodgeableProjectileLaunch(
-            17,
-            matchingId,
-            attack,
-            MapId.School,
-            new Cell(195, 93),
-            new Vector3f(1f, 2f, 0f),
-            new Vector3f(2f, 2f, 0f),
-            7f,
-            now,
-            now.AddSeconds(0.5));
-        var resolution = new DodgeableProjectileResolution(
-            launch,
-            "dodged",
-            [],
-            1.25f,
-            0.4f);
-
-        log.LogDodgeableProjectileLaunches(matchingId, [launch]);
-        log.LogDodgeableProjectileResolutions(matchingId, [resolution]);
-
-        var events = log.GetRecent(matchingId, 10);
-        var launched = Assert.Single(events, entry => entry.Type == "SURVIVOR_PVP_PROJECTILE_LAUNCHED");
-        Assert.Equal(17, launched.ProjectileId);
-        Assert.Equal(402, launched.TargetPlayerId);
-        Assert.Equal(0.5d, launched.ProjectileTravelSeconds);
-        var resolved = Assert.Single(events, entry => entry.Type == "SURVIVOR_PVP_PROJECTILE_RESOLVED");
-        Assert.Equal("dodged", resolved.Outcome);
-        Assert.Equal(1.25f, resolved.TargetDisplacement);
-        Assert.Equal(0.4f, resolved.ProjectileHitRadius);
-        Assert.Equal(0, resolved.HitTargetCount);
     }
     [Fact]
     public void OrbBoardTelemetryCapturesTransitionsMergeWindowsColorRatesAndVolleyTargets()

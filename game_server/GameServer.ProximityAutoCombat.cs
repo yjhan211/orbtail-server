@@ -15,7 +15,6 @@ public partial class GameServer
     private const int ProximityAutoCombatTickIntervalMs = 50;
 
     private readonly ProximityAutoCombatResolver _proximityAutoCombatResolver = new();
-    private readonly DodgeableProjectileResolver _dodgeableProjectileResolver = new();
     private readonly ConcurrentDictionary<(long MatchingId, long ObserverPlayerId, long ActorPlayerId),
         OrbVisualState> _orbVisualStates = new();
     private readonly ConcurrentDictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex), DateTime>
@@ -402,7 +401,6 @@ OrbResonanceSnapshot resonanceState)
         }
 
         RemoveOrbResonanceStates(matchingId);
-        _dodgeableProjectileResolver.RemoveMatching(matchingId);
     }
 
     private static bool TryCreateSpatialActor(

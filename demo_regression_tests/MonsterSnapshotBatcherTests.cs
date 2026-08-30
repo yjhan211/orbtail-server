@@ -28,22 +28,6 @@ public class MonsterSnapshotBatcherTests
             .Select(monster => monster.MonsterId));
     }
 
-    [Fact]
-    public void Accumulator_KeepsOnlyFinalStateForEachMonster()
-    {
-        var accumulator = new MonsterSnapshotAccumulator();
-        accumulator.Record(State(2, AreaType.Gym, 30));
-        accumulator.Record(State(1, AreaType.Classroom4, 41));
-        accumulator.Record(State(1, AreaType.Classroom4, 0, isAlive: false));
-
-        var finalStates = accumulator.GetFinalStates();
-
-        Assert.Equal(2, accumulator.Count);
-        Assert.Equal([1, 2], finalStates.Select(state => state.MonsterId));
-        Assert.False(finalStates[0].IsAlive);
-        Assert.Equal(0, finalStates[0].CurrentHealth);
-    }
-
     private static MonsterRuntimeInfo State(int monsterId, AreaType area, int health, bool isAlive = true) => new()
     {
         MonsterId = monsterId,

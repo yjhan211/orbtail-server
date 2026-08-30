@@ -43,21 +43,6 @@ public sealed class SummonStoneManager
     // 이후 소환석은 몹 처치로 번다 (빈손이 되면 개봉 무료 규칙이 재기를 보장).
     public static int InitialSummonStoneCount => 5;
 
-    public SummonStoneSnapshot EnsureStartingStones(long matchingId, long playerId)
-    {
-        var state = GetOrCreatePlayerState(matchingId, playerId);
-        lock (state.SyncRoot)
-        {
-            if (!state.HasStartingStones)
-            {
-                state.StoneCount = checked(state.StoneCount + InitialSummonStoneCount);
-                state.HasStartingStones = true;
-            }
-
-            return CreateSnapshot(state);
-        }
-    }
-
     public SummonStoneSnapshot AddStones(long matchingId, long playerId, int amount)
     {
         var state = GetOrCreatePlayerState(matchingId, playerId);
@@ -278,7 +263,6 @@ public sealed class SummonStoneManager
         public object SyncRoot { get; } = new();
         public int StoneCount { get; set; }
         public int SuccessfulSummonCount { get; set; }
-        public bool HasStartingStones { get; set; }
         public int PassiveIncomeElapsedSeconds { get; set; }
 
         // 성장 카드 성공 선택 횟수 N (#226 C 잔여): 비용 곡선 3+floor(N/3)의 단일 출처.

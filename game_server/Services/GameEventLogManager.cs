@@ -942,11 +942,6 @@ public class GameEventLogManager
         bool isBot) => LogExploreFinished(matchingId, playerId, interactId, area, "EXPLORE_CANCELLED", reason,
         [], 0, isBot);
 
-    public void LogExploreCompleted(long matchingId, long playerId, int interactId, string area,
-        IReadOnlyCollection<int> generatedItemIds, int areaRemainingStock, bool isBot) =>
-        LogExploreFinished(matchingId, playerId, interactId, area, "EXPLORE_COMPLETED", "completed",
-            generatedItemIds, areaRemainingStock, isBot);
-
     public void LogGroundItemSpawned(long matchingId, long discovererPlayerId, long groundItemUid, int itemId,
         string area, long priorityExpiresAtUnixMs, bool isBot)
     {
@@ -1325,73 +1320,6 @@ public class GameEventLogManager
         }
     }
 
-    public void LogDodgeableProjectileLaunches(
-        long matchingId,
-        IReadOnlyCollection<DodgeableProjectileLaunch> launches)
-    {
-        foreach (var launch in launches)
-        {
-            var attack = launch.Attack;
-            AppendAt(
-                matchingId,
-                "SURVIVOR_PVP_PROJECTILE_LAUNCHED",
-                attack.AttackerPlayerId,
-                BotPlayerManager.IsBotPlayerId(attack.AttackerPlayerId),
-                $"PvP projectile launched: id={launch.ProjectileId}, target={attack.TargetPlayerId}, item={attack.WeaponItemId}.",
-                new DateTimeOffset(launch.LaunchedAtUtc),
-                entry =>
-                {
-                    entry.ProjectileId = launch.ProjectileId;
-                    entry.TargetPlayerId = attack.TargetPlayerId;
-                    entry.Area = attack.Area.ToString();
-                    entry.WeaponItemId = attack.WeaponItemId;
-                    entry.Damage = attack.Damage;
-                    entry.CandidateTargetCount = attack.CandidateTargetCount;
-                    entry.ProjectileTravelSeconds = Math.Max(
-                        0d,
-                        (launch.ImpactAtUtc - launch.LaunchedAtUtc).TotalSeconds);
-                    entry.Outcome = "launched";
-                });
-        }
-    }
-
-    public void LogDodgeableProjectileResolutions(
-        long matchingId,
-        IReadOnlyCollection<DodgeableProjectileResolution> resolutions)
-    {
-        foreach (var resolution in resolutions)
-        {
-            var launch = resolution.Launch;
-            var attack = launch.Attack;
-            var hitTargetIds = resolution.Hits
-                .Select(hit => hit.TargetPlayerId)
-                .Distinct()
-                .ToList();
-            AppendAt(
-                matchingId,
-                "SURVIVOR_PVP_PROJECTILE_RESOLVED",
-                attack.AttackerPlayerId,
-                BotPlayerManager.IsBotPlayerId(attack.AttackerPlayerId),
-                $"PvP projectile resolved: id={launch.ProjectileId}, outcome={resolution.Outcome}, hits={hitTargetIds.Count}.",
-                new DateTimeOffset(launch.ImpactAtUtc),
-                entry =>
-                {
-                    entry.ProjectileId = launch.ProjectileId;
-                    entry.TargetPlayerId = attack.TargetPlayerId;
-                    entry.Area = attack.Area.ToString();
-                    entry.WeaponItemId = attack.WeaponItemId;
-                    entry.Damage = attack.Damage;
-                    entry.ProjectileTravelSeconds = Math.Max(
-                        0d,
-                        (launch.ImpactAtUtc - launch.LaunchedAtUtc).TotalSeconds);
-                    entry.TargetDisplacement = resolution.TargetDisplacement;
-                    entry.ProjectileHitRadius = resolution.HitRadius;
-                    entry.HitTargetCount = hitTargetIds.Count;
-                    entry.AttackTargetPlayerIds = hitTargetIds;
-                    entry.Outcome = resolution.Outcome;
-                });
-        }
-    }
     private OrbTransitionSnapshot TrackOrbTelemetry(long matchingId, long playerId, IReadOnlyList<int> itemIds,
         int equippedItemId, bool active, OrbColor color)
     {
