@@ -7,7 +7,6 @@ using network.common.data;
 using network.common.data.models;
 using network.contracts.authentication;
 using network.core;
-using network.helpers;
 using network.interfaces;
 using network.packets;
 
@@ -29,7 +28,6 @@ public partial class GameClientSession : SessionBase
 
     // 하트비트 타임아웃 (초)
     private const int HeartbeatTimeoutSeconds = 30;
-    private static readonly TimeSpan InteractCooldown = TimeSpan.FromSeconds(5);
     private static readonly ConcurrentDictionary<long, byte> InitializedMatchRuntimes = new();
     private static readonly ConcurrentDictionary<long, SemaphoreSlim> MatchInitializationLocks = new();
     private static readonly object _roundSessionStartLock = new();
