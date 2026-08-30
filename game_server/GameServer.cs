@@ -50,6 +50,13 @@ public partial class GameServer(
     private static readonly TimeSpan ShutdownStageTimeout = TimeSpan.FromSeconds(5);
 
     private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions = new();
+
+    // 매치별 세션 색인 (#278): matchingId → (playerId → 세션). _clientSessions와 등록/교체/이탈에서
+    // _sessionRegistryLock 아래 함께 갱신돼 항상 거울 상태다 — 매치 스코프 조회가 전체 세션 스캔을 대체한다.
+    private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, GameClientSession>> _sessionsByMatch =
+        new();
+
+    private readonly object _sessionRegistryLock = new();
     private readonly DoorStateManager _doorStateManager = new();
     private readonly InGameInventoryManager _inGameInventoryManager = new();
 
@@ -312,9 +319,7 @@ public partial class GameServer(
 
     private void OnGameServerMatchOwnerLost(long matchingId, IReadOnlyList<long> handoffPlayerIds)
     {
-        GameClientSession[] affectedSessions = _clientSessions.Values
-            .Where(session => session.CurrentMapSubId == matchingId)
-            .ToArray();
+        List<GameClientSession> affectedSessions = GetSessionsByMatch(matchingId);
         var playerIdsToPublish = handoffPlayerIds
             .Where(playerId => playerId > 0)
             .ToHashSet();
@@ -566,9 +571,7 @@ public partial class GameServer(
                 attackerPlayerId: attackerPlayerId,
                 isAreaClosureElimination: isAreaClosureElimination,
                 isOvertimeElimination: isOvertimeElimination);
-            var matchingSessions = _clientSessions.Values
-                .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
-                .ToList();
+            var matchingSessions = GetSessionsByMatch(matchingId);
             DropBotInventoryAtCurrentPosition(matchingId, botId, matchingSessions);
 
             // 1) 전체에게 봇 탈락 알림 (G_TO_C_PLAYER_ELIMINATED)
@@ -1937,8 +1940,15 @@ IReadOnlyCollection<GameClientSession> activeSessions)
     {
         if (session.PlayerId.HasValue)
         {
-            bool removed = ((ICollection<KeyValuePair<long, GameClientSession>>)_clientSessions)
-                .Remove(new KeyValuePair<long, GameClientSession>(session.PlayerId.Value, session));
+            bool removed;
+            lock (_sessionRegistryLock)
+            {
+                removed = ((ICollection<KeyValuePair<long, GameClientSession>>)_clientSessions)
+                    .Remove(new KeyValuePair<long, GameClientSession>(session.PlayerId.Value, session));
+                if (removed)
+                    RemoveFromMatchIndex(session);
+            }
+
             if (!removed)
             {
                 logger.LogDebug(
@@ -1955,12 +1965,9 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             if (session.CurrentMapSubId > 0 && session.CurrentArea != AreaType.None)
             {
                 using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(session.PlayerId.Value);
-                var sameAreaSessions = _clientSessions.Values
+                var sameAreaSessions = GetSessionsByMatch(session.CurrentMapSubId)
                     .Where(other =>
                         !ReferenceEquals(other, session) &&
-                        other.PlayerId.HasValue &&
-                        other.CurrentMapId == session.CurrentMapId &&
-                        other.CurrentMapSubId == session.CurrentMapSubId &&
                         other.CurrentArea == session.CurrentArea)
                     .ToList();
                 foreach (var other in sameAreaSessions) other.Send(leavePacket);
@@ -2033,9 +2040,8 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         if (!cleanupAccepted)
             return;
 
-        var otherSessions = _clientSessions.Values
-            .Where(other =>
-                !ReferenceEquals(other, session) && other.CurrentMapSubId == matchingId)
+        var otherSessions = GetSessionsByMatch(matchingId)
+            .Where(other => !ReferenceEquals(other, session))
             .ToList();
         foreach (var otherSession in otherSessions)
             otherSession.DisconnectForAdmissionFailure();
@@ -2054,8 +2060,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
     /// </summary>
     public void EndBotOnlyMatchIfSettled(long matchingId, long winnerPlayerId)
     {
-        if (_clientSessions.Values.Any(session =>
-                session.PlayerId.HasValue && session.CurrentMapSubId == matchingId))
+        if (HasHumanSessions(matchingId))
             return;
 
         CleanupMatchingIfNoHumanSessionsRemain(matchingId, "last_survivor_bot_only", winnerPlayerId);
@@ -2066,14 +2071,12 @@ IReadOnlyCollection<GameClientSession> activeSessions)
 
     private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId, string endReason, long winnerPlayerId)
     {
-        if (_clientSessions.Values.Any(other =>
-                other.PlayerId.HasValue && other.CurrentMapSubId == matchingId))
+        if (HasHumanSessions(matchingId))
             return;
 
         bool cleanupAccepted = TryCleanupMatchRuntime(
             matchingId,
-            () => !_clientSessions.Values.Any(other =>
-                other.PlayerId.HasValue && other.CurrentMapSubId == matchingId),
+            () => !HasHumanSessions(matchingId),
             () =>
             {
                 if (!_gameEventLogManager.TryBeginFinalization(matchingId))
@@ -2138,6 +2141,11 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                     matchingId,
                     "session runtime",
                     () => GameClientSession.CleanupAbandonedMatchingRuntime(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "session index",
+                    // 종료 확정된 매치는 소유권 펜스가 신규 핸드오프를 막으므로 빈 버킷을 제거해도 안전하다.
+                    () => _sessionsByMatch.TryRemove(matchingId, out _));
                 CleanupMatchComponent(
                     matchingId,
                     "countdown broadcast",
@@ -2365,25 +2373,24 @@ IReadOnlyCollection<GameClientSession> activeSessions)
 
     private Action? RegisterClientSession(long playerId, GameClientSession session)
     {
-        while (true)
+        // 등록·교체는 접속 시에만 일어나므로 잠금 비용이 무시할 수준이고,
+        // _clientSessions와 매치 색인을 한 단위로 갱신해 거울 상태를 보장한다.
+        lock (_sessionRegistryLock)
         {
             if (!_clientSessions.TryGetValue(playerId, out var existingSession))
             {
-                if (_clientSessions.TryAdd(playerId, session))
-                {
-                    logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
-                    return null;
-                }
-
-                continue;
+                _clientSessions[playerId] = session;
+                AddToMatchIndex(playerId, session);
+                logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
+                return null;
             }
 
             if (ReferenceEquals(existingSession, session))
                 return null;
 
-            if (!_clientSessions.TryUpdate(playerId, session, existingSession))
-                continue;
-
+            _clientSessions[playerId] = session;
+            RemoveFromMatchIndex(existingSession);
+            AddToMatchIndex(playerId, session);
             logger.LogWarning("Game client session replaced: PlayerId={PlayerId}", playerId);
             return () =>
             {
@@ -2393,10 +2400,49 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         }
     }
 
+    private void AddToMatchIndex(long playerId, GameClientSession session)
+    {
+        // 등록은 핸드오프 커밋(CurrentMapSubId 확정) 이후라 0은 실제로 오지 않지만 방어한다.
+        if (session.CurrentMapSubId <= 0)
+            return;
+
+        _sessionsByMatch
+            .GetOrAdd(session.CurrentMapSubId, _ => new ConcurrentDictionary<long, GameClientSession>())
+            [playerId] = session;
+    }
+
+    private void RemoveFromMatchIndex(GameClientSession session)
+    {
+        if (!session.PlayerId.HasValue)
+            return;
+        if (!_sessionsByMatch.TryGetValue(session.CurrentMapSubId, out var bucket))
+            return;
+
+        // 참조 일치 제거 — 교체된 세션이 후임 세션의 색인 항목을 지우지 못하게 한다.
+        ((ICollection<KeyValuePair<long, GameClientSession>>)bucket)
+            .Remove(new KeyValuePair<long, GameClientSession>(session.PlayerId.Value, session));
+    }
+
+    /// <summary>같은 매치 인스턴스의 인증된 세션 스냅샷 — 색인 조회라 전체 세션 스캔이 없다.</summary>
+    private List<GameClientSession> GetSessionsByMatch(long matchingId)
+    {
+        return _sessionsByMatch.TryGetValue(matchingId, out var bucket)
+            ? bucket.Values.ToList()
+            : [];
+    }
+
+    private bool HasHumanSessions(long matchingId)
+    {
+        return _sessionsByMatch.TryGetValue(matchingId, out var bucket) && !bucket.IsEmpty;
+    }
+
     private List<GameClientSession> GetSessionsByInstance(MapId mapId, long mapSubId)
     {
-        return _clientSessions.Values
-            .Where(s => s.CurrentMapId == mapId && s.CurrentMapSubId == mapSubId)
+        if (!_sessionsByMatch.TryGetValue(mapSubId, out var bucket))
+            return [];
+
+        return bucket.Values
+            .Where(s => s.CurrentMapId == mapId)
             .ToList();
     }
 
@@ -2428,9 +2474,9 @@ IReadOnlyCollection<GameClientSession> activeSessions)
 
     private List<long> GetActiveMatchingIds()
     {
-        var ids = _clientSessions.Values
-            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId > 0)
-            .Select(s => s.CurrentMapSubId)
+        var ids = _sessionsByMatch
+            .Where(pair => !pair.Value.IsEmpty)
+            .Select(pair => pair.Key)
             .ToHashSet();
 
         foreach (long matchingId in _botPlayerManager.GetActiveMatchingIds())
@@ -2546,9 +2592,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
     /// </summary>
     public InstanceSummary? GetInstanceSummary(long matchingId)
     {
-        var sessions = _clientSessions.Values
-            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
-            .ToList();
+        var sessions = GetSessionsByMatch(matchingId);
         var bots = _botPlayerManager.GetBots(matchingId);
 
         if (sessions.Count == 0 && bots.Count == 0) return null;
@@ -2619,9 +2663,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
     /// </summary>
     public InstanceSnapshot? GetInstanceSnapshot(long matchingId)
     {
-        var sessions = _clientSessions.Values
-            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
-            .ToList();
+        var sessions = GetSessionsByMatch(matchingId);
 
         var bots = _botPlayerManager.GetBots(matchingId);
 
