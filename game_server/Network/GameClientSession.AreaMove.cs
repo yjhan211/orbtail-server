@@ -34,7 +34,7 @@ public partial class GameClientSession
             return;
         }
 
-        if (CurrentState == PlayerState.Exploring)
+        if (CurrentState == PlayerState.EXPLORE_1)
         {
             LogAreaMoveError(ErrorCode.INVALID_GAME_STATE, msg.TargetArea);
             SendAreaMoveError(ErrorCode.INVALID_GAME_STATE, msg.TargetArea);

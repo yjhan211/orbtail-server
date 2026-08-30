@@ -571,9 +571,7 @@ public partial class GameClientSession
         var cell = session._lastValidCell ?? playerInfo.LastCell ?? playerInfo.ObjectInfo?.Cell;
         var position = session._lastValidatedPosition;
 
-        playerInfo.State = session.CurrentState == PlayerState.Exploring
-            ? global::network.common.PlayerState.EXPLORE_1
-            : global::network.common.PlayerState.IDLE;
+        playerInfo.State = session.CurrentState;
         playerInfo.LastMapId = session.CurrentMapId;
         playerInfo.LastMapSubId = session.CurrentMapSubId;
         playerInfo.ObjectInfo ??= new GameObjectInfo(playerInfo.PlayerId);

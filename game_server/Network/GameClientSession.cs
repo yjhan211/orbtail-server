@@ -12,12 +12,6 @@ using network.packets;
 
 namespace game_server.network;
 
-public enum PlayerState
-{
-    Idle, // 일반 상태 (이동 가능)
-    Exploring // 탐색 중 (이동 불가)
-}
-
 public partial class GameClientSession : SessionBase
 {
     private const int MaxStamina = 100;
@@ -265,7 +259,8 @@ public partial class GameClientSession : SessionBase
     public MapId CurrentMapId { get; private set; }
     public long CurrentMapSubId { get; private set; }
     public AreaType CurrentArea { get; private set; } = AreaType.None;
-    private PlayerState CurrentState { get; set; } = PlayerState.Idle;
+    // 이동 잠금 판정용 — IDLE/EXPLORE_1 두 값만 저장한다 (SLEEP 등은 _isSleeping이 별도 추적).
+    private PlayerState CurrentState { get; set; } = PlayerState.IDLE;
 
     /// <summary>마지막 검증된 월드 좌표 — 근접 전투와 체크리스트 거리 판정용.</summary>
     public Vector3f? LastValidatedPosition => _lastValidatedPosition;
