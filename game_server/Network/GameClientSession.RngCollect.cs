@@ -68,13 +68,13 @@ public partial class GameClientSession
     /// <summary>
     ///     같은 영역 모든 클라(본인 포함)에 G_TO_C_PLAYER_STATE broadcast.
     /// </summary>
-    private void BroadcastPlayerState(global::network.common.PlayerState state)
+    private void BroadcastPlayerState(PlayerState state)
     {
         if (!PlayerId.HasValue) return;
-        CurrentState = state == global::network.common.PlayerState.EXPLORE_1
-            ? PlayerState.Exploring
-            : PlayerState.Idle;
-        _exploreMoveGraceUntil = CurrentState == PlayerState.Exploring
+        CurrentState = state == PlayerState.EXPLORE_1
+            ? PlayerState.EXPLORE_1
+            : PlayerState.IDLE;
+        _exploreMoveGraceUntil = CurrentState == PlayerState.EXPLORE_1
             ? DateTime.UtcNow + ExploreMoveGracePeriod
             : DateTime.MinValue;
 
@@ -191,7 +191,7 @@ public partial class GameClientSession
             RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
             BroadcastRngCollectCooldown(msg.InteractId, 0);
             SendRngCollectResult(msg.InteractId, 0, 0, 0, 0);
-            BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+            BroadcastPlayerState(PlayerState.IDLE);
             return Task.CompletedTask;
         }
 
@@ -216,7 +216,7 @@ public partial class GameClientSession
             CurrentMapSubId, msg.InteractId, SwarmExploreCooldownSeconds, out _);
         BroadcastRngCollectCooldown(msg.InteractId, SwarmExploreCooldownSeconds);
         SendRngCollectResult(msg.InteractId, 0, 0, 0, SwarmExploreCooldownSeconds);
-        BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+        BroadcastPlayerState(PlayerState.IDLE);
         Logger.LogInformation(
             "Swarm box consumable: PlayerId={PlayerId}, InteractId={InteractId}, Cost={Cost}, Drop={DropItemId}",
             PlayerId, msg.InteractId, Config.SWARM_BOX_OPEN_COST, dropItemId);
@@ -267,7 +267,7 @@ public partial class GameClientSession
         if (!_doorStateManager.OpenDoor(CurrentMapSubId, doorId))
         {
             SendRngCollectResult(interactId, 0, 0, 0, 0);
-            BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+            BroadcastPlayerState(PlayerState.IDLE);
             return Task.CompletedTask;
         }
 
@@ -281,7 +281,7 @@ public partial class GameClientSession
             session.Send(updatePacket);
 
         SendRngCollectResult(interactId, 0, 0, 0, 0);
-        BroadcastPlayerState(global::network.common.PlayerState.IDLE);
+        BroadcastPlayerState(PlayerState.IDLE);
         return Task.CompletedTask;
     }
 

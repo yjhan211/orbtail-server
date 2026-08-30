@@ -68,9 +68,9 @@ public partial class GameClientSession
 
         Logger.LogInformation("Player {PlayerId} state change request: {State}", PlayerId, msg.State);
 
-        bool isExploreState = msg.State == global::network.common.PlayerState.EXPLORE_1;
+        bool isExploreState = msg.State == PlayerState.EXPLORE_1;
         if (!isExploreState &&
-            msg.State != global::network.common.PlayerState.IDLE &&
+            msg.State != PlayerState.IDLE &&
             _pendingFinish.Count > 0)
         {
             Logger.LogDebug(
@@ -79,7 +79,7 @@ public partial class GameClientSession
             return;
         }
 
-        if (msg.State == global::network.common.PlayerState.SLEEP)
+        if (msg.State == PlayerState.SLEEP)
         {
             CancelPendingRngCollect("PlayerState:SLEEP");
             await HandleRestStateRequest();
@@ -92,9 +92,9 @@ public partial class GameClientSession
             CancelPendingRngCollect($"PlayerState:{msg.State}");
 
         CurrentState = isExploreState
-            ? PlayerState.Exploring
-            : PlayerState.Idle;
-        _exploreMoveGraceUntil = CurrentState == PlayerState.Exploring
+            ? PlayerState.EXPLORE_1
+            : PlayerState.IDLE;
+        _exploreMoveGraceUntil = CurrentState == PlayerState.EXPLORE_1
             ? DateTime.UtcNow + ExploreMoveGracePeriod
             : DateTime.MinValue;
 
@@ -110,7 +110,7 @@ public partial class GameClientSession
             CurrentArea);
 
         // SLEEP 상태 추적
-        _isSleeping = msg.State == global::network.common.PlayerState.SLEEP;
+        _isSleeping = msg.State == PlayerState.SLEEP;
 
         // SLEEP 해제 시 주기적 버프 타이머 정리
         if (!_isSleeping) StopAllPeriodicBuffs();
@@ -303,7 +303,7 @@ public partial class GameClientSession
         _isSleeping = sleep;
         if (!sleep) StopAllPeriodicBuffs();
 
-        var state = sleep ? global::network.common.PlayerState.SLEEP : global::network.common.PlayerState.IDLE;
+        var state = sleep ? PlayerState.SLEEP : PlayerState.IDLE;
 
         // 서버 측 상태 저장
         await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);

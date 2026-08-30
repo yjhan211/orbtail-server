@@ -20,7 +20,7 @@ public partial class GameClientSession
         var now = DateTime.UtcNow;
 
         // 탐색 진입 직후에는 도착 정산용 in-flight 이동 패킷이 늦게 도착할 수 있다.
-        if (CurrentState == PlayerState.Exploring && now > _exploreMoveGraceUntil)
+        if (CurrentState == PlayerState.EXPLORE_1 && now > _exploreMoveGraceUntil)
         {
             Logger.LogDebug("Player {PlayerId} tried to move while exploring, ignoring", PlayerId);
             SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "탐색 중에는 이동할 수 없습니다");
