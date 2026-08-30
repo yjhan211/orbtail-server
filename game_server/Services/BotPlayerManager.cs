@@ -13,14 +13,6 @@ namespace game_server.services;
 /// </summary>
 public readonly record struct SwarmBotDodgeAdvice(float DirectionX, float DirectionY, float HoldSeconds);
 
-/// <summary>
-///     遊??뚮젅?댁뼱 ?곹깭 愿由? v0.2.0 遺??寃고빀 ?쒖뒪???뺥빀 (#26).
-///     - 留ㅼ묶 遊?梨꾩? ???앹꽦??遊뉗쓽 ?멸쾶???곹깭 異붿쟻 + ?됰룞 AI ?쒓났.
-///     - ?듭떖 ?숈옉? partial ?뚯씪濡?遺꾨━:
-///         - BotPlayerManager.Movement.cs : 紐⑹쟻???대룞 / ?먯뇙 ?뚰뵾
-///         - BotPlayerManager.Mission.cs  : 遺???뚯닔 / 寃고빀 / ?щ낫?二?/ ?됱텧
-///         - BotPlayerManager.Interaction.cs : 1:1 ?숆린???먮룞 ?묐떟
-/// </summary>
 public partial class BotPlayerManager
 {
     /// <summary>
@@ -67,12 +59,8 @@ public partial class BotPlayerManager
         AreaType.BroadcastRoom,
     };
 
-    // ?꾨줈??0: 遊뉗씠 ?뚮났(?寃?異붿쟻) ????좊낫湲?理쒖? ?몄썝 諛?濡?媛???뺣쪧. ?쒕떇 ?몃툕.
     private const double Proto0TestProbability = 0.3;
 
-    // ?꾨줈??0: ?먰븯??諛??寃?諛??좊낫湲?諛????꾩갑??癒몃Т???쒓컙(珥?.
-    // ???숈븞 ?뚮났쨌湲곗쿃???볦씠怨? 留뚮즺 ?꾩뿉???ㅼ쓬 寃곗젙(癒몃Ъ湲??좊낫湲????쒕떎.
-    // (?놁쑝硫?癒몃Ъ湲?寃곗젙??留???250ms) ?ш뎬由쇰릺???좊낫湲??뺣쪧??怨㏓컮濡??곗졇 ?섍?踰꾨┛??)
     private const double Proto0InitialDecisionDelayMinSeconds = 0.15;
     private const double Proto0InitialDecisionDelayMaxSeconds = 1.2;
     private const double Proto0RoomDwellMinSeconds = 1.25;
@@ -104,20 +92,16 @@ public partial class BotPlayerManager
     private const int InitialStamina = 100;
     private const int InitialCorruption = 0;
 
-    // matchingId ??遊?紐⑸줉
     private readonly ConcurrentDictionary<long, List<BotPlayerState>> _botStates = new();
 
     // Cell BFS is expensive enough that replanning every bot in one 50 ms tick stalls broadcasts.
     // Rotate one planning slot per matching while every bot keeps walking its existing path.
     private readonly ConcurrentDictionary<long, int> _botMovementPlanningCursors = new();
 
-    // matchingId ???몄뒪?댁뒪媛 ?ъ슜?섎뒗 MapId. 遊?ENTER/MOVE ?⑦궥??LastMapId/Position 蹂?섏뿉 ?꾩슂.
     private readonly ConcurrentDictionary<long, MapId> _botMapIds = new();
 
     private readonly ILogger _logger;
 
-    // H1 寃곗젙濡??쒕뱶 ??legacy mode ?쒖꽦?????쒕뱶 湲곕컲 RNG, ?꾨땲硫?Random.Shared ?꾩엫.
-    // 紐⑤뱺 遊??섏궗寃곗젙(?대룞/?됱텧/?묐떟/?щ낫?二???蹂??몄뒪?댁뒪 ?ъ슜.
     private readonly Random _rng = Random.Shared;
 
     public BotPlayerManager(ILogger logger)
@@ -125,10 +109,6 @@ public partial class BotPlayerManager
         _logger = logger;
     }
 
-    /// <summary>
-    ///     留ㅼ묶??遊??깅줉. 吏곸콉蹂?諛쒓껄 援ъ뿭 ?먮? 誘몃━ ?뷀뵆???숈꽑??紐⑹쟻?깆쓣 遺?ы븳??
-    ///     #125: 遊??꾩튂(Cell/Position) 珥덇린?????곸뿭蹂??ㅽ룿 ??먯꽌 ?쒖옉. ?대씪 AREA_PLAYER_ENTER ?숇벑.
-    /// </summary>
     public void RegisterBots(long matchingId, MapId mapId, List<BotMatchingInfo> botInfoList)
     {
         _botMapIds[matchingId] = mapId;
@@ -187,7 +167,7 @@ public partial class BotPlayerManager
         _botMovementPlanningCursors[matchingId] = 0;
 
         _logger.LogInformation(
-            "遊?{Count}紐??깅줉(紐⑹쟻???숈꽑): MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]",
+            "Bots registered: Count={Count}, MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]",
             bots.Count, matchingId, mapId,
             string.Join(",", bots.Select(b => $"{b.PlayerId}({b.MyJobTitle}/{b.Persona}@{b.CurrentArea})")));
     }
@@ -216,17 +196,11 @@ public partial class BotPlayerManager
 
 
 
-    /// <summary>
-    ///     留ㅼ묶?먯꽌 ?ъ슜 以묒씤 MapId 議고쉶. ?깅줉?섏? ?딆? 留ㅼ묶?대㈃ Config.SWARM_MATCH_MAP ?대갚.
-    /// </summary>
     public MapId GetMatchingMapId(long matchingId)
     {
         return _botMapIds.TryGetValue(matchingId, out var mapId) ? mapId : Config.SWARM_MATCH_MAP;
     }
 
-    /// <summary>
-    ///     遊?湲곕낯 ?섏긽 (user_server SetupNewPlayer 5醫? ?≪꽭?쒕━??吏곸콉蹂꾨줈 李⑤벑).
-    /// </summary>
     private static readonly int[] BotDefaultWearItemIds =
     {
         101000003, // Hair
@@ -236,21 +210,14 @@ public partial class BotPlayerManager
         106000003  // Shoes
     };
 
-    /// <summary>
-    ///     遊?而ㅼ뒪?곕쭏?댁쭠 ?꾩씠????由щ낯 ?ㅼ뼱諛대뱶 / ?꾨━裕щ씪 / 戮??洹留덇컻 / 踰좊젅紐?
-    ///     遊뉖쭏??playerId濡??쒕줈 ?ㅻⅨ 1醫낆쓣 諛곗젙?쒕떎(4醫???遊?4紐?1:1).
-    /// </summary>
     private static readonly int[] BotCustomizationItems =
     {
-        103000001, // 由щ낯 ?ㅼ뼱諛대뱶
-        103000004, // ?꾨━裕щ씪
-        103000005, // 戮??洹留덇컻
+        103000001,
+        103000004,
+        103000005,
         103000006
     };
 
-    /// <summary>
-    ///     遊?湲곕낯 ?섏긽 + 遊뉖퀎 而ㅼ뒪?곕쭏?댁쭠 ?꾩씠??1醫?議고빀 wear list ?앹꽦.
-    /// </summary>
     private static List<int> BuildBotWearItems(BotPlayerState bot)
     {
         var list = new List<int>(BotDefaultWearItemIds);
@@ -261,18 +228,12 @@ public partial class BotPlayerManager
         return list;
     }
 
-    /// <summary>
-    ///     遊뉗쓽 PlayerInfo瑜??⑹꽦?댁꽌 諛섑솚 ??G_TO_C_AREA_PLAYER_ENTER / G_TO_C_PLAYER_INFO ??    ///     ?ㅼ젣 ?뚮젅?댁뼱 ?⑦궥 ?숇벑 ?쒓컖?붿뿉 ?ъ슜.
-    ///     #125: 遊뉗? Redis????λ릺吏 ?딆쑝誘濡?留??몄텧 ??BotPlayerState濡쒕????⑹꽦.
-    ///     #127: 湲곕낯 ?섏긽 5醫?+ 吏곸콉蹂??≪꽭?쒕━(?쒖뿰 ?앸퀎).
-    /// </summary>
     public PlayerInfo? SynthesizePlayerInfo(long matchingId, long botPlayerId)
     {
         var bot = GetBot(matchingId, botPlayerId);
         if (bot == null) return null;
 
         var mapId = GetMatchingMapId(matchingId);
-        // 遊뉗씠 RNG progress 以묒씠硫?EXPLORE_1濡??⑹꽦 ???곸뿭 吏꾩엯 ???대씪媛 遊?罹먮┃???먯깋 ?좊땲 利됱떆 ?쒖떆.
         var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
             ? PlayerState.SLEEP
             : bot.RngCollectProgressStartTime != DateTime.MinValue ||
@@ -302,15 +263,9 @@ public partial class BotPlayerManager
         return info;
     }
 
-    /// <summary>
-    ///     Cell ??World 蹂?? GameClientSession???숈씪 ?⑥닔? ?숈씪 怨듭떇?댁?留?    ///     BotPlayerManager媛 game_server.network???섏〈?섏? ?딅룄濡?蹂??대옒???대????먯뿀??
-    /// </summary>
     internal static Vector3f CellToWorldPosition(MapId mapId, Cell cell) =>
         MapCoordinateConverter.CellToWorld(mapId, cell);
 
-    /// <summary>
-    ///     留ㅼ묶??遊?紐⑸줉 議고쉶 (?덈씫 ?ы븿)
-    /// </summary>
     public List<BotPlayerState> GetBots(long matchingId)
     {
         return _botStates.TryGetValue(matchingId, out var bots) ? bots : [];
@@ -321,41 +276,28 @@ public partial class BotPlayerManager
         return _botStates.Keys.ToList();
     }
 
-    /// <summary>
-    ///     ?뱀젙 遊?議고쉶
-    /// </summary>
     public BotPlayerState? GetBot(long matchingId, long playerId)
     {
         if (!_botStates.TryGetValue(matchingId, out var bots)) return null;
         return bots.FirstOrDefault(b => b.PlayerId == playerId);
     }
 
-    /// <summary>?꾨줈??0: ?뱀젙 ?곸뿭???앹〈 遊???(?뺤떊???뚮났 2/N ?몄썝 怨꾩궛??.</summary>
     public int CountBotsInArea(long matchingId, AreaType area)
     {
         if (!_botStates.TryGetValue(matchingId, out var bots)) return 0;
         return bots.Count(b => !b.IsEliminated && b.CurrentArea == area);
     }
 
-    /// <summary>
-    ///     ?대떦 留ㅼ묶??遊뉗씠 ?덈뒗吏 ?뺤씤
-    /// </summary>
     public bool HasBots(long matchingId) => _botStates.ContainsKey(matchingId);
 
-    /// <summary>
-    ///     遊뉗쓽 留덈땲???곹깭 蹂寃?(泥댁씤 ?⑥젅 / ?쒗븳遺 吏꾩엯 ??
-    /// </summary>
     public void SetBotRosterStatus(long matchingId, long botPlayerId, PlayerMatchStatus status)
     {
         var bot = GetBot(matchingId, botPlayerId);
         if (bot == null) return;
         bot.PlayerMatchStatus = status;
-        _logger.LogInformation("遊?留덈땲???곹깭 蹂寃? BotId={BotId}, Status={Status}", botPlayerId, status);
+        _logger.LogInformation("Bot roster status changed: BotId={BotId}, Status={Status}", botPlayerId, status);
     }
 
-    /// <summary>
-    ///     留ㅼ묶 ?뺣━ (寃뚯엫 醫낅즺 ???몄텧)
-    /// </summary>
     public void CleanupMatching(long matchingId)
     {
         _botStates.TryRemove(matchingId, out _);
@@ -363,16 +305,10 @@ public partial class BotPlayerManager
         _botMovementPlanningCursors.TryRemove(matchingId, out _);
     }
 
-    /// <summary>
-    ///     PlayerId媛 遊뉗씤吏 ?뺤씤 (?뚯닔 ID ??UserServer 留ㅼ묶 ??-1, -2, ... 遺??
-    /// </summary>
     public static bool IsBotPlayerId(long playerId) => playerId < 0;
 
 }
 
-/// <summary>
-///     遊??뚮젅?댁뼱 ?멸쾶???곹깭. v0.2.0 遺???쒕????꾪븳 ?곹깭 ?꾩쟻.
-/// </summary>
 public enum BotProto0Profile
 {
     SurvivalFirst,
@@ -408,16 +344,12 @@ public class BotPlayerState
     public DateTime LastFakeMoveTime { get; set; } = DateTime.MinValue;
     public DateTime LastProbeMoveTime { get; set; } = DateTime.MinValue;
 
-    /// <summary>遊??쒖떆 ?대쫫 (PlayerInfo.Name ?숇벑) ??留ㅼ묶 ??吏곸콉+ID濡??⑹꽦.</summary>
     public string Name { get; set; } = "";
 
-    /// <summary>遊??꾩옱 ? (?ㅼ젣 ?뚮젅?댁뼱 ObjectInfo.Cell ?숇벑). ?곸뿭 ?꾪솚/? wander ??媛깆떊.</summary>
     public Cell Cell { get; set; } = new(0, 0);
 
-    /// <summary>遊??붾뱶 醫뚰몴 (?ㅼ젣 ?뚮젅?댁뼱 ObjectInfo.Position ?숇벑).</summary>
     public Vector3f Position { get; set; } = new(0f, 0f, 0f);
 
-    /// <summary>遊?濡쒗뀒?댁뀡 (?ㅼ젣 ?뚮젅?댁뼱 ObjectInfo.Rotation ?숇벑).</summary>
     public float Rotation { get; set; }
 
     // 오브 궤도 위상 (#232): 사람 세션과 같은 규칙 — 이동한 거리만큼 돈다. null = 아직 시드 전.
@@ -442,26 +374,19 @@ public class BotPlayerState
         _orbOrbitLastPosition = new Vector3f(newPosition.X, newPosition.Y, newPosition.Z);
     }
 
-    /// <summary>留덉?留?? wander(?곸뿭 ???대룞) ?쒓컖. Phase 2 ???곸뿭 ???먯뿰 ?대룞.</summary>
     public DateTime LastCellWanderTime { get; set; } = DateTime.UtcNow;
 
     // === #127 walking pathfinding ===
-    /// <summary>?꾩옱 ?곕씪媛??寃쎈줈. 鍮꾩뼱?덉쑝硫??ㅼ쓬 ?깆뿉 ???寃?寃곗젙.</summary>
     public List<BotPathfinder.Step> Path { get; set; } = new();
 
-    /// <summary>Path?먯꽌 ?ㅼ쓬?쇰줈 ?꾨떖???몃뜳?? Path 湲몄씠? 媛숈쑝硫??꾩갑 ?꾨즺.</summary>
     public int PathIndex { get; set; }
 
-    /// <summary>?꾩옱 吏꾪뻾 諛⑺뼢(?붾뱶 醫뚰몴) 횞 walkSpeed. ?대씪 ?좊땲硫붿씠?섏슜.</summary>
     public Vector3f WalkVelocity { get; set; } = new(0f, 0f, 0f);
 
-    /// <summary>留덉?留?walk ??泥섎━ ?쒓컖. 250ms 媛꾧꺽 遊??대룞 ??대㉧媛 ?ъ슜.</summary>
     public DateTime LastWalkStepTime { get; set; } = DateTime.UtcNow;
 
-    /// <summary>?꾩갑 ??walking step ?ㅽ궢 醫낅즺 ?쒓컖 (?먯뿰?ㅻ윭???댁떇).</summary>
     public DateTime LoopWaitUntil { get; set; } = DateTime.MinValue;
 
-    /// <summary>?곸뿭 ?꾪솚 吏곸쟾 ?꾩뼱 ?욎뿉???좎떆 硫덉땄 醫낅즺 ?쒓컖 (?ы깉 ?ㅼ뼱媛???쒓컖???⑥꽌).</summary>
     public DateTime TransitionPauseUntil { get; set; } = DateTime.MinValue;
 
     /// <summary>
@@ -479,10 +404,8 @@ public class BotPlayerState
     /// </summary>
     public bool RoomHuntEscapeRequested { get; set; }
 
-    /// <summary>1:1 ?곹샇?묒슜 ?묐떟/???吏꾪뻾 以? true硫?遊?walking/?≪뀡 紐⑤몢 ?뺤? (?ㅼ젣 ?뚮젅?댁뼱? ?숇벑).</summary>
     public bool IsInInteraction { get; set; }
 
-    /// <summary>?곹샇?묒슜 ?섎씫 ??遊??뺤? ?좎? 醫낅즺 ?쒓컖. WalkStep?????쒓컖 ?댄썑 IsInInteraction???먮룞 ?댁젣.</summary>
     public DateTime InteractionStayUntil { get; set; } = DateTime.MinValue;
 
     public AreaType PendingForcedInteractArea { get; set; } = AreaType.None;
@@ -499,11 +422,8 @@ public class BotPlayerState
 
     public DateTime NextRestTickAt { get; set; } = DateTime.MinValue;
 
-    /// <summary>留ㅼ묶 ?쒖옉 ?쒓컖. legacy mode H4 遊?race ?섏씠??罹?怨꾩궛??</summary>
     public DateTime GameStartTime { get; set; } = DateTime.UtcNow;
 
-    // === v0.2.0 遺???쒕? ?곹깭 ===
-    /// <summary>留덉?留?誘몄뀡 ?됰룞(?뚯닔/寃고빀) ?쒓컖</summary>
     public DateTime LastMissionTickTime { get; set; } = DateTime.UtcNow;
 
     /// <summary>Next time the bot may replace its chase or retreat path.</summary>
@@ -540,25 +460,17 @@ public class BotPlayerState
     public SpotArenaBotMode SpotArenaMode { get; set; } = SpotArenaBotMode.None;
     public DateTime SpotArenaModeUntilUtc { get; set; } = DateTime.MinValue;
 
-    /// <summary>?먭린 吏곸콉 諛쒓껄 援ъ뿭 ?쒗쉶 ??(?뷀뵆??4媛?+ ?좏뻾 ?꾩씠???꾩튂)</summary>
     public List<AreaType> JobAreaQueue { get; set; } = new();
 
-    /// <summary>?ㅼ쓬 諛⑸Ц?????몃뜳??/summary>
     public int JobAreaQueueIndex { get; set; }
 
-    /// <summary>遊뉗씠 ?대? ?됱텧 ?쒕룄?덈뒗吏 (1???쒖젙)</summary>
 
-    /// <summary>遊뉗씠 留덉?留됱쑝濡??붿쟻 ?⑥젙??諛곗튂???쒓컖 ???덈Т ?먯＜ ??源붾룄濡?荑⑤떎??/summary>
     public DateTime LastTracePlaceTime { get; set; } = DateTime.MinValue;
 
-    /// <summary>H6 ???쒖뿰 紐⑤뱶 BR 遊뉗씠 ?꾩꽌愿 ?⑥젙 ?붿쟻??1??諛곗튂?덈뒗吏 (罹?媛뺤젣??.</summary>
     public bool HasPlacedDemoTrapTrace { get; set; }
 
-    /// <summary>遊뉗씠 留덉?留됱쑝濡??щ낫?二쇰? ?쒕룄???쒓컖 ???쒗븳遺 吏꾩엯 ??荑⑤떎??/summary>
 
-    /// <summary>?됱텧 ?대━?ㅽ떛 ?꾩쟻 ?먯닔 ??留덈땲???꾨낫 異붾━??(?먭린 race 吏꾪뻾 諛⑺빐 ?붿쟻 ??</summary>
 
-    /// <summary>遊뉗씠 留덉?留됱쑝濡?1:1 ?묐떟???곷? (?먭린 ?먯떊怨??숈씪 PlayerId硫??묐떟 X)</summary>
     public long LastInteractRespondedTo { get; set; }
 
     public long PresenceBookmarkPlayerId { get; set; }
@@ -611,14 +523,8 @@ public class BotPlayerState
     // 빈손인 내내 빠르면 "패배 직전"이 아니라 도주 특화 상태가 된다.
     public DateTime SwarmBareSpeedUntilUtc { get; set; } = DateTime.MinValue;
 
-    // === #134 RNG 梨꾩쭛 ?듯빀 ===
-    /// <summary>遊뉗씠 walking?쇰줈 ?묎렐 以묒씤 InteractObject Id. 0?대㈃ ?놁쓬.
-    /// ChooseNewWanderTarget?먯꽌 ?곸뿭 + ? ?좏깮 ???ㅼ젙, ?꾩갑 ??RNG 梨꾩쭛 ??0?쇰줈 clear.</summary>
     public int PendingRngInteractId { get; set; }
 
-    /// <summary>?꾩옱 ?곸뿭 ?댁뿉???꾩쭅 ?먯깋?섏? ?딆? InteractObject Id ??
-    /// ?곸뿭 吏꾩엯 ??洹??곸뿭??紐⑤뱺 ?꾨낫濡?梨꾩?. RNG 梨꾩쭛 ??泥?踰덉㎏瑜?爰쇰궡 ?ㅼ쓬 ?濡?walking.
-    /// 鍮꾨㈃ ChooseNewWanderTarget???ㅼ쓬 ?곸뿭 寃곗젙.</summary>
     public List<int> InteractQueueInArea { get; set; } = new();
 
     /// <summary>이번 매치에서 이 봇이 탐색을 끝낸 방. 방을 이동해도 유지한다.</summary>
@@ -629,7 +535,6 @@ public class BotPlayerState
 
     public AreaType RoomExploreQueueArea { get; set; } = AreaType.None;
 
-    /// <summary>留덉?留됱쑝濡??먮룞 ?뚮え?덉쓣 ?ъ슜???쒓컖 (?ъ궗??荑⑤떎??.</summary>
     public DateTime LastAutoConsumableUseTime { get; set; } = DateTime.MinValue;
 
     /// <summary>Current equipped battle tool, used to synchronize remote bot visuals.</summary>
@@ -642,10 +547,8 @@ public class BotPlayerState
     public DateTime WaveSlowUntilUtc { get; set; }
 
 
-    /// <summary>RNG 梨꾩쭛 progress ?쒖옉 ?쒓컖. 0?대㈃ ?꾩쭅 ?쒖옉 ???? ?쒖옉 ??1.5珥?寃쎄낵 ??寃곌낵 ?곗텧.</summary>
     public DateTime RngCollectProgressStartTime { get; set; } = DateTime.MinValue;
 
-    /// <summary>walking ?쒖옉 ??G_TO_C_EXPLORE_END broadcast媛 ?꾩슂?쒖? ??ChooseNewWanderTarget??set, ?ㅼ쓬 ProcessBotMovementTick?먯꽌 ?섏쭛 + reset.</summary>
     public bool PendingExploreEndBroadcast { get; set; }
 
     /// <summary>잼 승점 지갑 (#222 M3) — 매치 단위, 소환석과 분리.</summary>

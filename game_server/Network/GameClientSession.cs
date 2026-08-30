@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.contracts.authentication;
 using network.core;
 using network.helpers;
 using network.interfaces;
@@ -37,7 +38,8 @@ public partial class GameClientSession : SessionBase
     // 하트비트 타임아웃 (초)
     private const int HeartbeatTimeoutSeconds = 30;
     private static readonly TimeSpan InteractCooldown = TimeSpan.FromSeconds(5);
-    private static readonly ConcurrentDictionary<long, Timer> GameTimers = new();
+    private static readonly ConcurrentDictionary<long, byte> InitializedMatchRuntimes = new();
+    private static readonly ConcurrentDictionary<long, SemaphoreSlim> MatchInitializationLocks = new();
     private static readonly object _roundSessionStartLock = new();
     private static Proto0PresenceTracker? _presenceTracker;
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
@@ -53,12 +55,20 @@ public partial class GameClientSession : SessionBase
     private readonly ItemPoolManager _itemPoolManager;
     private readonly AreaItemStockManager _areaItemStockManager;
     private readonly GroundItemManager _groundItemManager;
+    private readonly Func<string?, Task<GameHandoffContext?>> _consumeGameHandoffTicket;
     private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager;
     private readonly SummonStoneManager _summonStoneManager;
     private readonly Action<GameClientSession> _onLeaveCallback;
-    private readonly Action<long, GameClientSession> _registerSessionCallback;
-    private readonly Action<long> _recordLeavePenalty;
-    private readonly Action<long> _recordGameCompletion;
+    private readonly Action<long> _cleanupMatchRuntime;
+    private readonly Func<long, Action, IDisposable?> _acquireMatchRuntimeOperation;
+    private readonly Func<long, Action, bool> _executeMatchRuntime;
+    private readonly Func<long, long, bool> _bindMatchOwnerFence;
+    private readonly Func<long, GameClientSession, Action?> _registerSessionCallback;
+    private readonly Action<long, long> _recordLeavePenalty;
+    private readonly Action<long, long> _recordGameCompletion;
+    private readonly Action<long, long> _releaseMatchingClaim;
+    private readonly Action<GameClientSession> _recordAdmissionFailure;
+    private readonly Func<bool> _isServerStopping;
     private readonly MatchRosterManager _matchRosterManager;
     private readonly ChecklistManager _checklistManager;
     private readonly AreaClosureManager _areaClosureManager;
@@ -94,13 +104,19 @@ public partial class GameClientSession : SessionBase
     private int _swarmSleepGrantedTicks;
     private DateTime _lastHeartbeatTime = DateTime.UtcNow;
     private DateTime _lastInteractRejectTime = DateTime.MinValue;
+    private int _admissionCompleted;
+    private int _admissionFailureReported;
+    private int _matchingLifecycleHandledExternally;
+    private int _matchingLifecycleTerminalReported;
+    private int _matchingClaimReleaseReported;
+    private long[] _handoffHumanPlayerIds = [];
 
     // #229: 진행 중인 문 잠금해제 게이지. 맞으면 서버가 지워 뒤늦은 FINISH까지 무효로 만든다.
     private int? _pendingDoorUnlockInteractId;
 
     // 이 매치에서 연 문 수 — 첫 문은 피격으로 게이지가 끊기지 않는다 (2026-08-16).
     private int _swarmDoorUnlockCount;
-    private int _pendingOrbDraftCost;
+    private int _pendingOrbDraftCost = 0;
     private DateTime _lastMoveTime = DateTime.UtcNow;
 
     private DateTime _exploreMoveGraceUntil = DateTime.MinValue;
@@ -172,8 +188,9 @@ public partial class GameClientSession : SessionBase
         IRedLockFactory redLock,
         ILogger logger,
         ICacheHelper cacheHelper,
+        Func<string?, Task<GameHandoffContext?>> consumeGameHandoffTicket,
         Action<GameClientSession> onLeaveCallback,
-        Action<long, GameClientSession> registerSessionCallback,
+        Func<long, GameClientSession, Action?> registerSessionCallback,
         Func<MapId, long, List<GameClientSession>> getSessionsByInstance,
         InteractableStateManager interactableStateManager,
         InGameInventoryManager inGameInventoryManager,
@@ -192,11 +209,19 @@ public partial class GameClientSession : SessionBase
         GameEventLogManager gameEventLogManager,
         MatchSummaryFileStore matchSummaryFileStore,
         EncounterRevealManager encounterRevealManager,
-        Action<long> recordLeavePenalty,
-        Action<long> recordGameCompletion)
+        Func<long, Action, IDisposable?> acquireMatchRuntimeOperation,
+        Func<long, Action, bool> executeMatchRuntime,
+        Func<long, long, bool> bindMatchOwnerFence,
+        Action<long> cleanupMatchRuntime,
+        Action<long, long> recordLeavePenalty,
+        Action<long, long> recordGameCompletion,
+        Action<long, long> releaseMatchingClaim,
+        Func<bool> isServerStopping,
+        Action<GameClientSession> recordAdmissionFailure)
         : base(token, logger, cacheHelper, redLock)
     {
         _onLeaveCallback = onLeaveCallback;
+        _consumeGameHandoffTicket = consumeGameHandoffTicket;
         _registerSessionCallback = registerSessionCallback;
         _getSessionsByInstance = getSessionsByInstance;
         _interactableStateManager = interactableStateManager;
@@ -216,12 +241,30 @@ public partial class GameClientSession : SessionBase
         _gameEventLogManager = gameEventLogManager;
         _matchSummaryFileStore = matchSummaryFileStore;
         _encounterRevealManager = encounterRevealManager;
+        _acquireMatchRuntimeOperation = acquireMatchRuntimeOperation;
+        _executeMatchRuntime = executeMatchRuntime;
+        _bindMatchOwnerFence = bindMatchOwnerFence;
+        _cleanupMatchRuntime = cleanupMatchRuntime;
         _recordLeavePenalty = recordLeavePenalty;
         _recordGameCompletion = recordGameCompletion;
+        _releaseMatchingClaim = releaseMatchingClaim;
+        _isServerStopping = isServerStopping;
+        _recordAdmissionFailure = recordAdmissionFailure;
 
         // ReSharper disable once VirtualMemberCallInConstructor
         InitializeProtocolHandlers();
         Logger.LogInformation("GameClientSession created");
+    }
+
+    protected override bool TryAcquireMessageScope(out IDisposable? scope)
+    {
+        scope = null;
+        long matchingId = CurrentMapSubId;
+        if (matchingId <= 0)
+            return true;
+
+        scope = _acquireMatchRuntimeOperation(matchingId, static () => { });
+        return scope != null;
     }
 
     internal static void SetPresenceTracker(Proto0PresenceTracker presenceTracker)
@@ -234,8 +277,9 @@ public partial class GameClientSession : SessionBase
         MatchStartGate.RemoveMatching(matchingId);
         _presenceTracker?.Remove(matchingId);
         RngCollectCooldownStore.ClearMatching(matchingId);
-        if (GameTimers.TryRemove(matchingId, out var timer))
-            timer.Dispose();
+        InitializedMatchRuntimes.TryRemove(matchingId, out _);
+        if (MatchInitializationLocks.TryRemove(matchingId, out var initializationLock))
+            initializationLock.Dispose();
     }
 
     internal static bool IsRoundActionPhase(long matchingId)
@@ -256,7 +300,7 @@ public partial class GameClientSession : SessionBase
             return true;
         }
 
-        if (_isGameEnded)
+        if (Volatile.Read(ref _isGameEnded))
         {
             reason = "Game has already ended";
             return true;
@@ -312,7 +356,7 @@ public partial class GameClientSession : SessionBase
     /// <summary>
     ///     탈락/관전 상태에서 행동 가능한지 체크
     /// </summary>
-    internal bool IsGameEnded => _isGameEnded;
+    internal bool IsGameEnded => Volatile.Read(ref _isGameEnded);
     internal int CurrentCorruption => Corruption;
     public bool IsEliminated => PlayerMatchStatus == PlayerMatchStatus.ELIMINATED || PlayerMatchStatus == PlayerMatchStatus.SPECTATING;
     private int? CurrentExploringInteractId { get; set; }
@@ -451,6 +495,100 @@ public partial class GameClientSession : SessionBase
         return protocolId == Protocol.C_TO_G_HEART_BEAT || protocolId == Protocol.C_TO_G_MOVE;
     }
 
+    internal IReadOnlyList<long> HandoffHumanPlayerIds => Volatile.Read(ref _handoffHumanPlayerIds);
+
+    private bool TryBeginMatchingLifecycleTerminal()
+    {
+        return Interlocked.CompareExchange(ref _matchingLifecycleTerminalReported, 1, 0) == 0;
+    }
+
+    private void ReportAdmissionFailureOnce()
+    {
+        if (Volatile.Read(ref _admissionCompleted) != 0 ||
+            !PlayerId.HasValue ||
+            CurrentMapSubId <= 0 ||
+            Interlocked.CompareExchange(ref _admissionFailureReported, 1, 0) != 0)
+            return;
+        if (!TryBeginMatchingLifecycleTerminal())
+            return;
+
+        try
+        {
+            _recordAdmissionFailure(this);
+        }
+        catch (Exception ex)
+        {
+            Volatile.Write(ref _matchingLifecycleTerminalReported, 0);
+            Volatile.Write(ref _admissionFailureReported, 0);
+            Logger.LogError(
+                ex,
+                "Failed to report game admission failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                PlayerId,
+                CurrentMapSubId);
+        }
+    }
+
+    private void ReleaseMatchingClaimOnce()
+    {
+        if (!PlayerId.HasValue ||
+            CurrentMapSubId <= 0 ||
+            Interlocked.CompareExchange(ref _matchingClaimReleaseReported, 1, 0) != 0)
+            return;
+        if (!TryBeginMatchingLifecycleTerminal())
+            return;
+
+        try
+        {
+            _releaseMatchingClaim(PlayerId.Value, CurrentMapSubId);
+        }
+        catch
+        {
+            Volatile.Write(ref _matchingLifecycleTerminalReported, 0);
+            Volatile.Write(ref _matchingClaimReleaseReported, 0);
+            throw;
+        }
+    }
+
+    internal void DisconnectForAdmissionFailure()
+    {
+        MarkServerInitiatedDisconnect();
+        try
+        {
+            using var packet = PacketMaker.G_TO_C_ERROR(ErrorCode.FATAL, "게임 입장 초기화에 실패했습니다");
+            Token.TrySendAndDisconnect(packet);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "입장 실패 응답 전송 실패: PlayerId={PlayerId}", PlayerId);
+            Token.Disconnect();
+        }
+    }
+
+    internal bool TryMarkMatchingLifecycleHandledExternally()
+    {
+        if (!TryBeginMatchingLifecycleTerminal())
+            return false;
+
+        Volatile.Write(ref _matchingLifecycleHandledExternally, 1);
+        return true;
+    }
+
+    private void RecordLeaveOnce()
+    {
+        if (!PlayerId.HasValue || CurrentMapSubId <= 0 || !TryBeginMatchingLifecycleTerminal())
+            return;
+
+        try
+        {
+            _recordLeavePenalty(PlayerId.Value, CurrentMapSubId);
+        }
+        catch
+        {
+            Volatile.Write(ref _matchingLifecycleTerminalReported, 0);
+            throw;
+        }
+    }
+
     protected override void SendErrorResponse(ErrorCode errorCode, string message)
     {
         try
@@ -479,24 +617,39 @@ public partial class GameClientSession : SessionBase
 
     public override void OnDisconnect()
     {
-        StopAllPeriodicBuffs();
-        _botInteractTimeoutCts?.Cancel();
-        _botInteractTimeoutCts?.Dispose();
-        _botInteractTimeoutCts = null;
-        _interactTimeoutCts?.Cancel();
-        _interactTimeoutCts?.Dispose();
-        _interactTimeoutCts = null;
-
         // 게임 진행 중 의도적 이탈 시 페널티 기록
         // 면제: SPECTATING/ELIMINATED, 게임 결과 화면 이후, 서버 주도 종료
-        if (PlayerId.HasValue && !IsEliminated && CurrentMapSubId > 0
-            && !_isGameEnded && !_isServerInitiatedDisconnect)
+        if (Volatile.Read(ref _matchingLifecycleHandledExternally) != 0)
         {
-            _recordLeavePenalty(PlayerId.Value);
+            // An infrastructure-level match abort publishes one deterministic terminal event
+            // for the whole roster. Do not race it with a per-socket Released event.
+        }
+        else if (Volatile.Read(ref _admissionCompleted) == 0)
+        {
+            ReportAdmissionFailureOnce();
+        }
+        else if (Volatile.Read(ref _isServerInitiatedDisconnect) || _isServerStopping())
+        {
+            // Planned shutdown is penalty-free, but it must not leave the exact matching claim
+            // behind until its long TTL expires.
+            ReleaseMatchingClaimOnce();
+        }
+        else if (PlayerId.HasValue && CurrentMapSubId > 0 && !Volatile.Read(ref _isGameEnded))
+        {
+            if (IsEliminated)
+            {
+                // Eliminated spectators already paid the gameplay consequence. They still need
+                // a penalty-free terminal event if they leave before the final result so the
+                // UserServer can clear the exact matching claim and local assignment.
+                ReleaseMatchingClaimOnce();
+            }
+            else
+            {
+                RecordLeaveOnce();
+            }
         }
 
         Logger.LogInformation("GameClient disconnected: PlayerId={PlayerId}", PlayerId);
-        _onLeaveCallback(this);
     }
 
     /// <summary>
@@ -505,9 +658,19 @@ public partial class GameClientSession : SessionBase
     /// </summary>
     public void MarkGameEnded()
     {
-        _isGameEnded = true;
-        if (PlayerId.HasValue)
-            _recordGameCompletion(PlayerId.Value);
+        Volatile.Write(ref _isGameEnded, true);
+        if (!PlayerId.HasValue || CurrentMapSubId <= 0 || !TryBeginMatchingLifecycleTerminal())
+            return;
+
+        try
+        {
+            _recordGameCompletion(PlayerId.Value, CurrentMapSubId);
+        }
+        catch
+        {
+            Volatile.Write(ref _matchingLifecycleTerminalReported, 0);
+            throw;
+        }
     }
 
     /// <summary>
@@ -515,7 +678,7 @@ public partial class GameClientSession : SessionBase
     /// </summary>
     public void MarkServerInitiatedDisconnect()
     {
-        _isServerInitiatedDisconnect = true;
+        Volatile.Write(ref _isServerInitiatedDisconnect, true);
     }
 
     /// <summary>

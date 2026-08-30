@@ -12,7 +12,7 @@ namespace network.common
     }
 
     /// <summary>
-    ///     援ъ뿭 ??? ?섎쾭留? 痢?횞 10 + ?쒕쾲 (痢?= value / 10)
+    ///     구역 식별자. 기존 School 맵은 층 번호 × 10 + 순번 규칙을 사용한다.
     /// </summary>
     public enum AreaType
     {
@@ -85,25 +85,20 @@ namespace network.common
 
     public static class AreaTypeExtensions
     {
-        /// <summary>
-        ///     蹂듬룄 援ъ뿭 ?щ? (1~4痢듬났??
-        /// </summary>
+        /// <summary>복도 구역인지 확인한다.</summary>
         // S2Corridor9는 #272 가운데 병합(테라스·운동장 흡수) 후 광장 정체성이라 복도가 아니다.
         public static bool IsCorridor(this AreaType area) =>
             area is AreaType.Corridor or AreaType.Corridor1F or AreaType.Corridor2F or AreaType.Corridor3F or
                 AreaType.Corridor4F ||
             (area >= AreaType.S2Corridor1 && area <= AreaType.S2Corridor8);
 
-        /// <summary>
-        ///     援ъ뿭??痢?踰덊샇 (0~4). None?대㈃ -1
-        /// </summary>
+        /// <summary>기존 School 구역의 층 번호를 반환한다. None이면 -1이다.</summary>
         public static int GetFloor(this AreaType area) =>
             area == AreaType.None ? -1 : (int)area / 10;
     }
 
     /// <summary>
-    ///     ?곹샇?묒슜 ?ㅻ툕?앺듃 ?????怨듯넻 ?좏깮吏 ? 留ㅼ묶??(GDD 짠2.4.2).
-    ///     interactable_info.csv ??object_type 而щ읆????enum 媛믪쓣 ?ъ슜?쒕떎.
+    ///     상호작용 오브젝트의 공통 분류. interactable_info.csv의 object_type과 같은 값을 쓴다.
     /// </summary>
     public enum InteractableObjectType
     {
@@ -167,10 +162,10 @@ namespace network.common
         MATERIAL,
         INSTALLATION,
         PUTABLE,
-        // 6 ???? ?щЪ(?댁뇿 ?? legacy ??enum???뺤쓽 X.
-        PART_BODY = 7,   // v0.2.0 遺??蹂몄껜. ItemId = 700000000 + PartId
-        PART_CHARGE = 8, // v0.2.0 遺??異⑹쟾?? ItemId = 800000000 + PartId
-        PART_GIFT = 9,   // v0.2.0 異⑹쟾 ?꾨즺 ?좊Ъ. ItemId = 900000000 + PartId
+        // 값 6은 레거시 예약 번호라 enum 멤버로 정의하지 않는다.
+        PART_BODY = 7,   // v0.2.0 부품 본체. ItemId = 700000000 + PartId
+        PART_CHARGE = 8, // v0.2.0 부품 충전재. ItemId = 800000000 + PartId
+        PART_GIFT = 9,   // v0.2.0 충전 완료 선물. ItemId = 900000000 + PartId
     }
 
     public enum GiftDiscoveryType
@@ -291,9 +286,7 @@ namespace network.common
         DARK,
     }
 
-    /// <summary>
-    ///     留덈땲??寃뚯엫 吏곸콉 (? 8媛?以?5媛??좏깮, 媛??뚮젅?댁뼱??1媛?諛곗젙)
-    /// </summary>
+    /// <summary>마니또 게임 직책. 각 플레이어에게 한 개를 배정한다.</summary>
     public enum JobTitle : short
     {
         NONE = 0,
@@ -311,9 +304,7 @@ namespace network.common
     {
         public static string ToKorean(this JobTitle jobTitle) => jobTitle.ToString();
 
-        /// <summary>
-        ///     吏곸콉紐낆쓣 ?꾩옱 ?몄뼱濡?諛섑솚. system_text.csv 11000~11007 textId 猷⑹뾽.
-        /// </summary>
+        /// <summary>system_text.csv의 11000~11007 textId로 직책명을 현지화한다.</summary>
         public static string ToLocalized(this JobTitle jobTitle, string lang)
         {
             int textId = jobTitle switch
@@ -334,17 +325,15 @@ namespace network.common
         }
     }
 
-    /// <summary>
-    ///     ?덈씫 ?ъ쑀
-    /// </summary>
+    /// <summary>플레이어 탈락 사유.</summary>
     public enum EliminationReason : short
     {
         NONE = 0,
-        DETECTED = 1,           // ?됱텧?뱁븿
-        MENTAL_ZERO = 2,        // ?뺤떊??0
-        STAMINA_ZERO = 3,       // ?ㅽ깭誘몃굹 0
-        RACE_LOST = 4,          // ?ㅻⅨ 吏곸콉??race ?꾩＜濡??⑤같 (#87)
-        SETTLEMENT_LOW_CONTRIBUTION = 5, // ?뺤궛 湲곗뿬??理쒗븯?꾨줈 ?덈씫
+        DETECTED = 1,
+        MENTAL_ZERO = 2,
+        STAMINA_ZERO = 3,
+        RACE_LOST = 4,
+        SETTLEMENT_LOW_CONTRIBUTION = 5,
     }
 
     public enum PlayerMatchStatus : short
@@ -354,8 +343,7 @@ namespace network.common
         SPECTATING = 4,
     }
 
-    /// <summary>
-    /// ?곹샇?묒슜 ?ㅻ툕?앺듃 ?먯깋 ???    /// </summary>
+    /// <summary>상호작용 오브젝트 탐색 유형.</summary>
     public enum InteractionType : short
     {
         NONE = 0,
@@ -367,29 +355,24 @@ namespace network.common
         RNG_COLLECT = 7,
     }
 
-    /// <summary>
-    /// ?곹샇?묒슜 ?≪뀡 寃곌낵 ???    /// </summary>
+    /// <summary>상호작용 행동 결과 유형.</summary>
     public enum ActionResultType : short
     {
         NONE = 0,
-        REWARD_POOL = 1,           // ?꾩씠???띾뱷
-        DEBUFF_CORRUPTION = 2,     // ?뺤떊?ㅼ뿼??利앷?
-        DEBUFF_STAMINA = 3,        // ?ㅽ깭誘몃굹 媛먯냼
-        BUFF_CORRUPTION = 4,       // ?뺤떊?ㅼ뿼??媛먯냼
-        BUFF_STAMINA = 5,          // ?ㅽ깭誘몃굹 利앷?
+        REWARD_POOL = 1,
+        DEBUFF_CORRUPTION = 2,
+        DEBUFF_STAMINA = 3,
+        BUFF_CORRUPTION = 4,
+        BUFF_STAMINA = 5,
     }
 
-    /// <summary>
-    /// ?곹샇?묒슜 ?≪뀡 ?곹깭 ???(?щ낫?二????숈쟻 ?곹깭 蹂寃?
-    /// </summary>
+    /// <summary>상호작용 오브젝트의 동적 상태 유형.</summary>
     public enum InteractableStateType : short
     {
-        DEFAULT = 0,        // 湲곕낯 ?곹깭
+        DEFAULT = 0,
     }
 
-    /// <summary>
-    /// ?쒖뒪???띿뒪??移댄뀒怨좊━
-    /// </summary>
+    /// <summary>시스템 텍스트 카테고리.</summary>
     public enum SystemTextCategory : short
     {
         NONE = 0,

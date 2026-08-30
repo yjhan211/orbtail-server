@@ -68,7 +68,7 @@ namespace network.common.data.models
             return (a - b).Magnitude();
         }
 
-        public bool Equals(Vector3f other)
+        public bool Equals(Vector3f? other)
         {
             if (other == null) return false;
             const float epsilon = 0.00001f;
@@ -77,7 +77,7 @@ namespace network.common.data.models
                    Math.Abs(Z - other.Z) < epsilon;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return obj is Vector3f other && Equals(other);
         }

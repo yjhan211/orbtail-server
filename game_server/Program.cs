@@ -1,10 +1,15 @@
 using System.Text.RegularExpressions;
+using game_server.services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using network.contracts.scaling;
 using network.core;
+using network.hosting;
 using network.infrastructure;
+using network.infrastructure.authentication;
+using network.infrastructure.scaling;
 using network.interfaces;
 using network.managers;
 using Serilog;
@@ -72,33 +77,64 @@ internal static partial class Program
         serverConfig.Validate();
         services.AddSingleton<IServerConfig>(serverConfig);
         services.AddSingleton(serverConfig);
-        services.AddSingleton<NetworkService>();
         services.AddSingleton<INetworkService, NetworkService>();
-        services.AddSingleton<NatsClientFactory>();
         services.AddSingleton<INatsClientFactory, NatsClientFactory>();
+        services.AddSingleton<ServerReadinessState>();
 
         services.AddSingleton<LogManager>(sp =>
             new LogManager(sp.GetRequiredService<ILogger<LogManager>>()
             )
         );
 
-        services.AddSingleton<RedisConnectionPool>(sp =>
+        RedisConfiguration redisConfiguration = RedisConfigurationParser.Parse(hostContext.Configuration);
+        services.AddSingleton(redisConfiguration);
+        services.AddSingleton<IRedisConnectionPool>(sp =>
         {
             var logger = sp.GetRequiredService<ILogger<RedisConnectionPool>>();
             var redisPool = new RedisConnectionPool(logger);
-            string redisEndpoints = hostContext.Configuration["redisEndpoints"] ??
-                                    throw new InvalidOperationException("RedisEndpoints is not configured.");
-            redisPool.Initialize(redisEndpoints);
+            redisPool.Initialize(redisConfiguration);
             return redisPool;
         });
-        services.AddSingleton<IRedisConnectionPool>(sp => sp.GetRequiredService<RedisConnectionPool>());
-        services.AddSingleton<IRedLockFactory>(sp => sp.GetRequiredService<RedisConnectionPool>().GetRedLockFactory());
-        services.AddSingleton<CacheHelper>();
+        services.AddSingleton<IRedLockFactory>(sp =>
+            sp.GetRequiredService<IRedisConnectionPool>().GetRedLockFactory());
         services.AddSingleton<ICacheHelper, CacheHelper>();
+        services.AddManittoAuthenticationBoundaries(hostContext.Configuration);
+        GameServerScalingOptions scalingOptions = CreateScalingOptions(hostContext.Configuration);
+        scalingOptions.Validate();
+        services.AddSingleton(scalingOptions);
+        services.AddSingleton<IGameServerRoutingStore, RedisGameServerRoutingStore>();
+        services.AddSingleton<MatchingLifecycleOutboxStore>();
+        services.AddSingleton<GameServerNodeLease>();
         // GameServer를 싱글턴으로 등록하여 HealthCheckService에서 어드민 endpoint용으로 주입 가능
         services.AddSingleton<GameServer>();
         services.AddHostedService<HealthCheckService>();
         services.AddHostedService(sp => sp.GetRequiredService<GameServer>());
+    }
+
+    private static GameServerScalingOptions CreateScalingOptions(IConfiguration configuration)
+    {
+        bool enabled = configuration.GetValue("horizontalScaling:enabled", false);
+        int clientPort = configuration.GetValue("clientPort", 9001);
+        return new GameServerScalingOptions
+        {
+            Enabled = enabled,
+            NodeId = configuration["horizontalScaling:nodeId"] ??
+                     configuration["gameServerId"] ??
+                     string.Empty,
+            PublicHost = configuration["horizontalScaling:publicHost"] ?? string.Empty,
+            PublicPort = configuration.GetValue("horizontalScaling:publicPort", clientPort),
+            MaxConcurrentMatches = configuration.GetValue("horizontalScaling:maxConcurrentMatches", 100),
+            HeartbeatInterval = TimeSpan.FromSeconds(
+                configuration.GetValue("horizontalScaling:heartbeatIntervalSeconds", 3)),
+            NodeLeaseLifetime = TimeSpan.FromSeconds(
+                configuration.GetValue("horizontalScaling:nodeLeaseSeconds", 12)),
+            ReservationLifetime = TimeSpan.FromSeconds(
+                configuration.GetValue("horizontalScaling:reservationSeconds", 300)),
+            ActiveOwnerLifetime = TimeSpan.FromSeconds(
+                configuration.GetValue("horizontalScaling:activeOwnerSeconds", 1800)),
+            DrainTimeout = TimeSpan.FromSeconds(
+                configuration.GetValue("horizontalScaling:drainTimeoutSeconds", 30))
+        };
     }
 
     [GeneratedRegex(@"-(\d+)$")]

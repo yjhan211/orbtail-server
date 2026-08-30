@@ -17,7 +17,7 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_LOGIN(PlayerInfo playerInfo)
+    public static Packet U_TO_C_LOGIN(PlayerInfo playerInfo, string accountToken)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_LOGIN);
         U_TO_C_LOGIN body =
@@ -25,6 +25,7 @@ public static partial class PacketMaker
             {
                 ObjectInfo = playerInfo.ObjectInfo,
                 PlayerInfo = playerInfo,
+                AccountToken = accountToken
             };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
@@ -87,7 +88,8 @@ public static partial class PacketMaker
 
     public static Packet U_TO_C_MATCHING_SUCCESS(long matchingId, MapId mapId, long mapSubId, Cell spawnPosition,
         string gameServerIp, int gameServerPort, long gameEndTimestamp,
-        long targetPlayerId, JobTitle targetJobTitle, JobTitle myJobTitle, List<PlayerInfo> playerRoster,
+        string gameHandoffTicket, long targetPlayerId, JobTitle targetJobTitle, JobTitle myJobTitle,
+        List<PlayerInfo> playerRoster,
         List<int>? activeBuffIds = null)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_MATCHING_SUCCESS);
@@ -100,6 +102,7 @@ public static partial class PacketMaker
             GameServerIp = gameServerIp,
             GameServerPort = gameServerPort,
             GameEndTimestamp = gameEndTimestamp,
+            GameHandoffTicket = gameHandoffTicket,
             TargetPlayerId = targetPlayerId,
             TargetJobTitle = targetJobTitle,
             MyJobTitle = myJobTitle,
@@ -111,10 +114,10 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_MATCHING_FAILED(ErrorCode errorCode)
+    public static Packet U_TO_C_MATCHING_FAILED(ErrorCode errorCode, long matchingId = 0)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_MATCHING_FAILED);
-        U_TO_C_MATCHING_FAILED body = new() { ErrorCode = errorCode };
+        U_TO_C_MATCHING_FAILED body = new() { ErrorCode = errorCode, MatchingId = matchingId };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

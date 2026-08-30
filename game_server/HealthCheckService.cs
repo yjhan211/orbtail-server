@@ -3,28 +3,39 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using network.hosting;
+using network.interfaces;
 using Prometheus;
 
 namespace game_server;
 
 public class HealthCheckService(
     ILogger<HealthCheckService> logger,
-    IConfiguration configuration,
+    RedisConfiguration redisConfiguration,
+    ServerReadinessState readinessState,
     GameServer gameServer) : IHostedService
 {
-    private readonly string _redisEndpoints = configuration["redisEndPoints"] ?? "localhost:6379";
     private WebApplication? _app;
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         var builder = WebApplication.CreateBuilder();
 
         // ASP.NET Core HTTP 요청 라이프사이클 로그 차단 (메인 Serilog와 별개 파이프라인)
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
 
-        builder.Services.AddHealthChecks().AddRedis(_redisEndpoints, name: "redis", tags: ["ready"]);
+        builder.Services
+            .AddHealthChecks()
+            .AddRedis(redisConfiguration.ConnectionString, name: "redis", tags: ["ready"])
+            .AddCheck(
+                "server",
+                () => readinessState.IsReady
+                    ? HealthCheckResult.Healthy()
+                    : HealthCheckResult.Unhealthy(readinessState.Status),
+                tags: ["ready"]);
         builder.WebHost.UseUrls("http://*:8080");
 
         _app = builder.Build();
@@ -46,9 +57,7 @@ public class HealthCheckService(
 
         logger.LogInformation("Health check service starting on port 8080");
 
-        _ = _app.RunAsync(cancellationToken);
-
-        return Task.CompletedTask;
+        await _app.StartAsync(cancellationToken);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)

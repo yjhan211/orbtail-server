@@ -13,7 +13,7 @@ namespace network.common.data.helpers
             Cell start,
             Cell destination,
             Func<Cell, bool> canOccupy,
-            Func<Cell, Cell, bool> canCross = null)
+            Func<Cell, Cell, bool>? canCross = null)
         {
             if (start == null) throw new ArgumentNullException(nameof(start));
             if (destination == null) throw new ArgumentNullException(nameof(destination));
@@ -81,7 +81,7 @@ namespace network.common.data.helpers
             Cell from,
             Cell to,
             Func<Cell, bool> canOccupy,
-            Func<Cell, Cell, bool> canCross)
+            Func<Cell, Cell, bool>? canCross)
         {
             return canOccupy(to) && (canCross == null || canCross(from, to));
         }

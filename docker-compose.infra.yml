@@ -16,12 +16,20 @@ services:
       retries: 5
 
   nats:
-    image: nats:latest
+    image: nats:2.10-alpine
     container_name: manitto-nats-dev
     ports:
       - "4222:4222"
       - "8222:8222"
-    command: "-m 8222"
+    command: "-m 8222 -js --store_dir /data"
+    volumes:
+      - nats-data-dev:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
   redis-data-dev:
+  nats-data-dev:

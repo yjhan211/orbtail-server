@@ -28,7 +28,7 @@ namespace network.common.data
             }
         }
 
-        public static SystemTextData Get(int id)
+        public static SystemTextData? Get(int id)
         {
             return _texts.GetValueOrDefault(id);
         }
@@ -107,16 +107,16 @@ namespace network.common.data
     /// </summary>
     public class TextReplacementContext
     {
-        public string ItemName { get; set; }
-        public string ItemSpawnArea { get; set; }
-        public string ItemWarning { get; set; }
-        public string SpotName { get; set; }
-        public string DebuffWarning { get; set; }
-        public string ConditionText { get; set; }
+        public string? ItemName { get; set; }
+        public string? ItemSpawnArea { get; set; }
+        public string? ItemWarning { get; set; }
+        public string? SpotName { get; set; }
+        public string? DebuffWarning { get; set; }
+        public string? ConditionText { get; set; }
 
         public static TextReplacementContext Create() => new TextReplacementContext();
 
-        public TextReplacementContext WithItem(string name, string spawnArea = null, string warning = null)
+        public TextReplacementContext WithItem(string name, string? spawnArea = null, string? warning = null)
         {
             ItemName = name;
             ItemSpawnArea = spawnArea;

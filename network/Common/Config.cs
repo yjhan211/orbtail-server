@@ -26,6 +26,12 @@ namespace network.common
         /// <summary>리스닝 소켓 백로그 큐 크기</summary>
         public static readonly int BACK_LOG = 100;
 
+        /// <summary>서버가 accept한 연결이 로그인/게임 인계를 완료해야 하는 제한 시간</summary>
+        public const int AUTHENTICATION_TIMEOUT_SECONDS = 15;
+
+        /// <summary>인증된 inbound 연결이 유효 패킷 없이 유지될 수 있는 제한 시간</summary>
+        public const int AUTHENTICATED_IDLE_TIMEOUT_SECONDS = 60;
+
         // Batch Processing Settings
         /// <summary>Redis 배치 작업 크기</summary>
         public static readonly int BATCH_SIZE = 10;

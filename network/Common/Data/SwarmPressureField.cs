@@ -18,7 +18,7 @@ namespace network.common.data
     public static class SwarmPressureField
     {
         private static readonly object InitLock = new object();
-        private static Dictionary<(int X, int Y), int> _distanceByCell;
+        private static Dictionary<(int X, int Y), int>? _distanceByCell;
         private static Dictionary<AreaType, int> _minDistanceByArea = new Dictionary<AreaType, int>();
         private static int _maxDistance;
         private static float _centerX;
@@ -48,7 +48,7 @@ namespace network.common.data
         public static int GetDistance(Cell cell)
         {
             EnsureInitialized();
-            return _distanceByCell.GetValueOrDefault((cell.X, cell.Y), _maxDistance);
+            return _distanceByCell?.GetValueOrDefault((cell.X, cell.Y), _maxDistance) ?? _maxDistance;
         }
 
         /// <summary>

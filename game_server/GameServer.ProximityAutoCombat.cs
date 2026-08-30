@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using game_server.network;
 using game_server.services;
 using MessagePack;
@@ -15,11 +16,11 @@ public partial class GameServer
 
     private readonly ProximityAutoCombatResolver _proximityAutoCombatResolver = new();
     private readonly DodgeableProjectileResolver _dodgeableProjectileResolver = new();
-    private readonly Dictionary<(long MatchingId, long ObserverPlayerId, long ActorPlayerId),
+    private readonly ConcurrentDictionary<(long MatchingId, long ObserverPlayerId, long ActorPlayerId),
         OrbVisualState> _orbVisualStates = new();
-    private readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex), DateTime>
+    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex), DateTime>
         _orbRecoveryReadyAtUtc = new();
-    private readonly Dictionary<(long MatchingId, long PlayerId), ProximityCombatAreaEntryState>
+    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId), ProximityCombatAreaEntryState>
         _proximityCombatAreaEntryStates = new();
     private Timer? _proximityAutoCombatTimer;
     private int _proximityAutoCombatProcessing;
@@ -61,15 +62,10 @@ public partial class GameServer
                 if (!swarmWarmup && !GameClientSession.IsRoundActionPhase(matchingId))
                     continue;
 
-                lock (GetMatchSettlementLock(matchingId))
+                _matchRuntimeRegistry.TryExecute(matchingId, () =>
                 {
                     ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
-                    if (!HasProximityAutoCombatMatchingEnded(matchingId)) continue;
-                    _proximityAutoCombatResolver.RemoveMatching(matchingId);
-                    RemoveOrbVisualStates(matchingId);
-                    CleanupSwarmArenaState(matchingId);
-                    _matchSettlementLocks.TryRemove(matchingId, out _);
-                }
+                });
             }
         }
         catch (Exception ex)
@@ -80,22 +76,6 @@ public partial class GameServer
         {
             Volatile.Write(ref _proximityAutoCombatProcessing, 0);
         }
-    }
-
-    /// <summary>
-    ///     자동전투 상태를 폐기해도 되는 시점인지 판정한다.
-    ///     세션이 하나도 없는 매치에 <c>All</c>을 쓰면 빈 시퀀스가 참이 되어 매 틱 종료로 오인한다.
-    ///     그러면 공격 쿨다운과 구역 진입 유예가 50ms마다 초기화되어 아무도 공격하지 못한다.
-    /// </summary>
-    private bool HasProximityAutoCombatMatchingEnded(long matchingId)
-    {
-        var matchingSessions = _clientSessions.Values
-            .Where(session => session.PlayerId.HasValue && session.CurrentMapSubId == matchingId)
-            .ToList();
-        if (matchingSessions.Count > 0)
-            return matchingSessions.All(session => session.IsGameEnded);
-
-        return !_botPlayerManager.GetBots(matchingId).Any(bot => !bot.IsEliminated);
     }
 
     private void ProcessProximityAutoCombatForMatching(
@@ -307,7 +287,7 @@ OrbResonanceSnapshot resonanceState)
             if (activeRecoveryKeys.Contains((key.PlayerId, key.ItemUid, key.StackIndex)))
                 continue;
 
-            _orbRecoveryReadyAtUtc.Remove(key);
+            _orbRecoveryReadyAtUtc.TryRemove(key, out _);
         }
     }
 
@@ -358,7 +338,7 @@ OrbResonanceSnapshot resonanceState)
                 var key = (matchingId, observer.PlayerId.Value, actor.PlayerId);
                 if (observer.CurrentArea != actor.Area)
                 {
-                    _orbVisualStates.Remove(key);
+                    _orbVisualStates.TryRemove(key, out _);
                     continue;
                 }
 
@@ -406,19 +386,19 @@ OrbResonanceSnapshot resonanceState)
                      .Where(key => key.MatchingId == matchingId)
                      .ToArray())
         {
-            _orbVisualStates.Remove(key);
+            _orbVisualStates.TryRemove(key, out _);
         }
         foreach (var key in _orbRecoveryReadyAtUtc.Keys
                      .Where(key => key.MatchingId == matchingId)
                      .ToArray())
         {
-            _orbRecoveryReadyAtUtc.Remove(key);
+            _orbRecoveryReadyAtUtc.TryRemove(key, out _);
         }
         foreach (var key in _proximityCombatAreaEntryStates.Keys
                      .Where(key => key.MatchingId == matchingId)
                      .ToArray())
         {
-            _proximityCombatAreaEntryStates.Remove(key);
+            _proximityCombatAreaEntryStates.TryRemove(key, out _);
         }
 
         RemoveOrbResonanceStates(matchingId);

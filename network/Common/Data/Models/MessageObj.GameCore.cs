@@ -16,13 +16,13 @@ namespace network.common.data.models
     [MessagePackObject]
     public class C_TO_G_CONNECT : IMessagePackObject
     {
+        // Legacy fields remain for wire compatibility. GameServer authorization ignores them.
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("matchingId")] public long MatchingId { get; set; }
-
-        // 마니또 체인 정보 (UserServer → Client → GameServer 전달)
         [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
         [Key("targetJobTitle")] public JobTitle TargetJobTitle { get; set; }
         [Key("myJobTitle")] public JobTitle MyJobTitle { get; set; }
+        [Key("gameHandoffTicket")] public string GameHandoffTicket { get; set; }
     }
 
     [MessagePackObject]

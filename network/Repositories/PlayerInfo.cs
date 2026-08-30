@@ -11,12 +11,12 @@ public partial class PlayerInfo
 {
     public static async Task<IRedLock> Lock(IRedLockFactory redLock, long playerId)
     {
-        return await redLock.CreateLockAsync(GetLockKey(playerId), Config.LOCK_TTL);
+        return await redLock.AcquireLockAsync(GetLockKey(playerId), Config.LOCK_TTL);
     }
 
     public async Task<IRedLock> Lock(IRedLockFactory redLock)
     {
-        return await redLock.CreateLockAsync(GetLockKey(), Config.LOCK_TTL);
+        return await redLock.AcquireLockAsync(GetLockKey(), Config.LOCK_TTL);
     }
 
     public async Task Save(ICacheHelper cacheHelper)
@@ -41,8 +41,6 @@ public partial class PlayerInfo
                                    new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
         playerInfo.QuestDiary = await QuestDiary.Load(cacheHelper, playerId);
         playerInfo.MailBox = await MailBox.Load(cacheHelper, playerId);
-        playerInfo.IsNew = false;
-
         // ObjectInfo의 Cell, MapId, MapSubId를 LastCell, LastMapId, LastMapSubId로 동기화 (세션 기반 게임)
         if (playerInfo.LastMapId != MapId.None)
         {

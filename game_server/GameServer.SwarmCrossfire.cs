@@ -681,7 +681,7 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        List<(long, long)> expired = null;
+        List<(long, long)>? expired = null;
         foreach (var pair in _swarmSunBurns)
         {
             if (pair.Key.MatchingId != matchingId)

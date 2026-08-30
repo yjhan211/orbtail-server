@@ -156,6 +156,7 @@ public partial class GameClientSession
             }
             catch (TaskCanceledException)
             {
+                // Expected when the conversation ends before the delayed choices are sent.
             }
             catch (Exception ex)
             {
@@ -334,18 +335,8 @@ public partial class GameClientSession
         var bot = _botPlayerManager.GetBot(CurrentMapSubId, playerId);
         if (bot != null && !string.IsNullOrEmpty(bot.Name)) return bot.Name;
 
-        if (!BotPlayerManager.IsBotPlayerId(playerId))
-        {
-            try
-            {
-                var playerInfo = PlayerInfo.Load(CacheHelper, playerId).GetAwaiter().GetResult();
-                if (!string.IsNullOrWhiteSpace(playerInfo?.Name)) return playerInfo.Name;
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "Interaction player name lookup failed: PlayerId={PlayerId}", playerId);
-            }
-        }
+        var profile = _matchRosterManager.GetPlayerProfile(CurrentMapSubId, playerId);
+        if (!string.IsNullOrWhiteSpace(profile?.Name)) return profile.Name;
 
         return BotPlayerManager.IsBotPlayerId(playerId)
             ? $"Player{Math.Abs(playerId)}"

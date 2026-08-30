@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using network.common;
 
 namespace game_server.services;
 
@@ -58,6 +59,18 @@ public static class MatchStartGate
         }
     }
 
+    public static bool IsAdmissionTimedOut(long matchingId, DateTime utcNow)
+    {
+        if (!States.TryGetValue(matchingId, out var state))
+            return false;
+
+        lock (state.SyncRoot)
+        {
+            return state.CountdownEndsAtUtc == null &&
+                   utcNow - state.CreatedAtUtc >= MatchingHandoffRedisKeys.AdmissionTimeout;
+        }
+    }
+
     public static MatchStartSnapshot GetSnapshot(long matchingId)
     {
         if (!States.TryGetValue(matchingId, out var state))
@@ -90,6 +103,7 @@ public static class MatchStartGate
     private sealed class State
     {
         public object SyncRoot { get; } = new();
+        public DateTime CreatedAtUtc { get; } = DateTime.UtcNow;
         public HashSet<long> ConnectedHumanIds { get; } = [];
         public HashSet<long> ReadyHumanIds { get; } = [];
         public int ExpectedHumanCount { get; set; } = MatchCapacity;

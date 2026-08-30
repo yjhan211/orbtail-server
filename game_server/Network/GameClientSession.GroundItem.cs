@@ -12,7 +12,24 @@ public partial class GameClientSession
 {
     private Task HandleGroundItemPickup(C_TO_G_GROUND_ITEM_PICKUP msg)
     {
-        if (!PlayerId.HasValue || IsEliminated || _lastValidatedPosition == null)
+        if (!PlayerId.HasValue)
+        {
+            SendGroundItemPickupResult(msg.GroundItemUid, 0, false, false, ErrorCode.INVALID_GAME_STATE);
+            return Task.CompletedTask;
+        }
+
+        Task result = Task.CompletedTask;
+        bool executed = _executeMatchRuntime(
+            CurrentMapSubId,
+            () => result = HandleGroundItemPickupCore(msg));
+        if (!executed)
+            SendGroundItemPickupResult(msg.GroundItemUid, 0, false, false, ErrorCode.INVALID_GAME_STATE);
+        return result;
+    }
+
+    private Task HandleGroundItemPickupCore(C_TO_G_GROUND_ITEM_PICKUP msg)
+    {
+        if (!PlayerId.HasValue || IsEliminated || IsGameEnded || _lastValidatedPosition == null)
         {
             SendGroundItemPickupResult(msg.GroundItemUid, 0, false, false, ErrorCode.INVALID_GAME_STATE);
             return Task.CompletedTask;

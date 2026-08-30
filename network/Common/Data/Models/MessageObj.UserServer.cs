@@ -16,7 +16,7 @@ namespace network.common.data.models
     [MessagePackObject]
     public class C_TO_U_LOGIN : IMessagePackObject
     {
-        [Key("accountToken")] public string AccountToken { get; set; } // TODO 계정키로 변경
+        [Key("accountToken")] public string AccountToken { get; set; }
     }
 
     [MessagePackObject]
@@ -24,6 +24,7 @@ namespace network.common.data.models
     {
         [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
+        [Key("accountToken")] public string AccountToken { get; set; }
     }
 
     [MessagePackObject]

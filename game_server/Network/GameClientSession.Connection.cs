@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.contracts.authentication;
 using network.helpers;
 using network.packets;
 
@@ -13,63 +14,132 @@ namespace game_server.network;
 
 public partial class GameClientSession
 {
-
     private async Task HandleConnect(C_TO_G_CONNECT msg)
     {
+        if (PlayerId.HasValue || CurrentMapSubId > 0)
+        {
+            Logger.LogWarning(
+                "Repeated game authentication attempt: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                PlayerId,
+                CurrentMapSubId);
+            SendConnectResult(false, ErrorCode.AUTH_FAILED, "이미 인증된 세션입니다", disconnectAfterSend: true);
+            return;
+        }
+
+        IDisposable? runtimeOperation = null;
         try
         {
-            Logger.LogInformation("Client connection request: PlayerId={MsgPlayerId}, MatchingId={MsgMatchingId}",
-                msg.PlayerId, msg.MatchingId);
-
-            // TODO: MatchingId 寃利?(Redis?먯꽌 留ㅼ묶 ?뺣낫 ?뺤씤)
-            // 吏湲덉? 媛꾨떒?섍쾶 PlayerId留??ㅼ젙
-
-            PlayerId = msg.PlayerId;
-            CurrentMapId = Config.SWARM_MATCH_MAP; // TODO: 留ㅼ묶 ?뺣낫?먯꽌 媛?몄삤湲?
-            CurrentMapSubId = msg.MatchingId;
-
-            // 留덈땲??泥댁씤 ?뺣낫 ???
-            TargetPlayerId = msg.TargetPlayerId;
-            MyJobTitle = msg.MyJobTitle;
-            TargetJobTitle = msg.TargetJobTitle;
-            SetActiveBuffIds([]);
-            Logger.LogInformation("留덈땲??泥댁씤: PlayerId={PlayerId}, ?寃?{Target}, ??吏곸콉={MyJob}, ?寃?吏곸콉={TargetJob}",
-                PlayerId, TargetPlayerId, MyJobTitle, TargetJobTitle);
-
-            // 泥댁씤 留ㅻ땲???留곹겕 ?깅줉 (媛??뚮젅?댁뼱媛 ?묒냽???뚮쭏???꾩쟻)
-            _matchRosterManager.RegisterEntry(msg.MatchingId, new RosterEntry
+            GameHandoffContext? handoff = await _consumeGameHandoffTicket(msg.GameHandoffTicket);
+            if (handoff == null)
             {
-                PlayerId = msg.PlayerId,
-                TargetPlayerId = msg.TargetPlayerId,
-                MyJobTitle = msg.MyJobTitle,
-                TargetJobTitle = msg.TargetJobTitle
-            });
+                EnsureConnectionActive();
+                Logger.LogWarning("GameServer connection rejected: invalid, expired, or replayed handoff ticket");
+                SendConnectResult(false, ErrorCode.AUTH_FAILED, "게임 접속 인증에 실패했습니다",
+                    disconnectAfterSend: true);
+                return;
+            }
 
-            // 誘몄뀡 珥덇린??
-            SetActiveBuffIds([]); // 방 사건 특성 버프 퇴역 (#238) — 접속 시 버프 없음
+            long matchingId = handoff.MatchingId;
+            long playerId = handoff.PlayerId;
+            // Commit the ticket identity immediately after a successful consume response and
+            // before checking the socket state. If a legacy GETDEL response itself is lost,
+            // no exact identity exists here; the UserServer admission deadline owns rollback.
+            PlayerId = playerId;
+            CurrentMapId = handoff.MapId;
+            CurrentMapSubId = handoff.MapSubId;
+            TargetPlayerId = handoff.TargetPlayerId;
+            MyJobTitle = handoff.MyJobTitle;
+            TargetJobTitle = handoff.TargetJobTitle;
+            SetActiveBuffIds(handoff.ActiveBuffIds);
+            Volatile.Write(
+                ref _handoffHumanPlayerIds,
+                handoff.HumanRoster.Select(entry => entry.PlayerId)
+                    .Append(playerId)
+                    .Where(id => id > 0)
+                    .Distinct()
+                    .ToArray());
+            if (!_bindMatchOwnerFence(matchingId, handoff.GameServerFence))
+                throw new InvalidOperationException(
+                    $"The handoff owner fence does not match the active runtime for match {matchingId}.");
+            EnsureConnectionActive();
 
-            // 遊?濡쒕뱶 (留ㅼ묶??理쒖큹 1?? ???먯뇙 珥덇린???꾩뿉 濡쒕뱶??吏곸콉 ????뺤젙 (#87)
-            await LoadBotsIfNeeded(msg.MatchingId, CurrentMapId);
+            Logger.LogInformation(
+                "Client connection authorized: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                playerId,
+                matchingId);
 
-            foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
+            Action? disconnectSupersededSession = null;
+            runtimeOperation = _acquireMatchRuntimeOperation(
+                matchingId,
+                () =>
+                {
+                    if (!Token.TryRunIfActive(
+                            () => disconnectSupersededSession = _registerSessionCallback(playerId, this)))
+                        throw new OperationCanceledException("Connection closed before session registration.");
+                });
+            if (runtimeOperation == null)
+            {
+                Logger.LogWarning(
+                    "GameServer connection rejected because the match is terminal: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    playerId,
+                    matchingId);
+                MarkServerInitiatedDisconnect();
+                SendConnectResult(false, ErrorCode.GAME_ALREADY_ENDED, "이미 종료된 게임입니다",
+                    disconnectAfterSend: true);
+                return;
+            }
+            disconnectSupersededSession?.Invoke();
+
+            Logger.LogInformation(
+                "Manitto chain restored: PlayerId={PlayerId}, Target={Target}, MyJob={MyJob}, TargetJob={TargetJob}",
+                PlayerId,
+                TargetPlayerId,
+                MyJobTitle,
+                TargetJobTitle);
+
+            foreach (var rosterEntry in handoff.HumanRoster)
+            {
+                _matchRosterManager.RegisterEntry(matchingId, new RosterEntry
+                {
+                    PlayerId = rosterEntry.PlayerId,
+                    TargetPlayerId = rosterEntry.TargetPlayerId,
+                    MyJobTitle = rosterEntry.MyJobTitle,
+                    TargetJobTitle = rosterEntry.TargetJobTitle
+                });
+            }
+
+            // Load bots once per match before initializing authoritative roster state.
+            int expectedBotCount = MatchStartGate.IsSoloMapValidationEnabled
+                ? 0
+                : Config.SWARM_PLAYERS_PER_MATCH - handoff.HumanRoster.Count;
+            if (expectedBotCount < 0)
+                throw new InvalidOperationException(
+                    $"Game handoff contains too many human players: {handoff.HumanRoster.Count}.");
+            await LoadBotsIfNeeded(
+                matchingId,
+                CurrentMapId,
+                expectedBotCount,
+                handoff.HumanRoster.Select(entry => entry.PlayerId).ToArray());
+            EnsureConnectionActive();
+
+            foreach (var bot in _botPlayerManager.GetBots(matchingId))
                 if (!bot.IsEliminated)
                 {
-                    _presenceTracker?.SetPlayerArea(msg.MatchingId, bot.PlayerId, bot.CurrentArea,
+                    _presenceTracker?.SetPlayerArea(matchingId, bot.PlayerId, bot.CurrentArea,
                         countAsEntry: false);
-                    _gameEventLogManager.SetPlayerArea(msg.MatchingId, bot.PlayerId, bot.CurrentArea.ToString());
+                    _gameEventLogManager.SetPlayerArea(matchingId, bot.PlayerId, bot.CurrentArea.ToString());
                 }
 
-            // 援ъ뿭 ?먯뇙 珥덇린??(留ㅼ묶??理쒖큹 1??
-            // #87: 留ㅼ묶??吏곸콉 ????뷀뵆 ?곗꽑?쒖쐞??諛섏쁺 (5遺?1?④퀎 蹂댁옣 + 吏곸콉蹂??꾩닚??
-            var jobPool = _matchRosterManager.GetMatchingJobs(msg.MatchingId);
-            _areaItemStockManager.InitializeMatching(msg.MatchingId);
-            _groundItemManager.InitializeMatching(msg.MatchingId);
-            int matchSeed = MatchSpawnData.GetDeterministicSeed(msg.MatchingId);
-            _gameEventLogManager.BeginMatch(msg.MatchingId, matchSeed);
-            foreach (var bot in _botPlayerManager.GetBots(msg.MatchingId))
+            // Initialize match-scoped area state once; manager implementations are idempotent.
+            var jobPool = _matchRosterManager.GetMatchingJobs(matchingId);
+            _areaItemStockManager.InitializeMatching(matchingId);
+            _groundItemManager.InitializeMatching(matchingId);
+            int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
+            _gameEventLogManager.BeginMatch(matchingId, matchSeed);
+            foreach (var bot in _botPlayerManager.GetBots(matchingId))
             {
                 _gameEventLogManager.LogSpawnAssignment(
-                    msg.MatchingId,
+                    matchingId,
                     bot.PlayerId,
                     matchSeed,
                     MatchSpawnData.GetAnchorIndex(bot.Cell),
@@ -79,78 +149,57 @@ public partial class GameClientSession
                     isBot: true);
             }
 
-            // ?멸쾶???ㅽ꺈 珥덇린??            ResetInGameStats();
+            // The authenticated session was registered while acquiring the runtime lease.
+            int connectedBotCount = _botPlayerManager.GetBots(matchingId).Count;
+            MatchStartGate.RegisterHumanPlayer(matchingId, PlayerId.Value, connectedBotCount);
 
-            // ?몄뀡 ?깅줉 ??寃뚯엫 ??대㉧ ?쒖옉 (?대떦 留ㅼ묶?????理쒖큹 1?뚮쭔)
-            _registerSessionCallback(PlayerId.Value, this);
-            int connectedBotCount = _botPlayerManager.GetBots(msg.MatchingId).Count;
-            MatchStartGate.RegisterHumanPlayer(msg.MatchingId, PlayerId.Value, connectedBotCount);
+            StartGameTimerIfNeeded(matchingId);
 
-            StartGameTimerIfNeeded(msg.MatchingId);
-
-            // 珥덇린 ?꾩튂 濡쒕뱶
+            // Restore the initial position only from the consumed server-issued handoff.
             {
                 await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
                 var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+                if (playerInfo == null)
+                    throw new InvalidOperationException($"PlayerInfo not found for authenticated player {playerId}.");
 
-                if (playerInfo != null)
+                var matchingSpawnCell = Cell.Clone(handoff.SpawnPosition);
+                playerInfo.LastMapId = CurrentMapId;
+                playerInfo.LastMapSubId = CurrentMapSubId;
+                playerInfo.LastCell = Cell.Clone(matchingSpawnCell);
+                playerInfo.ObjectInfo.MapId = CurrentMapId;
+                playerInfo.ObjectInfo.MapSubId = CurrentMapSubId;
+                playerInfo.ObjectInfo.Cell = Cell.Clone(matchingSpawnCell);
+                playerInfo.ObjectInfo.Position = CellToWorldPosition(matchingSpawnCell);
+
+                _lastValidatedPosition = playerInfo.ObjectInfo.Position;
+                _lastValidCell = playerInfo.ObjectInfo.Cell;
+                _lastValidatedRotation = playerInfo.ObjectInfo.Rotation;
+                CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
+                Logger.LogInformation(
+                    "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
+                    PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X,
+                    _lastValidCell?.Y);
+                _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea,
+                    countAsEntry: false);
+                _gameEventLogManager.LogSpawnAssignment(
+                    CurrentMapSubId,
+                    PlayerId.Value,
+                    MatchSpawnData.GetDeterministicSeed(CurrentMapSubId),
+                    MatchSpawnData.GetAnchorIndex(matchingSpawnCell),
+                    matchingSpawnCell.X,
+                    matchingSpawnCell.Y,
+                    CurrentArea.ToString(),
+                    isBot: false);
+                _gameEventLogManager.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea.ToString());
+
+                if (CurrentArea != AreaType.None)
                 {
-                    var matchingSpawnCell = await LoadMatchingSpawnCell(msg.MatchingId, msg.PlayerId);
-                    if (matchingSpawnCell != null)
-                    {
-                        playerInfo.ObjectInfo.Cell = matchingSpawnCell;
-                        playerInfo.ObjectInfo.Position = CellToWorldPosition(matchingSpawnCell);
-                    }
-
-                    _lastValidatedPosition = playerInfo.ObjectInfo.Position;
-                    _lastValidCell = playerInfo.ObjectInfo.Cell;
-                    _lastValidatedRotation = playerInfo.ObjectInfo.Rotation;
-                    // 珥덇린 Area ?ㅼ젙
-                    CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
-                    Logger.LogInformation(
-                        "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
-                        PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X,
-                        _lastValidCell?.Y);
-                    _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea,
-                        countAsEntry: false);
-                    _gameEventLogManager.LogSpawnAssignment(
-                        CurrentMapSubId,
-                        PlayerId.Value,
-                        MatchSpawnData.GetDeterministicSeed(CurrentMapSubId),
-                        MatchSpawnData.GetAnchorIndex(_lastValidCell),
-                        _lastValidCell.X,
-                        _lastValidCell.Y,
-                        CurrentArea.ToString(),
-                        isBot: false);
-                    _gameEventLogManager.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea.ToString());
-
-                    // 珥덇린 Area??Interactable 紐⑸줉 ?꾩넚
-                    if (CurrentArea != AreaType.None)
-                    {
-                        SendInteractableList(CurrentArea);
-                        SendInteractCooldownSnapshot();
-                        SendGroundItemSnapshot(CurrentArea);
-
-                        // 珥덇린 Area?먯꽌???щ낫?二??대깽???몃━嫄?                    _sabotageManager.OnPlayerEnterArea(CurrentMapSubId, CurrentArea);
-                    }
+                    SendInteractableList(CurrentArea);
+                    SendInteractCooldownSnapshot();
+                    SendGroundItemSnapshot(CurrentArea);
                 }
-
-                // ?곌껐 ?깃났 ?묐떟
             }
-
-            using var connectResultPacket = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, PlayerId.Value);
-            var response = new G_TO_C_CONNECT_RESULT
-            {
-                Success = true,
-                ErrorCode = ErrorCode.SUCCESS,
-                Message = "Connected to GameServer"
-            };
-            connectResultPacket.SetBody(MessagePackSerializer.Serialize(response));
-            Send(connectResultPacket);
-            SendMatchStartCountdown(msg.MatchingId);
-
-            Logger.LogInformation("Client connected successfully: PlayerId={L}", PlayerId);
-
+            EnsureConnectionActive();
 
             SendInGameInventoryList();
             SendSummonStoneState();
@@ -159,63 +208,285 @@ public partial class GameClientSession
                 CurrentMapSubId, PlayerId.Value, connectionBoard.GetAllItems(),
                 connectionBoard.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
 
-            // 臾?珥덇린 ?곹깭 ?ㅼ젙 諛??대┛ 臾?紐⑸줉 ?꾩넚
+            // Send the initial door and mission snapshots.
             _doorStateManager.InitializeMatching(CurrentMapSubId, Array.Empty<AreaType>());
             SendDoorStateList();
 
-            // 誘몄뀡 ?뺣낫 ?꾩넚
             // 스웜 모드(M4)는 시간 웨이브 폐쇄를 쓰므로 폐쇄 스냅샷을 복원해야 한다.
             SendAreaClosureStateSnapshot();
             SendAreaStockStateSnapshot();
             SendChecklistInfo();
 
-            // ?ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚 & ???뺣낫 釉뚮줈?쒖틦?ㅽ듃
+            // Send other players and broadcast this player's authoritative snapshot.
             await BroadcastPlayerJoin();
+            EnsureConnectionActive();
+
+            await CommitAdmissionAsync(
+                matchingId,
+                PlayerId.Value,
+                handoff.HumanRoster.Select(entry => entry.PlayerId)
+                    .Append(PlayerId.Value)
+                    .Where(id => id > 0)
+                    .Distinct()
+                    .ToArray());
+            EnsureConnectionActive();
 
             // The standalone submission client is only ready after the full initial snapshot
             // has been sent. Starting the countdown earlier lets bots consume finite room stock
             // while the human client is still loading the match.
-            int expectedBotCount = Config.SWARM_PLAYERS_PER_MATCH - 1;
-            if (connectedBotCount == expectedBotCount || MatchStartGate.IsSoloMapValidationEnabled)
+            int singleHumanBotCount = Config.SWARM_PLAYERS_PER_MATCH - 1;
+            if (connectedBotCount == singleHumanBotCount || MatchStartGate.IsSoloMapValidationEnabled)
             {
-                MatchStartGate.MarkHumanReady(msg.MatchingId, PlayerId.Value);
-                SendMatchStartCountdown(msg.MatchingId);
+                MatchStartGate.MarkHumanReady(matchingId, PlayerId.Value);
             }
+
+            // Authentication succeeds only after every fallible initialization and initial
+            // snapshot step has completed. This prevents success -> failure double responses.
+            SendMatchStartCountdown(matchingId);
+            bool admissionCommitted = _executeMatchRuntime(matchingId, () =>
+            {
+                if (!Token.TryMarkAuthenticated())
+                    throw new OperationCanceledException("Connection closed before authentication commit.");
+                if (!SendConnectResult(true, ErrorCode.SUCCESS, "Connected to GameServer"))
+                    throw new OperationCanceledException("Connection closed before admission response was queued.");
+                Volatile.Write(ref _admissionCompleted, 1);
+            });
+            if (!admissionCommitted)
+                throw new OperationCanceledException("Match became terminal before authentication commit.");
+            Logger.LogInformation("Client connected successfully: PlayerId={PlayerId}", PlayerId);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to handle connect");
 
-            // ?곌껐 ?ㅽ뙣 ?묐떟
-            using var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT);
-            var response = new G_TO_C_CONNECT_RESULT
-            {
-                Success = false,
-                ErrorCode = ErrorCode.FATAL,
-                Message = "?곌껐 泥섎━ 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎"
-            };
-            packet.SetBody(MessagePackSerializer.Serialize(response));
-            Send(packet);
+            // Move the match to Finalizing while this handler still owns its runtime lease.
+            // That prevents another concurrently connecting human from committing a success ACK.
+            ReportAdmissionFailureOnce();
+            MarkServerInitiatedDisconnect();
+            SendConnectResult(false, ErrorCode.FATAL, "게임 서버 연결 처리 중 오류가 발생했습니다",
+                disconnectAfterSend: true);
+        }
+        finally
+        {
+            runtimeOperation?.Dispose();
         }
     }
 
-    private async Task<Cell?> LoadMatchingSpawnCell(long matchingId, long playerId)
+    private void EnsureConnectionActive()
     {
-        try
+        if (Token.IsReleased)
+            throw new OperationCanceledException("Connection closed during game admission.");
+    }
+
+    private async Task CommitAdmissionAsync(
+        long matchingId,
+        long playerId,
+        IReadOnlyCollection<long> expectedHumanPlayerIds)
+    {
+        string admissionStateKey = MatchingHandoffRedisKeys.AdmissionStateKey(matchingId);
+        var admissionState = await CacheHelper.StringGetAsync(admissionStateKey);
+        if (admissionState.IsNullOrEmpty ||
+            !string.Equals(admissionState.ToString(), MatchingHandoffRedisKeys.AdmissionPendingState,
+                StringComparison.Ordinal))
         {
-            string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
-            var raw = await CacheHelper.HashGetAsync(handoffKey, MatchingHandoffRedisKeys.SpawnField(playerId));
-            return raw.IsNullOrEmpty
-                ? null
-                : MessagePackSerializer.Deserialize<Cell>((byte[])raw!);
+            throw new InvalidOperationException(
+                $"Admission is not pending for match {matchingId}: '{admissionState}'.");
         }
-        catch (Exception ex)
+
+        string expectedClaim = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Exception? claimError = null;
+        bool claimRenewed = false;
+        for (int attempt = 0; attempt < 3; attempt++)
         {
-            Logger.LogWarning(ex,
-                "Matching spawn handoff load failed: MatchingId={MatchingId}, PlayerId={PlayerId}",
-                matchingId, playerId);
-            return null;
+            try
+            {
+                claimRenewed = await CacheHelper.StringSetIfEqualsAsync(
+                    MatchingHandoffRedisKeys.ClaimKey(playerId),
+                    expectedClaim,
+                    expectedClaim,
+                    MatchingHandoffRedisKeys.Lifetime);
+            }
+            catch (Exception ex)
+            {
+                claimError = ex;
+                continue;
+            }
+
+            if (!claimRenewed)
+                throw new InvalidOperationException(
+                    $"Matching claim changed before admission for player {playerId} in match {matchingId}.");
+            break;
         }
+
+        if (!claimRenewed)
+        {
+            var claim = await CacheHelper.StringGetAsync(MatchingHandoffRedisKeys.ClaimKey(playerId));
+            if (claim.IsNullOrEmpty || !string.Equals(claim.ToString(), expectedClaim, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Could not renew the matching claim for player {playerId} in match {matchingId}.",
+                    claimError);
+            }
+
+            Logger.LogWarning(
+                claimError,
+                "Matching claim renewal response was lost; exact claim read-back confirmed: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                playerId,
+                matchingId);
+        }
+
+        string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
+        string admittedField = MatchingHandoffRedisKeys.AdmittedPlayerField(playerId);
+        await WriteAdmissionMarkerWithReadBackAsync(
+            handoffKey,
+            admittedField,
+            MatchingHandoffRedisKeys.AdmissionReadyValue,
+            $"player {playerId} admission for match {matchingId}");
+
+        var admittedFields = expectedHumanPlayerIds
+            .Select(MatchingHandoffRedisKeys.AdmittedPlayerField)
+            .Select(field => (StackExchange.Redis.RedisValue)field)
+            .ToArray();
+        var admittedValues = await CacheHelper.HashGetAsync(handoffKey, admittedFields);
+        bool allHumansAdmitted = admittedValues.Length == admittedFields.Length &&
+                                 admittedValues.All(value =>
+                                     !value.IsNullOrEmpty &&
+                                     ((byte[])value!).AsSpan().SequenceEqual(
+                                         [MatchingHandoffRedisKeys.AdmissionReadyValue]));
+        if (!allHumansAdmitted)
+            return;
+
+        await CompleteAdmissionStateAsync(admissionStateKey, matchingId);
+    }
+
+    private async Task CompleteAdmissionStateAsync(string admissionStateKey, long matchingId)
+    {
+        Exception? lastError = null;
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            bool canceledStateObserved = false;
+            try
+            {
+                bool completed = await CacheHelper.StringSetIfEqualsAsync(
+                    admissionStateKey,
+                    MatchingHandoffRedisKeys.AdmissionPendingState,
+                    MatchingHandoffRedisKeys.AdmissionCompletedState,
+                    MatchingHandoffRedisKeys.Lifetime);
+                if (completed)
+                    return;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+            }
+
+            try
+            {
+                var state = await CacheHelper.StringGetAsync(admissionStateKey);
+                if (!state.IsNullOrEmpty &&
+                    string.Equals(state.ToString(), MatchingHandoffRedisKeys.AdmissionCompletedState,
+                        StringComparison.Ordinal))
+                {
+                    if (lastError != null)
+                    {
+                        Logger.LogWarning(
+                            lastError,
+                            "Admission completion response was lost; terminal state read-back confirmed: MatchingId={MatchingId}",
+                            matchingId);
+                    }
+                    return;
+                }
+
+                if (!state.IsNullOrEmpty &&
+                    string.Equals(state.ToString(), MatchingHandoffRedisKeys.AdmissionCanceledState,
+                        StringComparison.Ordinal))
+                {
+                    canceledStateObserved = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                Logger.LogWarning(
+                    ex,
+                    "Admission terminal-state read-back failed: MatchingId={MatchingId}, Attempt={Attempt}",
+                    matchingId,
+                    attempt + 1);
+            }
+
+            if (canceledStateObserved)
+            {
+                throw new InvalidOperationException(
+                    $"Admission timeout canceled match {matchingId} before completion.");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50));
+        }
+
+        throw new InvalidOperationException(
+            $"Could not confirm admission completion for match {matchingId}.",
+            lastError);
+    }
+
+    private async Task WriteAdmissionMarkerWithReadBackAsync(
+        string key,
+        string field,
+        byte value,
+        string description)
+    {
+        Exception? lastError = null;
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                await CacheHelper.HashSetWithExpiryAsync(
+                    key,
+                    field,
+                    [value],
+                    MatchingHandoffRedisKeys.Lifetime);
+                return;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                try
+                {
+                    var marker = await CacheHelper.HashGetAsync(key, field);
+                    if (!marker.IsNullOrEmpty && ((byte[])marker!).AsSpan().SequenceEqual([value]))
+                    {
+                        Logger.LogWarning(
+                            ex,
+                            "Redis write response was lost; read-back confirmed {Description}",
+                            description);
+                        return;
+                    }
+                }
+                catch (Exception readBackError)
+                {
+                    Logger.LogWarning(
+                        readBackError,
+                        "Redis marker read-back failed for {Description}: Attempt={Attempt}",
+                        description,
+                        attempt + 1);
+                }
+            }
+        }
+
+        throw new InvalidOperationException($"Could not confirm {description}.", lastError);
+    }
+
+    private bool SendConnectResult(bool success, ErrorCode errorCode, string message,
+        bool disconnectAfterSend = false)
+    {
+        using var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, PlayerId ?? 0);
+        var response = new G_TO_C_CONNECT_RESULT
+        {
+            Success = success,
+            ErrorCode = errorCode,
+            Message = message
+        };
+        packet.SetBody(MessagePackSerializer.Serialize(response));
+        return disconnectAfterSend ? Token.TrySendAndDisconnect(packet) : Token.TrySend(packet);
     }
     private async Task BroadcastPlayerJoin()
     {
@@ -232,7 +503,7 @@ public partial class GameClientSession
                             s.PlayerId.HasValue)
                 .ToList();
 
-            // 1. ?섏뿉寃?媛숈? Area???ㅻⅨ ?뚮젅?댁뼱???뺣낫 ?꾩넚
+            // Send other players already present in the same area to this client.
             if (sameAreaSessions.Count > 0)
             {
                 var playerInfoList = new List<PlayerInfo>();
@@ -240,7 +511,9 @@ public partial class GameClientSession
                 {
                     await using var playerLock = await PlayerInfo.Lock(RedLock, session.PlayerId!.Value);
                     var playerInfo = await PlayerInfo.Load(CacheHelper, session.PlayerId!.Value);
-                    if (playerInfo == null) continue;
+                    if (playerInfo == null)
+                        throw new InvalidOperationException(
+                            $"PlayerInfo not found for connected player {session.PlayerId.Value}.");
 
                     ApplyLivePlayerInfoSnapshot(session, playerInfo);
                     playerInfoList.Add(playerInfo);
@@ -255,22 +528,22 @@ public partial class GameClientSession
                 }
             }
 
-            // 2. ???뺣낫 濡쒕뱶
+            // Load this player's authoritative snapshot.
             await using var myPlayerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
             var myPlayerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
 
-            if (myPlayerInfo != null)
-            {
-                ApplyLivePlayerInfoSnapshot(this, myPlayerInfo);
+            if (myPlayerInfo == null)
+                throw new InvalidOperationException($"PlayerInfo not found for joining player {PlayerId.Value}.");
 
-                // 3. 媛숈? Area???ㅻⅨ ?뚮젅?댁뼱?ㅼ뿉寃????뺣낫 釉뚮줈?쒖틦?ㅽ듃
-                using var myPacket = PacketMaker.G_TO_C_PLAYER_INFO([myPlayerInfo]);
-                foreach (var session in sameAreaSessions) session.Send(myPacket);
-                Logger.LogInformation("Broadcasted my PlayerInfo (PlayerId={L}) to {Count} players in Area {Area}",
-                    PlayerId, sameAreaSessions.Count, CurrentArea);
-            }
+            ApplyLivePlayerInfoSnapshot(this, myPlayerInfo);
 
-            // 4. #125: 媛숈? Area??遊뉖뱾 ?뺣낫瑜??섏뿉寃??꾩넚 (?ㅼ젣 ?뚮젅?댁뼱 ?숇벑 ?쒓컖??
+            // Broadcast this player's snapshot to other players in the same area.
+            using var myPacket = PacketMaker.G_TO_C_PLAYER_INFO([myPlayerInfo]);
+            foreach (var session in sameAreaSessions) session.Send(myPacket);
+            Logger.LogInformation("Broadcasted my PlayerInfo (PlayerId={L}) to {Count} players in Area {Area}",
+                PlayerId, sameAreaSessions.Count, CurrentArea);
+
+            // Send bots already present in the same area to this client.
             var sameAreaBots = _botPlayerManager.GetBots(CurrentMapSubId)
                 .Where(b => !b.IsEliminated && b.CurrentArea == CurrentArea)
                 .ToList();
@@ -294,10 +567,11 @@ public partial class GameClientSession
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to broadcast player join for PlayerId={L}", PlayerId);
+            throw;
         }
     }
 
-    private static void ApplyLivePlayerInfoSnapshot(GameClientSession session, PlayerInfo playerInfo)
+    private void ApplyLivePlayerInfoSnapshot(GameClientSession session, PlayerInfo playerInfo)
     {
         var cell = session._lastValidCell ?? playerInfo.LastCell ?? playerInfo.ObjectInfo?.Cell;
         var position = session._lastValidatedPosition;
@@ -321,6 +595,12 @@ public partial class GameClientSession
 
         if (position != null)
             playerInfo.ObjectInfo.Position = position;
+
+        _matchRosterManager.UpdatePlayerProfile(
+            session.CurrentMapSubId,
+            playerInfo.PlayerId,
+            playerInfo.Name,
+            playerInfo.WearItemIdList);
     }
 
     private void SendMatchStartCountdown(long matchingId)
@@ -354,7 +634,7 @@ public partial class GameClientSession
     {
         _lastHeartbeatTime = DateTime.UtcNow;
 
-        // ?섑듃鍮꾪듃 ?묐떟 ?꾩넚
+        // Send the heartbeat response.
         using var packet = PacketMaker.G_TO_C_HEART_BEAT(DateTime.UtcNow);
         Send(packet);
 
@@ -362,7 +642,7 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     ?섑듃鍮꾪듃 ??꾩븘??泥댄겕. ??꾩븘?껊릺硫?true 諛섑솚
+    ///     하트비트 타임아웃을 확인한다. 타임아웃이면 true를 반환한다.
     /// </summary>
     public bool IsHeartbeatTimedOut()
     {
@@ -371,7 +651,7 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     媛뺤젣 ?곌껐 ?댁젣
+    ///     Forcibly disconnects the session.
     /// </summary>
     public void ForceDisconnect()
     {
@@ -380,29 +660,76 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     Redis?먯꽌 遊??뺣낫 濡쒕뱶 (留ㅼ묶??理쒖큹 1??.
-    ///     #125: 遊??꾩튂 珥덇린?붿뿉 MapId媛 ?꾩슂?섎?濡??몄옄濡??꾨떖.
+    ///     Redis에서 봇 정보를 로드한다. 매칭별 최초 한 번만 수행한다.
+    ///     봇 위치 초기화에 필요한 MapId를 함께 전달한다.
     /// </summary>
-    private async Task LoadBotsIfNeeded(long matchingId, MapId mapId)
+    private async Task LoadBotsIfNeeded(
+        long matchingId,
+        MapId mapId,
+        int expectedBotCount,
+        IReadOnlyCollection<long> expectedHumanPlayerIds)
     {
+        var initializationLock =
+            MatchInitializationLocks.GetOrAdd(matchingId, static _ => new SemaphoreSlim(1, 1));
+        await initializationLock.WaitAsync();
         try
         {
-            if (_botPlayerManager.HasBots(matchingId)) return;
+            await WaitForMatchingHandoffReadyAsync(matchingId, expectedHumanPlayerIds);
+
+            if (_botPlayerManager.HasBots(matchingId))
+            {
+                int existingBotCount = _botPlayerManager.GetBots(matchingId).Count;
+                if (existingBotCount != expectedBotCount)
+                    throw new InvalidOperationException(
+                        $"Registered bot count mismatch for match {matchingId}: expected {expectedBotCount}, found {existingBotCount}.");
+                return;
+            }
 
             string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
-            var botData = await CacheHelper.HashGetAsync(handoffKey, MatchingHandoffRedisKeys.BotsField);
+            var botData = await CacheHelper.HashGetDeleteFirstAsync(
+                handoffKey,
+                MatchingHandoffRedisKeys.BotsField,
+                "matching_bots",
+                matchingId);
+
             if (botData.IsNullOrEmpty)
-                botData = await CacheHelper.HashGetAsync("matching_bots", matchingId);
+            {
+                if (expectedBotCount != 0)
+                    throw new InvalidOperationException(
+                        $"Missing bot handoff for match {matchingId}: expected {expectedBotCount} bots.");
+                return;
+            }
 
-            if (botData.IsNullOrEmpty) return;
-
-            await CacheHelper.HashDeleteAsync(handoffKey, MatchingHandoffRedisKeys.BotsField);
-            await CacheHelper.HashDeleteAsync("matching_bots", matchingId);
             var botInfoList = MessagePackSerializer.Deserialize<List<BotMatchingInfo>>((byte[])botData!);
+            if (botInfoList == null || botInfoList.Count != expectedBotCount)
+                throw new InvalidOperationException(
+                    $"Bot handoff count mismatch for match {matchingId}: expected {expectedBotCount}, found {botInfoList?.Count ?? 0}.");
+
+            var botPlayerIds = new HashSet<long>();
+            foreach (BotMatchingInfo bot in botInfoList)
+            {
+                if (bot == null ||
+                    bot.PlayerId >= 0 ||
+                    bot.TargetPlayerId == 0 ||
+                    bot.MyJobTitle == JobTitle.NONE ||
+                    bot.TargetJobTitle == JobTitle.NONE ||
+                    !Enum.IsDefined(bot.MyJobTitle) ||
+                    !Enum.IsDefined(bot.TargetJobTitle) ||
+                    bot.SpawnCell == null ||
+                    (bot.SpawnCell.X == 0 && bot.SpawnCell.Y == 0) ||
+                    !botPlayerIds.Add(bot.PlayerId))
+                {
+                    throw new InvalidOperationException(
+                        $"Bot handoff contains an invalid or duplicate entry for match {matchingId}.");
+                }
+            }
+
+            if (expectedBotCount == 0)
+                return;
 
             _botPlayerManager.RegisterBots(matchingId, mapId, botInfoList);
 
-            // 遊뉖룄 泥댁씤 留ㅻ땲? + 誘몄뀡 留ㅻ땲????깅줉 (#26: 遊?遺???뚯닔/寃고빀 ?쒕???
+            // 봇의 마니또 체인과 미션 상태를 매치 로스터에 등록한다.
             foreach (var bot in botInfoList)
             {
                 _matchRosterManager.RegisterEntry(matchingId, new RosterEntry
@@ -413,13 +740,77 @@ public partial class GameClientSession
                     TargetJobTitle = bot.TargetJobTitle
                 });
 
-                // 遊?遺???곹깭 珥덇린?????먭린 吏곸콉 諛쒓껄 ? 湲곗?
+                // 봇의 초기 상태는 서버가 보유한 직업과 타깃 정보에서 복원한다.
             }
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "遊??뺣낫 濡쒕뱶 ?ㅽ뙣: MatchingId={MatchingId}", matchingId);
+            Logger.LogError(ex, "Failed to load bot handoff: MatchingId={MatchingId}", matchingId);
+            throw;
         }
+        finally
+        {
+            initializationLock.Release();
+        }
+    }
+
+    private async Task WaitForMatchingHandoffReadyAsync(
+        long matchingId,
+        IReadOnlyCollection<long> expectedHumanPlayerIds)
+    {
+        TimeSpan retryDelay = TimeSpan.FromMilliseconds(50);
+        int maxAttempts = Math.Max(
+            1,
+            (int)Math.Ceiling(MatchingHandoffRedisKeys.AdmissionTimeout.TotalMilliseconds /
+                              retryDelay.TotalMilliseconds));
+        string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
+        string admissionStateKey = MatchingHandoffRedisKeys.AdmissionStateKey(matchingId);
+
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
+        {
+            var ready = await CacheHelper.HashGetAsync(
+                handoffKey,
+                MatchingHandoffRedisKeys.AdmissionReadyField);
+            if (!ready.IsNullOrEmpty)
+            {
+                byte[] value = (byte[])ready!;
+                if (value.Length == 1 && value[0] == MatchingHandoffRedisKeys.AdmissionReadyValue)
+                {
+                    string expectedClaim = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    foreach (long humanPlayerId in expectedHumanPlayerIds)
+                    {
+                        var claim = await CacheHelper.StringGetAsync(
+                            MatchingHandoffRedisKeys.ClaimKey(humanPlayerId));
+                        if (claim.IsNullOrEmpty || !string.Equals(claim.ToString(), expectedClaim,
+                                StringComparison.Ordinal))
+                        {
+                            throw new InvalidOperationException(
+                                $"Matching claim is not active for player {humanPlayerId} in match {matchingId}.");
+                        }
+                    }
+                    return;
+                }
+                throw new InvalidOperationException(
+                    $"Invalid admission marker for match {matchingId}.");
+            }
+
+            var admissionState = await CacheHelper.StringGetAsync(admissionStateKey);
+            if (!admissionState.IsNullOrEmpty &&
+                string.Equals(
+                    admissionState.ToString(),
+                    MatchingHandoffRedisKeys.AdmissionCanceledState,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"Matching admission was canceled before the handoff became ready for match {matchingId}.");
+            }
+
+            if (attempt + 1 < maxAttempts)
+                await Task.Delay(retryDelay);
+        }
+
+        throw new TimeoutException(
+            $"Matching handoff was not committed for match {matchingId}.");
     }
 
     /// <summary>
@@ -430,10 +821,21 @@ public partial class GameClientSession
     {
         lock (_roundSessionStartLock)
         {
-            _checklistManager.RemoveMatchingState(matchingId);
-            _presenceTracker?.Remove(matchingId);
-            StartChecklistRound(matchingId, 1, broadcast: false);
-            Logger.LogInformation("Continuous session started: MatchingId={MatchingId}", matchingId);
+            if (!InitializedMatchRuntimes.TryAdd(matchingId, 0))
+                return;
+
+            try
+            {
+                _checklistManager.RemoveMatchingState(matchingId);
+                _presenceTracker?.Remove(matchingId);
+                StartChecklistRound(matchingId, 1, broadcast: false);
+                Logger.LogInformation("Continuous session started: MatchingId={MatchingId}", matchingId);
+            }
+            catch
+            {
+                InitializedMatchRuntimes.TryRemove(matchingId, out _);
+                throw;
+            }
         }
     }
 

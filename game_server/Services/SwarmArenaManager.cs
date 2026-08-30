@@ -1263,7 +1263,7 @@ public sealed class SwarmArenaManager
         // 항상 바깥(자기장이 올 방향)에서 태어나 안쪽 앵커로 걸어 들어온다 — 경계 관통 중이면
         // 빨간 띠, 아직 안전한 구역이면 그 구역의 가장 바깥 띠. 저작 앵커는 자기장 모드 밖(리졸버
         // 미주입·null)에서만 쓴다. 오염이 잔상을 토해내는 그림 — 사냥터가 바깥 쪽이라 위험·보상이 겹친다.
-        Vector3f fieldHomeAnchor = null;
+        Vector3f? fieldHomeAnchor = null;
         var fieldSpawn = FieldSpawnCellResolver?.Invoke(state.MatchingId, area);
         if (fieldSpawn != null)
         {

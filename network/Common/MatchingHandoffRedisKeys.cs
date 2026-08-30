@@ -5,10 +5,24 @@ namespace network.common
     public static class MatchingHandoffRedisKeys
     {
         public static readonly TimeSpan Lifetime = TimeSpan.FromMinutes(30);
+        public static readonly TimeSpan AdmissionTimeout = TimeSpan.FromSeconds(45);
+        public static readonly TimeSpan AdmissionClaimLifetime = TimeSpan.FromMinutes(2);
 
         public const string BotsField = "bots";
+        public const string AdmissionReadyField = "admission_ready";
+        public const byte AdmissionReadyValue = 1;
+        public const string AdmissionPendingState = "pending";
+        public const string AdmissionCompletedState = "completed";
+        public const string AdmissionCanceledState = "canceled";
 
         public static string Key(long matchingId) => $"matching:{matchingId}:handoff";
+
+        public static string AdmissionStateKey(long matchingId) =>
+            $"{{user-server-scaling}}:matching:{matchingId}:admission-state";
+
+        public static string AdmittedPlayerField(long playerId) => $"admitted:{playerId}";
+
+        public static string ClaimKey(long playerId) => $"matching_claim:{playerId}";
 
         public static string SpawnField(long playerId) => $"spawn:{playerId}";
     }

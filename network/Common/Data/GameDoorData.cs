@@ -1,9 +1,6 @@
 // ReSharper disable All
 
 #pragma warning disable CS8618 // 생성자를 종료할 때 null을 허용하지 않는 필드에 null이 아닌 값을 포함해야 합니다. null 허용으로 선언해 보세요.
-#pragma warning disable CS8625 // Null 리터럴을 null을 허용하지 않는 참조 형식으로 변환할 수 없습니다.
-#pragma warning disable CS8603 // 가능한 null 참조 반환입니다.
-
 using System.Collections.Generic;
 using network.common.data.helpers;
 using network.common.data.models;
@@ -31,7 +28,7 @@ namespace network.common.data
         /// <summary>
         ///     특정 문 정보 가져오기
         /// </summary>
-        public static DoorInfoData Get(int doorId)
+        public static DoorInfoData? Get(int doorId)
         {
             return _doors.TryGetValue(doorId, out var door) ? door : null;
         }
@@ -80,7 +77,7 @@ namespace network.common.data
         /// <summary>
         ///     특정 셀 위치에 있는 문 가져오기
         /// </summary>
-        public static DoorInfoData GetAtCell(int cellX, int cellY)
+        public static DoorInfoData? GetAtCell(int cellX, int cellY)
         {
             foreach (var door in _doors.Values)
             {
@@ -97,7 +94,7 @@ namespace network.common.data
         /// Finds the door that permits a direct movement transition between two areas.
         /// A transition is valid only near a door assigned to either side of the boundary.
         /// </summary>
-        public static DoorInfoData GetDoorForTransition(
+        public static DoorInfoData? GetDoorForTransition(
             AreaType currentArea,
             AreaType nextArea,
             Cell currentCell,
@@ -106,7 +103,7 @@ namespace network.common.data
             if (currentArea == nextArea || currentArea == AreaType.None || nextArea == AreaType.None)
                 return null;
 
-            DoorInfoData nearestDoor = null;
+            DoorInfoData? nearestDoor = null;
             float nearestDistanceSquared = float.MaxValue;
 
             foreach (var door in _doors.Values)
@@ -161,7 +158,7 @@ namespace network.common.data
         ///     특정 영역의 문 가져오기 (area_type = 해당 문이 속한 "안쪽" 영역)
         ///     is_initially_open=0인 잠금 가능한 문만 반환
         /// </summary>
-        public static DoorInfoData GetBlockingDoor(AreaType areaType)
+        public static DoorInfoData? GetBlockingDoor(AreaType areaType)
         {
             foreach (var door in _doors.Values)
             {

@@ -15,6 +15,10 @@ namespace network.core;
 /// </summary>
 public abstract class SessionBase : IPeer
 {
+    private const string InternalErrorMessage = "요청 처리 중 오류가 발생했습니다";
+    private static readonly MessagePackSerializerOptions ClientMessagePackOptions =
+        MessagePackSerializer.DefaultOptions.WithSecurity(MessagePackSecurity.UntrustedData);
+
     protected readonly ICacheHelper CacheHelper;
     protected readonly ILogger Logger;
     protected readonly IProtocolRouter ProtocolRouter;
@@ -29,7 +33,6 @@ public abstract class SessionBase : IPeer
         IRedLockFactory redLock)
     {
         Token = token;
-        Token.SetPeer(this);
         _sessionLock = new SemaphoreSlim(1);
         Logger = logger;
         CacheHelper = cacheHelper;
@@ -38,6 +41,7 @@ public abstract class SessionBase : IPeer
         ProtocolRouter = new ProtocolRouter();
         // InitializeProtocolHandlers()는 서브클래스 생성자에서 호출
         // (base 생성자 시점에는 서브클래스 필드가 아직 초기화되지 않음)
+        Token.SetPeer(this);
     }
 
     // ReSharper disable once UnusedAutoPropertyAccessor.Global — 서브클래스(GameClientSession, GameSession)에서 사용
@@ -45,32 +49,45 @@ public abstract class SessionBase : IPeer
 
     public virtual async Task OnMessageFromClient(Const<byte[]> buffer)
     {
+        bool lockTaken = false;
         try
         {
             await _sessionLock.WaitAsync();
+            lockTaken = true;
+            if (!Token.IsAcceptingMessages) return;
 
-            using var packet = Packet.Create(buffer);
-            var protocolId = (Protocol)packet.PopProtocolId();
-            long playerId = packet.PopPlayerId();
-            byte[] body = packet.PopBody();
+            if (!TryAcquireMessageScope(out IDisposable? messageScope))
+                return;
+            using (messageScope)
+            {
+                using var packet = Packet.Create(buffer);
+                var protocolId = (Protocol)packet.PopProtocolId();
+                long playerId = packet.PopPlayerId();
+                byte[] body = packet.PopBody();
 
-            if (!ShouldSkipLogging(protocolId))
-                Logger.LogInformation("[Receive] Protocol: {Protocol}, PlayerId: {PlayerId}",
-                    protocolId, playerId);
+                if (!ShouldSkipLogging(protocolId))
+                    Logger.LogInformation("[Receive] Protocol: {Protocol}, PlayerId: {PlayerId}",
+                        protocolId, playerId);
 
-            await ProtocolRouter.RouteAsync(protocolId, body);
+                await ProtocolRouter.RouteAsync(protocolId, body);
 
-            if (!ShouldSkipLogging(protocolId))
-                Logger.LogInformation("[Processed] Protocol: {Protocol} completed", protocolId);
+                if (!ShouldSkipLogging(protocolId))
+                    Logger.LogInformation("[Processed] Protocol: {Protocol} completed", protocolId);
+            }
+        }
+        catch (MessagePackSerializationException ex)
+        {
+            Logger.LogWarning(ex, "Invalid MessagePack payload; disconnecting client");
+            Token.Disconnect();
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error processing client message");
-            SendErrorResponse(ErrorCode.SERVER_INTERNAL_ERROR, ex.Message);
+            SendErrorResponse(ErrorCode.SERVER_INTERNAL_ERROR, InternalErrorMessage);
         }
         finally
         {
-            _sessionLock.Release();
+            if (lockTaken) _sessionLock.Release();
         }
     }
 
@@ -91,9 +108,19 @@ public abstract class SessionBase : IPeer
     /// </summary>
     protected abstract bool ShouldSkipLogging(Protocol protocolId);
 
+    /// <summary>
+    ///     Lets a derived session keep an external lifecycle alive for the complete asynchronous
+    ///     protocol handler. Returning false drops work whose lifecycle is already terminal.
+    /// </summary>
+    protected virtual bool TryAcquireMessageScope(out IDisposable? scope)
+    {
+        scope = null;
+        return true;
+    }
+
     protected static async Task HandleMessage<T>(byte[] body, Func<T, Task> handler) where T : IMessagePackObject
     {
-        var message = MessagePackSerializer.Deserialize<T>(body);
+        var message = MessagePackSerializer.Deserialize<T>(body, ClientMessagePackOptions);
         await handler(message);
     }
 
