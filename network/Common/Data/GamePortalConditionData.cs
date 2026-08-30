@@ -24,17 +24,17 @@ namespace network.common.data
             }
         }
 
-        public static PortalConditionData Get(int id)
+        public static PortalConditionData? Get(int id)
         {
             return _conditions.GetValueOrDefault(id);
         }
 
-        public static PortalConditionData GetByItemId(int itemId)
+        public static PortalConditionData? GetByItemId(int itemId)
         {
             return _conditionsByItemId.GetValueOrDefault(itemId);
         }
 
-        public static PortalConditionData GetByAreaType(AreaType areaType)
+        public static PortalConditionData? GetByAreaType(AreaType areaType)
         {
             return _conditionsByAreaType.GetValueOrDefault(areaType);
         }
@@ -55,7 +55,7 @@ namespace network.common.data
         /// <summary>
         /// 특정 아이템 획득 시 포탈 조건이 충족되는지 확인
         /// </summary>
-        public static bool CheckPortalTrigger(int itemId, out PortalConditionData condition)
+        public static bool CheckPortalTrigger(int itemId, out PortalConditionData? condition)
         {
             condition = GetByItemId(itemId);
             return condition != null;

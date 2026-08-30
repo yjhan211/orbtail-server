@@ -39,13 +39,30 @@ public partial class GameClientSession
     private Task HandleRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        return HandleSwarmRngCollectStart(msg);
+
+        Task result = Task.CompletedTask;
+        bool executed = _executeMatchRuntime(
+            CurrentMapSubId,
+            () => result = HandleSwarmRngCollectStart(msg));
+        if (!executed)
+            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+        return result;
     }
 
     private Task HandleRngCollectFinish(C_TO_G_RNG_COLLECT_FINISH msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        return HandleSwarmRngCollectFinish(msg);
+
+        Task result = Task.CompletedTask;
+        bool executed = _executeMatchRuntime(
+            CurrentMapSubId,
+            () => result = HandleSwarmRngCollectFinish(msg));
+        if (!executed)
+        {
+            _pendingFinish.Remove(msg.InteractId);
+            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+        }
+        return result;
     }
 
     /// <summary>
@@ -80,7 +97,7 @@ public partial class GameClientSession
 
     private Task HandleSwarmRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
-        if (IsEliminated)
+        if (IsEliminated || IsGameEnded)
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
             return Task.CompletedTask;
@@ -139,6 +156,9 @@ public partial class GameClientSession
 
     private Task HandleSwarmRngCollectFinish(C_TO_G_RNG_COLLECT_FINISH msg)
     {
+        if (!PlayerId.HasValue)
+            return Task.CompletedTask;
+
         if (msg.EncounterCheckOnly)
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
@@ -146,7 +166,7 @@ public partial class GameClientSession
         }
 
         // 탈락 후 도착한 FINISH가 소환에 성공하면 드랍된 인벤토리와 상태가 꼬인다
-        if (IsEliminated)
+        if (IsEliminated || IsGameEnded)
         {
             _pendingFinish.Remove(msg.InteractId);
             SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);

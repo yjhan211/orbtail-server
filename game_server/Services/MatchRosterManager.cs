@@ -55,7 +55,7 @@ public class MatchRosterManager
             }
             else
             {
-                _logger.LogDebug("?대? ?깅줉??留곹겕: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId,
+                _logger.LogDebug("Roster link already registered: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId,
                     link.PlayerId);
             }
 
@@ -75,6 +75,33 @@ public class MatchRosterManager
     {
         if (!_states.TryGetValue(matchingId, out var state)) return null;
         return state.Entries.GetValueOrDefault(playerId);
+    }
+
+    public void UpdatePlayerProfile(
+        long matchingId,
+        long playerId,
+        string? name,
+        IEnumerable<int>? wearItemIds)
+    {
+        if (!_states.TryGetValue(matchingId, out var state) ||
+            !state.Entries.TryGetValue(playerId, out var entry))
+            return;
+
+        lock (entry)
+        {
+            entry.Name = name ?? string.Empty;
+            entry.WearItemIdList = wearItemIds?.ToList() ?? [];
+        }
+    }
+
+    public MatchPlayerProfile? GetPlayerProfile(long matchingId, long playerId)
+    {
+        if (!_states.TryGetValue(matchingId, out var state) ||
+            !state.Entries.TryGetValue(playerId, out var entry))
+            return null;
+
+        lock (entry)
+            return new MatchPlayerProfile(entry.Name, entry.WearItemIdList.ToArray());
     }
 
     public RosterEntry? FindWatcherOf(long matchingId, long playerId)
@@ -241,6 +268,8 @@ public sealed record PlayerEliminationTransition(
     bool Applied,
     Dictionary<long, PlayerMatchStatus> AffectedPlayers);
 
+public sealed record MatchPlayerProfile(string Name, IReadOnlyList<int> WearItemIdList);
+
 public class MatchRosterState
 {
     public object SyncRoot { get; } = new();
@@ -264,4 +293,6 @@ public class RosterEntry
     public bool IsOvertimeElimination { get; set; }
     public int EliminationRank { get; set; }
     public int FinalOrbTier { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public List<int> WearItemIdList { get; set; } = [];
 }

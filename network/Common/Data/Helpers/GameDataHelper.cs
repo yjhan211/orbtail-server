@@ -20,7 +20,7 @@ namespace network.common.data.helpers
         private static string _basePath = "";
         private static bool _initialized;
 
-        private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager> validate)[]
+        private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager>? validate)[]
             _standardDataDefinitions =
             {
                 // 중앙 로컬라이징 테이블 — 다른 데이터가 {prefix}_key로 참조하므로 가장 먼저 초기화

@@ -3,24 +3,35 @@ using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using network.hosting;
+using network.interfaces;
 using Prometheus;
 
 namespace user_server;
 
-public class HealthCheckService(ILogger<HealthCheckService> logger, IConfiguration configuration)
+public class HealthCheckService(
+    ILogger<HealthCheckService> logger,
+    RedisConfiguration redisConfiguration,
+    ServerReadinessState readinessState)
     : IHostedService
 {
-    private readonly string _redisEndpoints = configuration["redisEndPoints"] ?? "localhost:6379";
     private WebApplication? _app;
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         var builder = WebApplication.CreateBuilder();
 
         builder.Services.AddHealthChecks()
-            .AddRedis(_redisEndpoints, "redis", tags: ["ready"]);
+            .AddRedis(redisConfiguration.ConnectionString, "redis", tags: ["ready"])
+            .AddCheck(
+                "server",
+                () => readinessState.IsReady
+                    ? HealthCheckResult.Healthy()
+                    : HealthCheckResult.Unhealthy(readinessState.Status),
+                tags: ["ready"]);
 
         builder.WebHost.UseUrls("http://*:8080");
 
@@ -35,8 +46,7 @@ public class HealthCheckService(ILogger<HealthCheckService> logger, IConfigurati
 
         logger.LogInformation("Health check service starting on port 8080");
 
-        _ = _app.RunAsync(cancellationToken);
-        return Task.CompletedTask;
+        await _app.StartAsync(cancellationToken);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)

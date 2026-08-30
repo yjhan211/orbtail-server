@@ -98,7 +98,9 @@ namespace network.common.data.models
         [Key("mapSubId")] public long LastMapSubId { get; set; }
 
         [Key("lastCell")] public Cell LastCell { get; set; }
-        [IgnoreMember] public bool IsNew { get; set; }
+        // 신규 계정 초기화가 완전히 저장될 때까지 true로 유지한다.
+        // 서버가 중간 실패 후 재시도할 수 있어야 하므로 Redis 직렬화 대상이다.
+        [Key("isNew")] public bool IsNew { get; set; }
 
         public string GetLockKey()
         {

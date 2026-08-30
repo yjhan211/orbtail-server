@@ -14,7 +14,7 @@ public partial class ExploreTargetInfo
 
     public static async Task<IRedLock> Lock(IRedLockFactory redLock, long exploreTargetUid)
     {
-        return await redLock.CreateLockAsync(GetLockKey(exploreTargetUid), Config.LOCK_TTL);
+        return await redLock.AcquireLockAsync(GetLockKey(exploreTargetUid), Config.LOCK_TTL);
     }
 
     public async Task Save(ICacheHelper cacheHelper)

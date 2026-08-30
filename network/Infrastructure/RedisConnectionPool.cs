@@ -13,49 +13,94 @@ public class RedisConnectionPool(ILogger<RedisConnectionPool> logger) : IRedisCo
     private readonly ConcurrentDictionary<int, IDatabase> _databases = new();
     private readonly object _lock = new();
     private Lazy<ConnectionMultiplexer>? _lazyConnection;
+    private RedLockFactoryAdapter? _redLockFactory;
     private ConfigurationOptions? _options;
+    private bool _disposed;
 
     public void Initialize(string connectionString)
     {
-        _options = ConfigurationOptions.Parse(connectionString);
-        _options.AbortOnConnectFail = false;
-        _options.ConnectTimeout = 5000;
-        _options.SyncTimeout = 5000;
-        _options.ConnectRetry = 3;
+        Initialize(RedisConfigurationParser.ParseConnectionString(connectionString));
+    }
 
-        _lazyConnection = new Lazy<ConnectionMultiplexer>(() =>
+    public void Initialize(RedisConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        lock (_lock)
         {
-            try
+            ThrowIfDisposed();
+            if (_lazyConnection != null)
             {
-                return ConnectionMultiplexer.Connect(_options);
+                throw new InvalidOperationException("Redis connection is already initialized.");
             }
-            catch (Exception ex)
+
+            _options = configuration.CreateClientOptions();
+            _lazyConnection = new Lazy<ConnectionMultiplexer>(() =>
             {
-                throw new InvalidOperationException($"Failed to connect to Redis: {ex.Message}", ex);
-            }
-        }, LazyThreadSafetyMode.ExecutionAndPublication);
+                try
+                {
+                    var connection = ConnectionMultiplexer.Connect(_options);
+                    try
+                    {
+                        RejectUnsupportedClusterTopology(connection);
+                        return connection;
+                    }
+                    catch
+                    {
+                        connection.Dispose();
+                        throw;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException("Failed to connect to Redis.", ex);
+                }
+            }, LazyThreadSafetyMode.ExecutionAndPublication);
+        }
     }
 
     public void Dispose()
     {
+        RedLockFactoryAdapter? redLockFactory;
+        ConnectionMultiplexer? connection = null;
+
         lock (_lock)
         {
+            if (_disposed) return;
+            _disposed = true;
+
+            redLockFactory = _redLockFactory;
+            _redLockFactory = null;
             if (_lazyConnection is { IsValueCreated: true })
-                _lazyConnection.Value.Dispose();
+                connection = _lazyConnection.Value;
+
+            _lazyConnection = null;
+            _options = null;
+            _databases.Clear();
         }
+
+        redLockFactory?.Dispose();
+        connection?.Dispose();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
     }
 
     public IRedLockFactory GetRedLockFactory()
     {
-        var connection = GetConnection();
-        var endpoints = connection
-            .GetEndPoints()
-            .Select(endpoint => new RedLockEndPoint { EndPoint = endpoint })
-            .ToList();
+        lock (_lock)
+        {
+            ThrowIfDisposed();
+            if (_redLockFactory != null) return _redLockFactory;
 
-        // 여기서는 직접 RedLockFactory를 반환하지만,
-        // 실제 구현에서는 IRedLockFactory를 구현한 어댑터 클래스를 반환해야 함
-        return new RedLockFactoryAdapter(RedLockFactory.Create(endpoints));
+            var multiplexer = new RedLockMultiplexer(GetConnection());
+            _redLockFactory = new RedLockFactoryAdapter(
+                RedLockFactory.Create(new List<RedLockMultiplexer> { multiplexer }));
+            return _redLockFactory;
+        }
     }
 
     public async Task<T> ExecuteWithRetryAsync<T>(Func<IDatabase, Task<T>> action, int db = -1, int retryCount = 3)
@@ -101,29 +146,93 @@ public class RedisConnectionPool(ILogger<RedisConnectionPool> logger) : IRedisCo
 
     private ConnectionMultiplexer GetConnection()
     {
-        if (_lazyConnection == null) throw new InvalidOperationException("Redis connection is not initialized.");
-        return _lazyConnection.Value;
+        lock (_lock)
+        {
+            ThrowIfDisposed();
+            if (_lazyConnection == null) throw new InvalidOperationException("Redis connection is not initialized.");
+            return _lazyConnection.Value;
+        }
     }
 
     private IDatabase GetDatabase(int db = -1)
     {
-        return _databases.GetOrAdd(db, dbNum => _lazyConnection!.Value.GetDatabase(dbNum));
+        return _databases.GetOrAdd(db, dbNum => GetConnection().GetDatabase(dbNum));
     }
 
     private Task<IDatabase> GetDatabaseAsync(int db = -1)
     {
         return Task.FromResult(GetDatabase(db));
     }
-}
 
-// RedLockFactory의 어댑터 클래스
-public class RedLockFactoryAdapter(RedLockFactory redLockFactory) : IRedLockFactory
-{
-    // CreateLockAsync 구현
-    public Task<IRedLock> CreateLockAsync(string resource, TimeSpan expiryTime)
+    private static void RejectUnsupportedClusterTopology(ConnectionMultiplexer connection)
     {
-        return redLockFactory.CreateLockAsync(resource, expiryTime);
+        bool hasClusterNode = connection.GetEndPoints(configuredOnly: false)
+            .Select(endpoint => connection.GetServer(endpoint))
+            .Any(server => server.ServerType == ServerType.Cluster);
+        if (hasClusterNode)
+        {
+            throw new InvalidOperationException(
+                "Redis Cluster mode is not supported because account, matching claim, and handoff " +
+                "transactions use multi-key Lua scripts. Use standalone Redis or a managed " +
+                "cluster-mode-disabled deployment.");
+        }
     }
 
-    // 필요한 경우 다른 메서드들도 구현
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+    }
+}
+
+public sealed class RedLockFactoryAdapter(RedLockFactory redLockFactory) : IRedLockFactory
+{
+    private static readonly TimeSpan LockRetryInterval = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan LockWaitTime = TimeSpan.FromSeconds(3);
+    private int _disposed;
+
+    public async Task<IRedLock> AcquireLockAsync(string resource, TimeSpan expiryTime)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+        IRedLock redLock = await redLockFactory.CreateLockAsync(
+            resource,
+            expiryTime,
+            LockWaitTime,
+            LockRetryInterval);
+        if (redLock.IsAcquired) return redLock;
+
+        await redLock.DisposeAsync();
+        throw new RedisLockNotAcquiredException(resource);
+    }
+
+    public async Task ExecuteWithLockAsync(string resource, TimeSpan expiryTime, Func<Task> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+
+        await using IRedLock redLock = await AcquireLockAsync(resource, expiryTime);
+        await action();
+    }
+
+    public async Task<T> ExecuteWithLockAsync<T>(
+        string resource,
+        TimeSpan expiryTime,
+        Func<Task<T>> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+
+        await using IRedLock redLock = await AcquireLockAsync(resource, expiryTime);
+        return await action();
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            redLockFactory.Dispose();
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
+    }
 }

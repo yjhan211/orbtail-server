@@ -183,6 +183,10 @@ public sealed class SwarmArenaManager
     // 추격 대상 유지 창 (#229): 이 시간이 지나야 최근접을 다시 고른다.
     private const double SupplyTargetHoldSeconds = 1d;
 
+    // 유휴 순찰 (#269-B): 주인 잃은 몹의 앵커 주변 배회 — 반경·각속도(호속 ≈ 1.1/s).
+    private const float SupplyIdlePatrolRadius = 2.2f;
+    private const double SupplyIdlePatrolAngularSpeed = 0.5d;
+
     // 전역 활성 잔상 상한 (#229 4단계-보정): 고정 48은 개전 3초에 물려 밀도 램프를 통째로
     // 가렸다. 점유 구역 수 × 페이즈 목표로 풀되 서버 안전 천장을 둔다.
     // 클라 부하는 스냅샷을 구역별로만 보내는 것으로 분리했다(BroadcastMonsterMinimapSnapshot) —
@@ -1259,7 +1263,7 @@ public sealed class SwarmArenaManager
         // 항상 바깥(자기장이 올 방향)에서 태어나 안쪽 앵커로 걸어 들어온다 — 경계 관통 중이면
         // 빨간 띠, 아직 안전한 구역이면 그 구역의 가장 바깥 띠. 저작 앵커는 자기장 모드 밖(리졸버
         // 미주입·null)에서만 쓴다. 오염이 잔상을 토해내는 그림 — 사냥터가 바깥 쪽이라 위험·보상이 겹친다.
-        Vector3f fieldHomeAnchor = null;
+        Vector3f? fieldHomeAnchor = null;
         var fieldSpawn = FieldSpawnCellResolver?.Invoke(state.MatchingId, area);
         if (fieldSpawn != null)
         {
@@ -1911,6 +1915,15 @@ public sealed class SwarmArenaManager
                 position = ClampToAreaWalkable(
                     BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Spawn),
                     packAnchor, area);
+                // 도착지도 리졸버의 안쪽 띠 셀로 (#269-A, 2026-08-28 유저 승인): 캠프 앵커
+                // 산개점은 복도처럼 좁은 구역에서 스폰 띠와 몇 셀 차이라 "즉시 젠 후 제자리"로
+                // 읽혔다 — 구역을 최대로 가로질러 걸어 들어오게 한다. 산개 지터는 유지.
+                var fieldAnchorWorld = BotPlayerManager.CellToWorldPosition(
+                    Config.SWARM_MATCH_MAP, fieldSpawn.Value.Anchor);
+                destination = ClampToAreaWalkable(new Vector3f(
+                    fieldAnchorWorld.X + MathF.Cos(angle) * SupplyScatterRadius,
+                    fieldAnchorWorld.Y + MathF.Sin(angle) * SupplyScatterRadius,
+                    0f), fieldAnchorWorld, area);
             }
             else if (infiltrate &&
                      TryPlanInfiltration(state, area, destination, isAreaBlocked, out var origin,
@@ -2419,6 +2432,12 @@ public sealed class SwarmArenaManager
             monster.AnchorY = monster.Position.Y;
         }
 
+        // 쫓아간 구역이 새 배정 구역이 된다 (2026-08-16 결정의 미구현분, 2026-08-28 수리):
+        // HomeArea가 옛 방에 남으면 그 방이 비는 순간 좌초 회수가 추격 도착분까지 걷어가
+        // "문을 넘어 따라온 몹이 몇 초 뒤 증발"했다. 공급 회계도 주석대로 함께 옮겨간다.
+        if (monster.MarchIsPursuit)
+            monster.HomeArea = monster.Area;
+
         monster.Infiltrating = false;
         monster.MarchIsPursuit = false;
         monster.MarchWaypoints.Clear();
@@ -2518,8 +2537,29 @@ public sealed class SwarmArenaManager
         // 실제로는 한 사람에게 몰렸다.
         bool found = false;
         var target = default(SpotArenaPlayerSpatial);
+
+        // 근접 난입 (2026-08-28 플레이 제보 "복도 몹들이 나를 무시하고 대기"): 인당 할당
+        // 원칙(주인만 쫓는다)은 유지하되, 남이라도 어그로 반경 안까지 들어오면 그 순간의
+        // 표적이 된다 — 좁은 복도에서 남의 몫 몹 무리가 코앞 사람을 무시하고 서 있는
+        // "장식 몹"을 없앤다. 반경을 벗어나면 다음 표적 판정에서 주인 추격으로 돌아간다.
+        float intruderNearestSquared = CampAggroRadius * CampAggroRadius;
+        for (int index = 0; index < participants.Count; index++)
+        {
+            var participant = participants[index];
+            if (participant.Area != monster.Area)
+                continue;
+            float intruderDx = participant.Position.X - monster.Position.X;
+            float intruderDy = participant.Position.Y - monster.Position.Y;
+            float intruderSquared = intruderDx * intruderDx + intruderDy * intruderDy;
+            if (intruderSquared >= intruderNearestSquared)
+                continue;
+            intruderNearestSquared = intruderSquared;
+            target = participant;
+            found = true;
+        }
+
         long chaseId = monster.OwnerPlayerId != 0 ? monster.OwnerPlayerId : monster.ChaseTargetPlayerId;
-        for (int index = 0; index < participants.Count && chaseId != 0; index++)
+        for (int index = 0; index < participants.Count && !found && chaseId != 0; index++)
         {
             var participant = participants[index];
             if (participant.Area != monster.Area || participant.PlayerId != chaseId)
@@ -2533,6 +2573,7 @@ public sealed class SwarmArenaManager
         // 적은 쪽으로 넘겨야 한 사람에게 두 몫이 쌓이지 않는다.
         if (!found && monster.OwnerPlayerId != 0)
         {
+            long departedOwnerId = monster.OwnerPlayerId;
             monster.OwnerPlayerId = 0;
             long reassigned = ClaimLeastLoadedOwner(state, monster.Area, participants, isOrbless);
             if (reassigned != 0)
@@ -2546,6 +2587,15 @@ public sealed class SwarmArenaManager
                     found = true;
                     break;
                 }
+            }
+            else if (monster.Aggro)
+            {
+                // 문 너머 추격 수리 (2026-08-28 플레이 제보 "몹이 문 너머로 안 따라온다"):
+                // 주인 추격은 ChaseTargetPlayerId에 남지 않아 아래 TryStartCrossAreaPursuit가
+                // 평시 주인 몹에게 한 번도 발동하지 않았고, 구역이 비면 6초 뒤 좌초 회수가
+                // 몹을 통째로 걷어갔다. 구역이 통째로 비었을 때만 떠난 주인을 추격 표적으로
+                // 승격한다 — 남은 사람이 있으면 재배정(구역 몹은 구역 사람 몫)이 우선이다.
+                monster.ChaseTargetPlayerId = departedOwnerId;
             }
         }
 
@@ -2581,16 +2631,28 @@ public sealed class SwarmArenaManager
 
         if (!found)
         {
-            // 구역에 아무도 없다 — 앵커로 물러선다. 다시 잠들지는 않는다 (#229 침투):
-            // 사냥하러 걸어 들어온 개체가 잠들면 플레이어가 2.5m까지 붙어 깨워야 하고,
-            // 그러면 마주치는 수가 다시 접근 반경에 갇힌다.
+            // 구역에 아무도 없다 — 앵커로 물러서되 서 있지 않는다 (#269-B, 2026-08-28 유저
+            // 승인 "정지 대신 순찰"): 앵커 주변을 시간 위상 원운동으로 배회한다 — 주인을 잃고
+            // 얼어붙은 몹이 "장식"으로 읽히던 것을 없애고, 지나는 사람 눈에 살아 있는 위협으로
+            // 남는다. 다시 잠들지는 않는다 (#229 침투).
             var anchor = new Vector3f(monster.AnchorX, monster.AnchorY, 0f);
             float homeDx = anchor.X - monster.Position.X;
             float homeDy = anchor.Y - monster.Position.Y;
             if (homeDx * homeDx + homeDy * homeDy <=
-                CampReturnArriveDistance * CampReturnArriveDistance)
+                SupplyIdlePatrolRadius * SupplyIdlePatrolRadius * 4f)
             {
                 monster.ChaseTargetPlayerId = 0;
+                double patrolSeconds = (now - monster.SpawnedAtUtc).TotalSeconds;
+                float patrolAngle = monster.ScatterAngle +
+                                    (float)(patrolSeconds * SupplyIdlePatrolAngularSpeed);
+                var patrolPoint = new Vector3f(
+                    anchor.X + MathF.Cos(patrolAngle) * SupplyIdlePatrolRadius,
+                    anchor.Y + MathF.Sin(patrolAngle) * SupplyIdlePatrolRadius, 0f);
+                if (!GameMapData.IsMoveablePosition(
+                        Config.SWARM_MATCH_MAP,
+                        MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, patrolPoint)))
+                    patrolPoint = anchor;
+                MoveTowardPlayer(monster, patrolPoint, deltaSeconds);
                 return;
             }
 

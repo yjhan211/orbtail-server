@@ -46,12 +46,14 @@ namespace network.common.data.models
         [Key("myJobTitle")] public JobTitle MyJobTitle { get; set; }
         [Key("playerRoster")] public List<PlayerInfo> PlayerRoster { get; set; } = new();
         [Key("activeBuffIds")] public List<int> ActiveBuffIds { get; set; } = new();
+        [Key("gameHandoffTicket")] public string GameHandoffTicket { get; set; }
     }
 
     [MessagePackObject]
     public class U_TO_C_MATCHING_FAILED : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
+        [Key("matchingId")] public long MatchingId { get; set; }
     }
 
     /// <summary>

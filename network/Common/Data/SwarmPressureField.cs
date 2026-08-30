@@ -18,7 +18,7 @@ namespace network.common.data
     public static class SwarmPressureField
     {
         private static readonly object InitLock = new object();
-        private static Dictionary<(int X, int Y), int> _distanceByCell;
+        private static Dictionary<(int X, int Y), int>? _distanceByCell;
         private static Dictionary<AreaType, int> _minDistanceByArea = new Dictionary<AreaType, int>();
         private static int _maxDistance;
         private static float _centerX;
@@ -48,7 +48,7 @@ namespace network.common.data
         public static int GetDistance(Cell cell)
         {
             EnsureInitialized();
-            return _distanceByCell.GetValueOrDefault((cell.X, cell.Y), _maxDistance);
+            return _distanceByCell?.GetValueOrDefault((cell.X, cell.Y), _maxDistance) ?? _maxDistance;
         }
 
         /// <summary>
@@ -84,13 +84,17 @@ namespace network.common.data
             return _minDistanceByArea.Keys;
         }
 
+        private static readonly Dictionary<(int X, int Y), int> EmptyDistances = new Dictionary<(int X, int Y), int>();
+
         /// <summary>셀별 거리 원본 — 클라 경계 렌더가 유효 마스크·미니맵 베이크로 굽는다.</summary>
         public static IReadOnlyDictionary<(int X, int Y), int> DistancesByCell
         {
             get
             {
                 EnsureInitialized();
-                return _distanceByCell;
+                // 맵 CSV가 아직 로드되기 전이면 초기화가 미뤄져 null이다 — 빈 표를 돌려
+                // 호출자의 NRE를 막는다 (다음 접근에서 재시도된다).
+                return _distanceByCell ?? EmptyDistances;
             }
         }
 

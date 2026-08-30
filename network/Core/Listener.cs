@@ -1,87 +1,147 @@
 using System.Net;
 using System.Net.Sockets;
+using Microsoft.Extensions.Logging;
 using network.common;
 
 namespace network.core;
 
-public class Listener
+public sealed class Listener(ILogger? logger = null)
 {
     public delegate void NewClientHandler(Socket clientSocket, object? token);
 
-    private readonly SocketAsyncEventArgs _acceptArgs = new();
-    private readonly CancellationTokenSource _cts = new();
-    private AutoResetEvent? _flowControlEvent;
+    private readonly object _lifecycleLock = new();
+    private CancellationTokenSource? _cts;
     private Socket? _listenSocket;
+    private Task? _listenTask;
+
     public event NewClientHandler? ClientConnected;
 
     public void Start(IPAddress address, short port)
     {
-        IPEndPoint endPoint = new(address, port);
-        _listenSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-        _listenSocket.Bind(endPoint);
-        _listenSocket.Listen(Config.BACK_LOG);
-
-        _acceptArgs.Completed += OnAcceptCompleted;
-
-        var listenThread = new Thread(DoListen) { IsBackground = true };
-        listenThread.Start();
-    }
-
-    public void Stop()
-    {
-        _cts.Cancel();
-        _listenSocket?.Close();
-        _flowControlEvent?.Set();
-    }
-
-    private void DoListen()
-    {
-        if (_listenSocket == null) throw new Exception("[Listener/DoListen] ListenSocket is null");
-
-        _flowControlEvent = new AutoResetEvent(false);
-        while (!_cts.IsCancellationRequested)
+        lock (_lifecycleLock)
         {
-            _acceptArgs.AcceptSocket = null;
+            if (_listenTask is { IsCompleted: false })
+                throw new InvalidOperationException("Listener is already running.");
+
+            var listenSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            try
+            {
+                listenSocket.Bind(new IPEndPoint(address, port));
+                listenSocket.Listen(Config.BACK_LOG);
+            }
+            catch
+            {
+                listenSocket.Dispose();
+                throw;
+            }
+
+            _cts?.Dispose();
+            _cts = new CancellationTokenSource();
+            _listenSocket = listenSocket;
+            _listenTask = AcceptLoopAsync(listenSocket, _cts.Token);
+        }
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        Task? listenTask;
+        CancellationTokenSource? cts;
+        Socket? listenSocket;
+
+        lock (_lifecycleLock)
+        {
+            listenTask = _listenTask;
+            cts = _cts;
+            listenSocket = _listenSocket;
+            _listenSocket = null;
+        }
+
+        if (listenTask == null) return;
+
+        try
+        {
+            cts?.Cancel();
+            listenSocket?.Dispose();
+            await listenTask.WaitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cts?.IsCancellationRequested == true &&
+                                                 !cancellationToken.IsCancellationRequested)
+        {
+            // Listener cancellation is the normal stop path.
+        }
+        catch (ObjectDisposedException) when (cts?.IsCancellationRequested == true)
+        {
+            // Closing the listen socket interrupts AcceptAsync.
+        }
+        finally
+        {
+            lock (_lifecycleLock)
+            {
+                if (ReferenceEquals(_listenTask, listenTask))
+                {
+                    _listenTask = null;
+                    _cts = null;
+                }
+            }
+
+            cts?.Dispose();
+        }
+    }
+
+    private async Task AcceptLoopAsync(Socket listenSocket, CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            Socket clientSocket;
+            try
+            {
+                clientSocket = await listenSocket.AcceptAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (ObjectDisposedException) when (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (SocketException ex) when (cancellationToken.IsCancellationRequested)
+            {
+                logger?.LogDebug(ex, "Listener stopped while awaiting a connection");
+                break;
+            }
+            catch (Exception ex)
+            {
+                logger?.LogError(ex, "Failed to accept a client connection");
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                continue;
+            }
+
+            var handler = ClientConnected;
+            if (handler == null)
+            {
+                logger?.LogWarning("Accepted a client connection without a registered handler");
+                clientSocket.Dispose();
+                continue;
+            }
 
             try
             {
-                if (!_listenSocket.AcceptAsync(_acceptArgs))
-                {
-                    OnAcceptCompleted(null, _acceptArgs);
-                }
-
-                _flowControlEvent.WaitOne();
+                handler(clientSocket, null);
             }
-            catch (ObjectDisposedException)
+            catch (Exception ex)
             {
-                // Stop()으로 소켓이 닫힌 경우 — 정상 종료
-                break;
+                logger?.LogError(ex, "Client connection initialization failed");
+                clientSocket.Dispose();
             }
         }
-    }
-
-    private void OnAcceptCompleted(object? sender, SocketAsyncEventArgs socketEventArgs)
-    {
-        if (_flowControlEvent == null) throw new Exception("[Listener/OnAcceptCompleted] FlowControlEvent is null");
-
-        if (socketEventArgs.SocketError != SocketError.Success)
-        {
-            // 종료 중이면 예외 대신 무시
-            if (_cts.IsCancellationRequested)
-            {
-                _flowControlEvent.Set();
-                return;
-            }
-
-            throw new Exception($"[Listener/OnAcceptCompleted] SocketError:{socketEventArgs.SocketError}");
-        }
-
-        if (socketEventArgs.AcceptSocket == null)
-            throw new Exception("[Listener/OnAcceptCompleted] AcceptSocket is null");
-
-        if (ClientConnected == null) throw new Exception("[Listener/OnAcceptCompleted] ClientConnected is null");
-
-        ClientConnected(socketEventArgs.AcceptSocket, null);
-        _flowControlEvent.Set();
     }
 }

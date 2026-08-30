@@ -95,7 +95,7 @@ public partial class GameClientSession
     /// </summary>
     public void SendTargetLocation()
     {
-        if (!PlayerId.HasValue || IsEliminated || TargetPlayerId == 0) return;
+        if (!PlayerId.HasValue || IsEliminated || IsGameEnded || TargetPlayerId == 0) return;
         // 1인 매칭으로 본인이 본인을 타겟으로 가지는 케이스 방어
         if (TargetPlayerId == PlayerId.Value) return;
 

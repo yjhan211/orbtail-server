@@ -14,7 +14,7 @@ namespace network.common.data
     {
         private static readonly Dictionary<(int Area, int CampIndex), Cell> _anchors = new();
 
-        public static void Initialize(List<CsvRow> rows)
+        public static void Initialize(List<CsvRow>? rows)
         {
             _anchors.Clear();
             if (rows == null) return;
@@ -30,7 +30,7 @@ namespace network.common.data
         }
 
         /// <summary>커스텀 앵커 셀. 지정이 없으면 null — 호출부는 절차 배치로 폴백한다.</summary>
-        public static Cell GetAnchor(AreaType area, int campIndex) =>
+        public static Cell? GetAnchor(AreaType area, int campIndex) =>
             _anchors.TryGetValue(((int)area, campIndex), out var cell) ? cell : null;
 
         /// <summary>

@@ -20,7 +20,7 @@ public partial class GameClientSession
     /// <summary>
     ///     플레이어 탈락 처리 + 체인 단절 브로드캐스트
     /// </summary>
-    private Task ProcessElimination(long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
+    private void ProcessElimination(long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
         bool deferGameOver = false, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false, int forcedRank = 0)
     {
@@ -39,7 +39,7 @@ public partial class GameClientSession
             Logger.LogDebug(
                 "Duplicate elimination ignored: MatchingId={MatchingId}, PlayerId={PlayerId}, Reason={Reason}",
                 CurrentMapSubId, eliminatedPlayerId, reason);
-            return Task.CompletedTask;
+            return;
         }
 
         // Keep the live session state authoritative as soon as elimination is accepted.
@@ -148,7 +148,6 @@ public partial class GameClientSession
             SendGameResult(allSessions, winnerId ?? 0, false, CurrentMapSubId);
         }
 
-        return Task.CompletedTask;
     }
 
     internal void EliminateForSettlement(
@@ -157,7 +156,7 @@ public partial class GameClientSession
         bool isOvertimeElimination,
         int forcedRank)
     {
-        _ = ProcessElimination(
+        ProcessElimination(
             eliminatedPlayerId,
             EliminationReason.MENTAL_ZERO,
             deferGameOver: true,
@@ -175,7 +174,7 @@ public partial class GameClientSession
                 winnerId, criterion);
             return;
         }
-        if (_isGameEnded || CurrentMapSubId <= 0)
+        if (Volatile.Read(ref _isGameEnded) || CurrentMapSubId <= 0)
             return;
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
@@ -252,30 +251,7 @@ public partial class GameClientSession
         // 결과 화면 이후 퇴장은 페널티 면제
         foreach (var session in allSessions) session.MarkGameEnded();
 
-        // 게임 타이머 정리 — race 완주/색출로 종료되었을 때 타임아웃이 후행 발사되지 않도록 (#87)
-        if (GameTimers.TryRemove(matchingId, out var timer))
-            timer.Dispose();
-        _areaClosureManager.CleanupMatching(matchingId);
-        _presenceTracker?.Remove(matchingId);
-
-        MatchStartGate.RemoveMatching(matchingId);
-        RngCollectCooldownStore.ClearMatching(matchingId);
-        _checklistManager.RemoveMatchingState(matchingId);
-        _areaItemStockManager.RemoveMatchingState(matchingId);
-        _groundItemManager.RemoveMatchingState(matchingId);
-        _emotionAfterimageMonsterManager.RemoveMatchingState(matchingId);
-        _inGameInventoryManager.RemoveMatchingState(matchingId);
-        _interactableStateManager.RemoveMatchingState(matchingId);
-        _areaRuleManager.RemoveMatchingState(matchingId);
-        _itemPoolManager.RemoveMatchingState(matchingId);
-        _doorStateManager.ClearMatching(matchingId);
-        _interactionChoiceService.CleanupMatching(matchingId);
-        _encounterRevealManager.CleanupMatching(matchingId);
-        _matchRosterManager.CleanupMatching(matchingId);
-        _gameEventLogManager.Clear(matchingId);
-        // 매치 전송용 봇/버프 데이터는 결과를 보낸 뒤 더 이상 재접속에 필요하지 않다.
-        _botPlayerManager.CleanupMatching(matchingId);
-        _ = CleanupRedisMatchingTransientStateAsync(matchingId);
+        _cleanupMatchRuntime(matchingId);
     }
 
     private void PersistMatchSummary(long matchingId, string endReason, long winnerId)
@@ -308,9 +284,10 @@ public partial class GameClientSession
         var rows = resultRows
             .Select(d =>
             {
-                var playerInfo = ResolveResultPlayerInfo(matchingId, d.playerId);
                 var session = allSessions.FirstOrDefault(s => s.PlayerId == d.playerId);
                 var bot = _botPlayerManager.GetBot(matchingId, d.playerId);
+                var playerInfo = bot == null ? null : _botPlayerManager.SynthesizePlayerInfo(matchingId, d.playerId);
+                var playerProfile = _matchRosterManager.GetPlayerProfile(matchingId, d.playerId);
                 var stats = _gameEventLogManager.GetResultStats(matchingId, d.playerId);
                 var orbScore = ResolveResultOrbScore(matchingId, d.playerId);
                 DateTime survivalEndUtc = d.eliminatedAt ?? endedAtUtc;
@@ -321,7 +298,7 @@ public partial class GameClientSession
                     Info = new GameResultPlayerInfo
                     {
                         PlayerId = d.playerId,
-                        Name = ResolveResultPlayerName(d.playerId, playerInfo, bot),
+                        Name = ResolveResultPlayerName(d.playerId, playerInfo, playerProfile, bot),
                         JobTitle = d.job,
                         TargetPlayerId = d.targetId,
                         WatcherPlayerId = d.watcherId,
@@ -329,7 +306,9 @@ public partial class GameClientSession
                         FinalStatus = d.finalStatus,
                         Corruption = session?.Corruption ?? bot?.Corruption ?? 0,
                         MaxCorruption = MaxCorruption,
-                        WearItemIdList = playerInfo?.WearItemIdList != null
+                        WearItemIdList = playerProfile?.WearItemIdList is { Count: > 0 }
+                            ? new List<int>(playerProfile.WearItemIdList)
+                            : playerInfo?.WearItemIdList != null
                             ? new List<int>(playerInfo.WearItemIdList)
                             : new List<int>(),
                         SurvivalTimeSeconds = survivalSeconds,
@@ -382,43 +361,16 @@ public partial class GameClientSession
         return (orbCount, tierSum);
     }
 
-    private PlayerInfo? ResolveResultPlayerInfo(long matchingId, long playerId)
+    private static string ResolveResultPlayerName(
+        long playerId,
+        PlayerInfo? playerInfo,
+        MatchPlayerProfile? playerProfile,
+        BotPlayerState? bot)
     {
-        if (BotPlayerManager.IsBotPlayerId(playerId))
-            return _botPlayerManager.SynthesizePlayerInfo(matchingId, playerId);
-
-        try
-        {
-            return PlayerInfo.Load(CacheHelper, playerId).GetAwaiter().GetResult();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "결과 프로필 PlayerInfo 조회 실패: PlayerId={PlayerId}", playerId);
-            return null;
-        }
-    }
-
-    private static string ResolveResultPlayerName(long playerId, PlayerInfo? playerInfo, BotPlayerState? bot)
-    {
+        if (!string.IsNullOrEmpty(playerProfile?.Name)) return playerProfile.Name;
         if (!string.IsNullOrEmpty(playerInfo?.Name)) return playerInfo.Name;
         if (!string.IsNullOrEmpty(bot?.Name)) return bot.Name;
         return BotPlayerManager.IsBotPlayerId(playerId) ? $"Player{Math.Abs(playerId)}" : $"Player{playerId}";
-    }
-
-    /// <summary>매치 완료 뒤 재접속용 Redis handoff 데이터를 제거한다.</summary>
-    private async Task CleanupRedisMatchingTransientStateAsync(long matchingId)
-    {
-        try
-        {
-            await CacheHelper.KeyDeleteAsync(MatchingHandoffRedisKeys.Key(matchingId));
-            await CacheHelper.HashDeleteAsync("matching_bots", matchingId);
-
-            Logger.LogInformation("Redis matching handoff cleaned: MatchingId={MatchingId}", matchingId);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Redis matching handoff 정리 실패: MatchingId={MatchingId}", matchingId);
-        }
     }
 
     /// <summary>
@@ -428,13 +380,13 @@ public partial class GameClientSession
     public void CheckResourceElimination(long attackerPlayerId = 0, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false)
     {
-        if (!PlayerId.HasValue || _isGameEnded || IsEliminated) return;
+        if (!PlayerId.HasValue || Volatile.Read(ref _isGameEnded) || IsEliminated) return;
         if (Corruption < MaxCorruption) return;
 
         Logger.LogInformation(
             "[Resource] Mental depleted: PlayerId={PlayerId}, Corruption={Corruption}/{MaxCorruption}. Eliminating player.",
             PlayerId.Value, Corruption, MaxCorruption);
-        _ = ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO,
+        ProcessElimination(PlayerId.Value, EliminationReason.MENTAL_ZERO,
             attackerPlayerId: attackerPlayerId, isAreaClosureElimination: isAreaClosureElimination,
             isOvertimeElimination: isOvertimeElimination);
     }

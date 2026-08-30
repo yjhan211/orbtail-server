@@ -34,7 +34,7 @@ public sealed class GroundItemManager
     ///     그대로 떨어뜨리면 후반에 바닥이 오브밭이 되어 회수 경쟁이 사라진다.
     ///     수명을 지정한 아이템만 만료 대상이고, 나머지는 종전대로 남는다.
     /// </summary>
-    private readonly Dictionary<long, Dictionary<long, DateTimeOffset>> _itemExpiries = new();
+    private readonly ConcurrentDictionary<long, Dictionary<long, DateTimeOffset>> _itemExpiries = new();
     public static readonly TimeSpan DiscovererPickupWindow = TimeSpan.FromSeconds(1);
     private readonly ConcurrentDictionary<long, MatchingGroundItemState> _matchingStates = new();
     private readonly TimeProvider _timeProvider;
@@ -79,8 +79,9 @@ public sealed class GroundItemManager
                 state.SpawnedAtUtc[item.GroundItemUid] = _timeProvider.GetUtcNow();
                 if (lifetime is { } span && span > TimeSpan.Zero)
                 {
-                    if (!_itemExpiries.TryGetValue(matchingId, out var expiries))
-                        _itemExpiries[matchingId] = expiries = new Dictionary<long, DateTimeOffset>();
+                    var expiries = _itemExpiries.GetOrAdd(
+                        matchingId,
+                        static _ => new Dictionary<long, DateTimeOffset>());
                     expiries[item.GroundItemUid] = _timeProvider.GetUtcNow() + span;
                 }
                 if (discovererPlayerId != 0)
@@ -279,7 +280,11 @@ public sealed class GroundItemManager
         }
     }
 
-    public void RemoveMatchingState(long matchingId) => _matchingStates.TryRemove(matchingId, out _);
+    public void RemoveMatchingState(long matchingId)
+    {
+        _itemExpiries.TryRemove(matchingId, out _);
+        _matchingStates.TryRemove(matchingId, out _);
+    }
 
     private static (float X, float Y) ResolveLandingPosition(MapId mapId, AreaType area, float originX,
         float originY, int itemIndex, int itemCount, GroundItemSpawnLayout layout)

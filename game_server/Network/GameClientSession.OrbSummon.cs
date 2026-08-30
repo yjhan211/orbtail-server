@@ -41,6 +41,9 @@ public partial class GameClientSession
     /// </summary>
     internal bool ExecuteDraftOrbSummon(int choiceIndex)
     {
+        if (!PlayerId.HasValue)
+            return false;
+
         // 상자 시간 등급 (#222 M3): 개전 후 80초/160초를 넘기면 같은 색의 T2/T3가 나온다.
         int draftItemId = OrbData.ApplyDraftTier(
             choiceIndex switch

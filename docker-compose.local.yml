@@ -1,3 +1,5 @@
+# 앱 서비스는 container_name과 고정 host port를 사용하므로 이 파일 자체를 --scale 하지 않는다.
+# 다중 replica는 고유 nodeId/public endpoint를 주입하는 별도 manifest 또는 오케스트레이터를 사용한다.
 services:
   redis:
     image: redis:7-alpine
@@ -14,12 +16,19 @@ services:
       retries: 5
 
   nats:
-    image: nats:latest
+    image: nats:2.10-alpine
     container_name: manitto-nats-dev
     ports:
       - "127.0.0.1:4222:4222"
       - "127.0.0.1:8222:8222"
-    command: "-m 8222"
+    command: "-m 8222 -js --store_dir /data"
+    volumes:
+      - nats-data-dev:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8222/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   game_server:
     build:
@@ -46,6 +55,18 @@ services:
       - gameServerId=game-server-0
       - redisEndPoints=redis:6379
       - natsEndPoint=nats://nats:4222
+      - horizontalScaling__enabled=${GAME_SERVER_SCALING_ENABLED:-false}
+      - horizontalScaling__nodeId=${GAME_SERVER_NODE_ID:-game-server-0}
+      - horizontalScaling__publicHost=${GAME_SERVER_PUBLIC_IP:-192.168.0.167}
+      - horizontalScaling__publicPort=${GAME_SERVER_PORT:-9001}
+      - horizontalScaling__maxConcurrentMatches=${GAME_SERVER_MAX_CONCURRENT_MATCHES:-100}
+      - horizontalScaling__heartbeatIntervalSeconds=${GAME_SERVER_HEARTBEAT_INTERVAL_SECONDS:-3}
+      - horizontalScaling__nodeLeaseSeconds=${GAME_SERVER_NODE_LEASE_SECONDS:-12}
+      - horizontalScaling__reservationSeconds=${GAME_SERVER_RESERVATION_SECONDS:-300}
+      - horizontalScaling__activeOwnerSeconds=${GAME_SERVER_ACTIVE_OWNER_SECONDS:-1800}
+      - horizontalScaling__drainTimeoutSeconds=${GAME_SERVER_DRAIN_TIMEOUT_SECONDS:-30}
+      # 둘 중 하나라도 scaling이면 Game/User가 같은 durable lifecycle 계약을 사용한다.
+      - userServerScaling__enabled=${USER_SERVER_SCALING_ENABLED:-false}
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=true
       # #79 RNG 채집 시연/테스트용 — 모든 게임 종료 트리거 차단. 운영/시연 빌드에서는 제거
@@ -68,7 +89,7 @@ services:
       redis:
         condition: service_healthy
       nats:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
 
   user_server:
@@ -97,6 +118,20 @@ services:
       - natsEndPoint=nats://nats:4222
       - GAME_SERVER_IP=${GAME_SERVER_IP:-192.168.0.167}
       - GAME_SERVER_PORT=${GAME_SERVER_PORT:-9001}
+      # UserServer도 같은 section으로 Game node discovery/owner reservation을 켠다.
+      - horizontalScaling__enabled=${GAME_SERVER_SCALING_ENABLED:-false}
+      - horizontalScaling__nodeLeaseSeconds=${GAME_SERVER_NODE_LEASE_SECONDS:-12}
+      - horizontalScaling__reservationSeconds=${GAME_SERVER_RESERVATION_SECONDS:-300}
+      - userServerScaling__enabled=${USER_SERVER_SCALING_ENABLED:-false}
+      - userServerScaling__nodeId=${USER_SERVER_NODE_ID:-user-server-0}
+      - userServerScaling__heartbeatSeconds=${USER_SERVER_HEARTBEAT_SECONDS:-3}
+      - userServerScaling__nodeLeaseSeconds=${USER_SERVER_NODE_LEASE_SECONDS:-12}
+      - userServerScaling__sessionOwnerLeaseSeconds=${USER_SERVER_SESSION_OWNER_LEASE_SECONDS:-30}
+      - userServerScaling__matchingLeaderHeartbeatSeconds=${USER_SERVER_MATCHING_LEADER_HEARTBEAT_SECONDS:-3}
+      - userServerScaling__matchingLeaderLeaseSeconds=${USER_SERVER_MATCHING_LEADER_LEASE_SECONDS:-12}
+      - userServerScaling__deliveryRequestTimeoutMilliseconds=${USER_SERVER_DELIVERY_REQUEST_TIMEOUT_MILLISECONDS:-2000}
+      - userServerScaling__deliveryRetryDelayMilliseconds=${USER_SERVER_DELIVERY_RETRY_DELAY_MILLISECONDS:-100}
+      - userServerScaling__deliveryMaxAttempts=${USER_SERVER_DELIVERY_MAX_ATTEMPTS:-3}
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_USE_POLLING_FILE_WATCHER=true
       - FORCE_PLAYER_JOB=${FORCE_PLAYER_JOB:-}
@@ -113,7 +148,7 @@ services:
       redis:
         condition: service_healthy
       nats:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
 
   ops_server:
@@ -144,4 +179,5 @@ services:
 
 volumes:
   redis-data-dev:
+  nats-data-dev:
   match-summary-data-dev:

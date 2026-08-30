@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
@@ -13,8 +14,12 @@ using network.common;
 using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
+using network.contracts.authentication;
+using network.contracts.messaging;
+using network.contracts.scaling;
 using network.core;
 using network.helpers;
+using network.hosting;
 using network.infrastructure;
 using network.interfaces;
 using network.packets;
@@ -26,12 +31,24 @@ public partial class GameServer(
     ILogger<GameServer> logger,
     INatsClientFactory natsClientFactory,
     ICacheHelper cacheHelper,
+    MatchingLifecycleOutboxStore matchingLifecycleOutboxStore,
     INetworkService networkService,
-    ServerConfig serverConfig)
+    ServerConfig serverConfig,
+    IGameHandoffTicketService gameHandoffTicketService,
+    GameServerScalingOptions scalingOptions,
+    GameServerNodeLease gameServerNodeLease,
+    IHostApplicationLifetime applicationLifetime,
+    ServerReadinessState readinessState)
     : IHostedService
 {
     // 하트비트 체크 간격 (10초마다 체크)
     private const int HeartbeatCheckIntervalSeconds = 10;
+    private const int MatchingLifecycleTerminalMatchRetention = 4096;
+    private const int StaticMatchingLifecycleEnqueueAttempts = 5;
+    private const int StaticMatchingLifecycleDirectPublishAttempts = 3;
+    private static readonly TimeSpan StaticMatchingLifecycleDirectPublishTimeout =
+        TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ShutdownStageTimeout = TimeSpan.FromSeconds(5);
 
     private readonly AreaRuleManager _areaRuleManager = new();
     private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions = new();
@@ -62,7 +79,16 @@ public partial class GameServer(
     private readonly EncounterRevealManager _encounterRevealManager = new();
     private readonly Proto0PresenceTracker _presenceTracker = new();
     private readonly ConcurrentDictionary<long, int> _lastMatchStartCountdownBroadcast = new();
-    private readonly ConcurrentDictionary<long, object> _matchSettlementLocks = new();
+    private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, string>>
+        _matchingLifecycleTerminalSubjects = new();
+    private readonly ConcurrentQueue<long> _matchingLifecycleTerminalMatchOrder = new();
+    private readonly MatchRuntimeRegistry _matchRuntimeRegistry = new();
+    private readonly ConcurrentDictionary<long, Task> _pendingMatchOwnerLossTasks = new();
+    private readonly ConcurrentDictionary<long, Task> _pendingMatchingRedisCleanupTasks = new();
+    private readonly ConcurrentDictionary<long, Task> _pendingMatchingLifecyclePublishTasks = new();
+    private readonly ConcurrentDictionary<long, MatchingLifecyclePersistenceState>
+        _matchingLifecyclePersistenceStates = new();
+    private readonly object _matchingLifecycleEnqueueGate = new();
     // 재시작해도 되감기지 않도록 기동 시각을 섞는다. 고정 시드로 시작하면 서버를 다시
     // 올릴 때마다 같은 matchingId가 나오고, 매치 요약 파일이 같은 이름을 만나
     // 저장이 통째로 건너뛰어진다(기존 파일 우선 규칙).
@@ -70,6 +96,13 @@ public partial class GameServer(
         9_000_000 + DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond % 900_000;
     private long _adminBotOnlyPlayerIdSeed = -900_000_000;
     private INatsClient? _matchingLifecycleNatsClient;
+    private MatchingLifecycleOutboxWorker? _matchingLifecycleOutboxWorker;
+    private long _nextMatchingLifecyclePublishId;
+    private int _acceptingMatchingLifecycleEnqueues;
+    private int _stopping;
+
+    private bool IsDurableMatchingLifecycleEnabled =>
+        scalingOptions.Enabled || configuration.GetValue("userServerScaling:enabled", false);
 
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
@@ -95,12 +128,29 @@ public partial class GameServer(
     private int _botMovementConsecutiveSkips;
     private int _botMovementMaxConsecutiveSkips;
 
+    private sealed class MatchingLifecyclePersistenceState
+    {
+        public object SyncRoot { get; } = new();
+        public int PendingCount { get; set; }
+        public bool ClosingRequested { get; set; }
+        public bool Sealed { get; set; }
+        public bool PersistenceFailed { get; set; }
+        public bool OwnerReleaseCompleted { get; set; }
+        public TaskCompletionSource<bool>? Quiesced { get; set; }
+    }
+
     internal const int ResourceTickIntervalSeconds = 5;
     private const int ChecklistProgressTickIntervalSeconds = 1;
     // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
+        Volatile.Write(ref _stopping, 0);
+        StopAcceptingMatchingLifecycleEnqueues();
+        readinessState.MarkNotReady("starting");
+        _cts.Dispose();
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
         try
         {
             logger.LogInformation("Game server starting...");
@@ -120,48 +170,270 @@ public partial class GameServer(
             StartBotMovementTimer();
             StartChecklistProgressTickTimer();
             StartProximityAutoCombatTimer();
+            await gameServerNodeLease.StartAsync(
+                () => _matchRuntimeRegistry.ActiveCount,
+                OnGameServerRoutingLeaseLost,
+                OnGameServerMatchOwnerLost,
+                cancellationToken);
 
-            _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-
+            readinessState.MarkReady();
             logger.LogInformation("Game server started successfully.");
         }
         catch (Exception ex)
         {
+            readinessState.MarkNotReady("startup_failed");
             logger.LogError(ex, "Game server starting failed.");
+            Volatile.Write(ref _stopping, 1);
+            try
+            {
+                await StopAsync(CancellationToken.None);
+            }
+            catch (Exception shutdownException)
+            {
+                logger.LogWarning(
+                    shutdownException,
+                    "Game server cleanup after startup failure did not complete cleanly.");
+            }
             throw;
         }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        if (scalingOptions.Enabled && Volatile.Read(ref _stopping) == 0)
+        {
+            readinessState.MarkNotReady("draining");
+            logger.LogInformation("Game server beginning routing drain...");
+            try
+            {
+                await gameServerNodeLease.BeginDrainAsync();
+                await WaitForScalingDrainAsync();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "GameServer routing drain failed; proceeding with bounded shutdown.");
+            }
+        }
+
+        // Publish the stopping state before taking the session snapshot. Sessions accepted at
+        // this boundary observe the same penalty-free claim-release policy in OnDisconnect.
+        Volatile.Write(ref _stopping, 1);
+        readinessState.MarkNotReady("stopping");
         logger.LogInformation("Game server stopping...");
 
         // 서버 셧다운 시 모든 세션을 서버 주도 종료로 마킹 → 페널티 면제
         foreach (var session in _clientSessions.Values)
             session.MarkServerInitiatedDisconnect();
 
-        await _cts.CancelAsync();
+        // Host cancellation must not skip later cleanup stages. Log slow stages at a fixed
+        // threshold, but keep dependencies alive until the stage actually quiesces.
+        await RunShutdownStageAsync(
+            networkService.StopAsync(CancellationToken.None),
+            "network connections");
+        await RunShutdownStageAsync(_cts.CancelAsync(), "server cancellation");
 
-        // 타이머 정리
-        if (_heartbeatCheckTimer != null)
-        {
-            await _heartbeatCheckTimer.DisposeAsync();
-            _heartbeatCheckTimer = null;
-        }
+        Timer?[] timers =
+        [
+            _heartbeatCheckTimer,
+            _resourceTickTimer,
+            _areaClosureTickTimer,
+            _targetLocationTimer,
+            _botMovementTimer,
+            _checklistProgressTickTimer,
+            _proximityAutoCombatTimer
+        ];
+        _heartbeatCheckTimer = null;
+        _resourceTickTimer = null;
+        _areaClosureTickTimer = null;
+        _targetLocationTimer = null;
+        _botMovementTimer = null;
+        _checklistProgressTickTimer = null;
+        _proximityAutoCombatTimer = null;
+        await RunShutdownStageAsync(
+            Task.WhenAll(timers.Where(timer => timer != null)
+                .Select(timer => timer!.DisposeAsync().AsTask())),
+            "timers");
 
-        if (_resourceTickTimer != null) { await _resourceTickTimer.DisposeAsync(); _resourceTickTimer = null; }
-        if (_areaClosureTickTimer != null) { await _areaClosureTickTimer.DisposeAsync(); _areaClosureTickTimer = null; }
-        if (_targetLocationTimer != null) { await _targetLocationTimer.DisposeAsync(); _targetLocationTimer = null; }
-        if (_botMovementTimer != null) { await _botMovementTimer.DisposeAsync(); _botMovementTimer = null; }
-        if (_checklistProgressTickTimer != null) { await _checklistProgressTickTimer.DisposeAsync(); _checklistProgressTickTimer = null; }
-        if (_proximityAutoCombatTimer != null) { await _proximityAutoCombatTimer.DisposeAsync(); _proximityAutoCombatTimer = null; }
-
-        await Task.WhenAll(_instanceControllerList.Select(c => c.ShutdownAsync()));
+        await RunShutdownStageAsync(
+            Task.WhenAll(_instanceControllerList.Select(controller => controller.ShutdownAsync())),
+            "instance controllers");
+        await RunShutdownStageAsync(
+            WaitForPendingMatchOwnerLossesAsync(),
+            "match owner loss");
+        await RunShutdownStageAsync(
+            gameServerNodeLease.QuiesceHeartbeatsAsync(),
+            "routing heartbeat quiesce");
+        await RunShutdownStageAsync(
+            WaitForPendingMatchOwnerLossesAsync(),
+            "quiesced match owner loss");
+        await RunShutdownStageAsync(
+            WaitForPendingMatchingLifecyclePublishesAsync(),
+            "matching lifecycle outbox persistence");
+        await RunShutdownStageAsync(
+            WaitForPendingMatchingRedisCleanupsAsync(),
+            "matching Redis cleanup");
+        StopAcceptingMatchingLifecycleEnqueues();
+        await RunShutdownStageAsync(
+            WaitForPendingMatchingLifecyclePublishesAsync(),
+            "enqueue gate close");
+        await RunShutdownStageAsync(
+            WaitForPendingMatchingRedisCleanupsAsync(),
+            "enqueue gate matching Redis cleanup");
+        await RunShutdownStageAsync(gameServerNodeLease.StopAsync(), "routing lease");
+        await RunShutdownStageAsync(
+            WaitForPendingMatchOwnerLossesAsync(),
+            "late match owner loss");
+        await RunShutdownStageAsync(
+            WaitForPendingMatchingLifecyclePublishesAsync(),
+            "late matching lifecycle outbox persistence");
+        await RunShutdownStageAsync(
+            WaitForPendingMatchingRedisCleanupsAsync(),
+            "late matching Redis cleanup");
+        await RunShutdownStageAsync(
+            StopMatchingLifecycleOutboxWorkerAsync(),
+            "matching lifecycle outbox worker");
 
         _cts.Dispose();
+        await CloseMatchingLifecycleNatsClientAsync();
 
-        _matchingLifecycleNatsClient?.Close();
         logger.LogInformation("Game server stopped.");
+    }
+
+    private async Task WaitForScalingDrainAsync()
+    {
+        DateTime deadlineUtc = DateTime.UtcNow + scalingOptions.DrainTimeout;
+        while (DateTime.UtcNow < deadlineUtc)
+        {
+            int localActiveMatches = _matchRuntimeRegistry.ActiveCount;
+            int reservedOrActiveMatches = await gameServerNodeLease.GetOwnedMatchCountAsync()
+                .WaitAsync(TimeSpan.FromSeconds(2));
+            if (localActiveMatches == 0 && reservedOrActiveMatches == 0)
+            {
+                logger.LogInformation("GameServer routing drain completed.");
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(200));
+        }
+
+        logger.LogWarning(
+            "GameServer routing drain timed out: Timeout={Timeout}, LocalActiveMatches={LocalActiveMatches}",
+            scalingOptions.DrainTimeout,
+            _matchRuntimeRegistry.ActiveCount);
+    }
+
+    private void OnGameServerRoutingLeaseLost()
+    {
+        readinessState.MarkNotReady("routing_lease_lost");
+        Volatile.Write(ref _stopping, 1);
+        applicationLifetime.StopApplication();
+    }
+
+    private void OnGameServerMatchOwnerLost(long matchingId, IReadOnlyList<long> handoffPlayerIds)
+    {
+        GameClientSession[] affectedSessions = _clientSessions.Values
+            .Where(session => session.CurrentMapSubId == matchingId)
+            .ToArray();
+        var playerIdsToPublish = handoffPlayerIds
+            .Where(playerId => playerId > 0)
+            .ToHashSet();
+        foreach (GameClientSession session in affectedSessions)
+        {
+            if (!session.PlayerId.HasValue)
+                continue;
+
+            if (session.TryMarkMatchingLifecycleHandledExternally())
+                playerIdsToPublish.Add(session.PlayerId.Value);
+            else
+                playerIdsToPublish.Remove(session.PlayerId.Value);
+        }
+
+        long[] playerIds = playerIdsToPublish.ToArray();
+        Task handlerTask = Task.Run(() =>
+            HandleGameServerMatchOwnerLost(matchingId, affectedSessions, playerIds));
+        _pendingMatchOwnerLossTasks[matchingId] = handlerTask;
+        _ = handlerTask.ContinueWith(
+            _ => ((ICollection<KeyValuePair<long, Task>>)_pendingMatchOwnerLossTasks)
+                .Remove(new KeyValuePair<long, Task>(matchingId, handlerTask)),
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    private void HandleGameServerMatchOwnerLost(
+        long matchingId,
+        IReadOnlyList<GameClientSession> affectedSessions,
+        IReadOnlyCollection<long> affectedPlayerIds)
+    {
+        logger.LogError(
+            "Aborting match after its distributed GameServer owner fence was lost: MatchingId={MatchingId}, Players={PlayerCount}",
+            matchingId,
+            affectedPlayerIds.Count);
+
+        Action? persistenceRegistration =
+            BeginMatchingLifecyclePersistenceRegistration(matchingId);
+        try
+        {
+            bool cleanupAccepted = TryCleanupMatchRuntime(matchingId, null, null);
+            if (!cleanupAccepted && !_matchRuntimeRegistry.IsTerminal(matchingId))
+            {
+                logger.LogCritical(
+                    "Match owner fence was lost but local runtime cleanup could not start: MatchingId={MatchingId}",
+                    matchingId);
+            }
+
+            foreach (long playerId in affectedPlayerIds)
+            {
+                PublishMatchingLifecycle(
+                    MatchingLifecycleSubjects.PlayerAdmissionFailed,
+                    playerId,
+                    matchingId);
+            }
+        }
+        finally
+        {
+            persistenceRegistration?.Invoke();
+        }
+
+        foreach (GameClientSession session in affectedSessions)
+            session.DisconnectForAdmissionFailure();
+    }
+
+    private async Task WaitForPendingMatchOwnerLossesAsync()
+    {
+        while (true)
+        {
+            Task[] pendingTasks = _pendingMatchOwnerLossTasks.Values.ToArray();
+            if (pendingTasks.Length == 0)
+                return;
+
+            await Task.WhenAll(pendingTasks);
+        }
+    }
+
+    private async Task RunShutdownStageAsync(Task operation, string stage)
+    {
+        try
+        {
+            await operation.WaitAsync(ShutdownStageTimeout);
+        }
+        catch (TimeoutException ex)
+        {
+            logger.LogWarning(ex, "Shutdown stage exceeded warning threshold: Stage={Stage}, Timeout={Timeout}",
+                stage, ShutdownStageTimeout);
+            try
+            {
+                await operation;
+            }
+            catch (Exception completionException)
+            {
+                logger.LogWarning(completionException, "Shutdown stage failed after timeout: Stage={Stage}", stage);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Shutdown stage failed: Stage={Stage}", stage);
+        }
     }
 
     private void InitializeServices()
@@ -186,6 +458,22 @@ public partial class GameServer(
         {
             natsClientFactory.Initialize(natsEndpoint);
             _matchingLifecycleNatsClient = natsClientFactory.Create();
+            if (IsDurableMatchingLifecycleEnabled)
+            {
+                _matchingLifecycleNatsClient.EnsureDurableStream(new NatsDurableStreamOptions
+                {
+                    Name = MatchingLifecycleSubjects.Stream,
+                    Subjects = [MatchingLifecycleSubjects.AllPlayerEvents],
+                    Description = "Durable matching lifecycle events consumed by the UserServer cluster"
+                });
+                var outboxWorker = new MatchingLifecycleOutboxWorker(
+                    matchingLifecycleOutboxStore,
+                    _matchingLifecycleNatsClient,
+                    logger);
+                _matchingLifecycleOutboxWorker = outboxWorker;
+                outboxWorker.Start();
+                StartAcceptingMatchingLifecycleEnqueues();
+            }
             // 서버 환경에서 CSV 파일 경로 설정
             // Dev: 소스 디렉토리에서 직접 읽기 (Docker 볼륨 마운트 대응)
             string networkSourcePath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..",
@@ -218,7 +506,7 @@ public partial class GameServer(
     private void InitializeControllers()
     {
         var instanceController = new InstanceMapManager(logger, natsClientFactory.Create(), cacheHelper,
-            serverConfig, _clientSessions, _interactableStateManager, _inGameInventoryManager, _areaRuleManager);
+            serverConfig, _clientSessions);
         instanceController.Initialize();
         _instanceControllerList.Add(instanceController);
     }
@@ -275,23 +563,27 @@ public partial class GameServer(
 
             foreach (var session in activeSessions)
             {
-                if (!GameClientSession.IsRoundActionPhase(session.CurrentMapSubId))
+                long matchingId = session.CurrentMapSubId;
+                if (!GameClientSession.IsRoundActionPhase(matchingId))
                     continue;
                 if (session.CurrentArea == AreaType.None || session.TargetPlayerId == 0)
                     continue;
 
                 GameClientSession? targetSession = activeSessions.FirstOrDefault(s =>
                     s.PlayerId == session.TargetPlayerId &&
-                    s.CurrentMapSubId == session.CurrentMapSubId &&
+                    s.CurrentMapSubId == matchingId &&
                     !s.IsEliminated);
                 BotPlayerState? targetBot = targetSession == null
-                    ? _botPlayerManager.GetBot(session.CurrentMapSubId, session.TargetPlayerId)
+                    ? _botPlayerManager.GetBot(matchingId, session.TargetPlayerId)
                     : null;
                 if (targetSession == null && targetBot is not { IsEliminated: false })
                     continue;
 
                 if (IsTargetWithinProximity(session, targetSession, targetBot))
-                    session.AdvanceTargetProximityChecklistProgress(ChecklistProgressTickIntervalSeconds);
+                    _matchRuntimeRegistry.TryExecute(
+                        matchingId,
+                        () => session.AdvanceTargetProximityChecklistProgress(
+                            ChecklistProgressTickIntervalSeconds));
             }
 
             var matchingIds = GetActiveMatchingIds();
@@ -300,10 +592,12 @@ public partial class GameServer(
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
 
-                ProcessBotTargetProximityChecklistProgress(
+                _matchRuntimeRegistry.TryExecute(
                     matchingId,
-                    activeSessions,
-                    ChecklistProgressTickIntervalSeconds);
+                    () => ProcessBotTargetProximityChecklistProgress(
+                        matchingId,
+                        activeSessions,
+                        ChecklistProgressTickIntervalSeconds));
             }
         }
         catch (Exception ex)
@@ -335,42 +629,45 @@ public partial class GameServer(
             {
                 if (!Config.PRESENCE_SYSTEM_ENABLED) continue;
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
-                var playerAreas = BuildPlayerAreas(matchingId, activeSessions);
-                _presenceTracker.Tick(matchingId, playerAreas);
-                int roundNumber = 0 /* 라운드 시스템 퇴역(#246) */;
-
-                foreach (var session in activeSessions)
+                _matchRuntimeRegistry.TryExecute(matchingId, () =>
                 {
-                    if (session.CurrentMapSubId != matchingId || !session.PlayerId.HasValue) continue;
+                    var playerAreas = BuildPlayerAreas(matchingId, activeSessions);
+                    _presenceTracker.Tick(matchingId, playerAreas);
+                    int roundNumber = 0 /* 라운드 시스템 퇴역(#246) */;
 
-                    // roster = 현재 살아있는 전체 플레이어 → 타겟 제외 후보 전원(presence 0 포함)
-                    var scored = _presenceTracker.GetCandidates(
-                        matchingId, session.PlayerId.Value, session.TargetPlayerId, playerAreas.Keys);
-
-                    var candidates = new List<(long playerId, float presence, string name, List<int> wear)>();
-                    foreach (var (candidateId, presence) in scored)
+                    foreach (var session in activeSessions)
                     {
-                        string name = "";
-                        List<int> wear = null;
-                        // 봇은 서버 메모리에 정체성 보유 → 후보가 멀리 있어도 카드 채움. 인간은 빈값(클라가 폴백).
-                        if (BotPlayerManager.IsBotPlayerId(candidateId))
+                        if (session.CurrentMapSubId != matchingId || !session.PlayerId.HasValue) continue;
+
+                        // roster = 현재 살아있는 전체 플레이어 → 타겟 제외 후보 전원(presence 0 포함)
+                        var scored = _presenceTracker.GetCandidates(
+                            matchingId, session.PlayerId.Value, session.TargetPlayerId, playerAreas.Keys);
+
+                        var candidates = new List<(long playerId, float presence, string name, List<int> wear)>();
+                        foreach (var (candidateId, presence) in scored)
                         {
-                            var info = _botPlayerManager.SynthesizePlayerInfo(matchingId, candidateId);
-                            if (info != null) { name = info.Name; wear = info.WearItemIdList; }
+                            string name = "";
+                            List<int> wear = null!;
+                            // 봇은 서버 메모리에 정체성 보유 → 후보가 멀리 있어도 카드 채움. 인간은 빈값(클라가 폴백).
+                            if (BotPlayerManager.IsBotPlayerId(candidateId))
+                            {
+                                var info = _botPlayerManager.SynthesizePlayerInfo(matchingId, candidateId);
+                                if (info != null) { name = info.Name; wear = info.WearItemIdList; }
+                            }
+
+                            candidates.Add((candidateId, presence, name, wear));
                         }
 
-                        candidates.Add((candidateId, presence, name, wear));
+                        session.SendPresenceUpdate(candidates);
+
+                        var notebookRecords = _presenceTracker.GetNotebookRecords(
+                            matchingId,
+                            session.PlayerId.Value,
+                            playerAreas.Keys,
+                            includeEmpty: true);
+                        session.SendPresenceNotebookUpdate(matchingId, roundNumber, notebookRecords);
                     }
-
-                    session.SendPresenceUpdate(candidates);
-
-                    var notebookRecords = _presenceTracker.GetNotebookRecords(
-                        matchingId,
-                        session.PlayerId.Value,
-                        playerAreas.Keys,
-                        includeEmpty: true);
-                    session.SendPresenceNotebookUpdate(matchingId, roundNumber, notebookRecords);
-                }
+                });
             }
         }
         catch (Exception ex)
@@ -973,7 +1270,9 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 // #272 자기장 폐쇄: 자기장에서 파생한 구역 시간표 하나로만 닫는다 —
                 // 필드 오염은 정산 리소스 틱(GetSwarmFieldCorruptionPerTick)이 준다.
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
-                ProcessSwarmScheduledClosureTick(matchingId);
+                _matchRuntimeRegistry.TryExecute(
+                    matchingId,
+                    () => ProcessSwarmScheduledClosureTick(matchingId));
             }
         }
         catch (Exception ex)
@@ -996,7 +1295,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         try
         {
             var activeSessions = _clientSessions.Values
-                .Where(s => s.PlayerId.HasValue && s.TargetPlayerId != 0)
+                .Where(s => s.PlayerId.HasValue && s.TargetPlayerId != 0 && !s.IsGameEnded)
                 .ToList();
 
             foreach (var session in activeSessions)
@@ -1053,59 +1352,62 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
                 // 프로토 0: 봇 타겟 추적/떠보기를 위해 같은 매칭 인간 플레이어의 현재 영역을 넘긴다.
-                long snapshotStartedAt = Stopwatch.GetTimestamp();
-                var humanAreas = activeSessions
-                    .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
-                    .ToDictionary(s => s.PlayerId!.Value, s => s.CurrentArea);
-                var combatTargets = activeSessions
-                    .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue && !s.IsEliminated &&
-                                s.LastValidatedPosition != null)
-                    .Select(s => new BotCombatTargetSnapshot(
-                        s.PlayerId!.Value,
-                        s.CurrentArea,
-                        s.LastValidatedPosition!,
-                        _inGameInventoryManager.GetEquippedBattleItem(matchingId, s.PlayerId.Value)?.ItemId ?? 0,
-                        s.CurrentCorruption))
-                    .Concat(_botPlayerManager.GetBots(matchingId)
-                        .Where(bot => !bot.IsEliminated)
-                        .Select(bot => new BotCombatTargetSnapshot(
-                            bot.PlayerId,
-                            bot.CurrentArea,
-                            bot.Position,
-                            _inGameInventoryManager.GetEquippedBattleItem(matchingId, bot.PlayerId)?.ItemId ?? 0,
-                            bot.Corruption)))
-                    .ToList();
-                var pveTargets = _emotionAfterimageMonsterManager.GetAliveTargets(matchingId);
-                snapshotElapsedMilliseconds += Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
-
-                var movementResult = _botPlayerManager.ProcessBotMovementTick(
-                    matchingId,
-                    _areaClosureManager,
-                    _areaItemStockManager,
-                    humanAreas,
-                    _checklistManager,
-                    _inGameInventoryManager,
-                    _groundItemManager,
-                    combatTargets,
-                    pveTargets,
-                    ResolveSwarmBotDirective,
-                    _summonStoneManager);
-                planningElapsedMilliseconds += movementResult.PlanningElapsedMilliseconds;
-                walkingElapsedMilliseconds += movementResult.WalkingElapsedMilliseconds;
-
-                long broadcastStartedAt = Stopwatch.GetTimestamp();
-                foreach (var ev in movementResult.Movements)
+                _matchRuntimeRegistry.TryExecute(matchingId, () =>
                 {
-                    // 오브 궤도 (#232): 봇도 이동한 거리만큼 돈다 — 사람 세션의 검증 이동 적산과 같은 규칙.
-                    _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.AdvanceOrbOrbit(ev.Position);
-                    BroadcastBotMovement(matchingId, ev, activeSessions);
-                }
-                if (movementResult.ExploreEnds.Count > 0)
-                    BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);
-                if (movementResult.GroundItemPickups.Count > 0)
-                    BroadcastBotGroundItemPickups(matchingId, movementResult.GroundItemPickups, activeSessions);
-                StartTargetBotInterrogations(matchingId, activeSessions);
-                broadcastElapsedMilliseconds += Stopwatch.GetElapsedTime(broadcastStartedAt).TotalMilliseconds;
+                    long snapshotStartedAt = Stopwatch.GetTimestamp();
+                    var humanAreas = activeSessions
+                        .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
+                        .ToDictionary(s => s.PlayerId!.Value, s => s.CurrentArea);
+                    var combatTargets = activeSessions
+                        .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue && !s.IsEliminated &&
+                                    s.LastValidatedPosition != null)
+                        .Select(s => new BotCombatTargetSnapshot(
+                            s.PlayerId!.Value,
+                            s.CurrentArea,
+                            s.LastValidatedPosition!,
+                            _inGameInventoryManager.GetEquippedBattleItem(matchingId, s.PlayerId.Value)?.ItemId ?? 0,
+                            s.CurrentCorruption))
+                        .Concat(_botPlayerManager.GetBots(matchingId)
+                            .Where(bot => !bot.IsEliminated)
+                            .Select(bot => new BotCombatTargetSnapshot(
+                                bot.PlayerId,
+                                bot.CurrentArea,
+                                bot.Position,
+                                _inGameInventoryManager.GetEquippedBattleItem(matchingId, bot.PlayerId)?.ItemId ?? 0,
+                                bot.Corruption)))
+                        .ToList();
+                    var pveTargets = _emotionAfterimageMonsterManager.GetAliveTargets(matchingId);
+                    snapshotElapsedMilliseconds += Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
+
+                    var movementResult = _botPlayerManager.ProcessBotMovementTick(
+                        matchingId,
+                        _areaClosureManager,
+                        _areaItemStockManager,
+                        humanAreas,
+                        _checklistManager,
+                        _inGameInventoryManager,
+                        _groundItemManager,
+                        combatTargets,
+                        pveTargets,
+                        ResolveSwarmBotDirective,
+                        _summonStoneManager);
+                    planningElapsedMilliseconds += movementResult.PlanningElapsedMilliseconds;
+                    walkingElapsedMilliseconds += movementResult.WalkingElapsedMilliseconds;
+
+                    long broadcastStartedAt = Stopwatch.GetTimestamp();
+                    foreach (var ev in movementResult.Movements)
+                    {
+                        // 오브 궤도 (#232): 봇도 이동한 거리만큼 돈다 — 사람 세션의 검증 이동 적산과 같은 규칙.
+                        _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.AdvanceOrbOrbit(ev.Position);
+                        BroadcastBotMovement(matchingId, ev, activeSessions);
+                    }
+                    if (movementResult.ExploreEnds.Count > 0)
+                        BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);
+                    if (movementResult.GroundItemPickups.Count > 0)
+                        BroadcastBotGroundItemPickups(matchingId, movementResult.GroundItemPickups, activeSessions);
+                    StartTargetBotInterrogations(matchingId, activeSessions);
+                    broadcastElapsedMilliseconds += Stopwatch.GetElapsedTime(broadcastStartedAt).TotalMilliseconds;
+                });
             }
         }
         catch (Exception ex)
@@ -1158,18 +1460,20 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                     foreach (long matchingId in GetActiveMatchingIds()
                                  .Where(_botPlayerManager.HasBots))
                     {
-                        _gameEventLogManager.LogBotMovementTickPerformance(
+                        _matchRuntimeRegistry.TryExecute(
                             matchingId,
-                            p50Milliseconds,
-                            p95Milliseconds,
-                            p99Milliseconds,
-                            snapshotP95Milliseconds,
-                            planningP95Milliseconds,
-                            walkingP95Milliseconds,
-                            broadcastP95Milliseconds,
-                            _botMovementTickCount,
-                            skippedTicks,
-                            maxConsecutiveSkippedTicks);
+                            () => _gameEventLogManager.LogBotMovementTickPerformance(
+                                matchingId,
+                                p50Milliseconds,
+                                p95Milliseconds,
+                                p99Milliseconds,
+                                snapshotP95Milliseconds,
+                                planningP95Milliseconds,
+                                walkingP95Milliseconds,
+                                broadcastP95Milliseconds,
+                                _botMovementTickCount,
+                                skippedTicks,
+                                maxConsecutiveSkippedTicks));
                     }
                     _botMovementTickCount = 0;
                     _botMovementTickTotalMs = 0;
@@ -1224,33 +1528,51 @@ IReadOnlyCollection<GameClientSession> activeSessions)
     {
         foreach (long matchingId in matchingIds)
         {
-            var snapshot = MatchStartGate.GetSnapshot(matchingId);
-            if (!snapshot.IsKnown)
-                continue;
-
-            if (_lastMatchStartCountdownBroadcast.TryGetValue(matchingId, out int previous) &&
-                previous == snapshot.RemainingSeconds)
+            if (MatchStartGate.IsAdmissionTimedOut(matchingId, DateTime.UtcNow))
             {
+                var anchorSession = activeSessions.FirstOrDefault(
+                    session => session.CurrentMapSubId == matchingId && session.PlayerId.HasValue);
+                if (anchorSession != null)
+                {
+                    logger.LogWarning(
+                        "Match admission deadline expired before every human became ready: MatchingId={MatchingId}",
+                        matchingId);
+                    AbortMatchAfterAdmissionFailure(anchorSession);
+                    anchorSession.DisconnectForAdmissionFailure();
+                }
                 continue;
             }
 
-            _lastMatchStartCountdownBroadcast[matchingId] = snapshot.RemainingSeconds;
-            var matchingSessions = activeSessions
-                .Where(session => session.CurrentMapSubId == matchingId)
-                .ToList();
-            if (matchingSessions.Count == 0)
-                continue;
-
-            using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
+            _matchRuntimeRegistry.TryExecute(matchingId, () =>
             {
-                MatchingId = matchingId,
-                RemainingSeconds = snapshot.RemainingSeconds,
-                ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-            }));
+                var snapshot = MatchStartGate.GetSnapshot(matchingId);
+                if (!snapshot.IsKnown)
+                    return;
 
-            foreach (var session in matchingSessions)
-                session.Send(packet);
+                if (_lastMatchStartCountdownBroadcast.TryGetValue(matchingId, out int previous) &&
+                    previous == snapshot.RemainingSeconds)
+                {
+                    return;
+                }
+
+                _lastMatchStartCountdownBroadcast[matchingId] = snapshot.RemainingSeconds;
+                var matchingSessions = activeSessions
+                    .Where(session => session.CurrentMapSubId == matchingId)
+                    .ToList();
+                if (matchingSessions.Count == 0)
+                    return;
+
+                using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN);
+                packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
+                {
+                    MatchingId = matchingId,
+                    RemainingSeconds = snapshot.RemainingSeconds,
+                    ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                }));
+
+                foreach (var session in matchingSessions)
+                    session.Send(packet);
+            });
         }
     }
 
@@ -1433,21 +1755,590 @@ IReadOnlyCollection<GameClientSession> activeSessions)
     }
 
 
-    private void PublishMatchingLifecycle(string subject, long playerId)
+    private void PublishMatchingLifecycle(string subject, long playerId, long matchingId)
     {
+        if (!TryRegisterMatchingLifecycleTerminal(subject, playerId, matchingId))
+            return;
+
+        if (!IsDurableMatchingLifecycleEnabled)
+        {
+            PublishLegacyMatchingLifecycle(subject, playerId, matchingId);
+            return;
+        }
+
+        MatchingLifecycleOutboxWorker? outboxWorker = _matchingLifecycleOutboxWorker;
+        if (outboxWorker == null)
+        {
+            logger.LogError(
+                "Matching lifecycle outbox is unavailable: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                subject,
+                playerId,
+                matchingId);
+            return;
+        }
+
+        string messageId;
         try
         {
-            _matchingLifecycleNatsClient?.Publish(subject, BitConverter.GetBytes(playerId));
+            messageId = MatchingLifecycleMessageIds.Create(subject, playerId, matchingId);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Matching lifecycle publish failed: Subject={Subject}, PlayerId={PlayerId}",
-                subject, playerId);
+            logger.LogError(
+                ex,
+                "Matching lifecycle publish failed: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                subject,
+                playerId,
+                matchingId);
+            return;
+        }
+
+        var envelope = new MatchingLifecycleEnvelope
+        {
+            PlayerId = playerId,
+            MatchingId = matchingId,
+            OccurredAtUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+            EventId = messageId
+        };
+        byte[] payload = MessagePackSerializer.Serialize(envelope);
+        var record = new MatchingLifecycleOutboxRecord
+        {
+            EventId = messageId,
+            EventIdFingerprint = MatchingLifecycleOutboxKeys.FingerprintEventId(messageId),
+            Subject = subject,
+            Payload = payload,
+            PlayerId = playerId,
+            MatchingId = matchingId
+        };
+        TrackMatchingLifecyclePublish(outboxWorker, record);
+    }
+
+    private bool TryRegisterMatchingLifecycleTerminal(
+        string subject,
+        long playerId,
+        long matchingId)
+    {
+        if (playerId <= 0 || matchingId <= 0)
+            return true;
+
+        if (!_matchingLifecycleTerminalSubjects.TryGetValue(
+                matchingId,
+                out ConcurrentDictionary<long, string>? playerSubjects))
+        {
+            var candidate = new ConcurrentDictionary<long, string>();
+            if (_matchingLifecycleTerminalSubjects.TryAdd(matchingId, candidate))
+            {
+                playerSubjects = candidate;
+                _matchingLifecycleTerminalMatchOrder.Enqueue(matchingId);
+                while (_matchingLifecycleTerminalSubjects.Count >
+                       MatchingLifecycleTerminalMatchRetention &&
+                       _matchingLifecycleTerminalMatchOrder.TryDequeue(out long expiredMatchingId))
+                {
+                    _matchingLifecycleTerminalSubjects.TryRemove(expiredMatchingId, out _);
+                    if (_matchingLifecyclePersistenceStates.TryGetValue(
+                            expiredMatchingId,
+                            out MatchingLifecyclePersistenceState? state))
+                    {
+                        TryRemoveExpiredMatchingLifecyclePersistenceState(expiredMatchingId, state);
+                    }
+                }
+            }
+            else
+            {
+                playerSubjects = _matchingLifecycleTerminalSubjects[matchingId];
+            }
+        }
+
+        if (playerSubjects.TryAdd(playerId, subject))
+            return true;
+
+        playerSubjects.TryGetValue(playerId, out string? existingSubject);
+        logger.LogDebug(
+            "Ignored duplicate or conflicting matching lifecycle terminal event: MatchingId={MatchingId}, PlayerId={PlayerId}, ExistingSubject={ExistingSubject}, IgnoredSubject={IgnoredSubject}",
+            matchingId,
+            playerId,
+            existingSubject,
+            subject);
+        return false;
+    }
+
+    private void PublishLegacyMatchingLifecycle(string subject, long playerId, long matchingId)
+    {
+        try
+        {
+            byte[] payload = new byte[sizeof(long) * 2];
+            BinaryPrimitives.WriteInt64LittleEndian(payload, playerId);
+            BinaryPrimitives.WriteInt64LittleEndian(payload.AsSpan(sizeof(long)), matchingId);
+            _matchingLifecycleNatsClient?.Publish(subject, payload);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Matching lifecycle publish failed: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                subject,
+                playerId,
+                matchingId);
+        }
+    }
+
+    private void TrackMatchingLifecyclePublish(
+        MatchingLifecycleOutboxWorker outboxWorker,
+        MatchingLifecycleOutboxRecord record)
+    {
+        TaskCompletionSource<bool> completion;
+        Action<bool> completeMatchPersistence;
+        long operationId;
+        lock (_matchingLifecycleEnqueueGate)
+        {
+            if (Volatile.Read(ref _acceptingMatchingLifecycleEnqueues) == 0)
+            {
+                logger.LogWarning(
+                    "Matching lifecycle outbox rejected a late enqueue: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    record.Subject,
+                    record.PlayerId,
+                    record.MatchingId);
+                return;
+            }
+
+            Action<bool>? registration =
+                TryBeginMatchingLifecyclePersistenceUnderGate(record.MatchingId);
+            if (registration == null)
+            {
+                logger.LogWarning(
+                    "Matching lifecycle outbox rejected an event after owner-release ordering was sealed: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    record.Subject,
+                    record.PlayerId,
+                    record.MatchingId);
+                return;
+            }
+
+            completeMatchPersistence = registration;
+            operationId = Interlocked.Increment(ref _nextMatchingLifecyclePublishId);
+            completion = new TaskCompletionSource<bool>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            _pendingMatchingLifecyclePublishTasks.TryAdd(operationId, completion.Task);
+            _ = completion.Task.ContinueWith(
+                completedTask => _pendingMatchingLifecyclePublishTasks.TryRemove(operationId, out _),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+
+        _ = RunTrackedMatchingLifecyclePublishAsync(
+            outboxWorker,
+            record,
+            completeMatchPersistence,
+            completion);
+    }
+
+    private async Task RunTrackedMatchingLifecyclePublishAsync(
+        MatchingLifecycleOutboxWorker outboxWorker,
+        MatchingLifecycleOutboxRecord record,
+        Action<bool> completeMatchPersistence,
+        TaskCompletionSource<bool> completion)
+    {
+        bool persistenceProtected = false;
+        try
+        {
+            persistenceProtected =
+                await PersistMatchingLifecycleDecisionAsync(outboxWorker, record);
+        }
+        catch (Exception ex)
+        {
+            logger.LogCritical(
+                ex,
+                "Unexpected matching lifecycle persistence failure: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                record.Subject,
+                record.PlayerId,
+                record.MatchingId);
+        }
+        finally
+        {
+            completeMatchPersistence(persistenceProtected);
+            completion.TrySetResult(true);
+        }
+    }
+
+    private async Task<bool> PersistMatchingLifecycleDecisionAsync(
+        MatchingLifecycleOutboxWorker outboxWorker,
+        MatchingLifecycleOutboxRecord record)
+    {
+        int maximumEnqueueAttempts = scalingOptions.Enabled
+            ? 3
+            : StaticMatchingLifecycleEnqueueAttempts;
+        for (int attempt = 1; attempt <= maximumEnqueueAttempts; attempt++)
+        {
+            try
+            {
+                MatchingLifecycleOutboxEnqueueResult result =
+                    await outboxWorker.EnqueueAsync(record);
+                if (result == MatchingLifecycleOutboxEnqueueResult.Fenced)
+                {
+                    if (!scalingOptions.Enabled)
+                    {
+                        logger.LogError(
+                            "Static GameServer lifecycle enqueue was fenced, but this topology has no completed-owner recovery scanner; falling back to direct durable publish: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                            record.Subject,
+                            record.PlayerId,
+                            record.MatchingId);
+                        break;
+                    }
+
+                    logger.LogWarning(
+                        "Matching lifecycle event lost the Redis abort-fence race; recovery owns the terminal abort: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                        record.Subject,
+                        record.PlayerId,
+                        record.MatchingId);
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "Matching lifecycle outbox enqueue attempt failed: Attempt={Attempt}, MaxAttempts={MaxAttempts}, Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    attempt,
+                    maximumEnqueueAttempts,
+                    record.Subject,
+                    record.PlayerId,
+                    record.MatchingId);
+                if (attempt < maximumEnqueueAttempts)
+                {
+                    await DelayMatchingLifecyclePersistenceRetryAsync(
+                        TimeSpan.FromMilliseconds(200 * attempt));
+                }
+            }
+        }
+
+        if (!scalingOptions.Enabled)
+        {
+            bool published = await TryPublishStaticMatchingLifecycleFallbackAsync(record);
+            if (!published)
+            {
+                logger.LogCritical(
+                    "Static GameServer lifecycle event has no confirmed outbox persistence or direct JetStream PubAck; cleanup remains fail-closed and this topology has no completed-owner recovery scanner: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    record.Subject,
+                    record.PlayerId,
+                    record.MatchingId);
+            }
+            return published;
+        }
+
+        const int maximumAttempts = 3;
+        for (int attempt = 1; attempt <= maximumAttempts; attempt++)
+        {
+            try
+            {
+                MatchingLifecycleAbortFenceAcquireResult result =
+                    await matchingLifecycleOutboxStore.TryAcquireAbortFenceAsync(
+                        record.PlayerId,
+                        record.MatchingId);
+                logger.LogError(
+                    "Matching lifecycle enqueue exhausted; durable recovery protection was established: Protection={Protection}, Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    result,
+                    record.Subject,
+                    record.PlayerId,
+                    record.MatchingId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    ex,
+                    "Matching lifecycle abort-fence attempt failed: Attempt={Attempt}, MaxAttempts={MaxAttempts}, Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    attempt,
+                    maximumAttempts,
+                    record.Subject,
+                    record.PlayerId,
+                    record.MatchingId);
+                if (attempt < maximumAttempts)
+                {
+                    await DelayMatchingLifecyclePersistenceRetryAsync(
+                        TimeSpan.FromMilliseconds(250 * attempt));
+                }
+            }
+        }
+
+        logger.LogCritical(
+            "Matching lifecycle event has no durable record or abort fence; explicit owner release will be abandoned: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+            record.Subject,
+            record.PlayerId,
+            record.MatchingId);
+        return false;
+    }
+
+    private async Task<bool> TryPublishStaticMatchingLifecycleFallbackAsync(
+        MatchingLifecycleOutboxRecord record)
+    {
+        INatsClient? natsClient = _matchingLifecycleNatsClient;
+        if (natsClient == null)
+        {
+            logger.LogCritical(
+                "Static GameServer direct lifecycle fallback is unavailable because the NATS client is missing: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                record.Subject,
+                record.PlayerId,
+                record.MatchingId);
+            return false;
+        }
+
+        for (int attempt = 1; attempt <= StaticMatchingLifecycleDirectPublishAttempts; attempt++)
+        {
+            using var publishTimeout = new CancellationTokenSource(
+                StaticMatchingLifecycleDirectPublishTimeout);
+            try
+            {
+                NatsDurablePublishAck ack = await natsClient.PublishDurableAsync(
+                    MatchingLifecycleSubjects.Stream,
+                    record.Subject,
+                    record.EventId,
+                    record.Payload,
+                    publishTimeout.Token);
+                logger.LogWarning(
+                    "Static GameServer lifecycle event was published directly after Redis outbox persistence could not be confirmed: EventId={EventId}, Stream={Stream}, Sequence={Sequence}, Duplicate={Duplicate}",
+                    record.EventId,
+                    ack.Stream,
+                    ack.Sequence,
+                    ack.Duplicate);
+                return true;
+            }
+            catch (OperationCanceledException) when (publishTimeout.IsCancellationRequested)
+            {
+                logger.LogWarning(
+                    "Static GameServer direct lifecycle publish timed out: Attempt={Attempt}, MaxAttempts={MaxAttempts}, Timeout={Timeout}, EventId={EventId}",
+                    attempt,
+                    StaticMatchingLifecycleDirectPublishAttempts,
+                    StaticMatchingLifecycleDirectPublishTimeout,
+                    record.EventId);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "Static GameServer direct lifecycle publish failed: Attempt={Attempt}, MaxAttempts={MaxAttempts}, EventId={EventId}",
+                    attempt,
+                    StaticMatchingLifecycleDirectPublishAttempts,
+                    record.EventId);
+            }
+
+            if (attempt < StaticMatchingLifecycleDirectPublishAttempts)
+            {
+                await DelayMatchingLifecyclePersistenceRetryAsync(
+                    TimeSpan.FromMilliseconds(250 * attempt));
+            }
+        }
+
+        return false;
+    }
+
+    private async Task DelayMatchingLifecyclePersistenceRetryAsync(TimeSpan delay)
+    {
+        try
+        {
+            await Task.Delay(delay, _cts.Token);
+        }
+        catch (OperationCanceledException) when (_cts.IsCancellationRequested)
+        {
+            // Shutdown skips local backoff but still performs the remaining bounded Redis attempts.
+        }
+    }
+
+    private async Task WaitForPendingMatchingLifecyclePublishesAsync()
+    {
+        while (!_pendingMatchingLifecyclePublishTasks.IsEmpty)
+        {
+            Task[] tasks = _pendingMatchingLifecyclePublishTasks.Values.ToArray();
+            if (tasks.Length == 0)
+                break;
+            await Task.WhenAll(tasks);
+        }
+    }
+
+    private void StartAcceptingMatchingLifecycleEnqueues()
+    {
+        lock (_matchingLifecycleEnqueueGate)
+        {
+            if (_matchingLifecycleOutboxWorker == null)
+                throw new InvalidOperationException("Matching lifecycle outbox worker is unavailable.");
+            Volatile.Write(ref _acceptingMatchingLifecycleEnqueues, 1);
+        }
+    }
+
+    private void StopAcceptingMatchingLifecycleEnqueues()
+    {
+        lock (_matchingLifecycleEnqueueGate)
+            Volatile.Write(ref _acceptingMatchingLifecycleEnqueues, 0);
+    }
+
+    private Action? BeginMatchingLifecyclePersistenceRegistration(long matchingId)
+    {
+        if (!IsDurableMatchingLifecycleEnabled)
+            return static () => { };
+
+        lock (_matchingLifecycleEnqueueGate)
+        {
+            if (Volatile.Read(ref _acceptingMatchingLifecycleEnqueues) == 0)
+                return null;
+            Action<bool>? registration =
+                TryBeginMatchingLifecyclePersistenceUnderGate(matchingId);
+            return registration == null ? null : () => registration(true);
+        }
+    }
+
+    private Action<bool>? TryBeginMatchingLifecyclePersistenceUnderGate(long matchingId)
+    {
+        MatchingLifecyclePersistenceState state =
+            _matchingLifecyclePersistenceStates.GetOrAdd(
+                matchingId,
+                static _ => new MatchingLifecyclePersistenceState());
+        lock (state.SyncRoot)
+        {
+            if (state.Sealed)
+                return null;
+            state.PendingCount = checked(state.PendingCount + 1);
+        }
+
+        int completed = 0;
+        return persistenceProtected =>
+        {
+            if (Interlocked.Exchange(ref completed, 1) == 0)
+            {
+                CompleteMatchingLifecyclePersistence(
+                    matchingId,
+                    state,
+                    persistenceProtected);
+            }
+        };
+    }
+
+    private void CompleteMatchingLifecyclePersistence(
+        long matchingId,
+        MatchingLifecyclePersistenceState state,
+        bool persistenceProtected)
+    {
+        TaskCompletionSource<bool>? quiesced = null;
+        lock (state.SyncRoot)
+        {
+            if (state.PendingCount <= 0)
+                throw new InvalidOperationException("Matching lifecycle persistence registration underflow.");
+
+            state.PersistenceFailed |= !persistenceProtected;
+            state.PendingCount--;
+            if (state.PendingCount == 0 && state.ClosingRequested)
+            {
+                state.Sealed = true;
+                quiesced = state.Quiesced;
+            }
+        }
+
+        quiesced?.TrySetResult(true);
+        TryRemoveExpiredMatchingLifecyclePersistenceState(matchingId, state);
+    }
+
+    private async Task<bool> SealAndWaitForMatchingLifecyclePersistenceAsync(long matchingId)
+    {
+        if (!IsDurableMatchingLifecycleEnabled)
+            return true;
+
+        MatchingLifecyclePersistenceState state =
+            _matchingLifecyclePersistenceStates.GetOrAdd(
+                matchingId,
+                static _ => new MatchingLifecyclePersistenceState());
+        Task waitTask;
+        lock (state.SyncRoot)
+        {
+            state.ClosingRequested = true;
+            if (state.PendingCount == 0)
+            {
+                state.Sealed = true;
+                waitTask = Task.CompletedTask;
+            }
+            else
+            {
+                state.Quiesced ??= new TaskCompletionSource<bool>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                waitTask = state.Quiesced.Task;
+            }
+        }
+
+        await waitTask;
+        lock (state.SyncRoot)
+            return !state.PersistenceFailed;
+    }
+
+    private void MarkMatchingLifecycleOwnerReleaseCompleted(long matchingId)
+    {
+        if (!_matchingLifecyclePersistenceStates.TryGetValue(
+                matchingId,
+                out MatchingLifecyclePersistenceState? state))
+        {
+            return;
+        }
+
+        lock (state.SyncRoot)
+            state.OwnerReleaseCompleted = true;
+        TryRemoveExpiredMatchingLifecyclePersistenceState(matchingId, state);
+    }
+
+    private void TryRemoveExpiredMatchingLifecyclePersistenceState(
+        long matchingId,
+        MatchingLifecyclePersistenceState state)
+    {
+        if (_matchingLifecycleTerminalSubjects.ContainsKey(matchingId))
+            return;
+
+        lock (state.SyncRoot)
+        {
+            if (!state.Sealed || state.PendingCount != 0 || !state.OwnerReleaseCompleted)
+                return;
+        }
+
+        ((ICollection<KeyValuePair<long, MatchingLifecyclePersistenceState>>)
+            _matchingLifecyclePersistenceStates).Remove(
+            new KeyValuePair<long, MatchingLifecyclePersistenceState>(matchingId, state));
+    }
+
+    private async Task StopMatchingLifecycleOutboxWorkerAsync()
+    {
+        MatchingLifecycleOutboxWorker? worker =
+            Interlocked.Exchange(ref _matchingLifecycleOutboxWorker, null);
+        if (worker == null)
+            return;
+
+        try
+        {
+            await worker.StopAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Matching lifecycle outbox worker shutdown failed.");
+        }
+    }
+
+    private async Task CloseMatchingLifecycleNatsClientAsync()
+    {
+        INatsClient? natsClient = Interlocked.Exchange(ref _matchingLifecycleNatsClient, null);
+        if (natsClient == null)
+            return;
+
+        try
+        {
+            await natsClient.CloseAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "NATS close failed during shutdown.");
         }
     }
 
     private void OnClientSessionCreated(UserToken token)
     {
+        if (Volatile.Read(ref _stopping) != 0)
+        {
+            token.Disconnect();
+            return;
+        }
+
         try
         {
             var redLockFactory = cacheHelper.GetRedLockFactory();
@@ -1456,6 +2347,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 redLockFactory,
                 logger,
                 cacheHelper,
+                ConsumeGameHandoffTicketAsync,
                 OnClientSessionLeave,
                 RegisterClientSession,
                 GetSessionsByInstance,
@@ -1476,14 +2368,25 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 _gameEventLogManager,
                 _matchSummaryFileStore,
                 _encounterRevealManager,
-                playerId => PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerLeft, playerId),
-                playerId => PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerCompleted, playerId));
+                _matchRuntimeRegistry.TryAcquireOperation,
+                _matchRuntimeRegistry.TryExecute,
+                _matchRuntimeRegistry.TryBindOwnerFence,
+                CleanupMatchRuntime,
+                (playerId, matchingId) =>
+                    PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerLeft, playerId, matchingId),
+                (playerId, matchingId) =>
+                    PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerCompleted, playerId, matchingId),
+                (playerId, matchingId) =>
+                    PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerReleased, playerId, matchingId),
+                () => Volatile.Read(ref _stopping) != 0,
+                AbortMatchAfterAdmissionFailure);
 
             logger.LogInformation("Game client session created");
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to create game client session");
+            token.Disconnect();
         }
     }
 
@@ -1491,7 +2394,19 @@ IReadOnlyCollection<GameClientSession> activeSessions)
     {
         if (session.PlayerId.HasValue)
         {
-            _clientSessions.TryRemove(session.PlayerId.Value, out _);
+            bool removed = ((ICollection<KeyValuePair<long, GameClientSession>>)_clientSessions)
+                .Remove(new KeyValuePair<long, GameClientSession>(session.PlayerId.Value, session));
+            if (!removed)
+            {
+                logger.LogDebug(
+                    "Ignored removal from a superseded game session: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    session.PlayerId.Value,
+                    session.CurrentMapSubId);
+                if (session.CurrentMapSubId > 0)
+                    CleanupMatchingIfNoHumanSessionsRemain(session.CurrentMapSubId);
+                return;
+            }
+
             logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", session.PlayerId.Value);
 
             if (session.CurrentMapSubId > 0 && session.CurrentArea != AreaType.None)
@@ -1526,6 +2441,75 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         }
     }
 
+    private void AbortMatchAfterAdmissionFailure(GameClientSession session)
+    {
+        if (!session.PlayerId.HasValue || session.CurrentMapSubId <= 0)
+            return;
+
+        long playerId = session.PlayerId.Value;
+        long matchingId = session.CurrentMapSubId;
+        if (_clientSessions.TryGetValue(playerId, out var currentSession) &&
+            !ReferenceEquals(currentSession, session) &&
+            currentSession.CurrentMapSubId == matchingId)
+        {
+            logger.LogDebug(
+                "Skipped admission-failed claim release for superseded session: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                playerId,
+                matchingId);
+            return;
+        }
+
+        IReadOnlyList<long> affectedPlayerIds = session.HandoffHumanPlayerIds.Count > 0
+            ? session.HandoffHumanPlayerIds
+            : [playerId];
+
+        bool cleanupAccepted;
+        Action? persistenceRegistration =
+            BeginMatchingLifecyclePersistenceRegistration(matchingId);
+        try
+        {
+            // Win the terminal transition before publishing or taking the session snapshot. A new
+            // connection either registers under the same runtime lock before this transition and is
+            // included below, or observes Finalizing and cannot publish a successful admission.
+            cleanupAccepted = false;
+            if (!_matchRuntimeRegistry.IsTerminal(matchingId))
+                cleanupAccepted = TryCleanupMatchRuntime(matchingId, null, null);
+
+            // A competing finalizer or an already terminal match still needs exact claim release for
+            // a late, now-rejected ticket. Only skip when cleanup itself failed and the match remained active.
+            if (!cleanupAccepted && !_matchRuntimeRegistry.IsTerminal(matchingId))
+                return;
+
+            foreach (long affectedPlayerId in affectedPlayerIds)
+            {
+                PublishMatchingLifecycle(
+                    MatchingLifecycleSubjects.PlayerAdmissionFailed,
+                    affectedPlayerId,
+                    matchingId);
+            }
+        }
+        finally
+        {
+            persistenceRegistration?.Invoke();
+        }
+
+        if (!cleanupAccepted)
+            return;
+
+        var otherSessions = _clientSessions.Values
+            .Where(other =>
+                !ReferenceEquals(other, session) && other.CurrentMapSubId == matchingId)
+            .ToList();
+        foreach (var otherSession in otherSessions)
+            otherSession.DisconnectForAdmissionFailure();
+
+        logger.LogWarning(
+            "Match aborted after client admission failure: MatchingId={MatchingId}, FailedPlayerId={PlayerId}, AffectedPlayers={AffectedPlayers}",
+            matchingId,
+            playerId,
+            affectedPlayerIds.Count);
+    }
+
     /// <summary>
     ///     사람 세션 없이 진행되는 매치(관리자 봇 전용 인스턴스)를 정산한다.
     ///     승리 판정이 사람 세션에 의존해 최후 1인이 남아도 끝나지 않고, 오염도가 한계에
@@ -1549,56 +2533,177 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 other.PlayerId.HasValue && other.CurrentMapSubId == matchingId))
             return;
 
-        if (_gameEventLogManager.TryBeginFinalization(matchingId))
+        bool cleanupAccepted = TryCleanupMatchRuntime(
+            matchingId,
+            () => !_clientSessions.Values.Any(other =>
+                other.PlayerId.HasValue && other.CurrentMapSubId == matchingId),
+            () =>
+            {
+                if (!_gameEventLogManager.TryBeginFinalization(matchingId))
+                    return;
+
+                DateTime endedAtUtc = DateTime.UtcNow;
+                DateTime startedAtUtc =
+                    _areaClosureManager.GetMatchingState(matchingId)?.GameStartTime ?? endedAtUtc;
+                var finalPlayerStats = _matchRosterManager.BuildGameResult(matchingId)
+                    .Select(row =>
+                    {
+                        var stats = _gameEventLogManager.GetResultStats(matchingId, row.playerId);
+                        DateTime survivalEndUtc = row.eliminatedAt ?? endedAtUtc;
+                        return new MatchFinalPlayerStats(
+                            row.playerId,
+                            row.eliminationRank,
+                            Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
+                            stats.KillCount + stats.MonsterKillCount,
+                            stats.TotalDamageDealt + stats.MonsterDamageDealt,
+                            stats.TotalRecovery,
+                            // 승점 (#229): 사람이 나간 매치도 오브 수를 남긴다 — 봇 매치가 유일한
+                            // 자동 검증 창구라 여기서 빠지면 결과 집계를 로그로 확인할 수 없다.
+                            GetSwarmOrbScore(matchingId, row.playerId).OrbCount);
+                    })
+                    .ToList();
+                _gameEventLogManager.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);
+                PersistMatchSummary(matchingId, endReason, winnerPlayerId);
+            });
+
+        if (cleanupAccepted)
         {
-            DateTime endedAtUtc = DateTime.UtcNow;
-            DateTime startedAtUtc = _areaClosureManager.GetMatchingState(matchingId)?.GameStartTime ?? endedAtUtc;
-            var finalPlayerStats = _matchRosterManager.BuildGameResult(matchingId)
-                .Select(row =>
-                {
-                    var stats = _gameEventLogManager.GetResultStats(matchingId, row.playerId);
-                    DateTime survivalEndUtc = row.eliminatedAt ?? endedAtUtc;
-                    return new MatchFinalPlayerStats(
-                        row.playerId,
-                        row.eliminationRank,
-                        Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
-                        stats.KillCount + stats.MonsterKillCount,
-                        stats.TotalDamageDealt + stats.MonsterDamageDealt,
-                        stats.TotalRecovery,
-                        // 승점 (#229): 사람이 나간 매치도 오브 수를 남긴다 — 봇 매치가 유일한
-                        // 자동 검증 창구라 여기서 빠지면 결과 집계를 로그로 확인할 수 없다.
-                        GetSwarmOrbScore(matchingId, row.playerId).OrbCount);
-                })
-                .ToList();
-            _gameEventLogManager.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);
-            PersistMatchSummary(matchingId, endReason, winnerPlayerId);
+            logger.LogInformation(
+                "Removed matching without human sessions: MatchingId={MatchingId}, EndReason={EndReason}",
+                matchingId, endReason);
         }
+    }
 
-        GameClientSession.CleanupAbandonedMatchingRuntime(matchingId);
-        _areaClosureManager.CleanupMatching(matchingId);
-        _botPlayerManager.CleanupMatching(matchingId);
-        _presenceTracker.Remove(matchingId);
-        _checklistManager.RemoveMatchingState(matchingId);
-        _areaItemStockManager.RemoveMatchingState(matchingId);
-        _groundItemManager.RemoveMatchingState(matchingId);
-        _emotionAfterimageMonsterManager.RemoveMatchingState(matchingId);
-        _summonStoneManager.RemoveMatchingState(matchingId);
-        _inGameInventoryManager.RemoveMatchingState(matchingId);
-        _interactableStateManager.RemoveMatchingState(matchingId);
-        _areaRuleManager.RemoveMatchingState(matchingId);
-        _itemPoolManager.RemoveMatchingState(matchingId);
-        _doorStateManager.ClearMatching(matchingId);
-        _matchRosterManager.CleanupMatching(matchingId);
-        _interactionLogManager.CleanupMatching(matchingId);
-        _gameEventLogManager.Clear(matchingId);
-        _encounterRevealManager.CleanupMatching(matchingId);
-        _proximityAutoCombatResolver.RemoveMatching(matchingId);
-        CleanupMatchSettlementState(matchingId);
-        _ = CleanupAbandonedMatchingRedisAsync(matchingId);
+    /// <summary>
+    ///     Runs every in-memory match cleanup behind one terminal lifecycle gate.
+    ///     Each component cleanup is isolated so one failure cannot prevent the remaining
+    ///     managers from releasing their matchingId state.
+    /// </summary>
+    private void CleanupMatchRuntime(long matchingId) => CleanupMatchRuntime(matchingId, null);
 
-        logger.LogInformation(
-            "Removed matching without human sessions: MatchingId={MatchingId}, EndReason={EndReason}",
-            matchingId, endReason);
+    private void CleanupMatchRuntime(long matchingId, Action? beforeCleanup)
+    {
+        TryCleanupMatchRuntime(matchingId, null, beforeCleanup);
+    }
+
+    private bool TryCleanupMatchRuntime(
+        long matchingId,
+        Func<bool>? canFinalize,
+        Action? beforeCleanup)
+    {
+        try
+        {
+            return _matchRuntimeRegistry.TryFinalize(matchingId, canFinalize ?? (() => true), () =>
+            {
+                if (beforeCleanup != null)
+                    CleanupMatchComponent(matchingId, "match finalization", beforeCleanup);
+                CleanupMatchComponent(
+                    matchingId,
+                    "session runtime",
+                    () => GameClientSession.CleanupAbandonedMatchingRuntime(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "countdown broadcast",
+                    () => _lastMatchStartCountdownBroadcast.TryRemove(matchingId, out _));
+                CleanupMatchComponent(
+                    matchingId,
+                    "settlement",
+                    () => CleanupMatchSettlementState(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "swarm arena",
+                    () => CleanupSwarmArenaState(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "area closure",
+                    () => _areaClosureManager.CleanupMatching(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "bots",
+                    () => _botPlayerManager.CleanupMatching(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "checklist",
+                    () => _checklistManager.RemoveMatchingState(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "area item stock",
+                    () => _areaItemStockManager.RemoveMatchingState(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "ground items",
+                    () => _groundItemManager.RemoveMatchingState(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "afterimage monsters",
+                    () => _emotionAfterimageMonsterManager.RemoveMatchingState(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "summon stones",
+                    () => _summonStoneManager.RemoveMatchingState(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "inventory",
+                    () => _inGameInventoryManager.RemoveMatchingState(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "interactables",
+                    () => _interactableStateManager.RemoveMatchingState(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "area rules",
+                    () => _areaRuleManager.RemoveMatchingState(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "item pool",
+                    () => _itemPoolManager.RemoveMatchingState(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "doors",
+                    () => _doorStateManager.ClearMatching(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "roster",
+                    () => _matchRosterManager.CleanupMatching(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "interaction log",
+                    () => _interactionLogManager.CleanupMatching(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "encounter reveal",
+                    () => _encounterRevealManager.CleanupMatching(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "event log",
+                    () => _gameEventLogManager.Clear(matchingId));
+                CleanupMatchComponent(
+                    matchingId,
+                    "Redis cleanup scheduling",
+                    () => StartMatchingRedisCleanup(matchingId));
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Match runtime cleanup failed: MatchingId={MatchingId}", matchingId);
+            return false;
+        }
+    }
+
+    private void CleanupMatchComponent(long matchingId, string component, Action cleanup)
+    {
+        try
+        {
+            cleanup();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Match component cleanup failed: MatchingId={MatchingId}, Component={Component}",
+                matchingId,
+                component);
+        }
     }
 
     private void PersistMatchSummary(long matchingId, string endReason, long winnerId)
@@ -1619,6 +2724,44 @@ IReadOnlyCollection<GameClientSession> activeSessions)
 
     private async Task CleanupAbandonedMatchingRedisAsync(long matchingId)
     {
+        bool persistenceProtected =
+            await SealAndWaitForMatchingLifecyclePersistenceAsync(matchingId);
+        if (!persistenceProtected)
+        {
+            bool abandoned = false;
+            try
+            {
+                if (scalingOptions.Enabled)
+                    abandoned = await gameServerNodeLease.AbandonMatchOwnerAsync(matchingId);
+            }
+            catch (Exception ex)
+            {
+                logger.LogCritical(
+                    ex,
+                    "Failed to abandon the local match owner after lifecycle persistence failure: MatchingId={MatchingId}",
+                    matchingId);
+            }
+            finally
+            {
+                MarkMatchingLifecycleOwnerReleaseCompleted(matchingId);
+            }
+
+            if (scalingOptions.Enabled)
+            {
+                logger.LogCritical(
+                    "Matching cleanup is fail-closed because no lifecycle record or abort fence was persisted; handoff data remains and the Redis owner is left for TTL recovery: MatchingId={MatchingId}, LocalOwnerAbandoned={LocalOwnerAbandoned}",
+                    matchingId,
+                    abandoned);
+            }
+            else
+            {
+                logger.LogCritical(
+                    "Static GameServer matching cleanup is fail-closed because neither outbox persistence nor direct JetStream publication was confirmed; handoff data remains, but this topology has no routing owner or completed-owner recovery scanner: MatchingId={MatchingId}",
+                    matchingId);
+            }
+            return;
+        }
+
         try
         {
             await cacheHelper.KeyDeleteAsync(MatchingHandoffRedisKeys.Key(matchingId));
@@ -1630,12 +2773,103 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 "Failed to remove abandoned matching from Redis: MatchingId={MatchingId}",
                 matchingId);
         }
+
+        try
+        {
+            bool released = await gameServerNodeLease.ReleaseMatchOwnerAsync(matchingId);
+            if (scalingOptions.Enabled && !released)
+            {
+                logger.LogDebug(
+                    "Match owner was already released, untracked, or fenced: MatchingId={MatchingId}",
+                    matchingId);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Failed to release GameServer match owner; lease TTL will fence it: MatchingId={MatchingId}",
+                matchingId);
+        }
+        finally
+        {
+            MarkMatchingLifecycleOwnerReleaseCompleted(matchingId);
+        }
     }
 
-    private void RegisterClientSession(long playerId, GameClientSession session)
+    private async Task<GameHandoffContext?> ConsumeGameHandoffTicketAsync(string? ticket)
     {
-        _clientSessions.TryAdd(playerId, session);
-        logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
+        if (!scalingOptions.Enabled)
+            return await gameHandoffTicketService.ConsumeAsync(ticket);
+        if (Volatile.Read(ref _stopping) != 0 || !gameServerNodeLease.HasLease)
+            return null;
+
+        return await gameServerNodeLease.ConsumeAndTrackMatchOwnerAsync(
+            () => gameHandoffTicketService.ConsumeForOwnerAsync(
+                ticket,
+                gameServerNodeLease.Identity,
+                scalingOptions.NodeLeaseLifetime));
+    }
+
+    private void StartMatchingRedisCleanup(long matchingId)
+    {
+        Task cleanupTask = CleanupAbandonedMatchingRedisAsync(matchingId);
+        _pendingMatchingRedisCleanupTasks[matchingId] = cleanupTask;
+        _ = RemoveCompletedMatchingRedisCleanupAsync(matchingId, cleanupTask);
+    }
+
+    private async Task RemoveCompletedMatchingRedisCleanupAsync(long matchingId, Task cleanupTask)
+    {
+        await cleanupTask;
+        ((ICollection<KeyValuePair<long, Task>>)_pendingMatchingRedisCleanupTasks)
+            .Remove(new KeyValuePair<long, Task>(matchingId, cleanupTask));
+    }
+
+    private async Task WaitForPendingMatchingRedisCleanupsAsync()
+    {
+        while (true)
+        {
+            var pendingCleanups = _pendingMatchingRedisCleanupTasks.ToArray();
+            if (pendingCleanups.Length == 0)
+                return;
+
+            await Task.WhenAll(pendingCleanups.Select(pair => pair.Value));
+            foreach (var pendingCleanup in pendingCleanups)
+            {
+                ((ICollection<KeyValuePair<long, Task>>)_pendingMatchingRedisCleanupTasks)
+                    .Remove(pendingCleanup);
+            }
+        }
+    }
+
+    private Action? RegisterClientSession(long playerId, GameClientSession session)
+    {
+        while (true)
+        {
+            if (!_clientSessions.TryGetValue(playerId, out var existingSession))
+            {
+                if (_clientSessions.TryAdd(playerId, session))
+                {
+                    logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
+                    return null;
+                }
+
+                continue;
+            }
+
+            if (ReferenceEquals(existingSession, session))
+                return null;
+
+            if (!_clientSessions.TryUpdate(playerId, session, existingSession))
+                continue;
+
+            logger.LogWarning("Game client session replaced: PlayerId={PlayerId}", playerId);
+            return () =>
+            {
+                existingSession.MarkServerInitiatedDisconnect();
+                existingSession.ForceDisconnect();
+            };
+        }
     }
 
     private List<GameClientSession> GetSessionsByInstance(MapId mapId, long mapSubId)
@@ -1714,43 +2948,47 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         foreach (var botInfo in botInfoList)
             botInfo.SpawnCell = Cell.Clone(spawnAssignments[botInfo.PlayerId]);
 
-        _botPlayerManager.RegisterBots(matchingId, Config.SWARM_MATCH_MAP, botInfoList);
-        int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
-        _gameEventLogManager.BeginMatch(matchingId, matchSeed);
-        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        bool initialized = _matchRuntimeRegistry.TryExecute(matchingId, () =>
         {
-            _gameEventLogManager.LogSpawnAssignment(
-                matchingId,
-                bot.PlayerId,
-                matchSeed,
-                MatchSpawnData.GetAnchorIndex(bot.Cell),
-                bot.Cell.X,
-                bot.Cell.Y,
-                bot.CurrentArea.ToString(),
-                isBot: true);
-        }
-
-
-        foreach (var bot in botInfoList)
-        {
-            _matchRosterManager.RegisterEntry(matchingId, new RosterEntry
+            _botPlayerManager.RegisterBots(matchingId, Config.SWARM_MATCH_MAP, botInfoList);
+            int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
+            _gameEventLogManager.BeginMatch(matchingId, matchSeed);
+            foreach (var bot in _botPlayerManager.GetBots(matchingId))
             {
-                PlayerId = bot.PlayerId,
-                TargetPlayerId = bot.TargetPlayerId,
-                MyJobTitle = bot.MyJobTitle,
-                TargetJobTitle = bot.TargetJobTitle
-            });
+                _gameEventLogManager.LogSpawnAssignment(
+                    matchingId,
+                    bot.PlayerId,
+                    matchSeed,
+                    MatchSpawnData.GetAnchorIndex(bot.Cell),
+                    bot.Cell.X,
+                    bot.Cell.Y,
+                    bot.CurrentArea.ToString(),
+                    isBot: true);
+            }
 
-        }
+            foreach (var bot in botInfoList)
+            {
+                _matchRosterManager.RegisterEntry(matchingId, new RosterEntry
+                {
+                    PlayerId = bot.PlayerId,
+                    TargetPlayerId = bot.TargetPlayerId,
+                    MyJobTitle = bot.MyJobTitle,
+                    TargetJobTitle = bot.TargetJobTitle
+                });
+            }
 
-        _areaItemStockManager.InitializeMatching(matchingId);
-        _groundItemManager.InitializeMatching(matchingId);
-        _doorStateManager.InitializeMatching(matchingId, Array.Empty<AreaType>());
-        _checklistManager.StartRound(matchingId, 1, playerIds,
-            playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
+            _areaItemStockManager.InitializeMatching(matchingId);
+            _groundItemManager.InitializeMatching(matchingId);
+            _doorStateManager.InitializeMatching(matchingId, Array.Empty<AreaType>());
+            _checklistManager.StartRound(matchingId, 1, playerIds,
+                playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
 
-        _gameEventLogManager.LogSystem(matchingId,
-            $"Bot-only instance created: botCount={botCount}, ids=[{string.Join(",", playerIds)}]");
+            _gameEventLogManager.LogSystem(matchingId,
+                $"Bot-only instance created: botCount={botCount}, ids=[{string.Join(",", playerIds)}]");
+        });
+        if (!initialized)
+            return null;
+
         logger.LogInformation(
             "Bot-only instance created: MatchingId={MatchingId}, BotCount={BotCount}, Ids=[{Ids}]",
             matchingId, botCount, string.Join(",", playerIds));

@@ -9,14 +9,11 @@ namespace game_server;
 
 public partial class GameServer
 {
-    private object GetMatchSettlementLock(long matchingId) =>
-        _matchSettlementLocks.GetOrAdd(matchingId, _ => new object());
-
     private void ProcessResourceTickForMatching(
         long matchingId,
         List<GameClientSession> activeSessions)
     {
-        lock (GetMatchSettlementLock(matchingId))
+        _matchRuntimeRegistry.TryExecute(matchingId, () =>
         {
             // Combat always settles before environmental damage in the same server resource tick.
             ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
@@ -199,14 +196,13 @@ public partial class GameServer
                 resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);
                 CleanupMatchSettlementState(matchingId);
             }
-        }
+        });
     }
 
     private void CleanupMatchSettlementState(long matchingId)
     {
         _proximityAutoCombatResolver.RemoveMatching(matchingId);
         RemoveOrbVisualStates(matchingId);
-        _matchSettlementLocks.TryRemove(matchingId, out _);
     }
 
     private int ResolveFinalOrbTier(long matchingId, long playerId)

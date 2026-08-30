@@ -38,7 +38,7 @@ namespace network.common.data
             return effect;
         }
 
-        public static bool TryGet(int id, out StatusEffectInfoData effect)
+        public static bool TryGet(int id, out StatusEffectInfoData? effect)
         {
             return _effectsById.TryGetValue(id, out effect);
         }

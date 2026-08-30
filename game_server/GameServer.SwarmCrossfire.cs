@@ -645,7 +645,9 @@ public partial class GameServer
             new Dictionary<long, int> { [attackerId] = damage });
         SpawnSpotArenaSummonStone(
             matchingId, damageResult.MonsterState, allSessions,
-            damageResult.HeartReward, damageResult.BootsReward, damageResult.KeyReward);
+            damageResult.HeartReward, damageResult.BootsReward, damageResult.KeyReward,
+            killerPlayerId: attackerId,
+            isCore: damageResult.Kind == SwarmMonsterKind.RunawayGoblin);
     }
 
     // 충격 면역 퇴역 이력: 소유자 초당 1회 상한(2026-08-24)에 이어 피해자 0.9초 면역도
@@ -679,7 +681,7 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        List<(long, long)> expired = null;
+        List<(long, long)>? expired = null;
         foreach (var pair in _swarmSunBurns)
         {
             if (pair.Key.MatchingId != matchingId)

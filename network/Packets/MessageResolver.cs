@@ -5,6 +5,8 @@ namespace network.packets;
 
 internal class MessageResolver
 {
+    private const int MinimumMessageSize = sizeof(int) + sizeof(long);
+
     public delegate void CompleteMessageCallback(Const<byte[]> buffer);
 
     private readonly byte[] _messageBuffer = new byte[Config.BUFFER_SIZE];
@@ -32,7 +34,8 @@ internal class MessageResolver
                         return (ErrorCode.SUCCESS, null);
 
                     int messageSize = ParseHeader();
-                    if (messageSize <= 0 || messageSize > Config.BUFFER_SIZE - Config.HEADER_SIZE)
+                    if (messageSize < MinimumMessageSize ||
+                        messageSize > Config.BUFFER_SIZE - Config.HEADER_SIZE)
                         return (ErrorCode.FATAL, $"[MessageResolver/OnReceived] Invalid message size {messageSize}");
 
                     _targetPosition += messageSize;

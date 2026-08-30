@@ -25,10 +25,10 @@ namespace network.common.data
             }
         }
 
-        public static BattleItemCombatDefinition Get(int itemId) =>
+        public static BattleItemCombatDefinition? Get(int itemId) =>
             _definitions.GetValueOrDefault(itemId);
 
-        public static bool TryGet(int itemId, out BattleItemCombatDefinition definition) =>
+        public static bool TryGet(int itemId, out BattleItemCombatDefinition? definition) =>
             _definitions.TryGetValue(itemId, out definition);
 
         public static bool IsCombatItem(int itemId) => _definitions.ContainsKey(itemId);

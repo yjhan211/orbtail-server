@@ -53,7 +53,7 @@ namespace network.common.data
             }
         }
 
-        public static BattleItemRecipe Get(int recipeId) =>
+        public static BattleItemRecipe? Get(int recipeId) =>
             _recipesById.GetValueOrDefault(recipeId);
 
         public static List<BattleItemRecipe> GetAllRecipes() =>
@@ -75,17 +75,17 @@ namespace network.common.data
         public static bool IsRecipeOutputItem(int itemId) =>
             _recipesByOutput.ContainsKey(itemId);
 
-        public static BattleItemRecipe TryCombine(IEnumerable<int> inputItemIds)
+        public static BattleItemRecipe? TryCombine(IEnumerable<int>? inputItemIds)
         {
             return GetMatchingRecipes(inputItemIds).FirstOrDefault();
         }
 
-        public static BattleItemRecipe TryCombine(IEnumerable<int> inputItemIds, AreaType currentArea)
+        public static BattleItemRecipe? TryCombine(IEnumerable<int>? inputItemIds, AreaType currentArea)
         {
             return GetAvailableRecipes(inputItemIds, currentArea).FirstOrDefault();
         }
 
-        public static List<BattleItemRecipe> GetMatchingRecipes(IEnumerable<int> inputItemIds)
+        public static List<BattleItemRecipe> GetMatchingRecipes(IEnumerable<int>? inputItemIds)
         {
             var normalizedInputs = NormalizeInputs(inputItemIds);
             if (normalizedInputs.Count == 0) return new List<BattleItemRecipe>();
@@ -96,14 +96,14 @@ namespace network.common.data
                 .ToList();
         }
 
-        public static List<BattleItemRecipe> GetAvailableRecipes(IEnumerable<int> inputItemIds, AreaType currentArea)
+        public static List<BattleItemRecipe> GetAvailableRecipes(IEnumerable<int>? inputItemIds, AreaType currentArea)
         {
             return GetMatchingRecipes(inputItemIds)
                 .Where(recipe => IsAvailableInArea(recipe, currentArea))
                 .ToList();
         }
 
-        public static BattleItemRecipe PickRandomRecipe(IEnumerable<int> inputItemIds, Random random)
+        public static BattleItemRecipe? PickRandomRecipe(IEnumerable<int>? inputItemIds, Random random)
         {
             if (random == null) throw new ArgumentNullException(nameof(random));
 
@@ -111,7 +111,7 @@ namespace network.common.data
             return candidates.Count == 0 ? null : candidates[random.Next(candidates.Count)];
         }
 
-        public static BattleItemRecipe PickRandomRecipe(IEnumerable<int> inputItemIds, AreaType currentArea,
+        public static BattleItemRecipe? PickRandomRecipe(IEnumerable<int>? inputItemIds, AreaType currentArea,
             Random random)
         {
             if (random == null) throw new ArgumentNullException(nameof(random));
@@ -149,7 +149,7 @@ namespace network.common.data
             }
         }
 
-        private static List<int> NormalizeInputs(IEnumerable<int> inputItemIds) =>
+        private static List<int> NormalizeInputs(IEnumerable<int>? inputItemIds) =>
             inputItemIds?
                 .Where(id => id > 0)
                 .OrderBy(id => id)

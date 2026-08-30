@@ -27,4 +27,28 @@ public class SocketAsyncEventArgsManager(int capacity)
             return _pool.Pop();
         }
     }
+
+    public bool TryPop(out SocketAsyncEventArgs? item)
+    {
+        lock (_pool)
+        {
+            if (_pool.Count == 0)
+            {
+                item = null;
+                return false;
+            }
+
+            item = _pool.Pop();
+            return true;
+        }
+    }
+
+    public void DisposeAll()
+    {
+        lock (_pool)
+        {
+            while (_pool.Count > 0)
+                _pool.Pop().Dispose();
+        }
+    }
 }
