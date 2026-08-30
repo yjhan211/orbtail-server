@@ -1,8 +1,8 @@
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.packets;
-using Microsoft.Extensions.Logging;
 
 namespace game_server.network;
 
