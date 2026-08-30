@@ -187,10 +187,8 @@ public partial class GameServer
             }
 
             var (isGameOver, winnerId) = _matchRosterManager.CheckGameOver(matchingId);
-            var resultHost = _clientSessions.Values.FirstOrDefault(session =>
-                session.PlayerId.HasValue &&
-                session.CurrentMapSubId == matchingId &&
-                !session.IsGameEnded);
+            var resultHost = GetSessionsByMatch(matchingId)
+                .FirstOrDefault(session => !session.IsGameEnded);
             if (isGameOver && winnerId.HasValue && resultHost != null)
             {
                 resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);

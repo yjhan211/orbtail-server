@@ -899,9 +899,7 @@ public partial class GameServer
     /// </summary>
     private void BroadcastSwarmFieldState(long matchingId, DateTime fieldStartedAtUtc)
     {
-        var sessions = _clientSessions.Values
-            .Where(session => session.PlayerId.HasValue && session.CurrentMapSubId == matchingId)
-            .ToList();
+        var sessions = GetSessionsByMatch(matchingId);
         using var packet = global::network.packets.Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);
         packet.SetBody(MessagePack.MessagePackSerializer.Serialize(new G_TO_C_SWARM_FIELD_STATE
         {
@@ -927,9 +925,7 @@ public partial class GameServer
         if (closureTick.WarningAreas.Count == 0 && closureTick.ClosedAreas.Count == 0)
             return;
 
-        var sessions = _clientSessions.Values
-            .Where(session => session.PlayerId.HasValue && session.CurrentMapSubId == matchingId)
-            .ToList();
+        var sessions = GetSessionsByMatch(matchingId);
 
         foreach (var area in closureTick.WarningAreas)
         {
@@ -4409,10 +4405,9 @@ public partial class GameServer
     private int GetSwarmTopOrbCount(long matchingId)
     {
         int top = 0;
-        foreach (var session in _clientSessions.Values)
+        foreach (var session in GetSessionsByMatch(matchingId))
         {
-            if (session.PlayerId.HasValue && session.CurrentMapSubId == matchingId &&
-                !session.IsEliminated)
+            if (session.PlayerId.HasValue && !session.IsEliminated)
                 top = Math.Max(top, GetSwarmOrbScore(matchingId, session.PlayerId.Value).OrbCount);
         }
 
