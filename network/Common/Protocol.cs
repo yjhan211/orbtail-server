@@ -67,16 +67,6 @@ namespace network.common
         // 복도 규칙 프로토콜
 
         // 플레이어 상호작용 프로토콜
-        C_TO_G_PLAYER_INTERACT_REQUEST,   // A→서버: 상호작용 요청
-        G_TO_C_PLAYER_INTERACT_REQUEST,   // 서버→A,B: 요청 결과/알림
-        C_TO_G_PLAYER_INTERACT_RESPONSE,  // B→서버: 수락/거절
-        G_TO_C_PLAYER_INTERACT_RESULT,    // 서버→A,B: 최종 결과
-        C_TO_G_PLAYER_INTERACT_END,       // 대화 종료 요청
-        G_TO_C_PLAYER_INTERACT_END,       // 대화 종료 알림
-        C_TO_G_PLAYER_INTERACT_USE_ITEM,      // 상호작용 중 아이템 사용 요청
-        G_TO_C_PLAYER_INTERACT_USE_ITEM_RESULT, // 상호작용 중 아이템 사용 결과
-        C_TO_G_PLAYER_INTERACT_SHARE_RULE,        // 상호작용 중 수칙 공유 요청
-        G_TO_C_PLAYER_INTERACT_SHARE_RULE_RESULT,  // 상호작용 중 수칙 공유 결과
 
         // 미션 프로토콜 (v0.2.0 — 부품 결합 시스템)
         G_TO_C_ITEMS_COMBINED,         // 부품 결합 결과 (중간재 또는 최종)
@@ -92,11 +82,6 @@ namespace network.common
         // 흔적 프로토콜
 
         // 색출 프로토콜
-        G_TO_C_CHECKLIST_INFO,        // 라운드 체크리스트 과제 목록
-        C_TO_G_CHECKLIST_ACTIVITY_START, // 교내 활동 시작 요청 (RNG 보상 없이 체크리스트 진행)
-        G_TO_C_CHECKLIST_ACTIVITY_ACK,   // 교내 활동 시작 승인/거부 응답
-        C_TO_G_CHECKLIST_ACTIVITY_FINISH, // 교내 활동 progress 완료
-        G_TO_C_CHECKLIST_ACTIVITY_RESULT, // 교내 활동 체크리스트 처리 결과
 
         // 탈락 & 체인 프로토콜
         G_TO_C_PLAYER_ELIMINATED,     // 플레이어 탈락 알림 (전체 브로드캐스트)
@@ -104,11 +89,6 @@ namespace network.common
         // 마니또 전용: 흔적 배치 프로토콜
 
         // 1:1 상호작용 선택지 프로토콜 (마니또)
-        G_TO_C_INTERACTION_CHOICES,   // 대화 수락 시 질문/답변 선택지 전송
-        C_TO_G_INTERACTION_ASK,       // 질문자: 질문 선택
-        G_TO_C_INTERACTION_ANSWER_CHOICES, // 답변자: 답변 선택지 전송
-        C_TO_G_INTERACTION_ANSWER,    // 답변자: 답변 선택
-        G_TO_C_INTERACTION_RESULT,    // 양쪽: 상호작용 결과 (주장 직책, 로그 기록 등)
 
         // 시한부 사보타주 프로토콜
 
@@ -143,14 +123,8 @@ namespace network.common
         // 미션 그래프 선택지 프로토콜 (#143)
 
         // 기척 프로토콜 (프로토 0, #159)
-        G_TO_C_PRESENCE_UPDATE,         // 타겟 제외 후보별 최근 25초 조우 강도(0~5) 주기 전송
-        G_TO_C_PRESENCE_NOTEBOOK_UPDATE, // 학생수첩용 플레이어별 누적 조우 기록 주기 전송
-        C_TO_G_BOOKMARK_PRESENCE,       // 기척 HUD 수동 북마크 상태 전송
-        G_TO_C_BOOKMARK_PRESENCE_RESULT, // 기척 HUD 수동 북마크 결과
-        G_TO_C_SHARP_GAZE_MARK_UPDATE,  // 내 타겟이 나를 마니또로 북마크했는지 여부
 
         G_TO_C_ENCOUNTER_REVEAL,
-        C_TO_G_ROOM_ENCOUNTER_AVOID,
 
         // 서버 권위 바닥 아이템
         G_TO_C_GROUND_ITEM_SNAPSHOT,

@@ -63,40 +63,6 @@ public class GameEventLogManager
         Append(matchingId, "MISSION", playerId, isBot, description);
     }
 
-    public void LogSchoolActivityStart(long matchingId, long playerId, int taskId, string area, int interactId,
-        string activityReason, bool isBot)
-    {
-        var log = _logs.GetOrAdd(matchingId, _ => new MatchingEventLog());
-        var now = DateTimeOffset.UtcNow;
-        log.AddSchoolActivityStart(
-            playerId,
-            taskId,
-            area,
-            interactId,
-            activityReason,
-            isBot,
-            now,
-            CreateEntry);
-    }
-
-    public void LogSchoolActivityComplete(long matchingId, long playerId, int taskId, string area, int interactId,
-        float scoreDelta, int contributionDelta, string activityReason, bool isBot)
-    {
-        var log = _logs.GetOrAdd(matchingId, _ => new MatchingEventLog());
-        var now = DateTimeOffset.UtcNow;
-        log.AddSchoolActivityComplete(
-            playerId,
-            taskId,
-            area,
-            interactId,
-            scoreDelta,
-            contributionDelta,
-            activityReason,
-            isBot,
-            now,
-            CreateEntry);
-    }
-
     public void LogElimination(
         long matchingId,
         long playerId,
@@ -587,41 +553,6 @@ public class GameEventLogManager
                 entry.BotMovementTickSkipCount = skippedTickCount;
                 entry.BotMovementMaxConsecutiveSkipCount = maxConsecutiveSkippedTicks;
             });
-    }
-
-    public GameEventEntry LogStatement(
-        long matchingId,
-        int roundId,
-        long speakerPlayerId,
-        long listenerPlayerId,
-        string area,
-        string questionId,
-        string questionText,
-        string answerType,
-        string answerText,
-        IReadOnlyCollection<long> linkedLogIds,
-        bool isBot)
-    {
-        var linked = linkedLogIds.Distinct().ToList();
-        var linkedText = linked.Count == 0 ? "-" : string.Join(",", linked);
-        var description =
-            $"{FormatPlayer(speakerPlayerId)} -> {FormatPlayer(listenerPlayerId)} {questionId} {answerType} \"{answerText}\" linkedLogs={linkedText}";
-
-        return Append(matchingId, "STATEMENT", speakerPlayerId, isBot, description, entry =>
-        {
-            entry.StatementId = entry.Seq;
-            entry.RoundId = roundId;
-            entry.SpeakerPlayerId = speakerPlayerId;
-            entry.ListenerPlayerId = listenerPlayerId;
-            entry.Area = area;
-            entry.AreaId = area;
-            entry.QuestionId = questionId;
-            entry.QuestionText = questionText;
-            entry.AnswerType = answerType;
-            entry.AnswerText = answerText;
-            entry.LinkedLogIds = linked;
-            entry.SaidAtUnixMs = entry.TimestampUnixMs;
-        });
     }
 
     public void LogClosure(long matchingId, string area)

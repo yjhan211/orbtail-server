@@ -20,14 +20,12 @@ public class ProtocolWiringGuardTests
     /// </summary>
     private static readonly HashSet<string> DormantClientSenders = new()
     {
-        // 방 조우 회피 — 송신 UI가 갓 클래스 4곳에 배선돼 휴면 보존 (#238, 갓 클래스 분할 시 정리)
-        "C_TO_G_ROOM_ENCOUNTER_AVOID"
+        // 비어 있음 — 마니또 세대 휴면 배선은 #276에서 전부 삭제됨.
     };
 
     private static readonly HashSet<string> DormantServerSenders = new()
     {
-        // 체크리스트/상호작용/프레즌스 계열 — 차기 재사용 보존 결정 (2026-08-20).
-        // 서버 송신 코드는 있으나 플래그 동결로 도달 불가, 클라 수신 케이스는 유지돼 있다.
+        // 비어 있음 — 마니또 세대 보존 결정은 #276에서 철회·삭제됨.
     };
 
     [Fact]

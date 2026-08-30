@@ -39,7 +39,7 @@ public static class BotBehaviorDecisionService
         Func<AreaType, bool> isAreaBlocked)
     {
         if (bot.IsEliminated) return BotBehaviorDecision.None("bot-eliminated");
-        if (bot.IsInInteraction) return BotBehaviorDecision.None("bot-in-interaction");
+        if (bot.IsChannelHeld) return BotBehaviorDecision.None("bot-channel-held");
         if (bot.CurrentArea == AreaType.None) return BotBehaviorDecision.None("area-none");
 
         var sameAreaPlayers = players

@@ -1242,7 +1242,7 @@ public partial class GameServer
 
             bot.SwarmExploreSpotId = spot.Id;
             bot.SwarmExploreStartedAtUtc = DateTime.UtcNow;
-            bot.HoldForInteraction(TimeSpan.FromSeconds(SwarmBotExploreChannelSeconds + 0.5d));
+            bot.HoldForChannel(TimeSpan.FromSeconds(SwarmBotExploreChannelSeconds + 0.5d));
             BroadcastBotExploreStarts(
                 matchingId, [(bot.PlayerId, spot.Id, bot.CurrentArea)], sessions);
         }
@@ -1678,7 +1678,7 @@ public partial class GameServer
         {
             // 위협 앞에서는 채집 채널 홀드도 끊고 뛴다 — 홀드 채로 맞다 죽는 사고 방지 (매치 2372 봇 -78).
             _swarmBotFleeDirective.Add((matchingId, botPlayerId));
-            bot.CancelInteractionHold();
+            bot.CancelChannelHold();
             float fleeDx = bot.Position.X - strongerPosition.X;
             float fleeDy = bot.Position.Y - strongerPosition.Y;
             float fleeLength = MathF.Sqrt(fleeDx * fleeDx + fleeDy * fleeDy);
@@ -2654,7 +2654,7 @@ public partial class GameServer
             ownerBot.LastProximityAttackerPlayerId = creditPlayerId;
             ownerBot.LastDamagedAtUtc = nowUtc;
             _swarmBotLastDamagedAtUtc[(matchingId, ownerBot.PlayerId)] = nowUtc;
-            ownerBot.CancelInteractionHold();
+            ownerBot.CancelChannelHold();
         }
 
         // 절단 전후 대차대조 (#227 5단계): 오브 수(=점수)·순위·공격 기여 수를 한 줄에 묶는다.
@@ -3827,7 +3827,7 @@ public partial class GameServer
             // 채집을 계속하다 27초간 포격당한다 — 홀드를 풀어 몹 회피 반사(최우선)가 잡게 한다.
             _swarmBotLastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
             bot.LastDamagedAtUtc = DateTime.UtcNow;
-            bot.CancelInteractionHold();
+            bot.CancelChannelHold();
 
             _gameEventLogManager.LogEmotionAfterimageHit(
                 matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),

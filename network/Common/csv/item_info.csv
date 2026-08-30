@@ -1,4 +1,4 @@
-id,name_kr,name_en,name_jp,requirements,comment_kr,reusable
+﻿id,name_kr,name_en,name_jp,requirements,comment_kr,reusable
 101000001,고영희 단발,Goyounghee Bob,コ・ヨンヒ ボブ,[],인기스타 고영희를 닮은 단발,1
 101000002,사자 머리,Lion's Mane,ライオンヘア,[],자유롭고 활기찬 영혼의 표현,1
 101000003,단정한 머리,Neat Tied Hair,清楚なまとめ髪,[],한 방향으로 단정하게 묶은 머리,1
@@ -117,7 +117,6 @@ id,name_kr,name_en,name_jp,requirements,comment_kr,reusable
 201000020,더블샷 캔커피,Double-shot Canned Coffee,ダブルショット缶コーヒー,[],진한 카페인으로 스태미나를 크게 회복해요,0
 202000001,초급 조리 교본,Basic Cooking Manual,初級調理教本,[],기초적인 요리 레시피 모음집,0
 202000002,초급 야영 교본,Basic Camping Manual,初級野営教本,[],기초적인 야영 레시피 모음집,0
-202000003,행동 수칙 쪽지,Code of Conduct Note,行動規則のメモ,[],내용을 반드시 숙지해야 해요,0
 301000001,리갈 패드,Legal Pad,リーガルパッド,[],대중적으로 사용되는 필기 노트,0
 301000002,보조 배터리,Power Bank,モバイルバッテリー,[],무엇이든 충전할 수 있어요,0
 301000003,고장난 손전등,Broken Flashlight,壊れた懐中電灯,[],무슨 일인지 전원이 켜지지 않아요,0

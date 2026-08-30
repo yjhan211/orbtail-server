@@ -90,7 +90,6 @@ public partial class BotPlayerManager
     public BotWalkingTickResult ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager,
         AreaItemStockManager areaItemStockManager,
         IReadOnlyDictionary<long, AreaType> humanAreas,
-        ChecklistManager checklistManager,
         InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
         IReadOnlyCollection<MonsterCombatTarget>? pveTargets,
@@ -120,7 +119,6 @@ public partial class BotPlayerManager
             inventoryManager,
             groundItemManager,
             summonStoneManager,
-            checklistManager,
             playerAreas,
             pveTargets ?? [],
             spotArenaDirectiveProvider);
@@ -135,7 +133,6 @@ public partial class BotPlayerManager
         InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
         SummonStoneManager summonStoneManager,
-        ChecklistManager checklistManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets,
         Func<long, long, SpotArenaBotDirective> directiveProvider)
@@ -217,7 +214,6 @@ public partial class BotPlayerManager
                 areaItemStockManager,
                 inventoryManager,
                 playerAreas,
-                checklistManager,
                 pveTargets,
                 canPlanThisTick);
             if (movement != null)
@@ -257,14 +253,14 @@ public partial class BotPlayerManager
             directive.Mode,
             directive.DestinationArea,
             Math.Max(0, bot.Path.Count - bot.PathIndex),
-            bot.IsInInteraction,
+            bot.IsChannelHeld,
             bot.SwarmExploreSpotId);
     }
 
     /// <summary>유휴 배회 (#222): 제자리 4초 이상이면 같은 구역 인근 셀로 짧은 산책 경로를 만든다.</summary>
     private void TryStartSwarmIdleWander(BotPlayerState bot, long matchingId, DateTime nowUtc)
     {
-        if (bot.IsInInteraction || bot.SwarmExploreSpotId != 0)
+        if (bot.IsChannelHeld || bot.SwarmExploreSpotId != 0)
             return;
         if ((nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds < 4d || nowUtc < bot.NextIdleWanderAtUtc)
             return;
@@ -352,7 +348,7 @@ public partial class BotPlayerManager
     private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
         AreaItemStockManager areaItemStockManager, InGameInventoryManager inventoryManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
-        ChecklistManager checklistManager, IReadOnlyCollection<MonsterCombatTarget> pveTargets,
+        IReadOnlyCollection<MonsterCombatTarget> pveTargets,
         bool allowPathPlanning)
     {
         var now = DateTime.UtcNow;
@@ -361,10 +357,10 @@ public partial class BotPlayerManager
         bot.LastWalkStepTime = now;
 
         // 상호작용 중에는 walking 정지 (실제 플레이어 정지 동작과 동등).
-        // InteractionStayUntil 시각이 지나면 자동 해제.
-        if (bot.IsInInteraction)
+        // ChannelHoldUntil 시각이 지나면 자동 해제.
+        if (bot.IsChannelHeld)
         {
-            if (now >= bot.InteractionStayUntil) bot.IsInInteraction = false;
+            if (now >= bot.ChannelHoldUntil) bot.IsChannelHeld = false;
             else
             {
                 // 첫 진입 시 velocity 0 패킷 1회 발행 (이전 walking 패킷의 velocity가 그대로면 클라 발소리 잔존)
@@ -435,11 +431,11 @@ public partial class BotPlayerManager
         if (bot.Path.Count == 0 || bot.PathIndex >= bot.Path.Count)
         {
             // #134 — 도착 후 RNG 채집이 아직 안 됐으면 walking 보류 (ProcessBotMissionTick이 PendingRngInteractId 처리 후 0으로 클리어할 때까지 대기).
-            if (bot.PendingRngInteractId != 0 || bot.PendingChecklistTaskId != 0) return null;
+            if (bot.PendingRngInteractId != 0) return null;
 
             if (!allowPathPlanning) return null;
             ChooseNewWanderTarget(bot, matchingId, closureManager, areaItemStockManager, inventoryManager, playerAreas,
-                checklistManager, pveTargets);
+                pveTargets);
             if (bot.Path.Count == 0) return null;
 
             // 영역 도착 휴식처럼 대기를 설정한 결정은 다음 틱부터 걷는다. 같은 틱에 출발하면
@@ -708,14 +704,12 @@ public partial class BotPlayerManager
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
         AreaItemStockManager areaItemStockManager, InGameInventoryManager inventoryManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
-        ChecklistManager checklistManager, IReadOnlyCollection<MonsterCombatTarget> pveTargets)
+        IReadOnlyCollection<MonsterCombatTarget> pveTargets)
     {
         var mapId = GetMatchingMapId(matchingId);
         bot.Path.Clear();
         bot.PathIndex = 0;
         bot.PendingRngInteractId = 0;
-        bot.PendingChecklistTaskId = 0;
-        bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
 
         bool needsGuardianOrb = bot.EquippedBattleItemId <= 0;
 
@@ -740,18 +734,6 @@ public partial class BotPlayerManager
             TryStartBotForcedFollowPath(bot, matchingId, mapId, playerAreas))
         {
             return;
-        }
-
-        if (Config.CHECKLIST_SYSTEM_ENABLED)
-        {
-            var activeSchoolTask = checklistManager.GetNextActiveGeneralInteractTask(matchingId, bot.PlayerId);
-            int schoolTaskCost = activeSchoolTask != null ? Math.Max(0, activeSchoolTask.StaminaCost) : 0;
-            if (activeSchoolTask != null &&
-                bot.Stamina >= schoolTaskCost &&
-                TryStartBotChecklistTaskPath(bot, matchingId, activeSchoolTask, closureManager))
-            {
-                return;
-            }
         }
 
         // Starting orbs are granted before the first movement tick. Keep the guard for an
@@ -998,19 +980,6 @@ public partial class BotPlayerManager
             "Bot forced follow move: MatchingId={MatchingId}, BotId={Bot}, Target={Target}, {From}->{To}, Steps={Steps}",
             matchingId, bot.PlayerId, bot.TargetPlayerId, bot.CurrentArea, targetArea, path.Count);
         return true;
-    }
-
-    private bool TryStartBotChecklistTaskPath(BotPlayerState bot, long matchingId, ChecklistTaskData task,
-        AreaClosureManager closureManager)
-    {
-        var area = (AreaType)task.AreaType;
-        if (area == AreaType.None || IsAreaClosingOrClosed(closureManager, matchingId, area)) return false;
-
-        var info = GameInteractableData.Get(task.InteractId);
-        if (info == null || info.ZoneId != task.AreaType) return false;
-        if (info.CellX == 0 && info.CellY == 0) return false;
-
-        return TryStartBotChecklistPath(bot, matchingId, area, task.InteractId, task.TaskId, closureManager);
     }
 
     /// <summary>
@@ -1400,11 +1369,9 @@ public partial class BotPlayerManager
             bot.PathIndex = 0;
             bot.MovementDestination = AreaType.None;
             bot.PendingRngInteractId = interactId;
-            bot.PendingChecklistTaskId = 0;
-            bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
             bot.RngCollectProgressStartTime = DateTime.MinValue;
-            bot.IsInInteraction = false;
-            bot.InteractionStayUntil = DateTime.MinValue;
+            bot.IsChannelHeld = false;
+            bot.ChannelHoldUntil = DateTime.MinValue;
             bot.PendingForcedInteractArea = AreaType.None;
             bot.PendingForcedInteractId = 0;
             bot.LoopWaitUntil = DateTime.MinValue;
@@ -1425,11 +1392,9 @@ public partial class BotPlayerManager
         bot.PathIndex = 0;
         bot.MovementDestination = area;
         bot.PendingRngInteractId = interactId;
-        bot.PendingChecklistTaskId = 0;
-        bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
         bot.RngCollectProgressStartTime = DateTime.MinValue;
-        bot.IsInInteraction = false;
-        bot.InteractionStayUntil = DateTime.MinValue;
+        bot.IsChannelHeld = false;
+        bot.ChannelHoldUntil = DateTime.MinValue;
         bot.PendingForcedInteractArea = AreaType.None;
         bot.PendingForcedInteractId = 0;
         bot.LoopWaitUntil = DateTime.MinValue;
@@ -1437,53 +1402,6 @@ public partial class BotPlayerManager
         _logger.LogInformation(
             "봇 선물 회수 이동 시작: BotId={Bot}, Area={Area}, InteractId={InteractId}, Steps={Steps}",
             bot.PlayerId, area, interactId, path.Count);
-        return true;
-    }
-
-    private bool TryStartBotChecklistPath(BotPlayerState bot, long matchingId, AreaType area, int interactId,
-        int taskId, AreaClosureManager closureManager)
-    {
-        if (bot.IsEliminated) return false;
-        if (IsAreaClosingOrClosed(closureManager, matchingId, area)) return false;
-
-        var info = GameInteractableData.Get(interactId);
-        if (info == null || info.ZoneId != (int)area) return false;
-        if (info.CellX == 0 && info.CellY == 0) return false;
-
-        var mapId = GetMatchingMapId(matchingId);
-        var targetCell = new Cell(info.CellX, info.CellY);
-        if (bot.CurrentArea == area && bot.Cell.Equals(targetCell))
-        {
-            bot.Path.Clear();
-            bot.PathIndex = 0;
-            bot.MovementDestination = AreaType.None;
-        }
-        else
-        {
-            var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
-                area, targetCell,
-                a => IsAreaClosingOrClosed(closureManager, matchingId, a));
-            if (path == null || path.Count == 0) return false;
-
-            bot.Path = path;
-            bot.PathIndex = 0;
-            bot.MovementDestination = area;
-        }
-
-        bot.PendingRngInteractId = 0;
-        bot.RngCollectProgressStartTime = DateTime.MinValue;
-        bot.PendingChecklistTaskId = taskId;
-        bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
-        bot.IsInInteraction = false;
-        bot.InteractionStayUntil = DateTime.MinValue;
-        bot.PendingForcedInteractArea = AreaType.None;
-        bot.PendingForcedInteractId = 0;
-        bot.LoopWaitUntil = DateTime.MinValue;
-        bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
-
-        _logger.LogInformation(
-            "Bot school activity queued: BotId={Bot}, TaskId={TaskId}, Area={Area}, InteractId={InteractId}, Steps={Steps}",
-            bot.PlayerId, taskId, area, interactId, bot.Path.Count);
         return true;
     }
 

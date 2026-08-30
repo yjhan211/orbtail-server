@@ -191,8 +191,6 @@ public partial class BotPlayerManager
         bot.Path.Clear();
         bot.PathIndex = 0;
         bot.PendingRngInteractId = 0;
-        bot.PendingChecklistTaskId = 0;
-        bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
         bot.RngCollectProgressStartTime = DateTime.MinValue;
         bot.LoopWaitUntil = DateTime.MinValue;
 

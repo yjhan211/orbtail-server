@@ -48,14 +48,6 @@ public partial class GameClientSession
             return;
         }
 
-        // 1:1 상호작용 요청 중 또는 대화 진행 중에는 영역 이동 차단 (실제 플레이어 정지 동작과 동등).
-        if (_pendingInteractPlayerId.HasValue || _activeConversationPlayerId.HasValue)
-        {
-            LogAreaMoveError(ErrorCode.INVALID_GAME_STATE, msg.TargetArea);
-            SendAreaMoveError(ErrorCode.INVALID_GAME_STATE, msg.TargetArea);
-            return;
-        }
-
         // 1. 인접 그래프 검증
         if (!GameAreaConnectionData.IsAdjacent(CurrentMapId, CurrentArea, msg.TargetArea))
         {
@@ -109,10 +101,7 @@ public partial class GameClientSession
 
         // 7. 세션 상태 갱신 + Area 변경 후처리
         var oldArea = CurrentArea;
-        _previousArea = oldArea;
         CurrentArea = msg.TargetArea;
-        _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, msg.TargetArea,
-            countAsEntry: true);
         _lastValidatedPosition = spawnPos;
         _lastValidCell = spawnCell;
 
@@ -198,15 +187,13 @@ public partial class GameClientSession
     private void LogAreaMoveError(ErrorCode errorCode, AreaType requestedArea)
     {
         Logger.LogWarning(
-            "Player {PlayerId} AreaMove failed: {ErrorCode}, CurrentArea={CurrentArea}, RequestedArea={RequestedArea}, State={State}, Sleeping={Sleeping}, PendingInteract={PendingInteract}, ActiveConversation={ActiveConversation}",
+            "Player {PlayerId} AreaMove failed: {ErrorCode}, CurrentArea={CurrentArea}, RequestedArea={RequestedArea}, State={State}, Sleeping={Sleeping}",
             PlayerId,
             errorCode,
             CurrentArea,
             requestedArea,
             CurrentState,
-            _isSleeping,
-            _pendingInteractPlayerId,
-            _activeConversationPlayerId);
+            _isSleeping);
     }
 
 }

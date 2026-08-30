@@ -462,19 +462,9 @@ public partial class GameClientSession
                 // 주기적 버프 등록 시 SLEEP 상태로 전환 + 브로드캐스트
                 if (hasPeriodicBuff) await BroadcastSleepState(true);
 
-                // 행동 수칙 쪽지 아이템 처리 (202000003)
-                int ruleId = 0;
-                if (itemId == 202000003)
-                {
-                    ruleId = _areaRuleManager.GetRuleForNote(CurrentMapSubId);
-                    if (ruleId != 0)
-                        _discoveredRules[ruleId] = PlayerId!.Value;
-                    Logger.LogInformation("Player {PlayerId} used manual item, got RuleId={RuleId}", PlayerId, ruleId);
-                }
-
                 // 사용 결과 전송
                 using var resultPacket =
-                    PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS, ruleId);
+                    PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS);
                 Send(resultPacket);
 
                 Logger.LogInformation(

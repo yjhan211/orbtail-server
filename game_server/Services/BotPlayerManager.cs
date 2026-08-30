@@ -220,9 +220,7 @@ public partial class BotPlayerManager
         var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
             ? PlayerState.SLEEP
             : bot.RngCollectProgressStartTime != DateTime.MinValue ||
-              bot.SwarmExploreStartedAtUtc != DateTime.MinValue ||
-              Config.CHECKLIST_SYSTEM_ENABLED &&
-              bot.ChecklistActivityProgressStartTime != DateTime.MinValue
+              bot.SwarmExploreStartedAtUtc != DateTime.MinValue
                 ? PlayerState.EXPLORE_1
                 : PlayerState.IDLE;
         var info = new PlayerInfo
@@ -368,18 +366,16 @@ public class BotPlayerState
     ///     잔상 사냥 계획이 소비한다. 목적지 커밋이 사냥 계획을 가로막기 때문에 두 단계로 나눈다.
     /// </summary>
 
-    public bool IsInInteraction { get; set; }
+    public bool IsChannelHeld { get; set; }
 
-    public DateTime InteractionStayUntil { get; set; } = DateTime.MinValue;
+    public DateTime ChannelHoldUntil { get; set; } = DateTime.MinValue;
 
     public AreaType PendingForcedInteractArea { get; set; } = AreaType.None;
 
     public int PendingForcedInteractId { get; set; }
 
-    public int PendingChecklistTaskId { get; set; }
 
 
-    public DateTime ChecklistActivityProgressStartTime { get; set; } = DateTime.MinValue;
 
     public DateTime RestUntil { get; set; } = DateTime.MinValue;
 
@@ -416,31 +412,19 @@ public class BotPlayerState
 
 
 
-    public long PresenceBookmarkPlayerId { get; set; }
 
-    public Dictionary<long, DateTime> TargetEncounterStartedAtByPlayerId { get; } = new();
-    public HashSet<long> TargetInterrogationRequestedInEncounterPlayerIds { get; } = new();
 
-    public void SetPresenceBookmark(long targetPlayerId)
+    public void HoldForChannel(TimeSpan fallbackDuration)
     {
-        if (PresenceBookmarkPlayerId == targetPlayerId) return;
-
-        PresenceBookmarkPlayerId = targetPlayerId;
-        TargetEncounterStartedAtByPlayerId.Clear();
-        TargetInterrogationRequestedInEncounterPlayerIds.Clear();
-    }
-
-    public void HoldForInteraction(TimeSpan fallbackDuration)
-    {
-        IsInInteraction = true;
-        InteractionStayUntil = DateTime.UtcNow.Add(fallbackDuration);
+        IsChannelHeld = true;
+        ChannelHoldUntil = DateTime.UtcNow.Add(fallbackDuration);
     }
 
     /// <summary>위협 감지 시 채집·상호작용 홀드를 즉시 끊는다 — 홀드 채로 맞다 죽는 사고 방지.</summary>
-    public void CancelInteractionHold()
+    public void CancelChannelHold()
     {
-        IsInInteraction = false;
-        InteractionStayUntil = DateTime.MinValue;
+        IsChannelHeld = false;
+        ChannelHoldUntil = DateTime.MinValue;
     }
 
     /// <summary>마지막 피격 시각 (#222) — 피격 중에는 이동 계획 홀드를 무시하는 판단 입력.</summary>

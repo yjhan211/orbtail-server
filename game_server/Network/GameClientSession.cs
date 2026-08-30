@@ -21,14 +21,6 @@ public enum PlayerState
 
 public partial class GameClientSession : SessionBase
 {
-    // ---- GameClientSession.Manitto.cs 파셜에서 이동한 필드 (필드는 메인 파일에만) ----
-    private const int TargetPlayerAnswerIndexOffset = 100000;
-    private const int TargetPlayerAnswerTextId = 11044;
-    // #159/#158: 핀(경계)을 켤 때 1회 소모하는 스태미나. 켤 때마다 큰 비용이라 같은 방 무료 스팸을 차단한다.
-    // 따라가기와 공유 자원이라 의심에 쓸수록 따라갈 여력이 준다. 끄기는 무료, 재진입이 비싸 마이크로 토글도 막힌다. 튜닝 노브.
-    private const int BookmarkActivationStaminaCost = 15;
-    private readonly HashSet<int> _pendingChecklistActivityFinish = new();
-
     private const int MaxStamina = 100;
     private const int MaxCorruption = Config.MAX_CORRUPTION;
     private const int InitialStamina = MaxStamina;
@@ -41,13 +33,8 @@ public partial class GameClientSession : SessionBase
     private static readonly ConcurrentDictionary<long, byte> InitializedMatchRuntimes = new();
     private static readonly ConcurrentDictionary<long, SemaphoreSlim> MatchInitializationLocks = new();
     private static readonly object _roundSessionStartLock = new();
-    private static Proto0PresenceTracker? _presenceTracker;
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly List<int> _activeBuffIds = new();
-    private readonly AreaRuleManager _areaRuleManager;
-
-    // 플레이어가 발견한 행동 수칙 (ruleId → 최초 발견자 PlayerId)
-    private readonly Dictionary<int, long> _discoveredRules = new();
     private readonly DoorStateManager _doorStateManager;
     private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
     private readonly InGameInventoryManager _inGameInventoryManager;
@@ -68,28 +55,12 @@ public partial class GameClientSession : SessionBase
     private readonly Action<GameClientSession> _recordAdmissionFailure;
     private readonly Func<bool> _isServerStopping;
     private readonly MatchRosterManager _matchRosterManager;
-    private readonly ChecklistManager _checklistManager;
     private readonly AreaClosureManager _areaClosureManager;
-    private readonly InteractionChoiceService _interactionChoiceService;
     private readonly BotPlayerManager _botPlayerManager;
     private readonly GameEventLogManager _gameEventLogManager;
     private readonly MatchSummaryFileStore _matchSummaryFileStore;
     private readonly EncounterRevealManager _encounterRevealManager;
 
-    // 이미 공유한 수칙 추적 (ruleId, targetPlayerId) — 동일 대상에 중복 공유 방지
-    private readonly HashSet<(int RuleId, long TargetPlayerId)> _sharedRules = new();
-    // 활성 대화 상대 PlayerId (수락 후 대화 중)
-    private long? _activeConversationPlayerId;
-
-    // 마니또 상호작용 선택지 상태
-    private List<InteractionQuestion>? _pendingQuestions;     // 질문자의 선택지
-    private List<InteractionQuestionContext>? _pendingQuestionContexts;
-    private List<InteractionAnswer>? _pendingAnswers;         // 답변자의 선택지
-    private List<InteractionAnswerContext>? _pendingAnswerContexts;
-    private InteractionQuestionType _lastAskedQuestion;       // 마지막 질문 유형
-    private AreaType _previousArea = AreaType.None;           // 이전 구역 (동선추궁용)
-    private CancellationTokenSource? _interactTimeoutCts;
-    private CancellationTokenSource? _botInteractTimeoutCts;
     private bool _isSleeping;
 
     // #229 6단계 수면 회복 → 2026-08-17 재조정: 진입 시각(준비 1초)과 마지막 교전 시각
@@ -129,10 +100,6 @@ public partial class GameClientSession : SessionBase
     private long _lastMoveAcknowledgementTimestamp;
     private bool _hasProcessedMoveInputSequence;
     private uint _lastProcessedMoveInputSequence;
-
-    // 플레이어 상호작용 요청 상태
-    private long? _pendingInteractPlayerId;
-    private long? _pendingBotRequesterPlayerId;
 
     // #219 M2 3택 드래프트: 개봉이 연 드래프트 권리와 개봉 시점 확정 비용
     private bool _hasPendingOrbDraft;
@@ -191,15 +158,12 @@ public partial class GameClientSession : SessionBase
         Func<MapId, long, List<GameClientSession>> getSessionsByInstance,
         InteractableStateManager interactableStateManager,
         InGameInventoryManager inGameInventoryManager,
-        AreaRuleManager areaRuleManager,
         AreaItemStockManager areaItemStockManager,
         GroundItemManager groundItemManager,
         SummonStoneManager summonStoneManager,
         DoorStateManager doorStateManager,
         MatchRosterManager matchRosterManager,
-        ChecklistManager checklistManager,
         AreaClosureManager areaClosureManager,
-        InteractionChoiceService interactionChoiceService,
         BotPlayerManager botPlayerManager,
         GameEventLogManager gameEventLogManager,
         MatchSummaryFileStore matchSummaryFileStore,
@@ -221,15 +185,12 @@ public partial class GameClientSession : SessionBase
         _getSessionsByInstance = getSessionsByInstance;
         _interactableStateManager = interactableStateManager;
         _inGameInventoryManager = inGameInventoryManager;
-        _areaRuleManager = areaRuleManager;
         _areaItemStockManager = areaItemStockManager;
         _groundItemManager = groundItemManager;
         _summonStoneManager = summonStoneManager;
         _doorStateManager = doorStateManager;
         _matchRosterManager = matchRosterManager;
-        _checklistManager = checklistManager;
         _areaClosureManager = areaClosureManager;
-        _interactionChoiceService = interactionChoiceService;
         _botPlayerManager = botPlayerManager;
         _gameEventLogManager = gameEventLogManager;
         _matchSummaryFileStore = matchSummaryFileStore;
@@ -260,15 +221,9 @@ public partial class GameClientSession : SessionBase
         return scope != null;
     }
 
-    internal static void SetPresenceTracker(Proto0PresenceTracker presenceTracker)
-    {
-        _presenceTracker = presenceTracker;
-    }
-
     internal static void CleanupAbandonedMatchingRuntime(long matchingId)
     {
         MatchStartGate.RemoveMatching(matchingId);
-        _presenceTracker?.Remove(matchingId);
         RngCollectCooldownStore.ClearMatching(matchingId);
         InitializedMatchRuntimes.TryRemove(matchingId, out _);
         if (MatchInitializationLocks.TryRemove(matchingId, out var initializationLock))
@@ -400,49 +355,12 @@ public partial class GameClientSession : SessionBase
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DOOR_OPEN_REQUEST,
             async bytes => await HandleMessage<C_TO_G_DOOR_OPEN_REQUEST>(bytes, HandleDoorOpenRequest));
 
-        // 플레이어 상호작용 프로토콜
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_REQUEST,
-            async bytes => await HandleMessage<C_TO_G_PLAYER_INTERACT_REQUEST>(bytes, HandlePlayerInteractRequest));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_RESPONSE,
-            async bytes => await HandleMessage<C_TO_G_PLAYER_INTERACT_RESPONSE>(bytes, HandlePlayerInteractResponse));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_END,
-            async bytes => await HandleMessage<C_TO_G_PLAYER_INTERACT_END>(bytes, HandlePlayerInteractEnd));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_USE_ITEM,
-            async bytes => await HandleMessage<C_TO_G_PLAYER_INTERACT_USE_ITEM>(bytes, HandlePlayerInteractUseItem));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_INTERACT_SHARE_RULE,
-            async bytes =>
-                await HandleMessage<C_TO_G_PLAYER_INTERACT_SHARE_RULE>(bytes, HandlePlayerInteractShareRule));
-
-        // 프레즌스·체크리스트 — 차기 재사용 보존(2026-08-20). 동결 플래그가 꺼진 동안은 등록하지
-        // 않는다: 미등록 프로토콜은 SessionBase가 에러 응답으로 차단한다.
-        if (Config.PRESENCE_SYSTEM_ENABLED)
-        {
-            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_BOOKMARK_PRESENCE,
-                async bytes => await HandleMessage<C_TO_G_BOOKMARK_PRESENCE>(bytes, HandleBookmarkPresence));
-        }
-
-        if (Config.CHECKLIST_SYSTEM_ENABLED)
-        {
-            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CHECKLIST_ACTIVITY_START,
-                async bytes => await HandleMessage<C_TO_G_CHECKLIST_ACTIVITY_START>(bytes,
-                    HandleChecklistActivityStart));
-            ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CHECKLIST_ACTIVITY_FINISH,
-                async bytes => await HandleMessage<C_TO_G_CHECKLIST_ACTIVITY_FINISH>(bytes,
-                    HandleChecklistActivityFinish));
-        }
-
         // RNG 채집 프로토콜 (v0.2.1, #79)
         // RNG 채집 2단계 프로토콜 (#134)
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RNG_COLLECT_START,
             async bytes => await HandleMessage<C_TO_G_RNG_COLLECT_START>(bytes, HandleRngCollectStart));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RNG_COLLECT_FINISH,
             async bytes => await HandleMessage<C_TO_G_RNG_COLLECT_FINISH>(bytes, HandleRngCollectFinish));
-
-        // 상호작용 선택지 프로토콜
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ASK,
-            async bytes => await HandleMessage<C_TO_G_INTERACTION_ASK>(bytes, HandleInteractionAsk));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACTION_ANSWER,
-            async bytes => await HandleMessage<C_TO_G_INTERACTION_ANSWER>(bytes, HandleInteractionAnswer));
 
         // 구역 이동 프로토콜 (GDD v0.0.8: 문/계단 마커 방식)
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_AREA_MOVE,
@@ -597,12 +515,6 @@ public partial class GameClientSession : SessionBase
     public override void OnRemoved()
     {
         StopAllPeriodicBuffs();
-        _interactTimeoutCts?.Cancel();
-        _interactTimeoutCts?.Dispose();
-        _interactTimeoutCts = null;
-        _botInteractTimeoutCts?.Cancel();
-        _botInteractTimeoutCts?.Dispose();
-        _botInteractTimeoutCts = null;
         Logger.LogInformation("GameClient removed: PlayerId={PlayerId}", PlayerId);
         _onLeaveCallback(this);
     }

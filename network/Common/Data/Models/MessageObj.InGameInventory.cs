@@ -46,6 +46,5 @@ namespace network.common.data.models
         [Key("success")] public bool Success { get; set; }
         [Key("itemUid")] public long ItemUid { get; set; }
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("ruleId")] public int RuleId { get; set; } // 행동 수칙 쪽지 아이템(202000003) 사용 시 규칙 ID
     }
 }
