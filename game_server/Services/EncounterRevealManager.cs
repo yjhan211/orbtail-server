@@ -340,25 +340,6 @@ public sealed class EncounterRevealManager
         }
     }
 
-    public void ClearMatching(long matchingId)
-    {
-        foreach (var key in _pairCooldownUntil.Keys)
-            if (key.MatchingId == matchingId)
-                _pairCooldownUntil.TryRemove(key, out _);
-
-        foreach (var key in _corridorHintCooldownUntil.Keys)
-            if (key.MatchingId == matchingId)
-                _corridorHintCooldownUntil.TryRemove(key, out _);
-
-        foreach (var key in _pendingRoomDiscoveries.Keys)
-            if (key.MatchingId == matchingId)
-                _pendingRoomDiscoveries.TryRemove(key, out _);
-
-        foreach (var key in _pendingRoomEncounterTurns.Keys)
-            if (key.MatchingId == matchingId)
-                _pendingRoomEncounterTurns.TryRemove(key, out _);
-    }
-
     public static int NormalizeRoomEncounterAction(int actionType)
     {
         return actionType switch

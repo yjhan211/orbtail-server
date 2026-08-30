@@ -282,21 +282,7 @@ public partial class BotPlayerManager
         return bots.FirstOrDefault(b => b.PlayerId == playerId);
     }
 
-    public int CountBotsInArea(long matchingId, AreaType area)
-    {
-        if (!_botStates.TryGetValue(matchingId, out var bots)) return 0;
-        return bots.Count(b => !b.IsEliminated && b.CurrentArea == area);
-    }
-
     public bool HasBots(long matchingId) => _botStates.ContainsKey(matchingId);
-
-    public void SetBotRosterStatus(long matchingId, long botPlayerId, PlayerMatchStatus status)
-    {
-        var bot = GetBot(matchingId, botPlayerId);
-        if (bot == null) return;
-        bot.PlayerMatchStatus = status;
-        _logger.LogInformation("Bot roster status changed: BotId={BotId}, Status={Status}", botPlayerId, status);
-    }
 
     public void CleanupMatching(long matchingId)
     {
@@ -426,9 +412,6 @@ public class BotPlayerState
 
     public DateTime LastMissionTickTime { get; set; } = DateTime.UtcNow;
 
-    /// <summary>Next time the bot may replace its chase or retreat path.</summary>
-    public DateTime NextCombatRepathAt { get; set; } = DateTime.MinValue;
-
     /// <summary>Next time the bot may re-plan a short lateral path around nearby afterimages.</summary>
     public DateTime NextPveKiteRepathAt { get; set; } = DateTime.MinValue;
 
@@ -444,12 +427,6 @@ public class BotPlayerState
 
     /// <summary>Safe room retained while the bot is travelling out of a warned area.</summary>
     public AreaType EvacuationDestination { get; set; } = AreaType.None;
-
-    /// <summary>Room most recently abandoned because of a nearby combat threat.</summary>
-    public AreaType RecentCombatRetreatOrigin { get; set; } = AreaType.None;
-
-    /// <summary>Prevents loot routing from immediately sending the bot back into the room it fled.</summary>
-    public DateTime CombatRetreatOriginBlockedUntil { get; set; } = DateTime.MinValue;
 
     /// <summary>Room goal retained while the bot is travelling for loot, an interaction, or a target.</summary>
     public AreaType MovementDestination { get; set; } = AreaType.None;
@@ -471,7 +448,6 @@ public class BotPlayerState
 
 
 
-    public long LastInteractRespondedTo { get; set; }
 
     public long PresenceBookmarkPlayerId { get; set; }
 

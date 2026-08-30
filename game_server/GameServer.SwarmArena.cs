@@ -4140,7 +4140,6 @@ public partial class GameServer
             _ => Cost
         };
 
-        public IReadOnlyList<int> CostList => new[] { CostSummon, CostAttack, CostDefense };
     }
 
     private readonly Dictionary<(long MatchingId, long PlayerId), SwarmGrowthOfferState>
@@ -5015,8 +5014,7 @@ public partial class GameServer
                 Damage = 0,
                 AttackIntervalSeconds = 0f
             },
-            inventory,
-            resonanceState: default);
+            inventory);
         // #229: 태양·바람은 티어별 원시 피해·주기·탄속이 같은 유도탄이다. 차이는 보드
         // 패시브뿐이며, 태양 보너스는 모든 PvE 공격에 적용된다. 파도는 별도 물폭탄 시스템.
         float sunAttackMultiplier = OrbData.GetSunPveAttackMultiplier(inventoryItems);

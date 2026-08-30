@@ -52,7 +52,6 @@ public partial class GameClientSession : SessionBase
     private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
     private readonly InGameInventoryManager _inGameInventoryManager;
     private readonly InteractableStateManager _interactableStateManager;
-    private readonly ItemPoolManager _itemPoolManager;
     private readonly AreaItemStockManager _areaItemStockManager;
     private readonly GroundItemManager _groundItemManager;
     private readonly Func<string?, Task<GameHandoffContext?>> _consumeGameHandoffTicket;
@@ -116,7 +115,6 @@ public partial class GameClientSession : SessionBase
     // 이 매치에서 연 문 수 — 첫 문은 피격으로 게이지가 끊기지 않는다 (2026-08-16).
     private int _swarmDoorUnlockCount;
     private int _pendingOrbDraftCost = 0;
-    private DateTime _lastMoveTime = DateTime.UtcNow;
 
     private DateTime _exploreMoveGraceUntil = DateTime.MinValue;
 
@@ -194,7 +192,6 @@ public partial class GameClientSession : SessionBase
         InteractableStateManager interactableStateManager,
         InGameInventoryManager inGameInventoryManager,
         AreaRuleManager areaRuleManager,
-        ItemPoolManager itemPoolManager,
         AreaItemStockManager areaItemStockManager,
         GroundItemManager groundItemManager,
         SummonStoneManager summonStoneManager,
@@ -225,7 +222,6 @@ public partial class GameClientSession : SessionBase
         _interactableStateManager = interactableStateManager;
         _inGameInventoryManager = inGameInventoryManager;
         _areaRuleManager = areaRuleManager;
-        _itemPoolManager = itemPoolManager;
         _areaItemStockManager = areaItemStockManager;
         _groundItemManager = groundItemManager;
         _summonStoneManager = summonStoneManager;
@@ -356,7 +352,6 @@ public partial class GameClientSession : SessionBase
     internal bool IsGameEnded => Volatile.Read(ref _isGameEnded);
     internal int CurrentCorruption => Corruption;
     public bool IsEliminated => PlayerMatchStatus == PlayerMatchStatus.ELIMINATED || PlayerMatchStatus == PlayerMatchStatus.SPECTATING;
-    private int? CurrentExploringInteractId { get; set; }
 
     // 인게임 스탯 (게임 종료 시 초기화)
     private int Stamina { get; set; } = InitialStamina;

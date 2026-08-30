@@ -35,7 +35,6 @@ public sealed class GameServerNodeLease(
     public GameServerNodeIdentity Identity { get; } =
         new(options.NodeId, Guid.NewGuid().ToString("N"));
 
-    public bool Enabled => options.Enabled;
     public bool HasLease => !options.Enabled || Volatile.Read(ref _leaseHeld) != 0;
 
     public async Task StartAsync(

@@ -35,56 +35,6 @@ public class InteractionLogManager
     }
 
     /// <summary>
-    ///     특정 플레이어의 로그 조회
-    /// </summary>
-    public List<InteractionLogEntry> GetLogs(long matchingId, long playerId)
-    {
-        if (!_logs.TryGetValue(matchingId, out var matchingLogs)) return new List<InteractionLogEntry>();
-        if (!matchingLogs.TryGetValue(playerId, out var playerLogs)) return new List<InteractionLogEntry>();
-
-        lock (playerLogs)
-        {
-            return new List<InteractionLogEntry>(playerLogs);
-        }
-    }
-
-    /// <summary>
-    ///     교차 검증: 같은 플레이어가 다른 사람에게 다른 직책을 주장했는지 감지
-    /// </summary>
-    public List<(long playerId, JobTitle job1, JobTitle job2)> DetectConflicts(long matchingId)
-    {
-        var conflicts = new List<(long, JobTitle, JobTitle)>();
-        if (!_logs.TryGetValue(matchingId, out var matchingLogs)) return conflicts;
-
-        // 모든 로그에서 "이 사람이 주장한 직책" 수집
-        var claimsByPlayer = new Dictionary<long, HashSet<JobTitle>>();
-
-        foreach (var (_, playerLogs) in matchingLogs)
-        {
-            lock (playerLogs)
-            {
-                foreach (var log in playerLogs)
-                {
-                    if (!claimsByPlayer.ContainsKey(log.OtherPlayerId))
-                        claimsByPlayer[log.OtherPlayerId] = new HashSet<JobTitle>();
-
-                    claimsByPlayer[log.OtherPlayerId].Add(log.ClaimedJobTitle);
-                }
-            }
-        }
-
-        // 2개 이상 다른 직책을 주장한 플레이어 = 거짓말 감지
-        foreach (var (playerId, jobs) in claimsByPlayer)
-        {
-            if (jobs.Count <= 1) continue;
-            var jobList = jobs.ToList();
-            conflicts.Add((playerId, jobList[0], jobList[1]));
-        }
-
-        return conflicts;
-    }
-
-    /// <summary>
     ///     동일 직책 주장 충돌 감지: 2명 이상이 같은 직책 주장
     /// </summary>
     public List<(JobTitle job, List<long> claimers)> DetectDuplicateClaims(long matchingId)

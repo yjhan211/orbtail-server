@@ -61,15 +61,6 @@ public readonly record struct ProximityCombatAttack(
     // 발사한 오브의 열 순번 — 클라가 실제로 그리는 오브 슬롯에 예고의 시작점을 붙이는 근거.
     int AttackerTrailOrdinal = 0);
 
-public readonly record struct ProximityCombatTargetEvent(
-    long AttackerPlayerId,
-    long TargetPlayerId,
-    AreaType Area,
-    int WeaponItemId,
-    int TargetWeaponItemId,
-    DateTimeOffset OccurredAtUtc,
-    string Reason);
-
 /// <summary>
 ///     Selects the nearest target(s) per armed actor while keeping attack cadence server-authoritative.
 ///     Damage application stays outside this class so every volley is selected from one shared snapshot.
@@ -98,9 +89,7 @@ public sealed class ProximityAutoCombatResolver
         long matchingId,
         IReadOnlyList<ProximityCombatActor> actors,
         DateTime nowUtc,
-        Func<ProximityCombatActor, ProximityCombatActor, bool>? hasLineOfSight = null,
-        Action<ProximityCombatTargetEvent>? onTargetAcquired = null,
-        Action<ProximityCombatTargetEvent>? onTargetLost = null)
+        Func<ProximityCombatActor, ProximityCombatActor, bool>? hasLineOfSight = null)
     {
         if (matchingId <= 0)
             return [];
@@ -115,9 +104,7 @@ public sealed class ProximityAutoCombatResolver
             if (attacker.WeaponItemId <= 0 || attacker.Area == AreaType.None ||
                 attacker.AttackRange <= 0f || attacker.Damage <= 0 || attacker.AttackIntervalSeconds <= 0f)
             {
-                if (_combatStates.TryRemove(stateKey, out var previousState))
-                    onTargetLost?.Invoke(CreateTargetEvent(
-                        attacker.PlayerId, previousState, nowUtc, "attacker_unarmed"));
+                _combatStates.TryRemove(stateKey, out _);
                 _burstRechargeReadyAtUtc.TryRemove(stateKey, out _);
                 _recentlyLostCombatStates.TryRemove(stateKey, out _);
                 continue;
@@ -168,8 +155,6 @@ public sealed class ProximityAutoCombatResolver
                 if (_combatStates.TryRemove(stateKey, out var previousState))
                 {
                     _recentlyLostCombatStates[stateKey] = new SuspendedCombatState(previousState, nowUtc);
-                    onTargetLost?.Invoke(CreateTargetEvent(
-                        attacker.PlayerId, previousState, nowUtc, "out_of_range_or_los"));
                     if (attacker.InitialBurstAttackCount > 0 && attacker.BurstRechargeSeconds > 0f)
                         _burstRechargeReadyAtUtc[stateKey] =
                             nowUtc.AddSeconds(attacker.BurstRechargeSeconds);
@@ -186,17 +171,7 @@ public sealed class ProximityAutoCombatResolver
                 combatState.WeaponItemId != attacker.WeaponItemId)
             {
                 if (hasCombatState)
-                {
-                    string reason = combatState.TargetPlayerId != nearestTarget.PlayerId
-                        ? "target_changed"
-                        : "weapon_changed";
-                    onTargetLost?.Invoke(CreateTargetEvent(
-                        attacker.PlayerId,
-                        combatState,
-                        nowUtc,
-                        reason));
                     _recentlyLostCombatStates.TryRemove(stateKey, out _);
-                }
 
                 CombatState nextCombatState;
                 // 유예 엔트리는 조건과 무관하게 한 번만 꺼낸다 — 조건문 안의 TryRemove는 복원
@@ -261,14 +236,6 @@ public sealed class ProximityAutoCombatResolver
                 }
 
                 _combatStates[stateKey] = nextCombatState;
-                onTargetAcquired?.Invoke(new ProximityCombatTargetEvent(
-                    attacker.PlayerId,
-                    nearestTarget.PlayerId,
-                    attacker.Area,
-                    attacker.WeaponItemId,
-                    nearestTarget.WeaponItemId,
-                    AsUtcOffset(nowUtc),
-                    ""));
                 continue;
             }
 
@@ -325,8 +292,6 @@ public sealed class ProximityAutoCombatResolver
                 // 빠졌다 돌아오면 조준을 이어간다 — 즉시 삭제는 태양의 발사 지연을 매번
                 // 처음부터 다시 지불하게 해 이동 조우에서 첫 발이 영영 안 나갔다.
                 _recentlyLostCombatStates[key] = new SuspendedCombatState(previousState, nowUtc);
-                onTargetLost?.Invoke(CreateTargetEvent(
-                    key.PlayerId, previousState, nowUtc, "attacker_inactive"));
             }
             _burstRechargeReadyAtUtc.TryRemove(key, out _);
         }
@@ -396,34 +361,6 @@ public sealed class ProximityAutoCombatResolver
 
             _recentlyLostCombatStates.TryRemove(key, out _);
         }
-    }
-
-    public void Clear()
-    {
-        _combatStates.Clear();
-        _burstRechargeReadyAtUtc.Clear();
-        _recentlyLostCombatStates.Clear();
-    }
-
-    private static ProximityCombatTargetEvent CreateTargetEvent(
-        long attackerPlayerId,
-        CombatState state,
-        DateTime nowUtc,
-        string reason)
-    {
-        return new ProximityCombatTargetEvent(
-            attackerPlayerId,
-            state.TargetPlayerId,
-            state.Area,
-            state.WeaponItemId,
-            state.TargetWeaponItemId,
-            AsUtcOffset(nowUtc),
-            reason);
-    }
-
-    private static DateTimeOffset AsUtcOffset(DateTime value)
-    {
-        return new DateTimeOffset(value.Kind == DateTimeKind.Utc ? value : value.ToUniversalTime());
     }
 
     private static int CompareWeaponInstance(ProximityCombatActor left, ProximityCombatActor right)

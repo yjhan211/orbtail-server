@@ -57,11 +57,6 @@ public sealed class MatchRuntimeRegistry
         }
     }
 
-    public bool TryFinalize(long matchingId, Action cleanup)
-    {
-        return TryFinalize(matchingId, static () => true, cleanup);
-    }
-
     public bool TryFinalize(long matchingId, Func<bool> canFinalize, Action cleanup)
     {
         ArgumentNullException.ThrowIfNull(canFinalize);
@@ -97,9 +92,6 @@ public sealed class MatchRuntimeRegistry
             }
         }
     }
-
-    public bool IsCompleted(long matchingId) =>
-        matchingId > 0 && _completedMatchingIds.ContainsKey(matchingId);
 
     public bool IsTerminal(long matchingId)
     {

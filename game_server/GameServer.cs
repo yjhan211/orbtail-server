@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using game_server.admin.dto;
-using game_server.controllers;
 using game_server.network;
 using game_server.services;
 using MessagePack;
@@ -55,9 +54,7 @@ public partial class GameServer(
     private readonly DoorStateManager _doorStateManager = new();
     private readonly InGameInventoryManager _inGameInventoryManager = new();
 
-    private readonly List<InstanceMapManager> _instanceControllerList = [];
     private readonly InteractableStateManager _interactableStateManager = new();
-    private readonly ItemPoolManager _itemPoolManager = new();
     private readonly AreaItemStockManager _areaItemStockManager =
         new(naturalExploreLootEnabled: !Config.MONSTER_SUMMON_ECONOMY_ENABLED);
     private readonly GroundItemManager _groundItemManager = new();
@@ -155,7 +152,6 @@ public partial class GameServer(
             GameClientSession.SetPresenceTracker(_presenceTracker);
 
             InitializeServices();
-            InitializeControllers();
 
             // Redis에서 폐쇄 config 복원 (재시작/핫리로드 후에도 어드민 설정 유지)
             await _matchingConfigService.LoadClosureConfigFromRedisAsync();
@@ -252,9 +248,6 @@ public partial class GameServer(
                 .Select(timer => timer!.DisposeAsync().AsTask())),
             "timers");
 
-        await RunShutdownStageAsync(
-            Task.WhenAll(_instanceControllerList.Select(controller => controller.ShutdownAsync())),
-            "instance controllers");
         await RunShutdownStageAsync(
             WaitForPendingMatchOwnerLossesAsync(),
             "match owner loss");
@@ -490,21 +483,12 @@ public partial class GameServer(
             _interactableStateManager.Initialize(log);
             _inGameInventoryManager.Initialize(log);
             _areaRuleManager.Initialize(log);
-            _itemPoolManager.Initialize(log);
             _checklistManager.Initialize(log);
         }
         catch (Exception ex)
         {
             throw new InvalidOperationException("Failed to initialize services.", ex);
         }
-    }
-
-    private void InitializeControllers()
-    {
-        var instanceController = new InstanceMapManager(logger, natsClientFactory.Create(), cacheHelper,
-            serverConfig, _clientSessions);
-        instanceController.Initialize();
-        _instanceControllerList.Add(instanceController);
     }
 
     private void StartTcpServer()
@@ -910,25 +894,6 @@ public partial class GameServer(
             foreach (var session in receivers)
                 session.Send(packet);
         }
-    }
-
-    private void BroadcastAreaStockState(long matchingId, List<GameClientSession> sessions)
-    {
-        var message = new G_TO_C_AREA_STOCK_STATE
-        {
-            Areas = _areaItemStockManager.GetPublicDepletionSnapshot(matchingId)
-                .Select(state => new AreaNaturalStockState
-                {
-                    AreaType = state.AreaType,
-                    IsDepleted = state.IsDepleted,
-                    AvailableOrbColors = state.AvailableOrbColors
-                })
-                .ToList()
-        };
-        using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_STOCK_STATE);
-        packet.SetBody(MessagePackSerializer.Serialize(message));
-        foreach (var session in sessions.Where(session => session.CurrentMapSubId == matchingId))
-            session.Send(packet);
     }
 
     /// <summary>
@@ -1346,24 +1311,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                     var humanAreas = activeSessions
                         .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
                         .ToDictionary(s => s.PlayerId!.Value, s => s.CurrentArea);
-                    var combatTargets = activeSessions
-                        .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue && !s.IsEliminated &&
-                                    s.LastValidatedPosition != null)
-                        .Select(s => new BotCombatTargetSnapshot(
-                            s.PlayerId!.Value,
-                            s.CurrentArea,
-                            s.LastValidatedPosition!,
-                            _inGameInventoryManager.GetEquippedBattleItem(matchingId, s.PlayerId.Value)?.ItemId ?? 0,
-                            s.CurrentCorruption))
-                        .Concat(_botPlayerManager.GetBots(matchingId)
-                            .Where(bot => !bot.IsEliminated)
-                            .Select(bot => new BotCombatTargetSnapshot(
-                                bot.PlayerId,
-                                bot.CurrentArea,
-                                bot.Position,
-                                _inGameInventoryManager.GetEquippedBattleItem(matchingId, bot.PlayerId)?.ItemId ?? 0,
-                                bot.Corruption)))
-                        .ToList();
                     // 잔상 사냥 경로(MONSTER_SUMMON_ECONOMY_ENABLED 동결)의 공급원이던
                     // EmotionAfterimageMonsterManager는 #274에서 삭제 — 플래그 부활 시 SwarmArenaManager에서 공급할 것.
                     IReadOnlyCollection<MonsterCombatTarget> pveTargets = [];
@@ -1377,7 +1324,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                         _checklistManager,
                         _inGameInventoryManager,
                         _groundItemManager,
-                        combatTargets,
                         pveTargets,
                         ResolveSwarmBotDirective,
                         _summonStoneManager);
@@ -2344,7 +2290,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 _interactableStateManager,
                 _inGameInventoryManager,
                 _areaRuleManager,
-                _itemPoolManager,
                 _areaItemStockManager,
                 _groundItemManager,
                 _summonStoneManager,
@@ -2418,12 +2363,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                     session.CurrentArea,
                     sameAreaSessions.Count);
             }
-
-            // 인스턴스 컨트롤러에 연결 해제 알림 (모든 유저 연결 해제 시 게임 종료 처리)
-            if (session.CurrentMapSubId > 0)
-                foreach (var controller in _instanceControllerList)
-                    controller.OnPlayerDisconnected(session.CurrentMapId, session.CurrentMapSubId,
-                        session.PlayerId.Value);
 
             if (session.CurrentMapSubId > 0)
                 CleanupMatchingIfNoHumanSessionsRemain(session.CurrentMapSubId);
@@ -2642,10 +2581,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                     matchingId,
                     "area rules",
                     () => _areaRuleManager.RemoveMatchingState(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "item pool",
-                    () => _itemPoolManager.RemoveMatchingState(matchingId));
                 CleanupMatchComponent(
                     matchingId,
                     "doors",

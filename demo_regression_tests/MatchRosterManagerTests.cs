@@ -16,7 +16,7 @@ public sealed class MatchRosterManagerTests
         manager.RegisterEntry(matchingId, CreateLink(2, 3));
         manager.RegisterEntry(matchingId, CreateLink(3, 1));
 
-        var affected = manager.EliminatePlayer(matchingId, 2, EliminationReason.MENTAL_ZERO);
+        var affected = manager.TryEliminatePlayer(matchingId, 2, EliminationReason.MENTAL_ZERO).AffectedPlayers;
 
         Assert.Equal(new[] { 2L }, affected.Keys);
         Assert.Equal(PlayerMatchStatus.ELIMINATED, affected[2]);
@@ -33,7 +33,7 @@ public sealed class MatchRosterManagerTests
         manager.RegisterEntry(matchingId, CreateLink(1, 2));
         manager.RegisterEntry(matchingId, CreateLink(2, 1));
 
-        manager.EliminatePlayer(matchingId, 2, EliminationReason.MENTAL_ZERO,
+        manager.TryEliminatePlayer(matchingId, 2, EliminationReason.MENTAL_ZERO,
             attackerPlayerId: 1, eliminatedArea: AreaType.Library, isAreaClosureElimination: true);
 
         var result = Assert.Single(manager.BuildGameResult(matchingId), row => row.playerId == 2);
@@ -52,7 +52,7 @@ public sealed class MatchRosterManagerTests
         manager.RegisterEntry(matchingId, CreateLink(2, 3));
         manager.RegisterEntry(matchingId, CreateLink(3, 1));
 
-        manager.EliminatePlayer(
+        manager.TryEliminatePlayer(
             matchingId,
             2,
             EliminationReason.MENTAL_ZERO,

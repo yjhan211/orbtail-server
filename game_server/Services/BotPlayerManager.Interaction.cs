@@ -15,24 +15,6 @@ namespace game_server.services;
 public partial class BotPlayerManager
 {
     /// <summary>
-    ///     봇이 질문자일 때 무작위 질문 카테고리 선택.
-    ///     4 카테고리: JOB(직책추궁) / MOVEMENT(동선추궁) / CROSS_VERIFY(교차검증) / TRACE(흔적추궁).
-    ///     테스트 데이터 다양성을 위해 균등 분포.
-    /// </summary>
-    public InteractionQuestionType PickRandomQuestion()
-    {
-        // ASK_JOB(1) / ASK_LOCATION(2) / CROSS_CHECK(3) / ASK_TRACE(4)
-        InteractionQuestionType[] values =
-        {
-            InteractionQuestionType.ASK_JOB,
-            InteractionQuestionType.ASK_LOCATION,
-            InteractionQuestionType.CROSS_CHECK,
-            InteractionQuestionType.ASK_TRACE
-        };
-        return values[_rng.Next(values.Length)];
-    }
-
-    /// <summary>
     ///     봇이 답변자일 때 답변 인덱스 선택. 진실 1 / 거짓 2 비율 (블러프 시뮬).
     ///     답변 후보 수가 적어도 0..n-1에서 가중 랜덤으로 선택.
     /// </summary>
@@ -45,24 +27,4 @@ public partial class BotPlayerManager
         if (roll < 34) return 0;
         return 1 + _rng.Next(answerCount - 1);
     }
-
-    /// <summary>
-    ///     봇이 마지막으로 응답한 상대 기록 (동일 상대 연속 응답 방지)
-    /// </summary>
-    public void NoteRespondedTo(long matchingId, long botPlayerId, long requesterPlayerId)
-    {
-        var bot = GetBot(matchingId, botPlayerId);
-        if (bot == null) return;
-        bot.LastInteractRespondedTo = requesterPlayerId;
-    }
-}
-
-/// <summary>
-///     봇 직책 밝히기 모드.
-/// </summary>
-public enum BotJobReveal
-{
-    Silent,  // 밝히지 않음
-    Truth,   // 진실 (실제 직책)
-    Bluff    // 블러프 (다른 직책 사칭)
 }

@@ -452,9 +452,6 @@ public partial class GameClientSession
             Send(requesterAck);
         }
 
-        // 봇은 응답 기록만 갱신 (직책 밝히기는 클라이언트 UX 미구현 — 추후 확장 지점)
-        _botPlayerManager.NoteRespondedTo(CurrentMapSubId, botPlayerId, requesterPlayerId);
-
         // 봇은 별도 수락/거절 없이 즉시 대화를 시작한다.
         using (var requesterResult =
                PacketMaker.G_TO_C_PLAYER_INTERACT_RESULT(true, botPlayerId, ErrorCode.SUCCESS))

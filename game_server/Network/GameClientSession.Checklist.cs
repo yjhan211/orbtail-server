@@ -65,31 +65,6 @@ public partial class GameClientSession
         return true;
     }
 
-    public bool CompleteTargetGiftChecklist()
-    {
-        if (!PlayerId.HasValue) return false;
-
-        var task = _checklistManager.GetActiveTasks(CurrentMapSubId, PlayerId.Value)
-            .FirstOrDefault(activeTask =>
-                activeTask.TaskKey.Equals("MANITTO_TARGET_DISCOVERS_GIFT", StringComparison.OrdinalIgnoreCase));
-        if (task == null)
-            return false;
-
-        var result = _checklistManager.TryCompleteTask(
-            CurrentMapSubId,
-            PlayerId.Value,
-            task.TaskId,
-            CurrentArea,
-            interactId: 0,
-            _inGameInventoryManager);
-        if (result.ErrorCode != ErrorCode.SUCCESS)
-            return false;
-
-        SendChecklistInfo();
-        SendChecklistActivityResult(0, ErrorCode.SUCCESS, result.AwardedScore, result.AwardedContribution);
-        return true;
-    }
-
     private bool TryGetActiveInteractObjectChecklistTask(InteractableInfoData info, out ChecklistTaskData? task)
     {
         task = null;

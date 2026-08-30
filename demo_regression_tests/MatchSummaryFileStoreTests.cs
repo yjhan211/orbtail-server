@@ -214,41 +214,7 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
             },
             new()
             {
-                Seq = 11, TimestampUnixMs = startedAt + 210_000, Type = "SURVIVOR_REWARD_AREA_SNAPSHOT",
-                PhaseIndex = 1, Outcome = "closure",
-                RewardAreaStates = [new MonsterRewardAreaTelemetry("Library", 9, 1, 14)]
-            },
-            new()
-            {
-                Seq = 12, TimestampUnixMs = startedAt + 220_000, Type = "SURVIVOR_CORE_CONTESTED_ENTRY",
-                PlayerId = 2, Area = "Library", MonsterId = 202101,
-                CoreCurrentHealth = 24, CoreMaxHealth = 48, AlreadyPresentPlayerIds = [1]
-            },
-            new()
-            {
-                Seq = 13, TimestampUnixMs = startedAt + 230_000, Type = "SURVIVOR_PVP_PROJECTILE_LAUNCHED",
-                PlayerId = 1, ActorPlayerId = 1, TargetPlayerId = 2, ProjectileId = 1, Outcome = "launched"
-            },
-            new()
-            {
-                Seq = 14, TimestampUnixMs = startedAt + 231_000, Type = "SURVIVOR_PVP_PROJECTILE_RESOLVED",
-                PlayerId = 1, ActorPlayerId = 1, TargetPlayerId = 2, ProjectileId = 1,
-                HitTargetCount = 1, Outcome = "hit"
-            },
-            new()
-            {
-                Seq = 15, TimestampUnixMs = startedAt + 240_000, Type = "SURVIVOR_PVP_PROJECTILE_LAUNCHED",
-                PlayerId = 2, ActorPlayerId = 2, IsBot = true, TargetPlayerId = 1, ProjectileId = 2, Outcome = "launched"
-            },
-            new()
-            {
-                Seq = 16, TimestampUnixMs = startedAt + 241_000, Type = "SURVIVOR_PVP_PROJECTILE_RESOLVED",
-                PlayerId = 2, ActorPlayerId = 2, IsBot = true, TargetPlayerId = 1, ProjectileId = 2,
-                HitTargetCount = 0, Outcome = "dodged"
-            },
-            new()
-            {
-                Seq = 17, TimestampUnixMs = startedAt + 300_000, Type = "MATCH_ENDED",
+                Seq = 11, TimestampUnixMs = startedAt + 300_000, Type = "MATCH_ENDED",
                 WinnerPlayerId = 1, EndReason = "test"
             }
         };
@@ -259,20 +225,6 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
         Assert.Equal(60_000, summary.Metrics.FirstTier2ElapsedMilliseconds);
         Assert.Equal(100_000, summary.Metrics.FirstTier3ElapsedMilliseconds);
         Assert.Equal(1, summary.Metrics.PvpEliminationCount);
-        Assert.Equal(2, summary.Metrics.PvpProjectileLaunchCount);
-        Assert.Equal(2, summary.Metrics.PvpProjectileResolvedCount);
-        Assert.Equal(0, summary.Metrics.PvpProjectileUnresolvedCount);
-        Assert.Equal(1, summary.Metrics.PvpProjectileHitCount);
-        Assert.Equal(1, summary.Metrics.PvpProjectileMissCount);
-        Assert.Equal(0.5d, summary.Metrics.PvpProjectileHitRate);
-        Assert.Equal(1, summary.Metrics.PvpProjectileOutcomeCounts["hit"]);
-        Assert.Equal(1, summary.Metrics.PvpProjectileOutcomeCounts["dodged"]);
-        Assert.Equal(1, summary.Metrics.HumanPvpProjectileMetrics.LaunchCount);
-        Assert.Equal(1d, summary.Metrics.HumanPvpProjectileMetrics.HitRate);
-        Assert.Equal(1, summary.Metrics.HumanPvpProjectileMetrics.OutcomeCounts["hit"]);
-        Assert.Equal(1, summary.Metrics.BotPvpProjectileMetrics.LaunchCount);
-        Assert.Equal(0d, summary.Metrics.BotPvpProjectileMetrics.HitRate);
-        Assert.Equal(1, summary.Metrics.BotPvpProjectileMetrics.OutcomeCounts["dodged"]);
         Assert.Equal(1, summary.Metrics.EliminationCounts["closure"]);
         Assert.Equal(6, summary.Metrics.SummonStoneSources["room"]);
         Assert.Equal(1, summary.Metrics.SummonStoneSources["corridor"]);
@@ -281,12 +233,6 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
         var library = Assert.Single(summary.Metrics.AreaContention, metric => metric.Area == "Library");
         Assert.Equal(2, library.MaxConcurrentPlayers);
         Assert.Equal(2, library.UniqueVisitorCount);
-        var rewardSnapshot = Assert.Single(summary.Metrics.RewardAreaSnapshots);
-        Assert.Equal(1, rewardSnapshot.PhaseIndex);
-        Assert.Equal(14, Assert.Single(rewardSnapshot.Areas).RemainingSummonStoneReward);
-        var coreEntry = Assert.Single(summary.Metrics.CoreContestedEntries);
-        Assert.Equal(24, coreEntry.CoreCurrentHealth);
-        Assert.Equal([1L], coreEntry.AlreadyPresentPlayerIds);
 
         var player = Assert.Single(summary.Participants, participant => participant.PlayerId == 1);
         Assert.Equal(6, player.RoomSummonStonesEarned);
@@ -372,38 +318,7 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
         var store = new MatchSummaryFileStore(_directory, 5);
         var summary = store.Save(matchingId, "test", 1, events);
 
-        Assert.Equal(25_000, summary.Metrics.FirstEncounterElapsedMilliseconds);
         Assert.Equal(75_000, summary.Metrics.FirstEliminationElapsedMilliseconds);
-    }
-
-    [Fact]
-    public void RewardAreaAndContestedCoreTelemetryAreDeduplicatedAndRecorded()
-    {
-        const long matchingId = 210004;
-        var log = new GameEventLogManager();
-        var rewardSnapshot = new MonsterRewardAreaSnapshot(
-            0,
-            [new MonsterRewardAreaState(network.common.AreaType.Library, 9, 1, 14)]);
-
-        log.LogRewardAreaSnapshot(matchingId, rewardSnapshot, "initial");
-        log.LogRewardAreaSnapshot(matchingId, rewardSnapshot, "reconnect");
-        log.SetPlayerArea(matchingId, 11, "Library");
-        log.LogMove(matchingId, 22, "Corridor", "Library", isBot: false);
-        log.LogCoreContestedEntry(matchingId, 22, "Library", new network.common.data.models.MonsterRuntimeInfo
-        {
-            MonsterId = 202101,
-            AreaType = network.common.AreaType.Library,
-            IsAlive = true,
-            IsCore = true,
-            CurrentHealth = 24,
-            MaxHealth = 48
-        }, isBot: false);
-
-        var events = log.GetRecent(matchingId);
-        Assert.Single(events, entry => entry.Type == "SURVIVOR_REWARD_AREA_SNAPSHOT");
-        var contested = Assert.Single(events, entry => entry.Type == "SURVIVOR_CORE_CONTESTED_ENTRY");
-        Assert.Equal(24, contested.CoreCurrentHealth);
-        Assert.Equal([11L], contested.AlreadyPresentPlayerIds);
     }
 
     [Fact]
@@ -429,41 +344,13 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
     }
 
     [Fact]
-    public void SaveBuildsReinforcementDensityAndBotPerformanceMetrics()
+    public void SaveBuildsBotPerformanceMetrics()
     {
         const long matchingId = 214001;
         long startedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
         var events = new List<GameEventEntry>
         {
             new() { Seq = 1, TimestampUnixMs = startedAt, Type = "MATCH_STARTED" },
-            new()
-            {
-                Seq = 2, TimestampUnixMs = startedAt + 1_000,
-                Type = "SURVIVOR_MONSTER_DENSITY_SAMPLE", Area = "Library",
-                AliveMonsterCount = 0, GlobalAliveMonsterCount = 100,
-                ReinforcementRemainingBudget = 4, HasAttackableMonster = false
-            },
-            new()
-            {
-                Seq = 3, TimestampUnixMs = startedAt + 2_000,
-                Type = "SURVIVOR_MONSTER_DENSITY_SAMPLE", Area = "Library",
-                AliveMonsterCount = 0, GlobalAliveMonsterCount = 99,
-                ReinforcementRemainingBudget = 4, HasAttackableMonster = false
-            },
-            new()
-            {
-                Seq = 4, TimestampUnixMs = startedAt + 2_500,
-                Type = "SURVIVOR_REINFORCEMENT_RELEASED", Area = "Library",
-                PhaseIndex = 0, ReinforcementReleasedCount = 2,
-                ReinforcementRemainingBudget = 2, AliveMonsterCount = 2
-            },
-            new()
-            {
-                Seq = 5, TimestampUnixMs = startedAt + 3_000,
-                Type = "SURVIVOR_MONSTER_DENSITY_SAMPLE", Area = "Library",
-                AliveMonsterCount = 2, GlobalAliveMonsterCount = 102,
-                ReinforcementRemainingBudget = 2, HasAttackableMonster = true
-            },
             new()
             {
                 Seq = 6, TimestampUnixMs = startedAt + 4_000,
@@ -510,15 +397,6 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
             .Save(matchingId, "test", 1, events);
 
         Assert.Equal(1, summary.Metrics.ReinforcementKillCount);
-        Assert.Equal(2, summary.Metrics.ReinforcementReleasedCount);
-        Assert.Equal(3, summary.Metrics.MonsterDensitySampleCount);
-        Assert.Equal(1, summary.Metrics.MonsterContactSampleCount);
-        Assert.Equal(1d / 3d, summary.Metrics.MonsterContactRatio, 6);
-        Assert.Equal(102, summary.Metrics.MaxConcurrentAliveAfterimages);
-        var library = Assert.Single(summary.Metrics.HotspotDensity);
-        Assert.Equal(1, library.LongNoContactGapCount);
-        Assert.Equal(2_000, library.LongestNoContactGapMilliseconds);
-        Assert.Equal(2, library.ReinforcementReleasedCount);
         Assert.Equal(25, summary.Metrics.BotMovementTickP50Milliseconds);
         Assert.Equal(60, summary.Metrics.BotMovementTickP95Milliseconds);
         Assert.Equal(100, summary.Metrics.BotMovementTickP99Milliseconds);

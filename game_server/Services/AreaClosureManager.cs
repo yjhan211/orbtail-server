@@ -342,31 +342,10 @@ public class AreaClosureManager
         }
     }
 
-    public bool IsOvertimeActive(long matchingId) => GetOvertimeCorruptionPerTick(matchingId, 1) > 0;
-    public GlobalClosureTick CheckGlobalClosureSchedule(long matchingId)
-    {
-        _ = matchingId;
-        return GlobalClosureTick.Empty;
-    }
-
     public GlobalClosureClientState GetGlobalClosureClientState(long matchingId)
     {
         _ = matchingId;
         return GlobalClosureClientState.Empty;
-    }
-
-    public (int Stage, int CorruptionPerSecond) GetOvertimeStatus(long matchingId)
-    {
-        int rate = GetOvertimeCorruptionPerTick(matchingId, 1);
-        int stage = rate switch
-        {
-            <= 0 => 0,
-            <= 2 => 1,
-            <= 4 => 2,
-            <= 8 => 3,
-            _ => 4
-        };
-        return (stage, rate);
     }
 
 
@@ -467,12 +446,6 @@ public sealed record ClosureClientStateSnapshot(
     public static readonly ClosureClientStateSnapshot Empty = new([], [], 0, 0, 0, 0);
 }
 
-public sealed record GlobalClosureTick(bool IsActive, int SecondsRemaining, long ClosureAtUnixMs)
-{
-    public static readonly GlobalClosureTick Empty = new(false, -1, 0);
-    public bool HasTransition => SecondsRemaining >= 0;
-}
-
 public sealed record GlobalClosureClientState(
     bool IsKnown,
     bool IsActive,
@@ -492,8 +465,6 @@ public class MatchingClosureState
     public int NextClosureIndex { get; set; }
     public DateTime GameStartTime { get; set; }
     public HashSet<int> WarningsSent { get; set; } = new();
-    public bool GlobalClosureWarningSent { get; set; }
-    public bool GlobalClosureActiveSent { get; set; }
     public int StartDelaySec { get; set; }
     public int IntervalSec { get; set; }
     public bool PhaseDriven { get; set; }

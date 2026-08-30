@@ -72,13 +72,6 @@ public partial class BotPlayerManager
     }
 
 
-    /// <summary>봇 자원 틱 결과. 자원 고갈 탈락 + 위치 이동 이벤트(legacy mode 영역 전환만)를 함께 반환.</summary>
-    public class BotTickResult
-    {
-        public List<(long botPlayerId, EliminationReason reason)> Eliminated { get; } = new();
-        public List<BotMovementEvent> Movements { get; } = new();
-    }
-
     /// <summary>#134 봇 walking 틱 결과 — Movements + ExploreEnds (walking 시작 시 EXPLORE_END broadcast 안전망).</summary>
     public class BotWalkingTickResult
     {
@@ -90,104 +83,12 @@ public partial class BotPlayerManager
         public double WalkingElapsedMilliseconds { get; set; }
     }
 
-    /// <summary>
-    ///     봇 자원 틱(5초). 자원 변동 + 탈락 + legacy mode 스크립트 영역 전환만 처리.
-    ///     일반 walking은 ProcessBotMovementTick(250ms)에서 별도 처리.
-    /// </summary>
-    public BotTickResult ProcessBotTick(
-        long matchingId,
-        int resourceTickSeconds,
-        AreaClosureManager areaClosureManager)
-    {
-        var result = new BotTickResult();
-        if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
-
-        foreach (var bot in bots)
-        {
-            if (bot.IsEliminated) continue;
-
-            int totalCorruptionDelta = areaClosureManager.GetEnvironmentalCorruptionDelta(
-                matchingId,
-                bot.CurrentArea,
-                resourceTickSeconds);
-
-            if (totalCorruptionDelta != 0)
-                bot.Corruption = Math.Clamp(bot.Corruption + totalCorruptionDelta, 0, Config.MAX_CORRUPTION);
-
-            if (TryQueueBotMentalElimination(bot, matchingId, result))
-                continue;
-
-            // legacy mode 비활성에서도 일반 자원/상태 변동 후 오염도 100이면 탈락 처리한다.
-        }
-        foreach (var bot in bots)
-        {
-            if (bot.IsEliminated) continue;
-            SyncBotForcedFollowState(bot, matchingId);
-        }
-
-        return result;
-    }
-
     public void ApplyEnvironmentalCorruption(BotPlayerState bot, int corruptionDelta)
     {
         if (bot.IsEliminated || corruptionDelta == 0)
             return;
 
         bot.Corruption = Math.Clamp(bot.Corruption + corruptionDelta, 0, Config.MAX_CORRUPTION);
-    }
-
-    public void MarkEnvironmentalEliminated(BotPlayerState bot, long matchingId)
-    {
-        if (bot.IsEliminated)
-            return;
-
-        bot.IsEliminated = true;
-        bot.IsForcedFollowActive = false;
-        bot.Path.Clear();
-        bot.PathIndex = 0;
-        bot.PendingRngInteractId = 0;
-        bot.PendingChecklistTaskId = 0;
-        bot.PendingChecklistInteractId = 0;
-        bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
-        bot.RngCollectProgressStartTime = DateTime.MinValue;
-        ClearBotRoomExplorePlan(bot);
-        bot.LoopWaitUntil = DateTime.MinValue;
-
-        _logger.LogInformation(
-            "Bot environmental elimination finalized: MatchingId={MatchingId}, BotId={BotId}, Corruption={Corruption}",
-            matchingId, bot.PlayerId, bot.Corruption);
-    }
-    private bool TryQueueBotMentalElimination(BotPlayerState bot, long matchingId, BotTickResult result)
-    {
-        if (bot.Corruption < Config.MAX_CORRUPTION) return false;
-
-        bot.IsEliminated = true;
-        bot.IsForcedFollowActive = false;
-        bot.Path.Clear();
-        bot.PathIndex = 0;
-        bot.PendingRngInteractId = 0;
-        bot.PendingChecklistTaskId = 0;
-        bot.PendingChecklistInteractId = 0;
-        bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
-        bot.RngCollectProgressStartTime = DateTime.MinValue;
-        ClearBotRoomExplorePlan(bot);
-        bot.LoopWaitUntil = DateTime.MinValue;
-        result.Eliminated.Add((bot.PlayerId, EliminationReason.MENTAL_ZERO));
-
-        _logger.LogInformation(
-            "Bot mental depleted: MatchingId={MatchingId}, BotId={BotId}, Corruption={Corruption}. Eliminating bot.",
-            matchingId, bot.PlayerId, bot.Corruption);
-        return true;
-    }
-
-    private void SyncBotForcedFollowState(BotPlayerState bot, long matchingId)
-    {
-        if (!bot.IsForcedFollowActive) return;
-
-        bot.IsForcedFollowActive = false;
-        _logger.LogInformation(
-            "Bot forced follow ended: MatchingId={MatchingId}, BotId={BotId}, Corruption={Corruption}",
-            matchingId, bot.PlayerId, bot.Corruption);
     }
 
     /// <summary>
@@ -201,7 +102,6 @@ public partial class BotPlayerManager
         ChecklistManager checklistManager,
         InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
-        IReadOnlyCollection<BotCombatTargetSnapshot> combatTargets,
         IReadOnlyCollection<MonsterCombatTarget>? pveTargets,
         Func<long, long, SpotArenaBotDirective> spotArenaDirectiveProvider,
         SummonStoneManager? summonStoneManager = null)
@@ -444,10 +344,6 @@ public partial class BotPlayerManager
             : 0;
     }
 
-    private static bool IsRecentCombatRetreatOrigin(BotPlayerState bot, AreaType area) =>
-        area != AreaType.None &&
-        area == bot.RecentCombatRetreatOrigin &&
-        DateTime.UtcNow < bot.CombatRetreatOriginBlockedUntil;
 
     private static bool IsAreaClosingOrClosed(AreaClosureManager closureManager, long matchingId, AreaType area)
     {
@@ -933,11 +829,6 @@ public partial class BotPlayerManager
 
         var destination = ChooseBehaviorDestination(bot, matchingId, mapId, playerAreas, closureManager);
         if (destination == AreaType.None) return;
-        if (IsRecentCombatRetreatOrigin(bot, destination))
-        {
-            bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);
-            return;
-        }
         if (destination == bot.CurrentArea)
         {
             // 이미 원하는 방(타겟 방 등)에 있음 → 잠시 머물며 회복/기척.
@@ -1016,7 +907,6 @@ public partial class BotPlayerManager
                              !(target.Area.IsCorridor() && bot.CurrentArea.IsCorridor()) &&
                              !unavailable.Contains(target.Area) &&
                              !(selfRoomLocked && target.Area != bot.CurrentArea) &&
-                             !IsRecentCombatRetreatOrigin(bot, target.Area) &&
                              !(roomHuntStalled && target.Area == bot.CurrentArea))
             .GroupBy(target => target.Area)
             .ToList();
@@ -1290,7 +1180,6 @@ public partial class BotPlayerManager
 
         var decision = BotBehaviorDecisionService.Decide(
             bot,
-            mapId,
             players,
             area => IsAreaClosingOrClosed(closureManager, matchingId, area));
 
@@ -1634,24 +1523,6 @@ public partial class BotPlayerManager
         foreach (var area in playerAreas.Values)
             if (pop.ContainsKey(area)) pop[area]++;
         return pop;
-    }
-
-    public bool TrySendBotToInteract(long matchingId, long botPlayerId, AreaType area, int interactId,
-        AreaClosureManager closureManager)
-    {
-        var bot = GetBot(matchingId, botPlayerId);
-        if (bot == null || bot.IsEliminated) return false;
-        if (bot.IsInInteraction)
-        {
-            bot.PendingForcedInteractArea = area;
-            bot.PendingForcedInteractId = interactId;
-            _logger.LogInformation(
-                "봇 상호작용 중 선물 회수 이동 예약: BotId={Bot}, Area={Area}, InteractId={InteractId}",
-                bot.PlayerId, area, interactId);
-            return false;
-        }
-
-        return TryStartBotInteractPath(bot, matchingId, area, interactId, closureManager);
     }
 
     private bool TryStartBotInteractPath(BotPlayerState bot, long matchingId, AreaType area, int interactId,

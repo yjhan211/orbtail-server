@@ -13,8 +13,6 @@ public sealed class SummonStoneManager
 {
     public const int NormalMonsterReward = 1;
     public const int CoreMonsterReward = 3;
-    public const int PassiveIncomeIntervalSeconds = 30;
-    public const int PassiveIncomeAmount = 1;
 
     private const int BaseSummonCost = 2;
 
@@ -54,31 +52,6 @@ public sealed class SummonStoneManager
         }
     }
 
-    public SummonStoneSnapshot AdvancePassiveIncome(
-        long matchingId,
-        long playerId,
-        int elapsedSeconds,
-        out int awardedStones)
-    {
-        var state = GetOrCreatePlayerState(matchingId, playerId);
-        lock (state.SyncRoot)
-        {
-            awardedStones = 0;
-            if (elapsedSeconds <= 0)
-                return CreateSnapshot(state);
-
-            state.PassiveIncomeElapsedSeconds =
-                checked(state.PassiveIncomeElapsedSeconds + elapsedSeconds);
-            int grantCount = state.PassiveIncomeElapsedSeconds / PassiveIncomeIntervalSeconds;
-            if (grantCount <= 0)
-                return CreateSnapshot(state);
-
-            state.PassiveIncomeElapsedSeconds %= PassiveIncomeIntervalSeconds;
-            awardedStones = checked(grantCount * PassiveIncomeAmount);
-            state.StoneCount = checked(state.StoneCount + awardedStones);
-            return CreateSnapshot(state);
-        }
-    }
     public SummonStoneSnapshot GetSnapshot(long matchingId, long playerId)
     {
         var state = GetOrCreatePlayerState(matchingId, playerId);
@@ -263,7 +236,6 @@ public sealed class SummonStoneManager
         public object SyncRoot { get; } = new();
         public int StoneCount { get; set; }
         public int SuccessfulSummonCount { get; set; }
-        public int PassiveIncomeElapsedSeconds { get; set; }
 
         // 성장 카드 성공 선택 횟수 N (#226 C 잔여): 비용 곡선 3+floor(N/3)의 단일 출처.
         // 오브가 잘려도 줄지 않는다 — 절단이 성장 시간을 초기화하지 못하게.

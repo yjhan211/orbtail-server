@@ -407,17 +407,6 @@ public partial class GameClientSession
         Send(packet);
     }
 
-    private void BroadcastAreaStockState()
-    {
-        if (CurrentMapSubId <= 0) return;
-
-        var message = BuildAreaStockStateMessage();
-        using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_STOCK_STATE);
-        packet.SetBody(MessagePackSerializer.Serialize(message));
-        foreach (var session in _getSessionsByInstance(CurrentMapId, CurrentMapSubId))
-            session.Send(packet);
-    }
-
     private G_TO_C_AREA_STOCK_STATE BuildAreaStockStateMessage()
     {
         return new G_TO_C_AREA_STOCK_STATE

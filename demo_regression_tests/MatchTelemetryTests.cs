@@ -87,7 +87,6 @@ public sealed class MatchTelemetryTests
         var now = DateTimeOffset.UtcNow;
         var log = new GameEventLogManager();
 
-        log.LogTargetAcquired(matchingId, 301, 302, "Gym", 107000003, 107000004, false, now);
         log.LogTierReached(matchingId, 301, 107000004, 2, false, now.AddSeconds(1));
         log.LogTierReached(matchingId, 301, 107000005, 3, false, now.AddSeconds(2));
         log.LogHit(matchingId, 301, 302, 107000005, 20, true, false, now.AddSeconds(3));
@@ -96,7 +95,6 @@ public sealed class MatchTelemetryTests
             [new MatchFinalPlayerStats(301, 1, 330, 1, 20, 0)]);
 
         var events = log.GetRecent(matchingId, 5_000);
-        Assert.Contains(events, entry => entry.Type == "SURVIVOR_ENCOUNTER_START" && entry.IsFirstMilestone == true);
         Assert.Contains(events, entry => entry.Type == "SURVIVOR_FIRST_T2");
         Assert.Contains(events, entry => entry.Type == "SURVIVOR_FIRST_T3");
         Assert.Contains(events, entry => entry.Type == "SURVIVOR_FIRST_ELIMINATION");

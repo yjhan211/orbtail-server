@@ -35,7 +35,6 @@ public sealed class GroundItemManager
     ///     수명을 지정한 아이템만 만료 대상이고, 나머지는 종전대로 남는다.
     /// </summary>
     private readonly ConcurrentDictionary<long, Dictionary<long, DateTimeOffset>> _itemExpiries = new();
-    public static readonly TimeSpan DiscovererPickupWindow = TimeSpan.FromSeconds(1);
     private readonly ConcurrentDictionary<long, MatchingGroundItemState> _matchingStates = new();
     private readonly TimeProvider _timeProvider;
 
@@ -112,14 +111,6 @@ public sealed class GroundItemManager
                 .ToList();
     }
 
-    public bool Exists(long matchingId, long groundItemUid)
-    {
-        if (!_matchingStates.TryGetValue(matchingId, out var state))
-            return false;
-        lock (state.SyncRoot)
-            return state.Items.ContainsKey(groundItemUid);
-    }
-
     /// <summary>
     ///     스폰 후 경과가 age 미만인지 — 봇 줍기 반응 지연(#222)용. 봇은 이 창이 지나야
     ///     소환석에 반응한다. 사람의 눈·조작 시간을 흉내 내 낙수 선점권을 사람에게 준다.
@@ -144,59 +135,6 @@ public sealed class GroundItemManager
         if (!_matchingStates.TryGetValue(matchingId, out var state)) return 0;
         lock (state.SyncRoot)
             return state.DiscovererPlayerIds.GetValueOrDefault(groundItemUid);
-    }
-
-    /// <summary>
-    ///     수명이 다한 낙수를 걷어낸다 (#229). 반환값은 사라진 아이템들 — 호출부가
-    ///     G_TO_C_GROUND_ITEM_REMOVED로 알린다.
-    /// </summary>
-    public List<GroundItemInfo> ExpireGroundItems(long matchingId)
-    {
-        var removed = new List<GroundItemInfo>();
-        if (!_itemExpiries.TryGetValue(matchingId, out var expiries) || expiries.Count == 0)
-            return removed;
-        if (!_matchingStates.TryGetValue(matchingId, out var state))
-            return removed;
-
-        var now = _timeProvider.GetUtcNow();
-        lock (state.SyncRoot)
-        {
-            var due = expiries.Where(entry => entry.Value <= now).Select(entry => entry.Key).ToList();
-            foreach (long uid in due)
-            {
-                expiries.Remove(uid);
-                if (!state.Items.Remove(uid, out var item)) continue;
-
-                state.SpawnedAtUtc.Remove(uid);
-                state.DiscovererPlayerIds.Remove(uid);
-                state.ClaimReservations.Remove(uid);
-                removed.Add(item);
-            }
-        }
-
-        return removed;
-    }
-
-    public List<ExpiredGroundItemReservation> ExpireClaimReservations(long matchingId)
-    {
-        if (!_matchingStates.TryGetValue(matchingId, out var state))
-            return [];
-
-        var now = _timeProvider.GetUtcNow();
-        lock (state.SyncRoot)
-        {
-            var expired = state.ClaimReservations
-                .Where(entry => entry.Value.ExpiresAtUtc <= now)
-                .Select(entry => new ExpiredGroundItemReservation(
-                    entry.Key,
-                    state.Items.TryGetValue(entry.Key, out var item) ? item.ItemId : 0,
-                    entry.Value.PlayerId,
-                    entry.Value.ExpiresAtUtc.ToUnixTimeMilliseconds()))
-                .ToList();
-            foreach (var reservation in expired)
-                state.ClaimReservations.Remove(reservation.GroundItemUid);
-            return expired;
-        }
     }
 
     public GroundItemClaimStatus TryClaim(long matchingId, long groundItemUid, long claimingPlayerId, AreaType playerArea,
@@ -393,12 +331,6 @@ public sealed class GroundItemManager
         public Dictionary<long, DateTimeOffset> SpawnedAtUtc { get; } = new();
         public long NextUid() => checked(matchingId * 1_000_000L + ++_sequence);
     }
-
-    public readonly record struct ExpiredGroundItemReservation(
-        long GroundItemUid,
-        int ItemId,
-        long DiscovererPlayerId,
-        long ExpiresAtUnixMs);
 
     private readonly record struct GroundItemClaimReservation(long PlayerId, DateTimeOffset ExpiresAtUtc);
 }

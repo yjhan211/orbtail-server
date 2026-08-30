@@ -22,7 +22,6 @@ public static class BotPathfinder
         /// <summary>true면 문 건너편 영역의 첫 보행 웨이포인트.</summary>
         public bool IsAreaTransition { get; set; }
         /// <summary>영역 전환일 때 직전 영역 (LEAVE 패킷용).</summary>
-        public AreaType FromAreaForTransition { get; set; }
     }
 
     /// <summary>
@@ -82,8 +81,7 @@ public static class BotPathfinder
             {
                 Cell = entryCell,
                 Area = toA,
-                IsAreaTransition = true,
-                FromAreaForTransition = fromA
+                IsAreaTransition = true
             });
             currentCell = entryCell;
 

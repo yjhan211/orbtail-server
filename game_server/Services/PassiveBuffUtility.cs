@@ -37,20 +37,4 @@ public static class PassiveBuffUtility
         return value < 0 ? -adjusted : adjusted;
     }
 
-    public static int ApplyReduction(int value, IEnumerable<int> activeBuffIds, BuffSubType subType)
-    {
-        int percent = GetValuePercent(activeBuffIds, subType);
-        if (value == 0 || percent <= 0) return value;
-
-        int magnitude = Math.Abs(value);
-        int adjusted = Math.Max(0, magnitude - Math.Max(1, (int)Math.Ceiling(magnitude * percent / 100.0)));
-        return value < 0 ? -adjusted : adjusted;
-    }
-
-    public static bool RollPercent(int percent, Random rng)
-    {
-        if (percent <= 0) return false;
-        if (percent >= 100) return true;
-        return rng.Next(100) < percent;
-    }
 }

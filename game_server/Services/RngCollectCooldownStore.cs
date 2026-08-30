@@ -14,16 +14,6 @@ public static class RngCollectCooldownStore
 
     private static readonly ConcurrentDictionary<(long, int), DateTime> _cooldowns = new();
 
-    public static bool IsInCooldown(long matchingId, int interactId, out int remainingSeconds)
-    {
-        remainingSeconds = 0;
-        if (!_cooldowns.TryGetValue((matchingId, interactId), out var nextAvailable)) return false;
-        var now = DateTime.UtcNow;
-        if (now >= nextAvailable) return false;
-        remainingSeconds = (int)Math.Ceiling((nextAvailable - now).TotalSeconds);
-        return true;
-    }
-
     public static bool TryAcquireCooldown(long matchingId, int interactId, int seconds, out int remainingSeconds)
     {
         lock (SyncRoot)
@@ -38,20 +28,6 @@ public static class RngCollectCooldownStore
             _cooldowns[(matchingId, interactId)] = now.AddSeconds(seconds);
             remainingSeconds = 0;
             return true;
-        }
-    }
-
-    public static void SetCooldown(long matchingId, int interactId, int seconds)
-    {
-        lock (SyncRoot)
-        {
-            if (seconds <= 0)
-            {
-                _cooldowns.TryRemove((matchingId, interactId), out _);
-                return;
-            }
-
-            _cooldowns[(matchingId, interactId)] = DateTime.UtcNow.AddSeconds(seconds);
         }
     }
 

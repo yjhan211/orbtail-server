@@ -1,11 +1,9 @@
-using game_server.services;
 using network.common;
 using network.common.data;
-using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public class EmotionAfterimagePveCombatRulesTests
+public class OrbPveCombatDataTests
 {
     [Fact]
     public void AllColors_ShareTheSameBaseAttackInterval()
@@ -52,55 +50,6 @@ public class EmotionAfterimagePveCombatRulesTests
         Assert.Equal(10, OrbData.GetBaseAttackDamage(10, OrbColor.Green));
     }
 
-    [Fact]
-    public void WaveAreaAttack_SelectsEveryPlayerAndMonsterAroundTheImpact()
-    {
-        ProximityCombatActor[] targets =
-        [
-            CombatTarget(1, 0f, 0f),
-            CombatTarget(-100, 2f, 0f),
-            CombatTarget(-101, 3.5f, 0f),
-            CombatTarget(2, 2f, 1.5f),
-            CombatTarget(3, 4f, 0f),
-            CombatTarget(4, 2f, 2f, AreaType.Classroom2)
-        ];
-
-        var result = EmotionAfterimagePveCombatRules.FindWaveAreaSecondaryTargetIds(
-            targets, 1, -100, AreaType.Classroom4, 107000030);
-
-        Assert.Equal([-101, 2], result);
-    }
-
-    [Fact]
-    public void OnlyNonResonanceWaveOrbs_UseAreaDamage()
-    {
-        Assert.True(EmotionAfterimagePveCombatRules.IsWaveOrb(107000030));
-        Assert.False(EmotionAfterimagePveCombatRules.IsWaveOrb(107000010));
-        Assert.True(EmotionAfterimagePveCombatRules.ShouldApplyWaveAreaAttack(107000030, false));
-        Assert.False(EmotionAfterimagePveCombatRules.ShouldApplyWaveAreaAttack(107000030, true));
-        Assert.False(EmotionAfterimagePveCombatRules.ShouldApplyWaveAreaAttack(107000010, false));
-    }
-
-    [Fact]
-    public void WaveAreaAttack_ExpandsItsRadiusWithOrbTier()
-    {
-        Assert.Equal(1.8f, EmotionAfterimagePveCombatRules.GetWaveSplashRadius(107000030));
-        Assert.Equal(2.2f, EmotionAfterimagePveCombatRules.GetWaveSplashRadius(107000031));
-        Assert.Equal(2.6f, EmotionAfterimagePveCombatRules.GetWaveSplashRadius(107000032));
-    }
-
-    [Fact]
-    public void WaveAreaAttack_OnlyPrimaryHitEmitsProjectilePresentation()
-    {
-        Assert.True(EmotionAfterimagePveCombatRules.ShouldEmitWaveProjectilePresentation(false));
-        Assert.False(EmotionAfterimagePveCombatRules.ShouldEmitWaveProjectilePresentation(true));
-    }
-
-    private static ProximityCombatActor CombatTarget(long playerId, float x, float y,
-        AreaType area = AreaType.Classroom4) =>
-        new(playerId, area, new Vector3f(x, y, 0f), 0, 0f, 0, 0f, 0f, 0f, MapId.School);
-    private static MonsterCombatTarget Target(int monsterId, MapId mapId, AreaType area, float x, float y) =>
-        new(monsterId, mapId, area, new Vector3f(x, y, 0f), 107000010);
     [Fact]
     public void DominantPveColor_UsesStrictOrbCountMajorityAcrossTheWholeBoard()
     {

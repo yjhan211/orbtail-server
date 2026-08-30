@@ -57,24 +57,6 @@ public class PlayerInGameInventory(long matchingId)
     }
 
     /// <summary>
-    ///     오브 티어 상승 (#226 단계 C): ItemUid·열 순번을 유지한 채 ItemId만 다음 티어로
-    ///     교체한다 (티어 id는 연속: …10→11→12). 제거+추가로 구현하면 열 끝으로 밀린다.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryUpgradeOrb(long itemUid, out InGameItemInfo? upgradedItem)
-    {
-        upgradedItem = null;
-        if (!_items.TryGetValue(itemUid, out var item) || item.Count <= 0)
-            return false;
-        if (!OrbData.TryGetColorAndTier(item.ItemId, out _, out int tier) || tier is < 1 or > 2)
-            return false;
-
-        item.ItemId += 1;
-        upgradedItem = item;
-        return true;
-    }
-
-    /// <summary>
     ///     오브 갈아끼우기 (#232 4단계): ItemUid·열 순번은 그대로 두고 ItemId만 바꾼다 — 합성 결과가
     ///     첫 원본 슬롯에, 예비 오브가 고른 슬롯에 들어간다. 제거+추가로 하면 열 끝으로 밀린다.
     /// </summary>
@@ -251,15 +233,6 @@ public class PlayerInGameInventory(long matchingId)
         return OrbData.TryGetActivePair(boardItemIds, out color, out pairTier);
     }
 
-    [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool HasActiveOrbPair(OrbColor color, out int pairTier)
-    {
-        var boardItemIds = _items.Values
-            .Where(item => item.Count > 0)
-            .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count));
-        return OrbData.HasActivePair(boardItemIds, color, out pairTier);
-    }
-
     /// <summary>
     ///     전체 아이템 목록
     /// </summary>
@@ -294,13 +267,6 @@ public class MatchingInventoryState(long matchingId)
         return _playerInventories.GetOrAdd(playerId, _ => new PlayerInGameInventory(matchingId));
     }
 
-    /// <summary>
-    ///     플레이어 인벤토리 제거 (플레이어 퇴장 시)
-    /// </summary>
-    public void RemovePlayerInventory(long playerId)
-    {
-        _playerInventories.TryRemove(playerId, out _);
-    }
 }
 
 /// <summary>
@@ -351,24 +317,6 @@ public class InGameInventoryManager
         _logAction?.Invoke(
             $"InGameInventoryManager: Added item (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, Count={count}, GiftState={giftState}, ItemUid={item.ItemUid})");
         return item;
-    }
-
-    public int EnsureItemCount(long matchingId, long playerId, int itemId, int minCount,
-        GiftState giftState = GiftState.None)
-    {
-        if (minCount <= 0)
-            return 0;
-
-        var inventory = GetPlayerInventory(matchingId, playerId);
-        int currentCount = inventory.GetItemCount(itemId);
-        int addCount = minCount - currentCount;
-        if (addCount <= 0)
-            return 0;
-
-        var item = inventory.AddItem(itemId, addCount, giftState);
-        _logAction?.Invoke(
-            $"InGameInventoryManager: Ensured item count (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, MinCount={minCount}, AddedCount={addCount}, GiftState={giftState}, ItemUid={item.ItemUid})");
-        return addCount;
     }
 
     /// <summary>
@@ -500,22 +448,6 @@ public class InGameInventoryManager
     }
 
 
-    public InGameItemInfo? RemoveItemByItemId(long matchingId, long playerId, int itemId)
-    {
-        var inventory = GetPlayerInventory(matchingId, playerId);
-        var item = inventory.GetAllItems().FirstOrDefault(i => i.ItemId == itemId);
-        if (item == null) return null;
-
-        if (inventory.TryRemoveItem(item.ItemUid, item.Count, out _))
-        {
-            _logAction?.Invoke(
-                $"InGameInventoryManager: Removed item by ItemId (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, ItemUid={item.ItemUid})");
-            return item;
-        }
-
-        return null;
-    }
-
     /// <summary>
     ///     플레이어의 전체 아이템 목록
     /// </summary>
@@ -540,14 +472,5 @@ public class InGameInventoryManager
     {
         if (_matchingStates.TryRemove(matchingId, out _))
             _logAction?.Invoke($"InGameInventoryManager: Removed state for MatchingId={matchingId}");
-    }
-
-    /// <summary>
-    ///     전체 상태 초기화
-    /// </summary>
-    public void Reset()
-    {
-        _matchingStates.Clear();
-        _logAction?.Invoke("InGameInventoryManager: All matching states cleared");
     }
 }

@@ -50,35 +50,6 @@ public class DoorStateManager
         }
     }
 
-    public bool CloseDoor(long matchingId, int doorId)
-    {
-        lock (_lock)
-        {
-            return _openDoors.TryGetValue(matchingId, out var doors) && doors.Remove(doorId);
-        }
-    }
-
-    public IReadOnlyList<int> OpenDoorsForAreas(long matchingId, IEnumerable<AreaType> areas)
-    {
-        lock (_lock)
-        {
-            if (!_openDoors.TryGetValue(matchingId, out var openDoors))
-            {
-                openDoors = [];
-                _openDoors[matchingId] = openDoors;
-            }
-
-            var changed = new List<int>();
-            foreach (int doorId in GetDoorIds(areas))
-            {
-                if (openDoors.Add(doorId))
-                    changed.Add(doorId);
-            }
-
-            return changed;
-        }
-    }
-
     public IReadOnlyList<int> CloseDoorsForAreas(long matchingId, IEnumerable<AreaType> areas)
     {
         lock (_lock)
@@ -138,33 +109,4 @@ public class DoorStateManager
         }
     }
 
-    /// <summary>
-    ///     특정 영역의 가장 가까운 문이 잠겨있으면 반환
-    ///     가장 가까운 문이 열려있거나 문이 없으면 null 반환
-    /// </summary>
-    public DoorInfoData? GetBlockingDoorForArea(long matchingId, AreaType areaType, float playerX, float playerY)
-    {
-        // 해당 영역에 문이 없으면 진입 가능
-        if (!GameDoorData.HasDoorsForArea(areaType)) return null;
-
-        // 가장 가까운 문 찾기
-        DoorInfoData? nearestDoor = null;
-        float nearestDistance = float.MaxValue;
-
-        foreach (var door in GameDoorData.GetByAreaType(areaType))
-        {
-            float dx = playerX - door.PositionX;
-            float dy = playerY - door.PositionY;
-            float distance = dx * dx + dy * dy;
-
-            if (!(distance < nearestDistance)) continue;
-            nearestDistance = distance;
-            nearestDoor = door;
-        }
-
-        if (nearestDoor == null) return null;
-
-        // 가장 가까운 문이 잠겨있으면 반환, 열려있으면 통과
-        return !IsDoorOpen(matchingId, nearestDoor.DoorId) ? nearestDoor : null;
-    }
 }

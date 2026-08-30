@@ -41,38 +41,26 @@ public sealed class InteractionAnswerContext
 /// </summary>
 public class InteractionChoiceService
 {
-    public const int DemoQuestionTextId = 11033;
-    public const int DemoPassingAnswerTextId = 11034;
-    public const int DemoMissionAnswerTextId = 11035;
-    public const int DemoStaminaAnswerTextId = 11036;
-    public const int DemoRecordAnswerTextId = 11037;
-
     public const string NearbyReasonQuestionId = "ASK_NEARBY_REASON";
     public const string EncounterActionQuestionId = "ENCOUNTER_ACTION";
-    public const string EnRouteAnswerType = "EN_ROUTE";
     public const string ActivityInAreaAnswerType = "ACTIVITY_IN_AREA";
     public const string EnRouteToAreaAnswerType = "EN_ROUTE_TO_AREA";
     public const string CoincidenceAnswerType = "COINCIDENCE";
     public const string EncounterUseItemAnswerType = "USE_ITEM";
     public const string EncounterKeepDistanceAnswerType = "KEEP_DISTANCE";
-    public const string EncounterObserveAnswerType = "OBSERVE";
     public const string EncounterLeaveAreaAnswerType = "LEAVE_AREA";
     public const int NearbyReasonQuestionTextId = 11045;
-    public const int EnRouteAnswerTextId = 11046;
     public const int CoincidenceAnswerTextId = 11047;
     public const int ActivityInAreaAnswerTextId = 11048;
     public const int EnRouteToAreaAnswerTextId = 11049;
     public const int EncounterActionQuestionTextId = 11060;
     public const int EncounterUseItemAnswerTextId = 11061;
     public const int EncounterKeepDistanceAnswerTextId = 11062;
-    public const int EncounterObserveAnswerTextId = 11063;
     public const int EncounterLeaveAreaAnswerTextId = 11064;
     public const string EncounterActionQuestionText = "어떻게 대응할까요?";
     public const string EncounterKeepDistanceAnswerText = "\uC0C1\uB300\uBC29\uC758 \uD589\uB3D9\uC5D0 \uB300\uBE44\uD558\uAE30";
-    public const string EncounterObserveAnswerText = "상대를 유심히 살펴본다";
     public const string EncounterLeaveAreaAnswerText = "\uC7A5\uC18C \uC774\uD0C8\uD558\uAE30 (\uC2A4\uD0DC\uBBF8\uB098 -5)";
     public const string NearbyReasonQuestionText = "여기엔 무슨 일로 왔나요?";
-    public const string EnRouteAnswerText = "이동 중이었습니다.";
     public const string CoincidenceAnswerText = "우연입니다.";
 
     private const int NearbyReasonRecentWindowSeconds = 20;
@@ -101,11 +89,6 @@ public class InteractionChoiceService
         _eventLogManager = eventLogManager;
     }
 
-    public void CleanupMatching(long matchingId)
-    {
-        _logManager.CleanupMatching(matchingId);
-    }
-
     private static bool IsEncounterAttackItem(int itemId)
     {
         return Array.IndexOf(EncounterAttackItemIds, itemId) >= 0;
@@ -116,14 +99,6 @@ public class InteractionChoiceService
         int index = Array.IndexOf(EncounterAttackItemIds, itemId);
         return index >= 0 ? index : int.MaxValue;
     }
-
-    public List<InteractionQuestion> GenerateQuestions(
-        long matchingId,
-        long askerPlayerId,
-        long answererPlayerId,
-        AreaType currentArea,
-        AreaType? answererPreviousArea) =>
-        GenerateQuestionSet(matchingId, askerPlayerId, answererPlayerId, currentArea, answererPreviousArea).Questions;
 
     public InteractionQuestionSet GenerateQuestionSet(
         long matchingId,
@@ -152,40 +127,6 @@ public class InteractionChoiceService
 
         return new InteractionQuestionSet();
     }
-
-    public List<InteractionQuestion> GenerateDemoQuestions(AreaType currentArea)
-    {
-        return BuildLocationQuestionList(currentArea, DemoQuestionTextId);
-    }
-
-    private static List<InteractionQuestion> BuildLocationQuestionList(AreaType currentArea, int textId = 11020)
-    {
-        return new List<InteractionQuestion>
-        {
-            new()
-            {
-                QuestionType = InteractionQuestionType.ASK_LOCATION,
-                TextId = textId,
-                Args = new List<TextArg> { new() { Type = TextArgType.AREA_TYPE, IntValue = (int)currentArea } },
-                ReferenceArea = currentArea
-            }
-        };
-    }
-
-    public List<InteractionAnswer> GenerateAnswers(
-        long matchingId,
-        long answererPlayerId,
-        InteractionQuestionType questionType,
-        AreaType currentArea) =>
-        GenerateAnswerSet(matchingId, answererPlayerId, 0, questionType, currentArea, null).Answers;
-
-    public InteractionQuestion CreateEncounterActionQuestion(AreaType currentArea) =>
-        new()
-        {
-            QuestionType = InteractionQuestionType.ENCOUNTER_ACTION,
-            TextId = EncounterActionQuestionTextId,
-            ReferenceArea = currentArea
-        };
 
     public InteractionAnswerSet GenerateEncounterActionAnswerSet(
         AreaType currentArea,

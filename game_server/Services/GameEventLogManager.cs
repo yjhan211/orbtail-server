@@ -170,107 +170,6 @@ public class GameEventLogManager
             });
     }
 
-    public void LogTargetAcquired(
-        long matchingId,
-        long attackerPlayerId,
-        long targetPlayerId,
-        string area,
-        int weaponItemId,
-        int targetWeaponItemId,
-        bool isBot,
-        DateTimeOffset occurredAt)
-    {
-        int weaponTier = BattleItemCombatData.Get(weaponItemId)?.Tier ?? 0;
-        int targetWeaponTier = BattleItemCombatData.Get(targetWeaponItemId)?.Tier ?? 0;
-        var state = _matchCombatStates.GetOrAdd(matchingId, _ => new MatchCombatState());
-        bool isFirstEncounter;
-        lock (state.SyncRoot)
-        {
-            state.KnownPlayerIds.Add(attackerPlayerId);
-            state.KnownPlayerIds.Add(targetPlayerId);
-            isFirstEncounter = !state.FirstEncounterAtUnixMs.HasValue;
-            if (isFirstEncounter)
-                state.FirstEncounterAtUnixMs = occurredAt.ToUnixTimeMilliseconds();
-
-            state.EngagementsByAttacker[attackerPlayerId] = new MatchCombatEngagement(
-                targetPlayerId,
-                area,
-                weaponItemId,
-                weaponTier,
-                targetWeaponTier,
-                occurredAt);
-        }
-
-        AppendAt(
-            matchingId,
-            "SURVIVOR_ENCOUNTER_START",
-            attackerPlayerId,
-            isBot,
-            $"{FormatPlayer(attackerPlayerId)} acquired {FormatPlayer(targetPlayerId)} in {area}; aim window started.",
-            occurredAt,
-            entry =>
-            {
-                entry.TargetPlayerId = targetPlayerId;
-                entry.Area = area;
-                entry.WeaponItemId = weaponItemId;
-                entry.WeaponTier = weaponTier;
-                entry.TargetWeaponTier = targetWeaponTier;
-                entry.HitCount = 0;
-                entry.ElapsedMilliseconds = 0;
-                entry.IsFirstMilestone = isFirstEncounter;
-                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
-            });
-    }
-
-    public void LogTargetLost(
-        long matchingId,
-        long attackerPlayerId,
-        long targetPlayerId,
-        string reason,
-        bool isBot,
-        DateTimeOffset occurredAt)
-    {
-        if (!_matchCombatStates.TryGetValue(matchingId, out var state))
-            return;
-
-        MatchCombatEngagement engagement;
-        lock (state.SyncRoot)
-        {
-            if (!state.EngagementsByAttacker.TryGetValue(attackerPlayerId, out engagement!) ||
-                engagement.TargetPlayerId != targetPlayerId)
-            {
-                return;
-            }
-
-            state.EngagementsByAttacker.Remove(attackerPlayerId);
-        }
-
-        long elapsedMilliseconds = Math.Max(
-            0,
-            (long)(occurredAt - engagement.StartedAt).TotalMilliseconds);
-        bool escaped = string.Equals(reason, "out_of_range_or_los", StringComparison.Ordinal);
-        AppendAt(
-            matchingId,
-            "SURVIVOR_ENCOUNTER_END",
-            attackerPlayerId,
-            isBot,
-            $"{FormatPlayer(targetPlayerId)} left {FormatPlayer(attackerPlayerId)}'s engagement: reason={reason}, hits={engagement.HitCount}, elapsedMs={elapsedMilliseconds}.",
-            occurredAt,
-            entry =>
-            {
-                entry.TargetPlayerId = targetPlayerId;
-                entry.Area = engagement.Area;
-                entry.WeaponItemId = engagement.WeaponItemId;
-                entry.WeaponTier = engagement.WeaponTier;
-                entry.TargetWeaponTier = engagement.TargetWeaponTier;
-                entry.ElapsedMilliseconds = elapsedMilliseconds;
-                entry.HitCount = engagement.HitCount;
-                entry.Escaped = escaped;
-                entry.Outcome = reason;
-                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
-            });
-    }
-
     public void LogHit(
         long matchingId,
         long attackerPlayerId,
@@ -531,29 +430,6 @@ public class GameEventLogManager
     ///     크랙 생존 (#226 F 계측): 방어 강화 오브가 유효 교차를 흡수한 순간 —
     ///     "방어 강화가 실제로 몇 번의 절단을 막았나"의 근거.
     /// </summary>
-    public void LogSwarmOrbCrackAdvanced(
-        long matchingId,
-        long cutterPlayerId,
-        long ownerPlayerId,
-        int crackCount,
-        int requiredHits,
-        string area)
-    {
-        Append(
-            matchingId,
-            "ORB_CRACK_ADVANCED",
-            cutterPlayerId,
-            BotPlayerManager.IsBotPlayerId(cutterPlayerId),
-            $"{FormatPlayer(cutterPlayerId)} cracked {FormatPlayer(ownerPlayerId)} orb: {crackCount}/{requiredHits}.",
-            entry =>
-            {
-                entry.TargetPlayerId = ownerPlayerId;
-                entry.Area = area;
-                entry.CrackCount = crackCount;
-                entry.RequiredHits = requiredHits;
-                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
-            });
-    }
 
     /// <summary>성장 오퍼 제시 (#226 F 계측) — 오퍼→선택 지연·미선택 오퍼율의 근거.</summary>
     public void LogSwarmGrowthOffered(
@@ -678,75 +554,6 @@ public class GameEventLogManager
                 entry.MonsterDamageContributions = contributions;
             });
     }
-    public void LogRewardAreaSnapshot(long matchingId, MonsterRewardAreaSnapshot snapshot, string reason)
-    {
-        if (matchingId <= 0)
-            return;
-
-        string signature = string.Join(";", snapshot.Areas
-            .OrderBy(area => area.Area)
-            .Select(area => $"{area.Area}:{area.AliveMonsterCount}:{area.AliveCoreCount}:{area.RemainingSummonStoneReward}"));
-        var telemetry = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
-        lock (telemetry.SyncRoot)
-        {
-            if (telemetry.RewardAreaSignaturesByPhase.TryGetValue(snapshot.PhaseIndex, out string? previous) &&
-                string.Equals(previous, signature, StringComparison.Ordinal))
-                return;
-            telemetry.RewardAreaSignaturesByPhase[snapshot.PhaseIndex] = signature;
-        }
-
-        var areas = snapshot.Areas
-            .OrderBy(area => area.Area)
-            .Select(area => new MonsterRewardAreaTelemetry(
-                area.Area.ToString(),
-                area.AliveMonsterCount,
-                area.AliveCoreCount,
-                area.RemainingSummonStoneReward))
-            .ToList();
-        Append(matchingId, "SURVIVOR_REWARD_AREA_SNAPSHOT", 0, false,
-            $"Reward areas: phase={snapshot.PhaseIndex}, reason={reason}, areas={areas.Count}.", entry =>
-            {
-                entry.PhaseIndex = snapshot.PhaseIndex;
-                entry.Outcome = reason;
-                entry.RewardAreaStates = areas;
-            });
-    }
-
-    public void LogReinforcementReleased(long matchingId, MonsterReinforcementRelease release)
-    {
-        if (matchingId <= 0 || release.ReleasedCount <= 0)
-            return;
-
-        Append(matchingId, "SURVIVOR_REINFORCEMENT_RELEASED", 0, false,
-            $"Reinforcement released in {release.Area}: phase={release.PhaseIndex}, count={release.ReleasedCount}, remaining={release.RemainingBudget}.",
-            entry =>
-            {
-                entry.Area = release.Area.ToString();
-                entry.PhaseIndex = release.PhaseIndex;
-                entry.ReinforcementReleasedCount = release.ReleasedCount;
-                entry.ReinforcementRemainingBudget = release.RemainingBudget;
-                entry.AliveMonsterCount = release.AliveCountAfterRelease;
-            });
-    }
-
-    public void LogMonsterDensitySample(long matchingId, MonsterDensitySample sample)
-    {
-        if (matchingId <= 0)
-            return;
-
-        Append(matchingId, "SURVIVOR_MONSTER_DENSITY_SAMPLE", 0, false,
-            $"Monster density in {sample.Area}: alive={sample.AliveMonsterCount}, remaining={sample.ReinforcementRemainingBudget}.",
-            entry =>
-            {
-                entry.Area = sample.Area.ToString();
-                entry.PhaseIndex = sample.PhaseIndex;
-                entry.AliveMonsterCount = sample.AliveMonsterCount;
-                entry.ReinforcementRemainingBudget = sample.ReinforcementRemainingBudget;
-                entry.GlobalAliveMonsterCount = sample.GlobalAliveMonsterCount;
-                entry.HasAttackableMonster = sample.HasAttackableMonster;
-            });
-    }
-
     public void LogBotMovementTickPerformance(
         long matchingId,
         double p50Milliseconds,
@@ -779,53 +586,6 @@ public class GameEventLogManager
                 entry.BotMovementTickSampleCount = sampleCount;
                 entry.BotMovementTickSkipCount = skippedTickCount;
                 entry.BotMovementMaxConsecutiveSkipCount = maxConsecutiveSkippedTicks;
-            });
-    }
-
-    public void LogCoreContestedEntry(
-        long matchingId,
-        long enteringPlayerId,
-        string area,
-        MonsterRuntimeInfo? core,
-        bool isBot)
-    {
-        if (matchingId <= 0 || enteringPlayerId == 0 || core is not { IsAlive: true, IsCore: true })
-            return;
-
-        var log = _logs.GetOrAdd(matchingId, _ => new MatchingEventLog());
-        var otherPlayerIds = log.GetOtherPlayersInArea(enteringPlayerId, area);
-        if (otherPlayerIds.Count == 0)
-            return;
-
-        Append(matchingId, "SURVIVOR_CORE_CONTESTED_ENTRY", enteringPlayerId, isBot,
-            $"{FormatPlayer(enteringPlayerId)} entered contested core {core.MonsterId} in {area}; health={core.CurrentHealth}/{core.MaxHealth}.",
-            entry =>
-            {
-                entry.Area = area;
-                entry.MonsterId = core.MonsterId;
-                entry.CoreCurrentHealth = core.CurrentHealth;
-                entry.CoreMaxHealth = core.MaxHealth;
-                entry.AlreadyPresentPlayerIds = otherPlayerIds;
-                entry.Outcome = core.CurrentHealth < core.MaxHealth ? "damaged" : "full";
-            });
-    }
-
-    public void LogInteraction(long matchingId, long playerId, string description, bool isBot)
-    {
-        Append(matchingId, "INTERACT", playerId, isBot, description);
-    }
-
-    public GameEventEntry LogRoomEncounterReveal(long matchingId, long actorPlayerId, long targetPlayerId,
-        string area, int interactId, bool isBot)
-    {
-        return Append(matchingId, "ROOM_ENCOUNTER_REVEAL", actorPlayerId, isBot,
-            $"{FormatPlayer(actorPlayerId)} encountered {FormatPlayer(targetPlayerId)} while exploring {area}.",
-            entry =>
-            {
-                entry.Area = area;
-                entry.ActivityId = interactId;
-                entry.EncounteredPlayerIds = new List<long> { targetPlayerId };
-                entry.OccurredAtUnixMs = entry.TimestampUnixMs;
             });
     }
 
@@ -956,21 +716,6 @@ public class GameEventLogManager
             });
     }
 
-    public void LogGroundItemPriorityExpired(long matchingId, long discovererPlayerId, long groundItemUid,
-        int itemId, long expiredAtUnixMs)
-    {
-        Append(matchingId, "GROUND_ITEM_PRIORITY_EXPIRED", discovererPlayerId,
-            BotPlayerManager.IsBotPlayerId(discovererPlayerId),
-            $"Ground item priority expired: uid={groundItemUid}, item={itemId}.", entry =>
-            {
-                entry.GroundItemUid = groundItemUid;
-                entry.ItemId = itemId;
-                entry.DiscovererPlayerId = discovererPlayerId;
-                entry.PriorityExpiresAtUnixMs = expiredAtUnixMs;
-                entry.PriorityExpired = true;
-            });
-    }
-
     public void LogGroundItemPickup(long matchingId, long pickerPlayerId, long discovererPlayerId,
         long groundItemUid, int itemId, string area, bool autoUsed, bool isBot)
     {
@@ -1068,36 +813,6 @@ public class GameEventLogManager
                 playerId, area, isBot, now.AddSeconds(3), droppedItems));
     }
 
-    public void FlushElapsedEliminationDrops(long matchingId, Func<long, bool> isStillOnGround)
-    {
-        ArgumentNullException.ThrowIfNull(isStillOnGround);
-        if (!_telemetryStates.TryGetValue(matchingId, out var state))
-            return;
-
-        var now = DateTimeOffset.UtcNow;
-        List<PendingEliminationDrop> elapsed;
-        lock (state.SyncRoot)
-        {
-            elapsed = state.PendingEliminationDrops.Where(drop => drop.ObserveAtUtc <= now).ToList();
-            state.PendingEliminationDrops.RemoveAll(drop => drop.ObserveAtUtc <= now);
-        }
-
-        foreach (var drop in elapsed)
-        {
-            var uncollected = drop.Items.Where(item => isStillOnGround(item.GroundItemUid))
-                .Select(item => item.GroundItemUid).ToList();
-            AppendAt(matchingId, "ELIMINATION_DROP_3S", drop.PlayerId, drop.IsBot,
-                $"Elimination drop after 3s: picked={drop.PickupOrder.Count}, uncollected={uncollected.Count}.",
-                now, entry =>
-                {
-                    entry.Area = drop.Area;
-                    entry.EliminationDroppedItems = drop.Items;
-                    entry.DropPickupOrder = drop.PickupOrder.ToList();
-                    entry.UncollectedDroppedItemUids = uncollected;
-                    entry.DropScatterRadius = drop.Items.Max(item => item.DistanceFromOrigin);
-                });
-        }
-    }
 
     public static int CalculateDropRecoveryTotal(IEnumerable<int> itemIds) =>
         itemIds.Sum(itemId => itemId switch
@@ -1763,7 +1478,6 @@ public class GameEventLogManager
         { get; } = new();
         public List<PendingEliminationDrop> PendingEliminationDrops { get; } = new();
         public Dictionary<long, OrbTelemetry> OrbTelemetry { get; } = new();
-        public Dictionary<int, string> RewardAreaSignaturesByPhase { get; } = new();
         public bool OrbSummariesLogged { get; set; }
     }
 
@@ -2246,7 +1960,6 @@ public class GameEventEntry
     public int? BotMovementMaxConsecutiveSkipCount { get; set; }
     public int? CoreCurrentHealth { get; set; }
     public int? CoreMaxHealth { get; set; }
-    public List<MonsterRewardAreaTelemetry>? RewardAreaStates { get; set; }
     public string? DamageSourceType { get; set; }
     public long? FirstAttackerPlayerId { get; set; }
     public long? LastAttackerPlayerId { get; set; }
@@ -2370,11 +2083,6 @@ public class GameEventEntry
 }
 
 public sealed record MonsterDamageContribution(long PlayerId, int Damage);
-public sealed record MonsterRewardAreaTelemetry(
-    string Area,
-    int AliveMonsterCount,
-    int AliveCoreCount,
-    int RemainingSummonStoneReward);
 public sealed record MatchFinalPlayerStats(
     long PlayerId,
     int Rank,

@@ -647,24 +647,5 @@ public partial class GameClientSession
             PlayerId, areaType, correctedCell.X, correctedCell.Y);
     }
 
-    /// <summary>
-    ///     인게임 스탯 초기화 (새 게임 시작 시)
-    /// </summary>
-    private void ResetInGameStats()
-    {
-        StopAllPeriodicBuffs();
-        _isSleeping = false;
-        Stamina = InitialStamina;
-        Corruption = InitialCorruption;
-        CurrentState = PlayerState.Idle;
-        _exploreMoveGraceUntil = DateTime.MinValue;
-        CurrentExploringInteractId = null;
-        Logger.LogInformation("Player {PlayerId} in-game stats reset: Stamina={Stamina}, Corruption={Corruption}",
-            PlayerId, Stamina, Corruption);
-
-        // 클라이언트에 초기 스탯 푸시 — 변동 없는 상태에서도 UI가 시작값으로 갱신되도록
-        SendPlayerStatsUpdate(0, 0);
-    }
-
     #endregion
 }

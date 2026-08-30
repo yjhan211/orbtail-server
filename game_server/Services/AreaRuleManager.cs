@@ -133,37 +133,6 @@ public class AreaRuleManager
     }
 
     /// <summary>
-    ///     이번 매칭에 적용된 모든 규칙 가져오기 (InteractRuleManager 호환용)
-    /// </summary>
-    public Dictionary<AreaType, List<int>> GetAllRules(long matchingId)
-    {
-        var state = GetOrCreateMatchingState(matchingId);
-        var result = new Dictionary<AreaType, List<int>>();
-
-        foreach (int ruleId in state.AllRuleIds)
-        {
-            var ruleData = GameAreaRuleData.Get(ruleId);
-            if (!result.ContainsKey(ruleData.AreaType)) result[ruleData.AreaType] = new List<int>();
-            result[ruleData.AreaType].Add(ruleId);
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    ///     첫 번째 복도 규칙 ID 가져오기 (복도 규칙 체크용)
-    /// </summary>
-    public int GetFirstCorridorRuleId(long matchingId)
-    {
-        var state = GetOrCreateMatchingState(matchingId);
-        // 첫 번째 규칙이 복도 규칙
-        if (state.AllRuleIds.Count <= 0) return 0;
-        int firstRuleId = state.AllRuleIds[0];
-        var ruleData = GameAreaRuleData.Get(firstRuleId);
-        return ruleData.AreaType.IsCorridor() ? firstRuleId : 0;
-    }
-
-    /// <summary>
     ///     쪽지 아이템 사용 시 다음 규칙 ID 반환
     ///     모든 플레이어가 같은 순서로 규칙을 발견
     /// </summary>
@@ -178,32 +147,11 @@ public class AreaRuleManager
     }
 
     /// <summary>
-    ///     특정 InteractId에 대한 규칙 가져오기 (사보타주 연계용)
-    /// </summary>
-    /// <returns>해당 InteractId에 적용된 규칙, 없으면 null</returns>
-    public AreaRuleInfoData? GetRuleForInteract(long matchingId, int interactId)
-    {
-        var state = GetOrCreateMatchingState(matchingId);
-
-        return state.AllRuleIds.Select(GameAreaRuleData.Get)
-            .FirstOrDefault(ruleData => ruleData.TargetInteractId == interactId);
-    }
-
-    /// <summary>
     ///     매칭 종료 시 해당 매칭의 상태 정리
     /// </summary>
     public void RemoveMatchingState(long matchingId)
     {
         if (_matchingStates.TryRemove(matchingId, out _))
             _logAction?.Invoke($"AreaRuleManager: Removed state for MatchingId={matchingId}");
-    }
-
-    /// <summary>
-    ///     전체 상태 초기화
-    /// </summary>
-    public void Reset()
-    {
-        _matchingStates.Clear();
-        _logAction?.Invoke("AreaRuleManager: All matching states cleared");
     }
 }

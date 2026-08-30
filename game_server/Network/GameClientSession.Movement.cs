@@ -66,7 +66,6 @@ public partial class GameClientSession
             RecordMoveInputSequence(msg.InputSequence);
             long receiptTimestamp = Stopwatch.GetTimestamp();
             float deltaTime = GetServerReceiptDeltaSeconds(receiptTimestamp);
-            _lastMoveTime = now;
 
             var validatedPosition = ValidatePosition(
                 msg.Position,
