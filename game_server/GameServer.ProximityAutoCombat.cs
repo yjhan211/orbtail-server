@@ -15,13 +15,10 @@ public partial class GameServer
     private const int ProximityAutoCombatTickIntervalMs = 50;
 
     private readonly ProximityAutoCombatResolver _proximityAutoCombatResolver = new();
-    private readonly DodgeableProjectileResolver _dodgeableProjectileResolver = new();
     private readonly ConcurrentDictionary<(long MatchingId, long ObserverPlayerId, long ActorPlayerId),
         OrbVisualState> _orbVisualStates = new();
     private readonly ConcurrentDictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex), DateTime>
         _orbRecoveryReadyAtUtc = new();
-    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId), ProximityCombatAreaEntryState>
-        _proximityCombatAreaEntryStates = new();
     private Timer? _proximityAutoCombatTimer;
     private int _proximityAutoCombatProcessing;
 
@@ -87,8 +84,7 @@ public partial class GameServer
     private static void AddInventoryCombatActors(
 ICollection<ProximityCombatActor> actors,
 ProximityCombatActor spatialActor,
-PlayerInGameInventory inventory,
-OrbResonanceSnapshot resonanceState)
+PlayerInGameInventory inventory)
     {
         var equippedItem = inventory.GetEquippedBattleItem();
         bool addedBoardOrb = false;
@@ -123,7 +119,7 @@ OrbResonanceSnapshot resonanceState)
             bool windActive = false;
             int sunStage = 0;
             bool waveArmed = false;
-            bool orbEffectActive = resonanceState.ActiveColor == orbColor;
+            bool orbEffectActive = false;
 
             for (int stackIndex = 0; stackIndex < item.Count; stackIndex++)
             {
@@ -394,15 +390,6 @@ OrbResonanceSnapshot resonanceState)
         {
             _orbRecoveryReadyAtUtc.TryRemove(key, out _);
         }
-        foreach (var key in _proximityCombatAreaEntryStates.Keys
-                     .Where(key => key.MatchingId == matchingId)
-                     .ToArray())
-        {
-            _proximityCombatAreaEntryStates.TryRemove(key, out _);
-        }
-
-        RemoveOrbResonanceStates(matchingId);
-        _dodgeableProjectileResolver.RemoveMatching(matchingId);
     }
 
     private static bool TryCreateSpatialActor(
@@ -438,12 +425,6 @@ out ProximityCombatActor actor)
             cell);
         return true;
     }
-
-    private readonly record struct ProximityCombatAreaEntryState(
-        AreaType Area,
-        DateTime ReadyAtUtc,
-        AreaType PreviousArea,
-        DateTime PreviousAreaLeftAtUtc);
 
     private readonly record struct OrbVisualState(
         AreaType Area,

@@ -16,17 +16,7 @@ public readonly record struct SwarmBotDodgeAdvice(float DirectionX, float Direct
 public partial class BotPlayerManager
 {
     /// <summary>
-    ///     클리어 전이라 문이 잠긴 방 목록 제공자. 사람은 이동 검증이 문을 막지만 봇은
-    ///     서버가 직접 걷게 하므로, 같은 규칙을 봇 경로 결정에서 강제한다.
-    /// </summary>
-    private Func<long, IReadOnlyCollection<AreaType>>? _lockedRoomAreasProvider;
-
-    public void SetLockedRoomAreasProvider(Func<long, IReadOnlyCollection<AreaType>> provider) =>
-        _lockedRoomAreasProvider = provider ?? throw new ArgumentNullException(nameof(provider));
-
-    /// <summary>
     ///     문 개방 여부 조회 (2026-08-16 유저 제보: 봇이 문 열리기 전에 들어온다).
-    ///     위의 잠긴 방 목록은 구형 ROOM_COMBAT 페이즈에서만 채워져 군집 모드에서는 항상 비었다 —
     ///     사람은 GameClientSession.Movement가 문 상태로 막는데 봇만 그냥 지나다녔다.
     ///     봇도 잠긴 문은 3초 채널링(ProcessSwarmBotDoorUnlocks)으로 열 수 있으므로 막아도 갇히지 않는다.
     /// </summary>
@@ -149,17 +139,10 @@ public partial class BotPlayerManager
                 Stamina = InitialStamina,
                 Corruption = InitialCorruption,
                 PlayerMatchStatus = PlayerMatchStatus.ACTIVE,
-                LastMoveTime = now,
-                LastMissionTickTime = now.AddMilliseconds(-_rng.Next(BotMissionTickIntervalSeconds * 1000)),
-                LastCellWanderTime = now,
                 GameStartTime = now,
-                NextPveKiteRepathAt = now.AddMilliseconds(
-                    Math.Abs(info.PlayerId % 8) * 100d),
                 LoopWaitUntil = now.AddSeconds(RandomRange(
                     Proto0InitialDecisionDelayMinSeconds,
-                    Proto0InitialDecisionDelayMaxSeconds)),
-                JobAreaQueue = new List<AreaType>(),
-                JobAreaQueueIndex = 0
+                    Proto0InitialDecisionDelayMaxSeconds))
             };
         }).ToList();
 
@@ -237,9 +220,7 @@ public partial class BotPlayerManager
         var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
             ? PlayerState.SLEEP
             : bot.RngCollectProgressStartTime != DateTime.MinValue ||
-              bot.SwarmExploreStartedAtUtc != DateTime.MinValue ||
-              Config.CHECKLIST_SYSTEM_ENABLED &&
-              bot.ChecklistActivityProgressStartTime != DateTime.MinValue
+              bot.SwarmExploreStartedAtUtc != DateTime.MinValue
                 ? PlayerState.EXPLORE_1
                 : PlayerState.IDLE;
         var info = new PlayerInfo
@@ -282,21 +263,7 @@ public partial class BotPlayerManager
         return bots.FirstOrDefault(b => b.PlayerId == playerId);
     }
 
-    public int CountBotsInArea(long matchingId, AreaType area)
-    {
-        if (!_botStates.TryGetValue(matchingId, out var bots)) return 0;
-        return bots.Count(b => !b.IsEliminated && b.CurrentArea == area);
-    }
-
     public bool HasBots(long matchingId) => _botStates.ContainsKey(matchingId);
-
-    public void SetBotRosterStatus(long matchingId, long botPlayerId, PlayerMatchStatus status)
-    {
-        var bot = GetBot(matchingId, botPlayerId);
-        if (bot == null) return;
-        bot.PlayerMatchStatus = status;
-        _logger.LogInformation("Bot roster status changed: BotId={BotId}, Status={Status}", botPlayerId, status);
-    }
 
     public void CleanupMatching(long matchingId)
     {
@@ -335,7 +302,6 @@ public class BotPlayerState
     public bool IsForcedFollowActive { get; set; }
     public bool IsEliminated { get; set; }
     public PlayerMatchStatus PlayerMatchStatus { get; set; } = PlayerMatchStatus.ACTIVE;
-    public DateTime LastMoveTime { get; set; } = DateTime.UtcNow;
     public PersonaType Persona { get; set; } = PersonaType.None;
     public List<int> ActiveBuffIds { get; set; } = new();
     public BotProto0Profile Proto0Profile { get; set; } = BotProto0Profile.SurvivalFirst;
@@ -374,7 +340,6 @@ public class BotPlayerState
         _orbOrbitLastPosition = new Vector3f(newPosition.X, newPosition.Y, newPosition.Z);
     }
 
-    public DateTime LastCellWanderTime { get; set; } = DateTime.UtcNow;
 
     // === #127 walking pathfinding ===
     public List<BotPathfinder.Step> Path { get; set; } = new();
@@ -387,13 +352,11 @@ public class BotPlayerState
 
     public DateTime LoopWaitUntil { get; set; } = DateTime.MinValue;
 
-    public DateTime TransitionPauseUntil { get; set; } = DateTime.MinValue;
 
     /// <summary>
     ///     현재 지역에 들어온 시각. 방 사냥이 진전 없이 길어졌는지 판정하는 기준이다.
     ///     정상적인 팩 정리는 20초 안에 끝나므로, 이 시각이 오래되면 그 방을 목적지 후보에서 뺀다.
     /// </summary>
-    public DateTime RoomHuntStartedAtUtc { get; set; } = DateTime.UtcNow;
 
     /// <summary>잠긴 문 차단 로그의 중복 억제 — 같은 방에 연속으로 막히면 한 번만 남긴다.</summary>
     public AreaType LastLockedDoorBlockArea { get; set; } = AreaType.None;
@@ -402,39 +365,27 @@ public class BotPlayerState
     ///     정체가 감지되어 현재 방을 떠나야 한다는 요청. 이동 루프 상단에서 세우고
     ///     잔상 사냥 계획이 소비한다. 목적지 커밋이 사냥 계획을 가로막기 때문에 두 단계로 나눈다.
     /// </summary>
-    public bool RoomHuntEscapeRequested { get; set; }
 
-    public bool IsInInteraction { get; set; }
+    public bool IsChannelHeld { get; set; }
 
-    public DateTime InteractionStayUntil { get; set; } = DateTime.MinValue;
+    public DateTime ChannelHoldUntil { get; set; } = DateTime.MinValue;
 
     public AreaType PendingForcedInteractArea { get; set; } = AreaType.None;
 
     public int PendingForcedInteractId { get; set; }
 
-    public int PendingChecklistTaskId { get; set; }
 
-    public int PendingChecklistInteractId { get; set; }
 
-    public DateTime ChecklistActivityProgressStartTime { get; set; } = DateTime.MinValue;
 
     public DateTime RestUntil { get; set; } = DateTime.MinValue;
 
-    public DateTime NextRestTickAt { get; set; } = DateTime.MinValue;
 
     public DateTime GameStartTime { get; set; } = DateTime.UtcNow;
 
-    public DateTime LastMissionTickTime { get; set; } = DateTime.UtcNow;
 
-    /// <summary>Next time the bot may replace its chase or retreat path.</summary>
-    public DateTime NextCombatRepathAt { get; set; } = DateTime.MinValue;
-
-    /// <summary>Next time the bot may re-plan a short lateral path around nearby afterimages.</summary>
-    public DateTime NextPveKiteRepathAt { get; set; } = DateTime.MinValue;
 
     // 카이팅 접선 방향 (2026-08-18 유저 지시 "제자리 좌우 와리가리 금지"): 초마다 좌우를 바꾸던 것을
     // 봇마다 한쪽으로 고정한다 — 그쪽이 막혔을 때만 뒤집는다. 0이면 미정(봇 id 홀짝으로 정한다).
-    public int PveKiteWeaveSide { get; set; }
 
     // 투사체 회피 커밋 (2026-08-18): 한 번 비켜서기 시작한 방향과 유지 시각. 유지 중에는 띠 밖에 나가도
     // 원래 경로로 되돌아가지 않고 제자리에 선다 — 띠 가장자리에서 들락거리는 떨림을 없앤다.
@@ -445,60 +396,35 @@ public class BotPlayerState
     /// <summary>Safe room retained while the bot is travelling out of a warned area.</summary>
     public AreaType EvacuationDestination { get; set; } = AreaType.None;
 
-    /// <summary>Room most recently abandoned because of a nearby combat threat.</summary>
-    public AreaType RecentCombatRetreatOrigin { get; set; } = AreaType.None;
-
-    /// <summary>Prevents loot routing from immediately sending the bot back into the room it fled.</summary>
-    public DateTime CombatRetreatOriginBlockedUntil { get; set; } = DateTime.MinValue;
-
     /// <summary>Room goal retained while the bot is travelling for loot, an interaction, or a target.</summary>
     public AreaType MovementDestination { get; set; } = AreaType.None;
 
     /// <summary>Safe room selected during #214 corridor selection.</summary>
-    public AreaType SurvivorRoomChoice { get; set; } = AreaType.None;
 
     public SpotArenaBotMode SpotArenaMode { get; set; } = SpotArenaBotMode.None;
     public DateTime SpotArenaModeUntilUtc { get; set; } = DateTime.MinValue;
 
-    public List<AreaType> JobAreaQueue { get; set; } = new();
-
-    public int JobAreaQueueIndex { get; set; }
-
-
-    public DateTime LastTracePlaceTime { get; set; } = DateTime.MinValue;
-
-    public bool HasPlacedDemoTrapTrace { get; set; }
 
 
 
-    public long LastInteractRespondedTo { get; set; }
 
-    public long PresenceBookmarkPlayerId { get; set; }
 
-    public Dictionary<long, DateTime> TargetEncounterStartedAtByPlayerId { get; } = new();
-    public HashSet<long> TargetInterrogationRequestedInEncounterPlayerIds { get; } = new();
 
-    public void SetPresenceBookmark(long targetPlayerId)
+
+
+
+
+    public void HoldForChannel(TimeSpan fallbackDuration)
     {
-        if (PresenceBookmarkPlayerId == targetPlayerId) return;
-
-        PresenceBookmarkPlayerId = targetPlayerId;
-        TargetEncounterStartedAtByPlayerId.Clear();
-        TargetInterrogationRequestedInEncounterPlayerIds.Clear();
-    }
-
-    public void HoldForInteraction(TimeSpan fallbackDuration)
-    {
-        IsInInteraction = true;
-        InteractionStayUntil = DateTime.UtcNow.Add(fallbackDuration);
-        TransitionPauseUntil = DateTime.MinValue;
+        IsChannelHeld = true;
+        ChannelHoldUntil = DateTime.UtcNow.Add(fallbackDuration);
     }
 
     /// <summary>위협 감지 시 채집·상호작용 홀드를 즉시 끊는다 — 홀드 채로 맞다 죽는 사고 방지.</summary>
-    public void CancelInteractionHold()
+    public void CancelChannelHold()
     {
-        IsInInteraction = false;
-        InteractionStayUntil = DateTime.MinValue;
+        IsChannelHeld = false;
+        ChannelHoldUntil = DateTime.MinValue;
     }
 
     /// <summary>마지막 피격 시각 (#222) — 피격 중에는 이동 계획 홀드를 무시하는 판단 입력.</summary>
@@ -525,17 +451,12 @@ public class BotPlayerState
 
     public int PendingRngInteractId { get; set; }
 
-    public List<int> InteractQueueInArea { get; set; } = new();
 
     /// <summary>이번 매치에서 이 봇이 탐색을 끝낸 방. 방을 이동해도 유지한다.</summary>
-    public HashSet<AreaType> CompletedRoomExploreAreas { get; } = new();
 
     /// <summary>이번 매치에서 이 봇이 실제 RNG 탐색을 완료한 상호작용 지점.</summary>
-    public HashSet<int> ExploredRngInteractIds { get; } = new();
 
-    public AreaType RoomExploreQueueArea { get; set; } = AreaType.None;
 
-    public DateTime LastAutoConsumableUseTime { get; set; } = DateTime.MinValue;
 
     /// <summary>Current equipped battle tool, used to synchronize remote bot visuals.</summary>
     public int EquippedBattleItemId { get; set; }
@@ -549,7 +470,6 @@ public class BotPlayerState
 
     public DateTime RngCollectProgressStartTime { get; set; } = DateTime.MinValue;
 
-    public bool PendingExploreEndBroadcast { get; set; }
 
     /// <summary>잼 승점 지갑 (#222 M3) — 매치 단위, 소환석과 분리.</summary>
     public int JamCount { get; set; }

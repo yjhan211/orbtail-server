@@ -172,14 +172,6 @@ public class MatchingConfigService
         }
     }
 
-    /// <summary>
-    ///     직책 풀 config 초기화. standard 활성 시 ChainJobOrder로 복원, 비활성 시 무작위.
-    /// </summary>
-    public async Task ResetJobPoolConfigAsync()
-    {
-        await SetJobPoolConfigAsync(null);
-    }
-
     // ─── 현재 전체 config 조회 (GET endpoint용) ───────────────────────────────
 
     public async Task<MatchingConfigSnapshot> GetSnapshotAsync()

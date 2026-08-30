@@ -105,14 +105,6 @@ namespace network.common.data.models
             set => Cell = value;
         }
 
-        // Position이 업데이트될 때 Cell도 자동으로 업데이트
-        public void UpdateCellFromPosition()
-        {
-            // Keep this identical to the server movement validator and the
-            // School Tilemap, including the authored Grid transform.
-            Cell = MapCoordinateConverter.WorldToCell(MapId, Position);
-        }
-
         public string GetGameObjectKey()
         {
             return $"{(int)ObjectType}_{ObjectId}";

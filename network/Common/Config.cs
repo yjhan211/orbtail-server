@@ -93,9 +93,6 @@ namespace network.common
         ///     수치는 플레이테스트 후 최종 확정 예정 (미확정 #67). v0.1.10에서 2 → 4 → 5로 상향.</summary>
         public const int CLOSED_AREA_CORRUPTION_TICK = 5;
 
-        /// <summary>근접 자동전투와 타겟 근접 체크리스트의 공통 거리 기준.</summary>
-        public const float TARGET_PROXIMITY_DISTANCE = 3f;
-
         /// <summary>Survivor Royale inventory slot capacity shared by clients, bots, and the game server.</summary>
         public const int LEGACY_INVENTORY_SLOT_COUNT = 6;
 
@@ -574,16 +571,5 @@ namespace network.common
         /// <summary>결정 패킷 액션 — 클라·서버·로그 공유. TargetItemUid = OrbColor 값.</summary>
         public const int SWARM_ORB_DECISION_FAMILY_UPGRADE = 1;
 
-        /// <summary>
-        /// Survivor Royale P0에서는 레거시 마니또 체크리스트를 생성하거나 진행하지 않는다.
-        /// 데이터와 프로토콜은 보존하므로 레거시 모드가 다시 분리되면 이 게이트로 복구할 수 있다.
-        /// </summary>
-        public static readonly bool CHECKLIST_SYSTEM_ENABLED = false;
-
-        /// <summary>
-        ///     프레즌스(기척 카드·북마크·노트북) 동결 플래그 — 차기 재사용 보존 결정(2026-08-20).
-        ///     꺼져 있으면 서버 프레즌스 틱과 북마크 핸들러 등록을 건너뛴다. 데이터·프로토콜·클라 수신은 보존.
-        /// </summary>
-        public static readonly bool PRESENCE_SYSTEM_ENABLED = false;
     }
 }

@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using game_server.admin.dto;
-using game_server.controllers;
 using game_server.network;
 using game_server.services;
 using MessagePack;
@@ -50,24 +49,17 @@ public partial class GameServer(
         TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ShutdownStageTimeout = TimeSpan.FromSeconds(5);
 
-    private readonly AreaRuleManager _areaRuleManager = new();
     private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions = new();
     private readonly DoorStateManager _doorStateManager = new();
     private readonly InGameInventoryManager _inGameInventoryManager = new();
 
-    private readonly List<InstanceMapManager> _instanceControllerList = [];
     private readonly InteractableStateManager _interactableStateManager = new();
-    private readonly ItemPoolManager _itemPoolManager = new();
     private readonly AreaItemStockManager _areaItemStockManager =
         new(naturalExploreLootEnabled: !Config.MONSTER_SUMMON_ECONOMY_ENABLED);
     private readonly GroundItemManager _groundItemManager = new();
-    private readonly EmotionAfterimageMonsterManager _emotionAfterimageMonsterManager =
-        new(ambientCorridorEnabled: false);
     private readonly SwarmArenaManager _swarmArenaManager = new();
     private readonly SummonStoneManager _summonStoneManager = new();
-    private readonly InteractionLogManager _interactionLogManager = new();
     private readonly MatchRosterManager _matchRosterManager = new(logger);
-    private readonly ChecklistManager _checklistManager = new(logger);
     private readonly MatchingConfigService _matchingConfigService = new(cacheHelper, logger);
     // _areaClosureManager은 InitializeServices()에서 _matchingConfigService 생성 후 초기화
     private AreaClosureManager _areaClosureManager = null!;
@@ -77,7 +69,6 @@ public partial class GameServer(
         configuration["MATCH_SUMMARY_DIRECTORY"],
         configuration.GetValue<int>("MATCH_SUMMARY_MAX_FILES", MatchSummaryFileStore.DefaultMaxSummaries));
     private readonly EncounterRevealManager _encounterRevealManager = new();
-    private readonly Proto0PresenceTracker _presenceTracker = new();
     private readonly ConcurrentDictionary<long, int> _lastMatchStartCountdownBroadcast = new();
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, string>>
         _matchingLifecycleTerminalSubjects = new();
@@ -110,7 +101,6 @@ public partial class GameServer(
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
     private Timer? _botMovementTimer;         // #127 봇 walking step (250ms)
-    private Timer? _checklistProgressTickTimer;
 
     // 자원 틱 설정 (GDD v0.0.5 확정 수치)
     private int _botMovementProcessing;
@@ -140,7 +130,6 @@ public partial class GameServer(
     }
 
     internal const int ResourceTickIntervalSeconds = 5;
-    private const int ChecklistProgressTickIntervalSeconds = 1;
     // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -154,10 +143,8 @@ public partial class GameServer(
         try
         {
             logger.LogInformation("Game server starting...");
-            GameClientSession.SetPresenceTracker(_presenceTracker);
 
             InitializeServices();
-            InitializeControllers();
 
             // Redis에서 폐쇄 config 복원 (재시작/핫리로드 후에도 어드민 설정 유지)
             await _matchingConfigService.LoadClosureConfigFromRedisAsync();
@@ -168,7 +155,6 @@ public partial class GameServer(
             StartAreaClosureTickTimer();
             StartTargetLocationTimer();
             StartBotMovementTimer();
-            StartChecklistProgressTickTimer();
             StartProximityAutoCombatTimer();
             await gameServerNodeLease.StartAsync(
                 () => _matchRuntimeRegistry.ActiveCount,
@@ -239,7 +225,6 @@ public partial class GameServer(
             _areaClosureTickTimer,
             _targetLocationTimer,
             _botMovementTimer,
-            _checklistProgressTickTimer,
             _proximityAutoCombatTimer
         ];
         _heartbeatCheckTimer = null;
@@ -247,16 +232,12 @@ public partial class GameServer(
         _areaClosureTickTimer = null;
         _targetLocationTimer = null;
         _botMovementTimer = null;
-        _checklistProgressTickTimer = null;
         _proximityAutoCombatTimer = null;
         await RunShutdownStageAsync(
             Task.WhenAll(timers.Where(timer => timer != null)
                 .Select(timer => timer!.DisposeAsync().AsTask())),
             "timers");
 
-        await RunShutdownStageAsync(
-            Task.WhenAll(_instanceControllerList.Select(controller => controller.ShutdownAsync())),
-            "instance controllers");
         await RunShutdownStageAsync(
             WaitForPendingMatchOwnerLossesAsync(),
             "match owner loss");
@@ -484,8 +465,6 @@ public partial class GameServer(
             GameDataHelper.Initialize();
             MapHelper.Initialize(serverConfig.GameServerNum);
             Action<string> log = msg => logger.LogInformation(msg);
-            _emotionAfterimageMonsterManager.SetMatchingStateRemovedCallback(
-                CleanupEmotionAfterimageMonsterRuntime);
             // 문 상태는 페이즈와 별개다 (2026-08-16). 위 제공자는 ROOM_COMBAT에서만 채워져
             // 군집 모드에서는 항상 비었고, 그래서 봇이 잠긴 문을 그냥 통과했다.
             _botPlayerManager.SetDoorOpenResolver(_doorStateManager.IsDoorOpen);
@@ -493,22 +472,11 @@ public partial class GameServer(
             _botPlayerManager.SetSwarmDodgeResolver(ResolveSwarmBotDodgeDirection);
             _interactableStateManager.Initialize(log);
             _inGameInventoryManager.Initialize(log);
-            _areaRuleManager.Initialize(log);
-            _itemPoolManager.Initialize(log);
-            _checklistManager.Initialize(log);
         }
         catch (Exception ex)
         {
             throw new InvalidOperationException("Failed to initialize services.", ex);
         }
-    }
-
-    private void InitializeControllers()
-    {
-        var instanceController = new InstanceMapManager(logger, natsClientFactory.Create(), cacheHelper,
-            serverConfig, _clientSessions);
-        instanceController.Initialize();
-        _instanceControllerList.Add(instanceController);
     }
 
     private void StartTcpServer()
@@ -539,73 +507,6 @@ public partial class GameServer(
         logger.LogInformation("자원 틱 타이머 시작 ({Interval}초)", ResourceTickIntervalSeconds);
     }
 
-    private void StartChecklistProgressTickTimer()
-    {
-        if (!Config.CHECKLIST_SYSTEM_ENABLED)
-        {
-            logger.LogInformation("Checklist progress timer disabled by configuration");
-            return;
-        }
-
-        _checklistProgressTickTimer = new Timer(ProcessChecklistProgressTick, null,
-            TimeSpan.FromSeconds(ChecklistProgressTickIntervalSeconds),
-            TimeSpan.FromSeconds(ChecklistProgressTickIntervalSeconds));
-        logger.LogInformation("체크리스트 진행 틱 타이머 시작 ({Interval}초)", ChecklistProgressTickIntervalSeconds);
-    }
-
-    private void ProcessChecklistProgressTick(object? state)
-    {
-        try
-        {
-            var activeSessions = _clientSessions.Values
-                .Where(s => s.PlayerId.HasValue && !s.IsEliminated)
-                .ToList();
-
-            foreach (var session in activeSessions)
-            {
-                long matchingId = session.CurrentMapSubId;
-                if (!GameClientSession.IsRoundActionPhase(matchingId))
-                    continue;
-                if (session.CurrentArea == AreaType.None || session.TargetPlayerId == 0)
-                    continue;
-
-                GameClientSession? targetSession = activeSessions.FirstOrDefault(s =>
-                    s.PlayerId == session.TargetPlayerId &&
-                    s.CurrentMapSubId == matchingId &&
-                    !s.IsEliminated);
-                BotPlayerState? targetBot = targetSession == null
-                    ? _botPlayerManager.GetBot(matchingId, session.TargetPlayerId)
-                    : null;
-                if (targetSession == null && targetBot is not { IsEliminated: false })
-                    continue;
-
-                if (IsTargetWithinProximity(session, targetSession, targetBot))
-                    _matchRuntimeRegistry.TryExecute(
-                        matchingId,
-                        () => session.AdvanceTargetProximityChecklistProgress(
-                            ChecklistProgressTickIntervalSeconds));
-            }
-
-            var matchingIds = GetActiveMatchingIds();
-            foreach (long matchingId in matchingIds)
-            {
-                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
-                if (!_botPlayerManager.HasBots(matchingId)) continue;
-
-                _matchRuntimeRegistry.TryExecute(
-                    matchingId,
-                    () => ProcessBotTargetProximityChecklistProgress(
-                        matchingId,
-                        activeSessions,
-                        ChecklistProgressTickIntervalSeconds));
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "체크리스트 진행 틱 처리 중 오류");
-        }
-    }
-
     private void ProcessResourceTick(object? state)
     {
         try
@@ -624,138 +525,11 @@ public partial class GameServer(
                     ProcessResourceTickForMatching(matchingId, activeSessions);
             }
 
-            // 7. 프로토 0 기척 틱 (#159) — 5초 조우 강도 계산 후 인간 세션에 전송
-            foreach (long matchingId in matchingIds)
-            {
-                if (!Config.PRESENCE_SYSTEM_ENABLED) continue;
-                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
-                _matchRuntimeRegistry.TryExecute(matchingId, () =>
-                {
-                    var playerAreas = BuildPlayerAreas(matchingId, activeSessions);
-                    _presenceTracker.Tick(matchingId, playerAreas);
-                    int roundNumber = 0 /* 라운드 시스템 퇴역(#246) */;
-
-                    foreach (var session in activeSessions)
-                    {
-                        if (session.CurrentMapSubId != matchingId || !session.PlayerId.HasValue) continue;
-
-                        // roster = 현재 살아있는 전체 플레이어 → 타겟 제외 후보 전원(presence 0 포함)
-                        var scored = _presenceTracker.GetCandidates(
-                            matchingId, session.PlayerId.Value, session.TargetPlayerId, playerAreas.Keys);
-
-                        var candidates = new List<(long playerId, float presence, string name, List<int> wear)>();
-                        foreach (var (candidateId, presence) in scored)
-                        {
-                            string name = "";
-                            List<int> wear = null!;
-                            // 봇은 서버 메모리에 정체성 보유 → 후보가 멀리 있어도 카드 채움. 인간은 빈값(클라가 폴백).
-                            if (BotPlayerManager.IsBotPlayerId(candidateId))
-                            {
-                                var info = _botPlayerManager.SynthesizePlayerInfo(matchingId, candidateId);
-                                if (info != null) { name = info.Name; wear = info.WearItemIdList; }
-                            }
-
-                            candidates.Add((candidateId, presence, name, wear));
-                        }
-
-                        session.SendPresenceUpdate(candidates);
-
-                        var notebookRecords = _presenceTracker.GetNotebookRecords(
-                            matchingId,
-                            session.PlayerId.Value,
-                            playerAreas.Keys,
-                            includeEmpty: true);
-                        session.SendPresenceNotebookUpdate(matchingId, roundNumber, notebookRecords);
-                    }
-                });
-            }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "자원 틱 처리 중 오류");
         }
-    }
-
-    private Dictionary<long, AreaType> BuildPlayerAreas(long matchingId, List<GameClientSession> activeSessions)
-    {
-        var areas = new Dictionary<long, AreaType>();
-        foreach (var session in activeSessions)
-            if (session.CurrentMapSubId == matchingId && session.PlayerId.HasValue)
-                areas[session.PlayerId.Value] = session.CurrentArea;
-
-        if (_botPlayerManager.HasBots(matchingId))
-            foreach (var bot in _botPlayerManager.GetBots(matchingId))
-                if (!bot.IsEliminated)
-                    areas[bot.PlayerId] = bot.CurrentArea;
-
-        return areas;
-    }
-
-    private void ProcessBotTargetProximityChecklistProgress(
-        long matchingId,
-        List<GameClientSession> activeSessions,
-        float deltaSeconds)
-    {
-        foreach (var bot in _botPlayerManager.GetBots(matchingId))
-        {
-            if (bot.IsEliminated || bot.TargetPlayerId == 0 || bot.CurrentArea == AreaType.None)
-                continue;
-
-            var targetSession = activeSessions.FirstOrDefault(s =>
-                s.PlayerId == bot.TargetPlayerId &&
-                s.CurrentMapSubId == matchingId &&
-                !s.IsEliminated);
-            var targetBot = targetSession == null
-                ? _botPlayerManager.GetBot(matchingId, bot.TargetPlayerId)
-                : null;
-            if (targetSession == null && targetBot is not { IsEliminated: false })
-                continue;
-
-            bool sameArea = targetSession?.CurrentArea == bot.CurrentArea || targetBot?.CurrentArea == bot.CurrentArea;
-            if (!sameArea || !IsBotTargetWithinProximity(bot, targetSession, targetBot))
-                continue;
-
-            var progress = _checklistManager.AdvanceActiveTaskProgress(
-                matchingId,
-                bot.PlayerId,
-                "MANITTO_STAY_NEAR_TARGET_20",
-                deltaSeconds);
-            if (progress.Completion?.CompletedTask != null)
-            {
-                logger.LogInformation(
-                    "Bot proximity checklist completed: MatchingId={MatchingId}, BotId={BotId}, TaskId={TaskId}",
-                    matchingId, bot.PlayerId, progress.Completion.CompletedTask.TaskId);
-            }
-
-        }
-    }
-
-    /// <summary>타겟 근접 체크리스트 판정용 평면 거리 확인.</summary>
-    private static bool IsTargetWithinProximity(
-        GameClientSession session, GameClientSession? targetSession, BotPlayerState? targetBot)
-    {
-        var myPosition = session.LastValidatedPosition;
-        if (myPosition == null) return false;
-
-        var targetPosition = targetSession?.LastValidatedPosition ?? targetBot?.Position;
-        if (targetPosition == null) return false;
-
-        float dx = myPosition.X - targetPosition.X;
-        float dy = myPosition.Y - targetPosition.Y;
-        return dx * dx + dy * dy <=
-               Config.TARGET_PROXIMITY_DISTANCE * Config.TARGET_PROXIMITY_DISTANCE;
-    }
-
-    private static bool IsBotTargetWithinProximity(
-        BotPlayerState bot, GameClientSession? targetSession, BotPlayerState? targetBot)
-    {
-        var targetPosition = targetSession?.LastValidatedPosition ?? targetBot?.Position;
-        if (targetPosition == null) return false;
-
-        float dx = bot.Position.X - targetPosition.X;
-        float dy = bot.Position.Y - targetPosition.Y;
-        return dx * dx + dy * dy <=
-               Config.TARGET_PROXIMITY_DISTANCE * Config.TARGET_PROXIMITY_DISTANCE;
     }
 
     /// <summary>
@@ -916,25 +690,6 @@ public partial class GameServer(
         }
     }
 
-    private void BroadcastAreaStockState(long matchingId, List<GameClientSession> sessions)
-    {
-        var message = new G_TO_C_AREA_STOCK_STATE
-        {
-            Areas = _areaItemStockManager.GetPublicDepletionSnapshot(matchingId)
-                .Select(state => new AreaNaturalStockState
-                {
-                    AreaType = state.AreaType,
-                    IsDepleted = state.IsDepleted,
-                    AvailableOrbColors = state.AvailableOrbColors
-                })
-                .ToList()
-        };
-        using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_STOCK_STATE);
-        packet.SetBody(MessagePackSerializer.Serialize(message));
-        foreach (var session in sessions.Where(session => session.CurrentMapSubId == matchingId))
-            session.Send(packet);
-    }
-
     /// <summary>
     ///     #134 — 봇 RNG progress 시작을 같은 영역 인간 세션에 G_TO_C_EXPLORE_START broadcast.
     ///     클라가 봇 캐릭터를 EXPLORE_1 상태로 설정 → 탐색 애니메이션 + 사운드 자동 재생.
@@ -1091,18 +846,9 @@ IReadOnlyCollection<GameClientSession> activeSessions)
 
         if (ev.IsAreaTransition)
         {
-            _presenceTracker.SetPlayerArea(matchingId, ev.BotPlayerId, ev.ToArea, countAsEntry: true);
 
             _gameEventLogManager.LogMove(matchingId, ev.BotPlayerId,
                 ev.FromArea.ToString(), ev.ToArea.ToString(), isBot: true);
-            var core = _emotionAfterimageMonsterManager.GetSnapshot(matchingId, ev.ToArea)
-                .FirstOrDefault(monster => monster.IsAlive && monster.IsCore);
-            _gameEventLogManager.LogCoreContestedEntry(
-                matchingId,
-                ev.BotPlayerId,
-                ev.ToArea.ToString(),
-                core,
-                isBot: true);
 
             if (matchingSessions.Count == 0) return;
 
@@ -1150,7 +896,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         }
 
         TrySendBotCorridorEncounterEvent(matchingId, ev, matchingSessions);
-        TrySendBotRoomEncounterEvent(matchingId, ev, matchingSessions);
     }
 
     private void TrySendBotCorridorEncounterEvent(
@@ -1206,28 +951,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             decision.TargetPlayerId,
             ev.ToArea,
             decision.EventType);
-    }
-
-    private void TrySendBotRoomEncounterEvent(
-        long matchingId,
-        BotMovementEvent ev,
-        List<GameClientSession> matchingSessions)
-    {
-        if (ev.ToArea == AreaType.None || ev.ToArea.IsCorridor())
-            return;
-
-        foreach (var session in matchingSessions)
-        {
-            if (!session.PlayerId.HasValue ||
-                session.IsEliminated ||
-                session.CurrentMapSubId != matchingId ||
-                session.CurrentArea != ev.ToArea ||
-                session.PlayerId.Value == ev.BotPlayerId)
-            {
-                continue;
-            }
-
-        }
     }
 
     // ===== 구역 폐쇄 틱 =====
@@ -1358,25 +1081,9 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                     var humanAreas = activeSessions
                         .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
                         .ToDictionary(s => s.PlayerId!.Value, s => s.CurrentArea);
-                    var combatTargets = activeSessions
-                        .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue && !s.IsEliminated &&
-                                    s.LastValidatedPosition != null)
-                        .Select(s => new BotCombatTargetSnapshot(
-                            s.PlayerId!.Value,
-                            s.CurrentArea,
-                            s.LastValidatedPosition!,
-                            _inGameInventoryManager.GetEquippedBattleItem(matchingId, s.PlayerId.Value)?.ItemId ?? 0,
-                            s.CurrentCorruption))
-                        .Concat(_botPlayerManager.GetBots(matchingId)
-                            .Where(bot => !bot.IsEliminated)
-                            .Select(bot => new BotCombatTargetSnapshot(
-                                bot.PlayerId,
-                                bot.CurrentArea,
-                                bot.Position,
-                                _inGameInventoryManager.GetEquippedBattleItem(matchingId, bot.PlayerId)?.ItemId ?? 0,
-                                bot.Corruption)))
-                        .ToList();
-                    var pveTargets = _emotionAfterimageMonsterManager.GetAliveTargets(matchingId);
+                    // 잔상 사냥 경로(MONSTER_SUMMON_ECONOMY_ENABLED 동결)의 공급원이던
+                    // EmotionAfterimageMonsterManager는 #274에서 삭제 — 플래그 부활 시 SwarmArenaManager에서 공급할 것.
+                    IReadOnlyCollection<MonsterCombatTarget> pveTargets = [];
                     snapshotElapsedMilliseconds += Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
 
                     var movementResult = _botPlayerManager.ProcessBotMovementTick(
@@ -1384,10 +1091,8 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                         _areaClosureManager,
                         _areaItemStockManager,
                         humanAreas,
-                        _checklistManager,
-                        _inGameInventoryManager,
+                                _inGameInventoryManager,
                         _groundItemManager,
-                        combatTargets,
                         pveTargets,
                         ResolveSwarmBotDirective,
                         _summonStoneManager);
@@ -1401,11 +1106,8 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                         _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.AdvanceOrbOrbit(ev.Position);
                         BroadcastBotMovement(matchingId, ev, activeSessions);
                     }
-                    if (movementResult.ExploreEnds.Count > 0)
-                        BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);
                     if (movementResult.GroundItemPickups.Count > 0)
                         BroadcastBotGroundItemPickups(matchingId, movementResult.GroundItemPickups, activeSessions);
-                    StartTargetBotInterrogations(matchingId, activeSessions);
                     broadcastElapsedMilliseconds += Stopwatch.GetElapsedTime(broadcastStartedAt).TotalMilliseconds;
                 });
             }
@@ -1574,160 +1276,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                     session.Send(packet);
             });
         }
-    }
-
-    private static readonly TimeSpan TargetBotInterrogationDelay = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan BotToBotStatementHold = TimeSpan.FromSeconds(2);
-
-    private void StartTargetBotInterrogations(long matchingId, List<GameClientSession> activeSessions)
-    {
-        var now = DateTime.UtcNow;
-        var matchingSessions = activeSessions
-            .Where(s => s.CurrentMapSubId == matchingId)
-            .ToList();
-
-        var bots = _botPlayerManager.GetBots(matchingId)
-            .Where(b => !b.IsEliminated)
-            .ToList();
-
-        foreach (var bot in bots)
-        {
-            long guardedPlayerId = bot.PresenceBookmarkPlayerId;
-            if (guardedPlayerId == 0 || guardedPlayerId == bot.PlayerId)
-            {
-                PruneGuardedBotEncounter(bot, guardedPlayerId, false);
-                continue;
-            }
-
-            if (bot.IsInInteraction || bot.CurrentArea == AreaType.None)
-                continue;
-
-            var targetSession = matchingSessions.FirstOrDefault(s => s.PlayerId == guardedPlayerId);
-            var targetBot = targetSession == null
-                ? bots.FirstOrDefault(b => b.PlayerId == guardedPlayerId)
-                : null;
-
-            bool targetSameArea =
-                targetSession != null &&
-                !targetSession.IsEliminated &&
-                targetSession.CurrentArea == bot.CurrentArea;
-            if (!targetSameArea)
-                targetSameArea =
-                    targetBot is { IsEliminated: false } &&
-                    !targetBot.IsInInteraction &&
-                    targetBot.CurrentArea == bot.CurrentArea;
-
-            PruneGuardedBotEncounter(bot, guardedPlayerId, targetSameArea);
-            if (!targetSameArea) continue;
-            if (bot.TargetInterrogationRequestedInEncounterPlayerIds.Contains(guardedPlayerId)) continue;
-
-            if (!bot.TargetEncounterStartedAtByPlayerId.TryGetValue(guardedPlayerId, out var encounterStartedAt))
-            {
-                bot.TargetEncounterStartedAtByPlayerId[guardedPlayerId] = now;
-                continue;
-            }
-
-            if (now - encounterStartedAt < TargetBotInterrogationDelay) continue;
-
-            bool started = targetSession != null
-                ? targetSession.TryStartTargetBotInterrogation(bot)
-                : targetBot != null && TryCreateBotToBotStatement(matchingId, bot, targetBot);
-            if (!started) continue;
-
-            bot.TargetEncounterStartedAtByPlayerId[guardedPlayerId] = now;
-            bot.TargetInterrogationRequestedInEncounterPlayerIds.Add(guardedPlayerId);
-        }
-    }
-
-    private static void PruneGuardedBotEncounter(BotPlayerState bot, long guardedPlayerId, bool targetSameArea)
-    {
-        foreach (long playerId in bot.TargetEncounterStartedAtByPlayerId.Keys.ToList())
-            if (playerId != guardedPlayerId || !targetSameArea)
-                bot.TargetEncounterStartedAtByPlayerId.Remove(playerId);
-
-        foreach (long playerId in bot.TargetInterrogationRequestedInEncounterPlayerIds.ToList())
-            if (playerId != guardedPlayerId || !targetSameArea)
-                bot.TargetInterrogationRequestedInEncounterPlayerIds.Remove(playerId);
-    }
-
-    private bool TryCreateBotToBotStatement(long matchingId, BotPlayerState askerBot, BotPlayerState answererBot)
-    {
-        if (askerBot.PlayerId == answererBot.PlayerId) return false;
-        if (askerBot.CurrentArea == AreaType.None || askerBot.CurrentArea != answererBot.CurrentArea) return false;
-
-        var interactionChoiceService = new InteractionChoiceService(
-            _interactionLogManager,
-            _matchRosterManager,
-            _gameEventLogManager);
-
-        var questionSet = interactionChoiceService.GenerateQuestionSet(
-            matchingId,
-            askerBot.PlayerId,
-            answererBot.PlayerId,
-            askerBot.CurrentArea,
-            null);
-        var question = questionSet.Questions.FirstOrDefault(q => q.QuestionType == InteractionQuestionType.ASK_NEARBY_REASON)
-                       ?? questionSet.Questions.FirstOrDefault();
-        if (question == null) return false;
-
-        var answerTask = ResolveBotAnswerTask(matchingId, answererBot);
-        var answerSet = interactionChoiceService.GenerateAnswerSet(
-            matchingId,
-            answererBot.PlayerId,
-            askerBot.PlayerId,
-            question.QuestionType,
-            answererBot.CurrentArea,
-            questionSet.Contexts.FirstOrDefault(c => c.QuestionType == question.QuestionType),
-            ResolveTaskArea(answerTask),
-            answerTask?.TaskId ?? 0);
-        if (answerSet.Answers.Count == 0) return false;
-
-        int answerIndex = _botPlayerManager.PickAnswerIndex(answerSet.Answers.Count);
-        answerIndex = Math.Clamp(answerIndex, 0, answerSet.Answers.Count - 1);
-        var answerContext = answerSet.Contexts.ElementAtOrDefault(answerIndex);
-        if (answerContext == null) return false;
-
-        int roundId = 0 /* 라운드 시스템 퇴역(#246) */;
-        var statement = _gameEventLogManager.LogStatement(
-            matchingId,
-            roundId,
-            answererBot.PlayerId,
-            askerBot.PlayerId,
-            answerContext.Area.ToString(),
-            answerContext.QuestionId,
-            answerContext.QuestionText,
-            answerContext.AnswerType,
-            answerContext.AnswerText,
-            answerContext.LinkedLogIds,
-            isBot: true);
-
-        askerBot.HoldForInteraction(BotToBotStatementHold);
-        answererBot.HoldForInteraction(BotToBotStatementHold);
-
-        logger.LogInformation(
-            "[BOT_STATEMENT] MatchingId={MatchingId}, Asker={Asker}, Answerer={Answerer}, AnswerType={AnswerType}, Description={Description}",
-            matchingId, askerBot.PlayerId, answererBot.PlayerId, answerContext.AnswerType, statement.Description);
-        return true;
-    }
-
-    private ChecklistTaskData? ResolveBotAnswerTask(long matchingId, BotPlayerState bot)
-    {
-        if (bot.PendingChecklistTaskId > 0)
-        {
-            var pendingTask = GameChecklistData.GetTask(bot.PendingChecklistTaskId);
-            if (pendingTask != null)
-                return pendingTask;
-        }
-
-        return _checklistManager.GetNextActiveGeneralInteractTask(matchingId, bot.PlayerId);
-    }
-
-    private static AreaType? ResolveTaskArea(ChecklistTaskData? task)
-    {
-        if (task?.AreaType > 0 && Enum.IsDefined(typeof(AreaType), task.AreaType))
-            return (AreaType)task.AreaType;
-
-        return null;
     }
 
     private void CheckHeartbeatTimeouts(object? state)
@@ -2353,17 +1901,12 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 GetSessionsByInstance,
                 _interactableStateManager,
                 _inGameInventoryManager,
-                _areaRuleManager,
-                _itemPoolManager,
                 _areaItemStockManager,
                 _groundItemManager,
-                _emotionAfterimageMonsterManager,
                 _summonStoneManager,
                 _doorStateManager,
                 _matchRosterManager,
-                _checklistManager,
                 _areaClosureManager,
-                new InteractionChoiceService(_interactionLogManager, _matchRosterManager, _gameEventLogManager),
                 _botPlayerManager,
                 _gameEventLogManager,
                 _matchSummaryFileStore,
@@ -2429,12 +1972,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                     session.CurrentArea,
                     sameAreaSessions.Count);
             }
-
-            // 인스턴스 컨트롤러에 연결 해제 알림 (모든 유저 연결 해제 시 게임 종료 처리)
-            if (session.CurrentMapSubId > 0)
-                foreach (var controller in _instanceControllerList)
-                    controller.OnPlayerDisconnected(session.CurrentMapId, session.CurrentMapSubId,
-                        session.PlayerId.Value);
 
             if (session.CurrentMapSubId > 0)
                 CleanupMatchingIfNoHumanSessionsRemain(session.CurrentMapSubId);
@@ -2623,10 +2160,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                     () => _botPlayerManager.CleanupMatching(matchingId));
                 CleanupMatchComponent(
                     matchingId,
-                    "checklist",
-                    () => _checklistManager.RemoveMatchingState(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
                     "area item stock",
                     () => _areaItemStockManager.RemoveMatchingState(matchingId));
                 CleanupMatchComponent(
@@ -2635,8 +2168,8 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                     () => _groundItemManager.RemoveMatchingState(matchingId));
                 CleanupMatchComponent(
                     matchingId,
-                    "afterimage monsters",
-                    () => _emotionAfterimageMonsterManager.RemoveMatchingState(matchingId));
+                    "monster broadcast slots",
+                    () => CleanupEmotionAfterimageMonsterRuntime(matchingId));
                 CleanupMatchComponent(
                     matchingId,
                     "summon stones",
@@ -2651,24 +2184,12 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                     () => _interactableStateManager.RemoveMatchingState(matchingId));
                 CleanupMatchComponent(
                     matchingId,
-                    "area rules",
-                    () => _areaRuleManager.RemoveMatchingState(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "item pool",
-                    () => _itemPoolManager.RemoveMatchingState(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
                     "doors",
                     () => _doorStateManager.ClearMatching(matchingId));
                 CleanupMatchComponent(
                     matchingId,
                     "roster",
                     () => _matchRosterManager.CleanupMatching(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "interaction log",
-                    () => _interactionLogManager.CleanupMatching(matchingId));
                 CleanupMatchComponent(
                     matchingId,
                     "encounter reveal",
@@ -2980,8 +2501,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             _areaItemStockManager.InitializeMatching(matchingId);
             _groundItemManager.InitializeMatching(matchingId);
             _doorStateManager.InitializeMatching(matchingId, Array.Empty<AreaType>());
-            _checklistManager.StartRound(matchingId, 1, playerIds,
-                playerId => ResolveBotOnlyChecklistChainContext(matchingId, playerId));
 
             _gameEventLogManager.LogSystem(matchingId,
                 $"Bot-only instance created: botCount={botCount}, ids=[{string.Join(",", playerIds)}]");
@@ -3012,17 +2531,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
 
         // 정원(10)이 잡 풀(8)보다 클 수 있다 (#223 10인 전환) — 순환 배정.
         return Enumerable.Range(0, botCount).Select(index => jobs[index % jobs.Count]).ToList();
-    }
-
-    private ChecklistChainContext ResolveBotOnlyChecklistChainContext(long matchingId, long playerId)
-    {
-        var myLink = _matchRosterManager.GetEntry(matchingId, playerId);
-        bool targetAlive = myLink != null && IsBotOnlyChainPlayerActive(matchingId, myLink.TargetPlayerId);
-        var watcherEntry = _matchRosterManager.FindWatcherOf(matchingId, playerId);
-        bool manittoAlive = watcherEntry != null
-                            && watcherEntry.Status != PlayerMatchStatus.ELIMINATED
-                            && watcherEntry.Status != PlayerMatchStatus.SPECTATING;
-        return new ChecklistChainContext(targetAlive, manittoAlive);
     }
 
     private bool IsBotOnlyChainPlayerActive(long matchingId, long playerId)

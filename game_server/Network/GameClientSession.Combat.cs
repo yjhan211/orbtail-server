@@ -462,19 +462,9 @@ public partial class GameClientSession
                 // 주기적 버프 등록 시 SLEEP 상태로 전환 + 브로드캐스트
                 if (hasPeriodicBuff) await BroadcastSleepState(true);
 
-                // 행동 수칙 쪽지 아이템 처리 (202000003)
-                int ruleId = 0;
-                if (itemId == 202000003)
-                {
-                    ruleId = _areaRuleManager.GetRuleForNote(CurrentMapSubId);
-                    if (ruleId != 0)
-                        _discoveredRules[ruleId] = PlayerId!.Value;
-                    Logger.LogInformation("Player {PlayerId} used manual item, got RuleId={RuleId}", PlayerId, ruleId);
-                }
-
                 // 사용 결과 전송
                 using var resultPacket =
-                    PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS, ruleId);
+                    PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS);
                 Send(resultPacket);
 
                 Logger.LogInformation(
@@ -645,25 +635,6 @@ public partial class GameClientSession
         Send(packet);
         Logger.LogDebug("Sent AREA_EXIT_BLOCKED to Player {PlayerId}: Area={Area}, CorrectedCell=({X},{Y})",
             PlayerId, areaType, correctedCell.X, correctedCell.Y);
-    }
-
-    /// <summary>
-    ///     인게임 스탯 초기화 (새 게임 시작 시)
-    /// </summary>
-    private void ResetInGameStats()
-    {
-        StopAllPeriodicBuffs();
-        _isSleeping = false;
-        Stamina = InitialStamina;
-        Corruption = InitialCorruption;
-        CurrentState = PlayerState.Idle;
-        _exploreMoveGraceUntil = DateTime.MinValue;
-        CurrentExploringInteractId = null;
-        Logger.LogInformation("Player {PlayerId} in-game stats reset: Stamina={Stamina}, Corruption={Corruption}",
-            PlayerId, Stamina, Corruption);
-
-        // 클라이언트에 초기 스탯 푸시 — 변동 없는 상태에서도 UI가 시작값으로 갱신되도록
-        SendPlayerStatsUpdate(0, 0);
     }
 
     #endregion

@@ -125,8 +125,6 @@ public partial class GameClientSession
             foreach (var bot in _botPlayerManager.GetBots(matchingId))
                 if (!bot.IsEliminated)
                 {
-                    _presenceTracker?.SetPlayerArea(matchingId, bot.PlayerId, bot.CurrentArea,
-                        countAsEntry: false);
                     _gameEventLogManager.SetPlayerArea(matchingId, bot.PlayerId, bot.CurrentArea.ToString());
                 }
 
@@ -179,8 +177,6 @@ public partial class GameClientSession
                     "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
                     PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X,
                     _lastValidCell?.Y);
-                _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea,
-                    countAsEntry: false);
                 _gameEventLogManager.LogSpawnAssignment(
                     CurrentMapSubId,
                     PlayerId.Value,
@@ -215,7 +211,6 @@ public partial class GameClientSession
             // 스웜 모드(M4)는 시간 웨이브 폐쇄를 쓰므로 폐쇄 스냅샷을 복원해야 한다.
             SendAreaClosureStateSnapshot();
             SendAreaStockStateSnapshot();
-            SendChecklistInfo();
 
             // Send other players and broadcast this player's authoritative snapshot.
             await BroadcastPlayerJoin();
@@ -826,9 +821,6 @@ public partial class GameClientSession
 
             try
             {
-                _checklistManager.RemoveMatchingState(matchingId);
-                _presenceTracker?.Remove(matchingId);
-                StartChecklistRound(matchingId, 1, broadcast: false);
                 Logger.LogInformation("Continuous session started: MatchingId={MatchingId}", matchingId);
             }
             catch
@@ -837,30 +829,6 @@ public partial class GameClientSession
                 throw;
             }
         }
-    }
-
-    private void StartChecklistRound(long matchingId, int roundNumber, bool broadcast = true)
-    {
-        var playerIds = GetChecklistActivePlayerIds(matchingId);
-        if (playerIds.Count == 0)
-            return;
-
-        _checklistManager.StartRound(matchingId, roundNumber, playerIds,
-            playerId => ResolveChecklistChainContext(matchingId, playerId));
-        if (broadcast)
-            BroadcastChecklistInfo(matchingId);
-    }
-
-    private void BroadcastChecklistInfo(long matchingId)
-    {
-        foreach (var session in _getSessionsByInstance(CurrentMapId, matchingId))
-        {
-            if (session.PlayerId.HasValue)
-                session.SendChecklistInfo();
-        }
-
-        if (CurrentMapSubId == matchingId && PlayerId.HasValue)
-            SendChecklistInfo();
     }
 
     private List<long> GetAliveMatchPlayerIds(long matchingId)
@@ -888,33 +856,6 @@ public partial class GameClientSession
             .Distinct()
             .OrderBy(playerId => playerId)
             .ToList();
-    }
-
-    private List<long> GetChecklistActivePlayerIds(long matchingId)
-    {
-        var playerIds = GetAliveMatchPlayerIds(matchingId);
-
-        if (CurrentMapSubId == matchingId
-            && PlayerId.HasValue
-            && !IsEliminated
-            && PlayerMatchStatus != PlayerMatchStatus.SPECTATING)
-        {
-            playerIds.Add(PlayerId.Value);
-        }
-
-        return playerIds
-            .Distinct()
-            .OrderBy(id => id)
-            .ToList();
-    }
-
-    private ChecklistChainContext ResolveChecklistChainContext(long matchingId, long playerId)
-    {
-        var myLink = _matchRosterManager.GetEntry(matchingId, playerId);
-        bool targetAlive = myLink != null && IsAliveChainPlayer(matchingId, myLink.TargetPlayerId);
-        var watcherEntry = _matchRosterManager.FindWatcherOf(matchingId, playerId);
-        bool manittoAlive = IsAliveChainLink(watcherEntry);
-        return new ChecklistChainContext(targetAlive, manittoAlive);
     }
 
     private bool IsAliveChainPlayer(long matchingId, long playerId)

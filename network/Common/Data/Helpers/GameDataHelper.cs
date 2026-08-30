@@ -30,8 +30,6 @@ namespace network.common.data.helpers
                     validate: GameLoadingTextData.Validate),
                 (fileName: DataFiles.AreaName, init: GameAreaNameData.Initialize,
                     validate: GameAreaNameData.Validate),
-                (fileName: DataFiles.AreaRule, init: GameAreaRuleData.Initialize,
-                    validate: GameAreaRuleData.Validate),
                 (fileName: DataFiles.SystemText, init: GameSystemTextData.Initialize, validate: null),
                 (fileName: DataFiles.StatusEffectInfo, init: GameStatusEffectData.Initialize, validate: null),
                 (fileName: DataFiles.DoorInfo, init: GameDoorData.Initialize, validate: null),
@@ -182,22 +180,6 @@ namespace network.common.data.helpers
                 }
             }
 
-            // Checklist data files
-            foreach (var fileName in DataFiles.Checklist.ALL)
-            {
-                var filePath = GetCsvFilePath(fileName);
-                try
-                {
-                    loadedData[fileName] = CsvHelper.LoadCsv(filePath);
-                    Log($"[GameDataHelper] Loaded {fileName}: {loadedData[fileName].Count} rows");
-                }
-                catch (Exception ex)
-                {
-                    LogError($"[GameDataHelper] Failed to load {fileName}: {ex.Message}");
-                    throw;
-                }
-            }
-
             foreach (var (fileName, init, _) in _standardDataDefinitions)
             {
                 init(loadedData[fileName]);
@@ -233,12 +215,6 @@ namespace network.common.data.helpers
             );
             GameInteractableData.InitializeAreaItemPool(loadedData[DataFiles.Interactable.AreaItemPool]);
 
-            GameChecklistData.Initialize(
-                loadedData[DataFiles.Checklist.Rule],
-                loadedData[DataFiles.Checklist.TaskPool],
-                loadedData[DataFiles.Checklist.StateRules],
-                loadedData[DataFiles.Checklist.ActivityInteraction]);
-
             ValidateAllData();
             _initialized = true;
         }
@@ -246,7 +222,6 @@ namespace network.common.data.helpers
         private static void ValidateAllData()
         {
             GameMapData.Validate();
-            GameChecklistData.Validate();
             ValidateReferentialIntegrity();
         }
 
@@ -304,7 +279,6 @@ namespace network.common.data.helpers
             }
 
             BattleItemRecipeData.ValidateReferentialIntegrity(errors, itemIds);
-            GameChecklistData.ValidateReferentialIntegrity(errors, itemIds);
 
             if (errors.Count > 0)
             {
@@ -324,7 +298,6 @@ namespace network.common.data.helpers
             public const string GameRule = "game_rule.csv";
             public const string LoadingText = "loading_text.csv";
             public const string AreaName = "area_name.csv";
-            public const string AreaRule = "area_rule.csv";
             public const string SystemText = "system_text.csv";
             public const string StatusEffectInfo = "status_effect_info.csv";
             public const string DoorInfo = "door_info.csv";
@@ -342,16 +315,6 @@ namespace network.common.data.helpers
                 public const string AreaItemPool = "area_item_pool.csv";  // #135 — 영역 단위 ItemPool
 
                 public static readonly string[] ALL = new[] { Info, Action, ItemPool, AreaItemPool };
-            }
-
-            public static class Checklist
-            {
-                public const string Rule = "checklist_rule.csv";
-                public const string TaskPool = "checklist_task_pool.csv";
-                public const string StateRules = "checklist_state_rules.csv";
-                public const string ActivityInteraction = "checklist_activity_interaction.csv";
-
-                public static readonly string[] ALL = new[] { Rule, TaskPool, StateRules, ActivityInteraction };
             }
 
             public static class Item

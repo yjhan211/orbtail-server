@@ -16,9 +16,6 @@ public class MatchingInteractableState
     // Area별 오브젝트 ID 목록 (정적 데이터 캐시)
     private readonly ConcurrentDictionary<AreaType, List<int>> _areaObjects = new();
 
-    // Interactable별 현재 state (사보타주 등 동적 상태 변경용)
-    private readonly ConcurrentDictionary<int, int> _interactableStates = new();
-
     public MatchingInteractableState()
     {
         InitializeFromData();
@@ -63,8 +60,8 @@ public class MatchingInteractableState
         {
             var interactable = GameInteractableData.Get(interactId);
 
-            // 현재 Interactable의 state 가져오기
-            int currentInteractableState = GetInteractableState(interactId);
+            // 동적 state 변경(사보타주 세대)은 퇴역 — 모든 Interactable은 기본 state 0.
+            const int currentInteractableState = 0;
 
             var objectState = new InteractableObjectState
             {
@@ -102,67 +99,6 @@ public class MatchingInteractableState
         }
 
         return result;
-    }
-
-    public bool TryExplore(int interactId, int actionId, long playerId, out InteractableActionState? state)
-    {
-        state = null;
-        var key = (interactId, actionId);
-
-        if (!_actionStates.TryGetValue(key, out var currentState)) return false;
-
-        var interactable = GameInteractableData.Get(interactId);
-        bool isRepeatable = IsRepeatableInteraction(interactable.InteractionType);
-
-        if (currentState.IsExplored && !isRepeatable)
-        {
-            state = currentState;
-            return false;
-        }
-
-        var newState = new InteractableActionState { Order = actionId, IsExplored = true, ExploredBy = playerId };
-
-        _actionStates[key] = newState;
-        state = newState;
-
-        // SINGLE 타입이면 해당 오브젝트의 모든 액션을 탐색 완료 처리
-        if (interactable.InteractionType != InteractionType.SINGLE) return true;
-        foreach (var action in interactable.Actions)
-        {
-            var otherKey = (interactId, action.ActionId);
-            if (otherKey != key && _actionStates.TryGetValue(otherKey, out var otherState) &&
-                !otherState.IsExplored)
-                _actionStates[otherKey] = new InteractableActionState
-                {
-                    Order = action.ActionId,
-                    IsExplored = true,
-                    ExploredBy = playerId // 선택한 플레이어가 잠금
-                };
-        }
-
-        return true;
-    }
-
-    public InteractableActionState? GetState(int interactId, int actionId)
-    {
-        var key = (interactId, actionId);
-        return _actionStates.GetValueOrDefault(key);
-    }
-
-    /// <summary>
-    ///     Interactable의 현재 state 가져오기 (기본값 0)
-    /// </summary>
-    public int GetInteractableState(int interactId)
-    {
-        return _interactableStates.GetValueOrDefault(interactId, 0);
-    }
-
-    /// <summary>
-    ///     Interactable의 state 설정
-    /// </summary>
-    public void SetInteractableState(int interactId, int state)
-    {
-        _interactableStates[interactId] = state;
     }
 
     private static bool IsRepeatableInteraction(InteractionType interactionType)
@@ -216,73 +152,11 @@ public class InteractableStateManager
     }
 
     /// <summary>
-    ///     특정 선택지 탐색 처리
-    /// </summary>
-    public bool TryExplore(long matchingId, int interactId, int actionId, long playerId,
-        out InteractableActionState? state)
-    {
-        var matchingState = GetOrCreateMatchingState(matchingId);
-        return matchingState.TryExplore(interactId, actionId, playerId, out state);
-    }
-
-    /// <summary>
-    ///     특정 선택지 상태 조회
-    /// </summary>
-    public InteractableActionState? GetState(long matchingId, int interactId, int actionId)
-    {
-        var matchingState = GetOrCreateMatchingState(matchingId);
-        return matchingState.GetState(interactId, actionId);
-    }
-
-    /// <summary>
-    ///     특정 액션의 결과 정보 반환 (ResultType, ResultId, ResultAmount).
-    /// </summary>
-    public (ActionResultType resultType, int resultId, int resultAmount) GetActionResult(int interactId, int actionId)
-    {
-        var interactable = GameInteractableData.Get(interactId);
-
-        var action = interactable.Actions.FirstOrDefault(a => a.ActionId == actionId);
-        if (action == null)
-            return (ActionResultType.NONE, 0, 0);
-
-        return (action.ResultType, action.ResultId, action.ResultAmount);
-    }
-
-    /// <summary>
     ///     매칭 종료 시 해당 매칭의 상태 정리
     /// </summary>
     public void RemoveMatchingState(long matchingId)
     {
         if (_matchingStates.TryRemove(matchingId, out _))
             _logAction?.Invoke($"InteractableStateManager: Removed state for MatchingId={matchingId}");
-    }
-
-    /// <summary>
-    ///     Interactable의 현재 state 가져오기
-    /// </summary>
-    public int GetInteractableState(long matchingId, int interactId)
-    {
-        var matchingState = GetOrCreateMatchingState(matchingId);
-        return matchingState.GetInteractableState(interactId);
-    }
-
-    /// <summary>
-    ///     Interactable의 state 설정
-    /// </summary>
-    public void SetInteractableState(long matchingId, int interactId, int state)
-    {
-        var matchingState = GetOrCreateMatchingState(matchingId);
-        matchingState.SetInteractableState(interactId, state);
-        _logAction?.Invoke(
-            $"InteractableStateManager: SetInteractableState MatchingId={matchingId}, InteractId={interactId}, State={state}");
-    }
-
-    /// <summary>
-    ///     전체 상태 초기화
-    /// </summary>
-    public void Reset()
-    {
-        _matchingStates.Clear();
-        _logAction?.Invoke("InteractableStateManager: All matching states cleared");
     }
 }

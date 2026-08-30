@@ -154,8 +154,7 @@ public class ProximityAutoCombatDataTests
             "PlayGuardianHitOnly(packet.PlayerId, localPlayerIsAttacker: false, packet.DamageValue);",
             mapSource);
         Assert.Contains(
-            "int damageValue = authoritativeDamageValue > 0\n" +
-            "                ? authoritativeDamageValue",
+            "int damageValue = authoritativeDamageValue > 0 ? authoritativeDamageValue : 0;",
             mapSource);
         // 수치 팝업은 MonsterDamageLabel/DamageComboDisplay 경로가 맡는다 (Player.ShowGuardianHitDisplay는 호출자 0으로 #252에서 삭제).
         Assert.DoesNotContain("오염 +", playerSource);

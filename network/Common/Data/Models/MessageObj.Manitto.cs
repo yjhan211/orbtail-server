@@ -6,81 +6,6 @@ using network.common.data;
 
 namespace network.common.data.models
 {
-    // ===== 미션 =====
-
-    [MessagePackObject]
-    public class ChecklistTaskInfo : IMessagePackObject
-    {
-        [Key("taskId")] public int TaskId { get; set; }
-        [Key("category")] public ChecklistTaskCategory Category { get; set; }
-        [Key("taskKey")] public string TaskKey { get; set; } = "";
-        [Key("titleKr")] public string TitleKr { get; set; } = "";
-        [Key("descriptionKr")] public string DescriptionKr { get; set; } = "";
-        [Key("score")] public float Score { get; set; }
-        [Key("areaType")] public int AreaType { get; set; }
-        [Key("areaNameKr")] public string AreaNameKr { get; set; } = "";
-        [Key("objectType")] public int ObjectType { get; set; }
-        [Key("interactId")] public int InteractId { get; set; }
-        [Key("staminaCost")] public int StaminaCost { get; set; }
-        [Key("durationSeconds")] public int DurationSeconds { get; set; }
-        [Key("requiredItemId")] public int RequiredItemId { get; set; }
-        [Key("requiredItemNameKr")] public string RequiredItemNameKr { get; set; } = "";
-        [Key("requiredItemPolicy")] public ChecklistRequiredItemPolicy RequiredItemPolicy { get; set; }
-        [Key("successLogKr")] public string SuccessLogKr { get; set; } = "";
-        [Key("progress")] public float Progress { get; set; }
-    }
-
-    [MessagePackObject]
-    public class ChecklistTaskProgressInfo : IMessagePackObject
-    {
-        [Key("taskId")] public int TaskId { get; set; }
-        [Key("progress")] public float Progress { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_CHECKLIST_INFO : IMessagePackObject
-    {
-        [Key("matchingId")] public long MatchingId { get; set; }
-        [Key("roundNumber")] public int RoundNumber { get; set; }
-        [Key("activeTaskIds")] public List<int> ActiveTaskIds { get; set; } = new();
-        [Key("completedTaskIds")] public List<int> CompletedTaskIds { get; set; } = new();
-        [Key("activeTaskProgresses")] public List<ChecklistTaskProgressInfo> ActiveTaskProgresses { get; set; } = new();
-        [Key("generalJobScore")] public float GeneralJobScore { get; set; }
-        [Key("manittoRoleScore")] public float ManittoRoleScore { get; set; }
-        [Key("bonusScore")] public float BonusScore { get; set; }
-        [Key("contribution")] public int Contribution { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_G_CHECKLIST_ACTIVITY_START : IMessagePackObject
-    {
-        [Key("interactId")] public int InteractId { get; set; }
-        [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_CHECKLIST_ACTIVITY_ACK : IMessagePackObject
-    {
-        [Key("interactId")] public int InteractId { get; set; }
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("cooldownRemainSeconds")] public int CooldownRemainSeconds { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_G_CHECKLIST_ACTIVITY_FINISH : IMessagePackObject
-    {
-        [Key("interactId")] public int InteractId { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_CHECKLIST_ACTIVITY_RESULT : IMessagePackObject
-    {
-        [Key("interactId")] public int InteractId { get; set; }
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("awardedScore")] public float AwardedScore { get; set; }
-        [Key("awardedContribution")] public int AwardedContribution { get; set; }
-    }
-
     /// <summary>
     ///     v0.2.0 — 부품 메타 정보 (클라 UI 표시용)
     /// </summary>
@@ -282,71 +207,6 @@ namespace network.common.data.models
         [Key("areaType")] public AreaType AreaType { get; set; }
     }
 
-    // ===== 기척 (프로토 0, #159) =====
-
-    [MessagePackObject]
-    public class PresenceCandidate : IMessagePackObject
-    {
-        [Key("playerId")] public long PlayerId { get; set; }
-
-        // 최근 25초 조우 강도 0~5 (정수부=완료 슬롯, 소수부=진행 슬롯). 표시 양자화는 클라가 담당.
-        [Key("presence")] public float Presence { get; set; }
-
-        // 정체성 — 후보가 현재 같은 구역에 없어도 카드를 채울 수 있도록 서버가 함께 전송.
-        // 봇은 서버 메모리값, 인간은 비어 올 수 있고 그땐 클라가 FindPlayerByPlayerId로 폴백.
-        [Key("name")] public string Name { get; set; }
-        [Key("wearItemIds")] public List<int> WearItemIds { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_PRESENCE_UPDATE : IMessagePackObject
-    {
-        [Key("candidates")] public List<PresenceCandidate> Candidates { get; set; }
-    }
-
-    [MessagePackObject]
-    public class PresenceNotebookEntry : IMessagePackObject
-    {
-        [Key("playerId")] public long PlayerId { get; set; }
-        [Key("lastSeenArea")] public AreaType LastSeenArea { get; set; }
-        [Key("totalOverlapSeconds")] public int TotalOverlapSeconds { get; set; }
-        [Key("longestOverlapSeconds")] public int LongestOverlapSeconds { get; set; }
-        [Key("currentOverlapSeconds")] public int CurrentOverlapSeconds { get; set; }
-        [Key("overlapStartCount")] public int OverlapStartCount { get; set; }
-        [Key("enterAfterObserverCount")] public int EnterAfterObserverCount { get; set; }
-        [Key("alreadyThereWhenObserverArrivedCount")] public int AlreadyThereWhenObserverArrivedCount { get; set; }
-        [Key("unclassifiedOverlapStartCount")] public int UnclassifiedOverlapStartCount { get; set; }
-        [Key("isCurrentlyOverlapping")] public bool IsCurrentlyOverlapping { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_PRESENCE_NOTEBOOK_UPDATE : IMessagePackObject
-    {
-        [Key("matchingId")] public long MatchingId { get; set; }
-        [Key("roundNumber")] public int RoundNumber { get; set; }
-        [Key("entries")] public List<PresenceNotebookEntry> Entries { get; set; }
-    }
-
-    [MessagePackObject]
-    public class C_TO_G_BOOKMARK_PRESENCE : IMessagePackObject
-    {
-        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_BOOKMARK_PRESENCE_RESULT : IMessagePackObject
-    {
-        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_SHARP_GAZE_MARK_UPDATE : IMessagePackObject
-    {
-        [Key("isActive")] public bool IsActive { get; set; }
-    }
-
-    // ===== 흔적 =====
-
     // ===== 색출 =====
 
     [MessagePackObject]
@@ -367,21 +227,6 @@ namespace network.common.data.models
         [Key("resultPlayers")] public List<GameResultPlayerInfo> ResultPlayers { get; set; } = new();
         [Key("resultChunkIndex")] public int ResultChunkIndex { get; set; }
         [Key("isResultEnd")] public bool IsResultEnd { get; set; } = true;
-    }
-
-    // ===== 1:1 상호작용 선택지 =====
-
-    /// <summary>
-    ///     질문 선택지 카테고리
-    /// </summary>
-    public enum InteractionQuestionType : short
-    {
-        ASK_JOB = 1,          // 직책 추궁: "너 무슨 직책이야?"
-        ASK_LOCATION = 2,     // 동선 추궁: "[X구역]에서 방금 나왔지?"
-        CROSS_CHECK = 3,      // 교차 검증: "[Y]도 같은 직책이라던데?"
-        ASK_TRACE = 4,         // 흔적 추궁: "여기 누가 온 것 같던데?"
-        ASK_NEARBY_REASON = 5,
-        ENCOUNTER_ACTION = 6
     }
 
     /// <summary>
@@ -406,93 +251,6 @@ namespace network.common.data.models
         [Key("intValue")] public int IntValue { get; set; }
         [Key("stringValue")] public string StringValue { get; set; }
     }
-
-    /// <summary>
-    ///     질문 선택지 항목
-    /// </summary>
-    [MessagePackObject]
-    public class InteractionQuestion : IMessagePackObject
-    {
-        [Key("questionType")] public InteractionQuestionType QuestionType { get; set; }
-        [Key("textId")] public int TextId { get; set; }
-        [Key("args")] public List<TextArg> Args { get; set; }
-        /// <summary>교차검증 시 참조 플레이어 ID</summary>
-        [Key("referencePlayerId")] public long ReferencePlayerId { get; set; }
-        /// <summary>동선추궁 시 참조 구역</summary>
-        [Key("referenceArea")] public AreaType ReferenceArea { get; set; }
-    }
-
-    /// <summary>
-    ///     답변 선택지 항목
-    /// </summary>
-    [MessagePackObject]
-    public class InteractionAnswer : IMessagePackObject
-    {
-        [Key("isTrue")] public bool IsTrue { get; set; }  // 진실인지 거짓인지
-        [Key("claimedJob")] public JobTitle ClaimedJob { get; set; }
-        [Key("textId")] public int TextId { get; set; }
-        [Key("args")] public List<TextArg> Args { get; set; }
-    }
-
-    /// <summary>
-    ///     대화 수락 시 질문 선택지 전송
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_INTERACTION_CHOICES : IMessagePackObject
-    {
-        [Key("partnerPlayerId")] public long PartnerPlayerId { get; set; }
-        [Key("isAsker")] public bool IsAsker { get; set; }  // true=질문자, false=답변자(대기)
-        [Key("questions")] public List<InteractionQuestion> Questions { get; set; }
-    }
-
-    /// <summary>
-    ///     질문자가 질문 선택
-    /// </summary>
-    [MessagePackObject]
-    public class C_TO_G_INTERACTION_ASK : IMessagePackObject
-    {
-        [Key("questionType")] public InteractionQuestionType QuestionType { get; set; }
-    }
-
-    /// <summary>
-    ///     답변자에게 답변 선택지 전송
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_INTERACTION_ANSWER_CHOICES : IMessagePackObject
-    {
-        [Key("questionType")] public InteractionQuestionType QuestionType { get; set; }
-        [Key("questionTextId")] public int QuestionTextId { get; set; }
-        [Key("questionArgs")] public List<TextArg> QuestionArgs { get; set; }
-        [Key("answers")] public List<InteractionAnswer> Answers { get; set; }
-    }
-
-    /// <summary>
-    ///     답변자가 답변 선택
-    /// </summary>
-    [MessagePackObject]
-    public class C_TO_G_INTERACTION_ANSWER : IMessagePackObject
-    {
-        [Key("answerIndex")] public int AnswerIndex { get; set; }  // 선택한 답변 인덱스
-    }
-
-    /// <summary>
-    ///     상호작용 결과 (양쪽에 전송)
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_INTERACTION_RESULT : IMessagePackObject
-    {
-        [Key("partnerPlayerId")] public long PartnerPlayerId { get; set; }
-        [Key("questionType")] public InteractionQuestionType QuestionType { get; set; }
-        [Key("claimedJob")] public JobTitle ClaimedJob { get; set; }       // 상대가 주장한 직책
-        [Key("claimedArea")] public AreaType ClaimedArea { get; set; }     // 상대가 주장한 알리바이(구역)
-        [Key("isFakeDetected")] public bool IsFakeDetected { get; set; }   // 사칭 발각 여부
-        [Key("conflictTextId")] public int ConflictTextId { get; set; }    // 사칭 발각 시 충돌 정보 textId (0이면 미표시)
-        [Key("conflictArgs")] public List<TextArg> ConflictArgs { get; set; }
-        [Key("answerTextId")] public int AnswerTextId { get; set; }        // 답변자가 고른 답변 textId (양쪽 동일 표시용)
-        [Key("answerArgs")] public List<TextArg> AnswerArgs { get; set; }
-    }
-
-    // ===== 시한부 사보타주 =====
 
     // ===== 게임 결과 =====
 

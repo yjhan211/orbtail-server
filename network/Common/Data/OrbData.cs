@@ -519,12 +519,6 @@ namespace network.common.data
             return itemId > 0;
         }
 
-        public static int GetSunResonanceStage(int sunCount)
-        {
-            if (sunCount >= 5) return 5;
-            if (sunCount >= 3) return 3;
-            return sunCount >= 1 ? 1 : 0;
-        }
         public static bool TryGetActivePair(
             IEnumerable<int> boardItemIds,
             out OrbColor color,

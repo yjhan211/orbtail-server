@@ -8,17 +8,13 @@ namespace demo_regression_tests;
 public class SummonStoneManagerTests
 {
     [Fact]
-    public void StartingStones_GrantTwoOpeningSummonsAndDoNotDuplicate()
+    public void StartingStones_GrantTwoOpeningSummons()
     {
         var manager = new SummonStoneManager();
 
-        var first = manager.EnsureStartingStones(202, 10);
-        var reconnect = manager.EnsureStartingStones(202, 10);
-        var otherPlayer = manager.EnsureStartingStones(202, 20);
+        var granted = manager.AddStones(202, 10, SummonStoneManager.InitialSummonStoneCount);
 
-        Assert.Equal(5, first.StoneCount);
-        Assert.Equal(first, reconnect);
-        Assert.Equal(first, otherPlayer);
+        Assert.Equal(5, granted.StoneCount);
 
         var summon = manager.TrySummon(202, 10,
             itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
@@ -39,7 +35,7 @@ public class SummonStoneManagerTests
     public void SummonCandidates_AreDeterministicDistinctAndChoiceOneIsGranted()
     {
         var manager = new SummonStoneManager();
-        manager.EnsureStartingStones(214, 10);
+        manager.AddStones(214, 10, SummonStoneManager.InitialSummonStoneCount);
 
         // 결정론: 같은 상태에서 몇 번을 조회해도 같은 후보. 재접속 복원의 전제다.
         var candidates = manager.GetSummonCandidates(214, 10);
@@ -83,7 +79,7 @@ public class SummonStoneManagerTests
             for (long playerId = 1; playerId <= 16; playerId++)
             {
                 var manager = new SummonStoneManager();
-                manager.EnsureStartingStones(matchingId, playerId);
+                manager.AddStones(matchingId, playerId, SummonStoneManager.InitialSummonStoneCount);
 
                 var summon = manager.TrySummon(matchingId, playerId,
                     itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
@@ -93,28 +89,6 @@ public class SummonStoneManagerTests
             }
     }
 
-    [Fact]
-    public void SummonResults_AreUnaffectedByRegionalAfterimagePlacement()
-    {
-        var beforeLayout = new SummonStoneManager();
-        beforeLayout.AddStones(202, 10, 2);
-        var expected = beforeLayout.TrySummon(202, 10,
-            itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
-
-        var monsters = new EmotionAfterimageMonsterManager();
-        monsters.InitializeMatching(202);
-        monsters.InitializeMatching(203);
-
-        var afterLayout = new SummonStoneManager();
-        afterLayout.AddStones(202, 10, 2);
-        var actual = afterLayout.TrySummon(202, 10,
-            itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
-
-        Assert.True(expected.Success);
-        Assert.True(actual.Success);
-        Assert.Equal(expected.ItemId, actual.ItemId);
-        Assert.Equal(expected.State, actual.State);
-    }
     [Fact]
     public void MonsterRewards_AccumulateInOneAuthoritativeBalance()
     {
@@ -213,22 +187,6 @@ public class SummonStoneManagerTests
         Assert.Equal(new SummonStoneSnapshot(0, 1, 3), manager.GetSnapshot(202, 10));
     }
 
-    [Fact]
-    public void PassiveIncome_GrantsOneStoneEveryThirtyActiveSeconds()
-    {
-        var manager = new SummonStoneManager();
-
-        var beforeGrant = manager.AdvancePassiveIncome(202, 10, 25, out int earlyAward);
-        var firstGrant = manager.AdvancePassiveIncome(202, 10, 5, out int firstAward);
-        var secondGrant = manager.AdvancePassiveIncome(202, 10, 30, out int secondAward);
-
-        Assert.Equal(0, earlyAward);
-        Assert.Equal(0, beforeGrant.StoneCount);
-        Assert.Equal(1, firstAward);
-        Assert.Equal(1, firstGrant.StoneCount);
-        Assert.Equal(1, secondAward);
-        Assert.Equal(2, secondGrant.StoneCount);
-    }
     [Fact]
     public void RemoveMatchingState_ResetsAllPlayerBalances()
     {

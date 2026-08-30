@@ -66,7 +66,6 @@ public partial class GameClientSession
             RecordMoveInputSequence(msg.InputSequence);
             long receiptTimestamp = Stopwatch.GetTimestamp();
             float deltaTime = GetServerReceiptDeltaSeconds(receiptTimestamp);
-            _lastMoveTime = now;
 
             var validatedPosition = ValidatePosition(
                 msg.Position,
@@ -137,13 +136,9 @@ public partial class GameClientSession
                 Logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
                     PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);
                 var oldArea = CurrentArea;
-                _previousArea = oldArea; // 이전 구역 기록 (상호작용 동선추궁용)
                 CurrentArea = newArea; // 먼저 Area 업데이트 (다른 플레이어의 MOVE 수신 가능하도록)
-                _presenceTracker?.SetPlayerArea(CurrentMapSubId, PlayerId.Value, newArea,
-                    countAsEntry: true);
                 _gameEventLogManager.LogMove(CurrentMapSubId, PlayerId.Value,
                     oldArea.ToString(), newArea.ToString(), isBot: false);
-                LogContestedCoreEntry(newArea);
                 await HandleAreaChange(oldArea, newArea);
             }
 
@@ -494,7 +489,6 @@ public partial class GameClientSession
                 // 5. 나에게 새 Area의 Interactable 목록 전송
                 SendInteractableList(newArea);
                 SendGroundItemSnapshot(newArea);
-                SendMonsterSnapshot(newArea);
             }
         }
         catch (Exception ex)

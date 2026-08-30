@@ -110,14 +110,6 @@ public class MatchRosterManager
         return state.Entries.Values.FirstOrDefault(l => l.TargetPlayerId == playerId);
     }
 
-    public bool IsAliveWatcherOf(long matchingId, long playerId, long candidatePlayerId)
-    {
-        var myWatcher = FindWatcherOf(matchingId, playerId);
-        return myWatcher != null
-               && myWatcher.PlayerId == candidatePlayerId
-               && IsAliveLink(myWatcher);
-    }
-
     /// <summary>
     ///     해당 매칭에 등록된 모든 플레이어/봇의 직책 목록 (#87 — 폐쇄 셔플 우선순위 결정용).
     /// </summary>
@@ -136,16 +128,7 @@ public class MatchRosterManager
 
     /// <summary>
     ///     플레이어 탈락 처리. 체인 단절 + 영향받는 플레이어 상태 변경.
-    ///     반환: 영향받는 플레이어 목록 (playerId → 새 상태)
     /// </summary>
-    public Dictionary<long, PlayerMatchStatus> EliminatePlayer(long matchingId, long playerId, EliminationReason reason,
-        long attackerPlayerId = 0, AreaType eliminatedArea = AreaType.None, bool isAreaClosureElimination = false,
-        bool isOvertimeElimination = false, int forcedRank = 0, int finalOrbTier = 0)
-    {
-        return TryEliminatePlayer(matchingId, playerId, reason, attackerPlayerId, eliminatedArea,
-            isAreaClosureElimination, isOvertimeElimination, forcedRank, finalOrbTier).AffectedPlayers;
-    }
-
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.Synchronized)]
     public PlayerEliminationTransition TryEliminatePlayer(long matchingId, long playerId, EliminationReason reason,
         long attackerPlayerId = 0, AreaType eliminatedArea = AreaType.None, bool isAreaClosureElimination = false,
@@ -199,34 +182,6 @@ public class MatchRosterManager
     }
 
     /// <summary>
-    ///     시간 초과 시 승자 판정: 생존자 중 자원 총합 최대
-    /// </summary>
-    public long? DetermineWinnerByResources(long matchingId,
-        Func<long, (int stamina, int corruption, int maxCorruption)> getResources)
-    {
-        if (!_states.TryGetValue(matchingId, out var state)) return null;
-
-        var alive = state.Entries.Values
-            .Where(l => l.Status != PlayerMatchStatus.ELIMINATED && l.Status != PlayerMatchStatus.SPECTATING)
-            .ToList();
-
-        if (alive.Count == 0) return null;
-        if (alive.Count == 1) return alive[0].PlayerId;
-
-        // 자원 총합 = Stamina + (MaxCorruption - Corruption)
-        long winnerId = alive
-            .Select(l =>
-            {
-                var (stamina, corruption, maxCorruption) = getResources(l.PlayerId);
-                return (l.PlayerId, Score: stamina + (maxCorruption - corruption));
-            })
-            .OrderByDescending(x => x.Score)
-            .First().PlayerId;
-
-        return winnerId;
-    }
-
-    /// <summary>
     ///     게임 결과 데이터 생성 (체인 전체 공개)
     /// </summary>
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.Synchronized)]
@@ -272,7 +227,6 @@ public sealed record MatchPlayerProfile(string Name, IReadOnlyList<int> WearItem
 
 public class MatchRosterState
 {
-    public object SyncRoot { get; } = new();
     public long MatchingId { get; set; }
     public ConcurrentDictionary<long, RosterEntry> Entries { get; set; } = new();
     public int AliveCount { get; set; }
