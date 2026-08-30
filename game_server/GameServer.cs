@@ -1337,8 +1337,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                         _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.AdvanceOrbOrbit(ev.Position);
                         BroadcastBotMovement(matchingId, ev, activeSessions);
                     }
-                    if (movementResult.ExploreEnds.Count > 0)
-                        BroadcastBotExploreEnds(matchingId, movementResult.ExploreEnds, activeSessions);
                     if (movementResult.GroundItemPickups.Count > 0)
                         BroadcastBotGroundItemPickups(matchingId, movementResult.GroundItemPickups, activeSessions);
                     StartTargetBotInterrogations(matchingId, activeSessions);

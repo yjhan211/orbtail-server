@@ -65,11 +65,10 @@ public partial class BotPlayerManager
     }
 
 
-    /// <summary>#134 봇 walking 틱 결과 — Movements + ExploreEnds (walking 시작 시 EXPLORE_END broadcast 안전망).</summary>
+    /// <summary>#134 봇 walking 틱 결과.</summary>
     public class BotWalkingTickResult
     {
         public List<BotMovementEvent> Movements { get; } = new();
-        public List<(long botId, AreaType area)> ExploreEnds { get; } = new();
         public List<BotGroundItemPickup> GroundItemPickups { get; } = new();
         public long PlanningBotId { get; set; }
         public double PlanningElapsedMilliseconds { get; set; }
@@ -87,7 +86,6 @@ public partial class BotPlayerManager
     /// <summary>
     ///     #127: 봇 walking 틱(50ms). legacy mode 비활성 시 BotPathfinder 경로를 따라 셀 단위 이동.
     ///     Uses the same fixed movement speed 6.0 as the player and emits an equivalent G_TO_C_MOVE event each tick.
-    ///     #134: 추가로 ChooseNewWanderTarget 시 PendingExploreEndBroadcast가 set된 봇은 ExploreEnds list에 수집 — walking 시작 안전망.
     /// </summary>
     public BotWalkingTickResult ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager,
         AreaItemStockManager areaItemStockManager,
@@ -1385,7 +1383,7 @@ public partial class BotPlayerManager
     }
 
     private bool TryStartBotInteractPath(BotPlayerState bot, long matchingId, AreaType area, int interactId,
-        AreaClosureManager closureManager, bool clearInteractQueue = true)
+        AreaClosureManager closureManager)
     {
         if (bot.IsEliminated) return false;
         if (IsAreaClosingOrClosed(closureManager, matchingId, area)) return false;
