@@ -24,13 +24,6 @@ public partial class BotPlayerManager
     /// <summary>아이소메트릭 세로 속도 보정 — 클라 PlayerMovement.isoVerticalSpeedScale과 같은 값을 유지해야 한다.</summary>
     private const float IsoVerticalSpeedScale = 1f;
 
-    // Used only after the final room closure leaves no non-corridor refuge.
-    private static readonly (int X, int Y)[] LastStandPatrolOffsets =
-    [
-        (4, 0), (0, 4), (-4, 0), (0, -4),
-        (3, 2), (-3, 2), (3, -2), (-3, -2)
-    ];
-
     /// <summary>
     ///     화면 좌표 진행 방향(정규화)의 타일 기준 등속 속력.
     ///     세로가 압축된 아이소메트릭 화면에서 어느 방향이든 타일 통과 속도가 BotWalkSpeed로 일정해진다
@@ -464,29 +457,8 @@ public partial class BotPlayerManager
         var fromCell = bot.Cell;
         bool reachedStep = false;
 
-        // 최후 방어선: 어떤 플래너가 만든 경로든 잠긴 방으로 넘어가는 걸음은 문턱에서 버린다.
-        // 계획 지점 차단만으로는 커밋 잔존·경로 재빌드·페이즈 경합이 새어 들어왔다
-        // (2026-08-04 match-2159: 방 페이즈 중 미클리어 방 침입 45회).
-        if (nextStep.Area != bot.CurrentArea &&
-            GetLockedRoomAreas(matchingId).Contains(nextStep.Area))
-        {
-            bot.Path.Clear();
-            bot.PathIndex = 0;
-            bot.MovementDestination = AreaType.None;
-            bot.EvacuationDestination = AreaType.None;
-            bot.LoopWaitUntil = RandomizedDelayFromNow(0.6, 1.2);
-            if (bot.LastLockedDoorBlockArea != nextStep.Area)
-            {
-                bot.LastLockedDoorBlockArea = nextStep.Area;
-                _logger.LogInformation(
-                    "Bot blocked at locked door: MatchingId={MatchingId}, BotId={BotId}, From={From}, Locked={Locked}",
-                    matchingId, bot.PlayerId, bot.CurrentArea, nextStep.Area);
-            }
-            return null;
-        }
 
         // 잠긴 문 통과 차단 (2026-08-16 유저 제보: 봇이 문 열리기 전에 들어온다).
-        // 위의 잠긴 방 검사는 구형 ROOM_COMBAT 페이즈 전용이라 군집 모드에서는 비어 있었다.
         // 사람과 같은 판정을 쓴다 — 이 전이를 관장하는 문 하나만 보고, 그 문이 닫혀 있으면 버린다.
         if (nextStep.Area != bot.CurrentArea)
         {
@@ -597,9 +569,6 @@ public partial class BotPlayerManager
             {
                 bot.CurrentArea = resolvedArea;
                 areaChanged = true;
-                bot.RoomHuntStartedAtUtc = DateTime.UtcNow;
-                bot.RoomHuntEscapeRequested = false;
-                ClearBotRoomExplorePlan(bot);
             }
         }
 
@@ -746,12 +715,9 @@ public partial class BotPlayerManager
         var mapId = GetMatchingMapId(matchingId);
         bot.Path.Clear();
         bot.PathIndex = 0;
-        bot.TransitionPauseUntil = DateTime.MinValue;
         bot.PendingRngInteractId = 0;
         bot.PendingChecklistTaskId = 0;
-        bot.PendingChecklistInteractId = 0;
         bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
-        bot.PendingExploreEndBroadcast = false;
 
         bool needsGuardianOrb = bot.EquippedBattleItemId <= 0;
 
@@ -769,29 +735,6 @@ public partial class BotPlayerManager
         if (bot.CurrentArea.IsCorridor() &&
             TryStartCorridorExitPath(bot, matchingId, mapId, closureManager))
         {
-            return;
-        }
-
-        // 방 페이즈의 복도 봇은 갈 방이 없다(현재 방 전부 잠금). 그렇다고 멈춰 서면 죽은
-        // 판처럼 보이므로 근처 복도 셀을 어슬렁거린다. 교전 의도·상대 추격 경로가 있으면
-        // 그쪽이 우선한다 (여기는 경로가 비었을 때만 온다).
-        if (bot.CurrentArea.IsCorridor() && GetLockedRoomAreas(matchingId).Count > 0 &&
-            TryStartCorridorLoiterPath(bot, matchingId, mapId))
-        {
-            return;
-        }
-
-        // 자기 방이 잠겨 있으면(클리어 전) 방 밖 목적지를 만들지 않는다. 문이 잠겼는데
-        // 봇만 나가면 사람 규칙과 어긋난다. 방 안 사냥만 허용하고, 계획이 없으면 대기한다.
-        if (!bot.CurrentArea.IsCorridor() && GetLockedRoomAreas(matchingId).Contains(bot.CurrentArea))
-        {
-            if (!needsGuardianOrb && Config.MONSTER_SUMMON_ECONOMY_ENABLED &&
-                TryStartAfterimageHuntPath(bot, matchingId, mapId, closureManager, inventoryManager, pveTargets))
-            {
-                return;
-            }
-
-            bot.LoopWaitUntil = RandomizedDelayFromNow(0.45, 0.9);
             return;
         }
 
@@ -883,19 +826,10 @@ public partial class BotPlayerManager
 
         var closure = closureManager.GetClientStateSnapshot(matchingId);
         var unavailable = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
-        // 잠긴 방(클리어 전)은 목적지가 될 수 없다. 자기 방이 잠겨 있으면 밖으로 나가는
-        // 사냥 목적지도 전부 막는다 — 문이 잠겼는데 봇만 통과하면 사람 규칙과 어긋난다.
-        var lockedRooms = GetLockedRoomAreas(matchingId);
-        unavailable.UnionWith(lockedRooms.Where(area => area != bot.CurrentArea));
-        bool selfRoomLocked = lockedRooms.Contains(bot.CurrentArea);
         var boardItemIds = inventoryManager.GetPlayerInventory(matchingId, bot.PlayerId)
             .GetAllItems()
             .Select(item => item.ItemId)
             .ToArray();
-        // 같은 방에 오래 머물렀는데 아직 잔상이 남아 있다면 사냥이 막힌 상태다. 오브가 닿지
-        // 않는 위치, 결판나지 않는 대치, 이미 남이 차지한 팩이 원인이며, 어느 쪽이든 그 방을
-        // 계속 최우선 후보로 두면 봇이 제자리에 굳는다. 그때는 현재 지역을 후보에서 뺀다.
-        bool roomHuntStalled = bot.RoomHuntEscapeRequested;
         // 복도 잔상도 목적지가 된다. 폐쇄 페이즈마다 보상이 2배로 커지는데 봇만 방에
         // 묶여 있으면, 사람만 아는 복도 파밍이 그대로 격차가 된다 (2026-07-31 match-2015:
         // 사람 소환석 425 중 412가 복도, 봇 최고치는 123 중 20).
@@ -905,9 +839,7 @@ public partial class BotPlayerManager
             .Where(target => target.MapId == mapId &&
                              target.Area != AreaType.None &&
                              !(target.Area.IsCorridor() && bot.CurrentArea.IsCorridor()) &&
-                             !unavailable.Contains(target.Area) &&
-                             !(selfRoomLocked && target.Area != bot.CurrentArea) &&
-                             !(roomHuntStalled && target.Area == bot.CurrentArea))
+                             !unavailable.Contains(target.Area))
             .GroupBy(target => target.Area)
             .ToList();
 
@@ -984,17 +916,6 @@ public partial class BotPlayerManager
         // 정체 판정이 실제로 봇을 내보냈는지 확인할 수 있어야 한다. 탈출에 실패하면
         // 후보가 없는 것인지 경로를 못 찾은 것인지 이 한 줄로 갈린다.
         // 타이머를 여기서 다시 세워 같은 봇이 매 틱 로그를 쏟지 않게 한다.
-        if (roomHuntStalled)
-        {
-            // 탈출 요청이 실제로 어디로 이어졌는지만 남긴다. 발동 집계는 이동 루프 상단에서 한다.
-            _logger.LogInformation(
-                "Bot room hunt escape: MatchingId={MatchingId}, BotId={BotId}, Area={Area}, " +
-                "Escape={Escape}, Candidates={Candidates}, PveAreas={PveAreas}",
-                matchingId, bot.PlayerId, bot.CurrentArea,
-                selected?.Area.ToString() ?? "none", candidates.Count, areaGroups.Count);
-            bot.RoomHuntEscapeRequested = false;
-        }
-
         if (selected == null)
             return false;
 
@@ -1075,7 +996,6 @@ public partial class BotPlayerManager
         bot.PathIndex = 0;
         bot.MovementDestination = targetArea;
         bot.LoopWaitUntil = RandomizedDelayFromNow(0.3, 0.8);
-        bot.PendingExploreEndBroadcast = true;
         _logger.LogInformation(
             "Bot forced follow move: MatchingId={MatchingId}, BotId={Bot}, Target={Target}, {From}->{To}, Steps={Steps}",
             matchingId, bot.PlayerId, bot.TargetPlayerId, bot.CurrentArea, targetArea, path.Count);
@@ -1095,12 +1015,6 @@ public partial class BotPlayerManager
         return TryStartBotChecklistPath(bot, matchingId, area, task.InteractId, task.TaskId, closureManager);
     }
 
-    private static void ClearBotRoomExplorePlan(BotPlayerState bot)
-    {
-        bot.InteractQueueInArea.Clear();
-        bot.RoomExploreQueueArea = AreaType.None;
-    }
-
     /// <summary>
     ///     프로토 0 목적지(방) 선택. 떠보기 확률이면 최저 인원 방, 아니면 타겟이 있는 방(회복).
     ///     타겟 위치를 모르면 현재와 다른 임의 방.
@@ -1118,7 +1032,6 @@ public partial class BotPlayerManager
     private bool TryStartCorridorExitPath(BotPlayerState bot, long matchingId, MapId mapId,
         AreaClosureManager closureManager)
     {
-        var lockedRooms = GetLockedRoomAreas(matchingId);
         var exitAreas = GetOpenBotDestinationAreas(matchingId, mapId, closureManager)
             .Where(area => area != bot.CurrentArea)
             .ToList();
@@ -1143,8 +1056,7 @@ public partial class BotPlayerManager
                     area,
                     GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, area)
                     ?? GameMapData.GetAreaSpawnCell(mapId, area),
-                    candidate => lockedRooms.Contains(candidate) ||
-                                 IsAreaClosingOrClosed(closureManager, matchingId, candidate))
+                    candidate => IsAreaClosingOrClosed(closureManager, matchingId, candidate))
             })
             .Where(candidate => candidate.Path is { Count: > 0 })
             .OrderBy(candidate => candidate.Path!.Count)
@@ -1195,67 +1107,14 @@ public partial class BotPlayerManager
         return ChooseProto0Destination(bot, matchingId, mapId, playerAreas, closureManager);
     }
 
-    private IReadOnlyCollection<AreaType> GetLockedRoomAreas(long matchingId) =>
-        _lockedRoomAreasProvider?.Invoke(matchingId) ?? Array.Empty<AreaType>();
-
-    /// <summary>
-    ///     복도 순찰. 방 페이즈 동안 복도에 나온 봇이 서성이지 않도록, 멀리 있는 복도
-    ///     지점까지 끊김 없이 걷는 긴 다리(leg)를 만든다. 도착하면 다음 지점을 고르므로
-    ///     연속 이동으로 보이고, 교전 의도·카이팅이 경로를 세우면 그쪽이 우선한다.
-    /// </summary>
-    private bool TryStartCorridorLoiterPath(BotPlayerState bot, long matchingId, MapId mapId)
-    {
-        // 가끔은 멈춰 서서 숨을 고른다 — 항상 걷기만 하면 순찰 로봇처럼 보인다.
-        if (_rng.NextDouble() < 0.2)
-        {
-            bot.LoopWaitUntil = RandomizedDelayFromNow(0.5, 1.1);
-            return true;
-        }
-
-        // 먼 지점부터 시도해 다리를 최대한 길게 잡는다. 배율 1(±4셀)은 마지막 폴백.
-        foreach (int scale in (int[])[3, 2, 1])
-        {
-            for (int attempt = 0; attempt < 4; attempt++)
-            {
-                var offset = LastStandPatrolOffsets[_rng.Next(LastStandPatrolOffsets.Length)];
-                var targetCell = new Cell(
-                    bot.Cell.X + offset.X * scale,
-                    bot.Cell.Y + offset.Y * scale);
-                if (GameMapData.GetCurrentArea(mapId, targetCell) != bot.CurrentArea ||
-                    !GameMapData.IsMoveablePosition(mapId, targetCell))
-                {
-                    continue;
-                }
-
-                var path = BotPathfinder.FindPath(
-                    mapId, bot.CurrentArea, bot.Cell, bot.CurrentArea, targetCell,
-                    area => area != bot.CurrentArea);
-                if (path is not { Count: > 0 })
-                    continue;
-
-                bot.Path = path;
-                bot.PathIndex = 0;
-                // LoopWaitUntil은 걷기 시작 자체를 막는 게이트라, 커밋 즉시 출발해야
-                // 다리 사이가 끊기지 않는다.
-                bot.LoopWaitUntil = DateTime.MinValue;
-                return true;
-            }
-        }
-
-        bot.LoopWaitUntil = RandomizedDelayFromNow(0.6, 1.2);
-        return true;
-    }
 
     private List<AreaType> GetOpenBotDestinationAreas(long matchingId, MapId mapId,
         AreaClosureManager closureManager)
     {
-        // 클리어 전 방은 문이 잠겨 있다. 봇도 사람과 같은 규칙으로 목적지에서 제외한다.
-        var lockedRooms = GetLockedRoomAreas(matchingId);
         return GameMapData.GetAreas(mapId)
             .Select(region => region.AreaType)
             .Distinct()
             .Where(area => area != AreaType.None && !area.IsCorridor() &&
-                           !lockedRooms.Contains(area) &&
                            !IsAreaClosingOrClosed(closureManager, matchingId, area))
             .ToList();
     }
@@ -1544,16 +1403,13 @@ public partial class BotPlayerManager
             bot.MovementDestination = AreaType.None;
             bot.PendingRngInteractId = interactId;
             bot.PendingChecklistTaskId = 0;
-            bot.PendingChecklistInteractId = 0;
             bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
-            if (clearInteractQueue) ClearBotRoomExplorePlan(bot);
             bot.RngCollectProgressStartTime = DateTime.MinValue;
             bot.IsInInteraction = false;
             bot.InteractionStayUntil = DateTime.MinValue;
             bot.PendingForcedInteractArea = AreaType.None;
             bot.PendingForcedInteractId = 0;
             bot.LoopWaitUntil = DateTime.MinValue;
-            bot.TransitionPauseUntil = DateTime.MinValue;
             bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
 
             _logger.LogInformation(
@@ -1572,16 +1428,13 @@ public partial class BotPlayerManager
         bot.MovementDestination = area;
         bot.PendingRngInteractId = interactId;
         bot.PendingChecklistTaskId = 0;
-        bot.PendingChecklistInteractId = 0;
         bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
-        if (clearInteractQueue) ClearBotRoomExplorePlan(bot);
         bot.RngCollectProgressStartTime = DateTime.MinValue;
         bot.IsInInteraction = false;
         bot.InteractionStayUntil = DateTime.MinValue;
         bot.PendingForcedInteractArea = AreaType.None;
         bot.PendingForcedInteractId = 0;
         bot.LoopWaitUntil = DateTime.MinValue;
-        bot.PendingExploreEndBroadcast = true;
 
         _logger.LogInformation(
             "봇 선물 회수 이동 시작: BotId={Bot}, Area={Area}, InteractId={InteractId}, Steps={Steps}",
@@ -1617,21 +1470,17 @@ public partial class BotPlayerManager
             bot.Path = path;
             bot.PathIndex = 0;
             bot.MovementDestination = area;
-            bot.PendingExploreEndBroadcast = true;
         }
 
         bot.PendingRngInteractId = 0;
         bot.RngCollectProgressStartTime = DateTime.MinValue;
         bot.PendingChecklistTaskId = taskId;
-        bot.PendingChecklistInteractId = interactId;
         bot.ChecklistActivityProgressStartTime = DateTime.MinValue;
-        ClearBotRoomExplorePlan(bot);
         bot.IsInInteraction = false;
         bot.InteractionStayUntil = DateTime.MinValue;
         bot.PendingForcedInteractArea = AreaType.None;
         bot.PendingForcedInteractId = 0;
         bot.LoopWaitUntil = DateTime.MinValue;
-        bot.TransitionPauseUntil = DateTime.MinValue;
         bot.WalkVelocity = new Vector3f(0f, 0f, 0f);
 
         _logger.LogInformation(
