@@ -203,12 +203,6 @@ public partial class GameServer
         RemoveOrbVisualStates(matchingId);
     }
 
-    private int ResolveFinalOrbTier(long matchingId, long playerId)
-    {
-        var equippedItem = _inGameInventoryManager.GetEquippedBattleItem(matchingId, playerId);
-        return equippedItem == null ? 0 : BattleItemCombatData.Get(equippedItem.ItemId)?.Tier ?? 0;
-    }
-
     private sealed record EnvironmentalTarget(
         long PlayerId,
         int PreDamageCorruption,

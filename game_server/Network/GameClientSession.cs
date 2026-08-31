@@ -22,9 +22,7 @@ public partial class GameClientSession : SessionBase
 
     // 하트비트 타임아웃 (초)
     private const int HeartbeatTimeoutSeconds = 30;
-    private static readonly ConcurrentDictionary<long, byte> InitializedMatchRuntimes = new();
     private static readonly ConcurrentDictionary<long, SemaphoreSlim> MatchInitializationLocks = new();
-    private static readonly object _roundSessionStartLock = new();
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly List<int> _activeBuffIds = new();
     private readonly DoorStateManager _doorStateManager;
@@ -73,6 +71,10 @@ public partial class GameClientSession : SessionBase
 
     // #229: 진행 중인 문 잠금해제 게이지. 맞으면 서버가 지워 뒤늦은 FINISH까지 무효로 만든다.
     private int? _pendingDoorUnlockInteractId;
+
+    /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — RngCollect 파셜이 사용.
+    /// FINISH 도착 시 이 set에 있어야 결과 산출 진행.</summary>
+    private readonly HashSet<int> _pendingFinish = new();
 
     // 이 매치에서 연 문 수 — 첫 문은 피격으로 게이지가 끊기지 않는다 (2026-08-16).
     private int _swarmDoorUnlockCount;
@@ -216,17 +218,8 @@ public partial class GameClientSession : SessionBase
     {
         MatchStartGate.RemoveMatching(matchingId);
         RngCollectCooldownStore.ClearMatching(matchingId);
-        InitializedMatchRuntimes.TryRemove(matchingId, out _);
         if (MatchInitializationLocks.TryRemove(matchingId, out var initializationLock))
             initializationLock.Dispose();
-    }
-
-    internal static bool IsRoundActionPhase(long matchingId)
-    {
-        if (!MatchStartGate.IsGameplayActive(matchingId))
-            return false;
-
-        return true; // 라운드 시스템 퇴역(#246) — 게이트는 MatchStartGate만 남는다
     }
 
     private bool IsRoundActionLocked(out string reason)

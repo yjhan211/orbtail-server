@@ -144,8 +144,6 @@ public partial class GameClientSession
             int connectedBotCount = _botPlayerManager.GetBots(matchingId).Count;
             MatchStartGate.RegisterHumanPlayer(matchingId, PlayerId.Value, connectedBotCount);
 
-            StartGameTimerIfNeeded(matchingId);
-
             // Restore the initial position only from the consumed server-issued handoff.
             {
                 await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
@@ -789,29 +787,6 @@ public partial class GameClientSession
 
         throw new TimeoutException(
             $"Matching handoff was not committed for match {matchingId}.");
-    }
-
-    /// <summary>
-    ///     매치 세션 시작 표시 (매칭당 최초 1회).
-    ///     라운드/정산 시스템은 퇴역(#246); 매치 종료는 SwarmArena 틱(orb_score_timeout)이 담당한다.
-    /// </summary>
-    private void StartGameTimerIfNeeded(long matchingId)
-    {
-        lock (_roundSessionStartLock)
-        {
-            if (!InitializedMatchRuntimes.TryAdd(matchingId, 0))
-                return;
-
-            try
-            {
-                Logger.LogInformation("Continuous session started: MatchingId={MatchingId}", matchingId);
-            }
-            catch
-            {
-                InitializedMatchRuntimes.TryRemove(matchingId, out _);
-                throw;
-            }
-        }
     }
 
     /// <summary>
