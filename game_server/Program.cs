@@ -22,7 +22,7 @@ internal static partial class Program
     {
         await Host.CreateDefaultBuilder(args)
             .ConfigureAppConfiguration(ConfigureApp)
-            .ConfigureLogging(ConfigureLogging)
+            .UseSerilog(ConfigureSerilog)
             .ConfigureServices(ConfigureServices)
             .RunConsoleAsync();
     }
@@ -39,41 +39,25 @@ internal static partial class Program
         config.AddEnvironmentVariables();
     }
 
-    private static void ConfigureLogging(HostBuilderContext hostingContext, ILoggingBuilder logging)
+    // UseSerilog가 로거의 DI 연결·호스트 종료 시 flush/dispose를 관리한다
+    private static void ConfigureSerilog(HostBuilderContext hostingContext, LoggerConfiguration loggerConfiguration)
     {
-        // 서버 구성 가져오기
-        string serverType = hostingContext.Configuration["serverType"] ?? "GameServer";
-        int serverId = ExtractGameServerId(hostingContext.Configuration["gameServerId"] ?? "");
+        ServerConfig serverConfig = CreateServerConfig(hostingContext.Configuration);
 
-        // Serilog 구성
-        var serilogLogger = new LoggerConfiguration()
+        loggerConfiguration
             .MinimumLevel.Debug()
             .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
             .MinimumLevel.Override("Microsoft.Hosting.Lifetime", Serilog.Events.LogEventLevel.Information)
-            .Enrich.WithProperty("serverType", serverType)
-            .Enrich.WithProperty("serverId", serverId)
+            .Enrich.WithProperty("serverType", serverConfig.ServerType)
+            .Enrich.WithProperty("serverId", serverConfig.ServerId)
             .WriteTo.Console(
                 outputTemplate:
-                "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}")
-            .CreateLogger();
-
-        // 기본 공급자 지우기
-        logging.ClearProviders();
-
-        // 로깅 파이프라인에 Serilog 추가
-        logging.AddSerilog(serilogLogger);
+                "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}");
     }
-
 
     private static void ConfigureServices(HostBuilderContext hostContext, IServiceCollection services)
     {
-        var serverConfig = new ServerConfig
-        {
-            ServerType = hostContext.Configuration["serverType"] ?? "GameServer",
-            GameServerNum = hostContext.Configuration.GetValue<int>("gameServerNum"),
-            ServerId = ExtractGameServerId(hostContext.Configuration["gameServerId"] ?? "")
-        };
-
+        ServerConfig serverConfig = CreateServerConfig(hostContext.Configuration);
         serverConfig.Validate();
         services.AddSingleton<IServerConfig>(serverConfig);
         services.AddSingleton(serverConfig);
@@ -109,6 +93,16 @@ internal static partial class Program
         services.AddSingleton<GameServer>();
         services.AddHostedService<HealthCheckService>();
         services.AddHostedService(sp => sp.GetRequiredService<GameServer>());
+    }
+
+    private static ServerConfig CreateServerConfig(IConfiguration configuration)
+    {
+        return new ServerConfig
+        {
+            ServerType = configuration["serverType"] ?? "GameServer",
+            GameServerNum = configuration.GetValue<int>("gameServerNum"),
+            ServerId = ExtractGameServerId(configuration["gameServerId"] ?? "")
+        };
     }
 
     private static GameServerScalingOptions CreateScalingOptions(IConfiguration configuration)
