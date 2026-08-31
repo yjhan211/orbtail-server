@@ -21,7 +21,7 @@ namespace game_server.network;
 public partial class GameClientSession : SessionBase
 {
     private const int MaxStamina = 100;
-    private const int MaxCorruption = Config.MAX_CORRUPTION;
+    private static int MaxCorruption => Config.MAX_CORRUPTION;
     private const int InitialStamina = MaxStamina;
     private const int InitialCorruption = 0;
     private static readonly TimeSpan ExploreMoveGracePeriod = TimeSpan.FromMilliseconds(750);
