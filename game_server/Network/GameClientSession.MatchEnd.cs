@@ -18,7 +18,7 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     /// <summary>
-    ///     플레이어 탈락 처리 + 체인 단절 브로드캐스트
+    ///     플레이어 탈락 처리 + 탈락 브로드캐스트
     /// </summary>
     private void ProcessElimination(long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
         bool deferGameOver = false, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
@@ -104,7 +104,7 @@ public partial class GameClientSession
         }
 
         // 세션 PlayerMatchStatus 동기화 (탈락자 → SPECTATING으로 관전 전환)
-        // #26: 봇 상태도 함께 동기화 (BotPlayerManager) — 시한부 진입 시 사보타주 트리거 등
+        // #26: 봇 상태도 함께 동기화 (BotPlayerManager)
         foreach (var (playerId, newStatus) in affected)
         {
             var s = allSessions.FirstOrDefault(s => s.PlayerId == playerId);

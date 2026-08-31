@@ -20,7 +20,7 @@ namespace network.common.data
         private static readonly Dictionary<int, List<int>> _areaItemPools = new();
 
         /// <summary>
-        ///     action_group_key → 파싱된 액션 목록. 스토릿 단서 액션은 interactable.Actions에 섞지 않고
+        ///     action_group_key → 파싱된 액션 목록. 그룹 액션은 interactable.Actions에 섞지 않고
         ///     그룹 키로 별도 인덱싱한다(같은 오브젝트가 단계마다 다른 그룹 노출 + action_id 충돌 회피).
         /// </summary>
         private static readonly Dictionary<string, List<InteractableActionData>> _actionGroups = new();
@@ -87,7 +87,7 @@ namespace network.common.data
                     g => g.OrderBy(row => int.Parse(row["action_id"])).ToList()
                 );
 
-            // action_group_key → 파싱된 액션 목록으로 인덱싱. 스토릿 단서 액션은 interactable.Actions에
+            // action_group_key → 파싱된 액션 목록으로 인덱싱. 그룹 액션은 interactable.Actions에
             // 섞지 않고 여기로 분리한다(같은 오브젝트가 단계마다 다른 그룹 노출 + action_id 충돌 회피).
             _actionGroups.Clear();
             foreach (var group in actionData
@@ -181,8 +181,8 @@ namespace network.common.data
         }
 
         /// <summary>
-        ///     action_group_key에 해당하는 스토릿 단서 액션 목록 반환 (없으면 빈 목록).
-        ///     스토릿 노드가 node.ActionGroupKey로 단서 선택지를 조회할 때 사용.
+        ///     action_group_key에 해당하는 그룹 액션 목록 반환 (없으면 빈 목록).
+        ///     현행 호출처 없음 — action_group 풀 조회 API로 유지 (CSV 구조 로드맵).
         /// </summary>
         public static List<InteractableActionData> GetActionGroup(string actionGroupKey) =>
             !string.IsNullOrEmpty(actionGroupKey) && _actionGroups.TryGetValue(actionGroupKey, out var list)
@@ -228,7 +228,7 @@ namespace network.common.data
                 ? (InteractableObjectType)int.Parse(row["object_type"])
                 : InteractableObjectType.None;
 
-            // object_type 기본 공통 풀에서 액션 데이터를 복제 (스토릿 단서 그룹은 GameInteractableData._actionGroups로 분리)
+            // object_type 기본 공통 풀에서 액션 데이터를 복제 (그룹 액션은 GameInteractableData._actionGroups로 분리)
             var actions = new List<InteractableActionData>();
             if (actionsByObjectType.TryGetValue((int)objectType, out var poolRows))
             {

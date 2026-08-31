@@ -261,7 +261,7 @@ public partial class GameClientSession : SessionBase
     // 이동 잠금 판정용 — IDLE/EXPLORE_1 두 값만 저장한다 (SLEEP 등은 _isSleeping이 별도 추적).
     private PlayerState CurrentState { get; set; } = PlayerState.IDLE;
 
-    /// <summary>마지막 검증된 월드 좌표 — 근접 전투와 체크리스트 거리 판정용.</summary>
+    /// <summary>마지막 검증된 월드 좌표 — 근접 전투·드랍 위치 등 거리 판정용.</summary>
     public Vector3f? LastValidatedPosition => _lastValidatedPosition;
 
     /// <summary>
@@ -280,7 +280,7 @@ public partial class GameClientSession : SessionBase
             OrbOrbitPhaseDegrees, MathF.Sqrt(dx * dx + dy * dy));
     }
 
-    // 미니맵 타깃 마커 대상 (마니또 체인에서 유래 — 현행 TargetLocation 송신이 사용)
+    // 미니맵 타깃 마커 대상 (TargetLocation 송신이 사용)
     public long TargetPlayerId { get; private set; }
     public PlayerMatchStatus PlayerMatchStatus { get; private set; } = PlayerMatchStatus.ACTIVE;
 

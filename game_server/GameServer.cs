@@ -538,8 +538,8 @@ public partial class GameServer(
     }
 
     /// <summary>
-    ///     #26: 봇 자원 고갈 탈락 시 체인 단절 처리 + 게임 종료 판정.
-    ///     MatchRosterManager.EliminatePlayer로 체인 단절 (마니또 시한부 / 타겟 해방 등) 일괄 적용.
+    ///     #26: 봇 탈락 처리 + 게임 종료 판정.
+    ///     MatchRosterManager.TryEliminatePlayer로 로스터에 탈락 사유·순위를 기록하고 전체에 브로드캐스트한다.
     /// </summary>
     private void ProcessBotElimination(long matchingId, long botId, EliminationReason reason,
         List<GameClientSession> activeSessions, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
@@ -587,7 +587,7 @@ public partial class GameServer(
                 foreach (var s in matchingSessions) s.Send(eliminatedPacket);
             }
 
-            // 2) 영향받는 봇/세션 상태 동기화 + 체인 단절 알림
+            // 2) 영향받는 봇/세션 상태 동기화
             foreach (var (affectedId, newStatus) in affected)
             {
                 // 봇 영향

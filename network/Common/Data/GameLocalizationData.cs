@@ -6,7 +6,7 @@ namespace network.common.data
     /// <summary>
     ///     text_key → 다국어 텍스트 중앙 테이블 (localization.csv).
     ///     데이터 CSV가 인라인 kr/en/jp 대신 {prefix}_key로 텍스트를 참조할 때 사용한다.
-    ///     (system_text와 목적이 같지만, 콘텐츠(스토릿 등) 로컬라이징 풀로 분리)
+    ///     (system_text와 목적이 같지만, 콘텐츠 로컬라이징 풀로 분리)
     /// </summary>
     public static class GameLocalizationData
     {

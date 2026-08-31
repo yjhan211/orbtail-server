@@ -792,7 +792,7 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     매치 세션 시작 (매칭당 최초 1회) — 체크리스트 라운드 상태만 초기화한다.
+    ///     매치 세션 시작 표시 (매칭당 최초 1회).
     ///     라운드/정산 시스템은 퇴역(#246); 매치 종료는 SwarmArena 틱(orb_score_timeout)이 담당한다.
     /// </summary>
     private void StartGameTimerIfNeeded(long matchingId)
