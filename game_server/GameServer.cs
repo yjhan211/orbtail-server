@@ -65,6 +65,12 @@ public partial class GameServer(
         new(naturalExploreLootEnabled: !Config.MONSTER_SUMMON_ECONOMY_ENABLED);
     private readonly GroundItemManager _groundItemManager = new();
     private readonly SwarmArenaManager _swarmArenaManager = new();
+
+    // #294 — SwarmArena 파셜에 산개돼 있던 매치 상태 딕셔너리 37개의 새 집 (Services/SwarmArenaStates.cs).
+    private readonly SwarmTrailCombatState _swarmTrailCombat = new();
+    private readonly SwarmGrowthOfferStore _swarmGrowthOfferStore = new();
+    private readonly SwarmBotTacticalState _swarmBotTactics = new();
+    private readonly SwarmMatchPacingState _swarmMatchPacing = new();
     private readonly SummonStoneManager _summonStoneManager = new();
     private readonly MatchRosterManager _matchRosterManager = new(logger);
     private readonly MatchingConfigService _matchingConfigService = new(cacheHelper, logger);

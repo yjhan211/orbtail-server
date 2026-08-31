@@ -44,7 +44,7 @@ public class SwarmDamagePathTests
 
         // 일단 비활성 (2026-08-27 유저 지시) — 절단 재무장 시 true 어서션으로 되돌린다.
         Assert.Contains("SwarmTrailCutEnabled = false", source);
-        var crackWrites = Regex.Matches(source, @"_swarmOrbCutCracks\[[^\]]+\]\s*=");
+        var crackWrites = Regex.Matches(source, @"_swarmTrailCombat\.OrbCutCracks\[[^\]]+\]\s*=");
         Assert.True(
             crackWrites.Count == 0,
             $"절단 내구 대입 지점이 {crackWrites.Count}곳 남았다 — 절단은 크랙 시스템을 쓰지 않는다 (#232).");
@@ -122,7 +122,7 @@ public class SwarmDamagePathTests
         int cutMethodEnd = source.IndexOf("// ===== 포위 사격", cutMethodStart, StringComparison.Ordinal);
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
         Assert.Contains("cutterBot != null && !IsSwarmBotCutAllowed(", cutBody);
-        Assert.Contains("_swarmBotLastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc", cutBody);
+        Assert.Contains("_swarmBotTactics.LastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc", cutBody);
         // 사람 절단은 자제 규칙을 타지 않는다 — 봇 분기 안에서만 호출된다.
         Assert.Single(Regex.Matches(cutBody, @"IsSwarmBotCutAllowed\("));
 
