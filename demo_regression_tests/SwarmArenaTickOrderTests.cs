@@ -80,7 +80,10 @@ public sealed class SwarmArenaTickOrderTests
             "ProcessPendingSwarmMonsterHits(",
             "ProcessSwarmCrossfires(",
             "ApplySwarmPvpAttack(matchingId, pending.Attack",
+            "CollectSwarmCrossfireCappedOwners(",
+            "CollectSwarmCrossfireAnchoredTargets(",
             "_proximityAutoCombatResolver.Resolve(",
+            "TryScheduleSwarmCrossfire(",
             "_botPlayerManager.TryFinalizeProximityAutoCombatElimination(");
     }
 
@@ -128,7 +131,7 @@ public sealed class SwarmArenaTickOrderTests
     }
 
     [Fact]
-    public void SwarmCleanup_AlwaysDropsMatchOwnedRuntimeAfterRemainingLegacyCleanup()
+    public void SwarmCleanup_AlwaysDropsMatchOwnedRuntimeAfterMonsterCleanup()
     {
         string root = FindRepositoryRoot();
         string source = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
@@ -141,9 +144,9 @@ public sealed class SwarmArenaTickOrderTests
             cleanupBody,
             "try",
             "_swarmMonsterDirector.RemoveMatching(matchingId);",
-            "ClearSwarmCrossfireState(matchingId);",
             "finally",
             "_swarmMatchRuntimes.Remove(matchingId);");
+        Assert.DoesNotContain("ClearSwarmCrossfireState", cleanupBody);
         Assert.DoesNotContain("CleanupSwarmPvpAttackEvents", cleanupBody);
         Assert.DoesNotContain("ClearSwarmWindBladeState", cleanupBody);
         Assert.DoesNotContain("ClearSwarmOrbBoardState", cleanupBody);
@@ -164,6 +167,29 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmFamilyUpgradeCounts", orbBoard);
         Assert.Contains("GetSwarmMatchRuntime(matchingId).WindBlade", windBlade);
         Assert.Contains("GetSwarmMatchRuntime(matchingId).OrbBoard", orbBoard);
+    }
+
+    [Fact]
+    public void SwarmCrossfireState_IsMatchOwnedAndDodgeLookupDoesNotCreateRuntime()
+    {
+        string root = FindRepositoryRoot();
+        string crossfire = ReadNormalizedSource(root, "game_server", "GameServer.SwarmCrossfire.cs");
+        string botDodge = ReadNormalizedSource(root, "game_server", "GameServer.SwarmBotDodge.cs");
+        string runtimeStates = ReadNormalizedSource(root, "game_server", "Services", "SwarmArenaStates.cs");
+
+        Assert.DoesNotContain("_swarmCrossfireShapes", crossfire);
+        Assert.DoesNotContain("_swarmCrossfireDodgeSnapshot", crossfire);
+        Assert.DoesNotContain("_swarmCrossfireEventSeq", crossfire);
+        Assert.DoesNotContain("_swarmSunBurns", crossfire);
+        Assert.DoesNotContain("_swarmCrossfireConvergeWindows", crossfire);
+        Assert.DoesNotContain("ClearSwarmCrossfireState(", crossfire);
+        Assert.Contains("SwarmCrossfireState crossfire = GetSwarmMatchRuntime(matchingId).Crossfire;", crossfire);
+        Assert.Contains("public SwarmCrossfireState Crossfire { get; }", runtimeStates);
+
+        Assert.Contains("_swarmMatchRuntimes.TryGet(", botDodge);
+        Assert.Contains("runtime.Crossfire.DodgeSnapshot", botDodge);
+        Assert.DoesNotContain("GetSwarmMatchRuntime(", botDodge);
+        Assert.DoesNotContain("GetOrCreate(", botDodge);
     }
 
     [Fact]

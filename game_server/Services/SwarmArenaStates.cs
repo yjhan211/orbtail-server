@@ -19,7 +19,8 @@ public sealed class SwarmMatchRuntime
     internal SwarmMatchRuntime(
         long matchingId,
         SwarmGrowthOfferIdSequence growthOfferIds,
-        SwarmAttackEventIdSequence attackEventIds)
+        SwarmAttackEventIdSequence attackEventIds,
+        SwarmCrossfireEventIdSequence crossfireEventIds)
     {
         MatchingId = matchingId;
         GrowthOffers = new SwarmGrowthOfferStore();
@@ -28,6 +29,7 @@ public sealed class SwarmMatchRuntime
             GrowthOffers,
             growthOfferIds);
         AttackEvents = new SwarmPvpAttackEventState(attackEventIds);
+        Crossfire = new SwarmCrossfireState(matchingId, crossfireEventIds);
     }
 
     public long MatchingId { get; }
@@ -39,6 +41,7 @@ public sealed class SwarmMatchRuntime
     public SwarmWindBladeState WindBlade { get; } = new();
     public SwarmOrbBoardState OrbBoard { get; } = new();
     public SwarmPvpAttackEventState AttackEvents { get; }
+    public SwarmCrossfireState Crossfire { get; }
 }
 
 /// <summary>
@@ -50,6 +53,7 @@ public sealed class SwarmMatchRuntimeStore
     private readonly ConcurrentDictionary<long, SwarmMatchRuntime> _runtimes = new();
     private readonly SwarmGrowthOfferIdSequence _growthOfferIds = new();
     private readonly SwarmAttackEventIdSequence _attackEventIds = new();
+    private readonly SwarmCrossfireEventIdSequence _crossfireEventIds = new();
 
     public int Count => _runtimes.Count;
 
@@ -61,8 +65,11 @@ public sealed class SwarmMatchRuntimeStore
             static (id, sequences) => new SwarmMatchRuntime(
                 id,
                 sequences.GrowthOfferIds,
-                sequences.AttackEventIds),
-            (GrowthOfferIds: _growthOfferIds, AttackEventIds: _attackEventIds));
+                sequences.AttackEventIds,
+                sequences.CrossfireEventIds),
+            (GrowthOfferIds: _growthOfferIds,
+                AttackEventIds: _attackEventIds,
+                CrossfireEventIds: _crossfireEventIds));
     }
 
     public bool TryGet(

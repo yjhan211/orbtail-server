@@ -3591,11 +3591,10 @@ public partial class GameServer
         try
         {
             _swarmMonsterDirector.RemoveMatching(matchingId);
-            ClearSwarmCrossfireState(matchingId);
         }
         finally
         {
-            // 앞선 legacy cleanup 하나가 실패해도 match-owned aggregate는 terminal 뒤 남기지 않는다.
+            // director cleanup이 실패해도 Crossfire를 포함한 match-owned aggregate는 남기지 않는다.
             _swarmMatchRuntimes.Remove(matchingId);
         }
     }

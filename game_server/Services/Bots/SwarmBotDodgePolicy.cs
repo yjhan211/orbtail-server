@@ -10,7 +10,7 @@ namespace game_server.services;
 ///     판정 기하는 교차사격 서버 판정(바닥면 dy×2, 반폭 + 플레이어 반경)과 같다.
 ///     대상은 태양 투사체뿐이다: 바람 몸통박치기는 표적의 착지 순간 자리에 떨어져(호밍) 자리로는 못 피하고,
 ///     파도 물폭탄은 잔상 전용이다.
-///     상태 없는 순수 정책 (#297) — 스냅샷 발행(GameServer.SwarmBotDodge 파셜)과 분리.
+///     상태 없는 순수 정책 (#297) — 매치별 스냅샷 발행(SwarmCrossfireState)과 분리.
 /// </summary>
 public static class SwarmBotDodgePolicy
 {

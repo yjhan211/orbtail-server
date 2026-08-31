@@ -93,6 +93,18 @@ public class SwarmBotDodgeTests
     }
 
     [Fact]
+    public void OtherMatchingId_DoesNotReact()
+    {
+        Assert.Null(SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(
+            new[] { LineAlongX() },
+            matchingId: 217002,
+            botPlayerId: -900000001,
+            new Vector3f(2f, 0f, 0f),
+            AreaType.S2Ground,
+            Now));
+    }
+
+    [Fact]
     public void DiagonalLine_ReturnsWorldSpacePerpendicular()
     {
         // 바닥면 45° 축 (1/√2, 1/√2). 봇은 원점 앞 축 위. 비켜서는 방향은 바닥면 수직 (-1/√2, 1/√2)를

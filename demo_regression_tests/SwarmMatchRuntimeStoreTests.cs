@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using game_server.services;
 using network.common;
 using network.common.data;
@@ -151,6 +152,52 @@ public sealed class SwarmMatchRuntimeStoreTests
         Assert.True(second.AttackEvents.IsColorBlocked(playerId, OrbColor.Green, nowUtc));
         Assert.True(first.AttackEvents.TryGetCurrentTarget(playerId, out firstTargetId));
         Assert.Equal(7001, firstTargetId);
+
+        first.Crossfire.AddShape(CreateCrossfireShape(
+            eventId: 11,
+            ownerId: playerId,
+            anchorCombatTargetId: 7001,
+            armedAtUtc: nowUtc.AddSeconds(1)));
+        first.Crossfire.SetSunBurn(
+            playerId,
+            ownerId: playerId,
+            weaponItemId: 101,
+            AreaType.S2Ground,
+            nowUtc,
+            durationSeconds: 3d,
+            tickIntervalSeconds: 1d);
+        SwarmCrossfireConvergenceObservation firstConvergence =
+            first.Crossfire.TrackConvergence(7001, nowUtc);
+
+        Assert.Equal(1, firstConvergence.HitCount);
+        Assert.True(second.Crossfire.IsEmpty);
+        Assert.Equal(first.MatchingId, Assert.Single(first.Crossfire.DodgeSnapshot).MatchingId);
+
+        second.Crossfire.AddShape(CreateCrossfireShape(
+            eventId: 12,
+            ownerId: playerId,
+            anchorCombatTargetId: 7001,
+            armedAtUtc: nowUtc.AddSeconds(1)));
+        second.Crossfire.SetSunBurn(
+            playerId,
+            ownerId: playerId + 1,
+            weaponItemId: 202,
+            AreaType.S2Gym1,
+            nowUtc,
+            durationSeconds: 4d,
+            tickIntervalSeconds: 2d);
+        SwarmCrossfireConvergenceObservation secondConvergence =
+            second.Crossfire.TrackConvergence(7001, nowUtc);
+
+        Assert.Equal(1, secondConvergence.HitCount);
+        Assert.Equal(first.MatchingId, Assert.Single(first.Crossfire.DodgeSnapshot).MatchingId);
+        Assert.Equal(second.MatchingId, Assert.Single(second.Crossfire.DodgeSnapshot).MatchingId);
+        Assert.True(first.Crossfire.TryGetSunBurn(playerId, out SwarmSunBurnState? firstBurn));
+        Assert.True(second.Crossfire.TryGetSunBurn(playerId, out SwarmSunBurnState? secondBurn));
+        Assert.Equal(playerId, firstBurn!.OwnerId);
+        Assert.Equal(playerId + 1, secondBurn!.OwnerId);
+        Assert.Equal(1, first.Crossfire.ConvergenceWindowCount);
+        Assert.Equal(1, second.Crossfire.ConvergenceWindowCount);
     }
 
     [Fact]
@@ -204,6 +251,7 @@ public sealed class SwarmMatchRuntimeStoreTests
         const long siblingMatchingId = 42006;
         const long removedPlayerId = 501;
         const long siblingPlayerId = 601;
+        DateTime crossfireNowUtc = new(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
 
         SwarmMatchRuntime removed = store.GetOrCreate(removedMatchingId);
         SwarmMatchRuntime sibling = store.GetOrCreate(siblingMatchingId);
@@ -219,6 +267,20 @@ public sealed class SwarmMatchRuntimeStoreTests
                 removedMatchingId, 1, removedPlayerId, 7001, OrbColor.Green, DateTime.MaxValue),
             DateTime.MaxValue,
             DateTime.MaxValue);
+        removed.Crossfire.AddShape(CreateCrossfireShape(
+            eventId: 11,
+            ownerId: removedPlayerId,
+            anchorCombatTargetId: 7001,
+            armedAtUtc: crossfireNowUtc.AddSeconds(1)));
+        removed.Crossfire.SetSunBurn(
+            removedPlayerId,
+            ownerId: removedPlayerId,
+            weaponItemId: 101,
+            AreaType.S2Ground,
+            crossfireNowUtc,
+            durationSeconds: 3d,
+            tickIntervalSeconds: 1d);
+        removed.Crossfire.TrackConvergence(7001, crossfireNowUtc);
 
         sibling.TrailCombat.OrbTrails[(siblingMatchingId, siblingPlayerId)] = [];
         sibling.GrowthOffers.PreviewCost[(siblingMatchingId, siblingPlayerId)] = 7;
@@ -231,6 +293,20 @@ public sealed class SwarmMatchRuntimeStoreTests
                 siblingMatchingId, 2, siblingPlayerId, 8001, OrbColor.Blue, DateTime.MaxValue),
             DateTime.MaxValue,
             DateTime.MaxValue);
+        sibling.Crossfire.AddShape(CreateCrossfireShape(
+            eventId: 12,
+            ownerId: siblingPlayerId,
+            anchorCombatTargetId: 8001,
+            armedAtUtc: crossfireNowUtc.AddSeconds(1)));
+        sibling.Crossfire.SetSunBurn(
+            siblingPlayerId,
+            ownerId: siblingPlayerId,
+            weaponItemId: 202,
+            AreaType.S2Gym1,
+            crossfireNowUtc,
+            durationSeconds: 4d,
+            tickIntervalSeconds: 2d);
+        sibling.Crossfire.TrackConvergence(8001, crossfireNowUtc);
 
         Assert.True(store.Remove(removedMatchingId));
 
@@ -246,6 +322,14 @@ public sealed class SwarmMatchRuntimeStoreTests
         Assert.Equal(1, sibling.OrbBoard.GetFamilyUpgradeCount(siblingPlayerId, OrbColor.Blue));
         Assert.True(sibling.AttackEvents.TryGetCurrentTarget(siblingPlayerId, out long siblingTargetId));
         Assert.Equal(8001, siblingTargetId);
+        Assert.Equal(1, sibling.Crossfire.ShapeCount);
+        Assert.Equal(1, sibling.Crossfire.SunBurnCount);
+        Assert.Equal(1, sibling.Crossfire.ConvergenceWindowCount);
+        Assert.Equal(siblingMatchingId, Assert.Single(sibling.Crossfire.DodgeSnapshot).MatchingId);
+        Assert.True(sibling.Crossfire.TryGetSunBurn(
+            siblingPlayerId,
+            out SwarmSunBurnState? siblingBurn));
+        Assert.Equal(siblingPlayerId, siblingBurn!.OwnerId);
         Assert.Equal(1, store.Count);
 
         SwarmMatchRuntime replacement = store.GetOrCreate(removedMatchingId);
@@ -258,6 +342,9 @@ public sealed class SwarmMatchRuntimeStoreTests
         Assert.Equal(0, replacement.OrbBoard.GetFamilyUpgradeCount(removedPlayerId, OrbColor.Green));
         Assert.NotSame(removed.AttackEvents, replacement.AttackEvents);
         Assert.True(replacement.AttackEvents.IsEmpty);
+        Assert.NotSame(removed.Crossfire, replacement.Crossfire);
+        Assert.True(replacement.Crossfire.IsEmpty);
+        Assert.Empty(replacement.Crossfire.DodgeSnapshot);
     }
 
     [Fact]
@@ -296,6 +383,38 @@ public sealed class SwarmMatchRuntimeStoreTests
         SwarmMatchRuntime recreated = store.GetOrCreate(firstMatchingId);
 
         Assert.Equal(3L, recreated.AttackEvents.AllocateAttackEventId());
+    }
+
+    [Fact]
+    public void CrossfireEventIds_RemainProcessWideAndThreadSafeAcrossRuntimeRecreation()
+    {
+        var store = new SwarmMatchRuntimeStore();
+        const long firstMatchingId = 42011;
+        const long secondMatchingId = 42012;
+
+        SwarmMatchRuntime first = store.GetOrCreate(firstMatchingId);
+        SwarmMatchRuntime second = store.GetOrCreate(secondMatchingId);
+
+        Assert.Equal(1L, first.Crossfire.AllocateEventId());
+        Assert.Equal(2L, second.Crossfire.AllocateEventId());
+
+        Assert.True(store.Remove(firstMatchingId));
+        SwarmMatchRuntime recreated = store.GetOrCreate(firstMatchingId);
+        Assert.Equal(3L, recreated.Crossfire.AllocateEventId());
+
+        var allocated = new ConcurrentBag<long>();
+        Parallel.For(
+            0,
+            1000,
+            index => allocated.Add(
+                (index & 1) == 0
+                    ? recreated.Crossfire.AllocateEventId()
+                    : second.Crossfire.AllocateEventId()));
+
+        Assert.Equal(1000, allocated.Count);
+        Assert.Equal(1000, allocated.Distinct().Count());
+        Assert.Equal(4L, allocated.Min());
+        Assert.Equal(1003L, allocated.Max());
     }
 
     private static PendingSwarmAttackVisual CreatePendingVisual(long attackEventId, DateTime dueAtUtc) =>
@@ -337,4 +456,29 @@ public sealed class SwarmMatchRuntimeStoreTests
             FeedbackTargetId: 20,
             Array.Empty<ProximityCombatAttack>(),
             dueAtUtc);
+
+    private static SwarmCrossfireShape CreateCrossfireShape(
+        long eventId,
+        long ownerId,
+        long anchorCombatTargetId,
+        DateTime armedAtUtc) =>
+        new()
+        {
+            EventId = eventId,
+            OwnerId = ownerId,
+            WeaponItemId = 101,
+            Damage = 10,
+            Area = AreaType.S2Ground,
+            Origin = new Vector3f(0f, 0f, 0f),
+            End = new Vector3f(6f, 0f, 0f),
+            GroundLength = 6f,
+            HalfWidth = 0.35f,
+            BlastRadius = 0.5f,
+            SweepSpeed = 4.5f,
+            ArmedAtUtc = armedAtUtc,
+            ExpiresAtUtc = armedAtUtc.AddSeconds(2),
+            AnchorMonsterId = 301,
+            AnchorCombatTargetId = anchorCombatTargetId,
+            LastFront = -0.35f
+        };
 }

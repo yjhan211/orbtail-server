@@ -32,41 +32,6 @@ public partial class GameServer
     // (2026-08-17 유저 제보). 몸 폭의 절반쯤.
     private const float SwarmCrossfirePlayerRadius = SwarmBotDodgePolicy.SwarmCrossfirePlayerRadius;
 
-    private sealed class SwarmCrossfireShape
-    {
-        public long MatchingId { get; init; }
-        public long EventId { get; init; }
-        public long OwnerId { get; init; }
-        public int WeaponItemId { get; init; }
-        public int Damage { get; init; }
-        public AreaType Area { get; init; }
-        // 원점·끝은 월드 좌표. 판정은 바닥면(Y×2)에서 한다.
-        public Vector3f Origin { get; init; } = new(0f, 0f, 0f);
-        public Vector3f End { get; init; } = new(0f, 0f, 0f);
-        public float GroundLength { get; init; }
-        public float HalfWidth { get; init; }
-        // 벽 충돌 시각 폭발의 표시 반경(바닥면). 추가 피해 판정에는 사용하지 않는다.
-        public float BlastRadius { get; init; }
-        // 앞머리 속도 (바닥면 단위/초).
-        public float SweepSpeed { get; init; }
-        public DateTime ArmedAtUtc { get; init; }
-        public DateTime ExpiresAtUtc { get; init; }
-        // 벽 폭발 (2026-08-24 관통): 직선이 벽에 막혀 잘렸으면 끝점에서 터진다 — 사거리 소진이면 소멸.
-        public bool DetonateAtWall { get; init; }
-        public int AnchorMonsterId { get; init; }
-        // 기준 몬스터의 전투 표적 id — 리졸버 후보(PlayerId 자리)와 같은 값. 표적 분산 필터가 비교한다.
-        public long AnchorCombatTargetId { get; init; }
-        // 앞머리가 지난 축 위치(바닥면 단위, 원점 = 0). 캡 반폭 앞에서 시작한다.
-        public float LastFront { get; set; }
-        public HashSet<long> HitVictims { get; } = new();
-        // 관통으로 이미 맞은 몬스터(CombatTargetId) — 한 발에 한 번.
-        public HashSet<long> HitMonsters { get; } = new();
-    }
-
-    private readonly List<SwarmCrossfireShape> _swarmCrossfireShapes = new();
-    private volatile SwarmBotDodgePolicy.SwarmCrossfireDodgeThreat[] _swarmCrossfireDodgeSnapshot = [];
-    private long _swarmCrossfireEventSeq;
-
     /// <summary>이 발사가 교차사격 모양(태양 폭발 투사체)으로 처리되는가 — 유도탄 경로를 대체한다.</summary>
     private static bool IsSwarmCrossfireWeapon(int weaponItemId) => IsSwarmCrossfireSun(weaponItemId);
 
@@ -81,16 +46,7 @@ public partial class GameServer
     ///     리졸버 필터(상한이면 태양이 표적을 잡지 않음)와 예약 가드가 같은 수를 본다.
     /// </summary>
     private int CountSwarmCrossfireTelegraphing(long matchingId, long ownerId, DateTime nowUtc)
-    {
-        int count = 0;
-        foreach (var shape in _swarmCrossfireShapes)
-        {
-            if (shape.MatchingId == matchingId && shape.OwnerId == ownerId && nowUtc < shape.ArmedAtUtc)
-                count++;
-        }
-
-        return count;
-    }
+        => GetSwarmMatchRuntime(matchingId).Crossfire.CountTelegraphing(ownerId, nowUtc);
 
     /// <summary>
     ///     표적 분산 (#232, 2026-08-17 유저 지시 "한번에 같은 걸 겨냥하지 말 것"): 소유자의 살아 있는
@@ -100,40 +56,16 @@ public partial class GameServer
     ///     쓸기가 빗나가도 풀어 줄 게 없다 — 모양의 수명이 곧 배제 기간이다.
     /// </summary>
     private HashSet<(long OwnerId, long CombatTargetId)> CollectSwarmCrossfireAnchoredTargets(long matchingId)
-    {
-        var anchored = new HashSet<(long, long)>();
-        foreach (var shape in _swarmCrossfireShapes)
-        {
-            if (shape.MatchingId == matchingId)
-                anchored.Add((shape.OwnerId, shape.AnchorCombatTargetId));
-        }
-
-        return anchored;
-    }
+        => GetSwarmMatchRuntime(matchingId).Crossfire.CollectAnchoredTargets();
 
     /// <summary>
     ///     이번 틱에 예고 상한에 닿은 소유자들 — 리졸버 필터가 이들의 태양 오브 조준을 유예한다.
     ///     틱마다 한 번 만든다 (필터는 공격자×표적 쌍마다 불린다).
     /// </summary>
     private HashSet<long> CollectSwarmCrossfireCappedOwners(long matchingId, DateTime nowUtc)
-    {
-        var telegraphingByOwner = new Dictionary<long, int>();
-        foreach (var shape in _swarmCrossfireShapes)
-        {
-            if (shape.MatchingId != matchingId || nowUtc >= shape.ArmedAtUtc)
-                continue;
-            telegraphingByOwner[shape.OwnerId] = telegraphingByOwner.GetValueOrDefault(shape.OwnerId) + 1;
-        }
-
-        var capped = new HashSet<long>();
-        foreach (var (ownerId, count) in telegraphingByOwner)
-        {
-            if (count >= Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
-                capped.Add(ownerId);
-        }
-
-        return capped;
-    }
+        => GetSwarmMatchRuntime(matchingId).Crossfire.CollectCappedOwners(
+            nowUtc,
+            Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER);
 
     /// <summary>
     ///     발사 순간 직선을 잠근다. 소유자당 동시 예고 상한에 닿아 있으면 false — 호출부는 그 발을
@@ -153,6 +85,7 @@ public partial class GameServer
         if (origin == null || anchor == null || !IsSwarmCrossfireWeapon(attack.WeaponItemId))
             return false;
         OrbData.TryGetColorAndTier(attack.WeaponItemId, out _, out int tier);
+        SwarmCrossfireState crossfire = GetSwarmMatchRuntime(matchingId).Crossfire;
 
         if (CountSwarmCrossfireTelegraphing(matchingId, attack.AttackerPlayerId, nowUtc) >=
             Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
@@ -243,11 +176,10 @@ public partial class GameServer
 
         // 앞머리는 원점 앞 캡(반폭)에서 출발해 끝 너머 캡까지 간다 — 캡슐 전체를 한 번 쓴다.
         float sweepSeconds = (groundLength + width) / sweepSpeed;
-        long eventId = ++_swarmCrossfireEventSeq;
+        long eventId = crossfire.AllocateEventId();
         var armedAt = nowUtc.AddSeconds(Config.SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS);
-        _swarmCrossfireShapes.Add(new SwarmCrossfireShape
+        crossfire.AddShape(new SwarmCrossfireShape
         {
-            MatchingId = matchingId,
             EventId = eventId,
             OwnerId = attack.AttackerPlayerId,
             WeaponItemId = attack.WeaponItemId,
@@ -266,7 +198,6 @@ public partial class GameServer
             AnchorCombatTargetId = attack.TargetPlayerId,
             LastFront = -halfWidth
         });
-        PublishSwarmCrossfireDodgeSnapshot();
 
         BroadcastSwarmCrossfireTelegraph(
             eventId, attack, origin, end, width, sweepSeconds, anchorMonsterId, allSessions);
@@ -334,13 +265,12 @@ public partial class GameServer
         if (!SwarmCrossfireEnabled)
             return;
 
+        SwarmCrossfireState crossfire = GetSwarmMatchRuntime(matchingId).Crossfire;
         IReadOnlyList<SwarmArenaCombatTarget>? monsters = null;
-        int shapesBefore = _swarmCrossfireShapes.Count;
-        for (int index = _swarmCrossfireShapes.Count - 1; index >= 0; index--)
+        int shapesBefore = crossfire.ShapeCount;
+        for (int index = crossfire.ShapeCount - 1; index >= 0; index--)
         {
-            var shape = _swarmCrossfireShapes[index];
-            if (shape.MatchingId != matchingId)
-                continue;
+            SwarmCrossfireShape shape = crossfire.GetShapeAt(index);
             if (nowUtc < shape.ArmedAtUtc)
                 continue;
 
@@ -395,7 +325,7 @@ public partial class GameServer
             if (front < sweepEnd)
                 continue;
 
-            _swarmCrossfireShapes.RemoveAt(index);
+            crossfire.RemoveShapeAt(index);
             if (shape.DetonateAtWall)
             {
                 // 벽 폭발: 잘린 직선의 끝(= 첫 이동 불가 셀 앞)에서 터진다.
@@ -412,8 +342,8 @@ public partial class GameServer
         }
 
         // 봇 회피 스냅샷 — 이번 틱에 소멸·폭발로 줄었으면 다시 발행한다.
-        if (_swarmCrossfireShapes.Count != shapesBefore)
-            PublishSwarmCrossfireDodgeSnapshot();
+        if (crossfire.ShapeCount != shapesBefore)
+            crossfire.PublishDodgeSnapshot();
     }
 
     /// <summary>
@@ -657,20 +587,19 @@ public partial class GameServer
     // 소리 없이 관통해 "피격박스가 안 맞는" 오독을 만들었다. 표시 = 판정: 지나간 발은 다 맞는다.
     // 한 발이 같은 사람을 두 번 치는 것은 발 단위 HitVictims(교차사격)·틱 주기(칼날)가 막는다.
 
-    // 화상 (#268, 2026-08-25 유저 결정): 태양 충격 피격자에게 3초 틱 피해. 재피격은 지속 갱신.
-    private readonly Dictionary<(long MatchingId, long VictimId),
-        (long OwnerId, int WeaponItemId, AreaType Area, DateTime UntilUtc, DateTime NextTickAtUtc)>
-        _swarmSunBurns = new();
-
     /// <summary>화상 부여·갱신 — 첫 틱은 1초 뒤(직격과 같은 프레임에 겹치지 않게). HUD 통지 포함.</summary>
     private void ApplySwarmSunBurn(
         long matchingId, long ownerId, int weaponItemId, AreaType area, long victimId,
         DateTime nowUtc, List<GameClientSession> aliveSessions)
     {
-        _swarmSunBurns[(matchingId, victimId)] = (
-            ownerId, weaponItemId, area,
-            nowUtc.AddSeconds(Config.SWARM_SUN_BURN_SECONDS),
-            nowUtc.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS));
+        GetSwarmMatchRuntime(matchingId).Crossfire.SetSunBurn(
+            victimId,
+            ownerId,
+            weaponItemId,
+            area,
+            nowUtc,
+            Config.SWARM_SUN_BURN_SECONDS,
+            Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS);
         aliveSessions.FirstOrDefault(session => session.PlayerId == victimId)
             ?.SendSwarmSunBurn(ownerId, area, (int)(Config.SWARM_SUN_BURN_SECONDS * 1000f));
     }
@@ -683,38 +612,13 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        List<(long, long)>? expired = null;
-        foreach (var pair in _swarmSunBurns)
-        {
-            if (pair.Key.MatchingId != matchingId)
-                continue;
-            var burn = pair.Value;
-            if (nowUtc >= burn.NextTickAtUtc)
-            {
+        GetSwarmMatchRuntime(matchingId).Crossfire.ProcessSunBurns(
+            nowUtc,
+            Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS,
+            (victimId, burn) =>
                 ApplySwarmShock(matchingId, burn.OwnerId, burn.WeaponItemId, burn.Area,
-                    pair.Key.VictimId, "SUN_BURN_TICK", aliveSessions, aliveBots, allSessions,
-                    Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER, dotTick: true);
-                _swarmSunBurns[pair.Key] = burn with
-                {
-                    NextTickAtUtc = burn.NextTickAtUtc.AddSeconds(
-                        Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS)
-                };
-            }
-
-            if (nowUtc >= burn.UntilUtc)
-                (expired ??= new List<(long, long)>()).Add(pair.Key);
-        }
-
-        if (expired == null)
-            return;
-        foreach (var key in expired)
-            _swarmSunBurns.Remove(key);
-    }
-
-    private void ClearSwarmSunBurnState(long matchingId)
-    {
-        foreach (var key in _swarmSunBurns.Keys.Where(key => key.MatchingId == matchingId).ToList())
-            _swarmSunBurns.Remove(key);
+                    victimId, "SUN_BURN_TICK", aliveSessions, aliveBots, allSessions,
+                    Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER, dotTick: true));
     }
 
     /// <summary>상처 부여·갱신 — HUD 통지 포함. 효과는 ApplySwarmShock의 치명타 굴림이 읽는다.</summary>
@@ -836,45 +740,17 @@ public partial class GameServer
         }
     }
 
-    // 수렴 계측 (2026-08-24): 원호·ㄱ자 꼬리에서 여러 선이 같은 표적에 겹치는 정도를 잰다 —
-    // 같은 표적 2발째부터 피해 감쇠를 넣을지의 판단 근거(측정 먼저, 제한은 과할 때만).
-    private readonly Dictionary<(long MatchingId, long TargetId), (DateTime WindowStartUtc, int Count)>
-        _swarmCrossfireConvergeWindows = new();
-
     /// <summary>1초 창 안에 같은 표적이 교차사격을 두 발 이상 맞으면 crossfire_converge로 남긴다.</summary>
     private void TrackSwarmCrossfireConvergence(long matchingId, long targetId, DateTime nowUtc)
     {
-        // 창이 지난 엔트리가 쌓이지 않게 이따금 걷어낸다 — 몹 id는 스폰마다 새로 나온다.
-        if (_swarmCrossfireConvergeWindows.Count > 512)
-        {
-            foreach (var staleKey in _swarmCrossfireConvergeWindows
-                         .Where(pair => (nowUtc - pair.Value.WindowStartUtc).TotalSeconds > 1d)
-                         .Select(pair => pair.Key).ToList())
-                _swarmCrossfireConvergeWindows.Remove(staleKey);
-        }
-
-        var key = (matchingId, targetId);
-        if (!_swarmCrossfireConvergeWindows.TryGetValue(key, out var window) ||
-            (nowUtc - window.WindowStartUtc).TotalSeconds > 1d)
-            window = (nowUtc, 0);
-        window.Count++;
-        _swarmCrossfireConvergeWindows[key] = window;
-        if (window.Count >= 2)
+        SwarmCrossfireConvergenceObservation observation =
+            GetSwarmMatchRuntime(matchingId).Crossfire.TrackConvergence(targetId, nowUtc);
+        if (observation.HitCount >= 2)
         {
             _gameEventLogManager.LogSystem(
                 matchingId,
-                $"crossfire_converge target={targetId} hits={window.Count} " +
-                $"windowMs={(nowUtc - window.WindowStartUtc).TotalMilliseconds:F0}");
+                $"crossfire_converge target={targetId} hits={observation.HitCount} " +
+                $"windowMs={observation.WindowMilliseconds:F0}");
         }
-    }
-
-    private void ClearSwarmCrossfireState(long matchingId)
-    {
-        _swarmCrossfireShapes.RemoveAll(shape => shape.MatchingId == matchingId);
-        PublishSwarmCrossfireDodgeSnapshot();
-        foreach (var key in _swarmCrossfireConvergeWindows.Keys
-                     .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmCrossfireConvergeWindows.Remove(key);
-        ClearSwarmSunBurnState(matchingId);
     }
 }
