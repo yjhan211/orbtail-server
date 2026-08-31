@@ -1,12 +1,18 @@
 using game_server.services;
 using network.common;
 using network.common.data;
+using network.common.data.helpers;
 using network.common.data.models;
 
 namespace demo_regression_tests;
 
 public sealed class MatchTelemetryTests
 {
+    public MatchTelemetryTests()
+    {
+        InitializeBattleCombatData();
+    }
+
     [Fact]
     public void MatchTelemetrySurvivesCleanupWithSeedExploreRecoveryAndFinalStats()
     {
@@ -221,5 +227,21 @@ public sealed class MatchTelemetryTests
         var blocked = Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_PICKUP_BLOCKED_FULL");
         Assert.Equal(107000030, blocked.ItemId);
         Assert.Equal(6, blocked.InventorySlotsUsed);
+    }
+
+    private static void InitializeBattleCombatData()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null &&
+               !Directory.Exists(Path.Combine(directory.FullName, "network", "Common", "csv")))
+        {
+            directory = directory.Parent;
+        }
+
+        if (directory == null)
+            throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
+
+        BattleItemCombatData.Initialize(CsvHelper.LoadCsv(Path.Combine(
+            directory.FullName, "network", "Common", "csv", "battle_item_combat.csv")));
     }
 }
