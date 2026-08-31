@@ -90,8 +90,6 @@ namespace network.common
         G_TO_C_SOCIAL_ACTION,         // 같은 area 모든 클라에 broadcast
 
         // 구역 이동 프로토콜 (GDD v0.0.8: 문/계단 마커 방식)
-        C_TO_G_AREA_MOVE,             // 문/계단 마커 클릭 → 구역 이동 요청
-        G_TO_C_AREA_MOVE_RESULT,      // 이동 결과 (목적지 구역 + 스폰 셀 + 비용)
 
         // 범용 에러 프로토콜
         U_TO_C_ERROR, // UserServer 범용 에러 응답

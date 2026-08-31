@@ -348,8 +348,6 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_RNG_COLLECT_FINISH>(bytes, HandleRngCollectFinish));
 
         // 구역 이동 프로토콜 (GDD v0.0.8: 문/계단 마커 방식)
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_AREA_MOVE,
-            async bytes => await HandleMessage<C_TO_G_AREA_MOVE>(bytes, HandleAreaMove));
 
         // 소셜 액션 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SOCIAL_ACTION,
