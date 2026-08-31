@@ -78,12 +78,13 @@ namespace network.common.data
         public const float WindMoveSpeedBonusCap = 0.14f;
 
         // #229 P0 PvE 실효값. 태양·바람 유도탄과 파도 물폭탄이 같은 티어 피해표를 쓴다.
+        // 피해표 원본은 battle_item_combat.csv damage 컬럼 (#292 CSV 이전).
         public static int GetSwarmPveAttackDamage(int itemId)
         {
-            if (!TryGetColorAndTier(itemId, out _, out int tier))
+            if (!TryGetColorAndTier(itemId, out _, out _))
                 return 0;
 
-            return tier >= 3 ? 30 : tier == 2 ? 21 : 12;
+            return BattleItemCombatData.Get(itemId)?.Damage ?? 0;
         }
 
         /// <summary>
@@ -98,7 +99,7 @@ namespace network.common.data
             if (!TryGetColorAndTier(itemId, out _, out _))
                 return 0f;
 
-            return 0.8f;
+            return BattleItemCombatData.Get(itemId)?.AttackIntervalSeconds ?? 0f;
         }
 
         public static float GetSwarmWaveBombRadius(int itemId)
@@ -116,9 +117,10 @@ namespace network.common.data
         /// <summary>
         ///     스탯 티어 가중(1/1.75/4): 3머지는 슬롯·개봉비를 돌려주는 대신 스탯 합이
         ///     약간 손해 — 전문화(머지) vs 분산(보유)의 트레이드가 SB 융합 문법이다.
+        ///     값 원본은 battle_item_combat.csv stat_tier_weight 컬럼 (#292 CSV 이전).
         /// </summary>
         public static float GetSwarmStatTierWeight(int tier) =>
-            tier >= 3 ? 4f : tier == 2 ? 1.75f : 1f;
+            BattleItemCombatData.GetStatTierWeight(tier);
 
         // 상자 시간 등급 (#222 M3, SB 커먼→레어→에픽): 개전 후 경과초가 드래프트 오브 티어를
         // 정한다. 4분 매치 3등분 — 폐쇄 웨이브(80/160초)와 같은 박자로 판의 살림이 굵어진다.
@@ -144,14 +146,14 @@ namespace network.common.data
         ///     2026-08-09: 몹 피통 하향(해골 1방 체제)과 함께 2배 상향(12/28/60 → 24/56/120) —
         ///     몹은 빨리 녹고 오브는 오래 버텨야 교전이 즉사전이 아니라 소모전이 된다.
         /// </summary>
-        public static int GetSquadOrbMaxHp(int tier) => tier >= 3 ? 120 : tier == 2 ? 56 : 24;
+        public static int GetSquadOrbMaxHp(int tier) => BattleItemCombatData.GetOrbMaxHp(tier);
 
         /// <summary>
         ///     티어 크기 배율 — 티어 = 크기가 오브열의 문장 부호다. 클라 슬롯 스케일과
         ///     열 간격이 같은 표를 읽어야 "커진 만큼 벌어진다"가 성립한다 (#227).
         /// </summary>
         public static float GetSwarmOrbTierScale(int tier) =>
-            tier >= 3 ? 1.7f : tier == 2 ? 1.35f : 1f;
+            BattleItemCombatData.GetTierScale(tier);
 
         /// <summary>
         ///     열에서 ordinal번째 오브까지의 경로 거리 (#227): 간격이 이웃 두 오브의 크기
@@ -236,21 +238,21 @@ namespace network.common.data
             return colors.ToArray();
         }
 
+        /// <summary>
+        ///     색·티어 원본은 battle_item_combat.csv color/tier 컬럼 (#292 CSV 이전).
+        ///     회복 오브(color=4)는 여기서 제외 — TryGetRecoveryTier가 담당한다.
+        /// </summary>
         public static bool TryGetColorAndTier(int itemId, out OrbColor color, out int tier)
         {
-            switch (itemId)
+            if (!BattleItemCombatData.TryGetColorAndTier(itemId, out color, out tier) ||
+                color == OrbColor.Recovery)
             {
-                case 107000010: color = OrbColor.Red; tier = 1; return true;
-                case 107000011: color = OrbColor.Red; tier = 2; return true;
-                case 107000012: color = OrbColor.Red; tier = 3; return true;
-                case 107000020: color = OrbColor.Green; tier = 1; return true;
-                case 107000021: color = OrbColor.Green; tier = 2; return true;
-                case 107000022: color = OrbColor.Green; tier = 3; return true;
-                case 107000030: color = OrbColor.Blue; tier = 1; return true;
-                case 107000031: color = OrbColor.Blue; tier = 2; return true;
-                case 107000032: color = OrbColor.Blue; tier = 3; return true;
-                default: color = OrbColor.None; tier = 0; return false;
+                color = OrbColor.None;
+                tier = 0;
+                return false;
             }
+
+            return true;
         }
 
         public static bool IsOrbItem(int itemId) => TryGetColorAndTier(itemId, out _, out _);
@@ -437,28 +439,20 @@ namespace network.common.data
         }
         public static bool TryGetRecoveryTier(int itemId, out int tier)
         {
-            tier = itemId switch
+            if (BattleItemCombatData.TryGetColorAndTier(itemId, out OrbColor color, out tier) &&
+                color == OrbColor.Recovery)
             {
-                107000040 => 1,
-                107000041 => 2,
-                107000042 => 3,
-                _ => 0
-            };
-            return tier > 0;
+                return true;
+            }
+
+            tier = 0;
+            return false;
         }
 
         public static bool IsRecoveryOrb(int itemId) => TryGetRecoveryTier(itemId, out _);
 
         public static int GetRecoveryAmount(int itemId) =>
-            TryGetRecoveryTier(itemId, out int tier)
-                ? tier switch
-                {
-                    1 => 5,
-                    2 => 10,
-                    3 => 20,
-                    _ => 0
-                }
-                : 0;
+            IsRecoveryOrb(itemId) ? BattleItemCombatData.Get(itemId)?.RecoveryAmount ?? 0 : 0;
 
         /// <summary>
         /// Validates a P1 merge and randomly evolves its colour. The server calls this only after
@@ -486,13 +480,7 @@ namespace network.common.data
 
             if (TryGetRecoveryTier(inputA, out int recoveryTier))
             {
-                outputItemId = recoveryTier switch
-                {
-                    1 => 107000041,
-                    2 => 107000042,
-                    _ => 0
-                };
-                return outputItemId > 0;
+                return BattleItemCombatData.TryGetItemId(OrbColor.Recovery, recoveryTier + 1, out outputItemId);
             }
 
             if (!TryGetColorAndTier(inputA, out _, out int tier))
@@ -503,20 +491,13 @@ namespace network.common.data
 
         public static bool TryGetItemId(OrbColor color, int tier, out int itemId)
         {
-            itemId = (color, tier) switch
+            if (color is OrbColor.None or OrbColor.Recovery)
             {
-                (OrbColor.Red, 1) => 107000010,
-                (OrbColor.Red, 2) => 107000011,
-                (OrbColor.Red, 3) => 107000012,
-                (OrbColor.Green, 1) => 107000020,
-                (OrbColor.Green, 2) => 107000021,
-                (OrbColor.Green, 3) => 107000022,
-                (OrbColor.Blue, 1) => 107000030,
-                (OrbColor.Blue, 2) => 107000031,
-                (OrbColor.Blue, 3) => 107000032,
-                _ => 0
-            };
-            return itemId > 0;
+                itemId = 0;
+                return false;
+            }
+
+            return BattleItemCombatData.TryGetItemId(color, tier, out itemId);
         }
 
         public static bool TryGetActivePair(

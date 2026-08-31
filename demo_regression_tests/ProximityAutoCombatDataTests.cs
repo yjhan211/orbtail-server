@@ -269,6 +269,8 @@ public class ProximityAutoCombatDataTests
             .Replace("\r\n", "\n");
     }
 
+    // 티어 값어치 = 발당 피해 성장. 공속은 단축 금지 (#268, 2026-08-24: 티어 주기 단축 퇴역 —
+    // 현행 오브는 전 티어 0.8 고정, 레거시 가디언 라인만 옛 단축 값을 유지한다).
     private static void AssertGuardianTierGrowth(
         IReadOnlyCollection<BattleItemCombatDefinition> definitions)
     {
@@ -280,12 +282,12 @@ public class ProximityAutoCombatDataTests
         Assert.All(tiers[2], tierTwo =>
         {
             Assert.True(tierTwo.Damage > tierOne.Damage);
-            Assert.True(tierTwo.AttackIntervalSeconds < tierOne.AttackIntervalSeconds);
+            Assert.True(tierTwo.AttackIntervalSeconds <= tierOne.AttackIntervalSeconds);
         });
         Assert.All(tiers[3], tierThree =>
         {
             Assert.True(tierThree.Damage > tiers[2].Max(tierTwo => tierTwo.Damage));
-            Assert.True(tierThree.AttackIntervalSeconds < tiers[2].Min(tierTwo => tierTwo.AttackIntervalSeconds));
+            Assert.True(tierThree.AttackIntervalSeconds <= tiers[2].Min(tierTwo => tierTwo.AttackIntervalSeconds));
         });
     }
 }

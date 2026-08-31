@@ -297,45 +297,31 @@ public sealed class SwarmArenaManager
     /// <summary>파도 문양(Encircle 패턴) 몹인가 — 표기 문양과 공격 방식이 같은 근거를 쓴다.</summary>
     public static bool IsWavePatternMonster(SwarmPattern pattern) => pattern == SwarmPattern.Encircle;
 
+    /// <summary>
+    ///     종별 스탯 원본은 swarm_monster.csv (#292 CSV 이전). attack_range 0 = 접촉 몹(ContactRange 폴백).
+    ///     피통은 클라 종 식별자이기도 하다 — EmotionAfterimageMonsterDisplay 스위치와 동기 필수.
+    ///     보스 사거리(4.1)는 Config.SWARM_BOSS_ATTACK_RANGE(클라 범위 링)와 동기 필수.
+    /// </summary>
     public static (int MaxHp, int OrbDamage, float AttackRange, float AttackCooldownSeconds, int StoneReward,
         int HeartReward, int BootsReward, int KeyReward)
-        GetKindStats(SwarmMonsterKind kind) => kind switch
-        {
-            // 피통 = 시작 T1 오브(발당 12) 발수 정렬: 다트 2방 · 볼러 4방 (#219 초반 템포)
-            // 탈주 120 (#222 연사화 후 상향): 스쿼드 DPS ~50에 60은 1초 컷 — 미니보스 체급 복원.
-            // 피통은 클라 종 식별자이기도 하다 — EmotionAfterimageMonsterDisplay 스위치와 동기 필수.
-            // 하트 (#222 M4): 고위험 몹(탈주·볼러)만 확정 1 — 즉시 회복 픽업의 유일 공급처.
-            // 부츠·열쇠 (#222 M4): 부츠 = 다트(저보상 몹의 아이덴티티), 열쇠 = 탈주(미니보스 확정 드롭).
-            // 다트·볼러 원거리(5/4.5) 퇴역 (2026-08-24): 접촉 반경(종별 몸통 배율)으로 부딪혀야 때린다.
-            SwarmMonsterKind.DartGoblin => (18, 2, ContactRange, 2f, 1, 0, 1, 0),
-            SwarmMonsterKind.RunawayGoblin => (120, 5, ContactRange, 1.2f, 4, 1, 0, 1),
-            SwarmMonsterKind.Bowler => (48, 2, ContactRange, 2.5f, 4, 1, 0, 0),
-            // 보스 (#223, SB 드롭 = 코인 11 + 젬 7): 피통은 클라 종 식별자 — 기존 값과 겹치면 안 된다.
-            // 전원 제자리 고정 포대 — 파도 T3급 사거리(Config 공유 = 클라 범위 링)로 투사체를 던진다.
-            // 골렘 = 광역 강타(볼러 스플래시 공유), 트리 자이언트 = 열쇠 확정 드롭.
-            // 데미지는 참가자 피해 절반 배율(0.5) 통과 후가 실효 — 골렘 12·드래곤 6·트리 9.
-            // T1 오브(24)가 골렘 두 방에 깨진다: 링 안 눌러앉기가 실제로 비싸야 위협이다 (#223).
-            SwarmMonsterKind.Golem => (240, 24, Config.SWARM_BOSS_ATTACK_RANGE, 2.8f, 11, 0, 0, 0),
-            SwarmMonsterKind.BabyDragon => (200, 12, Config.SWARM_BOSS_ATTACK_RANGE, 2f, 11, 0, 0, 0),
-            SwarmMonsterKind.TreeGiant => (260, 18, Config.SWARM_BOSS_ATTACK_RANGE, 2.2f, 8, 0, 0, 1),
-            _ => (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1, 0, 0, 0)
-        };
+        GetKindStats(SwarmMonsterKind kind)
+    {
+        var definition = SwarmMonsterData.Get((int)kind) ?? SwarmMonsterData.Get((int)SwarmMonsterKind.Skeleton);
+        if (definition == null)
+            return (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1, 0, 0, 0);
+
+        float attackRange = definition.AttackRange > 0f ? definition.AttackRange : ContactRange;
+        return (definition.MaxHp, definition.OrbDamage, attackRange, definition.AttackCooldownSeconds,
+            definition.StoneReward, definition.HeartReward, definition.BootsReward, definition.KeyReward);
+    }
 
     /// <summary>보스 판별 (#223): 고정 포대·리스폰 없음·타원 판정 공유의 스위치.</summary>
     /// <summary>
     ///     종별 접촉 반경 (#229). 클라 ResolveKindScale과 같은 사다리를 쓴다 — 보이는 몸통이 판정이다.
     ///     원거리 몹의 사거리(AttackRangeValue)는 별개다. 이건 부딪힘 반경만 정한다.
     /// </summary>
-    public static float GetContactRadius(SwarmMonsterKind kind) => ContactRange * (kind switch
-    {
-        SwarmMonsterKind.RunawayGoblin => 2.4f,
-        SwarmMonsterKind.Bowler => 1.8f,
-        SwarmMonsterKind.TreeGiant => 1.8f,
-        SwarmMonsterKind.Golem => 1.7f,
-        SwarmMonsterKind.BabyDragon => 1.5f,
-        SwarmMonsterKind.DartGoblin => 1.4f,
-        _ => 1f
-    });
+    public static float GetContactRadius(SwarmMonsterKind kind) =>
+        ContactRange * (SwarmMonsterData.Get((int)kind)?.ContactRadiusScale ?? 1f);
 
     public static bool IsBossKind(SwarmMonsterKind kind) =>
         kind is SwarmMonsterKind.Golem or SwarmMonsterKind.BabyDragon or SwarmMonsterKind.TreeGiant;
