@@ -77,16 +77,6 @@ namespace network.common.data.models
         [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
     }
 
-    [MessagePackObject]
-    public class MissionShortRewardInfo : IMessagePackObject
-    {
-        [Key("rewardType")] public int RewardType { get; set; }
-        [Key("remainingUses")] public int RemainingUses { get; set; }
-        [Key("valuePercent")] public int ValuePercent { get; set; }
-        [Key("durationSeconds")] public int DurationSeconds { get; set; }
-        [Key("expiresAtUnixMs")] public long ExpiresAtUnixMs { get; set; }
-    }
-
     /// <summary>
     ///     v0.2.1 (#79) — RNG 채집 결과 통합 패킷. 5종 결과(부품/선행/디코이/빈손/지역 아이템) 단일 응답.
     ///     - 부품/선행 회수 시 추가로 G_TO_C_PART_COLLECTED / G_TO_C_PREREQUISITE_COLLECTED 송신 (인벤토리 갱신용)
