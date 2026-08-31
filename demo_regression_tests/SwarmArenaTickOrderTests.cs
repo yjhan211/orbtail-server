@@ -85,6 +85,24 @@ public sealed class SwarmArenaTickOrderTests
     }
 
     [Fact]
+    public void SwarmPvpAttackEventTick_DrainsDueWorkBeforeLaunchingAndStartingEvents()
+    {
+        string root = FindRepositoryRoot();
+        string source = ReadNormalizedSource(root, "game_server", "GameServer.SwarmAttackEvents.cs");
+        string processBody = ReadMethodSlice(
+            source,
+            "private void ProcessSwarmPvpAttackEvents(",
+            "private SpotArenaPlayerSpatial? ResolveSwarmAttackTarget(");
+
+        AssertInOrder(
+            processBody,
+            "DispatchPendingSwarmAttackVisuals(",
+            "ApplyPendingSwarmAttackHits(",
+            "LaunchReadySwarmAttackEvents(",
+            "foreach (var owner in participants)");
+    }
+
+    [Fact]
     public void GrowthOfferFlow_DelegatesLifecycleAndOwnershipToCoordinator()
     {
         string root = FindRepositoryRoot();
@@ -110,7 +128,7 @@ public sealed class SwarmArenaTickOrderTests
     }
 
     [Fact]
-    public void SwarmCleanup_AlwaysDropsMatchOwnedRuntimeAfterLegacyCleanup()
+    public void SwarmCleanup_AlwaysDropsMatchOwnedRuntimeAfterRemainingLegacyCleanup()
     {
         string root = FindRepositoryRoot();
         string source = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
@@ -122,9 +140,11 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             cleanupBody,
             "try",
-            "CleanupSwarmPvpAttackEvents(matchingId);",
+            "_swarmMonsterDirector.RemoveMatching(matchingId);",
+            "ClearSwarmCrossfireState(matchingId);",
             "finally",
             "_swarmMatchRuntimes.Remove(matchingId);");
+        Assert.DoesNotContain("CleanupSwarmPvpAttackEvents", cleanupBody);
         Assert.DoesNotContain("ClearSwarmWindBladeState", cleanupBody);
         Assert.DoesNotContain("ClearSwarmOrbBoardState", cleanupBody);
     }
@@ -144,6 +164,28 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmFamilyUpgradeCounts", orbBoard);
         Assert.Contains("GetSwarmMatchRuntime(matchingId).WindBlade", windBlade);
         Assert.Contains("GetSwarmMatchRuntime(matchingId).OrbBoard", orbBoard);
+    }
+
+    [Fact]
+    public void SwarmAttackEventState_IsOwnedBySwarmMatchRuntimeAndRemainsDormant()
+    {
+        string root = FindRepositoryRoot();
+        string attackEvents = ReadNormalizedSource(root, "game_server", "GameServer.SwarmAttackEvents.cs");
+        string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
+
+        Assert.DoesNotContain("_nextSwarmAttackEventId", attackEvents);
+        Assert.DoesNotContain("_swarmActiveAttackEvents", attackEvents);
+        Assert.DoesNotContain("_swarmAttackNextReadyAtUtc", attackEvents);
+        Assert.DoesNotContain("_swarmAttackNextAttributeAtUtc", attackEvents);
+        Assert.DoesNotContain("_swarmAttackCurrentTargets", attackEvents);
+        Assert.DoesNotContain("_pendingSwarmAttackVisuals", attackEvents);
+        Assert.DoesNotContain("_pendingSwarmAttackHits", attackEvents);
+        Assert.DoesNotContain("CleanupSwarmPvpAttackEvents(", attackEvents);
+        Assert.Contains("GetSwarmMatchRuntime(matchingId).AttackEvents", attackEvents);
+        Assert.Contains("private static readonly bool SwarmPvpRangedAttackEnabled = false;", arena);
+        Assert.Contains(
+            "if (SwarmPvpRangedAttackEnabled)\n        {\n            ProcessSwarmPvpAttackEvents(",
+            ReadSwarmArenaTick());
     }
 
     private static string ReadSwarmArenaTick()

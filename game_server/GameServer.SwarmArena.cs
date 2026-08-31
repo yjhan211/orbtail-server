@@ -3592,7 +3592,6 @@ public partial class GameServer
         {
             _swarmMonsterDirector.RemoveMatching(matchingId);
             ClearSwarmCrossfireState(matchingId);
-            CleanupSwarmPvpAttackEvents(matchingId);
         }
         finally
         {

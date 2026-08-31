@@ -16,7 +16,10 @@ namespace game_server.services;
 /// </summary>
 public sealed class SwarmMatchRuntime
 {
-    internal SwarmMatchRuntime(long matchingId, SwarmGrowthOfferIdSequence growthOfferIds)
+    internal SwarmMatchRuntime(
+        long matchingId,
+        SwarmGrowthOfferIdSequence growthOfferIds,
+        SwarmAttackEventIdSequence attackEventIds)
     {
         MatchingId = matchingId;
         GrowthOffers = new SwarmGrowthOfferStore();
@@ -24,6 +27,7 @@ public sealed class SwarmMatchRuntime
             matchingId,
             GrowthOffers,
             growthOfferIds);
+        AttackEvents = new SwarmPvpAttackEventState(attackEventIds);
     }
 
     public long MatchingId { get; }
@@ -34,6 +38,7 @@ public sealed class SwarmMatchRuntime
     public SwarmMatchPacingState Pacing { get; } = new();
     public SwarmWindBladeState WindBlade { get; } = new();
     public SwarmOrbBoardState OrbBoard { get; } = new();
+    public SwarmPvpAttackEventState AttackEvents { get; }
 }
 
 /// <summary>
@@ -44,6 +49,7 @@ public sealed class SwarmMatchRuntimeStore
 {
     private readonly ConcurrentDictionary<long, SwarmMatchRuntime> _runtimes = new();
     private readonly SwarmGrowthOfferIdSequence _growthOfferIds = new();
+    private readonly SwarmAttackEventIdSequence _attackEventIds = new();
 
     public int Count => _runtimes.Count;
 
@@ -52,8 +58,11 @@ public sealed class SwarmMatchRuntimeStore
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         return _runtimes.GetOrAdd(
             matchingId,
-            static (id, growthOfferIds) => new SwarmMatchRuntime(id, growthOfferIds),
-            _growthOfferIds);
+            static (id, sequences) => new SwarmMatchRuntime(
+                id,
+                sequences.GrowthOfferIds,
+                sequences.AttackEventIds),
+            (GrowthOfferIds: _growthOfferIds, AttackEventIds: _attackEventIds));
     }
 
     public bool TryGet(

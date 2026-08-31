@@ -21,67 +21,6 @@ public partial class GameServer
     private const int SwarmVfxWindCancel = 14;
     private const int SwarmVfxWaveCancel = 15;
 
-    private long _nextSwarmAttackEventId;
-
-    private sealed record SwarmAttackParticipantSnapshot(
-        long ItemUid,
-        int ItemId,
-        int SnapshotOrdinal,
-        int CurrentOrdinal,
-        int Tier,
-        Vector3f Origin,
-        int Damage);
-
-    private sealed class SwarmPvpAttackEvent
-    {
-        public long AttackEventId;
-        public long MatchingId;
-        public long AttackerId;
-        public long TargetId;
-        public AreaType Area;
-        public OrbColor Color;
-        public DateTime StartedAtUtc;
-        public DateTime LaunchAtUtc;
-        public int SnapshotDamageBudget;
-        public List<SwarmAttackParticipantSnapshot> Participants = new();
-    }
-
-    private sealed record PendingSwarmAttackVisual(
-        long MatchingId,
-        long AttackEventId,
-        long AttackerId,
-        long TargetId,
-        AreaType Area,
-        OrbColor Color,
-        int Kind,
-        int Ordinal,
-        int Tier,
-        Vector3f Origin,
-        float Radius,
-        DateTime DueAtUtc);
-
-    private sealed record PendingSwarmAttackHit(
-        long MatchingId,
-        long AttackEventId,
-        long FeedbackTargetId,
-        IReadOnlyList<ProximityCombatAttack> Attacks,
-        DateTime DueAtUtc);
-
-    private readonly Dictionary<(long MatchingId, long AttackerId, OrbColor Color),
-        SwarmPvpAttackEvent> _swarmActiveAttackEvents = new();
-
-    private readonly Dictionary<(long MatchingId, long AttackerId, OrbColor Color), DateTime>
-        _swarmAttackNextReadyAtUtc = new();
-
-    private readonly Dictionary<(long MatchingId, long AttackerId), DateTime>
-        _swarmAttackNextAttributeAtUtc = new();
-
-    private readonly Dictionary<(long MatchingId, long AttackerId), long>
-        _swarmAttackCurrentTargets = new();
-
-    private readonly List<PendingSwarmAttackVisual> _pendingSwarmAttackVisuals = new();
-    private readonly List<PendingSwarmAttackHit> _pendingSwarmAttackHits = new();
-
     /// <summary>
     ///     #227 6단계. 오브별 독립 PvP 연사를 속성별 한 번의 공격 사건으로 묶는다.
     ///     PvE는 기존 ProximityAutoCombatResolver가 계속 소유한다.
@@ -94,11 +33,12 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        DispatchPendingSwarmAttackVisuals(matchingId, nowUtc, participants, allSessions);
+        SwarmPvpAttackEventState attackEvents = GetSwarmMatchRuntime(matchingId).AttackEvents;
+        DispatchPendingSwarmAttackVisuals(attackEvents, nowUtc, participants, allSessions);
         ApplyPendingSwarmAttackHits(
-            matchingId, nowUtc, participants, aliveSessions, aliveBots, allSessions);
+            attackEvents, matchingId, nowUtc, participants, aliveSessions, aliveBots, allSessions);
         LaunchReadySwarmAttackEvents(
-            matchingId, nowUtc, participants, allSessions);
+            attackEvents, matchingId, nowUtc, participants, allSessions);
 
         foreach (var owner in participants)
         {
@@ -108,9 +48,7 @@ public partial class GameServer
                 continue;
             }
 
-            var ownerKey = (matchingId, owner.PlayerId);
-            if (_swarmAttackNextAttributeAtUtc.TryGetValue(ownerKey, out var nextAttributeAtUtc) &&
-                nowUtc < nextAttributeAtUtc)
+            if (attackEvents.IsAttributeBlocked(owner.PlayerId, nowUtc))
             {
                 continue;
             }
@@ -122,16 +60,13 @@ public partial class GameServer
                          OrbColor.Blue
                      })
             {
-                var eventKey = (matchingId, owner.PlayerId, color);
-                if (_swarmActiveAttackEvents.ContainsKey(eventKey) ||
-                    _swarmAttackNextReadyAtUtc.TryGetValue(eventKey, out var nextReadyAtUtc) &&
-                    nowUtc < nextReadyAtUtc)
+                if (attackEvents.IsColorBlocked(owner.PlayerId, color, nowUtc))
                 {
                     continue;
                 }
 
                 var target = ResolveSwarmAttackTarget(
-                    matchingId, owner, color, participants);
+                    attackEvents, matchingId, owner, color, participants);
                 if (!target.HasValue)
                     continue;
                 var resolvedTarget = target.Value;
@@ -141,7 +76,7 @@ public partial class GameServer
                 if (snapshots.Count == 0)
                     continue;
 
-                long attackEventId = Interlocked.Increment(ref _nextSwarmAttackEventId);
+                long attackEventId = attackEvents.AllocateAttackEventId();
                 int damageBudget = SwarmPvpAttackEventRules.CapDamage(
                     color, snapshots.Sum(snapshot => snapshot.Damage));
                 var attackEvent = new SwarmPvpAttackEvent
@@ -158,14 +93,13 @@ public partial class GameServer
                     SnapshotDamageBudget = damageBudget,
                     Participants = snapshots
                 };
-                _swarmActiveAttackEvents[eventKey] = attackEvent;
-                _swarmAttackNextReadyAtUtc[eventKey] = nowUtc.AddSeconds(
-                    SwarmPvpAttackEventRules.GetIntervalSeconds(color));
                 // 다음 속성 사건은 현재 사건이 실제 발사된 뒤에만 준비한다. 예고 시작 간격이
                 // 아니라 발사 간격을 보장해야 서로 다른 색의 탄막이 한 프레임에 겹치지 않는다.
-                _swarmAttackNextAttributeAtUtc[ownerKey] = attackEvent.LaunchAtUtc.AddSeconds(
-                    SwarmPvpAttackEventRules.CrossAttributeGapSeconds);
-                _swarmAttackCurrentTargets[ownerKey] = resolvedTarget.PlayerId;
+                attackEvents.RegisterEvent(
+                    attackEvent,
+                    nowUtc.AddSeconds(SwarmPvpAttackEventRules.GetIntervalSeconds(color)),
+                    attackEvent.LaunchAtUtc.AddSeconds(
+                        SwarmPvpAttackEventRules.CrossAttributeGapSeconds));
 
                 SendSwarmAttackChargeVfx(attackEvent, allSessions);
                 LogSwarmAttackEvent("started", attackEvent, snapshots, damageBudget);
@@ -175,13 +109,13 @@ public partial class GameServer
     }
 
     private SpotArenaPlayerSpatial? ResolveSwarmAttackTarget(
+        SwarmPvpAttackEventState attackEvents,
         long matchingId,
         SpotArenaPlayerSpatial owner,
         OrbColor color,
         List<SpotArenaPlayerSpatial> participants)
     {
-        var ownerKey = (matchingId, owner.PlayerId);
-        if (_swarmAttackCurrentTargets.TryGetValue(ownerKey, out long currentTargetId))
+        if (attackEvents.TryGetCurrentTarget(owner.PlayerId, out long currentTargetId))
         {
             if (TryGetSwarmAttackParticipant(
                     participants, currentTargetId, owner.Area, out var currentTarget) &&
@@ -200,7 +134,7 @@ public partial class GameServer
                 return candidate;
         }
 
-        _swarmAttackCurrentTargets.Remove(ownerKey);
+        attackEvents.ClearCurrentTarget(owner.PlayerId);
         return null;
     }
 
@@ -314,17 +248,14 @@ public partial class GameServer
     }
 
     private void LaunchReadySwarmAttackEvents(
+        SwarmPvpAttackEventState attackEvents,
         long matchingId,
         DateTime nowUtc,
         List<SpotArenaPlayerSpatial> participants,
         List<GameClientSession> allSessions)
     {
-        var readyEvents = _swarmActiveAttackEvents
-            .Where(pair => pair.Key.MatchingId == matchingId && nowUtc >= pair.Value.LaunchAtUtc)
-            .ToList();
-        foreach (var (eventKey, attackEvent) in readyEvents)
+        foreach (SwarmPvpAttackEvent attackEvent in attackEvents.TakeReadyEvents(nowUtc))
         {
-            _swarmActiveAttackEvents.Remove(eventKey);
             if (!TryGetSwarmAttackParticipant(
                     participants, attackEvent.AttackerId, attackEvent.Area, out var owner) ||
                 !TryGetSwarmAttackParticipant(
@@ -353,7 +284,7 @@ public partial class GameServer
             int highestTier = survivors.Max(snapshot => snapshot.Tier);
             OrbData.TryGetItemId(attackEvent.Color, highestTier, out int representativeItemId);
             DateTime impactAtUtc = QueueSwarmAttackEventPresentation(
-                attackEvent, survivors, target, nowUtc);
+                attackEvents, attackEvent, survivors, target, nowUtc);
             IReadOnlyList<ProximityCombatAttack> attacks = attackEvent.Color == OrbColor.Blue
                 ? BuildWaveAttackTargets(
                     attackEvent, survivors, participants, representativeItemId, damage)
@@ -368,8 +299,7 @@ public partial class GameServer
                         0f,
                         0f)
                 ];
-            _pendingSwarmAttackHits.Add(new PendingSwarmAttackHit(
-                matchingId,
+            attackEvents.EnqueueHit(new PendingSwarmAttackHit(
                 attackEvent.AttackEventId,
                 attackEvent.TargetId,
                 attacks,
@@ -411,6 +341,7 @@ public partial class GameServer
     }
 
     private DateTime QueueSwarmAttackEventPresentation(
+        SwarmPvpAttackEventState attackEvents,
         SwarmPvpAttackEvent attackEvent,
         List<SwarmAttackParticipantSnapshot> participants,
         SpotArenaPlayerSpatial target,
@@ -421,8 +352,7 @@ public partial class GameServer
             var foremost = participants.OrderBy(snapshot => snapshot.CurrentOrdinal).First();
             float radius = SwarmPvpAttackEventRules.GetWaveRadius(
                 participants.Max(snapshot => snapshot.Tier));
-            _pendingSwarmAttackVisuals.Add(new PendingSwarmAttackVisual(
-                attackEvent.MatchingId,
+            attackEvents.EnqueueVisual(new PendingSwarmAttackVisual(
                 attackEvent.AttackEventId,
                 attackEvent.AttackerId,
                 attackEvent.TargetId,
@@ -459,8 +389,7 @@ public partial class GameServer
         {
             var participant = visualSequence[index];
             DateTime visualAtUtc = nowUtc.AddSeconds(index * spacing);
-            _pendingSwarmAttackVisuals.Add(new PendingSwarmAttackVisual(
-                attackEvent.MatchingId,
+            attackEvents.EnqueueVisual(new PendingSwarmAttackVisual(
                 attackEvent.AttackEventId,
                 attackEvent.AttackerId,
                 attackEvent.TargetId,
@@ -484,18 +413,13 @@ public partial class GameServer
     }
 
     private void DispatchPendingSwarmAttackVisuals(
-        long matchingId,
+        SwarmPvpAttackEventState attackEvents,
         DateTime nowUtc,
         List<SpotArenaPlayerSpatial> participants,
         List<GameClientSession> allSessions)
     {
-        for (int index = _pendingSwarmAttackVisuals.Count - 1; index >= 0; index--)
+        foreach (PendingSwarmAttackVisual visual in attackEvents.TakeDueVisuals(nowUtc))
         {
-            var visual = _pendingSwarmAttackVisuals[index];
-            if (visual.MatchingId != matchingId || nowUtc < visual.DueAtUtc)
-                continue;
-            _pendingSwarmAttackVisuals.RemoveAt(index);
-
             if (!TryGetSwarmAttackParticipant(
                     participants, visual.TargetId, visual.Area, out _))
                 continue;
@@ -504,6 +428,7 @@ public partial class GameServer
     }
 
     private void ApplyPendingSwarmAttackHits(
+        SwarmPvpAttackEventState attackEvents,
         long matchingId,
         DateTime nowUtc,
         List<SpotArenaPlayerSpatial> participants,
@@ -511,13 +436,8 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        for (int index = _pendingSwarmAttackHits.Count - 1; index >= 0; index--)
+        foreach (PendingSwarmAttackHit pending in attackEvents.TakeDueHits(nowUtc))
         {
-            var pending = _pendingSwarmAttackHits[index];
-            if (pending.MatchingId != matchingId || nowUtc < pending.DueAtUtc)
-                continue;
-            _pendingSwarmAttackHits.RemoveAt(index);
-
             int totalDamage = 0;
             int appliedTargets = 0;
             int representativeItemId = 0;
@@ -601,7 +521,6 @@ public partial class GameServer
                 .First();
             SendSwarmAttackEventVfx(
                 new PendingSwarmAttackVisual(
-                    attackEvent.MatchingId,
                     attackEvent.AttackEventId,
                     attackEvent.AttackerId,
                     attackEvent.TargetId,
@@ -621,7 +540,6 @@ public partial class GameServer
         foreach (var participant in attackEvent.Participants)
             SendSwarmAttackEventVfx(
                 new PendingSwarmAttackVisual(
-                    attackEvent.MatchingId,
                     attackEvent.AttackEventId,
                     attackEvent.AttackerId,
                     attackEvent.TargetId,
@@ -658,7 +576,6 @@ public partial class GameServer
                 .First();
             SendSwarmAttackEventVfx(
                 new PendingSwarmAttackVisual(
-                    attackEvent.MatchingId,
                     attackEvent.AttackEventId,
                     attackEvent.AttackerId,
                     attackEvent.TargetId,
@@ -677,7 +594,6 @@ public partial class GameServer
         foreach (var participant in participants)
             SendSwarmAttackEventVfx(
                 new PendingSwarmAttackVisual(
-                    attackEvent.MatchingId,
                     attackEvent.AttackEventId,
                     attackEvent.AttackerId,
                     attackEvent.TargetId,
@@ -774,21 +690,4 @@ public partial class GameServer
             victims);
     }
 
-    private void CleanupSwarmPvpAttackEvents(long matchingId)
-    {
-        foreach (var key in _swarmActiveAttackEvents.Keys
-                     .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmActiveAttackEvents.Remove(key);
-        foreach (var key in _swarmAttackNextReadyAtUtc.Keys
-                     .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmAttackNextReadyAtUtc.Remove(key);
-        foreach (var key in _swarmAttackNextAttributeAtUtc.Keys
-                     .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmAttackNextAttributeAtUtc.Remove(key);
-        foreach (var key in _swarmAttackCurrentTargets.Keys
-                     .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmAttackCurrentTargets.Remove(key);
-        _pendingSwarmAttackVisuals.RemoveAll(visual => visual.MatchingId == matchingId);
-        _pendingSwarmAttackHits.RemoveAll(hit => hit.MatchingId == matchingId);
-    }
 }
