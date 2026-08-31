@@ -11,6 +11,7 @@ using network.infrastructure.scaling;
 using network.interfaces;
 using network.managers;
 using Serilog;
+using Serilog.Events;
 using user_server.services;
 using user_server.services.scaling;
 
@@ -21,33 +22,30 @@ internal static class Program
     public static async Task Main(string[] args)
     {
         await Host.CreateDefaultBuilder(args)
-            .ConfigureAppConfiguration(ConfigureApp)
-            .ConfigureLogging(ConfigureLogging)
+            .UseSerilog(ConfigureSerilog)
             .ConfigureServices(ConfigureServices)
             .RunConsoleAsync();
     }
 
-    private static void ConfigureApp(HostBuilderContext _, IConfigurationBuilder config)
-    {
-        config.AddEnvironmentVariables();
-    }
-
-    private static void ConfigureLogging(HostBuilderContext hostingContext, ILoggingBuilder logging)
+    private static void ConfigureSerilog(HostBuilderContext hostingContext, LoggerConfiguration loggerConfiguration)
     {
         var serverConfig = CreateServerConfig(hostingContext.Configuration);
-
-        var serilogLogger = new LoggerConfiguration()
-            .MinimumLevel.Debug()
-            .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
-            .MinimumLevel.Override("Microsoft.Hosting.Lifetime", Serilog.Events.LogEventLevel.Information)
+        loggerConfiguration
+            .MinimumLevel.Is(ResolveMinimumLevel(hostingContext.Configuration))
+            .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+            .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
             .Enrich.WithProperty("serverType", serverConfig.ServerType)
             .Enrich.WithProperty("serverId", serverConfig.ServerId)
             .WriteTo.Console(outputTemplate:
-                "[{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}")
-            .CreateLogger();
+                "[{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}");
+    }
 
-        logging.ClearProviders();
-        logging.AddSerilog(serilogLogger);
+    // logLevel 설정(예: Information)으로 재빌드 없이 최소 로그 레벨 조정. 미지정 시 기존 기본값 Debug
+    private static LogEventLevel ResolveMinimumLevel(IConfiguration configuration)
+    {
+        return Enum.TryParse(configuration["logLevel"], true, out LogEventLevel level)
+            ? level
+            : LogEventLevel.Debug;
     }
 
     private static void ConfigureServices(HostBuilderContext hostContext, IServiceCollection services)
@@ -83,7 +81,7 @@ internal static class Program
         services.AddSingleton<IUserServerCoordinationStore, RedisUserServerCoordinationStore>();
         services.AddSingleton<IGameServerRoutingStore, RedisGameServerRoutingStore>();
         services.AddSingleton<MatchingLifecycleOutboxStore>();
-        services.AddSingleton(CreateLogManager);
+        services.AddSingleton<LogManager>();
         services.AddManittoAuthenticationBoundaries(hostContext.Configuration);
 
         // 비즈니스 서비스
@@ -141,13 +139,6 @@ internal static class Program
             ReservationLifetime = TimeSpan.FromSeconds(
                 configuration.GetValue("horizontalScaling:reservationSeconds", 300))
         };
-    }
-
-    private static LogManager CreateLogManager(IServiceProvider sp)
-    {
-        var serverConfig = sp.GetRequiredService<ServerConfig>();
-        var logger = sp.GetRequiredService<ILogger<LogManager>>();
-        return new LogManager(logger);
     }
 
     private static RedisConnectionPool CreateRedisConnectionPool(
