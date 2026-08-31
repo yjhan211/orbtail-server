@@ -87,7 +87,7 @@ public class SwarmDamagePathTests
                          "private void SendInteractableList"),
                      (Path.Combine("game_server", "Network", "GameClientSession.RngCollect.cs"),
                          "private Task HandleSwarmRngCollectStart"),
-                     (Path.Combine("game_server", "GameServer.SwarmArena.cs"),
+                     (Path.Combine("game_server", "GameServer.SwarmBots.cs"),
                          "private void ProcessSwarmBotExplores"),
                      (Path.Combine("game_server", "GameServer.SwarmArena.cs"),
                          "private void SpawnSpotArenaSummonStone")
@@ -112,12 +112,15 @@ public class SwarmDamagePathTests
     [Fact]
     public void SwarmBotEngagement_KeepsCutRestraintNeutralBandAndWoundedRetreat()
     {
+        // #312 분리: 절단 기계는 SwarmArena, 봇 판단(자제·도주·치명상)은 SwarmBots가 소유한다.
         string source = File.ReadAllText(
             Path.Combine(FindRepositoryRoot(), "game_server", "GameServer.SwarmArena.cs"));
+        string botSource = File.ReadAllText(
+            Path.Combine(FindRepositoryRoot(), "game_server", "GameServer.SwarmBots.cs"));
 
         // ① 절단 자제: 봇 전용, 래치 앞에서 걸린다.
-        Assert.Contains("SwarmBotCutMaxCorruptionRatio = 0.5f", source);
-        Assert.Contains("SwarmBotCutCooldownSeconds = 6d", source);
+        Assert.Contains("SwarmBotCutMaxCorruptionRatio = 0.5f", botSource);
+        Assert.Contains("SwarmBotCutCooldownSeconds = 6d", botSource);
         int cutMethodStart = source.IndexOf("private void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
         int cutMethodEnd = source.IndexOf("// ===== 포위 사격", cutMethodStart, StringComparison.Ordinal);
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
@@ -127,14 +130,14 @@ public class SwarmDamagePathTests
         Assert.Single(Regex.Matches(cutBody, @"IsSwarmBotCutAllowed\("));
 
         // ② 도주 임계: 강자 판정과 피격 반응 둘 다 ×1.5를 쓴다.
-        Assert.Contains("SwarmBotFleePowerRatio = 1.5f", source);
-        Assert.Contains("rivalPower >= myPower * SwarmBotFleePowerRatio", source);
-        Assert.Contains("wounded || attackerPower >= squadPower * SwarmBotFleePowerRatio", source);
+        Assert.Contains("SwarmBotFleePowerRatio = 1.5f", botSource);
+        Assert.Contains("rivalPower >= myPower * SwarmBotFleePowerRatio", botSource);
+        Assert.Contains("wounded || attackerPower >= squadPower * SwarmBotFleePowerRatio", botSource);
 
         // ③ 치명상 이탈: 히스테리시스 + 전력 0으로 스캔.
-        Assert.Contains("SwarmBotWoundedEnterRatio = 0.6f", source);
-        Assert.Contains("SwarmBotWoundedExitRatio = 0.45f", source);
-        Assert.Contains("wounded ? 0f : squadPower", source);
+        Assert.Contains("SwarmBotWoundedEnterRatio = 0.6f", botSource);
+        Assert.Contains("SwarmBotWoundedExitRatio = 0.45f", botSource);
+        Assert.Contains("wounded ? 0f : squadPower", botSource);
     }
 
     /// <summary>
@@ -169,6 +172,9 @@ public class SwarmDamagePathTests
         // 아레나에서 수면을 깨우는 호출이 되살아나면 계약 위반이다 (폐쇄·경고 깨우기 퇴역).
         Assert.DoesNotContain("BreakSwarmSleep", arena);
         Assert.Contains("ProcessSwarmSleepRecovery(aliveSessions, nowUtc)", arena);
+        // 봇 파셜(#312)도 같은 계약을 진다.
+        Assert.DoesNotContain("BreakSwarmSleep", File.ReadAllText(
+            Path.Combine(root, "game_server", "GameServer.SwarmBots.cs")));
     }
 
     /// <summary>
