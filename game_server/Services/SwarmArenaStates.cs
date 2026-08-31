@@ -1,12 +1,65 @@
+using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using network.common;
 using network.common.data.models;
 
 namespace game_server.services;
 
-// #294 — GameServer.SwarmArena 파셜에 산개돼 있던 매치 상태 딕셔너리 37개를 도메인별
-// 상태 홀더 4개로 묶는다. 로직은 GameServer에 남고 상태 소유·매치 정리만 여기로 온다:
-// 각 홀더의 RemoveMatchingState(matchingId) 하나가 84줄짜리 수동 정리를 대체하고,
-// 필드 추가 시 정리 누락(매치 간 누수)을 홀더 안에서 잡는다.
+// #294 후속 — GameServer.SwarmArena 파셜에 산개돼 있던 상태를 도메인별 홀더 4개로 묶고,
+// matchingId가 소유하는 aggregate에서 함께 생성·폐기한다. 기존 key shape는 단계적으로 줄인다.
+
+/// <summary>
+///     Owns the mutable Swarm state for exactly one matching id. The nested state holders still
+///     keep their established key shapes while the migration is in progress, but their lifetime is
+///     now bounded by this aggregate instead of the GameServer process.
+/// </summary>
+public sealed class SwarmMatchRuntime
+{
+    internal SwarmMatchRuntime(long matchingId, SwarmGrowthOfferIdSequence growthOfferIds)
+    {
+        MatchingId = matchingId;
+        GrowthOffers = new SwarmGrowthOfferStore();
+        GrowthOfferCoordinator = new SwarmGrowthOfferCoordinator(
+            matchingId,
+            GrowthOffers,
+            growthOfferIds);
+    }
+
+    public long MatchingId { get; }
+    public SwarmTrailCombatState TrailCombat { get; } = new();
+    public SwarmGrowthOfferStore GrowthOffers { get; }
+    public SwarmGrowthOfferCoordinator GrowthOfferCoordinator { get; }
+    public SwarmBotTacticalState BotTactics { get; } = new();
+    public SwarmMatchPacingState Pacing { get; } = new();
+}
+
+/// <summary>
+///     Process-local index for match-owned Swarm runtimes. Removal drops the complete aggregate so
+///     a match cannot leak one forgotten collection into the next match using the same process.
+/// </summary>
+public sealed class SwarmMatchRuntimeStore
+{
+    private readonly ConcurrentDictionary<long, SwarmMatchRuntime> _runtimes = new();
+    private readonly SwarmGrowthOfferIdSequence _growthOfferIds = new();
+
+    public int Count => _runtimes.Count;
+
+    public SwarmMatchRuntime GetOrCreate(long matchingId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
+        return _runtimes.GetOrAdd(
+            matchingId,
+            static (id, growthOfferIds) => new SwarmMatchRuntime(id, growthOfferIds),
+            _growthOfferIds);
+    }
+
+    public bool TryGet(
+        long matchingId,
+        [NotNullWhen(true)] out SwarmMatchRuntime? runtime) =>
+        _runtimes.TryGetValue(matchingId, out runtime);
+
+    public bool Remove(long matchingId) => _runtimes.TryRemove(matchingId, out _);
+}
 
 /// <summary>
 ///     반격 보호 창 (#227 7단계): 절단자–피해자 <b>쌍</b>으로 연다. 같은 키가 다시 열리면
@@ -78,25 +131,6 @@ public sealed class SwarmTrailCombatState
         WaveBombNextDropAtUtc = new();
     public readonly List<(long MatchingId, long OwnerId, AreaType Area, Vector3f Position, int Damage,
         float Radius, int SourceItemId, DateTime ExplodeAtUtc)> PendingWaveBombs = new();
-
-    public void RemoveMatchingState(long matchingId)
-    {
-        RemoveWhere(OrbTrails, key => key.MatchingId == matchingId);
-        RemoveWhere(TrailLastTickPositions, key => key.MatchingId == matchingId);
-        RemoveWhere(OrbCutLatches, key => key.MatchingId == matchingId);
-        RemoveWhere(CutRetaliationWindows, key => key.MatchingId == matchingId);
-        RemoveWhere(OrbCutCracks, key => key.MatchingId == matchingId);
-        RemoveWhere(OrbDurabilityBonus, key => key.MatchingId == matchingId);
-        RemoveWhere(WaveBombNextDropAtUtc, key => key.MatchingId == matchingId);
-        PendingWaveBombs.RemoveAll(bomb => bomb.MatchingId == matchingId);
-    }
-
-    internal static void RemoveWhere<TKey, TValue>(
-        Dictionary<TKey, TValue> map, Func<TKey, bool> predicate) where TKey : notnull
-    {
-        foreach (var key in map.Keys.Where(predicate).ToList())
-            map.Remove(key);
-    }
 }
 
 /// <summary>성장 카드 3택 오퍼 상태 (#226 단계 C).</summary>
@@ -105,14 +139,6 @@ public sealed class SwarmGrowthOfferStore
     public readonly Dictionary<(long MatchingId, long PlayerId), SwarmGrowthOfferState> Offers = new();
     public readonly Dictionary<(long MatchingId, long PlayerId), int> PreviewCost = new();
     public readonly Dictionary<(long MatchingId, long PlayerId), DateTime> OfferResentAtUtc = new();
-    public int NextOfferId = 1;
-
-    public void RemoveMatchingState(long matchingId)
-    {
-        SwarmTrailCombatState.RemoveWhere(Offers, key => key.MatchingId == matchingId);
-        SwarmTrailCombatState.RemoveWhere(PreviewCost, key => key.MatchingId == matchingId);
-        SwarmTrailCombatState.RemoveWhere(OfferResentAtUtc, key => key.MatchingId == matchingId);
-    }
 }
 
 /// <summary>봇 전술 상태 — 도주·부상·구역 기억·캠프 순례·회복 페이싱.</summary>
@@ -136,18 +162,6 @@ public sealed class SwarmBotTacticalState
     // 봇 오염 자연 회복: 마지막 피격 후 유예가 지나면 초당 일정량 회복한다.
     public readonly Dictionary<(long MatchingId, long PlayerId), DateTime> LastDamagedAtUtc = new();
     public readonly Dictionary<(long MatchingId, long PlayerId), DateTime> NextRecoveryAtUtc = new();
-
-    public void RemoveMatchingState(long matchingId)
-    {
-        SwarmTrailCombatState.RemoveWhere(AreaMemory, key => key.MatchingId == matchingId);
-        FleeDirective.RemoveWhere(key => key.MatchingId == matchingId);
-        SwarmTrailCombatState.RemoveWhere(LastTrailCutAtUtc, key => key.MatchingId == matchingId);
-        Wounded.RemoveWhere(key => key.MatchingId == matchingId);
-        SwarmTrailCombatState.RemoveWhere(ChaseLogThrottle, key => key.MatchingId == matchingId);
-        SwarmTrailCombatState.RemoveWhere(CampSkipUntilUtc, key => key.MatchingId == matchingId);
-        SwarmTrailCombatState.RemoveWhere(LastDamagedAtUtc, key => key.MatchingId == matchingId);
-        SwarmTrailCombatState.RemoveWhere(NextRecoveryAtUtc, key => key.MatchingId == matchingId);
-    }
 }
 
 /// <summary>매치 페이싱·피격 대기열·포위·계측 서명·샌드박스 등 잡화 상태.</summary>
@@ -178,25 +192,4 @@ public sealed class SwarmMatchPacingState
     // 개발용 절단 더미 샌드박스 (#226 실험장).
     public readonly HashSet<long> CutDummyAutoSetupDone = new();
     public readonly Dictionary<(long MatchingId, long PlayerId), DateTime> CutDummyRefillAtUtc = new();
-
-    public void RemoveMatchingState(long matchingId)
-    {
-        StartingOrbGrantedPlayers.RemoveWhere(key => key.MatchingId == matchingId);
-        SwarmTrailCombatState.RemoveWhere(PvpCorruptionCarry, key => key.MatchingId == matchingId);
-        SwarmTrailCombatState.RemoveWhere(MovementSamples, key => key.MatchingId == matchingId);
-        SwarmTrailCombatState.RemoveWhere(FrontOrbHp, key => key.MatchingId == matchingId);
-        PendingMonsterHits.RemoveAll(hit => hit.MatchingId == matchingId);
-        PendingPvpHits.RemoveAll(hit => hit.MatchingId == matchingId);
-        AnchorOrphanCount.Remove(matchingId);
-        AnchorProbeAtUtc.Remove(matchingId);
-        JamRankingsSignature.Remove(matchingId);
-        TimeoutEndedMatchings.Remove(matchingId);
-        MatchFallbackAnchorUtc.Remove(matchingId);
-        ContactProbeAtUtc.Remove(matchingId);
-        FieldStateAnnounced.Remove(matchingId);
-        SwarmTrailCombatState.RemoveWhere(EncircleCandidateSinceUtc, key => key.MatchingId == matchingId);
-        SwarmTrailCombatState.RemoveWhere(EncircleCooldownUtc, key => key.MatchingId == matchingId);
-        CutDummyAutoSetupDone.Remove(matchingId);
-        SwarmTrailCombatState.RemoveWhere(CutDummyRefillAtUtc, key => key.MatchingId == matchingId);
-    }
 }

@@ -58,11 +58,8 @@ public partial class GameServer(
     private readonly GroundItemManager _groundItemManager = new();
     private readonly SwarmMonsterDirector _swarmMonsterDirector = new();
 
-    // #294 — SwarmArena 파셜에 산개돼 있던 매치 상태 딕셔너리 37개의 새 집 (Services/SwarmArenaStates.cs).
-    private readonly SwarmTrailCombatState _swarmTrailCombat = new();
-    private readonly SwarmGrowthOfferStore _swarmGrowthOfferStore = new();
-    private readonly SwarmBotTacticalState _swarmBotTactics = new();
-    private readonly SwarmMatchPacingState _swarmMatchPacing = new();
+    // #294 후속 — Swarm 상태 홀더는 matchingId 소유 런타임 아래에서 함께 생성·제거한다.
+    private readonly SwarmMatchRuntimeStore _swarmMatchRuntimes = new();
     private readonly SummonStoneManager _summonStoneManager = new();
     private readonly MatchRosterManager _matchRosterManager = new(logger);
     private AreaClosureManager _areaClosureManager = null!;
@@ -132,6 +129,13 @@ public partial class GameServer(
         public bool OwnerReleaseCompleted { get; set; }
         public TaskCompletionSource<bool>? Quiesced { get; set; }
     }
+
+    private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
+        _swarmMatchRuntimes.GetOrCreate(matchingId);
+
+    private bool IsSwarmFrontOrbDamaged(long matchingId, long playerId) =>
+        _swarmMatchRuntimes.TryGet(matchingId, out var runtime) &&
+        runtime.Pacing.FrontOrbHp.ContainsKey((matchingId, playerId));
 
     internal const int ResourceTickIntervalSeconds = 5;
     // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경

@@ -787,7 +787,7 @@ public partial class GameServer
                 return;
             corruptionBefore = bot.Corruption;
             bot.LastProximityAttackerPlayerId = ownerId;
-            _swarmBotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
+            GetSwarmMatchRuntime(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
             bot.LastDamagedAtUtc = DateTime.UtcNow;
             _gameEventLogManager.LogHit(
                 matchingId, ownerId, bot.PlayerId, weaponItemId, shock,
