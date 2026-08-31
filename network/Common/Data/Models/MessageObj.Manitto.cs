@@ -169,29 +169,6 @@ namespace network.common.data.models
         [Key("isResultEnd")] public bool IsResultEnd { get; set; } = true;
     }
 
-    /// <summary>
-    ///     다국어 텍스트 args의 타입. 클라가 enum 값을 다국어 라벨로 변환할 수 있게 한다.
-    /// </summary>
-    public enum TextArgType : byte
-    {
-        RAW_STRING = 0,
-        INT_NUMBER = 1,
-        AREA_TYPE = 2,    // IntValue를 AreaType으로 캐스팅 → GameAreaNameData 룩업
-        JOB_TITLE = 3,
-        ITEM_NAME = 4
-    }
-
-    /// <summary>
-    ///     system_text.csv textId 포맷 인자. 서버는 enum 값을 그대로 보내고 클라가 현재 언어로 변환.
-    /// </summary>
-    [MessagePackObject]
-    public class TextArg : IMessagePackObject
-    {
-        [Key("type")] public TextArgType Type { get; set; }
-        [Key("intValue")] public int IntValue { get; set; }
-        [Key("stringValue")] public string StringValue { get; set; }
-    }
-
     // ===== 게임 결과 =====
 
     [MessagePackObject]

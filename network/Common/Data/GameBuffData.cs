@@ -25,16 +25,6 @@ namespace network.common.data
 
         private static readonly Dictionary<int, BuffInfoData> _buffs = new();
 
-        public static int GetPersonaBuffId(PersonaType persona) => persona switch
-        {
-            PersonaType.SecretCollector => PersonaSecretCollectorBuffId,
-            PersonaType.Coward => PersonaCowardBuffId,
-            PersonaType.GuardianAngel => PersonaGuardianAngelBuffId,
-            PersonaType.PhysicalSolver => PersonaPhysicalSolverBuffId,
-            PersonaType.Nocturnal => PersonaNocturnalBuffId,
-            _ => 0
-        };
-
         public static int GetDefaultPassiveBuffValuePercent(int buffId)
         {
             return buffId is >= PersonaSecretCollectorBuffId and <= PersonaNocturnalBuffId
@@ -70,21 +60,6 @@ namespace network.common.data
             }
 
             LogManager.WriteDebugLog($"Total {_buffs.Count} buffs validated successfully!");
-        }
-
-        public static bool IsPeriodicBuff(int buffId)
-        {
-            return Get(buffId).Type == BuffType.PERIODIC;
-        }
-
-        public static bool IsInstantBuff(int buffId)
-        {
-            return Get(buffId).Type == BuffType.INSTANT;
-        }
-
-        public static bool IsConditionBuff(int buffId)
-        {
-            return Get(buffId).SubType == BuffSubType.CONDITION_ADD;
         }
     }
 

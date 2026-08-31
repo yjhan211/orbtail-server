@@ -301,11 +301,6 @@ namespace network.common.data
             return Math.Max(0.08f, Math.Max(0f, distance) / HopeProjectileSpeed);
         }
 
-        public static float GetPvpProjectileHitRadius(int itemId, float projectileWidth)
-        {
-            return Math.Max(0.55f, Math.Max(0f, projectileWidth) + ProjectileTargetBodyRadius);
-        }
-
         // #219 M2 공격 문법 통일: 색별 공속·데미지 차이 퇴역 — 색은 시각과 스탯 버프만.
         public static float GetBaseAttackIntervalMultiplier(OrbColor color) => 1f;
 

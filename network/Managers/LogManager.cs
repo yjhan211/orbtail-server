@@ -52,32 +52,4 @@ public class LogManager : ILogger
     {
         _staticLogger?.LogError(exception, exception.Message);
     }
-
-    public void WriteDebugLogWithStackTrace(string message, bool includeStackTrace = false)
-    {
-        var logBuilder = new StringBuilder();
-        logBuilder.Append(message);
-        if (includeStackTrace)
-        {
-            var stackTrace = new StackTrace(true);
-            logBuilder.AppendLine("\nStack Trace:");
-            for (int i = 1; i < stackTrace.FrameCount; i++)
-            {
-                var frame = stackTrace.GetFrame(i);
-                if (frame == null) continue;
-                var method = frame.GetMethod();
-                if (method == null) continue;
-                string fileName = frame.GetFileName() ?? "Unknown File";
-                int lineNumber = frame.GetFileLineNumber();
-                string className = method.DeclaringType?.FullName ?? "Unknown Class";
-                string methodName = method.Name;
-                if (lineNumber > 0)
-                    logBuilder.AppendLine($"   at {className}.{methodName} in {fileName}:line {lineNumber}");
-                else
-                    logBuilder.AppendLine($"   at {className}.{methodName}");
-            }
-        }
-
-        _logger.LogDebug(logBuilder.ToString());
-    }
 }

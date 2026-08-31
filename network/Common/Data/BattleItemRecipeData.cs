@@ -59,16 +59,6 @@ namespace network.common.data
         public static List<BattleItemRecipe> GetAllRecipes() =>
             _recipesById.Values.OrderBy(recipe => recipe.RecipeId).ToList();
 
-        public static List<BattleItemRecipe> GetRecipesByOutput(int outputItemId) =>
-            _recipesByOutput.TryGetValue(outputItemId, out var recipes)
-                ? recipes.OrderBy(recipe => recipe.RecipeId).ToList()
-                : new List<BattleItemRecipe>();
-
-        public static List<BattleItemRecipe> GetRecipesByInput(int inputItemId) =>
-            _recipesByInput.TryGetValue(inputItemId, out var recipes)
-                ? recipes.OrderBy(recipe => recipe.RecipeId).ToList()
-                : new List<BattleItemRecipe>();
-
         public static bool IsRecipeInputItem(int itemId) =>
             _recipesByInput.ContainsKey(itemId);
 

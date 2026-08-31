@@ -21,8 +21,6 @@ namespace network.common.data.models
             State = PlayerState.NONE;
             ObjectInfo = new GameObjectInfo();
             InventoryInfo = new InventoryInfo();
-            QuestDiary = new QuestDiary();
-            MailBox = new MailBox();
             LabId = 0;
             LabName = "";
             Gold = 0;
@@ -52,8 +50,6 @@ namespace network.common.data.models
             State = PlayerState.NONE;
             ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.Camp, 0, initCell);
             InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, PlayerId);
-            QuestDiary = new QuestDiary(PlayerId);
-            MailBox = new MailBox(PlayerId);
             LabId = 0;
             LabName = "";
             Gold = 1000;
@@ -69,8 +65,6 @@ namespace network.common.data.models
 
         [IgnoreMember] public GameObjectInfo ObjectInfo { get; set; }
         [IgnoreMember] public InventoryInfo InventoryInfo { get; set; }
-        [IgnoreMember] public QuestDiary QuestDiary { get; set; }
-        [IgnoreMember] public MailBox MailBox { get; set; }
 
         [Key("playerId")] public long PlayerId { get; set; }
 

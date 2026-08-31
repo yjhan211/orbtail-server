@@ -334,21 +334,6 @@ namespace network.common
                 ? SwarmConfigData.GetInt("SWARM_GROWTH_REBUILD_COST", 3)
                 : Math.Min(SWARM_GROWTH_COST_CAP, GetSwarmGrowthBaseCost(growthSuccessCount));
 
-        /// <summary>
-        ///     시작 지급 소환석 (2026-08-16 유저 결정). 오브를 들려 주는 대신, 오브 3개를 살 수
-        ///     있는 만큼의 소환석으로 시작한다 — 첫 성장을 플레이어가 직접 고르게 해서 판이
-        ///     선택으로 열리고, 소환·공격강화·방어강화 중 무엇을 먼저 세울지가 갈린다.
-        ///     같은 곡선으로 계산하므로 비용 곡선을 바꾸면 지급량이 따라온다.
-        ///     현재 값 = 3(0오브 보장가) + 7(N=1) + 9(N=2) = 19.
-        /// </summary>
-        public static int GetSwarmStartingStoneGrant()
-        {
-            int total = 0;
-            for (int purchased = 0; purchased < SWARM_STARTING_ORB_COUNT; purchased++)
-                total += GetSwarmGrowthCardCost(purchased, purchased);
-            return total;
-        }
-
         /// <summary>궤도 오브 1개당 개봉 비용 가산 — SB "스쿼드 인원수 비례 상자 코인".</summary>
         public static int SWARM_EXPLORE_COST_PER_ORB => SwarmConfigData.GetInt("SWARM_EXPLORE_COST_PER_ORB", 2);
 

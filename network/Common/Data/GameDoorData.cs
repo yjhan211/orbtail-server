@@ -59,38 +59,6 @@ namespace network.common.data
         }
 
         /// <summary>
-        ///     특정 영역에 문이 있는지 확인
-        /// </summary>
-        public static bool HasDoorsForArea(AreaType areaType)
-        {
-            foreach (var door in _doors.Values)
-            {
-                if (door.AreaType == areaType)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
-        ///     특정 셀 위치에 있는 문 가져오기
-        /// </summary>
-        public static DoorInfoData? GetAtCell(int cellX, int cellY)
-        {
-            foreach (var door in _doors.Values)
-            {
-                if ((int)door.PositionX == cellX && (int)door.PositionY == cellY)
-                {
-                    return door;
-                }
-            }
-
-            return null;
-        }
-
-        /// <summary>
         /// Finds the door that permits a direct movement transition between two areas.
         /// A transition is valid only near a door assigned to either side of the boundary.
         /// </summary>
@@ -129,12 +97,6 @@ namespace network.common.data
             return nearestDoor;
         }
 
-        public static bool IsOutsidePassageRadius(DoorInfoData door, Cell cell)
-        {
-            float passageRadius = GetPassageRadius(door);
-            return GetDistanceSquared(door, cell) > passageRadius * passageRadius;
-        }
-
         private static float GetPassageRadius(DoorInfoData door)
         {
             // 좁은 통과 반경 예외는 구 School 교실·창고 전용이었다 (#310에서 구역과 함께 제거).
@@ -147,23 +109,6 @@ namespace network.common.data
             float dx = cell.X - door.PositionX;
             float dy = cell.Y - door.PositionY;
             return dx * dx + dy * dy;
-        }
-
-        /// <summary>
-        ///     특정 영역의 문 가져오기 (area_type = 해당 문이 속한 "안쪽" 영역)
-        ///     is_initially_open=0인 잠금 가능한 문만 반환
-        /// </summary>
-        public static DoorInfoData? GetBlockingDoor(AreaType areaType)
-        {
-            foreach (var door in _doors.Values)
-            {
-                if (door.AreaType == areaType && !door.IsInitiallyOpen)
-                {
-                    return door;
-                }
-            }
-
-            return null;
         }
     }
 

@@ -10,15 +10,4 @@ public static class MapHelper
     {
         _totalServerNum = totalServerNum;
     }
-
-    public static string CreatePartKey(MapId mapId, long mapSubId)
-    {
-        return $"{mapId}|{mapSubId}";
-    }
-
-    public static int GetManageServerId(long mapSubId)
-    {
-        int result = (int)((mapSubId - 1) % _totalServerNum) + 1;
-        return result;
-    }
 }
