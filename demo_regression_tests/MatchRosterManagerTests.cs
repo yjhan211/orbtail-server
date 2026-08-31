@@ -135,7 +135,5 @@ public sealed class MatchRosterManagerTests
     {
         PlayerId = playerId,
         TargetPlayerId = targetPlayerId,
-        MyJobTitle = JobTitle.BROADCAST_MEMBER,
-        TargetJobTitle = JobTitle.BROADCAST_MEMBER
     };
 }

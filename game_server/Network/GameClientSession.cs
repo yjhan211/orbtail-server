@@ -64,7 +64,6 @@ public partial class GameClientSession : SessionBase
     internal bool IsSleeping => _isSleeping;
     private int _swarmSleepGrantedTicks;
     private DateTime _lastHeartbeatTime = DateTime.UtcNow;
-    private DateTime _lastInteractRejectTime = DateTime.MinValue;
     private int _admissionCompleted;
     private int _admissionFailureReported;
     private int _matchingLifecycleHandledExternally;
@@ -281,11 +280,8 @@ public partial class GameClientSession : SessionBase
             OrbOrbitPhaseDegrees, MathF.Sqrt(dx * dx + dy * dy));
     }
 
-    // 마니또 체인 정보
+    // 미니맵 타깃 마커 대상 (마니또 체인에서 유래 — 현행 TargetLocation 송신이 사용)
     public long TargetPlayerId { get; private set; }
-    public long PresenceBookmarkPlayerId { get; private set; }
-    private JobTitle MyJobTitle { get; set; }
-    private JobTitle TargetJobTitle { get; set; }
     public PlayerMatchStatus PlayerMatchStatus { get; private set; } = PlayerMatchStatus.ACTIVE;
 
     // 이탈 페널티 면제 플래그
@@ -304,10 +300,6 @@ public partial class GameClientSession : SessionBase
     // 인게임 스탯 (게임 종료 시 초기화)
     private int Stamina { get; set; } = InitialStamina;
     private int Corruption { get; set; } = InitialCorruption;
-
-    // 게임 타이머 설정 (Config에서 참조)
-    private static int GameDurationMinutes => Config.GAME_DURATION_MINUTES;
-    private static int GameDurationSeconds => Config.GAME_DURATION_SECONDS;
 
     protected override void InitializeProtocolHandlers()
     {

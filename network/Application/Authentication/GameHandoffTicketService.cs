@@ -124,10 +124,6 @@ public sealed class GameHandoffTicketService(
             if (entry == null ||
                 entry.PlayerId <= 0 ||
                 entry.TargetPlayerId == 0 ||
-                entry.MyJobTitle == global::network.common.JobTitle.NONE ||
-                entry.TargetJobTitle == global::network.common.JobTitle.NONE ||
-                !Enum.IsDefined(entry.MyJobTitle) ||
-                !Enum.IsDefined(entry.TargetJobTitle) ||
                 !playerIds.Add(entry.PlayerId))
             {
                 error = "A game handoff roster contains an invalid or duplicate entry.";
@@ -139,9 +135,7 @@ public sealed class GameHandoffTicketService(
         }
 
         if (ownerEntry == null ||
-            ownerEntry.TargetPlayerId != context.TargetPlayerId ||
-            ownerEntry.MyJobTitle != context.MyJobTitle ||
-            ownerEntry.TargetJobTitle != context.TargetJobTitle)
+            ownerEntry.TargetPlayerId != context.TargetPlayerId)
         {
             error = "A game handoff roster must contain a matching ticket owner entry.";
             return false;

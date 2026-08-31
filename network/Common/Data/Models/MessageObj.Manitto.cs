@@ -249,7 +249,6 @@ namespace network.common.data.models
     {
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("name")] public string Name { get; set; } = "";
-        [Key("jobTitle")] public JobTitle JobTitle { get; set; }
         [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
         [Key("manittoPlayerId")] public long WatcherPlayerId { get; set; }
         [Key("eliminationReason")] public EliminationReason EliminationReason { get; set; }

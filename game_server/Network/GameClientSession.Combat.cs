@@ -91,12 +91,7 @@ public partial class GameClientSession
         if (!isExploreState)
             CancelPendingRngCollect($"PlayerState:{msg.State}");
 
-        CurrentState = isExploreState
-            ? PlayerState.EXPLORE_1
-            : PlayerState.IDLE;
-        _exploreMoveGraceUntil = CurrentState == PlayerState.EXPLORE_1
-            ? DateTime.UtcNow + ExploreMoveGracePeriod
-            : DateTime.MinValue;
+        SetMovementLockState(isExploreState);
 
 
         // 같은 Area의 다른 플레이어들에게 상태 브로드캐스트
@@ -114,6 +109,15 @@ public partial class GameClientSession
 
         // SLEEP 해제 시 주기적 버프 타이머 정리
         if (!_isSleeping) StopAllPeriodicBuffs();
+    }
+
+    /// <summary>이동 잠금 상태 갱신 — EXPLORE_1만 잠그고, 진입 직후 짧은 유예로 이동 패킷 경합을 흡수한다.</summary>
+    private void SetMovementLockState(bool exploring)
+    {
+        CurrentState = exploring ? PlayerState.EXPLORE_1 : PlayerState.IDLE;
+        _exploreMoveGraceUntil = exploring
+            ? DateTime.UtcNow + ExploreMoveGracePeriod
+            : DateTime.MinValue;
     }
 
     private async Task HandleRestStateRequest()

@@ -31,18 +31,13 @@ public class MatchRosterManager
 
         if (state.Entries.TryGetValue(link.PlayerId, out var existing))
         {
-            if (existing.TargetPlayerId != link.TargetPlayerId
-                || existing.MyJobTitle != link.MyJobTitle
-                || existing.TargetJobTitle != link.TargetJobTitle)
+            if (existing.TargetPlayerId != link.TargetPlayerId)
             {
                 _logger.LogWarning(
-                    "마니또 체인 링크 갱신: MatchingId={MatchingId}, PlayerId={PlayerId}, Target {OldTarget}->{NewTarget}, Job {OldJob}->{NewJob}, TargetJob {OldTargetJob}->{NewTargetJob}",
-                    matchingId, link.PlayerId, existing.TargetPlayerId, link.TargetPlayerId,
-                    existing.MyJobTitle, link.MyJobTitle, existing.TargetJobTitle, link.TargetJobTitle);
+                    "타깃 체인 링크 갱신: MatchingId={MatchingId}, PlayerId={PlayerId}, Target {OldTarget}->{NewTarget}",
+                    matchingId, link.PlayerId, existing.TargetPlayerId, link.TargetPlayerId);
 
                 existing.TargetPlayerId = link.TargetPlayerId;
-                existing.MyJobTitle = link.MyJobTitle;
-                existing.TargetJobTitle = link.TargetJobTitle;
                 existing.Status = link.Status;
                 existing.EliminationReason = link.EliminationReason;
                 existing.EliminatedAt = link.EliminatedAt;
@@ -108,15 +103,6 @@ public class MatchRosterManager
     {
         if (!_states.TryGetValue(matchingId, out var state)) return null;
         return state.Entries.Values.FirstOrDefault(l => l.TargetPlayerId == playerId);
-    }
-
-    /// <summary>
-    ///     해당 매칭에 등록된 모든 플레이어/봇의 직책 목록 (#87 — 폐쇄 셔플 우선순위 결정용).
-    /// </summary>
-    public List<JobTitle> GetMatchingJobs(long matchingId)
-    {
-        if (!_states.TryGetValue(matchingId, out var state)) return new();
-        return state.Entries.Values.Select(l => l.MyJobTitle).Distinct().ToList();
     }
 
     private static bool IsAliveLink(RosterEntry? link)
@@ -185,7 +171,7 @@ public class MatchRosterManager
     ///     게임 결과 데이터 생성 (체인 전체 공개)
     /// </summary>
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.Synchronized)]
-    public List<(long playerId, JobTitle job, long targetId, long watcherId,
+    public List<(long playerId, long targetId, long watcherId,
         EliminationReason reason, PlayerMatchStatus finalStatus, DateTime? eliminatedAt,
         long attackerPlayerId, AreaType eliminatedArea, bool isAreaClosureElimination,
         bool isOvertimeElimination, int eliminationRank, int finalOrbTier)> BuildGameResult(long matchingId)
@@ -194,14 +180,14 @@ public class MatchRosterManager
             return new();
 
         var links = state.Entries.Values.ToList();
-        var result = new List<(long, JobTitle, long, long, EliminationReason, PlayerMatchStatus, DateTime?, long,
+        var result = new List<(long, long, long, EliminationReason, PlayerMatchStatus, DateTime?, long,
             AreaType, bool, bool, int, int)>();
 
         foreach (var link in links)
         {
-            // 이 플레이어의 마니또 = 이 플레이어를 타겟으로 가진 링크
+            // 이 플레이어의 감시자 = 이 플레이어를 타겟으로 가진 링크
             long watcherId = links.FirstOrDefault(l => l.TargetPlayerId == link.PlayerId)?.PlayerId ?? 0;
-            result.Add((link.PlayerId, link.MyJobTitle, link.TargetPlayerId, watcherId,
+            result.Add((link.PlayerId, link.TargetPlayerId, watcherId,
                 link.EliminationReason, link.Status, link.EliminatedAt, link.AttackerPlayerId,
                 link.EliminatedArea, link.IsAreaClosureElimination, link.IsOvertimeElimination,
                 link.EliminationRank, link.FinalOrbTier));
@@ -235,9 +221,7 @@ public class MatchRosterState
 public class RosterEntry
 {
     public long PlayerId { get; set; }
-    public long TargetPlayerId { get; set; }  // 내가 돌봐야 하는 ▓▓
-    public JobTitle MyJobTitle { get; set; }
-    public JobTitle TargetJobTitle { get; set; }
+    public long TargetPlayerId { get; set; }  // 미니맵 타깃 마커 대상
     public PlayerMatchStatus Status { get; set; } = PlayerMatchStatus.ACTIVE;
     public EliminationReason EliminationReason { get; set; } = EliminationReason.NONE;
     public DateTime? EliminatedAt { get; set; }

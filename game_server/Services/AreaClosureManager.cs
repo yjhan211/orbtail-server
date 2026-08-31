@@ -102,16 +102,13 @@ public class AreaClosureManager
     }
 
     /// <summary>
-    /// 매치별 고정 P0 웨이브를 만든다. jobsInMatching은 기존 호출 호환을 위해 유지한다.
+    /// 매치별 고정 P0 웨이브를 만든다.
     /// </summary>
     public MatchingClosureState InitializeMatching(
         long matchingId,
-        List<JobTitle>? jobsInMatching = null,
         IEnumerable<AreaType>? initiallyOpenAreas = null,
         IReadOnlyList<ClosureWaveDefinition>? wavesOverride = null)
     {
-        _ = jobsInMatching;
-
         // 동일 매치의 뒤늦은 접속(재접속 포함)이 폐쇄 시계와 누적 폐쇄 상태를
         // 처음부터 다시 만들면 안 된다. 최초 접속만 상태를 생성한다.
         if (_states.TryGetValue(matchingId, out var existingState))

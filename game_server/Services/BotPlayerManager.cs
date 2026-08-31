@@ -124,8 +124,6 @@ public partial class BotPlayerManager
             {
                 PlayerId = info.PlayerId,
                 TargetPlayerId = info.TargetPlayerId,
-                MyJobTitle = info.MyJobTitle,
-                TargetJobTitle = info.TargetJobTitle,
                 Name = $"Player{Math.Abs(info.PlayerId)}",
                 CurrentArea = startArea,
                 Cell = startCell,
@@ -152,7 +150,7 @@ public partial class BotPlayerManager
         _logger.LogInformation(
             "Bots registered: Count={Count}, MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]",
             bots.Count, matchingId, mapId,
-            string.Join(",", bots.Select(b => $"{b.PlayerId}({b.MyJobTitle}/{b.Persona}@{b.CurrentArea})")));
+            string.Join(",", bots.Select(b => $"{b.PlayerId}({b.Persona}@{b.CurrentArea})")));
     }
 
     private static bool IsAllowedAssignedStartArea(MapId mapId, AreaType area)
@@ -293,8 +291,6 @@ public class BotPlayerState
     /// <summary>절단 실험 더미 (#226): AI 정지·불사·오브 자동 리필 — 어드민이 지정한다.</summary>
     public bool IsSwarmCutDummy { get; set; }
 
-    public JobTitle MyJobTitle { get; set; }
-    public JobTitle TargetJobTitle { get; set; }
     public AreaType CurrentArea { get; set; }
     public int Stamina { get; set; } = 100;
     public int Corruption { get; set; } = 0;

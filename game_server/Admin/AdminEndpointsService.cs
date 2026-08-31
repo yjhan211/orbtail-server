@@ -130,17 +130,6 @@ public static class AdminEndpoints
             return Results.Ok(new { message = "폐쇄 config 변경 완료. 다음 매칭부터 적용됩니다.", config = updated });
         });
 
-        // POST /admin/matching-config/job-pool — 직책 풀 config 변경
-        app.MapPost("/admin/matching-config/job-pool", async (SetJobPoolConfigRequest req) =>
-        {
-            await matchingConfig.SetJobPoolConfigAsync(req.Jobs);
-            var snapshot = await matchingConfig.GetSnapshotAsync();
-            string message = req.Jobs == null
-                ? "직책 풀 무작위 복원 완료. 다음 매칭부터 적용됩니다."
-                : $"직책 풀 강제 지정 완료 ({req.Jobs.Count}개). 다음 매칭부터 적용됩니다.";
-            return Results.Ok(new { message, config = snapshot });
-        });
-
         // GET /admin/health — 어드민 서비스 헬스
         app.MapGet("/admin/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
     }

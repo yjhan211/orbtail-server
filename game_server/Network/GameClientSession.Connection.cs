@@ -48,8 +48,6 @@ public partial class GameClientSession
             CurrentMapId = handoff.MapId;
             CurrentMapSubId = handoff.MapSubId;
             TargetPlayerId = handoff.TargetPlayerId;
-            MyJobTitle = handoff.MyJobTitle;
-            TargetJobTitle = handoff.TargetJobTitle;
             SetActiveBuffIds(handoff.ActiveBuffIds);
             Volatile.Write(
                 ref _handoffHumanPlayerIds,
@@ -91,20 +89,16 @@ public partial class GameClientSession
             disconnectSupersededSession?.Invoke();
 
             Logger.LogInformation(
-                "Manitto chain restored: PlayerId={PlayerId}, Target={Target}, MyJob={MyJob}, TargetJob={TargetJob}",
+                "Target chain restored: PlayerId={PlayerId}, Target={Target}",
                 PlayerId,
-                TargetPlayerId,
-                MyJobTitle,
-                TargetJobTitle);
+                TargetPlayerId);
 
             foreach (var rosterEntry in handoff.HumanRoster)
             {
                 _matchRosterManager.RegisterEntry(matchingId, new RosterEntry
                 {
                     PlayerId = rosterEntry.PlayerId,
-                    TargetPlayerId = rosterEntry.TargetPlayerId,
-                    MyJobTitle = rosterEntry.MyJobTitle,
-                    TargetJobTitle = rosterEntry.TargetJobTitle
+                    TargetPlayerId = rosterEntry.TargetPlayerId
                 });
             }
 
@@ -129,7 +123,6 @@ public partial class GameClientSession
                 }
 
             // Initialize match-scoped area state once; manager implementations are idempotent.
-            var jobPool = _matchRosterManager.GetMatchingJobs(matchingId);
             _areaItemStockManager.InitializeMatching(matchingId);
             _groundItemManager.InitializeMatching(matchingId);
             int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
@@ -704,10 +697,6 @@ public partial class GameClientSession
                 if (bot == null ||
                     bot.PlayerId >= 0 ||
                     bot.TargetPlayerId == 0 ||
-                    bot.MyJobTitle == JobTitle.NONE ||
-                    bot.TargetJobTitle == JobTitle.NONE ||
-                    !Enum.IsDefined(bot.MyJobTitle) ||
-                    !Enum.IsDefined(bot.TargetJobTitle) ||
                     bot.SpawnCell == null ||
                     (bot.SpawnCell.X == 0 && bot.SpawnCell.Y == 0) ||
                     !botPlayerIds.Add(bot.PlayerId))
@@ -722,18 +711,14 @@ public partial class GameClientSession
 
             _botPlayerManager.RegisterBots(matchingId, mapId, botInfoList);
 
-            // 봇의 마니또 체인과 미션 상태를 매치 로스터에 등록한다.
+            // 봇의 타깃 체인을 매치 로스터에 등록한다.
             foreach (var bot in botInfoList)
             {
                 _matchRosterManager.RegisterEntry(matchingId, new RosterEntry
                 {
                     PlayerId = bot.PlayerId,
-                    TargetPlayerId = bot.TargetPlayerId,
-                    MyJobTitle = bot.MyJobTitle,
-                    TargetJobTitle = bot.TargetJobTitle
+                    TargetPlayerId = bot.TargetPlayerId
                 });
-
-                // 봇의 초기 상태는 서버가 보유한 직업과 타깃 정보에서 복원한다.
             }
         }
         catch (Exception ex)
@@ -827,46 +812,6 @@ public partial class GameClientSession
                 throw;
             }
         }
-    }
-
-    private List<long> GetAliveMatchPlayerIds(long matchingId)
-    {
-        var result = new List<long>();
-
-        foreach (var session in _getSessionsByInstance(CurrentMapId, matchingId))
-        {
-            if (!session.PlayerId.HasValue || session.IsEliminated ||
-                session.PlayerMatchStatus == PlayerMatchStatus.SPECTATING)
-                continue;
-
-            result.Add(session.PlayerId.Value);
-        }
-
-        foreach (var bot in _botPlayerManager.GetBots(matchingId))
-        {
-            if (bot.IsEliminated || bot.PlayerMatchStatus == PlayerMatchStatus.SPECTATING)
-                continue;
-
-            result.Add(bot.PlayerId);
-        }
-
-        return result
-            .Distinct()
-            .OrderBy(playerId => playerId)
-            .ToList();
-    }
-
-    private bool IsAliveChainPlayer(long matchingId, long playerId)
-    {
-        var link = _matchRosterManager.GetEntry(matchingId, playerId);
-        return IsAliveChainLink(link);
-    }
-
-    private static bool IsAliveChainLink(RosterEntry? link)
-    {
-        return link != null
-               && link.Status != PlayerMatchStatus.ELIMINATED
-               && link.Status != PlayerMatchStatus.SPECTATING;
     }
 
     /// <summary>

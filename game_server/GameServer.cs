@@ -2493,7 +2493,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         // 상한 = 매치 정원 (#223 10인 전환) — 스폰 포드 수와 일치.
         botCount = Math.Clamp(botCount, 2, Config.SWARM_PLAYERS_PER_MATCH);
         long matchingId = System.Threading.Interlocked.Increment(ref _adminBotOnlyMatchingIdSeed);
-        var jobs = BuildBotOnlyJobPool(botCount);
         var playerIds = Enumerable.Range(0, botCount)
             .Select(_ => System.Threading.Interlocked.Decrement(ref _adminBotOnlyPlayerIdSeed))
             .ToList();
@@ -2505,9 +2504,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             botInfoList.Add(new BotMatchingInfo
             {
                 PlayerId = playerIds[i],
-                TargetPlayerId = playerIds[targetIndex],
-                MyJobTitle = jobs[i],
-                TargetJobTitle = jobs[targetIndex]
+                TargetPlayerId = playerIds[targetIndex]
             });
         }
 
@@ -2538,9 +2535,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 _matchRosterManager.RegisterEntry(matchingId, new RosterEntry
                 {
                     PlayerId = bot.PlayerId,
-                    TargetPlayerId = bot.TargetPlayerId,
-                    MyJobTitle = bot.MyJobTitle,
-                    TargetJobTitle = bot.TargetJobTitle
+                    TargetPlayerId = bot.TargetPlayerId
                 });
             }
 
@@ -2559,24 +2554,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             matchingId, botCount, string.Join(",", playerIds));
 
         return GetInstanceSnapshot(matchingId);
-    }
-
-    private static List<JobTitle> BuildBotOnlyJobPool(int botCount)
-    {
-        var jobs = new List<JobTitle>
-        {
-            JobTitle.BROADCAST_MEMBER,
-            JobTitle.DISCIPLINE_MEMBER,
-            JobTitle.LIBRARY_COMMITTEE,
-            JobTitle.SPORTS_CAPTAIN,
-            JobTitle.SCIENCE_MEMBER,
-            JobTitle.CLEANING_MEMBER,
-            JobTitle.STUDENT_PRESIDENT,
-            JobTitle.HEALTH_MEMBER
-        };
-
-        // 정원(10)이 잡 풀(8)보다 클 수 있다 (#223 10인 전환) — 순환 배정.
-        return Enumerable.Range(0, botCount).Select(index => jobs[index % jobs.Count]).ToList();
     }
 
     private bool IsBotOnlyChainPlayerActive(long matchingId, long playerId)
