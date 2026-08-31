@@ -13,15 +13,17 @@ using network.infrastructure.scaling;
 using network.interfaces;
 using network.managers;
 using Serilog;
+using Serilog.Events;
 
 namespace game_server;
 
 internal static partial class Program
 {
+    private static bool _warnedPodNameParseFailure;
+
     public static async Task Main(string[] args)
     {
         await Host.CreateDefaultBuilder(args)
-            .ConfigureAppConfiguration(ConfigureApp)
             .UseSerilog(ConfigureSerilog)
             .ConfigureServices(ConfigureServices)
             .RunConsoleAsync();
@@ -29,25 +31,28 @@ internal static partial class Program
 
     private static int ExtractGameServerId(string podName)
     {
-        var match = MyRegex().Match(podName);
+        // 파드 이름 끝의 서수(0-based)를 1-based ID로 변환. 빈 값은 로컬 개발 경로라 폴백이 정상
+        if (string.IsNullOrEmpty(podName)) return 0;
+
+        var match = PodOrdinalRegex().Match(podName);
         if (match.Success && int.TryParse(match.Groups[1].Value, out int id)) return id + 1;
+
+        if (!_warnedPodNameParseFailure)
+        {
+            _warnedPodNameParseFailure = true;
+            Console.Error.WriteLine($"[WRN] gameServerId '{podName}'에서 파드 서수를 찾지 못해 serverId 0으로 폴백");
+        }
+
         return 0;
     }
 
-    private static void ConfigureApp(HostBuilderContext _, IConfigurationBuilder config)
-    {
-        config.AddEnvironmentVariables();
-    }
-
-    // UseSerilog가 로거의 DI 연결·호스트 종료 시 flush/dispose를 관리한다
     private static void ConfigureSerilog(HostBuilderContext hostingContext, LoggerConfiguration loggerConfiguration)
     {
-        ServerConfig serverConfig = CreateServerConfig(hostingContext.Configuration);
-
+        var serverConfig = CreateServerConfig(hostingContext.Configuration);
         loggerConfiguration
-            .MinimumLevel.Debug()
-            .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
-            .MinimumLevel.Override("Microsoft.Hosting.Lifetime", Serilog.Events.LogEventLevel.Information)
+            .MinimumLevel.Is(ResolveMinimumLevel(hostingContext.Configuration))
+            .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
+            .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
             .Enrich.WithProperty("serverType", serverConfig.ServerType)
             .Enrich.WithProperty("serverId", serverConfig.ServerId)
             .WriteTo.Console(
@@ -57,7 +62,7 @@ internal static partial class Program
 
     private static void ConfigureServices(HostBuilderContext hostContext, IServiceCollection services)
     {
-        ServerConfig serverConfig = CreateServerConfig(hostContext.Configuration);
+        var serverConfig = CreateServerConfig(hostContext.Configuration);
         serverConfig.Validate();
         services.AddSingleton<IServerConfig>(serverConfig);
         services.AddSingleton(serverConfig);
@@ -65,12 +70,9 @@ internal static partial class Program
         services.AddSingleton<INatsClientFactory, NatsClientFactory>();
         services.AddSingleton<ServerReadinessState>();
 
-        services.AddSingleton<LogManager>(sp =>
-            new LogManager(sp.GetRequiredService<ILogger<LogManager>>()
-            )
-        );
+        services.AddSingleton<LogManager>();
 
-        RedisConfiguration redisConfiguration = RedisConfigurationParser.Parse(hostContext.Configuration);
+        var redisConfiguration = RedisConfigurationParser.Parse(hostContext.Configuration);
         services.AddSingleton(redisConfiguration);
         services.AddSingleton<IRedisConnectionPool>(sp =>
         {
@@ -83,16 +85,24 @@ internal static partial class Program
             sp.GetRequiredService<IRedisConnectionPool>().GetRedLockFactory());
         services.AddSingleton<ICacheHelper, CacheHelper>();
         services.AddManittoAuthenticationBoundaries(hostContext.Configuration);
-        GameServerScalingOptions scalingOptions = CreateScalingOptions(hostContext.Configuration);
+
+        var scalingOptions = CreateScalingOptions(hostContext.Configuration);
         scalingOptions.Validate();
         services.AddSingleton(scalingOptions);
         services.AddSingleton<IGameServerRoutingStore, RedisGameServerRoutingStore>();
         services.AddSingleton<MatchingLifecycleOutboxStore>();
         services.AddSingleton<GameServerNodeLease>();
-        // GameServer를 싱글턴으로 등록하여 HealthCheckService에서 어드민 endpoint용으로 주입 가능
         services.AddSingleton<GameServer>();
         services.AddHostedService<HealthCheckService>();
         services.AddHostedService(sp => sp.GetRequiredService<GameServer>());
+    }
+
+    // logLevel 설정(예: Information)으로 재빌드 없이 최소 로그 레벨 조정. 미지정 시 기존 기본값 Debug
+    private static LogEventLevel ResolveMinimumLevel(IConfiguration configuration)
+    {
+        return Enum.TryParse(configuration["logLevel"], true, out LogEventLevel level)
+            ? level
+            : LogEventLevel.Debug;
     }
 
     private static ServerConfig CreateServerConfig(IConfiguration configuration)
@@ -132,5 +142,5 @@ internal static partial class Program
     }
 
     [GeneratedRegex(@"-(\d+)$")]
-    private static partial Regex MyRegex();
+    private static partial Regex PodOrdinalRegex();
 }
