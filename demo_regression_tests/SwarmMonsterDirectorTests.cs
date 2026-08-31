@@ -6,19 +6,19 @@ using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public class SwarmArenaManagerTests
+public class SwarmMonsterDirectorTests
 {
     private static readonly DateTime StartUtc =
         new(2026, 8, 6, 0, 0, 0, DateTimeKind.Utc);
 
-    public SwarmArenaManagerTests()
+    public SwarmMonsterDirectorTests()
     {
         GameDataHelper.SetBasePath(FindNetworkBasePath());
         GameDataHelper.Initialize();
         // 비주얼 확인용 임시 편성(고블린만)을 끄고 정규 편성을 검증한다.
-        SwarmArenaManager.GoblinOnlySpawnForVisualCheck = false;
+        SwarmMonsterDirector.GoblinOnlySpawnForVisualCheck = false;
         // 지역 공급(#226 단계 B)을 끄고 캠프 정규 동작을 검증한다. 공급 테스트는 개별로 켠다.
-        SwarmArenaManager.RegionSupplyModeEnabled = false;
+        SwarmMonsterDirector.RegionSupplyModeEnabled = false;
     }
 
     [Fact]
@@ -26,7 +26,7 @@ public class SwarmArenaManagerTests
     {
         // #229 4단계: 점유한 열린 구역마다 목표 수를 유지한다. 0초부터 1.5초마다 2마리씩
         // 보충하고, 목표에 닿으면 멈춘다. 전멸시키면 4초 휴지 뒤 보충이 재개된다.
-        SwarmArenaManager.RegionSupplyModeEnabled = true;
+        SwarmMonsterDirector.RegionSupplyModeEnabled = true;
         try
         {
             DateTime now = StartUtc.AddSeconds(0.25);
@@ -82,7 +82,7 @@ public class SwarmArenaManagerTests
         }
         finally
         {
-            SwarmArenaManager.RegionSupplyModeEnabled = false;
+            SwarmMonsterDirector.RegionSupplyModeEnabled = false;
         }
     }
 
@@ -92,11 +92,11 @@ public class SwarmArenaManagerTests
         // 곡선 (2026-08-16 유저 결정: 잘 죽되 맞으면 치명적): 최종 페이즈(4:10~)는
         // 일반 22 · 핵 120 · 접촉 40. 단단하게 만드는 방향은 되돌리고 위협은 접촉이 진다.
         // 전역 상한은 구역 목표(= 인당 목표 × 구역 인원)의 합이되 서버 천장 420을 넘지 않는다.
-        SwarmArenaManager.RegionSupplyModeEnabled = true;
+        SwarmMonsterDirector.RegionSupplyModeEnabled = true;
         try
         {
             DateTime now = StartUtc.AddSeconds(255);
-            var manager = new SwarmArenaManager(() => now);
+            var manager = new SwarmMonsterDirector(() => now);
             Assert.True(manager.InitializeMatching(217002, 1, StartUtc));
 
             var lateTick = manager.Tick(217002, ManyParticipants(8, AreaCenter(Config.SWARM_MATCH_GROUND_AREA)), now);
@@ -122,7 +122,7 @@ public class SwarmArenaManagerTests
         }
         finally
         {
-            SwarmArenaManager.RegionSupplyModeEnabled = false;
+            SwarmMonsterDirector.RegionSupplyModeEnabled = false;
         }
     }
 
@@ -132,11 +132,11 @@ public class SwarmArenaManagerTests
     [Fact]
     public void RegionSupply_ReclaimsStrandedMonstersAfterZoneIsVacated()
     {
-        SwarmArenaManager.RegionSupplyModeEnabled = true;
+        SwarmMonsterDirector.RegionSupplyModeEnabled = true;
         try
         {
             DateTime now = StartUtc;
-            var manager = new SwarmArenaManager(() => now);
+            var manager = new SwarmMonsterDirector(() => now);
             Assert.True(manager.InitializeMatching(217004, 1, StartUtc));
             var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
             Vector3f roomCenter = AreaCenter(room);
@@ -176,7 +176,7 @@ public class SwarmArenaManagerTests
         }
         finally
         {
-            SwarmArenaManager.RegionSupplyModeEnabled = false;
+            SwarmMonsterDirector.RegionSupplyModeEnabled = false;
         }
     }
 
@@ -186,11 +186,11 @@ public class SwarmArenaManagerTests
         // #229 4단계: 소환석 예산은 구역·페이즈 단위다. 봇처럼 구역을 들락날락해도
         // 예산이 리셋되면 안 된다 — 실측(매치 9687066)에서 한 구역이 페이즈 1 예산 11석 대신
         // 56석을 받았다. 보충 타이머는 버리되 예산 원장은 남긴다.
-        SwarmArenaManager.RegionSupplyModeEnabled = true;
+        SwarmMonsterDirector.RegionSupplyModeEnabled = true;
         try
         {
             DateTime now = StartUtc;
-            var manager = new SwarmArenaManager(() => now);
+            var manager = new SwarmMonsterDirector(() => now);
             Assert.True(manager.InitializeMatching(217003, 1, StartUtc));
             var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
             Vector3f roomCenter = AreaCenter(room);
@@ -216,7 +216,7 @@ public class SwarmArenaManagerTests
         }
         finally
         {
-            SwarmArenaManager.RegionSupplyModeEnabled = false;
+            SwarmMonsterDirector.RegionSupplyModeEnabled = false;
         }
     }
 
@@ -234,7 +234,7 @@ public class SwarmArenaManagerTests
         Assert.Equal(7, tick.SpawnedMonsters.Count);
         Assert.Equal(1, tick.SpawnedMonsters.Count(monster => monster.MaxHealth == 260));
         Assert.Equal(6, tick.SpawnedMonsters.Count(
-            monster => monster.MaxHealth == SwarmArenaManager.MonsterMaxHealth));
+            monster => monster.MaxHealth == SwarmMonsterDirector.MonsterMaxHealth));
         Assert.All(tick.SpawnedMonsters, monster =>
         {
             Assert.Equal(monster.MaxHealth, monster.CurrentHealth);
@@ -298,7 +298,7 @@ public class SwarmArenaManagerTests
 
         // #223 보스: 운동장에 트리 자이언트(접촉 6)가 상주한다 — 해골 위에 서서 검증한다.
         var monster = manager.GetVisualStates(217001)
-            .First(state => state.IsAlive && state.MaxHealth == SwarmArenaManager.MonsterMaxHealth);
+            .First(state => state.IsAlive && state.MaxHealth == SwarmMonsterDirector.MonsterMaxHealth);
         var onMonster = new Vector3f(monster.PositionX, monster.PositionY, 0f);
 
         for (double elapsed = 0.5d; elapsed <= 9d; elapsed += 0.25d)
@@ -324,17 +324,17 @@ public class SwarmArenaManagerTests
     {
         // 판정 = 보이는 몸통 (#229). 클라 ResolveKindScale과 같은 사다리라
         // 한쪽만 바뀌면 스프라이트와 판정이 어긋난다 — 여기서 잠근다.
-        Assert.Equal(SwarmArenaManager.ContactRange,
-            SwarmArenaManager.GetContactRadius(SwarmMonsterKind.Skeleton), 3);
-        Assert.Equal(SwarmArenaManager.ContactRange * 1.4f,
-            SwarmArenaManager.GetContactRadius(SwarmMonsterKind.DartGoblin), 3);
-        Assert.Equal(SwarmArenaManager.ContactRange * 2.4f,
-            SwarmArenaManager.GetContactRadius(SwarmMonsterKind.RunawayGoblin), 3);
-        Assert.Equal(SwarmArenaManager.ContactRange * 1.8f,
-            SwarmArenaManager.GetContactRadius(SwarmMonsterKind.TreeGiant), 3);
+        Assert.Equal(SwarmMonsterDirector.ContactRange,
+            SwarmMonsterDirector.GetContactRadius(SwarmMonsterKind.Skeleton), 3);
+        Assert.Equal(SwarmMonsterDirector.ContactRange * 1.4f,
+            SwarmMonsterDirector.GetContactRadius(SwarmMonsterKind.DartGoblin), 3);
+        Assert.Equal(SwarmMonsterDirector.ContactRange * 2.4f,
+            SwarmMonsterDirector.GetContactRadius(SwarmMonsterKind.RunawayGoblin), 3);
+        Assert.Equal(SwarmMonsterDirector.ContactRange * 1.8f,
+            SwarmMonsterDirector.GetContactRadius(SwarmMonsterKind.TreeGiant), 3);
 
         // 해골 반경은 몸통 반폭(0.31, 클라 실측)을 넘지 않는다.
-        Assert.True(SwarmArenaManager.GetContactRadius(SwarmMonsterKind.Skeleton) <= 0.32f);
+        Assert.True(SwarmMonsterDirector.GetContactRadius(SwarmMonsterKind.Skeleton) <= 0.32f);
     }
 
     [Fact]
@@ -352,13 +352,13 @@ public class SwarmArenaManagerTests
 
         // #223 보스: 운동장 첫 타겟이 트리 자이언트(260)일 수 있다 — 해골을 골라 원킬을 검증한다.
         var skeletonIds = manager.GetVisualStates(217001)
-            .Where(state => state.IsAlive && state.MaxHealth == SwarmArenaManager.MonsterMaxHealth)
+            .Where(state => state.IsAlive && state.MaxHealth == SwarmMonsterDirector.MonsterMaxHealth)
             .Select(state => state.MonsterId)
             .ToHashSet();
         var target = manager.GetCombatTargets(217001).First(candidate =>
             skeletonIds.Contains(candidate.MonsterId));
         var result = manager.ApplyMonsterDamage(
-            217001, target.CombatTargetId, attackerPlayerId: 1, SwarmArenaManager.MonsterMaxHealth);
+            217001, target.CombatTargetId, attackerPlayerId: 1, SwarmMonsterDirector.MonsterMaxHealth);
 
         Assert.True(result.Applied);
         Assert.True(result.Killed);
@@ -413,7 +413,7 @@ public class SwarmArenaManagerTests
         // 관찰 대상은 "아직 안 깨어난" 몹으로 고른다. 보스(#223 고정 포대)는 추격이 없어 제외.
         var sleeping = manager.GetVisualStates(217001)
             .First(state => state.IsAlive && state.ChaseTargetPlayerId == 0 &&
-                            state.MaxHealth == SwarmArenaManager.MonsterMaxHealth);
+                            state.MaxHealth == SwarmMonsterDirector.MonsterMaxHealth);
         var anchor = new Vector3f(sleeping.PositionX, sleeping.PositionY, 0f);
         // 관찰 지점은 모든 몹과 리쉬(5.5)+어그로 여유 밖(7) — 깨어난 몹도 추격을 끊고 귀환한다.
         var aliveStates = manager.GetVisualStates(217001).Where(state => state.IsAlive).ToList();
@@ -510,7 +510,7 @@ public class SwarmArenaManagerTests
     {
         // 문 너머 추격 (2026-08-16 유저 결정, 2026-08-28 플레이 제보 "몹이 문 너머로 안 따라온다"):
         // 방에서 나를 담당하던(주인) 몹은 내가 복도로 나가면 문을 넘어 따라와야 한다.
-        SwarmArenaManager.RegionSupplyModeEnabled = true;
+        SwarmMonsterDirector.RegionSupplyModeEnabled = true;
         try
         {
             DateTime now = StartUtc.AddSeconds(0.25);
@@ -558,13 +558,13 @@ public class SwarmArenaManagerTests
         }
         finally
         {
-            SwarmArenaManager.RegionSupplyModeEnabled = false;
+            SwarmMonsterDirector.RegionSupplyModeEnabled = false;
         }
     }
 
-    private static SwarmArenaManager CreateManager(Func<DateTime> clock)
+    private static SwarmMonsterDirector CreateManager(Func<DateTime> clock)
     {
-        var manager = new SwarmArenaManager(clock);
+        var manager = new SwarmMonsterDirector(clock);
         Assert.True(manager.InitializeMatching(217001, 1, StartUtc));
         return manager;
     }
@@ -605,7 +605,7 @@ public class SwarmArenaManagerTests
                 var authored = GameMonsterCampData.GetAnchor(region.AreaType, campIndex);
                 if (authored == null) continue;
 
-                var inset = SwarmArenaManager.InsetAnchorFromAreaEdge(authored, region.AreaType);
+                var inset = SwarmMonsterDirector.InsetAnchorFromAreaEdge(authored, region.AreaType);
                 int clearance = Math.Min(
                     Math.Min(inset.X - region.Start.X, region.End.X - inset.X),
                     Math.Min(inset.Y - region.Start.Y, region.End.Y - inset.Y));

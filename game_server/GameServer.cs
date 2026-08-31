@@ -25,13 +25,6 @@ using network.packets;
 
 namespace game_server;
 
-/// <summary>
-///     Hosts the authoritative GameServer process: network admission, match timers, gameplay managers,
-///     distributed owner leases, and durable matching lifecycle publication.
-///     Match mutations enter through <see cref="MatchRuntimeRegistry"/>; terminal cleanup is delegated to
-///     <see cref="MatchRuntimeCleanupCoordinator"/>, and live client indexes are owned by
-///     <see cref="GameSessionRegistry"/>.
-/// </summary>
 public partial class GameServer(
     IConfiguration configuration,
     ILogger<GameServer> logger,
@@ -47,7 +40,6 @@ public partial class GameServer(
     ServerReadinessState readinessState)
     : IHostedService
 {
-    // 하트비트 체크 간격 (10초마다 체크)
     private const int HeartbeatCheckIntervalSeconds = 10;
     private const int MatchingLifecycleTerminalMatchRetention = 4096;
     private const int StaticMatchingLifecycleEnqueueAttempts = 5;
@@ -64,7 +56,7 @@ public partial class GameServer(
     private readonly AreaItemStockManager _areaItemStockManager =
         new(naturalExploreLootEnabled: !Config.MONSTER_SUMMON_ECONOMY_ENABLED);
     private readonly GroundItemManager _groundItemManager = new();
-    private readonly SwarmArenaManager _swarmArenaManager = new();
+    private readonly SwarmMonsterDirector _swarmMonsterDirector = new();
 
     // #294 — SwarmArena 파셜에 산개돼 있던 매치 상태 딕셔너리 37개의 새 집 (Services/SwarmArenaStates.cs).
     private readonly SwarmTrailCombatState _swarmTrailCombat = new();
@@ -489,15 +481,15 @@ public partial class GameServer(
             ],
             logger);
         // M4: 폐쇄 구역은 스웜 신규 스폰을 멈춘다 (잔존 몹은 ReclaimStrandedMonsters가 걷어냄)
-        _swarmArenaManager.IsAreaClosedResolver =
+        _swarmMonsterDirector.IsAreaClosedResolver =
             (matchingId, area) => _areaClosureManager.IsAreaClosed(matchingId, area);
         // 인트로 산개 (2026-08-16): 카운트다운 동안에는 전 방을 공급 대상으로 열어
         // 운동장에서 열 방향으로 실제 몹이 뻗어 나가게 한다.
-        _swarmArenaManager.IsGameplayActiveResolver = MatchStartGate.IsGameplayActive;
+        _swarmMonsterDirector.IsGameplayActiveResolver = MatchStartGate.IsGameplayActive;
         // 무오브 우선 표적 (2026-08-16 유저 명세): 잔상 주인 배정·재배정이 이걸 본다.
         // 무오브는 자동 공격도 절단도 못 하므로, 잔상까지 남을 쫓으면 재건하는 동안
         // 아무 압력도 안 받아 무오브가 안전지대가 된다.
-        _swarmArenaManager.IsPlayerOrblessResolver =
+        _swarmMonsterDirector.IsPlayerOrblessResolver =
             (matchingId, playerId) => !HasAnySquadOrb(matchingId, playerId);
 
         try
@@ -1115,7 +1107,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                         .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
                         .ToDictionary(s => s.PlayerId!.Value, s => s.CurrentArea);
                     // 잔상 사냥 경로(MONSTER_SUMMON_ECONOMY_ENABLED 동결)의 공급원이던
-                    // EmotionAfterimageMonsterManager는 #274에서 삭제 — 플래그 부활 시 SwarmArenaManager에서 공급할 것.
+                    // EmotionAfterimageMonsterManager는 #274에서 삭제 — 플래그 부활 시 SwarmMonsterDirector에서 공급할 것.
                     IReadOnlyCollection<MonsterCombatTarget> pveTargets = [];
                     snapshotElapsedMilliseconds += Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
 

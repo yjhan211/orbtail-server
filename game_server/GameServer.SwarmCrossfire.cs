@@ -182,7 +182,7 @@ public partial class GameServer
         ReadOnlySpan<float> directionY = stackalloc float[]
             { diagonalUnit, -diagonalUnit, diagonalUnit, -diagonalUnit };
 
-        var combatTargets = _swarmArenaManager.GetCombatTargets(matchingId);
+        var combatTargets = _swarmMonsterDirector.GetCombatTargets(matchingId);
         float unitX = 0f;
         float unitY = 0f;
         float groundLength = 0f;
@@ -352,7 +352,7 @@ public partial class GameServer
             front = MathF.Min(front, sweepEnd);
             float lastFront = shape.LastFront;
             shape.LastFront = front;
-            monsters ??= _swarmArenaManager.GetCombatTargets(matchingId);
+            monsters ??= _swarmMonsterDirector.GetCombatTargets(matchingId);
 
             // 관통 (2026-08-24 유저 결정, 뱀서식): 이번 틱 구간에 걸린 표적 전부를 지나가며 때린다 —
             // 첫 표적 폭발은 퇴역. 투사체는 멈추지 않고, 폭발은 벽에 닿을 때만.
@@ -366,7 +366,7 @@ public partial class GameServer
 
                 shape.HitMonsters.Add(monster.CombatTargetId);
                 TrackSwarmCrossfireConvergence(matchingId, monster.CombatTargetId, nowUtc);
-                _swarmArenaManager.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
+                _swarmMonsterDirector.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
                 int monsterDamage = RollSwarmCriticalDamage(shape.Damage, out bool critical);
                 ApplySwarmMonsterHitNow(
                     matchingId, monster.CombatTargetId, monster.MonsterId, shape.OwnerId,
@@ -605,7 +605,7 @@ public partial class GameServer
         bool critical,
         List<GameClientSession> allSessions)
     {
-        var damageResult = _swarmArenaManager.ApplyMonsterDamage(matchingId, combatTargetId, attackerId, damage);
+        var damageResult = _swarmMonsterDirector.ApplyMonsterDamage(matchingId, combatTargetId, attackerId, damage);
         if (!damageResult.Applied)
             return;
 

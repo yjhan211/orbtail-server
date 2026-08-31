@@ -131,7 +131,7 @@ public partial class GameServer
                 continue;
 
             _swarmMatchPacing.PendingMonsterHits.RemoveAt(index);
-            var damageResult = _swarmArenaManager.ApplyMonsterDamage(
+            var damageResult = _swarmMonsterDirector.ApplyMonsterDamage(
                 matchingId, hit.CombatTargetId, hit.AttackerId, hit.Damage);
 
             // 결과 집계 (#229): 스웜 전투는 전부 여기를 지난다. 여기서 안 세면
@@ -198,17 +198,17 @@ public partial class GameServer
         if (sessions.Count == 0 && bots.Count == 0)
             return;
 
-        if (!_swarmArenaManager.HasMatching(matchingId))
+        if (!_swarmMonsterDirector.HasMatching(matchingId))
         {
             long humanPlayerId = sessions.Count > 0 ? sessions[0].PlayerId!.Value : bots[0].PlayerId;
-            if (!_swarmArenaManager.InitializeMatching(matchingId, humanPlayerId, DateTime.UtcNow))
+            if (!_swarmMonsterDirector.InitializeMatching(matchingId, humanPlayerId, DateTime.UtcNow))
                 return;
 
             GameClientSession.SwarmExploreNoiseCallback ??=
                 (noiseMatchingId, noisePlayerId) =>
                     _matchRuntimeRegistry.TryExecute(
                         noiseMatchingId,
-                        () => _swarmArenaManager.AttractSwarm(noiseMatchingId, noisePlayerId));
+                        () => _swarmMonsterDirector.AttractSwarm(noiseMatchingId, noisePlayerId));
             GameClientSession.SwarmDummyMoveCallback ??=
                 (dummyMatchingId, dirX, dirY) =>
                     _matchRuntimeRegistry.TryExecute(
@@ -226,7 +226,7 @@ public partial class GameServer
                         () => HandleSwarmOrbDecision(
                             session, decisionMatchingId, action, targetUid, secondUid));
             // #272 경계 토출 스폰: 자기장 경계가 관통 중인 구역의 캠프는 빨간 지대에서 태어난다.
-            SwarmArenaManager.FieldSpawnCellResolver ??= ResolveSwarmFieldSpawn;
+            SwarmMonsterDirector.FieldSpawnCellResolver ??= ResolveSwarmFieldSpawn;
             // 하트 = 본체 오염 + 앞줄 오브 HP 회복 (#222 M4, 원작 하트는 스쿼드도 회복).
             // 엔트리 제거 = 만충 취급 — 다음 오브 비주얼 틱에 체력바·크랙이 함께 복구된다.
             GameClientSession.SwarmHeartPickupCallback ??=
@@ -318,7 +318,7 @@ public partial class GameServer
             ? participants
             : participants.Where(participant => !dummyIds.Contains(participant.PlayerId)).ToList();
         // 실험장 (#226): 몹은 나오되(색 무기 과녁) 공격 피해만 아래 게이트에서 꺼진다.
-        var tick = _swarmArenaManager.Tick(matchingId, directorParticipants, nowUtc);
+        var tick = _swarmMonsterDirector.Tick(matchingId, directorParticipants, nowUtc);
 
         // 정지 감시: 8초 이상 제자리인 몹을 매치 로그로 남긴다 — 회귀 감지선.
         foreach (string report in tick.StuckReports)
@@ -328,7 +328,7 @@ public partial class GameServer
         // alive는 상한 48 준수와 구역 목표 유지를 한 줄로 읽기 위한 값이다.
         if (tick.SupplyPackSpawns.Count > 0)
         {
-            int aliveAfter = _swarmArenaManager.GetVisualStates(matchingId).Count(state => state.IsAlive);
+            int aliveAfter = _swarmMonsterDirector.GetVisualStates(matchingId).Count(state => state.IsAlive);
             foreach (var supplySpawn in tick.SupplyPackSpawns)
                 _gameEventLogManager.LogSystem(
                     matchingId,
@@ -343,7 +343,7 @@ public partial class GameServer
         if (!MatchStartGate.IsGameplayActive(matchingId))
         {
             BroadcastMonsterMinimapSnapshot(
-                matchingId, sessions, _swarmArenaManager.GetVisualStates(matchingId));
+                matchingId, sessions, _swarmMonsterDirector.GetVisualStates(matchingId));
             return;
         }
 
@@ -426,7 +426,7 @@ public partial class GameServer
         ProcessSwarmBotDoorUnlocks(matchingId, aliveBots, sessions, nowUtc);
 
         if (TryConsumeMonsterPositionBroadcastSlot(matchingId, nowUtc))
-            BroadcastMonsterMinimapSnapshot(matchingId, sessions, _swarmArenaManager.GetVisualStates(matchingId));
+            BroadcastMonsterMinimapSnapshot(matchingId, sessions, _swarmMonsterDirector.GetVisualStates(matchingId));
 
         UpdateSwarmMovementSamples(matchingId, participants, nowUtc);
         var actors = BuildSwarmArenaCombatActors(matchingId, aliveSessions, aliveBots, nowUtc);
@@ -554,7 +554,7 @@ public partial class GameServer
         Dictionary<long, ProximityCombatActor>? actorById = null;
         foreach (var attack in attacks)
         {
-            int monsterId = _swarmArenaManager.GetMonsterIdForCombatTarget(matchingId, attack.TargetPlayerId);
+            int monsterId = _swarmMonsterDirector.GetMonsterIdForCombatTarget(matchingId, attack.TargetPlayerId);
             // 유령 발사 가드 (#226 진단): 같은 틱에 죽은 몬스터의 CombatTargetId(-4e18대)가 몬스터 분기를
             // 통과해 PvP 분기로 새던 문제 — 음수 대역 차단. 태양 분기보다 먼저 건다.
             if (monsterId <= 0 && attack.TargetPlayerId < -1_000_000_000_000L)
@@ -632,11 +632,11 @@ public partial class GameServer
                     OrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, distance);
                 // 발사 즉시 예약 (#229): 착탄까지 기다리면 그 사이 다른 오브가 같은 몹을 또
                 // 고른다. 예약분으로 이미 죽는 몹은 표적 후보에서 빠지므로 사격이 흩어진다.
-                _swarmArenaManager.ReserveMonsterDamage(
+                _swarmMonsterDirector.ReserveMonsterDamage(
                     matchingId, attack.TargetPlayerId, monsterDamage);
                 // 기준점 계측 + 잠금 (#232 1단계): 발사 순간 몹의 공격 사건 수를 올리고,
                 // 원점·기준 위치·무기를 박제해 착탄 정산까지 들고 간다.
-                _swarmArenaManager.RecordMonsterAttackEvent(matchingId, attack.TargetPlayerId);
+                _swarmMonsterDirector.RecordMonsterAttackEvent(matchingId, attack.TargetPlayerId);
                 _swarmMatchPacing.PendingMonsterHits.Add(new PendingSwarmMonsterHit(
                     matchingId, attack.TargetPlayerId, attack.AttackerPlayerId,
                     monsterDamage, nowUtc.AddSeconds(delaySeconds),
@@ -1781,7 +1781,7 @@ public partial class GameServer
             if (polygon != null)
             {
                 // 몬스터도 유효 대상 (스펙 §6) — 웨이브 몹을 가둬 일격하는 것이 첫 포위 경험이 된다.
-                foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
+                foreach (var target in _swarmMonsterDirector.GetCombatTargets(matchingId))
                 {
                     if (target.Area != owner.Area || !IsPointInsidePolygon(polygon, target.Position))
                         continue;
@@ -1813,7 +1813,7 @@ public partial class GameServer
                 // 몬스터 피해는 지연 정산 파이프라인 재사용 — 킬 보상·상태 브로드캐스트가 따라온다.
                 foreach (var target in monsterVictims)
                 {
-                    _swarmArenaManager.ReserveMonsterDamage(
+                    _swarmMonsterDirector.ReserveMonsterDamage(
                         matchingId, target.CombatTargetId, SwarmEncircleMonsterDamage);
                     _swarmMatchPacing.PendingMonsterHits.Add(new PendingSwarmMonsterHit(
                         matchingId, target.CombatTargetId, owner.PlayerId,
@@ -1971,7 +1971,7 @@ public partial class GameServer
                 tiers ??= GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
                 var orbPosition = GetSwarmOrbTrailPosition(
                     matchingId, owner.PlayerId, ordinal, owner.Position, tiers);
-                vortexTargets ??= _swarmArenaManager.GetCombatTargets(matchingId);
+                vortexTargets ??= _swarmMonsterDirector.GetCombatTargets(matchingId);
                 bool hasTarget = false;
                 foreach (var target in vortexTargets)
                 {
@@ -2057,7 +2057,7 @@ public partial class GameServer
         int notifiedCount = 0;
         // 몹: 착탄 지연 정산 파이프라인 재사용 — 킬 보상·상태 브로드캐스트가 따라온다.
         // 당김은 서버 위치를 즉시 옮긴다 — 클라 표시가 SmoothDamp로 따라가며 당김으로 읽힌다.
-        foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
+        foreach (var target in _swarmMonsterDirector.GetCombatTargets(matchingId))
         {
             if (target.Area != area)
                 continue;
@@ -2066,15 +2066,15 @@ public partial class GameServer
             if (dx * dx + dy * dy > radiusSquared)
                 continue;
             int monsterDamage = RollSwarmCriticalDamage(damage, out bool critical);
-            _swarmArenaManager.ReserveMonsterDamage(matchingId, target.CombatTargetId, monsterDamage);
-            _swarmArenaManager.RecordMonsterAttackEvent(matchingId, target.CombatTargetId);
+            _swarmMonsterDirector.ReserveMonsterDamage(matchingId, target.CombatTargetId, monsterDamage);
+            _swarmMonsterDirector.RecordMonsterAttackEvent(matchingId, target.CombatTargetId);
             _swarmMatchPacing.PendingMonsterHits.Add(new PendingSwarmMonsterHit(
                 matchingId, target.CombatTargetId, ownerId, monsterDamage, nowUtc));
-            _swarmArenaManager.TrySlowMonster(
+            _swarmMonsterDirector.TrySlowMonster(
                 matchingId, target.CombatTargetId, OrbData.WaveSlowSeconds, nowUtc);
             hitCount++;
 
-            int monsterId = _swarmArenaManager.GetMonsterIdForCombatTarget(matchingId, target.CombatTargetId);
+            int monsterId = _swarmMonsterDirector.GetMonsterIdForCombatTarget(matchingId, target.CombatTargetId);
             if (monsterId <= 0)
                 continue;
 
@@ -2600,8 +2600,8 @@ public partial class GameServer
         // 같은 구역 전원에게 공격 VFX를 쏘고, 클라가 보스 여부(피통)로 투사체를 그린다.
         // 파도 문양 몹도 보낸다: 접촉 강타가 주변까지 튀므로 몸 기울임이 출처를 말한다.
         // 일반 몹 원거리 확대(2026-08-24 오전)는 같은 날 원거리 타격 자체가 퇴역하며 함께 걷어냈다.
-        if (_swarmArenaManager.IsBossMonster(matchingId, damage.MonsterId) ||
-            _swarmArenaManager.IsWavePatternMonster(matchingId, damage.MonsterId))
+        if (_swarmMonsterDirector.IsBossMonster(matchingId, damage.MonsterId) ||
+            _swarmMonsterDirector.IsWavePatternMonster(matchingId, damage.MonsterId))
         {
             using var vfxPacket = Packet.Create((int)Protocol.G_TO_C_MONSTER_ATTACK_VFX);
             vfxPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_ATTACK_VFX
@@ -3585,7 +3585,7 @@ public partial class GameServer
 
     private void CleanupSwarmArenaState(long matchingId)
     {
-        _swarmArenaManager.RemoveMatching(matchingId);
+        _swarmMonsterDirector.RemoveMatching(matchingId);
         ClearSwarmCrossfireState(matchingId);
         ClearSwarmWindBladeState(matchingId);
         ClearSwarmOrbBoardState(matchingId);
@@ -3631,7 +3631,7 @@ public partial class GameServer
                 AddSwarmParticipantCombatActors(actors, matchingId, botSpatial, nowUtc, bot.OrbOrbitPhaseDegrees);
         }
 
-        foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
+        foreach (var target in _swarmMonsterDirector.GetCombatTargets(matchingId))
         {
             actors.Add(new ProximityCombatActor(
                 target.CombatTargetId,

@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using network.common;
-using network.common.data;
 
 namespace game_server.network;
 
