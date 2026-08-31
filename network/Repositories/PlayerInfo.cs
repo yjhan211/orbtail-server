@@ -24,8 +24,6 @@ public partial class PlayerInfo
         // 조회가 빈번해서 메모리에 올려뒀음. 따로 Save함
         // await GameObjectInfoController.Save(cache_helper, player_info.object_info);
         await InventoryInfo.Save(cacheHelper);
-        await QuestDiary.Save(cacheHelper);
-        await MailBox.Save(cacheHelper);
         await cacheHelper.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
     }
 
@@ -39,8 +37,6 @@ public partial class PlayerInfo
         playerInfo.ObjectInfo = new GameObjectInfo(playerId);
         playerInfo.InventoryInfo = await InventoryInfo.Load(cacheHelper, InventoryOwnerType.PLAYER, playerId) ??
                                    new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
-        playerInfo.QuestDiary = await QuestDiary.Load(cacheHelper, playerId);
-        playerInfo.MailBox = await MailBox.Load(cacheHelper, playerId);
         // ObjectInfo의 Cell, MapId, MapSubId를 LastCell, LastMapId, LastMapSubId로 동기화 (세션 기반 게임)
         if (playerInfo.LastMapId != MapId.None)
         {
@@ -89,8 +85,6 @@ public partial class PlayerInfo
 
         await GameObjectInfo.Delete(cacheHelper, objectField);
         await InventoryInfo.Delete(cacheHelper, InventoryOwnerType.PLAYER, playerId);
-        await QuestDiary.Delete(cacheHelper, playerId);
-        await MailBox.Delete(cacheHelper, playerId);
         await cacheHelper.HashDeleteAsync(HashKey, playerId);
     }
 

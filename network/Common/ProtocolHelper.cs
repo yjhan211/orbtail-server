@@ -74,44 +74,5 @@ namespace network.common
         {
             return _gameServerProtocols.Contains(protocol);
         }
-
-        /// <summary>
-        /// 프로토콜이 UserServer로 가야 하는지 확인
-        /// </summary>
-        public static bool IsUserServerProtocol(Protocol protocol)
-        {
-            return _userServerProtocols.Contains(protocol);
-        }
-
-        /// <summary>
-        /// 프로토콜이 실시간 처리가 필요한지 확인
-        /// </summary>
-        public static bool IsRealtimeProtocol(Protocol protocol)
-        {
-            return protocol switch
-            {
-                Protocol.C_TO_G_MOVE => true,
-                Protocol.G_TO_C_MOVE => true,
-                _ => false
-            };
-        }
-
-        /// <summary>
-        /// 클라이언트가 보내는 프로토콜인지 확인
-        /// </summary>
-        public static bool IsClientToServerProtocol(Protocol protocol)
-        {
-            var protocolName = protocol.ToString();
-            return protocolName.StartsWith("C_TO_U_") || protocolName.StartsWith("C_TO_G_");
-        }
-
-        /// <summary>
-        /// 서버가 보내는 프로토콜인지 확인
-        /// </summary>
-        public static bool IsServerToClientProtocol(Protocol protocol)
-        {
-            var protocolName = protocol.ToString();
-            return protocolName.StartsWith("U_TO_C_") || protocolName.StartsWith("G_TO_C_");
-        }
     }
 }

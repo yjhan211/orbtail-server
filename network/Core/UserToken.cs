@@ -91,11 +91,6 @@ public partial class UserToken
         }
     }
 
-    public void MarkAuthenticated()
-    {
-        TryMarkAuthenticated();
-    }
-
     public bool TryMarkAuthenticated(Action? onAuthenticated = null)
     {
         lock (_stateTransitionLock)
@@ -150,44 +145,6 @@ public partial class UserToken
         ArgumentNullException.ThrowIfNull(peer);
         if (Interlocked.CompareExchange(ref _peer, peer, null) != null)
             throw new InvalidOperationException("A peer is already assigned to this connection.");
-    }
-
-    // ReSharper disable once UnusedMember.Global
-    public void SetHeartbeatTimer()
-    {
-        if (IsReleased) return;
-
-        var timer = new Timer(_ =>
-            {
-                try
-                {
-                    using var msg = Packet.Create((int)Protocol.C_TO_U_HEART_BEAT);
-                    Send(msg);
-                }
-                catch (Exception ex)
-                {
-                    RequestClose(ConnectionCloseReason.SendError, ex);
-                }
-            },
-            null,
-            Timeout.InfiniteTimeSpan,
-            Timeout.InfiniteTimeSpan);
-
-        Interlocked.Exchange(ref _heartbeatTimer, timer)?.Dispose();
-        if (IsReleased && Interlocked.CompareExchange(ref _heartbeatTimer, null, timer) == timer)
-        {
-            timer.Dispose();
-            return;
-        }
-
-        try
-        {
-            timer.Change(TimeSpan.Zero, TimeSpan.FromSeconds(3));
-        }
-        catch (ObjectDisposedException)
-        {
-            // 연결 종료와 timer 시작이 경합한 정상 경로다.
-        }
     }
 
     public void Disconnect()

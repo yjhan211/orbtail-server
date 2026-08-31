@@ -157,15 +157,6 @@ namespace network.common.data
             return list;
         }
 
-        /// <summary>
-        ///     action_group_key에 해당하는 그룹 액션 목록 반환 (없으면 빈 목록).
-        ///     현행 호출처 없음 — action_group 풀 조회 API로 유지 (CSV 구조 로드맵).
-        /// </summary>
-        public static List<InteractableActionData> GetActionGroup(string actionGroupKey) =>
-            !string.IsNullOrEmpty(actionGroupKey) && _actionGroups.TryGetValue(actionGroupKey, out var list)
-                ? list
-                : new List<InteractableActionData>();
-
         public static void Validate(LogManager logManager)
         {
             LogManager.WriteDebugLog("=== GameInteractableData Validation ===");

@@ -243,19 +243,6 @@ public class AreaClosureManager
         }
     }
 
-    public int GetEnvironmentalCorruptionDelta(long matchingId, AreaType area, int tickSeconds = ResourceTickSeconds)
-    {
-        if (tickSeconds <= 0 || !_states.TryGetValue(matchingId, out var state)) return 0;
-
-        lock (state.SyncRoot)
-        {
-            int corruptionPerSecond = GetOvertimeCorruptionPerSecond(state);
-            if (area != AreaType.None && state.ClosedAreas.Contains(area))
-                corruptionPerSecond += GetCurrentClosedAreaCorruptionPerSecond(state);
-            return corruptionPerSecond * tickSeconds;
-        }
-    }
-
     public int GetClosedAreaCorruptionPerTick(long matchingId, AreaType area, int tickSeconds = ResourceTickSeconds)
     {
         if (tickSeconds <= 0 || !_states.TryGetValue(matchingId, out var state)) return 0;

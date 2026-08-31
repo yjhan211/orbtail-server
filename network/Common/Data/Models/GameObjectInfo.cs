@@ -114,25 +114,5 @@ namespace network.common.data.models
         {
             return $"{(int)type}_{objectId}";
         }
-
-        public void SetFlip(DirectionType direction)
-        {
-            switch (direction)
-            {
-                case DirectionType.NONE:
-                    break;
-
-                case DirectionType.TOP_LEFT:
-                case DirectionType.BOTTOM_LEFT:
-                case DirectionType.LEFT:
-                case DirectionType.TOP:
-                    IsFlip = false;
-                    break;
-
-                default:
-                    IsFlip = true;
-                    break;
-            }
-        }
     }
 }

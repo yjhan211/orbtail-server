@@ -93,18 +93,6 @@ namespace network.common.data
                 .ToList();
         }
 
-        /// <summary>
-        /// 특정 버프 서브타입을 가진 소비 아이템 중 랜덤 선택
-        /// </summary>
-        public static ItemInfoData GetRandomConsumableByBuffSubType(BuffSubType buffSubType, Random random = null)
-        {
-            var items = GetConsumablesByBuffSubType(buffSubType);
-            if (items.Count == 0) return null;
-
-            random ??= new Random();
-            return items[random.Next(items.Count)];
-        }
-
         public static ItemType GetItemType(int itemId)
         {
             return (ItemType)(itemId / 100000000);
@@ -221,36 +209,6 @@ namespace network.common.data
             var arrays = JsonConvert.DeserializeObject<List<float[]>>(jsonString);
 
             return arrays?.Select(arr => (id: arr[0], value: arr[1])).ToList();
-        }
-
-        public string GetBuffComment()
-        {
-            if (BuffList.Count <= 0 && ConsumableBuffList.Count <= 0)
-            {
-                return "발동 효과 없음";
-            }
-
-            var result = "";
-            if (ConsumableBuffList.Count > 0)
-            {
-                foreach (var buffInfo in ConsumableBuffList)
-                {
-                    var buff = GameBuffData.Get(buffInfo.id);
-                    result += buff.Comment
-                        .Replace("{value1}", $"{buffInfo.value}")
-                        .Replace("{value2}", $"{buffInfo.interval}");
-                }
-            }
-            else
-            {
-                foreach (var buffInfo in BuffList)
-                {
-                    var buff = GameBuffData.Get(buffInfo.id);
-                    result += buff.Comment.Replace("{value1}", $"{buffInfo.value1}").Replace("{value2}", $"{buffInfo.value2}");
-                }
-            }
-
-            return result;
         }
     }
 }

@@ -176,17 +176,6 @@ namespace network.common.data
         }
 
         /// <summary>
-        ///     두 구역 간 연결 타입 조회 (인접 아니면 None)
-        /// </summary>
-        public static ConnectionType GetConnectionType(MapId mapId, AreaType a, AreaType b)
-        {
-            foreach (var conn in GetConnections(mapId, a))
-                if (conn.ToArea == b)
-                    return conn.Type;
-            return ConnectionType.None;
-        }
-
-        /// <summary>
         ///     모든 연결 반환 (디버그/검증용)
         /// </summary>
         public static IReadOnlyList<AreaConnectionInfo> GetAll()

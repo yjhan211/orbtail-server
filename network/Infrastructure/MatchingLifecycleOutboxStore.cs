@@ -343,15 +343,6 @@ public sealed class MatchingLifecycleOutboxStore(IRedisConnectionPool redisPool)
         };
     }
 
-    public async Task<bool> HasPendingOrRecentlyPublishedAsync(
-        string subject,
-        long playerId,
-        long matchingId)
-    {
-        return await GetPublicationStateAsync(subject, playerId, matchingId) !=
-               MatchingLifecycleOutboxPublicationState.None;
-    }
-
     public async Task<bool> RemoveMissingAsync(MatchingLifecycleOutboxClaim claim)
     {
         ArgumentNullException.ThrowIfNull(claim);

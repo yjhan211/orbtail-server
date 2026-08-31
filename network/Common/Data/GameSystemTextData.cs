@@ -45,27 +45,9 @@ namespace network.common.data
             return data?.Text?.Get(lang) ?? "";
         }
 
-        public static List<SystemTextData> GetByCategory(SystemTextCategory category)
-        {
-            return _textsByCategory.GetValueOrDefault(category) ?? new List<SystemTextData>();
-        }
-
         public static List<SystemTextData> GetAll()
         {
             return _texts.Values.ToList();
-        }
-
-        /// <summary>
-        /// 플레이스홀더를 치환한 텍스트 반환
-        /// 지원 플레이스홀더: {Item.Name}, {Item.SpawnArea}, {Item.Warning}, {Spot.Name}, {Debuff.Warning}, {Condition.Text}
-        /// </summary>
-        public static string FormatText(int textId, TextReplacementContext context)
-        {
-            var template = GetText(textId);
-            if (string.IsNullOrEmpty(template))
-                return "";
-
-            return FormatTemplate(template, context);
         }
 
         /// <summary>
@@ -115,32 +97,6 @@ namespace network.common.data
         public string? ConditionText { get; set; }
 
         public static TextReplacementContext Create() => new TextReplacementContext();
-
-        public TextReplacementContext WithItem(string name, string? spawnArea = null, string? warning = null)
-        {
-            ItemName = name;
-            ItemSpawnArea = spawnArea;
-            ItemWarning = warning;
-            return this;
-        }
-
-        public TextReplacementContext WithSpot(string name)
-        {
-            SpotName = name;
-            return this;
-        }
-
-        public TextReplacementContext WithDebuff(string warning)
-        {
-            DebuffWarning = warning;
-            return this;
-        }
-
-        public TextReplacementContext WithCondition(string text)
-        {
-            ConditionText = text;
-            return this;
-        }
     }
 
     public class SystemTextData
