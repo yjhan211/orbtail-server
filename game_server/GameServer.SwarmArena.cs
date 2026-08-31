@@ -604,7 +604,7 @@ public partial class GameServer
                 // 못한다 — "수면은 잔상이 없는 상태를 요구하지 않는다"는 규칙과 정면으로 충돌하고,
                 // 전멸 뒤 4초 휴지 창도 3초를 잠금에 뺏겨 무의미해진다.
                 // 잠금은 내가 몸으로 지르는 절단과 피격에만 건다.
-                attackerSession?.SendEmotionAfterimageMonsterAttackFeedback(
+                attackerSession?.SendSwarmAfterimageMonsterAttackFeedback(
                     monsterId, attack.Area, attack.WeaponItemId, monsterDamage, critical);
 
                 // 관전자에게도 발사 연출 (#219): 공격자 피드백만으로는 봇의 사냥이 완전 무음이었다.
@@ -2079,7 +2079,7 @@ public partial class GameServer
                 continue;
 
             notifiedCount++;
-            ownerSession?.SendEmotionAfterimageMonsterAttackFeedback(
+            ownerSession?.SendSwarmAfterimageMonsterAttackFeedback(
                 monsterId, area, sourceItemId, monsterDamage, critical, noProjectile: true);
         }
 
@@ -2634,7 +2634,7 @@ public partial class GameServer
             }
 
             // 레거시 오염 경로 — 오염 증가·피격 피드백·일반 탈락 흐름까지 담당한다.
-            session.ApplyEmotionAfterimageMonsterHit(damage.MonsterId, damage.Damage);
+            session.ApplySwarmAfterimageMonsterHit(damage.MonsterId, damage.Damage);
             return;
         }
 
@@ -2658,7 +2658,7 @@ public partial class GameServer
                 // AFTERIMAGE_HIT 114건이 전부 사람 대상으로 잡혔다 — "봇은 접촉 피해를
                 // 안 받는다"로 읽혔지만 실제로는 피해가 보이지 않았던 것이다.
                 // 봇 매치로 위협도를 재려면 이 줄이 있어야 한다.
-                _gameEventLogManager.LogEmotionAfterimageHit(
+                _gameEventLogManager.LogSwarmAfterimageHit(
                     matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
                     damage.Damage, nakedBefore, bot.Corruption,
                     bot.Corruption >= Config.MAX_CORRUPTION, isBot: true,
@@ -2673,7 +2673,7 @@ public partial class GameServer
             bot.LastDamagedAtUtc = DateTime.UtcNow;
             bot.CancelChannelHold();
 
-            _gameEventLogManager.LogEmotionAfterimageHit(
+            _gameEventLogManager.LogSwarmAfterimageHit(
                 matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
                 damage.Damage, bot.Corruption, bot.Corruption,
                 isLethal: false, isBot: true, DateTimeOffset.UtcNow);
@@ -2695,7 +2695,7 @@ public partial class GameServer
         _swarmBotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
         // 세 번째 봇 경로도 남긴다 — 앞의 두 경로만 로그를 붙여 놓으면 여기로 빠진 피해가
         // 그대로 안 보인다 (2026-08-16).
-        _gameEventLogManager.LogEmotionAfterimageHit(
+        _gameEventLogManager.LogSwarmAfterimageHit(
             matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
             botDamage, legacyBefore, bot.Corruption,
             bot.Corruption >= Config.MAX_CORRUPTION, isBot: true, DateTimeOffset.UtcNow);
@@ -2729,7 +2729,7 @@ public partial class GameServer
             // — 오염만 직접 반영한다. 피격 연출은 PvP VFX 브로드캐스트가 이미 담당한다.
             // 공격자 전달 (#223): 빈손 PvP 킬이 by=0 · src=mental로 남던 크레딧 증발 수리.
             if (monsterId > 0)
-                session.ApplyEmotionAfterimageMonsterHit(monsterId, GetSwarmNakedCorruption(damage));
+                session.ApplySwarmAfterimageMonsterHit(monsterId, GetSwarmNakedCorruption(damage));
             else
                 session.ModifyStats(corruptionDelta: GetSwarmNakedCorruption(damage),
                     attackerPlayerId: attackerPlayerId);
@@ -2751,7 +2751,7 @@ public partial class GameServer
 
         // 버스트(마지막 유닛 파괴)는 즉사가 아니다 (#219 SB 이탈, 2026-08-08) —
         // 빈손 생존으로 전환되고 이후 생존은 본체 HP(오염)가 결정한다. 재기 = 무료 개봉.
-        session.ApplyEmotionAfterimageMonsterHit(monsterId, 1, damage);
+        session.ApplySwarmAfterimageMonsterHit(monsterId, 1, damage);
     }
 
     /// <summary>

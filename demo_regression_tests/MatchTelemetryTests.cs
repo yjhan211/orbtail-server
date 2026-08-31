@@ -118,7 +118,7 @@ public sealed class MatchTelemetryTests
         var log = new GameEventLogManager();
         var now = DateTimeOffset.UtcNow;
 
-        log.LogEmotionAfterimageHit(
+        log.LogSwarmAfterimageHit(
             matchingId,
             monsterId: 202108,
             targetPlayerId: 401,

@@ -611,7 +611,7 @@ public partial class GameServer
 
         _gameEventLogManager.RecordMonsterHit(matchingId, attackerId, damage, damageResult.Killed);
         var attackerSession = allSessions.FirstOrDefault(session => session.PlayerId == attackerId);
-        attackerSession?.SendEmotionAfterimageMonsterAttackFeedback(
+        attackerSession?.SendSwarmAfterimageMonsterAttackFeedback(
             monsterId, area, weaponItemId, damage, critical, noProjectile: true);
 
         if (damageResult.Killed && damageResult.MonsterState != null)
@@ -638,7 +638,7 @@ public partial class GameServer
             $"killer={attackerId}");
 
         // 처치 계측 (#226 E): 종·구역·처치자 — 요약의 몹 처치 지표가 이 이벤트를 읽는다.
-        _gameEventLogManager.LogEmotionAfterimageKilled(
+        _gameEventLogManager.LogSwarmAfterimageKilled(
             matchingId, damageResult.MonsterId,
             damageResult.MonsterState.AreaType.ToString(),
             isCore: damageResult.Kind == SwarmMonsterKind.RunawayGoblin,
