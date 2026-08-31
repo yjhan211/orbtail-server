@@ -299,7 +299,6 @@ public partial class GameClientSession
                     {
                         PlayerId = d.playerId,
                         Name = ResolveResultPlayerName(d.playerId, playerInfo, playerProfile, bot),
-                        JobTitle = d.job,
                         TargetPlayerId = d.targetId,
                         WatcherPlayerId = d.watcherId,
                         EliminationReason = d.reason,

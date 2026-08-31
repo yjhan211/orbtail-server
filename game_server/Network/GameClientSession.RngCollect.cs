@@ -71,12 +71,7 @@ public partial class GameClientSession
     private void BroadcastPlayerState(PlayerState state)
     {
         if (!PlayerId.HasValue) return;
-        CurrentState = state == PlayerState.EXPLORE_1
-            ? PlayerState.EXPLORE_1
-            : PlayerState.IDLE;
-        _exploreMoveGraceUntil = CurrentState == PlayerState.EXPLORE_1
-            ? DateTime.UtcNow + ExploreMoveGracePeriod
-            : DateTime.MinValue;
+        SetMovementLockState(state == PlayerState.EXPLORE_1);
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);

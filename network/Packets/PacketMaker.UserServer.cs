@@ -88,7 +88,7 @@ public static partial class PacketMaker
 
     public static Packet U_TO_C_MATCHING_SUCCESS(long matchingId, MapId mapId, long mapSubId, Cell spawnPosition,
         string gameServerIp, int gameServerPort, long gameEndTimestamp,
-        string gameHandoffTicket, long targetPlayerId, JobTitle targetJobTitle, JobTitle myJobTitle,
+        string gameHandoffTicket, long targetPlayerId,
         List<PlayerInfo> playerRoster,
         List<int>? activeBuffIds = null)
     {
@@ -104,8 +104,6 @@ public static partial class PacketMaker
             GameEndTimestamp = gameEndTimestamp,
             GameHandoffTicket = gameHandoffTicket,
             TargetPlayerId = targetPlayerId,
-            TargetJobTitle = targetJobTitle,
-            MyJobTitle = myJobTitle,
             PlayerRoster = playerRoster,
             ActiveBuffIds = activeBuffIds ?? new List<int>()
         };

@@ -19,7 +19,6 @@ namespace user_server.services;
 internal static class MatchingConfigRedisKeys
 {
     internal const string Key = "matching_config";
-    internal const string JobPoolField = "job_pool";
 }
 
 public class MatchingManager : IMatchingManager
@@ -50,7 +49,6 @@ public class MatchingManager : IMatchingManager
     private static bool IsTwoPlayerTestMatch => Environment.GetEnvironmentVariable("TEST_TWO_PLAYER_MATCH") == "1";
     private static bool IsSoloMapValidation =>
         Environment.GetEnvironmentVariable("SOLO_MAP_VALIDATION") == "1";
-    private static JobTitle? ForcedPlayerJob => ParseForcedPlayerJob();
 
     private static long _botIdCounter; // Negative PlayerIds are reserved for bots.
     private readonly ICacheHelper _cacheHelper;
@@ -938,8 +936,6 @@ public class MatchingManager : IMatchingManager
                         {
                             PlayerId = data.PlayerId,
                             TargetPlayerId = link.TargetPlayerId,
-                            MyJobTitle = link.MyJobTitle,
-                            TargetJobTitle = link.TargetJobTitle,
                             Persona = PersonaType.None,
                             StartArea = link.StartArea,
                             SpawnCell = Cell.Clone(link.SpawnCell),
@@ -974,7 +970,7 @@ public class MatchingManager : IMatchingManager
                                 break;
                             deliveryAttempted = true;
                             delivered = await ProcessMatchedEntry(link.Entry, matchingId, link.TargetPlayerId,
-                                link.TargetJobTitle, link.MyJobTitle, playerRoster, humanHandoffRoster, link.SpawnCell,
+                                playerRoster, humanHandoffRoster, link.SpawnCell,
                                 gameServerAllocation);
                             if (delivered)
                             {
@@ -1164,8 +1160,6 @@ public class MatchingManager : IMatchingManager
                 {
                     PlayerId = data.PlayerId,
                     TargetPlayerId = link.TargetPlayerId,
-                    MyJobTitle = link.MyJobTitle,
-                    TargetJobTitle = link.TargetJobTitle,
                     Persona = PersonaType.None,
                     StartArea = link.StartArea,
                     SpawnCell = Cell.Clone(link.SpawnCell),
@@ -1200,7 +1194,7 @@ public class MatchingManager : IMatchingManager
                         break;
                     deliveryAttempted = true;
                     delivered = await ProcessMatchedEntry(link.Entry, matchingId, link.TargetPlayerId,
-                        link.TargetJobTitle, link.MyJobTitle, playerRoster, humanHandoffRoster, link.SpawnCell,
+                        playerRoster, humanHandoffRoster, link.SpawnCell,
                         gameServerAllocation);
                     if (delivered)
                     {
@@ -1398,68 +1392,8 @@ public class MatchingManager : IMatchingManager
             (entries[i], entries[j]) = (entries[j], entries[i]);
         }
 
-        // Resolve job pool.
-        List<JobTitle> jobs;
-        try
-        {
-            var raw = await _cacheHelper.HashGetAsync(
-                MatchingConfigRedisKeys.Key,
-                MatchingConfigRedisKeys.JobPoolField);
-
-            if (raw.HasValue)
-            {
-                var ints = System.Text.Json.JsonSerializer.Deserialize<List<int>>((string)raw!);
-                if (ints != null && ints.Count > 0)
-                {
-                    jobs = ints.Select(v => (JobTitle)v).ToList();
-                    _logger.LogInformation("Applied configured matching job pool: {Jobs}", string.Join(",", jobs));
-                }
-                else
-                {
-                    jobs = Enum.GetValues<JobTitle>().Where(j => j != JobTitle.NONE).ToList();
-                }
-            }
-            else
-            {
-                jobs = Enum.GetValues<JobTitle>().Where(j => j != JobTitle.NONE).ToList();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to read matching job pool; using the default shuffled pool");
-            jobs = Enum.GetValues<JobTitle>().Where(j => j != JobTitle.NONE).ToList();
-        }
-
-        // Shuffle the job pool.
-        for (int i = jobs.Count - 1; i > 0; i--)
-        {
-            int j = rng.Next(i + 1);
-            (jobs[i], jobs[j]) = (jobs[j], jobs[i]);
-        }
-
-        // Supplement a short configured pool with unused non-NONE jobs.
-        if (jobs.Count < entries.Count)
-        {
-            var fillPool = Enum.GetValues<JobTitle>()
-                .Where(j => j != JobTitle.NONE && !jobs.Contains(j))
-                .OrderBy(_ => rng.Next())
-                .ToList();
-            int needed = entries.Count - jobs.Count;
-            jobs.AddRange(fillPool.Take(needed));
-            _logger.LogInformation("Supplemented matching job pool with {Needed} jobs", needed);
-        }
-
-        // 직업 종수(8) < 정원(10)이면 전 직업을 써도 모자란다 — 순환 중복 배정 (#223 10인 전환).
-        if (jobs.Count < entries.Count)
-        {
-            int baseJobCount = jobs.Count;
-            for (int fillIndex = 0; jobs.Count < entries.Count; fillIndex++)
-                jobs.Add(jobs[fillIndex % baseJobCount]);
-        }
-
         // Deserialize PlayerIds once before building the chain.
         var players = entries.Select(e => MessagePackSerializer.Deserialize<MatchingQueueData>(e)).ToList();
-        ApplyForcedPlayerJob(players, jobs);
 
         var chain = new List<RosterChainLink>();
         for (int i = 0; i < entries.Count; i++)
@@ -1468,29 +1402,14 @@ public class MatchingManager : IMatchingManager
             chain.Add(new RosterChainLink
             {
                 Entry = entries[i],
-                TargetPlayerId = players[targetIndex].PlayerId,
-                MyJobTitle = jobs[i],
-                TargetJobTitle = jobs[targetIndex]
+                TargetPlayerId = players[targetIndex].PlayerId
             });
         }
 
-        _logger.LogInformation("Manitto chain created: {Chain}",
-            string.Join(" ??", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" ??{players[0].PlayerId}");
+        _logger.LogInformation("Target chain created: {Chain}",
+            string.Join(" -> ", players.Select(p => p.PlayerId.ToString())) + $" -> {players[0].PlayerId}");
 
         return chain;
-    }
-
-    private static JobTitle? ParseForcedPlayerJob()
-    {
-        string? raw = Environment.GetEnvironmentVariable("FORCE_PLAYER_JOB");
-        if (string.IsNullOrWhiteSpace(raw)) return null;
-
-        if (Enum.TryParse(raw, true, out JobTitle byName) && byName != JobTitle.NONE)
-            return byName;
-
-        return short.TryParse(raw, out short byValue) && Enum.IsDefined(typeof(JobTitle), byValue)
-            ? (JobTitle)byValue
-            : null;
     }
 
     private void ApplySpawnAssignments(long matchingId, List<RosterChainLink> chain)
@@ -1524,24 +1443,6 @@ public class MatchingManager : IMatchingManager
                 matchingId, playerId, link.StartArea, link.SpawnCell.X, link.SpawnCell.Y);
         }
     }
-    private void ApplyForcedPlayerJob(List<MatchingQueueData> players, List<JobTitle> jobs)
-    {
-        var forcedJob = ForcedPlayerJob;
-        if (!forcedJob.HasValue) return;
-
-        int playerIndex = players.FindIndex(player => player.PlayerId >= 0);
-        if (playerIndex < 0 || playerIndex >= jobs.Count) return;
-
-        int forcedJobIndex = jobs.IndexOf(forcedJob.Value);
-        if (forcedJobIndex >= 0)
-            (jobs[playerIndex], jobs[forcedJobIndex]) = (jobs[forcedJobIndex], jobs[playerIndex]);
-        else
-            jobs[playerIndex] = forcedJob.Value;
-
-        _logger.LogInformation("Applied forced player job: PlayerId={PlayerId}, Job={Job}",
-            players[playerIndex].PlayerId, forcedJob.Value);
-    }
-
     private async Task ApplyTwoPlayerTestTargetOutfitAsync(List<RosterChainLink> chain)
     {
         if (!IsTwoPlayerTestMatch) return;
@@ -1646,20 +1547,6 @@ public class MatchingManager : IMatchingManager
 
         var ordered = realPlayers.Concat(bots).ToList();
         var players = ordered.Select(x => x.Data).ToList();
-        // NONE을 배정하면 그 플레이어는 직책 없이 매치에 들어가 인게임 진입에서 막힌다.
-        // 실제 플레이어가 배열 앞에 오므로, 먼저 큐를 잡은 사람이 항상 걸렸다.
-        // JobTitle은 NONE을 빼고 정확히 8개라 8인 매치에 그대로 맞는다.
-        var jobs = new[]
-        {
-            JobTitle.STUDENT_PRESIDENT,
-            JobTitle.DISCIPLINE_MEMBER,
-            JobTitle.BROADCAST_MEMBER,
-            JobTitle.SCIENCE_MEMBER,
-            JobTitle.HEALTH_MEMBER,
-            JobTitle.LIBRARY_COMMITTEE,
-            JobTitle.SPORTS_CAPTAIN,
-            JobTitle.CLEANING_MEMBER
-        };
 
         var chain = new List<RosterChainLink>();
         for (int i = 0; i < ordered.Count; i++)
@@ -1668,15 +1555,13 @@ public class MatchingManager : IMatchingManager
             chain.Add(new RosterChainLink
             {
                 Entry = ordered[i].Entry,
-                TargetPlayerId = players[targetIndex].PlayerId,
-                MyJobTitle = jobs[i],
-                TargetJobTitle = jobs[targetIndex]
+                TargetPlayerId = players[targetIndex].PlayerId
             });
         }
 
         _logger.LogInformation(
             "TEST_TWO_PLAYER_MATCH deterministic chain: {Chain}",
-            string.Join(" -> ", players.Select((p, i) => $"{p.PlayerId}({jobs[i]})")) + $" -> {players[0].PlayerId}");
+            string.Join(" -> ", players.Select(p => p.PlayerId.ToString())) + $" -> {players[0].PlayerId}");
 
         return chain;
     }
@@ -1765,9 +1650,7 @@ public class MatchingManager : IMatchingManager
             .Select(item => new GameHandoffRosterEntry
             {
                 PlayerId = item.Data.PlayerId,
-                TargetPlayerId = item.Link.TargetPlayerId,
-                TargetJobTitle = item.Link.TargetJobTitle,
-                MyJobTitle = item.Link.MyJobTitle
+                TargetPlayerId = item.Link.TargetPlayerId
             })
             .ToList();
     }
@@ -2762,7 +2645,7 @@ public class MatchingManager : IMatchingManager
     }
 
     private async Task<bool> ProcessMatchedEntry(byte[] entry, long matchingId,
-        long targetPlayerId, JobTitle targetJobTitle, JobTitle myJobTitle, List<PlayerInfo> playerRoster,
+        long targetPlayerId, List<PlayerInfo> playerRoster,
         List<GameHandoffRosterEntry> humanHandoffRoster, Cell spawnCell,
         GameServerAllocation gameServerAllocation)
     {
@@ -2853,8 +2736,6 @@ public class MatchingManager : IMatchingManager
                 MapSubId = matchingId,
                 SpawnPosition = Cell.Clone(spawnPosition),
                 TargetPlayerId = targetPlayerId,
-                TargetJobTitle = targetJobTitle,
-                MyJobTitle = myJobTitle,
                 ActiveBuffIds = new List<int>(),
                 HumanRoster = humanHandoffRoster,
                 GameServerNodeId = gameServerAllocation.Owner?.NodeId ?? string.Empty,
@@ -2881,7 +2762,7 @@ public class MatchingManager : IMatchingManager
             using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
                 matchingId, mapId, matchingId, spawnPosition,
                 gameServerAllocation.PublicHost, gameServerAllocation.PublicPort, gameEndTimestamp,
-                gameHandoffTicket, targetPlayerId, targetJobTitle, myJobTitle, playerRoster, new List<int>()
+                gameHandoffTicket, targetPlayerId, playerRoster, new List<int>()
             );
 
             bool accepted;
@@ -2910,8 +2791,8 @@ public class MatchingManager : IMatchingManager
             }
 
             delivered = true;
-            _logger.LogInformation("Matching success sent: PlayerId={DataPlayerId}, Target={TargetPlayerId}, MyJob={MyJob}, TargetJob={TargetJob}",
-                data.PlayerId, targetPlayerId, myJobTitle, targetJobTitle);
+            _logger.LogInformation("Matching success sent: PlayerId={DataPlayerId}, Target={TargetPlayerId}",
+                data.PlayerId, targetPlayerId);
             return true;
         }
         finally
@@ -3302,14 +3183,12 @@ public class MatchingQueueData
 }
 
 /// <summary>
-///     One player-to-target link in the circular Manitto chain, including roles and spawn data.
+///     One player-to-target link in the circular target chain, including spawn data.
 /// </summary>
 public class RosterChainLink
 {
     public byte[] Entry { get; set; } = Array.Empty<byte>();
     public long TargetPlayerId { get; set; }
-    public JobTitle MyJobTitle { get; set; }
-    public JobTitle TargetJobTitle { get; set; }
     public PersonaType Persona { get; set; } = PersonaType.None;
     public AreaType StartArea { get; set; } = AreaType.None;
     public Cell SpawnCell { get; set; } = new(0, 0);

@@ -286,45 +286,6 @@ namespace network.common
         DARK,
     }
 
-    /// <summary>마니또 게임 직책. 각 플레이어에게 한 개를 배정한다.</summary>
-    public enum JobTitle : short
-    {
-        NONE = 0,
-        BROADCAST_MEMBER = 1,
-        DISCIPLINE_MEMBER = 2,
-        LIBRARY_COMMITTEE = 3,
-        SPORTS_CAPTAIN = 4,
-        SCIENCE_MEMBER = 5,
-        CLEANING_MEMBER = 6,
-        STUDENT_PRESIDENT = 7,
-        HEALTH_MEMBER = 8,
-    }
-
-    public static class JobTitleExtensions
-    {
-        public static string ToKorean(this JobTitle jobTitle) => jobTitle.ToString();
-
-        /// <summary>system_text.csv의 11000~11007 textId로 직책명을 현지화한다.</summary>
-        public static string ToLocalized(this JobTitle jobTitle, string lang)
-        {
-            int textId = jobTitle switch
-            {
-                JobTitle.BROADCAST_MEMBER => 11000,
-                JobTitle.DISCIPLINE_MEMBER => 11001,
-                JobTitle.LIBRARY_COMMITTEE => 11002,
-                JobTitle.SPORTS_CAPTAIN => 11003,
-                JobTitle.SCIENCE_MEMBER => 11004,
-                JobTitle.CLEANING_MEMBER => 11005,
-                JobTitle.STUDENT_PRESIDENT => 11006,
-                JobTitle.HEALTH_MEMBER => 11007,
-                _ => 0
-            };
-            if (textId == 0) return "";
-            var data = network.common.data.GameSystemTextData.Get(textId);
-            return data?.Text?.Get(lang) ?? jobTitle.ToKorean();
-        }
-    }
-
     /// <summary>플레이어 탈락 사유.</summary>
     public enum EliminationReason : short
     {
