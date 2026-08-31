@@ -1,17 +1,18 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 
 namespace game_server.services;
 
-// #294 후속 — GameServer.SwarmArena 파셜에 산개돼 있던 상태를 도메인별 홀더 4개로 묶고,
+// #294 후속 — GameServer.SwarmArena 파셜에 산개돼 있던 상태를 도메인별 홀더로 묶고,
 // matchingId가 소유하는 aggregate에서 함께 생성·폐기한다. 기존 key shape는 단계적으로 줄인다.
 
 /// <summary>
-///     Owns the mutable Swarm state for exactly one matching id. The nested state holders still
-///     keep their established key shapes while the migration is in progress, but their lifetime is
-///     now bounded by this aggregate instead of the GameServer process.
+///     Owns the mutable Swarm state for exactly one matching id. The initial state holders keep
+///     their established key shapes while the migration is in progress; newly migrated holders use
+///     match-local keys. Every holder lifetime is bounded by this aggregate instead of GameServer.
 /// </summary>
 public sealed class SwarmMatchRuntime
 {
@@ -31,6 +32,8 @@ public sealed class SwarmMatchRuntime
     public SwarmGrowthOfferCoordinator GrowthOfferCoordinator { get; }
     public SwarmBotTacticalState BotTactics { get; } = new();
     public SwarmMatchPacingState Pacing { get; } = new();
+    public SwarmWindBladeState WindBlade { get; } = new();
+    public SwarmOrbBoardState OrbBoard { get; } = new();
 }
 
 /// <summary>
@@ -192,4 +195,75 @@ public sealed class SwarmMatchPacingState
     // 개발용 절단 더미 샌드박스 (#226 실험장).
     public readonly HashSet<long> CutDummyAutoSetupDone = new();
     public readonly Dictionary<(long MatchingId, long PlayerId), DateTime> CutDummyRefillAtUtc = new();
+}
+
+/// <summary>
+///     바람 칼날의 틱·시동·피해자 면역·상처 상태. 이 객체 자체가 한 매치에 귀속되므로 내부 key에는
+///     matching id를 반복하지 않는다. enclosing match execution gate가 모든 변경을 직렬화한다.
+/// </summary>
+public sealed class SwarmWindBladeState
+{
+    private readonly Dictionary<(long PlayerId, long ItemUid), DateTime> _nextTickAtUtc = new();
+    private readonly Dictionary<(long PlayerId, long ItemUid), DateTime> _engagedAtUtc = new();
+    private readonly Dictionary<long, DateTime> _victimImmuneUntilUtc = new();
+    private readonly Dictionary<long, DateTime> _woundsUntilUtc = new();
+
+    public bool TryBeginTick(long playerId, long itemUid, DateTime nowUtc, double intervalSeconds)
+    {
+        var key = (playerId, itemUid);
+        if (_nextTickAtUtc.TryGetValue(key, out DateTime nextTickAtUtc) && nowUtc < nextTickAtUtc)
+            return false;
+
+        _nextTickAtUtc[key] = nowUtc.AddSeconds(intervalSeconds);
+        return true;
+    }
+
+    public void ResetEngagement(long playerId, long itemUid) =>
+        _engagedAtUtc.Remove((playerId, itemUid));
+
+    public bool HasCompletedSpinup(long playerId, long itemUid, DateTime nowUtc, double durationSeconds)
+    {
+        var key = (playerId, itemUid);
+        if (!_engagedAtUtc.TryGetValue(key, out DateTime engagedAtUtc))
+        {
+            engagedAtUtc = nowUtc;
+            _engagedAtUtc[key] = engagedAtUtc;
+        }
+
+        return (nowUtc - engagedAtUtc).TotalSeconds >= durationSeconds;
+    }
+
+    public bool TryClaimVictimShock(long victimId, DateTime nowUtc, double immunitySeconds)
+    {
+        if (_victimImmuneUntilUtc.TryGetValue(victimId, out DateTime immuneUntilUtc) && nowUtc < immuneUntilUtc)
+            return false;
+
+        _victimImmuneUntilUtc[victimId] = nowUtc.AddSeconds(immunitySeconds);
+        return true;
+    }
+
+    public void ApplyWound(long victimId, DateTime untilUtc) =>
+        _woundsUntilUtc[victimId] = untilUtc;
+
+    public bool IsWounded(long victimId, DateTime nowUtc) =>
+        _woundsUntilUtc.TryGetValue(victimId, out DateTime untilUtc) && nowUtc < untilUtc;
+}
+
+/// <summary>
+///     계열별 오브 강화 구매 횟수. 비용 계산이 읽는 매치 로컬 누적값만 소유하고, 소환석 소비와
+///     인벤토리 교체는 GameServer의 기존 흐름에 남긴다.
+/// </summary>
+public sealed class SwarmOrbBoardState
+{
+    private readonly Dictionary<(long PlayerId, OrbColor Color), int> _familyUpgradeCounts = new();
+
+    public int GetFamilyUpgradeCount(long playerId, OrbColor color) =>
+        _familyUpgradeCounts.TryGetValue((playerId, color), out int count) ? count : 0;
+
+    public int IncrementFamilyUpgradeCount(long playerId, OrbColor color)
+    {
+        int count = GetFamilyUpgradeCount(playerId, color) + 1;
+        _familyUpgradeCounts[(playerId, color)] = count;
+        return count;
+    }
 }

@@ -27,10 +27,6 @@ public partial class GameServer
     private static readonly OrbColor[] SwarmFamilyColors =
         [OrbColor.Red, OrbColor.Green, OrbColor.Blue];
 
-    // 계열별 강화 구매 횟수 — 비용 곡선(min(21, 5+2N))의 N. 소환 카드 곡선과 독립이다.
-    private readonly Dictionary<(long MatchingId, long PlayerId, OrbColor Color), int>
-        _swarmFamilyUpgradeCounts = new();
-
     // 봇 시작 오브 (2026-08-18 유저 지시): 사람은 3개, 봇은 10개로 시작한다 — 사람이 처음부터 긴 꼬리를
     // 상대하고, 절단할 표적이 판 초반부터 있다.
     private const int SwarmBotStartingOrbCount = 10;
@@ -108,13 +104,16 @@ public partial class GameServer
     }
 
     /// <summary>이 계열의 다음 강화 비용. 강화할 오브(T3 미만)가 없으면 0(강화 불가).</summary>
-    private int GetSwarmFamilyUpgradeCost(long matchingId, long playerId, OrbColor color)
+    private int GetSwarmFamilyUpgradeCost(long matchingId, long playerId, OrbColor color) =>
+        GetSwarmFamilyUpgradeCost(
+            matchingId, playerId, color, GetSwarmMatchRuntime(matchingId).OrbBoard);
+
+    private int GetSwarmFamilyUpgradeCost(
+        long matchingId, long playerId, OrbColor color, SwarmOrbBoardState orbBoard)
     {
         if (FindSwarmUpgradeTargetOrdinal(matchingId, playerId, color, out _) < 0)
             return 0;
-        int purchases = _swarmFamilyUpgradeCounts.TryGetValue((matchingId, playerId, color), out int count)
-            ? count
-            : 0;
+        int purchases = orbBoard.GetFamilyUpgradeCount(playerId, color);
         return Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(purchases));
     }
 
@@ -135,7 +134,8 @@ public partial class GameServer
         int ordinal = FindSwarmUpgradeTargetOrdinal(matchingId, playerId, color, out var target);
         if (ordinal < 0 || target == null)
             return false;
-        int cost = GetSwarmFamilyUpgradeCost(matchingId, playerId, color);
+        SwarmOrbBoardState orbBoard = GetSwarmMatchRuntime(matchingId).OrbBoard;
+        int cost = GetSwarmFamilyUpgradeCost(matchingId, playerId, color, orbBoard);
         if (cost <= 0)
             return false;
         if (!OrbData.TryGetColorAndTier(target.ItemId, out _, out int tier) ||
@@ -144,8 +144,7 @@ public partial class GameServer
         if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
             return false;
 
-        _swarmFamilyUpgradeCounts[(matchingId, playerId, color)] =
-            (_swarmFamilyUpgradeCounts.TryGetValue((matchingId, playerId, color), out int count) ? count : 0) + 1;
+        orbBoard.IncrementFamilyUpgradeCount(playerId, color);
 
         var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
         bool replaced = inventory.TryReplaceOrb(target.ItemUid, upgradedItemId, out _);
@@ -164,13 +163,14 @@ public partial class GameServer
     /// <summary>계열 레벨·비용 스냅샷 전송 — 시작·강화·오브 증감 때.</summary>
     private void SendSwarmFamilyLevels(long matchingId, long playerId, GameClientSession? session)
     {
+        SwarmOrbBoardState orbBoard = GetSwarmMatchRuntime(matchingId).OrbBoard;
         session?.SendSwarmFamilyLevels(
             GetSwarmFamilyLevel(matchingId, playerId, OrbColor.Red),
             GetSwarmFamilyLevel(matchingId, playerId, OrbColor.Green),
             GetSwarmFamilyLevel(matchingId, playerId, OrbColor.Blue),
-            GetSwarmFamilyUpgradeCost(matchingId, playerId, OrbColor.Red),
-            GetSwarmFamilyUpgradeCost(matchingId, playerId, OrbColor.Green),
-            GetSwarmFamilyUpgradeCost(matchingId, playerId, OrbColor.Blue));
+            GetSwarmFamilyUpgradeCost(matchingId, playerId, OrbColor.Red, orbBoard),
+            GetSwarmFamilyUpgradeCost(matchingId, playerId, OrbColor.Green, orbBoard),
+            GetSwarmFamilyUpgradeCost(matchingId, playerId, OrbColor.Blue, orbBoard));
     }
 
     /// <summary>클라 결정 요청 (사람 전용). 결과는 항상 응답한다 — 거절이면 Success=false.</summary>
@@ -214,20 +214,15 @@ public partial class GameServer
             return false;
 
         // 최다 보유 계열이 전부 T3이면 강화 가능한 다른 계열을 찾는다.
-        if (GetSwarmFamilyUpgradeCost(matchingId, playerId, favorite) <= 0)
+        SwarmOrbBoardState orbBoard = GetSwarmMatchRuntime(matchingId).OrbBoard;
+        if (GetSwarmFamilyUpgradeCost(matchingId, playerId, favorite, orbBoard) <= 0)
         {
             favorite = SwarmFamilyColors.FirstOrDefault(color =>
-                GetSwarmFamilyUpgradeCost(matchingId, playerId, color) > 0);
+                GetSwarmFamilyUpgradeCost(matchingId, playerId, color, orbBoard) > 0);
             if (favorite == OrbColor.None)
                 return false;
         }
 
         return TryUpgradeSwarmFamily(matchingId, playerId, favorite, session: null, out _, out _);
-    }
-
-    private void ClearSwarmOrbBoardState(long matchingId)
-    {
-        foreach (var key in _swarmFamilyUpgradeCounts.Keys.Where(key => key.MatchingId == matchingId).ToList())
-            _swarmFamilyUpgradeCounts.Remove(key);
     }
 }

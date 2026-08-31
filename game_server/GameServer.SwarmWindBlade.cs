@@ -22,32 +22,11 @@ public partial class GameServer
     private const float SwarmWindBladeMonsterRadius = 0.3f;
     private const float SwarmWindBladePlayerRadius = 0.25f;
 
-    private readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid), DateTime>
-        _swarmWindBladeNextTickAtUtc = new();
-
-    // 교전 시작 시각 — 시동 게이트(SPINUP_SECONDS)의 기준. 반경이 비면 지워져 다시 시동한다.
-    private readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid), DateTime>
-        _swarmWindBladeEngagedAtUtc = new();
-
     // 바람 원복 (2026-08-26 유저 지시 "바람은 태양 피격박스 수정 이전으로"): 충격 면역 전면
     // 퇴역은 태양 다발 화망의 침묵 관통 수리였다 — 바람 칼날은 예고선(회전 링)이 오브 위치
     // 그대로라 표시=판정 어긋남이 없었고, 면역까지 걷히면 순수 연타 상향이 딸려온다.
     // 바람만 종전과 같은 피해자 0.9초 창을 되살린다 (옛 SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS 값).
     private const double SwarmWindBladeVictimImmuneSeconds = 0.9d;
-
-    private readonly Dictionary<(long MatchingId, long VictimId), DateTime>
-        _swarmWindBladeVictimImmuneUntilUtc = new();
-
-    private bool TryClaimSwarmWindBladeShockWindow(long matchingId, long victimId, DateTime nowUtc)
-    {
-        if (_swarmWindBladeVictimImmuneUntilUtc.TryGetValue((matchingId, victimId), out var immuneUntil) &&
-            nowUtc < immuneUntil)
-            return false;
-
-        _swarmWindBladeVictimImmuneUntilUtc[(matchingId, victimId)] =
-            nowUtc.AddSeconds(SwarmWindBladeVictimImmuneSeconds);
-        return true;
-    }
 
     private void ProcessSwarmWindBlades(
         long matchingId,
@@ -58,6 +37,7 @@ public partial class GameServer
         List<GameClientSession> allSessions)
     {
         IReadOnlyList<SwarmArenaCombatTarget>? monsters = null;
+        SwarmWindBladeState windBlade = GetSwarmMatchRuntime(matchingId).WindBlade;
 
         foreach (var owner in participants)
         {
@@ -74,11 +54,10 @@ public partial class GameServer
                     color != OrbColor.Green)
                     continue;
 
-                var key = (matchingId, owner.PlayerId, item.ItemUid);
-                if (_swarmWindBladeNextTickAtUtc.TryGetValue(key, out var nextTickAtUtc) && nowUtc < nextTickAtUtc)
+                if (!windBlade.TryBeginTick(
+                        owner.PlayerId, item.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_TICK_SECONDS))
                     continue;
                 // 비무장(소환·채집 중)은 쉰다 — 미사일·물폭탄과 같은 규칙. 틱 시계는 계속 돈다.
-                _swarmWindBladeNextTickAtUtc[key] = nowUtc.AddSeconds(Config.SWARM_WIND_BLADE_TICK_SECONDS);
                 if (!IsSwarmAttackArmed(matchingId, owner.PlayerId, nowUtc))
                     continue;
 
@@ -115,17 +94,12 @@ public partial class GameServer
                 // 든 순간부터 클라 회전 20% 도달에 맞춘 0.2초만 기다린다. 반경이 비면 리셋.
                 if (monstersInRadius == null && playersInRadius == null)
                 {
-                    _swarmWindBladeEngagedAtUtc.Remove(key);
+                    windBlade.ResetEngagement(owner.PlayerId, item.ItemUid);
                     continue;
                 }
 
-                if (!_swarmWindBladeEngagedAtUtc.TryGetValue(key, out var engagedAtUtc))
-                {
-                    engagedAtUtc = nowUtc;
-                    _swarmWindBladeEngagedAtUtc[key] = engagedAtUtc;
-                }
-
-                if ((nowUtc - engagedAtUtc).TotalSeconds < Config.SWARM_WIND_BLADE_SPINUP_SECONDS)
+                if (!windBlade.HasCompletedSpinup(
+                        owner.PlayerId, item.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_SPINUP_SECONDS))
                     continue;
 
                 if (sunMultiplier < 0f)
@@ -153,7 +127,8 @@ public partial class GameServer
                 {
                     foreach (var participant in playersInRadius)
                     {
-                        if (!TryClaimSwarmWindBladeShockWindow(matchingId, participant.PlayerId, nowUtc))
+                        if (!windBlade.TryClaimVictimShock(
+                                participant.PlayerId, nowUtc, SwarmWindBladeVictimImmuneSeconds))
                             continue;
 
                         shocks++;
@@ -161,7 +136,7 @@ public partial class GameServer
                         ApplySwarmShock(matchingId, owner.PlayerId, item.ItemId, owner.Area, participant.PlayerId,
                             $"WIND_BLADE_HIT ordinal={ordinal}", aliveSessions, aliveBots, allSessions);
                         ApplySwarmWindWound(
-                            matchingId, owner.PlayerId, owner.Area, participant.PlayerId,
+                            windBlade, owner.PlayerId, owner.Area, participant.PlayerId,
                             nowUtc, aliveSessions);
                     }
                 }
@@ -178,15 +153,4 @@ public partial class GameServer
         }
     }
 
-    private void ClearSwarmWindBladeState(long matchingId)
-    {
-        foreach (var key in _swarmWindBladeNextTickAtUtc.Keys.Where(key => key.MatchingId == matchingId).ToList())
-            _swarmWindBladeNextTickAtUtc.Remove(key);
-        foreach (var key in _swarmWindBladeEngagedAtUtc.Keys.Where(key => key.MatchingId == matchingId).ToList())
-            _swarmWindBladeEngagedAtUtc.Remove(key);
-        foreach (var key in _swarmWindBladeVictimImmuneUntilUtc.Keys
-                     .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmWindBladeVictimImmuneUntilUtc.Remove(key);
-        ClearSwarmWindWoundState(matchingId);
-    }
 }

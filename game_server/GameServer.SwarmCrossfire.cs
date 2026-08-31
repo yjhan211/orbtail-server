@@ -717,31 +717,14 @@ public partial class GameServer
             _swarmSunBurns.Remove(key);
     }
 
-    // 상처 (#268, 2026-08-25 유저 결정): 바람 칼날 피격자는 5초간 PvP 충격 치명타가 열린다.
-    private readonly Dictionary<(long MatchingId, long VictimId), DateTime> _swarmWindWoundsUntilUtc = new();
-
     /// <summary>상처 부여·갱신 — HUD 통지 포함. 효과는 ApplySwarmShock의 치명타 굴림이 읽는다.</summary>
     private void ApplySwarmWindWound(
-        long matchingId, long ownerId, AreaType area, long victimId,
+        SwarmWindBladeState windBlade, long ownerId, AreaType area, long victimId,
         DateTime nowUtc, List<GameClientSession> aliveSessions)
     {
-        _swarmWindWoundsUntilUtc[(matchingId, victimId)] =
-            nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS);
+        windBlade.ApplyWound(victimId, nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS));
         aliveSessions.FirstOrDefault(session => session.PlayerId == victimId)
             ?.SendSwarmWindWound(ownerId, area, (int)(Config.SWARM_WIND_WOUND_SECONDS * 1000f));
-    }
-
-    private bool IsSwarmWounded(long matchingId, long victimId)
-    {
-        return _swarmWindWoundsUntilUtc.TryGetValue((matchingId, victimId), out var untilUtc) &&
-               DateTime.UtcNow < untilUtc;
-    }
-
-    private void ClearSwarmWindWoundState(long matchingId)
-    {
-        foreach (var key in _swarmWindWoundsUntilUtc.Keys
-                     .Where(key => key.MatchingId == matchingId).ToList())
-            _swarmWindWoundsUntilUtc.Remove(key);
     }
 
     /// <summary>
@@ -761,12 +744,13 @@ public partial class GameServer
         float damageScale = 1f,
         bool dotTick = false)
     {
+        SwarmMatchRuntime runtime = GetSwarmMatchRuntime(matchingId);
         // 받는 피해 배율 (2026-08-18): 고정 50 × 1/3 → 17. 태양·바람·파도 충격이 전부 이 한 곳을 지난다.
         // damageScale: 파도 소용돌이(#268)는 당김이 본체라 피해를 타격 피드백 수준(1/4)으로 줄인다.
         int shock = Math.Max(1, (int)MathF.Round(
             Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_CORRUPTION) * damageScale));
         // 상처 (#268): 상처 입은 피해자만 PvP 충격 치명타가 열린다 — PvE와 같은 2배.
-        if (IsSwarmWounded(matchingId, victimId) &&
+        if (runtime.WindBlade.IsWounded(victimId, DateTime.UtcNow) &&
             _swarmCriticalRng.NextDouble() < Config.SWARM_WIND_WOUND_CRIT_CHANCE)
             shock = Math.Max(shock + 1, (int)MathF.Round(shock * SwarmCriticalMultiplier));
         int corruptionBefore;
@@ -787,7 +771,7 @@ public partial class GameServer
                 return;
             corruptionBefore = bot.Corruption;
             bot.LastProximityAttackerPlayerId = ownerId;
-            GetSwarmMatchRuntime(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
+            runtime.BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
             bot.LastDamagedAtUtc = DateTime.UtcNow;
             _gameEventLogManager.LogHit(
                 matchingId, ownerId, bot.PlayerId, weaponItemId, shock,

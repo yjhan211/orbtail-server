@@ -125,6 +125,25 @@ public sealed class SwarmArenaTickOrderTests
             "CleanupSwarmPvpAttackEvents(matchingId);",
             "finally",
             "_swarmMatchRuntimes.Remove(matchingId);");
+        Assert.DoesNotContain("ClearSwarmWindBladeState", cleanupBody);
+        Assert.DoesNotContain("ClearSwarmOrbBoardState", cleanupBody);
+    }
+
+    [Fact]
+    public void WindBladeAndOrbBoardState_AreOwnedBySwarmMatchRuntime()
+    {
+        string root = FindRepositoryRoot();
+        string windBlade = ReadNormalizedSource(root, "game_server", "GameServer.SwarmWindBlade.cs");
+        string crossfire = ReadNormalizedSource(root, "game_server", "GameServer.SwarmCrossfire.cs");
+        string orbBoard = ReadNormalizedSource(root, "game_server", "GameServer.SwarmOrbBoard.cs");
+
+        Assert.DoesNotContain("_swarmWindBladeNextTickAtUtc", windBlade);
+        Assert.DoesNotContain("_swarmWindBladeEngagedAtUtc", windBlade);
+        Assert.DoesNotContain("_swarmWindBladeVictimImmuneUntilUtc", windBlade);
+        Assert.DoesNotContain("_swarmWindWoundsUntilUtc", crossfire);
+        Assert.DoesNotContain("_swarmFamilyUpgradeCounts", orbBoard);
+        Assert.Contains("GetSwarmMatchRuntime(matchingId).WindBlade", windBlade);
+        Assert.Contains("GetSwarmMatchRuntime(matchingId).OrbBoard", orbBoard);
     }
 
     private static string ReadSwarmArenaTick()
