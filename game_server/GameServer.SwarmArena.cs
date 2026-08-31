@@ -107,12 +107,11 @@ public partial class GameServer
     // 정식 축(뒤치기·처형 사거리 등 조건부)이 생기면 이 굴림을 그 조건으로 대체한다.
     private const double SwarmCriticalChance = 0.15d;
     private const float SwarmCriticalMultiplier = 2f;
-    private readonly Random _swarmCriticalRng = new();
 
     /// <summary>PvE 치명타 굴림 — 적중이면 배율을 적용한 피해를 돌려준다.</summary>
-    private int RollSwarmCriticalDamage(int damage, out bool critical)
+    private int RollSwarmCriticalDamage(long matchingId, int damage, out bool critical)
     {
-        critical = _swarmCriticalRng.NextDouble() < SwarmCriticalChance;
+        critical = GetSwarmMatchRuntime(matchingId).Pacing.RollCritical(SwarmCriticalChance);
         return critical
             ? Math.Max(damage + 1, (int)MathF.Round(damage * SwarmCriticalMultiplier))
             : damage;
@@ -595,7 +594,8 @@ public partial class GameServer
 
             if (monsterId > 0)
             {
-                int monsterDamage = RollSwarmCriticalDamage(attack.Damage, out bool critical);
+                int monsterDamage = RollSwarmCriticalDamage(
+                    matchingId, attack.Damage, out bool critical);
                 // 발사 연출은 즉시, 피해는 투사체 비행시간 뒤에 — 체력바와 폭발이 일치한다.
                 var attackerSession = sessions.FirstOrDefault(
                     session => session.PlayerId == attack.AttackerPlayerId);
@@ -748,29 +748,37 @@ public partial class GameServer
     }
 
     // #272 경계 토출 스폰: 구역별 walkable 셀을 중심 거리 오름차순으로 캐시 — 리졸버가 띠를 자른다.
-    private static Dictionary<AreaType, List<(Cell Cell, int Distance)>>? _swarmAreaCellsByDistance;
+    // Config 초기화 뒤 첫 접근까지 계산을 미루되, 서로 다른 매치의 동시 최초 접근은 한 번만 게시한다.
+    private static readonly Lazy<IReadOnlyDictionary<AreaType, IReadOnlyList<(Cell Cell, int Distance)>>>
+        _swarmAreaCellsByDistance = new(
+            BuildSwarmAreaCellsByDistance,
+            LazyThreadSafetyMode.ExecutionAndPublication);
 
-    private static List<(Cell Cell, int Distance)> GetSwarmAreaCellsByDistance(AreaType area)
+    private static IReadOnlyDictionary<AreaType, IReadOnlyList<(Cell Cell, int Distance)>>
+        BuildSwarmAreaCellsByDistance()
     {
-        if (_swarmAreaCellsByDistance == null)
+        var byArea = new Dictionary<AreaType, List<(Cell Cell, int Distance)>>();
+        foreach (var pair in SwarmPressureField.DistancesByCell)
         {
-            var byArea = new Dictionary<AreaType, List<(Cell Cell, int Distance)>>();
-            foreach (var pair in SwarmPressureField.DistancesByCell)
-            {
-                var cell = new Cell(pair.Key.X, pair.Key.Y);
-                var cellArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
-                if (cellArea == AreaType.None) continue;
-                if (!byArea.TryGetValue(cellArea, out var list))
-                    byArea[cellArea] = list = new List<(Cell, int)>();
-                list.Add((cell, pair.Value));
-            }
-
-            foreach (var list in byArea.Values)
-                list.Sort((left, right) => left.Distance.CompareTo(right.Distance));
-            _swarmAreaCellsByDistance = byArea;
+            var cell = new Cell(pair.Key.X, pair.Key.Y);
+            var cellArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
+            if (cellArea == AreaType.None) continue;
+            if (!byArea.TryGetValue(cellArea, out var list))
+                byArea[cellArea] = list = new List<(Cell, int)>();
+            list.Add((cell, pair.Value));
         }
 
-        return _swarmAreaCellsByDistance.TryGetValue(area, out var cells)
+        foreach (var list in byArea.Values)
+            list.Sort((left, right) => left.Distance.CompareTo(right.Distance));
+
+        return byArea.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<(Cell Cell, int Distance)>)pair.Value.AsReadOnly());
+    }
+
+    private static IReadOnlyList<(Cell Cell, int Distance)> GetSwarmAreaCellsByDistance(AreaType area)
+    {
+        return _swarmAreaCellsByDistance.Value.TryGetValue(area, out var cells)
             ? cells
             : [];
     }
@@ -821,13 +829,15 @@ public partial class GameServer
 
     // 자기장 파생 웨이브 (#272): 계산은 AreaClosureManager.BuildSwarmFieldWaves가 담당한다.
     // 거리 필드·상수가 프로세스 수명 동안 불변이라 한 번만 계산해 캐시한다.
-    private static IReadOnlyList<ClosureWaveDefinition>? _swarmFieldDerivedWaves;
+    private static readonly Lazy<IReadOnlyList<ClosureWaveDefinition>> _swarmFieldDerivedWaves =
+        new(
+            () => AreaClosureManager
+                .BuildSwarmFieldWaves(SwarmFieldHoldSeconds, SwarmFieldShrinkSeconds)
+                .AsReadOnly(),
+            LazyThreadSafetyMode.ExecutionAndPublication);
 
-    private static IReadOnlyList<ClosureWaveDefinition> GetSwarmFieldWaves()
-    {
-        return _swarmFieldDerivedWaves ??=
-            AreaClosureManager.BuildSwarmFieldWaves(SwarmFieldHoldSeconds, SwarmFieldShrinkSeconds);
-    }
+    private static IReadOnlyList<ClosureWaveDefinition> GetSwarmFieldWaves() =>
+        _swarmFieldDerivedWaves.Value;
 
     // 자기장 상태 패킷은 매칭당 개전 1회 브로드캐스트 (재접속은 스냅샷이 복원). 폐쇄 틱 단일
     // 스레드(Timer 콜백 직렬)만 쓰고 손다 — 잠금 불필요.
@@ -2065,7 +2075,7 @@ public partial class GameServer
             float dy = (target.Position.Y - position.Y) * 2f;
             if (dx * dx + dy * dy > radiusSquared)
                 continue;
-            int monsterDamage = RollSwarmCriticalDamage(damage, out bool critical);
+            int monsterDamage = RollSwarmCriticalDamage(matchingId, damage, out bool critical);
             _swarmMonsterDirector.ReserveMonsterDamage(matchingId, target.CombatTargetId, monsterDamage);
             _swarmMonsterDirector.RecordMonsterAttackEvent(matchingId, target.CombatTargetId);
             GetSwarmMatchRuntime(matchingId).Pacing.PendingMonsterHits.Add(new PendingSwarmMonsterHit(

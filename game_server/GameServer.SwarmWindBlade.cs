@@ -115,7 +115,8 @@ public partial class GameServer
                     {
                         monsterHits++;
                         _swarmMonsterDirector.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
-                        int monsterDamage = RollSwarmCriticalDamage(damage, out bool critical);
+                        int monsterDamage = RollSwarmCriticalDamage(
+                            matchingId, damage, out bool critical);
                         ApplySwarmMonsterHitNow(
                             matchingId, monster.CombatTargetId, monster.MonsterId, owner.PlayerId,
                             item.ItemId, owner.Area, monsterDamage, critical, allSessions);

@@ -297,7 +297,8 @@ public partial class GameServer
                 shape.HitMonsters.Add(monster.CombatTargetId);
                 TrackSwarmCrossfireConvergence(matchingId, monster.CombatTargetId, nowUtc);
                 _swarmMonsterDirector.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
-                int monsterDamage = RollSwarmCriticalDamage(shape.Damage, out bool critical);
+                int monsterDamage = RollSwarmCriticalDamage(
+                    matchingId, shape.Damage, out bool critical);
                 ApplySwarmMonsterHitNow(
                     matchingId, monster.CombatTargetId, monster.MonsterId, shape.OwnerId,
                     shape.WeaponItemId, shape.Area, monsterDamage, critical, allSessions);
@@ -655,7 +656,7 @@ public partial class GameServer
             Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_CORRUPTION) * damageScale));
         // 상처 (#268): 상처 입은 피해자만 PvP 충격 치명타가 열린다 — PvE와 같은 2배.
         if (runtime.WindBlade.IsWounded(victimId, DateTime.UtcNow) &&
-            _swarmCriticalRng.NextDouble() < Config.SWARM_WIND_WOUND_CRIT_CHANCE)
+            runtime.Pacing.RollCritical(Config.SWARM_WIND_WOUND_CRIT_CHANCE))
             shock = Math.Max(shock + 1, (int)MathF.Round(shock * SwarmCriticalMultiplier));
         int corruptionBefore;
         int corruptionAfter;

@@ -193,6 +193,39 @@ public sealed class SwarmArenaTickOrderTests
     }
 
     [Fact]
+    public void MatchExecutionBoundary_UsesMatchOwnedRandomAndThreadSafeCachesWithoutGlobalLock()
+    {
+        string root = FindRepositoryRoot();
+        string registry = ReadNormalizedSource(
+            root, "game_server", "Services", "MatchRuntimeRegistry.cs");
+        string runtimeStates = ReadNormalizedSource(
+            root, "game_server", "Services", "SwarmArenaStates.cs");
+        string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
+        string crossfire = ReadNormalizedSource(root, "game_server", "GameServer.SwarmCrossfire.cs");
+
+        Assert.DoesNotContain("_globalExecutionLock", registry);
+        Assert.Equal(5, CountOccurrences(registry, "lock (runtime.SyncRoot)"));
+
+        Assert.DoesNotContain("_swarmCriticalRng", arena);
+        Assert.DoesNotContain("_swarmCriticalRng", crossfire);
+        Assert.Contains("private readonly Random _criticalRng = new();", runtimeStates);
+        Assert.Contains(".Pacing.RollCritical(", arena);
+        Assert.Contains("runtime.Pacing.RollCritical(", crossfire);
+
+        Assert.Contains(
+            "Lazy<IReadOnlyDictionary<AreaType, IReadOnlyList<(Cell Cell, int Distance)>>>",
+            arena);
+        Assert.Contains(
+            "Lazy<IReadOnlyList<ClosureWaveDefinition>> _swarmFieldDerivedWaves",
+            arena);
+        Assert.Equal(
+            2,
+            CountOccurrences(arena, "LazyThreadSafetyMode.ExecutionAndPublication"));
+        Assert.DoesNotContain("_swarmAreaCellsByDistance == null", arena);
+        Assert.DoesNotContain("_swarmFieldDerivedWaves ??=", arena);
+    }
+
+    [Fact]
     public void SwarmAttackEventState_IsOwnedBySwarmMatchRuntimeAndRemainsDormant()
     {
         string root = FindRepositoryRoot();

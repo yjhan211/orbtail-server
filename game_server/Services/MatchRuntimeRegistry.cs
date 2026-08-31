@@ -13,7 +13,6 @@ public sealed class MatchRuntimeRegistry
     private readonly ConcurrentDictionary<long, MatchRuntime> _activeRuntimes = new();
     private readonly ConcurrentDictionary<long, byte> _completedMatchingIds = new();
     private readonly ConcurrentQueue<long> _completedOrder = new();
-    private readonly object _globalExecutionLock = new();
 
     public int ActiveCount => _activeRuntimes.Count;
 
@@ -24,35 +23,29 @@ public sealed class MatchRuntimeRegistry
         if (matchingId <= 0 || _completedMatchingIds.ContainsKey(matchingId))
             return false;
 
-        // Legacy swarm state still contains cross-match Dictionary/List/HashSet instances.
-        // Serialize synchronous state application globally until those fields are moved into
-        // a matchingId-owned runtime state object.
-        lock (_globalExecutionLock)
+        var runtime = _activeRuntimes.GetOrAdd(matchingId, static _ => new MatchRuntime());
+        lock (runtime.SyncRoot)
         {
-            var runtime = _activeRuntimes.GetOrAdd(matchingId, static _ => new MatchRuntime());
-            lock (runtime.SyncRoot)
+            if (_completedMatchingIds.ContainsKey(matchingId))
             {
-                if (_completedMatchingIds.ContainsKey(matchingId))
-                {
-                    _activeRuntimes.TryRemove(
-                        new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
-                    return false;
-                }
+                _activeRuntimes.TryRemove(
+                    new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
+                return false;
+            }
 
-                if (!runtime.TryBeginExecution())
-                    return false;
+            if (!runtime.TryBeginExecution())
+                return false;
 
-                try
-                {
-                    action();
-                    return true;
-                }
-                finally
-                {
-                    Action? deferredCleanup = runtime.EndExecution();
-                    if (deferredCleanup != null)
-                        CompleteFinalization(matchingId, runtime, deferredCleanup);
-                }
+            try
+            {
+                action();
+                return true;
+            }
+            finally
+            {
+                Action? deferredCleanup = runtime.EndExecution();
+                if (deferredCleanup != null)
+                    CompleteFinalization(matchingId, runtime, deferredCleanup);
             }
         }
     }
@@ -65,31 +58,28 @@ public sealed class MatchRuntimeRegistry
         if (matchingId <= 0 || _completedMatchingIds.ContainsKey(matchingId))
             return false;
 
-        lock (_globalExecutionLock)
+        var runtime = _activeRuntimes.GetOrAdd(matchingId, static _ => new MatchRuntime());
+        lock (runtime.SyncRoot)
         {
-            var runtime = _activeRuntimes.GetOrAdd(matchingId, static _ => new MatchRuntime());
-            lock (runtime.SyncRoot)
+            if (_completedMatchingIds.ContainsKey(matchingId))
             {
-                if (_completedMatchingIds.ContainsKey(matchingId))
-                {
-                    _activeRuntimes.TryRemove(
-                        new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
-                    return false;
-                }
-
-                // Evaluate state-dependent predicates under the same lifecycle lock as the
-                // Active -> Finalizing transition. Connection registration uses this lock too.
-                if (!canFinalize())
-                    return false;
-
-                if (!runtime.TryBeginFinalization(cleanup, out bool deferred))
-                    return false;
-                if (deferred)
-                    return true;
-
-                CompleteFinalization(matchingId, runtime, cleanup);
-                return true;
+                _activeRuntimes.TryRemove(
+                    new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
+                return false;
             }
+
+            // Evaluate state-dependent predicates under the same lifecycle lock as the
+            // Active -> Finalizing transition. Connection registration uses this lock too.
+            if (!canFinalize())
+                return false;
+
+            if (!runtime.TryBeginFinalization(cleanup, out bool deferred))
+                return false;
+            if (deferred)
+                return true;
+
+            CompleteFinalization(matchingId, runtime, cleanup);
+            return true;
         }
     }
 
@@ -112,20 +102,17 @@ public sealed class MatchRuntimeRegistry
         if (matchingId <= 0 || ownerFence < 0 || _completedMatchingIds.ContainsKey(matchingId))
             return false;
 
-        lock (_globalExecutionLock)
+        var runtime = _activeRuntimes.GetOrAdd(matchingId, static _ => new MatchRuntime());
+        lock (runtime.SyncRoot)
         {
-            var runtime = _activeRuntimes.GetOrAdd(matchingId, static _ => new MatchRuntime());
-            lock (runtime.SyncRoot)
+            if (_completedMatchingIds.ContainsKey(matchingId))
             {
-                if (_completedMatchingIds.ContainsKey(matchingId))
-                {
-                    _activeRuntimes.TryRemove(
-                        new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
-                    return false;
-                }
-
-                return runtime.TryBindOwnerFence(ownerFence);
+                _activeRuntimes.TryRemove(
+                    new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
+                return false;
             }
+
+            return runtime.TryBindOwnerFence(ownerFence);
         }
     }
 
@@ -203,14 +190,11 @@ public sealed class MatchRuntimeRegistry
 
     private void ReleaseOperation(long matchingId, MatchRuntime runtime)
     {
-        lock (_globalExecutionLock)
+        lock (runtime.SyncRoot)
         {
-            lock (runtime.SyncRoot)
-            {
-                Action? deferredCleanup = runtime.EndExecution();
-                if (deferredCleanup != null)
-                    CompleteFinalization(matchingId, runtime, deferredCleanup);
-            }
+            Action? deferredCleanup = runtime.EndExecution();
+            if (deferredCleanup != null)
+                CompleteFinalization(matchingId, runtime, deferredCleanup);
         }
     }
 

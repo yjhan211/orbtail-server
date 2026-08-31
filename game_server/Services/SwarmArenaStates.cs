@@ -186,6 +186,14 @@ public sealed class SwarmBotTacticalState
 /// <summary>매치 페이싱·피격 대기열·포위·계측 서명·샌드박스 등 잡화 상태.</summary>
 public sealed class SwarmMatchPacingState
 {
+    private readonly Random _criticalRng = new();
+
+    /// <summary>
+    ///     Keeps one match's critical-damage draw stream independent from other matches. Callers
+    ///     run under the enclosing match execution gate, so this Random is never used concurrently.
+    /// </summary>
+    internal bool RollCritical(double chance) => _criticalRng.NextDouble() < chance;
+
     public readonly HashSet<(long MatchingId, long PlayerId)> StartingOrbGrantedPlayers = new();
     public readonly Dictionary<(long MatchingId, long PlayerId), float> PvpCorruptionCarry = new();
     public readonly Dictionary<(long MatchingId, long PlayerId),
