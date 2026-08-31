@@ -206,6 +206,7 @@ namespace network.common.data.helpers
                     .ToList()
             );
             GameMonsterCampData.Initialize(loadedData[DataFiles.Map.MonsterCampAnchor]);
+            SwarmMonsterData.Initialize(loadedData[DataFiles.Map.SwarmMonster]);
 
             // Interactable object data
             GameInteractableData.Initialize(
@@ -325,8 +326,9 @@ namespace network.common.data.helpers
                 // #272 신맵(School2) 전용 리전 — 씬 내보내기가 기존 School 행을 덮지 않게 파일 분리.
                 public const string MapRegionSchool2 = "map_region_school2.csv";
                 public const string MonsterCampAnchor = "monster_camp_anchor.csv";
+                public const string SwarmMonster = "swarm_monster.csv";
 
-                public static readonly string[] ALL = new[] { MapInfo, MapRegion, MapRegionSchool2, MonsterCampAnchor };
+                public static readonly string[] ALL = new[] { MapInfo, MapRegion, MapRegionSchool2, MonsterCampAnchor, SwarmMonster };
             }
         }
     }

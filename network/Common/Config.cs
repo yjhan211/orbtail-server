@@ -161,7 +161,8 @@ namespace network.common
 
         /// <summary>
         ///     보스 사거리 (#223): 파도 T3 오브급(기본 2.5 + 가중치 4 × 0.4) — 제자리 고정
-        ///     포대의 위협 반경. 서버 판정과 클라 범위 링이 이 값을 공유한다 (표시 = 판정).
+        ///     포대의 위협 반경. 서버 판정(swarm_monster.csv attack_range)과 클라 범위 링이
+        ///     이 값을 공유한다 (표시 = 판정) — CSV 보스 행과 동기 필수.
         /// </summary>
         public const float SWARM_BOSS_ATTACK_RANGE = 4.1f;
 
@@ -274,23 +275,18 @@ namespace network.common
         /// <summary>문 게이지 시간(초) — 시작방 문: 혼자 여는 관문이라 짧다. 봇 채널도 같은 값.</summary>
         public const float SWARM_DOOR_GAUGE_SECONDS = 3f;
 
-        /// <summary>
-        ///     합류→중앙 문 게이지(초) (#272, 2026-08-27 유저 결정 "J에서 둘이 싸우게"):
-        ///     길게 잡아 선착자도 후착자 도착 전까지 못 나가고, 두 번째 문부터는 피격이 게이지를
-        ///     리셋하므로 "문을 열려면 상대를 먼저 처리해야 한다"가 규칙에서 나온다.
-        /// </summary>
-        public const float SWARM_JOIN_DOOR_GAUGE_SECONDS = 12f;
+        // 합류→중앙 J 문 12초 근거 (#272, 2026-08-27 유저 결정 "J에서 둘이 싸우게"): 길게 잡아
+        // 선착자도 후착자 도착 전까지 못 나가고, 두 번째 문부터는 피격이 게이지를 리셋하므로
+        // "문을 열려면 상대를 먼저 처리해야 한다"가 규칙에서 나온다. 값은 door_info.csv 저작.
 
         /// <summary>
-        ///     #272 School2 문 등급: 합류→중앙 J 문(213·216·219·222)만 듀얼 관문 게이지.
-        ///     복도→합류 진입 문(211·212·214·215·217·218·220·221)은 싸울 상대가 아직 없는
-        ///     통과 문이라 짧다 (2026-08-27 플레이 피드백 "복도에서 도서관 가는 문 너무 길다").
+        ///     #272 School2 문 등급: 합류→중앙 J 문만 듀얼 관문 게이지(12초), 나머지는 기본(3초).
+        ///     문별 값은 door_info.csv gauge_seconds 컬럼이 원본 (#292 CSV 이전) — 0이면 기본값.
         /// </summary>
         public static float GetSwarmDoorGaugeSeconds(int doorId)
         {
-            return doorId is 213 or 216 or 219 or 222
-                ? SWARM_JOIN_DOOR_GAUGE_SECONDS
-                : SWARM_DOOR_GAUGE_SECONDS;
+            float gaugeSeconds = network.common.data.GameDoorData.Get(doorId)?.GaugeSeconds ?? 0f;
+            return gaugeSeconds > 0f ? gaugeSeconds : SWARM_DOOR_GAUGE_SECONDS;
         }
 
         /// <summary>
@@ -395,6 +391,7 @@ namespace network.common
         ///     (PlayerRangeRing)이 같은 값을 읽어야 표시와 판정이 일치한다.
         ///     7 → … → 3 → 2.5 (2026-08-07): 좁은 시작이 파도(사거리 성장) 여지다.
         ///     다트 고블린 사거리(5)의 절반 — 원거리 몹 접근엔 피격 감수가 전제.
+        ///     battle_item_combat.csv attack_range(2.5)와 동기 필수 (#292).
         /// </summary>
         public const float SWARM_ORB_ATTACK_RANGE = 2.5f;
 

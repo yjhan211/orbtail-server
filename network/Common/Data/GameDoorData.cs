@@ -189,6 +189,9 @@ namespace network.common.data
         public int FallbackCellX { get; private set; } // 차단 시 텔레포트할 셀 X
         public int FallbackCellY { get; private set; } // 차단 시 텔레포트할 셀 Y
 
+        // #272 문 등급 게이지(초). 0 = 기본값(Config.SWARM_DOOR_GAUGE_SECONDS) 사용.
+        public float GaugeSeconds { get; private set; }
+
         // area_name.csv에서 이름 가져오기
         public string LocationName => GameAreaNameData.Get(AreaType);
 
@@ -211,7 +214,8 @@ namespace network.common.data
                     : AreaType.None,
                 IsInitiallyOpen = row.ContainsKey("is_initially_open") && row["is_initially_open"] == "1",
                 FallbackCellX = row.ContainsKey("fallback_cell_x") ? int.Parse(row["fallback_cell_x"]) : (int)posX,
-                FallbackCellY = row.ContainsKey("fallback_cell_y") ? int.Parse(row["fallback_cell_y"]) : (int)posY
+                FallbackCellY = row.ContainsKey("fallback_cell_y") ? int.Parse(row["fallback_cell_y"]) : (int)posY,
+                GaugeSeconds = row.ContainsKey("gauge_seconds") ? float.Parse(row["gauge_seconds"]) : 0f
             };
         }
     }
