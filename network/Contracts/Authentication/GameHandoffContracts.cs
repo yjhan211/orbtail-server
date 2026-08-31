@@ -10,8 +10,6 @@ public sealed class GameHandoffRosterEntry
 {
     [Key("playerId")] public long PlayerId { get; set; }
     [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-    [Key("targetJobTitle")] public JobTitle TargetJobTitle { get; set; }
-    [Key("myJobTitle")] public JobTitle MyJobTitle { get; set; }
 }
 
 [MessagePackObject]
@@ -23,8 +21,6 @@ public sealed class GameHandoffContext
     [Key("mapSubId")] public long MapSubId { get; set; }
     [Key("spawnPosition")] public Cell SpawnPosition { get; set; } = new(0, 0);
     [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-    [Key("targetJobTitle")] public JobTitle TargetJobTitle { get; set; }
-    [Key("myJobTitle")] public JobTitle MyJobTitle { get; set; }
     [Key("activeBuffIds")] public List<int> ActiveBuffIds { get; set; } = new();
     [Key("humanRoster")] public List<GameHandoffRosterEntry> HumanRoster { get; set; } = new();
     [Key("gameServerNodeId")] public string GameServerNodeId { get; set; } = string.Empty;

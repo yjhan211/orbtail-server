@@ -20,8 +20,6 @@ namespace network.common.data.models
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("matchingId")] public long MatchingId { get; set; }
         [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-        [Key("targetJobTitle")] public JobTitle TargetJobTitle { get; set; }
-        [Key("myJobTitle")] public JobTitle MyJobTitle { get; set; }
         [Key("gameHandoffTicket")] public string GameHandoffTicket { get; set; }
     }
 

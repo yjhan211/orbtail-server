@@ -16,7 +16,6 @@ public class MatchingConfigService
 {
     // Redis 공유 키 (user_server도 동일 키를 읽는다)
     public const string JobPoolRedisKey = "matching_config";
-    public const string JobPoolRedisField = "job_pool";
     public const string StartDelayRedisField = "start_delay_sec";
     public const string IntervalRedisField = "interval_sec";
     public const string ForcedSequenceRedisField = "forced_sequence";
@@ -126,66 +125,18 @@ public class MatchingConfigService
         _logger.LogInformation("Forced closure sequence cleared.");
     }
 
-    // ─── 직책 풀 Config (Redis 공유) ─────────────────────────────────────────
-
-    /// <summary>
-    ///     Redis에서 직책 풀 config 읽기.
-    ///     키가 없으면 null (무작위) 반환.
-    /// </summary>
-    public async Task<List<JobTitle>?> GetJobPoolConfigAsync()
-    {
-        try
-        {
-            var raw = await _cacheHelper.HashGetAsync(JobPoolRedisKey, JobPoolRedisField);
-            if (!raw.HasValue) return null;
-
-            var values = JsonSerializer.Deserialize<List<int>>((string)raw!);
-            return values?.Select(value => (JobTitle)value).ToList();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to load job pool config from Redis.");
-            return null;
-        }
-    }
-
-    public async Task SetJobPoolConfigAsync(List<int>? jobs)
-    {
-        try
-        {
-            if (jobs == null)
-            {
-                await _cacheHelper.HashDeleteAsync(JobPoolRedisKey, JobPoolRedisField);
-                _logger.LogInformation("직책 풀 config 삭제 (무작위 복원)");
-                return;
-            }
-
-            var json = JsonSerializer.SerializeToUtf8Bytes(jobs);
-            await _cacheHelper.HashSetAsync(JobPoolRedisKey, JobPoolRedisField, json);
-            _logger.LogInformation("직책 풀 config 저장 — jobs={Jobs}",
-                string.Join(",", jobs.Select(j => ((JobTitle)j).ToString())));
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "직책 풀 config 저장 실패");
-            throw;
-        }
-    }
-
     // ─── 현재 전체 config 조회 (GET endpoint용) ───────────────────────────────
 
-    public async Task<MatchingConfigSnapshot> GetSnapshotAsync()
+    public Task<MatchingConfigSnapshot> GetSnapshotAsync()
     {
         var closure = GetClosureConfig();
-        var jobPool = await GetJobPoolConfigAsync();
 
-        return new MatchingConfigSnapshot
+        return Task.FromResult(new MatchingConfigSnapshot
         {
             StartDelaySec = closure.StartDelaySec,
             IntervalSec = closure.IntervalSec,
-            ForcedSequence = closure.ForcedSequence?.Select(a => (int)a).ToList(),
-            ForcedJobs = jobPool?.Select(j => (int)j).ToList()
-        };
+            ForcedSequence = closure.ForcedSequence?.Select(a => (int)a).ToList()
+        });
     }
 }
 
@@ -208,9 +159,6 @@ public class MatchingConfigSnapshot
 
     /// <summary>강제 폐쇄 시퀀스 (null=무작위)</summary>
     public List<int>? ForcedSequence { get; set; }
-
-    /// <summary>강제 직책 풀 (null=무작위 8개 중 5/8)</summary>
-    public List<int>? ForcedJobs { get; set; }
 }
 
 /// <summary>POST /admin/matching-config/closure 요청 DTO</summary>
@@ -230,11 +178,4 @@ public class SetClosureConfigRequest
 
     /// <summary>true이면 폐쇄 config 전체를 기본값으로 초기화</summary>
     public bool ResetAll { get; set; }
-}
-
-/// <summary>POST /admin/matching-config/job-pool 요청 DTO</summary>
-public class SetJobPoolConfigRequest
-{
-    /// <summary>강제 직책 풀 (null=무작위 복원)</summary>
-    public List<int>? Jobs { get; set; }
 }

@@ -40,10 +40,8 @@ namespace network.common.data.models
         [Key("gameServerPort")] public int GameServerPort { get; set; }
         [Key("gameEndTimestamp")] public long GameEndTimestamp { get; set; }
 
-        // 마니또 체인 정보
+        // 미니맵 타깃 마커 대상 (마니또 체인에서 유래)
         [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-        [Key("targetJobTitle")] public JobTitle TargetJobTitle { get; set; }
-        [Key("myJobTitle")] public JobTitle MyJobTitle { get; set; }
         [Key("playerRoster")] public List<PlayerInfo> PlayerRoster { get; set; } = new();
         [Key("activeBuffIds")] public List<int> ActiveBuffIds { get; set; } = new();
         [Key("gameHandoffTicket")] public string GameHandoffTicket { get; set; }
@@ -64,8 +62,6 @@ namespace network.common.data.models
     {
         [Key(0)] public long PlayerId { get; set; }
         [Key(1)] public long TargetPlayerId { get; set; }
-        [Key(2)] public JobTitle MyJobTitle { get; set; }
-        [Key(3)] public JobTitle TargetJobTitle { get; set; }
         [Key(4)] public PersonaType Persona { get; set; }
         [Key(5)] public AreaType StartArea { get; set; }
         [Key(6)] public List<int> ActiveBuffIds { get; set; } = new();
