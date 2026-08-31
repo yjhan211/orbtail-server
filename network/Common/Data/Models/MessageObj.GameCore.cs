@@ -330,18 +330,6 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class C_TO_G_ATTACK : IMessagePackObject
-    {
-        [Key("targetId")] public string TargetId { get; set; } = string.Empty;
-    }
-
-    [MessagePackObject]
-    public class C_TO_G_INTERACT : IMessagePackObject
-    {
-        [Key("targetId")] public string TargetId { get; set; } = string.Empty;
-    }
-
-    [MessagePackObject]
     public class G_TO_C_GAME_TIME_WARNING : IMessagePackObject
     {
         [Key("matchingId")] public long MatchingId { get; set; }

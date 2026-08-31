@@ -20,8 +20,6 @@ namespace network.common
             Protocol.G_TO_C_PLAYER_INFO,
             Protocol.C_TO_G_MOVE,
             Protocol.G_TO_C_MOVE,
-            Protocol.C_TO_G_ATTACK,
-            Protocol.C_TO_G_INTERACT,
             Protocol.C_TO_G_SUMMON_ORB,
             Protocol.C_TO_G_DESTROY_ORB,
             Protocol.G_TO_C_ERROR,
@@ -94,8 +92,6 @@ namespace network.common
             {
                 Protocol.C_TO_G_MOVE => true,
                 Protocol.G_TO_C_MOVE => true,
-                Protocol.C_TO_G_ATTACK => true,
-                Protocol.C_TO_G_INTERACT => true,
                 _ => false
             };
         }

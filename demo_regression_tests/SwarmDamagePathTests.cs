@@ -147,7 +147,7 @@ public class SwarmDamagePathTests
     {
         string root = FindRepositoryRoot();
         string combat = File.ReadAllText(
-            Path.Combine(root, "game_server", "Network", "GameClientSession.Combat.cs"));
+            Path.Combine(root, "game_server", "Network", "GameClientSession.PlayerState.cs"));
 
         // 수치 계약: 1초 준비 · 1초 틱당 최대 HP 5% · 가해·피해 뒤 3초 진입 잠금.
         Assert.Contains("SwarmSleepWarmupSeconds = 1d", combat);
