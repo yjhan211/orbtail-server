@@ -13,6 +13,6 @@ public class PlayerSnapshot
     public long TargetPlayerId { get; set; }
     public bool IsBot { get; set; }
     public bool IsEliminated { get; set; }
-    public long? WatcherOfMe { get; set; }       // 나를 타겟으로 가진 플레이어 (마니또)
+    public long? WatcherOfMe { get; set; }       // 나를 타겟으로 가진 플레이어
     public string ChainStatus { get; set; } = ""; // RosterEntry.Status 문자열
 }

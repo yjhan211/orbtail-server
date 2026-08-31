@@ -68,32 +68,22 @@ namespace network.common
 
         // 플레이어 상호작용 프로토콜
 
-        // 미션 프로토콜 (v0.2.0 — 부품 결합 시스템)
-        G_TO_C_ITEMS_COMBINED,         // 부품 결합 결과 (중간재 또는 최종)
-        C_TO_G_COMBINE_ITEMS,         // 부품 결합 요청
+        // 배틀아이템 조합 프로토콜
+        G_TO_C_ITEMS_COMBINED,         // 조합 결과
+        C_TO_G_COMBINE_ITEMS,         // 조합 요청
 
         // 구역 폐쇄 프로토콜
         G_TO_C_AREA_CLOSURE_WARNING,  // 폐쇄 30초 전 경고
         G_TO_C_AREA_CLOSED,           // 구역 폐쇄 확정
 
         // 타겟 위치 추적 프로토콜
-        G_TO_C_TARGET_LOCATION,       // 마니또 → 타겟 구역 위치
+        G_TO_C_TARGET_LOCATION,       // 타겟 구역 위치 (3초 간격 갱신)
 
-        // 흔적 프로토콜
-
-        // 색출 프로토콜
-
-        // 탈락 & 체인 프로토콜
+        // 탈락 프로토콜
         G_TO_C_PLAYER_ELIMINATED,     // 플레이어 탈락 알림 (전체 브로드캐스트)
 
-        // 마니또 전용: 흔적 배치 프로토콜
-
-        // 1:1 상호작용 선택지 프로토콜 (마니또)
-
-        // 시한부 사보타주 프로토콜
-
         // 게임 결과 프로토콜
-        G_TO_C_GAME_RESULT,           // 게임 종료 시 전체 결과 (체인 공개)
+        G_TO_C_GAME_RESULT,           // 게임 종료 시 전체 결과 (전체 로스터 공개)
 
         // 소셜 액션 프로토콜
         C_TO_G_SOCIAL_ACTION,         // 본인 소셜 액션 요청 (LAUGH, SITGROUND 등)
@@ -258,17 +248,9 @@ namespace network.common
         MAIL_ALREADY_RECEIVED = 801,
         MAIL_EXPIRED = 802,
 
-        // 미션 (750~799)
-        MISSION_NOT_AVAILABLE = 750,
-        MISSION_ALREADY_COMPLETED = 751,
-        MISSION_AREA_CLOSED = 752,
-        PREREQUISITE_REQUIRED = 753,    // v0.2.0 — 부품 회수 시 선행 아이템 필요
-        INVALID_PARAMETER = 754,        // v0.2.0 — 결합 레시피 매칭 실패 등
-        INSUFFICIENT_ITEM = 755,        // v0.2.0 — 결합 입력 부품 미보유
-
-        // 색출 (850~899)
-
-        // 사보타주 (860~869)
+        // 배틀아이템 조합 (750~799)
+        INVALID_PARAMETER = 754,        // 조합 레시피 매칭 실패 등
+        INSUFFICIENT_ITEM = 755,        // 조합 입력 아이템 미보유
 
         // 레거시 호환 (900~)
         ALREADY_HAS_JOB = 900,

@@ -6,51 +6,10 @@ using network.common.data;
 
 namespace network.common.data.models
 {
-    /// <summary>
-    ///     v0.2.0 — 부품 메타 정보 (클라 UI 표시용)
-    /// </summary>
-    [MessagePackObject]
-    public class MissionPartInfo : IMessagePackObject
-    {
-        [Key("partId")] public int PartId { get; set; }
-        [Key("partNameKr")] public string PartNameKr { get; set; }
-        [Key("partTier")] public int PartTier { get; set; }
-        [Key("targetArea")] public int TargetArea { get; set; }
-        [Key("targetObjectType")] public int TargetObjectType { get; set; }
-        [Key("prerequisiteShareGroup")] public int PrerequisiteShareGroup { get; set; }
-        [Key("isCollected")] public bool IsCollected { get; set; }
-        [Key("narrativeKr")] public string NarrativeKr { get; set; }
-        [Key("narrativeEn")] public string NarrativeEn { get; set; }
-        [Key("narrativeJp")] public string NarrativeJp { get; set; }
-    }
-
-    [MessagePackObject]
-    public class MissionGraphNodeProgressInfo : IMessagePackObject
-    {
-        [Key("nodeId")] public int NodeId { get; set; }
-        [Key("nodeKey")] public string NodeKey { get; set; } = "";
-        [Key("nodeKind")] public int NodeKind { get; set; }
-        [Key("storyletId")] public string StoryletId { get; set; } = "";
-        [Key("storyletType")] public int StoryletType { get; set; }
-        [Key("targetAreaType")] public int TargetAreaType { get; set; }
-        [Key("targetObjectType")] public int TargetObjectType { get; set; }
-        [Key("claimPolicy")] public int ClaimPolicy { get; set; }
-        [Key("rewardKind")] public int RewardKind { get; set; }
-        [Key("caseGroup")] public string CaseGroup { get; set; } = "";
-        [Key("isVictoryStorylet")] public bool IsVictoryStorylet { get; set; }
-        [Key("isCompleted")] public bool IsCompleted { get; set; }
-        [Key("isUnlocked")] public bool IsUnlocked { get; set; }
-        [Key("isAvailable")] public bool IsAvailable { get; set; }
-        [Key("isDiscovered")] public bool IsDiscovered { get; set; }
-        [Key("isTracked")] public bool IsTracked { get; set; }
-        [Key("isClaimed")] public bool IsClaimed { get; set; }
-        [Key("isLost")] public bool IsLost { get; set; }
-    }
-
-    // ===== 부품 결합 시스템 (v0.2.0 — 이슈 #38) =====
+    // ===== 배틀아이템 조합 =====
 
     /// <summary>
-    ///     부품 결합 결과. 중간재(IsRaceComplete=false) 또는 최종(IsRaceComplete=true).
+    ///     배틀아이템 조합 결과. 중간재(IsRaceComplete=false) 또는 최종(IsRaceComplete=true).
     /// </summary>
     [MessagePackObject]
     public class G_TO_C_ITEMS_COMBINED : IMessagePackObject
@@ -65,8 +24,8 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    ///     부품 결합 요청.
-    ///     #87 N12: 동시 race 완주 시 결합 시작 시각이 빠른 쪽이 우선. 0이면 서버는 패킷 도착 시각으로 폴백.
+    ///     배틀아이템 조합 요청.
+    ///     #87 N12: 동시 조합 시 시작 시각이 빠른 쪽이 우선. 0이면 서버는 패킷 도착 시각으로 폴백.
     /// </summary>
     [MessagePackObject]
     public class C_TO_G_COMBINE_ITEMS : IMessagePackObject
@@ -197,16 +156,7 @@ namespace network.common.data.models
         [Key("areaType")] public AreaType AreaType { get; set; }
     }
 
-    // ===== 색출 =====
-
-    [MessagePackObject]
-    public class SettlementNominationEntry : IMessagePackObject
-    {
-        [Key("nominatorPlayerId")] public long NominatorPlayerId { get; set; }
-        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-    }
-
-    // ===== 탈락 & 체인 =====
+    // ===== 탈락 =====
 
     [MessagePackObject]
     public class G_TO_C_PLAYER_ELIMINATED : IMessagePackObject

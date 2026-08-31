@@ -40,7 +40,7 @@ namespace network.common.data.models
         [Key("gameServerPort")] public int GameServerPort { get; set; }
         [Key("gameEndTimestamp")] public long GameEndTimestamp { get; set; }
 
-        // 미니맵 타깃 마커 대상 (마니또 체인에서 유래)
+        // 미니맵 타깃 마커 대상
         [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
         [Key("playerRoster")] public List<PlayerInfo> PlayerRoster { get; set; } = new();
         [Key("activeBuffIds")] public List<int> ActiveBuffIds { get; set; } = new();
