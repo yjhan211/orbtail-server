@@ -526,7 +526,7 @@ public partial class GameServer(
             foreach (long matchingId in matchingIds)
             {
                 // #222 M3-2: 폐쇄·오버타임 오염은 이 정산 틱이 적용한다.
-                if (GameClientSession.IsRoundActionPhase(matchingId))
+                if (MatchStartGate.IsGameplayActive(matchingId))
                     ProcessResourceTickForMatching(matchingId, activeSessions);
             }
 
@@ -549,7 +549,7 @@ public partial class GameServer(
         {
             var eliminatedBot = _botPlayerManager.GetBot(matchingId, botId);
             AreaType eliminatedArea = eliminatedBot?.CurrentArea ?? AreaType.None;
-            int finalOrbTier = ResolveFinalOrbTier(matchingId, botId);
+            int finalOrbTier = _inGameInventoryManager.GetEquippedBattleItemTier(matchingId, botId);
             var transition = _matchRosterManager.TryEliminatePlayer(matchingId, botId, reason,
                 attackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
                 finalOrbTier);
@@ -625,39 +625,13 @@ public partial class GameServer(
         long botPlayerId,
         IReadOnlyCollection<GameClientSession> matchingSessions)
     {
-        var bot = _botPlayerManager.GetBot(matchingId, botPlayerId);
-        if (bot == null || bot.CurrentArea == AreaType.None)
+        var outcome = EliminationInventoryDropper.DropBotInventoryWithLogs(
+            _botPlayerManager, _inGameInventoryManager, _groundItemManager, _gameEventLogManager,
+            matchingId, botPlayerId);
+        if (outcome == null)
             return;
 
-        var drop = EliminationInventoryDropper.DropAll(
-            _inGameInventoryManager,
-            _groundItemManager,
-            matchingId,
-            botPlayerId,
-            bot.CurrentArea,
-            bot.Position.X,
-            bot.Position.Y,
-            _botPlayerManager.GetMatchingMapId(matchingId));
-        if (drop.RemovedItems.Count == 0)
-            return;
-
-        var emptyBoard = _inGameInventoryManager.GetPlayerInventory(matchingId, botPlayerId);
-        _gameEventLogManager.LogOrbBoardTransition(
-            matchingId, botPlayerId, emptyBoard.GetAllItems(), 0, bot.CurrentArea.ToString(), "elimination_drop",
-            isBot: true);
-
-        if (drop.DroppedItemIds.Count == 0)
-            return;
-
-        _gameEventLogManager.LogEliminationDrop(
-            matchingId,
-            botPlayerId,
-            bot.CurrentArea.ToString(),
-            drop.DroppedItemIds,
-            drop.SpawnedItems,
-            GameEventLogManager.CalculateDropRecoveryTotal(drop.DroppedItemIds),
-            isBot: true);
-
+        var (bot, drop) = outcome;
         BroadcastGroundItemSpawnChunked(
             matchingId, bot.CurrentArea, drop.SpawnedItems,
             matchingSessions.Where(session => session.CurrentArea == bot.CurrentArea));
@@ -995,7 +969,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             {
                 // #272 자기장 폐쇄: 자기장에서 파생한 구역 시간표 하나로만 닫는다 —
                 // 필드 오염은 정산 리소스 틱(GetSwarmFieldCorruptionPerTick)이 준다.
-                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
+                if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
                 _matchRuntimeRegistry.TryExecute(
                     matchingId,
                     () => ProcessSwarmScheduledClosureTick(matchingId));
@@ -1075,7 +1049,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             foreach (long matchingId in matchingIds)
             {
                 if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
-                if (!GameClientSession.IsRoundActionPhase(matchingId)) continue;
+                if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
                 // 프로토 0: 봇 타겟 추적/떠보기를 위해 같은 매칭 인간 플레이어의 현재 영역을 넘긴다.
                 _matchRuntimeRegistry.TryExecute(matchingId, () =>
@@ -2235,21 +2209,9 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         }
     }
 
-    private void PersistMatchSummary(long matchingId, string endReason, long winnerId)
-    {
-        try
-        {
-            var events = _gameEventLogManager.GetForPersistence(matchingId);
-            var summary = _matchSummaryFileStore.Save(matchingId, endReason, winnerId, events);
-            logger.LogInformation(
-                "Match summary persisted: MatchingId={MatchingId}, EndReason={EndReason}, Events={EventCount}, Directory={Directory}",
-                matchingId, summary.EndReason, summary.RawEventCount, _matchSummaryFileStore.DirectoryPath);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to persist match summary: MatchingId={MatchingId}", matchingId);
-        }
-    }
+    private void PersistMatchSummary(long matchingId, string endReason, long winnerId) =>
+        MatchSummaryPersistence.Persist(
+            _gameEventLogManager, _matchSummaryFileStore, logger, matchingId, endReason, winnerId);
 
     private async Task CleanupAbandonedMatchingRedisAsync(long matchingId)
     {

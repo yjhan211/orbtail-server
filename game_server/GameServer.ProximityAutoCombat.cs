@@ -53,12 +53,8 @@ public partial class GameServer
             {
                 // 인트로 예열 (2026-08-16 유저 결정): 카운트다운 동안에도 스웜은 돈다 —
                 // 운동장에서 각 방으로 나가는 몹이 그 5초의 볼거리이기 때문이다.
-                // IsRoundActionPhase는 매치 시작 게이트를 포함하므로 여기서 막히면 몹이
-                // 아예 태어나지 않는다. 스웜 경로만 예외로 열고, 전투는 그 안에서 막는다.
-                bool swarmWarmup = !MatchStartGate.IsGameplayActive(matchingId);
-                if (!swarmWarmup && !GameClientSession.IsRoundActionPhase(matchingId))
-                    continue;
-
+                // 매치 시작 게이트로 막으면 몹이 아예 태어나지 않으므로 여기서는 거르지
+                // 않고, 게이트 전 전투 차단은 ProcessProximityAutoCombatForMatching 안이 맡는다.
                 _matchRuntimeRegistry.TryExecute(matchingId, () =>
                 {
                     ProcessProximityAutoCombatForMatching(matchingId, activeSessions);

@@ -447,6 +447,13 @@ public class InGameInventoryManager
         return GetPlayerInventory(matchingId, playerId).GetEquippedBattleItem();
     }
 
+    /// <summary>장착 배틀아이템의 티어 (미장착 0) — 매치 정산의 최종 오브 티어 산정 공용 경로 (#297 중복 단일화).</summary>
+    public int GetEquippedBattleItemTier(long matchingId, long playerId)
+    {
+        var equippedItem = GetEquippedBattleItem(matchingId, playerId);
+        return equippedItem == null ? 0 : BattleItemCombatData.Get(equippedItem.ItemId)?.Tier ?? 0;
+    }
+
 
     /// <summary>
     ///     플레이어의 전체 아이템 목록

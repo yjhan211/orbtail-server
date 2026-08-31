@@ -32,10 +32,6 @@ public partial class GameClientSession
             _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId!.Value)
                 .GetAllItems().Count);
 
-    /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — 매칭 단위 추적.
-    /// FINISH 도착 시 이 set에 있어야 결과 산출 진행.</summary>
-    private readonly HashSet<int> _pendingFinish = new();
-
     private Task HandleRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;

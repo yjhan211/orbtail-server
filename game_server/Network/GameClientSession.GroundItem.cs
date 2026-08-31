@@ -340,39 +340,13 @@ public partial class GameClientSession
 
     internal void DropBotInventoryAtCurrentPosition(long botPlayerId)
     {
-        var bot = _botPlayerManager.GetBot(CurrentMapSubId, botPlayerId);
-        if (bot == null || bot.CurrentArea == AreaType.None)
+        var outcome = EliminationInventoryDropper.DropBotInventoryWithLogs(
+            _botPlayerManager, _inGameInventoryManager, _groundItemManager, _gameEventLogManager,
+            CurrentMapSubId, botPlayerId);
+        if (outcome == null)
             return;
 
-        var drop = EliminationInventoryDropper.DropAll(
-            _inGameInventoryManager,
-            _groundItemManager,
-            CurrentMapSubId,
-            botPlayerId,
-            bot.CurrentArea,
-            bot.Position.X,
-            bot.Position.Y,
-            _botPlayerManager.GetMatchingMapId(CurrentMapSubId));
-        if (drop.RemovedItems.Count == 0)
-            return;
-
-        var emptyBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, botPlayerId);
-        _gameEventLogManager.LogOrbBoardTransition(
-            CurrentMapSubId, botPlayerId, emptyBoard.GetAllItems(), 0, bot.CurrentArea.ToString(), "elimination_drop",
-            isBot: true);
-
-        if (drop.DroppedItemIds.Count == 0)
-            return;
-
-        _gameEventLogManager.LogEliminationDrop(
-            CurrentMapSubId,
-            botPlayerId,
-            bot.CurrentArea.ToString(),
-            drop.DroppedItemIds,
-            drop.SpawnedItems,
-            GameEventLogManager.CalculateDropRecoveryTotal(drop.DroppedItemIds),
-            isBot: true);
-        BroadcastGroundItemsSpawned(bot.CurrentArea, drop.SpawnedItems);
+        BroadcastGroundItemsSpawned(outcome.Bot.CurrentArea, outcome.Drop.SpawnedItems);
     }
 
     // 스냅샷 청크 크기: 패킷 버퍼(2048) 안에 안전히 들어가는 마릿수.

@@ -30,7 +30,7 @@ public partial class GameClientSession
         AreaType eliminatedArea = eliminatedSession?.CurrentArea ?? eliminatedBot?.CurrentArea ?? AreaType.None;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
-        int finalOrbTier = ResolveFinalOrbTier(CurrentMapSubId, eliminatedPlayerId);
+        int finalOrbTier = _inGameInventoryManager.GetEquippedBattleItemTier(CurrentMapSubId, eliminatedPlayerId);
         var transition = _matchRosterManager.TryEliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason,
             resolvedAttackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
             finalOrbTier);
@@ -190,14 +190,8 @@ public partial class GameClientSession
         SendGameResult(allSessions, winnerId, false, CurrentMapSubId, endReason, criterion);
     }
 
-    private int ResolveFinalOrbTier(long matchingId, long playerId)
-    {
-        var equippedItem = _inGameInventoryManager.GetEquippedBattleItem(matchingId, playerId);
-        return equippedItem == null ? 0 : BattleItemCombatData.Get(equippedItem.ItemId)?.Tier ?? 0;
-    }
-
     /// <summary>
-    ///     게임 결과 패킷 전송 (체인 전체 공개)
+    ///     게임 결과 패킷 전송 (전체 로스터 공개)
     /// </summary>
     private void SendGameResult(List<GameClientSession> allSessions, long winnerId, bool isTimeout, long matchingId,
         string endReason = "last_survivor", string tieBreakCriterion = "not_required")
@@ -230,7 +224,8 @@ public partial class GameClientSession
                 player.TotalDamageDealt,
                 player.TotalRecovery,
                 player.OrbCount)).ToList());
-        PersistMatchSummary(matchingId, endReason, winnerId);
+        MatchSummaryPersistence.Persist(
+            _gameEventLogManager, _matchSummaryFileStore, Logger, matchingId, endReason, winnerId);
 
         var resultChunks = GameResultPacketChunker.CreateGameResultChunks(winnerId, isTimeout, players);
         foreach (var resultChunk in resultChunks)
@@ -252,22 +247,6 @@ public partial class GameClientSession
         foreach (var session in allSessions) session.MarkGameEnded();
 
         _cleanupMatchRuntime(matchingId);
-    }
-
-    private void PersistMatchSummary(long matchingId, string endReason, long winnerId)
-    {
-        try
-        {
-            var events = _gameEventLogManager.GetForPersistence(matchingId);
-            var summary = _matchSummaryFileStore.Save(matchingId, endReason, winnerId, events);
-            Logger.LogInformation(
-                "Match summary persisted: MatchingId={MatchingId}, EndReason={EndReason}, Events={EventCount}, Directory={Directory}",
-                matchingId, summary.EndReason, summary.RawEventCount, _matchSummaryFileStore.DirectoryPath);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to persist match summary: MatchingId={MatchingId}", matchingId);
-        }
     }
 
     private List<GameResultPlayerInfo> BuildGameResultPlayers(List<GameClientSession> allSessions, long matchingId,
@@ -322,7 +301,7 @@ public partial class GameClientSession
                         IsAreaClosureElimination = d.isAreaClosureElimination,
                         IsOvertimeElimination = d.isOvertimeElimination,
                         Rank = d.playerId == winnerId ? 1 : d.eliminationRank,
-                        FinalOrbTier = d.playerId == winnerId ? ResolveFinalOrbTier(matchingId, d.playerId) : d.finalOrbTier,
+                        FinalOrbTier = d.playerId == winnerId ? _inGameInventoryManager.GetEquippedBattleItemTier(matchingId, d.playerId) : d.finalOrbTier,
                         // 결과 승점은 오브 수 (#229): 인게임 순위와 같은 눈금을 쓴다.
                         OrbCount = orbScore.OrbCount
                     },
