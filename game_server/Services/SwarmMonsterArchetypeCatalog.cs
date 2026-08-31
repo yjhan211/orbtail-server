@@ -5,7 +5,7 @@ namespace game_server.services;
 
 /// <summary>
 ///     Provides CSV-backed combat statistics and semantic classifications for every swarm monster archetype.
-///     Match runtime state and movement remain owned by <see cref="SwarmArenaManager"/>.
+///     Match runtime state and movement remain owned by <see cref="SwarmMonsterDirector"/>.
 /// </summary>
 internal static class SwarmMonsterArchetypeCatalog
 {

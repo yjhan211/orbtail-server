@@ -345,7 +345,7 @@ public partial class GameServer
     private SpotArenaBotDirective ResolveSwarmBotDirectiveCore(long matchingId, long botPlayerId)
     {
         _swarmBotTactics.FleeDirective.Remove((matchingId, botPlayerId));
-        var directive = _swarmArenaManager.GetBotDirective(matchingId, botPlayerId);
+        var directive = _swarmMonsterDirector.GetBotDirective(matchingId, botPlayerId);
 
         var bot = _botPlayerManager.GetBots(matchingId)
             .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
@@ -709,7 +709,7 @@ public partial class GameServer
             GetSwarmBotExploreCost(matchingId, botPlayerId) &&
             hasSquadOrbs)
         {
-            if (SwarmArenaManager.RegionSupplyModeEnabled &&
+            if (SwarmMonsterDirector.RegionSupplyModeEnabled &&
                 TryFindNearestSwarmSupplyMonster(matchingId, bot, out var supplyArea,
                     out var supplyPosition))
             {
@@ -721,7 +721,7 @@ public partial class GameServer
             }
 
             // 캠프 모드 폴백: 봇은 캠프 '위치'만 알고(지도 지식) 생사는 모른다.
-            if (!SwarmArenaManager.RegionSupplyModeEnabled &&
+            if (!SwarmMonsterDirector.RegionSupplyModeEnabled &&
                 TryChooseSwarmBotCampTarget(matchingId, bot, out var campArea, out var campPosition))
             {
                 return new SpotArenaBotDirective(
@@ -733,11 +733,11 @@ public partial class GameServer
         }
 
         // 4) 마른 방 탈출: 시작방·복도(또는 몹이 마른 지역 공급 구역)에서 사냥터로 이주한다.
-        if (SwarmArenaManager.RegionSupplyModeEnabled)
+        if (SwarmMonsterDirector.RegionSupplyModeEnabled)
         {
             // 지역 공급: 현재 구역에 살아있는 몹도, 열 수 있는 스팟 용무도 없으면
             // 몹이 남은 공급 구역으로 이주 — 스폰이 멈춘 종반에는 지시 없이 배회(디렉터 몫).
-            bool currentAreaHasSupply = _swarmArenaManager.GetVisualStates(matchingId)
+            bool currentAreaHasSupply = _swarmMonsterDirector.GetVisualStates(matchingId)
                 .Any(monster => monster.IsAlive && monster.AreaType == bot.CurrentArea);
             if (!currentAreaHasSupply &&
                 TryFindNearestSwarmSupplyMonster(matchingId, bot, out var migrateArea,
@@ -790,7 +790,7 @@ public partial class GameServer
         area = AreaType.None;
         position = null!;
         float bestSquared = float.MaxValue;
-        foreach (var monster in _swarmArenaManager.GetVisualStates(matchingId))
+        foreach (var monster in _swarmMonsterDirector.GetVisualStates(matchingId))
         {
             if (!monster.IsAlive || IsSwarmAreaOutside(matchingId, monster.AreaType))
                 continue;
@@ -961,7 +961,7 @@ public partial class GameServer
 
         if (includeMonstersAsStronger)
         {
-            foreach (var monster in _swarmArenaManager.GetVisualStates(matchingId))
+            foreach (var monster in _swarmMonsterDirector.GetVisualStates(matchingId))
             {
                 if (!monster.IsAlive) continue;
                 float dx = monster.PositionX - bot.Position.X;
@@ -997,7 +997,7 @@ public partial class GameServer
         long matchingId, BotPlayerState bot, out AreaType campArea, out Vector3f campPosition)
     {
         DateTime nowUtc = DateTime.UtcNow;
-        var visibleAliveMonsters = _swarmArenaManager.GetVisualStates(matchingId)
+        var visibleAliveMonsters = _swarmMonsterDirector.GetVisualStates(matchingId)
             .Where(monster => monster.IsAlive && monster.AreaType == bot.CurrentArea)
             .ToList();
 
@@ -1062,7 +1062,7 @@ public partial class GameServer
     private bool HasSwarmMonsterInBasicRange(long matchingId, BotPlayerState bot)
     {
         float rangeSquared = SwarmArenaBasicRange * SwarmArenaBasicRange;
-        foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
+        foreach (var target in _swarmMonsterDirector.GetCombatTargets(matchingId))
         {
             if (target.Area != bot.CurrentArea)
                 continue;

@@ -85,7 +85,7 @@ public partial class GameServer
                 tiers ??= GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
                 var origin = GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position, tiers);
                 float radius = Config.SWARM_WIND_BLADE_RADIUS_BY_TIER[Math.Clamp(tier, 1, 3) - 1];
-                monsters ??= _swarmArenaManager.GetCombatTargets(matchingId);
+                monsters ??= _swarmMonsterDirector.GetCombatTargets(matchingId);
 
                 // 판정 전에 반경 안 표적부터 수집한다 — 시동 게이트가 표적 유무를 먼저 물어야 한다.
                 List<SwarmArenaCombatTarget>? monstersInRadius = null;
@@ -140,7 +140,7 @@ public partial class GameServer
                     foreach (var monster in monstersInRadius)
                     {
                         monsterHits++;
-                        _swarmArenaManager.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
+                        _swarmMonsterDirector.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
                         int monsterDamage = RollSwarmCriticalDamage(damage, out bool critical);
                         ApplySwarmMonsterHitNow(
                             matchingId, monster.CombatTargetId, monster.MonsterId, owner.PlayerId,

@@ -10,7 +10,7 @@ namespace game_server.services;
 ///     이 매니저는 잔상 스웜만 담당한다: 참가자별 패턴 스폰(구역 프로파일), 같은 구역 추적,
 ///     접촉 피해, 개봉 소음 유인. 잔상은 공급이 아니라 회피해야 하는 압력이다.
 /// </summary>
-public sealed class SwarmArenaManager
+public sealed class SwarmMonsterDirector
 {
     // #219 초반 템포 하향 (2026-08-09): 시작 스쿼드가 오브 1개뿐이라 20(2방)도 캠프 하나에
     // 14초가 걸렸다. 해골 = T1 한 방(12) — 초반 파밍이 사격 몇 번으로 끝나야 SB "코인 몹"
@@ -428,7 +428,7 @@ public sealed class SwarmArenaManager
     private readonly ConcurrentDictionary<long, MatchState> _matches = new();
     private readonly Func<DateTime> _utcNow;
 
-    public SwarmArenaManager(Func<DateTime>? utcNow = null)
+    public SwarmMonsterDirector(Func<DateTime>? utcNow = null)
     {
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
@@ -1089,13 +1089,13 @@ public sealed class SwarmArenaManager
         }
     }
 
-    public SwarmArenaSummary GetSummary(long matchingId)
+    public SwarmMonsterSummary GetSummary(long matchingId)
     {
         if (!_matches.TryGetValue(matchingId, out var state))
-            return SwarmArenaSummary.Empty;
+            return SwarmMonsterSummary.Empty;
         lock (state.SyncRoot)
         {
-            return new SwarmArenaSummary(
+            return new SwarmMonsterSummary(
                 state.HitsTaken,
                 state.Kills,
                 state.PatternHits.ToDictionary(pair => pair.Key.ToString(), pair => pair.Value));
@@ -3227,10 +3227,10 @@ public readonly record struct SwarmArenaCombatTarget(
     Vector3f Position,
     int MonsterId);
 
-public readonly record struct SwarmArenaSummary(
+public readonly record struct SwarmMonsterSummary(
     int HitsTaken,
     int Kills,
     IReadOnlyDictionary<string, int> PatternHits)
 {
-    public static SwarmArenaSummary Empty => new(0, 0, new Dictionary<string, int>());
+    public static SwarmMonsterSummary Empty => new(0, 0, new Dictionary<string, int>());
 }
