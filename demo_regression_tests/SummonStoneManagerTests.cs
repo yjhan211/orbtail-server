@@ -7,6 +7,11 @@ namespace demo_regression_tests;
 
 public class SummonStoneManagerTests
 {
+    public SummonStoneManagerTests()
+    {
+        TestGameData.EnsureBattleItemCombatLoaded();
+    }
+
     [Fact]
     public void StartingStones_GrantTwoOpeningSummons()
     {

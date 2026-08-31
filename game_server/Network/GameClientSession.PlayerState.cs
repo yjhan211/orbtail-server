@@ -7,52 +7,15 @@ using network.packets;
 
 namespace game_server.network;
 
+/// <summary>
+///     플레이어 상태 파셜: C_TO_G_PLAYER_STATE(수면·휴식 요청)·스웜 수면 회복 틱·인게임 아이템
+///     사용(C_TO_G_USE_INGAME_ITEM)·주기 버프 타이머·스탯 통지. (구 Combat.cs — 수동 공격 퇴역 후 #304 개명)
+/// </summary>
 public partial class GameClientSession
 {
+    /// <summary>고양이 베개 (401000003): 휴식 주기 버프의 지속 시간 특례.</summary>
     private const int CatPillowItemId = 401000003;
-    private const int ChalkPowderItemId = 201000015;
-    private const int ShortChalkItemId = 201000016;
-    private const int LongChalkItemId = 201000017;
-    private static readonly int[] RoomEncounterAttackItemIds =
-    {
-        LongChalkItemId,
-        ChalkPowderItemId,
-        ShortChalkItemId
-    };
     private const int CatPillowRestDurationSeconds = 15;
-
-    private Task HandleAttack(C_TO_G_ATTACK msg)
-    {
-        if (!PlayerId.HasValue || msg == null)
-            return Task.CompletedTask;
-
-        // 근접 자동전투: 수동 공격은 상시 차단 (분필 조우 공격 퇴역 #238)
-        SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Manual attack is disabled during proximity auto combat P0");
-        return Task.CompletedTask;
-    }
-
-    private Task HandleInteract(C_TO_G_INTERACT msg)
-    {
-        if (IsRoundActionLocked(out _))
-        {
-            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "Round settlement in progress");
-            return Task.CompletedTask;
-        }
-
-        // 스태미나 0 이하이면 상호작용 차단
-        if (Stamina <= 0)
-        {
-            Logger.LogWarning("Player {PlayerId} cannot interact: Stamina={Stamina}", PlayerId, Stamina);
-            SendErrorResponse(ErrorCode.INSUFFICIENT_STAMINA, "스태미나 부족");
-            return Task.CompletedTask;
-        }
-
-        // 미구현 — 클라이언트에 에러 응답
-        SendErrorResponse(ErrorCode.NOT_IMPLEMENTED, "상호작용 기능 미구현");
-        return Task.CompletedTask;
-    }
-
-    #region 플레이어 상태
 
     private async Task HandlePlayerState(C_TO_G_PLAYER_STATE msg)
     {
@@ -324,9 +287,7 @@ public partial class GameClientSession
             sleep, PlayerId, sameAreaSessions.Count, CurrentArea);
     }
 
-    #endregion
 
-    #region 인게임 인벤토리
 
     /// <summary>
     ///     인게임 인벤토리 전체 목록 전송
@@ -424,15 +385,6 @@ public partial class GameClientSession
         }
 
         var itemData = GameItemData.Get(itemId);
-        if (System.Array.IndexOf(RoomEncounterAttackItemIds, itemId) >= 0)
-        {
-            using var failPacket =
-                PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.ITEM_NOT_USABLE);
-            Send(failPacket);
-            Logger.LogWarning("Player {PlayerId} tried to use attack-only item outside encounter: ItemUid={ItemUid}, ItemId={ItemId}",
-                PlayerId, msg.ItemUid, itemId);
-            return;
-        }
 
         // Reusable 아이템은 소모하지 않음
         if (itemData.Reusable)
@@ -487,9 +439,7 @@ public partial class GameClientSession
         }
     }
 
-    #endregion
 
-    #region 플레이어 스탯
 
     /// <summary>
     ///     아이템 버프 효과 적용. 주기적 버프가 등록되면 true 반환
@@ -641,5 +591,4 @@ public partial class GameClientSession
             PlayerId, areaType, correctedCell.X, correctedCell.Y);
     }
 
-    #endregion
 }

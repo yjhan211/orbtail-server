@@ -31,8 +31,6 @@ namespace network.common
         G_TO_C_PLAYER_INFO,
         C_TO_G_MOVE,
         G_TO_C_MOVE,
-        C_TO_G_ATTACK,
-        C_TO_G_INTERACT,
         G_TO_C_GAME_TIME_WARNING,
         G_TO_C_GAME_END,
         G_TO_C_AREA_PLAYER_ENTER, // 다른 플레이어가 내 Area에 진입

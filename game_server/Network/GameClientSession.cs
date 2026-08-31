@@ -311,8 +311,6 @@ public partial class GameClientSession : SessionBase
             async _ => await HandleMatchStartReady());
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_MOVE,
             async bytes => await HandleMessage<C_TO_G_MOVE>(bytes, HandleMove));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_ATTACK,
-            async bytes => await HandleMessage<C_TO_G_ATTACK>(bytes, HandleAttack));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SUMMON_ORB,
             async bytes => await HandleMessage<C_TO_G_SUMMON_ORB>(bytes, HandleSummonOrb));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DESTROY_ORB,
@@ -326,8 +324,6 @@ public partial class GameClientSession : SessionBase
         // 오브/배틀아이템 조합 — 이름은 부품 결합이지만 현행 오브 머지가 쓰는 프로토콜 (#238에서 게이트 밖으로 복구)
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_COMBINE_ITEMS,
             async bytes => await HandleMessage<C_TO_G_COMBINE_ITEMS>(bytes, HandleCombineItems));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_INTERACT,
-            async bytes => await HandleMessage<C_TO_G_INTERACT>(bytes, HandleInteract));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,
             async bytes => await HandleMessage<C_TO_G_USE_INGAME_ITEM>(bytes, HandleUseInGameItem));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_GROUND_ITEM_PICKUP,

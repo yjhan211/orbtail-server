@@ -5,6 +5,10 @@ namespace demo_regression_tests;
 
 public sealed class SwarmGrowthBalanceTests
 {
+    public SwarmGrowthBalanceTests()
+    {
+        TestGameData.EnsureBattleItemCombatLoaded();
+    }
     [Theory]
     [InlineData(0, 5)]
     [InlineData(1, 7)]
