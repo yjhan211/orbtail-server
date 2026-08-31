@@ -56,7 +56,7 @@ public partial class GameServer
         }
     }
 
-    private void CleanupEmotionAfterimageMonsterRuntime(long matchingId)
+    private void CleanupSwarmAfterimageMonsterRuntime(long matchingId)
     {
 
         _nextMonsterPositionBroadcastAtUtc.TryRemove(matchingId, out _);

@@ -11,8 +11,8 @@ public partial class GameClientSession
     internal const int ProximityAutoAttackDealtEventType = 17;
     internal const int ProximityAutoAttackTakenEventType = 18;
     internal const int OrbRecoveryEventType = 19;
-    internal const int EmotionAfterimageMonsterAttackTakenEventType = 24;
-    internal const int EmotionAfterimageMonsterAttackDealtEventType = 25;
+    internal const int SwarmAfterimageMonsterAttackTakenEventType = 24;
+    internal const int SwarmAfterimageMonsterAttackDealtEventType = 25;
     internal const int SwarmAttackEventDealtEventType = 26;
     internal const int SwarmAttackEventTakenEventType = 27;
     // 파도 침수 감속 (#268): 20 — 클라 MapManager.PlayerVisibility의 EncounterEventWaveSlow와 짝.
@@ -143,7 +143,7 @@ public partial class GameClientSession
             damage);
     }
 
-    internal void SendEmotionAfterimageMonsterAttackFeedback(
+    internal void SendSwarmAfterimageMonsterAttackFeedback(
         int monsterId, AreaType area, int weaponItemId, int damage, bool critical = false,
         bool noProjectile = false)
     {
@@ -157,12 +157,12 @@ public partial class GameClientSession
         // 숫자만 띄운다).
         int flags = (critical ? 1 : 0) | (noProjectile ? 2 : 0);
         using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(
-            PlayerId.Value, area, EmotionAfterimageMonsterAttackDealtEventType, flags,
+            PlayerId.Value, area, SwarmAfterimageMonsterAttackDealtEventType, flags,
             weaponItemId, damage, monsterId);
         Send(packet);
     }
     // displayDamage: 오브 HP 모델에서 오염 델타(연출용 1)와 클라 표시 피해량(실제 오브 피해)을 분리한다.
-    internal void ApplyEmotionAfterimageMonsterHit(int monsterId, int damage, int? displayDamage = null)
+    internal void ApplySwarmAfterimageMonsterHit(int monsterId, int damage, int? displayDamage = null)
     {
         if (!PlayerId.HasValue || IsEliminated || monsterId <= 0 || damage <= 0)
             return;
@@ -170,7 +170,7 @@ public partial class GameClientSession
         int corruptionBefore = Corruption;
         int corruptionAfter = Math.Min(MaxCorruption, corruptionBefore + damage);
         bool isLethal = corruptionBefore < MaxCorruption && corruptionAfter >= MaxCorruption;
-        _gameEventLogManager.LogEmotionAfterimageHit(
+        _gameEventLogManager.LogSwarmAfterimageHit(
             CurrentMapSubId,
             monsterId,
             PlayerId.Value,
@@ -193,7 +193,7 @@ public partial class GameClientSession
         // Monster damage has no survivor source, so final PvP damage accounting remains correct.
         ModifyStats(corruptionDelta: damage);
         // The encounter envelope carries the visual source (monster id) and the authoritative damage value.
-        SendEncounterEvent(PlayerId.Value, CurrentArea, EmotionAfterimageMonsterAttackTakenEventType,
+        SendEncounterEvent(PlayerId.Value, CurrentArea, SwarmAfterimageMonsterAttackTakenEventType,
             0, monsterId, displayDamage ?? damage);
     }
 

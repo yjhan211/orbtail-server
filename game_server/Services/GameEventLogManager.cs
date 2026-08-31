@@ -458,7 +458,7 @@ public class GameEventLogManager
             });
     }
 
-    public void LogEmotionAfterimageHit(
+    public void LogSwarmAfterimageHit(
         long matchingId,
         int monsterId,
         long targetPlayerId,
@@ -490,7 +490,7 @@ public class GameEventLogManager
                 entry.OccurredAtUnixMs = entry.TimestampUnixMs;
             });
     }
-    public void LogEmotionAfterimageKilled(
+    public void LogSwarmAfterimageKilled(
         long matchingId,
         int monsterId,
         string area,

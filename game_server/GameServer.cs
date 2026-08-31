@@ -453,7 +453,7 @@ public partial class GameServer(
                     _groundItemManager.RemoveMatchingState),
                 new MatchRuntimeCleanupStep(
                     "monster broadcast slots",
-                    CleanupEmotionAfterimageMonsterRuntime),
+                    CleanupSwarmAfterimageMonsterRuntime),
                 new MatchRuntimeCleanupStep(
                     "summon stones",
                     _summonStoneManager.RemoveMatchingState),
@@ -1107,7 +1107,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                         .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
                         .ToDictionary(s => s.PlayerId!.Value, s => s.CurrentArea);
                     // 잔상 사냥 경로(MONSTER_SUMMON_ECONOMY_ENABLED 동결)의 공급원이던
-                    // EmotionAfterimageMonsterManager는 #274에서 삭제 — 플래그 부활 시 SwarmMonsterDirector에서 공급할 것.
+                    // SwarmAfterimageMonsterManager는 #274에서 삭제 — 플래그 부활 시 SwarmMonsterDirector에서 공급할 것.
                     IReadOnlyCollection<MonsterCombatTarget> pveTargets = [];
                     snapshotElapsedMilliseconds += Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
 

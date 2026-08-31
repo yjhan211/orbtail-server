@@ -326,7 +326,7 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
     {
         var log = new GameEventLogManager();
 
-        log.LogEmotionAfterimageKilled(
+        log.LogSwarmAfterimageKilled(
             210003,
             202101,
             "S2Library1",

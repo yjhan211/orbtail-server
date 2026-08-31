@@ -300,7 +300,7 @@ public sealed class SwarmMonsterDirector
 
     /// <summary>
     ///     종별 스탯 원본은 swarm_monster.csv (#292 CSV 이전). attack_range 0 = 접촉 몹(ContactRange 폴백).
-    ///     피통은 클라 종 식별자이기도 하다 — EmotionAfterimageMonsterDisplay 스위치와 동기 필수.
+    ///     피통은 클라 종 식별자이기도 하다 — SwarmAfterimageMonsterDisplay 스위치와 동기 필수.
     ///     보스 사거리(4.1)는 Config.SWARM_BOSS_ATTACK_RANGE(클라 범위 링)와 동기 필수.
     /// </summary>
     public static (int MaxHp, int OrbDamage, float AttackRange, float AttackCooldownSeconds, int StoneReward,
