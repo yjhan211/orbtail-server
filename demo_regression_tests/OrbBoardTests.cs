@@ -8,6 +8,11 @@ namespace demo_regression_tests;
 
 public sealed class OrbBoardTests
 {
+    public OrbBoardTests()
+    {
+        TestGameData.EnsureBattleItemCombatLoaded();
+    }
+
     // 주기는 전 티어 0.8초 고정 (2026-08-24 #268): 티어 주기 단축은 오브 개수 증가와 겹치는
     // 이중 가속이라 퇴역 — 티어 값어치는 발당 피해(12/21/30)와 사거리만 진다. 기저 0.8초는
     // #229 상향값(시작 오브 하나로 구역 보충 초당 1.33마리를 열 수 있는 최소 박자) 그대로다.

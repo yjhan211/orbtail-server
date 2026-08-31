@@ -5,6 +5,11 @@ namespace demo_regression_tests;
 
 public class OrbPveCombatDataTests
 {
+    public OrbPveCombatDataTests()
+    {
+        TestGameData.EnsureBattleItemCombatLoaded();
+    }
+
     [Fact]
     public void AllColors_ShareTheSameBaseAttackInterval()
     {
