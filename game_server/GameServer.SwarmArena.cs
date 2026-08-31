@@ -14,7 +14,7 @@ public partial class GameServer
 {
     private const int SwarmArenaBasicDamage = 12;
     // 사거리는 클라 표시(PlayerRangeRing)와 공유 — Config가 단일 출처다.
-    private const float SwarmArenaBasicRange = Config.SWARM_ORB_ATTACK_RANGE;
+    private static float SwarmArenaBasicRange => Config.SWARM_ORB_ATTACK_RANGE;
     private const float SwarmArenaBasicAttackIntervalSeconds = 1f;
     private const int SwarmArenaWeaponItemId = 107000010;
     // P0-A 세 색 복귀 (#232, 2026-08-17 저녁 유저 지시): 태양(폭발 투사체)·파도(물폭탄)·바람(관통 칼날) —
@@ -754,8 +754,8 @@ public partial class GameServer
     // 자기장 스케줄 (#272 재무장, 원형): 유예 후 안전 반경이 최대치에서 0까지 선형 수축한다 —
     // 매치 종료(SWARM_MATCH_DURATION_SECONDS)에 운동장 중심만 안전, 최종 폐쇄 = 타이머 만료 = 오버타임 개시.
     // 깔때기 순서(외곽 방 → 복도 밴드 → 운동장)는 중심 거리가 먼 순서로 자연 재현된다.
-    private const double SwarmFieldHoldSeconds = Config.SWARM_FIELD_HOLD_SECONDS;
-    private const double SwarmFieldShrinkSeconds =
+    private static double SwarmFieldHoldSeconds => Config.SWARM_FIELD_HOLD_SECONDS;
+    private static double SwarmFieldShrinkSeconds =>
         Config.SWARM_MATCH_DURATION_SECONDS - Config.SWARM_FIELD_HOLD_SECONDS;
 
     // 경계 밖 오염 (리소스 틱 5초당): 기본 + 초과 셀당 가산. 문턱에서 즉사가 아니라
@@ -3714,7 +3714,7 @@ public partial class GameServer
 
     private bool HasSwarmMonsterInBasicRange(long matchingId, BotPlayerState bot)
     {
-        const float rangeSquared = SwarmArenaBasicRange * SwarmArenaBasicRange;
+        float rangeSquared = SwarmArenaBasicRange * SwarmArenaBasicRange;
         foreach (var target in _swarmArenaManager.GetCombatTargets(matchingId))
         {
             if (target.Area != bot.CurrentArea)

@@ -23,7 +23,7 @@ public partial class GameClientSession
 {
 
     // #217 P0-c: 스웜 아레나 탐색 스팟 — 비용·리젠 규칙은 봇과 공유하므로 Config에 있다.
-    private const int SwarmExploreCooldownSeconds = Config.SWARM_EXPLORE_REGEN_SECONDS;
+    private static int SwarmExploreCooldownSeconds => Config.SWARM_EXPLORE_REGEN_SECONDS;
 
     /// <summary>개봉 비용은 장소에 붙는다: 기본가 + 그 스팟의 재개봉 가산.</summary>
     // 개봉 비용 = SB 크기 비례: 현재 궤도 오브 슬롯 수 기준. 장소별 재개봉 가산은 퇴역.

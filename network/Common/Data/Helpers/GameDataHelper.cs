@@ -26,6 +26,7 @@ namespace network.common.data.helpers
                 // 중앙 로컬라이징 테이블 — 다른 데이터가 {prefix}_key로 참조하므로 가장 먼저 초기화
                 (fileName: DataFiles.LocalizationText, init: GameLocalizationData.Initialize, validate: null),
                 (fileName: DataFiles.GameRule, init: GameRuleData.Initialize, validate: GameRuleData.Validate),
+                (fileName: DataFiles.SwarmConfig, init: SwarmConfigData.Initialize, validate: null),
                 (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize,
                     validate: GameLoadingTextData.Validate),
                 (fileName: DataFiles.AreaName, init: GameAreaNameData.Initialize,
@@ -288,6 +289,7 @@ namespace network.common.data.helpers
         private static class DataFiles
         {
             public const string GameRule = "game_rule.csv";
+            public const string SwarmConfig = "swarm_config.csv";  // #296 — 스웜 밸런스 key/value
             public const string LoadingText = "loading_text.csv";
             public const string AreaName = "area_name.csv";
             public const string SystemText = "system_text.csv";

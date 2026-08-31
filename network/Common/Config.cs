@@ -1,10 +1,13 @@
 // ReSharper disable All
 using System;
+using network.common.data;
 
 namespace network.common
 {
     /// <summary>
-    /// 네트워크 및 서버 관련 설정 상수
+    ///     네트워크·서버 설정 상수 + 스웜 밸런스 진입점.
+    ///     밸런스 스칼라는 swarm_config.csv가 원본(#296) — 프로퍼티가 CSV를 읽고,
+    ///     미로드·미등재 키는 코드 기본값(현행값)으로 폴백한다.
     /// </summary>
     public class Config
     {
@@ -52,13 +55,13 @@ namespace network.common
 
         // Corruption 임계값
         /// <summary>불안 단계 시작 (정신 오염도 %)</summary>
-        public const int CORRUPTION_UNEASE = 25;
+        public static int CORRUPTION_UNEASE => SwarmConfigData.GetInt("CORRUPTION_UNEASE", 25);
 
         /// <summary>혼란 단계 시작 (정신 오염도 %)</summary>
-        public const int CORRUPTION_CONFUSION = 50;
+        public static int CORRUPTION_CONFUSION => SwarmConfigData.GetInt("CORRUPTION_CONFUSION", 50);
 
         /// <summary>광기 단계 시작 (정신 오염도 %)</summary>
-        public const int CORRUPTION_MADNESS = 75;
+        public static int CORRUPTION_MADNESS => SwarmConfigData.GetInt("CORRUPTION_MADNESS", 75);
 
         // Game Session Settings
         /// <summary>게임 세션 지속 시간 (분)</summary>
@@ -91,7 +94,7 @@ namespace network.common
         ///     메타포: 밀폐된 위험 구역 체류 = 정신적 압박 상승.
         ///     사건·전투 등 다른 오염도 변화와 합산된다.
         ///     수치는 플레이테스트 후 최종 확정 예정 (미확정 #67). v0.1.10에서 2 → 4 → 5로 상향.</summary>
-        public const int CLOSED_AREA_CORRUPTION_TICK = 5;
+        public static int CLOSED_AREA_CORRUPTION_TICK => SwarmConfigData.GetInt("CLOSED_AREA_CORRUPTION_TICK", 5);
 
         /// <summary>Survivor Royale inventory slot capacity shared by clients, bots, and the game server.</summary>
         public const int LEGACY_INVENTORY_SLOT_COUNT = 6;
@@ -110,22 +113,22 @@ namespace network.common
 
         /// <summary>부츠 (#222 M4): 10초 이속 버프 픽업 — 다트 고블린 드랍. 사람 전용.</summary>
         public const int BOOTS_GROUND_ITEM_ID = 107000080;
-        public const int BOOTS_SPEED_DURATION_SECONDS = 10;
+        public static int BOOTS_SPEED_DURATION_SECONDS => SwarmConfigData.GetInt("BOOTS_SPEED_DURATION_SECONDS", 10);
         // 1.5 (#222 3차): 1.4는 밋밋, 1.6은 과속 — 기본 5 → 7.5, 서버 검증 상한(10) 안.
-        public const float BOOTS_MOVE_SPEED_MULTIPLIER = 1.5f;
+        public static float BOOTS_MOVE_SPEED_MULTIPLIER => SwarmConfigData.GetFloat("BOOTS_MOVE_SPEED_MULTIPLIER", 1.5f);
 
         /// <summary>
         ///     빈손 이속 (#223, SB 정합: 스쿼드를 잃으면 빨라진다): 오브 0개 동안의 이동 배율.
         ///     부츠 중첩 시 5 × 1.3 × 1.5 = 9.75 — 서버 검증 상한(10) 안.
         /// </summary>
-        public const float SWARM_BARE_MOVE_SPEED_MULTIPLIER = 1.3f;
+        public static float SWARM_BARE_MOVE_SPEED_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_BARE_MOVE_SPEED_MULTIPLIER", 1.3f);
 
         /// <summary>
         ///     빈손 이속 유지 시간 (#229 12단계). 빈손인 내내 빠르면 "패배 직전"이 아니라
         ///     도주 특화 상태가 된다 — 마지막 오브를 잃은 직후 이 시간만 가속하고 원복한다.
         ///     그 뒤의 빈손은 잔상의 우선 표적이 되어 재건에 쫓긴다.
         /// </summary>
-        public const float SWARM_BARE_MOVE_SPEED_SECONDS = 2f;
+        public static float SWARM_BARE_MOVE_SPEED_SECONDS => SwarmConfigData.GetFloat("SWARM_BARE_MOVE_SPEED_SECONDS", 2f);
 
         /// <summary>열쇠 (#222 M4): 무료 소환 1회 충전 — 탈주 고블린(미니보스) 드랍. 사람 전용.</summary>
         public const int KEY_GROUND_ITEM_ID = 107000090;
@@ -164,7 +167,7 @@ namespace network.common
         ///     포대의 위협 반경. 서버 판정(swarm_monster.csv attack_range)과 클라 범위 링이
         ///     이 값을 공유한다 (표시 = 판정) — CSV 보스 행과 동기 필수.
         /// </summary>
-        public const float SWARM_BOSS_ATTACK_RANGE = 4.1f;
+        public static float SWARM_BOSS_ATTACK_RANGE => SwarmConfigData.GetFloat("SWARM_BOSS_ATTACK_RANGE", 4.1f);
 
         /// <summary>
         ///     3머지 비활성 (#226 오브열): 열 문법에서 성장 = 길이 — 같은 색 3개 압축(3→1)은
@@ -187,17 +190,17 @@ namespace network.common
         // 오브열 (#226 실험 α/β): 오브가 이동 경로를 따라오는 전투열 — 클라 배치와
         // 서버 판정(오브별 공격 원점·본체 접촉)이 같은 값을 쓴다 (표시 = 판정).
         // 0.9→0.7 (#227): 꼬리를 촘촘하게 — 열 응집감 + 림 메타볼 연결 강화.
-        public const float SWARM_ORB_TRAIL_SPACING = 0.7f;
-        public const float SWARM_ORB_TRAIL_FIRST_OFFSET = 0.7f;
+        public static float SWARM_ORB_TRAIL_SPACING => SwarmConfigData.GetFloat("SWARM_ORB_TRAIL_SPACING", 0.7f);
+        public static float SWARM_ORB_TRAIL_FIRST_OFFSET => SwarmConfigData.GetFloat("SWARM_ORB_TRAIL_FIRST_OFFSET", 0.7f);
 
         /// <summary>본체(머리)-상대 오브열 접촉 반경 — P0-a 접촉 판정(0.45)보다 오브 몸집만큼 여유.</summary>
-        public const float SWARM_ORB_TRAIL_CONTACT_RADIUS = 0.6f;
+        public static float SWARM_ORB_TRAIL_CONTACT_RADIUS => SwarmConfigData.GetFloat("SWARM_ORB_TRAIL_CONTACT_RADIUS", 0.6f);
 
         /// <summary>열 접촉 오염 (slither 비대칭 번역): 머리는 항상 취약 — 오브 HP를 우회해 본체 직행.</summary>
-        public const int SWARM_ORB_TRAIL_CONTACT_CORRUPTION = 35;
+        public static int SWARM_ORB_TRAIL_CONTACT_CORRUPTION => SwarmConfigData.GetInt("SWARM_ORB_TRAIL_CONTACT_CORRUPTION", 35);
 
         /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
-        public const int MAX_CORRUPTION = 420;
+        public static int MAX_CORRUPTION => SwarmConfigData.GetInt("MAX_CORRUPTION", 420);
 
         /// <summary>
         /// Survivor Royale #202 uses monster rewards as summon currency instead of direct orb exploration loot.
@@ -222,7 +225,7 @@ namespace network.common
         /// </summary>
         // #223 10인 전환 (2026-08-11, M5) → #272 8인 전환 (2026-08-27): School2 신맵은
         // 1인 시작방 8곳 × 합류 4세트 동심원 구조 — 정원 = 시작방 수.
-        public static readonly int SWARM_PLAYERS_PER_MATCH = 8;
+        public static int SWARM_PLAYERS_PER_MATCH => SwarmConfigData.GetInt("SWARM_PLAYERS_PER_MATCH", 8);
 
         /// <summary>
         ///     #272 매치 맵 단일 원천 — 스웜 매치가 도는 맵. 매치 경로의 모든 맵 참조는
@@ -244,7 +247,7 @@ namespace network.common
         ///     클라 타이머(GameStatusDisplay)와 폐쇄 시간표(AreaClosureManager 최종 웨이브)가
         ///     같은 값에 정렬된다. 잼 승점·4분 잼 타임아웃(#222 M3-2)은 퇴역.
         /// </summary>
-        public const int SWARM_MATCH_DURATION_SECONDS = 300;
+        public static int SWARM_MATCH_DURATION_SECONDS => SwarmConfigData.GetInt("SWARM_MATCH_DURATION_SECONDS", 300);
 
         /// <summary>
         ///     #272 자기장 폐쇄 — 운동장 중심 원형 수축 필드(SwarmPressureField)가 폐쇄 시간표의
@@ -262,7 +265,7 @@ namespace network.common
         ///     60 → 0 (2026-08-26 유저 결정): 개전 즉시 매치 전체 길이에 걸쳐 천천히 조인다 —
         ///     경계가 처음부터 존재해야 경계 토출 몹 스폰의 원천이 마르지 않는다.
         /// </summary>
-        public const int SWARM_FIELD_HOLD_SECONDS = 0;
+        public static int SWARM_FIELD_HOLD_SECONDS => SwarmConfigData.GetInt("SWARM_FIELD_HOLD_SECONDS", 0);
 
         /// <summary>
         ///     자기장 수축 곡선 지수 (#272, 2026-08-27 유저 결정 "방이 짧고 운동장이 길다"):
@@ -270,10 +273,10 @@ namespace network.common
         ///     1.4 기준 시작방 폐쇄 87→약 124초, 합류 141→약 175초, 종반 압축. 서버 판정·클라
         ///     경계 렌더·파생 시간표가 SwarmPressureField의 같은 곡선 함수를 쓴다.
         /// </summary>
-        public const double SWARM_FIELD_SHRINK_EXPONENT = 1.4d;
+        public static double SWARM_FIELD_SHRINK_EXPONENT => SwarmConfigData.GetDouble("SWARM_FIELD_SHRINK_EXPONENT", 1.4d);
 
         /// <summary>문 게이지 시간(초) — 시작방 문: 혼자 여는 관문이라 짧다. 봇 채널도 같은 값.</summary>
-        public const float SWARM_DOOR_GAUGE_SECONDS = 3f;
+        public static float SWARM_DOOR_GAUGE_SECONDS => SwarmConfigData.GetFloat("SWARM_DOOR_GAUGE_SECONDS", 3f);
 
         // 합류→중앙 J 문 12초 근거 (#272, 2026-08-27 유저 결정 "J에서 둘이 싸우게"): 길게 잡아
         // 선착자도 후착자 도착 전까지 못 나가고, 두 번째 문부터는 피격이 게이지를 리셋하므로
@@ -296,30 +299,31 @@ namespace network.common
         /// </summary>
         // 5 → 1 (#226 웨이브 전환): 상시 쫓기는 판에서 첫 소환이 5석이면 초반이 마른다 —
         // 초반은 싸게, 성장 억제는 오브 수 비례 가산이 맡는다.
-        public const int SWARM_EXPLORE_COST_BASE = 1;
+        public static int SWARM_EXPLORE_COST_BASE => SwarmConfigData.GetInt("SWARM_EXPLORE_COST_BASE", 1);
 
         /// <summary>스팟 리젠 시간(초). 개봉된 스팟은 사라지지 않고 이 시간 뒤 다시 나온다.
         ///     0 → 30 (#226 단계 C): 상자 = 소모품(하트·부츠) 공급처 — 즉시 리젠이면 하트가 무한이다.</summary>
-        public const int SWARM_EXPLORE_REGEN_SECONDS = 30;
+        public static int SWARM_EXPLORE_REGEN_SECONDS => SwarmConfigData.GetInt("SWARM_EXPLORE_REGEN_SECONDS", 30);
 
         /// <summary>
         ///     상자 개봉 비용 (#226 단계 C): 상자는 오브가 아니라 소모품(하트·부츠)을 준다 —
         ///     소환석의 주 소비처는 성장 카드이므로 상자는 고정 저가.
         /// </summary>
-        public const int SWARM_BOX_OPEN_COST = 1;
+        public static int SWARM_BOX_OPEN_COST => SwarmConfigData.GetInt("SWARM_BOX_OPEN_COST", 1);
 
         /// <summary>
         ///     성장 카드 기본 비용 (#229): 이번 판 성공한 성장 선택 횟수 N 기반 5+2N.
         ///     오브가 잘려도 N은 줄지 않아 절단이 성장 시간을 초기화하지 못한다.
         /// </summary>
         public static int GetSwarmGrowthBaseCost(int growthSuccessCount) =>
-            5 + 2 * Math.Max(0, growthSuccessCount);
+            SwarmConfigData.GetInt("SWARM_GROWTH_BASE_COST", 5) +
+            SwarmConfigData.GetInt("SWARM_GROWTH_COST_PER_SUCCESS", 2) * Math.Max(0, growthSuccessCount);
 
         /// <summary>#229에서는 보유 오브 수 할증을 쓰지 않는다. 로그 호환을 위해 0을 남긴다.</summary>
         public static int GetSwarmGrowthScoreSurcharge(int orbCount) => 0;
 
         /// <summary>5분 매치에서 후반 성장을 제한하는 성장 카드 상한 비용 (#229).</summary>
-        public const int SWARM_GROWTH_COST_CAP = 21;
+        public static int SWARM_GROWTH_COST_CAP => SwarmConfigData.GetInt("SWARM_GROWTH_COST_CAP", 21);
 
         /// <summary>
         ///     성장 카드 최종 비용 = min(21, 5+2N). 0오브는 비용 3의 T1 생성 보장(재건 경로).
@@ -327,7 +331,7 @@ namespace network.common
         /// </summary>
         public static int GetSwarmGrowthCardCost(int growthSuccessCount, int orbCount) =>
             orbCount <= 0
-                ? 3
+                ? SwarmConfigData.GetInt("SWARM_GROWTH_REBUILD_COST", 3)
                 : Math.Min(SWARM_GROWTH_COST_CAP, GetSwarmGrowthBaseCost(growthSuccessCount));
 
         /// <summary>
@@ -346,13 +350,13 @@ namespace network.common
         }
 
         /// <summary>궤도 오브 1개당 개봉 비용 가산 — SB "스쿼드 인원수 비례 상자 코인".</summary>
-        public const int SWARM_EXPLORE_COST_PER_ORB = 2;
+        public static int SWARM_EXPLORE_COST_PER_ORB => SwarmConfigData.GetInt("SWARM_EXPLORE_COST_PER_ORB", 2);
 
         /// <summary>
         ///     기본가 허용량 — 오브가 이 수 이하면 기본가(5)에서 출발하고, 성장분에만 가산이 붙는다.
         ///     (#219 M2: 시작 오브 지급은 퇴역 — 이 값은 가격 곡선의 피벗으로만 남는다)
         /// </summary>
-        public const int SWARM_STARTING_ORB_COUNT = 3;
+        public static int SWARM_STARTING_ORB_COUNT => SwarmConfigData.GetInt("SWARM_STARTING_ORB_COUNT", 3);
 
         /// <summary>
         ///     빈손(오브 0개)은 개봉 무료 — 빈손 시작의 첫 오브와 전멸 후 재기가 같은 경로로 성립한다.
@@ -393,7 +397,7 @@ namespace network.common
         ///     다트 고블린 사거리(5)의 절반 — 원거리 몹 접근엔 피격 감수가 전제.
         ///     battle_item_combat.csv attack_range(2.5)와 동기 필수 (#292).
         /// </summary>
-        public const float SWARM_ORB_ATTACK_RANGE = 2.5f;
+        public static float SWARM_ORB_ATTACK_RANGE => SwarmConfigData.GetFloat("SWARM_ORB_ATTACK_RANGE", 2.5f);
 
         /// <summary>
         ///     오브 궤도 (#232, 2026-08-17 서버 공유): 오브는 본체 주위 타원 궤도를 돈다 — 이동한 거리만큼
@@ -416,14 +420,14 @@ namespace network.common
         ///     늘어나 "오브 수는 PvP 화력을 키우지 않는다"는 규칙과 어긋나고, 링 하나로
         ///     표시할 수도 없다. 클라 표시(PlayerRangeRing)가 같은 값을 읽는다.
         /// </summary>
-        public const float SWARM_PVP_ATTACK_RANGE = 5f;
+        public static float SWARM_PVP_ATTACK_RANGE => SwarmConfigData.GetFloat("SWARM_PVP_ATTACK_RANGE", 5f);
 
         /// <summary>
         ///     유저간 사격에 참여하는 오브 수 = 앞열 이만큼 (2026-08-16 유저 명세).
         ///     전체 오브가 사람을 쏘면 20개 꼬리가 3개 꼬리를 그대로 녹인다. 상한을 두면
         ///     오브 수는 PvE 성장과 절단 위험만 키우는 축이 된다.
         /// </summary>
-        public const int SWARM_PVP_ORB_COUNT = 3;
+        public static int SWARM_PVP_ORB_COUNT => SwarmConfigData.GetInt("SWARM_PVP_ORB_COUNT", 3);
 
         // ===== 교차사격 (#232 2단계) =====
         // 오브는 몬스터만 쏜다. 그 공격이 만드는 모양(태양 = 직선)에 다른 플레이어가 들어오면
@@ -431,14 +435,14 @@ namespace network.common
         // 서버 판정과 클라 예고 표시가 같은 값을 읽어야 "표시 = 판정"이 성립한다.
 
         /// <summary>교차사격 충격 1회의 정신오염. 티어·공격 강화와 무관한 고정값.</summary>
-        public const int SWARM_CROSSFIRE_SHOCK_CORRUPTION = 50;
+        public static int SWARM_CROSSFIRE_SHOCK_CORRUPTION => SwarmConfigData.GetInt("SWARM_CROSSFIRE_SHOCK_CORRUPTION", 50);
 
         /// <summary>
         ///     받는 피해 배율 (2026-08-18 유저 지시 "봇·플레이어 전부 지금의 1/3만 받게"): 사람·봇 공통,
         ///     PvP 충격(태양·바람·파도)과 잔상 접촉·원거리 피해에 곱한다. 절단 자해(+35)와 폐쇄 즉사는 대상 아님.
         ///     최솟값 1 — 0이 되면 "맞았는데 안 닳는" 피격이 생긴다.
         /// </summary>
-        public const float SWARM_DAMAGE_TAKEN_MULTIPLIER = 1f / 3f;
+        public static float SWARM_DAMAGE_TAKEN_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_DAMAGE_TAKEN_MULTIPLIER", 1f / 3f);
 
         /// <summary>받는 피해에 배율을 적용한 정수값 — 반올림, 최솟값 1.</summary>
         public static int ScaleSwarmDamageTaken(int damage) =>
@@ -453,17 +457,17 @@ namespace network.common
         ///     틱당 = 충격의 0.2배(≈3). 재피격 시 지속이 갱신된다(중첩 없음). 몹은 제외 —
         ///     태양 PvE 화력은 이미 직격이 정점이다.
         /// </summary>
-        public const float SWARM_SUN_BURN_SECONDS = 3f;
-        public const float SWARM_SUN_BURN_TICK_INTERVAL_SECONDS = 1f;
-        public const float SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER = 0.2f;
+        public static float SWARM_SUN_BURN_SECONDS => SwarmConfigData.GetFloat("SWARM_SUN_BURN_SECONDS", 3f);
+        public static float SWARM_SUN_BURN_TICK_INTERVAL_SECONDS => SwarmConfigData.GetFloat("SWARM_SUN_BURN_TICK_INTERVAL_SECONDS", 1f);
+        public static float SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER", 0.2f);
 
         /// <summary>
         ///     상처 (#268, 2026-08-25): 바람 칼날 충격에 맞으면 5초간, 이후 받는 PvP 충격이
         ///     이 확률로 치명타(PvE와 같은 2배)가 된다. 평시 PvP 충격은 치명타가 없다 —
         ///     상처가 그 문을 연다. 재피격 시 지속 갱신(중첩 없음).
         /// </summary>
-        public const float SWARM_WIND_WOUND_SECONDS = 5f;
-        public const float SWARM_WIND_WOUND_CRIT_CHANCE = 0.35f;
+        public static float SWARM_WIND_WOUND_SECONDS => SwarmConfigData.GetFloat("SWARM_WIND_WOUND_SECONDS", 5f);
+        public static float SWARM_WIND_WOUND_CRIT_CHANCE => SwarmConfigData.GetFloat("SWARM_WIND_WOUND_CRIT_CHANCE", 0.35f);
 
         /// <summary>
         ///     한 플레이어가 동시에 유지할 수 있는 교차사격 예고 수 (명세 "동시 예고 최대 2개"). 예고(시전)
@@ -480,30 +484,34 @@ namespace network.common
         ///     벽 없는 끝점에서는 폭발 없이 소멸한다. 예고 시간에는 고정된 시안색 바닥 경로선이
         ///     차오르고, 발사 순간 0.22초 점멸·페이드한 뒤 비행은 꼬리 없는 태양 구체가 전달한다.
         /// </summary>
-        public const float SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS = 0.25f;
+        public static float SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_TELEGRAPH_SECONDS", 0.25f);
         // 서버 앞머리 속도. 클라 투사체는 패킷의 ActiveSeconds(= 실제 벽까지 거리/속도)를 그대로 써
         // 표시와 판정의 도착 시간을 맞춘다.
-        public const float SWARM_CROSSFIRE_SUN_SWEEP_SPEED = 7.5f;
+        public static float SWARM_CROSSFIRE_SUN_SWEEP_SPEED => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_SWEEP_SPEED", 7.5f);
 
         /// <summary>
         ///     큰 공격 한 번 = 유도탄 두 발 몫. 주기 ×2, 피해 ×2 — 총 화력은 같고 한 번의 무게가 커진다.
         ///     T1 24는 일반 몹(16~22)을 한 방에 지우고 관통하므로 실측 뒤 조정 대상이다.
         /// </summary>
-        public const float SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER = 2f;
-        public const float SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER = 2f;
+        public static float SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER", 2f);
+        public static float SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER", 2f);
 
         /// <summary>
         ///     태양 투사체의 판정 폭(T1/T2/T3, 바닥면 단위) — 이 안에 몸이 걸리면 닿은 것.
         ///     2026-08-26 ×2 실험은 같은 날 원복 (유저 제보 "허공에서 맞는다"): "안 맞는" 체감의
         ///     원인은 폭이 아니라 세로 축이었다 — 몸통 캡슐 판정이 그걸 풀었으니 폭은 원래대로.
         /// </summary>
-        public static readonly float[] SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER = { 0.7f, 0.85f, 1f };
+        private static readonly float[] DefaultSunWidthByTier = { 0.7f, 0.85f, 1f };
+        public static float[] SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER =>
+            SwarmConfigData.GetFloatArray("SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER", DefaultSunWidthByTier);
 
         /// <summary>
         ///     태양 표적 획득 거리(T1/T2/T3, 바닥면 단위). 투사체 길이로는 더 안 쓴다 (2026-08-24 유저
         ///     결정: 투사체는 항상 구역 경계까지 난다) — 강화는 조준이 걸리는 거리만 늘린다.
         /// </summary>
-        public static readonly float[] SWARM_CROSSFIRE_SUN_RANGE_BY_TIER = { 4f, 5.5f, 7f };
+        private static readonly float[] DefaultSunRangeByTier = { 4f, 5.5f, 7f };
+        public static float[] SWARM_CROSSFIRE_SUN_RANGE_BY_TIER =>
+            SwarmConfigData.GetFloatArray("SWARM_CROSSFIRE_SUN_RANGE_BY_TIER", DefaultSunRangeByTier);
 
         /// <summary>
         ///     바람 = 회전 칼날 (2026-08-25 유저 결정, #268): 오브가 제자리에서 돌며 반경(티어별, 바닥면) 안
@@ -514,15 +522,17 @@ namespace network.common
         ///     틱당 피해 = 발당 피해 × 0.75 — 슬램(× 1.5, 쿨 1.4초)과 단일 대상 DPS 동률(0.7초 틱 × 절반).
         ///     반경에 붙어야 갈리는 무기라 밀집 실효 화력 상승은 접근 리스크가 값을 치른다 (유저 판정).
         /// </summary>
-        public static readonly float[] SWARM_WIND_BLADE_RADIUS_BY_TIER = { 1.4f, 1.65f, 1.9f };
+        private static readonly float[] DefaultWindBladeRadiusByTier = { 1.4f, 1.65f, 1.9f };
+        public static float[] SWARM_WIND_BLADE_RADIUS_BY_TIER =>
+            SwarmConfigData.GetFloatArray("SWARM_WIND_BLADE_RADIUS_BY_TIER", DefaultWindBladeRadiusByTier);
         // 틱 0.35초 × 배율 0.375 (2026-08-25 2차: 0.7초 × 0.75에서 반분) — DPS는 그대로 두고
         // 타격 빈도만 두 배로. "믹서기에 갈린다"는 잘게 자주 맞아야 읽힌다 (유저 지시).
-        public const float SWARM_WIND_BLADE_TICK_SECONDS = 0.35f;
-        public const float SWARM_WIND_BLADE_DAMAGE_MULTIPLIER = 0.375f;
+        public static float SWARM_WIND_BLADE_TICK_SECONDS => SwarmConfigData.GetFloat("SWARM_WIND_BLADE_TICK_SECONDS", 0.35f);
+        public static float SWARM_WIND_BLADE_DAMAGE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_WIND_BLADE_DAMAGE_MULTIPLIER", 0.375f);
         // 시동 게이트 (2026-08-25 유저 지시 "회전 한 20퍼는 돼야 데미지"): 표적이 반경에 든
         // 순간부터 이 시간은 피해가 없다 — 클라 감지 폴링(0.15초)+가속 20% 도달(0.09초)에 맞춘
         // 값. 반경이 비면 리셋된다(클라 감속과 대칭). 옛 0.9초 게이트(체감 1.4초)와 혼동 금지.
-        public const float SWARM_WIND_BLADE_SPINUP_SECONDS = 0.2f;
+        public static float SWARM_WIND_BLADE_SPINUP_SECONDS => SwarmConfigData.GetFloat("SWARM_WIND_BLADE_SPINUP_SECONDS", 0.2f);
 
         /// <summary>
         ///     파도 = 소용돌이 (#268, 2026-08-25 유저 결정, 3차 "오브 위치 기준"). 물폭탄(표적
@@ -534,13 +544,15 @@ namespace network.common
         /// </summary>
         // 변위(당김·밀침·원 밖 축출) 실험은 전부 기각 (2026-08-25 유저 판정) — 효과는
         // "침수" 디버프(5초 25% 감속, WAVE_SOAKED_STATUS_EFFECT_ID)와 타격 피드백 피해만.
-        public const float SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER = 0.25f; // 현행 물폭탄 피해의 1/4
+        public static float SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER", 0.25f); // 현행 물폭탄 피해의 1/4
 
 
         /// <summary>
         ///     태양 벽 충돌 시각 폭발 크기(T1/T2/T3, 바닥면 단위). 추가 피해·충격 판정은 없다.
         /// </summary>
-        public static readonly float[] SWARM_CROSSFIRE_SUN_BLAST_RADIUS_BY_TIER = { 1.1f, 1.3f, 1.5f };
+        private static readonly float[] DefaultSunBlastRadiusByTier = { 1.1f, 1.3f, 1.5f };
+        public static float[] SWARM_CROSSFIRE_SUN_BLAST_RADIUS_BY_TIER =>
+            SwarmConfigData.GetFloatArray("SWARM_CROSSFIRE_SUN_BLAST_RADIUS_BY_TIER", DefaultSunBlastRadiusByTier);
 
         /// <summary>교차사격 모양 종류 — 패킷·로그·클라 렌더가 공유하는 식별자.</summary>
         public const int SWARM_CROSSFIRE_SHAPE_LINE = 1;
@@ -556,14 +568,14 @@ namespace network.common
         ///     시작 지급 (#232 4단계, 2026-08-17): 무작위 T1 공격 오브 3개 + 소환석 5. 첫 화력을 들고
         ///     시작하고, 첫 판단은 유지·계열 강화·파괴로 옮긴다. 08-16의 "소환석 19로 시작"은 되돌린다.
         /// </summary>
-        public const int SWARM_STARTING_ORB_GRANT_COUNT = 3;
-        public const int SWARM_STARTING_STONE_GRANT = 5;
+        public static int SWARM_STARTING_ORB_GRANT_COUNT => SwarmConfigData.GetInt("SWARM_STARTING_ORB_GRANT_COUNT", 3);
+        public static int SWARM_STARTING_STONE_GRANT => SwarmConfigData.GetInt("SWARM_STARTING_STONE_GRANT", 5);
 
         /// <summary>
         ///     오브 파괴 환급 (#232 4단계): 계열 공유 레벨은 플레이어에게 귀속되므로 표시 티어와
         ///     무관하게 오브 한 개당 소환석 1로 고정한다 — 강화한 오브를 부숴도 레벨은 남는다.
         /// </summary>
-        public const int SWARM_ORB_DESTROY_REFUND_STONES = 1;
+        public static int SWARM_ORB_DESTROY_REFUND_STONES => SwarmConfigData.GetInt("SWARM_ORB_DESTROY_REFUND_STONES", 1);
 
         /// <summary>결정 패킷 액션 — 클라·서버·로그 공유. TargetItemUid = OrbColor 값.</summary>
         public const int SWARM_ORB_DECISION_FAMILY_UPGRADE = 1;
