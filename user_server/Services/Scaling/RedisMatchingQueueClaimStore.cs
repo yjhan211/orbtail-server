@@ -10,6 +10,8 @@ namespace user_server.services.scaling;
 public sealed class RedisMatchingQueueClaimStore(IRedisConnectionPool redisPool) : IMatchingQueueClaimStore
 {
     private const string MatchingQueueKey = "matching_queue";
+    private static readonly TimeSpan MinimumRedisLifetime = TimeSpan.FromMilliseconds(1);
+
     private const string TryClaimQueueEntryScript = """
         if redis.call('ZSCORE', KEYS[1], ARGV[1]) == false then
             return 0
@@ -27,8 +29,12 @@ public sealed class RedisMatchingQueueClaimStore(IRedisConnectionPool redisPool)
         TimeSpan expiry)
     {
         ArgumentNullException.ThrowIfNull(queueEntry);
-        if (expiry <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(expiry), "Expiry must be greater than zero.");
+        if (expiry < MinimumRedisLifetime)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(expiry),
+                $"Expiry must be at least {MinimumRedisLifetime.TotalMilliseconds:0} millisecond.");
+        }
 
         RedisResult result = await redisPool.ExecuteWithRetryAsync(
             database => database.ScriptEvaluateAsync(

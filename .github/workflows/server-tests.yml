@@ -23,6 +23,17 @@ jobs:
     name: dotnet test
     runs-on: ubuntu-latest
 
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 1s
+          --health-timeout 3s
+          --health-retries 30
+
     steps:
       - uses: actions/checkout@v4
 
@@ -45,3 +56,15 @@ jobs:
 
       - name: Run regression tests
         run: dotnet test demo_regression_tests/demo_regression_tests.csproj --no-build --configuration Release --verbosity normal
+
+      - name: Restore Redis integration tests
+        run: dotnet restore redis_integration_tests/redis_integration_tests.csproj
+
+      - name: Build Redis integration tests
+        run: dotnet build redis_integration_tests/redis_integration_tests.csproj --no-restore --configuration Release
+
+      - name: Run Redis integration tests
+        env:
+          MANITTO_RUN_REDIS_INTEGRATION_TESTS: "1"
+          MANITTO_REDIS_TEST_CONNECTION: "127.0.0.1:6379,abortConnect=false,connectTimeout=3000,asyncTimeout=3000"
+        run: dotnet test redis_integration_tests/redis_integration_tests.csproj --no-build --configuration Release --verbosity normal

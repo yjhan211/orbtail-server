@@ -13,6 +13,8 @@ public sealed class RedisGameServerRoutingStore(
     ICacheHelper cacheHelper,
     IRedisConnectionPool redisPool) : IGameServerRoutingStore
 {
+    private static readonly TimeSpan MinimumRedisLifetime = TimeSpan.FromMilliseconds(1);
+
     private const string ReserveMatchOwnerScript = """
         if redis.call('GET', KEYS[1]) ~= ARGV[1] then
             return 0
@@ -146,6 +148,7 @@ public sealed class RedisGameServerRoutingStore(
         TimeSpan leaseLifetime)
     {
         ValidateDescriptor(descriptor);
+        ValidateRedisLifetime(leaseLifetime, nameof(leaseLifetime));
         bool acquired = await cacheHelper.StringSetIfNotExistsAsync(
             GameServerRoutingKeys.NodeLease(descriptor.NodeId),
             descriptor.Generation,
@@ -173,6 +176,7 @@ public sealed class RedisGameServerRoutingStore(
         TimeSpan leaseLifetime)
     {
         ValidateDescriptor(descriptor);
+        ValidateRedisLifetime(leaseLifetime, nameof(leaseLifetime));
         bool renewed = await cacheHelper.StringSetIfEqualsAsync(
             GameServerRoutingKeys.NodeLease(descriptor.NodeId),
             descriptor.Generation,
@@ -195,6 +199,7 @@ public sealed class RedisGameServerRoutingStore(
         ValidateDescriptor(descriptor);
         if (descriptor.Status != GameServerNodeStatus.Draining)
             throw new ArgumentException("A draining descriptor is required.", nameof(descriptor));
+        ValidateRedisLifetime(leaseLifetime, nameof(leaseLifetime));
 
         await cacheHelper.StringDeleteIfEqualsAsync(
             GameServerRoutingKeys.NodeAccepting(descriptor.NodeId),
@@ -224,8 +229,7 @@ public sealed class RedisGameServerRoutingStore(
     public async Task<IReadOnlyList<GameServerNodeDescriptor>> DiscoverHealthyNodesAsync(
         TimeSpan maximumAge)
     {
-        if (maximumAge <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(maximumAge));
+        ValidateRedisLifetime(maximumAge, nameof(maximumAge));
 
         RedisResult redisResult = await redisPool.ExecuteWithRetryAsync(
             database => database.ScriptEvaluateAsync(
@@ -283,8 +287,7 @@ public sealed class RedisGameServerRoutingStore(
             return null;
         if (matchingId <= 0)
             throw new ArgumentOutOfRangeException(nameof(matchingId));
-        if (ownerLifetime <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(ownerLifetime));
+        ValidateRedisLifetime(ownerLifetime, nameof(ownerLifetime));
 
         RedisResult result = await redisPool.ExecuteWithRetryAsync(
             database => database.ScriptEvaluateAsync(
@@ -316,8 +319,7 @@ public sealed class RedisGameServerRoutingStore(
         ArgumentNullException.ThrowIfNull(owner);
         if (!owner.IsValid)
             return false;
-        if (ownerLifetime <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(ownerLifetime));
+        ValidateRedisLifetime(ownerLifetime, nameof(ownerLifetime));
 
         RedisResult result = await redisPool.ExecuteWithRetryAsync(
             database => database.ScriptEvaluateAsync(
@@ -343,8 +345,7 @@ public sealed class RedisGameServerRoutingStore(
         ArgumentNullException.ThrowIfNull(owner);
         if (!owner.IsValid)
             return false;
-        if (maximumRemainingLifetime <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(maximumRemainingLifetime));
+        ValidateRedisLifetime(maximumRemainingLifetime, nameof(maximumRemainingLifetime));
         long maximumRemainingMilliseconds = checked(
             (long)Math.Ceiling(maximumRemainingLifetime.TotalMilliseconds));
 
@@ -472,6 +473,16 @@ public sealed class RedisGameServerRoutingStore(
             descriptor.MaxConcurrentMatches <= 0)
         {
             throw new ArgumentException("GameServer node descriptor is invalid.", nameof(descriptor));
+        }
+    }
+
+    private static void ValidateRedisLifetime(TimeSpan lifetime, string parameterName)
+    {
+        if (lifetime < MinimumRedisLifetime)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                $"Redis lifetimes must be at least {MinimumRedisLifetime.TotalMilliseconds:0} millisecond.");
         }
     }
 }

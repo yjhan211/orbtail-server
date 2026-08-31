@@ -17,6 +17,7 @@ public sealed class RedisGameHandoffTicketStore(
     private const string TicketKeyPrefix = "game_handoff_ticket:";
     private const int ConsumeResolutionAttempts = 3;
 
+    private static readonly TimeSpan MinimumRedisLifetime = TimeSpan.FromMilliseconds(1);
     private static readonly TimeSpan MaximumConsumeReceiptLifetime = TimeSpan.FromMinutes(10);
 
     private const string GuardedConsumeWithReceiptScript = """
@@ -124,6 +125,7 @@ public sealed class RedisGameHandoffTicketStore(
 
     public Task<bool> TryStoreAsync(string ticketHash, GameHandoffContext context, TimeSpan lifetime)
     {
+        ValidateRedisLifetime(lifetime, nameof(lifetime));
         byte[] serializedContext = MessagePackSerializer.Serialize(context, SerializerOptions);
         return cacheHelper.StringSetIfNotExistsAsync(
             context.HasGameServerOwner
@@ -163,8 +165,8 @@ public sealed class RedisGameHandoffTicketStore(
         ArgumentNullException.ThrowIfNull(owner);
         if (!identity.IsValid || !owner.IsValid ||
             string.IsNullOrWhiteSpace(consumeNonce) || consumeNonce.Length > 128 ||
-            provisionalOwnerLifetime <= TimeSpan.Zero ||
-            receiptLifetime <= TimeSpan.Zero ||
+            provisionalOwnerLifetime < MinimumRedisLifetime ||
+            receiptLifetime < MinimumRedisLifetime ||
             !string.Equals(identity.NodeId, owner.NodeId, StringComparison.Ordinal) ||
             !string.Equals(identity.Generation, owner.Generation, StringComparison.Ordinal))
         {
@@ -244,8 +246,7 @@ public sealed class RedisGameHandoffTicketStore(
         string consumeNonce,
         TimeSpan receiptExpiry)
     {
-        if (secondGuardExpiry <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(secondGuardExpiry), "Expiry must be greater than zero.");
+        ValidateRedisLifetime(secondGuardExpiry, nameof(secondGuardExpiry));
         if (matchingId <= 0)
             throw new ArgumentOutOfRangeException(nameof(matchingId));
         ValidateReceipt(receiptKey, consumeNonce, receiptExpiry);
@@ -326,12 +327,22 @@ public sealed class RedisGameHandoffTicketStore(
             throw new ArgumentException("A receipt key is required.", nameof(receiptKey));
         if (string.IsNullOrWhiteSpace(consumeNonce) || consumeNonce.Length > 128)
             throw new ArgumentException("A bounded consume nonce is required.", nameof(consumeNonce));
-        if (receiptExpiry <= TimeSpan.Zero || receiptExpiry > MaximumConsumeReceiptLifetime)
+        if (receiptExpiry < MinimumRedisLifetime || receiptExpiry > MaximumConsumeReceiptLifetime)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(receiptExpiry),
-                $"Receipt expiry must be greater than zero and no more than " +
+                $"Receipt expiry must be at least {MinimumRedisLifetime.TotalMilliseconds:0} millisecond and no more than " +
                 $"{MaximumConsumeReceiptLifetime.TotalMinutes} minutes.");
+        }
+    }
+
+    private static void ValidateRedisLifetime(TimeSpan lifetime, string parameterName)
+    {
+        if (lifetime < MinimumRedisLifetime)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                $"Redis lifetimes must be at least {MinimumRedisLifetime.TotalMilliseconds:0} millisecond.");
         }
     }
 
