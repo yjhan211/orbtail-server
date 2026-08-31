@@ -37,7 +37,8 @@ public partial class BotPlayerManager
     public void SetSwarmDodgeResolver(Func<long, long, Vector3f, AreaType, DateTime, SwarmBotDodgeAdvice?> resolver) =>
         _swarmDodgeResolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
 
-    private static readonly AreaType[] Proto0SpawnAreas =
+    // 스폰 셀 미지정 시 폴백 (School 세대 구역명 — School2 매치는 항상 스폰 셀을 지정받는다).
+    private static readonly AreaType[] FallbackSpawnAreas =
     {
         AreaType.AdminOffice,
         AreaType.StaffRoom,
@@ -49,34 +50,13 @@ public partial class BotPlayerManager
         AreaType.BroadcastRoom,
     };
 
-    private const double Proto0TestProbability = 0.3;
+    // 배회 폴백(잔상 사냥 실패 시)에서 최저 인원 방으로 흩어질 확률 — 봇이 한 방에 뭉치지 않게.
+    private const double SwarmWanderScatterProbability = 0.3;
 
-    private const double Proto0InitialDecisionDelayMinSeconds = 0.15;
-    private const double Proto0InitialDecisionDelayMaxSeconds = 1.2;
-    private const double Proto0RoomDwellMinSeconds = 1.25;
-    private const double Proto0RoomDwellMaxSeconds = 2.25;
-
-    private enum Proto0BotPolicy
-    {
-        SimpleTracker,
-        DisguiseMvp
-    }
-
-    private static readonly BotProto0Profile[] Proto0Profiles =
-    {
-        BotProto0Profile.SurvivalFirst,
-        BotProto0Profile.StealthFirst,
-        BotProto0Profile.AggressiveProbe,
-        BotProto0Profile.CrowdSeeking,
-        BotProto0Profile.QuietRoomSeeking,
-    };
-
-    private const Proto0BotPolicy ActiveProto0BotPolicy = Proto0BotPolicy.DisguiseMvp;
-    private const double Proto0FollowDelayMinSeconds = 3;
-    private const double Proto0FollowDelayMaxSeconds = 8;
-    private const double Proto0FakeMoveCooldownSeconds = 12;
-    private const double Proto0ProbeCooldownSeconds = 15;
-    private const int Proto0CrowdedRoomThreshold = 3;
+    private const double BotInitialDecisionDelayMinSeconds = 0.15;
+    private const double BotInitialDecisionDelayMaxSeconds = 1.2;
+    private const double BotRoomDwellMinSeconds = 1.25;
+    private const double BotRoomDwellMaxSeconds = 2.25;
 
     private const int BotMissionTickIntervalSeconds = 1;
     private const int InitialStamina = 100;
@@ -110,7 +90,7 @@ public partial class BotPlayerManager
                 ? Cell.Clone(info.SpawnCell)
                 : GameMapData.GetAreaSpawnCell(mapId, IsAllowedAssignedStartArea(mapId, info.StartArea)
                     ? info.StartArea
-                    : Proto0SpawnAreas[_rng.Next(Proto0SpawnAreas.Length)]);
+                    : FallbackSpawnAreas[_rng.Next(FallbackSpawnAreas.Length)]);
             var startArea = GameMapData.GetCurrentArea(mapId, startCell);
             if (startArea == AreaType.None)
             {
@@ -133,14 +113,13 @@ public partial class BotPlayerManager
                 ActiveBuffIds = info.ActiveBuffIds is { Count: > 0 }
                     ? new List<int>(info.ActiveBuffIds)
                     : new List<int>(),
-                Proto0Profile = Proto0Profiles[index % Proto0Profiles.Length],
                 Stamina = InitialStamina,
                 Corruption = InitialCorruption,
                 PlayerMatchStatus = PlayerMatchStatus.ACTIVE,
                 GameStartTime = now,
                 LoopWaitUntil = now.AddSeconds(RandomRange(
-                    Proto0InitialDecisionDelayMinSeconds,
-                    Proto0InitialDecisionDelayMaxSeconds))
+                    BotInitialDecisionDelayMinSeconds,
+                    BotInitialDecisionDelayMaxSeconds))
             };
         }).ToList();
 
@@ -274,15 +253,6 @@ public partial class BotPlayerManager
 
 }
 
-public enum BotProto0Profile
-{
-    SurvivalFirst,
-    StealthFirst,
-    AggressiveProbe,
-    CrowdSeeking,
-    QuietRoomSeeking
-}
-
 public class BotPlayerState
 {
     public long PlayerId { get; set; }
@@ -300,11 +270,6 @@ public class BotPlayerState
     public PlayerMatchStatus PlayerMatchStatus { get; set; } = PlayerMatchStatus.ACTIVE;
     public PersonaType Persona { get; set; } = PersonaType.None;
     public List<int> ActiveBuffIds { get; set; } = new();
-    public BotProto0Profile Proto0Profile { get; set; } = BotProto0Profile.SurvivalFirst;
-    public AreaType LastSeenTargetArea { get; set; } = AreaType.None;
-    public DateTime NextTargetFollowAllowedAt { get; set; } = DateTime.MinValue;
-    public DateTime LastFakeMoveTime { get; set; } = DateTime.MinValue;
-    public DateTime LastProbeMoveTime { get; set; } = DateTime.MinValue;
 
     public string Name { get; set; } = "";
 
