@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using network.application.authentication;
 using network.common;
@@ -27,10 +26,8 @@ public sealed class GameSession : SessionBase
     private readonly Func<long, GameSession, bool> _onSessionRemoved;
     private readonly IPlayerService _playerService;
     private readonly IProtocolRouter _subscribeRouter;
-    private readonly object _matchingDeliveryLock = new();
-    private readonly Dictionary<string, MatchingDeliveryReceipt> _matchingDeliveryReceipts =
-        new(StringComparer.Ordinal);
-    private readonly Queue<string> _matchingDeliveryReceiptOrder = new();
+    private readonly MatchingDeliveryReceiptCache _matchingDeliveryReceipts =
+        new(MaxMatchingDeliveryReceipts);
     private readonly object _matchingAssignmentLock = new();
     private UserSessionOwner? _sessionOwner;
     private string? _activeMatchingRequestId;
@@ -217,34 +214,10 @@ public sealed class GameSession : SessionBase
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        string payloadFingerprint = Convert.ToHexString(SHA256.HashData(request.Payload));
-        lock (_matchingDeliveryLock)
-        {
-            if (_matchingDeliveryReceipts.TryGetValue(request.DeliveryId, out MatchingDeliveryReceipt? receipt))
-            {
-                return receipt.Matches(request, payloadFingerprint)
-                    ? MatchingDeliveryResponse.Create(request.DeliveryId, receipt.Status)
-                    : MatchingDeliveryResponse.Create(
-                        request.DeliveryId,
-                        MatchingDeliveryStatus.InvalidRequest);
-            }
-
-            MatchingDeliveryStatus status = ApplyMatchingDelivery(request, requireDistributedOwner);
-            if (status == MatchingDeliveryStatus.Accepted)
-            {
-                _matchingDeliveryReceipts.Add(
-                    request.DeliveryId,
-                    MatchingDeliveryReceipt.Create(request, payloadFingerprint, status));
-                _matchingDeliveryReceiptOrder.Enqueue(request.DeliveryId);
-                while (_matchingDeliveryReceiptOrder.Count > MaxMatchingDeliveryReceipts)
-                {
-                    string expiredDeliveryId = _matchingDeliveryReceiptOrder.Dequeue();
-                    _matchingDeliveryReceipts.Remove(expiredDeliveryId);
-                }
-            }
-
-            return MatchingDeliveryResponse.Create(request.DeliveryId, status);
-        }
+        MatchingDeliveryStatus status = _matchingDeliveryReceipts.ApplyOnce(
+            request,
+            () => ApplyMatchingDelivery(request, requireDistributedOwner));
+        return MatchingDeliveryResponse.Create(request.DeliveryId, status);
     }
 
     private MatchingDeliveryStatus ApplyMatchingDelivery(
@@ -894,50 +867,4 @@ public sealed class GameSession : SessionBase
         Logger.LogInformation("Session disconnected: PlayerId={PlayerId}", PlayerId);
     }
 
-    private sealed record MatchingDeliveryReceipt(
-        MatchingDeliveryKind Kind,
-        long PlayerId,
-        long MatchingId,
-        string RequestId,
-        string OwnerNodeId,
-        string OwnerNodeGeneration,
-        string OwnerSessionId,
-        long OwnerSessionGeneration,
-        int ProtocolId,
-        string PayloadFingerprint,
-        MatchingDeliveryStatus Status)
-    {
-        public static MatchingDeliveryReceipt Create(
-            MatchingDeliveryRequest request,
-            string payloadFingerprint,
-            MatchingDeliveryStatus status)
-        {
-            return new MatchingDeliveryReceipt(
-                request.Kind,
-                request.PlayerId,
-                request.MatchingId,
-                request.RequestId,
-                request.OwnerNodeId,
-                request.OwnerNodeGeneration,
-                request.OwnerSessionId,
-                request.OwnerSessionGeneration,
-                request.ProtocolId,
-                payloadFingerprint,
-                status);
-        }
-
-        public bool Matches(MatchingDeliveryRequest request, string payloadFingerprint)
-        {
-            return Kind == request.Kind &&
-                   PlayerId == request.PlayerId &&
-                   MatchingId == request.MatchingId &&
-                   string.Equals(RequestId, request.RequestId, StringComparison.Ordinal) &&
-                   string.Equals(OwnerNodeId, request.OwnerNodeId, StringComparison.Ordinal) &&
-                   string.Equals(OwnerNodeGeneration, request.OwnerNodeGeneration, StringComparison.Ordinal) &&
-                   string.Equals(OwnerSessionId, request.OwnerSessionId, StringComparison.Ordinal) &&
-                   OwnerSessionGeneration == request.OwnerSessionGeneration &&
-                   ProtocolId == request.ProtocolId &&
-                   string.Equals(PayloadFingerprint, payloadFingerprint, StringComparison.Ordinal);
-        }
-    }
 }

@@ -25,6 +25,13 @@ using network.packets;
 
 namespace game_server;
 
+/// <summary>
+///     Hosts the authoritative GameServer process: network admission, match timers, gameplay managers,
+///     distributed owner leases, and durable matching lifecycle publication.
+///     Match mutations enter through <see cref="MatchRuntimeRegistry"/>; terminal cleanup is delegated to
+///     <see cref="MatchRuntimeCleanupCoordinator"/>, and live client indexes are owned by
+///     <see cref="GameSessionRegistry"/>.
+/// </summary>
 public partial class GameServer(
     IConfiguration configuration,
     ILogger<GameServer> logger,
@@ -49,14 +56,7 @@ public partial class GameServer(
         TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ShutdownStageTimeout = TimeSpan.FromSeconds(5);
 
-    private readonly ConcurrentDictionary<long, GameClientSession> _clientSessions = new();
-
-    // 매치별 세션 색인 (#278): matchingId → (playerId → 세션). _clientSessions와 등록/교체/이탈에서
-    // _sessionRegistryLock 아래 함께 갱신돼 항상 거울 상태다 — 매치 스코프 조회가 전체 세션 스캔을 대체한다.
-    private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, GameClientSession>> _sessionsByMatch =
-        new();
-
-    private readonly object _sessionRegistryLock = new();
+    private readonly GameSessionRegistry _sessionRegistry = new();
     private readonly DoorStateManager _doorStateManager = new();
     private readonly InGameInventoryManager _inGameInventoryManager = new();
 
@@ -81,6 +81,7 @@ public partial class GameServer(
         _matchingLifecycleTerminalSubjects = new();
     private readonly ConcurrentQueue<long> _matchingLifecycleTerminalMatchOrder = new();
     private readonly MatchRuntimeRegistry _matchRuntimeRegistry = new();
+    private MatchRuntimeCleanupCoordinator _matchRuntimeCleanupCoordinator = null!;
     private readonly ConcurrentDictionary<long, Task> _pendingMatchOwnerLossTasks = new();
     private readonly ConcurrentDictionary<long, Task> _pendingMatchingRedisCleanupTasks = new();
     private readonly ConcurrentDictionary<long, Task> _pendingMatchingLifecyclePublishTasks = new();
@@ -215,7 +216,7 @@ public partial class GameServer(
         logger.LogInformation("Game server stopping...");
 
         // 서버 셧다운 시 모든 세션을 서버 주도 종료로 마킹 → 페널티 면제
-        foreach (var session in _clientSessions.Values)
+        foreach (var session in _sessionRegistry.SnapshotAll())
             session.MarkServerInitiatedDisconnect();
 
         // Host cancellation must not skip later cleanup stages. Log slow stages at a fixed
@@ -428,6 +429,65 @@ public partial class GameServer(
 
         // MatchingConfigService 의존 — _matchingConfigService 필드 초기화 후 생성
         _areaClosureManager = new AreaClosureManager(logger, _matchingConfigService);
+        _matchRuntimeCleanupCoordinator = new MatchRuntimeCleanupCoordinator(
+            _matchRuntimeRegistry,
+            [
+                new MatchRuntimeCleanupStep(
+                    "session runtime",
+                    GameClientSession.CleanupAbandonedMatchingRuntime),
+                new MatchRuntimeCleanupStep(
+                    "session index",
+                    _sessionRegistry.RemoveMatch),
+                new MatchRuntimeCleanupStep(
+                    "countdown broadcast",
+                    matchingId => _lastMatchStartCountdownBroadcast.TryRemove(matchingId, out _)),
+                new MatchRuntimeCleanupStep(
+                    "settlement",
+                    CleanupMatchSettlementState),
+                new MatchRuntimeCleanupStep(
+                    "swarm arena",
+                    CleanupSwarmArenaState),
+                new MatchRuntimeCleanupStep(
+                    "area closure",
+                    _areaClosureManager.CleanupMatching),
+                new MatchRuntimeCleanupStep(
+                    "bots",
+                    _botPlayerManager.CleanupMatching),
+                new MatchRuntimeCleanupStep(
+                    "area item stock",
+                    _areaItemStockManager.RemoveMatchingState),
+                new MatchRuntimeCleanupStep(
+                    "ground items",
+                    _groundItemManager.RemoveMatchingState),
+                new MatchRuntimeCleanupStep(
+                    "monster broadcast slots",
+                    CleanupEmotionAfterimageMonsterRuntime),
+                new MatchRuntimeCleanupStep(
+                    "summon stones",
+                    _summonStoneManager.RemoveMatchingState),
+                new MatchRuntimeCleanupStep(
+                    "inventory",
+                    _inGameInventoryManager.RemoveMatchingState),
+                new MatchRuntimeCleanupStep(
+                    "interactables",
+                    _interactableStateManager.RemoveMatchingState),
+                new MatchRuntimeCleanupStep(
+                    "doors",
+                    _doorStateManager.ClearMatching),
+                new MatchRuntimeCleanupStep(
+                    "roster",
+                    _matchRosterManager.CleanupMatching),
+                new MatchRuntimeCleanupStep(
+                    "encounter reveal",
+                    _encounterRevealManager.CleanupMatching),
+                new MatchRuntimeCleanupStep(
+                    "event log",
+                    _gameEventLogManager.Clear),
+                new MatchRuntimeCleanupStep(
+                    "Redis cleanup scheduling",
+                    StartMatchingRedisCleanup)
+            ],
+            logger);
         // M4: 폐쇄 구역은 스웜 신규 스폰을 멈춘다 (잔존 몹은 ReclaimStrandedMonsters가 걷어냄)
         _swarmArenaManager.IsAreaClosedResolver =
             (matchingId, area) => _areaClosureManager.IsAreaClosed(matchingId, area);
@@ -516,9 +576,8 @@ public partial class GameServer(
     {
         try
         {
-            var activeSessions = _clientSessions.Values
-                .Where(s => s.PlayerId.HasValue && !s.IsEliminated)
-                .ToList();
+            var activeSessions = _sessionRegistry.SnapshotWhere(
+                static session => session.PlayerId.HasValue && !session.IsEliminated);
 
             // Environmental damage and eliminations are settled per matching below.
             var matchingIds = GetActiveMatchingIds();
@@ -994,9 +1053,8 @@ IReadOnlyCollection<GameClientSession> activeSessions)
     {
         try
         {
-            var activeSessions = _clientSessions.Values
-                .Where(s => s.PlayerId.HasValue && s.TargetPlayerId != 0 && !s.IsGameEnded)
-                .ToList();
+            var activeSessions = _sessionRegistry.SnapshotWhere(
+                static session => session.PlayerId.HasValue && session.TargetPlayerId != 0 && !session.IsGameEnded);
 
             foreach (var session in activeSessions)
             {
@@ -1040,9 +1098,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         double broadcastElapsedMilliseconds = 0d;
         try
         {
-            var activeSessions = _clientSessions.Values
-                .Where(s => s.PlayerId.HasValue)
-                .ToList();
+            var activeSessions = _sessionRegistry.SnapshotWhere(static session => session.PlayerId.HasValue);
             var matchingIds = GetActiveMatchingIds();
             BroadcastMatchStartCountdowns(matchingIds, activeSessions);
 
@@ -1259,9 +1315,8 @@ IReadOnlyCollection<GameClientSession> activeSessions)
     {
         try
         {
-            var timedOutSessions = _clientSessions.Values
-                .Where(s => s.PlayerId.HasValue && s.IsHeartbeatTimedOut())
-                .ToList();
+            var timedOutSessions = _sessionRegistry.SnapshotWhere(
+                static session => session.PlayerId.HasValue && session.IsHeartbeatTimedOut());
 
             foreach (var session in timedOutSessions)
             {
@@ -1914,14 +1969,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
     {
         if (session.PlayerId.HasValue)
         {
-            bool removed;
-            lock (_sessionRegistryLock)
-            {
-                removed = ((ICollection<KeyValuePair<long, GameClientSession>>)_clientSessions)
-                    .Remove(new KeyValuePair<long, GameClientSession>(session.PlayerId.Value, session));
-                if (removed)
-                    RemoveFromMatchIndex(session);
-            }
+            bool removed = _sessionRegistry.Remove(session);
 
             if (!removed)
             {
@@ -1966,7 +2014,8 @@ IReadOnlyCollection<GameClientSession> activeSessions)
 
         long playerId = session.PlayerId.Value;
         long matchingId = session.CurrentMapSubId;
-        if (_clientSessions.TryGetValue(playerId, out var currentSession) &&
+        if (_sessionRegistry.TryGetCurrent(playerId, out GameClientSession? currentSession) &&
+            currentSession != null &&
             !ReferenceEquals(currentSession, session) &&
             currentSession.CurrentMapSubId == matchingId)
         {
@@ -2105,108 +2154,10 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         Func<bool>? canFinalize,
         Action? beforeCleanup)
     {
-        try
-        {
-            return _matchRuntimeRegistry.TryFinalize(matchingId, canFinalize ?? (() => true), () =>
-            {
-                if (beforeCleanup != null)
-                    CleanupMatchComponent(matchingId, "match finalization", beforeCleanup);
-                CleanupMatchComponent(
-                    matchingId,
-                    "session runtime",
-                    () => GameClientSession.CleanupAbandonedMatchingRuntime(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "session index",
-                    // 종료 확정된 매치는 소유권 펜스가 신규 핸드오프를 막으므로 빈 버킷을 제거해도 안전하다.
-                    () => _sessionsByMatch.TryRemove(matchingId, out _));
-                CleanupMatchComponent(
-                    matchingId,
-                    "countdown broadcast",
-                    () => _lastMatchStartCountdownBroadcast.TryRemove(matchingId, out _));
-                CleanupMatchComponent(
-                    matchingId,
-                    "settlement",
-                    () => CleanupMatchSettlementState(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "swarm arena",
-                    () => CleanupSwarmArenaState(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "area closure",
-                    () => _areaClosureManager.CleanupMatching(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "bots",
-                    () => _botPlayerManager.CleanupMatching(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "area item stock",
-                    () => _areaItemStockManager.RemoveMatchingState(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "ground items",
-                    () => _groundItemManager.RemoveMatchingState(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "monster broadcast slots",
-                    () => CleanupEmotionAfterimageMonsterRuntime(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "summon stones",
-                    () => _summonStoneManager.RemoveMatchingState(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "inventory",
-                    () => _inGameInventoryManager.RemoveMatchingState(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "interactables",
-                    () => _interactableStateManager.RemoveMatchingState(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "doors",
-                    () => _doorStateManager.ClearMatching(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "roster",
-                    () => _matchRosterManager.CleanupMatching(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "encounter reveal",
-                    () => _encounterRevealManager.CleanupMatching(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "event log",
-                    () => _gameEventLogManager.Clear(matchingId));
-                CleanupMatchComponent(
-                    matchingId,
-                    "Redis cleanup scheduling",
-                    () => StartMatchingRedisCleanup(matchingId));
-            });
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Match runtime cleanup failed: MatchingId={MatchingId}", matchingId);
-            return false;
-        }
-    }
-
-    private void CleanupMatchComponent(long matchingId, string component, Action cleanup)
-    {
-        try
-        {
-            cleanup();
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(
-                ex,
-                "Match component cleanup failed: MatchingId={MatchingId}, Component={Component}",
-                matchingId,
-                component);
-        }
+        return _matchRuntimeCleanupCoordinator.TryFinalize(
+            matchingId,
+            canFinalize,
+            beforeCleanup);
     }
 
     private void PersistMatchSummary(long matchingId, string endReason, long winnerId) =>
@@ -2335,77 +2286,36 @@ IReadOnlyCollection<GameClientSession> activeSessions)
 
     private Action? RegisterClientSession(long playerId, GameClientSession session)
     {
-        // 등록·교체는 접속 시에만 일어나므로 잠금 비용이 무시할 수준이고,
-        // _clientSessions와 매치 색인을 한 단위로 갱신해 거울 상태를 보장한다.
-        lock (_sessionRegistryLock)
+        GameClientSession? existingSession = _sessionRegistry.Register(playerId, session, out bool added);
+        if (existingSession == null)
         {
-            if (!_clientSessions.TryGetValue(playerId, out var existingSession))
-            {
-                _clientSessions[playerId] = session;
-                AddToMatchIndex(playerId, session);
+            if (added)
                 logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
-                return null;
-            }
-
-            if (ReferenceEquals(existingSession, session))
-                return null;
-
-            _clientSessions[playerId] = session;
-            RemoveFromMatchIndex(existingSession);
-            AddToMatchIndex(playerId, session);
-            logger.LogWarning("Game client session replaced: PlayerId={PlayerId}", playerId);
-            return () =>
-            {
-                existingSession.MarkServerInitiatedDisconnect();
-                existingSession.ForceDisconnect();
-            };
+            return null;
         }
-    }
 
-    private void AddToMatchIndex(long playerId, GameClientSession session)
-    {
-        // 등록은 핸드오프 커밋(CurrentMapSubId 확정) 이후라 0은 실제로 오지 않지만 방어한다.
-        if (session.CurrentMapSubId <= 0)
-            return;
-
-        _sessionsByMatch
-            .GetOrAdd(session.CurrentMapSubId, _ => new ConcurrentDictionary<long, GameClientSession>())
-            [playerId] = session;
-    }
-
-    private void RemoveFromMatchIndex(GameClientSession session)
-    {
-        if (!session.PlayerId.HasValue)
-            return;
-        if (!_sessionsByMatch.TryGetValue(session.CurrentMapSubId, out var bucket))
-            return;
-
-        // 참조 일치 제거 — 교체된 세션이 후임 세션의 색인 항목을 지우지 못하게 한다.
-        ((ICollection<KeyValuePair<long, GameClientSession>>)bucket)
-            .Remove(new KeyValuePair<long, GameClientSession>(session.PlayerId.Value, session));
+        logger.LogWarning("Game client session replaced: PlayerId={PlayerId}", playerId);
+        return () =>
+        {
+            existingSession.MarkServerInitiatedDisconnect();
+            existingSession.ForceDisconnect();
+        };
     }
 
     /// <summary>같은 매치 인스턴스의 인증된 세션 스냅샷 — 색인 조회라 전체 세션 스캔이 없다.</summary>
     private List<GameClientSession> GetSessionsByMatch(long matchingId)
     {
-        return _sessionsByMatch.TryGetValue(matchingId, out var bucket)
-            ? bucket.Values.ToList()
-            : [];
+        return _sessionRegistry.GetByMatch(matchingId);
     }
 
     private bool HasHumanSessions(long matchingId)
     {
-        return _sessionsByMatch.TryGetValue(matchingId, out var bucket) && !bucket.IsEmpty;
+        return _sessionRegistry.HasSessions(matchingId);
     }
 
     private List<GameClientSession> GetSessionsByInstance(MapId mapId, long mapSubId)
     {
-        if (!_sessionsByMatch.TryGetValue(mapSubId, out var bucket))
-            return [];
-
-        return bucket.Values
-            .Where(s => s.CurrentMapId == mapId)
-            .ToList();
+        return _sessionRegistry.GetByInstance(mapId, mapSubId);
     }
 
     // MMO 로그아웃 프로토콜 제거됨 - 세션 기반 게임에서는 불필요
@@ -2436,10 +2346,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
 
     private List<long> GetActiveMatchingIds()
     {
-        var ids = _sessionsByMatch
-            .Where(pair => !pair.Value.IsEmpty)
-            .Select(pair => pair.Key)
-            .ToHashSet();
+        var ids = _sessionRegistry.GetActiveMatchingIds().ToHashSet();
 
         foreach (long matchingId in _botPlayerManager.GetActiveMatchingIds())
         {

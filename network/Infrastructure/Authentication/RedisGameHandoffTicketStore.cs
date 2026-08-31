@@ -6,10 +6,118 @@ using StackExchange.Redis;
 
 namespace network.infrastructure.authentication;
 
-public sealed class RedisGameHandoffTicketStore(ICacheHelper cacheHelper) : IGameHandoffTicketStore
+/// <summary>
+///     Persists one-time game handoff tickets and owns the owner-fenced consume and receipt-reconciliation
+///     transitions that must execute atomically in Redis.
+/// </summary>
+public sealed class RedisGameHandoffTicketStore(
+    ICacheHelper cacheHelper,
+    IRedisConnectionPool redisPool) : IGameHandoffTicketStore
 {
     private const string TicketKeyPrefix = "game_handoff_ticket:";
     private const int ConsumeResolutionAttempts = 3;
+
+    private static readonly TimeSpan MaximumConsumeReceiptLifetime = TimeSpan.FromMinutes(10);
+
+    private const string GuardedConsumeWithReceiptScript = """
+        if redis.call('EXISTS', KEYS[5]) ~= 0 then
+            if redis.call('EXISTS', KEYS[1]) ~= 0 then
+                return {-1}
+            end
+            local receiptNonce = redis.call('HGET', KEYS[5], 'nonce')
+            local receiptStatus = redis.call('HGET', KEYS[5], 'status')
+            local receiptContext = redis.call('HGET', KEYS[5], 'context')
+            if receiptNonce ~= ARGV[5] or not receiptStatus then
+                return {-1}
+            end
+            if receiptStatus == 'consumed' then
+                if not receiptContext then
+                    return {-1}
+                end
+                return {2, receiptContext}
+            end
+            if receiptStatus == 'aborted' then
+                if receiptContext then
+                    return {-1}
+                end
+                return {3}
+            end
+            return {-1}
+        end
+
+        if redis.call('GET', KEYS[2]) ~= ARGV[1] then
+            return {0}
+        end
+        if redis.call('GET', KEYS[3]) ~= ARGV[2] then
+            return {0}
+        end
+
+        local value = redis.call('GET', KEYS[1])
+        if not value then
+            return {0}
+        end
+
+        local redisTime = redis.call('TIME')
+        local now = tonumber(redisTime[1]) * 1000 + math.floor(tonumber(redisTime[2]) / 1000)
+        redis.call('PEXPIRE', KEYS[3], ARGV[3])
+        redis.call('ZADD', KEYS[4], now + tonumber(ARGV[3]), ARGV[4])
+        local desiredTtl = tonumber(ARGV[3]) + 3600000
+        local currentTtl = redis.call('PTTL', KEYS[4])
+        if currentTtl < desiredTtl then
+            redis.call('PEXPIRE', KEYS[4], desiredTtl)
+        end
+
+        redis.call(
+            'HSET',
+            KEYS[5],
+            'nonce',
+            ARGV[5],
+            'status',
+            'consumed',
+            'context',
+            value)
+        redis.call('PEXPIRE', KEYS[5], ARGV[6])
+        redis.call('DEL', KEYS[1])
+        return {1, value}
+        """;
+
+    private const string ReconcileConsumeReceiptScript = """
+        if redis.call('EXISTS', KEYS[2]) ~= 0 then
+            if redis.call('EXISTS', KEYS[1]) ~= 0 then
+                return {-1}
+            end
+            local receiptNonce = redis.call('HGET', KEYS[2], 'nonce')
+            local receiptStatus = redis.call('HGET', KEYS[2], 'status')
+            local receiptContext = redis.call('HGET', KEYS[2], 'context')
+            if receiptNonce ~= ARGV[1] or not receiptStatus then
+                return {-1}
+            end
+            if receiptStatus == 'consumed' then
+                if not receiptContext then
+                    return {-1}
+                end
+                return {1, receiptContext}
+            end
+            if receiptStatus == 'aborted' then
+                if receiptContext then
+                    return {-1}
+                end
+                return {2}
+            end
+            return {-1}
+        end
+
+        redis.call(
+            'HSET',
+            KEYS[2],
+            'nonce',
+            ARGV[1],
+            'status',
+            'aborted')
+        redis.call('PEXPIRE', KEYS[2], ARGV[2])
+        redis.call('DEL', KEYS[1])
+        return {2}
+        """;
 
     private static readonly MessagePackSerializerOptions SerializerOptions =
         MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData);
@@ -73,7 +181,7 @@ public sealed class RedisGameHandoffTicketStore(ICacheHelper cacheHelper) : IGam
             try
             {
                 RedisValue serializedContext =
-                    await cacheHelper.StringGetDeleteIfGuardsEqualWithReceiptAsync(
+                    await ConsumeOwnedAtomicallyAsync(
                         ticketKey,
                         GameServerRoutingKeys.NodeLease(owner.NodeId),
                         identity.Generation,
@@ -102,7 +210,7 @@ public sealed class RedisGameHandoffTicketStore(ICacheHelper cacheHelper) : IGam
             try
             {
                 RedisValue reconciledContext =
-                    await cacheHelper.StringReconcileConsumeReceiptAsync(
+                    await ReconcileConsumeReceiptAsync(
                         ticketKey,
                         receiptKey,
                         consumeNonce,
@@ -121,6 +229,110 @@ public sealed class RedisGameHandoffTicketStore(ICacheHelper cacheHelper) : IGam
         throw new InvalidOperationException(
             "An owner-bound handoff consume result could not be resolved or causally aborted.",
             new AggregateException(ambiguousExceptions!));
+    }
+
+    private async Task<RedisValue> ConsumeOwnedAtomicallyAsync(
+        string valueKey,
+        string firstGuardKey,
+        string expectedFirstGuardValue,
+        string secondGuardKey,
+        string expectedSecondGuardValue,
+        TimeSpan secondGuardExpiry,
+        string ownerSlotsKey,
+        long matchingId,
+        string receiptKey,
+        string consumeNonce,
+        TimeSpan receiptExpiry)
+    {
+        if (secondGuardExpiry <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(secondGuardExpiry), "Expiry must be greater than zero.");
+        if (matchingId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(matchingId));
+        ValidateReceipt(receiptKey, consumeNonce, receiptExpiry);
+
+        RedisResult result = await redisPool.ExecuteWithRetryAsync(
+            database => database.ScriptEvaluateAsync(
+                GuardedConsumeWithReceiptScript,
+                [valueKey, firstGuardKey, secondGuardKey, ownerSlotsKey, receiptKey],
+                [
+                    expectedFirstGuardValue,
+                    expectedSecondGuardValue,
+                    checked((long)secondGuardExpiry.TotalMilliseconds),
+                    matchingId,
+                    consumeNonce,
+                    checked((long)receiptExpiry.TotalMilliseconds)
+                ],
+                CommandFlags.DemandMaster),
+            retryCount: 1);
+
+        RedisResult[] response = (RedisResult[])result!;
+        if (response.Length == 0)
+            throw new InvalidOperationException("Redis returned an empty guarded consume response.");
+
+        long status = (long)response[0];
+        if (status is 0 or 3)
+        {
+            if (response.Length != 1)
+                throw new InvalidOperationException($"Redis returned invalid guarded consume status {status}.");
+            return RedisValue.Null;
+        }
+        if (status == -1)
+        {
+            throw new InvalidOperationException(
+                "Redis contains a conflicting or incomplete guarded consume receipt.");
+        }
+        if (status is not (1 or 2) || response.Length != 2 || response[1].IsNull)
+            throw new InvalidOperationException($"Redis returned invalid guarded consume status {status}.");
+        return (RedisValue)(byte[])response[1]!;
+    }
+
+    private async Task<RedisValue> ReconcileConsumeReceiptAsync(
+        string valueKey,
+        string receiptKey,
+        string consumeNonce,
+        TimeSpan receiptExpiry)
+    {
+        ValidateReceipt(receiptKey, consumeNonce, receiptExpiry);
+
+        RedisResult result = await redisPool.ExecuteWithRetryAsync(
+            database => database.ScriptEvaluateAsync(
+                ReconcileConsumeReceiptScript,
+                [valueKey, receiptKey],
+                [consumeNonce, checked((long)receiptExpiry.TotalMilliseconds)],
+                CommandFlags.DemandMaster),
+            retryCount: 1);
+
+        RedisResult[] response = (RedisResult[])result!;
+        if (response.Length == 0)
+            throw new InvalidOperationException("Redis returned an empty consume reconciliation response.");
+
+        long status = (long)response[0];
+        if (status == 2 && response.Length == 1)
+            return RedisValue.Null;
+        if (status != 1 || response.Length != 2 || response[1].IsNull)
+        {
+            throw new InvalidOperationException(
+                "Redis contains a conflicting or incomplete guarded consume receipt.");
+        }
+        return (RedisValue)(byte[])response[1]!;
+    }
+
+    private static void ValidateReceipt(
+        string receiptKey,
+        string consumeNonce,
+        TimeSpan receiptExpiry)
+    {
+        if (string.IsNullOrWhiteSpace(receiptKey))
+            throw new ArgumentException("A receipt key is required.", nameof(receiptKey));
+        if (string.IsNullOrWhiteSpace(consumeNonce) || consumeNonce.Length > 128)
+            throw new ArgumentException("A bounded consume nonce is required.", nameof(consumeNonce));
+        if (receiptExpiry <= TimeSpan.Zero || receiptExpiry > MaximumConsumeReceiptLifetime)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(receiptExpiry),
+                $"Receipt expiry must be greater than zero and no more than " +
+                $"{MaximumConsumeReceiptLifetime.TotalMinutes} minutes.");
+        }
     }
 
     private static GameHandoffContext? Deserialize(RedisValue serializedContext)

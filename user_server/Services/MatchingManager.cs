@@ -36,8 +36,6 @@ public class MatchingManager : IMatchingManager
     private const int DefaultPlayersPerMatch = 1;
     private const int DefaultGamePlayersPerMatch = 8;
     private const int AdmissionRecoveryScanBatchSize = 32;
-    private static readonly TimeSpan MatchingClaimReservationLifetime = TimeSpan.FromMinutes(2);
-    private static readonly TimeSpan ActiveMatchingClaimLifetime = MatchingHandoffRedisKeys.AdmissionClaimLifetime;
     private static readonly TimeSpan GameServerOwnerLossGrace = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan MatchingLifecycleMarkerLifetime = TimeSpan.FromDays(8);
 
@@ -57,11 +55,12 @@ public class MatchingManager : IMatchingManager
     private readonly CancellationTokenSource _shutdownCts = new();
     private readonly Func<long, GameSession?> _getSession;
     private readonly IGameHandoffTicketService _gameHandoffTicketService;
+    private readonly MatchingQueueClaimCoordinator _matchingClaims;
     private readonly MatchingManagerScalingContext? _scalingContext;
     private readonly bool _writeLegacySpawnFields;
     private readonly ILogger _logger;
-    private readonly Task _matchingLeaderHeartbeatTask;
-    private readonly Timer _matchingTimer;
+    private Task _matchingLeaderHeartbeatTask = Task.CompletedTask;
+    private Timer? _matchingTimer;
     private readonly object _processingTaskLock = new();
     private readonly IRedLockFactory _redLock;
     private int _isProcessing;
@@ -71,9 +70,11 @@ public class MatchingManager : IMatchingManager
     private Task _processingTask = Task.CompletedTask;
     private readonly object _stopTaskLock = new();
     private Task? _stopTask;
+    private int _started;
     private int _stopping;
 
-    public MatchingManager(ILogger logger, ICacheHelper cacheHelper, IRedLockFactory redLock,
+    public MatchingManager(ILogger logger, ICacheHelper cacheHelper,
+        IMatchingQueueClaimStore matchingClaimStore, IRedLockFactory redLock,
         IGameHandoffTicketService gameHandoffTicketService,
         Func<long, GameSession?> getSession,
         bool writeLegacySpawnFields,
@@ -83,28 +84,59 @@ public class MatchingManager : IMatchingManager
         _cacheHelper = cacheHelper;
         _redLock = redLock;
         _gameHandoffTicketService = gameHandoffTicketService;
+        _matchingClaims = new MatchingQueueClaimCoordinator(cacheHelper, matchingClaimStore, logger);
         _getSession = getSession;
         _writeLegacySpawnFields = writeLegacySpawnFields;
         _scalingContext = scalingContext;
 
-        // 매칭 대기열을 1초마다 확인한다.
-        _matchingTimer = new Timer(OnMatchingTimerTick, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
-        _matchingLeaderHeartbeatTask = IsUserServerScalingEnabled
-            ? RunMatchingLeaderHeartbeatAsync()
-            : Task.CompletedTask;
-        _logger.LogInformation(
-            "MatchingManager initialized: UserServerScaling={UserServerScaling}, GameServerRouting={GameServerRouting}",
-            IsUserServerScalingEnabled,
-            IsGameServerRoutingEnabled);
-        if (IsAdmissionRecoveryEnabled)
+    }
+
+    /// <summary>
+    ///     Starts queue polling and leader heartbeats after the delivery router and lifecycle subscriptions are ready.
+    /// </summary>
+    public void Start()
+    {
+        lock (_stopTaskLock)
         {
-            _logger.LogInformation(
-                "Matching admission recovery is persisted in Redis and scanned by the current matching leader");
-        }
-        else if (IsGameServerRoutingEnabled)
-        {
-            _logger.LogWarning(
-                "Matching admission watchdog state is process-local; Redis admission and claim TTLs are the fail-safe after a UserServer restart");
+            ObjectDisposedException.ThrowIf(_stopTask != null || Volatile.Read(ref _stopping) != 0, this);
+            if (Volatile.Read(ref _started) != 0)
+                throw new InvalidOperationException("MatchingManager is already started.");
+
+            try
+            {
+                // 매칭 대기열을 1초마다 확인한다.
+                _matchingTimer = new Timer(
+                    OnMatchingTimerTick,
+                    null,
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1));
+                _matchingLeaderHeartbeatTask = IsUserServerScalingEnabled
+                    ? RunMatchingLeaderHeartbeatAsync()
+                    : Task.CompletedTask;
+                Volatile.Write(ref _started, 1);
+                _logger.LogInformation(
+                    "MatchingManager started: UserServerScaling={UserServerScaling}, GameServerRouting={GameServerRouting}",
+                    IsUserServerScalingEnabled,
+                    IsGameServerRoutingEnabled);
+                if (IsAdmissionRecoveryEnabled)
+                {
+                    _logger.LogInformation(
+                        "Matching admission recovery is persisted in Redis and scanned by the current matching leader");
+                }
+                else if (IsGameServerRoutingEnabled)
+                {
+                    _logger.LogWarning(
+                        "Matching admission watchdog state is process-local; Redis admission and claim TTLs are the fail-safe after a UserServer restart");
+                }
+            }
+            catch
+            {
+                Volatile.Write(ref _stopping, 1);
+                _shutdownCts.Cancel();
+                _matchingTimer?.Dispose();
+                _matchingTimer = null;
+                throw;
+            }
         }
     }
 
@@ -127,7 +159,7 @@ public class MatchingManager : IMatchingManager
             await using var queueLock = await _redLock.AcquireLockAsync(
                 MakeMatchingQueueLockKey(playerId),
                 Config.LOCK_TTL);
-            if (await HasMatchingClaimAsync(playerId))
+            if (await _matchingClaims.HasClaimAsync(playerId))
                 return ErrorCode.MATCHING_ALREADY_IN_QUEUE;
 
             int removedCount = await RemovePlayerEntriesFromQueueAsync(playerId);
@@ -135,7 +167,7 @@ public class MatchingManager : IMatchingManager
                 _logger.LogInformation("Player {PlayerId}: removed {Count} stale matching entries", playerId, removedCount);
 
             // A worker may have claimed the snapshot that was removed above.
-            if (await HasMatchingClaimAsync(playerId))
+            if (await _matchingClaims.HasClaimAsync(playerId))
                 return ErrorCode.MATCHING_ALREADY_IN_QUEUE;
 
             string? requestId = user.ActiveMatchingRequestId;
@@ -212,12 +244,9 @@ public class MatchingManager : IMatchingManager
             await using var queueLock = await _redLock.AcquireLockAsync(
                 MakeMatchingQueueLockKey(playerId),
                 Config.LOCK_TTL);
-            string cancellationClaimId = "cancel_" + Guid.NewGuid().ToString("N");
-            bool cancellationClaimAcquired = await _cacheHelper.StringSetIfNotExistsAsync(
-                MakeMatchingClaimKey(playerId),
-                cancellationClaimId,
-                MatchingClaimReservationLifetime);
-            if (!cancellationClaimAcquired)
+            MatchingClaimLease? cancellationClaim =
+                await _matchingClaims.TryAcquireCancellationAsync(playerId);
+            if (cancellationClaim == null)
                 return ErrorCode.MATCHING_FAILED;
 
             try
@@ -231,9 +260,7 @@ public class MatchingManager : IMatchingManager
             }
             finally
             {
-                await _cacheHelper.StringDeleteIfEqualsAsync(
-                    MakeMatchingClaimKey(playerId),
-                    cancellationClaimId);
+                await _matchingClaims.ReleaseCancellationAsync(cancellationClaim);
             }
         }
         catch (Exception ex)
@@ -327,106 +354,9 @@ public class MatchingManager : IMatchingManager
             $"{(int)kind}:{matchingId}:{playerId}:{requestId}");
     }
 
-    private async Task<MatchingClaimLease?> TryAcquireMatchingClaimsAsync(IEnumerable<byte[]> entries)
-    {
-        var claimedEntries = entries
-            .Select(entry => (
-                Entry: entry,
-                PlayerId: MessagePackSerializer.Deserialize<MatchingQueueData>(entry).PlayerId))
-            .Where(item => item.PlayerId > 0)
-            .DistinctBy(item => item.PlayerId)
-            .ToList();
-        string claimId = Guid.NewGuid().ToString("N");
-        var acquiredPlayerIds = new List<long>(claimedEntries.Count);
-
-        try
-        {
-            foreach (var claimedEntry in claimedEntries)
-            {
-                bool acquired = await _cacheHelper.TryClaimSortedSetEntryAsync(
-                    MatchingQueueKey,
-                    claimedEntry.Entry,
-                    MakeMatchingClaimKey(claimedEntry.PlayerId),
-                    claimId,
-                    MatchingClaimReservationLifetime);
-                if (!acquired)
-                {
-                    await RollbackMatchingClaimsAsync(new MatchingClaimLease(claimId, acquiredPlayerIds));
-                    return null;
-                }
-
-                acquiredPlayerIds.Add(claimedEntry.PlayerId);
-            }
-
-            return new MatchingClaimLease(claimId, acquiredPlayerIds);
-        }
-        catch
-        {
-            await RollbackMatchingClaimsAsync(new MatchingClaimLease(claimId, acquiredPlayerIds));
-            throw;
-        }
-    }
-
-    private async Task RollbackMatchingClaimsAsync(MatchingClaimLease claimLease)
-    {
-        foreach (long playerId in claimLease.PlayerIds)
-        {
-            try
-            {
-                await _cacheHelper.StringDeleteIfEqualsAsync(
-                    MakeMatchingClaimKey(playerId),
-                    claimLease.ClaimId);
-                if (claimLease.MatchingId.HasValue)
-                {
-                    await _cacheHelper.StringDeleteIfEqualsAsync(
-                        MakeMatchingClaimKey(playerId),
-                        claimLease.MatchingId.Value.ToString(CultureInfo.InvariantCulture));
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(
-                    ex,
-                    "Matching claim rollback failed; TTL will release it: PlayerId={PlayerId}",
-                    playerId);
-            }
-        }
-    }
-
-    private static string MakeMatchingClaimKey(long playerId)
-    {
-        return MatchingHandoffRedisKeys.ClaimKey(playerId);
-    }
-
     private static string MakeMatchingQueueLockKey(long playerId)
     {
         return MatchingQueueLockKeyPrefix + playerId;
-    }
-
-    private async Task<bool> HasMatchingClaimAsync(long playerId)
-    {
-        var claim = await _cacheHelper.StringGetAsync(MakeMatchingClaimKey(playerId));
-        return !claim.IsNullOrEmpty;
-    }
-
-    private async Task CommitMatchingClaimsAsync(MatchingClaimLease claimLease, long matchingId)
-    {
-        string matchingIdValue = matchingId.ToString(CultureInfo.InvariantCulture);
-        claimLease.MatchingId = matchingId;
-
-        foreach (long playerId in claimLease.PlayerIds)
-        {
-            bool committed = await _cacheHelper.StringSetIfEqualsAsync(
-                MakeMatchingClaimKey(playerId),
-                claimLease.ClaimId,
-                matchingIdValue,
-                ActiveMatchingClaimLifetime);
-            if (!committed)
-            {
-                throw new InvalidOperationException(
-                    $"Matching claim ownership changed before commit for player {playerId}.");
-            }
-        }
     }
 
     /// <summary>
@@ -857,7 +787,7 @@ public class MatchingManager : IMatchingManager
                     return;
 
                 byte[][] groupEntries = entriesToMatch.Skip(i).Take(PlayersPerMatch).ToArray();
-                var claimLease = await TryAcquireMatchingClaimsAsync(groupEntries);
+                var claimLease = await _matchingClaims.TryAcquireAsync(groupEntries);
                 if (claimLease == null)
                 {
                     _logger.LogInformation("Matching group skipped because another worker owns a player claim");
@@ -891,7 +821,7 @@ public class MatchingManager : IMatchingManager
 
                     if (!await RenewMatchingLeadershipAsync())
                         continue;
-                    await CommitMatchingClaimsAsync(claimLease, matchingId);
+                    await _matchingClaims.CommitAsync(claimLease, matchingId);
                     if (IsAdmissionRecoveryEnabled)
                     {
                         admissionRecovery = await RegisterMatchingAdmissionRecoveryAsync(
@@ -1019,7 +949,7 @@ public class MatchingManager : IMatchingManager
                     {
                         if (gameServerAllocation == null)
                         {
-                            await RollbackMatchingClaimsAsync(claimLease);
+                            await _matchingClaims.RollbackAsync(claimLease);
                         }
                         else if (admissionRecovery != null)
                         {
@@ -1034,7 +964,7 @@ public class MatchingManager : IMatchingManager
                                  (IsUserServerScalingEnabled || IsGameServerRoutingEnabled))
                         {
                             await DeleteMatchingHandoffBestEffortAsync(matchingId);
-                            await RollbackMatchingClaimsAsync(claimLease);
+                            await _matchingClaims.RollbackAsync(claimLease);
                             await ReleaseGameServerOwnerBestEffortAsync(gameServerAllocation.Owner);
                         }
                         else
@@ -1046,7 +976,7 @@ public class MatchingManager : IMatchingManager
                                 await NotifyMatchingBatchFailedAsync(batchPlayers, matchingId);
                                 if (IsUserServerScalingEnabled || IsGameServerRoutingEnabled)
                                     await RemoveMatchingEntriesBestEffortAsync(groupEntries);
-                                await RollbackMatchingClaimsAsync(claimLease);
+                                await _matchingClaims.RollbackAsync(claimLease);
                                 await ReleaseGameServerOwnerBestEffortAsync(gameServerAllocation.Owner);
                             }
                         }
@@ -1083,7 +1013,7 @@ public class MatchingManager : IMatchingManager
 
         if (longWaitEntries.Length < PlayersPerMatch || longWaitEntries.Length >= GamePlayersPerMatch) return;
 
-        var claimLease = await TryAcquireMatchingClaimsAsync(longWaitEntries);
+        var claimLease = await _matchingClaims.TryAcquireAsync(longWaitEntries);
         if (claimLease == null)
         {
             _logger.LogInformation("Bot-fill match skipped because another worker owns a player claim");
@@ -1133,7 +1063,7 @@ public class MatchingManager : IMatchingManager
 
             if (!await RenewMatchingLeadershipAsync())
                 return;
-            await CommitMatchingClaimsAsync(claimLease, matchingId);
+            await _matchingClaims.CommitAsync(claimLease, matchingId);
             if (IsAdmissionRecoveryEnabled)
             {
                 admissionRecovery = await RegisterMatchingAdmissionRecoveryAsync(
@@ -1240,7 +1170,7 @@ public class MatchingManager : IMatchingManager
             {
                 if (gameServerAllocation == null)
                 {
-                    await RollbackMatchingClaimsAsync(claimLease);
+                    await _matchingClaims.RollbackAsync(claimLease);
                 }
                 else if (admissionRecovery != null)
                 {
@@ -1255,7 +1185,7 @@ public class MatchingManager : IMatchingManager
                          (IsUserServerScalingEnabled || IsGameServerRoutingEnabled))
                 {
                     await DeleteMatchingHandoffBestEffortAsync(matchingId);
-                    await RollbackMatchingClaimsAsync(claimLease);
+                    await _matchingClaims.RollbackAsync(claimLease);
                     await ReleaseGameServerOwnerBestEffortAsync(gameServerAllocation.Owner);
                 }
                 else
@@ -1267,7 +1197,7 @@ public class MatchingManager : IMatchingManager
                         await NotifyMatchingBatchFailedAsync(batchPlayers, matchingId);
                         if (IsUserServerScalingEnabled || IsGameServerRoutingEnabled)
                             await RemoveMatchingEntriesBestEffortAsync(longWaitEntries);
-                        await RollbackMatchingClaimsAsync(claimLease);
+                        await _matchingClaims.RollbackAsync(claimLease);
                         await ReleaseGameServerOwnerBestEffortAsync(gameServerAllocation.Owner);
                     }
                 }
@@ -2998,28 +2928,7 @@ public class MatchingManager : IMatchingManager
 
     public async Task ReleaseMatchingClaimAsync(long playerId, long matchingId)
     {
-        try
-        {
-            if (matchingId > 0)
-            {
-                await _cacheHelper.StringDeleteIfEqualsAsync(
-                    MakeMatchingClaimKey(playerId),
-                    matchingId.ToString(CultureInfo.InvariantCulture));
-            }
-            else
-            {
-                // Rolling compatibility for the previous 8-byte lifecycle payload.
-                await _cacheHelper.KeyDeleteAsync(MakeMatchingClaimKey(playerId));
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(
-                ex,
-                "Failed to release matching claim; TTL remains as fallback: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                playerId,
-                matchingId);
-        }
+        await _matchingClaims.ReleaseActiveBestEffortAsync(playerId, matchingId);
     }
 
     public bool TryRunBackgroundOperation(Func<Task> operation, string operationName)
@@ -3057,7 +2966,7 @@ public class MatchingManager : IMatchingManager
     public async Task QuiesceAsync()
     {
         if (Interlocked.Exchange(ref _quiescing, 1) == 0)
-            _matchingTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            _matchingTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
         Task processingTask;
         lock (_processingTaskLock)
@@ -3096,7 +3005,8 @@ public class MatchingManager : IMatchingManager
             _shutdownCts.Cancel();
         }
 
-        await _matchingTimer.DisposeAsync();
+        if (_matchingTimer != null)
+            await _matchingTimer.DisposeAsync();
         await _matchingLeaderHeartbeatTask;
 
         Task processingTask;
@@ -3139,13 +3049,6 @@ public class MatchingManager : IMatchingManager
         _shutdownCts.Dispose();
 
         _logger.LogInformation("MatchingManager stopped");
-    }
-
-    private sealed class MatchingClaimLease(string claimId, List<long> playerIds)
-    {
-        public string ClaimId { get; } = claimId;
-        public List<long> PlayerIds { get; } = playerIds;
-        public long? MatchingId { get; set; }
     }
 
     private sealed record GameServerAllocation(

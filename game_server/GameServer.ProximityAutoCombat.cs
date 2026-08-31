@@ -42,12 +42,11 @@ public partial class GameServer
 
         try
         {
-            var activeSessions = _clientSessions.Values
-                .Where(session =>
+            var activeSessions = _sessionRegistry.SnapshotWhere(
+                static session =>
                     session.PlayerId.HasValue &&
                     !session.IsEliminated &&
-                    !session.IsGameEnded)
-                .ToList();
+                    !session.IsGameEnded);
 
             foreach (long matchingId in GetActiveMatchingIds())
             {

@@ -5,10 +5,86 @@ using StackExchange.Redis;
 
 namespace network.infrastructure.scaling;
 
+/// <summary>
+///     Owns Redis-backed GameServer node leases, routing snapshots, capacity slots, and fenced match ownership,
+///     including the multi-key Lua transitions that reserve, renew, and release them.
+/// </summary>
 public sealed class RedisGameServerRoutingStore(
     ICacheHelper cacheHelper,
     IRedisConnectionPool redisPool) : IGameServerRoutingStore
 {
+    private const string ReserveMatchOwnerScript = """
+        if redis.call('GET', KEYS[1]) ~= ARGV[1] then
+            return 0
+        end
+        if redis.call('GET', KEYS[2]) ~= ARGV[1] then
+            return 0
+        end
+        if redis.call('EXISTS', KEYS[4]) ~= 0 then
+            return 0
+        end
+
+        local redisTime = redis.call('TIME')
+        local now = tonumber(redisTime[1]) * 1000 + math.floor(tonumber(redisTime[2]) / 1000)
+        redis.call('ZREMRANGEBYSCORE', KEYS[3], '-inf', now)
+        if redis.call('ZCARD', KEYS[3]) >= tonumber(ARGV[2]) then
+            return 0
+        end
+
+        local fence = redis.call('INCR', KEYS[5])
+        local token = ARGV[3] .. '|' .. ARGV[1] .. '|' .. fence
+        if not redis.call('SET', KEYS[4], token, 'PX', ARGV[5], 'NX') then
+            return 0
+        end
+
+        redis.call('ZADD', KEYS[3], now + tonumber(ARGV[5]), ARGV[4])
+        local desiredTtl = tonumber(ARGV[5]) + 3600000
+        local currentTtl = redis.call('PTTL', KEYS[3])
+        if currentTtl < desiredTtl then
+            redis.call('PEXPIRE', KEYS[3], desiredTtl)
+        end
+        return fence
+        """;
+
+    private const string RenewMatchOwnerScript = """
+        if redis.call('GET', KEYS[1]) ~= ARGV[1] then
+            return 0
+        end
+
+        local redisTime = redis.call('TIME')
+        local now = tonumber(redisTime[1]) * 1000 + math.floor(tonumber(redisTime[2]) / 1000)
+        redis.call('PEXPIRE', KEYS[1], ARGV[3])
+        redis.call('ZADD', KEYS[2], now + tonumber(ARGV[3]), ARGV[2])
+        local desiredTtl = tonumber(ARGV[3]) + 3600000
+        local currentTtl = redis.call('PTTL', KEYS[2])
+        if currentTtl < desiredTtl then
+            redis.call('PEXPIRE', KEYS[2], desiredTtl)
+        end
+        return 1
+        """;
+
+    private const string ReleaseMatchOwnerScript = """
+        if redis.call('GET', KEYS[1]) ~= ARGV[1] then
+            return 0
+        end
+        redis.call('DEL', KEYS[1])
+        redis.call('ZREM', KEYS[2], ARGV[2])
+        return 1
+        """;
+
+    private const string ReleaseNodeLeaseScript = """
+        if redis.call('GET', KEYS[1]) ~= ARGV[1] then
+            return 0
+        end
+        if redis.call('GET', KEYS[2]) == ARGV[1] then
+            redis.call('DEL', KEYS[2])
+        end
+        redis.call('DEL', KEYS[3])
+        redis.call('DEL', KEYS[1])
+        redis.call('ZREM', KEYS[4], ARGV[2])
+        return 1
+        """;
+
     private const string MatchOwnerActiveScript = """
         if redis.call('GET', KEYS[1]) ~= ARGV[1] then
             return 0
@@ -131,13 +207,18 @@ public sealed class RedisGameServerRoutingStore(
         if (!identity.IsValid)
             return;
 
-        await cacheHelper.ReleaseGameServerNodeLeaseAsync(
-            GameServerRoutingKeys.NodeLease(identity.NodeId),
-            GameServerRoutingKeys.NodeAccepting(identity.NodeId),
-            GameServerRoutingKeys.NodeDescriptor(identity.NodeId),
-            GameServerRoutingKeys.NodeHeartbeatIndex,
-            identity.NodeId,
-            identity.Generation);
+        await redisPool.ExecuteWithRetryAsync(
+            database => database.ScriptEvaluateAsync(
+                ReleaseNodeLeaseScript,
+                [
+                    GameServerRoutingKeys.NodeLease(identity.NodeId),
+                    GameServerRoutingKeys.NodeAccepting(identity.NodeId),
+                    GameServerRoutingKeys.NodeDescriptor(identity.NodeId),
+                    GameServerRoutingKeys.NodeHeartbeatIndex
+                ],
+                [identity.Generation, identity.NodeId],
+                CommandFlags.DemandMaster),
+            retryCount: 1);
     }
 
     public async Task<IReadOnlyList<GameServerNodeDescriptor>> DiscoverHealthyNodesAsync(
@@ -200,35 +281,59 @@ public sealed class RedisGameServerRoutingStore(
         ValidateDescriptor(node);
         if (node.Status != GameServerNodeStatus.Accepting)
             return null;
+        if (matchingId <= 0)
+            throw new ArgumentOutOfRangeException(nameof(matchingId));
+        if (ownerLifetime <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(ownerLifetime));
 
-        long fence = await cacheHelper.TryReserveGameServerMatchOwnerAsync(
-            GameServerRoutingKeys.NodeLease(node.NodeId),
-            GameServerRoutingKeys.NodeAccepting(node.NodeId),
-            node.Generation,
-            GameServerRoutingKeys.NodeSlots(node.NodeId, node.Generation),
-            GameServerRoutingKeys.MatchOwner(matchingId),
-            GameServerRoutingKeys.OwnerFence,
-            node.NodeId,
-            matchingId,
-            node.MaxConcurrentMatches,
-            ownerLifetime);
+        RedisResult result = await redisPool.ExecuteWithRetryAsync(
+            database => database.ScriptEvaluateAsync(
+                ReserveMatchOwnerScript,
+                [
+                    GameServerRoutingKeys.NodeLease(node.NodeId),
+                    GameServerRoutingKeys.NodeAccepting(node.NodeId),
+                    GameServerRoutingKeys.NodeSlots(node.NodeId, node.Generation),
+                    GameServerRoutingKeys.MatchOwner(matchingId),
+                    GameServerRoutingKeys.OwnerFence
+                ],
+                [
+                    node.Generation,
+                    node.MaxConcurrentMatches,
+                    node.NodeId,
+                    matchingId,
+                    checked((long)ownerLifetime.TotalMilliseconds)
+                ],
+                CommandFlags.DemandMaster),
+            retryCount: 1);
+        long fence = (long)result;
         return fence > 0
             ? new GameServerMatchOwner(matchingId, node.NodeId, node.Generation, fence)
             : null;
     }
 
-    public Task<bool> RenewMatchOwnerAsync(GameServerMatchOwner owner, TimeSpan ownerLifetime)
+    public async Task<bool> RenewMatchOwnerAsync(GameServerMatchOwner owner, TimeSpan ownerLifetime)
     {
         ArgumentNullException.ThrowIfNull(owner);
         if (!owner.IsValid)
-            return Task.FromResult(false);
+            return false;
+        if (ownerLifetime <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(ownerLifetime));
 
-        return cacheHelper.RenewGameServerMatchOwnerAsync(
-            GameServerRoutingKeys.MatchOwner(owner.MatchingId),
-            owner.Token,
-            GameServerRoutingKeys.NodeSlots(owner.NodeId, owner.Generation),
-            owner.MatchingId,
-            ownerLifetime);
+        RedisResult result = await redisPool.ExecuteWithRetryAsync(
+            database => database.ScriptEvaluateAsync(
+                RenewMatchOwnerScript,
+                [
+                    GameServerRoutingKeys.MatchOwner(owner.MatchingId),
+                    GameServerRoutingKeys.NodeSlots(owner.NodeId, owner.Generation)
+                ],
+                [
+                    owner.Token,
+                    owner.MatchingId,
+                    checked((long)ownerLifetime.TotalMilliseconds)
+                ],
+                CommandFlags.DemandMaster),
+            retryCount: 1);
+        return (long)result == 1;
     }
 
     public async Task<bool> ClampMatchOwnerLifetimeAsync(
@@ -259,17 +364,23 @@ public sealed class RedisGameServerRoutingStore(
         return (long)result == 1;
     }
 
-    public Task<bool> ReleaseMatchOwnerAsync(GameServerMatchOwner owner)
+    public async Task<bool> ReleaseMatchOwnerAsync(GameServerMatchOwner owner)
     {
         ArgumentNullException.ThrowIfNull(owner);
         if (!owner.IsValid)
-            return Task.FromResult(false);
+            return false;
 
-        return cacheHelper.ReleaseGameServerMatchOwnerAsync(
-            GameServerRoutingKeys.MatchOwner(owner.MatchingId),
-            owner.Token,
-            GameServerRoutingKeys.NodeSlots(owner.NodeId, owner.Generation),
-            owner.MatchingId);
+        RedisResult result = await redisPool.ExecuteWithRetryAsync(
+            database => database.ScriptEvaluateAsync(
+                ReleaseMatchOwnerScript,
+                [
+                    GameServerRoutingKeys.MatchOwner(owner.MatchingId),
+                    GameServerRoutingKeys.NodeSlots(owner.NodeId, owner.Generation)
+                ],
+                [owner.Token, owner.MatchingId],
+                CommandFlags.DemandMaster),
+            retryCount: 1);
+        return (long)result == 1;
     }
 
     public async Task<bool> IsMatchOwnerActiveAsync(GameServerMatchOwner owner)

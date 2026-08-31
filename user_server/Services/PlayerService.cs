@@ -7,11 +7,8 @@ using network.interfaces;
 namespace user_server.services;
 
 /// <summary>
-///     플레이어 관련 모든 로직을 처리하는 서비스
-///     - 인벤토리 관리
-///     - 퀘스트 관리
-///     - 메일 관리
-///     - 아이템 사용/착용
+///     Redis PlayerInfo를 player lock 안에서 load/mutate/save하여 아이템 착용과 소비 아이템 사용을 처리한다.
+///     연결, 매칭, 퀘스트, 메일 수명주기는 소유하지 않는다.
 /// </summary>
 public class PlayerService(ILogger<PlayerService> logger, ICacheHelper cacheHelper, IRedLockFactory redLock)
     : IPlayerService

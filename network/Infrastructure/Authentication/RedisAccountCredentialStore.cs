@@ -1,9 +1,9 @@
 using System.Globalization;
 using System.Text;
-using network.application.authentication;
 using network.common;
 using network.common.data.models;
 using network.contracts.authentication;
+using network.core.security;
 using network.interfaces;
 using StackExchange.Redis;
 

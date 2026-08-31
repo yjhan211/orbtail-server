@@ -7,16 +7,17 @@ using network.interfaces;
 
 namespace network.core;
 
+/// <summary>
+///     Accepts TCP clients, coordinates connection shutdown, and delegates per-connection protocol work to
+///     <see cref="UserToken"/> instances.
+/// </summary>
 public sealed class NetworkService : INetworkService
 {
     private readonly ConcurrentDictionary<UserToken, byte> _activeConnections = new();
-    private readonly BufferManager _bufferManager;
     private readonly Listener _clientListener;
     private readonly object _connectionLifecycleLock = new();
-    private readonly object _eventArgsPoolLock = new();
+    private readonly SocketEventArgsPool _eventArgsPool;
     private readonly ILogger? _logger;
-    private readonly SocketAsyncEventArgsManager _receiveEventArgsManager;
-    private readonly SocketAsyncEventArgsManager _sendEventArgsManager;
     private readonly SemaphoreSlim _stopLock = new(1, 1);
     private int _stopping;
 
@@ -25,12 +26,13 @@ public sealed class NetworkService : INetworkService
         _logger = logger;
         _clientListener = new Listener(logger);
         _clientListener.ClientConnected += OnNewClient;
-        _bufferManager = new BufferManager(Config.MAX_CONNECTION * Config.PRE_ALLOC_COUNT * Config.BUFFER_SIZE,
-            Config.BUFFER_SIZE);
-        _receiveEventArgsManager = new SocketAsyncEventArgsManager(Config.MAX_CONNECTION);
-        _sendEventArgsManager = new SocketAsyncEventArgsManager(Config.MAX_CONNECTION);
-
-        InitializeEventArgs();
+        _eventArgsPool = new SocketEventArgsPool(
+            Config.MAX_CONNECTION,
+            Config.PRE_ALLOC_COUNT,
+            Config.BUFFER_SIZE,
+            ReceiveCompleted,
+            SendCompleted,
+            () => Volatile.Read(ref _stopping) == 0);
     }
 
     public Action<UserToken>? SessionCreatedCallback { get; set; }
@@ -56,8 +58,8 @@ public sealed class NetworkService : INetworkService
         SocketAsyncEventArgs? sendArgs = null;
         try
         {
-            receiveArgs = CreateConnectionOwnedEventArgs(ReceiveCompleted);
-            sendArgs = CreateConnectionOwnedEventArgs(SendCompleted);
+            receiveArgs = _eventArgsPool.CreateConnectionOwned(ReceiveCompleted);
+            sendArgs = _eventArgsPool.CreateConnectionOwned(SendCompleted);
             if (!TryRegisterConnection(
                     userToken,
                     socket,
@@ -107,7 +109,7 @@ public sealed class NetworkService : INetworkService
             // 유휴 풀은 즉시 비우고, 사용 중인 EventArgs는 각 연결의 release 단계에서 폐기한다.
             try
             {
-                DisposeIdleEventArgs();
+                _eventArgsPool.DisposeIdle();
             }
             catch (Exception ex)
             {
@@ -140,7 +142,7 @@ public sealed class NetworkService : INetworkService
             // Stop 도중 풀로 돌아온 항목이 있더라도 남기지 않는다.
             try
             {
-                DisposeIdleEventArgs();
+                _eventArgsPool.DisposeIdle();
             }
             catch (Exception ex)
             {
@@ -189,31 +191,6 @@ public sealed class NetworkService : INetworkService
         }
     }
 
-    private void InitializeEventArgs()
-    {
-        for (int i = 0; i < Config.MAX_CONNECTION; i++)
-        {
-            SocketAsyncEventArgs receiveArgs = new();
-            receiveArgs.Completed += ReceiveCompleted;
-            _bufferManager.SetBuffer(receiveArgs);
-            _receiveEventArgsManager.Push(receiveArgs);
-
-            SocketAsyncEventArgs sendArgs = new();
-            sendArgs.Completed += SendCompleted;
-            _bufferManager.SetBuffer(sendArgs);
-            _sendEventArgsManager.Push(sendArgs);
-        }
-    }
-
-    private SocketAsyncEventArgs CreateConnectionOwnedEventArgs(
-        EventHandler<SocketAsyncEventArgs> completedHandler)
-    {
-        SocketAsyncEventArgs eventArgs = new();
-        eventArgs.Completed += completedHandler;
-        eventArgs.SetBuffer(new byte[Config.BUFFER_SIZE], 0, Config.BUFFER_SIZE);
-        return eventArgs;
-    }
-
     private void OnNewClient(Socket clientSocket, object? _)
     {
         if (Volatile.Read(ref _stopping) != 0)
@@ -222,7 +199,7 @@ public sealed class NetworkService : INetworkService
             return;
         }
 
-        if (!TryRentPooledEventArgs(out var receiveArgs, out var sendArgs))
+        if (!_eventArgsPool.TryRent(out var receiveArgs, out var sendArgs))
         {
             _logger?.LogWarning("Connection rejected because the socket event-args pool is exhausted");
             clientSocket.Dispose();
@@ -239,7 +216,7 @@ public sealed class NetworkService : INetworkService
                     sendArgs!,
                     SocketEventArgsOwnership.ListenerPool))
             {
-                ReturnPooledEventArgs(receiveArgs, sendArgs);
+                _eventArgsPool.Return(receiveArgs, sendArgs);
                 clientSocket.Dispose();
                 return;
             }
@@ -247,7 +224,7 @@ public sealed class NetworkService : INetworkService
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Failed to initialize an accepted connection");
-            ReturnPooledEventArgs(receiveArgs, sendArgs);
+            _eventArgsPool.Return(receiveArgs, sendArgs);
             clientSocket.Dispose();
             return;
         }
@@ -302,60 +279,6 @@ public sealed class NetworkService : INetworkService
                 throw new InvalidOperationException("The connection token is already registered.");
 
             return true;
-        }
-    }
-
-    private bool TryRentPooledEventArgs(
-        out SocketAsyncEventArgs? receiveArgs,
-        out SocketAsyncEventArgs? sendArgs)
-    {
-        lock (_eventArgsPoolLock)
-        {
-            bool hasReceiveArgs = _receiveEventArgsManager.TryPop(out receiveArgs);
-            bool hasSendArgs = _sendEventArgsManager.TryPop(out sendArgs);
-            if (hasReceiveArgs && hasSendArgs) return true;
-
-            if (receiveArgs != null) _receiveEventArgsManager.Push(receiveArgs);
-            if (sendArgs != null) _sendEventArgsManager.Push(sendArgs);
-            receiveArgs = null;
-            sendArgs = null;
-            return false;
-        }
-    }
-
-    private void ReturnPooledEventArgs(
-        SocketAsyncEventArgs? receiveArgs,
-        SocketAsyncEventArgs? sendArgs)
-    {
-        if (receiveArgs == null || sendArgs == null)
-        {
-            receiveArgs?.Dispose();
-            sendArgs?.Dispose();
-            return;
-        }
-
-        receiveArgs.UserToken = null;
-        sendArgs.UserToken = null;
-        lock (_eventArgsPoolLock)
-        {
-            if (Volatile.Read(ref _stopping) == 0)
-            {
-                _receiveEventArgsManager.Push(receiveArgs);
-                _sendEventArgsManager.Push(sendArgs);
-                return;
-            }
-        }
-
-        receiveArgs.Dispose();
-        sendArgs.Dispose();
-    }
-
-    private void DisposeIdleEventArgs()
-    {
-        lock (_eventArgsPoolLock)
-        {
-            _receiveEventArgsManager.DisposeAll();
-            _sendEventArgsManager.DisposeAll();
         }
     }
 
@@ -506,7 +429,7 @@ public sealed class NetworkService : INetworkService
         {
             if (ownership == SocketEventArgsOwnership.ListenerPool)
             {
-                ReturnPooledEventArgs(receiveArgs, sendArgs);
+                _eventArgsPool.Return(receiveArgs, sendArgs);
                 return;
             }
 

@@ -12,6 +12,12 @@ using network.packets;
 
 namespace game_server.network;
 
+/// <summary>
+///     Represents one TCP client connection after a GameServer handoff.
+///     The session validates protocol messages and owns per-connection state, while match-shared state remains
+///     in GameServer managers. Authentication becomes visible only after the Redis admission commit and initial
+///     authoritative snapshot have both completed.
+/// </summary>
 public partial class GameClientSession : SessionBase
 {
     private const int MaxStamina = 100;
@@ -50,6 +56,7 @@ public partial class GameClientSession : SessionBase
     private readonly GameEventLogManager _gameEventLogManager;
     private readonly MatchSummaryFileStore _matchSummaryFileStore;
     private readonly EncounterRevealManager _encounterRevealManager;
+    private readonly GameAdmissionStateCommitter _admissionStateCommitter;
 
     private bool _isSleeping;
 
@@ -188,6 +195,7 @@ public partial class GameClientSession : SessionBase
         _gameEventLogManager = gameEventLogManager;
         _matchSummaryFileStore = matchSummaryFileStore;
         _encounterRevealManager = encounterRevealManager;
+        _admissionStateCommitter = new GameAdmissionStateCommitter(cacheHelper, logger);
         _acquireMatchRuntimeOperation = acquireMatchRuntimeOperation;
         _executeMatchRuntime = executeMatchRuntime;
         _bindMatchOwnerFence = bindMatchOwnerFence;

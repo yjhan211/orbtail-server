@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using network.contracts.authentication;
+using network.core.security;
 
 namespace network.application.authentication;
 

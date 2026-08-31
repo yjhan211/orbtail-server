@@ -15,7 +15,7 @@ public sealed class SwarmArenaManager
     // #219 초반 템포 하향 (2026-08-09): 시작 스쿼드가 오브 1개뿐이라 20(2방)도 캠프 하나에
     // 14초가 걸렸다. 해골 = T1 한 방(12) — 초반 파밍이 사격 몇 번으로 끝나야 SB "코인 몹"
     // 감각이 산다.
-    public const int MonsterMaxHealth = 12;
+    public const int MonsterMaxHealth = SwarmMonsterArchetypeCatalog.DefaultMonsterMaxHealth;
 
     // 실측(2026-08-05): 30 + 무적 0.6초 조합은 18초 생존으로 끝났다. 연속 접촉 기준
     // 최소 사망 시간이 충분히 길도록 24 × 0.8초를 유지한다.
@@ -41,8 +41,8 @@ public sealed class SwarmArenaManager
     // 판정은 전 종 고정 0.45였다 — 스프라이트보다 45% 큰 원이라 옆을 스쳐도 맞았다.
     // 반폭에 맞춰 눕히고, 종별 크기는 GetContactRadius가 클라 ResolveKindScale과 같은 사다리로 따라간다.
     // 서버 위치는 클라 예측보다 늦으므로 회피자에게 후한 쪽이 맞다.
-    public const float ContactRange = 0.32f;
-    public const float ContactCooldownSeconds = 1f;
+    public const float ContactRange = SwarmMonsterArchetypeCatalog.DefaultContactRadius;
+    public const float ContactCooldownSeconds = SwarmMonsterArchetypeCatalog.DefaultContactCooldownSeconds;
     // 4.2 → 3.2(08-17 오후, "몹이 너무 빠르다") → 4.2 복구 (08-17 저녁 유저 결정: 몹이 달려들어
     // 부딪혀야 한다 — 숨쉬는 포위와 함께 내렸던 이속을 직진 추격 복귀와 함께 되돌린다).
     public const float MonsterMoveSpeed = 4.2f;
@@ -295,7 +295,8 @@ public sealed class SwarmArenaManager
     private const float WavePatternAttackCooldownSeconds = 2.2f;
 
     /// <summary>파도 문양(Encircle 패턴) 몹인가 — 표기 문양과 공격 방식이 같은 근거를 쓴다.</summary>
-    public static bool IsWavePatternMonster(SwarmPattern pattern) => pattern == SwarmPattern.Encircle;
+    public static bool IsWavePatternMonster(SwarmPattern pattern) =>
+        SwarmMonsterArchetypeCatalog.IsWavePattern(pattern);
 
     /// <summary>
     ///     종별 스탯 원본은 swarm_monster.csv (#292 CSV 이전). attack_range 0 = 접촉 몹(ContactRange 폴백).
@@ -304,16 +305,7 @@ public sealed class SwarmArenaManager
     /// </summary>
     public static (int MaxHp, int OrbDamage, float AttackRange, float AttackCooldownSeconds, int StoneReward,
         int HeartReward, int BootsReward, int KeyReward)
-        GetKindStats(SwarmMonsterKind kind)
-    {
-        var definition = SwarmMonsterData.Get((int)kind) ?? SwarmMonsterData.Get((int)SwarmMonsterKind.Skeleton);
-        if (definition == null)
-            return (MonsterMaxHealth, 1, ContactRange, ContactCooldownSeconds, 1, 0, 0, 0);
-
-        float attackRange = definition.AttackRange > 0f ? definition.AttackRange : ContactRange;
-        return (definition.MaxHp, definition.OrbDamage, attackRange, definition.AttackCooldownSeconds,
-            definition.StoneReward, definition.HeartReward, definition.BootsReward, definition.KeyReward);
-    }
+        GetKindStats(SwarmMonsterKind kind) => SwarmMonsterArchetypeCatalog.GetStats(kind);
 
     /// <summary>보스 판별 (#223): 고정 포대·리스폰 없음·타원 판정 공유의 스위치.</summary>
     /// <summary>
@@ -321,10 +313,10 @@ public sealed class SwarmArenaManager
     ///     원거리 몹의 사거리(AttackRangeValue)는 별개다. 이건 부딪힘 반경만 정한다.
     /// </summary>
     public static float GetContactRadius(SwarmMonsterKind kind) =>
-        ContactRange * (SwarmMonsterData.Get((int)kind)?.ContactRadiusScale ?? 1f);
+        SwarmMonsterArchetypeCatalog.GetContactRadius(kind);
 
     public static bool IsBossKind(SwarmMonsterKind kind) =>
-        kind is SwarmMonsterKind.Golem or SwarmMonsterKind.BabyDragon or SwarmMonsterKind.TreeGiant;
+        SwarmMonsterArchetypeCatalog.IsBoss(kind);
 
     /// <summary>클라 보스 연출(투사체) 분기용 — 스웜 공격 VFX 브로드캐스트가 묻는다.</summary>
     public bool IsBossMonster(long matchingId, int monsterId)
@@ -356,24 +348,7 @@ public sealed class SwarmArenaManager
     /// </summary>
     private static bool TryGetBossKind(AreaType area, out SwarmMonsterKind kind)
     {
-        switch (area)
-        {
-            // #272 School2: 가운데 병합(1차 통로·테라스·운동장 = S2Corridor9) 후 중간 지대는
-            // 하나 — 수렴 무대의 선주민은 트리 자이언트다. School 세대 케이스는 보존.
-            case AreaType.Junkyard:
-                kind = SwarmMonsterKind.Golem;
-                return true;
-            case AreaType.Corridor:
-                kind = SwarmMonsterKind.BabyDragon;
-                return true;
-            case AreaType.Ground:
-            case AreaType.S2Corridor9:
-                kind = SwarmMonsterKind.TreeGiant;
-                return true;
-            default:
-                kind = SwarmMonsterKind.Skeleton;
-                return false;
-        }
+        return SwarmMonsterArchetypeCatalog.TryGetResidentBoss(area, out kind);
     }
 
     private const int FirstMonsterId = 7_000_000;

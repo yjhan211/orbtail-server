@@ -79,6 +79,7 @@ internal static class Program
 
         // 헬퍼
         services.AddSingleton<ICacheHelper, CacheHelper>();
+        services.AddSingleton<IMatchingQueueClaimStore, RedisMatchingQueueClaimStore>();
         services.AddSingleton<IUserServerCoordinationStore, RedisUserServerCoordinationStore>();
         services.AddSingleton<IGameServerRoutingStore, RedisGameServerRoutingStore>();
         services.AddSingleton<MatchingLifecycleOutboxStore>();

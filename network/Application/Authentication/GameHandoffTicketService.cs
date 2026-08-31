@@ -1,5 +1,6 @@
 using network.contracts.authentication;
 using network.contracts.scaling;
+using network.core.security;
 
 namespace network.application.authentication;
 

@@ -1,8 +1,12 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace network.application.authentication;
+namespace network.core.security;
 
+/// <summary>
+///     Creates, validates, and fingerprints fixed-entropy opaque authentication tokens without depending on an
+///     application or persistence layer.
+/// </summary>
 internal static class OpaqueTokenCodec
 {
     private const int RandomByteCount = 32;

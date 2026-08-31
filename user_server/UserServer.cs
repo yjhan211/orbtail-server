@@ -1,33 +1,33 @@
-using System.Buffers.Binary;
-using System.Collections.Concurrent;
 using System.Net;
-using MessagePack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.helpers;
 using network.contracts.authentication;
-using network.contracts.messaging;
 using network.contracts.scaling;
 using network.core;
 using network.helpers;
 using network.hosting;
 using network.infrastructure;
 using network.interfaces;
-using network.packets;
 using user_server.network;
 using user_server.services;
 using user_server.services.scaling;
 
 namespace user_server;
 
+/// <summary>
+///     Hosts the UserServer process and orders TCP sessions, matching, replica coordination,
+///     messaging, readiness, and shutdown without owning their internal state machines.
+/// </summary>
 public class UserServer(
     INetworkService networkService,
     INatsClientFactory natsClientFactory,
     ILogger<UserServer> logger,
     IConfiguration configuration,
     ICacheHelper cacheHelper,
+    IMatchingQueueClaimStore matchingClaimStore,
     IRedLockFactory redLock,
     IServerConfig serverConfig,
     IPlayerService playerService,
@@ -44,24 +44,13 @@ public class UserServer(
     IHostApplicationLifetime applicationLifetime)
     : IHostedService
 {
-    private enum MatchingLifecycleEvent
-    {
-        PlayerLeft,
-        PlayerCompleted,
-        PlayerAdmissionFailed,
-        PlayerReleased
-    }
-
     private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(5);
-    private static readonly TimeSpan LifecycleMarkerLifetime = TimeSpan.FromDays(8);
-    private static readonly MessagePackSerializerOptions LifecycleSerializerOptions =
-        MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData);
-    private readonly ConcurrentDictionary<long, GameSession> _sessions = new();
+    private readonly UserSessionRegistry _sessions = new(logger);
     private readonly CancellationTokenSource _clusterHeartbeatCancellation = new();
     private readonly object _shutdownLock = new();
     private IMatchingManager? _matchingManager;
-    private INatsClient? _matchingLifecycleNatsClient;
     private MatchingDeliveryRouter? _matchingDeliveryRouter;
+    private MatchingMessagingRuntime? _matchingMessagingRuntime;
     private Task? _nodeHeartbeatTask;
     private Task? _sessionHeartbeatTask;
     private Task? _shutdownTask;
@@ -153,24 +142,23 @@ public class UserServer(
         _clusterHeartbeatCancellation.Cancel();
         await AwaitClusterHeartbeatShutdownAsync();
 
-        try
+        if (_matchingMessagingRuntime != null)
         {
-            if (_matchingLifecycleNatsClient != null)
-                await _matchingLifecycleNatsClient.CloseAsync(CancellationToken.None);
+            await _matchingMessagingRuntime.StopAsync();
         }
-        catch (Exception ex)
+        else if (_matchingDeliveryRouter != null)
         {
-            logger.LogWarning(ex, "NATS close failed during shutdown");
-        }
-
-        try
-        {
-            if (_matchingDeliveryRouter != null)
+            // Startup can fail after the router owns its NATS client but before the
+            // combined messaging runtime is constructed. Preserve the standalone
+            // cleanup path so that partial composition does not leak the connection.
+            try
+            {
                 await _matchingDeliveryRouter.StopAsync(CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Matching delivery router shutdown failed");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Matching delivery router shutdown failed");
+            }
         }
 
         if (Interlocked.Exchange(ref _nodeLeaseAcquired, 0) != 0)
@@ -223,8 +211,6 @@ public class UserServer(
             clusterOptions,
             natsClientFactory.Create(),
             matchingDeliveryLogger);
-        _matchingDeliveryRouter.Start(HandleMatchingDeliveryRequestAsync);
-
         MatchingManagerScalingContext? scalingContext =
             clusterOptions.Enabled || gameServerRoutingOptions.Enabled
                 ? new MatchingManagerScalingContext(
@@ -236,101 +222,31 @@ public class UserServer(
                     gameServerRoutingOptions,
                     matchingLifecycleOutboxStore)
                 : null;
-        _matchingManager = new MatchingManager(
+        var matchingManager = new MatchingManager(
             logger,
             cacheHelper,
+            matchingClaimStore,
             redLock,
             gameHandoffTicketService,
-            GetSession,
+            _sessions.Get,
             configuration.GetValue("gameHandoff:writeLegacySpawnFields", false),
             scalingContext);
+        _matchingManager = matchingManager;
 
-        _matchingLifecycleNatsClient = natsClientFactory.Create();
-        InitializeMatchingLifecycleSubscriptions(_matchingLifecycleNatsClient);
+        _matchingMessagingRuntime = new MatchingMessagingRuntime(
+            natsClientFactory.Create(),
+            _matchingDeliveryRouter,
+            coordinationStore,
+            clusterOptions,
+            processIdentity,
+            gameServerRoutingOptions,
+            _sessions,
+            matchingManager,
+            logger);
+        _matchingMessagingRuntime.Start();
+        matchingManager.Start();
 
         logger.LogInformation("Services initialized successfully");
-    }
-
-    private void InitializeMatchingLifecycleSubscriptions(INatsClient client)
-    {
-        if (!clusterOptions.Enabled && !gameServerRoutingOptions.Enabled)
-        {
-            client.Subscribe(MatchingLifecycleSubjects.PlayerLeft,
-                (_, body) => HandleMatchingLifecycleMessage(body, MatchingLifecycleEvent.PlayerLeft));
-            client.Subscribe(MatchingLifecycleSubjects.PlayerCompleted,
-                (_, body) => HandleMatchingLifecycleMessage(body, MatchingLifecycleEvent.PlayerCompleted));
-            client.Subscribe(MatchingLifecycleSubjects.PlayerAdmissionFailed,
-                (_, body) => HandleMatchingLifecycleMessage(body, MatchingLifecycleEvent.PlayerAdmissionFailed));
-            client.Subscribe(MatchingLifecycleSubjects.PlayerReleased,
-                (_, body) => HandleMatchingLifecycleMessage(body, MatchingLifecycleEvent.PlayerReleased));
-            return;
-        }
-
-        client.EnsureDurableStream(new NatsDurableStreamOptions
-        {
-            Name = MatchingLifecycleSubjects.Stream,
-            Subjects = [MatchingLifecycleSubjects.AllPlayerEvents],
-            Description = "Durable matching lifecycle events consumed by the UserServer cluster"
-        });
-        client.SubscribeDurableQueue(
-            new NatsDurableConsumerOptions
-            {
-                StreamName = MatchingLifecycleSubjects.Stream,
-                Subject = MatchingLifecycleSubjects.AllPlayerEvents,
-                DurableName = MatchingLifecycleSubjects.UserServerDurable,
-                QueueGroup = MatchingLifecycleSubjects.UserServerQueue,
-                DeliverSubject = MatchingLifecycleSubjects.UserServerDeliverSubject,
-                // A lifecycle effect may already be committed in Redis when owner delivery is
-                // temporarily unavailable. Keep redelivering for the stream lifetime instead
-                // of stranding a live UserServer session after the library default 10 attempts.
-                MaxDeliver = int.MaxValue
-            },
-            HandleDurableMatchingLifecycleMessageAsync);
-    }
-
-    private async Task<MatchingDeliveryResponse> HandleMatchingDeliveryRequestAsync(
-        MatchingDeliveryRequest request,
-        CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        UserSessionOwner? currentOwner = await coordinationStore.GetSessionOwnerAsync(request.PlayerId);
-        bool targetsCurrentOwner = currentOwner != null && OwnerMatchesRequest(currentOwner, request);
-        if (request.Kind == MatchingDeliveryKind.DisconnectSupersededSession)
-        {
-            if (targetsCurrentOwner)
-            {
-                return MatchingDeliveryResponse.Create(
-                    request.DeliveryId,
-                    MatchingDeliveryStatus.StaleOwner);
-            }
-        }
-        else if (!targetsCurrentOwner)
-        {
-            return MatchingDeliveryResponse.Create(
-                request.DeliveryId,
-                MatchingDeliveryStatus.StaleOwner);
-        }
-
-        GameSession? session = GetSession(request.PlayerId);
-        if (session == null)
-        {
-            return MatchingDeliveryResponse.Create(
-                request.DeliveryId,
-                MatchingDeliveryStatus.SessionUnavailable);
-        }
-
-        return session.HandleMatchingDelivery(request);
-    }
-
-    private static bool OwnerMatchesRequest(
-        UserSessionOwner owner,
-        MatchingDeliveryRequest request)
-    {
-        return owner.PlayerId == request.PlayerId &&
-               string.Equals(owner.NodeId, request.OwnerNodeId, StringComparison.Ordinal) &&
-               string.Equals(owner.NodeGeneration, request.OwnerNodeGeneration, StringComparison.Ordinal) &&
-               string.Equals(owner.SessionId, request.OwnerSessionId, StringComparison.Ordinal) &&
-               owner.SessionGeneration == request.OwnerSessionGeneration;
     }
 
     private void StartClusterHeartbeat()
@@ -378,7 +294,7 @@ public class UserServer(
             using var timer = new PeriodicTimer(clusterOptions.HeartbeatInterval);
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
-                GameSession[] sessions = _sessions.Values.ToArray();
+                GameSession[] sessions = _sessions.Snapshot();
                 await Parallel.ForEachAsync(
                     sessions,
                     new ParallelOptions
@@ -484,254 +400,6 @@ public class UserServer(
         }
     }
 
-    private async Task<NatsDurableMessageDisposition> HandleDurableMatchingLifecycleMessageAsync(
-        NatsDurableMessage message,
-        CancellationToken cancellationToken)
-    {
-        if (!TryGetLifecycleEffect(message.Subject, out MatchingLifecycleEffect requestedEffect))
-        {
-            logger.LogWarning(
-                "Terminating matching lifecycle message with an unknown subject: Subject={Subject}",
-                message.Subject);
-            return NatsDurableMessageDisposition.Terminate;
-        }
-
-        MatchingLifecycleEnvelope? envelope;
-        try
-        {
-            envelope = MessagePackSerializer.Deserialize<MatchingLifecycleEnvelope>(
-                message.Data,
-                LifecycleSerializerOptions,
-                cancellationToken);
-        }
-        catch (MessagePackSerializationException ex)
-        {
-            logger.LogWarning(
-                ex,
-                "Terminating malformed matching lifecycle envelope: Subject={Subject}, Sequence={Sequence}",
-                message.Subject,
-                message.StreamSequence);
-            return NatsDurableMessageDisposition.Terminate;
-        }
-
-        if (envelope == null ||
-            !envelope.IsValid ||
-            string.IsNullOrWhiteSpace(message.MessageId) ||
-            !string.Equals(message.MessageId, envelope.EventId, StringComparison.Ordinal))
-        {
-            logger.LogWarning(
-                "Terminating invalid matching lifecycle envelope: Subject={Subject}, Version={Version}, PlayerId={PlayerId}, MatchingId={MatchingId}, MessageId={MessageId}, EventId={EventId}",
-                message.Subject,
-                envelope?.Version,
-                envelope?.PlayerId,
-                envelope?.MatchingId,
-                message.MessageId,
-                envelope?.EventId);
-            return NatsDurableMessageDisposition.Terminate;
-        }
-
-        try
-        {
-            DateTimeOffset occurredAt =
-                DateTimeOffset.FromUnixTimeMilliseconds(envelope.OccurredAtUnixMilliseconds);
-            MatchingLifecycleApplyResult applyResult =
-                await coordinationStore.ApplyMatchingLifecycleOnceAsync(
-                    envelope.EventId,
-                    requestedEffect,
-                    envelope.PlayerId,
-                    envelope.MatchingId,
-                    occurredAt,
-                    LifecycleMarkerLifetime);
-            if (applyResult.HasConflictingTerminalEvent)
-            {
-                logger.LogWarning(
-                    "Conflicting terminal lifecycle event ignored after first global effect: PlayerId={PlayerId}, MatchingId={MatchingId}, Requested={Requested}, Effective={Effective}, EventId={EventId}",
-                    envelope.PlayerId,
-                    envelope.MatchingId,
-                    requestedEffect,
-                    applyResult.EffectiveEffect,
-                    envelope.EventId);
-            }
-
-            return await RouteMatchingLifecycleToOwnerAsync(
-                envelope.PlayerId,
-                envelope.MatchingId,
-                applyResult,
-                cancellationToken);
-        }
-        catch (ArgumentOutOfRangeException ex)
-        {
-            logger.LogWarning(
-                ex,
-                "Terminating matching lifecycle envelope with an invalid timestamp: EventId={EventId}",
-                envelope.EventId);
-            return NatsDurableMessageDisposition.Terminate;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(
-                ex,
-                "Matching lifecycle processing failed and will be retried: Subject={Subject}, EventId={EventId}, Delivery={Delivery}",
-                message.Subject,
-                envelope.EventId,
-                message.DeliveryAttempt);
-            return NatsDurableMessageDisposition.Retry;
-        }
-    }
-
-    private async Task<NatsDurableMessageDisposition> RouteMatchingLifecycleToOwnerAsync(
-        long playerId,
-        long matchingId,
-        MatchingLifecycleApplyResult applyResult,
-        CancellationToken cancellationToken)
-    {
-        if (!clusterOptions.Enabled)
-        {
-            GameSession? localSession = GetSession(playerId);
-            if (localSession == null)
-                return NatsDurableMessageDisposition.Ack;
-
-            var localOwner = new UserSessionOwner(
-                playerId,
-                processIdentity.NodeId,
-                processIdentity.Generation,
-                localSession.SessionId,
-                1);
-            MatchingDeliveryResponse localResponse = localSession.HandleLocalMatchingDelivery(
-                CreateLifecycleDeliveryRequest(localOwner, matchingId, applyResult));
-            return localResponse.Status switch
-            {
-                MatchingDeliveryStatus.Accepted => NatsDurableMessageDisposition.Ack,
-                MatchingDeliveryStatus.InvalidRequest => NatsDurableMessageDisposition.Terminate,
-                _ => NatsDurableMessageDisposition.Retry
-            };
-        }
-
-        for (int attempt = 0; attempt < 3; attempt++)
-        {
-            UserSessionOwner? owner = await coordinationStore.GetSessionOwnerAsync(playerId);
-            if (owner == null)
-                return NatsDurableMessageDisposition.Ack;
-
-            MatchingDeliveryRequest request = CreateLifecycleDeliveryRequest(
-                owner,
-                matchingId,
-                applyResult);
-            MatchingDeliveryResponse response = await _matchingDeliveryRouter!.DeliverAsync(
-                request,
-                cancellationToken);
-            switch (response.Status)
-            {
-                case MatchingDeliveryStatus.Accepted:
-                    return NatsDurableMessageDisposition.Ack;
-                case MatchingDeliveryStatus.StaleOwner:
-                    continue;
-                case MatchingDeliveryStatus.InvalidRequest:
-                    logger.LogError(
-                        "Terminating lifecycle notification rejected as invalid: PlayerId={PlayerId}, MatchingId={MatchingId}, Effect={Effect}",
-                        playerId,
-                        matchingId,
-                        applyResult.EffectiveEffect);
-                    return NatsDurableMessageDisposition.Terminate;
-                default:
-                    return NatsDurableMessageDisposition.Retry;
-            }
-        }
-
-        return NatsDurableMessageDisposition.Retry;
-    }
-
-    private static MatchingDeliveryRequest CreateLifecycleDeliveryRequest(
-        UserSessionOwner owner,
-        long matchingId,
-        MatchingLifecycleApplyResult applyResult)
-    {
-        int protocolId = 0;
-        byte[] payload = Array.Empty<byte>();
-        MatchingDeliveryKind kind = MatchingDeliveryKind.ClearMatchingAssignment;
-        if (applyResult.EffectiveEffect == MatchingLifecycleEffect.PlayerAdmissionFailed)
-        {
-            kind = MatchingDeliveryKind.MatchingAdmissionFailed;
-            protocolId = (int)Protocol.U_TO_C_MATCHING_FAILED;
-            using var packet = PacketMaker.U_TO_C_MATCHING_FAILED(
-                ErrorCode.MATCHING_FAILED,
-                matchingId);
-            packet.RecordSize();
-            payload = packet.ToBytes();
-        }
-
-        return new MatchingDeliveryRequest
-        {
-            DeliveryId = applyResult.EffectiveEventFingerprint,
-            Kind = kind,
-            PlayerId = owner.PlayerId,
-            MatchingId = matchingId,
-            RequestId = applyResult.EffectiveEventFingerprint,
-            OwnerNodeId = owner.NodeId,
-            OwnerNodeGeneration = owner.NodeGeneration,
-            OwnerSessionId = owner.SessionId,
-            OwnerSessionGeneration = owner.SessionGeneration,
-            ProtocolId = protocolId,
-            Payload = payload
-        };
-    }
-
-    private static bool TryGetLifecycleEffect(
-        string subject,
-        out MatchingLifecycleEffect effect)
-    {
-        effect = subject switch
-        {
-            MatchingLifecycleSubjects.PlayerLeft => MatchingLifecycleEffect.PlayerLeft,
-            MatchingLifecycleSubjects.PlayerCompleted => MatchingLifecycleEffect.PlayerCompleted,
-            MatchingLifecycleSubjects.PlayerAdmissionFailed => MatchingLifecycleEffect.PlayerAdmissionFailed,
-            MatchingLifecycleSubjects.PlayerReleased => MatchingLifecycleEffect.PlayerReleased,
-            _ => default
-        };
-        return effect != default;
-    }
-
-    private void HandleMatchingLifecycleMessage(byte[] body, MatchingLifecycleEvent lifecycleEvent)
-    {
-        if (body.Length != sizeof(long) && body.Length != sizeof(long) * 2)
-        {
-            logger.LogWarning("Invalid matching lifecycle message length: {Length}", body.Length);
-            return;
-        }
-
-        if (lifecycleEvent is MatchingLifecycleEvent.PlayerAdmissionFailed or MatchingLifecycleEvent.PlayerReleased &&
-            body.Length != sizeof(long) * 2)
-        {
-            logger.LogWarning(
-                "Release-only lifecycle message requires playerId + matchingId payload: Event={Event}, Length={Length}",
-                lifecycleEvent,
-                body.Length);
-            return;
-        }
-
-        var matchingManager = _matchingManager;
-        if (matchingManager == null) return;
-
-        long playerId = BinaryPrimitives.ReadInt64LittleEndian(body);
-        long matchingId = body.Length == sizeof(long) * 2
-            ? BinaryPrimitives.ReadInt64LittleEndian(body.AsSpan(sizeof(long)))
-            : 0;
-        if (matchingId > 0 && lifecycleEvent != MatchingLifecycleEvent.PlayerAdmissionFailed)
-            GetSession(playerId)?.ClearMatchingAssignment(matchingId);
-        matchingManager.TryRunBackgroundOperation(
-            () => lifecycleEvent switch
-            {
-                MatchingLifecycleEvent.PlayerCompleted =>
-                    matchingManager.RecordGameCompletionAsync(playerId, matchingId),
-                MatchingLifecycleEvent.PlayerAdmissionFailed =>
-                    matchingManager.AbortMatchingAdmissionAsync(playerId, matchingId),
-                MatchingLifecycleEvent.PlayerReleased =>
-                    matchingManager.ReleaseMatchingClaimAsync(playerId, matchingId),
-                _ => matchingManager.RecordLeaveAsync(playerId, matchingId)
-            },
-            $"handle {lifecycleEvent} for player {playerId}, matching {matchingId}");
-    }
-
     private void StartNetworkService()
     {
         short port = configuration.GetValue<short>("servicePort");
@@ -757,8 +425,8 @@ public class UserServer(
                 clusterOptions,
                 processIdentity,
                 _matchingDeliveryRouter!,
-                RegisterSession,
-                RemoveSession);
+                _sessions.Register,
+                _sessions.Remove);
 
             logger.LogInformation("New session created");
         }
@@ -767,47 +435,6 @@ public class UserServer(
             logger.LogError(ex, "GameSession 생성 실패, 연결 종료");
             token.Disconnect();
         }
-    }
-
-    private Action? RegisterSession(long playerId, GameSession session)
-    {
-        while (true)
-        {
-            if (!_sessions.TryGetValue(playerId, out var existingSession))
-            {
-                if (_sessions.TryAdd(playerId, session))
-                {
-                    logger.LogInformation("Session registered: PlayerId={PlayerId}", playerId);
-                    return null;
-                }
-
-                continue;
-            }
-
-            if (ReferenceEquals(existingSession, session))
-                return null;
-
-            if (!_sessions.TryUpdate(playerId, session, existingSession))
-                continue;
-
-            logger.LogWarning("Session replaced after duplicate login: PlayerId={PlayerId}", playerId);
-            return existingSession.DisconnectForDuplicateLogin;
-        }
-    }
-
-    private bool RemoveSession(long playerId, GameSession session)
-    {
-        bool removed = ((ICollection<KeyValuePair<long, GameSession>>)_sessions)
-            .Remove(new KeyValuePair<long, GameSession>(playerId, session));
-        if (removed)
-            logger.LogInformation("Session removed: PlayerId={PlayerId}", playerId);
-        return removed;
-    }
-
-    private GameSession? GetSession(long playerId)
-    {
-        _sessions.TryGetValue(playerId, out var session);
-        return session;
     }
 
 }
