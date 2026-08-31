@@ -69,7 +69,6 @@ internal static partial class Program
         services.AddSingleton<INetworkService, NetworkService>();
         services.AddSingleton<INatsClientFactory, NatsClientFactory>();
         services.AddSingleton<ServerReadinessState>();
-
         services.AddSingleton<LogManager>();
 
         var redisConfiguration = RedisConfigurationParser.Parse(hostContext.Configuration);

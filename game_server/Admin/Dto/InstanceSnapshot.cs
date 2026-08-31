@@ -46,14 +46,8 @@ public class ClosureSnapshot
     /// <summary>다음 폐쇄 카운트다운 잔여 초 (없으면 -1)</summary>
     public int NextClosureSecondsLeft { get; set; } = -1;
 
-    /// <summary>30초 경고 활성 여부</summary>
+    /// <summary>폐쇄 경고 활성 여부</summary>
     public bool WarningActive { get; set; }
-
-    /// <summary>이 인스턴스에 적용된 폐쇄 시작 딜레이 (초)</summary>
-    public int StartDelaySec { get; set; }
-
-    /// <summary>이 인스턴스에 적용된 폐쇄 간격 (초)</summary>
-    public int IntervalSec { get; set; }
 }
 
 /// <summary>

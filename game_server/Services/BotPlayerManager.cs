@@ -37,18 +37,9 @@ public partial class BotPlayerManager
     public void SetSwarmDodgeResolver(Func<long, long, Vector3f, AreaType, DateTime, SwarmBotDodgeAdvice?> resolver) =>
         _swarmDodgeResolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
 
-    // 스폰 셀 미지정 시 폴백 (School 세대 구역명 — School2 매치는 항상 스폰 셀을 지정받는다).
+    // 스폰 셀 미지정 시 폴백 = 시작방 8곳 (School2 매치는 항상 스폰 셀을 지정받는다).
     private static readonly AreaType[] FallbackSpawnAreas =
-    {
-        AreaType.AdminOffice,
-        AreaType.StaffRoom,
-        AreaType.Classroom2,
-        AreaType.Library,
-        AreaType.Classroom3,
-        AreaType.ExamRoom,
-        AreaType.Classroom4,
-        AreaType.BroadcastRoom,
-    };
+        MatchSpawnData.GetPhaseRoomCandidates().ToArray();
 
     // 배회 폴백(잔상 사냥 실패 시)에서 최저 인원 방으로 흩어질 확률 — 봇이 한 방에 뭉치지 않게.
     private const double SwarmWanderScatterProbability = 0.3;
@@ -94,7 +85,8 @@ public partial class BotPlayerManager
             var startArea = GameMapData.GetCurrentArea(mapId, startCell);
             if (startArea == AreaType.None)
             {
-                startArea = AreaType.Corridor;
+                // 구역 판정 실패 폴백 — 항상 경계 안인 중앙 광장으로 (#310, 구 Corridor 폴백 대체).
+                startArea = AreaType.S2Corridor9;
             }
 
             var startPosition = CellToWorldPosition(mapId, startCell);
@@ -147,8 +139,7 @@ public partial class BotPlayerManager
             return false;
 
         // #272 School2: 대형 개방 구역(운동장·테라스·1차 통로·합류 4곳)은 은둔 파밍처가 아니다.
-        return area is not (AreaType.Ground or AreaType.Gym or AreaType.Storage
-                   or AreaType.S2Ground or AreaType.S2Terrace or AreaType.S2Corridor9
+        return area is not (AreaType.S2Ground or AreaType.S2Terrace or AreaType.S2Corridor9
                    or AreaType.S2Library1 or AreaType.S2Library2
                    or AreaType.S2Gym1 or AreaType.S2Gym2) &&
                GameMapData.GetAreas(mapId).Any(region => region.AreaType == area);

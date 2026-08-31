@@ -34,12 +34,12 @@ public sealed class MatchRosterManagerTests
         manager.RegisterEntry(matchingId, CreateLink(2, 1));
 
         manager.TryEliminatePlayer(matchingId, 2, EliminationReason.MENTAL_ZERO,
-            attackerPlayerId: 1, eliminatedArea: AreaType.Library, isAreaClosureElimination: true);
+            attackerPlayerId: 1, eliminatedArea: AreaType.S2Library1, isAreaClosureElimination: true);
 
         var result = Assert.Single(manager.BuildGameResult(matchingId), row => row.playerId == 2);
 
         Assert.Equal(1, result.attackerPlayerId);
-        Assert.Equal(AreaType.Library, result.eliminatedArea);
+        Assert.Equal(AreaType.S2Library1, result.eliminatedArea);
         Assert.True(result.isAreaClosureElimination);
     }
     [Fact]

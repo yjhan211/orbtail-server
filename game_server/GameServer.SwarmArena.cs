@@ -866,7 +866,7 @@ public partial class GameServer
 
     /// <summary>
     ///     #272 자기장 폐쇄: 구역 웨이브는 자기장에서 파생한 시간표로 닫는다 (SwarmFieldEnabled=false면
-    ///     고정 DefaultP0Waves로 복귀). 경고 15초 → 폐쇄 브로드캐스트. 폐쇄 구역 오염은 자기장
+    ///     폐쇄 없음 — 레거시 DefaultP0Waves 폴백은 #310에서 제거). 경고 15초 → 폐쇄 브로드캐스트. 폐쇄 구역 오염은 자기장
     ///     경사(정산 틱의 GetSwarmFieldCorruptionPerTick)가 전담하고, 신규 몹 스폰 정지는 캠프
     ///     리졸버, 봇·스팟 제외는 IsSwarmAreaOutside가 담당한다.
     /// </summary>
@@ -1277,7 +1277,6 @@ public partial class GameServer
         {
             if ((area.HasValue && info.ZoneId != (int)area.Value) ||
                 info.InteractionType != InteractionType.RNG_COLLECT ||
-                info.ZoneId == (int)AreaType.Corridor ||
                 onCooldown.Contains(info.Id) ||
                 // 경계 밖 구역 스팟은 후보에서 제외 — 최근접이 밖이라고 순례 전체가 멈추면 안 된다.
                 IsSwarmAreaOutside(matchingId, (AreaType)info.ZoneId))
@@ -1838,8 +1837,7 @@ public partial class GameServer
             return directive;
         }
 
-        if (bot.CurrentArea == AreaType.Corridor ||
-            MatchSpawnData.GetPhaseRoomCandidates().Contains(bot.CurrentArea))
+        if (MatchSpawnData.GetPhaseRoomCandidates().Contains(bot.CurrentArea))
         {
             // 경계 밖 사냥터는 제외 — 전부 밖이면 종착지 운동장으로 (운동장은 항상 안이다).
             AreaType huntingArea = SwarmHuntingAreas

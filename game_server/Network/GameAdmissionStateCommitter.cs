@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.contracts.authentication;
 using network.interfaces;
 using StackExchange.Redis;
 

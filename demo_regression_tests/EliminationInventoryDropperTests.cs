@@ -34,7 +34,7 @@ public sealed class EliminationInventoryDropperTests
             groundItems,
             matchingId,
             playerId,
-            AreaType.Classroom3,
+            AreaType.S2Classroom1,
             0f,
             0f);
 
@@ -63,7 +63,7 @@ public sealed class EliminationInventoryDropperTests
             groundItems,
             matchingId,
             botPlayerId,
-            AreaType.Classroom3,
+            AreaType.S2Classroom1,
             0f,
             0f);
         var duplicate = EliminationInventoryDropper.DropAll(
@@ -71,14 +71,14 @@ public sealed class EliminationInventoryDropperTests
             groundItems,
             matchingId,
             botPlayerId,
-            AreaType.Classroom3,
+            AreaType.S2Classroom1,
             0f,
             0f);
 
         Assert.Single(first.SpawnedItems);
         Assert.Empty(duplicate.RemovedItems);
         Assert.Empty(duplicate.SpawnedItems);
-        Assert.Single(groundItems.GetSnapshot(matchingId, AreaType.Classroom3));
+        Assert.Single(groundItems.GetSnapshot(matchingId, AreaType.S2Classroom1));
     }
 
     private static string FindNetworkBasePath()

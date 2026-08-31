@@ -5,69 +5,10 @@ using network.common.data;
 
 namespace game_server.services;
 
-/// <summary>
-/// Survivor Royale P0의 서버 권위 구역 폐쇄·오버타임 상태를 관리한다.
-/// 복도는 모든 방 폐쇄가 끝난 뒤 마지막 웨이브에서만 폐쇄한다.
-/// </summary>
 public class AreaClosureManager
 {
     public const int ClosureWarningSeconds = 15;
     public const int ResourceTickSeconds = 5;
-
-    // #219 폐쇄 부활 (2026-08-08): 클론 맵 기준 — 바깥 포드(교실1·교실2·창고·보건실) →
-    // 중간 포드(고사실·방송실·행정실·교무실) → 쌍 구역(도서관·강당) → 밴드(테라스·복도) 순.
-    // 2026-08-09: 오염 3배 + 운동장 최종 폐쇄 — 종반엔 어디도 안전하지 않다.
-    // 2026-08-10 M3-2: 매치 길이(SWARM_MATCH_DURATION_SECONDS)에 맞춰 압축 —
-    // 운동장 최종 폐쇄 = 타이머 만료 = 승리 판정이 한 시점에 겹친다.
-    // 오염 재조정 (#222 08-10 2차): ×3은 한 틱 360~540 — 즉사 아니면 빈 바 생존만 남는
-    // 이분법이었다. 5초 틱 기준 첫 웨이브 5방(85), 종반 3방(145) 사망으로 완만화 —
-    // 여전히 "즉시 나가야 하는" 압박이되 체력바가 단계적으로 읽힌다.
-    // #226 단계 B: 5분(300초) 오브 점수전으로 재정렬 — 공급 축소(1:30/3:00/4:00)와 맞물려
-    // 마지막 60초는 신규 스폰 없이 절단·순위 역전만 남는다.
-    // 행정실·교무실은 한 웨이브 뒤로 (2026-08-18 유저 지시): 두 방은 정크장 경유라 출구가 멀다 —
-    // 도서관·강당과 같은 200초 웨이브로 옮겨 시간을 준다. 250초 이후는 통로뿐이라 그대로.
-    private static readonly IReadOnlyList<ClosureWaveDefinition> DefaultP0Waves =
-    [
-        new(100, [AreaType.Classroom4, AreaType.Classroom3, AreaType.Storage2, AreaType.Classroom2], 17),
-        new(150, [AreaType.ExamRoom, AreaType.BroadcastRoom], 20),
-        new(200, [AreaType.Library, AreaType.Gym, AreaType.AdminOffice, AreaType.StaffRoom], 23),
-        new(250, [AreaType.Corridor, AreaType.Junkyard], 26),
-        new(300, [AreaType.Ground], 29)
-    ];
-
-    // 순차 폐쇄 (#229): 한 웨이브가 네 구역을 동시에 닫으면 "문이 한꺼번에 내려온" 한 순간만
-    // 남고 어디로 갈지 고르는 시간이 사라진다. 구역을 하나씩 쪼개 원래 시각보다 앞당겨 흩는다 —
-    // 마지막 구역은 원래 시각 그대로라 매치 종료 봉투(최종 운동장 폐쇄 = 타이머 만료)는 안 밀린다.
-    // 순서는 매치마다 섞어 어떤 방이 일찍 닫힐지 미리 알 수 없게 한다.
-    private const int ClosureStaggerStepSeconds = 4;
-
-    private static List<ClosureWaveDefinition> StaggerWaveAreas(List<ClosureWaveDefinition> waves)
-    {
-        var rng = new Random();
-        var staggered = new List<ClosureWaveDefinition>();
-        foreach (var wave in waves)
-        {
-            if (wave.Areas.Count <= 1)
-            {
-                staggered.Add(wave);
-                continue;
-            }
-
-            var shuffled = wave.Areas.OrderBy(_ => rng.Next()).ToList();
-            for (int index = 0; index < shuffled.Count; index++)
-            {
-                // 마지막(index = Count-1)이 원래 시각, 앞선 것들이 그만큼 일찍.
-                int offset = (shuffled.Count - 1 - index) * ClosureStaggerStepSeconds;
-                staggered.Add(wave with
-                {
-                    ClosureAtSeconds = wave.ClosureAtSeconds - offset,
-                    Areas = [shuffled[index]]
-                });
-            }
-        }
-
-        return staggered.OrderBy(wave => wave.ClosureAtSeconds).ToList();
-    }
 
     /// <summary>
     ///     #272 자기장 파생 웨이브: 구역별 완전-밖 시각(안전 반경이 구역 최근접 셀 거리
@@ -94,11 +35,10 @@ public class AreaClosureManager
     private readonly ILogger _logger;
     private readonly Func<DateTime> _utcNow;
 
-    public AreaClosureManager(ILogger logger, MatchingConfigService matchingConfig, Func<DateTime>? utcNow = null)
+    public AreaClosureManager(ILogger logger, Func<DateTime>? utcNow = null)
     {
         _logger = logger;
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
-        _ = matchingConfig; // Legacy admin config is intentionally not used by fixed P0 waves.
     }
 
     /// <summary>
@@ -117,15 +57,15 @@ public class AreaClosureManager
         var mapAreas = GameMapData.GetAreas(Config.SWARM_MATCH_MAP)
             .Select(region => region.AreaType)
             .ToHashSet();
-        var waves = (wavesOverride ?? DefaultP0Waves)
+        // wavesOverride 미지정(자기장 비활성)은 폐쇄 없음 — 레거시 School 폴백 시절에도
+        // School2 구역과 교집합이 없어 빈 웨이브였다 (#310).
+        var waves = (wavesOverride ?? [])
             .Select(wave => wave with
             {
                 Areas = wave.Areas.Where(mapAreas.Contains).ToArray()
             })
             .Where(wave => wave.Areas.Count > 0)
             .ToList();
-        if (wavesOverride == null)
-            waves = StaggerWaveAreas(waves);
 
         var state = new MatchingClosureState
         {
@@ -134,9 +74,7 @@ public class AreaClosureManager
             ClosureOrder = waves.SelectMany(wave => wave.Areas).ToList(),
             ClosedAreas = new HashSet<AreaType>(),
             NextClosureIndex = 0,
-            GameStartTime = _utcNow(),
-            StartDelaySec = waves.Count > 0 ? waves[0].ClosureAtSeconds : 0,
-            IntervalSec = 0
+            GameStartTime = _utcNow()
         };
 
         if (initiallyOpenAreas != null)
@@ -377,18 +315,18 @@ public class AreaClosureManager
     }
 
     public (List<int> closureSequence, List<int> closedAreaIds, int nextAreaType,
-        long nextAtUnix, int secondsLeft, bool warningActive, int startDelaySec, int intervalSec)
+        long nextAtUnix, int secondsLeft, bool warningActive)
         GetClosureSnapshot(long matchingId)
     {
         if (!_states.TryGetValue(matchingId, out var state))
-            return ([], [], -1, -1, -1, false, 0, 0);
+            return ([], [], -1, -1, -1, false);
 
         lock (state.SyncRoot)
         {
             var sequence = state.ClosureOrder.Select(area => (int)area).ToList();
             var closed = state.ClosedAreas.Select(area => (int)area).ToList();
             if (state.NextClosureIndex >= state.Waves.Count)
-                return (sequence, closed, -1, -1, -1, false, state.StartDelaySec, state.IntervalSec);
+                return (sequence, closed, -1, -1, -1, false);
 
             var nextWave = state.Waves[state.NextClosureIndex];
             double elapsedSeconds = (_utcNow() - state.GameStartTime).TotalSeconds;
@@ -400,9 +338,7 @@ public class AreaClosureManager
                 (int)nextWave.Areas[0],
                 nextAtUnix,
                 remainingSeconds > 0 ? (int)Math.Ceiling(remainingSeconds) : 0,
-                remainingSeconds > 0 && remainingSeconds <= ClosureWarningSeconds,
-                state.StartDelaySec,
-                state.IntervalSec);
+                remainingSeconds > 0 && remainingSeconds <= ClosureWarningSeconds);
         }
     }
 
@@ -462,8 +398,6 @@ public class MatchingClosureState
     public int NextClosureIndex { get; set; }
     public DateTime GameStartTime { get; set; }
     public HashSet<int> WarningsSent { get; set; } = new();
-    public int StartDelaySec { get; set; }
-    public int IntervalSec { get; set; }
     public bool PhaseDriven { get; set; }
     public HashSet<AreaType> PhaseWarningAreas { get; set; } = [];
     public DateTime PhaseWarningEndsAtUtc { get; set; }

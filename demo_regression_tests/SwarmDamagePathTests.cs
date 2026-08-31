@@ -190,10 +190,8 @@ public class SwarmDamagePathTests
         Assert.All(doors, door => Assert.NotEqual(AreaType.None, door.AreaTypeB));
         Assert.All(doors, door => Assert.NotEqual(door.AreaType, door.AreaTypeB));
 
-        // 신고 건: 교실1(Classroom4=40) 폐쇄 목록에 고사실 소속 door 21이 들어와야 한다.
-        var classroom1Doors = GameDoorData.GetByAreaType(AreaType.Classroom4).ToList();
-        Assert.Contains(classroom1Doors, door => door.DoorId == 21);
-        Assert.Contains(classroom1Doors, door => door.DoorId == 22);
+        // 구 School 문(21·22) 개별 회귀는 #310에서 레거시 행과 함께 제거 —
+        // 양쪽 구역 조회 보장은 아래 전수 루프가 잠근다.
 
         // 어느 문이든 양쪽 구역 각각으로 조회했을 때 잡혀야 한다.
         foreach (var door in doors)

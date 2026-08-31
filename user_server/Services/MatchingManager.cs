@@ -16,11 +16,6 @@ using user_server.services.scaling;
 
 namespace user_server.services;
 
-internal static class MatchingConfigRedisKeys
-{
-    internal const string Key = "matching_config";
-}
-
 public class MatchingManager : IMatchingManager
 {
     private const string MatchingQueueKey = "matching_queue";

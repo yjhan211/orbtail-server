@@ -44,13 +44,6 @@ internal static class SwarmMonsterArchetypeCatalog
     {
         switch (area)
         {
-            case AreaType.Junkyard:
-                kind = SwarmMonsterKind.Golem;
-                return true;
-            case AreaType.Corridor:
-                kind = SwarmMonsterKind.BabyDragon;
-                return true;
-            case AreaType.Ground:
             case AreaType.S2Corridor9:
                 kind = SwarmMonsterKind.TreeGiant;
                 return true;

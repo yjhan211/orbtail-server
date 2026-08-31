@@ -12,30 +12,11 @@ namespace network.common
     }
 
     /// <summary>
-    ///     구역 식별자. 기존 School 맵은 층 번호 × 10 + 순번 규칙을 사용한다.
+    ///     구역 식별자. 구 School 맵 값(1~42)과 Camp(100)는 #310에서 제거 — S2 블록만 남는다.
     /// </summary>
     public enum AreaType
     {
         None = 0,
-        Junkyard = 1,
-        Ground = 2,
-        Corridor = 7,
-        Storage2 = 9,
-        AdminOffice = 10,
-        Corridor1F = 11,
-        StaffRoom = 12,
-        Gym = 13,
-        Storage = 14,
-        Junkyard2 = 15,
-        Classroom2 = 20,
-        Corridor2F = 21,
-        Library = 22,
-        Classroom3 = 30,
-        Corridor3F = 31,
-        ExamRoom = 32,
-        Classroom4 = 40,
-        Corridor4F = 41,
-        BroadcastRoom = 42,
 
         // #272 School2 (8인 4세트 신맵, 2026-08-27) — 50번대 블록. 기존 School 이름과 겹쳐
         // S2 접두어를 쓴다 (층×10 규약은 이 맵에 해당 없음). 씬 Structure 루트 이름과 1:1.
@@ -69,8 +50,6 @@ namespace network.common
         // 테라스 링 · 중앙 운동장
         S2Terrace = 73,
         S2Ground = 74,
-
-        Camp = 100,
     }
 
     public enum PersonaType
@@ -88,11 +67,9 @@ namespace network.common
         /// <summary>복도 구역인지 확인한다.</summary>
         // S2Corridor9는 #272 가운데 병합(테라스·운동장 흡수) 후 광장 정체성이라 복도가 아니다.
         public static bool IsCorridor(this AreaType area) =>
-            area is AreaType.Corridor or AreaType.Corridor1F or AreaType.Corridor2F or AreaType.Corridor3F or
-                AreaType.Corridor4F ||
-            (area >= AreaType.S2Corridor1 && area <= AreaType.S2Corridor8);
+            area >= AreaType.S2Corridor1 && area <= AreaType.S2Corridor8;
 
-        /// <summary>기존 School 구역의 층 번호를 반환한다. None이면 -1이다.</summary>
+        /// <summary>구역의 10번대 블록 번호를 반환한다 (S2: 시작방 5, 합류·복도 6, 광장 7). None이면 -1이다.</summary>
         public static int GetFloor(this AreaType area) =>
             area == AreaType.None ? -1 : (int)area / 10;
     }

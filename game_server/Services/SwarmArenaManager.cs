@@ -462,10 +462,9 @@ public sealed class SwarmArenaManager
         // 원본 맵의 링·광장 주변에도 몹 수풀이 고르게 깔려 있다 (역기획서 철학 ④).
         // #272 School2: 복도(연결로 1~8)는 무스폰 통로 — 병합된 가운데(S2Corridor9)는
         // 운동장 프로파일(아래 Config 그라운드 분기)을 탄다.
-        if (area == AreaType.Corridor ||
-            (area >= AreaType.S2Corridor1 && area <= AreaType.S2Corridor8))
+        if (area >= AreaType.S2Corridor1 && area <= AreaType.S2Corridor8)
             return CampModeEnabled ? (12, 9d) : (0, 0d);
-        if (area == AreaType.Ground || area == Config.SWARM_MATCH_GROUND_AREA)
+        if (area == Config.SWARM_MATCH_GROUND_AREA)
             return (14, 9d);
         // 시작방은 정확히 2팩(개전 1.5초 + 약 13초)만 주고 완전히 마른다 — 방은 유한
         // 콘텐츠고, 두 팩(약 18킬 = 18석)이면 방 스팟 2개를 열고 떠날 여비까지 나온다.
