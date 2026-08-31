@@ -1113,7 +1113,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                 if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
                 if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
                 if (!_botPlayerManager.HasBots(matchingId)) continue;
-                // 프로토 0: 봇 타겟 추적/떠보기를 위해 같은 매칭 인간 플레이어의 현재 영역을 넘긴다.
+                // 봇 배회 목적지(타겟 추적·흩어지기)를 위해 같은 매칭 인간 플레이어의 현재 영역을 넘긴다.
                 _matchRuntimeRegistry.TryExecute(matchingId, () =>
                 {
                     long snapshotStartedAt = Stopwatch.GetTimestamp();

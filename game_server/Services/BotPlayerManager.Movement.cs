@@ -696,10 +696,9 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     프로토 0: 봇이 도착했거나 경로가 비었을 때 다음 목적지(3·4층 방) 선택 + 경로 계산.
-    ///     - 따라가기: 타겟(TargetPlayerId)이 있는 방으로 이동(회복).
-    ///     - 떠보기: 일정 확률로 최저 인원 방으로 이동(추적자 유인).
-    ///     복도는 목적지가 아니라 통과만(transit). 미션 수집 동선(직책 큐/RNG 채집)은 폐기.
+    ///     봇이 도착했거나 경로가 비었을 때 다음 목적지 선택 + 경로 계산.
+    ///     잔상 사냥 경로가 우선이고, 실패 시 배회 폴백(ChooseSwarmWanderDestination):
+    ///     따라가기(타겟 방)·흩어지기(최저 인원 방)·임의 방. 복도는 목적지가 아니라 통과만(transit).
     /// </summary>
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
         AreaItemStockManager areaItemStockManager, InGameInventoryManager inventoryManager,
@@ -755,8 +754,8 @@ public partial class BotPlayerManager
         if (destination == bot.CurrentArea)
         {
             // 이미 원하는 방(타겟 방 등)에 있음 → 잠시 머물며 회복/기척.
-            // (즉시 재결정 시 떠보기 확률이 매 틱 굴러 곧바로 나가버리는 문제 방지)
-            bot.LoopWaitUntil = RandomizedDelayFromNow(Proto0RoomDwellMinSeconds, Proto0RoomDwellMaxSeconds);
+            // (즉시 재결정 시 흩어지기 확률이 매 틱 굴러 곧바로 나가버리는 문제 방지)
+            bot.LoopWaitUntil = RandomizedDelayFromNow(BotRoomDwellMinSeconds, BotRoomDwellMaxSeconds);
             return;
         }
 
@@ -769,7 +768,7 @@ public partial class BotPlayerManager
         if (path == null || path.Count == 0)
         {
             bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.6);
-            _logger.LogDebug("프로토0 봇 경로 실패: BotId={Bot}, {From} → {To}",
+            _logger.LogDebug("봇 배회 경로 실패: BotId={Bot}, {From} → {To}",
                 bot.PlayerId, bot.CurrentArea, destination);
             return;
         }
@@ -779,9 +778,8 @@ public partial class BotPlayerManager
         bot.MovementDestination = destination;
         bot.LoopWaitUntil = RandomizedDelayFromNow(0.25, 0.6);
         _logger.LogInformation(
-            "Proto0 bot move: BotId={Bot}, Target={Target}, Policy={Policy}, Profile={Profile}, {From}->{To}, Steps={Steps}",
-            bot.PlayerId, bot.TargetPlayerId, ActiveProto0BotPolicy, bot.Proto0Profile,
-            bot.CurrentArea, destination, path.Count);
+            "Bot wander move: BotId={Bot}, Target={Target}, {From}->{To}, Steps={Steps}",
+            bot.PlayerId, bot.TargetPlayerId, bot.CurrentArea, destination, path.Count);
     }
 
 
@@ -982,20 +980,6 @@ public partial class BotPlayerManager
         return true;
     }
 
-    /// <summary>
-    ///     프로토 0 목적지(방) 선택. 떠보기 확률이면 최저 인원 방, 아니면 타겟이 있는 방(회복).
-    ///     타겟 위치를 모르면 현재와 다른 임의 방.
-    /// </summary>
-    private AreaType ChooseProto0Destination(BotPlayerState bot, long matchingId, MapId mapId,
-        IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
-    {
-        return ActiveProto0BotPolicy switch
-        {
-            Proto0BotPolicy.DisguiseMvp => ChooseDisguiseProto0Destination(bot, matchingId, mapId, playerAreas, closureManager),
-            _ => ChooseSimpleProto0Destination(bot, matchingId, mapId, playerAreas, closureManager)
-        };
-    }
-
     private bool TryStartCorridorExitPath(BotPlayerState bot, long matchingId, MapId mapId,
         AreaClosureManager closureManager)
     {
@@ -1071,7 +1055,7 @@ public partial class BotPlayerManager
             && decision.TargetArea != bot.CurrentArea)
             return decision.TargetArea;
 
-        return ChooseProto0Destination(bot, matchingId, mapId, playerAreas, closureManager);
+        return ChooseSwarmWanderDestination(bot, matchingId, mapId, playerAreas, closureManager);
     }
 
 
@@ -1086,20 +1070,25 @@ public partial class BotPlayerManager
             .ToList();
     }
 
-    private AreaType ChooseSimpleProto0Destination(BotPlayerState bot, long matchingId, MapId mapId,
+    /// <summary>
+    ///     배회 폴백 목적지 (#295 — 마니또 세대 위장 AI 삭제 후 단순화): 잔상 사냥·캠프 순례가
+    ///     목적지를 못 정할 때만 온다. 확률적으로 최저 인원 방으로 흩어지고(뭉침 방지),
+    ///     아니면 타겟(미니맵 타깃 마커 대상) 방으로, 타겟 위치 불명이면 임의 방.
+    /// </summary>
+    private AreaType ChooseSwarmWanderDestination(BotPlayerState bot, long matchingId, MapId mapId,
         IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
     {
         var rooms = GetOpenBotDestinationAreas(matchingId, mapId, closureManager);
         if (rooms.Count == 0) return AreaType.None;
 
-        // 떠보기: 최저 인원 방으로 (추적자 유인 — 회복 포기 비용)
-        if (_rng.NextDouble() < Proto0TestProbability)
+        // 흩어지기: 최저 인원 방으로 — 봇이 한 방에 뭉쳐 잔상을 경합하지 않게.
+        if (_rng.NextDouble() < SwarmWanderScatterProbability)
         {
             var pop = CountRoomPopulations(rooms, playerAreas);
             return rooms.OrderBy(a => pop[a]).ThenBy(_ => _rng.Next()).First();
         }
 
-        // 따라가기: 타겟이 있는 방으로 (회복)
+        // 따라가기: 타겟이 있는 방으로
         if (playerAreas.TryGetValue(bot.TargetPlayerId, out var targetArea) && targetArea != AreaType.None)
         {
             if (!targetArea.IsCorridor() && rooms.Contains(targetArea)) return targetArea;
@@ -1114,153 +1103,6 @@ public partial class BotPlayerManager
         return others.Count > 0 ? others[_rng.Next(others.Count)] : AreaType.None;
     }
 
-    /// <summary>프로토 0 위장 정책: 즉시 추적 대신 지연, 미끼 이동, 떠보기 이동을 섞는다.</summary>
-    private AreaType ChooseDisguiseProto0Destination(BotPlayerState bot, long matchingId, MapId mapId,
-        IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
-    {
-        var rooms = GetOpenBotDestinationAreas(matchingId, mapId, closureManager);
-        if (rooms.Count == 0) return AreaType.None;
-
-        var now = DateTime.UtcNow;
-        var pop = CountRoomPopulations(rooms, playerAreas);
-        var config = GetProto0ProfileConfig(bot.Proto0Profile);
-        var targetRoom = ResolveTargetRoom(rooms, playerAreas, bot.TargetPlayerId);
-
-        if (targetRoom != AreaType.None && targetRoom != bot.LastSeenTargetArea)
-        {
-            bot.LastSeenTargetArea = targetRoom;
-            var delaySeconds = RandomRange(Proto0FollowDelayMinSeconds, Proto0FollowDelayMaxSeconds)
-                * config.FollowDelayMultiplier;
-            bot.NextTargetFollowAllowedAt = now.AddSeconds(delaySeconds);
-        }
-        else if (targetRoom == AreaType.None)
-        {
-            bot.LastSeenTargetArea = AreaType.None;
-            bot.NextTargetFollowAllowedAt = DateTime.MinValue;
-        }
-
-        var canFakeMove = bot.Stamina >= config.FakeMoveMinStamina
-            && (now - bot.LastFakeMoveTime).TotalSeconds >= Proto0FakeMoveCooldownSeconds;
-        var canProbe = (now - bot.LastProbeMoveTime).TotalSeconds >= Proto0ProbeCooldownSeconds;
-
-        if (canFakeMove && targetRoom != AreaType.None && now < bot.NextTargetFollowAllowedAt
-            && TryChooseFakeRoom(bot, rooms, pop, targetRoom, config, out var delayedRoom))
-        {
-            bot.LastFakeMoveTime = now;
-            return delayedRoom;
-        }
-
-        var currentIsCrowded = rooms.Contains(bot.CurrentArea)
-            && pop[bot.CurrentArea] >= Proto0CrowdedRoomThreshold;
-        if (canFakeMove && currentIsCrowded && !config.PrefersCrowd
-            && _rng.NextDouble() < config.FakeMoveChance
-            && TryChooseFakeRoom(bot, rooms, pop, targetRoom, config, out var crowdExitRoom))
-        {
-            bot.LastFakeMoveTime = now;
-            return crowdExitRoom;
-        }
-
-        var targetIsPrivate = targetRoom != AreaType.None && pop[targetRoom] <= 1 && targetRoom != bot.CurrentArea;
-        if (canFakeMove && targetIsPrivate && config.AvoidsPrivateTarget
-            && _rng.NextDouble() < config.FakeMoveChance
-            && TryChooseFakeRoom(bot, rooms, pop, targetRoom, config, out var decoyRoom))
-        {
-            bot.LastFakeMoveTime = now;
-            return decoyRoom;
-        }
-
-        if (canProbe && _rng.NextDouble() < config.ProbeChance
-            && TryChooseProbeRoom(bot, rooms, pop, out var probeRoom))
-        {
-            bot.LastProbeMoveTime = now;
-            return probeRoom;
-        }
-
-        if (canFakeMove && _rng.NextDouble() < config.FakeMoveChance
-            && TryChooseFakeRoom(bot, rooms, pop, targetRoom, config, out var fakeRoom))
-        {
-            bot.LastFakeMoveTime = now;
-            return fakeRoom;
-        }
-
-        if (targetRoom != AreaType.None) return targetRoom;
-        return ChooseProfileFallbackRoom(bot, rooms, pop, config);
-    }
-
-    private AreaType ResolveTargetRoom(List<AreaType> rooms, IReadOnlyDictionary<long, AreaType> playerAreas,
-        long targetPlayerId)
-    {
-        if (!playerAreas.TryGetValue(targetPlayerId, out var targetArea) || targetArea == AreaType.None)
-            return AreaType.None;
-
-        if (!targetArea.IsCorridor() && rooms.Contains(targetArea)) return targetArea;
-
-        var floor = targetArea.GetFloor();
-        var floorRooms = rooms.Where(a => a.GetFloor() == floor).ToList();
-        return floorRooms.Count > 0 ? floorRooms[_rng.Next(floorRooms.Count)] : AreaType.None;
-    }
-
-    private bool TryChooseFakeRoom(BotPlayerState bot, List<AreaType> rooms, Dictionary<AreaType, int> pop,
-        AreaType targetRoom, Proto0ProfileConfig config, out AreaType room)
-    {
-        var candidates = rooms
-            .Where(a => a != targetRoom && a != bot.CurrentArea)
-            .ToList();
-
-        if (candidates.Count == 0)
-            candidates = rooms.Where(a => a != targetRoom).ToList();
-
-        if (candidates.Count == 0)
-        {
-            room = AreaType.None;
-            return false;
-        }
-
-        room = ChooseProfileRoom(candidates, pop, config);
-        return true;
-    }
-
-    private bool TryChooseProbeRoom(BotPlayerState bot, List<AreaType> rooms, Dictionary<AreaType, int> pop,
-        out AreaType room)
-    {
-        var candidates = rooms.Where(a => a != bot.CurrentArea).ToList();
-        if (candidates.Count == 0)
-        {
-            room = AreaType.None;
-            return false;
-        }
-
-        room = candidates
-            .OrderBy(a => pop[a])
-            .ThenBy(_ => _rng.Next())
-            .First();
-        return true;
-    }
-
-    private AreaType ChooseProfileFallbackRoom(BotPlayerState bot, List<AreaType> rooms,
-        Dictionary<AreaType, int> pop, Proto0ProfileConfig config)
-    {
-        var candidates = rooms.Where(a => a != bot.CurrentArea).ToList();
-        return candidates.Count > 0
-            ? ChooseProfileRoom(candidates, pop, config)
-            : rooms[_rng.Next(rooms.Count)];
-    }
-
-    private AreaType ChooseProfileRoom(List<AreaType> rooms, Dictionary<AreaType, int> pop,
-        Proto0ProfileConfig config)
-    {
-        if (config.PrefersCrowd)
-            return rooms.OrderByDescending(a => pop[a]).ThenBy(_ => _rng.Next()).First();
-
-        if (config.PrefersQuiet)
-            return rooms.OrderBy(a => pop[a]).ThenBy(_ => _rng.Next()).First();
-
-        return rooms
-            .OrderBy(a => Math.Abs(pop[a] - 2))
-            .ThenBy(_ => _rng.Next())
-            .First();
-    }
-
     private double RandomRange(double min, double max)
     {
         return min + _rng.NextDouble() * (max - min);
@@ -1271,77 +1113,7 @@ public partial class BotPlayerManager
         return DateTime.UtcNow.AddSeconds(RandomRange(minSeconds, maxSeconds));
     }
 
-    private static Proto0ProfileConfig GetProto0ProfileConfig(BotProto0Profile profile)
-    {
-        return profile switch
-        {
-            BotProto0Profile.StealthFirst => new Proto0ProfileConfig(
-                probeChance: 0.16,
-                fakeMoveChance: 0.45,
-                followDelayMultiplier: 1.35,
-                fakeMoveMinStamina: 55,
-                prefersCrowd: false,
-                prefersQuiet: false,
-                avoidsPrivateTarget: true),
-            BotProto0Profile.AggressiveProbe => new Proto0ProfileConfig(
-                probeChance: 0.42,
-                fakeMoveChance: 0.24,
-                followDelayMultiplier: 0.95,
-                fakeMoveMinStamina: 60,
-                prefersCrowd: false,
-                prefersQuiet: true,
-                avoidsPrivateTarget: false),
-            BotProto0Profile.CrowdSeeking => new Proto0ProfileConfig(
-                probeChance: 0.12,
-                fakeMoveChance: 0.26,
-                followDelayMultiplier: 1.1,
-                fakeMoveMinStamina: 60,
-                prefersCrowd: true,
-                prefersQuiet: false,
-                avoidsPrivateTarget: false),
-            BotProto0Profile.QuietRoomSeeking => new Proto0ProfileConfig(
-                probeChance: 0.30,
-                fakeMoveChance: 0.30,
-                followDelayMultiplier: 1.15,
-                fakeMoveMinStamina: 65,
-                prefersCrowd: false,
-                prefersQuiet: true,
-                avoidsPrivateTarget: true),
-            _ => new Proto0ProfileConfig(
-                probeChance: 0.10,
-                fakeMoveChance: 0.12,
-                followDelayMultiplier: 0.7,
-                fakeMoveMinStamina: 75,
-                prefersCrowd: false,
-                prefersQuiet: false,
-                avoidsPrivateTarget: false)
-        };
-    }
-
-    private readonly struct Proto0ProfileConfig
-    {
-        public Proto0ProfileConfig(double probeChance, double fakeMoveChance, double followDelayMultiplier,
-            int fakeMoveMinStamina, bool prefersCrowd, bool prefersQuiet, bool avoidsPrivateTarget)
-        {
-            ProbeChance = probeChance;
-            FakeMoveChance = fakeMoveChance;
-            FollowDelayMultiplier = followDelayMultiplier;
-            FakeMoveMinStamina = fakeMoveMinStamina;
-            PrefersCrowd = prefersCrowd;
-            PrefersQuiet = prefersQuiet;
-            AvoidsPrivateTarget = avoidsPrivateTarget;
-        }
-
-        public double ProbeChance { get; }
-        public double FakeMoveChance { get; }
-        public double FollowDelayMultiplier { get; }
-        public int FakeMoveMinStamina { get; }
-        public bool PrefersCrowd { get; }
-        public bool PrefersQuiet { get; }
-        public bool AvoidsPrivateTarget { get; }
-    }
-
-    /// <summary>프로토 0: 각 방의 현재 인원수(봇+인간) 집계. 떠보기 목적지 선택용.</summary>
+    /// <summary>각 방의 현재 인원수(봇+인간) 집계 — 흩어지기 목적지 선택용.</summary>
     private static Dictionary<AreaType, int> CountRoomPopulations(List<AreaType> rooms,
         IReadOnlyDictionary<long, AreaType> playerAreas)
     {
