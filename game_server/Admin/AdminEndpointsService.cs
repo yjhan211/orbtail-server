@@ -1,5 +1,4 @@
 using game_server.admin.dto;
-using game_server.services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -18,8 +17,6 @@ public static class AdminEndpoints
     /// </summary>
     public static void MapAdminEndpoints(this IEndpointRouteBuilder app, GameServer gameServer)
     {
-        var matchingConfig = gameServer.MatchingConfigService;
-
         // GET /admin/instances — 활성 인스턴스 목록
         app.MapGet("/admin/instances", () =>
         {
@@ -94,7 +91,6 @@ public static class AdminEndpoints
                 var events = gameServer.MatchSummaryFileStore.ReadRawEvents(matchingId, take, since);
                 return Results.Ok(new { matchingId, count = events.Count, events });
             });
-        // GET /admin/matching-config — 현재 글로벌 매칭 config 조회
         app.MapPost("/admin/bot-only-instance", (int? botCount) =>
         {
             var snapshot = gameServer.CreateBotOnlyInstance(botCount ?? 8);
@@ -105,30 +101,6 @@ public static class AdminEndpoints
         // matchingId 생략 시 최신 활성 매치.
         app.MapPost("/admin/swarm-cut-dummy", (long? matchingId) =>
             Results.Ok(gameServer.SetupSwarmCutDummy(matchingId ?? 0)));
-
-        app.MapGet("/admin/matching-config", async () =>
-        {
-            var snapshot = await matchingConfig.GetSnapshotAsync();
-            return Results.Ok(snapshot);
-        });
-
-        // POST /admin/matching-config/closure — 폐쇄 config 변경
-        app.MapPost("/admin/matching-config/closure", async (SetClosureConfigRequest req) =>
-        {
-            if (req.ResetAll)
-            {
-                await matchingConfig.ResetClosureConfigAsync();
-                var snapshot = await matchingConfig.GetSnapshotAsync();
-                return Results.Ok(new { message = "폐쇄 config 기본값 복원 완료. 다음 매칭부터 적용됩니다.", config = snapshot });
-            }
-
-            if (req.ResetSequence)
-                await matchingConfig.ClearForcedSequenceAsync();
-
-            await matchingConfig.SetClosureConfigAsync(req.StartDelaySec, req.IntervalSec, req.Sequence);
-            var updated = await matchingConfig.GetSnapshotAsync();
-            return Results.Ok(new { message = "폐쇄 config 변경 완료. 다음 매칭부터 적용됩니다.", config = updated });
-        });
 
         // GET /admin/health — 어드민 서비스 헬스
         app.MapGet("/admin/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));

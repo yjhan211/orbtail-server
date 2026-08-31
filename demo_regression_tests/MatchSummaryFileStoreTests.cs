@@ -181,8 +181,8 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
         var events = new List<GameEventEntry>
         {
             new() { Seq = 1, TimestampUnixMs = startedAt, Type = "MATCH_STARTED" },
-            new() { Seq = 2, TimestampUnixMs = startedAt + 1_000, Type = "SPAWN_ASSIGNMENT", PlayerId = 1, Area = "Library" },
-            new() { Seq = 3, TimestampUnixMs = startedAt + 2_000, Type = "SPAWN_ASSIGNMENT", PlayerId = 2, Area = "Library" },
+            new() { Seq = 2, TimestampUnixMs = startedAt + 1_000, Type = "SPAWN_ASSIGNMENT", PlayerId = 1, Area = "S2Library1" },
+            new() { Seq = 3, TimestampUnixMs = startedAt + 2_000, Type = "SPAWN_ASSIGNMENT", PlayerId = 2, Area = "S2Library1" },
             new() { Seq = 4, TimestampUnixMs = startedAt + 60_000, Type = "SURVIVOR_FIRST_T2", PlayerId = 1 },
             new() { Seq = 5, TimestampUnixMs = startedAt + 100_000, Type = "SURVIVOR_FIRST_T3", PlayerId = 1 },
             new()
@@ -193,12 +193,12 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
             new()
             {
                 Seq = 7, TimestampUnixMs = startedAt + 160_000, Type = "SUMMON_STONE_AWARDED",
-                PlayerId = 1, Area = "Library", Outcome = "core", SummonStoneDelta = 6
+                PlayerId = 1, Area = "S2Library1", Outcome = "core", SummonStoneDelta = 6
             },
             new()
             {
                 Seq = 8, TimestampUnixMs = startedAt + 170_000, Type = "SUMMON_STONE_AWARDED",
-                PlayerId = 1, Area = "Corridor", Outcome = "normal", SummonStoneDelta = 1
+                PlayerId = 1, Area = "S2Corridor1", Outcome = "normal", SummonStoneDelta = 1
             },
             new()
             {
@@ -230,7 +230,7 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
         Assert.Equal(1, summary.Metrics.SummonStoneSources["corridor"]);
         Assert.Equal(6, summary.Metrics.SummonStoneSources["core"]);
         Assert.Equal(1, summary.Metrics.ContestedAreaEntryCount);
-        var library = Assert.Single(summary.Metrics.AreaContention, metric => metric.Area == "Library");
+        var library = Assert.Single(summary.Metrics.AreaContention, metric => metric.Area == "S2Library1");
         Assert.Equal(2, library.MaxConcurrentPlayers);
         Assert.Equal(2, library.UniqueVisitorCount);
 
@@ -251,27 +251,27 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
             new()
             {
                 Seq = 2, TimestampUnixMs = startedAt + 1_000, Type = "AFTERIMAGE_KILLED",
-                PlayerId = 1, Area = "Library", Outcome = "core"
+                PlayerId = 1, Area = "S2Library1", Outcome = "core"
             },
             new()
             {
                 Seq = 3, TimestampUnixMs = startedAt + 2_000, Type = "AFTERIMAGE_KILLED",
-                PlayerId = 1, Area = "Classroom1", Outcome = "normal"
+                PlayerId = 1, Area = "S2Classroom1", Outcome = "normal"
             },
             new()
             {
                 Seq = 4, TimestampUnixMs = startedAt + 3_000, Type = "AFTERIMAGE_KILLED",
-                PlayerId = 1, Area = "Corridor", Outcome = "normal"
+                PlayerId = 1, Area = "S2Corridor1", Outcome = "normal"
             },
             new()
             {
                 Seq = 5, TimestampUnixMs = startedAt + 4_000, Type = "SUMMON_STONE_AWARDED",
-                PlayerId = 1, Area = "Library", Outcome = "core", SummonStoneDelta = 6
+                PlayerId = 1, Area = "S2Library1", Outcome = "core", SummonStoneDelta = 6
             },
             new()
             {
                 Seq = 6, TimestampUnixMs = startedAt + 5_000, Type = "SUMMON_STONE_AWARDED",
-                PlayerId = 1, Area = "Corridor", Outcome = "pvp", SummonStoneDelta = 2
+                PlayerId = 1, Area = "S2Corridor1", Outcome = "pvp", SummonStoneDelta = 2
             },
             new()
             {
@@ -329,7 +329,7 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
         log.LogEmotionAfterimageKilled(
             210003,
             202101,
-            "Library",
+            "S2Library1",
             isCore: true,
             firstAttackerPlayerId: 11,
             lastAttackerPlayerId: 22,
@@ -384,7 +384,7 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
             new()
             {
                 Seq = 8, TimestampUnixMs = startedAt + 6_000,
-                Type = "AFTERIMAGE_KILLED", Area = "Library", Outcome = "reinforcement"
+                Type = "AFTERIMAGE_KILLED", Area = "S2Library1", Outcome = "reinforcement"
             },
             new()
             {

@@ -137,14 +137,9 @@ namespace network.common.data
 
         private static float GetPassageRadius(DoorInfoData door)
         {
+            // 좁은 통과 반경 예외는 구 School 교실·창고 전용이었다 (#310에서 구역과 함께 제거).
             float interactionRadius = door.InteractDistance > 0f ? door.InteractDistance : 1f;
-            return interactionRadius + (UsesTightPassageRadius(door) ? 0f : PassageRadiusPadding);
-        }
-
-        private static bool UsesTightPassageRadius(DoorInfoData door)
-        {
-            return door.AreaType is AreaType.Classroom2 or AreaType.Classroom3 or AreaType.Classroom4 or
-                AreaType.Storage or AreaType.Storage2;
+            return interactionRadius + PassageRadiusPadding;
         }
 
         private static float GetDistanceSquared(DoorInfoData door, Cell cell)

@@ -10,8 +10,8 @@ public class MonsterSnapshotBatcherTests
     public void CreateAreaChunks_SeparatesAreasAndRespectsPacketLimit()
     {
         var states = Enumerable.Range(1, 12)
-            .Select(id => State(id, AreaType.Classroom4, 48 - id))
-            .Append(State(100, AreaType.Gym, 40))
+            .Select(id => State(id, AreaType.S2Classroom2, 48 - id))
+            .Append(State(100, AreaType.S2Gym1, 40))
             .Reverse()
             .ToList();
 
@@ -23,7 +23,7 @@ public class MonsterSnapshotBatcherTests
         Assert.All(chunks, chunk => Assert.All(chunk.Monsters,
             monster => Assert.Equal(chunk.Area, monster.AreaType)));
         Assert.Equal(Enumerable.Range(1, 12), chunks
-            .Where(chunk => chunk.Area == AreaType.Classroom4)
+            .Where(chunk => chunk.Area == AreaType.S2Classroom2)
             .SelectMany(chunk => chunk.Monsters)
             .Select(monster => monster.MonsterId));
     }

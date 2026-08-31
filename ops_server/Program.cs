@@ -1,4 +1,3 @@
-using Microsoft.Extensions.FileProviders;
 using ops_server.services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,16 +23,6 @@ var app = builder.Build();
 // 정적 파일 (wwwroot/index.html, app.js)
 app.UseDefaultFiles();
 app.UseStaticFiles();
-
-string? itemSpritesRoot = ResolveItemSpritesRoot(builder.Configuration["ItemSpritesRoot"]);
-if (!string.IsNullOrWhiteSpace(itemSpritesRoot))
-{
-    app.UseStaticFiles(new StaticFileOptions
-    {
-        FileProvider = new PhysicalFileProvider(itemSpritesRoot),
-        RequestPath = "/item-sprites",
-    });
-}
 
 // ─── API 라우트 ───────────────────────────────────────────────────────────
 
@@ -74,50 +63,7 @@ app.MapGet("/api/instance/{matchingId:long}/events",
             : Results.Ok(result);
     });
 
-// 프록시: 글로벌 매칭 config 조회
-app.MapGet("/api/matching-config", async (GameServerClient client, CancellationToken ct) =>
-{
-    var result = await client.GetMatchingConfigAsync(ct);
-    return result is null
-        ? Results.Problem("game_server 연결 실패")
-        : Results.Ok(result);
-});
-
-// 프록시: 폐쇄 config 변경
-app.MapPost("/api/matching-config/closure", async (System.Text.Json.JsonElement body, GameServerClient client, CancellationToken ct) =>
-{
-    var result = await client.PostClosureConfigAsync(body, ct);
-    return result is null
-        ? Results.Problem("game_server 연결 실패")
-        : Results.Ok(result);
-});
-
-
 // ops_server 헬스
 app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime.UtcNow }));
 
 app.Run();
-
-static string? ResolveItemSpritesRoot(string? configuredRoot)
-{
-    // 설정(ItemSpritesRoot 환경변수)이 있고 실제로 존재하면 우선 사용 — Docker 마운트 경로 등.
-    // 컨테이너에는 client/ 에셋이 없어 walk-up이 실패하므로 이 경로가 스프라이트 서빙의 핵심이다.
-    if (!string.IsNullOrWhiteSpace(configuredRoot))
-    {
-        string full = Path.GetFullPath(configuredRoot);
-        if (Directory.Exists(full)) return full;
-    }
-
-    foreach (string seed in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
-    {
-        string? cursor = Path.GetFullPath(seed);
-        while (!string.IsNullOrEmpty(cursor))
-        {
-            string candidate = Path.Combine(cursor, "client", "Assets", "Resources", "ItemSprites");
-            if (Directory.Exists(candidate)) return candidate;
-            cursor = Directory.GetParent(cursor)?.FullName;
-        }
-    }
-
-    return null;
-}

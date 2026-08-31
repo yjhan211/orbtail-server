@@ -73,8 +73,6 @@ public partial class GameServer(
     private readonly SwarmMatchPacingState _swarmMatchPacing = new();
     private readonly SummonStoneManager _summonStoneManager = new();
     private readonly MatchRosterManager _matchRosterManager = new(logger);
-    private readonly MatchingConfigService _matchingConfigService = new(cacheHelper, logger);
-    // _areaClosureManager은 InitializeServices()에서 _matchingConfigService 생성 후 초기화
     private AreaClosureManager _areaClosureManager = null!;
     private readonly BotPlayerManager _botPlayerManager = new(logger);
     private readonly GameEventLogManager _gameEventLogManager = new();
@@ -159,9 +157,6 @@ public partial class GameServer(
             logger.LogInformation("Game server starting...");
 
             InitializeServices();
-
-            // Redis에서 폐쇄 config 복원 (재시작/핫리로드 후에도 어드민 설정 유지)
-            await _matchingConfigService.LoadClosureConfigFromRedisAsync();
 
             StartTcpServer();
             StartHeartbeatChecker();
@@ -433,8 +428,7 @@ public partial class GameServer(
     {
         string natsEndpoint = configuration.GetRequiredString("natsEndPoint");
 
-        // MatchingConfigService 의존 — _matchingConfigService 필드 초기화 후 생성
-        _areaClosureManager = new AreaClosureManager(logger, _matchingConfigService);
+        _areaClosureManager = new AreaClosureManager(logger);
         _matchRuntimeCleanupCoordinator = new MatchRuntimeCleanupCoordinator(
             _matchRuntimeRegistry,
             [
@@ -2332,11 +2326,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
     // ===== 운영 어드민 API =====
 
     /// <summary>
-    ///     글로벌 매칭 config 서비스 (AdminEndpoints에서 직접 접근)
-    /// </summary>
-    public MatchingConfigService MatchingConfigService => _matchingConfigService;
-
-    /// <summary>
     ///     운영툴 진행 로그 매니저 (AdminEndpoints에서 events 조회용)
     /// </summary>
     public GameEventLogManager GameEventLogManager => _gameEventLogManager;
@@ -2487,8 +2476,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         var base_ = GetInstanceSnapshot(matchingId);
         if (base_ == null) return null;
 
-        // 폐쇄 스케줄 조립 (startDelaySec, intervalSec 포함)
-        var (sequence, closedIds, nextArea, nextAtUnix, secondsLeft, warningActive, startDelaySec, intervalSec) =
+        var (sequence, closedIds, nextArea, nextAtUnix, secondsLeft, warningActive) =
             _areaClosureManager.GetClosureSnapshot(matchingId);
 
         // 시퀀스 한글명 목록
@@ -2502,9 +2490,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
             NextClosureAreaType = nextArea,
             NextClosureAtUnix = nextAtUnix,
             NextClosureSecondsLeft = secondsLeft,
-            WarningActive = warningActive,
-            StartDelaySec = startDelaySec,
-            IntervalSec = intervalSec
+            WarningActive = warningActive
         };
 
         return base_;

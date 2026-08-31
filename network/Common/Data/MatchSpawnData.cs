@@ -42,14 +42,6 @@ namespace network.common.data
             AreaType.S2AdminOffice2
         };
 
-        private static readonly AreaType[] SpotArenaCandidates =
-        {
-            AreaType.Classroom3,
-            AreaType.Classroom4,
-            AreaType.BroadcastRoom,
-            AreaType.Classroom2,
-        };
-
         public static IReadOnlyList<AreaType> GetPhaseRoomCandidates() =>
             PhaseRoomCandidates.ToArray();
 
@@ -65,16 +57,6 @@ namespace network.common.data
             }
 
             return Cell.Clone(CorridorAnchors[srNumber - 1]);
-        }
-
-        public static Cell GetCorridorSpawnCell(int srNumber)
-        {
-            Cell anchor = GetCorridorAnchor(srNumber);
-            Cell? spawnCell = anchor.GetAdjacentCells()
-                .FirstOrDefault(cell =>
-                    GameMapData.GetCurrentArea(MapId.School, cell) == AreaType.Corridor &&
-                    GameMapData.IsMoveablePosition(MapId.School, cell));
-            return spawnCell is null ? anchor : Cell.Clone(spawnCell);
         }
 
         // #272 8인: 스폰 풀 = 시작방 8곳 전부 — 정원과 일치, 전원 유니크 스폰.

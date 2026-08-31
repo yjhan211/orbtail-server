@@ -21,8 +21,6 @@
         .closure-warning  { background: #7f1d1d; color: #f87171; border: 1px solid #ef4444; animation: pulse 1s infinite; }
         .closure-pending  { background: #1f2937; color: #4b5563; }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.6} }
-        /* 토스트 */
-        #toast { transition: opacity 0.3s; }
         /* 이벤트 로그 타입별 색상 */
         .ev-MOVE      { color: #93c5fd; }
         .ev-RESOURCE  { color: #fcd34d; }
@@ -32,9 +30,6 @@
         .ev-CLOSURE   { color: #fb923c; }
         .ev-SYSTEM    { color: #9ca3af; font-style: italic; }
         .ev-bot       { background: rgba(168, 85, 247, 0.08); }
-        .storylet-row.active { background: rgba(37, 99, 235, 0.22); border-color: #3b82f6; }
-        .storylet-field textarea { min-height: 5.5rem; }
-        .storylet-tag { background: #111827; border: 1px solid #374151; color: #cbd5e1; }
     </style>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen font-mono">
@@ -43,7 +38,7 @@
 <header class="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between">
     <div>
         <h1 class="text-xl font-bold text-white">Manitto Ops Dashboard</h1>
-        <p class="text-xs text-gray-400 mt-0.5">활성 인스턴스 + 플레이어 코어 모니터링</p>
+        <p class="text-xs text-gray-400 mt-0.5">활성 인스턴스 + 플레이어 코어 읽기 전용 모니터링</p>
     </div>
     <div class="text-right">
         <div id="summary" class="text-sm text-gray-300">--</div>
@@ -51,93 +46,8 @@
     </div>
 </header>
 
-<!-- 토스트 알림 -->
-<div id="toast" class="fixed top-6 right-6 z-50 hidden bg-green-800 text-green-100 px-4 py-2 rounded shadow-lg text-sm opacity-0"></div>
-
 <!-- 본문 -->
 <main class="p-6">
-
-    <!-- ══ 글로벌 매칭 Config 패널 ══════════════════════════════════════════ -->
-    <section class="bg-gray-900 border border-blue-900 rounded-lg p-5 mb-6">
-        <div class="flex items-center justify-between mb-4">
-            <h2 class="text-base font-bold text-blue-300">글로벌 매칭 Config</h2>
-            <span class="text-xs text-gray-500">진행 중 인스턴스에 영향 없음 — 다음 매칭부터 적용</span>
-        </div>
-
-        <!-- 현재 config 표시 -->
-        <div id="config-status" class="text-xs text-gray-400 mb-4 bg-gray-800 rounded px-3 py-2">로딩 중...</div>
-
-        <div class="grid grid-cols-1 gap-6">
-            <!-- 폐쇄 Config -->
-            <div>
-                <h3 class="text-sm font-semibold text-gray-300 mb-3">폐쇄 타이밍</h3>
-                <div class="flex flex-col gap-2">
-                    <label class="text-xs text-gray-400">첫 폐쇄 딜레이 (초)
-                        <input id="cfg-start-delay" type="number" min="0" value="300"
-                               class="mt-1 w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white" />
-                    </label>
-                    <label class="text-xs text-gray-400">폐쇄 간격 (초)
-                        <input id="cfg-interval" type="number" min="1" value="180"
-                               class="mt-1 w-full bg-gray-800 border border-gray-600 rounded px-2 py-1 text-sm text-white" />
-                    </label>
-                    <div class="flex gap-2 mt-1">
-                        <button onclick="applyClosureConfig()"
-                                class="flex-1 bg-blue-700 hover:bg-blue-600 text-white text-xs px-3 py-1.5 rounded">
-                            타이밍 적용
-                        </button>
-                        <button onclick="resetClosureConfig()"
-                                class="flex-1 bg-gray-700 hover:bg-gray-600 text-xs px-3 py-1.5 rounded">
-                            기본값 복원
-                        </button>
-                    </div>
-                </div>
-
-                <!-- 폐쇄 순서 -->
-                <h3 class="text-sm font-semibold text-gray-300 mt-4 mb-2">폐쇄 순서</h3>
-                <div class="flex gap-2 mb-2">
-                    <label class="flex items-center gap-1 text-xs cursor-pointer">
-                        <input type="radio" name="seq-mode" id="seq-random" value="random" checked
-                               onchange="onSeqModeChange()" class="accent-blue-500" />
-                        무작위 (기본)
-                    </label>
-                    <label class="flex items-center gap-1 text-xs cursor-pointer">
-                        <input type="radio" name="seq-mode" id="seq-forced" value="forced"
-                               onchange="onSeqModeChange()" class="accent-blue-500" />
-                        강제 지정
-                    </label>
-                </div>
-                <div id="seq-forced-panel" class="hidden">
-                    <p class="text-xs text-gray-500 mb-1">폐쇄 대상 구역을 순서대로 선택 (아래 버튼 클릭으로 추가)</p>
-                    <div class="flex flex-wrap gap-1 mb-2">
-                        <!-- 폐쇄 가능 구역 버튼 -->
-                        <button onclick="addSeqArea(10)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">행정실(10)</button>
-                        <button onclick="addSeqArea(12)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">교무실(12)</button>
-                        <button onclick="addSeqArea(20)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">보건실(20)</button>
-                        <button onclick="addSeqArea(22)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">도서관(22)</button>
-                        <button onclick="addSeqArea(30)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">2-1(30)</button>
-                        <button onclick="addSeqArea(32)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">고사실(32)</button>
-                        <button onclick="addSeqArea(40)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">3-1(40)</button>
-                        <button onclick="addSeqArea(42)" class="seq-area-btn text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">방송실(42)</button>
-                    </div>
-                    <div id="seq-list" class="text-xs text-yellow-300 mb-1 min-h-4">순서 없음</div>
-                    <div class="flex gap-2">
-                        <button onclick="applyForcedSequence()"
-                                class="flex-1 bg-yellow-700 hover:bg-yellow-600 text-white text-xs px-3 py-1.5 rounded">
-                            순서 적용
-                        </button>
-                        <button onclick="clearSeqList()"
-                                class="bg-gray-700 hover:bg-gray-600 text-xs px-3 py-1.5 rounded">
-                            초기화
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-
-
-
-        </div>
-    </section>
 
     <!-- 인스턴스 카드 그리드 -->
     <section id="instance-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-6">
@@ -157,7 +67,6 @@
         <!-- 구역 폐쇄 스케줄 섹션 -->
         <div id="closure-section" class="mb-6">
             <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-2">구역 폐쇄 스케줄</h3>
-            <div id="closure-config-info" class="text-xs text-gray-500 mb-1 hidden"></div>
             <div id="closure-countdown" class="text-xs text-yellow-400 mb-2 hidden"></div>
             <div id="closure-sequence" class="flex flex-wrap gap-1"></div>
         </div>
@@ -201,6 +110,6 @@
     </section>
 </main>
 
-<script src="app.js?v=ops-no-storylet-editor-20260701"></script>
+<script src="app.js?v=ops-readonly-closure-20260831"></script>
 </body>
 </html>

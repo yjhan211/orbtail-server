@@ -60,7 +60,7 @@ public class ProximityAutoCombatResolverTests
         {
             Actor(1, 0f, 0f, weaponItemId: 107000003),
             Actor(2, 4f, 0f),
-            Actor(3, 1f, 0f, area: AreaType.Corridor3F)
+            Actor(3, 1f, 0f, area: AreaType.S2Corridor3)
         };
 
         Assert.Empty(resolver.Resolve(100, actors, now));
@@ -330,13 +330,13 @@ public class ProximityAutoCombatResolverTests
         Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(500)));
 
         // Target 2 disappears but target 3 remains: this is a target change, not a recharge condition.
-        actors[1] = Actor(2, 1f, 0f, area: AreaType.Corridor3F);
+        actors[1] = Actor(2, 1f, 0f, area: AreaType.S2Corridor3);
         Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(600)));
         Assert.Single(resolver.Resolve(198, actors, now.AddMilliseconds(1100)));
         Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(1700)));
 
         // Only now, with no valid target, does the three-second recharge start.
-        actors[2] = Actor(3, 2f, 0f, area: AreaType.Corridor3F);
+        actors[2] = Actor(3, 2f, 0f, area: AreaType.S2Corridor3);
         Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(1800)));
         actors[2] = Actor(3, 2f, 0f);
         Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(2500)));
@@ -388,7 +388,7 @@ public class ProximityAutoCombatResolverTests
         // 조준을 절반만 마친 상태에서 타깃을 잃고, 유예 안에 다시 잡으면 남은 절반만 채운다.
         double halfAimMs = AimMs / 2;
         Assert.Empty(resolver.Resolve(198, actors, now));
-        actors[1] = Actor(2, 1f, 0f, area: AreaType.Corridor3F);
+        actors[1] = Actor(2, 1f, 0f, area: AreaType.S2Corridor3);
         Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(halfAimMs)));
 
         actors[1] = Actor(2, 1f, 0f);
@@ -410,7 +410,7 @@ public class ProximityAutoCombatResolverTests
         };
 
         Assert.Empty(resolver.Resolve(198, actors, now));
-        actors[1] = Actor(2, 1f, 0f, area: AreaType.Corridor3F);
+        actors[1] = Actor(2, 1f, 0f, area: AreaType.S2Corridor3);
         Assert.Empty(resolver.Resolve(198, actors, now.AddMilliseconds(300)));
 
         var reacquiredAt = now.AddMilliseconds(1801);
@@ -513,7 +513,7 @@ public class ProximityAutoCombatResolverTests
         float x,
         float y,
         int weaponItemId = 0,
-        AreaType area = AreaType.Classroom3)
+        AreaType area = AreaType.S2Classroom1)
     {
         bool armed = weaponItemId > 0;
         return new ProximityCombatActor(
