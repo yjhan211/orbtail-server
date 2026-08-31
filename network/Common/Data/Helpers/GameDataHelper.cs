@@ -210,8 +210,7 @@ namespace network.common.data.helpers
             // Interactable object data
             GameInteractableData.Initialize(
                 loadedData[DataFiles.Interactable.Info],
-                loadedData[DataFiles.Interactable.Action],
-                loadedData[DataFiles.Interactable.ItemPool]
+                loadedData[DataFiles.Interactable.Action]
             );
             GameInteractableData.InitializeAreaItemPool(loadedData[DataFiles.Interactable.AreaItemPool]);
 
@@ -235,7 +234,6 @@ namespace network.common.data.helpers
             var errors = new List<string>();
             var itemIds = new HashSet<int>(GameItemData.GetAllList().Select(i => i.Id));
             var buffIds = new HashSet<int>(GameBuffData.GetAll().Select(buff => buff.Id));
-            var poolIds = GameInteractableData.GetAllItemPoolIds();
 
             foreach (int itemId in GameInteractableData.GetAllAreaItemPoolItems())
             {
@@ -249,18 +247,11 @@ namespace network.common.data.helpers
                     errors.Add($"status_effect_info [{effect.Id}]: buff_id={effect.BuffId} not found in buff_info");
             }
 
-            // 1. interactable_action result_type=1(REWARD_POOL) → interactable_item_pool id 존재
+            // 1. interactable_action require_item_id (≠0) → item_info id 존재
             foreach (var info in GameInteractableData.GetAll())
             {
                 foreach (var action in info.Actions)
                 {
-                    if (action.ResultType == ActionResultType.REWARD_POOL && !poolIds.Contains(action.ResultId))
-                    {
-                        errors.Add(
-                            $"interactable_action [{info.Id}_{action.ActionId}]: result_id={action.ResultId}이 item_pool에 없음");
-                    }
-
-                    // 5. interactable_action require_item_id (≠0) → item_info id 존재
                     if (action.RequireItemId != 0 && !itemIds.Contains(action.RequireItemId))
                     {
                         errors.Add(
@@ -311,10 +302,9 @@ namespace network.common.data.helpers
             {
                 public const string Info = "interactable_info.csv";
                 public const string Action = "object_action.csv";  // GDD §2.4.2 — object_type 기반 통합 풀
-                public const string ItemPool = "interactable_item_pool.csv";
                 public const string AreaItemPool = "area_item_pool.csv";  // #135 — 영역 단위 ItemPool
 
-                public static readonly string[] ALL = new[] { Info, Action, ItemPool, AreaItemPool };
+                public static readonly string[] ALL = new[] { Info, Action, AreaItemPool };
             }
 
             public static class Item

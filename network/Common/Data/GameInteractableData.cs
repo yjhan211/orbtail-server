@@ -16,7 +16,6 @@ namespace network.common.data
     {
         private static readonly Dictionary<int, InteractableInfoData> _infos = new();
         private static readonly Dictionary<int, List<InteractableInfoData>> _infosByZone = new();
-        private static readonly Dictionary<int, List<int>> _itemPools = new();
         private static readonly Dictionary<int, List<int>> _areaItemPools = new();
 
         /// <summary>
@@ -58,20 +57,8 @@ namespace network.common.data
         public static List<int> GetAllAreaItemPoolItems() =>
             _areaItemPools.Values.SelectMany(pool => pool).Distinct().ToList();
 
-        public static void Initialize(List<CsvRow> infoData, List<CsvRow> actionData, List<CsvRow> itemPoolData)
+        public static void Initialize(List<CsvRow> infoData, List<CsvRow> actionData)
         {
-            // 아이템 풀 데이터 로드
-            _itemPools.Clear();
-            foreach (var row in itemPoolData)
-            {
-                var poolId = int.Parse(row["id"]);
-                var itemIdListJson = row["item_id_list"];
-                var itemIds = string.IsNullOrEmpty(itemIdListJson) || itemIdListJson == "[]"
-                    ? new List<int>()
-                    : JsonConvert.DeserializeObject<List<int>>(itemIdListJson) ?? new List<int>();
-                _itemPools[poolId] = itemIds;
-            }
-
             // 기존 데이터 클리어
             _infos.Clear();
             _infosByZone.Clear();
@@ -134,16 +121,6 @@ namespace network.common.data
             return row["action_group_key"].Trim().Equals(
                 $"object_{objectType}",
                 StringComparison.OrdinalIgnoreCase);
-        }
-
-        public static List<int> GetItemPool(int poolId)
-        {
-            return _itemPools.TryGetValue(poolId, out var pool) ? pool : new List<int>();
-        }
-
-        public static HashSet<int> GetAllItemPoolIds()
-        {
-            return new HashSet<int>(_itemPools.Keys);
         }
 
         /// <summary>
