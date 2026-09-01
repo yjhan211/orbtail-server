@@ -38,14 +38,85 @@ public sealed class SwarmArenaTickOrderTests
     }
 
     [Fact]
+    public void CombatEntrypoints_KeepResourceCombatBeforeSettlementInsideMatchGate()
+    {
+        string root = FindRepositoryRoot();
+        string proximity = ReadNormalizedSource(
+            root, "game_server", "GameServer.ProximityAutoCombat.cs");
+        string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
+        string settlement = ReadNormalizedSource(
+            root, "game_server", "GameServer.MatchSettlement.cs");
+
+        string proximityTick = ReadMethodSlice(
+            proximity,
+            "private void ProcessProximityAutoCombatTick(object? state)",
+            "private void ProcessProximityAutoCombatForMatching(");
+        AssertInOrder(
+            proximityTick,
+            "Interlocked.Exchange(ref _proximityAutoCombatProcessing, 1)",
+            "_sessionRegistry.SnapshotWhere(",
+            "foreach (long matchingId in GetActiveMatchingIds())",
+            "_matchRuntimeRegistry.TryExecute(",
+            "catch (Exception ex)");
+        string proximityCallback = MaskCommentsAndLiterals(
+            ReadBracedBlockAfterMarker(
+                proximityTick,
+                "_matchRuntimeRegistry.TryExecute(matchingId, () =>"));
+        Assert.Contains(
+            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
+            proximityCallback);
+
+        string resourceTick = ReadMethodSlice(
+            server,
+            "private void ProcessResourceTick(object? state)",
+            "private void ProcessBotElimination(");
+        AssertInOrder(
+            resourceTick,
+            "_sessionRegistry.SnapshotWhere(",
+            "GetActiveMatchingIds()",
+            "if (MatchStartGate.IsGameplayActive(matchingId))",
+            "ProcessResourceTickForMatching(matchingId, activeSessions);",
+            "catch (Exception ex)");
+
+        string matchingSettlement = ReadMethodSlice(
+            settlement,
+            "private void ProcessResourceTickForMatching(",
+            "private void CleanupMatchSettlementState(");
+        string settlementCallback = MaskCommentsAndLiterals(
+            ReadBracedBlockAfterMarker(
+                matchingSettlement,
+                "_matchRuntimeRegistry.TryExecute(matchingId, () =>"));
+        AssertInOrder(
+            settlementCallback,
+            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
+            "var humans = activeSessions",
+            "var bots = _botPlayerManager.GetBots(matchingId)",
+            "target.Session.ModifyStats(",
+            "var eliminatedTargets = targets",
+            "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
+            "target.Session.EliminateForSettlement(",
+            "ProcessBotElimination(",
+            "_matchRosterManager.CheckGameOver(matchingId)",
+            "resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);");
+    }
+
+    [Fact]
     public void SwarmArenaTick_RunsDirectorBeforeGameplayGate()
     {
         string arenaTick = ReadSwarmArenaTick();
+        string arenaCode = MaskCommentsAndLiterals(arenaTick);
 
         AssertInOrder(
-            arenaTick,
+            arenaCode,
             "_swarmMonsterDirector.Tick(",
-            "if (!MatchStartGate.IsGameplayActive(matchingId))",
+            "if (!MatchStartGate.IsGameplayActive(matchingId))");
+
+        string inactiveGameplayBranch = MaskCommentsAndLiterals(
+            ReadBracedBlockAfterMarker(
+                arenaTick,
+                "if (!MatchStartGate.IsGameplayActive(matchingId))"));
+        AssertInOrder(
+            inactiveGameplayBranch,
             "BroadcastMonsterMinimapSnapshot(",
             "return;");
     }
@@ -53,10 +124,25 @@ public sealed class SwarmArenaTickOrderTests
     [Fact]
     public void SwarmArenaTick_KeepsAuthoritativeGameplayPhaseOrder()
     {
-        string arenaTick = ReadSwarmArenaTick();
+        string arenaTickSource = ReadSwarmArenaTick();
+        string arenaTick = MaskCommentsAndLiterals(arenaTickSource);
+        string inactiveGameplayBranch = MaskCommentsAndLiterals(
+            ReadBracedBlockAfterMarker(
+                arenaTickSource,
+                "if (!MatchStartGate.IsGameplayActive(matchingId))"));
+        AssertInOrder(
+            inactiveGameplayBranch,
+            "BroadcastMonsterMinimapSnapshot(",
+            "return;");
 
         AssertInOrder(
             arenaTick,
+            "GrantSwarmStartingOrbs(matchingId, session.PlayerId.Value, session);",
+            "session.SendSummonStoneState();",
+            "SetupSwarmCutDummy(matchingId);",
+            "session.Send(leavePacket);",
+            "_swarmMonsterDirector.Tick(",
+            "if (!MatchStartGate.IsGameplayActive(matchingId))",
             "UpdateSwarmOrbTrails(",
             "ProcessSwarmTrailCuts(",
             "ProcessSwarmRetaliationWindows(",
@@ -69,6 +155,7 @@ public sealed class SwarmArenaTickOrderTests
             "ProcessSwarmSleepRecovery(",
             "ProcessSwarmBotExplores(",
             "ProcessSwarmBotDoorUnlocks(",
+            "BroadcastMonsterMinimapSnapshot(",
             "UpdateSwarmMovementSamples(",
             "BuildSwarmArenaCombatActors(",
             "ProcessSwarmPvpAttackEvents(",
@@ -84,7 +171,83 @@ public sealed class SwarmArenaTickOrderTests
             "CollectSwarmCrossfireAnchoredTargets(",
             "_proximityAutoCombatResolver.Resolve(",
             "TryScheduleSwarmCrossfire(",
-            "_botPlayerManager.TryFinalizeProximityAutoCombatElimination(");
+            "attackerSession?.SendSwarmAfterimageMonsterAttackFeedback(",
+            "BroadcastSpotArenaAttackVfxToTargetAndObservers(",
+            "_botPlayerManager.TryFinalizeProximityAutoCombatElimination(",
+            "ProcessBotElimination(");
+    }
+
+    [Fact]
+    public void CombatPublicationSeams_CharacterizeStateCouplingAndFailureBoundaries()
+    {
+        string root = FindRepositoryRoot();
+        string playerState = ReadNormalizedSource(
+            root, "game_server", "Network", "GameClientSession.PlayerState.cs");
+        string sessionCombat = ReadNormalizedSource(
+            root, "game_server", "Network", "GameClientSession.ProximityAutoCombat.cs");
+        string sessionMatchEnd = ReadNormalizedSource(
+            root, "game_server", "Network", "GameClientSession.MatchEnd.cs");
+        string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
+        string proximity = ReadNormalizedSource(
+            root, "game_server", "GameServer.ProximityAutoCombat.cs");
+
+        string modifyStats = ReadMethodSlice(
+            playerState,
+            "public void ModifyStats(",
+            "private void SendPlayerStatsUpdate(");
+        AssertInOrder(
+            modifyStats,
+            "Corruption = Math.Clamp(",
+            "SendPlayerStatsUpdate(",
+            "CheckResourceElimination(");
+
+        string applyProximityHit = ReadMethodSlice(
+            sessionCombat,
+            "internal void ApplyProximityAutoCombatHit(",
+            "internal void SendProximityAutoCombatAttackFeedback(");
+        AssertInOrder(
+            applyProximityHit,
+            "_gameEventLogManager.LogHit(",
+            "ModifyStats(corruptionDelta: damage, attackerPlayerId: sourcePlayerId);",
+            "SendEncounterEvent(");
+
+        string orbPublicationSteps = ReadMethodSlice(
+            proximity,
+            "private static void CommitAndDispatchOrbVisualPublicationSteps<TStep>(",
+            "private static ImmutableArray<int> CaptureSwarmOrbVisualItemIds(");
+        AssertInOrder(
+            orbPublicationSteps,
+            "foreach (TStep step in steps)",
+            "commit(step);",
+            "dispatch(step);");
+        Assert.False(ContainsCodeToken(orbPublicationSteps, "catch"));
+
+        string botElimination = ReadMethodSlice(
+            server,
+            "private void ProcessBotElimination(",
+            "private void DropBotInventoryAtCurrentPosition(");
+        AssertInOrder(
+            botElimination,
+            "try",
+            "_matchRosterManager.TryEliminatePlayer(",
+            "DropBotInventoryAtCurrentPosition(",
+            "foreach (var s in matchingSessions) s.Send(eliminatedPacket);",
+            "catch (Exception ex)");
+
+        string humanElimination = ReadMethodSlice(
+            sessionMatchEnd,
+            "private void ProcessElimination(",
+            "internal void EliminateForSettlement(");
+        AssertInOrder(
+            humanElimination,
+            "_matchRosterManager.TryEliminatePlayer(",
+            "eliminatedSession.DropAllInventoryAtCurrentPosition();",
+            "session.Send(resultPacket);",
+            "session.Send(eliminatedPacket);",
+            "session.Send(leavePacket);",
+            "_matchRosterManager.CheckGameOver(",
+            "SendGameResult(");
+        Assert.False(ContainsCodeToken(humanElimination, "catch"));
     }
 
     [Fact]
@@ -365,6 +528,180 @@ public sealed class SwarmArenaTickOrderTests
             source,
             "private void ProcessSwarmArenaForMatching(",
             "private double GetSwarmSafeDistance(");
+    }
+
+    private static string ReadBracedBlockAfterMarker(string source, string marker)
+    {
+        string codeOnly = MaskCommentsAndLiterals(source);
+        int markerIndex = codeOnly.IndexOf(marker, StringComparison.Ordinal);
+        Assert.True(markerIndex >= 0, $"Could not find block marker '{marker}'.");
+
+        int openBraceIndex = codeOnly.IndexOf(
+            '{',
+            markerIndex + marker.Length);
+        Assert.True(openBraceIndex >= 0, $"Could not find opening brace after '{marker}'.");
+
+        int depth = 0;
+        for (int index = openBraceIndex; index < codeOnly.Length; index++)
+        {
+            if (codeOnly[index] == '{')
+            {
+                depth++;
+                continue;
+            }
+
+            if (codeOnly[index] != '}')
+                continue;
+
+            depth--;
+            if (depth == 0)
+                return source[(openBraceIndex + 1)..index];
+        }
+
+        Assert.Fail($"Could not find closing brace after '{marker}'.");
+        return string.Empty;
+    }
+
+    private static bool ContainsCodeToken(string source, string token)
+    {
+        string codeOnly = MaskCommentsAndLiterals(source);
+        int searchStart = 0;
+        while (true)
+        {
+            int index = codeOnly.IndexOf(token, searchStart, StringComparison.Ordinal);
+            if (index < 0)
+                return false;
+
+            int end = index + token.Length;
+            bool validStart = index == 0 || !IsIdentifierPart(codeOnly[index - 1]);
+            bool validEnd = end == codeOnly.Length || !IsIdentifierPart(codeOnly[end]);
+            if (validStart && validEnd)
+                return true;
+
+            searchStart = index + 1;
+        }
+    }
+
+    private static bool IsIdentifierPart(char value) =>
+        char.IsLetterOrDigit(value) || value == '_';
+
+    private static string MaskCommentsAndLiterals(string source)
+    {
+        char[] masked = source.ToCharArray();
+        int index = 0;
+        while (index < source.Length)
+        {
+            if (source[index] == '/' && index + 1 < source.Length && source[index + 1] == '/')
+            {
+                int end = index + 2;
+                while (end < source.Length && source[end] != '\r' && source[end] != '\n')
+                    end++;
+                MaskRange(masked, index, end);
+                index = end;
+                continue;
+            }
+
+            if (source[index] == '/' && index + 1 < source.Length && source[index + 1] == '*')
+            {
+                int end = index + 2;
+                while (end + 1 < source.Length &&
+                       (source[end] != '*' || source[end + 1] != '/'))
+                {
+                    end++;
+                }
+                end = end + 1 < source.Length ? end + 2 : source.Length;
+                MaskRange(masked, index, end);
+                index = end;
+                continue;
+            }
+
+            if (source[index] == '\'')
+            {
+                int end = index + 1;
+                while (end < source.Length)
+                {
+                    if (source[end] == '\\')
+                    {
+                        end = Math.Min(source.Length, end + 2);
+                        continue;
+                    }
+
+                    if (source[end++] == '\'')
+                        break;
+                }
+                MaskRange(masked, index, end);
+                index = end;
+                continue;
+            }
+
+            if (source[index] != '"')
+            {
+                index++;
+                continue;
+            }
+
+            int delimiterLength = 1;
+            while (index + delimiterLength < source.Length &&
+                   source[index + delimiterLength] == '"')
+            {
+                delimiterLength++;
+            }
+
+            int literalEnd;
+            if (delimiterLength >= 3)
+            {
+                literalEnd = index + delimiterLength;
+                while (literalEnd < source.Length)
+                {
+                    int quoteRun = 0;
+                    while (literalEnd + quoteRun < source.Length &&
+                           source[literalEnd + quoteRun] == '"')
+                    {
+                        quoteRun++;
+                    }
+                    if (quoteRun >= delimiterLength)
+                    {
+                        literalEnd += delimiterLength;
+                        break;
+                    }
+                    literalEnd++;
+                }
+            }
+            else
+            {
+                bool verbatim =
+                    index > 0 && source[index - 1] == '@' ||
+                    index > 1 && source[index - 2] == '@' && source[index - 1] == '$';
+                literalEnd = index + 1;
+                while (literalEnd < source.Length)
+                {
+                    if (verbatim && source[literalEnd] == '"' &&
+                        literalEnd + 1 < source.Length && source[literalEnd + 1] == '"')
+                    {
+                        literalEnd += 2;
+                        continue;
+                    }
+                    if (!verbatim && source[literalEnd] == '\\')
+                    {
+                        literalEnd = Math.Min(source.Length, literalEnd + 2);
+                        continue;
+                    }
+                    if (source[literalEnd++] == '"')
+                        break;
+                }
+            }
+
+            MaskRange(masked, index, literalEnd);
+            index = literalEnd;
+        }
+
+        return new string(masked);
+    }
+
+    private static void MaskRange(char[] target, int start, int end)
+    {
+        for (int index = start; index < end; index++)
+            target[index] = ' ';
     }
 
     private static void AssertInOrder(string source, params string[] markers)
