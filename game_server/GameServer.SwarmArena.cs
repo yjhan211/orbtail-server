@@ -240,7 +240,7 @@ public partial class GameServer
                 IsSwarmFrontOrbDamaged;
             LogSwarmPairZoneDistances(matchingId);
             // #272 자기장: 수축 시계는 폐쇄 시계와 같은 앵커(AreaClosureManager.GameStartTime)를 쓴다 —
-            // 무장은 폐쇄 틱(ProcessSwarmScheduledClosureTick)의 최초 InitializeMatching이 담당한다.
+            // 무장은 폐쇄 틱(PrepareSwarmScheduledClosureTick)의 최초 InitializeMatching이 담당한다.
             logger.LogInformation(
                 "Swarm pressure field armed: MatchingId={MatchingId}, MaxDistance={MaxDistance}, " +
                 "HoldSeconds={Hold}, ShrinkSeconds={Shrink}",
@@ -845,24 +845,8 @@ public partial class GameServer
     private static IReadOnlyList<ClosureWaveDefinition> GetSwarmFieldWaves() =>
         _swarmFieldDerivedWaves.Value;
 
-    // 자기장 상태 패킷은 매칭당 개전 1회 브로드캐스트 (재접속은 스냅샷이 복원). 폐쇄 틱 단일
-    // 스레드(Timer 콜백 직렬)만 쓰고 손다 — 잠금 불필요.
-
-    /// <summary>
-    ///     #272 자기장 시계 브로드캐스트: 클라 경계 렌더의 유일한 입력. 유예·수축 길이·거리
-    ///     필드는 Common(Config·SwarmPressureField)에서 양쪽이 같은 값을 계산하므로 시작
-    ///     시각만 나른다 — 표시 = 판정.
-    /// </summary>
-    private void BroadcastSwarmFieldState(long matchingId, DateTime fieldStartedAtUtc)
-    {
-        var sessions = GetSessionsByMatch(matchingId);
-        using var packet = global::network.packets.Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);
-        packet.SetBody(MessagePack.MessagePackSerializer.Serialize(new G_TO_C_SWARM_FIELD_STATE
-        {
-            StartedAtUnixMs = new DateTimeOffset(fieldStartedAtUtc).ToUnixTimeMilliseconds()
-        }));
-        foreach (var session in sessions) session.Send(packet);
-    }
+    // 자기장 상태 패킷은 매칭당 개전 1회 브로드캐스트 (재접속은 스냅샷이 복원). Timer 콜백은
+    // 겹칠 수 있으므로 authoritative commit은 match monitor, outbound 순서는 field FIFO가 맡는다.
 
     /// <summary>
     ///     #272 자기장 폐쇄: 구역 웨이브는 자기장에서 파생한 시간표로 닫는다 (SwarmFieldEnabled=false면
@@ -870,58 +854,171 @@ public partial class GameServer
     ///     경사(정산 틱의 GetSwarmFieldCorruptionPerTick)가 전담하고, 신규 몹 스폰 정지는 캠프
     ///     리졸버, 봇·스팟 제외는 IsSwarmAreaOutside가 담당한다.
     /// </summary>
-    private void ProcessSwarmScheduledClosureTick(long matchingId)
+    /// <summary>
+    ///     Commits closure, door, inventory, and event-log state under the match monitor, then
+    ///     freezes its ordered best-effort packet projection. Transport failure never rolls back
+    ///     these authoritative changes.
+    /// </summary>
+    private SwarmClosurePublicationPlan? PrepareSwarmScheduledClosureTick(
+        long matchingId,
+        IReadOnlyList<GameClientSession> sessions)
     {
+        var outbound = ImmutableArray.CreateBuilder<SwarmClosureOutbound>();
+        ImmutableArray<int> allRecipients = CaptureSwarmClosureRecipientOrdinals(
+            sessions,
+            static _ => true);
         var closureState = _areaClosureManager.InitializeMatching(
             matchingId,
             wavesOverride: SwarmFieldEnabled ? GetSwarmFieldWaves() : null);
         if (SwarmFieldEnabled && GetSwarmMatchRuntime(matchingId).Pacing.FieldStateAnnounced.Add(matchingId))
-            BroadcastSwarmFieldState(matchingId, closureState.GameStartTime);
+        {
+            outbound.Add(new SwarmFieldStateOutbound(
+                new DateTimeOffset(closureState.GameStartTime).ToUnixTimeMilliseconds(),
+                allRecipients));
+        }
+
         var closureTick = _areaClosureManager.CheckClosureSchedule(matchingId);
-        if (closureTick.WarningAreas.Count == 0 && closureTick.ClosedAreas.Count == 0)
-            return;
-
-        var sessions = GetSessionsByMatch(matchingId);
-
         foreach (var area in closureTick.WarningAreas)
         {
-            using var warningPacket =
-                global::network.packets.Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
-            warningPacket.SetBody(MessagePack.MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
-            {
-                AreaType = area,
-                SecondsRemaining = closureTick.WarningSeconds,
-                ClosureAtUnixMs = closureTick.ClosureAtUnixMs
-            }));
-            foreach (var session in sessions) session.Send(warningPacket);
+            outbound.Add(new SwarmClosureWarningOutbound(
+                area,
+                closureTick.WarningSeconds,
+                closureTick.ClosureAtUnixMs,
+                allRecipients));
         }
 
         foreach (var area in closureTick.ClosedAreas)
         {
             _gameEventLogManager.LogClosure(matchingId, area.ToString());
-            using var packet = global::network.packets.Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
-            packet.SetBody(MessagePack.MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED
-            {
-                AreaType = area,
-                IsClosed = true
-            }));
-            foreach (var session in sessions) session.Send(packet);
+            outbound.Add(new SwarmAreaClosedOutbound(area, allRecipients));
         }
 
-        if (closureTick.ClosedAreas.Count == 0)
-            return;
+        if (closureTick.ClosedAreas.Count > 0)
+        {
+            // 폐쇄 = 문 잠금 + 틱 오염 (2026-08-18 유저 결정, #227 즉사 퇴역): 닫히는 순간 안에 있어도 죽지
+            // 않는다. 정산 틱(GetClosedAreaCorruptionPerTick)이 5초마다 오염을 얹고, 안에 있는 사람은 자기 구역
+            // 문을 게이지로 따고 나갈 수 있다(밖에서 들어오는 문 따기는 여전히 거절). 자기 구역 문이 잠기는 것은
+            // 그대로다 — "지금 나가야 하는가"의 판단은 경고 15초와 잠긴 문이 만든다.
+            // 2026-08-17 재조정: 폐쇄·경고도 수면을 깨우지 않는다 — 수면 중단은 이동뿐이다.
+            IReadOnlyList<int> lockedDoorIds =
+                _doorStateManager.CloseDoorsForAreas(matchingId, closureTick.ClosedAreas);
+            foreach (int doorId in lockedDoorIds.Distinct())
+                outbound.Add(new SwarmDoorStateOutbound(doorId, allRecipients));
 
-        // 폐쇄 = 문 잠금 + 틱 오염 (2026-08-18 유저 결정, #227 즉사 퇴역): 닫히는 순간 안에 있어도 죽지
-        // 않는다. 정산 틱(GetClosedAreaCorruptionPerTick)이 5초마다 오염을 얹고, 안에 있는 사람은 자기 구역
-        // 문을 게이지로 따고 나갈 수 있다(밖에서 들어오는 문 따기는 여전히 거절). 자기 구역 문이 잠기는 것은
-        // 그대로다 — "지금 나가야 하는가"의 판단은 경고 15초와 잠긴 문이 만든다.
-        // 2026-08-17 재조정: 폐쇄·경고도 수면을 깨우지 않는다 — 수면 중단은 이동뿐이다.
-        var lockedDoorIds = _doorStateManager.CloseDoorsForAreas(matchingId, closureTick.ClosedAreas);
-        BroadcastDoorStateChanges(sessions, lockedDoorIds, false, 0);
+            // 꼬리 파괴: 본인은 밖에 있고 꼬리만 남은 경우가 무보상 파괴 대상이다. 안에 있는 사람의 꼬리는
+            // 본인과 함께 남는다 — 틱 오염이 그 사람의 비용이다.
+            PrepareDestroySwarmOrbsInClosedAreas(
+                matchingId,
+                closureTick.ClosedAreas,
+                sessions,
+                outbound);
+        }
 
-        // 꼬리 파괴: 본인은 밖에 있고 꼬리만 남은 경우가 무보상 파괴 대상이다. 안에 있는 사람의 꼬리는
-        // 본인과 함께 남는다 — 틱 오염이 그 사람의 비용이다.
-        DestroySwarmOrbsInClosedAreas(matchingId, closureTick.ClosedAreas, sessions);
+        return outbound.Count == 0
+            ? null
+            : new SwarmClosurePublicationPlan(matchingId, outbound.ToImmutable());
+    }
+
+    private static ImmutableArray<int> CaptureSwarmClosureRecipientOrdinals(
+        IReadOnlyList<GameClientSession> sessions,
+        Func<GameClientSession, bool> predicate)
+    {
+        var recipients = ImmutableArray.CreateBuilder<int>();
+        for (int ordinal = 0; ordinal < sessions.Count; ordinal++)
+        {
+            if (predicate(sessions[ordinal]))
+                recipients.Add(ordinal);
+        }
+
+        return recipients.ToImmutable();
+    }
+
+    /// <summary>
+    ///     Dispatches one frozen closure plan in legacy packet order. The first transport exception
+    ///     aborts the remaining projection; the surrounding FIFO/lease finally paths still advance.
+    /// </summary>
+    private void DispatchSwarmClosurePublicationPlan(
+        SwarmClosurePublicationPlan plan,
+        IReadOnlyList<GameClientSession> sessions)
+    {
+        foreach (SwarmClosureOutbound outbound in plan.Outbound)
+        {
+            switch (outbound)
+            {
+                case SwarmFieldStateOutbound fieldState:
+                    {
+                        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);
+                        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_FIELD_STATE
+                        {
+                            StartedAtUnixMs = fieldState.StartedAtUnixMs
+                        }));
+                        SendToCapturedRecipients(packet, fieldState.RecipientOrdinals, sessions);
+                        break;
+                    }
+                case SwarmClosureWarningOutbound warning:
+                    {
+                        using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
+                        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
+                        {
+                            AreaType = warning.Area,
+                            SecondsRemaining = warning.SecondsRemaining,
+                            ClosureAtUnixMs = warning.ClosureAtUnixMs
+                        }));
+                        SendToCapturedRecipients(packet, warning.RecipientOrdinals, sessions);
+                        break;
+                    }
+                case SwarmAreaClosedOutbound closed:
+                    {
+                        using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
+                        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED
+                        {
+                            AreaType = closed.Area,
+                            IsClosed = true
+                        }));
+                        SendToCapturedRecipients(packet, closed.RecipientOrdinals, sessions);
+                        break;
+                    }
+                case SwarmDoorStateOutbound door:
+                    {
+                        using var packet = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(
+                            door.DoorId,
+                            false,
+                            ErrorCode.SUCCESS,
+                            0);
+                        SendToCapturedRecipients(packet, door.RecipientOrdinals, sessions);
+                        break;
+                    }
+                case SwarmInventoryUpdateOutbound inventory:
+                    {
+                        foreach (int ordinal in inventory.RecipientOrdinals)
+                        {
+                            if (TryGetCapturedValue(sessions, ordinal, out GameClientSession session))
+                                session.SendInGameInventoryUpdate(inventory.Item.ToModel());
+                        }
+
+                        break;
+                    }
+                case SwarmRingVfxOutbound ring:
+                    {
+                        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_ENCIRCLE_VFX);
+                        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_ENCIRCLE_VFX
+                        {
+                            OwnerPlayerId = ring.OwnerPlayerId,
+                            CenterX = ring.CenterX,
+                            CenterY = ring.CenterY,
+                            Radius = ring.Radius,
+                            Kind = ring.Kind,
+                            VictimPlayerId = ring.VictimPlayerId,
+                            FromOrdinal = ring.FromOrdinal
+                        }));
+                        SendToCapturedRecipients(packet, ring.RecipientOrdinals, sessions);
+                        break;
+                    }
+                default:
+                    throw new InvalidOperationException(
+                        $"Unknown closure outbound type {outbound.GetType().Name} for matching {plan.MatchingId}.");
+            }
+        }
     }
 
     /// <summary>
@@ -929,29 +1026,33 @@ public partial class GameServer
     ///     끝에서부터 무보상 파괴한다 — 소환석 낙수 없음. 긴 꼬리는 점수·화력이 높지만
     ///     폐쇄 전에 더 일찍 철수해야 한다는 관리 비용이 여기서 성립한다.
     /// </summary>
-    private void DestroySwarmOrbsInClosedAreas(
-        long matchingId, IReadOnlyCollection<AreaType> closedAreas, List<GameClientSession> sessions)
+    private void PrepareDestroySwarmOrbsInClosedAreas(
+        long matchingId,
+        IReadOnlyCollection<AreaType> closedAreas,
+        IReadOnlyList<GameClientSession> sessions,
+        ImmutableArray<SwarmClosureOutbound>.Builder outbound)
     {
         // 궤도 배치 (#232): 오브가 본체 곁을 돌아 꼬리가 폐쇄 구역에 남는 상황 자체가 없다.
         if (SwarmOrbOrbitLayout)
             return;
 
         var closed = closedAreas.ToHashSet();
-        var owners = new List<(long PlayerId, Vector3f Position, GameClientSession? Session)>();
-        foreach (var session in sessions)
+        var owners = new List<(long PlayerId, Vector3f Position, int SessionOrdinal)>();
+        for (int ordinal = 0; ordinal < sessions.Count; ordinal++)
         {
+            GameClientSession session = sessions[ordinal];
             if (session.PlayerId.HasValue && !session.IsEliminated &&
                 session.LastValidatedPosition != null)
-                owners.Add((session.PlayerId.Value, session.LastValidatedPosition, session));
+                owners.Add((session.PlayerId.Value, session.LastValidatedPosition, ordinal));
         }
 
         foreach (var bot in _botPlayerManager.GetBots(matchingId))
         {
             if (!bot.IsEliminated && !bot.IsSwarmCutDummy)
-                owners.Add((bot.PlayerId, bot.Position, null));
+                owners.Add((bot.PlayerId, bot.Position, -1));
         }
 
-        foreach (var (playerId, ownerPosition, ownerSession) in owners)
+        foreach (var (playerId, ownerPosition, ownerSessionOrdinal) in owners)
         {
             // 본인이 폐쇄 구역 안이면 꼬리는 그대로 둔다 (2026-08-18): 즉사가 퇴역해 본인은 틱 오염을 받으며
             // 문을 따고 나가는 중이다 — 여기서 꼬리까지 지우면 나가도 빈손이라 살아남을 이유가 없다.
@@ -986,17 +1087,30 @@ public partial class GameServer
             {
                 GetSwarmMatchRuntime(matchingId).TrailCombat.OrbCutCracks.Remove((matchingId, playerId, destroyedItem.ItemUid));
                 GetSwarmMatchRuntime(matchingId).TrailCombat.OrbDurabilityBonus.Remove((matchingId, playerId, destroyedItem.ItemUid));
-                ownerSession?.SendInGameInventoryUpdate(destroyedItem);
+                if (ownerSessionOrdinal >= 0)
+                {
+                    outbound.Add(new SwarmInventoryUpdateOutbound(
+                        SwarmInGameItemSnapshot.Capture(destroyedItem),
+                        [ownerSessionOrdinal]));
+                }
             }
 
             // 파열 연출은 절단 링 재사용 — 전리품은 흩뿌리지 않는다 (폐쇄 파괴 무보상).
             var closedArea = GameMapData.GetCurrentArea(
                 Config.SWARM_MATCH_MAP,
                 ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, suffixPosition));
-            SendSwarmRingVfx(
-                closedArea, playerId, suffixPosition.X, suffixPosition.Y,
-                SwarmTrailCutFlashRadius, sessions, SwarmRingVfxKindCut,
-                victimId: playerId, fromOrdinal: suffixStart);
+            ImmutableArray<int> ringRecipients = CaptureSwarmClosureRecipientOrdinals(
+                sessions,
+                session => session.PlayerId.HasValue && session.CurrentArea == closedArea);
+            outbound.Add(new SwarmRingVfxOutbound(
+                playerId,
+                suffixPosition.X,
+                suffixPosition.Y,
+                SwarmTrailCutFlashRadius,
+                SwarmRingVfxKindCut,
+                playerId,
+                suffixStart,
+                ringRecipients));
             _gameEventLogManager.LogSystem(
                 matchingId,
                 $"closure_orb_destroyed player={playerId} from={suffixStart} count={destroyed.Count}");

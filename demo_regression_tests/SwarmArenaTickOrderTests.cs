@@ -153,6 +153,116 @@ public sealed class SwarmArenaTickOrderTests
     }
 
     [Fact]
+    public void ScheduledClosureTick_CommitsStateBeforeTransportAndPublishesOutsideMatchMonitor()
+    {
+        string root = FindRepositoryRoot();
+        string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
+        string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
+        string coordinator = ReadNormalizedSource(
+            root,
+            "game_server",
+            "Services",
+            "Field",
+            "SwarmClosurePublicationCoordinator.cs");
+        string tick = ReadMethodSlice(
+            server,
+            "private void ProcessAreaClosureTick(object? state)",
+            "// ===== 타겟 위치 전송 =====");
+        string prepare = ReadMethodSlice(
+            arena,
+            "private SwarmClosurePublicationPlan? PrepareSwarmScheduledClosureTick(",
+            "private static ImmutableArray<int> CaptureSwarmClosureRecipientOrdinals(");
+        string dispatch = ReadMethodSlice(
+            arena,
+            "private void DispatchSwarmClosurePublicationPlan(",
+            "private void PrepareDestroySwarmOrbsInClosedAreas(");
+        string orbPrepare = ReadMethodSlice(
+            arena,
+            "private void PrepareDestroySwarmOrbsInClosedAreas(",
+            "// 쌍 깔때기:");
+
+        AssertInOrder(
+            tick,
+            "_matchRuntimeRegistry.TryAcquireOperation(",
+            "sessionSnapshot = GetSessionsByMatch(matchingId).ToArray();",
+            "plan = PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);",
+            "_swarmClosurePublicationCoordinator.ReservePublication(matchingId)",
+            "DispatchWithMatchRuntimeLease(",
+            "_swarmClosurePublicationCoordinator.DispatchInOrder(",
+            "DispatchSwarmClosurePublicationPlan(capturedPlan, capturedSessions)");
+        Assert.DoesNotContain("_matchRuntimeRegistry.TryExecute(", tick);
+        Assert.DoesNotContain(".Send(", tick);
+
+        AssertInOrder(
+            prepare,
+            "_areaClosureManager.InitializeMatching(",
+            "new SwarmFieldStateOutbound(",
+            "_areaClosureManager.CheckClosureSchedule(matchingId)",
+            "new SwarmClosureWarningOutbound(",
+            "_gameEventLogManager.LogClosure(",
+            "new SwarmAreaClosedOutbound(",
+            "_doorStateManager.CloseDoorsForAreas(",
+            "new SwarmDoorStateOutbound(",
+            "PrepareDestroySwarmOrbsInClosedAreas(",
+            "new SwarmClosurePublicationPlan(");
+        Assert.DoesNotContain("Packet.Create(", prepare);
+        Assert.DoesNotContain("PacketMaker.", prepare);
+        Assert.DoesNotContain(".Send(", prepare);
+        Assert.Contains("Transport failure never rolls back", arena);
+
+        AssertInOrder(
+            orbPrepare,
+            "DestroySwarmOrbsFromOrdinal(",
+            ".OrbCutCracks.Remove(",
+            ".OrbDurabilityBonus.Remove(",
+            "new SwarmInventoryUpdateOutbound(",
+            "new SwarmRingVfxOutbound(",
+            "_gameEventLogManager.LogSystem(");
+        Assert.DoesNotContain("Packet.Create(", orbPrepare);
+        Assert.DoesNotContain("PacketMaker.", orbPrepare);
+        Assert.DoesNotContain(".Send(", orbPrepare);
+        Assert.DoesNotContain("SendInGameInventoryUpdate(", orbPrepare);
+        Assert.DoesNotContain("SendSwarmRingVfx(", orbPrepare);
+
+        AssertInOrder(
+            dispatch,
+            "case SwarmFieldStateOutbound",
+            "Protocol.G_TO_C_SWARM_FIELD_STATE",
+            "case SwarmClosureWarningOutbound",
+            "Protocol.G_TO_C_AREA_CLOSURE_WARNING",
+            "case SwarmAreaClosedOutbound",
+            "Protocol.G_TO_C_AREA_CLOSED",
+            "case SwarmDoorStateOutbound",
+            "PacketMaker.G_TO_C_DOOR_STATE_UPDATE(",
+            "case SwarmInventoryUpdateOutbound",
+            "session.SendInGameInventoryUpdate(",
+            "case SwarmRingVfxOutbound",
+            "Protocol.G_TO_C_SWARM_ENCIRCLE_VFX");
+        Assert.Contains("SendToCapturedRecipients(", dispatch);
+        Assert.DoesNotContain("catch", dispatch);
+        Assert.Contains("first transport exception", arena);
+        Assert.Contains("finally", coordinator);
+        Assert.Contains("state.ServingTicket++;", coordinator);
+        Assert.Contains("state.DispatchingTicket = ticket.Sequence;", coordinator);
+    }
+
+    [Fact]
+    public void ScheduledClosurePublicationCleanup_PrecedesAreaStateCleanup()
+    {
+        string root = FindRepositoryRoot();
+        string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
+
+        AssertInOrder(
+            server,
+            "\"bot movement publication\"",
+            "_swarmBotMovementCoordinator.ClearMatching",
+            "\"field closure publication\"",
+            "_swarmClosurePublicationCoordinator.ClearMatching",
+            "\"area closure\"",
+            "_areaClosureManager.CleanupMatching");
+    }
+
+    [Fact]
     public void WindBladeAndOrbBoardState_AreOwnedBySwarmMatchRuntime()
     {
         string root = FindRepositoryRoot();
