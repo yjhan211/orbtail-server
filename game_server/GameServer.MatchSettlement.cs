@@ -2,7 +2,6 @@ using game_server.network;
 using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.common.data;
 using network.helpers;
 
 namespace game_server;
@@ -15,7 +14,6 @@ public partial class GameServer
     {
         _matchRuntimeRegistry.TryExecute(matchingId, () =>
         {
-            // Combat always settles before environmental damage in the same server resource tick.
             ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
 
             var humans = activeSessions
@@ -31,9 +29,6 @@ public partial class GameServer
             int aliveCount = humans.Count + bots.Count;
             if (aliveCount <= 1)
             {
-                // 맵 이동 검증에서는 단독 생존을 승리 상태로 정산하지 않는다.
-                // 실험장(절단·교차사격 샌드박스)도 같다 (2026-08-24): 교차사격 샌드박스가 더미 없이
-                // 봇 전원을 퇴장시키므로, 이 게이트가 없으면 매치가 첫 틱에 단독 생존 승리로 끝난다.
                 if (DevFlags.DisableGameEnd || SwarmDummySandboxActive)
                     return;
 
@@ -44,9 +39,6 @@ public partial class GameServer
                     return;
                 }
 
-                // 사람 세션이 없는 매치(관리자 봇 전용 인스턴스)는 정산 주체가 없어
-                // 최후 1인이 남아도 끝나지 않았다. 오염도가 한계에 닿은 봇이 계속 살아 있는
-                // 채로 매치가 무한히 이어진다.
                 if (humans.Count == 0)
                 {
                     long winnerPlayerId = bots.Count == 1 ? bots[0].PlayerId : 0;
@@ -57,7 +49,6 @@ public partial class GameServer
                 return;
             }
 
-            // Overtime is valid only while at least two survivors remain.
             int overtimeDelta = _areaClosureManager.GetOvertimeCorruptionPerTick(
                 matchingId,
                 ResourceTickIntervalSeconds);
@@ -69,7 +60,6 @@ public partial class GameServer
                     matchingId,
                     session.CurrentArea,
                     ResourceTickIntervalSeconds);
-                // 스웜 자기장: 구역이 아니라 참가자 셀의 중심 거리 기준 연속 압박.
                 if (session.LastValidatedPosition != null)
                     closureDelta += GetSwarmFieldCorruptionPerTick(matchingId, session.LastValidatedPosition);
                 targets.Add(new EnvironmentalTarget(
@@ -186,7 +176,7 @@ public partial class GameServer
                 rank--;
             }
 
-            var (isGameOver, winnerId) = _matchRosterManager.CheckGameOver(matchingId);
+            (bool isGameOver, long? winnerId) = _matchRosterManager.CheckGameOver(matchingId);
             var resultHost = GetSessionsByMatch(matchingId)
                 .FirstOrDefault(session => !session.IsGameEnded);
             if (isGameOver && winnerId.HasValue && resultHost != null)

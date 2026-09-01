@@ -2,9 +2,7 @@ using System.Collections.Concurrent;
 using game_server.network;
 using game_server.services;
 using MessagePack;
-using Microsoft.Extensions.Logging;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 using network.packets;
 

@@ -359,10 +359,9 @@ namespace network.common
         public const int SWARM_EXPLORE_CONSUME_SECONDS = 100_000;
 
         /// <summary>
-        ///     궤도 스쿼드(#217 오브 성장 개편): 6칸 보드를 폐지하고 궤도 오브 수가 곧 성장이다.
-        ///     같은 색 3개가 모이면 자동으로 상위 티어(같은 색)로 합쳐진다 — SB 3머지 문법.
-        ///     SB에는 슬롯 하드캡이 없다 — 오브 수 비례 개봉 비용이 성장을 억제하고, 이 값은
-        ///     이상 상황 방지용 안전상한일 뿐이다. 클라 궤도 슬롯 수와 같아야 한다 (PlayerTool.MaxOrbSlots).
+        ///     오브 꼬리 안전상한 (#232 무한 꼬리): 플레이어에게 보이는 상한은 없고, 소환 비용 곡선이
+        ///     성장을 억제한다. 이 값은 정상 5분 매치에서 닿지 않는 이상 상황 방지용 안전장치일 뿐이다.
+        ///     클라 꼬리 슬롯 수와 같아야 한다 (PlayerTool.MaxOrbSlots).
         /// </summary>
         // 30 → 99 (#226 오브열): 머지 폐지로 성장 = 열 길이 — 사실상 무제한, 비용 곡선이 억제자.
         // 99 → 6 (#232 1절): 꼬리는 6칸 빌드판이다. 성장은 길이가 아니라 유지·합성·교체로 돈다.
@@ -371,7 +370,7 @@ namespace network.common
         // 클라 PlayerTool.MaxOrbSlots(99)와 같아야 한다.
         public const int SWARM_ORB_CAPACITY = 99;
 
-        /// <summary>현재 모드의 오브 보유 상한 — 스웜(궤도 스쿼드)은 9, 레거시 보드는 6.</summary>
+        /// <summary>오브 보유 안전상한 — 무한 꼬리라 실질 상한이 아니다 (SWARM_ORB_CAPACITY 주석 참조).</summary>
         public static int GetOrbCapacity() =>
             SWARM_ORB_CAPACITY;
 
