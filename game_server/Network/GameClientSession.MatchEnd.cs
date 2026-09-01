@@ -224,8 +224,12 @@ public partial class GameClientSession
                 player.TotalDamageDealt,
                 player.TotalRecovery,
                 player.OrbCount)).ToList());
-        MatchSummaryPersistence.Persist(
-            _gameEventLogManager, _matchSummaryFileStore, Logger, matchingId, endReason, winnerId);
+        MatchSummaryPersistenceRequest? summaryRequest = MatchSummaryPersistence.Capture(
+            _gameEventLogManager,
+            Logger,
+            matchingId,
+            endReason,
+            winnerId);
 
         var resultChunks = GameResultPacketChunker.CreateGameResultChunks(winnerId, isTimeout, players);
         foreach (var resultChunk in resultChunks)
@@ -246,7 +250,15 @@ public partial class GameClientSession
         // 결과 화면 이후 퇴장은 페널티 면제
         foreach (var session in allSessions) session.MarkGameEnded();
 
-        _cleanupMatchRuntime(matchingId);
+        Action? afterFinalized = null;
+        if (summaryRequest != null)
+        {
+            MatchSummaryPersistenceRequest capturedSummary = summaryRequest;
+            afterFinalized = () =>
+                MatchSummaryPersistence.Persist(capturedSummary, _matchSummaryFileStore, Logger);
+        }
+
+        _cleanupMatchRuntime(matchingId, afterFinalized);
     }
 
     private List<GameResultPlayerInfo> BuildGameResultPlayers(List<GameClientSession> allSessions, long matchingId,

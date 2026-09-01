@@ -2093,6 +2093,7 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         if (HasHumanSessions(matchingId))
             return;
 
+        MatchSummaryPersistenceRequest? summaryRequest = null;
         bool cleanupAccepted = TryCleanupMatchRuntime(
             matchingId,
             () => !HasHumanSessions(matchingId),
@@ -2122,7 +2123,23 @@ IReadOnlyCollection<GameClientSession> activeSessions)
                     })
                     .ToList();
                 _gameEventLogManager.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);
-                PersistMatchSummary(matchingId, endReason, winnerPlayerId);
+                summaryRequest = MatchSummaryPersistence.Capture(
+                    _gameEventLogManager,
+                    logger,
+                    matchingId,
+                    endReason,
+                    winnerPlayerId);
+            },
+            () =>
+            {
+                MatchSummaryPersistenceRequest? capturedSummary = summaryRequest;
+                if (capturedSummary != null)
+                {
+                    MatchSummaryPersistence.Persist(
+                        capturedSummary,
+                        _matchSummaryFileStore,
+                        logger);
+                }
             });
 
         if (cleanupAccepted)
@@ -2140,25 +2157,23 @@ IReadOnlyCollection<GameClientSession> activeSessions)
     /// </summary>
     private void CleanupMatchRuntime(long matchingId) => CleanupMatchRuntime(matchingId, null);
 
-    private void CleanupMatchRuntime(long matchingId, Action? beforeCleanup)
+    private void CleanupMatchRuntime(long matchingId, Action? afterFinalized)
     {
-        TryCleanupMatchRuntime(matchingId, null, beforeCleanup);
+        TryCleanupMatchRuntime(matchingId, null, null, afterFinalized);
     }
 
     private bool TryCleanupMatchRuntime(
         long matchingId,
         Func<bool>? canFinalize,
-        Action? beforeCleanup)
+        Action? beforeCleanup,
+        Action? afterFinalized = null)
     {
         return _matchRuntimeCleanupCoordinator.TryFinalize(
             matchingId,
             canFinalize,
-            beforeCleanup);
+            beforeCleanup,
+            afterFinalized);
     }
-
-    private void PersistMatchSummary(long matchingId, string endReason, long winnerId) =>
-        MatchSummaryPersistence.Persist(
-            _gameEventLogManager, _matchSummaryFileStore, logger, matchingId, endReason, winnerId);
 
     private async Task CleanupAbandonedMatchingRedisAsync(long matchingId)
     {

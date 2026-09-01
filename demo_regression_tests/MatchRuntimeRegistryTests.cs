@@ -1,4 +1,6 @@
+using System.Reflection;
 using game_server.services;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace demo_regression_tests;
 
@@ -256,7 +258,8 @@ public sealed class MatchRuntimeRegistryTests
                 Assert.True(registry.TryFinalize(
                     matchingId,
                     static () => true,
-                    () => events.Add("cleanup")));
+                    () => events.Add("cleanup"),
+                    () => events.Add("after-finalized")));
                 events.Add("finalize-returned");
                 Assert.True(registry.IsTerminal(matchingId));
                 Assert.False(registry.TryExecute(
@@ -264,10 +267,11 @@ public sealed class MatchRuntimeRegistryTests
                     () => events.Add("late-execution")));
                 events.Add("execution-end");
                 Assert.DoesNotContain("cleanup", events);
+                Assert.DoesNotContain("after-finalized", events);
             }));
 
         Assert.Equal(
-            ["execution-start", "finalize-returned", "execution-end", "cleanup"],
+            ["execution-start", "finalize-returned", "execution-end", "cleanup", "after-finalized"],
             events);
         Assert.Equal(0, registry.ActiveCount);
         Assert.True(registry.IsTerminal(matchingId));
@@ -418,6 +422,7 @@ public sealed class MatchRuntimeRegistryTests
         var registry = new MatchRuntimeRegistry();
         const long matchingId = 41013;
         int cleanupAttempts = 0;
+        int afterFinalizedCount = 0;
 
         Assert.Throws<InvalidOperationException>(() => registry.TryFinalize(
             matchingId,
@@ -426,9 +431,11 @@ public sealed class MatchRuntimeRegistryTests
             {
                 Interlocked.Increment(ref cleanupAttempts);
                 throw new InvalidOperationException("simulated cleanup failure");
-            }));
+            },
+            () => Interlocked.Increment(ref afterFinalizedCount)));
 
         Assert.Equal(1, cleanupAttempts);
+        Assert.Equal(0, afterFinalizedCount);
         Assert.False(registry.IsTerminal(matchingId));
         Assert.Equal(1, registry.ActiveCount);
         Assert.True(registry.TryExecute(matchingId, static () => { }));
@@ -436,10 +443,302 @@ public sealed class MatchRuntimeRegistryTests
         Assert.True(registry.TryFinalize(
             matchingId,
             static () => true,
-            () => Interlocked.Increment(ref cleanupAttempts)));
+            () => Interlocked.Increment(ref cleanupAttempts),
+            () => Interlocked.Increment(ref afterFinalizedCount)));
         Assert.Equal(2, cleanupAttempts);
+        Assert.Equal(1, afterFinalizedCount);
         Assert.True(registry.IsTerminal(matchingId));
         Assert.Equal(0, registry.ActiveCount);
+    }
+
+    [Fact]
+    public void TryFinalize_AfterFinalizedRunsOutsideMonitorExactlyOnce()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41014;
+        Assert.True(registry.TryExecute(matchingId, static () => { }));
+        object syncRoot = GetRuntimeSyncRoot(registry, matchingId);
+        int afterFinalizedCount = 0;
+
+        Assert.True(registry.TryFinalize(
+            matchingId,
+            static () => true,
+            static () => { },
+            () =>
+            {
+                Assert.False(Monitor.IsEntered(syncRoot));
+                Interlocked.Increment(ref afterFinalizedCount);
+            }));
+
+        Assert.Equal(1, afterFinalizedCount);
+        Assert.True(registry.IsTerminal(matchingId));
+        Assert.False(registry.TryFinalize(
+            matchingId,
+            static () => true,
+            static () => { }));
+        Assert.Equal(1, afterFinalizedCount);
+    }
+
+    [Fact]
+    public void TryFinalize_WhenAfterFinalizedThrows_KeepsTerminalTombstone()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41015;
+        int cleanupCount = 0;
+        int afterFinalizedCount = 0;
+
+        Assert.Throws<InvalidOperationException>(() => registry.TryFinalize(
+            matchingId,
+            static () => true,
+            () => Interlocked.Increment(ref cleanupCount),
+            () =>
+            {
+                Interlocked.Increment(ref afterFinalizedCount);
+                throw new InvalidOperationException("simulated post-finalization failure");
+            }));
+
+        Assert.Equal(1, cleanupCount);
+        Assert.Equal(1, afterFinalizedCount);
+        Assert.True(registry.IsTerminal(matchingId));
+        Assert.Equal(0, registry.ActiveCount);
+        Assert.False(registry.TryExecute(matchingId, static () => { }));
+        Assert.False(registry.TryFinalize(
+            matchingId,
+            static () => true,
+            () => Interlocked.Increment(ref cleanupCount)));
+        Assert.Equal(1, cleanupCount);
+        Assert.Equal(1, afterFinalizedCount);
+    }
+
+    [Fact]
+    public void TryFinalize_WhenAnotherFinalizerIsPending_AttachesOnlyCallerPostWork()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41017;
+        var events = new List<string>();
+        int losingPredicateCount = 0;
+        int losingCleanupCount = 0;
+        IDisposable? operation = registry.TryAcquireOperation(matchingId, static () => { });
+        Assert.NotNull(operation);
+
+        Assert.True(registry.TryFinalize(
+            matchingId,
+            static () => true,
+            () => events.Add("winner-cleanup"),
+            () => events.Add("winner-post")));
+        Assert.False(registry.TryFinalize(
+            matchingId,
+            () =>
+            {
+                Interlocked.Increment(ref losingPredicateCount);
+                return true;
+            },
+            () => Interlocked.Increment(ref losingCleanupCount),
+            () => events.Add("loser-post")));
+
+        Assert.Equal(0, losingPredicateCount);
+        Assert.Equal(0, losingCleanupCount);
+        Assert.Empty(events);
+
+        operation!.Dispose();
+
+        Assert.Equal(["winner-cleanup", "winner-post", "loser-post"], events);
+        Assert.Equal(0, losingPredicateCount);
+        Assert.Equal(0, losingCleanupCount);
+        Assert.True(registry.IsTerminal(matchingId));
+
+        operation.Dispose();
+        Assert.Equal(["winner-cleanup", "winner-post", "loser-post"], events);
+    }
+
+    [Fact]
+    public void TryFinalize_WhenCompletionWonTheRace_RunsOnlyCallerPostOutsideMonitor()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41018;
+        int losingPredicateCount = 0;
+        int losingCleanupCount = 0;
+        int postCount = 0;
+        Assert.True(registry.TryExecute(matchingId, static () => { }));
+        object syncRoot = GetRuntimeSyncRoot(registry, matchingId);
+        Assert.True(registry.TryFinalize(
+            matchingId,
+            static () => true,
+            static () => { }));
+
+        Assert.False(registry.TryFinalize(
+            matchingId,
+            () =>
+            {
+                Interlocked.Increment(ref losingPredicateCount);
+                return true;
+            },
+            () => Interlocked.Increment(ref losingCleanupCount),
+            () =>
+            {
+                Assert.False(Monitor.IsEntered(syncRoot));
+                Interlocked.Increment(ref postCount);
+            }));
+
+        Assert.Equal(0, losingPredicateCount);
+        Assert.Equal(0, losingCleanupCount);
+        Assert.Equal(1, postCount);
+    }
+
+    [Fact]
+    public void TryExecute_WhenActionAndPostFail_PreservesBothExceptions()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41019;
+
+        AggregateException exception = Assert.Throws<AggregateException>(() =>
+            registry.TryExecute(
+                matchingId,
+                () =>
+                {
+                    Assert.True(registry.TryFinalize(
+                        matchingId,
+                        static () => true,
+                        static () => { },
+                        () => throw new ApplicationException("post failure")));
+                    throw new InvalidOperationException("action failure");
+                }));
+
+        Assert.Collection(
+            exception.InnerExceptions,
+            failure => Assert.Equal("action failure", failure.Message),
+            failure => Assert.Equal("post failure", failure.Message));
+        Assert.True(registry.IsTerminal(matchingId));
+    }
+
+    [Fact]
+    public void TryAcquireOperation_WhenAcquisitionAndPostFail_PreservesBothExceptions()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41020;
+
+        AggregateException exception = Assert.Throws<AggregateException>(() =>
+            registry.TryAcquireOperation(
+                matchingId,
+                () =>
+                {
+                    Assert.True(registry.TryFinalize(
+                        matchingId,
+                        static () => true,
+                        static () => { },
+                        () => throw new ApplicationException("post failure")));
+                    throw new InvalidOperationException("acquisition failure");
+                }));
+
+        Assert.Collection(
+            exception.InnerExceptions,
+            failure => Assert.Equal("acquisition failure", failure.Message),
+            failure => Assert.Equal("post failure", failure.Message));
+        Assert.True(registry.IsTerminal(matchingId));
+    }
+
+    [Fact]
+    public void TryExecute_WhenActionAndDeferredCleanupFail_PreservesBothExceptions()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41021;
+        int postCount = 0;
+
+        AggregateException exception = Assert.Throws<AggregateException>(() =>
+            registry.TryExecute(
+                matchingId,
+                () =>
+                {
+                    Assert.True(registry.TryFinalize(
+                        matchingId,
+                        static () => true,
+                        () => throw new ApplicationException("cleanup failure"),
+                        () => Interlocked.Increment(ref postCount)));
+                    throw new InvalidOperationException("action failure");
+                }));
+
+        Assert.Collection(
+            exception.InnerExceptions,
+            failure => Assert.Equal("action failure", failure.Message),
+            failure => Assert.Equal("cleanup failure", failure.Message));
+        Assert.Equal(0, postCount);
+        Assert.False(registry.IsTerminal(matchingId));
+        Assert.True(registry.TryExecute(matchingId, static () => { }));
+    }
+
+    [Fact]
+    public void TryAcquireOperation_WhenAcquisitionAndDeferredCleanupFail_PreservesBothExceptions()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41022;
+        int postCount = 0;
+
+        AggregateException exception = Assert.Throws<AggregateException>(() =>
+            registry.TryAcquireOperation(
+                matchingId,
+                () =>
+                {
+                    Assert.True(registry.TryFinalize(
+                        matchingId,
+                        static () => true,
+                        () => throw new ApplicationException("cleanup failure"),
+                        () => Interlocked.Increment(ref postCount)));
+                    throw new InvalidOperationException("acquisition failure");
+                }));
+
+        Assert.Collection(
+            exception.InnerExceptions,
+            failure => Assert.Equal("acquisition failure", failure.Message),
+            failure => Assert.Equal("cleanup failure", failure.Message));
+        Assert.Equal(0, postCount);
+        Assert.False(registry.IsTerminal(matchingId));
+        Assert.True(registry.TryExecute(matchingId, static () => { }));
+    }
+
+    [Fact]
+    public void CleanupCoordinator_DeferredAfterFinalizedFailure_DoesNotUndoTerminalState()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41016;
+        var events = new List<string>();
+        var coordinator = new MatchRuntimeCleanupCoordinator(
+            registry,
+            [new MatchRuntimeCleanupStep("component", _ => events.Add("cleanup"))],
+            NullLogger.Instance);
+        IDisposable? operation = registry.TryAcquireOperation(matchingId, static () => { });
+        Assert.NotNull(operation);
+
+        Assert.True(coordinator.TryFinalize(
+            matchingId,
+            beforeCleanup: () => events.Add("before"),
+            afterFinalized: () =>
+            {
+                events.Add("after-finalized");
+                throw new InvalidOperationException("simulated post-finalization failure");
+            }));
+        Assert.Empty(events);
+
+        operation!.Dispose();
+
+        Assert.Equal(["before", "cleanup", "after-finalized"], events);
+        Assert.True(registry.IsTerminal(matchingId));
+        Assert.Equal(0, registry.ActiveCount);
+        operation.Dispose();
+        Assert.Equal(["before", "cleanup", "after-finalized"], events);
+    }
+
+    private static object GetRuntimeSyncRoot(MatchRuntimeRegistry registry, long matchingId)
+    {
+        FieldInfo runtimesField = typeof(MatchRuntimeRegistry).GetField(
+            "_activeRuntimes",
+            BindingFlags.Instance | BindingFlags.NonPublic)!;
+        object runtimes = runtimesField.GetValue(registry)!;
+        MethodInfo tryGetValue = runtimes.GetType().GetMethod("TryGetValue")!;
+        object?[] arguments = [matchingId, null];
+
+        Assert.True((bool)tryGetValue.Invoke(runtimes, arguments)!);
+        object runtime = arguments[1]!;
+        return runtime.GetType().GetProperty("SyncRoot")!.GetValue(runtime)!;
     }
 
     private static void UpdateMaximum(ref int maximum, int candidate)

@@ -17,13 +17,45 @@ internal sealed class MatchRuntimeCleanupCoordinator(
     ILogger logger)
 {
     /// <summary>
-    ///     Attempts the Active-to-Finalizing transition and runs the cleanup plan exactly once.
-    ///     The optional predicate and pre-cleanup action execute under the runtime lifecycle boundary.
+    ///     Attempts to register the ordered cleanup plan and guarded post-commit continuation.
     /// </summary>
+    /// <returns>
+    ///     <list type="table">
+    ///         <listheader>
+    ///             <term>Result and state</term>
+    ///             <description>Contract</description>
+    ///         </listheader>
+    ///         <item>
+    ///             <term>true / Active winner</term>
+    ///             <description>The predicate and before-cleanup action run under the lifecycle boundary,
+    ///             cleanup runs exactly once, and post runs after commit outside it.</description>
+    ///         </item>
+    ///         <item>
+    ///             <term>false / Active rejected or invalid id</term>
+    ///             <description>No cleanup or post is registered.</description>
+    ///         </item>
+    ///         <item>
+    ///             <term>false / Finalizing</term>
+    ///             <description>Before-cleanup and component cleanup are not repeated; a non-null guarded
+    ///             post is attached to the pending finalization.</description>
+    ///         </item>
+    ///         <item>
+    ///             <term>false / Completed or tombstoned</term>
+    ///             <description>Before-cleanup and component cleanup are not repeated; a non-null guarded
+    ///             post executes immediately outside the monitor.</description>
+    ///         </item>
+    ///         <item>
+    ///             <term>false / exception</term>
+    ///             <description>The exception is logged; registry cleanup/post state follows the transition
+    ///             outcome described above.</description>
+    ///         </item>
+    ///     </list>
+    /// </returns>
     public bool TryFinalize(
         long matchingId,
         Func<bool>? canFinalize = null,
-        Action? beforeCleanup = null)
+        Action? beforeCleanup = null,
+        Action? afterFinalized = null)
     {
         try
         {
@@ -34,7 +66,9 @@ internal sealed class MatchRuntimeCleanupCoordinator(
 
                 foreach (MatchRuntimeCleanupStep step in cleanupSteps)
                     RunStep(matchingId, step.Name, () => step.Cleanup(matchingId));
-            });
+            }, afterFinalized == null
+                ? null
+                : () => RunStep(matchingId, "match post-finalization", afterFinalized));
         }
         catch (Exception ex)
         {
