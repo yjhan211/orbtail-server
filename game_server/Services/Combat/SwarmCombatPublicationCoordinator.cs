@@ -111,6 +111,25 @@ internal sealed class SwarmCombatPublicationCoordinator
     ///     Captures the current packet as immutable recorded wire bytes. Returning false means that
     ///     no live capture owns this execution context and the caller should perform its normal send.
     /// </summary>
+    public bool TryCapturePacket(Action<IPacket> sendDirect, IPacket packet)
+    {
+        ArgumentNullException.ThrowIfNull(sendDirect);
+        ArgumentNullException.ThrowIfNull(packet);
+
+        if (_dispatchDepth.Value > 0)
+            return false;
+
+        CaptureFrame? frame = _activeCapture.Value;
+        if (frame == null || !ReferenceEquals(frame.Owner, this))
+            return false;
+
+        return TryCapturePacket(new PacketRecipient(sendDirect), packet);
+    }
+
+    /// <summary>
+    ///     Captures for an already frozen recipient identity. Tests and future publication adapters
+    ///     can retain this wrapper when constructing several ordered packet steps for one recipient.
+    /// </summary>
     public bool TryCapturePacket(PacketRecipient recipient, IPacket packet)
     {
         ArgumentNullException.ThrowIfNull(recipient);

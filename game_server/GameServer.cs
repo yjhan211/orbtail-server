@@ -74,6 +74,7 @@ public partial class GameServer(
         _matchingLifecycleTerminalSubjects = new();
     private readonly ConcurrentQueue<long> _matchingLifecycleTerminalMatchOrder = new();
     private readonly MatchRuntimeRegistry _matchRuntimeRegistry = new();
+    private readonly SwarmCombatPublicationCoordinator _swarmCombatPublicationCoordinator = new();
     private MatchRuntimeCleanupCoordinator _matchRuntimeCleanupCoordinator = null!;
     private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
     private SwarmClosurePublicationCoordinator _swarmClosurePublicationCoordinator = null!;
@@ -136,6 +137,15 @@ public partial class GameServer(
 
     private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
         _swarmMatchRuntimes.GetOrCreate(matchingId);
+
+    private void RegisterCombatPublicationMatching(long matchingId)
+    {
+        if (!_swarmCombatPublicationCoordinator.RegisterMatching(matchingId))
+        {
+            throw new InvalidOperationException(
+                $"Combat publication state was already registered for match {matchingId}.");
+        }
+    }
 
     private bool IsSwarmFrontOrbDamaged(long matchingId, long playerId) =>
         _swarmMatchRuntimes.TryGet(matchingId, out var runtime) &&
@@ -441,9 +451,13 @@ public partial class GameServer(
             _encounterRevealManager,
             _gameEventLogManager);
         _swarmClosurePublicationCoordinator = new SwarmClosurePublicationCoordinator();
+        _matchRuntimeRegistry.SetRuntimeInitializer(RegisterCombatPublicationMatching);
         _matchRuntimeCleanupCoordinator = new MatchRuntimeCleanupCoordinator(
             _matchRuntimeRegistry,
             [
+                new MatchRuntimeCleanupStep(
+                    "combat publication",
+                    _swarmCombatPublicationCoordinator.ClearMatching),
                 new MatchRuntimeCleanupStep(
                     "session runtime",
                     GameClientSession.CleanupAbandonedMatchingRuntime),
@@ -1850,6 +1864,7 @@ public partial class GameServer(
                 _gameEventLogManager,
                 _matchSummaryFileStore,
                 _encounterRevealManager,
+                _swarmCombatPublicationCoordinator.TryCapturePacket,
                 _matchRuntimeRegistry.TryAcquireOperation,
                 _matchRuntimeRegistry.TryExecute,
                 _matchRuntimeRegistry.TryBindOwnerFence,

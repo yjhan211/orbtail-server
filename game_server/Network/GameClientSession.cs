@@ -56,6 +56,8 @@ public partial class GameClientSession : SessionBase
     private readonly GameEventLogManager _gameEventLogManager;
     private readonly MatchSummaryFileStore _matchSummaryFileStore;
     private readonly EncounterRevealManager _encounterRevealManager;
+    private readonly Func<Action<IPacket>, IPacket, bool>? _tryCaptureCombatPublication;
+    private readonly Action<IPacket>? _sendCombatPublicationDirect;
     private readonly GameAdmissionStateCommitter _admissionStateCommitter;
 
     private bool _isSleeping;
@@ -168,6 +170,7 @@ public partial class GameClientSession : SessionBase
         GameEventLogManager gameEventLogManager,
         MatchSummaryFileStore matchSummaryFileStore,
         EncounterRevealManager encounterRevealManager,
+        Func<Action<IPacket>, IPacket, bool> tryCaptureCombatPublication,
         Func<long, Action, IDisposable?> acquireMatchRuntimeOperation,
         Func<long, Action, bool> executeMatchRuntime,
         Func<long, long, bool> bindMatchOwnerFence,
@@ -195,6 +198,8 @@ public partial class GameClientSession : SessionBase
         _gameEventLogManager = gameEventLogManager;
         _matchSummaryFileStore = matchSummaryFileStore;
         _encounterRevealManager = encounterRevealManager;
+        _tryCaptureCombatPublication = tryCaptureCombatPublication;
+        _sendCombatPublicationDirect = SendCombatPublicationDirect;
         _admissionStateCommitter = new GameAdmissionStateCommitter(cacheHelper, logger);
         _acquireMatchRuntimeOperation = acquireMatchRuntimeOperation;
         _executeMatchRuntime = executeMatchRuntime;
@@ -210,6 +215,18 @@ public partial class GameClientSession : SessionBase
         InitializeProtocolHandlers();
         Logger.LogInformation("GameClientSession created");
     }
+
+    public override void Send(IPacket packet)
+    {
+        Func<Action<IPacket>, IPacket, bool>? tryCapture = _tryCaptureCombatPublication;
+        Action<IPacket>? sendDirect = _sendCombatPublicationDirect;
+        if (tryCapture != null && sendDirect != null && tryCapture(sendDirect, packet))
+            return;
+
+        base.Send(packet);
+    }
+
+    private void SendCombatPublicationDirect(IPacket packet) => base.Send(packet);
 
     protected override bool TryAcquireMessageScope(out IDisposable? scope)
     {

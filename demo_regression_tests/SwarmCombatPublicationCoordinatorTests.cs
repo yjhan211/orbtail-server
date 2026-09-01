@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using game_server.services;
 using network.common;
+using network.interfaces;
 using network.packets;
 
 namespace demo_regression_tests;
@@ -369,11 +371,385 @@ public sealed class SwarmCombatPublicationCoordinatorTests
                 coordinator.TryBeginRealtimeTurn(matchingId));
     }
 
+    [Fact]
+    public void CaptureDelegate_WithoutFrameReturnsFalseWithoutMutatingPacket()
+    {
+        var coordinator = new SwarmCombatPublicationCoordinator();
+        int directSendCount = 0;
+        Action<IPacket> sendDirect = _ => directSendCount++;
+        using var packet = Packet.Create((int)Protocol.G_TO_C_HEART_BEAT, 7017);
+        packet.SetBody([1, 7]);
+        byte[] before = packet.ToBytes();
+
+        Assert.False(coordinator.TryCapturePacket(sendDirect, packet));
+
+        Assert.Equal(before, packet.ToBytes());
+        Assert.Equal(0, directSendCount);
+    }
+
+    [Fact]
+    public void CaptureDelegate_ActiveFrameDefersOneExactWireReplay()
+    {
+        const long matchingId = 61_026;
+        int bodyOffset = Config.HEADER_SIZE + sizeof(int) + sizeof(long);
+        SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
+        using SwarmCombatPublicationCoordinator.PublicationTurn turn =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginRealtimeTurn(matchingId));
+        var sent = new List<byte[]>();
+        Action<IPacket> sendDirect = packet => sent.Add(packet.ToBytes());
+        using SwarmCombatPublicationCoordinator.CaptureScope capture = coordinator.BeginCapture(turn);
+        byte[] expected;
+        using (var packet = Packet.Create((int)Protocol.G_TO_C_HEART_BEAT, 7026))
+        {
+            packet.SetBody([2, 6]);
+            Assert.True(coordinator.TryCapturePacket(sendDirect, packet));
+            expected = packet.ToBytes();
+            packet.Buffer[bodyOffset] = 99;
+        }
+
+        Assert.Empty(sent);
+        SwarmCombatPublicationCoordinator.PublicationPlan plan = capture.Freeze();
+        coordinator.DispatchAndRetire(turn, plan);
+
+        Assert.Single(sent);
+        Assert.Equal(expected, sent[0]);
+    }
+
+    [Fact]
+    public void MatchRuntimeInitializer_RunsOnceForEveryLazyCreationPath()
+    {
+        var initialized = new Dictionary<long, int>();
+        var registry = new MatchRuntimeRegistry();
+        registry.SetRuntimeInitializer(matchingId =>
+            initialized[matchingId] = initialized.GetValueOrDefault(matchingId) + 1);
+
+        Assert.True(registry.TryExecute(61_018, static () => { }));
+        Assert.True(registry.TryBindOwnerFence(61_018, ownerFence: 18));
+        using IDisposable executionFirst = Assert.IsAssignableFrom<IDisposable>(
+            registry.TryAcquireOperation(61_018, static () => { }));
+
+        Assert.True(registry.TryBindOwnerFence(61_019, ownerFence: 19));
+        Assert.True(registry.TryExecute(61_019, static () => { }));
+
+        using IDisposable leaseFirst = Assert.IsAssignableFrom<IDisposable>(
+            registry.TryAcquireOperation(61_020, static () => { }));
+        Assert.True(registry.TryExecute(61_020, static () => { }));
+
+        Assert.True(registry.TryFinalize(
+            61_021,
+            static () => true,
+            static () => { }));
+
+        Assert.Equal(4, initialized.Count);
+        Assert.All(initialized.Values, count => Assert.Equal(1, count));
+    }
+
+    [Fact]
+    public void MatchRuntimeInitializer_MustBeConfiguredBeforeRuntimeUse()
+    {
+        var registry = new MatchRuntimeRegistry();
+        Assert.True(registry.TryExecute(61_022, static () => { }));
+
+        Assert.Throws<InvalidOperationException>(
+            () => registry.SetRuntimeInitializer(static _ => { }));
+    }
+
+    [Fact]
+    public void MatchRuntimeInitializer_FailureIsRetriedBeforeActionRuns()
+    {
+        const long matchingId = 61_024;
+        int initializationAttempts = 0;
+        int actionCount = 0;
+        var registry = new MatchRuntimeRegistry();
+        registry.SetRuntimeInitializer(_ =>
+        {
+            initializationAttempts++;
+            if (initializationAttempts == 1)
+                throw new InvalidOperationException("registration failed");
+        });
+
+        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
+            () => registry.TryExecute(matchingId, () => actionCount++));
+        Assert.Equal("registration failed", failure.Message);
+        Assert.Equal(0, actionCount);
+
+        Assert.True(registry.TryExecute(matchingId, () => actionCount++));
+        Assert.Equal(2, initializationAttempts);
+        Assert.Equal(1, actionCount);
+    }
+
+    [Fact]
+    public void MatchRuntimeInitializer_CannotBeConfiguredAfterRemovedRuntimeWasUsed()
+    {
+        const long matchingId = 61_025;
+        var registry = new MatchRuntimeRegistry();
+        Assert.True(registry.TryExecute(matchingId, static () => { }));
+        Assert.True(registry.TryFinalize(
+            matchingId,
+            static () => true,
+            static () => { }));
+        Assert.Equal(0, registry.ActiveCount);
+
+        Assert.Throws<InvalidOperationException>(
+            () => registry.SetRuntimeInitializer(static _ => { }));
+    }
+
+    [Fact]
+    public async Task MatchRuntimeInitializer_SetupRaceIsAtomicWithFirstRuntimeUse()
+    {
+        for (int iteration = 0; iteration < 32; iteration++)
+        {
+            var registry = new MatchRuntimeRegistry();
+            var events = new ConcurrentQueue<string>();
+            using var start = new Barrier(2);
+            Exception? setupFailure = null;
+            bool executed = false;
+
+            Task setup = Task.Run(() =>
+            {
+                start.SignalAndWait();
+                try
+                {
+                    registry.SetRuntimeInitializer(_ => events.Enqueue("initializer"));
+                }
+                catch (Exception ex)
+                {
+                    setupFailure = ex;
+                }
+            });
+            Task use = Task.Run(() =>
+            {
+                start.SignalAndWait();
+                executed = registry.TryExecute(
+                    62_000 + iteration,
+                    () => events.Enqueue("action"));
+            });
+
+            await Task.WhenAll(setup, use).WaitAsync(TimeSpan.FromSeconds(2));
+
+            Assert.True(executed);
+            if (setupFailure == null)
+                Assert.Equal(["initializer", "action"], events);
+            else
+            {
+                Assert.IsType<InvalidOperationException>(setupFailure);
+                Assert.Equal(["action"], events);
+            }
+        }
+    }
+
+    [Fact]
+    public void RuntimeLease_DefersCombatCoordinatorCleanupUntilTurnCanRetire()
+    {
+        const long matchingId = 61_023;
+        var coordinator = new SwarmCombatPublicationCoordinator();
+        var registry = new MatchRuntimeRegistry();
+        registry.SetRuntimeInitializer(id => Assert.True(coordinator.RegisterMatching(id)));
+        IDisposable operation = Assert.IsAssignableFrom<IDisposable>(
+            registry.TryAcquireOperation(matchingId, static () => { }));
+        SwarmCombatPublicationCoordinator.PublicationTurn turn =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginRealtimeTurn(matchingId));
+
+        Assert.True(registry.TryFinalize(
+            matchingId,
+            static () => true,
+            () => coordinator.ClearMatching(matchingId)));
+        Assert.NotNull(coordinator.Inspect(matchingId));
+
+        turn.Dispose();
+        operation.Dispose();
+
+        Assert.Null(coordinator.Inspect(matchingId));
+        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+    }
+
+    [Fact]
+    public void IntegrationSeam_WiresLifecycleAndSendFallbackWithoutActivation()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string server = ReadNormalizedSource(repositoryRoot, "game_server", "GameServer.cs");
+        string session = ReadNormalizedSource(
+            repositoryRoot, "game_server", "Network", "GameClientSession.cs");
+        string registry = ReadNormalizedSource(
+            repositoryRoot, "game_server", "Services", "MatchRuntimeRegistry.cs");
+
+        Assert.Contains(
+            "private readonly SwarmCombatPublicationCoordinator _swarmCombatPublicationCoordinator = new();",
+            server);
+        string start = ReadMethodSlice(
+            server,
+            "public async Task StartAsync(CancellationToken cancellationToken)",
+            "public async Task StopAsync(CancellationToken cancellationToken)");
+        AssertInOrder(
+            start,
+            "InitializeServices();",
+            "StartTcpServer();",
+            "StartResourceTickTimer();",
+            "StartProximityAutoCombatTimer();");
+        string initialization = ReadMethodSlice(
+            server,
+            "private void InitializeServices()",
+            "private void StartTcpServer()");
+        AssertInOrder(
+            initialization,
+            "_matchRuntimeRegistry.SetRuntimeInitializer(",
+            "RegisterCombatPublicationMatching",
+            "_matchRuntimeCleanupCoordinator = new MatchRuntimeCleanupCoordinator(",
+            "\"combat publication\"",
+            "_swarmCombatPublicationCoordinator.ClearMatching",
+            "\"session runtime\"");
+        int cleanupPlanStart = initialization.IndexOf(
+            "_matchRuntimeCleanupCoordinator = new MatchRuntimeCleanupCoordinator(",
+            StringComparison.Ordinal);
+        int firstCleanupStep = initialization.IndexOf(
+            "new MatchRuntimeCleanupStep(",
+            cleanupPlanStart,
+            StringComparison.Ordinal);
+        int secondCleanupStep = initialization.IndexOf(
+            "new MatchRuntimeCleanupStep(",
+            firstCleanupStep + 1,
+            StringComparison.Ordinal);
+        int combatStepName = initialization.IndexOf(
+            "\"combat publication\"",
+            firstCleanupStep,
+            StringComparison.Ordinal);
+        int combatClear = initialization.IndexOf(
+            "_swarmCombatPublicationCoordinator.ClearMatching",
+            firstCleanupStep,
+            StringComparison.Ordinal);
+        Assert.True(
+            cleanupPlanStart >= 0 &&
+            firstCleanupStep > cleanupPlanStart &&
+            combatStepName > firstCleanupStep &&
+            combatClear > combatStepName &&
+            secondCleanupStep > combatClear,
+            "Combat publication cleanup must be the first component cleanup step.");
+        Assert.Equal(
+            1,
+            CountOccurrences(
+                initialization,
+                "_swarmCombatPublicationCoordinator.ClearMatching"));
+        Assert.Contains("_swarmCombatPublicationCoordinator.TryCapturePacket,", server);
+        string registration = ReadMethodSlice(
+            server,
+            "private void RegisterCombatPublicationMatching(long matchingId)",
+            "private bool IsSwarmFrontOrbDamaged(");
+        AssertInOrder(
+            registration,
+            "_swarmCombatPublicationCoordinator.RegisterMatching(matchingId)",
+            "throw new InvalidOperationException(");
+        Assert.Contains("internal void SetRuntimeInitializer(Action<long> runtimeInitializer)", registry);
+        Assert.Equal(4, CountOccurrences(registry, "GetOrCreateRuntime(matchingId)"));
+        Assert.Equal(4, CountOccurrences(registry, "runtime.EnsureInitialized("));
+
+        Assert.Contains(
+            "private readonly Func<Action<IPacket>, IPacket, bool>? _tryCaptureCombatPublication;",
+            session);
+        Assert.Contains(
+            "Func<Action<IPacket>, IPacket, bool> tryCaptureCombatPublication,",
+            session);
+        string sendOverride = ReadMethodSlice(
+            session,
+            "public override void Send(IPacket packet)",
+            "private void SendCombatPublicationDirect(IPacket packet)");
+        AssertInOrder(
+            sendOverride,
+            "Func<Action<IPacket>, IPacket, bool>? tryCapture = _tryCaptureCombatPublication;",
+            "Action<IPacket>? sendDirect = _sendCombatPublicationDirect;",
+            "tryCapture != null && sendDirect != null && tryCapture(sendDirect, packet)",
+            "return;",
+            "base.Send(packet);");
+        Assert.Contains(
+            "private void SendCombatPublicationDirect(IPacket packet) => base.Send(packet);",
+            session);
+
+        string coordinatorSourcePath = Path.GetFullPath(Path.Combine(
+            repositoryRoot,
+            "game_server",
+            "Services",
+            "Combat",
+            "SwarmCombatPublicationCoordinator.cs"));
+        string productionWithoutCoordinator = string.Join(
+            "\n",
+            Directory.GetFiles(
+                    Path.Combine(repositoryRoot, "game_server"),
+                    "*.cs",
+                    SearchOption.AllDirectories)
+                .Where(path =>
+                    !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(
+                        Path.GetFullPath(path),
+                        coordinatorSourcePath,
+                        StringComparison.OrdinalIgnoreCase))
+                .Select(File.ReadAllText));
+        Assert.DoesNotContain(".BeginCapture(", productionWithoutCoordinator);
+        Assert.DoesNotContain(".TryBeginRealtimeTurn(", productionWithoutCoordinator);
+        Assert.DoesNotContain(".BeginRequiredTurn(", productionWithoutCoordinator);
+        Assert.DoesNotContain(".DispatchAndRetire(", productionWithoutCoordinator);
+    }
+
     private static SwarmCombatPublicationCoordinator CreateCoordinator(params long[] matchingIds)
     {
         var coordinator = new SwarmCombatPublicationCoordinator();
         foreach (long matchingId in matchingIds)
             Assert.True(coordinator.RegisterMatching(matchingId));
         return coordinator;
+    }
+
+    private static void AssertInOrder(string source, params string[] markers)
+    {
+        int previousIndex = -1;
+        foreach (string marker in markers)
+        {
+            int index = source.IndexOf(marker, previousIndex + 1, StringComparison.Ordinal);
+            Assert.True(index > previousIndex, $"Expected '{marker}' after index {previousIndex}.");
+            previousIndex = index;
+        }
+    }
+
+    private static int CountOccurrences(string source, string marker)
+    {
+        int count = 0;
+        int start = 0;
+        while ((start = source.IndexOf(marker, start, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            start += marker.Length;
+        }
+
+        return count;
+    }
+
+    private static string ReadMethodSlice(string source, string startMarker, string endMarker)
+    {
+        int start = source.IndexOf(startMarker, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Could not find '{startMarker}'.");
+        int end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
+        Assert.True(end > start, $"Could not find '{endMarker}' after '{startMarker}'.");
+        return source[start..end];
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, "network", "Common", "csv")))
+                return directory.FullName;
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
+    }
+
+    private static string ReadNormalizedSource(string repositoryRoot, params string[] pathParts)
+    {
+        string[] fullPathParts = [repositoryRoot, .. pathParts];
+        return File.ReadAllText(Path.Combine(fullPathParts)).Replace("\r\n", "\n");
     }
 }

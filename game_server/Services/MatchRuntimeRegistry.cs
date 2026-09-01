@@ -14,8 +14,30 @@ public sealed class MatchRuntimeRegistry
     private readonly ConcurrentDictionary<long, MatchRuntime> _activeRuntimes = new();
     private readonly ConcurrentDictionary<long, byte> _completedMatchingIds = new();
     private readonly ConcurrentQueue<long> _completedOrder = new();
+    private readonly object _runtimeCreationGate = new();
+    private Action<long>? _runtimeInitializer;
+    private bool _runtimeUseStarted;
 
     public int ActiveCount => _activeRuntimes.Count;
+
+    /// <summary>
+    ///     Configures a component-registration hook before the first runtime is used. The hook is
+    ///     invoked once per accepted match runtime while its lifecycle monitor is held, before any
+    ///     execution, lease, owner bind, or finalization can observe that runtime.
+    /// </summary>
+    internal void SetRuntimeInitializer(Action<long> runtimeInitializer)
+    {
+        ArgumentNullException.ThrowIfNull(runtimeInitializer);
+        lock (_runtimeCreationGate)
+        {
+            if (_runtimeUseStarted)
+                throw new InvalidOperationException("The match runtime initializer must be configured before use.");
+            if (_runtimeInitializer != null)
+                throw new InvalidOperationException("The match runtime initializer is already configured.");
+
+            Volatile.Write(ref _runtimeInitializer, runtimeInitializer);
+        }
+    }
 
     public bool TryExecute(long matchingId, Action action)
     {
@@ -24,7 +46,7 @@ public sealed class MatchRuntimeRegistry
         if (matchingId <= 0 || _completedMatchingIds.ContainsKey(matchingId))
             return false;
 
-        var runtime = _activeRuntimes.GetOrAdd(matchingId, static _ => new MatchRuntime());
+        MatchRuntime runtime = GetOrCreateRuntime(matchingId);
         Action? afterFinalized = null;
         return ExecuteWithAfterFinalized(() =>
         {
@@ -37,6 +59,7 @@ public sealed class MatchRuntimeRegistry
                     return false;
                 }
 
+                runtime.EnsureInitialized(matchingId, Volatile.Read(ref _runtimeInitializer));
                 if (!runtime.TryBeginExecution())
                     return false;
 
@@ -147,7 +170,7 @@ public sealed class MatchRuntimeRegistry
             return ExecuteWithAfterFinalized(static () => false, () => postFinalization);
         }
 
-        var runtime = _activeRuntimes.GetOrAdd(matchingId, static _ => new MatchRuntime());
+        MatchRuntime runtime = GetOrCreateRuntime(matchingId);
         return ExecuteWithAfterFinalized(() =>
         {
             lock (runtime.SyncRoot)
@@ -160,6 +183,7 @@ public sealed class MatchRuntimeRegistry
                     return false;
                 }
 
+                runtime.EnsureInitialized(matchingId, Volatile.Read(ref _runtimeInitializer));
                 // A caller that already captured terminal publication or post-commit work may
                 // arrive after another execution or operation won the transition. Attach only
                 // those hooks to pending work; its predicate and component cleanup stay skipped.
@@ -202,7 +226,7 @@ public sealed class MatchRuntimeRegistry
         if (matchingId <= 0 || ownerFence < 0 || _completedMatchingIds.ContainsKey(matchingId))
             return false;
 
-        var runtime = _activeRuntimes.GetOrAdd(matchingId, static _ => new MatchRuntime());
+        MatchRuntime runtime = GetOrCreateRuntime(matchingId);
         lock (runtime.SyncRoot)
         {
             if (_completedMatchingIds.ContainsKey(matchingId))
@@ -212,6 +236,7 @@ public sealed class MatchRuntimeRegistry
                 return false;
             }
 
+            runtime.EnsureInitialized(matchingId, Volatile.Read(ref _runtimeInitializer));
             return runtime.TryBindOwnerFence(ownerFence);
         }
     }
@@ -228,7 +253,7 @@ public sealed class MatchRuntimeRegistry
         if (matchingId <= 0 || _completedMatchingIds.ContainsKey(matchingId))
             return null;
 
-        var runtime = _activeRuntimes.GetOrAdd(matchingId, static _ => new MatchRuntime());
+        MatchRuntime runtime = GetOrCreateRuntime(matchingId);
         Action? afterFinalized = null;
         return ExecuteWithAfterFinalized(() =>
         {
@@ -241,6 +266,7 @@ public sealed class MatchRuntimeRegistry
                     return null;
                 }
 
+                runtime.EnsureInitialized(matchingId, Volatile.Read(ref _runtimeInitializer));
                 if (!runtime.TryBeginExecution())
                     return null;
 
@@ -498,6 +524,20 @@ public sealed class MatchRuntimeRegistry
         }
     }
 
+    private MatchRuntime GetOrCreateRuntime(long matchingId)
+    {
+        if (_activeRuntimes.TryGetValue(matchingId, out MatchRuntime? existing))
+            return existing;
+        if (Volatile.Read(ref _runtimeUseStarted))
+            return _activeRuntimes.GetOrAdd(matchingId, static _ => new MatchRuntime());
+
+        lock (_runtimeCreationGate)
+        {
+            Volatile.Write(ref _runtimeUseStarted, true);
+            return _activeRuntimes.GetOrAdd(matchingId, static _ => new MatchRuntime());
+        }
+    }
+
     private sealed class MatchRuntimeOperation(
         MatchRuntimeRegistry owner,
         long matchingId,
@@ -520,10 +560,20 @@ public sealed class MatchRuntimeRegistry
         private int _state = Active;
         private int _executionDepth;
         private long _ownerFence;
+        private bool _initialized;
         private FinalizationWork? _currentFinalization;
 
         public object SyncRoot { get; } = new();
         public bool IsTerminal => Volatile.Read(ref _state) != Active;
+
+        public void EnsureInitialized(long matchingId, Action<long>? runtimeInitializer)
+        {
+            if (_initialized || runtimeInitializer == null)
+                return;
+
+            runtimeInitializer(matchingId);
+            _initialized = true;
+        }
 
         public bool TryBeginExecution()
         {
