@@ -14,7 +14,8 @@ internal sealed record MatchRuntimeCleanupStep(string Name, Action<long> Cleanup
 internal sealed class MatchRuntimeCleanupCoordinator(
     MatchRuntimeRegistry runtimeRegistry,
     IReadOnlyList<MatchRuntimeCleanupStep> cleanupSteps,
-    ILogger logger)
+    ILogger logger,
+    Func<long, Action?>? prepareWinnerPostCommit = null)
 {
     /// <summary>
     ///     Attempts to register guarded pre-cleanup/post-commit hooks around the ordered,
@@ -60,6 +61,29 @@ internal sealed class MatchRuntimeCleanupCoordinator(
     {
         try
         {
+            Action? winnerPostCommit = null;
+            Action? postCommit =
+                prepareWinnerPostCommit == null && afterFinalized == null
+                    ? null
+                    : () =>
+                    {
+                        if (winnerPostCommit != null)
+                        {
+                            RunStep(
+                                matchingId,
+                                "match winner post-finalization",
+                                winnerPostCommit);
+                        }
+
+                        if (afterFinalized != null)
+                        {
+                            RunStep(
+                                matchingId,
+                                "match post-finalization",
+                                afterFinalized);
+                        }
+                    };
+
             return runtimeRegistry.TryFinalize(
                 matchingId,
                 canFinalize ?? (static () => true),
@@ -70,10 +94,16 @@ internal sealed class MatchRuntimeCleanupCoordinator(
                 {
                     foreach (MatchRuntimeCleanupStep step in cleanupSteps)
                         RunStep(matchingId, step.Name, () => step.Cleanup(matchingId));
+
+                    if (prepareWinnerPostCommit != null)
+                    {
+                        RunStep(
+                            matchingId,
+                            "match winner post-finalization registration",
+                            () => winnerPostCommit = prepareWinnerPostCommit(matchingId));
+                    }
                 },
-                afterFinalized == null
-                ? null
-                : () => RunStep(matchingId, "match post-finalization", afterFinalized));
+                postCommit);
         }
         catch (Exception ex)
         {

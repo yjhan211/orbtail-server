@@ -331,6 +331,102 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             completion);
     }
 
+    [Fact]
+    public void RedisCleanup_SourceContract_RegistersBeforeDeferredDispatchAndAlwaysCompletesTracker()
+    {
+        string root = FindRepositoryRoot();
+        string serverSource = ReadNormalizedSource(root, "game_server", "GameServer.cs");
+        string preparation = ReadMethodSlice(
+            serverSource,
+            "private Action PrepareMatchingRedisCleanup(",
+            "private async Task RunTrackedMatchingRedisCleanupAsync(");
+        string trackedCleanup = ReadMethodSlice(
+            serverSource,
+            "private async Task RunTrackedMatchingRedisCleanupAsync(",
+            "private void CompleteMatchingRedisCleanup(");
+        string completion = ReadMethodSlice(
+            serverSource,
+            "private void CompleteMatchingRedisCleanup(",
+            "private async Task WaitForPendingMatchingRedisCleanupsAsync(");
+
+        int completionSource = Find(preparation, "new TaskCompletionSource<bool>(");
+        int pendingRegistration = Find(
+            preparation,
+            "_pendingMatchingRedisCleanupTasks.TryAdd(operationId, completion.Task)");
+        int deferredFactory = Find(preparation, "return () =>");
+        int exactlyOnceGuard = Find(
+            preparation,
+            "Interlocked.Exchange(ref dispatchStarted, 1)");
+        int trackedDispatch = Find(
+            preparation,
+            "_ = RunTrackedMatchingRedisCleanupAsync(");
+
+        Assert.True(completionSource < pendingRegistration);
+        Assert.True(pendingRegistration < deferredFactory);
+        Assert.True(deferredFactory < exactlyOnceGuard);
+        Assert.True(exactlyOnceGuard < trackedDispatch);
+        Assert.DoesNotContain(
+            "CleanupAbandonedMatchingRedisAsync(",
+            preparation,
+            StringComparison.Ordinal);
+
+        int cleanupInvocation = Find(
+            trackedCleanup,
+            "await CleanupAbandonedMatchingRedisAsync(matchingId);");
+        int cleanupFinally = Find(trackedCleanup, "finally");
+        int trackedCompletion = Find(
+            trackedCleanup,
+            "CompleteMatchingRedisCleanup(operationId, completion);");
+        Assert.True(cleanupInvocation < cleanupFinally);
+        Assert.True(cleanupFinally < trackedCompletion);
+
+        int completionSignal = Find(completion, "completion.TrySetResult(true);");
+        int pendingRemoval = Find(
+            completion,
+            "_pendingMatchingRedisCleanupTasks)");
+        Assert.True(completionSignal < pendingRemoval);
+        Assert.Matches(
+            new Regex(
+                """
+                try\s*
+                \{\s*
+                    completion\.TrySetResult\s*\(\s*true\s*\)\s*;\s*
+                \}\s*
+                finally\s*
+                \{.*?
+                    _pendingMatchingRedisCleanupTasks.*?
+                    Remove\s*\(\s*new\s+KeyValuePair<long,\s*Task>\s*
+                    \(\s*operationId\s*,\s*completion\.Task\s*\)\s*\)\s*;\s*
+                \}
+                """,
+                RegexOptions.Singleline |
+                RegexOptions.IgnorePatternWhitespace |
+                RegexOptions.CultureInvariant),
+            completion);
+
+        Assert.DoesNotContain(
+            "\"Redis cleanup scheduling\"",
+            serverSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "logger,\n            PrepareMatchingRedisCleanup);",
+            serverSource,
+            StringComparison.Ordinal);
+
+        string coordinatorSource = ReadNormalizedSource(
+            root,
+            "game_server",
+            "Services",
+            "MatchRuntimeCleanupCoordinator.cs");
+        int winnerDispatch = Find(
+            coordinatorSource,
+            "\"match winner post-finalization\",");
+        int callerAfter = Find(
+            coordinatorSource,
+            "\"match post-finalization\",");
+        Assert.True(winnerDispatch < callerAfter);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_directory))

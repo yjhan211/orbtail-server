@@ -866,6 +866,107 @@ public sealed class MatchRuntimeRegistryTests
         Assert.DoesNotContain("late-gameplay", events);
     }
 
+    [Fact]
+    public void CleanupCoordinator_WinnerPostCommit_RunsOnceAfterCommitBeforeCallerPosts()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41026;
+        var events = new List<string>();
+        int preparationCount = 0;
+        int dispatchCount = 0;
+        IDisposable? operation = registry.TryAcquireOperation(matchingId, static () => { });
+        Assert.NotNull(operation);
+        object syncRoot = GetRuntimeSyncRoot(registry, matchingId);
+        var coordinator = new MatchRuntimeCleanupCoordinator(
+            registry,
+            [
+                new MatchRuntimeCleanupStep("component", _ =>
+                {
+                    Assert.True(Monitor.IsEntered(syncRoot));
+                    events.Add("cleanup");
+                })
+            ],
+            NullLogger.Instance,
+            preparedMatchingId =>
+            {
+                Assert.Equal(matchingId, preparedMatchingId);
+                Assert.True(Monitor.IsEntered(syncRoot));
+                Interlocked.Increment(ref preparationCount);
+                events.Add("redis-registered");
+                return () =>
+                {
+                    Assert.False(Monitor.IsEntered(syncRoot));
+                    Assert.True(registry.IsTerminal(matchingId));
+                    Assert.Equal(0, registry.ActiveCount);
+                    Interlocked.Increment(ref dispatchCount);
+                    events.Add("redis-dispatched");
+                };
+            });
+
+        Assert.True(coordinator.TryFinalize(
+            matchingId,
+            afterFinalized: () => events.Add("winner-after")));
+        Assert.False(coordinator.TryFinalize(
+            matchingId,
+            afterFinalized: () => events.Add("finalizing-loser-after")));
+        Assert.Empty(events);
+
+        operation!.Dispose();
+
+        Assert.Equal(
+            [
+                "cleanup",
+                "redis-registered",
+                "redis-dispatched",
+                "winner-after",
+                "finalizing-loser-after"
+            ],
+            events);
+        Assert.Equal(1, Volatile.Read(ref preparationCount));
+        Assert.Equal(1, Volatile.Read(ref dispatchCount));
+
+        Assert.False(coordinator.TryFinalize(
+            matchingId,
+            afterFinalized: () => events.Add("completed-loser-after")));
+        Assert.Equal("completed-loser-after", events[^1]);
+        Assert.Equal(1, Volatile.Read(ref preparationCount));
+        Assert.Equal(1, Volatile.Read(ref dispatchCount));
+
+        operation.Dispose();
+        Assert.Equal(1, Volatile.Read(ref dispatchCount));
+    }
+
+    [Fact]
+    public void CleanupCoordinator_WinnerPostCommitFailure_DoesNotSkipCallerAfter()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41027;
+        var events = new List<string>();
+        var coordinator = new MatchRuntimeCleanupCoordinator(
+            registry,
+            [new MatchRuntimeCleanupStep("component", _ => events.Add("cleanup"))],
+            NullLogger.Instance,
+            _ =>
+            {
+                events.Add("redis-registered");
+                return () =>
+                {
+                    events.Add("redis-dispatched");
+                    throw new InvalidOperationException("simulated Redis dispatch failure");
+                };
+            });
+
+        Assert.True(coordinator.TryFinalize(
+            matchingId,
+            afterFinalized: () => events.Add("caller-after")));
+
+        Assert.Equal(
+            ["cleanup", "redis-registered", "redis-dispatched", "caller-after"],
+            events);
+        Assert.True(registry.IsTerminal(matchingId));
+        Assert.Equal(0, registry.ActiveCount);
+    }
+
     private static object GetRuntimeSyncRoot(MatchRuntimeRegistry registry, long matchingId)
     {
         FieldInfo runtimesField = typeof(MatchRuntimeRegistry).GetField(

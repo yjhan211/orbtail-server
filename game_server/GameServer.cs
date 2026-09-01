@@ -90,6 +90,7 @@ public partial class GameServer(
     private long _adminBotOnlyPlayerIdSeed = -900_000_000;
     private INatsClient? _matchingLifecycleNatsClient;
     private MatchingLifecycleOutboxWorker? _matchingLifecycleOutboxWorker;
+    private long _nextMatchingRedisCleanupId;
     private long _nextMatchingLifecyclePublishId;
     private int _acceptingMatchingLifecycleEnqueues;
     private int _stopping;
@@ -491,12 +492,10 @@ public partial class GameServer(
                     _encounterRevealManager.CleanupMatching),
                 new MatchRuntimeCleanupStep(
                     "event log",
-                    _gameEventLogManager.Clear),
-                new MatchRuntimeCleanupStep(
-                    "Redis cleanup scheduling",
-                    StartMatchingRedisCleanup)
+                    _gameEventLogManager.Clear)
             ],
-            logger);
+            logger,
+            PrepareMatchingRedisCleanup);
         // M4: 폐쇄 구역은 스웜 신규 스폰을 멈춘다 (잔존 몹은 ReclaimStrandedMonsters가 걷어냄)
         _swarmMonsterDirector.IsAreaClosedResolver =
             (matchingId, area) => _areaClosureManager.IsAreaClosed(matchingId, area);
@@ -1994,18 +1993,78 @@ public partial class GameServer(
                 scalingOptions.NodeLeaseLifetime));
     }
 
-    private void StartMatchingRedisCleanup(long matchingId)
+    private Action PrepareMatchingRedisCleanup(long matchingId)
     {
-        Task cleanupTask = CleanupAbandonedMatchingRedisAsync(matchingId);
-        _pendingMatchingRedisCleanupTasks[matchingId] = cleanupTask;
-        _ = RemoveCompletedMatchingRedisCleanupAsync(matchingId, cleanupTask);
+        long operationId = Interlocked.Increment(ref _nextMatchingRedisCleanupId);
+        var completion = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_pendingMatchingRedisCleanupTasks.TryAdd(operationId, completion.Task))
+        {
+            throw new InvalidOperationException(
+                $"Duplicate matching Redis cleanup operation id: {operationId}.");
+        }
+
+        int dispatchStarted = 0;
+        return () =>
+        {
+            if (Interlocked.Exchange(ref dispatchStarted, 1) != 0)
+                return;
+
+            try
+            {
+                _ = RunTrackedMatchingRedisCleanupAsync(
+                    matchingId,
+                    operationId,
+                    completion);
+            }
+            catch (Exception ex)
+            {
+                logger.LogCritical(
+                    ex,
+                    "Unexpected matching Redis cleanup dispatch failure: MatchingId={MatchingId}, OperationId={OperationId}",
+                    matchingId,
+                    operationId);
+                CompleteMatchingRedisCleanup(operationId, completion);
+            }
+        };
     }
 
-    private async Task RemoveCompletedMatchingRedisCleanupAsync(long matchingId, Task cleanupTask)
+    private async Task RunTrackedMatchingRedisCleanupAsync(
+        long matchingId,
+        long operationId,
+        TaskCompletionSource<bool> completion)
     {
-        await cleanupTask;
-        ((ICollection<KeyValuePair<long, Task>>)_pendingMatchingRedisCleanupTasks)
-            .Remove(new KeyValuePair<long, Task>(matchingId, cleanupTask));
+        try
+        {
+            await CleanupAbandonedMatchingRedisAsync(matchingId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogCritical(
+                ex,
+                "Unexpected matching Redis cleanup failure: MatchingId={MatchingId}, OperationId={OperationId}",
+                matchingId,
+                operationId);
+        }
+        finally
+        {
+            CompleteMatchingRedisCleanup(operationId, completion);
+        }
+    }
+
+    private void CompleteMatchingRedisCleanup(
+        long operationId,
+        TaskCompletionSource<bool> completion)
+    {
+        try
+        {
+            completion.TrySetResult(true);
+        }
+        finally
+        {
+            ((ICollection<KeyValuePair<long, Task>>)_pendingMatchingRedisCleanupTasks)
+                .Remove(new KeyValuePair<long, Task>(operationId, completion.Task));
+        }
     }
 
     private async Task WaitForPendingMatchingRedisCleanupsAsync()
