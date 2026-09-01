@@ -12,179 +12,187 @@ public partial class GameServer
         long matchingId,
         List<GameClientSession> activeSessions)
     {
-        _matchRuntimeRegistry.TryExecute(matchingId, () =>
-        {
-            ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
+        SwarmCombatPublicationCoordinator.PublicationTurn? publicationTurn =
+            _swarmCombatPublicationCoordinator.BeginRequiredTurn(matchingId);
+        if (publicationTurn == null)
+            return;
 
-            var humans = activeSessions
-                .Where(session =>
-                    session.CurrentMapSubId == matchingId &&
-                    !session.IsEliminated &&
-                    !session.IsGameEnded)
-                .ToList();
-            var bots = _botPlayerManager.GetBots(matchingId)
-                .Where(bot => !bot.IsEliminated)
-                .ToList();
-
-            int aliveCount = humans.Count + bots.Count;
-            if (aliveCount <= 1)
+        PrepareAndDispatchCombatPublication(
+            matchingId,
+            publicationTurn,
+            () =>
             {
-                if (DevFlags.DisableGameEnd || SwarmDummySandboxActive)
+                ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
+
+                var humans = activeSessions
+                    .Where(session =>
+                        session.CurrentMapSubId == matchingId &&
+                        !session.IsEliminated &&
+                        !session.IsGameEnded)
+                    .ToList();
+                var bots = _botPlayerManager.GetBots(matchingId)
+                    .Where(bot => !bot.IsEliminated)
+                    .ToList();
+
+                int aliveCount = humans.Count + bots.Count;
+                if (aliveCount <= 1)
+                {
+                    if (DevFlags.DisableGameEnd || SwarmDummySandboxActive)
+                        return;
+
+                    if (aliveCount == 1 && humans.Count > 0)
+                    {
+                        humans[0].TryEndMatch(humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
+                        CleanupMatchSettlementState(matchingId);
+                        return;
+                    }
+
+                    if (humans.Count == 0)
+                    {
+                        long winnerPlayerId = bots.Count == 1 ? bots[0].PlayerId : 0;
+                        CleanupMatchSettlementState(matchingId);
+                        EndBotOnlyMatchIfSettled(matchingId, winnerPlayerId);
+                    }
+
                     return;
-
-                if (aliveCount == 1 && humans.Count > 0)
-                {
-                    humans[0].TryEndMatch(humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
-                    CleanupMatchSettlementState(matchingId);
-                    return;
                 }
 
-                if (humans.Count == 0)
-                {
-                    long winnerPlayerId = bots.Count == 1 ? bots[0].PlayerId : 0;
-                    CleanupMatchSettlementState(matchingId);
-                    EndBotOnlyMatchIfSettled(matchingId, winnerPlayerId);
-                }
-
-                return;
-            }
-
-            int overtimeDelta = _areaClosureManager.GetOvertimeCorruptionPerTick(
-                matchingId,
-                ResourceTickIntervalSeconds);
-            var targets = new List<EnvironmentalTarget>(aliveCount);
-
-            foreach (var session in humans)
-            {
-                int closureDelta = _areaClosureManager.GetClosedAreaCorruptionPerTick(
+                int overtimeDelta = _areaClosureManager.GetOvertimeCorruptionPerTick(
                     matchingId,
-                    session.CurrentArea,
                     ResourceTickIntervalSeconds);
-                if (session.LastValidatedPosition != null)
-                    closureDelta += GetSwarmFieldCorruptionPerTick(matchingId, session.LastValidatedPosition);
-                targets.Add(new EnvironmentalTarget(
-                    session.PlayerId!.Value,
-                    session.CurrentCorruption,
-                    closureDelta,
-                    overtimeDelta,
-                    session,
-                    null));
-            }
+                var targets = new List<EnvironmentalTarget>(aliveCount);
 
-            foreach (var bot in bots)
-            {
-                int closureDelta = _areaClosureManager.GetClosedAreaCorruptionPerTick(
-                    matchingId,
-                    bot.CurrentArea,
-                    ResourceTickIntervalSeconds);
-                closureDelta += GetSwarmFieldCorruptionPerTick(matchingId, bot.Position);
-                targets.Add(new EnvironmentalTarget(
-                    bot.PlayerId,
-                    bot.Corruption,
-                    closureDelta,
-                    overtimeDelta,
-                    null,
-                    bot));
-            }
-
-            foreach (var target in targets)
-            {
-                int totalDelta = target.ClosureDelta + target.OvertimeDelta;
-                if (totalDelta == 0)
-                    continue;
-
-                if (target.Session != null)
+                foreach (var session in humans)
                 {
-                    target.Session.ModifyStats(
-                        corruptionDelta: totalDelta,
-                        deferElimination: true);
-                }
-                else if (target.Bot != null)
-                {
-                    _botPlayerManager.ApplyEnvironmentalCorruption(target.Bot, totalDelta);
-                }
-            }
-
-            var eliminatedTargets = targets
-                .Where(target => target.PreDamageCorruption + target.ClosureDelta + target.OvertimeDelta >= Config.MAX_CORRUPTION)
-                .ToList();
-            if (eliminatedTargets.Count == 0)
-                return;
-
-            var resolution = MatchSettlementResolver.Resolve(
-                matchingId,
-                eliminatedTargets.Select(target =>
-                {
-                    int damage = _gameEventLogManager
-                        .GetResultStats(matchingId, target.PlayerId)
-                        .TotalDamageDealt;
-                    return new MatchSettlementCandidate(
-                        target.PlayerId,
-                        target.PreDamageCorruption,
-                        damage);
-                }));
-
-            var survivorsToEliminate = resolution.BestToWorst.ToList();
-            if (eliminatedTargets.Count == aliveCount)
-                survivorsToEliminate.RemoveAt(0);
-
-            if (resolution.BestToWorst.Count > 1)
-            {
-                string orderedPlayers = string.Join(
-                    ",",
-                    resolution.BestToWorst.Select(candidate => candidate.PlayerId));
-                logger.LogInformation(
-                    "Simultaneous environmental settlement: MatchingId={MatchingId}, Criterion={Criterion}, BestToWorst={BestToWorst}",
-                    matchingId,
-                    resolution.DecisiveCriterion,
-                    orderedPlayers);
-                _gameEventLogManager.LogSystem(
-                    matchingId,
-                    $"environment_tiebreak criterion={resolution.DecisiveCriterion} best_to_worst={orderedPlayers}");
-            }
-
-            int rank = aliveCount;
-            foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())
-            {
-                var target = eliminatedTargets.First(entry => entry.PlayerId == candidate.PlayerId);
-                bool closureElimination =
-                    target.ClosureDelta > 0 &&
-                    target.PreDamageCorruption + target.ClosureDelta >= Config.MAX_CORRUPTION;
-                bool overtimeElimination = !closureElimination && target.OvertimeDelta > 0;
-
-                if (target.Session != null)
-                {
-                    target.Session.EliminateForSettlement(
-                        target.PlayerId,
-                        closureElimination,
-                        overtimeElimination,
-                        rank);
-                }
-                else if (target.Bot != null)
-                {
-                    ProcessBotElimination(
+                    int closureDelta = _areaClosureManager.GetClosedAreaCorruptionPerTick(
                         matchingId,
-                        target.PlayerId,
-                        EliminationReason.MENTAL_ZERO,
-                        activeSessions,
-                        isAreaClosureElimination: closureElimination,
-                        isOvertimeElimination: overtimeElimination,
-                        deferGameOver: true,
-                        forcedRank: rank);
+                        session.CurrentArea,
+                        ResourceTickIntervalSeconds);
+                    if (session.LastValidatedPosition != null)
+                        closureDelta += GetSwarmFieldCorruptionPerTick(matchingId, session.LastValidatedPosition);
+                    targets.Add(new EnvironmentalTarget(
+                        session.PlayerId!.Value,
+                        session.CurrentCorruption,
+                        closureDelta,
+                        overtimeDelta,
+                        session,
+                        null));
                 }
 
-                rank--;
-            }
+                foreach (var bot in bots)
+                {
+                    int closureDelta = _areaClosureManager.GetClosedAreaCorruptionPerTick(
+                        matchingId,
+                        bot.CurrentArea,
+                        ResourceTickIntervalSeconds);
+                    closureDelta += GetSwarmFieldCorruptionPerTick(matchingId, bot.Position);
+                    targets.Add(new EnvironmentalTarget(
+                        bot.PlayerId,
+                        bot.Corruption,
+                        closureDelta,
+                        overtimeDelta,
+                        null,
+                        bot));
+                }
 
-            (bool isGameOver, long? winnerId) = _matchRosterManager.CheckGameOver(matchingId);
-            var resultHost = GetSessionsByMatch(matchingId)
-                .FirstOrDefault(session => !session.IsGameEnded);
-            if (isGameOver && winnerId.HasValue && resultHost != null)
-            {
-                resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);
-                CleanupMatchSettlementState(matchingId);
-            }
-        });
+                foreach (var target in targets)
+                {
+                    int totalDelta = target.ClosureDelta + target.OvertimeDelta;
+                    if (totalDelta == 0)
+                        continue;
+
+                    if (target.Session != null)
+                    {
+                        target.Session.ModifyStats(
+                            corruptionDelta: totalDelta,
+                            deferElimination: true);
+                    }
+                    else if (target.Bot != null)
+                    {
+                        _botPlayerManager.ApplyEnvironmentalCorruption(target.Bot, totalDelta);
+                    }
+                }
+
+                var eliminatedTargets = targets
+                    .Where(target => target.PreDamageCorruption + target.ClosureDelta + target.OvertimeDelta >= Config.MAX_CORRUPTION)
+                    .ToList();
+                if (eliminatedTargets.Count == 0)
+                    return;
+
+                var resolution = MatchSettlementResolver.Resolve(
+                    matchingId,
+                    eliminatedTargets.Select(target =>
+                    {
+                        int damage = _gameEventLogManager
+                            .GetResultStats(matchingId, target.PlayerId)
+                            .TotalDamageDealt;
+                        return new MatchSettlementCandidate(
+                            target.PlayerId,
+                            target.PreDamageCorruption,
+                            damage);
+                    }));
+
+                var survivorsToEliminate = resolution.BestToWorst.ToList();
+                if (eliminatedTargets.Count == aliveCount)
+                    survivorsToEliminate.RemoveAt(0);
+
+                if (resolution.BestToWorst.Count > 1)
+                {
+                    string orderedPlayers = string.Join(
+                        ",",
+                        resolution.BestToWorst.Select(candidate => candidate.PlayerId));
+                    logger.LogInformation(
+                        "Simultaneous environmental settlement: MatchingId={MatchingId}, Criterion={Criterion}, BestToWorst={BestToWorst}",
+                        matchingId,
+                        resolution.DecisiveCriterion,
+                        orderedPlayers);
+                    _gameEventLogManager.LogSystem(
+                        matchingId,
+                        $"environment_tiebreak criterion={resolution.DecisiveCriterion} best_to_worst={orderedPlayers}");
+                }
+
+                int rank = aliveCount;
+                foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())
+                {
+                    var target = eliminatedTargets.First(entry => entry.PlayerId == candidate.PlayerId);
+                    bool closureElimination =
+                        target.ClosureDelta > 0 &&
+                        target.PreDamageCorruption + target.ClosureDelta >= Config.MAX_CORRUPTION;
+                    bool overtimeElimination = !closureElimination && target.OvertimeDelta > 0;
+
+                    if (target.Session != null)
+                    {
+                        target.Session.EliminateForSettlement(
+                            target.PlayerId,
+                            closureElimination,
+                            overtimeElimination,
+                            rank);
+                    }
+                    else if (target.Bot != null)
+                    {
+                        ProcessBotElimination(
+                            matchingId,
+                            target.PlayerId,
+                            EliminationReason.MENTAL_ZERO,
+                            activeSessions,
+                            isAreaClosureElimination: closureElimination,
+                            isOvertimeElimination: overtimeElimination,
+                            deferGameOver: true,
+                            forcedRank: rank);
+                    }
+
+                    rank--;
+                }
+
+                (bool isGameOver, long? winnerId) = _matchRosterManager.CheckGameOver(matchingId);
+                var resultHost = GetSessionsByMatch(matchingId)
+                    .FirstOrDefault(session => !session.IsGameEnded);
+                if (isGameOver && winnerId.HasValue && resultHost != null)
+                {
+                    resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);
+                    CleanupMatchSettlementState(matchingId);
+                }
+            });
     }
 
     private void CleanupMatchSettlementState(long matchingId)

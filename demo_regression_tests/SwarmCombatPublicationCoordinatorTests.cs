@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.ExceptionServices;
 using game_server.services;
 using network.common;
 using network.interfaces;
@@ -179,7 +180,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
     }
 
     [Fact]
-    public void DefaultFailure_AbortsRemainingPlan_AndRetiresTurn()
+    public void DefaultFailure_PreservesPreparedState_AbortsRemainingPlan_AndRetiresTurn()
     {
         const long matchingId = 61_009;
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
@@ -187,7 +188,9 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
                 coordinator.TryBeginRealtimeTurn(matchingId));
         var events = new List<string>();
+        int authoritativeState = 0;
         using SwarmCombatPublicationCoordinator.CaptureScope capture = coordinator.BeginCapture(turn);
+        authoritativeState = 1;
         coordinator.AppendDeferredStep(() => events.Add("before"));
         coordinator.AppendDeferredStep(() => throw new InvalidOperationException("send failed"));
         coordinator.AppendDeferredStep(() => events.Add("after"));
@@ -197,6 +200,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             () => coordinator.DispatchAndRetire(turn, plan));
 
         Assert.Equal("send failed", failure.Message);
+        Assert.Equal(1, authoritativeState);
         Assert.Equal(["before"], events);
         Assert.False(coordinator.Inspect(matchingId)?.HasActiveTurn);
         using SwarmCombatPublicationCoordinator.PublicationTurn next =
@@ -205,7 +209,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
     }
 
     [Fact]
-    public void BestEffortFailure_SkipsItsGroup_AndContinuesFollowingSteps()
+    public void BestEffortFailure_PreservesPreparedState_SkipsGroup_AndContinuesPlan()
     {
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(61_010);
         using SwarmCombatPublicationCoordinator.PublicationTurn turn =
@@ -213,10 +217,12 @@ public sealed class SwarmCombatPublicationCoordinatorTests
                 coordinator.TryBeginRealtimeTurn(61_010));
         var events = new List<string>();
         var failures = new List<string>();
+        int authoritativeBotState = 0;
         using SwarmCombatPublicationCoordinator.CaptureScope capture = coordinator.BeginCapture(turn);
         coordinator.AppendDeferredStep(() => events.Add("before"));
         using (coordinator.BeginBestEffortGroup(failure => failures.Add(failure.Message)))
         {
+            authoritativeBotState = 1;
             coordinator.AppendDeferredStep(() => events.Add("group-start"));
             coordinator.AppendDeferredStep(() => throw new InvalidOperationException("bot send failed"));
             coordinator.AppendDeferredStep(() => events.Add("group-skipped"));
@@ -226,8 +232,122 @@ public sealed class SwarmCombatPublicationCoordinatorTests
 
         coordinator.DispatchAndRetire(turn, plan);
 
+        Assert.Equal(1, authoritativeBotState);
         Assert.Equal(["before", "group-start", "after"], events);
         Assert.Equal(["bot send failed"], failures);
+    }
+
+    [Fact]
+    public void OptionalBestEffortGroup_OnlyOpensDuringActiveCapture()
+    {
+        const long matchingId = 61_027;
+        SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
+        Assert.Null(coordinator.TryBeginBestEffortGroup(static _ => { }));
+
+        using SwarmCombatPublicationCoordinator.PublicationTurn turn =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginRealtimeTurn(matchingId));
+        using SwarmCombatPublicationCoordinator.CaptureScope capture =
+            coordinator.BeginCapture(turn);
+        using IDisposable group = Assert.IsAssignableFrom<IDisposable>(
+            coordinator.TryBeginBestEffortGroup(static _ => { }));
+        group.Dispose();
+
+        SwarmCombatPublicationCoordinator.PublicationPlan plan = capture.Freeze();
+        coordinator.DispatchAndRetire(turn, plan);
+        Assert.Null(coordinator.TryBeginBestEffortGroup(static _ => { }));
+    }
+
+    [Fact]
+    public void PreparationFailure_DispatchesCapturedPrefixBeforeOriginalRethrow()
+    {
+        const long matchingId = 61_028;
+        SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
+        using SwarmCombatPublicationCoordinator.PublicationTurn turn =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginRealtimeTurn(matchingId));
+        var events = new List<string>();
+        var expected = new InvalidOperationException("prepare failed");
+        ExceptionDispatchInfo? preparationFailure = null;
+        using SwarmCombatPublicationCoordinator.CaptureScope capture =
+            coordinator.BeginCapture(turn);
+
+        try
+        {
+            coordinator.AppendDeferredStep(() => events.Add("captured-prefix"));
+            throw expected;
+        }
+        catch (Exception ex)
+        {
+            preparationFailure = ExceptionDispatchInfo.Capture(ex);
+        }
+
+        SwarmCombatPublicationCoordinator.PublicationPlan plan = capture.Freeze();
+        coordinator.DispatchAndRetire(turn, plan);
+        InvalidOperationException actual = Assert.Throws<InvalidOperationException>(
+            () => preparationFailure!.Throw());
+
+        Assert.Same(expected, actual);
+        Assert.Equal(["captured-prefix"], events);
+    }
+
+    [Fact]
+    public void OrbVisualDeferredSteps_FailedKeyIsCommittedAndUnvisitedKeysRetry()
+    {
+        const long matchingId = 61_029;
+        SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
+        var committed = new HashSet<int>();
+        var dispatched = new List<int>();
+        int[] candidates = [1, 2, 3];
+
+        using (SwarmCombatPublicationCoordinator.PublicationTurn firstTurn =
+               Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                   coordinator.TryBeginRealtimeTurn(matchingId)))
+        {
+            using SwarmCombatPublicationCoordinator.CaptureScope firstCapture =
+                coordinator.BeginCapture(firstTurn);
+            foreach (int candidate in candidates)
+            {
+                int frozenCandidate = candidate;
+                coordinator.AppendDeferredStep(() =>
+                {
+                    committed.Add(frozenCandidate);
+                    dispatched.Add(frozenCandidate);
+                    if (frozenCandidate == 1)
+                        throw new InvalidOperationException("visual send failed");
+                });
+            }
+
+            SwarmCombatPublicationCoordinator.PublicationPlan firstPlan = firstCapture.Freeze();
+            Assert.Throws<InvalidOperationException>(
+                () => coordinator.DispatchAndRetire(firstTurn, firstPlan));
+        }
+
+        Assert.Equal([1], committed.OrderBy(value => value).ToArray());
+        Assert.Equal([1], dispatched);
+        int[] retryCandidates =
+            candidates.Where(candidate => !committed.Contains(candidate)).ToArray();
+
+        using SwarmCombatPublicationCoordinator.PublicationTurn retryTurn =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginRealtimeTurn(matchingId));
+        using SwarmCombatPublicationCoordinator.CaptureScope retryCapture =
+            coordinator.BeginCapture(retryTurn);
+        foreach (int candidate in retryCandidates)
+        {
+            int frozenCandidate = candidate;
+            coordinator.AppendDeferredStep(() =>
+            {
+                committed.Add(frozenCandidate);
+                dispatched.Add(frozenCandidate);
+            });
+        }
+
+        SwarmCombatPublicationCoordinator.PublicationPlan retryPlan = retryCapture.Freeze();
+        coordinator.DispatchAndRetire(retryTurn, retryPlan);
+
+        Assert.Equal([1, 2, 3], committed.OrderBy(value => value).ToArray());
+        Assert.Equal([1, 2, 3], dispatched);
     }
 
     [Fact]
@@ -293,9 +413,14 @@ public sealed class SwarmCombatPublicationCoordinatorTests
     {
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(61_013, 61_014);
         var directlySent = new List<byte[]>();
+        bool? bestEffortGroupOpenedDuringReplay = null;
         SwarmCombatPublicationCoordinator.PacketRecipient? recipient = null;
         recipient = new SwarmCombatPublicationCoordinator.PacketRecipient(packet =>
         {
+            IDisposable? replayGroup =
+                coordinator.TryBeginBestEffortGroup(static _ => { });
+            bestEffortGroupOpenedDuringReplay = replayGroup != null;
+            replayGroup?.Dispose();
             if (!coordinator.TryCapturePacket(recipient!, packet))
                 directlySent.Add(packet.ToBytes());
         });
@@ -324,6 +449,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
 
         Assert.Single(directlySent);
         Assert.Equal(expected, directlySent[0]);
+        Assert.False(bestEffortGroupOpenedDuringReplay);
         SwarmCombatPublicationCoordinator.PublicationPlan secondPlan = secondCapture.Freeze();
         Assert.Equal(0, secondPlan.Count);
         coordinator.DispatchAndRetire(secondTurn, secondPlan);
@@ -566,7 +692,56 @@ public sealed class SwarmCombatPublicationCoordinatorTests
     }
 
     [Fact]
-    public void IntegrationSeam_WiresLifecycleAndSendFallbackWithoutActivation()
+    public void RuntimeLease_PublishesTerminalOnlyAfterCombatRetiresAndLeaseReleases()
+    {
+        const long matchingId = 61_030;
+        var events = new List<string>();
+        var coordinator = new SwarmCombatPublicationCoordinator();
+        var registry = new MatchRuntimeRegistry();
+        registry.SetRuntimeInitializer(id => Assert.True(coordinator.RegisterMatching(id)));
+        Assert.True(registry.TryExecute(matchingId, static () => { }));
+        SwarmCombatPublicationCoordinator.PublicationTurn turn =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginRealtimeTurn(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationPlan? plan = null;
+        IDisposable operation = Assert.IsAssignableFrom<IDisposable>(
+            registry.TryAcquireOperation(
+                matchingId,
+                () =>
+                {
+                    using SwarmCombatPublicationCoordinator.CaptureScope capture =
+                        coordinator.BeginCapture(turn);
+                    coordinator.AppendDeferredStep(() => events.Add("combat"));
+                    plan = capture.Freeze();
+                }));
+
+        Assert.True(registry.TryFinalize(
+            matchingId,
+            static () => true,
+            beforeFinalized: () => events.Add("terminal"),
+            cleanup: () =>
+            {
+                events.Add("cleanup");
+                coordinator.ClearMatching(matchingId);
+            },
+            afterFinalized: () => events.Add("lifecycle")));
+
+        coordinator.DispatchAndRetire(
+            turn,
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationPlan>(plan));
+        Assert.Equal(["combat"], events);
+        Assert.NotNull(coordinator.Inspect(matchingId));
+
+        turn.Dispose();
+        Assert.Equal(["combat"], events);
+        operation.Dispose();
+
+        Assert.Equal(["combat", "terminal", "cleanup", "lifecycle"], events);
+        Assert.Null(coordinator.Inspect(matchingId));
+    }
+
+    [Fact]
+    public void IntegrationSeam_WiresLifecycleSendFallbackAndActivatedEntrypoints()
     {
         string repositoryRoot = FindRepositoryRoot();
         string server = ReadNormalizedSource(repositoryRoot, "game_server", "GameServer.cs");
@@ -665,32 +840,111 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             "private void SendCombatPublicationDirect(IPacket packet) => base.Send(packet);",
             session);
 
-        string coordinatorSourcePath = Path.GetFullPath(Path.Combine(
-            repositoryRoot,
-            "game_server",
-            "Services",
-            "Combat",
-            "SwarmCombatPublicationCoordinator.cs"));
-        string productionWithoutCoordinator = string.Join(
-            "\n",
-            Directory.GetFiles(
-                    Path.Combine(repositoryRoot, "game_server"),
-                    "*.cs",
-                    SearchOption.AllDirectories)
-                .Where(path =>
-                    !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}",
-                        StringComparison.OrdinalIgnoreCase) &&
-                    !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
-                        StringComparison.OrdinalIgnoreCase) &&
-                    !string.Equals(
-                        Path.GetFullPath(path),
-                        coordinatorSourcePath,
-                        StringComparison.OrdinalIgnoreCase))
-                .Select(File.ReadAllText));
-        Assert.DoesNotContain(".BeginCapture(", productionWithoutCoordinator);
-        Assert.DoesNotContain(".TryBeginRealtimeTurn(", productionWithoutCoordinator);
-        Assert.DoesNotContain(".BeginRequiredTurn(", productionWithoutCoordinator);
-        Assert.DoesNotContain(".DispatchAndRetire(", productionWithoutCoordinator);
+        string proximity = ReadNormalizedSource(
+            repositoryRoot, "game_server", "GameServer.ProximityAutoCombat.cs");
+        string settlement = ReadNormalizedSource(
+            repositoryRoot, "game_server", "GameServer.MatchSettlement.cs");
+        string arena = ReadNormalizedSource(
+            repositoryRoot, "game_server", "GameServer.SwarmArena.cs");
+        string realtimeTick = ReadMethodSlice(
+            proximity,
+            "private void ProcessProximityAutoCombatTick(object? state)",
+            "private void ProcessProximityAutoCombatForMatching(");
+        string publicationHelper = ReadMethodSlice(
+            proximity,
+            "private void PrepareAndDispatchCombatPublication(",
+            "private static void AddInventoryCombatActors(");
+        string resourceTick = ReadMethodSlice(
+            settlement,
+            "private void ProcessResourceTickForMatching(",
+            "private void CleanupMatchSettlementState(");
+        string botElimination = ReadMethodSlice(
+            server,
+            "private void ProcessBotElimination(",
+            "private void DropBotInventoryAtCurrentPosition(");
+
+        AssertInOrder(
+            realtimeTick,
+            "_swarmCombatPublicationCoordinator.TryBeginRealtimeTurn(matchingId)",
+            "if (publicationTurn == null)",
+            "PrepareAndDispatchCombatPublication(",
+            "() => ProcessProximityAutoCombatForMatching(matchingId, activeSessions)");
+        AssertInOrder(
+            resourceTick,
+            "_swarmCombatPublicationCoordinator.BeginRequiredTurn(matchingId)",
+            "if (publicationTurn == null)",
+            "PrepareAndDispatchCombatPublication(",
+            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
+            "target.Session.ModifyStats(",
+            "var eliminatedTargets = targets",
+            "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
+            "target.Session.EliminateForSettlement(",
+            "ProcessBotElimination(",
+            "_matchRosterManager.CheckGameOver(matchingId)",
+            "resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);");
+        Assert.DoesNotContain("_matchRuntimeRegistry.TryExecute(", realtimeTick);
+        Assert.DoesNotContain("_matchRuntimeRegistry.TryExecute(", resourceTick);
+
+        AssertInOrder(
+            publicationHelper,
+            "_matchRuntimeRegistry.TryAcquireOperation(",
+            "SwarmCombatPublicationCoordinator.CaptureScope? capture = null;",
+            "_swarmCombatPublicationCoordinator.BeginCapture(publicationTurn)",
+            "prepare();",
+            "preparationFailure = ExceptionDispatchInfo.Capture(ex);",
+            "publicationPlan = capture.Freeze();",
+            "_swarmCombatPublicationCoordinator.DispatchAndRetire(",
+            "publicationTurn.Dispose();",
+            "runtimeOperation?.Dispose();",
+            "pendingFailure?.Throw();");
+        int acquisitionStart = publicationHelper.IndexOf(
+            "_matchRuntimeRegistry.TryAcquireOperation(",
+            StringComparison.Ordinal);
+        int acquiredLeaseBranch = publicationHelper.IndexOf(
+            "if (runtimeOperation != null)",
+            acquisitionStart,
+            StringComparison.Ordinal);
+        Assert.True(acquisitionStart >= 0 && acquiredLeaseBranch > acquisitionStart);
+        string acquisitionCallback =
+            publicationHelper[acquisitionStart..acquiredLeaseBranch];
+        AssertInOrder(
+            acquisitionCallback,
+            "CaptureScope? capture = null;",
+            "capture = _swarmCombatPublicationCoordinator.BeginCapture(publicationTurn);",
+            "prepare();",
+            "preparationFailure = ExceptionDispatchInfo.Capture(ex);",
+            "publicationPlan = capture.Freeze();",
+            "if (preparationFailure != null && pendingFailure == null)",
+            "pendingFailure = preparationFailure;",
+            "RecordFailure(ex);",
+            "finally",
+            "capture?.Dispose();");
+        Assert.DoesNotContain("throw;", acquisitionCallback);
+        Assert.DoesNotContain("throw ", acquisitionCallback);
+        AssertInOrder(
+            publicationHelper,
+            "publicationTurn.Dispose();",
+            "runtimeOperation?.Dispose();",
+            "if (ReferenceEquals(pendingFailure, preparationFailure))",
+            "preparationFailure!.Throw();",
+            "throw new AggregateException(",
+            "pendingFailure?.Throw();");
+        AssertInOrder(
+            botElimination,
+            "try",
+            "_swarmCombatPublicationCoordinator.TryBeginBestEffortGroup(",
+            "_matchRosterManager.TryEliminatePlayer(",
+            "catch (Exception ex)",
+            "finally",
+            "publicationGroup?.Dispose();");
+        Assert.Contains("AppendOrbVisualStatePublicationSteps(", arena);
+        Assert.Contains(
+            "_swarmCombatPublicationCoordinator.AppendDeferredStep(",
+            proximity);
+        Assert.Equal(1, CountOccurrences(proximity, ".TryBeginRealtimeTurn("));
+        Assert.Equal(1, CountOccurrences(settlement, ".BeginRequiredTurn("));
+        Assert.Equal(1, CountOccurrences(proximity, ".BeginCapture("));
+        Assert.Equal(1, CountOccurrences(proximity, ".DispatchAndRetire("));
     }
 
     private static SwarmCombatPublicationCoordinator CreateCoordinator(params long[] matchingIds)

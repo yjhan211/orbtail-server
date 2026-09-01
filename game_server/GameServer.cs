@@ -635,8 +635,14 @@ public partial class GameServer(
         List<GameClientSession> activeSessions, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false, bool deferGameOver = false, int forcedRank = 0)
     {
+        IDisposable? publicationGroup = null;
         try
         {
+            // Roster/drop/log changes are authoritative preparation. When capture is active, a
+            // later transport failure skips only this bot's remaining outbound group; it does not
+            // roll back state or prevent later combat plan groups from dispatching.
+            publicationGroup = _swarmCombatPublicationCoordinator.TryBeginBestEffortGroup(
+                ex => logger.LogError(ex, "봇 탈락 처리 중 오류: BotId={BotId}", botId));
             var eliminatedBot = _botPlayerManager.GetBot(matchingId, botId);
             AreaType eliminatedArea = eliminatedBot?.CurrentArea ?? AreaType.None;
             int finalOrbTier = _inGameInventoryManager.GetEquippedBattleItemTier(matchingId, botId);
@@ -707,6 +713,10 @@ public partial class GameServer(
         catch (Exception ex)
         {
             logger.LogError(ex, "봇 탈락 처리 중 오류: BotId={BotId}", botId);
+        }
+        finally
+        {
+            publicationGroup?.Dispose();
         }
     }
 

@@ -203,6 +203,36 @@ internal sealed class SwarmCombatPublicationCoordinator
     }
 
     /// <summary>
+    ///     Opens a best-effort boundary only when this execution context is preparing a combat
+    ///     publication. Legacy direct-send callers receive <see langword="null"/> and keep their
+    ///     existing synchronous try/catch boundary.
+    /// </summary>
+    public IDisposable? TryBeginBestEffortGroup(Action<Exception> reportFailure)
+    {
+        ArgumentNullException.ThrowIfNull(reportFailure);
+        if (_dispatchDepth.Value > 0)
+            return null;
+
+        CaptureFrame? frame = _activeCapture.Value;
+        if (frame == null || !ReferenceEquals(frame.Owner, this))
+            return null;
+
+        lock (frame.Gate)
+        {
+            if (frame.Phase != CapturePhase.Capturing)
+                return null;
+            if (frame.CurrentBoundary != null)
+                throw new InvalidOperationException("Nested combat publication failure groups are not supported.");
+
+            var boundary = new BestEffortBoundary(
+                Interlocked.Increment(ref _nextBoundaryId),
+                reportFailure);
+            frame.CurrentBoundary = boundary;
+            return new BestEffortGroupScope(this, frame, boundary);
+        }
+    }
+
+    /// <summary>
     ///     Replays the frozen plan and always retires the turn. A default-step failure aborts and is
     ///     propagated; a best-effort-group failure skips that group and continues.
     /// </summary>

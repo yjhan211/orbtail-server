@@ -3,7 +3,7 @@ namespace demo_regression_tests;
 public sealed class SwarmArenaTickOrderTests
 {
     [Fact]
-    public void ProximityAutoCombatTimer_UsesFiftyMillisecondMatchRuntimeGate()
+    public void ProximityAutoCombatTimer_UsesFiftyMillisecondCombatPublicationGate()
     {
         string root = FindRepositoryRoot();
         string source = ReadNormalizedSource(
@@ -25,8 +25,10 @@ public sealed class SwarmArenaTickOrderTests
             tickBody,
             "_sessionRegistry.SnapshotWhere(",
             "GetActiveMatchingIds()",
-            "_matchRuntimeRegistry.TryExecute(",
-            "ProcessProximityAutoCombatForMatching(");
+            "_swarmCombatPublicationCoordinator.TryBeginRealtimeTurn(matchingId)",
+            "if (publicationTurn == null)",
+            "PrepareAndDispatchCombatPublication(",
+            "() => ProcessProximityAutoCombatForMatching(matchingId, activeSessions)");
 
         string matchingBody = ReadMethodSlice(
             source,
@@ -56,15 +58,28 @@ public sealed class SwarmArenaTickOrderTests
             "Interlocked.Exchange(ref _proximityAutoCombatProcessing, 1)",
             "_sessionRegistry.SnapshotWhere(",
             "foreach (long matchingId in GetActiveMatchingIds())",
-            "_matchRuntimeRegistry.TryExecute(",
+            "_swarmCombatPublicationCoordinator.TryBeginRealtimeTurn(matchingId)",
+            "PrepareAndDispatchCombatPublication(",
             "catch (Exception ex)");
-        string proximityCallback = MaskCommentsAndLiterals(
-            ReadBracedBlockAfterMarker(
-                proximityTick,
-                "_matchRuntimeRegistry.TryExecute(matchingId, () =>"));
         Assert.Contains(
-            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
-            proximityCallback);
+            "() => ProcessProximityAutoCombatForMatching(matchingId, activeSessions)",
+            proximityTick);
+
+        string publicationHelper = ReadMethodSlice(
+            proximity,
+            "private void PrepareAndDispatchCombatPublication(",
+            "private static void AddInventoryCombatActors(");
+        AssertInOrder(
+            publicationHelper,
+            "_matchRuntimeRegistry.TryAcquireOperation(",
+            "_swarmCombatPublicationCoordinator.BeginCapture(publicationTurn)",
+            "prepare();",
+            "preparationFailure = ExceptionDispatchInfo.Capture(ex);",
+            "publicationPlan = capture.Freeze();",
+            "_swarmCombatPublicationCoordinator.DispatchAndRetire(",
+            "publicationTurn.Dispose();",
+            "runtimeOperation?.Dispose();",
+            "pendingFailure?.Throw();");
 
         string resourceTick = ReadMethodSlice(
             server,
@@ -82,12 +97,11 @@ public sealed class SwarmArenaTickOrderTests
             settlement,
             "private void ProcessResourceTickForMatching(",
             "private void CleanupMatchSettlementState(");
-        string settlementCallback = MaskCommentsAndLiterals(
-            ReadBracedBlockAfterMarker(
-                matchingSettlement,
-                "_matchRuntimeRegistry.TryExecute(matchingId, () =>"));
         AssertInOrder(
-            settlementCallback,
+            matchingSettlement,
+            "_swarmCombatPublicationCoordinator.BeginRequiredTurn(matchingId)",
+            "if (publicationTurn == null)",
+            "PrepareAndDispatchCombatPublication(",
             "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
             "var humans = activeSessions",
             "var bots = _botPlayerManager.GetBots(matchingId)",
@@ -98,6 +112,8 @@ public sealed class SwarmArenaTickOrderTests
             "ProcessBotElimination(",
             "_matchRosterManager.CheckGameOver(matchingId)",
             "resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);");
+        Assert.DoesNotContain("_matchRuntimeRegistry.TryExecute(", proximityTick);
+        Assert.DoesNotContain("_matchRuntimeRegistry.TryExecute(", matchingSettlement);
     }
 
     [Fact]
@@ -160,7 +176,7 @@ public sealed class SwarmArenaTickOrderTests
             "BuildSwarmArenaCombatActors(",
             "ProcessSwarmPvpAttackEvents(",
             "ProcessOrbRecovery(",
-            "CommitAndDispatchOrbVisualStatePublications(",
+            "AppendOrbVisualStatePublicationSteps(",
             "BroadcastSwarmOrbRankings(",
             "ProcessSwarmGrowthOffers(",
             "ProcessSwarmScoreTimeout(",
@@ -213,13 +229,16 @@ public sealed class SwarmArenaTickOrderTests
 
         string orbPublicationSteps = ReadMethodSlice(
             proximity,
-            "private static void CommitAndDispatchOrbVisualPublicationSteps<TStep>(",
+            "private void AppendOrbVisualStatePublicationSteps(",
             "private static ImmutableArray<int> CaptureSwarmOrbVisualItemIds(");
         AssertInOrder(
             orbPublicationSteps,
-            "foreach (TStep step in steps)",
-            "commit(step);",
-            "dispatch(step);");
+            "foreach (SwarmOrbVisualPublication publication in publications)",
+            "_swarmCombatPublicationCoordinator.AppendDeferredStep(",
+            "CommitAndDispatchOrbVisualStatePublication(publication)",
+            "_orbVisualStates[key] = state;",
+            "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
+            "publication.Recipient!.Send(packet);");
         Assert.False(ContainsCodeToken(orbPublicationSteps, "catch"));
 
         string botElimination = ReadMethodSlice(
@@ -229,10 +248,13 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             botElimination,
             "try",
+            "_swarmCombatPublicationCoordinator.TryBeginBestEffortGroup(",
             "_matchRosterManager.TryEliminatePlayer(",
             "DropBotInventoryAtCurrentPosition(",
             "foreach (var s in matchingSessions) s.Send(eliminatedPacket);",
-            "catch (Exception ex)");
+            "catch (Exception ex)",
+            "finally",
+            "publicationGroup?.Dispose();");
 
         string humanElimination = ReadMethodSlice(
             sessionMatchEnd,

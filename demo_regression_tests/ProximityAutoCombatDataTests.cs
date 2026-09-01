@@ -194,41 +194,36 @@ public class ProximityAutoCombatDataTests
     }
 
     [Fact]
-    public void OrbVisualPublicationCommitDispatch_FailureLeavesRemainderForRetry()
+    public void OrbVisualPublication_UsesOneDeferredCommitAndSendStepPerCandidate()
     {
-        MethodInfo genericMethod = typeof(GameServer)
-            .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
-            .Single(method => method.Name == "CommitAndDispatchOrbVisualPublicationSteps");
-        MethodInfo commitAndDispatch = genericMethod.MakeGenericMethod(typeof(int));
-        int[] candidates = [1, 2, 3];
-        var cache = new HashSet<int>();
-        Action<int> commit = step => cache.Add(step);
-        Action<int> dispatch = step =>
-        {
-            if (step == 1)
-                throw new InvalidOperationException("send failed");
-        };
+        string source = ReadNormalizedSource(
+            FindRepositoryRoot(), "game_server", "GameServer.ProximityAutoCombat.cs");
+        string append = ReadMethodSlice(
+            source,
+            "private void AppendOrbVisualStatePublicationSteps(",
+            "private void CommitAndDispatchOrbVisualStatePublication(");
+        string commitAndDispatch = ReadMethodSlice(
+            source,
+            "private void CommitAndDispatchOrbVisualStatePublication(",
+            "private static ImmutableArray<int> CaptureSwarmOrbVisualItemIds(");
 
-        var failure = Assert.Throws<TargetInvocationException>(() =>
-            commitAndDispatch.Invoke(null, [candidates, commit, dispatch]));
-
-        Assert.IsType<InvalidOperationException>(failure.InnerException);
-        Assert.Equal([1], cache.OrderBy(value => value).ToArray());
-        int[] retryCandidates = candidates.Where(candidate => !cache.Contains(candidate)).ToArray();
-        Assert.Equal([2, 3], retryCandidates);
-
-        var retriedDispatches = new List<int>();
-        commitAndDispatch.Invoke(
-            null,
-            [retryCandidates, commit, (Action<int>)(step => retriedDispatches.Add(step))]);
-
-        Assert.Equal([2, 3], retriedDispatches);
-        Assert.DoesNotContain(1, retriedDispatches);
-        Assert.Equal([1, 2, 3], cache.OrderBy(value => value).ToArray());
+        AssertInOrder(
+            append,
+            "foreach (SwarmOrbVisualPublication publication in publications)",
+            "_swarmCombatPublicationCoordinator.AppendDeferredStep(",
+            "() => CommitAndDispatchOrbVisualStatePublication(publication)");
+        AssertInOrder(
+            commitAndDispatch,
+            "_orbVisualStates[key] = state;",
+            "_orbVisualStates.TryRemove(key, out _);",
+            "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
+            "publication.Recipient!.Send(packet);");
+        Assert.DoesNotContain("catch", append);
+        Assert.DoesNotContain("catch", commitAndDispatch);
     }
 
     [Fact]
-    public void OrbVisualPublication_PreparesImmutablePlanBeforeImmediateOrderedDispatch()
+    public void OrbVisualPublication_PreparesImmutablePlanBeforeDeferredOrderedDispatch()
     {
         string root = FindRepositoryRoot();
         string proximity = ReadNormalizedSource(
@@ -237,18 +232,18 @@ public class ProximityAutoCombatDataTests
         int prepareStart = proximity.IndexOf(
             "private ImmutableArray<SwarmOrbVisualPublication> PrepareOrbVisualStatePublications(",
             StringComparison.Ordinal);
-        int dispatchStart = proximity.IndexOf(
-            "private void CommitAndDispatchOrbVisualStatePublications(",
+        int appendStart = proximity.IndexOf(
+            "private void AppendOrbVisualStatePublicationSteps(",
             StringComparison.Ordinal);
         int captureStart = proximity.IndexOf(
             "private static ImmutableArray<int> CaptureSwarmOrbVisualItemIds(",
             StringComparison.Ordinal);
-        Assert.True(prepareStart >= 0 && dispatchStart > prepareStart && captureStart > dispatchStart);
-        string prepare = proximity[prepareStart..dispatchStart];
-        string dispatch = proximity[dispatchStart..captureStart];
+        Assert.True(prepareStart >= 0 && appendStart > prepareStart && captureStart > appendStart);
+        string prepare = proximity[prepareStart..appendStart];
+        string dispatch = proximity[appendStart..captureStart];
 
         Assert.Contains(
-            "CommitAndDispatchOrbVisualStatePublications(\n" +
+            "AppendOrbVisualStatePublicationSteps(\n" +
             "            PrepareOrbVisualStatePublications(matchingId, actors, sessions));",
             arena);
         AssertInOrder(
@@ -268,7 +263,8 @@ public class ProximityAutoCombatDataTests
 
         AssertInOrder(
             dispatch,
-            "CommitAndDispatchOrbVisualPublicationSteps(",
+            "_swarmCombatPublicationCoordinator.AppendDeferredStep(",
+            "CommitAndDispatchOrbVisualStatePublication(publication)",
             "_orbVisualStates[key] = state;",
             "_orbVisualStates.TryRemove(key, out _);",
             "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
@@ -369,6 +365,15 @@ public class ProximityAutoCombatDataTests
         string[] fullPathParts = [repositoryRoot, .. pathParts];
         return File.ReadAllText(Path.Combine(fullPathParts))
             .Replace("\r\n", "\n");
+    }
+
+    private static string ReadMethodSlice(string source, string startMarker, string endMarker)
+    {
+        int start = source.IndexOf(startMarker, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Could not find '{startMarker}'.");
+        int end = source.IndexOf(endMarker, start + startMarker.Length, StringComparison.Ordinal);
+        Assert.True(end > start, $"Could not find '{endMarker}' after '{startMarker}'.");
+        return source[start..end];
     }
 
     private static void AssertInOrder(string source, params string[] markers)

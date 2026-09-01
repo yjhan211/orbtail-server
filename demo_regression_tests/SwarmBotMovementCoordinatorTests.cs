@@ -489,6 +489,10 @@ public sealed class SwarmBotMovementCoordinatorTests
         string matching = ReadMethodSlice(
             proximity,
             "private void ProcessProximityAutoCombatForMatching(",
+            "private void PrepareAndDispatchCombatPublication(");
+        string publication = ReadMethodSlice(
+            proximity,
+            "private void PrepareAndDispatchCombatPublication(",
             "private static void AddInventoryCombatActors(");
         string automaticSetup = ReadMethodSlice(
             arena,
@@ -497,9 +501,16 @@ public sealed class SwarmBotMovementCoordinatorTests
 
         AssertInOrder(
             tick,
-            "_matchRuntimeRegistry.TryExecute(matchingId, () =>",
-            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);");
+            "_swarmCombatPublicationCoordinator.TryBeginRealtimeTurn(matchingId)",
+            "PrepareAndDispatchCombatPublication(",
+            "() => ProcessProximityAutoCombatForMatching(matchingId, activeSessions)");
         Assert.Contains("ProcessSwarmArenaForMatching(matchingId, activeSessions);", matching);
+        AssertInOrder(
+            publication,
+            "_matchRuntimeRegistry.TryAcquireOperation(",
+            "_swarmCombatPublicationCoordinator.BeginCapture(publicationTurn)",
+            "prepare();",
+            "publicationPlan = capture.Freeze();");
         AssertInOrder(
             automaticSetup,
             "DEV-only order-parity exception",

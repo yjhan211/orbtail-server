@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Runtime.ExceptionServices;
 using game_server.network;
 using game_server.services;
 using MessagePack;
@@ -55,10 +56,15 @@ public partial class GameServer
                 // 운동장에서 각 방으로 나가는 몹이 그 5초의 볼거리이기 때문이다.
                 // 매치 시작 게이트로 막으면 몹이 아예 태어나지 않으므로 여기서는 거르지
                 // 않고, 게이트 전 전투 차단은 ProcessProximityAutoCombatForMatching 안이 맡는다.
-                _matchRuntimeRegistry.TryExecute(matchingId, () =>
-                {
-                    ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
-                });
+                SwarmCombatPublicationCoordinator.PublicationTurn? publicationTurn =
+                    _swarmCombatPublicationCoordinator.TryBeginRealtimeTurn(matchingId);
+                if (publicationTurn == null)
+                    continue;
+
+                PrepareAndDispatchCombatPublication(
+                    matchingId,
+                    publicationTurn,
+                    () => ProcessProximityAutoCombatForMatching(matchingId, activeSessions));
             }
         }
         catch (Exception ex)
@@ -76,6 +82,181 @@ public partial class GameServer
         List<GameClientSession> activeSessions)
     {
         ProcessSwarmArenaForMatching(matchingId, activeSessions);
+    }
+
+    /// <summary>
+    ///     Holds the match publication turn and terminal operation lease across outside-monitor
+    ///     dispatch. Authoritative state, logs, recipients, packet bytes, and deferred visual steps
+    ///     are all prepared while TryAcquireOperation owns the matching runtime monitor.
+    /// </summary>
+    private void PrepareAndDispatchCombatPublication(
+        long matchingId,
+        SwarmCombatPublicationCoordinator.PublicationTurn publicationTurn,
+        Action prepare)
+    {
+        IDisposable? runtimeOperation = null;
+        SwarmCombatPublicationCoordinator.PublicationPlan? publicationPlan = null;
+        ExceptionDispatchInfo? preparationFailure = null;
+        ExceptionDispatchInfo? pendingFailure = null;
+        List<Exception>? secondaryFailures = null;
+
+        void RecordFailure(Exception failure)
+        {
+            if (pendingFailure == null)
+                pendingFailure = ExceptionDispatchInfo.Capture(failure);
+            else
+            {
+                secondaryFailures ??= [];
+                secondaryFailures.Add(failure);
+            }
+        }
+
+        try
+        {
+            runtimeOperation = _matchRuntimeRegistry.TryAcquireOperation(
+                matchingId,
+                () =>
+                {
+                    SwarmCombatPublicationCoordinator.CaptureScope? capture = null;
+                    try
+                    {
+                        capture = _swarmCombatPublicationCoordinator.BeginCapture(publicationTurn);
+                        try
+                        {
+                            prepare();
+                        }
+                        catch (Exception ex)
+                        {
+                            // Freeze and dispatch the already committed authoritative prefix before
+                            // the original preparation exception is rethrown to the timer boundary.
+                            preparationFailure = ExceptionDispatchInfo.Capture(ex);
+                        }
+
+                        try
+                        {
+                            publicationPlan = capture.Freeze();
+                        }
+                        catch (Exception ex)
+                        {
+                            if (preparationFailure != null && pendingFailure == null)
+                                pendingFailure = preparationFailure;
+                            RecordFailure(ex);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        RecordFailure(ex);
+                    }
+                    finally
+                    {
+                        try
+                        {
+                            capture?.Dispose();
+                        }
+                        catch (Exception ex)
+                        {
+                            RecordFailure(ex);
+                        }
+                    }
+                });
+
+            if (runtimeOperation != null)
+            {
+                if (preparationFailure != null &&
+                    !ReferenceEquals(pendingFailure, preparationFailure))
+                {
+                    if (pendingFailure != null)
+                    {
+                        secondaryFailures ??= [];
+                        secondaryFailures.Add(pendingFailure.SourceException);
+                    }
+
+                    pendingFailure = preparationFailure;
+                }
+
+                if (publicationPlan == null)
+                {
+                    if (pendingFailure == null)
+                    {
+                        RecordFailure(
+                            new InvalidOperationException(
+                                "Combat publication operation completed without a frozen plan."));
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        _swarmCombatPublicationCoordinator.DispatchAndRetire(
+                            publicationTurn,
+                            publicationPlan);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Preparation remains authoritative when both it and prefix transport fail.
+                        RecordFailure(ex);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            if (preparationFailure != null && pendingFailure == null)
+                pendingFailure = preparationFailure;
+            RecordFailure(ex);
+        }
+
+        try
+        {
+            // Retire the publication before releasing the operation lease. A deferred terminal
+            // finalization may clear the coordinator as soon as the lease reaches zero.
+            publicationTurn.Dispose();
+        }
+        catch (Exception ex)
+        {
+            RecordFailure(ex);
+        }
+
+        try
+        {
+            runtimeOperation?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            RecordFailure(ex);
+        }
+
+        if (ReferenceEquals(pendingFailure, preparationFailure))
+        {
+            if (secondaryFailures != null)
+            {
+                foreach (Exception secondaryFailure in secondaryFailures)
+                {
+                    try
+                    {
+                        logger.LogError(
+                            secondaryFailure,
+                            "Combat publication cleanup or prefix dispatch also failed: MatchingId={MatchingId}",
+                            matchingId);
+                    }
+                    catch
+                    {
+                        // Logging must not mask the authoritative preparation exception.
+                    }
+                }
+            }
+
+            preparationFailure!.Throw();
+        }
+
+        if (pendingFailure != null && secondaryFailures is { Count: > 0 })
+        {
+            throw new AggregateException(
+                "Combat publication and cleanup both failed.",
+                [pendingFailure.SourceException, .. secondaryFailures]);
+        }
+
+        pendingFailure?.Throw();
     }
     private static void AddInventoryCombatActors(
 ICollection<ProximityCombatActor> actors,
@@ -286,7 +467,7 @@ PlayerInGameInventory inventory)
     /// <summary>
     ///     현재 observer→actor 순서의 cache remove 또는 publication 후보를 불변 값으로 고정한다.
     ///     cache commit은 아직 하지 않는다. 각 Send 직전 commit이라는 기존 failure boundary는
-    ///     <see cref="CommitAndDispatchOrbVisualStatePublications"/>가 보존한다.
+    ///     <see cref="AppendOrbVisualStatePublicationSteps"/>의 deferred step이 보존한다.
     /// </summary>
     private ImmutableArray<SwarmOrbVisualPublication> PrepareOrbVisualStatePublications(
         long matchingId,
@@ -382,54 +563,47 @@ PlayerInGameInventory inventory)
     }
 
     /// <summary>
-    ///     현재는 match monitor 안에서 호출된다. 각 step의 cache remove/update를 순서대로 commit하고,
-    ///     publish step은 그 직후 packet을 보낸다. Send 실패 시 현재 key는 no-retry로 남지만 아직
-    ///     방문하지 않은 step은 cache가 바뀌지 않아 다음 tick에 다시 후보가 된다.
+    ///     match monitor 안에서는 불변 step만 capture하고, dispatch 때 각 cache remove/update와
+    ///     바로 뒤 Send를 하나의 deferred step으로 실행한다. Send 실패 시 현재 key는 no-retry로
+    ///     남지만 아직 방문하지 않은 step은 cache가 바뀌지 않아 다음 tick에 다시 후보가 된다.
     /// </summary>
-    private void CommitAndDispatchOrbVisualStatePublications(
+    private void AppendOrbVisualStatePublicationSteps(
         ImmutableArray<SwarmOrbVisualPublication> publications)
     {
-        CommitAndDispatchOrbVisualPublicationSteps(
-            publications,
-            publication =>
-            {
-                var key = (publication.MatchingId, publication.ObserverPlayerId, publication.ActorPlayerId);
-                if (publication.State is { } state)
-                    _orbVisualStates[key] = state;
-                else
-                    _orbVisualStates.TryRemove(key, out _);
-            },
-            publication =>
-            {
-                if (publication.State is null)
-                    return;
-
-                using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE);
-                packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_EFFECT_STATE
-                {
-                    PlayerId = publication.ActorPlayerId,
-                    WeaponItemId = publication.WeaponItemId,
-                    IsActive = publication.IsActive,
-                    OrbItemIds = publication.OrbItemIds.ToList(),
-                    FrontOrbHp = publication.FrontOrbHp,
-                    JamCount = publication.JamCount,
-                    BodyCorruption = publication.BodyCorruption,
-                    ArmorMask = publication.ArmorMask
-                }));
-                publication.Recipient!.Send(packet);
-            });
+        foreach (SwarmOrbVisualPublication publication in publications)
+        {
+            // One deferred step owns both cache commit and its immediately following send. A failed
+            // key remains committed (no retry), while later unvisited keys remain candidates.
+            _swarmCombatPublicationCoordinator.AppendDeferredStep(
+                () => CommitAndDispatchOrbVisualStatePublication(publication));
+        }
     }
 
-    private static void CommitAndDispatchOrbVisualPublicationSteps<TStep>(
-        IReadOnlyList<TStep> steps,
-        Action<TStep> commit,
-        Action<TStep> dispatch)
+    private void CommitAndDispatchOrbVisualStatePublication(
+        SwarmOrbVisualPublication publication)
     {
-        foreach (TStep step in steps)
+        var key = (publication.MatchingId, publication.ObserverPlayerId, publication.ActorPlayerId);
+        if (publication.State is { } state)
+            _orbVisualStates[key] = state;
+        else
+            _orbVisualStates.TryRemove(key, out _);
+
+        if (publication.State is null)
+            return;
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_EFFECT_STATE
         {
-            commit(step);
-            dispatch(step);
-        }
+            PlayerId = publication.ActorPlayerId,
+            WeaponItemId = publication.WeaponItemId,
+            IsActive = publication.IsActive,
+            OrbItemIds = publication.OrbItemIds.ToList(),
+            FrontOrbHp = publication.FrontOrbHp,
+            JamCount = publication.JamCount,
+            BodyCorruption = publication.BodyCorruption,
+            ArmorMask = publication.ArmorMask
+        }));
+        publication.Recipient!.Send(packet);
     }
 
     private static ImmutableArray<int> CaptureSwarmOrbVisualItemIds(IEnumerable<int> orbItemIds) =>
