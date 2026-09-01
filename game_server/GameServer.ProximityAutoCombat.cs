@@ -232,7 +232,8 @@ public partial class GameServer
             RecordFailure(ex);
         }
 
-        if (ReferenceEquals(pendingFailure, preparationFailure))
+        if (preparationFailure != null &&
+            ReferenceEquals(pendingFailure, preparationFailure))
         {
             if (secondaryFailures != null)
             {

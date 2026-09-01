@@ -69,7 +69,6 @@ public partial class GameServer(
         configuration["MATCH_SUMMARY_DIRECTORY"],
         configuration.GetValue<int>("MATCH_SUMMARY_MAX_FILES", MatchSummaryFileStore.DefaultMaxSummaries));
     private readonly EncounterRevealManager _encounterRevealManager = new();
-    private readonly ConcurrentDictionary<long, int> _lastMatchStartCountdownBroadcast = new();
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, string>>
         _matchingLifecycleTerminalSubjects = new();
     private readonly ConcurrentQueue<long> _matchingLifecycleTerminalMatchOrder = new();
@@ -465,9 +464,6 @@ public partial class GameServer(
                 new MatchRuntimeCleanupStep(
                     "session index",
                     _sessionRegistry.RemoveMatch),
-                new MatchRuntimeCleanupStep(
-                    "countdown broadcast",
-                    matchingId => _lastMatchStartCountdownBroadcast.TryRemove(matchingId, out _)),
                 new MatchRuntimeCleanupStep(
                     "settlement",
                     CleanupMatchSettlementState),
@@ -982,36 +978,51 @@ public partial class GameServer(
                 continue;
             }
 
-            _matchRuntimeRegistry.TryExecute(matchingId, () =>
+            var preliminarySnapshot = MatchStartGate.GetSnapshot(matchingId);
+            if (!preliminarySnapshot.IsKnown ||
+                !_swarmCombatPublicationCoordinator.NeedsPeriodicCountdownPublication(
+                    matchingId,
+                    preliminarySnapshot.RemainingSeconds))
             {
-                var snapshot = MatchStartGate.GetSnapshot(matchingId);
-                if (!snapshot.IsKnown)
-                    return;
+                continue;
+            }
 
-                if (_lastMatchStartCountdownBroadcast.TryGetValue(matchingId, out int previous) &&
-                    previous == snapshot.RemainingSeconds)
+            SwarmCombatPublicationCoordinator.PublicationTurn? publicationTurn =
+                _swarmCombatPublicationCoordinator.BeginOrderedTurn(matchingId);
+            if (publicationTurn == null)
+                continue;
+
+            PrepareAndDispatchCombatPublication(
+                matchingId,
+                publicationTurn,
+                () =>
                 {
-                    return;
-                }
+                    var snapshot = MatchStartGate.GetSnapshot(matchingId);
+                    if (!snapshot.IsKnown ||
+                        !_swarmCombatPublicationCoordinator.TryCommitPeriodicCountdownPublication(
+                            publicationTurn,
+                            snapshot.RemainingSeconds))
+                    {
+                        return;
+                    }
 
-                _lastMatchStartCountdownBroadcast[matchingId] = snapshot.RemainingSeconds;
-                var matchingSessions = activeSessions
-                    .Where(session => session.CurrentMapSubId == matchingId)
-                    .ToList();
-                if (matchingSessions.Count == 0)
-                    return;
+                    var matchingSessions = activeSessions
+                        .Where(session => session.CurrentMapSubId == matchingId)
+                        .ToList();
+                    if (matchingSessions.Count == 0)
+                        return;
 
-                using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN);
-                packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
-                {
-                    MatchingId = matchingId,
-                    RemainingSeconds = snapshot.RemainingSeconds,
-                    ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                }));
+                    using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN);
+                    packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
+                    {
+                        MatchingId = matchingId,
+                        RemainingSeconds = snapshot.RemainingSeconds,
+                        ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                    }));
 
-                foreach (var session in matchingSessions)
-                    session.Send(packet);
-            });
+                    foreach (var session in matchingSessions)
+                        session.Send(packet);
+                });
         }
     }
 
@@ -1965,6 +1976,7 @@ public partial class GameServer(
         IReadOnlyList<long> affectedPlayerIds = session.HandoffHumanPlayerIds.Count > 0
             ? session.HandoffHumanPlayerIds
             : [playerId];
+        List<GameClientSession> otherSessions = [];
 
         bool cleanupAccepted;
         Action? persistenceRegistration =
@@ -1976,7 +1988,18 @@ public partial class GameServer(
             // included below, or observes Finalizing and cannot publish a successful admission.
             cleanupAccepted = false;
             if (!_matchRuntimeRegistry.IsTerminal(matchingId))
-                cleanupAccepted = TryCleanupMatchRuntime(matchingId, null, null);
+            {
+                cleanupAccepted = TryCleanupMatchRuntime(
+                    matchingId,
+                    () =>
+                    {
+                        otherSessions = GetSessionsByMatch(matchingId)
+                            .Where(other => !ReferenceEquals(other, session))
+                            .ToList();
+                        return true;
+                    },
+                    null);
+            }
 
             // A competing finalizer or an already terminal match still needs exact claim release for
             // a late, now-rejected ticket. Only skip when cleanup itself failed and the match remained active.
@@ -1999,9 +2022,6 @@ public partial class GameServer(
         if (!cleanupAccepted)
             return;
 
-        var otherSessions = GetSessionsByMatch(matchingId)
-            .Where(other => !ReferenceEquals(other, session))
-            .ToList();
         foreach (var otherSession in otherSessions)
             otherSession.DisconnectForAdmissionFailure();
 

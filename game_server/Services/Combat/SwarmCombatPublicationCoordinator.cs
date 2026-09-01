@@ -8,8 +8,9 @@ namespace game_server.services;
 
 /// <summary>
 ///     Owns one prepare-to-dispatch publication turn per match. A realtime caller may coalesce
-///     while a turn is active, whereas a required caller waits outside the match runtime monitor.
-///     Realtime and required acquisition atomically rebase the same monotonic start-based due.
+///     while a turn is active, whereas required and ordered callers wait outside the match runtime
+///     monitor. Realtime and required acquisition rebase the monotonic start-based due; an ordered
+///     countdown turn preserves that due and commits its last projected second in the same state.
 ///     Captured packet bytes and deferred steps are replayed in their original call order.
 /// </summary>
 internal sealed class SwarmCombatPublicationCoordinator
@@ -93,6 +94,65 @@ internal sealed class SwarmCombatPublicationCoordinator
     /// </summary>
     public PublicationTurn? BeginRequiredTurn(long matchingId)
     {
+        return BeginBlockingTurn(matchingId, rebaseRealtimeDue: true);
+    }
+
+    /// <summary>
+    ///     Waits for the current publication to retire, then claims the same ordered match turn
+    ///     without consuming or rebasing the realtime combat due. Periodic countdown publication
+    ///     uses this lane so its packet cannot split a combat/settlement bundle.
+    /// </summary>
+    public PublicationTurn? BeginOrderedTurn(long matchingId)
+    {
+        return BeginBlockingTurn(matchingId, rebaseRealtimeDue: false);
+    }
+
+    /// <summary>
+    ///     Returns whether the periodic countdown projection differs from the last committed
+    ///     second. This is only an optimistic precheck; callers must commit again with the acquired
+    ///     ordered turn while the match runtime monitor is held.
+    /// </summary>
+    public bool NeedsPeriodicCountdownPublication(long matchingId, int remainingSeconds)
+    {
+        ValidateMatchingId(matchingId);
+        if (!_matchStates.TryGetValue(matchingId, out MatchTurnState? state))
+            return false;
+
+        lock (state.Gate)
+        {
+            return !state.Cleared &&
+                   (!state.HasPeriodicCountdownPublication ||
+                    state.LastPeriodicCountdownSeconds != remainingSeconds);
+        }
+    }
+
+    /// <summary>
+    ///     Commits the periodic countdown second for a live ordered turn. The commit precedes
+    ///     packet capture, preserving the legacy no-retry boundary when later transport fails.
+    /// </summary>
+    public bool TryCommitPeriodicCountdownPublication(
+        PublicationTurn turn,
+        int remainingSeconds)
+    {
+        ArgumentNullException.ThrowIfNull(turn);
+        ValidateOwnedTurn(turn);
+        lock (turn.State.Gate)
+        {
+            ValidateActiveTurnUnderLock(turn);
+            if (turn.State.HasPeriodicCountdownPublication &&
+                turn.State.LastPeriodicCountdownSeconds == remainingSeconds)
+            {
+                return false;
+            }
+
+            turn.State.LastPeriodicCountdownSeconds = remainingSeconds;
+            turn.State.HasPeriodicCountdownPublication = true;
+            return true;
+        }
+    }
+
+    private PublicationTurn? BeginBlockingTurn(long matchingId, bool rebaseRealtimeDue)
+    {
         ValidateMatchingId(matchingId);
         if (!_matchStates.TryGetValue(matchingId, out MatchTurnState? state))
             return null;
@@ -111,7 +171,9 @@ internal sealed class SwarmCombatPublicationCoordinator
                 if (state.Cleared)
                     return null;
 
-                return ActivateTurnAndRebaseRealtimeDue(matchingId, state, _getTimestamp());
+                return rebaseRealtimeDue
+                    ? ActivateTurnAndRebaseRealtimeDue(matchingId, state, _getTimestamp())
+                    : ActivateTurn(matchingId, state);
             }
             finally
             {
@@ -339,6 +401,13 @@ internal sealed class SwarmCombatPublicationCoordinator
         state.ActiveTurnId = turnId;
         state.NextRealtimeEligibleTimestamp = unchecked(startedAt + _realtimeIntervalTicks);
         state.HasRealtimeSchedule = true;
+        return new PublicationTurn(this, matchingId, turnId, state);
+    }
+
+    private PublicationTurn ActivateTurn(long matchingId, MatchTurnState state)
+    {
+        long turnId = Interlocked.Increment(ref _nextTurnId);
+        state.ActiveTurnId = turnId;
         return new PublicationTurn(this, matchingId, turnId, state);
     }
 
@@ -634,6 +703,8 @@ internal sealed class SwarmCombatPublicationCoordinator
         public long? ActiveTurnId;
         public ulong NextRealtimeEligibleTimestamp;
         public bool HasRealtimeSchedule;
+        public int LastPeriodicCountdownSeconds;
+        public bool HasPeriodicCountdownPublication;
         public int RequiredWaiterCount;
         public bool Cleared;
     }

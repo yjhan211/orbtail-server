@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Runtime.ExceptionServices;
 using game_server;
 using game_server.services;
+using MessagePack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -253,6 +254,269 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
         now = 1_050;
         Assert.NotNull(coordinator.TryBeginRealtimeTurn(matchingId));
+    }
+
+    [Fact]
+    public async Task OrderedTurn_WaitsBehindActiveTurnAndPreventsRealtimeBargeIn()
+    {
+        const long matchingId = 61_043;
+        ulong now = 0;
+        var coordinator = new SwarmCombatPublicationCoordinator(
+            TimeSpan.FromMilliseconds(50), () => now, 1_000);
+        Assert.True(coordinator.RegisterMatching(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn realtime =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginRealtimeTurn(matchingId));
+
+        Task<SwarmCombatPublicationCoordinator.PublicationTurn?> orderedTask =
+            Task.Run(() => coordinator.BeginOrderedTurn(matchingId));
+        Assert.True(SpinWait.SpinUntil(
+            () => coordinator.Inspect(matchingId)?.RequiredWaiterCount == 1,
+            TimeSpan.FromSeconds(2)));
+        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+
+        realtime.Dispose();
+        SwarmCombatPublicationCoordinator.PublicationTurn ordered =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await orderedTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        ordered.Dispose();
+
+        now = 49;
+        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        now = 50;
+        Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+            coordinator.TryBeginRealtimeTurn(matchingId)).Dispose();
+    }
+
+    [Fact]
+    public void OrderedTurn_DoesNotReadClockOrRebaseRealtimeDue()
+    {
+        const long matchingId = 61_044;
+        ulong now = 0;
+        int clockReads = 0;
+        var coordinator = new SwarmCombatPublicationCoordinator(
+            TimeSpan.FromMilliseconds(50),
+            () =>
+            {
+                clockReads++;
+                return now;
+            },
+            1_000);
+        Assert.True(coordinator.RegisterMatching(matchingId));
+        Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+            coordinator.TryBeginRealtimeTurn(matchingId)).Dispose();
+        Assert.Equal(1, clockReads);
+
+        now = 25;
+        Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+            coordinator.BeginOrderedTurn(matchingId)).Dispose();
+        Assert.Equal(1, clockReads);
+
+        now = 49;
+        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        now = 50;
+        Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+            coordinator.TryBeginRealtimeTurn(matchingId)).Dispose();
+        Assert.Equal(3, clockReads);
+    }
+
+    [Fact]
+    public async Task OrderedTurn_SharesBlockingLaneWithRequiredTurn()
+    {
+        const long matchingId = 61_049;
+        SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
+        SwarmCombatPublicationCoordinator.PublicationTurn required =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.BeginRequiredTurn(matchingId));
+
+        Task<SwarmCombatPublicationCoordinator.PublicationTurn?> orderedTask =
+            Task.Run(() => coordinator.BeginOrderedTurn(matchingId));
+        Assert.True(SpinWait.SpinUntil(
+            () => coordinator.Inspect(matchingId)?.RequiredWaiterCount == 1,
+            TimeSpan.FromSeconds(2)));
+        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+
+        required.Dispose();
+        using SwarmCombatPublicationCoordinator.PublicationTurn ordered =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await orderedTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+    }
+
+    [Fact]
+    public void OrderedCountdownLease_DefersTerminalUntilDispatchTurnAndLeaseRetire()
+    {
+        const long matchingId = 61_050;
+        var events = new List<string>();
+        SwarmCombatPublicationCoordinator coordinator = CreateUnregisteredCoordinator();
+        var registry = new MatchRuntimeRegistry();
+        registry.SetRuntimeInitializer(id => Assert.True(coordinator.RegisterMatching(id)));
+        Assert.True(registry.TryExecute(matchingId, static () => { }));
+        SwarmCombatPublicationCoordinator.PublicationTurn turn =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.BeginOrderedTurn(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationPlan? plan = null;
+        IDisposable operation = Assert.IsAssignableFrom<IDisposable>(
+            registry.TryAcquireOperation(
+                matchingId,
+                () =>
+                {
+                    Assert.True(
+                        coordinator.TryCommitPeriodicCountdownPublication(turn, 2));
+                    using SwarmCombatPublicationCoordinator.CaptureScope capture =
+                        coordinator.BeginCapture(turn);
+                    coordinator.AppendDeferredStep(() => events.Add("countdown"));
+                    plan = capture.Freeze();
+                }));
+
+        Assert.True(registry.TryFinalize(
+            matchingId,
+            static () => true,
+            beforeFinalized: () => events.Add("terminal"),
+            cleanup: () =>
+            {
+                events.Add("cleanup");
+                coordinator.ClearMatching(matchingId);
+            },
+            afterFinalized: () => events.Add("lifecycle")));
+
+        coordinator.DispatchAndRetire(
+            turn,
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationPlan>(plan));
+        turn.Dispose();
+        Assert.Equal(["countdown"], events);
+        Assert.NotNull(coordinator.Inspect(matchingId));
+
+        operation.Dispose();
+        Assert.Equal(["countdown", "terminal", "cleanup", "lifecycle"], events);
+        Assert.Null(coordinator.Inspect(matchingId));
+    }
+
+    [Fact]
+    public void PeriodicCountdownCommit_CapturesPacketForEveryFrozenRecipient()
+    {
+        const long matchingId = 61_045;
+        const int remainingSeconds = 4;
+        const long serverUnixMs = 1_777_000_123_456;
+        SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
+        Assert.True(coordinator.NeedsPeriodicCountdownPublication(matchingId, remainingSeconds));
+        using SwarmCombatPublicationCoordinator.PublicationTurn turn =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.BeginOrderedTurn(matchingId));
+        Assert.True(coordinator.TryCommitPeriodicCountdownPublication(turn, remainingSeconds));
+        Assert.False(coordinator.TryCommitPeriodicCountdownPublication(turn, remainingSeconds));
+        var delivered = new List<(string Recipient, byte[] WireBytes)>();
+        var first = new SwarmCombatPublicationCoordinator.PacketRecipient(
+            packet => delivered.Add(("first", packet.ToBytes())));
+        var second = new SwarmCombatPublicationCoordinator.PacketRecipient(
+            packet => delivered.Add(("second", packet.ToBytes())));
+        using SwarmCombatPublicationCoordinator.CaptureScope capture = coordinator.BeginCapture(turn);
+        byte[] expectedBody = MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
+        {
+            MatchingId = matchingId,
+            RemainingSeconds = remainingSeconds,
+            ServerUnixMs = serverUnixMs
+        });
+        using (var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN))
+        {
+            packet.SetBody(expectedBody);
+            Assert.True(coordinator.TryCapturePacket(first, packet));
+            Assert.True(coordinator.TryCapturePacket(second, packet));
+        }
+
+        SwarmCombatPublicationCoordinator.PublicationPlan plan = capture.Freeze();
+        Assert.Equal(2, plan.Count);
+        coordinator.DispatchAndRetire(turn, plan);
+
+        Assert.Equal(["first", "second"], delivered.Select(entry => entry.Recipient));
+        foreach ((string _, byte[] wireBytes) in delivered)
+        {
+            Assert.Equal(
+                (int)Protocol.G_TO_C_MATCH_START_COUNTDOWN,
+                BitConverter.ToInt32(wireBytes, Config.HEADER_SIZE));
+            Assert.Equal(
+                expectedBody,
+                wireBytes[(Config.HEADER_SIZE + sizeof(int) + sizeof(long))..]);
+        }
+
+        Assert.False(
+            coordinator.NeedsPeriodicCountdownPublication(matchingId, remainingSeconds));
+        Assert.True(coordinator.NeedsPeriodicCountdownPublication(matchingId, remainingSeconds - 1));
+    }
+
+    [Fact]
+    public void PeriodicCountdownCommit_NoRecipientsStillDedupesSecond()
+    {
+        const long matchingId = 61_046;
+        SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
+        using SwarmCombatPublicationCoordinator.PublicationTurn turn =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.BeginOrderedTurn(matchingId));
+        Assert.True(coordinator.TryCommitPeriodicCountdownPublication(turn, -1));
+        using SwarmCombatPublicationCoordinator.CaptureScope capture = coordinator.BeginCapture(turn);
+        SwarmCombatPublicationCoordinator.PublicationPlan plan = capture.Freeze();
+
+        Assert.Equal(0, plan.Count);
+        coordinator.DispatchAndRetire(turn, plan);
+        Assert.False(coordinator.NeedsPeriodicCountdownPublication(matchingId, -1));
+    }
+
+    [Fact]
+    public void PeriodicCountdownFailure_DoesNotRetryCommittedSecondAndRetiresTurn()
+    {
+        const long matchingId = 61_047;
+        SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
+        using SwarmCombatPublicationCoordinator.PublicationTurn turn =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.BeginOrderedTurn(matchingId));
+        Assert.True(coordinator.TryCommitPeriodicCountdownPublication(turn, 3));
+        int laterRecipients = 0;
+        using SwarmCombatPublicationCoordinator.CaptureScope capture = coordinator.BeginCapture(turn);
+        using (var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN))
+        {
+            packet.SetBody([1, 2, 3]);
+            Assert.True(coordinator.TryCapturePacket(
+                new SwarmCombatPublicationCoordinator.PacketRecipient(
+                    static _ => throw new InvalidOperationException("countdown send failed")),
+                packet));
+            Assert.True(coordinator.TryCapturePacket(
+                new SwarmCombatPublicationCoordinator.PacketRecipient(
+                    _ => laterRecipients++),
+                packet));
+        }
+
+        SwarmCombatPublicationCoordinator.PublicationPlan plan = capture.Freeze();
+        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(
+            () => coordinator.DispatchAndRetire(turn, plan));
+
+        Assert.Equal("countdown send failed", failure.Message);
+        Assert.Equal(0, laterRecipients);
+        Assert.False(coordinator.NeedsPeriodicCountdownPublication(matchingId, 3));
+        Assert.False(coordinator.Inspect(matchingId)?.HasActiveTurn);
+        using SwarmCombatPublicationCoordinator.PublicationTurn next =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.BeginOrderedTurn(matchingId));
+        Assert.False(coordinator.TryCommitPeriodicCountdownPublication(next, 3));
+    }
+
+    [Fact]
+    public void PeriodicCountdownCommit_ClearAndReregisterStartsFresh()
+    {
+        const long matchingId = 61_048;
+        SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
+        using (SwarmCombatPublicationCoordinator.PublicationTurn turn =
+               Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                   coordinator.BeginOrderedTurn(matchingId)))
+        {
+            Assert.True(coordinator.TryCommitPeriodicCountdownPublication(turn, 5));
+        }
+
+        Assert.False(coordinator.NeedsPeriodicCountdownPublication(matchingId, 5));
+        coordinator.ClearMatching(matchingId);
+        Assert.False(coordinator.NeedsPeriodicCountdownPublication(matchingId, 5));
+        Assert.True(coordinator.RegisterMatching(matchingId));
+        Assert.True(coordinator.NeedsPeriodicCountdownPublication(matchingId, 5));
     }
 
     [Fact]
@@ -1252,7 +1516,8 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             publicationHelper,
             "publicationTurn.Dispose();",
             "runtimeOperation?.Dispose();",
-            "if (ReferenceEquals(pendingFailure, preparationFailure))",
+            "if (preparationFailure != null &&",
+            "ReferenceEquals(pendingFailure, preparationFailure)",
             "preparationFailure!.Throw();",
             "throw new AggregateException(",
             "pendingFailure?.Throw();");

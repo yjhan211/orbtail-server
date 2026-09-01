@@ -456,7 +456,7 @@ public partial class GameClientSession : SessionBase
         }
     }
 
-    internal void DisconnectForAdmissionFailure()
+    internal virtual void DisconnectForAdmissionFailure()
     {
         MarkServerInitiatedDisconnect();
         try
