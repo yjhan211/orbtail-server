@@ -516,6 +516,7 @@ public sealed class MatchStartCountdownPublicationTests
                 null!,
                 null!,
                 static (_, _) => false,
+                static (_, prepare, _) => prepare(),
                 static (_, _) => null,
                 static (_, action) =>
                 {

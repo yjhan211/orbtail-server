@@ -17,14 +17,20 @@ public partial class GameClientSession
             SendGroundItemPickupResult(msg.GroundItemUid, 0, false, false, ErrorCode.INVALID_GAME_STATE);
             return Task.CompletedTask;
         }
-
-        Task result = Task.CompletedTask;
-        bool executed = _executeMatchRuntime(
-            CurrentMapSubId,
-            () => result = HandleGroundItemPickupCore(msg));
-        if (!executed)
+        if (CurrentMapSubId <= 0)
+        {
             SendGroundItemPickupResult(msg.GroundItemUid, 0, false, false, ErrorCode.INVALID_GAME_STATE);
-        return result;
+            return Task.CompletedTask;
+        }
+
+        return PublishOrderedSessionAction(
+            () => HandleGroundItemPickupCore(msg),
+            () => SendGroundItemPickupResult(
+                msg.GroundItemUid,
+                0,
+                false,
+                false,
+                ErrorCode.INVALID_GAME_STATE));
     }
 
     private Task HandleGroundItemPickupCore(C_TO_G_GROUND_ITEM_PICKUP msg)

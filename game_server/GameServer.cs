@@ -1887,6 +1887,7 @@ public partial class GameServer(
                 _matchSummaryFileStore,
                 _encounterRevealManager,
                 _swarmCombatPublicationCoordinator.TryCapturePacket,
+                PublishOrderedSessionPublication,
                 _matchRuntimeRegistry.TryAcquireOperation,
                 _matchRuntimeRegistry.TryExecute,
                 _matchRuntimeRegistry.TryBindOwnerFence,

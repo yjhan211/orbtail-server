@@ -57,8 +57,10 @@ public partial class GameClientSession : SessionBase
     private readonly MatchSummaryFileStore _matchSummaryFileStore;
     private readonly EncounterRevealManager _encounterRevealManager;
     private readonly Func<Action<IPacket>, IPacket, bool>? _tryCaptureCombatPublication;
+    private readonly Action<long, Action, Action> _publishOrderedSessionPublication;
     private readonly Action<IPacket>? _sendCombatPublicationDirect;
     private readonly GameAdmissionStateCommitter _admissionStateCommitter;
+    private readonly AsyncLocal<MessageMatchRuntimeScope?> _activeMessageMatchRuntimeScope = new();
 
     private bool _isSleeping;
 
@@ -171,6 +173,7 @@ public partial class GameClientSession : SessionBase
         MatchSummaryFileStore matchSummaryFileStore,
         EncounterRevealManager encounterRevealManager,
         Func<Action<IPacket>, IPacket, bool> tryCaptureCombatPublication,
+        Action<long, Action, Action> publishOrderedSessionPublication,
         Func<long, Action, IDisposable?> acquireMatchRuntimeOperation,
         Func<long, Action, bool> executeMatchRuntime,
         Func<long, long, bool> bindMatchOwnerFence,
@@ -199,6 +202,7 @@ public partial class GameClientSession : SessionBase
         _matchSummaryFileStore = matchSummaryFileStore;
         _encounterRevealManager = encounterRevealManager;
         _tryCaptureCombatPublication = tryCaptureCombatPublication;
+        _publishOrderedSessionPublication = publishOrderedSessionPublication;
         _sendCombatPublicationDirect = SendCombatPublicationDirect;
         _admissionStateCommitter = new GameAdmissionStateCommitter(cacheHelper, logger);
         _acquireMatchRuntimeOperation = acquireMatchRuntimeOperation;
@@ -235,8 +239,92 @@ public partial class GameClientSession : SessionBase
         if (matchingId <= 0)
             return true;
 
-        scope = _acquireMatchRuntimeOperation(matchingId, static () => { });
-        return scope != null;
+        if (_activeMessageMatchRuntimeScope.Value is { IsDisposed: false })
+            throw new InvalidOperationException("A match message operation is already active for this session.");
+
+        IDisposable? runtimeOperation =
+            _acquireMatchRuntimeOperation(matchingId, static () => { });
+        if (runtimeOperation == null)
+            return false;
+
+        var messageScope = new MessageMatchRuntimeScope(this, matchingId, runtimeOperation);
+        _activeMessageMatchRuntimeScope.Value = messageScope;
+        scope = messageScope;
+        return true;
+    }
+
+    /// <summary>
+    ///     Publishes one player-message mutation through the shared per-match ordered lane. The
+    ///     SessionBase message scope already owns the terminal operation lease; this guard makes
+    ///     that borrowed ownership explicit and prevents a continuation from publishing after the
+    ///     scope has retired or against a different match.
+    /// </summary>
+    private Task PublishOrderedSessionAction(
+        Func<Task> prepare,
+        Action prepareFinalizingRejection)
+    {
+        ArgumentNullException.ThrowIfNull(prepare);
+        ArgumentNullException.ThrowIfNull(prepareFinalizingRejection);
+
+        long matchingId = CurrentMapSubId;
+        MessageMatchRuntimeScope? messageScope = _activeMessageMatchRuntimeScope.Value;
+        if (matchingId <= 0 ||
+            messageScope == null ||
+            messageScope.IsDisposed ||
+            messageScope.MatchingId != matchingId)
+        {
+            throw new InvalidOperationException(
+                "Ordered session publication requires the active message match operation lease.");
+        }
+
+        Task preparedTask = Task.CompletedTask;
+        _publishOrderedSessionPublication(
+            matchingId,
+            () =>
+            {
+                preparedTask = prepare() ??
+                    throw new InvalidOperationException(
+                        "Ordered session preparation returned a null task.");
+                if (!preparedTask.IsCompleted)
+                {
+                    throw new InvalidOperationException(
+                        "Ordered session preparation must complete synchronously under the match monitor.");
+                }
+
+                preparedTask.GetAwaiter().GetResult();
+            },
+            prepareFinalizingRejection);
+        return preparedTask;
+    }
+
+    private void ClearMessageMatchRuntimeScope(MessageMatchRuntimeScope scope)
+    {
+        if (ReferenceEquals(_activeMessageMatchRuntimeScope.Value, scope))
+            _activeMessageMatchRuntimeScope.Value = null;
+    }
+
+    /// <summary>
+    ///     Wraps the SessionBase message operation lease with the matching identity and a shared
+    ///     disposed bit so inherited execution contexts cannot reuse a retired capability.
+    /// </summary>
+    private sealed class MessageMatchRuntimeScope(
+        GameClientSession owner,
+        long matchingId,
+        IDisposable runtimeOperation) : IDisposable
+    {
+        private int _disposed;
+
+        public long MatchingId { get; } = matchingId;
+        public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+                return;
+
+            owner.ClearMessageMatchRuntimeScope(this);
+            runtimeOperation.Dispose();
+        }
     }
 
     internal static void CleanupAbandonedMatchingRuntime(long matchingId)

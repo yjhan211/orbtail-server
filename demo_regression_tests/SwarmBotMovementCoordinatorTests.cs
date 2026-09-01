@@ -509,7 +509,7 @@ public sealed class SwarmBotMovementCoordinatorTests
             publication,
             "_matchRuntimeRegistry.TryAcquireOperation(",
             "_swarmCombatPublicationCoordinator.BeginCapture(publicationTurn)",
-            "prepare();",
+            "preparation();",
             "publicationPlan = capture.Freeze();");
         AssertInOrder(
             automaticSetup,

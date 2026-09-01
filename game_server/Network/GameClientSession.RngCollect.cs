@@ -35,30 +35,34 @@ public partial class GameClientSession
     private Task HandleRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-
-        Task result = Task.CompletedTask;
-        bool executed = _executeMatchRuntime(
-            CurrentMapSubId,
-            () => result = HandleSwarmRngCollectStart(msg));
-        if (!executed)
+        if (CurrentMapSubId <= 0)
+        {
             SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
-        return result;
+            return Task.CompletedTask;
+        }
+
+        return PublishOrderedSessionAction(
+            () => HandleSwarmRngCollectStart(msg),
+            () => SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0));
     }
 
     private Task HandleRngCollectFinish(C_TO_G_RNG_COLLECT_FINISH msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-
-        Task result = Task.CompletedTask;
-        bool executed = _executeMatchRuntime(
-            CurrentMapSubId,
-            () => result = HandleSwarmRngCollectFinish(msg));
-        if (!executed)
+        if (CurrentMapSubId <= 0)
         {
             _pendingFinish.Remove(msg.InteractId);
             SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+            return Task.CompletedTask;
         }
-        return result;
+
+        return PublishOrderedSessionAction(
+            () => HandleSwarmRngCollectFinish(msg),
+            () =>
+            {
+                _pendingFinish.Remove(msg.InteractId);
+                SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+            });
     }
 
     /// <summary>

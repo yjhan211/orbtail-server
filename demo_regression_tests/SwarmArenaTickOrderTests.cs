@@ -79,12 +79,12 @@ public sealed class SwarmArenaTickOrderTests
             publicationHelper,
             "_matchRuntimeRegistry.TryAcquireOperation(",
             "_swarmCombatPublicationCoordinator.BeginCapture(publicationTurn)",
-            "prepare();",
+            "preparation();",
             "preparationFailure = ExceptionDispatchInfo.Capture(ex);",
             "publicationPlan = capture.Freeze();",
             "_swarmCombatPublicationCoordinator.DispatchAndRetire(",
             "publicationTurn.Dispose();",
-            "runtimeOperation?.Dispose();",
+            "releaseOwnedRuntimeOperation?.Invoke();",
             "pendingFailure?.Throw();");
 
         string resourceTick = ReadMethodSlice(

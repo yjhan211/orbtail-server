@@ -2188,9 +2188,17 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             proximity,
             "private void ProcessProximityAutoCombatTick(object? state)",
             "private void ProcessProximityAutoCombatForMatching(");
-        string publicationHelper = ReadMethodSlice(
+        string combatPublicationAdapter = ReadMethodSlice(
             proximity,
             "private void PrepareAndDispatchCombatPublication(",
+            "private void PublishOrderedSessionPublication(");
+        string sessionPublicationAdapter = ReadMethodSlice(
+            proximity,
+            "private void PublishOrderedSessionPublication(",
+            "private void PrepareAndDispatchMatchPublication(");
+        string publicationHelper = ReadMethodSlice(
+            proximity,
+            "private void PrepareAndDispatchMatchPublication(",
             "private static void AddInventoryCombatActors(");
         string resourceTick = ReadMethodSlice(
             settlement,
@@ -2241,32 +2249,40 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.DoesNotContain("_matchRuntimeRegistry.TryExecute(", resourceTick);
 
         AssertInOrder(
-            publicationHelper,
+            combatPublicationAdapter,
             "_matchRuntimeRegistry.TryAcquireOperation(",
+            "return runtimeOperation != null;",
+            "prepare,",
+            "() => runtimeOperation?.Dispose()");
+        AssertInOrder(
+            sessionPublicationAdapter,
+            "_swarmCombatPublicationCoordinator.BeginOrderedTurn(matchingId)",
+            "_matchRuntimeRegistry.TryExecute(",
+            "captureActivePreparation",
+            "captureFinalizingRejection();",
+            "releaseOwnedRuntimeOperation: null");
+        Assert.DoesNotContain("TryAcquireOperation", sessionPublicationAdapter);
+        AssertInOrder(
+            publicationHelper,
             "SwarmCombatPublicationCoordinator.CaptureScope? capture = null;",
             "_swarmCombatPublicationCoordinator.BeginCapture(publicationTurn)",
-            "prepare();",
+            "preparation();",
             "preparationFailure = ExceptionDispatchInfo.Capture(ex);",
             "publicationPlan = capture.Freeze();",
+            "bool prepared = tryPrepare(",
             "_swarmCombatPublicationCoordinator.DispatchAndRetire(",
             "publicationTurn.Dispose();",
-            "runtimeOperation?.Dispose();",
+            "releaseOwnedRuntimeOperation?.Invoke();",
             "pendingFailure?.Throw();");
-        int acquisitionStart = publicationHelper.IndexOf(
-            "_matchRuntimeRegistry.TryAcquireOperation(",
-            StringComparison.Ordinal);
-        int acquiredLeaseBranch = publicationHelper.IndexOf(
-            "if (runtimeOperation != null)",
-            acquisitionStart,
-            StringComparison.Ordinal);
-        Assert.True(acquisitionStart >= 0 && acquiredLeaseBranch > acquisitionStart);
-        string acquisitionCallback =
-            publicationHelper[acquisitionStart..acquiredLeaseBranch];
+        string capturePreparation = ReadMethodSlice(
+            publicationHelper,
+            "void CapturePreparation(Action preparation)",
+            "try\n        {\n            bool prepared = tryPrepare(");
         AssertInOrder(
-            acquisitionCallback,
+            capturePreparation,
             "CaptureScope? capture = null;",
             "capture = _swarmCombatPublicationCoordinator.BeginCapture(publicationTurn);",
-            "prepare();",
+            "preparation();",
             "preparationFailure = ExceptionDispatchInfo.Capture(ex);",
             "publicationPlan = capture.Freeze();",
             "if (preparationFailure != null && pendingFailure == null)",
@@ -2274,12 +2290,12 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             "RecordFailure(ex);",
             "finally",
             "capture?.Dispose();");
-        Assert.DoesNotContain("throw;", acquisitionCallback);
-        Assert.DoesNotContain("throw ", acquisitionCallback);
+        Assert.DoesNotContain("throw;", capturePreparation);
+        Assert.DoesNotContain("throw ", capturePreparation);
         AssertInOrder(
             publicationHelper,
             "publicationTurn.Dispose();",
-            "runtimeOperation?.Dispose();",
+            "releaseOwnedRuntimeOperation?.Invoke();",
             "if (preparationFailure != null &&",
             "ReferenceEquals(pendingFailure, preparationFailure)",
             "preparationFailure!.Throw();",

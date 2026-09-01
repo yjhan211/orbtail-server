@@ -101,6 +101,74 @@ public partial class GameServer
         Action prepare)
     {
         IDisposable? runtimeOperation = null;
+        PrepareAndDispatchMatchPublication(
+            matchingId,
+            publicationTurn,
+            (captureActivePreparation, _) =>
+            {
+                runtimeOperation = _matchRuntimeRegistry.TryAcquireOperation(
+                    matchingId,
+                    captureActivePreparation);
+                return runtimeOperation != null;
+            },
+            prepare,
+            static () => { },
+            () => runtimeOperation?.Dispose());
+    }
+
+    /// <summary>
+    ///     Publishes a player-message mutation with the operation lease already borrowed from
+    ///     SessionBase. The shared ordered turn is acquired before the nested runtime monitor; a
+    ///     runtime that became finalizing while the outer lease was held prepares its rejection in
+    ///     the same lane. Dispatch and turn retirement complete before the message scope releases
+    ///     that outer lease.
+    /// </summary>
+    private void PublishOrderedSessionPublication(
+        long matchingId,
+        Action prepare,
+        Action prepareFinalizingRejection)
+    {
+        ArgumentNullException.ThrowIfNull(prepare);
+        ArgumentNullException.ThrowIfNull(prepareFinalizingRejection);
+
+        SwarmCombatPublicationCoordinator.PublicationTurn publicationTurn =
+            _swarmCombatPublicationCoordinator.BeginOrderedTurn(matchingId) ??
+            throw new InvalidOperationException(
+                $"Missing ordered publication runtime for matching {matchingId}.");
+
+        PrepareAndDispatchMatchPublication(
+            matchingId,
+            publicationTurn,
+            (captureActivePreparation, captureFinalizingRejection) =>
+            {
+                if (_matchRuntimeRegistry.TryExecute(
+                        matchingId,
+                        captureActivePreparation))
+                {
+                    return true;
+                }
+
+                captureFinalizingRejection();
+                return true;
+            },
+            prepare,
+            prepareFinalizingRejection,
+            releaseOwnedRuntimeOperation: null);
+    }
+
+    /// <summary>
+    ///     Shared capture/freeze/dispatch failure boundary. Timer callers supply an owned operation
+    ///     lease and release it after the turn; message callers supply a nested TryExecute gate and
+    ///     leave their borrowed outer lease untouched.
+    /// </summary>
+    private void PrepareAndDispatchMatchPublication(
+        long matchingId,
+        SwarmCombatPublicationCoordinator.PublicationTurn publicationTurn,
+        Func<Action, Action, bool> tryPrepare,
+        Action prepare,
+        Action prepareFinalizingRejection,
+        Action? releaseOwnedRuntimeOperation)
+    {
         SwarmCombatPublicationCoordinator.PublicationPlan? publicationPlan = null;
         ExceptionDispatchInfo? preparationFailure = null;
         ExceptionDispatchInfo? pendingFailure = null;
@@ -117,56 +185,58 @@ public partial class GameServer
             }
         }
 
+        void CapturePreparation(Action preparation)
+        {
+            SwarmCombatPublicationCoordinator.CaptureScope? capture = null;
+            try
+            {
+                capture = _swarmCombatPublicationCoordinator.BeginCapture(publicationTurn);
+                try
+                {
+                    preparation();
+                }
+                catch (Exception ex)
+                {
+                    // Freeze and dispatch the already committed authoritative prefix before
+                    // the original preparation exception reaches the message/timer boundary.
+                    preparationFailure = ExceptionDispatchInfo.Capture(ex);
+                }
+
+                try
+                {
+                    publicationPlan = capture.Freeze();
+                }
+                catch (Exception ex)
+                {
+                    if (preparationFailure != null && pendingFailure == null)
+                        pendingFailure = preparationFailure;
+                    RecordFailure(ex);
+                }
+            }
+            catch (Exception ex)
+            {
+                RecordFailure(ex);
+            }
+            finally
+            {
+                try
+                {
+                    capture?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    RecordFailure(ex);
+                }
+            }
+        }
+
         try
         {
-            runtimeOperation = _matchRuntimeRegistry.TryAcquireOperation(
-                matchingId,
-                () =>
-                {
-                    SwarmCombatPublicationCoordinator.CaptureScope? capture = null;
-                    try
-                    {
-                        capture = _swarmCombatPublicationCoordinator.BeginCapture(publicationTurn);
-                        try
-                        {
-                            prepare();
-                        }
-                        catch (Exception ex)
-                        {
-                            // Freeze and dispatch the already committed authoritative prefix before
-                            // the original preparation exception is rethrown to the timer boundary.
-                            preparationFailure = ExceptionDispatchInfo.Capture(ex);
-                        }
+            bool prepared = tryPrepare(
+                () => CapturePreparation(prepare),
+                () => CapturePreparation(prepareFinalizingRejection));
 
-                        try
-                        {
-                            publicationPlan = capture.Freeze();
-                        }
-                        catch (Exception ex)
-                        {
-                            if (preparationFailure != null && pendingFailure == null)
-                                pendingFailure = preparationFailure;
-                            RecordFailure(ex);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        RecordFailure(ex);
-                    }
-                    finally
-                    {
-                        try
-                        {
-                            capture?.Dispose();
-                        }
-                        catch (Exception ex)
-                        {
-                            RecordFailure(ex);
-                        }
-                    }
-                });
-
-            if (runtimeOperation != null)
+            if (prepared)
             {
                 if (preparationFailure != null &&
                     !ReferenceEquals(pendingFailure, preparationFailure))
@@ -225,7 +295,7 @@ public partial class GameServer
 
         try
         {
-            runtimeOperation?.Dispose();
+            releaseOwnedRuntimeOperation?.Invoke();
         }
         catch (Exception ex)
         {
@@ -243,7 +313,7 @@ public partial class GameServer
                     {
                         logger.LogError(
                             secondaryFailure,
-                            "Combat publication cleanup or prefix dispatch also failed: MatchingId={MatchingId}",
+                            "Match publication cleanup or prefix dispatch also failed: MatchingId={MatchingId}",
                             matchingId);
                     }
                     catch
@@ -259,7 +329,7 @@ public partial class GameServer
         if (pendingFailure != null && secondaryFailures is { Count: > 0 })
         {
             throw new AggregateException(
-                "Combat publication and cleanup both failed.",
+                "Match publication and cleanup both failed.",
                 [pendingFailure.SourceException, .. secondaryFailures]);
         }
 
