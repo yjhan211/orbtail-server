@@ -443,7 +443,8 @@ public partial class GameServer
                 return;
         }
         ProcessOrbRecovery(matchingId, actors, aliveSessions, aliveBots, nowUtc);
-        BroadcastOrbVisualStates(matchingId, actors, sessions);
+        CommitAndDispatchOrbVisualStatePublications(
+            PrepareOrbVisualStatePublications(matchingId, actors, sessions));
         BroadcastSwarmOrbRankings(matchingId, sessions, bots);
         // 성장 카드 (#226 단계 C): 소환석이 비용에 닿는 즉시 3택 오퍼 — 상자 트리거 퇴역.
         ProcessSwarmGrowthOffers(matchingId, nowUtc, aliveSessions, aliveBots);

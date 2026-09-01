@@ -73,7 +73,7 @@ public sealed class SwarmArenaTickOrderTests
             "BuildSwarmArenaCombatActors(",
             "ProcessSwarmPvpAttackEvents(",
             "ProcessOrbRecovery(",
-            "BroadcastOrbVisualStates(",
+            "CommitAndDispatchOrbVisualStatePublications(",
             "BroadcastSwarmOrbRankings(",
             "ProcessSwarmGrowthOffers(",
             "ProcessSwarmScoreTimeout(",

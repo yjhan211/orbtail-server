@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using game_server.network;
 using game_server.services;
 using MessagePack;
@@ -282,11 +283,18 @@ PlayerInGameInventory inventory)
         }
     }
 
-    private void BroadcastOrbVisualStates(
+    /// <summary>
+    ///     현재 observer→actor 순서의 cache remove 또는 publication 후보를 불변 값으로 고정한다.
+    ///     cache commit은 아직 하지 않는다. 각 Send 직전 commit이라는 기존 failure boundary는
+    ///     <see cref="CommitAndDispatchOrbVisualStatePublications"/>가 보존한다.
+    /// </summary>
+    private ImmutableArray<SwarmOrbVisualPublication> PrepareOrbVisualStatePublications(
         long matchingId,
         IReadOnlyCollection<ProximityCombatActor> actors,
         IReadOnlyCollection<GameClientSession> matchingSessions)
     {
+        GameClientSession[] recipientSnapshot = matchingSessions.ToArray();
+        var publications = ImmutableArray.CreateBuilder<SwarmOrbVisualPublication>();
         var visualActors = actors
             .GroupBy(actor => actor.PlayerId)
             .Select(group =>
@@ -317,7 +325,7 @@ PlayerInGameInventory inventory)
             })
             .ToList();
 
-        foreach (var observer in matchingSessions)
+        foreach (var observer in recipientSnapshot)
         {
             // 탈락 관전자도 받는다 (#219): 오브 궤도·앞줄 HP가 관전 화면에서도 계속 갱신돼야 한다.
             if (!observer.PlayerId.HasValue)
@@ -329,7 +337,8 @@ PlayerInGameInventory inventory)
                 var key = (matchingId, observer.PlayerId.Value, actor.PlayerId);
                 if (observer.CurrentArea != actor.Area)
                 {
-                    _orbVisualStates.TryRemove(key, out _);
+                    publications.Add(SwarmOrbVisualPublication.Remove(
+                        matchingId, observer.PlayerId.Value, actor.PlayerId));
                     continue;
                 }
 
@@ -353,23 +362,78 @@ PlayerInGameInventory inventory)
                     continue;
                 }
 
-                _orbVisualStates[key] = state;
+                publications.Add(SwarmOrbVisualPublication.Publish(
+                    matchingId,
+                    observer.PlayerId.Value,
+                    observer,
+                    actor.PlayerId,
+                    state,
+                    actor.WeaponItemId,
+                    actor.OrbEffectActive,
+                    CaptureSwarmOrbVisualItemIds(visualActor.OrbItemIds),
+                    frontOrbHp,
+                    jamCount,
+                    bodyCorruption,
+                    armorMask));
+            }
+        }
+
+        return publications.ToImmutable();
+    }
+
+    /// <summary>
+    ///     현재는 match monitor 안에서 호출된다. 각 step의 cache remove/update를 순서대로 commit하고,
+    ///     publish step은 그 직후 packet을 보낸다. Send 실패 시 현재 key는 no-retry로 남지만 아직
+    ///     방문하지 않은 step은 cache가 바뀌지 않아 다음 tick에 다시 후보가 된다.
+    /// </summary>
+    private void CommitAndDispatchOrbVisualStatePublications(
+        ImmutableArray<SwarmOrbVisualPublication> publications)
+    {
+        CommitAndDispatchOrbVisualPublicationSteps(
+            publications,
+            publication =>
+            {
+                var key = (publication.MatchingId, publication.ObserverPlayerId, publication.ActorPlayerId);
+                if (publication.State is { } state)
+                    _orbVisualStates[key] = state;
+                else
+                    _orbVisualStates.TryRemove(key, out _);
+            },
+            publication =>
+            {
+                if (publication.State is null)
+                    return;
+
                 using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE);
                 packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_EFFECT_STATE
                 {
-                    PlayerId = actor.PlayerId,
-                    WeaponItemId = actor.WeaponItemId,
-                    IsActive = actor.OrbEffectActive,
-                    OrbItemIds = visualActor.OrbItemIds,
-                    FrontOrbHp = frontOrbHp,
-                    JamCount = jamCount,
-                    BodyCorruption = bodyCorruption,
-                    ArmorMask = armorMask
+                    PlayerId = publication.ActorPlayerId,
+                    WeaponItemId = publication.WeaponItemId,
+                    IsActive = publication.IsActive,
+                    OrbItemIds = publication.OrbItemIds.ToList(),
+                    FrontOrbHp = publication.FrontOrbHp,
+                    JamCount = publication.JamCount,
+                    BodyCorruption = publication.BodyCorruption,
+                    ArmorMask = publication.ArmorMask
                 }));
-                observer.Send(packet);
-            }
+                publication.Recipient!.Send(packet);
+            });
+    }
+
+    private static void CommitAndDispatchOrbVisualPublicationSteps<TStep>(
+        IReadOnlyList<TStep> steps,
+        Action<TStep> commit,
+        Action<TStep> dispatch)
+    {
+        foreach (TStep step in steps)
+        {
+            commit(step);
+            dispatch(step);
         }
     }
+
+    private static ImmutableArray<int> CaptureSwarmOrbVisualItemIds(IEnumerable<int> orbItemIds) =>
+        [.. orbItemIds];
 
     private void RemoveOrbVisualStates(long matchingId)
     {
@@ -430,5 +494,43 @@ out ProximityCombatActor actor)
         int JamCount,
         int BodyCorruption,
         long ArmorMask);
+
+    private sealed record SwarmOrbVisualPublication(
+        long MatchingId,
+        long ObserverPlayerId,
+        long ActorPlayerId,
+        OrbVisualState? State,
+        GameClientSession? Recipient,
+        int WeaponItemId,
+        bool IsActive,
+        ImmutableArray<int> OrbItemIds,
+        int FrontOrbHp,
+        int JamCount,
+        int BodyCorruption,
+        long ArmorMask)
+    {
+        public static SwarmOrbVisualPublication Remove(
+            long matchingId, long observerPlayerId, long actorPlayerId) =>
+            new(
+                matchingId, observerPlayerId, actorPlayerId, null, null,
+                0, false, ImmutableArray<int>.Empty, 0, 0, 0, 0);
+
+        public static SwarmOrbVisualPublication Publish(
+            long matchingId,
+            long observerPlayerId,
+            GameClientSession recipient,
+            long actorPlayerId,
+            OrbVisualState state,
+            int weaponItemId,
+            bool isActive,
+            ImmutableArray<int> orbItemIds,
+            int frontOrbHp,
+            int jamCount,
+            int bodyCorruption,
+            long armorMask) =>
+            new(
+                matchingId, observerPlayerId, actorPlayerId, state, recipient,
+                weaponItemId, isActive, orbItemIds, frontOrbHp, jamCount, bodyCorruption, armorMask);
+    }
 
 }
