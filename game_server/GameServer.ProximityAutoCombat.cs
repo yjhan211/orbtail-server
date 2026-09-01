@@ -22,7 +22,6 @@ public partial class GameServer
     private readonly ConcurrentDictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex), DateTime>
         _orbRecoveryReadyAtUtc = new();
     private Timer? _proximityAutoCombatTimer;
-    private int _proximityAutoCombatProcessing;
 
     private void StartProximityAutoCombatTimer()
     {
@@ -39,18 +38,26 @@ public partial class GameServer
 
     private void ProcessProximityAutoCombatTick(object? state)
     {
-        if (Interlocked.Exchange(ref _proximityAutoCombatProcessing, 1) != 0)
-            return;
-
+        List<GameClientSession> activeSessions;
+        List<long> activeMatchingIds;
         try
         {
-            var activeSessions = _sessionRegistry.SnapshotWhere(
+            activeSessions = _sessionRegistry.SnapshotWhere(
                 static session =>
                     session.PlayerId.HasValue &&
                     !session.IsEliminated &&
                     !session.IsGameEnded);
+            activeMatchingIds = GetActiveMatchingIds();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Proximity auto combat snapshot failed");
+            return;
+        }
 
-            foreach (long matchingId in GetActiveMatchingIds())
+        foreach (long matchingId in activeMatchingIds)
+        {
+            try
             {
                 // 인트로 예열 (2026-08-16 유저 결정): 카운트다운 동안에도 스웜은 돈다 —
                 // 운동장에서 각 방으로 나가는 몹이 그 5초의 볼거리이기 때문이다.
@@ -66,14 +73,13 @@ public partial class GameServer
                     publicationTurn,
                     () => ProcessProximityAutoCombatForMatching(matchingId, activeSessions));
             }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Proximity auto combat tick failed");
-        }
-        finally
-        {
-            Volatile.Write(ref _proximityAutoCombatProcessing, 0);
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    ex,
+                    "Proximity auto combat tick failed: MatchingId={MatchingId}",
+                    matchingId);
+            }
         }
     }
 

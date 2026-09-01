@@ -55,15 +55,21 @@ public sealed class SwarmArenaTickOrderTests
             "private void ProcessProximityAutoCombatForMatching(");
         AssertInOrder(
             proximityTick,
-            "Interlocked.Exchange(ref _proximityAutoCombatProcessing, 1)",
             "_sessionRegistry.SnapshotWhere(",
-            "foreach (long matchingId in GetActiveMatchingIds())",
+            "activeMatchingIds = GetActiveMatchingIds();",
+            "Proximity auto combat snapshot failed",
+            "foreach (long matchingId in activeMatchingIds)",
+            "try",
             "_swarmCombatPublicationCoordinator.TryBeginRealtimeTurn(matchingId)",
             "PrepareAndDispatchCombatPublication(",
-            "catch (Exception ex)");
+            "catch (Exception ex)",
+            "MatchingId={MatchingId}");
         Assert.Contains(
             "() => ProcessProximityAutoCombatForMatching(matchingId, activeSessions)",
             proximityTick);
+        Assert.DoesNotContain("_proximityAutoCombatProcessing", proximity);
+        Assert.DoesNotContain("Interlocked.Exchange(", proximityTick);
+        Assert.DoesNotContain("Volatile.Write(", proximityTick);
 
         string publicationHelper = ReadMethodSlice(
             proximity,

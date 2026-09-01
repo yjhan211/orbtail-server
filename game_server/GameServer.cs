@@ -74,7 +74,8 @@ public partial class GameServer(
         _matchingLifecycleTerminalSubjects = new();
     private readonly ConcurrentQueue<long> _matchingLifecycleTerminalMatchOrder = new();
     private readonly MatchRuntimeRegistry _matchRuntimeRegistry = new();
-    private readonly SwarmCombatPublicationCoordinator _swarmCombatPublicationCoordinator = new();
+    private readonly SwarmCombatPublicationCoordinator _swarmCombatPublicationCoordinator =
+        new(TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs));
     private MatchRuntimeCleanupCoordinator _matchRuntimeCleanupCoordinator = null!;
     private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
     private SwarmClosurePublicationCoordinator _swarmClosurePublicationCoordinator = null!;

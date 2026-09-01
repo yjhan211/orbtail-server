@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using network.interfaces;
 using network.packets;
 
@@ -8,15 +9,46 @@ namespace game_server.services;
 /// <summary>
 ///     Owns one prepare-to-dispatch publication turn per match. A realtime caller may coalesce
 ///     while a turn is active, whereas a required caller waits outside the match runtime monitor.
+///     Realtime and required acquisition atomically rebase the same monotonic start-based due.
 ///     Captured packet bytes and deferred steps are replayed in their original call order.
 /// </summary>
 internal sealed class SwarmCombatPublicationCoordinator
 {
+    private readonly Func<ulong> _getTimestamp;
+    private readonly ulong _realtimeIntervalTicks;
     private readonly ConcurrentDictionary<long, MatchTurnState> _matchStates = new();
     private readonly AsyncLocal<CaptureFrame?> _activeCapture = new();
     private readonly AsyncLocal<int> _dispatchDepth = new();
     private long _nextTurnId;
     private long _nextBoundaryId;
+
+    public SwarmCombatPublicationCoordinator(
+        TimeSpan realtimeInterval,
+        Func<ulong>? getTimestamp = null,
+        ulong? timestampFrequency = null)
+    {
+        if (realtimeInterval <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(realtimeInterval));
+
+        ulong frequency = timestampFrequency ?? checked((ulong)Stopwatch.Frequency);
+        if (frequency == 0)
+            throw new ArgumentOutOfRangeException(nameof(timestampFrequency));
+
+        UInt128 numerator =
+            (UInt128)checked((ulong)realtimeInterval.Ticks) * frequency;
+        UInt128 intervalTicks =
+            (numerator + (ulong)TimeSpan.TicksPerSecond - 1) /
+            (ulong)TimeSpan.TicksPerSecond;
+        if (intervalTicks == 0 || intervalTicks > long.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(realtimeInterval),
+                "The combat publication interval must fit within half the monotonic timestamp range.");
+        }
+
+        _realtimeIntervalTicks = (ulong)intervalTicks;
+        _getTimestamp = getTimestamp ?? (static () => unchecked((ulong)Stopwatch.GetTimestamp()));
+    }
 
     /// <summary>
     ///     Registers the coordinator entry at match start. Publication begins fail closed for an
@@ -30,8 +62,9 @@ internal sealed class SwarmCombatPublicationCoordinator
     }
 
     /// <summary>
-    ///     Attempts to claim a realtime combat turn without waiting. Required waiters have priority
-    ///     so a 50 ms callback cannot repeatedly steal the turn from a settlement publication.
+    ///     Attempts to claim a due realtime combat turn without waiting. Required waiters have
+    ///     priority, and a successful acquisition consumes the due even if later preparation or
+    ///     dispatch fails.
     /// </summary>
     public PublicationTurn? TryBeginRealtimeTurn(long matchingId)
     {
@@ -44,7 +77,12 @@ internal sealed class SwarmCombatPublicationCoordinator
             if (state.Cleared || state.ActiveTurnId.HasValue || state.RequiredWaiterCount > 0)
                 return null;
 
-            return ActivateTurn(matchingId, state);
+            ulong now = _getTimestamp();
+            if (state.HasRealtimeSchedule &&
+                !HasReachedTimestamp(now, state.NextRealtimeEligibleTimestamp))
+                return null;
+
+            return ActivateTurnAndRebaseRealtimeDue(matchingId, state, now);
         }
     }
 
@@ -73,7 +111,7 @@ internal sealed class SwarmCombatPublicationCoordinator
                 if (state.Cleared)
                     return null;
 
-                return ActivateTurn(matchingId, state);
+                return ActivateTurnAndRebaseRealtimeDue(matchingId, state, _getTimestamp());
             }
             finally
             {
@@ -292,12 +330,20 @@ internal sealed class SwarmCombatPublicationCoordinator
         }
     }
 
-    private PublicationTurn ActivateTurn(long matchingId, MatchTurnState state)
+    private PublicationTurn ActivateTurnAndRebaseRealtimeDue(
+        long matchingId,
+        MatchTurnState state,
+        ulong startedAt)
     {
         long turnId = Interlocked.Increment(ref _nextTurnId);
         state.ActiveTurnId = turnId;
+        state.NextRealtimeEligibleTimestamp = unchecked(startedAt + _realtimeIntervalTicks);
+        state.HasRealtimeSchedule = true;
         return new PublicationTurn(this, matchingId, turnId, state);
     }
+
+    private static bool HasReachedTimestamp(ulong timestamp, ulong due) =>
+        unchecked((long)(timestamp - due)) >= 0;
 
     private CaptureFrame GetCapturingFrame()
     {
@@ -586,6 +632,8 @@ internal sealed class SwarmCombatPublicationCoordinator
     {
         public readonly object Gate = new();
         public long? ActiveTurnId;
+        public ulong NextRealtimeEligibleTimestamp;
+        public bool HasRealtimeSchedule;
         public int RequiredWaiterCount;
         public bool Cleared;
     }
