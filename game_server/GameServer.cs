@@ -141,6 +141,10 @@ public partial class GameServer(
         public TaskCompletionSource<bool>? Quiesced { get; set; }
     }
 
+    private sealed record AdmissionFailureTerminalSnapshot(
+        IReadOnlyList<GameClientSession> Sessions,
+        IReadOnlyCollection<long> PlayerIds);
+
     private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
         _swarmMatchRuntimes.GetOrCreate(matchingId);
 
@@ -339,24 +343,12 @@ public partial class GameServer(
 
     private void OnGameServerMatchOwnerLost(long matchingId, IReadOnlyList<long> handoffPlayerIds)
     {
-        List<GameClientSession> affectedSessions = GetSessionsByMatch(matchingId);
-        var playerIdsToPublish = handoffPlayerIds
+        long[] affectedPlayerIds = handoffPlayerIds
             .Where(playerId => playerId > 0)
-            .ToHashSet();
-        foreach (GameClientSession session in affectedSessions)
-        {
-            if (!session.PlayerId.HasValue)
-                continue;
-
-            if (session.TryMarkMatchingLifecycleHandledExternally())
-                playerIdsToPublish.Add(session.PlayerId.Value);
-            else
-                playerIdsToPublish.Remove(session.PlayerId.Value);
-        }
-
-        long[] playerIds = playerIdsToPublish.ToArray();
+            .Distinct()
+            .ToArray();
         Task handlerTask = Task.Run(() =>
-            HandleGameServerMatchOwnerLost(matchingId, affectedSessions, playerIds));
+            HandleGameServerMatchOwnerLost(matchingId, affectedPlayerIds));
         _pendingMatchOwnerLossTasks[matchingId] = handlerTask;
         _ = handlerTask.ContinueWith(
             _ => ((ICollection<KeyValuePair<long, Task>>)_pendingMatchOwnerLossTasks)
@@ -368,7 +360,6 @@ public partial class GameServer(
 
     private void HandleGameServerMatchOwnerLost(
         long matchingId,
-        IReadOnlyList<GameClientSession> affectedSessions,
         IReadOnlyCollection<long> affectedPlayerIds)
     {
         logger.LogError(
@@ -376,33 +367,33 @@ public partial class GameServer(
             matchingId,
             affectedPlayerIds.Count);
 
-        Action? persistenceRegistration =
-            BeginMatchingLifecyclePersistenceRegistration(matchingId);
-        try
-        {
-            bool cleanupAccepted = TryCleanupMatchRuntime(matchingId, null, null);
-            if (!cleanupAccepted && !_matchRuntimeRegistry.IsTerminal(matchingId))
+        bool cleanupAccepted = TryAbortMatchAtTerminalBoundary(
+            matchingId,
+            () =>
             {
-                logger.LogCritical(
-                    "Match owner fence was lost but local runtime cleanup could not start: MatchingId={MatchingId}",
-                    matchingId);
-            }
+                List<GameClientSession> affectedSessions = GetSessionsByMatch(matchingId);
+                var playerIdsToPublish = affectedPlayerIds.ToHashSet();
+                foreach (GameClientSession session in affectedSessions)
+                {
+                    if (!session.PlayerId.HasValue)
+                        continue;
 
-            foreach (long playerId in affectedPlayerIds)
-            {
-                PublishMatchingLifecycle(
-                    MatchingLifecycleSubjects.PlayerAdmissionFailed,
-                    playerId,
-                    matchingId);
-            }
-        }
-        finally
+                    if (session.TryMarkMatchingLifecycleHandledExternally())
+                        playerIdsToPublish.Add(session.PlayerId.Value);
+                    else
+                        playerIdsToPublish.Remove(session.PlayerId.Value);
+                }
+
+                return new AdmissionFailureTerminalSnapshot(
+                    affectedSessions,
+                    playerIdsToPublish.ToArray());
+            });
+        if (!cleanupAccepted && !_matchRuntimeRegistry.IsTerminal(matchingId))
         {
-            persistenceRegistration?.Invoke();
+            logger.LogCritical(
+                "Match owner fence was lost but local runtime cleanup could not start: MatchingId={MatchingId}",
+                matchingId);
         }
-
-        foreach (GameClientSession session in affectedSessions)
-            session.DisconnectForAdmissionFailure();
     }
 
     private async Task WaitForPendingMatchOwnerLossesAsync()
@@ -979,7 +970,6 @@ public partial class GameServer(
                         "Match admission deadline expired before every human became ready: MatchingId={MatchingId}",
                         matchingId);
                     AbortMatchAfterAdmissionFailure(anchorSession);
-                    anchorSession.DisconnectForAdmissionFailure();
                 }
                 continue;
             }
@@ -1971,75 +1961,333 @@ public partial class GameServer(
 
         long playerId = session.PlayerId.Value;
         long matchingId = session.CurrentMapSubId;
-        if (_sessionRegistry.TryGetCurrent(playerId, out GameClientSession? currentSession) &&
-            currentSession != null &&
-            !ReferenceEquals(currentSession, session) &&
-            currentSession.CurrentMapSubId == matchingId)
+        bool cleanupAccepted = TryAbortMatchAtTerminalBoundary(
+            matchingId,
+            () =>
+            {
+                if (_sessionRegistry.TryGetCurrent(playerId, out GameClientSession? currentSession) &&
+                    currentSession != null &&
+                    !ReferenceEquals(currentSession, session) &&
+                    currentSession.CurrentMapSubId == matchingId)
+                {
+                    logger.LogDebug(
+                        "Skipped admission-failed claim release for superseded session: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                        playerId,
+                        matchingId);
+                    return null;
+                }
+
+                List<GameClientSession> affectedSessions = GetSessionsByMatch(matchingId);
+                foreach (GameClientSession affectedSession in affectedSessions)
+                    affectedSession.TryMarkMatchingLifecycleHandledExternally();
+
+                IReadOnlyCollection<long> affectedPlayerIds =
+                    session.HandoffHumanPlayerIds.Count > 0
+                        ? session.HandoffHumanPlayerIds.ToArray()
+                        : [playerId];
+                return new AdmissionFailureTerminalSnapshot(affectedSessions, affectedPlayerIds);
+            },
+            lifecyclePublications =>
+            {
+                PrepareAdmissionFailureLifecycle(
+                    matchingId,
+                    [playerId],
+                    lifecyclePublications);
+                try
+                {
+                    PublishAdmissionFailureTerminalDisconnect(matchingId, [session]);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(
+                        ex,
+                        "Failed to disconnect late admission failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                        playerId,
+                        matchingId);
+                }
+            },
+            () =>
+            {
+                PublishLateDurableAdmissionFailure(matchingId, playerId);
+                try
+                {
+                    session.DisconnectForAdmissionFailure();
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(
+                        ex,
+                        "Failed to disconnect completed-runtime admission failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                        playerId,
+                        matchingId);
+                }
+            });
+
+        if (cleanupAccepted)
         {
-            logger.LogDebug(
-                "Skipped admission-failed claim release for superseded session: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                playerId,
-                matchingId);
-            return;
+            logger.LogWarning(
+                "Match aborted after client admission failure: MatchingId={MatchingId}, FailedPlayerId={PlayerId}",
+                matchingId,
+                playerId);
         }
+    }
 
-        IReadOnlyList<long> affectedPlayerIds = session.HandoffHumanPlayerIds.Count > 0
-            ? session.HandoffHumanPlayerIds
-            : [playerId];
-        List<GameClientSession> otherSessions = [];
+    /// <summary>
+    ///     Freezes the admission-abort recipients and lifecycle work only for the caller that wins
+    ///     Active -> Finalizing. The registry may attach a late before hook to already-pending work,
+    ///     so the winner marker prevents a loser from publishing terminal packets or disconnecting
+    ///     a different finalizer's roster. The required publication turn drains after all operation
+    ///     leases retire and before component cleanup clears its coordinator entry.
+    /// </summary>
+    private bool TryAbortMatchAtTerminalBoundary(
+        long matchingId,
+        Func<AdmissionFailureTerminalSnapshot?> captureWinnerSnapshot,
+        Action<List<Action>>? beforeLostFinalization = null,
+        Action? afterBeforeSkipped = null)
+    {
+        AdmissionFailureTerminalSnapshot? winnerSnapshot = null;
+        int winnerMarker = 0;
+        int beforeHookRan = 0;
+        var lifecyclePublications = new List<Action>();
 
-        bool cleanupAccepted;
-        Action? persistenceRegistration =
-            BeginMatchingLifecyclePersistenceRegistration(matchingId);
+        return TryCleanupMatchRuntime(
+            matchingId,
+            () =>
+            {
+                winnerSnapshot = captureWinnerSnapshot();
+                if (winnerSnapshot == null)
+                    return false;
+
+                Volatile.Write(ref winnerMarker, 1);
+                return true;
+            },
+            () =>
+            {
+                Volatile.Write(ref beforeHookRan, 1);
+                if (Volatile.Read(ref winnerMarker) == 0 || winnerSnapshot == null)
+                {
+                    try
+                    {
+                        beforeLostFinalization?.Invoke(lifecyclePublications);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(
+                            ex,
+                            "Failed to prepare late admission abort finalization: MatchingId={MatchingId}",
+                            matchingId);
+                    }
+                    return;
+                }
+
+                PrepareAdmissionFailureLifecycle(
+                    matchingId,
+                    winnerSnapshot.PlayerIds,
+                    lifecyclePublications);
+                PublishAdmissionFailureTerminalDisconnect(matchingId, winnerSnapshot.Sessions);
+            },
+            () =>
+            {
+                if (Volatile.Read(ref beforeHookRan) == 0)
+                {
+                    afterBeforeSkipped?.Invoke();
+                    return;
+                }
+
+                DispatchPreparedAdmissionFailureLifecycle(matchingId, lifecyclePublications);
+            });
+    }
+
+    private void PublishAdmissionFailureTerminalDisconnect(
+        long matchingId,
+        IReadOnlyList<GameClientSession> sessions)
+    {
         try
         {
-            // Win the terminal transition before publishing or taking the session snapshot. A new
-            // connection either registers under the same runtime lock before this transition and is
-            // included below, or observes Finalizing and cannot publish a successful admission.
-            cleanupAccepted = false;
-            if (!_matchRuntimeRegistry.IsTerminal(matchingId))
-            {
-                cleanupAccepted = TryCleanupMatchRuntime(
-                    matchingId,
-                    () =>
+            PublishRequiredTerminalAction(
+                matchingId,
+                () =>
+                {
+                    foreach (GameClientSession affectedSession in sessions)
                     {
-                        otherSessions = GetSessionsByMatch(matchingId)
-                            .Where(other => !ReferenceEquals(other, session))
-                            .ToList();
-                        return true;
-                    },
-                    null);
-            }
+                        try
+                        {
+                            affectedSession.DisconnectForAdmissionFailure();
+                        }
+                        catch (Exception ex)
+                        {
+                            logger.LogWarning(
+                                ex,
+                                "Failed to deliver admission failure disconnect: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                                affectedSession.PlayerId,
+                                matchingId);
+                        }
+                    }
+                });
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Failed to acquire required terminal publication turn for admission failure: MatchingId={MatchingId}",
+                matchingId);
+        }
+    }
 
-            // A competing finalizer or an already terminal match still needs exact claim release for
-            // a late, now-rejected ticket. Only skip when cleanup itself failed and the match remained active.
-            if (!cleanupAccepted && !_matchRuntimeRegistry.IsTerminal(matchingId))
-                return;
-
-            foreach (long affectedPlayerId in affectedPlayerIds)
+    /// <summary>
+    ///     Claims each player/subject during pre-finalization and retains only dispatch work for
+    ///     post-commit. This keeps Redis/outbox registration inside the cleanup seal while allowing
+    ///     a normal winner's already-prepared terminal subject to win over a late admission abort.
+    /// </summary>
+    private void PrepareAdmissionFailureLifecycle(
+        long matchingId,
+        IReadOnlyCollection<long> playerIds,
+        List<Action> lifecyclePublications)
+    {
+        foreach (long playerId in playerIds)
+        {
+            try
             {
-                PublishMatchingLifecycle(
+                Action? publication = PrepareMatchingLifecyclePublication(
                     MatchingLifecycleSubjects.PlayerAdmissionFailed,
-                    affectedPlayerId,
+                    playerId,
+                    matchingId);
+                if (publication != null)
+                    lifecyclePublications.Add(publication);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    ex,
+                    "Failed to prepare admission failure lifecycle publication: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    playerId,
                     matchingId);
             }
         }
-        finally
+    }
+
+    private void DispatchPreparedAdmissionFailureLifecycle(
+        long matchingId,
+        IReadOnlyList<Action> lifecyclePublications)
+    {
+        foreach (Action publication in lifecyclePublications)
         {
-            persistenceRegistration?.Invoke();
+            try
+            {
+                publication();
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    ex,
+                    "Failed to dispatch prepared admission failure lifecycle: MatchingId={MatchingId}",
+                    matchingId);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Handles an admission callback that arrived after the runtime's before-finalized phase
+    ///     was no longer attachable. The normal local registration gate is already sealed here, so
+    ///     durable deployments enqueue directly through the existing outbox/abort-fence decision
+    ///     path. The process-local terminal-subject claim keeps this from overriding a winner that
+    ///     had already prepared Completed, Released, or AdmissionFailed for the same player.
+    /// </summary>
+    private void PublishLateDurableAdmissionFailure(long matchingId, long playerId)
+    {
+        if (!TryRegisterMatchingLifecycleTerminal(
+                MatchingLifecycleSubjects.PlayerAdmissionFailed,
+                playerId,
+                matchingId))
+        {
+            return;
         }
 
-        if (!cleanupAccepted)
+        if (!IsDurableMatchingLifecycleEnabled)
+        {
+            try
+            {
+                PrepareLegacyMatchingLifecyclePublication(
+                    MatchingLifecycleSubjects.PlayerAdmissionFailed,
+                    playerId,
+                    matchingId).Invoke();
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    ex,
+                    "Failed to publish late legacy admission failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    playerId,
+                    matchingId);
+            }
             return;
+        }
 
-        foreach (var otherSession in otherSessions)
-            otherSession.DisconnectForAdmissionFailure();
+        MatchingLifecycleOutboxWorker? outboxWorker = _matchingLifecycleOutboxWorker;
+        if (outboxWorker == null)
+        {
+            logger.LogCritical(
+                "Late admission failure cannot reach the durable outbox: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                playerId,
+                matchingId);
+            RecordMatchingLifecyclePersistenceFailure(matchingId);
+            return;
+        }
 
-        logger.LogWarning(
-            "Match aborted after client admission failure: MatchingId={MatchingId}, FailedPlayerId={PlayerId}, AffectedPlayers={AffectedPlayers}",
-            matchingId,
-            playerId,
-            affectedPlayerIds.Count);
+        try
+        {
+            string subject = MatchingLifecycleSubjects.PlayerAdmissionFailed;
+            string eventId = MatchingLifecycleMessageIds.Create(subject, playerId, matchingId);
+            var envelope = new MatchingLifecycleEnvelope
+            {
+                PlayerId = playerId,
+                MatchingId = matchingId,
+                OccurredAtUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                EventId = eventId
+            };
+            var record = new MatchingLifecycleOutboxRecord
+            {
+                EventId = eventId,
+                EventIdFingerprint = MatchingLifecycleOutboxKeys.FingerprintEventId(eventId),
+                Subject = subject,
+                Payload = MessagePackSerializer.Serialize(envelope),
+                PlayerId = playerId,
+                MatchingId = matchingId
+            };
+            long operationId = Interlocked.Increment(ref _nextMatchingLifecyclePublishId);
+            Task persistence = PersistLateAdmissionFailureAsync(outboxWorker, record);
+            if (!_pendingMatchingLifecyclePublishTasks.TryAdd(operationId, persistence))
+                throw new InvalidOperationException($"Duplicate late lifecycle operation id: {operationId}.");
+
+            _ = persistence.ContinueWith(
+                _completedTask => _pendingMatchingLifecyclePublishTasks.TryRemove(operationId, out _),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
+        catch (Exception ex)
+        {
+            logger.LogCritical(
+                ex,
+                "Failed to schedule late durable admission failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                playerId,
+                matchingId);
+            RecordMatchingLifecyclePersistenceFailure(matchingId);
+        }
+    }
+
+    private async Task PersistLateAdmissionFailureAsync(
+        MatchingLifecycleOutboxWorker outboxWorker,
+        MatchingLifecycleOutboxRecord record)
+    {
+        bool persistenceProtected = await PersistMatchingLifecycleDecisionAsync(outboxWorker, record);
+        if (!persistenceProtected)
+        {
+            logger.LogCritical(
+                "Late durable admission failure has no confirmed persistence protection: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                record.PlayerId,
+                record.MatchingId);
+        }
     }
 
     /// <summary>

@@ -17,9 +17,11 @@ namespace game_server.network;
 ///     The session validates protocol messages and owns per-connection state, while match-shared state remains
 ///     in GameServer managers. Authentication becomes visible only after the Redis admission commit and initial
 ///     authoritative snapshot have both completed. Human Swarm growth-pick and orb-decision rules are injected
-///     by the owning GameServer instance instead of process-static routing callbacks. Terminal recipients and
-///     payloads are frozen during runtime-owned preparation; after the outer turn and lease retire, a supplied
-///     required-turn adapter publishes result, end, and mark steps outside the match monitor before cleanup.
+    ///     by the owning GameServer instance instead of process-static routing callbacks. A successful admission
+    ///     response is built before authentication commits, then queued outside the match monitor while the outer
+    ///     runtime lease is still held. Terminal recipients and payloads are frozen during runtime-owned preparation;
+    ///     after the outer turn and lease retire, a supplied required-turn adapter publishes result, end, and mark
+    ///     steps outside the match monitor before cleanup.
 /// </summary>
 public partial class GameClientSession : SessionBase
 {
@@ -46,6 +48,11 @@ public partial class GameClientSession : SessionBase
     private readonly Action<long, Action?, Action?> _cleanupMatchRuntime;
     private readonly Func<long, Action, IDisposable?> _acquireMatchRuntimeOperation;
     private readonly Func<long, Action, bool> _executeMatchRuntime;
+    /// <summary>
+    ///     Queues an already-built successful admission response after authentication has committed. Production uses
+    ///     <see cref="UserToken.TrySend"/>; tests can inject a sender to verify the match monitor boundary.
+    /// </summary>
+    private readonly Func<Packet, bool> _trySendConnectSuccessResponse;
     private readonly Func<long, long, bool> _bindMatchOwnerFence;
     private readonly Func<long, GameClientSession, Action?> _registerSessionCallback;
     private readonly Action<long, long> _recordLeavePenalty;
@@ -88,6 +95,7 @@ public partial class GameClientSession : SessionBase
     private DateTime _lastHeartbeatTime = DateTime.UtcNow;
     private int _admissionCompleted;
     private int _admissionFailureReported;
+    private int _admissionDisconnectIssued;
     private int _matchingLifecycleHandledExternally;
     private int _matchingLifecycleTerminalReported;
     private int _matchingClaimReleaseReported;
@@ -192,7 +200,8 @@ public partial class GameClientSession : SessionBase
         Func<long, long, Action?> prepareGameCompletion,
         Action<long, long> releaseMatchingClaim,
         Func<bool> isServerStopping,
-        Action<GameClientSession> recordAdmissionFailure)
+        Action<GameClientSession> recordAdmissionFailure,
+        Func<Packet, bool>? trySendConnectSuccessResponse = null)
         : base(token, logger, cacheHelper, redLock)
     {
         _onLeaveCallback = onLeaveCallback;
@@ -220,6 +229,7 @@ public partial class GameClientSession : SessionBase
         _admissionStateCommitter = new GameAdmissionStateCommitter(cacheHelper, logger);
         _acquireMatchRuntimeOperation = acquireMatchRuntimeOperation;
         _executeMatchRuntime = executeMatchRuntime;
+        _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Token.TrySend;
         _bindMatchOwnerFence = bindMatchOwnerFence;
         _cleanupMatchRuntime = cleanupMatchRuntime;
         _recordLeavePenalty = recordLeavePenalty;
@@ -511,29 +521,47 @@ public partial class GameClientSession : SessionBase
         return Interlocked.CompareExchange(ref _matchingLifecycleTerminalReported, 1, 0) == 0;
     }
 
-    private void ReportAdmissionFailureOnce()
+    /// <summary>
+    ///     Hands a registered, pre-authentication session to the owning server's deferred
+    ///     admission-abort path. A false result means invoking that hook failed; callers may
+    ///     close the socket without sending a competing local terminal response.
+    /// </summary>
+    private bool ReportAdmissionFailureOnce()
     {
+        bool admissionFailureClaimed = false;
+        bool matchingLifecycleTerminalClaimed = false;
         if (Volatile.Read(ref _admissionCompleted) != 0 ||
             !PlayerId.HasValue ||
-            CurrentMapSubId <= 0 ||
-            Interlocked.CompareExchange(ref _admissionFailureReported, 1, 0) != 0)
-            return;
+            CurrentMapSubId <= 0)
+            return true;
+        if (Interlocked.CompareExchange(ref _admissionFailureReported, 1, 0) != 0)
+            return true;
+
+        admissionFailureClaimed = true;
         if (!TryBeginMatchingLifecycleTerminal())
-            return;
+            return true;
+
+        matchingLifecycleTerminalClaimed = true;
 
         try
         {
             _recordAdmissionFailure(this);
+            return true;
         }
         catch (Exception ex)
         {
-            Volatile.Write(ref _matchingLifecycleTerminalReported, 0);
-            Volatile.Write(ref _admissionFailureReported, 0);
+            // Only release reservations this invocation acquired. A competing terminal path
+            // can already own either marker when this method returns early above.
+            if (matchingLifecycleTerminalClaimed)
+                Volatile.Write(ref _matchingLifecycleTerminalReported, 0);
+            if (admissionFailureClaimed)
+                Volatile.Write(ref _admissionFailureReported, 0);
             Logger.LogError(
                 ex,
                 "Failed to report game admission failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 PlayerId,
                 CurrentMapSubId);
+            return false;
         }
     }
 
@@ -560,6 +588,9 @@ public partial class GameClientSession : SessionBase
 
     internal virtual void DisconnectForAdmissionFailure()
     {
+        if (Interlocked.Exchange(ref _admissionDisconnectIssued, 1) != 0)
+            return;
+
         MarkServerInitiatedDisconnect();
         try
         {

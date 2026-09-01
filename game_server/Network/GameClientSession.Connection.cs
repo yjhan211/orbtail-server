@@ -227,27 +227,54 @@ public partial class GameClientSession
             }
 
             // Authentication succeeds only after every fallible initialization and initial
-            // snapshot step has completed. This prevents success -> failure double responses.
+            // snapshot step has completed. Build the complete success response before that
+            // commit so serialization failure still follows the admission-abort path.
             SendMatchStartCountdown(matchingId);
+            using Packet successResponse = CreateConnectResultPacket(
+                true,
+                ErrorCode.SUCCESS,
+                "Connected to GameServer");
             bool admissionCommitted = _executeMatchRuntime(matchingId, () =>
             {
-                if (!Token.TryMarkAuthenticated())
+                if (!Token.TryMarkAuthenticated(() => Volatile.Write(ref _admissionCompleted, 1)))
                     throw new OperationCanceledException("Connection closed before authentication commit.");
-                if (!SendConnectResult(true, ErrorCode.SUCCESS, "Connected to GameServer"))
-                    throw new OperationCanceledException("Connection closed before admission response was queued.");
-                Volatile.Write(ref _admissionCompleted, 1);
             });
             if (!admissionCommitted)
                 throw new OperationCanceledException("Match became terminal before authentication commit.");
+            if (!TryPublishCommittedConnectResult(successResponse))
+                return;
             Logger.LogInformation("Client connected successfully: PlayerId={PlayerId}", PlayerId);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to handle connect");
 
-            // Move the match to Finalizing while this handler still owns its runtime lease.
-            // That prevents another concurrently connecting human from committing a success ACK.
-            ReportAdmissionFailureOnce();
+            // Authentication and the local admission flag commit together. Once visible, an
+            // ACK publication failure is connection-local: never roll admission back or abort
+            // the whole match, and never send a contradictory negative CONNECT_RESULT.
+            if (Volatile.Read(ref _admissionCompleted) != 0)
+            {
+                CloseAfterCommittedAdmissionResponseFailure();
+                return;
+            }
+
+            // A completed runtime-operation acquisition registered this session under the
+            // match monitor. The deferred abort hook owns the one terminal error/disconnect
+            // publication for every registered recipient, so do not send a competing local
+            // CONNECT_RESULT here.
+            if (runtimeOperation != null)
+            {
+                if (!ReportAdmissionFailureOnce())
+                {
+                    MarkServerInitiatedDisconnect();
+                    Token.Disconnect();
+                }
+                return;
+            }
+
+            // No runtime lease means this failed before registration (for example a rejected
+            // handoff identity or owner fence), so no deferred recipient snapshot owns this
+            // socket. Keep the direct response for that early failure path.
             MarkServerInitiatedDisconnect();
             SendConnectResult(false, ErrorCode.FATAL, "게임 서버 연결 처리 중 오류가 발생했습니다",
                 disconnectAfterSend: true);
@@ -267,16 +294,86 @@ public partial class GameClientSession
     private bool SendConnectResult(bool success, ErrorCode errorCode, string message,
         bool disconnectAfterSend = false)
     {
-        using var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, PlayerId ?? 0);
+        using Packet packet = CreateConnectResultPacket(success, errorCode, message);
+        return disconnectAfterSend ? Token.TrySendAndDisconnect(packet) : Token.TrySend(packet);
+    }
+
+    /// <summary>
+    ///     Creates a complete CONNECT_RESULT frame. Successful admission calls this before the authentication commit,
+    ///     keeping allocation, serialization, and body construction on the pre-commit failure side of the boundary.
+    /// </summary>
+    private Packet CreateConnectResultPacket(bool success, ErrorCode errorCode, string message)
+    {
         var response = new G_TO_C_CONNECT_RESULT
         {
             Success = success,
             ErrorCode = errorCode,
             Message = message
         };
-        packet.SetBody(MessagePackSerializer.Serialize(response));
-        return disconnectAfterSend ? Token.TrySendAndDisconnect(packet) : Token.TrySend(packet);
+        byte[] body = MessagePackSerializer.Serialize(response);
+        Packet packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, PlayerId ?? 0);
+        try
+        {
+            packet.SetBody(body);
+            return packet;
+        }
+        catch
+        {
+            packet.Dispose();
+            throw;
+        }
     }
+
+    /// <summary>
+    ///     Queues a prebuilt success response after admission commits and outside MatchRuntime.SyncRoot. A false return
+    ///     or exception is fail-forward: the authenticated admission remains committed and only this socket is closed.
+    /// </summary>
+    private bool TryPublishCommittedConnectResult(Packet packet)
+    {
+        try
+        {
+            if (_trySendConnectSuccessResponse(packet))
+                return true;
+
+            Logger.LogWarning(
+                "Committed game admission response was not queued; closing connection: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                PlayerId,
+                CurrentMapSubId);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(
+                ex,
+                "Committed game admission response enqueue failed; closing connection: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                PlayerId,
+                CurrentMapSubId);
+        }
+
+        CloseAfterCommittedAdmissionResponseFailure();
+        return false;
+    }
+
+    /// <summary>
+    ///     Closes a connection whose admission already committed without reporting an admission failure or attempting
+    ///     a contradictory negative CONNECT_RESULT.
+    /// </summary>
+    private void CloseAfterCommittedAdmissionResponseFailure()
+    {
+        MarkServerInitiatedDisconnect();
+        try
+        {
+            Token.Disconnect();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(
+                ex,
+                "Failed to close connection after committed admission response failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                PlayerId,
+                CurrentMapSubId);
+        }
+    }
+
     private async Task BroadcastPlayerJoin()
     {
         if (!PlayerId.HasValue || IsEliminated) return;
