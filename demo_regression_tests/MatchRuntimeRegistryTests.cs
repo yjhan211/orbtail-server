@@ -511,7 +511,7 @@ public sealed class MatchRuntimeRegistryTests
     }
 
     [Fact]
-    public void TryFinalize_WhenAnotherFinalizerIsPending_AttachesOnlyCallerPostWork()
+    public void TryFinalize_WhenAnotherFinalizerIsPending_AttachesCallerHooksWithoutRepeatingCleanup()
     {
         var registry = new MatchRuntimeRegistry();
         const long matchingId = 41017;
@@ -520,12 +520,22 @@ public sealed class MatchRuntimeRegistryTests
         int losingCleanupCount = 0;
         IDisposable? operation = registry.TryAcquireOperation(matchingId, static () => { });
         Assert.NotNull(operation);
+        object syncRoot = GetRuntimeSyncRoot(registry, matchingId);
 
         Assert.True(registry.TryFinalize(
             matchingId,
             static () => true,
-            () => events.Add("winner-cleanup"),
-            () => events.Add("winner-post")));
+            beforeFinalized: () =>
+            {
+                Assert.True(Monitor.IsEntered(syncRoot));
+                events.Add("winner-before");
+            },
+            cleanup: () => events.Add("winner-cleanup"),
+            afterFinalized: () =>
+            {
+                Assert.False(Monitor.IsEntered(syncRoot));
+                events.Add("winner-post");
+            }));
         Assert.False(registry.TryFinalize(
             matchingId,
             () =>
@@ -533,8 +543,17 @@ public sealed class MatchRuntimeRegistryTests
                 Interlocked.Increment(ref losingPredicateCount);
                 return true;
             },
-            () => Interlocked.Increment(ref losingCleanupCount),
-            () => events.Add("loser-post")));
+            beforeFinalized: () =>
+            {
+                Assert.True(Monitor.IsEntered(syncRoot));
+                events.Add("loser-before");
+            },
+            cleanup: () => Interlocked.Increment(ref losingCleanupCount),
+            afterFinalized: () =>
+            {
+                Assert.False(Monitor.IsEntered(syncRoot));
+                events.Add("loser-post");
+            }));
 
         Assert.Equal(0, losingPredicateCount);
         Assert.Equal(0, losingCleanupCount);
@@ -542,13 +561,17 @@ public sealed class MatchRuntimeRegistryTests
 
         operation!.Dispose();
 
-        Assert.Equal(["winner-cleanup", "winner-post", "loser-post"], events);
+        Assert.Equal(
+            ["winner-before", "loser-before", "winner-cleanup", "winner-post", "loser-post"],
+            events);
         Assert.Equal(0, losingPredicateCount);
         Assert.Equal(0, losingCleanupCount);
         Assert.True(registry.IsTerminal(matchingId));
 
         operation.Dispose();
-        Assert.Equal(["winner-cleanup", "winner-post", "loser-post"], events);
+        Assert.Equal(
+            ["winner-before", "loser-before", "winner-cleanup", "winner-post", "loser-post"],
+            events);
     }
 
     [Fact]
@@ -557,6 +580,7 @@ public sealed class MatchRuntimeRegistryTests
         var registry = new MatchRuntimeRegistry();
         const long matchingId = 41018;
         int losingPredicateCount = 0;
+        int losingBeforeCount = 0;
         int losingCleanupCount = 0;
         int postCount = 0;
         Assert.True(registry.TryExecute(matchingId, static () => { }));
@@ -573,16 +597,96 @@ public sealed class MatchRuntimeRegistryTests
                 Interlocked.Increment(ref losingPredicateCount);
                 return true;
             },
-            () => Interlocked.Increment(ref losingCleanupCount),
-            () =>
+            beforeFinalized: () => Interlocked.Increment(ref losingBeforeCount),
+            cleanup: () => Interlocked.Increment(ref losingCleanupCount),
+            afterFinalized: () =>
             {
                 Assert.False(Monitor.IsEntered(syncRoot));
                 Interlocked.Increment(ref postCount);
             }));
 
         Assert.Equal(0, losingPredicateCount);
+        Assert.Equal(0, losingBeforeCount);
         Assert.Equal(0, losingCleanupCount);
         Assert.Equal(1, postCount);
+    }
+
+    [Fact]
+    public void TryFinalize_ReentrantFromBefore_DropsNestedBeforeAndCleanupButRunsNestedAfter()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41023;
+        var events = new List<string>();
+
+        Assert.True(registry.TryFinalize(
+            matchingId,
+            static () => true,
+            beforeFinalized: () =>
+            {
+                events.Add("outer-before");
+                Assert.False(registry.TryFinalize(
+                    matchingId,
+                    static () => true,
+                    beforeFinalized: () => events.Add("nested-before"),
+                    cleanup: () => events.Add("nested-cleanup"),
+                    afterFinalized: () => events.Add("nested-after")));
+                events.Add("outer-before-end");
+            },
+            cleanup: () => events.Add("outer-cleanup"),
+            afterFinalized: () => events.Add("outer-after")));
+
+        Assert.Equal(
+            ["outer-before", "outer-before-end", "outer-cleanup", "outer-after", "nested-after"],
+            events);
+        Assert.True(registry.IsTerminal(matchingId));
+    }
+
+    [Fact]
+    public void TryFinalize_BotOperationLeasesHoldTerminalHooksUntilLastDispose()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41024;
+        var events = new List<string>();
+
+        IDisposable? first = registry.TryAcquireOperation(
+            matchingId,
+            () => events.Add("bot-prepare-1"));
+        IDisposable? second = registry.TryAcquireOperation(
+            matchingId,
+            () => events.Add("bot-prepare-2"));
+        Assert.NotNull(first);
+        Assert.NotNull(second);
+
+        events.Add("bot-dispatch-start");
+        Assert.True(registry.TryFinalize(
+            matchingId,
+            static () => true,
+            beforeFinalized: () => events.Add("terminal-before"),
+            cleanup: () => events.Add("component-cleanup"),
+            afterFinalized: () => events.Add("summary-after")));
+        events.Add("bot-dispatch-end");
+
+        first!.Dispose();
+        Assert.Equal(
+            ["bot-prepare-1", "bot-prepare-2", "bot-dispatch-start", "bot-dispatch-end"],
+            events);
+
+        second!.Dispose();
+        Assert.Equal(
+            [
+                "bot-prepare-1",
+                "bot-prepare-2",
+                "bot-dispatch-start",
+                "bot-dispatch-end",
+                "terminal-before",
+                "component-cleanup",
+                "summary-after"
+            ],
+            events);
+        Assert.True(registry.IsTerminal(matchingId));
+
+        Parallel.Invoke(first.Dispose, second.Dispose);
+        Assert.Equal(7, events.Count);
     }
 
     [Fact]
@@ -710,7 +814,7 @@ public sealed class MatchRuntimeRegistryTests
 
         Assert.True(coordinator.TryFinalize(
             matchingId,
-            beforeCleanup: () => events.Add("before"),
+            beforeFinalized: () => events.Add("before"),
             afterFinalized: () =>
             {
                 events.Add("after-finalized");
@@ -725,6 +829,41 @@ public sealed class MatchRuntimeRegistryTests
         Assert.Equal(0, registry.ActiveCount);
         operation.Dispose();
         Assert.Equal(["before", "cleanup", "after-finalized"], events);
+    }
+
+    [Fact]
+    public void CleanupCoordinator_BeforeAndComponentFailures_DoNotUndoTerminalCommit()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41025;
+        var events = new List<string>();
+        var coordinator = new MatchRuntimeCleanupCoordinator(
+            registry,
+            [
+                new MatchRuntimeCleanupStep("failing-component", _ =>
+                {
+                    events.Add("component-failed");
+                    throw new InvalidOperationException("simulated component failure");
+                }),
+                new MatchRuntimeCleanupStep("remaining-component", _ => events.Add("component-completed"))
+            ],
+            NullLogger.Instance);
+
+        Assert.True(coordinator.TryFinalize(
+            matchingId,
+            beforeFinalized: () =>
+            {
+                events.Add("terminal-before");
+                throw new InvalidOperationException("simulated terminal publication failure");
+            },
+            afterFinalized: () => events.Add("summary-after")));
+
+        Assert.Equal(
+            ["terminal-before", "component-failed", "component-completed", "summary-after"],
+            events);
+        Assert.True(registry.IsTerminal(matchingId));
+        Assert.False(registry.TryExecute(matchingId, () => events.Add("late-gameplay")));
+        Assert.DoesNotContain("late-gameplay", events);
     }
 
     private static object GetRuntimeSyncRoot(MatchRuntimeRegistry registry, long matchingId)

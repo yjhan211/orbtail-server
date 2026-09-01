@@ -112,6 +112,28 @@ public sealed class MatchRuntimeRegistry
         Action cleanup,
         Action? afterFinalized = null)
     {
+        return TryFinalize(
+            matchingId,
+            canFinalize,
+            beforeFinalized: null,
+            cleanup,
+            afterFinalized);
+    }
+
+    /// <summary>
+    ///     Attempts to register terminal cleanup with ordered hooks that run immediately before
+    ///     the winner-owned component cleanup and after the terminal commit, respectively.
+    ///     A losing caller may attach only its hooks to pending work; it never contributes another
+    ///     component cleanup plan. Once the before phase has started or completion has won the race,
+    ///     a late before hook is dropped while a late after hook retains the public post-commit contract.
+    /// </summary>
+    internal bool TryFinalize(
+        long matchingId,
+        Func<bool> canFinalize,
+        Action? beforeFinalized,
+        Action cleanup,
+        Action? afterFinalized)
+    {
         ArgumentNullException.ThrowIfNull(canFinalize);
         ArgumentNullException.ThrowIfNull(cleanup);
 
@@ -138,10 +160,10 @@ public sealed class MatchRuntimeRegistry
                     return false;
                 }
 
-                // A caller that already captured post-commit work may arrive after another
-                // execution or operation has won the terminal transition. Attach only that
-                // post work to the pending finalization; its predicate and cleanup stay skipped.
-                if (runtime.TryAttachAfterFinalized(afterFinalized))
+                // A caller that already captured terminal publication or post-commit work may
+                // arrive after another execution or operation won the transition. Attach only
+                // those hooks to pending work; its predicate and component cleanup stay skipped.
+                if (runtime.TryAttachFinalizationHooks(beforeFinalized, afterFinalized))
                     return false;
 
                 // Evaluate state-dependent predicates under the same lifecycle lock as the
@@ -149,7 +171,7 @@ public sealed class MatchRuntimeRegistry
                 if (!canFinalize())
                     return false;
 
-                var finalization = new FinalizationWork(cleanup, afterFinalized);
+                var finalization = new FinalizationWork(cleanup, beforeFinalized, afterFinalized);
                 if (!runtime.TryBeginFinalization(finalization, out bool deferred))
                     return false;
                 if (deferred)
@@ -283,7 +305,8 @@ public sealed class MatchRuntimeRegistry
     {
         try
         {
-            finalization.Cleanup();
+            finalization.RunBeforeFinalized();
+            finalization.ComponentCleanup();
             runtime.Complete();
             RememberCompleted(matchingId);
             _activeRuntimes.TryRemove(
@@ -388,7 +411,9 @@ public sealed class MatchRuntimeRegistry
             getAfterFinalized);
     }
 
-    private static void InvokeAfterFinalizedCallbacks(IReadOnlyList<Action> callbacks)
+    private static void InvokeFinalizationCallbacks(
+        IReadOnlyList<Action> callbacks,
+        string aggregateMessage)
     {
         List<Exception>? failures = null;
         foreach (Action callback in callbacks)
@@ -407,20 +432,53 @@ public sealed class MatchRuntimeRegistry
         if (failures is [Exception singleFailure])
             ExceptionDispatchInfo.Capture(singleFailure).Throw();
         if (failures is { Count: > 1 })
-            throw new AggregateException("Multiple post-finalization callbacks failed.", failures);
+            throw new AggregateException(aggregateMessage, failures);
     }
 
     private sealed class FinalizationWork
     {
+        // These collections and the phase flag are touched only while the owning
+        // MatchRuntime.SyncRoot is held. The post-commit action closes over an immutable
+        // array snapshot before the runtime is completed and the monitor is released.
+        private readonly List<Action> _beforeFinalized = [];
         private readonly List<Action> _afterFinalized = [];
+        private bool _beforeFinalizedStarted;
 
-        public FinalizationWork(Action cleanup, Action? afterFinalized)
+        public FinalizationWork(
+            Action componentCleanup,
+            Action? beforeFinalized,
+            Action? afterFinalized)
         {
-            Cleanup = cleanup;
+            ComponentCleanup = componentCleanup;
+            AttachBeforeFinalized(beforeFinalized);
             AttachAfterFinalized(afterFinalized);
         }
 
-        public Action Cleanup { get; }
+        public Action ComponentCleanup { get; }
+
+        public void AttachHooks(Action? beforeFinalized, Action? afterFinalized)
+        {
+            AttachBeforeFinalized(beforeFinalized);
+            AttachAfterFinalized(afterFinalized);
+        }
+
+        public void RunBeforeFinalized()
+        {
+            _beforeFinalizedStarted = true;
+            if (_beforeFinalized.Count == 0)
+                return;
+
+            Action[] callbacks = _beforeFinalized.ToArray();
+            InvokeFinalizationCallbacks(
+                callbacks,
+                "Multiple pre-finalization callbacks failed.");
+        }
+
+        private void AttachBeforeFinalized(Action? beforeFinalized)
+        {
+            if (!_beforeFinalizedStarted && beforeFinalized != null)
+                _beforeFinalized.Add(beforeFinalized);
+        }
 
         public void AttachAfterFinalized(Action? afterFinalized)
         {
@@ -434,7 +492,9 @@ public sealed class MatchRuntimeRegistry
                 return null;
 
             Action[] callbacks = _afterFinalized.ToArray();
-            return () => InvokeAfterFinalizedCallbacks(callbacks);
+            return () => InvokeFinalizationCallbacks(
+                callbacks,
+                "Multiple post-finalization callbacks failed.");
         }
     }
 
@@ -489,12 +549,12 @@ public sealed class MatchRuntimeRegistry
             return _ownerFence == ownerFence;
         }
 
-        public bool TryAttachAfterFinalized(Action? afterFinalized)
+        public bool TryAttachFinalizationHooks(Action? beforeFinalized, Action? afterFinalized)
         {
             if (Volatile.Read(ref _state) != Finalizing || _currentFinalization == null)
                 return false;
 
-            _currentFinalization.AttachAfterFinalized(afterFinalized);
+            _currentFinalization.AttachHooks(beforeFinalized, afterFinalized);
             return true;
         }
 

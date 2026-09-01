@@ -86,38 +86,82 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         string normalFinalization = ReadMethodSlice(
             sessionSource,
             "private void SendGameResult(",
-            "private List<GameResultPlayerInfo> BuildGameResultPlayers(");
+            "private void PublishTerminalResult(");
+        string terminalPublication = ReadMethodSlice(
+            sessionSource,
+            "private void PublishTerminalResult(",
+            "private void RunTerminalPublicationStep(");
 
+        int operationAcquisition = Find(normalFinalization, "_acquireMatchRuntimeOperation(");
+        int resultPayload = Find(normalFinalization, ".CreateGameResultChunks(");
+        int preparedTerminalPlan = Find(normalFinalization, "var preparedTerminalPlan = new MatchTerminalPublicationPlan(");
+        int finalizationClaim = Find(normalFinalization, "_gameEventLogManager.TryBeginFinalization(");
         int normalFinalEvent = Find(normalFinalization, "_gameEventLogManager.LogMatchEnded(");
+        int eventLogFailure = Find(normalFinalization, "Final match event logging failed;");
         int normalCapture = Find(normalFinalization, "MatchSummaryPersistence.Capture(");
-        int resultPacket = Find(normalFinalization, "GameResultPacketChunker.CreateGameResultChunks(");
-        int markEnded = Find(normalFinalization, "session.MarkGameEnded()");
+        int summaryCaptureFailure = Find(normalFinalization, "Final match summary capture failed;");
+        int terminalPlanCommit = Find(normalFinalization, "terminalPlan = preparedTerminalPlan;");
+        int cleanupRegistration = Find(normalFinalization, "_cleanupMatchRuntime(");
+        int resultPublication = Find(terminalPublication, "Protocol.G_TO_C_GAME_RESULT");
+        int endPublication = Find(terminalPublication, "Protocol.G_TO_C_GAME_END");
+        int markEnded = Find(terminalPublication, "publication.Session.MarkGameEnded");
         const string persistCallPattern = @"MatchSummaryPersistence\.Persist\s*\(";
         RegexOptions sourceContractOptions =
             RegexOptions.Singleline |
             RegexOptions.IgnorePatternWhitespace |
             RegexOptions.CultureInvariant;
 
-        Assert.True(normalFinalEvent < normalCapture);
-        Assert.True(normalCapture < resultPacket);
-        Assert.True(resultPacket < markEnded);
+        Assert.True(operationAcquisition < resultPayload);
+        Assert.True(resultPayload < preparedTerminalPlan);
+        Assert.True(preparedTerminalPlan < finalizationClaim);
+        Assert.True(finalizationClaim < normalFinalEvent);
+        Assert.True(normalFinalEvent < eventLogFailure);
+        Assert.True(eventLogFailure < normalCapture);
+        Assert.True(normalCapture < summaryCaptureFailure);
+        Assert.True(summaryCaptureFailure < terminalPlanCommit);
+        Assert.True(terminalPlanCommit < cleanupRegistration);
+        Assert.True(resultPublication < endPublication);
+        Assert.True(endPublication < markEnded);
+        Assert.DoesNotContain(".Send(", normalFinalization);
+        Assert.DoesNotContain(".MarkGameEnded(", normalFinalization);
         Assert.Single(Regex.Matches(normalFinalization, persistCallPattern));
         Assert.Matches(
             new Regex(
                 """
-                Action\?\s+afterFinalized\s*=\s*null\s*;\s*
-                if\s*\(\s*summaryRequest\s*!=\s*null\s*\)\s*
-                \{\s*
-                    MatchSummaryPersistenceRequest\s+capturedSummary\s*=\s*summaryRequest\s*;\s*
-                    afterFinalized\s*=\s*\(\s*\)\s*=>\s*
-                        MatchSummaryPersistence\.Persist\s*
-                        \(\s*capturedSummary\s*,\s*_matchSummaryFileStore\s*,\s*Logger\s*\)\s*;\s*
-                \}\s*
-                _cleanupMatchRuntime\s*
-                \(\s*matchingId\s*,\s*afterFinalized\s*\)\s*;
+                finally\s*
+                \{.*?
+                    terminalPlan\s*=\s*preparedTerminalPlan\s*;\s*
+                    Action\?\s+afterFinalized\s*=\s*null\s*;\s*
+                    if\s*\(\s*summaryRequest\s*!=\s*null\s*\)\s*
+                    \{\s*
+                        MatchSummaryPersistenceRequest\s+capturedSummary\s*=\s*summaryRequest\s*;\s*
+                        afterFinalized\s*=\s*\(\s*\)\s*=>\s*
+                            MatchSummaryPersistence\.Persist\s*
+                            \(\s*capturedSummary\s*,\s*_matchSummaryFileStore\s*,\s*Logger\s*\)\s*;\s*
+                    \}\s*
+                    _cleanupMatchRuntime\s*
+                    \(\s*
+                        matchingId\s*,\s*
+                        \(\s*\)\s*=>\s*PublishTerminalResult\s*
+                            \(\s*preparedTerminalPlan\s*\)\s*,\s*
+                        afterFinalized\s*
+                    \)\s*;\s*
+                \}
                 """,
                 sourceContractOptions),
             normalFinalization);
+        Assert.Matches(
+            new Regex(
+                """
+                foreach\s*\(\s*byte\[\]\s+resultPayload.*?
+                    Protocol\.G_TO_C_GAME_RESULT.*?
+                foreach\s*\(\s*MatchTerminalSessionPublication\s+publication.*?
+                    Protocol\.G_TO_C_GAME_END.*?
+                foreach\s*\(\s*MatchTerminalSessionPublication\s+publication.*?
+                    publication\.Session\.MarkGameEnded
+                """,
+                sourceContractOptions),
+            terminalPublication);
 
         string serverSource = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string noHumanFinalization = ReadMethodSlice(
@@ -167,6 +211,21 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 sourceContractOptions),
             noHumanFinalization);
         Assert.DoesNotContain("PersistMatchSummary(", noHumanFinalization);
+
+        Assert.Matches(
+            new Regex(
+                """
+                private\s+void\s+CleanupMatchRuntime\s*
+                \(\s*
+                    long\s+matchingId\s*,\s*
+                    Action\?\s+beforeFinalized\s*,\s*
+                    Action\?\s+afterFinalized\s*
+                \).*?
+                TryCleanupMatchRuntime\s*
+                \(\s*matchingId\s*,\s*null\s*,\s*beforeFinalized\s*,\s*afterFinalized\s*\)
+                """,
+                sourceContractOptions),
+            serverSource);
     }
 
     public void Dispose()

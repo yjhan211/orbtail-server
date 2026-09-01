@@ -17,7 +17,8 @@ internal sealed class MatchRuntimeCleanupCoordinator(
     ILogger logger)
 {
     /// <summary>
-    ///     Attempts to register the ordered cleanup plan and guarded post-commit continuation.
+    ///     Attempts to register guarded pre-cleanup/post-commit hooks around the ordered,
+    ///     winner-owned component cleanup plan.
     /// </summary>
     /// <returns>
     ///     <list type="table">
@@ -27,8 +28,8 @@ internal sealed class MatchRuntimeCleanupCoordinator(
     ///         </listheader>
     ///         <item>
     ///             <term>true / Active winner</term>
-    ///             <description>The predicate and before-cleanup action run under the lifecycle boundary,
-    ///             cleanup runs exactly once, and post runs after commit outside it.</description>
+    ///             <description>The predicate and before-finalized hook run under the lifecycle boundary,
+    ///             component cleanup runs exactly once, and post runs after commit outside it.</description>
     ///         </item>
     ///         <item>
     ///             <term>false / Active rejected or invalid id</term>
@@ -36,12 +37,12 @@ internal sealed class MatchRuntimeCleanupCoordinator(
     ///         </item>
     ///         <item>
     ///             <term>false / Finalizing</term>
-    ///             <description>Before-cleanup and component cleanup are not repeated; a non-null guarded
-    ///             post is attached to the pending finalization.</description>
+    ///             <description>Component cleanup is not repeated. Non-null guarded before/post hooks are
+    ///             attached to pending work in registration order.</description>
     ///         </item>
     ///         <item>
     ///             <term>false / Completed or tombstoned</term>
-    ///             <description>Before-cleanup and component cleanup are not repeated; a non-null guarded
+    ///             <description>Before-finalized and component cleanup are not repeated. A non-null guarded
     ///             post executes immediately outside the monitor.</description>
     ///         </item>
     ///         <item>
@@ -54,19 +55,23 @@ internal sealed class MatchRuntimeCleanupCoordinator(
     public bool TryFinalize(
         long matchingId,
         Func<bool>? canFinalize = null,
-        Action? beforeCleanup = null,
+        Action? beforeFinalized = null,
         Action? afterFinalized = null)
     {
         try
         {
-            return runtimeRegistry.TryFinalize(matchingId, canFinalize ?? (static () => true), () =>
-            {
-                if (beforeCleanup != null)
-                    RunStep(matchingId, "match finalization", beforeCleanup);
-
-                foreach (MatchRuntimeCleanupStep step in cleanupSteps)
-                    RunStep(matchingId, step.Name, () => step.Cleanup(matchingId));
-            }, afterFinalized == null
+            return runtimeRegistry.TryFinalize(
+                matchingId,
+                canFinalize ?? (static () => true),
+                beforeFinalized == null
+                    ? null
+                    : () => RunStep(matchingId, "match pre-finalization", beforeFinalized),
+                () =>
+                {
+                    foreach (MatchRuntimeCleanupStep step in cleanupSteps)
+                        RunStep(matchingId, step.Name, () => step.Cleanup(matchingId));
+                },
+                afterFinalized == null
                 ? null
                 : () => RunStep(matchingId, "match post-finalization", afterFinalized));
         }

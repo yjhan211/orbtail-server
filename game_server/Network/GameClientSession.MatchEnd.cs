@@ -145,7 +145,7 @@ public partial class GameClientSession
         if (!deferGameOver && isGameOver)
         {
             Logger.LogInformation("게임 종료! 최후의 1인: {WinnerId}", winnerId);
-            SendGameResult(allSessions, winnerId ?? 0, false, CurrentMapSubId);
+            SendGameResult(winnerId ?? 0, false, CurrentMapSubId);
         }
 
     }
@@ -187,13 +187,13 @@ public partial class GameClientSession
         // 오브 점수 만료(#226 단계 B)는 요약 EndReason에도 그대로 남긴다 — 계측에서
         // 연장전 정산과 섞이면 5분 판정 발화율을 셀 수 없다.
         string endReason = criterion == "orb_score_timeout" ? criterion : "overtime_settlement";
-        SendGameResult(allSessions, winnerId, false, CurrentMapSubId, endReason, criterion);
+        SendGameResult(winnerId, false, CurrentMapSubId, endReason, criterion);
     }
 
     /// <summary>
     ///     게임 결과 패킷 전송 (전체 로스터 공개)
     /// </summary>
-    private void SendGameResult(List<GameClientSession> allSessions, long winnerId, bool isTimeout, long matchingId,
+    private void SendGameResult(long winnerId, bool isTimeout, long matchingId,
         string endReason = "last_survivor", string tieBreakCriterion = "not_required")
     {
         if (DevFlags.DisableGameEnd)
@@ -203,63 +203,190 @@ public partial class GameClientSession
                 matchingId, endReason);
             return;
         }
-        if (allSessions.Any(session => session.IsGameEnded) ||
-            !_gameEventLogManager.TryBeginFinalization(matchingId))
+
+        MatchTerminalPublicationPlan? terminalPlan = null;
+        MatchSummaryPersistenceRequest? summaryRequest = null;
+        using IDisposable? runtimeOperation = _acquireMatchRuntimeOperation(
+            matchingId,
+            () =>
+            {
+                List<GameClientSession> sessionSnapshot =
+                    _getSessionsByInstance(CurrentMapId, matchingId);
+                if (sessionSnapshot.Any(session => session.IsGameEnded))
+                    return;
+
+                var players = BuildGameResultPlayers(sessionSnapshot, matchingId, winnerId);
+                byte[][] resultPayloads = GameResultPacketChunker
+                    .CreateGameResultChunks(winnerId, isTimeout, players)
+                    .Select(resultChunk => MessagePackSerializer.Serialize(resultChunk))
+                    .ToArray();
+                MatchTerminalSessionPublication[] sessionPublications = sessionSnapshot
+                    .Select(session => new MatchTerminalSessionPublication(
+                        session,
+                        MessagePackSerializer.Serialize(new G_TO_C_GAME_END
+                        {
+                            MatchingId = matchingId,
+                            IsEscaped = !isTimeout && session.PlayerId == winnerId
+                        })))
+                    .ToArray();
+                var preparedTerminalPlan = new MatchTerminalPublicationPlan(
+                    matchingId,
+                    resultPayloads,
+                    sessionPublications);
+
+                if (!_gameEventLogManager.TryBeginFinalization(matchingId))
+                    return;
+
+                try
+                {
+                    try
+                    {
+                        _gameEventLogManager.LogMatchEnded(
+                            matchingId,
+                            winnerId,
+                            endReason,
+                            tieBreakCriterion,
+                            players.Select(player => new MatchFinalPlayerStats(
+                                player.PlayerId,
+                                player.Rank,
+                                player.SurvivalTimeSeconds,
+                                player.KillCount,
+                                player.TotalDamageDealt,
+                                player.TotalRecovery,
+                                player.OrbCount)).ToList());
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogWarning(
+                            ex,
+                            "Final match event logging failed; summary capture will continue: MatchingId={MatchingId}",
+                            matchingId);
+                    }
+
+                    try
+                    {
+                        summaryRequest = MatchSummaryPersistence.Capture(
+                            _gameEventLogManager,
+                            Logger,
+                            matchingId,
+                            endReason,
+                            winnerId);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogWarning(
+                            ex,
+                            "Final match summary capture failed; terminal publication will continue: MatchingId={MatchingId}",
+                            matchingId);
+                    }
+                }
+                finally
+                {
+                    // Once TryBeginFinalization succeeds, the captured terminal plan must always
+                    // reach lifecycle cleanup even when observational event/summary capture fails.
+                    // Register while the operation acquisition still owns SyncRoot so no gameplay
+                    // action can mutate the already serialized result before Active -> Finalizing.
+                    terminalPlan = preparedTerminalPlan;
+                    Action? afterFinalized = null;
+                    if (summaryRequest != null)
+                    {
+                        MatchSummaryPersistenceRequest capturedSummary = summaryRequest;
+                        afterFinalized = () =>
+                            MatchSummaryPersistence.Persist(capturedSummary, _matchSummaryFileStore, Logger);
+                    }
+
+                    _cleanupMatchRuntime(
+                        matchingId,
+                        () => PublishTerminalResult(preparedTerminalPlan),
+                        afterFinalized);
+                }
+            });
+
+        if (runtimeOperation == null)
+        {
+            Logger.LogDebug("Terminal match result preparation rejected: MatchingId={MatchingId}", matchingId);
+            return;
+        }
+
+        if (terminalPlan == null)
         {
             Logger.LogDebug("Duplicate match finalization ignored: MatchingId={MatchingId}", matchingId);
             return;
         }
-
-        var players = BuildGameResultPlayers(allSessions, matchingId, winnerId);
-        _gameEventLogManager.LogMatchEnded(
-            matchingId,
-            winnerId,
-            endReason,
-            tieBreakCriterion,
-            players.Select(player => new MatchFinalPlayerStats(
-                player.PlayerId,
-                player.Rank,
-                player.SurvivalTimeSeconds,
-                player.KillCount,
-                player.TotalDamageDealt,
-                player.TotalRecovery,
-                player.OrbCount)).ToList());
-        MatchSummaryPersistenceRequest? summaryRequest = MatchSummaryPersistence.Capture(
-            _gameEventLogManager,
-            Logger,
-            matchingId,
-            endReason,
-            winnerId);
-
-        var resultChunks = GameResultPacketChunker.CreateGameResultChunks(winnerId, isTimeout, players);
-        foreach (var resultChunk in resultChunks)
-        {
-            using var resultPacket = Packet.Create((int)Protocol.G_TO_C_GAME_RESULT);
-            resultPacket.SetBody(MessagePackSerializer.Serialize(resultChunk));
-            foreach (var session in allSessions) session.Send(resultPacket);
-        }
-
-        // 기존 게임 종료 패킷도 전송 (클라이언트 호환)
-        foreach (var session in allSessions)
-        {
-            bool isEscaped = !isTimeout && session.PlayerId == winnerId;
-            using var endPacket = PacketMaker.G_TO_C_GAME_END(matchingId, isEscaped);
-            session.Send(endPacket);
-        }
-
-        // 결과 화면 이후 퇴장은 페널티 면제
-        foreach (var session in allSessions) session.MarkGameEnded();
-
-        Action? afterFinalized = null;
-        if (summaryRequest != null)
-        {
-            MatchSummaryPersistenceRequest capturedSummary = summaryRequest;
-            afterFinalized = () =>
-                MatchSummaryPersistence.Persist(capturedSummary, _matchSummaryFileStore, Logger);
-        }
-
-        _cleanupMatchRuntime(matchingId, afterFinalized);
     }
+
+    private void PublishTerminalResult(MatchTerminalPublicationPlan plan)
+    {
+        foreach (byte[] resultPayload in plan.GameResultPayloads)
+        {
+            foreach (MatchTerminalSessionPublication publication in plan.SessionPublications)
+            {
+                RunTerminalPublicationStep(
+                    plan.MatchingId,
+                    publication.Session,
+                    "GAME_RESULT",
+                    () =>
+                    {
+                        using var resultPacket = Packet.Create((int)Protocol.G_TO_C_GAME_RESULT);
+                        resultPacket.SetBody(resultPayload);
+                        publication.Session.Send(resultPacket);
+                    });
+            }
+        }
+
+        foreach (MatchTerminalSessionPublication publication in plan.SessionPublications)
+        {
+            RunTerminalPublicationStep(
+                plan.MatchingId,
+                publication.Session,
+                "GAME_END",
+                () =>
+                {
+                    using var endPacket = Packet.Create((int)Protocol.G_TO_C_GAME_END);
+                    endPacket.SetBody(publication.GameEndPayload);
+                    publication.Session.Send(endPacket);
+                });
+        }
+
+        foreach (MatchTerminalSessionPublication publication in plan.SessionPublications)
+        {
+            RunTerminalPublicationStep(
+                plan.MatchingId,
+                publication.Session,
+                "MarkGameEnded",
+                publication.Session.MarkGameEnded);
+        }
+    }
+
+    private void RunTerminalPublicationStep(
+        long matchingId,
+        GameClientSession session,
+        string component,
+        Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(
+                ex,
+                "Match terminal publication failed: MatchingId={MatchingId}, PlayerId={PlayerId}, Component={Component}",
+                matchingId,
+                session.PlayerId,
+                component);
+        }
+    }
+
+    private sealed record MatchTerminalPublicationPlan(
+        long MatchingId,
+        byte[][] GameResultPayloads,
+        MatchTerminalSessionPublication[] SessionPublications);
+
+    private sealed record MatchTerminalSessionPublication(
+        GameClientSession Session,
+        byte[] GameEndPayload);
 
     private List<GameResultPlayerInfo> BuildGameResultPlayers(List<GameClientSession> allSessions, long matchingId,
         long winnerId)

@@ -26,7 +26,7 @@ public sealed class SwarmArenaTickOrderTests
             "_sessionRegistry.SnapshotWhere(",
             "GetActiveMatchingIds()",
             "_matchRuntimeRegistry.TryExecute(",
-            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);");
+            "ProcessProximityAutoCombatForMatching(");
 
         string matchingBody = ReadMethodSlice(
             source,

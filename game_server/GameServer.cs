@@ -75,6 +75,7 @@ public partial class GameServer(
     private readonly ConcurrentQueue<long> _matchingLifecycleTerminalMatchOrder = new();
     private readonly MatchRuntimeRegistry _matchRuntimeRegistry = new();
     private MatchRuntimeCleanupCoordinator _matchRuntimeCleanupCoordinator = null!;
+    private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
     private readonly ConcurrentDictionary<long, Task> _pendingMatchOwnerLossTasks = new();
     private readonly ConcurrentDictionary<long, Task> _pendingMatchingRedisCleanupTasks = new();
     private readonly ConcurrentDictionary<long, Task> _pendingMatchingLifecyclePublishTasks = new();
@@ -425,6 +426,15 @@ public partial class GameServer(
         string natsEndpoint = configuration.GetRequiredString("natsEndPoint");
 
         _areaClosureManager = new AreaClosureManager(logger);
+        _swarmBotMovementCoordinator = new SwarmBotMovementCoordinator(
+            _botPlayerManager,
+            _areaClosureManager,
+            _areaItemStockManager,
+            _inGameInventoryManager,
+            _groundItemManager,
+            _summonStoneManager,
+            _encounterRevealManager,
+            _gameEventLogManager);
         _matchRuntimeCleanupCoordinator = new MatchRuntimeCleanupCoordinator(
             _matchRuntimeRegistry,
             [
@@ -443,6 +453,9 @@ public partial class GameServer(
                 new MatchRuntimeCleanupStep(
                     "swarm arena",
                     CleanupSwarmArenaState),
+                new MatchRuntimeCleanupStep(
+                    "bot movement publication",
+                    _swarmBotMovementCoordinator.ClearMatching),
                 new MatchRuntimeCleanupStep(
                     "area closure",
                     _areaClosureManager.CleanupMatching),
@@ -772,219 +785,6 @@ public partial class GameServer(
         }
     }
 
-    private void BroadcastBotBattleItemEquips(long matchingId,
-IReadOnlyCollection<(long botPlayerId, int itemId)> equips,
-IReadOnlyCollection<GameClientSession> activeSessions)
-    {
-        foreach (var (botPlayerId, _) in equips)
-        {
-            var bot = _botPlayerManager.GetBot(matchingId, botPlayerId);
-            var botInfo = _botPlayerManager.SynthesizePlayerInfo(matchingId, botPlayerId);
-            if (bot == null || botInfo == null) continue;
-
-            var sameAreaSessions = activeSessions
-                .Where(session => session.PlayerId.HasValue &&
-                                  session.CurrentMapSubId == matchingId &&
-                                  session.CurrentArea == bot.CurrentArea)
-                .ToList();
-            if (sameAreaSessions.Count == 0) continue;
-
-            using var packet = PacketMaker.G_TO_C_PLAYER_INFO([botInfo]);
-            foreach (var session in sameAreaSessions)
-                session.Send(packet);
-        }
-    }
-    /// <summary>
-    ///     #125: 봇 이동 이벤트를 같은 매칭의 영향권 인간 세션에 패킷 브로드캐스트.
-    ///     - 영역 전환: G_TO_C_AREA_PLAYER_LEAVE(이전 영역) + G_TO_C_AREA_PLAYER_ENTER(새 영역) + G_TO_C_MOVE(텔레포트)
-    ///     - 영역 내 wander: G_TO_C_MOVE(같은 영역)
-    /// </summary>
-    private void BroadcastBotGroundItemPickups(
-        long matchingId,
-        IReadOnlyCollection<BotGroundItemPickup> pickups,
-        IReadOnlyCollection<GameClientSession> activeSessions)
-    {
-        foreach (var pickup in pickups)
-        {
-            if (pickup.CorruptionRecovery > 0)
-                _gameEventLogManager.RecordRecovery(matchingId, pickup.BotPlayerId, pickup.CorruptionRecovery);
-            if (pickup.AutoUsed)
-            {
-                _gameEventLogManager.LogRecoveryUse(
-                    matchingId, pickup.BotPlayerId, pickup.Item.ItemId, pickup.EffectiveRecovery,
-                    source: "ground_auto_use", isBot: true);
-                _gameEventLogManager.LogPelletPickupOutcome(
-                    matchingId, pickup.BotPlayerId, pickup.Item.ItemId, pickup.RequestedRecovery, pickup.EffectiveRecovery,
-                    pickup.EffectiveRecovery == 0 ? "wasted" :
-                    pickup.EffectiveRecovery == pickup.RequestedRecovery ? "effective" : "partial_waste",
-                    isBot: true);
-            }
-
-            var area = (AreaType)pickup.Item.AreaType;
-            _gameEventLogManager.LogGroundItemPickup(
-                matchingId,
-                pickup.BotPlayerId,
-                pickup.DiscovererPlayerId,
-                pickup.Item.GroundItemUid,
-                pickup.Item.ItemId,
-                area.ToString(),
-                pickup.AutoUsed,
-                isBot: true);
-            if (pickup.SummonStoneAmount > 0)
-            {
-                _gameEventLogManager.LogSummonStoneAward(
-                    matchingId,
-                    pickup.BotPlayerId,
-                    monsterId: 0,
-                    pickup.SummonStoneAmount,
-                    pickup.SummonStoneBalance,
-                    area.ToString(),
-                    isCore: false,
-                    isBot: true);
-            }
-            else
-            {
-                var boardAfterPickup = _inGameInventoryManager.GetPlayerInventory(matchingId, pickup.BotPlayerId);
-                _gameEventLogManager.LogOrbBoardTransition(
-                    matchingId, pickup.BotPlayerId, boardAfterPickup.GetAllItems(),
-                    boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, area.ToString(), "pickup", isBot: true);
-            }
-            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(
-                pickup.Item.GroundItemUid,
-                pickup.BotPlayerId,
-                pickup.AutoUsed);
-            foreach (var session in activeSessions.Where(session =>
-                         session.CurrentMapSubId == matchingId && session.CurrentArea == area))
-            {
-                session.Send(packet);
-            }
-        }
-
-        var autoEquips = pickups
-            .Where(pickup => pickup.AutoEquippedItemId > 0)
-            .Select(pickup => (pickup.BotPlayerId, pickup.AutoEquippedItemId))
-            .ToList();
-        if (autoEquips.Count > 0)
-            BroadcastBotBattleItemEquips(matchingId, autoEquips, activeSessions);
-    }
-    private void BroadcastBotMovement(long matchingId, BotMovementEvent ev,
-        List<GameClientSession> activeSessions)
-    {
-        var matchingSessions = activeSessions
-            .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId)
-            .ToList();
-
-        long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-        if (ev.IsAreaTransition)
-        {
-
-            _gameEventLogManager.LogMove(matchingId, ev.BotPlayerId,
-                ev.FromArea.ToString(), ev.ToArea.ToString(), isBot: true);
-
-            if (matchingSessions.Count == 0) return;
-
-            // 1) 이전 영역의 인간들에게 LEAVE
-            using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(ev.BotPlayerId);
-            foreach (var session in matchingSessions)
-            {
-                if (session.CurrentArea != ev.FromArea) continue;
-                session.Send(leavePacket);
-            }
-
-            // 2) 새 영역의 인간들에게 ENTER (합성 PlayerInfo)
-            var botInfo = _botPlayerManager.SynthesizePlayerInfo(matchingId, ev.BotPlayerId);
-            if (botInfo != null)
-            {
-                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(botInfo, ev.ToCell);
-                foreach (var session in matchingSessions)
-                {
-                    if (session.CurrentArea != ev.ToArea) continue;
-                    session.Send(enterPacket);
-                }
-            }
-        }
-        else if (matchingSessions.Count == 0)
-        {
-            return;
-        }
-
-        // 3) 새 영역의 인간들에게 MOVE (텔레포트 또는 wander)
-        float orbOrbitPhase = _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.OrbOrbitPhaseDegrees
-                              ?? SwarmOrbOrbit.InitialPhaseDegrees(ev.BotPlayerId);
-        using var movePacket = PacketMaker.G_TO_C_MOVE(
-            ev.BotPlayerId,
-            ev.Position,
-            ev.Velocity,
-            ev.Rotation,
-            ev.ToCell,
-            lastProcessedInput: 0u,
-            serverTimestamp,
-            orbOrbitPhase);
-        foreach (var session in matchingSessions)
-        {
-            if (session.CurrentArea != ev.ToArea) continue;
-            session.Send(movePacket);
-        }
-
-        TrySendBotCorridorEncounterEvent(matchingId, ev, matchingSessions);
-    }
-
-    private void TrySendBotCorridorEncounterEvent(
-        long matchingId,
-        BotMovementEvent ev,
-        List<GameClientSession> matchingSessions)
-    {
-        if (!ev.ToArea.IsCorridor())
-            return;
-
-        var candidates = matchingSessions
-            .Where(session =>
-                session.PlayerId.HasValue &&
-                !session.IsEliminated &&
-                session.CurrentMapSubId == matchingId &&
-                session.CurrentArea == ev.ToArea &&
-                session.LastValidatedPosition != null)
-            .Select(session => (session.PlayerId!.Value, session.LastValidatedPosition!))
-            .ToList();
-        if (candidates.Count == 0)
-            return;
-
-        var decision = _encounterRevealManager.ResolveCorridorEncounter(
-            matchingId,
-            ev.BotPlayerId,
-            ev.Position,
-            candidates.Select(entry => (entry.Item1, entry.Item2!)),
-            PassiveBuffUtility.GetValuePercent(
-                _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.ActiveBuffIds ?? [],
-                BuffSubType.RISK_EVENT_CHANCE_DOWN),
-            PassiveBuffUtility.GetValuePercent(
-                _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.ActiveBuffIds ?? [],
-                BuffSubType.ENCOUNTER_ESCAPE_CHANCE_ADD));
-        if (!decision.HasEvent)
-            return;
-
-        var targetSession = matchingSessions.FirstOrDefault(session => session.PlayerId == decision.TargetPlayerId);
-        if (targetSession == null)
-            return;
-
-        using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(
-            ev.BotPlayerId,
-            ev.ToArea,
-            decision.EventType,
-            decision.CooldownSeconds,
-            decision.RevealDelayMs);
-        targetSession.Send(packet);
-
-        logger.LogInformation(
-            "Bot corridor encounter event: Matching={MatchingId}, Bot={Bot}, Target={Target}, Area={Area}, EventType={EventType}",
-            matchingId,
-            ev.BotPlayerId,
-            decision.TargetPlayerId,
-            ev.ToArea,
-            decision.EventType);
-    }
-
     // ===== 구역 폐쇄 틱 =====
 
     private void StartAreaClosureTickTimer()
@@ -1060,170 +860,6 @@ IReadOnlyCollection<GameClientSession> activeSessions)
         catch (Exception ex)
         {
             logger.LogError(ex, "타겟 위치 전송 처리 중 오류");
-        }
-    }
-
-    // ===== #127 봇 walking 타이머 =====
-
-    private const int BotMovementTickIntervalMs = 50; // 봇 walking step 주기 (실제 플레이어 sendInterval=50ms와 동등 — 클라 보간 일치)
-
-    private void StartBotMovementTimer()
-    {
-        _botMovementTimer = new Timer(ProcessBotMovement, null,
-            TimeSpan.FromMilliseconds(BotMovementTickIntervalMs),
-            TimeSpan.FromMilliseconds(BotMovementTickIntervalMs));
-        logger.LogInformation("봇 walking 타이머 시작 ({Ms}ms 간격)", BotMovementTickIntervalMs);
-    }
-
-    private void ProcessBotMovement(object? state)
-    {
-        if (System.Threading.Interlocked.Exchange(ref _botMovementProcessing, 1) == 1)
-        {
-            // 틱이 50ms를 넘기면 다음 틱이 통째로 스킵되어 봇 위치 브로드캐스트 간격이
-            // 50ms와 100ms를 오간다. 클라 보간이 그대로 튀므로 빈도를 계측한다.
-            System.Threading.Interlocked.Increment(ref _botMovementTickSkips);
-            int consecutiveSkips = System.Threading.Interlocked.Increment(ref _botMovementConsecutiveSkips);
-            UpdateMaximum(ref _botMovementMaxConsecutiveSkips, consecutiveSkips);
-            return;
-        }
-
-        var botMovementTickStartedAt = DateTime.UtcNow;
-        double snapshotElapsedMilliseconds = 0d;
-        double planningElapsedMilliseconds = 0d;
-        double walkingElapsedMilliseconds = 0d;
-        double broadcastElapsedMilliseconds = 0d;
-        try
-        {
-            var activeSessions = _sessionRegistry.SnapshotWhere(static session => session.PlayerId.HasValue);
-            var matchingIds = GetActiveMatchingIds();
-            BroadcastMatchStartCountdowns(matchingIds, activeSessions);
-
-            foreach (long matchingId in matchingIds)
-            {
-                if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
-                if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
-                if (!_botPlayerManager.HasBots(matchingId)) continue;
-                // 봇 배회 목적지(타겟 추적·흩어지기)를 위해 같은 매칭 인간 플레이어의 현재 영역을 넘긴다.
-                _matchRuntimeRegistry.TryExecute(matchingId, () =>
-                {
-                    long snapshotStartedAt = Stopwatch.GetTimestamp();
-                    var humanAreas = activeSessions
-                        .Where(s => s.CurrentMapSubId == matchingId && s.PlayerId.HasValue)
-                        .ToDictionary(s => s.PlayerId!.Value, s => s.CurrentArea);
-                    // 잔상 사냥 경로(MONSTER_SUMMON_ECONOMY_ENABLED 동결)의 공급원이던
-                    // SwarmAfterimageMonsterManager는 #274에서 삭제 — 플래그 부활 시 SwarmMonsterDirector에서 공급할 것.
-                    IReadOnlyCollection<MonsterCombatTarget> pveTargets = [];
-                    snapshotElapsedMilliseconds += Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
-
-                    var movementResult = _botPlayerManager.ProcessBotMovementTick(
-                        matchingId,
-                        _areaClosureManager,
-                        _areaItemStockManager,
-                        humanAreas,
-                                _inGameInventoryManager,
-                        _groundItemManager,
-                        pveTargets,
-                        ResolveSwarmBotDirective,
-                        _summonStoneManager);
-                    planningElapsedMilliseconds += movementResult.PlanningElapsedMilliseconds;
-                    walkingElapsedMilliseconds += movementResult.WalkingElapsedMilliseconds;
-
-                    long broadcastStartedAt = Stopwatch.GetTimestamp();
-                    foreach (var ev in movementResult.Movements)
-                    {
-                        // 오브 궤도 (#232): 봇도 이동한 거리만큼 돈다 — 사람 세션의 검증 이동 적산과 같은 규칙.
-                        _botPlayerManager.GetBot(matchingId, ev.BotPlayerId)?.AdvanceOrbOrbit(ev.Position);
-                        BroadcastBotMovement(matchingId, ev, activeSessions);
-                    }
-                    if (movementResult.GroundItemPickups.Count > 0)
-                        BroadcastBotGroundItemPickups(matchingId, movementResult.GroundItemPickups, activeSessions);
-                    broadcastElapsedMilliseconds += Stopwatch.GetElapsedTime(broadcastStartedAt).TotalMilliseconds;
-                });
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "봇 walking 틱 처리 중 오류");
-        }
-        finally
-        {
-            try
-            {
-                double botTickElapsedMs = (DateTime.UtcNow - botMovementTickStartedAt).TotalMilliseconds;
-                System.Threading.Interlocked.Exchange(ref _botMovementConsecutiveSkips, 0);
-                _botMovementTickSamples.Add(botTickElapsedMs);
-                _botMovementSnapshotSamples.Add(snapshotElapsedMilliseconds);
-                _botMovementPlanningSamples.Add(planningElapsedMilliseconds);
-                _botMovementWalkingSamples.Add(walkingElapsedMilliseconds);
-                _botMovementBroadcastSamples.Add(broadcastElapsedMilliseconds);
-                _botMovementTickCount++;
-                _botMovementTickTotalMs += botTickElapsedMs;
-                if (botTickElapsedMs > _botMovementTickMaxMs) _botMovementTickMaxMs = botTickElapsedMs;
-                if (_botMovementTickCount >= 200)
-                {
-                    var sortedSamples = _botMovementTickSamples.OrderBy(value => value).ToArray();
-                    double p50Milliseconds = CalculatePercentile(sortedSamples, 0.50);
-                    double p95Milliseconds = CalculatePercentile(sortedSamples, 0.95);
-                    double p99Milliseconds = CalculatePercentile(sortedSamples, 0.99);
-                    double snapshotP95Milliseconds = CalculatePercentile(
-                        _botMovementSnapshotSamples.OrderBy(value => value).ToArray(), 0.95);
-                    double planningP95Milliseconds = CalculatePercentile(
-                        _botMovementPlanningSamples.OrderBy(value => value).ToArray(), 0.95);
-                    double walkingP95Milliseconds = CalculatePercentile(
-                        _botMovementWalkingSamples.OrderBy(value => value).ToArray(), 0.95);
-                    double broadcastP95Milliseconds = CalculatePercentile(
-                        _botMovementBroadcastSamples.OrderBy(value => value).ToArray(), 0.95);
-                    int skippedTicks = System.Threading.Interlocked.Exchange(ref _botMovementTickSkips, 0);
-                    int maxConsecutiveSkippedTicks =
-                        System.Threading.Interlocked.Exchange(ref _botMovementMaxConsecutiveSkips, 0);
-                    logger.LogInformation(
-                        "Bot movement tick: avg={Avg:F1}ms max={Max:F1}ms skips={Skips} over {Count} ticks; " +
-                        "p95 snapshot={SnapshotP95:F1}ms planning={PlanningP95:F1}ms walking={WalkingP95:F1}ms " +
-                        "broadcast={BroadcastP95:F1}ms",
-                        _botMovementTickTotalMs / _botMovementTickCount,
-                        _botMovementTickMaxMs,
-                        skippedTicks,
-                        _botMovementTickCount,
-                        snapshotP95Milliseconds,
-                        planningP95Milliseconds,
-                        walkingP95Milliseconds,
-                        broadcastP95Milliseconds);
-                    foreach (long matchingId in GetActiveMatchingIds()
-                                 .Where(_botPlayerManager.HasBots))
-                    {
-                        _matchRuntimeRegistry.TryExecute(
-                            matchingId,
-                            () => _gameEventLogManager.LogBotMovementTickPerformance(
-                                matchingId,
-                                p50Milliseconds,
-                                p95Milliseconds,
-                                p99Milliseconds,
-                                snapshotP95Milliseconds,
-                                planningP95Milliseconds,
-                                walkingP95Milliseconds,
-                                broadcastP95Milliseconds,
-                                _botMovementTickCount,
-                                skippedTicks,
-                                maxConsecutiveSkippedTicks));
-                    }
-                    _botMovementTickCount = 0;
-                    _botMovementTickTotalMs = 0;
-                    _botMovementTickMaxMs = 0;
-                    _botMovementTickSamples.Clear();
-                    _botMovementSnapshotSamples.Clear();
-                    _botMovementPlanningSamples.Clear();
-                    _botMovementWalkingSamples.Clear();
-                    _botMovementBroadcastSamples.Clear();
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Failed to record bot movement tick metrics");
-            }
-            finally
-            {
-                System.Threading.Volatile.Write(ref _botMovementProcessing, 0);
-            }
         }
     }
 
@@ -2155,23 +1791,27 @@ IReadOnlyCollection<GameClientSession> activeSessions)
     ///     Each component cleanup is isolated so one failure cannot prevent the remaining
     ///     managers from releasing their matchingId state.
     /// </summary>
-    private void CleanupMatchRuntime(long matchingId) => CleanupMatchRuntime(matchingId, null);
+    private void CleanupMatchRuntime(long matchingId) =>
+        TryCleanupMatchRuntime(matchingId, null, null);
 
-    private void CleanupMatchRuntime(long matchingId, Action? afterFinalized)
+    private void CleanupMatchRuntime(
+        long matchingId,
+        Action? beforeFinalized,
+        Action? afterFinalized)
     {
-        TryCleanupMatchRuntime(matchingId, null, null, afterFinalized);
+        TryCleanupMatchRuntime(matchingId, null, beforeFinalized, afterFinalized);
     }
 
     private bool TryCleanupMatchRuntime(
         long matchingId,
         Func<bool>? canFinalize,
-        Action? beforeCleanup,
+        Action? beforeFinalized,
         Action? afterFinalized = null)
     {
         return _matchRuntimeCleanupCoordinator.TryFinalize(
             matchingId,
             canFinalize,
-            beforeCleanup,
+            beforeFinalized,
             afterFinalized);
     }
 

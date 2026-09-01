@@ -40,7 +40,7 @@ public partial class GameClientSession : SessionBase
     private readonly Func<string?, Task<GameHandoffContext?>> _consumeGameHandoffTicket;
     private readonly SummonStoneManager _summonStoneManager;
     private readonly Action<GameClientSession> _onLeaveCallback;
-    private readonly Action<long, Action?> _cleanupMatchRuntime;
+    private readonly Action<long, Action?, Action?> _cleanupMatchRuntime;
     private readonly Func<long, Action, IDisposable?> _acquireMatchRuntimeOperation;
     private readonly Func<long, Action, bool> _executeMatchRuntime;
     private readonly Func<long, long, bool> _bindMatchOwnerFence;
@@ -171,7 +171,7 @@ public partial class GameClientSession : SessionBase
         Func<long, Action, IDisposable?> acquireMatchRuntimeOperation,
         Func<long, Action, bool> executeMatchRuntime,
         Func<long, long, bool> bindMatchOwnerFence,
-        Action<long, Action?> cleanupMatchRuntime,
+        Action<long, Action?, Action?> cleanupMatchRuntime,
         Action<long, long> recordLeavePenalty,
         Action<long, long> recordGameCompletion,
         Action<long, long> releaseMatchingClaim,

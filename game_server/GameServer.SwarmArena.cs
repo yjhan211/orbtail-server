@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using game_server.network;
 using game_server.services;
 using MessagePack;
@@ -179,7 +180,9 @@ public partial class GameServer
     ///     #217 8인 맵 역할 검증(M1). 매치 수명(탈락·최후 1인·타이머)은 기존 서바이버 로얄
     ///     흐름이 소유하고, 여기서는 스웜 디렉터 틱·접촉 피해·전투 액터·PvP만 돌린다.
     /// </summary>
-    private void ProcessSwarmArenaForMatching(long matchingId, List<GameClientSession> activeSessions)
+    private void ProcessSwarmArenaForMatching(
+        long matchingId,
+        List<GameClientSession> activeSessions)
     {
         // 탐사 모드(SOLO_MAP_VALIDATION=1): 맵 검증용 1인 매치 — 캠프 몹·접촉 피해·
         // 전투·오브 스트림을 전부 끈다. 이동·문·탐색만 남는다.
@@ -210,9 +213,7 @@ public partial class GameServer
                         () => _swarmMonsterDirector.AttractSwarm(noiseMatchingId, noisePlayerId));
             GameClientSession.SwarmDummyMoveCallback ??=
                 (dummyMatchingId, dirX, dirY) =>
-                    _matchRuntimeRegistry.TryExecute(
-                        dummyMatchingId,
-                        () => MoveSwarmCutDummy(dummyMatchingId, dirX, dirY));
+                    MoveSwarmCutDummy(dummyMatchingId, dirX, dirY);
             GameClientSession.SwarmGrowthPickCallback ??=
                 (session, growthMatchingId, offerId, cardIndex) =>
                     _matchRuntimeRegistry.TryExecute(
@@ -297,7 +298,12 @@ public partial class GameServer
             // 사람 + 몹만 남긴다 (2026-08-24 유저 지시 "더미 유저 없애줘") — 단독 생존 종료는
             // 정산 쪽 샌드박스 게이트가 막는다.
             if (SwarmCutDummyAutoSetup)
+            {
+                // DEV-only order-parity exception: publish the automatic dummy setup while the
+                // proximity tick still owns the match monitor, before the remaining arena packets.
+                // Regular timer and manual dummy publications keep their outside-monitor dispatch.
                 SetupSwarmCutDummy(matchingId);
+            }
             // 실험장 격리: 더미 외 봇은 조용히 퇴장 — 순위·드롭 이벤트 없이 화면에서 사라진다.
             foreach (var other in _botPlayerManager.GetBots(matchingId))
             {
@@ -2326,15 +2332,59 @@ public partial class GameServer
         if (matchingId <= 0)
             return new { error = "no active match" };
 
-        object result = new { error = "match is no longer active " + matchingId };
-        bool executed = _matchRuntimeRegistry.TryExecute(
-            matchingId,
-            () => result = SetupSwarmCutDummyCore(matchingId));
-        return executed ? result : new { error = "match is no longer active " + matchingId };
+        PendingSwarmBotMovementDispatch? pending =
+            PrepareSwarmCutDummySetup(matchingId, out object result);
+        if (pending == null)
+            return new { error = "match is no longer active " + matchingId };
+
+        DispatchPendingSwarmBotMovement(pending);
+        return result;
     }
 
-    private object SetupSwarmCutDummyCore(long matchingId)
+    private PendingSwarmBotMovementDispatch? PrepareSwarmCutDummySetup(
+        long matchingId,
+        out object result)
     {
+        object preparedResult = new { error = "match is no longer active " + matchingId };
+        SwarmBotMovementPlan? plan = null;
+        SwarmBotPublicationTicket? publicationTicket = null;
+        GameClientSession[] sessionSnapshot = [];
+        IDisposable? runtimeOperation = _matchRuntimeRegistry.TryAcquireOperation(
+            matchingId,
+            () =>
+            {
+                sessionSnapshot = _sessionRegistry.GetByMatch(matchingId)
+                    .Where(session =>
+                        session.PlayerId is > 0 &&
+                        session.CurrentMapId == Config.SWARM_MATCH_MAP &&
+                        session.CurrentMapSubId == matchingId)
+                    .ToArray();
+                preparedResult = SetupSwarmCutDummyCore(matchingId, out BotMovementEvent? movement);
+                if (movement != null)
+                {
+                    ImmutableArray<SwarmBotObserverSnapshot> observers =
+                        CaptureSwarmBotObservers(matchingId, sessionSnapshot);
+                    plan = _swarmBotMovementCoordinator.PrepareExternalMovement(
+                        matchingId,
+                        movement,
+                        observers);
+                    publicationTicket = _swarmBotMovementCoordinator.ReservePublication(matchingId);
+                }
+            });
+        result = preparedResult;
+        if (runtimeOperation == null)
+            return null;
+
+        return new PendingSwarmBotMovementDispatch(
+            runtimeOperation,
+            plan,
+            publicationTicket,
+            sessionSnapshot);
+    }
+
+    private object SetupSwarmCutDummyCore(long matchingId, out BotMovementEvent? movement)
+    {
+        movement = null;
         var bots = _botPlayerManager.GetBots(matchingId)
             .Where(bot => !bot.IsEliminated).ToList();
         var dummy = bots.FirstOrDefault(bot => bot.IsSwarmCutDummy) ?? bots.FirstOrDefault();
@@ -2365,8 +2415,7 @@ public partial class GameServer
         GetSwarmMatchRuntime(matchingId).Pacing.CutDummyRefillAtUtc.Remove((matchingId, dummy.PlayerId));
         RefillSwarmCutDummyOrbs(matchingId, dummy);
 
-        var sessions = GetSessionsByInstance(Config.SWARM_MATCH_MAP, matchingId).ToList();
-        BroadcastBotMovement(matchingId, new BotMovementEvent
+        movement = new BotMovementEvent
         {
             BotPlayerId = dummy.PlayerId,
             FromArea = fromArea,
@@ -2377,7 +2426,7 @@ public partial class GameServer
             Velocity = new Vector3f(0f, 0f, 0f),
             Rotation = 0f,
             IsAreaTransition = fromArea != Config.SWARM_MATCH_GROUND_AREA
-        }, sessions);
+        };
         logger.LogInformation(
             "Swarm cut dummy ready: MatchingId={MatchingId}, DummyId={DummyId}, Position=({X},{Y})",
             matchingId, dummy.PlayerId, dummy.Position.X, dummy.Position.Y);
@@ -2397,14 +2446,51 @@ public partial class GameServer
     /// </summary>
     private void MoveSwarmCutDummy(long matchingId, float dirX, float dirY)
     {
+        SwarmBotMovementPlan? plan = null;
+        SwarmBotPublicationTicket? publicationTicket = null;
+        GameClientSession[]? sessionSnapshot = null;
+        IDisposable? runtimeOperation = _matchRuntimeRegistry.TryAcquireOperation(
+            matchingId,
+            () =>
+            {
+                sessionSnapshot = _sessionRegistry.GetByMatch(matchingId)
+                    .Where(session =>
+                        session.PlayerId is > 0 &&
+                        session.CurrentMapId == Config.SWARM_MATCH_MAP &&
+                        session.CurrentMapSubId == matchingId)
+                    .ToArray();
+                BotMovementEvent? movement = MoveSwarmCutDummyCore(matchingId, dirX, dirY);
+                if (movement == null)
+                    return;
+
+                ImmutableArray<SwarmBotObserverSnapshot> observers =
+                    CaptureSwarmBotObservers(matchingId, sessionSnapshot);
+                plan = _swarmBotMovementCoordinator.PrepareExternalMovement(
+                    matchingId,
+                    movement,
+                    observers);
+                publicationTicket = _swarmBotMovementCoordinator.ReservePublication(matchingId);
+            });
+        if (runtimeOperation == null)
+            return;
+
+        DispatchPendingSwarmBotMovement(new PendingSwarmBotMovementDispatch(
+            runtimeOperation,
+            plan,
+            publicationTicket,
+            sessionSnapshot ?? []));
+    }
+
+    private BotMovementEvent? MoveSwarmCutDummyCore(long matchingId, float dirX, float dirY)
+    {
         var dummy = _botPlayerManager.GetBots(matchingId)
             .FirstOrDefault(bot => bot.IsSwarmCutDummy && !bot.IsEliminated);
         if (dummy == null)
-            return;
+            return null;
 
         float length = MathF.Sqrt(dirX * dirX + dirY * dirY);
         if (length < 0.01f)
-            return;
+            return null;
 
         // 10Hz 전송 기준 스텝 0.5 = 5u/s — 플레이어 달리기와 동급.
         const float step = 0.5f;
@@ -2414,7 +2500,7 @@ public partial class GameServer
             0f);
         var proposedCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, proposed);
         if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, proposedCell))
-            return;
+            return null;
 
         var fromArea = dummy.CurrentArea;
         var fromCell = dummy.Cell;
@@ -2424,7 +2510,7 @@ public partial class GameServer
         if (currentArea != AreaType.None)
             dummy.CurrentArea = currentArea;
 
-        BroadcastBotMovement(matchingId, new BotMovementEvent
+        return new BotMovementEvent
         {
             BotPlayerId = dummy.PlayerId,
             FromArea = fromArea,
@@ -2435,7 +2521,7 @@ public partial class GameServer
             Velocity = new Vector3f(dirX / length * 5f, dirY / length * 5f, 0f),
             Rotation = 0f,
             IsAreaTransition = fromArea != dummy.CurrentArea
-        }, GetSessionsByInstance(Config.SWARM_MATCH_MAP, matchingId).ToList());
+        };
     }
 
     /// <summary>
