@@ -501,7 +501,7 @@ public sealed class SwarmBotMovementCoordinatorTests
 
         AssertInOrder(
             tick,
-            "_swarmCombatPublicationCoordinator.TryBeginRealtimeTurn(matchingId)",
+            "_swarmCombatPublicationCoordinator.TryBeginDueRealtimeTurn(matchingId)",
             "PrepareAndDispatchCombatPublication(",
             "() => ProcessProximityAutoCombatForMatching(matchingId, activeSessions)");
         Assert.Contains("ProcessSwarmArenaForMatching(matchingId, activeSessions);", matching);

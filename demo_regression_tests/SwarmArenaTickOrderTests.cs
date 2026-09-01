@@ -25,7 +25,7 @@ public sealed class SwarmArenaTickOrderTests
             tickBody,
             "_sessionRegistry.SnapshotWhere(",
             "GetActiveMatchingIds()",
-            "_swarmCombatPublicationCoordinator.TryBeginRealtimeTurn(matchingId)",
+            "_swarmCombatPublicationCoordinator.TryBeginDueRealtimeTurn(matchingId)",
             "if (publicationTurn == null)",
             "PrepareAndDispatchCombatPublication(",
             "() => ProcessProximityAutoCombatForMatching(matchingId, activeSessions)");
@@ -60,7 +60,7 @@ public sealed class SwarmArenaTickOrderTests
             "Proximity auto combat snapshot failed",
             "foreach (long matchingId in activeMatchingIds)",
             "try",
-            "_swarmCombatPublicationCoordinator.TryBeginRealtimeTurn(matchingId)",
+            "_swarmCombatPublicationCoordinator.TryBeginDueRealtimeTurn(matchingId)",
             "PrepareAndDispatchCombatPublication(",
             "catch (Exception ex)",
             "MatchingId={MatchingId}");

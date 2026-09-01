@@ -7,16 +7,20 @@ using network.packets;
 namespace game_server.services;
 
 /// <summary>
-///     Owns one prepare-to-dispatch publication turn per match. A realtime caller may coalesce
-///     while a turn is active, whereas required and ordered callers wait outside the match runtime
-///     monitor. Realtime and required acquisition rebase the monotonic start-based due; an ordered
-///     countdown turn preserves that due and commits its last projected second in the same state.
-///     Captured packet bytes and deferred steps are replayed in their original call order.
+///     Owns one prepare-to-dispatch publication turn per match. Required and ordered callers wait
+///     in separate FIFO lanes outside the match runtime monitor. Required work has priority. Once a
+///     due realtime caller is observed behind an active turn, it receives one bounded handoff
+///     opportunity ahead of ordered work; ordered work resumes if that reservation expires or its
+///     clock cannot be read. Realtime and required acquisition rebase the monotonic start-based due,
+///     while ordered acquisition preserves it. Captured packet bytes and deferred steps are replayed
+///     in their original call order.
 /// </summary>
 internal sealed class SwarmCombatPublicationCoordinator
 {
     private readonly Func<ulong> _getTimestamp;
     private readonly ulong _realtimeIntervalTicks;
+    private readonly ulong _realtimeHandoffGraceTicks;
+    private readonly ulong _realtimeHandoffGraceStopwatchTicks;
     private readonly ConcurrentDictionary<long, MatchTurnState> _matchStates = new();
     private readonly AsyncLocal<CaptureFrame?> _activeCapture = new();
     private readonly AsyncLocal<int> _dispatchDepth = new();
@@ -26,7 +30,8 @@ internal sealed class SwarmCombatPublicationCoordinator
     public SwarmCombatPublicationCoordinator(
         TimeSpan realtimeInterval,
         Func<ulong>? getTimestamp = null,
-        ulong? timestampFrequency = null)
+        ulong? timestampFrequency = null,
+        TimeSpan? realtimeHandoffGrace = null)
     {
         if (realtimeInterval <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(realtimeInterval));
@@ -47,7 +52,46 @@ internal sealed class SwarmCombatPublicationCoordinator
                 "The combat publication interval must fit within half the monotonic timestamp range.");
         }
 
+        TimeSpan handoffGrace;
+        try
+        {
+            handoffGrace = realtimeHandoffGrace ??
+                           TimeSpan.FromTicks(checked(realtimeInterval.Ticks * 2));
+        }
+        catch (OverflowException)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(realtimeHandoffGrace),
+                "The realtime handoff grace is too large.");
+        }
+
+        if (handoffGrace <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(realtimeHandoffGrace));
+
+        UInt128 handoffNumerator =
+            (UInt128)checked((ulong)handoffGrace.Ticks) * frequency;
+        UInt128 handoffTicks =
+            (handoffNumerator + (ulong)TimeSpan.TicksPerSecond - 1) /
+            (ulong)TimeSpan.TicksPerSecond;
+        if (handoffTicks == 0 || handoffTicks > long.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(realtimeHandoffGrace),
+                "The realtime handoff grace must fit within half the monotonic timestamp range.");
+        }
+
+        UInt128 stopwatchNumerator =
+            (UInt128)checked((ulong)handoffGrace.Ticks) *
+            checked((ulong)Stopwatch.Frequency);
+        UInt128 stopwatchTicks =
+            (stopwatchNumerator + (ulong)TimeSpan.TicksPerSecond - 1) /
+            (ulong)TimeSpan.TicksPerSecond;
+        if (stopwatchTicks == 0 || stopwatchTicks > long.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(realtimeHandoffGrace));
+
         _realtimeIntervalTicks = (ulong)intervalTicks;
+        _realtimeHandoffGraceTicks = (ulong)handoffTicks;
+        _realtimeHandoffGraceStopwatchTicks = (ulong)stopwatchTicks;
         _getTimestamp = getTimestamp ?? (static () => unchecked((ulong)Stopwatch.GetTimestamp()));
     }
 
@@ -67,7 +111,7 @@ internal sealed class SwarmCombatPublicationCoordinator
     ///     priority, and a successful acquisition consumes the due even if later preparation or
     ///     dispatch fails.
     /// </summary>
-    public PublicationTurn? TryBeginRealtimeTurn(long matchingId)
+    public PublicationTurn? TryBeginDueRealtimeTurn(long matchingId)
     {
         ValidateMatchingId(matchingId);
         if (!_matchStates.TryGetValue(matchingId, out MatchTurnState? state))
@@ -75,7 +119,7 @@ internal sealed class SwarmCombatPublicationCoordinator
 
         lock (state.Gate)
         {
-            if (state.Cleared || state.ActiveTurnId.HasValue || state.RequiredWaiterCount > 0)
+            if (state.Cleared || state.RequiredWaiters.Count > 0)
                 return null;
 
             ulong now = _getTimestamp();
@@ -83,6 +127,23 @@ internal sealed class SwarmCombatPublicationCoordinator
                 !HasReachedTimestamp(now, state.NextRealtimeEligibleTimestamp))
                 return null;
 
+            if (state.ActiveTurnId.HasValue)
+            {
+                ArmRealtimeDemandIfNeeded(state, now);
+                return null;
+            }
+
+            if (state.HasPendingRealtimeDemand &&
+                state.OrderedWaiters.Count > 0 &&
+                IsRealtimeDemandExpired(state, now))
+            {
+                // The FIFO head owns expiry fallback. Keep the reservation intact until that
+                // waiter can clear it and activate atomically under this same gate.
+                Monitor.PulseAll(state.Gate);
+                return null;
+            }
+
+            ClearPendingRealtimeDemand(state);
             return ActivateTurnAndRebaseRealtimeDue(matchingId, state, now);
         }
     }
@@ -94,7 +155,7 @@ internal sealed class SwarmCombatPublicationCoordinator
     /// </summary>
     public PublicationTurn? BeginRequiredTurn(long matchingId)
     {
-        return BeginBlockingTurn(matchingId, rebaseRealtimeDue: true);
+        return BeginRequiredBlockingTurn(matchingId);
     }
 
     /// <summary>
@@ -104,7 +165,7 @@ internal sealed class SwarmCombatPublicationCoordinator
     /// </summary>
     public PublicationTurn? BeginOrderedTurn(long matchingId)
     {
-        return BeginBlockingTurn(matchingId, rebaseRealtimeDue: false);
+        return BeginOrderedBlockingTurn(matchingId);
     }
 
     /// <summary>
@@ -151,7 +212,7 @@ internal sealed class SwarmCombatPublicationCoordinator
         }
     }
 
-    private PublicationTurn? BeginBlockingTurn(long matchingId, bool rebaseRealtimeDue)
+    private PublicationTurn? BeginRequiredBlockingTurn(long matchingId)
     {
         ValidateMatchingId(matchingId);
         if (!_matchStates.TryGetValue(matchingId, out MatchTurnState? state))
@@ -162,22 +223,106 @@ internal sealed class SwarmCombatPublicationCoordinator
             if (state.Cleared)
                 return null;
 
-            state.RequiredWaiterCount++;
+            var waiter = new BlockingWaiter();
+            LinkedListNode<BlockingWaiter> node = state.RequiredWaiters.AddLast(waiter);
+            Monitor.PulseAll(state.Gate);
             try
             {
-                while (state.ActiveTurnId.HasValue && !state.Cleared)
+                while (!state.Cleared &&
+                       (state.ActiveTurnId.HasValue ||
+                        !ReferenceEquals(state.RequiredWaiters.First, node)))
+                {
                     Monitor.Wait(state.Gate);
+                }
 
                 if (state.Cleared)
                     return null;
 
-                return rebaseRealtimeDue
-                    ? ActivateTurnAndRebaseRealtimeDue(matchingId, state, _getTimestamp())
-                    : ActivateTurn(matchingId, state);
+                ulong now = _getTimestamp();
+                state.RequiredWaiters.Remove(node);
+                ClearPendingRealtimeDemand(state);
+                return ActivateTurnAndRebaseRealtimeDue(matchingId, state, now);
             }
             finally
             {
-                state.RequiredWaiterCount--;
+                if (node.List != null)
+                    state.RequiredWaiters.Remove(node);
+                Monitor.PulseAll(state.Gate);
+            }
+        }
+    }
+
+    private PublicationTurn? BeginOrderedBlockingTurn(long matchingId)
+    {
+        ValidateMatchingId(matchingId);
+        if (!_matchStates.TryGetValue(matchingId, out MatchTurnState? state))
+            return null;
+
+        lock (state.Gate)
+        {
+            if (state.Cleared)
+                return null;
+
+            var waiter = new BlockingWaiter();
+            LinkedListNode<BlockingWaiter> node = state.OrderedWaiters.AddLast(waiter);
+            try
+            {
+                while (!state.Cleared)
+                {
+                    if (state.ActiveTurnId.HasValue ||
+                        state.RequiredWaiters.Count > 0 ||
+                        !ReferenceEquals(state.OrderedWaiters.First, node))
+                    {
+                        Monitor.Wait(state.Gate);
+                        continue;
+                    }
+
+                    if (!state.HasPendingRealtimeDemand)
+                    {
+                        state.OrderedWaiters.Remove(node);
+                        return ActivateTurn(matchingId, state);
+                    }
+
+                    long demandVersion = state.RealtimeDemandVersion;
+                    bool expired;
+                    try
+                    {
+                        expired = IsRealtimeDemandExpired(state, _getTimestamp());
+                    }
+                    catch
+                    {
+                        if (state.HasPendingRealtimeDemand &&
+                            state.RealtimeDemandVersion == demandVersion)
+                        {
+                            ClearPendingRealtimeDemand(state);
+                        }
+
+                        state.OrderedWaiters.Remove(node);
+                        return ActivateTurn(matchingId, state);
+                    }
+
+                    if (expired)
+                    {
+                        if (state.HasPendingRealtimeDemand &&
+                            state.RealtimeDemandVersion == demandVersion)
+                        {
+                            ClearPendingRealtimeDemand(state);
+                        }
+
+                        state.OrderedWaiters.Remove(node);
+                        return ActivateTurn(matchingId, state);
+                    }
+
+                    Monitor.Wait(state.Gate, GetRealtimeDemandWaitMilliseconds(state));
+                }
+
+                return null;
+            }
+            finally
+            {
+                if (node.List != null)
+                    state.OrderedWaiters.Remove(node);
+                Monitor.PulseAll(state.Gate);
             }
         }
     }
@@ -357,7 +502,8 @@ internal sealed class SwarmCombatPublicationCoordinator
     }
 
     /// <summary>
-    ///     Terminal cleanup marks the registered state cleared, wakes its required waiters, then
+    ///     Terminal cleanup marks the registered state cleared, detaches and wakes both waiter
+    ///     queues, then
     ///     removes the entry. Stale holders still observe the cleared state; late begins fail closed
     ///     because only match-start registration may create an entry.
     /// </summary>
@@ -372,6 +518,9 @@ internal sealed class SwarmCombatPublicationCoordinator
         lock (state.Gate)
         {
             state.Cleared = true;
+            state.RequiredWaiters.Clear();
+            state.OrderedWaiters.Clear();
+            ClearPendingRealtimeDemand(state);
             Monitor.PulseAll(state.Gate);
         }
 
@@ -387,9 +536,63 @@ internal sealed class SwarmCombatPublicationCoordinator
         {
             return new PublicationDiagnostics(
                 state.ActiveTurnId.HasValue,
-                state.RequiredWaiterCount,
+                state.RequiredWaiters.Count,
+                state.OrderedWaiters.Count,
+                state.HasPendingRealtimeDemand,
+                state.RealtimeDemandVersion,
+                state.RealtimeDemandExpiresAt,
                 state.Cleared);
         }
+    }
+
+    private void ArmRealtimeDemandIfNeeded(MatchTurnState state, ulong observedAt)
+    {
+        if (state.HasPendingRealtimeDemand)
+            return;
+
+        ulong stopwatchNow = unchecked((ulong)Stopwatch.GetTimestamp());
+        state.HasPendingRealtimeDemand = true;
+        state.RealtimeDemandVersion = unchecked(state.RealtimeDemandVersion + 1);
+        state.RealtimeDemandExpiresAt =
+            unchecked(observedAt + _realtimeHandoffGraceTicks);
+        state.RealtimeDemandStopwatchExpiresAt =
+            unchecked(stopwatchNow + _realtimeHandoffGraceStopwatchTicks);
+        Monitor.PulseAll(state.Gate);
+    }
+
+    private static void ClearPendingRealtimeDemand(MatchTurnState state)
+    {
+        state.HasPendingRealtimeDemand = false;
+        state.RealtimeDemandExpiresAt = 0;
+        state.RealtimeDemandStopwatchExpiresAt = 0;
+    }
+
+    private static bool IsRealtimeDemandExpired(MatchTurnState state, ulong timestamp)
+    {
+        if (!state.HasPendingRealtimeDemand)
+            return false;
+
+        ulong stopwatchNow = unchecked((ulong)Stopwatch.GetTimestamp());
+        return HasReachedTimestamp(timestamp, state.RealtimeDemandExpiresAt) ||
+               HasReachedTimestamp(stopwatchNow, state.RealtimeDemandStopwatchExpiresAt);
+    }
+
+    private static int GetRealtimeDemandWaitMilliseconds(MatchTurnState state)
+    {
+        ulong stopwatchNow = unchecked((ulong)Stopwatch.GetTimestamp());
+        if (HasReachedTimestamp(stopwatchNow, state.RealtimeDemandStopwatchExpiresAt))
+            return 1;
+
+        ulong remainingTicks =
+            unchecked(state.RealtimeDemandStopwatchExpiresAt - stopwatchNow);
+        UInt128 milliseconds =
+            ((UInt128)remainingTicks * 1_000 + checked((ulong)Stopwatch.Frequency) - 1) /
+            checked((ulong)Stopwatch.Frequency);
+        if (milliseconds == 0)
+            return 1;
+        return milliseconds > int.MaxValue
+            ? int.MaxValue
+            : (int)milliseconds;
     }
 
     private PublicationTurn ActivateTurnAndRebaseRealtimeDue(
@@ -695,19 +898,30 @@ internal sealed class SwarmCombatPublicationCoordinator
     internal readonly record struct PublicationDiagnostics(
         bool HasActiveTurn,
         int RequiredWaiterCount,
+        int OrderedWaiterCount,
+        bool HasPendingRealtimeDemand,
+        long RealtimeDemandVersion,
+        ulong RealtimeDemandExpiresAt,
         bool IsCleared);
 
     internal sealed class MatchTurnState
     {
         public readonly object Gate = new();
+        public readonly LinkedList<BlockingWaiter> RequiredWaiters = new();
+        public readonly LinkedList<BlockingWaiter> OrderedWaiters = new();
         public long? ActiveTurnId;
         public ulong NextRealtimeEligibleTimestamp;
         public bool HasRealtimeSchedule;
+        public bool HasPendingRealtimeDemand;
+        public long RealtimeDemandVersion;
+        public ulong RealtimeDemandExpiresAt;
+        public ulong RealtimeDemandStopwatchExpiresAt;
         public int LastPeriodicCountdownSeconds;
         public bool HasPeriodicCountdownPublication;
-        public int RequiredWaiterCount;
         public bool Cleared;
     }
+
+    internal sealed class BlockingWaiter;
 
     internal sealed class CaptureFrame(
         SwarmCombatPublicationCoordinator owner,

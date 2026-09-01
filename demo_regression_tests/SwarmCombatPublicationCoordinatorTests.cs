@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
 using game_server;
@@ -24,17 +25,17 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(61_001, 61_002);
         using SwarmCombatPublicationCoordinator.PublicationTurn first =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(61_001));
+                coordinator.TryBeginDueRealtimeTurn(61_001));
 
-        Assert.Null(coordinator.TryBeginRealtimeTurn(61_001));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(61_001));
         using SwarmCombatPublicationCoordinator.PublicationTurn independent =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(61_002));
+                coordinator.TryBeginDueRealtimeTurn(61_002));
 
         first.Dispose();
         using SwarmCombatPublicationCoordinator.PublicationTurn next =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(61_001));
+                coordinator.TryBeginDueRealtimeTurn(61_001));
     }
 
     [Fact]
@@ -44,7 +45,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
         SwarmCombatPublicationCoordinator.PublicationTurn first =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
         using var requiredStarted = new ManualResetEventSlim();
 
         Task<SwarmCombatPublicationCoordinator.PublicationTurn?> requiredTask = Task.Run(() =>
@@ -57,18 +58,18 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.True(SpinWait.SpinUntil(
             () => coordinator.Inspect(matchingId)?.RequiredWaiterCount == 1,
             TimeSpan.FromSeconds(2)));
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
 
         first.Dispose();
         SwarmCombatPublicationCoordinator.PublicationTurn required =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
                 await requiredTask.WaitAsync(TimeSpan.FromSeconds(2)));
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         required.Dispose();
 
         using SwarmCombatPublicationCoordinator.PublicationTurn nextRealtime =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
     }
 
     [Fact]
@@ -77,7 +78,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(61_004, 61_005);
         using SwarmCombatPublicationCoordinator.PublicationTurn blocked =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(61_004));
+                coordinator.TryBeginDueRealtimeTurn(61_004));
 
         Task<SwarmCombatPublicationCoordinator.PublicationTurn?> waiting =
             Task.Run(() => coordinator.BeginRequiredTurn(61_004));
@@ -111,7 +112,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
                 .Select(_ => Task.Run(() =>
                 {
                     start.SignalAndWait();
-                    return coordinator.TryBeginRealtimeTurn(matchingId);
+                    return coordinator.TryBeginDueRealtimeTurn(matchingId);
                 }))
                 .ToArray();
 
@@ -119,7 +120,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             await Task.WhenAll(attempts).WaitAsync(TimeSpan.FromSeconds(2));
         SwarmCombatPublicationCoordinator.PublicationTurn winner = Assert.Single(turns.OfType<SwarmCombatPublicationCoordinator.PublicationTurn>());
         winner.Dispose();
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
     }
 
     [Fact]
@@ -132,7 +133,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.True(coordinator.RegisterMatching(matchingId));
         SwarmCombatPublicationCoordinator.PublicationTurn overrun =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
 
         now = 1_000;
         overrun.Dispose();
@@ -142,7 +143,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
                 .Select(_ => Task.Run(() =>
                 {
                     start.SignalAndWait();
-                    return coordinator.TryBeginRealtimeTurn(matchingId);
+                    return coordinator.TryBeginDueRealtimeTurn(matchingId);
                 }))
                 .ToArray();
 
@@ -151,11 +152,11 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         SwarmCombatPublicationCoordinator.PublicationTurn catchUp =
             Assert.Single(turns.OfType<SwarmCombatPublicationCoordinator.PublicationTurn>());
         catchUp.Dispose();
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         now = 1_049;
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         now = 1_050;
-        Assert.NotNull(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.NotNull(coordinator.TryBeginDueRealtimeTurn(matchingId));
     }
 
     [Fact]
@@ -168,22 +169,22 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.True(coordinator.RegisterMatching(matchingId));
 
         Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-            coordinator.TryBeginRealtimeTurn(matchingId)).Dispose();
+            coordinator.TryBeginDueRealtimeTurn(matchingId)).Dispose();
         now = 49;
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         now = 50;
         Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-            coordinator.TryBeginRealtimeTurn(matchingId)).Dispose();
+            coordinator.TryBeginDueRealtimeTurn(matchingId)).Dispose();
 
         now = 1_000;
         Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-            coordinator.TryBeginRealtimeTurn(matchingId)).Dispose();
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+            coordinator.TryBeginDueRealtimeTurn(matchingId)).Dispose();
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         now = 1_049;
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         now = 1_050;
         Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-            coordinator.TryBeginRealtimeTurn(matchingId)).Dispose();
+            coordinator.TryBeginDueRealtimeTurn(matchingId)).Dispose();
     }
 
     [Fact]
@@ -196,15 +197,15 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.True(coordinator.RegisterMatching(61_034));
 
         Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-            coordinator.TryBeginRealtimeTurn(61_033)).Dispose();
+            coordinator.TryBeginDueRealtimeTurn(61_033)).Dispose();
         Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-            coordinator.TryBeginRealtimeTurn(61_034)).Dispose();
+            coordinator.TryBeginDueRealtimeTurn(61_034)).Dispose();
         now = 59;
-        Assert.Null(coordinator.TryBeginRealtimeTurn(61_033));
-        Assert.Null(coordinator.TryBeginRealtimeTurn(61_034));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(61_033));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(61_034));
         now = 60;
-        Assert.NotNull(coordinator.TryBeginRealtimeTurn(61_033));
-        Assert.NotNull(coordinator.TryBeginRealtimeTurn(61_034));
+        Assert.NotNull(coordinator.TryBeginDueRealtimeTurn(61_033));
+        Assert.NotNull(coordinator.TryBeginDueRealtimeTurn(61_034));
     }
 
     [Fact]
@@ -219,10 +220,10 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
             coordinator.BeginRequiredTurn(matchingId)).Dispose();
         now = 74;
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         now = 75;
         Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-            coordinator.TryBeginRealtimeTurn(matchingId)).Dispose();
+            coordinator.TryBeginDueRealtimeTurn(matchingId)).Dispose();
     }
 
     [Fact]
@@ -235,7 +236,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.True(coordinator.RegisterMatching(matchingId));
         SwarmCombatPublicationCoordinator.PublicationTurn realtime =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
 
         Task<SwarmCombatPublicationCoordinator.PublicationTurn?> requiredTask =
             Task.Run(() => coordinator.BeginRequiredTurn(matchingId));
@@ -251,9 +252,9 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         required.Dispose();
 
         now = 1_049;
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         now = 1_050;
-        Assert.NotNull(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.NotNull(coordinator.TryBeginDueRealtimeTurn(matchingId));
     }
 
     [Fact]
@@ -266,27 +267,27 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.True(coordinator.RegisterMatching(matchingId));
         SwarmCombatPublicationCoordinator.PublicationTurn realtime =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
 
         Task<SwarmCombatPublicationCoordinator.PublicationTurn?> orderedTask =
             Task.Run(() => coordinator.BeginOrderedTurn(matchingId));
         Assert.True(SpinWait.SpinUntil(
-            () => coordinator.Inspect(matchingId)?.RequiredWaiterCount == 1,
+            () => coordinator.Inspect(matchingId)?.OrderedWaiterCount == 1,
             TimeSpan.FromSeconds(2)));
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
 
         realtime.Dispose();
         SwarmCombatPublicationCoordinator.PublicationTurn ordered =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
                 await orderedTask.WaitAsync(TimeSpan.FromSeconds(2)));
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         ordered.Dispose();
 
         now = 49;
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         now = 50;
         Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-            coordinator.TryBeginRealtimeTurn(matchingId)).Dispose();
+            coordinator.TryBeginDueRealtimeTurn(matchingId)).Dispose();
     }
 
     [Fact]
@@ -305,7 +306,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             1_000);
         Assert.True(coordinator.RegisterMatching(matchingId));
         Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-            coordinator.TryBeginRealtimeTurn(matchingId)).Dispose();
+            coordinator.TryBeginDueRealtimeTurn(matchingId)).Dispose();
         Assert.Equal(1, clockReads);
 
         now = 25;
@@ -314,10 +315,10 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.Equal(1, clockReads);
 
         now = 49;
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         now = 50;
         Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-            coordinator.TryBeginRealtimeTurn(matchingId)).Dispose();
+            coordinator.TryBeginDueRealtimeTurn(matchingId)).Dispose();
         Assert.Equal(3, clockReads);
     }
 
@@ -333,15 +334,778 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Task<SwarmCombatPublicationCoordinator.PublicationTurn?> orderedTask =
             Task.Run(() => coordinator.BeginOrderedTurn(matchingId));
         Assert.True(SpinWait.SpinUntil(
-            () => coordinator.Inspect(matchingId)?.RequiredWaiterCount == 1,
+            () => coordinator.Inspect(matchingId)?.OrderedWaiterCount == 1,
             TimeSpan.FromSeconds(2)));
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
 
         required.Dispose();
         using SwarmCombatPublicationCoordinator.PublicationTurn ordered =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
                 await orderedTask.WaitAsync(TimeSpan.FromSeconds(2)));
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+    }
+
+    [Fact]
+    public async Task RequiredTurn_IsFifoWithinRequiredLane()
+    {
+        const long matchingId = 61_051;
+        SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
+        SwarmCombatPublicationCoordinator.PublicationTurn? active =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? firstTurn = null;
+        SwarmCombatPublicationCoordinator.PublicationTurn? secondTurn = null;
+
+        try
+        {
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> firstTask =
+                Task.Run(() => coordinator.BeginRequiredTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.RequiredWaiterCount == 1,
+                TimeSpan.FromSeconds(2)));
+
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> secondTask =
+                Task.Run(() => coordinator.BeginRequiredTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.RequiredWaiterCount == 2,
+                TimeSpan.FromSeconds(2)));
+
+            active.Dispose();
+            active = null;
+            firstTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await firstTask.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.False(secondTask.IsCompleted);
+
+            firstTurn.Dispose();
+            firstTurn = null;
+            secondTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await secondTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        finally
+        {
+            active?.Dispose();
+            firstTurn?.Dispose();
+            secondTurn?.Dispose();
+            coordinator.ClearMatching(matchingId);
+        }
+    }
+
+    [Fact]
+    public async Task OrderedTurn_IsFifoWithinOrderedLane()
+    {
+        const long matchingId = 61_052;
+        SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
+        SwarmCombatPublicationCoordinator.PublicationTurn? active =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? firstTurn = null;
+        SwarmCombatPublicationCoordinator.PublicationTurn? secondTurn = null;
+
+        try
+        {
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> firstTask =
+                Task.Run(() => coordinator.BeginOrderedTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.OrderedWaiterCount == 1,
+                TimeSpan.FromSeconds(2)));
+
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> secondTask =
+                Task.Run(() => coordinator.BeginOrderedTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.OrderedWaiterCount == 2,
+                TimeSpan.FromSeconds(2)));
+
+            active.Dispose();
+            active = null;
+            firstTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await firstTask.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.False(secondTask.IsCompleted);
+
+            firstTurn.Dispose();
+            firstTurn = null;
+            secondTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await secondTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        finally
+        {
+            active?.Dispose();
+            firstTurn?.Dispose();
+            secondTurn?.Dispose();
+            coordinator.ClearMatching(matchingId);
+        }
+    }
+
+    [Fact]
+    public async Task RequiredTurn_QueuedLaterLeapfrogsOrderedLane()
+    {
+        const long matchingId = 61_053;
+        SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
+        SwarmCombatPublicationCoordinator.PublicationTurn? active =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? requiredTurn = null;
+        SwarmCombatPublicationCoordinator.PublicationTurn? orderedTurn = null;
+
+        try
+        {
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> orderedTask =
+                Task.Run(() => coordinator.BeginOrderedTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.OrderedWaiterCount == 1,
+                TimeSpan.FromSeconds(2)));
+
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> requiredTask =
+                Task.Run(() => coordinator.BeginRequiredTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.RequiredWaiterCount == 1,
+                TimeSpan.FromSeconds(2)));
+
+            active.Dispose();
+            active = null;
+            requiredTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await requiredTask.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.False(orderedTask.IsCompleted);
+
+            requiredTurn.Dispose();
+            requiredTurn = null;
+            orderedTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await orderedTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        finally
+        {
+            active?.Dispose();
+            requiredTurn?.Dispose();
+            orderedTurn?.Dispose();
+            coordinator.ClearMatching(matchingId);
+        }
+    }
+
+    [Fact]
+    public void DueRealtimeObservation_ArmsDefaultGraceOnceWithoutExtendingVersionOrDeadline()
+    {
+        const long matchingId = 61_054;
+        ulong now = 0;
+        var coordinator = new SwarmCombatPublicationCoordinator(
+            TimeSpan.FromMilliseconds(50), () => now, 1_000);
+        Assert.True(coordinator.RegisterMatching(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? active = null;
+
+        try
+        {
+            active = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+            now = 50;
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+            SwarmCombatPublicationCoordinator.PublicationDiagnostics first =
+                Assert.IsType<SwarmCombatPublicationCoordinator.PublicationDiagnostics>(
+                    coordinator.Inspect(matchingId));
+            Assert.True(first.HasPendingRealtimeDemand);
+            Assert.Equal(1, first.RealtimeDemandVersion);
+            Assert.Equal((ulong)150, first.RealtimeDemandExpiresAt);
+
+            now = 75;
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+            now = 250;
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+            SwarmCombatPublicationCoordinator.PublicationDiagnostics repeated =
+                Assert.IsType<SwarmCombatPublicationCoordinator.PublicationDiagnostics>(
+                    coordinator.Inspect(matchingId));
+            Assert.True(repeated.HasPendingRealtimeDemand);
+            Assert.Equal(first.RealtimeDemandVersion, repeated.RealtimeDemandVersion);
+            Assert.Equal(first.RealtimeDemandExpiresAt, repeated.RealtimeDemandExpiresAt);
+        }
+        finally
+        {
+            active?.Dispose();
+            coordinator.ClearMatching(matchingId);
+        }
+    }
+
+    [Fact]
+    public void DefaultHandoffGrace_CeilsTwiceTheDurationInsteadOfDoublingIntervalTicks()
+    {
+        const long matchingId = 61_065;
+        ulong now = 0;
+        var coordinator = new SwarmCombatPublicationCoordinator(
+            TimeSpan.FromMilliseconds(50), () => now, 1_001);
+        Assert.True(coordinator.RegisterMatching(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? active = null;
+
+        try
+        {
+            active = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+            now = 51;
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+
+            SwarmCombatPublicationCoordinator.PublicationDiagnostics pending =
+                Assert.IsType<SwarmCombatPublicationCoordinator.PublicationDiagnostics>(
+                    coordinator.Inspect(matchingId));
+            Assert.True(pending.HasPendingRealtimeDemand);
+            Assert.Equal((ulong)152, pending.RealtimeDemandExpiresAt);
+            Assert.NotEqual((ulong)153, pending.RealtimeDemandExpiresAt);
+        }
+        finally
+        {
+            active?.Dispose();
+            coordinator.ClearMatching(matchingId);
+        }
+    }
+
+    [Fact]
+    public async Task DueRealtimeTurn_ClaimsAheadOfQueuedOrderedTurnBeforeGraceExpires()
+    {
+        const long matchingId = 61_055;
+        ulong now = 0;
+        var coordinator = new SwarmCombatPublicationCoordinator(
+            TimeSpan.FromMilliseconds(50),
+            () => now,
+            1_000,
+            TimeSpan.FromSeconds(5));
+        Assert.True(coordinator.RegisterMatching(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? active = null;
+        SwarmCombatPublicationCoordinator.PublicationTurn? realtimeTurn = null;
+        SwarmCombatPublicationCoordinator.PublicationTurn? orderedTurn = null;
+
+        try
+        {
+            active = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> orderedTask =
+                Task.Run(() => coordinator.BeginOrderedTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.OrderedWaiterCount == 1,
+                TimeSpan.FromSeconds(2)));
+
+            now = 50;
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+            Assert.True(coordinator.Inspect(matchingId)?.HasPendingRealtimeDemand);
+            active.Dispose();
+            active = null;
+
+            realtimeTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+            Assert.False(orderedTask.IsCompleted);
+            realtimeTurn.Dispose();
+            realtimeTurn = null;
+            orderedTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await orderedTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        finally
+        {
+            active?.Dispose();
+            realtimeTurn?.Dispose();
+            orderedTurn?.Dispose();
+            coordinator.ClearMatching(matchingId);
+        }
+    }
+
+    [Fact]
+    public async Task DueRealtimeTurn_MakesBoundedProgressAgainstContinuousOrderedProducers()
+    {
+        const long matchingId = 61_066;
+        const int producerCount = 4;
+        long timestamp = 0;
+        int stopProducers = 0;
+        int orderedAcquisitions = 0;
+        TimeSpan handoffGrace = TimeSpan.FromSeconds(2);
+        var coordinator = new SwarmCombatPublicationCoordinator(
+            TimeSpan.FromMilliseconds(50),
+            () => unchecked((ulong)Interlocked.Read(ref timestamp)),
+            1_000,
+            handoffGrace);
+        Assert.True(coordinator.RegisterMatching(matchingId));
+        Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+            coordinator.TryBeginDueRealtimeTurn(matchingId)).Dispose();
+        using var holderActive = new ManualResetEventSlim();
+        using var releaseHolder = new ManualResetEventSlim();
+        Task[] producers = [];
+        SwarmCombatPublicationCoordinator.PublicationTurn? realtimeTurn = null;
+
+        try
+        {
+            Task holder = Task.Run(() =>
+            {
+                using (SwarmCombatPublicationCoordinator.PublicationTurn? first =
+                       coordinator.BeginOrderedTurn(matchingId))
+                {
+                    if (first == null)
+                        return;
+
+                    Interlocked.Increment(ref orderedAcquisitions);
+                    holderActive.Set();
+                    releaseHolder.Wait();
+                }
+
+                while (Volatile.Read(ref stopProducers) == 0)
+                {
+                    using SwarmCombatPublicationCoordinator.PublicationTurn? ordered =
+                        coordinator.BeginOrderedTurn(matchingId);
+                    if (ordered == null)
+                        break;
+                    Interlocked.Increment(ref orderedAcquisitions);
+                    Thread.Yield();
+                }
+            });
+            Assert.True(holderActive.Wait(TimeSpan.FromSeconds(2)));
+
+            Task[] followers = Enumerable.Range(0, producerCount - 1)
+                .Select(_ => Task.Run(() =>
+                {
+                    while (Volatile.Read(ref stopProducers) == 0)
+                    {
+                        using SwarmCombatPublicationCoordinator.PublicationTurn? ordered =
+                            coordinator.BeginOrderedTurn(matchingId);
+                        if (ordered == null)
+                            break;
+                        Interlocked.Increment(ref orderedAcquisitions);
+                        Thread.Yield();
+                    }
+                }))
+                .ToArray();
+            producers = [holder, .. followers];
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.OrderedWaiterCount ==
+                      producerCount - 1,
+                TimeSpan.FromSeconds(2)));
+
+            Interlocked.Exchange(ref timestamp, 50);
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+            Assert.True(coordinator.Inspect(matchingId)?.HasPendingRealtimeDemand);
+
+            var elapsed = Stopwatch.StartNew();
+            releaseHolder.Set();
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.OrderedWaiterCount == producerCount,
+                TimeSpan.FromSeconds(1)));
+            while (realtimeTurn == null && elapsed.Elapsed < handoffGrace)
+            {
+                realtimeTurn = coordinator.TryBeginDueRealtimeTurn(matchingId);
+                if (realtimeTurn == null)
+                    await Task.Yield();
+            }
+
+            Assert.NotNull(realtimeTurn);
+            Assert.True(elapsed.Elapsed < handoffGrace);
+            Assert.True(Volatile.Read(ref orderedAcquisitions) >= 1);
+            Assert.All(producers, producer => Assert.False(producer.IsCompleted));
+        }
+        finally
+        {
+            Volatile.Write(ref stopProducers, 1);
+            releaseHolder.Set();
+            realtimeTurn?.Dispose();
+            coordinator.ClearMatching(matchingId);
+            if (producers.Length > 0)
+                await Task.WhenAll(producers).WaitAsync(TimeSpan.FromSeconds(2));
+        }
+    }
+
+    [Fact]
+    public async Task DueRealtimeHandoff_GraceStartsWhenDemandIsArmed()
+    {
+        const long matchingId = 61_056;
+        long timestamp = 0;
+        TimeSpan handoffGrace = TimeSpan.FromMilliseconds(400);
+        var coordinator = new SwarmCombatPublicationCoordinator(
+            TimeSpan.FromMilliseconds(50),
+            () => unchecked((ulong)Interlocked.Read(ref timestamp)),
+            1_000,
+            handoffGrace);
+        Assert.True(coordinator.RegisterMatching(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? active =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? orderedTurn = null;
+
+        try
+        {
+            Interlocked.Exchange(ref timestamp, 50);
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+            Assert.True(coordinator.Inspect(matchingId)?.HasPendingRealtimeDemand);
+            await Task.Delay(handoffGrace + TimeSpan.FromMilliseconds(150));
+
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> orderedTask =
+                Task.Run(() => coordinator.BeginOrderedTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.OrderedWaiterCount == 1,
+                TimeSpan.FromSeconds(2)));
+
+            var releaseElapsed = Stopwatch.StartNew();
+            active.Dispose();
+            active = null;
+            orderedTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await orderedTask.WaitAsync(TimeSpan.FromSeconds(2)));
+            releaseElapsed.Stop();
+
+            Assert.True(
+                releaseElapsed.Elapsed < TimeSpan.FromMilliseconds(300),
+                $"Expired handoff took {releaseElapsed.Elapsed.TotalMilliseconds:F1} ms " +
+                $"after active retirement instead of falling back immediately.");
+            Assert.False(coordinator.Inspect(matchingId)?.HasPendingRealtimeDemand);
+        }
+        finally
+        {
+            active?.Dispose();
+            orderedTurn?.Dispose();
+            coordinator.ClearMatching(matchingId);
+        }
+    }
+
+    [Fact]
+    public async Task ExpiredRealtimeHandoff_AtomicallyFallsBackToOrderedBeforeFreshRealtime()
+    {
+        const long matchingId = 61_057;
+        ulong now = 0;
+        var coordinator = new SwarmCombatPublicationCoordinator(
+            TimeSpan.FromMilliseconds(50),
+            () => now,
+            1_000,
+            TimeSpan.FromSeconds(5));
+        Assert.True(coordinator.RegisterMatching(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? active = null;
+        SwarmCombatPublicationCoordinator.PublicationTurn? orderedTurn = null;
+        SwarmCombatPublicationCoordinator.PublicationTurn? freshRealtime = null;
+
+        try
+        {
+            active = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> orderedTask =
+                Task.Run(() => coordinator.BeginOrderedTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.OrderedWaiterCount == 1,
+                TimeSpan.FromSeconds(2)));
+
+            now = 50;
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+            now = 5_050;
+            active.Dispose();
+            active = null;
+
+            freshRealtime = coordinator.TryBeginDueRealtimeTurn(matchingId);
+            Assert.Null(freshRealtime);
+            orderedTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await orderedTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        finally
+        {
+            active?.Dispose();
+            freshRealtime?.Dispose();
+            orderedTurn?.Dispose();
+            coordinator.ClearMatching(matchingId);
+        }
+    }
+
+    [Fact]
+    public async Task PendingRealtimeClockFailure_FailsOpenToOrderedWithoutRebasingDue()
+    {
+        const long matchingId = 61_058;
+        ulong now = 0;
+        int failClock = 0;
+        var coordinator = new SwarmCombatPublicationCoordinator(
+            TimeSpan.FromMilliseconds(50),
+            () =>
+            {
+                if (Volatile.Read(ref failClock) != 0)
+                    throw new InvalidOperationException("pending clock failed");
+                return now;
+            },
+            1_000,
+            TimeSpan.FromSeconds(5));
+        Assert.True(coordinator.RegisterMatching(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? active = null;
+        SwarmCombatPublicationCoordinator.PublicationTurn? orderedTurn = null;
+        SwarmCombatPublicationCoordinator.PublicationTurn? realtimeTurn = null;
+
+        try
+        {
+            active = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+            now = 50;
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> orderedTask =
+                Task.Run(() => coordinator.BeginOrderedTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.OrderedWaiterCount == 1,
+                TimeSpan.FromSeconds(2)));
+
+            Volatile.Write(ref failClock, 1);
+            active.Dispose();
+            active = null;
+            orderedTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await orderedTask.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.False(coordinator.Inspect(matchingId)?.HasPendingRealtimeDemand);
+
+            Volatile.Write(ref failClock, 0);
+            orderedTurn.Dispose();
+            orderedTurn = null;
+            now = 49;
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+            now = 50;
+            realtimeTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+        }
+        finally
+        {
+            Volatile.Write(ref failClock, 0);
+            active?.Dispose();
+            orderedTurn?.Dispose();
+            realtimeTurn?.Dispose();
+            coordinator.ClearMatching(matchingId);
+        }
+    }
+
+    [Fact]
+    public async Task RequiredClockFailure_RemovesFifoHeadAndLetsNextRequiredTurnProceed()
+    {
+        const long matchingId = 61_059;
+        ulong now = 0;
+        int failNextClock = 0;
+        var coordinator = new SwarmCombatPublicationCoordinator(
+            TimeSpan.FromMilliseconds(50),
+            () =>
+            {
+                if (Interlocked.Exchange(ref failNextClock, 0) != 0)
+                    throw new InvalidOperationException("required clock failed");
+                return now;
+            },
+            1_000);
+        Assert.True(coordinator.RegisterMatching(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? active =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? secondTurn = null;
+
+        try
+        {
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> firstTask =
+                Task.Run(() => coordinator.BeginRequiredTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.RequiredWaiterCount == 1,
+                TimeSpan.FromSeconds(2)));
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> secondTask =
+                Task.Run(() => coordinator.BeginRequiredTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.RequiredWaiterCount == 2,
+                TimeSpan.FromSeconds(2)));
+
+            now = 100;
+            Volatile.Write(ref failNextClock, 1);
+            active.Dispose();
+            active = null;
+
+            InvalidOperationException failure =
+                await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                {
+                    await firstTask.WaitAsync(TimeSpan.FromSeconds(2));
+                });
+            Assert.Equal("required clock failed", failure.Message);
+            secondTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await secondTask.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.Equal(0, coordinator.Inspect(matchingId)?.RequiredWaiterCount);
+        }
+        finally
+        {
+            active?.Dispose();
+            secondTurn?.Dispose();
+            coordinator.ClearMatching(matchingId);
+        }
+    }
+
+    [Fact]
+    public async Task RequiredAcquisition_ClearsPendingRealtimeDemandAndRebasesDue()
+    {
+        const long matchingId = 61_060;
+        ulong now = 0;
+        var coordinator = new SwarmCombatPublicationCoordinator(
+            TimeSpan.FromMilliseconds(50),
+            () => now,
+            1_000,
+            TimeSpan.FromSeconds(5));
+        Assert.True(coordinator.RegisterMatching(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? active = null;
+        SwarmCombatPublicationCoordinator.PublicationTurn? requiredTurn = null;
+        SwarmCombatPublicationCoordinator.PublicationTurn? realtimeTurn = null;
+
+        try
+        {
+            active = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+            now = 50;
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+            Assert.True(coordinator.Inspect(matchingId)?.HasPendingRealtimeDemand);
+
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> requiredTask =
+                Task.Run(() => coordinator.BeginRequiredTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.RequiredWaiterCount == 1,
+                TimeSpan.FromSeconds(2)));
+            now = 70;
+            active.Dispose();
+            active = null;
+
+            requiredTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await requiredTask.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.False(coordinator.Inspect(matchingId)?.HasPendingRealtimeDemand);
+            requiredTurn.Dispose();
+            requiredTurn = null;
+
+            now = 119;
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+            now = 120;
+            realtimeTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+        }
+        finally
+        {
+            active?.Dispose();
+            requiredTurn?.Dispose();
+            realtimeTurn?.Dispose();
+            coordinator.ClearMatching(matchingId);
+        }
+    }
+
+    [Fact]
+    public void DueButUnobservedRealtime_DoesNotDelayOrderedOrReadClock()
+    {
+        const long matchingId = 61_061;
+        ulong now = 0;
+        int clockReads = 0;
+        var coordinator = new SwarmCombatPublicationCoordinator(
+            TimeSpan.FromMilliseconds(50),
+            () =>
+            {
+                clockReads++;
+                return now;
+            },
+            1_000);
+        Assert.True(coordinator.RegisterMatching(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? realtimeTurn = null;
+        SwarmCombatPublicationCoordinator.PublicationTurn? orderedTurn = null;
+
+        try
+        {
+            realtimeTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+            realtimeTurn.Dispose();
+            realtimeTurn = null;
+            Assert.Equal(1, clockReads);
+
+            now = 50;
+            orderedTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.BeginOrderedTurn(matchingId));
+            Assert.Equal(1, clockReads);
+            Assert.False(coordinator.Inspect(matchingId)?.HasPendingRealtimeDemand);
+            orderedTurn.Dispose();
+            orderedTurn = null;
+
+            realtimeTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+            Assert.Equal(2, clockReads);
+        }
+        finally
+        {
+            realtimeTurn?.Dispose();
+            orderedTurn?.Dispose();
+            coordinator.ClearMatching(matchingId);
+        }
+    }
+
+    [Fact]
+    public async Task ClearMatching_WakesDetachedRequiredAndOrderedQueues_AndReregistersFresh()
+    {
+        const long matchingId = 61_062;
+        SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
+        SwarmCombatPublicationCoordinator.PublicationTurn? stale =
+            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? fresh = null;
+
+        try
+        {
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+            Assert.True(coordinator.Inspect(matchingId)?.HasPendingRealtimeDemand);
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> orderedTask =
+                Task.Run(() => coordinator.BeginOrderedTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.OrderedWaiterCount == 1,
+                TimeSpan.FromSeconds(2)));
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> requiredTask =
+                Task.Run(() => coordinator.BeginRequiredTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.RequiredWaiterCount == 1,
+                TimeSpan.FromSeconds(2)));
+
+            coordinator.ClearMatching(matchingId);
+            Assert.Null(await requiredTask.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.Null(await orderedTask.WaitAsync(TimeSpan.FromSeconds(2)));
+            Assert.Null(coordinator.Inspect(matchingId));
+
+            stale.Dispose();
+            stale = null;
+            Assert.True(coordinator.RegisterMatching(matchingId));
+            fresh = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+        }
+        finally
+        {
+            stale?.Dispose();
+            fresh?.Dispose();
+            coordinator.ClearMatching(matchingId);
+        }
+    }
+
+    [Fact]
+    public async Task PendingRealtimeExpiry_HandlesUint64WrapAndDoesNotBlockOtherMatch()
+    {
+        const long matchingId = 61_063;
+        const long otherMatchingId = 61_064;
+        ulong now = ulong.MaxValue - 100;
+        var coordinator = new SwarmCombatPublicationCoordinator(
+            TimeSpan.FromMilliseconds(50),
+            () => now,
+            1_000,
+            TimeSpan.FromSeconds(1));
+        Assert.True(coordinator.RegisterMatching(matchingId));
+        Assert.True(coordinator.RegisterMatching(otherMatchingId));
+        SwarmCombatPublicationCoordinator.PublicationTurn? active = null;
+        SwarmCombatPublicationCoordinator.PublicationTurn? orderedTurn = null;
+        SwarmCombatPublicationCoordinator.PublicationTurn? independentTurn = null;
+
+        try
+        {
+            active = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
+            now = ulong.MaxValue - 50;
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+            SwarmCombatPublicationCoordinator.PublicationDiagnostics pending =
+                Assert.IsType<SwarmCombatPublicationCoordinator.PublicationDiagnostics>(
+                    coordinator.Inspect(matchingId));
+            Assert.True(pending.HasPendingRealtimeDemand);
+            Assert.Equal((ulong)949, pending.RealtimeDemandExpiresAt);
+
+            Task<SwarmCombatPublicationCoordinator.PublicationTurn?> orderedTask =
+                Task.Run(() => coordinator.BeginOrderedTurn(matchingId));
+            Assert.True(SpinWait.SpinUntil(
+                () => coordinator.Inspect(matchingId)?.OrderedWaiterCount == 1,
+                TimeSpan.FromSeconds(2)));
+            independentTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                coordinator.BeginOrderedTurn(otherMatchingId));
+
+            now = 949;
+            active.Dispose();
+            active = null;
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
+            orderedTurn = Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
+                await orderedTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        }
+        finally
+        {
+            active?.Dispose();
+            orderedTurn?.Dispose();
+            independentTurn?.Dispose();
+            coordinator.ClearMatching(matchingId);
+            coordinator.ClearMatching(otherMatchingId);
+        }
     }
 
     [Fact]
@@ -536,7 +1300,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.True(coordinator.RegisterMatching(matchingId));
         SwarmCombatPublicationCoordinator.PublicationTurn turn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
         using SwarmCombatPublicationCoordinator.CaptureScope capture = coordinator.BeginCapture(turn);
         coordinator.AppendDeferredStep(() => throw new InvalidOperationException("send failed"));
         SwarmCombatPublicationCoordinator.PublicationPlan plan = capture.Freeze();
@@ -546,9 +1310,9 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         turn.Dispose();
         Assert.Equal(1, clockReads);
         now = 149;
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         now = 150;
-        Assert.NotNull(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.NotNull(coordinator.TryBeginDueRealtimeTurn(matchingId));
     }
 
     [Fact]
@@ -560,13 +1324,13 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             TimeSpan.FromMilliseconds(50), () => now, 1_001);
         Assert.True(coordinator.RegisterMatching(matchingId));
         Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-            coordinator.TryBeginRealtimeTurn(matchingId)).Dispose();
+            coordinator.TryBeginDueRealtimeTurn(matchingId)).Dispose();
 
         now = 49;
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         now = 50;
         Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-            coordinator.TryBeginRealtimeTurn(matchingId)).Dispose();
+            coordinator.TryBeginDueRealtimeTurn(matchingId)).Dispose();
     }
 
     [Fact]
@@ -592,20 +1356,20 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.True(coordinator.RegisterMatching(matchingId));
         SwarmCombatPublicationCoordinator.PublicationTurn stale =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
 
         coordinator.ClearMatching(matchingId);
         Assert.True(coordinator.RegisterMatching(matchingId));
         SwarmCombatPublicationCoordinator.PublicationTurn fresh =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
 
         stale.Dispose();
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         fresh.Dispose();
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         now = 50;
-        Assert.NotNull(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.NotNull(coordinator.TryBeginDueRealtimeTurn(matchingId));
     }
 
     [Fact]
@@ -615,7 +1379,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(61_006);
         using SwarmCombatPublicationCoordinator.PublicationTurn turn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(61_006));
+                coordinator.TryBeginDueRealtimeTurn(61_006));
         var events = new List<string>();
         var sent = new List<byte[]>();
         var recipient = new SwarmCombatPublicationCoordinator.PacketRecipient(packet =>
@@ -661,7 +1425,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(61_007);
         using SwarmCombatPublicationCoordinator.PublicationTurn turn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(61_007));
+                coordinator.TryBeginDueRealtimeTurn(61_007));
         var recipient = new SwarmCombatPublicationCoordinator.PacketRecipient(static _ => { });
         using SwarmCombatPublicationCoordinator.CaptureScope capture = coordinator.BeginCapture(turn);
         using var inherited = new ManualResetEventSlim();
@@ -690,7 +1454,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         SwarmCombatPublicationCoordinator foreign = CreateUnregisteredCoordinator();
         using SwarmCombatPublicationCoordinator.PublicationTurn turn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                owner.TryBeginRealtimeTurn(61_008));
+                owner.TryBeginDueRealtimeTurn(61_008));
 
         Assert.Throws<InvalidOperationException>(() => foreign.BeginCapture(turn));
         using SwarmCombatPublicationCoordinator.CaptureScope capture = owner.BeginCapture(turn);
@@ -707,7 +1471,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
         using SwarmCombatPublicationCoordinator.PublicationTurn turn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
         var events = new List<string>();
         int authoritativeState = 0;
         using SwarmCombatPublicationCoordinator.CaptureScope capture = coordinator.BeginCapture(turn);
@@ -726,7 +1490,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.False(coordinator.Inspect(matchingId)?.HasActiveTurn);
         using SwarmCombatPublicationCoordinator.PublicationTurn next =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
     }
 
     [Fact]
@@ -735,7 +1499,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(61_010);
         using SwarmCombatPublicationCoordinator.PublicationTurn turn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(61_010));
+                coordinator.TryBeginDueRealtimeTurn(61_010));
         var events = new List<string>();
         var failures = new List<string>();
         int authoritativeBotState = 0;
@@ -767,7 +1531,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
 
         using SwarmCombatPublicationCoordinator.PublicationTurn turn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
         using SwarmCombatPublicationCoordinator.CaptureScope capture =
             coordinator.BeginCapture(turn);
         using IDisposable group = Assert.IsAssignableFrom<IDisposable>(
@@ -786,7 +1550,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
         using SwarmCombatPublicationCoordinator.PublicationTurn turn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
         var events = new List<string>();
         var expected = new InvalidOperationException("prepare failed");
         ExceptionDispatchInfo? preparationFailure = null;
@@ -823,7 +1587,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
 
         using (SwarmCombatPublicationCoordinator.PublicationTurn firstTurn =
                Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                   coordinator.TryBeginRealtimeTurn(matchingId)))
+                   coordinator.TryBeginDueRealtimeTurn(matchingId)))
         {
             using SwarmCombatPublicationCoordinator.CaptureScope firstCapture =
                 coordinator.BeginCapture(firstTurn);
@@ -851,7 +1615,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
 
         using SwarmCombatPublicationCoordinator.PublicationTurn retryTurn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
         using SwarmCombatPublicationCoordinator.CaptureScope retryCapture =
             coordinator.BeginCapture(retryTurn);
         foreach (int candidate in retryCandidates)
@@ -878,7 +1642,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
         SwarmCombatPublicationCoordinator.PublicationTurn turn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
         using var dispatchEntered = new ManualResetEventSlim();
         using var releaseDispatch = new ManualResetEventSlim();
         using SwarmCombatPublicationCoordinator.CaptureScope capture = coordinator.BeginCapture(turn);
@@ -894,7 +1658,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         try
         {
             turn.Dispose();
-            Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+            Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         }
         finally
         {
@@ -904,7 +1668,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         await dispatch.WaitAsync(TimeSpan.FromSeconds(2));
         using SwarmCombatPublicationCoordinator.PublicationTurn next =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
     }
 
     [Fact]
@@ -914,7 +1678,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
         SwarmCombatPublicationCoordinator.PublicationTurn turn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
         var events = new List<string>();
         using SwarmCombatPublicationCoordinator.CaptureScope capture = coordinator.BeginCapture(turn);
         coordinator.AppendDeferredStep(() => events.Add("replayed"));
@@ -926,7 +1690,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.Empty(events);
         using SwarmCombatPublicationCoordinator.PublicationTurn next =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
     }
 
     [Fact]
@@ -948,7 +1712,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
 
         using SwarmCombatPublicationCoordinator.PublicationTurn firstTurn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(61_013));
+                coordinator.TryBeginDueRealtimeTurn(61_013));
         using SwarmCombatPublicationCoordinator.CaptureScope firstCapture =
             coordinator.BeginCapture(firstTurn);
         byte[] expected;
@@ -962,7 +1726,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
 
         using SwarmCombatPublicationCoordinator.PublicationTurn secondTurn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(61_014));
+                coordinator.TryBeginDueRealtimeTurn(61_014));
         using SwarmCombatPublicationCoordinator.CaptureScope secondCapture =
             coordinator.BeginCapture(secondTurn);
 
@@ -983,7 +1747,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
         SwarmCombatPublicationCoordinator.PublicationTurn active =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
         Task<SwarmCombatPublicationCoordinator.PublicationTurn?> waiting =
             Task.Run(() => coordinator.BeginRequiredTurn(matchingId));
         Assert.True(SpinWait.SpinUntil(
@@ -994,12 +1758,12 @@ public sealed class SwarmCombatPublicationCoordinatorTests
 
         Assert.Null(await waiting.WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.Null(coordinator.Inspect(matchingId));
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         Assert.Null(coordinator.BeginRequiredTurn(matchingId));
 
         active.Dispose();
         Assert.Null(coordinator.Inspect(matchingId));
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
     }
 
     [Fact]
@@ -1008,14 +1772,14 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         const long matchingId = 61_016;
         SwarmCombatPublicationCoordinator coordinator = CreateUnregisteredCoordinator();
 
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
         Assert.Null(coordinator.BeginRequiredTurn(matchingId));
         Assert.True(coordinator.RegisterMatching(matchingId));
         Assert.False(coordinator.RegisterMatching(matchingId));
 
         using SwarmCombatPublicationCoordinator.PublicationTurn turn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
     }
 
     [Fact]
@@ -1042,7 +1806,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         SwarmCombatPublicationCoordinator coordinator = CreateCoordinator(matchingId);
         using SwarmCombatPublicationCoordinator.PublicationTurn turn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
         var sent = new List<byte[]>();
         Action<IPacket> sendDirect = packet => sent.Add(packet.ToBytes());
         using SwarmCombatPublicationCoordinator.CaptureScope capture = coordinator.BeginCapture(turn);
@@ -1197,7 +1961,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             registry.TryAcquireOperation(matchingId, static () => { }));
         SwarmCombatPublicationCoordinator.PublicationTurn turn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
 
         Assert.True(registry.TryFinalize(
             matchingId,
@@ -1209,7 +1973,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         operation.Dispose();
 
         Assert.Null(coordinator.Inspect(matchingId));
-        Assert.Null(coordinator.TryBeginRealtimeTurn(matchingId));
+        Assert.Null(coordinator.TryBeginDueRealtimeTurn(matchingId));
     }
 
     [Fact]
@@ -1223,7 +1987,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.True(registry.TryExecute(matchingId, static () => { }));
         SwarmCombatPublicationCoordinator.PublicationTurn turn =
             Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginRealtimeTurn(matchingId));
+                coordinator.TryBeginDueRealtimeTurn(matchingId));
         SwarmCombatPublicationCoordinator.PublicationPlan? plan = null;
         IDisposable operation = Assert.IsAssignableFrom<IDisposable>(
             registry.TryAcquireOperation(
@@ -1451,7 +2215,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             realtimeTick,
             "foreach (long matchingId in activeMatchingIds)",
             "try",
-            "_swarmCombatPublicationCoordinator.TryBeginRealtimeTurn(matchingId)",
+            "_swarmCombatPublicationCoordinator.TryBeginDueRealtimeTurn(matchingId)",
             "if (publicationTurn == null)",
             "PrepareAndDispatchCombatPublication(",
             "() => ProcessProximityAutoCombatForMatching(matchingId, activeSessions)",
@@ -1533,7 +2297,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.Contains(
             "_swarmCombatPublicationCoordinator.AppendDeferredStep(",
             proximity);
-        Assert.Equal(1, CountOccurrences(proximity, ".TryBeginRealtimeTurn("));
+        Assert.Equal(1, CountOccurrences(proximity, ".TryBeginDueRealtimeTurn("));
         Assert.Equal(1, CountOccurrences(settlement, ".BeginRequiredTurn("));
         Assert.Equal(1, CountOccurrences(proximity, ".BeginCapture("));
         Assert.Equal(1, CountOccurrences(proximity, ".DispatchAndRetire("));

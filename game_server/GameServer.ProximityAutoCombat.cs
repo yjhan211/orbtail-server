@@ -64,7 +64,7 @@ public partial class GameServer
                 // 매치 시작 게이트로 막으면 몹이 아예 태어나지 않으므로 여기서는 거르지
                 // 않고, 게이트 전 전투 차단은 ProcessProximityAutoCombatForMatching 안이 맡는다.
                 SwarmCombatPublicationCoordinator.PublicationTurn? publicationTurn =
-                    _swarmCombatPublicationCoordinator.TryBeginRealtimeTurn(matchingId);
+                    _swarmCombatPublicationCoordinator.TryBeginDueRealtimeTurn(matchingId);
                 if (publicationTurn == null)
                     continue;
 

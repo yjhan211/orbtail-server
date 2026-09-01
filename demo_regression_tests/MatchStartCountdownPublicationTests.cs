@@ -258,14 +258,14 @@ public sealed class MatchStartCountdownPublicationTests
             SetSessionIdentity(differentMatch, 999, matchingId + 1);
             SwarmCombatPublicationCoordinator.PublicationTurn combat =
                 Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                    coordinator.TryBeginRealtimeTurn(matchingId));
+                    coordinator.TryBeginDueRealtimeTurn(matchingId));
 
             Task broadcast = Task.Run(() => InvokePeriodicBroadcast(
                 server,
                 [matchingId],
                 [first, second, differentMatch]));
             Assert.True(SpinWait.SpinUntil(
-                () => coordinator.Inspect(matchingId)?.RequiredWaiterCount == 1,
+                () => coordinator.Inspect(matchingId)?.OrderedWaiterCount == 1,
                 TimeSpan.FromSeconds(2)));
             Assert.Equal(0, first.SendCount);
             Assert.Equal(0, second.SendCount);
