@@ -410,7 +410,7 @@ public sealed class SwarmBotMovementCoordinatorTests
         string callback = ReadMethodSlice(
             arena,
             "GameClientSession.SwarmDummyMoveCallback ??=",
-            "GameClientSession.SwarmGrowthPickCallback ??=");
+            "SwarmMonsterDirector.FieldSpawnCellResolver ??=");
         string adminSetup = ReadMethodSlice(
             arena,
             "public object SetupSwarmCutDummy(long matchingId)",

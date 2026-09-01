@@ -162,21 +162,52 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
-    /// <summary>성장 카드 선택 (#226 단계 C) — 오퍼 상태를 가진 게임서버 훅으로 위임.</summary>
+    /// <summary>
+    ///     성장 카드 선택 (#226 단계 C) — human ordered publication 안에서 owning GameServer instance
+    ///     delegate로 오퍼 상태를 판정한다.
+    /// </summary>
     private Task HandleSwarmGrowthPick(C_TO_G_SWARM_GROWTH_PICK request)
     {
-        if (PlayerId.HasValue && CurrentMapSubId > 0)
-            SwarmGrowthPickCallback?.Invoke(this, CurrentMapSubId, request.OfferId, request.CardIndex);
-        return Task.CompletedTask;
+        if (!PlayerId.HasValue || CurrentMapSubId <= 0)
+            return Task.CompletedTask;
+
+        long matchingId = CurrentMapSubId;
+        return PublishOrderedSessionAction(
+            () =>
+            {
+                _handleSwarmGrowthPick(this, matchingId, request.OfferId, request.CardIndex);
+                return Task.CompletedTask;
+            },
+            () => SendSwarmGrowthResult(request.OfferId, request.CardIndex, success: false));
     }
 
-    /// <summary>6칸 빌드 결정 (#232 4단계): 합성·예비 오브 교체·분해 — 게임서버가 판정한다.</summary>
+    /// <summary>
+    ///     6칸 빌드 결정 (#232 4단계): 합성·예비 오브 교체·분해 — human ordered publication 안에서
+    ///     owning GameServer instance delegate로 판정한다.
+    /// </summary>
     private Task HandleSwarmOrbDecision(C_TO_G_SWARM_ORB_DECISION request)
     {
-        if (PlayerId.HasValue && CurrentMapSubId > 0)
-            SwarmOrbDecisionCallback?.Invoke(
-                this, CurrentMapSubId, request.Action, request.TargetItemUid, request.SecondItemUid);
-        return Task.CompletedTask;
+        if (!PlayerId.HasValue || CurrentMapSubId <= 0 || IsEliminated)
+            return Task.CompletedTask;
+
+        long matchingId = CurrentMapSubId;
+        return PublishOrderedSessionAction(
+            () =>
+            {
+                _handleSwarmOrbDecision(
+                    this,
+                    matchingId,
+                    request.Action,
+                    request.TargetItemUid,
+                    request.SecondItemUid);
+                return Task.CompletedTask;
+            },
+            () => SendSwarmOrbDecisionResult(
+                request.Action,
+                success: false,
+                resultItemId: 0,
+                targetItemUid: request.TargetItemUid,
+                targetOrdinal: -1));
     }
 
     /// <summary>계열 공유 레벨 전송 (#232 4단계). 시작·강화·오브 증감 때 게임서버가 부른다.</summary>

@@ -1888,6 +1888,8 @@ public partial class GameServer(
                 _encounterRevealManager,
                 _swarmCombatPublicationCoordinator.TryCapturePacket,
                 PublishOrderedSessionPublication,
+                HandleSwarmGrowthPick,
+                HandleSwarmOrbDecision,
                 _matchRuntimeRegistry.TryAcquireOperation,
                 _matchRuntimeRegistry.TryExecute,
                 _matchRuntimeRegistry.TryBindOwnerFence,

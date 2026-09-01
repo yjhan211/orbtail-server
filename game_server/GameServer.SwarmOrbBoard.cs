@@ -174,7 +174,11 @@ public partial class GameServer
             GetSwarmFamilyUpgradeCost(matchingId, playerId, OrbColor.Blue, orbBoard));
     }
 
-    /// <summary>클라 결정 요청 (사람 전용). 결과는 항상 응답한다 — 거절이면 Success=false.</summary>
+    /// <summary>
+    ///     클라 결정 요청 (사람 전용) — 이 GameServer instance가 생성한 session delegate를 통해
+    ///     ordered publication의 authoritative prepare 안에서 호출된다. 실행된 판정은 항상 응답하며
+    ///     거절이면 Success=false다.
+    /// </summary>
     private void HandleSwarmOrbDecision(
         GameClientSession session, long matchingId, int action, long targetUid, long secondUid)
     {

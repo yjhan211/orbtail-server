@@ -487,12 +487,17 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
-    public void SourceScope_ActivatesOnlyRngAndGroundOuterHandlers()
+    public void SourceScope_ActivatesOnlySelectedPlayerOuterHandlers()
     {
         string root = FindRepositoryRoot();
         string session = ReadNormalizedSource(root, "game_server", "Network", "GameClientSession.cs");
         string rng = ReadNormalizedSource(root, "game_server", "Network", "GameClientSession.RngCollect.cs");
         string ground = ReadNormalizedSource(root, "game_server", "Network", "GameClientSession.GroundItem.cs");
+        string orbSummon = ReadNormalizedSource(
+            root,
+            "game_server",
+            "Network",
+            "GameClientSession.OrbSummon.cs");
         string doors = ReadNormalizedSource(root, "game_server", "Network", "GameClientSession.Doors.cs");
         string connection = ReadNormalizedSource(root, "game_server", "Network", "GameClientSession.Connection.cs");
         string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
@@ -509,6 +514,11 @@ public sealed class GameClientSessionPublicationTests
         Assert.Contains("messageScope.IsDisposed", session);
         Assert.Equal(2, CountOccurrences(rng, "PublishOrderedSessionAction("));
         Assert.Equal(1, CountOccurrences(ground, "PublishOrderedSessionAction("));
+        Assert.Equal(2, CountOccurrences(orbSummon, "PublishOrderedSessionAction("));
+        Assert.DoesNotContain("SwarmGrowthPickCallback", session);
+        Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
+        Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
+        Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
         Assert.DoesNotContain("PublishOrderedSessionAction", doors);
         Assert.DoesNotContain("PublishOrderedSessionAction", connection);
         Assert.DoesNotContain("PublishOrderedSessionAction", arena);
@@ -823,6 +833,8 @@ public sealed class GameClientSessionPublicationTests
                 encounters,
                 coordinator.TryCapturePacket,
                 publishOrdered,
+                static (_, _, _, _) => { },
+                static (_, _, _, _, _) => { },
                 acquireOperation,
                 registry.TryExecute,
                 registry.TryBindOwnerFence,

@@ -214,17 +214,6 @@ public partial class GameServer
             GameClientSession.SwarmDummyMoveCallback ??=
                 (dummyMatchingId, dirX, dirY) =>
                     MoveSwarmCutDummy(dummyMatchingId, dirX, dirY);
-            GameClientSession.SwarmGrowthPickCallback ??=
-                (session, growthMatchingId, offerId, cardIndex) =>
-                    _matchRuntimeRegistry.TryExecute(
-                        growthMatchingId,
-                        () => HandleSwarmGrowthPick(session, growthMatchingId, offerId, cardIndex));
-            GameClientSession.SwarmOrbDecisionCallback ??=
-                (session, decisionMatchingId, action, targetUid, secondUid) =>
-                    _matchRuntimeRegistry.TryExecute(
-                        decisionMatchingId,
-                        () => HandleSwarmOrbDecision(
-                            session, decisionMatchingId, action, targetUid, secondUid));
             // #272 경계 토출 스폰: 자기장 경계가 관통 중인 구역의 캠프는 빨간 지대에서 태어난다.
             SwarmMonsterDirector.FieldSpawnCellResolver ??= ResolveSwarmFieldSpawn;
             // 하트 = 본체 오염 + 앞줄 오브 HP 회복 (#222 M4, 원작 하트는 스쿼드도 회복).
@@ -3474,7 +3463,10 @@ public partial class GameServer
         }
     }
 
-    /// <summary>성장 카드 선택 처리 — 세션 라우팅 콜백의 종착지. 실패 시 오퍼는 유지된다.</summary>
+    /// <summary>
+    ///     성장 카드 선택 처리 — 이 GameServer instance가 생성한 human session delegate를 통해
+    ///     ordered publication의 authoritative prepare 안에서 호출된다. 실패 시 오퍼는 유지된다.
+    /// </summary>
     internal void HandleSwarmGrowthPick(GameClientSession session, long matchingId, int offerId, int cardIndex)
     {
         if (!session.PlayerId.HasValue || matchingId <= 0)

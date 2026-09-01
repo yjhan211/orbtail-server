@@ -16,7 +16,8 @@ namespace game_server.network;
 ///     Represents one TCP client connection after a GameServer handoff.
 ///     The session validates protocol messages and owns per-connection state, while match-shared state remains
 ///     in GameServer managers. Authentication becomes visible only after the Redis admission commit and initial
-///     authoritative snapshot have both completed.
+///     authoritative snapshot have both completed. Human Swarm growth-pick and orb-decision rules are injected
+///     by the owning GameServer instance instead of process-static routing callbacks.
 /// </summary>
 public partial class GameClientSession : SessionBase
 {
@@ -58,6 +59,10 @@ public partial class GameClientSession : SessionBase
     private readonly EncounterRevealManager _encounterRevealManager;
     private readonly Func<Action<IPacket>, IPacket, bool>? _tryCaptureCombatPublication;
     private readonly Action<long, Action, Action> _publishOrderedSessionPublication;
+    /// <summary>Owning GameServer instance delegate invoked inside a human growth-pick ordered turn.</summary>
+    private readonly Action<GameClientSession, long, int, int> _handleSwarmGrowthPick;
+    /// <summary>Owning GameServer instance delegate invoked inside a human orb-decision ordered turn.</summary>
+    private readonly Action<GameClientSession, long, int, long, long> _handleSwarmOrbDecision;
     private readonly Action<IPacket>? _sendCombatPublicationDirect;
     private readonly GameAdmissionStateCommitter _admissionStateCommitter;
     private readonly AsyncLocal<MessageMatchRuntimeScope?> _activeMessageMatchRuntimeScope = new();
@@ -125,12 +130,6 @@ public partial class GameClientSession : SessionBase
     /// <summary>절단 실험 더미 조종 훅 (#226 실험장, 개발용) — (matchingId, dirX, dirY).</summary>
     internal static Action<long, float, float>? SwarmDummyMoveCallback { get; set; }
 
-    /// <summary>성장 카드 선택 훅 (#226 단계 C) — (session, matchingId, offerId, cardIndex).</summary>
-    internal static Action<GameClientSession, long, int, int>? SwarmGrowthPickCallback { get; set; }
-
-    /// <summary>6칸 빌드 결정 훅 (#232 4단계) — (session, matchingId, action, targetUid, secondUid).</summary>
-    internal static Action<GameClientSession, long, int, long, long>? SwarmOrbDecisionCallback { get; set; }
-
     /// <summary>
     ///     하트 픽업 시 앞줄 오브 HP 회복 훅 (#222 M4) — 원작 하트는 스쿼드 유닛도 회복한다.
     ///     GameServer가 스웜 매치 초기화 시 배선한다 (사람·봇 픽업 공통).
@@ -174,6 +173,8 @@ public partial class GameClientSession : SessionBase
         EncounterRevealManager encounterRevealManager,
         Func<Action<IPacket>, IPacket, bool> tryCaptureCombatPublication,
         Action<long, Action, Action> publishOrderedSessionPublication,
+        Action<GameClientSession, long, int, int> handleSwarmGrowthPick,
+        Action<GameClientSession, long, int, long, long> handleSwarmOrbDecision,
         Func<long, Action, IDisposable?> acquireMatchRuntimeOperation,
         Func<long, Action, bool> executeMatchRuntime,
         Func<long, long, bool> bindMatchOwnerFence,
@@ -203,6 +204,8 @@ public partial class GameClientSession : SessionBase
         _encounterRevealManager = encounterRevealManager;
         _tryCaptureCombatPublication = tryCaptureCombatPublication;
         _publishOrderedSessionPublication = publishOrderedSessionPublication;
+        _handleSwarmGrowthPick = handleSwarmGrowthPick;
+        _handleSwarmOrbDecision = handleSwarmOrbDecision;
         _sendCombatPublicationDirect = SendCombatPublicationDirect;
         _admissionStateCommitter = new GameAdmissionStateCommitter(cacheHelper, logger);
         _acquireMatchRuntimeOperation = acquireMatchRuntimeOperation;
