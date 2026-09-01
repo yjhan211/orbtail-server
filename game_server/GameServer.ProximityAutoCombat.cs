@@ -157,6 +157,30 @@ public partial class GameServer
     }
 
     /// <summary>
+    ///     Publishes an already frozen terminal plan through the match's required ordered lane.
+    ///     The cleanup registry invokes this adapter only after the final operation/execution has
+    ///     retired, so it must not acquire another runtime lease or nest under an existing turn.
+    /// </summary>
+    private void PublishRequiredTerminalAction(long matchingId, Action publish)
+    {
+        ArgumentNullException.ThrowIfNull(publish);
+
+        SwarmCombatPublicationCoordinator.PublicationTurn publicationTurn =
+            _swarmCombatPublicationCoordinator.BeginRequiredTurn(matchingId) ??
+            throw new InvalidOperationException(
+                $"Missing required terminal publication runtime for matching {matchingId}.");
+
+        try
+        {
+            publish();
+        }
+        finally
+        {
+            publicationTurn.Dispose();
+        }
+    }
+
+    /// <summary>
     ///     Shared capture/freeze/dispatch failure boundary. Timer callers supply an owned operation
     ///     lease and release it after the turn; message callers supply a nested TryExecute gate and
     ///     leave their borrowed outer lease untouched.

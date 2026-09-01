@@ -505,7 +505,9 @@ public sealed class SwarmArenaTickOrderTests
         string crossfire = ReadNormalizedSource(root, "game_server", "GameServer.SwarmCrossfire.cs");
 
         Assert.DoesNotContain("_globalExecutionLock", registry);
-        Assert.Equal(5, CountOccurrences(registry, "lock (runtime.SyncRoot)"));
+        // Finalization now freezes its before snapshot, runs it outside the monitor, then
+        // reacquires SyncRoot once to validate the same claim and commit cleanup.
+        Assert.Equal(6, CountOccurrences(registry, "lock (runtime.SyncRoot)"));
 
         Assert.DoesNotContain("_swarmCriticalRng", arena);
         Assert.DoesNotContain("_swarmCriticalRng", crossfire);

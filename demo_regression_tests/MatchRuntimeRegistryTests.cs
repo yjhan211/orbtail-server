@@ -320,6 +320,71 @@ public sealed class MatchRuntimeRegistryTests
     }
 
     [Fact]
+    public async Task TryFinalize_BlockedBefore_ReleasesTargetMonitorAndAllowsSiblingMatch()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long finalizingMatchingId = 41028;
+        const long siblingMatchingId = 41029;
+        using var beforeEntered = new ManualResetEventSlim(initialState: false);
+        using var releaseBefore = new ManualResetEventSlim(initialState: false);
+        using var targetMonitorEntered = new ManualResetEventSlim(initialState: false);
+        using var siblingEntered = new ManualResetEventSlim(initialState: false);
+
+        Assert.True(registry.TryExecute(finalizingMatchingId, static () => { }));
+        object syncRoot = GetRuntimeSyncRoot(registry, finalizingMatchingId);
+        Task<bool> finalization = Task.Factory.StartNew(
+            () => registry.TryFinalize(
+                finalizingMatchingId,
+                static () => true,
+                beforeFinalized: () =>
+                {
+                    Assert.False(Monitor.IsEntered(syncRoot));
+                    beforeEntered.Set();
+                    Assert.True(
+                        releaseBefore.Wait(TimeSpan.FromSeconds(5)),
+                        "The blocked before-finalized callback was not released.");
+                },
+                cleanup: () => Assert.True(Monitor.IsEntered(syncRoot)),
+                afterFinalized: () => Assert.False(Monitor.IsEntered(syncRoot))),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+
+        Assert.True(beforeEntered.Wait(TimeSpan.FromSeconds(2)), "Before-finalized did not start in time.");
+
+        Task monitorProbe = Task.Factory.StartNew(
+            () =>
+            {
+                lock (syncRoot)
+                {
+                    targetMonitorEntered.Set();
+                }
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+        Task<bool> siblingExecution = Task.Factory.StartNew(
+            () => registry.TryExecute(siblingMatchingId, siblingEntered.Set),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+
+        bool targetMonitorWasFree = targetMonitorEntered.Wait(TimeSpan.FromSeconds(2));
+        bool siblingRanBeforeRelease = siblingEntered.Wait(TimeSpan.FromSeconds(2));
+        Assert.False(registry.TryExecute(finalizingMatchingId, static () => { }));
+        Assert.Null(registry.TryAcquireOperation(finalizingMatchingId, static () => { }));
+        Assert.False(registry.TryBindOwnerFence(finalizingMatchingId, ownerFence: 1));
+        releaseBefore.Set();
+
+        Assert.True(targetMonitorWasFree, "Before-finalized held the target runtime monitor.");
+        Assert.True(siblingRanBeforeRelease, "Before-finalized blocked a different match.");
+        await monitorProbe;
+        Assert.True(await siblingExecution);
+        Assert.True(await finalization);
+        Assert.True(registry.IsTerminal(finalizingMatchingId));
+    }
+
+    [Fact]
     public async Task TryAcquireOperation_RegistrationAndFinalizePredicate_AreAtomic()
     {
         var registry = new MatchRuntimeRegistry();
@@ -421,19 +486,22 @@ public sealed class MatchRuntimeRegistryTests
     {
         var registry = new MatchRuntimeRegistry();
         const long matchingId = 41013;
+        int beforeFinalizedCount = 0;
         int cleanupAttempts = 0;
         int afterFinalizedCount = 0;
 
         Assert.Throws<InvalidOperationException>(() => registry.TryFinalize(
             matchingId,
             static () => true,
-            () =>
+            beforeFinalized: () => Interlocked.Increment(ref beforeFinalizedCount),
+            cleanup: () =>
             {
                 Interlocked.Increment(ref cleanupAttempts);
                 throw new InvalidOperationException("simulated cleanup failure");
             },
-            () => Interlocked.Increment(ref afterFinalizedCount)));
+            afterFinalized: () => Interlocked.Increment(ref afterFinalizedCount)));
 
+        Assert.Equal(1, beforeFinalizedCount);
         Assert.Equal(1, cleanupAttempts);
         Assert.Equal(0, afterFinalizedCount);
         Assert.False(registry.IsTerminal(matchingId));
@@ -445,6 +513,7 @@ public sealed class MatchRuntimeRegistryTests
             static () => true,
             () => Interlocked.Increment(ref cleanupAttempts),
             () => Interlocked.Increment(ref afterFinalizedCount)));
+        Assert.Equal(1, beforeFinalizedCount);
         Assert.Equal(2, cleanupAttempts);
         Assert.Equal(1, afterFinalizedCount);
         Assert.True(registry.IsTerminal(matchingId));
@@ -511,6 +580,49 @@ public sealed class MatchRuntimeRegistryTests
     }
 
     [Fact]
+    public void TryFinalize_WhenBeforeFinalizedThrows_RunsAllPhasesAndKeepsTerminalTombstone()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41031;
+        var events = new List<string>();
+        IDisposable? operation = registry.TryAcquireOperation(matchingId, static () => { });
+        Assert.NotNull(operation);
+
+        Assert.True(registry.TryFinalize(
+            matchingId,
+            static () => true,
+            beforeFinalized: () =>
+            {
+                events.Add("winner-before-failed");
+                throw new InvalidOperationException("simulated before-finalized failure");
+            },
+            cleanup: () => events.Add("winner-cleanup"),
+            afterFinalized: () => events.Add("winner-after")));
+        Assert.False(registry.TryFinalize(
+            matchingId,
+            static () => true,
+            beforeFinalized: () => events.Add("loser-before-completed"),
+            cleanup: () => events.Add("loser-cleanup"),
+            afterFinalized: () => events.Add("loser-after")));
+
+        InvalidOperationException failure = Assert.Throws<InvalidOperationException>(operation!.Dispose);
+
+        Assert.Equal("simulated before-finalized failure", failure.Message);
+        Assert.Equal(
+            [
+                "winner-before-failed",
+                "loser-before-completed",
+                "winner-cleanup",
+                "winner-after",
+                "loser-after"
+            ],
+            events);
+        Assert.True(registry.IsTerminal(matchingId));
+        Assert.Equal(0, registry.ActiveCount);
+        Assert.False(registry.TryExecute(matchingId, static () => { }));
+    }
+
+    [Fact]
     public void TryFinalize_WhenAnotherFinalizerIsPending_AttachesCallerHooksWithoutRepeatingCleanup()
     {
         var registry = new MatchRuntimeRegistry();
@@ -527,7 +639,7 @@ public sealed class MatchRuntimeRegistryTests
             static () => true,
             beforeFinalized: () =>
             {
-                Assert.True(Monitor.IsEntered(syncRoot));
+                Assert.False(Monitor.IsEntered(syncRoot));
                 events.Add("winner-before");
             },
             cleanup: () => events.Add("winner-cleanup"),
@@ -545,7 +657,7 @@ public sealed class MatchRuntimeRegistryTests
             },
             beforeFinalized: () =>
             {
-                Assert.True(Monitor.IsEntered(syncRoot));
+                Assert.False(Monitor.IsEntered(syncRoot));
                 events.Add("loser-before");
             },
             cleanup: () => Interlocked.Increment(ref losingCleanupCount),
@@ -572,6 +684,69 @@ public sealed class MatchRuntimeRegistryTests
         Assert.Equal(
             ["winner-before", "loser-before", "winner-cleanup", "winner-post", "loser-post"],
             events);
+    }
+
+    [Fact]
+    public async Task TryFinalize_WhileBeforeIsRunning_DropsLateBeforeAndAttachesLateAfter()
+    {
+        var registry = new MatchRuntimeRegistry();
+        const long matchingId = 41030;
+        using var beforeEntered = new ManualResetEventSlim(initialState: false);
+        using var releaseBefore = new ManualResetEventSlim(initialState: false);
+        var events = new List<string>();
+        int losingPredicateCount = 0;
+        int losingBeforeCount = 0;
+        int losingCleanupCount = 0;
+
+        Task<bool> winner = Task.Factory.StartNew(
+            () => registry.TryFinalize(
+                matchingId,
+                static () => true,
+                beforeFinalized: () =>
+                {
+                    events.Add("winner-before");
+                    beforeEntered.Set();
+                    Assert.True(
+                        releaseBefore.Wait(TimeSpan.FromSeconds(5)),
+                        "The winner before-finalized callback was not released.");
+                    events.Add("winner-before-end");
+                },
+                cleanup: () => events.Add("winner-cleanup"),
+                afterFinalized: () => events.Add("winner-after")),
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+
+        Assert.True(beforeEntered.Wait(TimeSpan.FromSeconds(2)), "Winner before-finalized did not start.");
+        Assert.False(registry.TryFinalize(
+            matchingId,
+            () =>
+            {
+                Interlocked.Increment(ref losingPredicateCount);
+                return true;
+            },
+            beforeFinalized: () => Interlocked.Increment(ref losingBeforeCount),
+            cleanup: () => Interlocked.Increment(ref losingCleanupCount),
+            afterFinalized: () => events.Add("late-after")));
+        Assert.Equal(0, losingPredicateCount);
+        Assert.Equal(0, losingBeforeCount);
+        Assert.Equal(0, losingCleanupCount);
+
+        releaseBefore.Set();
+
+        Assert.True(await winner);
+        Assert.Equal(
+            [
+                "winner-before",
+                "winner-before-end",
+                "winner-cleanup",
+                "winner-after",
+                "late-after"
+            ],
+            events);
+        Assert.Equal(0, losingBeforeCount);
+        Assert.Equal(0, losingCleanupCount);
+        Assert.True(registry.IsTerminal(matchingId));
     }
 
     [Fact]

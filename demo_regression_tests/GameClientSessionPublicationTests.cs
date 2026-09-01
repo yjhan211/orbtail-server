@@ -833,6 +833,7 @@ public sealed class GameClientSessionPublicationTests
                 encounters,
                 coordinator.TryCapturePacket,
                 publishOrdered,
+                static (_, publish) => publish(),
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
                 acquireOperation,

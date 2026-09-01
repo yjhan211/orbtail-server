@@ -191,7 +191,9 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     게임 결과 패킷 전송 (전체 로스터 공개)
+    ///     Freezes the full-roster terminal plan while runtime preparation owns SyncRoot and registers
+    ///     finalization. After the outer turn and lease retire, the before hook opens a required turn and
+    ///     publishes chunk-major GAME_RESULT, then GAME_END and MarkGameEnded as isolated best-effort steps.
     /// </summary>
     private void SendGameResult(long winnerId, bool isTimeout, long matchingId,
         string endReason = "last_survivor", string tieBreakCriterion = "not_required")
@@ -287,15 +289,18 @@ public partial class GameClientSession
                     // Register while the operation acquisition still owns SyncRoot so no gameplay
                     // action can mutate the already serialized result before Active -> Finalizing.
                     terminalPlan = preparedTerminalPlan;
-                    var lifecyclePublications = new List<Action>();
                     MatchSummaryPersistenceRequest? capturedSummary = summaryRequest;
 
                     _cleanupMatchRuntime(
                         matchingId,
-                        () => PublishTerminalResult(preparedTerminalPlan, lifecyclePublications),
+                        () => _publishRequiredTerminalAction(
+                            matchingId,
+                            () => PublishTerminalResult(preparedTerminalPlan)),
                         () =>
                         {
-                            DispatchMatchingLifecyclePublications(matchingId, lifecyclePublications);
+                            DispatchMatchingLifecyclePublications(
+                                matchingId,
+                                preparedTerminalPlan.LifecyclePublications);
                             if (capturedSummary != null)
                             {
                                 MatchSummaryPersistence.Persist(
@@ -320,9 +325,7 @@ public partial class GameClientSession
         }
     }
 
-    private void PublishTerminalResult(
-        MatchTerminalPublicationPlan plan,
-        List<Action> lifecyclePublications)
+    private void PublishTerminalResult(MatchTerminalPublicationPlan plan)
     {
         foreach (byte[] resultPayload in plan.GameResultPayloads)
         {
@@ -365,7 +368,7 @@ public partial class GameClientSession
                 () => lifecyclePublication =
                     publication.Session.MarkGameEndedAndPrepareLifecyclePublication());
             if (lifecyclePublication != null)
-                lifecyclePublications.Add(lifecyclePublication);
+                plan.LifecyclePublications.Add(lifecyclePublication);
         }
     }
 
@@ -413,7 +416,10 @@ public partial class GameClientSession
     private sealed record MatchTerminalPublicationPlan(
         long MatchingId,
         byte[][] GameResultPayloads,
-        MatchTerminalSessionPublication[] SessionPublications);
+        MatchTerminalSessionPublication[] SessionPublications)
+    {
+        public List<Action> LifecyclePublications { get; } = [];
+    }
 
     private sealed record MatchTerminalSessionPublication(
         GameClientSession Session,

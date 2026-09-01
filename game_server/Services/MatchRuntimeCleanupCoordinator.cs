@@ -9,7 +9,9 @@ internal sealed record MatchRuntimeCleanupStep(string Name, Action<long> Cleanup
 
 /// <summary>
 ///     Owns the terminal transition and ordered cleanup plan for an in-memory match runtime.
-///     Each cleanup step is isolated so a component failure cannot prevent later components from releasing state.
+///     Pre-finalization hooks run after the depth-zero claim outside the runtime monitor, component
+///     cleanup runs under it, and winner/caller post-commit work runs outside it. Each step is isolated
+///     so one failure cannot prevent later components from releasing state.
 /// </summary>
 internal sealed class MatchRuntimeCleanupCoordinator(
     MatchRuntimeRegistry runtimeRegistry,
@@ -29,8 +31,9 @@ internal sealed class MatchRuntimeCleanupCoordinator(
     ///         </listheader>
     ///         <item>
     ///             <term>true / Active winner</term>
-    ///             <description>The predicate and before-finalized hook run under the lifecycle boundary,
-    ///             component cleanup runs exactly once, and post runs after commit outside it.</description>
+    ///             <description>The predicate and before snapshot are guarded by the lifecycle boundary.
+    ///             Before-finalized hooks run outside the monitor, component cleanup runs exactly once
+    ///             under it, and post runs after commit outside it.</description>
     ///         </item>
     ///         <item>
     ///             <term>false / Active rejected or invalid id</term>
@@ -38,8 +41,8 @@ internal sealed class MatchRuntimeCleanupCoordinator(
     ///         </item>
     ///         <item>
     ///             <term>false / Finalizing</term>
-    ///             <description>Component cleanup is not repeated. Non-null guarded before/post hooks are
-    ///             attached to pending work in registration order.</description>
+    ///             <description>Component cleanup is not repeated. A non-null before hook attaches only
+    ///             while the before snapshot is still pending; a post hook attaches until commit.</description>
     ///         </item>
     ///         <item>
     ///             <term>false / Completed or tombstoned</term>
@@ -48,8 +51,11 @@ internal sealed class MatchRuntimeCleanupCoordinator(
     ///         </item>
     ///         <item>
     ///             <term>false / exception</term>
-    ///             <description>The exception is logged; registry cleanup/post state follows the transition
-    ///             outcome described above.</description>
+    ///             <description>RunStep logs and isolates individual before, component, winner-post, and
+    ///             caller-post failures so later stages and terminal commit continue. Only registry/lifecycle
+    ///             orchestration failure reaches the outer catch and is returned as false. Registry-level
+    ///             cleanup failure abandons the completed before snapshot; a later finalization attempt may
+    ///             register a new hook but never replays the abandoned work's frozen callbacks.</description>
     ///         </item>
     ///     </list>
     /// </returns>

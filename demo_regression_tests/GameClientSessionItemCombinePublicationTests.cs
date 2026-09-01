@@ -768,6 +768,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 Encounters,
                 TryCapturePacket,
                 PublishOrdered,
+                static (_, publish) => publish(),
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
                 AcquireOperation,

@@ -5,6 +5,9 @@ namespace game_server.services;
 
 /// <summary>
 ///     Owns the serialization boundary and terminal lifecycle for each in-memory match.
+///     Finalization freezes a tokenized before-callback claim at execution depth zero, runs that
+///     snapshot outside the match monitor, then validates the same claim for component cleanup and
+///     terminal commit under the monitor. Post-commit callbacks run outside it.
 ///     Recently completed matching ids are tombstoned within a bounded retention window so a
 ///     late timer or client packet cannot immediately recreate state after cleanup.
 /// </summary>
@@ -47,56 +50,58 @@ public sealed class MatchRuntimeRegistry
             return false;
 
         MatchRuntime runtime = GetOrCreateRuntime(matchingId);
-        Action? afterFinalized = null;
-        return ExecuteWithAfterFinalized(() =>
+        FinalizationClaim? finalizationClaim = null;
+        ExceptionDispatchInfo? actionFailure = null;
+        ExceptionDispatchInfo? finalizationFailure = null;
+        lock (runtime.SyncRoot)
         {
-            lock (runtime.SyncRoot)
+            if (_completedMatchingIds.ContainsKey(matchingId))
             {
-                if (_completedMatchingIds.ContainsKey(matchingId))
-                {
-                    _activeRuntimes.TryRemove(
-                        new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
-                    return false;
-                }
-
-                runtime.EnsureInitialized(matchingId, Volatile.Read(ref _runtimeInitializer));
-                if (!runtime.TryBeginExecution())
-                    return false;
-
-                ExceptionDispatchInfo? actionFailure = null;
-                try
-                {
-                    action();
-                }
-                catch (Exception ex)
-                {
-                    actionFailure = ExceptionDispatchInfo.Capture(ex);
-                }
-
-                ExceptionDispatchInfo? finalizationFailure = null;
-                try
-                {
-                    FinalizationWork? deferredFinalization = runtime.EndExecution();
-                    if (deferredFinalization != null)
-                    {
-                        afterFinalized = CompleteFinalization(
-                            matchingId,
-                            runtime,
-                            deferredFinalization);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    finalizationFailure = ExceptionDispatchInfo.Capture(ex);
-                }
-
-                ThrowIfFailures(
-                    actionFailure,
-                    finalizationFailure,
-                    "Match action and deferred finalization both failed.");
-                return true;
+                _activeRuntimes.TryRemove(
+                    new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
+                return false;
             }
-        }, () => afterFinalized);
+
+            runtime.EnsureInitialized(matchingId, Volatile.Read(ref _runtimeInitializer));
+            if (!runtime.TryBeginExecution())
+                return false;
+
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                actionFailure = ExceptionDispatchInfo.Capture(ex);
+            }
+
+            try
+            {
+                finalizationClaim = runtime.EndExecution();
+            }
+            catch (Exception ex)
+            {
+                finalizationFailure = ExceptionDispatchInfo.Capture(ex);
+            }
+        }
+
+        if (finalizationFailure == null && finalizationClaim != null)
+        {
+            try
+            {
+                CompleteFinalization(matchingId, runtime, finalizationClaim);
+            }
+            catch (Exception ex)
+            {
+                finalizationFailure = ExceptionDispatchInfo.Capture(ex);
+            }
+        }
+
+        ThrowIfFailures(
+            actionFailure,
+            finalizationFailure,
+            "Match action and deferred finalization both failed.");
+        return true;
     }
 
     /// <summary>
@@ -146,9 +151,17 @@ public sealed class MatchRuntimeRegistry
     /// <summary>
     ///     Attempts to register terminal cleanup with ordered hooks that run immediately before
     ///     the winner-owned component cleanup and after the terminal commit, respectively.
+    ///     At execution depth zero, the runtime freezes the before-hook snapshot while holding its
+    ///     lifecycle monitor, runs that snapshot outside the monitor, then validates the same
+    ///     work/token before component cleanup and commit under the monitor.
     ///     A losing caller may attach only its hooks to pending work; it never contributes another
     ///     component cleanup plan. Once the before phase has started or completion has won the race,
     ///     a late before hook is dropped while a late after hook retains the public post-commit contract.
+    ///     Before-hook failures do not prevent cleanup, commit, or post dispatch and are rethrown
+    ///     after those phases. A component-cleanup failure resets the runtime to Active, skips post,
+    ///     and abandons the frozen before snapshot. A post failure leaves the committed runtime terminal
+    ///     and does not replay callbacks.
+    ///     A later attempt after failed cleanup may explicitly register new hooks.
     /// </summary>
     internal bool TryFinalize(
         long matchingId,
@@ -166,45 +179,52 @@ public sealed class MatchRuntimeRegistry
         Action? postFinalization = null;
         if (_completedMatchingIds.ContainsKey(matchingId))
         {
-            postFinalization = afterFinalized;
-            return ExecuteWithAfterFinalized(static () => false, () => postFinalization);
+            afterFinalized?.Invoke();
+            return false;
         }
 
         MatchRuntime runtime = GetOrCreateRuntime(matchingId);
-        return ExecuteWithAfterFinalized(() =>
+        FinalizationClaim? finalizationClaim = null;
+        bool wonFinalization;
+        lock (runtime.SyncRoot)
         {
-            lock (runtime.SyncRoot)
+            if (_completedMatchingIds.ContainsKey(matchingId))
             {
-                if (_completedMatchingIds.ContainsKey(matchingId))
-                {
-                    _activeRuntimes.TryRemove(
-                        new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
-                    postFinalization = afterFinalized;
-                    return false;
-                }
-
+                _activeRuntimes.TryRemove(
+                    new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
+                postFinalization = afterFinalized;
+                wonFinalization = false;
+            }
+            else
+            {
                 runtime.EnsureInitialized(matchingId, Volatile.Read(ref _runtimeInitializer));
                 // A caller that already captured terminal publication or post-commit work may
                 // arrive after another execution or operation won the transition. Attach only
                 // those hooks to pending work; its predicate and component cleanup stay skipped.
                 if (runtime.TryAttachFinalizationHooks(beforeFinalized, afterFinalized))
-                    return false;
-
-                // Evaluate state-dependent predicates under the same lifecycle lock as the
-                // Active -> Finalizing transition. Connection registration uses this lock too.
-                if (!canFinalize())
-                    return false;
-
-                var finalization = new FinalizationWork(cleanup, beforeFinalized, afterFinalized);
-                if (!runtime.TryBeginFinalization(finalization, out bool deferred))
-                    return false;
-                if (deferred)
-                    return true;
-
-                postFinalization = CompleteFinalization(matchingId, runtime, finalization);
-                return true;
+                {
+                    wonFinalization = false;
+                }
+                else if (!canFinalize())
+                {
+                    // Evaluate state-dependent predicates under the same lifecycle lock as the
+                    // Active -> Finalizing transition. Connection registration uses this lock too.
+                    wonFinalization = false;
+                }
+                else
+                {
+                    var finalization = new FinalizationWork(cleanup, beforeFinalized, afterFinalized);
+                    wonFinalization = runtime.TryBeginFinalization(
+                        finalization,
+                        out finalizationClaim);
+                }
             }
-        }, () => postFinalization);
+        }
+
+        if (finalizationClaim != null)
+            CompleteFinalization(matchingId, runtime, finalizationClaim);
+        postFinalization?.Invoke();
+        return wonFinalization;
     }
 
     public bool IsTerminal(long matchingId)
@@ -254,61 +274,68 @@ public sealed class MatchRuntimeRegistry
             return null;
 
         MatchRuntime runtime = GetOrCreateRuntime(matchingId);
-        Action? afterFinalized = null;
-        return ExecuteWithAfterFinalized(() =>
+        FinalizationClaim? finalizationClaim = null;
+        MatchRuntimeOperation? operation = null;
+        ExceptionDispatchInfo? acquisitionFailure = null;
+        ExceptionDispatchInfo? finalizationFailure = null;
+        lock (runtime.SyncRoot)
         {
-            lock (runtime.SyncRoot)
+            if (_completedMatchingIds.ContainsKey(matchingId))
             {
-                if (_completedMatchingIds.ContainsKey(matchingId))
-                {
-                    _activeRuntimes.TryRemove(
-                        new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
-                    return null;
-                }
+                _activeRuntimes.TryRemove(
+                    new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
+                return null;
+            }
 
-                runtime.EnsureInitialized(matchingId, Volatile.Read(ref _runtimeInitializer));
-                if (!runtime.TryBeginExecution())
-                    return null;
+            runtime.EnsureInitialized(matchingId, Volatile.Read(ref _runtimeInitializer));
+            if (!runtime.TryBeginExecution())
+                return null;
 
-                ExceptionDispatchInfo? acquisitionFailure = null;
+            try
+            {
+                // Connection registration can be supplied here so a no-human finalizer cannot
+                // slip between acquiring the lifecycle lease and publishing the live session.
+                onAcquired();
+            }
+            catch (Exception ex)
+            {
+                acquisitionFailure = ExceptionDispatchInfo.Capture(ex);
+            }
+
+            if (acquisitionFailure == null)
+            {
+                operation = new MatchRuntimeOperation(this, matchingId, runtime);
+            }
+            else
+            {
                 try
                 {
-                    // Connection registration can be supplied here so a no-human finalizer cannot
-                    // slip between acquiring the lifecycle lease and publishing the live session.
-                    onAcquired();
-                }
-                catch (Exception ex)
-                {
-                    acquisitionFailure = ExceptionDispatchInfo.Capture(ex);
-                }
-
-                if (acquisitionFailure == null)
-                    return new MatchRuntimeOperation(this, matchingId, runtime);
-
-                ExceptionDispatchInfo? finalizationFailure = null;
-                try
-                {
-                    FinalizationWork? deferredFinalization = runtime.EndExecution();
-                    if (deferredFinalization != null)
-                    {
-                        afterFinalized = CompleteFinalization(
-                            matchingId,
-                            runtime,
-                            deferredFinalization);
-                    }
+                    finalizationClaim = runtime.EndExecution();
                 }
                 catch (Exception ex)
                 {
                     finalizationFailure = ExceptionDispatchInfo.Capture(ex);
                 }
-
-                ThrowIfFailures(
-                    acquisitionFailure,
-                    finalizationFailure,
-                    "Match operation acquisition and deferred finalization both failed.");
-                return null;
             }
-        }, () => afterFinalized);
+        }
+
+        if (finalizationFailure == null && finalizationClaim != null)
+        {
+            try
+            {
+                CompleteFinalization(matchingId, runtime, finalizationClaim);
+            }
+            catch (Exception ex)
+            {
+                finalizationFailure = ExceptionDispatchInfo.Capture(ex);
+            }
+        }
+
+        ThrowIfFailures(
+            acquisitionFailure,
+            finalizationFailure,
+            "Match operation acquisition and deferred finalization both failed.");
+        return operation;
     }
 
     private void RememberCompleted(long matchingId)
@@ -324,85 +351,84 @@ public sealed class MatchRuntimeRegistry
         }
     }
 
-    private Action? CompleteFinalization(
+    private void CompleteFinalization(
         long matchingId,
         MatchRuntime runtime,
-        FinalizationWork finalization)
+        FinalizationClaim claim)
     {
+        ExceptionDispatchInfo? beforeFailure = null;
         try
         {
-            finalization.RunBeforeFinalized();
-            finalization.ComponentCleanup();
-            runtime.Complete();
-            RememberCompleted(matchingId);
-            _activeRuntimes.TryRemove(
-                new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
-            return finalization.CreateAfterFinalizedAction();
-        }
-        catch
-        {
-            runtime.ResetAfterFailedFinalization();
-            throw;
-        }
-    }
-
-    private void ReleaseOperation(long matchingId, MatchRuntime runtime)
-    {
-        Action? afterFinalized = null;
-        ExecuteWithAfterFinalized(() =>
-        {
-            lock (runtime.SyncRoot)
-            {
-                FinalizationWork? deferredFinalization = runtime.EndExecution();
-                if (deferredFinalization != null)
-                {
-                    afterFinalized = CompleteFinalization(
-                        matchingId,
-                        runtime,
-                        deferredFinalization);
-                }
-            }
-        }, () => afterFinalized);
-    }
-
-    private static TResult ExecuteWithAfterFinalized<TResult>(
-        Func<TResult> operation,
-        Func<Action?> getAfterFinalized)
-    {
-        TResult result = default!;
-        ExceptionDispatchInfo? primaryFailure = null;
-        try
-        {
-            result = operation();
+            claim.RunBeforeFinalized();
         }
         catch (Exception ex)
         {
-            primaryFailure = ExceptionDispatchInfo.Capture(ex);
+            beforeFailure = ExceptionDispatchInfo.Capture(ex);
+        }
+
+        Action? afterFinalized = null;
+        ExceptionDispatchInfo? cleanupFailure = null;
+        try
+        {
+            lock (runtime.SyncRoot)
+            {
+                runtime.BeginCleanup(claim);
+                try
+                {
+                    claim.Work.ComponentCleanup();
+                }
+                catch
+                {
+                    runtime.ResetAfterFailedFinalization(claim);
+                    throw;
+                }
+
+                afterFinalized = runtime.Complete(claim);
+                RememberCompleted(matchingId);
+                _activeRuntimes.TryRemove(
+                    new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
+            }
+        }
+        catch (Exception ex)
+        {
+            cleanupFailure = ExceptionDispatchInfo.Capture(ex);
+        }
+
+        if (cleanupFailure != null)
+        {
+            ThrowIfFailures(
+                beforeFailure,
+                cleanupFailure,
+                "Pre-finalization callbacks and component cleanup both failed.");
+            return;
         }
 
         ExceptionDispatchInfo? postFailure = null;
         try
         {
-            getAfterFinalized()?.Invoke();
+            afterFinalized?.Invoke();
         }
         catch (Exception ex)
         {
             postFailure = ExceptionDispatchInfo.Capture(ex);
         }
 
-        if (primaryFailure != null && postFailure != null)
+        ThrowIfFailures(
+            beforeFailure,
+            postFailure,
+            "Pre-finalization and post-finalization callbacks both failed.");
+    }
+
+    private void ReleaseOperation(long matchingId, MatchRuntime runtime)
+    {
+        FinalizationClaim? finalizationClaim;
+        lock (runtime.SyncRoot)
         {
-            throw new AggregateException(
-                "Match operation and post-finalization callback both failed.",
-                primaryFailure.SourceException,
-                postFailure.SourceException);
+            finalizationClaim = runtime.EndExecution();
         }
 
-        if (primaryFailure != null)
-            primaryFailure.Throw();
-        if (postFailure != null)
-            postFailure.Throw();
-        return result;
+        if (finalizationClaim != null)
+            CompleteFinalization(matchingId, runtime, finalizationClaim);
     }
 
     private static void ThrowIfFailures(
@@ -422,19 +448,6 @@ public sealed class MatchRuntimeRegistry
             primaryFailure.Throw();
         if (secondaryFailure != null)
             secondaryFailure.Throw();
-    }
-
-    private static void ExecuteWithAfterFinalized(
-        Action operation,
-        Func<Action?> getAfterFinalized)
-    {
-        ExecuteWithAfterFinalized(
-            () =>
-            {
-                operation();
-                return true;
-            },
-            getAfterFinalized);
     }
 
     private static void InvokeFinalizationCallbacks(
@@ -461,14 +474,39 @@ public sealed class MatchRuntimeRegistry
             throw new AggregateException(aggregateMessage, failures);
     }
 
+    private enum FinalizationPhase
+    {
+        Pending,
+        BeforeRunning,
+        BeforeCompleted,
+        CleanupRunning,
+        Committed
+    }
+
+    private sealed class FinalizationClaim(
+        FinalizationWork work,
+        long token,
+        Action[] beforeFinalized)
+    {
+        public FinalizationWork Work { get; } = work;
+        public long Token { get; } = token;
+
+        public void RunBeforeFinalized()
+        {
+            InvokeFinalizationCallbacks(
+                beforeFinalized,
+                "Multiple pre-finalization callbacks failed.");
+        }
+    }
+
     private sealed class FinalizationWork
     {
-        // These collections and the phase flag are touched only while the owning
-        // MatchRuntime.SyncRoot is held. The post-commit action closes over an immutable
-        // array snapshot before the runtime is completed and the monitor is released.
+        // The lists, token, and phase are touched only while the owning MatchRuntime.SyncRoot
+        // is held. A claim freezes the before callbacks so the completion owner can run them
+        // outside the monitor; commit likewise freezes the post callbacks for outside dispatch.
         private readonly List<Action> _beforeFinalized = [];
         private readonly List<Action> _afterFinalized = [];
-        private bool _beforeFinalizedStarted;
+        private FinalizationPhase _phase = FinalizationPhase.Pending;
 
         public FinalizationWork(
             Action componentCleanup,
@@ -481,39 +519,46 @@ public sealed class MatchRuntimeRegistry
         }
 
         public Action ComponentCleanup { get; }
+        public long Token { get; private set; }
 
         public void AttachHooks(Action? beforeFinalized, Action? afterFinalized)
         {
-            AttachBeforeFinalized(beforeFinalized);
-            AttachAfterFinalized(afterFinalized);
-        }
-
-        public void RunBeforeFinalized()
-        {
-            _beforeFinalizedStarted = true;
-            if (_beforeFinalized.Count == 0)
-                return;
-
-            Action[] callbacks = _beforeFinalized.ToArray();
-            InvokeFinalizationCallbacks(
-                callbacks,
-                "Multiple pre-finalization callbacks failed.");
-        }
-
-        private void AttachBeforeFinalized(Action? beforeFinalized)
-        {
-            if (!_beforeFinalizedStarted && beforeFinalized != null)
+            if (_phase == FinalizationPhase.Pending && beforeFinalized != null)
                 _beforeFinalized.Add(beforeFinalized);
-        }
-
-        public void AttachAfterFinalized(Action? afterFinalized)
-        {
-            if (afterFinalized != null)
+            if (_phase != FinalizationPhase.Committed && afterFinalized != null)
                 _afterFinalized.Add(afterFinalized);
         }
 
-        public Action? CreateAfterFinalizedAction()
+        public void BindToken(long token)
         {
+            if (token == 0 || Token != 0 || _phase != FinalizationPhase.Pending)
+                throw new InvalidOperationException("Finalization work cannot be rebound.");
+
+            Token = token;
+        }
+
+        public FinalizationClaim? TryClaim()
+        {
+            if (_phase != FinalizationPhase.Pending)
+                return null;
+            if (Token == 0)
+                throw new InvalidOperationException("Finalization work must be bound before it is claimed.");
+
+            _phase = FinalizationPhase.BeforeRunning;
+            return new FinalizationClaim(this, Token, _beforeFinalized.ToArray());
+        }
+
+        public void BeginCleanup(long token)
+        {
+            ValidateTokenAndPhase(token, FinalizationPhase.BeforeRunning);
+            _phase = FinalizationPhase.BeforeCompleted;
+            _phase = FinalizationPhase.CleanupRunning;
+        }
+
+        public Action? CommitAndCreateAfterFinalizedAction(long token)
+        {
+            ValidateTokenAndPhase(token, FinalizationPhase.CleanupRunning);
+            _phase = FinalizationPhase.Committed;
             if (_afterFinalized.Count == 0)
                 return null;
 
@@ -521,6 +566,35 @@ public sealed class MatchRuntimeRegistry
             return () => InvokeFinalizationCallbacks(
                 callbacks,
                 "Multiple post-finalization callbacks failed.");
+        }
+
+        public void ResetAfterFailedCleanup(long token)
+        {
+            ValidateTokenAndPhase(token, FinalizationPhase.CleanupRunning);
+            // This work is abandoned when the runtime returns to Active. Keeping the phase after
+            // before completion makes it impossible to claim and replay its frozen callbacks.
+            _phase = FinalizationPhase.BeforeCompleted;
+        }
+
+        private void AttachBeforeFinalized(Action? beforeFinalized)
+        {
+            if (beforeFinalized != null)
+                _beforeFinalized.Add(beforeFinalized);
+        }
+
+        private void AttachAfterFinalized(Action? afterFinalized)
+        {
+            if (afterFinalized != null)
+                _afterFinalized.Add(afterFinalized);
+        }
+
+        private void ValidateTokenAndPhase(long token, FinalizationPhase expectedPhase)
+        {
+            if (Token != token || _phase != expectedPhase)
+            {
+                throw new InvalidOperationException(
+                    $"Finalization phase mismatch. Expected={expectedPhase}, Actual={_phase}.");
+            }
         }
     }
 
@@ -560,6 +634,7 @@ public sealed class MatchRuntimeRegistry
         private int _state = Active;
         private int _executionDepth;
         private long _ownerFence;
+        private long _nextFinalizationToken;
         private bool _initialized;
         private FinalizationWork? _currentFinalization;
 
@@ -608,36 +683,83 @@ public sealed class MatchRuntimeRegistry
             return true;
         }
 
-        public FinalizationWork? EndExecution()
+        public FinalizationClaim? EndExecution()
         {
+            if (_executionDepth <= 0)
+                throw new InvalidOperationException("A match execution cannot end more than once.");
+
             _executionDepth--;
             if (_executionDepth != 0 || Volatile.Read(ref _state) != Finalizing)
                 return null;
 
-            return _currentFinalization;
+            return ClaimCurrentFinalization();
         }
 
-        public bool TryBeginFinalization(FinalizationWork finalization, out bool deferred)
+        public bool TryBeginFinalization(
+            FinalizationWork finalization,
+            out FinalizationClaim? claim)
         {
-            deferred = false;
+            claim = null;
+            long token = GetNextFinalizationToken();
+            finalization.BindToken(token);
             if (Interlocked.CompareExchange(ref _state, Finalizing, Active) != Active)
                 return false;
 
             _currentFinalization = finalization;
-            deferred = _executionDepth > 0;
+            if (_executionDepth == 0)
+                claim = ClaimCurrentFinalization();
             return true;
         }
 
-        public void Complete()
+        public void BeginCleanup(FinalizationClaim claim)
         {
-            _currentFinalization = null;
-            Volatile.Write(ref _state, Completed);
+            ValidateCurrentFinalization(claim);
+            claim.Work.BeginCleanup(claim.Token);
         }
 
-        public void ResetAfterFailedFinalization()
+        public Action? Complete(FinalizationClaim claim)
         {
+            ValidateCurrentFinalization(claim);
+            Action? afterFinalized =
+                claim.Work.CommitAndCreateAfterFinalizedAction(claim.Token);
             _currentFinalization = null;
-            Interlocked.CompareExchange(ref _state, Active, Finalizing);
+            Volatile.Write(ref _state, Completed);
+            return afterFinalized;
+        }
+
+        public void ResetAfterFailedFinalization(FinalizationClaim claim)
+        {
+            ValidateCurrentFinalization(claim);
+            claim.Work.ResetAfterFailedCleanup(claim.Token);
+            _currentFinalization = null;
+            Volatile.Write(ref _state, Active);
+        }
+
+        private FinalizationClaim ClaimCurrentFinalization()
+        {
+            if (Volatile.Read(ref _state) != Finalizing || _currentFinalization == null)
+                throw new InvalidOperationException("No pending match finalization can be claimed.");
+
+            return _currentFinalization.TryClaim()
+                   ?? throw new InvalidOperationException("Match finalization already has a completion owner.");
+        }
+
+        private long GetNextFinalizationToken()
+        {
+            long token = unchecked(++_nextFinalizationToken);
+            if (token == 0)
+                token = unchecked(++_nextFinalizationToken);
+            return token;
+        }
+
+        private void ValidateCurrentFinalization(FinalizationClaim claim)
+        {
+            if (Volatile.Read(ref _state) != Finalizing ||
+                !ReferenceEquals(_currentFinalization, claim.Work) ||
+                _currentFinalization.Token != claim.Token)
+            {
+                throw new InvalidOperationException("Finalization claim no longer owns this match runtime.");
+            }
         }
     }
 }

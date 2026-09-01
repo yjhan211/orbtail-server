@@ -25,6 +25,12 @@ using network.packets;
 
 namespace game_server;
 
+/// <summary>
+///     Hosts authoritative match admission, simulation, ordered publication, terminal lifecycle, and
+///     distributed owner cleanup. Match state preparation is serialized per matchingId; normal and terminal
+///     network publications run outside MatchRuntime.SyncRoot while holding the appropriate turn/lease, and
+///     terminal component cleanup runs under the monitor before lifecycle, Redis, and summary continuations.
+/// </summary>
 public partial class GameServer(
     IConfiguration configuration,
     ILogger<GameServer> logger,
@@ -1888,6 +1894,7 @@ public partial class GameServer(
                 _encounterRevealManager,
                 _swarmCombatPublicationCoordinator.TryCapturePacket,
                 PublishOrderedSessionPublication,
+                PublishRequiredTerminalAction,
                 HandleSwarmGrowthPick,
                 HandleSwarmOrbDecision,
                 _matchRuntimeRegistry.TryAcquireOperation,
@@ -2039,6 +2046,9 @@ public partial class GameServer(
     ///     사람 세션 없이 진행되는 매치(관리자 봇 전용 인스턴스)를 정산한다.
     ///     승리 판정이 사람 세션에 의존해 최후 1인이 남아도 끝나지 않고, 오염도가 한계에
     ///     닿은 봇이 계속 살아 있는 상태로 매치가 무한히 이어지던 것을 막는다.
+    ///     The depth-zero before hook captures its event and summary outside SyncRoot but opens no
+    ///     required publication turn because there are no human recipients. Component cleanup remains
+    ///     under SyncRoot and summary persistence remains post-commit outside it.
     /// </summary>
     public void EndBotOnlyMatchIfSettled(long matchingId, long winnerPlayerId)
     {
@@ -2051,6 +2061,12 @@ public partial class GameServer(
     private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId) =>
         CleanupMatchingIfNoHumanSessionsRemain(matchingId, "last_human_left", 0);
 
+    /// <summary>
+    ///     Finalizes a match only when its runtime-guarded predicate still sees no human sessions.
+    ///     The depth-zero before hook captures the terminal event and summary outside SyncRoot without
+    ///     opening a required publication turn; component cleanup stays under SyncRoot and persistence
+    ///     remains an outside post-commit continuation.
+    /// </summary>
     private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId, string endReason, long winnerPlayerId)
     {
         if (HasHumanSessions(matchingId))
@@ -2115,8 +2131,9 @@ public partial class GameServer(
 
     /// <summary>
     ///     Runs every in-memory match cleanup behind one terminal lifecycle gate.
-    ///     Each component cleanup is isolated so one failure cannot prevent the remaining
-    ///     managers from releasing their matchingId state.
+    ///     The claimed before hook runs outside SyncRoot, each isolated component cleanup runs under it,
+    ///     and Redis, lifecycle, and summary continuations run after commit outside it. One component
+    ///     failure cannot prevent the remaining managers from releasing their matchingId state.
     /// </summary>
     private void CleanupMatchRuntime(long matchingId) =>
         TryCleanupMatchRuntime(matchingId, null, null);

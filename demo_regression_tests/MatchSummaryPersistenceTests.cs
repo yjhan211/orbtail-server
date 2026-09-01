@@ -112,10 +112,13 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         int normalCapture = Find(normalFinalization, "MatchSummaryPersistence.Capture(");
         int summaryCaptureFailure = Find(normalFinalization, "Final match summary capture failed;");
         int terminalPlanCommit = Find(normalFinalization, "terminalPlan = preparedTerminalPlan;");
-        int lifecyclePreparationBuffer = Find(
-            normalFinalization,
-            "var lifecyclePublications = new List<Action>();");
         int cleanupRegistration = Find(normalFinalization, "_cleanupMatchRuntime(");
+        int requiredTerminalPublication = Find(
+            normalFinalization,
+            "_publishRequiredTerminalAction(");
+        int lifecyclePlanDispatch = Find(
+            normalFinalization,
+            "preparedTerminalPlan.LifecyclePublications");
         int resultPublication = Find(terminalPublication, "Protocol.G_TO_C_GAME_RESULT");
         int endPublication = Find(terminalPublication, "Protocol.G_TO_C_GAME_END");
         int markEnded = Find(
@@ -123,7 +126,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             "publication.Session.MarkGameEndedAndPrepareLifecyclePublication()");
         int lifecyclePreparationCommit = Find(
             terminalPublication,
-            "lifecyclePublications.Add(lifecyclePublication);");
+            "plan.LifecyclePublications.Add(lifecyclePublication);");
         int lifecycleDispatch = Find(terminalPublication, "foreach (Action dispatch in lifecyclePublications)");
         int lifecycleDispatchInvocation = Find(terminalPublication, "dispatch();");
         const string persistCallPattern = @"MatchSummaryPersistence\.Persist\s*\(";
@@ -140,8 +143,9 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Assert.True(eventLogFailure < normalCapture);
         Assert.True(normalCapture < summaryCaptureFailure);
         Assert.True(summaryCaptureFailure < terminalPlanCommit);
-        Assert.True(terminalPlanCommit < lifecyclePreparationBuffer);
-        Assert.True(lifecyclePreparationBuffer < cleanupRegistration);
+        Assert.True(terminalPlanCommit < cleanupRegistration);
+        Assert.True(cleanupRegistration < requiredTerminalPublication);
+        Assert.True(requiredTerminalPublication < lifecyclePlanDispatch);
         Assert.True(resultPublication < endPublication);
         Assert.True(endPublication < markEnded);
         Assert.True(markEnded < lifecyclePreparationCommit);
@@ -156,17 +160,23 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 finally\s*
                 \{.*?
                     terminalPlan\s*=\s*preparedTerminalPlan\s*;\s*
-                    var\s+lifecyclePublications\s*=\s*new\s+List<Action>\s*\(\s*\)\s*;\s*
                     MatchSummaryPersistenceRequest\?\s+capturedSummary\s*=\s*summaryRequest\s*;\s*
                     _cleanupMatchRuntime\s*
                     \(\s*
                         matchingId\s*,\s*
-                        \(\s*\)\s*=>\s*PublishTerminalResult\s*
-                            \(\s*preparedTerminalPlan\s*,\s*lifecyclePublications\s*\)\s*,\s*
+                        \(\s*\)\s*=>\s*_publishRequiredTerminalAction\s*
+                        \(\s*
+                            matchingId\s*,\s*
+                            \(\s*\)\s*=>\s*PublishTerminalResult\s*
+                                \(\s*preparedTerminalPlan\s*\)\s*
+                        \)\s*,\s*
                         \(\s*\)\s*=>\s*
                         \{\s*
                             DispatchMatchingLifecyclePublications\s*
-                                \(\s*matchingId\s*,\s*lifecyclePublications\s*\)\s*;\s*
+                            \(\s*
+                                matchingId\s*,\s*
+                                preparedTerminalPlan\.LifecyclePublications\s*
+                            \)\s*;\s*
                             if\s*\(\s*capturedSummary\s*!=\s*null\s*\)\s*
                             \{\s*
                                 MatchSummaryPersistence\.Persist\s*
@@ -191,12 +201,34 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                     Protocol\.G_TO_C_GAME_END.*?
                 foreach\s*\(\s*MatchTerminalSessionPublication\s+publication.*?
                     publication\.Session\.MarkGameEndedAndPrepareLifecyclePublication\s*\(\s*\).*?
-                    lifecyclePublications\.Add\s*\(\s*lifecyclePublication\s*\).*?
+                    plan\.LifecyclePublications\.Add\s*\(\s*lifecyclePublication\s*\).*?
                 foreach\s*\(\s*Action\s+dispatch\s+in\s+lifecyclePublications\s*\).*?
                     dispatch\s*\(\s*\)
                 """,
                 sourceContractOptions),
             terminalPublication);
+
+        string publicationSource = ReadNormalizedSource(
+            root,
+            "game_server",
+            "GameServer.ProximityAutoCombat.cs");
+        string requiredTerminalAdapter = ReadMethodSlice(
+            publicationSource,
+            "private void PublishRequiredTerminalAction(",
+            "private void PrepareAndDispatchMatchPublication(");
+        int requiredTurn = Find(
+            requiredTerminalAdapter,
+            "_swarmCombatPublicationCoordinator.BeginRequiredTurn(matchingId)");
+        int frozenPlanDispatch = Find(requiredTerminalAdapter, "publish();");
+        int turnRetirement = Find(requiredTerminalAdapter, "publicationTurn.Dispose();");
+        Assert.True(requiredTurn < frozenPlanDispatch);
+        Assert.True(frozenPlanDispatch < turnRetirement);
+        Assert.Contains("finally", requiredTerminalAdapter, StringComparison.Ordinal);
+        Assert.DoesNotContain("TryAcquireOperation", requiredTerminalAdapter, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "PrepareAndDispatchCombatPublication",
+            requiredTerminalAdapter,
+            StringComparison.Ordinal);
 
         string serverSource = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string lifecycleRegistration = ReadMethodSlice(
@@ -272,6 +304,8 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 sourceContractOptions),
             noHumanFinalization);
         Assert.DoesNotContain("PersistMatchSummary(", noHumanFinalization);
+        Assert.DoesNotContain("PublishRequiredTerminalAction", noHumanFinalization);
+        Assert.DoesNotContain("BeginRequiredTurn", noHumanFinalization);
 
         Assert.Matches(
             new Regex(

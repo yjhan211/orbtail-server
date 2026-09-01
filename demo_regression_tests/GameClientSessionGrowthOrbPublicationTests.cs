@@ -765,6 +765,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 Encounters,
                 Coordinator.TryCapturePacket,
                 PublishOrdered,
+                static (_, publish) => publish(),
                 growthHandler ?? _growthHandler,
                 orbHandler ?? _orbHandler,
                 AcquireOperation,

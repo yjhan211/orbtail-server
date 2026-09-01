@@ -17,7 +17,9 @@ namespace game_server.network;
 ///     The session validates protocol messages and owns per-connection state, while match-shared state remains
 ///     in GameServer managers. Authentication becomes visible only after the Redis admission commit and initial
 ///     authoritative snapshot have both completed. Human Swarm growth-pick and orb-decision rules are injected
-///     by the owning GameServer instance instead of process-static routing callbacks.
+///     by the owning GameServer instance instead of process-static routing callbacks. Terminal recipients and
+///     payloads are frozen during runtime-owned preparation; after the outer turn and lease retire, a supplied
+///     required-turn adapter publishes result, end, and mark steps outside the match monitor before cleanup.
 /// </summary>
 public partial class GameClientSession : SessionBase
 {
@@ -59,6 +61,12 @@ public partial class GameClientSession : SessionBase
     private readonly EncounterRevealManager _encounterRevealManager;
     private readonly Func<Action<IPacket>, IPacket, bool>? _tryCaptureCombatPublication;
     private readonly Action<long, Action, Action> _publishOrderedSessionPublication;
+    /// <summary>
+    ///     Owning GameServer adapter that opens BeginRequiredTurn only after the outer publication turn and
+    ///     operation lease retire. The supplied action publishes a previously frozen terminal plan outside
+    ///     MatchRuntime.SyncRoot and retires its required turn before component cleanup resumes.
+    /// </summary>
+    private readonly Action<long, Action> _publishRequiredTerminalAction;
     /// <summary>Owning GameServer instance delegate invoked inside a human growth-pick ordered turn.</summary>
     private readonly Action<GameClientSession, long, int, int> _handleSwarmGrowthPick;
     /// <summary>Owning GameServer instance delegate invoked inside a human orb-decision ordered turn.</summary>
@@ -173,6 +181,7 @@ public partial class GameClientSession : SessionBase
         EncounterRevealManager encounterRevealManager,
         Func<Action<IPacket>, IPacket, bool> tryCaptureCombatPublication,
         Action<long, Action, Action> publishOrderedSessionPublication,
+        Action<long, Action> publishRequiredTerminalAction,
         Action<GameClientSession, long, int, int> handleSwarmGrowthPick,
         Action<GameClientSession, long, int, long, long> handleSwarmOrbDecision,
         Func<long, Action, IDisposable?> acquireMatchRuntimeOperation,
@@ -204,6 +213,7 @@ public partial class GameClientSession : SessionBase
         _encounterRevealManager = encounterRevealManager;
         _tryCaptureCombatPublication = tryCaptureCombatPublication;
         _publishOrderedSessionPublication = publishOrderedSessionPublication;
+        _publishRequiredTerminalAction = publishRequiredTerminalAction;
         _handleSwarmGrowthPick = handleSwarmGrowthPick;
         _handleSwarmOrbDecision = handleSwarmOrbDecision;
         _sendCombatPublicationDirect = SendCombatPublicationDirect;
@@ -258,9 +268,10 @@ public partial class GameClientSession : SessionBase
 
     /// <summary>
     ///     Publishes one player-message mutation through the shared per-match ordered lane. The
-    ///     SessionBase message scope already owns the terminal operation lease; this guard makes
-    ///     that borrowed ownership explicit and prevents a continuation from publishing after the
-    ///     scope has retired or against a different match.
+    ///     SessionBase message scope already owns an ordinary player-message match-runtime lease;
+    ///     this guard makes that borrowed ownership explicit and prevents a continuation from
+    ///     publishing after the scope has retired or against a different match. Terminal publication
+    ///     uses a separate required turn only after this outer turn and lease have retired.
     /// </summary>
     private Task PublishOrderedSessionAction(
         Func<Task> prepare,
@@ -645,8 +656,9 @@ public partial class GameClientSession : SessionBase
     }
 
     /// <summary>
-    ///     게임 결과 패킷 전송 후 호출. 이후 퇴장은 페널티 면제.
-    ///     동시에 정상 완료 보상으로 이탈 횟수 1 감소.
+    ///     `GAME_RESULT`와 `GAME_END` 시도 뒤 마지막 best-effort mark 단계에서 호출한다.
+    ///     이후 퇴장은 페널티를 면제하고 정상 완료 보상으로 이탈 횟수 1을 감소시킨다.
+    ///     이 public wrapper는 준비된 lifecycle Action을 즉시 dispatch한다.
     /// </summary>
     public void MarkGameEnded()
     {
@@ -654,6 +666,10 @@ public partial class GameClientSession : SessionBase
         dispatch?.Invoke();
     }
 
+    /// <summary>
+    ///     Marks this session terminal and prepares, but does not dispatch, its lifecycle Action.
+    ///     Required terminal publication uses this form so dispatch remains a post-commit after hook.
+    /// </summary>
     internal Action? MarkGameEndedAndPrepareLifecyclePublication()
     {
         Volatile.Write(ref _isGameEnded, true);
