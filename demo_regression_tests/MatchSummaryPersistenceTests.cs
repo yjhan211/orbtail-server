@@ -101,10 +101,20 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         int normalCapture = Find(normalFinalization, "MatchSummaryPersistence.Capture(");
         int summaryCaptureFailure = Find(normalFinalization, "Final match summary capture failed;");
         int terminalPlanCommit = Find(normalFinalization, "terminalPlan = preparedTerminalPlan;");
+        int lifecyclePreparationBuffer = Find(
+            normalFinalization,
+            "var lifecyclePublications = new List<Action>();");
         int cleanupRegistration = Find(normalFinalization, "_cleanupMatchRuntime(");
         int resultPublication = Find(terminalPublication, "Protocol.G_TO_C_GAME_RESULT");
         int endPublication = Find(terminalPublication, "Protocol.G_TO_C_GAME_END");
-        int markEnded = Find(terminalPublication, "publication.Session.MarkGameEnded");
+        int markEnded = Find(
+            terminalPublication,
+            "publication.Session.MarkGameEndedAndPrepareLifecyclePublication()");
+        int lifecyclePreparationCommit = Find(
+            terminalPublication,
+            "lifecyclePublications.Add(lifecyclePublication);");
+        int lifecycleDispatch = Find(terminalPublication, "foreach (Action dispatch in lifecyclePublications)");
+        int lifecycleDispatchInvocation = Find(terminalPublication, "dispatch();");
         const string persistCallPattern = @"MatchSummaryPersistence\.Persist\s*\(";
         RegexOptions sourceContractOptions =
             RegexOptions.Singleline |
@@ -119,9 +129,13 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Assert.True(eventLogFailure < normalCapture);
         Assert.True(normalCapture < summaryCaptureFailure);
         Assert.True(summaryCaptureFailure < terminalPlanCommit);
-        Assert.True(terminalPlanCommit < cleanupRegistration);
+        Assert.True(terminalPlanCommit < lifecyclePreparationBuffer);
+        Assert.True(lifecyclePreparationBuffer < cleanupRegistration);
         Assert.True(resultPublication < endPublication);
         Assert.True(endPublication < markEnded);
+        Assert.True(markEnded < lifecyclePreparationCommit);
+        Assert.True(lifecyclePreparationCommit < lifecycleDispatch);
+        Assert.True(lifecycleDispatch < lifecycleDispatchInvocation);
         Assert.DoesNotContain(".Send(", normalFinalization);
         Assert.DoesNotContain(".MarkGameEnded(", normalFinalization);
         Assert.Single(Regex.Matches(normalFinalization, persistCallPattern));
@@ -131,20 +145,27 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 finally\s*
                 \{.*?
                     terminalPlan\s*=\s*preparedTerminalPlan\s*;\s*
-                    Action\?\s+afterFinalized\s*=\s*null\s*;\s*
-                    if\s*\(\s*summaryRequest\s*!=\s*null\s*\)\s*
-                    \{\s*
-                        MatchSummaryPersistenceRequest\s+capturedSummary\s*=\s*summaryRequest\s*;\s*
-                        afterFinalized\s*=\s*\(\s*\)\s*=>\s*
-                            MatchSummaryPersistence\.Persist\s*
-                            \(\s*capturedSummary\s*,\s*_matchSummaryFileStore\s*,\s*Logger\s*\)\s*;\s*
-                    \}\s*
+                    var\s+lifecyclePublications\s*=\s*new\s+List<Action>\s*\(\s*\)\s*;\s*
+                    MatchSummaryPersistenceRequest\?\s+capturedSummary\s*=\s*summaryRequest\s*;\s*
                     _cleanupMatchRuntime\s*
                     \(\s*
                         matchingId\s*,\s*
                         \(\s*\)\s*=>\s*PublishTerminalResult\s*
-                            \(\s*preparedTerminalPlan\s*\)\s*,\s*
-                        afterFinalized\s*
+                            \(\s*preparedTerminalPlan\s*,\s*lifecyclePublications\s*\)\s*,\s*
+                        \(\s*\)\s*=>\s*
+                        \{\s*
+                            DispatchMatchingLifecyclePublications\s*
+                                \(\s*matchingId\s*,\s*lifecyclePublications\s*\)\s*;\s*
+                            if\s*\(\s*capturedSummary\s*!=\s*null\s*\)\s*
+                            \{\s*
+                                MatchSummaryPersistence\.Persist\s*
+                                \(\s*
+                                    capturedSummary\s*,\s*
+                                    _matchSummaryFileStore\s*,\s*
+                                    Logger\s*
+                                \)\s*;\s*
+                            \}\s*
+                        \}\s*
                     \)\s*;\s*
                 \}
                 """,
@@ -158,12 +179,41 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 foreach\s*\(\s*MatchTerminalSessionPublication\s+publication.*?
                     Protocol\.G_TO_C_GAME_END.*?
                 foreach\s*\(\s*MatchTerminalSessionPublication\s+publication.*?
-                    publication\.Session\.MarkGameEnded
+                    publication\.Session\.MarkGameEndedAndPrepareLifecyclePublication\s*\(\s*\).*?
+                    lifecyclePublications\.Add\s*\(\s*lifecyclePublication\s*\).*?
+                foreach\s*\(\s*Action\s+dispatch\s+in\s+lifecyclePublications\s*\).*?
+                    dispatch\s*\(\s*\)
                 """,
                 sourceContractOptions),
             terminalPublication);
 
         string serverSource = ReadNormalizedSource(root, "game_server", "GameServer.cs");
+        string lifecycleRegistration = ReadMethodSlice(
+            serverSource,
+            "private Action? RegisterMatchingLifecyclePublish(",
+            "private async Task RunTrackedMatchingLifecyclePublishAsync(");
+        int deferredDispatchFactory = Find(lifecycleRegistration, "return () =>");
+        int durableDispatchStart = Find(
+            lifecycleRegistration,
+            "_ = RunTrackedMatchingLifecyclePublishAsync(");
+        Assert.True(deferredDispatchFactory < durableDispatchStart);
+        Assert.Matches(
+            new Regex(
+                """
+                return\s*\(\s*\)\s*=>\s*
+                \{.*?
+                    Interlocked\.Exchange\s*\(\s*ref\s+dispatchStarted\s*,\s*1\s*\).*?
+                    _\s*=\s*RunTrackedMatchingLifecyclePublishAsync\s*
+                    \(\s*
+                        outboxWorker\s*,\s*
+                        record\s*,\s*
+                        completeMatchPersistence\s*,\s*
+                        completion\s*
+                    \)\s*;
+                """,
+                sourceContractOptions),
+            lifecycleRegistration);
+
         string noHumanFinalization = ReadMethodSlice(
             serverSource,
             "private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId, string endReason",
@@ -226,6 +276,59 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 """,
                 sourceContractOptions),
             serverSource);
+    }
+
+    [Fact]
+    public void DurableLifecycleCompletion_SourceContract_AlwaysReleasesPendingTracker()
+    {
+        string root = FindRepositoryRoot();
+        string serverSource = ReadNormalizedSource(root, "game_server", "GameServer.cs");
+        string lifecycleRegistration = ReadMethodSlice(
+            serverSource,
+            "private Action? RegisterMatchingLifecyclePublish(",
+            "private async Task RunTrackedMatchingLifecyclePublishAsync(");
+        string trackedPublish = ReadMethodSlice(
+            serverSource,
+            "private async Task RunTrackedMatchingLifecyclePublishAsync(",
+            "private void CompleteTrackedMatchingLifecyclePublish(");
+        string completion = ReadMethodSlice(
+            serverSource,
+            "private void CompleteTrackedMatchingLifecyclePublish(",
+            "private async Task<bool> PersistMatchingLifecycleDecisionAsync(");
+        RegexOptions sourceContractOptions =
+            RegexOptions.Singleline |
+            RegexOptions.IgnorePatternWhitespace |
+            RegexOptions.CultureInvariant;
+
+        Assert.Contains(
+            "CompleteTrackedMatchingLifecyclePublish(",
+            lifecycleRegistration,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "CompleteTrackedMatchingLifecyclePublish(",
+            trackedPublish,
+            StringComparison.Ordinal);
+        Assert.Matches(
+            new Regex(
+                """
+                try\s*
+                \{\s*
+                    completeMatchPersistence\s*\(\s*persistenceProtected\s*\)\s*;\s*
+                \}\s*
+                catch\s*\(\s*Exception\s+ex\s*\)\s*
+                \{.*?
+                    logger\.LogCritical\s*
+                    \(.*?
+                        "Matching\s+lifecycle\s+persistence\s+completion\s+callback\s+failed:.*?
+                    \)\s*;\s*
+                \}\s*
+                finally\s*
+                \{.*?
+                    completion\.TrySetResult\s*\(\s*true\s*\)\s*;\s*
+                \}
+                """,
+                sourceContractOptions),
+            completion);
     }
 
     public void Dispose()

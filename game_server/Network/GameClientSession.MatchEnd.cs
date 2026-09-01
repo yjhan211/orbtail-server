@@ -287,18 +287,23 @@ public partial class GameClientSession
                     // Register while the operation acquisition still owns SyncRoot so no gameplay
                     // action can mutate the already serialized result before Active -> Finalizing.
                     terminalPlan = preparedTerminalPlan;
-                    Action? afterFinalized = null;
-                    if (summaryRequest != null)
-                    {
-                        MatchSummaryPersistenceRequest capturedSummary = summaryRequest;
-                        afterFinalized = () =>
-                            MatchSummaryPersistence.Persist(capturedSummary, _matchSummaryFileStore, Logger);
-                    }
+                    var lifecyclePublications = new List<Action>();
+                    MatchSummaryPersistenceRequest? capturedSummary = summaryRequest;
 
                     _cleanupMatchRuntime(
                         matchingId,
-                        () => PublishTerminalResult(preparedTerminalPlan),
-                        afterFinalized);
+                        () => PublishTerminalResult(preparedTerminalPlan, lifecyclePublications),
+                        () =>
+                        {
+                            DispatchMatchingLifecyclePublications(matchingId, lifecyclePublications);
+                            if (capturedSummary != null)
+                            {
+                                MatchSummaryPersistence.Persist(
+                                    capturedSummary,
+                                    _matchSummaryFileStore,
+                                    Logger);
+                            }
+                        });
                 }
             });
 
@@ -315,7 +320,9 @@ public partial class GameClientSession
         }
     }
 
-    private void PublishTerminalResult(MatchTerminalPublicationPlan plan)
+    private void PublishTerminalResult(
+        MatchTerminalPublicationPlan plan,
+        List<Action> lifecyclePublications)
     {
         foreach (byte[] resultPayload in plan.GameResultPayloads)
         {
@@ -350,11 +357,35 @@ public partial class GameClientSession
 
         foreach (MatchTerminalSessionPublication publication in plan.SessionPublications)
         {
+            Action? lifecyclePublication = null;
             RunTerminalPublicationStep(
                 plan.MatchingId,
                 publication.Session,
                 "MarkGameEnded",
-                publication.Session.MarkGameEnded);
+                () => lifecyclePublication =
+                    publication.Session.MarkGameEndedAndPrepareLifecyclePublication());
+            if (lifecyclePublication != null)
+                lifecyclePublications.Add(lifecyclePublication);
+        }
+    }
+
+    private void DispatchMatchingLifecyclePublications(
+        long matchingId,
+        IReadOnlyList<Action> lifecyclePublications)
+    {
+        foreach (Action dispatch in lifecyclePublications)
+        {
+            try
+            {
+                dispatch();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(
+                    ex,
+                    "Deferred matching lifecycle dispatch failed: MatchingId={MatchingId}",
+                    matchingId);
+            }
         }
     }
 

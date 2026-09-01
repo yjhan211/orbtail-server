@@ -969,13 +969,21 @@ public partial class GameServer(
 
     private void PublishMatchingLifecycle(string subject, long playerId, long matchingId)
     {
+        Action? dispatch = PrepareMatchingLifecyclePublication(subject, playerId, matchingId);
+        dispatch?.Invoke();
+    }
+
+    private Action? PrepareMatchingLifecyclePublication(string subject, long playerId, long matchingId)
+    {
         if (!TryRegisterMatchingLifecycleTerminal(subject, playerId, matchingId))
-            return;
+            return null;
 
         if (!IsDurableMatchingLifecycleEnabled)
         {
+            // Legacy Core NATS has no persistence registration that can hold Redis cleanup.
+            // Keep its existing publish-before-cleanup ordering in this incremental split.
             PublishLegacyMatchingLifecycle(subject, playerId, matchingId);
-            return;
+            return null;
         }
 
         MatchingLifecycleOutboxWorker? outboxWorker = _matchingLifecycleOutboxWorker;
@@ -986,43 +994,43 @@ public partial class GameServer(
                 subject,
                 playerId,
                 matchingId);
-            return;
+            RecordMatchingLifecyclePersistenceFailure(matchingId);
+            return null;
         }
 
-        string messageId;
         try
         {
-            messageId = MatchingLifecycleMessageIds.Create(subject, playerId, matchingId);
+            string messageId = MatchingLifecycleMessageIds.Create(subject, playerId, matchingId);
+            var envelope = new MatchingLifecycleEnvelope
+            {
+                PlayerId = playerId,
+                MatchingId = matchingId,
+                OccurredAtUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                EventId = messageId
+            };
+            byte[] payload = MessagePackSerializer.Serialize(envelope);
+            var record = new MatchingLifecycleOutboxRecord
+            {
+                EventId = messageId,
+                EventIdFingerprint = MatchingLifecycleOutboxKeys.FingerprintEventId(messageId),
+                Subject = subject,
+                Payload = payload,
+                PlayerId = playerId,
+                MatchingId = matchingId
+            };
+            return RegisterMatchingLifecyclePublish(outboxWorker, record);
         }
         catch (Exception ex)
         {
             logger.LogError(
                 ex,
-                "Matching lifecycle publish failed: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                "Matching lifecycle publication preparation failed: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
                 subject,
                 playerId,
                 matchingId);
-            return;
+            RecordMatchingLifecyclePersistenceFailure(matchingId);
+            return null;
         }
-
-        var envelope = new MatchingLifecycleEnvelope
-        {
-            PlayerId = playerId,
-            MatchingId = matchingId,
-            OccurredAtUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            EventId = messageId
-        };
-        byte[] payload = MessagePackSerializer.Serialize(envelope);
-        var record = new MatchingLifecycleOutboxRecord
-        {
-            EventId = messageId,
-            EventIdFingerprint = MatchingLifecycleOutboxKeys.FingerprintEventId(messageId),
-            Subject = subject,
-            Payload = payload,
-            PlayerId = playerId,
-            MatchingId = matchingId
-        };
-        TrackMatchingLifecyclePublish(outboxWorker, record);
     }
 
     private bool TryRegisterMatchingLifecycleTerminal(
@@ -1094,7 +1102,7 @@ public partial class GameServer(
         }
     }
 
-    private void TrackMatchingLifecyclePublish(
+    private Action? RegisterMatchingLifecyclePublish(
         MatchingLifecycleOutboxWorker outboxWorker,
         MatchingLifecycleOutboxRecord record)
     {
@@ -1110,7 +1118,8 @@ public partial class GameServer(
                     record.Subject,
                     record.PlayerId,
                     record.MatchingId);
-                return;
+                RecordMatchingLifecyclePersistenceFailureUnderGate(record.MatchingId);
+                return null;
             }
 
             Action<bool>? registration =
@@ -1122,7 +1131,8 @@ public partial class GameServer(
                     record.Subject,
                     record.PlayerId,
                     record.MatchingId);
-                return;
+                RecordMatchingLifecyclePersistenceFailureUnderGate(record.MatchingId);
+                return null;
             }
 
             completeMatchPersistence = registration;
@@ -1137,11 +1147,30 @@ public partial class GameServer(
                 TaskScheduler.Default);
         }
 
-        _ = RunTrackedMatchingLifecyclePublishAsync(
-            outboxWorker,
-            record,
-            completeMatchPersistence,
-            completion);
+        int dispatchStarted = 0;
+        return () =>
+        {
+            if (Interlocked.Exchange(ref dispatchStarted, 1) != 0)
+                return;
+
+            try
+            {
+                _ = RunTrackedMatchingLifecyclePublishAsync(
+                    outboxWorker,
+                    record,
+                    completeMatchPersistence,
+                    completion);
+            }
+            catch
+            {
+                CompleteTrackedMatchingLifecyclePublish(
+                    record,
+                    completeMatchPersistence,
+                    persistenceProtected: false,
+                    completion);
+                throw;
+            }
+        };
     }
 
     private async Task RunTrackedMatchingLifecyclePublishAsync(
@@ -1167,7 +1196,36 @@ public partial class GameServer(
         }
         finally
         {
+            CompleteTrackedMatchingLifecyclePublish(
+                record,
+                completeMatchPersistence,
+                persistenceProtected,
+                completion);
+        }
+    }
+
+    private void CompleteTrackedMatchingLifecyclePublish(
+        MatchingLifecycleOutboxRecord record,
+        Action<bool> completeMatchPersistence,
+        bool persistenceProtected,
+        TaskCompletionSource<bool> completion)
+    {
+        try
+        {
             completeMatchPersistence(persistenceProtected);
+        }
+        catch (Exception ex)
+        {
+            logger.LogCritical(
+                ex,
+                "Matching lifecycle persistence completion callback failed: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                record.Subject,
+                record.PlayerId,
+                record.MatchingId);
+        }
+        finally
+        {
+            // The continuation removes this operation from the shutdown-drain tracker.
             completion.TrySetResult(true);
         }
     }
@@ -1382,6 +1440,35 @@ public partial class GameServer(
             Volatile.Write(ref _acceptingMatchingLifecycleEnqueues, 0);
     }
 
+    private void RecordMatchingLifecyclePersistenceFailure(long matchingId)
+    {
+        if (!IsDurableMatchingLifecycleEnabled)
+            return;
+
+        lock (_matchingLifecycleEnqueueGate)
+            RecordMatchingLifecyclePersistenceFailureUnderGate(matchingId);
+    }
+
+    private void RecordMatchingLifecyclePersistenceFailureUnderGate(long matchingId)
+    {
+        MatchingLifecyclePersistenceState state =
+            _matchingLifecyclePersistenceStates.GetOrAdd(
+                matchingId,
+                static _ => new MatchingLifecyclePersistenceState());
+        TaskCompletionSource<bool>? quiesced = null;
+        lock (state.SyncRoot)
+        {
+            state.PersistenceFailed = true;
+            if (state.PendingCount == 0 && state.ClosingRequested)
+            {
+                state.Sealed = true;
+                quiesced = state.Quiesced;
+            }
+        }
+
+        quiesced?.TrySetResult(true);
+    }
+
     private Action? BeginMatchingLifecyclePersistenceRegistration(long matchingId)
     {
         if (!IsDurableMatchingLifecycleEnabled)
@@ -1582,7 +1669,10 @@ public partial class GameServer(
                 (playerId, matchingId) =>
                     PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerLeft, playerId, matchingId),
                 (playerId, matchingId) =>
-                    PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerCompleted, playerId, matchingId),
+                    PrepareMatchingLifecyclePublication(
+                        MatchingLifecycleSubjects.PlayerCompleted,
+                        playerId,
+                        matchingId),
                 (playerId, matchingId) =>
                     PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerReleased, playerId, matchingId),
                 () => Volatile.Read(ref _stopping) != 0,

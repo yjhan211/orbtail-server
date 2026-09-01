@@ -46,7 +46,7 @@ public partial class GameClientSession : SessionBase
     private readonly Func<long, long, bool> _bindMatchOwnerFence;
     private readonly Func<long, GameClientSession, Action?> _registerSessionCallback;
     private readonly Action<long, long> _recordLeavePenalty;
-    private readonly Action<long, long> _recordGameCompletion;
+    private readonly Func<long, long, Action?> _prepareGameCompletion;
     private readonly Action<long, long> _releaseMatchingClaim;
     private readonly Action<GameClientSession> _recordAdmissionFailure;
     private readonly Func<bool> _isServerStopping;
@@ -173,7 +173,7 @@ public partial class GameClientSession : SessionBase
         Func<long, long, bool> bindMatchOwnerFence,
         Action<long, Action?, Action?> cleanupMatchRuntime,
         Action<long, long> recordLeavePenalty,
-        Action<long, long> recordGameCompletion,
+        Func<long, long, Action?> prepareGameCompletion,
         Action<long, long> releaseMatchingClaim,
         Func<bool> isServerStopping,
         Action<GameClientSession> recordAdmissionFailure)
@@ -201,7 +201,7 @@ public partial class GameClientSession : SessionBase
         _bindMatchOwnerFence = bindMatchOwnerFence;
         _cleanupMatchRuntime = cleanupMatchRuntime;
         _recordLeavePenalty = recordLeavePenalty;
-        _recordGameCompletion = recordGameCompletion;
+        _prepareGameCompletion = prepareGameCompletion;
         _releaseMatchingClaim = releaseMatchingClaim;
         _isServerStopping = isServerStopping;
         _recordAdmissionFailure = recordAdmissionFailure;
@@ -542,13 +542,19 @@ public partial class GameClientSession : SessionBase
     /// </summary>
     public void MarkGameEnded()
     {
+        Action? dispatch = MarkGameEndedAndPrepareLifecyclePublication();
+        dispatch?.Invoke();
+    }
+
+    internal Action? MarkGameEndedAndPrepareLifecyclePublication()
+    {
         Volatile.Write(ref _isGameEnded, true);
         if (!PlayerId.HasValue || CurrentMapSubId <= 0 || !TryBeginMatchingLifecycleTerminal())
-            return;
+            return null;
 
         try
         {
-            _recordGameCompletion(PlayerId.Value, CurrentMapSubId);
+            return _prepareGameCompletion(PlayerId.Value, CurrentMapSubId);
         }
         catch
         {
