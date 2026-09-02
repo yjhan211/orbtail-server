@@ -2157,8 +2157,24 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         AssertInOrder(
             registration,
             "_swarmBotTickCoordinator.RegisterMatching(matchingId)",
+            "_doorStateManager.RegisterMatching(matchingId)",
             "_swarmCombatPublicationCoordinator.RegisterMatching(matchingId)",
             "throw new InvalidOperationException(");
+        AssertInOrder(
+            registration,
+            "_swarmCombatPublicationCoordinator.RegisterMatching(matchingId)",
+            "_doorStateManager.ClearMatching(matchingId)",
+            "_swarmBotTickCoordinator.ClearMatching(matchingId)",
+            "throw new InvalidOperationException(");
+        AssertInOrder(
+            initialization,
+            "\"interactables\"",
+            "\"doors\"",
+            "_doorStateManager.ClearMatching",
+            "\"roster\"");
+        Assert.Equal(
+            1,
+            CountOccurrences(initialization, "_doorStateManager.ClearMatching"));
         Assert.Contains("internal void SetRuntimeInitializer(Action<long> runtimeInitializer)", registry);
         Assert.Equal(4, CountOccurrences(registry, "GetOrCreateRuntime(matchingId)"));
         Assert.Equal(4, CountOccurrences(registry, "runtime.EnsureInitialized("));

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using network.common;
 using network.common.data;
 
@@ -9,30 +10,36 @@ namespace game_server.services;
 /// </summary>
 public class DoorStateManager
 {
-    private readonly object _lock = new();
-
-    // matchingId -> 열린 문 ID 목록
-    private readonly Dictionary<long, HashSet<int>> _openDoors = new();
+    private readonly ConcurrentDictionary<long, MatchingDoorState> _states = new();
 
     /// <summary>
-    ///     매칭 시작 시 초기 열린 문 등록
+    ///     Preregisters fail-closed state at the match runtime boundary. Gameplay methods never
+    ///     create missing state, so terminal cleanup cannot be undone by a late door action.
+    /// </summary>
+    public bool RegisterMatching(long matchingId) =>
+        _states.TryAdd(matchingId, new MatchingDoorState());
+
+    /// <summary>
+    ///     매칭 시작 시 초기 열린 문을 등록한다. Production callers invoke this only inside
+    ///     an active match runtime operation; direct state creation remains for standalone fixtures.
     /// </summary>
     public void InitializeMatching(long matchingId, IEnumerable<AreaType>? initiallyLockedAreas = null)
     {
-        lock (_lock)
+        var lockedAreas = initiallyLockedAreas?.ToHashSet() ?? [];
+        int[] initiallyOpenDoorIds = GameDoorData.GetAll()
+            .Where(door => !lockedAreas.Contains(door.AreaType) && door.IsInitiallyOpen)
+            .Select(door => door.DoorId)
+            .ToArray();
+        MatchingDoorState state = _states.GetOrAdd(
+            matchingId,
+            static _ => new MatchingDoorState());
+        lock (state.SyncRoot)
         {
-            // 이미 초기화되어 있으면 스킵
-            if (_openDoors.ContainsKey(matchingId)) return;
+            if (state.Cleared || state.Initialized)
+                return;
 
-            var lockedAreas = initiallyLockedAreas?.ToHashSet() ?? [];
-            _openDoors[matchingId] = new HashSet<int>();
-
-            // 초기 열림 상태인 문 등록 (is_initially_open=0인 문은 열쇠로만 개방)
-            foreach (var door in GameDoorData.GetAll())
-            {
-                if (!lockedAreas.Contains(door.AreaType) && door.IsInitiallyOpen)
-                    _openDoors[matchingId].Add(door.DoorId);
-            }
+            state.OpenDoors.UnionWith(initiallyOpenDoorIds);
+            state.Initialized = true;
         }
     }
 
@@ -42,25 +49,36 @@ public class DoorStateManager
     /// <returns>true: 새로 열림, false: 이미 열려있었음</returns>
     public bool OpenDoor(long matchingId, int doorId)
     {
-        lock (_lock)
-        {
-            if (!_openDoors.ContainsKey(matchingId)) _openDoors[matchingId] = new HashSet<int>();
+        if (!_states.TryGetValue(matchingId, out MatchingDoorState? state))
+            return false;
 
-            return _openDoors[matchingId].Add(doorId);
+        lock (state.SyncRoot)
+        {
+            if (state.Cleared)
+                return false;
+
+            // Preserve the legacy OpenDoor-before-Initialize behavior for a preregistered state:
+            // the first explicit mutation owns an otherwise empty initial set.
+            state.Initialized = true;
+            return state.OpenDoors.Add(doorId);
         }
     }
 
     public IReadOnlyList<int> CloseDoorsForAreas(long matchingId, IEnumerable<AreaType> areas)
     {
-        lock (_lock)
+        if (!_states.TryGetValue(matchingId, out MatchingDoorState? state))
+            return [];
+
+        int[] doorIds = GetDoorIds(areas).ToArray();
+        lock (state.SyncRoot)
         {
-            if (!_openDoors.TryGetValue(matchingId, out var openDoors))
+            if (state.Cleared)
                 return [];
 
             var changed = new List<int>();
-            foreach (int doorId in GetDoorIds(areas))
+            foreach (int doorId in doorIds)
             {
-                if (openDoors.Remove(doorId))
+                if (state.OpenDoors.Remove(doorId))
                     changed.Add(doorId);
             }
 
@@ -80,9 +98,12 @@ public class DoorStateManager
     /// </summary>
     public bool IsDoorOpen(long matchingId, int doorId)
     {
-        lock (_lock)
+        if (!_states.TryGetValue(matchingId, out MatchingDoorState? state))
+            return false;
+
+        lock (state.SyncRoot)
         {
-            return _openDoors.TryGetValue(matchingId, out var doors) && doors.Contains(doorId);
+            return !state.Cleared && state.OpenDoors.Contains(doorId);
         }
     }
 
@@ -91,10 +112,12 @@ public class DoorStateManager
     /// </summary>
     public List<int> GetOpenDoors(long matchingId)
     {
-        lock (_lock)
+        if (!_states.TryGetValue(matchingId, out MatchingDoorState? state))
+            return [];
+
+        lock (state.SyncRoot)
         {
-            if (_openDoors.TryGetValue(matchingId, out var doors)) return doors.ToList();
-            return new List<int>();
+            return state.Cleared ? [] : state.OpenDoors.ToList();
         }
     }
 
@@ -103,10 +126,24 @@ public class DoorStateManager
     /// </summary>
     public void ClearMatching(long matchingId)
     {
-        lock (_lock)
+        if (!_states.TryGetValue(matchingId, out MatchingDoorState? state))
+            return;
+
+        lock (state.SyncRoot)
         {
-            _openDoors.Remove(matchingId);
+            state.Cleared = true;
+            state.OpenDoors.Clear();
         }
+
+        ((ICollection<KeyValuePair<long, MatchingDoorState>>)_states)
+            .Remove(new KeyValuePair<long, MatchingDoorState>(matchingId, state));
     }
 
+    private sealed class MatchingDoorState
+    {
+        public object SyncRoot { get; } = new();
+        public HashSet<int> OpenDoors { get; } = [];
+        public bool Initialized { get; set; }
+        public bool Cleared { get; set; }
+    }
 }

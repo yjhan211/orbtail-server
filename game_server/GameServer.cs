@@ -141,8 +141,16 @@ public partial class GameServer(
                 $"Bot tick state was already registered for match {matchingId}.");
         }
 
+        if (!_doorStateManager.RegisterMatching(matchingId))
+        {
+            _swarmBotTickCoordinator.ClearMatching(matchingId);
+            throw new InvalidOperationException(
+                $"Door state was already registered for match {matchingId}.");
+        }
+
         if (!_swarmCombatPublicationCoordinator.RegisterMatching(matchingId))
         {
+            _doorStateManager.ClearMatching(matchingId);
             _swarmBotTickCoordinator.ClearMatching(matchingId);
             throw new InvalidOperationException(
                 $"Combat publication state was already registered for match {matchingId}.");
