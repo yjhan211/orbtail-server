@@ -690,7 +690,7 @@ public partial class GameServer
         }
 
         // 3) 사냥 정지: 도주·개봉·줍기 용무가 없고 사거리 안에 몹이 있으면 제자리에 선다.
-        //    정지 공격 규칙에서 서야 쏘고, 캠프 모드에선 잠든 캠프 옆이 안전 사격 지점이다.
+        //    정지 공격 규칙에서 서야 쏘고, 잠든 공급 무리 옆이 안전 사격 지점이다.
         //    빈손은 제외 — 화력 없이 몹 옆에 서는 건 자살이다 (#222).
         if (hasSquadOrbs && HasSwarmMonsterInBasicRange(matchingId, bot))
         {
@@ -709,8 +709,7 @@ public partial class GameServer
             GetSwarmBotExploreCost(matchingId, botPlayerId) &&
             hasSquadOrbs)
         {
-            if (SwarmMonsterDirector.RegionSupplyModeEnabled &&
-                TryFindNearestSwarmSupplyMonster(matchingId, bot, out var supplyArea,
+            if (TryFindNearestSwarmSupplyMonster(matchingId, bot, out var supplyArea,
                     out var supplyPosition))
             {
                 return new SpotArenaBotDirective(
@@ -719,61 +718,21 @@ public partial class GameServer
                     ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, supplyPosition),
                     supplyPosition);
             }
-
-            // 캠프 모드 폴백: 봇은 캠프 '위치'만 알고(지도 지식) 생사는 모른다.
-            if (!SwarmMonsterDirector.RegionSupplyModeEnabled &&
-                TryChooseSwarmBotCampTarget(matchingId, bot, out var campArea, out var campPosition))
-            {
-                return new SpotArenaBotDirective(
-                    SpotArenaBotMode.Escort,
-                    campArea,
-                    ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, campPosition),
-                    campPosition);
-            }
         }
 
-        // 4) 마른 방 탈출: 시작방·복도(또는 몹이 마른 지역 공급 구역)에서 사냥터로 이주한다.
-        if (SwarmMonsterDirector.RegionSupplyModeEnabled)
+        // 4) 마른 방 탈출: 현재 구역에 살아있는 몹도, 열 수 있는 스팟 용무도 없으면
+        //    몹이 남은 공급 구역으로 이주 — 스폰이 멈춘 종반에는 지시 없이 배회(디렉터 몫).
+        bool currentAreaHasSupply = _swarmMonsterDirector.GetVisualStates(matchingId)
+            .Any(monster => monster.IsAlive && monster.AreaType == bot.CurrentArea);
+        if (!currentAreaHasSupply &&
+            TryFindNearestSwarmSupplyMonster(matchingId, bot, out var migrateArea,
+                out var migratePosition))
         {
-            // 지역 공급: 현재 구역에 살아있는 몹도, 열 수 있는 스팟 용무도 없으면
-            // 몹이 남은 공급 구역으로 이주 — 스폰이 멈춘 종반에는 지시 없이 배회(디렉터 몫).
-            bool currentAreaHasSupply = _swarmMonsterDirector.GetVisualStates(matchingId)
-                .Any(monster => monster.IsAlive && monster.AreaType == bot.CurrentArea);
-            if (!currentAreaHasSupply &&
-                TryFindNearestSwarmSupplyMonster(matchingId, bot, out var migrateArea,
-                    out var migratePosition))
-            {
-                return new SpotArenaBotDirective(
-                    SpotArenaBotMode.Escort,
-                    migrateArea,
-                    ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, migratePosition),
-                    migratePosition);
-            }
-
-            return directive;
-        }
-
-        if (MatchSpawnData.GetPhaseRoomCandidates().Contains(bot.CurrentArea))
-        {
-            // 경계 밖 사냥터는 제외 — 전부 밖이면 종착지 운동장으로 (운동장은 항상 안이다).
-            AreaType huntingArea = SwarmHuntingAreas
-                .Where(area => !IsSwarmAreaOutside(matchingId, area))
-                .OrderBy(area =>
-                {
-                    var center = BotPlayerManager.CellToWorldPosition(
-                        Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
-                    float dx = center.X - bot.Position.X;
-                    float dy = center.Y - bot.Position.Y;
-                    return dx * dx + dy * dy;
-                })
-                .DefaultIfEmpty(Config.SWARM_MATCH_GROUND_AREA)
-                .First();
-            Cell huntingCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, huntingArea);
             return new SpotArenaBotDirective(
                 SpotArenaBotMode.Escort,
-                huntingArea,
-                huntingCell,
-                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, huntingCell));
+                migrateArea,
+                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, migratePosition),
+                migratePosition);
         }
 
         return directive;
@@ -975,88 +934,6 @@ public partial class GameServer
 
         strongerPosition = nearestStronger;
         weakerRival = nearestWeaker;
-    }
-
-    // 빈 캠프 재방문 제외 시간 — 캠프 리스폰(45초)보다 짧게 잡아 순회가 한 바퀴 돌면 돌아온다.
-    private const double SwarmBotEmptyCampSkipSeconds = 30d;
-
-    // 캠프 혼잡 판정 반경과 초과 인원당 실효 거리 배율 (#222 봇 뭉침 해소).
-    private const float SwarmBotCampCrowdRadius = 7f;
-    private const float SwarmBotCampCrowdPenaltyPerBot = 1.5f;
-
-    // 캠프 생사 판정 반경 — 리쉬(5.5) 안에 살아있는 몹이 없으면 그 캠프는 비어 있는 것이다.
-    private const float SwarmBotCampAliveCheckRange = 5.5f;
-
-
-    /// <summary>
-    ///     봇의 캠프 순례 목적지 — 정적 앵커(지도 지식)에서 가까운 순으로 고른다. 같은 구역
-    ///     캠프는 시야로 생사를 확인할 수 있고, 비어 있으면 스킵 표시 후 다음 후보로 넘어간다.
-    ///     다른 구역 캠프는 생사를 모르니 일단 걸어간다 — 도착 후 다음 틱에 같은 규칙으로 판정된다.
-    /// </summary>
-    private bool TryChooseSwarmBotCampTarget(
-        long matchingId, BotPlayerState bot, out AreaType campArea, out Vector3f campPosition)
-    {
-        DateTime nowUtc = DateTime.UtcNow;
-        var visibleAliveMonsters = _swarmMonsterDirector.GetVisualStates(matchingId)
-            .Where(monster => monster.IsAlive && monster.AreaType == bot.CurrentArea)
-            .ToList();
-
-        // 혼잡 페널티 (#222): 이미 다른 봇이 몰린 캠프는 실효 거리를 늘려 순위를 낮춘다.
-        // 1명까지는 경쟁 허용(선점 다툼도 재미), 2명째부터 뭉침으로 보고 흩어지게 한다.
-        var otherBotPositions = _botPlayerManager.GetBots(matchingId)
-            .Where(other => other.PlayerId != bot.PlayerId && !other.IsEliminated)
-            .Select(other => other.Position)
-            .ToList();
-
-        var anchors = GameMonsterCampData.GetAllAnchors()
-            .Where(anchor => !IsSwarmAreaOutside(matchingId, anchor.Area))
-            .Select(anchor => (anchor.Area, anchor.CampIndex,
-                World: BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, anchor.Cell)))
-            .OrderBy(anchor =>
-            {
-                float dx = anchor.World.X - bot.Position.X;
-                float dy = anchor.World.Y - bot.Position.Y;
-                int nearbyBots = otherBotPositions.Count(position =>
-                {
-                    float bx = position.X - anchor.World.X;
-                    float by = position.Y - anchor.World.Y;
-                    return bx * bx + by * by <=
-                           SwarmBotCampCrowdRadius * SwarmBotCampCrowdRadius;
-                });
-                return (dx * dx + dy * dy) *
-                       (1f + SwarmBotCampCrowdPenaltyPerBot * Math.Max(0, nearbyBots - 1));
-            });
-
-        foreach (var anchor in anchors)
-        {
-            var skipKey = (matchingId, bot.PlayerId, anchor.Area, anchor.CampIndex);
-            if (GetSwarmMatchRuntime(matchingId).BotTactics.CampSkipUntilUtc.TryGetValue(skipKey, out var skipUntil) && nowUtc < skipUntil)
-                continue;
-
-            if (anchor.Area == bot.CurrentArea)
-            {
-                bool campAlive = visibleAliveMonsters.Any(monster =>
-                {
-                    float dx = monster.PositionX - anchor.World.X;
-                    float dy = monster.PositionY - anchor.World.Y;
-                    return dx * dx + dy * dy <=
-                           SwarmBotCampAliveCheckRange * SwarmBotCampAliveCheckRange;
-                });
-                if (!campAlive)
-                {
-                    GetSwarmMatchRuntime(matchingId).BotTactics.CampSkipUntilUtc[skipKey] = nowUtc.AddSeconds(SwarmBotEmptyCampSkipSeconds);
-                    continue;
-                }
-            }
-
-            campArea = anchor.Area;
-            campPosition = anchor.World;
-            return true;
-        }
-
-        campArea = AreaType.None;
-        campPosition = bot.Position;
-        return false;
     }
 
     private bool HasSwarmMonsterInBasicRange(long matchingId, BotPlayerState bot)

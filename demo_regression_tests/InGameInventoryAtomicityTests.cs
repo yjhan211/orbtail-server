@@ -134,31 +134,6 @@ public sealed class InGameInventoryAtomicityTests
         Assert.Equal(1, manager.GetPlayerInventory(10, 100).GetItemCount(SunOrbT1));
     }
 
-    [Fact]
-    public void LegacyOrbMergeWithMissingMaterialPreservesDrawBeforeRejection()
-    {
-        InitializeBattleCombatData();
-        var manager = new InGameInventoryManager();
-        manager.Initialize();
-        manager.AddItem(matchingId: 10, playerId: 100, itemId: SunOrbT1);
-        var random = new CountingRandom();
-
-        bool combined = manager.TryCombineOrbsLegacy(
-            matchingId: 10,
-            playerId: 100,
-            SunOrbT1,
-            SunOrbT1,
-            random,
-            out int outputItemId,
-            out var changedItems);
-
-        Assert.False(combined);
-        Assert.NotEqual(0, outputItemId);
-        Assert.Empty(changedItems);
-        Assert.Equal(1, random.DrawCount);
-        Assert.Equal(1, manager.GetPlayerInventory(10, 100).GetItemCount(SunOrbT1));
-    }
-
     private static void InitializeBattleCombatData()
     {
         BattleItemCombatData.Initialize(CsvHelper.LoadCsv(Path.Combine(

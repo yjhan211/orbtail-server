@@ -175,22 +175,6 @@ public class PlayerInGameInventory(long matchingId)
     }
 
     /// <summary>
-    ///     Preserves the pre-match-runtime behavior where a valid orb pair can draw before a
-    ///     missing-material rejection. Only the matchingId-less legacy session path uses this.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.Synchronized)]
-    internal bool TryCombineOrbsLegacy(int inputA, int inputB, Random random,
-        out int outputItemId, out List<InGameItemInfo> changedItems)
-    {
-        outputItemId = 0;
-        changedItems = new List<InGameItemInfo>();
-        if (!OrbData.TryGetRandomMergeOutput(inputA, inputB, random, out outputItemId))
-            return false;
-
-        return TryCombineItems([inputA, inputB], outputItemId, out changedItems);
-    }
-
-    /// <summary>
     ///     Checks a matching recipe's materials, draws its outcome, and consumes the inputs under
     ///     one inventory monitor so a rejected combine cannot advance the supplied random stream.
     /// </summary>
@@ -439,22 +423,6 @@ public class InGameInventoryManager
     {
         var inventory = GetPlayerInventory(matchingId, playerId);
         bool result = inventory.TryCombineOrbs(inputA, inputB, random, out outputItemId, out changedItems);
-        if (result)
-            _logAction?.Invoke(
-                $"InGameInventoryManager: Random Survivor orb merge (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{inputA},{inputB}], Output={outputItemId})");
-        return result;
-    }
-
-    internal bool TryCombineOrbsLegacy(long matchingId, long playerId, int inputA, int inputB,
-        Random random, out int outputItemId, out List<InGameItemInfo> changedItems)
-    {
-        var inventory = GetPlayerInventory(matchingId, playerId);
-        bool result = inventory.TryCombineOrbsLegacy(
-            inputA,
-            inputB,
-            random,
-            out outputItemId,
-            out changedItems);
         if (result)
             _logAction?.Invoke(
                 $"InGameInventoryManager: Random Survivor orb merge (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{inputA},{inputB}], Output={outputItemId})");

@@ -7,8 +7,8 @@ namespace game_server.services;
 
 /// <summary>
 ///     #217 스웜 디렉터. 매치 수명은 기존 서바이버 로얄 흐름(탈락·최후 1인·타이머)이 소유하고,
-///     이 매니저는 잔상 스웜만 담당한다: 참가자별 패턴 스폰(구역 프로파일), 같은 구역 추적,
-///     접촉 피해, 개봉 소음 유인. 잔상은 공급이 아니라 회피해야 하는 압력이다.
+///     이 매니저는 잔상 스웜만 담당한다: 점유 구역 지속 공급(운동장 발원 침투), 주인 할당 추격,
+///     접촉 피해. 잔상은 공급이 아니라 회피해야 하는 압력이다.
 /// </summary>
 public sealed class SwarmMonsterDirector
 {
@@ -16,14 +16,6 @@ public sealed class SwarmMonsterDirector
     // 14초가 걸렸다. 해골 = T1 한 방(12) — 초반 파밍이 사격 몇 번으로 끝나야 SB "코인 몹"
     // 감각이 산다.
     public const int MonsterMaxHealth = SwarmMonsterArchetypeCatalog.DefaultMonsterMaxHealth;
-
-    // 실측(2026-08-05): 30 + 무적 0.6초 조합은 18초 생존으로 끝났다. 연속 접촉 기준
-    // 최소 사망 시간이 충분히 길도록 24 × 0.8초를 유지한다.
-    public const int ContactDamage = 24;
-
-    // 시작방 몹은 약하게: 봇 포함 8인 전원이 초반 2팩을 버티고 조우 지점까지 살아나가야
-    // 조우 구도가 성립한다. 위험 경사는 시작방(약) → 조우 지점·외곽(강)으로 유지.
-    public const int StartRoomContactDamage = 12;
 
     // 몬스터별 쿨다운만 있으면 무리에 겹칠 때 마릿수만큼 중첩 피격되어 1~2초 만에 죽는다.
     // 뱀서 표준대로 참가자 측 피격 무적을 둔다: 한 입은 아프게, 무리는 초당 몇 입만.
@@ -35,7 +27,8 @@ public sealed class SwarmMonsterDirector
     // 0.4 → 0.6 재조정 (사람 매치 2694 실측): 접촉 피해 상향과 겹쳐 과했다. 초당 1.1회 피격 ·
     // 피격당 오염 1~2로 오염이 초당 1.93씩 차, 4분이면 아무것도 안 해도 만충이었다.
     // 0.6이면 초당 상한 1.67회로 5분 매치 끝에 위험해지는 수준이 된다 — 수면으로 회복하면 산다.
-    public const float ContactImmunitySeconds = 0.6f;
+    public static float ContactImmunitySeconds =>
+        SwarmConfigData.GetFloat("SWARM_MONSTER_CONTACT_IMMUNITY_SECONDS", 0.6f);
 
     // 접촉 반경 = 보이는 몸통 (#229, 클라 실측): 해골 몸통 스프라이트는 폭 0.62 · 반폭 0.31인데
     // 판정은 전 종 고정 0.45였다 — 스프라이트보다 45% 큰 원이라 옆을 스쳐도 맞았다.
@@ -45,34 +38,15 @@ public sealed class SwarmMonsterDirector
     public const float ContactCooldownSeconds = SwarmMonsterArchetypeCatalog.DefaultContactCooldownSeconds;
     // 4.2 → 3.2(08-17 오후, "몹이 너무 빠르다") → 4.2 복구 (08-17 저녁 유저 결정: 몹이 달려들어
     // 부딪혀야 한다 — 숨쉬는 포위와 함께 내렸던 이속을 직진 추격 복귀와 함께 되돌린다).
-    public const float MonsterMoveSpeed = 4.2f;
-    public const float RingTelegraphSeconds = 1f;
-    public const float RushTelegraphSeconds = 1f;
-    public const float EncircleTelegraphSeconds = 1.5f;
-    public const int RingSpawnCount = 10;
-    public const int RushSpawnCount = 8;
-    public const int EncircleSpawnCount = 8;
-
-    // PvP 발당 데미지 배율 (#223 밸런싱): 전 발 적용(#222) 후 TTK가 너무 짧아
-    // 매치가 2:47에 전멸로 끝났다(매치 2401 — 첫 킬 42초, 사망 7건 전부 PvP).
-    // 몬스터전은 그대로 두고 PvP만 눌러 4분 타이머(잼 판정)까지 생존자가 남게 한다.
-    // 빈손 오염(데미지 ×17.5)도 이 배율을 자동으로 따른다.
-    public const float PvpDamageScale = 0.65f;
-
-    // 개봉 소음 유인 반경: 채집을 시작하면 같은 구역 이 반경의 잔상이 개봉자에게 몰린다.
-    public const float ExploreAttractRadius = 14f;
-
-    // #219 SB 클론 M1: 몹 개시권을 플레이어에게. 몹은 캠프에 고정되고, 근접하거나
-    // 맞았을 때만 리쉬 안에서 반격 추격하며, 리쉬를 벗어나면 캠프로 돌아가 잠든다.
-    // 방은 조용하고 위험은 선택이다 — 켜면 추적 스웜 디렉터(패턴 스폰)는 쉰다.
-    public static readonly bool CampModeEnabled = true;
+    public static float MonsterMoveSpeed => SwarmConfigData.GetFloat("SWARM_MONSTER_MOVE_SPEED", 4.2f);
 
     // #229 4단계 점유 구역 지속 웨이브: 공급지가 돌아다니던 #226 E 모델(무리 2회 → 이전)을
     // 퇴역하고, 플레이어가 서 있는 열린 구역마다 목표 개체 수를 유지한다. 오브는 쉬지 않고
     // 쏘고, 폐쇄가 진행될수록 웨이브가 두꺼워진다 — 몹 체력을 시간에 따라 올려(#226 E는
     // 고정이었다) 공격 강화가 "같은 웨이브를 더 빨리"가 아니라 "더 두꺼운 웨이브를 같은
     // 속도로" 치우는 것으로 체감되게 한다. 서버 부하는 전역 상한 48로 잡는다.
-    public static bool RegionSupplyModeEnabled = true;
+    // 캠프 모드(#219 SB 클론)·참가자별 패턴 스폰(#217)은 이 모델에 가려 사장됐고 #325에서 삭제했다 —
+    // 지역 공급이 유일한 경로다.
     // 폐쇄 단계별 웨이브 곡선 (#229 4단계 P0 확정). 접촉 피해는 원시 스탯이라
     // 참가자 피해 절반 배율(SwarmMonsterDamageTakenMultiplier)을 지난 값이 실효다.
     //
@@ -225,15 +199,12 @@ public sealed class SwarmMonsterDirector
     // 원거리 종(다트·볼러)은 사거리의 이 비율에서 멈춰 쏜다 — 근접 종만 몸으로 파고든다.
     private const float RangedHoldRangeRatio = 0.8f;
 
-    public const float CampAggroRadius = 2.5f;
-    // 리쉬는 봇 사격 대역(5~7)보다 짧게 — 추격이 빨리 끊겨야 카이팅 사이클이 성립한다.
-    public const float CampLeashRadius = 5.5f;
+    // 잠든 몹이 깨어나는 근접 반경 — 주인 할당 추격의 개전 거리이자 남의 몹 근접 난입 반경.
+    public static float CampAggroRadius => SwarmConfigData.GetFloat("SWARM_MONSTER_AGGRO_RADIUS", 2.5f);
+    // 구역당 공급 앵커 수 (monster_camp_anchor.csv 캠프 인덱스 0~2와 같은 자리).
     private const int CampsPerArea = 3;
-    // 스폰 셀(방 중앙)과 캠프 사이 안전 이격 — 스폰 포켓은 SB처럼 비워 둔다.
+    // 절차 폴백 앵커의 방 중심 이격 — 스폰 포켓은 비워 둔다.
     private const float CampAnchorRadius = 6f;
-    private const float CampScatterRadius = 1.2f;
-    private const double CampRespawnSeconds = 45d;
-    private const float CampReturnArriveDistance = 0.4f;
 
     // ===== 침투 (#229) =====
     // 웨이브는 구역 안에서 솟지 않는다. 운동장(최종 폐쇄 구역) 중심에서 태어나 배정 구역까지
@@ -287,11 +258,11 @@ public sealed class SwarmMonsterDirector
     // 해골: 무해한 코인 파밍 무리. 다트: 접촉 단발(부츠 드롭). 탈주: 접촉 강펀치 브루저.
     // 볼러: 접촉 범위 강타. 일반 몹 원거리 타격은 퇴역 (2026-08-24 유저 지시: 몹 외형이 전부
     // 근거리라 서서 때리는 원거리가 이상해 보임) — 원거리는 고정 포대인 보스만 남는다.
-    public const float BowlerSplashRadius = 1.5f;
+    public static float BowlerSplashRadius => SwarmConfigData.GetFloat("SWARM_MONSTER_BOWLER_SPLASH_RADIUS", 1.5f);
 
     // 파도 문양 몹: 접촉 강타가 주변까지 튄다 — 보드의 파도 오브(물폭탄 스플래시)와 같은 문법.
     // 원거리 유지 사거리(3.2)는 2026-08-24 원거리 퇴역과 함께 제거 — 문양의 정체는 스플래시가 진다.
-    public const float WavePatternSplashRadius = 2.2f;
+    public static float WavePatternSplashRadius => SwarmConfigData.GetFloat("SWARM_MONSTER_WAVE_SPLASH_RADIUS", 2.2f);
     private const float WavePatternAttackCooldownSeconds = 2.2f;
 
     /// <summary>파도 문양(Encircle 패턴) 몹인가 — 표기 문양과 공격 방식이 같은 근거를 쓴다.</summary>
@@ -341,38 +312,15 @@ public sealed class SwarmMonsterDirector
         }
     }
 
-    /// <summary>
-    ///     보스 상주 구역 (#223): 중간 지대 캠프 0번이 보스 단독 캠프가 된다.
-    ///     School 맵의 실존 중간 지대는 3곳뿐 — 북 밴드(정크장)·남 밴드(회랑)·운동장.
-    ///     트리 자이언트(열쇠)는 운동장 — 광산(150초 개장)과 같은 무대의 선주민 수호자.
-    /// </summary>
-    private static bool TryGetBossKind(AreaType area, out SwarmMonsterKind kind)
-    {
-        return SwarmMonsterArchetypeCatalog.TryGetResidentBoss(area, out kind);
-    }
-
     private const int FirstMonsterId = 7_000_000;
     private const long FirstCombatTargetId = -4_000_000_000_000_000_000L;
-    private const float RingRadius = 9f;
-    private const float RushDistance = 11f;
-    private const float RushLateralSpread = 1.6f;
-    private const float EncircleRadius = 4.5f;
-    private const float RetargetStickinessSquared = 1.5625f;
     // 아이소 월드 스케일에서 방의 세로 폭은 ~2.5유닛에 불과하다. 이동 목표가 방을
     // 벗어나면 구역 클램프로 제자리 회귀해 봇이 서 있는 것처럼 보인다 — 짧게 잡는다.
-    // 캠프 모드: 위험 반경 5 / 사격 대역 5~7 — 깨어난 몹이 5에 오면 물러나고,
-    // 리쉬(5.5)가 곧 추격을 끊어 다시 설 자리가 생긴다.
+    // 위험 반경 5 / 사격 대역 5~7 — 깨어난 몹이 5에 오면 물러난다.
     private const float BotDangerRadius = 5f;
     private const float BotFleeDistance = 5f;
     private const float BotRoamDistance = 3f;
-    private const double FirstPatternDelaySeconds = 3d;
-    private const double StartRoomFirstPatternDelaySeconds = 1.5d;
-    private const double StartRoomSecondPackDelaySeconds = 11.5d;
-    private const int StartRoomPackLimit = 2;
     private const double DeadPruneAfterSeconds = 3d;
-
-    private static readonly HashSet<AreaType> StartRooms =
-        MatchSpawnData.GetPhaseRoomCandidates().ToHashSet();
 
     // M4 격화: 폐쇄 웨이브와 동기화된 시간 단계. 접촉 데미지는 올리지 않는다 —
     // TTK가 아니라 밀도·페이스·이속만 조인다 (결정 브리프 2026-08-06).
@@ -441,27 +389,6 @@ public sealed class SwarmMonsterDirector
         return _matches.TryAdd(matchingId, state);
     }
 
-    /// <summary>
-    ///     구역별 스웜 프로파일 (#217 8인 맵 역할). 시작방은 저위험 성장, 복도는 무스폰
-    ///     이동·조우 통로, 운동장은 수렴점, 그 외 대형 공간은 고위험 성장로다.
-    /// </summary>
-    private static (int DensityCap, double IntervalSeconds) GetAreaProfile(AreaType area)
-    {
-        // SB 클론(캠프 모드): 균질 밀도 — 회랑 밴드(테라스=Corridor)에도 캠프가 선다.
-        // 원본 맵의 링·광장 주변에도 몹 수풀이 고르게 깔려 있다 (역기획서 철학 ④).
-        // #272 School2: 복도(연결로 1~8)는 무스폰 통로 — 병합된 가운데(S2Corridor9)는
-        // 운동장 프로파일(아래 Config 그라운드 분기)을 탄다.
-        if (area >= AreaType.S2Corridor1 && area <= AreaType.S2Corridor8)
-            return CampModeEnabled ? (12, 9d) : (0, 0d);
-        if (area == Config.SWARM_MATCH_GROUND_AREA)
-            return (14, 9d);
-        // 시작방은 정확히 2팩(개전 1.5초 + 약 13초)만 주고 완전히 마른다 — 방은 유한
-        // 콘텐츠고, 두 팩(약 18킬 = 18석)이면 방 스팟 2개를 열고 떠날 여비까지 나온다.
-        if (StartRooms.Contains(area))
-            return (12, StartRoomSecondPackDelaySeconds);
-        return (16, 7d);
-    }
-
     public SwarmArenaTickResult Tick(
         long matchingId,
         IReadOnlyCollection<SpotArenaPlayerSpatial> participants,
@@ -486,26 +413,10 @@ public sealed class SwarmMonsterDirector
                 ? deltaSeconds * EscalationStage2MoveSpeedMultiplier
                 : deltaSeconds;
 
-            // 몹 스폰 끄기 (DEV_NO_MONSTERS=1, 2026-08-18 촬영용): 공급·캠프·레거시 어느 경로도 세우지 않는다.
+            // 몹 스폰 끄기 (DEV_NO_MONSTERS=1, 2026-08-18 촬영용): 공급 경로를 세우지 않는다.
             // 봇·전투·폐쇄는 그대로 돈다 — 잔상 없는 판이 필요할 때(영상·PvP만 검증) 쓴다.
-            if (!MonsterSpawnEnabled)
-            {
-                // 아무것도 안 함
-            }
-            else if (RegionSupplyModeEnabled)
-            {
+            if (MonsterSpawnEnabled)
                 ProcessRegionSupply(state, now, result);
-            }
-            else if (CampModeEnabled)
-            {
-                foreach (var participant in state.LastParticipants)
-                    EnsureAreaCamps(state, participant.Area, now, result);
-            }
-            else
-            {
-                foreach (var participant in state.LastParticipants)
-                    SpawnDueParticipantPattern(state, participant, now, result);
-            }
 
             int probeAlive = 0, probeAggro = 0, probeChasing = 0, probeSameArea = 0, probeCooldown = 0;
             int probeInRange = 0, probeImmuneBlocked = 0, probeWithinOne = 0;
@@ -516,28 +427,14 @@ public sealed class SwarmMonsterDirector
                 if (!monster.Alive || now < monster.ActivatesAtUtc)
                     continue;
 
-                if (RegionSupplyModeEnabled)
-                {
-                    UpdateSupplyMonsterMovement(
-                        state, monster, state.LastParticipants, now, moveDeltaSeconds, preMatch,
-                        playerId => IsOrbless(state.MatchingId, playerId));
-                    // 벽 탈출 안전망 (2026-08-16 유저 제보: 운동장에 벽에 낀 몹이 많다).
-                    // 스폰·행군·추격 어느 경로로 들어갔든, 비보행 칸에 선 개체는 매 틱
-                    // 보행 가능한 자리로 당긴다 — 원인을 하나 놓쳐도 화면에는 남지 않는다.
-                    RescueMonsterFromBlockedCell(monster);
-                    TrackStuckMonster(monster, now, result);
-                }
-                else if (CampModeEnabled)
-                {
-                    // 잠든 몹도 접촉 판정은 받는다 — 걸어 들어와 부딪히면 그게 개전이다.
-                    UpdateCampMonsterMovement(monster, state.LastParticipants, moveDeltaSeconds);
-                }
-                else
-                {
-                    if (!TryResolveChaseTarget(monster, state.LastParticipants, out var chaseTarget))
-                        continue;
-                    MoveTowardPlayer(monster, chaseTarget.Position, moveDeltaSeconds);
-                }
+                UpdateSupplyMonsterMovement(
+                    state, monster, state.LastParticipants, now, moveDeltaSeconds, preMatch,
+                    playerId => IsOrbless(state.MatchingId, playerId));
+                // 벽 탈출 안전망 (2026-08-16 유저 제보: 운동장에 벽에 낀 몹이 많다).
+                // 스폰·행군·추격 어느 경로로 들어갔든, 비보행 칸에 선 개체는 매 틱
+                // 보행 가능한 자리로 당긴다 — 원인을 하나 놓쳐도 화면에는 남지 않는다.
+                RescueMonsterFromBlockedCell(monster);
+                TrackStuckMonster(monster, now, result);
 
                 probeAlive++;
                 if (monster.Aggro) probeAggro++;
@@ -597,12 +494,9 @@ public sealed class SwarmMonsterDirector
                     monster.NextContactAtUtc = now.AddSeconds(monster.AttackCooldownValue);
                     state.ContactImmuneUntilUtc[participant.PlayerId] =
                         now.AddSeconds(ContactImmunitySeconds);
-                    if (CampModeEnabled || RegionSupplyModeEnabled)
-                    {
-                        // 부딪힘도 개전이다 — 맞은 캠프·공급 몹이 깨어난다.
-                        monster.Aggro = true;
-                        monster.ChaseTargetPlayerId = participant.PlayerId;
-                    }
+                    // 부딪힘도 개전이다 — 맞은 공급 몹이 깨어난다.
+                    monster.Aggro = true;
+                    monster.ChaseTargetPlayerId = participant.PlayerId;
                     if (participant.PlayerId == state.HumanPlayerId)
                     {
                         state.HitsTaken++;
@@ -671,55 +565,6 @@ public sealed class SwarmMonsterDirector
     }
 
     /// <summary>
-    ///     가장 가까운 같은 구역 참가자를 쫓되, 기존 목표가 최근접의 1.25배 거리 안이면 유지한다.
-    ///     같은 구역에 아무도 없으면 그 자리에 서서 구역 위험물로 남는다.
-    /// </summary>
-    private static bool TryResolveChaseTarget(
-        MonsterRuntime monster,
-        IReadOnlyList<SpotArenaPlayerSpatial> participants,
-        out SpotArenaPlayerSpatial target)
-    {
-        target = default;
-        int nearestIndex = -1;
-        float nearestSquared = float.MaxValue;
-        int currentIndex = -1;
-        float currentSquared = float.MaxValue;
-        for (int index = 0; index < participants.Count; index++)
-        {
-            var participant = participants[index];
-            if (participant.Area != monster.Area)
-                continue;
-            float dx = participant.Position.X - monster.Position.X;
-            float dy = participant.Position.Y - monster.Position.Y;
-            float distanceSquared = dx * dx + dy * dy;
-            if (distanceSquared < nearestSquared)
-            {
-                nearestSquared = distanceSquared;
-                nearestIndex = index;
-            }
-
-            if (participant.PlayerId == monster.ChaseTargetPlayerId)
-            {
-                currentIndex = index;
-                currentSquared = distanceSquared;
-            }
-        }
-
-        if (nearestIndex < 0)
-            return false;
-
-        if (currentIndex >= 0 && currentSquared <= nearestSquared * RetargetStickinessSquared)
-        {
-            target = participants[currentIndex];
-            return true;
-        }
-
-        target = participants[nearestIndex];
-        monster.ChaseTargetPlayerId = target.PlayerId;
-        return true;
-    }
-
-    /// <summary>
     ///     착탄 예약 (#229 과잉 사격 방지). 발사 시점에 피해를 미리 물려 두고 정산 때 푼다.
     ///     예약분만으로 이미 죽는 몹은 GetCombatTargets가 후보에서 빼므로, 다음 오브는 아직
     ///     살아남을 몹을 고른다. 화력이 곧 처치 수가 된다.
@@ -778,7 +623,6 @@ public sealed class SwarmMonsterDirector
             if (monster is not { Alive: true })
                 return SwarmArenaDamageResult.None;
 
-            if (RegionSupplyModeEnabled)
             {
                 // 반격 개전: 맞은 몹과 같은 구역 무리 전체가 함께 깨어난다 — 무리는 한 덩어리다.
                 // 다만 주인이 있는 개체는 표적을 넘기지 않는다 (2026-08-16): 오브는 사거리 안
@@ -796,21 +640,6 @@ public sealed class SwarmMonsterDirector
                         mate.ChaseTargetPlayerId = attackerPlayerId;
                 }
             }
-            else if (CampModeEnabled)
-            {
-                // 반격 개전: 맞은 몹과 같은 캠프 동료가 함께 깨어난다.
-                monster.Aggro = true;
-                monster.ChaseTargetPlayerId = attackerPlayerId;
-                foreach (var mate in state.Monsters.Values)
-                {
-                    if (!mate.Alive || mate.Aggro ||
-                        mate.Area != monster.Area || mate.CampIndex != monster.CampIndex)
-                        continue;
-                    mate.Aggro = true;
-                    mate.ChaseTargetPlayerId = attackerPlayerId;
-                }
-            }
-
             monster.Health = Math.Max(0, monster.Health - damage);
             bool killed = monster.Health == 0;
             var monsterInfo = monster.ToMonsterRuntimeInfo();
@@ -832,44 +661,6 @@ public sealed class SwarmMonsterDirector
                 monster.HeartReward, monster.BootsReward, monster.KeyReward, monster.Kind,
                 AliveSeconds: killed ? (monster.DiedAtUtc - monster.SpawnedAtUtc).TotalSeconds : 0d,
                 AttackEventCount: monster.AttackEventCount);
-        }
-    }
-
-    /// <summary>개봉 소음: 같은 구역 반경 안 잔상이 개봉자를 새 추적 목표로 삼는다.</summary>
-    public void AttractSwarm(long matchingId, long playerId)
-    {
-        // SB 클론: 개봉은 몹을 부르지 않는다 — 개봉의 리스크는 다른 플레이어다.
-        // 지역 공급 모드도 동일 — 몹은 찾아가는 자원이지 배달되는 압박이 아니다.
-        if (CampModeEnabled || RegionSupplyModeEnabled)
-            return;
-        if (!_matches.TryGetValue(matchingId, out var state))
-            return;
-        lock (state.SyncRoot)
-        {
-            bool found = false;
-            var opener = default(SpotArenaPlayerSpatial);
-            foreach (var participant in state.LastParticipants)
-            {
-                if (participant.PlayerId != playerId)
-                    continue;
-                found = true;
-                opener = participant;
-                break;
-            }
-
-            if (!found)
-                return;
-
-            foreach (var monster in state.Monsters.Values)
-            {
-                if (!monster.Alive || monster.Area != opener.Area)
-                    continue;
-                float dx = monster.Position.X - opener.Position.X;
-                float dy = monster.Position.Y - opener.Position.Y;
-                if (dx * dx + dy * dy > ExploreAttractRadius * ExploreAttractRadius)
-                    continue;
-                monster.ChaseTargetPlayerId = playerId;
-            }
         }
     }
 
@@ -905,8 +696,8 @@ public sealed class SwarmMonsterDirector
             {
                 if (!monster.Alive || now < monster.ActivatesAtUtc || monster.Area != bot.Area)
                     continue;
-                // 캠프·지역 공급 모드: 잠든 몹은 위험이 아니다 — 깨어난(어그로) 몹만 피한다.
-                if ((CampModeEnabled || RegionSupplyModeEnabled) && !monster.Aggro)
+                // 잠든 몹은 위험이 아니다 — 깨어난(어그로) 몹만 피한다.
+                if (!monster.Aggro)
                     continue;
                 float dx = monster.Position.X - bot.Position.X;
                 float dy = monster.Position.Y - bot.Position.Y;
@@ -1094,187 +885,6 @@ public sealed class SwarmMonsterDirector
     public void RemoveMatching(long matchingId) => _matches.TryRemove(matchingId, out _);
 
     /// <summary>
-    ///     구역 캠프 충원: 최초 진입 시 캠프를 세우고, 전멸한 캠프는 대기 후 되살린다.
-    ///     몹은 앵커에 잠든 채 서 있다 — 방은 조용하고, 위험은 선택이다.
-    /// </summary>
-    private void EnsureAreaCamps(MatchState state, AreaType area, DateTime now, SwarmArenaTickResult result)
-    {
-        var (densityCap, _) = GetAreaProfile(area);
-        if (densityCap <= 0)
-            return;
-        if (IsAreaClosedResolver?.Invoke(state.MatchingId, area) == true)
-            return;
-
-        if (state.CampInitializedAreas.Add(area))
-        {
-            for (int campIndex = 0; campIndex < CampsPerArea; campIndex++)
-                SpawnCamp(state, area, campIndex, now, result);
-            return;
-        }
-
-        for (int campIndex = 0; campIndex < CampsPerArea; campIndex++)
-        {
-            bool anyAlive = false;
-            foreach (var monster in state.Monsters.Values)
-            {
-                if (monster.Alive && monster.Area == area && monster.CampIndex == campIndex)
-                {
-                    anyAlive = true;
-                    break;
-                }
-            }
-
-            if (anyAlive)
-            {
-                state.CampRespawnAtUtc.Remove((area, campIndex));
-                continue;
-            }
-
-            // 보스는 리스폰하지 않는다 (#223): 11석+7잼 드롭이 45초마다 돌면 경제가 터진다.
-            if (!StartRooms.Contains(area) && campIndex == 0 && TryGetBossKind(area, out _))
-                continue;
-
-            if (!state.CampRespawnAtUtc.TryGetValue((area, campIndex), out var respawnAtUtc))
-            {
-                state.CampRespawnAtUtc[(area, campIndex)] = now.AddSeconds(CampRespawnSeconds);
-                continue;
-            }
-
-            if (now < respawnAtUtc)
-                continue;
-            state.CampRespawnAtUtc.Remove((area, campIndex));
-            SpawnCamp(state, area, campIndex, now, result);
-        }
-    }
-
-    // 임시(비주얼 확인): 전 캠프를 고블린 2종만으로 스폰한다. 확인 끝나면 false로 복원.
-    // 테스트는 정규 편성을 검증하므로 생성자에서 끈다.
-    public static bool GoblinOnlySpawnForVisualCheck = false;
-
-    /// <summary>
-    ///     캠프 편성 (SB 배치 문법): 밴드·광장은 "다리 위 해골 3마리" — 전 캠프 해골 무리.
-    ///     포드 방은 해골 무리 1캠프 + 다트 고블린 1기 + (탈주 고블린 | 볼러) 1기.
-    /// </summary>
-    private static SwarmMonsterKind[] GetCampComposition(MatchState state, AreaType area, int campIndex)
-    {
-        if (GoblinOnlySpawnForVisualCheck)
-        {
-            return campIndex switch
-            {
-                0 => [SwarmMonsterKind.DartGoblin, SwarmMonsterKind.DartGoblin, SwarmMonsterKind.DartGoblin],
-                1 => [SwarmMonsterKind.DartGoblin],
-                _ => [SwarmMonsterKind.RunawayGoblin]
-            };
-        }
-
-        if (!StartRooms.Contains(area))
-        {
-            // 보스 구역 (#223): 캠프 0번 = 보스 단독. 나머지 캠프는 해골 무리 유지.
-            if (campIndex == 0 && TryGetBossKind(area, out var bossKind))
-                return [bossKind];
-            return [SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton];
-        }
-
-        if (campIndex == 0)
-            return [SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton, SwarmMonsterKind.Skeleton];
-        if (campIndex == 1)
-            return [SwarmMonsterKind.DartGoblin];
-        return state.Rng.NextDouble() < 0.5d
-            ? [SwarmMonsterKind.RunawayGoblin]
-            : [SwarmMonsterKind.Bowler];
-    }
-
-    private static void SpawnCamp(
-        MatchState state, AreaType area, int campIndex, DateTime now, SwarmArenaTickResult result)
-    {
-        var center = BotPlayerManager.CellToWorldPosition(
-            Config.SWARM_MATCH_MAP, GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, area));
-        Vector3f campAnchor;
-        var customAnchorCell = GameMonsterCampData.GetAnchor(area, campIndex);
-        if (customAnchorCell != null)
-        {
-            // 커스텀 앵커 (#219): monster_camp_anchor.csv가 지정한 셀. 지터 없이 고정 —
-            // 저작한 위치가 곧 실배치다. walkable 클램프만 안전망으로 유지한다.
-            campAnchor = ClampToAreaWalkable(
-                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, customAnchorCell), center, area);
-        }
-        else
-        {
-            float campAngle = (float)(campIndex * Math.PI * 2d / CampsPerArea) +
-                              (float)(state.Rng.NextDouble() * 0.6d - 0.3d);
-            campAnchor = ClampToAreaWalkable(new Vector3f(
-                center.X + MathF.Cos(campAngle) * CampAnchorRadius,
-                center.Y + MathF.Sin(campAngle) * CampAnchorRadius,
-                0f), center, area);
-        }
-
-        // #272 경계 토출 스폰 (2026-08-26 유저 결정, 같은 날 2차 "안전 구역 예외 제거"): 캠프는
-        // 항상 바깥(자기장이 올 방향)에서 태어나 안쪽 앵커로 걸어 들어온다 — 경계 관통 중이면
-        // 빨간 띠, 아직 안전한 구역이면 그 구역의 가장 바깥 띠. 저작 앵커는 자기장 모드 밖(리졸버
-        // 미주입·null)에서만 쓴다. 오염이 잔상을 토해내는 그림 — 사냥터가 바깥 쪽이라 위험·보상이 겹친다.
-        Vector3f? fieldHomeAnchor = null;
-        var fieldSpawn = FieldSpawnCellResolver?.Invoke(state.MatchingId, area);
-        if (fieldSpawn != null)
-        {
-            campAnchor = ClampToAreaWalkable(
-                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Spawn), center, area);
-            fieldHomeAnchor = ClampToAreaWalkable(
-                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldSpawn.Value.Anchor), center, area);
-        }
-
-        // 캠프별 오브 색 유지 — 처치 보상 색이 캠프 단위로 읽힌다.
-        var pattern = (SwarmPattern)(campIndex % 3);
-        var kinds = GetCampComposition(state, area, campIndex);
-        for (int index = 0; index < kinds.Length; index++)
-        {
-            float angle = (float)(index * Math.PI * 2d / kinds.Length) +
-                          (float)(state.Rng.NextDouble() * 0.5d - 0.25d);
-            var position = ClampToAreaWalkable(new Vector3f(
-                campAnchor.X + MathF.Cos(angle) * CampScatterRadius,
-                campAnchor.Y + MathF.Sin(angle) * CampScatterRadius,
-                0f), campAnchor, area);
-
-            var stats = GetKindStats(kinds[index]);
-            // 첫 캠프 경제 (#223): 시작방 첫 캠프(해골 3)는 마리당 2석 — 클리어 즉시
-            // 첫 상자(비용 5)가 열린다. 1석 몹 5마리 노가다(첫 소환 36초, 매치 2402)의 수리.
-            int stoneReward = stats.StoneReward;
-            if (campIndex == 0 && kinds[index] == SwarmMonsterKind.Skeleton && StartRooms.Contains(area))
-                stoneReward = 2;
-            int serial = state.NextSerial++;
-            var monster = new MonsterRuntime
-            {
-                MonsterId = FirstMonsterId + serial,
-                CombatTargetId = FirstCombatTargetId - serial,
-                Pattern = pattern,
-                Area = area,
-                HomeArea = area,
-                Position = position,
-                Health = stats.MaxHp,
-                Alive = true,
-                ActivatesAtUtc = now,
-                SpawnedAtUtc = now,
-                NextContactAtUtc = now,
-                ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
-                SummonStoneReward = stoneReward,
-                HeartReward = stats.HeartReward,
-                BootsReward = stats.BootsReward,
-                KeyReward = stats.KeyReward,
-                ContactDamageValue = stats.OrbDamage,
-                Kind = kinds[index],
-                MaxHealthValue = stats.MaxHp,
-                AttackRangeValue = stats.AttackRange,
-                AttackCooldownValue = stats.AttackCooldownSeconds,
-                CampIndex = campIndex,
-                // 경계 토출이면 앵커는 경계 안쪽 — 구역이 비어 있으면 이 앵커로 걸어 들어온다.
-                AnchorX = fieldHomeAnchor != null ? fieldHomeAnchor.X : position.X,
-                AnchorY = fieldHomeAnchor != null ? fieldHomeAnchor.Y : position.Y
-            };
-            state.Monsters[monster.MonsterId] = monster;
-            result.SpawnedMonsters.Add(monster.ToMonsterRuntimeInfo());
-        }
-    }
-
-    /// <summary>
     ///     같은 구역 참가자에게 직선이 뚫려 있는가 — 뚫렸으면 경로를 탈 이유가 없다.
     ///     가장 가까운 한 명만 본다. 전 인원을 훑으면 몹 수백 마리에서 비용이 터진다.
     /// </summary>
@@ -1382,80 +992,6 @@ public sealed class SwarmMonsterDirector
         }
 
         return false;
-    }
-
-    /// <summary>
-    ///     캠프 몹 이동: 잠듦 → (근접·피격·접촉) 어그로 → 리쉬 안 추격 → 이탈 시 앵커 귀환.
-    /// </summary>
-    private static void UpdateCampMonsterMovement(
-        MonsterRuntime monster,
-        IReadOnlyList<SpotArenaPlayerSpatial> participants,
-        double deltaSeconds)
-    {
-        if (!monster.Aggro && !HasParticipantWithinAggro(monster, participants))
-            return;
-
-        // 보스는 고정 포대 (#223): 추격도 귀환도 없다 — 어그로만 켜지고 제자리에서 쏜다.
-        if (IsBossKind(monster.Kind))
-            return;
-
-        // 추격 대상: 어그로 대상 우선, 구역을 떠났으면 같은 구역 최근접.
-        bool found = false;
-        var target = default(SpotArenaPlayerSpatial);
-        float nearestSquared = float.MaxValue;
-        for (int index = 0; index < participants.Count; index++)
-        {
-            var participant = participants[index];
-            if (participant.Area != monster.Area)
-                continue;
-            if (participant.PlayerId == monster.ChaseTargetPlayerId)
-            {
-                target = participant;
-                found = true;
-                break;
-            }
-
-            float dx = participant.Position.X - monster.Position.X;
-            float dy = participant.Position.Y - monster.Position.Y;
-            float distanceSquared = dx * dx + dy * dy;
-            if (distanceSquared < nearestSquared)
-            {
-                nearestSquared = distanceSquared;
-                target = participant;
-                found = true;
-            }
-        }
-
-        // 대상이 없거나 리쉬(앵커 기준) 밖이면 귀환 — 도주는 언제나 성립한다.
-        // 공급 몹에는 앵커 리쉬가 없다 (#229 침투): 걸어 들어온 개체가 5.5m 줄에 묶이면 구역
-        // 어디에 서든 마주치는 수가 앵커 하나 분량으로 고정돼, 화력을 올려도 잡을 게 늘지 않는다.
-        // 구역 경계가 리쉬다 — 위 루프가 이미 같은 구역 참가자만 후보로 본다.
-        bool returnToAnchor = !found;
-        if (found && !monster.IsSupplyUnit)
-        {
-            float leashDx = target.Position.X - monster.AnchorX;
-            float leashDy = target.Position.Y - monster.AnchorY;
-            returnToAnchor = leashDx * leashDx + leashDy * leashDy > CampLeashRadius * CampLeashRadius;
-        }
-
-        if (returnToAnchor)
-        {
-            var anchor = new Vector3f(monster.AnchorX, monster.AnchorY, 0f);
-            float homeDx = anchor.X - monster.Position.X;
-            float homeDy = anchor.Y - monster.Position.Y;
-            if (homeDx * homeDx + homeDy * homeDy <= CampReturnArriveDistance * CampReturnArriveDistance)
-            {
-                monster.Aggro = false;
-                monster.ChaseTargetPlayerId = 0;
-                return;
-            }
-
-            MoveTowardPlayer(monster, anchor, deltaSeconds);
-            return;
-        }
-
-        // 캠프(레거시)는 포위 없이 직진 — 잠깨는 순간의 접촉 리듬(무적창 테스트)이 이 직진에 기댄다.
-        MoveTowardPlayer(monster, target.Position, deltaSeconds);
     }
 
     /// <summary>
@@ -1666,7 +1202,7 @@ public sealed class SwarmMonsterDirector
     private static int ConsumeSupplyStoneBudget(MatchState state, MonsterRuntime monster, DateTime now)
     {
         int reward = monster.SummonStoneReward;
-        if (!RegionSupplyModeEnabled || reward <= 0)
+        if (reward <= 0)
             return reward;
 
         int phaseIndex = GetSupplyPhaseIndex((now - state.StartsAtUtc).TotalSeconds);
@@ -2653,176 +2189,6 @@ public sealed class SwarmMonsterDirector
         MoveTowardPlayer(monster, target.Position, deltaSeconds);
     }
 
-    private void SpawnDueParticipantPattern(
-        MatchState state,
-        SpotArenaPlayerSpatial participant,
-        DateTime now,
-        SwarmArenaTickResult result)
-    {
-        var (densityCap, intervalSeconds) = GetAreaProfile(participant.Area);
-        if (densityCap <= 0)
-            return;
-
-        // 폐쇄 구역은 신규 스폰 정지 — 잔존 몹은 ReclaimStrandedMonsters가 걷어낸다.
-        if (IsAreaClosedResolver?.Invoke(state.MatchingId, participant.Area) == true)
-            return;
-
-        int escalationStage = GetEscalationStage((now - state.StartsAtUtc).TotalSeconds);
-        if (escalationStage == 1)
-        {
-            densityCap += 2;
-            intervalSeconds *= 0.85d;
-        }
-        else if (escalationStage >= 2)
-        {
-            densityCap += 4;
-            intervalSeconds *= 0.7d;
-        }
-
-        if (!state.PatternSchedules.TryGetValue(participant.PlayerId, out var schedule))
-        {
-            // 시작방의 선지급 무리는 거의 즉시 — 첫 전투가 개전과 함께 시작된다.
-            double firstDelay = StartRooms.Contains(participant.Area)
-                ? StartRoomFirstPatternDelaySeconds
-                : FirstPatternDelaySeconds;
-            schedule = new PatternSchedule
-            {
-                NextPatternAtUtc = now.AddSeconds(firstDelay)
-            };
-            state.PatternSchedules[participant.PlayerId] = schedule;
-        }
-
-        if (now < schedule.NextPatternAtUtc)
-            return;
-
-        bool inStartRoom = StartRooms.Contains(participant.Area);
-        if (inStartRoom && schedule.StartRoomPacksSpawned >= StartRoomPackLimit)
-            return;
-
-        schedule.NextPatternAtUtc = now.AddSeconds(intervalSeconds);
-        if (inStartRoom)
-            schedule.StartRoomPacksSpawned++;
-
-        int aliveInArea = state.Monsters.Values.Count(monster =>
-            monster.Alive && monster.Area == participant.Area);
-        if (aliveInArea >= densityCap)
-            return;
-
-        int budget = densityCap - aliveInArea;
-        var pattern = schedule.NextPattern;
-        schedule.NextPattern = (SwarmPattern)(((int)pattern + 1) % 3);
-        switch (pattern)
-        {
-            case SwarmPattern.Ring:
-                SpawnRing(state, participant, now, Math.Min(budget, RingSpawnCount), result);
-                break;
-            case SwarmPattern.Rush:
-                SpawnRush(state, participant, now, Math.Min(budget, RushSpawnCount), result);
-                break;
-            default:
-                SpawnEncircle(state, participant, now, Math.Min(budget, EncircleSpawnCount), result);
-                break;
-        }
-    }
-
-    private static void SpawnRing(
-        MatchState state,
-        SpotArenaPlayerSpatial anchor,
-        DateTime now,
-        int count,
-        SwarmArenaTickResult result)
-    {
-        for (int index = 0; index < count; index++)
-        {
-            float angle = (float)(index * Math.PI * 2d / count) +
-                          (float)(state.Rng.NextDouble() * 0.4d - 0.2d);
-            var position = new Vector3f(
-                anchor.Position.X + MathF.Cos(angle) * RingRadius,
-                anchor.Position.Y + MathF.Sin(angle) * RingRadius,
-                0f);
-            SpawnMonster(state, anchor, position, now, RingTelegraphSeconds, SwarmPattern.Ring, result);
-        }
-    }
-
-    private static void SpawnRush(
-        MatchState state,
-        SpotArenaPlayerSpatial anchor,
-        DateTime now,
-        int count,
-        SwarmArenaTickResult result)
-    {
-        float direction = (float)(state.Rng.NextDouble() * Math.PI * 2d);
-        float lateralX = -MathF.Sin(direction);
-        float lateralY = MathF.Cos(direction);
-        for (int index = 0; index < count; index++)
-        {
-            float lateral = (index - (count - 1) * 0.5f) * RushLateralSpread;
-            float depth = (float)(state.Rng.NextDouble() * 2d);
-            var position = new Vector3f(
-                anchor.Position.X + MathF.Cos(direction) * (RushDistance + depth) + lateralX * lateral,
-                anchor.Position.Y + MathF.Sin(direction) * (RushDistance + depth) + lateralY * lateral,
-                0f);
-            SpawnMonster(state, anchor, position, now, RushTelegraphSeconds, SwarmPattern.Rush, result);
-        }
-    }
-
-    private static void SpawnEncircle(
-        MatchState state,
-        SpotArenaPlayerSpatial anchor,
-        DateTime now,
-        int count,
-        SwarmArenaTickResult result)
-    {
-        for (int index = 0; index < count; index++)
-        {
-            float angle = (float)(index * Math.PI * 2d / count);
-            var position = new Vector3f(
-                anchor.Position.X + MathF.Cos(angle) * EncircleRadius,
-                anchor.Position.Y + MathF.Sin(angle) * EncircleRadius,
-                0f);
-            SpawnMonster(state, anchor, position, now, EncircleTelegraphSeconds, SwarmPattern.Encircle, result);
-        }
-    }
-
-    private static void SpawnMonster(
-        MatchState state,
-        SpotArenaPlayerSpatial anchor,
-        Vector3f position,
-        DateTime now,
-        float telegraphSeconds,
-        SwarmPattern pattern,
-        SwarmArenaTickResult result)
-    {
-        // 패턴 반경이 방 크기를 넘으면 참가자 쪽으로 끌어당겨 같은 구역 안에 스폰한다.
-        // 구역 프로파일(시작방 저위험 등)이 옆 구역으로 새지 않게 하는 규칙.
-        position = ClampToAreaWalkable(position, anchor.Position, anchor.Area);
-
-        int serial = state.NextSerial++;
-        var monster = new MonsterRuntime
-        {
-            MonsterId = FirstMonsterId + serial,
-            CombatTargetId = FirstCombatTargetId - serial,
-            Pattern = pattern,
-            Area = anchor.Area,
-            HomeArea = anchor.Area,
-            Position = position,
-            Health = MonsterMaxHealth,
-            Alive = true,
-            ActivatesAtUtc = now.AddSeconds(telegraphSeconds),
-            SpawnedAtUtc = now,
-            NextContactAtUtc = now,
-            ScatterAngle = (float)(state.Rng.NextDouble() * Math.PI * 2d),
-            // 매 킬 1석: 시작방 선지급 10마리 = 방 스팟 2개(10석)를 정확히 커버한다.
-            // 스팟이 유한 소진형이라 드롭률 인상은 스노우볼이 아니라 페이스 조절이다.
-            SummonStoneReward = 1,
-            ContactDamageValue = StartRooms.Contains(anchor.Area)
-                ? StartRoomContactDamage
-                : ContactDamage
-        };
-        state.Monsters[monster.MonsterId] = monster;
-        result.SpawnedMonsters.Add(monster.ToMonsterRuntimeInfo());
-    }
-
     private static void MoveTowardPlayer(
         MonsterRuntime monster, Vector3f playerPosition, double deltaSeconds)
     {
@@ -2952,13 +2318,6 @@ public sealed class SwarmMonsterDirector
             state.Monsters.Remove(monsterId);
     }
 
-    private sealed class PatternSchedule
-    {
-        public DateTime NextPatternAtUtc { get; set; }
-        public SwarmPattern NextPattern { get; set; } = SwarmPattern.Ring;
-        public int StartRoomPacksSpawned { get; set; }
-    }
-
     private sealed class MatchState
     {
         public object SyncRoot { get; } = new();
@@ -2967,7 +2326,6 @@ public sealed class SwarmMonsterDirector
         public DateTime StartsAtUtc { get; init; }
         public DateTime LastTickAtUtc { get; set; }
         public Dictionary<int, MonsterRuntime> Monsters { get; } = new();
-        public Dictionary<long, PatternSchedule> PatternSchedules { get; } = new();
         public Dictionary<long, DateTime> ContactImmuneUntilUtc { get; } = new();
         public Random Rng { get; init; } = new();
         public int NextSerial { get; set; }
@@ -2976,8 +2334,6 @@ public sealed class SwarmMonsterDirector
         public int HitsTaken { get; set; }
         public int Kills { get; set; }
         public Dictionary<SwarmPattern, int> PatternHits { get; } = new();
-        public HashSet<AreaType> CampInitializedAreas { get; } = new();
-        public Dictionary<(AreaType Area, int CampIndex), DateTime> CampRespawnAtUtc { get; } = new();
 
         // 도주 목적지 약속 (#226): 봇별 최근 도주 목적지 — 재계획 폭주에도 방향을 유지한다.
         public Dictionary<long, (Vector3f Destination, DateTime CommittedAtUtc)> BotFleeCommitments { get; } =
@@ -3044,14 +2400,13 @@ public sealed class SwarmMonsterDirector
         public int ContactDamageValue { get; init; }
         public long ChaseTargetPlayerId { get; set; }
 
-        // 몬스터 4종: 종별 스탯은 스폰 시 박제된다. 레거시 스폰 경로는 기본값(해골 상당)을 쓴다.
+        // 몬스터 4종: 종별 스탯은 스폰 시 박제된다 (swarm_monster.csv).
         public SwarmMonsterKind Kind { get; init; } = SwarmMonsterKind.Skeleton;
         public int MaxHealthValue { get; init; } = MonsterMaxHealth;
         public float AttackRangeValue { get; init; } = ContactRange;
         public float AttackCooldownValue { get; init; } = ContactCooldownSeconds;
 
-        // 캠프 모드: 소속 캠프와 제자리(앵커), 어그로 상태.
-        public int CampIndex { get; set; } = -1;
+        // 제자리(앵커)와 어그로 상태.
         public DateTime NextTargetScanAtUtc { get; set; }
         public float AnchorX { get; set; }
         public float AnchorY { get; set; }
@@ -3098,9 +2453,6 @@ public sealed class SwarmMonsterDirector
         public float StuckWatchY { get; set; }
         public DateTime StuckSinceUtc { get; set; }
         public bool StuckReported { get; set; }
-
-        /// <summary>캠프 몹은 앵커에 묶이고, 공급 몹은 구역 자체가 리쉬다.</summary>
-        public bool IsSupplyUnit => CampIndex < 0;
 
         public MonsterRuntimeInfo ToMonsterRuntimeInfo() => new()
         {

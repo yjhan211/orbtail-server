@@ -19,16 +19,20 @@ namespace game_server.network;
 public partial class GameClientSession
 {
     /// <summary>
-    ///     조합 요청의 outer 경계. PlayerId가 없으면 조용히 끝내고 matchingId가 없으면 기존
-    ///     core를 ordered lane 밖에서 직접 실행한다. 유효한 매치는 SessionBase의 outer operation
-    ///     lease를 빌려 ordered publisher에 active core와 Finalizing rejection을 함께 넘긴다.
+    ///     조합 요청의 outer 경계. PlayerId가 없으면 조용히 끝내고 matchingId가 없으면 Finalizing과
+    ///     같은 INVALID_GAME_STATE 거부 bundle을 lane 밖에서 보낸다 (#325 — 매치 밖 조합 core는 없다).
+    ///     유효한 매치는 SessionBase의 outer operation lease를 빌려 ordered publisher에 active core와
+    ///     Finalizing rejection을 함께 넘긴다.
     ///     ClientStartUnixMs는 legacy payload key/Int64 shape 보존 필드이며 순서 결정에는 사용하지 않는다.
     /// </summary>
     private Task HandleCombineItems(C_TO_G_COMBINE_ITEMS msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
         if (CurrentMapSubId <= 0)
-            return HandleCombineItemsCore(msg);
+        {
+            SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INVALID_GAME_STATE);
+            return Task.CompletedTask;
+        }
 
         return PublishOrderedSessionAction(
             () => HandleCombineItemsCore(msg),
@@ -60,19 +64,16 @@ public partial class GameClientSession
 
         long matchingId = CurrentMapSubId;
         long playerId = PlayerId.Value;
-        bool usesMatchOwnedRandom = matchingId > 0;
-        Random ResolveRandom() => usesMatchOwnedRandom
-            ? _getItemCombineRandom(matchingId)
-            : Random.Shared;
+        // 조합 난수는 매치 소유 stream 하나뿐이다 (#325 — matchingId 없는 legacy core 삭제).
+        Random ResolveRandom() => _getItemCombineRandom(matchingId);
 
         bool isOrbRequest = OrbData.IsOrbItem(msg.ItemA) ||
                                     OrbData.IsOrbItem(msg.ItemB);
         if (isOrbRequest)
         {
             var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
-            if (usesMatchOwnedRandom &&
-                (!OrbData.CanMerge(msg.ItemA, msg.ItemB) ||
-                 !inventory.HasItems([msg.ItemA, msg.ItemB])))
+            if (!OrbData.CanMerge(msg.ItemA, msg.ItemB) ||
+                !inventory.HasItems([msg.ItemA, msg.ItemB]))
             {
                 SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INVALID_PARAMETER);
                 return true;
@@ -80,25 +81,14 @@ public partial class GameClientSession
 
             bool hadResonance = inventory.TryGetActiveOrbPair(out OrbColor previousResonanceColor,
                 out int previousSupportTier);
-            int outputItemId;
-            List<InGameItemInfo> changedItems;
-            bool combined = usesMatchOwnedRandom
-                ? _inGameInventoryManager.TryCombineOrbs(
-                    matchingId,
-                    playerId,
-                    msg.ItemA,
-                    msg.ItemB,
-                    ResolveRandom(),
-                    out outputItemId,
-                    out changedItems)
-                : _inGameInventoryManager.TryCombineOrbsLegacy(
-                    matchingId,
-                    playerId,
-                    msg.ItemA,
-                    msg.ItemB,
-                    ResolveRandom(),
-                    out outputItemId,
-                    out changedItems);
+            bool combined = _inGameInventoryManager.TryCombineOrbs(
+                matchingId,
+                playerId,
+                msg.ItemA,
+                msg.ItemB,
+                ResolveRandom(),
+                out int outputItemId,
+                out List<InGameItemInfo> changedItems);
             if (!combined)
             {
                 SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INVALID_PARAMETER);
@@ -133,60 +123,35 @@ public partial class GameClientSession
             return true;
         }
 
-        BattleItemRecipe? recipe;
-        List<InGameItemInfo> legacyChangedItems;
-        if (usesMatchOwnedRandom)
+        var candidates = BattleItemRecipeData.GetAvailableRecipes(
+            [msg.ItemA, msg.ItemB],
+            CurrentArea);
+        if (candidates.Count == 0)
+            return false;
+
+        var recipeInventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
+        if (!recipeInventory.HasItems(candidates[0].InputItemIds))
         {
-            var candidates = BattleItemRecipeData.GetAvailableRecipes(
-                [msg.ItemA, msg.ItemB],
-                CurrentArea);
-            if (candidates.Count == 0)
-                return false;
-
-            var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
-            if (!inventory.HasItems(candidates[0].InputItemIds))
-            {
-                SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INSUFFICIENT_ITEM);
-                return true;
-            }
-
-            if (!_inGameInventoryManager.TryCombineRandomRecipe(
-                    matchingId,
-                    playerId,
-                    candidates,
-                    ResolveRandom(),
-                    out recipe,
-                    out legacyChangedItems))
-            {
-                SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INSUFFICIENT_ITEM);
-                return true;
-            }
+            SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INSUFFICIENT_ITEM);
+            return true;
         }
-        else
-        {
-            recipe = BattleItemRecipeData.PickRandomRecipe(
-                [msg.ItemA, msg.ItemB],
-                CurrentArea,
-                ResolveRandom());
-            if (recipe == null)
-                return false;
 
-            if (!_inGameInventoryManager.TryCombineItems(
-                    matchingId,
-                    playerId,
-                    recipe.InputItemIds,
-                    recipe.OutputItemId,
-                    out legacyChangedItems))
-            {
-                SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INSUFFICIENT_ITEM);
-                return true;
-            }
+        if (!_inGameInventoryManager.TryCombineRandomRecipe(
+                matchingId,
+                playerId,
+                candidates,
+                ResolveRandom(),
+                out BattleItemRecipe? recipe,
+                out List<InGameItemInfo> recipeChangedItems))
+        {
+            SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INSUFFICIENT_ITEM);
+            return true;
         }
 
         if (recipe == null)
             throw new InvalidOperationException("Successful random recipe combine did not select a recipe.");
 
-        SendBattleItemCombineResult(msg, recipe.OutputItemId, legacyChangedItems, recipe.RecipeId);
+        SendBattleItemCombineResult(msg, recipe.OutputItemId, recipeChangedItems, recipe.RecipeId);
         _gameEventLogManager.LogMission(matchingId, playerId,
             $"Battle item combine: {msg.ItemA} + {msg.ItemB} => {recipe.OutputItemId}",
             isBot: false);
