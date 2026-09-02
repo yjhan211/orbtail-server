@@ -109,11 +109,15 @@ public sealed class SwarmCombatPublicationCoordinatorTests
 
         Task<SwarmCombatPublicationCoordinator.PublicationTurn?>[] attempts =
             Enumerable.Range(0, 16)
-                .Select(_ => Task.Run(() =>
-                {
-                    start.SignalAndWait();
-                    return coordinator.TryBeginDueRealtimeTurn(matchingId);
-                }))
+                // 전용 스레드 (2026-09-02 CI 플래키 수리): 2코어 러너의 스레드풀은 스레드를 0.5초에 하나씩만
+                // 늘려 16개가 Barrier에 모이기 전에 2초 제한이 끝난다 — 풀 성장에 의존하지 않는다.
+                .Select(_ => Task.Factory.StartNew(
+                    () =>
+                    {
+                        start.SignalAndWait();
+                        return coordinator.TryBeginDueRealtimeTurn(matchingId);
+                    },
+                    TaskCreationOptions.LongRunning))
                 .ToArray();
 
         SwarmCombatPublicationCoordinator.PublicationTurn?[] turns =
@@ -140,11 +144,15 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         using var start = new Barrier(16);
         Task<SwarmCombatPublicationCoordinator.PublicationTurn?>[] attempts =
             Enumerable.Range(0, 16)
-                .Select(_ => Task.Run(() =>
-                {
-                    start.SignalAndWait();
-                    return coordinator.TryBeginDueRealtimeTurn(matchingId);
-                }))
+                // 전용 스레드 (2026-09-02 CI 플래키 수리): 2코어 러너의 스레드풀은 스레드를 0.5초에 하나씩만
+                // 늘려 16개가 Barrier에 모이기 전에 2초 제한이 끝난다 — 풀 성장에 의존하지 않는다.
+                .Select(_ => Task.Factory.StartNew(
+                    () =>
+                    {
+                        start.SignalAndWait();
+                        return coordinator.TryBeginDueRealtimeTurn(matchingId);
+                    },
+                    TaskCreationOptions.LongRunning))
                 .ToArray();
 
         SwarmCombatPublicationCoordinator.PublicationTurn?[] turns =
