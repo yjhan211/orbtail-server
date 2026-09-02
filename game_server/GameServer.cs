@@ -70,6 +70,7 @@ public partial class GameServer(
         _matchingLifecycleTerminalSubjects = new();
     private readonly ConcurrentQueue<long> _matchingLifecycleTerminalMatchOrder = new();
     private readonly MatchRuntimeRegistry _matchRuntimeRegistry = new();
+    private MatchRuntimeStore? _matchRuntimes;
     private readonly SwarmCombatPublicationCoordinator _swarmCombatPublicationCoordinator =
         new(TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs));
     private readonly SwarmBotTickCoordinator _swarmBotTickCoordinator = new();
@@ -104,6 +105,25 @@ public partial class GameServer(
     private Random GetItemCombineRandom(long matchingId) =>
         GetSwarmMatchRuntime(matchingId).ItemCombineRandom;
 
+    /// <summary>
+    ///     매치별 잠금·수명 색인 (#331). 필드 초기화자는 this를 참조할 수 없어 첫 접근에서 만든다 —
+    ///     정리 단계가 매니저 인스턴스를 잡아야 하기 때문이다.
+    /// </summary>
+    internal MatchRuntimeStore MatchRuntimes =>
+        LazyInitializer.EnsureInitialized(ref _matchRuntimes, CreateMatchRuntimeStore)!;
+
+    private MatchRuntimeStore CreateMatchRuntimeStore() => new(logger, CreateMatchRuntime);
+
+    /// <summary>새 매치 런타임의 모니터 안에서 한 번 실행되는 fail-closed 컴포넌트 등록.</summary>
+    private void CreateMatchRuntime(long matchingId)
+    {
+        if (!_doorStateManager.RegisterMatching(matchingId))
+        {
+            throw new InvalidOperationException(
+                $"Door state was already registered for match {matchingId}.");
+        }
+    }
+
     private void RegisterMatchRuntimeComponents(long matchingId)
     {
         if (!_swarmBotTickCoordinator.RegisterMatching(matchingId))
@@ -112,16 +132,8 @@ public partial class GameServer(
                 $"Bot tick state was already registered for match {matchingId}.");
         }
 
-        if (!_doorStateManager.RegisterMatching(matchingId))
-        {
-            _swarmBotTickCoordinator.ClearMatching(matchingId);
-            throw new InvalidOperationException(
-                $"Door state was already registered for match {matchingId}.");
-        }
-
         if (!_swarmCombatPublicationCoordinator.RegisterMatching(matchingId))
         {
-            _doorStateManager.ClearMatching(matchingId);
             _swarmBotTickCoordinator.ClearMatching(matchingId);
             throw new InvalidOperationException(
                 $"Combat publication state was already registered for match {matchingId}.");
@@ -263,6 +275,7 @@ public partial class GameServer(
             _encounterRevealManager,
             _gameEventLogManager);
         _swarmClosurePublicationCoordinator = new SwarmClosurePublicationCoordinator();
+        _matchRuntimeRegistry.AttachStore(MatchRuntimes);
         _matchRuntimeRegistry.SetRuntimeInitializer(RegisterMatchRuntimeComponents);
         _matchRuntimeCleanupCoordinator = new MatchRuntimeCleanupCoordinator(
             _matchRuntimeRegistry,
@@ -1600,6 +1613,7 @@ public partial class GameServer(
         foreach (var botInfo in botInfoList)
             botInfo.SpawnCell = Cell.Clone(spawnAssignments[botInfo.PlayerId]);
 
+        MatchRuntimes.GetOrCreate(matchingId);
         bool initialized = _matchRuntimeRegistry.TryExecute(matchingId, () =>
         {
             _botPlayerManager.RegisterBots(matchingId, Config.SWARM_MATCH_MAP, botInfoList);

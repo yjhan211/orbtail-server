@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Runtime.ExceptionServices;
+using StoreMatchRuntime = game_server.services.MatchRuntime;
 
 namespace game_server.services;
 
@@ -19,6 +20,7 @@ public sealed class MatchRuntimeRegistry
     private readonly ConcurrentQueue<long> _completedOrder = new();
     private readonly object _runtimeCreationGate = new();
     private Action<long>? _runtimeInitializer;
+    private MatchRuntimeStore? _store;
     private bool _runtimeUseStarted;
 
     public int ActiveCount => _activeRuntimes.Count;
@@ -39,6 +41,22 @@ public sealed class MatchRuntimeRegistry
                 throw new InvalidOperationException("The match runtime initializer is already configured.");
 
             Volatile.Write(ref _runtimeInitializer, runtimeInitializer);
+        }
+    }
+
+    /// <summary>
+    ///     #331 이행 셈: 등록소 런타임의 모니터를 <see cref="MatchRuntimeStore"/>의 런타임과 공유해
+    ///     두 경로가 같은 잠금 객체로 직렬화된다. 등록소 커밋은 저장소 런타임도 터미널로 표시한다.
+    /// </summary>
+    internal void AttachStore(MatchRuntimeStore store)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        lock (_runtimeCreationGate)
+        {
+            if (_runtimeUseStarted)
+                throw new InvalidOperationException("The match runtime store must be attached before use.");
+
+            _store = store;
         }
     }
 
@@ -389,6 +407,7 @@ public sealed class MatchRuntimeRegistry
                 RememberCompleted(matchingId);
                 _activeRuntimes.TryRemove(
                     new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
+                _store?.Remove(matchingId);
             }
         }
         catch (Exception ex)
@@ -605,14 +624,17 @@ public sealed class MatchRuntimeRegistry
         if (_activeRuntimes.TryGetValue(matchingId, out MatchRuntime? existing))
             return existing;
         if (Volatile.Read(ref _runtimeUseStarted))
-            return _activeRuntimes.GetOrAdd(matchingId, static _ => new MatchRuntime());
+            return _activeRuntimes.GetOrAdd(matchingId, CreateRuntime);
 
         lock (_runtimeCreationGate)
         {
             Volatile.Write(ref _runtimeUseStarted, true);
-            return _activeRuntimes.GetOrAdd(matchingId, static _ => new MatchRuntime());
+            return _activeRuntimes.GetOrAdd(matchingId, CreateRuntime);
         }
     }
+
+    private MatchRuntime CreateRuntime(long matchingId) =>
+        new(Volatile.Read(ref _store)?.GetOrCreate(matchingId));
 
     private sealed class MatchRuntimeOperation(
         MatchRuntimeRegistry owner,
@@ -633,13 +655,20 @@ public sealed class MatchRuntimeRegistry
         private const int Active = 0;
         private const int Finalizing = 1;
         private const int Completed = 2;
+        private readonly StoreMatchRuntime? _storeRuntime;
         private int _state = Active;
         private int _executionDepth;
         private long _nextFinalizationToken;
         private bool _initialized;
         private FinalizationWork? _currentFinalization;
 
-        public object SyncRoot { get; } = new();
+        public MatchRuntime(StoreMatchRuntime? storeRuntime)
+        {
+            _storeRuntime = storeRuntime;
+            SyncRoot = storeRuntime?.Sync ?? new object();
+        }
+
+        public object SyncRoot { get; }
         public bool IsTerminal => Volatile.Read(ref _state) != Active;
 
         public void EnsureInitialized(long matchingId, Action<long>? runtimeInitializer)
@@ -710,6 +739,12 @@ public sealed class MatchRuntimeRegistry
                 claim.Work.CommitAndCreateAfterFinalizedAction(claim.Token);
             _currentFinalization = null;
             Volatile.Write(ref _state, Completed);
+            if (_storeRuntime != null)
+            {
+                // 등록소가 정리를 끝냈으므로 저장소 런타임은 터미널이고 재정리 대상이 아니다.
+                _storeRuntime.TryMarkTerminal();
+                _storeRuntime.CleanupDone = true;
+            }
             return afterFinalized;
         }
 

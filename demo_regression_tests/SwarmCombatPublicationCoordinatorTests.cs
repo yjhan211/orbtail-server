@@ -2163,13 +2163,11 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         AssertInOrder(
             registration,
             "_swarmBotTickCoordinator.RegisterMatching(matchingId)",
-            "_doorStateManager.RegisterMatching(matchingId)",
             "_swarmCombatPublicationCoordinator.RegisterMatching(matchingId)",
             "throw new InvalidOperationException(");
         AssertInOrder(
             registration,
             "_swarmCombatPublicationCoordinator.RegisterMatching(matchingId)",
-            "_doorStateManager.ClearMatching(matchingId)",
             "_swarmBotTickCoordinator.ClearMatching(matchingId)",
             "throw new InvalidOperationException(");
         AssertInOrder(
