@@ -317,8 +317,10 @@ public sealed class GameClientSessionItemCombinePublicationTests
     }
 
     [Fact]
-    public async Task MissingPlayerIsSilent_AndMissingMatchPreservesLegacyCoreFailure()
+    public async Task MissingPlayerIsSilent_AndMissingMatchRejectsWithInvalidGameState()
     {
+        // #325: matchingId 없는 legacy direct core는 삭제됐다 — Finalizing과 같은
+        // 입력 보존 INVALID_GAME_STATE bundle을 lane 밖에서 보내고 난수·재고를 건드리지 않는다.
         using var fixture = new SessionFixture();
         GameClientSession missingPlayer = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         fixture.SetPlayerId(missingPlayer, null);
@@ -328,6 +330,10 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Empty(fixture.TokenFor(missingPlayer).AttemptedProtocols);
 
         GameClientSession missingMatch = fixture.CreateSession(SecondMatchingId, SecondPlayerId);
+        fixture.SeedPair(SecondMatchingId, SecondPlayerId, Bandage);
+        (long ItemUid, int ItemId, int Count)[] before = fixture.InventorySnapshot(
+            SecondMatchingId,
+            SecondPlayerId);
         fixture.SetMatchingId(missingMatch, 0);
         await SendCombineAsync(missingMatch, Bandage, Bandage);
 
@@ -335,7 +341,9 @@ public sealed class GameClientSessionItemCombinePublicationTests
             fixture.TokenFor(missingMatch),
             Bandage,
             Bandage,
-            ErrorCode.INSUFFICIENT_ITEM);
+            ErrorCode.INVALID_GAME_STATE);
+        Assert.Equal(before, fixture.InventorySnapshot(SecondMatchingId, SecondPlayerId));
+        Assert.Empty(fixture.EventLog.GetForPersistence(SecondMatchingId));
         Assert.Equal(0, fixture.TotalItemCombineRandomResolverCalls);
     }
 

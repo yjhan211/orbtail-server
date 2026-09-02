@@ -174,8 +174,6 @@ public sealed class SwarmBotTacticalState
 
     // 추격 로그 스로틀 — 같은 쌍은 3초에 한 번만 남긴다. 판단은 50ms마다 돈다.
     public readonly Dictionary<(long MatchingId, long ChaserId, long TargetId), DateTime> ChaseLogThrottle = new();
-    public readonly Dictionary<(long MatchingId, long PlayerId, AreaType Area, int CampIndex), DateTime>
-        CampSkipUntilUtc = new();
 
     // 봇 오염 자연 회복: 마지막 피격 후 유예가 지나면 초당 일정량 회복한다.
     public readonly Dictionary<(long MatchingId, long PlayerId), DateTime> LastDamagedAtUtc = new();

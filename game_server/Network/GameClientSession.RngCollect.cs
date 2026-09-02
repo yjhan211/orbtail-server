@@ -143,9 +143,6 @@ public partial class GameClientSession
         _gameEventLogManager.LogExploreStart(
             CurrentMapSubId, PlayerId.Value, msg.InteractId, CurrentArea.ToString(), isBot: false);
         SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
-
-        // 개봉 소음 — 주변 스웜이 개봉자에게 몰린다. 게이지가 곧 리스크 창.
-        SwarmExploreNoiseCallback?.Invoke(CurrentMapSubId, PlayerId.Value);
         return Task.CompletedTask;
     }
 
@@ -248,9 +245,6 @@ public partial class GameClientSession
         _gameEventLogManager.LogExploreStart(
             CurrentMapSubId, PlayerId!.Value, interactId, CurrentArea.ToString(), isBot: false);
         SendRngCollectAck(interactId, ErrorCode.SUCCESS, 0);
-
-        // 문을 흔드는 소음 — 주변 잔상이 몰린다. 게이지가 곧 리스크 창이다.
-        SwarmExploreNoiseCallback?.Invoke(CurrentMapSubId, PlayerId.Value);
         return Task.CompletedTask;
     }
 

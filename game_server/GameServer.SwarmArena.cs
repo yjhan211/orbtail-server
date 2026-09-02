@@ -65,7 +65,9 @@ public partial class GameServer
     // 몹 피격은 초당 2.17에서 1.19로 반토막, 절단은 142회에서 25회로 죽었다.
     // 원거리로 처리되니 몸으로 파고들 이유가 사라진 것이다.
     // 0.12면 TTK가 60초대로 늘어 사격은 깎는 수단이 되고, 마무리는 몹과 절단이 가져간다.
-    private const float SwarmPvpCorruptionPerDamage = 0.12f;
+    // 원천은 swarm_config.csv (#325) — 미등재 시 코드 기본값.
+    private static float SwarmPvpCorruptionPerDamage =>
+        SwarmConfigData.GetFloat("SWARM_PVP_CORRUPTION_PER_DAMAGE", 0.12f);
 
     /// <summary>PvP 피해 → 본체 오염 이월 누산. 반환 = 이번 타에 실제 적용할 오염(0 가능).</summary>
     private int ConsumeSwarmPvpCorruption(long matchingId, long victimId, int rawDamage)
@@ -81,8 +83,9 @@ public partial class GameServer
     // 치명타 (#229 임시): PvE 전용. 성장 축이 오브 수·티어뿐이라 같은 몹을 같은 속도로 지우는
     // 감각이 계속된다 — 가끔 크게 터지는 순간을 넣어 파밍에 리듬을 준다. 확률·배율은 임시값이고,
     // 정식 축(뒤치기·처형 사거리 등 조건부)이 생기면 이 굴림을 그 조건으로 대체한다.
-    private const double SwarmCriticalChance = 0.15d;
-    private const float SwarmCriticalMultiplier = 2f;
+    // 원천은 swarm_config.csv (#325) — 미등재 시 코드 기본값.
+    private static double SwarmCriticalChance => SwarmConfigData.GetDouble("SWARM_CRITICAL_CHANCE", 0.15d);
+    private static float SwarmCriticalMultiplier => SwarmConfigData.GetFloat("SWARM_CRITICAL_MULTIPLIER", 2f);
 
     /// <summary>PvE 치명타 굴림 — 적중이면 배율을 적용한 피해를 돌려준다.</summary>
     private int RollSwarmCriticalDamage(long matchingId, int damage, out bool critical)
@@ -181,11 +184,6 @@ public partial class GameServer
             if (!_swarmMonsterDirector.InitializeMatching(matchingId, humanPlayerId, DateTime.UtcNow))
                 return;
 
-            GameClientSession.SwarmExploreNoiseCallback ??=
-                (noiseMatchingId, noisePlayerId) =>
-                    _matchRuntimeRegistry.TryExecute(
-                        noiseMatchingId,
-                        () => _swarmMonsterDirector.AttractSwarm(noiseMatchingId, noisePlayerId));
             GameClientSession.SwarmDummyMoveCallback ??=
                 (dummyMatchingId, dirX, dirY) =>
                     MoveSwarmCutDummy(dummyMatchingId, dirX, dirY);
@@ -3224,8 +3222,8 @@ public partial class GameServer
 
     /// <summary>
     ///     PvP 미사일 적용 (#226 재개편): 오브 HP·본체 보호 퇴역 — 모든 발은 본체 오염으로
-    ///     환산(이월 누산)되어 직행한다. 오브 파괴는 열 절단 전용. PvpDamageScale(0.65)은
-    ///     오염 환산 상수가 대체하므로 퇴역.
+    ///     환산(이월 누산)되어 직행한다. 오브 파괴는 열 절단 전용. 옛 PvpDamageScale(0.65)은
+    ///     오염 환산 상수가 대체해 퇴역했다 (#325에서 상수 삭제).
     /// </summary>
     private int ApplySwarmPvpAttack(
         long matchingId,

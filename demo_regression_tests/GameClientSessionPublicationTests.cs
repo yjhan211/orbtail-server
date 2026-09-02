@@ -630,7 +630,6 @@ public sealed class GameClientSessionPublicationTests
 
             Interactables.Initialize();
             Inventories.Initialize();
-            GameClientSession.SwarmExploreNoiseCallback = null;
             GameClientSession.SwarmHeartPickupCallback = null;
         }
 
@@ -719,7 +718,6 @@ public sealed class GameClientSessionPublicationTests
 
         public void Dispose()
         {
-            GameClientSession.SwarmExploreNoiseCallback = null;
             GameClientSession.SwarmHeartPickupCallback = null;
             if (Directory.Exists(_summaryDirectory))
                 Directory.Delete(_summaryDirectory, recursive: true);

@@ -7,13 +7,14 @@ using network.common.data.models;
 namespace game_server.services;
 
 /// <summary>
-///     Keeps recent in-game event logs for ops/debugging and derives social-evidence logs from raw actions.
+///     매치별 최근 인게임 이벤트 로그(운영·디버깅용)와 이동에서 파생하는 AREA_ENTER, 전투·오브 보드·
+///     폐쇄 텔레메트리 상태를 보관한다. 마니또 세대의 사회적 증거 파생(AREA_STAY·ENCOUNTER·
+///     FOLLOW_IN_CANDIDATE)은 #325에서 삭제했다 — 매치 요약은 MOVE·AREA_ENTER만 읽는다.
 /// </summary>
 public class GameEventLogManager
 {
     private const int MaxEventsPerMatching = 5_000;
     private const int MaxArchivedMatchings = 50;
-    private const int FollowInWindowSeconds = 6;
 
     private readonly ConcurrentDictionary<long, MatchingEventLog> _logs = new();
     private readonly ConcurrentDictionary<long, MatchingEventLog> _archivedLogs = new();
@@ -41,7 +42,6 @@ public class GameEventLogManager
             toArea,
             isBot,
             now,
-            FollowInWindowSeconds,
             CreateEntry);
         LogClosureMovement(matchingId, playerId, fromArea, toArea, isBot, now);
     }
@@ -1520,7 +1520,6 @@ public class GameEventLogManager
 
     private sealed class MatchingEventLog
     {
-        private readonly Dictionary<ActivityKey, DateTimeOffset> _activeSchoolActivities = new();
         private readonly LinkedList<GameEventEntry> _entries = new();
         private readonly List<GameEventEntry> _fullEntries = new();
         private readonly Dictionary<long, AreaPresenceState> _playerAreas = new();
@@ -1550,7 +1549,6 @@ public class GameEventLogManager
             string toArea,
             bool isBot,
             DateTimeOffset timestamp,
-            int followInWindowSeconds,
             Func<string, long, bool, string, DateTimeOffset, Action<GameEventEntry>?, GameEventEntry> createEntry)
         {
             lock (_lock)
@@ -1567,26 +1565,6 @@ public class GameEventLogManager
                         entry.ToArea = toArea;
                     });
                 AddNoLock(rawMove);
-
-                if (_playerAreas.TryGetValue(playerId, out var previous) && IsTrackableArea(previous.Area))
-                {
-                    var durationSeconds = Math.Max(0, (timestamp - previous.EnteredAt).TotalSeconds);
-                    var areaStay = createEntry(
-                        "AREA_STAY",
-                        playerId,
-                        isBot,
-                        $"{FormatPlayer(playerId)} stayed in {previous.Area} for {FormatSeconds(durationSeconds)}.",
-                        timestamp,
-                        entry =>
-                        {
-                            entry.Area = previous.Area;
-                            entry.EnteredAtUnixMs = previous.EnteredAt.ToUnixTimeMilliseconds();
-                            entry.ExitedAtUnixMs = timestamp.ToUnixTimeMilliseconds();
-                            entry.DurationSeconds = durationSeconds;
-                            entry.SourceEventSeq = rawMove.Seq;
-                        });
-                    AddNoLock(areaStay);
-                }
 
                 if (!IsTrackableArea(toArea))
                 {
@@ -1616,55 +1594,6 @@ public class GameEventLogManager
                         entry.SourceEventSeq = rawMove.Seq;
                     });
                 AddNoLock(areaEnter);
-
-                if (alreadyPresentIds.Count > 0)
-                {
-                    var encounter = createEntry(
-                        "ENCOUNTER",
-                        playerId,
-                        isBot,
-                        $"{FormatPlayer(playerId)} encountered {FormatPlayers(alreadyPresentIds)} in {toArea}.",
-                        timestamp,
-                        entry =>
-                        {
-                            entry.Area = toArea;
-                            entry.EncounteredPlayerIds = alreadyPresentIds;
-                            entry.OccurredAtUnixMs = timestamp.ToUnixTimeMilliseconds();
-                            entry.SourceEventSeq = areaEnter.Seq;
-                        });
-                    AddNoLock(encounter);
-                }
-
-                var recentEntries = alreadyPresent
-                    .Select(pair => new
-                    {
-                        PlayerId = pair.Key,
-                        SecondsAfter = (timestamp - pair.Value.EnteredAt).TotalSeconds
-                    })
-                    .Where(entry => entry.SecondsAfter >= 0 && entry.SecondsAfter <= followInWindowSeconds)
-                    .OrderBy(entry => entry.SecondsAfter)
-                    .ToList();
-
-                if (recentEntries.Count > 0)
-                {
-                    var recentIds = recentEntries.Select(entry => entry.PlayerId).ToList();
-                    var followIn = createEntry(
-                        "FOLLOW_IN_CANDIDATE",
-                        playerId,
-                        isBot,
-                        BuildFollowInDescription(playerId, toArea, recentEntries
-                            .Select(entry => (entry.PlayerId, entry.SecondsAfter))
-                            .ToList()),
-                        timestamp,
-                        entry =>
-                        {
-                            entry.Area = toArea;
-                            entry.RecentPlayerIds = recentIds;
-                            entry.OccurredAtUnixMs = timestamp.ToUnixTimeMilliseconds();
-                            entry.SourceEventSeq = areaEnter.Seq;
-                        });
-                    AddNoLock(followIn);
-                }
 
                 _playerAreas[playerId] = new AreaPresenceState(toArea, timestamp);
             }
@@ -1723,26 +1652,11 @@ public class GameEventLogManager
                 : $"{description} Already present: {FormatPlayers(alreadyPresentIds)}.";
         }
 
-        private static string BuildFollowInDescription(
-            long playerId,
-            string area,
-            IReadOnlyCollection<(long PlayerId, double SecondsAfter)> recentEntries)
-        {
-            var details = string.Join(", ", recentEntries.Select(entry =>
-                $"{FormatPlayer(entry.PlayerId)} ({FormatSeconds(entry.SecondsAfter)} earlier)"));
-            return $"{FormatPlayer(playerId)} entered {area} shortly after {details}.";
-        }
-
         private static string FormatPlayers(IEnumerable<long> playerIds) =>
             string.Join(", ", playerIds.Select(FormatPlayer));
 
         private static string FormatPlayer(long playerId) => $"Player{playerId}";
-
-        private static string FormatSeconds(double seconds) =>
-            $"{seconds.ToString("0.#", CultureInfo.InvariantCulture)}s";
     }
-
-    private readonly record struct ActivityKey(long PlayerId, int TaskId, int InteractId);
 
     private readonly record struct AreaPresenceState(string Area, DateTimeOffset EnteredAt);
 }
@@ -1765,8 +1679,6 @@ public class GameEventEntry
     public long? OccurredAtUnixMs { get; set; }
     public double? DurationSeconds { get; set; }
     public List<long>? AlreadyPresentPlayerIds { get; set; }
-    public List<long>? EncounteredPlayerIds { get; set; }
-    public List<long>? RecentPlayerIds { get; set; }
     public long? SourceEventSeq { get; set; }
 
     public int? TaskId { get; set; }
