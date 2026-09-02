@@ -40,10 +40,12 @@ public class NatsClient : INatsClient
         }
     }
 
-    public void Subscribe(string subject, Action<string, byte[]> messageHandler)
+    public void Subscribe(string subject, Action<string, byte[]> messageHandler, string? queue = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(subject);
         ArgumentNullException.ThrowIfNull(messageHandler);
+        if (queue != null)
+            ArgumentException.ThrowIfNullOrWhiteSpace(queue);
 
         void Handler(object? sender, MsgHandlerEventArgs args)
         {
@@ -53,7 +55,9 @@ public class NatsClient : INatsClient
         lock (_subscriptionLock)
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref _closed) != 0, this);
-            var subscription = _connection.SubscribeAsync(subject, Handler);
+            IAsyncSubscription subscription = queue == null
+                ? _connection.SubscribeAsync(subject, Handler)
+                : _connection.SubscribeAsync(subject, queue, Handler);
             _subscriptions.Add(subscription);
         }
     }
@@ -79,7 +83,7 @@ public class NatsClient : INatsClient
 
     public void SubscribeRequest(
         string subject,
-        Func<string, byte[], CancellationToken, Task<byte[]>> messageHandler,
+        Func<string, byte[], CancellationToken, Task<byte[]?>> messageHandler,
         string? queue = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(subject);
@@ -143,15 +147,17 @@ public class NatsClient : INatsClient
 
     private async Task HandleRequestAsync(
         Msg message,
-        Func<string, byte[], CancellationToken, Task<byte[]>> messageHandler)
+        Func<string, byte[], CancellationToken, Task<byte[]?>> messageHandler)
     {
         try
         {
-            byte[] response = await messageHandler(
+            byte[]? response = await messageHandler(
                 message.Subject,
                 message.Data,
                 _handlerCancellation.Token);
-            ArgumentNullException.ThrowIfNull(response);
+            // null은 "내 담당이 아니다" — 다른 구독자가 답하도록 침묵한다. 요청자는 타임아웃으로 부재를 안다.
+            if (response == null)
+                return;
             message.Respond(response);
         }
         catch (OperationCanceledException) when (_handlerCancellation.IsCancellationRequested)

@@ -71,6 +71,8 @@ internal sealed class InMemoryCacheHelper : ICacheHelper
     private readonly Dictionary<string, TimeSpan?> _expiries = new(StringComparer.Ordinal);
 
     public Exception? HashGetError { get; set; }
+    /// <summary>String 조건부 연산(SET NX/IfEquals/DeleteIfEquals) 실패 주입 — 리더 lease 테스트용.</summary>
+    public Exception? StringError { get; set; }
 
     public IReadOnlyDictionary<string, TimeSpan?> Expiries
     {
@@ -217,6 +219,7 @@ internal sealed class InMemoryCacheHelper : ICacheHelper
 
     public Task<bool> StringSetIfNotExistsAsync(string key, RedisValue value, TimeSpan? expiry = null, int db = -1)
     {
+        if (StringError != null) throw StringError;
         lock (_sync)
         {
             if (_strings.ContainsKey(key)) return Task.FromResult(false);
@@ -228,6 +231,7 @@ internal sealed class InMemoryCacheHelper : ICacheHelper
 
     public Task<bool> StringSetIfEqualsAsync(string key, string expectedValue, string newValue, TimeSpan expiry, int db = -1)
     {
+        if (StringError != null) throw StringError;
         lock (_sync)
         {
             if (!_strings.TryGetValue(key, out RedisValue value) ||
@@ -241,6 +245,7 @@ internal sealed class InMemoryCacheHelper : ICacheHelper
 
     public Task<bool> StringDeleteIfEqualsAsync(string key, string expectedValue, int db = -1)
     {
+        if (StringError != null) throw StringError;
         lock (_sync)
         {
             if (!_strings.TryGetValue(key, out RedisValue value) ||

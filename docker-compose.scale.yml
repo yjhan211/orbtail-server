@@ -1,7 +1,8 @@
-# 로컬에서 Game Server 두 대를 띄우는 오버라이드 (#339).
+# 로컬에서 Game Server·User Server를 두 대씩 띄우는 오버라이드 (#339).
 #   docker compose -f docker-compose.local.yml -f docker-compose.scale.yml up -d
-# 두 번째 노드는 같은 소스를 마운트해 핫 리로드하고, 호스트 포트만 9003/8083으로 어긋난다.
-# User Server는 레지스트리에서 두 노드를 보고 활성 매치 비율이 낮은 쪽에 매치를 배정한다.
+# 두 번째 노드는 같은 소스를 마운트해 핫 리로드하고, 호스트 포트만 어긋난다 (game 9003/8083, user 7001/8084).
+# User Server는 레지스트리에서 두 노드를 보고 활성 매치 비율이 낮은 쪽에 매치를 배정하고,
+# 두 User Server 중 리더 lease를 가진 쪽만 큐를 읽는다. 클라이언트는 7000 또는 7001 아무 쪽에 붙어도 된다.
 services:
   game_server_2:
     # 첫 노드와 같은 dev 이미지를 재사용한다 (소스는 볼륨 마운트라 코드는 항상 같다)
@@ -34,6 +35,37 @@ services:
       - DEV_NO_MONSTERS=${DEV_NO_MONSTERS:-0}
       - SOLO_MAP_VALIDATION=${SOLO_MAP_VALIDATION:-0}
       - MATCH_SUMMARY_DIRECTORY=/App/match-summaries
+    depends_on:
+      - redis
+      - nats
+    restart: unless-stopped
+
+  user_server_2:
+    image: manitto-user_server:latest
+    container_name: manitto-user-server-2-dev
+    ports:
+      - "7001:7000"
+      - "8084:8080"
+    volumes:
+      - ./user_server:/App/user_server:rw
+      - ./network:/App/network:rw
+      - /App/user_server/bin
+      - /App/user_server/obj
+      - /App/network/bin
+      - /App/network/obj
+    environment:
+      - serverType=UserServer
+      - gameServerNum=2
+      - USER_SERVER_ID=user-server-1
+      - servicePort=7000
+      - redisEndPoints=redis:6379
+      - natsEndPoint=nats://nats:4222
+      - ASPNETCORE_ENVIRONMENT=Development
+      - DOTNET_USE_POLLING_FILE_WATCHER=true
+      - TEST_TWO_PLAYER_MATCH=${TEST_TWO_PLAYER_MATCH:-0}
+      - DEV_CROSSFIRE_SANDBOX=${DEV_CROSSFIRE_SANDBOX:-0}
+      - DEV_NO_MONSTERS=${DEV_NO_MONSTERS:-0}
+      - SOLO_MAP_VALIDATION=${SOLO_MAP_VALIDATION:-0}
     depends_on:
       - redis
       - nats
