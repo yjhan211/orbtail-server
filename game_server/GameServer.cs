@@ -1232,6 +1232,41 @@ public partial class GameServer(
         long playerId,
         long matchingId)
     {
+        if (!TryReserveUntrackedLegacyMatchingLifecyclePublish(
+                subject,
+                playerId,
+                matchingId,
+                out long operationId,
+                out TaskCompletionSource<bool>? completion))
+        {
+            return;
+        }
+
+        try
+        {
+            PublishLegacyMatchingLifecycle(subject, playerId, matchingId);
+        }
+        finally
+        {
+            CompleteUntrackedLegacyMatchingLifecyclePublish(operationId, completion!);
+        }
+    }
+
+    /// <summary>
+    /// Atomically checks the legacy shutdown fence and registers an in-flight publication.
+    /// The caller publishes outside <see cref="_matchingLifecycleEnqueueGate"/>, while shutdown
+    /// drains every operation that was accepted before the fence closed.
+    /// </summary>
+    private bool TryReserveUntrackedLegacyMatchingLifecyclePublish(
+        string subject,
+        long playerId,
+        long matchingId,
+        out long operationId,
+        out TaskCompletionSource<bool>? completion)
+    {
+        operationId = 0;
+        completion = null;
+
         lock (_matchingLifecycleEnqueueGate)
         {
             if (Volatile.Read(ref _acceptingLegacyMatchingLifecyclePublishes) == 0)
@@ -1241,10 +1276,39 @@ public partial class GameServer(
                     subject,
                     playerId,
                     matchingId);
-                return;
+                return false;
             }
 
-            PublishLegacyMatchingLifecycle(subject, playerId, matchingId);
+            operationId = Interlocked.Increment(ref _nextMatchingLifecyclePublishId);
+            completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!_pendingMatchingLifecyclePublishTasks.TryAdd(operationId, completion.Task))
+            {
+                logger.LogCritical(
+                    "Legacy matching lifecycle tracker registration failed: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}, OperationId={OperationId}",
+                    subject,
+                    playerId,
+                    matchingId,
+                    operationId);
+                completion = null;
+                return false;
+            }
+
+            return true;
+        }
+    }
+
+    private void CompleteUntrackedLegacyMatchingLifecyclePublish(
+        long operationId,
+        TaskCompletionSource<bool> completion)
+    {
+        try
+        {
+            completion.TrySetResult(true);
+        }
+        finally
+        {
+            ((ICollection<KeyValuePair<long, Task>>)_pendingMatchingLifecyclePublishTasks)
+                .Remove(new KeyValuePair<long, Task>(operationId, completion.Task));
         }
     }
 

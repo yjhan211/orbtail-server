@@ -463,6 +463,92 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     }
 
     [Fact]
+    public async Task LegacyLifecycle_UntrackedPublish_ReleasesGateAndDrainsReservedWork()
+    {
+        var nats = new BlockingNatsClient();
+        GameServer server = CreateLegacyGameServer(
+            nats,
+            new RecordingLogger<GameServer>());
+        Action dispatch = Assert.IsType<Action>(InvokePrivate(
+            server,
+            "PrepareMatchingLifecyclePublication",
+            MatchingLifecycleSubjects.PlayerLeft,
+            104L,
+            42_006L));
+
+        Task dispatchTask = Task.Run(dispatch);
+        await nats.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Task? drain = null;
+        try
+        {
+            Assert.Single(GetPendingLifecycleTasks(server));
+
+            Task secondDispatch = Task.Run(dispatch);
+            await secondDispatch.WaitAsync(TimeSpan.FromSeconds(2));
+            Task stopFence = Task.Run(
+                () => InvokePrivate(server, "StopAcceptingLegacyMatchingLifecyclePublishes"));
+            await stopFence.WaitAsync(TimeSpan.FromSeconds(2));
+
+            drain = Assert.IsAssignableFrom<Task>(InvokePrivate(
+                server,
+                "WaitForPendingMatchingLifecyclePublishesAsync"));
+            Assert.False(drain.IsCompleted);
+        }
+        finally
+        {
+            nats.Release.TrySetResult(true);
+        }
+
+        await dispatchTask.WaitAsync(TimeSpan.FromSeconds(2));
+        await Assert.IsAssignableFrom<Task>(drain).WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(1, nats.PublishCount);
+        Assert.Empty(GetPendingLifecycleTasks(server));
+    }
+
+    [Fact]
+    public async Task LegacyLifecycle_UntrackedPublishFailure_DrainsTrackerAndLaterPublicationProgresses()
+    {
+        var nats = new RecordingNatsClient
+        {
+            PublishException = new InvalidOperationException("legacy untracked failure")
+        };
+        var logger = new RecordingLogger<GameServer>();
+        GameServer server = CreateLegacyGameServer(nats, logger);
+        Action failedDispatch = Assert.IsType<Action>(InvokePrivate(
+            server,
+            "PrepareMatchingLifecyclePublication",
+            MatchingLifecycleSubjects.PlayerLeft,
+            105L,
+            42_007L));
+
+        failedDispatch();
+        failedDispatch();
+
+        Task drain = Assert.IsAssignableFrom<Task>(InvokePrivate(
+            server,
+            "WaitForPendingMatchingLifecyclePublishesAsync"));
+        await drain.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.Equal(1, nats.PublishCount);
+        Assert.True(logger.Contains(
+            LogLevel.Error,
+            "Matching lifecycle publish failed:"));
+        Assert.Empty(GetPendingLifecycleTasks(server));
+
+        nats.PublishException = null;
+        Action laterDispatch = Assert.IsType<Action>(InvokePrivate(
+            server,
+            "PrepareMatchingLifecyclePublication",
+            MatchingLifecycleSubjects.PlayerLeft,
+            106L,
+            42_008L));
+        laterDispatch();
+
+        Assert.Equal(2, nats.PublishCount);
+        Assert.Empty(GetPendingLifecycleTasks(server));
+    }
+
+    [Fact]
     public void LegacyLifecycle_UntrackedPreparedActionDoesNotCrossShutdownFence()
     {
         var nats = new RecordingNatsClient();
@@ -503,6 +589,18 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         string legacyPreparation = ReadMethodSlice(
             serverSource,
             "private Action PrepareLegacyMatchingLifecyclePublication(",
+            "private void PublishUntrackedLegacyMatchingLifecycle(");
+        string untrackedDispatch = ReadMethodSlice(
+            serverSource,
+            "private void PublishUntrackedLegacyMatchingLifecycle(",
+            "private bool TryReserveUntrackedLegacyMatchingLifecyclePublish(");
+        string untrackedReservation = ReadMethodSlice(
+            serverSource,
+            "private bool TryReserveUntrackedLegacyMatchingLifecyclePublish(",
+            "private void CompleteUntrackedLegacyMatchingLifecyclePublish(");
+        string untrackedCompletion = ReadMethodSlice(
+            serverSource,
+            "private void CompleteUntrackedLegacyMatchingLifecyclePublish(",
             "private void PublishLegacyMatchingLifecycle(");
         string legacyPublish = ReadMethodSlice(
             serverSource,
@@ -606,21 +704,33 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Assert.Contains("await waitTask;", persistenceBarrier, StringComparison.Ordinal);
         Assert.Contains("return !state.PersistenceFailed;", persistenceBarrier, StringComparison.Ordinal);
 
-        string untrackedPublish = ReadMethodSlice(
-            serverSource,
-            "private void PublishUntrackedLegacyMatchingLifecycle(",
-            "private void PublishLegacyMatchingLifecycle(");
         int untrackedGate = Find(
-            untrackedPublish,
+            untrackedReservation,
             "lock (_matchingLifecycleEnqueueGate)");
         int shutdownFence = Find(
-            untrackedPublish,
+            untrackedReservation,
             "Volatile.Read(ref _acceptingLegacyMatchingLifecyclePublishes) == 0");
-        int fencedPublish = Find(
-            untrackedPublish,
+        int pendingReservation = Find(
+            untrackedReservation,
+            "_pendingMatchingLifecyclePublishTasks.TryAdd(operationId, completion.Task)");
+        int outsideGatePublish = Find(
+            untrackedDispatch,
             "PublishLegacyMatchingLifecycle(subject, playerId, matchingId);");
+        int untrackedCompletionFinally = Find(untrackedDispatch, "finally");
+        int untrackedTrackerCompletion = Find(
+            untrackedCompletion,
+            "completion.TrySetResult(true);");
+        int untrackedTrackerRemoval = Find(
+            untrackedCompletion,
+            ".Remove(new KeyValuePair<long, Task>(operationId, completion.Task));");
         Assert.True(untrackedGate < shutdownFence);
-        Assert.True(shutdownFence < fencedPublish);
+        Assert.True(shutdownFence < pendingReservation);
+        Assert.DoesNotContain(
+            "PublishLegacyMatchingLifecycle(",
+            untrackedReservation,
+            StringComparison.Ordinal);
+        Assert.True(outsideGatePublish < untrackedCompletionFinally);
+        Assert.True(untrackedTrackerCompletion < untrackedTrackerRemoval);
 
         int legacyFenceStart = Find(
             serverSource,
@@ -847,13 +957,73 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     private sealed class RecordingNatsClient : INatsClient
     {
         public int PublishCount { get; private set; }
-        public Exception? PublishException { get; init; }
+        public Exception? PublishException { get; set; }
 
         public void Publish(string subject, byte[] message)
         {
             PublishCount++;
             if (PublishException != null)
                 throw PublishException;
+        }
+
+        public void Subscribe(
+            string subject,
+            Action<string, byte[]> messageHandler) =>
+            throw new NotSupportedException();
+
+        public Task<byte[]> RequestAsync(
+            string subject,
+            byte[] message,
+            TimeSpan timeout,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public void SubscribeRequest(
+            string subject,
+            Func<string, byte[], CancellationToken, Task<byte[]>> messageHandler,
+            string? queue = null) =>
+            throw new NotSupportedException();
+
+        public void EnsureDurableStream(NatsDurableStreamOptions options) =>
+            throw new NotSupportedException();
+
+        public Task<NatsDurablePublishAck> PublishDurableAsync(
+            string stream,
+            string subject,
+            string messageId,
+            byte[] message,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public void SubscribeDurableQueue(
+            NatsDurableConsumerOptions options,
+            Func<NatsDurableMessage, CancellationToken, Task<NatsDurableMessageDisposition>>
+                messageHandler) =>
+            throw new NotSupportedException();
+
+        public Task CloseAsync(CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public void Close()
+        {
+        }
+    }
+
+    private sealed class BlockingNatsClient : INatsClient
+    {
+        private int _publishCount;
+
+        public TaskCompletionSource<bool> Entered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> Release { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int PublishCount => Volatile.Read(ref _publishCount);
+
+        public void Publish(string subject, byte[] message)
+        {
+            Interlocked.Increment(ref _publishCount);
+            Entered.TrySetResult(true);
+            Release.Task.GetAwaiter().GetResult();
         }
 
         public void Subscribe(
