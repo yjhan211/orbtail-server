@@ -1,5 +1,4 @@
 using System.Globalization;
-using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
@@ -26,14 +25,11 @@ internal sealed class MatchingQueueClaimCoordinator(
         return !claim.IsNullOrEmpty;
     }
 
-    public async Task<MatchingClaimLease?> TryAcquireAsync(IEnumerable<byte[]> entries)
+    public async Task<MatchingClaimLease?> TryAcquireAsync(IEnumerable<MatchingQueueEntry> entries)
     {
         var claimedEntries = entries
-            .Select(entry => (
-                Entry: entry,
-                PlayerId: MessagePackSerializer.Deserialize<MatchingQueueData>(entry).PlayerId))
-            .Where(item => item.PlayerId > 0)
-            .DistinctBy(item => item.PlayerId)
+            .Where(entry => entry.IsHuman)
+            .DistinctBy(entry => entry.PlayerId)
             .ToList();
         string claimId = Guid.NewGuid().ToString("N");
         var acquiredPlayerIds = new List<long>(claimedEntries.Count);
@@ -43,7 +39,7 @@ internal sealed class MatchingQueueClaimCoordinator(
             foreach (var claimedEntry in claimedEntries)
             {
                 bool acquired = await claimStore.TryClaimQueueEntryAsync(
-                    claimedEntry.Entry,
+                    claimedEntry.Raw,
                     claimedEntry.PlayerId,
                     claimId,
                     ReservationLifetime);

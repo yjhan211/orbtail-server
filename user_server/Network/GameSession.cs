@@ -544,12 +544,6 @@ public sealed class GameSession : SessionBase
         }
     }
 
-    public string GetChannelName()
-    {
-        // TODO: SubjectHelper에 GetPlayerSubject 추가 필요
-        return $"player.{PlayerId ?? 0}";
-    }
-
     private void Disconnect()
     {
         Token.Disconnect();
