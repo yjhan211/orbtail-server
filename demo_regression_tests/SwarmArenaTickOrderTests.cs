@@ -382,7 +382,6 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             orbPrepare,
             "DestroySwarmOrbsFromOrdinal(",
-            ".OrbCutCracks.Remove(",
             ".OrbDurabilityBonus.Remove(",
             "new SwarmInventoryUpdateOutbound(",
             "new SwarmRingVfxOutbound(",

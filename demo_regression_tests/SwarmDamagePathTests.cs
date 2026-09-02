@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text.RegularExpressions;
 using game_server;
 using network.common;
@@ -13,24 +12,6 @@ namespace demo_regression_tests;
 public class SwarmDamagePathTests
 {
     /// <summary>
-    ///     오브 HP 경로(몹 접촉이 앞줄 오브를 깎던 구형 모델)는 꺼진 채로 유지한다.
-    ///     이 플래그가 켜지면 원거리·접촉 피해가 다시 오브를 깎아 두 경로가 한 축으로 합쳐진다.
-    /// </summary>
-    [Fact]
-    public void SwarmOrbHealth_StaysDisabled()
-    {
-        var field = typeof(GameServer).GetField(
-            "SwarmOrbHealthEnabled", BindingFlags.NonPublic | BindingFlags.Static);
-        Assert.NotNull(field);
-
-        var value = field!.GetValue(null);
-        Assert.False(
-            (bool)value!,
-            "SwarmOrbHealthEnabled가 켜졌다 — 원거리 피해가 전투 오브를 깎으면 " +
-            "본체 HP와 절단 내구의 역할 분리가 무너진다 (#227 M2).");
-    }
-
-    /// <summary>
     ///     고위험 절단 계약 (#232, 2026-08-18 유저 결정 "오브 절단면 다 깨지게"): 크랙 5칸·방어 장갑은 퇴역 —
     ///     절단 내구에 값을 쓰는 곳이 하나라도 남으면 "유효 교차 한 번 = 즉시 절단"이 무너진다.
     ///     절단은 켜져 있고, 한 교차는 밟은 지점부터 꼬리 끝까지 지우며(스네이크 접미), 낙수를 흩지 않고,
@@ -44,10 +25,7 @@ public class SwarmDamagePathTests
 
         // 2026-09-02 재무장 — 절단은 켜져 있어야 한다 (끌 때는 이 어서션도 같이 바꾼다).
         Assert.Contains("SwarmTrailCutEnabled = true", source);
-        var crackWrites = Regex.Matches(source, @"TrailCombat\.OrbCutCracks\[[^\]]+\]\s*=");
-        Assert.True(
-            crackWrites.Count == 0,
-            $"절단 내구 대입 지점이 {crackWrites.Count}곳 남았다 — 절단은 크랙 시스템을 쓰지 않는다 (#232).");
+        Assert.DoesNotContain("OrbCutCracks", source);
 
         int cutMethodStart = source.IndexOf("private void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
         Assert.True(cutMethodStart >= 0, "TryPerformSwarmTrailCut를 찾지 못했다");

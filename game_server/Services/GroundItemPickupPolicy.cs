@@ -25,9 +25,6 @@ public static class GroundItemPickupPolicy
 
     public static bool ShouldDropOnElimination(int itemId) => !IsImmediateUseItem(itemId);
 
-    /// <summary>앞줄 오브 손상 여부 조회 — 하트 픽업 게이트 보조. GameServer가 스웜 초기화 시 배선.</summary>
-    public static Func<long, long, bool>? FrontOrbDamagedResolver { get; set; }
-
     public static GroundItemPickupDisposition Resolve(
         int itemId,
         int stamina,
@@ -49,10 +46,9 @@ public static class GroundItemPickupPolicy
             _ => 0
         };
 
-        // 원작 하트 문법: 스쿼드가 만피면 흐릿해지고 못 줍는다 — 본체(오염)도 앞줄 오브도
-        // 멀쩡하면 바닥에 남긴다. 낭비 방지 + 다친 쪽이 줍는 경합 유지.
-        if (itemId == HeartItemId && corruption <= 0 &&
-            FrontOrbDamagedResolver?.Invoke(matchingId, playerId) != true)
+        // 원작 하트 문법: 만피면 흐릿해지고 못 줍는다 — 본체(오염)가 멀쩡하면 바닥에 남긴다.
+        // 낭비 방지 + 다친 쪽이 줍는 경합 유지. (오브 HP 게이트는 오브 HP 전투 퇴역으로 #318에서 삭제)
+        if (itemId == HeartItemId && corruption <= 0)
             return GroundItemPickupDisposition.LeaveOnGround;
 
         if (staminaRecovery == 0 && corruptionRecovery == 0)

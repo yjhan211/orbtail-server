@@ -2153,7 +2153,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         string registration = ReadMethodSlice(
             server,
             "private void RegisterMatchRuntimeComponents(long matchingId)",
-            "private bool IsSwarmFrontOrbDamaged(");
+            "internal const int ResourceTickIntervalSeconds = 5;");
         AssertInOrder(
             registration,
             "_swarmBotTickCoordinator.RegisterMatching(matchingId)",

@@ -40,10 +40,6 @@ public partial class GameServer
     // 파생한다(GetSwarmFieldWaves). 토글은 클라 경계 렌더와 공유하므로 Config가 단일 출처.
     private static readonly bool SwarmFieldEnabled = Config.SWARM_PRESSURE_FIELD_ENABLED;
 
-    // 오브 HP 전투 퇴역 (#226 재개편): 미사일·물폭탄·몹 공격은 전부 본체 오염 직행 —
-    // 오브 파괴는 열 절단(+폐쇄) 전용이라야 절단이 독립 전투 동사로 산다.
-    private static readonly bool SwarmOrbHealthEnabled = false;
-
     // 고위험 절단 복귀 (#232 무한 꼬리, 2026-08-17 저녁 유저 지시 "절단은 되살려야 해"):
     // 몸으로 상대 꼬리를 유효하게 가로지르면 밟은 지점부터 꼬리 끝까지 깨지고(2026-08-18 유저 결정: 접미
     // 전체) 나는 정신오염 +35를 낸다. 크랙 5칸·방어 장갑·절단 낙수는 쓰지 않는다 (TryPerformSwarmTrailCut).
@@ -195,17 +191,6 @@ public partial class GameServer
                     MoveSwarmCutDummy(dummyMatchingId, dirX, dirY);
             // #272 경계 토출 스폰: 자기장 경계가 관통 중인 구역의 캠프는 빨간 지대에서 태어난다.
             SwarmMonsterDirector.FieldSpawnCellResolver ??= ResolveSwarmFieldSpawn;
-            // 하트 = 본체 오염 + 앞줄 오브 HP 회복 (#222 M4, 원작 하트는 스쿼드도 회복).
-            // 엔트리 제거 = 만충 취급 — 다음 오브 비주얼 틱에 체력바·크랙이 함께 복구된다.
-            GameClientSession.SwarmHeartPickupCallback ??=
-                (healMatchingId, healPlayerId) =>
-                    _matchRuntimeRegistry.TryExecute(
-                        healMatchingId,
-                        () => GetSwarmMatchRuntime(healMatchingId).Pacing.FrontOrbHp.Remove(
-                            (healMatchingId, healPlayerId)));
-            // 하트 픽업 게이트: 앞줄 오브가 상했으면 오염 0이어도 줍는다 (원작 만피 게이트의 근사).
-            GroundItemPickupPolicy.FrontOrbDamagedResolver ??=
-                IsSwarmFrontOrbDamaged;
             LogSwarmPairZoneDistances(matchingId);
             // #272 자기장: 수축 시계는 폐쇄 시계와 같은 앵커(AreaClosureManager.GameStartTime)를 쓴다 —
             // 무장은 폐쇄 틱(PrepareSwarmScheduledClosureTick)의 최초 InitializeMatching이 담당한다.
@@ -459,7 +444,7 @@ public partial class GameServer
             //
             // PvP 제한 (2026-08-16 유저 명세): 자동 공격과 절단이 서로 다른 것을 건드려야
             // 한다. 자동 공격은 본체를 서서히 압박하고, 오브 손실은 충돌 절단으로만 난다
-            // (오브 HP 전투는 SwarmOrbHealthEnabled=false로 이미 퇴역).
+            // (오브 HP 전투는 #226에서 퇴역, #318에서 코드 삭제).
             // 전체 오브가 사람을 쏘면 20개 꼬리가 3개 꼬리를 그대로 녹인다 — 앞열 3개로
             // 끊어, 오브 수는 PvE 성장과 절단 위험만 키우고 원거리 PvP 화력은 상한을 갖는다.
             // 사거리도 PvE(7)보다 짧은 5로 둔다 — 붙어야 싸운다.
@@ -1040,7 +1025,6 @@ public partial class GameServer
             var destroyed = DestroySwarmOrbsFromOrdinal(matchingId, playerId, suffixStart);
             foreach (var destroyedItem in destroyed)
             {
-                GetSwarmMatchRuntime(matchingId).TrailCombat.OrbCutCracks.Remove((matchingId, playerId, destroyedItem.ItemUid));
                 GetSwarmMatchRuntime(matchingId).TrailCombat.OrbDurabilityBonus.Remove((matchingId, playerId, destroyedItem.ItemUid));
                 if (ownerSessionOrdinal >= 0)
                 {
@@ -1746,7 +1730,6 @@ public partial class GameServer
         var ownerChain = chains[bestOwnerId];
         foreach (var lost in destroyedItems)
         {
-            GetSwarmMatchRuntime(matchingId).TrailCombat.OrbCutCracks.Remove((matchingId, bestOwnerId, lost.ItemUid));
             GetSwarmMatchRuntime(matchingId).TrailCombat.OrbDurabilityBonus.Remove((matchingId, bestOwnerId, lost.ItemUid));
             ownerSession?.SendInGameInventoryUpdate(lost);
         }
@@ -2408,9 +2391,6 @@ public partial class GameServer
                 destroyedItem != null)
                 destroyed.Add(destroyedItem);
         }
-
-        if (destroyed.Count > 0)
-            GetSwarmMatchRuntime(matchingId).Pacing.FrontOrbHp.Remove((matchingId, playerId));
         return destroyed;
     }
 
@@ -2585,14 +2565,7 @@ public partial class GameServer
             session.MarkSwarmCombat(DateTime.UtcNow);
             // #229: 문 게이지도 같이 끊는다 — 문 앞을 비우지 못하면 방을 못 연다.
             session.BreakDoorUnlockGauge();
-            if (SwarmOrbHealthEnabled)
-            {
-                // 피해량은 몬스터 종이 결정한다 (해골 1 · 다트 2 · 탈주 5 · 볼러 2).
-                ApplySwarmSquadOrbHit(matchingId, session, damage.MonsterId, damage.Damage, allSessions);
-                return;
-            }
-
-            // 레거시 오염 경로 — 오염 증가·피격 피드백·일반 탈락 흐름까지 담당한다.
+            // 오염 경로 — 오염 증가·피격 피드백·일반 탈락 흐름까지 담당한다.
             session.ApplySwarmAfterimageMonsterHit(damage.MonsterId, damage.Damage);
             return;
         }
@@ -2600,51 +2573,6 @@ public partial class GameServer
         var bot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == damage.TargetPlayerId);
         if (bot == null)
             return;
-
-        if (SwarmOrbHealthEnabled)
-        {
-            // 유닛 낱개 체력: 접촉은 오브 HP를 깎는다. 마지막 유닛을 잃으면 그 타격이
-            // 곧 버스트 — 오염 만충으로 기존 탈락 파이프라인(순위·드롭)을 그대로 탄다.
-            // 빈손 봇은 본체(오염)가 닳는다 — 사람과 같은 규칙.
-            if (!HasAnySquadOrb(matchingId, bot.PlayerId))
-            {
-                int nakedBefore = bot.Corruption;
-                bot.Corruption = Math.Min(Config.MAX_CORRUPTION,
-                    bot.Corruption + GetSwarmNakedCorruption(damage.Damage));
-                GetSwarmMatchRuntime(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
-                bot.LastDamagedAtUtc = DateTime.UtcNow;
-                // 봇 피격도 남긴다 (2026-08-16): 사람 경로만 로그를 남겨, 매치 2744에서
-                // AFTERIMAGE_HIT 114건이 전부 사람 대상으로 잡혔다 — "봇은 접촉 피해를
-                // 안 받는다"로 읽혔지만 실제로는 피해가 보이지 않았던 것이다.
-                // 봇 매치로 위협도를 재려면 이 줄이 있어야 한다.
-                _gameEventLogManager.LogSwarmAfterimageHit(
-                    matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
-                    damage.Damage, nakedBefore, bot.Corruption,
-                    bot.Corruption >= Config.MAX_CORRUPTION, isBot: true,
-                    DateTimeOffset.UtcNow);
-                return;
-            }
-
-            // 버스트 즉사 제거 (#219): 봇도 빈손 생존으로 전환 — 이후는 본체(오염) 피해 경로.
-            // 몹 피격도 "맞는 중"이다 (#223, 매치 2453 -90): 스탬프가 없으면 보스 링 안에서
-            // 채집을 계속하다 27초간 포격당한다 — 홀드를 풀어 몹 회피 반사(최우선)가 잡게 한다.
-            GetSwarmMatchRuntime(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
-            bot.LastDamagedAtUtc = DateTime.UtcNow;
-            bot.CancelChannelHold();
-
-            _gameEventLogManager.LogSwarmAfterimageHit(
-                matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
-                damage.Damage, bot.Corruption, bot.Corruption,
-                isLethal: false, isBot: true, DateTimeOffset.UtcNow);
-
-            var botHit = ApplySwarmOrbHpDamage(matchingId, bot.PlayerId, damage.Damage);
-            if (botHit.DestroyedItem != null)
-                ScatterSwarmOrbBreakStones(
-                    matchingId, botHit.DestroyedItem.ItemId, bot.CurrentArea,
-                    bot.Position.X, bot.Position.Y, allSessions,
-                    hadDurabilityBonus: botHit.HadDurabilityBonus);
-            return;
-        }
 
         // 반올림으로 맞춘다 (#229 4단계-보정): 잘라내기라 raw 6(배율 통과 3)이 1로, raw 8(4)이
         // 2로 뭉개져 페이즈별 접촉 곡선이 봇에게는 통째로 평평했다. 사람 경로는 Round를 쓴다.
@@ -2660,63 +2588,6 @@ public partial class GameServer
             bot.Corruption >= Config.MAX_CORRUPTION, isBot: true, DateTimeOffset.UtcNow);
     }
 
-    // 빈손 본체 유효 HP = T1 오브 두 개 값 (#223 재상향): T1 한 개 값(×17.5)은 후반 T3
-    // 앞에서 2~3발 0.2초 증발이었다(매치 2403 +262×2 · 2404 +455 한 방) — 읽고 도망칠
-    // 시간이 없는 죽음은 전투를 관전으로 만든다. 두 개 값(×8.75)이면 빈손 도주 창이
-    // 2~3초 생기고, 재기는 여전히 도주 지시(0.5단계)·빈손 이속·무료 개봉이 만든다.
-    private static readonly float SwarmNakedCorruptionPerDamage =
-        Config.MAX_CORRUPTION / (float)(OrbData.GetSquadOrbMaxHp(1) * 2);
-
-    private static int GetSwarmNakedCorruption(int damage) =>
-        Math.Max(1, (int)MathF.Round(damage * SwarmNakedCorruptionPerDamage));
-
-    /// <summary>
-    ///     사람 피격 (유닛 낱개 체력): 오브 HP 차감 → 0이면 파괴 + 인벤 동기화, 궤도가 비면 버스트.
-    ///     빈손이면 플레이어 본체(오염 게이지)가 닳고, 만충이면 기존 탈락 파이프라인을 탄다.
-    ///     피격 연출·탈락은 기존 잔상 피격 경로를 재사용한다 (오염은 연출용 1, 표시는 실제 피해량).
-    /// </summary>
-    private void ApplySwarmSquadOrbHit(
-        long matchingId, GameClientSession session, int monsterId, int damage,
-        List<GameClientSession> allSessions, long attackerPlayerId = 0)
-    {
-        if (!session.PlayerId.HasValue)
-            return;
-
-        if (!HasAnySquadOrb(matchingId, session.PlayerId.Value))
-        {
-            // PvP(monsterId=0)는 몬스터 피격 경로의 monsterId 가드에 걸려 증발했다 (#222 수리)
-            // — 오염만 직접 반영한다. 피격 연출은 PvP VFX 브로드캐스트가 이미 담당한다.
-            // 공격자 전달 (#223): 빈손 PvP 킬이 by=0 · src=mental로 남던 크레딧 증발 수리.
-            if (monsterId > 0)
-                session.ApplySwarmAfterimageMonsterHit(monsterId, GetSwarmNakedCorruption(damage));
-            else
-                session.ModifyStats(corruptionDelta: GetSwarmNakedCorruption(damage),
-                    attackerPlayerId: attackerPlayerId);
-            return;
-        }
-
-        var hit = ApplySwarmOrbHpDamage(matchingId, session.PlayerId.Value, damage);
-        if (hit.DestroyedItem != null)
-        {
-            session.SendInGameInventoryUpdate(hit.DestroyedItem);
-            if (session.LastValidatedPosition is { } hitPosition)
-            {
-                ScatterSwarmOrbBreakStones(
-                    matchingId, hit.DestroyedItem.ItemId, session.CurrentArea,
-                    hitPosition.X, hitPosition.Y, allSessions,
-                    hadDurabilityBonus: hit.HadDurabilityBonus);
-            }
-        }
-
-        // 버스트(마지막 유닛 파괴)는 즉사가 아니다 (#219 SB 이탈, 2026-08-08) —
-        // 빈손 생존으로 전환되고 이후 생존은 본체 HP(오염)가 결정한다. 재기 = 무료 개봉.
-        session.ApplySwarmAfterimageMonsterHit(monsterId, 1, damage);
-    }
-
-    /// <summary>
-    ///     오브 HP 피해 공통 처리 (사람·봇). 최저 티어 오브의 HP를 깎고, 0이 되면 그 오브를 파괴한다.
-    ///     앞줄 오브가 바뀌면(머지·획득) HP는 새 오브 만충으로 리셋된다 — 잔여 HP 이월 없음.
-    /// </summary>
     /// <summary>앞줄 오브 = 최저 티어·선입(ItemUid) — 피해·표시가 같은 기준을 읽는다.</summary>
     private InGameItemInfo? FindSwarmFrontOrb(long matchingId, long playerId)
     {
@@ -3327,82 +3198,14 @@ public partial class GameServer
         }
     }
 
-    /// <summary>앞줄 오브의 현재 HP — 오브별 체력바 브로드캐스트용. 빈손은 -1(만충 취급).</summary>
+    /// <summary>
+    ///     앞줄 오브의 HP — 오브별 체력바 브로드캐스트용. 오브 HP 전투가 퇴역해 서버는 HP를 깎지 않으므로
+    ///     항상 만충을 보낸다. 빈손은 -1.
+    /// </summary>
     private int GetSwarmFrontOrbHp(long matchingId, long playerId)
     {
         var frontOrb = FindSwarmFrontOrb(matchingId, playerId);
-        if (frontOrb == null)
-            return -1;
-
-        return GetSwarmMatchRuntime(matchingId).Pacing.FrontOrbHp.TryGetValue((matchingId, playerId), out var stored) &&
-               stored.ItemId == frontOrb.ItemId
-            ? stored.Hp
-            : GetSquadOrbMaxHp(GetSquadOrbTier(frontOrb.ItemId));
-    }
-
-    private (InGameItemInfo? DestroyedItem, bool Busted, bool HadDurabilityBonus) ApplySwarmOrbHpDamage(
-        long matchingId, long playerId, int damage)
-    {
-        var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
-        var frontOrb = FindSwarmFrontOrb(matchingId, playerId);
-        // 빈손(#219 M2 빈손 시작)은 스쿼드가 없으니 스쿼드 피해도 버스트도 없다 —
-        // 버스트는 "마지막 유닛을 잃는 타격"에만 성립한다. 빈손 즉사 사고 방지.
-        if (frontOrb == null)
-            return (null, false, false);
-
-        var key = (matchingId, playerId);
-        int currentHp = GetSwarmMatchRuntime(matchingId).Pacing.FrontOrbHp.TryGetValue(key, out var stored) && stored.ItemId == frontOrb.ItemId
-            ? stored.Hp
-            : GetSquadOrbMaxHp(GetSquadOrbTier(frontOrb.ItemId));
-        currentHp -= damage;
-        if (currentHp > 0)
-        {
-            GetSwarmMatchRuntime(matchingId).Pacing.FrontOrbHp[key] = (frontOrb.ItemId, currentHp);
-            return (null, false, false);
-        }
-
-        GetSwarmMatchRuntime(matchingId).Pacing.FrontOrbHp.Remove(key);
-        inventory.TryRemoveItem(frontOrb.ItemUid, 1, out var destroyedItem);
-        // 절단 외 파괴(몹 접촉)도 내구·크랙 상태를 함께 정리한다 — 방어 투자분은 낙수 +1로 정산.
-        GetSwarmMatchRuntime(matchingId).TrailCombat.OrbCutCracks.Remove((matchingId, playerId, frontOrb.ItemUid));
-        bool hadDurabilityBonus =
-            GetSwarmMatchRuntime(matchingId).TrailCombat.OrbDurabilityBonus.Remove((matchingId, playerId, frontOrb.ItemUid));
-        return (destroyedItem, !HasAnySquadOrb(matchingId, playerId), hadDurabilityBonus);
-    }
-
-    /// <summary>
-    ///     오브 파괴 낙수 (#226 D 정산): 깨진 오브는 소환석으로만 흩어진다 — 승자의 전리품이자
-    ///     도망친 주인의 회수 기회. T1/2/3 = 1/2/3, 방어 강화(내구 2+) 오브는 +1.
-    ///     잼 낙수는 잼 승점 퇴역과 함께 제거 — 승점은 오브 수 하나로 통일한다.
-    /// </summary>
-    private static int GetSwarmOrbBreakStoneCount(int tier) => Math.Clamp(tier, 1, 3);
-
-    private void ScatterSwarmOrbBreakStones(
-        long matchingId,
-        int destroyedItemId,
-        AreaType area,
-        float x,
-        float y,
-        List<GameClientSession> sessions,
-        bool hadDurabilityBonus = false)
-    {
-        int destroyedTier = GetSquadOrbTier(destroyedItemId);
-        int stoneCount = GetSwarmOrbBreakStoneCount(destroyedTier) + (hadDurabilityBonus ? 1 : 0);
-        if (stoneCount <= 0 || area == AreaType.None)
-            return;
-
-        var itemIds = Enumerable.Repeat(Config.SUMMON_STONE_GROUND_ITEM_ID, stoneCount)
-            .ToArray();
-        var spawned = _groundItemManager.SpawnItems(
-            matchingId, area, x, y, itemIds,
-            mapId: Config.SWARM_MATCH_MAP,
-            layout: GroundItemSpawnLayout.EliminationScatter);
-        if (spawned.Count == 0)
-            return;
-
-        BroadcastGroundItemSpawnChunked(
-            matchingId, area, spawned.ToList(),
-            sessions.Where(session => session.PlayerId.HasValue && session.CurrentArea == area));
+        return frontOrb == null ? -1 : GetSquadOrbMaxHp(GetSquadOrbTier(frontOrb.ItemId));
     }
 
     private bool HasAnySquadOrb(long matchingId, long playerId)

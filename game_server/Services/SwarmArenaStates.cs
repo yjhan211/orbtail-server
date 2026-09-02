@@ -139,10 +139,9 @@ public sealed class SwarmTrailCombatState
     public readonly Dictionary<(long MatchingId, long CutterId, long ItemUid), DateTime> OrbCutLatches = new();
     public readonly Dictionary<(long MatchingId, long CutterId, long VictimId), SwarmRetaliationWindow>
         CutRetaliationWindows = new();
-    public readonly Dictionary<(long MatchingId, long OwnerId, long ItemUid), int> OrbCutCracks = new();
 
     // 오브 내구 보너스 (#226 방어 강화 = 내구 모델): 기본 내구 1 + 보너스.
-    // 파괴·매치 정리에서 함께 지운다. 크랙은 유지된다(방어 강화가 균열을 지우지 않는다).
+    // 파괴·매치 정리에서 함께 지운다.
     public readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid), int> OrbDurabilityBonus = new();
 
     // 파도 폭탄: 오브 uid 기반 고유 위상으로 첫 발동을 흩뿌린다.
@@ -196,7 +195,6 @@ public sealed class SwarmMatchPacingState
 
     public readonly HashSet<(long MatchingId, long PlayerId)> StartingOrbGrantedPlayers = new();
     public readonly Dictionary<(long MatchingId, long PlayerId), float> PvpCorruptionCarry = new();
-    public readonly Dictionary<(long MatchingId, long PlayerId), (int ItemId, int Hp)> FrontOrbHp = new();
 
     public readonly List<PendingSwarmMonsterHit> PendingMonsterHits = new();
 
