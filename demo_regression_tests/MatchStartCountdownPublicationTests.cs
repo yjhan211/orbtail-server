@@ -10,15 +10,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data.models;
 using network.contracts.authentication;
-using network.contracts.messaging;
-using network.contracts.scaling;
 using network.core;
 using network.hosting;
 using network.infrastructure;
 using network.interfaces;
 using network.packets;
-using RedLockNet;
-using StackExchange.Redis;
 
 namespace demo_regression_tests;
 
@@ -232,7 +228,8 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.Equal(1, CountOccurrences(method, "GetSessionsByMatch(matchingId)"));
         AssertInOrder(
             method,
-            "PublishLateDurableAdmissionFailure(matchingId, playerId);",
+            "PublishMatchingLifecycle(",
+            "MatchingLifecycleSubjects.PlayerAdmissionFailed,",
             "session.DisconnectForAdmissionFailure();");
 
         AssertInOrder(
@@ -261,38 +258,6 @@ public sealed class MatchStartCountdownPublicationTests
             lifecycleDispatch,
             "foreach (Action publication in lifecyclePublications)",
             "publication();");
-    }
-
-    [Fact]
-    public void OwnerLoss_DefersSnapshotAndExternalLifecycleMarkerToSharedTerminalBoundary()
-    {
-        string repositoryRoot = FindRepositoryRoot();
-        string server = ReadNormalizedSource(repositoryRoot, "game_server", "GameServer.cs");
-        string callback = ReadMethodSlice(
-            server,
-            "private void OnGameServerMatchOwnerLost(",
-            "private void HandleGameServerMatchOwnerLost(");
-        string handler = ReadMethodSlice(
-            server,
-            "private void HandleGameServerMatchOwnerLost(",
-            "private async Task WaitForPendingMatchOwnerLossesAsync(");
-
-        AssertInOrder(
-            callback,
-            "long[] affectedPlayerIds = handoffPlayerIds",
-            ".Distinct()",
-            "HandleGameServerMatchOwnerLost(matchingId, affectedPlayerIds)");
-        Assert.DoesNotContain("GetSessionsByMatch", callback);
-        Assert.DoesNotContain("TryMarkMatchingLifecycleHandledExternally", callback);
-
-        AssertInOrder(
-            handler,
-            "TryAbortMatchAtTerminalBoundary(",
-            "List<GameClientSession> affectedSessions = GetSessionsByMatch(matchingId);",
-            "session.TryMarkMatchingLifecycleHandledExternally()",
-            "new AdmissionFailureTerminalSnapshot(");
-        Assert.DoesNotContain("TryAcquireOperation", handler);
-        Assert.DoesNotContain("PublishAdmissionFailureLifecycle", handler);
     }
 
     [Fact]
@@ -357,41 +322,6 @@ public sealed class MatchStartCountdownPublicationTests
             playerSubjects[excludedLatePlayerId]);
         Assert.Equal(1, completedSession.FatalCount);
         Assert.Equal(1, excludedLateSession.FatalCount);
-    }
-
-    [Fact]
-    public void OwnerLoss_LosingNormalFinalizer_DoesNotOverrideWinnerLifecycleSubject()
-    {
-        const long matchingId = 71_006;
-        const long playerId = 603;
-        GameServer server = CreateAdmissionTestServer();
-        (MatchRuntimeRegistry runtimeRegistry, _) = InitializePublicationRuntime(server);
-        ConfigureAdmissionCleanup(server, runtimeRegistry);
-        IDisposable operation = Assert.IsAssignableFrom<IDisposable>(
-            runtimeRegistry.TryAcquireOperation(matchingId, static () => { }));
-        Action? normalLifecyclePublication = null;
-        Assert.True(runtimeRegistry.TryFinalize(
-            matchingId,
-            static () => true,
-            beforeFinalized: () =>
-            {
-                normalLifecyclePublication = PrepareLifecyclePublication(
-                    server,
-                    MatchingLifecycleSubjects.PlayerCompleted,
-                    playerId,
-                    matchingId);
-            },
-            cleanup: static () => { },
-            afterFinalized: () => normalLifecyclePublication?.Invoke()));
-
-        InvokeOwnerLossHandler(server, matchingId, [playerId]);
-        Assert.False(GetTerminalSubjects(server).ContainsKey(matchingId));
-
-        operation.Dispose();
-
-        ConcurrentDictionary<long, string> playerSubjects = GetTerminalSubjects(server)[matchingId];
-        Assert.Single(playerSubjects);
-        Assert.Equal(MatchingLifecycleSubjects.PlayerCompleted, playerSubjects[playerId]);
     }
 
     [Fact]
@@ -482,114 +412,6 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.Single(playerSubjects);
         Assert.Equal(MatchingLifecycleSubjects.PlayerAdmissionFailed, playerSubjects[playerId]);
         Assert.Equal(1, session.FatalCount);
-    }
-
-    [Fact]
-    public async Task AdmissionFailure_AfterRealRedisCleanupSeal_UsesDeterministicStaticPubAckExactlyOnce()
-    {
-        const long matchingId = 71_010;
-        const long playerId = 607;
-        var redis = new FencedLifecycleRedisConnectionPool();
-        var nats = new RecordingDurableNatsClient();
-        GameServer server = CreateDurableAdmissionTestServer(redis, nats);
-        (MatchRuntimeRegistry runtimeRegistry, _) = InitializePublicationRuntime(server);
-        MatchRuntimeCleanupCoordinator cleanup = ConfigureDurableAdmissionCleanup(server, runtimeRegistry);
-        var session = new RecordingAdmissionSession();
-        SetSessionIdentity(session, playerId, matchingId);
-
-        Assert.True(runtimeRegistry.TryExecute(matchingId, static () => { }));
-        Assert.True(Assert.IsType<bool>(InvokePrivate(
-            server,
-            "TryRegisterMatchingLifecycleTerminal",
-            MatchingLifecycleSubjects.PlayerCompleted,
-            playerId + 10_000,
-            matchingId)));
-        Assert.True(cleanup.TryFinalize(matchingId));
-        await WaitForMatchingRedisCleanupAsync(server);
-
-        // The production cleanup continuation has sealed ordinary lifecycle registration.
-        Assert.Null(InvokePrivate(
-            server,
-            "BeginMatchingLifecyclePersistenceRegistration",
-            matchingId));
-
-        InvokeAdmissionAbort(server, session);
-        InvokeAdmissionAbort(server, session);
-        await WaitForMatchingLifecyclePublishesAsync(server);
-
-        MatchingLifecycleOutboxRecord record = Assert.Single(redis.EnqueuedRecords);
-        DurablePublication publication = Assert.Single(nats.Publications);
-        string expectedEventId = MatchingLifecycleMessageIds.Create(
-            MatchingLifecycleSubjects.PlayerAdmissionFailed,
-            playerId,
-            matchingId);
-        Assert.Equal(1, redis.EnqueueCount);
-        Assert.Equal(expectedEventId, record.EventId);
-        Assert.Equal(expectedEventId, publication.MessageId);
-        Assert.Equal(MatchingLifecycleSubjects.PlayerAdmissionFailed, record.Subject);
-        Assert.Equal(MatchingLifecycleSubjects.PlayerAdmissionFailed, publication.Subject);
-        Assert.Equal(record.Payload, publication.Payload);
-        var envelope = MessagePackSerializer.Deserialize<MatchingLifecycleEnvelope>(publication.Payload);
-        Assert.Equal(playerId, envelope.PlayerId);
-        Assert.Equal(matchingId, envelope.MatchingId);
-        Assert.Equal(expectedEventId, envelope.EventId);
-        Assert.Equal(1, session.FatalCount);
-        Assert.Equal(1, session.DisconnectCount);
-    }
-
-    [Fact]
-    public async Task AdmissionFailure_AfterRealRedisCleanupSeal_PreservesPriorWinnerSubject()
-    {
-        const long matchingId = 71_011;
-        const long playerId = 608;
-        var redis = new FencedLifecycleRedisConnectionPool();
-        var nats = new RecordingDurableNatsClient();
-        GameServer server = CreateDurableAdmissionTestServer(redis, nats);
-        (MatchRuntimeRegistry runtimeRegistry, _) = InitializePublicationRuntime(server);
-        MatchRuntimeCleanupCoordinator cleanup = ConfigureDurableAdmissionCleanup(server, runtimeRegistry);
-        var session = new RecordingAdmissionSession();
-        SetSessionIdentity(session, playerId, matchingId);
-        Action? winnerPublication = null;
-
-        Assert.True(runtimeRegistry.TryExecute(matchingId, static () => { }));
-        Assert.True(cleanup.TryFinalize(
-            matchingId,
-            beforeFinalized: () =>
-            {
-                winnerPublication = PrepareLifecyclePublication(
-                    server,
-                    MatchingLifecycleSubjects.PlayerCompleted,
-                    playerId,
-                    matchingId);
-            },
-            afterFinalized: () => winnerPublication?.Invoke()));
-        await WaitForMatchingLifecyclePublishesAsync(server);
-        await WaitForMatchingRedisCleanupAsync(server);
-        Assert.Null(InvokePrivate(
-            server,
-            "BeginMatchingLifecyclePersistenceRegistration",
-            matchingId));
-
-        InvokeAdmissionAbort(server, session);
-        InvokeAdmissionAbort(server, session);
-        await WaitForMatchingLifecyclePublishesAsync(server);
-
-        MatchingLifecycleOutboxRecord record = Assert.Single(redis.EnqueuedRecords);
-        DurablePublication publication = Assert.Single(nats.Publications);
-        string expectedEventId = MatchingLifecycleMessageIds.Create(
-            MatchingLifecycleSubjects.PlayerCompleted,
-            playerId,
-            matchingId);
-        Assert.Equal(1, redis.EnqueueCount);
-        Assert.Equal(expectedEventId, record.EventId);
-        Assert.Equal(expectedEventId, publication.MessageId);
-        Assert.Equal(MatchingLifecycleSubjects.PlayerCompleted, record.Subject);
-        Assert.Equal(MatchingLifecycleSubjects.PlayerCompleted, publication.Subject);
-        Assert.Equal(
-            MatchingLifecycleSubjects.PlayerCompleted,
-            GetTerminalSubjects(server)[matchingId][playerId]);
-        Assert.Equal(1, session.FatalCount);
-        Assert.Equal(1, session.DisconnectCount);
     }
 
     [Fact]
@@ -814,7 +636,6 @@ public sealed class MatchStartCountdownPublicationTests
             null!,
             null!,
             null!,
-            null!,
             new ServerConfig
             {
                 ServerType = "GameServer",
@@ -822,56 +643,7 @@ public sealed class MatchStartCountdownPublicationTests
                 GameServerNum = 1
             },
             null!,
-            new GameServerScalingOptions { Enabled = false },
-            null!,
-            null!,
             new ServerReadinessState());
-    }
-
-    private static GameServer CreateDurableAdmissionTestServer(
-        FencedLifecycleRedisConnectionPool redis,
-        RecordingDurableNatsClient nats)
-    {
-        IConfiguration configuration = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["userServerScaling:enabled"] = "true"
-            })
-            .Build();
-        var outboxStore = new MatchingLifecycleOutboxStore(redis);
-        var outboxWorker = new MatchingLifecycleOutboxWorker(
-            outboxStore,
-            nats,
-            NullLogger.Instance);
-        typeof(MatchingLifecycleOutboxWorker)
-            .GetField("_acceptingEnqueues", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(outboxWorker, 1);
-        var server = new GameServer(
-            configuration,
-            NullLogger<GameServer>.Instance,
-            null!,
-            null!,
-            outboxStore,
-            null!,
-            new ServerConfig
-            {
-                ServerType = "GameServer",
-                ServerId = 1,
-                GameServerNum = 1
-            },
-            null!,
-            new GameServerScalingOptions { Enabled = false },
-            null!,
-            null!,
-            new ServerReadinessState());
-        typeof(GameServer)
-            .GetField("_matchingLifecycleNatsClient", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(server, nats);
-        typeof(GameServer)
-            .GetField("_matchingLifecycleOutboxWorker", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(server, outboxWorker);
-        InvokePrivate(server, "StartAcceptingMatchingLifecycleEnqueues");
-        return server;
     }
 
     private static (
@@ -922,18 +694,6 @@ public sealed class MatchStartCountdownPublicationTests
             .Invoke(server, [session]);
     }
 
-    private static void InvokeOwnerLossHandler(
-        GameServer server,
-        long matchingId,
-        IReadOnlyCollection<long> playerIds)
-    {
-        typeof(GameServer)
-            .GetMethod(
-                "HandleGameServerMatchOwnerLost",
-                BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(server, [matchingId, playerIds]);
-    }
-
     private static Action? PrepareLifecyclePublication(
         GameServer server,
         string subject,
@@ -972,42 +732,6 @@ public sealed class MatchStartCountdownPublicationTests
                     runtimeRegistry,
                     Array.Empty<MatchRuntimeCleanupStep>(),
                     NullLogger<GameServer>.Instance));
-    }
-
-    private static MatchRuntimeCleanupCoordinator ConfigureDurableAdmissionCleanup(
-        GameServer server,
-        MatchRuntimeRegistry runtimeRegistry)
-    {
-        var cleanup = new MatchRuntimeCleanupCoordinator(
-            runtimeRegistry,
-            Array.Empty<MatchRuntimeCleanupStep>(),
-            NullLogger<GameServer>.Instance,
-            matchingId => (Action?)InvokePrivate(
-                server,
-                "PrepareMatchingRedisCleanup",
-                matchingId));
-        typeof(GameServer)
-            .GetField(
-                "_matchRuntimeCleanupCoordinator",
-                BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(server, cleanup);
-        return cleanup;
-    }
-
-    private static async Task WaitForMatchingLifecyclePublishesAsync(GameServer server)
-    {
-        Task wait = Assert.IsAssignableFrom<Task>(InvokePrivate(
-            server,
-            "WaitForPendingMatchingLifecyclePublishesAsync"));
-        await wait.WaitAsync(TimeSpan.FromSeconds(2));
-    }
-
-    private static async Task WaitForMatchingRedisCleanupAsync(GameServer server)
-    {
-        Task wait = Assert.IsAssignableFrom<Task>(InvokePrivate(
-            server,
-            "WaitForPendingMatchingRedisCleanupsAsync"));
-        await wait.WaitAsync(TimeSpan.FromSeconds(2));
     }
 
     private static object? InvokePrivate(
@@ -1134,7 +858,6 @@ public sealed class MatchStartCountdownPublicationTests
                     action();
                     return true;
                 },
-                static (_, _) => true,
                 static (_, _, _) => { },
                 static (_, _) => { },
                 static (_, _) => null,
@@ -1180,125 +903,6 @@ public sealed class MatchStartCountdownPublicationTests
             if (_throwOnSend)
                 throw new InvalidOperationException("countdown transport failed");
             DeliveredWireBytes.Add(Assert.IsType<Packet>(packet).ToBytes());
-        }
-    }
-
-    private sealed record DurablePublication(
-        string Stream,
-        string Subject,
-        string MessageId,
-        byte[] Payload);
-
-    private sealed class RecordingDurableNatsClient : INatsClient
-    {
-        public ConcurrentQueue<DurablePublication> Publications { get; } = new();
-
-        public void Publish(string subject, byte[] message) =>
-            throw new NotSupportedException();
-
-        public void Subscribe(string subject, Action<string, byte[]> messageHandler) =>
-            throw new NotSupportedException();
-
-        public Task<byte[]> RequestAsync(
-            string subject,
-            byte[] message,
-            TimeSpan timeout,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public void SubscribeRequest(
-            string subject,
-            Func<string, byte[], CancellationToken, Task<byte[]>> messageHandler,
-            string? queue = null) =>
-            throw new NotSupportedException();
-
-        public void EnsureDurableStream(NatsDurableStreamOptions options) =>
-            throw new NotSupportedException();
-
-        public Task<NatsDurablePublishAck> PublishDurableAsync(
-            string stream,
-            string subject,
-            string messageId,
-            byte[] message,
-            CancellationToken cancellationToken = default)
-        {
-            Publications.Enqueue(new DurablePublication(
-                stream,
-                subject,
-                messageId,
-                message.ToArray()));
-            return Task.FromResult(new NatsDurablePublishAck(
-                stream,
-                checked((ulong)Publications.Count),
-                Duplicate: false));
-        }
-
-        public void SubscribeDurableQueue(
-            NatsDurableConsumerOptions options,
-            Func<NatsDurableMessage, CancellationToken, Task<NatsDurableMessageDisposition>> messageHandler) =>
-            throw new NotSupportedException();
-
-        public Task CloseAsync(CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
-
-        public void Close() { }
-    }
-
-    private sealed class FencedLifecycleRedisConnectionPool : IRedisConnectionPool
-    {
-        private readonly IDatabase _database;
-
-        public FencedLifecycleRedisConnectionPool()
-        {
-            _database = DispatchProxy.Create<IDatabase, LifecycleRedisDatabaseProxy>();
-            ((LifecycleRedisDatabaseProxy)(object)_database).Owner = this;
-        }
-
-        public ConcurrentQueue<MatchingLifecycleOutboxRecord> EnqueuedRecords { get; } = new();
-        public int EnqueueCount => EnqueuedRecords.Count;
-
-        public void Initialize(string connectionString) { }
-
-        public void Initialize(RedisConfiguration configuration) { }
-
-        public IRedLockFactory GetRedLockFactory() =>
-            throw new NotSupportedException();
-
-        public Task<T> ExecuteWithRetryAsync<T>(
-            Func<IDatabase, Task<T>> action,
-            int db = -1,
-            int retryCount = 3) =>
-            action(_database);
-
-        public void Dispose() { }
-
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
-        public class LifecycleRedisDatabaseProxy : DispatchProxy
-        {
-            public FencedLifecycleRedisConnectionPool Owner { get; set; } = null!;
-
-            protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
-            {
-                if (targetMethod?.Name != nameof(IDatabase.ScriptEvaluateAsync) ||
-                    args is not { Length: >= 3 })
-                {
-                    throw new NotSupportedException(
-                        $"Unexpected fake Redis call: {targetMethod?.Name ?? "<null>"}.");
-                }
-
-                RedisKey[] keys = Assert.IsType<RedisKey[]>(args[1]);
-                RedisValue[] values = Assert.IsType<RedisValue[]>(args[2]);
-                Assert.Equal(3, keys.Length);
-                Assert.Equal(MatchingLifecycleOutboxKeys.Due, keys[1].ToString());
-                Assert.Contains(":record:", keys[0].ToString(), StringComparison.Ordinal);
-                Assert.Contains(":abort:", keys[2].ToString(), StringComparison.Ordinal);
-                byte[] serialized = (byte[])values[0]!;
-                Owner.EnqueuedRecords.Enqueue(
-                    MessagePackSerializer.Deserialize<MatchingLifecycleOutboxRecord>(serialized));
-                RedisResult fenced = RedisResult.Create((RedisValue)2L);
-                return Task.FromResult(fenced);
-            }
         }
     }
 }

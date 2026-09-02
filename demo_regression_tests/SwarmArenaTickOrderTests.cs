@@ -486,7 +486,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_globalExecutionLock", registry);
         // Finalization still reacquires SyncRoot to validate and commit. Operation acquisition
         // shares one Monitor-based core so timer callers can choose non-blocking TryEnter.
-        Assert.Equal(5, CountOccurrences(registry, "lock (runtime.SyncRoot)"));
+        Assert.Equal(4, CountOccurrences(registry, "lock (runtime.SyncRoot)"));
         Assert.Contains("Monitor.Enter(runtime.SyncRoot, ref lockTaken);", registry);
         Assert.Contains("Monitor.TryEnter(runtime.SyncRoot, ref lockTaken);", registry);
 

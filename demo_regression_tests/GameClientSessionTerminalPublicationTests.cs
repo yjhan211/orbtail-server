@@ -12,7 +12,6 @@ using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.contracts.authentication;
-using network.contracts.scaling;
 using network.core;
 using network.helpers;
 using network.hosting;
@@ -500,16 +499,12 @@ public sealed class GameClientSessionTerminalPublicationTests
             null!,
             null!,
             null!,
-            null!,
             new ServerConfig
             {
                 ServerType = "GameServer",
                 ServerId = 1,
                 GameServerNum = 1
             },
-            null!,
-            new GameServerScalingOptions { Enabled = false },
-            null!,
             null!,
             new ServerReadinessState());
     }
@@ -570,7 +565,6 @@ public sealed class GameClientSessionTerminalPublicationTests
                 static _ => Random.Shared,
                 acquireOperation,
                 registry.TryExecute,
-                registry.TryBindOwnerFence,
                 cleanupRuntime,
                 static (_, _) => { },
                 prepareGameCompletion,

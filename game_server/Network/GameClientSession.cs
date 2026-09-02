@@ -53,7 +53,6 @@ public partial class GameClientSession : SessionBase
     ///     <see cref="UserToken.TrySend"/>; tests can inject a sender to verify the match monitor boundary.
     /// </summary>
     private readonly Func<Packet, bool> _trySendConnectSuccessResponse;
-    private readonly Func<long, long, bool> _bindMatchOwnerFence;
     private readonly Func<long, GameClientSession, Action?> _registerSessionCallback;
     private readonly Action<long, long> _recordLeavePenalty;
     private readonly Func<long, long, Action?> _prepareGameCompletion;
@@ -197,7 +196,6 @@ public partial class GameClientSession : SessionBase
         Func<long, Random> getItemCombineRandom,
         Func<long, Action, IDisposable?> acquireMatchRuntimeOperation,
         Func<long, Action, bool> executeMatchRuntime,
-        Func<long, long, bool> bindMatchOwnerFence,
         Action<long, Action?, Action?> cleanupMatchRuntime,
         Action<long, long> recordLeavePenalty,
         Func<long, long, Action?> prepareGameCompletion,
@@ -234,7 +232,6 @@ public partial class GameClientSession : SessionBase
         _acquireMatchRuntimeOperation = acquireMatchRuntimeOperation;
         _executeMatchRuntime = executeMatchRuntime;
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Token.TrySend;
-        _bindMatchOwnerFence = bindMatchOwnerFence;
         _cleanupMatchRuntime = cleanupMatchRuntime;
         _recordLeavePenalty = recordLeavePenalty;
         _prepareGameCompletion = prepareGameCompletion;

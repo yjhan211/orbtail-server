@@ -316,7 +316,6 @@ public sealed class MatchRuntimeRegistryTests
         Assert.True(siblingRanBeforeRelease, "A different match was blocked by target cleanup.");
         Assert.False(registry.TryExecute(finalizingMatchingId, static () => { }));
         Assert.Null(registry.TryAcquireOperation(finalizingMatchingId, static () => { }));
-        Assert.False(registry.TryBindOwnerFence(finalizingMatchingId, ownerFence: 1));
     }
 
     [Fact]
@@ -373,7 +372,6 @@ public sealed class MatchRuntimeRegistryTests
         bool siblingRanBeforeRelease = siblingEntered.Wait(TimeSpan.FromSeconds(2));
         Assert.False(registry.TryExecute(finalizingMatchingId, static () => { }));
         Assert.Null(registry.TryAcquireOperation(finalizingMatchingId, static () => { }));
-        Assert.False(registry.TryBindOwnerFence(finalizingMatchingId, ownerFence: 1));
         releaseBefore.Set();
 
         Assert.True(targetMonitorWasFree, "Before-finalized held the target runtime monitor.");
@@ -465,7 +463,6 @@ public sealed class MatchRuntimeRegistryTests
         Assert.Equal(0, cleanupCount);
         Assert.False(registry.TryExecute(matchingId, static () => { }));
         Assert.Null(registry.TryAcquireOperation(matchingId, static () => { }));
-        Assert.False(registry.TryBindOwnerFence(matchingId, ownerFence: 1));
 
         first!.Dispose();
         Assert.Equal(0, cleanupCount);
@@ -478,7 +475,6 @@ public sealed class MatchRuntimeRegistryTests
         Assert.True(registry.IsTerminal(matchingId));
         Assert.False(registry.TryExecute(matchingId, static () => { }));
         Assert.Null(registry.TryAcquireOperation(matchingId, static () => { }));
-        Assert.False(registry.TryBindOwnerFence(matchingId, ownerFence: 1));
     }
 
     [Fact]

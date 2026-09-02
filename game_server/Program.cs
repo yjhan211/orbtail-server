@@ -4,12 +4,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using network.contracts.scaling;
 using network.core;
 using network.hosting;
 using network.infrastructure;
 using network.infrastructure.authentication;
-using network.infrastructure.scaling;
 using network.interfaces;
 using network.managers;
 using Serilog;
@@ -84,13 +82,6 @@ internal static partial class Program
             sp.GetRequiredService<IRedisConnectionPool>().GetRedLockFactory());
         services.AddSingleton<ICacheHelper, CacheHelper>();
         services.AddManittoAuthenticationBoundaries(hostContext.Configuration);
-
-        var scalingOptions = CreateScalingOptions(hostContext.Configuration);
-        scalingOptions.Validate();
-        services.AddSingleton(scalingOptions);
-        services.AddSingleton<IGameServerRoutingStore, RedisGameServerRoutingStore>();
-        services.AddSingleton<MatchingLifecycleOutboxStore>();
-        services.AddSingleton<GameServerNodeLease>();
         services.AddSingleton<GameServer>();
         services.AddHostedService<HealthCheckService>();
         services.AddHostedService(sp => sp.GetRequiredService<GameServer>());
@@ -111,32 +102,6 @@ internal static partial class Program
             ServerType = configuration["serverType"] ?? "GameServer",
             GameServerNum = configuration.GetValue<int>("gameServerNum"),
             ServerId = ExtractGameServerId(configuration["gameServerId"] ?? "")
-        };
-    }
-
-    private static GameServerScalingOptions CreateScalingOptions(IConfiguration configuration)
-    {
-        bool enabled = configuration.GetValue("horizontalScaling:enabled", false);
-        int clientPort = configuration.GetValue("clientPort", 9001);
-        return new GameServerScalingOptions
-        {
-            Enabled = enabled,
-            NodeId = configuration["horizontalScaling:nodeId"] ??
-                     configuration["gameServerId"] ??
-                     string.Empty,
-            PublicHost = configuration["horizontalScaling:publicHost"] ?? string.Empty,
-            PublicPort = configuration.GetValue("horizontalScaling:publicPort", clientPort),
-            MaxConcurrentMatches = configuration.GetValue("horizontalScaling:maxConcurrentMatches", 100),
-            HeartbeatInterval = TimeSpan.FromSeconds(
-                configuration.GetValue("horizontalScaling:heartbeatIntervalSeconds", 3)),
-            NodeLeaseLifetime = TimeSpan.FromSeconds(
-                configuration.GetValue("horizontalScaling:nodeLeaseSeconds", 12)),
-            ReservationLifetime = TimeSpan.FromSeconds(
-                configuration.GetValue("horizontalScaling:reservationSeconds", 300)),
-            ActiveOwnerLifetime = TimeSpan.FromSeconds(
-                configuration.GetValue("horizontalScaling:activeOwnerSeconds", 1800)),
-            DrainTimeout = TimeSpan.FromSeconds(
-                configuration.GetValue("horizontalScaling:drainTimeoutSeconds", 30))
         };
     }
 
