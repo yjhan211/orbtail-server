@@ -1,0 +1,43 @@
+# 로컬에서 Game Server 두 대를 띄우는 오버라이드 (#339).
+#   docker compose -f docker-compose.local.yml -f docker-compose.scale.yml up -d
+# 두 번째 노드는 같은 소스를 마운트해 핫 리로드하고, 호스트 포트만 9003/8083으로 어긋난다.
+# User Server는 레지스트리에서 두 노드를 보고 활성 매치 비율이 낮은 쪽에 매치를 배정한다.
+services:
+  game_server_2:
+    # 첫 노드와 같은 dev 이미지를 재사용한다 (소스는 볼륨 마운트라 코드는 항상 같다)
+    image: manitto-game_server:latest
+    container_name: manitto-game-server-2-dev
+    ports:
+      - "8083:8080"
+      - "9003:9001"
+    volumes:
+      - ./game_server:/App/game_server:rw
+      - ./network:/App/network:rw
+      - /App/game_server/bin
+      - /App/game_server/obj
+      - /App/network/bin
+      - /App/network/obj
+      - match-summary-data-dev-2:/App/match-summaries
+    environment:
+      - serverType=GameServer
+      - gameServerNum=2
+      - gameServerId=game-server-1
+      - GAME_SERVER_PUBLIC_HOST=${GAME_SERVER_IP:-192.168.0.167}
+      - GAME_SERVER_PUBLIC_PORT=9003
+      - redisEndPoints=redis:6379
+      - natsEndPoint=nats://nats:4222
+      - ASPNETCORE_ENVIRONMENT=Development
+      - DOTNET_USE_POLLING_FILE_WATCHER=true
+      - DISABLE_GAME_END=${DISABLE_GAME_END:-0}
+      - TEST_TWO_PLAYER_MATCH=${TEST_TWO_PLAYER_MATCH:-0}
+      - DEV_CROSSFIRE_SANDBOX=${DEV_CROSSFIRE_SANDBOX:-0}
+      - DEV_NO_MONSTERS=${DEV_NO_MONSTERS:-0}
+      - SOLO_MAP_VALIDATION=${SOLO_MAP_VALIDATION:-0}
+      - MATCH_SUMMARY_DIRECTORY=/App/match-summaries
+    depends_on:
+      - redis
+      - nats
+    restart: unless-stopped
+
+volumes:
+  match-summary-data-dev-2:

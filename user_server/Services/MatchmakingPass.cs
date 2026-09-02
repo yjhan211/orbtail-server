@@ -27,6 +27,7 @@ internal sealed class MatchmakingPass(
     MatchingQueueClaimCoordinator claims,
     MatchRosterBuilder rosterBuilder,
     IMatchHandoffPublisher handoff,
+    IGameServerAllocator gameServers,
     DevMatchOverrides overrides,
     CancellationToken shutdownToken,
     ILogger logger)
@@ -100,14 +101,19 @@ internal sealed class MatchmakingPass(
     }
 
     /// <summary>
-    ///     그룹 하나를 매치로 확정한다. claim을 얻지 못하면 건너뛰고(false), 전달이 불완전하면 되돌린다(false).
-    ///     matchingId 발급 뒤 예외는 롤백 후 호출자에게 전파돼 이번 pass를 끝낸다.
+    ///     그룹 하나를 매치로 확정한다. 받아 줄 Game Server가 없거나 claim을 얻지 못하면 건너뛰고(false),
+    ///     전달이 불완전하면 되돌린다(false). matchingId 발급 뒤 예외는 롤백 후 호출자에게 전파돼 이번 pass를 끝낸다.
     /// </summary>
     internal async Task<bool> CreateMatchAsync(
         MatchingQueueEntry[] groupEntries,
         int botsNeeded,
         MatchCreationOrigin origin)
     {
+        // 배정은 부작용이 없으므로 claim보다 먼저 — 노드가 없으면 큐를 그대로 두고 다음 pass에 다시 본다.
+        GameServerAllocation? gameServer = await gameServers.TryAllocateAsync();
+        if (gameServer == null)
+            return false;
+
         MatchingClaimLease? claimLease = await claims.TryAcquireAsync(groupEntries);
         if (claimLease == null)
         {
@@ -132,8 +138,9 @@ internal sealed class MatchmakingPass(
             for (int b = 0; b < botsNeeded; b++)
                 allGroupEntries.Add(MatchingQueueEntry.CreateBot(Interlocked.Decrement(ref _botIdCounter)));
 
-            logger.LogInformation("Bot-filled matching: MatchingId={MatchingId}, Real={Real}, Bots={Bot}, Origin={Origin}",
-                matchingId, groupEntries.Length, botsNeeded, origin);
+            logger.LogInformation(
+                "Bot-filled matching: MatchingId={MatchingId}, Real={Real}, Bots={Bot}, Origin={Origin}, GameServer={NodeId}",
+                matchingId, groupEntries.Length, botsNeeded, origin, gameServer.NodeId);
 
             // 원형 타겟 체인을 만들고 권위 스폰을 배정한다.
             List<RosterChainLink> chain = rosterBuilder.BuildRosterChain(allGroupEntries);
@@ -153,7 +160,8 @@ internal sealed class MatchmakingPass(
                 bool delivered = false;
                 try
                 {
-                    delivered = await handoff.DeliverMatchingSuccessAsync(link, matchingId, playerRoster, humanHandoffRoster);
+                    delivered = await handoff.DeliverMatchingSuccessAsync(
+                        link, matchingId, playerRoster, humanHandoffRoster, gameServer);
                     if (delivered)
                         deliveredPlayerCount++;
                 }

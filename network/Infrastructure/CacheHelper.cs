@@ -109,6 +109,11 @@ public class CacheHelper(IRedisConnection redisPool) : ICacheHelper
         return result.IsNull ? RedisValue.Null : (RedisValue)(byte[])result!;
     }
 
+    public Task<HashEntry[]> HashGetAllAsync(string key, int db = -1)
+    {
+        return ExecuteRedisCommandAsync(database => database.HashGetAllAsync(key, CommandFlags.DemandMaster), db);
+    }
+
     public Task<RedisValue[]> HashGetAsync(string key, RedisValue[] fields, int db = -1)
     {
         return ExecuteRedisCommandAsync(

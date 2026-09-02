@@ -34,6 +34,7 @@ public interface ICacheHelper
         int db = -1
     );
     public Task<RedisValue[]> HashGetAsync(string key, RedisValue[] fields, int db = -1);
+    public Task<HashEntry[]> HashGetAllAsync(string key, int db = -1);
     public Task<bool> HashDeleteAsync(string key, string field, int db = -1);
     public Task<bool> HashDeleteAsync(string key, long field, int db = -1);
     public Task<bool> HashExistsAsync(string key, string field, int db = -1);

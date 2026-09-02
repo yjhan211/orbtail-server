@@ -14,6 +14,7 @@ using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.contracts.authentication;
+using network.contracts.routing;
 using network.core;
 using network.helpers;
 using network.hosting;
@@ -27,7 +28,8 @@ namespace game_server;
 ///     매치 입장·시뮬레이션·종료 수명을 소유하는 호스트. 매치 하나의 권위 상태 변경은 전부
 ///     <see cref="MatchRuntime.Sync"/> 잠금 안에서 돌고(타이머 틱·세션 핸들러·종료), 패킷도 그 안에서 큐에
 ///     넣어 순서가 곧 변경 순서다. 터미널 정리는 최외곽 잠금 탈출에서 한 번 돌고, lifecycle·Redis·요약 후처리는
-///     잠금 밖에서 이어진다. 단일 노드 전제 (#320) — 수평 확장·durable outbox 계층은 태그 pre-stage2-scaling에 보존.
+///     잠금 밖에서 이어진다. 노드는 기동 시 레지스트리에 자기를 광고하고 자기 노드에 결합된 ticket만 받는다 (#339);
+///     소유권 fence·durable outbox 계층은 두지 않는다 (태그 pre-stage2-scaling에 보존).
 /// </summary>
 public partial class GameServer(
     IConfiguration configuration,
@@ -37,7 +39,9 @@ public partial class GameServer(
     INetworkService networkService,
     ServerConfig serverConfig,
     IGameHandoffTicketService gameHandoffTicketService,
-    ServerReadinessState readinessState)
+    ServerReadinessState readinessState,
+    IGameServerRegistry gameServerRegistry,
+    GameServerNodeOptions nodeOptions)
     : IHostedService
 {
     private const int HeartbeatCheckIntervalSeconds = 10;
@@ -86,6 +90,7 @@ public partial class GameServer(
     private Timer? _resourceTickTimer;        // 폐쇄 구역 등 주기성 자원 변화
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
+    private GameServerNodeAdvertiser? _nodeAdvertiser; // 레지스트리 광고 — Start/Stop 순서 안에서만 만지고 지운다
 
     private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
         _swarmMatchRuntimes.GetOrCreate(matchingId);
@@ -164,6 +169,15 @@ public partial class GameServer(
             StartTargetLocationTimer();
             StartProximityAutoCombatTimer();
 
+            // 광고는 리슨·타이머가 모두 선 뒤에 — 배정받은 클라이언트가 바로 접속할 수 있어야 한다.
+            _nodeAdvertiser = new GameServerNodeAdvertiser(
+                gameServerRegistry,
+                nodeOptions,
+                serverConfig.GameServerNodeId,
+                () => MatchRuntimes.ActiveIds().Count,
+                logger);
+            await _nodeAdvertiser.StartAsync();
+
             readinessState.MarkReady();
             logger.LogInformation("Game server started successfully.");
         }
@@ -193,6 +207,10 @@ public partial class GameServer(
         Volatile.Write(ref _stopping, 1);
         readinessState.MarkNotReady("stopping");
         logger.LogInformation("Game server stopping...");
+
+        // 새 배정을 먼저 막는다 — 이 뒤로 발급되는 ticket은 다른 노드를 가리킨다.
+        if (_nodeAdvertiser != null)
+            await RunShutdownStageAsync(_nodeAdvertiser.StopAcceptingAsync(), "node registry draining");
 
         // 서버 셧다운 시 모든 세션을 서버 주도 종료로 마킹 → 페널티 면제
         foreach (var session in _sessionRegistry.SnapshotAll())
@@ -226,6 +244,13 @@ public partial class GameServer(
         await RunShutdownStageAsync(
             WaitForPendingMatchingRedisCleanupsAsync(),
             "matching Redis cleanup");
+
+        if (_nodeAdvertiser != null)
+        {
+            await RunShutdownStageAsync(_nodeAdvertiser.RemoveAsync(), "node registry removal");
+            await _nodeAdvertiser.DisposeAsync();
+            _nodeAdvertiser = null;
+        }
 
         _cts.Dispose();
         await CloseMatchingLifecycleNatsClientAsync();
@@ -867,7 +892,7 @@ public partial class GameServer(
                 redLockFactory,
                 logger,
                 cacheHelper,
-                gameHandoffTicketService.ConsumeAsync,
+                ticket => gameHandoffTicketService.ConsumeAsync(ticket, serverConfig.GameServerNodeId),
                 OnClientSessionLeave,
                 RegisterClientSession,
                 GetSessionsByInstance,
