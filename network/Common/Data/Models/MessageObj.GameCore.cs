@@ -38,7 +38,6 @@ namespace network.common.data.models
         [Key("velocity")] public Vector3f Velocity { get; set; }
         [Key("rotation")] public float Rotation { get; set; }
         [Key("inputSeq")] public uint InputSequence { get; set; }
-        [Key("clientTime")] public long ClientTimestamp { get; set; }
     }
 
     [MessagePackObject]
