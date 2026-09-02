@@ -2162,13 +2162,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             "internal const int ResourceTickIntervalSeconds = 5;");
         AssertInOrder(
             registration,
-            "_swarmBotTickCoordinator.RegisterMatching(matchingId)",
             "_swarmCombatPublicationCoordinator.RegisterMatching(matchingId)",
-            "throw new InvalidOperationException(");
-        AssertInOrder(
-            registration,
-            "_swarmCombatPublicationCoordinator.RegisterMatching(matchingId)",
-            "_swarmBotTickCoordinator.ClearMatching(matchingId)",
             "throw new InvalidOperationException(");
         AssertInOrder(
             initialization,

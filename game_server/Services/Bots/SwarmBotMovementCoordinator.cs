@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Diagnostics;
 using network.common;
@@ -8,8 +7,8 @@ using network.common.data.models;
 namespace game_server.services;
 
 /// <summary>
-///     Commits authoritative bot movement state and freezes the matching outbound projection while
-///     the caller owns the match runtime monitor. Packet construction and transport stay in GameServer.
+///     매치 잠금 안에서 봇 이동 권위 상태를 확정하고 불변 송신 계획을 만든다. 패킷 생성·전송은
+///     GameServer가 같은 잠금 안에서 계획 순서대로 한다.
 /// </summary>
 internal sealed class SwarmBotMovementCoordinator(
     BotPlayerManager botPlayerManager,
@@ -21,69 +20,6 @@ internal sealed class SwarmBotMovementCoordinator(
     EncounterRevealManager encounterRevealManager,
     GameEventLogManager gameEventLogManager)
 {
-    private readonly ConcurrentDictionary<long, PublicationSequenceState> _publicationSequences = new();
-
-    /// <summary>
-    ///     Reserves the next wire-publication turn. Callers invoke this only after a complete plan
-    ///     has been frozen, while they still own the matching runtime monitor.
-    /// </summary>
-    public SwarmBotPublicationTicket ReservePublication(long matchingId)
-    {
-        if (matchingId <= 0)
-            throw new ArgumentOutOfRangeException(nameof(matchingId));
-
-        PublicationSequenceState state = _publicationSequences.GetOrAdd(
-            matchingId,
-            static _ => new PublicationSequenceState());
-        long sequence = Interlocked.Increment(ref state.NextTicket) - 1;
-        return new SwarmBotPublicationTicket(matchingId, sequence);
-    }
-
-    /// <summary>
-    ///     Regular timer and manual callers wait outside the matching runtime monitor. The dev
-    ///     auto-sandbox caller is the explicit monitor-held exception that preserves legacy arena
-    ///     packet order. The wait gate is never held during packet construction or Send, and a failed
-    ///     publication always retires its turn so later committed plans cannot deadlock.
-    /// </summary>
-    public void DispatchInOrder(SwarmBotPublicationTicket ticket, Action dispatch)
-    {
-        ArgumentNullException.ThrowIfNull(dispatch);
-        if (!_publicationSequences.TryGetValue(ticket.MatchingId, out PublicationSequenceState? state))
-            throw new InvalidOperationException(
-                $"Missing bot publication sequence for matching {ticket.MatchingId}.");
-
-        lock (state.WaitGate)
-        {
-            while (state.ServingTicket < ticket.Sequence)
-                Monitor.Wait(state.WaitGate);
-            if (state.ServingTicket != ticket.Sequence)
-            {
-                throw new InvalidOperationException(
-                    $"Bot publication ticket {ticket.Sequence} was already retired for matching " +
-                    $"{ticket.MatchingId}.");
-            }
-        }
-
-        try
-        {
-            dispatch();
-        }
-        finally
-        {
-            lock (state.WaitGate)
-            {
-                state.ServingTicket++;
-                Monitor.PulseAll(state.WaitGate);
-            }
-        }
-    }
-
-    /// <summary>
-    ///     Terminal component cleanup calls this only after every operation lease has drained.
-    /// </summary>
-    public void ClearMatching(long matchingId) =>
-        _publicationSequences.TryRemove(matchingId, out _);
-
     public SwarmBotMovementPlan PrepareTick(
         long matchingId,
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
@@ -412,15 +348,7 @@ internal sealed class SwarmBotMovementCoordinator(
         return recipients.ToImmutable();
     }
 
-    private sealed class PublicationSequenceState
-    {
-        public readonly object WaitGate = new();
-        public long NextTicket;
-        public long ServingTicket;
-    }
 }
-
-internal readonly record struct SwarmBotPublicationTicket(long MatchingId, long Sequence);
 
 internal readonly record struct SwarmVectorSnapshot(float X, float Y, float Z)
 {

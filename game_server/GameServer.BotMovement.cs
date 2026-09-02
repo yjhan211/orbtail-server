@@ -1,12 +1,9 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
-using System.Runtime.ExceptionServices;
 using game_server.network;
 using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.common.data.models;
-using network.core;
 using network.packets;
 
 namespace game_server;
@@ -23,270 +20,103 @@ public partial class GameServer
         logger.LogInformation("봇 walking 타이머 시작 ({Ms}ms 간격)", BotMovementTickIntervalMs);
     }
 
+    /// <summary>
+    ///     50ms 펄스마다 매치별 워커를 띄운다. 모니터는 스레드 친화적이라 잠금 시도는 워커 안에서 한다 —
+    ///     잠금이 바쁜 매치는 이 펄스를 버리고(따라잡기 없음) 다른 매치는 그대로 진행한다.
+    /// </summary>
     private void ProcessBotMovement(object? state)
     {
-        var workers = new List<Task>();
-        Exception? schedulingFailure = null;
         try
         {
             GameClientSession[] activeSessions = _sessionRegistry
                 .SnapshotWhere(static session => session.PlayerId.HasValue)
                 .ToArray();
-            IReadOnlyList<long> matchingIds = GetActiveMatchingIds();
-            foreach (long matchingId in matchingIds)
-            {
-                Task? worker = TryStartBotMovementWorker(matchingId, activeSessions);
-                if (worker != null)
-                    workers.Add(worker);
-            }
+            Task[] workers = MatchRuntimes.ActiveIds()
+                .Select(matchingId => Task.Run(() => RunBotMovementWorker(matchingId, activeSessions)))
+                .ToArray();
+            Task.WhenAll(workers).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {
-            schedulingFailure = ex;
-        }
-        finally
-        {
-            try
-            {
-                Task.WhenAll(workers).GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "One or more bot movement workers failed");
-            }
-
-            if (schedulingFailure != null)
-            {
-                logger.LogError(
-                    schedulingFailure,
-                    "Failed to schedule bot movement workers");
-            }
+            logger.LogError(ex, "One or more bot movement workers failed");
         }
     }
 
-    private Task? TryStartBotMovementWorker(
-        long matchingId,
-        GameClientSession[] activeSessions)
+    private void RunBotMovementWorker(long matchingId, GameClientSession[] activeSessions)
     {
-        IDisposable? outerRuntimeOperation = null;
-        SwarmBotTickCoordinator.SwarmBotTickLease? tickLease = null;
         try
         {
-            bool trackBusySkip =
-                MatchStartGate.IsGameplayActive(matchingId) &&
-                _botPlayerManager.HasBots(matchingId);
-            outerRuntimeOperation = _matchRuntimeRegistry.TryAcquireOperationIfAvailable(
-                matchingId,
-                () => _swarmBotTickCoordinator.TryBegin(
-                    matchingId,
-                    trackBusySkip,
-                    out tickLease));
-            if (outerRuntimeOperation == null)
-            {
-                if (trackBusySkip)
-                    _swarmBotTickCoordinator.TryRecordBusySkip(matchingId);
-                return null;
-            }
-
-            if (tickLease == null)
-            {
-                ReleaseBotMovementTickClaim(
-                    matchingId,
-                    outerRuntimeOperation,
-                    tickLease);
-                return null;
-            }
-
-            IDisposable capturedOperation = outerRuntimeOperation;
-            SwarmBotTickCoordinator.SwarmBotTickLease capturedLease = tickLease;
-            return Task.Run(
-                () => ProcessBotMovementForMatching(
-                    matchingId,
-                    activeSessions,
-                    capturedOperation,
-                    capturedLease));
-        }
-        catch (Exception ex)
-        {
-            ReleaseBotMovementTickClaim(
-                matchingId,
-                outerRuntimeOperation,
-                tickLease);
-            logger.LogError(
-                ex,
-                "Failed to schedule bot movement worker: MatchingId={MatchingId}",
-                matchingId);
-            return null;
-        }
-    }
-
-    private void ProcessBotMovementForMatching(
-        long matchingId,
-        GameClientSession[] activeSessions,
-        IDisposable outerRuntimeOperation,
-        SwarmBotTickCoordinator.SwarmBotTickLease tickLease)
-    {
-        var tickStartedAt = DateTime.UtcNow;
-        double snapshotElapsedMilliseconds = 0d;
-        double planningElapsedMilliseconds = 0d;
-        double walkingElapsedMilliseconds = 0d;
-        double broadcastElapsedMilliseconds = 0d;
-        bool movementAttempted = false;
-        SwarmBotTickMetricsBatch? metricsBatch = null;
-
-        try
-        {
+            // #331 이행 셈: 카운트다운은 아직 전투 발행 레인을 타므로 매치 잠금 밖에서 보낸다.
             BroadcastMatchStartCountdowns([matchingId], activeSessions);
-            if (!MatchStartGate.IsGameplayActive(matchingId) ||
-                !_botPlayerManager.HasBots(matchingId))
+            if (!ShouldTrackBotTickBusySkip(matchingId))
+                return;
+
+            if (!MatchRuntimes.TryEnter(matchingId, out MatchScope scope))
             {
+                if (_swarmMatchRuntimes.TryGet(matchingId, out SwarmMatchRuntime? busyRuntime))
+                    busyRuntime.BotTickMetrics.RecordBusySkip();
                 return;
             }
 
-            SwarmBotMovementPlan? plan = null;
-            SwarmBotPublicationTicket? publicationTicket = null;
-            GameClientSession[]? sessionSnapshot = null;
-            if (!_matchRuntimeRegistry.TryExecute(
-                    matchingId,
-                    () =>
-                    {
-                        movementAttempted = true;
-                        long snapshotStartedAt = Stopwatch.GetTimestamp();
-                        sessionSnapshot = _sessionRegistry.GetByMatch(matchingId)
-                            .Where(session =>
-                                session.PlayerId is > 0 &&
-                                session.CurrentMapId == Config.SWARM_MATCH_MAP &&
-                                session.CurrentMapSubId == matchingId)
-                            .ToArray();
-                        ImmutableArray<SwarmBotObserverSnapshot> observers =
-                            CaptureSwarmBotObservers(matchingId, sessionSnapshot);
-                        double sessionSnapshotElapsedMilliseconds =
-                            Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
-                        plan = _swarmBotMovementCoordinator.PrepareTick(
-                            matchingId,
-                            observers,
-                            ResolveSwarmBotDirective);
-                        snapshotElapsedMilliseconds +=
-                            sessionSnapshotElapsedMilliseconds + plan.SnapshotElapsedMilliseconds;
-                        publicationTicket =
-                            _swarmBotMovementCoordinator.ReservePublication(matchingId);
-                    }))
+            using (scope)
             {
-                return;
+                if (scope.Runtime.IsTerminal)
+                    return;
+
+                // #331 이행 셈: 등록소 정리를 이 틱이 끝난 뒤로 미룬다.
+                using IDisposable? runtimeLease =
+                    _matchRuntimeRegistry.TryAcquireOperationIfAvailable(matchingId, static () => { });
+                if (runtimeLease == null)
+                    return;
+
+                ProcessBotMovementForMatching(matchingId);
             }
-
-            if (publicationTicket is not { } ticket)
-                return;
-
-            SwarmBotMovementPlan? capturedPlan = plan;
-            GameClientSession[] capturedSessions = sessionSnapshot ?? [];
-            if (capturedPlan != null)
-            {
-                planningElapsedMilliseconds += capturedPlan.PlanningElapsedMilliseconds;
-                walkingElapsedMilliseconds += capturedPlan.WalkingElapsedMilliseconds;
-                broadcastElapsedMilliseconds +=
-                    capturedPlan.DispatchPreparationElapsedMilliseconds;
-            }
-
-            long dispatchStartedAt = Stopwatch.GetTimestamp();
-            _swarmBotMovementCoordinator.DispatchInOrder(
-                ticket,
-                () =>
-                {
-                    if (capturedPlan != null)
-                        DispatchSwarmBotMovementPlan(capturedPlan, capturedSessions);
-                });
-            broadcastElapsedMilliseconds +=
-                Stopwatch.GetElapsedTime(dispatchStartedAt).TotalMilliseconds;
         }
         catch (Exception ex)
         {
-            logger.LogError(
-                ex,
-                "Bot walking tick failed: MatchingId={MatchingId}",
-                matchingId);
-        }
-        finally
-        {
-            try
-            {
-                if (movementAttempted)
-                {
-                    metricsBatch = _swarmBotTickCoordinator.Record(
-                        tickLease,
-                        new SwarmBotTickSample(
-                            (DateTime.UtcNow - tickStartedAt).TotalMilliseconds,
-                            snapshotElapsedMilliseconds,
-                            planningElapsedMilliseconds,
-                            walkingElapsedMilliseconds,
-                            broadcastElapsedMilliseconds));
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(
-                    ex,
-                    "Failed to record bot movement tick metrics: MatchingId={MatchingId}",
-                    matchingId);
-            }
-            finally
-            {
-                ReleaseBotMovementTickClaim(
-                    matchingId,
-                    outerRuntimeOperation,
-                    tickLease);
-            }
-
-            if (metricsBatch != null)
-            {
-                try
-                {
-                    PublishBotMovementMetrics(metricsBatch);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(
-                        ex,
-                        "Failed to publish bot movement metrics: MatchingId={MatchingId}",
-                        matchingId);
-                }
-            }
+            logger.LogError(ex, "Bot walking tick failed: MatchingId={MatchingId}", matchingId);
         }
     }
 
-    private void ReleaseBotMovementTickClaim(
-        long matchingId,
-        IDisposable? outerRuntimeOperation,
-        SwarmBotTickCoordinator.SwarmBotTickLease? tickLease)
+    /// <summary>봇이 실제로 걷는 매치만 바쁜 펄스를 계측한다 — 카운트다운·봇 없는 매치는 계측 잡음이다.</summary>
+    private bool ShouldTrackBotTickBusySkip(long matchingId) =>
+        MatchStartGate.IsGameplayActive(matchingId) && _botPlayerManager.HasBots(matchingId);
+
+    /// <summary>매치 잠금 안에서 봇 걸음을 확정하고 같은 순서로 바로 송신한다.</summary>
+    private void ProcessBotMovementForMatching(long matchingId)
     {
-        try
-        {
-            outerRuntimeOperation?.Dispose();
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(
-                ex,
-                "Failed to release bot movement runtime lease: MatchingId={MatchingId}",
-                matchingId);
-        }
-        finally
-        {
-            if (tickLease != null)
-            {
-                try
-                {
-                    _swarmBotTickCoordinator.Retire(tickLease);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(
-                        ex,
-                        "Failed to retire bot movement tick: MatchingId={MatchingId}",
-                        matchingId);
-                }
-            }
-        }
+        long tickStartedAt = Stopwatch.GetTimestamp();
+        GameClientSession[] sessionSnapshot = _sessionRegistry.GetByMatch(matchingId)
+            .Where(session =>
+                session.PlayerId is > 0 &&
+                session.CurrentMapId == Config.SWARM_MATCH_MAP &&
+                session.CurrentMapSubId == matchingId)
+            .ToArray();
+        ImmutableArray<SwarmBotObserverSnapshot> observers =
+            CaptureSwarmBotObservers(matchingId, sessionSnapshot);
+        double sessionSnapshotElapsedMilliseconds =
+            Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds;
+        SwarmBotMovementPlan plan = _swarmBotMovementCoordinator.PrepareTick(
+            matchingId,
+            observers,
+            ResolveSwarmBotDirective);
+
+        long dispatchStartedAt = Stopwatch.GetTimestamp();
+        DispatchSwarmBotMovementPlan(plan, sessionSnapshot);
+        double broadcastElapsedMilliseconds =
+            plan.DispatchPreparationElapsedMilliseconds +
+            Stopwatch.GetElapsedTime(dispatchStartedAt).TotalMilliseconds;
+
+        SwarmBotTickMetricsBatch? batch = GetSwarmMatchRuntime(matchingId).BotTickMetrics.Record(
+            matchingId,
+            new SwarmBotTickSample(
+                Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds,
+                sessionSnapshotElapsedMilliseconds + plan.SnapshotElapsedMilliseconds,
+                plan.PlanningElapsedMilliseconds,
+                plan.WalkingElapsedMilliseconds,
+                broadcastElapsedMilliseconds));
+        if (batch != null)
+            PublishBotMovementMetrics(batch);
     }
 
     private void PublishBotMovementMetrics(SwarmBotTickMetricsBatch batch)
@@ -320,20 +150,18 @@ public partial class GameServer
             planningP95Milliseconds,
             walkingP95Milliseconds,
             broadcastP95Milliseconds);
-        _matchRuntimeRegistry.TryExecute(
+        _gameEventLogManager.LogBotMovementTickPerformance(
             batch.MatchingId,
-            () => _gameEventLogManager.LogBotMovementTickPerformance(
-                batch.MatchingId,
-                p50Milliseconds,
-                p95Milliseconds,
-                p99Milliseconds,
-                snapshotP95Milliseconds,
-                planningP95Milliseconds,
-                walkingP95Milliseconds,
-                broadcastP95Milliseconds,
-                batch.TickSamples.Length,
-                batch.BusySkips,
-                batch.MaxConsecutiveBusySkips));
+            p50Milliseconds,
+            p95Milliseconds,
+            p99Milliseconds,
+            snapshotP95Milliseconds,
+            planningP95Milliseconds,
+            walkingP95Milliseconds,
+            broadcastP95Milliseconds,
+            batch.TickSamples.Length,
+            batch.BusySkips,
+            batch.MaxConsecutiveBusySkips);
     }
 
     private static ImmutableArray<SwarmBotObserverSnapshot> CaptureSwarmBotObservers(
@@ -459,76 +287,4 @@ public partial class GameServer
         value = default!;
         return false;
     }
-
-    private void DispatchPendingSwarmBotMovement(PendingSwarmBotMovementDispatch pending)
-    {
-        DispatchWithMatchRuntimeLease(
-            pending.RuntimeOperation,
-            () =>
-            {
-                if (pending.PublicationTicket is not { } ticket)
-                {
-                    if (pending.Plan != null)
-                    {
-                        throw new InvalidOperationException(
-                            "A prepared bot publication is missing its reserved ticket.");
-                    }
-
-                    return;
-                }
-
-                _swarmBotMovementCoordinator.DispatchInOrder(
-                    ticket,
-                    () =>
-                    {
-                        if (pending.Plan != null)
-                            DispatchSwarmBotMovementPlan(pending.Plan, pending.SessionSnapshot);
-                    });
-            });
-    }
-
-    internal static void DispatchWithMatchRuntimeLease(IDisposable runtimeOperation, Action dispatch)
-    {
-        ArgumentNullException.ThrowIfNull(runtimeOperation);
-        ArgumentNullException.ThrowIfNull(dispatch);
-
-        ExceptionDispatchInfo? dispatchFailure = null;
-        ExceptionDispatchInfo? releaseFailure = null;
-        try
-        {
-            dispatch();
-        }
-        catch (Exception ex)
-        {
-            dispatchFailure = ExceptionDispatchInfo.Capture(ex);
-        }
-        finally
-        {
-            try
-            {
-                runtimeOperation.Dispose();
-            }
-            catch (Exception ex)
-            {
-                releaseFailure = ExceptionDispatchInfo.Capture(ex);
-            }
-        }
-
-        if (dispatchFailure != null && releaseFailure != null)
-        {
-            throw new AggregateException(
-                "Bot movement dispatch and deferred match finalization both failed.",
-                dispatchFailure.SourceException,
-                releaseFailure.SourceException);
-        }
-
-        dispatchFailure?.Throw();
-        releaseFailure?.Throw();
-    }
-
-    private sealed record PendingSwarmBotMovementDispatch(
-        IDisposable RuntimeOperation,
-        SwarmBotMovementPlan? Plan,
-        SwarmBotPublicationTicket? PublicationTicket,
-        GameClientSession[] SessionSnapshot);
 }

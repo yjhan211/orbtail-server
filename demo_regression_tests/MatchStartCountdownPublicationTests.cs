@@ -33,26 +33,10 @@ public sealed class MatchStartCountdownPublicationTests
             server,
             "private void BroadcastMatchStartCountdowns(",
             "private void CheckHeartbeatTimeouts(");
-        string botScheduler = ReadMethodSlice(
-            botMovement,
-            "private void ProcessBotMovement(object? state)",
-            "private Task? TryStartBotMovementWorker(");
-        string botStarter = ReadMethodSlice(
-            botMovement,
-            "private Task? TryStartBotMovementWorker(",
-            "private void ProcessBotMovementForMatching(");
         string botWorker = ReadMethodSlice(
             botMovement,
-            "private void ProcessBotMovementForMatching(",
-            "private void ReleaseBotMovementTickClaim(");
-        string botRelease = ReadMethodSlice(
-            botMovement,
-            "private void ReleaseBotMovementTickClaim(",
-            "private void PublishBotMovementMetrics(");
-        string botWorkerFinalization = ReadMethodSlice(
-            botWorker,
-            "        finally\n        {",
-            "            if (metricsBatch != null)");
+            "private void RunBotMovementWorker(",
+            "private bool ShouldTrackBotTickBusySkip(");
 
         Assert.DoesNotContain("_lastMatchStartCountdownBroadcast", server);
         Assert.DoesNotContain("countdown broadcast", server);
@@ -80,60 +64,10 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.DoesNotContain("anchorSession.DisconnectForAdmissionFailure();", broadcast);
 
         AssertInOrder(
-            botScheduler,
-            "var workers = new List<Task>();",
-            "_sessionRegistry",
-            "GetActiveMatchingIds();",
-            "foreach (long matchingId in matchingIds)",
-            "TryStartBotMovementWorker(matchingId, activeSessions);",
-            "if (worker != null)",
-            "workers.Add(worker);",
-            "finally",
-            "Task.WhenAll(workers).GetAwaiter().GetResult();");
-        Assert.DoesNotContain("_botMovementProcessing", botMovement);
-        AssertInOrder(
-            botStarter,
-            "MatchStartGate.IsGameplayActive(matchingId)",
-            "_botPlayerManager.HasBots(matchingId)",
-            "_matchRuntimeRegistry.TryAcquireOperationIfAvailable(",
-            "_swarmBotTickCoordinator.TryBegin(",
-            "if (outerRuntimeOperation == null)",
-            "_swarmBotTickCoordinator.TryRecordBusySkip(matchingId)",
-            "if (tickLease == null)",
-            "ReleaseBotMovementTickClaim(",
-            "Task.Run(",
-            "ProcessBotMovementForMatching(");
-        AssertInOrder(
-            botStarter,
-            "Task.Run(",
-            "catch (Exception ex)",
-            "ReleaseBotMovementTickClaim(",
-            "Failed to schedule bot movement worker");
-        Assert.Equal(
-            2,
-            CountOccurrences(botStarter, "ReleaseBotMovementTickClaim("));
-        AssertInOrder(
             botWorker,
             "BroadcastMatchStartCountdowns([matchingId], activeSessions);",
-            "MatchStartGate.IsGameplayActive(matchingId)",
-            "_botPlayerManager.HasBots(matchingId)",
-            "_matchRuntimeRegistry.TryExecute(",
-            "_swarmBotMovementCoordinator.PrepareTick(",
-            "_swarmBotMovementCoordinator.ReservePublication(matchingId)",
-            "_swarmBotMovementCoordinator.DispatchInOrder(",
-            "_swarmBotTickCoordinator.Record(",
-            "ReleaseBotMovementTickClaim(",
-            "PublishBotMovementMetrics(metricsBatch);");
-        AssertInOrder(
-            botWorkerFinalization,
-            "_swarmBotTickCoordinator.Record(",
-            "catch (Exception ex)",
-            "finally",
-            "ReleaseBotMovementTickClaim(");
-        AssertInOrder(
-            botRelease,
-            "outerRuntimeOperation?.Dispose();",
-            "_swarmBotTickCoordinator.Retire(tickLease);");
+            "MatchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "ProcessBotMovementForMatching(matchingId)");
     }
 
     [Fact]

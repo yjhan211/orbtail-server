@@ -1,0 +1,278 @@
+using System.Collections.Immutable;
+using game_server;
+using game_server.services;
+using Microsoft.Extensions.Logging.Abstractions;
+using network.common;
+using network.common.data.models;
+
+namespace demo_regression_tests;
+
+public sealed class SwarmBotMovementPlanTests
+{
+    [Fact]
+    public void PrepareExternalMovement_FreezesMutableMovementAndRecipientOrder()
+    {
+        const long matchingId = 44_001;
+        var position = new Vector3f(10f, 20f, 0f);
+        var velocity = new Vector3f(3f, 4f, 0f);
+        var fromCell = new Cell(1, 2);
+        var toCell = new Cell(3, 4);
+        var movement = new BotMovementEvent
+        {
+            BotPlayerId = -10,
+            FromArea = AreaType.S2Gym1,
+            ToArea = AreaType.S2Ground,
+            FromCell = fromCell,
+            ToCell = toCell,
+            Position = position,
+            Velocity = velocity,
+            Rotation = 17f,
+            IsAreaTransition = true
+        };
+        var observers = new List<SwarmBotObserverSnapshot>
+        {
+            new(0, 101, AreaType.S2Gym1, false, null),
+            new(1, 201, AreaType.S2Ground, false, null),
+            new(2, 102, AreaType.S2Gym1, false, null),
+            new(3, 202, AreaType.S2Ground, false, null)
+        };
+
+        SwarmBotMovementPlan plan = CreateCoordinator().PrepareExternalMovement(
+            matchingId,
+            movement,
+            observers);
+
+        position.X = 999f;
+        velocity.Y = 999f;
+        fromCell.X = 999;
+        toCell.Y = 999;
+        movement.Rotation = 999f;
+        observers.Clear();
+
+        SwarmBotMovementDispatch publication = Assert.Single(plan.Movements);
+        Assert.Equal(new SwarmVectorSnapshot(10f, 20f, 0f), publication.Position);
+        Assert.Equal(new SwarmVectorSnapshot(3f, 4f, 0f), publication.Velocity);
+        Assert.Equal(new SwarmCellSnapshot(3, 4), publication.ToCell);
+        Assert.Equal(17f, publication.Rotation);
+        Assert.Equal([0, 2], publication.LeaveRecipientOrdinals.ToArray());
+        Assert.Equal([1, 3], publication.DestinationRecipientOrdinals.ToArray());
+    }
+
+    [Fact]
+    public void PlayerInfoSnapshot_FreezesNestedCollectionsAndCell()
+    {
+        var source = new PlayerInfo
+        {
+            PlayerId = -20,
+            Name = "Bot",
+            WearItemIdList = [101, 202],
+            LastCell = new Cell(7, 8)
+        };
+
+        SwarmBotPlayerInfoSnapshot snapshot = SwarmBotPlayerInfoSnapshot.Capture(source);
+        source.WearItemIdList[0] = 999;
+        source.LastCell.X = 999;
+
+        PlayerInfo firstProjection = snapshot.ToPlayerInfo();
+        Assert.Equal([101, 202], firstProjection.WearItemIdList);
+        Assert.Equal(new Cell(7, 8), firstProjection.LastCell);
+
+        firstProjection.WearItemIdList.Clear();
+        firstProjection.LastCell.Y = 999;
+        PlayerInfo secondProjection = snapshot.ToPlayerInfo();
+        Assert.Equal([101, 202], secondProjection.WearItemIdList);
+        Assert.Equal(new Cell(7, 8), secondProjection.LastCell);
+    }
+
+    [Fact]
+    public void CapturedOrdinalLookup_PreservesOrderAndSkipsInvalidSlots()
+    {
+        string[] snapshot = ["first", "second", "third"];
+        ImmutableArray<int> ordinals = [2, -1, 0, 99, 2];
+        var resolved = new List<string>();
+
+        foreach (int ordinal in ordinals)
+        {
+            if (GameServer.TryGetCapturedValue(snapshot, ordinal, out string value))
+                resolved.Add(value);
+        }
+
+        Assert.Equal(["third", "first", "third"], resolved);
+    }
+
+    [Fact]
+    public void MovementSources_KeepPrepareTransportFreeAndDispatchInLegacyPacketOrder()
+    {
+        string root = FindRepositoryRoot();
+        string coordinator = ReadNormalizedSource(
+            root, "game_server", "Services", "Bots", "SwarmBotMovementCoordinator.cs");
+        string server = ReadNormalizedSource(root, "game_server", "GameServer.BotMovement.cs");
+        string scheduler = ReadMethodSlice(
+            server,
+            "private void ProcessBotMovement(object? state)",
+            "private void RunBotMovementWorker(");
+        string worker = ReadMethodSlice(
+            server,
+            "private void RunBotMovementWorker(",
+            "private bool ShouldTrackBotTickBusySkip(");
+        string process = ReadMethodSlice(
+            server,
+            "private void ProcessBotMovementForMatching(",
+            "private void PublishBotMovementMetrics(");
+        string dispatch = ReadMethodSlice(
+            server,
+            "private void DispatchSwarmBotMovementPlan(",
+            "private static void SendToCapturedRecipients(");
+
+        Assert.DoesNotContain("PacketMaker", coordinator);
+        Assert.DoesNotContain("MessagePackSerializer", coordinator);
+        Assert.DoesNotContain("GameClientSession", coordinator);
+        Assert.DoesNotContain(".Send(", coordinator);
+        Assert.DoesNotContain("ReservePublication", coordinator);
+        Assert.DoesNotContain("DispatchInOrder", coordinator);
+        Assert.DoesNotContain("MoveToImmutable()", coordinator);
+        Assert.DoesNotContain("MoveToImmutable()", server);
+        // 펄스마다 매치별 워커를 띄우고, 잠금 시도는 워커 안에서(모니터는 스레드 친화적).
+        AssertInOrder(
+            scheduler,
+            "MatchRuntimes.ActiveIds()",
+            "Task.Run(() => RunBotMovementWorker(matchingId, activeSessions))",
+            "Task.WhenAll(workers).GetAwaiter().GetResult();");
+        Assert.DoesNotContain("TryEnter", scheduler);
+        // 바쁜 펄스는 버리고(따라잡기 없음) 스킵만 센다; 잠금 안에서 준비→송신이 한 순서다.
+        AssertInOrder(
+            worker,
+            "MatchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "BotTickMetrics.RecordBusySkip()",
+            "return;",
+            "using (scope)",
+            "scope.Runtime.IsTerminal",
+            "ProcessBotMovementForMatching(matchingId)");
+        AssertInOrder(
+            process,
+            "_sessionRegistry.GetByMatch(matchingId)",
+            "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
+            "_swarmBotMovementCoordinator.PrepareTick(",
+            "DispatchSwarmBotMovementPlan(plan, sessionSnapshot)",
+            "BotTickMetrics.Record(",
+            "PublishBotMovementMetrics(batch)");
+        Assert.Contains("session.CurrentMapId == Config.SWARM_MATCH_MAP", process);
+        Assert.DoesNotContain(".Send(", process);
+        AssertInOrder(
+            dispatch,
+            "G_TO_C_AREA_PLAYER_LEAVE",
+            "G_TO_C_AREA_PLAYER_ENTER",
+            "G_TO_C_MOVE",
+            "G_TO_C_ENCOUNTER_REVEAL",
+            "G_TO_C_GROUND_ITEM_REMOVED",
+            "G_TO_C_PLAYER_INFO");
+    }
+
+    [Fact]
+    public void DummySetupAndMove_UseLockedExternalPlansWithoutOrbitAdvance()
+    {
+        string root = FindRepositoryRoot();
+        string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
+        string coordinator = ReadNormalizedSource(
+            root, "game_server", "Services", "Bots", "SwarmBotMovementCoordinator.cs");
+        string callback = ReadMethodSlice(
+            arena,
+            "GameClientSession.SwarmDummyMoveCallback ??=",
+            "SwarmMonsterDirector.FieldSpawnCellResolver ??=");
+        string adminSetup = ReadMethodSlice(
+            arena,
+            "public object SetupSwarmCutDummy(long matchingId)",
+            "private void DispatchSwarmExternalBotMovement(");
+        string external = ReadMethodSlice(
+            arena,
+            "private void DispatchSwarmExternalBotMovement(",
+            "private object SetupSwarmCutDummyCore(");
+        string move = ReadMethodSlice(
+            arena,
+            "private void MoveSwarmCutDummy(long matchingId, float dirX, float dirY)",
+            "private BotMovementEvent? MoveSwarmCutDummyCore(");
+        string externalPrepare = ReadMethodSlice(
+            coordinator,
+            "public SwarmBotMovementPlan PrepareExternalMovement(",
+            "private SwarmBotMovementPlan PrepareResult(");
+
+        Assert.Contains("MoveSwarmCutDummy(dummyMatchingId, dirX, dirY);", callback);
+        AssertInOrder(
+            adminSetup,
+            "MatchRuntimes.Enter(matchingId, out MatchScope scope)",
+            "scope.Runtime.IsTerminal",
+            "SetupSwarmCutDummyCore(",
+            "DispatchSwarmExternalBotMovement(matchingId, movement)");
+        AssertInOrder(
+            external,
+            "_sessionRegistry.GetByMatch(matchingId)",
+            "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
+            "PrepareExternalMovement(",
+            "DispatchSwarmBotMovementPlan(plan, sessionSnapshot)");
+        AssertInOrder(
+            move,
+            "MatchRuntimes.Enter(matchingId, out MatchScope scope)",
+            "scope.Runtime.IsTerminal",
+            "MoveSwarmCutDummyCore(",
+            "DispatchSwarmExternalBotMovement(matchingId, movement)");
+        Assert.Contains("advanceOrbOrbit: false", externalPrepare);
+        Assert.Contains("session.CurrentMapId == Config.SWARM_MATCH_MAP", external);
+        Assert.DoesNotContain("PacketMaker", external);
+        Assert.DoesNotContain("BroadcastBotMovement(", arena);
+    }
+
+    private static SwarmBotMovementCoordinator CreateCoordinator() => new(
+        new BotPlayerManager(NullLogger.Instance),
+        new AreaClosureManager(NullLogger.Instance),
+        new AreaItemStockManager(),
+        new InGameInventoryManager(),
+        new GroundItemManager(),
+        new SummonStoneManager(),
+        new EncounterRevealManager(),
+        new GameEventLogManager());
+
+    private static void AssertInOrder(string source, params string[] markers)
+    {
+        int previousIndex = -1;
+        foreach (string marker in markers)
+        {
+            int currentIndex = source.IndexOf(
+                marker,
+                previousIndex + 1,
+                StringComparison.Ordinal);
+            Assert.True(currentIndex > previousIndex, $"Expected '{marker}' in order.");
+            previousIndex = currentIndex;
+        }
+    }
+
+    private static string ReadMethodSlice(string source, string startMarker, string endMarker)
+    {
+        int startIndex = source.IndexOf(startMarker, StringComparison.Ordinal);
+        Assert.True(startIndex >= 0, $"Could not find start marker '{startMarker}'.");
+        int endIndex = source.IndexOf(
+            endMarker,
+            startIndex + startMarker.Length,
+            StringComparison.Ordinal);
+        Assert.True(endIndex > startIndex, $"Could not find end marker '{endMarker}'.");
+        return source[startIndex..endIndex];
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null)
+        {
+            if (Directory.Exists(Path.Combine(directory.FullName, "network", "Common", "csv")))
+                return directory.FullName;
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
+    }
+
+    private static string ReadNormalizedSource(string repositoryRoot, params string[] pathParts)
+    {
+        string[] fullPathParts = [repositoryRoot, .. pathParts];
+        return File.ReadAllText(Path.Combine(fullPathParts)).Replace("\r\n", "\n");
+    }
+}

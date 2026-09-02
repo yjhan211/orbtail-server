@@ -2134,54 +2134,43 @@ public partial class GameServer
         if (matchingId <= 0)
             return new { error = "no active match" };
 
-        PendingSwarmBotMovementDispatch? pending =
-            PrepareSwarmCutDummySetup(matchingId, out object result);
-        if (pending == null)
+        if (!MatchRuntimes.Enter(matchingId, out MatchScope scope))
             return new { error = "match is no longer active " + matchingId };
 
-        DispatchPendingSwarmBotMovement(pending);
-        return result;
+        using (scope)
+        {
+            if (scope.Runtime.IsTerminal)
+                return new { error = "match is no longer active " + matchingId };
+
+            // #331 이행 셈: 등록소 정리를 이 발행 뒤로 미룬다.
+            using IDisposable? runtimeLease =
+                _matchRuntimeRegistry.TryAcquireOperation(matchingId, static () => { });
+            if (runtimeLease == null)
+                return new { error = "match is no longer active " + matchingId };
+
+            object result = SetupSwarmCutDummyCore(matchingId, out BotMovementEvent? movement);
+            if (movement != null)
+                DispatchSwarmExternalBotMovement(matchingId, movement);
+            return result;
+        }
     }
 
-    private PendingSwarmBotMovementDispatch? PrepareSwarmCutDummySetup(
-        long matchingId,
-        out object result)
+    /// <summary>수동 더미 이동을 매치 잠금 안에서 계획·송신한다 — 궤도는 돌리지 않는다.</summary>
+    private void DispatchSwarmExternalBotMovement(long matchingId, BotMovementEvent movement)
     {
-        object preparedResult = new { error = "match is no longer active " + matchingId };
-        SwarmBotMovementPlan? plan = null;
-        SwarmBotPublicationTicket? publicationTicket = null;
-        GameClientSession[] sessionSnapshot = [];
-        IDisposable? runtimeOperation = _matchRuntimeRegistry.TryAcquireOperation(
+        GameClientSession[] sessionSnapshot = _sessionRegistry.GetByMatch(matchingId)
+            .Where(session =>
+                session.PlayerId is > 0 &&
+                session.CurrentMapId == Config.SWARM_MATCH_MAP &&
+                session.CurrentMapSubId == matchingId)
+            .ToArray();
+        ImmutableArray<SwarmBotObserverSnapshot> observers =
+            CaptureSwarmBotObservers(matchingId, sessionSnapshot);
+        SwarmBotMovementPlan plan = _swarmBotMovementCoordinator.PrepareExternalMovement(
             matchingId,
-            () =>
-            {
-                sessionSnapshot = _sessionRegistry.GetByMatch(matchingId)
-                    .Where(session =>
-                        session.PlayerId is > 0 &&
-                        session.CurrentMapId == Config.SWARM_MATCH_MAP &&
-                        session.CurrentMapSubId == matchingId)
-                    .ToArray();
-                preparedResult = SetupSwarmCutDummyCore(matchingId, out BotMovementEvent? movement);
-                if (movement != null)
-                {
-                    ImmutableArray<SwarmBotObserverSnapshot> observers =
-                        CaptureSwarmBotObservers(matchingId, sessionSnapshot);
-                    plan = _swarmBotMovementCoordinator.PrepareExternalMovement(
-                        matchingId,
-                        movement,
-                        observers);
-                    publicationTicket = _swarmBotMovementCoordinator.ReservePublication(matchingId);
-                }
-            });
-        result = preparedResult;
-        if (runtimeOperation == null)
-            return null;
-
-        return new PendingSwarmBotMovementDispatch(
-            runtimeOperation,
-            plan,
-            publicationTicket,
-            sessionSnapshot);
+            movement,
+            observers);
+        DispatchSwarmBotMovementPlan(plan, sessionSnapshot);
     }
 
     private object SetupSwarmCutDummyCore(long matchingId, out BotMovementEvent? movement)
@@ -2248,39 +2237,24 @@ public partial class GameServer
     /// </summary>
     private void MoveSwarmCutDummy(long matchingId, float dirX, float dirY)
     {
-        SwarmBotMovementPlan? plan = null;
-        SwarmBotPublicationTicket? publicationTicket = null;
-        GameClientSession[]? sessionSnapshot = null;
-        IDisposable? runtimeOperation = _matchRuntimeRegistry.TryAcquireOperation(
-            matchingId,
-            () =>
-            {
-                sessionSnapshot = _sessionRegistry.GetByMatch(matchingId)
-                    .Where(session =>
-                        session.PlayerId is > 0 &&
-                        session.CurrentMapId == Config.SWARM_MATCH_MAP &&
-                        session.CurrentMapSubId == matchingId)
-                    .ToArray();
-                BotMovementEvent? movement = MoveSwarmCutDummyCore(matchingId, dirX, dirY);
-                if (movement == null)
-                    return;
-
-                ImmutableArray<SwarmBotObserverSnapshot> observers =
-                    CaptureSwarmBotObservers(matchingId, sessionSnapshot);
-                plan = _swarmBotMovementCoordinator.PrepareExternalMovement(
-                    matchingId,
-                    movement,
-                    observers);
-                publicationTicket = _swarmBotMovementCoordinator.ReservePublication(matchingId);
-            });
-        if (runtimeOperation == null)
+        if (!MatchRuntimes.Enter(matchingId, out MatchScope scope))
             return;
 
-        DispatchPendingSwarmBotMovement(new PendingSwarmBotMovementDispatch(
-            runtimeOperation,
-            plan,
-            publicationTicket,
-            sessionSnapshot ?? []));
+        using (scope)
+        {
+            if (scope.Runtime.IsTerminal)
+                return;
+
+            // #331 이행 셈: 등록소 정리를 이 발행 뒤로 미룬다.
+            using IDisposable? runtimeLease =
+                _matchRuntimeRegistry.TryAcquireOperation(matchingId, static () => { });
+            if (runtimeLease == null)
+                return;
+
+            BotMovementEvent? movement = MoveSwarmCutDummyCore(matchingId, dirX, dirY);
+            if (movement != null)
+                DispatchSwarmExternalBotMovement(matchingId, movement);
+        }
     }
 
     private BotMovementEvent? MoveSwarmCutDummyCore(long matchingId, float dirX, float dirY)

@@ -73,10 +73,8 @@ public partial class GameServer(
     private MatchRuntimeStore? _matchRuntimes;
     private readonly SwarmCombatPublicationCoordinator _swarmCombatPublicationCoordinator =
         new(TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs));
-    private readonly SwarmBotTickCoordinator _swarmBotTickCoordinator = new();
     private MatchRuntimeCleanupCoordinator _matchRuntimeCleanupCoordinator = null!;
     private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
-    private SwarmClosurePublicationCoordinator _swarmClosurePublicationCoordinator = null!;
     private readonly ConcurrentDictionary<long, Task> _pendingMatchingRedisCleanupTasks = new();
     // 재시작해도 되감기지 않도록 기동 시각을 섞는다. 고정 시드로 시작하면 서버를 다시
     // 올릴 때마다 같은 matchingId가 나오고, 매치 요약 파일이 같은 이름을 만나
@@ -126,15 +124,8 @@ public partial class GameServer(
 
     private void RegisterMatchRuntimeComponents(long matchingId)
     {
-        if (!_swarmBotTickCoordinator.RegisterMatching(matchingId))
-        {
-            throw new InvalidOperationException(
-                $"Bot tick state was already registered for match {matchingId}.");
-        }
-
         if (!_swarmCombatPublicationCoordinator.RegisterMatching(matchingId))
         {
-            _swarmBotTickCoordinator.ClearMatching(matchingId);
             throw new InvalidOperationException(
                 $"Combat publication state was already registered for match {matchingId}.");
         }
@@ -274,7 +265,6 @@ public partial class GameServer(
             _summonStoneManager,
             _encounterRevealManager,
             _gameEventLogManager);
-        _swarmClosurePublicationCoordinator = new SwarmClosurePublicationCoordinator();
         _matchRuntimeRegistry.AttachStore(MatchRuntimes);
         _matchRuntimeRegistry.SetRuntimeInitializer(RegisterMatchRuntimeComponents);
         _matchRuntimeCleanupCoordinator = new MatchRuntimeCleanupCoordinator(
@@ -295,15 +285,6 @@ public partial class GameServer(
                 new MatchRuntimeCleanupStep(
                     "swarm arena",
                     CleanupSwarmArenaState),
-                new MatchRuntimeCleanupStep(
-                    "bot movement ticks",
-                    _swarmBotTickCoordinator.ClearMatching),
-                new MatchRuntimeCleanupStep(
-                    "bot movement publication",
-                    _swarmBotMovementCoordinator.ClearMatching),
-                new MatchRuntimeCleanupStep(
-                    "field closure publication",
-                    _swarmClosurePublicationCoordinator.ClearMatching),
                 new MatchRuntimeCleanupStep(
                     "area closure",
                     _areaClosureManager.CleanupMatching),
@@ -652,60 +633,39 @@ public partial class GameServer(
         }
     }
 
+    /// <summary>
+    ///     1초 폐쇄 틱. 매치 잠금 안에서 폐쇄 상태를 확정하고 같은 순서로 송신한다 — 폐쇄는 50ms
+    ///     전투 틱보다 드물어 잠금을 기다려도 된다.
+    /// </summary>
     private void ProcessAreaClosureTick(object? state)
     {
         try
         {
-            // 매칭별로 폐쇄 스케줄 체크
-            var matchingIds = GetActiveMatchingIds();
-
-            foreach (long matchingId in matchingIds)
+            foreach (long matchingId in MatchRuntimes.ActiveIds())
             {
                 // #272 자기장 폐쇄: 자기장에서 파생한 구역 시간표 하나로만 닫는다 —
                 // 필드 오염은 정산 리소스 틱(GetSwarmFieldCorruptionPerTick)이 준다.
                 if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
-                SwarmClosurePublicationPlan? plan = null;
-                SwarmClosurePublicationTicket? publicationTicket = null;
-                GameClientSession[]? sessionSnapshot = null;
-                IDisposable? runtimeOperation = _matchRuntimeRegistry.TryAcquireOperation(
-                    matchingId,
-                    () =>
-                    {
-                        sessionSnapshot = GetSessionsByMatch(matchingId).ToArray();
-                        plan = PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);
-                        if (plan != null)
-                        {
-                            publicationTicket =
-                                _swarmClosurePublicationCoordinator.ReservePublication(matchingId);
-                        }
-                    });
-                if (runtimeOperation == null)
+                if (!MatchRuntimes.Enter(matchingId, out MatchScope scope))
                     continue;
-                if (plan == null || sessionSnapshot == null || publicationTicket == null)
-                {
-                    SwarmClosurePublicationTicket? ticketToRetire = publicationTicket;
-                    DispatchWithMatchRuntimeLease(
-                        runtimeOperation,
-                        () =>
-                        {
-                            if (ticketToRetire is { } ticket)
-                            {
-                                _swarmClosurePublicationCoordinator.DispatchInOrder(
-                                    ticket,
-                                    static () => { });
-                            }
-                        });
-                    continue;
-                }
 
-                SwarmClosurePublicationPlan capturedPlan = plan;
-                SwarmClosurePublicationTicket capturedTicket = publicationTicket.Value;
-                GameClientSession[] capturedSessions = sessionSnapshot;
-                DispatchWithMatchRuntimeLease(
-                    runtimeOperation,
-                    () => _swarmClosurePublicationCoordinator.DispatchInOrder(
-                        capturedTicket,
-                        () => DispatchSwarmClosurePublicationPlan(capturedPlan, capturedSessions)));
+                using (scope)
+                {
+                    if (scope.Runtime.IsTerminal)
+                        continue;
+
+                    // #331 이행 셈: 등록소 정리를 이 틱이 끝난 뒤로 미룬다.
+                    using IDisposable? runtimeLease =
+                        _matchRuntimeRegistry.TryAcquireOperation(matchingId, static () => { });
+                    if (runtimeLease == null)
+                        continue;
+
+                    GameClientSession[] sessionSnapshot = GetSessionsByMatch(matchingId).ToArray();
+                    SwarmClosurePublicationPlan? plan =
+                        PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);
+                    if (plan != null)
+                        DispatchSwarmClosurePublicationPlan(plan, sessionSnapshot);
+                }
             }
         }
         catch (Exception ex)
