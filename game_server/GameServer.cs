@@ -1388,6 +1388,8 @@ public partial class GameServer(
             if (runtime.IsTerminal)
                 return null;
 
+            // 사람이 없으므로 카운트다운 없이 즉시 활성 — 미등록 매치는 게이트가 막는다 (#335).
+            MatchStartGate.RegisterBotOnlyMatch(matchingId);
             _botPlayerManager.RegisterBots(matchingId, Config.SWARM_MATCH_MAP, botInfoList);
             int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
             _gameEventLogManager.BeginMatch(matchingId, matchSeed);
