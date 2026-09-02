@@ -3,7 +3,10 @@ using StackExchange.Redis;
 
 namespace network.interfaces;
 
-public interface IRedisConnectionPool : IDisposable, IAsyncDisposable
+/// <summary>
+///     Redis 연결 포트 — 연결 초기화, RedLock 팩토리 조회, 재시도 포함 DB 실행을 제공한다.
+/// </summary>
+public interface IRedisConnection : IDisposable, IAsyncDisposable
 {
     public void Initialize(string connectionString);
     public void Initialize(RedisConfiguration configuration);

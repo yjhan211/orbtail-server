@@ -20,12 +20,9 @@
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="MessagePack.ReactiveProperty" Version="3.1.8" />
         <PackageReference Include="MessagePack.UnityShims" Version="3.1.8" />
-        <PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.8" />
         <PackageReference Include="NATS.Client" Version="1.1.7" />
         <PackageReference Include="StackExchange.Redis" Version="2.8.24" />
-        <PackageReference Include="RedLock" Version="9.0.2" />
         <PackageReference Include="RedLock.net" Version="2.3.2" />
         <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="8.0.0" />
         <PackageReference Include="AspNetCore.HealthChecks.Redis" Version="8.0.1" />

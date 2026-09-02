@@ -118,6 +118,8 @@ public sealed class EncounterRevealManager
     {
         foreach (var key in _pairCooldownUntil.Keys.Where(key => key.MatchingId == matchingId))
             _pairCooldownUntil.TryRemove(key, out _);
+        foreach (var key in _corridorHintCooldownUntil.Keys.Where(key => key.MatchingId == matchingId))
+            _corridorHintCooldownUntil.TryRemove(key, out _);
     }
     private readonly record struct PairKey(long MatchingId, long A, long B)
     {

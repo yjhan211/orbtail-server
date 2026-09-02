@@ -16,9 +16,4 @@ public interface IProtocolRouter
     /// 프로토콜 메시지 처리
     /// </summary>
     public Task RouteAsync(Protocol protocol, byte[] body);
-
-    /// <summary>
-    /// 프로토콜이 인증 없이 처리 가능한지 확인
-    /// </summary>
-    public bool IsNonAuthProtocol(Protocol protocol);
 }

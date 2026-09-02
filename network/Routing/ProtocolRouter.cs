@@ -8,11 +8,6 @@ namespace network.routing;
 /// </summary>
 public class ProtocolRouter : IProtocolRouter
 {
-    private static readonly IReadOnlyList<Protocol> NonAuthProtocols = new List<Protocol>
-    {
-        Protocol.C_TO_U_HEART_BEAT, Protocol.C_TO_U_LOGIN
-    };
-
     private readonly Dictionary<Protocol, Func<byte[], Task>> _handlers = new();
 
     public void RegisterHandler(Protocol protocol, Func<byte[], Task> handler)
@@ -26,10 +21,5 @@ public class ProtocolRouter : IProtocolRouter
             throw new NotSupportedException($"Unsupported protocol: {protocol}");
 
         await handler(body);
-    }
-
-    public bool IsNonAuthProtocol(Protocol protocol)
-    {
-        return NonAuthProtocols.Contains(protocol);
     }
 }

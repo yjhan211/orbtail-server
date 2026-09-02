@@ -48,39 +48,6 @@ public sealed class NetworkService : INetworkService
         }
     }
 
-    // Connector가 만든 소켓과 EventArgs는 풀에 반환하지 않고 연결 종료 시 폐기한다.
-    public void OnConnectCompleted(Socket socket, UserToken userToken)
-    {
-        ArgumentNullException.ThrowIfNull(socket);
-        ArgumentNullException.ThrowIfNull(userToken);
-
-        SocketAsyncEventArgs? receiveArgs = null;
-        SocketAsyncEventArgs? sendArgs = null;
-        try
-        {
-            receiveArgs = _eventArgsPool.CreateConnectionOwned(ReceiveCompleted);
-            sendArgs = _eventArgsPool.CreateConnectionOwned(SendCompleted);
-            if (!TryRegisterConnection(
-                    userToken,
-                    socket,
-                    receiveArgs,
-                    sendArgs,
-                    SocketEventArgsOwnership.ConnectionOwned))
-            {
-                receiveArgs.Dispose();
-                sendArgs.Dispose();
-                socket.Dispose();
-            }
-        }
-        catch
-        {
-            receiveArgs?.Dispose();
-            sendArgs?.Dispose();
-            socket.Dispose();
-            throw;
-        }
-    }
-
     public void CloseClientSocket(UserToken? userToken)
     {
         userToken?.Disconnect();
@@ -209,12 +176,7 @@ public sealed class NetworkService : INetworkService
         var userToken = new UserToken();
         try
         {
-            if (!TryRegisterConnection(
-                    userToken,
-                    clientSocket,
-                    receiveArgs!,
-                    sendArgs!,
-                    SocketEventArgsOwnership.ListenerPool))
+            if (!TryRegisterConnection(userToken, clientSocket, receiveArgs!, sendArgs!))
             {
                 _eventArgsPool.Return(receiveArgs, sendArgs);
                 clientSocket.Dispose();
@@ -260,8 +222,7 @@ public sealed class NetworkService : INetworkService
         UserToken userToken,
         Socket socket,
         SocketAsyncEventArgs receiveArgs,
-        SocketAsyncEventArgs sendArgs,
-        SocketEventArgsOwnership ownership)
+        SocketAsyncEventArgs sendArgs)
     {
         lock (_connectionLifecycleLock)
         {
@@ -271,7 +232,6 @@ public sealed class NetworkService : INetworkService
                 socket,
                 receiveArgs,
                 sendArgs,
-                ownership,
                 CloseAndReleaseStarted,
                 ReleaseConnection);
 
@@ -424,17 +384,10 @@ public sealed class NetworkService : INetworkService
     {
         // 세션 생성 중 close된 경우 peer가 늦게 연결될 수 있으므로 release 직전에 한 번 더 보장한다.
         userToken.NotifyPeerClosed(ex => _logger?.LogError(ex, "Session close callback failed"));
-        userToken.DetachEventArgs(out var receiveArgs, out var sendArgs, out var ownership);
+        userToken.DetachEventArgs(out var receiveArgs, out var sendArgs);
         try
         {
-            if (ownership == SocketEventArgsOwnership.ListenerPool)
-            {
-                _eventArgsPool.Return(receiveArgs, sendArgs);
-                return;
-            }
-
-            DisposeConnectionOwnedEventArgs(receiveArgs, ReceiveCompleted);
-            DisposeConnectionOwnedEventArgs(sendArgs, SendCompleted);
+            _eventArgsPool.Return(receiveArgs, sendArgs);
         }
         catch (Exception ex)
         {
@@ -450,15 +403,5 @@ public sealed class NetworkService : INetworkService
             // from the shutdown snapshot while its cleanup still uses Redis or NATS dependencies.
             _activeConnections.TryRemove(userToken, out _);
         }
-    }
-
-    private static void DisposeConnectionOwnedEventArgs(
-        SocketAsyncEventArgs? eventArgs,
-        EventHandler<SocketAsyncEventArgs> completedHandler)
-    {
-        if (eventArgs == null) return;
-        eventArgs.UserToken = null;
-        eventArgs.Completed -= completedHandler;
-        eventArgs.Dispose();
     }
 }

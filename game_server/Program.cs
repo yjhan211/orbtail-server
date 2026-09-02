@@ -71,15 +71,15 @@ internal static partial class Program
 
         var redisConfiguration = RedisConfigurationParser.Parse(hostContext.Configuration);
         services.AddSingleton(redisConfiguration);
-        services.AddSingleton<IRedisConnectionPool>(sp =>
+        services.AddSingleton<IRedisConnection>(sp =>
         {
-            var logger = sp.GetRequiredService<ILogger<RedisConnectionPool>>();
-            var redisPool = new RedisConnectionPool(logger);
+            var logger = sp.GetRequiredService<ILogger<RedisConnection>>();
+            var redisPool = new RedisConnection(logger);
             redisPool.Initialize(redisConfiguration);
             return redisPool;
         });
         services.AddSingleton<IRedLockFactory>(sp =>
-            sp.GetRequiredService<IRedisConnectionPool>().GetRedLockFactory());
+            sp.GetRequiredService<IRedisConnection>().GetRedLockFactory());
         services.AddSingleton<ICacheHelper, CacheHelper>();
         services.AddManittoAuthenticationBoundaries(hostContext.Configuration);
         services.AddSingleton<GameServer>();
