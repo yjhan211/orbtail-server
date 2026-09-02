@@ -391,7 +391,7 @@ public partial class GameClientSession
 
             ApplyLivePlayerInfoSnapshot(this, playerInfo);
 
-            // 내 최신 위치로 playerInfo 업데이트
+            // 내 최신 위치를 ENTER 패킷 스냅샷에 반영한다 (저장 아님 — Last*는 Game Server가 Redis에 쓰지 않는다)
             if (_lastValidatedPosition != null)
             {
                 var latestCell = WorldPositionToCell(_lastValidatedPosition);
