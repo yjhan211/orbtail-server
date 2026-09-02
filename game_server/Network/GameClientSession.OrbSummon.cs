@@ -73,7 +73,7 @@ public partial class GameClientSession
         // 자동 머지: 오브열 실험(#226)에서는 끈다 — 성장 = 열 길이, 압축은 그 언어와 싸운다.
         if (Config.SWARM_ORB_MERGE_ENABLED)
             foreach (var mergedItem in _inGameInventoryManager.AutoMergeOrbs(
-                         CurrentMapSubId, PlayerId.Value, Random.Shared))
+                         CurrentMapSubId, PlayerId.Value))
                 SendInGameInventoryUpdate(mergedItem);
         return true;
     }

@@ -78,6 +78,8 @@ public partial class GameClientSession : SessionBase
     private readonly Action<GameClientSession, long, int, int> _handleSwarmGrowthPick;
     /// <summary>Owning GameServer instance delegate invoked inside a human orb-decision ordered turn.</summary>
     private readonly Action<GameClientSession, long, int, long, long> _handleSwarmOrbDecision;
+    /// <summary>Resolves the owning match's item-combine stream inside its active ordered turn.</summary>
+    private readonly Func<long, Random> _getItemCombineRandom;
     private readonly Action<IPacket>? _sendCombatPublicationDirect;
     private readonly GameAdmissionStateCommitter _admissionStateCommitter;
     private readonly AsyncLocal<MessageMatchRuntimeScope?> _activeMessageMatchRuntimeScope = new();
@@ -192,6 +194,7 @@ public partial class GameClientSession : SessionBase
         Action<long, Action> publishRequiredTerminalAction,
         Action<GameClientSession, long, int, int> handleSwarmGrowthPick,
         Action<GameClientSession, long, int, long, long> handleSwarmOrbDecision,
+        Func<long, Random> getItemCombineRandom,
         Func<long, Action, IDisposable?> acquireMatchRuntimeOperation,
         Func<long, Action, bool> executeMatchRuntime,
         Func<long, long, bool> bindMatchOwnerFence,
@@ -225,6 +228,7 @@ public partial class GameClientSession : SessionBase
         _publishRequiredTerminalAction = publishRequiredTerminalAction;
         _handleSwarmGrowthPick = handleSwarmGrowthPick;
         _handleSwarmOrbDecision = handleSwarmOrbDecision;
+        _getItemCombineRandom = getItemCombineRandom;
         _sendCombatPublicationDirect = SendCombatPublicationDirect;
         _admissionStateCommitter = new GameAdmissionStateCommitter(cacheHelper, logger);
         _acquireMatchRuntimeOperation = acquireMatchRuntimeOperation;

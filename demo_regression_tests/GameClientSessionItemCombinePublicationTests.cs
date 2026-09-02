@@ -32,6 +32,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
     private const int RecoveryOrbT2 = 107000041;
     private const int SunOrbT1 = 107000010;
     private const int SunOrbT2 = 107000011;
+    private const int WindOrbT2 = 107000021;
+    private const int WaveOrbT2 = 107000031;
     private const int Bandage = 201000008;
     private const int CannedCoffee = 201000011;
     private const int CompressionBandage = 201000019;
@@ -48,6 +50,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
     public async Task RecoveryOrbSuccess_PreservesExactEquippedStateWireAndLogs()
     {
         using var fixture = new SessionFixture();
+        CountingRandom itemCombineRandom = fixture.ConfigureItemCombineRandom(FirstMatchingId, 0);
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         RecordingUserToken token = fixture.TokenFor(session);
         (InGameItemInfo first, InGameItemInfo second) = fixture.SeedPair(
@@ -116,12 +119,16 @@ public sealed class GameClientSessionItemCombinePublicationTests
             events[0].Description);
         Assert.Equal(RecoveryOrbT2, events[1].WeaponItemId);
         Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
+        Assert.Equal(1, itemCombineRandom.DrawCount);
+        Assert.Equal([0], itemCombineRandom.DrawResults);
+        Assert.Equal(1, fixture.ItemCombineRandomResolverCallCount(FirstMatchingId));
     }
 
     [Fact]
     public async Task TrueOrbBranchSuccess_PreservesRecipeZeroBoardLogsAndEquippedOutput()
     {
         using var fixture = new SessionFixture();
+        CountingRandom itemCombineRandom = fixture.ConfigureItemCombineRandom(FirstMatchingId, 1);
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         RecordingUserToken token = fixture.TokenFor(session);
         (InGameItemInfo first, _) = fixture.SeedPair(
@@ -148,6 +155,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(0, combined.RecipeId);
         Assert.Equal(SunOrbT1, combined.InputItemA);
         Assert.Equal(SunOrbT1, combined.InputItemB);
+        Assert.Equal(WindOrbT2, combined.OutputItemId);
         Assert.True(OrbData.TryGetColorAndTier(combined.OutputItemId, out OrbColor color, out int tier));
         Assert.NotEqual(OrbColor.None, color);
         Assert.Equal(2, tier);
@@ -178,12 +186,16 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(outputItemId, events[0].WeaponItemId);
         Assert.Contains("SURVIVOR_ORB_MERGE", events[2].Description);
         Assert.Equal(outputItemId, events[3].WeaponItemId);
+        Assert.Equal(1, itemCombineRandom.DrawCount);
+        Assert.Equal([1], itemCombineRandom.DrawResults);
+        Assert.Equal(1, fixture.ItemCombineRandomResolverCallCount(FirstMatchingId));
     }
 
     [Fact]
     public async Task OrdinaryRecipeSuccess_PreservesExactTwoPacketResultAndState()
     {
         using var fixture = new SessionFixture();
+        CountingRandom itemCombineRandom = fixture.ConfigureItemCombineRandom(FirstMatchingId, 0);
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         RecordingUserToken token = fixture.TokenFor(session);
         fixture.SeedPair(FirstMatchingId, FirstPlayerId, Bandage);
@@ -209,6 +221,9 @@ public sealed class GameClientSessionItemCombinePublicationTests
         GameEventEntry mission = Assert.Single(fixture.EventLog.GetForPersistence(FirstMatchingId));
         Assert.Equal("MISSION", mission.Type);
         Assert.Contains($"{Bandage} + {Bandage} => {CompressionBandage}", mission.Description);
+        Assert.Equal(1, itemCombineRandom.DrawCount);
+        Assert.Equal([0], itemCombineRandom.DrawResults);
+        Assert.Equal(1, fixture.ItemCombineRandomResolverCallCount(FirstMatchingId));
     }
 
     [Theory]
@@ -221,6 +236,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         ErrorCode expectedError)
     {
         using var fixture = new SessionFixture();
+        CountingRandom itemCombineRandom = fixture.ConfigureItemCombineRandom(FirstMatchingId, 0);
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         RecordingUserToken token = fixture.TokenFor(session);
         int itemA;
@@ -265,6 +281,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(before, fixture.InventorySnapshot(FirstMatchingId, FirstPlayerId));
         Assert.Empty(fixture.EventLog.GetForPersistence(FirstMatchingId));
         Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
+        Assert.Equal(0, itemCombineRandom.DrawCount);
     }
 
     [Fact]
@@ -287,6 +304,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             Bandage,
             Bandage,
             ErrorCode.INSUFFICIENT_ITEM);
+        Assert.Equal(0, fixture.TotalItemCombineRandomResolverCalls);
     }
 
     [Fact]
@@ -325,6 +343,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(before, fixture.InventorySnapshot(FirstMatchingId, FirstPlayerId));
         Assert.Empty(fixture.EventLog.GetForPersistence(FirstMatchingId));
         Assert.Null(fixture.Coordinator.Inspect(FirstMatchingId));
+        Assert.Equal(0, fixture.TotalItemCombineRandomResolverCalls);
     }
 
     [Fact]
@@ -517,6 +536,58 @@ public sealed class GameClientSessionItemCombinePublicationTests
     }
 
     [Fact]
+    public async Task SameMatch_TwoColoredOrbRequestsDrawInOrderedTurnOrder()
+    {
+        using var fixture = new SessionFixture();
+        CountingRandom itemCombineRandom = fixture.ConfigureItemCombineRandom(FirstMatchingId, 0, 1);
+        GameClientSession first = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
+        GameClientSession second = fixture.CreateSession(FirstMatchingId, SecondPlayerId);
+        fixture.SeedPair(FirstMatchingId, FirstPlayerId, SunOrbT1);
+        fixture.SeedPair(FirstMatchingId, SecondPlayerId, SunOrbT1);
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        fixture.TokenFor(first).BeforeSend = protocol =>
+        {
+            if (protocol != Protocol.G_TO_C_ITEMS_COMBINED)
+                return;
+            entered.Set();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(5)));
+        };
+
+        Task firstTask = Task.Run(() => SendCombineAsync(first, SunOrbT1, SunOrbT1));
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+        Assert.Equal(1, itemCombineRandom.DrawCount);
+
+        Task secondTask = Task.Run(() => SendCombineAsync(second, SunOrbT1, SunOrbT1));
+        try
+        {
+            Assert.True(SpinWait.SpinUntil(
+                () => fixture.Coordinator.Inspect(FirstMatchingId)?.OrderedWaiterCount == 1,
+                TimeSpan.FromSeconds(5)));
+            Assert.Equal(1, itemCombineRandom.DrawCount);
+            Assert.Equal(2, fixture.Inventories.GetAllItems(FirstMatchingId, SecondPlayerId).Count);
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        await Task.WhenAll(firstTask, secondTask).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal([0, 1], itemCombineRandom.DrawResults);
+        Assert.Equal(2, itemCombineRandom.DrawCount);
+        Assert.Equal(2, fixture.ItemCombineRandomResolverCallCount(FirstMatchingId));
+        Assert.Equal(
+            SunOrbT2,
+            fixture.TokenFor(first).DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
+                Protocol.G_TO_C_ITEMS_COMBINED).OutputItemId);
+        Assert.Equal(
+            WindOrbT2,
+            fixture.TokenFor(second).DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
+                Protocol.G_TO_C_ITEMS_COMBINED).OutputItemId);
+    }
+
+    [Fact]
     public async Task DifferentMatches_DispatchIndependentlyWhileFirstBundleIsBlocked()
     {
         using var fixture = new SessionFixture();
@@ -548,6 +619,58 @@ public sealed class GameClientSessionItemCombinePublicationTests
         await firstTask.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
         Assert.False(fixture.Coordinator.Inspect(SecondMatchingId)!.Value.HasActiveTurn);
+    }
+
+    [Fact]
+    public async Task DifferentMatches_ColoredOrbRandomStreamsAdvanceIndependently()
+    {
+        using var fixture = new SessionFixture();
+        CountingRandom firstRandom = fixture.ConfigureItemCombineRandom(FirstMatchingId, 2);
+        CountingRandom secondRandom = fixture.ConfigureItemCombineRandom(SecondMatchingId, 1);
+        GameClientSession first = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
+        GameClientSession second = fixture.CreateSession(SecondMatchingId, SecondPlayerId);
+        fixture.SeedPair(FirstMatchingId, FirstPlayerId, SunOrbT1);
+        fixture.SeedPair(SecondMatchingId, SecondPlayerId, SunOrbT1);
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        fixture.TokenFor(first).BeforeSend = protocol =>
+        {
+            if (protocol != Protocol.G_TO_C_ITEMS_COMBINED)
+                return;
+            entered.Set();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(5)));
+        };
+
+        Task firstTask = Task.Run(() => SendCombineAsync(first, SunOrbT1, SunOrbT1));
+        Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+        Assert.Equal(1, firstRandom.DrawCount);
+
+        Task secondTask = SendCombineAsync(second, SunOrbT1, SunOrbT1);
+        try
+        {
+            await secondTask.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(firstTask.IsCompleted);
+            Assert.Equal(1, firstRandom.DrawCount);
+            Assert.Equal(1, secondRandom.DrawCount);
+            Assert.NotSame(firstRandom, secondRandom);
+            Assert.Equal(
+                WindOrbT2,
+                fixture.TokenFor(second).DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
+                    Protocol.G_TO_C_ITEMS_COMBINED).OutputItemId);
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        await firstTask.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(
+            WaveOrbT2,
+            fixture.TokenFor(first).DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
+                Protocol.G_TO_C_ITEMS_COMBINED).OutputItemId);
+        Assert.Equal(1, fixture.ItemCombineRandomResolverCallCount(FirstMatchingId));
+        Assert.Equal(1, fixture.ItemCombineRandomResolverCallCount(SecondMatchingId));
     }
 
     [Fact]
@@ -688,6 +811,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
     {
         private readonly List<GameClientSession> _sessions = [];
         private readonly Dictionary<GameClientSession, RecordingUserToken> _tokens = [];
+        private readonly ConcurrentDictionary<long, CountingRandom> _itemCombineRandoms = new();
+        private readonly ConcurrentDictionary<long, int> _itemCombineRandomResolverCalls = new();
         private readonly string _summaryDirectory = Path.Combine(
             Path.GetTempPath(),
             "orbtail-item-combine-publication-tests",
@@ -734,6 +859,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
         public EncounterRevealManager Encounters { get; } = new();
         public Action<long>? AfterMessageLeaseAcquired { get; set; }
         public int? ThrowOnCaptureOrdinal { get; init; }
+        public int TotalItemCombineRandomResolverCalls =>
+            _itemCombineRandomResolverCalls.Values.Sum();
 
         public GameClientSession CreateSession(long matchingId, long playerId)
         {
@@ -771,6 +898,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 static (_, publish) => publish(),
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
+                ResolveItemCombineRandom,
                 AcquireOperation,
                 Registry.TryExecute,
                 Registry.TryBindOwnerFence,
@@ -787,6 +915,16 @@ public sealed class GameClientSessionItemCombinePublicationTests
         }
 
         public RecordingUserToken TokenFor(GameClientSession session) => _tokens[session];
+
+        public CountingRandom ConfigureItemCombineRandom(long matchingId, params int[] drawResults)
+        {
+            var random = new CountingRandom(drawResults);
+            _itemCombineRandoms[matchingId] = random;
+            return random;
+        }
+
+        public int ItemCombineRandomResolverCallCount(long matchingId) =>
+            _itemCombineRandomResolverCalls.GetValueOrDefault(matchingId);
 
         public (InGameItemInfo First, InGameItemInfo Second) SeedPair(
             long matchingId,
@@ -840,6 +978,17 @@ public sealed class GameClientSessionItemCombinePublicationTests
             return operation;
         }
 
+        private Random ResolveItemCombineRandom(long matchingId)
+        {
+            _itemCombineRandomResolverCalls.AddOrUpdate(
+                matchingId,
+                1,
+                static (_, count) => count + 1);
+            return _itemCombineRandoms.GetOrAdd(
+                matchingId,
+                static _ => new CountingRandom());
+        }
+
         private static void SetIdentity(GameClientSession session, long matchingId, long playerId)
         {
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
@@ -891,6 +1040,47 @@ public sealed class GameClientSessionItemCombinePublicationTests
             null!,
             null!,
             new ServerReadinessState());
+    }
+
+    private sealed class CountingRandom(params int[] drawResults) : Random
+    {
+        private readonly object _gate = new();
+        private readonly Queue<int> _scriptedResults = new(drawResults);
+        private readonly List<int> _drawResults = [];
+
+        public int DrawCount
+        {
+            get
+            {
+                lock (_gate)
+                    return _drawResults.Count;
+            }
+        }
+
+        public IReadOnlyList<int> DrawResults
+        {
+            get
+            {
+                lock (_gate)
+                    return _drawResults.ToArray();
+            }
+        }
+
+        public override int Next(int maxValue)
+        {
+            lock (_gate)
+            {
+                int result = _scriptedResults.Count == 0 ? 0 : _scriptedResults.Dequeue();
+                if (result < 0 || result >= maxValue)
+                {
+                    throw new InvalidOperationException(
+                        $"Scripted random result {result} is outside [0, {maxValue}).");
+                }
+
+                _drawResults.Add(result);
+                return result;
+            }
+        }
     }
 
     private sealed class RecordingUserToken : UserToken

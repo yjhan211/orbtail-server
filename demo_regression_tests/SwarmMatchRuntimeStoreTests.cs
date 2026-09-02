@@ -213,6 +213,8 @@ public sealed class SwarmMatchRuntimeStoreTests
 
         Assert.Same(first, firstAgain);
         Assert.NotSame(first, second);
+        Assert.Same(first.ItemCombineRandom, firstAgain.ItemCombineRandom);
+        Assert.NotSame(first.ItemCombineRandom, second.ItemCombineRandom);
         Assert.Equal(firstMatchingId, first.MatchingId);
         Assert.Equal(secondMatchingId, second.MatchingId);
         Assert.Equal(2, store.Count);
@@ -227,6 +229,8 @@ public sealed class SwarmMatchRuntimeStoreTests
 
         SwarmMatchRuntime removed = store.GetOrCreate(removedMatchingId);
         SwarmMatchRuntime sibling = store.GetOrCreate(siblingMatchingId);
+        Random removedItemCombineRandom = removed.ItemCombineRandom;
+        Random siblingItemCombineRandom = sibling.ItemCombineRandom;
 
         Assert.True(store.Remove(removedMatchingId));
         Assert.False(store.TryGet(removedMatchingId, out SwarmMatchRuntime? missing));
@@ -238,6 +242,8 @@ public sealed class SwarmMatchRuntimeStoreTests
         SwarmMatchRuntime recreated = store.GetOrCreate(removedMatchingId);
 
         Assert.NotSame(removed, recreated);
+        Assert.NotSame(removedItemCombineRandom, recreated.ItemCombineRandom);
+        Assert.Same(siblingItemCombineRandom, sibling.ItemCombineRandom);
         Assert.Equal(removedMatchingId, recreated.MatchingId);
         Assert.Same(sibling, store.GetOrCreate(siblingMatchingId));
         Assert.Equal(2, store.Count);

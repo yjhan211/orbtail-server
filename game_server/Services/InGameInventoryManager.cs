@@ -143,10 +143,7 @@ public class PlayerInGameInventory(long matchingId)
                                           _items.TryGetValue(_equippedBattleItemUid, out var equippedItem) &&
                                           inputItemIds.Contains(equippedItem.ItemId);
 
-        var requiredCounts = inputItemIds
-            .GroupBy(itemId => itemId)
-            .ToDictionary(group => group.Key, group => group.Count());
-        if (requiredCounts.Any(required => GetItemCount(required.Key) < required.Value))
+        if (!HasItems(inputItemIds))
             return false;
 
         foreach (int inputItemId in inputItemIds)
@@ -169,10 +166,70 @@ public class PlayerInGameInventory(long matchingId)
     {
         outputItemId = 0;
         changedItems = new List<InGameItemInfo>();
+        if (!OrbData.CanMerge(inputA, inputB) || !HasItems([inputA, inputB]))
+            return false;
         if (!OrbData.TryGetRandomMergeOutput(inputA, inputB, random, out outputItemId))
             return false;
 
         return TryCombineItems([inputA, inputB], outputItemId, out changedItems);
+    }
+
+    /// <summary>
+    ///     Preserves the pre-match-runtime behavior where a valid orb pair can draw before a
+    ///     missing-material rejection. Only the matchingId-less legacy session path uses this.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    internal bool TryCombineOrbsLegacy(int inputA, int inputB, Random random,
+        out int outputItemId, out List<InGameItemInfo> changedItems)
+    {
+        outputItemId = 0;
+        changedItems = new List<InGameItemInfo>();
+        if (!OrbData.TryGetRandomMergeOutput(inputA, inputB, random, out outputItemId))
+            return false;
+
+        return TryCombineItems([inputA, inputB], outputItemId, out changedItems);
+    }
+
+    /// <summary>
+    ///     Checks a matching recipe's materials, draws its outcome, and consumes the inputs under
+    ///     one inventory monitor so a rejected combine cannot advance the supplied random stream.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool TryCombineRandomRecipe(
+        IReadOnlyList<BattleItemRecipe> candidates,
+        Random random,
+        out BattleItemRecipe? selectedRecipe,
+        out List<InGameItemInfo> changedItems)
+    {
+        ArgumentNullException.ThrowIfNull(random);
+        selectedRecipe = null;
+        changedItems = new List<InGameItemInfo>();
+        if (candidates.Count == 0)
+            return false;
+
+        int[] expectedInputs = candidates[0].InputItemIds.OrderBy(itemId => itemId).ToArray();
+        if (candidates.Skip(1).Any(candidate =>
+                !candidate.InputItemIds.OrderBy(itemId => itemId).SequenceEqual(expectedInputs)))
+        {
+            throw new ArgumentException(
+                "Random recipe candidates must describe the same input multiset.",
+                nameof(candidates));
+        }
+
+        if (!HasItems(candidates[0].InputItemIds))
+            return false;
+
+        selectedRecipe = candidates[random.Next(candidates.Count)];
+        if (!TryCombineItems(
+                selectedRecipe.InputItemIds,
+                selectedRecipe.OutputItemId,
+                out changedItems))
+        {
+            throw new InvalidOperationException(
+                "Inventory changed during atomic random recipe combine.");
+        }
+
+        return true;
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -249,6 +306,18 @@ public class PlayerInGameInventory(long matchingId)
     public int GetItemCount(int itemId)
     {
         return _items.Values.Where(i => i.ItemId == itemId).Sum(i => i.Count);
+    }
+
+    /// <summary>Checks duplicate-aware material quantities without mutating the inventory.</summary>
+    [MethodImpl(MethodImplOptions.Synchronized)]
+    public bool HasItems(IReadOnlyCollection<int> itemIds)
+    {
+        if (itemIds.Count == 0)
+            return false;
+
+        return itemIds
+            .GroupBy(itemId => itemId)
+            .All(required => GetItemCount(required.Key) >= required.Count());
     }
 }
 
@@ -376,14 +445,49 @@ public class InGameInventoryManager
         return result;
     }
 
+    internal bool TryCombineOrbsLegacy(long matchingId, long playerId, int inputA, int inputB,
+        Random random, out int outputItemId, out List<InGameItemInfo> changedItems)
+    {
+        var inventory = GetPlayerInventory(matchingId, playerId);
+        bool result = inventory.TryCombineOrbsLegacy(
+            inputA,
+            inputB,
+            random,
+            out outputItemId,
+            out changedItems);
+        if (result)
+            _logAction?.Invoke(
+                $"InGameInventoryManager: Random Survivor orb merge (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{inputA},{inputB}], Output={outputItemId})");
+        return result;
+    }
+
+    public bool TryCombineRandomRecipe(
+        long matchingId,
+        long playerId,
+        IReadOnlyList<BattleItemRecipe> candidates,
+        Random random,
+        out BattleItemRecipe? selectedRecipe,
+        out List<InGameItemInfo> changedItems)
+    {
+        var inventory = GetPlayerInventory(matchingId, playerId);
+        bool result = inventory.TryCombineRandomRecipe(
+            candidates,
+            random,
+            out selectedRecipe,
+            out changedItems);
+        if (result)
+            _logAction?.Invoke(
+                $"InGameInventoryManager: Combined items (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{string.Join(',', selectedRecipe!.InputItemIds)}], Output={selectedRecipe.OutputItemId})");
+        return result;
+    }
+
     /// <summary>
     ///     #217 궤도 스쿼드 자동 머지: 같은 색·티어 3개가 모이면 같은 색 상위 티어로
     ///     즉시 합성한다 (SB 3머지 문법). 보드 관리를 실시간 태스크에서 제거하고,
     ///     드래프트(무슨 색을 쌓나)는 개봉 선택에 남는다. 반환은 변경 목록(클라 전송용).
     /// </summary>
-    public List<InGameItemInfo> AutoMergeOrbs(long matchingId, long playerId, Random random)
+    public List<InGameItemInfo> AutoMergeOrbs(long matchingId, long playerId)
     {
-        _ = random; // 랜덤 진화(2머지)를 대체 — 시그니처는 호출부 호환을 위해 유지.
         var allChanged = new List<InGameItemInfo>();
         var inventory = GetPlayerInventory(matchingId, playerId);
         while (true)

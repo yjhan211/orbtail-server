@@ -1127,6 +1127,7 @@ public sealed class MatchStartCountdownPublicationTests
                 static (_, publish) => publish(),
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
+                static _ => Random.Shared,
                 static (_, _) => null,
                 static (_, action) =>
                 {

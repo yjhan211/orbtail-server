@@ -567,6 +567,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                 publishRequiredTerminal,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
+                static _ => Random.Shared,
                 acquireOperation,
                 registry.TryExecute,
                 registry.TryBindOwnerFence,

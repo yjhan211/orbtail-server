@@ -6,6 +6,10 @@ namespace demo_regression_tests;
 
 public sealed class InGameInventoryAtomicityTests
 {
+    private const int SunOrbT1 = 107000010;
+    private const int Bandage = 201000008;
+    private const int BandageRecipeId = 193031;
+
     [Fact]
     public async Task ConcurrentQuantityOneConsumptionCannotOverdraw()
     {
@@ -81,7 +85,95 @@ public sealed class InGameInventoryAtomicityTests
         Assert.Null(manager.GetEquippedBattleItem(10, 100));
     }
 
+    [Fact]
+    public void RandomRecipeWithMissingMaterialDoesNotDraw()
+    {
+        var manager = new InGameInventoryManager();
+        manager.Initialize();
+        manager.AddItem(matchingId: 10, playerId: 100, itemId: Bandage);
+        BattleItemRecipe recipe = LoadBattleItemRecipe(BandageRecipeId);
+        var random = new CountingRandom();
+
+        bool combined = manager.TryCombineRandomRecipe(
+            matchingId: 10,
+            playerId: 100,
+            [recipe],
+            random,
+            out BattleItemRecipe? selectedRecipe,
+            out var changedItems);
+
+        Assert.False(combined);
+        Assert.Null(selectedRecipe);
+        Assert.Empty(changedItems);
+        Assert.Equal(0, random.DrawCount);
+        Assert.Equal(1, manager.GetPlayerInventory(10, 100).GetItemCount(Bandage));
+    }
+
+    [Fact]
+    public void OrbMergeWithMissingMaterialDoesNotDraw()
+    {
+        InitializeBattleCombatData();
+        var manager = new InGameInventoryManager();
+        manager.Initialize();
+        manager.AddItem(matchingId: 10, playerId: 100, itemId: SunOrbT1);
+        var random = new CountingRandom();
+
+        bool combined = manager.TryCombineOrbs(
+            matchingId: 10,
+            playerId: 100,
+            SunOrbT1,
+            SunOrbT1,
+            random,
+            out int outputItemId,
+            out var changedItems);
+
+        Assert.False(combined);
+        Assert.Equal(0, outputItemId);
+        Assert.Empty(changedItems);
+        Assert.Equal(0, random.DrawCount);
+        Assert.Equal(1, manager.GetPlayerInventory(10, 100).GetItemCount(SunOrbT1));
+    }
+
+    [Fact]
+    public void LegacyOrbMergeWithMissingMaterialPreservesDrawBeforeRejection()
+    {
+        InitializeBattleCombatData();
+        var manager = new InGameInventoryManager();
+        manager.Initialize();
+        manager.AddItem(matchingId: 10, playerId: 100, itemId: SunOrbT1);
+        var random = new CountingRandom();
+
+        bool combined = manager.TryCombineOrbsLegacy(
+            matchingId: 10,
+            playerId: 100,
+            SunOrbT1,
+            SunOrbT1,
+            random,
+            out int outputItemId,
+            out var changedItems);
+
+        Assert.False(combined);
+        Assert.NotEqual(0, outputItemId);
+        Assert.Empty(changedItems);
+        Assert.Equal(1, random.DrawCount);
+        Assert.Equal(1, manager.GetPlayerInventory(10, 100).GetItemCount(SunOrbT1));
+    }
+
     private static void InitializeBattleCombatData()
+    {
+        BattleItemCombatData.Initialize(CsvHelper.LoadCsv(Path.Combine(
+            FindRepositoryRoot(), "network", "Common", "csv", "battle_item_combat.csv")));
+    }
+
+    private static BattleItemRecipe LoadBattleItemRecipe(int recipeId)
+    {
+        return Assert.Single(CsvHelper.LoadCsv(Path.Combine(
+                FindRepositoryRoot(), "network", "Common", "csv", "battle_item_recipe.csv"))
+            .Where(row => row["recipe_id"] == recipeId.ToString())
+            .Select(BattleItemRecipe.CreateFromData));
+    }
+
+    private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory != null &&
@@ -90,10 +182,20 @@ public sealed class InGameInventoryAtomicityTests
             directory = directory.Parent;
         }
 
-        if (directory == null)
-            throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
+        return directory?.FullName ??
+               throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
+    }
 
-        BattleItemCombatData.Initialize(CsvHelper.LoadCsv(Path.Combine(
-            directory.FullName, "network", "Common", "csv", "battle_item_combat.csv")));
+    private sealed class CountingRandom : Random
+    {
+        private int _drawCount;
+
+        public int DrawCount => Volatile.Read(ref _drawCount);
+
+        public override int Next(int maxValue)
+        {
+            Interlocked.Increment(ref _drawCount);
+            return 0;
+        }
     }
 }

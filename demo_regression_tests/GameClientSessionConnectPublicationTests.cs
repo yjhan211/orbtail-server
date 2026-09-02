@@ -358,6 +358,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 static (_, publish) => publish(),
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
+                static _ => Random.Shared,
                 Registry.TryAcquireOperation,
                 Registry.TryExecute,
                 Registry.TryBindOwnerFence,

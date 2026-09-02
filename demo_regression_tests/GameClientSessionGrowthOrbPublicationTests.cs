@@ -768,6 +768,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 static (_, publish) => publish(),
                 growthHandler ?? _growthHandler,
                 orbHandler ?? _orbHandler,
+                static _ => Random.Shared,
                 AcquireOperation,
                 Registry.TryExecute,
                 Registry.TryBindOwnerFence,

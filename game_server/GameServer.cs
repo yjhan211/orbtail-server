@@ -133,6 +133,9 @@ public partial class GameServer(
     private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
         _swarmMatchRuntimes.GetOrCreate(matchingId);
 
+    private Random GetItemCombineRandom(long matchingId) =>
+        GetSwarmMatchRuntime(matchingId).ItemCombineRandom;
+
     private void RegisterMatchRuntimeComponents(long matchingId)
     {
         if (!_swarmBotTickCoordinator.RegisterMatching(matchingId))
@@ -1942,6 +1945,7 @@ public partial class GameServer(
                 PublishRequiredTerminalAction,
                 HandleSwarmGrowthPick,
                 HandleSwarmOrbDecision,
+                GetItemCombineRandom,
                 _matchRuntimeRegistry.TryAcquireOperation,
                 _matchRuntimeRegistry.TryExecute,
                 _matchRuntimeRegistry.TryBindOwnerFence,

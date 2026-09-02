@@ -38,6 +38,12 @@ public sealed class SwarmMatchRuntime
     public SwarmGrowthOfferCoordinator GrowthOfferCoordinator { get; }
     public SwarmBotTacticalState BotTactics { get; } = new();
     public SwarmMatchPacingState Pacing { get; } = new();
+    /// <summary>
+    ///     Match-local outcome stream for explicit item-combine requests. It is intentionally
+    ///     separate from combat critical rolls and is consumed only while the match runtime
+    ///     monitor is held. The default seed is not a deterministic replay contract.
+    /// </summary>
+    internal Random ItemCombineRandom { get; } = new();
     public SwarmWindBladeState WindBlade { get; } = new();
     public SwarmOrbBoardState OrbBoard { get; } = new();
     public SwarmPvpAttackEventState AttackEvents { get; }
