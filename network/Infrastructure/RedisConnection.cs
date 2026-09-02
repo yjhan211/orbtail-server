@@ -8,7 +8,12 @@ using StackExchange.Redis;
 
 namespace network.infrastructure;
 
-public class RedisConnectionPool(ILogger<RedisConnectionPool> logger) : IRedisConnectionPool
+/// <summary>
+///     서버 프로세스의 Redis 연결 단일 진입점 — ConnectionMultiplexer 하나와 DB 뷰 캐시, RedLock 팩토리를 소유한다.
+///     lazy 연결 생성과 dispose는 lock으로 보호하고, 지원하지 않는 Cluster topology는 첫 연결에서 거부한다.
+///     (구 RedisConnectionPool — 멀티플렉서를 풀링하지 않아 #325에서 개명)
+/// </summary>
+public class RedisConnection(ILogger<RedisConnection> logger) : IRedisConnection
 {
     private readonly ConcurrentDictionary<int, IDatabase> _databases = new();
     private readonly object _lock = new();

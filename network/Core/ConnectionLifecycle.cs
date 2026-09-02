@@ -14,9 +14,3 @@ internal enum ConnectionCloseReason
     AuthenticationTimeout,
     AuthenticatedIdleTimeout
 }
-
-internal enum SocketEventArgsOwnership
-{
-    ListenerPool,
-    ConnectionOwned
-}

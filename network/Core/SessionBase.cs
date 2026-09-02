@@ -134,9 +134,4 @@ public abstract class SessionBase : IPeer
     {
         Logger.LogInformation("Session disconnected: PlayerId={PlayerId}", PlayerId);
     }
-
-    public Task<UserToken?> Release()
-    {
-        return Task.FromResult<UserToken?>(Token);
-    }
 }

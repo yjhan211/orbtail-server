@@ -33,7 +33,6 @@ public partial class UserToken
     private Timer? _gracefulCloseTimer;
     private int _closePrepared;
     private int _disconnectNotified;
-    private Timer? _heartbeatTimer;
     private int _initialized;
     private int _pendingOperations;
     private int _pendingMessages;
@@ -53,16 +52,13 @@ public partial class UserToken
     public bool IsReleased => Volatile.Read(ref _state) != StateActive;
     public bool IsAcceptingMessages =>
         Volatile.Read(ref _state) == StateActive && Volatile.Read(ref _closeAfterSend) == 0;
-    public event Action<UserToken>? Disconnected;
 
-    internal SocketEventArgsOwnership EventArgsOwnership { get; private set; }
     internal Task ReleaseTask => _releaseCompletion.Task;
 
     internal void InitializeConnection(
         Socket socket,
         SocketAsyncEventArgs receiveEventArgs,
         SocketAsyncEventArgs sendEventArgs,
-        SocketEventArgsOwnership eventArgsOwnership,
         Action<UserToken, ConnectionCloseReason, Exception?> closeStarted,
         Action<UserToken> releaseReady)
     {
@@ -72,7 +68,6 @@ public partial class UserToken
         _socket = socket ?? throw new ArgumentNullException(nameof(socket));
         ReceiveEventArgs = receiveEventArgs ?? throw new ArgumentNullException(nameof(receiveEventArgs));
         SendEventArgs = sendEventArgs ?? throw new ArgumentNullException(nameof(sendEventArgs));
-        EventArgsOwnership = eventArgsOwnership;
         _closeStarted = closeStarted ?? throw new ArgumentNullException(nameof(closeStarted));
         _releaseReady = releaseReady ?? throw new ArgumentNullException(nameof(releaseReady));
         _releaseCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -81,14 +76,11 @@ public partial class UserToken
         sendEventArgs.UserToken = this;
         Volatile.Write(ref _state, StateActive);
 
-        if (eventArgsOwnership == SocketEventArgsOwnership.ListenerPool)
-        {
-            _authenticationTimer = new Timer(
-                _ => RequestAuthenticationTimeoutClose(),
-                null,
-                TimeSpan.FromSeconds(Config.AUTHENTICATION_TIMEOUT_SECONDS),
-                Timeout.InfiniteTimeSpan);
-        }
+        _authenticationTimer = new Timer(
+            _ => RequestAuthenticationTimeoutClose(),
+            null,
+            TimeSpan.FromSeconds(Config.AUTHENTICATION_TIMEOUT_SECONDS),
+            Timeout.InfiniteTimeSpan);
     }
 
     public bool TryMarkAuthenticated(Action? onAuthenticated = null)
@@ -108,7 +100,7 @@ public partial class UserToken
         }
 
         Interlocked.Exchange(ref _authenticationTimer, null)?.Dispose();
-        if (EventArgsOwnership != SocketEventArgsOwnership.ListenerPool || IsReleased)
+        if (IsReleased)
             return true;
 
         var idleTimer = new Timer(
@@ -279,7 +271,6 @@ public partial class UserToken
             }
         }
 
-        Interlocked.Exchange(ref _heartbeatTimer, null)?.Dispose();
         Interlocked.Exchange(ref _authenticationTimer, null)?.Dispose();
         Interlocked.Exchange(ref _authenticatedIdleTimer, null)?.Dispose();
         Interlocked.Exchange(ref _gracefulCloseTimer, null)?.Dispose();
@@ -309,15 +300,6 @@ public partial class UserToken
             {
                 ReportException(logException, ex);
             }
-
-            try
-            {
-                Disconnected?.Invoke(this);
-            }
-            catch (Exception ex)
-            {
-                ReportException(logException, ex);
-            }
         }
 
         if (Interlocked.Exchange(ref _removedNotified, 1) != 0) return;
@@ -340,12 +322,10 @@ public partial class UserToken
 
     internal void DetachEventArgs(
         out SocketAsyncEventArgs? receiveEventArgs,
-        out SocketAsyncEventArgs? sendEventArgs,
-        out SocketEventArgsOwnership ownership)
+        out SocketAsyncEventArgs? sendEventArgs)
     {
         receiveEventArgs = ReceiveEventArgs;
         sendEventArgs = SendEventArgs;
-        ownership = EventArgsOwnership;
         ReceiveEventArgs = null;
         SendEventArgs = null;
         _closeStarted = null;

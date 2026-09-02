@@ -12,10 +12,8 @@
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="MessagePack.ReactiveProperty" Version="3.1.8" />
         <PackageReference Include="MessagePack.UnityShims" Version="3.1.8" />
-        <PackageReference Include="MessagePack.AspNetCoreMvcFormatter" Version="3.1.8" />
-        <PackageReference Include="log4net" Version="3.3.1" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.0" />
         <PackageReference Include="NATS.Client" Version="1.1.7" />
         <PackageReference Include="Newtonsoft.Json" Version="13.0.3"/>
         <PackageReference Include="Serilog.Extensions.Hosting" Version="9.0.0" />
@@ -23,11 +21,9 @@
         <PackageReference Include="Serilog.Sinks.Console" Version="6.0.1-dev-00953" />
         <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
         <PackageReference Include="StackExchange.Redis" Version="2.8.24" />
-        <PackageReference Include="RedLock" Version="9.0.2" />
         <PackageReference Include="RedLock.net" Version="2.3.2"/>
         <PackageReference Include="Serilog" Version="4.2.1-dev-02340" />
         <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0" />
-        <PackageReference Include="StackExchange.Redis.MultiplexerPool" Version="2.2.0" />
     </ItemGroup>
     <ItemGroup>
         <None Include="Common\csv\**\*.csv">

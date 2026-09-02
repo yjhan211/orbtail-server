@@ -8,7 +8,7 @@ namespace network.infrastructure;
 ///     Provides reusable Redis data-structure and compare-and-set primitives used by server application services.
 ///     Domain-specific multi-key state transitions belong to their owning Redis stores.
 /// </summary>
-public class CacheHelper(IRedisConnectionPool redisPool) : ICacheHelper
+public class CacheHelper(IRedisConnection redisPool) : ICacheHelper
 {
     public IRedLockFactory GetRedLockFactory()
     {

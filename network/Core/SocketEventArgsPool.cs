@@ -3,16 +3,14 @@ using System.Net.Sockets;
 namespace network.core;
 
 /// <summary>
-///     Owns the preallocated receive/send <see cref="SocketAsyncEventArgs"/> pairs used by accepted sockets.
-///     It also creates connection-owned pairs for outbound connector sockets, keeping buffer ownership rules out of
-///     <see cref="NetworkService"/>.
+///     Owns the preallocated receive/send <see cref="SocketAsyncEventArgs"/> pairs used by accepted sockets,
+///     keeping buffer ownership rules out of <see cref="NetworkService"/>.
 /// </summary>
 internal sealed class SocketEventArgsPool
 {
     private readonly object _gate = new();
     private readonly SocketAsyncEventArgsManager _receivePool;
     private readonly SocketAsyncEventArgsManager _sendPool;
-    private readonly int _bufferSize;
     private readonly Func<bool> _canReuse;
 
     public SocketEventArgsPool(
@@ -34,7 +32,6 @@ internal sealed class SocketEventArgsPool
         ArgumentNullException.ThrowIfNull(sendCompleted);
         ArgumentNullException.ThrowIfNull(canReuse);
 
-        _bufferSize = bufferSize;
         _canReuse = canReuse;
         _receivePool = new SocketAsyncEventArgsManager(capacity);
         _sendPool = new SocketAsyncEventArgsManager(capacity);
@@ -56,16 +53,6 @@ internal sealed class SocketEventArgsPool
                 throw new InvalidOperationException("The send buffer pool is smaller than its configured capacity.");
             _sendPool.Push(sendArgs);
         }
-    }
-
-    public SocketAsyncEventArgs CreateConnectionOwned(EventHandler<SocketAsyncEventArgs> completedHandler)
-    {
-        ArgumentNullException.ThrowIfNull(completedHandler);
-
-        SocketAsyncEventArgs eventArgs = new();
-        eventArgs.Completed += completedHandler;
-        eventArgs.SetBuffer(new byte[_bufferSize], 0, _bufferSize);
-        return eventArgs;
     }
 
     public bool TryRent(

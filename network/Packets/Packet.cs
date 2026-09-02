@@ -108,17 +108,6 @@ public class Packet : IPacket
         target.Overwrite(Buffer, Position);
     }
 
-    public void CopyTo(IPacket target)
-    {
-        if (target is Packet packet)
-        {
-            CopyTo(packet);
-            return;
-        }
-
-        throw new NotImplementedException();
-    }
-
     private void Overwrite(byte[] source, int position)
     {
         if (position < 0 || position > source.Length || position > Buffer.Length)

@@ -137,7 +137,6 @@ public class UserServer(
         // 서버 환경에서 CSV 파일 경로 설정 (bin 디렉토리 기준)
         GameDataHelper.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
         GameDataHelper.Initialize();
-        MapHelper.Initialize(serverConfig.GameServerNum);
         cancellationToken.ThrowIfCancellationRequested();
 
         var matchingManager = new MatchingManager(

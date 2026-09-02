@@ -60,9 +60,9 @@ internal static class Program
         // Redis
         RedisConfiguration redisConfiguration = RedisConfigurationParser.Parse(hostContext.Configuration);
         services.AddSingleton(redisConfiguration);
-        services.AddSingleton<IRedisConnectionPool>(sp => CreateRedisConnectionPool(sp, redisConfiguration));
+        services.AddSingleton<IRedisConnection>(sp => CreateRedisConnectionPool(sp, redisConfiguration));
         services.AddSingleton<IRedLockFactory>(sp =>
-            sp.GetRequiredService<IRedisConnectionPool>().GetRedLockFactory());
+            sp.GetRequiredService<IRedisConnection>().GetRedLockFactory());
 
         // 헬퍼
         services.AddSingleton<ICacheHelper, CacheHelper>();
@@ -88,12 +88,12 @@ internal static class Program
         };
     }
 
-    private static RedisConnectionPool CreateRedisConnectionPool(
+    private static RedisConnection CreateRedisConnectionPool(
         IServiceProvider sp,
         RedisConfiguration redisConfiguration)
     {
-        var logger = sp.GetRequiredService<ILogger<RedisConnectionPool>>();
-        var redisPool = new RedisConnectionPool(logger);
+        var logger = sp.GetRequiredService<ILogger<RedisConnection>>();
+        var redisPool = new RedisConnection(logger);
         redisPool.Initialize(redisConfiguration);
         return redisPool;
     }

@@ -145,13 +145,6 @@ namespace network.common
         PART_GIFT = 9,   // v0.2.0 충전 완료 선물. ItemId = 900000000 + PartId
     }
 
-    public enum GiftDiscoveryType
-    {
-        None = 0,
-        Target = 1,
-        Other = 2
-    }
-
     public enum GiftState
     {
         None = 0,
@@ -173,13 +166,6 @@ namespace network.common
         BEDDING = 109,
     }
 
-    public enum InstallationType
-    {
-        NONE = 0,
-        TENT,
-        SHOP
-    }
-
     // Object type
     public enum ObjectType
     {
@@ -197,31 +183,6 @@ namespace network.common
         LAB
     }
 
-    public enum DirectionType : byte
-    {
-        NONE,
-        TOP_LEFT,
-        TOP_RIGHT,
-        BOTTOM_LEFT,
-        BOTTOM_RIGHT,
-        TOP,
-        LEFT,
-        RIGHT,
-        BOTTOM,
-    }
-
-    public enum LabGrade : byte
-    {
-        NONE,
-        ALONE,
-        CLUB
-    }
-
-    public enum LoginType
-    {
-        GUEST
-    }
-
     public enum PlayerState : short
     {
         NONE = 0,
@@ -235,32 +196,6 @@ namespace network.common
         // #229 7단계: 성장(제작·강화) 자세. 애니메이터 character_basic_Controller의 tool 상태와
         // 짝이다 — 값을 바꾸면 컨트롤러 전이 조건(PlayerState Equals 7)도 함께 고쳐야 한다.
         TOOL,
-    }
-
-    public enum QuestType : short
-    {
-        NONE = 0,
-        MAIN,
-        SUB
-    }
-
-    public enum QuestState : short
-    {
-        NONE = 0,
-        SUCCESS,
-        END
-    }
-
-    public enum MailState : short
-    {
-        NONE = 0,
-        REWARDED = 1,
-    }
-
-    public enum DamageType : short
-    {
-        NONE = 0,
-        DARK,
     }
 
     /// <summary>플레이어 탈락 사유.</summary>
@@ -304,12 +239,6 @@ namespace network.common
         BUFF_STAMINA = 5,
     }
 
-    /// <summary>상호작용 오브젝트의 동적 상태 유형.</summary>
-    public enum InteractableStateType : short
-    {
-        DEFAULT = 0,
-    }
-
     /// <summary>시스템 텍스트 카테고리.</summary>
     public enum SystemTextCategory : short
     {
@@ -321,17 +250,5 @@ namespace network.common
         JOB_TITLE = 5,
         INTERROGATION = 6,
         UI = 7,
-    }
-
-    /// <summary>
-    /// ?뺤떊?ㅼ뿼 ?щ━???띿뒪?????    /// </summary>
-    public enum CreepyType : short
-    {
-        NONE = 0,
-        DEFAULT = 1,
-        MAP = 2,
-        PLAYER_TITLE = 3,
-        TIMER = 4,
-        PROGRESS = 5,
     }
 }

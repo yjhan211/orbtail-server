@@ -1,9 +1,5 @@
 id,value,comment
-CORRUPTION_UNEASE,25,불안 단계 시작 (정신 오염도 %)
-CORRUPTION_CONFUSION,50,혼란 단계 시작 (정신 오염도 %)
-CORRUPTION_MADNESS,75,광기 단계 시작 (정신 오염도 %)
 MAX_CORRUPTION,420,전투·폐쇄 탈락 오염 임계
-CLOSED_AREA_CORRUPTION_TICK,5,폐쇄 구역 체류 5초당 오염 증가
 SWARM_MATCH_DURATION_SECONDS,300,매치 길이(초) — 5분 오브 점수전
 SWARM_PLAYERS_PER_MATCH,8,매치 정원 — School2 시작방 수
 SWARM_FIELD_HOLD_SECONDS,0,자기장 수축 유예(초)
@@ -27,8 +23,6 @@ SWARM_PVP_ORB_COUNT,3,유저간 사격 참여 오브 수 (앞열)
 SWARM_BOSS_ATTACK_RANGE,4.1,보스 사거리 — swarm_monster.csv 보스 행과 동기
 SWARM_ORB_TRAIL_SPACING,0.7,오브열 간격
 SWARM_ORB_TRAIL_FIRST_OFFSET,0.7,오브열 첫 오브 오프셋
-SWARM_ORB_TRAIL_CONTACT_RADIUS,0.6,본체-상대 오브열 접촉 반경
-SWARM_ORB_TRAIL_CONTACT_CORRUPTION,35,열 접촉 오염 — 본체 직행
 SWARM_CROSSFIRE_SHOCK_CORRUPTION,50,교차사격 충격 1회 오염 (티어 무관 고정)
 SWARM_DAMAGE_TAKEN_MULTIPLIER,0.33333334,받는 피해 배율 (1/3의 float 정확값) — 최솟값 1 보정은 코드
 SWARM_SUN_BURN_SECONDS,3,화상 지속(초)
