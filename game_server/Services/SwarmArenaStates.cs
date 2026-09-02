@@ -19,7 +19,6 @@ public sealed class SwarmMatchRuntime
     internal SwarmMatchRuntime(
         long matchingId,
         SwarmGrowthOfferIdSequence growthOfferIds,
-        SwarmAttackEventIdSequence attackEventIds,
         SwarmCrossfireEventIdSequence crossfireEventIds)
     {
         MatchingId = matchingId;
@@ -28,7 +27,6 @@ public sealed class SwarmMatchRuntime
             matchingId,
             GrowthOffers,
             growthOfferIds);
-        AttackEvents = new SwarmPvpAttackEventState(attackEventIds);
         Crossfire = new SwarmCrossfireState(matchingId, crossfireEventIds);
     }
 
@@ -46,7 +44,6 @@ public sealed class SwarmMatchRuntime
     internal Random ItemCombineRandom { get; } = new();
     public SwarmWindBladeState WindBlade { get; } = new();
     public SwarmOrbBoardState OrbBoard { get; } = new();
-    public SwarmPvpAttackEventState AttackEvents { get; }
     public SwarmCrossfireState Crossfire { get; }
 }
 
@@ -58,7 +55,6 @@ public sealed class SwarmMatchRuntimeStore
 {
     private readonly ConcurrentDictionary<long, SwarmMatchRuntime> _runtimes = new();
     private readonly SwarmGrowthOfferIdSequence _growthOfferIds = new();
-    private readonly SwarmAttackEventIdSequence _attackEventIds = new();
     private readonly SwarmCrossfireEventIdSequence _crossfireEventIds = new();
 
     public int Count => _runtimes.Count;
@@ -71,10 +67,8 @@ public sealed class SwarmMatchRuntimeStore
             static (id, sequences) => new SwarmMatchRuntime(
                 id,
                 sequences.GrowthOfferIds,
-                sequences.AttackEventIds,
                 sequences.CrossfireEventIds),
             (GrowthOfferIds: _growthOfferIds,
-                AttackEventIds: _attackEventIds,
                 CrossfireEventIds: _crossfireEventIds));
     }
 
@@ -145,10 +139,9 @@ public sealed class SwarmTrailCombatState
     public readonly Dictionary<(long MatchingId, long CutterId, long ItemUid), DateTime> OrbCutLatches = new();
     public readonly Dictionary<(long MatchingId, long CutterId, long VictimId), SwarmRetaliationWindow>
         CutRetaliationWindows = new();
-    public readonly Dictionary<(long MatchingId, long OwnerId, long ItemUid), int> OrbCutCracks = new();
 
     // 오브 내구 보너스 (#226 방어 강화 = 내구 모델): 기본 내구 1 + 보너스.
-    // 파괴·매치 정리에서 함께 지운다. 크랙은 유지된다(방어 강화가 균열을 지우지 않는다).
+    // 파괴·매치 정리에서 함께 지운다.
     public readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid), int> OrbDurabilityBonus = new();
 
     // 파도 폭탄: 오브 uid 기반 고유 위상으로 첫 발동을 흩뿌린다.
@@ -189,7 +182,7 @@ public sealed class SwarmBotTacticalState
     public readonly Dictionary<(long MatchingId, long PlayerId), DateTime> NextRecoveryAtUtc = new();
 }
 
-/// <summary>매치 페이싱·피격 대기열·포위·계측 서명·샌드박스 등 잡화 상태.</summary>
+/// <summary>매치 페이싱·피격 대기열·계측 서명·샌드박스 등 잡화 상태.</summary>
 public sealed class SwarmMatchPacingState
 {
     private readonly Random _criticalRng = new();
@@ -202,9 +195,6 @@ public sealed class SwarmMatchPacingState
 
     public readonly HashSet<(long MatchingId, long PlayerId)> StartingOrbGrantedPlayers = new();
     public readonly Dictionary<(long MatchingId, long PlayerId), float> PvpCorruptionCarry = new();
-    public readonly Dictionary<(long MatchingId, long PlayerId),
-        (Vector3f Position, DateTime At, bool Moving, DateTime StoppedAtUtc)> MovementSamples = new();
-    public readonly Dictionary<(long MatchingId, long PlayerId), (int ItemId, int Hp)> FrontOrbHp = new();
 
     public readonly List<PendingSwarmMonsterHit> PendingMonsterHits = new();
 
@@ -218,9 +208,6 @@ public sealed class SwarmMatchPacingState
     public readonly Dictionary<long, DateTime> MatchFallbackAnchorUtc = new();
     public readonly Dictionary<long, DateTime> ContactProbeAtUtc = new();
     public readonly HashSet<long> FieldStateAnnounced = new();
-
-    public readonly Dictionary<(long MatchingId, long PlayerId), DateTime> EncircleCandidateSinceUtc = new();
-    public readonly Dictionary<(long MatchingId, long PlayerId), DateTime> EncircleCooldownUtc = new();
 
     // 개발용 절단 더미 샌드박스 (#226 실험장).
     public readonly HashSet<long> CutDummyAutoSetupDone = new();

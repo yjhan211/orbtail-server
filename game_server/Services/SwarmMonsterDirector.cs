@@ -357,17 +357,6 @@ public sealed class SwarmMonsterDirector
     private const float RushDistance = 11f;
     private const float RushLateralSpread = 1.6f;
     private const float EncircleRadius = 4.5f;
-    // 포위 오프셋 (#232 2026-08-17 유저 결정: 몹이 뭉쳐 따라오지 말고 축이 될 만큼 산재).
-    // 접근 목표 = 플레이어 + 개체 고유 각도의 오프셋. 반경은 추격하는 동안 줄어들어 결국 접촉한다 —
-    // 사방에서 조여드는 흩어진 고리가 되고, 교차사격 기준점이 여러 방위에 선다.
-    // 바닥면은 아이소라 Y 오프셋은 절반(dy×2 정규화의 역).
-    // 포위 스위치 (2026-08-17 저녁 유저 결정: 몹이 플레이어에게 달려들어 부딪혀야 한다 — 숨쉬는 포위는
-    // 사람 매치 로그에서 몹 접촉 피해 0건). 끄면 직진 추격. 코드는 남긴다 — 켜면 산재 고리로 돌아간다.
-    private const bool SurroundEnabled = false;
-    private const float SurroundStartRadius = 3.5f;
-    private const float SurroundShrinkPerSecond = 0.35f;
-    // 반경 0 이후 이만큼 더 감쇠하는 동안 플레이어를 직격한다(접촉 창 ≈ 1.7초), 그 뒤 고리로 복귀.
-    private const float SurroundLungeDepth = 0.6f;
     private const float RetargetStickinessSquared = 1.5625f;
     // 아이소 월드 스케일에서 방의 세로 폭은 ~2.5유닛에 불과하다. 이동 목표가 방을
     // 벗어나면 구역 클램프로 제자리 회귀해 봇이 서 있는 것처럼 보인다 — 짧게 잡는다.
@@ -2661,7 +2650,7 @@ public sealed class SwarmMonsterDirector
             }
         }
 
-        MoveTowardPlayer(monster, target.Position, deltaSeconds, surround: SurroundEnabled);
+        MoveTowardPlayer(monster, target.Position, deltaSeconds);
     }
 
     private void SpawnDueParticipantPattern(
@@ -2835,38 +2824,9 @@ public sealed class SwarmMonsterDirector
     }
 
     private static void MoveTowardPlayer(
-        MonsterRuntime monster, Vector3f playerPosition, double deltaSeconds, bool surround = false)
+        MonsterRuntime monster, Vector3f playerPosition, double deltaSeconds)
     {
-        // 포위 오프셋 (#232): 개체 고유 각도의 접근 목표 — 사방에서 조여드는 흩어진 고리.
-        // 반경은 추격하는 동안만 줄어들고, 현재 거리로 캡한다 — 이미 붙은 몹이 오프셋 지점으로
-        // 멀어지면 접촉이 영영 안 난다. 앵커 복귀(surround=false)는 오프셋 없이 정확히 간다.
-        float radius = 0f;
-        // 플레이어와 같은 구역에 들어온 뒤부터 포위한다 — 문·복도의 몹이 오프셋 각도 때문에
-        // 문을 못 찾고 겉돌면 구역 목표 수가 영영 안 찬다. 밖에서는 오프셋 없이 직진.
-        var playerArea = GameMapData.GetCurrentArea(
-            Config.SWARM_MATCH_MAP, MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, playerPosition));
-        if (surround && monster.Area == playerArea)
-        {
-            // 숨쉬는 포위 (#232): 반경이 0에 머물면 전원이 플레이어 위로 수렴한다 — 그게
-            // "뭉쳐 따라옴"이다. 사이클을 돈다: 고리 접근 → 조임 → 반경 0 구간(접촉 창, 음수로
-            // 계속 감쇠) → 시작 반경으로 리셋해 다시 걸어 나온다. 리셋 폭을 개체 각도로 흔들어
-            // 위상이 갈라진다. 거리 캡은 두지 않는다 — 붙은 몹이 min(반경, 거리 0)에 갇혀
-            // 안 움직이면 정지 감시가 걷어가 구역 수가 출렁였다(실측).
-            monster.SurroundRadius -= (float)(SurroundShrinkPerSecond * deltaSeconds);
-            if (monster.SurroundRadius <= -SurroundLungeDepth)
-                monster.SurroundRadius = SurroundStartRadius *
-                                         (0.7f + 0.3f * (MathF.Sin(monster.ScatterAngle * 3.7f) + 1f) * 0.5f);
-            radius = MathF.Max(0f, monster.SurroundRadius);
-        }
-
-        var target = new Vector3f(
-            playerPosition.X + MathF.Cos(monster.ScatterAngle) * radius,
-            playerPosition.Y + MathF.Sin(monster.ScatterAngle) * radius * 0.5f,
-            0f);
-        // 좁은 방에서는 오프셋 목표가 방 밖(복도)으로 새 구역 인원이 흘러나간다 —
-        // 플레이어가 선 구역 안으로 눌러 담는다 (밖이면 플레이어 쪽으로 줄인다).
-        if (radius > 0.05f && playerArea != AreaType.None)
-            target = ClampToAreaWalkable(target, playerPosition, playerArea);
+        var target = playerPosition;
         float dx = target.X - monster.Position.X;
         float dy = target.Y - monster.Position.Y;
         float distance = MathF.Sqrt(dx * dx + dy * dy);
@@ -3077,8 +3037,6 @@ public sealed class SwarmMonsterDirector
         // 후류 소용돌이 감속 (#268): 당김 직후 잠깐 늦는다 — 봇 WaveSlowUntilUtc와 대칭.
         public DateTime WaveSlowUntilUtc { get; set; }
 
-        // 포위 반경 (#232): 추격 중 매 틱 줄어든다. 스폰 시 SurroundStartRadius로 시작.
-        public float SurroundRadius { get; set; } = SurroundStartRadius;
         public int SummonStoneReward { get; init; }
         public int HeartReward { get; init; }
         public int BootsReward { get; init; }

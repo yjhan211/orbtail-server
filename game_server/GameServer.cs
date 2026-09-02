@@ -160,10 +160,6 @@ public partial class GameServer(
         }
     }
 
-    private bool IsSwarmFrontOrbDamaged(long matchingId, long playerId) =>
-        _swarmMatchRuntimes.TryGet(matchingId, out var runtime) &&
-        runtime.Pacing.FrontOrbHp.ContainsKey((matchingId, playerId));
-
     internal const int ResourceTickIntervalSeconds = 5;
     // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
 
