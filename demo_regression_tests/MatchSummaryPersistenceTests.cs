@@ -626,7 +626,8 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
 
         public void Subscribe(
             string subject,
-            Action<string, byte[]> messageHandler) =>
+            Action<string, byte[]> messageHandler,
+            string? queue = null) =>
             throw new NotSupportedException();
 
         public Task<byte[]> RequestAsync(
@@ -638,7 +639,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
 
         public void SubscribeRequest(
             string subject,
-            Func<string, byte[], CancellationToken, Task<byte[]>> messageHandler,
+            Func<string, byte[], CancellationToken, Task<byte[]?>> messageHandler,
             string? queue = null) =>
             throw new NotSupportedException();
 

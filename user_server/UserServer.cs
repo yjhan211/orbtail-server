@@ -37,6 +37,7 @@ public class UserServer(
     private readonly object _shutdownLock = new();
     private IMatchingManager? _matchingManager;
     private MatchingLifecycleSubscriber? _matchingLifecycleSubscriber;
+    private NatsPlayerSessionRouter? _sessionRouter;
     private Task? _shutdownTask;
     private int _stopping;
 
@@ -139,22 +140,30 @@ public class UserServer(
         GameDataHelper.Initialize();
         cancellationToken.ThrowIfCancellationRequested();
 
+        // 라우터·lifecycle 구독은 NATS 연결 하나를 나눠 쓴다. 종료 시 구독자가 닫는다.
+        string nodeId = ResolveNodeId();
+        INatsClient natsClient = natsClientFactory.Create();
+        _sessionRouter = new NatsPlayerSessionRouter(natsClient, _sessions.Get, nodeId, logger);
         var matchingManager = new MatchingManager(
             logger,
             cacheHelper,
             matchingClaimStore,
             redLock,
             gameHandoffTicketService,
-            _sessions.Get);
+            _sessionRouter,
+            new MatchingLeaderLease(cacheHelper, nodeId, logger));
         _matchingManager = matchingManager;
 
         _matchingLifecycleSubscriber = new MatchingLifecycleSubscriber(
-            natsClientFactory.Create(),
-            _sessions,
+            natsClient,
+            _sessionRouter,
             matchingManager,
             logger);
+        // 세션 전달 요청을 받을 수 있게 된 뒤에 리더가 큐를 읽기 시작해야 한다.
+        _sessionRouter.Start();
         _matchingLifecycleSubscriber.Start();
         matchingManager.Start();
+        logger.LogInformation("User server node identity: NodeId={NodeId}", nodeId);
 
         logger.LogInformation("Services initialized successfully");
         return Task.CompletedTask;
@@ -166,6 +175,23 @@ public class UserServer(
         networkService.SessionCreatedCallback += OnSessionCreated;
         networkService.Listen(IPAddress.Any, port);
         logger.LogInformation($"Listening on port {port}");
+    }
+
+    /// <summary>로컬 등록 뒤 다른 User Server에 알려 같은 플레이어의 옛 세션을 끊게 한다.</summary>
+    private Action? RegisterSession(long playerId, GameSession session)
+    {
+        Action? disconnectSuperseded = _sessions.Register(playerId, session);
+        _sessionRouter?.AnnounceLogin(playerId);
+        return disconnectSuperseded;
+    }
+
+    /// <summary>
+    ///     리더 lease 값이자 세션 알림의 origin. <c>USER_SERVER_ID</c>가 없으면 컨테이너 호스트명 — compose·k8s 모두 유일하다.
+    /// </summary>
+    private string ResolveNodeId()
+    {
+        string? configured = configuration["USER_SERVER_ID"];
+        return string.IsNullOrWhiteSpace(configured) ? Environment.MachineName : configured.Trim();
     }
 
     private void OnSessionCreated(UserToken token)
@@ -181,7 +207,7 @@ public class UserServer(
                 playerService,
                 _matchingManager!,
                 accountTokenService,
-                _sessions.Register,
+                RegisterSession,
                 _sessions.Remove);
 
             logger.LogInformation("New session created");

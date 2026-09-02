@@ -102,6 +102,8 @@ services:
     environment:
       - serverType=UserServer
       - gameServerNum=2
+      # 매칭 리더 lease 값이자 세션 알림 origin. 노드마다 유일 (#339)
+      - USER_SERVER_ID=user-server-0
       - servicePort=7000
       - redisEndPoints=redis:6379
       - natsEndPoint=nats://nats:4222

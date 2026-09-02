@@ -19,7 +19,8 @@ public class MatchingManager : IMatchingManager
     private readonly ConcurrentDictionary<long, Task> _backgroundTasks = new();
     private readonly object _backgroundTaskLock = new();
     private readonly CancellationTokenSource _shutdownCts = new();
-    private readonly Func<long, GameSession?> _getSession;
+    private readonly IPlayerSessionRouter _sessions;
+    private readonly MatchingLeaderLease _leaderLease;
     private readonly MatchingQueueClaimCoordinator _matchingClaims;
     private readonly MatchingQueue _queue;
     private readonly LeavePenaltyService _leavePenalties;
@@ -37,13 +38,15 @@ public class MatchingManager : IMatchingManager
     private int _started;
     private int _stopping;
 
-    public MatchingManager(ILogger logger, ICacheHelper cacheHelper,
+    internal MatchingManager(ILogger logger, ICacheHelper cacheHelper,
         IMatchingQueueClaimStore matchingClaimStore, IRedLockFactory redLock,
         IGameHandoffTicketService gameHandoffTicketService,
-        Func<long, GameSession?> getSession)
+        IPlayerSessionRouter sessions,
+        MatchingLeaderLease leaderLease)
     {
         _logger = logger;
-        _getSession = getSession;
+        _sessions = sessions;
+        _leaderLease = leaderLease;
         _matchingClaims = new MatchingQueueClaimCoordinator(cacheHelper, matchingClaimStore, logger);
         _leavePenalties = new LeavePenaltyService(cacheHelper, logger);
         _queue = new MatchingQueue(cacheHelper, redLock, _matchingClaims, _leavePenalties, logger);
@@ -52,10 +55,9 @@ public class MatchingManager : IMatchingManager
         var rosterBuilder = new MatchRosterBuilder(cacheHelper, overrides, logger);
         _handoff = new MatchHandoffPublisher(
             cacheHelper,
-            redLock,
             gameHandoffTicketService,
             _matchingClaims,
-            getSession,
+            sessions,
             TryRunBackgroundOperation,
             _shutdownCts.Token,
             logger);
@@ -138,6 +140,10 @@ public class MatchingManager : IMatchingManager
     {
         try
         {
+            // 큐는 리더만 읽는다. 리더가 아니면 이번 tick은 비우고 다음 tick에 다시 lease를 본다.
+            if (!await _leaderLease.TryAcquireOrRenewAsync())
+                return;
+
             await _pass.RunAsync();
         }
         catch (Exception ex)
@@ -167,11 +173,8 @@ public class MatchingManager : IMatchingManager
 
     public async Task AbortMatchingAdmissionAsync(long playerId, long matchingId)
     {
-        GameSession? session = _getSession(playerId);
-        string? requestId = session?.ActiveMatchingRequestId;
-        if (MatchingRequestTokens.IsSafeTokenComponent(requestId))
-            _handoff.NotifyAdmissionFailed(playerId, matchingId);
-
+        // 이 매치에 배정되지 않은 세션은 라우터 쪽에서 보낼 것 없음으로 처리한다.
+        await _handoff.NotifyAdmissionFailedAsync(playerId, matchingId);
         await ReleaseMatchingClaimAsync(playerId, matchingId);
     }
 
@@ -278,6 +281,7 @@ public class MatchingManager : IMatchingManager
             await Task.WhenAll(backgroundTasks);
         }
 
+        await _leaderLease.ReleaseAsync();
         _shutdownCts.Dispose();
 
         _logger.LogInformation("MatchingManager stopped");

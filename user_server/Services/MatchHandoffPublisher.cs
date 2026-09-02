@@ -41,10 +41,9 @@ internal interface IMatchHandoffPublisher
 /// </summary>
 internal sealed class MatchHandoffPublisher(
     ICacheHelper cacheHelper,
-    IRedLockFactory redLock,
     IGameHandoffTicketService gameHandoffTicketService,
     MatchingQueueClaimCoordinator claims,
-    Func<long, GameSession?> getSession,
+    IPlayerSessionRouter sessions,
     Func<Func<Task>, string, bool> tryRunBackgroundOperation,
     CancellationToken shutdownToken,
     ILogger logger) : IMatchHandoffPublisher
@@ -63,8 +62,8 @@ internal sealed class MatchHandoffPublisher(
     }
 
     /// <summary>
-    ///     사람 한 명에게 handoff ticket을 발급하고 성공 패킷을 세션 송신 큐에 넣는다.
-    ///     세션이 바뀌었거나 요청 ID가 다르면 false. 전송 실패 시 배정을 남기지 않는다.
+    ///     사람 한 명에게 handoff ticket을 발급하고 성공 패킷을 세션 송신 큐에 넣는다(세션이 다른 프로세스에 있으면 라우터가 위임).
+    ///     세션이 없거나 요청 ID가 다르면 false. 전송 실패 시 배정을 남기지 않는 것은 세션 쪽 책임이다.
     /// </summary>
     public async Task<bool> DeliverMatchingSuccessAsync(
         RosterChainLink link,
@@ -77,12 +76,10 @@ internal sealed class MatchHandoffPublisher(
         long targetPlayerId = link.TargetPlayerId;
         logger.LogInformation("Processing matched player {DataPlayerId} (Target={TargetPlayerId})", playerId, targetPlayerId);
 
-        GameSession? session = getSession(playerId);
-        if (session?.PlayerInfo == null || !session.IsConnected)
+        string requestId = link.Entry.RequestId;
+        if (!MatchingRequestTokens.IsSafeTokenComponent(requestId))
         {
-            logger.LogWarning(
-                "Matched player session or PlayerInfo is unavailable: PlayerId={DataPlayerId}",
-                playerId);
+            logger.LogWarning("Matched player has no valid matching request id: PlayerId={DataPlayerId}", playerId);
             return false;
         }
 
@@ -91,81 +88,41 @@ internal sealed class MatchHandoffPublisher(
         if (spawnPosition.X == 0 && spawnPosition.Y == 0)
             throw new InvalidOperationException($"Missing Swarm spawn assignment for player {playerId}.");
 
-        // PlayerInfo 갱신은 분산 락으로 보호한다.
-        await using var playerLock = await PlayerInfo.Lock(redLock, playerId);
-        var playerInfo = await PlayerInfo.Load(cacheHelper, playerId);
-        if (playerInfo == null)
+        // ticket은 세션 위치와 무관하게 먼저 발급한다. 전달이 실패하면 아무도 받지 못한 채 3분 TTL로 사라진다.
+        string gameHandoffTicket = await gameHandoffTicketService.IssueAsync(new GameHandoffContext
         {
-            logger.LogError("Failed to reload matched PlayerInfo: PlayerId={DataPlayerId}", playerId);
-            return false;
-        }
+            PlayerId = playerId,
+            MatchingId = matchingId,
+            MapId = mapId,
+            MapSubId = matchingId,
+            SpawnPosition = Cell.Clone(spawnPosition),
+            TargetPlayerId = targetPlayerId,
+            ActiveBuffIds = new List<int>(),
+            HumanRoster = humanHandoffRoster,
+            GameServerNodeId = gameServer.NodeId
+        });
 
-        if (!ReferenceEquals(session, getSession(playerId)) ||
-            session.PlayerInfo == null ||
-            !session.IsConnected)
+        long gameEndTimestamp = DateTimeOffset.UtcNow.AddMinutes(Config.GAME_DURATION_MINUTES)
+            .ToUnixTimeMilliseconds();
+
+        using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
+            matchingId, mapId, matchingId, spawnPosition,
+            gameServer.PublicHost, gameServer.PublicPort, gameEndTimestamp,
+            gameHandoffTicket, targetPlayerId, playerRoster, new List<int>()
+        );
+
+        // 세션이 어느 User Server에 있든 라우터가 요청 ID fence를 확인한 뒤 송신 큐에 넣는다.
+        if (!await sessions.DeliverMatchingSuccessAsync(playerId, matchingId, requestId, packet))
         {
             logger.LogWarning(
-                "Matched player session changed before handoff issuance: PlayerId={DataPlayerId}",
+                "Matching success was not accepted by the exact session owner: PlayerId={DataPlayerId}",
                 playerId);
             return false;
         }
 
-        string requestId = link.Entry.RequestId;
-        if (!session.TryAssignMatching(matchingId, requestId))
-            return false;
-
-        bool delivered = false;
-        try
-        {
-            playerInfo.LastMapId = mapId;
-            playerInfo.LastMapSubId = matchingId;
-            playerInfo.LastCell = spawnPosition;
-            playerInfo.ObjectInfo.MapId = mapId;
-            playerInfo.ObjectInfo.MapSubId = matchingId;
-            playerInfo.ObjectInfo.Cell = Cell.Clone(spawnPosition);
-            playerInfo.ObjectInfo.Position = MapCoordinateConverter.CellToWorld(mapId, spawnPosition);
-            playerInfo.ObjectInfo.Velocity = new Vector3f(0f, 0f, 0f);
-            playerInfo.ObjectInfo.MoveTimestamp = DateTime.UtcNow;
-            string gameHandoffTicket = await gameHandoffTicketService.IssueAsync(new GameHandoffContext
-            {
-                PlayerId = playerId,
-                MatchingId = matchingId,
-                MapId = mapId,
-                MapSubId = matchingId,
-                SpawnPosition = Cell.Clone(spawnPosition),
-                TargetPlayerId = targetPlayerId,
-                ActiveBuffIds = new List<int>(),
-                HumanRoster = humanHandoffRoster,
-                GameServerNodeId = gameServer.NodeId
-            });
-
-            long gameEndTimestamp = DateTimeOffset.UtcNow.AddMinutes(Config.GAME_DURATION_MINUTES)
-                .ToUnixTimeMilliseconds();
-
-            using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
-                matchingId, mapId, matchingId, spawnPosition,
-                gameServer.PublicHost, gameServer.PublicPort, gameEndTimestamp,
-                gameHandoffTicket, targetPlayerId, playerRoster, new List<int>()
-            );
-
-            if (!session.TryDeliverMatchingSuccess(matchingId, requestId, packet))
-            {
-                logger.LogWarning(
-                    "Matching success was not accepted by the exact session owner: PlayerId={DataPlayerId}",
-                    playerId);
-                return false;
-            }
-
-            delivered = true;
-            logger.LogInformation("Matching success sent: PlayerId={DataPlayerId}, Target={TargetPlayerId}",
-                playerId, targetPlayerId);
-            return true;
-        }
-        finally
-        {
-            if (!delivered)
-                session.ClearMatchingAssignment(matchingId);
-        }
+        logger.LogInformation("Matching success sent: PlayerId={DataPlayerId}, Target={TargetPlayerId}",
+            playerId, targetPlayerId);
+        return true;
     }
 
     /// <summary>
@@ -417,7 +374,7 @@ internal sealed class MatchHandoffPublisher(
                 {
                     try
                     {
-                        NotifyAdmissionFailed(playerId, matchingId);
+                        await NotifyAdmissionFailedAsync(playerId, matchingId);
                     }
                     catch (Exception ex)
                     {
@@ -428,7 +385,7 @@ internal sealed class MatchHandoffPublisher(
                             matchingId);
                     }
 
-                    getSession(playerId)?.ClearMatchingAssignment(matchingId);
+                    sessions.ClearMatchingAssignment(playerId, matchingId);
                     await claims.ReleaseActiveBestEffortAsync(playerId, matchingId);
                 }
                 return;
@@ -462,15 +419,11 @@ internal sealed class MatchHandoffPublisher(
         {
             foreach (MatchingQueueEntry player in players.DistinctBy(entry => entry.PlayerId))
             {
-                GameSession? session = getSession(player.PlayerId);
-                if (session == null)
-                    continue;
-
                 using var packet = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, matchingId);
-                if (!session.TryDeliverMatchingFailed(matchingId, player.RequestId, packet))
+                if (!await sessions.DeliverMatchingFailedAsync(player.PlayerId, matchingId, player.RequestId, packet))
                 {
                     logger.LogWarning(
-                        "Local matching rollback notification was rejected: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                        "Matching rollback notification was rejected or found no session: PlayerId={PlayerId}, MatchingId={MatchingId}",
                         player.PlayerId,
                         matchingId);
                 }
@@ -483,19 +436,15 @@ internal sealed class MatchHandoffPublisher(
     }
 
     /// <summary>
-    ///     입장 실패 패킷을 보낸다. 이 매치에 배정되지 않은 세션은 보낼 것이 없다.
+    ///     입장 실패 패킷을 보낸다. 이 매치에 배정되지 않은 세션은 보낼 것이 없고, 세션이 아예 없으면 false다.
     /// </summary>
-    public void NotifyAdmissionFailed(long playerId, long matchingId)
+    public async Task NotifyAdmissionFailedAsync(long playerId, long matchingId)
     {
-        GameSession? session = getSession(playerId);
-        if (session == null)
-            return;
-
         using var packet = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, matchingId);
-        if (!session.TryDeliverAdmissionFailed(matchingId, packet))
+        if (!await sessions.DeliverAdmissionFailedAsync(playerId, matchingId, packet))
         {
             logger.LogWarning(
-                "Local matching admission failure was rejected: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                "Matching admission failure was rejected or found no session: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 playerId,
                 matchingId);
         }

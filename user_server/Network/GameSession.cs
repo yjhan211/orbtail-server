@@ -11,7 +11,7 @@ using user_server.services;
 
 namespace user_server.network;
 
-public sealed class GameSession : SessionBase
+public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
 {
     private readonly IMatchingManager _matchingManager;
     private readonly IAccountTokenService _accountTokenService;
@@ -208,6 +208,18 @@ public sealed class GameSession : SessionBase
             return true;
         return TrySend(packet);
     }
+
+    // 라우터 port — 세션이 다른 User Server에 있을 때 같은 fence 규칙으로 대신 처리하게 한다.
+    bool IMatchingSessionEndpoint.TryDeliverMatchingSuccess(long matchingId, string requestId, Packet packet) =>
+        TryDeliverMatchingSuccess(matchingId, requestId, packet);
+
+    bool IMatchingSessionEndpoint.TryDeliverMatchingFailed(long matchingId, string requestId, Packet packet) =>
+        TryDeliverMatchingFailed(matchingId, requestId, packet);
+
+    bool IMatchingSessionEndpoint.TryDeliverAdmissionFailed(long matchingId, Packet packet) =>
+        TryDeliverAdmissionFailed(matchingId, packet);
+
+    void IMatchingSessionEndpoint.ClearMatchingAssignment(long matchingId) => ClearMatchingAssignment(matchingId);
 
     protected override void InitializeProtocolHandlers()
     {
