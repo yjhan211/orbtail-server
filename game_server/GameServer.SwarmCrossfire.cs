@@ -10,14 +10,12 @@ using network.packets;
 namespace game_server;
 
 /// <summary>
-///     교차사격 (#232 2단계 → 2026-08-24 뱀서식 관통). 오브는 몬스터만 조준하지만, 태양의 공격은
-///     유도탄이 아니라 큰 투사체가 같은 타일 X/Y축을 공유하는 표적 방향으로 직진하는 공격이다.
-///     길이는 항상 구역 경계(벽)까지다 — 티어 사거리는 표적 획득에만 쓰고, 구역 안 프랍은 통과.
-///     판정은 관통 (2026-08-24 유저 결정): 선상의 몬스터·플레이어는 앞머리가 지나가는 순간 각각
-///     피해를 입고(한 발에 한 번), 투사체는 멈추지 않는다. 벽에 막힌 직선은 피해 없는 시각 폭발로 종료한다.
-///     벽 없이 사거리 끝까지 가면
-///     폭발 없이 소멸. "첫 표적 폭발"(2026-08-17)은 퇴역 — 회피가 프랍·벽 배치 읽기가 되게 한다.
-///     발사 뒤 표적이 죽거나 움직여도 모양은 잠근 직선을 끝까지 쓴다. 태양만 — 바람은 회전 칼날(SwarmWindSlash), 파도는 물폭탄.
+///     교차사격 (#232, 뱀서식 관통). 오브는 몬스터만 조준하지만, 태양의 공격은 유도탄이 아니라 큰 투사체가
+///     같은 타일 X/Y축을 공유하는 표적 방향으로 직진하는 공격이다. 길이는 항상 구역 경계(벽)까지다 — 티어
+///     사거리는 표적 획득에만 쓰고, 구역 안 프랍은 통과. 판정은 관통: 선상의 몬스터·플레이어는 앞머리가
+///     지나가는 순간 각각 피해를 입고(한 발에 한 번), 투사체는 멈추지 않는다. 벽에 막힌 직선은 피해 없는
+///     시각 폭발로, 벽 없이 사거리 끝까지 가면 폭발 없이 소멸 — 회피가 프랍·벽 배치 읽기가 되게 한다.
+///     발사 뒤 표적이 죽거나 움직여도 모양은 잠근 직선을 끝까지 쓴다. 태양만 — 바람은 회전 칼날, 파도는 소용돌이.
 /// </summary>
 public partial class GameServer
 {
@@ -28,8 +26,7 @@ public partial class GameServer
     private const float SwarmGroundYScale = SwarmBotDodgePolicy.SwarmGroundYScale;
     // 몬스터 몸통 여유 — 앞머리가 몸 가장자리를 스쳐도 맞는다 (접촉 반경 0.32와 같은 급).
     private const float SwarmCrossfireMonsterRadius = 0.3f;
-    // 플레이어 몸통 여유 — 중심점만 재면 캡슐 가장자리가 몸을 스치는 장면에서 "지나갔는데 안 맞는다"
-    // (2026-08-17 유저 제보). 몸 폭의 절반쯤.
+    // 플레이어 몸통 여유 — 중심점만 재면 캡슐 가장자리가 몸을 스치는 장면에서 "지나갔는데 안 맞는다". 몸 폭의 절반쯤.
     private const float SwarmCrossfirePlayerRadius = SwarmBotDodgePolicy.SwarmCrossfirePlayerRadius;
 
     /// <summary>이 발사가 교차사격 모양(태양 폭발 투사체)으로 처리되는가 — 유도탄 경로를 대체한다.</summary>
@@ -49,7 +46,7 @@ public partial class GameServer
         => GetSwarmMatchRuntime(matchingId).Crossfire.CountTelegraphing(ownerId, nowUtc);
 
     /// <summary>
-    ///     표적 분산 (#232, 2026-08-17 유저 지시 "한번에 같은 걸 겨냥하지 말 것"): 소유자의 살아 있는
+    ///     표적 분산 (#232, "한번에 같은 걸 겨냥하지 말 것"): 소유자의 살아 있는
     ///     모양이 이미 기준으로 잡은 몬스터 쌍. 리졸버 필터가 같은 소유자의 다른 태양 오브에게 이 몹을
     ///     후보에서 빼 준다 — 다음으로 가까운 몹을 고르므로 오브마다 다른 자리를 겨눈다.
     ///     모양이 쓸고 끝나면(제거) 다시 후보가 된다. 예약(PendingDamage) 대신 이 필터를 쓰는 이유:
@@ -91,11 +88,9 @@ public partial class GameServer
             Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
             return false;
 
-        // 조준 개편 (2026-08-26 유저 결정 "가로/세로 축 나누기 폐지"): 꼬리 접선 기반 축
-        // 잠금(2026-08-24 국소 창 가중 접선)은 퇴역 — 오브 위치·꼬리 모양과 무관하게 타일
-        // 4방향(가로 ±, 세로 ±) 후보 선을 전부 벽까지 만들어, 실제 선분 위에 표적이 있는
-        // 방향을 우선 조준한다 (몹 수 → 첫 적중 거리). 어느 선에도 표적이 없으면 발사 사유였던
-        // 기준 표적 쪽 사영이 가장 큰 방향으로 쏜다. 유효한 방향(벽 여유 0.3)이 없으면 생략
+        // 조준: 꼬리 접선이나 오브 위치와 무관하게 타일 4방향(가로 ±, 세로 ±) 후보 선을 전부 벽까지 만들어,
+        // 실제 선분 위에 표적이 있는 방향을 우선 조준한다(첫 적중 거리 우선, 다음 몹 수). 어느 선에도 표적이
+        // 없으면 발사 사유였던 기준 표적 쪽 사영이 가장 큰 방향으로 쏜다. 유효한 방향(벽 여유 0.3)이 없으면 생략
         // (환불 — 벽에 붙은 태양 공이 제자리 폭발하는 것보다 자연스럽다).
         float groundDx = anchor.X - origin.X;
         float groundDy = (anchor.Y - origin.Y) * SwarmGroundYScale;
@@ -135,8 +130,8 @@ public partial class GameServer
             CountSwarmCrossfireLineTargets(
                 combatTargets, attack.Area, origin, directionX[direction], directionY[direction],
                 candidateLength, halfWidth, out int hits, out float nearest);
-            // 거리 우선 (2026-08-26 2차: 몹 수 → 거리에서 뒤집음): 몹 수 우선은 긴 축이 항상
-            // 이겨 좁은 복도의 세로 발사가 죽었다 — 코앞 표적 쪽으로 응사하고, 같은 거리면 많은 쪽.
+            // 거리 우선: 몹 수 우선은 긴 축이 항상 이겨 좁은 복도의 세로 발사가 죽는다 — 코앞 표적 쪽으로
+            // 응사하고, 같은 거리면 많은 쪽.
             bool better = hits > 0 &&
                           (!resolvedByHits ||
                            nearest < bestNearest - 0.001f ||
@@ -284,7 +279,7 @@ public partial class GameServer
             shape.LastFront = front;
             monsters ??= _swarmMonsterDirector.GetCombatTargets(matchingId);
 
-            // 관통 (2026-08-24 유저 결정, 뱀서식): 이번 틱 구간에 걸린 표적 전부를 지나가며 때린다 —
+            // 관통 (뱀서식): 이번 틱 구간에 걸린 표적 전부를 지나가며 때린다 —
             // 첫 표적 폭발은 퇴역. 투사체는 멈추지 않고, 폭발은 벽에 닿을 때만.
             foreach (var monster in monsters)
             {
@@ -416,7 +411,7 @@ public partial class GameServer
 
     /// <summary>
     ///     원점에서 바닥면 단위 방향(unitX, unitY)으로 표본을 전진시키며 첫 구역 밖 셀(구역 경계·벽)까지의
-    ///     거리를 찾는다 — 없으면 maxLength. 이동 불가 셀이 아니라 구역 소속을 보는 이유 (2026-08-24 유저
+    ///     거리를 찾는다 — 없으면 maxLength. 이동 불가 셀이 아니라 구역 소속을 보는 이유 (유저
     ///     결정): 골대 같은 구역 안 프랍(이동 불가 셀)에서 멈추면 회피가 아니라 운으로 읽혀서, 프랍은
     ///     관통하고 진짜 벽에서만 터진다. 전투 판정이 전부 구역 단위라 구역 경계 = 판정 공간의 끝이다.
     /// </summary>
@@ -468,7 +463,7 @@ public partial class GameServer
         return along > fromFront && along <= toFront + radiusPadding;
     }
 
-    // 플레이어 몸통 캡슐 (2026-08-26 유저 결정 "큰 캡슐", 같은 날 화면 정합 보정): 판정
+    // 플레이어 몸통 캡슐("큰 캡슐"로 결정, 화면 정합 보정): 판정
     // 기준점(발 피벗) 하나로는 투사체가 화면에서 몸을 겹쳐 지나가도 미스였다 — 지면 타원(dy×2)이
     // 세로 화면 거리를 반으로 치기 때문. 표본 범위는 "화면에서 공이 몸(발~머리 0.9)과 겹치는"
     // 차선 범위다: 클라가 선·공을 부양된 오브 높이(+SWARM_ORB_ORBIT_CENTER_OFFSET_Y)에 그리므로,
@@ -483,9 +478,8 @@ public partial class GameServer
             SwarmCrossfirePlayerRadius, SwarmCrossfirePlayerBodyHeight, out along);
     }
 
-    // 몹 몸통 (2026-08-26 유저 제보 "몹은 충돌하면 안 맞고 비껴가면 맞는다"): 표시 차선이
-    // 부양(+0.8) 높이라 지면 판정 그대로면 화면 겹침과 판정이 반전된다 — 플레이어와 같은
-    // 화면 정합 표본을 쓴다. 몸 높이는 소형 몹 기준 0.6.
+    // 몹 몸통("충돌하면 안 맞고 비껴가면 맞는다" 제보): 표시 차선이 부양(+0.8) 높이라 지면 판정 그대로면 화면
+    // 겹침과 판정이 반전된다 — 플레이어와 같은 화면 정합 표본을 쓴다. 몸 높이는 소형 몹 기준 0.6.
     private const float SwarmCrossfireMonsterBodyHeight = 0.6f;
 
     private static bool TryGetSwarmCrossfireSweptMonsterBody(
@@ -583,10 +577,8 @@ public partial class GameServer
             isCore: damageResult.Kind == SwarmMonsterKind.RunawayGoblin);
     }
 
-    // 충격 면역 퇴역 이력: 소유자 초당 1회 상한(2026-08-24)에 이어 피해자 0.9초 면역도
-    // 퇴역(2026-08-26 유저 결정 "충격 면역 아예 없애자") — 태양 다발 화망에서 첫 발 이후가
-    // 소리 없이 관통해 "피격박스가 안 맞는" 오독을 만들었다. 표시 = 판정: 지나간 발은 다 맞는다.
-    // 한 발이 같은 사람을 두 번 치는 것은 발 단위 HitVictims(교차사격)·틱 주기(칼날)가 막는다.
+    // 충격 면역은 없다 — 태양 다발 화망에서 첫 발 이후가 소리 없이 관통하면 "피격박스가 안 맞는" 오독이 된다.
+    // 표시 = 판정: 지나간 발은 다 맞는다. 한 발이 같은 사람을 두 번 치는 것은 발 단위 HitVictims(교차사격)·틱 주기(칼날)가 막는다.
 
     /// <summary>화상 부여·갱신 — 첫 틱은 1초 뒤(직격과 같은 프레임에 겹치지 않게). HUD 통지 포함.</summary>
     private void ApplySwarmSunBurn(
@@ -650,7 +642,7 @@ public partial class GameServer
         bool dotTick = false)
     {
         SwarmMatchRuntime runtime = GetSwarmMatchRuntime(matchingId);
-        // 받는 피해 배율 (2026-08-18): 고정 50 × 1/3 → 17. 태양·바람·파도 충격이 전부 이 한 곳을 지난다.
+        // 받는 피해 배율: 고정 충격 50에 1/3을 곱한다. 태양·바람·파도 충격이 전부 이 한 곳을 지난다.
         // damageScale: 파도 소용돌이(#268)는 당김이 본체라 피해를 타격 피드백 수준(1/4)으로 줄인다.
         int shock = Math.Max(1, (int)MathF.Round(
             Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_CORRUPTION) * damageScale));
@@ -711,9 +703,8 @@ public partial class GameServer
         hitCount = 0;
         nearestAlong = float.MaxValue;
         float reach = halfWidth + SwarmCrossfireMonsterRadius;
-        // 화면 정합 (2026-08-26, 같은 날 2차: 중앙 1점 → 명중과 같은 몸통 표본): 중앙 1점만
-        // 세면 대각 축의 수직 성분(0.7)이 도달 반경(0.65)을 넘어, 실제로 맞을 몹이 카운트에서
-        // 빠졌다 — 좁은 복도의 세로 후보가 0마리로 집계돼 선택되지 않던 원인.
+        // 화면 정합(명중과 같은 몸통 표본): 중앙 1점만 세면 대각 축의 수직 성분(0.7)이 도달 반경(0.65)을 넘어
+        // 실제로 맞을 몹이 카운트에서 빠진다 — 좁은 복도의 세로 후보가 0마리로 집계돼 선택되지 않는다.
         float bodyStart = -Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
         float bodyEnd = SwarmCrossfireMonsterBodyHeight - Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y;
         foreach (var target in combatTargets)

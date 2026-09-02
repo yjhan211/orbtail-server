@@ -18,8 +18,7 @@ public partial class GameServer
     private static float SwarmArenaBasicRange => Config.SWARM_ORB_ATTACK_RANGE;
     private const float SwarmArenaBasicAttackIntervalSeconds = 1f;
     private const int SwarmArenaWeaponItemId = 107000010;
-    // P0-A 세 색 복귀 (#232, 2026-08-17 저녁 유저 지시): 태양(폭발 투사체)·파도(물폭탄)·바람(관통 칼날) —
-    // 소환·시작·재건 풀.
+    // 세 색(태양·파도·바람) 소환·시작·재건 풀 (#232).
     private static readonly int[] SwarmStartingOrbPool = BuildSwarmSupplyOrbPool();
 
     /// <summary>공급 차단 토글을 반영한 색 풀 — 소환·시작 지급·샌드박스 세트가 공유한다.</summary>
@@ -32,39 +31,26 @@ public partial class GameServer
         return pool.ToArray();
     }
 
-    // 플레이어 단위 지급 (2026-08-09): 매칭 단위 1회 지급은 지급 틱에 아직 접속 전인
-    // 사람을 영영 빈손으로 만들었다 — 늦게 합류해도 첫 등장 틱에 각자 1회 받는다.
-    // (상태는 GetSwarmMatchRuntime(matchingId).Pacing.StartingOrbGrantedPlayers — #294 상태 홀더)
+    // 플레이어 단위 지급: 매칭 단위 1회 지급은 지급 틱에 아직 접속 전인 사람을 영영 빈손으로 만든다 —
+    // 늦게 합류해도 첫 등장 틱에 각자 1회 받는다 (상태는 Pacing.StartingOrbGrantedPlayers).
 
     // #272 자기장 재무장: 원형 수축 필드가 폐쇄 시간표의 단일 원천 — 구역 웨이브는 필드에서
     // 파생한다(GetSwarmFieldWaves). 토글은 클라 경계 렌더와 공유하므로 Config가 단일 출처.
     private static readonly bool SwarmFieldEnabled = Config.SWARM_PRESSURE_FIELD_ENABLED;
 
-    // 고위험 절단 복귀 (#232 무한 꼬리, 2026-08-17 저녁 유저 지시 "절단은 되살려야 해"):
-    // 몸으로 상대 꼬리를 유효하게 가로지르면 밟은 지점부터 꼬리 끝까지 깨지고(2026-08-18 유저 결정: 접미
-    // 전체) 나는 정신오염 +35를 낸다. 크랙 5칸·방어 장갑·절단 낙수는 쓰지 않는다 (TryPerformSwarmTrailCut).
-    // 2026-08-27 School2 플레이테스트용으로 잠시 껐다가 2026-09-02 유저 지시로 재무장. 끄려면 절단 계약 테스트
-    // (SwarmDamagePathTests.TailCut_RemovesSuffixAndChargesAttacker)의 플래그 어서션도 같이 바꾼다.
+    // 고위험 절단 (#232 무한 꼬리): 몸으로 상대 꼬리를 유효하게 가로지르면 밟은 지점부터 꼬리 끝까지(접미 전체)
+    // 깨지고 나는 정신오염 +35를 낸다. 크랙·방어 장갑·절단 낙수는 쓰지 않는다 (TryPerformSwarmTrailCut).
+    // 끄려면 절단 계약 테스트(SwarmDamagePathTests.TailCut_RemovesSuffixAndChargesAttacker)의 플래그 어서션도 같이 바꾼다.
     private static readonly bool SwarmTrailCutEnabled = true;
-    // 오브의 플레이어 직접 조준 복귀 (2026-08-17 유저 지시 "오브가 플레이어(봇)도 타겟팅"): 태양은 교차사격
-    // 투사체(첫 표적 폭발)로, 바람은 유도탄으로 사람을 쏜다. 아래 PvP 사거리·앞열 규칙이 산다.
+    // 오브는 플레이어(봇)도 조준한다 — 아래 PvP 사거리·앞열 규칙이 산다.
     private static readonly bool SwarmOrbTargetsPlayersEnabled = true;
 
-    // 오브열 (2026-08-17 유저 지시 "오브열 꼬리 형태로 원복"): 오브가 이동 경로를 따라오는 전투열.
-    // 사격·교차사격 원점과 표적 선정은 오브별 열 좌표(10Hz 이동 표본), 폐쇄 잔류 파괴도 산다.
+    // 오브열: 오브가 이동 경로를 따라오는 전투열. 사격·교차사격 원점과 표적 선정은 오브별 열 좌표(10Hz 이동
+    // 표본)를 쓰고, 폐쇄 잔류 파괴도 산다.
 
-    // PvP 오염 환산 (#226 재개편): 본체 상시 피격 체제의 TTK 앵커. 0.15 = 혼성 6오브
-    // 원시 DPS(~28)를 오염 ~4.2/s로 눌러 동급 정면 TTK ~24초(목표 22~28). PvE는 원시
-    // 피해 유지(배율 분리). 소수 이월 누산으로 정수 반올림 왜곡(바람 최소 1 인플레)을 막는다.
-    // 0.15 → 0.35 (2026-08-12 유도탄 복귀 후 재보정): 게이지 420 기준 0.15는 풀히트로도
-    // TTK ~56초+자연회복 — "안 박히는" 체감의 수치적 실체. 0.35 = TTK 22~28초 목표 정렬.
-    //
-    // 0.35 → 0.12 (2026-08-16): 0.35는 PvP가 주 킬 경로일 때 잡힌 값이라 지금 설계와
-    // 어긋난다. 지금은 몹이 사형집행자고 사람은 서로를 몹 앞에 밀어넣는 구조다.
-    // 봇 매치 9875558에서 PvP를 살리자마자 매치가 170초에 끝났다 — 첫 탈락 28.8초,
-    // 몹 피격은 초당 2.17에서 1.19로 반토막, 절단은 142회에서 25회로 죽었다.
-    // 원거리로 처리되니 몸으로 파고들 이유가 사라진 것이다.
-    // 0.12면 TTK가 60초대로 늘어 사격은 깎는 수단이 되고, 마무리는 몹과 절단이 가져간다.
+    // PvP 오염 환산: 본체 상시 피격 체제의 TTK 앵커. 소수 이월 누산으로 정수 반올림 왜곡(바람 최소 1 인플레)을
+    // 막는다. 0.12는 TTK 60초대 — 몹이 사형집행자고 사람은 서로를 몹 앞에 밀어넣는 구조라, 사격은 깎는 수단이고
+    // 마무리는 몹과 절단이 가져간다(값을 올리면 원거리로 끝나 몸으로 파고들 이유가 사라진다).
     // 원천은 swarm_config.csv (#325) — 미등재 시 코드 기본값.
     private static float SwarmPvpCorruptionPerDamage =>
         SwarmConfigData.GetFloat("SWARM_PVP_CORRUPTION_PER_DAMAGE", 0.12f);
@@ -201,9 +187,8 @@ public partial class GameServer
                 matchingId, sessions.Count, bots.Count);
         }
 
-        // 시작 지급 (#232 4단계, 2026-08-17): 무작위 T1 공격 오브 3개 + 소환석 5. 08-16의
-        // "소환석 19로 시작"은 되돌린다 — 6칸 빌드에서 첫 판단은 무엇을 살지가 아니라 들고 시작한
-        // 셋을 유지·합성·교체할지다. 샌드박스 사람은 태양·바람·파도 한 개씩 고정(P0-A).
+        // 시작 지급 (#232 4단계): 무작위 T1 공격 오브 3개 + 소환석 5 — 6칸 빌드에서 첫 판단은 무엇을 살지가
+        // 아니라 들고 시작한 셋을 유지·합성·교체할지다. 샌드박스 사람은 태양·바람·파도 한 개씩 고정.
         int startingStones = Config.SWARM_STARTING_STONE_GRANT;
         foreach (var session in sessions)
         {
@@ -246,7 +231,7 @@ public partial class GameServer
             GetSwarmMatchRuntime(matchingId).Pacing.CutDummyAutoSetupDone.Add(matchingId))
         {
             // 무장 과녁은 절단 실험장(DEV_CUT_DUMMY)에만 세운다. 교차사격 샌드박스는 더미 없이
-            // 사람 + 몹만 남긴다 (2026-08-24 유저 지시 "더미 유저 없애줘") — 단독 생존 종료는
+            // 사람 + 몹만 남긴다 (유저 지시 "더미 유저 없애줘") — 단독 생존 종료는
             // 정산 쪽 샌드박스 게이트가 막는다.
             if (SwarmCutDummyAutoSetup)
             {
@@ -293,7 +278,7 @@ public partial class GameServer
                     $"alive={aliveAfter}");
         }
 
-        // 인트로 예열은 여기서 끝난다 (2026-08-16): 공급 디렉터와 몹 이동만 돌리고
+        // 인트로 예열은 여기서 끝난다: 공급 디렉터와 몹 이동만 돌리고
         // 전투·절단·포위·물폭탄·접촉 피해는 매치가 시작된 뒤에 붙는다. 카운트다운 동안
         // 운동장에서 각 방으로 걸어 나가는 그림만 만들면 되고, 그 사이 누가 맞아서는 안 된다.
         if (!MatchStartGate.IsGameplayActive(matchingId))
@@ -327,7 +312,7 @@ public partial class GameServer
         // 실험장 (#227): 절단 더미 매치에서는 물폭탄도 끈다 — 파도 오브가 계속 터지면
         // 절단 궤적 실험이 폭발 연출·피해에 묻힌다. 미사일 비무장(AddSwarmParticipantCombatActors)과
         // 같은 조건을 쓴다 — 옵트인 환경변수 자체가 실험장 스위치다.
-        // 교차사격 샌드박스(#232)는 켠다 — 파도·바람이 실험 대상이다 (2026-08-17 저녁 유저 지시).
+        // 교차사격 샌드박스(#232)는 켠다 — 파도·바람이 실험 대상이다 (저녁 유저 지시).
         if (!SwarmCutDummyAutoSetup && (dummyIds.Count == 0 || SwarmCrossfireSandbox))
         {
             ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
@@ -344,7 +329,7 @@ public partial class GameServer
         if (_matchRuntimeRegistry.IsTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
 
-        // 접촉 계측 (2026-08-16): 접촉이 성립하는지 층별로 남긴다. 이 줄들이 "봇은 접촉 피해를
+        // 접촉 계측: 접촉이 성립하는지 층별로 남긴다. 이 줄들이 "봇은 접촉 피해를
         // 안 받는다"는 오독을 두 번 걷어냈다 — 실제로는 로깅이 없었고, 그다음엔 배율이 깎고 있었다.
         if (tick.PlayerDamage.Count > 0 && GetSwarmMatchRuntime(matchingId).Pacing.ContactProbeAtUtc.TryGetValue(matchingId, out var probeAt)
                 ? nowUtc >= probeAt
@@ -362,7 +347,7 @@ public partial class GameServer
 
         // 실험장 (#226): 절단 더미 매치는 몹 공격도 끈다 — 절단 튜닝 중 방해 금지.
         // 교차사격 샌드박스(#232)는 켠다 — 몹이 달려들어 부딪히는 것까지가 실험 대상이다
-        // (2026-08-17 저녁 유저 제보 "몹이 데미지를 안 입힌다": 이 게이트가 막고 있었다).
+        // (저녁 유저 제보 "몹이 데미지를 안 입힌다": 이 게이트가 막고 있었다).
         if (dummyIds.Count == 0 || SwarmCrossfireSandbox)
         {
             foreach (var damage in tick.PlayerDamage)
@@ -398,11 +383,8 @@ public partial class GameServer
         if (_matchRuntimeRegistry.IsTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
 
-        // 비행 중인 PvP 탄을 매 틱 지우던 줄을 걷어낸다 (2026-08-16 유저 제보: 플레이어
-        // 오브가 봇을 안 때린다). "리졸버는 PvE 전용"이라는 전제로 쓰인 청소인데, 리졸버가
-        // 사람 표적도 내보내게 바뀐 뒤로는 방금 발사한 태양·바람 유도탄을 다음 틱에 통째로
-        // 삭제하고 있었다 — 청소가 착탄 처리보다 앞이라 큐가 늘 비어 있었고, 쏘는 색이
-        // 정확히 그 둘이라 PvP가 한 발도 착탄하지 못했다(봇 매치 9873914: SURVIVOR_HIT 0건).
+        // 비행 중인 PvP 탄은 여기서 착탄 처리한다 — 매 틱 지우면 안 된다. "리졸버는 PvE 전용"이라는 전제의 청소가
+        // 리졸버가 사람 표적도 내보내게 바뀐 뒤 방금 발사한 탄을 다음 틱에 통째로 삭제해 PvP가 한 발도 착탄하지 못했다.
         for (int index = GetSwarmMatchRuntime(matchingId).Pacing.PendingPvpHits.Count - 1; index >= 0; index--)
         {
             var pending = GetSwarmMatchRuntime(matchingId).Pacing.PendingPvpHits[index];
@@ -436,19 +418,11 @@ public partial class GameServer
             matchingId,
             actors,
             nowUtc,
-            // 유저간 공격도 같은 리졸버가 담당한다 (2026-08-16 유저 결정: 몹이랑 똑같이
-            // 유도탄으로). 아래 루프의 태양·바람 분기가 몹 사격과 같은 발사 연출
-            // (BroadcastSwarmAttackVfxToTargetAndObservers)과 비행시간 착탄을 쓴다.
-            //
-            // PvP 제한 (2026-08-16 유저 명세): 자동 공격과 절단이 서로 다른 것을 건드려야
-            // 한다. 자동 공격은 본체를 서서히 압박하고, 오브 손실은 충돌 절단으로만 난다
-            // (오브 HP 전투는 #226에서 퇴역, #318에서 코드 삭제).
-            // 전체 오브가 사람을 쏘면 20개 꼬리가 3개 꼬리를 그대로 녹인다 — 앞열 3개로
-            // 끊어, 오브 수는 PvE 성장과 절단 위험만 키우고 원거리 PvP 화력은 상한을 갖는다.
-            // 사거리도 PvE(7)보다 짧은 5로 둔다 — 붙어야 싸운다.
-            //
-            // #232 1단계 (2026-08-17): 오브는 몬스터만 조준한다. 사람은 표적 후보에서 아예
-            // 빠진다 — 사람에게 닿는 유일한 경로는 몬스터를 향한 공격 모양(2단계 교차사격)이다.
+            // 유저간 공격도 같은 리졸버가 담당한다(몹이랑 똑같이 유도탄으로 결정). 아래 루프의 태양·바람 분기가
+            // 몹 사격과 같은 발사 연출(BroadcastSwarmAttackVfxToTargetAndObservers)과 비행시간 착탄을 쓴다.
+            // PvP 제한: 자동 공격과 절단이 서로 다른 것을 건드려야 한다. 자동 공격은 본체를 서서히 압박하고, 오브
+            // 손실은 충돌 절단으로만 난다. 전체 오브가 사람을 쏘면 20개 꼬리가 3개 꼬리를 그대로 녹인다 — 앞열
+            // 3개로 끊어 오브 수는 PvE 성장과 절단 위험만 키우고, 사거리도 PvE(7)보다 짧은 5로 둔다 — 붙어야 싸운다.
             // 아래 PvP 사거리·앞열 규칙은 SwarmOrbTargetsPlayersEnabled를 켤 때만 산다.
             (attacker, target) =>
             {
@@ -461,7 +435,7 @@ public partial class GameServer
                     if (crossfireAnchoredTargets.Contains((attacker.PlayerId, target.PlayerId)))
                         return false;
                     // 사거리(티어, 바닥면 타원) 안에 표적이 있으면 쏜다 — 축 정렬 조건은 퇴역
-                    // (2026-08-24 유저 결정 개정: 축이 맞는 표적을 기다리면 태양이 아예 공격을 안
+                    // (유저 결정 개정: 축이 맞는 표적을 기다리면 태양이 아예 공격을 안
                     // 하는 구간이 생긴다). 발사 방향은 표적이 아니라 이동 방향의 수직 타일 축이
                     // 정하므로(TryScheduleSwarmCrossfire), 이 표적은 "쏠 이유"일 뿐 "조준점"이 아니다 —
                     // 선이 이 표적을 못 맞혀도 발사한다. 논타게팅.
@@ -472,7 +446,7 @@ public partial class GameServer
                     return true;
                 if (!SwarmOrbTargetsPlayersEnabled)
                     return false;
-                // 플레이어 최우선 (2026-08-18 유저 지시 "반경 내에 다른 플레이어가 있으면 최우선"): 태양은
+                // 플레이어 최우선 (유저 지시 "반경 내에 다른 플레이어가 있으면 최우선"): 태양은
                 // 앞열 3개 제한·본체 기준 5u 사거리를 걷고, 티어 사거리(위 IsWithinSwarmOrbRange) 안이면
                 // 어느 오브든 사람을 후보에 올린다. 우선순위 0(사람) < 2(몹)이라 후보에 오르면 곧 최우선이다.
                 if (IsSwarmCrossfireWeapon(attacker.WeaponItemId))
@@ -480,7 +454,7 @@ public partial class GameServer
                 if (attacker.TrailOrdinal >= Config.SWARM_PVP_ORB_COUNT)
                     return false;
 
-                // 사거리는 오브가 아니라 본체 기준이다 (2026-08-16 유저 요청: 사거리 표시).
+                // 사거리는 오브가 아니라 본체 기준이다 (유저 요청: 사거리 표시).
                 // 오브별 원점으로 재면 꼬리가 길수록 사정권이 늘어 "오브 수는 PvP 화력을
                 // 키우지 않는다"는 규칙과 어긋나고, 링 하나로 표시할 수도 없다.
                 if (!swarmBodyPositions.TryGetValue(attacker.PlayerId, out var attackerBody))
@@ -491,10 +465,8 @@ public partial class GameServer
                     Config.SWARM_PVP_ATTACK_RANGE * Config.SWARM_PVP_ATTACK_RANGE)
                     return false;
 
-                // 시야 판정은 걷어냈다 (2026-08-16 유저 판정: 범위 안이면 사람 먼저 무조건).
-                // 봇 매치 9879171 실측 — 조우 69회에 절단 47회가 났는데도(즉 몸이 서로
-                // 붙어 있었는데도) PvP는 0건이었다. 오브는 궤도를 돌며 벽·소품 위를 자주
-                // 지나고 HasClearPath는 출발 셀이 불투명하면 즉시 false다.
+                // 시야 판정은 걷어냈다 (범위 안이면 사람 먼저 무조건). 오브는 궤도를 돌며 벽·소품 위를 자주 지나고
+                // HasClearPath는 출발 셀이 불투명하면 즉시 false라 몸이 붙어 있어도 PvP가 0건이 됐다 —
                 // 사거리 안에 붙어 있는데 조준이 안 서는 쪽이 훨씬 나쁘다.
                 return true;
             });
@@ -506,15 +478,15 @@ public partial class GameServer
             // 통과해 PvP 분기로 새던 문제 — 음수 대역 차단. 태양 분기보다 먼저 건다.
             if (monsterId <= 0 && attack.TargetPlayerId < -1_000_000_000_000L)
                 continue;
-            // 태양은 표적이 몬스터든 플레이어든 교차사격 투사체다 (2026-08-17 유저 지시: 오브가 사람도 조준) —
+            // 태양은 표적이 몬스터든 플레이어든 교차사격 투사체다 (유저 지시: 오브가 사람도 조준) —
             // 첫 표적에서 폭발. 바람은 조준하지 않는다(회전 칼날), 파도는 물폭탄.
             if (IsSwarmCrossfireWeapon(attack.WeaponItemId))
             {
-                // 태양 = 교차사격 직선 (#232 2단계, 2026-08-17): 유도탄이 아니라 예고 뒤 쓸고 지나가는
+                // 태양 = 교차사격 직선 (#232 2단계): 유도탄이 아니라 예고 뒤 쓸고 지나가는
                 // 큰 공격이다. 미사일 연출·비행시간 착탄·예약을 타지 않고 모양 하나를 잠근다.
                 // 모양을 못 잠그면(같은 틱에 여러 오브가 함께 준비돼 예고 상한을 넘김) 그 발은 환불한다 —
                 // 쿨다운을 되돌려 다음 틱에 다시 시도한다. 모양 없이 때리던 옛 폴백은 "안 맞은 몹이 죽는"
-                // 보이지 않는 피해였다 (2026-08-17 유저 제보). 표시 = 판정: 화면에 없는 공격은 없다.
+                // 보이지 않는 피해였다 (유저 제보). 표시 = 판정: 화면에 없는 공격은 없다.
                 actorById ??= actors
                     .GroupBy(actor => actor.PlayerId)
                     .ToDictionary(group => group.Key, group => group.First());
@@ -597,7 +569,7 @@ public partial class GameServer
             if (attack.TargetPlayerId < -1_000_000_000_000L)
                 continue;
 
-            // 태양·바람 유도탄 (2026-08-12 복귀): 발사 연출 즉시 + 비행시간 뒤 착탄 확정 —
+            // 태양·바람 유도탄 (복귀): 발사 연출 즉시 + 비행시간 뒤 착탄 확정 —
             // 직선탄 회피 실험은 상시 이동에서 유령 사격이 됐다. 클라 투사체는 표적을 추적한다.
             if (OrbData.TryGetColorAndTier(attack.WeaponItemId, out var pvpColor, out _) &&
                 pvpColor is OrbColor.Red or OrbColor.Green)
@@ -647,17 +619,15 @@ public partial class GameServer
     private static double SwarmFieldShrinkSeconds =>
         Config.SWARM_MATCH_DURATION_SECONDS - Config.SWARM_FIELD_HOLD_SECONDS;
 
-    // 경계 밖 오염 (리소스 틱 5초당): 기본 + 초과 셀당 가산. 문턱에서 즉사가 아니라
-    // "슬슬 따가움 → 깊을수록 아픔"의 경사 — 외곽 마지막 개봉 도박이 성립해야 한다.
-    // #272 재조정: 구 웨이브 폐쇄 오염(85~145/틱)을 퇴역시키고 이 경사가 압박을 전담한다.
-    // 기본 25→12 (봇 매치 9831482 실측): 유예 제거로 상시 노출 시간이 급증해 이동 중 마모만으로
-    // 갈려나갔다 — 경계 스침 175초 생존(12/틱), 깊이 20셀 방치는 약 19초 사망(112/틱).
+    // 경계 밖 오염 (리소스 틱 5초당): 기본 + 초과 셀당 가산. 문턱에서 즉사가 아니라 "슬슬 따가움에서 깊을수록
+    // 아픔"의 경사 — 외곽 마지막 개봉 도박이 성립해야 한다. 구 웨이브 폐쇄 오염 대신 이 경사가 압박을 전담한다
+    // (#272). 기본 12: 유예가 없어 상시 노출 시간이 길므로 경계 스침은 오래 살고 깊이 20셀 방치는 20초 안에 죽는다.
     private const int SwarmFieldBaseCorruptionPerTick = 12;
     private const int SwarmFieldCorruptionPerExtraCell = 5;
 
     /// <summary>현재 안전 반경. 수축 전에는 double.MaxValue(전 맵 안전). 폐쇄 시계(GameStartTime)와
     ///     같은 앵커를 쓴다 — 파생 웨이브의 구역 완전-밖 시각과 필드 오염이 어긋나지 않는다.
-    ///     양자화 없는 연속식(2026-08-26 유저 결정: 주기 단위가 아니라 계속 줄어드는 원) —
+    ///     양자화 없는 연속식(유저 결정: 주기 단위가 아니라 계속 줄어드는 원) —
     ///     클라 경계 렌더(ClosureFieldOverlay.ComputeSafeDistance)와 같은 식이다.</summary>
     private double GetSwarmSafeDistance(long matchingId, DateTime nowUtc)
     {
@@ -735,7 +705,7 @@ public partial class GameServer
     private const int SwarmFieldSpawnBandCells = 6;
 
     /// <summary>
-    ///     #272 경계 토출 스폰 (2026-08-26 유저 결정, 같은 날 2차 "안전 구역 예외 제거"): 캠프
+    ///     #272 경계 토출 스폰 ("안전 구역 예외 제거" 결정 포함): 캠프
     ///     신규 스폰은 항상 바깥(자기장이 올 방향)에서 태어나 안쪽 앵커로 걸어 들어온다 —
     ///     경계가 구역을 관통 중이면 경계 밖 빨간 띠, 아직 온전히 안전한 구역이면 그 구역의
     ///     가장 바깥 띠. 저작 캠프 앵커는 자기장 모드에서 쓰지 않는다 (단일 문법).
@@ -761,7 +731,7 @@ public partial class GameServer
                 ? cells.Where(entry => entry.Distance > safeDistance).ToList()
                 : [cells[^1]];
 
-        // 앵커(도착지)는 구역에서 자기장 중심에 가장 가까운 띠 (#269-A, 2026-08-28 유저 승인):
+        // 앵커(도착지)는 구역에서 자기장 중심에 가장 가까운 띠 (#269-A):
         // 스폰 띠 바로 안쪽으로 잡으면 복도처럼 좁은 구역에서 스폰과 도착이 사실상 같은 자리라
         // "즉시 젠 후 제자리"로 읽힌다 — 구역을 최대로 가로질러 걸어 들어오게 한다.
         var anchorBand = cells
@@ -837,11 +807,11 @@ public partial class GameServer
 
         if (closureTick.ClosedAreas.Count > 0)
         {
-            // 폐쇄 = 문 잠금 + 틱 오염 (2026-08-18 유저 결정, #227 즉사 퇴역): 닫히는 순간 안에 있어도 죽지
+            // 폐쇄 = 문 잠금 + 틱 오염 (즉사 없음, #227): 닫히는 순간 안에 있어도 죽지
             // 않는다. 정산 틱(GetClosedAreaCorruptionPerTick)이 5초마다 오염을 얹고, 안에 있는 사람은 자기 구역
             // 문을 게이지로 따고 나갈 수 있다(밖에서 들어오는 문 따기는 여전히 거절). 자기 구역 문이 잠기는 것은
             // 그대로다 — "지금 나가야 하는가"의 판단은 경고 15초와 잠긴 문이 만든다.
-            // 2026-08-17 재조정: 폐쇄·경고도 수면을 깨우지 않는다 — 수면 중단은 이동뿐이다.
+            // 폐쇄·경고도 수면을 깨우지 않는다 — 수면 중단은 이동뿐이다.
             IReadOnlyList<int> lockedDoorIds =
                 _doorStateManager.CloseDoorsForAreas(matchingId, closureTick.ClosedAreas);
             foreach (int doorId in lockedDoorIds.Distinct())
@@ -992,7 +962,7 @@ public partial class GameServer
 
         foreach (var (playerId, ownerPosition, ownerSessionOrdinal) in owners)
         {
-            // 본인이 폐쇄 구역 안이면 꼬리는 그대로 둔다 (2026-08-18): 즉사가 퇴역해 본인은 틱 오염을 받으며
+            // 본인이 폐쇄 구역 안이면 꼬리는 그대로 둔다: 즉사가 퇴역해 본인은 틱 오염을 받으며
             // 문을 따고 나가는 중이다 — 여기서 꼬리까지 지우면 나가도 빈손이라 살아남을 이유가 없다.
             var ownerCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, ownerPosition);
             if (closed.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, ownerCell)))
@@ -1058,7 +1028,7 @@ public partial class GameServer
     }
 
     // 쌍 깔때기: 시작방 → 만남 구역. 거리 편차의 보정값(잔상 스폰 시점)은 이 로그를 계측한 뒤 정한다.
-    // #272 School2: 복도 연결 정의(2026-08-27 유저)와 1:1 — 시작방 2곳이 합류 1곳을 공유한다.
+    // #272 School2: 복도 연결 정의와 1:1 — 시작방 2곳이 합류 1곳을 공유한다.
     private static readonly (AreaType StartRoom, AreaType PairZone)[] SwarmPairZones =
     [
         (AreaType.S2Classroom1, AreaType.S2Library1),
@@ -1203,12 +1173,9 @@ public partial class GameServer
     private const float SwarmTrailSampleMinDistance = 0.08f;
     private const float SwarmTrailTeleportResetDistance = 5f;
 
-    // 열 절단 (#226 단계 A 정규화): 대상 오브(ItemUid)별 래치 — 0.12초 내부 중복 억제 +
-    // 같은 오브를 다시 때리려면 판정 타원 밖으로 완전히 나갔다 와야 한다(이탈 재무장).
-    // 서로 다른 오브 연속 타격은 자유 — 꼬리를 따라 달리면 순차로 금이 간다.
-    // 0.12 → 0.7 (2026-08-12 내구 모델): 움직이는 열이 절단자를 스치면 오브가 타원을 벗어나며
-    // 매 틱 재무장돼 내구 2가 0.24초에 소진됐다 — 같은 오브 재타는 별개의 통과여야 한다.
-    // 0.7 → 0.8 (#232 단일 절단, 2026-08-17): 명세 시작값.
+    // 열 절단: 대상 오브(ItemUid)별 래치 — 같은 오브를 다시 때리려면 판정 타원 밖으로 완전히 나갔다 와야 하고
+    // (이탈 재무장), 0.8초 안의 재타는 같은 통과로 본다. 움직이는 열이 절단자를 스치면 매 틱 재무장되므로
+    // 디바운스가 없으면 한 통과가 여러 번으로 잡힌다. 서로 다른 오브 연속 타격은 자유 — 꼬리를 따라 달리면 순차로 금이 간다.
     private const double SwarmTrailCutSameOrbDebounceSeconds = 0.8d;
     private const float SwarmTrailCutMaxSegmentLength = 2f;
     // 고위험 단일 절단 (#232): 성공한 공격자는 정신오염 +35를 내고 8초 동안 수면 회복을 잃는다.
@@ -1219,11 +1186,9 @@ public partial class GameServer
     // 전역 무적이 아니라 '방금 내 꼬리를 자른 그 사람에게 되갚을 시간'이다 —
     // 제3자·잔상·폐쇄 피해는 그대로 들어오고, 피해자는 이동·사격·역절단을 다 할 수 있다.
     private const double SwarmCutRetaliationWindowSeconds = 1.2d;
-    // 오브 관통 판정 (정규화 dy×2 공간): 링크 선을 스치는 게 아니라 오브를 밟아야 끊긴다.
-    // 판정 중심 위 오프셋 (2026-08-12): 스프라이트가 떠 있어 위 접근이 짜던 문제를 해결한다.
-    // 반경 0.35 → 0.42 (#229 실플레이 판정: "붙어도 안 깨진다"). 오브 간격이 0.9라
-    // 0.45가 옆 오브와 맞닿는 선이다 — 그 아래로만 키운다. 넘기면 판정 원이 겹쳐
-    // 의도보다 앞선 순번이 잡히고, 절단은 그 순번부터 뒤를 전부 날리므로 손실이 과해진다.
+    // 오브 관통 판정 (정규화 dy×2 공간): 링크 선을 스치는 게 아니라 오브를 밟아야 끊긴다. 판정 중심은 스프라이트가
+    // 떠 있어 위로 오프셋한다. 반경 0.42는 오브 간격 0.9의 절반(0.45) 아래 — 넘기면 판정 원이 겹쳐 의도보다 앞선
+    // 순번이 잡히고, 절단은 그 순번부터 뒤를 전부 날리므로 손실이 과해진다.
     private const float SwarmTrailCutOrbHitRadiusX = 0.42f;
     private const float SwarmTrailCutOrbHitRadiusY = 0.42f;
     private const float SwarmTrailCutOrbHitYOffset = 0.15f;
@@ -1404,7 +1369,7 @@ public partial class GameServer
         float accumulated = 0f;
         // 인덱스로 훑는다 (#229): 폐쇄 틱은 아레나 틱과 다른 스레드에서 돈다 — foreach로 열거하는
         // 사이 아레나가 이 궤적에 점을 추가하면 "Collection was modified"로 폐쇄 정산이 통째로
-        // 죽는다. 순차 폐쇄로 폐쇄 횟수가 2회 → 8회로 늘면서 실제로 터졌다(매치 9703335).
+        // 죽는다 — 순차 폐쇄로 폐쇄 횟수가 늘면서 실제로 터졌다.
         // 길이 변화는 이번 프레임 계산에서만 무시하면 되고, 다음 틱이 새 값을 읽는다.
         for (int index = 0; index < points.Count; index++)
         {
@@ -1442,11 +1407,9 @@ public partial class GameServer
     }
 
     /// <summary>
-    ///     열 절단 (#226 C): 본체 이동 선분이 상대 오브 링크(오브i-오브i+1)를 가로지르면
-    ///     링크의 꼬리 쪽 오브를 즉시 파괴한다. 접촉 오염(β)은 퇴역 — 이동이 곧 공격 동사라는
-    ///     문법은 유지하되, 비용이 "본체가 깎임"이 아니라 "상대 성장물이 끊김"으로 바뀐다.
-    ///     본체-첫 오브 링크는 절단 불가. 한 이동 선분당 가장 먼저 교차한 링크 하나만 처리한다.
-    ///     절단자 자해 없음(P0) — 적 화망 안으로 들어가는 위험이 비용이다.
+    ///     열 절단: 본체 이동 선분이 상대 오브 링크(오브i-오브i+1)를 가로지르면 밟힌 순번부터 꼬리 끝까지 파괴한다.
+    ///     이동이 곧 공격 동사이고, 비용은 "상대 성장물이 끊김"과 절단자의 정신오염 +35다. 본체-첫 오브 링크는
+    ///     절단 불가. 한 이동 선분당 가장 먼저 교차한 링크 하나만 처리한다.
     /// </summary>
     private void ProcessSwarmTrailCuts(
         long matchingId,
@@ -1494,7 +1457,7 @@ public partial class GameServer
                 new Vector3f(cutter.Position.X, cutter.Position.Y, 0f);
             if (!hasPrevious)
                 continue;
-            // 무오브는 절단할 수 없다 (2026-08-16 유저 명세). 자동 공격도 절단도 못 하는
+            // 무오브는 절단할 수 없다 (유저 명세). 자동 공격도 절단도 못 하는
             // 상태라야 "살아 있지만 전투력을 잃어 재건에 집중하는 패배 직전"이 성립한다 —
             // 지금은 빈손으로 남의 꼬리만 끊고 다니는 무적 훼방꾼이 될 수 있다.
             // 위치 기록은 위에서 이미 갱신했다 — 재건 직후 첫 틱부터 다시 자를 수 있다.
@@ -1688,11 +1651,9 @@ public partial class GameServer
             return;
         }
 
-        // 봇 절단 자제 (2026-08-18 촬영 튜닝): 봇은 오염이 절반 아래일 때, 봇 1인당 6초에 한 번만 자른다.
-        // 봇 매치 9126059 실측 — 66회 절단 중 39회가 머리(순번 0) 절단으로 꼬리 통째였고, 두 봇이 3초 간격으로
-        // 서로 자르며 오염 74→332까지 자해해 7마리가 죽었다. 사람 카메라에 남는 봇은 긴 꼬리를 끌고 다녀야
-        // 표적이 되고, 봇의 절단은 '한 번 지르는 사건'으로 읽혀야 한다. 거절된 통과는 래치를 찍어 같은 오브를
-        // 이번 통과에서 다시 판정하지 않는다 — 사람의 절단은 이 규칙과 무관하다.
+        // 봇 절단 자제: 봇은 오염이 절반 아래일 때, 봇 1인당 6초에 한 번만 자른다. 봇끼리 몇 초 간격으로 서로 자르며
+        // 자해로 죽어 나가면 사람 카메라에 남는 긴 꼬리가 없다 — 봇의 절단은 '한 번 지르는 사건'으로 읽혀야 한다.
+        // 거절된 통과는 래치를 찍어 같은 오브를 이번 통과에서 다시 판정하지 않는다 — 사람의 절단은 이 규칙과 무관하다.
         if (cutterBot != null && !IsSwarmBotCutAllowed(matchingId, cutterId, cutterCorruptionBefore, nowUtc))
         {
             GetSwarmMatchRuntime(matchingId).TrailCombat.OrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
@@ -1716,7 +1677,7 @@ public partial class GameServer
             breaksNow: true,
             area: bestArea.ToString());
 
-        // 접미 절단 (스네이크 문법 복귀, 2026-08-18 유저 결정 "오브 절단면 다 깨지게"): 밟힌 오브(몸체) 또는
+        // 접미 절단 (스네이크 문법, "오브 절단면 다 깨지게" 결정): 밟힌 오브(몸체) 또는
         // 링크 뒤쪽 첫 오브부터 꼬리 끝까지 전부 사라진다. 절단 지점이 머리에 가까울수록 손실이 크다.
         var destroyedItems = DestroySwarmOrbsFromOrdinal(matchingId, bestOwnerId, bestTailOrdinal);
         if (destroyedItems.Count == 0)
@@ -1816,7 +1777,7 @@ public partial class GameServer
     private const int SwarmRingVfxKindRetaliationGuard = 5;
     private const int SwarmRingVfxKindRetaliationBlocked = 6;
 
-    // 5단계 → 즉시 절단 (2026-08-12): 밟으면 바로 그 지점부터 꼬리가 끊긴다.
+    // 즉시 절단: 밟으면 바로 그 지점부터 꼬리가 끊긴다.
     // 크랙 단계 시스템(1~4 금 + 5타 파괴)은 값만 되돌리면 복원된다.
     private const int SwarmTrailCutBreakHits = 1;
     // 오브 체력 모델 (#227): 모든 오브의 최대 내구는 5칸이고, 소환 직후는 1/5로 시작한다.
@@ -1848,16 +1809,13 @@ public partial class GameServer
         }
     }
 
-    // ===== 파도 = 소용돌이 (#268, 2026-08-25 유저 결정, 3차 개정 "오브 위치 기준"): 표적
-    // 스냅샷 낙하(물폭탄, #229)와 합산 소용돌이(꼬리 끝 뒤 1개)는 퇴역 — 파도 오브 각각이
-    // 주기(2초)마다 자기 열 위치에 소용돌이를 깐다. 오브가 곧 무기 위치라는 점에서 바람
-    // 회전 칼날과 같은 문법. 예고(0.65초 림 링) 후 반경 안 전원을 중심으로 당기고 잠깐
-    // 늦춘다 — 피해는 타격 피드백 수준(현행의 1/4). 예고 원점은 스폰 순간 고정. =====
+    // ===== 파도 = 소용돌이 (#268): 파도 오브 각각이 주기(2초)마다 자기 열 위치에 소용돌이를 깐다 — 오브가 곧
+    // 무기 위치라는 점에서 바람 회전 칼날과 같은 문법. 예고(0.65초 림 링) 후 반경 안 전원을 잠깐 늦춘다(침수) —
+    // 피해는 타격 피드백 수준(1/4). 예고 원점은 스폰 순간 고정. =====
     private const double SwarmWaveBombIntervalSeconds = 2d;
     private const double SwarmWaveBombFuseSeconds = 0.65d;
 
-    // 오브별 독립 시계 (2026-08-25 유저 제보 "다같이 터지는 게 어색"): 플레이어 단위 시계
-    // 파도 폭탄 상태(위상·대기열)는 GetSwarmMatchRuntime(matchingId).TrailCombat (#294 상태 홀더).
+    // 오브별 독립 시계("다같이 터지는 게 어색"). 파도 폭탄 상태(위상·대기열)는 GetSwarmMatchRuntime(matchingId).TrailCombat.
 
     private void ProcessSwarmWaveBombs(
         long matchingId,
@@ -1915,7 +1873,7 @@ public partial class GameServer
                 if (radius <= 0f || baseDamage <= 0)
                     continue;
 
-                // 사거리 게이트 (2026-08-25 유저 결정, 태양·바람과 동일): 소용돌이 반경 안에
+                // 사거리 게이트 (유저 결정, 태양·바람과 동일): 소용돌이 반경 안에
                 // 표적(몹 또는 소유자 아닌 플레이어)이 있어야 깐다. 없으면 시계를 소모하지 않고
                 // 대기 — 표적이 들어오는 순간 바로 발동한다.
                 tiers ??= GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
@@ -1981,7 +1939,7 @@ public partial class GameServer
     /// <summary>
     ///     소용돌이 기폭 (#268): 반경 안 전원(몹·플레이어 동일)에게 타격 피드백 수준의 피해와
     ///     "침수"(5초 25% 감속) 디버프를 준다. 변위(당김·밀침·원 밖 축출) 실험은 전부
-    ///     기각(2026-08-25 유저 판정). 플레이어는 충격 면역 창(0.9초)이 연쇄 피격을 막는다 —
+    ///     기각(유저 판정). 플레이어는 충격 면역 창(0.9초)이 연쇄 피격을 막는다 —
     ///     면역이면 감속·피해 전부 없음.
     /// </summary>
     private void DetonateSwarmWaveVortex(
@@ -2039,7 +1997,7 @@ public partial class GameServer
             if (!IsWithinSwarmGroundRadius(position, participant.Position, radius + SwarmCrossfirePlayerRadius))
                 continue;
 
-            // 충격 면역 퇴역 (2026-08-26): 겹친 링에 다 맞는다 — 침수는 지속 갱신이라 중첩 무해.
+            // 충격 면역 없음: 겹친 링에 다 맞는다 — 침수는 지속 갱신이라 중첩 무해.
             soaked++;
             ApplySwarmShock(matchingId, ownerId, sourceItemId, area, participant.PlayerId,
                 "WAVE_VORTEX_HIT", aliveSessions, aliveBots, allSessions,
@@ -2528,15 +2486,13 @@ public partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        // 받는 피해 배율 (2026-08-18 유저 지시 "봇·플레이어 전부 지금의 1/3만 받게"): 사람·봇·로그가 전부
-        // 같은 값을 보게 진입점에서 한 번 줄인다. 페이즈 곡선(접촉 2/3/4/6/8)은 그대로 두고 배율만 곱한다 —
-        // 곡선을 고치면 "위협이 세지는 리듬"까지 다시 잡아야 한다.
+        // 받는 피해 배율(봇·플레이어 전부 1/3만 받게 결정): 사람·봇·로그가 전부 같은 값을 보게 진입점에서 한 번
+        // 줄인다. 페이즈 곡선은 그대로 두고 배율만 곱한다 — 곡선을 고치면 "위협이 세지는 리듬"까지 다시 잡아야 한다.
         damage = damage with { Damage = Config.ScaleSwarmDamageTaken(damage.Damage) };
 
         // 보스 공격 연출 (#223): 고정 포대의 원거리 타격은 투사체로 보여야 읽힌다 —
         // 같은 구역 전원에게 공격 VFX를 쏘고, 클라가 보스 여부(피통)로 투사체를 그린다.
         // 파도 문양 몹도 보낸다: 접촉 강타가 주변까지 튀므로 몸 기울임이 출처를 말한다.
-        // 일반 몹 원거리 확대(2026-08-24 오전)는 같은 날 원거리 타격 자체가 퇴역하며 함께 걷어냈다.
         if (_swarmMonsterDirector.IsBossMonster(matchingId, damage.MonsterId) ||
             _swarmMonsterDirector.IsWavePatternMonster(matchingId, damage.MonsterId))
         {
@@ -2558,7 +2514,7 @@ public partial class GameServer
             candidate.PlayerId == damage.TargetPlayerId);
         if (session != null)
         {
-            // 2026-08-17 재조정: 피격은 수면을 깨지 않는다 — 자면서 맞는 건 본인의 선택이다.
+            // 피격은 수면을 깨지 않는다 — 자면서 맞는 건 본인의 선택이다.
             // 3초 진입 잠금만 찍어 맞자마자 새로 눕는 것은 계속 막는다.
             session.MarkSwarmCombat(DateTime.UtcNow);
             // #229: 문 게이지도 같이 끊는다 — 문 앞을 비우지 못하면 방을 못 연다.
@@ -2579,7 +2535,7 @@ public partial class GameServer
         bot.Corruption = Math.Min(Config.MAX_CORRUPTION, bot.Corruption + botDamage);
         GetSwarmMatchRuntime(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
         // 세 번째 봇 경로도 남긴다 — 앞의 두 경로만 로그를 붙여 놓으면 여기로 빠진 피해가
-        // 그대로 안 보인다 (2026-08-16).
+        // 그대로 안 보인다.
         _gameEventLogManager.LogSwarmAfterimageHit(
             matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
             botDamage, legacyBefore, bot.Corruption,
@@ -2788,10 +2744,8 @@ public partial class GameServer
     // ===== 성장 카드 3택 (#226 단계 C) =====
     // 소환석이 카드 비용에 도달하면 즉시 오퍼가 뜬다 (상자 개방 트리거 퇴역).
     // 카드: 0=증식(무작위 T1 +1) · 1=강화(선두 T1→T2, 없으면 T2→T3) · 2=철갑(선두 무외피 오브).
-    // 성장 직후 오퍼 휴지는 퇴역했다 (2026-08-16 유저 결정). 카드 3택 시절의 페이싱이었고,
-    // 성장이 상시 버튼이 된 뒤로는 석이 남아 있는데도 오퍼가 서지 않아 버튼이 "아직 성장할 수
-    // 없습니다"로 답하는 벽이었다. 성장 속도는 소환석 수입과 비용 곡선(5+2N)이 정한다 —
-    // 시간 잠금이 하나 더 있을 이유가 없다.
+    // 성장 직후 오퍼 휴지는 없다: 성장이 상시 버튼이라 석이 남아 있는데 오퍼가 서지 않으면 버튼이 "아직 성장할 수
+    // 없습니다"로 답하는 벽이 된다. 성장 속도는 소환석 수입과 비용 곡선(5+2N)이 정한다.
     // 이중 차감은 오퍼 소유권이 막는다: 픽이 성립하면 오퍼가 사라지고, 같은 OfferId로 온 두 번째
     // 요청은 대조에서 걸러진다. 클라도 응답 전까지 입력을 잠근다.
     private const int SwarmGrowthCardMultiply = SwarmGrowthOfferState.CardMultiply;
@@ -2806,7 +2760,7 @@ public partial class GameServer
         _inGameInventoryManager.GetPlayerInventory(matchingId, playerId)
             .GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
-            // uid 오름차순 = 열 순번·링 마스크·카드 대상의 단일 정렬 (2026-08-12 통일)
+            // uid 오름차순 = 열 순번·링 마스크·카드 대상의 단일 정렬 (통일)
             .OrderBy(item => item.ItemUid)
             .ToList();
 
@@ -2875,7 +2829,7 @@ public partial class GameServer
                 CostSummon: costSummon, CostAttack: costAttack, CostDefense: costDefense);
         }
 
-        // 소환은 늘 T1 (2026-08-18): 티어는 오브마다 계열 버튼으로 따로 산다 — 공유 레벨 상속은 퇴역.
+        // 소환은 늘 T1: 티어는 오브마다 계열 버튼으로 따로 산다 — 공유 레벨 상속은 퇴역.
         // 품질 티어 RNG도 퇴역.
         _ = qualityCost;
         int spawnItemId = SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)];
@@ -3161,7 +3115,7 @@ public partial class GameServer
                         return false;
                     if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
                         return false;
-                    // 소환은 T1 그대로 (2026-08-18): 티어는 오브마다 따로 산다 — 공유 레벨 상속은 퇴역.
+                    // 소환은 T1 그대로: 티어는 오브마다 따로 산다 — 공유 레벨 상속은 퇴역.
                     if (session != null)
                         session.GrantSwarmArenaOrb(offer.SpawnItemId);
                     else
@@ -3392,18 +3346,14 @@ public partial class GameServer
         // 교차사격 샌드박스(#232)는 반대다 — 더미도 몹을 쏴야 그 직선이 나를 지나는 장면이 나온다.
         bool armed = !SwarmCutDummyAutoSetup &&
                      (SwarmCrossfireSandbox || !IsSwarmCutDummyPlayer(matchingId, spatial.PlayerId));
-        // 본체 우선(1)으로 되돌린다 (2026-08-16 유저 제보: 내 캐릭터가 봇을 안 때린다).
-        // 동급(2)이면 최근접이 이기는데, 밀도 램프 이후 구역당 몹이 8~28마리라 항상 몹이
-        // 더 가깝다 — 게다가 표적 고정이 걸려 죽으면 또 다음 몹을 문다. 봇 매치 9873914에서
-        // PvP 피격(SURVIVOR_HIT)이 300초 동안 0건이었다. 사람은 표적이 될 기회조차 없었다.
-        //
-        // #226에서 동급으로 내린 이유("적 플레이어가 있는 한 몹이 영영 표적이 안 돼 파밍이
-        // 죽는다")는 지금은 성립하지 않는다. 그때 PvP 사거리는 30이라 구역 전체를 덮었지만
-        // 지금은 7이다 — 적이 코앞에 붙었을 때만 우선권을 가져간다. 그건 오히려 맞는 동작이다.
+        // 본체 우선(1). 동급(2)이면 최근접이 이기는데 구역당 몹이 8~28마리라 항상 몹이 더 가깝고, 표적 고정이
+        // 걸려 죽으면 또 다음 몹을 문다 — 사람은 표적이 될 기회조차 없다. PvP 사거리가 구역 전체를 덮던 시절의
+        // "적 플레이어가 있는 한 몹이 영영 표적이 안 된다"는 사거리가 짧아진 지금은 성립하지 않는다 — 적이 코앞에
+        // 붙었을 때만 우선권을 가져간다.
         // 오브 액터는 발사 원점일 뿐 표적이 아니다(Untargetable).
         var fallback = CreateSwarmParticipantActor(spatial, armed) with
         {
-            // 0 = 최상위 (2026-08-16 유저 판정: 범위 안이면 사람 먼저 무조건).
+            // 0 = 최상위 (유저 판정: 범위 안이면 사람 먼저 무조건).
             // 사거리 판정을 이미 필터가 하므로, 후보에 올라온 사람은 곧 사정권 안이다.
             TargetPriority = 0
         };
@@ -3480,7 +3430,7 @@ public partial class GameServer
                         OrbData.GetSwarmPveAttackDamage(actor.WeaponItemId) *
                         sunAttackMultiplier * crossfireDamageMultiplier))
                     : 0,
-                // 오브마다 제 박자를 준다 (2026-08-16 유저 판정: 일제사가 어색하다).
+                // 오브마다 제 박자를 준다 (유저 판정: 일제사가 어색하다).
                 // 전 오브가 같은 주기를 쓰면 한 번에 쏘고 한 번에 쉬는 호흡이 되어, 서로 다른
                 // 시기에 붙은 오브들이 한 몸처럼 읽힌다. 슬롯마다 주기를 ±12% 흔들어
                 // 몇 발 만에 위상이 벌어지게 한다 — 평균 주기는 그대로라 화력 총량은 불변이고,
@@ -3496,9 +3446,8 @@ public partial class GameServer
             };
         }
 
-        // 발사 순서 공평화 (#232 교차사격 예고 상한): 리졸버는 목록 순서로 공격자를 돌아 자리를
-        // 배정하므로, 상한이 찬 동안 앞 순번 오브만 계속 쏘고 뒤 순번은 굶는다(봇 매치 실측:
-        // 순번 0·1이 3·4의 3~7배). 순번·자리는 이미 박혔으니 목록 순서만 틱마다 돌린다.
+        // 발사 순서 공평화 (#232 교차사격 예고 상한): 리졸버는 목록 순서로 공격자를 돌아 자리를 배정하므로, 상한이
+        // 찬 동안 앞 순번 오브만 계속 쏘고 뒤 순번은 굶는다. 순번·자리는 이미 박혔으니 목록 순서만 틱마다 돌린다.
         if (orbCount > 1)
         {
             int rotation = (int)(nowUnixMs / 50 % orbCount);
@@ -3524,20 +3473,16 @@ public partial class GameServer
         return 0.88f + phase * 0.24f;
     }
 
-    // 국소 화망 (#227 6단계): 30 → 6.0. 사거리 30은 구역 전체를 덮어 후미 절단과 머리
-    // 절단의 위험이 같았다 — 어디를 자르든 상대의 모든 오브가 사정권이었기 때문이다.
-    // 6.0이면 각 오브가 자기 열 좌표 주변만 덮으므로, 깊게 자를수록 앞열 여러 오브의
+    // 국소 화망 (#227): 사거리가 구역 전체를 덮으면 후미 절단과 머리 절단의 위험이 같다 — 어디를 자르든 상대의 모든
+    // 오브가 사정권이기 때문. 6.0이면 각 오브가 자기 열 좌표 주변만 덮으므로, 깊게 자를수록 앞열 여러 오브의
     // 사거리가 겹치는 자리로 들어가야 한다. 위험을 수치가 아니라 공간이 만든다.
     private const float SwarmSunAttackRange = 6f;
     // 바람 사거리 = 태양과 동일: 색 차이는 거리표가 아니라 리듬(연사 vs 한 방)과 탄속이 만든다.
     private const float SwarmWindAttackRange = SwarmSunAttackRange;
-    // PvE 사거리 국소화 (2026-08-16 유저 판정: 몹이 위협적이지 않다). 1000은 구역 전체를
-    // 덮어, 화면 밖 7m에 선 몹이 등장하는 순간부터 계속 맞으며 걸어왔다 — 도착하기 전에
-    // 죽으니 접촉이 성립하지 않는다. 봇 매치 9871477 실측: 1인당 처치 1.5회/초 대 피격
-    // 0.15회/초, 10대 1. 몹은 위협이 아니라 자원 자판기였다.
-    // 등장 거리(SupplyOffscreenDistance 7)에 맞춘다 — 뱀서라이크의 무기가 그렇듯 화면에
-    // 들어온 것만 친다. 그러면 걸어오는 1.6초가 화망을 통과하는 시간이 되고, 페이즈가
-    // 올라 HP가 24→64로 두꺼워질수록 실제로 도달하는 몹이 늘어난다.
+    // PvE 사거리 = 등장 거리(SupplyOffscreenDistance 7) — 뱀서라이크의 무기가 그렇듯 화면에 들어온 것만 친다.
+    // 구역 전체를 덮으면 화면 밖에 선 몹이 등장하는 순간부터 계속 맞으며 걸어와 도착 전에 죽으니 접촉이 성립하지
+    // 않고 몹은 위협이 아니라 자원 자판기가 된다. 걸어오는 1.6초가 화망을 통과하는 시간이고, 페이즈가 올라
+    // HP가 두꺼워질수록 실제로 도달하는 몹이 늘어난다.
     private const float SwarmPveSameAreaAttackRange = 7f;
 
     /// <summary>
@@ -3630,16 +3575,15 @@ public partial class GameServer
         // #229 5단계: 스웜에서는 이동속도(부츠)·열쇠를 떨구지 않는다. 기동력은 바람 오브가
         // 맡고, 폐쇄 문은 시간이 여닫는 것이라 열쇠로 뚫는 예외가 없다 — 몹이 떨구면 바닥에
         // 쓰지 못하는 아이템만 쌓인다.
-        // 하트는 되살린다 (2026-08-16 유저 결정: 회복이 수면밖에 없다). 상자 탐색을 끈 뒤로
-        // 즉시 회복 공급처가 통째로 사라졌고, 일반 몹 3% 드롭을 붙였는데도 이 게이트가
-        // 스폰 직전에 지워 매치 2744에서 처치 2,895마리에 하트 0개가 나왔다.
+        // 하트는 떨군다(회복이 수면밖에 없다는 결정): 상자 탐색을 끈 뒤로 즉시 회복 공급처가 통째로 사라지므로,
+        // 일반 몹 3% 드롭을 이 게이트가 스폰 직전에 지우면 안 된다.
         if (Config.IsSwarmExploreDisabled())
         {
             bootsReward = 0;
             keyReward = 0;
         }
 
-        // 몹 소환석 자동 습득 (2026-08-28 유저 결정 "잡으면 몸으로 끌려와 자동 습득"): 처치
+        // 몹 소환석 자동 습득 (유저 결정 "잡으면 몸으로 끌려와 자동 습득"): 처치
         // 보상 소환석은 바닥을 거치지 않고 처치자에게 즉시 귀속된다 — 원거리 오브 처치가
         // 표준이라 드랍 자리까지 걸어가 줍는 동선이 전투 리듬을 끊었다. 클라는 몬스터
         // 위치(AwardSource)에서 몸으로 빨려오는 흡수 연출로 같은 사실을 그린다.

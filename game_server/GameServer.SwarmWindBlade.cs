@@ -7,12 +7,9 @@ using network.common.data.models;
 namespace game_server;
 
 /// <summary>
-///     바람 = 회전 칼날 (#268, 2026-08-25 유저 결정). 바람 오브는 제자리(열 좌표)에서 돌며 반경 안
-///     전원을 주기 틱으로 간다 — 믹서기. 반경 안 몬스터는 틱 PvE 피해, 소유자 아닌 플레이어는
-///     충격 1회(피해자 0.9초 창 — 바람 전용, 태양의 면역 전면 퇴역과 무관). 표적 선택·예고·돌진이
-///     없다 — 판정 반경이 곧 무기다.
-///     몸통박치기 세대(감지→돌진→착지, 2026-08-17)는 퇴역: 감지 대기가 병목이라 실효 간격이
-///     3.5초였고, 3박자 연출로도 직관적으로 읽히지 않았다.
+///     바람 = 회전 칼날 (#268). 바람 오브는 제자리(열 좌표)에서 돌며 반경 안 전원을 주기 틱으로 간다 — 믹서기.
+///     반경 안 몬스터는 틱 PvE 피해, 소유자 아닌 플레이어는 충격 1회(피해자 0.9초 창 — 바람 전용, 태양에는
+///     면역이 없다). 표적 선택·예고·돌진이 없다 — 판정 반경이 곧 무기다.
 ///     연출은 클라(PlayerTool.WindBlade): 오브 자전 + 판정 반경 칼날 원판 — 평시 저속, 적 감지 시
 ///     가속·발광. 서버는 별도 연출 패킷을 보내지 않는다 — 피해 틱의 피격 패킷이 곧 신호다.
 /// </summary>
@@ -22,10 +19,8 @@ public partial class GameServer
     private const float SwarmWindBladeMonsterRadius = 0.3f;
     private const float SwarmWindBladePlayerRadius = 0.25f;
 
-    // 바람 원복 (2026-08-26 유저 지시 "바람은 태양 피격박스 수정 이전으로"): 충격 면역 전면
-    // 퇴역은 태양 다발 화망의 침묵 관통 수리였다 — 바람 칼날은 예고선(회전 링)이 오브 위치
-    // 그대로라 표시=판정 어긋남이 없었고, 면역까지 걷히면 순수 연타 상향이 딸려온다.
-    // 바람만 종전과 같은 피해자 0.9초 창을 되살린다 (옛 SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS 값).
+    // 바람만 피해자 면역 창을 둔다: 칼날은 예고선(회전 링)이 오브 위치 그대로라 표시=판정 어긋남이 없고, 면역까지
+    // 걷히면 순수 연타 상향이 딸려온다 — 태양의 면역 제거는 침묵 관통 수리였지 연타 상향이 아니다.
     private const double SwarmWindBladeVictimImmuneSeconds = 0.9d;
 
     private void ProcessSwarmWindBlades(
@@ -86,9 +81,8 @@ public partial class GameServer
                     (playersInRadius ??= new List<SwarmParticipantSpatial>()).Add(participant);
                 }
 
-                // 짧은 시동 게이트 (2026-08-25 재조정): 옛 0.9초 게이트(체감 1.4초)는 퇴역했지만,
-                // "즉시 틱"은 오브가 돌기도 전에 피해가 들어가 어색했다(유저 제보) — 표적이 반경에
-                // 든 순간부터 클라 회전 20% 도달에 맞춘 0.2초만 기다린다. 반경이 비면 리셋.
+                // 짧은 시동 게이트: "즉시 틱"은 오브가 돌기도 전에 피해가 들어가 어색하다 — 표적이 반경에 든 순간부터
+                // 클라 회전 20% 도달에 맞춘 0.2초만 기다린다. 반경이 비면 리셋.
                 if (monstersInRadius == null && playersInRadius == null)
                 {
                     windBlade.ResetEngagement(owner.PlayerId, item.ItemUid);
