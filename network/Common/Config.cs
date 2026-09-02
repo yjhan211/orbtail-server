@@ -63,7 +63,7 @@ namespace network.common
         /// <summary>부츠 (#222 M4): 10초 이속 버프 픽업 — 다트 고블린 드랍. 사람 전용.</summary>
         public const int BOOTS_GROUND_ITEM_ID = 107000080;
         public static int BOOTS_SPEED_DURATION_SECONDS => SwarmConfigData.GetInt("BOOTS_SPEED_DURATION_SECONDS", 10);
-        // 1.5 (#222 3차): 1.4는 밋밋, 1.6은 과속 — 기본 5 → 7.5, 서버 검증 상한(10) 안.
+        // 1.5: 기본 5의 1.5배 = 7.5, 서버 검증 상한(10) 안 (#222).
         public static float BOOTS_MOVE_SPEED_MULTIPLIER => SwarmConfigData.GetFloat("BOOTS_MOVE_SPEED_MULTIPLIER", 1.5f);
 
         /// <summary>
@@ -87,7 +87,7 @@ namespace network.common
         public const int KEY_STATUS_EFFECT_ID = 1102;
 
         /// <summary>
-        ///     무방비 (2026-08-16 유저 결정, 구 "필사의 탈주"): 오브 0개 상태의 시각화.
+        ///     무방비 (구 "필사의 탈주"): 오브 0개 상태의 시각화.
         ///     새 능력이 아니라 이미 있는 현상을 읽히게 한 것이다 — 공격·절단 불가에
         ///     잔상 우선 표적까지 걸린 상태이므로, 이름과 설명을 그 규칙으로 갈아 끼운다.
         ///     이속 가속은 2초만 유지되므로(SWARM_BARE_MOVE_SPEED_SECONDS) 더는
@@ -96,19 +96,19 @@ namespace network.common
         public const int BARE_STATUS_EFFECT_ID = 1103;
 
         /// <summary>
-        ///     필사의 저항 (2026-08-16 유저 결정): 절단당한 직후 반격 보호 창의 시각화.
+        ///     필사의 저항: 절단당한 직후 반격 보호 창의 시각화.
         ///     내 꼬리를 자른 상대의 본체 공격만 무효가 된다(#227 7단계) — 제3자·잔상은
         ///     그대로 들어온다. 서버가 잔광 VFX와 같은 시점·지속으로 보낸다.
         /// </summary>
         public const int RETALIATION_STATUS_EFFECT_ID = 1104;
 
-        /// <summary>침수 (#268, 2026-08-25): 파도 소용돌이 피격 — 5초 이동 감속 디버프.</summary>
+        /// <summary>침수 (#268): 파도 소용돌이 피격 — 5초 이동 감속 디버프.</summary>
         public const int WAVE_SOAKED_STATUS_EFFECT_ID = 1105;
 
-        /// <summary>화상 (#268, 2026-08-25): 태양 미사일 피격 — 3초 틱 피해 디버프.</summary>
+        /// <summary>화상 (#268): 태양 미사일 피격 — 3초 틱 피해 디버프.</summary>
         public const int SUN_BURN_STATUS_EFFECT_ID = 1106;
 
-        /// <summary>상처 (#268, 2026-08-25): 바람 칼날 피격 — 5초간 치명타 피격 확률 증가 디버프.</summary>
+        /// <summary>상처 (#268): 바람 칼날 피격 — 5초간 치명타 피격 확률 증가 디버프.</summary>
         public const int WIND_WOUND_STATUS_EFFECT_ID = 1107;
 
         /// <summary>
@@ -138,7 +138,7 @@ namespace network.common
 
         // 오브열 (#226 실험 α/β): 오브가 이동 경로를 따라오는 전투열 — 클라 배치와
         // 서버 판정(오브별 공격 원점·본체 접촉)이 같은 값을 쓴다 (표시 = 판정).
-        // 0.9→0.7 (#227): 꼬리를 촘촘하게 — 열 응집감 + 림 메타볼 연결 강화.
+        // 꼬리를 촘촘하게 (#227) — 열 응집감 + 림 메타볼 연결 강화.
         public static float SWARM_ORB_TRAIL_SPACING => SwarmConfigData.GetFloat("SWARM_ORB_TRAIL_SPACING", 0.7f);
         public static float SWARM_ORB_TRAIL_FIRST_OFFSET => SwarmConfigData.GetFloat("SWARM_ORB_TRAIL_FIRST_OFFSET", 0.7f);
 
@@ -163,11 +163,9 @@ namespace network.common
         public static bool IsSwarmExploreDisabled() => !SWARM_EXPLORE_AND_CONSUMABLES_ENABLED;
 
         /// <summary>
-        ///     스웜 아레나 매치 정원. P0-a는 1(솔로), P0-b는 2, 3쌍 깔때기(성장곡선 v3)는 6.
+        ///     스웜 아레나 매치 정원. School2 신맵은 1인 시작방 8곳 × 합류 4세트 동심원 구조라 정원 = 시작방 수.
         ///     사람은 항상 1명이고 나머지는 봇으로 채운다.
         /// </summary>
-        // #223 10인 전환 (2026-08-11, M5) → #272 8인 전환 (2026-08-27): School2 신맵은
-        // 1인 시작방 8곳 × 합류 4세트 동심원 구조 — 정원 = 시작방 수.
         public static int SWARM_PLAYERS_PER_MATCH => SwarmConfigData.GetInt("SWARM_PLAYERS_PER_MATCH", 8);
 
         /// <summary>
@@ -178,7 +176,7 @@ namespace network.common
 
         /// <summary>
         ///     매치 맵의 중앙 수렴 구역 (자기장 중심·보스 무대·교차사격 샌드박스 스폰).
-        ///     #272 가운데 병합 (2026-08-27 유저 지시): 1차 통로·테라스·운동장을 S2Corridor9
+        ///     #272 가운데 병합: 1차 통로·테라스·운동장을 S2Corridor9
         ///     하나로 묶었다 — 구역 단위 프랍 가시성이 광장 내부에서 토글되지 않게. 자기장
         ///     중심은 이 구역 rect들의 경계 상자 중심(138.5, 23)이라 병합 전과 동일하다.
         /// </summary>
@@ -205,25 +203,23 @@ namespace network.common
         ///     자기장 수축 유예(초) — 개전 후 이 시간 동안 전 맵 안전, 이후 매치 종료까지 안전
         ///     반경이 최대치에서 0으로 선형 수축한다 (종료 시 운동장 중심만 안전). 서버 판정과
         ///     클라 경계 렌더가 같은 값으로 보간한다.
-        ///     60 → 0 (2026-08-26 유저 결정): 개전 즉시 매치 전체 길이에 걸쳐 천천히 조인다 —
-        ///     경계가 처음부터 존재해야 경계 토출 몹 스폰의 원천이 마르지 않는다.
+        ///     유예 0: 개전 즉시 매치 전체 길이에 걸쳐 천천히 조인다 — 경계가 처음부터 존재해야 경계 토출 몹
+        ///     스폰의 원천이 마르지 않는다.
         /// </summary>
         public static int SWARM_FIELD_HOLD_SECONDS => SwarmConfigData.GetInt("SWARM_FIELD_HOLD_SECONDS", 0);
 
         /// <summary>
-        ///     자기장 수축 곡선 지수 (#272, 2026-08-27 유저 결정 "방이 짧고 운동장이 길다"):
-        ///     1 = 선형, 커질수록 초반 느리고 후반 빠르다 (안전 반경 = Max×(1−진행률^지수)).
-        ///     1.4 기준 시작방 폐쇄 87→약 124초, 합류 141→약 175초, 종반 압축. 서버 판정·클라
-        ///     경계 렌더·파생 시간표가 SwarmPressureField의 같은 곡선 함수를 쓴다.
+        ///     자기장 수축 곡선 지수 (#272): 1 = 선형, 커질수록 초반 느리고 후반 빠르다 (안전 반경 = Max×(1−진행률^지수)).
+        ///     방은 짧게, 운동장은 길게 — 종반을 압축하기로 결정. 서버 판정·클라 경계 렌더·파생 시간표가
+        ///     SwarmPressureField의 같은 곡선 함수를 쓴다.
         /// </summary>
         public static double SWARM_FIELD_SHRINK_EXPONENT => SwarmConfigData.GetDouble("SWARM_FIELD_SHRINK_EXPONENT", 1.4d);
 
         /// <summary>문 게이지 시간(초) — 시작방 문: 혼자 여는 관문이라 짧다. 봇 채널도 같은 값.</summary>
         public static float SWARM_DOOR_GAUGE_SECONDS => SwarmConfigData.GetFloat("SWARM_DOOR_GAUGE_SECONDS", 3f);
 
-        // 합류→중앙 J 문 12초 근거 (#272, 2026-08-27 유저 결정 "J에서 둘이 싸우게"): 길게 잡아
-        // 선착자도 후착자 도착 전까지 못 나가고, 두 번째 문부터는 피격이 게이지를 리셋하므로
-        // "문을 열려면 상대를 먼저 처리해야 한다"가 규칙에서 나온다. 값은 door_info.csv 저작.
+        // 합류에서 중앙으로 가는 J 문이 긴 이유 (#272): 선착자도 후착자 도착 전까지 못 나가고, 두 번째 문부터는
+        // 피격이 게이지를 리셋하므로 "문을 열려면 상대를 먼저 처리해야 한다"가 규칙에서 나온다. 값은 door_info.csv 저작.
 
         /// <summary>
         ///     #272 School2 문 등급: 합류→중앙 J 문만 듀얼 관문 게이지(12초), 나머지는 기본(3초).
@@ -240,12 +236,11 @@ namespace network.common
         ///     다음 개봉이 비싸진다. 3머지가 오브 수를 줄이면 비용이 도로 내려간다 —
         ///     슬롯 차단 대신 비용 곡선이 성장을 억제한다. 사람·봇 공통.
         /// </summary>
-        // 5 → 1 (#226 웨이브 전환): 상시 쫓기는 판에서 첫 소환이 5석이면 초반이 마른다 —
-        // 초반은 싸게, 성장 억제는 오브 수 비례 가산이 맡는다.
+        // 첫 소환은 싸게 — 상시 쫓기는 판에서 초반이 마르지 않게 하고, 성장 억제는 오브 수 비례 가산이 맡는다.
         public static int SWARM_EXPLORE_COST_BASE => SwarmConfigData.GetInt("SWARM_EXPLORE_COST_BASE", 1);
 
         /// <summary>스팟 리젠 시간(초). 개봉된 스팟은 사라지지 않고 이 시간 뒤 다시 나온다.
-        ///     0 → 30 (#226 단계 C): 상자 = 소모품(하트·부츠) 공급처 — 즉시 리젠이면 하트가 무한이다.</summary>
+        ///     상자 = 소모품(하트·부츠) 공급처라 즉시 리젠이면 하트가 무한이다.</summary>
         public static int SWARM_EXPLORE_REGEN_SECONDS => SwarmConfigData.GetInt("SWARM_EXPLORE_REGEN_SECONDS", 30);
 
         /// <summary>
@@ -300,11 +295,7 @@ namespace network.common
         ///     성장을 억제한다. 이 값은 정상 5분 매치에서 닿지 않는 이상 상황 방지용 안전장치일 뿐이다.
         ///     클라 꼬리 슬롯 수와 같아야 한다 (PlayerTool.MaxOrbSlots).
         /// </summary>
-        // 30 → 99 (#226 오브열): 머지 폐지로 성장 = 열 길이 — 사실상 무제한, 비용 곡선이 억제자.
-        // 99 → 6 (#232 1절): 꼬리는 6칸 빌드판이다. 성장은 길이가 아니라 유지·합성·교체로 돈다.
-        // 6 → 99 (#232 무한 꼬리, 2026-08-17): 플레이어에게 보이는 상한은 없다. 이 값은 정상 5분
-        // 매치에서 닿지 않는 내부 안전장치일 뿐이고, 포화 상태·포화 해소 UI는 쓰지 않는다.
-        // 클라 PlayerTool.MaxOrbSlots(99)와 같아야 한다.
+        // 클라 PlayerTool.MaxOrbSlots(99)와 같아야 한다. 포화 상태·포화 해소 UI는 쓰지 않는다.
         public const int SWARM_ORB_CAPACITY = 99;
 
         /// <summary>오브 보유 안전상한 — 무한 꼬리라 실질 상한이 아니다 (SWARM_ORB_CAPACITY 주석 참조).</summary>
@@ -314,15 +305,15 @@ namespace network.common
         /// <summary>
         ///     스웜 기본 오브 사거리. 서버 전투(GameServer.SwarmArena)와 클라 사거리 링
         ///     (PlayerRangeRing)이 같은 값을 읽어야 표시와 판정이 일치한다.
-        ///     7 → … → 3 → 2.5 (2026-08-07): 좁은 시작이 파도(사거리 성장) 여지다.
+        ///     좁게 시작한다 — 사거리 성장의 여지다.
         ///     다트 고블린 사거리(5)의 절반 — 원거리 몹 접근엔 피격 감수가 전제.
         ///     battle_item_combat.csv attack_range(2.5)와 동기 필수 (#292).
         /// </summary>
         public static float SWARM_ORB_ATTACK_RANGE => SwarmConfigData.GetFloat("SWARM_ORB_ATTACK_RANGE", 2.5f);
 
         /// <summary>
-        ///     오브 궤도 (#232, 2026-08-17 서버 공유): 오브는 본체 주위 타원 궤도를 돈다 — 이동한 거리만큼
-        ///     (2026-08-17 유저 지시: 이동할 때 돌고 멈추면 선다). 위상 = 시드 + 이동 거리 × 도/단위.
+        ///     오브 궤도 (#232): 오브는 본체 주위 타원 궤도를 돈다 — 이동한 거리만큼 돌고 멈추면 선다.
+        ///     위상 = 시드 + 이동 거리 × 도/단위.
         ///     서버가 검증 이동으로 적산해 G_TO_C_MOVE에 실어 보내고(권위), 클라는 자기 트랜스폼 이동으로
         ///     같은 식을 적산하다 그 값으로 보정한다 — 서버는 그 자리를 오브별 발사 원점·표적 선정 기준으로
         ///     쓰고, 클라는 그 자리에 그린다. 9도/단위 = 걷기 속도 6에서 54도/초.
@@ -336,7 +327,7 @@ namespace network.common
         public const float SWARM_ORB_ORBIT_CENTER_OFFSET_Y = 0.8f;
 
         /// <summary>
-        ///     유저간 사격 사거리 (2026-08-16 유저 명세). PvE(7)보다 짧게 — 붙어야 싸운다.
+        ///     유저간 사격 사거리. PvE(7)보다 짧게 — 붙어야 싸운다.
         ///     플레이어 본체 기준으로 잰다: 오브별 원점으로 재면 꼬리가 길수록 사정권이
         ///     늘어나 "오브 수는 PvP 화력을 키우지 않는다"는 규칙과 어긋나고, 링 하나로
         ///     표시할 수도 없다. 클라 표시(PlayerRangeRing)가 같은 값을 읽는다.
@@ -344,7 +335,7 @@ namespace network.common
         public static float SWARM_PVP_ATTACK_RANGE => SwarmConfigData.GetFloat("SWARM_PVP_ATTACK_RANGE", 5f);
 
         /// <summary>
-        ///     유저간 사격에 참여하는 오브 수 = 앞열 이만큼 (2026-08-16 유저 명세).
+        ///     유저간 사격에 참여하는 오브 수 = 앞열 이만큼.
         ///     전체 오브가 사람을 쏘면 20개 꼬리가 3개 꼬리를 그대로 녹인다. 상한을 두면
         ///     오브 수는 PvE 성장과 절단 위험만 키우는 축이 된다.
         /// </summary>
@@ -359,7 +350,7 @@ namespace network.common
         public static int SWARM_CROSSFIRE_SHOCK_CORRUPTION => SwarmConfigData.GetInt("SWARM_CROSSFIRE_SHOCK_CORRUPTION", 50);
 
         /// <summary>
-        ///     받는 피해 배율 (2026-08-18 유저 지시 "봇·플레이어 전부 지금의 1/3만 받게"): 사람·봇 공통,
+        ///     받는 피해 배율(봇·플레이어 전부 1/3만 받게 결정): 사람·봇 공통,
         ///     PvP 충격(태양·바람·파도)과 잔상 접촉·원거리 피해에 곱한다. 절단 자해(+35)와 폐쇄 즉사는 대상 아님.
         ///     최솟값 1 — 0이 되면 "맞았는데 안 닳는" 피격이 생긴다.
         /// </summary>
@@ -369,12 +360,11 @@ namespace network.common
         public static int ScaleSwarmDamageTaken(int damage) =>
             damage <= 0 ? damage : Math.Max(1, (int)Math.Round(damage * SWARM_DAMAGE_TAKEN_MULTIPLIER));
 
-        // 충격 면역 퇴역 이력: 소유자 초당 1회 상한(2026-08-24) → 피해자 0.9초 면역
-        // (SWARM_CROSSFIRE_VICTIM_IMMUNE_SECONDS)도 2026-08-26 퇴역 — 태양 다발 화망에서
-        // 첫 발 이후가 소리 없이 관통해 "안 맞는" 오독을 만들었다. 지나간 발은 다 맞는다.
+        // 충격 면역은 없다 — 태양 다발 화망에서 첫 발 이후가 소리 없이 관통하면 "안 맞는" 오독이 된다.
+        // 지나간 발은 다 맞는다.
 
         /// <summary>
-        ///     화상 (#268, 2026-08-25): 태양 미사일 충격에 맞으면 3초간 매초 틱 피해 —
+        ///     화상 (#268): 태양 미사일 충격에 맞으면 3초간 매초 틱 피해 —
         ///     틱당 = 충격의 0.2배(≈3). 재피격 시 지속이 갱신된다(중첩 없음). 몹은 제외 —
         ///     태양 PvE 화력은 이미 직격이 정점이다.
         /// </summary>
@@ -383,7 +373,7 @@ namespace network.common
         public static float SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER", 0.2f);
 
         /// <summary>
-        ///     상처 (#268, 2026-08-25): 바람 칼날 충격에 맞으면 5초간, 이후 받는 PvP 충격이
+        ///     상처 (#268): 바람 칼날 충격에 맞으면 5초간, 이후 받는 PvP 충격이
         ///     이 확률로 치명타(PvE와 같은 2배)가 된다. 평시 PvP 충격은 치명타가 없다 —
         ///     상처가 그 문을 연다. 재피격 시 지속 갱신(중첩 없음).
         /// </summary>
@@ -394,13 +384,12 @@ namespace network.common
         ///     한 플레이어가 동시에 유지할 수 있는 교차사격 예고 수 (명세 "동시 예고 최대 2개"). 예고(시전)
         ///     중인 모양만 센다 — 예고 시간이 0인 지금은 사실상 안 걸리고, 예고를 되살릴 때를 위해 남긴다.
         ///     상한에 닿은 소유자의 태양은 표적을 잡지 않고 기다렸다가(리졸버 필터) 자리가 나면 쏜다 —
-        ///     버리지 않는다. 모양 없이 때리던 옛 폴백은 "안 맞은 몹이 죽는" 보이지 않는 피해였다
-        ///     (2026-08-17 유저 제보: 봇 매치에서 예고 594건에 폴백 1293건). 표시 = 판정.
+        ///     버리지 않는다. 모양 없이 때리던 옛 폴백은 "안 맞은 몹이 죽는" 보이지 않는 피해였다 — 표시 = 판정.
         /// </summary>
         public const int SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER = 2;
 
         /// <summary>
-        ///     태양 투사체 (2026-08-24 최종): 같은 타일 X/Y축 표적을 향해 큰 구체 하나가 직진하며
+        ///     태양 투사체: 같은 타일 X/Y축 표적을 향해 큰 구체 하나가 직진하며
         ///     선상의 몬스터·플레이어를 대상당 한 번 관통 타격한다. 벽에서는 피해 없는 시각 폭발,
         ///     벽 없는 끝점에서는 폭발 없이 소멸한다. 예고 시간에는 고정된 시안색 바닥 경로선이
         ///     차오르고, 발사 순간 0.22초 점멸·페이드한 뒤 비행은 꼬리 없는 태양 구체가 전달한다.
@@ -419,52 +408,42 @@ namespace network.common
 
         /// <summary>
         ///     태양 투사체의 판정 폭(T1/T2/T3, 바닥면 단위) — 이 안에 몸이 걸리면 닿은 것.
-        ///     2026-08-26 ×2 실험은 같은 날 원복 (유저 제보 "허공에서 맞는다"): "안 맞는" 체감의
-        ///     원인은 폭이 아니라 세로 축이었다 — 몸통 캡슐 판정이 그걸 풀었으니 폭은 원래대로.
+        ///     "안 맞는" 체감의 원인은 폭이 아니라 세로 축이었고 몸통 캡슐 판정이 그걸 풀었다 — 폭은 넓히지 않는다.
         /// </summary>
         private static readonly float[] DefaultSunWidthByTier = { 0.7f, 0.85f, 1f };
         public static float[] SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER =>
             SwarmConfigData.GetFloatArray("SWARM_CROSSFIRE_SUN_WIDTH_BY_TIER", DefaultSunWidthByTier);
 
         /// <summary>
-        ///     태양 표적 획득 거리(T1/T2/T3, 바닥면 단위). 투사체 길이로는 더 안 쓴다 (2026-08-24 유저
-        ///     결정: 투사체는 항상 구역 경계까지 난다) — 강화는 조준이 걸리는 거리만 늘린다.
+        ///     태양 표적 획득 거리(T1/T2/T3, 바닥면 단위). 투사체 길이로는 쓰지 않는다 (투사체는 항상 구역 경계까지
+        ///     난다) — 강화는 조준이 걸리는 거리만 늘린다.
         /// </summary>
         private static readonly float[] DefaultSunRangeByTier = { 4f, 5.5f, 7f };
         public static float[] SWARM_CROSSFIRE_SUN_RANGE_BY_TIER =>
             SwarmConfigData.GetFloatArray("SWARM_CROSSFIRE_SUN_RANGE_BY_TIER", DefaultSunRangeByTier);
 
         /// <summary>
-        ///     바람 = 회전 칼날 (2026-08-25 유저 결정, #268): 오브가 제자리에서 돌며 반경(티어별, 바닥면) 안
-        ///     전원을 주기 틱으로 간다 — 믹서기. 몬스터는 틱 PvE 피해, 소유자 아닌 플레이어는 충격(공용 면역 창).
-        ///     몸통박치기(2026-08-17 결정: 감지→돌진→착지)는 퇴역 — 감지 대기가 병목이라 실효 간격 3.5초였고,
-        ///     3박자 연출로도 직관적으로 읽히지 않았다. 이전에 회전 칼날을 기각했던 근거("아무도 없을 때
-        ///     혼자 도는 게 이상하다")는 평시 저속 자전 → 적 감지 시 가속·발광 연출로 해소한다.
-        ///     틱당 피해 = 발당 피해 × 0.75 — 슬램(× 1.5, 쿨 1.4초)과 단일 대상 DPS 동률(0.7초 틱 × 절반).
-        ///     반경에 붙어야 갈리는 무기라 밀집 실효 화력 상승은 접근 리스크가 값을 치른다 (유저 판정).
+        ///     바람 = 회전 칼날 (#268): 오브가 제자리에서 돌며 반경(티어별, 바닥면) 안 전원을 주기 틱으로 간다 —
+        ///     믹서기. 몬스터는 틱 PvE 피해, 소유자 아닌 플레이어는 충격(바람 전용 면역 창). "아무도 없을 때 혼자
+        ///     도는 게 이상하다"는 평시 저속 자전, 적 감지 시 가속·발광 연출로 해소한다. 반경에 붙어야 갈리는
+        ///     무기라 밀집 실효 화력 상승은 접근 리스크가 값을 치른다.
         /// </summary>
         private static readonly float[] DefaultWindBladeRadiusByTier = { 1.4f, 1.65f, 1.9f };
         public static float[] SWARM_WIND_BLADE_RADIUS_BY_TIER =>
             SwarmConfigData.GetFloatArray("SWARM_WIND_BLADE_RADIUS_BY_TIER", DefaultWindBladeRadiusByTier);
-        // 틱 0.35초 × 배율 0.375 (2026-08-25 2차: 0.7초 × 0.75에서 반분) — DPS는 그대로 두고
-        // 타격 빈도만 두 배로. "믹서기에 갈린다"는 잘게 자주 맞아야 읽힌다 (유저 지시).
+        // 틱 0.35초 × 배율 0.375 = 발당 피해 기준 DPS 유지 — "믹서기에 갈린다"는 잘게 자주 맞아야 읽힌다.
         public static float SWARM_WIND_BLADE_TICK_SECONDS => SwarmConfigData.GetFloat("SWARM_WIND_BLADE_TICK_SECONDS", 0.35f);
         public static float SWARM_WIND_BLADE_DAMAGE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_WIND_BLADE_DAMAGE_MULTIPLIER", 0.375f);
-        // 시동 게이트 (2026-08-25 유저 지시 "회전 한 20퍼는 돼야 데미지"): 표적이 반경에 든
-        // 순간부터 이 시간은 피해가 없다 — 클라 감지 폴링(0.15초)+가속 20% 도달(0.09초)에 맞춘
-        // 값. 반경이 비면 리셋된다(클라 감속과 대칭). 옛 0.9초 게이트(체감 1.4초)와 혼동 금지.
+        // 시동 게이트("회전 한 20퍼는 돼야 데미지"): 표적이 반경에 든 순간부터 이 시간은 피해가 없다 — 클라 감지
+        // 폴링(0.15초)+가속 20% 도달(0.09초)에 맞춘 값. 반경이 비면 리셋된다(클라 감속과 대칭).
         public static float SWARM_WIND_BLADE_SPINUP_SECONDS => SwarmConfigData.GetFloat("SWARM_WIND_BLADE_SPINUP_SECONDS", 0.2f);
 
         /// <summary>
-        ///     파도 = 소용돌이 (#268, 2026-08-25 유저 결정, 3차 "오브 위치 기준"). 물폭탄(표적
-        ///     스냅샷 낙하)과 합산 소용돌이(이동 거리 게이트 + 꼬리 끝 뒤 1개)는 퇴역: 파도 오브
-        ///     각각이 주기(2초)마다 자기 열 위치에 소용돌이를 깐다 — 오브가 곧 무기 위치(바람
-        ///     칼날과 같은 문법). 예고(0.65초 림 링) 후 반경 안 전원(몹·플레이어 동일)을 중심으로
-        ///     당기고 잠깐 늦춘다 — 피해는 타격 피드백 수준. 플레이어는 충격 면역 창(0.9초)이
-        ///     연쇄 당김을 막는다.
+        ///     파도 = 소용돌이 (#268): 파도 오브 각각이 주기(2초)마다 자기 열 위치에 소용돌이를 깐다 — 오브가 곧
+        ///     무기 위치(바람 칼날과 같은 문법). 예고(0.65초 림 링) 후 반경 안 전원(몹·플레이어 동일)에게 타격
+        ///     피드백 피해와 "침수" 디버프(5초 25% 감속, WAVE_SOAKED_STATUS_EFFECT_ID)를 준다.
+        ///     변위(당김·밀침·원 밖 축출)는 쓰지 않기로 결정.
         /// </summary>
-        // 변위(당김·밀침·원 밖 축출) 실험은 전부 기각 (2026-08-25 유저 판정) — 효과는
-        // "침수" 디버프(5초 25% 감속, WAVE_SOAKED_STATUS_EFFECT_ID)와 타격 피드백 피해만.
         public static float SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER => SwarmConfigData.GetFloat("SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER", 0.25f); // 현행 물폭탄 피해의 1/4
 
 
@@ -486,8 +465,8 @@ namespace network.common
 
         // ===== 6칸 빌드 (#232 4단계) =====
         /// <summary>
-        ///     시작 지급 (#232 4단계, 2026-08-17): 무작위 T1 공격 오브 3개 + 소환석 5. 첫 화력을 들고
-        ///     시작하고, 첫 판단은 유지·계열 강화·파괴로 옮긴다. 08-16의 "소환석 19로 시작"은 되돌린다.
+        ///     시작 지급 (#232 4단계): 무작위 T1 공격 오브 3개 + 소환석 5. 첫 화력을 들고 시작하고,
+        ///     첫 판단은 유지·계열 강화·파괴로 옮긴다.
         /// </summary>
         public static int SWARM_STARTING_ORB_GRANT_COUNT => SwarmConfigData.GetInt("SWARM_STARTING_ORB_GRANT_COUNT", 3);
         public static int SWARM_STARTING_STONE_GRANT => SwarmConfigData.GetInt("SWARM_STARTING_STONE_GRANT", 5);

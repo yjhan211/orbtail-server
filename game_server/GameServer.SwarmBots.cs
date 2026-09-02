@@ -16,21 +16,15 @@ public partial class GameServer
     // 봇 = 가짜 플레이어(참가자 레이어). 호출 순서는 여전히 SwarmArena 틱 본체가 소유한다.
 
 
-    // 봇 오염 자연 회복: 회복 오브 운에 기대지 않는 생존 바닥. 마지막 피격 후 유예가
-    // 지나면 초당 일정량 회복한다 — "도망 성공"이 실제 생존이 되게 (계측: 매치 2223에서
-    // 봇 오염이 단조 증가해 85초 전멸). 사람은 위로 오브가 같은 역할을 하므로 제외.
-    // 봇 수동 회복 (#229 4단계-보정 하향): 4초 유예 뒤 초당 4는 접촉 피해 최대치(1.25~2.5/초)를
-    // 앞질러, 봇이 잔상에게 수학적으로 죽을 수 없었다 — 매치 9761085에서 탈락 9건이 전부
-    // 폐쇄사이고 몹 사망 0건인 이유다. 사람은 이만한 수동 회복이 없다(수면은 정지·무피격을
-    // 요구하고 맞으면 끊긴다). 유예를 늘리고 속도를 낮춰 같은 압력을 받게 한다.
+    // 봇 오염 자연 회복: 회복 오브 운에 기대지 않는 생존 바닥. 마지막 피격 후 유예가 지나면 초당 일정량
+    // 회복한다 — "도망 성공"이 실제 생존이 되게. 사람은 위로 오브가 같은 역할을 하므로 제외. 유예 6초·초당 2는
+    // 접촉 피해 최대치(1.25~2.5/초)를 앞지르지 않는 값이다 — 앞지르면 봇이 잔상에게 수학적으로 죽을 수 없고,
+    // 사람은 이만한 수동 회복이 없다(수면은 정지·무피격을 요구하고 맞으면 끊긴다).
     private const double SwarmBotRecoveryGraceSeconds = 6d;
     private const int SwarmBotRecoveryPerSecond = 2;
 
     private const float SwarmBotOpenRange = 1.6f;
-    // 봇 접촉 피해 배율은 퇴역했다 (2026-08-16). 사람 쪽 반감(SwarmMonsterDamageTakenMultiplier)을
-    // 걷을 때 이 쌍둥이를 놓쳐, 사람만 설계값 2/3/4/6/8을 받고 봇은 절반을 받고 있었다 —
-    // 봇 매치 9864958에서 피격 85건의 피해가 1(77건)·2(8건)뿐이었다(round(2*0.5)=1, round(3*0.5)=2).
-    // 같은 규칙을 받아야 봇 매치로 위협도를 잴 수 있다.
+    // 봇 접촉 피해 배율은 1 — 사람과 같은 규칙을 받아야 봇 매치로 위협도를 잴 수 있다.
     private const float SwarmBotContactDamageMultiplier = 1f;
 
 
@@ -95,14 +89,14 @@ public partial class GameServer
     {
         doorId = 0;
         float best = float.MaxValue;
-        // 폐쇄 문 규칙은 사람과 같다 (2026-08-18): 밖에서 폐쇄 구역으로 들어가는 문은 못 따고,
+        // 폐쇄 문 규칙은 사람과 같다: 밖에서 폐쇄 구역으로 들어가는 문은 못 따고,
         // 내가 폐쇄 구역 안이면 어느 문이든 따서 나간다.
         bool insideClosed = _areaClosureManager.IsAreaClosed(matchingId, bot.CurrentArea);
         foreach (var door in GameDoorData.GetByAreaType(bot.CurrentArea))
         {
             if (!GameInteractableData.IsGaugeGatedDoor(door.DoorId)) continue;
             if (_doorStateManager.IsDoorOpen(matchingId, door.DoorId)) continue;
-            // 단방향 문 (2026-08-28 플레이 제보 "봇이 바깥에서 문을 따고 들어온다"): 게이지가
+            // 단방향 문("봇이 바깥에서 문을 따고 들어온다" 제보): 게이지가
             // 놓인 쪽(안쪽)에서만 딴다 — 사람은 게이지 노출 규칙이 이미 막고 있고, 봇도 같은
             // 표를 따른다. 폐쇄 구역 탈출은 예외 (사람 규칙과 동일).
             if (!insideClosed &&
@@ -257,9 +251,8 @@ public partial class GameServer
     private const double SwarmBotClosureEvacuatePerOrbSeconds = 0.5d;
 
     // 자기장 대피 여유 (셀, #272): 경계에 이만큼 다가서면 미리 물러나고, 두 배 안쪽까지 들어간다.
-    // 3 → 5 (School2 실측 9006207): 반경이 커진 신맵은 경계가 초당 약 0.28셀로 60% 빨라
-    // 3셀 마진이 11초에 불과했다 — 합류→통로 이송 중 봇 5/8이 오염사. 5셀 = 약 18초로
-    // School 시절 여유를 복원한다. 재발동 간격도 같은 비율이라 와리가리하지 않는다.
+    // 5셀 = 약 18초 여유. School2는 경계가 초당 약 0.28셀로 조여 3셀이면 11초뿐이라 합류에서 통로로 이송하는
+    // 중에 오염사한다. 재발동 간격도 같은 비율이라 와리가리하지 않는다.
     private const int SwarmBotFieldEvacuateMarginCells = 5;
 
     // 방 마감 선제 탈출 리드 (초): 문 잠금 전에 방을 비우는 여유 — 큰 방 횡단 + 문 경유 시간.
@@ -373,7 +366,7 @@ public partial class GameServer
                 BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, evacuationCell));
         }
 
-        // 0.2) 자기장 셀 대피 (#272, 2026-08-26 유저 제보 "봇이 자기장을 무시한다"): 구역 단위
+        // 0.2) 자기장 셀 대피 (#272): 구역 단위
         //      신호(완전-밖·경고)만 보면 경계가 방을 관통하는 동안 빨간 쪽에 선 봇이 오염을
         //      그대로 마신다. 내 셀이 경계 밖이거나 여유(3셀) 안이면 같은 구역의 안쪽 셀로
         //      물러나고, 구역에 안전 셀이 없으면 경계 안 이웃 구역으로 나간다.
@@ -479,10 +472,9 @@ public partial class GameServer
             bot.SwarmBareSpeedUntilUtc =
                 DateTime.UtcNow.AddSeconds(Config.SWARM_BARE_MOVE_SPEED_SECONDS);
         bot.IsSwarmBareHanded = !hasSquadOrbs;
-        // 치명상 이탈 (2026-08-18 촬영 튜닝): 오염이 60%를 넘긴 봇은 전력 비교 없이 모든 상대를 강자로 보고
-        // 물러나며(추격도 압박도 없음), 45% 아래로 회복해야 다시 싸운다. 도주 임계를 넓힌 뒤 봇 매치 9133549에서
-        // 봇들이 죽을 때까지 맞붙어 2:44에 2마리만 남았다 — 다친 쪽이 등을 보이고 성한 쪽이 쫓는 그림이
-        // 카메라에 남아야 하고, 후반까지 살아 있는 봇이 있어야 폐쇄 수렴전이 선다.
+        // 치명상 이탈: 오염이 60%를 넘긴 봇은 전력 비교 없이 모든 상대를 강자로 보고 물러나며(추격도 압박도 없음),
+        // 45% 아래로 회복해야 다시 싸운다 — 다친 쪽이 등을 보이고 성한 쪽이 쫓는 그림이 서야 하고, 후반까지
+        // 살아 있는 봇이 있어야 폐쇄 수렴전이 선다.
         bool wounded = UpdateSwarmBotWoundedState(matchingId, bot);
         FindNearbySwarmRivals(matchingId, bot, wounded ? 0f : squadPower,
             includeMonstersAsStronger: !hasSquadOrbs,
@@ -503,7 +495,7 @@ public partial class GameServer
         {
             float attackerPower = GetSwarmSquadPower(matchingId, bot.LastProximityAttackerPlayerId);
             // 확실한 강자(×1.5 이상)에게 맞았을 때만 이탈 — 동수·소폭 열세 공격자에게는 압박 전진한다
-            // (2026-08-18 촬영 튜닝, SwarmBotFleePowerRatio 주석). 맞고 바로 등을 보이던 봇이 붙어 싸운다.
+            // (SwarmBotFleePowerRatio 주석).
             // 치명상이면 상대 전력과 무관하게 이탈한다.
             if (wounded || attackerPower >= squadPower * SwarmBotFleePowerRatio)
             {
@@ -741,7 +733,7 @@ public partial class GameServer
     /// <summary>
     ///     지역 공급 사냥 목적지 (#226 단계 B): 폐쇄·경계 밖을 제외하고 살아있는 공급 몹 중
     ///     가장 가까운 개체의 위치. 봇의 파밍 이동은 항상 Escort 모드로 나가야 개봉 채널
-    ///     완료 로직이 산다 (Return 단락 사고 2026-08-12).
+    ///     완료 로직이 산다 (Return 단락 사고).
     /// </summary>
     private bool TryFindNearestSwarmSupplyMonster(
         long matchingId, BotPlayerState bot, out AreaType area, out Vector3f position)
@@ -791,14 +783,12 @@ public partial class GameServer
     // 추격 우위 임계: 내 전력이 상대의 이 배수 이상일 때만 붙는다.
     private const float SwarmBotChasePowerAdvantage = 1.25f;
 
-    // 도주 임계 (2026-08-18 촬영 튜닝): 상대 전력이 내 전력의 이 배수 이상일 때만 피한다. 그 사이(동수·소폭
-    // 열세, 1/1.5 ~ 1.25배)는 중립 — 피하지도 붙지도 않고 하던 일을 한다.
-    // 동수 도주(#222 "동수는 강자 취급")는 오브 HP 소모전 시절 "뭉쳐서 대치"를 막던 규칙인데, 오브 손실이 절단
-    // 전용이 된 뒤로는 동수 대치가 서로의 꼬리 주위를 도는 코어 동사다. 사람 카메라 앞에서 봇이 늘 등을 보이며
-    // 흩어지던 원인이라 넓힌다. 빈손(전력 0)은 여전히 모두를 강자로 본다.
+    // 도주 임계: 상대 전력이 내 전력의 이 배수 이상일 때만 피한다. 그 사이(동수·소폭 열세, 1/1.5 ~ 1.25배)는
+    // 중립 — 피하지도 붙지도 않고 하던 일을 한다. 오브 손실이 절단 전용이 된 뒤로 동수 대치는 서로의 꼬리 주위를
+    // 도는 코어 동사라 동수를 강자로 보지 않는다. 빈손(전력 0)은 여전히 모두를 강자로 본다.
     private const float SwarmBotFleePowerRatio = 1.5f;
 
-    // 치명상 이탈 (2026-08-18 촬영 튜닝): 오염이 최대의 60%(252)에 닿으면 치명상, 45%(189) 아래로 내려와야
+    // 치명상 이탈: 오염이 최대의 60%(252)에 닿으면 치명상, 45%(189) 아래로 내려와야
     // 해제 — 회복 1틱에 상태가 뒤집혀 "도망↔복귀"가 떨리지 않게 히스테리시스를 둔다.
     private const float SwarmBotWoundedEnterRatio = 0.6f;
     private const float SwarmBotWoundedExitRatio = 0.45f;
@@ -832,7 +822,7 @@ public partial class GameServer
     // 스트레이프(수직 와리가리)는 퇴역 (#226): 1초 반전은 좌우 연타, 3초 버킷도 촐싹거림 —
     // 우세 피격 반응은 압박 전진(ChooseSwarmBotDirective)으로 대체됐다.
 
-    // 봇 절단 자제 (2026-08-18 촬영 튜닝): 절단 뒤 오염이 이 비율(최대 420의 절반 = 210)을 넘으면 봇은 자르지
+    // 봇 절단 자제: 절단 뒤 오염이 이 비율(최대 420의 절반 = 210)을 넘으면 봇은 자르지
     // 않고, 자른 뒤 이 시간 동안은 다시 자르지 않는다. 사람에게는 적용하지 않는다.
     private const float SwarmBotCutMaxCorruptionRatio = 0.5f;
     private const double SwarmBotCutCooldownSeconds = 6d;

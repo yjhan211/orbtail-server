@@ -8,10 +8,8 @@ using network.helpers;
 namespace game_server.services;
 
 /// <summary>
-///     봇 이동 AI. 자기 직책 발견 구역 우선 순회 + 폐쇄 회피.
-///     #26: "허수아비" 무작위 이동 → 직책별 목적성 동선으로 폴리싱.
-///     #125: 영역 전환/영역 내 셀 wander 시 BotMovementEvent 반환 → GameServer가 패킷 브로드캐스트.
-///     #127: walking pathfinding — 셀 단위 walk + 영역 경계 통과 BFS. WanderInArea 제거.
+///     봇 이동 AI: 셀 단위 walk + 영역 경계 통과 BFS 경로탐색, 폐쇄·자기장 회피. 영역 전환/영역 내 셀 이동은
+///     BotMovementEvent로 돌려주고 GameServer가 패킷을 브로드캐스트한다.
 /// </summary>
 public partial class BotPlayerManager
 {
@@ -44,7 +42,7 @@ public partial class BotPlayerManager
         float boots = DateTime.UtcNow < bot.BootsSpeedUntilUtc
             ? Config.BOOTS_MOVE_SPEED_MULTIPLIER
             : 1f;
-        // 빈손 이속 (#223 → #229 12단계): 사람과 같은 규칙 — 마지막 오브를 잃은 직후
+        // 빈손 이속: 사람과 같은 규칙 — 마지막 오브를 잃은 직후
         // 2초만 빨라지고 원복한다. 유예가 끝난 빈손은 잔상의 우선 표적이 되어 재건에 쫓긴다.
         float bare = bot.IsSwarmBareHanded && DateTime.UtcNow < bot.SwarmBareSpeedUntilUtc
             ? Config.SWARM_BARE_MOVE_SPEED_MULTIPLIER
@@ -309,8 +307,7 @@ public partial class BotPlayerManager
 
     /// <summary>
     ///     지역 혼잡도. 목적지를 고르는 봇 자신은 제외해야 한다. 자기가 선 방의 점수를
-    ///     스스로 깎으면 두 방을 1초 간격으로 왕복한다 (2026-07-30 matching 1983에서
-    ///     Storage↔Library 8회 진동 관측).
+    ///     스스로 깎으면 두 방을 1초 간격으로 왕복한다.
     /// </summary>
     private int CountAreaPressure(long matchingId, AreaType area, long excludeBotPlayerId = 0)
     {
@@ -384,7 +381,7 @@ public partial class BotPlayerManager
             }
         }
 
-        // 투사체 회피 반사 (#232 §9, 2026-08-18): 경로·휴식·대기보다 먼저 — 이 자리를 지나갈 태양 투사체가
+        // 투사체 회피 반사 (#232 §9): 경로·휴식·대기보다 먼저 — 이 자리를 지나갈 태양 투사체가
         // 있으면 그 직선의 수직으로 한 걸음 비켜선다. 경로는 버리지 않는다: 다음 틱에 비켜선 자리에서
         // 다음 웨이포인트로 이어 걷는다. 상호작용(채널링) 중만 예외 — 사람도 채널링 중엔 못 움직인다.
         if (TryDodgeStep(bot, matchingId, now, deltaSec, out var dodgeMovement))
@@ -452,7 +449,7 @@ public partial class BotPlayerManager
         bool reachedStep = false;
 
 
-        // 잠긴 문 통과 차단 (2026-08-16 유저 제보: 봇이 문 열리기 전에 들어온다).
+        // 잠긴 문 통과 차단 (유저 제보: 봇이 문 열리기 전에 들어온다).
         // 사람과 같은 판정을 쓴다 — 이 전이를 관장하는 문 하나만 보고, 그 문이 닫혀 있으면 버린다.
         if (nextStep.Area != bot.CurrentArea)
         {
@@ -491,7 +488,7 @@ public partial class BotPlayerManager
         Vector3f newPosition;
         Vector3f velocity;
 
-        // 벽 판정 (2026-08-16 유저 제보: 봇이 문이 아니라 벽으로 넘어다닌다).
+        // 벽 판정 (유저 제보: 봇이 문이 아니라 벽으로 넘어다닌다).
         // WalkStep은 웨이포인트로 직선 이동만 했다 — 경로가 한 칸이라도 어긋나면 그대로 통과한다.
         // 다음 웨이포인트가 비보행이면 그 경로는 이미 틀린 것이므로 버리고 다시 짠다.
         // 이미 벽 안에 서 있는 개체는 막지 않는다 — 막으면 영영 못 빠져나온다.
@@ -589,7 +586,7 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     투사체 회피 (#232 §9, 2026-08-18 "제자리 좌우 와리가리 금지"): 위협이 있으면 리졸버가 준 방향으로
+    ///     투사체 회피 (#232 §9, "제자리 좌우 와리가리 금지"): 위협이 있으면 리졸버가 준 방향으로
     ///     한 걸음 비켜서고 그 방향을 위협이 지나갈 때까지 커밋한다. 커밋 중에 띠 밖으로 나가 위협이 사라지면
     ///     원래 경로로 되돌아가지 않고 제자리에 선다 — 되돌아가면 다시 띠에 들어가 다시 비켜서는 떨림이 된다.
     ///     비켜선 칸이 벽이거나 다른 구역이면 반대쪽을 시도하고, 둘 다 막히면 회피 없이 원래 걸음.
@@ -714,8 +711,7 @@ public partial class BotPlayerManager
 
         // 복도는 통로다. 잔상 분포로 목적지를 정할 수 있으면 그것이 우선이고,
         // 못 정할 때만 가장 가까운 방으로 나간다. 이전에는 복도 탈출이 먼저 걸려
-        // 잔상 사냥 판단에 도달하지 못했고, 봇이 잔상 없는 방과 복도를 왕복했다
-        // (2026-07-30 6판 계측: 봇 1인당 잔상 타격 29회 대 사람 122회).
+        // 잔상 사냥 판단에 도달하지 못했고, 봇이 잔상 없는 방과 복도를 왕복했다.
         if (bot.CurrentArea.IsCorridor() && !needsGuardianOrb &&
             Config.MONSTER_SUMMON_ECONOMY_ENABLED &&
             TryStartAfterimageHuntPath(bot, matchingId, mapId, closureManager, inventoryManager, pveTargets))
@@ -809,8 +805,7 @@ public partial class BotPlayerManager
             .Select(item => item.ItemId)
             .ToArray();
         // 복도 잔상도 목적지가 된다. 폐쇄 페이즈마다 보상이 2배로 커지는데 봇만 방에
-        // 묶여 있으면, 사람만 아는 복도 파밍이 그대로 격차가 된다 (2026-07-31 match-2015:
-        // 사람 소환석 425 중 412가 복도, 봇 최고치는 123 중 20).
+        // 묶여 있으면, 사람만 아는 복도 파밍이 그대로 격차가 된다.
         // 다만 이미 복도에 서 있는 봇에게 복도를 다시 목적지로 주면 제자리에서 맴돈다.
         // 그 경우는 자동전투가 근처 잔상을 알아서 잡으므로 목적지에서만 뺀다.
         var areaGroups = pveTargets
@@ -823,7 +818,7 @@ public partial class BotPlayerManager
 
         // 경로 탐색이 이 틱의 비용을 지배한다. 잔상이 있는 모든 지역에 길을 찾으면
         // 봇 수 x 지역 수만큼 A*가 돌아 틱이 200~370ms까지 튀고, 그동안 이동 틱이
-        // 통째로 스킵되어 봇 위치 브로드캐스트가 끊긴다 (2026-07-31 계측: 200틱 중 93틱 스킵).
+        // 통째로 스킵되어 봇 위치 브로드캐스트가 끊긴다.
         //
         // 현재 지역과 인접 지역만 후보로 둔다. 미니맵이 잔상 분포를 공개하므로 봇이 그
         // 정보를 쓰는 것 자체는 규칙에 맞지만, 맵 반대편까지 직행할 필요는 없다. 인접
