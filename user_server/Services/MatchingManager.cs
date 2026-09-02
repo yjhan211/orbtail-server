@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.contracts.authentication;
+using network.infrastructure.routing;
 using network.interfaces;
 using user_server.network;
 
@@ -57,7 +58,6 @@ public class MatchingManager : IMatchingManager
             getSession,
             TryRunBackgroundOperation,
             _shutdownCts.Token,
-            GameServerAllocation.FromEnvironment(),
             logger);
         _pass = new MatchmakingPass(
             cacheHelper,
@@ -65,6 +65,7 @@ public class MatchingManager : IMatchingManager
             _matchingClaims,
             rosterBuilder,
             _handoff,
+            new GameServerAllocator(new RedisGameServerRegistry(cacheHelper), logger),
             overrides,
             _shutdownCts.Token,
             logger);

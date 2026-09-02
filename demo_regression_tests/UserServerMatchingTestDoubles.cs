@@ -5,6 +5,7 @@ using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.contracts.authentication;
+using network.contracts.routing;
 using network.interfaces;
 using RedLockNet;
 using StackExchange.Redis;
@@ -158,6 +159,17 @@ internal sealed class InMemoryCacheHelper : ICacheHelper
         RedisValue secondField, int db = -1) => throw new NotSupportedException();
 
     public Task<RedisValue[]> HashGetAsync(string key, RedisValue[] fields, int db = -1) => throw new NotSupportedException();
+
+    public Task<HashEntry[]> HashGetAllAsync(string key, int db = -1)
+    {
+        if (HashGetError != null) throw HashGetError;
+        lock (_sync)
+        {
+            return Task.FromResult(_hashes.TryGetValue(key, out var hash)
+                ? hash.Select(pair => new HashEntry(pair.Key, pair.Value)).ToArray()
+                : Array.Empty<HashEntry>());
+        }
+    }
 
     public Task<bool> HashDeleteAsync(string key, string field, int db = -1)
     {
@@ -386,6 +398,7 @@ internal sealed class RecordingHandoffPublisher : IMatchHandoffPublisher
     public List<string> Events { get; } = new();
     public Dictionary<long, IReadOnlyList<BotMatchingInfo>> StoredBots { get; } = new();
     public List<(long MatchingId, RosterChainLink Link, int RosterCount, int HumanRosterCount)> Deliveries { get; } = new();
+    public List<string> DeliveredNodeIds { get; } = new();
     public Func<long, bool> DeliverResult { get; set; } = _ => true;
     public HashSet<long> ThrowOnDeliver { get; } = new();
     public bool CancelAdmissionResult { get; set; } = true;
@@ -399,9 +412,10 @@ internal sealed class RecordingHandoffPublisher : IMatchHandoffPublisher
     }
 
     public Task<bool> DeliverMatchingSuccessAsync(RosterChainLink link, long matchingId, List<PlayerInfo> playerRoster,
-        List<GameHandoffRosterEntry> humanHandoffRoster)
+        List<GameHandoffRosterEntry> humanHandoffRoster, GameServerAllocation gameServer)
     {
         Deliveries.Add((matchingId, link, playerRoster.Count, humanHandoffRoster.Count));
+        DeliveredNodeIds.Add(gameServer.NodeId);
         Events.Add($"deliver:{matchingId}:{link.PlayerId}");
         if (ThrowOnDeliver.Contains(link.PlayerId))
             throw new InvalidOperationException($"delivery failed for {link.PlayerId}");
@@ -458,4 +472,43 @@ internal sealed class RecordingLogger : ILogger
 
     public bool Contains(LogLevel level, string text) =>
         _entries.Any(entry => entry.Level == level && entry.Message.Contains(text, StringComparison.Ordinal));
+}
+
+/// <summary>매칭 pass 테스트용 고정 배정자. <see cref="Allocation" />을 null로 두면 "받아 줄 노드 없음"을 흉내 낸다.</summary>
+internal sealed class FixedGameServerAllocator : IGameServerAllocator
+{
+    public const string DefaultNodeId = "game-server-0";
+
+    public GameServerAllocation? Allocation { get; set; } = new("127.0.0.1", 9001, DefaultNodeId);
+    public int Calls { get; private set; }
+
+    public Task<GameServerAllocation?> TryAllocateAsync()
+    {
+        Calls++;
+        return Task.FromResult(Allocation);
+    }
+}
+
+/// <summary>레지스트리 테스트 더블 — 발행 순서를 기록한다.</summary>
+internal sealed class RecordingGameServerRegistry : IGameServerRegistry
+{
+    public List<GameServerNodeDescriptor> Published { get; } = new();
+    public List<string> Removed { get; } = new();
+    public Exception? PublishError { get; set; }
+
+    public Task PublishAsync(GameServerNodeDescriptor descriptor)
+    {
+        if (PublishError != null) throw PublishError;
+        Published.Add(descriptor);
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveAsync(string nodeId)
+    {
+        Removed.Add(nodeId);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<GameServerNodeDescriptor>> DiscoverAsync() =>
+        Task.FromResult<IReadOnlyList<GameServerNodeDescriptor>>(Published.ToList());
 }

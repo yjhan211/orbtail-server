@@ -15,6 +15,7 @@ public sealed class MatchmakingPassTests
     private readonly MatchingQueueClaimCoordinator _claims;
     private readonly MatchingQueue _queue;
     private readonly RecordingHandoffPublisher _handoff = new();
+    private readonly FixedGameServerAllocator _gameServers = new();
     private readonly RecordingLogger _logger = new();
 
     public MatchmakingPassTests()
@@ -29,7 +30,7 @@ public sealed class MatchmakingPassTests
     {
         overrides ??= new DevMatchOverrides(false, false, false, _cache, new FakeRedLockFactory(), _logger);
         var rosterBuilder = new MatchRosterBuilder(_cache, overrides, _logger);
-        return new MatchmakingPass(_cache, _queue, _claims, rosterBuilder, _handoff, overrides, shutdown, _logger);
+        return new MatchmakingPass(_cache, _queue, _claims, rosterBuilder, _handoff, _gameServers, overrides, shutdown, _logger);
     }
 
     private async Task<MatchingQueueEntry[]> EnqueueHumansAsync(int count, double score = 1)
@@ -47,6 +48,22 @@ public sealed class MatchmakingPassTests
     private string? ClaimOf(long playerId) => _cache.GetString(MatchingHandoffRedisKeys.ClaimKey(playerId));
 
     [Fact]
+    public async Task CreateMatchAsync_WithoutGameServerNodeLeavesQueueAndClaimsUntouched()
+    {
+        MatchingQueueEntry[] humans = await EnqueueHumansAsync(8);
+        _gameServers.Allocation = null;
+
+        bool committed = await CreatePass().CreateMatchAsync(humans, 0, MatchCreationOrigin.Queue);
+
+        Assert.False(committed);
+        Assert.Equal(1, _gameServers.Calls);
+        Assert.Equal(8, _cache.SortedSetCount(MatchingQueue.QueueKey));
+        Assert.Null(_cache.GetString(MatchmakingPass.MatchingIdKey));
+        Assert.All(humans, human => Assert.Null(ClaimOf(human.PlayerId)));
+        Assert.Empty(_handoff.Events);
+    }
+
+    [Fact]
     public async Task CreateMatchAsync_EightHumansMakeOneMatchWithoutBots()
     {
         MatchingQueueEntry[] humans = await EnqueueHumansAsync(8);
@@ -58,6 +75,7 @@ public sealed class MatchmakingPassTests
         Assert.Empty(_handoff.StoredBots[1]);
         Assert.Equal(8, _handoff.Deliveries.Count);
         Assert.All(_handoff.Deliveries, delivery => Assert.Equal(8, delivery.RosterCount));
+        Assert.All(_handoff.DeliveredNodeIds, nodeId => Assert.Equal(FixedGameServerAllocator.DefaultNodeId, nodeId));
         Assert.All(_handoff.Deliveries, delivery => Assert.Equal(8, delivery.HumanRosterCount));
         Assert.Equal(humans.Select(h => h.PlayerId).OrderBy(id => id), _handoff.Deliveries.Select(d => d.Link.PlayerId).OrderBy(id => id));
         Assert.All(humans, human => Assert.Equal("1", ClaimOf(human.PlayerId)));

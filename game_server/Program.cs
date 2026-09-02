@@ -4,10 +4,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using network.contracts.routing;
 using network.core;
 using network.hosting;
 using network.infrastructure;
 using network.infrastructure.authentication;
+using network.infrastructure.routing;
 using network.interfaces;
 using network.managers;
 using Serilog;
@@ -82,6 +84,10 @@ internal static partial class Program
             sp.GetRequiredService<IRedisConnection>().GetRedLockFactory());
         services.AddSingleton<ICacheHelper, CacheHelper>();
         services.AddAuthenticationBoundaries(hostContext.Configuration);
+        var nodeOptions = CreateGameServerNodeOptions(hostContext.Configuration);
+        nodeOptions.Validate();
+        services.AddSingleton(nodeOptions);
+        services.AddSingleton<IGameServerRegistry, RedisGameServerRegistry>();
         services.AddSingleton<GameServer>();
         services.AddHostedService<HealthCheckService>();
         services.AddHostedService(sp => sp.GetRequiredService<GameServer>());
@@ -101,7 +107,23 @@ internal static partial class Program
         {
             ServerType = configuration["serverType"] ?? "GameServer",
             GameServerNum = configuration.GetValue<int>("gameServerNum"),
+            GameServerNodeId = configuration["gameServerId"] ?? "",
             ServerId = ExtractGameServerId(configuration["gameServerId"] ?? "")
+        };
+    }
+
+    /// <summary>
+    ///     레지스트리에 광고할 공개 주소·용량. 공개 host는 클라이언트가 실제로 접속할 주소라 기본값이 없다.
+    /// </summary>
+    private static GameServerNodeOptions CreateGameServerNodeOptions(IConfiguration configuration)
+    {
+        return new GameServerNodeOptions
+        {
+            PublicHost = configuration["GAME_SERVER_PUBLIC_HOST"] ?? "",
+            PublicPort = configuration.GetValue("GAME_SERVER_PUBLIC_PORT", GameServerNodeOptions.DefaultPublicPort),
+            MaxConcurrentMatches = configuration.GetValue(
+                "GAME_SERVER_MAX_MATCHES",
+                GameServerNodeOptions.DefaultMaxConcurrentMatches)
         };
     }
 

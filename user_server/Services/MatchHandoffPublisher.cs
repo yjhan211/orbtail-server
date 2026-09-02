@@ -22,30 +22,14 @@ internal interface IMatchHandoffPublisher
         RosterChainLink link,
         long matchingId,
         List<PlayerInfo> playerRoster,
-        List<GameHandoffRosterEntry> humanHandoffRoster);
+        List<GameHandoffRosterEntry> humanHandoffRoster,
+        GameServerAllocation gameServer);
 
     public Task MarkHandoffReadyAsync(long matchingId);
     public bool StartAdmissionWatchdog(long matchingId, IReadOnlyCollection<long> humanPlayerIds);
     public Task<bool> TryCancelAdmissionForRollbackAsync(long matchingId);
     public Task DeleteHandoffBestEffortAsync(long matchingId);
     public Task NotifyBatchFailedAsync(IEnumerable<MatchingQueueEntry> players, long matchingId);
-}
-
-/// <summary>
-///     Unity가 직접 접속할 Game Server 주소. 단일 Game Server 구성이라 환경 변수로 고정한다.
-/// </summary>
-internal sealed record GameServerAllocation(string PublicHost, int PublicPort)
-{
-    public static GameServerAllocation FromEnvironment()
-    {
-        string gameServerIp = Environment.GetEnvironmentVariable("GAME_SERVER_IP") ?? "127.0.0.1";
-        int gameServerPort = int.TryParse(
-            Environment.GetEnvironmentVariable("GAME_SERVER_PORT"),
-            out int configuredPort)
-            ? configuredPort
-            : 9001;
-        return new GameServerAllocation(gameServerIp, gameServerPort);
-    }
 }
 
 /// <summary>
@@ -63,7 +47,6 @@ internal sealed class MatchHandoffPublisher(
     Func<long, GameSession?> getSession,
     Func<Func<Task>, string, bool> tryRunBackgroundOperation,
     CancellationToken shutdownToken,
-    GameServerAllocation gameServerAllocation,
     ILogger logger) : IMatchHandoffPublisher
 {
     /// <summary>
@@ -87,7 +70,8 @@ internal sealed class MatchHandoffPublisher(
         RosterChainLink link,
         long matchingId,
         List<PlayerInfo> playerRoster,
-        List<GameHandoffRosterEntry> humanHandoffRoster)
+        List<GameHandoffRosterEntry> humanHandoffRoster,
+        GameServerAllocation gameServer)
     {
         long playerId = link.PlayerId;
         long targetPlayerId = link.TargetPlayerId;
@@ -151,7 +135,8 @@ internal sealed class MatchHandoffPublisher(
                 SpawnPosition = Cell.Clone(spawnPosition),
                 TargetPlayerId = targetPlayerId,
                 ActiveBuffIds = new List<int>(),
-                HumanRoster = humanHandoffRoster
+                HumanRoster = humanHandoffRoster,
+                GameServerNodeId = gameServer.NodeId
             });
 
             long gameEndTimestamp = DateTimeOffset.UtcNow.AddMinutes(Config.GAME_DURATION_MINUTES)
@@ -159,7 +144,7 @@ internal sealed class MatchHandoffPublisher(
 
             using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
                 matchingId, mapId, matchingId, spawnPosition,
-                gameServerAllocation.PublicHost, gameServerAllocation.PublicPort, gameEndTimestamp,
+                gameServer.PublicHost, gameServer.PublicPort, gameEndTimestamp,
                 gameHandoffTicket, targetPlayerId, playerRoster, new List<int>()
             );
 

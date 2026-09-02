@@ -32,8 +32,9 @@ public sealed class GameHandoffTicketService(
         throw new InvalidOperationException("A unique game handoff ticket could not be issued.");
     }
 
-    public async Task<GameHandoffContext?> ConsumeAsync(string? ticket)
+    public async Task<GameHandoffContext?> ConsumeAsync(string? ticket, string gameServerNodeId)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(gameServerNodeId);
         if (string.IsNullOrWhiteSpace(ticket))
             return null;
 
@@ -43,7 +44,11 @@ public sealed class GameHandoffTicketService(
 
         GameHandoffContext? context =
             await ticketStore.ConsumeAsync(OpaqueTokenCodec.Fingerprint(normalizedTicket));
-        return context != null && TryValidateContext(context, out _)
+        if (context == null || !TryValidateContext(context, out _))
+            return null;
+
+        // 노드 결합: 다른 노드에 배정된 매치의 ticket은 여기서 끝난다 (fail closed).
+        return string.Equals(context.GameServerNodeId, gameServerNodeId, StringComparison.Ordinal)
             ? context
             : null;
     }
@@ -57,6 +62,12 @@ public sealed class GameHandoffTicketService(
             context.SpawnPosition == null)
         {
             error = "A game handoff requires a valid owner, match, map, and spawn.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(context.GameServerNodeId))
+        {
+            error = "A game handoff must be bound to the game server node that owns the match.";
             return false;
         }
 

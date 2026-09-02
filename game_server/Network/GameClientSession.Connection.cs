@@ -33,7 +33,8 @@ public partial class GameClientSession
             if (handoff == null)
             {
                 EnsureConnectionActive();
-                Logger.LogWarning("GameServer connection rejected: invalid, expired, or replayed handoff ticket");
+                Logger.LogWarning(
+                    "GameServer connection rejected: invalid, expired, replayed, or another node's handoff ticket");
                 SendConnectResult(false, ErrorCode.AUTH_FAILED, "게임 접속 인증에 실패했습니다",
                     disconnectAfterSend: true);
                 return;
