@@ -26,22 +26,22 @@ namespace demo_regression_tests;
 public sealed class MatchStartCountdownPublicationTests
 {
     [Fact]
-    public void PeriodicCountdown_SourceContract_PublishesInsideMatchLockFromBotWorker()
+    public void PeriodicCountdown_SourceContract_PublishesInsideMatchLockFromMatchTick()
     {
         string repositoryRoot = FindRepositoryRoot();
         string server = ReadNormalizedSource(repositoryRoot, "game_server", "GameServer.cs");
-        string botMovement = ReadNormalizedSource(
+        string combat = ReadNormalizedSource(
             repositoryRoot,
             "game_server",
-            "GameServer.BotMovement.cs");
+            "GameServer.ProximityAutoCombat.cs");
         string broadcast = ReadMethodSlice(
             server,
             "private void BroadcastMatchStartCountdowns(",
             "private void CheckHeartbeatTimeouts(");
-        string botWorker = ReadMethodSlice(
-            botMovement,
-            "private void RunBotMovementWorker(",
-            "private bool ShouldTrackBotTickBusySkip(");
+        string matchTick = ReadMethodSlice(
+            combat,
+            "private void ProcessProximityAutoCombatTick(object? state)",
+            "private void ProcessProximityAutoCombatForMatching(");
 
         Assert.DoesNotContain("_lastMatchStartCountdownBroadcast", server);
         AssertInOrder(
@@ -63,12 +63,13 @@ public sealed class MatchStartCountdownPublicationTests
             "session.Send(packet);");
         Assert.DoesNotContain("anchorSession.DisconnectForAdmissionFailure();", broadcast);
 
-        // 워커는 잠금 안에서 카운트다운을 먼저 보내고 봇 걸음을 잇는다.
+        // 매치 틱은 잠금 안에서 카운트다운을 먼저 보내고 전투·봇 걸음을 잇는다.
         AssertInOrder(
-            botWorker,
+            matchTick,
             "MatchRuntimes.TryEnter(matchingId, out MatchScope scope)",
             "using (scope)",
-            "BroadcastMatchStartCountdowns([matchingId], activeSessions);",
+            "BroadcastMatchStartCountdowns([matchingId], countdownSessions);",
+            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
             "ProcessBotMovementForMatching(matchingId)");
     }
 

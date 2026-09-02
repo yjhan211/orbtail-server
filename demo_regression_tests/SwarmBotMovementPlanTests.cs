@@ -107,14 +107,11 @@ public sealed class SwarmBotMovementPlanTests
         string coordinator = ReadNormalizedSource(
             root, "game_server", "Services", "Bots", "SwarmBotMovementCoordinator.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.BotMovement.cs");
-        string scheduler = ReadMethodSlice(
-            server,
-            "private void ProcessBotMovement(object? state)",
-            "private void RunBotMovementWorker(");
-        string worker = ReadMethodSlice(
-            server,
-            "private void RunBotMovementWorker(",
-            "private bool ShouldTrackBotTickBusySkip(");
+        string combat = ReadNormalizedSource(root, "game_server", "GameServer.ProximityAutoCombat.cs");
+        string tick = ReadMethodSlice(
+            combat,
+            "private void ProcessProximityAutoCombatTick(object? state)",
+            "private void ProcessProximityAutoCombatForMatching(");
         string process = ReadMethodSlice(
             server,
             "private void ProcessBotMovementForMatching(",
@@ -132,22 +129,21 @@ public sealed class SwarmBotMovementPlanTests
         Assert.DoesNotContain("DispatchInOrder", coordinator);
         Assert.DoesNotContain("MoveToImmutable()", coordinator);
         Assert.DoesNotContain("MoveToImmutable()", server);
-        // 펄스마다 매치별 워커를 띄우고, 잠금 시도는 워커 안에서(모니터는 스레드 친화적).
+        // 봇 걸음은 별도 타이머가 아니라 50ms 매치 틱이 전투 뒤에 같은 잠금 안에서 잇는다 — 두 타이머가
+        // 같은 주기로 맞물려 뒤에 오는 쪽이 매 펄스 잠금을 놓치던 문제의 재발 방지.
+        Assert.DoesNotContain("StartBotMovementTimer", server);
+        Assert.DoesNotContain("Task.Run(", server);
+        // 바쁜 펄스는 버리고(따라잡기 없음) 스킵만 센다; 잠금 안에서 전투→걸음, 준비→송신이 한 순서다.
         AssertInOrder(
-            scheduler,
-            "MatchRuntimes.ActiveIds()",
-            "Task.Run(() => RunBotMovementWorker(matchingId, activeSessions))",
-            "Task.WhenAll(workers).GetAwaiter().GetResult();");
-        Assert.DoesNotContain("TryEnter", scheduler);
-        // 바쁜 펄스는 버리고(따라잡기 없음) 스킵만 센다; 잠금 안에서 준비→송신이 한 순서다.
-        AssertInOrder(
-            worker,
+            tick,
             "MatchRuntimes.TryEnter(matchingId, out MatchScope scope)",
-            "BotTickMetrics.RecordBusySkip()",
-            "return;",
+            "RecordBotTickBusySkip(matchingId);",
+            "continue;",
             "using (scope)",
             "scope.Runtime.IsTerminal",
-            "ProcessBotMovementForMatching(matchingId)");
+            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
+            "ShouldTrackBotTickBusySkip(matchingId)",
+            "ProcessBotMovementForMatching(matchingId);");
         AssertInOrder(
             process,
             "_sessionRegistry.GetByMatch(matchingId)",

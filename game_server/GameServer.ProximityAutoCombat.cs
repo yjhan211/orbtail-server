@@ -36,21 +36,22 @@ public partial class GameServer
     }
 
     /// <summary>
-    ///     50ms 전투 틱. 매치별로 잠금을 시도해 들어간 매치만 돌리고, 바쁜 매치(세션 핸들러·정산 틱)는 이
-    ///     펄스를 버린다 — 밀린 틱을 따라잡지 않는다. 틱 안의 Send는 잠금 안에서 그대로 나가므로
-    ///     패킷 순서가 곧 상태 변경 순서다.
+    ///     50ms 매치 틱 — 한 매치의 카운트다운 방송·전투·봇 걸음을 같은 잠금 한 번으로 이어 돌린다. 예전처럼
+    ///     전투와 봇 걸음을 별도 타이머로 두면 두 타이머가 같은 주기로 맞물려 뒤에 오는 쪽이 매 펄스 잠금을
+    ///     놓친다. 잠금이 바쁜 매치(세션 핸들러·정산 틱)는 이 펄스를 버리고 밀린 틱을 따라잡지 않는다.
+    ///     틱 안의 Send는 잠금 안에서 그대로 나가므로 패킷 순서가 곧 상태 변경 순서다.
     /// </summary>
     private void ProcessProximityAutoCombatTick(object? state)
     {
         List<GameClientSession> activeSessions;
+        List<GameClientSession> countdownSessions;
         IReadOnlyList<long> activeMatchingIds;
         try
         {
-            activeSessions = _sessionRegistry.SnapshotWhere(
-                static session =>
-                    session.PlayerId.HasValue &&
-                    !session.IsEliminated &&
-                    !session.IsGameEnded);
+            countdownSessions = _sessionRegistry.SnapshotWhere(static session => session.PlayerId.HasValue);
+            activeSessions = countdownSessions
+                .Where(static session => !session.IsEliminated && !session.IsGameEnded)
+                .ToList();
             activeMatchingIds = MatchRuntimes.ActiveIds();
         }
         catch (Exception ex)
@@ -66,7 +67,10 @@ public partial class GameServer
             // 매치 시작 게이트로 막으면 몹이 아예 태어나지 않으므로 여기서는 거르지
             // 않고, 게이트 전 전투 차단은 ProcessSwarmArenaForMatching 안이 맡는다.
             if (!MatchRuntimes.TryEnter(matchingId, out MatchScope scope))
+            {
+                RecordBotTickBusySkip(matchingId);
                 continue;
+            }
 
             using (scope)
             {
@@ -75,6 +79,7 @@ public partial class GameServer
 
                 try
                 {
+                    BroadcastMatchStartCountdowns([matchingId], countdownSessions);
                     ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
                 }
                 catch (Exception ex)
@@ -83,6 +88,18 @@ public partial class GameServer
                         ex,
                         "Proximity auto combat tick failed: MatchingId={MatchingId}",
                         matchingId);
+                }
+
+                if (scope.Runtime.IsTerminal || !ShouldTrackBotTickBusySkip(matchingId))
+                    continue;
+
+                try
+                {
+                    ProcessBotMovementForMatching(matchingId);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Bot walking tick failed: MatchingId={MatchingId}", matchingId);
                 }
             }
         }

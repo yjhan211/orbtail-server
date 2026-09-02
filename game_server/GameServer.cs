@@ -86,7 +86,6 @@ public partial class GameServer(
     private Timer? _resourceTickTimer;        // 폐쇄 구역 등 주기성 자원 변화
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
-    private Timer? _botMovementTimer;         // #127 봇 walking step (50ms)
 
     private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
         _swarmMatchRuntimes.GetOrCreate(matchingId);
@@ -163,7 +162,6 @@ public partial class GameServer(
             StartResourceTickTimer();
             StartAreaClosureTickTimer();
             StartTargetLocationTimer();
-            StartBotMovementTimer();
             StartProximityAutoCombatTimer();
 
             readinessState.MarkReady();
@@ -213,14 +211,12 @@ public partial class GameServer(
             _resourceTickTimer,
             _areaClosureTickTimer,
             _targetLocationTimer,
-            _botMovementTimer,
             _proximityAutoCombatTimer
         ];
         _heartbeatCheckTimer = null;
         _resourceTickTimer = null;
         _areaClosureTickTimer = null;
         _targetLocationTimer = null;
-        _botMovementTimer = null;
         _proximityAutoCombatTimer = null;
         await RunShutdownStageAsync(
             Task.WhenAll(timers.Where(timer => timer != null)
