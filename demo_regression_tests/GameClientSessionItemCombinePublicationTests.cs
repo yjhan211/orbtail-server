@@ -914,6 +914,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
         public GameClientSession CreateSession(long matchingId, long playerId)
         {
             Store.GetOrCreate(matchingId);
+            // 미등록 매치는 게이트가 막는다 (#335) — 테스트 매치를 카운트다운 없이 즉시 활성으로 등록한다.
+            MatchStartGate.RegisterBotOnlyMatch(matchingId);
             AreaStocks.InitializeMatching(matchingId);
             GroundItems.InitializeMatching(matchingId);
             Doors.InitializeMatching(matchingId);

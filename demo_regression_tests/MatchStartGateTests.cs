@@ -32,4 +32,37 @@ public sealed class MatchStartGateTests
         }
     }
 
+    [Fact]
+    public void UnknownMatchIsNotActive()
+    {
+        // 등록 누락이 "게이트 없이 진행"으로 새지 않는다 (#335).
+        long matchingId = DateTime.UtcNow.Ticks + 1;
+
+        Assert.False(MatchStartGate.IsGameplayActive(matchingId));
+        Assert.False(MatchStartGate.GetSnapshot(matchingId).IsKnown);
+        Assert.Null(MatchStartGate.GetGameplayStartedAtUtc(matchingId));
+    }
+
+    [Fact]
+    public void BotOnlyMatchIsActiveImmediatelyWithoutCountdown()
+    {
+        long matchingId = DateTime.UtcNow.Ticks + 2;
+
+        try
+        {
+            MatchStartGate.RegisterBotOnlyMatch(matchingId);
+
+            Assert.True(MatchStartGate.IsGameplayActive(matchingId));
+            Assert.False(MatchStartGate.GetSnapshot(matchingId).IsKnown);
+            Assert.False(MatchStartGate.IsAdmissionTimedOut(matchingId, DateTime.UtcNow.AddMinutes(5)));
+            Assert.NotNull(MatchStartGate.GetGameplayStartedAtUtc(matchingId));
+
+            MatchStartGate.RemoveMatching(matchingId);
+            Assert.False(MatchStartGate.IsGameplayActive(matchingId));
+        }
+        finally
+        {
+            MatchStartGate.RemoveMatching(matchingId);
+        }
+    }
 }

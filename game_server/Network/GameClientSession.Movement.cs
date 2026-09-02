@@ -353,15 +353,8 @@ public partial class GameClientSession
     #region Isometric 좌표 변환 (Unity Isometric Z as Y 타일맵)
 
     /// <summary>
-    ///     World Position을 Cell 좌표로 변환
-    ///     Unity Isometric Z as Y 타일맵의 WorldToCell과 동일한 로직
-    ///     클라이언트 MapManager.WorldToCell:
-    ///     var unityCell = tileMap.WorldToCell(position);
-    ///     return new Vector3Int(unityCell.x + CellOffsetX, unityCell.y + CellOffsetY + 1, 0);
-    ///     Unity Isometric Z as Y 역변환:
-    ///     unityCellX = floor(WorldX + 2 * WorldY)
-    ///     unityCellY = floor (2 * WorldY - WorldX)
-    ///     최종 Cell = unityCell + CellOffset (Y는 +1 추가)
+    ///     World Position → Cell. 공식·원점 보정은 MapCoordinateConverter(Common) 한 곳이 소유하며
+    ///     클라 MapManager.WorldToCell과 같은 결과를 낸다 — 셀 오프셋 같은 별도 보정은 없다.
     /// </summary>
     private Cell WorldPositionToCell(Vector3f worldPos) =>
         MapCoordinateConverter.WorldToCell(CurrentMapId, worldPos);
@@ -391,7 +384,7 @@ public partial class GameClientSession
 
             ApplyLivePlayerInfoSnapshot(this, playerInfo);
 
-            // 내 최신 위치로 playerInfo 업데이트
+            // 내 최신 위치를 ENTER 패킷 스냅샷에 반영한다 (저장 아님 — Last*는 Game Server가 Redis에 쓰지 않는다)
             if (_lastValidatedPosition != null)
             {
                 var latestCell = WorldPositionToCell(_lastValidatedPosition);

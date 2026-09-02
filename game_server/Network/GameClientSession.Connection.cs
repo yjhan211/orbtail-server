@@ -149,26 +149,19 @@ public partial class GameClientSession
                 MatchStartGate.RegisterHumanPlayer(matchingId, PlayerId.Value, connectedBotCount);
             });
 
-            // Restore the initial position only from the consumed server-issued handoff.
+            // 초기 위치는 소비한 서버 발급 handoff에서만 복원한다. PlayerInfo는 존재 확인만 한다 —
+            // Game Server는 PlayerInfo.Save를 부르지 않으므로(호출처는 user_server뿐) Last*를 여기서
+            // 바꿔도 Redis에 남지 않고, 분산 락도 지킬 쓰기가 없어 잡지 않는다 (#335).
             {
-                await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
                 var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
                 if (playerInfo == null)
                     throw new InvalidOperationException($"PlayerInfo not found for authenticated player {playerId}.");
 
                 var matchingSpawnCell = Cell.Clone(handoff.SpawnPosition);
-                playerInfo.LastMapId = CurrentMapId;
-                playerInfo.LastMapSubId = CurrentMapSubId;
-                playerInfo.LastCell = Cell.Clone(matchingSpawnCell);
-                playerInfo.ObjectInfo.MapId = CurrentMapId;
-                playerInfo.ObjectInfo.MapSubId = CurrentMapSubId;
-                playerInfo.ObjectInfo.Cell = Cell.Clone(matchingSpawnCell);
-                playerInfo.ObjectInfo.Position = CellToWorldPosition(matchingSpawnCell);
-
-                _lastValidatedPosition = playerInfo.ObjectInfo.Position;
-                _lastValidCell = playerInfo.ObjectInfo.Cell;
-                _lastValidatedRotation = playerInfo.ObjectInfo.Rotation;
-                CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, playerInfo.ObjectInfo.Cell);
+                _lastValidatedPosition = CellToWorldPosition(matchingSpawnCell);
+                _lastValidCell = Cell.Clone(matchingSpawnCell);
+                _lastValidatedRotation = 0f;
+                CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, matchingSpawnCell);
                 Logger.LogInformation(
                     "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
                     PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X,
@@ -406,7 +399,6 @@ public partial class GameClientSession
                 var playerInfoList = new List<PlayerInfo>();
                 foreach (var session in sameAreaSessions)
                 {
-                    await using var playerLock = await PlayerInfo.Lock(RedLock, session.PlayerId!.Value);
                     var playerInfo = await PlayerInfo.Load(CacheHelper, session.PlayerId!.Value);
                     if (playerInfo == null)
                         throw new InvalidOperationException(
@@ -425,8 +417,7 @@ public partial class GameClientSession
                 }
             }
 
-            // Load this player's authoritative snapshot.
-            await using var myPlayerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
+            // 내 스냅샷 로드 — 읽기 전용이라 분산 락은 잡지 않는다 (#335).
             var myPlayerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
 
             if (myPlayerInfo == null)
@@ -468,6 +459,10 @@ public partial class GameClientSession
         }
     }
 
+    /// <summary>
+    ///     로드한 PlayerInfo에 세션의 현재 위치·상태를 덮어 패킷 스냅샷을 만든다. Last*·ObjectInfo는
+    ///     동봉 패킷(G_TO_C_PLAYER_INFO·AREA_PLAYER_ENTER)용이며 Redis에는 저장하지 않는다 (#335).
+    /// </summary>
     private void ApplyLivePlayerInfoSnapshot(GameClientSession session, PlayerInfo playerInfo)
     {
         var cell = session._lastValidCell ?? playerInfo.LastCell ?? playerInfo.ObjectInfo?.Cell;

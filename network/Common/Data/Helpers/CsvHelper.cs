@@ -12,6 +12,18 @@ namespace network.common.data.helpers
 {
     public static class CsvHelper
     {
+        /// <summary>
+        ///     CSV 정수(또는 이름) 열을 enum으로 엄격 변환 — 정의되지 않은 값은 부팅 실패로 막는다 (#335).
+        ///     (T)int 캐스트는 미정의 값을 조용히 통과시켜 #310에서 퇴역한 구역 값이 데이터에 살아남았다.
+        /// </summary>
+        public static TEnum ParseDefinedEnum<TEnum>(string raw, string context) where TEnum : struct, Enum
+        {
+            if (!Enum.TryParse(raw?.Trim(), out TEnum value) || !Enum.IsDefined(typeof(TEnum), value))
+                throw new InvalidDataException($"{context}: '{raw}'은(는) 정의되지 않은 {typeof(TEnum).Name} 값");
+
+            return value;
+        }
+
         public static List<CsvRow> LoadCsv(string filePath)
         {
             string[] lines;

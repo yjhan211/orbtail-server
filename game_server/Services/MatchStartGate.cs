@@ -4,8 +4,10 @@ using network.common;
 namespace game_server.services;
 
 /// <summary>
-/// Keeps a match inert until every expected human client has connected, then releases all
-/// server-authoritative gameplay on the same five-second countdown boundary.
+///     Keeps a match inert until every expected human client has connected, then releases all
+///     server-authoritative gameplay on the same five-second countdown boundary.
+///     등록되지 않은 matchingId는 활성으로 보지 않는다 (#335) — 봇 전용 매치는
+///     <see cref="RegisterBotOnlyMatch"/>로 카운트다운 없이 즉시 활성 상태를 등록한다.
 /// </summary>
 public static class MatchStartGate
 {
@@ -32,6 +34,21 @@ public static class MatchStartGate
         }
     }
 
+    /// <summary>
+    ///     봇 전용 매치(어드민 검증) 등록 — 준비할 사람이 없으므로 카운트다운 없이 생성 즉시 활성이다.
+    ///     개전 앵커(GetGameplayStartedAtUtc)도 생성 시각이 된다.
+    /// </summary>
+    public static void RegisterBotOnlyMatch(long matchingId)
+    {
+        var state = States.GetOrAdd(matchingId, _ => new State());
+        lock (state.SyncRoot)
+        {
+            state.IsBotOnly = true;
+            state.ExpectedHumanCount = 0;
+            state.CountdownEndsAtUtc ??= state.CreatedAtUtc;
+        }
+    }
+
     public static void MarkHumanReady(long matchingId, long playerId)
     {
         if (!States.TryGetValue(matchingId, out var state))
@@ -50,8 +67,9 @@ public static class MatchStartGate
 
     public static bool IsGameplayActive(long matchingId)
     {
+        // 미등록 매치는 비활성 — 등록 누락이 "게이트 없이 바로 진행"으로 새지 않게 한다 (#335).
         if (!States.TryGetValue(matchingId, out var state))
-            return true;
+            return false;
 
         lock (state.SyncRoot)
         {
@@ -78,6 +96,10 @@ public static class MatchStartGate
 
         lock (state.SyncRoot)
         {
+            // 봇 전용 매치는 카운트다운 방송 대상이 아니다 — 받을 세션도 없다.
+            if (state.IsBotOnly)
+                return new MatchStartSnapshot(false, 0);
+
             if (state.CountdownEndsAtUtc is not { } endsAt)
                 return new MatchStartSnapshot(true, -1);
 
@@ -108,6 +130,7 @@ public static class MatchStartGate
         public HashSet<long> ReadyHumanIds { get; } = [];
         public int ExpectedHumanCount { get; set; } = MatchCapacity;
         public DateTime? CountdownEndsAtUtc { get; set; }
+        public bool IsBotOnly { get; set; }
     }
 }
 

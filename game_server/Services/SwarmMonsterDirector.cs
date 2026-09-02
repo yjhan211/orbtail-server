@@ -201,33 +201,17 @@ public sealed class SwarmMonsterDirector
     /// <summary>
     ///     종별 스탯 원본은 swarm_monster.csv (#292 CSV 이전). attack_range 0 = 접촉 몹(ContactRange 폴백).
     ///     피통은 클라 종 식별자이기도 하다 — SwarmAfterimageMonsterDisplay 스위치와 동기 필수.
-    ///     보스 사거리(4.1)는 Config.SWARM_BOSS_ATTACK_RANGE(클라 범위 링)와 동기 필수.
     /// </summary>
     public static (int MaxHp, int OrbDamage, float AttackRange, float AttackCooldownSeconds, int StoneReward,
         int HeartReward, int BootsReward, int KeyReward)
         GetKindStats(SwarmMonsterKind kind) => SwarmMonsterArchetypeCatalog.GetStats(kind);
 
-    /// <summary>보스 판별 (#223): 고정 포대·리스폰 없음·타원 판정 공유의 스위치.</summary>
     /// <summary>
     ///     종별 접촉 반경 (#229). 클라 ResolveKindScale과 같은 사다리를 쓴다 — 보이는 몸통이 판정이다.
     ///     원거리 몹의 사거리(AttackRangeValue)는 별개다. 이건 부딪힘 반경만 정한다.
     /// </summary>
     public static float GetContactRadius(SwarmMonsterKind kind) =>
         SwarmMonsterArchetypeCatalog.GetContactRadius(kind);
-
-    public static bool IsBossKind(SwarmMonsterKind kind) =>
-        SwarmMonsterArchetypeCatalog.IsBoss(kind);
-
-    /// <summary>클라 보스 연출(투사체) 분기용 — 스웜 공격 VFX 브로드캐스트가 묻는다.</summary>
-    public bool IsBossMonster(long matchingId, int monsterId)
-    {
-        if (!_matches.TryGetValue(matchingId, out var state))
-            return false;
-        lock (state.SyncRoot)
-        {
-            return state.Monsters.TryGetValue(monsterId, out var monster) && IsBossKind(monster.Kind);
-        }
-    }
 
     /// <summary>파도 문양 몹인가 — 접촉 강타가 스플래시로 튀므로 공격 연출을 따로 보내야 읽힌다.</summary>
     public bool IsWavePatternMonster(long matchingId, int monsterId)
@@ -237,7 +221,7 @@ public sealed class SwarmMonsterDirector
         lock (state.SyncRoot)
         {
             return state.Monsters.TryGetValue(monsterId, out var monster) &&
-                   !IsBossKind(monster.Kind) && IsWavePatternMonster(monster.Pattern);
+                   IsWavePatternMonster(monster.Pattern);
         }
     }
 
@@ -440,12 +424,10 @@ public sealed class SwarmMonsterDirector
                         monster.ContactDamageValue));
 
                     // 볼러 스플래시: 주 대상 주변까지 함께 맞는다 — 뭉치기 견제.
-                    // 골렘(#223)도 공유 — 광역 강타가 보스 접근전의 특수공격 근사다.
                     // 파도 문양 몹도 같은 경로를 쓰되 반경이 더 넓다 — 물폭탄이 플레이어 발밑에서
                     // 터지는 그림이라, 붙어 있는 사람이 같이 맞는 것이 규칙이다.
-                    bool wavePattern = IsWavePatternMonster(monster.Pattern) && !IsBossKind(monster.Kind);
-                    if (wavePattern ||
-                        monster.Kind is SwarmMonsterKind.Bowler or SwarmMonsterKind.Golem)
+                    bool wavePattern = IsWavePatternMonster(monster.Pattern);
+                    if (wavePattern || monster.Kind == SwarmMonsterKind.Bowler)
                     {
                         float splashRadius = wavePattern ? WavePatternSplashRadius : BowlerSplashRadius;
                         foreach (var splashed in state.LastParticipants)
@@ -470,9 +452,8 @@ public sealed class SwarmMonsterDirector
                         }
                     }
 
-                    // 보스 (#223): 범위 안 전원 동시 타격 — 고정 포대는 한 명씩 고르지 않는다.
-                    if (!IsBossKind(monster.Kind))
-                        break;
+                    // 접촉 강타는 한 번에 한 명 — 스플래시는 위에서 따로 튄다.
+                    break;
                 }
             }
 
@@ -896,9 +877,6 @@ public sealed class SwarmMonsterDirector
     private static bool HasParticipantWithinAggro(
         MonsterRuntime monster, IReadOnlyList<SwarmParticipantSpatial> participants)
     {
-        bool isBoss = IsBossKind(monster.Kind);
-        float aggroRadius = isBoss ? monster.AttackRangeValue : CampAggroRadius;
-        float aggroVerticalScale = isBoss ? 2f : 1f;
         for (int index = 0; index < participants.Count; index++)
         {
             var participant = participants[index];
@@ -906,8 +884,8 @@ public sealed class SwarmMonsterDirector
                 continue;
 
             float aggroDx = participant.Position.X - monster.Position.X;
-            float aggroDy = (participant.Position.Y - monster.Position.Y) * aggroVerticalScale;
-            if (aggroDx * aggroDx + aggroDy * aggroDy > aggroRadius * aggroRadius)
+            float aggroDy = participant.Position.Y - monster.Position.Y;
+            if (aggroDx * aggroDx + aggroDy * aggroDy > CampAggroRadius * CampAggroRadius)
                 continue;
 
             // 주인이 있으면 주인만 깨운다: 남이 스쳐 지나가는 것만으로
@@ -1089,7 +1067,7 @@ public sealed class SwarmMonsterDirector
 
         foreach (var monster in state.Monsters.Values)
         {
-            if (!monster.Alive || IsBossKind(monster.Kind) || occupied.ContainsKey(monster.HomeArea))
+            if (!monster.Alive || occupied.ContainsKey(monster.HomeArea))
                 continue;
             // 추격 중인 개체는 남의 구역을 지나는 중이다 — 걷어내면 쫓다 말고 사라진다.
             if (monster.Infiltrating && monster.MarchIsPursuit)
@@ -1113,9 +1091,9 @@ public sealed class SwarmMonsterDirector
         }
     }
 
-    /// <summary>전역 생존 몹 수 — 보스(고정 콘텐츠)는 공급 상한에서 제외한다.</summary>
+    /// <summary>전역 생존 몹 수 — 공급 상한의 분모.</summary>
     private static int CountAliveGlobal(MatchState state) =>
-        state.Monsters.Values.Count(monster => monster.Alive && !IsBossKind(monster.Kind));
+        state.Monsters.Values.Count(monster => monster.Alive);
 
     /// <summary>
     ///     소환석 보상 예산 정산 (#229). 잡은 몹이 실제로 줄 석을 구역·페이즈 예산에서 떼어 준다 — 예산이
@@ -2399,18 +2377,17 @@ public enum SwarmPattern
     Encircle = 2
 }
 
-/// <summary>#219 SB 몬스터 4종. 보스(골렘·베이비 드래곤)는 M4 몫.</summary>
+/// <summary>
+///     #219 SB 몬스터 4종. 보스 종(골렘 4·베이비 드래곤 5·트리 자이언트 6)은 #229 구역 공급 전환 뒤
+///     스폰 경로가 없어 #335에서 삭제 — 값 4~6은 클라 SwarmAfterimageMonsterDisplay 보스 휴리스틱과의
+///     충돌을 피해 비워 둔다.
+/// </summary>
 public enum SwarmMonsterKind
 {
     Skeleton = 0,
     DartGoblin = 1,
     RunawayGoblin = 2,
-    Bowler = 3,
-
-    // 보스 (#223): 중간 지대 고정 캠프 1기, 리스폰 없음 — 맵의 유한 대형 콘텐츠.
-    Golem = 4,
-    BabyDragon = 5,
-    TreeGiant = 6
+    Bowler = 3
 }
 
 public sealed class SwarmArenaTickResult

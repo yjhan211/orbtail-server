@@ -148,9 +148,11 @@ namespace network.common.data
                 PositionY = posY,
                 InteractDistance =
                     row.ContainsKey("interact_distance") ? float.Parse(row["interact_distance"]) : 3f,
-                AreaType = row.ContainsKey("area_type") ? (AreaType)int.Parse(row["area_type"]) : AreaType.None,
+                AreaType = row.ContainsKey("area_type")
+                    ? CsvHelper.ParseDefinedEnum<AreaType>(row["area_type"], "door_info.area_type")
+                    : AreaType.None,
                 AreaTypeB = row.ContainsKey("area_type_b")
-                    ? (AreaType)int.Parse(row["area_type_b"])
+                    ? CsvHelper.ParseDefinedEnum<AreaType>(row["area_type_b"], "door_info.area_type_b")
                     : AreaType.None,
                 IsInitiallyOpen = row.ContainsKey("is_initially_open") && row["is_initially_open"] == "1",
                 FallbackCellX = row.ContainsKey("fallback_cell_x") ? int.Parse(row["fallback_cell_x"]) : (int)posX,

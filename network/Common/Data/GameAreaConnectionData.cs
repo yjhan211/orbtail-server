@@ -79,9 +79,9 @@ namespace network.common.data
 
             return new AreaConnectionInfo
             {
-                MapId = (MapId)int.Parse(row["map_id"]),
-                FromArea = (AreaType)int.Parse(row["from_area"]),
-                ToArea = (AreaType)int.Parse(row["to_area"]),
+                MapId = CsvHelper.ParseDefinedEnum<MapId>(row["map_id"], "map_connections.map_id"),
+                FromArea = CsvHelper.ParseDefinedEnum<AreaType>(row["from_area"], "map_connections.from_area"),
+                ToArea = CsvHelper.ParseDefinedEnum<AreaType>(row["to_area"], "map_connections.to_area"),
                 Type = type,
                 StairSide = side,
                 SpawnCell = new Cell(forwardX, forwardY)

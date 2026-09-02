@@ -2469,11 +2469,9 @@ public partial class GameServer
         // 줄인다. 페이즈 곡선은 그대로 두고 배율만 곱한다 — 곡선을 고치면 "위협이 세지는 리듬"까지 다시 잡아야 한다.
         damage = damage with { Damage = Config.ScaleSwarmDamageTaken(damage.Damage) };
 
-        // 보스 공격 연출 (#223): 고정 포대의 원거리 타격은 투사체로 보여야 읽힌다 —
-        // 같은 구역 전원에게 공격 VFX를 쏘고, 클라가 보스 여부(피통)로 투사체를 그린다.
-        // 파도 문양 몹도 보낸다: 접촉 강타가 주변까지 튀므로 몸 기울임이 출처를 말한다.
-        if (_swarmMonsterDirector.IsBossMonster(matchingId, damage.MonsterId) ||
-            _swarmMonsterDirector.IsWavePatternMonster(matchingId, damage.MonsterId))
+        // 파도 문양 몹 공격 연출: 접촉 강타가 주변까지 튀므로 같은 구역 전원에게 공격 VFX를 쏴
+        // 몸 기울임이 출처를 말하게 한다 (보스 투사체 분기는 #335에서 삭제 — 보스 스폰 경로 없음).
+        if (_swarmMonsterDirector.IsWavePatternMonster(matchingId, damage.MonsterId))
         {
             using var vfxPacket = Packet.Create((int)Protocol.G_TO_C_MONSTER_ATTACK_VFX);
             vfxPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_ATTACK_VFX
