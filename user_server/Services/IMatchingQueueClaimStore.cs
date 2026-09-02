@@ -1,4 +1,4 @@
-namespace user_server.services.scaling;
+namespace user_server.services;
 
 /// <summary>
 ///     Owns the atomic Redis transition that reserves one matching-queue entry

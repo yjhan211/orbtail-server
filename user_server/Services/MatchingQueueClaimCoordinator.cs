@@ -5,7 +5,6 @@ using network.common;
 using network.common.data.models;
 using network.contracts.authentication;
 using network.interfaces;
-using user_server.services.scaling;
 
 namespace user_server.services;
 
