@@ -38,13 +38,31 @@ public class SwarmDamagePathTests
         Assert.DoesNotContain("DestroySwarmOrbAtOrdinal", source);
         Assert.DoesNotContain("ScatterSwarmOrbBreakStones", cutBody);
         // 공격자 비용: 선결 검사 → 치명상 → 회복 차단이 같은 사건 안에 있다.
-        Assert.Contains("SwarmSingleCutCorruptionCost = 35", source);
-        Assert.Contains("SwarmSingleCutHealLockSeconds = 8d", source);
+        // 값의 원천은 swarm_config.csv(#335) — CSV 행과 코드 폴백 기본값을 함께 잠근다.
+        Assert.Contains("SwarmConfigData.GetInt(\"SWARM_SINGLE_CUT_CORRUPTION_COST\", 35)", source);
+        Assert.Contains("SwarmConfigData.GetDouble(\"SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS\", 8d)", source);
+        Assert.Equal("35", ReadSwarmConfigValue("SWARM_SINGLE_CUT_CORRUPTION_COST"));
+        Assert.Equal("8", ReadSwarmConfigValue("SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS"));
         Assert.Contains("ORB_SINGLE_CUT_REFUSED", cutBody);
         Assert.Contains("SwarmHealLockUntilUtc = healLockUntil", cutBody);
         Assert.Contains("ORB_TAIL_CUT ", cutBody);
         // 0.8초 재접촉 억제 시작값.
-        Assert.Contains("SwarmTrailCutSameOrbDebounceSeconds = 0.8d", source);
+        Assert.Contains("SwarmConfigData.GetDouble(\"SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS\", 0.8d)", source);
+        Assert.Equal("0.8", ReadSwarmConfigValue("SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS"));
+    }
+
+    /// <summary>swarm_config.csv의 한 키 값(문자열 그대로). 없으면 실패한다.</summary>
+    private static string ReadSwarmConfigValue(string key)
+    {
+        string csvPath = Path.Combine(FindRepositoryRoot(), "network", "Common", "csv", "swarm_config.csv");
+        foreach (string line in File.ReadLines(csvPath))
+        {
+            string[] parts = line.Split(',');
+            if (parts.Length >= 2 && parts[0] == key)
+                return parts[1].Trim();
+        }
+
+        throw new Xunit.Sdk.XunitException($"swarm_config.csv에 {key} 행이 없다");
     }
 
     /// <summary>
