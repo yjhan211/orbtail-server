@@ -355,10 +355,26 @@ public sealed class SwarmBotMovementCoordinatorTests
         string coordinator = ReadNormalizedSource(
             root, "game_server", "Services", "Bots", "SwarmBotMovementCoordinator.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.BotMovement.cs");
-        string process = ReadMethodSlice(
+        string scheduler = ReadMethodSlice(
             server,
             "private void ProcessBotMovement(object? state)",
-            "private void RecordBotMovementMetrics()");
+            "private Task? TryStartBotMovementWorker(");
+        string starter = ReadMethodSlice(
+            server,
+            "private Task? TryStartBotMovementWorker(",
+            "private void ProcessBotMovementForMatching(");
+        string process = ReadMethodSlice(
+            server,
+            "private void ProcessBotMovementForMatching(",
+            "private void ReleaseBotMovementTickClaim(");
+        string release = ReadMethodSlice(
+            server,
+            "private void ReleaseBotMovementTickClaim(",
+            "private void PublishBotMovementMetrics(");
+        string processFinalization = ReadMethodSlice(
+            process,
+            "        finally\n        {",
+            "            if (metricsBatch != null)");
         string dispatch = ReadMethodSlice(
             server,
             "private void DispatchSwarmBotMovementPlan(",
@@ -370,25 +386,59 @@ public sealed class SwarmBotMovementCoordinatorTests
         Assert.DoesNotContain(".Send(", coordinator);
         Assert.DoesNotContain("MoveToImmutable()", coordinator);
         Assert.DoesNotContain("MoveToImmutable()", server);
+        Assert.DoesNotContain("_botMovementProcessing", server);
+        AssertInOrder(
+            scheduler,
+            "var workers = new List<Task>();",
+            "foreach (long matchingId in matchingIds)",
+            "TryStartBotMovementWorker(matchingId, activeSessions);",
+            "if (worker != null)",
+            "workers.Add(worker);",
+            "Task.WhenAll(workers).GetAwaiter().GetResult();");
+        AssertInOrder(
+            starter,
+            "_matchRuntimeRegistry.TryAcquireOperationIfAvailable(",
+            "_swarmBotTickCoordinator.TryBegin(",
+            "if (outerRuntimeOperation == null)",
+            "_swarmBotTickCoordinator.TryRecordBusySkip(matchingId)",
+            "if (tickLease == null)",
+            "ReleaseBotMovementTickClaim(",
+            "Task.Run(",
+            "ProcessBotMovementForMatching(");
+        AssertInOrder(
+            starter,
+            "Task.Run(",
+            "catch (Exception ex)",
+            "ReleaseBotMovementTickClaim(",
+            "Failed to schedule bot movement worker");
+        Assert.Equal(
+            2,
+            starter.Split(
+                "ReleaseBotMovementTickClaim(",
+                StringSplitOptions.None).Length - 1);
         AssertInOrder(
             process,
-            "_matchRuntimeRegistry.TryAcquireOperation(",
+            "BroadcastMatchStartCountdowns([matchingId], activeSessions);",
+            "_matchRuntimeRegistry.TryExecute(",
             "_sessionRegistry.GetByMatch(matchingId)",
             "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
             "_swarmBotMovementCoordinator.PrepareTick(",
             "_swarmBotMovementCoordinator.ReservePublication(matchingId)",
-            "DispatchWithMatchRuntimeLease(",
             "_swarmBotMovementCoordinator.DispatchInOrder(",
-            "DispatchSwarmBotMovementPlan(capturedPlan, capturedSessions)");
-        Assert.Contains("session.CurrentMapId == Config.SWARM_MATCH_MAP", process);
+            "DispatchSwarmBotMovementPlan(capturedPlan, capturedSessions)",
+            "_swarmBotTickCoordinator.Record(",
+            "ReleaseBotMovementTickClaim(");
         AssertInOrder(
-            process,
-            "if (plan == null || sessionSnapshot == null || publicationTicket == null)",
-            "SwarmBotPublicationTicket? ticketToRetire = publicationTicket;",
-            "_swarmBotMovementCoordinator.DispatchInOrder(",
-            "ticket,",
-            "static () => { });",
-            "continue;");
+            processFinalization,
+            "_swarmBotTickCoordinator.Record(",
+            "catch (Exception ex)",
+            "finally",
+            "ReleaseBotMovementTickClaim(");
+        AssertInOrder(
+            release,
+            "outerRuntimeOperation?.Dispose();",
+            "_swarmBotTickCoordinator.Retire(tickLease);");
+        Assert.Contains("session.CurrentMapId == Config.SWARM_MATCH_MAP", process);
         Assert.DoesNotContain(".Send(", process);
         AssertInOrder(
             dispatch,
@@ -469,6 +519,8 @@ public sealed class SwarmBotMovementCoordinatorTests
         AssertInOrder(
             server,
             "\"swarm arena\"",
+            "\"bot movement ticks\"",
+            "_swarmBotTickCoordinator.ClearMatching",
             "\"bot movement publication\"",
             "_swarmBotMovementCoordinator.ClearMatching",
             "\"area closure\"",

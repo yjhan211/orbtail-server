@@ -2101,6 +2101,11 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             "_proximityAutoCombatTimer = null;",
             ".Select(timer => timer!.DisposeAsync().AsTask())",
             "WaitForPendingMatchOwnerLossesAsync()");
+        AssertInOrder(
+            stop,
+            "_botMovementTimer",
+            "_botMovementTimer = null;",
+            ".Select(timer => timer!.DisposeAsync().AsTask())");
         string initialization = ReadMethodSlice(
             server,
             "private void InitializeServices()",
@@ -2108,7 +2113,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         AssertInOrder(
             initialization,
             "_matchRuntimeRegistry.SetRuntimeInitializer(",
-            "RegisterCombatPublicationMatching",
+            "RegisterMatchRuntimeComponents",
             "_matchRuntimeCleanupCoordinator = new MatchRuntimeCleanupCoordinator(",
             "\"combat publication\"",
             "_swarmCombatPublicationCoordinator.ClearMatching",
@@ -2147,10 +2152,11 @@ public sealed class SwarmCombatPublicationCoordinatorTests
         Assert.Contains("_swarmCombatPublicationCoordinator.TryCapturePacket,", server);
         string registration = ReadMethodSlice(
             server,
-            "private void RegisterCombatPublicationMatching(long matchingId)",
+            "private void RegisterMatchRuntimeComponents(long matchingId)",
             "private bool IsSwarmFrontOrbDamaged(");
         AssertInOrder(
             registration,
+            "_swarmBotTickCoordinator.RegisterMatching(matchingId)",
             "_swarmCombatPublicationCoordinator.RegisterMatching(matchingId)",
             "throw new InvalidOperationException(");
         Assert.Contains("internal void SetRuntimeInitializer(Action<long> runtimeInitializer)", registry);

@@ -25,42 +25,132 @@ public partial class GameServer
 
     private void ProcessBotMovement(object? state)
     {
-        if (Interlocked.Exchange(ref _botMovementProcessing, 1) == 1)
-        {
-            Interlocked.Increment(ref _botMovementTickSkips);
-            int consecutiveSkips = Interlocked.Increment(ref _botMovementConsecutiveSkips);
-            UpdateMaximum(ref _botMovementMaxConsecutiveSkips, consecutiveSkips);
-            return;
-        }
-
-        var botMovementTickStartedAt = DateTime.UtcNow;
-        double snapshotElapsedMilliseconds = 0d;
-        double planningElapsedMilliseconds = 0d;
-        double walkingElapsedMilliseconds = 0d;
-        double broadcastElapsedMilliseconds = 0d;
+        var workers = new List<Task>();
+        Exception? schedulingFailure = null;
         try
         {
             GameClientSession[] activeSessions = _sessionRegistry
                 .SnapshotWhere(static session => session.PlayerId.HasValue)
                 .ToArray();
             IReadOnlyList<long> matchingIds = GetActiveMatchingIds();
-            BroadcastMatchStartCountdowns(matchingIds, activeSessions);
-
             foreach (long matchingId in matchingIds)
             {
-                if (!MatchStartGate.IsGameplayActive(matchingId) ||
-                    !_botPlayerManager.HasBots(matchingId))
-                {
-                    continue;
-                }
+                Task? worker = TryStartBotMovementWorker(matchingId, activeSessions);
+                if (worker != null)
+                    workers.Add(worker);
+            }
+        }
+        catch (Exception ex)
+        {
+            schedulingFailure = ex;
+        }
+        finally
+        {
+            try
+            {
+                Task.WhenAll(workers).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "One or more bot movement workers failed");
+            }
 
-                SwarmBotMovementPlan? plan = null;
-                SwarmBotPublicationTicket? publicationTicket = null;
-                GameClientSession[]? sessionSnapshot = null;
-                IDisposable? runtimeOperation = _matchRuntimeRegistry.TryAcquireOperation(
+            if (schedulingFailure != null)
+            {
+                logger.LogError(
+                    schedulingFailure,
+                    "Failed to schedule bot movement workers");
+            }
+        }
+    }
+
+    private Task? TryStartBotMovementWorker(
+        long matchingId,
+        GameClientSession[] activeSessions)
+    {
+        IDisposable? outerRuntimeOperation = null;
+        SwarmBotTickCoordinator.SwarmBotTickLease? tickLease = null;
+        try
+        {
+            bool trackBusySkip =
+                MatchStartGate.IsGameplayActive(matchingId) &&
+                _botPlayerManager.HasBots(matchingId);
+            outerRuntimeOperation = _matchRuntimeRegistry.TryAcquireOperationIfAvailable(
+                matchingId,
+                () => _swarmBotTickCoordinator.TryBegin(
+                    matchingId,
+                    trackBusySkip,
+                    out tickLease));
+            if (outerRuntimeOperation == null)
+            {
+                if (trackBusySkip)
+                    _swarmBotTickCoordinator.TryRecordBusySkip(matchingId);
+                return null;
+            }
+
+            if (tickLease == null)
+            {
+                ReleaseBotMovementTickClaim(
+                    matchingId,
+                    outerRuntimeOperation,
+                    tickLease);
+                return null;
+            }
+
+            IDisposable capturedOperation = outerRuntimeOperation;
+            SwarmBotTickCoordinator.SwarmBotTickLease capturedLease = tickLease;
+            return Task.Run(
+                () => ProcessBotMovementForMatching(
+                    matchingId,
+                    activeSessions,
+                    capturedOperation,
+                    capturedLease));
+        }
+        catch (Exception ex)
+        {
+            ReleaseBotMovementTickClaim(
+                matchingId,
+                outerRuntimeOperation,
+                tickLease);
+            logger.LogError(
+                ex,
+                "Failed to schedule bot movement worker: MatchingId={MatchingId}",
+                matchingId);
+            return null;
+        }
+    }
+
+    private void ProcessBotMovementForMatching(
+        long matchingId,
+        GameClientSession[] activeSessions,
+        IDisposable outerRuntimeOperation,
+        SwarmBotTickCoordinator.SwarmBotTickLease tickLease)
+    {
+        var tickStartedAt = DateTime.UtcNow;
+        double snapshotElapsedMilliseconds = 0d;
+        double planningElapsedMilliseconds = 0d;
+        double walkingElapsedMilliseconds = 0d;
+        double broadcastElapsedMilliseconds = 0d;
+        bool movementAttempted = false;
+        SwarmBotTickMetricsBatch? metricsBatch = null;
+
+        try
+        {
+            BroadcastMatchStartCountdowns([matchingId], activeSessions);
+            if (!MatchStartGate.IsGameplayActive(matchingId) ||
+                !_botPlayerManager.HasBots(matchingId))
+            {
+                return;
+            }
+
+            SwarmBotMovementPlan? plan = null;
+            SwarmBotPublicationTicket? publicationTicket = null;
+            GameClientSession[]? sessionSnapshot = null;
+            if (!_matchRuntimeRegistry.TryExecute(
                     matchingId,
                     () =>
                     {
+                        movementAttempted = true;
                         long snapshotStartedAt = Stopwatch.GetTimestamp();
                         sessionSnapshot = _sessionRegistry.GetByMatch(matchingId)
                             .Where(session =>
@@ -78,130 +168,172 @@ public partial class GameServer
                             ResolveSwarmBotDirective);
                         snapshotElapsedMilliseconds +=
                             sessionSnapshotElapsedMilliseconds + plan.SnapshotElapsedMilliseconds;
-                        publicationTicket = _swarmBotMovementCoordinator.ReservePublication(matchingId);
-                    });
-                if (runtimeOperation == null)
-                    continue;
-                if (plan == null || sessionSnapshot == null || publicationTicket == null)
-                {
-                    SwarmBotPublicationTicket? ticketToRetire = publicationTicket;
-                    DispatchWithMatchRuntimeLease(
-                        runtimeOperation,
-                        () =>
-                        {
-                            if (ticketToRetire is { } ticket)
-                            {
-                                _swarmBotMovementCoordinator.DispatchInOrder(
-                                    ticket,
-                                    static () => { });
-                            }
-                        });
-                    continue;
-                }
+                        publicationTicket =
+                            _swarmBotMovementCoordinator.ReservePublication(matchingId);
+                    }))
+            {
+                return;
+            }
 
-                SwarmBotMovementPlan capturedPlan = plan;
-                SwarmBotPublicationTicket capturedTicket = publicationTicket.Value;
-                GameClientSession[] capturedSessions = sessionSnapshot;
+            if (publicationTicket is not { } ticket)
+                return;
+
+            SwarmBotMovementPlan? capturedPlan = plan;
+            GameClientSession[] capturedSessions = sessionSnapshot ?? [];
+            if (capturedPlan != null)
+            {
                 planningElapsedMilliseconds += capturedPlan.PlanningElapsedMilliseconds;
                 walkingElapsedMilliseconds += capturedPlan.WalkingElapsedMilliseconds;
-                broadcastElapsedMilliseconds += capturedPlan.DispatchPreparationElapsedMilliseconds;
-                long dispatchStartedAt = Stopwatch.GetTimestamp();
-                DispatchWithMatchRuntimeLease(
-                    runtimeOperation,
-                    () => _swarmBotMovementCoordinator.DispatchInOrder(
-                        capturedTicket,
-                        () => DispatchSwarmBotMovementPlan(capturedPlan, capturedSessions)));
                 broadcastElapsedMilliseconds +=
-                    Stopwatch.GetElapsedTime(dispatchStartedAt).TotalMilliseconds;
+                    capturedPlan.DispatchPreparationElapsedMilliseconds;
             }
+
+            long dispatchStartedAt = Stopwatch.GetTimestamp();
+            _swarmBotMovementCoordinator.DispatchInOrder(
+                ticket,
+                () =>
+                {
+                    if (capturedPlan != null)
+                        DispatchSwarmBotMovementPlan(capturedPlan, capturedSessions);
+                });
+            broadcastElapsedMilliseconds +=
+                Stopwatch.GetElapsedTime(dispatchStartedAt).TotalMilliseconds;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "봇 walking 틱 처리 중 오류");
+            logger.LogError(
+                ex,
+                "Bot walking tick failed: MatchingId={MatchingId}",
+                matchingId);
         }
         finally
         {
             try
             {
-                double botTickElapsedMs = (DateTime.UtcNow - botMovementTickStartedAt).TotalMilliseconds;
-                Interlocked.Exchange(ref _botMovementConsecutiveSkips, 0);
-                _botMovementTickSamples.Add(botTickElapsedMs);
-                _botMovementSnapshotSamples.Add(snapshotElapsedMilliseconds);
-                _botMovementPlanningSamples.Add(planningElapsedMilliseconds);
-                _botMovementWalkingSamples.Add(walkingElapsedMilliseconds);
-                _botMovementBroadcastSamples.Add(broadcastElapsedMilliseconds);
-                _botMovementTickCount++;
-                _botMovementTickTotalMs += botTickElapsedMs;
-                if (botTickElapsedMs > _botMovementTickMaxMs)
-                    _botMovementTickMaxMs = botTickElapsedMs;
-                if (_botMovementTickCount >= 200)
-                    RecordBotMovementMetrics();
+                if (movementAttempted)
+                {
+                    metricsBatch = _swarmBotTickCoordinator.Record(
+                        tickLease,
+                        new SwarmBotTickSample(
+                            (DateTime.UtcNow - tickStartedAt).TotalMilliseconds,
+                            snapshotElapsedMilliseconds,
+                            planningElapsedMilliseconds,
+                            walkingElapsedMilliseconds,
+                            broadcastElapsedMilliseconds));
+                }
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Failed to record bot movement tick metrics");
+                logger.LogWarning(
+                    ex,
+                    "Failed to record bot movement tick metrics: MatchingId={MatchingId}",
+                    matchingId);
             }
             finally
             {
-                Volatile.Write(ref _botMovementProcessing, 0);
+                ReleaseBotMovementTickClaim(
+                    matchingId,
+                    outerRuntimeOperation,
+                    tickLease);
+            }
+
+            if (metricsBatch != null)
+            {
+                try
+                {
+                    PublishBotMovementMetrics(metricsBatch);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(
+                        ex,
+                        "Failed to publish bot movement metrics: MatchingId={MatchingId}",
+                        matchingId);
+                }
             }
         }
     }
 
-    private void RecordBotMovementMetrics()
+    private void ReleaseBotMovementTickClaim(
+        long matchingId,
+        IDisposable? outerRuntimeOperation,
+        SwarmBotTickCoordinator.SwarmBotTickLease? tickLease)
     {
-        var sortedSamples = _botMovementTickSamples.OrderBy(value => value).ToArray();
-        double p50Milliseconds = CalculatePercentile(sortedSamples, 0.50);
-        double p95Milliseconds = CalculatePercentile(sortedSamples, 0.95);
-        double p99Milliseconds = CalculatePercentile(sortedSamples, 0.99);
+        try
+        {
+            outerRuntimeOperation?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(
+                ex,
+                "Failed to release bot movement runtime lease: MatchingId={MatchingId}",
+                matchingId);
+        }
+        finally
+        {
+            if (tickLease != null)
+            {
+                try
+                {
+                    _swarmBotTickCoordinator.Retire(tickLease);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(
+                        ex,
+                        "Failed to retire bot movement tick: MatchingId={MatchingId}",
+                        matchingId);
+                }
+            }
+        }
+    }
+
+    private void PublishBotMovementMetrics(SwarmBotTickMetricsBatch batch)
+    {
+        double[] sortedTickSamples = batch.TickSamples.OrderBy(value => value).ToArray();
+        double p50Milliseconds = CalculatePercentile(sortedTickSamples, 0.50);
+        double p95Milliseconds = CalculatePercentile(sortedTickSamples, 0.95);
+        double p99Milliseconds = CalculatePercentile(sortedTickSamples, 0.99);
         double snapshotP95Milliseconds = CalculatePercentile(
-            _botMovementSnapshotSamples.OrderBy(value => value).ToArray(), 0.95);
+            batch.SnapshotSamples.OrderBy(value => value).ToArray(),
+            0.95);
         double planningP95Milliseconds = CalculatePercentile(
-            _botMovementPlanningSamples.OrderBy(value => value).ToArray(), 0.95);
+            batch.PlanningSamples.OrderBy(value => value).ToArray(),
+            0.95);
         double walkingP95Milliseconds = CalculatePercentile(
-            _botMovementWalkingSamples.OrderBy(value => value).ToArray(), 0.95);
+            batch.WalkingSamples.OrderBy(value => value).ToArray(),
+            0.95);
         double broadcastP95Milliseconds = CalculatePercentile(
-            _botMovementBroadcastSamples.OrderBy(value => value).ToArray(), 0.95);
-        int skippedTicks = Interlocked.Exchange(ref _botMovementTickSkips, 0);
-        int maxConsecutiveSkippedTicks = Interlocked.Exchange(ref _botMovementMaxConsecutiveSkips, 0);
+            batch.BroadcastSamples.OrderBy(value => value).ToArray(),
+            0.95);
         logger.LogInformation(
-            "Bot movement tick: avg={Avg:F1}ms max={Max:F1}ms skips={Skips} over {Count} ticks; " +
+            "Bot movement tick: MatchingId={MatchingId} avg={Avg:F1}ms max={Max:F1}ms skips={Skips} over {Count} ticks; " +
             "p95 snapshot={SnapshotP95:F1}ms planning={PlanningP95:F1}ms walking={WalkingP95:F1}ms " +
             "broadcast={BroadcastP95:F1}ms",
-            _botMovementTickTotalMs / _botMovementTickCount,
-            _botMovementTickMaxMs,
-            skippedTicks,
-            _botMovementTickCount,
+            batch.MatchingId,
+            batch.TotalElapsedMilliseconds / batch.TickSamples.Length,
+            batch.MaxElapsedMilliseconds,
+            batch.BusySkips,
+            batch.TickSamples.Length,
             snapshotP95Milliseconds,
             planningP95Milliseconds,
             walkingP95Milliseconds,
             broadcastP95Milliseconds);
-        foreach (long matchingId in GetActiveMatchingIds().Where(_botPlayerManager.HasBots))
-        {
-            _matchRuntimeRegistry.TryExecute(
-                matchingId,
-                () => _gameEventLogManager.LogBotMovementTickPerformance(
-                    matchingId,
-                    p50Milliseconds,
-                    p95Milliseconds,
-                    p99Milliseconds,
-                    snapshotP95Milliseconds,
-                    planningP95Milliseconds,
-                    walkingP95Milliseconds,
-                    broadcastP95Milliseconds,
-                    _botMovementTickCount,
-                    skippedTicks,
-                    maxConsecutiveSkippedTicks));
-        }
-
-        _botMovementTickCount = 0;
-        _botMovementTickTotalMs = 0;
-        _botMovementTickMaxMs = 0;
-        _botMovementTickSamples.Clear();
-        _botMovementSnapshotSamples.Clear();
-        _botMovementPlanningSamples.Clear();
-        _botMovementWalkingSamples.Clear();
-        _botMovementBroadcastSamples.Clear();
+        _matchRuntimeRegistry.TryExecute(
+            batch.MatchingId,
+            () => _gameEventLogManager.LogBotMovementTickPerformance(
+                batch.MatchingId,
+                p50Milliseconds,
+                p95Milliseconds,
+                p99Milliseconds,
+                snapshotP95Milliseconds,
+                planningP95Milliseconds,
+                walkingP95Milliseconds,
+                broadcastP95Milliseconds,
+                batch.TickSamples.Length,
+                batch.BusySkips,
+                batch.MaxConsecutiveBusySkips));
     }
 
     private static ImmutableArray<SwarmBotObserverSnapshot> CaptureSwarmBotObservers(

@@ -266,7 +266,20 @@ public sealed class MatchRuntimeRegistry
     ///     a monitor across await, but final cleanup is deferred until every acquired lease
     ///     and synchronous execution has completed.
     /// </summary>
-    public IDisposable? TryAcquireOperation(long matchingId, Action onAcquired)
+    public IDisposable? TryAcquireOperation(long matchingId, Action onAcquired) =>
+        TryAcquireOperationCore(matchingId, onAcquired, waitForRuntimeMonitor: true);
+
+    /// <summary>
+    ///     Attempts to acquire a terminal-lifecycle lease without waiting for the match monitor.
+    ///     Timer callers can drop only the contended match pulse and continue scheduling siblings.
+    /// </summary>
+    public IDisposable? TryAcquireOperationIfAvailable(long matchingId, Action onAcquired) =>
+        TryAcquireOperationCore(matchingId, onAcquired, waitForRuntimeMonitor: false);
+
+    private IDisposable? TryAcquireOperationCore(
+        long matchingId,
+        Action onAcquired,
+        bool waitForRuntimeMonitor)
     {
         ArgumentNullException.ThrowIfNull(onAcquired);
 
@@ -278,8 +291,16 @@ public sealed class MatchRuntimeRegistry
         MatchRuntimeOperation? operation = null;
         ExceptionDispatchInfo? acquisitionFailure = null;
         ExceptionDispatchInfo? finalizationFailure = null;
-        lock (runtime.SyncRoot)
+        bool lockTaken = false;
+        try
         {
+            if (waitForRuntimeMonitor)
+                Monitor.Enter(runtime.SyncRoot, ref lockTaken);
+            else
+                Monitor.TryEnter(runtime.SyncRoot, ref lockTaken);
+            if (!lockTaken)
+                return null;
+
             if (_completedMatchingIds.ContainsKey(matchingId))
             {
                 _activeRuntimes.TryRemove(
@@ -317,6 +338,11 @@ public sealed class MatchRuntimeRegistry
                     finalizationFailure = ExceptionDispatchInfo.Capture(ex);
                 }
             }
+        }
+        finally
+        {
+            if (lockTaken)
+                Monitor.Exit(runtime.SyncRoot);
         }
 
         if (finalizationFailure == null && finalizationClaim != null)

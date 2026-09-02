@@ -445,6 +445,8 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             server,
+            "\"bot movement ticks\"",
+            "_swarmBotTickCoordinator.ClearMatching",
             "\"bot movement publication\"",
             "_swarmBotMovementCoordinator.ClearMatching",
             "\"field closure publication\"",
@@ -505,9 +507,11 @@ public sealed class SwarmArenaTickOrderTests
         string crossfire = ReadNormalizedSource(root, "game_server", "GameServer.SwarmCrossfire.cs");
 
         Assert.DoesNotContain("_globalExecutionLock", registry);
-        // Finalization now freezes its before snapshot, runs it outside the monitor, then
-        // reacquires SyncRoot once to validate the same claim and commit cleanup.
-        Assert.Equal(6, CountOccurrences(registry, "lock (runtime.SyncRoot)"));
+        // Finalization still reacquires SyncRoot to validate and commit. Operation acquisition
+        // shares one Monitor-based core so timer callers can choose non-blocking TryEnter.
+        Assert.Equal(5, CountOccurrences(registry, "lock (runtime.SyncRoot)"));
+        Assert.Contains("Monitor.Enter(runtime.SyncRoot, ref lockTaken);", registry);
+        Assert.Contains("Monitor.TryEnter(runtime.SyncRoot, ref lockTaken);", registry);
 
         Assert.DoesNotContain("_swarmCriticalRng", arena);
         Assert.DoesNotContain("_swarmCriticalRng", crossfire);

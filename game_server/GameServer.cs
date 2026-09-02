@@ -81,6 +81,7 @@ public partial class GameServer(
     private readonly MatchRuntimeRegistry _matchRuntimeRegistry = new();
     private readonly SwarmCombatPublicationCoordinator _swarmCombatPublicationCoordinator =
         new(TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs));
+    private readonly SwarmBotTickCoordinator _swarmBotTickCoordinator = new();
     private MatchRuntimeCleanupCoordinator _matchRuntimeCleanupCoordinator = null!;
     private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
     private SwarmClosurePublicationCoordinator _swarmClosurePublicationCoordinator = null!;
@@ -112,23 +113,7 @@ public partial class GameServer(
     private Timer? _resourceTickTimer;        // 폐쇄 구역 등 주기성 자원 변화
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
-    private Timer? _botMovementTimer;         // #127 봇 walking step (250ms)
-
-    // 자원 틱 설정 (GDD v0.0.5 확정 수치)
-    private int _botMovementProcessing;
-
-    // 봇 이동 틱 계측 (#207) — 틱이 밀려 스킵되면 봇 위치 브로드캐스트 간격이 벌어진다.
-    private int _botMovementTickSkips;
-    private int _botMovementTickCount;
-    private double _botMovementTickTotalMs;
-    private readonly List<double> _botMovementSnapshotSamples = new(200);
-    private readonly List<double> _botMovementPlanningSamples = new(200);
-    private readonly List<double> _botMovementWalkingSamples = new(200);
-    private readonly List<double> _botMovementBroadcastSamples = new(200);
-    private double _botMovementTickMaxMs;
-    private readonly List<double> _botMovementTickSamples = new(200);
-    private int _botMovementConsecutiveSkips;
-    private int _botMovementMaxConsecutiveSkips;
+    private Timer? _botMovementTimer;         // #127 봇 walking step (50ms)
 
     private sealed class MatchingLifecyclePersistenceState
     {
@@ -148,10 +133,17 @@ public partial class GameServer(
     private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
         _swarmMatchRuntimes.GetOrCreate(matchingId);
 
-    private void RegisterCombatPublicationMatching(long matchingId)
+    private void RegisterMatchRuntimeComponents(long matchingId)
     {
+        if (!_swarmBotTickCoordinator.RegisterMatching(matchingId))
+        {
+            throw new InvalidOperationException(
+                $"Bot tick state was already registered for match {matchingId}.");
+        }
+
         if (!_swarmCombatPublicationCoordinator.RegisterMatching(matchingId))
         {
+            _swarmBotTickCoordinator.ClearMatching(matchingId);
             throw new InvalidOperationException(
                 $"Combat publication state was already registered for match {matchingId}.");
         }
@@ -448,7 +440,7 @@ public partial class GameServer(
             _encounterRevealManager,
             _gameEventLogManager);
         _swarmClosurePublicationCoordinator = new SwarmClosurePublicationCoordinator();
-        _matchRuntimeRegistry.SetRuntimeInitializer(RegisterCombatPublicationMatching);
+        _matchRuntimeRegistry.SetRuntimeInitializer(RegisterMatchRuntimeComponents);
         _matchRuntimeCleanupCoordinator = new MatchRuntimeCleanupCoordinator(
             _matchRuntimeRegistry,
             [
@@ -467,6 +459,9 @@ public partial class GameServer(
                 new MatchRuntimeCleanupStep(
                     "swarm arena",
                     CleanupSwarmArenaState),
+                new MatchRuntimeCleanupStep(
+                    "bot movement ticks",
+                    _swarmBotTickCoordinator.ClearMatching),
                 new MatchRuntimeCleanupStep(
                     "bot movement publication",
                     _swarmBotMovementCoordinator.ClearMatching),
@@ -940,18 +935,6 @@ public partial class GameServer(
             return sortedValues[lowerIndex];
         double fraction = position - lowerIndex;
         return sortedValues[lowerIndex] + (sortedValues[upperIndex] - sortedValues[lowerIndex]) * fraction;
-    }
-
-    private static void UpdateMaximum(ref int location, int candidate)
-    {
-        int current = System.Threading.Volatile.Read(ref location);
-        while (candidate > current)
-        {
-            int observed = System.Threading.Interlocked.CompareExchange(ref location, candidate, current);
-            if (observed == current)
-                return;
-            current = observed;
-        }
     }
 
     private void BroadcastMatchStartCountdowns(
