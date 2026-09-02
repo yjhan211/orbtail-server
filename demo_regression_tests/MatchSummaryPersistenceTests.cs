@@ -7,8 +7,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
-using network.contracts.messaging;
-using network.contracts.scaling;
 using network.hosting;
 using network.infrastructure;
 using network.interfaces;
@@ -231,32 +229,6 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             StringComparison.Ordinal);
 
         string serverSource = ReadNormalizedSource(root, "game_server", "GameServer.cs");
-        string lifecycleRegistration = ReadMethodSlice(
-            serverSource,
-            "private Action? RegisterMatchingLifecyclePublish(",
-            "private async Task RunTrackedMatchingLifecyclePublishAsync(");
-        int deferredDispatchFactory = Find(lifecycleRegistration, "return () =>");
-        int durableDispatchStart = Find(
-            lifecycleRegistration,
-            "_ = RunTrackedMatchingLifecyclePublishAsync(");
-        Assert.True(deferredDispatchFactory < durableDispatchStart);
-        Assert.Matches(
-            new Regex(
-                """
-                return\s*\(\s*\)\s*=>\s*
-                \{.*?
-                    Interlocked\.Exchange\s*\(\s*ref\s+dispatchStarted\s*,\s*1\s*\).*?
-                    _\s*=\s*RunTrackedMatchingLifecyclePublishAsync\s*
-                    \(\s*
-                        outboxWorker\s*,\s*
-                        record\s*,\s*
-                        completeMatchPersistence\s*,\s*
-                        completion\s*
-                    \)\s*;
-                """,
-                sourceContractOptions),
-            lifecycleRegistration);
-
         string noHumanFinalization = ReadMethodSlice(
             serverSource,
             "private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId, string endReason",
@@ -324,64 +296,10 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     }
 
     [Fact]
-    public void DurableLifecycleCompletion_SourceContract_AlwaysReleasesPendingTracker()
-    {
-        string root = FindRepositoryRoot();
-        string serverSource = ReadNormalizedSource(root, "game_server", "GameServer.cs");
-        string lifecycleRegistration = ReadMethodSlice(
-            serverSource,
-            "private Action? RegisterMatchingLifecyclePublish(",
-            "private async Task RunTrackedMatchingLifecyclePublishAsync(");
-        string trackedPublish = ReadMethodSlice(
-            serverSource,
-            "private async Task RunTrackedMatchingLifecyclePublishAsync(",
-            "private void CompleteTrackedMatchingLifecyclePublish(");
-        string completion = ReadMethodSlice(
-            serverSource,
-            "private void CompleteTrackedMatchingLifecyclePublish(",
-            "private async Task<bool> PersistMatchingLifecycleDecisionAsync(");
-        RegexOptions sourceContractOptions =
-            RegexOptions.Singleline |
-            RegexOptions.IgnorePatternWhitespace |
-            RegexOptions.CultureInvariant;
-
-        Assert.Contains(
-            "CompleteTrackedMatchingLifecyclePublish(",
-            lifecycleRegistration,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "CompleteTrackedMatchingLifecyclePublish(",
-            trackedPublish,
-            StringComparison.Ordinal);
-        Assert.Matches(
-            new Regex(
-                """
-                try\s*
-                \{\s*
-                    completeMatchPersistence\s*\(\s*persistenceProtected\s*\)\s*;\s*
-                \}\s*
-                catch\s*\(\s*Exception\s+ex\s*\)\s*
-                \{.*?
-                    logger\.LogCritical\s*
-                    \(.*?
-                        "Matching\s+lifecycle\s+persistence\s+completion\s+callback\s+failed:.*?
-                    \)\s*;\s*
-                \}\s*
-                finally\s*
-                \{.*?
-                    completion\.TrySetResult\s*\(\s*true\s*\)\s*;\s*
-                \}
-                """,
-                sourceContractOptions),
-            completion);
-    }
-
-    [Fact]
-    public async Task LegacyLifecycleCompletion_PrepareDefersOneShotPublishAndHoldsBarrier()
+    public void LifecycleCompletion_PrepareDefersOneShotCorePublish()
     {
         var nats = new RecordingNatsClient();
-        var logger = new RecordingLogger<GameServer>();
-        GameServer server = CreateLegacyGameServer(nats, logger);
+        GameServer server = CreateLegacyGameServer(nats, new RecordingLogger<GameServer>());
         const long matchingId = 42_003;
 
         Action dispatch = Assert.IsType<Action>(InvokePrivate(
@@ -390,61 +308,55 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             MatchingLifecycleSubjects.PlayerCompleted,
             101L,
             matchingId));
-        ConcurrentDictionary<long, Task> pending = GetPendingLifecycleTasks(server);
-        KeyValuePair<long, Task> registration = Assert.Single(pending);
-        Assert.False(registration.Value.IsCompleted);
         Assert.Equal(0, nats.PublishCount);
-
-        Task<bool> barrier = Assert.IsAssignableFrom<Task<bool>>(InvokePrivate(
-            server,
-            "SealAndWaitForMatchingLifecyclePersistenceAsync",
-            matchingId));
-        Assert.False(barrier.IsCompleted);
 
         dispatch();
         dispatch();
 
         Assert.Equal(1, nats.PublishCount);
-        Assert.True(await barrier.WaitAsync(TimeSpan.FromSeconds(2)));
-        Assert.True(registration.Value.IsCompletedSuccessfully);
-        Assert.Empty(pending);
+        Assert.Equal(MatchingLifecycleSubjects.PlayerCompleted, nats.LastSubject);
+        byte[] payload = Assert.IsType<byte[]>(nats.LastPayload);
+        Assert.Equal(16, payload.Length);
+        Assert.Equal(101L, BitConverter.ToInt64(payload, 0));
+        Assert.Equal(matchingId, BitConverter.ToInt64(payload, 8));
     }
 
     [Fact]
-    public async Task LegacyLifecycleCompletion_PublishFailureIsLoggedButBarrierStaysSuccessful()
+    public void LifecyclePublishFailure_IsLoggedAndLaterPublicationProgresses()
     {
         var nats = new RecordingNatsClient
         {
-            PublishException = new InvalidOperationException("legacy failure")
+            PublishException = new InvalidOperationException("core failure")
         };
         var logger = new RecordingLogger<GameServer>();
         GameServer server = CreateLegacyGameServer(nats, logger);
-        const long matchingId = 42_004;
 
-        Action dispatch = Assert.IsType<Action>(InvokePrivate(
+        InvokePrivate(
             server,
-            "PrepareMatchingLifecyclePublication",
-            MatchingLifecycleSubjects.PlayerCompleted,
+            "PublishMatchingLifecycle",
+            MatchingLifecycleSubjects.PlayerLeft,
             102L,
-            matchingId));
-        Task<bool> barrier = Assert.IsAssignableFrom<Task<bool>>(InvokePrivate(
-            server,
-            "SealAndWaitForMatchingLifecyclePersistenceAsync",
-            matchingId));
-
-        dispatch();
+            42_004L);
 
         Assert.Equal(1, nats.PublishCount);
-        Assert.True(await barrier.WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.True(
             logger.Contains(
                 LogLevel.Error,
                 "Matching lifecycle publish failed:"));
-        Assert.Empty(GetPendingLifecycleTasks(server));
+
+        nats.PublishException = null;
+        InvokePrivate(
+            server,
+            "PublishMatchingLifecycle",
+            MatchingLifecycleSubjects.PlayerLeft,
+            103L,
+            42_004L);
+
+        Assert.Equal(2, nats.PublishCount);
     }
 
     [Fact]
-    public void LegacyLifecycle_NonCompletedWrapperStillPublishesImmediately()
+    public void Lifecycle_ImmediateWrapperPublishesOnce()
     {
         var nats = new RecordingNatsClient();
         GameServer server = CreateLegacyGameServer(
@@ -459,122 +371,56 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             42_005L);
 
         Assert.Equal(1, nats.PublishCount);
-        Assert.Empty(GetPendingLifecycleTasks(server));
+        Assert.Equal(MatchingLifecycleSubjects.PlayerLeft, nats.LastSubject);
     }
 
     [Fact]
-    public async Task LegacyLifecycle_UntrackedPublish_ReleasesGateAndDrainsReservedWork()
+    public void Lifecycle_SecondTerminalSubjectForSamePlayerIsIgnored()
     {
-        var nats = new BlockingNatsClient();
+        // left+completed 이중 발행은 user_server 이탈 페널티를 깨뜨린다 — 플레이어당 terminal 하나만.
+        var nats = new RecordingNatsClient();
         GameServer server = CreateLegacyGameServer(
             nats,
             new RecordingLogger<GameServer>());
-        Action dispatch = Assert.IsType<Action>(InvokePrivate(
+        const long matchingId = 42_006;
+
+        Action? completed = (Action?)InvokePrivate(
+            server,
+            "PrepareMatchingLifecyclePublication",
+            MatchingLifecycleSubjects.PlayerCompleted,
+            104L,
+            matchingId);
+        Assert.NotNull(completed);
+        Assert.Null(InvokePrivate(
             server,
             "PrepareMatchingLifecyclePublication",
             MatchingLifecycleSubjects.PlayerLeft,
             104L,
-            42_006L));
+            matchingId));
+        InvokePrivate(
+            server,
+            "PublishMatchingLifecycle",
+            MatchingLifecycleSubjects.PlayerReleased,
+            104L,
+            matchingId);
+        Assert.Equal(0, nats.PublishCount);
 
-        Task dispatchTask = Task.Run(dispatch);
-        await nats.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        Task? drain = null;
-        try
-        {
-            Assert.Single(GetPendingLifecycleTasks(server));
-
-            Task secondDispatch = Task.Run(dispatch);
-            await secondDispatch.WaitAsync(TimeSpan.FromSeconds(2));
-            Task stopFence = Task.Run(
-                () => InvokePrivate(server, "StopAcceptingLegacyMatchingLifecyclePublishes"));
-            await stopFence.WaitAsync(TimeSpan.FromSeconds(2));
-
-            drain = Assert.IsAssignableFrom<Task>(InvokePrivate(
-                server,
-                "WaitForPendingMatchingLifecyclePublishesAsync"));
-            Assert.False(drain.IsCompleted);
-        }
-        finally
-        {
-            nats.Release.TrySetResult(true);
-        }
-
-        await dispatchTask.WaitAsync(TimeSpan.FromSeconds(2));
-        await Assert.IsAssignableFrom<Task>(drain).WaitAsync(TimeSpan.FromSeconds(2));
+        completed!();
 
         Assert.Equal(1, nats.PublishCount);
-        Assert.Empty(GetPendingLifecycleTasks(server));
-    }
+        Assert.Equal(MatchingLifecycleSubjects.PlayerCompleted, nats.LastSubject);
 
-    [Fact]
-    public async Task LegacyLifecycle_UntrackedPublishFailure_DrainsTrackerAndLaterPublicationProgresses()
-    {
-        var nats = new RecordingNatsClient
-        {
-            PublishException = new InvalidOperationException("legacy untracked failure")
-        };
-        var logger = new RecordingLogger<GameServer>();
-        GameServer server = CreateLegacyGameServer(nats, logger);
-        Action failedDispatch = Assert.IsType<Action>(InvokePrivate(
+        InvokePrivate(
             server,
-            "PrepareMatchingLifecyclePublication",
+            "PublishMatchingLifecycle",
             MatchingLifecycleSubjects.PlayerLeft,
             105L,
-            42_007L));
-
-        failedDispatch();
-        failedDispatch();
-
-        Task drain = Assert.IsAssignableFrom<Task>(InvokePrivate(
-            server,
-            "WaitForPendingMatchingLifecyclePublishesAsync"));
-        await drain.WaitAsync(TimeSpan.FromSeconds(2));
-        Assert.Equal(1, nats.PublishCount);
-        Assert.True(logger.Contains(
-            LogLevel.Error,
-            "Matching lifecycle publish failed:"));
-        Assert.Empty(GetPendingLifecycleTasks(server));
-
-        nats.PublishException = null;
-        Action laterDispatch = Assert.IsType<Action>(InvokePrivate(
-            server,
-            "PrepareMatchingLifecyclePublication",
-            MatchingLifecycleSubjects.PlayerLeft,
-            106L,
-            42_008L));
-        laterDispatch();
-
+            matchingId);
         Assert.Equal(2, nats.PublishCount);
-        Assert.Empty(GetPendingLifecycleTasks(server));
     }
 
     [Fact]
-    public void LegacyLifecycle_UntrackedPreparedActionDoesNotCrossShutdownFence()
-    {
-        var nats = new RecordingNatsClient();
-        var logger = new RecordingLogger<GameServer>();
-        GameServer server = CreateLegacyGameServer(nats, logger);
-
-        Action dispatch = Assert.IsType<Action>(InvokePrivate(
-            server,
-            "PrepareMatchingLifecyclePublication",
-            MatchingLifecycleSubjects.PlayerLeft,
-            104L,
-            42_006L));
-        InvokePrivate(server, "StopAcceptingLegacyMatchingLifecyclePublishes");
-
-        dispatch();
-
-        Assert.Equal(0, nats.PublishCount);
-        Assert.True(
-            logger.Contains(
-                LogLevel.Warning,
-                "Legacy matching lifecycle publish was skipped after the shutdown fence closed:"));
-        Assert.Empty(GetPendingLifecycleTasks(server));
-    }
-
-    [Fact]
-    public void LegacyLifecycleCompletion_SourceContract_DefersAndTracksOnlyPlayerCompleted()
+    public void Lifecycle_SourceContract_ClaimsTerminalBeforeOneShotCorePublish()
     {
         string root = FindRepositoryRoot();
         string serverSource = ReadNormalizedSource(root, "game_server", "GameServer.cs");
@@ -586,174 +432,58 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             serverSource,
             "private Action? PrepareMatchingLifecyclePublication(",
             "private bool TryRegisterMatchingLifecycleTerminal(");
-        string legacyPreparation = ReadMethodSlice(
+        string corePublish = ReadMethodSlice(
             serverSource,
-            "private Action PrepareLegacyMatchingLifecyclePublication(",
-            "private void PublishUntrackedLegacyMatchingLifecycle(");
-        string untrackedDispatch = ReadMethodSlice(
-            serverSource,
-            "private void PublishUntrackedLegacyMatchingLifecycle(",
-            "private bool TryReserveUntrackedLegacyMatchingLifecyclePublish(");
-        string untrackedReservation = ReadMethodSlice(
-            serverSource,
-            "private bool TryReserveUntrackedLegacyMatchingLifecyclePublish(",
-            "private void CompleteUntrackedLegacyMatchingLifecyclePublish(");
-        string untrackedCompletion = ReadMethodSlice(
-            serverSource,
-            "private void CompleteUntrackedLegacyMatchingLifecyclePublish(",
-            "private void PublishLegacyMatchingLifecycle(");
-        string legacyPublish = ReadMethodSlice(
-            serverSource,
-            "private void PublishLegacyMatchingLifecycle(",
-            "private void CompleteTrackedLegacyMatchingLifecyclePublish(");
-        string legacyCompletion = ReadMethodSlice(
-            serverSource,
-            "private void CompleteTrackedLegacyMatchingLifecyclePublish(",
-            "private Action? RegisterMatchingLifecyclePublish(");
-        string persistenceBarrier = ReadMethodSlice(
-            serverSource,
-            "private async Task<bool> SealAndWaitForMatchingLifecyclePersistenceAsync(",
-            "private void MarkMatchingLifecycleOwnerReleaseCompleted(");
+            "private void PublishMatchingLifecycleCore(",
+            "private async Task CloseMatchingLifecycleNatsClientAsync(");
+
         int immediatePreparation = Find(
             immediateWrapper,
             "Action? dispatch = PrepareMatchingLifecyclePublication(subject, playerId, matchingId);");
         int immediateDispatch = Find(immediateWrapper, "dispatch?.Invoke();");
         Assert.True(immediatePreparation < immediateDispatch);
-        Assert.DoesNotContain(
-            "PublishLegacyMatchingLifecycle(",
-            preparation,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "return PrepareLegacyMatchingLifecyclePublication(subject, playerId, matchingId);",
-            preparation,
-            StringComparison.Ordinal);
+        Assert.DoesNotContain("PublishMatchingLifecycleCore(", immediateWrapper, StringComparison.Ordinal);
 
-        int playerCompletedGuard = Find(
-            legacyPreparation,
-            "if (subject == MatchingLifecycleSubjects.PlayerCompleted)");
-        int registrationGate = Find(legacyPreparation, "lock (_matchingLifecycleEnqueueGate)");
-        int persistenceRegistration = Find(
-            legacyPreparation,
-            "TryBeginMatchingLifecyclePersistenceUnderGate(matchingId)");
-        int completionSource = Find(
-            legacyPreparation,
-            "new TaskCompletionSource<bool>(");
-        int pendingRegistration = Find(
-            legacyPreparation,
-            "_pendingMatchingLifecyclePublishTasks.TryAdd(operationId, completion.Task);");
-        int deferredFactory = Find(legacyPreparation, "return () =>");
-        int exactlyOnceGuard = Find(
-            legacyPreparation,
-            "Interlocked.Exchange(ref dispatchStarted, 1)");
-        int legacyAttempt = Find(
-            legacyPreparation,
-            "PublishLegacyMatchingLifecycle(subject, playerId, matchingId);");
-        int completionFinally = Find(legacyPreparation, "finally");
-        int trackedCompletion = Find(
-            legacyPreparation,
-            "CompleteTrackedLegacyMatchingLifecyclePublish(");
-
-        Assert.True(playerCompletedGuard < registrationGate);
-        Assert.True(registrationGate < persistenceRegistration);
-        Assert.True(persistenceRegistration < completionSource);
-        Assert.True(completionSource < pendingRegistration);
-        Assert.True(pendingRegistration < deferredFactory);
+        int terminalClaim = Find(
+            preparation,
+            "if (!TryRegisterMatchingLifecycleTerminal(subject, playerId, matchingId))");
+        int claimRejected = Find(preparation, "return null;");
+        int deferredFactory = Find(preparation, "return () =>");
+        int exactlyOnceGuard = Find(preparation, "Interlocked.Exchange(ref dispatchStarted, 1)");
+        int corePublishCall = Find(
+            preparation,
+            "PublishMatchingLifecycleCore(subject, playerId, matchingId);");
+        Assert.True(terminalClaim < claimRejected);
+        Assert.True(claimRejected < deferredFactory);
         Assert.True(deferredFactory < exactlyOnceGuard);
-        Assert.True(exactlyOnceGuard < legacyAttempt);
-        Assert.True(legacyAttempt < completionFinally);
-        Assert.True(completionFinally < trackedCompletion);
-        Assert.Single(
-            Regex.Matches(
-                legacyPreparation,
-                Regex.Escape("TryBeginMatchingLifecyclePersistenceUnderGate(matchingId)")));
-        Assert.Contains("logger.LogError(", legacyPublish, StringComparison.Ordinal);
+        Assert.True(exactlyOnceGuard < corePublishCall);
 
-        int successfulAttemptCompletion = Find(
-            legacyCompletion,
-            "completeMatchPersistence(true);");
-        int completionFailureLog = Find(
-            legacyCompletion,
-            "Legacy matching lifecycle completion callback failed:");
-        int trackerCompletion = Find(
-            legacyCompletion,
-            "completion.TrySetResult(true);");
-        int exactTrackerRemoval = Find(
-            legacyCompletion,
-            ".Remove(new KeyValuePair<long, Task>(operationId, completion.Task));");
-        Assert.True(successfulAttemptCompletion < completionFailureLog);
-        Assert.True(completionFailureLog < trackerCompletion);
-        Assert.True(trackerCompletion < exactTrackerRemoval);
+        int firstLittleEndian = Find(corePublish, "BinaryPrimitives.WriteInt64LittleEndian(payload, playerId);");
+        int secondLittleEndian = Find(
+            corePublish,
+            "BinaryPrimitives.WriteInt64LittleEndian(payload.AsSpan(sizeof(long)), matchingId);");
+        int corePublishInvocation = Find(corePublish, "_matchingLifecycleNatsClient?.Publish(subject, payload);");
+        int failureLog = Find(corePublish, "Matching lifecycle publish failed:");
+        Assert.True(firstLittleEndian < secondLittleEndian);
+        Assert.True(secondLittleEndian < corePublishInvocation);
+        Assert.True(corePublishInvocation < failureLog);
+        Assert.DoesNotContain("throw", corePublish, StringComparison.Ordinal);
 
-        int existingStateLookup = Find(
-            persistenceBarrier,
-            "_matchingLifecyclePersistenceStates.TryGetValue(");
-        int legacyNoStateFastPath = Find(
-            persistenceBarrier,
-            "if (!IsDurableMatchingLifecycleEnabled)");
-        int durableStateCreation = Find(
-            persistenceBarrier,
-            "state = _matchingLifecyclePersistenceStates.GetOrAdd(");
-        int barrierWait = Find(persistenceBarrier, "await waitTask;");
-        int barrierResult = Find(
-            persistenceBarrier,
-            "return !state.PersistenceFailed;");
-        Assert.True(existingStateLookup < legacyNoStateFastPath);
-        Assert.True(legacyNoStateFastPath < durableStateCreation);
-        Assert.True(durableStateCreation < barrierWait);
-        Assert.True(barrierWait < barrierResult);
-        Assert.Contains("await waitTask;", persistenceBarrier, StringComparison.Ordinal);
-        Assert.Contains("return !state.PersistenceFailed;", persistenceBarrier, StringComparison.Ordinal);
+        // #320 단일 노드 — durable outbox·JetStream·owner fence 경로는 GameServer에 남지 않는다.
+        Assert.DoesNotContain("Outbox", serverSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("JetStream", serverSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("OwnerFence", serverSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("PublishDurableAsync", serverSource, StringComparison.Ordinal);
 
-        int untrackedGate = Find(
-            untrackedReservation,
-            "lock (_matchingLifecycleEnqueueGate)");
-        int shutdownFence = Find(
-            untrackedReservation,
-            "Volatile.Read(ref _acceptingLegacyMatchingLifecyclePublishes) == 0");
-        int pendingReservation = Find(
-            untrackedReservation,
-            "_pendingMatchingLifecyclePublishTasks.TryAdd(operationId, completion.Task)");
-        int outsideGatePublish = Find(
-            untrackedDispatch,
-            "PublishLegacyMatchingLifecycle(subject, playerId, matchingId);");
-        int untrackedCompletionFinally = Find(untrackedDispatch, "finally");
-        int untrackedTrackerCompletion = Find(
-            untrackedCompletion,
-            "completion.TrySetResult(true);");
-        int untrackedTrackerRemoval = Find(
-            untrackedCompletion,
-            ".Remove(new KeyValuePair<long, Task>(operationId, completion.Task));");
-        Assert.True(untrackedGate < shutdownFence);
-        Assert.True(shutdownFence < pendingReservation);
-        Assert.DoesNotContain(
-            "PublishLegacyMatchingLifecycle(",
-            untrackedReservation,
-            StringComparison.Ordinal);
-        Assert.True(outsideGatePublish < untrackedCompletionFinally);
-        Assert.True(untrackedTrackerCompletion < untrackedTrackerRemoval);
-
-        int legacyFenceStart = Find(
-            serverSource,
-            "StartAcceptingLegacyMatchingLifecyclePublishes();");
-        int natsClientCreation = Find(
-            serverSource,
-            "_matchingLifecycleNatsClient = natsClientFactory.Create();");
-        Assert.True(natsClientCreation < legacyFenceStart);
         string shutdown = ReadMethodSlice(
             serverSource,
             "public async Task StopAsync(",
-            "private async Task WaitForScalingDrainAsync(");
-        int lateOwnerLossDrain = Find(
-            shutdown,
-            "late match owner loss");
-        int legacyFenceStop = Find(
-            shutdown,
-            "StopAcceptingLegacyMatchingLifecyclePublishes();");
-        int finalLifecycleDrain = Find(
-            shutdown,
-            "late matching lifecycle outbox persistence");
-        Assert.True(lateOwnerLossDrain < legacyFenceStop);
-        Assert.True(legacyFenceStop < finalLifecycleDrain);
+            "private async Task RunShutdownStageAsync(");
+        int timerDisposal = Find(shutdown, "\"timers\");");
+        int redisCleanupDrain = Find(shutdown, "WaitForPendingMatchingRedisCleanupsAsync()");
+        int natsClose = Find(shutdown, "CloseMatchingLifecycleNatsClientAsync();");
+        Assert.True(timerDisposal < redisCleanupDrain);
+        Assert.True(redisCleanupDrain < natsClose);
     }
 
     [Fact]
@@ -904,14 +634,12 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["MATCH_SUMMARY_DIRECTORY"] = _directory,
-                ["MATCH_SUMMARY_MAX_FILES"] = "5",
-                ["userServerScaling:enabled"] = "false"
+                ["MATCH_SUMMARY_MAX_FILES"] = "5"
             })
             .Build();
         var server = new GameServer(
             configuration,
             logger,
-            null!,
             null!,
             null!,
             null!,
@@ -922,16 +650,12 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 GameServerNum = 1
             },
             null!,
-            new GameServerScalingOptions { Enabled = false },
-            null!,
-            null!,
             new ServerReadinessState());
         typeof(GameServer)
             .GetField(
                 "_matchingLifecycleNatsClient",
                 BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(server, nats);
-        InvokePrivate(server, "StartAcceptingLegacyMatchingLifecyclePublishes");
         return server;
     }
 
@@ -945,23 +669,18 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(server, args);
 
-    private static ConcurrentDictionary<long, Task> GetPendingLifecycleTasks(
-        GameServer server) =>
-        Assert.IsType<ConcurrentDictionary<long, Task>>(
-            typeof(GameServer)
-                .GetField(
-                    "_pendingMatchingLifecyclePublishTasks",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(server));
-
     private sealed class RecordingNatsClient : INatsClient
     {
         public int PublishCount { get; private set; }
+        public string? LastSubject { get; private set; }
+        public byte[]? LastPayload { get; private set; }
         public Exception? PublishException { get; set; }
 
         public void Publish(string subject, byte[] message)
         {
             PublishCount++;
+            LastSubject = subject;
+            LastPayload = message.ToArray();
             if (PublishException != null)
                 throw PublishException;
         }
@@ -982,83 +701,6 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             string subject,
             Func<string, byte[], CancellationToken, Task<byte[]>> messageHandler,
             string? queue = null) =>
-            throw new NotSupportedException();
-
-        public void EnsureDurableStream(NatsDurableStreamOptions options) =>
-            throw new NotSupportedException();
-
-        public Task<NatsDurablePublishAck> PublishDurableAsync(
-            string stream,
-            string subject,
-            string messageId,
-            byte[] message,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public void SubscribeDurableQueue(
-            NatsDurableConsumerOptions options,
-            Func<NatsDurableMessage, CancellationToken, Task<NatsDurableMessageDisposition>>
-                messageHandler) =>
-            throw new NotSupportedException();
-
-        public Task CloseAsync(CancellationToken cancellationToken = default) =>
-            Task.CompletedTask;
-
-        public void Close()
-        {
-        }
-    }
-
-    private sealed class BlockingNatsClient : INatsClient
-    {
-        private int _publishCount;
-
-        public TaskCompletionSource<bool> Entered { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TaskCompletionSource<bool> Release { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public int PublishCount => Volatile.Read(ref _publishCount);
-
-        public void Publish(string subject, byte[] message)
-        {
-            Interlocked.Increment(ref _publishCount);
-            Entered.TrySetResult(true);
-            Release.Task.GetAwaiter().GetResult();
-        }
-
-        public void Subscribe(
-            string subject,
-            Action<string, byte[]> messageHandler) =>
-            throw new NotSupportedException();
-
-        public Task<byte[]> RequestAsync(
-            string subject,
-            byte[] message,
-            TimeSpan timeout,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public void SubscribeRequest(
-            string subject,
-            Func<string, byte[], CancellationToken, Task<byte[]>> messageHandler,
-            string? queue = null) =>
-            throw new NotSupportedException();
-
-        public void EnsureDurableStream(NatsDurableStreamOptions options) =>
-            throw new NotSupportedException();
-
-        public Task<NatsDurablePublishAck> PublishDurableAsync(
-            string stream,
-            string subject,
-            string messageId,
-            byte[] message,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
-        public void SubscribeDurableQueue(
-            NatsDurableConsumerOptions options,
-            Func<NatsDurableMessage, CancellationToken, Task<NatsDurableMessageDisposition>>
-                messageHandler) =>
             throw new NotSupportedException();
 
         public Task CloseAsync(CancellationToken cancellationToken = default) =>

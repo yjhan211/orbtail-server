@@ -9,7 +9,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data.models;
-using network.contracts.scaling;
 using network.hosting;
 using network.infrastructure;
 using network.interfaces;
@@ -1844,11 +1843,10 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             initialized[matchingId] = initialized.GetValueOrDefault(matchingId) + 1);
 
         Assert.True(registry.TryExecute(61_018, static () => { }));
-        Assert.True(registry.TryBindOwnerFence(61_018, ownerFence: 18));
         using IDisposable executionFirst = Assert.IsAssignableFrom<IDisposable>(
             registry.TryAcquireOperation(61_018, static () => { }));
 
-        Assert.True(registry.TryBindOwnerFence(61_019, ownerFence: 19));
+        Assert.True(registry.TryExecute(61_019, static () => { }));
         Assert.True(registry.TryExecute(61_019, static () => { }));
 
         using IDisposable leaseFirst = Assert.IsAssignableFrom<IDisposable>(
@@ -2108,7 +2106,7 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             "_proximityAutoCombatTimer",
             "_proximityAutoCombatTimer = null;",
             ".Select(timer => timer!.DisposeAsync().AsTask())",
-            "WaitForPendingMatchOwnerLossesAsync()");
+            "WaitForPendingMatchingRedisCleanupsAsync()");
         AssertInOrder(
             stop,
             "_botMovementTimer",
@@ -2184,8 +2182,8 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             1,
             CountOccurrences(initialization, "_doorStateManager.ClearMatching"));
         Assert.Contains("internal void SetRuntimeInitializer(Action<long> runtimeInitializer)", registry);
-        Assert.Equal(4, CountOccurrences(registry, "GetOrCreateRuntime(matchingId)"));
-        Assert.Equal(4, CountOccurrences(registry, "runtime.EnsureInitialized("));
+        Assert.Equal(3, CountOccurrences(registry, "GetOrCreateRuntime(matchingId)"));
+        Assert.Equal(3, CountOccurrences(registry, "runtime.EnsureInitialized("));
 
         Assert.Contains(
             "private readonly Func<Action<IPacket>, IPacket, bool>? _tryCaptureCombatPublication;",
@@ -2375,16 +2373,12 @@ public sealed class SwarmCombatPublicationCoordinatorTests
             null!,
             null!,
             null!,
-            null!,
             new ServerConfig
             {
                 ServerType = "GameServer",
                 ServerId = 1,
                 GameServerNum = 1
             },
-            null!,
-            new GameServerScalingOptions { Enabled = false },
-            null!,
             null!,
             new ServerReadinessState());
     }

@@ -238,30 +238,6 @@ public sealed class MatchRuntimeRegistry
     }
 
     /// <summary>
-    ///     Binds the in-memory runtime to the distributed owner fence carried by its first
-    ///     admitted handoff. Later admissions must present the same fence.
-    /// </summary>
-    public bool TryBindOwnerFence(long matchingId, long ownerFence)
-    {
-        if (matchingId <= 0 || ownerFence < 0 || _completedMatchingIds.ContainsKey(matchingId))
-            return false;
-
-        MatchRuntime runtime = GetOrCreateRuntime(matchingId);
-        lock (runtime.SyncRoot)
-        {
-            if (_completedMatchingIds.ContainsKey(matchingId))
-            {
-                _activeRuntimes.TryRemove(
-                    new KeyValuePair<long, MatchRuntime>(matchingId, runtime));
-                return false;
-            }
-
-            runtime.EnsureInitialized(matchingId, Volatile.Read(ref _runtimeInitializer));
-            return runtime.TryBindOwnerFence(ownerFence);
-        }
-    }
-
-    /// <summary>
     ///     Acquires a terminal-lifecycle lease for asynchronous work. The lease does not hold
     ///     a monitor across await, but final cleanup is deferred until every acquired lease
     ///     and synchronous execution has completed.
@@ -659,7 +635,6 @@ public sealed class MatchRuntimeRegistry
         private const int Completed = 2;
         private int _state = Active;
         private int _executionDepth;
-        private long _ownerFence;
         private long _nextFinalizationToken;
         private bool _initialized;
         private FinalizationWork? _currentFinalization;
@@ -683,21 +658,6 @@ public sealed class MatchRuntimeRegistry
 
             _executionDepth++;
             return true;
-        }
-
-        public bool TryBindOwnerFence(long ownerFence)
-        {
-            if (Volatile.Read(ref _state) != Active)
-                return false;
-            if (ownerFence == 0)
-                return _ownerFence == 0;
-            if (_ownerFence == 0)
-            {
-                _ownerFence = ownerFence;
-                return true;
-            }
-
-            return _ownerFence == ownerFence;
         }
 
         public bool TryAttachFinalizationHooks(Action? beforeFinalized, Action? afterFinalized)

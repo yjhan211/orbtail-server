@@ -56,9 +56,6 @@ public partial class GameClientSession
                     .Where(id => id > 0)
                     .Distinct()
                     .ToArray());
-            if (!_bindMatchOwnerFence(matchingId, handoff.GameServerFence))
-                throw new InvalidOperationException(
-                    $"The handoff owner fence does not match the active runtime for match {matchingId}.");
             EnsureConnectionActive();
 
             Logger.LogInformation(

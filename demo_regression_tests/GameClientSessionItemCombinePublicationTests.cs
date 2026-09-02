@@ -11,7 +11,6 @@ using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.contracts.authentication;
-using network.contracts.scaling;
 using network.core;
 using network.helpers;
 using network.hosting;
@@ -989,7 +988,6 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 ResolveItemCombineRandom,
                 AcquireOperation,
                 Registry.TryExecute,
-                Registry.TryBindOwnerFence,
                 static (_, _, _) => { },
                 static (_, _) => { },
                 static (_, _) => null,
@@ -1116,16 +1114,12 @@ public sealed class GameClientSessionItemCombinePublicationTests
             null!,
             null!,
             null!,
-            null!,
             new ServerConfig
             {
                 ServerType = "GameServer",
                 ServerId = 1,
                 GameServerNum = 1
             },
-            null!,
-            new GameServerScalingOptions { Enabled = false },
-            null!,
             null!,
             new ServerReadinessState());
     }

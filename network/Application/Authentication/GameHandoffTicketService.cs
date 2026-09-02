@@ -1,5 +1,4 @@
 using network.contracts.authentication;
-using network.contracts.scaling;
 using network.core.security;
 
 namespace network.application.authentication;
@@ -14,9 +13,7 @@ public sealed class GameHandoffTicketService(
     GameHandoffTicketOptions options) : IGameHandoffTicketService
 {
     private const string TicketPrefix = "game_";
-    private const string ConsumeNoncePrefix = "consume_";
     private const int MaxTicketGenerationAttempts = 5;
-    private static readonly TimeSpan ConsumeReceiptLifetime = TimeSpan.FromMinutes(5);
 
     public async Task<string> IssueAsync(GameHandoffContext context)
     {
@@ -51,45 +48,6 @@ public sealed class GameHandoffTicketService(
             : null;
     }
 
-    public async Task<GameHandoffContext?> ConsumeForOwnerAsync(
-        string? ticket,
-        GameServerNodeIdentity identity,
-        TimeSpan provisionalOwnerLifetime)
-    {
-        ArgumentNullException.ThrowIfNull(identity);
-        if (!identity.IsValid || provisionalOwnerLifetime <= TimeSpan.Zero || string.IsNullOrWhiteSpace(ticket))
-            return null;
-
-        string normalizedTicket = ticket.Trim();
-        if (!OpaqueTokenCodec.IsValid(normalizedTicket, TicketPrefix))
-            return null;
-
-        string ticketHash = OpaqueTokenCodec.Fingerprint(normalizedTicket);
-        GameHandoffContext? pendingContext = await ticketStore.PeekOwnedAsync(ticketHash);
-        if (pendingContext == null ||
-            !TryValidateContext(pendingContext, out _) ||
-            !TryGetExactOwner(pendingContext, identity, out GameServerMatchOwner? owner))
-        {
-            return null;
-        }
-
-        string consumeNonce = OpaqueTokenCodec.Create(ConsumeNoncePrefix);
-        GameHandoffContext? consumedContext =
-            await ticketStore.ConsumeOwnedAsync(
-                ticketHash,
-                consumeNonce,
-                identity,
-                owner!,
-                provisionalOwnerLifetime,
-                ConsumeReceiptLifetime);
-        return consumedContext != null &&
-               TryValidateContext(consumedContext, out _) &&
-               TryGetExactOwner(consumedContext, identity, out GameServerMatchOwner? consumedOwner) &&
-               consumedOwner == owner
-            ? consumedContext
-            : null;
-    }
-
     private static bool TryValidateContext(GameHandoffContext context, out string error)
     {
         if (context.PlayerId <= 0 ||
@@ -105,16 +63,6 @@ public sealed class GameHandoffTicketService(
         if (context.ActiveBuffIds == null || context.HumanRoster == null || context.HumanRoster.Count == 0)
         {
             error = "A game handoff requires non-null buff and human roster collections.";
-            return false;
-        }
-
-        bool hasAnyOwnerField =
-            !string.IsNullOrWhiteSpace(context.GameServerNodeId) ||
-            !string.IsNullOrWhiteSpace(context.GameServerGeneration) ||
-            context.GameServerFence != 0;
-        if (hasAnyOwnerField && !context.HasGameServerOwner)
-        {
-            error = "A game handoff owner binding must contain node, generation, and fence together.";
             return false;
         }
 
@@ -144,16 +92,5 @@ public sealed class GameHandoffTicketService(
 
         error = string.Empty;
         return true;
-    }
-
-    private static bool TryGetExactOwner(
-        GameHandoffContext context,
-        GameServerNodeIdentity identity,
-        out GameServerMatchOwner? owner)
-    {
-        owner = context.GetGameServerOwner();
-        return owner is { IsValid: true } &&
-               string.Equals(owner.NodeId, identity.NodeId, StringComparison.Ordinal) &&
-               string.Equals(owner.Generation, identity.Generation, StringComparison.Ordinal);
     }
 }

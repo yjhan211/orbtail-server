@@ -1,26 +1,19 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using NATS.Client;
-using NATS.Client.JetStream;
-using network.contracts.messaging;
 using network.interfaces;
 
 namespace network.infrastructure;
 
 /// <summary>
 ///     Owns one NATS connection and coordinates core publish, subscribe, request/reply, and graceful handler drain.
-///     Durable JetStream behavior is grouped in the JetStream partial implementation.
 /// </summary>
-public partial class NatsClient : INatsClient
+public class NatsClient : INatsClient
 {
-    private const string JetStreamMessageIdHeader = "Nats-Msg-Id";
     private readonly IConnection _connection;
-    private readonly IJetStream _jetStream;
-    private readonly IJetStreamManagement _jetStreamManagement;
     private readonly ILogger? _logger;
     private readonly CancellationTokenSource _handlerCancellation = new();
     private readonly ConcurrentDictionary<long, Task> _inFlightHandlers = new();
-    private readonly object _jetStreamManagementLock = new();
     private readonly object _subscriptionLock = new();
     private readonly List<IAsyncSubscription> _subscriptions = [];
     private readonly string _url;
@@ -32,11 +25,6 @@ public partial class NatsClient : INatsClient
         _url = url;
         _logger = logger;
         _connection = CreateConnection();
-        var jetStreamOptions = JetStreamOptions.Builder()
-            .WithRequestTimeout(5_000)
-            .Build();
-        _jetStream = _connection.CreateJetStreamContext(jetStreamOptions);
-        _jetStreamManagement = _connection.CreateJetStreamManagementContext(jetStreamOptions);
     }
 
     public void Publish(string subject, byte[] message)

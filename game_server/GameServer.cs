@@ -14,8 +14,6 @@ using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.contracts.authentication;
-using network.contracts.messaging;
-using network.contracts.scaling;
 using network.core;
 using network.helpers;
 using network.hosting;
@@ -26,32 +24,25 @@ using network.packets;
 namespace game_server;
 
 /// <summary>
-///     Hosts authoritative match admission, simulation, ordered publication, terminal lifecycle, and
-///     distributed owner cleanup. Match state preparation is serialized per matchingId; normal and terminal
-///     network publications run outside MatchRuntime.SyncRoot while holding the appropriate turn/lease, and
-///     terminal component cleanup runs under the monitor before lifecycle, Redis, and summary continuations.
+///     Hosts authoritative match admission, simulation, ordered publication, and terminal lifecycle.
+///     Match state preparation is serialized per matchingId; normal and terminal network publications run
+///     outside MatchRuntime.SyncRoot while holding the appropriate turn/lease, and terminal component
+///     cleanup runs under the monitor before lifecycle, Redis, and summary continuations.
+///     단일 노드 전제 (#320) — 수평 확장·durable outbox 계층은 태그 pre-stage2-scaling에 보존.
 /// </summary>
 public partial class GameServer(
     IConfiguration configuration,
     ILogger<GameServer> logger,
     INatsClientFactory natsClientFactory,
     ICacheHelper cacheHelper,
-    MatchingLifecycleOutboxStore matchingLifecycleOutboxStore,
     INetworkService networkService,
     ServerConfig serverConfig,
     IGameHandoffTicketService gameHandoffTicketService,
-    GameServerScalingOptions scalingOptions,
-    GameServerNodeLease gameServerNodeLease,
-    IHostApplicationLifetime applicationLifetime,
     ServerReadinessState readinessState)
     : IHostedService
 {
     private const int HeartbeatCheckIntervalSeconds = 10;
     private const int MatchingLifecycleTerminalMatchRetention = 4096;
-    private const int StaticMatchingLifecycleEnqueueAttempts = 5;
-    private const int StaticMatchingLifecycleDirectPublishAttempts = 3;
-    private static readonly TimeSpan StaticMatchingLifecycleDirectPublishTimeout =
-        TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ShutdownStageTimeout = TimeSpan.FromSeconds(5);
 
     private readonly GameSessionRegistry _sessionRegistry = new();
@@ -85,12 +76,7 @@ public partial class GameServer(
     private MatchRuntimeCleanupCoordinator _matchRuntimeCleanupCoordinator = null!;
     private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
     private SwarmClosurePublicationCoordinator _swarmClosurePublicationCoordinator = null!;
-    private readonly ConcurrentDictionary<long, Task> _pendingMatchOwnerLossTasks = new();
     private readonly ConcurrentDictionary<long, Task> _pendingMatchingRedisCleanupTasks = new();
-    private readonly ConcurrentDictionary<long, Task> _pendingMatchingLifecyclePublishTasks = new();
-    private readonly ConcurrentDictionary<long, MatchingLifecyclePersistenceState>
-        _matchingLifecyclePersistenceStates = new();
-    private readonly object _matchingLifecycleEnqueueGate = new();
     // 재시작해도 되감기지 않도록 기동 시각을 섞는다. 고정 시드로 시작하면 서버를 다시
     // 올릴 때마다 같은 matchingId가 나오고, 매치 요약 파일이 같은 이름을 만나
     // 저장이 통째로 건너뛰어진다(기존 파일 우선 규칙).
@@ -98,15 +84,8 @@ public partial class GameServer(
         9_000_000 + DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond % 900_000;
     private long _adminBotOnlyPlayerIdSeed = -900_000_000;
     private INatsClient? _matchingLifecycleNatsClient;
-    private MatchingLifecycleOutboxWorker? _matchingLifecycleOutboxWorker;
     private long _nextMatchingRedisCleanupId;
-    private long _nextMatchingLifecyclePublishId;
-    private int _acceptingMatchingLifecycleEnqueues;
-    private int _acceptingLegacyMatchingLifecyclePublishes;
     private int _stopping;
-
-    private bool IsDurableMatchingLifecycleEnabled =>
-        scalingOptions.Enabled || configuration.GetValue("userServerScaling:enabled", false);
 
     private CancellationTokenSource _cts = new();
     private Timer? _heartbeatCheckTimer;
@@ -114,17 +93,6 @@ public partial class GameServer(
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
     private Timer? _botMovementTimer;         // #127 봇 walking step (50ms)
-
-    private sealed class MatchingLifecyclePersistenceState
-    {
-        public object SyncRoot { get; } = new();
-        public int PendingCount { get; set; }
-        public bool ClosingRequested { get; set; }
-        public bool Sealed { get; set; }
-        public bool PersistenceFailed { get; set; }
-        public bool OwnerReleaseCompleted { get; set; }
-        public TaskCompletionSource<bool>? Quiesced { get; set; }
-    }
 
     private sealed record AdmissionFailureTerminalSnapshot(
         IReadOnlyList<GameClientSession> Sessions,
@@ -166,8 +134,6 @@ public partial class GameServer(
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         Volatile.Write(ref _stopping, 0);
-        StopAcceptingMatchingLifecycleEnqueues();
-        StopAcceptingLegacyMatchingLifecyclePublishes();
         readinessState.MarkNotReady("starting");
         _cts.Dispose();
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -185,11 +151,6 @@ public partial class GameServer(
             StartTargetLocationTimer();
             StartBotMovementTimer();
             StartProximityAutoCombatTimer();
-            await gameServerNodeLease.StartAsync(
-                () => _matchRuntimeRegistry.ActiveCount,
-                OnGameServerRoutingLeaseLost,
-                OnGameServerMatchOwnerLost,
-                cancellationToken);
 
             readinessState.MarkReady();
             logger.LogInformation("Game server started successfully.");
@@ -215,21 +176,6 @@ public partial class GameServer(
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (scalingOptions.Enabled && Volatile.Read(ref _stopping) == 0)
-        {
-            readinessState.MarkNotReady("draining");
-            logger.LogInformation("Game server beginning routing drain...");
-            try
-            {
-                await gameServerNodeLease.BeginDrainAsync();
-                await WaitForScalingDrainAsync();
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "GameServer routing drain failed; proceeding with bounded shutdown.");
-            }
-        }
-
         // Publish the stopping state before taking the session snapshot. Sessions accepted at
         // this boundary observe the same penalty-free claim-release policy in OnDisconnect.
         Volatile.Write(ref _stopping, 1);
@@ -268,143 +214,13 @@ public partial class GameServer(
             "timers");
 
         await RunShutdownStageAsync(
-            WaitForPendingMatchOwnerLossesAsync(),
-            "match owner loss");
-        await RunShutdownStageAsync(
-            gameServerNodeLease.QuiesceHeartbeatsAsync(),
-            "routing heartbeat quiesce");
-        await RunShutdownStageAsync(
-            WaitForPendingMatchOwnerLossesAsync(),
-            "quiesced match owner loss");
-        await RunShutdownStageAsync(
-            WaitForPendingMatchingLifecyclePublishesAsync(),
-            "matching lifecycle outbox persistence");
-        await RunShutdownStageAsync(
             WaitForPendingMatchingRedisCleanupsAsync(),
             "matching Redis cleanup");
-        StopAcceptingMatchingLifecycleEnqueues();
-        await RunShutdownStageAsync(
-            WaitForPendingMatchingLifecyclePublishesAsync(),
-            "enqueue gate close");
-        await RunShutdownStageAsync(
-            WaitForPendingMatchingRedisCleanupsAsync(),
-            "enqueue gate matching Redis cleanup");
-        await RunShutdownStageAsync(gameServerNodeLease.StopAsync(), "routing lease");
-        await RunShutdownStageAsync(
-            WaitForPendingMatchOwnerLossesAsync(),
-            "late match owner loss");
-        StopAcceptingLegacyMatchingLifecyclePublishes();
-        await RunShutdownStageAsync(
-            WaitForPendingMatchingLifecyclePublishesAsync(),
-            "late matching lifecycle outbox persistence");
-        await RunShutdownStageAsync(
-            WaitForPendingMatchingRedisCleanupsAsync(),
-            "late matching Redis cleanup");
-        await RunShutdownStageAsync(
-            StopMatchingLifecycleOutboxWorkerAsync(),
-            "matching lifecycle outbox worker");
 
         _cts.Dispose();
         await CloseMatchingLifecycleNatsClientAsync();
 
         logger.LogInformation("Game server stopped.");
-    }
-
-    private async Task WaitForScalingDrainAsync()
-    {
-        DateTime deadlineUtc = DateTime.UtcNow + scalingOptions.DrainTimeout;
-        while (DateTime.UtcNow < deadlineUtc)
-        {
-            int localActiveMatches = _matchRuntimeRegistry.ActiveCount;
-            int reservedOrActiveMatches = await gameServerNodeLease.GetOwnedMatchCountAsync()
-                .WaitAsync(TimeSpan.FromSeconds(2));
-            if (localActiveMatches == 0 && reservedOrActiveMatches == 0)
-            {
-                logger.LogInformation("GameServer routing drain completed.");
-                return;
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(200));
-        }
-
-        logger.LogWarning(
-            "GameServer routing drain timed out: Timeout={Timeout}, LocalActiveMatches={LocalActiveMatches}",
-            scalingOptions.DrainTimeout,
-            _matchRuntimeRegistry.ActiveCount);
-    }
-
-    private void OnGameServerRoutingLeaseLost()
-    {
-        readinessState.MarkNotReady("routing_lease_lost");
-        Volatile.Write(ref _stopping, 1);
-        applicationLifetime.StopApplication();
-    }
-
-    private void OnGameServerMatchOwnerLost(long matchingId, IReadOnlyList<long> handoffPlayerIds)
-    {
-        long[] affectedPlayerIds = handoffPlayerIds
-            .Where(playerId => playerId > 0)
-            .Distinct()
-            .ToArray();
-        Task handlerTask = Task.Run(() =>
-            HandleGameServerMatchOwnerLost(matchingId, affectedPlayerIds));
-        _pendingMatchOwnerLossTasks[matchingId] = handlerTask;
-        _ = handlerTask.ContinueWith(
-            _ => ((ICollection<KeyValuePair<long, Task>>)_pendingMatchOwnerLossTasks)
-                .Remove(new KeyValuePair<long, Task>(matchingId, handlerTask)),
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Default);
-    }
-
-    private void HandleGameServerMatchOwnerLost(
-        long matchingId,
-        IReadOnlyCollection<long> affectedPlayerIds)
-    {
-        logger.LogError(
-            "Aborting match after its distributed GameServer owner fence was lost: MatchingId={MatchingId}, Players={PlayerCount}",
-            matchingId,
-            affectedPlayerIds.Count);
-
-        bool cleanupAccepted = TryAbortMatchAtTerminalBoundary(
-            matchingId,
-            () =>
-            {
-                List<GameClientSession> affectedSessions = GetSessionsByMatch(matchingId);
-                var playerIdsToPublish = affectedPlayerIds.ToHashSet();
-                foreach (GameClientSession session in affectedSessions)
-                {
-                    if (!session.PlayerId.HasValue)
-                        continue;
-
-                    if (session.TryMarkMatchingLifecycleHandledExternally())
-                        playerIdsToPublish.Add(session.PlayerId.Value);
-                    else
-                        playerIdsToPublish.Remove(session.PlayerId.Value);
-                }
-
-                return new AdmissionFailureTerminalSnapshot(
-                    affectedSessions,
-                    playerIdsToPublish.ToArray());
-            });
-        if (!cleanupAccepted && !_matchRuntimeRegistry.IsTerminal(matchingId))
-        {
-            logger.LogCritical(
-                "Match owner fence was lost but local runtime cleanup could not start: MatchingId={MatchingId}",
-                matchingId);
-        }
-    }
-
-    private async Task WaitForPendingMatchOwnerLossesAsync()
-    {
-        while (true)
-        {
-            Task[] pendingTasks = _pendingMatchOwnerLossTasks.Values.ToArray();
-            if (pendingTasks.Length == 0)
-                return;
-
-            await Task.WhenAll(pendingTasks);
-        }
     }
 
     private async Task RunShutdownStageAsync(Task operation, string stage)
@@ -530,23 +346,6 @@ public partial class GameServer(
         {
             natsClientFactory.Initialize(natsEndpoint);
             _matchingLifecycleNatsClient = natsClientFactory.Create();
-            StartAcceptingLegacyMatchingLifecyclePublishes();
-            if (IsDurableMatchingLifecycleEnabled)
-            {
-                _matchingLifecycleNatsClient.EnsureDurableStream(new NatsDurableStreamOptions
-                {
-                    Name = MatchingLifecycleSubjects.Stream,
-                    Subjects = [MatchingLifecycleSubjects.AllPlayerEvents],
-                    Description = "Durable matching lifecycle events consumed by the UserServer cluster"
-                });
-                var outboxWorker = new MatchingLifecycleOutboxWorker(
-                    matchingLifecycleOutboxStore,
-                    _matchingLifecycleNatsClient,
-                    logger);
-                _matchingLifecycleOutboxWorker = outboxWorker;
-                outboxWorker.Start();
-                StartAcceptingMatchingLifecycleEnqueues();
-            }
             // 서버 환경에서 CSV 파일 경로 설정
             // Dev: 소스 디렉토리에서 직접 읽기 (Docker 볼륨 마운트 대응)
             string networkSourcePath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..",
@@ -1036,67 +835,39 @@ public partial class GameServer(
     }
 
 
+    /// <summary>
+    ///     매칭 수명주기 이벤트를 NATS Core로 즉시 발행한다 (best-effort, at-most-once).
+    ///     유실 시 안전망은 user_server의 claim TTL·admission watchdog이다.
+    /// </summary>
     private void PublishMatchingLifecycle(string subject, long playerId, long matchingId)
     {
         Action? dispatch = PrepareMatchingLifecyclePublication(subject, playerId, matchingId);
         dispatch?.Invoke();
     }
 
+    /// <summary>
+    ///     플레이어별 terminal subject를 지금 선점하고, 실제 Core publish는 한 번만 실행되는 Action으로
+    ///     돌려준다. 완료(PlayerCompleted) 이벤트는 match runtime finalization commit 뒤에 dispatch된다.
+    /// </summary>
     private Action? PrepareMatchingLifecyclePublication(string subject, long playerId, long matchingId)
     {
         if (!TryRegisterMatchingLifecycleTerminal(subject, playerId, matchingId))
             return null;
 
-        if (!IsDurableMatchingLifecycleEnabled)
-            return PrepareLegacyMatchingLifecyclePublication(subject, playerId, matchingId);
+        int dispatchStarted = 0;
+        return () =>
+        {
+            if (Interlocked.Exchange(ref dispatchStarted, 1) != 0)
+                return;
 
-        MatchingLifecycleOutboxWorker? outboxWorker = _matchingLifecycleOutboxWorker;
-        if (outboxWorker == null)
-        {
-            logger.LogError(
-                "Matching lifecycle outbox is unavailable: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                subject,
-                playerId,
-                matchingId);
-            RecordMatchingLifecyclePersistenceFailure(matchingId);
-            return null;
-        }
-
-        try
-        {
-            string messageId = MatchingLifecycleMessageIds.Create(subject, playerId, matchingId);
-            var envelope = new MatchingLifecycleEnvelope
-            {
-                PlayerId = playerId,
-                MatchingId = matchingId,
-                OccurredAtUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                EventId = messageId
-            };
-            byte[] payload = MessagePackSerializer.Serialize(envelope);
-            var record = new MatchingLifecycleOutboxRecord
-            {
-                EventId = messageId,
-                EventIdFingerprint = MatchingLifecycleOutboxKeys.FingerprintEventId(messageId),
-                Subject = subject,
-                Payload = payload,
-                PlayerId = playerId,
-                MatchingId = matchingId
-            };
-            return RegisterMatchingLifecyclePublish(outboxWorker, record);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(
-                ex,
-                "Matching lifecycle publication preparation failed: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                subject,
-                playerId,
-                matchingId);
-            RecordMatchingLifecyclePersistenceFailure(matchingId);
-            return null;
-        }
+            PublishMatchingLifecycleCore(subject, playerId, matchingId);
+        };
     }
 
+    /// <summary>
+    ///     한 매치의 한 플레이어는 terminal subject(left/completed/admission_failed/released)를 하나만
+    ///     발행한다. left+completed 이중 발행은 user_server의 이탈 페널티 계산을 깨뜨린다.
+    /// </summary>
     private bool TryRegisterMatchingLifecycleTerminal(
         string subject,
         long playerId,
@@ -1119,12 +890,6 @@ public partial class GameServer(
                        _matchingLifecycleTerminalMatchOrder.TryDequeue(out long expiredMatchingId))
                 {
                     _matchingLifecycleTerminalSubjects.TryRemove(expiredMatchingId, out _);
-                    if (_matchingLifecyclePersistenceStates.TryGetValue(
-                            expiredMatchingId,
-                            out MatchingLifecyclePersistenceState? state))
-                    {
-                        TryRemoveExpiredMatchingLifecyclePersistenceState(expiredMatchingId, state);
-                    }
                 }
             }
             else
@@ -1146,163 +911,7 @@ public partial class GameServer(
         return false;
     }
 
-    private Action PrepareLegacyMatchingLifecyclePublication(
-        string subject,
-        long playerId,
-        long matchingId)
-    {
-        Action<bool>? completeMatchPersistence = null;
-        TaskCompletionSource<bool>? completion = null;
-        long operationId = 0;
-        if (subject == MatchingLifecycleSubjects.PlayerCompleted)
-        {
-            lock (_matchingLifecycleEnqueueGate)
-            {
-                if (Volatile.Read(ref _acceptingLegacyMatchingLifecyclePublishes) != 0)
-                {
-                    completeMatchPersistence =
-                        TryBeginMatchingLifecyclePersistenceUnderGate(matchingId);
-                    if (completeMatchPersistence == null)
-                    {
-                        logger.LogWarning(
-                            "Legacy matching lifecycle completion was prepared after cleanup ordering was sealed; the Core publish remains best effort but can no longer hold the Redis cleanup barrier: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                            subject,
-                            playerId,
-                            matchingId);
-                    }
-                    else
-                    {
-                        operationId = Interlocked.Increment(ref _nextMatchingLifecyclePublishId);
-                        completion = new TaskCompletionSource<bool>(
-                            TaskCreationOptions.RunContinuationsAsynchronously);
-                        _pendingMatchingLifecyclePublishTasks.TryAdd(operationId, completion.Task);
-                    }
-                }
-            }
-        }
-
-        int dispatchStarted = 0;
-        return () =>
-        {
-            if (Interlocked.Exchange(ref dispatchStarted, 1) != 0)
-                return;
-
-            try
-            {
-                if (completeMatchPersistence != null && completion != null)
-                {
-                    PublishLegacyMatchingLifecycle(subject, playerId, matchingId);
-                }
-                else
-                {
-                    PublishUntrackedLegacyMatchingLifecycle(
-                        subject,
-                        playerId,
-                        matchingId);
-                }
-            }
-            finally
-            {
-                if (completeMatchPersistence != null && completion != null)
-                {
-                    CompleteTrackedLegacyMatchingLifecyclePublish(
-                        subject,
-                        playerId,
-                        matchingId,
-                        operationId,
-                        completeMatchPersistence,
-                        completion);
-                }
-            }
-        };
-    }
-
-    private void PublishUntrackedLegacyMatchingLifecycle(
-        string subject,
-        long playerId,
-        long matchingId)
-    {
-        if (!TryReserveUntrackedLegacyMatchingLifecyclePublish(
-                subject,
-                playerId,
-                matchingId,
-                out long operationId,
-                out TaskCompletionSource<bool>? completion))
-        {
-            return;
-        }
-
-        try
-        {
-            PublishLegacyMatchingLifecycle(subject, playerId, matchingId);
-        }
-        finally
-        {
-            CompleteUntrackedLegacyMatchingLifecyclePublish(operationId, completion!);
-        }
-    }
-
-    /// <summary>
-    /// Atomically checks the legacy shutdown fence and registers an in-flight publication.
-    /// The caller publishes outside <see cref="_matchingLifecycleEnqueueGate"/>, while shutdown
-    /// drains every operation that was accepted before the fence closed.
-    /// </summary>
-    private bool TryReserveUntrackedLegacyMatchingLifecyclePublish(
-        string subject,
-        long playerId,
-        long matchingId,
-        out long operationId,
-        out TaskCompletionSource<bool>? completion)
-    {
-        operationId = 0;
-        completion = null;
-
-        lock (_matchingLifecycleEnqueueGate)
-        {
-            if (Volatile.Read(ref _acceptingLegacyMatchingLifecyclePublishes) == 0)
-            {
-                logger.LogWarning(
-                    "Legacy matching lifecycle publish was skipped after the shutdown fence closed: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    subject,
-                    playerId,
-                    matchingId);
-                return false;
-            }
-
-            operationId = Interlocked.Increment(ref _nextMatchingLifecyclePublishId);
-            completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (!_pendingMatchingLifecyclePublishTasks.TryAdd(operationId, completion.Task))
-            {
-                logger.LogCritical(
-                    "Legacy matching lifecycle tracker registration failed: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}, OperationId={OperationId}",
-                    subject,
-                    playerId,
-                    matchingId,
-                    operationId);
-                completion = null;
-                return false;
-            }
-
-            return true;
-        }
-    }
-
-    private void CompleteUntrackedLegacyMatchingLifecyclePublish(
-        long operationId,
-        TaskCompletionSource<bool> completion)
-    {
-        try
-        {
-            completion.TrySetResult(true);
-        }
-        finally
-        {
-            ((ICollection<KeyValuePair<long, Task>>)_pendingMatchingLifecyclePublishTasks)
-                .Remove(new KeyValuePair<long, Task>(operationId, completion.Task));
-        }
-    }
-
-    private void PublishLegacyMatchingLifecycle(string subject, long playerId, long matchingId)
+    private void PublishMatchingLifecycleCore(string subject, long playerId, long matchingId)
     {
         try
         {
@@ -1319,572 +928,6 @@ public partial class GameServer(
                 subject,
                 playerId,
                 matchingId);
-        }
-    }
-
-    private void CompleteTrackedLegacyMatchingLifecyclePublish(
-        string subject,
-        long playerId,
-        long matchingId,
-        long operationId,
-        Action<bool> completeMatchPersistence,
-        TaskCompletionSource<bool> completion)
-    {
-        try
-        {
-            // Legacy Core publication is best effort. Reaching this callback means the attempt
-            // completed, so Redis cleanup remains fail-open exactly as it was before deferral.
-            completeMatchPersistence(true);
-        }
-        catch (Exception ex)
-        {
-            logger.LogCritical(
-                ex,
-                "Legacy matching lifecycle completion callback failed: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                subject,
-                playerId,
-                matchingId);
-        }
-        finally
-        {
-            try
-            {
-                completion.TrySetResult(true);
-            }
-            finally
-            {
-                ((ICollection<KeyValuePair<long, Task>>)_pendingMatchingLifecyclePublishTasks)
-                    .Remove(new KeyValuePair<long, Task>(operationId, completion.Task));
-            }
-        }
-    }
-
-    private Action? RegisterMatchingLifecyclePublish(
-        MatchingLifecycleOutboxWorker outboxWorker,
-        MatchingLifecycleOutboxRecord record)
-    {
-        TaskCompletionSource<bool> completion;
-        Action<bool> completeMatchPersistence;
-        long operationId;
-        lock (_matchingLifecycleEnqueueGate)
-        {
-            if (Volatile.Read(ref _acceptingMatchingLifecycleEnqueues) == 0)
-            {
-                logger.LogWarning(
-                    "Matching lifecycle outbox rejected a late enqueue: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    record.Subject,
-                    record.PlayerId,
-                    record.MatchingId);
-                RecordMatchingLifecyclePersistenceFailureUnderGate(record.MatchingId);
-                return null;
-            }
-
-            Action<bool>? registration =
-                TryBeginMatchingLifecyclePersistenceUnderGate(record.MatchingId);
-            if (registration == null)
-            {
-                logger.LogWarning(
-                    "Matching lifecycle outbox rejected an event after owner-release ordering was sealed: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    record.Subject,
-                    record.PlayerId,
-                    record.MatchingId);
-                RecordMatchingLifecyclePersistenceFailureUnderGate(record.MatchingId);
-                return null;
-            }
-
-            completeMatchPersistence = registration;
-            operationId = Interlocked.Increment(ref _nextMatchingLifecyclePublishId);
-            completion = new TaskCompletionSource<bool>(
-                TaskCreationOptions.RunContinuationsAsynchronously);
-            _pendingMatchingLifecyclePublishTasks.TryAdd(operationId, completion.Task);
-            _ = completion.Task.ContinueWith(
-                completedTask => _pendingMatchingLifecyclePublishTasks.TryRemove(operationId, out _),
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
-        }
-
-        int dispatchStarted = 0;
-        return () =>
-        {
-            if (Interlocked.Exchange(ref dispatchStarted, 1) != 0)
-                return;
-
-            try
-            {
-                _ = RunTrackedMatchingLifecyclePublishAsync(
-                    outboxWorker,
-                    record,
-                    completeMatchPersistence,
-                    completion);
-            }
-            catch
-            {
-                CompleteTrackedMatchingLifecyclePublish(
-                    record,
-                    completeMatchPersistence,
-                    persistenceProtected: false,
-                    completion);
-                throw;
-            }
-        };
-    }
-
-    private async Task RunTrackedMatchingLifecyclePublishAsync(
-        MatchingLifecycleOutboxWorker outboxWorker,
-        MatchingLifecycleOutboxRecord record,
-        Action<bool> completeMatchPersistence,
-        TaskCompletionSource<bool> completion)
-    {
-        bool persistenceProtected = false;
-        try
-        {
-            persistenceProtected =
-                await PersistMatchingLifecycleDecisionAsync(outboxWorker, record);
-        }
-        catch (Exception ex)
-        {
-            logger.LogCritical(
-                ex,
-                "Unexpected matching lifecycle persistence failure: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                record.Subject,
-                record.PlayerId,
-                record.MatchingId);
-        }
-        finally
-        {
-            CompleteTrackedMatchingLifecyclePublish(
-                record,
-                completeMatchPersistence,
-                persistenceProtected,
-                completion);
-        }
-    }
-
-    private void CompleteTrackedMatchingLifecyclePublish(
-        MatchingLifecycleOutboxRecord record,
-        Action<bool> completeMatchPersistence,
-        bool persistenceProtected,
-        TaskCompletionSource<bool> completion)
-    {
-        try
-        {
-            completeMatchPersistence(persistenceProtected);
-        }
-        catch (Exception ex)
-        {
-            logger.LogCritical(
-                ex,
-                "Matching lifecycle persistence completion callback failed: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                record.Subject,
-                record.PlayerId,
-                record.MatchingId);
-        }
-        finally
-        {
-            // The continuation removes this operation from the shutdown-drain tracker.
-            completion.TrySetResult(true);
-        }
-    }
-
-    private async Task<bool> PersistMatchingLifecycleDecisionAsync(
-        MatchingLifecycleOutboxWorker outboxWorker,
-        MatchingLifecycleOutboxRecord record)
-    {
-        int maximumEnqueueAttempts = scalingOptions.Enabled
-            ? 3
-            : StaticMatchingLifecycleEnqueueAttempts;
-        for (int attempt = 1; attempt <= maximumEnqueueAttempts; attempt++)
-        {
-            try
-            {
-                MatchingLifecycleOutboxEnqueueResult result =
-                    await outboxWorker.EnqueueAsync(record);
-                if (result == MatchingLifecycleOutboxEnqueueResult.Fenced)
-                {
-                    if (!scalingOptions.Enabled)
-                    {
-                        logger.LogError(
-                            "Static GameServer lifecycle enqueue was fenced, but this topology has no completed-owner recovery scanner; falling back to direct durable publish: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                            record.Subject,
-                            record.PlayerId,
-                            record.MatchingId);
-                        break;
-                    }
-
-                    logger.LogWarning(
-                        "Matching lifecycle event lost the Redis abort-fence race; recovery owns the terminal abort: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                        record.Subject,
-                        record.PlayerId,
-                        record.MatchingId);
-                }
-                return true;
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(
-                    ex,
-                    "Matching lifecycle outbox enqueue attempt failed: Attempt={Attempt}, MaxAttempts={MaxAttempts}, Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    attempt,
-                    maximumEnqueueAttempts,
-                    record.Subject,
-                    record.PlayerId,
-                    record.MatchingId);
-                if (attempt < maximumEnqueueAttempts)
-                {
-                    await DelayMatchingLifecyclePersistenceRetryAsync(
-                        TimeSpan.FromMilliseconds(200 * attempt));
-                }
-            }
-        }
-
-        if (!scalingOptions.Enabled)
-        {
-            bool published = await TryPublishStaticMatchingLifecycleFallbackAsync(record);
-            if (!published)
-            {
-                logger.LogCritical(
-                    "Static GameServer lifecycle event has no confirmed outbox persistence or direct JetStream PubAck; cleanup remains fail-closed and this topology has no completed-owner recovery scanner: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    record.Subject,
-                    record.PlayerId,
-                    record.MatchingId);
-            }
-            return published;
-        }
-
-        const int maximumAttempts = 3;
-        for (int attempt = 1; attempt <= maximumAttempts; attempt++)
-        {
-            try
-            {
-                MatchingLifecycleAbortFenceAcquireResult result =
-                    await matchingLifecycleOutboxStore.TryAcquireAbortFenceAsync(
-                        record.PlayerId,
-                        record.MatchingId);
-                logger.LogError(
-                    "Matching lifecycle enqueue exhausted; durable recovery protection was established: Protection={Protection}, Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    result,
-                    record.Subject,
-                    record.PlayerId,
-                    record.MatchingId);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(
-                    ex,
-                    "Matching lifecycle abort-fence attempt failed: Attempt={Attempt}, MaxAttempts={MaxAttempts}, Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    attempt,
-                    maximumAttempts,
-                    record.Subject,
-                    record.PlayerId,
-                    record.MatchingId);
-                if (attempt < maximumAttempts)
-                {
-                    await DelayMatchingLifecyclePersistenceRetryAsync(
-                        TimeSpan.FromMilliseconds(250 * attempt));
-                }
-            }
-        }
-
-        logger.LogCritical(
-            "Matching lifecycle event has no durable record or abort fence; explicit owner release will be abandoned: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-            record.Subject,
-            record.PlayerId,
-            record.MatchingId);
-        return false;
-    }
-
-    private async Task<bool> TryPublishStaticMatchingLifecycleFallbackAsync(
-        MatchingLifecycleOutboxRecord record)
-    {
-        INatsClient? natsClient = _matchingLifecycleNatsClient;
-        if (natsClient == null)
-        {
-            logger.LogCritical(
-                "Static GameServer direct lifecycle fallback is unavailable because the NATS client is missing: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                record.Subject,
-                record.PlayerId,
-                record.MatchingId);
-            return false;
-        }
-
-        for (int attempt = 1; attempt <= StaticMatchingLifecycleDirectPublishAttempts; attempt++)
-        {
-            using var publishTimeout = new CancellationTokenSource(
-                StaticMatchingLifecycleDirectPublishTimeout);
-            try
-            {
-                NatsDurablePublishAck ack = await natsClient.PublishDurableAsync(
-                    MatchingLifecycleSubjects.Stream,
-                    record.Subject,
-                    record.EventId,
-                    record.Payload,
-                    publishTimeout.Token);
-                logger.LogWarning(
-                    "Static GameServer lifecycle event was published directly after Redis outbox persistence could not be confirmed: EventId={EventId}, Stream={Stream}, Sequence={Sequence}, Duplicate={Duplicate}",
-                    record.EventId,
-                    ack.Stream,
-                    ack.Sequence,
-                    ack.Duplicate);
-                return true;
-            }
-            catch (OperationCanceledException) when (publishTimeout.IsCancellationRequested)
-            {
-                logger.LogWarning(
-                    "Static GameServer direct lifecycle publish timed out: Attempt={Attempt}, MaxAttempts={MaxAttempts}, Timeout={Timeout}, EventId={EventId}",
-                    attempt,
-                    StaticMatchingLifecycleDirectPublishAttempts,
-                    StaticMatchingLifecycleDirectPublishTimeout,
-                    record.EventId);
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(
-                    ex,
-                    "Static GameServer direct lifecycle publish failed: Attempt={Attempt}, MaxAttempts={MaxAttempts}, EventId={EventId}",
-                    attempt,
-                    StaticMatchingLifecycleDirectPublishAttempts,
-                    record.EventId);
-            }
-
-            if (attempt < StaticMatchingLifecycleDirectPublishAttempts)
-            {
-                await DelayMatchingLifecyclePersistenceRetryAsync(
-                    TimeSpan.FromMilliseconds(250 * attempt));
-            }
-        }
-
-        return false;
-    }
-
-    private async Task DelayMatchingLifecyclePersistenceRetryAsync(TimeSpan delay)
-    {
-        try
-        {
-            await Task.Delay(delay, _cts.Token);
-        }
-        catch (OperationCanceledException) when (_cts.IsCancellationRequested)
-        {
-            // Shutdown skips local backoff but still performs the remaining bounded Redis attempts.
-        }
-    }
-
-    private async Task WaitForPendingMatchingLifecyclePublishesAsync()
-    {
-        while (!_pendingMatchingLifecyclePublishTasks.IsEmpty)
-        {
-            Task[] tasks = _pendingMatchingLifecyclePublishTasks.Values.ToArray();
-            if (tasks.Length == 0)
-                break;
-            await Task.WhenAll(tasks);
-        }
-    }
-
-    private void StartAcceptingMatchingLifecycleEnqueues()
-    {
-        lock (_matchingLifecycleEnqueueGate)
-        {
-            if (_matchingLifecycleOutboxWorker == null)
-                throw new InvalidOperationException("Matching lifecycle outbox worker is unavailable.");
-            Volatile.Write(ref _acceptingMatchingLifecycleEnqueues, 1);
-        }
-    }
-
-    private void StopAcceptingMatchingLifecycleEnqueues()
-    {
-        lock (_matchingLifecycleEnqueueGate)
-            Volatile.Write(ref _acceptingMatchingLifecycleEnqueues, 0);
-    }
-
-    private void StartAcceptingLegacyMatchingLifecyclePublishes()
-    {
-        lock (_matchingLifecycleEnqueueGate)
-            Volatile.Write(ref _acceptingLegacyMatchingLifecyclePublishes, 1);
-    }
-
-    private void StopAcceptingLegacyMatchingLifecyclePublishes()
-    {
-        lock (_matchingLifecycleEnqueueGate)
-            Volatile.Write(ref _acceptingLegacyMatchingLifecyclePublishes, 0);
-    }
-
-    private void RecordMatchingLifecyclePersistenceFailure(long matchingId)
-    {
-        if (!IsDurableMatchingLifecycleEnabled)
-            return;
-
-        lock (_matchingLifecycleEnqueueGate)
-            RecordMatchingLifecyclePersistenceFailureUnderGate(matchingId);
-    }
-
-    private void RecordMatchingLifecyclePersistenceFailureUnderGate(long matchingId)
-    {
-        MatchingLifecyclePersistenceState state =
-            _matchingLifecyclePersistenceStates.GetOrAdd(
-                matchingId,
-                static _ => new MatchingLifecyclePersistenceState());
-        TaskCompletionSource<bool>? quiesced = null;
-        lock (state.SyncRoot)
-        {
-            state.PersistenceFailed = true;
-            if (state.PendingCount == 0 && state.ClosingRequested)
-            {
-                state.Sealed = true;
-                quiesced = state.Quiesced;
-            }
-        }
-
-        quiesced?.TrySetResult(true);
-    }
-
-    private Action? BeginMatchingLifecyclePersistenceRegistration(long matchingId)
-    {
-        if (!IsDurableMatchingLifecycleEnabled)
-            return static () => { };
-
-        lock (_matchingLifecycleEnqueueGate)
-        {
-            if (Volatile.Read(ref _acceptingMatchingLifecycleEnqueues) == 0)
-                return null;
-            Action<bool>? registration =
-                TryBeginMatchingLifecyclePersistenceUnderGate(matchingId);
-            return registration == null ? null : () => registration(true);
-        }
-    }
-
-    private Action<bool>? TryBeginMatchingLifecyclePersistenceUnderGate(long matchingId)
-    {
-        MatchingLifecyclePersistenceState state =
-            _matchingLifecyclePersistenceStates.GetOrAdd(
-                matchingId,
-                static _ => new MatchingLifecyclePersistenceState());
-        lock (state.SyncRoot)
-        {
-            if (state.Sealed)
-                return null;
-            state.PendingCount = checked(state.PendingCount + 1);
-        }
-
-        int completed = 0;
-        return persistenceProtected =>
-        {
-            if (Interlocked.Exchange(ref completed, 1) == 0)
-            {
-                CompleteMatchingLifecyclePersistence(
-                    matchingId,
-                    state,
-                    persistenceProtected);
-            }
-        };
-    }
-
-    private void CompleteMatchingLifecyclePersistence(
-        long matchingId,
-        MatchingLifecyclePersistenceState state,
-        bool persistenceProtected)
-    {
-        TaskCompletionSource<bool>? quiesced = null;
-        lock (state.SyncRoot)
-        {
-            if (state.PendingCount <= 0)
-                throw new InvalidOperationException("Matching lifecycle persistence registration underflow.");
-
-            state.PersistenceFailed |= !persistenceProtected;
-            state.PendingCount--;
-            if (state.PendingCount == 0 && state.ClosingRequested)
-            {
-                state.Sealed = true;
-                quiesced = state.Quiesced;
-            }
-        }
-
-        quiesced?.TrySetResult(true);
-        TryRemoveExpiredMatchingLifecyclePersistenceState(matchingId, state);
-    }
-
-    private async Task<bool> SealAndWaitForMatchingLifecyclePersistenceAsync(long matchingId)
-    {
-        if (!_matchingLifecyclePersistenceStates.TryGetValue(
-                matchingId,
-                out MatchingLifecyclePersistenceState? state))
-        {
-            if (!IsDurableMatchingLifecycleEnabled)
-                return true;
-
-            state = _matchingLifecyclePersistenceStates.GetOrAdd(
-                matchingId,
-                static _ => new MatchingLifecyclePersistenceState());
-        }
-
-        Task waitTask;
-        lock (state.SyncRoot)
-        {
-            state.ClosingRequested = true;
-            if (state.PendingCount == 0)
-            {
-                state.Sealed = true;
-                waitTask = Task.CompletedTask;
-            }
-            else
-            {
-                state.Quiesced ??= new TaskCompletionSource<bool>(
-                    TaskCreationOptions.RunContinuationsAsynchronously);
-                waitTask = state.Quiesced.Task;
-            }
-        }
-
-        await waitTask;
-        lock (state.SyncRoot)
-            return !state.PersistenceFailed;
-    }
-
-    private void MarkMatchingLifecycleOwnerReleaseCompleted(long matchingId)
-    {
-        if (!_matchingLifecyclePersistenceStates.TryGetValue(
-                matchingId,
-                out MatchingLifecyclePersistenceState? state))
-        {
-            return;
-        }
-
-        lock (state.SyncRoot)
-            state.OwnerReleaseCompleted = true;
-        TryRemoveExpiredMatchingLifecyclePersistenceState(matchingId, state);
-    }
-
-    private void TryRemoveExpiredMatchingLifecyclePersistenceState(
-        long matchingId,
-        MatchingLifecyclePersistenceState state)
-    {
-        if (_matchingLifecycleTerminalSubjects.ContainsKey(matchingId))
-            return;
-
-        lock (state.SyncRoot)
-        {
-            if (!state.Sealed || state.PendingCount != 0 || !state.OwnerReleaseCompleted)
-                return;
-        }
-
-        ((ICollection<KeyValuePair<long, MatchingLifecyclePersistenceState>>)
-            _matchingLifecyclePersistenceStates).Remove(
-            new KeyValuePair<long, MatchingLifecyclePersistenceState>(matchingId, state));
-    }
-
-    private async Task StopMatchingLifecycleOutboxWorkerAsync()
-    {
-        MatchingLifecycleOutboxWorker? worker =
-            Interlocked.Exchange(ref _matchingLifecycleOutboxWorker, null);
-        if (worker == null)
-            return;
-
-        try
-        {
-            await worker.StopAsync();
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Matching lifecycle outbox worker shutdown failed.");
         }
     }
 
@@ -1920,7 +963,7 @@ public partial class GameServer(
                 redLockFactory,
                 logger,
                 cacheHelper,
-                ConsumeGameHandoffTicketAsync,
+                gameHandoffTicketService.ConsumeAsync,
                 OnClientSessionLeave,
                 RegisterClientSession,
                 GetSessionsByInstance,
@@ -1944,7 +987,6 @@ public partial class GameServer(
                 GetItemCombineRandom,
                 _matchRuntimeRegistry.TryAcquireOperation,
                 _matchRuntimeRegistry.TryExecute,
-                _matchRuntimeRegistry.TryBindOwnerFence,
                 CleanupMatchRuntime,
                 (playerId, matchingId) =>
                     PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerLeft, playerId, matchingId),
@@ -2063,7 +1105,10 @@ public partial class GameServer(
             },
             () =>
             {
-                PublishLateDurableAdmissionFailure(matchingId, playerId);
+                PublishMatchingLifecycle(
+                    MatchingLifecycleSubjects.PlayerAdmissionFailed,
+                    playerId,
+                    matchingId);
                 try
                 {
                     session.DisconnectForAdmissionFailure();
@@ -2191,8 +1236,8 @@ public partial class GameServer(
 
     /// <summary>
     ///     Claims each player/subject during pre-finalization and retains only dispatch work for
-    ///     post-commit. This keeps Redis/outbox registration inside the cleanup seal while allowing
-    ///     a normal winner's already-prepared terminal subject to win over a late admission abort.
+    ///     post-commit, so a normal winner's already-prepared terminal subject wins over a late
+    ///     admission abort.
     /// </summary>
     private void PrepareAdmissionFailureLifecycle(
         long matchingId,
@@ -2238,110 +1283,6 @@ public partial class GameServer(
                     "Failed to dispatch prepared admission failure lifecycle: MatchingId={MatchingId}",
                     matchingId);
             }
-        }
-    }
-
-    /// <summary>
-    ///     Handles an admission callback that arrived after the runtime's before-finalized phase
-    ///     was no longer attachable. The normal local registration gate is already sealed here, so
-    ///     durable deployments enqueue directly through the existing outbox/abort-fence decision
-    ///     path. The process-local terminal-subject claim keeps this from overriding a winner that
-    ///     had already prepared Completed, Released, or AdmissionFailed for the same player.
-    /// </summary>
-    private void PublishLateDurableAdmissionFailure(long matchingId, long playerId)
-    {
-        if (!TryRegisterMatchingLifecycleTerminal(
-                MatchingLifecycleSubjects.PlayerAdmissionFailed,
-                playerId,
-                matchingId))
-        {
-            return;
-        }
-
-        if (!IsDurableMatchingLifecycleEnabled)
-        {
-            try
-            {
-                PrepareLegacyMatchingLifecyclePublication(
-                    MatchingLifecycleSubjects.PlayerAdmissionFailed,
-                    playerId,
-                    matchingId).Invoke();
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(
-                    ex,
-                    "Failed to publish late legacy admission failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    playerId,
-                    matchingId);
-            }
-            return;
-        }
-
-        MatchingLifecycleOutboxWorker? outboxWorker = _matchingLifecycleOutboxWorker;
-        if (outboxWorker == null)
-        {
-            logger.LogCritical(
-                "Late admission failure cannot reach the durable outbox: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                playerId,
-                matchingId);
-            RecordMatchingLifecyclePersistenceFailure(matchingId);
-            return;
-        }
-
-        try
-        {
-            string subject = MatchingLifecycleSubjects.PlayerAdmissionFailed;
-            string eventId = MatchingLifecycleMessageIds.Create(subject, playerId, matchingId);
-            var envelope = new MatchingLifecycleEnvelope
-            {
-                PlayerId = playerId,
-                MatchingId = matchingId,
-                OccurredAtUnixMilliseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                EventId = eventId
-            };
-            var record = new MatchingLifecycleOutboxRecord
-            {
-                EventId = eventId,
-                EventIdFingerprint = MatchingLifecycleOutboxKeys.FingerprintEventId(eventId),
-                Subject = subject,
-                Payload = MessagePackSerializer.Serialize(envelope),
-                PlayerId = playerId,
-                MatchingId = matchingId
-            };
-            long operationId = Interlocked.Increment(ref _nextMatchingLifecyclePublishId);
-            Task persistence = PersistLateAdmissionFailureAsync(outboxWorker, record);
-            if (!_pendingMatchingLifecyclePublishTasks.TryAdd(operationId, persistence))
-                throw new InvalidOperationException($"Duplicate late lifecycle operation id: {operationId}.");
-
-            _ = persistence.ContinueWith(
-                _completedTask => _pendingMatchingLifecyclePublishTasks.TryRemove(operationId, out _),
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
-        }
-        catch (Exception ex)
-        {
-            logger.LogCritical(
-                ex,
-                "Failed to schedule late durable admission failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                playerId,
-                matchingId);
-            RecordMatchingLifecyclePersistenceFailure(matchingId);
-        }
-    }
-
-    private async Task PersistLateAdmissionFailureAsync(
-        MatchingLifecycleOutboxWorker outboxWorker,
-        MatchingLifecycleOutboxRecord record)
-    {
-        bool persistenceProtected = await PersistMatchingLifecycleDecisionAsync(outboxWorker, record);
-        if (!persistenceProtected)
-        {
-            logger.LogCritical(
-                "Late durable admission failure has no confirmed persistence protection: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                record.PlayerId,
-                record.MatchingId);
         }
     }
 
@@ -2464,44 +1405,6 @@ public partial class GameServer(
 
     private async Task CleanupAbandonedMatchingRedisAsync(long matchingId)
     {
-        bool persistenceProtected =
-            await SealAndWaitForMatchingLifecyclePersistenceAsync(matchingId);
-        if (!persistenceProtected)
-        {
-            bool abandoned = false;
-            try
-            {
-                if (scalingOptions.Enabled)
-                    abandoned = await gameServerNodeLease.AbandonMatchOwnerAsync(matchingId);
-            }
-            catch (Exception ex)
-            {
-                logger.LogCritical(
-                    ex,
-                    "Failed to abandon the local match owner after lifecycle persistence failure: MatchingId={MatchingId}",
-                    matchingId);
-            }
-            finally
-            {
-                MarkMatchingLifecycleOwnerReleaseCompleted(matchingId);
-            }
-
-            if (scalingOptions.Enabled)
-            {
-                logger.LogCritical(
-                    "Matching cleanup is fail-closed because no lifecycle record or abort fence was persisted; handoff data remains and the Redis owner is left for TTL recovery: MatchingId={MatchingId}, LocalOwnerAbandoned={LocalOwnerAbandoned}",
-                    matchingId,
-                    abandoned);
-            }
-            else
-            {
-                logger.LogCritical(
-                    "Static GameServer matching cleanup is fail-closed because neither outbox persistence nor direct JetStream publication was confirmed; handoff data remains, but this topology has no routing owner or completed-owner recovery scanner: MatchingId={MatchingId}",
-                    matchingId);
-            }
-            return;
-        }
-
         try
         {
             await cacheHelper.KeyDeleteAsync(MatchingHandoffRedisKeys.Key(matchingId));
@@ -2513,42 +1416,6 @@ public partial class GameServer(
                 "Failed to remove abandoned matching from Redis: MatchingId={MatchingId}",
                 matchingId);
         }
-
-        try
-        {
-            bool released = await gameServerNodeLease.ReleaseMatchOwnerAsync(matchingId);
-            if (scalingOptions.Enabled && !released)
-            {
-                logger.LogDebug(
-                    "Match owner was already released, untracked, or fenced: MatchingId={MatchingId}",
-                    matchingId);
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(
-                ex,
-                "Failed to release GameServer match owner; lease TTL will fence it: MatchingId={MatchingId}",
-                matchingId);
-        }
-        finally
-        {
-            MarkMatchingLifecycleOwnerReleaseCompleted(matchingId);
-        }
-    }
-
-    private async Task<GameHandoffContext?> ConsumeGameHandoffTicketAsync(string? ticket)
-    {
-        if (!scalingOptions.Enabled)
-            return await gameHandoffTicketService.ConsumeAsync(ticket);
-        if (Volatile.Read(ref _stopping) != 0 || !gameServerNodeLease.HasLease)
-            return null;
-
-        return await gameServerNodeLease.ConsumeAndTrackMatchOwnerAsync(
-            () => gameHandoffTicketService.ConsumeForOwnerAsync(
-                ticket,
-                gameServerNodeLease.Identity,
-                scalingOptions.NodeLeaseLifetime));
     }
 
     private Action PrepareMatchingRedisCleanup(long matchingId)
