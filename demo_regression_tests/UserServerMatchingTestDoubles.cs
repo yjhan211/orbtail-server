@@ -158,11 +158,6 @@ internal sealed class InMemoryCacheHelper : ICacheHelper
         RedisValue secondField, int db = -1) => throw new NotSupportedException();
 
     public Task<RedisValue[]> HashGetAsync(string key, RedisValue[] fields, int db = -1) => throw new NotSupportedException();
-    public Task<HashEntry[]> HashGetAllAsync(string key, int db = -1) => throw new NotSupportedException();
-    public Task<RedisValue> HashGetFromReplicaAsync(string key, string field, int db = -1) => throw new NotSupportedException();
-    public Task<RedisValue> HashGetFromReplicaAsync(string key, long field, int db = -1) => throw new NotSupportedException();
-    public Task<RedisValue[]> HashGetFromReplicaAsync(string key, RedisValue[] fields, int db = -1) => throw new NotSupportedException();
-    public Task<HashEntry[]> HashGetAllFromReplicaAsync(string key, int db = -1) => throw new NotSupportedException();
 
     public Task<bool> HashDeleteAsync(string key, string field, int db = -1)
     {
@@ -174,16 +169,6 @@ internal sealed class InMemoryCacheHelper : ICacheHelper
 
     public Task<bool> HashDeleteAsync(string key, long field, int db = -1) => HashDeleteAsync(key, field.ToString(), db);
     public Task<bool> HashExistsAsync(string key, string field, int db = -1) => Task.FromResult(GetHash(key, field) != null);
-    public Task<bool> HashExistsOnReplicaAsync(string key, string field, int db = -1) => throw new NotSupportedException();
-    public Task<RedisValue[]> ListRangeAsync(string key, int start = 0, int end = -1, int db = -1) => throw new NotSupportedException();
-    public Task<RedisValue[]> ListRangeFromReplicaAsync(string key, int start = 0, int end = -1, int db = -1) => throw new NotSupportedException();
-    public Task<RedisValue[]> ListRangeAsync(List<string> keys, int start = 0, int end = -1, int db = -1) => throw new NotSupportedException();
-    public Task<List<(string key, RedisValue value)>> ListRangeWithKeyAsync(List<string> keys, int start = 0, int end = -1, int db = -1) => throw new NotSupportedException();
-    public Task<long> ListPushAsync(string key, string value, int db = -1) => throw new NotSupportedException();
-    public Task<long> ListRemoveAsync(string key, string value, int db = -1) => throw new NotSupportedException();
-    public Task<long> EnqueueAsync(string key, byte[] value, int db = -1) => throw new NotSupportedException();
-    public Task<byte[]?> DequeueAsync(string key, int db = -1) => throw new NotSupportedException();
-    public Task<long> ListLengthAsync(string key, int db = -1) => throw new NotSupportedException();
 
     public Task<long> StringIncrementAsync(string key, int db = -1) => StringIncrementByAsync(key, 1, db);
 
@@ -253,9 +238,6 @@ internal sealed class InMemoryCacheHelper : ICacheHelper
             return Task.FromResult(true);
         }
     }
-
-    public Task<bool> StringSetWithExpiryIfGuardEqualsAsync(string key, RedisValue value, TimeSpan expiry, string guardKey,
-        string expectedGuardValue, int db = -1) => throw new NotSupportedException();
 
     public Task<bool> KeyDeleteAsync(string key, int db = -1)
     {

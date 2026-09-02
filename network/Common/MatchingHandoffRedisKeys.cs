@@ -23,7 +23,5 @@ namespace network.common
         public static string AdmittedPlayerField(long playerId) => $"admitted:{playerId}";
 
         public static string ClaimKey(long playerId) => $"matching_claim:{playerId}";
-
-        public static string SpawnField(long playerId) => $"spawn:{playerId}";
     }
 }
