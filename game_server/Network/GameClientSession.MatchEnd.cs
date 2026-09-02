@@ -179,7 +179,7 @@ public partial class GameClientSession
 
         var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
         Logger.LogInformation(
-            "Survivor match resolved: MatchingId={MatchingId}, WinnerId={WinnerId}, Criterion={Criterion}",
+            "Swarm match resolved: MatchingId={MatchingId}, WinnerId={WinnerId}, Criterion={Criterion}",
             CurrentMapSubId, winnerId, criterion);
         _gameEventLogManager.LogSystem(
             CurrentMapSubId,

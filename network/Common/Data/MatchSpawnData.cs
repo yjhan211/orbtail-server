@@ -7,7 +7,7 @@ namespace network.common.data
 {
 
     /// <summary>
-    /// Fixed Survivor Royale opening anchors.  A match seed permutes anchors, never players,
+    /// Fixed Swarm match opening anchors.  A match seed permutes anchors, never players,
     /// so every roster member receives one unique position regardless of join order.
     /// </summary>
     public static class MatchSpawnData
@@ -70,7 +70,7 @@ namespace network.common.data
             if (orderedPlayerIds.Count > SwarmSpawnPodCandidates.Length)
             {
                 throw new ArgumentOutOfRangeException(nameof(playerIds), orderedPlayerIds.Count,
-                    $"Survivor Royale supports at most {SwarmSpawnPodCandidates.Length} players per match.");
+                    $"Swarm match supports at most {SwarmSpawnPodCandidates.Length} players per match.");
             }
 
             var shuffledRooms = SwarmSpawnPodCandidates.ToList();

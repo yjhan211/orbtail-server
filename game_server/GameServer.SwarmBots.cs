@@ -299,7 +299,7 @@ public partial class GameServer
         return (bestArea, bestCell);
     }
 
-    private SpotArenaBotDirective ResolveSwarmBotDirective(long matchingId, long botPlayerId)
+    private SwarmBotDirective ResolveSwarmBotDirective(long matchingId, long botPlayerId)
     {
         var directive = ResolveSwarmBotDirectiveCore(matchingId, botPlayerId);
         var bot = _botPlayerManager.GetBots(matchingId)
@@ -320,7 +320,7 @@ public partial class GameServer
             GetSwarmMatchRuntime(matchingId).BotTactics.AreaMemory[key] = memory;
         }
 
-        if (directive.Mode != SpotArenaBotMode.Escort)
+        if (directive.Mode != SwarmBotMode.Escort)
             return directive;
 
         // 도주·대피 지시는 어디로든 즉시 — 억제는 경제·추격 지시의 판단 떨림에만 건다.
@@ -332,8 +332,8 @@ public partial class GameServer
             (DateTime.UtcNow - memory.LeftAtUtc).TotalSeconds < SwarmBotAreaReturnCooldownSeconds)
         {
             // 복귀 지시 강등: 쿨다운 동안 현 구역 제자리 — 자동 전투·픽업은 계속 돈다.
-            return new SpotArenaBotDirective(
-                SpotArenaBotMode.Escort,
+            return new SwarmBotDirective(
+                SwarmBotMode.Escort,
                 bot.CurrentArea,
                 ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Position),
                 bot.Position);
@@ -342,7 +342,7 @@ public partial class GameServer
         return directive;
     }
 
-    private SpotArenaBotDirective ResolveSwarmBotDirectiveCore(long matchingId, long botPlayerId)
+    private SwarmBotDirective ResolveSwarmBotDirectiveCore(long matchingId, long botPlayerId)
     {
         GetSwarmMatchRuntime(matchingId).BotTactics.FleeDirective.Remove((matchingId, botPlayerId));
         var directive = _swarmMonsterDirector.GetBotDirective(matchingId, botPlayerId);
@@ -366,8 +366,8 @@ public partial class GameServer
             GetSwarmMatchRuntime(matchingId).BotTactics.FleeDirective.Add((matchingId, botPlayerId));
             var (evacuationArea, evacuationCell) =
                 ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
-            return new SpotArenaBotDirective(
-                SpotArenaBotMode.Escort,
+            return new SwarmBotDirective(
+                SwarmBotMode.Escort,
                 evacuationArea,
                 evacuationCell,
                 BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, evacuationCell));
@@ -391,8 +391,8 @@ public partial class GameServer
             {
                 GetSwarmMatchRuntime(matchingId).BotTactics.FleeDirective.Add((matchingId, botPlayerId));
                 var (exitArea, exitCell) = ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
-                return new SpotArenaBotDirective(
-                    SpotArenaBotMode.Escort,
+                return new SwarmBotDirective(
+                    SwarmBotMode.Escort,
                     exitArea,
                     exitCell,
                     BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, exitCell));
@@ -422,8 +422,8 @@ public partial class GameServer
                 }
 
                 if (retreatCell != null)
-                    return new SpotArenaBotDirective(
-                        SpotArenaBotMode.Escort,
+                    return new SwarmBotDirective(
+                        SwarmBotMode.Escort,
                         bot.CurrentArea,
                         retreatCell,
                         BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, retreatCell));
@@ -431,8 +431,8 @@ public partial class GameServer
                 // 이 방엔 이제 설 자리가 없다 — 자기장 안쪽 대피 구역으로.
                 var (fieldEvacuationArea, fieldEvacuationCell) =
                     ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
-                return new SpotArenaBotDirective(
-                    SpotArenaBotMode.Escort,
+                return new SwarmBotDirective(
+                    SwarmBotMode.Escort,
                     fieldEvacuationArea,
                     fieldEvacuationCell,
                     BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fieldEvacuationCell));
@@ -454,8 +454,8 @@ public partial class GameServer
                 // 뜰 바깥 방을 고를 수 있다 — 원형 자기장에서 안전은 항상 안쪽이다.
                 var (closureEvacuationArea, closureEvacuationCell) =
                     ResolveSwarmFieldEvacuationTarget(matchingId, bot.Position);
-                return new SpotArenaBotDirective(
-                    SpotArenaBotMode.Escort,
+                return new SwarmBotDirective(
+                    SwarmBotMode.Escort,
                     closureEvacuationArea,
                     closureEvacuationCell,
                     BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, closureEvacuationCell));
@@ -463,7 +463,7 @@ public partial class GameServer
         }
 
         // 여기부터는 대피가 필요 없는 상태 — 위협이 있으면 원래 지시(Return)를 따른다.
-        if (directive.Mode != SpotArenaBotMode.Escort)
+        if (directive.Mode != SwarmBotMode.Escort)
             return directive;
 
         // 0.5) 상대 전력 비교 (#222): 티어 가중 전력(1/1.75/4)으로 비교한다.
@@ -524,8 +524,8 @@ public partial class GameServer
                         GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, pressCell) is var pressArea &&
                         pressArea != AreaType.None)
                     {
-                        return new SpotArenaBotDirective(
-                            SpotArenaBotMode.Escort,
+                        return new SwarmBotDirective(
+                            SwarmBotMode.Escort,
                             pressArea,
                             pressCell,
                             BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, pressCell));
@@ -568,8 +568,8 @@ public partial class GameServer
                 var fleeWorld = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fleeCell);
                 // 도주지가 제자리면 도주가 아니다 (#223 구석 정지 수리) — 다음 폴백으로 넘긴다.
                 if (IsFarEnoughSwarmFleeTarget(bot, fleeWorld))
-                    return new SpotArenaBotDirective(
-                        SpotArenaBotMode.Escort, fleeArea, fleeCell, fleeWorld);
+                    return new SwarmBotDirective(
+                        SwarmBotMode.Escort, fleeArea, fleeCell, fleeWorld);
             }
 
             // 폴백 (#222): 도주 방향에 열린 스팟이 없어도 무조건 이탈한다 — 스팟 부재로
@@ -589,8 +589,8 @@ public partial class GameServer
                 var fleeFallbackWorld = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fleeFallbackCell);
                 // 구석에서 벽에 막힌 probe는 제자리로 수렴한다 (#223) — 가까우면 구역 이탈로.
                 if (IsFarEnoughSwarmFleeTarget(bot, fleeFallbackWorld))
-                    return new SpotArenaBotDirective(
-                        SpotArenaBotMode.Escort, fleeFallbackArea, fleeFallbackCell, fleeFallbackWorld);
+                    return new SwarmBotDirective(
+                        SwarmBotMode.Escort, fleeFallbackArea, fleeFallbackCell, fleeFallbackWorld);
             }
 
             // 벽 방향이거나 도주지가 제자리면 위협 반대편에서 가장 가까운 열린 사냥 구역
@@ -608,8 +608,8 @@ public partial class GameServer
                 .DefaultIfEmpty(Config.SWARM_MATCH_GROUND_AREA)
                 .First();
             Cell fleeRetreatCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, fleeRetreatArea);
-            return new SpotArenaBotDirective(
-                SpotArenaBotMode.Escort,
+            return new SwarmBotDirective(
+                SwarmBotMode.Escort,
                 fleeRetreatArea,
                 fleeRetreatCell,
                 BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fleeRetreatCell));
@@ -620,8 +620,8 @@ public partial class GameServer
             (DateTime.UtcNow - lastCutAtUtc).TotalSeconds < SwarmBotPostCutLootSeconds &&
             TryFindNearestSwarmGroundStone(matchingId, bot, out Vector3f lootPosition))
         {
-            return new SpotArenaBotDirective(
-                SpotArenaBotMode.Escort,
+            return new SwarmBotDirective(
+                SwarmBotMode.Escort,
                 bot.CurrentArea,
                 ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, lootPosition),
                 lootPosition);
@@ -644,8 +644,8 @@ public partial class GameServer
             var chaseArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, chaseCell);
             bool chaseCellUsable = chaseArea != AreaType.None &&
                                    GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, chaseCell);
-            return new SpotArenaBotDirective(
-                SpotArenaBotMode.Escort,
+            return new SwarmBotDirective(
+                SwarmBotMode.Escort,
                 chaseCellUsable ? chaseArea : weakerRival.Value.Area,
                 chaseCellUsable
                     ? chaseCell
@@ -672,8 +672,8 @@ public partial class GameServer
                     GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == spotArea) ?? spotCell;
             }
 
-            return new SpotArenaBotDirective(
-                SpotArenaBotMode.Escort,
+            return new SwarmBotDirective(
+                SwarmBotMode.Escort,
                 spotArea,
                 spotCell,
                 BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, spotCell));
@@ -682,8 +682,8 @@ public partial class GameServer
         // 2) 같은 구역 바닥 소환석 — 걸어가면 자동 픽업 반경이 줍는다.
         if (TryFindNearestSwarmGroundStone(matchingId, bot, out Vector3f stonePosition))
         {
-            return new SpotArenaBotDirective(
-                SpotArenaBotMode.Escort,
+            return new SwarmBotDirective(
+                SwarmBotMode.Escort,
                 bot.CurrentArea,
                 ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, stonePosition),
                 stonePosition);
@@ -694,8 +694,8 @@ public partial class GameServer
         //    빈손은 제외 — 화력 없이 몹 옆에 서는 건 자살이다 (#222).
         if (hasSquadOrbs && HasSwarmMonsterInBasicRange(matchingId, bot))
         {
-            return new SpotArenaBotDirective(
-                SpotArenaBotMode.Escort,
+            return new SwarmBotDirective(
+                SwarmBotMode.Escort,
                 bot.CurrentArea,
                 ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, bot.Position),
                 bot.Position);
@@ -712,8 +712,8 @@ public partial class GameServer
             if (TryFindNearestSwarmSupplyMonster(matchingId, bot, out var supplyArea,
                     out var supplyPosition))
             {
-                return new SpotArenaBotDirective(
-                    SpotArenaBotMode.Escort,
+                return new SwarmBotDirective(
+                    SwarmBotMode.Escort,
                     supplyArea,
                     ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, supplyPosition),
                     supplyPosition);
@@ -728,8 +728,8 @@ public partial class GameServer
             TryFindNearestSwarmSupplyMonster(matchingId, bot, out var migrateArea,
                 out var migratePosition))
         {
-            return new SpotArenaBotDirective(
-                SpotArenaBotMode.Escort,
+            return new SwarmBotDirective(
+                SwarmBotMode.Escort,
                 migrateArea,
                 ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, migratePosition),
                 migratePosition);

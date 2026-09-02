@@ -353,8 +353,8 @@ public class BotPlayerState
 
     /// <summary>Safe room selected during #214 corridor selection.</summary>
 
-    public SpotArenaBotMode SpotArenaMode { get; set; } = SpotArenaBotMode.None;
-    public DateTime SpotArenaModeUntilUtc { get; set; } = DateTime.MinValue;
+    public SwarmBotMode SwarmMode { get; set; } = SwarmBotMode.None;
+    public DateTime SwarmModeUntilUtc { get; set; } = DateTime.MinValue;
 
 
 

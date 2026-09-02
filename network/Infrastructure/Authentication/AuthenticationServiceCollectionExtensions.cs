@@ -12,7 +12,7 @@ public static class AuthenticationServiceCollectionExtensions
     private const int MinimumGameHandoffLifetimeSeconds = 30;
     private const int MaximumGameHandoffLifetimeSeconds = 600;
 
-    public static IServiceCollection AddManittoAuthenticationBoundaries(
+    public static IServiceCollection AddAuthenticationBoundaries(
         this IServiceCollection services,
         IConfiguration configuration)
     {

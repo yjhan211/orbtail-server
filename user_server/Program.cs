@@ -68,7 +68,7 @@ internal static class Program
         services.AddSingleton<ICacheHelper, CacheHelper>();
         services.AddSingleton<IMatchingQueueClaimStore, RedisMatchingQueueClaimStore>();
         services.AddSingleton<LogManager>();
-        services.AddManittoAuthenticationBoundaries(hostContext.Configuration);
+        services.AddAuthenticationBoundaries(hostContext.Configuration);
 
         // 비즈니스 서비스
         services.AddSingleton<IPlayerService, PlayerService>();

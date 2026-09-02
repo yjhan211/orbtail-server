@@ -45,7 +45,7 @@ namespace network.common
         /// <summary>게임 세션 지속 시간 (분)</summary>
         public static readonly int GAME_DURATION_MINUTES = 15;
 
-        /// <summary>Survivor Royale inventory slot capacity shared by clients, bots, and the game server.</summary>
+        /// <summary>Swarm match inventory slot capacity shared by clients, bots, and the game server.</summary>
         public const int LEGACY_INVENTORY_SLOT_COUNT = 6;
 
         /// <summary>World pickup used to represent one summon stone.</summary>
@@ -142,11 +142,11 @@ namespace network.common
         public static float SWARM_ORB_TRAIL_SPACING => SwarmConfigData.GetFloat("SWARM_ORB_TRAIL_SPACING", 0.7f);
         public static float SWARM_ORB_TRAIL_FIRST_OFFSET => SwarmConfigData.GetFloat("SWARM_ORB_TRAIL_FIRST_OFFSET", 0.7f);
 
-        /// <summary>Survivor Royale combat and closure elimination threshold.</summary>
+        /// <summary>Swarm match combat and closure elimination threshold.</summary>
         public static int MAX_CORRUPTION => SwarmConfigData.GetInt("MAX_CORRUPTION", 420);
 
         /// <summary>
-        /// Survivor Royale #202 uses monster rewards as summon currency instead of direct orb exploration loot.
+        /// Swarm match (#202) uses monster rewards as summon currency instead of direct orb exploration loot.
         /// Legacy area pools stay loadable for data validation and isolated regression tests.
         /// </summary>
         public static readonly bool MONSTER_SUMMON_ECONOMY_ENABLED = true;

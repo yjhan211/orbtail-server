@@ -97,7 +97,7 @@ public class SwarmMonsterDirectorTests
             now = StartUtc.AddSeconds(elapsed);
             var spread = rooms
                 .SelectMany((room, roomIndex) => Enumerable.Range(0, 2).Select(seat =>
-                    new SpotArenaPlayerSpatial(roomIndex * 2 + seat + 1, room, AreaCenter(room))))
+                    new SwarmParticipantSpatial(roomIndex * 2 + seat + 1, room, AreaCenter(room))))
                 .ToList();
             manager.Tick(217002, spread, now);
             int alive = manager.GetVisualStates(217002).Count(state => state.IsAlive);
@@ -192,7 +192,7 @@ public class SwarmMonsterDirectorTests
         DateTime now = StartUtc.AddSeconds(0.25);
         var manager = CreateManager(() => now);
         Vector3f center = AreaCenter(Config.SWARM_MATCH_GROUND_AREA);
-        var damageEvents = new List<SpotArenaPlayerDamage>();
+        var damageEvents = new List<SwarmPlayerDamage>();
         var firstTick = manager.Tick(217001, Participants(center), now);
         Assert.NotEmpty(firstTick.SpawnedMonsters);
         damageEvents.AddRange(firstTick.PlayerDamage);
@@ -274,19 +274,19 @@ public class SwarmMonsterDirectorTests
         // #272 가운데 병합: 밴드가 운동장과 같은 구역이 됐다 — 다른 구역 참가자는 도서관1의
         // 먼 구석에 세운다 (좁은 복도는 공급 앵커와 겹쳐 물린다).
         Vector3f corridor = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, new Cell(126, 90));
-        manager.Tick(217001, [new SpotArenaPlayerSpatial(1, Config.SWARM_MATCH_GROUND_AREA, AreaCenter(Config.SWARM_MATCH_GROUND_AREA))], now);
+        manager.Tick(217001, [new SwarmParticipantSpatial(1, Config.SWARM_MATCH_GROUND_AREA, AreaCenter(Config.SWARM_MATCH_GROUND_AREA))], now);
 
         var monster = manager.GetVisualStates(217001).First(state => state.IsAlive);
         var onMonster = new Vector3f(monster.PositionX, monster.PositionY, 0f);
 
-        var damageEvents = new List<SpotArenaPlayerDamage>();
+        var damageEvents = new List<SwarmPlayerDamage>();
         for (double elapsed = 0.5d; elapsed <= 9d; elapsed += 0.25d)
         {
             now = StartUtc.AddSeconds(elapsed);
             var participants = new[]
             {
-                new SpotArenaPlayerSpatial(1, Config.SWARM_MATCH_GROUND_AREA, onMonster),
-                new SpotArenaPlayerSpatial(2, AreaType.S2Library1, corridor)
+                new SwarmParticipantSpatial(1, Config.SWARM_MATCH_GROUND_AREA, onMonster),
+                new SwarmParticipantSpatial(2, AreaType.S2Library1, corridor)
             };
             damageEvents.AddRange(manager.Tick(217001, participants, now).PlayerDamage);
         }
@@ -296,17 +296,17 @@ public class SwarmMonsterDirectorTests
         Assert.All(damageEvents, damage => Assert.Equal(1, damage.TargetPlayerId));
     }
 
-    private static IReadOnlyCollection<SpotArenaPlayerSpatial> Participants(
+    private static IReadOnlyCollection<SwarmParticipantSpatial> Participants(
         Vector3f position,
         AreaType area = AreaType.None) =>
-        [new SpotArenaPlayerSpatial(1, ResolveArea(area), position)];
+        [new SwarmParticipantSpatial(1, ResolveArea(area), position)];
 
-    private static IReadOnlyCollection<SpotArenaPlayerSpatial> ManyParticipants(
+    private static IReadOnlyCollection<SwarmParticipantSpatial> ManyParticipants(
         int count,
         Vector3f position,
         AreaType area = AreaType.None) =>
         Enumerable.Range(1, count)
-            .Select(id => new SpotArenaPlayerSpatial(id, ResolveArea(area), position))
+            .Select(id => new SwarmParticipantSpatial(id, ResolveArea(area), position))
             .ToList();
 
     // 기본 구역 = 매치 맵 운동장 (기본 매개변수는 컴파일 상수만 허용 — None을 센티널로 쓴다).

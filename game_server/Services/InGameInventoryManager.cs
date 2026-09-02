@@ -425,7 +425,7 @@ public class InGameInventoryManager
         bool result = inventory.TryCombineOrbs(inputA, inputB, random, out outputItemId, out changedItems);
         if (result)
             _logAction?.Invoke(
-                $"InGameInventoryManager: Random Survivor orb merge (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{inputA},{inputB}], Output={outputItemId})");
+                $"InGameInventoryManager: Random Swarm orb merge (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{inputA},{inputB}], Output={outputItemId})");
         return result;
     }
 

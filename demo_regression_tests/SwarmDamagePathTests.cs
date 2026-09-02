@@ -68,7 +68,7 @@ public class SwarmDamagePathTests
                      (Path.Combine("game_server", "GameServer.SwarmBots.cs"),
                          "private void ProcessSwarmBotExplores"),
                      (Path.Combine("game_server", "GameServer.SwarmArena.cs"),
-                         "private void SpawnSpotArenaSummonStone")
+                         "private void SpawnSwarmSummonStone")
                  })
         {
             string source = File.ReadAllText(Path.Combine(FindRepositoryRoot(), file));

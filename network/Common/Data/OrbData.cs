@@ -6,7 +6,7 @@ using network.common.data.models;
 namespace network.common.data
 {
     /// <summary>
-    /// Shared color and tier rules for the three Survivor Royale orb lines added by #198.
+    /// Shared color and tier rules for the three Swarm orb lines added by #198.
     /// Legacy guardian orbs (107000003/004/006) intentionally remain outside this board rule.
     /// </summary>
     public enum OrbColor
