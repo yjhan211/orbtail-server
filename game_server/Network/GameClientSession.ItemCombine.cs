@@ -22,6 +22,7 @@ public partial class GameClientSession
     ///     조합 요청의 outer 경계. PlayerId가 없으면 조용히 끝내고 matchingId가 없으면 기존
     ///     core를 ordered lane 밖에서 직접 실행한다. 유효한 매치는 SessionBase의 outer operation
     ///     lease를 빌려 ordered publisher에 active core와 Finalizing rejection을 함께 넘긴다.
+    ///     ClientStartUnixMs는 legacy payload key/Int64 shape 보존 필드이며 순서 결정에는 사용하지 않는다.
     /// </summary>
     private Task HandleCombineItems(C_TO_G_COMBINE_ITEMS msg)
     {

@@ -28,6 +28,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
     private const long SecondMatchingId = 72002;
     private const long FirstPlayerId = 101;
     private const long SecondPlayerId = 202;
+    private const long ThirdPlayerId = 303;
     private const int RecoveryOrbT1 = 107000040;
     private const int RecoveryOrbT2 = 107000041;
     private const int SunOrbT1 = 107000010;
@@ -44,6 +45,38 @@ public sealed class GameClientSessionItemCombinePublicationTests
         GameDataHelper.Initialize();
         MatchStartGate.RemoveMatching(FirstMatchingId);
         MatchStartGate.RemoveMatching(SecondMatchingId);
+    }
+
+    [Fact]
+    public void LegacyPayloadKeyAndInt64Shape_RemainCompatible()
+    {
+        var legacyRequest = new LegacyCombineRequest
+        {
+            ItemA = Bandage,
+            ItemB = Bandage,
+            ClientStartUnixMs = long.MaxValue
+        };
+
+        C_TO_G_COMBINE_ITEMS currentRequest =
+            MessagePackSerializer.Deserialize<C_TO_G_COMBINE_ITEMS>(
+                MessagePackSerializer.Serialize(legacyRequest));
+
+        Assert.Equal(Bandage, currentRequest.ItemA);
+        Assert.Equal(Bandage, currentRequest.ItemB);
+        Assert.Equal(long.MaxValue, currentRequest.ClientStartUnixMs);
+
+        LegacyCombineRequest legacyRoundTrip =
+            MessagePackSerializer.Deserialize<LegacyCombineRequest>(
+                MessagePackSerializer.Serialize(new C_TO_G_COMBINE_ITEMS
+                {
+                    ItemA = RecoveryOrbT1,
+                    ItemB = RecoveryOrbT2,
+                    ClientStartUnixMs = long.MinValue
+                }));
+
+        Assert.Equal(RecoveryOrbT1, legacyRoundTrip.ItemA);
+        Assert.Equal(RecoveryOrbT2, legacyRoundTrip.ItemB);
+        Assert.Equal(long.MinValue, legacyRoundTrip.ClientStartUnixMs);
     }
 
     [Fact]
@@ -488,55 +521,87 @@ public sealed class GameClientSessionItemCombinePublicationTests
     }
 
     [Fact]
-    public async Task SameMatch_TwoPlayerBundlesAreFifoAndNeverInterleave()
+    public async Task SameMatch_OrderedLaneFifoIgnoresClientTimestampsAndBundlesNeverInterleave()
     {
         using var fixture = new SessionFixture();
-        GameClientSession first = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        GameClientSession second = fixture.CreateSession(FirstMatchingId, SecondPlayerId);
+        GameClientSession blocker = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
+        GameClientSession firstWaiter = fixture.CreateSession(FirstMatchingId, SecondPlayerId);
+        GameClientSession secondWaiter = fixture.CreateSession(FirstMatchingId, ThirdPlayerId);
         fixture.SeedPair(FirstMatchingId, FirstPlayerId, Bandage);
         fixture.SeedPair(FirstMatchingId, SecondPlayerId, Bandage);
-        var entered = new ManualResetEventSlim();
-        var release = new ManualResetEventSlim();
+        fixture.SeedPair(FirstMatchingId, ThirdPlayerId, Bandage);
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
         var timeline = new ConcurrentQueue<string>();
-        fixture.TokenFor(first).BeforeSend = protocol =>
+        fixture.TokenFor(blocker).BeforeSend = protocol =>
         {
-            timeline.Enqueue($"first:{protocol}");
+            timeline.Enqueue($"blocker:{protocol}");
             if (protocol != Protocol.G_TO_C_ITEMS_COMBINED)
                 return;
             entered.Set();
             Assert.True(release.Wait(TimeSpan.FromSeconds(5)));
         };
-        fixture.TokenFor(second).BeforeSend = protocol => timeline.Enqueue($"second:{protocol}");
+        fixture.TokenFor(firstWaiter).BeforeSend =
+            protocol => timeline.Enqueue($"first-waiter:{protocol}");
+        fixture.TokenFor(secondWaiter).BeforeSend =
+            protocol => timeline.Enqueue($"second-waiter:{protocol}");
 
-        Task firstTask = Task.Run(() => SendCombineAsync(first, Bandage, Bandage));
-        Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
-        Task secondTask = Task.Run(() => SendCombineAsync(second, Bandage, Bandage));
-        Assert.True(SpinWait.SpinUntil(
-            () => fixture.Coordinator.Inspect(FirstMatchingId)?.OrderedWaiterCount == 1,
-            TimeSpan.FromSeconds(5)));
-        Assert.Empty(fixture.TokenFor(second).AttemptedProtocols);
-        Assert.Equal(2, fixture.Inventories.GetAllItems(FirstMatchingId, SecondPlayerId).Count);
+        Task blockerTask = Task.Run(() => SendCombineAsync(blocker, Bandage, Bandage));
+        Task firstWaiterTask = Task.CompletedTask;
+        Task secondWaiterTask = Task.CompletedTask;
+        try
+        {
+            Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
+            firstWaiterTask = Task.Run(() => SendCombineAsync(
+                firstWaiter,
+                Bandage,
+                Bandage,
+                clientStartUnixMs: long.MaxValue));
+            Assert.True(SpinWait.SpinUntil(
+                () => fixture.Coordinator.Inspect(FirstMatchingId)?.OrderedWaiterCount == 1,
+                TimeSpan.FromSeconds(5)));
+            secondWaiterTask = Task.Run(() => SendCombineAsync(
+                secondWaiter,
+                Bandage,
+                Bandage,
+                clientStartUnixMs: long.MinValue));
+            Assert.True(SpinWait.SpinUntil(
+                () => fixture.Coordinator.Inspect(FirstMatchingId)?.OrderedWaiterCount == 2,
+                TimeSpan.FromSeconds(5)));
+            Assert.Empty(fixture.TokenFor(firstWaiter).AttemptedProtocols);
+            Assert.Empty(fixture.TokenFor(secondWaiter).AttemptedProtocols);
+            Assert.Equal(2, fixture.Inventories.GetAllItems(FirstMatchingId, SecondPlayerId).Count);
+            Assert.Equal(2, fixture.Inventories.GetAllItems(FirstMatchingId, ThirdPlayerId).Count);
+        }
+        finally
+        {
+            release.Set();
+        }
 
-        release.Set();
-        await Task.WhenAll(firstTask, secondTask).WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.WhenAll(blockerTask, firstWaiterTask, secondWaiterTask)
+            .WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(
             [
-                "first:G_TO_C_ITEMS_COMBINED",
-                "first:G_TO_C_INGAME_INVENTORY_UPDATE",
-                "second:G_TO_C_ITEMS_COMBINED",
-                "second:G_TO_C_INGAME_INVENTORY_UPDATE"
+                "blocker:G_TO_C_ITEMS_COMBINED",
+                "blocker:G_TO_C_INGAME_INVENTORY_UPDATE",
+                "first-waiter:G_TO_C_ITEMS_COMBINED",
+                "first-waiter:G_TO_C_INGAME_INVENTORY_UPDATE",
+                "second-waiter:G_TO_C_ITEMS_COMBINED",
+                "second-waiter:G_TO_C_INGAME_INVENTORY_UPDATE"
             ],
             timeline);
         Assert.Equal(CompressionBandage, Assert.Single(
             fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId)).ItemId);
         Assert.Equal(CompressionBandage, Assert.Single(
             fixture.Inventories.GetAllItems(FirstMatchingId, SecondPlayerId)).ItemId);
+        Assert.Equal(CompressionBandage, Assert.Single(
+            fixture.Inventories.GetAllItems(FirstMatchingId, ThirdPlayerId)).ItemId);
         Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
     }
 
     [Fact]
-    public async Task SameMatch_TwoColoredOrbRequestsDrawInOrderedTurnOrder()
+    public async Task SameMatch_InvertedClientTimestampsDoNotChangeColoredOrbDrawOrder()
     {
         using var fixture = new SessionFixture();
         CountingRandom itemCombineRandom = fixture.ConfigureItemCombineRandom(FirstMatchingId, 0, 1);
@@ -554,11 +619,19 @@ public sealed class GameClientSessionItemCombinePublicationTests
             Assert.True(release.Wait(TimeSpan.FromSeconds(5)));
         };
 
-        Task firstTask = Task.Run(() => SendCombineAsync(first, SunOrbT1, SunOrbT1));
+        Task firstTask = Task.Run(() => SendCombineAsync(
+            first,
+            SunOrbT1,
+            SunOrbT1,
+            clientStartUnixMs: long.MaxValue));
         Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
         Assert.Equal(1, itemCombineRandom.DrawCount);
 
-        Task secondTask = Task.Run(() => SendCombineAsync(second, SunOrbT1, SunOrbT1));
+        Task secondTask = Task.Run(() => SendCombineAsync(
+            second,
+            SunOrbT1,
+            SunOrbT1,
+            clientStartUnixMs: long.MinValue));
         try
         {
             Assert.True(SpinWait.SpinUntil(
@@ -693,6 +766,12 @@ public sealed class GameClientSessionItemCombinePublicationTests
             "game_server",
             "Network",
             "GameClientSession.PlayerState.cs");
+        string clientCombine = ReadNormalizedSource(
+            root,
+            "client",
+            "Assets",
+            "Scripts",
+            "GameUser.ItemCombine.cs");
 
         Assert.Contains(
             "Protocol.C_TO_G_COMBINE_ITEMS,\n            async bytes => await HandleMessage<C_TO_G_COMBINE_ITEMS>(bytes, HandleCombineItems)",
@@ -719,16 +798,25 @@ public sealed class GameClientSessionItemCombinePublicationTests
             playerState,
             "private async Task HandleUseInGameItem(",
             "private bool ApplyItemBuffs("));
+        Assert.DoesNotContain("msg.ClientStartUnixMs", combine);
+        Assert.Contains("ClientStartUnixMs = 0", clientCombine);
+        Assert.DoesNotContain("DateTimeOffset.UtcNow", clientCombine);
     }
 
     private static async Task SendCombineAsync(
         GameClientSession session,
         int itemA,
-        int itemB) =>
+        int itemB,
+        long clientStartUnixMs = 0) =>
         await SendAsync(
             session,
             Protocol.C_TO_G_COMBINE_ITEMS,
-            new C_TO_G_COMBINE_ITEMS { ItemA = itemA, ItemB = itemB });
+            new C_TO_G_COMBINE_ITEMS
+            {
+                ItemA = itemA,
+                ItemB = itemB,
+                ClientStartUnixMs = clientStartUnixMs
+            });
 
     private static async Task SendAsync<T>(
         GameClientSession session,
@@ -1040,6 +1128,14 @@ public sealed class GameClientSessionItemCombinePublicationTests
             null!,
             null!,
             new ServerReadinessState());
+    }
+
+    [MessagePackObject]
+    public sealed class LegacyCombineRequest
+    {
+        [Key("partA")] public int ItemA { get; set; }
+        [Key("partB")] public int ItemB { get; set; }
+        [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
     }
 
     private sealed class CountingRandom(params int[] drawResults) : Random

@@ -24,15 +24,17 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    ///     배틀아이템 조합 요청.
-    ///     #87 N12: 동시 조합 시 시작 시각이 빠른 쪽이 우선. 0이면 서버는 패킷 도착 시각으로 폴백.
+    ///     배틀아이템·오브 조합 요청. 같은 match의 조합끼리는 서버 ordered-lane waiter 진입 FIFO를 따른다.
+    ///     clientStartUnixMs는 퇴역한 mission-race payload의 key와 Int64 shape를 보존하기 위해서만 남긴다.
     /// </summary>
     [MessagePackObject]
     public class C_TO_G_COMBINE_ITEMS : IMessagePackObject
     {
         [Key("partA")] public int ItemA { get; set; }
         [Key("partB")] public int ItemB { get; set; }
-        /// <summary>클라이언트 결합 액션 시작 시각 (UTC Unix ms). #87 동시성 가드용. 미지원 클라는 0.</summary>
+        /// <summary>
+        ///     Legacy reserved payload field. 서버는 권위 판정이나 순서 결정에 사용하지 않으며 현행 클라이언트는 0을 보낸다.
+        /// </summary>
         [Key("clientStartUnixMs")] public long ClientStartUnixMs { get; set; }
     }
 
