@@ -51,7 +51,7 @@ public class SwarmDamagePathTests
 
         int cutMethodStart = source.IndexOf("private void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
         Assert.True(cutMethodStart >= 0, "TryPerformSwarmTrailCut를 찾지 못했다");
-        int cutMethodEnd = source.IndexOf("// ===== 포위 사격", cutMethodStart, StringComparison.Ordinal);
+        int cutMethodEnd = source.IndexOf("// 링 연출 종류", cutMethodStart, StringComparison.Ordinal);
         Assert.True(cutMethodEnd > cutMethodStart, "절단 판정 메서드의 끝을 찾지 못했다");
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
 
@@ -122,7 +122,7 @@ public class SwarmDamagePathTests
         Assert.Contains("SwarmBotCutMaxCorruptionRatio = 0.5f", botSource);
         Assert.Contains("SwarmBotCutCooldownSeconds = 6d", botSource);
         int cutMethodStart = source.IndexOf("private void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
-        int cutMethodEnd = source.IndexOf("// ===== 포위 사격", cutMethodStart, StringComparison.Ordinal);
+        int cutMethodEnd = source.IndexOf("// 링 연출 종류", cutMethodStart, StringComparison.Ordinal);
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
         Assert.Contains("cutterBot != null && !IsSwarmBotCutAllowed(", cutBody);
         Assert.Contains("BotTactics.LastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc", cutBody);

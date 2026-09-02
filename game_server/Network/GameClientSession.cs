@@ -17,11 +17,11 @@ namespace game_server.network;
 ///     The session validates protocol messages and owns per-connection state, while match-shared state remains
 ///     in GameServer managers. Authentication becomes visible only after the Redis admission commit and initial
 ///     authoritative snapshot have both completed. Human Swarm growth-pick and orb-decision rules are injected
-    ///     by the owning GameServer instance instead of process-static routing callbacks. A successful admission
-    ///     response is built before authentication commits, then queued outside the match monitor while the outer
-    ///     runtime lease is still held. Terminal recipients and payloads are frozen during runtime-owned preparation;
-    ///     after the outer turn and lease retire, a supplied required-turn adapter publishes result, end, and mark
-    ///     steps outside the match monitor before cleanup.
+///     by the owning GameServer instance instead of process-static routing callbacks. A successful admission
+///     response is built before authentication commits, then queued outside the match monitor while the outer
+///     runtime lease is still held. Terminal recipients and payloads are frozen during runtime-owned preparation;
+///     after the outer turn and lease retire, a supplied required-turn adapter publishes result, end, and mark
+///     steps outside the match monitor before cleanup.
 /// </summary>
 public partial class GameClientSession : SessionBase
 {

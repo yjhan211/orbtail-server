@@ -57,9 +57,6 @@ public partial class GameServer
                 if (!windBlade.TryBeginTick(
                         owner.PlayerId, item.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_TICK_SECONDS))
                     continue;
-                // 비무장(소환·채집 중)은 쉰다 — 미사일·물폭탄과 같은 규칙. 틱 시계는 계속 돈다.
-                if (!IsSwarmAttackArmed(matchingId, owner.PlayerId, nowUtc))
-                    continue;
 
                 tiers ??= GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
                 var origin = GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position, tiers);
