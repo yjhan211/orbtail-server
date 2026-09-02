@@ -7,32 +7,20 @@ using network.contracts.authentication;
 using network.core;
 using network.interfaces;
 using network.packets;
-using network.routing;
 using user_server.services;
-using user_server.services.scaling;
 
 namespace user_server.network;
 
 public sealed class GameSession : SessionBase
 {
-    private const int MaxMatchingDeliveryReceipts = 256;
     private readonly IMatchingManager _matchingManager;
     private readonly IAccountTokenService _accountTokenService;
-    private readonly IUserServerCoordinationStore _coordinationStore;
-    private readonly UserServerClusterOptions _clusterOptions;
-    private readonly UserServerProcessIdentity _processIdentity;
-    private readonly IMatchingDeliveryRouter _deliveryRouter;
     private readonly Func<long, GameSession, Action?> _onSessionRegistered;
     private readonly Func<long, GameSession, bool> _onSessionRemoved;
     private readonly IPlayerService _playerService;
-    private readonly IProtocolRouter _subscribeRouter;
-    private readonly MatchingDeliveryReceiptCache _matchingDeliveryReceipts =
-        new(MaxMatchingDeliveryReceipts);
     private readonly object _matchingAssignmentLock = new();
-    private UserSessionOwner? _sessionOwner;
     private string? _activeMatchingRequestId;
     private long _assignedMatchingId;
-    private int _authenticationCommitted;
 
     public GameSession(
         UserToken token,
@@ -42,10 +30,6 @@ public sealed class GameSession : SessionBase
         IPlayerService playerService,
         IMatchingManager matchingManager,
         IAccountTokenService accountTokenService,
-        IUserServerCoordinationStore coordinationStore,
-        UserServerClusterOptions clusterOptions,
-        UserServerProcessIdentity processIdentity,
-        IMatchingDeliveryRouter deliveryRouter,
         Func<long, GameSession, Action?> onSessionRegistered,
         Func<long, GameSession, bool> onSessionRemoved)
         : base(token, logger, cacheHelper, redLock)
@@ -53,22 +37,15 @@ public sealed class GameSession : SessionBase
         _playerService = playerService;
         _matchingManager = matchingManager;
         _accountTokenService = accountTokenService;
-        _coordinationStore = coordinationStore;
-        _clusterOptions = clusterOptions;
-        _processIdentity = processIdentity;
-        _deliveryRouter = deliveryRouter;
         _onSessionRegistered = onSessionRegistered;
         _onSessionRemoved = onSessionRemoved;
 
-        _subscribeRouter = new ProtocolRouter();
         // ReSharper disable once VirtualMemberCallInConstructor
         InitializeProtocolHandlers();
     }
 
     public new long? PlayerId { get; private set; }
     public PlayerInfo? PlayerInfo { get; private set; }
-    internal string SessionId { get; } = Guid.NewGuid().ToString("N");
-    internal UserSessionOwner? SessionOwner => Volatile.Read(ref _sessionOwner);
     internal string? ActiveMatchingRequestId
     {
         get
@@ -82,7 +59,7 @@ public sealed class GameSession : SessionBase
     internal bool TryAssignMatching(long matchingId, string requestId)
     {
         if (matchingId <= 0 ||
-            !UserServerClusterOptions.IsSafeTokenComponent(requestId))
+            !MatchingRequestTokens.IsSafeTokenComponent(requestId))
             return false;
 
         lock (_matchingAssignmentLock)
@@ -198,131 +175,38 @@ public sealed class GameSession : SessionBase
         }
     }
 
-    internal MatchingDeliveryResponse HandleMatchingDelivery(MatchingDeliveryRequest request)
+    /// <summary>
+    ///     매칭 성공 패킷을 보낸다. 요청 ID가 현재 매칭 요청과 다르거나 전송에 실패하면 배정을 남기지 않는다.
+    /// </summary>
+    internal bool TryDeliverMatchingSuccess(long matchingId, string requestId, Packet packet)
     {
-        return HandleMatchingDeliveryCore(request, requireDistributedOwner: true);
+        if (!TryAssignMatching(matchingId, requestId))
+            return false;
+        if (TrySend(packet))
+            return true;
+
+        ClearMatchingAssignment(matchingId);
+        return false;
     }
 
-    internal MatchingDeliveryResponse HandleLocalMatchingDelivery(MatchingDeliveryRequest request)
+    /// <summary>
+    ///     매칭 롤백 실패 패킷을 보낸다. 요청 ID가 현재 매칭 요청과 다르면 보내지 않는다.
+    /// </summary>
+    internal bool TryDeliverMatchingFailed(long matchingId, string requestId, Packet packet)
     {
-        return HandleMatchingDeliveryCore(request, requireDistributedOwner: false);
+        if (!TryFailMatchingRequest(requestId, matchingId))
+            return false;
+        return TrySend(packet);
     }
 
-    private MatchingDeliveryResponse HandleMatchingDeliveryCore(
-        MatchingDeliveryRequest request,
-        bool requireDistributedOwner)
+    /// <summary>
+    ///     입장 실패 패킷을 보낸다. 이 세션이 해당 매치에 배정돼 있지 않으면 보낼 것이 없으므로 성공으로 본다.
+    /// </summary>
+    internal bool TryDeliverAdmissionFailed(long matchingId, Packet packet)
     {
-        ArgumentNullException.ThrowIfNull(request);
-
-        MatchingDeliveryStatus status = _matchingDeliveryReceipts.ApplyOnce(
-            request,
-            () => ApplyMatchingDelivery(request, requireDistributedOwner));
-        return MatchingDeliveryResponse.Create(request.DeliveryId, status);
-    }
-
-    private MatchingDeliveryStatus ApplyMatchingDelivery(
-        MatchingDeliveryRequest request,
-        bool requireDistributedOwner)
-    {
-        UserSessionOwner? owner = SessionOwner;
-        if (PlayerId != request.PlayerId ||
-            (requireDistributedOwner &&
-             (owner == null ||
-              !string.Equals(owner.NodeId, request.OwnerNodeId, StringComparison.Ordinal) ||
-              !string.Equals(owner.NodeGeneration, request.OwnerNodeGeneration, StringComparison.Ordinal) ||
-              !string.Equals(owner.SessionId, request.OwnerSessionId, StringComparison.Ordinal) ||
-              owner.SessionGeneration != request.OwnerSessionGeneration)))
-        {
-            return MatchingDeliveryStatus.StaleOwner;
-        }
-
-        switch (request.Kind)
-        {
-            case MatchingDeliveryKind.MatchingSucceeded:
-                if (request.ProtocolId != (int)Protocol.U_TO_C_MATCHING_SUCCESS ||
-                    request.Payload.Length == 0)
-                {
-                    return MatchingDeliveryStatus.InvalidRequest;
-                }
-                try
-                {
-                    using var successPacket = Packet.CreateForSending(request.Payload);
-                    if (successPacket.ProtocolId != request.ProtocolId)
-                        return MatchingDeliveryStatus.InvalidRequest;
-                    if (!TryAssignMatching(request.MatchingId, request.RequestId))
-                        return MatchingDeliveryStatus.StaleOwner;
-                    if (TrySend(successPacket))
-                        return MatchingDeliveryStatus.Accepted;
-                }
-                catch (ArgumentException ex)
-                {
-                    Logger.LogWarning(ex, "Rejected malformed matching-success packet");
-                    return MatchingDeliveryStatus.InvalidRequest;
-                }
-                ClearMatchingAssignment(request.MatchingId);
-                return MatchingDeliveryStatus.SessionUnavailable;
-
-            case MatchingDeliveryKind.MatchingFailed:
-                if (request.ProtocolId != (int)Protocol.U_TO_C_MATCHING_FAILED ||
-                    request.Payload.Length == 0)
-                {
-                    return MatchingDeliveryStatus.InvalidRequest;
-                }
-                try
-                {
-                    using var failedPacket = Packet.CreateForSending(request.Payload);
-                    if (failedPacket.ProtocolId != request.ProtocolId)
-                        return MatchingDeliveryStatus.InvalidRequest;
-                    if (!TryFailMatchingRequest(request.RequestId, request.MatchingId))
-                        return MatchingDeliveryStatus.StaleOwner;
-                    return TrySend(failedPacket)
-                        ? MatchingDeliveryStatus.Accepted
-                        : MatchingDeliveryStatus.SessionUnavailable;
-                }
-                catch (ArgumentException ex)
-                {
-                    Logger.LogWarning(ex, "Rejected malformed matching-failed packet");
-                    return MatchingDeliveryStatus.InvalidRequest;
-                }
-
-            case MatchingDeliveryKind.MatchingAdmissionFailed:
-                if (request.ProtocolId != (int)Protocol.U_TO_C_MATCHING_FAILED ||
-                    request.Payload.Length == 0)
-                {
-                    return MatchingDeliveryStatus.InvalidRequest;
-                }
-                try
-                {
-                    using var admissionFailedPacket = Packet.CreateForSending(request.Payload);
-                    if (admissionFailedPacket.ProtocolId != request.ProtocolId)
-                        return MatchingDeliveryStatus.InvalidRequest;
-                    if (!TryFailMatchingAdmission(request.MatchingId))
-                        return MatchingDeliveryStatus.Accepted;
-                    return TrySend(admissionFailedPacket)
-                        ? MatchingDeliveryStatus.Accepted
-                        : MatchingDeliveryStatus.SessionUnavailable;
-                }
-                catch (ArgumentException ex)
-                {
-                    Logger.LogWarning(ex, "Rejected malformed matching-admission-failed packet");
-                    return MatchingDeliveryStatus.InvalidRequest;
-                }
-
-            case MatchingDeliveryKind.ClearMatchingAssignment:
-                if (request.ProtocolId != 0 || request.Payload.Length != 0)
-                    return MatchingDeliveryStatus.InvalidRequest;
-                ClearMatchingAssignment(request.MatchingId);
-                return MatchingDeliveryStatus.Accepted;
-
-            case MatchingDeliveryKind.DisconnectSupersededSession:
-                if (request.ProtocolId != 0 || request.Payload.Length != 0)
-                    return MatchingDeliveryStatus.InvalidRequest;
-                DisconnectForDuplicateLogin();
-                return MatchingDeliveryStatus.Accepted;
-
-            default:
-                return MatchingDeliveryStatus.InvalidRequest;
-        }
+        if (!TryFailMatchingAdmission(matchingId))
+            return true;
+        return TrySend(packet);
     }
 
     protected override void InitializeProtocolHandlers()
@@ -340,13 +224,6 @@ public sealed class GameSession : SessionBase
         ProtocolRouter.RegisterHandler(Protocol.C_TO_U_MATCHING,
             async bytes => await HandleMessage<C_TO_U_MATCHING>(bytes, HandleMatching));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_U_MATCHING_CANCEL, async _ => await HandleMatchingCancel());
-
-        // 구독 프로토콜
-        _subscribeRouter.RegisterHandler(Protocol.U_TO_U_DUPLICATE, _ =>
-        {
-            ReceiveDuplicate();
-            return Task.CompletedTask;
-        });
     }
 
     protected override bool ShouldSkipLogging(Protocol protocolId)
@@ -370,8 +247,6 @@ public sealed class GameSession : SessionBase
             return;
         }
 
-        bool authenticationCommitted = false;
-        UserSessionOwnerAcquisition? ownerAcquisition = null;
         try
         {
             Logger.LogInformation("Login request received: HasAccountCredential={HasAccountCredential}",
@@ -412,22 +287,6 @@ public sealed class GameSession : SessionBase
             // 신규 플레이어 초기 아이템 지급
             if (PlayerInfo.IsNew) await SetupNewPlayer(PlayerInfo);
 
-            if (_clusterOptions.Enabled)
-            {
-                ownerAcquisition = await _coordinationStore.TryAcquireOrReplaceSessionOwnerAsync(
-                    _processIdentity,
-                    PlayerId.Value,
-                    SessionId,
-                    _clusterOptions.SessionOwnerLifetime);
-                if (ownerAcquisition == null)
-                {
-                    throw new InvalidOperationException(
-                        "Could not acquire the distributed session owner because this UserServer node lease is not active.");
-                }
-
-                Volatile.Write(ref _sessionOwner, ownerAcquisition.CurrentOwner);
-            }
-
             // 로그인 응답 전송
             Logger.LogInformation("Creating login packet for PlayerId={PlayerId}", PlayerId);
             using var loginPacket = PacketMaker.U_TO_C_LOGIN(PlayerInfo, account.AccountToken);
@@ -435,23 +294,9 @@ public sealed class GameSession : SessionBase
                 loginPacket.ToBytes().Length);
             Action? disconnectSupersededSession = null;
             if (!Token.TryMarkAuthenticated(
-                    () =>
-                    {
-                        disconnectSupersededSession = _onSessionRegistered(PlayerId.Value, this);
-                        Volatile.Write(ref _authenticationCommitted, 1);
-                    }))
+                    () => disconnectSupersededSession = _onSessionRegistered(PlayerId.Value, this)))
                 throw new OperationCanceledException("Connection closed before login admission.");
-            authenticationCommitted = true;
             disconnectSupersededSession?.Invoke();
-            if (ownerAcquisition?.PreviousOwner is { } previousOwner &&
-                (!string.Equals(previousOwner.NodeId, _processIdentity.NodeId, StringComparison.Ordinal) ||
-                 !string.Equals(
-                     previousOwner.NodeGeneration,
-                     _processIdentity.Generation,
-                     StringComparison.Ordinal)))
-            {
-                QueueRemoteDuplicateDisconnect(previousOwner);
-            }
             Logger.LogInformation("Session registered for PlayerId={PlayerId}", PlayerId);
             Send(loginPacket);
 
@@ -480,87 +325,13 @@ public sealed class GameSession : SessionBase
         }
         catch (AccountAuthenticationException ex)
         {
-            if (!authenticationCommitted)
-                await RestoreUncommittedSessionOwnerAsync(ownerAcquisition);
             Logger.LogWarning(ex, "Login authentication failed");
             SendErrorResponseAndDisconnect(ErrorCode.AUTH_FAILED, "계정 인증에 실패했습니다");
         }
         catch (Exception ex)
         {
-            if (!authenticationCommitted)
-                await RestoreUncommittedSessionOwnerAsync(ownerAcquisition);
             Logger.LogError(ex, "Login failed");
             SendErrorResponseAndDisconnect(ErrorCode.SERVER_INTERNAL_ERROR, "로그인 처리 중 오류가 발생했습니다");
-        }
-    }
-
-    private async Task RestoreUncommittedSessionOwnerAsync(
-        UserSessionOwnerAcquisition? acquisition)
-    {
-        UserSessionOwner? owner = Interlocked.Exchange(ref _sessionOwner, null);
-        if (owner == null)
-            return;
-
-        try
-        {
-            if (acquisition == null ||
-                acquisition.CurrentOwner != owner ||
-                !await _coordinationStore.RestorePreviousSessionOwnerAsync(
-                    acquisition,
-                    _clusterOptions.SessionOwnerLifetime))
-            {
-                Logger.LogWarning(
-                    "Uncommitted distributed session owner could not restore its previous owner: PlayerId={PlayerId}, SessionId={SessionId}",
-                    owner.PlayerId,
-                    owner.SessionId);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(
-                ex,
-                "Failed to restore the previous distributed session owner: PlayerId={PlayerId}, SessionId={SessionId}",
-                owner.PlayerId,
-                owner.SessionId);
-        }
-    }
-
-    private void QueueRemoteDuplicateDisconnect(UserSessionOwner previousOwner)
-    {
-        string deliveryId = Guid.NewGuid().ToString("N");
-        var request = new MatchingDeliveryRequest
-        {
-            DeliveryId = deliveryId,
-            Kind = MatchingDeliveryKind.DisconnectSupersededSession,
-            PlayerId = previousOwner.PlayerId,
-            MatchingId = 0,
-            RequestId = SessionId,
-            OwnerNodeId = previousOwner.NodeId,
-            OwnerNodeGeneration = previousOwner.NodeGeneration,
-            OwnerSessionId = previousOwner.SessionId,
-            OwnerSessionGeneration = previousOwner.SessionGeneration
-        };
-
-        if (!_matchingManager.TryRunBackgroundOperation(
-                async () =>
-                {
-                    MatchingDeliveryResponse response = await _deliveryRouter.DeliverAsync(request);
-                    if (response.Status is not (
-                            MatchingDeliveryStatus.Accepted or
-                            MatchingDeliveryStatus.StaleOwner or
-                            MatchingDeliveryStatus.SessionUnavailable))
-                    {
-                        Logger.LogWarning(
-                            "Remote duplicate-session disconnect was not accepted: PlayerId={PlayerId}, Status={Status}",
-                            previousOwner.PlayerId,
-                            response.Status);
-                    }
-                },
-                $"disconnect superseded remote session {previousOwner.PlayerId}/{previousOwner.SessionId}"))
-        {
-            Logger.LogWarning(
-                "Remote duplicate-session disconnect was rejected during shutdown: PlayerId={PlayerId}",
-                previousOwner.PlayerId);
         }
     }
 
@@ -693,8 +464,6 @@ public sealed class GameSession : SessionBase
         }
     }
 
-    // ========== 채팅 ==========
-
     // ========== 매칭 ==========
 
     private async Task HandleMatching(C_TO_U_MATCHING msg)
@@ -822,31 +591,6 @@ public sealed class GameSession : SessionBase
 
         long playerId = PlayerId.Value;
         bool removedLocally = _onSessionRemoved(playerId, this);
-        UserSessionOwner? owner = SessionOwner;
-        if (_clusterOptions.Enabled && owner != null)
-        {
-            if (Volatile.Read(ref _authenticationCommitted) == 0)
-                return;
-
-            if (!_matchingManager.TryRunBackgroundOperation(
-                    async () =>
-                    {
-                        bool released = await _coordinationStore.ReleaseSessionOwnerAsync(owner);
-                        if (released)
-                            Interlocked.CompareExchange(ref _sessionOwner, null, owner);
-                        if (removedLocally && released)
-                            await CleanupRemovedSessionMatchingAsync(playerId);
-                    },
-                    $"release distributed session owner {playerId}/{owner.SessionId}"))
-            {
-                Logger.LogWarning(
-                    "Distributed session-owner release was rejected during shutdown: PlayerId={PlayerId}, SessionId={SessionId}",
-                    playerId,
-                    owner.SessionId);
-            }
-            return;
-        }
-
         if (removedLocally)
             _matchingManager.TryRunBackgroundOperation(
                 () => CleanupRemovedSessionMatchingAsync(playerId),

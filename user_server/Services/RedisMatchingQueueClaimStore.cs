@@ -2,7 +2,7 @@ using network.common;
 using network.interfaces;
 using StackExchange.Redis;
 
-namespace user_server.services.scaling;
+namespace user_server.services;
 
 /// <summary>
 ///     Performs matching-queue claim acquisition as one Redis-side state transition.

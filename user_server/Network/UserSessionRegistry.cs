@@ -51,9 +51,4 @@ internal sealed class UserSessionRegistry(ILogger logger)
         _sessions.TryGetValue(playerId, out GameSession? session);
         return session;
     }
-
-    public GameSession[] Snapshot()
-    {
-        return _sessions.Values.ToArray();
-    }
 }
