@@ -91,7 +91,7 @@ public class AreaClosureManager
         if (!ReferenceEquals(actualState, state)) return actualState;
 
         _logger.LogInformation(
-            "Survivor Royale closure schedule initialized: MatchingId={MatchingId}, Waves={Waves}",
+            "Swarm closure schedule initialized: MatchingId={MatchingId}, Waves={Waves}",
             matchingId,
             string.Join(" | ", waves.Select(wave =>
                 $"{wave.ClosureAtSeconds}s:{string.Join(',', wave.Areas)}@{wave.ClosedAreaCorruptionPerSecond}/s")));
@@ -201,7 +201,7 @@ public class AreaClosureManager
 
                 state.NextClosureIndex++;
                 _logger.LogInformation(
-                    "Survivor Royale closure wave applied: MatchingId={MatchingId}, CloseAt={CloseAt}s, Areas={Areas}, Rate={Rate}/s",
+                    "Swarm closure wave applied: MatchingId={MatchingId}, CloseAt={CloseAt}s, Areas={Areas}, Rate={Rate}/s",
                     matchingId, wave.ClosureAtSeconds, string.Join(',', wave.Areas), wave.ClosedAreaCorruptionPerSecond);
             }
 
@@ -237,7 +237,7 @@ public class AreaClosureManager
             long closureAtUnixMs = ((DateTimeOffset)state.GameStartTime.AddSeconds(earliestClosureAtSeconds))
                 .ToUnixTimeMilliseconds();
             _logger.LogInformation(
-                "Survivor Royale closure warning: MatchingId={MatchingId}, CloseAt={CloseAt}s, Areas={Areas}, Remaining={Remaining}s",
+                "Swarm closure warning: MatchingId={MatchingId}, CloseAt={CloseAt}s, Areas={Areas}, Remaining={Remaining}s",
                 matchingId, earliestClosureAtSeconds, string.Join(',', warnAreas), remainingSeconds);
             return new ClosureScheduleTick(warnAreas, remainingSeconds, closureAtUnixMs, []);
         }

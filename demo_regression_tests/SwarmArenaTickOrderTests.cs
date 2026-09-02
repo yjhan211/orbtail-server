@@ -191,7 +191,7 @@ public sealed class SwarmArenaTickOrderTests
             "_proximityAutoCombatResolver.Resolve(",
             "TryScheduleSwarmCrossfire(",
             "attackerSession?.SendSwarmAfterimageMonsterAttackFeedback(",
-            "BroadcastSpotArenaAttackVfxToTargetAndObservers(",
+            "BroadcastSwarmAttackVfxToTargetAndObservers(",
             "_botPlayerManager.TryFinalizeProximityAutoCombatElimination(",
             "ProcessBotElimination(");
     }

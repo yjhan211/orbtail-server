@@ -391,7 +391,7 @@ public sealed class SwarmMonsterDirector
 
     public SwarmArenaTickResult Tick(
         long matchingId,
-        IReadOnlyCollection<SpotArenaPlayerSpatial> participants,
+        IReadOnlyCollection<SwarmParticipantSpatial> participants,
         DateTime? nowUtc = null)
     {
         var result = new SwarmArenaTickResult();
@@ -504,7 +504,7 @@ public sealed class SwarmMonsterDirector
                             state.PatternHits.GetValueOrDefault(monster.Pattern) + 1;
                     }
 
-                    result.PlayerDamage.Add(new SpotArenaPlayerDamage(
+                    result.PlayerDamage.Add(new SwarmPlayerDamage(
                         monster.MonsterId,
                         participant.PlayerId,
                         monster.Area,
@@ -533,7 +533,7 @@ public sealed class SwarmMonsterDirector
                                 continue;
                             state.ContactImmuneUntilUtc[splashed.PlayerId] =
                                 now.AddSeconds(ContactImmunitySeconds);
-                            result.PlayerDamage.Add(new SpotArenaPlayerDamage(
+                            result.PlayerDamage.Add(new SwarmPlayerDamage(
                                 monster.MonsterId,
                                 splashed.PlayerId,
                                 monster.Area,
@@ -668,15 +668,15 @@ public sealed class SwarmMonsterDirector
     ///     봇 지시: 잔상 무리가 가까우면 반대쪽으로 이탈하고, 아니면 현재 구역 안을 배회한다.
     ///     M1의 최소 행동 — 경제(개봉·정예 사냥) 참여는 후속 증분에서 붙인다.
     /// </summary>
-    public SpotArenaBotDirective GetBotDirective(long matchingId, long botPlayerId)
+    public SwarmBotDirective GetBotDirective(long matchingId, long botPlayerId)
     {
         if (!_matches.TryGetValue(matchingId, out var state))
-            return SpotArenaBotDirective.None;
+            return SwarmBotDirective.None;
 
         lock (state.SyncRoot)
         {
             bool botFound = false;
-            var bot = default(SpotArenaPlayerSpatial);
+            var bot = default(SwarmParticipantSpatial);
             foreach (var participant in state.LastParticipants)
             {
                 if (participant.PlayerId != botPlayerId)
@@ -687,7 +687,7 @@ public sealed class SwarmMonsterDirector
             }
 
             if (!botFound)
-                return SpotArenaBotDirective.None;
+                return SwarmBotDirective.None;
 
             DateTime now = _utcNow();
             float threatX = 0f, threatY = 0f;
@@ -721,8 +721,8 @@ public sealed class SwarmMonsterDirector
                     float commitDy = commitment.Destination.Y - bot.Position.Y;
                     if (commitDx * commitDx + commitDy * commitDy > 1f)
                     {
-                        return new SpotArenaBotDirective(
-                            SpotArenaBotMode.Return,
+                        return new SwarmBotDirective(
+                            SwarmBotMode.Return,
                             bot.Area,
                             MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, commitment.Destination),
                             commitment.Destination);
@@ -761,8 +761,8 @@ public sealed class SwarmMonsterDirector
                 destination = ClampToAreaWalkable(destination, bot.Position, bot.Area);
             }
 
-            var mode = threatCount > 0 ? SpotArenaBotMode.Return : SpotArenaBotMode.Escort;
-            return new SpotArenaBotDirective(
+            var mode = threatCount > 0 ? SwarmBotMode.Return : SwarmBotMode.Escort;
+            return new SwarmBotDirective(
                 mode,
                 bot.Area,
                 MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, destination),
@@ -781,7 +781,7 @@ public sealed class SwarmMonsterDirector
     ///     찾는다 (#223 구석 수렴 방지). 전부 벽이면 구역 스폰 지점 — 몬스터 옆 정지는 없다.
     /// </summary>
     private static Vector3f ResolveThreatFleeDestination(
-        SpotArenaPlayerSpatial bot, float directionX, float directionY)
+        SwarmParticipantSpatial bot, float directionX, float directionY)
     {
         ReadOnlySpan<float> angleOffsets = [0f, 45f, -45f, 90f, -90f, 135f, -135f, 180f];
         foreach (float angleDegrees in angleOffsets)
@@ -889,9 +889,9 @@ public sealed class SwarmMonsterDirector
     ///     가장 가까운 한 명만 본다. 전 인원을 훑으면 몹 수백 마리에서 비용이 터진다.
     /// </summary>
     private static bool HasDirectLineToParticipant(
-        MonsterRuntime monster, IReadOnlyList<SpotArenaPlayerSpatial> participants)
+        MonsterRuntime monster, IReadOnlyList<SwarmParticipantSpatial> participants)
     {
-        var nearest = default(SpotArenaPlayerSpatial);
+        var nearest = default(SwarmParticipantSpatial);
         float nearestSquared = float.MaxValue;
         bool found = false;
         for (int index = 0; index < participants.Count; index++)
@@ -924,7 +924,7 @@ public sealed class SwarmMonsterDirector
     ///     탈락했을 때 몹을 넘길 곳을 고른다.
     /// </summary>
     private static long ClaimLeastLoadedOwner(
-        MatchState state, AreaType area, IReadOnlyList<SpotArenaPlayerSpatial> participants,
+        MatchState state, AreaType area, IReadOnlyList<SwarmParticipantSpatial> participants,
         Func<long, bool>? isOrbless)
     {
         long chosen = 0;
@@ -965,7 +965,7 @@ public sealed class SwarmMonsterDirector
     }
 
     private static bool HasParticipantWithinAggro(
-        MonsterRuntime monster, IReadOnlyList<SpotArenaPlayerSpatial> participants)
+        MonsterRuntime monster, IReadOnlyList<SwarmParticipantSpatial> participants)
     {
         bool isBoss = IsBossKind(monster.Kind);
         float aggroRadius = isBoss ? monster.AttackRangeValue : CampAggroRadius;
@@ -1638,7 +1638,7 @@ public sealed class SwarmMonsterDirector
     ///     쫓아간 구역이 그 몹의 새 배정 구역이 되므로 공급 회계도 따라 옮겨간다.
     /// </summary>
     private static bool TryStartCrossAreaPursuit(
-        MonsterRuntime monster, IReadOnlyList<SpotArenaPlayerSpatial> participants)
+        MonsterRuntime monster, IReadOnlyList<SwarmParticipantSpatial> participants)
     {
         if (monster.ChaseTargetPlayerId == 0 || monster.Infiltrating)
             return false;
@@ -1978,7 +1978,7 @@ public sealed class SwarmMonsterDirector
     private static void UpdateSupplyMonsterMovement(
         MatchState state,
         MonsterRuntime monster,
-        IReadOnlyList<SpotArenaPlayerSpatial> participants,
+        IReadOnlyList<SwarmParticipantSpatial> participants,
         DateTime now,
         double deltaSeconds,
         bool holdAtThreshold = false,
@@ -2021,7 +2021,7 @@ public sealed class SwarmMonsterDirector
         // 지나갈 때마다 무리가 통째로 그쪽으로 쏠려, 구역 목표를 인당으로 잡아 둔 몫이
         // 실제로는 한 사람에게 몰렸다.
         bool found = false;
-        var target = default(SpotArenaPlayerSpatial);
+        var target = default(SwarmParticipantSpatial);
 
         // 근접 난입 (2026-08-28 플레이 제보 "복도 몹들이 나를 무시하고 대기"): 인당 할당
         // 원칙(주인만 쫓는다)은 유지하되, 남이라도 어그로 반경 안까지 들어오면 그 순간의
@@ -2330,7 +2330,7 @@ public sealed class SwarmMonsterDirector
         public Random Rng { get; init; } = new();
         public int NextSerial { get; set; }
         public bool NextMonsterGrantsSummonStone { get; set; } = true;
-        public SpotArenaPlayerSpatial[] LastParticipants { get; set; } = [];
+        public SwarmParticipantSpatial[] LastParticipants { get; set; } = [];
         public int HitsTaken { get; set; }
         public int Kills { get; set; }
         public Dictionary<SwarmPattern, int> PatternHits { get; } = new();
@@ -2503,7 +2503,7 @@ public enum SwarmMonsterKind
 
 public sealed class SwarmArenaTickResult
 {
-    public List<SpotArenaPlayerDamage> PlayerDamage { get; } = new();
+    public List<SwarmPlayerDamage> PlayerDamage { get; } = new();
     public List<MonsterRuntimeInfo> SpawnedMonsters { get; } = new();
     public List<SupplyPackSpawnInfo> SupplyPackSpawns { get; } = new();
 

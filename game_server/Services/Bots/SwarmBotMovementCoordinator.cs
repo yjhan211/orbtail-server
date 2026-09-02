@@ -87,7 +87,7 @@ internal sealed class SwarmBotMovementCoordinator(
     public SwarmBotMovementPlan PrepareTick(
         long matchingId,
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
-        Func<long, long, SpotArenaBotDirective> directiveProvider)
+        Func<long, long, SwarmBotDirective> directiveProvider)
     {
         ArgumentNullException.ThrowIfNull(observers);
         ArgumentNullException.ThrowIfNull(directiveProvider);

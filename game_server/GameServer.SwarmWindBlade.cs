@@ -31,7 +31,7 @@ public partial class GameServer
     private void ProcessSwarmWindBlades(
         long matchingId,
         DateTime nowUtc,
-        List<SpotArenaPlayerSpatial> participants,
+        List<SwarmParticipantSpatial> participants,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
@@ -75,7 +75,7 @@ public partial class GameServer
                     (monstersInRadius ??= new List<SwarmArenaCombatTarget>()).Add(monster);
                 }
 
-                List<SpotArenaPlayerSpatial>? playersInRadius = null;
+                List<SwarmParticipantSpatial>? playersInRadius = null;
                 foreach (var participant in participants)
                 {
                     if (participant.PlayerId == owner.PlayerId || participant.Area != owner.Area)
@@ -83,7 +83,7 @@ public partial class GameServer
                     if (!IsWithinSwarmGroundRadius(
                             origin, participant.Position, radius + SwarmWindBladePlayerRadius))
                         continue;
-                    (playersInRadius ??= new List<SpotArenaPlayerSpatial>()).Add(participant);
+                    (playersInRadius ??= new List<SwarmParticipantSpatial>()).Add(participant);
                 }
 
                 // 짧은 시동 게이트 (2026-08-25 재조정): 옛 0.9초 게이트(체감 1.4초)는 퇴역했지만,

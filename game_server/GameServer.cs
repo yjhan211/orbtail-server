@@ -537,7 +537,7 @@ public partial class GameServer(
     // 바닥 아이템 스폰 브로드캐스트는 반드시 청크로 나눈다 (#229).
     // 단일 패킷은 버퍼 2048에 묶여 있는데 탈락 드롭은 개수가 열려 있다 — 오브 상한이 99로
     // 오르고 소환석 예산이 커지면서 실제로 넘겼다(실측 2091, 봇 탈락 처리 전체가 예외로 죽어
-    // 드롭이 통째로 사라졌다). SpotArena가 #222에서 같은 이유로 8개씩 나눈 전례를 따른다.
+    // 드롭이 통째로 사라졌다). 스팟 아레나 세대가 #222에서 같은 이유로 8개씩 나눈 전례를 따른다.
     private const int GroundItemSpawnBroadcastChunkSize = 8;
 
     private void BroadcastGroundItemSpawnChunked(

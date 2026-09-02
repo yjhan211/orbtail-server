@@ -105,7 +105,7 @@ internal sealed class MatchHandoffPublisher(
         MapId mapId = Config.SWARM_MATCH_MAP;
         var spawnPosition = Cell.Clone(link.SpawnCell);
         if (spawnPosition.X == 0 && spawnPosition.Y == 0)
-            throw new InvalidOperationException($"Missing Survivor Royale spawn assignment for player {playerId}.");
+            throw new InvalidOperationException($"Missing Swarm spawn assignment for player {playerId}.");
 
         // PlayerInfo 갱신은 분산 락으로 보호한다.
         await using var playerLock = await PlayerInfo.Lock(redLock, playerId);

@@ -257,7 +257,7 @@ public partial class GameServer
     private void ProcessSwarmCrossfires(
         long matchingId,
         DateTime nowUtc,
-        List<SpotArenaPlayerSpatial> participants,
+        List<SwarmParticipantSpatial> participants,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
@@ -576,7 +576,7 @@ public partial class GameServer
             firstAttackerPlayerId: attackerId,
             lastAttackerPlayerId: attackerId,
             new Dictionary<long, int> { [attackerId] = damage });
-        SpawnSpotArenaSummonStone(
+        SpawnSwarmSummonStone(
             matchingId, damageResult.MonsterState, allSessions,
             damageResult.HeartReward, damageResult.BootsReward, damageResult.KeyReward,
             killerPlayerId: attackerId,

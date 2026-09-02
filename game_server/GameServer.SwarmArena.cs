@@ -234,10 +234,10 @@ public partial class GameServer
         var aliveBots = bots.Where(bot => !bot.IsEliminated).ToList();
         var participants = aliveSessions
             .Where(session => session.LastValidatedPosition != null)
-            .Select(session => new SpotArenaPlayerSpatial(
+            .Select(session => new SwarmParticipantSpatial(
                 session.PlayerId!.Value, session.CurrentArea, session.LastValidatedPosition!))
             .Concat(aliveBots.Select(bot =>
-                new SpotArenaPlayerSpatial(bot.PlayerId, bot.CurrentArea, bot.Position)))
+                new SwarmParticipantSpatial(bot.PlayerId, bot.CurrentArea, bot.Position)))
             .ToList();
 
         // 실험장 자동 세팅 (#226): 사람이 있는 매치는 첫 틱에 실험장이 자동으로 차려진다.
@@ -438,7 +438,7 @@ public partial class GameServer
             nowUtc,
             // 유저간 공격도 같은 리졸버가 담당한다 (2026-08-16 유저 결정: 몹이랑 똑같이
             // 유도탄으로). 아래 루프의 태양·바람 분기가 몹 사격과 같은 발사 연출
-            // (BroadcastSpotArenaAttackVfxToTargetAndObservers)과 비행시간 착탄을 쓴다.
+            // (BroadcastSwarmAttackVfxToTargetAndObservers)과 비행시간 착탄을 쓴다.
             //
             // PvP 제한 (2026-08-16 유저 명세): 자동 공격과 절단이 서로 다른 것을 건드려야
             // 한다. 자동 공격은 본체를 서서히 압박하고, 오브 손실은 충돌 절단으로만 난다
@@ -557,7 +557,7 @@ public partial class GameServer
 
                 // 관전자에게도 발사 연출 (#219): 공격자 피드백만으로는 봇의 사냥이 완전 무음이었다.
                 // 클라 관전 분기(TargetPlayerId < 0 → 몬스터)가 받는 음수 id로 실어 보낸다.
-                BroadcastSpotArenaAttackVfxToTargetAndObservers(
+                BroadcastSwarmAttackVfxToTargetAndObservers(
                     attack with { TargetPlayerId = -monsterId }, sessions);
 
                 actorById ??= actors
@@ -602,7 +602,7 @@ public partial class GameServer
             if (OrbData.TryGetColorAndTier(attack.WeaponItemId, out var pvpColor, out _) &&
                 pvpColor is OrbColor.Red or OrbColor.Green)
             {
-                BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, sessions);
+                BroadcastSwarmAttackVfxToTargetAndObservers(attack, sessions);
                 actorById ??= actors
                     .GroupBy(actor => actor.PlayerId)
                     .ToDictionary(group => group.Key, group => group.First());
@@ -1268,7 +1268,7 @@ public partial class GameServer
 
     /// <summary>만료된 창을 결산해 CUT_RETALIATION_WINDOW로 남긴다 — 매 틱 호출.</summary>
     private void ProcessSwarmRetaliationWindows(
-        long matchingId, DateTime nowUtc, List<SpotArenaPlayerSpatial> participants)
+        long matchingId, DateTime nowUtc, List<SwarmParticipantSpatial> participants)
     {
         var expired = GetSwarmMatchRuntime(matchingId).TrailCombat.CutRetaliationWindows
             .Where(pair => pair.Key.MatchingId == matchingId && nowUtc >= pair.Value.ExpiresAtUtc)
@@ -1278,13 +1278,13 @@ public partial class GameServer
             GetSwarmMatchRuntime(matchingId).TrailCombat.CutRetaliationWindows.Remove(key);
 
             // 양측 이탈: 창이 닫히는 시점에 둘이 같은 구역에 없다 = 싸움을 접고 갈라섰다.
-            SpotArenaPlayerSpatial? cutter = participants
+            SwarmParticipantSpatial? cutter = participants
                 .Where(participant => participant.PlayerId == key.CutterId)
-                .Select(static participant => (SpotArenaPlayerSpatial?)participant)
+                .Select(static participant => (SwarmParticipantSpatial?)participant)
                 .FirstOrDefault();
-            SpotArenaPlayerSpatial? victim = participants
+            SwarmParticipantSpatial? victim = participants
                 .Where(participant => participant.PlayerId == key.VictimId)
-                .Select(static participant => (SpotArenaPlayerSpatial?)participant)
+                .Select(static participant => (SwarmParticipantSpatial?)participant)
                 .FirstOrDefault();
             bool bothDisengaged =
                 !cutter.HasValue ||
@@ -1324,7 +1324,7 @@ public partial class GameServer
     }
 
     /// <summary>클라 PlayerTool.UpdateOrbTrail과 같은 규칙 — 정지하면 경로가 얼어 열이 남는다.</summary>
-    private void UpdateSwarmOrbTrails(long matchingId, List<SpotArenaPlayerSpatial> participants)
+    private void UpdateSwarmOrbTrails(long matchingId, List<SwarmParticipantSpatial> participants)
     {
         foreach (var participant in participants)
         {
@@ -1451,7 +1451,7 @@ public partial class GameServer
     private void ProcessSwarmTrailCuts(
         long matchingId,
         DateTime nowUtc,
-        List<SpotArenaPlayerSpatial> participants,
+        List<SwarmParticipantSpatial> participants,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
@@ -1862,7 +1862,7 @@ public partial class GameServer
     private void ProcessSwarmWaveBombs(
         long matchingId,
         DateTime nowUtc,
-        List<SpotArenaPlayerSpatial> participants,
+        List<SwarmParticipantSpatial> participants,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
@@ -1993,7 +1993,7 @@ public partial class GameServer
         float radius,
         int sourceItemId,
         DateTime nowUtc,
-        List<SpotArenaPlayerSpatial> participants,
+        List<SwarmParticipantSpatial> participants,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
@@ -2523,7 +2523,7 @@ public partial class GameServer
 
     private void ApplySwarmParticipantDamage(
         long matchingId,
-        SpotArenaPlayerDamage damage,
+        SwarmPlayerDamage damage,
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
@@ -3304,7 +3304,7 @@ public partial class GameServer
         }
         // 태양 착탄(#226)은 발사 시점에 이미 연출을 쐈다 — 이중 투사체 방지.
         if (broadcastVfx)
-            BroadcastSpotArenaAttackVfxToTargetAndObservers(attack, allSessions);
+            BroadcastSwarmAttackVfxToTargetAndObservers(attack, allSessions);
         return corruption;
     }
 
@@ -3587,7 +3587,7 @@ public partial class GameServer
     }
 
     // #238: 스팟 아레나 파셜 퇴역 시 현행 스웜이 실사용하던 헬퍼 2종을 이관.
-    private static void BroadcastSpotArenaAttackVfxToTargetAndObservers(
+    private static void BroadcastSwarmAttackVfxToTargetAndObservers(
         ProximityCombatAttack attack,
         IReadOnlyCollection<GameClientSession> sessions)
     {
@@ -3613,7 +3613,7 @@ public partial class GameServer
         }
     }
 
-    private void SpawnSpotArenaSummonStone(
+    private void SpawnSwarmSummonStone(
         long matchingId,
         MonsterRuntimeInfo defeatedWave,
         IReadOnlyCollection<GameClientSession> sessions,

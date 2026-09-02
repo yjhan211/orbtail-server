@@ -67,7 +67,7 @@ internal sealed class MatchRosterBuilder(ICacheHelper cacheHelper, DevMatchOverr
             link.StartArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, link.SpawnCell);
 
             logger.LogInformation(
-                "Survivor Royale spawn assigned: MatchingId={MatchingId}, PlayerId={PlayerId}, Area={Area}, Cell=({X},{Y})",
+                "Swarm spawn assigned: MatchingId={MatchingId}, PlayerId={PlayerId}, Area={Area}, Cell=({X},{Y})",
                 matchingId, link.PlayerId, link.StartArea, link.SpawnCell.X, link.SpawnCell.Y);
         }
     }

@@ -81,7 +81,7 @@ internal static partial class Program
         services.AddSingleton<IRedLockFactory>(sp =>
             sp.GetRequiredService<IRedisConnection>().GetRedLockFactory());
         services.AddSingleton<ICacheHelper, CacheHelper>();
-        services.AddManittoAuthenticationBoundaries(hostContext.Configuration);
+        services.AddAuthenticationBoundaries(hostContext.Configuration);
         services.AddSingleton<GameServer>();
         services.AddHostedService<HealthCheckService>();
         services.AddHostedService(sp => sp.GetRequiredService<GameServer>());

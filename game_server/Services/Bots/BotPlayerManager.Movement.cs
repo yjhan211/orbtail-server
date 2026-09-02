@@ -93,7 +93,7 @@ public partial class BotPlayerManager
         InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
         IReadOnlyCollection<MonsterCombatTarget>? pveTargets,
-        Func<long, long, SpotArenaBotDirective> spotArenaDirectiveProvider,
+        Func<long, long, SwarmBotDirective> spotArenaDirectiveProvider,
         SummonStoneManager? summonStoneManager = null)
     {
         var result = new BotWalkingTickResult();
@@ -110,7 +110,7 @@ public partial class BotPlayerManager
         foreach (var b in activeBots)
             playerAreas[b.PlayerId] = b.CurrentArea;
 
-        return ProcessSpotArenaBotMovement(
+        return ProcessSwarmBotMovement(
             matchingId,
             activeBots,
             result,
@@ -124,7 +124,7 @@ public partial class BotPlayerManager
             spotArenaDirectiveProvider);
     }
 
-    private BotWalkingTickResult ProcessSpotArenaBotMovement(
+    private BotWalkingTickResult ProcessSwarmBotMovement(
         long matchingId,
         IReadOnlyList<BotPlayerState> activeBots,
         BotWalkingTickResult result,
@@ -135,7 +135,7 @@ public partial class BotPlayerManager
         SummonStoneManager summonStoneManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets,
-        Func<long, long, SpotArenaBotDirective> directiveProvider)
+        Func<long, long, SwarmBotDirective> directiveProvider)
     {
         DateTime nowUtc = DateTime.UtcNow;
         foreach (var bot in activeBots)
@@ -155,10 +155,10 @@ public partial class BotPlayerManager
                 result.GroundItemPickups.Add(pickup.Value);
             }
 
-            SpotArenaBotDirective currentDirective = directiveProvider(matchingId, bot.PlayerId);
-            if (currentDirective.Mode == SpotArenaBotMode.None)
+            SwarmBotDirective currentDirective = directiveProvider(matchingId, bot.PlayerId);
+            if (currentDirective.Mode == SwarmBotMode.None)
             {
-                bot.SpotArenaMode = SpotArenaBotMode.None;
+                bot.SwarmMode = SwarmBotMode.None;
                 bot.Path.Clear();
                 bot.PathIndex = 0;
                 bot.LastWalkStepTime = nowUtc;
@@ -171,16 +171,16 @@ public partial class BotPlayerManager
             // 창은 판단 레이어(SwarmBotDamagedFleeSeconds)와 같은 6초.
             bool underFire = (nowUtc - bot.LastDamagedAtUtc).TotalSeconds <= 6d;
             if (canPlanThisTick &&
-                (bot.SpotArenaMode == SpotArenaBotMode.None ||
-                 nowUtc >= bot.SpotArenaModeUntilUtc ||
+                (bot.SwarmMode == SwarmBotMode.None ||
+                 nowUtc >= bot.SwarmModeUntilUtc ||
                  underFire))
             {
-                bool changed = bot.SpotArenaMode != currentDirective.Mode;
-                bot.SpotArenaMode = currentDirective.Mode;
+                bool changed = bot.SwarmMode != currentDirective.Mode;
+                bot.SwarmMode = currentDirective.Mode;
                 // 스웜 아레나 봇은 회피가 본체라 5초 홀드로는 서 있는 것처럼 보인다.
                 const double holdSeconds = 1.5;
-                if (changed || bot.SpotArenaModeUntilUtc <= nowUtc)
-                    bot.SpotArenaModeUntilUtc = nowUtc.AddSeconds(holdSeconds);
+                if (changed || bot.SwarmModeUntilUtc <= nowUtc)
+                    bot.SwarmModeUntilUtc = nowUtc.AddSeconds(holdSeconds);
 
                 bot.MovementDestination = currentDirective.DestinationArea;
                 bot.Path = BotPathfinder.FindPath(
@@ -226,7 +226,7 @@ public partial class BotPlayerManager
     ///     유휴 감시 (#222): 6초 이상 제자리인 봇의 상태(모드·경로·홀드)를 10초에 한 번 남긴다.
     ///     "가만히 서 있는 봇" 신고가 반복되는데 이동은 로그에 안 남아 원인 특정이 안 됐다.
     /// </summary>
-    private void TrackSwarmBotIdle(BotPlayerState bot, SpotArenaBotDirective directive, DateTime nowUtc)
+    private void TrackSwarmBotIdle(BotPlayerState bot, SwarmBotDirective directive, DateTime nowUtc)
     {
         const float movedThresholdSquared = 0.01f;
         if (bot.IdleWatchLastPosition == null ||
@@ -784,7 +784,7 @@ public partial class BotPlayerManager
 
 
     /// <summary>
-    /// Survivor Royale PVE policy: treat an afterimage pack as the room objective.
+    /// Swarm PVE policy: treat an afterimage pack as the room objective.
     /// The score deliberately favors a visible core and an under-contested pack, while
     /// retaining one committed destination until arrival so door thresholds cannot flip
     /// the bot between two adjacent rooms every movement tick.
