@@ -1,24 +1,5 @@
 ﻿area_type,name_kr,name_en,name_jp
 0,없음,None,なし
-1,쓰레기장,Dump,ゴミ捨て場
-2,운동장,Schoolyard,グラウンド
-7,복도,Corridor,廊下
-9,창고,Storage,倉庫
-10,행정실,Admin Office,事務室
-11,1F,1F,1F
-12,교무실,Staff Room,職員室
-13,강당,Gym,講堂
-14,창고,Storage,倉庫
-15,쓰레기장,Dump,ゴミ捨て場
-20,보건실,Nurse's Office,保健室
-21,2F,2F,2F
-22,도서관,Library,図書館
-30,교실2,Classroom 2,教室2
-31,3F,3F,3F
-32,고사실,Exam Room,試験室
-40,교실1,Classroom 1,教室1
-41,4F,4F,4F
-42,방송실,Broadcast Room,放送室
 50,교실1,Classroom 1,教室1
 51,교실2,Classroom 2,教室2
 52,고사실,Exam Room,試験室
@@ -42,4 +23,3 @@
 72,운동장,Schoolyard,グラウンド
 73,복도,Corridor,廊下
 74,운동장,Schoolyard,グラウンド
-100,캠프,Camp,キャンプ

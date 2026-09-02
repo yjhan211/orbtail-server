@@ -22,7 +22,7 @@ namespace network.common.data
 
             foreach (var row in csvData)
             {
-                var areaType = (AreaType)int.Parse(row["area_type"]);
+                var areaType = CsvHelper.ParseDefinedEnum<AreaType>(row["area_type"], "area_name.area_type");
                 var name = LocalizedText.FromCsv(row, "name");
                 _areaNames[areaType] = name;
             }
