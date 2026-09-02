@@ -1,4 +1,3 @@
-using network.common;
 using network.common.data;
 
 namespace game_server.services;
@@ -36,20 +35,4 @@ internal static class SwarmMonsterArchetypeCatalog
 
     public static float GetContactRadius(SwarmMonsterKind kind) =>
         DefaultContactRadius * (SwarmMonsterData.Get((int)kind)?.ContactRadiusScale ?? 1f);
-
-    public static bool IsBoss(SwarmMonsterKind kind) =>
-        kind is SwarmMonsterKind.Golem or SwarmMonsterKind.BabyDragon or SwarmMonsterKind.TreeGiant;
-
-    public static bool TryGetResidentBoss(AreaType area, out SwarmMonsterKind kind)
-    {
-        switch (area)
-        {
-            case AreaType.S2Corridor9:
-                kind = SwarmMonsterKind.TreeGiant;
-                return true;
-            default:
-                kind = SwarmMonsterKind.Skeleton;
-                return false;
-        }
-    }
 }

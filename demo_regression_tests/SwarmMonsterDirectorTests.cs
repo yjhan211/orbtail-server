@@ -230,7 +230,7 @@ public class SwarmMonsterDirectorTests
         Assert.Equal(SwarmMonsterDirector.ContactRange * 2.4f,
             SwarmMonsterDirector.GetContactRadius(SwarmMonsterKind.RunawayGoblin), 3);
         Assert.Equal(SwarmMonsterDirector.ContactRange * 1.8f,
-            SwarmMonsterDirector.GetContactRadius(SwarmMonsterKind.TreeGiant), 3);
+            SwarmMonsterDirector.GetContactRadius(SwarmMonsterKind.Bowler), 3);
 
         // 해골 반경은 몸통 반폭(0.31, 클라 실측)을 넘지 않는다.
         Assert.True(SwarmMonsterDirector.GetContactRadius(SwarmMonsterKind.Skeleton) <= 0.32f);
