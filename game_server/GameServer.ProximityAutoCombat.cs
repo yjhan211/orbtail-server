@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
-using System.Runtime.ExceptionServices;
 using game_server.network;
 using game_server.services;
 using MessagePack;
@@ -36,18 +35,24 @@ public partial class GameServer
             ProximityAutoCombatResolver.AimDuration.TotalMilliseconds);
     }
 
+    /// <summary>
+    ///     50ms 매치 틱 — 한 매치의 카운트다운 방송·전투·봇 걸음을 같은 잠금 한 번으로 이어 돌린다. 예전처럼
+    ///     전투와 봇 걸음을 별도 타이머로 두면 두 타이머가 같은 주기로 맞물려 뒤에 오는 쪽이 매 펄스 잠금을
+    ///     놓친다. 잠금이 바쁜 매치(세션 핸들러·정산 틱)는 이 펄스를 버리고 밀린 틱을 따라잡지 않는다.
+    ///     틱 안의 Send는 잠금 안에서 그대로 나가므로 패킷 순서가 곧 상태 변경 순서다.
+    /// </summary>
     private void ProcessProximityAutoCombatTick(object? state)
     {
         List<GameClientSession> activeSessions;
-        List<long> activeMatchingIds;
+        List<GameClientSession> countdownSessions;
+        IReadOnlyList<long> activeMatchingIds;
         try
         {
-            activeSessions = _sessionRegistry.SnapshotWhere(
-                static session =>
-                    session.PlayerId.HasValue &&
-                    !session.IsEliminated &&
-                    !session.IsGameEnded);
-            activeMatchingIds = GetActiveMatchingIds();
+            countdownSessions = _sessionRegistry.SnapshotWhere(static session => session.PlayerId.HasValue);
+            activeSessions = countdownSessions
+                .Where(static session => !session.IsEliminated && !session.IsGameEnded)
+                .ToList();
+            activeMatchingIds = MatchRuntimes.ActiveIds();
         }
         catch (Exception ex)
         {
@@ -57,28 +62,45 @@ public partial class GameServer
 
         foreach (long matchingId in activeMatchingIds)
         {
-            try
+            // 인트로 예열 (유저 결정): 카운트다운 동안에도 스웜은 돈다 —
+            // 운동장에서 각 방으로 나가는 몹이 그 5초의 볼거리이기 때문이다.
+            // 매치 시작 게이트로 막으면 몹이 아예 태어나지 않으므로 여기서는 거르지
+            // 않고, 게이트 전 전투 차단은 ProcessSwarmArenaForMatching 안이 맡는다.
+            if (!MatchRuntimes.TryEnter(matchingId, out MatchScope scope))
             {
-                // 인트로 예열 (2026-08-16 유저 결정): 카운트다운 동안에도 스웜은 돈다 —
-                // 운동장에서 각 방으로 나가는 몹이 그 5초의 볼거리이기 때문이다.
-                // 매치 시작 게이트로 막으면 몹이 아예 태어나지 않으므로 여기서는 거르지
-                // 않고, 게이트 전 전투 차단은 ProcessProximityAutoCombatForMatching 안이 맡는다.
-                SwarmCombatPublicationCoordinator.PublicationTurn? publicationTurn =
-                    _swarmCombatPublicationCoordinator.TryBeginDueRealtimeTurn(matchingId);
-                if (publicationTurn == null)
+                RecordBotTickBusySkip(matchingId);
+                continue;
+            }
+
+            using (scope)
+            {
+                if (scope.Runtime.IsTerminal)
                     continue;
 
-                PrepareAndDispatchCombatPublication(
-                    matchingId,
-                    publicationTurn,
-                    () => ProcessProximityAutoCombatForMatching(matchingId, activeSessions));
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(
-                    ex,
-                    "Proximity auto combat tick failed: MatchingId={MatchingId}",
-                    matchingId);
+                try
+                {
+                    BroadcastMatchStartCountdowns([matchingId], countdownSessions);
+                    ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(
+                        ex,
+                        "Proximity auto combat tick failed: MatchingId={MatchingId}",
+                        matchingId);
+                }
+
+                if (scope.Runtime.IsTerminal || !ShouldTrackBotTickBusySkip(matchingId))
+                    continue;
+
+                try
+                {
+                    ProcessBotMovementForMatching(matchingId);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Bot walking tick failed: MatchingId={MatchingId}", matchingId);
+                }
             }
         }
     }
@@ -90,275 +112,6 @@ public partial class GameServer
         ProcessSwarmArenaForMatching(matchingId, activeSessions);
     }
 
-    /// <summary>
-    ///     Holds the match publication turn and terminal operation lease across outside-monitor
-    ///     dispatch. Authoritative state, logs, recipients, packet bytes, and deferred visual steps
-    ///     are all prepared while TryAcquireOperation owns the matching runtime monitor.
-    /// </summary>
-    private void PrepareAndDispatchCombatPublication(
-        long matchingId,
-        SwarmCombatPublicationCoordinator.PublicationTurn publicationTurn,
-        Action prepare)
-    {
-        IDisposable? runtimeOperation = null;
-        PrepareAndDispatchMatchPublication(
-            matchingId,
-            publicationTurn,
-            (captureActivePreparation, _) =>
-            {
-                runtimeOperation = _matchRuntimeRegistry.TryAcquireOperation(
-                    matchingId,
-                    captureActivePreparation);
-                return runtimeOperation != null;
-            },
-            prepare,
-            static () => { },
-            () => runtimeOperation?.Dispose());
-    }
-
-    /// <summary>
-    ///     Publishes a player-message mutation with the operation lease already borrowed from
-    ///     SessionBase. The shared ordered turn is acquired before the nested runtime monitor; a
-    ///     runtime that became finalizing while the outer lease was held prepares its rejection in
-    ///     the same lane. Dispatch and turn retirement complete before the message scope releases
-    ///     that outer lease.
-    /// </summary>
-    private void PublishOrderedSessionPublication(
-        long matchingId,
-        Action prepare,
-        Action prepareFinalizingRejection)
-    {
-        ArgumentNullException.ThrowIfNull(prepare);
-        ArgumentNullException.ThrowIfNull(prepareFinalizingRejection);
-
-        SwarmCombatPublicationCoordinator.PublicationTurn publicationTurn =
-            _swarmCombatPublicationCoordinator.BeginOrderedTurn(matchingId) ??
-            throw new InvalidOperationException(
-                $"Missing ordered publication runtime for matching {matchingId}.");
-
-        PrepareAndDispatchMatchPublication(
-            matchingId,
-            publicationTurn,
-            (captureActivePreparation, captureFinalizingRejection) =>
-            {
-                if (_matchRuntimeRegistry.TryExecute(
-                        matchingId,
-                        captureActivePreparation))
-                {
-                    return true;
-                }
-
-                captureFinalizingRejection();
-                return true;
-            },
-            prepare,
-            prepareFinalizingRejection,
-            releaseOwnedRuntimeOperation: null);
-    }
-
-    /// <summary>
-    ///     Publishes an already frozen terminal plan through the match's required ordered lane.
-    ///     The cleanup registry invokes this adapter only after the final operation/execution has
-    ///     retired, so it must not acquire another runtime lease or nest under an existing turn.
-    /// </summary>
-    private void PublishRequiredTerminalAction(long matchingId, Action publish)
-    {
-        ArgumentNullException.ThrowIfNull(publish);
-
-        SwarmCombatPublicationCoordinator.PublicationTurn publicationTurn =
-            _swarmCombatPublicationCoordinator.BeginRequiredTurn(matchingId) ??
-            throw new InvalidOperationException(
-                $"Missing required terminal publication runtime for matching {matchingId}.");
-
-        try
-        {
-            publish();
-        }
-        finally
-        {
-            publicationTurn.Dispose();
-        }
-    }
-
-    /// <summary>
-    ///     Shared capture/freeze/dispatch failure boundary. Timer callers supply an owned operation
-    ///     lease and release it after the turn; message callers supply a nested TryExecute gate and
-    ///     leave their borrowed outer lease untouched.
-    /// </summary>
-    private void PrepareAndDispatchMatchPublication(
-        long matchingId,
-        SwarmCombatPublicationCoordinator.PublicationTurn publicationTurn,
-        Func<Action, Action, bool> tryPrepare,
-        Action prepare,
-        Action prepareFinalizingRejection,
-        Action? releaseOwnedRuntimeOperation)
-    {
-        SwarmCombatPublicationCoordinator.PublicationPlan? publicationPlan = null;
-        ExceptionDispatchInfo? preparationFailure = null;
-        ExceptionDispatchInfo? pendingFailure = null;
-        List<Exception>? secondaryFailures = null;
-
-        void RecordFailure(Exception failure)
-        {
-            if (pendingFailure == null)
-                pendingFailure = ExceptionDispatchInfo.Capture(failure);
-            else
-            {
-                secondaryFailures ??= [];
-                secondaryFailures.Add(failure);
-            }
-        }
-
-        void CapturePreparation(Action preparation)
-        {
-            SwarmCombatPublicationCoordinator.CaptureScope? capture = null;
-            try
-            {
-                capture = _swarmCombatPublicationCoordinator.BeginCapture(publicationTurn);
-                try
-                {
-                    preparation();
-                }
-                catch (Exception ex)
-                {
-                    // Freeze and dispatch the already committed authoritative prefix before
-                    // the original preparation exception reaches the message/timer boundary.
-                    preparationFailure = ExceptionDispatchInfo.Capture(ex);
-                }
-
-                try
-                {
-                    publicationPlan = capture.Freeze();
-                }
-                catch (Exception ex)
-                {
-                    if (preparationFailure != null && pendingFailure == null)
-                        pendingFailure = preparationFailure;
-                    RecordFailure(ex);
-                }
-            }
-            catch (Exception ex)
-            {
-                RecordFailure(ex);
-            }
-            finally
-            {
-                try
-                {
-                    capture?.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    RecordFailure(ex);
-                }
-            }
-        }
-
-        try
-        {
-            bool prepared = tryPrepare(
-                () => CapturePreparation(prepare),
-                () => CapturePreparation(prepareFinalizingRejection));
-
-            if (prepared)
-            {
-                if (preparationFailure != null &&
-                    !ReferenceEquals(pendingFailure, preparationFailure))
-                {
-                    if (pendingFailure != null)
-                    {
-                        secondaryFailures ??= [];
-                        secondaryFailures.Add(pendingFailure.SourceException);
-                    }
-
-                    pendingFailure = preparationFailure;
-                }
-
-                if (publicationPlan == null)
-                {
-                    if (pendingFailure == null)
-                    {
-                        RecordFailure(
-                            new InvalidOperationException(
-                                "Combat publication operation completed without a frozen plan."));
-                    }
-                }
-                else
-                {
-                    try
-                    {
-                        _swarmCombatPublicationCoordinator.DispatchAndRetire(
-                            publicationTurn,
-                            publicationPlan);
-                    }
-                    catch (Exception ex)
-                    {
-                        // Preparation remains authoritative when both it and prefix transport fail.
-                        RecordFailure(ex);
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            if (preparationFailure != null && pendingFailure == null)
-                pendingFailure = preparationFailure;
-            RecordFailure(ex);
-        }
-
-        try
-        {
-            // Retire the publication before releasing the operation lease. A deferred terminal
-            // finalization may clear the coordinator as soon as the lease reaches zero.
-            publicationTurn.Dispose();
-        }
-        catch (Exception ex)
-        {
-            RecordFailure(ex);
-        }
-
-        try
-        {
-            releaseOwnedRuntimeOperation?.Invoke();
-        }
-        catch (Exception ex)
-        {
-            RecordFailure(ex);
-        }
-
-        if (preparationFailure != null &&
-            ReferenceEquals(pendingFailure, preparationFailure))
-        {
-            if (secondaryFailures != null)
-            {
-                foreach (Exception secondaryFailure in secondaryFailures)
-                {
-                    try
-                    {
-                        logger.LogError(
-                            secondaryFailure,
-                            "Match publication cleanup or prefix dispatch also failed: MatchingId={MatchingId}",
-                            matchingId);
-                    }
-                    catch
-                    {
-                        // Logging must not mask the authoritative preparation exception.
-                    }
-                }
-            }
-
-            preparationFailure!.Throw();
-        }
-
-        if (pendingFailure != null && secondaryFailures is { Count: > 0 })
-        {
-            throw new AggregateException(
-                "Match publication and cleanup both failed.",
-                [pendingFailure.SourceException, .. secondaryFailures]);
-        }
-
-        pendingFailure?.Throw();
-    }
     private static void AddInventoryCombatActors(
 ICollection<ProximityCombatActor> actors,
 ProximityCombatActor spatialActor,
@@ -567,8 +320,8 @@ PlayerInGameInventory inventory)
 
     /// <summary>
     ///     현재 observer→actor 순서의 cache remove 또는 publication 후보를 불변 값으로 고정한다.
-    ///     cache commit은 아직 하지 않는다. 각 Send 직전 commit이라는 기존 failure boundary는
-    ///     <see cref="AppendOrbVisualStatePublicationSteps"/>의 deferred step이 보존한다.
+    ///     cache commit은 아직 하지 않는다. 각 Send 직전 commit이라는 failure boundary는
+    ///     <see cref="DispatchOrbVisualStatePublications"/>가 지킨다.
     /// </summary>
     private ImmutableArray<SwarmOrbVisualPublication> PrepareOrbVisualStatePublications(
         long matchingId,
@@ -664,20 +417,14 @@ PlayerInGameInventory inventory)
     }
 
     /// <summary>
-    ///     match monitor 안에서는 불변 step만 capture하고, dispatch 때 각 cache remove/update와
-    ///     바로 뒤 Send를 하나의 deferred step으로 실행한다. Send 실패 시 현재 key는 no-retry로
-    ///     남지만 아직 방문하지 않은 step은 cache가 바뀌지 않아 다음 tick에 다시 후보가 된다.
+    ///     cache remove/update와 바로 뒤 Send를 항목마다 붙여 실행한다 (매치 잠금 안). Send가 실패한 key는
+    ///     이미 commit돼 재시도하지 않지만, 아직 방문하지 않은 항목은 cache가 그대로라 다음 틱에 다시 후보가 된다.
     /// </summary>
-    private void AppendOrbVisualStatePublicationSteps(
+    private void DispatchOrbVisualStatePublications(
         ImmutableArray<SwarmOrbVisualPublication> publications)
     {
         foreach (SwarmOrbVisualPublication publication in publications)
-        {
-            // One deferred step owns both cache commit and its immediately following send. A failed
-            // key remains committed (no retry), while later unvisited keys remain candidates.
-            _swarmCombatPublicationCoordinator.AppendDeferredStep(
-                () => CommitAndDispatchOrbVisualStatePublication(publication));
-        }
+            CommitAndDispatchOrbVisualStatePublication(publication);
     }
 
     private void CommitAndDispatchOrbVisualStatePublication(

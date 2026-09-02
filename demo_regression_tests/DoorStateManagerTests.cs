@@ -1,5 +1,6 @@
 using System.Collections;
 using game_server.services;
+using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
@@ -78,24 +79,23 @@ public sealed class DoorStateManagerTests
         const long matchingId = 231_004;
         const int doorId = 990_004;
         var manager = new DoorStateManager();
-        var registry = new MatchRuntimeRegistry();
-        registry.SetRuntimeInitializer(
-            id => Assert.True(manager.RegisterMatching(id)));
+        var store = new MatchRuntimeStore(
+            NullLogger.Instance,
+            id => Assert.True(manager.RegisterMatching(id)),
+            [new MatchCleanupStep("doors", manager.ClearMatching)]);
 
-        Assert.True(registry.TryExecute(matchingId, () =>
+        MatchRuntime runtime = store.GetOrCreate(matchingId);
+        using (store.Enter(runtime))
         {
             manager.InitializeMatching(matchingId);
             Assert.True(manager.OpenDoor(matchingId, doorId));
-        }));
-        Assert.True(registry.TryFinalize(
-            matchingId,
-            static () => true,
-            () => manager.ClearMatching(matchingId)));
+            Assert.True(runtime.TryMarkTerminal());
+        }
 
         Assert.False(manager.OpenDoor(matchingId, doorId));
         Assert.False(manager.IsDoorOpen(matchingId, doorId));
         Assert.Empty(manager.GetOpenDoors(matchingId));
-        Assert.False(registry.TryExecute(matchingId, static () => { }));
+        Assert.Null(store.Get(matchingId));
     }
 
     [Fact]

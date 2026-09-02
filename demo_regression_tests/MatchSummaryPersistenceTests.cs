@@ -101,22 +101,21 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             "private void PublishTerminalResult(",
             "private void RunTerminalPublicationStep(");
 
-        int operationAcquisition = Find(normalFinalization, "_acquireMatchRuntimeOperation(");
+        int runtimeLookup = Find(normalFinalization, "_matchRuntimes.Get(matchingId)");
+        int lockEntry = Find(normalFinalization, "_matchRuntimes.Enter(runtime)");
+        int terminalMark = Find(normalFinalization, "runtime.TryMarkTerminal()");
         int resultPayload = Find(normalFinalization, ".CreateGameResultChunks(");
-        int preparedTerminalPlan = Find(normalFinalization, "var preparedTerminalPlan = new MatchTerminalPublicationPlan(");
+        int preparedTerminalPlan = Find(normalFinalization, "var terminalPlan = new MatchTerminalPublicationPlan(");
         int finalizationClaim = Find(normalFinalization, "_gameEventLogManager.TryBeginFinalization(");
         int normalFinalEvent = Find(normalFinalization, "_gameEventLogManager.LogMatchEnded(");
         int eventLogFailure = Find(normalFinalization, "Final match event logging failed;");
         int normalCapture = Find(normalFinalization, "MatchSummaryPersistence.Capture(");
         int summaryCaptureFailure = Find(normalFinalization, "Final match summary capture failed;");
-        int terminalPlanCommit = Find(normalFinalization, "terminalPlan = preparedTerminalPlan;");
-        int cleanupRegistration = Find(normalFinalization, "_cleanupMatchRuntime(");
-        int requiredTerminalPublication = Find(
-            normalFinalization,
-            "_publishRequiredTerminalAction(");
+        int inLockPublication = Find(normalFinalization, "PublishTerminalResult(terminalPlan);");
+        int afterRelease = Find(normalFinalization, "runtime.AfterRelease.Add(");
         int lifecyclePlanDispatch = Find(
             normalFinalization,
-            "preparedTerminalPlan.LifecyclePublications");
+            "terminalPlan.LifecyclePublications");
         int resultPublication = Find(terminalPublication, "Protocol.G_TO_C_GAME_RESULT");
         int endPublication = Find(terminalPublication, "Protocol.G_TO_C_GAME_END");
         int markEnded = Find(
@@ -133,17 +132,19 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             RegexOptions.IgnorePatternWhitespace |
             RegexOptions.CultureInvariant;
 
-        Assert.True(operationAcquisition < resultPayload);
+        // 잠금 진입 → 터미널 표시 → 결과 동결 → 로그·요약 캡처 → 잠금 안 발행 → 잠금 밖 후처리.
+        Assert.True(runtimeLookup < lockEntry);
+        Assert.True(lockEntry < terminalMark);
+        Assert.True(terminalMark < resultPayload);
         Assert.True(resultPayload < preparedTerminalPlan);
         Assert.True(preparedTerminalPlan < finalizationClaim);
         Assert.True(finalizationClaim < normalFinalEvent);
         Assert.True(normalFinalEvent < eventLogFailure);
         Assert.True(eventLogFailure < normalCapture);
         Assert.True(normalCapture < summaryCaptureFailure);
-        Assert.True(summaryCaptureFailure < terminalPlanCommit);
-        Assert.True(terminalPlanCommit < cleanupRegistration);
-        Assert.True(cleanupRegistration < requiredTerminalPublication);
-        Assert.True(requiredTerminalPublication < lifecyclePlanDispatch);
+        Assert.True(summaryCaptureFailure < inLockPublication);
+        Assert.True(inLockPublication < afterRelease);
+        Assert.True(afterRelease < lifecyclePlanDispatch);
         Assert.True(resultPublication < endPublication);
         Assert.True(endPublication < markEnded);
         Assert.True(markEnded < lifecyclePreparationCommit);
@@ -155,38 +156,23 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Assert.Matches(
             new Regex(
                 """
-                finally\s*
-                \{.*?
-                    terminalPlan\s*=\s*preparedTerminalPlan\s*;\s*
-                    MatchSummaryPersistenceRequest\?\s+capturedSummary\s*=\s*summaryRequest\s*;\s*
-                    _cleanupMatchRuntime\s*
+                runtime\.AfterRelease\.Add\s*\(\s*\(\s*\)\s*=>\s*
+                \{\s*
+                    DispatchMatchingLifecyclePublications\s*
                     \(\s*
                         matchingId\s*,\s*
-                        \(\s*\)\s*=>\s*_publishRequiredTerminalAction\s*
-                        \(\s*
-                            matchingId\s*,\s*
-                            \(\s*\)\s*=>\s*PublishTerminalResult\s*
-                                \(\s*preparedTerminalPlan\s*\)\s*
-                        \)\s*,\s*
-                        \(\s*\)\s*=>\s*
-                        \{\s*
-                            DispatchMatchingLifecyclePublications\s*
-                            \(\s*
-                                matchingId\s*,\s*
-                                preparedTerminalPlan\.LifecyclePublications\s*
-                            \)\s*;\s*
-                            if\s*\(\s*capturedSummary\s*!=\s*null\s*\)\s*
-                            \{\s*
-                                MatchSummaryPersistence\.Persist\s*
-                                \(\s*
-                                    capturedSummary\s*,\s*
-                                    _matchSummaryFileStore\s*,\s*
-                                    Logger\s*
-                                \)\s*;\s*
-                            \}\s*
-                        \}\s*
+                        terminalPlan\.LifecyclePublications\s*
                     \)\s*;\s*
-                \}
+                    if\s*\(\s*capturedSummary\s*!=\s*null\s*\)\s*
+                    \{\s*
+                        MatchSummaryPersistence\.Persist\s*
+                        \(\s*
+                            capturedSummary\s*,\s*
+                            _matchSummaryFileStore\s*,\s*
+                            Logger\s*
+                        \)\s*;\s*
+                    \}\s*
+                \}\s*\)\s*;
                 """,
                 sourceContractOptions),
             normalFinalization);
@@ -206,93 +192,38 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 sourceContractOptions),
             terminalPublication);
 
-        string publicationSource = ReadNormalizedSource(
-            root,
-            "game_server",
-            "GameServer.ProximityAutoCombat.cs");
-        string requiredTerminalAdapter = ReadMethodSlice(
-            publicationSource,
-            "private void PublishRequiredTerminalAction(",
-            "private void PrepareAndDispatchMatchPublication(");
-        int requiredTurn = Find(
-            requiredTerminalAdapter,
-            "_swarmCombatPublicationCoordinator.BeginRequiredTurn(matchingId)");
-        int frozenPlanDispatch = Find(requiredTerminalAdapter, "publish();");
-        int turnRetirement = Find(requiredTerminalAdapter, "publicationTurn.Dispose();");
-        Assert.True(requiredTurn < frozenPlanDispatch);
-        Assert.True(frozenPlanDispatch < turnRetirement);
-        Assert.Contains("finally", requiredTerminalAdapter, StringComparison.Ordinal);
-        Assert.DoesNotContain("TryAcquireOperation", requiredTerminalAdapter, StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "PrepareAndDispatchCombatPublication",
-            requiredTerminalAdapter,
-            StringComparison.Ordinal);
-
         string serverSource = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string noHumanFinalization = ReadMethodSlice(
             serverSource,
             "private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId, string endReason",
-            "private void CleanupMatchRuntime(long matchingId)");
+            "private async Task CleanupAbandonedMatchingRedisAsync(");
 
+        int noHumanLock = Find(noHumanFinalization, "MatchRuntimes.Enter(runtime)");
+        int noHumanTerminalMark = Find(noHumanFinalization, "runtime.TryMarkTerminal();");
         int abandonedEvent = Find(noHumanFinalization, "_gameEventLogManager.LogMatchAbandoned(");
         int noHumanCapture = Find(noHumanFinalization, "MatchSummaryPersistence.Capture(");
+        int noHumanAfterRelease = Find(noHumanFinalization, "runtime.AfterRelease.Add(");
 
+        Assert.True(noHumanLock < noHumanTerminalMark);
+        Assert.True(noHumanTerminalMark < abandonedEvent);
         Assert.True(abandonedEvent < noHumanCapture);
+        Assert.True(noHumanCapture < noHumanAfterRelease);
         Assert.Single(Regex.Matches(noHumanFinalization, persistCallPattern));
         Assert.Matches(
             new Regex(
                 """
-                bool\s+cleanupAccepted\s*=\s*TryCleanupMatchRuntime\s*
+                runtime\.AfterRelease\.Add\s*\(\s*\(\s*\)\s*=>\s*MatchSummaryPersistence\.Persist\s*
                 \(\s*
-                    matchingId\s*,\s*
-                    \(\s*\)\s*=>\s*!\s*HasHumanSessions\s*
-                        \(\s*matchingId\s*\)\s*,\s*
-                    \(\s*\)\s*=>\s*
-                    \{.*?
-                        summaryRequest\s*=\s*MatchSummaryPersistence\.Capture\s*
-                        \(\s*
-                            _gameEventLogManager\s*,\s*
-                            logger\s*,\s*
-                            matchingId\s*,\s*
-                            endReason\s*,\s*
-                            winnerPlayerId\s*
-                        \)\s*;\s*
-                    \}\s*,\s*
-                    \(\s*\)\s*=>\s*
-                    \{\s*
-                        MatchSummaryPersistenceRequest\?\s+capturedSummary\s*=\s*summaryRequest\s*;\s*
-                        if\s*\(\s*capturedSummary\s*!=\s*null\s*\)\s*
-                        \{\s*
-                            MatchSummaryPersistence\.Persist\s*
-                            \(\s*
-                                capturedSummary\s*,\s*
-                                _matchSummaryFileStore\s*,\s*
-                                logger\s*
-                            \)\s*;\s*
-                        \}\s*
-                    \}\s*
-                \)\s*;
+                    summaryRequest\s*,\s*
+                    _matchSummaryFileStore\s*,\s*
+                    logger\s*
+                \)\s*\)\s*;
                 """,
                 sourceContractOptions),
             noHumanFinalization);
         Assert.DoesNotContain("PersistMatchSummary(", noHumanFinalization);
-        Assert.DoesNotContain("PublishRequiredTerminalAction", noHumanFinalization);
-        Assert.DoesNotContain("BeginRequiredTurn", noHumanFinalization);
-
-        Assert.Matches(
-            new Regex(
-                """
-                private\s+void\s+CleanupMatchRuntime\s*
-                \(\s*
-                    long\s+matchingId\s*,\s*
-                    Action\?\s+beforeFinalized\s*,\s*
-                    Action\?\s+afterFinalized\s*
-                \).*?
-                TryCleanupMatchRuntime\s*
-                \(\s*matchingId\s*,\s*null\s*,\s*beforeFinalized\s*,\s*afterFinalized\s*\)
-                """,
-                sourceContractOptions),
-            serverSource);
+        Assert.DoesNotContain("PublishTerminalResult", noHumanFinalization);
+        Assert.DoesNotContain(".Send(", noHumanFinalization);
     }
 
     [Fact]
@@ -564,22 +495,28 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             serverSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "logger,\n            PrepareMatchingRedisCleanup);",
+            "new(logger, CreateMatchRuntime, BuildMatchCleanupSteps(), StartMatchingRedisCleanup);",
+            serverSource,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "PrepareMatchingRedisCleanup(matchingId).Invoke();",
             serverSource,
             StringComparison.Ordinal);
 
-        string coordinatorSource = ReadNormalizedSource(
+        // 저장소는 정리 단계를 잠금 안에서 돌린 뒤 Redis 정리를 잠금 밖 후처리로 넘긴다.
+        string storeSource = ReadNormalizedSource(
             root,
             "game_server",
             "Services",
-            "MatchRuntimeCleanupCoordinator.cs");
-        int winnerDispatch = Find(
-            coordinatorSource,
-            "\"match winner post-finalization\",");
-        int callerAfter = Find(
-            coordinatorSource,
-            "\"match post-finalization\",");
-        Assert.True(winnerDispatch < callerAfter);
+            "MatchRuntimeStore.cs");
+        string exit = ReadMethodSlice(storeSource, "internal void Exit(MatchRuntime runtime)", "private void RunCleanup(");
+        int cleanupSteps = Find(exit, "RunCleanup(runtime.MatchingId);");
+        int storeRemoval = Find(exit, "_runtimes.TryRemove(");
+        int afterCleanupQueue = Find(exit, "runtime.AfterRelease.Add(() => afterCleanup(matchingId));");
+        int monitorExit = Find(exit, "Monitor.Exit(runtime.Sync);");
+        Assert.True(cleanupSteps < storeRemoval);
+        Assert.True(storeRemoval < afterCleanupQueue);
+        Assert.True(afterCleanupQueue < monitorExit);
     }
 
     public void Dispose()

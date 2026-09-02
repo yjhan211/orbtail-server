@@ -150,7 +150,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             $"{RecoveryOrbT1} + {RecoveryOrbT1} => {RecoveryOrbT2}",
             events[0].Description);
         Assert.Equal(RecoveryOrbT2, events[1].WeaponItemId);
-        Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
+        Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
         Assert.Equal(1, itemCombineRandom.DrawCount);
         Assert.Equal([0], itemCombineRandom.DrawResults);
         Assert.Equal(1, fixture.ItemCombineRandomResolverCallCount(FirstMatchingId));
@@ -312,7 +312,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         AssertCombineFailure(token, itemA, itemB, expectedError);
         Assert.Equal(before, fixture.InventorySnapshot(FirstMatchingId, FirstPlayerId));
         Assert.Empty(fixture.EventLog.GetForPersistence(FirstMatchingId));
-        Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
+        Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
         Assert.Equal(0, itemCombineRandom.DrawCount);
     }
 
@@ -348,7 +348,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
     }
 
     [Fact]
-    public async Task FinalizingAfterOuterLease_RejectsBeforeCleanupWithoutMutation()
+    public async Task TerminalWhileWaitingForLock_RejectsWithoutMutation()
     {
         using var fixture = new SessionFixture();
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
@@ -358,22 +358,29 @@ public sealed class GameClientSessionItemCombinePublicationTests
             FirstPlayerId);
         var timeline = new ConcurrentQueue<string>();
         fixture.TokenFor(session).BeforeSend = protocol => timeline.Enqueue($"send:{protocol}");
-        fixture.AfterMessageLeaseAcquired = matchingId =>
+        MatchRuntime runtime = fixture.Store.Get(FirstMatchingId)!;
+        using var lockHeld = new ManualResetEventSlim();
+        using var markTerminal = new ManualResetEventSlim();
+        Task holder = Task.Run(() =>
         {
-            Assert.True(fixture.Registry.TryFinalize(
-                matchingId,
-                static () => true,
-                () =>
-                {
-                    timeline.Enqueue("cleanup");
-                    fixture.Coordinator.ClearMatching(matchingId);
-                }));
-        };
+            using (fixture.Store.Enter(runtime))
+            {
+                lockHeld.Set();
+                Assert.True(markTerminal.Wait(TimeSpan.FromSeconds(5)));
+                Assert.True(runtime.TryMarkTerminal());
+            }
+        });
+        Assert.True(lockHeld.Wait(TimeSpan.FromSeconds(5)));
 
-        await SendCombineAsync(session, Bandage, Bandage);
+        Task message = Task.Run(() => SendCombineAsync(session, Bandage, Bandage));
+        await Task.Delay(100);
+        Assert.False(message.IsCompleted);
+        markTerminal.Set();
+        await holder.WaitAsync(TimeSpan.FromSeconds(5));
+        await message.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(
-            ["send:G_TO_C_ITEMS_COMBINED", "send:G_TO_C_ERROR", "cleanup"],
+            ["send:G_TO_C_ITEMS_COMBINED", "send:G_TO_C_ERROR"],
             timeline);
         AssertCombineFailure(
             fixture.TokenFor(session),
@@ -382,12 +389,12 @@ public sealed class GameClientSessionItemCombinePublicationTests
             ErrorCode.INVALID_GAME_STATE);
         Assert.Equal(before, fixture.InventorySnapshot(FirstMatchingId, FirstPlayerId));
         Assert.Empty(fixture.EventLog.GetForPersistence(FirstMatchingId));
-        Assert.Null(fixture.Coordinator.Inspect(FirstMatchingId));
+        Assert.Null(fixture.Store.Get(FirstMatchingId));
         Assert.Equal(0, fixture.TotalItemCombineRandomResolverCalls);
     }
 
     [Fact]
-    public async Task PendingTerminalWaitsForEntireBundleAndTurnRetirement()
+    public async Task PendingTerminalWaitsForEntireBundleAndLockRelease()
     {
         using var fixture = new SessionFixture();
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
@@ -403,7 +410,6 @@ public sealed class GameClientSessionItemCombinePublicationTests
         var entered = new ManualResetEventSlim();
         var release = new ManualResetEventSlim();
         var timeline = new ConcurrentQueue<string>();
-        bool? activeTurnAtCleanup = null;
         fixture.TokenFor(session).BeforeSend = protocol =>
         {
             timeline.Enqueue($"send:{protocol}");
@@ -415,24 +421,22 @@ public sealed class GameClientSessionItemCombinePublicationTests
 
         Task message = Task.Run(() => SendCombineAsync(session, RecoveryOrbT1, RecoveryOrbT1));
         Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
-        Assert.True(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
+        Assert.False(fixture.Store.TryEnter(FirstMatchingId, out _));
 
-        Assert.True(fixture.Registry.TryFinalize(
-            FirstMatchingId,
-            static () => true,
-            () =>
-            {
-                activeTurnAtCleanup = fixture.Coordinator.Inspect(FirstMatchingId)?.HasActiveTurn;
-                timeline.Enqueue("cleanup");
-                fixture.Coordinator.ClearMatching(FirstMatchingId);
-            },
-            () => timeline.Enqueue("after")));
+        fixture.CleanupTimeline = timeline;
+        Task terminal = Task.Run(() =>
+        {
+            fixture.MarkTerminal(FirstMatchingId);
+            timeline.Enqueue("after");
+        });
+        await Task.Delay(100);
+        Assert.False(terminal.IsCompleted);
         Assert.DoesNotContain("cleanup", timeline);
 
         release.Set();
         await message.WaitAsync(TimeSpan.FromSeconds(5));
+        await terminal.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.False(activeTurnAtCleanup);
         Assert.Equal(
             [
                 "send:G_TO_C_ITEMS_COMBINED",
@@ -442,14 +446,14 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 "after"
             ],
             timeline);
-        Assert.Null(fixture.Coordinator.Inspect(FirstMatchingId));
+        Assert.Null(fixture.Store.Get(FirstMatchingId));
     }
 
     [Theory]
     [InlineData(Protocol.G_TO_C_ITEMS_COMBINED, 0)]
     [InlineData(Protocol.G_TO_C_INGAME_INVENTORY_UPDATE, 1)]
     [InlineData(Protocol.G_TO_C_USE_INGAME_ITEM_RESULT, 2)]
-    public async Task TransportFailure_CommitsStateAndLogsButStopsWireSuffix(
+    public async Task TransportFailure_CommitsStateButStopsWireAndLogSuffix(
         Protocol failingProtocol,
         int failingIndex)
     {
@@ -487,48 +491,15 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(
             output.ItemUid,
             fixture.Inventories.GetEquippedBattleItem(FirstMatchingId, FirstPlayerId)!.ItemUid);
-        Assert.Equal(
-            ["MISSION", "SURVIVOR_FIRST_T2"],
-            fixture.EventLog.GetForPersistence(FirstMatchingId).Select(entry => entry.Type));
+        // 송신이 잠금 안에서 바로 나가므로 실패한 Send 뒤의 로그 단계는 돌지 않는다 — 인벤토리 변경은 남는다.
+        Assert.Empty(fixture.EventLog.GetForPersistence(FirstMatchingId));
         G_TO_C_ERROR error = token.DeserializeSingle<G_TO_C_ERROR>(Protocol.G_TO_C_ERROR);
         Assert.Equal(ErrorCode.SERVER_INTERNAL_ERROR, error.ErrorCode);
-        Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
+        Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
     }
 
     [Fact]
-    public async Task CaptureFailure_ReplaysCapturedPrefixAndStopsPreparationSuffix()
-    {
-        using var fixture = new SessionFixture { ThrowOnCaptureOrdinal = 2 };
-        GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        (InGameItemInfo first, _) = fixture.SeedPair(
-            FirstMatchingId,
-            FirstPlayerId,
-            RecoveryOrbT1);
-        Assert.True(fixture.Inventories.TryEquipBattleItem(
-            FirstMatchingId,
-            FirstPlayerId,
-            first.ItemUid,
-            out _));
-
-        await SendCombineAsync(session, RecoveryOrbT1, RecoveryOrbT1);
-
-        RecordingUserToken token = fixture.TokenFor(session);
-        Assert.Equal(
-            [Protocol.G_TO_C_ITEMS_COMBINED, Protocol.G_TO_C_ERROR],
-            token.DeliveredProtocols);
-        Assert.DoesNotContain(Protocol.G_TO_C_INGAME_INVENTORY_UPDATE, token.AttemptedProtocols);
-        Assert.DoesNotContain(Protocol.G_TO_C_USE_INGAME_ITEM_RESULT, token.AttemptedProtocols);
-        Assert.Equal(RecoveryOrbT2, Assert.Single(
-            fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId)).ItemId);
-        Assert.Empty(fixture.EventLog.GetForPersistence(FirstMatchingId));
-        Assert.Equal(
-            ErrorCode.SERVER_INTERNAL_ERROR,
-            token.DeserializeSingle<G_TO_C_ERROR>(Protocol.G_TO_C_ERROR).ErrorCode);
-        Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
-    }
-
-    [Fact]
-    public async Task SameMatch_OrderedLaneFifoIgnoresClientTimestampsAndBundlesNeverInterleave()
+    public async Task SameMatch_LockIgnoresClientTimestampsAndBundlesNeverInterleave()
     {
         using var fixture = new SessionFixture();
         GameClientSession blocker = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
@@ -564,17 +535,14 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 Bandage,
                 Bandage,
                 clientStartUnixMs: long.MaxValue));
-            Assert.True(SpinWait.SpinUntil(
-                () => fixture.Coordinator.Inspect(FirstMatchingId)?.OrderedWaiterCount == 1,
-                TimeSpan.FromSeconds(5)));
             secondWaiterTask = Task.Run(() => SendCombineAsync(
                 secondWaiter,
                 Bandage,
                 Bandage,
                 clientStartUnixMs: long.MinValue));
-            Assert.True(SpinWait.SpinUntil(
-                () => fixture.Coordinator.Inspect(FirstMatchingId)?.OrderedWaiterCount == 2,
-                TimeSpan.FromSeconds(5)));
+            await Task.Delay(100);
+            Assert.False(firstWaiterTask.IsCompleted);
+            Assert.False(secondWaiterTask.IsCompleted);
             Assert.Empty(fixture.TokenFor(firstWaiter).AttemptedProtocols);
             Assert.Empty(fixture.TokenFor(secondWaiter).AttemptedProtocols);
             Assert.Equal(2, fixture.Inventories.GetAllItems(FirstMatchingId, SecondPlayerId).Count);
@@ -588,23 +556,26 @@ public sealed class GameClientSessionItemCombinePublicationTests
         await Task.WhenAll(blockerTask, firstWaiterTask, secondWaiterTask)
             .WaitAsync(TimeSpan.FromSeconds(5));
 
+        // 잠금은 대기 순서를 약속하지 않는다 — 번들이 통째로 이어지는 것만 약속한다.
+        string[] entries = timeline.ToArray();
+        Assert.Equal(6, entries.Length);
+        Assert.Equal("blocker:G_TO_C_ITEMS_COMBINED", entries[0]);
+        Assert.Equal("blocker:G_TO_C_INGAME_INVENTORY_UPDATE", entries[1]);
+        for (int index = 2; index < entries.Length; index += 2)
+        {
+            string owner = entries[index][..entries[index].IndexOf(':')];
+            Assert.Equal($"{owner}:G_TO_C_ITEMS_COMBINED", entries[index]);
+            Assert.Equal($"{owner}:G_TO_C_INGAME_INVENTORY_UPDATE", entries[index + 1]);
+        }
         Assert.Equal(
-            [
-                "blocker:G_TO_C_ITEMS_COMBINED",
-                "blocker:G_TO_C_INGAME_INVENTORY_UPDATE",
-                "first-waiter:G_TO_C_ITEMS_COMBINED",
-                "first-waiter:G_TO_C_INGAME_INVENTORY_UPDATE",
-                "second-waiter:G_TO_C_ITEMS_COMBINED",
-                "second-waiter:G_TO_C_INGAME_INVENTORY_UPDATE"
-            ],
-            timeline);
+            ["first-waiter", "second-waiter"],
+            entries.Skip(2).Select(entry => entry[..entry.IndexOf(':')]).Distinct().Order());
         Assert.Equal(CompressionBandage, Assert.Single(
             fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId)).ItemId);
         Assert.Equal(CompressionBandage, Assert.Single(
             fixture.Inventories.GetAllItems(FirstMatchingId, SecondPlayerId)).ItemId);
         Assert.Equal(CompressionBandage, Assert.Single(
             fixture.Inventories.GetAllItems(FirstMatchingId, ThirdPlayerId)).ItemId);
-        Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
     }
 
     [Fact]
@@ -641,9 +612,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
             clientStartUnixMs: long.MinValue));
         try
         {
-            Assert.True(SpinWait.SpinUntil(
-                () => fixture.Coordinator.Inspect(FirstMatchingId)?.OrderedWaiterCount == 1,
-                TimeSpan.FromSeconds(5)));
+            await Task.Delay(100);
+            Assert.False(secondTask.IsCompleted);
             Assert.Equal(1, itemCombineRandom.DrawCount);
             Assert.Equal(2, fixture.Inventories.GetAllItems(FirstMatchingId, SecondPlayerId).Count);
         }
@@ -697,8 +667,6 @@ public sealed class GameClientSessionItemCombinePublicationTests
 
         release.Set();
         await firstTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
-        Assert.False(fixture.Coordinator.Inspect(SecondMatchingId)!.Value.HasActiveTurn);
     }
 
     [Fact]
@@ -783,25 +751,25 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Contains(
             "Protocol.C_TO_G_COMBINE_ITEMS,\n            async bytes => await HandleMessage<C_TO_G_COMBINE_ITEMS>(bytes, HandleCombineItems)",
             session);
-        Assert.Equal(1, CountOccurrences(combine, "PublishOrderedSessionAction("));
+        Assert.Equal(1, CountOccurrences(combine, "RunUnderMatch("));
         Assert.Contains("private Task HandleCombineItemsCore(", combine);
         Assert.Contains("CurrentMapSubId <= 0", ReadMethodSlice(
             combine,
             "private Task HandleCombineItems(",
             "private Task HandleCombineItemsCore("));
-        Assert.DoesNotContain("PublishOrderedSessionAction", ReadMethodSlice(
+        Assert.DoesNotContain("RunUnderMatch", ReadMethodSlice(
             combine,
             "private Task HandleCombineItemsCore(",
             "private bool TryHandleBattleItemCombine("));
-        Assert.DoesNotContain("PublishOrderedSessionAction", ReadMethodSlice(
+        Assert.DoesNotContain("RunUnderMatch", ReadMethodSlice(
             orbSummon,
             "private Task HandleSummonOrb(",
             "internal bool ExecuteDraftOrbSummon("));
-        Assert.DoesNotContain("PublishOrderedSessionAction", ReadMethodSlice(
+        Assert.DoesNotContain("RunUnderMatch", ReadMethodSlice(
             orbSummon,
             "private Task HandleDestroyOrb(",
             "private void SendDestroyOrbResult("));
-        Assert.DoesNotContain("PublishOrderedSessionAction", ReadMethodSlice(
+        Assert.DoesNotContain("RunUnderMatch", ReadMethodSlice(
             playerState,
             "private async Task HandleUseInGameItem(",
             "private bool ApplyItemBuffs("));
@@ -912,35 +880,23 @@ public sealed class GameClientSessionItemCombinePublicationTests
             Path.GetTempPath(),
             "orbtail-item-combine-publication-tests",
             Guid.NewGuid().ToString("N"));
-        private int _captureOrdinal;
 
         public SessionFixture()
         {
             Server = CreateServer();
-            Registry = GetField<MatchRuntimeRegistry>(Server, "_matchRuntimeRegistry");
-            Coordinator = GetField<SwarmCombatPublicationCoordinator>(
-                Server,
-                "_swarmCombatPublicationCoordinator");
+            Store = new MatchRuntimeStore(
+                NullLogger.Instance,
+                cleanupSteps: [new MatchCleanupStep("cleanup", _ => CleanupTimeline?.Enqueue("cleanup"))]);
             Inventories = GetField<InGameInventoryManager>(Server, "_inGameInventoryManager");
             EventLog = GetField<GameEventLogManager>(Server, "_gameEventLogManager");
-            Registry.SetRuntimeInitializer(matchingId =>
-            {
-                if (!Coordinator.RegisterMatching(matchingId))
-                    throw new InvalidOperationException($"Duplicate publication runtime {matchingId}.");
-            });
-            PublishOrdered = typeof(GameServer).GetMethod(
-                    "PublishOrderedSessionPublication",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!
-                .CreateDelegate<Action<long, Action, Action>>(Server);
 
             Interactables.Initialize();
             Inventories.Initialize();
         }
 
         public GameServer Server { get; }
-        public MatchRuntimeRegistry Registry { get; }
-        public SwarmCombatPublicationCoordinator Coordinator { get; }
-        public Action<long, Action, Action> PublishOrdered { get; }
+        public MatchRuntimeStore Store { get; }
+        public ConcurrentQueue<string>? CleanupTimeline { get; set; }
         public InGameInventoryManager Inventories { get; }
         public GameEventLogManager EventLog { get; }
         public InteractableStateManager Interactables { get; } = new();
@@ -952,13 +908,12 @@ public sealed class GameClientSessionItemCombinePublicationTests
         public AreaClosureManager Closures { get; } = new(NullLogger.Instance);
         public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
         public EncounterRevealManager Encounters { get; } = new();
-        public Action<long>? AfterMessageLeaseAcquired { get; set; }
-        public int? ThrowOnCaptureOrdinal { get; init; }
         public int TotalItemCombineRandomResolverCalls =>
             _itemCombineRandomResolverCalls.Values.Sum();
 
         public GameClientSession CreateSession(long matchingId, long playerId)
         {
+            Store.GetOrCreate(matchingId);
             AreaStocks.InitializeMatching(matchingId);
             GroundItems.InitializeMatching(matchingId);
             Doors.InitializeMatching(matchingId);
@@ -988,15 +943,10 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 EventLog,
                 new MatchSummaryFileStore(_summaryDirectory),
                 Encounters,
-                TryCapturePacket,
-                PublishOrdered,
-                static (_, publish) => publish(),
+                Store,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
                 ResolveItemCombineRandom,
-                AcquireOperation,
-                Registry.TryExecute,
-                static (_, _, _) => { },
                 static (_, _) => { },
                 static (_, _) => null,
                 static (_, _) => { },
@@ -1009,6 +959,16 @@ public sealed class GameClientSessionItemCombinePublicationTests
         }
 
         public RecordingUserToken TokenFor(GameClientSession session) => _tokens[session];
+
+        /// <summary>잠금 안에서 터미널로 표시하고 나온다 — 정리는 깊이 0 탈출에서 바로 돈다.</summary>
+        public void MarkTerminal(long matchingId)
+        {
+            MatchRuntime runtime = Store.Get(matchingId)!;
+            using (Store.Enter(runtime))
+            {
+                Assert.True(runtime.TryMarkTerminal());
+            }
+        }
 
         public CountingRandom ConfigureItemCombineRandom(long matchingId, params int[] drawResults)
         {
@@ -1054,22 +1014,6 @@ public sealed class GameClientSessionItemCombinePublicationTests
             MatchStartGate.RemoveMatching(SecondMatchingId);
             if (Directory.Exists(_summaryDirectory))
                 Directory.Delete(_summaryDirectory, recursive: true);
-        }
-
-        private bool TryCapturePacket(Action<IPacket> sendDirect, IPacket packet)
-        {
-            int ordinal = Interlocked.Increment(ref _captureOrdinal);
-            if (ThrowOnCaptureOrdinal == ordinal)
-                throw new InvalidOperationException($"capture failed at ordinal {ordinal}");
-            return Coordinator.TryCapturePacket(sendDirect, packet);
-        }
-
-        private IDisposable? AcquireOperation(long matchingId, Action onAcquired)
-        {
-            IDisposable? operation = Registry.TryAcquireOperation(matchingId, onAcquired);
-            if (operation != null)
-                AfterMessageLeaseAcquired?.Invoke(matchingId);
-            return operation;
         }
 
         private Random ResolveItemCombineRandom(long matchingId)

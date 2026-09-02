@@ -24,11 +24,10 @@ using network.packets;
 namespace game_server;
 
 /// <summary>
-///     Hosts authoritative match admission, simulation, ordered publication, and terminal lifecycle.
-///     Match state preparation is serialized per matchingId; normal and terminal network publications run
-///     outside MatchRuntime.SyncRoot while holding the appropriate turn/lease, and terminal component
-///     cleanup runs under the monitor before lifecycle, Redis, and summary continuations.
-///     단일 노드 전제 (#320) — 수평 확장·durable outbox 계층은 태그 pre-stage2-scaling에 보존.
+///     매치 입장·시뮬레이션·종료 수명을 소유하는 호스트. 매치 하나의 권위 상태 변경은 전부
+///     <see cref="MatchRuntime.Sync"/> 잠금 안에서 돌고(타이머 틱·세션 핸들러·종료), 패킷도 그 안에서 큐에
+///     넣어 순서가 곧 변경 순서다. 터미널 정리는 최외곽 잠금 탈출에서 한 번 돌고, lifecycle·Redis·요약 후처리는
+///     잠금 밖에서 이어진다. 단일 노드 전제 (#320) — 수평 확장·durable outbox 계층은 태그 pre-stage2-scaling에 보존.
 /// </summary>
 public partial class GameServer(
     IConfiguration configuration,
@@ -69,13 +68,8 @@ public partial class GameServer(
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, string>>
         _matchingLifecycleTerminalSubjects = new();
     private readonly ConcurrentQueue<long> _matchingLifecycleTerminalMatchOrder = new();
-    private readonly MatchRuntimeRegistry _matchRuntimeRegistry = new();
-    private readonly SwarmCombatPublicationCoordinator _swarmCombatPublicationCoordinator =
-        new(TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs));
-    private readonly SwarmBotTickCoordinator _swarmBotTickCoordinator = new();
-    private MatchRuntimeCleanupCoordinator _matchRuntimeCleanupCoordinator = null!;
+    private MatchRuntimeStore? _matchRuntimes;
     private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
-    private SwarmClosurePublicationCoordinator _swarmClosurePublicationCoordinator = null!;
     private readonly ConcurrentDictionary<long, Task> _pendingMatchingRedisCleanupTasks = new();
     // 재시작해도 되감기지 않도록 기동 시각을 섞는다. 고정 시드로 시작하면 서버를 다시
     // 올릴 때마다 같은 matchingId가 나오고, 매치 요약 파일이 같은 이름을 만나
@@ -92,11 +86,6 @@ public partial class GameServer(
     private Timer? _resourceTickTimer;        // 폐쇄 구역 등 주기성 자원 변화
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private Timer? _targetLocationTimer;      // 타겟 위치 전송
-    private Timer? _botMovementTimer;         // #127 봇 walking step (50ms)
-
-    private sealed record AdmissionFailureTerminalSnapshot(
-        IReadOnlyList<GameClientSession> Sessions,
-        IReadOnlyCollection<long> PlayerIds);
 
     private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
         _swarmMatchRuntimes.GetOrCreate(matchingId);
@@ -104,29 +93,53 @@ public partial class GameServer(
     private Random GetItemCombineRandom(long matchingId) =>
         GetSwarmMatchRuntime(matchingId).ItemCombineRandom;
 
-    private void RegisterMatchRuntimeComponents(long matchingId)
-    {
-        if (!_swarmBotTickCoordinator.RegisterMatching(matchingId))
-        {
-            throw new InvalidOperationException(
-                $"Bot tick state was already registered for match {matchingId}.");
-        }
+    /// <summary>
+    ///     매치별 잠금·수명 색인 (#331). 필드 초기화자는 this를 참조할 수 없어 첫 접근에서 만든다 —
+    ///     정리 단계가 매니저 인스턴스를 잡아야 하기 때문이다.
+    /// </summary>
+    internal MatchRuntimeStore MatchRuntimes =>
+        LazyInitializer.EnsureInitialized(ref _matchRuntimes, CreateMatchRuntimeStore)!;
 
+    private MatchRuntimeStore CreateMatchRuntimeStore() =>
+        new(logger, CreateMatchRuntime, BuildMatchCleanupSteps(), StartMatchingRedisCleanup);
+
+    /// <summary>새 매치 런타임의 모니터 안에서 한 번 실행되는 fail-closed 컴포넌트 등록.</summary>
+    private void CreateMatchRuntime(long matchingId)
+    {
         if (!_doorStateManager.RegisterMatching(matchingId))
         {
-            _swarmBotTickCoordinator.ClearMatching(matchingId);
             throw new InvalidOperationException(
                 $"Door state was already registered for match {matchingId}.");
         }
-
-        if (!_swarmCombatPublicationCoordinator.RegisterMatching(matchingId))
-        {
-            _doorStateManager.ClearMatching(matchingId);
-            _swarmBotTickCoordinator.ClearMatching(matchingId);
-            throw new InvalidOperationException(
-                $"Combat publication state was already registered for match {matchingId}.");
-        }
     }
+
+    /// <summary>
+    ///     터미널 정리 순서. 최외곽 잠금 탈출에서 한 번 돌고 단계마다 예외를 격리한다 — 한 컴포넌트 실패가
+    ///     나머지 매니저의 matchingId 상태 해제를 막지 않는다.
+    /// </summary>
+    private IReadOnlyList<MatchCleanupStep> BuildMatchCleanupSteps() =>
+    [
+        new MatchCleanupStep("session runtime", GameClientSession.CleanupAbandonedMatchingRuntime),
+        new MatchCleanupStep("session index", _sessionRegistry.RemoveMatch),
+        new MatchCleanupStep("settlement", CleanupMatchSettlementState),
+        new MatchCleanupStep("swarm arena", CleanupSwarmArenaState),
+        new MatchCleanupStep("area closure", matchingId => _areaClosureManager.CleanupMatching(matchingId)),
+        new MatchCleanupStep("bots", _botPlayerManager.CleanupMatching),
+        new MatchCleanupStep("area item stock", _areaItemStockManager.RemoveMatchingState),
+        new MatchCleanupStep("ground items", _groundItemManager.RemoveMatchingState),
+        new MatchCleanupStep("monster broadcast slots", CleanupSwarmAfterimageMonsterRuntime),
+        new MatchCleanupStep("summon stones", _summonStoneManager.RemoveMatchingState),
+        new MatchCleanupStep("inventory", _inGameInventoryManager.RemoveMatchingState),
+        new MatchCleanupStep("interactables", _interactableStateManager.RemoveMatchingState),
+        new MatchCleanupStep("doors", _doorStateManager.ClearMatching),
+        new MatchCleanupStep("roster", _matchRosterManager.CleanupMatching),
+        new MatchCleanupStep("encounter reveal", _encounterRevealManager.CleanupMatching),
+        new MatchCleanupStep("event log", _gameEventLogManager.Clear)
+    ];
+
+    /// <summary>정리가 끝난 매치의 Redis 인계 키를 잠금 밖에서 지운다 (셧다운이 완료를 기다린다).</summary>
+    private void StartMatchingRedisCleanup(long matchingId) =>
+        PrepareMatchingRedisCleanup(matchingId).Invoke();
 
     internal const int ResourceTickIntervalSeconds = 5;
     // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
@@ -149,7 +162,6 @@ public partial class GameServer(
             StartResourceTickTimer();
             StartAreaClosureTickTimer();
             StartTargetLocationTimer();
-            StartBotMovementTimer();
             StartProximityAutoCombatTimer();
 
             readinessState.MarkReady();
@@ -199,14 +211,12 @@ public partial class GameServer(
             _resourceTickTimer,
             _areaClosureTickTimer,
             _targetLocationTimer,
-            _botMovementTimer,
             _proximityAutoCombatTimer
         ];
         _heartbeatCheckTimer = null;
         _resourceTickTimer = null;
         _areaClosureTickTimer = null;
         _targetLocationTimer = null;
-        _botMovementTimer = null;
         _proximityAutoCombatTimer = null;
         await RunShutdownStageAsync(
             Task.WhenAll(timers.Where(timer => timer != null)
@@ -262,74 +272,6 @@ public partial class GameServer(
             _summonStoneManager,
             _encounterRevealManager,
             _gameEventLogManager);
-        _swarmClosurePublicationCoordinator = new SwarmClosurePublicationCoordinator();
-        _matchRuntimeRegistry.SetRuntimeInitializer(RegisterMatchRuntimeComponents);
-        _matchRuntimeCleanupCoordinator = new MatchRuntimeCleanupCoordinator(
-            _matchRuntimeRegistry,
-            [
-                new MatchRuntimeCleanupStep(
-                    "combat publication",
-                    _swarmCombatPublicationCoordinator.ClearMatching),
-                new MatchRuntimeCleanupStep(
-                    "session runtime",
-                    GameClientSession.CleanupAbandonedMatchingRuntime),
-                new MatchRuntimeCleanupStep(
-                    "session index",
-                    _sessionRegistry.RemoveMatch),
-                new MatchRuntimeCleanupStep(
-                    "settlement",
-                    CleanupMatchSettlementState),
-                new MatchRuntimeCleanupStep(
-                    "swarm arena",
-                    CleanupSwarmArenaState),
-                new MatchRuntimeCleanupStep(
-                    "bot movement ticks",
-                    _swarmBotTickCoordinator.ClearMatching),
-                new MatchRuntimeCleanupStep(
-                    "bot movement publication",
-                    _swarmBotMovementCoordinator.ClearMatching),
-                new MatchRuntimeCleanupStep(
-                    "field closure publication",
-                    _swarmClosurePublicationCoordinator.ClearMatching),
-                new MatchRuntimeCleanupStep(
-                    "area closure",
-                    _areaClosureManager.CleanupMatching),
-                new MatchRuntimeCleanupStep(
-                    "bots",
-                    _botPlayerManager.CleanupMatching),
-                new MatchRuntimeCleanupStep(
-                    "area item stock",
-                    _areaItemStockManager.RemoveMatchingState),
-                new MatchRuntimeCleanupStep(
-                    "ground items",
-                    _groundItemManager.RemoveMatchingState),
-                new MatchRuntimeCleanupStep(
-                    "monster broadcast slots",
-                    CleanupSwarmAfterimageMonsterRuntime),
-                new MatchRuntimeCleanupStep(
-                    "summon stones",
-                    _summonStoneManager.RemoveMatchingState),
-                new MatchRuntimeCleanupStep(
-                    "inventory",
-                    _inGameInventoryManager.RemoveMatchingState),
-                new MatchRuntimeCleanupStep(
-                    "interactables",
-                    _interactableStateManager.RemoveMatchingState),
-                new MatchRuntimeCleanupStep(
-                    "doors",
-                    _doorStateManager.ClearMatching),
-                new MatchRuntimeCleanupStep(
-                    "roster",
-                    _matchRosterManager.CleanupMatching),
-                new MatchRuntimeCleanupStep(
-                    "encounter reveal",
-                    _encounterRevealManager.CleanupMatching),
-                new MatchRuntimeCleanupStep(
-                    "event log",
-                    _gameEventLogManager.Clear)
-            ],
-            logger,
-            PrepareMatchingRedisCleanup);
         // M4: 폐쇄 구역은 스웜 신규 스폰을 멈춘다 (잔존 몹은 ReclaimStrandedMonsters가 걷어냄)
         _swarmMonsterDirector.IsAreaClosedResolver =
             (matchingId, area) => _areaClosureManager.IsAreaClosed(matchingId, area);
@@ -405,15 +347,22 @@ public partial class GameServer(
                 static session => session.PlayerId.HasValue && !session.IsEliminated);
 
             // Environmental damage and eliminations are settled per matching below.
-            var matchingIds = GetActiveMatchingIds();
-
-            foreach (long matchingId in matchingIds)
+            foreach (long matchingId in MatchRuntimes.ActiveIds())
             {
                 // #222 M3-2: 폐쇄·오버타임 오염은 이 정산 틱이 적용한다.
-                if (MatchStartGate.IsGameplayActive(matchingId))
-                    ProcessResourceTickForMatching(matchingId, activeSessions);
-            }
+                if (!MatchStartGate.IsGameplayActive(matchingId))
+                    continue;
+                if (!MatchRuntimes.Enter(matchingId, out MatchScope scope))
+                    continue;
 
+                using (scope)
+                {
+                    if (scope.Runtime.IsTerminal)
+                        continue;
+
+                    ProcessResourceTickForMatching(matchingId, activeSessions);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -429,14 +378,8 @@ public partial class GameServer(
         List<GameClientSession> activeSessions, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false, bool deferGameOver = false, int forcedRank = 0)
     {
-        IDisposable? publicationGroup = null;
         try
         {
-            // Roster/drop/log changes are authoritative preparation. When capture is active, a
-            // later transport failure skips only this bot's remaining outbound group; it does not
-            // roll back state or prevent later combat plan groups from dispatching.
-            publicationGroup = _swarmCombatPublicationCoordinator.TryBeginBestEffortGroup(
-                ex => logger.LogError(ex, "봇 탈락 처리 중 오류: BotId={BotId}", botId));
             var eliminatedBot = _botPlayerManager.GetBot(matchingId, botId);
             AreaType eliminatedArea = eliminatedBot?.CurrentArea ?? AreaType.None;
             int finalOrbTier = _inGameInventoryManager.GetEquippedBattleItemTier(matchingId, botId);
@@ -507,10 +450,6 @@ public partial class GameServer(
         catch (Exception ex)
         {
             logger.LogError(ex, "봇 탈락 처리 중 오류: BotId={BotId}", botId);
-        }
-        finally
-        {
-            publicationGroup?.Dispose();
         }
     }
 
@@ -639,60 +578,33 @@ public partial class GameServer(
         }
     }
 
+    /// <summary>
+    ///     1초 폐쇄 틱. 매치 잠금 안에서 폐쇄 상태를 확정하고 같은 순서로 송신한다 — 폐쇄는 50ms
+    ///     전투 틱보다 드물어 잠금을 기다려도 된다.
+    /// </summary>
     private void ProcessAreaClosureTick(object? state)
     {
         try
         {
-            // 매칭별로 폐쇄 스케줄 체크
-            var matchingIds = GetActiveMatchingIds();
-
-            foreach (long matchingId in matchingIds)
+            foreach (long matchingId in MatchRuntimes.ActiveIds())
             {
                 // #272 자기장 폐쇄: 자기장에서 파생한 구역 시간표 하나로만 닫는다 —
                 // 필드 오염은 정산 리소스 틱(GetSwarmFieldCorruptionPerTick)이 준다.
                 if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
-                SwarmClosurePublicationPlan? plan = null;
-                SwarmClosurePublicationTicket? publicationTicket = null;
-                GameClientSession[]? sessionSnapshot = null;
-                IDisposable? runtimeOperation = _matchRuntimeRegistry.TryAcquireOperation(
-                    matchingId,
-                    () =>
-                    {
-                        sessionSnapshot = GetSessionsByMatch(matchingId).ToArray();
-                        plan = PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);
-                        if (plan != null)
-                        {
-                            publicationTicket =
-                                _swarmClosurePublicationCoordinator.ReservePublication(matchingId);
-                        }
-                    });
-                if (runtimeOperation == null)
+                if (!MatchRuntimes.Enter(matchingId, out MatchScope scope))
                     continue;
-                if (plan == null || sessionSnapshot == null || publicationTicket == null)
-                {
-                    SwarmClosurePublicationTicket? ticketToRetire = publicationTicket;
-                    DispatchWithMatchRuntimeLease(
-                        runtimeOperation,
-                        () =>
-                        {
-                            if (ticketToRetire is { } ticket)
-                            {
-                                _swarmClosurePublicationCoordinator.DispatchInOrder(
-                                    ticket,
-                                    static () => { });
-                            }
-                        });
-                    continue;
-                }
 
-                SwarmClosurePublicationPlan capturedPlan = plan;
-                SwarmClosurePublicationTicket capturedTicket = publicationTicket.Value;
-                GameClientSession[] capturedSessions = sessionSnapshot;
-                DispatchWithMatchRuntimeLease(
-                    runtimeOperation,
-                    () => _swarmClosurePublicationCoordinator.DispatchInOrder(
-                        capturedTicket,
-                        () => DispatchSwarmClosurePublicationPlan(capturedPlan, capturedSessions)));
+                using (scope)
+                {
+                    if (scope.Runtime.IsTerminal)
+                        continue;
+
+                    GameClientSession[] sessionSnapshot = GetSessionsByMatch(matchingId).ToArray();
+                    SwarmClosurePublicationPlan? plan =
+                        PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);
+                    if (plan != null)
+                        DispatchSwarmClosurePublicationPlan(plan, sessionSnapshot);
+                }
             }
         }
         catch (Exception ex)
@@ -742,6 +654,10 @@ public partial class GameServer(
         return sortedValues[lowerIndex] + (sortedValues[upperIndex] - sortedValues[lowerIndex]) * fraction;
     }
 
+    /// <summary>
+    ///     카운트다운 초 방송 — 봇 이동 워커가 매치 잠금 안에서 부른다(직접 호출도 잠금을 잡는다). 남은 초가
+    ///     마지막 방송과 같으면 보내지 않고, 초가 바뀌면 수신자가 없어도 방송한 것으로 기록한다(재시도 없음).
+    /// </summary>
     private void BroadcastMatchStartCountdowns(
         IEnumerable<long> matchingIds,
         IReadOnlyCollection<GameClientSession> activeSessions)
@@ -762,51 +678,40 @@ public partial class GameServer(
                 continue;
             }
 
-            var preliminarySnapshot = MatchStartGate.GetSnapshot(matchingId);
-            if (!preliminarySnapshot.IsKnown ||
-                !_swarmCombatPublicationCoordinator.NeedsPeriodicCountdownPublication(
-                    matchingId,
-                    preliminarySnapshot.RemainingSeconds))
+            if (!MatchRuntimes.Enter(matchingId, out MatchScope scope))
+                continue;
+
+            using (scope)
             {
-                continue;
-            }
+                if (scope.Runtime.IsTerminal)
+                    continue;
 
-            SwarmCombatPublicationCoordinator.PublicationTurn? publicationTurn =
-                _swarmCombatPublicationCoordinator.BeginOrderedTurn(matchingId);
-            if (publicationTurn == null)
-                continue;
+                var snapshot = MatchStartGate.GetSnapshot(matchingId);
+                if (!snapshot.IsKnown)
+                    continue;
 
-            PrepareAndDispatchCombatPublication(
-                matchingId,
-                publicationTurn,
-                () =>
+                SwarmMatchPacingState pacing = GetSwarmMatchRuntime(matchingId).Pacing;
+                if (pacing.LastCountdownSecondsPublished == snapshot.RemainingSeconds)
+                    continue;
+
+                pacing.LastCountdownSecondsPublished = snapshot.RemainingSeconds;
+                var matchingSessions = activeSessions
+                    .Where(session => session.CurrentMapSubId == matchingId)
+                    .ToList();
+                if (matchingSessions.Count == 0)
+                    continue;
+
+                using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN);
+                packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
                 {
-                    var snapshot = MatchStartGate.GetSnapshot(matchingId);
-                    if (!snapshot.IsKnown ||
-                        !_swarmCombatPublicationCoordinator.TryCommitPeriodicCountdownPublication(
-                            publicationTurn,
-                            snapshot.RemainingSeconds))
-                    {
-                        return;
-                    }
+                    MatchingId = matchingId,
+                    RemainingSeconds = snapshot.RemainingSeconds,
+                    ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                }));
 
-                    var matchingSessions = activeSessions
-                        .Where(session => session.CurrentMapSubId == matchingId)
-                        .ToList();
-                    if (matchingSessions.Count == 0)
-                        return;
-
-                    using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN);
-                    packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
-                    {
-                        MatchingId = matchingId,
-                        RemainingSeconds = snapshot.RemainingSeconds,
-                        ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                    }));
-
-                    foreach (var session in matchingSessions)
-                        session.Send(packet);
-                });
+                foreach (var session in matchingSessions)
+                    session.Send(packet);
+            }
         }
     }
 
@@ -978,15 +883,10 @@ public partial class GameServer(
                 _gameEventLogManager,
                 _matchSummaryFileStore,
                 _encounterRevealManager,
-                _swarmCombatPublicationCoordinator.TryCapturePacket,
-                PublishOrderedSessionPublication,
-                PublishRequiredTerminalAction,
+                MatchRuntimes,
                 HandleSwarmGrowthPick,
                 HandleSwarmOrbDecision,
                 GetItemCombineRandom,
-                _matchRuntimeRegistry.TryAcquireOperation,
-                _matchRuntimeRegistry.TryExecute,
-                CleanupMatchRuntime,
                 (playerId, matchingId) =>
                     PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerLeft, playerId, matchingId),
                 (playerId, matchingId) =>
@@ -1050,6 +950,11 @@ public partial class GameServer(
         }
     }
 
+    /// <summary>
+    ///     입장 실패로 매치를 중단한다. 터미널 전이를 이긴 호출이 잠금 안에서 로스터 전원의 lifecycle subject
+    ///     선점과 FATAL 응답·끊기를 소유하고(발행은 잠금 밖 후처리), 이미 끝난 매치에 늦게 온 호출은
+    ///     자기 세션의 admission_failed 발행과 끊기만 한다 — 정상 종료가 먼저 선점한 subject는 중복 제거된다.
+    /// </summary>
     private void AbortMatchAfterAdmissionFailure(GameClientSession session)
     {
         if (!session.PlayerId.HasValue || session.CurrentMapSubId <= 0)
@@ -1057,9 +962,17 @@ public partial class GameServer(
 
         long playerId = session.PlayerId.Value;
         long matchingId = session.CurrentMapSubId;
-        bool cleanupAccepted = TryAbortMatchAtTerminalBoundary(
-            matchingId,
-            () =>
+        MatchRuntime? runtime = MatchRuntimes.Get(matchingId);
+        if (runtime == null)
+        {
+            PublishLateAdmissionFailure(session, playerId, matchingId);
+            return;
+        }
+
+        bool wonTerminal = false;
+        using (MatchRuntimes.Enter(runtime))
+        {
+            if (!runtime.IsTerminal)
             {
                 if (_sessionRegistry.TryGetCurrent(playerId, out GameClientSession? currentSession) &&
                     currentSession != null &&
@@ -1070,9 +983,10 @@ public partial class GameServer(
                         "Skipped admission-failed claim release for superseded session: PlayerId={PlayerId}, MatchingId={MatchingId}",
                         playerId,
                         matchingId);
-                    return null;
+                    return;
                 }
 
+                wonTerminal = runtime.TryMarkTerminal();
                 List<GameClientSession> affectedSessions = GetSessionsByMatch(matchingId);
                 foreach (GameClientSession affectedSession in affectedSessions)
                     affectedSession.TryMarkMatchingLifecycleHandledExternally();
@@ -1081,159 +995,66 @@ public partial class GameServer(
                     session.HandoffHumanPlayerIds.Count > 0
                         ? session.HandoffHumanPlayerIds.ToArray()
                         : [playerId];
-                return new AdmissionFailureTerminalSnapshot(affectedSessions, affectedPlayerIds);
-            },
-            lifecyclePublications =>
-            {
-                PrepareAdmissionFailureLifecycle(
-                    matchingId,
-                    [playerId],
-                    lifecyclePublications);
-                try
+                var lifecyclePublications = new List<Action>();
+                PrepareAdmissionFailureLifecycle(matchingId, affectedPlayerIds, lifecyclePublications);
+                foreach (GameClientSession affectedSession in affectedSessions)
                 {
-                    PublishAdmissionFailureTerminalDisconnect(matchingId, [session]);
+                    try
+                    {
+                        affectedSession.DisconnectForAdmissionFailure();
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(
+                            ex,
+                            "Failed to deliver admission failure disconnect: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                            affectedSession.PlayerId,
+                            matchingId);
+                    }
                 }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(
-                        ex,
-                        "Failed to disconnect late admission failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                        playerId,
-                        matchingId);
-                }
-            },
-            () =>
-            {
-                PublishMatchingLifecycle(
-                    MatchingLifecycleSubjects.PlayerAdmissionFailed,
-                    playerId,
-                    matchingId);
-                try
-                {
-                    session.DisconnectForAdmissionFailure();
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(
-                        ex,
-                        "Failed to disconnect completed-runtime admission failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                        playerId,
-                        matchingId);
-                }
-            });
 
-        if (cleanupAccepted)
+                runtime.AfterRelease.Add(
+                    () => DispatchPreparedAdmissionFailureLifecycle(matchingId, lifecyclePublications));
+            }
+        }
+
+        if (wonTerminal)
         {
             logger.LogWarning(
                 "Match aborted after client admission failure: MatchingId={MatchingId}, FailedPlayerId={PlayerId}",
                 matchingId,
                 playerId);
+            return;
         }
+
+        PublishLateAdmissionFailure(session, playerId, matchingId);
     }
 
-    /// <summary>
-    ///     Freezes the admission-abort recipients and lifecycle work only for the caller that wins
-    ///     Active -> Finalizing. The registry may attach a late before hook to already-pending work,
-    ///     so the winner marker prevents a loser from publishing terminal packets or disconnecting
-    ///     a different finalizer's roster. The required publication turn drains after all operation
-    ///     leases retire and before component cleanup clears its coordinator entry.
-    /// </summary>
-    private bool TryAbortMatchAtTerminalBoundary(
-        long matchingId,
-        Func<AdmissionFailureTerminalSnapshot?> captureWinnerSnapshot,
-        Action<List<Action>>? beforeLostFinalization = null,
-        Action? afterBeforeSkipped = null)
+    /// <summary>이미 끝난 매치에 늦게 도착한 입장 실패 — 이 세션 한 명만 발행·끊는다.</summary>
+    private void PublishLateAdmissionFailure(GameClientSession session, long playerId, long matchingId)
     {
-        AdmissionFailureTerminalSnapshot? winnerSnapshot = null;
-        int winnerMarker = 0;
-        int beforeHookRan = 0;
-        var lifecyclePublications = new List<Action>();
-
-        return TryCleanupMatchRuntime(
-            matchingId,
-            () =>
-            {
-                winnerSnapshot = captureWinnerSnapshot();
-                if (winnerSnapshot == null)
-                    return false;
-
-                Volatile.Write(ref winnerMarker, 1);
-                return true;
-            },
-            () =>
-            {
-                Volatile.Write(ref beforeHookRan, 1);
-                if (Volatile.Read(ref winnerMarker) == 0 || winnerSnapshot == null)
-                {
-                    try
-                    {
-                        beforeLostFinalization?.Invoke(lifecyclePublications);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(
-                            ex,
-                            "Failed to prepare late admission abort finalization: MatchingId={MatchingId}",
-                            matchingId);
-                    }
-                    return;
-                }
-
-                PrepareAdmissionFailureLifecycle(
-                    matchingId,
-                    winnerSnapshot.PlayerIds,
-                    lifecyclePublications);
-                PublishAdmissionFailureTerminalDisconnect(matchingId, winnerSnapshot.Sessions);
-            },
-            () =>
-            {
-                if (Volatile.Read(ref beforeHookRan) == 0)
-                {
-                    afterBeforeSkipped?.Invoke();
-                    return;
-                }
-
-                DispatchPreparedAdmissionFailureLifecycle(matchingId, lifecyclePublications);
-            });
-    }
-
-    private void PublishAdmissionFailureTerminalDisconnect(
-        long matchingId,
-        IReadOnlyList<GameClientSession> sessions)
-    {
+        PublishMatchingLifecycle(
+            MatchingLifecycleSubjects.PlayerAdmissionFailed,
+            playerId,
+            matchingId);
         try
         {
-            PublishRequiredTerminalAction(
-                matchingId,
-                () =>
-                {
-                    foreach (GameClientSession affectedSession in sessions)
-                    {
-                        try
-                        {
-                            affectedSession.DisconnectForAdmissionFailure();
-                        }
-                        catch (Exception ex)
-                        {
-                            logger.LogWarning(
-                                ex,
-                                "Failed to deliver admission failure disconnect: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                                affectedSession.PlayerId,
-                                matchingId);
-                        }
-                    }
-                });
+            session.DisconnectForAdmissionFailure();
         }
         catch (Exception ex)
         {
             logger.LogWarning(
                 ex,
-                "Failed to acquire required terminal publication turn for admission failure: MatchingId={MatchingId}",
+                "Failed to disconnect late admission failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                playerId,
                 matchingId);
         }
     }
 
     /// <summary>
+    ///     잠금 안에서 플레이어별 subject를 선점하고 발행 작업만 남긴다 — 정상 종료가 먼저 선점한 subject는
+    ///     늦은 입장 중단이 덮어쓰지 못한다.
+    /// </summary>    /// <summary>
     ///     Claims each player/subject during pre-finalization and retains only dispatch work for
     ///     post-commit, so a normal winner's already-prepared terminal subject wins over a late
     ///     admission abort.
@@ -1289,9 +1110,7 @@ public partial class GameServer(
     ///     사람 세션 없이 진행되는 매치(관리자 봇 전용 인스턴스)를 정산한다.
     ///     승리 판정이 사람 세션에 의존해 최후 1인이 남아도 끝나지 않고, 오염도가 한계에
     ///     닿은 봇이 계속 살아 있는 상태로 매치가 무한히 이어지던 것을 막는다.
-    ///     The depth-zero before hook captures its event and summary outside SyncRoot but opens no
-    ///     required publication turn because there are no human recipients. Component cleanup remains
-    ///     under SyncRoot and summary persistence remains post-commit outside it.
+    ///     정산 틱 안에서 불리면 재진입이라 정리는 그 틱이 끝난 뒤에 돈다.
     /// </summary>
     public void EndBotOnlyMatchIfSettled(long matchingId, long winnerPlayerId)
     {
@@ -1305,101 +1124,64 @@ public partial class GameServer(
         CleanupMatchingIfNoHumanSessionsRemain(matchingId, "last_human_left", 0);
 
     /// <summary>
-    ///     Finalizes a match only when its runtime-guarded predicate still sees no human sessions.
-    ///     The depth-zero before hook captures the terminal event and summary outside SyncRoot without
-    ///     opening a required publication turn; component cleanup stays under SyncRoot and persistence
-    ///     remains an outside post-commit continuation.
+    ///     사람 세션이 하나도 남지 않은 매치를 잠금 안에서 터미널로 표시한다. 마지막 이벤트·요약은 잠금 안에서
+    ///     캡처하고 파일 쓰기는 잠금 밖 후처리로 돈다. 사람 수신자가 없으므로 결과 패킷은 없다.
     /// </summary>
     private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId, string endReason, long winnerPlayerId)
     {
         if (HasHumanSessions(matchingId))
             return;
 
-        MatchSummaryPersistenceRequest? summaryRequest = null;
-        bool cleanupAccepted = TryCleanupMatchRuntime(
-            matchingId,
-            () => !HasHumanSessions(matchingId),
-            () =>
-            {
-                if (!_gameEventLogManager.TryBeginFinalization(matchingId))
-                    return;
+        MatchRuntime? runtime = MatchRuntimes.Get(matchingId);
+        if (runtime == null)
+            return;
 
-                DateTime endedAtUtc = DateTime.UtcNow;
-                DateTime startedAtUtc =
-                    _areaClosureManager.GetMatchingState(matchingId)?.GameStartTime ?? endedAtUtc;
-                var finalPlayerStats = _matchRosterManager.BuildGameResult(matchingId)
-                    .Select(row =>
-                    {
-                        var stats = _gameEventLogManager.GetResultStats(matchingId, row.playerId);
-                        DateTime survivalEndUtc = row.eliminatedAt ?? endedAtUtc;
-                        return new MatchFinalPlayerStats(
-                            row.playerId,
-                            row.eliminationRank,
-                            Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
-                            stats.KillCount + stats.MonsterKillCount,
-                            stats.TotalDamageDealt + stats.MonsterDamageDealt,
-                            stats.TotalRecovery,
-                            // 승점 (#229): 사람이 나간 매치도 오브 수를 남긴다 — 봇 매치가 유일한
-                            // 자동 검증 창구라 여기서 빠지면 결과 집계를 로그로 확인할 수 없다.
-                            GetSwarmOrbScore(matchingId, row.playerId).OrbCount);
-                    })
-                    .ToList();
-                _gameEventLogManager.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);
-                summaryRequest = MatchSummaryPersistence.Capture(
-                    _gameEventLogManager,
-                    logger,
-                    matchingId,
-                    endReason,
-                    winnerPlayerId);
-            },
-            () =>
-            {
-                MatchSummaryPersistenceRequest? capturedSummary = summaryRequest;
-                if (capturedSummary != null)
-                {
-                    MatchSummaryPersistence.Persist(
-                        capturedSummary,
-                        _matchSummaryFileStore,
-                        logger);
-                }
-            });
+        using MatchScope scope = MatchRuntimes.Enter(runtime);
+        if (runtime.IsTerminal || HasHumanSessions(matchingId))
+            return;
 
-        if (cleanupAccepted)
+        runtime.TryMarkTerminal();
+        if (_gameEventLogManager.TryBeginFinalization(matchingId))
         {
-            logger.LogInformation(
-                "Removed matching without human sessions: MatchingId={MatchingId}, EndReason={EndReason}",
-                matchingId, endReason);
+            DateTime endedAtUtc = DateTime.UtcNow;
+            DateTime startedAtUtc =
+                _areaClosureManager.GetMatchingState(matchingId)?.GameStartTime ?? endedAtUtc;
+            var finalPlayerStats = _matchRosterManager.BuildGameResult(matchingId)
+                .Select(row =>
+                {
+                    var stats = _gameEventLogManager.GetResultStats(matchingId, row.playerId);
+                    DateTime survivalEndUtc = row.eliminatedAt ?? endedAtUtc;
+                    return new MatchFinalPlayerStats(
+                        row.playerId,
+                        row.eliminationRank,
+                        Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
+                        stats.KillCount + stats.MonsterKillCount,
+                        stats.TotalDamageDealt + stats.MonsterDamageDealt,
+                        stats.TotalRecovery,
+                        // 승점 (#229): 사람이 나간 매치도 오브 수를 남긴다 — 봇 매치가 유일한
+                        // 자동 검증 창구라 여기서 빠지면 결과 집계를 로그로 확인할 수 없다.
+                        GetSwarmOrbScore(matchingId, row.playerId).OrbCount);
+                })
+                .ToList();
+            _gameEventLogManager.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);
+            MatchSummaryPersistenceRequest? summaryRequest = MatchSummaryPersistence.Capture(
+                _gameEventLogManager,
+                logger,
+                matchingId,
+                endReason,
+                winnerPlayerId);
+            if (summaryRequest != null)
+            {
+                runtime.AfterRelease.Add(() => MatchSummaryPersistence.Persist(
+                    summaryRequest,
+                    _matchSummaryFileStore,
+                    logger));
+            }
         }
-    }
 
-    /// <summary>
-    ///     Runs every in-memory match cleanup behind one terminal lifecycle gate.
-    ///     The claimed before hook runs outside SyncRoot, each isolated component cleanup runs under it,
-    ///     and Redis, lifecycle, and summary continuations run after commit outside it. One component
-    ///     failure cannot prevent the remaining managers from releasing their matchingId state.
-    /// </summary>
-    private void CleanupMatchRuntime(long matchingId) =>
-        TryCleanupMatchRuntime(matchingId, null, null);
-
-    private void CleanupMatchRuntime(
-        long matchingId,
-        Action? beforeFinalized,
-        Action? afterFinalized)
-    {
-        TryCleanupMatchRuntime(matchingId, null, beforeFinalized, afterFinalized);
-    }
-
-    private bool TryCleanupMatchRuntime(
-        long matchingId,
-        Func<bool>? canFinalize,
-        Action? beforeFinalized,
-        Action? afterFinalized = null)
-    {
-        return _matchRuntimeCleanupCoordinator.TryFinalize(
-            matchingId,
-            canFinalize,
-            beforeFinalized,
-            afterFinalized);
+        logger.LogInformation(
+            "Removed matching without human sessions: MatchingId={MatchingId}, EndReason={EndReason}",
+            matchingId, endReason);
     }
 
     private async Task CleanupAbandonedMatchingRedisAsync(long matchingId)
@@ -1600,8 +1382,12 @@ public partial class GameServer(
         foreach (var botInfo in botInfoList)
             botInfo.SpawnCell = Cell.Clone(spawnAssignments[botInfo.PlayerId]);
 
-        bool initialized = _matchRuntimeRegistry.TryExecute(matchingId, () =>
+        MatchRuntime runtime = MatchRuntimes.GetOrCreate(matchingId);
+        using (MatchRuntimes.Enter(runtime))
         {
+            if (runtime.IsTerminal)
+                return null;
+
             _botPlayerManager.RegisterBots(matchingId, Config.SWARM_MATCH_MAP, botInfoList);
             int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
             _gameEventLogManager.BeginMatch(matchingId, matchSeed);
@@ -1633,9 +1419,7 @@ public partial class GameServer(
 
             _gameEventLogManager.LogSystem(matchingId,
                 $"Bot-only instance created: botCount={botCount}, ids=[{string.Join(",", playerIds)}]");
-        });
-        if (!initialized)
-            return null;
+        }
 
         logger.LogInformation(
             "Bot-only instance created: MatchingId={MatchingId}, BotCount={BotCount}, Ids=[{Ids}]",

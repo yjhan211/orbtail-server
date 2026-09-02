@@ -55,25 +55,22 @@ public abstract class SessionBase : IPeer
             await _sessionLock.WaitAsync();
             lockTaken = true;
             if (!Token.IsAcceptingMessages) return;
-
-            if (!TryAcquireMessageScope(out IDisposable? messageScope))
+            if (!IsMessageLifecycleActive())
                 return;
-            using (messageScope)
-            {
-                using var packet = Packet.Create(buffer);
-                var protocolId = (Protocol)packet.PopProtocolId();
-                long playerId = packet.PopPlayerId();
-                byte[] body = packet.PopBody();
 
-                if (!ShouldSkipLogging(protocolId))
-                    Logger.LogInformation("[Receive] Protocol: {Protocol}, PlayerId: {PlayerId}",
-                        protocolId, playerId);
+            using var packet = Packet.Create(buffer);
+            var protocolId = (Protocol)packet.PopProtocolId();
+            long playerId = packet.PopPlayerId();
+            byte[] body = packet.PopBody();
 
-                await ProtocolRouter.RouteAsync(protocolId, body);
+            if (!ShouldSkipLogging(protocolId))
+                Logger.LogInformation("[Receive] Protocol: {Protocol}, PlayerId: {PlayerId}",
+                    protocolId, playerId);
 
-                if (!ShouldSkipLogging(protocolId))
-                    Logger.LogInformation("[Processed] Protocol: {Protocol} completed", protocolId);
-            }
+            await ProtocolRouter.RouteAsync(protocolId, body);
+
+            if (!ShouldSkipLogging(protocolId))
+                Logger.LogInformation("[Processed] Protocol: {Protocol} completed", protocolId);
         }
         catch (MessagePackSerializationException ex)
         {
@@ -109,14 +106,10 @@ public abstract class SessionBase : IPeer
     protected abstract bool ShouldSkipLogging(Protocol protocolId);
 
     /// <summary>
-    ///     Lets a derived session keep an external lifecycle alive for the complete asynchronous
-    ///     protocol handler. Returning false drops work whose lifecycle is already terminal.
+    ///     파생 세션이 이미 끝난 수명(터미널 매치)의 늦은 패킷을 잠금 없이 거르는 게이트.
+    ///     false면 이 메시지는 조용히 버린다.
     /// </summary>
-    protected virtual bool TryAcquireMessageScope(out IDisposable? scope)
-    {
-        scope = null;
-        return true;
-    }
+    protected virtual bool IsMessageLifecycleActive() => true;
 
     protected static async Task HandleMessage<T>(byte[] body, Func<T, Task> handler) where T : IMessagePackObject
     {

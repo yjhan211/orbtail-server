@@ -140,14 +140,23 @@ public partial class GameServer
     // 티어별 오브 HP는 Common(OrbData.GetSquadOrbMaxHp)이 단일 출처 — 클라 체력바와 공유.
     private static int GetSquadOrbMaxHp(int tier) => OrbData.GetSquadOrbMaxHp(tier);
 
+    /// <summary>매치 잠금 밖에서도 읽을 수 있는 터미널 게이트 — 색인에 없는 매치도 터미널로 본다.</summary>
+    private bool IsMatchTerminal(long matchingId) =>
+        MatchRuntimes.Get(matchingId) is not { IsTerminal: false };
+
     /// <summary>
     ///     #217 8인 맵 역할 검증(M1). 매치 수명(탈락·최후 1인·타이머)은 기존 서바이버 로얄
     ///     흐름이 소유하고, 여기서는 스웜 디렉터 틱·접촉 피해·전투 액터·PvP만 돌린다.
+    ///     호출자(50ms 전투 틱·5초 정산 틱)가 매치 잠금을 쥔 채 부른다.
     /// </summary>
     private void ProcessSwarmArenaForMatching(
         long matchingId,
         List<GameClientSession> activeSessions)
     {
+        // 정리된 매치의 상태를 되살리지 않는다 — 아래 GetSwarmMatchRuntime은 GetOrCreate다.
+        if (IsMatchTerminal(matchingId))
+            return;
+
         // 탐사 모드(SOLO_MAP_VALIDATION=1): 맵 검증용 1인 매치 — 캠프 몹·접촉 피해·
         // 전투·오브 스트림을 전부 끈다. 이동·문·탐색만 남는다.
         // SOLO_MONSTERS=1을 얹으면 캠프 몹만 되살린다 (봇 없이 몹 상대 검증).
@@ -235,9 +244,7 @@ public partial class GameServer
             // 정산 쪽 샌드박스 게이트가 막는다.
             if (SwarmCutDummyAutoSetup)
             {
-                // DEV-only order-parity exception: publish the automatic dummy setup while the
-                // proximity tick still owns the match monitor, before the remaining arena packets.
-                // Regular timer and manual dummy publications keep their outside-monitor dispatch.
+                // 자동 세팅은 전투 틱과 같은 잠금 안에서 재진입해 나머지 아레나 패킷보다 먼저 나간다.
                 SetupSwarmCutDummy(matchingId);
             }
             // 실험장 격리: 더미 외 봇은 조용히 퇴장 — 순위·드롭 이벤트 없이 화면에서 사라진다.
@@ -316,17 +323,17 @@ public partial class GameServer
         if (!SwarmCutDummyAutoSetup && (dummyIds.Count == 0 || SwarmCrossfireSandbox))
         {
             ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
-            if (_matchRuntimeRegistry.IsTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+            if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
                 return;
 
             ProcessSwarmWindBlades(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
-            if (_matchRuntimeRegistry.IsTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+            if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
                 return;
         }
 
         // 화상 틱 (#268): 교차사격 충격이 남긴 도트 — 발생원이 위 블록과 무관하게 항상 정산한다.
         ProcessSwarmSunBurns(matchingId, nowUtc, aliveSessions, aliveBots, sessions);
-        if (_matchRuntimeRegistry.IsTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+        if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
 
         // 접촉 계측: 접촉이 성립하는지 층별로 남긴다. 이 줄들이 "봇은 접촉 피해를
@@ -369,7 +376,7 @@ public partial class GameServer
 
         var actors = BuildSwarmArenaCombatActors(matchingId, aliveSessions, aliveBots, nowUtc);
         ProcessOrbRecovery(matchingId, actors, aliveSessions, aliveBots, nowUtc);
-        AppendOrbVisualStatePublicationSteps(
+        DispatchOrbVisualStatePublications(
             PrepareOrbVisualStatePublications(matchingId, actors, sessions));
         BroadcastSwarmOrbRankings(matchingId, sessions, bots);
         // 성장 카드 (#226 단계 C): 소환석이 비용에 닿는 즉시 3택 오퍼 — 상자 트리거 퇴역.
@@ -380,7 +387,7 @@ public partial class GameServer
         ProcessPendingSwarmMonsterHits(matchingId, nowUtc, sessions);
         // 교차사격 판정 (#232 2단계): 예고가 끝난 모양을 이번 틱 위치로 판정한다.
         ProcessSwarmCrossfires(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
-        if (_matchRuntimeRegistry.IsTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+        if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
 
         // 비행 중인 PvP 탄은 여기서 착탄 처리한다 — 매 틱 지우면 안 된다. "리졸버는 PvE 전용"이라는 전제의 청소가
@@ -393,7 +400,7 @@ public partial class GameServer
             GetSwarmMatchRuntime(matchingId).Pacing.PendingPvpHits.RemoveAt(index);
             ApplySwarmPvpAttack(matchingId, pending.Attack, aliveSessions, aliveBots, sessions,
                 broadcastVfx: false);
-            if (_matchRuntimeRegistry.IsTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+            if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
                 return;
         }
 
@@ -590,7 +597,7 @@ public partial class GameServer
 
             // PvP는 저데미지 보조다. 킬의 주 경로는 스웜이어야 한다 (#217 결합 원칙).
             ApplySwarmPvpAttack(matchingId, attack, aliveSessions, aliveBots, sessions);
-            if (_matchRuntimeRegistry.IsTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+            if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
                 return;
         }
 
@@ -602,7 +609,7 @@ public partial class GameServer
 
             ProcessBotElimination(matchingId, bot.PlayerId, EliminationReason.MENTAL_ZERO, activeSessions,
                 attackerPlayerId: bot.LastProximityAttackerPlayerId);
-            if (_matchRuntimeRegistry.IsTerminal(matchingId) ||
+            if (IsMatchTerminal(matchingId) ||
                 activeSessions.Any(session => session.IsGameEnded))
                 return;
         }
@@ -2134,54 +2141,37 @@ public partial class GameServer
         if (matchingId <= 0)
             return new { error = "no active match" };
 
-        PendingSwarmBotMovementDispatch? pending =
-            PrepareSwarmCutDummySetup(matchingId, out object result);
-        if (pending == null)
+        if (!MatchRuntimes.Enter(matchingId, out MatchScope scope))
             return new { error = "match is no longer active " + matchingId };
 
-        DispatchPendingSwarmBotMovement(pending);
-        return result;
+        using (scope)
+        {
+            if (scope.Runtime.IsTerminal)
+                return new { error = "match is no longer active " + matchingId };
+
+            object result = SetupSwarmCutDummyCore(matchingId, out BotMovementEvent? movement);
+            if (movement != null)
+                DispatchSwarmExternalBotMovement(matchingId, movement);
+            return result;
+        }
     }
 
-    private PendingSwarmBotMovementDispatch? PrepareSwarmCutDummySetup(
-        long matchingId,
-        out object result)
+    /// <summary>수동 더미 이동을 매치 잠금 안에서 계획·송신한다 — 궤도는 돌리지 않는다.</summary>
+    private void DispatchSwarmExternalBotMovement(long matchingId, BotMovementEvent movement)
     {
-        object preparedResult = new { error = "match is no longer active " + matchingId };
-        SwarmBotMovementPlan? plan = null;
-        SwarmBotPublicationTicket? publicationTicket = null;
-        GameClientSession[] sessionSnapshot = [];
-        IDisposable? runtimeOperation = _matchRuntimeRegistry.TryAcquireOperation(
+        GameClientSession[] sessionSnapshot = _sessionRegistry.GetByMatch(matchingId)
+            .Where(session =>
+                session.PlayerId is > 0 &&
+                session.CurrentMapId == Config.SWARM_MATCH_MAP &&
+                session.CurrentMapSubId == matchingId)
+            .ToArray();
+        ImmutableArray<SwarmBotObserverSnapshot> observers =
+            CaptureSwarmBotObservers(matchingId, sessionSnapshot);
+        SwarmBotMovementPlan plan = _swarmBotMovementCoordinator.PrepareExternalMovement(
             matchingId,
-            () =>
-            {
-                sessionSnapshot = _sessionRegistry.GetByMatch(matchingId)
-                    .Where(session =>
-                        session.PlayerId is > 0 &&
-                        session.CurrentMapId == Config.SWARM_MATCH_MAP &&
-                        session.CurrentMapSubId == matchingId)
-                    .ToArray();
-                preparedResult = SetupSwarmCutDummyCore(matchingId, out BotMovementEvent? movement);
-                if (movement != null)
-                {
-                    ImmutableArray<SwarmBotObserverSnapshot> observers =
-                        CaptureSwarmBotObservers(matchingId, sessionSnapshot);
-                    plan = _swarmBotMovementCoordinator.PrepareExternalMovement(
-                        matchingId,
-                        movement,
-                        observers);
-                    publicationTicket = _swarmBotMovementCoordinator.ReservePublication(matchingId);
-                }
-            });
-        result = preparedResult;
-        if (runtimeOperation == null)
-            return null;
-
-        return new PendingSwarmBotMovementDispatch(
-            runtimeOperation,
-            plan,
-            publicationTicket,
-            sessionSnapshot);
+            movement,
+            observers);
+        DispatchSwarmBotMovementPlan(plan, sessionSnapshot);
     }
 
     private object SetupSwarmCutDummyCore(long matchingId, out BotMovementEvent? movement)
@@ -2248,39 +2238,18 @@ public partial class GameServer
     /// </summary>
     private void MoveSwarmCutDummy(long matchingId, float dirX, float dirY)
     {
-        SwarmBotMovementPlan? plan = null;
-        SwarmBotPublicationTicket? publicationTicket = null;
-        GameClientSession[]? sessionSnapshot = null;
-        IDisposable? runtimeOperation = _matchRuntimeRegistry.TryAcquireOperation(
-            matchingId,
-            () =>
-            {
-                sessionSnapshot = _sessionRegistry.GetByMatch(matchingId)
-                    .Where(session =>
-                        session.PlayerId is > 0 &&
-                        session.CurrentMapId == Config.SWARM_MATCH_MAP &&
-                        session.CurrentMapSubId == matchingId)
-                    .ToArray();
-                BotMovementEvent? movement = MoveSwarmCutDummyCore(matchingId, dirX, dirY);
-                if (movement == null)
-                    return;
-
-                ImmutableArray<SwarmBotObserverSnapshot> observers =
-                    CaptureSwarmBotObservers(matchingId, sessionSnapshot);
-                plan = _swarmBotMovementCoordinator.PrepareExternalMovement(
-                    matchingId,
-                    movement,
-                    observers);
-                publicationTicket = _swarmBotMovementCoordinator.ReservePublication(matchingId);
-            });
-        if (runtimeOperation == null)
+        if (!MatchRuntimes.Enter(matchingId, out MatchScope scope))
             return;
 
-        DispatchPendingSwarmBotMovement(new PendingSwarmBotMovementDispatch(
-            runtimeOperation,
-            plan,
-            publicationTicket,
-            sessionSnapshot ?? []));
+        using (scope)
+        {
+            if (scope.Runtime.IsTerminal)
+                return;
+
+            BotMovementEvent? movement = MoveSwarmCutDummyCore(matchingId, dirX, dirY);
+            if (movement != null)
+                DispatchSwarmExternalBotMovement(matchingId, movement);
+        }
     }
 
     private BotMovementEvent? MoveSwarmCutDummyCore(long matchingId, float dirX, float dirY)

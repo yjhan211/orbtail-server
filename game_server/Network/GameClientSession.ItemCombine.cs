@@ -13,16 +13,15 @@ using network.packets;
 namespace game_server.network;
 
 /// <summary>
-///     사람 아이템 조합 (C_TO_G_COMBINE_ITEMS): 배틀아이템·오브 조합을 match별 ordered
-///     publication turn에서 준비하고 결과/실패 bundle을 기존 순서로 발행한다.
+///     사람 아이템 조합 (C_TO_G_COMBINE_ITEMS): 배틀아이템·오브 조합을 매치 잠금 안에서 판정하고
+///     결과/실패 bundle을 같은 순서로 보낸다.
 /// </summary>
 public partial class GameClientSession
 {
     /// <summary>
-    ///     조합 요청의 outer 경계. PlayerId가 없으면 조용히 끝내고 matchingId가 없으면 Finalizing과
-    ///     같은 INVALID_GAME_STATE 거부 bundle을 lane 밖에서 보낸다 (#325 — 매치 밖 조합 core는 없다).
-    ///     유효한 매치는 SessionBase의 outer operation lease를 빌려 ordered publisher에 active core와
-    ///     Finalizing rejection을 함께 넘긴다.
+    ///     조합 요청의 outer 경계. PlayerId가 없으면 조용히 끝내고 matchingId가 없으면 터미널과 같은
+    ///     INVALID_GAME_STATE 거부 bundle을 보낸다 (매치 밖 조합 core는 없다). 유효한 매치는 잠금 안에서
+    ///     core를 돌리고, 터미널이면 같은 거부 bundle을 보낸다.
     ///     ClientStartUnixMs는 legacy payload key/Int64 shape 보존 필드이며 순서 결정에는 사용하지 않는다.
     /// </summary>
     private Task HandleCombineItems(C_TO_G_COMBINE_ITEMS msg)
@@ -34,13 +33,13 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        return PublishOrderedSessionAction(
+        return RunUnderMatch(
             () => HandleCombineItemsCore(msg),
             () => SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INVALID_GAME_STATE));
     }
 
     /// <summary>
-    ///     매치 monitor와 publication capture 안에서 동기 완료해야 하는 권위 조합 core.
+    ///     매치 잠금 안에서 동기 완료해야 하는 권위 조합 core.
     ///     미션 부품 결합은 퇴역(#238)했고 배틀아이템·오브 조합과 기존 packet/log 순서만 유지한다.
     /// </summary>
     private Task HandleCombineItemsCore(C_TO_G_COMBINE_ITEMS msg)

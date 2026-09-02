@@ -3,7 +3,7 @@ namespace demo_regression_tests;
 public sealed class SwarmArenaTickOrderTests
 {
     [Fact]
-    public void ProximityAutoCombatTimer_UsesFiftyMillisecondCombatPublicationGate()
+    public void ProximityAutoCombatTimer_UsesFiftyMillisecondMatchLockPulse()
     {
         string root = FindRepositoryRoot();
         string source = ReadNormalizedSource(
@@ -21,14 +21,17 @@ public sealed class SwarmArenaTickOrderTests
             source,
             "private void ProcessProximityAutoCombatTick(object? state)",
             "private void ProcessProximityAutoCombatForMatching(");
+        // 바쁜 매치는 이 펄스를 버리고(TryEnter), 들어간 매치는 잠금 안에서 틱을 돌린다.
         AssertInOrder(
             tickBody,
             "_sessionRegistry.SnapshotWhere(",
-            "GetActiveMatchingIds()",
-            "_swarmCombatPublicationCoordinator.TryBeginDueRealtimeTurn(matchingId)",
-            "if (publicationTurn == null)",
-            "PrepareAndDispatchCombatPublication(",
-            "() => ProcessProximityAutoCombatForMatching(matchingId, activeSessions)");
+            "MatchRuntimes.ActiveIds()",
+            "MatchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "continue;",
+            "using (scope)",
+            "scope.Runtime.IsTerminal",
+            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);");
+        Assert.DoesNotContain("MatchRuntimes.Enter(", tickBody);
 
         string matchingBody = ReadMethodSlice(
             source,
@@ -56,48 +59,35 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             proximityTick,
             "_sessionRegistry.SnapshotWhere(",
-            "activeMatchingIds = GetActiveMatchingIds();",
+            "activeMatchingIds = MatchRuntimes.ActiveIds();",
             "Proximity auto combat snapshot failed",
             "foreach (long matchingId in activeMatchingIds)",
+            "MatchRuntimes.TryEnter(matchingId, out MatchScope scope)",
             "try",
-            "_swarmCombatPublicationCoordinator.TryBeginDueRealtimeTurn(matchingId)",
-            "PrepareAndDispatchCombatPublication(",
+            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
             "catch (Exception ex)",
             "MatchingId={MatchingId}");
-        Assert.Contains(
-            "() => ProcessProximityAutoCombatForMatching(matchingId, activeSessions)",
-            proximityTick);
         Assert.DoesNotContain("_proximityAutoCombatProcessing", proximity);
         Assert.DoesNotContain("Interlocked.Exchange(", proximityTick);
         Assert.DoesNotContain("Volatile.Write(", proximityTick);
+        Assert.DoesNotContain("PrepareAndDispatch", proximity);
+        Assert.DoesNotContain("Coordinator", proximity);
 
-        string publicationHelper = ReadMethodSlice(
-            proximity,
-            "private void PrepareAndDispatchCombatPublication(",
-            "private static void AddInventoryCombatActors(");
-        AssertInOrder(
-            publicationHelper,
-            "_matchRuntimeRegistry.TryAcquireOperation(",
-            "_swarmCombatPublicationCoordinator.BeginCapture(publicationTurn)",
-            "preparation();",
-            "preparationFailure = ExceptionDispatchInfo.Capture(ex);",
-            "publicationPlan = capture.Freeze();",
-            "_swarmCombatPublicationCoordinator.DispatchAndRetire(",
-            "publicationTurn.Dispose();",
-            "releaseOwnedRuntimeOperation?.Invoke();",
-            "pendingFailure?.Throw();");
-
+        // 5초 정산 틱은 잠금을 기다린다 — 전투 펄스보다 드물어 버릴 이유가 없다.
         string resourceTick = ReadMethodSlice(
             server,
             "private void ProcessResourceTick(object? state)",
-            "private void ProcessBotElimination(");
+            "/// <summary>\n    ///     #26: 봇 탈락 처리 + 게임 종료 판정.");
         AssertInOrder(
             resourceTick,
             "_sessionRegistry.SnapshotWhere(",
-            "GetActiveMatchingIds()",
-            "if (MatchStartGate.IsGameplayActive(matchingId))",
+            "MatchRuntimes.ActiveIds()",
+            "if (!MatchStartGate.IsGameplayActive(matchingId))",
+            "MatchRuntimes.Enter(matchingId, out MatchScope scope)",
+            "scope.Runtime.IsTerminal",
             "ProcessResourceTickForMatching(matchingId, activeSessions);",
             "catch (Exception ex)");
+        Assert.DoesNotContain("TryEnter", resourceTick);
 
         string matchingSettlement = ReadMethodSlice(
             settlement,
@@ -105,9 +95,6 @@ public sealed class SwarmArenaTickOrderTests
             "private void CleanupMatchSettlementState(");
         AssertInOrder(
             matchingSettlement,
-            "_swarmCombatPublicationCoordinator.BeginRequiredTurn(matchingId)",
-            "if (publicationTurn == null)",
-            "PrepareAndDispatchCombatPublication(",
             "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
             "var humans = activeSessions",
             "var bots = _botPlayerManager.GetBots(matchingId)",
@@ -118,8 +105,8 @@ public sealed class SwarmArenaTickOrderTests
             "ProcessBotElimination(",
             "_matchRosterManager.CheckGameOver(matchingId)",
             "resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);");
-        Assert.DoesNotContain("_matchRuntimeRegistry.TryExecute(", proximityTick);
-        Assert.DoesNotContain("_matchRuntimeRegistry.TryExecute(", matchingSettlement);
+        Assert.DoesNotContain("Enter(", matchingSettlement);
+        Assert.DoesNotContain("PublicationTurn", matchingSettlement);
     }
 
     [Fact]
@@ -179,7 +166,7 @@ public sealed class SwarmArenaTickOrderTests
             "BroadcastMonsterMinimapSnapshot(",
             "BuildSwarmArenaCombatActors(",
             "ProcessOrbRecovery(",
-            "AppendOrbVisualStatePublicationSteps(",
+            "DispatchOrbVisualStatePublications(",
             "BroadcastSwarmOrbRankings(",
             "ProcessSwarmGrowthOffers(",
             "ProcessSwarmScoreTimeout(",
@@ -232,12 +219,11 @@ public sealed class SwarmArenaTickOrderTests
 
         string orbPublicationSteps = ReadMethodSlice(
             proximity,
-            "private void AppendOrbVisualStatePublicationSteps(",
+            "private void DispatchOrbVisualStatePublications(",
             "private static ImmutableArray<int> CaptureSwarmOrbVisualItemIds(");
         AssertInOrder(
             orbPublicationSteps,
             "foreach (SwarmOrbVisualPublication publication in publications)",
-            "_swarmCombatPublicationCoordinator.AppendDeferredStep(",
             "CommitAndDispatchOrbVisualStatePublication(publication)",
             "_orbVisualStates[key] = state;",
             "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
@@ -251,13 +237,11 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             botElimination,
             "try",
-            "_swarmCombatPublicationCoordinator.TryBeginBestEffortGroup(",
             "_matchRosterManager.TryEliminatePlayer(",
             "DropBotInventoryAtCurrentPosition(",
             "foreach (var s in matchingSessions) s.Send(eliminatedPacket);",
-            "catch (Exception ex)",
-            "finally",
-            "publicationGroup?.Dispose();");
+            "catch (Exception ex)");
+        Assert.DoesNotContain("BestEffortGroup", botElimination);
 
         string humanElimination = ReadMethodSlice(
             sessionMatchEnd,
@@ -322,17 +306,11 @@ public sealed class SwarmArenaTickOrderTests
     }
 
     [Fact]
-    public void ScheduledClosureTick_CommitsStateBeforeTransportAndPublishesOutsideMatchMonitor()
+    public void ScheduledClosureTick_CommitsStateThenPublishesInsideMatchLock()
     {
         string root = FindRepositoryRoot();
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
-        string coordinator = ReadNormalizedSource(
-            root,
-            "game_server",
-            "Services",
-            "Field",
-            "SwarmClosurePublicationCoordinator.cs");
         string tick = ReadMethodSlice(
             server,
             "private void ProcessAreaClosureTick(object? state)",
@@ -350,16 +328,15 @@ public sealed class SwarmArenaTickOrderTests
             "private void PrepareDestroySwarmOrbsInClosedAreas(",
             "// 쌍 깔때기:");
 
+        // 매치 잠금 안에서 상태 확정 → 같은 순서로 송신 (#331). 폐쇄는 1초 틱이라 잠금을 기다린다.
         AssertInOrder(
             tick,
-            "_matchRuntimeRegistry.TryAcquireOperation(",
-            "sessionSnapshot = GetSessionsByMatch(matchingId).ToArray();",
-            "plan = PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);",
-            "_swarmClosurePublicationCoordinator.ReservePublication(matchingId)",
-            "DispatchWithMatchRuntimeLease(",
-            "_swarmClosurePublicationCoordinator.DispatchInOrder(",
-            "DispatchSwarmClosurePublicationPlan(capturedPlan, capturedSessions)");
-        Assert.DoesNotContain("_matchRuntimeRegistry.TryExecute(", tick);
+            "MatchRuntimes.Enter(matchingId, out MatchScope scope)",
+            "scope.Runtime.IsTerminal",
+            "GetSessionsByMatch(matchingId).ToArray();",
+            "PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);",
+            "DispatchSwarmClosurePublicationPlan(plan, sessionSnapshot)");
+        Assert.DoesNotContain("TryEnter", tick);
         Assert.DoesNotContain(".Send(", tick);
 
         AssertInOrder(
@@ -409,27 +386,6 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Contains("SendToCapturedRecipients(", dispatch);
         Assert.DoesNotContain("catch", dispatch);
         Assert.Contains("first transport exception", arena);
-        Assert.Contains("finally", coordinator);
-        Assert.Contains("state.ServingTicket++;", coordinator);
-        Assert.Contains("state.DispatchingTicket = ticket.Sequence;", coordinator);
-    }
-
-    [Fact]
-    public void ScheduledClosurePublicationCleanup_PrecedesAreaStateCleanup()
-    {
-        string root = FindRepositoryRoot();
-        string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
-
-        AssertInOrder(
-            server,
-            "\"bot movement ticks\"",
-            "_swarmBotTickCoordinator.ClearMatching",
-            "\"bot movement publication\"",
-            "_swarmBotMovementCoordinator.ClearMatching",
-            "\"field closure publication\"",
-            "_swarmClosurePublicationCoordinator.ClearMatching",
-            "\"area closure\"",
-            "_areaClosureManager.CleanupMatching");
     }
 
     [Fact]
@@ -476,19 +432,19 @@ public sealed class SwarmArenaTickOrderTests
     public void MatchExecutionBoundary_UsesMatchOwnedRandomAndThreadSafeCachesWithoutGlobalLock()
     {
         string root = FindRepositoryRoot();
-        string registry = ReadNormalizedSource(
-            root, "game_server", "Services", "MatchRuntimeRegistry.cs");
+        string store = ReadNormalizedSource(
+            root, "game_server", "Services", "MatchRuntimeStore.cs");
         string runtimeStates = ReadNormalizedSource(
             root, "game_server", "Services", "SwarmArenaStates.cs");
         string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
         string crossfire = ReadNormalizedSource(root, "game_server", "GameServer.SwarmCrossfire.cs");
 
-        Assert.DoesNotContain("_globalExecutionLock", registry);
-        // Finalization still reacquires SyncRoot to validate and commit. Operation acquisition
-        // shares one Monitor-based core so timer callers can choose non-blocking TryEnter.
-        Assert.Equal(4, CountOccurrences(registry, "lock (runtime.SyncRoot)"));
-        Assert.Contains("Monitor.Enter(runtime.SyncRoot, ref lockTaken);", registry);
-        Assert.Contains("Monitor.TryEnter(runtime.SyncRoot, ref lockTaken);", registry);
+        // 매치 하나에 모니터 하나 — 블로킹 진입과 펄스용 TryEnter가 같은 잠금 객체를 쓴다.
+        Assert.DoesNotContain("_globalExecutionLock", store);
+        Assert.Contains("Monitor.Enter(runtime.Sync);", store);
+        Assert.Contains("Monitor.TryEnter(runtime.Sync, ref lockTaken);", store);
+        Assert.Contains("Monitor.Exit(runtime.Sync);", store);
+        Assert.Contains("if (IsMatchTerminal(matchingId))", arena);
 
         Assert.DoesNotContain("_swarmCriticalRng", arena);
         Assert.DoesNotContain("_swarmCriticalRng", crossfire);

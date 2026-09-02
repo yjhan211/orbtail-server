@@ -134,7 +134,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         G_TO_C_SUMMON_STONE_STATE stoneState = token.DeserializeSingle<G_TO_C_SUMMON_STONE_STATE>(
             Protocol.G_TO_C_SUMMON_STONE_STATE);
         Assert.Equal(17, stoneState.State.StoneCount);
-        Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
+        Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
     }
 
     [Fact]
@@ -221,16 +221,15 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal((long)OrbColor.Red, success.TargetItemUid);
         Assert.Equal(20 - upgradeCost, success.StoneCount);
         Assert.Equal(0, success.TargetOrdinal);
-        Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
+        Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task FinalizingAfterOuterLease_RejectsBeforeCleanupWithoutCallingHandler(bool orbDecision)
+    public async Task TerminalWhileWaitingForLock_RejectsWithoutCallingHandler(bool orbDecision)
     {
         using var fixture = new SessionFixture();
-        var timeline = new ConcurrentQueue<string>();
         int growthCalls = 0;
         int orbCalls = 0;
         GameClientSession session = fixture.CreateSession(
@@ -239,42 +238,42 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             growthHandler: (_, _, _, _) => growthCalls++,
             orbHandler: (_, _, _, _, _) => orbCalls++);
         RecordingUserToken token = fixture.TokenFor(session);
-        token.BeforeSend = protocol => timeline.Enqueue($"send:{protocol}");
-        fixture.AfterMessageLeaseAcquired = matchingId =>
+        MatchRuntime runtime = fixture.Store.Get(FirstMatchingId)!;
+        using var lockHeld = new ManualResetEventSlim();
+        using var markTerminal = new ManualResetEventSlim();
+        Task holder = Task.Run(() =>
         {
-            Assert.True(fixture.Registry.TryFinalize(
-                matchingId,
-                static () => true,
-                () =>
-                {
-                    timeline.Enqueue("cleanup");
-                    fixture.Coordinator.ClearMatching(matchingId);
-                }));
-        };
+            using (fixture.Store.Enter(runtime))
+            {
+                lockHeld.Set();
+                Assert.True(markTerminal.Wait(TimeSpan.FromSeconds(5)));
+                Assert.True(runtime.TryMarkTerminal());
+            }
+        });
+        Assert.True(lockHeld.Wait(TimeSpan.FromSeconds(5)));
 
-        if (orbDecision)
-        {
-            await SendAsync(
+        Task message = orbDecision
+            ? Task.Run(() => SendAsync(
                 session,
                 Protocol.C_TO_G_SWARM_ORB_DECISION,
                 new C_TO_G_SWARM_ORB_DECISION
                 {
                     Action = Config.SWARM_ORB_DECISION_FAMILY_UPGRADE,
                     TargetItemUid = (long)OrbColor.Red
-                });
-        }
-        else
-        {
-            await SendAsync(
+                }))
+            : Task.Run(() => SendAsync(
                 session,
                 Protocol.C_TO_G_SWARM_GROWTH_PICK,
-                new C_TO_G_SWARM_GROWTH_PICK { OfferId = 17, CardIndex = 2 });
-        }
+                new C_TO_G_SWARM_GROWTH_PICK { OfferId = 17, CardIndex = 2 }));
+        await Task.Delay(100);
+        Assert.False(message.IsCompleted);
+        markTerminal.Set();
+        await holder.WaitAsync(TimeSpan.FromSeconds(5));
+        await message.WaitAsync(TimeSpan.FromSeconds(5));
 
         Protocol expected = orbDecision
             ? Protocol.G_TO_C_SWARM_ORB_DECISION_RESULT
             : Protocol.G_TO_C_SWARM_GROWTH_RESULT;
-        Assert.Equal([$"send:{expected}", "cleanup"], timeline);
         Assert.Equal([expected], token.DeliveredProtocols);
         Assert.Equal(0, growthCalls);
         Assert.Equal(0, orbCalls);
@@ -293,11 +292,11 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Assert.Equal(17, result.OfferId);
             Assert.Equal(2, result.CardIndex);
         }
-        Assert.Null(fixture.Coordinator.Inspect(FirstMatchingId));
+        Assert.Null(fixture.Store.Get(FirstMatchingId));
     }
 
     [Fact]
-    public async Task GrowthTransportFailure_CommitsAuthoritativeStateAndStopsWireSuffix()
+    public async Task GrowthTransportFailure_KeepsCommittedPrefixAndStopsWireAndStateSuffix()
     {
         using var fixture = new SessionFixture();
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
@@ -345,13 +344,15 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(offer.SpawnItemId, Assert.Single(
             fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId)).ItemId);
         Assert.Equal(17, fixture.SummonStones.GetSnapshot(FirstMatchingId, FirstPlayerId).StoneCount);
-        Assert.Equal(1, fixture.SummonStones.GetGrowthSuccessCount(FirstMatchingId, FirstPlayerId));
-        Assert.DoesNotContain((FirstMatchingId, FirstPlayerId), runtime.GrowthOffers.Offers.Keys);
-        Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
+        // 송신이 잠금 안에서 바로 나가므로 FAMILY_LEVELS Send 실패 뒤의 단계(성공 카운트·오퍼 회수)는
+        // 돌지 않는다 — 앞선 인벤토리·소환석 변경은 남는다.
+        Assert.Equal(0, fixture.SummonStones.GetGrowthSuccessCount(FirstMatchingId, FirstPlayerId));
+        Assert.Contains((FirstMatchingId, FirstPlayerId), runtime.GrowthOffers.Offers.Keys);
+        Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
     }
 
     [Fact]
-    public async Task OrbTransportFailure_CommitsUpgradeStopsWireSuffixAndReleasesRuntime()
+    public async Task OrbTransportFailure_CommitsUpgradeStopsWireSuffixAndReleasesLock()
     {
         using var fixture = new SessionFixture();
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
@@ -405,23 +406,16 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(1, fixture.Runtime(FirstMatchingId).OrbBoard.GetFamilyUpgradeCount(
             FirstPlayerId,
             OrbColor.Red));
-        Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
+        Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
 
-        bool cleanupRan = false;
-        Assert.True(fixture.Registry.TryFinalize(
-            FirstMatchingId,
-            static () => true,
-            () =>
-            {
-                cleanupRan = true;
-                fixture.Coordinator.ClearMatching(FirstMatchingId);
-            }));
-        Assert.True(cleanupRan);
-        Assert.Null(fixture.Coordinator.Inspect(FirstMatchingId));
+        // 실패한 핸들러가 잠금을 풀었으므로 종료 정리가 바로 진행된다.
+        fixture.MarkTerminal(FirstMatchingId);
+        Assert.Null(fixture.Store.Get(FirstMatchingId));
+        Assert.False(fixture.Runtimes.TryGet(FirstMatchingId, out _));
     }
 
     [Fact]
-    public async Task PreparationFailure_DispatchesCapturedPrefixAndStopsPreparationSuffix()
+    public async Task PreparationFailure_KeepsAlreadySentPrefixAndStopsPreparationSuffix()
     {
         using var fixture = new SessionFixture();
         bool prefixCommitted = false;
@@ -449,7 +443,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(
             [Protocol.G_TO_C_SWARM_GROWTH_RESULT, Protocol.G_TO_C_ERROR],
             fixture.TokenFor(session).DeliveredProtocols);
-        Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
     }
 
     [Fact]
@@ -494,8 +487,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
         release.Set();
         await firstTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.False(fixture.Coordinator.Inspect(FirstMatchingId)!.Value.HasActiveTurn);
-        Assert.False(fixture.Coordinator.Inspect(SecondMatchingId)!.Value.HasActiveTurn);
     }
 
     [Fact]
@@ -588,7 +579,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
         Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
-        Assert.Equal(2, CountOccurrences(orbSummon, "PublishOrderedSessionAction("));
+        Assert.Equal(2, CountOccurrences(orbSummon, "RunUnderMatch("));
         Assert.Contains("CurrentMapSubId <= 0", ReadMethodSlice(
             orbSummon,
             "private Task HandleSwarmGrowthPick(",
@@ -597,18 +588,16 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             orbSummon,
             "private Task HandleSwarmOrbDecision(",
             "internal void SendSwarmFamilyLevels("));
-        Assert.DoesNotContain("PublishOrderedSessionAction", ReadMethodSlice(
+        Assert.DoesNotContain("RunUnderMatch", ReadMethodSlice(
             orbSummon,
             "private Task HandleSummonOrb(",
             "internal bool ExecuteDraftOrbSummon("));
-        Assert.DoesNotContain("PublishOrderedSessionAction", ReadMethodSlice(
+        Assert.DoesNotContain("RunUnderMatch", ReadMethodSlice(
             orbSummon,
             "private Task HandleDestroyOrb(",
             "internal void SendSummonStoneState("));
-        Assert.DoesNotContain("BeginOrderedTurn", arena);
-        Assert.DoesNotContain("BeginOrderedTurn", orbBoard);
-        Assert.DoesNotContain("PublishOrderedSessionAction", arena);
-        Assert.DoesNotContain("PublishOrderedSessionAction", orbBoard);
+        Assert.DoesNotContain("RunUnderMatch", arena);
+        Assert.DoesNotContain("RunUnderMatch", orbBoard);
     }
 
     private static async Task SendAsync<T>(
@@ -679,23 +668,11 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         public SessionFixture()
         {
             Server = CreateServer();
-            Registry = GetField<MatchRuntimeRegistry>(Server, "_matchRuntimeRegistry");
-            Coordinator = GetField<SwarmCombatPublicationCoordinator>(
-                Server,
-                "_swarmCombatPublicationCoordinator");
+            Store = Server.MatchRuntimes;
             Inventories = GetField<InGameInventoryManager>(Server, "_inGameInventoryManager");
             SummonStones = GetField<SummonStoneManager>(Server, "_summonStoneManager");
             EventLog = GetField<GameEventLogManager>(Server, "_gameEventLogManager");
             Runtimes = GetField<SwarmMatchRuntimeStore>(Server, "_swarmMatchRuntimes");
-            Registry.SetRuntimeInitializer(matchingId =>
-            {
-                if (!Coordinator.RegisterMatching(matchingId))
-                    throw new InvalidOperationException($"Duplicate publication runtime {matchingId}.");
-            });
-            PublishOrdered = typeof(GameServer).GetMethod(
-                    "PublishOrderedSessionPublication",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!
-                .CreateDelegate<Action<long, Action, Action>>(Server);
             _growthHandler = typeof(GameServer).GetMethod(
                     "HandleSwarmGrowthPick",
                     BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
@@ -710,10 +687,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         }
 
         public GameServer Server { get; }
-        public MatchRuntimeRegistry Registry { get; }
-        public SwarmCombatPublicationCoordinator Coordinator { get; }
+        public MatchRuntimeStore Store { get; }
         public SwarmMatchRuntimeStore Runtimes { get; }
-        public Action<long, Action, Action> PublishOrdered { get; }
         public InGameInventoryManager Inventories { get; }
         public SummonStoneManager SummonStones { get; }
         public GameEventLogManager EventLog { get; }
@@ -725,7 +700,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         public AreaClosureManager Closures { get; } = new(NullLogger.Instance);
         public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
         public EncounterRevealManager Encounters { get; } = new();
-        public Action<long>? AfterMessageLeaseAcquired { get; set; }
 
         public GameClientSession CreateSession(
             long matchingId,
@@ -733,6 +707,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Action<GameClientSession, long, int, int>? growthHandler = null,
             Action<GameClientSession, long, int, long, long>? orbHandler = null)
         {
+            Store.GetOrCreate(matchingId);
             AreaStocks.InitializeMatching(matchingId);
             GroundItems.InitializeMatching(matchingId);
             Doors.InitializeMatching(matchingId);
@@ -762,15 +737,10 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 EventLog,
                 new MatchSummaryFileStore(_summaryDirectory),
                 Encounters,
-                Coordinator.TryCapturePacket,
-                PublishOrdered,
-                static (_, publish) => publish(),
+                Store,
                 growthHandler ?? _growthHandler,
                 orbHandler ?? _orbHandler,
                 static _ => Random.Shared,
-                AcquireOperation,
-                Registry.TryExecute,
-                static (_, _, _) => { },
                 static (_, _) => { },
                 static (_, _) => null,
                 static (_, _) => { },
@@ -786,6 +756,16 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
         public SwarmMatchRuntime Runtime(long matchingId) => Runtimes.GetOrCreate(matchingId);
 
+        /// <summary>잠금 안에서 터미널로 표시하고 나온다 — 정리는 깊이 0 탈출에서 바로 돈다.</summary>
+        public void MarkTerminal(long matchingId)
+        {
+            MatchRuntime runtime = Store.Get(matchingId)!;
+            using (Store.Enter(runtime))
+            {
+                Assert.True(runtime.TryMarkTerminal());
+            }
+        }
+
         public void SetMatchingId(GameClientSession session, long matchingId) =>
             SetProperty(session, nameof(GameClientSession.CurrentMapSubId), matchingId);
 
@@ -799,14 +779,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         {
             if (Directory.Exists(_summaryDirectory))
                 Directory.Delete(_summaryDirectory, recursive: true);
-        }
-
-        private IDisposable? AcquireOperation(long matchingId, Action onAcquired)
-        {
-            IDisposable? operation = Registry.TryAcquireOperation(matchingId, onAcquired);
-            if (operation != null)
-                AfterMessageLeaseAcquired?.Invoke(matchingId);
-            return operation;
         }
 
         private static void SetIdentity(GameClientSession session, long matchingId, long playerId)

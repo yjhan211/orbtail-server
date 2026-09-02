@@ -5,12 +5,13 @@ using game_server.network;
 using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 using network.contracts.authentication;
 using network.core;
+using network.helpers;
 using network.hosting;
 using network.infrastructure;
 using network.interfaces;
@@ -18,56 +19,40 @@ using network.packets;
 
 namespace demo_regression_tests;
 
+/// <summary>
+///     카운트다운 방송과 입장 실패 중단 (#331): 둘 다 매치 잠금 안에서 확정된다 — 초는 한 번만,
+///     입장 실패는 터미널을 이긴 호출이 로스터 전원을 한 번 끊고 늦은 호출은 자기 세션만 정리한다.
+/// </summary>
 public sealed class MatchStartCountdownPublicationTests
 {
     [Fact]
-    public void PeriodicCountdown_UsesSharedOrderedTurnAndPreservesBotTickBoundary()
+    public void PeriodicCountdown_SourceContract_PublishesInsideMatchLockFromMatchTick()
     {
         string repositoryRoot = FindRepositoryRoot();
         string server = ReadNormalizedSource(repositoryRoot, "game_server", "GameServer.cs");
-        string botMovement = ReadNormalizedSource(
+        string combat = ReadNormalizedSource(
             repositoryRoot,
             "game_server",
-            "GameServer.BotMovement.cs");
+            "GameServer.ProximityAutoCombat.cs");
         string broadcast = ReadMethodSlice(
             server,
             "private void BroadcastMatchStartCountdowns(",
             "private void CheckHeartbeatTimeouts(");
-        string botScheduler = ReadMethodSlice(
-            botMovement,
-            "private void ProcessBotMovement(object? state)",
-            "private Task? TryStartBotMovementWorker(");
-        string botStarter = ReadMethodSlice(
-            botMovement,
-            "private Task? TryStartBotMovementWorker(",
-            "private void ProcessBotMovementForMatching(");
-        string botWorker = ReadMethodSlice(
-            botMovement,
-            "private void ProcessBotMovementForMatching(",
-            "private void ReleaseBotMovementTickClaim(");
-        string botRelease = ReadMethodSlice(
-            botMovement,
-            "private void ReleaseBotMovementTickClaim(",
-            "private void PublishBotMovementMetrics(");
-        string botWorkerFinalization = ReadMethodSlice(
-            botWorker,
-            "        finally\n        {",
-            "            if (metricsBatch != null)");
+        string matchTick = ReadMethodSlice(
+            combat,
+            "private void ProcessProximityAutoCombatTick(object? state)",
+            "private void ProcessProximityAutoCombatForMatching(");
 
         Assert.DoesNotContain("_lastMatchStartCountdownBroadcast", server);
-        Assert.DoesNotContain("countdown broadcast", server);
-        Assert.DoesNotContain("_matchRuntimeRegistry.TryExecute(", broadcast);
         AssertInOrder(
             broadcast,
             "MatchStartGate.IsAdmissionTimedOut(matchingId, DateTime.UtcNow)",
             "AbortMatchAfterAdmissionFailure(anchorSession);",
-            "var preliminarySnapshot = MatchStartGate.GetSnapshot(matchingId);",
-            "_swarmCombatPublicationCoordinator.NeedsPeriodicCountdownPublication(",
-            "_swarmCombatPublicationCoordinator.BeginOrderedTurn(matchingId)",
-            "if (publicationTurn == null)",
-            "PrepareAndDispatchCombatPublication(",
+            "MatchRuntimes.Enter(matchingId, out MatchScope scope)",
+            "scope.Runtime.IsTerminal",
             "var snapshot = MatchStartGate.GetSnapshot(matchingId);",
-            "_swarmCombatPublicationCoordinator.TryCommitPeriodicCountdownPublication(",
+            "pacing.LastCountdownSecondsPublished == snapshot.RemainingSeconds",
+            "pacing.LastCountdownSecondsPublished = snapshot.RemainingSeconds;",
             ".Where(session => session.CurrentMapSubId == matchingId)",
             "if (matchingSessions.Count == 0)",
             "Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN)",
@@ -76,64 +61,16 @@ public sealed class MatchStartCountdownPublicationTests
             "ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()",
             "foreach (var session in matchingSessions)",
             "session.Send(packet);");
-        Assert.Equal(2, CountOccurrences(broadcast, "MatchStartGate.GetSnapshot(matchingId)"));
         Assert.DoesNotContain("anchorSession.DisconnectForAdmissionFailure();", broadcast);
 
+        // 매치 틱은 잠금 안에서 카운트다운을 먼저 보내고 전투·봇 걸음을 잇는다.
         AssertInOrder(
-            botScheduler,
-            "var workers = new List<Task>();",
-            "_sessionRegistry",
-            "GetActiveMatchingIds();",
-            "foreach (long matchingId in matchingIds)",
-            "TryStartBotMovementWorker(matchingId, activeSessions);",
-            "if (worker != null)",
-            "workers.Add(worker);",
-            "finally",
-            "Task.WhenAll(workers).GetAwaiter().GetResult();");
-        Assert.DoesNotContain("_botMovementProcessing", botMovement);
-        AssertInOrder(
-            botStarter,
-            "MatchStartGate.IsGameplayActive(matchingId)",
-            "_botPlayerManager.HasBots(matchingId)",
-            "_matchRuntimeRegistry.TryAcquireOperationIfAvailable(",
-            "_swarmBotTickCoordinator.TryBegin(",
-            "if (outerRuntimeOperation == null)",
-            "_swarmBotTickCoordinator.TryRecordBusySkip(matchingId)",
-            "if (tickLease == null)",
-            "ReleaseBotMovementTickClaim(",
-            "Task.Run(",
-            "ProcessBotMovementForMatching(");
-        AssertInOrder(
-            botStarter,
-            "Task.Run(",
-            "catch (Exception ex)",
-            "ReleaseBotMovementTickClaim(",
-            "Failed to schedule bot movement worker");
-        Assert.Equal(
-            2,
-            CountOccurrences(botStarter, "ReleaseBotMovementTickClaim("));
-        AssertInOrder(
-            botWorker,
-            "BroadcastMatchStartCountdowns([matchingId], activeSessions);",
-            "MatchStartGate.IsGameplayActive(matchingId)",
-            "_botPlayerManager.HasBots(matchingId)",
-            "_matchRuntimeRegistry.TryExecute(",
-            "_swarmBotMovementCoordinator.PrepareTick(",
-            "_swarmBotMovementCoordinator.ReservePublication(matchingId)",
-            "_swarmBotMovementCoordinator.DispatchInOrder(",
-            "_swarmBotTickCoordinator.Record(",
-            "ReleaseBotMovementTickClaim(",
-            "PublishBotMovementMetrics(metricsBatch);");
-        AssertInOrder(
-            botWorkerFinalization,
-            "_swarmBotTickCoordinator.Record(",
-            "catch (Exception ex)",
-            "finally",
-            "ReleaseBotMovementTickClaim(");
-        AssertInOrder(
-            botRelease,
-            "outerRuntimeOperation?.Dispose();",
-            "_swarmBotTickCoordinator.Retire(tickLease);");
+            matchTick,
+            "MatchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "using (scope)",
+            "BroadcastMatchStartCountdowns([matchingId], countdownSessions);",
+            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
+            "ProcessBotMovementForMatching(matchingId)");
     }
 
     [Fact]
@@ -153,7 +90,7 @@ public sealed class MatchStartCountdownPublicationTests
         string connect = ReadMethodSlice(
             connection,
             "private async Task HandleConnect(C_TO_G_CONNECT msg)",
-            "private async Task LoadBotsIfNeeded(");
+            "private void RunUnderLiveMatch(");
         string directCountdown = ReadMethodSlice(
             connection,
             "private void SendMatchStartCountdown(long matchingId)",
@@ -168,7 +105,7 @@ public sealed class MatchStartCountdownPublicationTests
             "MatchStartGate.MarkHumanReady(matchingId, PlayerId.Value);",
             "SendMatchStartCountdown(matchingId);",
             "using Packet successResponse = CreateConnectResultPacket(",
-            "_executeMatchRuntime(matchingId, () =>",
+            "RunUnderLiveMatch(runtime, () =>",
             "Token.TryMarkAuthenticated(() => Volatile.Write(ref _admissionCompleted, 1))",
             "TryPublishCommittedConnectResult(successResponse)");
         AssertInOrder(
@@ -180,8 +117,7 @@ public sealed class MatchStartCountdownPublicationTests
             "private Task HandleMatchStartReady()",
             "MatchStartGate.MarkHumanReady(CurrentMapSubId, PlayerId.Value);",
             "SendMatchStartCountdown(CurrentMapSubId);");
-        Assert.DoesNotContain("BeginOrderedTurn", connection);
-        Assert.DoesNotContain("TryCommitPeriodicCountdownPublication", connection);
+        Assert.DoesNotContain("LastCountdownSecondsPublished", connection);
 
         AssertInOrder(
             gameplayActive,
@@ -192,230 +128,130 @@ public sealed class MatchStartCountdownPublicationTests
     }
 
     [Fact]
-    public void AdmissionFailure_FreezesWinningRosterAndDefersFatalDisconnectToRequiredTurn()
+    public async Task PeriodicCountdown_PublishesEachSecondOnceUnderMatchLock()
     {
-        string repositoryRoot = FindRepositoryRoot();
-        string server = ReadNormalizedSource(repositoryRoot, "game_server", "GameServer.cs");
-        string method = ReadMethodSlice(
-            server,
-            "private void AbortMatchAfterAdmissionFailure(GameClientSession session)",
-            "private bool TryAbortMatchAtTerminalBoundary(");
-        string boundary = ReadMethodSlice(
-            server,
-            "private bool TryAbortMatchAtTerminalBoundary(",
-            "private void PublishAdmissionFailureTerminalDisconnect(");
-        string publication = ReadMethodSlice(
-            server,
-            "private void PublishAdmissionFailureTerminalDisconnect(",
-            "/// <summary>\n    ///     Claims each player/subject during pre-finalization");
-        string lifecyclePreparation = ReadMethodSlice(
-            server,
-            "private void PrepareAdmissionFailureLifecycle(",
-            "private void DispatchPreparedAdmissionFailureLifecycle(");
-        string lifecycleDispatch = ReadMethodSlice(
-            server,
-            "private void DispatchPreparedAdmissionFailureLifecycle(",
-            "/// <summary>\n    ///     사람 세션 없이");
-
-        AssertInOrder(
-            method,
-            "TryAbortMatchAtTerminalBoundary(",
-            "_sessionRegistry.TryGetCurrent(playerId",
-            "List<GameClientSession> affectedSessions = GetSessionsByMatch(matchingId);",
-            "affectedSession.TryMarkMatchingLifecycleHandledExternally();",
-            "session.HandoffHumanPlayerIds.Count > 0",
-            "new AdmissionFailureTerminalSnapshot(");
-        Assert.Equal(1, CountOccurrences(method, "GetSessionsByMatch(matchingId)"));
-        AssertInOrder(
-            method,
-            "PublishMatchingLifecycle(",
-            "MatchingLifecycleSubjects.PlayerAdmissionFailed,",
-            "session.DisconnectForAdmissionFailure();");
-
-        AssertInOrder(
-            boundary,
-            "AdmissionFailureTerminalSnapshot? winnerSnapshot = null;",
-            "int winnerMarker = 0;",
-            "winnerSnapshot = captureWinnerSnapshot();",
-            "Volatile.Write(ref winnerMarker, 1);",
-            "Volatile.Read(ref winnerMarker) == 0 || winnerSnapshot == null",
-            "beforeLostFinalization?.Invoke(lifecyclePublications);",
-            "PrepareAdmissionFailureLifecycle(",
-            "PublishAdmissionFailureTerminalDisconnect(matchingId, winnerSnapshot.Sessions);",
-            "DispatchPreparedAdmissionFailureLifecycle(matchingId, lifecyclePublications);");
-        AssertInOrder(
-            publication,
-            "PublishRequiredTerminalAction(",
-            "foreach (GameClientSession affectedSession in sessions)",
-            "affectedSession.DisconnectForAdmissionFailure();");
-        Assert.DoesNotContain("PublishMatchingLifecycle", publication);
-        AssertInOrder(
-            lifecyclePreparation,
-            "PrepareMatchingLifecyclePublication(",
-            "MatchingLifecycleSubjects.PlayerAdmissionFailed",
-            "lifecyclePublications.Add(publication);");
-        AssertInOrder(
-            lifecycleDispatch,
-            "foreach (Action publication in lifecyclePublications)",
-            "publication();");
-    }
-
-    [Fact]
-    public void AdmissionFailure_LosingNormalFinalizer_DefersFallbackUntilWinnerSubjectIsClaimed()
-    {
-        const long matchingId = 71_005;
-        const long completedPlayerId = 601;
-        const long excludedLatePlayerId = 602;
+        const long matchingId = 71_002;
         GameServer server = CreateAdmissionTestServer();
-        (MatchRuntimeRegistry runtimeRegistry, _) = InitializePublicationRuntime(server);
-        ConfigureAdmissionCleanup(server, runtimeRegistry);
-        var sessionRegistry = Assert.IsType<GameSessionRegistry>(
-            typeof(GameServer)
-                .GetField("_sessionRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(server));
-        var completedSession = new RecordingAdmissionSession();
-        SetSessionIdentity(completedSession, completedPlayerId, matchingId);
-        Assert.Null(sessionRegistry.Register(completedPlayerId, completedSession, out bool completedAdded));
-        Assert.True(completedAdded);
-        var excludedLateSession = new RecordingAdmissionSession();
-        SetSessionIdentity(excludedLateSession, excludedLatePlayerId, matchingId);
-        Assert.Null(sessionRegistry.Register(excludedLatePlayerId, excludedLateSession, out bool excludedAdded));
-        Assert.True(excludedAdded);
-
-        // ReportAdmissionFailureOnce has already reserved this session marker before the normal
-        // finalizer wins. The late before hook must still prepare its exact admission-failed event.
-        Assert.True(completedSession.TryMarkMatchingLifecycleHandledExternally());
-
-        IDisposable operation = Assert.IsAssignableFrom<IDisposable>(
-            runtimeRegistry.TryAcquireOperation(matchingId, static () => { }));
-        Action? normalLifecyclePublication = null;
-        Assert.True(runtimeRegistry.TryFinalize(
+        MatchRuntime runtime = server.MatchRuntimes.GetOrCreate(matchingId);
+        MatchStartGate.RegisterHumanPlayer(
             matchingId,
-            static () => true,
-            beforeFinalized: () =>
+            playerId: 301,
+            botCount: Config.SWARM_PLAYERS_PER_MATCH - 1);
+        try
+        {
+            var first = new RecordingAdmissionSession();
+            SetSessionIdentity(first, 301, matchingId);
+            var second = new RecordingAdmissionSession();
+            SetSessionIdentity(second, 302, matchingId);
+            var differentMatch = new RecordingAdmissionSession();
+            SetSessionIdentity(differentMatch, 999, matchingId + 1);
+
+            using var lockHeld = new ManualResetEventSlim();
+            using var releaseLock = new ManualResetEventSlim();
+            Task holder = Task.Run(() =>
             {
-                normalLifecyclePublication = PrepareLifecyclePublication(
-                    server,
-                    MatchingLifecycleSubjects.PlayerCompleted,
-                    completedPlayerId,
-                    matchingId);
-            },
-            cleanup: static () => { },
-            afterFinalized: () => normalLifecyclePublication?.Invoke()));
-
-        InvokeAdmissionAbort(server, completedSession);
-        InvokeAdmissionAbort(server, excludedLateSession);
-
-        ConcurrentDictionary<long, ConcurrentDictionary<long, string>> terminalSubjects =
-            GetTerminalSubjects(server);
-        Assert.False(terminalSubjects.ContainsKey(matchingId));
-
-        operation.Dispose();
-
-        ConcurrentDictionary<long, string> playerSubjects = terminalSubjects[matchingId];
-        Assert.Equal(2, playerSubjects.Count);
-        Assert.Equal(
-            MatchingLifecycleSubjects.PlayerCompleted,
-            playerSubjects[completedPlayerId]);
-        Assert.Equal(
-            MatchingLifecycleSubjects.PlayerAdmissionFailed,
-            playerSubjects[excludedLatePlayerId]);
-        Assert.Equal(1, completedSession.FatalCount);
-        Assert.Equal(1, excludedLateSession.FatalCount);
-    }
-
-    [Fact]
-    public void AdmissionFailure_AfterCompletedTombstone_PublishesExactlyOneLateFailureAndClosesAnchor()
-    {
-        const long matchingId = 71_007;
-        const long playerId = 604;
-        GameServer server = CreateAdmissionTestServer();
-        (MatchRuntimeRegistry runtimeRegistry, _) = InitializePublicationRuntime(server);
-        ConfigureAdmissionCleanup(server, runtimeRegistry);
-        var sessionRegistry = Assert.IsType<GameSessionRegistry>(
-            typeof(GameServer)
-                .GetField("_sessionRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(server));
-        var session = new RecordingAdmissionSession();
-        SetSessionIdentity(session, playerId, matchingId);
-        Assert.Null(sessionRegistry.Register(playerId, session, out bool added));
-        Assert.True(added);
-
-        Assert.True(runtimeRegistry.TryExecute(matchingId, static () => { }));
-        Assert.True(runtimeRegistry.TryFinalize(
-            matchingId,
-            static () => true,
-            cleanup: static () => { }));
-        Assert.True(runtimeRegistry.IsTerminal(matchingId));
-
-        InvokeAdmissionAbort(server, session);
-        InvokeAdmissionAbort(server, session);
-
-        ConcurrentDictionary<long, string> playerSubjects = GetTerminalSubjects(server)[matchingId];
-        Assert.Single(playerSubjects);
-        Assert.Equal(MatchingLifecycleSubjects.PlayerAdmissionFailed, playerSubjects[playerId]);
-        Assert.Equal(1, session.FatalCount);
-        Assert.Equal(1, session.DisconnectCount);
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task AdmissionFailure_WhenBeforeHookIsAlreadyClosed_UsesLateFallbackAfterCommit(
-        bool blockBeforeFinalized)
-    {
-        long matchingId = blockBeforeFinalized ? 71_008 : 71_009;
-        long playerId = blockBeforeFinalized ? 605 : 606;
-        GameServer server = CreateAdmissionTestServer();
-        (MatchRuntimeRegistry runtimeRegistry, _) = InitializePublicationRuntime(server);
-        ConfigureAdmissionCleanup(server, runtimeRegistry);
-        var sessionRegistry = Assert.IsType<GameSessionRegistry>(
-            typeof(GameServer)
-                .GetField("_sessionRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(server));
-        var session = new RecordingAdmissionSession();
-        SetSessionIdentity(session, playerId, matchingId);
-        Assert.Null(sessionRegistry.Register(playerId, session, out bool added));
-        Assert.True(added);
-        Assert.True(runtimeRegistry.TryExecute(matchingId, static () => { }));
-
-        using var phaseEntered = new ManualResetEventSlim(initialState: false);
-        using var releasePhase = new ManualResetEventSlim(initialState: false);
-        Task<bool> winner = Task.Run(() => runtimeRegistry.TryFinalize(
-            matchingId,
-            static () => true,
-            beforeFinalized: () =>
-            {
-                if (blockBeforeFinalized)
+                using (server.MatchRuntimes.Enter(runtime))
                 {
-                    phaseEntered.Set();
-                    Assert.True(releasePhase.Wait(TimeSpan.FromSeconds(5)));
+                    lockHeld.Set();
+                    Assert.True(releaseLock.Wait(TimeSpan.FromSeconds(5)));
                 }
-            },
-            cleanup: () =>
+            });
+            Assert.True(lockHeld.Wait(TimeSpan.FromSeconds(5)));
+
+            Task broadcast = Task.Run(() => InvokePeriodicBroadcast(
+                server,
+                [matchingId],
+                [first, second, differentMatch]));
+            await Task.Delay(100);
+            Assert.False(broadcast.IsCompleted);
+            Assert.Equal(0, first.SendCount);
+            Assert.Equal(0, second.SendCount);
+
+            releaseLock.Set();
+            await holder.WaitAsync(TimeSpan.FromSeconds(5));
+            await broadcast.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.Equal(1, first.SendCount);
+            Assert.Equal(1, second.SendCount);
+            Assert.Equal(0, differentMatch.SendCount);
+            byte[] firstWire = Assert.Single(first.DeliveredWireBytes);
+            byte[] secondWire = Assert.Single(second.DeliveredWireBytes);
+            Assert.Equal(firstWire, secondWire);
+            Assert.Equal(
+                (int)Protocol.G_TO_C_MATCH_START_COUNTDOWN,
+                BitConverter.ToInt32(firstWire, Config.HEADER_SIZE));
+            var body = MessagePackSerializer.Deserialize<G_TO_C_MATCH_START_COUNTDOWN>(
+                firstWire[(Config.HEADER_SIZE + sizeof(int) + sizeof(long))..]);
+            Assert.Equal(matchingId, body.MatchingId);
+            Assert.Equal(-1, body.RemainingSeconds);
+            Assert.True(body.ServerUnixMs > 0);
+
+            // 같은 초는 다시 보내지 않는다.
+            InvokePeriodicBroadcast(
+                server,
+                [matchingId],
+                [first, second, differentMatch]);
+            Assert.Equal(1, first.SendCount);
+            Assert.Equal(1, second.SendCount);
+
+            // 수신자가 없어도 초는 기록된다 — 늦게 붙은 세션이 옛 초를 받지 않는다.
+            const long noRecipientMatchingId = 71_003;
+            server.MatchRuntimes.GetOrCreate(noRecipientMatchingId);
+            MatchStartGate.RegisterHumanPlayer(
+                noRecipientMatchingId,
+                playerId: 401,
+                botCount: Config.SWARM_PLAYERS_PER_MATCH - 1);
+            try
             {
-                if (!blockBeforeFinalized)
-                {
-                    phaseEntered.Set();
-                    Assert.True(releasePhase.Wait(TimeSpan.FromSeconds(5)));
-                }
-            },
-            afterFinalized: null));
-
-        Assert.True(phaseEntered.Wait(TimeSpan.FromSeconds(2)));
-        Task lateAbort = Task.Run(() => InvokeAdmissionAbort(server, session));
-        releasePhase.Set();
-        Assert.True(await winner.WaitAsync(TimeSpan.FromSeconds(2)));
-        await lateAbort.WaitAsync(TimeSpan.FromSeconds(2));
-
-        ConcurrentDictionary<long, string> playerSubjects = GetTerminalSubjects(server)[matchingId];
-        Assert.Single(playerSubjects);
-        Assert.Equal(MatchingLifecycleSubjects.PlayerAdmissionFailed, playerSubjects[playerId]);
-        Assert.Equal(1, session.FatalCount);
+                InvokePeriodicBroadcast(server, [noRecipientMatchingId], []);
+                Assert.Equal(-1, GetPacing(server, noRecipientMatchingId).LastCountdownSecondsPublished);
+            }
+            finally
+            {
+                MatchStartGate.RemoveMatching(noRecipientMatchingId);
+            }
+        }
+        finally
+        {
+            MatchStartGate.RemoveMatching(matchingId);
+        }
     }
 
     [Fact]
-    public async Task AdmissionFailure_WaitsForLeaseAndRequiredTurn_AndDisconnectsRosterExactlyOnce()
+    public void PeriodicCountdown_TransportFailureCommitsSecondWithoutRetry()
+    {
+        const long matchingId = 71_004;
+        GameServer server = CreateAdmissionTestServer();
+        server.MatchRuntimes.GetOrCreate(matchingId);
+        MatchStartGate.RegisterHumanPlayer(
+            matchingId,
+            playerId: 501,
+            botCount: Config.SWARM_PLAYERS_PER_MATCH - 1);
+        try
+        {
+            var failing = new RecordingAdmissionSession(throwOnSend: true);
+            SetSessionIdentity(failing, 501, matchingId);
+
+            TargetInvocationException failure = Assert.Throws<TargetInvocationException>(
+                () => InvokePeriodicBroadcast(server, [matchingId], [failing]));
+            Assert.IsType<InvalidOperationException>(failure.InnerException);
+            Assert.Equal(1, failing.SendCount);
+            Assert.Equal(-1, GetPacing(server, matchingId).LastCountdownSecondsPublished);
+            // 실패해도 잠금은 풀린다.
+            Assert.True(server.MatchRuntimes.TryEnter(matchingId, out MatchScope scope));
+            scope.Dispose();
+
+            InvokePeriodicBroadcast(server, [matchingId], [failing]);
+            Assert.Equal(1, failing.SendCount);
+        }
+        finally
+        {
+            MatchStartGate.RemoveMatching(matchingId);
+        }
+    }
+
+    [Fact]
+    public void AdmissionFailure_WinnerDisconnectsRosterOnce_AndLateCallsFallBackToSelf()
     {
         const long matchingId = 71_001;
         GameServer server = CreateAdmissionTestServer();
@@ -423,21 +259,7 @@ public sealed class MatchStartCountdownPublicationTests
             typeof(GameServer)
                 .GetField("_sessionRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(server));
-        (MatchRuntimeRegistry runtimeRegistry, SwarmCombatPublicationCoordinator coordinator) =
-            InitializePublicationRuntime(server);
-        var cleanupCoordinator = new MatchRuntimeCleanupCoordinator(
-            runtimeRegistry,
-            [
-                new MatchRuntimeCleanupStep(
-                    "session index",
-                    sessionRegistry.RemoveMatch)
-            ],
-            NullLogger<GameServer>.Instance);
-        typeof(GameServer)
-            .GetField(
-                "_matchRuntimeCleanupCoordinator",
-                BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(server, cleanupCoordinator);
+        MatchRuntime runtime = server.MatchRuntimes.GetOrCreate(matchingId);
 
         var anchor = new RecordingAdmissionSession();
         SetSessionIdentity(anchor, playerId: 101, matchingId);
@@ -449,38 +271,67 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.True(otherAdded);
         Assert.Equal(2, sessionRegistry.GetByMatch(matchingId).Count);
 
-        IDisposable operation = Assert.IsAssignableFrom<IDisposable>(
-            runtimeRegistry.TryAcquireOperation(matchingId, static () => { }));
-        SwarmCombatPublicationCoordinator.PublicationTurn inFlightTurn =
-            Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                coordinator.TryBeginDueRealtimeTurn(matchingId));
+        InvokeAdmissionAbort(server, anchor);
 
-        Task firstAbort = Task.Run(() => InvokeAdmissionAbort(server, anchor));
-        Assert.True(SpinWait.SpinUntil(
-            () => runtimeRegistry.IsTerminal(matchingId),
-            TimeSpan.FromSeconds(2)));
-        Task secondAbort = Task.Run(() => InvokeAdmissionAbort(server, other));
-        await Task.WhenAll(firstAbort, secondAbort).WaitAsync(TimeSpan.FromSeconds(2));
-
-        Assert.Equal(0, anchor.FatalCount);
-        Assert.Equal(0, other.FatalCount);
-
-        Task releaseOperation = Task.Run(operation.Dispose);
-        Assert.True(SpinWait.SpinUntil(
-            () => coordinator.Inspect(matchingId)?.RequiredWaiterCount == 1,
-            TimeSpan.FromSeconds(2)));
-        Assert.Equal(0, anchor.FatalCount);
-        Assert.Equal(0, other.FatalCount);
-
-        inFlightTurn.Dispose();
-        await releaseOperation.WaitAsync(TimeSpan.FromSeconds(2));
-
+        Assert.True(runtime.IsTerminal);
+        Assert.Null(server.MatchRuntimes.Get(matchingId));
         Assert.Equal(1, anchor.FatalCount);
         Assert.Equal(1, anchor.DisconnectCount);
         Assert.Equal(1, other.FatalCount);
         Assert.Equal(1, other.DisconnectCount);
         Assert.Empty(sessionRegistry.GetByMatch(matchingId));
-        Assert.True(runtimeRegistry.IsTerminal(matchingId));
+        ConcurrentDictionary<long, string> playerSubjects = GetTerminalSubjects(server)[matchingId];
+        Assert.Equal(MatchingLifecycleSubjects.PlayerAdmissionFailed, playerSubjects[101]);
+
+        // 이미 끝난 매치에 늦게 온 호출은 자기 세션의 admission_failed만 발행하고 끊기는 반복하지 않는다.
+        InvokeAdmissionAbort(server, other);
+        InvokeAdmissionAbort(server, other);
+
+        Assert.Equal(2, playerSubjects.Count);
+        Assert.Equal(MatchingLifecycleSubjects.PlayerAdmissionFailed, playerSubjects[202]);
+        Assert.Equal(1, other.FatalCount);
+        Assert.Equal(1, other.DisconnectCount);
+    }
+
+    [Fact]
+    public void AdmissionFailure_AfterNormalCompletion_KeepsCompletedSubjectAndClosesOnce()
+    {
+        const long matchingId = 71_005;
+        const long completedPlayerId = 601;
+        GameServer server = CreateAdmissionTestServer();
+        var sessionRegistry = Assert.IsType<GameSessionRegistry>(
+            typeof(GameServer)
+                .GetField("_sessionRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(server));
+        var completedSession = new RecordingAdmissionSession();
+        SetSessionIdentity(completedSession, completedPlayerId, matchingId);
+        Assert.Null(sessionRegistry.Register(completedPlayerId, completedSession, out bool completedAdded));
+        Assert.True(completedAdded);
+
+        // 정상 종료가 잠금 안에서 subject를 먼저 선점하고 터미널로 끝난다.
+        MatchRuntime runtime = server.MatchRuntimes.GetOrCreate(matchingId);
+        Action? completion;
+        using (server.MatchRuntimes.Enter(runtime))
+        {
+            completion = PrepareLifecyclePublication(
+                server,
+                MatchingLifecycleSubjects.PlayerCompleted,
+                completedPlayerId,
+                matchingId);
+            Assert.True(runtime.TryMarkTerminal());
+        }
+
+        Assert.NotNull(completion);
+        Assert.Null(server.MatchRuntimes.Get(matchingId));
+
+        InvokeAdmissionAbort(server, completedSession);
+        InvokeAdmissionAbort(server, completedSession);
+
+        ConcurrentDictionary<long, string> playerSubjects = GetTerminalSubjects(server)[matchingId];
+        Assert.Single(playerSubjects);
+        Assert.Equal(MatchingLifecycleSubjects.PlayerCompleted, playerSubjects[completedPlayerId]);
+        Assert.Equal(1, completedSession.FatalCount);
+        Assert.Equal(1, completedSession.DisconnectCount);
     }
 
     [Fact]
@@ -508,125 +359,6 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.Equal(1, CountOccurrences(method, "Token.TrySendAndDisconnect(packet);"));
     }
 
-    [Fact]
-    public async Task PeriodicCountdown_GameServerWaitsForSharedLaneAndCapturesMatchingRecipients()
-    {
-        const long matchingId = 71_002;
-        GameServer server = CreateAdmissionTestServer();
-        (MatchRuntimeRegistry runtimeRegistry, SwarmCombatPublicationCoordinator coordinator) =
-            InitializePublicationRuntime(server);
-        Assert.True(runtimeRegistry.TryExecute(matchingId, static () => { }));
-        MatchStartGate.RegisterHumanPlayer(
-            matchingId,
-            playerId: 301,
-            botCount: Config.SWARM_PLAYERS_PER_MATCH - 1);
-        try
-        {
-            var first = new RecordingAdmissionSession(coordinator);
-            SetSessionIdentity(first, 301, matchingId);
-            var second = new RecordingAdmissionSession(coordinator);
-            SetSessionIdentity(second, 302, matchingId);
-            var differentMatch = new RecordingAdmissionSession(coordinator);
-            SetSessionIdentity(differentMatch, 999, matchingId + 1);
-            SwarmCombatPublicationCoordinator.PublicationTurn combat =
-                Assert.IsType<SwarmCombatPublicationCoordinator.PublicationTurn>(
-                    coordinator.TryBeginDueRealtimeTurn(matchingId));
-
-            Task broadcast = Task.Run(() => InvokePeriodicBroadcast(
-                server,
-                [matchingId],
-                [first, second, differentMatch]));
-            Assert.True(SpinWait.SpinUntil(
-                () => coordinator.Inspect(matchingId)?.OrderedWaiterCount == 1,
-                TimeSpan.FromSeconds(2)));
-            Assert.Equal(0, first.SendCount);
-            Assert.Equal(0, second.SendCount);
-
-            combat.Dispose();
-            await broadcast.WaitAsync(TimeSpan.FromSeconds(2));
-
-            Assert.Equal(1, first.SendCount);
-            Assert.Equal(1, second.SendCount);
-            Assert.Equal(0, differentMatch.SendCount);
-            byte[] firstWire = Assert.Single(first.DeliveredWireBytes);
-            byte[] secondWire = Assert.Single(second.DeliveredWireBytes);
-            Assert.Equal(firstWire, secondWire);
-            Assert.Equal(
-                (int)Protocol.G_TO_C_MATCH_START_COUNTDOWN,
-                BitConverter.ToInt32(firstWire, Config.HEADER_SIZE));
-            var body = MessagePackSerializer.Deserialize<G_TO_C_MATCH_START_COUNTDOWN>(
-                firstWire[(Config.HEADER_SIZE + sizeof(int) + sizeof(long))..]);
-            Assert.Equal(matchingId, body.MatchingId);
-            Assert.Equal(-1, body.RemainingSeconds);
-            Assert.True(body.ServerUnixMs > 0);
-
-            InvokePeriodicBroadcast(
-                server,
-                [matchingId],
-                [first, second, differentMatch]);
-            Assert.Equal(1, first.SendCount);
-            Assert.Equal(1, second.SendCount);
-
-            const long noRecipientMatchingId = 71_003;
-            Assert.True(runtimeRegistry.TryExecute(noRecipientMatchingId, static () => { }));
-            MatchStartGate.RegisterHumanPlayer(
-                noRecipientMatchingId,
-                playerId: 401,
-                botCount: Config.SWARM_PLAYERS_PER_MATCH - 1);
-            try
-            {
-                InvokePeriodicBroadcast(server, [noRecipientMatchingId], []);
-                Assert.False(
-                    coordinator.NeedsPeriodicCountdownPublication(
-                        noRecipientMatchingId,
-                        -1));
-            }
-            finally
-            {
-                MatchStartGate.RemoveMatching(noRecipientMatchingId);
-            }
-        }
-        finally
-        {
-            MatchStartGate.RemoveMatching(matchingId);
-        }
-    }
-
-    [Fact]
-    public void PeriodicCountdown_GameServerFailureCommitsNoRetryAndReleasesTurn()
-    {
-        const long matchingId = 71_004;
-        GameServer server = CreateAdmissionTestServer();
-        (MatchRuntimeRegistry runtimeRegistry, SwarmCombatPublicationCoordinator coordinator) =
-            InitializePublicationRuntime(server);
-        Assert.True(runtimeRegistry.TryExecute(matchingId, static () => { }));
-        MatchStartGate.RegisterHumanPlayer(
-            matchingId,
-            playerId: 501,
-            botCount: Config.SWARM_PLAYERS_PER_MATCH - 1);
-        try
-        {
-            var failing = new RecordingAdmissionSession(
-                coordinator,
-                throwOnSend: true);
-            SetSessionIdentity(failing, 501, matchingId);
-
-            TargetInvocationException failure = Assert.Throws<TargetInvocationException>(
-                () => InvokePeriodicBroadcast(server, [matchingId], [failing]));
-            Assert.IsType<InvalidOperationException>(failure.InnerException);
-            Assert.Equal(1, failing.SendCount);
-            Assert.False(coordinator.NeedsPeriodicCountdownPublication(matchingId, -1));
-            Assert.False(coordinator.Inspect(matchingId)?.HasActiveTurn);
-
-            InvokePeriodicBroadcast(server, [matchingId], [failing]);
-            Assert.Equal(1, failing.SendCount);
-        }
-        finally
-        {
-            MatchStartGate.RemoveMatching(matchingId);
-        }
-    }
-
     private static GameServer CreateAdmissionTestServer()
     {
         IConfiguration configuration = new ConfigurationBuilder().Build();
@@ -646,31 +378,14 @@ public sealed class MatchStartCountdownPublicationTests
             new ServerReadinessState());
     }
 
-    private static (
-        MatchRuntimeRegistry RuntimeRegistry,
-        SwarmCombatPublicationCoordinator Coordinator)
-        InitializePublicationRuntime(GameServer server)
+    private static SwarmMatchPacingState GetPacing(GameServer server, long matchingId)
     {
-        var runtimeRegistry = Assert.IsType<MatchRuntimeRegistry>(
+        var runtimes = Assert.IsType<SwarmMatchRuntimeStore>(
             typeof(GameServer)
-                .GetField("_matchRuntimeRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetField("_swarmMatchRuntimes", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(server));
-        var coordinator = Assert.IsType<SwarmCombatPublicationCoordinator>(
-            typeof(GameServer)
-                .GetField(
-                    "_swarmCombatPublicationCoordinator",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(server));
-        runtimeRegistry.SetRuntimeInitializer(
-            matchingId =>
-            {
-                if (!coordinator.RegisterMatching(matchingId))
-                {
-                    throw new InvalidOperationException(
-                        $"Duplicate publication runtime for {matchingId}.");
-                }
-            });
-        return (runtimeRegistry, coordinator);
+        Assert.True(runtimes.TryGet(matchingId, out SwarmMatchRuntime? runtime));
+        return runtime!.Pacing;
     }
 
     private static void InvokePeriodicBroadcast(
@@ -716,32 +431,6 @@ public sealed class MatchStartCountdownPublicationTests
                     "_matchingLifecycleTerminalSubjects",
                     BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(server));
-    }
-
-    private static void ConfigureAdmissionCleanup(
-        GameServer server,
-        MatchRuntimeRegistry runtimeRegistry)
-    {
-        typeof(GameServer)
-            .GetField(
-                "_matchRuntimeCleanupCoordinator",
-                BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(
-                server,
-                new MatchRuntimeCleanupCoordinator(
-                    runtimeRegistry,
-                    Array.Empty<MatchRuntimeCleanupStep>(),
-                    NullLogger<GameServer>.Instance));
-    }
-
-    private static object? InvokePrivate(
-        GameServer server,
-        string methodName,
-        params object?[] args)
-    {
-        return typeof(GameServer)
-            .GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(server, args);
     }
 
     private static void SetSessionIdentity(
@@ -819,12 +508,9 @@ public sealed class MatchStartCountdownPublicationTests
             typeof(GameClientSession).GetField(
                 "_admissionDisconnectIssued",
                 BindingFlags.Instance | BindingFlags.NonPublic)!;
-        private readonly SwarmCombatPublicationCoordinator? _publicationCoordinator;
         private readonly bool _throwOnSend;
 
-        public RecordingAdmissionSession(
-            SwarmCombatPublicationCoordinator? publicationCoordinator = null,
-            bool throwOnSend = false)
+        public RecordingAdmissionSession(bool throwOnSend = false)
             : base(
                 new UserToken(),
                 null!,
@@ -846,26 +532,16 @@ public sealed class MatchStartCountdownPublicationTests
                 null!,
                 null!,
                 null!,
-                static (_, _) => false,
-                static (_, prepare, _) => prepare(),
-                static (_, publish) => publish(),
+                new MatchRuntimeStore(NullLogger.Instance),
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
                 static _ => Random.Shared,
-                static (_, _) => null,
-                static (_, action) =>
-                {
-                    action();
-                    return true;
-                },
-                static (_, _, _) => { },
                 static (_, _) => { },
                 static (_, _) => null,
                 static (_, _) => { },
                 static () => false,
                 static _ => { })
         {
-            _publicationCoordinator = publicationCoordinator;
             _throwOnSend = throwOnSend;
         }
 
@@ -887,17 +563,6 @@ public sealed class MatchStartCountdownPublicationTests
         }
 
         public override void Send(IPacket packet)
-        {
-            if (_publicationCoordinator != null &&
-                _publicationCoordinator.TryCapturePacket(RecordSend, packet))
-            {
-                return;
-            }
-
-            RecordSend(packet);
-        }
-
-        private void RecordSend(IPacket packet)
         {
             SendCount++;
             if (_throwOnSend)

@@ -23,7 +23,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        return PublishOrderedSessionAction(
+        return RunUnderMatch(
             () => HandleGroundItemPickupCore(msg),
             () => SendGroundItemPickupResult(
                 msg.GroundItemUid,

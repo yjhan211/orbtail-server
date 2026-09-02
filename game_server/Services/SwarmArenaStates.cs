@@ -42,6 +42,8 @@ public sealed class SwarmMatchRuntime
     ///     monitor is held. The default seed is not a deterministic replay contract.
     /// </summary>
     internal Random ItemCombineRandom { get; } = new();
+    /// <summary>봇 이동 틱 계측 창 — 기록은 매치 잠금 안, 바쁜 펄스 카운트는 잠금 밖 Interlocked.</summary>
+    internal SwarmBotTickMetrics BotTickMetrics { get; } = new();
     public SwarmWindBladeState WindBlade { get; } = new();
     public SwarmOrbBoardState OrbBoard { get; } = new();
     public SwarmCrossfireState Crossfire { get; }
@@ -206,6 +208,9 @@ public sealed class SwarmMatchPacingState
     public readonly Dictionary<long, DateTime> MatchFallbackAnchorUtc = new();
     public readonly Dictionary<long, DateTime> ContactProbeAtUtc = new();
     public readonly HashSet<long> FieldStateAnnounced = new();
+
+    /// <summary>마지막으로 방송한 카운트다운 남은 초 — 같은 초는 다시 보내지 않는다(재시도 없음).</summary>
+    public int? LastCountdownSecondsPublished { get; set; }
 
     // 개발용 절단 더미 샌드박스 (#226 실험장).
     public readonly HashSet<long> CutDummyAutoSetupDone = new();

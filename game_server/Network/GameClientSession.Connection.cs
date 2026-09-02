@@ -26,7 +26,7 @@ public partial class GameClientSession
             return;
         }
 
-        IDisposable? runtimeOperation = null;
+        bool registered = false;
         try
         {
             GameHandoffContext? handoff = await _consumeGameHandoffTicket(msg.GameHandoffTicket);
@@ -63,25 +63,27 @@ public partial class GameClientSession
                 playerId,
                 matchingId);
 
+            // 세션 등록은 매치 잠금 안에서 — 사람 없음 정리가 등록과 발행 사이로 끼어들 수 없다.
+            MatchRuntime runtime = _matchRuntimes.GetOrCreate(matchingId);
             Action? disconnectSupersededSession = null;
-            runtimeOperation = _acquireMatchRuntimeOperation(
-                matchingId,
-                () =>
-                {
-                    if (!Token.TryRunIfActive(
-                            () => disconnectSupersededSession = _registerSessionCallback(playerId, this)))
-                        throw new OperationCanceledException("Connection closed before session registration.");
-                });
-            if (runtimeOperation == null)
+            using (_matchRuntimes.Enter(runtime))
             {
-                Logger.LogWarning(
-                    "GameServer connection rejected because the match is terminal: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    playerId,
-                    matchingId);
-                MarkServerInitiatedDisconnect();
-                SendConnectResult(false, ErrorCode.GAME_ALREADY_ENDED, "이미 종료된 게임입니다",
-                    disconnectAfterSend: true);
-                return;
+                if (runtime.IsTerminal)
+                {
+                    Logger.LogWarning(
+                        "GameServer connection rejected because the match is terminal: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                        playerId,
+                        matchingId);
+                    MarkServerInitiatedDisconnect();
+                    SendConnectResult(false, ErrorCode.GAME_ALREADY_ENDED, "이미 종료된 게임입니다",
+                        disconnectAfterSend: true);
+                    return;
+                }
+
+                if (!Token.TryRunIfActive(
+                        () => disconnectSupersededSession = _registerSessionCallback(playerId, this)))
+                    throw new OperationCanceledException("Connection closed before session registration.");
+                registered = true;
             }
             disconnectSupersededSession?.Invoke();
 
@@ -90,14 +92,17 @@ public partial class GameClientSession
                 PlayerId,
                 TargetPlayerId);
 
-            foreach (var rosterEntry in handoff.HumanRoster)
+            RunUnderLiveMatch(runtime, () =>
             {
-                _matchRosterManager.RegisterEntry(matchingId, new RosterEntry
+                foreach (var rosterEntry in handoff.HumanRoster)
                 {
-                    PlayerId = rosterEntry.PlayerId,
-                    TargetPlayerId = rosterEntry.TargetPlayerId
-                });
-            }
+                    _matchRosterManager.RegisterEntry(matchingId, new RosterEntry
+                    {
+                        PlayerId = rosterEntry.PlayerId,
+                        TargetPlayerId = rosterEntry.TargetPlayerId
+                    });
+                }
+            });
 
             // Load bots once per match before initializing authoritative roster state.
             int expectedBotCount = MatchStartGate.IsSoloMapValidationEnabled
@@ -113,33 +118,36 @@ public partial class GameClientSession
                 handoff.HumanRoster.Select(entry => entry.PlayerId).ToArray());
             EnsureConnectionActive();
 
-            foreach (var bot in _botPlayerManager.GetBots(matchingId))
-                if (!bot.IsEliminated)
+            int connectedBotCount = 0;
+            RunUnderLiveMatch(runtime, () =>
+            {
+                foreach (var bot in _botPlayerManager.GetBots(matchingId))
+                    if (!bot.IsEliminated)
+                    {
+                        _gameEventLogManager.SetPlayerArea(matchingId, bot.PlayerId, bot.CurrentArea.ToString());
+                    }
+
+                // Initialize match-scoped area state once; manager implementations are idempotent.
+                _areaItemStockManager.InitializeMatching(matchingId);
+                _groundItemManager.InitializeMatching(matchingId);
+                int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
+                _gameEventLogManager.BeginMatch(matchingId, matchSeed);
+                foreach (var bot in _botPlayerManager.GetBots(matchingId))
                 {
-                    _gameEventLogManager.SetPlayerArea(matchingId, bot.PlayerId, bot.CurrentArea.ToString());
+                    _gameEventLogManager.LogSpawnAssignment(
+                        matchingId,
+                        bot.PlayerId,
+                        matchSeed,
+                        MatchSpawnData.GetAnchorIndex(bot.Cell),
+                        bot.Cell.X,
+                        bot.Cell.Y,
+                        bot.CurrentArea.ToString(),
+                        isBot: true);
                 }
 
-            // Initialize match-scoped area state once; manager implementations are idempotent.
-            _areaItemStockManager.InitializeMatching(matchingId);
-            _groundItemManager.InitializeMatching(matchingId);
-            int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
-            _gameEventLogManager.BeginMatch(matchingId, matchSeed);
-            foreach (var bot in _botPlayerManager.GetBots(matchingId))
-            {
-                _gameEventLogManager.LogSpawnAssignment(
-                    matchingId,
-                    bot.PlayerId,
-                    matchSeed,
-                    MatchSpawnData.GetAnchorIndex(bot.Cell),
-                    bot.Cell.X,
-                    bot.Cell.Y,
-                    bot.CurrentArea.ToString(),
-                    isBot: true);
-            }
-
-            // The authenticated session was registered while acquiring the runtime lease.
-            int connectedBotCount = _botPlayerManager.GetBots(matchingId).Count;
-            MatchStartGate.RegisterHumanPlayer(matchingId, PlayerId.Value, connectedBotCount);
+                connectedBotCount = _botPlayerManager.GetBots(matchingId).Count;
+                MatchStartGate.RegisterHumanPlayer(matchingId, PlayerId.Value, connectedBotCount);
+            });
 
             // Restore the initial position only from the consumed server-issued handoff.
             {
@@ -193,7 +201,9 @@ public partial class GameClientSession
                 connectionBoard.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
 
             // Send the initial door and mission snapshots.
-            _doorStateManager.InitializeMatching(CurrentMapSubId, Array.Empty<AreaType>());
+            RunUnderLiveMatch(
+                runtime,
+                () => _doorStateManager.InitializeMatching(CurrentMapSubId, Array.Empty<AreaType>()));
             SendDoorStateList();
 
             // 스웜 모드(M4)는 시간 웨이브 폐쇄를 쓰므로 폐쇄 스냅샷을 복원해야 한다.
@@ -231,13 +241,11 @@ public partial class GameClientSession
                 true,
                 ErrorCode.SUCCESS,
                 "Connected to GameServer");
-            bool admissionCommitted = _executeMatchRuntime(matchingId, () =>
+            RunUnderLiveMatch(runtime, () =>
             {
                 if (!Token.TryMarkAuthenticated(() => Volatile.Write(ref _admissionCompleted, 1)))
                     throw new OperationCanceledException("Connection closed before authentication commit.");
             });
-            if (!admissionCommitted)
-                throw new OperationCanceledException("Match became terminal before authentication commit.");
             if (!TryPublishCommittedConnectResult(successResponse))
                 return;
             Logger.LogInformation("Client connected successfully: PlayerId={PlayerId}", PlayerId);
@@ -255,11 +263,9 @@ public partial class GameClientSession
                 return;
             }
 
-            // A completed runtime-operation acquisition registered this session under the
-            // match monitor. The deferred abort hook owns the one terminal error/disconnect
-            // publication for every registered recipient, so do not send a competing local
-            // CONNECT_RESULT here.
-            if (runtimeOperation != null)
+            // 매치 잠금 안에서 이미 등록된 세션이다. 입장 중단 경로가 등록된 수신자 전원의 터미널
+            // 에러/끊기를 한 번에 소유하므로 여기서 경쟁하는 CONNECT_RESULT를 보내지 않는다.
+            if (registered)
             {
                 if (!ReportAdmissionFailureOnce())
                 {
@@ -269,17 +275,25 @@ public partial class GameClientSession
                 return;
             }
 
-            // No runtime lease means this failed before registration (for example a rejected
-            // handoff identity or owner fence), so no deferred recipient snapshot owns this
-            // socket. Keep the direct response for that early failure path.
+            // 등록 전 실패(거부된 인계 티켓 등)는 어떤 수신자 스냅샷도 이 소켓을 소유하지 않으므로
+            // 직접 응답한다.
             MarkServerInitiatedDisconnect();
             SendConnectResult(false, ErrorCode.FATAL, "게임 서버 연결 처리 중 오류가 발생했습니다",
                 disconnectAfterSend: true);
         }
-        finally
-        {
-            runtimeOperation?.Dispose();
-        }
+    }
+
+    /// <summary>
+    ///     입장 초기화 블록을 매치 잠금 안에서 돌린다 — await 사이에 매치가 끝났으면 상태를 되살리는 대신
+    ///     입장을 중단한다.
+    /// </summary>
+    private void RunUnderLiveMatch(MatchRuntime runtime, Action initialize)
+    {
+        using MatchScope scope = _matchRuntimes.Enter(runtime);
+        if (runtime.IsTerminal)
+            throw new OperationCanceledException("Match became terminal during game admission.");
+
+        initialize();
     }
 
     private void EnsureConnectionActive()
@@ -322,8 +336,8 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     Queues a prebuilt success response after admission commits and outside MatchRuntime.SyncRoot. A false return
-    ///     or exception is fail-forward: the authenticated admission remains committed and only this socket is closed.
+    ///     인증 커밋 뒤 매치 잠금 밖에서 미리 만든 성공 응답을 큐에 넣는다. false나 예외는 fail-forward —
+    ///     커밋된 입장은 유지하고 이 소켓만 닫는다.
     /// </summary>
     private bool TryPublishCommittedConnectResult(Packet packet)
     {
