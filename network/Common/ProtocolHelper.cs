@@ -61,7 +61,6 @@ namespace network.common
             // 채팅
 
             // 중복 로그인
-            Protocol.U_TO_U_DUPLICATE,
 
             // 에러
             Protocol.U_TO_C_ERROR,

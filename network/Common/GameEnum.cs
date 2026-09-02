@@ -102,12 +102,6 @@ namespace network.common
         THUMBSUP,
     }
 
-    public enum BoostType
-    {
-        NONE = 0,
-        SPEED = 1
-    }
-
     public enum BuffType
     {
         NONE = 0,

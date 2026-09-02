@@ -43,12 +43,6 @@ namespace network.common.data.models
     }
 
     [MessagePackObject]
-    public class U_TO_C_EXPLORE : IMessagePackObject
-    {
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-    }
-
-    [MessagePackObject]
     public class C_TO_U_WEAR_ITEM : IMessagePackObject
     {
         [Key("itemUidList")] public List<long> ItemUidList { get; set; }
@@ -71,13 +65,6 @@ namespace network.common.data.models
     public class U_TO_C_USE_ITEM : IMessagePackObject
     {
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
-    }
-
-    [MessagePackObject]
-    public class U_TO_C_CHANGE_MAP : IMessagePackObject
-    {
-        [Key("mapId")] public MapId MapId { get; set; }
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
     }
 
     [MessagePackObject]
