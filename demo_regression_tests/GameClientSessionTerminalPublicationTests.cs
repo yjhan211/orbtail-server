@@ -1,10 +1,8 @@
 using System.Collections.Concurrent;
 using System.Reflection;
-using game_server;
 using game_server.network;
 using game_server.services;
 using MessagePack;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -13,14 +11,15 @@ using network.common.data.helpers;
 using network.common.data.models;
 using network.contracts.authentication;
 using network.core;
-using network.helpers;
-using network.hosting;
-using network.infrastructure;
 using network.packets;
 using network.utils;
 
 namespace demo_regression_tests;
 
+/// <summary>
+///     매치 종료 (#331): 결과·GAME_END·MarkGameEnded는 매치 잠금 안에서 chunk-major로 나가고, 정리는 잠금
+///     탈출에서 한 번, lifecycle 발행·요약 영속은 잠금 밖 후처리로 돈다.
+/// </summary>
 public sealed class GameClientSessionTerminalPublicationTests
 {
     public GameClientSessionTerminalPublicationTests()
@@ -30,7 +29,7 @@ public sealed class GameClientSessionTerminalPublicationTests
     }
 
     [Fact]
-    public async Task TryEndMatch_WaitsOutsideRuntimeMonitor_ThenPublishesChunkMajorBeforeCleanupLifecycleAndSummary()
+    public async Task TryEndMatch_WaitsForMatchLock_ThenPublishesChunkMajorBeforeCleanupLifecycleAndSummary()
     {
         const long matchingId = 73001;
         const long otherMatchingId = 73901;
@@ -40,36 +39,40 @@ public sealed class GameClientSessionTerminalPublicationTests
         RecordingSession spectator = fixture.CreateSession(matchingId, 303, PlayerMatchStatus.SPECTATING);
         RecordingSession[] sessions = [winner, survivor, spectator];
         fixture.SeedRoster(matchingId, sessions, totalEntries: 8, useLongProfiles: true);
-        fixture.EnsureRuntime(matchingId);
+        MatchRuntime runtime = fixture.Store.GetOrCreate(matchingId);
+        fixture.TrackedRuntime = runtime;
+        fixture.Store.GetOrCreate(otherMatchingId);
 
-        SwarmCombatPublicationCoordinator.PublicationTurn heldTurn =
-            fixture.Coordinator.BeginOrderedTurn(matchingId)!;
+        using var lockHeld = new ManualResetEventSlim();
+        using var releaseLock = new ManualResetEventSlim();
+        Task holder = Task.Run(() =>
+        {
+            using (fixture.Store.Enter(runtime))
+            {
+                lockHeld.Set();
+                Assert.True(releaseLock.Wait(TimeSpan.FromSeconds(5)));
+            }
+        });
+        Assert.True(lockHeld.Wait(TimeSpan.FromSeconds(5)));
+
         Task terminal = Task.Run(() => winner.TryEndMatch(winner.PlayerId!.Value, "terminal_behavior"));
         try
         {
-            Assert.True(SpinWait.SpinUntil(
-                () => fixture.Coordinator.Inspect(matchingId)?.RequiredWaiterCount == 1,
-                TimeSpan.FromSeconds(5)));
+            await Task.Delay(100);
+            Assert.False(terminal.IsCompleted);
             Assert.All(sessions, session => Assert.Empty(fixture.TokenFor(session).AttemptedProtocols));
 
-            bool sameMatchMutationRan = false;
-            Task<bool> sameMatchProbe = Task.Run(() =>
-                fixture.Registry.TryExecute(matchingId, () => sameMatchMutationRan = true));
-            Assert.False(await sameMatchProbe.WaitAsync(TimeSpan.FromSeconds(5)));
-            Assert.False(sameMatchMutationRan);
-
-            bool otherMatchMutationRan = false;
-            Task<bool> otherMatchProbe = Task.Run(() =>
-                fixture.Registry.TryExecute(otherMatchingId, () => otherMatchMutationRan = true));
-            Assert.True(await otherMatchProbe.WaitAsync(TimeSpan.FromSeconds(5)));
-            Assert.True(otherMatchMutationRan);
-            Assert.False(terminal.IsCompleted);
+            // 다른 매치는 잠금이 독립이라 그대로 진행한다.
+            Assert.True(fixture.Store.TryEnter(otherMatchingId, out MatchScope otherScope));
+            otherScope.Dispose();
+            Assert.False(fixture.Store.TryEnter(matchingId, out _));
         }
         finally
         {
-            heldTurn.Dispose();
+            releaseLock.Set();
         }
 
+        await holder.WaitAsync(TimeSpan.FromSeconds(5));
         await terminal.WaitAsync(TimeSpan.FromSeconds(5));
 
         IReadOnlyList<G_TO_C_GAME_RESULT> winnerChunks = fixture.TokenFor(winner)
@@ -128,9 +131,8 @@ public sealed class GameClientSessionTerminalPublicationTests
         Assert.Equal(PlayerMatchStatus.SPECTATING, spectatorRow.FinalStatus);
 
         Assert.Equal(1, fixture.CleanupCount);
-        Assert.False(fixture.ActiveTurnAtCleanup ?? true);
-        Assert.Null(fixture.Coordinator.Inspect(matchingId));
-        Assert.True(fixture.Registry.IsTerminal(matchingId));
+        Assert.True(runtime.IsTerminal);
+        Assert.Null(fixture.Store.Get(matchingId));
         Assert.Single(fixture.SummaryFiles);
         Assert.All(recipientIds, playerId =>
             Assert.Equal(1, fixture.LifecycleDispatchCounts.GetValueOrDefault(playerId)));
@@ -144,6 +146,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         Assert.True(lastPacket >= 0 && lastPacket < clear, string.Join(" | ", timeline));
         Assert.True(clear < firstLifecycle, string.Join(" | ", timeline));
         Assert.True(lastLifecycle < summary, string.Join(" | ", timeline));
+        Assert.False(fixture.LockHeldDuringLifecycle ?? true);
     }
 
     [Fact]
@@ -158,6 +161,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             fixture.CreateSession(matchingId, 333, PlayerMatchStatus.ACTIVE)
         ];
         fixture.SeedRoster(matchingId, sessions, totalEntries: sessions.Length, useLongProfiles: false);
+        fixture.Store.GetOrCreate(matchingId);
 
         using var start = new ManualResetEventSlim();
         Task[] finalizers = sessions.Select(session => Task.Run(() =>
@@ -189,14 +193,12 @@ public sealed class GameClientSessionTerminalPublicationTests
         }
 
         Assert.Equal(1, fixture.CleanupCount);
-        Assert.False(fixture.ActiveTurnAtCleanup ?? true);
         Assert.Single(fixture.SummaryFiles);
-        Assert.True(fixture.Registry.IsTerminal(matchingId));
-        Assert.Null(fixture.Coordinator.Inspect(matchingId));
+        Assert.Null(fixture.Store.Get(matchingId));
     }
 
     [Fact]
-    public void TerminalPublication_FailuresAreIsolatedPerResultEndAndMarkStep_AndTurnStillRetires()
+    public void TerminalPublication_FailuresAreIsolatedPerResultEndAndMarkStep_AndCleanupStillRuns()
     {
         const long matchingId = 73003;
         using var fixture = new TerminalFixture();
@@ -208,6 +210,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             fixture.CreateSession(matchingId, 363, PlayerMatchStatus.SPECTATING);
         RecordingSession[] sessions = [markFailure, resultFailure, endFailure];
         fixture.SeedRoster(matchingId, sessions, totalEntries: 8, useLongProfiles: true);
+        fixture.Store.GetOrCreate(matchingId);
         fixture.ThrowPrepareCompletionForPlayerId = markFailure.PlayerId;
         fixture.TokenFor(resultFailure).ThrowOnceOn = Protocol.G_TO_C_GAME_RESULT;
         fixture.TokenFor(endFailure).ThrowOnceOn = Protocol.G_TO_C_GAME_END;
@@ -240,10 +243,8 @@ public sealed class GameClientSessionTerminalPublicationTests
         Assert.Equal(1, fixture.LifecycleDispatchCounts.GetValueOrDefault(endFailure.PlayerId!.Value));
         Assert.All(sessions, session => Assert.True(session.IsGameEnded));
         Assert.Equal(1, fixture.CleanupCount);
-        Assert.False(fixture.ActiveTurnAtCleanup ?? true);
         Assert.Single(fixture.SummaryFiles);
-        Assert.True(fixture.Registry.IsTerminal(matchingId));
-        Assert.Null(fixture.Coordinator.Inspect(matchingId));
+        Assert.Null(fixture.Store.Get(matchingId));
 
         TerminalDelivery[] deliveries = fixture.Deliveries.ToArray();
         int lastResult = Array.FindLastIndex(
@@ -276,49 +277,28 @@ public sealed class GameClientSessionTerminalPublicationTests
             Path.GetTempPath(),
             "orbtail-terminal-publication-tests",
             Guid.NewGuid().ToString("N"));
-        private readonly MatchRuntimeCleanupCoordinator _cleanup;
         private long _deliverySequence;
         private int _cleanupCount;
 
         public TerminalFixture()
         {
             Logger = new TimelineLogger(Timeline);
-            Server = CreateServer();
-            Registry = Assert.IsType<MatchRuntimeRegistry>(
-                typeof(GameServer).GetField(
-                    "_matchRuntimeRegistry",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Server));
-            Coordinator = Assert.IsType<SwarmCombatPublicationCoordinator>(
-                typeof(GameServer).GetField(
-                    "_swarmCombatPublicationCoordinator",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(Server));
-            Registry.SetRuntimeInitializer(matchingId =>
-            {
-                if (!Coordinator.RegisterMatching(matchingId))
-                    throw new InvalidOperationException($"Duplicate publication runtime {matchingId}.");
-            });
-            PublishOrdered = typeof(GameServer).GetMethod(
-                    "PublishOrderedSessionPublication",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!
-                .CreateDelegate<Action<long, Action, Action>>(Server);
-            PublishRequiredTerminal = typeof(GameServer).GetMethod(
-                    "PublishRequiredTerminalAction",
-                    BindingFlags.Instance | BindingFlags.NonPublic)!
-                .CreateDelegate<Action<long, Action>>(Server);
-            _cleanup = new MatchRuntimeCleanupCoordinator(
-                Registry,
-                [new MatchRuntimeCleanupStep("combat publication", ClearPublicationMatching)],
-                Logger);
+            Store = new MatchRuntimeStore(
+                Logger,
+                cleanupSteps:
+                [
+                    new MatchCleanupStep("clear", _ =>
+                    {
+                        Timeline.Enqueue("clear");
+                        Interlocked.Increment(ref _cleanupCount);
+                    })
+                ]);
 
             Interactables.Initialize();
             Inventories.Initialize();
         }
 
-        public GameServer Server { get; }
-        public MatchRuntimeRegistry Registry { get; }
-        public SwarmCombatPublicationCoordinator Coordinator { get; }
-        public Action<long, Action, Action> PublishOrdered { get; }
-        public Action<long, Action> PublishRequiredTerminal { get; }
+        public MatchRuntimeStore Store { get; }
         public ConcurrentQueue<string> Timeline { get; } = new();
         public ConcurrentDictionary<long, int> LifecycleDispatchCounts { get; } = new();
         public TimelineLogger Logger { get; }
@@ -335,7 +315,8 @@ public sealed class GameClientSessionTerminalPublicationTests
         public MatchSummaryFileStore Summaries => new(_summaryDirectory);
         public EncounterRevealManager Encounters { get; } = new();
         public long? ThrowPrepareCompletionForPlayerId { get; set; }
-        public bool? ActiveTurnAtCleanup { get; private set; }
+        public MatchRuntime? TrackedRuntime { get; set; }
+        public bool? LockHeldDuringLifecycle { get; private set; }
         public int CleanupCount => Volatile.Read(ref _cleanupCount);
         public IReadOnlyList<string> SummaryFiles => Directory.Exists(_summaryDirectory)
             ? Directory.EnumerateFiles(_summaryDirectory, "match-*.json").ToList()
@@ -368,12 +349,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                 EventLog,
                 Summaries,
                 Encounters,
-                Coordinator,
-                PublishOrdered,
-                PublishRequiredTerminal,
-                Registry.TryAcquireOperation,
-                Registry,
-                CleanupRuntime,
+                Store,
                 PrepareGameCompletion);
             SetIdentity(session, matchingId, playerId, status);
             _sessions.Add(session);
@@ -382,9 +358,6 @@ public sealed class GameClientSessionTerminalPublicationTests
         }
 
         public RecordingUserToken TokenFor(GameClientSession session) => _tokens[session];
-
-        public void EnsureRuntime(long matchingId) =>
-            Assert.True(Registry.TryExecute(matchingId, static () => { }));
 
         public void SeedRoster(
             long matchingId,
@@ -431,9 +404,6 @@ public sealed class GameClientSessionTerminalPublicationTests
                 Directory.Delete(_summaryDirectory, recursive: true);
         }
 
-        private void CleanupRuntime(long matchingId, Action? beforeFinalized, Action? afterFinalized) =>
-            _cleanup.TryFinalize(matchingId, null, beforeFinalized, afterFinalized);
-
         private Action? PrepareGameCompletion(long playerId, long matchingId)
         {
             if (ThrowPrepareCompletionForPlayerId == playerId)
@@ -441,17 +411,11 @@ public sealed class GameClientSessionTerminalPublicationTests
 
             return () =>
             {
+                if (TrackedRuntime != null)
+                    LockHeldDuringLifecycle = Monitor.IsEntered(TrackedRuntime.Sync);
                 LifecycleDispatchCounts.AddOrUpdate(playerId, 1, static (_, count) => count + 1);
                 Timeline.Enqueue($"lifecycle:{playerId}");
             };
-        }
-
-        private void ClearPublicationMatching(long matchingId)
-        {
-            ActiveTurnAtCleanup = Coordinator.Inspect(matchingId)?.HasActiveTurn;
-            Timeline.Enqueue("clear");
-            Interlocked.Increment(ref _cleanupCount);
-            Coordinator.ClearMatching(matchingId);
         }
 
         private void RecordDelivery(long playerId, Protocol protocol, byte[] wireBytes)
@@ -492,21 +456,6 @@ public sealed class GameClientSessionTerminalPublicationTests
                 "_state",
                 BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(token, active);
         }
-
-        private static GameServer CreateServer() => new(
-            new ConfigurationBuilder().Build(),
-            NullLogger<GameServer>.Instance,
-            null!,
-            null!,
-            null!,
-            new ServerConfig
-            {
-                ServerType = "GameServer",
-                ServerId = 1,
-                GameServerNum = 1
-            },
-            null!,
-            new ServerReadinessState());
     }
 
     private sealed class RecordingSession : GameClientSession
@@ -527,12 +476,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             GameEventLogManager eventLog,
             MatchSummaryFileStore summaries,
             EncounterRevealManager encounters,
-            SwarmCombatPublicationCoordinator coordinator,
-            Action<long, Action, Action> publishOrdered,
-            Action<long, Action> publishRequiredTerminal,
-            Func<long, Action, IDisposable?> acquireOperation,
-            MatchRuntimeRegistry registry,
-            Action<long, Action?, Action?> cleanupRuntime,
+            MatchRuntimeStore matchRuntimes,
             Func<long, long, Action?> prepareGameCompletion)
             : base(
                 token,
@@ -557,15 +501,10 @@ public sealed class GameClientSessionTerminalPublicationTests
                 eventLog,
                 summaries,
                 encounters,
-                coordinator.TryCapturePacket,
-                publishOrdered,
-                publishRequiredTerminal,
+                matchRuntimes,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
                 static _ => Random.Shared,
-                acquireOperation,
-                registry.TryExecute,
-                cleanupRuntime,
                 static (_, _) => { },
                 prepareGameCompletion,
                 static (_, _) => { },

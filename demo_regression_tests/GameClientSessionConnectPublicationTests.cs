@@ -14,10 +14,8 @@ using network.utils;
 namespace demo_regression_tests;
 
 /// <summary>
-/// Regression coverage for the successful game-admission ACK boundary.  These tests intentionally
-/// invoke the private packet/publish boundary rather than a socket: the important contract is that
-/// authentication has committed before a potentially slow enqueue, while the runtime operation
-/// lease remains alive until the enqueue completes.
+///     입장 성공 ACK 경계 (#331): 인증 커밋은 매치 잠금 안에서 원자적으로, 느릴 수 있는 큐 적재는 잠금 밖에서.
+///     소켓 대신 private 패킷/발행 경계를 직접 부른다.
 /// </summary>
 public sealed class GameClientSessionConnectPublicationTests
 {
@@ -41,7 +39,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Equal(ErrorCode.SUCCESS, body.ErrorCode);
         Assert.Equal("Connected to GameServer", body.Message);
 
-        Assert.True(CommitAuthentication(fixture.Registry, matchingId, fixture.Token, session));
+        Assert.True(CommitAuthentication(fixture.Store, matchingId, fixture.Token, session));
         Assert.Equal(1, GetIntField(fixture.Token, "_authenticated"));
         Assert.Equal(1, GetIntField(session, "_admissionCompleted"));
 
@@ -51,10 +49,9 @@ public sealed class GameClientSessionConnectPublicationTests
     }
 
     [Fact]
-    public async Task BlockedSuccessAck_IsOutsideRuntimeMonitor_LeaseDelaysFinalizationCleanup()
+    public async Task BlockedSuccessAck_IsOutsideMatchLock_AndDoesNotDelayTerminalCleanup()
     {
         const long matchingId = 74_002;
-        const long otherMatchingId = 74_003;
         const long playerId = 8_102;
         using var fixture = new ConnectFixture();
         using var senderEntered = new ManualResetEventSlim();
@@ -69,12 +66,13 @@ public sealed class GameClientSessionConnectPublicationTests
                 Assert.True(releaseSender.Wait(TimeSpan.FromSeconds(5)));
                 return true;
             });
+        int cleanupCount = 0;
+        fixture.CleanupSteps.Add(new MatchCleanupStep("count", _ => Interlocked.Increment(ref cleanupCount)));
 
         Task<bool> connect = Task.Run(() =>
         {
-            using IDisposable lease = fixture.Registry.TryAcquireOperation(matchingId, static () => { })!;
             using Packet packet = CreateSuccessPacket(session);
-            Assert.True(CommitAuthentication(fixture.Registry, matchingId, fixture.Token, session));
+            Assert.True(CommitAuthentication(fixture.Store, matchingId, fixture.Token, session));
             return PublishCommittedSuccess(session, packet);
         });
 
@@ -82,28 +80,18 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Equal(1, GetIntField(fixture.Token, "_authenticated"));
         Assert.Equal(1, GetIntField(session, "_admissionCompleted"));
 
-        bool sameMatchProgressed = false;
-        bool otherMatchProgressed = false;
-        Assert.True(await Task.Run(() => fixture.Registry.TryExecute(
-            matchingId, () => sameMatchProgressed = true)).WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.True(await Task.Run(() => fixture.Registry.TryExecute(
-            otherMatchingId, () => otherMatchProgressed = true)).WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.True(sameMatchProgressed);
-        Assert.True(otherMatchProgressed);
+        // 큐 적재가 막혀 있어도 매치 잠금은 비어 있다 — 같은 매치 작업과 터미널 정리가 그대로 진행된다.
+        Assert.True(fixture.Store.TryEnter(matchingId, out MatchScope probe));
+        using (probe)
+        {
+            Assert.True(probe.Runtime.TryMarkTerminal());
+        }
 
-        int cleanupCount = 0;
-        Task<bool> finalization = Task.Run(() => fixture.Registry.TryFinalize(
-            matchingId,
-            static () => true,
-            () => Interlocked.Increment(ref cleanupCount)));
-        Assert.True(SpinWait.SpinUntil(() => fixture.Registry.IsTerminal(matchingId), TimeSpan.FromSeconds(5)));
-        Assert.True(await finalization.WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.Equal(0, Volatile.Read(ref cleanupCount));
+        Assert.Equal(1, Volatile.Read(ref cleanupCount));
+        Assert.Null(fixture.Store.Get(matchingId));
 
         releaseSender.Set();
         Assert.True(await connect.WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.True(await finalization.WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.Equal(1, Volatile.Read(ref cleanupCount));
     }
 
     [Theory]
@@ -125,7 +113,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 return false;
             });
 
-        Assert.True(CommitAuthentication(fixture.Registry, matchingId, fixture.Token, session));
+        Assert.True(CommitAuthentication(fixture.Store, matchingId, fixture.Token, session));
         using Packet packet = CreateSuccessPacket(session);
 
         Assert.False(PublishCommittedSuccess(session, packet));
@@ -137,17 +125,20 @@ public sealed class GameClientSessionConnectPublicationTests
     }
 
     [Fact]
-    public void FinalizingBeforeCommit_RejectsSuccessWithoutAuthenticationAdmissionOrAck()
+    public void TerminalBeforeCommit_RejectsSuccessWithoutAuthenticationAdmissionOrAck()
     {
         const long matchingId = 74_005;
         using var fixture = new ConnectFixture();
         GameClientSession session = fixture.CreateSession(matchingId, 8_104, _ => true);
 
-        using IDisposable lease = fixture.Registry.TryAcquireOperation(matchingId, static () => { })!;
-        Assert.True(fixture.Registry.TryFinalize(matchingId, static () => true, static () => { }));
-        Assert.True(fixture.Registry.IsTerminal(matchingId));
+        MatchRuntime runtime = fixture.Store.GetOrCreate(matchingId);
+        using (fixture.Store.Enter(runtime))
+        {
+            Assert.True(runtime.TryMarkTerminal());
+        }
 
-        Assert.False(CommitAuthentication(fixture.Registry, matchingId, fixture.Token, session));
+        Assert.Null(fixture.Store.Get(matchingId));
+        Assert.False(CommitAuthentication(fixture.Store, matchingId, fixture.Token, session));
         Assert.Equal(0, GetIntField(fixture.Token, "_authenticated"));
         Assert.Equal(0, GetIntField(session, "_admissionCompleted"));
         Assert.Empty(fixture.SentPackets);
@@ -194,13 +185,19 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Contains("trySendConnectSuccessResponse ?? Token.TrySend", sessionSource);
         Assert.Contains("Token.TryMarkAuthenticated(() => Volatile.Write(ref _admissionCompleted, 1))", connectionSource);
 
-        int countdown = connectionSource.IndexOf("SendMatchStartCountdown(matchingId);", StringComparison.Ordinal);
+        // 세션 등록·초기화 블록·인증 커밋은 매치 잠금 안에서, 성공 ACK 큐 적재는 잠금 밖에서.
+        int registration = connectionSource.IndexOf("_matchRuntimes.GetOrCreate(matchingId)", StringComparison.Ordinal);
+        int registerCallback = connectionSource.IndexOf("_registerSessionCallback(playerId, this)", registration, StringComparison.Ordinal);
+        int countdown = connectionSource.IndexOf("SendMatchStartCountdown(matchingId);", registerCallback, StringComparison.Ordinal);
         int response = connectionSource.IndexOf("CreateConnectResultPacket(", countdown, StringComparison.Ordinal);
-        int authentication = connectionSource.IndexOf("Token.TryMarkAuthenticated", response, StringComparison.Ordinal);
+        int commitScope = connectionSource.IndexOf("RunUnderLiveMatch(runtime, () =>", response, StringComparison.Ordinal);
+        int authentication = connectionSource.IndexOf("Token.TryMarkAuthenticated", commitScope, StringComparison.Ordinal);
         int publication = connectionSource.IndexOf("TryPublishCommittedConnectResult(successResponse)", authentication, StringComparison.Ordinal);
-        Assert.True(countdown >= 0 && countdown < response && response < authentication && authentication < publication);
+        Assert.True(registration >= 0 && registration < registerCallback && registerCallback < countdown &&
+                    countdown < response && response < commitScope && commitScope < authentication &&
+                    authentication < publication);
 
-        int registeredFailure = connectionSource.IndexOf("if (runtimeOperation != null)", publication, StringComparison.Ordinal);
+        int registeredFailure = connectionSource.IndexOf("if (registered)", publication, StringComparison.Ordinal);
         int deferredAbort = connectionSource.IndexOf("ReportAdmissionFailureOnce()", registeredFailure, StringComparison.Ordinal);
         int earlyFailureResponse = connectionSource.IndexOf(
             "SendConnectResult(false, ErrorCode.FATAL",
@@ -209,22 +206,30 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.True(registeredFailure >= 0 &&
                     registeredFailure < deferredAbort &&
                     deferredAbort < earlyFailureResponse);
+        Assert.Contains("throw new OperationCanceledException(\"Match became terminal during game admission.\")", connectionSource);
     }
 
     private static bool CommitAuthentication(
-        MatchRuntimeRegistry registry,
+        MatchRuntimeStore store,
         long matchingId,
         UserToken token,
         GameClientSession session)
     {
-        return registry.TryExecute(matchingId, () =>
+        MatchRuntime? runtime = store.Get(matchingId);
+        if (runtime == null)
+            return false;
+
+        using MatchScope scope = store.Enter(runtime);
+        if (runtime.IsTerminal)
+            return false;
+
+        if (!token.TryMarkAuthenticated(
+                () => SetIntField(session, "_admissionCompleted", 1)))
         {
-            if (!token.TryMarkAuthenticated(
-                    () => SetIntField(session, "_admissionCompleted", 1)))
-            {
-                throw new OperationCanceledException("Connection closed before authentication commit.");
-            }
-        });
+            throw new OperationCanceledException("Connection closed before authentication commit.");
+        }
+
+        return true;
     }
 
     private static Packet CreateSuccessPacket(GameClientSession session) =>
@@ -321,7 +326,13 @@ public sealed class GameClientSessionConnectPublicationTests
     {
         private readonly List<SentPacket> _sentPackets = [];
 
-        public MatchRuntimeRegistry Registry { get; } = new();
+        public ConnectFixture()
+        {
+            Store = new MatchRuntimeStore(NullLogger.Instance, cleanupSteps: CleanupSteps);
+        }
+
+        public List<MatchCleanupStep> CleanupSteps { get; } = [];
+        public MatchRuntimeStore Store { get; }
         public UserToken Token { get; } = new();
         public IReadOnlyList<SentPacket> SentPackets => _sentPackets.ToList();
 
@@ -332,6 +343,7 @@ public sealed class GameClientSessionConnectPublicationTests
             Action<GameClientSession>? recordAdmissionFailure = null)
         {
             Activate(Token);
+            Store.GetOrCreate(matchingId);
             var session = new GameClientSession(
                 Token,
                 null!,
@@ -353,15 +365,10 @@ public sealed class GameClientSessionConnectPublicationTests
                 new GameEventLogManager(),
                 new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
                 new EncounterRevealManager(),
-                static (_, _) => false,
-                static (_, prepare, _) => prepare(),
-                static (_, publish) => publish(),
+                Store,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
                 static _ => Random.Shared,
-                Registry.TryAcquireOperation,
-                Registry.TryExecute,
-                static (_, _, _) => { },
                 static (_, _) => { },
                 static (_, _) => null,
                 static (_, _) => { },

@@ -46,15 +46,14 @@ public partial class GameServer
     {
         try
         {
-            // #331 이행 셈: 카운트다운은 아직 전투 발행 레인을 타므로 매치 잠금 밖에서 보낸다.
-            BroadcastMatchStartCountdowns([matchingId], activeSessions);
-            if (!ShouldTrackBotTickBusySkip(matchingId))
-                return;
-
             if (!MatchRuntimes.TryEnter(matchingId, out MatchScope scope))
             {
-                if (_swarmMatchRuntimes.TryGet(matchingId, out SwarmMatchRuntime? busyRuntime))
+                if (ShouldTrackBotTickBusySkip(matchingId) &&
+                    _swarmMatchRuntimes.TryGet(matchingId, out SwarmMatchRuntime? busyRuntime))
+                {
                     busyRuntime.BotTickMetrics.RecordBusySkip();
+                }
+
                 return;
             }
 
@@ -63,10 +62,8 @@ public partial class GameServer
                 if (scope.Runtime.IsTerminal)
                     return;
 
-                // #331 이행 셈: 등록소 정리를 이 틱이 끝난 뒤로 미룬다.
-                using IDisposable? runtimeLease =
-                    _matchRuntimeRegistry.TryAcquireOperationIfAvailable(matchingId, static () => { });
-                if (runtimeLease == null)
+                BroadcastMatchStartCountdowns([matchingId], activeSessions);
+                if (!ShouldTrackBotTickBusySkip(matchingId))
                     return;
 
                 ProcessBotMovementForMatching(matchingId);

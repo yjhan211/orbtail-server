@@ -194,13 +194,13 @@ public class ProximityAutoCombatDataTests
     }
 
     [Fact]
-    public void OrbVisualPublication_UsesOneDeferredCommitAndSendStepPerCandidate()
+    public void OrbVisualPublication_UsesOneCommitAndSendStepPerCandidate()
     {
         string source = ReadNormalizedSource(
             FindRepositoryRoot(), "game_server", "GameServer.ProximityAutoCombat.cs");
         string append = ReadMethodSlice(
             source,
-            "private void AppendOrbVisualStatePublicationSteps(",
+            "private void DispatchOrbVisualStatePublications(",
             "private void CommitAndDispatchOrbVisualStatePublication(");
         string commitAndDispatch = ReadMethodSlice(
             source,
@@ -210,8 +210,7 @@ public class ProximityAutoCombatDataTests
         AssertInOrder(
             append,
             "foreach (SwarmOrbVisualPublication publication in publications)",
-            "_swarmCombatPublicationCoordinator.AppendDeferredStep(",
-            "() => CommitAndDispatchOrbVisualStatePublication(publication)");
+            "CommitAndDispatchOrbVisualStatePublication(publication);");
         AssertInOrder(
             commitAndDispatch,
             "_orbVisualStates[key] = state;",
@@ -223,7 +222,7 @@ public class ProximityAutoCombatDataTests
     }
 
     [Fact]
-    public void OrbVisualPublication_PreparesImmutablePlanBeforeDeferredOrderedDispatch()
+    public void OrbVisualPublication_PreparesImmutablePlanBeforeInLockDispatch()
     {
         string root = FindRepositoryRoot();
         string proximity = ReadNormalizedSource(
@@ -233,7 +232,7 @@ public class ProximityAutoCombatDataTests
             "private ImmutableArray<SwarmOrbVisualPublication> PrepareOrbVisualStatePublications(",
             StringComparison.Ordinal);
         int appendStart = proximity.IndexOf(
-            "private void AppendOrbVisualStatePublicationSteps(",
+            "private void DispatchOrbVisualStatePublications(",
             StringComparison.Ordinal);
         int captureStart = proximity.IndexOf(
             "private static ImmutableArray<int> CaptureSwarmOrbVisualItemIds(",
@@ -243,7 +242,7 @@ public class ProximityAutoCombatDataTests
         string dispatch = proximity[appendStart..captureStart];
 
         Assert.Contains(
-            "AppendOrbVisualStatePublicationSteps(\n" +
+            "DispatchOrbVisualStatePublications(\n" +
             "            PrepareOrbVisualStatePublications(matchingId, actors, sessions));",
             arena);
         AssertInOrder(
@@ -263,7 +262,6 @@ public class ProximityAutoCombatDataTests
 
         AssertInOrder(
             dispatch,
-            "_swarmCombatPublicationCoordinator.AppendDeferredStep(",
             "CommitAndDispatchOrbVisualStatePublication(publication)",
             "_orbVisualStates[key] = state;",
             "_orbVisualStates.TryRemove(key, out _);",

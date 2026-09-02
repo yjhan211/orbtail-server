@@ -13,15 +13,12 @@ using network.packets;
 namespace game_server.network;
 
 /// <summary>
-///     Represents one TCP client connection after a GameServer handoff.
-///     The session validates protocol messages and owns per-connection state, while match-shared state remains
-///     in GameServer managers. Authentication becomes visible only after the Redis admission commit and initial
-///     authoritative snapshot have both completed. Human Swarm growth-pick and orb-decision rules are injected
-///     by the owning GameServer instance instead of process-static routing callbacks. A successful admission
-///     response is built before authentication commits, then queued outside the match monitor while the outer
-///     runtime lease is still held. Terminal recipients and payloads are frozen during runtime-owned preparation;
-///     after the outer turn and lease retire, a supplied required-turn adapter publishes result, end, and mark
-///     steps outside the match monitor before cleanup.
+///     GameServer 인계 뒤의 TCP 클라이언트 연결 하나. 프로토콜 검증과 연결별 상태를 소유하고, 매치 공유 상태는
+///     GameServer 매니저에 남긴다. 권위 상태를 바꾸는 핸들러(채집·픽업·성장·조합)는 <see cref="RunUnderMatch"/>로
+///     매치 잠금(<see cref="MatchRuntime.Sync"/>) 안에서 동기 실행되며 응답도 그 안에서 보낸다 — 잠금 안 송신은
+///     큐 적재뿐이라 I/O를 기다리지 않는다. 인증은 Redis 입장 커밋과 초기 스냅샷이 끝난 뒤에만 보이고, 성공 응답은
+///     잠금 밖에서 큐에 넣는다. 매치 종료 결과·GAME_END는 같은 잠금 안에서 보내고 영속·lifecycle 발행은 잠금이
+///     풀린 뒤 후처리로 돈다.
 /// </summary>
 public partial class GameClientSession : SessionBase
 {
@@ -45,9 +42,8 @@ public partial class GameClientSession : SessionBase
     private readonly Func<string?, Task<GameHandoffContext?>> _consumeGameHandoffTicket;
     private readonly SummonStoneManager _summonStoneManager;
     private readonly Action<GameClientSession> _onLeaveCallback;
-    private readonly Action<long, Action?, Action?> _cleanupMatchRuntime;
-    private readonly Func<long, Action, IDisposable?> _acquireMatchRuntimeOperation;
-    private readonly Func<long, Action, bool> _executeMatchRuntime;
+    /// <summary>매치별 잠금·수명 색인 (#331) — 핸들러 직렬화·터미널 게이트·종료 정리의 단일 원천.</summary>
+    private readonly MatchRuntimeStore _matchRuntimes;
     /// <summary>
     ///     Queues an already-built successful admission response after authentication has committed. Production uses
     ///     <see cref="UserToken.TrySend"/>; tests can inject a sender to verify the match monitor boundary.
@@ -65,23 +61,13 @@ public partial class GameClientSession : SessionBase
     private readonly GameEventLogManager _gameEventLogManager;
     private readonly MatchSummaryFileStore _matchSummaryFileStore;
     private readonly EncounterRevealManager _encounterRevealManager;
-    private readonly Func<Action<IPacket>, IPacket, bool>? _tryCaptureCombatPublication;
-    private readonly Action<long, Action, Action> _publishOrderedSessionPublication;
-    /// <summary>
-    ///     Owning GameServer adapter that opens BeginRequiredTurn only after the outer publication turn and
-    ///     operation lease retire. The supplied action publishes a previously frozen terminal plan outside
-    ///     MatchRuntime.SyncRoot and retires its required turn before component cleanup resumes.
-    /// </summary>
-    private readonly Action<long, Action> _publishRequiredTerminalAction;
-    /// <summary>Owning GameServer instance delegate invoked inside a human growth-pick ordered turn.</summary>
+    /// <summary>성장 카드 픽 — 매치 잠금 안에서 부르는 GameServer 인스턴스 위임.</summary>
     private readonly Action<GameClientSession, long, int, int> _handleSwarmGrowthPick;
-    /// <summary>Owning GameServer instance delegate invoked inside a human orb-decision ordered turn.</summary>
+    /// <summary>6칸 빌드 결정 — 매치 잠금 안에서 부르는 GameServer 인스턴스 위임.</summary>
     private readonly Action<GameClientSession, long, int, long, long> _handleSwarmOrbDecision;
-    /// <summary>Resolves the owning match's item-combine stream inside its active ordered turn.</summary>
+    /// <summary>매치 소유 조합 난수 stream — 매치 잠금 안에서만 조회한다.</summary>
     private readonly Func<long, Random> _getItemCombineRandom;
-    private readonly Action<IPacket>? _sendCombatPublicationDirect;
     private readonly GameAdmissionStateCommitter _admissionStateCommitter;
-    private readonly AsyncLocal<MessageMatchRuntimeScope?> _activeMessageMatchRuntimeScope = new();
 
     private bool _isSleeping;
 
@@ -161,7 +147,7 @@ public partial class GameClientSession : SessionBase
         }
     }
 
-    public GameClientSession(
+    internal GameClientSession(
         UserToken token,
         IRedLockFactory redLock,
         ILogger logger,
@@ -182,15 +168,10 @@ public partial class GameClientSession : SessionBase
         GameEventLogManager gameEventLogManager,
         MatchSummaryFileStore matchSummaryFileStore,
         EncounterRevealManager encounterRevealManager,
-        Func<Action<IPacket>, IPacket, bool> tryCaptureCombatPublication,
-        Action<long, Action, Action> publishOrderedSessionPublication,
-        Action<long, Action> publishRequiredTerminalAction,
+        MatchRuntimeStore matchRuntimes,
         Action<GameClientSession, long, int, int> handleSwarmGrowthPick,
         Action<GameClientSession, long, int, long, long> handleSwarmOrbDecision,
         Func<long, Random> getItemCombineRandom,
-        Func<long, Action, IDisposable?> acquireMatchRuntimeOperation,
-        Func<long, Action, bool> executeMatchRuntime,
-        Action<long, Action?, Action?> cleanupMatchRuntime,
         Action<long, long> recordLeavePenalty,
         Func<long, long, Action?> prepareGameCompletion,
         Action<long, long> releaseMatchingClaim,
@@ -215,18 +196,12 @@ public partial class GameClientSession : SessionBase
         _gameEventLogManager = gameEventLogManager;
         _matchSummaryFileStore = matchSummaryFileStore;
         _encounterRevealManager = encounterRevealManager;
-        _tryCaptureCombatPublication = tryCaptureCombatPublication;
-        _publishOrderedSessionPublication = publishOrderedSessionPublication;
-        _publishRequiredTerminalAction = publishRequiredTerminalAction;
+        _matchRuntimes = matchRuntimes;
         _handleSwarmGrowthPick = handleSwarmGrowthPick;
         _handleSwarmOrbDecision = handleSwarmOrbDecision;
         _getItemCombineRandom = getItemCombineRandom;
-        _sendCombatPublicationDirect = SendCombatPublicationDirect;
         _admissionStateCommitter = new GameAdmissionStateCommitter(cacheHelper, logger);
-        _acquireMatchRuntimeOperation = acquireMatchRuntimeOperation;
-        _executeMatchRuntime = executeMatchRuntime;
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Token.TrySend;
-        _cleanupMatchRuntime = cleanupMatchRuntime;
         _recordLeavePenalty = recordLeavePenalty;
         _prepareGameCompletion = prepareGameCompletion;
         _releaseMatchingClaim = releaseMatchingClaim;
@@ -238,112 +213,47 @@ public partial class GameClientSession : SessionBase
         Logger.LogInformation("GameClientSession created");
     }
 
-    public override void Send(IPacket packet)
+    /// <summary>터미널 매치의 늦은 패킷은 잠금 없이 거른다 — 매치 밖 세션(로비 전)은 그대로 통과.</summary>
+    protected override bool IsMessageLifecycleActive()
     {
-        Func<Action<IPacket>, IPacket, bool>? tryCapture = _tryCaptureCombatPublication;
-        Action<IPacket>? sendDirect = _sendCombatPublicationDirect;
-        if (tryCapture != null && sendDirect != null && tryCapture(sendDirect, packet))
-            return;
-
-        base.Send(packet);
-    }
-
-    private void SendCombatPublicationDirect(IPacket packet) => base.Send(packet);
-
-    protected override bool TryAcquireMessageScope(out IDisposable? scope)
-    {
-        scope = null;
         long matchingId = CurrentMapSubId;
-        if (matchingId <= 0)
-            return true;
-
-        if (_activeMessageMatchRuntimeScope.Value is { IsDisposed: false })
-            throw new InvalidOperationException("A match message operation is already active for this session.");
-
-        IDisposable? runtimeOperation =
-            _acquireMatchRuntimeOperation(matchingId, static () => { });
-        if (runtimeOperation == null)
-            return false;
-
-        var messageScope = new MessageMatchRuntimeScope(this, matchingId, runtimeOperation);
-        _activeMessageMatchRuntimeScope.Value = messageScope;
-        scope = messageScope;
-        return true;
+        return matchingId <= 0 || _matchRuntimes.Get(matchingId) is { IsTerminal: false };
     }
 
     /// <summary>
-    ///     Publishes one player-message mutation through the shared per-match ordered lane. The
-    ///     SessionBase message scope already owns an ordinary player-message match-runtime lease;
-    ///     this guard makes that borrowed ownership explicit and prevents a continuation from
-    ///     publishing after the scope has retired or against a different match. Terminal publication
-    ///     uses a separate required turn only after this outer turn and lease have retired.
+    ///     권위 상태를 바꾸는 핸들러 core를 매치 잠금 안에서 동기로 돌린다 — 50ms 전투 틱과 같은 잠금이라
+    ///     이 안의 Send 순서가 곧 상태 변경 순서다. 런타임이 없거나 터미널이면 core 대신 거부 응답만 보낸다.
+    ///     core가 던지면 잠금을 풀고 SessionBase가 G_TO_C_ERROR를 보낸다(앞서 보낸 패킷은 그대로).
     /// </summary>
-    private Task PublishOrderedSessionAction(
-        Func<Task> prepare,
-        Action prepareFinalizingRejection)
+    private Task RunUnderMatch(Func<Task> core, Action rejectIfTerminal)
     {
-        ArgumentNullException.ThrowIfNull(prepare);
-        ArgumentNullException.ThrowIfNull(prepareFinalizingRejection);
+        ArgumentNullException.ThrowIfNull(core);
+        ArgumentNullException.ThrowIfNull(rejectIfTerminal);
 
-        long matchingId = CurrentMapSubId;
-        MessageMatchRuntimeScope? messageScope = _activeMessageMatchRuntimeScope.Value;
-        if (matchingId <= 0 ||
-            messageScope == null ||
-            messageScope.IsDisposed ||
-            messageScope.MatchingId != matchingId)
+        MatchRuntime? runtime = _matchRuntimes.Get(CurrentMapSubId);
+        if (runtime == null)
+        {
+            rejectIfTerminal();
+            return Task.CompletedTask;
+        }
+
+        using MatchScope scope = _matchRuntimes.Enter(runtime);
+        if (runtime.IsTerminal)
+        {
+            rejectIfTerminal();
+            return Task.CompletedTask;
+        }
+
+        Task prepared = core() ??
+            throw new InvalidOperationException("Match handler core returned a null task.");
+        if (!prepared.IsCompleted)
         {
             throw new InvalidOperationException(
-                "Ordered session publication requires the active message match operation lease.");
+                "Match handler core must complete synchronously under the match lock.");
         }
 
-        Task preparedTask = Task.CompletedTask;
-        _publishOrderedSessionPublication(
-            matchingId,
-            () =>
-            {
-                preparedTask = prepare() ??
-                    throw new InvalidOperationException(
-                        "Ordered session preparation returned a null task.");
-                if (!preparedTask.IsCompleted)
-                {
-                    throw new InvalidOperationException(
-                        "Ordered session preparation must complete synchronously under the match monitor.");
-                }
-
-                preparedTask.GetAwaiter().GetResult();
-            },
-            prepareFinalizingRejection);
-        return preparedTask;
-    }
-
-    private void ClearMessageMatchRuntimeScope(MessageMatchRuntimeScope scope)
-    {
-        if (ReferenceEquals(_activeMessageMatchRuntimeScope.Value, scope))
-            _activeMessageMatchRuntimeScope.Value = null;
-    }
-
-    /// <summary>
-    ///     Wraps the SessionBase message operation lease with the matching identity and a shared
-    ///     disposed bit so inherited execution contexts cannot reuse a retired capability.
-    /// </summary>
-    private sealed class MessageMatchRuntimeScope(
-        GameClientSession owner,
-        long matchingId,
-        IDisposable runtimeOperation) : IDisposable
-    {
-        private int _disposed;
-
-        public long MatchingId { get; } = matchingId;
-        public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _disposed, 1) != 0)
-                return;
-
-            owner.ClearMessageMatchRuntimeScope(this);
-            runtimeOperation.Dispose();
-        }
+        prepared.GetAwaiter().GetResult();
+        return Task.CompletedTask;
     }
 
     internal static void CleanupAbandonedMatchingRuntime(long matchingId)
@@ -693,8 +603,8 @@ public partial class GameClientSession : SessionBase
     }
 
     /// <summary>
-    ///     Marks this session terminal and prepares, but does not dispatch, its lifecycle Action.
-    ///     Required terminal publication uses this form so dispatch remains a post-commit after hook.
+    ///     세션을 터미널로 표시하고 lifecycle Action을 준비만 한다(발행 안 함). 매치 종료 경로가
+    ///     잠금 안에서 부르고, 발행은 잠금이 풀린 뒤 후처리에서 한다.
     /// </summary>
     internal Action? MarkGameEndedAndPrepareLifecyclePublication()
     {

@@ -163,8 +163,8 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     성장 카드 선택 (#226 단계 C) — human ordered publication 안에서 owning GameServer instance
-    ///     delegate로 오퍼 상태를 판정한다.
+    ///     성장 카드 선택 (#226 단계 C) — 매치 잠금 안에서 owning GameServer instance delegate로
+    ///     오퍼 상태를 판정한다.
     /// </summary>
     private Task HandleSwarmGrowthPick(C_TO_G_SWARM_GROWTH_PICK request)
     {
@@ -172,7 +172,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
 
         long matchingId = CurrentMapSubId;
-        return PublishOrderedSessionAction(
+        return RunUnderMatch(
             () =>
             {
                 _handleSwarmGrowthPick(this, matchingId, request.OfferId, request.CardIndex);
@@ -182,7 +182,7 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     6칸 빌드 결정 (#232 4단계): 합성·예비 오브 교체·분해 — human ordered publication 안에서
+    ///     6칸 빌드 결정 (#232 4단계): 합성·예비 오브 교체·분해 — 매치 잠금 안에서
     ///     owning GameServer instance delegate로 판정한다.
     /// </summary>
     private Task HandleSwarmOrbDecision(C_TO_G_SWARM_ORB_DECISION request)
@@ -191,7 +191,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
 
         long matchingId = CurrentMapSubId;
-        return PublishOrderedSessionAction(
+        return RunUnderMatch(
             () =>
             {
                 _handleSwarmOrbDecision(
