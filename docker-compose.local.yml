@@ -38,7 +38,6 @@ services:
     ports:
       - "8080:8080"
       - "9001:9001"
-      - "9090:9090"
     volumes:
       # Mount source code for hot reload
       - ./game_server:/App/game_server:rw
@@ -88,7 +87,6 @@ services:
     ports:
       - "7000:7000"
       - "8081:8080"
-      - "9091:9090"
     volumes:
       # Mount source code for hot reload
       - ./user_server:/App/user_server:rw
