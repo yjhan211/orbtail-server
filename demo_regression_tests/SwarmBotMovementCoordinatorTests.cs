@@ -67,26 +67,21 @@ public sealed class SwarmBotMovementCoordinatorTests
             PlayerId = -20,
             Name = "Bot",
             WearItemIdList = [101, 202],
-            Boosts = [BoostType.SPEED],
             LastCell = new Cell(7, 8)
         };
 
         SwarmBotPlayerInfoSnapshot snapshot = SwarmBotPlayerInfoSnapshot.Capture(source);
         source.WearItemIdList[0] = 999;
-        source.Boosts.Clear();
         source.LastCell.X = 999;
 
         PlayerInfo firstProjection = snapshot.ToPlayerInfo();
         Assert.Equal([101, 202], firstProjection.WearItemIdList);
-        Assert.Contains(BoostType.SPEED, firstProjection.Boosts);
         Assert.Equal(new Cell(7, 8), firstProjection.LastCell);
 
         firstProjection.WearItemIdList.Clear();
-        firstProjection.Boosts.Clear();
         firstProjection.LastCell.Y = 999;
         PlayerInfo secondProjection = snapshot.ToPlayerInfo();
         Assert.Equal([101, 202], secondProjection.WearItemIdList);
-        Assert.Contains(BoostType.SPEED, secondProjection.Boosts);
         Assert.Equal(new Cell(7, 8), secondProjection.LastCell);
     }
 

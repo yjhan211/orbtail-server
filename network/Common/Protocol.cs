@@ -14,7 +14,6 @@ namespace network.common
         U_TO_C_WEAR_ITEM,
         C_TO_U_USE_ITEM,
         U_TO_C_USE_ITEM,
-        U_TO_U_DUPLICATE,
         C_TO_U_MATCHING,
         U_TO_C_MATCHING,
         C_TO_U_MATCHING_CANCEL,

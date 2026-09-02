@@ -21,13 +21,9 @@ namespace network.common.data.models
             State = PlayerState.NONE;
             ObjectInfo = new GameObjectInfo();
             InventoryInfo = new InventoryInfo();
-            LabId = 0;
-            LabName = "";
             Gold = 0;
             Hp = 0;
             Stamina = 0;
-            Boosts = new();
-            IsTutorial = true;
             LastMapId = MapId.None;
             LastMapSubId = 0;
             LastCell = new(0, 0);
@@ -50,13 +46,9 @@ namespace network.common.data.models
             State = PlayerState.NONE;
             ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, PlayerId, MapId.Camp, 0, initCell);
             InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, PlayerId);
-            LabId = 0;
-            LabName = "";
             Gold = 1000;
             Hp = 5000;
             Stamina = 100;
-            Boosts = new();
-            IsTutorial = true;
             LastMapId = MapId.Camp;
             LastMapSubId = 0;
             LastCell = initCell;
@@ -74,18 +66,11 @@ namespace network.common.data.models
 
         [Key("state")] public PlayerState State { get; set; }
 
-        [Key("labId")] public long LabId { get; set; }
-
-        [Key("labName")] public string LabName { get; set; }
-
         [Key("gold")] public long Gold { get; set; }
 
         [Key("hp")] public int Hp { get; set; }
 
         [Key("stamina")] public int Stamina { get; set; }
-
-        [Key("boostList")] public HashSet<BoostType> Boosts { get; set; }
-        [Key("isTutorial")] public bool IsTutorial { get; set; }
 
         [Key("mapId")] public MapId LastMapId { get; set; }
 
