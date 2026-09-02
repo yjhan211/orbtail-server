@@ -629,8 +629,11 @@ public partial class GameServer
     // 경계 밖 오염 (리소스 틱 5초당): 기본 + 초과 셀당 가산. 문턱에서 즉사가 아니라 "슬슬 따가움에서 깊을수록
     // 아픔"의 경사 — 외곽 마지막 개봉 도박이 성립해야 한다. 구 웨이브 폐쇄 오염 대신 이 경사가 압박을 전담한다
     // (#272). 기본 12: 유예가 없어 상시 노출 시간이 길므로 경계 스침은 오래 살고 깊이 20셀 방치는 20초 안에 죽는다.
-    private const int SwarmFieldBaseCorruptionPerTick = 12;
-    private const int SwarmFieldCorruptionPerExtraCell = 5;
+    // 원천은 swarm_config.csv (#335) — 미등재 시 코드 기본값.
+    private static int SwarmFieldBaseCorruptionPerTick =>
+        SwarmConfigData.GetInt("SWARM_FIELD_BASE_CORRUPTION_PER_TICK", 12);
+    private static int SwarmFieldCorruptionPerExtraCell =>
+        SwarmConfigData.GetInt("SWARM_FIELD_CORRUPTION_PER_EXTRA_CELL", 5);
 
     /// <summary>현재 안전 반경. 수축 전에는 double.MaxValue(전 맵 안전). 폐쇄 시계(GameStartTime)와
     ///     같은 앵커를 쓴다 — 파생 웨이브의 구역 완전-밖 시각과 필드 오염이 어긋나지 않는다.
@@ -1183,16 +1186,21 @@ public partial class GameServer
     // 열 절단: 대상 오브(ItemUid)별 래치 — 같은 오브를 다시 때리려면 판정 타원 밖으로 완전히 나갔다 와야 하고
     // (이탈 재무장), 0.8초 안의 재타는 같은 통과로 본다. 움직이는 열이 절단자를 스치면 매 틱 재무장되므로
     // 디바운스가 없으면 한 통과가 여러 번으로 잡힌다. 서로 다른 오브 연속 타격은 자유 — 꼬리를 따라 달리면 순차로 금이 간다.
-    private const double SwarmTrailCutSameOrbDebounceSeconds = 0.8d;
+    // 절단 비용·창의 원천은 swarm_config.csv (#335) — 미등재 시 코드 기본값.
+    private static double SwarmTrailCutSameOrbDebounceSeconds =>
+        SwarmConfigData.GetDouble("SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS", 0.8d);
     private const float SwarmTrailCutMaxSegmentLength = 2f;
     // 고위험 단일 절단 (#232): 성공한 공격자는 정신오염 +35를 내고 8초 동안 수면 회복을 잃는다.
     // 비용을 감당할 수 없으면(만충으로 탈락) 절단도 비용도 발생하지 않는다.
-    private const int SwarmSingleCutCorruptionCost = 35;
-    private const double SwarmSingleCutHealLockSeconds = 8d;
+    private static int SwarmSingleCutCorruptionCost =>
+        SwarmConfigData.GetInt("SWARM_SINGLE_CUT_CORRUPTION_COST", 35);
+    private static double SwarmSingleCutHealLockSeconds =>
+        SwarmConfigData.GetDouble("SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS", 8d);
     // 절단자 한정 반격 보호 (#227 7단계): 실제 꼬리 상실 순간부터 1.2초.
     // 전역 무적이 아니라 '방금 내 꼬리를 자른 그 사람에게 되갚을 시간'이다 —
     // 제3자·잔상·폐쇄 피해는 그대로 들어오고, 피해자는 이동·사격·역절단을 다 할 수 있다.
-    private const double SwarmCutRetaliationWindowSeconds = 1.2d;
+    private static double SwarmCutRetaliationWindowSeconds =>
+        SwarmConfigData.GetDouble("SWARM_CUT_RETALIATION_WINDOW_SECONDS", 1.2d);
     // 오브 관통 판정 (정규화 dy×2 공간): 링크 선을 스치는 게 아니라 오브를 밟아야 끊긴다. 판정 중심은 스프라이트가
     // 떠 있어 위로 오프셋한다. 반경 0.42는 오브 간격 0.9의 절반(0.45) 아래 — 넘기면 판정 원이 겹쳐 의도보다 앞선
     // 순번이 잡히고, 절단은 그 순번부터 뒤를 전부 날리므로 손실이 과해진다.
@@ -1818,9 +1826,11 @@ public partial class GameServer
 
     // ===== 파도 = 소용돌이 (#268): 파도 오브 각각이 주기(2초)마다 자기 열 위치에 소용돌이를 깐다 — 오브가 곧
     // 무기 위치라는 점에서 바람 회전 칼날과 같은 문법. 예고(0.65초 림 링) 후 반경 안 전원을 잠깐 늦춘다(침수) —
-    // 피해는 타격 피드백 수준(1/4). 예고 원점은 스폰 순간 고정. =====
-    private const double SwarmWaveBombIntervalSeconds = 2d;
-    private const double SwarmWaveBombFuseSeconds = 0.65d;
+    // 피해는 타격 피드백 수준(1/4). 예고 원점은 스폰 순간 고정. 주기·예고의 원천은 swarm_config.csv (#335). =====
+    private static double SwarmWaveBombIntervalSeconds =>
+        SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_INTERVAL_SECONDS", 2d);
+    private static double SwarmWaveBombFuseSeconds =>
+        SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_FUSE_SECONDS", 0.65d);
 
     // 오브별 독립 시계("다같이 터지는 게 어색"). 파도 폭탄 상태(위상·대기열)는 GetSwarmMatchRuntime(matchingId).TrailCombat.
 

@@ -36,25 +36,29 @@ public sealed class SwarmMonsterDirector
     // 순간이 곧 한 방이 되는 순간) 위협은 HP가 아니라 접촉 피해가 진다 — 최종 페이즈에 T1 오브는 한 방,
     // 빈손은 두 방이 죽음. 핵 HP 곡선은 "아직 한 방이 아닌 것"의 눈금자. 소환석 예산은 몹 보유량보다 훨씬
     // 낮아 "한 구역 무한 파밍"을 차단하되 5분 안에 성장 8회(누적 96석)에 닿는 값이다.
-    private static readonly (double UntilSeconds, int PerPlayerTarget, int NormalHp, int ContactDamage,
-        int CoreHp, int StoneBudget)[] SupplyPhases =
+    // 원천은 swarm_supply_phase.csv (#335) — 미로드 시 아래 기본 곡선으로 폴백한다 (값은 CSV와 같다).
+    private static readonly SwarmSupplyPhaseDefinition[] DefaultSupplyPhases =
     [
-        (100d, 8, 16, 10, 48, 90), // 0:00~1:40 폐쇄 전
-        (150d, 12, 17, 14, 60, 100), // 1:40~2:30 1차
-        (200d, 16, 19, 20, 72, 110), // 2:30~3:20 2차
-        (250d, 22, 21, 28, 96, 120), // 3:20~4:10 3차
-        (double.MaxValue, 28, 22, 40, 120, 120) // 4:10~5:00 최종 수렴
+        new(0, 100d, 8, 16, 10, 48, 90), // 0:00~1:40 폐쇄 전
+        new(1, 150d, 12, 17, 14, 60, 100), // 1:40~2:30 1차
+        new(2, 200d, 16, 19, 20, 72, 110), // 2:30~3:20 2차
+        new(3, 250d, 22, 21, 28, 96, 120), // 3:20~4:10 3차
+        new(4, double.MaxValue, 28, 22, 40, 120, 120) // 4:10~5:00 최종 수렴
     ];
+
+    private static IReadOnlyList<SwarmSupplyPhaseDefinition> SupplyPhases =>
+        SwarmSupplyPhaseData.IsLoaded ? SwarmSupplyPhaseData.GetAll() : DefaultSupplyPhases;
 
     private static int GetSupplyPhaseIndex(double elapsedSeconds)
     {
-        for (int index = 0; index < SupplyPhases.Length; index++)
+        var phases = SupplyPhases;
+        for (int index = 0; index < phases.Count; index++)
         {
-            if (elapsedSeconds < SupplyPhases[index].UntilSeconds)
+            if (elapsedSeconds < phases[index].UntilSeconds)
                 return index;
         }
 
-        return SupplyPhases.Length - 1;
+        return phases.Count - 1;
     }
 
     // 웨이브 리듬: 12초마다 구역 목표까지 한 번에 붓는다 — 리젠은 수치로 정해진다는 결정. 부족분을 계속
@@ -1006,7 +1010,7 @@ public sealed class SwarmMonsterDirector
             {
                 if (zoneState.WipeRestUntilUtc == null)
                 {
-                    bool finalPhase = phaseIndex == SupplyPhases.Length - 1;
+                    bool finalPhase = phaseIndex == SupplyPhases.Count - 1;
                     zoneState.WipeRestUntilUtc = now.AddSeconds(
                         finalPhase ? SupplyWipeRestSecondsFinalPhase : SupplyWipeRestSeconds);
                     zoneState.NextTopUpAtUtc = null;

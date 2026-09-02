@@ -21,7 +21,9 @@ public partial class GameServer
 
     // 바람만 피해자 면역 창을 둔다: 칼날은 예고선(회전 링)이 오브 위치 그대로라 표시=판정 어긋남이 없고, 면역까지
     // 걷히면 순수 연타 상향이 딸려온다 — 태양의 면역 제거는 침묵 관통 수리였지 연타 상향이 아니다.
-    private const double SwarmWindBladeVictimImmuneSeconds = 0.9d;
+    // 원천은 swarm_config.csv (#335) — 미등재 시 코드 기본값.
+    private static double SwarmWindBladeVictimImmuneSeconds =>
+        SwarmConfigData.GetDouble("SWARM_WIND_BLADE_VICTIM_IMMUNE_SECONDS", 0.9d);
 
     private void ProcessSwarmWindBlades(
         long matchingId,

@@ -27,6 +27,7 @@ namespace network.common.data.helpers
                 (fileName: DataFiles.LocalizationText, init: GameLocalizationData.Initialize, validate: null),
                 (fileName: DataFiles.GameRule, init: GameRuleData.Initialize, validate: GameRuleData.Validate),
                 (fileName: DataFiles.SwarmConfig, init: SwarmConfigData.Initialize, validate: null),
+                (fileName: DataFiles.SwarmSupplyPhase, init: SwarmSupplyPhaseData.Initialize, validate: null),
                 (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize,
                     validate: GameLoadingTextData.Validate),
                 (fileName: DataFiles.AreaName, init: GameAreaNameData.Initialize,
@@ -290,6 +291,7 @@ namespace network.common.data.helpers
         {
             public const string GameRule = "game_rule.csv";
             public const string SwarmConfig = "swarm_config.csv";  // #296 — 스웜 밸런스 key/value
+            public const string SwarmSupplyPhase = "swarm_supply_phase.csv";  // #335 — 잔상 공급 페이즈 곡선
             public const string LoadingText = "loading_text.csv";
             public const string AreaName = "area_name.csv";
             public const string SystemText = "system_text.csv";
