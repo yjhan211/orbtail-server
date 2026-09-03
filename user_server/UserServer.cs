@@ -5,7 +5,6 @@ using Microsoft.Extensions.Logging;
 using network.common.data.helpers;
 using network.contracts.authentication;
 using network.core;
-using network.helpers;
 using network.hosting;
 using network.interfaces;
 using user_server.network;
@@ -198,7 +197,6 @@ public class UserServer(
     {
         try
         {
-
             _ = new GameSession(
                 token,
                 logger,
