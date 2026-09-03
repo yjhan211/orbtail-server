@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
-using network.common.data.models;
-using network.common.data;
 using network.common;
+using network.common.data;
+using network.common.data.models;
 using network.gamehandoff;
 using network.interfaces;
 

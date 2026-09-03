@@ -1,6 +1,6 @@
 using game_server.services;
-using network.common.data.models;
 using network.common;
+using network.common.data.models;
 using network.gamehandoff;
 using network.infrastructure.routing;
 using network.interfaces;
