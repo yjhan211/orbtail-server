@@ -50,7 +50,7 @@ public partial class GameClientSession : SessionBase
     /// </summary>
     private readonly Func<Packet, bool> _trySendConnectSuccessResponse;
     private readonly Func<long, GameClientSession, Action?> _registerSessionCallback;
-    private readonly Action<long, long> _recordLeavePenalty;
+    private readonly Action<long, long> _publishPlayerLeft;
     private readonly Func<long, long, Action?> _prepareGameCompletion;
     private readonly Action<long, long> _releaseMatchingClaim;
     private readonly Action<GameClientSession> _recordAdmissionFailure;
@@ -172,7 +172,7 @@ public partial class GameClientSession : SessionBase
         Action<GameClientSession, long, int, int> handleSwarmGrowthPick,
         Action<GameClientSession, long, int, long, long> handleSwarmOrbDecision,
         Func<long, Random> getItemCombineRandom,
-        Action<long, long> recordLeavePenalty,
+        Action<long, long> publishPlayerLeft,
         Func<long, long, Action?> prepareGameCompletion,
         Action<long, long> releaseMatchingClaim,
         Func<bool> isServerStopping,
@@ -202,7 +202,7 @@ public partial class GameClientSession : SessionBase
         _getItemCombineRandom = getItemCombineRandom;
         _admissionStateCommitter = new GameAdmissionStateCommitter(cacheHelper, logger);
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Token.TrySend;
-        _recordLeavePenalty = recordLeavePenalty;
+        _publishPlayerLeft = publishPlayerLeft;
         _prepareGameCompletion = prepareGameCompletion;
         _releaseMatchingClaim = releaseMatchingClaim;
         _isServerStopping = isServerStopping;
@@ -525,7 +525,7 @@ public partial class GameClientSession : SessionBase
 
         try
         {
-            _recordLeavePenalty(PlayerId.Value, CurrentMapSubId);
+            _publishPlayerLeft(PlayerId.Value, CurrentMapSubId);
         }
         catch
         {

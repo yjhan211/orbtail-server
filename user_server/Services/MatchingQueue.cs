@@ -14,7 +14,6 @@ internal sealed class MatchingQueue(
     ICacheHelper cacheHelper,
     IRedLockFactory redLock,
     MatchingQueueClaimCoordinator claims,
-    LeavePenaltyService leavePenalties,
     ILogger logger)
 {
     internal const string QueueKey = "matching_queue";
@@ -53,16 +52,8 @@ internal sealed class MatchingQueue(
                 RequestId = requestId!
             });
 
-            // 누적 이탈 횟수만큼 큐 진입을 늦춘다.
-            long penaltyDelay = await leavePenalties.GetQueueDelayAsync(playerId);
-            long score = matchingNow.ToUnixTimeSeconds() + penaltyDelay;
-
-            await cacheHelper.SortedSetAddAsync(QueueKey, entry.Raw, score);
-
-            if (penaltyDelay > 0)
-                logger.LogInformation("Player {PlayerId} queued with a {Penalty}s leave penalty", playerId, penaltyDelay);
-            else
-                logger.LogInformation("Player {PlayerId} queued for matching", playerId);
+            await cacheHelper.SortedSetAddAsync(QueueKey, entry.Raw, matchingNow.ToUnixTimeSeconds());
+            logger.LogInformation("Player {PlayerId} queued for matching", playerId);
 
             return ErrorCode.SUCCESS;
         }

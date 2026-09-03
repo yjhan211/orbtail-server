@@ -15,7 +15,7 @@ public sealed class MatchingQueueTests
     public MatchingQueueTests()
     {
         var claims = new MatchingQueueClaimCoordinator(_cache, new InMemoryMatchingClaimStore(_cache), _logger);
-        _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), claims, new LeavePenaltyService(_cache, _logger), _logger);
+        _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), claims, _logger);
     }
 
     [Fact]

@@ -23,7 +23,7 @@ public sealed class MatchmakingPassTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         _claimStore = new InMemoryMatchingClaimStore(_cache);
         _claims = new MatchingQueueClaimCoordinator(_cache, _claimStore, _logger);
-        _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), _claims, new LeavePenaltyService(_cache, _logger), _logger);
+        _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), _claims, _logger);
     }
 
     private MatchmakingPass CreatePass(DevMatchOverrides? overrides = null, CancellationToken shutdown = default)
