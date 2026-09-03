@@ -1,8 +1,7 @@
-using network.contracts.authentication;
 using network.core.security;
 using network.interfaces;
 
-namespace network.application.authentication;
+namespace network.gamehandoff;
 
 public sealed class GameHandoffTicketOptions
 {

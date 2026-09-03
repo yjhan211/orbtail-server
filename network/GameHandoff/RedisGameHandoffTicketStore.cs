@@ -1,9 +1,8 @@
 using MessagePack;
-using network.contracts.authentication;
-using network.interfaces;
 using StackExchange.Redis;
+using network.interfaces;
 
-namespace network.infrastructure.authentication;
+namespace network.gamehandoff;
 
 /// <summary>
 ///     Persists one-time game handoff tickets. SET NX issues the ticket and GETDEL consumes it exactly once.

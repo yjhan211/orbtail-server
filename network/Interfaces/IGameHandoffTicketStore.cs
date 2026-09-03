@@ -1,5 +1,4 @@
-using network.contracts.authentication;
-using network.interfaces;
+using network.gamehandoff;
 
 namespace network.interfaces;
 

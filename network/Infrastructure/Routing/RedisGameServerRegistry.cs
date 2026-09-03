@@ -1,7 +1,6 @@
 using MessagePack;
-using network.contracts.routing;
-using network.interfaces;
 using StackExchange.Redis;
+using network.interfaces;
 
 namespace network.infrastructure.routing;
 

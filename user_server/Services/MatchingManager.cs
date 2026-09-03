@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.contracts.authentication;
+using network.gamehandoff;
 using network.infrastructure.routing;
 using network.interfaces;
 using user_server.network;

@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
-using network.contracts.authentication;
+using network.gamehandoff;
 using network.helpers;
 using network.interfaces;
 using network.packets;

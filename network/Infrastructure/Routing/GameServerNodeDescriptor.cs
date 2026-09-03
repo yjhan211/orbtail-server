@@ -1,6 +1,6 @@
 using MessagePack;
 
-namespace network.contracts.routing;
+namespace network.infrastructure.routing;
 
 /// <summary>
 ///     Game Server 한 대가 레지스트리에 광고하는 자기 소개. User Server 매칭이 이 값만 보고 매치를 배정한다.

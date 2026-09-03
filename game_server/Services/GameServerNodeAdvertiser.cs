@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-using network.contracts.routing;
+using network.infrastructure.routing;
 using network.interfaces;
 
 namespace game_server.services;
