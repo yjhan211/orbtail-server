@@ -1,11 +1,10 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-using network.contracts.authentication;
 using network.core.security;
 using network.interfaces;
 
-namespace network.application.authentication;
+namespace user_server.services;
 
 public sealed class AccountTokenOptions
 {

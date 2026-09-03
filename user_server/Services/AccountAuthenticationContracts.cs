@@ -1,4 +1,4 @@
-namespace network.contracts.authentication;
+namespace user_server.services;
 
 public sealed record AccountTokenResolution(
     long PlayerId,
