@@ -5,8 +5,9 @@ using network.common;
 
 namespace network.core;
 
-public sealed class Listener(ILogger? logger = null)
+public sealed class Listener(ILogger<Listener> logger)
 {
+    private readonly ILogger<Listener> _logger = logger;
     public delegate void NewClientHandler(Socket clientSocket, object? token);
 
     private readonly object _lifecycleLock = new();
@@ -42,6 +43,10 @@ public sealed class Listener(ILogger? logger = null)
         }
     }
 
+    /// <summary>
+    ///     매개변수 토큰은 "루프 종료를 얼마나 기다릴지"(호출자의 취소)이고, 필드 _cts는 accept 루프 자체의 취소다.
+    ///     둘을 합치면 호출자가 기다림을 포기한 것과 루프가 정상 종료한 것을 구분할 수 없다.
+    /// </summary>
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         Task? listenTask;
@@ -60,7 +65,7 @@ public sealed class Listener(ILogger? logger = null)
 
         try
         {
-            cts?.Cancel();
+            await cts.CancelAsync();
             listenSocket?.Dispose();
             await listenTask.WaitAsync(cancellationToken);
         }
@@ -107,12 +112,12 @@ public sealed class Listener(ILogger? logger = null)
             }
             catch (SocketException ex) when (cancellationToken.IsCancellationRequested)
             {
-                logger?.LogDebug(ex, "Listener stopped while awaiting a connection");
+                _logger.LogDebug(ex, "Listener stopped while awaiting a connection");
                 break;
             }
             catch (Exception ex)
             {
-                logger?.LogError(ex, "Failed to accept a client connection");
+                _logger.LogError(ex, "Failed to accept a client connection");
                 try
                 {
                     await Task.Delay(TimeSpan.FromMilliseconds(100), cancellationToken);
@@ -128,7 +133,7 @@ public sealed class Listener(ILogger? logger = null)
             var handler = ClientConnected;
             if (handler == null)
             {
-                logger?.LogWarning("Accepted a client connection without a registered handler");
+                _logger.LogWarning("Accepted a client connection without a registered handler");
                 clientSocket.Dispose();
                 continue;
             }
@@ -139,7 +144,7 @@ public sealed class Listener(ILogger? logger = null)
             }
             catch (Exception ex)
             {
-                logger?.LogError(ex, "Client connection initialization failed");
+                _logger.LogError(ex, "Client connection initialization failed");
                 clientSocket.Dispose();
             }
         }

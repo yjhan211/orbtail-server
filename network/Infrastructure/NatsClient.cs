@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NATS.Client;
 using network.interfaces;
 
@@ -11,7 +12,7 @@ namespace network.infrastructure;
 public class NatsClient : INatsClient
 {
     private readonly IConnection _connection;
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
     private readonly CancellationTokenSource _handlerCancellation = new();
     private readonly ConcurrentDictionary<long, Task> _inFlightHandlers = new();
     private readonly object _subscriptionLock = new();
@@ -23,7 +24,7 @@ public class NatsClient : INatsClient
     public NatsClient(string url, ILogger? logger = null)
     {
         _url = url;
-        _logger = logger;
+        _logger = logger ?? NullLogger.Instance;
         _connection = CreateConnection();
     }
 
@@ -35,7 +36,7 @@ public class NatsClient : INatsClient
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "NATS Publish 실패: Subject={Subject}", subject);
+            _logger.LogError(ex, "NATS Publish 실패: Subject={Subject}", subject);
             throw;
         }
     }
@@ -97,7 +98,7 @@ public class NatsClient : INatsClient
                     () => HandleRequestAsync(args.Message, messageHandler),
                     $"request {args.Message.Subject}"))
             {
-                _logger?.LogDebug(
+                _logger.LogDebug(
                     "NATS request ignored during shutdown: Subject={Subject}",
                     args.Message.Subject);
             }
@@ -162,11 +163,11 @@ public class NatsClient : INatsClient
         }
         catch (OperationCanceledException) when (_handlerCancellation.IsCancellationRequested)
         {
-            _logger?.LogDebug("NATS request canceled during shutdown: Subject={Subject}", message.Subject);
+            _logger.LogDebug("NATS request canceled during shutdown: Subject={Subject}", message.Subject);
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "NATS request handler failed: Subject={Subject}", message.Subject);
+            _logger.LogError(ex, "NATS request handler failed: Subject={Subject}", message.Subject);
         }
     }
 
@@ -186,7 +187,7 @@ public class NatsClient : INatsClient
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogError(ex, "Unhandled NATS operation failure: Operation={Operation}", operationName);
+                    _logger.LogError(ex, "Unhandled NATS operation failure: Operation={Operation}", operationName);
                 }
             });
             _inFlightHandlers.TryAdd(handlerId, task);
@@ -225,7 +226,7 @@ public class NatsClient : INatsClient
             }
             catch (Exception ex)
             {
-                _logger?.LogDebug(ex, "NATS 구독 해제 실패: Subject={Subject}", subscription.Subject);
+                _logger.LogDebug(ex, "NATS 구독 해제 실패: Subject={Subject}", subscription.Subject);
             }
         }
     }
@@ -255,15 +256,15 @@ public class NatsClient : INatsClient
 
         options.DisconnectedEventHandler += (_, args) =>
         {
-            _logger?.LogWarning("NATS 연결 끊김: {Error}", args.Error?.Message ?? "unknown");
+            _logger.LogWarning("NATS 연결 끊김: {Error}", args.Error?.Message ?? "unknown");
         };
 
         options.ReconnectedEventHandler += (_, _) =>
         {
-            _logger?.LogInformation("NATS 재연결 성공: {Url}", _url);
+            _logger.LogInformation("NATS 재연결 성공: {Url}", _url);
         };
 
-        options.ClosedEventHandler += (_, _) => { _logger?.LogWarning("NATS 연결 종료: {Url}", _url); };
+        options.ClosedEventHandler += (_, _) => { _logger.LogWarning("NATS 연결 종료: {Url}", _url); };
 
         return new ConnectionFactory().CreateConnection(options);
     }

@@ -8,8 +8,8 @@ using network.interfaces;
 namespace network.core;
 
 /// <summary>
-///     Accepts TCP clients, coordinates connection shutdown, and delegates per-connection protocol work to
-///     <see cref="UserToken"/> instances.
+///     Listener가 수락한 TCP 연결을 초기화하고 연결 종료를 관리하며,
+///     연결별 프로토콜 처리는 UserToken에 위임한다.
 /// </summary>
 public sealed class NetworkService : INetworkService
 {
@@ -17,14 +17,16 @@ public sealed class NetworkService : INetworkService
     private readonly Listener _clientListener;
     private readonly object _connectionLifecycleLock = new();
     private readonly SocketEventArgsPool _eventArgsPool;
-    private readonly ILogger? _logger;
+    private readonly ILogger<NetworkService> _logger;
     private readonly SemaphoreSlim _stopLock = new(1, 1);
     private int _stopping;
 
-    public NetworkService(ILogger<NetworkService>? logger = null)
+    public NetworkService(
+        ILogger<NetworkService> logger,
+        ILogger<Listener> listenerLogger)
     {
         _logger = logger;
-        _clientListener = new Listener(logger);
+        _clientListener = new Listener(listenerLogger);
         _clientListener.ClientConnected += OnNewClient;
         _eventArgsPool = new SocketEventArgsPool(
             Config.MAX_CONNECTION,
@@ -168,7 +170,7 @@ public sealed class NetworkService : INetworkService
 
         if (!_eventArgsPool.TryRent(out var receiveArgs, out var sendArgs))
         {
-            _logger?.LogWarning("Connection rejected because the socket event-args pool is exhausted");
+            _logger.LogWarning("Connection rejected because the socket event-args pool is exhausted");
             clientSocket.Dispose();
             return;
         }
@@ -185,7 +187,7 @@ public sealed class NetworkService : INetworkService
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Failed to initialize an accepted connection");
+            _logger.LogError(ex, "Failed to initialize an accepted connection");
             _eventArgsPool.Return(receiveArgs, sendArgs);
             clientSocket.Dispose();
             return;
@@ -207,7 +209,7 @@ public sealed class NetworkService : INetworkService
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Session creation failed");
+            _logger.LogError(ex, "Session creation failed");
             CloseAndRelease(userToken, ConnectionCloseReason.SessionCreationFailed, ex);
         }
         finally
@@ -246,7 +248,7 @@ public sealed class NetworkService : INetworkService
     {
         if (receiveArgs.UserToken is not UserToken userToken)
         {
-            _logger?.LogWarning("Receive completion arrived without an owning connection");
+            _logger.LogWarning("Receive completion arrived without an owning connection");
             return;
         }
 
@@ -256,7 +258,7 @@ public sealed class NetworkService : INetworkService
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Unexpected receive completion failure");
+            _logger.LogError(ex, "Unexpected receive completion failure");
             CloseAndRelease(userToken, ConnectionCloseReason.ReceiveError, ex);
         }
     }
@@ -300,13 +302,13 @@ public sealed class NetworkService : INetworkService
                 receiveArgs.BytesTransferred);
             if (errorCode == ErrorCode.SUCCESS) return true;
 
-            _logger?.LogWarning("Malformed packet closed the connection: {Reason}", errorLog);
+            _logger.LogWarning("Malformed packet closed the connection: {Reason}", errorLog);
             CloseAndRelease(userToken, ConnectionCloseReason.MalformedPacket, null);
             return false;
         }
         catch (Exception ex)
         {
-            _logger?.LogWarning(ex, "Packet processing failed; closing the connection");
+            _logger.LogWarning(ex, "Packet processing failed; closing the connection");
             CloseAndRelease(userToken, ConnectionCloseReason.MalformedPacket, ex);
             return false;
         }
@@ -320,7 +322,7 @@ public sealed class NetworkService : INetworkService
     {
         if (sendArgs.UserToken is not UserToken userToken)
         {
-            _logger?.LogWarning("Send completion arrived without an owning connection");
+            _logger.LogWarning("Send completion arrived without an owning connection");
             return;
         }
 
@@ -330,7 +332,7 @@ public sealed class NetworkService : INetworkService
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Unexpected send completion failure");
+            _logger.LogError(ex, "Unexpected send completion failure");
             CloseAndRelease(userToken, ConnectionCloseReason.SendError, ex);
         }
     }
@@ -354,11 +356,11 @@ public sealed class NetworkService : INetworkService
         try
         {
             if (reason is ConnectionCloseReason.SendQueueOverflow or ConnectionCloseReason.MessageQueueOverflow)
-                _logger?.LogWarning("Closing connection because a bounded queue overflowed: {Reason}", reason);
+                _logger.LogWarning("Closing connection because a bounded queue overflowed: {Reason}", reason);
             else if (exception == null)
-                _logger?.LogDebug("Closing connection: {Reason}", reason);
+                _logger.LogDebug("Closing connection: {Reason}", reason);
             else
-                _logger?.LogDebug(exception, "Closing connection: {Reason}", reason);
+                _logger.LogDebug(exception, "Closing connection: {Reason}", reason);
         }
         catch
         {
@@ -367,11 +369,11 @@ public sealed class NetworkService : INetworkService
 
         try
         {
-            userToken.CloseTransport(ex => _logger?.LogDebug(ex, "Exception while closing socket resources"));
+            userToken.CloseTransport(ex => _logger.LogDebug(ex, "Exception while closing socket resources"));
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Unexpected failure while closing socket resources");
+            _logger.LogError(ex, "Unexpected failure while closing socket resources");
         }
         finally
         {
@@ -383,7 +385,7 @@ public sealed class NetworkService : INetworkService
     private void ReleaseConnection(UserToken userToken)
     {
         // 세션 생성 중 close된 경우 peer가 늦게 연결될 수 있으므로 release 직전에 한 번 더 보장한다.
-        userToken.NotifyPeerClosed(ex => _logger?.LogError(ex, "Session close callback failed"));
+        userToken.NotifyPeerClosed(ex => _logger.LogError(ex, "Session close callback failed"));
         userToken.DetachEventArgs(out var receiveArgs, out var sendArgs);
         try
         {
@@ -391,7 +393,7 @@ public sealed class NetworkService : INetworkService
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Failed to release socket event-args resources");
+            _logger.LogError(ex, "Failed to release socket event-args resources");
             receiveArgs?.Dispose();
             sendArgs?.Dispose();
         }
