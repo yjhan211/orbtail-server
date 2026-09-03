@@ -10,7 +10,7 @@ namespace user_server.services;
 
 /// <summary>
 ///     매칭 서브시스템의 composition root이자 수명 조정자. 1초 timer로 <see cref="MatchmakingPass" />를 겹치지 않게
-///     하나만 실행하고, 큐 등록/취소·이탈 페널티·claim 해제·입장 실패 통지를 collaborator에 위임하며,
+///     하나만 실행하고, 큐 등록/취소·claim 해제·입장 실패 통지를 collaborator에 위임하며,
 ///     background operation(watchdog·lifecycle handler)을 추적해 quiesce → stop 순서로 배수한다.
 ///     매칭 규칙·Redis 키·패킷 조립은 소유하지 않는다.
 /// </summary>
@@ -23,7 +23,6 @@ public class MatchingManager : IMatchingManager
     private readonly MatchingLeaderLease _leaderLease;
     private readonly MatchingQueueClaimCoordinator _matchingClaims;
     private readonly MatchingQueue _queue;
-    private readonly LeavePenaltyService _leavePenalties;
     private readonly MatchHandoffPublisher _handoff;
     private readonly MatchmakingPass _pass;
     private readonly ILogger _logger;
@@ -48,8 +47,7 @@ public class MatchingManager : IMatchingManager
         _sessions = sessions;
         _leaderLease = leaderLease;
         _matchingClaims = new MatchingQueueClaimCoordinator(cacheHelper, matchingClaimStore, logger);
-        _leavePenalties = new LeavePenaltyService(cacheHelper, logger);
-        _queue = new MatchingQueue(cacheHelper, redLock, _matchingClaims, _leavePenalties, logger);
+        _queue = new MatchingQueue(cacheHelper, redLock, _matchingClaims, logger);
 
         DevMatchOverrides overrides = DevMatchOverrides.FromEnvironment(cacheHelper, redLock, logger);
         var rosterBuilder = new MatchRosterBuilder(cacheHelper, overrides, logger);
@@ -156,20 +154,10 @@ public class MatchingManager : IMatchingManager
         }
     }
 
-    /// <summary>
-    ///     이탈을 기록하고 Game Server가 보고한 정확한 active claim을 해제한다.
-    /// </summary>
-    public async Task RecordLeaveAsync(long playerId, long matchingId)
-    {
-        await ReleaseMatchingClaimAsync(playerId, matchingId);
-        await _leavePenalties.RecordLeaveAsync(playerId);
-    }
+    /// <summary>이탈·완주 모두 Game Server가 보고한 정확한 active claim을 해제한다 — 이탈 페널티는 두지 않는다.</summary>
+    public Task RecordLeaveAsync(long playerId, long matchingId) => ReleaseMatchingClaimAsync(playerId, matchingId);
 
-    public async Task RecordGameCompletionAsync(long playerId, long matchingId)
-    {
-        await ReleaseMatchingClaimAsync(playerId, matchingId);
-        await _leavePenalties.RecordCompletionAsync(playerId);
-    }
+    public Task RecordGameCompletionAsync(long playerId, long matchingId) => ReleaseMatchingClaimAsync(playerId, matchingId);
 
     public async Task AbortMatchingAdmissionAsync(long playerId, long matchingId)
     {
