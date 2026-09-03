@@ -1,6 +1,6 @@
 using MessagePack;
-using StackExchange.Redis;
 using network.interfaces;
+using StackExchange.Redis;
 
 namespace network.gamehandoff;
 
