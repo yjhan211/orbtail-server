@@ -4,7 +4,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.common.data.helpers;
 using network.core;
-using network.gamehandoff;
 using network.hosting;
 using network.interfaces;
 using user_server.network;
@@ -171,7 +170,7 @@ public class UserServer(
     private void StartNetworkService()
     {
         short port = configuration.GetValue<short>("servicePort");
-        networkService.SessionCreatedCallback += OnSessionCreated;
+        networkService.SessionFactory = CreateSession;
         networkService.Listen(IPAddress.Any, port);
         logger.LogInformation($"Listening on port {port}");
     }
@@ -193,11 +192,11 @@ public class UserServer(
         return string.IsNullOrWhiteSpace(configured) ? Environment.MachineName : configured.Trim();
     }
 
-    private void OnSessionCreated(UserToken token)
+    private IPeer? CreateSession(UserToken token)
     {
         try
         {
-            _ = new GameSession(
+            var session = new GameSession(
                 token,
                 logger,
                 cacheHelper,
@@ -209,11 +208,13 @@ public class UserServer(
                 _sessions.Remove);
 
             logger.LogInformation("New session created");
+            return session;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "GameSession 생성 실패, 연결 종료");
             token.Disconnect();
+            return null;
         }
     }
 }

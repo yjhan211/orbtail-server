@@ -101,6 +101,28 @@ public class ProtocolWiringGuardTests
     }
 
     [Fact]
+    public void NetworkServiceBindsOnlyFullyConstructedSessionsToUserTokens()
+    {
+        string root = FindRepositoryRoot();
+        string sessionBase = File.ReadAllText(Path.Combine(
+            root, "network", "Core", "SessionBase.cs"));
+        string networkService = File.ReadAllText(Path.Combine(
+            root, "network", "Core", "NetworkService.cs"));
+
+        Assert.DoesNotContain("Token.SetPeer(this)", sessionBase);
+
+        int createIndex = networkService.IndexOf(
+            "var peer = sessionFactory(userToken);",
+            StringComparison.Ordinal);
+        int bindIndex = networkService.IndexOf(
+            "userToken.SetPeer(peer);",
+            StringComparison.Ordinal);
+
+        Assert.True(createIndex >= 0, "NetworkService must create the session through SessionFactory.");
+        Assert.True(bindIndex > createIndex, "NetworkService must bind the peer only after construction succeeds.");
+    }
+
+    [Fact]
     public void CsvFolderMatchesLoaderRegistrations()
     {
         string root = FindRepositoryRoot();

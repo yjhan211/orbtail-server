@@ -42,7 +42,7 @@ public sealed class NetworkService : INetworkService
             () => Volatile.Read(ref _stopping) == 0);
     }
 
-    public Action<UserToken>? SessionCreatedCallback { get; set; }
+    public Func<UserToken, IPeer?>? SessionFactory { get; set; }
 
     public void Listen(IPAddress address, short port)
     {
@@ -68,7 +68,7 @@ public sealed class NetworkService : INetworkService
             var shutdownFailures = new List<Exception>();
             lock (_connectionLifecycleLock)
             {
-                Interlocked.Exchange(ref _stopping, 1);
+                Volatile.Write(ref _stopping, 1);
             }
 
             try
@@ -198,19 +198,27 @@ public sealed class NetworkService : INetworkService
             return;
         }
 
-        // 생성 콜백도 연결 작업으로 계수하여, 생성자 실패 중 close가 EventArgs를 먼저 회수하지 않게 한다.
+        // 세션 생성과 peer 결합도 연결 작업으로 계수하여, 생성 중 close가 EventArgs를 먼저 회수하지 않게 한다.
         if (!userToken.TryBeginOperation()) return;
         try
         {
-            var sessionCreated = SessionCreatedCallback;
-            if (sessionCreated == null)
+            var sessionFactory = SessionFactory;
+            if (sessionFactory == null)
             {
                 CloseAndRelease(userToken, ConnectionCloseReason.SessionCreationFailed,
-                    new InvalidOperationException("SessionCreatedCallback is not registered."));
+                    new InvalidOperationException("SessionFactory is not registered."));
                 return;
             }
 
-            sessionCreated(userToken);
+            var peer = sessionFactory(userToken);
+            if (peer == null)
+            {
+                CloseAndRelease(userToken, ConnectionCloseReason.SessionCreationFailed,
+                    new InvalidOperationException("SessionFactory did not create a session."));
+                return;
+            }
+
+            userToken.SetPeer(peer);
         }
         catch (Exception ex)
         {

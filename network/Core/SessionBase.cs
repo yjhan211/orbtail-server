@@ -19,35 +19,22 @@ namespace network.core;
 ///     공통 송신과 오류 처리, 연결 종료 통보를 제공하고,
 ///     실제 프로토콜 등록과 세션 제거 처리는 GameSession과 GameClientSession이 구현한다.
 /// </summary>
-public abstract class SessionBase : IPeer
+public abstract class SessionBase(
+    UserToken token,
+    ILogger logger,
+    ICacheHelper cacheHelper,
+    IRedLockFactory redLock)
+    : IPeer
 {
     private static readonly MessagePackSerializerOptions ClientMessagePackOptions =
         MessagePackSerializer.DefaultOptions.WithSecurity(MessagePackSecurity.UntrustedData);
 
-    protected readonly ICacheHelper CacheHelper;
-    protected readonly ILogger Logger;
-    protected readonly IProtocolRouter ProtocolRouter;
-    protected readonly IRedLockFactory RedLock;
-    private readonly SemaphoreSlim _sessionLock;
-    protected readonly UserToken Token;
-
-    protected SessionBase(
-        UserToken token,
-        ILogger logger,
-        ICacheHelper cacheHelper,
-        IRedLockFactory redLock)
-    {
-        Token = token;
-        _sessionLock = new SemaphoreSlim(1);
-        Logger = logger;
-        CacheHelper = cacheHelper;
-        RedLock = redLock;
-
-        ProtocolRouter = new ProtocolRouter();
-
-        // InitializeProtocolHandlers()는 서브클래스 생성자에서 호출
-        Token.SetPeer(this);
-    }
+    protected readonly ICacheHelper CacheHelper = cacheHelper;
+    protected readonly ILogger Logger = logger;
+    protected readonly IProtocolRouter ProtocolRouter = new ProtocolRouter();
+    protected readonly IRedLockFactory RedLock = redLock;
+    private readonly SemaphoreSlim _sessionLock = new(1);
+    protected readonly UserToken Token = token;
 
     public long? PlayerId { get; protected set; }
 
@@ -99,6 +86,7 @@ public abstract class SessionBase : IPeer
 
     public abstract void OnRemoved();
 
+    // InitializeProtocolHandlers()는 서브클래스 생성자에서 호출
     protected abstract void InitializeProtocolHandlers();
 
     protected abstract bool ShouldSkipLogging(Protocol protocolId);

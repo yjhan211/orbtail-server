@@ -330,7 +330,7 @@ public partial class GameServer(
     private void StartTcpServer()
     {
         short port = configuration.GetValue<short>("clientPort", 9001);
-        networkService.SessionCreatedCallback += OnClientSessionCreated;
+        networkService.SessionFactory = CreateClientSession;
         networkService.Listen(IPAddress.Any, port);
         logger.LogInformation($"TCP server listening on port {port}");
     }
@@ -806,18 +806,18 @@ public partial class GameServer(
         }
     }
 
-    private void OnClientSessionCreated(UserToken token)
+    private IPeer? CreateClientSession(UserToken token)
     {
         if (Volatile.Read(ref _stopping) != 0)
         {
             token.Disconnect();
-            return;
+            return null;
         }
 
         try
         {
             var redLockFactory = cacheHelper.GetRedLockFactory();
-            _ = new GameClientSession(
+            var session = new GameClientSession(
                 token,
                 redLockFactory,
                 logger,
@@ -855,11 +855,13 @@ public partial class GameServer(
                 AbortMatchAfterAdmissionFailure);
 
             logger.LogInformation("Game client session created");
+            return session;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to create game client session");
             token.Disconnect();
+            return null;
         }
     }
 
