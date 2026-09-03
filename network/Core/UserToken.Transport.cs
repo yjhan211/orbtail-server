@@ -323,5 +323,4 @@ public partial class UserToken
             CompleteOperation();
         }
     }
-
 }
