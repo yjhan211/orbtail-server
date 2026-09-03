@@ -8,8 +8,13 @@ using network.interfaces;
 namespace network.core;
 
 /// <summary>
-///     Listener가 수락한 TCP 연결을 초기화하고 연결 종료를 관리하며,
-///     연결별 프로토콜 처리는 UserToken에 위임한다.
+///     서버의 TCP 연결 생성과 종료 과정을 관리한다.
+///
+///     Listener가 새 소켓을 수락하면 수신·송신용 SocketAsyncEventArgs를 풀에서 빌리고,
+///     연결을 나타내는 UserToken과 서버별 세션을 연결한 뒤 수신을 시작한다.
+///
+///     활성 연결을 추적하며 서버 종료 시 새로운 접속을 중단하고,
+///     모든 연결의 송수신과 세션 정리가 끝날 때까지 기다린 후 SocketAsyncEventArgs를 폐기한다.
 /// </summary>
 public sealed class NetworkService : INetworkService
 {

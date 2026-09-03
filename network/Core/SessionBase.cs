@@ -10,12 +10,17 @@ using network.utils;
 namespace network.core;
 
 /// <summary>
-///     GameClientSession / GameSession 공통 세션 로직 추상 클래스.
-///     패킷 파싱, 프로토콜 라우팅, 세션 잠금, 기본 IPeer 구현을 공유한다.
+///     UserServer와 GameServer의 TCP 세션이 공통으로 사용하는 기반 클래스다.
+///
+///     UserToken이 전달한 패킷을 세션 단위로 하나씩 처리하며,
+///     프로토콜 번호와 플레이어 번호, MessagePack 본문을 분리한 뒤
+///     ProtocolRouter를 통해 서버별 핸들러에 전달한다.
+///
+///     공통 송신과 오류 처리, 연결 종료 통보를 제공하고,
+///     실제 프로토콜 등록과 세션 제거 처리는 GameSession과 GameClientSession이 구현한다.
 /// </summary>
 public abstract class SessionBase : IPeer
 {
-    private const string InternalErrorMessage = "요청 처리 중 오류가 발생했습니다";
     private static readonly MessagePackSerializerOptions ClientMessagePackOptions =
         MessagePackSerializer.DefaultOptions.WithSecurity(MessagePackSecurity.UntrustedData);
 
@@ -39,12 +44,11 @@ public abstract class SessionBase : IPeer
         RedLock = redLock;
 
         ProtocolRouter = new ProtocolRouter();
+
         // InitializeProtocolHandlers()는 서브클래스 생성자에서 호출
-        // (base 생성자 시점에는 서브클래스 필드가 아직 초기화되지 않음)
         Token.SetPeer(this);
     }
 
-    // ReSharper disable once UnusedAutoPropertyAccessor.Global — 서브클래스(GameClientSession, GameSession)에서 사용
     public long? PlayerId { get; protected set; }
 
     public virtual async Task OnMessageFromClient(Const<byte[]> buffer)
@@ -80,7 +84,7 @@ public abstract class SessionBase : IPeer
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error processing client message");
-            SendErrorResponse(ErrorCode.SERVER_INTERNAL_ERROR, InternalErrorMessage);
+            SendErrorResponse(ErrorCode.SERVER_INTERNAL_ERROR, string.Empty);
         }
         finally
         {
@@ -95,20 +99,10 @@ public abstract class SessionBase : IPeer
 
     public abstract void OnRemoved();
 
-    /// <summary>
-    ///     프로토콜 핸들러를 ProtocolRouter에 등록한다.
-    /// </summary>
     protected abstract void InitializeProtocolHandlers();
 
-    /// <summary>
-    ///     로깅 대상에서 제외할 프로토콜인지 판단한다.
-    /// </summary>
     protected abstract bool ShouldSkipLogging(Protocol protocolId);
 
-    /// <summary>
-    ///     파생 세션이 이미 끝난 수명(터미널 매치)의 늦은 패킷을 잠금 없이 거르는 게이트.
-    ///     false면 이 메시지는 조용히 버린다.
-    /// </summary>
     protected virtual bool IsMessageLifecycleActive() => true;
 
     protected static async Task HandleMessage<T>(byte[] body, Func<T, Task> handler) where T : IMessagePackObject
@@ -117,10 +111,6 @@ public abstract class SessionBase : IPeer
         await handler(message);
     }
 
-    /// <summary>
-    ///     미처리 예외 발생 시 클라이언트에 에러 응답을 전송한다.
-    ///     서브클래스에서 오버라이드하여 적절한 에러 패킷(U_TO_C_ERROR / G_TO_C_ERROR)을 전송한다.
-    /// </summary>
     protected virtual void SendErrorResponse(ErrorCode errorCode, string message) { }
 
     public virtual void OnDisconnect()

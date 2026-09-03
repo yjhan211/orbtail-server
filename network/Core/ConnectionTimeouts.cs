@@ -1,10 +1,15 @@
 namespace network.core;
 
 /// <summary>
-///     연결 하나의 시계 셋. 인증 전 대기(넘기면 끊는다), 인증 뒤 유휴(패킷마다 마감을 미룬다),
-///     마지막 응답 뒤 유예(응답 전송이 안 끝나도 끊는다). 콜백은 타이머 스레드에서 오므로 실제로 끊을지는
-///     <see cref="UserToken" />이 자기 상태 잠금 안에서 판단한다. <see cref="Dispose" /> 뒤에는 어떤 타이머도
-///     새로 서지 않는다 — 종료와 타이머 콜백의 경합을 여기서 끊는다.
+///     TCP 연결 하나에 필요한 시간 제한을 관리한다.
+///
+///     접속 후 일정 시간 안에 인증하지 않으면 연결을 종료하고,
+///     인증 후에는 패킷이 들어올 때마다 유휴 제한 시간을 연장한다.
+///     마지막 응답을 보낸 뒤에는 전송이 끝나지 않더라도 일정 시간이 지나면 연결을 종료한다.
+///
+///     타이머는 다른 스레드에서 실행될 수 있으므로,
+///     실제로 연결을 종료할지는 UserToken이 현재 연결 상태를 확인한 뒤 결정한다.
+///     Dispose된 이후에는 새로운 타이머를 예약하지 않는다.
 /// </summary>
 internal sealed class ConnectionTimeouts(
     TimeSpan authenticationWindow,
@@ -28,7 +33,6 @@ internal sealed class ConnectionTimeouts(
         }
     }
 
-    /// <summary>인증 창을 닫고 유휴 창을 연다. 유휴 콜백은 마감이 실제로 지났을 때만 온다.</summary>
     public void MarkAuthenticated(Action onIdleTimeout)
     {
         lock (_gate)
@@ -43,10 +47,6 @@ internal sealed class ConnectionTimeouts(
         }
     }
 
-    /// <summary>
-    ///     패킷이 왔다 — 유휴 마감만 미룬다. 타이머를 매 패킷마다 다시 맞추지 않고, 울렸을 때 마감이 남았으면
-    ///     그만큼 다시 재운다. 50ms 이동 패킷마다 Timer.Change를 부르지 않기 위해서다.
-    /// </summary>
     public void Touch()
     {
         lock (_gate)

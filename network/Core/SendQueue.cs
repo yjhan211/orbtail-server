@@ -5,14 +5,21 @@ using network.packets;
 namespace network.core;
 
 /// <summary>
-///     연결 하나의 송신 대기열. 패킷 수·바이트 상한을 넘기면 넣지 않고 Overflow를 돌려주며, 연결을 닫는 건 호출자의 몫이다.
-///     소켓에는 한 번에 한 패킷만 걸고, 부분 전송은 오프셋으로 이어 보낸다.
-///     잠금은 안에 있고 UserToken의 상태 잠금보다 안쪽이다 — 바깥에서 상태 잠금을 잡은 채 불러도 된다.
+///     TCP 연결 하나에서 보낼 패킷을 순서대로 보관한다.
+///
+///     대기 중인 패킷 수나 전체 크기가 제한을 넘으면 패킷을 추가하지 않고
+///     Overflow를 반환한다. 이때 연결을 종료할지는 UserToken이 결정한다.
+///
+///     패킷은 한 번에 하나씩 전송하며,
+///     일부만 전송된 경우에는 남은 위치부터 이어서 전송한다.
+///
+///     송신 큐의 데이터는 내부 잠금으로 보호한다.
+///     UserToken 상태 잠금과 함께 사용할 때는 UserToken 잠금을 먼저 잡는다.
 /// </summary>
 internal sealed class SendQueue
 {
     public const int MaxQueuedPackets = 128;
-    public const int MaxQueuedBytes = 256 * 1024;
+    private const int MaxQueuedBytes = 256 * 1024;
 
     private readonly object _gate = new();
     private readonly Queue<Packet> _packets = new();
@@ -21,22 +28,17 @@ internal sealed class SendQueue
 
     public enum EnqueueResult
     {
-        /// <summary>비어 있던 큐에 들어갔다 — 호출자가 송신을 시작해야 한다.</summary>
         Started,
         Queued,
         Overflow,
-        /// <summary>호출자의 거절 조건이 잠금 안에서 참이었다 (닫히는 중 등).</summary>
         Refused
     }
 
     public enum AdvanceResult
     {
         Invalid,
-        /// <summary>선두 패킷이 아직 남았다 — 이어서 보낸다.</summary>
         Continue,
-        /// <summary>선두 패킷이 끝났고 다음 패킷이 있다.</summary>
         NextPacket,
-        /// <summary>큐가 비었다.</summary>
         Drained
     }
 
@@ -48,10 +50,6 @@ internal sealed class SendQueue
         }
     }
 
-    /// <summary>
-    ///     <paramref name="refuse" />는 잠금 안에서 평가한다 — "닫히는 중인지 확인"과 "넣기"가 한 번에 일어나야
-    ///     닫기의 <see cref="Clear" />와 어긋나 패킷이 큐에 남는 일이 없다.
-    /// </summary>
     public EnqueueResult TryEnqueue(Packet packet, Func<bool> refuse)
     {
         lock (_gate)
@@ -68,7 +66,6 @@ internal sealed class SendQueue
         }
     }
 
-    /// <summary>선두 패킷의 남은 바이트를 송신 버퍼에 복사한다. 큐가 비었으면 false. 길이 헤더는 첫 조각을 보낼 때 기록한다.</summary>
     public bool TryStageNext(SocketAsyncEventArgs sendArgs)
     {
         lock (_gate)
@@ -78,7 +75,7 @@ internal sealed class SendQueue
             if (sendArgs.Buffer == null)
                 throw new InvalidOperationException("The send buffer is not initialized.");
 
-            Packet packet = _packets.Peek();
+            var packet = _packets.Peek();
             if (_sendOffset == 0)
                 packet.RecordSize();
 
@@ -93,7 +90,6 @@ internal sealed class SendQueue
         }
     }
 
-    /// <summary>전송 완료 바이트를 반영한다. 패킷이 끝나면 버퍼를 풀에 돌려준다.</summary>
     public AdvanceResult Advance(int bytesTransferred)
     {
         lock (_gate)
@@ -101,7 +97,7 @@ internal sealed class SendQueue
             if (_packets.Count == 0)
                 return AdvanceResult.Invalid;
 
-            Packet packet = _packets.Peek();
+            var packet = _packets.Peek();
             _sendOffset += bytesTransferred;
             if (_sendOffset > packet.Position)
                 return AdvanceResult.Invalid;

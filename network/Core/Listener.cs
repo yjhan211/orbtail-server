@@ -5,16 +5,19 @@ using network.common;
 
 namespace network.core;
 
+/// <summary>
+///     클라이언트의 TCP 접속을 기다리는 리스너다.
+///     Start가 리슨 소켓과 accept 반복 작업을 시작하고, StopAsync가 이를 중단하고 끝날 때까지 기다린다.
+///     새 연결을 받으면 ClientConnected 이벤트를 통해 실제 연결 처리를 NetworkService에 넘긴다.
+/// </summary>
 public sealed class Listener(ILogger<Listener> logger)
 {
     private readonly ILogger<Listener> _logger = logger;
     public delegate void NewClientHandler(Socket clientSocket, object? token);
-
     private readonly object _lifecycleLock = new();
     private CancellationTokenSource? _cts;
     private Socket? _listenSocket;
     private Task? _listenTask;
-
     public event NewClientHandler? ClientConnected;
 
     public void Start(IPAddress address, short port)
@@ -43,10 +46,6 @@ public sealed class Listener(ILogger<Listener> logger)
         }
     }
 
-    /// <summary>
-    ///     매개변수 토큰은 "루프 종료를 얼마나 기다릴지"(호출자의 취소)이고, 필드 _cts는 accept 루프 자체의 취소다.
-    ///     둘을 합치면 호출자가 기다림을 포기한 것과 루프가 정상 종료한 것을 구분할 수 없다.
-    /// </summary>
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         Task? listenTask;

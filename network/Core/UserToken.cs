@@ -9,8 +9,8 @@ namespace network.core;
 ///     클라이언트의 TCP 연결 하나를 관리한다.
 ///     소켓과 세션, 연결 상태를 보관하며 여러 곳에서 동시에 종료를 요청해도 종료 처리는 한 번만 실행한다.
 ///
-///     송신 대기열은 <see cref="SendQueue"/>가 관리하고,
-///     인증 및 유휴 시간 제한은 <see cref="ConnectionTimeouts"/>가 관리한다.
+///     송신 대기열은 SendQueue가 관리하고,
+///     인증 및 유휴 시간 제한은 ConnectionTimeouts가 관리한다.
 ///     실제 패킷 수신과 송신 처리는 UserToken.Transport 파일에 분리되어 있다.
 ///
 ///     연결 상태:

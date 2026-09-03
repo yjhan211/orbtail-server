@@ -3,7 +3,13 @@ using System.Net.Sockets;
 namespace network.core;
 
 /// <summary>
-///     accept된 소켓이 쓰는 수신·송신 SocketAsyncEventArgs 쌍을 서버 시작 때 정원만큼 미리 만들어 둔다.
+///     TCP 연결에서 사용하는 수신용·송신용 SocketAsyncEventArgs를 미리 만들어 보관한다.
+///
+///     새 연결이 들어오면 수신용과 송신용 객체를 한 쌍으로 빌려주며,
+///     둘 중 하나라도 부족하면 대여하지 않는다.
+///
+///     연결이 정상적으로 끝나면 객체를 다시 받아 다음 연결에서 재사용한다.
+///     서버가 종료 중이면 반환된 객체를 풀에 넣지 않고 폐기한다.
 /// </summary>
 internal sealed class SocketEventArgsPool
 {
