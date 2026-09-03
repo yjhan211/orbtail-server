@@ -127,6 +127,9 @@ public sealed class ConsumableInventoryMergeTests
     {
         string repoRoot = FindRepositoryRoot();
         string spriteRoot = Path.Combine(repoRoot, "client", "Assets", "Resources", "ItemSprites");
+        // 클라 에셋이 없는 체크아웃(서버·스크립트만 담은 공개 분리본)에서는 검사할 대상이 없다.
+        if (!Directory.Exists(spriteRoot)) return;
+
         string baseSpritePath = Path.Combine(spriteRoot, $"{baseItemId}.png");
         string mergedSpritePath = Path.Combine(spriteRoot, $"{mergedItemId}.png");
         string mergedMetaPath = mergedSpritePath + ".meta";
