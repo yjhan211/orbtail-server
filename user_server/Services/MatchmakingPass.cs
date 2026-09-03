@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using network.common.data.models;
-using network.contracts.authentication;
+using network.gamehandoff;
 using network.interfaces;
 
 namespace user_server.services;

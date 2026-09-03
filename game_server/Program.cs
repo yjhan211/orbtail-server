@@ -1,19 +1,18 @@
 using System.Text.RegularExpressions;
-using game_server.services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using network.contracts.routing;
+using Serilog.Events;
+using Serilog;
+using game_server.services;
 using network.core;
+using network.gamehandoff;
 using network.hosting;
-using network.infrastructure;
-using network.infrastructure.authentication;
 using network.infrastructure.routing;
+using network.infrastructure;
 using network.interfaces;
 using network.managers;
-using Serilog;
-using Serilog.Events;
 
 namespace game_server;
 

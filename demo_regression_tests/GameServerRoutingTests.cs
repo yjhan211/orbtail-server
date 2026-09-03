@@ -1,9 +1,7 @@
 using game_server.services;
-using network.application.authentication;
-using network.common;
 using network.common.data.models;
-using network.contracts.authentication;
-using network.contracts.routing;
+using network.common;
+using network.gamehandoff;
 using network.infrastructure.routing;
 using network.interfaces;
 using user_server.services;

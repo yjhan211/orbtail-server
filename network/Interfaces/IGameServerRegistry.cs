@@ -1,5 +1,4 @@
-using network.contracts.routing;
-using network.interfaces;
+using network.infrastructure.routing;
 
 namespace network.interfaces;
 

@@ -2,7 +2,7 @@ using MessagePack;
 using network.common;
 using network.common.data.models;
 
-namespace network.contracts.authentication;
+namespace network.gamehandoff;
 
 [MessagePackObject]
 public sealed class GameHandoffRosterEntry
