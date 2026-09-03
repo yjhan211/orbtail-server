@@ -66,15 +66,6 @@ internal sealed class ConnectionTimeouts(
         }
     }
 
-    public void DisarmGracefulClose()
-    {
-        lock (_gate)
-        {
-            _gracefulCloseTimer?.Dispose();
-            _gracefulCloseTimer = null;
-        }
-    }
-
     public void Dispose()
     {
         lock (_gate)

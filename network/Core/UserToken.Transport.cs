@@ -198,9 +198,8 @@ public partial class UserToken
                     StartSend();
                     return;
                 case SendQueue.AdvanceResult.Drained:
-                    if (Volatile.Read(ref _closeAfterSend) == 0) return;
-                    _timeouts.DisarmGracefulClose();
-                    RequestClose(ConnectionCloseReason.ExplicitDisconnect);
+                    if (Volatile.Read(ref _closeAfterSend) != 0)
+                        RequestClose(ConnectionCloseReason.ExplicitDisconnect);
                     return;
             }
         }
