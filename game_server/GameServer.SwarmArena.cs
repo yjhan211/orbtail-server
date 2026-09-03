@@ -3541,9 +3541,7 @@ public partial class GameServer
         IReadOnlyCollection<GameClientSession> sessions,
         int heartReward = 0,
         int bootsReward = 0,
-        int keyReward = 0,
-        long killerPlayerId = 0,
-        bool isCore = false)
+        int keyReward = 0)
     {
         if (defeatedWave.SummonStoneReward <= 0 && heartReward <= 0 &&
             bootsReward <= 0 && keyReward <= 0)
@@ -3560,29 +3558,9 @@ public partial class GameServer
             keyReward = 0;
         }
 
-        // 몹 소환석 자동 습득 (유저 결정 "잡으면 몸으로 끌려와 자동 습득"): 처치
-        // 보상 소환석은 바닥을 거치지 않고 처치자에게 즉시 귀속된다 — 원거리 오브 처치가
-        // 표준이라 드랍 자리까지 걸어가 줍는 동선이 전투 리듬을 끊었다. 클라는 몬스터
-        // 위치(AwardSource)에서 몸으로 빨려오는 흡수 연출로 같은 사실을 그린다.
-        // 하트·부츠·열쇠는 기존 픽업 경쟁 규칙 그대로 바닥에 흩어진다.
+        // 소환석은 바닥에 떨어진다 (즉시 귀속 철회): 처치자도 다른 플레이어와 같은 픽업 경쟁 규칙으로 줍는다.
+        // 클라는 재화를 자석 반경에서 몸으로 끌어와 픽업을 요청하므로 동선 부담은 작다.
         int groundStoneReward = defeatedWave.SummonStoneReward;
-        if (groundStoneReward > 0 && killerPlayerId != 0)
-        {
-            var summonState = _summonStoneManager.AddStones(matchingId, killerPlayerId, groundStoneReward);
-            var killerSession = sessions.FirstOrDefault(session => session.PlayerId == killerPlayerId);
-            killerSession?.SendSummonStoneState(
-                groundStoneReward, defeatedWave.PositionX, defeatedWave.PositionY);
-            _gameEventLogManager.LogSummonStoneAward(
-                matchingId,
-                killerPlayerId,
-                defeatedWave.MonsterId,
-                groundStoneReward,
-                summonState.StoneCount,
-                defeatedWave.AreaType.ToString(),
-                isCore,
-                isBot: killerSession == null);
-            groundStoneReward = 0;
-        }
 
         if (groundStoneReward <= 0 && heartReward <= 0 &&
             bootsReward <= 0 && keyReward <= 0)

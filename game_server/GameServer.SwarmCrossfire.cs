@@ -572,9 +572,7 @@ public partial class GameServer
             new Dictionary<long, int> { [attackerId] = damage });
         SpawnSwarmSummonStone(
             matchingId, damageResult.MonsterState, allSessions,
-            damageResult.HeartReward, damageResult.BootsReward, damageResult.KeyReward,
-            killerPlayerId: attackerId,
-            isCore: damageResult.Kind == SwarmMonsterKind.RunawayGoblin);
+            damageResult.HeartReward, damageResult.BootsReward, damageResult.KeyReward);
     }
 
     // 충격 면역은 없다 — 태양 다발 화망에서 첫 발 이후가 소리 없이 관통하면 "피격박스가 안 맞는" 오독이 된다.
