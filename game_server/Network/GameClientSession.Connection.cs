@@ -492,8 +492,6 @@ public partial class GameClientSession
 
     private Task HandleHeartbeat()
     {
-        _lastHeartbeatTime = DateTime.UtcNow;
-
         // Send the heartbeat response.
         using var packet = PacketMaker.G_TO_C_HEART_BEAT(DateTime.UtcNow);
         Send(packet);
@@ -502,20 +500,11 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     하트비트 타임아웃을 확인한다. 타임아웃이면 true를 반환한다.
-    /// </summary>
-    public bool IsHeartbeatTimedOut()
-    {
-        double elapsed = (DateTime.UtcNow - _lastHeartbeatTime).TotalSeconds;
-        return elapsed > HeartbeatTimeoutSeconds;
-    }
-
-    /// <summary>
-    ///     Forcibly disconnects the session.
+    ///     세션의 TCP 연결을 즉시 종료한다.
     /// </summary>
     public void ForceDisconnect()
     {
-        Logger.LogWarning("Force disconnecting PlayerId={PlayerId} due to heartbeat timeout", PlayerId);
+        Logger.LogWarning("Force disconnecting PlayerId={PlayerId}", PlayerId);
         Token.Disconnect();
     }
 

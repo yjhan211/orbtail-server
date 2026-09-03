@@ -44,7 +44,6 @@ public partial class GameServer(
     GameServerNodeOptions nodeOptions)
     : IHostedService
 {
-    private const int HeartbeatCheckIntervalSeconds = 10;
     private const int MatchingLifecycleTerminalMatchRetention = 4096;
     private static readonly TimeSpan ShutdownStageTimeout = TimeSpan.FromSeconds(5);
 
@@ -86,7 +85,6 @@ public partial class GameServer(
     private int _stopping;
 
     private CancellationTokenSource _cts = new();
-    private Timer? _heartbeatCheckTimer;
     private Timer? _resourceTickTimer;        // 폐쇄 구역 등 주기성 자원 변화
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
     private GameServerNodeAdvertiser? _nodeAdvertiser; // 레지스트리 광고 — Start/Stop 순서 안에서만 만지고 지운다
@@ -162,7 +160,6 @@ public partial class GameServer(
             InitializeServices();
 
             StartTcpServer();
-            StartHeartbeatChecker();
             StartResourceTickTimer();
             StartAreaClosureTickTimer();
             StartProximityAutoCombatTimer();
@@ -223,12 +220,10 @@ public partial class GameServer(
 
         Timer?[] timers =
         [
-            _heartbeatCheckTimer,
             _resourceTickTimer,
             _areaClosureTickTimer,
             _proximityAutoCombatTimer
         ];
-        _heartbeatCheckTimer = null;
         _resourceTickTimer = null;
         _areaClosureTickTimer = null;
         _proximityAutoCombatTimer = null;
@@ -338,16 +333,6 @@ public partial class GameServer(
         networkService.SessionCreatedCallback += OnClientSessionCreated;
         networkService.Listen(IPAddress.Any, port);
         logger.LogInformation($"TCP server listening on port {port}");
-    }
-
-    private void StartHeartbeatChecker()
-    {
-        _heartbeatCheckTimer = new Timer(
-            CheckHeartbeatTimeouts,
-            null,
-            TimeSpan.FromSeconds(HeartbeatCheckIntervalSeconds),
-            TimeSpan.FromSeconds(HeartbeatCheckIntervalSeconds));
-        logger.LogInformation("Heartbeat checker started (interval: {Interval}s)", HeartbeatCheckIntervalSeconds);
     }
 
     // ===== 자원 틱 (폐쇄 구역 등 주기성 자원 변화) =====
@@ -708,30 +693,6 @@ public partial class GameServer(
             }
         }
     }
-
-    private void CheckHeartbeatTimeouts(object? state)
-    {
-        try
-        {
-            var timedOutSessions = _sessionRegistry.SnapshotWhere(
-                static session => session.PlayerId.HasValue && session.IsHeartbeatTimedOut());
-
-            foreach (var session in timedOutSessions)
-            {
-                logger.LogWarning("Heartbeat timeout for PlayerId={PlayerId}, forcing disconnect", session.PlayerId);
-                session.ForceDisconnect();
-            }
-
-            if (timedOutSessions.Count > 0)
-                logger.LogInformation("Disconnected {Count} sessions due to heartbeat timeout",
-                    timedOutSessions.Count);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Error checking heartbeat timeouts");
-        }
-    }
-
 
     /// <summary>
     ///     매칭 수명주기 이벤트를 NATS Core로 즉시 발행한다 (best-effort, at-most-once).

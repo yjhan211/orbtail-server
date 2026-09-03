@@ -28,8 +28,6 @@ public partial class GameClientSession : SessionBase
     private const int InitialCorruption = 0;
     private static readonly TimeSpan ExploreMoveGracePeriod = TimeSpan.FromMilliseconds(750);
 
-    // 하트비트 타임아웃 (초)
-    private const int HeartbeatTimeoutSeconds = 30;
     private static readonly ConcurrentDictionary<long, SemaphoreSlim> MatchInitializationLocks = new();
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly List<int> _activeBuffIds = new();
@@ -79,7 +77,6 @@ public partial class GameClientSession : SessionBase
     internal DateTime SwarmHealLockUntilUtc { get; set; } = DateTime.MinValue;
     internal bool IsSleeping => _isSleeping;
     private int _swarmSleepGrantedTicks;
-    private DateTime _lastHeartbeatTime = DateTime.UtcNow;
     private int _admissionCompleted;
     private int _admissionFailureReported;
     private int _admissionDisconnectIssued;

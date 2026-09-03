@@ -78,6 +78,29 @@ public class ProtocolWiringGuardTests
     }
 
     [Fact]
+    public void GameConnectionLivenessUsesNetworkTimeoutOnly()
+    {
+        string root = FindRepositoryRoot();
+        string gameServer = File.ReadAllText(Path.Combine(root, "game_server", "GameServer.cs"));
+        string gameSession = File.ReadAllText(Path.Combine(
+            root, "game_server", "Network", "GameClientSession.cs"));
+        string gameConnection = File.ReadAllText(Path.Combine(
+            root, "game_server", "Network", "GameClientSession.Connection.cs"));
+
+        Assert.DoesNotContain("HeartbeatCheckIntervalSeconds", gameServer);
+        Assert.DoesNotContain("StartHeartbeatChecker", gameServer);
+        Assert.DoesNotContain("CheckHeartbeatTimeouts", gameServer);
+        Assert.DoesNotContain("HeartbeatTimeoutSeconds", gameSession);
+        Assert.DoesNotContain("_lastHeartbeatTime", gameSession);
+        Assert.DoesNotContain("IsHeartbeatTimedOut", gameConnection);
+
+        // Heartbeat packets remain ordinary inbound traffic. UserToken touches the shared
+        // ConnectionTimeouts idle window before dispatching them to this response handler.
+        Assert.Contains("RegisterHandler(Protocol.C_TO_G_HEART_BEAT", gameSession);
+        Assert.Contains("PacketMaker.G_TO_C_HEART_BEAT", gameConnection);
+    }
+
+    [Fact]
     public void CsvFolderMatchesLoaderRegistrations()
     {
         string root = FindRepositoryRoot();

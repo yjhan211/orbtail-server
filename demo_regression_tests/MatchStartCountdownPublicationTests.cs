@@ -37,7 +37,7 @@ public sealed class MatchStartCountdownPublicationTests
         string broadcast = ReadMethodSlice(
             server,
             "private void BroadcastMatchStartCountdowns(",
-            "private void CheckHeartbeatTimeouts(");
+            "private void PublishMatchingLifecycle(");
         string matchTick = ReadMethodSlice(
             combat,
             "private void ProcessProximityAutoCombatTick(object? state)",
