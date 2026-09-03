@@ -5,6 +5,7 @@ using network.common.data.models;
 using network.contracts.authentication;
 using network.contracts.routing;
 using network.infrastructure.routing;
+using network.interfaces;
 using user_server.services;
 
 namespace demo_regression_tests;

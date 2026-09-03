@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using network.application.authentication;
 using network.contracts.authentication;
+using network.interfaces;
 
 namespace network.infrastructure.authentication;
 
