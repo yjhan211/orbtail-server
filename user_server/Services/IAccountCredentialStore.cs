@@ -1,7 +1,6 @@
-using network.contracts.authentication;
 using network.interfaces;
 
-namespace network.interfaces;
+namespace user_server.services;
 
 public interface IAccountCredentialStore
 {

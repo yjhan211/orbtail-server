@@ -7,7 +7,7 @@ namespace network.core.security;
 ///     Creates, validates, and fingerprints fixed-entropy opaque authentication tokens without depending on an
 ///     application or persistence layer.
 /// </summary>
-internal static class OpaqueTokenCodec
+public static class OpaqueTokenCodec
 {
     private const int RandomByteCount = 32;
     private const int EncodedRandomLength = 43;

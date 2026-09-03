@@ -83,7 +83,7 @@ internal static partial class Program
         services.AddSingleton<IRedLockFactory>(sp =>
             sp.GetRequiredService<IRedisConnection>().GetRedLockFactory());
         services.AddSingleton<ICacheHelper, CacheHelper>();
-        services.AddAuthenticationBoundaries(hostContext.Configuration);
+        services.AddGameHandoffTicket(hostContext.Configuration);
         var nodeOptions = CreateGameServerNodeOptions(hostContext.Configuration);
         nodeOptions.Validate();
         services.AddSingleton(nodeOptions);

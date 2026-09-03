@@ -2,12 +2,11 @@ using System.Globalization;
 using System.Text;
 using network.common;
 using network.common.data.models;
-using network.contracts.authentication;
 using network.core.security;
 using network.interfaces;
 using StackExchange.Redis;
 
-namespace network.infrastructure.authentication;
+namespace user_server.services;
 
 public sealed class RedisAccountCredentialStore(
     ICacheHelper cacheHelper,
