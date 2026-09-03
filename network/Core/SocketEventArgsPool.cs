@@ -3,9 +3,7 @@ using System.Net.Sockets;
 namespace network.core;
 
 /// <summary>
-///     accept된 소켓이 쓰는 수신·송신 <see cref="SocketAsyncEventArgs"/> 쌍을 서버 시작 때 정원만큼 미리 만들어 두고
-///     빌려주는 창고. 버퍼는 큰 배열 하나를 잘라 붙여 pin이 한 번이고, 짝으로만 빌려주며, 정지 중에는 반납을 받지 않고 버린다.
-///     버퍼 소유 규칙을 <see cref="NetworkService"/> 밖에 두기 위한 클래스라, 여기 말고는 아무도 버퍼를 만들지 않는다.
+///     accept된 소켓이 쓰는 수신·송신 SocketAsyncEventArgs 쌍을 서버 시작 때 정원만큼 미리 만들어 둔다.
 /// </summary>
 internal sealed class SocketEventArgsPool
 {

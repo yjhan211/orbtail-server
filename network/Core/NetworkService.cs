@@ -68,7 +68,7 @@ public sealed class NetworkService : INetworkService
 
             try
             {
-                await _clientListener.StopAsync();
+                await _clientListener.StopAsync(cancellationToken);
             }
             catch (Exception ex)
             {
@@ -85,8 +85,8 @@ public sealed class NetworkService : INetworkService
                 shutdownFailures.Add(ex);
             }
 
-            UserToken[] connections = _activeConnections.Keys.ToArray();
-            Task[] releaseTasks = connections.Select(connection => connection.ReleaseTask).ToArray();
+            var connections = _activeConnections.Keys.ToArray();
+            var releaseTasks = connections.Select(connection => connection.ReleaseTask).ToArray();
             foreach (var connection in connections)
             {
                 try
@@ -127,7 +127,7 @@ public sealed class NetworkService : INetworkService
         }
     }
 
-    internal void StartReceiving(UserToken userToken)
+    private void StartReceiving(UserToken userToken)
     {
         while (true)
         {
@@ -296,7 +296,7 @@ public sealed class NetworkService : INetworkService
                 return false;
             }
 
-            (ErrorCode errorCode, string? errorLog) = userToken.OnReceived(
+            (var errorCode, string? errorLog) = userToken.OnReceived(
                 receiveArgs.Buffer,
                 receiveArgs.Offset,
                 receiveArgs.BytesTransferred);
@@ -400,9 +400,7 @@ public sealed class NetworkService : INetworkService
         finally
         {
             userToken.MarkReleased();
-            // Keep the connection discoverable by StopAsync until OnRemoved, EventArgs release,
-            // and ReleaseTask completion are all final. Otherwise a natural close can disappear
-            // from the shutdown snapshot while its cleanup still uses Redis or NATS dependencies.
+            // userToken은 맨 마지막에 제거
             _activeConnections.TryRemove(userToken, out _);
         }
     }
