@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text;
 using network.common;
 using network.common.data.models;
-using network.core.security;
+using network.helpers;
 using network.interfaces;
 using StackExchange.Redis;
 

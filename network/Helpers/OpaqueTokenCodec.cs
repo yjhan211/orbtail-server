@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace network.core.security;
+namespace network.helpers;
 
 /// <summary>
 ///     Creates, validates, and fingerprints fixed-entropy opaque authentication tokens without depending on an
