@@ -24,21 +24,21 @@ public partial class GameClientSession
         bool deferGameOver = false, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false, int forcedRank = 0)
     {
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
         var eliminatedSession = allSessions.FirstOrDefault(session => session.PlayerId == eliminatedPlayerId);
-        var eliminatedBot = _botPlayerManager.GetBot(CurrentMapSubId, eliminatedPlayerId);
+        var eliminatedBot = _botPlayerManager.GetBot(MatchingId, eliminatedPlayerId);
         AreaType eliminatedArea = eliminatedSession?.CurrentArea ?? eliminatedBot?.CurrentArea ?? AreaType.None;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
-        int finalOrbTier = _inGameInventoryManager.GetEquippedBattleItemTier(CurrentMapSubId, eliminatedPlayerId);
-        var transition = _matchRosterManager.TryEliminatePlayer(CurrentMapSubId, eliminatedPlayerId, reason,
+        int finalOrbTier = _inGameInventoryManager.GetEquippedBattleItemTier(MatchingId, eliminatedPlayerId);
+        var transition = _matchRosterManager.TryEliminatePlayer(MatchingId, eliminatedPlayerId, reason,
             resolvedAttackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
             finalOrbTier);
         if (!transition.Applied)
         {
             Logger.LogDebug(
                 "Duplicate elimination ignored: MatchingId={MatchingId}, PlayerId={PlayerId}, Reason={Reason}",
-                CurrentMapSubId, eliminatedPlayerId, reason);
+                MatchingId, eliminatedPlayerId, reason);
             return;
         }
 
@@ -52,9 +52,9 @@ public partial class GameClientSession
         }
 
         var affected = transition.AffectedPlayers;
-        _groundItemManager.ReleaseClaimReservationsForPlayer(CurrentMapSubId, eliminatedPlayerId);
+        _groundItemManager.ReleaseClaimReservationsForPlayer(MatchingId, eliminatedPlayerId);
         _gameEventLogManager.LogElimination(
-            CurrentMapSubId,
+            MatchingId,
             eliminatedPlayerId,
             reason.ToString(),
             isBot: eliminatedBot != null,
@@ -68,7 +68,7 @@ public partial class GameClientSession
             DropBotInventoryAtCurrentPosition(eliminatedPlayerId);
 
         // 1. 전체에게 탈락 알림. 탈락자에게만 결과표를 고정 패킷 예산 안에서 나눠 보낸다.
-        var eliminatedResultPlayers = BuildGameResultPlayers(allSessions, CurrentMapSubId, 0);
+        var eliminatedResultPlayers = BuildGameResultPlayers(allSessions, MatchingId, 0);
         var eliminatedResultChunks = GameResultPacketChunker.CreateEliminationChunks(
             eliminatedPlayerId,
             resolvedAttackerPlayerId,
@@ -117,7 +117,7 @@ public partial class GameClientSession
             }
 
             // 봇 상태 동기화
-            var bot = _botPlayerManager.GetBot(CurrentMapSubId, playerId);
+            var bot = _botPlayerManager.GetBot(MatchingId, playerId);
             if (bot != null)
             {
                 if (newStatus == PlayerMatchStatus.ELIMINATED)
@@ -141,11 +141,11 @@ public partial class GameClientSession
         }
 
         // 3. 게임 종료 판정
-        var (isGameOver, winnerId) = _matchRosterManager.CheckGameOver(CurrentMapSubId);
+        var (isGameOver, winnerId) = _matchRosterManager.CheckGameOver(MatchingId);
         if (!deferGameOver && isGameOver)
         {
             Logger.LogInformation("게임 종료! 최후의 1인: {WinnerId}", winnerId);
-            SendGameResult(winnerId ?? 0, false, CurrentMapSubId);
+            SendGameResult(winnerId ?? 0, false, MatchingId);
         }
 
     }
@@ -174,20 +174,20 @@ public partial class GameClientSession
                 winnerId, criterion);
             return;
         }
-        if (Volatile.Read(ref _isGameEnded) || CurrentMapSubId <= 0)
+        if (Volatile.Read(ref _isGameEnded) || MatchingId <= 0)
             return;
 
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
         Logger.LogInformation(
             "Swarm match resolved: MatchingId={MatchingId}, WinnerId={WinnerId}, Criterion={Criterion}",
-            CurrentMapSubId, winnerId, criterion);
+            MatchingId, winnerId, criterion);
         _gameEventLogManager.LogSystem(
-            CurrentMapSubId,
+            MatchingId,
             $"survivor_settlement winner={winnerId} criterion={criterion}");
         // 오브 점수 만료(#226 단계 B)는 요약 EndReason에도 그대로 남긴다 — 계측에서
         // 연장전 정산과 섞이면 5분 판정 발화율을 셀 수 없다.
         string endReason = criterion == "orb_score_timeout" ? criterion : "overtime_settlement";
-        SendGameResult(winnerId, false, CurrentMapSubId, endReason, criterion);
+        SendGameResult(winnerId, false, MatchingId, endReason, criterion);
     }
 
     /// <summary>
@@ -432,8 +432,6 @@ public partial class GameClientSession
                     {
                         PlayerId = d.playerId,
                         Name = ResolveResultPlayerName(d.playerId, playerInfo, playerProfile, bot),
-                        TargetPlayerId = d.targetId,
-                        WatcherPlayerId = d.watcherId,
                         EliminationReason = d.reason,
                         FinalStatus = d.finalStatus,
                         Corruption = session?.Corruption ?? bot?.Corruption ?? 0,

@@ -29,13 +29,13 @@ public partial class GameClientSession
     // 개봉 비용 = SB 크기 비례: 현재 궤도 오브 슬롯 수 기준. 장소별 재개봉 가산은 퇴역.
     private int GetSwarmExploreCost() =>
         Config.GetSwarmExploreCost(
-            _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId!.Value)
+            _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId!.Value)
                 .GetAllItems().Count);
 
     private Task HandleRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (CurrentMapSubId <= 0)
+        if (MatchingId <= 0)
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
             return Task.CompletedTask;
@@ -49,7 +49,7 @@ public partial class GameClientSession
     private Task HandleRngCollectFinish(C_TO_G_RNG_COLLECT_FINISH msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (CurrentMapSubId <= 0)
+        if (MatchingId <= 0)
         {
             _pendingFinish.Remove(msg.InteractId);
             SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
@@ -73,7 +73,7 @@ public partial class GameClientSession
         if (!PlayerId.HasValue) return;
         SetMovementLockState(state == PlayerState.EXPLORE_1);
 
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, state);
         foreach (var session in sameAreaSessions) session.Send(packet);
@@ -124,7 +124,7 @@ public partial class GameClientSession
 
         // 소환석 부족이면 게이지를 시작하지 않는다 — 헛 채널 방지.
         // #226 단계 C: 상자 = 소모품 공급처(고정 저가) — 궤도 포화 게이트는 오브를 안 주므로 퇴역.
-        if (_summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId!.Value).StoneCount <
+        if (_summonStoneManager.GetSnapshot(MatchingId, PlayerId!.Value).StoneCount <
             Config.SWARM_BOX_OPEN_COST)
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.INSUFFICIENT_CURRENCY, 0);
@@ -132,7 +132,7 @@ public partial class GameClientSession
         }
 
         if (!RngCollectCooldownStore.TryAcquireCooldown(
-                CurrentMapSubId, msg.InteractId, RngCollectCooldownStore.DefaultCooldownSeconds,
+                MatchingId, msg.InteractId, RngCollectCooldownStore.DefaultCooldownSeconds,
                 out int remaining))
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.ACTION_ALREADY_EXPLORED, remaining);
@@ -141,7 +141,7 @@ public partial class GameClientSession
 
         _pendingFinish.Add(msg.InteractId);
         _gameEventLogManager.LogExploreStart(
-            CurrentMapSubId, PlayerId.Value, msg.InteractId, CurrentArea.ToString(), isBot: false);
+            MatchingId, PlayerId.Value, msg.InteractId, CurrentArea.ToString(), isBot: false);
         SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
         return Task.CompletedTask;
     }
@@ -177,10 +177,10 @@ public partial class GameClientSession
         // #226 단계 C: 상자 = 소모품 공급처 — 개봉하면 하트·부츠가 바닥에 터져 나온다.
         // 오브 성장은 소환석 임계의 성장 카드 3택이 맡는다 (상자 개방 트리거·자동 소환 퇴역).
         if (!_summonStoneManager.TrySpendStones(
-                CurrentMapSubId, PlayerId.Value, Config.SWARM_BOX_OPEN_COST, out _))
+                MatchingId, PlayerId.Value, Config.SWARM_BOX_OPEN_COST, out _))
         {
             // 석 부족 — 쿨다운을 풀어 나중에 다시 열 수 있게 한다.
-            RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
+            RngCollectCooldownStore.ClearCooldown(MatchingId, msg.InteractId);
             BroadcastRngCollectCooldown(msg.InteractId, 0);
             SendRngCollectResult(msg.InteractId, 0, 0, 0, 0);
             BroadcastPlayerState(PlayerState.IDLE);
@@ -196,16 +196,16 @@ public partial class GameClientSession
         if (dropAnchor != null)
         {
             var spawned = _groundItemManager.SpawnItems(
-                CurrentMapSubId, CurrentArea, dropAnchor.X, dropAnchor.Y, [dropItemId],
+                MatchingId, CurrentArea, dropAnchor.X, dropAnchor.Y, [dropItemId],
                 mapId: Config.SWARM_MATCH_MAP,
                 layout: GroundItemSpawnLayout.EliminationScatter);
             BroadcastGroundItemsSpawned(CurrentArea, spawned);
         }
 
         // 스팟은 소진되지 않는다 — 리젠 시간 뒤 다시 나온다.
-        RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, msg.InteractId);
+        RngCollectCooldownStore.ClearCooldown(MatchingId, msg.InteractId);
         RngCollectCooldownStore.TryAcquireCooldown(
-            CurrentMapSubId, msg.InteractId, SwarmExploreCooldownSeconds, out _);
+            MatchingId, msg.InteractId, SwarmExploreCooldownSeconds, out _);
         BroadcastRngCollectCooldown(msg.InteractId, SwarmExploreCooldownSeconds);
         SendRngCollectResult(msg.InteractId, 0, 0, 0, SwarmExploreCooldownSeconds);
         BroadcastPlayerState(PlayerState.IDLE);
@@ -222,7 +222,7 @@ public partial class GameClientSession
     /// </summary>
     private Task HandleSwarmDoorUnlockStart(int interactId, int doorId)
     {
-        if (_doorStateManager.IsDoorOpen(CurrentMapSubId, doorId))
+        if (_doorStateManager.IsDoorOpen(MatchingId, doorId))
         {
             SendRngCollectAck(interactId, ErrorCode.DOOR_ALREADY_OPEN, 0);
             return Task.CompletedTask;
@@ -232,9 +232,9 @@ public partial class GameClientSession
         // 단 내가 그 폐쇄 구역 안에 있으면 연다 (2026-08-18 유저 결정: 갇히면 틱 오염을 받으며 문을 따고 나간다).
         var door = GameDoorData.Get(doorId);
         if (door != null && _areaClosureManager != null &&
-            (_areaClosureManager.IsAreaClosed(CurrentMapSubId, door.AreaType) ||
-             _areaClosureManager.IsAreaClosed(CurrentMapSubId, door.AreaTypeB)) &&
-            !_areaClosureManager.IsAreaClosed(CurrentMapSubId, CurrentArea))
+            (_areaClosureManager.IsAreaClosed(MatchingId, door.AreaType) ||
+             _areaClosureManager.IsAreaClosed(MatchingId, door.AreaTypeB)) &&
+            !_areaClosureManager.IsAreaClosed(MatchingId, CurrentArea))
         {
             SendRngCollectAck(interactId, ErrorCode.INVALID_GAME_STATE, 0);
             return Task.CompletedTask;
@@ -243,7 +243,7 @@ public partial class GameClientSession
         _pendingFinish.Add(interactId);
         _pendingDoorUnlockInteractId = interactId;
         _gameEventLogManager.LogExploreStart(
-            CurrentMapSubId, PlayerId!.Value, interactId, CurrentArea.ToString(), isBot: false);
+            MatchingId, PlayerId!.Value, interactId, CurrentArea.ToString(), isBot: false);
         SendRngCollectAck(interactId, ErrorCode.SUCCESS, 0);
         return Task.CompletedTask;
     }
@@ -253,7 +253,7 @@ public partial class GameClientSession
         _pendingDoorUnlockInteractId = null;
         _swarmDoorUnlockCount++;
 
-        if (!_doorStateManager.OpenDoor(CurrentMapSubId, doorId))
+        if (!_doorStateManager.OpenDoor(MatchingId, doorId))
         {
             SendRngCollectResult(interactId, 0, 0, 0, 0);
             BroadcastPlayerState(PlayerState.IDLE);
@@ -266,7 +266,7 @@ public partial class GameClientSession
 
         using var updatePacket =
             PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId!.Value);
-        foreach (var session in _getSessionsByInstance(CurrentMapId, CurrentMapSubId))
+        foreach (var session in _getSessionsByInstance(CurrentMapId, MatchingId))
             session.Send(updatePacket);
 
         SendRngCollectResult(interactId, 0, 0, 0, 0);
@@ -288,7 +288,7 @@ public partial class GameClientSession
         _pendingDoorUnlockInteractId = null;
         _pendingFinish.Remove(interactId);
         _gameEventLogManager.LogExploreCancelled(
-            CurrentMapSubId, PlayerId ?? 0, interactId, CurrentArea.ToString(), "door_unlock_hit",
+            MatchingId, PlayerId ?? 0, interactId, CurrentArea.ToString(), "door_unlock_hit",
             isBot: false);
         SendRngCollectAck(interactId, ErrorCode.INVALID_GAME_STATE, 0);
     }
@@ -317,8 +317,8 @@ public partial class GameClientSession
         foreach (int interactId in _pendingFinish.ToArray())
         {
             _gameEventLogManager.LogExploreCancelled(
-                CurrentMapSubId, PlayerId.GetValueOrDefault(), interactId, CurrentArea.ToString(), reason, isBot: false);
-            RngCollectCooldownStore.ClearCooldown(CurrentMapSubId, interactId);
+                MatchingId, PlayerId.GetValueOrDefault(), interactId, CurrentArea.ToString(), reason, isBot: false);
+            RngCollectCooldownStore.ClearCooldown(MatchingId, interactId);
             BroadcastRngCollectCooldown(interactId, 0);
         }
 
@@ -330,7 +330,7 @@ public partial class GameClientSession
 
     private void BroadcastRngCollectCooldown(int interactId, int cooldownSeconds)
     {
-        var sessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var sessions = _getSessionsByInstance(CurrentMapId, MatchingId);
         var msg = new G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST
         {
             InteractId = interactId,
@@ -350,7 +350,7 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return;
 
-        var snapshot = RngCollectCooldownStore.GetSnapshot(CurrentMapSubId);
+        var snapshot = RngCollectCooldownStore.GetSnapshot(MatchingId);
         if (snapshot.Count == 0) return;
 
         var msg = new G_TO_C_INTERACT_COOLDOWN_SNAPSHOT

@@ -52,16 +52,6 @@ namespace network.common
         S2Ground = 74,
     }
 
-    public enum PersonaType
-    {
-        None = 0,
-        SecretCollector = 1,
-        Coward = 2,
-        GuardianAngel = 3,
-        PhysicalSolver = 4,
-        Nocturnal = 5,
-    }
-
     public static class AreaTypeExtensions
     {
         /// <summary>복도 구역인지 확인한다.</summary>

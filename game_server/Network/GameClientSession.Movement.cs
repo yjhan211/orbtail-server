@@ -95,7 +95,7 @@ public partial class GameClientSession
                 var transitionDoor = GameDoorData.GetDoorForTransition(
                     CurrentArea, newArea, previousCell, currentCell);
                 if (transitionDoor != null &&
-                    !_doorStateManager.IsDoorOpen(CurrentMapSubId, transitionDoor.DoorId))
+                    !_doorStateManager.IsDoorOpen(MatchingId, transitionDoor.DoorId))
                 {
                     Logger.LogWarning(
                         "Player {PlayerId} blocked crossing {CurrentArea}→{NewArea} (locked door: {DoorId})",
@@ -120,14 +120,14 @@ public partial class GameClientSession
             if (_lastValidatedPosition != null)
                 AdvanceOrbOrbit(_lastValidatedPosition, validatedPosition);
             _lastValidatedPosition = validatedPosition;
-            _groundItemManager.ReleaseSourcePickupBlocks(CurrentMapSubId, PlayerId.Value,
+            _groundItemManager.ReleaseSourcePickupBlocks(MatchingId, PlayerId.Value,
                 newArea == AreaType.None ? CurrentArea : newArea, validatedPosition.X, validatedPosition.Y);
             _lastValidatedRotation = msg.Rotation;
 
             if (newArea != CurrentArea && newArea != AreaType.None)
             {
                 // 폐쇄 구역 진입 경고 (지속 페널티는 ResourceTick에서 처리)
-                if (_areaClosureManager.IsAreaClosed(CurrentMapSubId, newArea))
+                if (_areaClosureManager.IsAreaClosed(MatchingId, newArea))
                 {
                     Logger.LogInformation("폐쇄 구역 진입: PlayerId={PlayerId}, Area={Area} (체류 시 오염도 지속 증가)",
                         PlayerId, newArea);
@@ -137,7 +137,7 @@ public partial class GameClientSession
                     PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);
                 var oldArea = CurrentArea;
                 CurrentArea = newArea; // 먼저 Area 업데이트 (다른 플레이어의 MOVE 수신 가능하도록)
-                _gameEventLogManager.LogMove(CurrentMapSubId, PlayerId.Value,
+                _gameEventLogManager.LogMove(MatchingId, PlayerId.Value,
                     oldArea.ToString(), newArea.ToString(), isBot: false);
                 await HandleAreaChange(oldArea, newArea);
             }
@@ -156,7 +156,7 @@ public partial class GameClientSession
                 OrbOrbitPhaseDegrees
             );
 
-            var otherSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+            var otherSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
             var sameAreaSessions = GetSessionsInArea(otherSessions, CurrentArea);
 
             foreach (var session in sameAreaSessions)
@@ -377,7 +377,7 @@ public partial class GameClientSession
             Logger.LogInformation("Player {PlayerId} moved from Area {OldArea} to {NewArea}", PlayerId, oldArea,
                 newArea);
 
-            var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+            var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
             var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
 
             if (playerInfo == null) return;
@@ -413,7 +413,7 @@ public partial class GameClientSession
                 }
 
                 // #79: 나에게 이전 Area의 봇들 삭제 알림 (봇은 TCP 세션이 없어 별도 처리)
-                var oldAreaBots = _botPlayerManager.GetBots(CurrentMapSubId)
+                var oldAreaBots = _botPlayerManager.GetBots(MatchingId)
                     .Where(b => !b.IsEliminated && b.CurrentArea == oldArea)
                     .ToList();
                 foreach (var bot in oldAreaBots)
@@ -465,12 +465,12 @@ public partial class GameClientSession
                 Logger.LogDebug("Sent {Count} existing players to Player {PlayerId}", newAreaSessions.Count, PlayerId);
 
                 // 4. #125: 새 Area의 봇들 ENTER도 나에게 전송 (실제 플레이어 동등)
-                var newAreaBots = _botPlayerManager.GetBots(CurrentMapSubId)
+                var newAreaBots = _botPlayerManager.GetBots(MatchingId)
                     .Where(b => !b.IsEliminated && b.CurrentArea == newArea)
                     .ToList();
                 foreach (var bot in newAreaBots)
                 {
-                    var botInfo = _botPlayerManager.SynthesizePlayerInfo(CurrentMapSubId, bot.PlayerId);
+                    var botInfo = _botPlayerManager.SynthesizePlayerInfo(MatchingId, bot.PlayerId);
                     if (botInfo == null) continue;
                     using var botEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(botInfo, bot.Cell);
                     Send(botEnterPacket);
@@ -492,7 +492,7 @@ public partial class GameClientSession
 
     private void SendInteractableList(AreaType areaType)
     {
-        var objects = _interactableStateManager.GetAreaObjectStates(CurrentMapSubId, areaType);
+        var objects = _interactableStateManager.GetAreaObjectStates(MatchingId, areaType);
 
         // #229 5단계: 스웜은 상자 탐색을 보내지 않는다 — 마커도 빈 상호작용 UI도 뜰 일이 없다.
         // 단 문 잠금해제(door_id > 0)는 예외다. 방을 여는 유일한 수단이라 스웜의 핵심 조작이다.
@@ -502,7 +502,7 @@ public partial class GameClientSession
         // 이미 열린 문의 마커는 보내지 않는다 — 열린 문 앞에서 게이지가 도는 그림은 거짓말이다.
         objects = objects
             .Where(state => GameInteractableData.Get(state.InteractId) is not { DoorId: > 0 } info ||
-                            !_doorStateManager.IsDoorOpen(CurrentMapSubId, info.DoorId))
+                            !_doorStateManager.IsDoorOpen(MatchingId, info.DoorId))
             .ToList();
         if (objects.Count == 0)
         {
@@ -527,7 +527,7 @@ public partial class GameClientSession
 
         Logger.LogDebug(
             "Sent {Count} interactable objects for area {AreaType} to Player {PlayerId} (MatchingId={MatchingId})",
-            objects.Count, areaType, PlayerId, CurrentMapSubId);
+            objects.Count, areaType, PlayerId, MatchingId);
     }
 
 }

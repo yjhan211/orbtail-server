@@ -217,11 +217,6 @@ public sealed class GameServerRoutingTests
         {
             PlayerId = 7,
             MatchingId = 42,
-            MapId = MapId.School2,
-            MapSubId = 42,
-            SpawnPosition = new Cell(3, 4),
-            TargetPlayerId = 8,
-            HumanRoster = [new GameHandoffRosterEntry { PlayerId = 7, TargetPlayerId = 8 }],
             GameServerNodeId = nodeId
         };
     }

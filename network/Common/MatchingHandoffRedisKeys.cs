@@ -8,7 +8,7 @@ namespace network.common
         public static readonly TimeSpan AdmissionTimeout = TimeSpan.FromSeconds(45);
         public static readonly TimeSpan AdmissionClaimLifetime = TimeSpan.FromMinutes(2);
 
-        public const string BotsField = "bots";
+        public const string ManifestField = "manifest";
         public const string AdmissionReadyField = "admission_ready";
         public const byte AdmissionReadyValue = 1;
         public const string AdmissionPendingState = "pending";

@@ -86,7 +86,7 @@ public partial class GameClientSession : SessionBase
     private int _matchingLifecycleHandledExternally;
     private int _matchingLifecycleTerminalReported;
     private int _matchingClaimReleaseReported;
-    private long[] _handoffHumanPlayerIds = [];
+    private long[] _matchHumanPlayerIds = [];
 
     // #229: 진행 중인 문 잠금해제 게이지. 맞으면 서버가 지워 뒤늦은 FINISH까지 무효로 만든다.
     private int? _pendingDoorUnlockInteractId;
@@ -134,18 +134,6 @@ public partial class GameClientSession : SessionBase
     internal static Action<long, long>? SwarmHeartPickupCallback { get; set; }
 
     public IReadOnlyCollection<int> ActiveBuffIds => _activeBuffIds;
-
-    private void SetActiveBuffIds(IEnumerable<int>? activeBuffIds)
-    {
-        _activeBuffIds.Clear();
-        if (activeBuffIds == null) return;
-
-        foreach (int buffId in activeBuffIds)
-        {
-            if (buffId > 0 && !_activeBuffIds.Contains(buffId))
-                _activeBuffIds.Add(buffId);
-        }
-    }
 
     internal GameClientSession(
         UserToken token,
@@ -216,7 +204,7 @@ public partial class GameClientSession : SessionBase
     /// <summary>터미널 매치의 늦은 패킷은 잠금 없이 거른다 — 매치 밖 세션(로비 전)은 그대로 통과.</summary>
     protected override bool IsMessageLifecycleActive()
     {
-        long matchingId = CurrentMapSubId;
+        long matchingId = MatchingId;
         return matchingId <= 0 || _matchRuntimes.Get(matchingId) is { IsTerminal: false };
     }
 
@@ -230,7 +218,7 @@ public partial class GameClientSession : SessionBase
         ArgumentNullException.ThrowIfNull(core);
         ArgumentNullException.ThrowIfNull(rejectIfTerminal);
 
-        MatchRuntime? runtime = _matchRuntimes.Get(CurrentMapSubId);
+        MatchRuntime? runtime = _matchRuntimes.Get(MatchingId);
         if (runtime == null)
         {
             rejectIfTerminal();
@@ -280,7 +268,7 @@ public partial class GameClientSession : SessionBase
             return true;
         }
 
-        if (CurrentMapSubId > 0 && !MatchStartGate.IsGameplayActive(CurrentMapSubId))
+        if (MatchingId > 0 && !MatchStartGate.IsGameplayActive(MatchingId))
         {
             reason = "Waiting for match start";
             return true;
@@ -291,7 +279,7 @@ public partial class GameClientSession : SessionBase
 
     public new long? PlayerId { get; private set; }
     public MapId CurrentMapId { get; private set; }
-    public long CurrentMapSubId { get; private set; }
+    public long MatchingId { get; private set; }
     public AreaType CurrentArea { get; private set; } = AreaType.None;
     // 이동 잠금 판정용 — IDLE/EXPLORE_1 두 값만 저장한다 (SLEEP 등은 _isSleeping이 별도 추적).
     private PlayerState CurrentState { get; set; } = PlayerState.IDLE;
@@ -315,8 +303,6 @@ public partial class GameClientSession : SessionBase
             OrbOrbitPhaseDegrees, MathF.Sqrt(dx * dx + dy * dy));
     }
 
-    // 미니맵 타깃 마커 대상 (TargetLocation 송신이 사용)
-    public long TargetPlayerId { get; private set; }
     public PlayerMatchStatus PlayerMatchStatus { get; private set; } = PlayerMatchStatus.ACTIVE;
 
     // 이탈 페널티 면제 플래그
@@ -394,7 +380,7 @@ public partial class GameClientSession : SessionBase
         if (IsRoundActionLocked(out _))
             return Task.CompletedTask;
 
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
 
         var broadcast = new G_TO_C_SOCIAL_ACTION
@@ -419,7 +405,7 @@ public partial class GameClientSession : SessionBase
         return protocolId == Protocol.C_TO_G_HEART_BEAT || protocolId == Protocol.C_TO_G_MOVE;
     }
 
-    internal IReadOnlyList<long> HandoffHumanPlayerIds => Volatile.Read(ref _handoffHumanPlayerIds);
+    internal IReadOnlyList<long> MatchHumanPlayerIds => Volatile.Read(ref _matchHumanPlayerIds);
 
     private bool TryBeginMatchingLifecycleTerminal()
     {
@@ -437,7 +423,7 @@ public partial class GameClientSession : SessionBase
         bool matchingLifecycleTerminalClaimed = false;
         if (Volatile.Read(ref _admissionCompleted) != 0 ||
             !PlayerId.HasValue ||
-            CurrentMapSubId <= 0)
+            MatchingId <= 0)
             return true;
         if (Interlocked.CompareExchange(ref _admissionFailureReported, 1, 0) != 0)
             return true;
@@ -465,7 +451,7 @@ public partial class GameClientSession : SessionBase
                 ex,
                 "Failed to report game admission failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 PlayerId,
-                CurrentMapSubId);
+                MatchingId);
             return false;
         }
     }
@@ -473,7 +459,7 @@ public partial class GameClientSession : SessionBase
     private void ReleaseMatchingClaimOnce()
     {
         if (!PlayerId.HasValue ||
-            CurrentMapSubId <= 0 ||
+            MatchingId <= 0 ||
             Interlocked.CompareExchange(ref _matchingClaimReleaseReported, 1, 0) != 0)
             return;
         if (!TryBeginMatchingLifecycleTerminal())
@@ -481,7 +467,7 @@ public partial class GameClientSession : SessionBase
 
         try
         {
-            _releaseMatchingClaim(PlayerId.Value, CurrentMapSubId);
+            _releaseMatchingClaim(PlayerId.Value, MatchingId);
         }
         catch
         {
@@ -520,12 +506,12 @@ public partial class GameClientSession : SessionBase
 
     private void RecordLeaveOnce()
     {
-        if (!PlayerId.HasValue || CurrentMapSubId <= 0 || !TryBeginMatchingLifecycleTerminal())
+        if (!PlayerId.HasValue || MatchingId <= 0 || !TryBeginMatchingLifecycleTerminal())
             return;
 
         try
         {
-            _publishPlayerLeft(PlayerId.Value, CurrentMapSubId);
+            _publishPlayerLeft(PlayerId.Value, MatchingId);
         }
         catch
         {
@@ -573,7 +559,7 @@ public partial class GameClientSession : SessionBase
             // behind until its long TTL expires.
             ReleaseMatchingClaimOnce();
         }
-        else if (PlayerId.HasValue && CurrentMapSubId > 0 && !Volatile.Read(ref _isGameEnded))
+        else if (PlayerId.HasValue && MatchingId > 0 && !Volatile.Read(ref _isGameEnded))
         {
             if (IsEliminated)
             {
@@ -609,12 +595,12 @@ public partial class GameClientSession : SessionBase
     internal Action? MarkGameEndedAndPrepareLifecyclePublication()
     {
         Volatile.Write(ref _isGameEnded, true);
-        if (!PlayerId.HasValue || CurrentMapSubId <= 0 || !TryBeginMatchingLifecycleTerminal())
+        if (!PlayerId.HasValue || MatchingId <= 0 || !TryBeginMatchingLifecycleTerminal())
             return null;
 
         try
         {
-            return _prepareGameCompletion(PlayerId.Value, CurrentMapSubId);
+            return _prepareGameCompletion(PlayerId.Value, MatchingId);
         }
         catch
         {

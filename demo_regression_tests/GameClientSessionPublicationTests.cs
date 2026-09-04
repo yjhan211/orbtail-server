@@ -639,7 +639,7 @@ public sealed class GameClientSessionPublicationTests
         public GroundItemInfo SpawnAtSession(RecordingSession session, int itemId)
         {
             GroundItemInfo item = GroundItems.SpawnItems(
-                session.CurrentMapSubId,
+                session.MatchingId,
                 session.CurrentArea,
                 0f,
                 0f,
@@ -655,7 +655,7 @@ public sealed class GameClientSessionPublicationTests
                 BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, corruption);
 
         public void SetMatchingId(RecordingSession session, long matchingId) =>
-            SetProperty(session, nameof(GameClientSession.CurrentMapSubId), matchingId);
+            SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
 
         public void SeedPendingFinish(RecordingSession session, int interactId)
         {
@@ -680,7 +680,7 @@ public sealed class GameClientSessionPublicationTests
             AreaType area)
         {
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
-            SetProperty(session, nameof(GameClientSession.CurrentMapSubId), matchingId);
+            SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
             SetProperty(session, nameof(GameClientSession.CurrentMapId), Config.SWARM_MATCH_MAP);
             SetProperty(session, nameof(GameClientSession.CurrentArea), area);
             SetPosition(session, new Vector3f(0f, 0f, 0f));
@@ -735,7 +735,7 @@ public sealed class GameClientSessionPublicationTests
                 static _ => { },
                 static (_, _) => null,
                 (_, matchingId) => sessions
-                    .Where(session => session.CurrentMapSubId == matchingId)
+                    .Where(session => session.MatchingId == matchingId)
                     .ToList(),
                 interactables,
                 inventories,

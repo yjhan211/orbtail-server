@@ -27,7 +27,7 @@ public partial class GameClientSession
     private Task HandleCombineItems(C_TO_G_COMBINE_ITEMS msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (CurrentMapSubId <= 0)
+        if (MatchingId <= 0)
         {
             SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INVALID_GAME_STATE);
             return Task.CompletedTask;
@@ -61,7 +61,7 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return false;
 
-        long matchingId = CurrentMapSubId;
+        long matchingId = MatchingId;
         long playerId = PlayerId.Value;
         // 조합 난수는 매치 소유 stream 하나뿐이다 (#325 — matchingId 없는 legacy core 삭제).
         Random ResolveRandom() => _getItemCombineRandom(matchingId);
@@ -169,7 +169,7 @@ public partial class GameClientSession
         IReadOnlyCollection<InGameItemInfo> changedItems, int recipeId)
     {
         var outputItem = changedItems.LastOrDefault(item => item.ItemId == outputItemId && item.Count > 0);
-        var equippedBattleItem = _inGameInventoryManager.GetEquippedBattleItem(CurrentMapSubId, PlayerId!.Value);
+        var equippedBattleItem = _inGameInventoryManager.GetEquippedBattleItem(MatchingId, PlayerId!.Value);
         bool shouldReplaceEquippedItem = outputItem != null && equippedBattleItem?.ItemUid == outputItem.ItemUid;
 
         using var combinePacket = Packet.Create((int)Protocol.G_TO_C_ITEMS_COMBINED, PlayerId.Value);

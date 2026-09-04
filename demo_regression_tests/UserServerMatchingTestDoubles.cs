@@ -401,30 +401,30 @@ internal sealed class FakeRedLockFactory : IRedLockFactory
 internal sealed class RecordingHandoffPublisher : IMatchHandoffPublisher
 {
     public List<string> Events { get; } = new();
-    public Dictionary<long, IReadOnlyList<BotMatchingInfo>> StoredBots { get; } = new();
-    public List<(long MatchingId, RosterChainLink Link, int RosterCount, int HumanRosterCount)> Deliveries { get; } = new();
+    public Dictionary<long, MatchManifest> StoredManifests { get; } = new();
+    public List<(long MatchingId, MatchingQueueEntry Entry, int RosterCount)> Deliveries { get; } = new();
     public List<string> DeliveredNodeIds { get; } = new();
     public Func<long, bool> DeliverResult { get; set; } = _ => true;
     public HashSet<long> ThrowOnDeliver { get; } = new();
     public bool CancelAdmissionResult { get; set; } = true;
     public bool WatchdogResult { get; set; } = true;
 
-    public Task StoreBotHandoffAsync(long matchingId, IReadOnlyList<BotMatchingInfo> bots)
+    public Task StoreMatchManifestAsync(long matchingId, MatchManifest manifest)
     {
-        StoredBots[matchingId] = bots;
-        Events.Add($"bots:{matchingId}:{bots.Count}");
+        StoredManifests[matchingId] = manifest;
+        Events.Add($"manifest:{matchingId}:{manifest.HumanPlayerIds.Count}+{manifest.BotPlayerIds.Count}");
         return Task.CompletedTask;
     }
 
-    public Task<bool> DeliverMatchingSuccessAsync(RosterChainLink link, long matchingId, List<PlayerInfo> playerRoster,
-        List<GameHandoffRosterEntry> humanHandoffRoster, GameServerAllocation gameServer)
+    public Task<bool> DeliverMatchingSuccessAsync(MatchingQueueEntry entry, long matchingId, List<PlayerInfo> playerRoster,
+        GameServerAllocation gameServer)
     {
-        Deliveries.Add((matchingId, link, playerRoster.Count, humanHandoffRoster.Count));
+        Deliveries.Add((matchingId, entry, playerRoster.Count));
         DeliveredNodeIds.Add(gameServer.NodeId);
-        Events.Add($"deliver:{matchingId}:{link.PlayerId}");
-        if (ThrowOnDeliver.Contains(link.PlayerId))
-            throw new InvalidOperationException($"delivery failed for {link.PlayerId}");
-        return Task.FromResult(DeliverResult(link.PlayerId));
+        Events.Add($"deliver:{matchingId}:{entry.PlayerId}");
+        if (ThrowOnDeliver.Contains(entry.PlayerId))
+            throw new InvalidOperationException($"delivery failed for {entry.PlayerId}");
+        return Task.FromResult(DeliverResult(entry.PlayerId));
     }
 
     public Task MarkHandoffReadyAsync(long matchingId)

@@ -27,31 +27,10 @@ public class MatchRosterManager
     {
         var state = _states.GetOrAdd(matchingId, _ => new MatchRosterState { MatchingId = matchingId });
 
-        if (state.Entries.TryGetValue(link.PlayerId, out var existing))
+        if (state.Entries.ContainsKey(link.PlayerId))
         {
-            if (existing.TargetPlayerId != link.TargetPlayerId)
-            {
-                _logger.LogWarning(
-                    "로스터 타깃 갱신: MatchingId={MatchingId}, PlayerId={PlayerId}, Target {OldTarget}->{NewTarget}",
-                    matchingId, link.PlayerId, existing.TargetPlayerId, link.TargetPlayerId);
-
-                existing.TargetPlayerId = link.TargetPlayerId;
-                existing.Status = link.Status;
-                existing.EliminationReason = link.EliminationReason;
-                existing.EliminatedAt = link.EliminatedAt;
-                existing.AttackerPlayerId = link.AttackerPlayerId;
-                existing.EliminatedArea = link.EliminatedArea;
-                existing.IsAreaClosureElimination = link.IsAreaClosureElimination;
-                existing.IsOvertimeElimination = link.IsOvertimeElimination;
-                existing.EliminationRank = link.EliminationRank;
-                existing.FinalOrbTier = link.FinalOrbTier;
-            }
-            else
-            {
-                _logger.LogDebug("Roster link already registered: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId,
-                    link.PlayerId);
-            }
-
+            _logger.LogDebug("Roster entry already registered: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId,
+                link.PlayerId);
             return;
         }
 
@@ -95,12 +74,6 @@ public class MatchRosterManager
 
         lock (entry)
             return new MatchPlayerProfile(entry.Name, entry.WearItemIdList.ToArray());
-    }
-
-    public RosterEntry? FindWatcherOf(long matchingId, long playerId)
-    {
-        if (!_states.TryGetValue(matchingId, out var state)) return null;
-        return state.Entries.Values.FirstOrDefault(l => l.TargetPlayerId == playerId);
     }
 
     private static bool IsAliveLink(RosterEntry? link)
@@ -169,7 +142,7 @@ public class MatchRosterManager
     ///     게임 결과 데이터 생성 (전체 로스터 공개)
     /// </summary>
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.Synchronized)]
-    public List<(long playerId, long targetId, long watcherId,
+    public List<(long playerId,
         EliminationReason reason, PlayerMatchStatus finalStatus, DateTime? eliminatedAt,
         long attackerPlayerId, AreaType eliminatedArea, bool isAreaClosureElimination,
         bool isOvertimeElimination, int eliminationRank, int finalOrbTier)> BuildGameResult(long matchingId)
@@ -177,15 +150,12 @@ public class MatchRosterManager
         if (!_states.TryGetValue(matchingId, out var state))
             return new();
 
-        var links = state.Entries.Values.ToList();
-        var result = new List<(long, long, long, EliminationReason, PlayerMatchStatus, DateTime?, long,
+        var result = new List<(long, EliminationReason, PlayerMatchStatus, DateTime?, long,
             AreaType, bool, bool, int, int)>();
 
-        foreach (var link in links)
+        foreach (var link in state.Entries.Values)
         {
-            // 이 플레이어의 감시자 = 이 플레이어를 타겟으로 가진 링크
-            long watcherId = links.FirstOrDefault(l => l.TargetPlayerId == link.PlayerId)?.PlayerId ?? 0;
-            result.Add((link.PlayerId, link.TargetPlayerId, watcherId,
+            result.Add((link.PlayerId,
                 link.EliminationReason, link.Status, link.EliminatedAt, link.AttackerPlayerId,
                 link.EliminatedArea, link.IsAreaClosureElimination, link.IsOvertimeElimination,
                 link.EliminationRank, link.FinalOrbTier));
@@ -219,7 +189,6 @@ public class MatchRosterState
 public class RosterEntry
 {
     public long PlayerId { get; set; }
-    public long TargetPlayerId { get; set; }  // 미니맵 타깃 마커 대상
     public PlayerMatchStatus Status { get; set; } = PlayerMatchStatus.ACTIVE;
     public EliminationReason EliminationReason { get; set; } = EliminationReason.NONE;
     public DateTime? EliminatedAt { get; set; }

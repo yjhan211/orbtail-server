@@ -16,12 +16,12 @@ public partial class GameClientSession
 {
     private async Task HandleConnect(C_TO_G_CONNECT msg)
     {
-        if (PlayerId.HasValue || CurrentMapSubId > 0)
+        if (PlayerId.HasValue || MatchingId > 0)
         {
             Logger.LogWarning(
                 "Repeated game authentication attempt: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 PlayerId,
-                CurrentMapSubId);
+                MatchingId);
             SendConnectResult(false, ErrorCode.AUTH_FAILED, "이미 인증된 세션입니다", disconnectAfterSend: true);
             return;
         }
@@ -42,21 +42,11 @@ public partial class GameClientSession
 
             long matchingId = handoff.MatchingId;
             long playerId = handoff.PlayerId;
-            // Commit the ticket identity immediately after a successful consume response and
-            // before checking the socket state. If a legacy GETDEL response itself is lost,
-            // no exact identity exists here; the UserServer admission deadline owns rollback.
+            // 신원은 소비 응답 직후, 소켓 상태 확인 전에 확정한다. GETDEL 응답이 유실되면 여기에 정확한 신원이
+            // 없고, 되돌리기는 user_server의 입장 마감이 맡는다.
             PlayerId = playerId;
-            CurrentMapId = handoff.MapId;
-            CurrentMapSubId = handoff.MapSubId;
-            TargetPlayerId = handoff.TargetPlayerId;
-            SetActiveBuffIds(handoff.ActiveBuffIds);
-            Volatile.Write(
-                ref _handoffHumanPlayerIds,
-                handoff.HumanRoster.Select(entry => entry.PlayerId)
-                    .Append(playerId)
-                    .Where(id => id > 0)
-                    .Distinct()
-                    .ToArray());
+            CurrentMapId = Config.SWARM_MATCH_MAP;
+            MatchingId = matchingId;
             EnsureConnectionActive();
 
             Logger.LogInformation(
@@ -88,36 +78,13 @@ public partial class GameClientSession
             }
             disconnectSupersededSession?.Invoke();
 
-            Logger.LogInformation(
-                "Target chain restored: PlayerId={PlayerId}, Target={Target}",
-                PlayerId,
-                TargetPlayerId);
-
-            RunUnderLiveMatch(runtime, () =>
-            {
-                foreach (var rosterEntry in handoff.HumanRoster)
-                {
-                    _matchRosterManager.RegisterEntry(matchingId, new RosterEntry
-                    {
-                        PlayerId = rosterEntry.PlayerId,
-                        TargetPlayerId = rosterEntry.TargetPlayerId
-                    });
-                }
-            });
-
-            // Load bots once per match before initializing authoritative roster state.
-            int expectedBotCount = MatchStartGate.IsSoloMapValidationEnabled
-                ? 0
-                : Config.SWARM_PLAYERS_PER_MATCH - handoff.HumanRoster.Count;
-            if (expectedBotCount < 0)
-                throw new InvalidOperationException(
-                    $"Game handoff contains too many human players: {handoff.HumanRoster.Count}.");
-            await LoadBotsIfNeeded(
-                matchingId,
-                CurrentMapId,
-                expectedBotCount,
-                handoff.HumanRoster.Select(entry => entry.PlayerId).ToArray());
+            // 매치 구성(사람·봇·스폰)은 manifest에서 매치당 한 번 확정한다. ticket은 신원만 증명하므로
+            // 이 사람이 정말 이 매치의 참가자인지도 여기서 가른다.
+            MatchComposition composition = await LoadMatchCompositionAsync(matchingId, CurrentMapId, runtime);
             EnsureConnectionActive();
+            if (!composition.HumanPlayerIds.Contains(playerId))
+                throw new InvalidOperationException($"Player {playerId} is not part of match {matchingId}.");
+            Volatile.Write(ref _matchHumanPlayerIds, composition.HumanPlayerIds.ToArray());
 
             int connectedBotCount = 0;
             RunUnderLiveMatch(runtime, () =>
@@ -150,15 +117,16 @@ public partial class GameClientSession
                 MatchStartGate.RegisterHumanPlayer(matchingId, PlayerId.Value, connectedBotCount);
             });
 
-            // 초기 위치는 소비한 서버 발급 handoff에서만 복원한다. PlayerInfo는 존재 확인만 한다 —
+            // 초기 위치는 매치 구성의 스폰에서 복원한다. PlayerInfo는 존재 확인만 한다 —
             // Game Server는 PlayerInfo.Save를 부르지 않으므로(호출처는 user_server뿐) Last*를 여기서
             // 바꿔도 Redis에 남지 않고, 분산 락도 지킬 쓰기가 없어 잡지 않는다 (#335).
+            Cell matchingSpawnCell;
             {
                 var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
                 if (playerInfo == null)
                     throw new InvalidOperationException($"PlayerInfo not found for authenticated player {playerId}.");
 
-                var matchingSpawnCell = Cell.Clone(handoff.SpawnPosition);
+                matchingSpawnCell = Cell.Clone(composition.SpawnCells[playerId]);
                 _lastValidatedPosition = CellToWorldPosition(matchingSpawnCell);
                 _lastValidCell = Cell.Clone(matchingSpawnCell);
                 _lastValidatedRotation = 0f;
@@ -168,15 +136,15 @@ public partial class GameClientSession
                     PlayerId, CurrentArea, _lastValidatedPosition?.X, _lastValidatedPosition?.Y, _lastValidCell?.X,
                     _lastValidCell?.Y);
                 _gameEventLogManager.LogSpawnAssignment(
-                    CurrentMapSubId,
+                    MatchingId,
                     PlayerId.Value,
-                    MatchSpawnData.GetDeterministicSeed(CurrentMapSubId),
+                    MatchSpawnData.GetDeterministicSeed(MatchingId),
                     MatchSpawnData.GetAnchorIndex(matchingSpawnCell),
                     matchingSpawnCell.X,
                     matchingSpawnCell.Y,
                     CurrentArea.ToString(),
                     isBot: false);
-                _gameEventLogManager.SetPlayerArea(CurrentMapSubId, PlayerId.Value, CurrentArea.ToString());
+                _gameEventLogManager.SetPlayerArea(MatchingId, PlayerId.Value, CurrentArea.ToString());
 
                 if (CurrentArea != AreaType.None)
                 {
@@ -189,15 +157,15 @@ public partial class GameClientSession
 
             SendInGameInventoryList();
             SendSummonStoneState();
-            var connectionBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+            var connectionBoard = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
             _gameEventLogManager.LogOrbBoardTransition(
-                CurrentMapSubId, PlayerId.Value, connectionBoard.GetAllItems(),
+                MatchingId, PlayerId.Value, connectionBoard.GetAllItems(),
                 connectionBoard.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
 
             // Send the initial door and mission snapshots.
             RunUnderLiveMatch(
                 runtime,
-                () => _doorStateManager.InitializeMatching(CurrentMapSubId, Array.Empty<AreaType>()));
+                () => _doorStateManager.InitializeMatching(MatchingId, Array.Empty<AreaType>()));
             SendDoorStateList();
 
             // 스웜 모드(M4)는 시간 웨이브 폐쇄를 쓰므로 폐쇄 스냅샷을 복원해야 한다.
@@ -211,11 +179,7 @@ public partial class GameClientSession
             await _admissionStateCommitter.CommitAsync(
                 matchingId,
                 PlayerId.Value,
-                handoff.HumanRoster.Select(entry => entry.PlayerId)
-                    .Append(PlayerId.Value)
-                    .Where(id => id > 0)
-                    .Distinct()
-                    .ToArray());
+                composition.HumanPlayerIds);
             EnsureConnectionActive();
 
             // The standalone submission client is only ready after the full initial snapshot
@@ -234,7 +198,9 @@ public partial class GameClientSession
             using Packet successResponse = CreateConnectResultPacket(
                 true,
                 ErrorCode.SUCCESS,
-                "Connected to GameServer");
+                "Connected to GameServer",
+                matchingId,
+                matchingSpawnCell);
             RunUnderLiveMatch(runtime, () =>
             {
                 if (!Token.TryMarkAuthenticated(() => Volatile.Write(ref _admissionCompleted, 1)))
@@ -307,13 +273,16 @@ public partial class GameClientSession
     ///     Creates a complete CONNECT_RESULT frame. Successful admission calls this before the authentication commit,
     ///     keeping allocation, serialization, and body construction on the pre-commit failure side of the boundary.
     /// </summary>
-    private Packet CreateConnectResultPacket(bool success, ErrorCode errorCode, string message)
+    private Packet CreateConnectResultPacket(bool success, ErrorCode errorCode, string message,
+        long matchingId = 0, Cell? spawnCell = null)
     {
         var response = new G_TO_C_CONNECT_RESULT
         {
             Success = success,
             ErrorCode = errorCode,
-            Message = message
+            Message = message,
+            MatchingId = matchingId,
+            SpawnCell = spawnCell ?? new Cell(0, 0)
         };
         byte[] body = MessagePackSerializer.Serialize(response);
         Packet packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT, PlayerId ?? 0);
@@ -343,7 +312,7 @@ public partial class GameClientSession
             Logger.LogWarning(
                 "Committed game admission response was not queued; closing connection: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 PlayerId,
-                CurrentMapSubId);
+                MatchingId);
         }
         catch (Exception ex)
         {
@@ -351,7 +320,7 @@ public partial class GameClientSession
                 ex,
                 "Committed game admission response enqueue failed; closing connection: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 PlayerId,
-                CurrentMapSubId);
+                MatchingId);
         }
 
         CloseAfterCommittedAdmissionResponseFailure();
@@ -375,7 +344,7 @@ public partial class GameClientSession
                 ex,
                 "Failed to close connection after committed admission response failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 PlayerId,
-                CurrentMapSubId);
+                MatchingId);
         }
     }
 
@@ -385,7 +354,7 @@ public partial class GameClientSession
 
         try
         {
-            var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+            var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
             // Same-area players only
             var sameAreaSessions = allSessions
                 .Where(s => !s.IsEliminated &&
@@ -433,7 +402,7 @@ public partial class GameClientSession
                 PlayerId, sameAreaSessions.Count, CurrentArea);
 
             // Send bots already present in the same area to this client.
-            var sameAreaBots = _botPlayerManager.GetBots(CurrentMapSubId)
+            var sameAreaBots = _botPlayerManager.GetBots(MatchingId)
                 .Where(b => !b.IsEliminated && b.CurrentArea == CurrentArea)
                 .ToList();
             if (sameAreaBots.Count > 0)
@@ -441,7 +410,7 @@ public partial class GameClientSession
                 var botInfoList = new List<PlayerInfo>();
                 foreach (var bot in sameAreaBots)
                 {
-                    var botInfo = _botPlayerManager.SynthesizePlayerInfo(CurrentMapSubId, bot.PlayerId);
+                    var botInfo = _botPlayerManager.SynthesizePlayerInfo(MatchingId, bot.PlayerId);
                     if (botInfo != null) botInfoList.Add(botInfo);
                 }
                 if (botInfoList.Count > 0)
@@ -471,10 +440,10 @@ public partial class GameClientSession
 
         playerInfo.State = session.CurrentState;
         playerInfo.LastMapId = session.CurrentMapId;
-        playerInfo.LastMapSubId = session.CurrentMapSubId;
+        playerInfo.LastMapSubId = session.MatchingId;
         playerInfo.ObjectInfo ??= new GameObjectInfo(playerInfo.PlayerId);
         playerInfo.ObjectInfo.MapId = session.CurrentMapId;
-        playerInfo.ObjectInfo.MapSubId = session.CurrentMapSubId;
+        playerInfo.ObjectInfo.MapSubId = session.MatchingId;
         playerInfo.ObjectInfo.Rotation = session._lastValidatedRotation;
 
         if (cell != null)
@@ -488,7 +457,7 @@ public partial class GameClientSession
             playerInfo.ObjectInfo.Position = position;
 
         _matchRosterManager.UpdatePlayerProfile(
-            session.CurrentMapSubId,
+            session.MatchingId,
             playerInfo.PlayerId,
             playerInfo.Name,
             playerInfo.WearItemIdList);
@@ -512,10 +481,10 @@ public partial class GameClientSession
 
     private Task HandleMatchStartReady()
     {
-        if (PlayerId.HasValue && CurrentMapSubId > 0)
+        if (PlayerId.HasValue && MatchingId > 0)
         {
-            MatchStartGate.MarkHumanReady(CurrentMapSubId, PlayerId.Value);
-            SendMatchStartCountdown(CurrentMapSubId);
+            MatchStartGate.MarkHumanReady(MatchingId, PlayerId.Value);
+            SendMatchStartCountdown(MatchingId);
         }
 
         return Task.CompletedTask;
@@ -551,90 +520,70 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     Redis에서 봇 정보를 로드한다. 매칭별 최초 한 번만 수행한다.
-    ///     봇 위치 초기화에 필요한 MapId를 함께 전달한다.
+    ///     매치 구성을 확정한다 — 매치당 한 번. manifest(사람·봇 ID)를 읽고, 스폰을 정하고, 봇과 로스터를 등록한다.
+    ///     이후 세션은 런타임에 세워진 구성을 그대로 쓴다. 입장 마커·사람 claim 확인은 세션마다 다시 한다.
     /// </summary>
-    private async Task LoadBotsIfNeeded(
-        long matchingId,
-        MapId mapId,
-        int expectedBotCount,
-        IReadOnlyCollection<long> expectedHumanPlayerIds)
+    private async Task<MatchComposition> LoadMatchCompositionAsync(long matchingId, MapId mapId, MatchRuntime runtime)
     {
         var initializationLock =
             MatchInitializationLocks.GetOrAdd(matchingId, static _ => new SemaphoreSlim(1, 1));
         await initializationLock.WaitAsync();
         try
         {
-            await WaitForMatchingHandoffReadyAsync(matchingId, expectedHumanPlayerIds);
+            MatchManifest manifest = await ReadMatchManifestAsync(matchingId);
+            await WaitForMatchingHandoffReadyAsync(matchingId, manifest.HumanPlayerIds);
 
-            if (_botPlayerManager.HasBots(matchingId))
-            {
-                int existingBotCount = _botPlayerManager.GetBots(matchingId).Count;
-                if (existingBotCount != expectedBotCount)
-                    throw new InvalidOperationException(
-                        $"Registered bot count mismatch for match {matchingId}: expected {expectedBotCount}, found {existingBotCount}.");
-                return;
-            }
+            if (runtime.Composition is { } existing)
+                return existing;
 
-            string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
-            var botData = await CacheHelper.HashGetDeleteFirstAsync(
-                handoffKey,
-                MatchingHandoffRedisKeys.BotsField,
-                "matching_bots",
-                matchingId);
-
-            if (botData.IsNullOrEmpty)
-            {
-                if (expectedBotCount != 0)
-                    throw new InvalidOperationException(
-                        $"Missing bot handoff for match {matchingId}: expected {expectedBotCount} bots.");
-                return;
-            }
-
-            var botInfoList = MessagePackSerializer.Deserialize<List<BotMatchingInfo>>((byte[])botData!);
-            if (botInfoList == null || botInfoList.Count != expectedBotCount)
+            List<long> humanPlayerIds = manifest.HumanPlayerIds.Distinct().ToList();
+            List<long> botPlayerIds = MatchStartGate.IsSoloMapValidationEnabled
+                ? []
+                : manifest.BotPlayerIds.Distinct().ToList();
+            if (humanPlayerIds.Count == 0 || humanPlayerIds.Any(id => id <= 0) || botPlayerIds.Any(id => id >= 0))
+                throw new InvalidOperationException($"Match manifest is invalid for match {matchingId}.");
+            if (humanPlayerIds.Count + botPlayerIds.Count > Config.SWARM_PLAYERS_PER_MATCH)
                 throw new InvalidOperationException(
-                    $"Bot handoff count mismatch for match {matchingId}: expected {expectedBotCount}, found {botInfoList?.Count ?? 0}.");
+                    $"Match manifest exceeds the match capacity for match {matchingId}: " +
+                    $"{humanPlayerIds.Count} humans, {botPlayerIds.Count} bots.");
 
-            var botPlayerIds = new HashSet<long>();
-            foreach (BotMatchingInfo bot in botInfoList)
+            IReadOnlyDictionary<long, Cell> spawnCells =
+                MatchSpawnPlanner.Plan(matchingId, mapId, humanPlayerIds.Concat(botPlayerIds));
+            if (botPlayerIds.Count > 0)
+                _botPlayerManager.RegisterBots(matchingId, mapId, botPlayerIds, spawnCells);
+
+            RunUnderLiveMatch(runtime, () =>
             {
-                if (bot == null ||
-                    bot.PlayerId >= 0 ||
-                    bot.TargetPlayerId == 0 ||
-                    bot.SpawnCell == null ||
-                    (bot.SpawnCell.X == 0 && bot.SpawnCell.Y == 0) ||
-                    !botPlayerIds.Add(bot.PlayerId))
-                {
-                    throw new InvalidOperationException(
-                        $"Bot handoff contains an invalid or duplicate entry for match {matchingId}.");
-                }
-            }
+                foreach (long participantId in humanPlayerIds.Concat(botPlayerIds))
+                    _matchRosterManager.RegisterEntry(matchingId, new RosterEntry { PlayerId = participantId });
+            });
 
-            if (expectedBotCount == 0)
-                return;
-
-            _botPlayerManager.RegisterBots(matchingId, mapId, botInfoList);
-
-            // 봇의 타깃 체인을 매치 로스터에 등록한다.
-            foreach (var bot in botInfoList)
-            {
-                _matchRosterManager.RegisterEntry(matchingId, new RosterEntry
-                {
-                    PlayerId = bot.PlayerId,
-                    TargetPlayerId = bot.TargetPlayerId
-                });
-            }
+            var composition = new MatchComposition(humanPlayerIds, botPlayerIds, spawnCells);
+            runtime.Composition = composition;
+            return composition;
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to load bot handoff: MatchingId={MatchingId}", matchingId);
+            Logger.LogError(ex, "Failed to load match composition: MatchingId={MatchingId}", matchingId);
             throw;
         }
         finally
         {
             initializationLock.Release();
         }
+    }
+
+    private async Task<MatchManifest> ReadMatchManifestAsync(long matchingId)
+    {
+        // manifest는 ticket 발급보다 먼저 쓰인다. 없으면 만료됐거나 handoff가 지워진 것이다.
+        var serialized = await CacheHelper.HashGetAsync(
+            MatchingHandoffRedisKeys.Key(matchingId),
+            MatchingHandoffRedisKeys.ManifestField);
+        if (serialized.IsNullOrEmpty)
+            throw new InvalidOperationException($"Missing match manifest for match {matchingId}.");
+
+        return MessagePackSerializer.Deserialize<MatchManifest>((byte[])serialized!)
+               ?? throw new InvalidOperationException($"Match manifest is empty for match {matchingId}.");
     }
 
     private async Task WaitForMatchingHandoffReadyAsync(
@@ -702,9 +651,9 @@ public partial class GameClientSession
     /// </summary>
     private void SendAreaClosureStateSnapshot()
     {
-        if (CurrentMapSubId <= 0) return;
+        if (MatchingId <= 0) return;
 
-        var snapshot = _areaClosureManager.GetClientStateSnapshot(CurrentMapSubId);
+        var snapshot = _areaClosureManager.GetClientStateSnapshot(MatchingId);
         foreach (var closedArea in snapshot.ClosedAreas)
         {
             using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
@@ -727,7 +676,7 @@ public partial class GameClientSession
             }));
             Send(packet);
         }
-        var globalClosure = _areaClosureManager.GetGlobalClosureClientState(CurrentMapSubId);
+        var globalClosure = _areaClosureManager.GetGlobalClosureClientState(MatchingId);
         if (globalClosure.IsKnown)
         {
             using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
@@ -754,7 +703,7 @@ public partial class GameClientSession
 
         // #272 자기장: 수축 시계를 복원한다 — 클라 경계 렌더의 유일한 입력. 폐쇄 시계와
         // 같은 앵커(GameStartTime)라 별도 상태가 없다.
-        var closureState = _areaClosureManager.GetMatchingState(CurrentMapSubId);
+        var closureState = _areaClosureManager.GetMatchingState(MatchingId);
         if (Config.SWARM_PRESSURE_FIELD_ENABLED && closureState != null)
         {
             using var fieldPacket = Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);

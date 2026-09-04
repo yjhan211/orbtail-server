@@ -36,13 +36,4 @@ namespace network.common.data.models
     {
         [Key("startedAtUnixMs")] public long StartedAtUnixMs { get; set; }
     }
-
-    // ===== 타겟 위치 추적 =====
-
-    [MessagePackObject]
-    public class G_TO_C_TARGET_LOCATION : IMessagePackObject
-    {
-        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
-        [Key("areaType")] public AreaType AreaType { get; set; }
-    }
 }

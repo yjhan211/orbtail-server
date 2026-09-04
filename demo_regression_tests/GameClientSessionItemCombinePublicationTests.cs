@@ -753,7 +753,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             session);
         Assert.Equal(1, CountOccurrences(combine, "RunUnderMatch("));
         Assert.Contains("private Task HandleCombineItemsCore(", combine);
-        Assert.Contains("CurrentMapSubId <= 0", ReadMethodSlice(
+        Assert.Contains("MatchingId <= 0", ReadMethodSlice(
             combine,
             "private Task HandleCombineItems(",
             "private Task HandleCombineItemsCore("));
@@ -931,7 +931,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 static _ => { },
                 static (_, _) => null,
                 (_, instanceId) => _sessions
-                    .Where(candidate => candidate.CurrentMapSubId == instanceId)
+                    .Where(candidate => candidate.MatchingId == instanceId)
                     .ToList(),
                 Interactables,
                 Inventories,
@@ -1002,7 +1002,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 .ToArray();
 
         public void SetMatchingId(GameClientSession session, long matchingId) =>
-            SetProperty(session, nameof(GameClientSession.CurrentMapSubId), matchingId);
+            SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
 
         public void SetPlayerId(GameClientSession session, long? playerId) =>
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
@@ -1032,7 +1032,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         private static void SetIdentity(GameClientSession session, long matchingId, long playerId)
         {
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
-            SetProperty(session, nameof(GameClientSession.CurrentMapSubId), matchingId);
+            SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
             SetProperty(session, nameof(GameClientSession.CurrentMapId), Config.SWARM_MATCH_MAP);
             SetProperty(session, nameof(GameClientSession.CurrentArea), Config.SWARM_MATCH_GROUND_AREA);
             typeof(GameClientSession).GetField(

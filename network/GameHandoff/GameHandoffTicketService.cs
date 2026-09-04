@@ -55,49 +55,15 @@ public sealed class GameHandoffTicketService(
 
     private static bool TryValidateContext(GameHandoffContext context, out string error)
     {
-        if (context.PlayerId <= 0 ||
-            context.MatchingId <= 0 ||
-            context.MapSubId != context.MatchingId ||
-            context.MapId == global::network.common.MapId.None ||
-            context.SpawnPosition == null)
+        if (context.PlayerId <= 0 || context.MatchingId <= 0)
         {
-            error = "A game handoff requires a valid owner, match, map, and spawn.";
+            error = "A game handoff requires a valid owner and match.";
             return false;
         }
 
         if (string.IsNullOrWhiteSpace(context.GameServerNodeId))
         {
             error = "A game handoff must be bound to the game server node that owns the match.";
-            return false;
-        }
-
-        if (context.ActiveBuffIds == null || context.HumanRoster == null || context.HumanRoster.Count == 0)
-        {
-            error = "A game handoff requires non-null buff and human roster collections.";
-            return false;
-        }
-
-        var playerIds = new HashSet<long>();
-        GameHandoffRosterEntry? ownerEntry = null;
-        foreach (GameHandoffRosterEntry entry in context.HumanRoster)
-        {
-            if (entry == null ||
-                entry.PlayerId <= 0 ||
-                entry.TargetPlayerId == 0 ||
-                !playerIds.Add(entry.PlayerId))
-            {
-                error = "A game handoff roster contains an invalid or duplicate entry.";
-                return false;
-            }
-
-            if (entry.PlayerId == context.PlayerId)
-                ownerEntry = entry;
-        }
-
-        if (ownerEntry == null ||
-            ownerEntry.TargetPlayerId != context.TargetPlayerId)
-        {
-            error = "A game handoff roster must contain a matching ticket owner entry.";
             return false;
         }
 

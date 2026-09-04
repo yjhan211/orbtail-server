@@ -16,13 +16,12 @@ namespace user_server.services;
 /// </summary>
 internal interface IMatchHandoffPublisher
 {
-    public Task StoreBotHandoffAsync(long matchingId, IReadOnlyList<BotMatchingInfo> bots);
+    public Task StoreMatchManifestAsync(long matchingId, MatchManifest manifest);
 
     public Task<bool> DeliverMatchingSuccessAsync(
-        RosterChainLink link,
+        MatchingQueueEntry entry,
         long matchingId,
         List<PlayerInfo> playerRoster,
-        List<GameHandoffRosterEntry> humanHandoffRoster,
         GameServerAllocation gameServer);
 
     public Task MarkHandoffReadyAsync(long matchingId);
@@ -33,7 +32,7 @@ internal interface IMatchHandoffPublisher
 }
 
 /// <summary>
-///     매치 handoff 발행자: handoff ticket 발급, 봇 Hash 기록, <c>admission_ready</c> 마커, admission state의
+///     매치 handoff 발행자: handoff ticket 발급, 매치 manifest 기록, <c>admission_ready</c> 마커, admission state의
 ///     pending/canceled 전이, handoff 삭제, 사람별 성공·실패 패킷 전달, 45초 process-local 입장 watchdog.
 ///     불변식: 성공 패킷은 전원 인간의 세션 송신 큐에 들어간 뒤에만 <c>admission_ready</c>를 쓴다
 ///     (호출 순서는 <see cref="MatchmakingPass" />가 지킨다). Redis 응답 유실은 read-back으로 보정하고,
@@ -49,15 +48,13 @@ internal sealed class MatchHandoffPublisher(
     ILogger logger) : IMatchHandoffPublisher
 {
     /// <summary>
-    ///     Game Server가 매치당 한 번 읽는 봇 handoff를 기록한다. 봇이 없으면 아무것도 쓰지 않는다.
+    ///     Game Server가 매치당 한 번 읽는 구성(사람·봇 ID)을 기록한다.
     /// </summary>
-    public async Task StoreBotHandoffAsync(long matchingId, IReadOnlyList<BotMatchingInfo> bots)
+    public async Task StoreMatchManifestAsync(long matchingId, MatchManifest manifest)
     {
-        if (bots.Count == 0) return;
-
         string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
-        byte[] serialized = MessagePack.MessagePackSerializer.Serialize(bots.ToList());
-        await cacheHelper.HashSetAsync(handoffKey, MatchingHandoffRedisKeys.BotsField, serialized);
+        byte[] serialized = MessagePack.MessagePackSerializer.Serialize(manifest);
+        await cacheHelper.HashSetAsync(handoffKey, MatchingHandoffRedisKeys.ManifestField, serialized);
         await cacheHelper.KeyExpireAsync(handoffKey, MatchingHandoffRedisKeys.Lifetime);
     }
 
@@ -66,39 +63,26 @@ internal sealed class MatchHandoffPublisher(
     ///     세션이 없거나 요청 ID가 다르면 false. 전송 실패 시 배정을 남기지 않는 것은 세션 쪽 책임이다.
     /// </summary>
     public async Task<bool> DeliverMatchingSuccessAsync(
-        RosterChainLink link,
+        MatchingQueueEntry entry,
         long matchingId,
         List<PlayerInfo> playerRoster,
-        List<GameHandoffRosterEntry> humanHandoffRoster,
         GameServerAllocation gameServer)
     {
-        long playerId = link.PlayerId;
-        long targetPlayerId = link.TargetPlayerId;
-        logger.LogInformation("Processing matched player {DataPlayerId} (Target={TargetPlayerId})", playerId, targetPlayerId);
+        long playerId = entry.PlayerId;
+        logger.LogInformation("Processing matched player {DataPlayerId}", playerId);
 
-        string requestId = link.Entry.RequestId;
+        string requestId = entry.RequestId;
         if (!MatchingRequestTokens.IsSafeTokenComponent(requestId))
         {
             logger.LogWarning("Matched player has no valid matching request id: PlayerId={DataPlayerId}", playerId);
             return false;
         }
 
-        MapId mapId = Config.SWARM_MATCH_MAP;
-        var spawnPosition = Cell.Clone(link.SpawnCell);
-        if (spawnPosition.X == 0 && spawnPosition.Y == 0)
-            throw new InvalidOperationException($"Missing Swarm spawn assignment for player {playerId}.");
-
         // ticket은 세션 위치와 무관하게 먼저 발급한다. 전달이 실패하면 아무도 받지 못한 채 3분 TTL로 사라진다.
         string gameHandoffTicket = await gameHandoffTicketService.IssueAsync(new GameHandoffContext
         {
             PlayerId = playerId,
             MatchingId = matchingId,
-            MapId = mapId,
-            MapSubId = matchingId,
-            SpawnPosition = Cell.Clone(spawnPosition),
-            TargetPlayerId = targetPlayerId,
-            ActiveBuffIds = new List<int>(),
-            HumanRoster = humanHandoffRoster,
             GameServerNodeId = gameServer.NodeId
         });
 
@@ -106,9 +90,9 @@ internal sealed class MatchHandoffPublisher(
             .ToUnixTimeMilliseconds();
 
         using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
-            matchingId, mapId, matchingId, spawnPosition,
+            matchingId,
             gameServer.PublicHost, gameServer.PublicPort, gameEndTimestamp,
-            gameHandoffTicket, targetPlayerId, playerRoster, new List<int>()
+            gameHandoffTicket, playerRoster
         );
 
         // 세션이 어느 User Server에 있든 라우터가 요청 ID fence를 확인한 뒤 송신 큐에 넣는다.
@@ -120,8 +104,7 @@ internal sealed class MatchHandoffPublisher(
             return false;
         }
 
-        logger.LogInformation("Matching success sent: PlayerId={DataPlayerId}, Target={TargetPlayerId}",
-            playerId, targetPlayerId);
+        logger.LogInformation("Matching success sent: PlayerId={DataPlayerId}", playerId);
         return true;
     }
 

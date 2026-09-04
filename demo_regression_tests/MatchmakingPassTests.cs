@@ -28,8 +28,8 @@ public sealed class MatchmakingPassTests
 
     private MatchmakingPass CreatePass(DevMatchOverrides? overrides = null, CancellationToken shutdown = default)
     {
-        overrides ??= new DevMatchOverrides(false, false, false, _cache, new FakeRedLockFactory(), _logger);
-        var rosterBuilder = new MatchRosterBuilder(_cache, overrides, _logger);
+        overrides ??= new DevMatchOverrides(false, false, _cache, new FakeRedLockFactory(), _logger);
+        var rosterBuilder = new MatchRosterBuilder(_cache, _logger);
         return new MatchmakingPass(_cache, _queue, _claims, rosterBuilder, _handoff, _gameServers, overrides, shutdown, _logger);
     }
 
@@ -72,12 +72,12 @@ public sealed class MatchmakingPassTests
 
         Assert.True(committed);
         Assert.Equal("1", _cache.GetString(MatchmakingPass.MatchingIdKey));
-        Assert.Empty(_handoff.StoredBots[1]);
+        Assert.Empty(_handoff.StoredManifests[1].BotPlayerIds);
+        Assert.Equal(humans.Select(h => h.PlayerId).OrderBy(id => id), _handoff.StoredManifests[1].HumanPlayerIds.OrderBy(id => id));
         Assert.Equal(8, _handoff.Deliveries.Count);
         Assert.All(_handoff.Deliveries, delivery => Assert.Equal(8, delivery.RosterCount));
         Assert.All(_handoff.DeliveredNodeIds, nodeId => Assert.Equal(FixedGameServerAllocator.DefaultNodeId, nodeId));
-        Assert.All(_handoff.Deliveries, delivery => Assert.Equal(8, delivery.HumanRosterCount));
-        Assert.Equal(humans.Select(h => h.PlayerId).OrderBy(id => id), _handoff.Deliveries.Select(d => d.Link.PlayerId).OrderBy(id => id));
+        Assert.Equal(humans.Select(h => h.PlayerId).OrderBy(id => id), _handoff.Deliveries.Select(d => d.Entry.PlayerId).OrderBy(id => id));
         Assert.All(humans, human => Assert.Equal("1", ClaimOf(human.PlayerId)));
         Assert.Equal(0, _cache.SortedSetCount(MatchingQueue.QueueKey));
         Assert.Contains("ready:1", _handoff.Events);
@@ -93,14 +93,13 @@ public sealed class MatchmakingPassTests
         bool committed = await CreatePass().CreateMatchAsync(humans, 5, MatchCreationOrigin.Queue);
 
         Assert.True(committed);
-        var bots = _handoff.StoredBots[1];
-        Assert.Equal(5, bots.Count);
-        Assert.All(bots, bot => Assert.True(bot.PlayerId < 0));
-        Assert.Equal(5, bots.Select(bot => bot.PlayerId).Distinct().Count());
-        Assert.All(bots, bot => Assert.False(bot.SpawnCell.X == 0 && bot.SpawnCell.Y == 0));
+        network.common.data.models.MatchManifest manifest = _handoff.StoredManifests[1];
+        Assert.Equal(5, manifest.BotPlayerIds.Count);
+        Assert.All(manifest.BotPlayerIds, botId => Assert.True(botId < 0));
+        Assert.Equal(5, manifest.BotPlayerIds.Distinct().Count());
+        Assert.Equal(3, manifest.HumanPlayerIds.Count);
         Assert.Equal(3, _handoff.Deliveries.Count);
         Assert.All(_handoff.Deliveries, delivery => Assert.Equal(8, delivery.RosterCount));
-        Assert.All(_handoff.Deliveries, delivery => Assert.Equal(3, delivery.HumanRosterCount));
         Assert.Equal("1", ClaimOf(1_000));
         Assert.Contains("ready:1", _handoff.Events);
     }
@@ -112,7 +111,7 @@ public sealed class MatchmakingPassTests
 
         await CreatePass().CreateMatchAsync(humans, 4, MatchCreationOrigin.Queue);
 
-        int botsIndex = _handoff.Events.IndexOf("bots:1:4");
+        int botsIndex = _handoff.Events.IndexOf("manifest:1:4+4");
         int readyIndex = _handoff.Events.IndexOf("ready:1");
         int watchdogIndex = _handoff.Events.FindIndex(e => e.StartsWith("watchdog:1:", StringComparison.Ordinal));
         int[] deliverIndexes = _handoff.Events
@@ -221,9 +220,9 @@ public sealed class MatchmakingPassTests
         await CreatePass().RunAsync();
 
         Assert.Equal("2", _cache.GetString(MatchmakingPass.MatchingIdKey));
-        Assert.Equal(2, _handoff.StoredBots.Count);
-        Assert.All(_handoff.StoredBots.Values, bots => Assert.Equal(7, bots.Count));
-        Assert.Equal(new long[] { 1, 2 }, _handoff.Deliveries.Select(d => d.Link.PlayerId));
+        Assert.Equal(2, _handoff.StoredManifests.Count);
+        Assert.All(_handoff.StoredManifests.Values, manifest => Assert.Equal(7, manifest.BotPlayerIds.Count));
+        Assert.Equal(new long[] { 1, 2 }, _handoff.Deliveries.Select(d => d.Entry.PlayerId));
         Assert.Equal("1", ClaimOf(1));
         Assert.Equal("2", ClaimOf(2));
         Assert.Null(ClaimOf(3));
@@ -258,7 +257,7 @@ public sealed class MatchmakingPassTests
     [Fact]
     public async Task RunAsync_TwoPlayerTestWaitsForSecondHuman()
     {
-        var overrides = new DevMatchOverrides(true, false, false, _cache, new FakeRedLockFactory(), _logger);
+        var overrides = new DevMatchOverrides(true, false, _cache, new FakeRedLockFactory(), _logger);
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         MatchingQueueEntry alone = UserServerMatchingTestData.HumanEntry(1);
         await _cache.SortedSetAddAsync(MatchingQueue.QueueKey, alone.Raw, now - 100);

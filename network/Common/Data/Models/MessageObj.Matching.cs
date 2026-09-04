@@ -33,17 +33,10 @@ namespace network.common.data.models
     public class U_TO_C_MATCHING_SUCCESS : IMessagePackObject
     {
         [Key("matchingId")] public long MatchingId { get; set; }
-        [Key("mapId")] public MapId MapId { get; set; }
-        [Key("mapSubId")] public long MapSubId { get; set; }
-        [Key("spawnPosition")] public Cell SpawnPosition { get; set; }
         [Key("gameServerIp")] public string GameServerIp { get; set; }
         [Key("gameServerPort")] public int GameServerPort { get; set; }
         [Key("gameEndTimestamp")] public long GameEndTimestamp { get; set; }
-
-        // 미니맵 타깃 마커 대상
-        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
         [Key("playerRoster")] public List<PlayerInfo> PlayerRoster { get; set; } = new();
-        [Key("activeBuffIds")] public List<int> ActiveBuffIds { get; set; } = new();
         [Key("gameHandoffTicket")] public string GameHandoffTicket { get; set; }
     }
 
@@ -55,16 +48,13 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    ///     봇 채움 매칭 때 Redis에 저장되는 봇 정보
+    ///     매치 구성 — user_server가 매치 확정 때 Redis handoff Hash에 한 번 쓰고 Game Server가 첫 접속 때 읽는다.
+    ///     "누가 이 매치에 오는가"만 담는다. 스폰·로스터 같은 매치 안의 사실은 Game Server가 정한다.
     /// </summary>
     [MessagePackObject]
-    public class BotMatchingInfo
+    public class MatchManifest
     {
-        [Key(0)] public long PlayerId { get; set; }
-        [Key(1)] public long TargetPlayerId { get; set; }
-        [Key(4)] public PersonaType Persona { get; set; }
-        [Key(5)] public AreaType StartArea { get; set; }
-        [Key(6)] public List<int> ActiveBuffIds { get; set; } = new();
-        [Key(7)] public Cell SpawnCell { get; set; } = new(0, 0);
+        [Key(0)] public List<long> HumanPlayerIds { get; set; } = new();
+        [Key(1)] public List<long> BotPlayerIds { get; set; } = new();
     }
 }

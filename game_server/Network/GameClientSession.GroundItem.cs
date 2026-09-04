@@ -17,7 +17,7 @@ public partial class GameClientSession
             SendGroundItemPickupResult(msg.GroundItemUid, 0, false, false, ErrorCode.INVALID_GAME_STATE);
             return Task.CompletedTask;
         }
-        if (CurrentMapSubId <= 0)
+        if (MatchingId <= 0)
         {
             SendGroundItemPickupResult(msg.GroundItemUid, 0, false, false, ErrorCode.INVALID_GAME_STATE);
             return Task.CompletedTask;
@@ -53,10 +53,10 @@ public partial class GameClientSession
         ErrorCode rejection = ErrorCode.INVENTORY_FULL;
         var position = _lastValidatedPosition;
         long discovererPlayerId = _groundItemManager.GetDiscovererPlayerId(
-            CurrentMapSubId, msg.GroundItemUid);
-        var attemptedItem = _groundItemManager.GetItem(CurrentMapSubId, msg.GroundItemUid);
+            MatchingId, msg.GroundItemUid);
+        var attemptedItem = _groundItemManager.GetItem(MatchingId, msg.GroundItemUid);
         var status = _groundItemManager.TryClaim(
-            CurrentMapSubId,
+            MatchingId,
             msg.GroundItemUid,
             PlayerId.Value,
             CurrentArea,
@@ -95,7 +95,7 @@ public partial class GameClientSession
                     Corruption,
                     out staminaRecovery,
                     out corruptionRecovery,
-                    CurrentMapSubId,
+                    MatchingId,
                     PlayerId.Value);
                 if (disposition == GroundItemPickupDisposition.LeaveOnGround)
                 {
@@ -109,13 +109,13 @@ public partial class GameClientSession
                 }
 
                 bool added = _inGameInventoryManager.TryAddItemWithCapacity(
-                    CurrentMapSubId, PlayerId.Value, item.ItemId, Config.GetOrbCapacity(),
+                    MatchingId, PlayerId.Value, item.ItemId, Config.GetOrbCapacity(),
                     out addedItem);
                 if (!added) rejection = ErrorCode.INVENTORY_FULL;
                 else if (addedItem != null)
                 {
                     var equippedItem = _inGameInventoryManager.GetEquippedBattleItem(
-                        CurrentMapSubId, PlayerId.Value);
+                        MatchingId, PlayerId.Value);
                     autoEquipped = equippedItem?.ItemUid == addedItem.ItemUid;
                 }
                 return added;
@@ -128,7 +128,7 @@ public partial class GameClientSession
             {
                 Logger.LogDebug(
                     "Summon stone pickup rejected: MatchingId={MatchingId}, PlayerId={PlayerId}, GroundItemUid={GroundItemUid}, Status={Status}, PlayerArea={PlayerArea}, ItemArea={ItemArea}, Player=({PlayerX:F2},{PlayerY:F2}), Item=({ItemX:F2},{ItemY:F2})",
-                    CurrentMapSubId,
+                    MatchingId,
                     PlayerId.Value,
                     msg.GroundItemUid,
                     status,
@@ -154,15 +154,15 @@ public partial class GameClientSession
                 GroundItemPickupPolicy.Resolve(attemptedItem.ItemId, Stamina, MaxStamina, Corruption,
                     out int deniedStaminaRecovery, out int deniedCorruptionRecovery);
                 _gameEventLogManager.LogPelletPickupOutcome(
-                    CurrentMapSubId, PlayerId.Value, attemptedItem.ItemId,
+                    MatchingId, PlayerId.Value, attemptedItem.ItemId,
                     deniedStaminaRecovery + deniedCorruptionRecovery, 0,
                     $"denied_{status.ToString().ToLowerInvariant()}", isBot: false);
             }
             if (attemptedItem != null && error == ErrorCode.INVENTORY_FULL)
             {
-                var board = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+                var board = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
                 _gameEventLogManager.LogOrbPickupBlockedFull(
-                    CurrentMapSubId,
+                    MatchingId,
                     PlayerId.Value,
                     attemptedItem.ItemId,
                     CurrentArea.ToString(),
@@ -188,10 +188,10 @@ public partial class GameClientSession
         }
         else if (summonStonePickup)
         {
-            var summonState = _summonStoneManager.AddStones(CurrentMapSubId, PlayerId.Value, 1);
+            var summonState = _summonStoneManager.AddStones(MatchingId, PlayerId.Value, 1);
             SendSummonStoneState(1, claimedItem.PositionX, claimedItem.PositionY);
             _gameEventLogManager.LogSummonStoneAward(
-                CurrentMapSubId,
+                MatchingId,
                 PlayerId.Value,
                 monsterId: 0,
                 amount: 1,
@@ -209,12 +209,12 @@ public partial class GameClientSession
             ModifyStats(staminaDelta: staminaRecovery, corruptionDelta: -corruptionRecovery);
             // 하트는 앞줄 오브 HP도 만충으로 (#222 M4) — 원작 하트의 스쿼드 회복.
             if (claimedItem.ItemId == Config.HEART_GROUND_ITEM_ID)
-                SwarmHeartPickupCallback?.Invoke(CurrentMapSubId, PlayerId.Value);
+                SwarmHeartPickupCallback?.Invoke(MatchingId, PlayerId.Value);
             _gameEventLogManager.LogRecoveryUse(
-                CurrentMapSubId, PlayerId.Value, claimedItem.ItemId,
+                MatchingId, PlayerId.Value, claimedItem.ItemId,
                 effectiveRecovery, source: "ground_auto_use", isBot: false);
             _gameEventLogManager.LogPelletPickupOutcome(
-                CurrentMapSubId, PlayerId.Value, claimedItem.ItemId, requestedRecovery, effectiveRecovery,
+                MatchingId, PlayerId.Value, claimedItem.ItemId, requestedRecovery, effectiveRecovery,
                 effectiveRecovery == 0 ? "wasted" : effectiveRecovery == requestedRecovery ? "effective" : "partial_waste",
                 isBot: false);
         }
@@ -231,7 +231,7 @@ public partial class GameClientSession
 
         BroadcastGroundItemRemoved(claimedItem, autoUsed);
         _gameEventLogManager.LogGroundItemPickup(
-            CurrentMapSubId,
+            MatchingId,
             PlayerId.Value,
             discovererPlayerId,
             claimedItem.GroundItemUid,
@@ -241,9 +241,9 @@ public partial class GameClientSession
             isBot: false);
         if (!summonStonePickup && !jamPickup && !bootsPickup && !keyPickup)
         {
-            var boardAfterPickup = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+            var boardAfterPickup = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
             _gameEventLogManager.LogOrbBoardTransition(
-                CurrentMapSubId, PlayerId.Value, boardAfterPickup.GetAllItems(),
+                MatchingId, PlayerId.Value, boardAfterPickup.GetAllItems(),
                 boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "pickup", isBot: false);
         }
         SendGroundItemPickupResult(claimedItem.GroundItemUid, claimedItem.ItemId, true, autoUsed, ErrorCode.SUCCESS);
@@ -310,7 +310,7 @@ public partial class GameClientSession
         var drop = EliminationInventoryDropper.DropAll(
             _inGameInventoryManager,
             _groundItemManager,
-            CurrentMapSubId,
+            MatchingId,
             PlayerId.Value,
             CurrentArea,
             position.X,
@@ -318,9 +318,9 @@ public partial class GameClientSession
             CurrentMapId);
         if (drop.RemovedItems.Count == 0) return;
 
-        var emptyBoard = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+        var emptyBoard = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
         _gameEventLogManager.LogOrbBoardTransition(
-            CurrentMapSubId, PlayerId.Value, emptyBoard.GetAllItems(), 0, CurrentArea.ToString(), "elimination_drop",
+            MatchingId, PlayerId.Value, emptyBoard.GetAllItems(), 0, CurrentArea.ToString(), "elimination_drop",
             isBot: false);
         foreach (var item in drop.RemovedItems)
             SendInGameInventoryUpdate(new InGameItemInfo
@@ -334,7 +334,7 @@ public partial class GameClientSession
         if (drop.DroppedItemIds.Count == 0) return;
 
         _gameEventLogManager.LogEliminationDrop(
-            CurrentMapSubId,
+            MatchingId,
             PlayerId.Value,
             CurrentArea.ToString(),
             drop.DroppedItemIds,
@@ -348,7 +348,7 @@ public partial class GameClientSession
     {
         var outcome = EliminationInventoryDropper.DropBotInventoryWithLogs(
             _botPlayerManager, _inGameInventoryManager, _groundItemManager, _gameEventLogManager,
-            CurrentMapSubId, botPlayerId);
+            MatchingId, botPlayerId);
         if (outcome == null)
             return;
 
@@ -361,9 +361,9 @@ public partial class GameClientSession
 
     private void SendGroundItemSnapshot(AreaType area)
     {
-        if (CurrentMapSubId <= 0 || area == AreaType.None) return;
-        var items = _groundItemManager.GetSnapshot(CurrentMapSubId, area);
-        int remaining = _areaItemStockManager.GetRemainingCount(CurrentMapSubId, (int)area);
+        if (MatchingId <= 0 || area == AreaType.None) return;
+        var items = _groundItemManager.GetSnapshot(MatchingId, area);
+        int remaining = _areaItemStockManager.GetRemainingCount(MatchingId, (int)area);
         // 버퍼 초과 방지 (#226): 웨이브 모드로 바닥 아이템이 수백 개까지 쌓여 단일 패킷이
         // 2048을 넘었다(실측 9963). 첫 청크는 SNAPSHOT(클라: 구역 교체), 이후 청크는
         // SPAWN(클라: 누적) — 기존 수신 의미를 그대로 이용해 프로토콜 변경 없이 나눈다.
@@ -379,7 +379,7 @@ public partial class GameClientSession
 
     private void SendAreaStockStateSnapshot()
     {
-        if (CurrentMapSubId <= 0) return;
+        if (MatchingId <= 0) return;
 
         var message = BuildAreaStockStateMessage();
         using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_STOCK_STATE);
@@ -391,7 +391,7 @@ public partial class GameClientSession
     {
         return new G_TO_C_AREA_STOCK_STATE
         {
-            Areas = _areaItemStockManager.GetPublicDepletionSnapshot(CurrentMapSubId)
+            Areas = _areaItemStockManager.GetPublicDepletionSnapshot(MatchingId)
                 .Select(state => new AreaNaturalStockState
                 {
                     AreaType = state.AreaType,
@@ -405,9 +405,9 @@ public partial class GameClientSession
     private void BroadcastGroundItemsSpawned(AreaType area, IReadOnlyList<GroundItemInfo> spawned)
     {
         if (spawned.Count == 0) return;
-        int remaining = _areaItemStockManager.GetRemainingCount(CurrentMapSubId, (int)area);
+        int remaining = _areaItemStockManager.GetRemainingCount(MatchingId, (int)area);
         var sessions = GetSessionsInArea(
-            _getSessionsByInstance(CurrentMapId, CurrentMapSubId), area, excludeSelf: false);
+            _getSessionsByInstance(CurrentMapId, MatchingId), area, excludeSelf: false);
         // 청크로 나눠 보낸다 (#229): 드롭 개수가 열려 있어 단일 패킷이 버퍼 2048을 넘길 수 있다.
         // 넘기면 예외가 호출부까지 올라가 드롭 처리 전체가 죽는다 — 봇 탈락에서 실제로 났다.
         for (int offset = 0; offset < spawned.Count; offset += GroundItemSpawnBroadcastChunkSize)
@@ -423,7 +423,7 @@ public partial class GameClientSession
     private void BroadcastGroundItemRemoved(GroundItemInfo item, bool autoUsed)
     {
         var sessions = GetSessionsInArea(
-            _getSessionsByInstance(CurrentMapId, CurrentMapSubId),
+            _getSessionsByInstance(CurrentMapId, MatchingId),
             (AreaType)item.AreaType,
             excludeSelf: false);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(item.GroundItemUid, PlayerId ?? 0, autoUsed);

@@ -33,7 +33,7 @@ public partial class GameServer
             .Where(session =>
                 session.PlayerId is > 0 &&
                 session.CurrentMapId == Config.SWARM_MATCH_MAP &&
-                session.CurrentMapSubId == matchingId)
+                session.MatchingId == matchingId)
             .ToArray();
         ImmutableArray<SwarmBotObserverSnapshot> observers =
             CaptureSwarmBotObservers(matchingId, sessionSnapshot);
@@ -117,7 +117,7 @@ public partial class GameServer
             GameClientSession session = sessionSnapshot[ordinal];
             if (session.PlayerId is not > 0 ||
                 session.CurrentMapId != Config.SWARM_MATCH_MAP ||
-                session.CurrentMapSubId != matchingId)
+                session.MatchingId != matchingId)
                 continue;
 
             SwarmVectorSnapshot? position = session.LastValidatedPosition == null

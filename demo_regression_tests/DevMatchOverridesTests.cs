@@ -12,9 +12,9 @@ public sealed class DevMatchOverridesTests
     private readonly InMemoryCacheHelper _cache = new();
     private readonly RecordingLogger _logger = new();
 
-    private DevMatchOverrides Create(bool twoPlayer = false, bool solo = false, bool sandbox = false)
+    private DevMatchOverrides Create(bool twoPlayer = false, bool solo = false)
     {
-        return new DevMatchOverrides(twoPlayer, solo, sandbox, _cache, new FakeRedLockFactory(), _logger);
+        return new DevMatchOverrides(twoPlayer, solo, _cache, new FakeRedLockFactory(), _logger);
     }
 
     [Fact]
@@ -66,7 +66,6 @@ public sealed class DevMatchOverridesTests
         Assert.Equal(1, overrides.PlayersPerMatch);
         Assert.Equal(Config.SWARM_PLAYERS_PER_MATCH, overrides.GamePlayersPerMatch);
         Assert.True(overrides.AllowsBotFill);
-        Assert.Null(overrides.GetSandboxSpawnCell());
     }
 
     [Fact]
@@ -99,88 +98,45 @@ public sealed class DevMatchOverridesTests
     }
 
     [Fact]
-    public void BuildTwoPlayerTestRosterChain_OrdersHumansByRequestTimeThenBots()
-    {
-        var baseTime = new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var entries = new List<MatchingQueueEntry>
-        {
-            UserServerMatchingTestData.HumanEntry(200, baseTime.AddSeconds(5)),
-            MatchingQueueEntry.CreateBot(-1),
-            UserServerMatchingTestData.HumanEntry(100, baseTime.AddSeconds(1)),
-            MatchingQueueEntry.CreateBot(-2),
-            MatchingQueueEntry.CreateBot(-3),
-            MatchingQueueEntry.CreateBot(-4),
-            MatchingQueueEntry.CreateBot(-5),
-            MatchingQueueEntry.CreateBot(-6)
-        };
-
-        List<RosterChainLink> chain = Create(twoPlayer: true).BuildTwoPlayerTestRosterChain(entries);
-
-        Assert.Equal(new long[] { 100, 200, -1, -2, -3, -4, -5, -6 }, chain.Select(l => l.PlayerId));
-        Assert.Equal(200, chain[0].TargetPlayerId);
-        Assert.Equal(-1, chain[1].TargetPlayerId);
-        Assert.Equal(100, chain[^1].TargetPlayerId);
-    }
-
-    [Fact]
-    public void BuildTwoPlayerTestRosterChain_RejectsWrongComposition()
+    public async Task ApplyTwoPlayerTestOutfitAsync_IsNoOpWhenDisabled()
     {
         var entries = new List<MatchingQueueEntry>
         {
             UserServerMatchingTestData.HumanEntry(1),
-            UserServerMatchingTestData.HumanEntry(2),
-            UserServerMatchingTestData.HumanEntry(3),
-            MatchingQueueEntry.CreateBot(-1),
-            MatchingQueueEntry.CreateBot(-2),
-            MatchingQueueEntry.CreateBot(-3),
-            MatchingQueueEntry.CreateBot(-4),
-            MatchingQueueEntry.CreateBot(-5)
-        };
-
-        Assert.Throws<InvalidOperationException>(() => Create(twoPlayer: true).BuildTwoPlayerTestRosterChain(entries));
-        Assert.True(_logger.Contains(Microsoft.Extensions.Logging.LogLevel.Warning, "composition invalid"));
-    }
-
-    [Fact]
-    public async Task ApplyTwoPlayerTestTargetOutfitAsync_IsNoOpWhenDisabled()
-    {
-        var chain = new List<RosterChainLink>
-        {
-            new(UserServerMatchingTestData.HumanEntry(1), 2),
-            new(UserServerMatchingTestData.HumanEntry(2), 1)
+            UserServerMatchingTestData.HumanEntry(2)
         };
         var redLock = new FakeRedLockFactory();
-        var overrides = new DevMatchOverrides(false, false, false, _cache, redLock, _logger);
+        var overrides = new DevMatchOverrides(false, false, _cache, redLock, _logger);
 
-        await overrides.ApplyTwoPlayerTestTargetOutfitAsync(chain);
+        await overrides.ApplyTwoPlayerTestOutfitAsync(entries);
 
         Assert.Empty(redLock.AcquiredResources);
         Assert.Empty(_cache.StringKeys);
     }
 
     [Fact]
-    public async Task ApplyTwoPlayerTestTargetOutfitAsync_MissingTargetPlayerLogsAndReturns()
+    public async Task ApplyTwoPlayerTestOutfitAsync_MissingSecondPlayerLogsAndReturns()
     {
         var baseTime = new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var chain = new List<RosterChainLink>
+        var entries = new List<MatchingQueueEntry>
         {
-            new(UserServerMatchingTestData.HumanEntry(1, baseTime), 2),
-            new(UserServerMatchingTestData.HumanEntry(2, baseTime.AddSeconds(1)), 1)
+            UserServerMatchingTestData.HumanEntry(1, baseTime),
+            UserServerMatchingTestData.HumanEntry(2, baseTime.AddSeconds(1))
         };
         var redLock = new FakeRedLockFactory();
-        var overrides = new DevMatchOverrides(true, false, false, _cache, redLock, _logger);
+        var overrides = new DevMatchOverrides(true, false, _cache, redLock, _logger);
 
-        await overrides.ApplyTwoPlayerTestTargetOutfitAsync(chain);
+        await overrides.ApplyTwoPlayerTestOutfitAsync(entries);
 
         Assert.Single(redLock.AcquiredResources);
         Assert.True(_logger.Contains(Microsoft.Extensions.Logging.LogLevel.Warning, "Two-player outfit setup failed"));
     }
 
     [Fact]
-    public void TwoPlayerTargetOutfit_CoversSixCostumeSlots()
+    public void TwoPlayerTestOutfit_CoversSixCostumeSlots()
     {
-        Assert.Equal(6, DevMatchOverrides.TwoPlayerTargetOutfitItemIds.Length);
-        Assert.Equal(DevMatchOverrides.TwoPlayerTargetOutfitItemIds.Length,
-            DevMatchOverrides.TwoPlayerTargetOutfitItemIds.Select(id => id / 1_000_000).Distinct().Count());
+        Assert.Equal(6, DevMatchOverrides.TwoPlayerTestOutfitItemIds.Length);
+        Assert.Equal(DevMatchOverrides.TwoPlayerTestOutfitItemIds.Length,
+            DevMatchOverrides.TwoPlayerTestOutfitItemIds.Select(id => id / 1_000_000).Distinct().Count());
     }
 }

@@ -385,7 +385,6 @@ public sealed class GameClientSessionTerminalPublicationTests
             for (int index = 0; index < entries.Count; index++)
             {
                 RosterEntry entry = entries[index];
-                entry.TargetPlayerId = entries[(index + 1) % entries.Count].PlayerId;
                 Roster.RegisterEntry(matchingId, entry);
                 string name = useLongProfiles
                     ? $"Player{entry.PlayerId}_{new string('x', 300)}"
@@ -436,7 +435,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             PlayerMatchStatus status)
         {
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
-            SetProperty(session, nameof(GameClientSession.CurrentMapSubId), matchingId);
+            SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
             SetProperty(session, nameof(GameClientSession.CurrentMapId), Config.SWARM_MATCH_MAP);
             SetProperty(session, nameof(GameClientSession.CurrentArea), Config.SWARM_MATCH_GROUND_AREA);
             SetProperty(session, nameof(GameClientSession.PlayerMatchStatus), status);
@@ -487,7 +486,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                 static _ => { },
                 static (_, _) => null,
                 (_, matchingId) => sessions
-                    .Where(session => session.CurrentMapSubId == matchingId)
+                    .Where(session => session.MatchingId == matchingId)
                     .ToList(),
                 interactables,
                 inventories,

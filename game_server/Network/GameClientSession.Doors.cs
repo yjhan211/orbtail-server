@@ -43,9 +43,9 @@ public partial class GameClientSession
             // 양쪽 중 한쪽이라도 닫혔으면 거절한다(간선이므로 한쪽만 닫혀도 통행이 막혀야 한다).
             // 단 내가 그 폐쇄 구역 안에 있으면 예외 (2026-08-18): 갇힌 사람은 문을 따고 나갈 수 있다.
             if (_areaClosureManager != null &&
-                (_areaClosureManager.IsAreaClosed(CurrentMapSubId, doorInfo.AreaType) ||
-                 _areaClosureManager.IsAreaClosed(CurrentMapSubId, doorInfo.AreaTypeB)) &&
-                !_areaClosureManager.IsAreaClosed(CurrentMapSubId, CurrentArea))
+                (_areaClosureManager.IsAreaClosed(MatchingId, doorInfo.AreaType) ||
+                 _areaClosureManager.IsAreaClosed(MatchingId, doorInfo.AreaTypeB)) &&
+                !_areaClosureManager.IsAreaClosed(MatchingId, CurrentArea))
             {
                 using var closedAreaPacket =
                     PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.INVALID_GAME_STATE);
@@ -56,7 +56,7 @@ public partial class GameClientSession
             // 탐색 게이지가 붙은 문은 근접만으로 열리지 않는다 (#229). Door.CheckProximityAndRequestOpen이
             // 사거리 안에 들면 자동으로 요청을 쏘기 때문에, 여기서 막지 않으면 게이지가 무의미해진다.
             if (GameInteractableData.IsGaugeGatedDoor(doorId) &&
-                !_doorStateManager.IsDoorOpen(CurrentMapSubId, doorId))
+                !_doorStateManager.IsDoorOpen(MatchingId, doorId))
             {
                 using var gatedPacket =
                     PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.DOOR_KEY_MISSING);
@@ -65,7 +65,7 @@ public partial class GameClientSession
             }
 
             // 이미 열려있는지 확인
-            if (_doorStateManager.IsDoorOpen(CurrentMapSubId, doorId))
+            if (_doorStateManager.IsDoorOpen(MatchingId, doorId))
             {
                 Logger.LogDebug("Player {PlayerId} tried to open already open door: DoorId={DoorId}", PlayerId, doorId);
                 using var alreadyOpenPacket =
@@ -77,7 +77,7 @@ public partial class GameClientSession
             // 열쇠 보유 확인 (required_item_id가 0이면 열쇠 불필요)
             if (doorInfo.RequiredItemId > 0)
             {
-                var playerInventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+                var playerInventory = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
                 bool hasKey = playerInventory.GetItemCount(doorInfo.RequiredItemId) > 0;
 
                 if (!hasKey)
@@ -93,13 +93,13 @@ public partial class GameClientSession
             }
 
             // 문 열기
-            _doorStateManager.OpenDoor(CurrentMapSubId, doorId);
+            _doorStateManager.OpenDoor(MatchingId, doorId);
             Logger.LogInformation("Player {PlayerId} opened door: DoorId={DoorId}", PlayerId, doorId);
 
             // 같은 매칭의 모든 플레이어에게 브로드캐스트
             using var updatePacket =
                 PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId.Value);
-            var matchingSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+            var matchingSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
             foreach (var session in matchingSessions) session.Send(updatePacket);
         }
         catch (Exception ex)
@@ -117,7 +117,7 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return;
 
-        var openDoors = _doorStateManager.GetOpenDoors(CurrentMapSubId);
+        var openDoors = _doorStateManager.GetOpenDoors(MatchingId);
         using var packet = PacketMaker.G_TO_C_DOOR_STATE_LIST(openDoors);
         Send(packet);
         Logger.LogDebug("Sent DOOR_STATE_LIST to Player {PlayerId}: {Count} open doors", PlayerId, openDoors.Count);

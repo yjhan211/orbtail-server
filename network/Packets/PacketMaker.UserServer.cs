@@ -86,26 +86,20 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_MATCHING_SUCCESS(long matchingId, MapId mapId, long mapSubId, Cell spawnPosition,
+    public static Packet U_TO_C_MATCHING_SUCCESS(long matchingId,
         string gameServerIp, int gameServerPort, long gameEndTimestamp,
-        string gameHandoffTicket, long targetPlayerId,
-        List<PlayerInfo> playerRoster,
-        List<int>? activeBuffIds = null)
+        string gameHandoffTicket,
+        List<PlayerInfo> playerRoster)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_MATCHING_SUCCESS);
         U_TO_C_MATCHING_SUCCESS body = new()
         {
             MatchingId = matchingId,
-            MapId = mapId,
-            MapSubId = mapSubId,
-            SpawnPosition = spawnPosition,
             GameServerIp = gameServerIp,
             GameServerPort = gameServerPort,
             GameEndTimestamp = gameEndTimestamp,
             GameHandoffTicket = gameHandoffTicket,
-            TargetPlayerId = targetPlayerId,
-            PlayerRoster = playerRoster,
-            ActiveBuffIds = activeBuffIds ?? new List<int>()
+            PlayerRoster = playerRoster
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

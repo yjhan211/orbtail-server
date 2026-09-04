@@ -354,9 +354,7 @@ function buildPlayerRow(p) {
                     <span class="text-xs w-8">${p.corruption}</span>
                 </div>
             </td>
-            <td class="py-2 pr-4 text-xs ${statusClass}">${p.playerMatchStatus}</td>
-            <td class="py-2 pr-4 text-xs text-gray-400">${p.watcherOfMe ?? '—'}</td>
-            <td class="py-2 text-xs text-gray-400">${p.targetPlayerId || '—'}</td>
+            <td class="py-2 text-xs ${statusClass}">${p.playerMatchStatus}</td>
         </tr>
     `;
 }
