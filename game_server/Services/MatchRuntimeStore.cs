@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using network.common.data.models;
 
 namespace game_server.services;
 
@@ -22,6 +23,18 @@ internal sealed class MatchRuntime
     public object Sync { get; } = new();
     public bool IsTerminal => Volatile.Read(ref _terminal) != 0;
 
+    private MatchComposition? _composition;
+
+    /// <summary>
+    ///     매치 구성 — manifest의 사람·봇 ID와 Game Server가 정한 스폰. 매치 초기화 잠금 안에서 한 번 세우고
+    ///     이후 사람 세션은 읽기만 한다.
+    /// </summary>
+    public MatchComposition? Composition
+    {
+        get => Volatile.Read(ref _composition);
+        set => Volatile.Write(ref _composition, value);
+    }
+
     /// <summary>재진입 깊이 — Sync 안에서만 읽고 쓴다. 0으로 돌아오는 순간이 정리·후처리 시점이다.</summary>
     internal int Depth;
     internal bool CleanupDone;
@@ -41,6 +54,12 @@ internal sealed class MatchRuntime
         return Interlocked.CompareExchange(ref _terminal, 1, 0) == 0;
     }
 }
+
+/// <summary>매치 구성: 누가 오는지(사람·봇 ID)와 어디서 시작하는지(스폰). Game Server가 첫 접속 때 확정한다.</summary>
+internal sealed record MatchComposition(
+    IReadOnlyList<long> HumanPlayerIds,
+    IReadOnlyList<long> BotPlayerIds,
+    IReadOnlyDictionary<long, Cell> SpawnCells);
 
 /// <summary>매치 정리 단계 하나 — 실패해도 다음 단계를 막지 않도록 이름과 함께 격리 실행된다.</summary>
 internal sealed record MatchCleanupStep(string Name, Action<long> Cleanup);

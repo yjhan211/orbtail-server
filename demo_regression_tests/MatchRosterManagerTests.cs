@@ -131,9 +131,8 @@ public sealed class MatchRosterManagerTests
         Assert.Equal(2, Assert.Single(results, row => row.playerId == 3).eliminationRank);
     }
 
-    private static RosterEntry CreateLink(long playerId, long targetPlayerId) => new()
+    private static RosterEntry CreateLink(long playerId, long _) => new()
     {
-        PlayerId = playerId,
-        TargetPlayerId = targetPlayerId,
+        PlayerId = playerId
     };
 }

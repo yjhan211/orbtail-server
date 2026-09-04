@@ -89,7 +89,6 @@ public partial class GameServer(
     private Timer? _heartbeatCheckTimer;
     private Timer? _resourceTickTimer;        // 폐쇄 구역 등 주기성 자원 변화
     private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
-    private Timer? _targetLocationTimer;      // 타겟 위치 전송
     private GameServerNodeAdvertiser? _nodeAdvertiser; // 레지스트리 광고 — Start/Stop 순서 안에서만 만지고 지운다
 
     private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
@@ -166,7 +165,6 @@ public partial class GameServer(
             StartHeartbeatChecker();
             StartResourceTickTimer();
             StartAreaClosureTickTimer();
-            StartTargetLocationTimer();
             StartProximityAutoCombatTimer();
 
             // 광고는 리슨·타이머가 모두 선 뒤에 — 배정받은 클라이언트가 바로 접속할 수 있어야 한다.
@@ -228,13 +226,11 @@ public partial class GameServer(
             _heartbeatCheckTimer,
             _resourceTickTimer,
             _areaClosureTickTimer,
-            _targetLocationTimer,
             _proximityAutoCombatTimer
         ];
         _heartbeatCheckTimer = null;
         _resourceTickTimer = null;
         _areaClosureTickTimer = null;
-        _targetLocationTimer = null;
         _proximityAutoCombatTimer = null;
         await RunShutdownStageAsync(
             Task.WhenAll(timers.Where(timer => timer != null)
@@ -536,7 +532,7 @@ public partial class GameServer(
         foreach (var (botId, interactId, area) in starts)
         {
             var sameAreaSessions = activeSessions
-                .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId && s.CurrentArea == area)
+                .Where(s => s.PlayerId.HasValue && s.MatchingId == matchingId && s.CurrentArea == area)
                 .ToList();
             if (sameAreaSessions.Count == 0) continue;
 
@@ -560,7 +556,7 @@ public partial class GameServer(
         foreach (var (botId, area) in ends)
         {
             var sameAreaSessions = activeSessions
-                .Where(s => s.PlayerId.HasValue && s.CurrentMapSubId == matchingId && s.CurrentArea == area)
+                .Where(s => s.PlayerId.HasValue && s.MatchingId == matchingId && s.CurrentArea == area)
                 .ToList();
             if (sameAreaSessions.Count == 0) continue;
 
@@ -638,33 +634,6 @@ public partial class GameServer(
         }
     }
 
-    // ===== 타겟 위치 전송 =====
-
-    private void StartTargetLocationTimer()
-    {
-        _targetLocationTimer = new Timer(ProcessTargetLocation, null,
-            TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
-        logger.LogInformation("타겟 위치 전송 타이머 시작 (1초 간격)");
-    }
-
-    private void ProcessTargetLocation(object? state)
-    {
-        try
-        {
-            var activeSessions = _sessionRegistry.SnapshotWhere(
-                static session => session.PlayerId.HasValue && session.TargetPlayerId != 0 && !session.IsGameEnded);
-
-            foreach (var session in activeSessions)
-            {
-                session.SendTargetLocation();
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "타겟 위치 전송 처리 중 오류");
-        }
-    }
-
     private static double CalculatePercentile(IReadOnlyList<double> sortedValues, double percentile)
     {
         if (sortedValues.Count == 0)
@@ -692,7 +661,7 @@ public partial class GameServer(
             if (MatchStartGate.IsAdmissionTimedOut(matchingId, DateTime.UtcNow))
             {
                 var anchorSession = activeSessions.FirstOrDefault(
-                    session => session.CurrentMapSubId == matchingId && session.PlayerId.HasValue);
+                    session => session.MatchingId == matchingId && session.PlayerId.HasValue);
                 if (anchorSession != null)
                 {
                     logger.LogWarning(
@@ -721,7 +690,7 @@ public partial class GameServer(
 
                 pacing.LastCountdownSecondsPublished = snapshot.RemainingSeconds;
                 var matchingSessions = activeSessions
-                    .Where(session => session.CurrentMapSubId == matchingId)
+                    .Where(session => session.MatchingId == matchingId)
                     .ToList();
                 if (matchingSessions.Count == 0)
                     continue;
@@ -944,18 +913,18 @@ public partial class GameServer(
                 logger.LogDebug(
                     "Ignored removal from a superseded game session: PlayerId={PlayerId}, MatchingId={MatchingId}",
                     session.PlayerId.Value,
-                    session.CurrentMapSubId);
-                if (session.CurrentMapSubId > 0)
-                    CleanupMatchingIfNoHumanSessionsRemain(session.CurrentMapSubId);
+                    session.MatchingId);
+                if (session.MatchingId > 0)
+                    CleanupMatchingIfNoHumanSessionsRemain(session.MatchingId);
                 return;
             }
 
             logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", session.PlayerId.Value);
 
-            if (session.CurrentMapSubId > 0 && session.CurrentArea != AreaType.None)
+            if (session.MatchingId > 0 && session.CurrentArea != AreaType.None)
             {
                 using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(session.PlayerId.Value);
-                var sameAreaSessions = GetSessionsByMatch(session.CurrentMapSubId)
+                var sameAreaSessions = GetSessionsByMatch(session.MatchingId)
                     .Where(other =>
                         !ReferenceEquals(other, session) &&
                         other.CurrentArea == session.CurrentArea)
@@ -965,13 +934,13 @@ public partial class GameServer(
                 logger.LogInformation(
                     "Broadcasted disconnected player leave: PlayerId={PlayerId}, MatchingId={MatchingId}, Area={Area}, Receivers={ReceiverCount}",
                     session.PlayerId.Value,
-                    session.CurrentMapSubId,
+                    session.MatchingId,
                     session.CurrentArea,
                     sameAreaSessions.Count);
             }
 
-            if (session.CurrentMapSubId > 0)
-                CleanupMatchingIfNoHumanSessionsRemain(session.CurrentMapSubId);
+            if (session.MatchingId > 0)
+                CleanupMatchingIfNoHumanSessionsRemain(session.MatchingId);
         }
     }
 
@@ -982,11 +951,11 @@ public partial class GameServer(
     /// </summary>
     private void AbortMatchAfterAdmissionFailure(GameClientSession session)
     {
-        if (!session.PlayerId.HasValue || session.CurrentMapSubId <= 0)
+        if (!session.PlayerId.HasValue || session.MatchingId <= 0)
             return;
 
         long playerId = session.PlayerId.Value;
-        long matchingId = session.CurrentMapSubId;
+        long matchingId = session.MatchingId;
         MatchRuntime? runtime = MatchRuntimes.Get(matchingId);
         if (runtime == null)
         {
@@ -1002,7 +971,7 @@ public partial class GameServer(
                 if (_sessionRegistry.TryGetCurrent(playerId, out GameClientSession? currentSession) &&
                     currentSession != null &&
                     !ReferenceEquals(currentSession, session) &&
-                    currentSession.CurrentMapSubId == matchingId)
+                    currentSession.MatchingId == matchingId)
                 {
                     logger.LogDebug(
                         "Skipped admission-failed claim release for superseded session: PlayerId={PlayerId}, MatchingId={MatchingId}",
@@ -1017,8 +986,8 @@ public partial class GameServer(
                     affectedSession.TryMarkMatchingLifecycleHandledExternally();
 
                 IReadOnlyCollection<long> affectedPlayerIds =
-                    session.HandoffHumanPlayerIds.Count > 0
-                        ? session.HandoffHumanPlayerIds.ToArray()
+                    session.MatchHumanPlayerIds.Count > 0
+                        ? session.MatchHumanPlayerIds.ToArray()
                         : [playerId];
                 var lifecyclePublications = new List<Action>();
                 PrepareAdmissionFailureLifecycle(matchingId, affectedPlayerIds, lifecyclePublications);
@@ -1392,20 +1361,7 @@ public partial class GameServer(
             .Select(_ => System.Threading.Interlocked.Decrement(ref _adminBotOnlyPlayerIdSeed))
             .ToList();
 
-        var botInfoList = new List<BotMatchingInfo>();
-        for (int i = 0; i < botCount; i++)
-        {
-            int targetIndex = (i + 1) % botCount;
-            botInfoList.Add(new BotMatchingInfo
-            {
-                PlayerId = playerIds[i],
-                TargetPlayerId = playerIds[targetIndex]
-            });
-        }
-
-        var spawnAssignments = MatchSpawnData.CreatePhaseRoomAssignments(matchingId, playerIds);
-        foreach (var botInfo in botInfoList)
-            botInfo.SpawnCell = Cell.Clone(spawnAssignments[botInfo.PlayerId]);
+        var spawnAssignments = MatchSpawnPlanner.Plan(matchingId, Config.SWARM_MATCH_MAP, playerIds);
 
         MatchRuntime runtime = MatchRuntimes.GetOrCreate(matchingId);
         using (MatchRuntimes.Enter(runtime))
@@ -1415,7 +1371,7 @@ public partial class GameServer(
 
             // 사람이 없으므로 카운트다운 없이 즉시 활성 — 미등록 매치는 게이트가 막는다 (#335).
             MatchStartGate.RegisterBotOnlyMatch(matchingId);
-            _botPlayerManager.RegisterBots(matchingId, Config.SWARM_MATCH_MAP, botInfoList);
+            _botPlayerManager.RegisterBots(matchingId, Config.SWARM_MATCH_MAP, playerIds, spawnAssignments);
             int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
             _gameEventLogManager.BeginMatch(matchingId, matchSeed);
             foreach (var bot in _botPlayerManager.GetBots(matchingId))
@@ -1431,14 +1387,8 @@ public partial class GameServer(
                     isBot: true);
             }
 
-            foreach (var bot in botInfoList)
-            {
-                _matchRosterManager.RegisterEntry(matchingId, new RosterEntry
-                {
-                    PlayerId = bot.PlayerId,
-                    TargetPlayerId = bot.TargetPlayerId
-                });
-            }
+            foreach (long botPlayerId in playerIds)
+                _matchRosterManager.RegisterEntry(matchingId, new RosterEntry { PlayerId = botPlayerId });
 
             _areaItemStockManager.InitializeMatching(matchingId);
             _groundItemManager.InitializeMatching(matchingId);
@@ -1551,15 +1501,6 @@ public partial class GameServer(
             .Select(a => a.ToString())
             .ToList() ?? [];
 
-        // 모든 PlayerId(인간+봇)에 대한 RosterEntry 조회 → WatcherOfMe 역방향 매핑
-        var allPlayerIds = sessions.Select(s => s.PlayerId!.Value).Concat(bots.Select(b => b.PlayerId)).ToList();
-        var allLinks = allPlayerIds
-            .Select(id => _matchRosterManager.GetEntry(matchingId, id))
-            .Where(l => l != null)
-            .ToList();
-        long? FindWatcherOf(long playerId) =>
-            allLinks.FirstOrDefault(l => l!.TargetPlayerId == playerId)?.PlayerId;
-
         var playerSnapshots = new List<PlayerSnapshot>();
 
         // 1) 인간 플레이어
@@ -1573,10 +1514,8 @@ public partial class GameServer(
                 Stamina = s.AdminStamina,
                 Corruption = s.AdminCorruption,
                 PlayerMatchStatus = s.PlayerMatchStatus.ToString(),
-                TargetPlayerId = s.TargetPlayerId,
                 IsBot = s.IsBot,
                 IsEliminated = s.IsEliminated,
-                WatcherOfMe = FindWatcherOf(s.PlayerId!.Value),
                 ChainStatus = chainLink?.Status.ToString() ?? ""
             });
         }
@@ -1592,10 +1531,8 @@ public partial class GameServer(
                 Stamina = bot.Stamina,
                 Corruption = bot.Corruption,
                 PlayerMatchStatus = bot.PlayerMatchStatus.ToString(),
-                TargetPlayerId = bot.TargetPlayerId,
                 IsBot = true,
                 IsEliminated = bot.IsEliminated,
-                WatcherOfMe = FindWatcherOf(bot.PlayerId),
                 ChainStatus = chainLink?.Status.ToString() ?? ""
             });
         }

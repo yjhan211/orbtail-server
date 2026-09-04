@@ -58,7 +58,7 @@ public partial class GameClientSession
 
 
         // 같은 Area의 다른 플레이어들에게 상태 브로드캐스트
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea);
 
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, msg.State);
@@ -276,7 +276,7 @@ public partial class GameClientSession
         await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
 
         // 같은 Area의 모든 플레이어에게 상태 브로드캐스트 (본인 포함)
-        var allSessions = _getSessionsByInstance(CurrentMapId, CurrentMapSubId);
+        var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
 
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, state);
@@ -296,7 +296,7 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return;
 
-        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+        var inventory = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
         var items = inventory.GetAllItems();
         using var packet = PacketMaker.G_TO_C_INGAME_INVENTORY_LIST(items);
         Send(packet);
@@ -339,7 +339,7 @@ public partial class GameClientSession
         }
 
         // 아이템 정보 먼저 조회 (제거 전에 ItemId 확인 필요)
-        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value);
+        var inventory = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
         var itemInfo = inventory.GetItem(msg.ItemUid);
         if (itemInfo == null)
         {
@@ -365,14 +365,14 @@ public partial class GameClientSession
                 PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, equippedItem!.ItemUid, ErrorCode.SUCCESS);
             Send(resultPacket);
             _gameEventLogManager.LogOrbBoardTransition(
-                CurrentMapSubId, PlayerId.Value, inventory.GetAllItems(), equippedItem.ItemId,
+                MatchingId, PlayerId.Value, inventory.GetAllItems(), equippedItem.ItemId,
                 CurrentArea.ToString(), "equip", isBot: false);
             Logger.LogInformation(
                 "Player {PlayerId} equipped battle item: ItemUid={ItemUid}, ItemId={ItemId}",
                 PlayerId, equippedItem.ItemUid, equippedItem.ItemId);
             var equippedCombatData = BattleItemCombatData.Get(equippedItem.ItemId);
             _gameEventLogManager.LogTierReached(
-                CurrentMapSubId, PlayerId.Value, equippedItem.ItemId, equippedCombatData?.Tier ?? 0, isBot: false);
+                MatchingId, PlayerId.Value, equippedItem.ItemId, equippedCombatData?.Tier ?? 0, isBot: false);
             return;
         }
 
@@ -404,7 +404,7 @@ public partial class GameClientSession
         }
         else
         {
-            bool success = _inGameInventoryManager.TryRemoveItem(CurrentMapSubId, PlayerId.Value, msg.ItemUid,
+            bool success = _inGameInventoryManager.TryRemoveItem(MatchingId, PlayerId.Value, msg.ItemUid,
                 msg.Count, out var updatedItem);
 
             if (success && updatedItem != null)
@@ -494,7 +494,7 @@ public partial class GameClientSession
         int recoveredCorruption = Math.Max(0, corruptionBeforeBuffs - Corruption);
         if (PlayerId.HasValue && recoveredCorruption > 0)
             _gameEventLogManager.LogRecoveryUse(
-                CurrentMapSubId, PlayerId.Value, itemId, recoveredCorruption,
+                MatchingId, PlayerId.Value, itemId, recoveredCorruption,
                 source: "inventory_consumable", isBot: false);
 
         return hasPeriodicBuff;
@@ -556,9 +556,9 @@ public partial class GameClientSession
         {
             int recoveredCorruption = Math.Max(0, oldCorruption - Corruption);
             if (recoveredCorruption > 0)
-                _gameEventLogManager.RecordRecovery(CurrentMapSubId, PlayerId.Value, recoveredCorruption);
+                _gameEventLogManager.RecordRecovery(MatchingId, PlayerId.Value, recoveredCorruption);
 
-            _gameEventLogManager.LogResource(CurrentMapSubId, PlayerId.Value,
+            _gameEventLogManager.LogResource(MatchingId, PlayerId.Value,
                 staminaDelta, totalCorDelta, Stamina, Corruption,
                 conversionCor > 0, reason: "", isBot: false);
         }

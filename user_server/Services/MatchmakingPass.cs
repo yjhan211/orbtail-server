@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging;
 using network.common.data.models;
-using network.gamehandoff;
 using network.interfaces;
 
 namespace user_server.services;
@@ -17,7 +16,7 @@ internal enum MatchCreationOrigin
 /// <summary>
 ///     1초 timer가 호출하는 매칭 pass 한 번의 본체. 큐에서 3초 이상 기다린 entry를 PlayersPerMatch 단위로 묶고,
 ///     끝으로 30초 이상 기다린 미달 그룹을 봇으로 채운다. 두 경로는 <see cref="CreateMatchAsync" /> 하나로 합쳐졌으며,
-///     claim 획득 → matchingId 발급 → claim commit → 로스터 조립 → 봇 handoff → 사람별 성공 전달 →
+///     claim 획득 → matchingId 발급 → claim commit → 로스터 조립 → 매치 manifest → 사람별 성공 전달 →
 ///     <c>admission_ready</c> → watchdog 순서와, 실패 시 pending→canceled CAS 뒤 handoff 삭제·실패 통지·claim 롤백을 지킨다.
 ///     봇 PlayerId는 process-wide 음수 카운터에서 발급한다. 그 외 프로세스 상태는 없다.
 /// </summary>
@@ -142,26 +141,24 @@ internal sealed class MatchmakingPass(
                 "Bot-filled matching: MatchingId={MatchingId}, Real={Real}, Bots={Bot}, Origin={Origin}, GameServer={NodeId}",
                 matchingId, groupEntries.Length, botsNeeded, origin, gameServer.NodeId);
 
-            // 원형 타겟 체인을 만들고 권위 스폰을 배정한다.
-            List<RosterChainLink> chain = rosterBuilder.BuildRosterChain(allGroupEntries);
-            rosterBuilder.ApplySpawnAssignments(matchingId, chain);
-            await overrides.ApplyTwoPlayerTestTargetOutfitAsync(chain);
-            List<PlayerInfo> playerRoster = await rosterBuilder.BuildPlayerRosterAsync(chain);
-            List<GameHandoffRosterEntry> humanHandoffRoster = MatchRosterBuilder.BuildHumanHandoffRoster(chain);
-            expectedHumanCount = humanHandoffRoster.Count;
+            await overrides.ApplyTwoPlayerTestOutfitAsync(allGroupEntries);
+            List<PlayerInfo> playerRoster = await rosterBuilder.BuildPlayerRosterAsync(allGroupEntries);
+            MatchManifest manifest = MatchRosterBuilder.BuildManifest(allGroupEntries);
+            expectedHumanCount = manifest.HumanPlayerIds.Count;
 
-            await handoff.StoreBotHandoffAsync(matchingId, MatchRosterBuilder.BuildBotHandoffInfos(chain));
+            // Game Server는 이 manifest로 봇 수·입장 기대 인원·스폰을 정한다.
+            await handoff.StoreMatchManifestAsync(matchingId, manifest);
 
             // 사람에게 통지하고 commit된 큐 entry를 제거한다.
-            foreach (RosterChainLink link in chain)
+            foreach (MatchingQueueEntry entry in allGroupEntries)
             {
-                if (link.Entry.IsBot) continue;
+                if (entry.IsBot) continue;
 
                 bool delivered = false;
                 try
                 {
                     delivered = await handoff.DeliverMatchingSuccessAsync(
-                        link, matchingId, playerRoster, humanHandoffRoster, gameServer);
+                        entry, matchingId, playerRoster, gameServer);
                     if (delivered)
                         deliveredPlayerCount++;
                 }
@@ -169,17 +166,17 @@ internal sealed class MatchmakingPass(
                 {
                     logger.LogError(ex,
                         "Failed to commit matching entry; removing it from this match: PlayerId={PlayerId}, Origin={Origin}",
-                        link.PlayerId, origin);
+                        entry.PlayerId, origin);
                 }
                 finally
                 {
                     if (!delivered)
-                        await claims.ReleaseActiveBestEffortAsync(link.PlayerId, matchingId);
-                    await queue.RemoveEntryAsync(link.Entry);
+                        await claims.ReleaseActiveBestEffortAsync(entry.PlayerId, matchingId);
+                    await queue.RemoveEntryAsync(entry);
                 }
             }
 
-            // handoff 로스터는 전원 인간 계약이다. 살아 있는 인간 전원이 성공 패킷을 받아들인 뒤에만 admission
+            // manifest의 사람 목록은 전원 계약이다. 살아 있는 인간 전원이 성공 패킷을 받아들인 뒤에만 admission
             // 마커를 쓴다. Game Server는 이 마커가 있어야 ticket을 받으므로 부분 전달이 멈춘 매치를 만들 수 없다.
             bool deliveryComplete = deliveredPlayerCount == expectedHumanCount;
             if (deliveryComplete)

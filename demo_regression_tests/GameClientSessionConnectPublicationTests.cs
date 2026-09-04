@@ -237,7 +237,7 @@ public sealed class GameClientSessionConnectPublicationTests
             "CreateConnectResultPacket",
             BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(
             session,
-            [true, ErrorCode.SUCCESS, "Connected to GameServer"]));
+            [true, ErrorCode.SUCCESS, "Connected to GameServer", 0L, null]));
 
     private static bool PublishCommittedSuccess(GameClientSession session, Packet packet) =>
         Assert.IsType<bool>(typeof(GameClientSession).GetMethod(
@@ -293,7 +293,7 @@ public sealed class GameClientSessionConnectPublicationTests
     {
         SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
         SetProperty(session, nameof(GameClientSession.CurrentMapId), Config.SWARM_MATCH_MAP);
-        SetProperty(session, nameof(GameClientSession.CurrentMapSubId), matchingId);
+        SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
     }
 
     private static void SetProperty(GameClientSession session, string name, object value) =>

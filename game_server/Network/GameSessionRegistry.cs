@@ -119,11 +119,11 @@ internal sealed class GameSessionRegistry
 
     private void AddToMatchIndex(long playerId, GameClientSession session)
     {
-        if (session.CurrentMapSubId <= 0)
+        if (session.MatchingId <= 0)
             return;
 
         _sessionsByMatch
-            .GetOrAdd(session.CurrentMapSubId, _ => new ConcurrentDictionary<long, GameClientSession>())
+            .GetOrAdd(session.MatchingId, _ => new ConcurrentDictionary<long, GameClientSession>())
             [playerId] = session;
     }
 
@@ -132,7 +132,7 @@ internal sealed class GameSessionRegistry
         if (!session.PlayerId.HasValue)
             return;
         if (!_sessionsByMatch.TryGetValue(
-                session.CurrentMapSubId,
+                session.MatchingId,
                 out ConcurrentDictionary<long, GameClientSession>? bucket))
         {
             return;

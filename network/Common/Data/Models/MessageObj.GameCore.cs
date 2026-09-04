@@ -16,10 +16,7 @@ namespace network.common.data.models
     [MessagePackObject]
     public class C_TO_G_CONNECT : IMessagePackObject
     {
-        // Legacy fields remain for wire compatibility. GameServer authorization ignores them.
-        [Key("playerId")] public long PlayerId { get; set; }
-        [Key("matchingId")] public long MatchingId { get; set; }
-        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+        // 신원·매치는 ticket이 증명한다. 클라이언트가 말하는 값은 받지 않는다.
         [Key("gameHandoffTicket")] public string GameHandoffTicket { get; set; }
     }
 
@@ -29,6 +26,10 @@ namespace network.common.data.models
         [Key("success")] public bool Success { get; set; }
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
         [Key("message")] public string Message { get; set; }
+
+        // 성공 시에만 채운다. 스폰은 Game Server가 매치 첫 접속 때 결정하므로 클라이언트는 여기서 처음 안다.
+        [Key("matchingId")] public long MatchingId { get; set; }
+        [Key("spawnCell")] public Cell SpawnCell { get; set; }
     }
 
     [MessagePackObject]

@@ -17,7 +17,7 @@ public partial class GameServer
 
         var humans = activeSessions
             .Where(session =>
-                session.CurrentMapSubId == matchingId &&
+                session.MatchingId == matchingId &&
                 !session.IsEliminated &&
                 !session.IsGameEnded)
             .ToList();

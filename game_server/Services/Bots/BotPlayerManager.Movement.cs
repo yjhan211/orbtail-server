@@ -725,12 +725,6 @@ public partial class BotPlayerManager
             return;
         }
 
-        if (!needsGuardianOrb && bot.IsForcedFollowActive &&
-            TryStartBotForcedFollowPath(bot, matchingId, mapId, playerAreas))
-        {
-            return;
-        }
-
         // Starting orbs are granted before the first movement tick. Keep the guard for an
         // unexpected initialization failure, but never route to RNG pickup locations.
         if (needsGuardianOrb)
@@ -745,11 +739,11 @@ public partial class BotPlayerManager
             return;
         }
 
-        var destination = ChooseBehaviorDestination(bot, matchingId, mapId, playerAreas, closureManager);
+        var destination = ChooseSwarmWanderDestination(bot, matchingId, mapId, playerAreas, closureManager);
         if (destination == AreaType.None) return;
         if (destination == bot.CurrentArea)
         {
-            // 이미 원하는 방(타겟 방 등)에 있음 → 잠시 머물며 회복/기척.
+            // 이미 원하는 방에 있음 → 잠시 머물며 회복/기척.
             // (즉시 재결정 시 흩어지기 확률이 매 틱 굴러 곧바로 나가버리는 문제 방지)
             bot.LoopWaitUntil = RandomizedDelayFromNow(BotRoomDwellMinSeconds, BotRoomDwellMaxSeconds);
             return;
@@ -774,8 +768,8 @@ public partial class BotPlayerManager
         bot.MovementDestination = destination;
         bot.LoopWaitUntil = RandomizedDelayFromNow(0.25, 0.6);
         _logger.LogInformation(
-            "Bot wander move: BotId={Bot}, Target={Target}, {From}->{To}, Steps={Steps}",
-            bot.PlayerId, bot.TargetPlayerId, bot.CurrentArea, destination, path.Count);
+            "Bot wander move: BotId={Bot}, {From}->{To}, Steps={Steps}",
+            bot.PlayerId, bot.CurrentArea, destination, path.Count);
     }
 
 
@@ -935,46 +929,6 @@ public partial class BotPlayerManager
         return score;
     }
 
-    private bool TryStartBotForcedFollowPath(BotPlayerState bot, long matchingId, MapId mapId,
-        IReadOnlyDictionary<long, AreaType> playerAreas)
-    {
-        if (!playerAreas.TryGetValue(bot.TargetPlayerId, out var targetArea) || targetArea == AreaType.None)
-        {
-            bot.LoopWaitUntil = RandomizedDelayFromNow(0.4, 0.9);
-            return true;
-        }
-
-        if (targetArea == bot.CurrentArea)
-        {
-            bot.LoopWaitUntil = RandomizedDelayFromNow(0.8, 1.5);
-            return true;
-        }
-
-        var targetCell = GameAreaConnectionData.GetSpawnCell(mapId, bot.CurrentArea, targetArea)
-            ?? GameMapData.GetAreaSpawnCell(mapId, targetArea);
-
-        var path = BotPathfinder.FindPath(mapId, bot.CurrentArea, bot.Cell,
-            targetArea, targetCell,
-            _ => false);
-        if (path == null || path.Count == 0)
-        {
-            bot.LoopWaitUntil = RandomizedDelayFromNow(0.4, 0.9);
-            _logger.LogWarning(
-                "Bot forced follow path failed: MatchingId={MatchingId}, BotId={Bot}, Target={Target}, {From}->{To}",
-                matchingId, bot.PlayerId, bot.TargetPlayerId, bot.CurrentArea, targetArea);
-            return true;
-        }
-
-        bot.Path = path;
-        bot.PathIndex = 0;
-        bot.MovementDestination = targetArea;
-        bot.LoopWaitUntil = RandomizedDelayFromNow(0.3, 0.8);
-        _logger.LogInformation(
-            "Bot forced follow move: MatchingId={MatchingId}, BotId={Bot}, Target={Target}, {From}->{To}, Steps={Steps}",
-            matchingId, bot.PlayerId, bot.TargetPlayerId, bot.CurrentArea, targetArea, path.Count);
-        return true;
-    }
-
     private bool TryStartCorridorExitPath(BotPlayerState bot, long matchingId, MapId mapId,
         AreaClosureManager closureManager)
     {
@@ -1023,37 +977,6 @@ public partial class BotPlayerManager
         return true;
     }
 
-    private AreaType ChooseBehaviorDestination(BotPlayerState bot, long matchingId, MapId mapId,
-        IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
-    {
-        var players = playerAreas
-            .Select(p => new BotBehaviorPlayerSnapshot
-            {
-                PlayerId = p.Key,
-                CurrentArea = p.Value,
-                TargetPlayerId = 0,
-                IsEliminated = false
-            })
-            .ToList();
-
-        var decision = BotBehaviorDecisionService.Decide(
-            bot,
-            players,
-            area => IsAreaClosingOrClosed(closureManager, matchingId, area));
-
-        // Corridors are transit only. Following a target whose current area is a corridor
-        // must fall through to the room-selection policy; otherwise bots path to the
-        // corridor center and have no room destination to continue toward.
-        if (decision.Kind == BotBehaviorActionKind.FollowTarget
-            && decision.TargetArea != AreaType.None
-            && !decision.TargetArea.IsCorridor()
-            && decision.TargetArea != bot.CurrentArea)
-            return decision.TargetArea;
-
-        return ChooseSwarmWanderDestination(bot, matchingId, mapId, playerAreas, closureManager);
-    }
-
-
     private List<AreaType> GetOpenBotDestinationAreas(long matchingId, MapId mapId,
         AreaClosureManager closureManager)
     {
@@ -1066,9 +989,8 @@ public partial class BotPlayerManager
     }
 
     /// <summary>
-    ///     배회 폴백 목적지 (#295 — 마니또 세대 위장 AI 삭제 후 단순화): 잔상 사냥·캠프 순례가
-    ///     목적지를 못 정할 때만 온다. 확률적으로 최저 인원 방으로 흩어지고(뭉침 방지),
-    ///     아니면 타겟(미니맵 타깃 마커 대상) 방으로, 타겟 위치 불명이면 임의 방.
+    ///     배회 폴백 목적지: 잔상 사냥·캠프 순례가 목적지를 못 정할 때만 온다.
+    ///     확률적으로 최저 인원 방으로 흩어지고(뭉침 방지), 아니면 현재와 다른 임의 방.
     /// </summary>
     private AreaType ChooseSwarmWanderDestination(BotPlayerState bot, long matchingId, MapId mapId,
         IReadOnlyDictionary<long, AreaType> playerAreas, AreaClosureManager closureManager)
@@ -1083,17 +1005,7 @@ public partial class BotPlayerManager
             return rooms.OrderBy(a => pop[a]).ThenBy(_ => _rng.Next()).First();
         }
 
-        // 따라가기: 타겟이 있는 방으로
-        if (playerAreas.TryGetValue(bot.TargetPlayerId, out var targetArea) && targetArea != AreaType.None)
-        {
-            if (!targetArea.IsCorridor() && rooms.Contains(targetArea)) return targetArea;
-            // 타겟이 복도면 같은 층 방으로
-            int floor = targetArea.GetFloor();
-            var floorRooms = rooms.Where(a => a.GetFloor() == floor).ToList();
-            if (floorRooms.Count > 0) return floorRooms[_rng.Next(floorRooms.Count)];
-        }
-
-        // 타겟 위치 불명 → 현재와 다른 임의 방
+        // 현재와 다른 임의 방
         var others = rooms.Where(a => a != bot.CurrentArea).ToList();
         return others.Count > 0 ? others[_rng.Next(others.Count)] : AreaType.None;
     }

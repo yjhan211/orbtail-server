@@ -73,9 +73,6 @@ namespace network.common
         G_TO_C_AREA_CLOSURE_WARNING,  // 폐쇄 30초 전 경고
         G_TO_C_AREA_CLOSED,           // 구역 폐쇄 확정
 
-        // 타겟 위치 추적 프로토콜
-        G_TO_C_TARGET_LOCATION,       // 타겟 구역 위치 (3초 간격 갱신)
-
         // 탈락 프로토콜
         G_TO_C_PLAYER_ELIMINATED,     // 플레이어 탈락 알림 (전체 브로드캐스트)
 

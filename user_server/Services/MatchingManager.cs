@@ -50,7 +50,7 @@ public class MatchingManager : IMatchingManager
         _queue = new MatchingQueue(cacheHelper, redLock, _matchingClaims, logger);
 
         DevMatchOverrides overrides = DevMatchOverrides.FromEnvironment(cacheHelper, redLock, logger);
-        var rosterBuilder = new MatchRosterBuilder(cacheHelper, overrides, logger);
+        var rosterBuilder = new MatchRosterBuilder(cacheHelper, logger);
         _handoff = new MatchHandoffPublisher(
             cacheHelper,
             gameHandoffTicketService,

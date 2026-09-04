@@ -26,7 +26,7 @@ public partial class GameClientSession
         if (!_hasPendingOrbDraft)
         {
             SendSummonOrbResult(false, ErrorCode.INVALID_GAME_STATE, 0, 0,
-                _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value));
+                _summonStoneManager.GetSnapshot(MatchingId, PlayerId.Value));
             return Task.CompletedTask;
         }
 
@@ -73,7 +73,7 @@ public partial class GameClientSession
         // 자동 머지: 오브열 실험(#226)에서는 끈다 — 성장 = 열 길이, 압축은 그 언어와 싸운다.
         if (Config.SWARM_ORB_MERGE_ENABLED)
             foreach (var mergedItem in _inGameInventoryManager.AutoMergeOrbs(
-                         CurrentMapSubId, PlayerId.Value))
+                         MatchingId, PlayerId.Value))
                 SendInGameInventoryUpdate(mergedItem);
         return true;
     }
@@ -81,7 +81,7 @@ public partial class GameClientSession
     /// <summary>상자 시간 등급 (#222 M3): 개전 앵커 경과로 드래프트 티어 결정. 게이트 전엔 T1.</summary>
     private int GetSwarmDraftTier()
     {
-        var startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(CurrentMapSubId);
+        var startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(MatchingId);
         if (startedAtUtc == null)
             return 1;
 
@@ -96,10 +96,10 @@ public partial class GameClientSession
     {
         long playerId = PlayerId!.Value;
         var attempt = _summonStoneManager.TrySummon(
-            CurrentMapSubId,
+            MatchingId,
             playerId,
             itemId => _inGameInventoryManager.TryAddItemWithCapacity(
-                CurrentMapSubId,
+                MatchingId,
                 playerId,
                 itemId,
                 Config.SWARM_ORB_CAPACITY,
@@ -113,9 +113,9 @@ public partial class GameClientSession
         if (attempt.Success && attempt.AddedItem != null)
         {
             SendInGameInventoryUpdate(attempt.AddedItem);
-            var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, playerId);
+            var inventory = _inGameInventoryManager.GetPlayerInventory(MatchingId, playerId);
             _gameEventLogManager.LogOrbBoardTransition(
-                CurrentMapSubId,
+                MatchingId,
                 playerId,
                 inventory.GetAllItems(),
                 inventory.GetEquippedBattleItem()?.ItemId ?? 0,
@@ -131,7 +131,7 @@ public partial class GameClientSession
             attempt.AddedItem?.ItemUid ?? 0,
             attempt.State);
         _gameEventLogManager.LogOrbSummonAttempt(
-            CurrentMapSubId,
+            MatchingId,
             playerId,
             attempt.Success,
             attempt.ErrorCode,
@@ -144,7 +144,7 @@ public partial class GameClientSession
 
         Logger.LogInformation(
             "Orb summon request: MatchingId={MatchingId}, PlayerId={PlayerId}, Success={Success}, Error={ErrorCode}, ItemId={ItemId}, Stones={StoneCount}, NextCost={NextCost}",
-            CurrentMapSubId,
+            MatchingId,
             playerId,
             attempt.Success,
             attempt.ErrorCode,
@@ -157,8 +157,8 @@ public partial class GameClientSession
     /// <summary>절단 실험 더미 조종 (#226 실험장, 개발용) — 게임서버 훅으로 위임.</summary>
     private Task HandleDevDummyMove(C_TO_G_DEV_DUMMY_MOVE request)
     {
-        if (PlayerId.HasValue && CurrentMapSubId > 0)
-            SwarmDummyMoveCallback?.Invoke(CurrentMapSubId, request.DirX, request.DirY);
+        if (PlayerId.HasValue && MatchingId > 0)
+            SwarmDummyMoveCallback?.Invoke(MatchingId, request.DirX, request.DirY);
         return Task.CompletedTask;
     }
 
@@ -168,10 +168,10 @@ public partial class GameClientSession
     /// </summary>
     private Task HandleSwarmGrowthPick(C_TO_G_SWARM_GROWTH_PICK request)
     {
-        if (!PlayerId.HasValue || CurrentMapSubId <= 0)
+        if (!PlayerId.HasValue || MatchingId <= 0)
             return Task.CompletedTask;
 
-        long matchingId = CurrentMapSubId;
+        long matchingId = MatchingId;
         return RunUnderMatch(
             () =>
             {
@@ -187,10 +187,10 @@ public partial class GameClientSession
     /// </summary>
     private Task HandleSwarmOrbDecision(C_TO_G_SWARM_ORB_DECISION request)
     {
-        if (!PlayerId.HasValue || CurrentMapSubId <= 0 || IsEliminated)
+        if (!PlayerId.HasValue || MatchingId <= 0 || IsEliminated)
             return Task.CompletedTask;
 
-        long matchingId = CurrentMapSubId;
+        long matchingId = MatchingId;
         return RunUnderMatch(
             () =>
             {
@@ -237,7 +237,7 @@ public partial class GameClientSession
         if (!PlayerId.HasValue)
             return;
 
-        int stones = _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value).StoneCount;
+        int stones = _summonStoneManager.GetSnapshot(MatchingId, PlayerId.Value).StoneCount;
         using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_ORB_DECISION_RESULT, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_ORB_DECISION_RESULT
         {
@@ -278,7 +278,7 @@ public partial class GameClientSession
         if (!PlayerId.HasValue)
             return;
 
-        int stones = _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value).StoneCount;
+        int stones = _summonStoneManager.GetSnapshot(MatchingId, PlayerId.Value).StoneCount;
         using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_GROWTH_RESULT, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_GROWTH_RESULT
         {
@@ -299,16 +299,16 @@ public partial class GameClientSession
         if (IsRoundActionLocked(out _))
         {
             SendDestroyOrbResult(false, ErrorCode.INVALID_GAME_STATE, request.ItemUid, 0,
-                _summonStoneManager.GetSnapshot(CurrentMapSubId, playerId));
+                _summonStoneManager.GetSnapshot(MatchingId, playerId));
             return Task.CompletedTask;
         }
 
-        var inventory = _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, playerId);
+        var inventory = _inGameInventoryManager.GetPlayerInventory(MatchingId, playerId);
         var item = inventory.GetItem(request.ItemUid);
         if (item == null || item.Count <= 0)
         {
             SendDestroyOrbResult(false, ErrorCode.ITEM_NOT_FOUND, request.ItemUid, 0,
-                _summonStoneManager.GetSnapshot(CurrentMapSubId, playerId));
+                _summonStoneManager.GetSnapshot(MatchingId, playerId));
             return Task.CompletedTask;
         }
 
@@ -319,28 +319,28 @@ public partial class GameClientSession
         if (!isDestroyableOrb)
         {
             SendDestroyOrbResult(false, ErrorCode.ITEM_NOT_USABLE, request.ItemUid, 0,
-                _summonStoneManager.GetSnapshot(CurrentMapSubId, playerId));
+                _summonStoneManager.GetSnapshot(MatchingId, playerId));
             return Task.CompletedTask;
         }
 
         if (!_inGameInventoryManager.TryRemoveItem(
-                CurrentMapSubId, playerId, request.ItemUid, 1, out var removedItem) ||
+                MatchingId, playerId, request.ItemUid, 1, out var removedItem) ||
             removedItem == null)
         {
             SendDestroyOrbResult(false, ErrorCode.ITEM_NOT_OWNED, request.ItemUid, 0,
-                _summonStoneManager.GetSnapshot(CurrentMapSubId, playerId));
+                _summonStoneManager.GetSnapshot(MatchingId, playerId));
             return Task.CompletedTask;
         }
 
         // 스웜 (#232 4단계): 계열 공유 레벨이 플레이어 귀속이라 표시 티어와 무관하게 1로 고정 —
         // 강화한 오브를 부숴도 레벨은 남으므로 티어 환급이면 강화-파괴 재판매가 성립한다.
         int refundedStones = Config.SWARM_ORB_DESTROY_REFUND_STONES;
-        var state = _summonStoneManager.AddStones(CurrentMapSubId, playerId, refundedStones);
+        var state = _summonStoneManager.AddStones(MatchingId, playerId, refundedStones);
         SendInGameInventoryUpdate(removedItem);
         SendDestroyOrbResult(true, ErrorCode.SUCCESS, request.ItemUid, refundedStones, state);
 
         _gameEventLogManager.LogOrbBoardTransition(
-            CurrentMapSubId,
+            MatchingId,
             playerId,
             inventory.GetAllItems(),
             inventory.GetEquippedBattleItem()?.ItemId ?? 0,
@@ -349,7 +349,7 @@ public partial class GameClientSession
             isBot: false);
         Logger.LogInformation(
             "Orb destroyed for summon stones: MatchingId={MatchingId}, PlayerId={PlayerId}, ItemId={ItemId}, ItemUid={ItemUid}, Tier={Tier}, RefundedStones={RefundedStones}",
-            CurrentMapSubId,
+            MatchingId,
             playerId,
             item.ItemId,
             request.ItemUid,
@@ -359,16 +359,16 @@ public partial class GameClientSession
     }
     internal void SendSummonStoneState(int awardedStones = 0, float awardSourceX = 0f, float awardSourceY = 0f)
     {
-        if (!PlayerId.HasValue || CurrentMapSubId <= 0)
+        if (!PlayerId.HasValue || MatchingId <= 0)
             return;
 
-        var state = _summonStoneManager.GetSnapshot(CurrentMapSubId, PlayerId.Value);
+        var state = _summonStoneManager.GetSnapshot(MatchingId, PlayerId.Value);
         var stateInfo = ToNetworkState(state);
         // NextCost = 성장 카드 최종 비용 (#226 C 잔여): N 기반 기본 + 오브 수 점수 할증,
         // 상한 10 — 클라 Mana 카운터가 이 서버 값을 그대로 표시한다(로컬 계산 퇴역).
         int orbCount = 0;
         foreach (var item in _inGameInventoryManager
-                     .GetPlayerInventory(CurrentMapSubId, PlayerId.Value).GetAllItems())
+                     .GetPlayerInventory(MatchingId, PlayerId.Value).GetAllItems())
         {
             if (item.Count <= 0) continue;
             if (OrbData.TryGetColorAndTier(item.ItemId, out _, out _) ||
@@ -377,7 +377,7 @@ public partial class GameClientSession
         }
 
         stateInfo.NextCost = Config.GetSwarmGrowthCardCost(
-            _summonStoneManager.GetGrowthSuccessCount(CurrentMapSubId, PlayerId.Value), orbCount);
+            _summonStoneManager.GetGrowthSuccessCount(MatchingId, PlayerId.Value), orbCount);
         using var packet = Packet.Create((int)Protocol.G_TO_C_SUMMON_STONE_STATE, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SUMMON_STONE_STATE
         {
@@ -425,8 +425,8 @@ public partial class GameClientSession
         NextCost = state.NextCost,
         PoolItemIds = _summonStoneManager.PoolItemIds.ToList(),
         // 다음 소환의 2택 후보. 결정론적이라 상태 패킷마다 실어도 대기 상태가 필요 없다.
-        NextCandidateItemIds = PlayerId.HasValue && CurrentMapSubId > 0
-            ? _summonStoneManager.GetSummonCandidates(CurrentMapSubId, PlayerId.Value).ToList()
+        NextCandidateItemIds = PlayerId.HasValue && MatchingId > 0
+            ? _summonStoneManager.GetSummonCandidates(MatchingId, PlayerId.Value).ToList()
             : []
     };
 
@@ -438,7 +438,7 @@ public partial class GameClientSession
         // 개별 스택 강제 (#226 단계 C 수리): AddItem은 같은 색·티어를 한 항목으로 합쳐
         // 오브별 ItemUid 정체성(열 순번·절단 래치·강화·철갑 대상)을 깨뜨렸다 — 봇 지급
         // 경로(TryAddItemWithCapacity)와 같은 규칙으로 오브 1개 = 항목 1개를 보장한다.
-        _inGameInventoryManager.GetPlayerInventory(CurrentMapSubId, PlayerId.Value)
+        _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value)
             .TryAddItemWithCapacity(itemId, Config.SWARM_ORB_CAPACITY, out _);
         SendInGameInventoryList();
     }

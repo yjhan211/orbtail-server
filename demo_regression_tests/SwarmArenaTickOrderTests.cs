@@ -314,7 +314,7 @@ public sealed class SwarmArenaTickOrderTests
         string tick = ReadMethodSlice(
             server,
             "private void ProcessAreaClosureTick(object? state)",
-            "// ===== 타겟 위치 전송 =====");
+            "    private static double CalculatePercentile(");
         string prepare = ReadMethodSlice(
             arena,
             "private SwarmClosurePublicationPlan? PrepareSwarmScheduledClosureTick(",

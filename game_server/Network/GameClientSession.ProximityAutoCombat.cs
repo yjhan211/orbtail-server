@@ -65,7 +65,7 @@ public partial class GameClientSession
             return;
 
         _gameEventLogManager.LogHit(
-            CurrentMapSubId,
+            MatchingId,
             sourcePlayerId,
             PlayerId.Value,
             weaponItemId,
@@ -109,7 +109,7 @@ public partial class GameClientSession
             return;
 
         _gameEventLogManager.LogHit(
-            CurrentMapSubId,
+            MatchingId,
             sourcePlayerId,
             PlayerId.Value,
             weaponItemId,
@@ -171,7 +171,7 @@ public partial class GameClientSession
         int corruptionAfter = Math.Min(MaxCorruption, corruptionBefore + damage);
         bool isLethal = corruptionBefore < MaxCorruption && corruptionAfter >= MaxCorruption;
         _gameEventLogManager.LogSwarmAfterimageHit(
-            CurrentMapSubId,
+            MatchingId,
             monsterId,
             PlayerId.Value,
             CurrentArea.ToString(),
@@ -183,7 +183,7 @@ public partial class GameClientSession
             DateTimeOffset.UtcNow);
         Logger.LogInformation(
             "Emotion afterimage attack: MatchingId={MatchingId}, MonsterId={MonsterId}, Target={Target}, TargetKind=Human, Damage={Damage}, CorruptionBefore={CorruptionBefore}, CorruptionAfter={CorruptionAfter}, Killed={Killed}",
-            CurrentMapSubId,
+            MatchingId,
             monsterId,
             PlayerId.Value,
             damage,

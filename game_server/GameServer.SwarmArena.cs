@@ -165,7 +165,7 @@ public partial class GameServer
 
         var sessions = activeSessions
             .Where(session => session.PlayerId.HasValue &&
-                              session.CurrentMapSubId == matchingId &&
+                              session.MatchingId == matchingId &&
                               !session.IsGameEnded)
             .ToList();
         var bots = _botPlayerManager.GetBots(matchingId).ToList();
@@ -2054,9 +2054,8 @@ public partial class GameServer
     // 교차사격 샌드박스 (#232 2단계): DEV_CROSSFIRE_SANDBOX=1 — 절단 실험장과 같은 격리
     // (운동장 더미 하나 + 나머지 봇 퇴장)를 쓰되(몹 접촉 피해는 켜 둔다), 더미는 태양 T1 3개·철갑
     // 없음·무장(몹을 쏜다)이다. 사람 오브도 무장 — 실험 대상이 절단 궤적이 아니라
-    // 몹을 향한 사격이 만드는 직선이기 때문이다. user_server 같은 env가 전원을 운동장에 스폰한다.
-    private static readonly bool SwarmCrossfireSandbox =
-        Environment.GetEnvironmentVariable("DEV_CROSSFIRE_SANDBOX") == "1";
+    // 몹을 향한 사격이 만드는 직선이기 때문이다. 같은 플래그로 MatchSpawnPlanner가 전원을 운동장에 스폰한다.
+    private static bool SwarmCrossfireSandbox => MatchSpawnPlanner.IsCrossfireSandbox;
     private static bool SwarmDummySandboxActive => SwarmCutDummyAutoSetup || SwarmCrossfireSandbox;
     private const int SwarmCutDummyOrbCount = 10;
     private const int SwarmCrossfireDummyOrbCount = 3;
@@ -2173,7 +2172,7 @@ public partial class GameServer
             .Where(session =>
                 session.PlayerId is > 0 &&
                 session.CurrentMapId == Config.SWARM_MATCH_MAP &&
-                session.CurrentMapSubId == matchingId)
+                session.MatchingId == matchingId)
             .ToArray();
         ImmutableArray<SwarmBotObserverSnapshot> observers =
             CaptureSwarmBotObservers(matchingId, sessionSnapshot);

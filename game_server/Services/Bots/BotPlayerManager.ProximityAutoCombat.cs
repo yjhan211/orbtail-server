@@ -187,7 +187,6 @@ public partial class BotPlayerManager
             return false;
 
         bot.IsEliminated = true;
-        bot.IsForcedFollowActive = false;
         bot.Path.Clear();
         bot.PathIndex = 0;
         bot.PendingRngInteractId = 0;

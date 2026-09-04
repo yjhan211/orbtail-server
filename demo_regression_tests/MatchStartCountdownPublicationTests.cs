@@ -53,7 +53,7 @@ public sealed class MatchStartCountdownPublicationTests
             "var snapshot = MatchStartGate.GetSnapshot(matchingId);",
             "pacing.LastCountdownSecondsPublished == snapshot.RemainingSeconds",
             "pacing.LastCountdownSecondsPublished = snapshot.RemainingSeconds;",
-            ".Where(session => session.CurrentMapSubId == matchingId)",
+            ".Where(session => session.MatchingId == matchingId)",
             "if (matchingSessions.Count == 0)",
             "Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN)",
             "MatchingId = matchingId",
@@ -115,8 +115,8 @@ public sealed class MatchStartCountdownPublicationTests
             "Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN, PlayerId ?? 0)",
             "Send(packet);",
             "private Task HandleMatchStartReady()",
-            "MatchStartGate.MarkHumanReady(CurrentMapSubId, PlayerId.Value);",
-            "SendMatchStartCountdown(CurrentMapSubId);");
+            "MatchStartGate.MarkHumanReady(MatchingId, PlayerId.Value);",
+            "SendMatchStartCountdown(MatchingId);");
         Assert.DoesNotContain("LastCountdownSecondsPublished", connection);
 
         AssertInOrder(
@@ -447,7 +447,7 @@ public sealed class MatchStartCountdownPublicationTests
             .SetValue(session, playerId);
         typeof(GameClientSession)
             .GetProperty(
-                nameof(GameClientSession.CurrentMapSubId),
+                nameof(GameClientSession.MatchingId),
                 BindingFlags.Instance | BindingFlags.Public)!
             .SetValue(session, matchingId);
     }

@@ -21,12 +21,12 @@ public partial class GameClientSession
         int targetCorruption = -1;
         if (eventType == ProximityAutoAttackDealtEventType || eventType == ProximityAutoAttackTakenEventType)
         {
-            var targetSession = _getSessionsByInstance(CurrentMapId, CurrentMapSubId)
+            var targetSession = _getSessionsByInstance(CurrentMapId, MatchingId)
                 .FirstOrDefault(session => session.PlayerId == targetPlayerId);
             if (targetSession != null)
                 targetCorruption = targetSession.Corruption;
             else
-                targetCorruption = _botPlayerManager.GetBot(CurrentMapSubId, targetPlayerId)?.Corruption ?? -1;
+                targetCorruption = _botPlayerManager.GetBot(MatchingId, targetPlayerId)?.Corruption ?? -1;
         }
 
         using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(

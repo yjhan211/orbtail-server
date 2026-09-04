@@ -37,10 +37,6 @@ public partial class BotPlayerManager
     public void SetSwarmDodgeResolver(Func<long, long, Vector3f, AreaType, DateTime, SwarmBotDodgeAdvice?> resolver) =>
         _swarmDodgeResolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
 
-    // 스폰 셀 미지정 시 폴백 = 시작방 8곳 (School2 매치는 항상 스폰 셀을 지정받는다).
-    private static readonly AreaType[] FallbackSpawnAreas =
-        MatchSpawnData.GetPhaseRoomCandidates().ToArray();
-
     // 배회 폴백(잔상 사냥 실패 시)에서 최저 인원 방으로 흩어질 확률 — 봇이 한 방에 뭉치지 않게.
     private const double SwarmWanderScatterProbability = 0.3;
 
@@ -70,18 +66,19 @@ public partial class BotPlayerManager
         _logger = logger;
     }
 
-    public void RegisterBots(long matchingId, MapId mapId, List<BotMatchingInfo> botInfoList)
+    /// <summary>
+    ///     매치 구성이 정한 봇 ID와 스폰으로 봇 상태를 만든다. 스폰은 MatchSpawnPlanner가 사람과 함께 배정한 값이다.
+    /// </summary>
+    public void RegisterBots(long matchingId, MapId mapId, IReadOnlyList<long> botPlayerIds,
+        IReadOnlyDictionary<long, Cell> spawnCells)
     {
         _botMapIds[matchingId] = mapId;
 
-        var bots = botInfoList.Select((info, index) =>
+        var bots = botPlayerIds.Select(botPlayerId =>
         {
-            var hasAssignedSpawn = info.SpawnCell is { X: not 0 } || info.SpawnCell is { Y: not 0 };
-            var startCell = hasAssignedSpawn
-                ? Cell.Clone(info.SpawnCell)
-                : GameMapData.GetAreaSpawnCell(mapId, IsAllowedAssignedStartArea(mapId, info.StartArea)
-                    ? info.StartArea
-                    : FallbackSpawnAreas[_rng.Next(FallbackSpawnAreas.Length)]);
+            if (!spawnCells.TryGetValue(botPlayerId, out Cell? assignedSpawn))
+                throw new InvalidOperationException($"Bot {botPlayerId} has no spawn assignment in match {matchingId}.");
+            var startCell = Cell.Clone(assignedSpawn);
             var startArea = GameMapData.GetCurrentArea(mapId, startCell);
             if (startArea == AreaType.None)
             {
@@ -94,17 +91,12 @@ public partial class BotPlayerManager
 
             return new BotPlayerState
             {
-                PlayerId = info.PlayerId,
-                TargetPlayerId = info.TargetPlayerId,
-                Name = $"Player{Math.Abs(info.PlayerId)}",
+                PlayerId = botPlayerId,
+                Name = $"Player{Math.Abs(botPlayerId)}",
                 CurrentArea = startArea,
                 Cell = startCell,
                 Position = startPosition,
                 Rotation = 0f,
-                Persona = PersonaType.None,
-                ActiveBuffIds = info.ActiveBuffIds is { Count: > 0 }
-                    ? new List<int>(info.ActiveBuffIds)
-                    : new List<int>(),
                 Stamina = InitialStamina,
                 Corruption = InitialCorruption,
                 PlayerMatchStatus = PlayerMatchStatus.ACTIVE,
@@ -121,12 +113,7 @@ public partial class BotPlayerManager
         _logger.LogInformation(
             "Bots registered: Count={Count}, MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]",
             bots.Count, matchingId, mapId,
-            string.Join(",", bots.Select(b => $"{b.PlayerId}({b.Persona}@{b.CurrentArea})")));
-    }
-
-    private static bool IsAllowedAssignedStartArea(MapId mapId, AreaType area)
-    {
-        return IsSecludedFarmingArea(mapId, area);
+            string.Join(",", bots.Select(b => $"{b.PlayerId}@{b.CurrentArea}")));
     }
 
     /// <summary>
@@ -247,7 +234,6 @@ public partial class BotPlayerManager
 public class BotPlayerState
 {
     public long PlayerId { get; set; }
-    public long TargetPlayerId { get; set; }
 
     /// <summary>절단 실험 더미 (#226): AI 정지·불사·오브 자동 리필 — 어드민이 지정한다.</summary>
     public bool IsSwarmCutDummy { get; set; }
@@ -256,10 +242,8 @@ public class BotPlayerState
     public int Stamina { get; set; } = 100;
     public int Corruption { get; set; } = 0;
     public long LastProximityAttackerPlayerId { get; set; }
-    public bool IsForcedFollowActive { get; set; }
     public bool IsEliminated { get; set; }
     public PlayerMatchStatus PlayerMatchStatus { get; set; } = PlayerMatchStatus.ACTIVE;
-    public PersonaType Persona { get; set; } = PersonaType.None;
     public List<int> ActiveBuffIds { get; set; } = new();
 
     public string Name { get; set; } = "";
