@@ -3,7 +3,7 @@ using System.Text;
 using network.common;
 using network.common.data.models;
 using network.helpers;
-using network.interfaces;
+using network.infrastructure.redis;
 using StackExchange.Redis;
 
 namespace user_server.services;

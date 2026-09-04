@@ -1,7 +1,7 @@
 using System.Reflection;
 using Microsoft.Extensions.Logging;
 using NATS.Client;
-using network.infrastructure;
+using network.infrastructure.messaging;
 
 namespace demo_regression_tests;
 

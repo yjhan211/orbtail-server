@@ -8,8 +8,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.hosting;
+using network.infrastructure.messaging;
+using network.infrastructure.redis;
 
-using network.interfaces;
 
 namespace demo_regression_tests;
 

@@ -15,7 +15,6 @@ using network.gamehandoff;
 using network.helpers;
 using network.hosting;
 
-using network.interfaces;
 using network.packets;
 using network.utils;
 

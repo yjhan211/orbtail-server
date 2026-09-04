@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using MessagePack;
 using Microsoft.Extensions.Logging;
-using network.interfaces;
+using network.infrastructure.messaging;
 using network.packets;
 
 namespace user_server.services;

@@ -5,6 +5,7 @@ using network.common;
 using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
+using network.infrastructure.redis;
 using network.packets;
 
 namespace game_server.network;

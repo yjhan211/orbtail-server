@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
-using network.interfaces;
+using network.infrastructure.redis;
 using StackExchange.Redis;
 
 namespace user_server.services;

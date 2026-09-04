@@ -1,6 +1,4 @@
-using network.infrastructure.routing;
-
-namespace network.interfaces;
+namespace network.routing;
 
 public interface IGameServerRegistry
 {

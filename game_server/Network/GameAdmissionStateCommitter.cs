@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.interfaces;
+using network.infrastructure.redis;
 using StackExchange.Redis;
 
 namespace game_server.network;

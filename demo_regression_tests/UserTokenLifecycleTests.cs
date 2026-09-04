@@ -1,6 +1,6 @@
 using System.Net.Sockets;
 using network.core;
-using network.interfaces;
+using network.core.abstractions;
 using network.utils;
 
 namespace demo_regression_tests;

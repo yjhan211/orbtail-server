@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.interfaces;
+using network.infrastructure.messaging;
 
 namespace user_server.services;
 

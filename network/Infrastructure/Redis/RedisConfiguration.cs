@@ -1,6 +1,6 @@
 using StackExchange.Redis;
 
-namespace network.interfaces;
+namespace network.infrastructure.redis;
 
 /// <summary>
 ///     검증이 끝난 Redis 클라이언트 구성이다.

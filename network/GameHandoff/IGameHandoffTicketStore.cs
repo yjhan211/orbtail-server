@@ -1,6 +1,4 @@
-using network.gamehandoff;
-
-namespace network.interfaces;
+namespace network.gamehandoff;
 
 public interface IGameHandoffTicketStore
 {

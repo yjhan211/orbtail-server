@@ -1,4 +1,4 @@
-namespace network.interfaces;
+namespace network.infrastructure.messaging;
 
 public interface INatsClient
 {

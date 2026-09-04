@@ -1,5 +1,5 @@
 using MessagePack;
-using network.interfaces;
+using network.infrastructure.redis;
 
 // ReSharper disable once CheckNamespace
 namespace network.common.data.models;

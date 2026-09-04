@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
-using network.interfaces;
+using network.infrastructure.messaging;
 using network.packets;
 using user_server.services;
 

@@ -1,6 +1,6 @@
 using MessagePack;
 using network.common.data;
-using network.interfaces;
+using network.infrastructure.redis;
 using RedLockNet;
 using StackExchange.Redis;
 

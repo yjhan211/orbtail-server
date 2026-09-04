@@ -7,7 +7,7 @@ using network.common.data;
 using network.common.data.models;
 using network.core;
 using network.gamehandoff;
-using network.interfaces;
+using network.infrastructure.redis;
 using network.packets;
 
 namespace game_server.network;

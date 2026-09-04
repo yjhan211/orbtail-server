@@ -1,6 +1,6 @@
 using StackExchange.Redis;
 
-namespace network.interfaces;
+namespace network.infrastructure.redis;
 
 /// <summary>
 ///     서버 서비스와 Redis 저장소가 공통으로 사용하는 Redis 자료구조 및 원자 연산을 제공한다.

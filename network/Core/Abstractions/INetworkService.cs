@@ -2,7 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using network.core;
 
-namespace network.interfaces;
+namespace network.core.abstractions;
 
 public interface INetworkService
 {

@@ -3,8 +3,9 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.core;
+using network.core.abstractions;
 using network.gamehandoff;
-using network.interfaces;
+using network.infrastructure.redis;
 using network.packets;
 using user_server.services;
 

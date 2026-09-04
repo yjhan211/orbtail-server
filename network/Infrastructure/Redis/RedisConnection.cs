@@ -1,12 +1,11 @@
 using System.Collections.Concurrent;
 
-using network.interfaces;
 using RedLockNet;
 using RedLockNet.SERedis;
 using RedLockNet.SERedis.Configuration;
 using StackExchange.Redis;
 
-namespace network.infrastructure;
+namespace network.infrastructure.redis;
 
 /// <summary>
 ///     서버 프로세스에서 Redis 연결을 생성하고 공유한다.

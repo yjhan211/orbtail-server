@@ -1,4 +1,4 @@
-namespace network.interfaces;
+namespace network.core.abstractions;
 
 public interface IPacket : IDisposable
 {

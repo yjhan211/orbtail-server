@@ -1,5 +1,5 @@
 using Microsoft.Extensions.Logging;
-using network.interfaces;
+using network.infrastructure.redis;
 
 namespace user_server.services;
 

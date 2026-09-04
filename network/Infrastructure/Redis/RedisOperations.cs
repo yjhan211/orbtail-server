@@ -1,7 +1,6 @@
-using network.interfaces;
 using StackExchange.Redis;
 
-namespace network.infrastructure;
+namespace network.infrastructure.redis;
 
 /// <summary>
 ///     Redis의 Hash, String, Sorted Set에 대한 공통 저수준 연산을 제공한다.

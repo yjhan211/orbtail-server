@@ -2,8 +2,8 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.gamehandoff;
+using network.infrastructure.redis;
 using network.infrastructure.routing;
-using network.interfaces;
 using user_server.network;
 
 namespace user_server.services;

@@ -1,5 +1,5 @@
 using MessagePack;
-using network.interfaces;
+using network.infrastructure.redis;
 using StackExchange.Redis;
 
 namespace network.gamehandoff;

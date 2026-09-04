@@ -6,7 +6,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.hosting;
-using network.interfaces;
+using network.infrastructure.redis;
 using Prometheus;
 
 namespace game_server;

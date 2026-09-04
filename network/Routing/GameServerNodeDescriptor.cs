@@ -1,6 +1,6 @@
 using MessagePack;
 
-namespace network.infrastructure.routing;
+namespace network.routing;
 
 /// <summary>
 ///     노드 식별자. 배포 환경에서 Game Server 인스턴스마다 고정되고 고유해야 한다.

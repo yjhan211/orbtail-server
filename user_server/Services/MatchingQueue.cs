@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.interfaces;
+using network.infrastructure.redis;
 using user_server.network;
 
 namespace user_server.services;

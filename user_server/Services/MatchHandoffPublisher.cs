@@ -4,7 +4,7 @@ using network.common.data;
 using network.common.data.models;
 using network.gamehandoff;
 using network.helpers;
-using network.interfaces;
+using network.infrastructure.redis;
 using network.packets;
 using user_server.network;
 

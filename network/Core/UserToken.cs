@@ -1,6 +1,6 @@
 using System.Net.Sockets;
 using network.common;
-using network.interfaces;
+using network.core.abstractions;
 using network.packets;
 
 namespace network.core;

@@ -1,9 +1,8 @@
 using System.Globalization;
 using Microsoft.Extensions.Configuration;
-using network.interfaces;
 using StackExchange.Redis;
 
-namespace network.infrastructure;
+namespace network.infrastructure.redis;
 
 /// <summary>
 ///     appsettings와 환경 변수에서 Redis 연결 설정을 읽어

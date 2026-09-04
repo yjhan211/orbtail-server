@@ -8,6 +8,7 @@ using network.common.data;
 using network.common.data.models;
 using network.gamehandoff;
 using network.helpers;
+using network.infrastructure.redis;
 using network.packets;
 
 namespace game_server.network;

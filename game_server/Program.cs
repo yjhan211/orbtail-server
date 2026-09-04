@@ -3,12 +3,14 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using network.core;
+using network.core.abstractions;
 using network.gamehandoff;
 using network.hosting;
-using network.infrastructure;
+using network.infrastructure.messaging;
+using network.infrastructure.redis;
 using network.infrastructure.routing;
-using network.interfaces;
 using network.managers;
+using network.routing;
 using Serilog;
 using Serilog.Events;
 

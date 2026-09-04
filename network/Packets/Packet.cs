@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 using network.common;
-using network.interfaces;
+using network.core.abstractions;
 using network.utils;
 
 namespace network.packets;

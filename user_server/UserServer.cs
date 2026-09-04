@@ -4,8 +4,11 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.common.data.helpers;
 using network.core;
+using network.core.abstractions;
+using network.gamehandoff;
 using network.hosting;
-using network.interfaces;
+using network.infrastructure.messaging;
+using network.infrastructure.redis;
 using user_server.network;
 using user_server.services;
 

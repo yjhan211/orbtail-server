@@ -2,9 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NATS.Client;
-using network.interfaces;
-
-namespace network.infrastructure;
+namespace network.infrastructure.messaging;
 
 /// <summary>
 ///     User Server와 Game Server가 공유하는 Core NATS 클라이언트.

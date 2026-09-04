@@ -3,7 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.interfaces;
+using network.core.abstractions;
 
 namespace network.core;
 
