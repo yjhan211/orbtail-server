@@ -40,11 +40,11 @@ public sealed class GameClientSessionPublicationTests
             Protocol.C_TO_G_RNG_COLLECT_START,
             new C_TO_G_RNG_COLLECT_START { InteractId = 702000101 });
 
-        G_TO_C_RNG_COLLECT_ACK startAck = fixture.TokenFor(session)
+        G_TO_C_RNG_COLLECT_ACK startAck = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_RNG_COLLECT_ACK>(Protocol.G_TO_C_RNG_COLLECT_ACK);
         Assert.Equal(ErrorCode.SUCCESS, startAck.ErrorCode);
 
-        fixture.TokenFor(session).ClearPackets();
+        fixture.ConnectionFor(session).ClearPackets();
         await SendAsync(
             session,
             Protocol.C_TO_G_RNG_COLLECT_FINISH,
@@ -56,7 +56,7 @@ public sealed class GameClientSessionPublicationTests
                 Protocol.G_TO_C_RNG_COLLECT_RESULT,
                 Protocol.G_TO_C_PLAYER_STATE
             ],
-            fixture.TokenFor(session).DeliveredProtocols);
+            fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.True(fixture.Doors.IsDoorOpen(70001, 201));
         Assert.False(Monitor.IsEntered(fixture.Store.Get(70001)!.Sync));
     }
@@ -82,7 +82,7 @@ public sealed class GameClientSessionPublicationTests
             Protocol.C_TO_G_GROUND_ITEM_PICKUP,
             new C_TO_G_GROUND_ITEM_PICKUP { GroundItemUid = item.GroundItemUid });
 
-        IReadOnlyList<Protocol> protocols = fixture.TokenFor(session).DeliveredProtocols;
+        IReadOnlyList<Protocol> protocols = fixture.ConnectionFor(session).DeliveredProtocols;
         if (expectedPrefix.HasValue)
             Assert.Equal(expectedPrefix.Value, protocols[0]);
         Assert.Equal(Protocol.G_TO_C_GROUND_ITEM_REMOVED, protocols[^2]);
@@ -120,7 +120,7 @@ public sealed class GameClientSessionPublicationTests
                 Protocol.G_TO_C_GROUND_ITEM_REMOVED,
                 Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT
             ],
-            fixture.TokenFor(session).DeliveredProtocols);
+            fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.True(session.CurrentCorruption < 20);
     }
 
@@ -138,9 +138,9 @@ public sealed class GameClientSessionPublicationTests
 
         Assert.Equal(
             [Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT],
-            fixture.TokenFor(session).DeliveredProtocols);
+            fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.NotNull(fixture.GroundItems.GetItem(70001, item.GroundItemUid));
-        G_TO_C_GROUND_ITEM_PICKUP_RESULT result = fixture.TokenFor(session)
+        G_TO_C_GROUND_ITEM_PICKUP_RESULT result = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_GROUND_ITEM_PICKUP_RESULT>(
                 Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT);
         Assert.False(result.Success);
@@ -173,16 +173,16 @@ public sealed class GameClientSessionPublicationTests
                 Protocol.G_TO_C_RNG_COLLECT_ACK,
                 Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT
             ],
-            fixture.TokenFor(session).DeliveredProtocols);
-        Assert.DoesNotContain(Protocol.G_TO_C_ERROR, fixture.TokenFor(session).AttemptedProtocols);
-        foreach (G_TO_C_RNG_COLLECT_ACK ack in fixture.TokenFor(session)
+            fixture.ConnectionFor(session).DeliveredProtocols);
+        Assert.DoesNotContain(Protocol.G_TO_C_ERROR, fixture.ConnectionFor(session).AttemptedProtocols);
+        foreach (G_TO_C_RNG_COLLECT_ACK ack in fixture.ConnectionFor(session)
                      .DeserializeAll<G_TO_C_RNG_COLLECT_ACK>(Protocol.G_TO_C_RNG_COLLECT_ACK))
         {
             Assert.Equal(ErrorCode.INVALID_GAME_STATE, ack.ErrorCode);
         }
         Assert.Equal(
             ErrorCode.INVALID_GAME_STATE,
-            fixture.TokenFor(session)
+            fixture.ConnectionFor(session)
                 .DeserializeSingle<G_TO_C_GROUND_ITEM_PICKUP_RESULT>(
                     Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT).ErrorCode);
     }
@@ -217,10 +217,10 @@ public sealed class GameClientSessionPublicationTests
         await holder.WaitAsync(TimeSpan.FromSeconds(5));
         await message.WaitAsync(TimeSpan.FromSeconds(5));
 
-        G_TO_C_RNG_COLLECT_ACK ack = fixture.TokenFor(session)
+        G_TO_C_RNG_COLLECT_ACK ack = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_RNG_COLLECT_ACK>(Protocol.G_TO_C_RNG_COLLECT_ACK);
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, ack.ErrorCode);
-        Assert.Equal([Protocol.G_TO_C_RNG_COLLECT_ACK], fixture.TokenFor(session).DeliveredProtocols);
+        Assert.Equal([Protocol.G_TO_C_RNG_COLLECT_ACK], fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.False(fixture.Doors.IsDoorOpen(70001, 201));
         Assert.Null(fixture.Store.Get(70001));
     }
@@ -237,7 +237,7 @@ public sealed class GameClientSessionPublicationTests
             Protocol.C_TO_G_RNG_COLLECT_START,
             new C_TO_G_RNG_COLLECT_START { InteractId = 702000101 });
 
-        Assert.Empty(fixture.TokenFor(session).AttemptedProtocols);
+        Assert.Empty(fixture.ConnectionFor(session).AttemptedProtocols);
         Assert.False(fixture.Doors.IsDoorOpen(70001, 201));
     }
 
@@ -251,8 +251,8 @@ public sealed class GameClientSessionPublicationTests
         var releaseDispatch = new ManualResetEventSlim();
         var timeline = new ConcurrentQueue<string>();
         fixture.CleanupTimeline = timeline;
-        RecordingUserToken token = fixture.TokenFor(session);
-        token.BeforeSend = protocol =>
+        RecordingTcpConnection connection = fixture.ConnectionFor(session);
+        connection.BeforeSend = protocol =>
         {
             timeline.Enqueue($"send:{protocol}");
             if (protocol != Protocol.G_TO_C_JAM_STATE)
@@ -300,8 +300,8 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         GroundItemInfo item = fixture.SpawnAtSession(session, Config.JAM_GROUND_ITEM_ID);
-        RecordingUserToken token = fixture.TokenFor(session);
-        token.ThrowOnceOn = Protocol.G_TO_C_GROUND_ITEM_REMOVED;
+        RecordingTcpConnection connection = fixture.ConnectionFor(session);
+        connection.ThrowOnceOn = Protocol.G_TO_C_GROUND_ITEM_REMOVED;
 
         await SendAsync(
             session,
@@ -316,8 +316,8 @@ public sealed class GameClientSessionPublicationTests
                 Protocol.G_TO_C_GROUND_ITEM_REMOVED,
                 Protocol.G_TO_C_ERROR
             ],
-            token.AttemptedProtocols);
-        Assert.DoesNotContain(Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT, token.AttemptedProtocols);
+            connection.AttemptedProtocols);
+        Assert.DoesNotContain(Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT, connection.AttemptedProtocols);
         Assert.False(Monitor.IsEntered(fixture.Store.Get(70001)!.Sync));
     }
 
@@ -338,7 +338,7 @@ public sealed class GameClientSessionPublicationTests
 
         Assert.Equal(
             [Protocol.G_TO_C_PLAYER_STATS_UPDATE, Protocol.G_TO_C_ERROR],
-            fixture.TokenFor(session).DeliveredProtocols);
+            fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.Null(fixture.GroundItems.GetItem(70001, item.GroundItemUid));
         Assert.True(session.CurrentCorruption < 20);
     }
@@ -364,8 +364,8 @@ public sealed class GameClientSessionPublicationTests
                 Protocol.G_TO_C_RNG_COLLECT_RESULT,
                 Protocol.G_TO_C_PLAYER_STATE
             ],
-            fixture.TokenFor(session).DeliveredProtocols);
-        G_TO_C_RNG_COLLECT_RESULT result = fixture.TokenFor(session)
+            fixture.ConnectionFor(session).DeliveredProtocols);
+        G_TO_C_RNG_COLLECT_RESULT result = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_RNG_COLLECT_RESULT>(Protocol.G_TO_C_RNG_COLLECT_RESULT);
         Assert.Equal(0, result.CooldownSeconds);
         Assert.Empty(fixture.GroundItems.GetSnapshot(70001, (AreaType)13));
@@ -394,7 +394,7 @@ public sealed class GameClientSessionPublicationTests
                 Protocol.G_TO_C_RNG_COLLECT_RESULT,
                 Protocol.G_TO_C_PLAYER_STATE
             ],
-            fixture.TokenFor(session).DeliveredProtocols);
+            fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.Equal(
             stonesBefore - Config.SWARM_BOX_OPEN_COST,
             fixture.SummonStones.GetSnapshot(70001, 101).StoneCount);
@@ -402,7 +402,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Contains(
             spawned.ItemId,
             new[] { Config.HEART_GROUND_ITEM_ID, Config.BOOTS_GROUND_ITEM_ID });
-        G_TO_C_RNG_COLLECT_RESULT result = fixture.TokenFor(session)
+        G_TO_C_RNG_COLLECT_RESULT result = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_RNG_COLLECT_RESULT>(Protocol.G_TO_C_RNG_COLLECT_RESULT);
         Assert.Equal(Config.SWARM_EXPLORE_REGEN_SECONDS, result.CooldownSeconds);
         Assert.NotEmpty(RngCollectCooldownStore.GetSnapshot(70001));
@@ -418,7 +418,7 @@ public sealed class GameClientSessionPublicationTests
         GroundItemInfo secondItem = fixture.SpawnAtSession(second, Config.KEY_GROUND_ITEM_ID);
         var entered = new ManualResetEventSlim();
         var release = new ManualResetEventSlim();
-        fixture.TokenFor(first).BeforeSend = protocol =>
+        fixture.ConnectionFor(first).BeforeSend = protocol =>
         {
             if (protocol != Protocol.G_TO_C_JAM_STATE)
                 return;
@@ -561,7 +561,7 @@ public sealed class GameClientSessionPublicationTests
     private sealed class SessionFixture : IDisposable
     {
         private readonly List<GameClientSession> _sessions = [];
-        private readonly Dictionary<GameClientSession, RecordingUserToken> _tokens = [];
+        private readonly Dictionary<GameClientSession, RecordingTcpConnection> _connections = [];
         private readonly string _summaryDirectory = Path.Combine(
             Path.GetTempPath(),
             "orbtail-session-publication-tests",
@@ -600,10 +600,10 @@ public sealed class GameClientSessionPublicationTests
             GroundItems.InitializeMatching(matchingId);
             Doors.InitializeMatching(matchingId);
 
-            var token = new RecordingUserToken();
-            Activate(token);
+            var connection = new RecordingTcpConnection();
+            Activate(connection);
             var session = new RecordingSession(
-                token,
+                connection,
                 _sessions,
                 Interactables,
                 Inventories,
@@ -620,11 +620,11 @@ public sealed class GameClientSessionPublicationTests
                 Store);
             SetIdentity(session, matchingId, playerId, area);
             _sessions.Add(session);
-            _tokens.Add(session, token);
+            _connections.Add(session, connection);
             return session;
         }
 
-        public RecordingUserToken TokenFor(GameClientSession session) => _tokens[session];
+        public RecordingTcpConnection ConnectionFor(GameClientSession session) => _connections[session];
 
         /// <summary>잠금 안에서 터미널로 표시하고 나온다 — 정리는 깊이 0 탈출에서 바로 돈다.</summary>
         public void MarkTerminal(long matchingId)
@@ -696,14 +696,14 @@ public sealed class GameClientSessionPublicationTests
                 "_lastValidatedPosition",
                 BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, position);
 
-        private static void Activate(UserToken token)
+        private static void Activate(TcpConnection connection)
         {
-            int active = (int)typeof(UserToken).GetField(
+            int active = (int)typeof(TcpConnection).GetField(
                 "StateActive",
                 BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
-            typeof(UserToken).GetField(
+            typeof(TcpConnection).GetField(
                 "_state",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(token, active);
+                BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(connection, active);
         }
 
     }
@@ -711,7 +711,7 @@ public sealed class GameClientSessionPublicationTests
     private sealed class RecordingSession : GameClientSession
     {
         public RecordingSession(
-            UserToken token,
+            TcpConnection connection,
             List<GameClientSession> sessions,
             InteractableStateManager interactables,
             InGameInventoryManager inventories,
@@ -727,7 +727,7 @@ public sealed class GameClientSessionPublicationTests
             EncounterRevealManager encounters,
             MatchRuntimeStore matchRuntimes)
             : base(
-                token,
+                connection,
                 NullLogger.Instance,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),
@@ -762,7 +762,7 @@ public sealed class GameClientSessionPublicationTests
         }
     }
 
-    private sealed class RecordingUserToken : UserToken
+    private sealed class RecordingTcpConnection : TcpConnection
     {
         private readonly object _gate = new();
         private readonly List<(Protocol Protocol, byte[] WireBytes)> _delivered = [];

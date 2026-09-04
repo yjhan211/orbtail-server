@@ -12,7 +12,7 @@ namespace network.core;
 /// <summary>
 ///     UserServer와 GameServer의 TCP 세션이 공통으로 사용하는 기반 클래스다.
 ///
-///     UserToken이 전달한 패킷을 세션 단위로 하나씩 처리하며,
+///     TcpConnection이 전달한 패킷을 세션 단위로 하나씩 처리하며,
 ///     프로토콜 번호와 플레이어 번호, MessagePack 본문을 분리한 뒤
 ///     ProtocolRouter를 통해 서버별 핸들러에 전달한다.
 ///
@@ -20,7 +20,7 @@ namespace network.core;
 ///     실제 프로토콜 등록과 세션 제거 처리는 GameSession과 GameClientSession이 구현한다.
 /// </summary>
 public abstract class SessionBase(
-    UserToken token,
+    TcpConnection connection,
     ILogger logger,
     IRedisOperations redisOperations)
     : IConnectionSession
@@ -32,7 +32,7 @@ public abstract class SessionBase(
     protected readonly ILogger Logger = logger;
     protected readonly IProtocolRouter ProtocolRouter = new ProtocolRouter();
     private readonly SemaphoreSlim _sessionLock = new(1);
-    protected readonly UserToken Token = token;
+    protected readonly TcpConnection Connection = connection;
 
     public long? PlayerId { get; protected set; }
 
@@ -43,7 +43,7 @@ public abstract class SessionBase(
         {
             await _sessionLock.WaitAsync();
             lockTaken = true;
-            if (!Token.IsAcceptingMessages) return;
+            if (!Connection.IsAcceptingMessages) return;
             if (!IsMessageLifecycleActive())
                 return;
 
@@ -64,7 +64,7 @@ public abstract class SessionBase(
         catch (MessagePackSerializationException ex)
         {
             Logger.LogWarning(ex, "Invalid MessagePack payload; disconnecting client");
-            Token.Disconnect();
+            Connection.Disconnect();
         }
         catch (Exception ex)
         {
@@ -77,7 +77,7 @@ public abstract class SessionBase(
         }
     }
 
-    public virtual void Send(Packet packet) => Token.Send(packet);
+    public virtual void Send(Packet packet) => Connection.Send(packet);
 
     public abstract void OnRemoved();
 

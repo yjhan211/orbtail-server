@@ -39,8 +39,8 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Equal(ErrorCode.SUCCESS, body.ErrorCode);
         Assert.Equal("Connected to GameServer", body.Message);
 
-        Assert.True(CommitAuthentication(fixture.Store, matchingId, fixture.Token, session));
-        Assert.Equal(1, GetIntField(fixture.Token, "_authenticated"));
+        Assert.True(CommitAuthentication(fixture.Store, matchingId, fixture.Connection, session));
+        Assert.Equal(1, GetIntField(fixture.Connection, "_authenticated"));
         Assert.Equal(1, GetIntField(session, "_admissionCompleted"));
 
         Assert.True(PublishCommittedSuccess(session, packet));
@@ -72,12 +72,12 @@ public sealed class GameClientSessionConnectPublicationTests
         Task<bool> connect = Task.Run(() =>
         {
             using Packet packet = CreateSuccessPacket(session);
-            Assert.True(CommitAuthentication(fixture.Store, matchingId, fixture.Token, session));
+            Assert.True(CommitAuthentication(fixture.Store, matchingId, fixture.Connection, session));
             return PublishCommittedSuccess(session, packet);
         });
 
         Assert.True(senderEntered.Wait(TimeSpan.FromSeconds(5)));
-        Assert.Equal(1, GetIntField(fixture.Token, "_authenticated"));
+        Assert.Equal(1, GetIntField(fixture.Connection, "_authenticated"));
         Assert.Equal(1, GetIntField(session, "_admissionCompleted"));
 
         // 큐 적재가 막혀 있어도 매치 잠금은 비어 있다 — 같은 매치 작업과 터미널 정리가 그대로 진행된다.
@@ -113,12 +113,12 @@ public sealed class GameClientSessionConnectPublicationTests
                 return false;
             });
 
-        Assert.True(CommitAuthentication(fixture.Store, matchingId, fixture.Token, session));
+        Assert.True(CommitAuthentication(fixture.Store, matchingId, fixture.Connection, session));
         using Packet packet = CreateSuccessPacket(session);
 
         Assert.False(PublishCommittedSuccess(session, packet));
         Assert.Equal(1, Volatile.Read(ref senderCalls));
-        Assert.Equal(1, GetIntField(fixture.Token, "_authenticated"));
+        Assert.Equal(1, GetIntField(fixture.Connection, "_authenticated"));
         Assert.Equal(1, GetIntField(session, "_admissionCompleted"));
         Assert.Equal(0, GetIntField(session, "_admissionFailureReported"));
         Assert.Empty(fixture.SentPackets);
@@ -138,8 +138,8 @@ public sealed class GameClientSessionConnectPublicationTests
         }
 
         Assert.Null(fixture.Store.Get(matchingId));
-        Assert.False(CommitAuthentication(fixture.Store, matchingId, fixture.Token, session));
-        Assert.Equal(0, GetIntField(fixture.Token, "_authenticated"));
+        Assert.False(CommitAuthentication(fixture.Store, matchingId, fixture.Connection, session));
+        Assert.Equal(0, GetIntField(fixture.Connection, "_authenticated"));
         Assert.Equal(0, GetIntField(session, "_admissionCompleted"));
         Assert.Empty(fixture.SentPackets);
     }
@@ -182,8 +182,8 @@ public sealed class GameClientSessionConnectPublicationTests
 
         Assert.Contains("ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CONNECT", sessionSource);
         Assert.Contains("async bytes => await HandleMessage<C_TO_G_CONNECT>(bytes, HandleConnect)", sessionSource);
-        Assert.Contains("trySendConnectSuccessResponse ?? Token.TrySend", sessionSource);
-        Assert.Contains("Token.TryMarkAuthenticated(() => Volatile.Write(ref _admissionCompleted, 1))", connectionSource);
+        Assert.Contains("trySendConnectSuccessResponse ?? Connection.TrySend", sessionSource);
+        Assert.Contains("Connection.TryMarkAuthenticated(() => Volatile.Write(ref _admissionCompleted, 1))", connectionSource);
 
         // 세션 등록·초기화 블록·인증 커밋은 매치 잠금 안에서, 성공 ACK 큐 적재는 잠금 밖에서.
         int registration = connectionSource.IndexOf("_matchRuntimes.GetOrCreate(matchingId)", StringComparison.Ordinal);
@@ -191,7 +191,7 @@ public sealed class GameClientSessionConnectPublicationTests
         int countdown = connectionSource.IndexOf("SendMatchStartCountdown(matchingId);", registerCallback, StringComparison.Ordinal);
         int response = connectionSource.IndexOf("CreateConnectResultPacket(", countdown, StringComparison.Ordinal);
         int commitScope = connectionSource.IndexOf("RunUnderLiveMatch(runtime, () =>", response, StringComparison.Ordinal);
-        int authentication = connectionSource.IndexOf("Token.TryMarkAuthenticated", commitScope, StringComparison.Ordinal);
+        int authentication = connectionSource.IndexOf("Connection.TryMarkAuthenticated", commitScope, StringComparison.Ordinal);
         int publication = connectionSource.IndexOf("TryPublishCommittedConnectResult(successResponse)", authentication, StringComparison.Ordinal);
         Assert.True(registration >= 0 && registration < registerCallback && registerCallback < countdown &&
                     countdown < response && response < commitScope && commitScope < authentication &&
@@ -212,7 +212,7 @@ public sealed class GameClientSessionConnectPublicationTests
     private static bool CommitAuthentication(
         MatchRuntimeStore store,
         long matchingId,
-        UserToken token,
+        TcpConnection connection,
         GameClientSession session)
     {
         MatchRuntime? runtime = store.Get(matchingId);
@@ -223,7 +223,7 @@ public sealed class GameClientSessionConnectPublicationTests
         if (runtime.IsTerminal)
             return false;
 
-        if (!token.TryMarkAuthenticated(
+        if (!connection.TryMarkAuthenticated(
                 () => SetIntField(session, "_admissionCompleted", 1)))
         {
             throw new OperationCanceledException("Connection closed before authentication commit.");
@@ -301,12 +301,12 @@ public sealed class GameClientSessionConnectPublicationTests
             name,
             BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.SetValue(session, value);
 
-    private static void Activate(UserToken token)
+    private static void Activate(TcpConnection connection)
     {
-        int active = (int)typeof(UserToken).GetField(
+        int active = (int)typeof(TcpConnection).GetField(
             "StateActive",
             BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
-        SetIntField(token, "_state", active);
+        SetIntField(connection, "_state", active);
     }
 
     private static string FindRepositoryRoot()
@@ -333,7 +333,7 @@ public sealed class GameClientSessionConnectPublicationTests
 
         public List<MatchCleanupStep> CleanupSteps { get; } = [];
         public MatchRuntimeStore Store { get; }
-        public UserToken Token { get; } = new();
+        public TcpConnection Connection { get; } = new();
         public IReadOnlyList<SentPacket> SentPackets => _sentPackets.ToList();
 
         public GameClientSession CreateSession(
@@ -342,10 +342,10 @@ public sealed class GameClientSessionConnectPublicationTests
             Func<Packet, bool> sender,
             Action<GameClientSession>? recordAdmissionFailure = null)
         {
-            Activate(Token);
+            Activate(Connection);
             Store.GetOrCreate(matchingId);
             var session = new GameClientSession(
-                Token,
+                Connection,
                 NullLogger.Instance,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),
@@ -375,7 +375,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 recordAdmissionFailure ?? (_ => { }),
                 GameServerDevOptions.Disabled,
                 sender);
-            Token.SetSession(session);
+            Connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);
             return session;
         }

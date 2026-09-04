@@ -6,7 +6,7 @@ using network.utils;
 namespace network.core;
 
 /// <summary>
-///     UserToken의 패킷 수신과 송신을 처리한다.
+///     TcpConnection의 패킷 수신과 송신을 처리한다.
 ///
 ///     수신한 TCP 데이터를 완성된 패킷으로 조립해 세션에 전달하며,
 ///     처리 대기 중인 메시지는 최대 128개로 제한한다.(MessageQueueOverflow)
@@ -15,7 +15,7 @@ namespace network.core;
 ///     마지막 응답을 보낸 뒤 연결을 종료해야 할 때는 패킷 추가와 종료 예약을
 ///     하나의 작업으로 처리한다.
 /// </summary>
-public partial class UserToken
+public partial class TcpConnection
 {
     public (ErrorCode errorCode, string? errorLog) OnReceived(byte[] buffer, int offset, int transferred)
     {

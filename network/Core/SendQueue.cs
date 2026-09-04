@@ -8,13 +8,13 @@ namespace network.core;
 ///     TCP 연결 하나에서 보낼 패킷을 순서대로 보관한다.
 ///
 ///     대기 중인 패킷 수나 전체 크기가 제한을 넘으면 패킷을 추가하지 않고
-///     Overflow를 반환한다. 이때 연결을 종료할지는 UserToken이 결정한다.
+///     Overflow를 반환한다. 이때 연결을 종료할지는 TcpConnection이 결정한다.
 ///
 ///     패킷은 한 번에 하나씩, 송신 I/O 버퍼(BUFFER_SIZE) 크기로 잘라 전송하며,
 ///     일부만 전송된 경우에는 남은 위치부터 이어서 전송한다. 패킷 자체는 MAX_MESSAGE_SIZE까지 허용한다.
 ///
 ///     송신 큐의 데이터는 내부 잠금으로 보호한다.
-///     UserToken 상태 잠금과 함께 사용할 때는 UserToken 잠금을 먼저 잡는다.
+///     TcpConnection 상태 잠금과 함께 사용할 때는 TcpConnection 잠금을 먼저 잡는다.
 /// </summary>
 internal sealed class SendQueue
 {

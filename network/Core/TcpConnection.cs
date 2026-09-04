@@ -10,7 +10,7 @@ namespace network.core;
 ///
 ///     송신 대기열은 SendQueue가 관리하고,
 ///     인증 및 유휴 시간 제한은 ConnectionTimeouts가 관리한다.
-///     실제 패킷 수신과 송신 처리는 UserToken.Transport 파일에 분리되어 있다.
+///     실제 패킷 수신과 송신 처리는 TcpConnection.Transport 파일에 분리되어 있다.
 ///
 ///     연결 상태:
 ///         New → Active → Closing → Released
@@ -25,7 +25,7 @@ namespace network.core;
 ///     클라이언트 접속 종료, 네트워크 오류, 잘못된 패킷, 타임아웃,
 ///     서버 종료 등 어떤 이유로 종료되더라도 같은 과정을 거친다.
 /// </summary>
-public partial class UserToken
+public partial class TcpConnection
 {
     private const int MaxPendingMessages = 128;
     private const int StateNew = 0;
@@ -56,8 +56,8 @@ public partial class UserToken
 
     private Socket? _socket;
     private IConnectionSession? _session;
-    private Action<UserToken, ConnectionCloseReason, Exception?>? _closeStarted;
-    private Action<UserToken>? _releaseReady;
+    private Action<TcpConnection, ConnectionCloseReason, Exception?>? _closeStarted;
+    private Action<TcpConnection>? _releaseReady;
     private TaskCompletionSource<bool> _releaseCompletion = CreateCompletedReleaseSource();
 
     public SocketAsyncEventArgs? ReceiveEventArgs { get; private set; }
@@ -74,11 +74,11 @@ public partial class UserToken
         Socket socket,
         SocketAsyncEventArgs receiveEventArgs,
         SocketAsyncEventArgs sendEventArgs,
-        Action<UserToken, ConnectionCloseReason, Exception?> closeStarted,
-        Action<UserToken> releaseReady)
+        Action<TcpConnection, ConnectionCloseReason, Exception?> closeStarted,
+        Action<TcpConnection> releaseReady)
     {
         if (Interlocked.Exchange(ref _initialized, 1) != 0)
-            throw new InvalidOperationException("UserToken cannot be initialized more than once.");
+            throw new InvalidOperationException("TcpConnection cannot be initialized more than once.");
 
         _socket = socket ?? throw new ArgumentNullException(nameof(socket));
         ReceiveEventArgs = receiveEventArgs ?? throw new ArgumentNullException(nameof(receiveEventArgs));

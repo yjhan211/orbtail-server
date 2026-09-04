@@ -31,7 +31,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
     private long _assignedMatchingId;
 
     public GameSession(
-        UserToken token,
+        TcpConnection connection,
         ILogger logger,
         IRedisOperations redisOperations,
         IRedLockFactory redLock,
@@ -43,7 +43,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         Func<long, GameSession, (bool Accepted, Action? DisconnectSuperseded)> onSessionRegistered,
         Action<long, long> announceLogin,
         Func<long, GameSession, bool> onSessionRemoved)
-        : base(token, logger, redisOperations)
+        : base(connection, logger, redisOperations)
     {
         _playerService = playerService;
         _matchingManager = matchingManager;
@@ -73,7 +73,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
                 return _activeMatchingRequestId;
         }
     }
-    internal bool IsConnected => !Token.IsReleased;
+    internal bool IsConnected => !Connection.IsReleased;
 
     internal bool TryAssignMatching(long matchingId, string requestId)
     {
@@ -223,7 +223,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
     {
         try
         {
-            bool sent = Token.TrySend(packet);
+            bool sent = Connection.TrySend(packet);
             if (sent && packet.ProtocolId != (int)Protocol.U_TO_C_HEART_BEAT)
                 Logger.LogInformation("Packet sent: Protocol={Protocol}, PlayerId={PlayerId}",
                     (Protocol)packet.ProtocolId, PlayerId);
@@ -384,7 +384,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
             Logger.LogInformation("Sending U_TO_C_LOGIN packet for PlayerId={PlayerId}, Packet size={Size}", PlayerId,
                 loginPacket.ToBytes().Length);
             (bool Accepted, Action? DisconnectSuperseded) registration = default;
-            if (!Token.TryMarkAuthenticated(
+            if (!Connection.TryMarkAuthenticated(
                     () => registration = _onSessionRegistered(PlayerId.Value, this)))
                 throw new OperationCanceledException("Connection closed before login admission.");
             if (!registration.Accepted)
@@ -632,7 +632,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
     {
         try
         {
-            Token.Send(packet);
+            Connection.Send(packet);
             if (packet.ProtocolId != (int)Protocol.U_TO_C_HEART_BEAT)
                 Logger.LogInformation("Packet sent: Protocol={Protocol}, PlayerId={PlayerId}",
                     (Protocol)packet.ProtocolId, PlayerId);
@@ -645,7 +645,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
 
     private void Disconnect()
     {
-        Token.Disconnect();
+        Connection.Disconnect();
     }
 
     protected override void SendErrorResponse(ErrorCode errorCode, string message)
@@ -666,12 +666,12 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         try
         {
             using var packet = PacketMaker.U_TO_C_ERROR(errorCode, message);
-            Token.TrySendAndDisconnect(packet);
+            Connection.TrySendAndDisconnect(packet);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to send final error response: PlayerId={PlayerId}", PlayerId);
-            Token.Disconnect();
+            Connection.Disconnect();
         }
     }
 

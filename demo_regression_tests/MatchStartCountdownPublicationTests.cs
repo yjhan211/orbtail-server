@@ -104,7 +104,7 @@ public sealed class MatchStartCountdownPublicationTests
             "SendMatchStartCountdown(matchingId);",
             "using Packet successResponse = CreateConnectResultPacket(",
             "RunUnderLiveMatch(runtime, () =>",
-            "Token.TryMarkAuthenticated(() => Volatile.Write(ref _admissionCompleted, 1))",
+            "Connection.TryMarkAuthenticated(() => Volatile.Write(ref _admissionCompleted, 1))",
             "TryPublishCommittedConnectResult(successResponse)");
         AssertInOrder(
             directCountdown,
@@ -351,10 +351,10 @@ public sealed class MatchStartCountdownPublicationTests
             "Interlocked.Exchange(ref _admissionDisconnectIssued, 1) != 0",
             "MarkServerInitiatedDisconnect();",
             "PacketMaker.G_TO_C_ERROR(ErrorCode.FATAL",
-            "Token.TrySendAndDisconnect(packet);",
+            "Connection.TrySendAndDisconnect(packet);",
             "catch (Exception ex)",
-            "Token.Disconnect();");
-        Assert.Equal(1, CountOccurrences(method, "Token.TrySendAndDisconnect(packet);"));
+            "Connection.Disconnect();");
+        Assert.Equal(1, CountOccurrences(method, "Connection.TrySendAndDisconnect(packet);"));
     }
 
     private static GameServer CreateAdmissionTestServer()
@@ -507,7 +507,7 @@ public sealed class MatchStartCountdownPublicationTests
 
         public RecordingAdmissionSession(bool throwOnSend = false)
             : base(
-                new UserToken(),
+                new TcpConnection(),
                 NullLogger.Instance,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),

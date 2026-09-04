@@ -10,14 +10,14 @@ namespace network.core;
 ///     서버의 TCP 연결 생성과 종료 과정을 관리한다.
 ///
 ///     Listener가 새 소켓을 수락하면 수신·송신용 SocketAsyncEventArgs를 풀에서 빌리고,
-///     연결을 나타내는 UserToken과 서버별 세션을 연결한 뒤 수신을 시작한다.
+///     연결을 나타내는 TcpConnection과 서버별 세션을 연결한 뒤 수신을 시작한다.
 ///
 ///     활성 연결을 추적하며 서버 종료 시 새로운 접속을 중단하고,
 ///     모든 연결의 송수신과 세션 정리가 끝날 때까지 기다린 후 SocketAsyncEventArgs를 폐기한다.
 /// </summary>
 public sealed class NetworkService
 {
-    private readonly ConcurrentDictionary<UserToken, byte> _activeConnections = new();
+    private readonly ConcurrentDictionary<TcpConnection, byte> _activeConnections = new();
     private readonly Listener _clientListener;
     private readonly object _connectionLifecycleLock = new();
     private readonly SocketEventArgsPool _eventArgsPool;
@@ -41,7 +41,7 @@ public sealed class NetworkService
             () => Volatile.Read(ref _stopping) == 0);
     }
 
-    public Func<UserToken, IConnectionSession?>? SessionFactory { get; set; }
+    public Func<TcpConnection, IConnectionSession?>? SessionFactory { get; set; }
 
     public void Listen(IPAddress address, short port)
     {
@@ -54,9 +54,9 @@ public sealed class NetworkService
         }
     }
 
-    public void CloseClientSocket(UserToken? userToken)
+    public void CloseClientSocket(TcpConnection? connection)
     {
-        userToken?.Disconnect();
+        connection?.Disconnect();
     }
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
@@ -131,19 +131,19 @@ public sealed class NetworkService
         }
     }
 
-    private void StartReceiving(UserToken userToken)
+    private void StartReceiving(TcpConnection connection)
     {
         while (true)
         {
-            if (!userToken.TryBeginOperation()) return;
+            if (!connection.TryBeginOperation()) return;
 
-            var socket = userToken.Socket;
-            var receiveArgs = userToken.ReceiveEventArgs;
+            var socket = connection.Socket;
+            var receiveArgs = connection.ReceiveEventArgs;
             if (socket == null || receiveArgs == null)
             {
-                CloseAndRelease(userToken, ConnectionCloseReason.ReceiveError,
+                CloseAndRelease(connection, ConnectionCloseReason.ReceiveError,
                     new InvalidOperationException("Receive resources are not initialized."));
-                userToken.CompleteOperation();
+                connection.CompleteOperation();
                 return;
             }
 
@@ -154,8 +154,8 @@ public sealed class NetworkService
             }
             catch (Exception ex)
             {
-                CloseAndRelease(userToken, ConnectionCloseReason.ReceiveError, ex);
-                userToken.CompleteOperation();
+                CloseAndRelease(connection, ConnectionCloseReason.ReceiveError, ex);
+                connection.CompleteOperation();
                 return;
             }
 
@@ -179,10 +179,10 @@ public sealed class NetworkService
             return;
         }
 
-        var userToken = new UserToken();
+        var connection = new TcpConnection();
         try
         {
-            if (!TryRegisterConnection(userToken, clientSocket, receiveArgs!, sendArgs!))
+            if (!TryRegisterConnection(connection, clientSocket, receiveArgs!, sendArgs!))
             {
                 _eventArgsPool.Return(receiveArgs, sendArgs);
                 clientSocket.Dispose();
@@ -198,42 +198,42 @@ public sealed class NetworkService
         }
 
         // 세션 생성과 결합도 연결 작업으로 계수하여, 생성 중 close가 EventArgs를 먼저 회수하지 않게 한다.
-        if (!userToken.TryBeginOperation()) return;
+        if (!connection.TryBeginOperation()) return;
         try
         {
             var sessionFactory = SessionFactory;
             if (sessionFactory == null)
             {
-                CloseAndRelease(userToken, ConnectionCloseReason.SessionCreationFailed,
+                CloseAndRelease(connection, ConnectionCloseReason.SessionCreationFailed,
                     new InvalidOperationException("SessionFactory is not registered."));
                 return;
             }
 
-            var session = sessionFactory(userToken);
+            var session = sessionFactory(connection);
             if (session == null)
             {
-                CloseAndRelease(userToken, ConnectionCloseReason.SessionCreationFailed,
+                CloseAndRelease(connection, ConnectionCloseReason.SessionCreationFailed,
                     new InvalidOperationException("SessionFactory did not create a session."));
                 return;
             }
 
-            userToken.SetSession(session);
+            connection.SetSession(session);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Session creation failed");
-            CloseAndRelease(userToken, ConnectionCloseReason.SessionCreationFailed, ex);
+            CloseAndRelease(connection, ConnectionCloseReason.SessionCreationFailed, ex);
         }
         finally
         {
-            userToken.CompleteOperation();
+            connection.CompleteOperation();
         }
 
-        StartReceiving(userToken);
+        StartReceiving(connection);
     }
 
     private bool TryRegisterConnection(
-        UserToken userToken,
+        TcpConnection connection,
         Socket socket,
         SocketAsyncEventArgs receiveArgs,
         SocketAsyncEventArgs sendArgs)
@@ -242,15 +242,15 @@ public sealed class NetworkService
         {
             if (Volatile.Read(ref _stopping) != 0) return false;
 
-            userToken.InitializeConnection(
+            connection.InitializeConnection(
                 socket,
                 receiveArgs,
                 sendArgs,
                 CloseAndReleaseStarted,
                 ReleaseConnection);
 
-            if (!_activeConnections.TryAdd(userToken, 0))
-                throw new InvalidOperationException("The connection token is already registered.");
+            if (!_activeConnections.TryAdd(connection, 0))
+                throw new InvalidOperationException("The connection is already registered.");
 
             return true;
         }
@@ -258,7 +258,7 @@ public sealed class NetworkService
 
     private void ReceiveCompleted(object? _, SocketAsyncEventArgs receiveArgs)
     {
-        if (receiveArgs.UserToken is not UserToken userToken)
+        if (receiveArgs.UserToken is not TcpConnection connection)
         {
             _logger.LogWarning("Receive completion arrived without an owning connection");
             return;
@@ -266,73 +266,73 @@ public sealed class NetworkService
 
         try
         {
-            if (ProcessReceive(receiveArgs)) StartReceiving(userToken);
+            if (ProcessReceive(receiveArgs)) StartReceiving(connection);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected receive completion failure");
-            CloseAndRelease(userToken, ConnectionCloseReason.ReceiveError, ex);
+            CloseAndRelease(connection, ConnectionCloseReason.ReceiveError, ex);
         }
     }
 
     private bool ProcessReceive(SocketAsyncEventArgs receiveArgs)
     {
-        if (receiveArgs.UserToken is not UserToken userToken) return false;
+        if (receiveArgs.UserToken is not TcpConnection connection) return false;
 
         try
         {
             if (receiveArgs.LastOperation != SocketAsyncOperation.Receive)
             {
-                CloseAndRelease(userToken, ConnectionCloseReason.ReceiveError,
+                CloseAndRelease(connection, ConnectionCloseReason.ReceiveError,
                     new InvalidOperationException("A non-receive operation reached the receive callback."));
                 return false;
             }
 
             if (receiveArgs.SocketError != SocketError.Success)
             {
-                CloseAndRelease(userToken, ConnectionCloseReason.ReceiveError,
+                CloseAndRelease(connection, ConnectionCloseReason.ReceiveError,
                     new SocketException((int)receiveArgs.SocketError));
                 return false;
             }
 
             if (receiveArgs.BytesTransferred == 0)
             {
-                CloseAndRelease(userToken, ConnectionCloseReason.RemoteClosed, null);
+                CloseAndRelease(connection, ConnectionCloseReason.RemoteClosed, null);
                 return false;
             }
 
             if (receiveArgs.Buffer == null)
             {
-                CloseAndRelease(userToken, ConnectionCloseReason.ReceiveError,
+                CloseAndRelease(connection, ConnectionCloseReason.ReceiveError,
                     new InvalidOperationException("The receive buffer is missing."));
                 return false;
             }
 
-            (var errorCode, string? errorLog) = userToken.OnReceived(
+            (var errorCode, string? errorLog) = connection.OnReceived(
                 receiveArgs.Buffer,
                 receiveArgs.Offset,
                 receiveArgs.BytesTransferred);
             if (errorCode == ErrorCode.SUCCESS) return true;
 
             _logger.LogWarning("Malformed packet closed the connection: {Reason}", errorLog);
-            CloseAndRelease(userToken, ConnectionCloseReason.MalformedPacket, null);
+            CloseAndRelease(connection, ConnectionCloseReason.MalformedPacket, null);
             return false;
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Packet processing failed; closing the connection");
-            CloseAndRelease(userToken, ConnectionCloseReason.MalformedPacket, ex);
+            CloseAndRelease(connection, ConnectionCloseReason.MalformedPacket, ex);
             return false;
         }
         finally
         {
-            userToken.CompleteOperation();
+            connection.CompleteOperation();
         }
     }
 
     private void SendCompleted(object? _, SocketAsyncEventArgs sendArgs)
     {
-        if (sendArgs.UserToken is not UserToken userToken)
+        if (sendArgs.UserToken is not TcpConnection connection)
         {
             _logger.LogWarning("Send completion arrived without an owning connection");
             return;
@@ -340,27 +340,27 @@ public sealed class NetworkService
 
         try
         {
-            userToken.ProcessSend(sendArgs);
+            connection.ProcessSend(sendArgs);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected send completion failure");
-            CloseAndRelease(userToken, ConnectionCloseReason.SendError, ex);
+            CloseAndRelease(connection, ConnectionCloseReason.SendError, ex);
         }
     }
 
     private void CloseAndRelease(
-        UserToken userToken,
+        TcpConnection connection,
         ConnectionCloseReason reason,
         Exception? exception)
     {
-        if (!userToken.TryBeginClose()) return;
+        if (!connection.TryBeginClose()) return;
 
-        CloseAndReleaseStarted(userToken, reason, exception);
+        CloseAndReleaseStarted(connection, reason, exception);
     }
 
     private void CloseAndReleaseStarted(
-        UserToken userToken,
+        TcpConnection connection,
         ConnectionCloseReason reason,
         Exception? exception)
     {
@@ -381,7 +381,7 @@ public sealed class NetworkService
 
         try
         {
-            userToken.CloseTransport(ex => _logger.LogDebug(ex, "Exception while closing socket resources"));
+            connection.CloseTransport(ex => _logger.LogDebug(ex, "Exception while closing socket resources"));
         }
         catch (Exception ex)
         {
@@ -390,15 +390,15 @@ public sealed class NetworkService
         finally
         {
             // 세션 콜백은 모든 생성/수신/송신/메시지 작업이 끝난 release 단계에서 실행한다.
-            userToken.MarkClosePrepared();
+            connection.MarkClosePrepared();
         }
     }
 
-    private void ReleaseConnection(UserToken userToken)
+    private void ReleaseConnection(TcpConnection connection)
     {
         // 세션 생성 중 close된 경우 세션이 늦게 연결될 수 있으므로 release 직전에 한 번 더 보장한다.
-        userToken.NotifySessionClosed(ex => _logger.LogError(ex, "Session close callback failed"));
-        userToken.DetachEventArgs(out var receiveArgs, out var sendArgs);
+        connection.NotifySessionClosed(ex => _logger.LogError(ex, "Session close callback failed"));
+        connection.DetachEventArgs(out var receiveArgs, out var sendArgs);
         try
         {
             _eventArgsPool.Return(receiveArgs, sendArgs);
@@ -411,9 +411,9 @@ public sealed class NetworkService
         }
         finally
         {
-            userToken.MarkReleased();
-            // userToken은 맨 마지막에 제거
-            _activeConnections.TryRemove(userToken, out _);
+            connection.MarkReleased();
+            // 종료 콜백과 I/O 자원 회수가 모두 끝난 뒤 활성 연결 목록에서 제거한다.
+            _activeConnections.TryRemove(connection, out _);
         }
     }
 }

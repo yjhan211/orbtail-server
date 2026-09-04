@@ -45,7 +45,7 @@ public partial class GameClientSession : SessionBase
     private readonly GameServerDevOptions _devOptions;
     /// <summary>
     ///     Queues an already-built successful admission response after authentication has committed. Production uses
-    ///     <see cref="UserToken.TrySend"/>; tests can inject a sender to verify the match monitor boundary.
+    ///     <see cref="TcpConnection.TrySend"/>; tests can inject a sender to verify the match monitor boundary.
     /// </summary>
     private readonly Func<Packet, bool> _trySendConnectSuccessResponse;
     private readonly Func<long, GameClientSession, Action?> _registerSessionCallback;
@@ -134,7 +134,7 @@ public partial class GameClientSession : SessionBase
     public IReadOnlyCollection<int> ActiveBuffIds => _activeBuffIds;
 
     internal GameClientSession(
-        UserToken token,
+        TcpConnection connection,
         ILogger logger,
         IRedisOperations redisOperations,
         Func<string?, Task<GameHandoffContext?>> consumeGameHandoffTicket,
@@ -164,7 +164,7 @@ public partial class GameClientSession : SessionBase
         Action<GameClientSession> recordAdmissionFailure,
         GameServerDevOptions devOptions,
         Func<Packet, bool>? trySendConnectSuccessResponse = null)
-        : base(token, logger, redisOperations)
+        : base(connection, logger, redisOperations)
     {
         _onLeaveCallback = onLeaveCallback;
         _consumeGameHandoffTicket = consumeGameHandoffTicket;
@@ -188,7 +188,7 @@ public partial class GameClientSession : SessionBase
         _handleSwarmOrbDecision = handleSwarmOrbDecision;
         _getItemCombineRandom = getItemCombineRandom;
         _admissionStateCommitter = new GameAdmissionStateCommitter(redisOperations, logger);
-        _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Token.TrySend;
+        _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
         _publishPlayerLeft = publishPlayerLeft;
         _prepareGameCompletion = prepareGameCompletion;
         _releaseMatchingClaim = releaseMatchingClaim;
@@ -485,12 +485,12 @@ public partial class GameClientSession : SessionBase
         try
         {
             using var packet = PacketMaker.G_TO_C_ERROR(ErrorCode.FATAL, "게임 입장 초기화에 실패했습니다");
-            Token.TrySendAndDisconnect(packet);
+            Connection.TrySendAndDisconnect(packet);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "입장 실패 응답 전송 실패: PlayerId={PlayerId}", PlayerId);
-            Token.Disconnect();
+            Connection.Disconnect();
         }
     }
 

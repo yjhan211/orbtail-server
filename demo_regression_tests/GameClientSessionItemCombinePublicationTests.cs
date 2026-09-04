@@ -83,7 +83,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         using var fixture = new SessionFixture();
         CountingRandom itemCombineRandom = fixture.ConfigureItemCombineRandom(FirstMatchingId, 0);
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        RecordingUserToken token = fixture.TokenFor(session);
+        RecordingTcpConnection connection = fixture.ConnectionFor(session);
         (InGameItemInfo first, InGameItemInfo second) = fixture.SeedPair(
             FirstMatchingId,
             FirstPlayerId,
@@ -102,9 +102,9 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 Protocol.G_TO_C_INGAME_INVENTORY_UPDATE,
                 Protocol.G_TO_C_USE_INGAME_ITEM_RESULT
             ],
-            token.DeliveredProtocols);
+            connection.DeliveredProtocols);
 
-        G_TO_C_ITEMS_COMBINED combined = token.DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
+        G_TO_C_ITEMS_COMBINED combined = connection.DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
             Protocol.G_TO_C_ITEMS_COMBINED);
         Assert.Equal(193401, combined.RecipeId);
         Assert.Equal(RecoveryOrbT1, combined.InputItemA);
@@ -115,7 +115,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.False(combined.IsRaceComplete);
 
         G_TO_C_INGAME_INVENTORY_UPDATE inventoryUpdate =
-            token.DeserializeSingle<G_TO_C_INGAME_INVENTORY_UPDATE>(
+            connection.DeserializeSingle<G_TO_C_INGAME_INVENTORY_UPDATE>(
                 Protocol.G_TO_C_INGAME_INVENTORY_UPDATE);
         Assert.Equal(3, inventoryUpdate.Items.Count);
         Assert.Equal(
@@ -137,7 +137,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             fixture.Inventories.GetEquippedBattleItem(FirstMatchingId, FirstPlayerId)!.ItemUid);
 
         G_TO_C_USE_INGAME_ITEM_RESULT equipped =
-            token.DeserializeSingle<G_TO_C_USE_INGAME_ITEM_RESULT>(
+            connection.DeserializeSingle<G_TO_C_USE_INGAME_ITEM_RESULT>(
                 Protocol.G_TO_C_USE_INGAME_ITEM_RESULT);
         Assert.True(equipped.Success);
         Assert.Equal(liveOutput.ItemUid, equipped.ItemUid);
@@ -161,7 +161,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         using var fixture = new SessionFixture();
         CountingRandom itemCombineRandom = fixture.ConfigureItemCombineRandom(FirstMatchingId, 1);
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        RecordingUserToken token = fixture.TokenFor(session);
+        RecordingTcpConnection connection = fixture.ConnectionFor(session);
         (InGameItemInfo first, _) = fixture.SeedPair(
             FirstMatchingId,
             FirstPlayerId,
@@ -180,8 +180,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 Protocol.G_TO_C_INGAME_INVENTORY_UPDATE,
                 Protocol.G_TO_C_USE_INGAME_ITEM_RESULT
             ],
-            token.DeliveredProtocols);
-        G_TO_C_ITEMS_COMBINED combined = token.DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
+            connection.DeliveredProtocols);
+        G_TO_C_ITEMS_COMBINED combined = connection.DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
             Protocol.G_TO_C_ITEMS_COMBINED);
         Assert.Equal(0, combined.RecipeId);
         Assert.Equal(SunOrbT1, combined.InputItemA);
@@ -200,7 +200,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             fixture.Inventories.GetEquippedBattleItem(FirstMatchingId, FirstPlayerId)!.ItemUid);
         Assert.Equal(
             output.ItemUid,
-            token.DeserializeSingle<G_TO_C_USE_INGAME_ITEM_RESULT>(
+            connection.DeserializeSingle<G_TO_C_USE_INGAME_ITEM_RESULT>(
                 Protocol.G_TO_C_USE_INGAME_ITEM_RESULT).ItemUid);
 
         List<GameEventEntry> events = fixture.EventLog.GetForPersistence(FirstMatchingId);
@@ -228,15 +228,15 @@ public sealed class GameClientSessionItemCombinePublicationTests
         using var fixture = new SessionFixture();
         CountingRandom itemCombineRandom = fixture.ConfigureItemCombineRandom(FirstMatchingId, 0);
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        RecordingUserToken token = fixture.TokenFor(session);
+        RecordingTcpConnection connection = fixture.ConnectionFor(session);
         fixture.SeedPair(FirstMatchingId, FirstPlayerId, Bandage);
 
         await SendCombineAsync(session, Bandage, Bandage);
 
         Assert.Equal(
             [Protocol.G_TO_C_ITEMS_COMBINED, Protocol.G_TO_C_INGAME_INVENTORY_UPDATE],
-            token.DeliveredProtocols);
-        G_TO_C_ITEMS_COMBINED result = token.DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
+            connection.DeliveredProtocols);
+        G_TO_C_ITEMS_COMBINED result = connection.DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
             Protocol.G_TO_C_ITEMS_COMBINED);
         Assert.Equal(193031, result.RecipeId);
         Assert.Equal(Bandage, result.InputItemA);
@@ -245,7 +245,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(CompressionBandage, Assert.Single(
             fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId)).ItemId);
         G_TO_C_INGAME_INVENTORY_UPDATE update =
-            token.DeserializeSingle<G_TO_C_INGAME_INVENTORY_UPDATE>(
+            connection.DeserializeSingle<G_TO_C_INGAME_INVENTORY_UPDATE>(
                 Protocol.G_TO_C_INGAME_INVENTORY_UPDATE);
         Assert.Equal(2, update.Items.Count(item => item.ItemId == Bandage && item.Count == 0));
         Assert.Single(update.Items, item => item.ItemId == CompressionBandage && item.Count == 1);
@@ -269,7 +269,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         using var fixture = new SessionFixture();
         CountingRandom itemCombineRandom = fixture.ConfigureItemCombineRandom(FirstMatchingId, 0);
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        RecordingUserToken token = fixture.TokenFor(session);
+        RecordingTcpConnection connection = fixture.ConnectionFor(session);
         int itemA;
         int itemB;
 
@@ -308,7 +308,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
 
         await SendCombineAsync(session, itemA, itemB);
 
-        AssertCombineFailure(token, itemA, itemB, expectedError);
+        AssertCombineFailure(connection, itemA, itemB, expectedError);
         Assert.Equal(before, fixture.InventorySnapshot(FirstMatchingId, FirstPlayerId));
         Assert.Empty(fixture.EventLog.GetForPersistence(FirstMatchingId));
         Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
@@ -326,7 +326,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
 
         await SendCombineAsync(missingPlayer, Bandage, Bandage);
 
-        Assert.Empty(fixture.TokenFor(missingPlayer).AttemptedProtocols);
+        Assert.Empty(fixture.ConnectionFor(missingPlayer).AttemptedProtocols);
 
         GameClientSession missingMatch = fixture.CreateSession(SecondMatchingId, SecondPlayerId);
         fixture.SeedPair(SecondMatchingId, SecondPlayerId, Bandage);
@@ -337,7 +337,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         await SendCombineAsync(missingMatch, Bandage, Bandage);
 
         AssertCombineFailure(
-            fixture.TokenFor(missingMatch),
+            fixture.ConnectionFor(missingMatch),
             Bandage,
             Bandage,
             ErrorCode.INVALID_GAME_STATE);
@@ -356,7 +356,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             FirstMatchingId,
             FirstPlayerId);
         var timeline = new ConcurrentQueue<string>();
-        fixture.TokenFor(session).BeforeSend = protocol => timeline.Enqueue($"send:{protocol}");
+        fixture.ConnectionFor(session).BeforeSend = protocol => timeline.Enqueue($"send:{protocol}");
         MatchRuntime runtime = fixture.Store.Get(FirstMatchingId)!;
         using var lockHeld = new ManualResetEventSlim();
         using var markTerminal = new ManualResetEventSlim();
@@ -382,7 +382,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             ["send:G_TO_C_ITEMS_COMBINED", "send:G_TO_C_ERROR"],
             timeline);
         AssertCombineFailure(
-            fixture.TokenFor(session),
+            fixture.ConnectionFor(session),
             Bandage,
             Bandage,
             ErrorCode.INVALID_GAME_STATE);
@@ -409,7 +409,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         var entered = new ManualResetEventSlim();
         var release = new ManualResetEventSlim();
         var timeline = new ConcurrentQueue<string>();
-        fixture.TokenFor(session).BeforeSend = protocol =>
+        fixture.ConnectionFor(session).BeforeSend = protocol =>
         {
             timeline.Enqueue($"send:{protocol}");
             if (protocol != Protocol.G_TO_C_ITEMS_COMBINED)
@@ -458,7 +458,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
     {
         using var fixture = new SessionFixture();
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        RecordingUserToken token = fixture.TokenFor(session);
+        RecordingTcpConnection connection = fixture.ConnectionFor(session);
         (InGameItemInfo first, _) = fixture.SeedPair(
             FirstMatchingId,
             FirstPlayerId,
@@ -468,7 +468,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             FirstPlayerId,
             first.ItemUid,
             out _));
-        token.ThrowOnceOn = failingProtocol;
+        connection.ThrowOnceOn = failingProtocol;
         Protocol[] bundle =
         [
             Protocol.G_TO_C_ITEMS_COMBINED,
@@ -480,10 +480,10 @@ public sealed class GameClientSessionItemCombinePublicationTests
 
         Assert.Equal(
             bundle.Take(failingIndex + 1).Append(Protocol.G_TO_C_ERROR),
-            token.AttemptedProtocols);
+            connection.AttemptedProtocols);
         Assert.Equal(
             bundle.Take(failingIndex).Append(Protocol.G_TO_C_ERROR),
-            token.DeliveredProtocols);
+            connection.DeliveredProtocols);
         InGameItemInfo output = Assert.Single(
             fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId));
         Assert.Equal(RecoveryOrbT2, output.ItemId);
@@ -492,7 +492,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             fixture.Inventories.GetEquippedBattleItem(FirstMatchingId, FirstPlayerId)!.ItemUid);
         // 송신이 잠금 안에서 바로 나가므로 실패한 Send 뒤의 로그 단계는 돌지 않는다 — 인벤토리 변경은 남는다.
         Assert.Empty(fixture.EventLog.GetForPersistence(FirstMatchingId));
-        G_TO_C_ERROR error = token.DeserializeSingle<G_TO_C_ERROR>(Protocol.G_TO_C_ERROR);
+        G_TO_C_ERROR error = connection.DeserializeSingle<G_TO_C_ERROR>(Protocol.G_TO_C_ERROR);
         Assert.Equal(ErrorCode.SERVER_INTERNAL_ERROR, error.ErrorCode);
         Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
     }
@@ -510,7 +510,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         using var entered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
         var timeline = new ConcurrentQueue<string>();
-        fixture.TokenFor(blocker).BeforeSend = protocol =>
+        fixture.ConnectionFor(blocker).BeforeSend = protocol =>
         {
             timeline.Enqueue($"blocker:{protocol}");
             if (protocol != Protocol.G_TO_C_ITEMS_COMBINED)
@@ -518,9 +518,9 @@ public sealed class GameClientSessionItemCombinePublicationTests
             entered.Set();
             Assert.True(release.Wait(TimeSpan.FromSeconds(5)));
         };
-        fixture.TokenFor(firstWaiter).BeforeSend =
+        fixture.ConnectionFor(firstWaiter).BeforeSend =
             protocol => timeline.Enqueue($"first-waiter:{protocol}");
-        fixture.TokenFor(secondWaiter).BeforeSend =
+        fixture.ConnectionFor(secondWaiter).BeforeSend =
             protocol => timeline.Enqueue($"second-waiter:{protocol}");
 
         Task blockerTask = Task.Run(() => SendCombineAsync(blocker, Bandage, Bandage));
@@ -542,8 +542,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
             await Task.Delay(100);
             Assert.False(firstWaiterTask.IsCompleted);
             Assert.False(secondWaiterTask.IsCompleted);
-            Assert.Empty(fixture.TokenFor(firstWaiter).AttemptedProtocols);
-            Assert.Empty(fixture.TokenFor(secondWaiter).AttemptedProtocols);
+            Assert.Empty(fixture.ConnectionFor(firstWaiter).AttemptedProtocols);
+            Assert.Empty(fixture.ConnectionFor(secondWaiter).AttemptedProtocols);
             Assert.Equal(2, fixture.Inventories.GetAllItems(FirstMatchingId, SecondPlayerId).Count);
             Assert.Equal(2, fixture.Inventories.GetAllItems(FirstMatchingId, ThirdPlayerId).Count);
         }
@@ -588,7 +588,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         fixture.SeedPair(FirstMatchingId, SecondPlayerId, SunOrbT1);
         using var entered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
-        fixture.TokenFor(first).BeforeSend = protocol =>
+        fixture.ConnectionFor(first).BeforeSend = protocol =>
         {
             if (protocol != Protocol.G_TO_C_ITEMS_COMBINED)
                 return;
@@ -628,11 +628,11 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(2, fixture.ItemCombineRandomResolverCallCount(FirstMatchingId));
         Assert.Equal(
             SunOrbT2,
-            fixture.TokenFor(first).DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
+            fixture.ConnectionFor(first).DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
                 Protocol.G_TO_C_ITEMS_COMBINED).OutputItemId);
         Assert.Equal(
             WindOrbT2,
-            fixture.TokenFor(second).DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
+            fixture.ConnectionFor(second).DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
                 Protocol.G_TO_C_ITEMS_COMBINED).OutputItemId);
     }
 
@@ -646,7 +646,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         fixture.SeedPair(SecondMatchingId, SecondPlayerId, Bandage);
         var entered = new ManualResetEventSlim();
         var release = new ManualResetEventSlim();
-        fixture.TokenFor(first).BeforeSend = protocol =>
+        fixture.ConnectionFor(first).BeforeSend = protocol =>
         {
             if (protocol != Protocol.G_TO_C_ITEMS_COMBINED)
                 return;
@@ -661,7 +661,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
 
         Assert.Equal(
             [Protocol.G_TO_C_ITEMS_COMBINED, Protocol.G_TO_C_INGAME_INVENTORY_UPDATE],
-            fixture.TokenFor(second).DeliveredProtocols);
+            fixture.ConnectionFor(second).DeliveredProtocols);
         Assert.False(firstTask.IsCompleted);
 
         release.Set();
@@ -680,7 +680,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         fixture.SeedPair(SecondMatchingId, SecondPlayerId, SunOrbT1);
         using var entered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
-        fixture.TokenFor(first).BeforeSend = protocol =>
+        fixture.ConnectionFor(first).BeforeSend = protocol =>
         {
             if (protocol != Protocol.G_TO_C_ITEMS_COMBINED)
                 return;
@@ -702,7 +702,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             Assert.NotSame(firstRandom, secondRandom);
             Assert.Equal(
                 WindOrbT2,
-                fixture.TokenFor(second).DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
+                fixture.ConnectionFor(second).DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
                     Protocol.G_TO_C_ITEMS_COMBINED).OutputItemId);
         }
         finally
@@ -714,7 +714,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
 
         Assert.Equal(
             WaveOrbT2,
-            fixture.TokenFor(first).DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
+            fixture.ConnectionFor(first).DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
                 Protocol.G_TO_C_ITEMS_COMBINED).OutputItemId);
         Assert.Equal(1, fixture.ItemCombineRandomResolverCallCount(FirstMatchingId));
         Assert.Equal(1, fixture.ItemCombineRandomResolverCallCount(SecondMatchingId));
@@ -809,15 +809,15 @@ public sealed class GameClientSessionItemCombinePublicationTests
     }
 
     private static void AssertCombineFailure(
-        RecordingUserToken token,
+        RecordingTcpConnection connection,
         int itemA,
         int itemB,
         ErrorCode errorCode)
     {
         Assert.Equal(
             [Protocol.G_TO_C_ITEMS_COMBINED, Protocol.G_TO_C_ERROR],
-            token.DeliveredProtocols);
-        G_TO_C_ITEMS_COMBINED result = token.DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
+            connection.DeliveredProtocols);
+        G_TO_C_ITEMS_COMBINED result = connection.DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
             Protocol.G_TO_C_ITEMS_COMBINED);
         Assert.Equal(0, result.RecipeId);
         Assert.Equal(itemA, result.InputItemA);
@@ -826,7 +826,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(string.Empty, result.OutputItemName);
         Assert.Equal(0, result.StaminaReward);
         Assert.False(result.IsRaceComplete);
-        G_TO_C_ERROR error = token.DeserializeSingle<G_TO_C_ERROR>(Protocol.G_TO_C_ERROR);
+        G_TO_C_ERROR error = connection.DeserializeSingle<G_TO_C_ERROR>(Protocol.G_TO_C_ERROR);
         Assert.Equal(errorCode, error.ErrorCode);
         Assert.Equal("부품 결합 실패", error.Message);
     }
@@ -872,7 +872,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
     private sealed class SessionFixture : IDisposable
     {
         private readonly List<GameClientSession> _sessions = [];
-        private readonly Dictionary<GameClientSession, RecordingUserToken> _tokens = [];
+        private readonly Dictionary<GameClientSession, RecordingTcpConnection> _connections = [];
         private readonly ConcurrentDictionary<long, CountingRandom> _itemCombineRandoms = new();
         private readonly ConcurrentDictionary<long, int> _itemCombineRandomResolverCalls = new();
         private readonly string _summaryDirectory = Path.Combine(
@@ -919,10 +919,10 @@ public sealed class GameClientSessionItemCombinePublicationTests
             GroundItems.InitializeMatching(matchingId);
             Doors.InitializeMatching(matchingId);
 
-            var token = new RecordingUserToken();
-            Activate(token);
+            var connection = new RecordingTcpConnection();
+            Activate(connection);
             var session = new GameClientSession(
-                token,
+                connection,
                 NullLogger.Instance,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),
@@ -953,14 +953,14 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 static () => false,
                 static _ => { },
                 GameServerDevOptions.Disabled);
-            token.SetSession(session);
+            connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);
             _sessions.Add(session);
-            _tokens.Add(session, token);
+            _connections.Add(session, connection);
             return session;
         }
 
-        public RecordingUserToken TokenFor(GameClientSession session) => _tokens[session];
+        public RecordingTcpConnection ConnectionFor(GameClientSession session) => _connections[session];
 
         /// <summary>잠금 안에서 터미널로 표시하고 나온다 — 정리는 깊이 0 탈출에서 바로 돈다.</summary>
         public void MarkTerminal(long matchingId)
@@ -1052,14 +1052,14 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 name,
                 BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner));
 
-        private static void Activate(UserToken token)
+        private static void Activate(TcpConnection connection)
         {
-            int active = (int)typeof(UserToken).GetField(
+            int active = (int)typeof(TcpConnection).GetField(
                 "StateActive",
                 BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
-            typeof(UserToken).GetField(
+            typeof(TcpConnection).GetField(
                 "_state",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(token, active);
+                BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(connection, active);
         }
 
         private static GameServer CreateServer() => new(
@@ -1124,7 +1124,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         }
     }
 
-    private sealed class RecordingUserToken : UserToken
+    private sealed class RecordingTcpConnection : TcpConnection
     {
         private readonly object _gate = new();
         private readonly List<(Protocol Protocol, byte[] WireBytes)> _delivered = [];

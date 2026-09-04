@@ -5,10 +5,10 @@ using network.packets;
 namespace demo_regression_tests;
 
 /// <summary>
-///     UserToken에서 떼어낸 두 부품. SendQueue: 상한(128개·256KB)·거절 조건은 잠금 안·부분 전송 오프셋·비우기.
+///     TcpConnection에서 떼어낸 두 부품. SendQueue: 상한(128개·256KB)·거절 조건은 잠금 안·부분 전송 오프셋·비우기.
 ///     ConnectionTimeouts: 인증 창은 인증되면 취소, 유휴 창은 Touch로 미뤄지고 Dispose 뒤에는 아무 콜백도 없다.
 /// </summary>
-public sealed class UserTokenComponentTests
+public sealed class TcpConnectionComponentTests
 {
     private static Packet NewPacket(int bodyBytes = 16)
     {

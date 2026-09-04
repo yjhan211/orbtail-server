@@ -16,8 +16,8 @@ public sealed class UserServerMatchingReconciliationTests
     public async Task MissingClaim_ClearsStaleAssignmentAndStartsNewRequest()
     {
         var matching = new RecordingMatchingManager();
-        using var connection = new ActiveUserToken();
-        var session = NewSession(connection.Token, matching);
+        using var connection = new ActiveTcpConnection();
+        var session = NewSession(connection.Connection, matching);
 
         string firstRequest = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
         Assert.True(session.TryAssignMatching(42, firstRequest));
@@ -33,8 +33,8 @@ public sealed class UserServerMatchingReconciliationTests
     public async Task ExistingClaim_PreservesAssignmentAndRejectsNewRequest()
     {
         var matching = new RecordingMatchingManager();
-        using var connection = new ActiveUserToken();
-        var session = NewSession(connection.Token, matching);
+        using var connection = new ActiveTcpConnection();
+        var session = NewSession(connection.Connection, matching);
 
         string firstRequest = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
         Assert.True(session.TryAssignMatching(42, firstRequest));
@@ -49,8 +49,8 @@ public sealed class UserServerMatchingReconciliationTests
     public async Task ConcurrentClearAndNewRequest_AreNotOverwrittenByOlderReconciliation()
     {
         var matching = new RecordingMatchingManager();
-        using var connection = new ActiveUserToken();
-        var session = NewSession(connection.Token, matching);
+        using var connection = new ActiveTcpConnection();
+        var session = NewSession(connection.Connection, matching);
 
         string firstRequest = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
         Assert.True(session.TryAssignMatching(42, firstRequest));
@@ -70,8 +70,8 @@ public sealed class UserServerMatchingReconciliationTests
     public async Task ClaimReadFailure_FailsClosedWithoutClearingAssignment()
     {
         var matching = new RecordingMatchingManager();
-        using var connection = new ActiveUserToken();
-        var session = NewSession(connection.Token, matching);
+        using var connection = new ActiveTcpConnection();
+        var session = NewSession(connection.Connection, matching);
 
         string firstRequest = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
         Assert.True(session.TryAssignMatching(42, firstRequest));
@@ -81,10 +81,10 @@ public sealed class UserServerMatchingReconciliationTests
         Assert.Equal(firstRequest, session.ActiveMatchingRequestId);
     }
 
-    private static GameSession NewSession(UserToken token, IMatchingManager matchingManager)
+    private static GameSession NewSession(TcpConnection connection, IMatchingManager matchingManager)
     {
         return new GameSession(
-            token,
+            connection,
             NullLogger.Instance,
             new InMemoryRedisOperations(),
             new FakeRedLockFactory(),
@@ -126,34 +126,34 @@ public sealed class UserServerMatchingReconciliationTests
         public Task StopAsync() => Task.CompletedTask;
     }
 
-    private sealed class ActiveUserToken : IDisposable
+    private sealed class ActiveTcpConnection : IDisposable
     {
-        public ActiveUserToken()
+        public ActiveTcpConnection()
         {
-            Token.InitializeConnection(
+            Connection.InitializeConnection(
                 new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp),
                 new SocketAsyncEventArgs(),
                 new SocketAsyncEventArgs(),
-                static (token, _, _) =>
+                static (connection, _, _) =>
                 {
-                    token.CloseTransport(static _ => { });
-                    token.NotifySessionClosed(static _ => { });
-                    token.MarkClosePrepared();
+                    connection.CloseTransport(static _ => { });
+                    connection.NotifySessionClosed(static _ => { });
+                    connection.MarkClosePrepared();
                 },
-                static token =>
+                static connection =>
                 {
-                    token.DetachEventArgs(out SocketAsyncEventArgs? receive, out SocketAsyncEventArgs? send);
+                    connection.DetachEventArgs(out SocketAsyncEventArgs? receive, out SocketAsyncEventArgs? send);
                     receive?.Dispose();
                     send?.Dispose();
-                    token.MarkReleased();
+                    connection.MarkReleased();
                 });
         }
 
-        public UserToken Token { get; } = new();
+        public TcpConnection Connection { get; } = new();
 
         public void Dispose()
         {
-            Token.Disconnect();
+            Connection.Disconnect();
         }
     }
 }

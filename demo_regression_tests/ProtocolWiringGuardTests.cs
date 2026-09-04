@@ -94,14 +94,14 @@ public class ProtocolWiringGuardTests
         Assert.DoesNotContain("_lastHeartbeatTime", gameSession);
         Assert.DoesNotContain("IsHeartbeatTimedOut", gameConnection);
 
-        // Heartbeat packets remain ordinary inbound traffic. UserToken touches the shared
+        // Heartbeat packets remain ordinary inbound traffic. TcpConnection touches the shared
         // ConnectionTimeouts idle window before dispatching them to this response handler.
         Assert.Contains("RegisterHandler(Protocol.C_TO_G_HEART_BEAT", gameSession);
         Assert.Contains("PacketMaker.G_TO_C_HEART_BEAT", gameConnection);
     }
 
     [Fact]
-    public void NetworkServiceBindsOnlyFullyConstructedSessionsToUserTokens()
+    public void NetworkServiceBindsOnlyFullyConstructedSessionsToTcpConnections()
     {
         string root = FindRepositoryRoot();
         string sessionBase = File.ReadAllText(Path.Combine(
@@ -109,13 +109,13 @@ public class ProtocolWiringGuardTests
         string networkService = File.ReadAllText(Path.Combine(
             root, "network", "Core", "NetworkService.cs"));
 
-        Assert.DoesNotContain("Token.SetSession(this)", sessionBase);
+        Assert.DoesNotContain("Connection.SetSession(this)", sessionBase);
 
         int createIndex = networkService.IndexOf(
-            "var session = sessionFactory(userToken);",
+            "var session = sessionFactory(connection);",
             StringComparison.Ordinal);
         int bindIndex = networkService.IndexOf(
-            "userToken.SetSession(session);",
+            "connection.SetSession(session);",
             StringComparison.Ordinal);
 
         Assert.True(createIndex >= 0, "NetworkService must create the session through SessionFactory.");

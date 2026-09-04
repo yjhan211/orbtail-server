@@ -879,18 +879,18 @@ public partial class GameServer(
         }
     }
 
-    private IConnectionSession? CreateClientSession(UserToken token)
+    private IConnectionSession? CreateClientSession(TcpConnection connection)
     {
         if (Volatile.Read(ref _stopping) != 0)
         {
-            token.Disconnect();
+            connection.Disconnect();
             return null;
         }
 
         try
         {
             var session = new GameClientSession(
-                token,
+                connection,
                 logger,
                 redisOperations,
                 ticket => gameHandoffTicketService.ConsumeAsync(ticket, nodeOptions.NodeId),
@@ -932,7 +932,7 @@ public partial class GameServer(
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to create game client session");
-            token.Disconnect();
+            connection.Disconnect();
             return null;
         }
     }

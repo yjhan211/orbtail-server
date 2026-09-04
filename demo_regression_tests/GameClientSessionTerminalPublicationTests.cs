@@ -60,7 +60,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         {
             await Task.Delay(100);
             Assert.False(terminal.IsCompleted);
-            Assert.All(sessions, session => Assert.Empty(fixture.TokenFor(session).AttemptedProtocols));
+            Assert.All(sessions, session => Assert.Empty(fixture.ConnectionFor(session).AttemptedProtocols));
 
             // 다른 매치는 잠금이 독립이라 그대로 진행한다.
             Assert.True(fixture.Store.TryEnter(otherMatchingId, out MatchScope otherScope));
@@ -75,7 +75,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         await holder.WaitAsync(TimeSpan.FromSeconds(5));
         await terminal.WaitAsync(TimeSpan.FromSeconds(5));
 
-        G_TO_C_GAME_RESULT winnerResult = Assert.Single(fixture.TokenFor(winner)
+        G_TO_C_GAME_RESULT winnerResult = Assert.Single(fixture.ConnectionFor(winner)
             .DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT));
         Assert.Equal(winner.PlayerId, winnerResult.WinnerId);
         Assert.False(winnerResult.IsTimeout);
@@ -96,11 +96,11 @@ public sealed class GameClientSessionTerminalPublicationTests
 
         foreach (RecordingSession session in sessions)
         {
-            RecordingUserToken token = fixture.TokenFor(session);
-            Assert.Single(token.DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT));
+            RecordingTcpConnection connection = fixture.ConnectionFor(session);
+            Assert.Single(connection.DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT));
 
             G_TO_C_GAME_END gameEnd =
-                token.DeserializeSingle<G_TO_C_GAME_END>(Protocol.G_TO_C_GAME_END);
+                connection.DeserializeSingle<G_TO_C_GAME_END>(Protocol.G_TO_C_GAME_END);
             Assert.Equal(matchingId, gameEnd.MatchingId);
             Assert.Equal(session.PlayerId == winner.PlayerId, gameEnd.IsEscaped);
             Assert.True(session.IsGameEnded);
@@ -110,7 +110,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             winnerResult.Players,
             player => player.PlayerId == winner.PlayerId);
         GameResultPlayerInfo spectatorRow = Assert.Single(
-            fixture.TokenFor(spectator)
+            fixture.ConnectionFor(spectator)
                 .DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT)
                 .Single().Players,
             player => player.PlayerId == spectator.PlayerId);
@@ -159,23 +159,23 @@ public sealed class GameClientSessionTerminalPublicationTests
         start.Set();
         await Task.WhenAll(finalizers).WaitAsync(TimeSpan.FromSeconds(5));
 
-        long publishedWinnerId = fixture.TokenFor(sessions[0])
+        long publishedWinnerId = fixture.ConnectionFor(sessions[0])
             .DeserializeSingle<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT)
             .WinnerId;
         Assert.Contains(publishedWinnerId, sessions.Select(session => session.PlayerId!.Value));
         foreach (RecordingSession session in sessions)
         {
-            RecordingUserToken token = fixture.TokenFor(session);
+            RecordingTcpConnection connection = fixture.ConnectionFor(session);
             G_TO_C_GAME_RESULT result =
-                token.DeserializeSingle<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT);
+                connection.DeserializeSingle<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT);
             G_TO_C_GAME_END gameEnd =
-                token.DeserializeSingle<G_TO_C_GAME_END>(Protocol.G_TO_C_GAME_END);
+                connection.DeserializeSingle<G_TO_C_GAME_END>(Protocol.G_TO_C_GAME_END);
             Assert.Equal(publishedWinnerId, result.WinnerId);
             Assert.Equal(matchingId, gameEnd.MatchingId);
             Assert.Equal(session.PlayerId == publishedWinnerId, gameEnd.IsEscaped);
             Assert.Equal(
                 [Protocol.G_TO_C_GAME_RESULT, Protocol.G_TO_C_GAME_END],
-                token.AttemptedProtocols);
+                connection.AttemptedProtocols);
             Assert.Equal(1, fixture.LifecycleDispatchCounts.GetValueOrDefault(session.PlayerId!.Value));
         }
 
@@ -199,22 +199,22 @@ public sealed class GameClientSessionTerminalPublicationTests
         fixture.SeedRoster(matchingId, sessions, totalEntries: 8, useLongProfiles: true);
         fixture.Store.GetOrCreate(matchingId);
         fixture.ThrowPrepareCompletionForPlayerId = markFailure.PlayerId;
-        fixture.TokenFor(resultFailure).ThrowOnceOn = Protocol.G_TO_C_GAME_RESULT;
-        fixture.TokenFor(endFailure).ThrowOnceOn = Protocol.G_TO_C_GAME_END;
+        fixture.ConnectionFor(resultFailure).ThrowOnceOn = Protocol.G_TO_C_GAME_RESULT;
+        fixture.ConnectionFor(endFailure).ThrowOnceOn = Protocol.G_TO_C_GAME_END;
 
         markFailure.TryEndMatch(markFailure.PlayerId!.Value, "isolated_terminal_failures");
 
-        Assert.Single(fixture.TokenFor(markFailure)
+        Assert.Single(fixture.ConnectionFor(markFailure)
             .DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT));
 
-        RecordingUserToken resultFailureToken = fixture.TokenFor(resultFailure);
+        RecordingTcpConnection resultFailureToken = fixture.ConnectionFor(resultFailure);
         Assert.Equal(
             1,
             resultFailureToken.AttemptedProtocols.Count(protocol => protocol == Protocol.G_TO_C_GAME_RESULT));
         Assert.Empty(resultFailureToken.DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT));
         Assert.Contains(Protocol.G_TO_C_GAME_END, resultFailureToken.DeliveredProtocols);
 
-        RecordingUserToken endFailureToken = fixture.TokenFor(endFailure);
+        RecordingTcpConnection endFailureToken = fixture.ConnectionFor(endFailure);
         Assert.Equal(1, endFailureToken.DeliveredProtocols.Count(
             protocol => protocol == Protocol.G_TO_C_GAME_RESULT));
         Assert.Contains(Protocol.G_TO_C_GAME_END, endFailureToken.AttemptedProtocols);
@@ -254,7 +254,7 @@ public sealed class GameClientSessionTerminalPublicationTests
     private sealed class TerminalFixture : IDisposable
     {
         private readonly List<GameClientSession> _sessions = [];
-        private readonly Dictionary<GameClientSession, RecordingUserToken> _tokens = [];
+        private readonly Dictionary<GameClientSession, RecordingTcpConnection> _connections = [];
         private readonly string _summaryDirectory = Path.Combine(
             Path.GetTempPath(),
             "orbtail-terminal-publication-tests",
@@ -303,8 +303,8 @@ public sealed class GameClientSessionTerminalPublicationTests
         public IReadOnlyList<string> SummaryFiles => Directory.Exists(_summaryDirectory)
             ? Directory.EnumerateFiles(_summaryDirectory, "match-*.json").ToList()
             : [];
-        public IReadOnlyList<TerminalDelivery> Deliveries => _tokens.Values
-            .SelectMany(token => token.Deliveries)
+        public IReadOnlyList<TerminalDelivery> Deliveries => _connections.Values
+            .SelectMany(connection => connection.Deliveries)
             .OrderBy(delivery => delivery.Sequence)
             .ToList();
 
@@ -313,10 +313,10 @@ public sealed class GameClientSessionTerminalPublicationTests
             long playerId,
             PlayerMatchStatus status)
         {
-            var token = new RecordingUserToken(playerId, RecordDelivery);
-            Activate(token);
+            var connection = new RecordingTcpConnection(playerId, RecordDelivery);
+            Activate(connection);
             var session = new RecordingSession(
-                token,
+                connection,
                 Logger,
                 _sessions,
                 Interactables,
@@ -335,11 +335,11 @@ public sealed class GameClientSessionTerminalPublicationTests
                 PrepareGameCompletion);
             SetIdentity(session, matchingId, playerId, status);
             _sessions.Add(session);
-            _tokens.Add(session, token);
+            _connections.Add(session, connection);
             return session;
         }
 
-        public RecordingUserToken TokenFor(GameClientSession session) => _tokens[session];
+        public RecordingTcpConnection ConnectionFor(GameClientSession session) => _connections[session];
 
         public void SeedRoster(
             long matchingId,
@@ -403,7 +403,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         {
             long sequence = Interlocked.Increment(ref _deliverySequence);
             Timeline.Enqueue($"packet:{protocol}:{playerId}");
-            _tokens.Values.FirstOrDefault(token => token.PlayerId == playerId)?.RecordDelivery(
+            _connections.Values.FirstOrDefault(connection => connection.PlayerId == playerId)?.RecordDelivery(
                 new TerminalDelivery(sequence, playerId, protocol, wireBytes));
         }
 
@@ -425,21 +425,21 @@ public sealed class GameClientSessionTerminalPublicationTests
                 name,
                 BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.SetValue(session, value);
 
-        private static void Activate(UserToken token)
+        private static void Activate(TcpConnection connection)
         {
-            int active = (int)typeof(UserToken).GetField(
+            int active = (int)typeof(TcpConnection).GetField(
                 "StateActive",
                 BindingFlags.Static | BindingFlags.NonPublic)!.GetRawConstantValue()!;
-            typeof(UserToken).GetField(
+            typeof(TcpConnection).GetField(
                 "_state",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(token, active);
+                BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(connection, active);
         }
     }
 
     private sealed class RecordingSession : GameClientSession
     {
         public RecordingSession(
-            UserToken token,
+            TcpConnection connection,
             ILogger logger,
             List<GameClientSession> sessions,
             InteractableStateManager interactables,
@@ -457,7 +457,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             MatchRuntimeStore matchRuntimes,
             Func<long, long, Action?> prepareGameCompletion)
             : base(
-                token,
+                connection,
                 logger,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),
@@ -492,9 +492,9 @@ public sealed class GameClientSessionTerminalPublicationTests
         }
     }
 
-    private sealed class RecordingUserToken(
+    private sealed class RecordingTcpConnection(
         long playerId,
-        Action<long, Protocol, byte[]> onDelivered) : UserToken
+        Action<long, Protocol, byte[]> onDelivered) : TcpConnection
     {
         private readonly object _gate = new();
         private readonly List<Protocol> _attempted = [];

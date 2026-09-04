@@ -72,7 +72,7 @@ public partial class GameClientSession
                     return;
                 }
 
-                if (!Token.TryRunIfActive(
+                if (!Connection.TryRunIfActive(
                         () => disconnectSupersededSession = _registerSessionCallback(playerId, this)))
                     throw new OperationCanceledException("Connection closed before session registration.");
                 registered = true;
@@ -202,7 +202,7 @@ public partial class GameClientSession
                 matchingSpawnCell);
             RunUnderLiveMatch(runtime, () =>
             {
-                if (!Token.TryMarkAuthenticated(() => Volatile.Write(ref _admissionCompleted, 1)))
+                if (!Connection.TryMarkAuthenticated(() => Volatile.Write(ref _admissionCompleted, 1)))
                     throw new OperationCanceledException("Connection closed before authentication commit.");
             });
             if (!TryPublishCommittedConnectResult(successResponse))
@@ -229,7 +229,7 @@ public partial class GameClientSession
                 if (!ReportAdmissionFailureOnce())
                 {
                     MarkServerInitiatedDisconnect();
-                    Token.Disconnect();
+                    Connection.Disconnect();
                 }
                 return;
             }
@@ -257,7 +257,7 @@ public partial class GameClientSession
 
     private void EnsureConnectionActive()
     {
-        if (Token.IsReleased)
+        if (Connection.IsReleased)
             throw new OperationCanceledException("Connection closed during game admission.");
     }
 
@@ -265,7 +265,7 @@ public partial class GameClientSession
         bool disconnectAfterSend = false)
     {
         using Packet packet = CreateConnectResultPacket(success, errorCode, message);
-        return disconnectAfterSend ? Token.TrySendAndDisconnect(packet) : Token.TrySend(packet);
+        return disconnectAfterSend ? Connection.TrySendAndDisconnect(packet) : Connection.TrySend(packet);
     }
 
     /// <summary>
@@ -335,7 +335,7 @@ public partial class GameClientSession
         MarkServerInitiatedDisconnect();
         try
         {
-            Token.Disconnect();
+            Connection.Disconnect();
         }
         catch (Exception ex)
         {
@@ -504,7 +504,7 @@ public partial class GameClientSession
     public void ForceDisconnect()
     {
         Logger.LogWarning("Force disconnecting PlayerId={PlayerId}", PlayerId);
-        Token.Disconnect();
+        Connection.Disconnect();
     }
 
     /// <summary>

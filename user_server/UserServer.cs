@@ -176,7 +176,7 @@ public class UserServer(
         logger.LogInformation($"Listening on port {port}");
     }
 
-    /// <summary>UserToken 인증 전이와 함께 실행할 로컬 세션 등록. 외부 I/O는 이 콜백 안에서 하지 않는다.</summary>
+    /// <summary>TcpConnection 인증 전이와 함께 실행할 로컬 세션 등록. 외부 I/O는 이 콜백 안에서 하지 않는다.</summary>
     private (bool Accepted, Action? DisconnectSuperseded) RegisterSession(long playerId, GameSession session) =>
         _sessions.Register(playerId, session);
 
@@ -193,12 +193,12 @@ public class UserServer(
         return string.IsNullOrWhiteSpace(configured) ? Environment.MachineName : configured.Trim();
     }
 
-    private IConnectionSession? CreateSession(UserToken token)
+    private IConnectionSession? CreateSession(TcpConnection connection)
     {
         try
         {
             var session = new GameSession(
-                token,
+                connection,
                 logger,
                 redisOperations,
                 redLock,
@@ -217,7 +217,7 @@ public class UserServer(
         catch (Exception ex)
         {
             logger.LogError(ex, "GameSession 생성 실패, 연결 종료");
-            token.Disconnect();
+            connection.Disconnect();
             return null;
         }
     }

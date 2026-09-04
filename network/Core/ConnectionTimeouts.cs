@@ -8,7 +8,7 @@ namespace network.core;
 ///     마지막 응답을 보낸 뒤에는 전송이 끝나지 않더라도 일정 시간이 지나면 연결을 종료한다.
 ///
 ///     타이머는 다른 스레드에서 실행될 수 있으므로,
-///     실제로 연결을 종료할지는 UserToken이 현재 연결 상태를 확인한 뒤 결정한다.
+///     실제로 연결을 종료할지는 TcpConnection이 현재 연결 상태를 확인한 뒤 결정한다.
 ///     Dispose된 이후에는 새로운 타이머를 예약하지 않는다.
 /// </summary>
 internal sealed class ConnectionTimeouts(
