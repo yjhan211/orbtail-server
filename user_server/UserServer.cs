@@ -135,7 +135,9 @@ public class UserServer(
     {
         // 서버 환경에서 CSV 파일 경로 설정 (bin 디렉토리 기준)
         GameDataHelper.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
-        GameDataHelper.Initialize();
+        GameDataHelper.Initialize(
+            message => logger.LogDebug("{Message}", message),
+            message => logger.LogError("{Message}", message));
         cancellationToken.ThrowIfCancellationRequested();
 
         // 라우터·lifecycle 구독은 NATS 연결 하나를 나눠 쓴다. 종료 시 구독자가 닫는다.

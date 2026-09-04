@@ -9,7 +9,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using network.common.data.helpers;
-using network.managers;
 using Newtonsoft.Json;
 
 namespace network.common.data
@@ -49,17 +48,17 @@ namespace network.common.data
             return _buffs.Values;
         }
 
-        public static void Validate(LogManager logManager)
+        public static void Validate(Action<string> log)
         {
-            LogManager.WriteDebugLog("=== GameBuffData Validation ===");
+            log("=== GameBuffData Validation ===");
             foreach (var (id, buff) in _buffs)
             {
-                LogManager.WriteDebugLog($"Buff {id}:");
-                LogManager.WriteDebugLog($"  Type: {buff.Type}");
-                LogManager.WriteDebugLog($"  SubType: {buff.SubType}");
+                log($"Buff {id}:");
+                log($"  Type: {buff.Type}");
+                log($"  SubType: {buff.SubType}");
             }
 
-            LogManager.WriteDebugLog($"Total {_buffs.Count} buffs validated successfully!");
+            log($"Total {_buffs.Count} buffs validated successfully!");
         }
     }
 

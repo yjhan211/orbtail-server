@@ -8,7 +8,6 @@ using network.gamehandoff;
 using network.hosting;
 using network.infrastructure.messaging;
 using network.infrastructure.redis;
-using network.managers;
 using Serilog;
 using Serilog.Events;
 using user_server.services;
@@ -66,7 +65,6 @@ internal static class Program
         services.AddSingleton<IRedisOperations, RedisOperations>();
         services.AddSingleton<IPlayerSessionOwnershipStore, RedisPlayerSessionOwnershipStore>();
         services.AddSingleton<IMatchingQueueClaimStore, RedisMatchingQueueClaimStore>();
-        services.AddSingleton<LogManager>();
         services.AddGameHandoffTicket(hostContext.Configuration);
         services.AddAccountAuthentication(hostContext.Configuration);
 

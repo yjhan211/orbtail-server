@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using network.common.data.helpers;
-using network.managers;
 using Newtonsoft.Json;
 
 namespace network.common.data

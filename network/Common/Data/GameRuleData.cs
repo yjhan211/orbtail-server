@@ -3,12 +3,12 @@
 #pragma warning disable CS8625 // Null 리터럴을 null을 허용하지 않는 참조 형식으로 변환할 수 없습니다.
 #pragma warning disable CS8603 // 가능한 null 참조 반환입니다.
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using network.common.data.helpers;
 using network.common.data.models;
-using network.managers;
 
 namespace network.common.data
 {
@@ -69,16 +69,16 @@ namespace network.common.data
             }
         }
 
-        public static void Validate(LogManager logManager)
+        public static void Validate(Action<string> log)
         {
-            LogManager.WriteInfoLog("=== GameRuleData Validation ===");
-            LogManager.WriteInfoLog($"StartPosition: ({StartPosition.X}, {StartPosition.Y})");
-            LogManager.WriteInfoLog($"HeartBeatActive: {HeartBeatActive}");
-            LogManager.WriteInfoLog(
+            log("=== GameRuleData Validation ===");
+            log($"StartPosition: ({StartPosition.X}, {StartPosition.Y})");
+            log($"HeartBeatActive: {HeartBeatActive}");
+            log(
                 $"DefaultItemList: [{string.Join(", ", DefaultItemList.Select(x => $"({x.Item1}, {x.Item2})"))}]");
-            LogManager.WriteInfoLog(
+            log(
                 $"InGameItemList: [{string.Join(", ", InGameItemList.Select(x => $"({x.Item1}, {x.Item2})"))}]");
-            LogManager.WriteInfoLog("");
+            log("");
 
             var errors = new List<string>();
 
@@ -90,12 +90,12 @@ namespace network.common.data
 
             if (errors.Count != 0)
             {
-                LogManager.WriteInfoLog("Validation Errors:");
-                foreach (var error in errors) LogManager.WriteInfoLog($"- {error}");
+                log("Validation Errors:");
+                foreach (var error in errors) log($"- {error}");
                 throw new InvalidDataException(string.Join("\n", errors));
             }
 
-            LogManager.WriteInfoLog("All validations passed successfully!");
+            log("All validations passed successfully!");
         }
     }
 }

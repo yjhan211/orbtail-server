@@ -3,12 +3,12 @@
 #pragma warning disable CS8625 // Null 리터럴을 null을 허용하지 않는 참조 형식으로 변환할 수 없습니다.
 #pragma warning disable CS8603 // 가능한 null 참조 반환입니다.
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
-using network.managers;
 
 namespace network.common.data
 {
@@ -28,10 +28,10 @@ namespace network.common.data
             }
         }
 
-        public static void Validate(LogManager logManager)
+        public static void Validate(Action<string> log)
         {
-            LogManager.WriteInfoLog("=== GameAreaNameData Validation ===");
-            LogManager.WriteInfoLog($"Total area names loaded: {_areaNames.Count}");
+            log("=== GameAreaNameData Validation ===");
+            log($"Total area names loaded: {_areaNames.Count}");
 
             var errors = new List<string>();
 
@@ -44,23 +44,23 @@ namespace network.common.data
                 }
                 else
                 {
-                    LogManager.WriteInfoLog($"{areaType}: {_areaNames[areaType].Kr}");
+                    log($"{areaType}: {_areaNames[areaType].Kr}");
                 }
             }
 
-            LogManager.WriteInfoLog("");
+            log("");
 
             if (errors.Count != 0)
             {
-                LogManager.WriteInfoLog("Validation Errors:");
+                log("Validation Errors:");
                 foreach (var error in errors)
                 {
-                    LogManager.WriteInfoLog($"- {error}");
+                    log($"- {error}");
                 }
                 throw new InvalidDataException(string.Join("\n", errors));
             }
 
-            LogManager.WriteInfoLog("All validations passed successfully!");
+            log("All validations passed successfully!");
         }
 
         /// <summary>

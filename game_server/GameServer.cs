@@ -314,7 +314,9 @@ public partial class GameServer(
             GameDataHelper.SetBasePath(Directory.Exists(Path.Combine(networkSourcePath, "Common", "csv"))
                 ? networkSourcePath
                 : AppDomain.CurrentDomain.BaseDirectory);
-            GameDataHelper.Initialize();
+            GameDataHelper.Initialize(
+                message => logger.LogDebug("{Message}", message),
+                message => logger.LogError("{Message}", message));
             Action<string> log = msg => logger.LogInformation(msg);
             // 문 상태는 페이즈와 별개다 (2026-08-16). 위 제공자는 ROOM_COMBAT에서만 채워져
             // 군집 모드에서는 항상 비었고, 그래서 봇이 잠긴 문을 그냥 통과했다.

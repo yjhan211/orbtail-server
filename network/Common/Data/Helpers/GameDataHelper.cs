@@ -7,7 +7,6 @@ using System.IO;
 using System.Linq;
 using network.common;
 using network.common.data.helpers;
-using network.managers;
 #if UNITY_5_3_OR_NEWER
 using UnityEngine;
 #endif
@@ -19,24 +18,24 @@ namespace network.common.data.helpers
         // 서버 환경에서 CSV 파일 기본 경로 (SetBasePath로 설정 가능)
         private static string _basePath = "";
         private static bool _initialized;
+        private static Action<string>? _debugLog;
+        private static Action<string>? _errorLog;
 
-        private static readonly (string fileName, Action<List<CsvRow>> init, Action<LogManager>? validate)[]
+        private static readonly (string fileName, Action<List<CsvRow>> init)[]
             _standardDataDefinitions =
             {
                 // 중앙 로컬라이징 테이블 — 다른 데이터가 {prefix}_key로 참조하므로 가장 먼저 초기화
-                (fileName: DataFiles.LocalizationText, init: GameLocalizationData.Initialize, validate: null),
-                (fileName: DataFiles.GameRule, init: GameRuleData.Initialize, validate: GameRuleData.Validate),
-                (fileName: DataFiles.SwarmConfig, init: SwarmConfigData.Initialize, validate: null),
-                (fileName: DataFiles.SwarmSupplyPhase, init: SwarmSupplyPhaseData.Initialize, validate: null),
-                (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize,
-                    validate: GameLoadingTextData.Validate),
-                (fileName: DataFiles.AreaName, init: GameAreaNameData.Initialize,
-                    validate: GameAreaNameData.Validate),
-                (fileName: DataFiles.SystemText, init: GameSystemTextData.Initialize, validate: null),
-                (fileName: DataFiles.StatusEffectInfo, init: GameStatusEffectData.Initialize, validate: null),
-                (fileName: DataFiles.DoorInfo, init: GameDoorData.Initialize, validate: null),
-                (fileName: DataFiles.AreaConnection, init: GameAreaConnectionData.Initialize, validate: null),
-                (fileName: DataFiles.ErrorMessage, init: GameErrorMessageData.Initialize, validate: null)
+                (fileName: DataFiles.LocalizationText, init: GameLocalizationData.Initialize),
+                (fileName: DataFiles.GameRule, init: GameRuleData.Initialize),
+                (fileName: DataFiles.SwarmConfig, init: SwarmConfigData.Initialize),
+                (fileName: DataFiles.SwarmSupplyPhase, init: SwarmSupplyPhaseData.Initialize),
+                (fileName: DataFiles.LoadingText, init: GameLoadingTextData.Initialize),
+                (fileName: DataFiles.AreaName, init: GameAreaNameData.Initialize),
+                (fileName: DataFiles.SystemText, init: GameSystemTextData.Initialize),
+                (fileName: DataFiles.StatusEffectInfo, init: GameStatusEffectData.Initialize),
+                (fileName: DataFiles.DoorInfo, init: GameDoorData.Initialize),
+                (fileName: DataFiles.AreaConnection, init: GameAreaConnectionData.Initialize),
+                (fileName: DataFiles.ErrorMessage, init: GameErrorMessageData.Initialize)
             };
 
         /// <summary>
@@ -76,7 +75,7 @@ namespace network.common.data.helpers
 #if UNITY_5_3_OR_NEWER
             Debug.Log(message);
 #else
-            LogManager.WriteDebugLog(message);
+            _debugLog?.Invoke(message);
 #endif
         }
 
@@ -85,12 +84,15 @@ namespace network.common.data.helpers
 #if UNITY_5_3_OR_NEWER
             Debug.LogError(message);
 #else
-            LogManager.WriteErrorLog(message);
+            _errorLog?.Invoke(message);
 #endif
         }
 
-        public static void Initialize()
+        public static void Initialize(Action<string>? debugLog = null, Action<string>? errorLog = null)
         {
+            _debugLog = debugLog;
+            _errorLog = errorLog;
+
             if (_initialized)
             {
                 Log("[GameDataHelper] Initialize skipped (already initialized)");
@@ -103,7 +105,7 @@ namespace network.common.data.helpers
             var loadedData = new Dictionary<string, List<CsvRow>>();
 
             // _standardDataDefinitions 파일 로드
-            foreach (var (fileName, init, _) in _standardDataDefinitions)
+            foreach (var (fileName, init) in _standardDataDefinitions)
             {
                 var filePath = GetCsvFilePath(fileName);
                 Log($"[GameDataHelper] Loading: {filePath}");
@@ -182,7 +184,7 @@ namespace network.common.data.helpers
                 }
             }
 
-            foreach (var (fileName, init, _) in _standardDataDefinitions)
+            foreach (var (fileName, init) in _standardDataDefinitions)
             {
                 init(loadedData[fileName]);
             }

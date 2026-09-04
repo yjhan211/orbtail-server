@@ -10,7 +10,6 @@ using network.hosting;
 using network.infrastructure.messaging;
 using network.infrastructure.redis;
 using network.infrastructure.routing;
-using network.managers;
 using network.routing;
 using Serilog;
 using Serilog.Events;
@@ -51,7 +50,6 @@ internal static class Program
         services.AddSingleton<NatsClientFactory>(sp =>
             new NatsClientFactory(natsEndpoint, sp.GetRequiredService<ILogger<NatsClient>>()));
         services.AddSingleton<ServerReadinessState>();
-        services.AddSingleton<LogManager>();
 
         var redisConfiguration = RedisConfigurationParser.Parse(hostContext.Configuration);
         services.AddSingleton(redisConfiguration);

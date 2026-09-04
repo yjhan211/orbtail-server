@@ -7,7 +7,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using network.common.data.helpers;
-using network.managers;
 using Newtonsoft.Json;
 
 namespace network.common.data
@@ -157,14 +156,14 @@ namespace network.common.data
             return list;
         }
 
-        public static void Validate(LogManager logManager)
+        public static void Validate(Action<string> log)
         {
-            LogManager.WriteDebugLog("=== GameInteractableData Validation ===");
+            log("=== GameInteractableData Validation ===");
             foreach (var (id, info) in _infos)
             {
-                LogManager.WriteDebugLog($"[{id}] {info.ShortName?.Kr} - Actions: {info.Actions.Count}");
+                log($"[{id}] {info.ShortName?.Kr} - Actions: {info.Actions.Count}");
             }
-            LogManager.WriteDebugLog("All validations passed successfully!");
+            log("All validations passed successfully!");
         }
     }
 
