@@ -8,6 +8,10 @@ public sealed class GameHandoffTicketOptions
     public TimeSpan Lifetime { get; set; } = TimeSpan.FromMinutes(3);
 }
 
+/// <summary>
+///     User Server가 Game Server 입장용 일회성 ticket을 발급하고, Game Server가 이를 소비할 때 유효성을 검사한다.
+///     ticket에는 플레이어·매치·배정 서버 정보가 연결되며, 원문 대신 fingerprint를 저장소의 키로 사용한다.
+/// </summary>
 public sealed class GameHandoffTicketService(
     IGameHandoffTicketStore ticketStore,
     GameHandoffTicketOptions options) : IGameHandoffTicketService
@@ -42,12 +46,11 @@ public sealed class GameHandoffTicketService(
         if (!OpaqueTokenCodec.IsValid(normalizedTicket, TicketPrefix))
             return null;
 
-        GameHandoffContext? context =
+        var context =
             await ticketStore.ConsumeAsync(OpaqueTokenCodec.Fingerprint(normalizedTicket));
         if (context == null || !TryValidateContext(context, out _))
             return null;
 
-        // 노드 결합: 다른 노드에 배정된 매치의 ticket은 여기서 끝난다 (fail closed).
         return string.Equals(context.GameServerNodeId, gameServerNodeId, StringComparison.Ordinal)
             ? context
             : null;

@@ -5,7 +5,10 @@ using StackExchange.Redis;
 namespace network.gamehandoff;
 
 /// <summary>
-///     Persists one-time game handoff tickets. SET NX issues the ticket and GETDEL consumes it exactly once.
+///     Game Server 입장용 ticket 정보를 Redis에 저장하고 한 번만 꺼낼 수 있도록 관리한다.
+///     ticket 원문 대신 fingerprint를 Redis 키로 사용하고, 입장 정보는 MessagePack으로 직렬화해 저장한다.
+///     발급할 때는 SET NX와 TTL을 적용해 중복 저장과 영구 잔존을 막고,
+///     소비할 때는 GETDEL로 값을 읽으면서 삭제해 같은 ticket의 재사용을 막는다.
 /// </summary>
 public sealed class RedisGameHandoffTicketStore(ICacheHelper cacheHelper) : IGameHandoffTicketStore
 {
@@ -25,7 +28,7 @@ public sealed class RedisGameHandoffTicketStore(ICacheHelper cacheHelper) : IGam
 
     public async Task<GameHandoffContext?> ConsumeAsync(string ticketHash)
     {
-        RedisValue serializedContext = await cacheHelper.StringGetDeleteAsync(MakeKey(ticketHash));
+        var serializedContext = await cacheHelper.StringGetDeleteAsync(MakeKey(ticketHash));
         if (serializedContext.IsNullOrEmpty)
             return null;
 

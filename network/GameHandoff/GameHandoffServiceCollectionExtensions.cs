@@ -4,13 +4,16 @@ using network.interfaces;
 
 namespace network.gamehandoff;
 
+/// <summary>
+///     User Server와 Game Server에서 공통으로 사용하는 GameHandoff 기능을 DI에 등록한다.
+///     ticket 서비스와 Redis 저장소를 연결하고, 발급 시 적용할 TTL의 기본값과 허용 범위를 통일한다.
+/// </summary>
 public static class GameHandoffServiceCollectionExtensions
 {
     private const int DefaultGameHandoffLifetimeSeconds = 180;
     private const int MinimumGameHandoffLifetimeSeconds = 30;
     private const int MaximumGameHandoffLifetimeSeconds = 600;
 
-    /// <summary>두 서버가 공유하는 handoff ticket 계약(발급·소비·Redis 저장소)만 등록한다. 계정 인증은 user_server의 몫이다.</summary>
     public static IServiceCollection AddGameHandoffTicket(
         this IServiceCollection services,
         IConfiguration configuration)

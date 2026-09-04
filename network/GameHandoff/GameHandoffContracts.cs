@@ -3,15 +3,15 @@ using MessagePack;
 namespace network.gamehandoff;
 
 /// <summary>
-///     handoff ticket이 증명하는 것: 이 소켓이 누구고(PlayerId), 어느 매치에(MatchingId), 어느 노드로(GameServerNodeId) 왔는가.
-///     매치 구성은 <see cref="network.common.data.models.MatchManifest" />가, 스폰·로스터는 Game Server가 정한다.
+///     User Server가 발급하는 일회용 Game Server 입장권에 저장되는 정보.
+///     Game Server는 이 값으로 접속한 플레이어와 참가할 매치, 배정받은 서버 노드가 맞는지 확인한다.
+///     전체 참가자 목록은 network.common.data.models.MatchManifest에서 읽고,
+///     플레이어의 스폰 위치와 매치 런타임 상태는 Game Server가 정한다.
 /// </summary>
 [MessagePackObject]
 public sealed class GameHandoffContext
 {
     [Key("playerId")] public long PlayerId { get; set; }
     [Key("matchingId")] public long MatchingId { get; set; }
-
-    /// <summary>이 매치를 배정받은 Game Server 노드. 다른 노드는 이 ticket을 받아들이지 않는다.</summary>
     [Key("gameServerNodeId")] public string GameServerNodeId { get; set; } = string.Empty;
 }

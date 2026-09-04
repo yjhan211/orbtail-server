@@ -54,8 +54,11 @@ internal sealed class MatchHandoffPublisher(
     {
         string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
         byte[] serialized = MessagePack.MessagePackSerializer.Serialize(manifest);
-        await cacheHelper.HashSetAsync(handoffKey, MatchingHandoffRedisKeys.ManifestField, serialized);
-        await cacheHelper.KeyExpireAsync(handoffKey, MatchingHandoffRedisKeys.Lifetime);
+        await cacheHelper.HashSetWithExpiryAsync(
+            handoffKey,
+            MatchingHandoffRedisKeys.ManifestField,
+            serialized,
+            MatchingHandoffRedisKeys.Lifetime);
     }
 
     /// <summary>

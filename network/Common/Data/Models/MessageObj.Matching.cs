@@ -47,10 +47,6 @@ namespace network.common.data.models
         [Key("matchingId")] public long MatchingId { get; set; }
     }
 
-    /// <summary>
-    ///     매치 구성 — user_server가 매치 확정 때 Redis handoff Hash에 한 번 쓰고 Game Server가 첫 접속 때 읽는다.
-    ///     "누가 이 매치에 오는가"만 담는다. 스폰·로스터 같은 매치 안의 사실은 Game Server가 정한다.
-    /// </summary>
     [MessagePackObject]
     public class MatchManifest
     {
