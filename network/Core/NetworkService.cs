@@ -3,7 +3,6 @@ using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.core.abstractions;
 
 namespace network.core;
 
@@ -16,7 +15,7 @@ namespace network.core;
 ///     활성 연결을 추적하며 서버 종료 시 새로운 접속을 중단하고,
 ///     모든 연결의 송수신과 세션 정리가 끝날 때까지 기다린 후 SocketAsyncEventArgs를 폐기한다.
 /// </summary>
-public sealed class NetworkService : INetworkService
+public sealed class NetworkService
 {
     private readonly ConcurrentDictionary<UserToken, byte> _activeConnections = new();
     private readonly Listener _clientListener;
@@ -42,7 +41,7 @@ public sealed class NetworkService : INetworkService
             () => Volatile.Read(ref _stopping) == 0);
     }
 
-    public Func<UserToken, IPeer?>? SessionFactory { get; set; }
+    public Func<UserToken, IConnectionSession?>? SessionFactory { get; set; }
 
     public void Listen(IPAddress address, short port)
     {
@@ -198,7 +197,7 @@ public sealed class NetworkService : INetworkService
             return;
         }
 
-        // 세션 생성과 peer 결합도 연결 작업으로 계수하여, 생성 중 close가 EventArgs를 먼저 회수하지 않게 한다.
+        // 세션 생성과 결합도 연결 작업으로 계수하여, 생성 중 close가 EventArgs를 먼저 회수하지 않게 한다.
         if (!userToken.TryBeginOperation()) return;
         try
         {
@@ -210,15 +209,15 @@ public sealed class NetworkService : INetworkService
                 return;
             }
 
-            var peer = sessionFactory(userToken);
-            if (peer == null)
+            var session = sessionFactory(userToken);
+            if (session == null)
             {
                 CloseAndRelease(userToken, ConnectionCloseReason.SessionCreationFailed,
                     new InvalidOperationException("SessionFactory did not create a session."));
                 return;
             }
 
-            userToken.SetPeer(peer);
+            userToken.SetSession(session);
         }
         catch (Exception ex)
         {
@@ -397,8 +396,8 @@ public sealed class NetworkService : INetworkService
 
     private void ReleaseConnection(UserToken userToken)
     {
-        // 세션 생성 중 close된 경우 peer가 늦게 연결될 수 있으므로 release 직전에 한 번 더 보장한다.
-        userToken.NotifyPeerClosed(ex => _logger.LogError(ex, "Session close callback failed"));
+        // 세션 생성 중 close된 경우 세션이 늦게 연결될 수 있으므로 release 직전에 한 번 더 보장한다.
+        userToken.NotifySessionClosed(ex => _logger.LogError(ex, "Session close callback failed"));
         userToken.DetachEventArgs(out var receiveArgs, out var sendArgs);
         try
         {

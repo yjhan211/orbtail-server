@@ -1,6 +1,5 @@
 using System.Net.Sockets;
 using network.common;
-using network.core.abstractions;
 using network.packets;
 using network.utils;
 
@@ -30,9 +29,9 @@ public partial class UserToken
 
         _timeouts.Touch();
 
-        var peer = Volatile.Read(ref _peer);
-        if (peer == null)
-            throw new InvalidOperationException("A message arrived before the session peer was initialized.");
+        var session = Volatile.Read(ref _session);
+        if (session == null)
+            throw new InvalidOperationException("A message arrived before the connection session was initialized.");
 
         if (Interlocked.Increment(ref _pendingMessages) > MaxPendingMessages)
         {
@@ -47,14 +46,14 @@ public partial class UserToken
             return;
         }
 
-        _ = DispatchMessageAsync(peer, buffer);
+        _ = DispatchMessageAsync(session, buffer);
     }
 
-    private async Task DispatchMessageAsync(IPeer peer, Const<byte[]> buffer)
+    private async Task DispatchMessageAsync(IConnectionSession session, Const<byte[]> buffer)
     {
         try
         {
-            await peer.OnMessageFromClient(buffer);
+            await session.OnMessageFromClient(buffer);
         }
         catch (Exception ex)
         {

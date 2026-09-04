@@ -746,7 +746,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 static () => false,
                 static _ => { },
                 GameServerDevOptions.Disabled);
-            token.SetPeer(session);
+            token.SetSession(session);
             SetIdentity(session, matchingId, playerId);
             _sessions.Add(session);
             _tokens.Add(session, token);

@@ -1,6 +1,5 @@
 using System.Net.Sockets;
 using network.core;
-using network.core.abstractions;
 using network.packets;
 using network.utils;
 
@@ -8,8 +7,8 @@ namespace demo_regression_tests;
 
 /// <summary>
 ///     UserToken 수명 보장: 종료 경로가 여럿이어도 닫기 시작은 한 번, 진행 중 작업이 0이 돼야 자원 반납,
-///     닫기 시작 뒤 새 작업 거절, peer 통보는 각 한 번, ReleaseTask는 반납 뒤에만 완료(초기화 전에는 이미 완료).
-///     NetworkService의 역할(닫기 시작 → 전송 닫기·준비 표시, 반납 준비 → peer 통보·args 분리·released)은
+///     닫기 시작 뒤 새 작업 거절, 세션 통보는 각 한 번, ReleaseTask는 반납 뒤에만 완료(초기화 전에는 이미 완료).
+///     NetworkService의 역할(닫기 시작 → 전송 닫기·준비 표시, 반납 준비 → 세션 통보·args 분리·released)은
 ///     <see cref="Harness" />가 같은 순서로 흉내 낸다.
 /// </summary>
 public sealed class UserTokenLifecycleTests
@@ -67,15 +66,15 @@ public sealed class UserTokenLifecycleTests
     }
 
     [Fact]
-    public void PeerCallbacks_FireExactlyOnce()
+    public void SessionCallbacks_FireExactlyOnce()
     {
         using var harness = Harness.Create();
 
-        harness.Token.NotifyPeerClosed(_ => { });
-        harness.Token.NotifyPeerClosed(_ => { });
+        harness.Token.NotifySessionClosed(_ => { });
+        harness.Token.NotifySessionClosed(_ => { });
 
-        Assert.Equal(1, harness.Peer.DisconnectCount);
-        Assert.Equal(1, harness.Peer.RemovedCount);
+        Assert.Equal(1, harness.Session.DisconnectCount);
+        Assert.Equal(1, harness.Session.RemovedCount);
     }
 
     [Fact]
@@ -119,7 +118,7 @@ public sealed class UserTokenLifecycleTests
         Assert.False(harness.Token.TrySend(packet));
     }
 
-    private sealed class FakePeer : IPeer
+    private sealed class FakeConnectionSession : IConnectionSession
     {
         public int DisconnectCount;
         public int RemovedCount;
@@ -139,7 +138,7 @@ public sealed class UserTokenLifecycleTests
         private int _releaseReady;
 
         public UserToken Token { get; } = new();
-        public FakePeer Peer { get; } = new();
+        public FakeConnectionSession Session { get; } = new();
         public int CloseStartedCount => Volatile.Read(ref _closeStarted);
         public int ReleaseReadyCount => Volatile.Read(ref _releaseReady);
 
@@ -151,7 +150,7 @@ public sealed class UserTokenLifecycleTests
         {
             var harness = new Harness();
             harness.Initialize(harness.Token);
-            harness.Token.SetPeer(harness.Peer);
+            harness.Token.SetSession(harness.Session);
             return harness;
         }
 
@@ -168,7 +167,7 @@ public sealed class UserTokenLifecycleTests
         private void ReleaseReady(UserToken token)
         {
             Interlocked.Increment(ref _releaseReady);
-            token.NotifyPeerClosed(_ => { });
+            token.NotifySessionClosed(_ => { });
             token.DetachEventArgs(out _, out _);
             token.MarkReleased();
         }

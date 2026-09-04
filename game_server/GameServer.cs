@@ -14,7 +14,6 @@ using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.core;
-using network.core.abstractions;
 using network.gamehandoff;
 using network.helpers;
 using network.hosting;
@@ -37,7 +36,7 @@ public partial class GameServer(
     ILogger<GameServer> logger,
     NatsClientFactory natsClientFactory,
     IRedisOperations redisOperations,
-    INetworkService networkService,
+    NetworkService networkService,
     IGameHandoffTicketService gameHandoffTicketService,
     ServerReadinessState readinessState,
     IGameServerRegistry gameServerRegistry,
@@ -880,7 +879,7 @@ public partial class GameServer(
         }
     }
 
-    private IPeer? CreateClientSession(UserToken token)
+    private IConnectionSession? CreateClientSession(UserToken token)
     {
         if (Volatile.Read(ref _stopping) != 0)
         {

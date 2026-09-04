@@ -137,7 +137,7 @@ public sealed class UserServerMatchingReconciliationTests
                 static (token, _, _) =>
                 {
                     token.CloseTransport(static _ => { });
-                    token.NotifyPeerClosed(static _ => { });
+                    token.NotifySessionClosed(static _ => { });
                     token.MarkClosePrepared();
                 },
                 static token =>

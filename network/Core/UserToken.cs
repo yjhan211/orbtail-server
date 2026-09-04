@@ -1,6 +1,5 @@
 using System.Net.Sockets;
 using network.common;
-using network.core.abstractions;
 using network.packets;
 
 namespace network.core;
@@ -50,13 +49,13 @@ public partial class UserToken
     private int _closeAfterSend;
     private int _closePrepared;
     private int _releaseSignaled;
-    private int _peerNotified;
+    private int _sessionNotified;
 
     private int _pendingOperations;
     private int _pendingMessages;
 
     private Socket? _socket;
-    private IPeer? _peer;
+    private IConnectionSession? _session;
     private Action<UserToken, ConnectionCloseReason, Exception?>? _closeStarted;
     private Action<UserToken>? _releaseReady;
     private TaskCompletionSource<bool> _releaseCompletion = CreateCompletedReleaseSource();
@@ -95,11 +94,11 @@ public partial class UserToken
         _timeouts.StartAuthenticationWindow(OnAuthenticationTimeout);
     }
 
-    public void SetPeer(IPeer peer)
+    public void SetSession(IConnectionSession session)
     {
-        ArgumentNullException.ThrowIfNull(peer);
-        if (Interlocked.CompareExchange(ref _peer, peer, null) != null)
-            throw new InvalidOperationException("A peer is already assigned to this connection.");
+        ArgumentNullException.ThrowIfNull(session);
+        if (Interlocked.CompareExchange(ref _session, session, null) != null)
+            throw new InvalidOperationException("A session is already assigned to this connection.");
     }
 
     public bool TryMarkAuthenticated(Action? onAuthenticated = null)
@@ -193,15 +192,15 @@ public partial class UserToken
         _sendQueue.Clear();
     }
 
-    internal void NotifyPeerClosed(Action<Exception> logException)
+    internal void NotifySessionClosed(Action<Exception> logException)
     {
-        var peer = Volatile.Read(ref _peer);
-        if (peer == null) return;
-        if (Interlocked.Exchange(ref _peerNotified, 1) != 0) return;
+        var session = Volatile.Read(ref _session);
+        if (session == null) return;
+        if (Interlocked.Exchange(ref _sessionNotified, 1) != 0) return;
 
         try
         {
-            peer.OnDisconnect();
+            session.OnDisconnect();
         }
         catch (Exception ex)
         {
@@ -210,7 +209,7 @@ public partial class UserToken
 
         try
         {
-            peer.OnRemoved();
+            session.OnRemoved();
         }
         catch (Exception ex)
         {
@@ -234,7 +233,7 @@ public partial class UserToken
         SendEventArgs = null;
         _closeStarted = null;
         _releaseReady = null;
-        _peer = null;
+        _session = null;
     }
 
     internal void MarkReleased()
@@ -290,7 +289,7 @@ public partial class UserToken
         }
 
         CloseTransport(_ => { });
-        NotifyPeerClosed(_ => { });
+        NotifySessionClosed(_ => { });
         MarkClosePrepared();
         MarkReleased();
     }

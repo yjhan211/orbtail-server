@@ -2,7 +2,6 @@ using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
-using network.core.abstractions;
 using network.infrastructure.redis;
 using network.packets;
 using network.routing;
@@ -24,7 +23,7 @@ public abstract class SessionBase(
     UserToken token,
     ILogger logger,
     IRedisOperations redisOperations)
-    : IPeer
+    : IConnectionSession
 {
     private static readonly MessagePackSerializerOptions ClientMessagePackOptions =
         MessagePackSerializer.DefaultOptions.WithSecurity(MessagePackSecurity.UntrustedData);

@@ -109,17 +109,17 @@ public class ProtocolWiringGuardTests
         string networkService = File.ReadAllText(Path.Combine(
             root, "network", "Core", "NetworkService.cs"));
 
-        Assert.DoesNotContain("Token.SetPeer(this)", sessionBase);
+        Assert.DoesNotContain("Token.SetSession(this)", sessionBase);
 
         int createIndex = networkService.IndexOf(
-            "var peer = sessionFactory(userToken);",
+            "var session = sessionFactory(userToken);",
             StringComparison.Ordinal);
         int bindIndex = networkService.IndexOf(
-            "userToken.SetPeer(peer);",
+            "userToken.SetSession(session);",
             StringComparison.Ordinal);
 
         Assert.True(createIndex >= 0, "NetworkService must create the session through SessionFactory.");
-        Assert.True(bindIndex > createIndex, "NetworkService must bind the peer only after construction succeeds.");
+        Assert.True(bindIndex > createIndex, "NetworkService must bind the session only after construction succeeds.");
     }
 
     [Fact]

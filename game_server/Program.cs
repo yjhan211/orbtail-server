@@ -4,7 +4,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.core;
-using network.core.abstractions;
 using network.gamehandoff;
 using network.hosting;
 using network.infrastructure.messaging;
@@ -44,7 +43,7 @@ internal static class Program
 
     private static void ConfigureServices(HostBuilderContext hostContext, IServiceCollection services)
     {
-        services.AddSingleton<INetworkService, NetworkService>();
+        services.AddSingleton<NetworkService>();
         string natsEndpoint = hostContext.Configuration["natsEndPoint"]
                               ?? throw new InvalidOperationException("natsEndPoint is not configured.");
         services.AddSingleton<NatsClientFactory>(sp =>

@@ -4,7 +4,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.common.data.helpers;
 using network.core;
-using network.core.abstractions;
 using network.gamehandoff;
 using network.hosting;
 using network.infrastructure.messaging;
@@ -19,7 +18,7 @@ namespace user_server;
 ///     readiness, and shutdown without owning their internal state machines.
 /// </summary>
 public class UserServer(
-    INetworkService networkService,
+    NetworkService networkService,
     NatsClientFactory natsClientFactory,
     ILogger<UserServer> logger,
     IConfiguration configuration,
@@ -194,7 +193,7 @@ public class UserServer(
         return string.IsNullOrWhiteSpace(configured) ? Environment.MachineName : configured.Trim();
     }
 
-    private IPeer? CreateSession(UserToken token)
+    private IConnectionSession? CreateSession(UserToken token)
     {
         try
         {

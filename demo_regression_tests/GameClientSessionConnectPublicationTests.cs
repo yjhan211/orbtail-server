@@ -375,7 +375,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 recordAdmissionFailure ?? (_ => { }),
                 GameServerDevOptions.Disabled,
                 sender);
-            Token.SetPeer(session);
+            Token.SetSession(session);
             SetIdentity(session, matchingId, playerId);
             return session;
         }
