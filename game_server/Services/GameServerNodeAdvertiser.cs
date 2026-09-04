@@ -5,7 +5,8 @@ using network.interfaces;
 namespace game_server.services;
 
 /// <summary>
-///     레지스트리에 광고할 이 노드의 공개 주소와 용량. 환경 변수 <c>GAME_SERVER_PUBLIC_HOST</c>·
+///     레지스트리에 광고할 이 노드의 식별자·공개 주소·용량. 설정 <c>gameServerId</c>와 환경 변수
+///     <c>GAME_SERVER_PUBLIC_HOST</c>·
 ///     <c>GAME_SERVER_PUBLIC_PORT</c>·<c>GAME_SERVER_MAX_MATCHES</c>에서 온다.
 /// </summary>
 public sealed class GameServerNodeOptions
@@ -13,12 +14,15 @@ public sealed class GameServerNodeOptions
     public const int DefaultPublicPort = 9001;
     public const int DefaultMaxConcurrentMatches = 64;
 
+    public string NodeId { get; init; } = "";
     public string PublicHost { get; init; } = "";
     public int PublicPort { get; init; } = DefaultPublicPort;
     public int MaxConcurrentMatches { get; init; } = DefaultMaxConcurrentMatches;
 
     public void Validate()
     {
+        if (string.IsNullOrWhiteSpace(NodeId))
+            throw new InvalidOperationException("gameServerId must name this Game Server node.");
         if (string.IsNullOrWhiteSpace(PublicHost))
             throw new InvalidOperationException("GAME_SERVER_PUBLIC_HOST must be the address clients connect to.");
         if (PublicPort is <= 0 or > ushort.MaxValue)
@@ -37,7 +41,6 @@ public sealed class GameServerNodeOptions
 internal sealed class GameServerNodeAdvertiser(
     IGameServerRegistry registry,
     GameServerNodeOptions options,
-    string nodeId,
     Func<int> activeMatchCount,
     ILogger logger) : IAsyncDisposable
 {
@@ -48,7 +51,7 @@ internal sealed class GameServerNodeAdvertiser(
     private int _accepting;
     private int _heartbeatFailures;
 
-    public string NodeId { get; } = nodeId;
+    public string NodeId => options.NodeId;
 
     /// <summary>accepting=true로 첫 광고를 쓴다. 실패는 예외로 올려 기동을 막는다 — 광고 없는 노드는 매치를 받지 못한다.</summary>
     public async Task StartAsync()

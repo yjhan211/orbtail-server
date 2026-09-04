@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.hosting;
-using network.infrastructure;
+
 using network.interfaces;
 
 namespace demo_regression_tests;
@@ -580,16 +580,10 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             null!,
             null!,
             null!,
-            new ServerConfig
-            {
-                ServerType = "GameServer",
-                ServerId = 1,
-                GameServerNum = 1
-            },
             null!,
             new ServerReadinessState(),
             new RecordingGameServerRegistry(),
-            new GameServerNodeOptions { PublicHost = "127.0.0.1" },
+            new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
             GameServerDevOptions.Disabled);
         typeof(GameServer)
             .GetField(

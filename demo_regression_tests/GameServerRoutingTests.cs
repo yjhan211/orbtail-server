@@ -152,9 +152,9 @@ public sealed class GameServerRoutingTests
     public async Task Advertiser_PublishesAcceptingThenDrainingThenRemoves()
     {
         var registry = new RecordingGameServerRegistry();
-        var options = new GameServerNodeOptions { PublicHost = "10.0.0.5", PublicPort = 9002, MaxConcurrentMatches = 3 };
+        var options = new GameServerNodeOptions { NodeId = "game-server-1", PublicHost = "10.0.0.5", PublicPort = 9002, MaxConcurrentMatches = 3 };
         int active = 1;
-        await using var advertiser = new GameServerNodeAdvertiser(registry, options, "game-server-1", () => active, new RecordingLogger());
+        await using var advertiser = new GameServerNodeAdvertiser(registry, options, () => active, new RecordingLogger());
 
         await advertiser.StartAsync();
         active = 2;
@@ -174,17 +174,29 @@ public sealed class GameServerRoutingTests
     public async Task Advertiser_FailsStartupWhenFirstPublishFails()
     {
         var registry = new RecordingGameServerRegistry { PublishError = new InvalidOperationException("redis down") };
-        var options = new GameServerNodeOptions { PublicHost = "10.0.0.5" };
-        await using var advertiser = new GameServerNodeAdvertiser(registry, options, "game-server-1", () => 0, new RecordingLogger());
+        var options = new GameServerNodeOptions { NodeId = "game-server-1", PublicHost = "10.0.0.5" };
+        await using var advertiser = new GameServerNodeAdvertiser(registry, options, () => 0, new RecordingLogger());
 
         await Assert.ThrowsAsync<InvalidOperationException>(advertiser.StartAsync);
     }
 
     [Fact]
-    public void NodeOptions_RequirePublicHost()
+    public void NodeOptions_RequireNodeIdentityAndPublicHost()
     {
-        Assert.Throws<InvalidOperationException>(() => new GameServerNodeOptions().Validate());
-        new GameServerNodeOptions { PublicHost = "10.0.0.5" }.Validate();
+        Assert.Throws<InvalidOperationException>(() => new GameServerNodeOptions
+        {
+            PublicHost = "10.0.0.5"
+        }.Validate());
+        Assert.Throws<InvalidOperationException>(() => new GameServerNodeOptions
+        {
+            NodeId = "game-server-blue"
+        }.Validate());
+
+        new GameServerNodeOptions
+        {
+            NodeId = "game-server-blue",
+            PublicHost = "10.0.0.5"
+        }.Validate();
     }
 
     [Fact]

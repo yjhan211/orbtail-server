@@ -17,7 +17,6 @@ using network.core;
 using network.gamehandoff;
 using network.helpers;
 using network.hosting;
-using network.infrastructure;
 using network.infrastructure.routing;
 using network.interfaces;
 using network.packets;
@@ -37,7 +36,6 @@ public partial class GameServer(
     INatsClientFactory natsClientFactory,
     IRedisOperations redisOperations,
     INetworkService networkService,
-    ServerConfig serverConfig,
     IGameHandoffTicketService gameHandoffTicketService,
     ServerReadinessState readinessState,
     IGameServerRegistry gameServerRegistry,
@@ -175,7 +173,6 @@ public partial class GameServer(
             _nodeAdvertiser = new GameServerNodeAdvertiser(
                 gameServerRegistry,
                 nodeOptions,
-                serverConfig.GameServerNodeId,
                 () => MatchRuntimes.ActiveIds().Count,
                 logger);
             await _nodeAdvertiser.StartAsync();
@@ -283,7 +280,8 @@ public partial class GameServer(
 
     private void InitializeServices()
     {
-        string natsEndpoint = configuration.GetRequiredString("natsEndPoint");
+        string natsEndpoint = configuration["natsEndPoint"] ??
+                              throw new InvalidOperationException("natsEndPoint is not configured.");
 
         _areaClosureManager = new AreaClosureManager(logger);
         _swarmBotMovementCoordinator = new SwarmBotMovementCoordinator(
@@ -817,7 +815,7 @@ public partial class GameServer(
                 token,
                 logger,
                 redisOperations,
-                ticket => gameHandoffTicketService.ConsumeAsync(ticket, serverConfig.GameServerNodeId),
+                ticket => gameHandoffTicketService.ConsumeAsync(ticket, nodeOptions.NodeId),
                 OnClientSessionLeave,
                 RegisterClientSession,
                 GetSessionsByInstance,

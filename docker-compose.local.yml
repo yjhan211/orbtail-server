@@ -50,7 +50,6 @@ services:
       - match-summary-data-dev:/App/match-summaries
     environment:
       - serverType=GameServer
-      - gameServerNum=2
       - gameServerId=game-server-0
       # 레지스트리에 광고하는 공개 주소 — 클라이언트가 실제로 접속하는 IP (#339)
       - GAME_SERVER_PUBLIC_HOST=${GAME_SERVER_IP:-192.168.0.167}
@@ -97,7 +96,6 @@ services:
       - /App/network/obj
     environment:
       - serverType=UserServer
-      - gameServerNum=2
       # 매칭 리더 lease 값이자 세션 알림 origin. 노드마다 유일 (#339)
       - USER_SERVER_ID=user-server-0
       - servicePort=7000

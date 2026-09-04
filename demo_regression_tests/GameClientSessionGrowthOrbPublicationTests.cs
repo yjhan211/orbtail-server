@@ -14,7 +14,7 @@ using network.core;
 using network.gamehandoff;
 using network.helpers;
 using network.hosting;
-using network.infrastructure;
+
 using network.packets;
 using network.utils;
 
@@ -821,16 +821,10 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             null!,
             null!,
             null!,
-            new ServerConfig
-            {
-                ServerType = "GameServer",
-                ServerId = 1,
-                GameServerNum = 1
-            },
             null!,
             new ServerReadinessState(),
             new RecordingGameServerRegistry(),
-            new GameServerNodeOptions { PublicHost = "127.0.0.1" },
+            new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
             GameServerDevOptions.Disabled);
     }
 

@@ -24,7 +24,6 @@ public class UserServer(
     IPlayerSessionOwnershipStore sessionOwnershipStore,
     IMatchingQueueClaimStore matchingClaimStore,
     IRedLockFactory redLock,
-    IServerConfig serverConfig,
     IPlayerService playerService,
     IAccountTokenService accountTokenService,
     IGameHandoffTicketService gameHandoffTicketService,

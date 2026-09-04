@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using game_server.services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,10 +14,8 @@ using Serilog.Events;
 
 namespace game_server;
 
-internal static partial class Program
+internal static class Program
 {
-    private static bool _warnedPodNameParseFailure;
-
     public static async Task Main(string[] args)
     {
         await Host.CreateDefaultBuilder(args)
@@ -27,43 +24,24 @@ internal static partial class Program
             .RunConsoleAsync();
     }
 
-    private static int ExtractGameServerId(string podName)
-    {
-        // 파드 이름 끝의 서수(0-based)를 1-based ID로 변환. 빈 값은 로컬 개발 경로라 폴백이 정상
-        if (string.IsNullOrEmpty(podName)) return 0;
-
-        var match = PodOrdinalRegex().Match(podName);
-        if (match.Success && int.TryParse(match.Groups[1].Value, out int id)) return id + 1;
-
-        if (!_warnedPodNameParseFailure)
-        {
-            _warnedPodNameParseFailure = true;
-            Console.Error.WriteLine($"[WRN] gameServerId '{podName}'에서 파드 서수를 찾지 못해 serverId 0으로 폴백");
-        }
-
-        return 0;
-    }
-
     private static void ConfigureSerilog(HostBuilderContext hostingContext, LoggerConfiguration loggerConfiguration)
     {
-        var serverConfig = CreateServerConfig(hostingContext.Configuration);
+        IConfiguration configuration = hostingContext.Configuration;
+        string serverType = configuration["serverType"] ?? "GameServer";
+        string nodeId = configuration["gameServerId"] ?? "unconfigured";
         loggerConfiguration
             .MinimumLevel.Is(ResolveMinimumLevel(hostingContext.Configuration))
             .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
             .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
-            .Enrich.WithProperty("serverType", serverConfig.ServerType)
-            .Enrich.WithProperty("serverId", serverConfig.ServerId)
+            .Enrich.WithProperty("serverType", serverType)
+            .Enrich.WithProperty("nodeId", nodeId)
             .WriteTo.Console(
                 outputTemplate:
-                "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}");
+                "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [ServerType:{serverType}] [NodeId:{nodeId}] {Message:lj}{NewLine}{Exception}");
     }
 
     private static void ConfigureServices(HostBuilderContext hostContext, IServiceCollection services)
     {
-        var serverConfig = CreateServerConfig(hostContext.Configuration);
-        serverConfig.Validate();
-        services.AddSingleton<IServerConfig>(serverConfig);
-        services.AddSingleton(serverConfig);
         services.AddSingleton<INetworkService, NetworkService>();
         services.AddSingleton<INatsClientFactory, NatsClientFactory>();
         services.AddSingleton<ServerReadinessState>();
@@ -99,17 +77,6 @@ internal static partial class Program
             : LogEventLevel.Debug;
     }
 
-    private static ServerConfig CreateServerConfig(IConfiguration configuration)
-    {
-        return new ServerConfig
-        {
-            ServerType = configuration["serverType"] ?? "GameServer",
-            GameServerNum = configuration.GetValue<int>("gameServerNum"),
-            GameServerNodeId = configuration["gameServerId"] ?? "",
-            ServerId = ExtractGameServerId(configuration["gameServerId"] ?? "")
-        };
-    }
-
     /// <summary>
     ///     레지스트리에 광고할 공개 주소·용량. 공개 host는 클라이언트가 실제로 접속할 주소라 기본값이 없다.
     /// </summary>
@@ -117,6 +84,7 @@ internal static partial class Program
     {
         return new GameServerNodeOptions
         {
+            NodeId = configuration["gameServerId"] ?? "",
             PublicHost = configuration["GAME_SERVER_PUBLIC_HOST"] ?? "",
             PublicPort = configuration.GetValue("GAME_SERVER_PUBLIC_PORT", GameServerNodeOptions.DefaultPublicPort),
             MaxConcurrentMatches = configuration.GetValue(
@@ -124,7 +92,4 @@ internal static partial class Program
                 GameServerNodeOptions.DefaultMaxConcurrentMatches)
         };
     }
-
-    [GeneratedRegex(@"-(\d+)$")]
-    private static partial Regex PodOrdinalRegex();
 }

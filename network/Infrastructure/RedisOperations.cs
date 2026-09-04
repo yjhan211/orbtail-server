@@ -4,8 +4,8 @@ using StackExchange.Redis;
 namespace network.infrastructure;
 
 /// <summary>
-///     서버 서비스와 Redis 저장소가 공통으로 사용하는 Redis 자료구조 및 원자 연산을 구현한다.
-///     연결 수명과 DB view는 IRedisConnection에 위임하고, 각 Redis 명령은 호출마다 한 번만 실행한다.
+///     Redis의 Hash, String, Sorted Set에 대한 공통 저수준 연산을 제공한다.
+///     조건부 변경이나 여러 명령을 함께 처리해야 하는 작업은 Lua 스크립트로 원자적으로 실행한다.
 /// </summary>
 public class RedisOperations(IRedisConnection redisConnection) : IRedisOperations
 {

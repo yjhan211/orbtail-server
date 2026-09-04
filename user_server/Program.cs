@@ -25,15 +25,14 @@ internal static class Program
 
     private static void ConfigureSerilog(HostBuilderContext hostingContext, LoggerConfiguration loggerConfiguration)
     {
-        var serverConfig = CreateServerConfig(hostingContext.Configuration);
+        string serverType = hostingContext.Configuration["serverType"] ?? "UserServer";
         loggerConfiguration
             .MinimumLevel.Is(ResolveMinimumLevel(hostingContext.Configuration))
             .MinimumLevel.Override("Microsoft.AspNetCore", LogEventLevel.Warning)
             .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
-            .Enrich.WithProperty("serverType", serverConfig.ServerType)
-            .Enrich.WithProperty("serverId", serverConfig.ServerId)
+            .Enrich.WithProperty("serverType", serverType)
             .WriteTo.Console(outputTemplate:
-                "[{Level:u3}] [ServerType:{serverType}] [ServerId:{serverId}] {Message:lj}{NewLine}{Exception}");
+                "[{Level:u3}] [ServerType:{serverType}] {Message:lj}{NewLine}{Exception}");
     }
 
     // logLevel 설정(예: Information)으로 재빌드 없이 최소 로그 레벨 조정. 미지정 시 기존 기본값 Debug
@@ -46,11 +45,6 @@ internal static class Program
 
     private static void ConfigureServices(HostBuilderContext hostContext, IServiceCollection services)
     {
-        // 설정
-        var serverConfig = CreateServerConfig(hostContext.Configuration);
-        services.AddSingleton<IServerConfig>(serverConfig);
-        services.AddSingleton(serverConfig);
-
         // 네트워크/NATS
         services.AddSingleton<INetworkService, NetworkService>();
         services.AddSingleton<INatsClientFactory, NatsClientFactory>();
@@ -77,16 +71,6 @@ internal static class Program
         // 호스트 서비스
         services.AddHostedService<HealthCheckService>();
         services.AddHostedService<UserServer>();
-    }
-
-    private static ServerConfig CreateServerConfig(IConfiguration configuration)
-    {
-        return new ServerConfig
-        {
-            ServerType = configuration["serverType"] ?? "UserServer",
-            GameServerNum = configuration.GetValue<int>("gameServerNum"),
-            ServerId = 0
-        };
     }
 
     private static RedisConnection CreateRedisConnection(RedisConfiguration redisConfiguration)
