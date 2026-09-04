@@ -7,7 +7,15 @@ using network.interfaces;
 namespace network.infrastructure;
 
 /// <summary>
-///     Owns one NATS connection and coordinates core publish, subscribe, request/reply, and graceful handler drain.
+///     User Server와 Game Server가 공유하는 Core NATS 클라이언트.
+///     하나의 NATS 연결로 publish/subscribe와 request/reply를 제공하고,
+///     구독 목록과 연결 해제·재연결 상태를 관리한다.
+///
+///     종료 시 새 요청 처리를 막고 구독을 해제한 뒤,
+///     진행 중인 비동기 request handler가 끝날 때까지 기다린다.
+///
+///     JetStream을 사용하지 않으므로 메시지를 저장하거나 재전달하지 않는다.
+///     따라서 상태의 정본이 아닌 서버 간 알림과 세션 라우팅에 사용한다.
 /// </summary>
 public class NatsClient : INatsClient
 {

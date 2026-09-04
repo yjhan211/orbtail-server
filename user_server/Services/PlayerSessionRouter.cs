@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.interfaces;
@@ -39,6 +40,8 @@ internal interface IPlayerSessionRouter
 ///     로컬 세션이면 직접, 아니면 NATS request로 세션을 가진 프로세스에 위임하는 라우터.
 ///     Redis lease가 전역 현재 세대를 정본으로 보관하고, 이 라우터는 그 위치를 별도로 복제하지 않는다.
 ///     전달 요청은 모든 User Server가 구독하되 로컬 현재 세션을 가진 프로세스만 답하며,
+///     원격 응답이 timeout되면 같은 요청을 한 번 재시도한다. 세션 보유 프로세스는 request ID별 첫 처리 결과를
+///     잠시 보관해 응답만 유실된 재시도가 패킷을 중복 전송하지 않게 한다.
 ///     로그인 알림은 더 높은 세대의 로그인일 때만 옛 세션을 끊는다.
 ///     알림이 유실돼도 옛 세션은 다음 lease 갱신 실패 때 종료된다.
 /// </summary>
@@ -52,14 +55,22 @@ internal sealed class NatsPlayerSessionRouter(
     public const string ClearSubject = "user_server.session.clear";
     public const string LoginSubject = "user_server.session.login";
 
-    /// <summary>세션을 가진 프로세스가 없을 때 이만큼 기다린다. 8인 매치 전원이 부재여도 pass 한 번이 수십 초를 넘지 않게 짧게 둔다.</summary>
-    public static readonly TimeSpan RemoteTimeout = TimeSpan.FromMilliseconds(1500);
+    public const int RemoteDeliveryAttempts = 2;
+
+    /// <summary>원격 전달 한 번의 응답 대기 시간. 두 번 모두 timeout되어도 기존 총 상한 1.5초를 유지한다.</summary>
+    public static readonly TimeSpan RemoteAttemptTimeout = TimeSpan.FromMilliseconds(750);
+
+    /// <summary>응답 유실 뒤 같은 요청이 돌아왔을 때 첫 처리 결과를 재사용하는 기간.</summary>
+    public static readonly TimeSpan DeliveryResultLifetime = TimeSpan.FromMinutes(2);
 
     private static readonly byte[] Delivered = [1];
     private static readonly byte[] Rejected = [0];
 
     private static readonly MessagePackSerializerOptions SerializerOptions =
         MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData);
+
+    private readonly ConcurrentDictionary<SessionDeliveryKey, CachedDeliveryResult> _deliveryResults = new();
+    private long _handledRemoteDeliveryRequests;
 
     public string NodeId { get; } = nodeId;
 
@@ -122,27 +133,39 @@ internal sealed class NatsPlayerSessionRouter(
             PacketWire = packet.ToBytes(),
             OriginNodeId = NodeId
         };
-        try
+        byte[] requestBody = MessagePackSerializer.Serialize(request, SerializerOptions);
+        for (int attempt = 1; attempt <= RemoteDeliveryAttempts; attempt++)
         {
-            byte[] reply = await natsClient.RequestAsync(
-                DeliverSubjectPrefix + playerId,
-                MessagePackSerializer.Serialize(request, SerializerOptions),
-                RemoteTimeout);
-            return reply.Length == 1 && reply[0] == Delivered[0];
-        }
-        catch (Exception ex)
-        {
-            // 타임아웃이 정상 경로다: 어느 프로세스에도 세션이 없다. 그 밖의 실패는 경고로 남긴다.
-            if (ex is TimeoutException or NATS.Client.NATSTimeoutException)
+            try
+            {
+                byte[] reply = await natsClient.RequestAsync(
+                    DeliverSubjectPrefix + playerId,
+                    requestBody,
+                    RemoteAttemptTimeout);
+                return reply.Length == 1 && reply[0] == Delivered[0];
+            }
+            catch (Exception ex) when (IsTimeout(ex) && attempt < RemoteDeliveryAttempts)
+            {
                 logger.LogInformation(
-                    "No user server owns the session; delivery dropped: Op={Op}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    op, playerId, matchingId);
-            else
-                logger.LogWarning(ex,
-                    "Remote session delivery failed: Op={Op}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    op, playerId, matchingId);
-            return false;
+                    "Remote session delivery response timed out; retrying same request: Op={Op}, PlayerId={PlayerId}, MatchingId={MatchingId}, Attempt={Attempt}",
+                    op, playerId, matchingId, attempt);
+            }
+            catch (Exception ex)
+            {
+                // 최종 timeout은 세션 부재와 요청·응답 유실을 구분할 수 없다. 확인되지 않은 전달은 실패로 되돌린다.
+                if (IsTimeout(ex))
+                    logger.LogInformation(
+                        "No user server confirmed the session delivery; delivery dropped: Op={Op}, PlayerId={PlayerId}, MatchingId={MatchingId}, Attempts={Attempts}",
+                        op, playerId, matchingId, RemoteDeliveryAttempts);
+                else
+                    logger.LogWarning(ex,
+                        "Remote session delivery failed: Op={Op}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                        op, playerId, matchingId);
+                return false;
+            }
         }
+
+        return false;
     }
 
     private Task<byte[]?> HandleDeliverRequestAsync(string subject, byte[] body, CancellationToken cancellationToken)
@@ -158,16 +181,78 @@ internal sealed class NatsPlayerSessionRouter(
             return Task.FromResult<byte[]?>(null);
         }
 
+        var key = new SessionDeliveryKey(
+            request.OriginNodeId,
+            request.Op,
+            request.PlayerId,
+            request.MatchingId,
+            request.RequestId);
+        long now = Environment.TickCount64;
+        if (TryGetCachedDeliveryResult(key, now, out bool cachedResult))
+        {
+            logger.LogInformation(
+                "Remote session delivery result replayed without applying again: Op={Op}, PlayerId={PlayerId}, MatchingId={MatchingId}, From={Origin}, Delivered={Delivered}",
+                request.Op, request.PlayerId, request.MatchingId, request.OriginNodeId, cachedResult);
+            return Task.FromResult<byte[]?>(cachedResult ? Delivered : Rejected);
+        }
+
         IMatchingSessionEndpoint? local = getLocalSession(request.PlayerId);
         if (local == null)
             return Task.FromResult<byte[]?>(null);
 
-        using Packet packet = Packet.CreateForSending(request.PacketWire);
-        bool delivered = Apply(local, request.Op, request.MatchingId, request.RequestId, packet);
+        var candidate = new CachedDeliveryResult(
+            new Lazy<bool>(
+                () => ApplyRemote(local, request),
+                LazyThreadSafetyMode.ExecutionAndPublication),
+            now + (long)DeliveryResultLifetime.TotalMilliseconds);
+        CachedDeliveryResult stored = _deliveryResults.GetOrAdd(key, candidate);
+        bool delivered = stored.Result.Value;
+        PruneExpiredDeliveryResults(now);
         logger.LogInformation(
-            "Remote session delivery handled: Op={Op}, PlayerId={PlayerId}, MatchingId={MatchingId}, From={Origin}, Delivered={Delivered}",
-            request.Op, request.PlayerId, request.MatchingId, request.OriginNodeId, delivered);
+            "Remote session delivery handled: Op={Op}, PlayerId={PlayerId}, MatchingId={MatchingId}, From={Origin}, Delivered={Delivered}, Replayed={Replayed}",
+            request.Op, request.PlayerId, request.MatchingId, request.OriginNodeId, delivered, !ReferenceEquals(stored, candidate));
         return Task.FromResult<byte[]?>(delivered ? Delivered : Rejected);
+    }
+
+    private static bool IsTimeout(Exception exception) =>
+        exception is TimeoutException or NATS.Client.NATSTimeoutException;
+
+    private static bool ApplyRemote(IMatchingSessionEndpoint session, SessionDeliveryRequest request)
+    {
+        using Packet packet = Packet.CreateForSending(request.PacketWire);
+        return Apply(session, request.Op, request.MatchingId, request.RequestId, packet);
+    }
+
+    private bool TryGetCachedDeliveryResult(SessionDeliveryKey key, long now, out bool result)
+    {
+        if (_deliveryResults.TryGetValue(key, out CachedDeliveryResult? cached))
+        {
+            if (cached.ExpiresAtTick > now)
+            {
+                result = cached.Result.Value;
+                return true;
+            }
+
+            ((ICollection<KeyValuePair<SessionDeliveryKey, CachedDeliveryResult>>)_deliveryResults)
+                .Remove(new KeyValuePair<SessionDeliveryKey, CachedDeliveryResult>(key, cached));
+        }
+
+        result = false;
+        return false;
+    }
+
+    private void PruneExpiredDeliveryResults(long now)
+    {
+        if ((Interlocked.Increment(ref _handledRemoteDeliveryRequests) & 63) != 0)
+            return;
+
+        foreach ((SessionDeliveryKey key, CachedDeliveryResult cached) in _deliveryResults)
+        {
+            if (cached.ExpiresAtTick > now)
+                continue;
+            ((ICollection<KeyValuePair<SessionDeliveryKey, CachedDeliveryResult>>)_deliveryResults)
+                .Remove(new KeyValuePair<SessionDeliveryKey, CachedDeliveryResult>(key, cached));
+        }
     }
 
     private static bool Apply(
@@ -231,6 +316,15 @@ internal sealed class NatsPlayerSessionRouter(
             logger.LogWarning(ex, "Session notice publish failed: Subject={Subject}, PlayerId={PlayerId}", subject, notice.PlayerId);
         }
     }
+
+    private readonly record struct SessionDeliveryKey(
+        string OriginNodeId,
+        SessionDeliveryOp Op,
+        long PlayerId,
+        long MatchingId,
+        string RequestId);
+
+    private sealed record CachedDeliveryResult(Lazy<bool> Result, long ExpiresAtTick);
 }
 
 internal enum SessionDeliveryOp : byte

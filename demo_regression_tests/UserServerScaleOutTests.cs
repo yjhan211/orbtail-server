@@ -10,7 +10,7 @@ namespace demo_regression_tests;
 
 /// <summary>
 ///     #339 2단계 User Server N대: 매칭 리더 lease(획득·갱신·상실·해제), 세션 라우터(로컬 직행, 원격 request는 세션을
-///     가진 프로세스만 응답, 부재는 타임아웃 → false, 해제·로그인 알림은 origin 제외 브로드캐스트).
+///     가진 프로세스만 응답, timeout 재시도는 첫 결과 재사용, 최종 부재는 false, 해제·로그인 알림은 origin 제외 브로드캐스트).
 /// </summary>
 public sealed class UserServerScaleOutTests
 {
@@ -100,6 +100,43 @@ public sealed class UserServerScaleOutTests
     }
 
     [Fact]
+    public async Task Router_RetriesRequestLostBeforeTheOwnerHandlesIt()
+    {
+        var bus = new InMemoryNatsBus { RequestsToDropBeforeHandling = 1 };
+        var owner = new FakeSessionEndpoint();
+        var leader = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger());
+        var other = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "user-server-1", new RecordingLogger());
+        leader.Start();
+        other.Start();
+
+        using Packet packet = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, 42);
+        Assert.True(await leader.DeliverMatchingFailedAsync(7, 42, "req7", packet));
+
+        Assert.Equal(2, bus.RequestCount);
+        Assert.Single(owner.Deliveries);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Router_RetriesLostReplyAndReplaysFirstResultWithoutApplyingTwice(bool accepted)
+    {
+        var bus = new InMemoryNatsBus { RepliesToDropAfterHandling = 1 };
+        var owner = new FakeSessionEndpoint { Accept = accepted };
+        var leader = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger());
+        var other = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "user-server-1", new RecordingLogger());
+        leader.Start();
+        other.Start();
+
+        using Packet packet = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, 42);
+        Assert.Equal(accepted, await leader.DeliverMatchingFailedAsync(7, 42, "req7", packet));
+
+        Assert.Equal(2, bus.RequestCount);
+        Assert.Single(owner.Deliveries);
+        Assert.Equal(("failed", 42L, "req7"), owner.Deliveries[0]);
+    }
+
+    [Fact]
     public async Task Router_ReturnsFalseWhenNoProcessOwnsTheSession()
     {
         var bus = new InMemoryNatsBus();
@@ -111,6 +148,7 @@ public sealed class UserServerScaleOutTests
         using Packet packet = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, 42);
         Assert.False(await leader.DeliverMatchingFailedAsync(7, 42, "req7", packet));
         Assert.Equal(0, bus.RepliesForLastRequest);
+        Assert.Equal(NatsPlayerSessionRouter.RemoteDeliveryAttempts, bus.RequestCount);
     }
 
     [Fact]
@@ -251,6 +289,8 @@ public sealed class UserServerScaleOutTests
 
         public int RequestCount { get; private set; }
         public int RepliesForLastRequest { get; private set; }
+        public int RequestsToDropBeforeHandling { get; set; }
+        public int RepliesToDropAfterHandling { get; set; }
 
         public INatsClient Connect() => new Client(this);
 
@@ -283,6 +323,12 @@ public sealed class UserServerScaleOutTests
             {
                 bus.RequestCount++;
                 bus.RepliesForLastRequest = 0;
+                if (bus.RequestsToDropBeforeHandling > 0)
+                {
+                    bus.RequestsToDropBeforeHandling--;
+                    throw new TimeoutException("request lost before handling");
+                }
+
                 byte[]? first = null;
                 foreach ((string pattern, var handler) in bus._responders.ToArray())
                 {
@@ -293,7 +339,15 @@ public sealed class UserServerScaleOutTests
                     first ??= reply;
                 }
 
-                return first ?? throw new TimeoutException("no responder");
+                if (first == null)
+                    throw new TimeoutException("no responder");
+                if (bus.RepliesToDropAfterHandling > 0)
+                {
+                    bus.RepliesToDropAfterHandling--;
+                    throw new TimeoutException("reply lost after handling");
+                }
+
+                return first;
             }
 
             public void SubscribeRequest(string subject,
