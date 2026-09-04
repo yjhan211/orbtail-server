@@ -27,8 +27,8 @@ public sealed class GameHandoffTicketService(
 
         for (int attempt = 0; attempt < MaxTicketGenerationAttempts; attempt++)
         {
-            string ticket = OpaqueTokenCodec.Create(TicketPrefix);
-            string ticketHash = OpaqueTokenCodec.Fingerprint(ticket);
+            string ticket = OpaqueToken.Create(TicketPrefix);
+            string ticketHash = OpaqueToken.Fingerprint(ticket);
             if (await ticketStore.TryStoreAsync(ticketHash, context, options.Lifetime))
                 return ticket;
         }
@@ -43,11 +43,11 @@ public sealed class GameHandoffTicketService(
             return null;
 
         string normalizedTicket = ticket.Trim();
-        if (!OpaqueTokenCodec.IsValid(normalizedTicket, TicketPrefix))
+        if (!OpaqueToken.IsValid(normalizedTicket, TicketPrefix))
             return null;
 
         var context =
-            await ticketStore.ConsumeAsync(OpaqueTokenCodec.Fingerprint(normalizedTicket));
+            await ticketStore.ConsumeAsync(OpaqueToken.Fingerprint(normalizedTicket));
         if (context == null || !TryValidateContext(context, out _))
             return null;
 

@@ -39,9 +39,9 @@ public sealed class RedisAccountCredentialStore(
             return null;
 
         string storedCredential = Decode(tokenHashValue);
-        bool containsLegacyPlaintext = OpaqueTokenCodec.IsValid(storedCredential, "acct_");
+        bool containsLegacyPlaintext = OpaqueToken.IsValid(storedCredential, "acct_");
         string storedTokenHash = containsLegacyPlaintext
-            ? OpaqueTokenCodec.Fingerprint(storedCredential)
+            ? OpaqueToken.Fingerprint(storedCredential)
             : storedCredential;
         if (!string.Equals(storedTokenHash, tokenHash, StringComparison.Ordinal))
             return null;
@@ -90,9 +90,9 @@ public sealed class RedisAccountCredentialStore(
                 return new AccountCredentialProvisionResult(AccountCredentialProvisionStatus.PlayerAlreadyExists);
 
             string storedCredential = Decode(existingTokenHashValue);
-            bool containsLegacyPlaintext = OpaqueTokenCodec.IsValid(storedCredential, "acct_");
+            bool containsLegacyPlaintext = OpaqueToken.IsValid(storedCredential, "acct_");
             string existingTokenHash = containsLegacyPlaintext
-                ? OpaqueTokenCodec.Fingerprint(storedCredential)
+                ? OpaqueToken.Fingerprint(storedCredential)
                 : storedCredential;
             RedisValue mappedPlayerValue = await cacheHelper.HashGetAsync(PlayerByTokenHashKey, existingTokenHash);
             if (!mappedPlayerValue.IsNullOrEmpty &&

@@ -4,10 +4,11 @@ using System.Text;
 namespace network.helpers;
 
 /// <summary>
-///     Creates, validates, and fingerprints fixed-entropy opaque authentication tokens without depending on an
-///     application or persistence layer.
+///     클라이언트가 내용을 해석하지 않는 고정 길이 난수 토큰을 생성한다.
+///     접두사와 문자열 형식을 검사하고, 토큰 원문 대신 저장·조회할 SHA-256 fingerprint를 계산한다.
+///     토큰과 계정·매치 정보를 연결하거나 만료와 일회성 소비를 관리하는 책임은 각 서비스와 저장소가 담당한다.
 /// </summary>
-public static class OpaqueTokenCodec
+public static class OpaqueToken
 {
     private const int RandomByteCount = 32;
     private const int EncodedRandomLength = 43;

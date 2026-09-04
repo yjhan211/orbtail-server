@@ -27,7 +27,7 @@ public sealed class AccountTokenService(
             return await CreateAccountAsync();
 
         string token = presentedToken.Trim();
-        if (OpaqueTokenCodec.IsValid(token, TokenPrefix))
+        if (OpaqueToken.IsValid(token, TokenPrefix))
             return await ResolveOrProvisionOpaqueTokenAsync(token);
 
         if (options.AllowLegacyNumericMigration &&
@@ -45,11 +45,11 @@ public sealed class AccountTokenService(
         for (int attempt = 0; attempt < MaxTokenGenerationAttempts; attempt++)
         {
             long playerId = await credentialStore.AllocatePlayerIdAsync();
-            string token = OpaqueTokenCodec.Create(TokenPrefix);
+            string token = OpaqueToken.Create(TokenPrefix);
             var result = await credentialStore.ProvisionAsync(
                 playerId,
                 token,
-                OpaqueTokenCodec.Fingerprint(token),
+                OpaqueToken.Fingerprint(token),
                 requireExistingPlayer: false);
 
             if (result.Status == AccountCredentialProvisionStatus.Created)
@@ -71,7 +71,7 @@ public sealed class AccountTokenService(
 
     private async Task<AccountTokenResolution> ResolveOrProvisionOpaqueTokenAsync(string token)
     {
-        string tokenHash = OpaqueTokenCodec.Fingerprint(token);
+        string tokenHash = OpaqueToken.Fingerprint(token);
         var credential = await credentialStore.FindByTokenHashAsync(tokenHash);
         if (credential != null)
             return ResolveCredential(credential, token, tokenHash, isNewAccount: false);
@@ -138,7 +138,7 @@ public sealed class AccountTokenService(
             var result = await credentialStore.ProvisionAsync(
                 playerId,
                 token,
-                OpaqueTokenCodec.Fingerprint(token),
+                OpaqueToken.Fingerprint(token),
                 requireExistingPlayer: true);
 
             if (result.Status == AccountCredentialProvisionStatus.Created)
@@ -184,6 +184,6 @@ public sealed class AccountTokenService(
         byte[] input = Encoding.UTF8.GetBytes(
             $"manitto-account-migration:v1:{playerId.ToString(CultureInfo.InvariantCulture)}");
         byte[] digest = HMACSHA256.HashData(key, input);
-        return OpaqueTokenCodec.CreateFromBytes(TokenPrefix, digest);
+        return OpaqueToken.CreateFromBytes(TokenPrefix, digest);
     }
 }
