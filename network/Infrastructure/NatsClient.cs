@@ -11,15 +11,18 @@ namespace network.infrastructure;
 ///     하나의 NATS 연결로 publish/subscribe와 request/reply를 제공하고,
 ///     구독 목록과 연결 해제·재연결 상태를 관리한다.
 ///
-///     종료 시 새 요청 처리를 막고 구독을 해제한 뒤,
-///     진행 중인 비동기 request handler가 끝날 때까지 기다린다.
+///     종료 시 새 요청 처리를 막고 구독을 해제한 뒤, 진행 중인 비동기 request handler를 제한 시간 동안 기다린다.
+///     제한을 넘으면 handler를 취소하고 다시 정리를 기다리되, 취소를 무시해도 연결 종료가 무한히 막히지는 않는다.
 ///
 ///     JetStream을 사용하지 않으므로 메시지를 저장하거나 재전달하지 않는다.
 ///     따라서 상태의 정본이 아닌 서버 간 알림과 세션 라우팅에 사용한다.
 /// </summary>
 public class NatsClient : INatsClient
 {
+    private static readonly TimeSpan DefaultHandlerShutdownGracePeriod = TimeSpan.FromSeconds(5);
+
     private readonly IConnection _connection;
+    private readonly TimeSpan _handlerShutdownGracePeriod;
     private readonly ILogger _logger;
     private readonly CancellationTokenSource _handlerCancellation = new();
     private readonly ConcurrentDictionary<long, Task> _inFlightHandlers = new();
@@ -33,7 +36,23 @@ public class NatsClient : INatsClient
     {
         _url = url;
         _logger = logger ?? NullLogger.Instance;
+        _handlerShutdownGracePeriod = DefaultHandlerShutdownGracePeriod;
         _connection = CreateConnection();
+    }
+
+    internal NatsClient(
+        IConnection connection,
+        TimeSpan handlerShutdownGracePeriod,
+        ILogger? logger = null)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        if (handlerShutdownGracePeriod <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(handlerShutdownGracePeriod));
+
+        _url = "injected";
+        _logger = logger ?? NullLogger.Instance;
+        _handlerShutdownGracePeriod = handlerShutdownGracePeriod;
+        _connection = connection;
     }
 
     public void Publish(string subject, byte[] message)
@@ -58,7 +77,17 @@ public class NatsClient : INatsClient
 
         void Handler(object? sender, MsgHandlerEventArgs args)
         {
-            messageHandler(args.Message.Subject, args.Message.Data);
+            try
+            {
+                messageHandler(args.Message.Subject, args.Message.Data);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "NATS subscription handler failed: Subject={Subject}",
+                    args.Message.Subject);
+            }
         }
 
         lock (_subscriptionLock)
@@ -130,18 +159,33 @@ public class NatsClient : INatsClient
         UnsubscribeAll(subscriptions);
         try
         {
-            while (!_inFlightHandlers.IsEmpty)
+            if (!await WaitForInFlightHandlersAsync(cancellationToken))
             {
-                var inFlight = _inFlightHandlers.Values.ToArray();
-                if (inFlight.Length == 0)
-                    break;
-                await Task.WhenAll(inFlight).WaitAsync(cancellationToken);
+                _logger.LogWarning(
+                    "NATS request handlers exceeded the graceful shutdown period; canceling: Count={Count}, GracePeriod={GracePeriod}",
+                    _inFlightHandlers.Count,
+                    _handlerShutdownGracePeriod);
+                await _handlerCancellation.CancelAsync();
+
+                if (!await WaitForInFlightHandlersAsync(cancellationToken))
+                {
+                    _logger.LogWarning(
+                        "NATS request handlers did not stop after cancellation; closing connection: Count={Count}, GracePeriod={GracePeriod}",
+                        _inFlightHandlers.Count,
+                        _handlerShutdownGracePeriod);
+                }
             }
         }
         finally
         {
-            await _handlerCancellation.CancelAsync();
-            _connection.Close();
+            try
+            {
+                await _handlerCancellation.CancelAsync();
+            }
+            finally
+            {
+                _connection.Close();
+            }
         }
     }
 
@@ -150,8 +194,14 @@ public class NatsClient : INatsClient
         if (!TryBeginClose(out var subscriptions))
             return;
         UnsubscribeAll(subscriptions);
-        _handlerCancellation.Cancel();
-        _connection.Close();
+        try
+        {
+            _handlerCancellation.Cancel();
+        }
+        finally
+        {
+            _connection.Close();
+        }
     }
 
     private async Task HandleRequestAsync(
@@ -164,7 +214,7 @@ public class NatsClient : INatsClient
                 message.Subject,
                 message.Data,
                 _handlerCancellation.Token);
-            // null은 "내 담당이 아니다" — 다른 구독자가 답하도록 침묵한다. 요청자는 타임아웃으로 부재를 안다.
+            // 다른 구독자가 응답하지 않으면 요청자는 timeout으로 실패한다.
             if (response == null)
                 return;
             message.Respond(response);
@@ -208,6 +258,23 @@ public class NatsClient : INatsClient
         }
     }
 
+    private async Task<bool> WaitForInFlightHandlersAsync(CancellationToken cancellationToken)
+    {
+        var inFlight = _inFlightHandlers.Values.ToArray();
+        if (inFlight.Length == 0)
+            return true;
+
+        try
+        {
+            await Task.WhenAll(inFlight).WaitAsync(_handlerShutdownGracePeriod, cancellationToken);
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            return false;
+        }
+    }
+
     private bool TryBeginClose(out IAsyncSubscription[] subscriptions)
     {
         lock (_subscriptionLock)
@@ -241,18 +308,15 @@ public class NatsClient : INatsClient
 
     private static int ToPositiveMilliseconds(TimeSpan value, string parameterName)
     {
-        long milliseconds = ToPositiveMilliseconds64(value, parameterName);
-        if (milliseconds > int.MaxValue)
-            throw new ArgumentOutOfRangeException(parameterName, "The duration is too long.");
-        return (int)milliseconds;
-    }
+        double milliseconds = Math.Ceiling(value.TotalMilliseconds);
+        if (milliseconds is <= 0 or > int.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(
+                parameterName,
+                "A positive duration no greater than Int32.MaxValue milliseconds is required.");
+        }
 
-    private static long ToPositiveMilliseconds64(TimeSpan value, string parameterName)
-    {
-        double totalMilliseconds = Math.Ceiling(value.TotalMilliseconds);
-        if (!double.IsFinite(totalMilliseconds) || totalMilliseconds <= 0 || totalMilliseconds > long.MaxValue)
-            throw new ArgumentOutOfRangeException(parameterName, "A positive finite duration is required.");
-        return (long)totalMilliseconds;
+        return (int)milliseconds;
     }
 
     private IConnection CreateConnection()
