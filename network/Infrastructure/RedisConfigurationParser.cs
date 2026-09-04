@@ -5,6 +5,12 @@ using StackExchange.Redis;
 
 namespace network.infrastructure;
 
+/// <summary>
+///     appsettings와 환경 변수에서 Redis 연결 설정을 읽어
+///     검증된 <see cref="RedisConfiguration"/>으로 변환한다.
+///     endpoint·비밀번호·TLS·timeout·재시도 설정을 공통 규칙으로 해석하고,
+///     잘못된 값은 서버가 시작되기 전에 예외로 거부한다.
+/// </summary>
 public static class RedisConfigurationParser
 {
     public static RedisConfiguration Parse(
