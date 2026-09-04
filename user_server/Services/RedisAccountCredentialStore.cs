@@ -13,9 +13,9 @@ public sealed class RedisAccountCredentialStore(
     IRedLockFactory redLockFactory) : IAccountCredentialStore
 {
     private const string PlayerIdCounterKey = "player_id_counter";
-    // Keep the existing Redis key for rolling migration, but store only fingerprints going forward.
-    private const string TokenHashByPlayerKey = "account_token_by_player";
-    private const string PlayerByTokenHashKey = "account_player_by_token_hash";
+    private const string AccountHashTag = "{account}";
+    private const string TokenHashByPlayerKey = AccountHashTag + ":token_hash_by_player";
+    private const string PlayerByTokenHashKey = AccountHashTag + ":player_by_token_hash";
 
     public Task<long> AllocatePlayerIdAsync()
     {

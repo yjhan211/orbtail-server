@@ -1,4 +1,5 @@
 using MessagePack;
+using network.common;
 using user_server.services;
 
 namespace demo_regression_tests;
@@ -108,6 +109,13 @@ public sealed class MatchingQueueTests
     public void MakeLockKey_UsesPlayerScopedPrefix()
     {
         Assert.Equal("matching_queue_lock:42", MatchingQueue.MakeLockKey(42));
+    }
+
+    [Fact]
+    public void AtomicClaimKeys_ShareRedisClusterHashTag()
+    {
+        Assert.Equal("{matching}:queue", MatchingQueue.QueueKey);
+        Assert.Equal("{matching}:claim:42", MatchingHandoffRedisKeys.ClaimKey(42));
     }
 
     [Fact]

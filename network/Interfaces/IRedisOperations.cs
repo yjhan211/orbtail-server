@@ -4,7 +4,7 @@ namespace network.interfaces;
 
 /// <summary>
 ///     서버 서비스와 Redis 저장소가 공통으로 사용하는 Redis 자료구조 및 원자 연산을 제공한다.
-///     연결 수명과 재시도는 IRedisConnection이, 키 구성·직렬화·도메인 상태 전이는 각 저장소가 담당한다.
+///     연결 수명과 DB view는 IRedisConnection이 담당한다.
 /// </summary>
 public interface IRedisOperations
 {
@@ -27,13 +27,6 @@ public interface IRedisOperations
     );
     public Task<RedisValue> HashGetAsync(string key, string field, int db = -1);
     public Task<RedisValue> HashGetAsync(string key, long field, int db = -1);
-    public Task<RedisValue> HashGetDeleteFirstAsync(
-        string firstKey,
-        RedisValue firstField,
-        string secondKey,
-        RedisValue secondField,
-        int db = -1
-    );
     public Task<RedisValue[]> HashGetAsync(string key, RedisValue[] fields, int db = -1);
     public Task<HashEntry[]> HashGetAllAsync(string key, int db = -1);
     public Task<bool> HashDeleteAsync(string key, string field, int db = -1);

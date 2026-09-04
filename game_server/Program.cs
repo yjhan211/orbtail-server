@@ -3,7 +3,6 @@ using game_server.services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using network.core;
 using network.gamehandoff;
 using network.hosting;
@@ -72,10 +71,9 @@ internal static partial class Program
 
         var redisConfiguration = RedisConfigurationParser.Parse(hostContext.Configuration);
         services.AddSingleton(redisConfiguration);
-        services.AddSingleton<IRedisConnection>(sp =>
+        services.AddSingleton<IRedisConnection>(_ =>
         {
-            var logger = sp.GetRequiredService<ILogger<RedisConnection>>();
-            var redisConnection = new RedisConnection(logger);
+            var redisConnection = new RedisConnection();
             redisConnection.Initialize(redisConfiguration);
             return redisConnection;
         });

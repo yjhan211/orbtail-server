@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using Microsoft.Extensions.Logging;
+
 using network.interfaces;
 using RedLockNet;
 using RedLockNet.SERedis;
@@ -9,16 +9,18 @@ using StackExchange.Redis;
 namespace network.infrastructure;
 
 /// <summary>
-///     서버 프로세스의 Redis 연결 단일 진입점 — ConnectionMultiplexer 하나와 DB 뷰 캐시, RedLock 팩토리를 소유한다.
-///     lazy 연결 생성과 dispose는 lock으로 보호하고, 지원하지 않는 Cluster topology는 첫 연결에서 거부한다.
+///     서버 프로세스에서 Redis 연결을 생성하고 공유한다.
+///     초기화할 때 하나의 ConnectionMultiplexer를 생성하고 계속 재사용한다.
+///     DB별 IDatabase 객체와 필요한 경우 RedLock 팩토리를 함께 관리한다.
+///     연결 생성과 종료를 담당한다.
 /// </summary>
-public class RedisConnection(ILogger<RedisConnection> logger) : IRedisConnection
+public sealed class RedisConnection : IRedisConnection
 {
     private readonly ConcurrentDictionary<int, IDatabase> _databases = new();
     private readonly object _lock = new();
-    private Lazy<ConnectionMultiplexer>? _lazyConnection;
+    private ConnectionMultiplexer? _connection;
     private RedLockFactoryAdapter? _redLockFactory;
-    private ConfigurationOptions? _options;
+
     private bool _disposed;
 
     public void Initialize(string connectionString)
@@ -33,33 +35,22 @@ public class RedisConnection(ILogger<RedisConnection> logger) : IRedisConnection
         lock (_lock)
         {
             ThrowIfDisposed();
-            if (_lazyConnection != null)
+            if (_connection != null)
             {
                 throw new InvalidOperationException("Redis connection is already initialized.");
             }
 
-            _options = configuration.CreateClientOptions();
-            _lazyConnection = new Lazy<ConnectionMultiplexer>(() =>
+            ConnectionMultiplexer? connection = null;
+            try
             {
-                try
-                {
-                    var connection = ConnectionMultiplexer.Connect(_options);
-                    try
-                    {
-                        RejectUnsupportedClusterTopology(connection);
-                        return connection;
-                    }
-                    catch
-                    {
-                        connection.Dispose();
-                        throw;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    throw new InvalidOperationException("Failed to connect to Redis.", ex);
-                }
-            }, LazyThreadSafetyMode.ExecutionAndPublication);
+                connection = ConnectionMultiplexer.Connect(configuration.CreateClientOptions());
+                _connection = connection;
+            }
+            catch (Exception ex)
+            {
+                connection?.Dispose();
+                throw new InvalidOperationException("Failed to connect to Redis.", ex);
+            }
         }
     }
 
@@ -75,11 +66,8 @@ public class RedisConnection(ILogger<RedisConnection> logger) : IRedisConnection
 
             redLockFactory = _redLockFactory;
             _redLockFactory = null;
-            if (_lazyConnection is { IsValueCreated: true })
-                connection = _lazyConnection.Value;
-
-            _lazyConnection = null;
-            _options = null;
+            connection = _connection;
+            _connection = null;
             _databases.Clear();
         }
 
@@ -107,79 +95,19 @@ public class RedisConnection(ILogger<RedisConnection> logger) : IRedisConnection
         }
     }
 
-    public async Task<T> ExecuteWithRetryAsync<T>(Func<IDatabase, Task<T>> action, int db = -1, int retryCount = 3)
-    {
-        int delay = 100; // 시작 딜레이 (ms)
-
-        for (int i = 0; i < retryCount; i++)
-            try
-            {
-                var database = await GetDatabaseAsync(db);
-                return await action(database);
-            }
-            catch (RedisTimeoutException ex)
-            {
-                if (i == retryCount - 1)
-                {
-                    logger.LogWarning("Redis timeout after {RetryCount} retries: {Message}", retryCount, ex.Message);
-                    throw;
-                }
-
-                logger.LogWarning("Redis timeout (attempt {Attempt}/{RetryCount}), retrying in {Delay}ms...", i + 1,
-                    retryCount, delay);
-                await Task.Delay(delay);
-                delay *= 2; // 지수 백오프
-            }
-            catch (RedisConnectionException ex)
-            {
-                if (i == retryCount - 1)
-                {
-                    logger.LogError("Redis connection error after {RetryCount} retries: {Message}", retryCount,
-                        ex.Message);
-                    throw;
-                }
-
-                logger.LogWarning("Redis connection error (attempt {Attempt}/{RetryCount}), retrying in {Delay}ms...",
-                    i + 1, retryCount, delay);
-                await Task.Delay(delay);
-                delay *= 2; // 지수 백오프
-            }
-
-        throw new Exception($"Redis operation failed after {retryCount} retries");
-    }
-
     private ConnectionMultiplexer GetConnection()
     {
         lock (_lock)
         {
             ThrowIfDisposed();
-            if (_lazyConnection == null) throw new InvalidOperationException("Redis connection is not initialized.");
-            return _lazyConnection.Value;
+            if (_connection == null) throw new InvalidOperationException("Redis connection is not initialized.");
+            return _connection;
         }
     }
 
-    private IDatabase GetDatabase(int db = -1)
+    public IDatabase GetDatabase(int db = -1)
     {
         return _databases.GetOrAdd(db, dbNum => GetConnection().GetDatabase(dbNum));
-    }
-
-    private Task<IDatabase> GetDatabaseAsync(int db = -1)
-    {
-        return Task.FromResult(GetDatabase(db));
-    }
-
-    private static void RejectUnsupportedClusterTopology(ConnectionMultiplexer connection)
-    {
-        bool hasClusterNode = connection.GetEndPoints(configuredOnly: false)
-            .Select(endpoint => connection.GetServer(endpoint))
-            .Any(server => server.ServerType == ServerType.Cluster);
-        if (hasClusterNode)
-        {
-            throw new InvalidOperationException(
-                "Redis Cluster mode is not supported because account, matching claim, and handoff " +
-                "transactions use multi-key Lua scripts. Use standalone Redis or a managed " +
-                "cluster-mode-disabled deployment.");
-        }
     }
 
     private void ThrowIfDisposed()
@@ -198,7 +126,7 @@ public sealed class RedLockFactoryAdapter(RedLockFactory redLockFactory) : IRedL
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
-        IRedLock redLock = await redLockFactory.CreateLockAsync(
+        var redLock = await redLockFactory.CreateLockAsync(
             resource,
             expiryTime,
             LockWaitTime,
@@ -213,7 +141,7 @@ public sealed class RedLockFactoryAdapter(RedLockFactory redLockFactory) : IRedL
     {
         ArgumentNullException.ThrowIfNull(action);
 
-        await using IRedLock redLock = await AcquireLockAsync(resource, expiryTime);
+        await using var redLock = await AcquireLockAsync(resource, expiryTime);
         await action();
     }
 
@@ -224,7 +152,7 @@ public sealed class RedLockFactoryAdapter(RedLockFactory redLockFactory) : IRedL
     {
         ArgumentNullException.ThrowIfNull(action);
 
-        await using IRedLock redLock = await AcquireLockAsync(resource, expiryTime);
+        await using var redLock = await AcquireLockAsync(resource, expiryTime);
         return await action();
     }
 

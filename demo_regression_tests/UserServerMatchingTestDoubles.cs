@@ -155,8 +155,6 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
 
     public Task<RedisValue> HashGetAsync(string key, long field, int db = -1) => HashGetAsync(key, field.ToString(), db);
 
-    public Task<RedisValue> HashGetDeleteFirstAsync(string firstKey, RedisValue firstField, string secondKey,
-        RedisValue secondField, int db = -1) => throw new NotSupportedException();
 
     public Task<RedisValue[]> HashGetAsync(string key, RedisValue[] fields, int db = -1) => throw new NotSupportedException();
 

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using network.core;
 using network.gamehandoff;
 using network.hosting;
@@ -60,7 +59,7 @@ internal static class Program
         // Redis
         RedisConfiguration redisConfiguration = RedisConfigurationParser.Parse(hostContext.Configuration);
         services.AddSingleton(redisConfiguration);
-        services.AddSingleton<IRedisConnection>(sp => CreateRedisConnection(sp, redisConfiguration));
+        services.AddSingleton<IRedisConnection>(_ => CreateRedisConnection(redisConfiguration));
         services.AddSingleton<IRedLockFactory>(sp =>
             sp.GetRequiredService<IRedisConnection>().GetRedLockFactory());
 
@@ -90,12 +89,9 @@ internal static class Program
         };
     }
 
-    private static RedisConnection CreateRedisConnection(
-        IServiceProvider sp,
-        RedisConfiguration redisConfiguration)
+    private static RedisConnection CreateRedisConnection(RedisConfiguration redisConfiguration)
     {
-        var logger = sp.GetRequiredService<ILogger<RedisConnection>>();
-        var redisConnection = new RedisConnection(logger);
+        var redisConnection = new RedisConnection();
         redisConnection.Initialize(redisConfiguration);
         return redisConnection;
     }

@@ -9,7 +9,6 @@ namespace user_server.services;
 /// </summary>
 public sealed class RedisMatchingQueueClaimStore(IRedisConnection redisConnection) : IMatchingQueueClaimStore
 {
-    private const string MatchingQueueKey = "matching_queue";
     private static readonly TimeSpan MinimumRedisLifetime = TimeSpan.FromMilliseconds(1);
 
     private const string TryClaimQueueEntryScript = """
@@ -36,13 +35,11 @@ public sealed class RedisMatchingQueueClaimStore(IRedisConnection redisConnectio
                 $"Expiry must be at least {MinimumRedisLifetime.TotalMilliseconds:0} millisecond.");
         }
 
-        RedisResult result = await redisConnection.ExecuteWithRetryAsync(
-            database => database.ScriptEvaluateAsync(
-                TryClaimQueueEntryScript,
-                [MatchingQueueKey, MatchingHandoffRedisKeys.ClaimKey(playerId)],
-                [queueEntry, claimId, checked((long)expiry.TotalMilliseconds)],
-                CommandFlags.DemandMaster),
-            retryCount: 1);
+        var result = await redisConnection.GetDatabase().ScriptEvaluateAsync(
+            TryClaimQueueEntryScript,
+            [MatchingHandoffRedisKeys.MatchingQueueKey, MatchingHandoffRedisKeys.ClaimKey(playerId)],
+            [queueEntry, claimId, checked((long)expiry.TotalMilliseconds)],
+            CommandFlags.DemandMaster);
         return (long)result == 1;
     }
 }

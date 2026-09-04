@@ -6,7 +6,7 @@ using user_server.network;
 namespace user_server.services;
 
 /// <summary>
-///     Redis 매칭 큐(sorted set <c>matching_queue</c>, score = 요청 시각 + 이탈 페널티)의 단일 접근 경로.
+///     Redis 매칭 큐(sorted set <c>{matching}:queue</c>, score = 요청 시각 + 이탈 페널티)의 단일 접근 경로.
 ///     등록·취소는 player별 RedLock 안에서 claim 존재를 확인한 뒤 진행하고, 읽기는 손상·중복·무효 entry를
 ///     제거(sanitize)한 typed entry 배열로 돌려준다. 프로세스 상태를 갖지 않는다.
 /// </summary>
@@ -16,7 +16,7 @@ internal sealed class MatchingQueue(
     MatchingQueueClaimCoordinator claims,
     ILogger logger)
 {
-    internal const string QueueKey = "matching_queue";
+    internal const string QueueKey = MatchingHandoffRedisKeys.MatchingQueueKey;
     private const string LockKeyPrefix = "matching_queue_lock:";
 
     public async Task<ErrorCode> AddToQueueAsync(long playerId, GameSession user)

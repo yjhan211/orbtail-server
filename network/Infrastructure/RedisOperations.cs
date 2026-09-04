@@ -5,7 +5,7 @@ namespace network.infrastructure;
 
 /// <summary>
 ///     서버 서비스와 Redis 저장소가 공통으로 사용하는 Redis 자료구조 및 원자 연산을 구현한다.
-///     연결 수명과 재시도는 IRedisConnection에 위임하고, 도메인에 속한 키·직렬화·상태 전이는 소유하지 않는다.
+///     연결 수명과 DB view는 IRedisConnection에 위임하고, 각 Redis 명령은 호출마다 한 번만 실행한다.
 /// </summary>
 public class RedisOperations(IRedisConnection redisConnection) : IRedisOperations
 {
@@ -33,7 +33,7 @@ public class RedisOperations(IRedisConnection redisConnection) : IRedisOperation
             "redis.call('HSET', KEYS[1], ARGV[1], ARGV[2]); " +
             "redis.call('PEXPIRE', KEYS[1], ARGV[3]); return 1";
 
-        await ExecuteAtomicRedisCommandAsync(
+        await ExecuteRedisCommandAsync(
             database => database.ScriptEvaluateAsync(
                 setWithExpiryScript,
                 [key],
@@ -56,7 +56,7 @@ public class RedisOperations(IRedisConnection redisConnection) : IRedisOperation
             "redis.call('HSET', KEYS[1], ARGV[1], ARGV[2]); " +
             "redis.call('HSET', KEYS[2], ARGV[3], ARGV[4]); return 1";
 
-        await ExecuteAtomicRedisCommandAsync(
+        await ExecuteRedisCommandAsync(
             database => database.ScriptEvaluateAsync(
                 setPairScript,
                 [firstKey, secondKey],
@@ -77,31 +77,6 @@ public class RedisOperations(IRedisConnection redisConnection) : IRedisOperation
         return ExecuteRedisCommandAsync(database => database.HashGetAsync(key, field, CommandFlags.DemandMaster), db);
     }
 
-    public async Task<RedisValue> HashGetDeleteFirstAsync(
-        string firstKey,
-        RedisValue firstField,
-        string secondKey,
-        RedisValue secondField,
-        int db = -1
-    )
-    {
-        const string getDeleteFirstScript =
-            "local value = redis.call('HGET', KEYS[1], ARGV[1]); " +
-            "if not value then value = redis.call('HGET', KEYS[2], ARGV[2]); end; " +
-            "redis.call('HDEL', KEYS[1], ARGV[1]); " +
-            "redis.call('HDEL', KEYS[2], ARGV[2]); return value";
-
-        var result = await ExecuteAtomicRedisCommandAsync(
-            database => database.ScriptEvaluateAsync(
-                getDeleteFirstScript,
-                [firstKey, secondKey],
-                [firstField, secondField],
-                CommandFlags.DemandMaster
-            ),
-            db
-        );
-        return result.IsNull ? RedisValue.Null : (RedisValue)(byte[])result!;
-    }
 
     public Task<HashEntry[]> HashGetAllAsync(string key, int db = -1)
     {
@@ -140,12 +115,12 @@ public class RedisOperations(IRedisConnection redisConnection) : IRedisOperation
 
     public Task<long> StringIncrementAsync(string key, int db = -1)
     {
-        return ExecuteAtomicRedisCommandAsync(database => database.StringIncrementAsync(key), db);
+        return ExecuteRedisCommandAsync(database => database.StringIncrementAsync(key), db);
     }
 
     public Task<long> StringIncrementByAsync(string key, long increment, int db = -1)
     {
-        return ExecuteAtomicRedisCommandAsync(database => database.StringIncrementAsync(key, increment), db);
+        return ExecuteRedisCommandAsync(database => database.StringIncrementAsync(key, increment), db);
     }
 
     public Task<RedisValue> StringGetAsync(string key, int db = -1)
@@ -158,7 +133,7 @@ public class RedisOperations(IRedisConnection redisConnection) : IRedisOperation
 
     public Task<RedisValue> StringGetDeleteAsync(string key, int db = -1)
     {
-        return ExecuteAtomicRedisCommandAsync(
+        return ExecuteRedisCommandAsync(
             database => database.StringGetDeleteAsync(key, CommandFlags.DemandMaster),
             db
         );
@@ -187,7 +162,7 @@ public class RedisOperations(IRedisConnection redisConnection) : IRedisOperation
         int db = -1
     )
     {
-        return ExecuteAtomicRedisCommandAsync(
+        return ExecuteRedisCommandAsync(
             database => database.StringSetAsync(
                 key,
                 value,
@@ -214,7 +189,7 @@ public class RedisOperations(IRedisConnection redisConnection) : IRedisOperation
             "if redis.call('GET', KEYS[1]) == ARGV[1] then " +
             "redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]); return 1 else return 0 end";
 
-        var result = await ExecuteAtomicRedisCommandAsync(
+        var result = await ExecuteRedisCommandAsync(
             database => database.ScriptEvaluateAsync(
                 setIfEqualsScript,
                 [key],
@@ -234,7 +209,7 @@ public class RedisOperations(IRedisConnection redisConnection) : IRedisOperation
             "if redis.call('GET', KEYS[1]) == ARGV[1] then " +
             "return redis.call('DEL', KEYS[1]) else return 0 end";
 
-        var result = await ExecuteAtomicRedisCommandAsync(
+        var result = await ExecuteRedisCommandAsync(
             database => database.ScriptEvaluateAsync(
                 deleteIfEqualsScript,
                 [key],
@@ -276,14 +251,8 @@ public class RedisOperations(IRedisConnection redisConnection) : IRedisOperation
         return ExecuteRedisCommandAsync(database => database.SortedSetRemoveAsync(key, value), db);
     }
 
-    private async Task<T> ExecuteRedisCommandAsync<T>(Func<IDatabase, Task<T>> action, int db = -1)
+    private Task<T> ExecuteRedisCommandAsync<T>(Func<IDatabase, Task<T>> action, int db = -1)
     {
-        return await redisConnection.ExecuteWithRetryAsync(action, db);
-    }
-
-    private async Task<T> ExecuteAtomicRedisCommandAsync<T>(Func<IDatabase, Task<T>> action, int db = -1)
-    {
-        // 결과를 잃은 요청을 자동 재실행하면 increment/consume이 중복 적용될 수 있다.
-        return await redisConnection.ExecuteWithRetryAsync(action, db, retryCount: 1);
+        return action(redisConnection.GetDatabase(db));
     }
 }

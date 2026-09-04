@@ -14,14 +14,16 @@ namespace network.common
         public const string AdmissionPendingState = "pending";
         public const string AdmissionCompletedState = "completed";
         public const string AdmissionCanceledState = "canceled";
+        public const string MatchingHashTag = "{matching}";
+        public const string MatchingQueueKey = MatchingHashTag + ":queue";
 
         public static string Key(long matchingId) => $"matching:{matchingId}:handoff";
 
         public static string AdmissionStateKey(long matchingId) =>
-            $"{{user-server-scaling}}:matching:{matchingId}:admission-state";
+            $"matching:{matchingId}:admission-state";
 
         public static string AdmittedPlayerField(long playerId) => $"admitted:{playerId}";
 
-        public static string ClaimKey(long playerId) => $"matching_claim:{playerId}";
+        public static string ClaimKey(long playerId) => $"{MatchingHashTag}:claim:{playerId}";
     }
 }

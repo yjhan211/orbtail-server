@@ -7,7 +7,6 @@ public class ServerConfig : IServerConfig
 {
     public string ServerType { get; init; } = "";
     public int ServerId { get; init; }
-
     /// <summary>
     ///     Game Server 노드 식별자(설정 <c>gameServerId</c> 원문, 예: <c>game-server-0</c>).
     ///     레지스트리 필드 이름이자 handoff ticket이 결합되는 값이라 배포 단위에서 고정돼야 한다.
