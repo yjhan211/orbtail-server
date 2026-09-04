@@ -143,7 +143,7 @@ internal sealed class MatchmakingPass(
 
             await overrides.ApplyTwoPlayerTestOutfitAsync(allGroupEntries);
             List<PlayerInfo> playerRoster = await rosterBuilder.BuildPlayerRosterAsync(allGroupEntries);
-            MatchManifest manifest = MatchRosterBuilder.BuildManifest(allGroupEntries);
+            MatchManifest manifest = MatchRosterBuilder.BuildManifest(allGroupEntries, overrides.MatchMode);
             expectedHumanCount = manifest.HumanPlayerIds.Count;
 
             // Game Server는 이 manifest로 봇 수·입장 기대 인원·스폰을 정한다.

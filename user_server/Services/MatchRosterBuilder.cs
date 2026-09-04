@@ -11,14 +11,17 @@ namespace user_server.services;
 internal sealed class MatchRosterBuilder(ICacheHelper cacheHelper, ILogger logger)
 {
     /// <summary>
-    ///     Game Server가 매치당 한 번 읽는 구성: 사람 ID와 봇 ID.
+    ///     Game Server가 매치당 한 번 읽는 구성: 사람 ID, 봇 ID, 매치 모드.
     /// </summary>
-    public static MatchManifest BuildManifest(IReadOnlyList<MatchingQueueEntry> entries)
+    public static MatchManifest BuildManifest(
+        IReadOnlyList<MatchingQueueEntry> entries,
+        MatchMode mode = MatchMode.Normal)
     {
         return new MatchManifest
         {
             HumanPlayerIds = entries.Where(entry => entry.IsHuman).Select(entry => entry.PlayerId).Distinct().ToList(),
-            BotPlayerIds = entries.Where(entry => entry.IsBot).Select(entry => entry.PlayerId).Distinct().ToList()
+            BotPlayerIds = entries.Where(entry => entry.IsBot).Select(entry => entry.PlayerId).Distinct().ToList(),
+            Mode = mode
         };
     }
 

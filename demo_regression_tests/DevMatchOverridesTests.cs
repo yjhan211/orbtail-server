@@ -1,4 +1,5 @@
 using network.common;
+using network.common.data.models;
 using user_server.services;
 
 namespace demo_regression_tests;
@@ -63,6 +64,7 @@ public sealed class DevMatchOverridesTests
     {
         DevMatchOverrides overrides = Create();
 
+        Assert.Equal(MatchMode.Normal, overrides.MatchMode);
         Assert.Equal(1, overrides.PlayersPerMatch);
         Assert.Equal(Config.SWARM_PLAYERS_PER_MATCH, overrides.GamePlayersPerMatch);
         Assert.True(overrides.AllowsBotFill);
@@ -73,6 +75,7 @@ public sealed class DevMatchOverridesTests
     {
         DevMatchOverrides overrides = Create(solo: true);
 
+        Assert.Equal(MatchMode.SoloMapValidation, overrides.MatchMode);
         Assert.Equal(1, overrides.PlayersPerMatch);
         Assert.Equal(1, overrides.GamePlayersPerMatch);
         Assert.False(overrides.AllowsBotFill);

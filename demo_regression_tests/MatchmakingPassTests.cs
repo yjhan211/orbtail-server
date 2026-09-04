@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using network.common;
+using network.common.data.models;
 using user_server.services;
 
 namespace demo_regression_tests;
@@ -228,6 +229,23 @@ public sealed class MatchmakingPassTests
         Assert.Null(ClaimOf(3));
         Assert.True(_cache.SortedSetContains(MatchingQueue.QueueKey, fresh.Raw));
         Assert.Equal(1, _cache.SortedSetCount(MatchingQueue.QueueKey));
+    }
+
+    [Fact]
+    public async Task RunAsync_SoloMapValidationPublishesModeWithoutBots()
+    {
+        var overrides = new DevMatchOverrides(false, true, _cache, new FakeRedLockFactory(), _logger);
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        MatchingQueueEntry player = UserServerMatchingTestData.HumanEntry(1);
+        await _cache.SortedSetAddAsync(MatchingQueue.QueueKey, player.Raw, now - 10);
+
+        await CreatePass(overrides).RunAsync();
+
+        MatchManifest manifest = Assert.Single(_handoff.StoredManifests).Value;
+        Assert.Equal(MatchMode.SoloMapValidation, manifest.Mode);
+        Assert.Equal(new long[] { player.PlayerId }, manifest.HumanPlayerIds);
+        Assert.Empty(manifest.BotPlayerIds);
+        Assert.Single(_handoff.Deliveries);
     }
 
     [Fact]

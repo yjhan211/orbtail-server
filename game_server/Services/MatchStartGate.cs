@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using network.common;
+using network.common.data.models;
 
 namespace game_server.services;
 
@@ -13,25 +14,46 @@ public static class MatchStartGate
 {
     private static readonly ConcurrentDictionary<long, State> States = new();
 
-    public static bool IsSoloMapValidationEnabled =>
-        Environment.GetEnvironmentVariable("SOLO_MAP_VALIDATION") == "1";
-
-    /// <summary>탐사 모드에서 캠프 몹만 되살린다 — 봇 없이 몹 상대 검증용.</summary>
-    public static bool IsSoloMonstersEnabled =>
-        Environment.GetEnvironmentVariable("SOLO_MONSTERS") == "1";
-
-    private static int MatchCapacity => IsSoloMapValidationEnabled
-        ? 1
-        : global::network.common.Config.SWARM_PLAYERS_PER_MATCH;
-
+    /// <summary>기존 호출 호환용. 일반 매치의 기대 사람 수를 봇 수에서 계산한다.</summary>
     public static void RegisterHumanPlayer(long matchingId, long playerId, int botCount)
+        => RegisterHumanPlayer(
+            matchingId,
+            playerId,
+            Math.Max(1, Config.SWARM_PLAYERS_PER_MATCH - Math.Max(0, botCount)),
+            MatchMode.Normal);
+
+    public static void RegisterHumanPlayer(
+        long matchingId,
+        long playerId,
+        int expectedHumanCount,
+        MatchMode mode)
     {
+        if (expectedHumanCount <= 0)
+            throw new ArgumentOutOfRangeException(nameof(expectedHumanCount));
+        if (!Enum.IsDefined(mode))
+            throw new ArgumentOutOfRangeException(nameof(mode));
+
         var state = States.GetOrAdd(matchingId, _ => new State());
         lock (state.SyncRoot)
         {
-            state.ExpectedHumanCount = Math.Max(1, MatchCapacity - Math.Max(0, botCount));
+            if (state.IsConfigured &&
+                (state.ExpectedHumanCount != expectedHumanCount || state.Mode != mode || state.IsBotOnly))
+                throw new InvalidOperationException($"Match {matchingId} start configuration changed after registration.");
+
+            state.IsConfigured = true;
+            state.ExpectedHumanCount = expectedHumanCount;
+            state.Mode = mode;
             state.ConnectedHumanIds.Add(playerId);
         }
+    }
+
+    public static bool IsSoloMapValidation(long matchingId)
+    {
+        if (!States.TryGetValue(matchingId, out var state))
+            return false;
+
+        lock (state.SyncRoot)
+            return state.Mode == MatchMode.SoloMapValidation;
     }
 
     /// <summary>
@@ -43,7 +65,12 @@ public static class MatchStartGate
         var state = States.GetOrAdd(matchingId, _ => new State());
         lock (state.SyncRoot)
         {
+            if (state.IsConfigured && !state.IsBotOnly)
+                throw new InvalidOperationException($"Match {matchingId} start configuration changed after registration.");
+
+            state.IsConfigured = true;
             state.IsBotOnly = true;
+            state.Mode = MatchMode.Normal;
             state.ExpectedHumanCount = 0;
             state.CountdownEndsAtUtc ??= state.CreatedAtUtc;
         }
@@ -128,9 +155,11 @@ public static class MatchStartGate
         public DateTime CreatedAtUtc { get; } = DateTime.UtcNow;
         public HashSet<long> ConnectedHumanIds { get; } = [];
         public HashSet<long> ReadyHumanIds { get; } = [];
-        public int ExpectedHumanCount { get; set; } = MatchCapacity;
+        public int ExpectedHumanCount { get; set; }
+        public MatchMode Mode { get; set; }
         public DateTime? CountdownEndsAtUtc { get; set; }
         public bool IsBotOnly { get; set; }
+        public bool IsConfigured { get; set; }
     }
 }
 

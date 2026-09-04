@@ -83,6 +83,9 @@ internal static partial class Program
             sp.GetRequiredService<IRedisConnection>().GetRedLockFactory());
         services.AddSingleton<ICacheHelper, CacheHelper>();
         services.AddGameHandoffTicket(hostContext.Configuration);
+        var devOptions = GameServerDevOptions.FromConfiguration(hostContext.Configuration);
+        devOptions.Validate(hostContext.HostingEnvironment.IsDevelopment());
+        services.AddSingleton(devOptions);
         var nodeOptions = CreateGameServerNodeOptions(hostContext.Configuration);
         nodeOptions.Validate();
         services.AddSingleton(nodeOptions);

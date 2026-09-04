@@ -86,7 +86,6 @@ public partial class GameClientSession
                 throw new InvalidOperationException($"Player {playerId} is not part of match {matchingId}.");
             Volatile.Write(ref _matchHumanPlayerIds, composition.HumanPlayerIds.ToArray());
 
-            int connectedBotCount = 0;
             RunUnderLiveMatch(runtime, () =>
             {
                 foreach (var bot in _botPlayerManager.GetBots(matchingId))
@@ -113,8 +112,8 @@ public partial class GameClientSession
                         isBot: true);
                 }
 
-                connectedBotCount = _botPlayerManager.GetBots(matchingId).Count;
-                MatchStartGate.RegisterHumanPlayer(matchingId, PlayerId.Value, connectedBotCount);
+                MatchStartGate.RegisterHumanPlayer(
+                    matchingId, PlayerId.Value, composition.HumanPlayerIds.Count, composition.Mode);
             });
 
             // 초기 위치는 매치 구성의 스폰에서 복원한다. PlayerInfo는 존재 확인만 한다 —
@@ -185,8 +184,7 @@ public partial class GameClientSession
             // The standalone submission client is only ready after the full initial snapshot
             // has been sent. Starting the countdown earlier lets bots consume finite room stock
             // while the human client is still loading the match.
-            int singleHumanBotCount = Config.SWARM_PLAYERS_PER_MATCH - 1;
-            if (connectedBotCount == singleHumanBotCount || MatchStartGate.IsSoloMapValidationEnabled)
+            if (composition.HumanPlayerIds.Count == 1)
             {
                 MatchStartGate.MarkHumanReady(matchingId, PlayerId.Value);
             }
@@ -526,18 +524,23 @@ public partial class GameClientSession
                 return existing;
 
             List<long> humanPlayerIds = manifest.HumanPlayerIds.Distinct().ToList();
-            List<long> botPlayerIds = MatchStartGate.IsSoloMapValidationEnabled
-                ? []
-                : manifest.BotPlayerIds.Distinct().ToList();
+            List<long> botPlayerIds = manifest.BotPlayerIds.Distinct().ToList();
+            MatchMode mode = manifest.Mode;
+            if (!Enum.IsDefined(mode))
+                throw new InvalidOperationException($"Match manifest mode is invalid for match {matchingId}: {mode}.");
             if (humanPlayerIds.Count == 0 || humanPlayerIds.Any(id => id <= 0) || botPlayerIds.Any(id => id >= 0))
                 throw new InvalidOperationException($"Match manifest is invalid for match {matchingId}.");
+            if (mode == MatchMode.SoloMapValidation && (humanPlayerIds.Count != 1 || botPlayerIds.Count != 0))
+                throw new InvalidOperationException(
+                    $"Solo map validation manifest must contain one human and no bots for match {matchingId}.");
             if (humanPlayerIds.Count + botPlayerIds.Count > Config.SWARM_PLAYERS_PER_MATCH)
                 throw new InvalidOperationException(
                     $"Match manifest exceeds the match capacity for match {matchingId}: " +
                     $"{humanPlayerIds.Count} humans, {botPlayerIds.Count} bots.");
 
             IReadOnlyDictionary<long, Cell> spawnCells =
-                MatchSpawnPlanner.Plan(matchingId, mapId, humanPlayerIds.Concat(botPlayerIds));
+                MatchSpawnPlanner.Plan(
+                    matchingId, mapId, humanPlayerIds.Concat(botPlayerIds), _devOptions.CrossfireSandbox);
             if (botPlayerIds.Count > 0)
                 _botPlayerManager.RegisterBots(matchingId, mapId, botPlayerIds, spawnCells);
 
@@ -547,7 +550,7 @@ public partial class GameClientSession
                     _matchRosterManager.RegisterEntry(matchingId, new RosterEntry { PlayerId = participantId });
             });
 
-            var composition = new MatchComposition(humanPlayerIds, botPlayerIds, spawnCells);
+            var composition = new MatchComposition(humanPlayerIds, botPlayerIds, mode, spawnCells);
             runtime.Composition = composition;
             return composition;
         }

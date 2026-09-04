@@ -40,6 +40,7 @@ public sealed class MatchRosterBuilderTests
 
         MatchManifest manifest = MatchRosterBuilder.BuildManifest(group);
 
+        Assert.Equal(MatchMode.Normal, manifest.Mode);
         Assert.Equal(new long[] { 101, 102, 103 }, manifest.HumanPlayerIds);
         Assert.Equal(new long[] { -1, -2, -3, -4, -5 }, manifest.BotPlayerIds);
     }
@@ -50,6 +51,18 @@ public sealed class MatchRosterBuilderTests
         MatchManifest manifest = MatchRosterBuilder.BuildManifest(new List<MatchingQueueEntry>());
 
         Assert.Empty(manifest.HumanPlayerIds);
+        Assert.Empty(manifest.BotPlayerIds);
+    }
+
+    [Fact]
+    public void BuildManifest_PreservesRequestedMatchMode()
+    {
+        List<MatchingQueueEntry> group = MixedGroup(1, 0);
+
+        MatchManifest manifest = MatchRosterBuilder.BuildManifest(group, MatchMode.SoloMapValidation);
+
+        Assert.Equal(MatchMode.SoloMapValidation, manifest.Mode);
+        Assert.Single(manifest.HumanPlayerIds);
         Assert.Empty(manifest.BotPlayerIds);
     }
 

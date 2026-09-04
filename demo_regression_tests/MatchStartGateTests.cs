@@ -1,5 +1,6 @@
 using game_server.services;
 using network.common;
+using network.common.data.models;
 
 namespace demo_regression_tests;
 
@@ -41,6 +42,45 @@ public sealed class MatchStartGateTests
         Assert.False(MatchStartGate.IsGameplayActive(matchingId));
         Assert.False(MatchStartGate.GetSnapshot(matchingId).IsKnown);
         Assert.Null(MatchStartGate.GetGameplayStartedAtUtc(matchingId));
+    }
+
+    [Fact]
+    public void MatchModeIsOwnedByEachRegisteredMatch()
+    {
+        long normalMatchingId = DateTime.UtcNow.Ticks + 10;
+        long soloMatchingId = normalMatchingId + 1;
+
+        try
+        {
+            MatchStartGate.RegisterHumanPlayer(normalMatchingId, 1, 1, MatchMode.Normal);
+            MatchStartGate.RegisterHumanPlayer(soloMatchingId, 2, 1, MatchMode.SoloMapValidation);
+
+            Assert.False(MatchStartGate.IsSoloMapValidation(normalMatchingId));
+            Assert.True(MatchStartGate.IsSoloMapValidation(soloMatchingId));
+        }
+        finally
+        {
+            MatchStartGate.RemoveMatching(normalMatchingId);
+            MatchStartGate.RemoveMatching(soloMatchingId);
+        }
+    }
+
+    [Fact]
+    public void RegisterHumanPlayerRejectsChangingMatchConfiguration()
+    {
+        long matchingId = DateTime.UtcNow.Ticks + 20;
+
+        try
+        {
+            MatchStartGate.RegisterHumanPlayer(matchingId, 1, 1, MatchMode.Normal);
+
+            Assert.Throws<InvalidOperationException>(() =>
+                MatchStartGate.RegisterHumanPlayer(matchingId, 2, 1, MatchMode.SoloMapValidation));
+        }
+        finally
+        {
+            MatchStartGate.RemoveMatching(matchingId);
+        }
     }
 
     [Fact]

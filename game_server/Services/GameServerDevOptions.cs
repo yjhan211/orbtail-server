@@ -47,9 +47,13 @@ public sealed class GameServerDevOptions
             throw new InvalidOperationException(
                 $"{DisableMonstersVariable} and {SoloMonstersVariable} cannot both be enabled.");
 
-        if (!isDevelopmentEnvironment && EnabledVariableNames().Count > 0)
+        if (isDevelopmentEnvironment)
+            return;
+
+        IReadOnlyList<string> enabledVariables = EnabledVariableNames();
+        if (enabledVariables.Count > 0)
             throw new InvalidOperationException(
-                $"Game Server development flags cannot be enabled outside Development: {string.Join(", ", EnabledVariableNames())}");
+                $"Game Server development flags cannot be enabled outside Development: {string.Join(", ", enabledVariables)}");
     }
 
     public IReadOnlyList<string> EnabledVariableNames()

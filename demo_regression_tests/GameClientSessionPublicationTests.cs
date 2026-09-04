@@ -757,7 +757,8 @@ public sealed class GameClientSessionPublicationTests
                 static (_, _) => null,
                 static (_, _) => { },
                 static () => false,
-                static _ => { })
+                static _ => { },
+                GameServerDevOptions.Disabled)
         {
         }
     }

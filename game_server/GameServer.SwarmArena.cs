@@ -6,7 +6,6 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
-using network.helpers;
 using network.packets;
 
 namespace game_server;
@@ -160,7 +159,7 @@ public partial class GameServer
         // 탐사 모드(SOLO_MAP_VALIDATION=1): 맵 검증용 1인 매치 — 캠프 몹·접촉 피해·
         // 전투·오브 스트림을 전부 끈다. 이동·문·탐색만 남는다.
         // SOLO_MONSTERS=1을 얹으면 캠프 몹만 되살린다 (봇 없이 몹 상대 검증).
-        if (MatchStartGate.IsSoloMapValidationEnabled && !MatchStartGate.IsSoloMonstersEnabled)
+        if (MatchStartGate.IsSoloMapValidation(matchingId) && !_devOptions.SoloMonsters)
             return;
 
         var sessions = activeSessions
@@ -2048,18 +2047,17 @@ public partial class GameServer
     // ===== 절단 실험 더미 (#226): 매치의 봇 하나를 운동장 과녁으로 바꾼다 —
     // 정지·불사·오브 10개 일자 꼬리(자동 리필)·비무장·몹 절단 면제. 웨이브 디렉터 제외.
     // 명시적 분리 (단계 0): DEV_CUT_DUMMY=1 환경변수 옵트인 — 일반 매치는 순정으로 돈다. =====
-    private static readonly bool SwarmCutDummyAutoSetup =
-        Environment.GetEnvironmentVariable("DEV_CUT_DUMMY") == "1";
+    private bool SwarmCutDummyAutoSetup => _devOptions.CutDummy;
 
     // 교차사격 샌드박스 (#232 2단계): DEV_CROSSFIRE_SANDBOX=1 — 절단 실험장과 같은 격리
     // (운동장 더미 하나 + 나머지 봇 퇴장)를 쓰되(몹 접촉 피해는 켜 둔다), 더미는 태양 T1 3개·철갑
     // 없음·무장(몹을 쏜다)이다. 사람 오브도 무장 — 실험 대상이 절단 궤적이 아니라
     // 몹을 향한 사격이 만드는 직선이기 때문이다. 같은 플래그로 MatchSpawnPlanner가 전원을 운동장에 스폰한다.
-    private static bool SwarmCrossfireSandbox => MatchSpawnPlanner.IsCrossfireSandbox;
-    private static bool SwarmDummySandboxActive => SwarmCutDummyAutoSetup || SwarmCrossfireSandbox;
+    private bool SwarmCrossfireSandbox => _devOptions.CrossfireSandbox;
+    private bool SwarmDummySandboxActive => SwarmCutDummyAutoSetup || SwarmCrossfireSandbox;
     private const int SwarmCutDummyOrbCount = 10;
     private const int SwarmCrossfireDummyOrbCount = 3;
-    private static int SwarmDummyOrbCount => SwarmCrossfireSandbox ? SwarmCrossfireDummyOrbCount : SwarmCutDummyOrbCount;
+    private int SwarmDummyOrbCount => SwarmCrossfireSandbox ? SwarmCrossfireDummyOrbCount : SwarmCutDummyOrbCount;
     // 과녁 열은 단색 태양 T1 — 시작 지급의 무작위 색이 섞이면 파도(물폭탄)가 딸려 온다.
     private const int SwarmCutDummyOrbItemId = 107000010;
     // 절단 직후 3초는 비워 둔다 — 즉시 채우면 "끊어도 안 줄어드는" 것처럼 보인다.
@@ -2580,7 +2578,7 @@ public partial class GameServer
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots)
     {
-        if (DevFlags.DisableGameEnd || GetSwarmMatchRuntime(matchingId).Pacing.TimeoutEndedMatchings.Contains(matchingId))
+        if (_devOptions.DisableGameEnd || GetSwarmMatchRuntime(matchingId).Pacing.TimeoutEndedMatchings.Contains(matchingId))
             return false;
 
         var startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId);

@@ -42,6 +42,7 @@ public partial class GameClientSession : SessionBase
     private readonly Action<GameClientSession> _onLeaveCallback;
     /// <summary>매치별 잠금·수명 색인 (#331) — 핸들러 직렬화·터미널 게이트·종료 정리의 단일 원천.</summary>
     private readonly MatchRuntimeStore _matchRuntimes;
+    private readonly GameServerDevOptions _devOptions;
     /// <summary>
     ///     Queues an already-built successful admission response after authentication has committed. Production uses
     ///     <see cref="UserToken.TrySend"/>; tests can inject a sender to verify the match monitor boundary.
@@ -162,6 +163,7 @@ public partial class GameClientSession : SessionBase
         Action<long, long> releaseMatchingClaim,
         Func<bool> isServerStopping,
         Action<GameClientSession> recordAdmissionFailure,
+        GameServerDevOptions devOptions,
         Func<Packet, bool>? trySendConnectSuccessResponse = null)
         : base(token, logger, cacheHelper, redLock)
     {
@@ -182,6 +184,7 @@ public partial class GameClientSession : SessionBase
         _matchSummaryFileStore = matchSummaryFileStore;
         _encounterRevealManager = encounterRevealManager;
         _matchRuntimes = matchRuntimes;
+        _devOptions = devOptions;
         _handleSwarmGrowthPick = handleSwarmGrowthPick;
         _handleSwarmOrbDecision = handleSwarmOrbDecision;
         _getItemCombineRandom = getItemCombineRandom;

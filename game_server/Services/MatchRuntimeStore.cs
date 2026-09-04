@@ -26,8 +26,8 @@ internal sealed class MatchRuntime
     private MatchComposition? _composition;
 
     /// <summary>
-    ///     매치 구성 — manifest의 사람·봇 ID와 Game Server가 정한 스폰. 매치 초기화 잠금 안에서 한 번 세우고
-    ///     이후 사람 세션은 읽기만 한다.
+    ///     매치 구성 — manifest의 사람·봇 ID·모드와 Game Server가 정한 스폰. 매치 초기화 잠금 안에서 한 번 세우고
+    ///     이후 사람 세션은 읽기만 한다. 개발 모드도 프로세스 전역이 아니라 이 매치 구성에 고정된다.
     /// </summary>
     public MatchComposition? Composition
     {
@@ -55,10 +55,11 @@ internal sealed class MatchRuntime
     }
 }
 
-/// <summary>매치 구성: 누가 오는지(사람·봇 ID)와 어디서 시작하는지(스폰). Game Server가 첫 접속 때 확정한다.</summary>
+/// <summary>매치 구성: 누가 오는지(사람·봇 ID), 어떤 모드인지, 어디서 시작하는지. 첫 접속 때 확정한다.</summary>
 internal sealed record MatchComposition(
     IReadOnlyList<long> HumanPlayerIds,
     IReadOnlyList<long> BotPlayerIds,
+    MatchMode Mode,
     IReadOnlyDictionary<long, Cell> SpawnCells);
 
 /// <summary>매치 정리 단계 하나 — 실패해도 다음 단계를 막지 않도록 이름과 함께 격리 실행된다.</summary>

@@ -52,5 +52,12 @@ namespace network.common.data.models
     {
         [Key(0)] public List<long> HumanPlayerIds { get; set; } = new();
         [Key(1)] public List<long> BotPlayerIds { get; set; } = new();
+        [Key(2)] public MatchMode Mode { get; set; }
+    }
+
+    public enum MatchMode
+    {
+        Normal = 0,
+        SoloMapValidation = 1
     }
 }

@@ -589,7 +589,8 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             null!,
             new ServerReadinessState(),
             new RecordingGameServerRegistry(),
-            new GameServerNodeOptions { PublicHost = "127.0.0.1" });
+            new GameServerNodeOptions { PublicHost = "127.0.0.1" },
+            GameServerDevOptions.Disabled);
         typeof(GameServer)
             .GetField(
                 "_matchingLifecycleNatsClient",

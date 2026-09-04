@@ -487,7 +487,8 @@ public sealed class GameClientSessionTerminalPublicationTests
                 prepareGameCompletion,
                 static (_, _) => { },
                 static () => false,
-                static _ => { })
+                static _ => { },
+                GameServerDevOptions.Disabled)
         {
         }
     }

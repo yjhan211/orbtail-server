@@ -953,7 +953,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 static (_, _) => null,
                 static (_, _) => { },
                 static () => false,
-                static _ => { });
+                static _ => { },
+                GameServerDevOptions.Disabled);
             token.SetPeer(session);
             SetIdentity(session, matchingId, playerId);
             _sessions.Add(session);
@@ -1078,7 +1079,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
             null!,
             new ServerReadinessState(),
             new RecordingGameServerRegistry(),
-            new GameServerNodeOptions { PublicHost = "127.0.0.1" });
+            new GameServerNodeOptions { PublicHost = "127.0.0.1" },
+            GameServerDevOptions.Disabled);
     }
 
     [MessagePackObject]

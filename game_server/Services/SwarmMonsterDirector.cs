@@ -242,11 +242,9 @@ public sealed class SwarmMonsterDirector
     private const float EscalationStage2MoveSpeedMultiplier = 1.1f;
 
     /// <summary>
-    ///     몹 스폰 스위치 (촬영용): DEV_NO_MONSTERS=1이면 어떤 경로로도 잔상을 세우지 않는다.
-    ///     compose 환경변수라 켜고 끄기는 컨테이너 재생성. 테스트는 기본값(켬)을 본다.
+    ///     몹 스폰 스위치 (촬영용). GameServer 기동 시 확정되며 실행 중에는 바뀌지 않는다.
     /// </summary>
-    public static bool MonsterSpawnEnabled { get; set; } =
-        Environment.GetEnvironmentVariable("DEV_NO_MONSTERS") != "1";
+    public bool MonsterSpawnEnabled { get; }
 
     /// <summary>
     ///     #272 경계 토출 스폰 리졸버 — GameServer가 주입한다. 자기장 경계가 구역을 관통 중이면
@@ -278,9 +276,10 @@ public sealed class SwarmMonsterDirector
     private readonly ConcurrentDictionary<long, MatchState> _matches = new();
     private readonly Func<DateTime> _utcNow;
 
-    public SwarmMonsterDirector(Func<DateTime>? utcNow = null)
+    public SwarmMonsterDirector(Func<DateTime>? utcNow = null, bool monsterSpawnEnabled = true)
     {
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
+        MonsterSpawnEnabled = monsterSpawnEnabled;
     }
 
     public bool HasMatching(long matchingId) => _matches.ContainsKey(matchingId);

@@ -41,7 +41,8 @@ public partial class GameServer(
     IGameHandoffTicketService gameHandoffTicketService,
     ServerReadinessState readinessState,
     IGameServerRegistry gameServerRegistry,
-    GameServerNodeOptions nodeOptions)
+    GameServerNodeOptions nodeOptions,
+    GameServerDevOptions devOptions)
     : IHostedService
 {
     private const int MatchingLifecycleTerminalMatchRetention = 4096;
@@ -55,7 +56,9 @@ public partial class GameServer(
     private readonly AreaItemStockManager _areaItemStockManager =
         new(naturalExploreLootEnabled: !Config.MONSTER_SUMMON_ECONOMY_ENABLED);
     private readonly GroundItemManager _groundItemManager = new();
-    private readonly SwarmMonsterDirector _swarmMonsterDirector = new();
+    private readonly GameServerDevOptions _devOptions = devOptions;
+    private readonly SwarmMonsterDirector _swarmMonsterDirector =
+        new(monsterSpawnEnabled: devOptions.MonsterSpawnEnabled);
 
     // #294 후속 — Swarm 상태 홀더는 matchingId 소유 런타임 아래에서 함께 생성·제거한다.
     private readonly SwarmMatchRuntimeStore _swarmMatchRuntimes = new();
@@ -156,6 +159,10 @@ public partial class GameServer(
         try
         {
             logger.LogInformation("Game server starting...");
+            IReadOnlyList<string> enabledDevFlags = _devOptions.EnabledVariableNames();
+            if (enabledDevFlags.Count > 0)
+                logger.LogWarning("[DEV] Game Server flags enabled: {Flags}",
+                    string.Join(", ", enabledDevFlags));
 
             InitializeServices();
 
@@ -842,7 +849,8 @@ public partial class GameServer(
                 (playerId, matchingId) =>
                     PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerReleased, playerId, matchingId),
                 () => Volatile.Read(ref _stopping) != 0,
-                AbortMatchAfterAdmissionFailure);
+                AbortMatchAfterAdmissionFailure,
+                devOptions: _devOptions);
 
             logger.LogInformation("Game client session created");
             return session;
@@ -1314,7 +1322,8 @@ public partial class GameServer(
             .Select(_ => System.Threading.Interlocked.Decrement(ref _adminBotOnlyPlayerIdSeed))
             .ToList();
 
-        var spawnAssignments = MatchSpawnPlanner.Plan(matchingId, Config.SWARM_MATCH_MAP, playerIds);
+        var spawnAssignments = MatchSpawnPlanner.Plan(
+            matchingId, Config.SWARM_MATCH_MAP, playerIds, _devOptions.CrossfireSandbox);
 
         MatchRuntime runtime = MatchRuntimes.GetOrCreate(matchingId);
         using (MatchRuntimes.Enter(runtime))

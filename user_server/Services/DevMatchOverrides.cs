@@ -51,6 +51,7 @@ internal sealed class DevMatchOverrides
 
     public bool IsTwoPlayerTestMatch { get; }
     public bool IsSoloMapValidation { get; }
+    public MatchMode MatchMode => IsSoloMapValidation ? MatchMode.SoloMapValidation : MatchMode.Normal;
 
     /// <summary>
     ///     한 그룹을 이루는 인간 수. 솔로 검증 1, 두 명 테스트 2, 기본 1.

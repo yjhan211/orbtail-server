@@ -2,7 +2,6 @@ using game_server.network;
 using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.helpers;
 
 namespace game_server;
 
@@ -28,7 +27,7 @@ public partial class GameServer
         int aliveCount = humans.Count + bots.Count;
         if (aliveCount <= 1)
         {
-            if (DevFlags.DisableGameEnd || SwarmDummySandboxActive)
+            if (_devOptions.DisableGameEnd || SwarmDummySandboxActive)
                 return;
 
             if (aliveCount == 1 && humans.Count > 0)
