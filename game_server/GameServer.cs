@@ -36,7 +36,6 @@ public partial class GameServer(
     ILogger<GameServer> logger,
     INatsClientFactory natsClientFactory,
     IRedisOperations redisOperations,
-    IRedLockFactory redLockFactory,
     INetworkService networkService,
     ServerConfig serverConfig,
     IGameHandoffTicketService gameHandoffTicketService,
@@ -816,7 +815,6 @@ public partial class GameServer(
         {
             var session = new GameClientSession(
                 token,
-                redLockFactory,
                 logger,
                 redisOperations,
                 ticket => gameHandoffTicketService.ConsumeAsync(ticket, serverConfig.GameServerNodeId),

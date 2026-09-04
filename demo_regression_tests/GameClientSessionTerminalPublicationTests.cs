@@ -458,7 +458,6 @@ public sealed class GameClientSessionTerminalPublicationTests
             Func<long, long, Action?> prepareGameCompletion)
             : base(
                 token,
-                null!,
                 logger,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),

@@ -49,8 +49,6 @@ public partial class GameClientSession
             return;
         }
 
-        // 서버 측 상태 저장
-        await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
         if (!isExploreState)
             CancelPendingRngCollect($"PlayerState:{msg.State}");
 
@@ -272,8 +270,6 @@ public partial class GameClientSession
 
         var state = sleep ? PlayerState.SLEEP : PlayerState.IDLE;
 
-        // 서버 측 상태 저장
-        await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
 
         // 같은 Area의 모든 플레이어에게 상태 브로드캐스트 (본인 포함)
         var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);

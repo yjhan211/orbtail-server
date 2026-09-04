@@ -10,11 +10,12 @@ namespace user_server.services;
 /// </summary>
 internal interface IMatchingSessionEndpoint
 {
+    public long SessionGeneration { get; }
     public bool TryDeliverMatchingSuccess(long matchingId, string requestId, Packet packet);
     public bool TryDeliverMatchingFailed(long matchingId, string requestId, Packet packet);
     public bool TryDeliverAdmissionFailed(long matchingId, Packet packet);
     public void ClearMatchingAssignment(long matchingId);
-    public void DisconnectForDuplicateLogin();
+    public void DisconnectIfSuperseded(long newGeneration);
 }
 
 /// <summary>
@@ -31,14 +32,15 @@ internal interface IPlayerSessionRouter
     public void ClearMatchingAssignment(long playerId, long matchingId);
 
     /// <summary>이 프로세스에 로그인이 들어왔음을 알려 다른 프로세스의 같은 플레이어 세션을 끊게 한다.</summary>
-    public void AnnounceLogin(long playerId);
+    public void AnnounceLogin(long playerId, long generation);
 }
 
 /// <summary>
 ///     로컬 세션이면 직접, 아니면 NATS request로 세션을 가진 프로세스에 위임하는 라우터.
-///     전달 요청은 모든 User Server가 구독하되 세션을 가진 프로세스만 답한다(나머지는 침묵) — 세션 소유자 레지스트리 없이
-///     "첫 응답 = 소유자"로 푼다. 아무도 답하지 않으면 타임아웃이 곧 "세션 없음"이다.
-///     해제·로그인 알림은 fire-and-forget publish이고 발신자는 origin으로 자기 메시지를 거른다.
+///     Redis lease가 전역 현재 세대를 정본으로 보관하고, 이 라우터는 그 위치를 별도로 복제하지 않는다.
+///     전달 요청은 모든 User Server가 구독하되 로컬 현재 세션을 가진 프로세스만 답하며,
+///     로그인 알림은 더 높은 세대의 로그인일 때만 옛 세션을 끊는다.
+///     알림이 유실돼도 옛 세션은 다음 lease 갱신 실패 때 종료된다.
 /// </summary>
 internal sealed class NatsPlayerSessionRouter(
     INatsClient natsClient,
@@ -88,9 +90,14 @@ internal sealed class NatsPlayerSessionRouter(
         });
     }
 
-    public void AnnounceLogin(long playerId)
+    public void AnnounceLogin(long playerId, long generation)
     {
-        PublishBestEffort(LoginSubject, new SessionNotice { PlayerId = playerId, OriginNodeId = NodeId });
+        PublishBestEffort(LoginSubject, new SessionNotice
+        {
+            PlayerId = playerId,
+            OriginNodeId = NodeId,
+            SessionGeneration = generation
+        });
     }
 
     private async Task<bool> DeliverAsync(
@@ -197,10 +204,7 @@ internal sealed class NatsPlayerSessionRouter(
         if (local == null)
             return;
 
-        logger.LogWarning(
-            "Session superseded by a login on another user server: PlayerId={PlayerId}, NewOwner={Origin}",
-            notice.PlayerId, notice.OriginNodeId);
-        local.DisconnectForDuplicateLogin();
+        local.DisconnectIfSuperseded(notice.SessionGeneration);
     }
 
     private SessionNotice? TryReadNotice(byte[] body, string subject)
@@ -253,4 +257,5 @@ internal sealed class SessionNotice
     [Key(0)] public long PlayerId { get; set; }
     [Key(1)] public long MatchingId { get; set; }
     [Key(2)] public string OriginNodeId { get; set; } = string.Empty;
+    [Key(3)] public long SessionGeneration { get; set; }
 }

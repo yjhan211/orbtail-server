@@ -346,7 +346,6 @@ public sealed class GameClientSessionConnectPublicationTests
             Store.GetOrCreate(matchingId);
             var session = new GameClientSession(
                 Token,
-                null!,
                 NullLogger.Instance,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),

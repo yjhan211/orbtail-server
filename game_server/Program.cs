@@ -79,8 +79,6 @@ internal static partial class Program
             redisConnection.Initialize(redisConfiguration);
             return redisConnection;
         });
-        services.AddSingleton<IRedLockFactory>(sp =>
-            sp.GetRequiredService<IRedisConnection>().GetRedLockFactory());
         services.AddSingleton<IRedisOperations, RedisOperations>();
         services.AddGameHandoffTicket(hostContext.Configuration);
         var devOptions = GameServerDevOptions.FromConfiguration(hostContext.Configuration);

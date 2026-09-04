@@ -368,7 +368,6 @@ public sealed class MatchStartCountdownPublicationTests
             null!,
             null!,
             null!,
-            null!,
             new ServerConfig
             {
                 ServerType = "GameServer",
@@ -517,7 +516,6 @@ public sealed class MatchStartCountdownPublicationTests
         public RecordingAdmissionSession(bool throwOnSend = false)
             : base(
                 new UserToken(),
-                null!,
                 NullLogger.Instance,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),

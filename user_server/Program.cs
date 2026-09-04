@@ -66,6 +66,7 @@ internal static class Program
 
         // 공용 Redis 연산
         services.AddSingleton<IRedisOperations, RedisOperations>();
+        services.AddSingleton<IPlayerSessionOwnershipStore, RedisPlayerSessionOwnershipStore>();
         services.AddSingleton<IMatchingQueueClaimStore, RedisMatchingQueueClaimStore>();
         services.AddSingleton<LogManager>();
         services.AddGameHandoffTicket(hostContext.Configuration);

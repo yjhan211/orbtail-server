@@ -135,7 +135,6 @@ public partial class GameClientSession : SessionBase
 
     internal GameClientSession(
         UserToken token,
-        IRedLockFactory redLock,
         ILogger logger,
         IRedisOperations redisOperations,
         Func<string?, Task<GameHandoffContext?>> consumeGameHandoffTicket,
@@ -165,7 +164,7 @@ public partial class GameClientSession : SessionBase
         Action<GameClientSession> recordAdmissionFailure,
         GameServerDevOptions devOptions,
         Func<Packet, bool>? trySendConnectSuccessResponse = null)
-        : base(token, logger, redisOperations, redLock)
+        : base(token, logger, redisOperations)
     {
         _onLeaveCallback = onLeaveCallback;
         _consumeGameHandoffTicket = consumeGameHandoffTicket;

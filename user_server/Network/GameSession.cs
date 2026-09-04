@@ -14,7 +14,16 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
 {
     private readonly IMatchingManager _matchingManager;
     private readonly IAccountTokenService _accountTokenService;
-    private readonly Func<long, GameSession, Action?> _onSessionRegistered;
+    private readonly IRedLockFactory _redLock;
+    private readonly IPlayerSessionOwnershipStore _sessionOwnership;
+    private readonly string _nodeId;
+    private readonly string _sessionId = Guid.NewGuid().ToString("N");
+    private PlayerSessionLease? _sessionLease;
+    private CancellationTokenSource? _ownershipRenewalCts;
+    private Task _ownershipRenewalTask = Task.CompletedTask;
+    private long _sessionGeneration;
+    private readonly Func<long, GameSession, (bool Accepted, Action? DisconnectSuperseded)> _onSessionRegistered;
+    private readonly Action<long, long> _announceLogin;
     private readonly Func<long, GameSession, bool> _onSessionRemoved;
     private readonly IPlayerService _playerService;
     private readonly object _matchingAssignmentLock = new();
@@ -29,14 +38,23 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         IPlayerService playerService,
         IMatchingManager matchingManager,
         IAccountTokenService accountTokenService,
-        Func<long, GameSession, Action?> onSessionRegistered,
+        IPlayerSessionOwnershipStore sessionOwnership,
+        string nodeId,
+        Func<long, GameSession, (bool Accepted, Action? DisconnectSuperseded)> onSessionRegistered,
+        Action<long, long> announceLogin,
         Func<long, GameSession, bool> onSessionRemoved)
-        : base(token, logger, redisOperations, redLock)
+        : base(token, logger, redisOperations)
     {
         _playerService = playerService;
         _matchingManager = matchingManager;
         _accountTokenService = accountTokenService;
+        _redLock = redLock;
+        _sessionOwnership = sessionOwnership;
+        _nodeId = string.IsNullOrWhiteSpace(nodeId)
+            ? throw new ArgumentException("UserServer node id is required.", nameof(nodeId))
+            : nodeId;
         _onSessionRegistered = onSessionRegistered;
+        _announceLogin = announceLogin;
         _onSessionRemoved = onSessionRemoved;
 
         // ReSharper disable once VirtualMemberCallInConstructor
@@ -45,6 +63,8 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
 
     public new long? PlayerId { get; private set; }
     public PlayerInfo? PlayerInfo { get; private set; }
+    internal long SessionGeneration => Volatile.Read(ref _sessionGeneration);
+    long IMatchingSessionEndpoint.SessionGeneration => SessionGeneration;
     internal string? ActiveMatchingRequestId
     {
         get
@@ -269,46 +289,77 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
             PlayerId = playerId;
             Logger.LogInformation("PlayerId set to {PlayerId}", PlayerId);
 
-            await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
-            Logger.LogInformation("Player lock acquired for PlayerId={PlayerId}", PlayerId);
-
-            PlayerInfo = await PlayerInfo.Load(RedisOperations, PlayerId.Value);
-
-            if (PlayerInfo == null)
             {
-                if (!account.IsNewAccount)
+                await using var playerLock = await PlayerInfo.Lock(_redLock, PlayerId.Value);
+                Logger.LogInformation("Player lock acquired for PlayerId={PlayerId}", PlayerId);
+
+                PlayerInfo = await PlayerInfo.Load(RedisOperations, PlayerId.Value);
+
+                if (PlayerInfo == null)
                 {
-                    Logger.LogWarning(
-                        "Recovering a provisioned account with missing PlayerInfo: PlayerId={PlayerId}",
-                        PlayerId);
+                    if (!account.IsNewAccount)
+                    {
+                        Logger.LogWarning(
+                            "Recovering a provisioned account with missing PlayerInfo: PlayerId={PlayerId}",
+                            PlayerId);
+                    }
+
+                    // 신규 플레이어 생성
+                    Logger.LogInformation("Creating new player: PlayerId={PlayerId}", PlayerId);
+                    PlayerInfo = new PlayerInfo(PlayerId.Value, false);
+                    await PlayerInfo.Save(RedisOperations);
+                    Logger.LogInformation("New player created and saved: PlayerId={PlayerId}", PlayerId);
+                }
+                else
+                {
+                    Logger.LogInformation("Existing player loaded: PlayerId={PlayerId}, Name={Name}", PlayerId,
+                        PlayerInfo.Name);
                 }
 
-                // 신규 플레이어 생성
-                Logger.LogInformation("Creating new player: PlayerId={PlayerId}", PlayerId);
-                PlayerInfo = new PlayerInfo(PlayerId.Value, false);
-                await PlayerInfo.Save(RedisOperations);
-                Logger.LogInformation("New player created and saved: PlayerId={PlayerId}", PlayerId);
-            }
-            else
-            {
-                Logger.LogInformation("Existing player loaded: PlayerId={PlayerId}, Name={Name}", PlayerId,
-                    PlayerInfo.Name);
+                // 신규 플레이어 초기 아이템 지급
+                if (PlayerInfo.IsNew) await SetupNewPlayer(PlayerInfo);
             }
 
-            // 신규 플레이어 초기 아이템 지급
-            if (PlayerInfo.IsNew) await SetupNewPlayer(PlayerInfo);
+            PlayerSessionLease? sessionLease = await _sessionOwnership.TryAcquireAsync(
+                PlayerId.Value,
+                _nodeId,
+                _sessionId);
+            if (sessionLease == null)
+            {
+                Logger.LogWarning(
+                    "Login lost session ownership before admission: PlayerId={PlayerId}",
+                    PlayerId);
+                SendErrorResponseAndDisconnect(ErrorCode.ALREADY_CONNECTED, "더 최근에 로그인한 세션이 있습니다");
+                return;
+            }
+
+            _sessionLease = sessionLease;
+            Volatile.Write(ref _sessionGeneration, sessionLease.Generation);
 
             // 로그인 응답 전송
             Logger.LogInformation("Creating login packet for PlayerId={PlayerId}", PlayerId);
             using var loginPacket = PacketMaker.U_TO_C_LOGIN(PlayerInfo, account.AccountToken);
             Logger.LogInformation("Sending U_TO_C_LOGIN packet for PlayerId={PlayerId}, Packet size={Size}", PlayerId,
                 loginPacket.ToBytes().Length);
-            Action? disconnectSupersededSession = null;
+            (bool Accepted, Action? DisconnectSuperseded) registration = default;
             if (!Token.TryMarkAuthenticated(
-                    () => disconnectSupersededSession = _onSessionRegistered(PlayerId.Value, this)))
+                    () => registration = _onSessionRegistered(PlayerId.Value, this)))
                 throw new OperationCanceledException("Connection closed before login admission.");
-            disconnectSupersededSession?.Invoke();
-            Logger.LogInformation("Session registered for PlayerId={PlayerId}", PlayerId);
+            if (!registration.Accepted)
+            {
+                Logger.LogWarning(
+                    "Stale login rejected by the local session registry: PlayerId={PlayerId}, Generation={Generation}",
+                    PlayerId, SessionGeneration);
+                Disconnect();
+                return;
+            }
+
+            registration.DisconnectSuperseded?.Invoke();
+            StartOwnershipRenewal(sessionLease);
+            _announceLogin(PlayerId.Value, SessionGeneration);
+            Logger.LogInformation(
+                "Session registered for PlayerId={PlayerId}, Generation={Generation}",
+                PlayerId, SessionGeneration);
             Send(loginPacket);
 
             // 인벤토리 아이템 리스트 전송
@@ -524,6 +575,17 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         ReceiveDuplicate();
     }
 
+    public void DisconnectIfSuperseded(long newGeneration)
+    {
+        if (newGeneration <= SessionGeneration)
+            return;
+
+        Logger.LogWarning(
+            "Session superseded by a newer login: PlayerId={PlayerId}, Generation={Generation}, NewGeneration={NewGeneration}",
+            PlayerId, SessionGeneration, newGeneration);
+        ReceiveDuplicate();
+    }
+
     public override void Send(IPacket packet)
     {
         try
@@ -578,6 +640,59 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         }
     }
 
+    private void StartOwnershipRenewal(PlayerSessionLease lease)
+    {
+        var cts = new CancellationTokenSource();
+        _ownershipRenewalCts = cts;
+        _ownershipRenewalTask = RenewOwnershipAsync(lease, cts.Token);
+    }
+
+    private async Task RenewOwnershipAsync(PlayerSessionLease lease, CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(_sessionOwnership.RenewalInterval);
+        DateTimeOffset lastSuccessfulRenewal = DateTimeOffset.UtcNow;
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                try
+                {
+                    if (!await _sessionOwnership.TryRenewAsync(lease))
+                    {
+                        Logger.LogWarning(
+                            "Session ownership lost: PlayerId={PlayerId}, Generation={Generation}",
+                            lease.PlayerId, lease.Generation);
+                        Disconnect();
+                        return;
+                    }
+
+                    lastSuccessfulRenewal = DateTimeOffset.UtcNow;
+                }
+                catch (Exception ex)
+                {
+                    if (DateTimeOffset.UtcNow - lastSuccessfulRenewal >= _sessionOwnership.LeaseLifetime)
+                    {
+                        Logger.LogError(
+                            ex,
+                            "Session ownership could not be renewed before expiry; disconnecting: PlayerId={PlayerId}, Generation={Generation}",
+                            lease.PlayerId, lease.Generation);
+                        Disconnect();
+                        return;
+                    }
+
+                    Logger.LogWarning(
+                        ex,
+                        "Session ownership renewal failed; retrying before expiry: PlayerId={PlayerId}, Generation={Generation}",
+                        lease.PlayerId, lease.Generation);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
     public override void OnRemoved()
     {
         Logger.LogInformation("Session removed: PlayerId={PlayerId}", PlayerId);
@@ -587,14 +702,44 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
 
         long playerId = PlayerId.Value;
         bool removedLocally = _onSessionRemoved(playerId, this);
-        if (removedLocally)
-            _matchingManager.TryRunBackgroundOperation(
-                () => CleanupRemovedSessionMatchingAsync(playerId),
-                $"cleanup disconnected player {playerId}");
+        if (_sessionLease == null && !removedLocally)
+            return;
+
+        bool scheduled = _matchingManager.TryRunBackgroundOperation(
+            () => CleanupRemovedSessionAsync(playerId, removedLocally),
+            $"cleanup disconnected player {playerId}");
+        if (!scheduled)
+            _ownershipRenewalCts?.Cancel();
     }
 
-    private async Task CleanupRemovedSessionMatchingAsync(long playerId)
+    private async Task CleanupRemovedSessionAsync(long playerId, bool cleanupMatching)
     {
+        CancellationTokenSource? renewalCts = Interlocked.Exchange(ref _ownershipRenewalCts, null);
+        if (renewalCts != null)
+        {
+            await renewalCts.CancelAsync();
+            try
+            {
+                await _ownershipRenewalTask;
+            }
+            finally
+            {
+                renewalCts.Dispose();
+            }
+        }
+
+        PlayerSessionLease? lease = Interlocked.Exchange(ref _sessionLease, null);
+        if (lease != null)
+        {
+            bool released = await _sessionOwnership.TryReleaseAsync(lease);
+            Logger.LogInformation(
+                "Session ownership release completed: PlayerId={PlayerId}, Generation={Generation}, Released={Released}",
+                lease.PlayerId, lease.Generation, released);
+        }
+
+        if (!cleanupMatching)
+            return;
+
         long matchingId = TakeMatchingAssignment();
         if (matchingId > 0)
             await _matchingManager.ReleaseMatchingClaimAsync(playerId, matchingId);

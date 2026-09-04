@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.interfaces;
 using network.packets;
@@ -131,8 +132,8 @@ public sealed class UserServerScaleOutTests
     public void Router_ClearAndLoginNoticesReachOtherProcessesOnly()
     {
         var bus = new InMemoryNatsBus();
-        var mine = new FakeSessionEndpoint();
-        var theirs = new FakeSessionEndpoint();
+        var mine = new FakeSessionEndpoint { SessionGeneration = 2 };
+        var theirs = new FakeSessionEndpoint { SessionGeneration = 1 };
         var a = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? mine : null, "user-server-0", new RecordingLogger());
         var b = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? theirs : null, "user-server-1", new RecordingLogger());
         a.Start();
@@ -142,14 +143,77 @@ public sealed class UserServerScaleOutTests
         Assert.Equal([42L], mine.Cleared);
         Assert.Equal([42L], theirs.Cleared);
 
-        a.AnnounceLogin(7);
+        a.AnnounceLogin(7, 2);
         Assert.False(mine.DuplicateDisconnected);
         Assert.True(theirs.DuplicateDisconnected);
+    }
+
+    [Fact]
+    public void Router_DelayedOlderLoginNoticeDoesNotDisconnectNewerSession()
+    {
+        var bus = new InMemoryNatsBus();
+        var newer = new FakeSessionEndpoint { SessionGeneration = 3 };
+        var oldNode = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger());
+        var newNode = new NatsPlayerSessionRouter(
+            bus.Connect(),
+            id => id == 7 ? newer : null,
+            "user-server-1",
+            new RecordingLogger());
+        oldNode.Start();
+        newNode.Start();
+
+        oldNode.AnnounceLogin(7, 2);
+
+        Assert.False(newer.DuplicateDisconnected);
+    }
+
+    [Fact]
+    public async Task SessionOwnership_LaterGenerationSupersedesAndOldLeaseCannotRenewOrRelease()
+    {
+        var cache = new InMemoryRedisOperations();
+        var store = new RedisPlayerSessionOwnershipStore(
+            cache,
+            NullLogger<RedisPlayerSessionOwnershipStore>.Instance);
+
+        PlayerSessionLease first = Assert.IsType<PlayerSessionLease>(
+            await store.TryAcquireAsync(7, "user-server-0", "session-a"));
+        PlayerSessionLease second = Assert.IsType<PlayerSessionLease>(
+            await store.TryAcquireAsync(7, "user-server-1", "session-b"));
+
+        Assert.True(second.Generation > first.Generation);
+        Assert.Equal(second.OwnerValue, cache.GetString(RedisPlayerSessionOwnershipStore.OwnerKey(7)));
+        Assert.False(await store.TryRenewAsync(first));
+        Assert.False(await store.TryReleaseAsync(first));
+        Assert.True(await store.TryRenewAsync(second));
+        Assert.True(await store.TryReleaseAsync(second));
+        Assert.Null(cache.GetString(RedisPlayerSessionOwnershipStore.OwnerKey(7)));
+    }
+
+    [Fact]
+    public async Task SessionOwnership_ConcurrentClaimsLeaveHighestGenerationAsOwner()
+    {
+        var cache = new InMemoryRedisOperations();
+        var store = new RedisPlayerSessionOwnershipStore(
+            cache,
+            NullLogger<RedisPlayerSessionOwnershipStore>.Instance);
+
+        PlayerSessionLease?[] leases = await Task.WhenAll(
+            Enumerable.Range(0, 16)
+                .Select(index => store.TryAcquireAsync(9, $"user-server-{index}", $"session-{index}")));
+
+        PlayerSessionLease winner = leases
+            .Where(lease => lease != null)
+            .Select(lease => lease!)
+            .MaxBy(lease => lease.Generation)!;
+
+        Assert.Equal(winner.OwnerValue, cache.GetString(RedisPlayerSessionOwnershipStore.OwnerKey(9)));
+        Assert.Equal(16, winner.Generation);
     }
 
     private sealed class FakeSessionEndpoint : IMatchingSessionEndpoint
     {
         public bool Accept { get; set; } = true;
+        public long SessionGeneration { get; set; } = 1;
         public List<(string Op, long MatchingId, string RequestId)> Deliveries { get; } = new();
         public List<long> Cleared { get; } = new();
         public int LastPacketProtocolId { get; private set; }
@@ -165,7 +229,8 @@ public sealed class UserServerScaleOutTests
             Record("admission", matchingId, string.Empty, packet);
 
         public void ClearMatchingAssignment(long matchingId) => Cleared.Add(matchingId);
-        public void DisconnectForDuplicateLogin() => DuplicateDisconnected = true;
+        public void DisconnectIfSuperseded(long newGeneration) =>
+            DuplicateDisconnected = newGeneration > SessionGeneration;
 
         private bool Record(string op, long matchingId, string requestId, Packet packet)
         {

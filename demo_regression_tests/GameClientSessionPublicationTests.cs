@@ -728,7 +728,6 @@ public sealed class GameClientSessionPublicationTests
             MatchRuntimeStore matchRuntimes)
             : base(
                 token,
-                null!,
                 NullLogger.Instance,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),

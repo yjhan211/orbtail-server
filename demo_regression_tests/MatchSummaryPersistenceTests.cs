@@ -580,7 +580,6 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             null!,
             null!,
             null!,
-            null!,
             new ServerConfig
             {
                 ServerType = "GameServer",

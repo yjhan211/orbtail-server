@@ -21,6 +21,7 @@ public class UserServer(
     ILogger<UserServer> logger,
     IConfiguration configuration,
     IRedisOperations redisOperations,
+    IPlayerSessionOwnershipStore sessionOwnershipStore,
     IMatchingQueueClaimStore matchingClaimStore,
     IRedLockFactory redLock,
     IServerConfig serverConfig,
@@ -37,6 +38,7 @@ public class UserServer(
     private MatchingLifecycleSubscriber? _matchingLifecycleSubscriber;
     private NatsPlayerSessionRouter? _sessionRouter;
     private Task? _shutdownTask;
+    private string _nodeId = string.Empty;
     private int _stopping;
 
     public async Task StartAsync(CancellationToken ct)
@@ -139,9 +141,9 @@ public class UserServer(
         cancellationToken.ThrowIfCancellationRequested();
 
         // 라우터·lifecycle 구독은 NATS 연결 하나를 나눠 쓴다. 종료 시 구독자가 닫는다.
-        string nodeId = ResolveNodeId();
+        _nodeId = ResolveNodeId();
         INatsClient natsClient = natsClientFactory.Create();
-        _sessionRouter = new NatsPlayerSessionRouter(natsClient, _sessions.Get, nodeId, logger);
+        _sessionRouter = new NatsPlayerSessionRouter(natsClient, _sessions.Get, _nodeId, logger);
         var matchingManager = new MatchingManager(
             logger,
             redisOperations,
@@ -149,7 +151,7 @@ public class UserServer(
             redLock,
             gameHandoffTicketService,
             _sessionRouter,
-            new MatchingLeaderLease(redisOperations, nodeId, logger));
+            new MatchingLeaderLease(redisOperations, _nodeId, logger));
         _matchingManager = matchingManager;
 
         _matchingLifecycleSubscriber = new MatchingLifecycleSubscriber(
@@ -161,7 +163,7 @@ public class UserServer(
         _sessionRouter.Start();
         _matchingLifecycleSubscriber.Start();
         matchingManager.Start();
-        logger.LogInformation("User server node identity: NodeId={NodeId}", nodeId);
+        logger.LogInformation("User server node identity: NodeId={NodeId}", _nodeId);
 
         logger.LogInformation("Services initialized successfully");
         return Task.CompletedTask;
@@ -175,13 +177,13 @@ public class UserServer(
         logger.LogInformation($"Listening on port {port}");
     }
 
-    /// <summary>로컬 등록 뒤 다른 User Server에 알려 같은 플레이어의 옛 세션을 끊게 한다.</summary>
-    private Action? RegisterSession(long playerId, GameSession session)
-    {
-        Action? disconnectSuperseded = _sessions.Register(playerId, session);
-        _sessionRouter?.AnnounceLogin(playerId);
-        return disconnectSuperseded;
-    }
+    /// <summary>UserToken 인증 전이와 함께 실행할 로컬 세션 등록. 외부 I/O는 이 콜백 안에서 하지 않는다.</summary>
+    private (bool Accepted, Action? DisconnectSuperseded) RegisterSession(long playerId, GameSession session) =>
+        _sessions.Register(playerId, session);
+
+    /// <summary>인증 상태 잠금을 푼 뒤 다른 User Server에 더 높은 로그인 세대를 알린다.</summary>
+    private void AnnounceLogin(long playerId, long generation) =>
+        _sessionRouter?.AnnounceLogin(playerId, generation);
 
     /// <summary>
     ///     리더 lease 값이자 세션 알림의 origin. <c>USER_SERVER_ID</c>가 없으면 컨테이너 호스트명 — compose·k8s 모두 유일하다.
@@ -204,7 +206,10 @@ public class UserServer(
                 playerService,
                 _matchingManager!,
                 accountTokenService,
+                sessionOwnershipStore,
+                _nodeId,
                 RegisterSession,
+                AnnounceLogin,
                 _sessions.Remove);
 
             logger.LogInformation("New session created");

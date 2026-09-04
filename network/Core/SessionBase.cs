@@ -22,8 +22,7 @@ namespace network.core;
 public abstract class SessionBase(
     UserToken token,
     ILogger logger,
-    IRedisOperations redisOperations,
-    IRedLockFactory redLock)
+    IRedisOperations redisOperations)
     : IPeer
 {
     private static readonly MessagePackSerializerOptions ClientMessagePackOptions =
@@ -32,7 +31,6 @@ public abstract class SessionBase(
     protected readonly IRedisOperations RedisOperations = redisOperations;
     protected readonly ILogger Logger = logger;
     protected readonly IProtocolRouter ProtocolRouter = new ProtocolRouter();
-    protected readonly IRedLockFactory RedLock = redLock;
     private readonly SemaphoreSlim _sessionLock = new(1);
     protected readonly UserToken Token = token;
 

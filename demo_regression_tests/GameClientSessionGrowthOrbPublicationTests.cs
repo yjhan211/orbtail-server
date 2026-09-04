@@ -716,7 +716,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Activate(token);
             var session = new GameClientSession(
                 token,
-                null!,
                 NullLogger.Instance,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),
@@ -819,7 +818,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         private static GameServer CreateServer() => new(
             new ConfigurationBuilder().Build(),
             NullLogger<GameServer>.Instance,
-            null!,
             null!,
             null!,
             null!,
