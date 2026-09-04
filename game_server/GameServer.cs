@@ -35,7 +35,7 @@ namespace game_server;
 public partial class GameServer(
     IConfiguration configuration,
     ILogger<GameServer> logger,
-    INatsClientFactory natsClientFactory,
+    NatsClientFactory natsClientFactory,
     IRedisOperations redisOperations,
     INetworkService networkService,
     IGameHandoffTicketService gameHandoffTicketService,
@@ -282,9 +282,6 @@ public partial class GameServer(
 
     private void InitializeServices()
     {
-        string natsEndpoint = configuration["natsEndPoint"] ??
-                              throw new InvalidOperationException("natsEndPoint is not configured.");
-
         _areaClosureManager = new AreaClosureManager(logger);
         _swarmBotMovementCoordinator = new SwarmBotMovementCoordinator(
             _botPlayerManager,
@@ -309,7 +306,6 @@ public partial class GameServer(
 
         try
         {
-            natsClientFactory.Initialize(natsEndpoint);
             _matchingLifecycleNatsClient = natsClientFactory.Create();
             // 서버 환경에서 CSV 파일 경로 설정
             // Dev: 소스 디렉토리에서 직접 읽기 (Docker 볼륨 마운트 대응)

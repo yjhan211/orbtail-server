@@ -629,21 +629,14 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         ReceiveDuplicate();
     }
 
-    public override void Send(IPacket packet)
+    public override void Send(Packet packet)
     {
         try
         {
-            if (packet is Packet p)
-            {
-                Token.Send(p);
-                if (p.ProtocolId != (int)Protocol.U_TO_C_HEART_BEAT)
-                    Logger.LogInformation("Packet sent: Protocol={Protocol}, PlayerId={PlayerId}",
-                        (Protocol)p.ProtocolId, PlayerId);
-            }
-            else
-            {
-                Logger.LogWarning("Invalid packet type: {Type}, PlayerId={PlayerId}", packet.GetType().Name, PlayerId);
-            }
+            Token.Send(packet);
+            if (packet.ProtocolId != (int)Protocol.U_TO_C_HEART_BEAT)
+                Logger.LogInformation("Packet sent: Protocol={Protocol}, PlayerId={PlayerId}",
+                    (Protocol)packet.ProtocolId, PlayerId);
         }
         catch (Exception ex)
         {

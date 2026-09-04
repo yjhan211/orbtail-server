@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using network.core;
 using network.core.abstractions;
 using network.gamehandoff;
@@ -48,15 +49,18 @@ internal static class Program
     {
         // 네트워크/NATS
         services.AddSingleton<INetworkService, NetworkService>();
-        services.AddSingleton<INatsClientFactory, NatsClientFactory>();
+        string natsEndpoint = hostContext.Configuration["natsEndPoint"]
+                              ?? throw new InvalidOperationException("natsEndPoint is not configured.");
+        services.AddSingleton<NatsClientFactory>(sp =>
+            new NatsClientFactory(natsEndpoint, sp.GetRequiredService<ILogger<NatsClient>>()));
         services.AddSingleton<ServerReadinessState>();
 
         // Redis
         RedisConfiguration redisConfiguration = RedisConfigurationParser.Parse(hostContext.Configuration);
         services.AddSingleton(redisConfiguration);
-        services.AddSingleton<IRedisConnection>(_ => CreateRedisConnection(redisConfiguration));
+        services.AddSingleton(_ => new RedisConnection(redisConfiguration));
         services.AddSingleton<IRedLockFactory>(sp =>
-            sp.GetRequiredService<IRedisConnection>().GetRedLockFactory());
+            sp.GetRequiredService<RedisConnection>().GetRedLockFactory());
 
         // 공용 Redis 연산
         services.AddSingleton<IRedisOperations, RedisOperations>();
@@ -72,12 +76,5 @@ internal static class Program
         // 호스트 서비스
         services.AddHostedService<HealthCheckService>();
         services.AddHostedService<UserServer>();
-    }
-
-    private static RedisConnection CreateRedisConnection(RedisConfiguration redisConfiguration)
-    {
-        var redisConnection = new RedisConnection();
-        redisConnection.Initialize(redisConfiguration);
-        return redisConnection;
     }
 }

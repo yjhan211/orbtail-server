@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 
-using RedLockNet;
 using RedLockNet.SERedis;
 using RedLockNet.SERedis.Configuration;
 using StackExchange.Redis;
@@ -9,11 +8,11 @@ namespace network.infrastructure.redis;
 
 /// <summary>
 ///     서버 프로세스에서 Redis 연결을 생성하고 공유한다.
-///     초기화할 때 하나의 ConnectionMultiplexer를 생성하고 계속 재사용한다.
+///     생성할 때 하나의 ConnectionMultiplexer를 연결하고 계속 재사용한다.
 ///     DB별 IDatabase 객체와 필요한 경우 RedLock 팩토리를 함께 관리한다.
 ///     연결 생성과 종료를 담당한다.
 /// </summary>
-public sealed class RedisConnection : IRedisConnection
+public sealed class RedisConnection : IDisposable, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<int, IDatabase> _databases = new();
     private readonly object _lock = new();
@@ -22,34 +21,25 @@ public sealed class RedisConnection : IRedisConnection
 
     private bool _disposed;
 
-    public void Initialize(string connectionString)
+    public RedisConnection(string connectionString)
+        : this(RedisConfigurationParser.ParseConnectionString(connectionString))
     {
-        Initialize(RedisConfigurationParser.ParseConnectionString(connectionString));
     }
 
-    public void Initialize(RedisConfiguration configuration)
+    public RedisConnection(RedisConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
 
-        lock (_lock)
+        ConnectionMultiplexer? connection = null;
+        try
         {
-            ThrowIfDisposed();
-            if (_connection != null)
-            {
-                throw new InvalidOperationException("Redis connection is already initialized.");
-            }
-
-            ConnectionMultiplexer? connection = null;
-            try
-            {
-                connection = ConnectionMultiplexer.Connect(configuration.CreateClientOptions());
-                _connection = connection;
-            }
-            catch (Exception ex)
-            {
-                connection?.Dispose();
-                throw new InvalidOperationException("Failed to connect to Redis.", ex);
-            }
+            connection = ConnectionMultiplexer.Connect(configuration.CreateClientOptions());
+            _connection = connection;
+        }
+        catch (Exception ex)
+        {
+            connection?.Dispose();
+            throw new InvalidOperationException("Failed to connect to Redis.", ex);
         }
     }
 
@@ -112,58 +102,5 @@ public sealed class RedisConnection : IRedisConnection
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-    }
-}
-
-public sealed class RedLockFactoryAdapter(RedLockFactory redLockFactory) : IRedLockFactory
-{
-    private static readonly TimeSpan LockRetryInterval = TimeSpan.FromMilliseconds(100);
-    private static readonly TimeSpan LockWaitTime = TimeSpan.FromSeconds(3);
-    private int _disposed;
-
-    public async Task<IRedLock> AcquireLockAsync(string resource, TimeSpan expiryTime)
-    {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-
-        var redLock = await redLockFactory.CreateLockAsync(
-            resource,
-            expiryTime,
-            LockWaitTime,
-            LockRetryInterval);
-        if (redLock.IsAcquired) return redLock;
-
-        await redLock.DisposeAsync();
-        throw new RedisLockNotAcquiredException(resource);
-    }
-
-    public async Task ExecuteWithLockAsync(string resource, TimeSpan expiryTime, Func<Task> action)
-    {
-        ArgumentNullException.ThrowIfNull(action);
-
-        await using var redLock = await AcquireLockAsync(resource, expiryTime);
-        await action();
-    }
-
-    public async Task<T> ExecuteWithLockAsync<T>(
-        string resource,
-        TimeSpan expiryTime,
-        Func<Task<T>> action)
-    {
-        ArgumentNullException.ThrowIfNull(action);
-
-        await using var redLock = await AcquireLockAsync(resource, expiryTime);
-        return await action();
-    }
-
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) == 0)
-            redLockFactory.Dispose();
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        Dispose();
-        return ValueTask.CompletedTask;
     }
 }

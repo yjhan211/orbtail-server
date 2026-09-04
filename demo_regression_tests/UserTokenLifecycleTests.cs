@@ -1,6 +1,7 @@
 using System.Net.Sockets;
 using network.core;
 using network.core.abstractions;
+using network.packets;
 using network.utils;
 
 namespace demo_regression_tests;
@@ -126,7 +127,7 @@ public sealed class UserTokenLifecycleTests
         public Task OnMessageFromClient(Const<byte[]> buffer) => Task.CompletedTask;
         public void OnDisconnect() => Interlocked.Increment(ref DisconnectCount);
         public void OnRemoved() => Interlocked.Increment(ref RemovedCount);
-        public void Send(IPacket msg)
+        public void Send(Packet msg)
         {
         }
     }

@@ -2,6 +2,7 @@ using game_server.services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using network.core;
 using network.core.abstractions;
 using network.gamehandoff;
@@ -45,18 +46,16 @@ internal static class Program
     private static void ConfigureServices(HostBuilderContext hostContext, IServiceCollection services)
     {
         services.AddSingleton<INetworkService, NetworkService>();
-        services.AddSingleton<INatsClientFactory, NatsClientFactory>();
+        string natsEndpoint = hostContext.Configuration["natsEndPoint"]
+                              ?? throw new InvalidOperationException("natsEndPoint is not configured.");
+        services.AddSingleton<NatsClientFactory>(sp =>
+            new NatsClientFactory(natsEndpoint, sp.GetRequiredService<ILogger<NatsClient>>()));
         services.AddSingleton<ServerReadinessState>();
         services.AddSingleton<LogManager>();
 
         var redisConfiguration = RedisConfigurationParser.Parse(hostContext.Configuration);
         services.AddSingleton(redisConfiguration);
-        services.AddSingleton<IRedisConnection>(_ =>
-        {
-            var redisConnection = new RedisConnection();
-            redisConnection.Initialize(redisConfiguration);
-            return redisConnection;
-        });
+        services.AddSingleton(_ => new RedisConnection(redisConfiguration));
         services.AddSingleton<IRedisOperations, RedisOperations>();
         services.AddGameHandoffTicket(hostContext.Configuration);
         var devOptions = GameServerDevOptions.FromConfiguration(hostContext.Configuration);

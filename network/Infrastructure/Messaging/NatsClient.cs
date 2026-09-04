@@ -212,7 +212,6 @@ public class NatsClient : INatsClient
                 message.Subject,
                 message.Data,
                 _handlerCancellation.Token);
-            // 다른 구독자가 응답하지 않으면 요청자는 timeout으로 실패한다.
             if (response == null)
                 return;
             message.Respond(response);
@@ -341,22 +340,25 @@ public class NatsClient : INatsClient
 }
 
 /// <summary>
-///     NatsClient 팩토리
+///     생성 시 확정된 endpoint로 독립적인 NatsClient 연결을 만든다.
 /// </summary>
-public class NatsClientFactory(ILogger<NatsClient>? logger = null) : INatsClientFactory
+public class NatsClientFactory
 {
-    private string _natsEndpoint = "";
+    private readonly ILogger<NatsClient>? _logger;
+    private readonly string _natsEndpoint;
 
-    public void Initialize(string natsEndPoint)
+    public NatsClientFactory(string natsEndpoint, ILogger<NatsClient>? logger = null)
     {
-        _natsEndpoint = natsEndPoint;
+        ArgumentException.ThrowIfNullOrWhiteSpace(natsEndpoint);
+        _natsEndpoint = natsEndpoint;
+        _logger = logger;
     }
 
     public INatsClient Create()
     {
         try
         {
-            return new NatsClient(_natsEndpoint, logger);
+            return new NatsClient(_natsEndpoint, _logger);
         }
         catch (Exception ex)
         {

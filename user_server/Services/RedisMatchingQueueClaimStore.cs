@@ -7,7 +7,7 @@ namespace user_server.services;
 /// <summary>
 ///     Performs matching-queue claim acquisition as one Redis-side state transition.
 /// </summary>
-public sealed class RedisMatchingQueueClaimStore(IRedisConnection redisConnection) : IMatchingQueueClaimStore
+public sealed class RedisMatchingQueueClaimStore(RedisConnection redisConnection) : IMatchingQueueClaimStore
 {
     private static readonly TimeSpan MinimumRedisLifetime = TimeSpan.FromMilliseconds(1);
 

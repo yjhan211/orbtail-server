@@ -6,7 +6,7 @@ namespace network.infrastructure.redis;
 ///     Redis의 Hash, String, Sorted Set에 대한 공통 저수준 연산을 제공한다.
 ///     조건부 변경이나 여러 명령을 함께 처리해야 하는 작업은 Lua 스크립트로 원자적으로 실행한다.
 /// </summary>
-public class RedisOperations(IRedisConnection redisConnection) : IRedisOperations
+public class RedisOperations(RedisConnection redisConnection) : IRedisOperations
 {
     public Task<bool> HashSetAsync(string key, long field, byte[] value, int db = -1)
     {

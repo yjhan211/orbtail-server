@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using network.common;
-using network.core.abstractions;
 using network.utils;
 
 namespace network.packets;
@@ -10,7 +9,7 @@ namespace network.packets;
 ///     버퍼는 I/O 버퍼 크기(BUFFER_SIZE)로 시작해 본문이 크면 MAX_MESSAGE_SIZE까지 자란다.
 ///     풀로 돌아갈 때는 기본 크기로 줄여 큰 패킷 하나가 풀 전체를 키우지 않게 한다.
 /// </summary>
-public class Packet : IPacket
+public class Packet : IDisposable
 {
     private long _playerId;
     private int _readLimit = Config.BUFFER_SIZE;

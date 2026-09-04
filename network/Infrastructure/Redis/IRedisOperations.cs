@@ -3,8 +3,7 @@ using StackExchange.Redis;
 namespace network.infrastructure.redis;
 
 /// <summary>
-///     서버 서비스와 Redis 저장소가 공통으로 사용하는 Redis 자료구조 및 원자 연산을 제공한다.
-///     연결 수명과 DB view는 IRedisConnection이 담당한다.
+///     운영 구현체는 하나지만, Redis를 사용하는 로직을 실제 Redis 서버 없이 테스트하기 위해 인터페이스로 분리.
 /// </summary>
 public interface IRedisOperations
 {

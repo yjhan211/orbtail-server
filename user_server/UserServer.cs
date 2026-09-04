@@ -20,7 +20,7 @@ namespace user_server;
 /// </summary>
 public class UserServer(
     INetworkService networkService,
-    INatsClientFactory natsClientFactory,
+    NatsClientFactory natsClientFactory,
     ILogger<UserServer> logger,
     IConfiguration configuration,
     IRedisOperations redisOperations,
@@ -133,10 +133,6 @@ public class UserServer(
 
     private Task InitializeServicesAsync(CancellationToken cancellationToken)
     {
-        string natsEndpoint = configuration["natsEndPoint"]
-                              ?? throw new InvalidOperationException("NatsEndpoint is not configured");
-
-        natsClientFactory.Initialize(natsEndpoint);
         // 서버 환경에서 CSV 파일 경로 설정 (bin 디렉토리 기준)
         GameDataHelper.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
         GameDataHelper.Initialize();
@@ -144,7 +140,7 @@ public class UserServer(
 
         // 라우터·lifecycle 구독은 NATS 연결 하나를 나눠 쓴다. 종료 시 구독자가 닫는다.
         _nodeId = ResolveNodeId();
-        INatsClient natsClient = natsClientFactory.Create();
+        var natsClient = natsClientFactory.Create();
         _sessionRouter = new NatsPlayerSessionRouter(natsClient, _sessions.Get, _nodeId, logger);
         var matchingManager = new MatchingManager(
             logger,

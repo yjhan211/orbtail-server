@@ -558,12 +558,12 @@ public sealed class MatchStartCountdownPublicationTests
             }
         }
 
-        public override void Send(IPacket packet)
+        public override void Send(Packet packet)
         {
             SendCount++;
             if (_throwOnSend)
                 throw new InvalidOperationException("countdown transport failed");
-            DeliveredWireBytes.Add(Assert.IsType<Packet>(packet).ToBytes());
+            DeliveredWireBytes.Add(packet.ToBytes());
         }
     }
 }

@@ -78,10 +78,7 @@ public abstract class SessionBase(
         }
     }
 
-    public virtual void Send(IPacket packet)
-    {
-        if (packet is Packet p) Token.Send(p);
-    }
+    public virtual void Send(Packet packet) => Token.Send(packet);
 
     public abstract void OnRemoved();
 
