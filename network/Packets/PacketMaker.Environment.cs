@@ -34,5 +34,4 @@ public static partial class PacketMaker
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
-
 }

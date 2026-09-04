@@ -13,6 +13,9 @@ public static class MovementValidationPolicy
     public const float MaximumSpeedUnitsPerSecond = 10f;
     public const float MovementAcknowledgementIntervalSeconds = 0.25f;
 
+    // 50ms 전송이 지터로 몰려도 마지막 이동은 버리지 않고 이 간격 뒤에 처리한다.
+    public static readonly TimeSpan MinimumMovementInterval = TimeSpan.FromMilliseconds(10);
+
     public static float ClampReceiptDeltaSeconds(double elapsedSeconds)
     {
         if (double.IsNaN(elapsedSeconds) || double.IsInfinity(elapsedSeconds))

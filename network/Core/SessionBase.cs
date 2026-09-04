@@ -38,28 +38,22 @@ public abstract class SessionBase(
 
     public virtual async Task OnMessageFromClient(Const<byte[]> buffer)
     {
-        bool lockTaken = false;
         try
         {
-            await _sessionLock.WaitAsync();
-            lockTaken = true;
             if (!Connection.IsAcceptingMessages) return;
-            if (!IsMessageLifecycleActive())
-                return;
 
-            using var packet = Packet.Create(buffer);
-            var protocolId = (Protocol)packet.PopProtocolId();
-            long playerId = packet.PopPlayerId();
-            byte[] body = packet.PopBody();
+            Protocol protocolId;
+            long playerId;
+            byte[] body;
+            using (var packet = Packet.Create(buffer))
+            {
+                protocolId = (Protocol)packet.PopProtocolId();
+                playerId = packet.PopPlayerId();
+                body = packet.PopBody();
+            }
 
-            if (!ShouldSkipLogging(protocolId))
-                Logger.LogInformation("[Receive] Protocol: {Protocol}, PlayerId: {PlayerId}",
-                    protocolId, playerId);
-
-            await ProtocolRouter.RouteAsync(protocolId, body);
-
-            if (!ShouldSkipLogging(protocolId))
-                Logger.LogInformation("[Processed] Protocol: {Protocol} completed", protocolId);
+            await ScheduleMessageAsync(protocolId, body,
+                () => ProcessMessageAsync(protocolId, playerId, body));
         }
         catch (MessagePackSerializationException ex)
         {
@@ -71,9 +65,32 @@ public abstract class SessionBase(
             Logger.LogError(ex, "Error processing client message");
             SendErrorResponse(ErrorCode.SERVER_INTERNAL_ERROR, string.Empty);
         }
+    }
+
+    /// <summary>
+    ///     기본은 즉시 처리한다. 서버별로 대기 요청을 합칠 경우에도 실제 처리는 dispatch로 수행하고,
+    ///     반환 Task는 처리 또는 취소가 끝날 때 완료해야 연결 종료가 정리를 기다릴 수 있다.
+    /// </summary>
+    protected virtual Task ScheduleMessageAsync(Protocol protocolId, byte[] body, Func<Task> dispatch) => dispatch();
+
+    private async Task ProcessMessageAsync(Protocol protocolId, long playerId, byte[] body)
+    {
+        await _sessionLock.WaitAsync();
+        try
+        {
+            if (!Connection.IsAcceptingMessages || !IsMessageLifecycleActive()) return;
+
+            if (!ShouldSkipLogging(protocolId))
+                Logger.LogInformation("[Receive] Protocol: {Protocol}, PlayerId: {PlayerId}", protocolId, playerId);
+
+            await ProtocolRouter.RouteAsync(protocolId, body);
+
+            if (!ShouldSkipLogging(protocolId))
+                Logger.LogInformation("[Processed] Protocol: {Protocol} completed", protocolId);
+        }
         finally
         {
-            if (lockTaken) _sessionLock.Release();
+            _sessionLock.Release();
         }
     }
 

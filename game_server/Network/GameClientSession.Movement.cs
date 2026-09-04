@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using game_server.services;
+using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -12,6 +13,25 @@ namespace game_server.network;
 
 public partial class GameClientSession
 {
+    private static readonly MessagePackSerializerOptions MovementMessagePackOptions =
+        MessagePackSerializer.DefaultOptions.WithSecurity(MessagePackSecurity.UntrustedData);
+
+    protected override Task ScheduleMessageAsync(Protocol protocolId, byte[] body, Func<Task> dispatch)
+    {
+        uint? sequence = null;
+        if (protocolId == Protocol.C_TO_G_MOVE)
+        {
+            var move = MessagePackSerializer.Deserialize<C_TO_G_MOVE>(body, MovementMessagePackOptions);
+            // 잘못된 값이 보류 중인 정상 이동을 덮어쓰지 않도록 합치기 전에 확인한다.
+            if (move?.Position == null || move.Velocity == null ||
+                !MovementValidationPolicy.IsFinite(move.Position) ||
+                !MovementValidationPolicy.IsFinite(move.Velocity) || !float.IsFinite(move.Rotation))
+                return Task.CompletedTask;
+            sequence = move.InputSequence;
+        }
+        return _movementPacketQueue.EnqueueAsync(dispatch, sequence);
+    }
+
     private async Task HandleMove(C_TO_G_MOVE msg)
     {
         if (PlayerId == null) return;
@@ -64,8 +84,10 @@ public partial class GameClientSession
                 return;
             }
 
-            RecordMoveInputSequence(msg.InputSequence);
+            // 대기 중인 이동은 MovementPacketQueue가 최신 값으로 합치고 최소 간격 뒤에 넘긴다.
+            // 여기서는 실제로 처리하는 이동만 순번·시각을 기록한다.
             long receiptTimestamp = Stopwatch.GetTimestamp();
+            RecordMoveInputSequence(msg.InputSequence);
             float deltaTime = GetServerReceiptDeltaSeconds(receiptTimestamp);
 
             var validatedPosition = ValidatePosition(

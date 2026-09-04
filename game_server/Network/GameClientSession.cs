@@ -107,6 +107,7 @@ public partial class GameClientSession : SessionBase
     private float? _orbOrbitPhaseDegrees;
     // Stopwatch ticks: client timestamps are telemetry only and never extend movement authority.
     private long _lastMoveReceiptTimestamp;
+    private readonly MovementPacketQueue _movementPacketQueue;
     private long _lastMoveAcknowledgementTimestamp;
     private bool _hasProcessedMoveInputSequence;
     private uint _lastProcessedMoveInputSequence;
@@ -163,7 +164,8 @@ public partial class GameClientSession : SessionBase
         Func<bool> isServerStopping,
         Action<GameClientSession> recordAdmissionFailure,
         GameServerDevOptions devOptions,
-        Func<Packet, bool>? trySendConnectSuccessResponse = null)
+        Func<Packet, bool>? trySendConnectSuccessResponse = null,
+        TimeProvider? movementTimeProvider = null)
         : base(connection, logger, redisOperations)
     {
         _onLeaveCallback = onLeaveCallback;
@@ -184,6 +186,7 @@ public partial class GameClientSession : SessionBase
         _encounterRevealManager = encounterRevealManager;
         _matchRuntimes = matchRuntimes;
         _devOptions = devOptions;
+        _movementPacketQueue = new MovementPacketQueue(() => Connection.IsAcceptingMessages, movementTimeProvider);
         _handleSwarmGrowthPick = handleSwarmGrowthPick;
         _handleSwarmOrbDecision = handleSwarmOrbDecision;
         _getItemCombineRandom = getItemCombineRandom;
