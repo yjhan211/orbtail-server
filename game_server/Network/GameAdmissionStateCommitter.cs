@@ -70,7 +70,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
                     MatchingHandoffRedisKeys.ClaimKey(playerId),
                     expectedClaim,
                     expectedClaim,
-                    MatchingHandoffRedisKeys.Lifetime);
+                    MatchingHandoffRedisKeys.PostAdmissionClaimLifetime);
             }
             catch (Exception ex)
             {
@@ -117,7 +117,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
                     admissionStateKey,
                     MatchingHandoffRedisKeys.AdmissionPendingState,
                     MatchingHandoffRedisKeys.AdmissionCompletedState,
-                    MatchingHandoffRedisKeys.Lifetime);
+                    MatchingHandoffRedisKeys.HandoffStateLifetime);
                 if (completed)
                     return;
             }
@@ -190,7 +190,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
                     key,
                     field,
                     [value],
-                    MatchingHandoffRedisKeys.Lifetime);
+                    MatchingHandoffRedisKeys.HandoffStateLifetime);
                 return;
             }
             catch (Exception ex)

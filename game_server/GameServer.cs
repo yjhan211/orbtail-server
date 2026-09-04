@@ -202,7 +202,7 @@ public partial class GameServer(
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         // Publish the stopping state before taking the session snapshot. Sessions accepted at
-        // this boundary observe the same penalty-free claim-release policy in OnDisconnect.
+        // this boundary follow the same claim-release policy in OnDisconnect.
         Volatile.Write(ref _stopping, 1);
         readinessState.MarkNotReady("stopping");
         logger.LogInformation("Game server stopping...");
@@ -211,7 +211,7 @@ public partial class GameServer(
         if (_nodeAdvertiser != null)
             await RunShutdownStageAsync(_nodeAdvertiser.StopAcceptingAsync(), "node registry draining");
 
-        // 서버 셧다운 시 모든 세션을 서버 주도 종료로 마킹 → 페널티 면제
+        // 서버 셧다운 시 모든 세션을 서버 주도 종료로 마킹 → released terminal로 claim 해제
         foreach (var session in _sessionRegistry.SnapshotAll())
             session.MarkServerInitiatedDisconnect();
 
@@ -690,8 +690,8 @@ public partial class GameServer(
     }
 
     /// <summary>
-    ///     매칭 수명주기 이벤트를 NATS Core로 즉시 발행한다 (best-effort, at-most-once).
-    ///     유실 시 안전망은 user_server의 claim TTL·admission watchdog이다.
+    ///     플레이어의 exact matching claim 해제를 먼저 시도한 뒤 NATS Core로 종료 사실을 알린다.
+    ///     Redis와 NATS 중 한 경로만 성공해도 user_server가 배정을 복구할 수 있고, 둘 다 실패하면 claim TTL이 남는다.
     /// </summary>
     private void PublishMatchingLifecycle(string subject, long playerId, long matchingId)
     {
@@ -714,13 +714,13 @@ public partial class GameServer(
             if (Interlocked.Exchange(ref dispatchStarted, 1) != 0)
                 return;
 
-            PublishMatchingLifecycleCore(subject, playerId, matchingId);
+            StartMatchingLifecyclePublication(subject, playerId, matchingId);
         };
     }
 
     /// <summary>
     ///     한 매치의 한 플레이어는 terminal subject(left/completed/admission_failed/released)를 하나만
-    ///     발행한다. left+completed 이중 발행은 user_server의 이탈 페널티 계산을 깨뜨린다.
+    ///     발행한다. 서로 다른 종료 원인이 중복되면 세션 통지와 claim 해제의 의미가 충돌한다.
     /// </summary>
     private bool TryRegisterMatchingLifecycleTerminal(
         string subject,
@@ -763,6 +763,85 @@ public partial class GameServer(
             existingSubject,
             subject);
         return false;
+    }
+
+    private void StartMatchingLifecyclePublication(string subject, long playerId, long matchingId)
+    {
+        long operationId = Interlocked.Increment(ref _nextMatchingRedisCleanupId);
+        var completion = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_pendingMatchingRedisCleanupTasks.TryAdd(operationId, completion.Task))
+        {
+            throw new InvalidOperationException(
+                $"Duplicate matching lifecycle operation id: {operationId}.");
+        }
+
+        _ = RunTrackedMatchingLifecyclePublicationAsync(
+            subject,
+            playerId,
+            matchingId,
+            operationId,
+            completion);
+    }
+
+    private async Task RunTrackedMatchingLifecyclePublicationAsync(
+        string subject,
+        long playerId,
+        long matchingId,
+        long operationId,
+        TaskCompletionSource<bool> completion)
+    {
+        try
+        {
+            try
+            {
+                await ReleaseMatchingClaimBeforeLifecycleAsync(playerId, matchingId);
+            }
+            catch (Exception ex)
+            {
+                logger.LogCritical(
+                    ex,
+                    "Unexpected matching claim release failure before lifecycle publish: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    subject,
+                    playerId,
+                    matchingId);
+            }
+
+            PublishMatchingLifecycleCore(subject, playerId, matchingId);
+        }
+        finally
+        {
+            CompleteMatchingRedisCleanup(operationId, completion);
+        }
+    }
+
+    private async Task ReleaseMatchingClaimBeforeLifecycleAsync(long playerId, long matchingId)
+    {
+        if (playerId <= 0 || matchingId <= 0)
+            return;
+
+        string expectedClaim = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        try
+        {
+            bool released = await redisOperations.StringDeleteIfEqualsAsync(
+                MatchingHandoffRedisKeys.ClaimKey(playerId),
+                expectedClaim);
+            if (!released)
+            {
+                logger.LogWarning(
+                    "Matching claim was absent or changed before lifecycle publish: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    playerId,
+                    matchingId);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Matching claim release failed before lifecycle publish: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                playerId,
+                matchingId);
+        }
     }
 
     private void PublishMatchingLifecycleCore(string subject, long playerId, long matchingId)

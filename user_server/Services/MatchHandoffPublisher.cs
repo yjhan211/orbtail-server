@@ -58,7 +58,7 @@ internal sealed class MatchHandoffPublisher(
             handoffKey,
             MatchingHandoffRedisKeys.ManifestField,
             serialized,
-            MatchingHandoffRedisKeys.Lifetime);
+            MatchingHandoffRedisKeys.HandoffStateLifetime);
     }
 
     /// <summary>
@@ -127,7 +127,7 @@ internal sealed class MatchHandoffPublisher(
                     handoffKey,
                     MatchingHandoffRedisKeys.AdmissionReadyField,
                     [MatchingHandoffRedisKeys.AdmissionReadyValue],
-                    MatchingHandoffRedisKeys.Lifetime);
+                    MatchingHandoffRedisKeys.HandoffStateLifetime);
                 return;
             }
             catch (Exception ex)
@@ -176,7 +176,7 @@ internal sealed class MatchHandoffPublisher(
                 bool created = await redisOperations.StringSetIfNotExistsAsync(
                     stateKey,
                     MatchingHandoffRedisKeys.AdmissionPendingState,
-                    MatchingHandoffRedisKeys.Lifetime);
+                    MatchingHandoffRedisKeys.HandoffStateLifetime);
                 if (created)
                     return;
 
@@ -244,7 +244,7 @@ internal sealed class MatchHandoffPublisher(
                     stateKey,
                     MatchingHandoffRedisKeys.AdmissionPendingState,
                     MatchingHandoffRedisKeys.AdmissionCanceledState,
-                    MatchingHandoffRedisKeys.Lifetime);
+                    MatchingHandoffRedisKeys.HandoffStateLifetime);
                 if (canceled)
                     return true;
 
@@ -334,7 +334,7 @@ internal sealed class MatchHandoffPublisher(
                     stateKey,
                     MatchingHandoffRedisKeys.AdmissionPendingState,
                     MatchingHandoffRedisKeys.AdmissionCanceledState,
-                    MatchingHandoffRedisKeys.Lifetime);
+                    MatchingHandoffRedisKeys.HandoffStateLifetime);
                 if (!canceled)
                 {
                     var state = await redisOperations.StringGetAsync(stateKey);

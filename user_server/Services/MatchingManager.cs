@@ -114,6 +114,10 @@ public class MatchingManager : IMatchingManager
         return _queue.CancelMatchingAsync(playerId);
     }
 
+    public Task<bool> HasMatchingClaimAsync(long playerId)
+    {
+        return _matchingClaims.HasClaimAsync(playerId);
+    }
     /// <summary>
     ///     비동기 매칭 pass 하나를 시작하고 timer callback이 겹치지 않게 막는다.
     /// </summary>

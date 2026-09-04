@@ -304,10 +304,10 @@ public partial class GameClientSession : SessionBase
 
     public PlayerMatchStatus PlayerMatchStatus { get; private set; } = PlayerMatchStatus.ACTIVE;
 
-    // 이탈 페널티 면제 플래그
-    /// <summary>게임 결과 화면 이후 퇴장: 페널티 면제</summary>
+    // terminal lifecycle 원인을 고르는 상태 플래그
+    /// <summary>게임 결과가 확정된 뒤에는 completed terminal을 유지한다.</summary>
     private bool _isGameEnded;
-    /// <summary>서버 셧다운/크래시로 인한 종료: 페널티 면제</summary>
+    /// <summary>서버 주도 종료는 released terminal로 claim만 해제한다.</summary>
     private bool _isServerInitiatedDisconnect;
 
     /// <summary>
@@ -541,8 +541,8 @@ public partial class GameClientSession : SessionBase
 
     public override void OnDisconnect()
     {
-        // 게임 진행 중 의도적 이탈 시 페널티 기록
-        // 면제: SPECTATING/ELIMINATED, 게임 결과 화면 이후, 서버 주도 종료
+        // 연결이 끝난 시점의 상태에 맞는 terminal lifecycle 원인을 한 번만 고른다.
+        // 입장 실패·서버 주도 종료·탈락 뒤 퇴장·진행 중 이탈을 서로 다른 subject로 구분한다.
         if (Volatile.Read(ref _matchingLifecycleHandledExternally) != 0)
         {
             // An infrastructure-level match abort publishes one deterministic terminal event
@@ -554,7 +554,7 @@ public partial class GameClientSession : SessionBase
         }
         else if (Volatile.Read(ref _isServerInitiatedDisconnect) || _isServerStopping())
         {
-            // Planned shutdown is penalty-free, but it must not leave the exact matching claim
+            // Planned shutdown still must not leave the exact matching claim
             // behind until its long TTL expires.
             ReleaseMatchingClaimOnce();
         }
@@ -563,7 +563,7 @@ public partial class GameClientSession : SessionBase
             if (IsEliminated)
             {
                 // Eliminated spectators already paid the gameplay consequence. They still need
-                // a penalty-free terminal event if they leave before the final result so the
+                // a released terminal event if they leave before the final result so the
                 // UserServer can clear the exact matching claim and local assignment.
                 ReleaseMatchingClaimOnce();
             }
@@ -578,7 +578,7 @@ public partial class GameClientSession : SessionBase
 
     /// <summary>
     ///     `GAME_RESULT`와 `GAME_END` 시도 뒤 마지막 best-effort mark 단계에서 호출한다.
-    ///     이후 퇴장은 페널티를 면제하고 정상 완료 보상으로 이탈 횟수 1을 감소시킨다.
+    ///     completed terminal을 선점해 이후 소켓 종료가 다른 종료 원인으로 덮어쓰지 못하게 한다.
     ///     이 public wrapper는 준비된 lifecycle Action을 즉시 dispatch한다.
     /// </summary>
     public void MarkGameEnded()
@@ -609,7 +609,7 @@ public partial class GameClientSession : SessionBase
     }
 
     /// <summary>
-    ///     서버 셧다운/크래시 시 호출. 비자발적 이탈로 간주하여 페널티 면제.
+    ///     서버가 소켓 종료를 시작했음을 표시해 released terminal로 정리한다.
     /// </summary>
     public void MarkServerInitiatedDisconnect()
     {

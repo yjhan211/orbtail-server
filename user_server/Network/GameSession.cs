@@ -119,20 +119,62 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         }
     }
 
-    private string? TryBeginMatchingRequest()
+    /// <summary>
+    ///     새 매칭 요청 fence를 만든다. NATS의 session.clear가 유실돼 로컬 배정만 남았으면 Redis claim을
+    ///     다시 확인하고, claim이 완전히 사라진 경우에만 stale 배정을 지운 뒤 같은 요청을 계속한다.
+    /// </summary>
+    internal async Task<string?> TryBeginMatchingRequestAsync(long playerId)
     {
+        long assignedMatchingId;
         lock (_matchingAssignmentLock)
         {
-            if (!IsConnected ||
-                _assignedMatchingId != 0 ||
-                _activeMatchingRequestId != null)
-            {
+            if (!IsConnected)
                 return null;
+
+            assignedMatchingId = _assignedMatchingId;
+            if (assignedMatchingId == 0)
+            {
+                if (_activeMatchingRequestId != null)
+                    return null;
+
+                _activeMatchingRequestId = Guid.NewGuid().ToString("N");
+                return _activeMatchingRequestId;
+            }
+        }
+
+        // claim 값이 다른 경우도 다른 매칭 작업이 진행 중인 것으로 보고 보수적으로 배정을 유지한다.
+        if (await _matchingManager.HasMatchingClaimAsync(playerId))
+            return null;
+
+        string? requestId;
+        lock (_matchingAssignmentLock)
+        {
+            if (!IsConnected)
+                return null;
+
+            // Redis를 기다리는 동안 더 새로운 배정이 생겼으면 그 상태를 건드리지 않는다.
+            if (_assignedMatchingId != 0 && _assignedMatchingId != assignedMatchingId)
+                return null;
+
+            if (_assignedMatchingId == assignedMatchingId)
+            {
+                _assignedMatchingId = 0;
+                _activeMatchingRequestId = null;
             }
 
-            _activeMatchingRequestId = Guid.NewGuid().ToString("N");
-            return _activeMatchingRequestId;
+            // clear 알림 등 다른 경로가 먼저 정리했어도 새 요청이 이미 시작됐다면 끼어들지 않는다.
+            if (_assignedMatchingId != 0 || _activeMatchingRequestId != null)
+                return null;
+
+            requestId = Guid.NewGuid().ToString("N");
+            _activeMatchingRequestId = requestId;
         }
+
+        Logger.LogInformation(
+            "Cleared stale local matching assignment after Redis claim disappeared: PlayerId={PlayerId}, MatchingId={MatchingId}",
+            playerId,
+            assignedMatchingId);
+        return requestId;
     }
 
     private bool TryClearMatchingRequest(string requestId)
@@ -523,7 +565,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
     {
         if (PlayerId == null) return;
 
-        string? requestId = TryBeginMatchingRequest();
+        string? requestId = await TryBeginMatchingRequestAsync(PlayerId.Value);
         if (requestId == null)
         {
             using var alreadyMatchingPacket =

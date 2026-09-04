@@ -227,7 +227,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     }
 
     [Fact]
-    public void LifecycleCompletion_PrepareDefersOneShotCorePublish()
+    public async Task LifecycleCompletion_PrepareDefersOneShotCorePublish()
     {
         var nats = new RecordingNatsClient();
         GameServer server = CreateLegacyGameServer(nats, new RecordingLogger<GameServer>());
@@ -243,6 +243,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
 
         dispatch();
         dispatch();
+        await WaitForPendingMatchingRedisCleanupsAsync(server);
 
         Assert.Equal(1, nats.PublishCount);
         Assert.Equal(MatchingLifecycleSubjects.PlayerCompleted, nats.LastSubject);
@@ -253,7 +254,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     }
 
     [Fact]
-    public void LifecyclePublishFailure_IsLoggedAndLaterPublicationProgresses()
+    public async Task LifecyclePublishFailure_IsLoggedAndLaterPublicationProgresses()
     {
         var nats = new RecordingNatsClient
         {
@@ -268,6 +269,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             MatchingLifecycleSubjects.PlayerLeft,
             102L,
             42_004L);
+        await WaitForPendingMatchingRedisCleanupsAsync(server);
 
         Assert.Equal(1, nats.PublishCount);
         Assert.True(
@@ -282,12 +284,99 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             MatchingLifecycleSubjects.PlayerLeft,
             103L,
             42_004L);
+        await WaitForPendingMatchingRedisCleanupsAsync(server);
 
         Assert.Equal(2, nats.PublishCount);
     }
 
     [Fact]
-    public void Lifecycle_ImmediateWrapperPublishesOnce()
+    public async Task LifecyclePublishFailure_StillReleasesExactClaim()
+    {
+        const long playerId = 1201;
+        const long matchingId = 42_104;
+        var redis = new InMemoryRedisOperations();
+        await redis.StringSetAsync(
+            MatchingHandoffRedisKeys.ClaimKey(playerId),
+            matchingId,
+            MatchingHandoffRedisKeys.PostAdmissionClaimLifetime);
+        var nats = new RecordingNatsClient
+        {
+            PublishException = new InvalidOperationException("core failure")
+        };
+        var logger = new RecordingLogger<GameServer>();
+        GameServer server = CreateLegacyGameServer(nats, logger, redis);
+
+        InvokePrivate(
+            server,
+            "PublishMatchingLifecycle",
+            MatchingLifecycleSubjects.PlayerCompleted,
+            playerId,
+            matchingId);
+        await WaitForPendingMatchingRedisCleanupsAsync(server);
+
+        Assert.Null(redis.GetString(MatchingHandoffRedisKeys.ClaimKey(playerId)));
+        Assert.Equal(1, nats.PublishCount);
+        Assert.True(logger.Contains(LogLevel.Error, "Matching lifecycle publish failed:"));
+    }
+
+    [Fact]
+    public async Task LifecycleClaimRelease_DoesNotDeleteDifferentClaim()
+    {
+        const long playerId = 1202;
+        const long endedMatchingId = 42_105;
+        const long newerMatchingId = 42_106;
+        var redis = new InMemoryRedisOperations();
+        await redis.StringSetAsync(
+            MatchingHandoffRedisKeys.ClaimKey(playerId),
+            newerMatchingId,
+            MatchingHandoffRedisKeys.PostAdmissionClaimLifetime);
+        var nats = new RecordingNatsClient();
+        var logger = new RecordingLogger<GameServer>();
+        GameServer server = CreateLegacyGameServer(nats, logger, redis);
+
+        InvokePrivate(
+            server,
+            "PublishMatchingLifecycle",
+            MatchingLifecycleSubjects.PlayerLeft,
+            playerId,
+            endedMatchingId);
+        await WaitForPendingMatchingRedisCleanupsAsync(server);
+
+        Assert.Equal(
+            newerMatchingId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            redis.GetString(MatchingHandoffRedisKeys.ClaimKey(playerId)));
+        Assert.Equal(1, nats.PublishCount);
+        Assert.True(logger.Contains(LogLevel.Warning, "Matching claim was absent or changed"));
+    }
+
+    [Fact]
+    public async Task LifecycleClaimReleaseFailure_StillPublishesNats()
+    {
+        const long playerId = 1203;
+        const long matchingId = 42_107;
+        var redis = new InMemoryRedisOperations
+        {
+            StringError = new InvalidOperationException("redis failure")
+        };
+        var nats = new RecordingNatsClient();
+        var logger = new RecordingLogger<GameServer>();
+        GameServer server = CreateLegacyGameServer(nats, logger, redis);
+
+        InvokePrivate(
+            server,
+            "PublishMatchingLifecycle",
+            MatchingLifecycleSubjects.PlayerReleased,
+            playerId,
+            matchingId);
+        await WaitForPendingMatchingRedisCleanupsAsync(server);
+
+        Assert.Equal(1, nats.PublishCount);
+        Assert.Equal(MatchingLifecycleSubjects.PlayerReleased, nats.LastSubject);
+        Assert.True(logger.Contains(LogLevel.Warning, "Matching claim release failed before lifecycle publish:"));
+    }
+
+    [Fact]
+    public async Task Lifecycle_ImmediateWrapperPublishesOnce()
     {
         var nats = new RecordingNatsClient();
         GameServer server = CreateLegacyGameServer(
@@ -300,15 +389,16 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             MatchingLifecycleSubjects.PlayerLeft,
             103L,
             42_005L);
+        await WaitForPendingMatchingRedisCleanupsAsync(server);
 
         Assert.Equal(1, nats.PublishCount);
         Assert.Equal(MatchingLifecycleSubjects.PlayerLeft, nats.LastSubject);
     }
 
     [Fact]
-    public void Lifecycle_SecondTerminalSubjectForSamePlayerIsIgnored()
+    public async Task Lifecycle_SecondTerminalSubjectForSamePlayerIsIgnored()
     {
-        // left+completed 이중 발행은 user_server 이탈 페널티를 깨뜨린다 — 플레이어당 terminal 하나만.
+        // left+completed처럼 서로 다른 종료 원인이 충돌하지 않도록 플레이어당 terminal 하나만 선점한다.
         var nats = new RecordingNatsClient();
         GameServer server = CreateLegacyGameServer(
             nats,
@@ -337,6 +427,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Assert.Equal(0, nats.PublishCount);
 
         completed!();
+        await WaitForPendingMatchingRedisCleanupsAsync(server);
 
         Assert.Equal(1, nats.PublishCount);
         Assert.Equal(MatchingLifecycleSubjects.PlayerCompleted, nats.LastSubject);
@@ -347,6 +438,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             MatchingLifecycleSubjects.PlayerLeft,
             105L,
             matchingId);
+        await WaitForPendingMatchingRedisCleanupsAsync(server);
         Assert.Equal(2, nats.PublishCount);
     }
 
@@ -381,13 +473,13 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         int claimRejected = Find(preparation, "return null;");
         int deferredFactory = Find(preparation, "return () =>");
         int exactlyOnceGuard = Find(preparation, "Interlocked.Exchange(ref dispatchStarted, 1)");
-        int corePublishCall = Find(
+        int trackedPublication = Find(
             preparation,
-            "PublishMatchingLifecycleCore(subject, playerId, matchingId);");
+            "StartMatchingLifecyclePublication(subject, playerId, matchingId);");
         Assert.True(terminalClaim < claimRejected);
         Assert.True(claimRejected < deferredFactory);
         Assert.True(deferredFactory < exactlyOnceGuard);
-        Assert.True(exactlyOnceGuard < corePublishCall);
+        Assert.True(exactlyOnceGuard < trackedPublication);
 
         int firstLittleEndian = Find(corePublish, "BinaryPrimitives.WriteInt64LittleEndian(payload, playerId);");
         int secondLittleEndian = Find(
@@ -565,7 +657,8 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
 
     private GameServer CreateLegacyGameServer(
         INatsClient nats,
-        ILogger<GameServer> logger)
+        ILogger<GameServer> logger,
+        IRedisOperations? redisOperations = null)
     {
         IConfiguration configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -578,7 +671,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             configuration,
             logger,
             null!,
-            null!,
+            redisOperations ?? new InMemoryRedisOperations(),
             null!,
             null!,
             new ServerReadinessState(),
@@ -591,6 +684,12 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 BindingFlags.Instance | BindingFlags.NonPublic)!
             .SetValue(server, nats);
         return server;
+    }
+
+    private static async Task WaitForPendingMatchingRedisCleanupsAsync(GameServer server)
+    {
+        var pending = Assert.IsAssignableFrom<Task>(InvokePrivate(server, "WaitForPendingMatchingRedisCleanupsAsync"));
+        await pending;
     }
 
     private static object? InvokePrivate(

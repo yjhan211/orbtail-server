@@ -156,7 +156,23 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
     public Task<RedisValue> HashGetAsync(string key, long field, int db = -1) => HashGetAsync(key, field.ToString(), db);
 
 
-    public Task<RedisValue[]> HashGetAsync(string key, RedisValue[] fields, int db = -1) => throw new NotSupportedException();
+    public Task<RedisValue[]> HashGetAsync(string key, RedisValue[] fields, int db = -1)
+    {
+        if (HashGetError != null) throw HashGetError;
+        lock (_sync)
+        {
+            var values = fields
+                .Select(field =>
+                {
+                    string fieldName = field.ToString();
+                    return _hashes.TryGetValue(key, out var hash) && hash.TryGetValue(fieldName, out byte[]? value)
+                        ? (RedisValue)value
+                        : RedisValue.Null;
+                })
+                .ToArray();
+            return Task.FromResult(values);
+        }
+    }
 
     public Task<HashEntry[]> HashGetAllAsync(string key, int db = -1)
     {
@@ -248,6 +264,7 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
                 !string.Equals(value.ToString(), expectedValue, StringComparison.Ordinal))
                 return Task.FromResult(false);
             _strings.Remove(key);
+            _expiries.Remove(key);
             return Task.FromResult(true);
         }
     }
