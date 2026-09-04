@@ -21,7 +21,7 @@ internal enum MatchCreationOrigin
 ///     봇 PlayerId는 process-wide 음수 카운터에서 발급한다. 그 외 프로세스 상태는 없다.
 /// </summary>
 internal sealed class MatchmakingPass(
-    ICacheHelper cacheHelper,
+    IRedisOperations redisOperations,
     MatchingQueue queue,
     MatchingQueueClaimCoordinator claims,
     MatchRosterBuilder rosterBuilder,
@@ -130,7 +130,7 @@ internal sealed class MatchmakingPass(
             .ToArray();
         try
         {
-            matchingId = await cacheHelper.StringIncrementAsync(MatchingIdKey);
+            matchingId = await redisOperations.StringIncrementAsync(MatchingIdKey);
             await claims.CommitAsync(claimLease, matchingId);
 
             var allGroupEntries = new List<MatchingQueueEntry>(groupEntries);

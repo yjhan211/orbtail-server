@@ -9,7 +9,7 @@ namespace user_server.services;
 ///     claim이 중복 매치를 막아 주더라도 성공 전달·watchdog 소유자가 둘이면 롤백 판단이 갈리기 때문이다.
 ///     매칭 timer 스레드에서만 부른다.
 /// </summary>
-internal sealed class MatchingLeaderLease(ICacheHelper cacheHelper, string nodeId, ILogger logger)
+internal sealed class MatchingLeaderLease(IRedisOperations redisOperations, string nodeId, ILogger logger)
 {
     public const string Key = "user_server:matching_leader";
 
@@ -27,8 +27,8 @@ internal sealed class MatchingLeaderLease(ICacheHelper cacheHelper, string nodeI
         bool held;
         try
         {
-            held = await cacheHelper.StringSetIfEqualsAsync(Key, NodeId, NodeId, Lifetime) ||
-                   await cacheHelper.StringSetIfNotExistsAsync(Key, NodeId, Lifetime);
+            held = await redisOperations.StringSetIfEqualsAsync(Key, NodeId, NodeId, Lifetime) ||
+                   await redisOperations.StringSetIfNotExistsAsync(Key, NodeId, Lifetime);
         }
         catch (Exception ex)
         {
@@ -57,7 +57,7 @@ internal sealed class MatchingLeaderLease(ICacheHelper cacheHelper, string nodeI
         _isLeader = false;
         try
         {
-            await cacheHelper.StringDeleteIfEqualsAsync(Key, NodeId);
+            await redisOperations.StringDeleteIfEqualsAsync(Key, NodeId);
             logger.LogInformation("Matching leader released: NodeId={NodeId}", NodeId);
         }
         catch (Exception ex)

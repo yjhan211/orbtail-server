@@ -9,7 +9,7 @@ using StackExchange.Redis;
 namespace user_server.services;
 
 public sealed class RedisAccountCredentialStore(
-    ICacheHelper cacheHelper,
+    IRedisOperations redisOperations,
     IRedLockFactory redLockFactory) : IAccountCredentialStore
 {
     private const string PlayerIdCounterKey = "player_id_counter";
@@ -19,12 +19,12 @@ public sealed class RedisAccountCredentialStore(
 
     public Task<long> AllocatePlayerIdAsync()
     {
-        return cacheHelper.StringIncrementAsync(PlayerIdCounterKey);
+        return redisOperations.StringIncrementAsync(PlayerIdCounterKey);
     }
 
     public async Task<AccountCredential?> FindByTokenHashAsync(string tokenHash)
     {
-        RedisValue playerIdValue = await cacheHelper.HashGetAsync(PlayerByTokenHashKey, tokenHash);
+        RedisValue playerIdValue = await redisOperations.HashGetAsync(PlayerByTokenHashKey, tokenHash);
         if (playerIdValue.IsNullOrEmpty ||
             !long.TryParse(Decode(playerIdValue), NumberStyles.None, CultureInfo.InvariantCulture, out long playerId) ||
             playerId <= 0)
@@ -32,7 +32,7 @@ public sealed class RedisAccountCredentialStore(
             return null;
         }
 
-        RedisValue tokenHashValue = await cacheHelper.HashGetAsync(
+        RedisValue tokenHashValue = await redisOperations.HashGetAsync(
             TokenHashByPlayerKey,
             playerId.ToString(CultureInfo.InvariantCulture));
         if (tokenHashValue.IsNullOrEmpty)
@@ -48,7 +48,7 @@ public sealed class RedisAccountCredentialStore(
 
         if (containsLegacyPlaintext)
         {
-            await cacheHelper.HashSetAsync(
+            await redisOperations.HashSetAsync(
                 TokenHashByPlayerKey,
                 playerId.ToString(CultureInfo.InvariantCulture),
                 Encode(storedTokenHash));
@@ -73,7 +73,7 @@ public sealed class RedisAccountCredentialStore(
             Config.LOCK_TTL);
 
         string playerField = playerId.ToString(CultureInfo.InvariantCulture);
-        bool playerExists = await cacheHelper.HashExistsAsync(PlayerInfo.HashKey, playerField);
+        bool playerExists = await redisOperations.HashExistsAsync(PlayerInfo.HashKey, playerField);
         if (requireExistingPlayer && !playerExists)
         {
             return new AccountCredentialProvisionResult(AccountCredentialProvisionStatus.PlayerNotFound);
@@ -83,7 +83,7 @@ public sealed class RedisAccountCredentialStore(
             return new AccountCredentialProvisionResult(AccountCredentialProvisionStatus.PlayerAlreadyExists);
         }
 
-        RedisValue existingTokenHashValue = await cacheHelper.HashGetAsync(TokenHashByPlayerKey, playerField);
+        RedisValue existingTokenHashValue = await redisOperations.HashGetAsync(TokenHashByPlayerKey, playerField);
         if (!existingTokenHashValue.IsNullOrEmpty)
         {
             if (!requireExistingPlayer)
@@ -94,7 +94,7 @@ public sealed class RedisAccountCredentialStore(
             string existingTokenHash = containsLegacyPlaintext
                 ? OpaqueToken.Fingerprint(storedCredential)
                 : storedCredential;
-            RedisValue mappedPlayerValue = await cacheHelper.HashGetAsync(PlayerByTokenHashKey, existingTokenHash);
+            RedisValue mappedPlayerValue = await redisOperations.HashGetAsync(PlayerByTokenHashKey, existingTokenHash);
             if (!mappedPlayerValue.IsNullOrEmpty &&
                 (!long.TryParse(Decode(mappedPlayerValue), NumberStyles.None, CultureInfo.InvariantCulture,
                      out long mappedPlayerId) || mappedPlayerId != playerId))
@@ -102,7 +102,7 @@ public sealed class RedisAccountCredentialStore(
                 throw new InvalidOperationException("The stored account credential mapping is inconsistent.");
             }
 
-            await cacheHelper.HashSetPairAtomicAsync(
+            await redisOperations.HashSetPairAtomicAsync(
                 TokenHashByPlayerKey,
                 playerField,
                 Encode(existingTokenHash),
@@ -118,7 +118,7 @@ public sealed class RedisAccountCredentialStore(
                         : null);
         }
 
-        RedisValue proposedMapping = await cacheHelper.HashGetAsync(PlayerByTokenHashKey, proposedTokenHash);
+        RedisValue proposedMapping = await redisOperations.HashGetAsync(PlayerByTokenHashKey, proposedTokenHash);
         if (!proposedMapping.IsNullOrEmpty &&
             (!long.TryParse(Decode(proposedMapping), NumberStyles.None, CultureInfo.InvariantCulture,
                  out long proposedMappedPlayerId) || proposedMappedPlayerId != playerId))
@@ -126,7 +126,7 @@ public sealed class RedisAccountCredentialStore(
             return new AccountCredentialProvisionResult(AccountCredentialProvisionStatus.TokenCollision);
         }
 
-        await cacheHelper.HashSetPairAtomicAsync(
+        await redisOperations.HashSetPairAtomicAsync(
             TokenHashByPlayerKey,
             playerField,
             Encode(proposedTokenHash),

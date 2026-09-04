@@ -24,14 +24,14 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
     public GameSession(
         UserToken token,
         ILogger logger,
-        ICacheHelper cacheHelper,
+        IRedisOperations redisOperations,
         IRedLockFactory redLock,
         IPlayerService playerService,
         IMatchingManager matchingManager,
         IAccountTokenService accountTokenService,
         Func<long, GameSession, Action?> onSessionRegistered,
         Func<long, GameSession, bool> onSessionRemoved)
-        : base(token, logger, cacheHelper, redLock)
+        : base(token, logger, redisOperations, redLock)
     {
         _playerService = playerService;
         _matchingManager = matchingManager;
@@ -272,7 +272,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
             await using var playerLock = await PlayerInfo.Lock(RedLock, PlayerId.Value);
             Logger.LogInformation("Player lock acquired for PlayerId={PlayerId}", PlayerId);
 
-            PlayerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+            PlayerInfo = await PlayerInfo.Load(RedisOperations, PlayerId.Value);
 
             if (PlayerInfo == null)
             {
@@ -286,7 +286,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
                 // 신규 플레이어 생성
                 Logger.LogInformation("Creating new player: PlayerId={PlayerId}", PlayerId);
                 PlayerInfo = new PlayerInfo(PlayerId.Value, false);
-                await PlayerInfo.Save(CacheHelper);
+                await PlayerInfo.Save(RedisOperations);
                 Logger.LogInformation("New player created and saved: PlayerId={PlayerId}", PlayerId);
             }
             else
@@ -366,7 +366,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
             long itemUidCounter = 0;
             if (missingItemIds.Count > 0)
             {
-                itemUidUpperBound = await CacheHelper.StringIncrementByAsync(
+                itemUidUpperBound = await RedisOperations.StringIncrementByAsync(
                     "item_uid_counter",
                     missingItemIds.Count);
                 itemUidCounter = checked(itemUidUpperBound - missingItemIds.Count + 1);
@@ -418,7 +418,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
 
             // 저장
             playerInfo.IsNew = false;
-            await playerInfo.Save(CacheHelper);
+            await playerInfo.Save(RedisOperations);
 
             Logger.LogInformation("New player setup complete: PlayerId={PlayerId}, Total items={Count}",
                 playerInfo.PlayerId, playerInfo.InventoryInfo.ItemDict.Count);

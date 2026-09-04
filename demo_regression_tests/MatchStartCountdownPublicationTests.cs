@@ -368,6 +368,7 @@ public sealed class MatchStartCountdownPublicationTests
             null!,
             null!,
             null!,
+            null!,
             new ServerConfig
             {
                 ServerType = "GameServer",

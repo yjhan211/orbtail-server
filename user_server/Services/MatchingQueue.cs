@@ -11,7 +11,7 @@ namespace user_server.services;
 ///     제거(sanitize)한 typed entry 배열로 돌려준다. 프로세스 상태를 갖지 않는다.
 /// </summary>
 internal sealed class MatchingQueue(
-    ICacheHelper cacheHelper,
+    IRedisOperations redisOperations,
     IRedLockFactory redLock,
     MatchingQueueClaimCoordinator claims,
     ILogger logger)
@@ -52,7 +52,7 @@ internal sealed class MatchingQueue(
                 RequestId = requestId!
             });
 
-            await cacheHelper.SortedSetAddAsync(QueueKey, entry.Raw, matchingNow.ToUnixTimeSeconds());
+            await redisOperations.SortedSetAddAsync(QueueKey, entry.Raw, matchingNow.ToUnixTimeSeconds());
             logger.LogInformation("Player {PlayerId} queued for matching", playerId);
 
             return ErrorCode.SUCCESS;
@@ -99,7 +99,7 @@ internal sealed class MatchingQueue(
     /// </summary>
     public async Task<int> RemovePlayerEntriesAsync(long playerId)
     {
-        byte[][] allEntries = await cacheHelper.SortedSetRangeByScoreAsync(QueueKey);
+        byte[][] allEntries = await redisOperations.SortedSetRangeByScoreAsync(QueueKey);
         int removedCount = 0;
 
         foreach (byte[] raw in allEntries)
@@ -108,13 +108,13 @@ internal sealed class MatchingQueue(
             {
                 if (MatchingQueueEntry.Parse(raw).PlayerId != playerId) continue;
 
-                if (await cacheHelper.SortedSetRemoveAsync(QueueKey, raw))
+                if (await redisOperations.SortedSetRemoveAsync(QueueKey, raw))
                     removedCount++;
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Invalid matching entry removed while cleaning the queue");
-                if (await cacheHelper.SortedSetRemoveAsync(QueueKey, raw))
+                if (await redisOperations.SortedSetRemoveAsync(QueueKey, raw))
                     removedCount++;
             }
         }
@@ -127,7 +127,7 @@ internal sealed class MatchingQueue(
     /// </summary>
     public async Task<MatchingQueueEntry[]> ReadWaitingEntriesAsync(long cutoffUnixSeconds)
     {
-        byte[][] rawEntries = await cacheHelper.SortedSetRangeByScoreAsync(
+        byte[][] rawEntries = await redisOperations.SortedSetRangeByScoreAsync(
             QueueKey,
             double.NegativeInfinity,
             cutoffUnixSeconds);
@@ -166,7 +166,7 @@ internal sealed class MatchingQueue(
             }
 
             if (removeEntry)
-                await cacheHelper.SortedSetRemoveAsync(QueueKey, raw);
+                await redisOperations.SortedSetRemoveAsync(QueueKey, raw);
         }
 
         return validEntries.ToArray();
@@ -174,7 +174,7 @@ internal sealed class MatchingQueue(
 
     public Task<bool> RemoveEntryAsync(MatchingQueueEntry entry)
     {
-        return cacheHelper.SortedSetRemoveAsync(QueueKey, entry.Raw);
+        return redisOperations.SortedSetRemoveAsync(QueueKey, entry.Raw);
     }
 
     /// <summary>

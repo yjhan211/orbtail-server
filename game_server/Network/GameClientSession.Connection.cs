@@ -121,7 +121,7 @@ public partial class GameClientSession
             // 바꿔도 Redis에 남지 않고, 분산 락도 지킬 쓰기가 없어 잡지 않는다 (#335).
             Cell matchingSpawnCell;
             {
-                var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+                var playerInfo = await PlayerInfo.Load(RedisOperations, PlayerId.Value);
                 if (playerInfo == null)
                     throw new InvalidOperationException($"PlayerInfo not found for authenticated player {playerId}.");
 
@@ -367,7 +367,7 @@ public partial class GameClientSession
                 var playerInfoList = new List<PlayerInfo>();
                 foreach (var session in sameAreaSessions)
                 {
-                    var playerInfo = await PlayerInfo.Load(CacheHelper, session.PlayerId!.Value);
+                    var playerInfo = await PlayerInfo.Load(RedisOperations, session.PlayerId!.Value);
                     if (playerInfo == null)
                         throw new InvalidOperationException(
                             $"PlayerInfo not found for connected player {session.PlayerId.Value}.");
@@ -386,7 +386,7 @@ public partial class GameClientSession
             }
 
             // 내 스냅샷 로드 — 읽기 전용이라 분산 락은 잡지 않는다 (#335).
-            var myPlayerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+            var myPlayerInfo = await PlayerInfo.Load(RedisOperations, PlayerId.Value);
 
             if (myPlayerInfo == null)
                 throw new InvalidOperationException($"PlayerInfo not found for joining player {PlayerId.Value}.");
@@ -568,7 +568,7 @@ public partial class GameClientSession
     private async Task<MatchManifest> ReadMatchManifestAsync(long matchingId)
     {
         // manifest는 ticket 발급보다 먼저 쓰인다. 없으면 만료됐거나 handoff가 지워진 것이다.
-        var serialized = await CacheHelper.HashGetAsync(
+        var serialized = await RedisOperations.HashGetAsync(
             MatchingHandoffRedisKeys.Key(matchingId),
             MatchingHandoffRedisKeys.ManifestField);
         if (serialized.IsNullOrEmpty)
@@ -592,7 +592,7 @@ public partial class GameClientSession
 
         for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
-            var ready = await CacheHelper.HashGetAsync(
+            var ready = await RedisOperations.HashGetAsync(
                 handoffKey,
                 MatchingHandoffRedisKeys.AdmissionReadyField);
             if (!ready.IsNullOrEmpty)
@@ -603,7 +603,7 @@ public partial class GameClientSession
                     string expectedClaim = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     foreach (long humanPlayerId in expectedHumanPlayerIds)
                     {
-                        var claim = await CacheHelper.StringGetAsync(
+                        var claim = await RedisOperations.StringGetAsync(
                             MatchingHandoffRedisKeys.ClaimKey(humanPlayerId));
                         if (claim.IsNullOrEmpty || !string.Equals(claim.ToString(), expectedClaim,
                                 StringComparison.Ordinal))
@@ -618,7 +618,7 @@ public partial class GameClientSession
                     $"Invalid admission marker for match {matchingId}.");
             }
 
-            var admissionState = await CacheHelper.StringGetAsync(admissionStateKey);
+            var admissionState = await RedisOperations.StringGetAsync(admissionStateKey);
             if (!admissionState.IsNullOrEmpty &&
                 string.Equals(
                     admissionState.ToString(),

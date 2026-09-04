@@ -1,8 +1,8 @@
 namespace network.hosting;
 
 /// <summary>
-///     Process-local readiness gate shared by the hosted server and its health endpoint.
-///     Liveness remains independent so an unready process can still report diagnostics.
+///     /health/ready 응답을 통해 Docker와 같은 외부 운영 환경에
+///     서버가 실제 요청을 받을 준비가 되었는지 알린다.
 /// </summary>
 public sealed class ServerReadinessState
 {

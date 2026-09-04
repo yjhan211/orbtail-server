@@ -39,7 +39,7 @@ internal interface IMatchHandoffPublisher
 ///     watchdog은 shutdown token으로만 멈춘다. 프로세스 상태는 갖지 않으며 background task 등록은 소유자에게 위임한다.
 /// </summary>
 internal sealed class MatchHandoffPublisher(
-    ICacheHelper cacheHelper,
+    IRedisOperations redisOperations,
     IGameHandoffTicketService gameHandoffTicketService,
     MatchingQueueClaimCoordinator claims,
     IPlayerSessionRouter sessions,
@@ -54,7 +54,7 @@ internal sealed class MatchHandoffPublisher(
     {
         string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
         byte[] serialized = MessagePack.MessagePackSerializer.Serialize(manifest);
-        await cacheHelper.HashSetWithExpiryAsync(
+        await redisOperations.HashSetWithExpiryAsync(
             handoffKey,
             MatchingHandoffRedisKeys.ManifestField,
             serialized,
@@ -123,7 +123,7 @@ internal sealed class MatchHandoffPublisher(
         {
             try
             {
-                await cacheHelper.HashSetWithExpiryAsync(
+                await redisOperations.HashSetWithExpiryAsync(
                     handoffKey,
                     MatchingHandoffRedisKeys.AdmissionReadyField,
                     [MatchingHandoffRedisKeys.AdmissionReadyValue],
@@ -135,7 +135,7 @@ internal sealed class MatchHandoffPublisher(
                 lastError = ex;
                 try
                 {
-                    var marker = await cacheHelper.HashGetAsync(
+                    var marker = await redisOperations.HashGetAsync(
                         handoffKey,
                         MatchingHandoffRedisKeys.AdmissionReadyField);
                     if (!marker.IsNullOrEmpty &&
@@ -173,14 +173,14 @@ internal sealed class MatchHandoffPublisher(
             string? conflictingState = null;
             try
             {
-                bool created = await cacheHelper.StringSetIfNotExistsAsync(
+                bool created = await redisOperations.StringSetIfNotExistsAsync(
                     stateKey,
                     MatchingHandoffRedisKeys.AdmissionPendingState,
                     MatchingHandoffRedisKeys.Lifetime);
                 if (created)
                     return;
 
-                var existing = await cacheHelper.StringGetAsync(stateKey);
+                var existing = await redisOperations.StringGetAsync(stateKey);
                 if (!existing.IsNullOrEmpty &&
                     string.Equals(existing.ToString(), MatchingHandoffRedisKeys.AdmissionPendingState,
                         StringComparison.Ordinal))
@@ -192,7 +192,7 @@ internal sealed class MatchHandoffPublisher(
                 lastError = ex;
                 try
                 {
-                    var existing = await cacheHelper.StringGetAsync(stateKey);
+                    var existing = await redisOperations.StringGetAsync(stateKey);
                     if (!existing.IsNullOrEmpty &&
                         string.Equals(existing.ToString(), MatchingHandoffRedisKeys.AdmissionPendingState,
                             StringComparison.Ordinal))
@@ -240,7 +240,7 @@ internal sealed class MatchHandoffPublisher(
         {
             try
             {
-                bool canceled = await cacheHelper.StringSetIfEqualsAsync(
+                bool canceled = await redisOperations.StringSetIfEqualsAsync(
                     stateKey,
                     MatchingHandoffRedisKeys.AdmissionPendingState,
                     MatchingHandoffRedisKeys.AdmissionCanceledState,
@@ -248,7 +248,7 @@ internal sealed class MatchHandoffPublisher(
                 if (canceled)
                     return true;
 
-                var state = await cacheHelper.StringGetAsync(stateKey);
+                var state = await redisOperations.StringGetAsync(stateKey);
                 if (state.IsNullOrEmpty ||
                     string.Equals(state.ToString(), MatchingHandoffRedisKeys.AdmissionCanceledState,
                         StringComparison.Ordinal))
@@ -289,7 +289,7 @@ internal sealed class MatchHandoffPublisher(
 
         try
         {
-            await cacheHelper.KeyDeleteAsync(MatchingHandoffRedisKeys.Key(matchingId));
+            await redisOperations.KeyDeleteAsync(MatchingHandoffRedisKeys.Key(matchingId));
         }
         catch (Exception ex)
         {
@@ -330,14 +330,14 @@ internal sealed class MatchHandoffPublisher(
         {
             try
             {
-                bool canceled = await cacheHelper.StringSetIfEqualsAsync(
+                bool canceled = await redisOperations.StringSetIfEqualsAsync(
                     stateKey,
                     MatchingHandoffRedisKeys.AdmissionPendingState,
                     MatchingHandoffRedisKeys.AdmissionCanceledState,
                     MatchingHandoffRedisKeys.Lifetime);
                 if (!canceled)
                 {
-                    var state = await cacheHelper.StringGetAsync(stateKey);
+                    var state = await redisOperations.StringGetAsync(stateKey);
                     if (!state.IsNullOrEmpty &&
                         string.Equals(state.ToString(), MatchingHandoffRedisKeys.AdmissionCompletedState,
                             StringComparison.Ordinal))

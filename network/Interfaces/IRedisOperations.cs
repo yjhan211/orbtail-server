@@ -2,11 +2,12 @@ using StackExchange.Redis;
 
 namespace network.interfaces;
 
-public interface ICacheHelper
+/// <summary>
+///     서버 서비스와 Redis 저장소가 공통으로 사용하는 Redis 자료구조 및 원자 연산을 제공한다.
+///     연결 수명과 재시도는 IRedisConnection이, 키 구성·직렬화·도메인 상태 전이는 각 저장소가 담당한다.
+/// </summary>
+public interface IRedisOperations
 {
-
-    public IRedLockFactory GetRedLockFactory();
-
     public Task<bool> HashSetAsync(string key, long field, byte[] value, int db = -1);
     public Task<bool> HashSetAsync(string key, string field, byte[] value, int db = -1);
     public Task HashSetWithExpiryAsync(

@@ -9,13 +9,13 @@ namespace network.common.data.models;
 /// </summary>
 public partial class GameObjectInfo
 {
-    public static async Task Delete(ICacheHelper cacheHelper, string hashField)
+    public static async Task Delete(IRedisOperations redisOperations, string hashField)
     {
-        await cacheHelper.HashDeleteAsync(HashKey, hashField);
+        await redisOperations.HashDeleteAsync(HashKey, hashField);
     }
 
-    public async Task Delete(ICacheHelper cacheHelper)
+    public async Task Delete(IRedisOperations redisOperations)
     {
-        await cacheHelper.HashDeleteAsync(HashKey, GetGameObjectKey());
+        await redisOperations.HashDeleteAsync(HashKey, GetGameObjectKey());
     }
 }

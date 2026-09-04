@@ -10,7 +10,7 @@ namespace user_server.services;
 ///     Redis PlayerInfo를 player lock 안에서 load/mutate/save하여 아이템 착용과 소비 아이템 사용을 처리한다.
 ///     연결, 매칭, 퀘스트, 메일 수명주기는 소유하지 않는다.
 /// </summary>
-public class PlayerService(ILogger<PlayerService> logger, ICacheHelper cacheHelper, IRedLockFactory redLock)
+public class PlayerService(ILogger<PlayerService> logger, IRedisOperations redisOperations, IRedLockFactory redLock)
     : IPlayerService
 {
     // ========== 인벤토리 ==========
@@ -20,7 +20,7 @@ public class PlayerService(ILogger<PlayerService> logger, ICacheHelper cacheHelp
         try
         {
             await using var playerLock = await PlayerInfo.Lock(redLock, playerId);
-            var playerInfo = await PlayerInfo.Load(cacheHelper, playerId);
+            var playerInfo = await PlayerInfo.Load(redisOperations, playerId);
 
             if (playerInfo == null) return (ErrorCode.PLAYER_NOT_FOUND, null);
 
@@ -44,7 +44,7 @@ public class PlayerService(ILogger<PlayerService> logger, ICacheHelper cacheHelp
             logger.LogInformation("Player {PlayerId} wearing items: {Join}", playerId,
                 string.Join(", ", msg.ItemUidList));
 
-            await playerInfo.Save(cacheHelper);
+            await playerInfo.Save(redisOperations);
             return (ErrorCode.SUCCESS, playerInfo);
         }
         catch (Exception ex)
@@ -59,7 +59,7 @@ public class PlayerService(ILogger<PlayerService> logger, ICacheHelper cacheHelp
         try
         {
             await using var playerLock = await PlayerInfo.Lock(redLock, playerId);
-            var playerInfo = await PlayerInfo.Load(cacheHelper, playerId);
+            var playerInfo = await PlayerInfo.Load(redisOperations, playerId);
 
             if (playerInfo == null) return (ErrorCode.PLAYER_NOT_FOUND, null);
 
@@ -85,7 +85,7 @@ public class PlayerService(ILogger<PlayerService> logger, ICacheHelper cacheHelp
                 "Player {PlayerId} using consumable item {MsgItemUid} (ItemId={ItemInfoItemId}) on target {MsgTargetItemUid}",
                 playerId, msg.ItemUid, itemInfo.ItemId, msg.TargetItemUid);
 
-            await playerInfo.Save(cacheHelper);
+            await playerInfo.Save(redisOperations);
             return (ErrorCode.SUCCESS, playerInfo);
         }
         catch (Exception ex)

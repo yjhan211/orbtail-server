@@ -26,7 +26,7 @@ public static class RedisConfigurationParser
                                   ) ??
                                   defaultEndpoints;
 
-        ConfigurationOptions options = ParseOptions(connectionString);
+        var options = ParseOptions(connectionString);
 
         string? password = FirstPresentValue(configuration, "Redis:Password", "redisPassword");
         if (password != null) options.Password = string.IsNullOrEmpty(password) ? null : password;
@@ -82,7 +82,7 @@ public static class RedisConfigurationParser
 
     public static RedisConfiguration ParseConnectionString(string connectionString)
     {
-        ConfigurationOptions options = ParseOptions(connectionString);
+        var options = ParseOptions(connectionString);
         options.AbortOnConnectFail = false;
         Validate(options);
         return new RedisConfiguration(options);

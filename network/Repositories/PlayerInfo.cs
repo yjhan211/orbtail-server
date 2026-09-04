@@ -19,23 +19,23 @@ public partial class PlayerInfo
         return await redLock.AcquireLockAsync(GetLockKey(), Config.LOCK_TTL);
     }
 
-    public async Task Save(ICacheHelper cacheHelper)
+    public async Task Save(IRedisOperations redisOperations)
     {
         // 조회가 빈번해서 메모리에 올려뒀음. 따로 Save함
         // await GameObjectInfoController.Save(cache_helper, player_info.object_info);
-        await InventoryInfo.Save(cacheHelper);
-        await cacheHelper.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
+        await InventoryInfo.Save(redisOperations);
+        await redisOperations.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
     }
 
-    public static async Task<PlayerInfo?> Load(ICacheHelper cacheHelper, long playerId)
+    public static async Task<PlayerInfo?> Load(IRedisOperations redisOperations, long playerId)
     {
-        var serialized = await cacheHelper.HashGetAsync(HashKey, playerId);
+        var serialized = await redisOperations.HashGetAsync(HashKey, playerId);
         if (serialized == RedisValue.Null) return null;
 
         var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serialized);
 
         playerInfo.ObjectInfo = new GameObjectInfo(playerId);
-        playerInfo.InventoryInfo = await InventoryInfo.Load(cacheHelper, InventoryOwnerType.PLAYER, playerId) ??
+        playerInfo.InventoryInfo = await InventoryInfo.Load(redisOperations, InventoryOwnerType.PLAYER, playerId) ??
                                    new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
         // ObjectInfo의 Cell, MapId, MapSubId를 LastCell, LastMapId, LastMapSubId로 동기화 (세션 기반 게임)
         if (playerInfo.LastMapId != MapId.None)
@@ -62,9 +62,9 @@ public partial class PlayerInfo
         return playerInfo;
     }
 
-    public static async Task<List<PlayerInfo>> LoadAll(ICacheHelper cacheHelper, RedisValue[] objectKeys)
+    public static async Task<List<PlayerInfo>> LoadAll(IRedisOperations redisOperations, RedisValue[] objectKeys)
     {
-        var hashEntries = await cacheHelper.HashGetAsync(HashKey, objectKeys);
+        var hashEntries = await redisOperations.HashGetAsync(HashKey, objectKeys);
         var hashStrings = hashEntries
             .Where(entry => entry != RedisValue.Null)
             .Select(entry => entry)
@@ -73,19 +73,19 @@ public partial class PlayerInfo
         return hashStrings.Select(hashString => MessagePackSerializer.Deserialize<PlayerInfo>(hashString)).ToList();
     }
 
-    public async Task Delete(ICacheHelper cacheHelper, PlayerInfo playerInfo)
+    public async Task Delete(IRedisOperations redisOperations, PlayerInfo playerInfo)
     {
-        await playerInfo.ObjectInfo.Delete(cacheHelper);
-        await cacheHelper.HashDeleteAsync(HashKey, playerInfo.PlayerId);
+        await playerInfo.ObjectInfo.Delete(redisOperations);
+        await redisOperations.HashDeleteAsync(HashKey, playerInfo.PlayerId);
     }
 
-    public static async Task Delete(ICacheHelper cacheHelper, long playerId)
+    public static async Task Delete(IRedisOperations redisOperations, long playerId)
     {
         string objectField = GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, playerId);
 
-        await GameObjectInfo.Delete(cacheHelper, objectField);
-        await InventoryInfo.Delete(cacheHelper, InventoryOwnerType.PLAYER, playerId);
-        await cacheHelper.HashDeleteAsync(HashKey, playerId);
+        await GameObjectInfo.Delete(redisOperations, objectField);
+        await InventoryInfo.Delete(redisOperations, InventoryOwnerType.PLAYER, playerId);
+        await redisOperations.HashDeleteAsync(HashKey, playerId);
     }
 
     /// <summary>

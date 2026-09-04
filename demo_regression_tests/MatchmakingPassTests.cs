@@ -11,7 +11,7 @@ namespace demo_regression_tests;
 /// </summary>
 public sealed class MatchmakingPassTests
 {
-    private readonly InMemoryCacheHelper _cache = new();
+    private readonly InMemoryRedisOperations _cache = new();
     private readonly InMemoryMatchingClaimStore _claimStore;
     private readonly MatchingQueueClaimCoordinator _claims;
     private readonly MatchingQueue _queue;

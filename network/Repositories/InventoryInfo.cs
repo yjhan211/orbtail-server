@@ -66,23 +66,23 @@ public partial class InventoryInfo
         return item;
     }
 
-    public async Task Save(ICacheHelper cacheHelper)
+    public async Task Save(IRedisOperations redisOperations)
     {
-        await cacheHelper.HashSetAsync(HashKey, $"{(int)OwnerType}_{OwnerId}",
+        await redisOperations.HashSetAsync(HashKey, $"{(int)OwnerType}_{OwnerId}",
             MessagePackSerializer.Serialize(this));
     }
 
-    public static async Task<InventoryInfo?> Load(ICacheHelper cacheHelper, InventoryOwnerType ownerType, long ownerId)
+    public static async Task<InventoryInfo?> Load(IRedisOperations redisOperations, InventoryOwnerType ownerType, long ownerId)
     {
-        var serializedData = await cacheHelper.HashGetAsync(HashKey, $"{(int)ownerType}_{ownerId}");
+        var serializedData = await redisOperations.HashGetAsync(HashKey, $"{(int)ownerType}_{ownerId}");
         if (serializedData.IsNull) return new InventoryInfo(ownerType, ownerId);
 
         var inventoryInfo = MessagePackSerializer.Deserialize<InventoryInfo?>(serializedData);
         return inventoryInfo;
     }
 
-    public static async Task Delete(ICacheHelper cacheHelper, InventoryOwnerType ownerType, long ownerId)
+    public static async Task Delete(IRedisOperations redisOperations, InventoryOwnerType ownerType, long ownerId)
     {
-        await cacheHelper.HashDeleteAsync(HashKey, $"{(int)ownerType}_{ownerId}");
+        await redisOperations.HashDeleteAsync(HashKey, $"{(int)ownerType}_{ownerId}");
     }
 }

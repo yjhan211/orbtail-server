@@ -378,7 +378,7 @@ public partial class GameClientSession
                 newArea);
 
             var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
-            var playerInfo = await PlayerInfo.Load(CacheHelper, PlayerId.Value);
+            var playerInfo = await PlayerInfo.Load(RedisOperations, PlayerId.Value);
 
             if (playerInfo == null) return;
 
@@ -444,7 +444,7 @@ public partial class GameClientSession
                 {
                     if (!session.PlayerId.HasValue) continue;
 
-                    var otherPlayerInfo = await PlayerInfo.Load(CacheHelper, session.PlayerId.Value);
+                    var otherPlayerInfo = await PlayerInfo.Load(RedisOperations, session.PlayerId.Value);
                     if (otherPlayerInfo != null)
                     {
                         ApplyLivePlayerInfoSnapshot(session, otherPlayerInfo);

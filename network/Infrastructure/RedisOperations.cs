@@ -1,20 +1,14 @@
-using network.common;
 using network.interfaces;
 using StackExchange.Redis;
 
 namespace network.infrastructure;
 
 /// <summary>
-///     Provides reusable Redis data-structure and compare-and-set primitives used by server application services.
-///     Domain-specific multi-key state transitions belong to their owning Redis stores.
+///     서버 서비스와 Redis 저장소가 공통으로 사용하는 Redis 자료구조 및 원자 연산을 구현한다.
+///     연결 수명과 재시도는 IRedisConnection에 위임하고, 도메인에 속한 키·직렬화·상태 전이는 소유하지 않는다.
 /// </summary>
-public class CacheHelper(IRedisConnection redisPool) : ICacheHelper
+public class RedisOperations(IRedisConnection redisConnection) : IRedisOperations
 {
-    public IRedLockFactory GetRedLockFactory()
-    {
-        return redisPool.GetRedLockFactory();
-    }
-
     public Task<bool> HashSetAsync(string key, long field, byte[] value, int db = -1)
     {
         return ExecuteRedisCommandAsync(database => database.HashSetAsync(key, field, value), db);
@@ -97,7 +91,7 @@ public class CacheHelper(IRedisConnection redisPool) : ICacheHelper
             "redis.call('HDEL', KEYS[1], ARGV[1]); " +
             "redis.call('HDEL', KEYS[2], ARGV[2]); return value";
 
-        RedisResult result = await ExecuteAtomicRedisCommandAsync(
+        var result = await ExecuteAtomicRedisCommandAsync(
             database => database.ScriptEvaluateAsync(
                 getDeleteFirstScript,
                 [firstKey, secondKey],
@@ -220,7 +214,7 @@ public class CacheHelper(IRedisConnection redisPool) : ICacheHelper
             "if redis.call('GET', KEYS[1]) == ARGV[1] then " +
             "redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3]); return 1 else return 0 end";
 
-        RedisResult result = await ExecuteAtomicRedisCommandAsync(
+        var result = await ExecuteAtomicRedisCommandAsync(
             database => database.ScriptEvaluateAsync(
                 setIfEqualsScript,
                 [key],
@@ -240,7 +234,7 @@ public class CacheHelper(IRedisConnection redisPool) : ICacheHelper
             "if redis.call('GET', KEYS[1]) == ARGV[1] then " +
             "return redis.call('DEL', KEYS[1]) else return 0 end";
 
-        RedisResult result = await ExecuteAtomicRedisCommandAsync(
+        var result = await ExecuteAtomicRedisCommandAsync(
             database => database.ScriptEvaluateAsync(
                 deleteIfEqualsScript,
                 [key],
@@ -284,12 +278,12 @@ public class CacheHelper(IRedisConnection redisPool) : ICacheHelper
 
     private async Task<T> ExecuteRedisCommandAsync<T>(Func<IDatabase, Task<T>> action, int db = -1)
     {
-        return await redisPool.ExecuteWithRetryAsync(action, db);
+        return await redisConnection.ExecuteWithRetryAsync(action, db);
     }
 
     private async Task<T> ExecuteAtomicRedisCommandAsync<T>(Func<IDatabase, Task<T>> action, int db = -1)
     {
         // 결과를 잃은 요청을 자동 재실행하면 increment/consume이 중복 적용될 수 있다.
-        return await redisPool.ExecuteWithRetryAsync(action, db, retryCount: 1);
+        return await redisConnection.ExecuteWithRetryAsync(action, db, retryCount: 1);
     }
 }

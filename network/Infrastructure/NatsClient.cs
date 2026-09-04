@@ -56,7 +56,7 @@ public class NatsClient : INatsClient
         lock (_subscriptionLock)
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref _closed) != 0, this);
-            IAsyncSubscription subscription = queue == null
+            var subscription = queue == null
                 ? _connection.SubscribeAsync(subject, Handler)
                 : _connection.SubscribeAsync(subject, queue, Handler);
             _subscriptions.Add(subscription);
@@ -74,7 +74,7 @@ public class NatsClient : INatsClient
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _closed) != 0, this);
 
         int timeoutMilliseconds = ToPositiveMilliseconds(timeout, nameof(timeout));
-        Msg response = await _connection.RequestAsync(
+        var response = await _connection.RequestAsync(
             subject,
             message,
             timeoutMilliseconds,
@@ -107,7 +107,7 @@ public class NatsClient : INatsClient
         lock (_subscriptionLock)
         {
             ObjectDisposedException.ThrowIf(Volatile.Read(ref _closed) != 0, this);
-            IAsyncSubscription subscription = queue == null
+            var subscription = queue == null
                 ? _connection.SubscribeAsync(subject, Handler)
                 : _connection.SubscribeAsync(subject, queue, Handler);
             _subscriptions.Add(subscription);
@@ -116,7 +116,7 @@ public class NatsClient : INatsClient
 
     public async Task CloseAsync(CancellationToken cancellationToken = default)
     {
-        if (!TryBeginClose(out IAsyncSubscription[] subscriptions))
+        if (!TryBeginClose(out var subscriptions))
             return;
 
         UnsubscribeAll(subscriptions);
@@ -124,7 +124,7 @@ public class NatsClient : INatsClient
         {
             while (!_inFlightHandlers.IsEmpty)
             {
-                Task[] inFlight = _inFlightHandlers.Values.ToArray();
+                var inFlight = _inFlightHandlers.Values.ToArray();
                 if (inFlight.Length == 0)
                     break;
                 await Task.WhenAll(inFlight).WaitAsync(cancellationToken);
@@ -132,14 +132,14 @@ public class NatsClient : INatsClient
         }
         finally
         {
-            _handlerCancellation.Cancel();
+            await _handlerCancellation.CancelAsync();
             _connection.Close();
         }
     }
 
     public void Close()
     {
-        if (!TryBeginClose(out IAsyncSubscription[] subscriptions))
+        if (!TryBeginClose(out var subscriptions))
             return;
         UnsubscribeAll(subscriptions);
         _handlerCancellation.Cancel();
@@ -179,7 +179,7 @@ public class NatsClient : INatsClient
                 return false;
 
             long handlerId = Interlocked.Increment(ref _nextHandlerId);
-            Task task = Task.Run(async () =>
+            var task = Task.Run(async () =>
             {
                 try
                 {
@@ -218,7 +218,7 @@ public class NatsClient : INatsClient
 
     private void UnsubscribeAll(IEnumerable<IAsyncSubscription> subscriptions)
     {
-        foreach (IAsyncSubscription subscription in subscriptions)
+        foreach (var subscription in subscriptions)
         {
             try
             {

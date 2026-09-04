@@ -9,7 +9,7 @@ namespace game_server.network;
 ///     Commits a consumed GameServer handoff into Redis admission state.
 ///     This class owns the retry and exact read-back rules that make ambiguous Redis write responses safe.
 /// </summary>
-internal sealed class GameAdmissionStateCommitter(ICacheHelper cacheHelper, ILogger logger)
+internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperations, ILogger logger)
 {
     private const int ConfirmationAttempts = 3;
     private static readonly TimeSpan ConfirmationRetryDelay = TimeSpan.FromMilliseconds(50);
@@ -24,7 +24,7 @@ internal sealed class GameAdmissionStateCommitter(ICacheHelper cacheHelper, ILog
         IReadOnlyCollection<long> expectedHumanPlayerIds)
     {
         string admissionStateKey = MatchingHandoffRedisKeys.AdmissionStateKey(matchingId);
-        RedisValue admissionState = await cacheHelper.StringGetAsync(admissionStateKey);
+        RedisValue admissionState = await redisOperations.StringGetAsync(admissionStateKey);
         if (admissionState.IsNullOrEmpty ||
             !string.Equals(admissionState.ToString(), MatchingHandoffRedisKeys.AdmissionPendingState,
                 StringComparison.Ordinal))
@@ -47,7 +47,7 @@ internal sealed class GameAdmissionStateCommitter(ICacheHelper cacheHelper, ILog
             .Select(MatchingHandoffRedisKeys.AdmittedPlayerField)
             .Select(field => (RedisValue)field)
             .ToArray();
-        RedisValue[] admittedValues = await cacheHelper.HashGetAsync(handoffKey, admittedFields);
+        RedisValue[] admittedValues = await redisOperations.HashGetAsync(handoffKey, admittedFields);
         bool allHumansAdmitted = admittedValues.Length == admittedFields.Length &&
                                  admittedValues.All(value =>
                                      !value.IsNullOrEmpty &&
@@ -66,7 +66,7 @@ internal sealed class GameAdmissionStateCommitter(ICacheHelper cacheHelper, ILog
         {
             try
             {
-                claimRenewed = await cacheHelper.StringSetIfEqualsAsync(
+                claimRenewed = await redisOperations.StringSetIfEqualsAsync(
                     MatchingHandoffRedisKeys.ClaimKey(playerId),
                     expectedClaim,
                     expectedClaim,
@@ -90,7 +90,7 @@ internal sealed class GameAdmissionStateCommitter(ICacheHelper cacheHelper, ILog
         if (claimRenewed)
             return;
 
-        RedisValue claim = await cacheHelper.StringGetAsync(MatchingHandoffRedisKeys.ClaimKey(playerId));
+        RedisValue claim = await redisOperations.StringGetAsync(MatchingHandoffRedisKeys.ClaimKey(playerId));
         if (claim.IsNullOrEmpty || !string.Equals(claim.ToString(), expectedClaim, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
@@ -113,7 +113,7 @@ internal sealed class GameAdmissionStateCommitter(ICacheHelper cacheHelper, ILog
             bool canceledStateObserved = false;
             try
             {
-                bool completed = await cacheHelper.StringSetIfEqualsAsync(
+                bool completed = await redisOperations.StringSetIfEqualsAsync(
                     admissionStateKey,
                     MatchingHandoffRedisKeys.AdmissionPendingState,
                     MatchingHandoffRedisKeys.AdmissionCompletedState,
@@ -128,7 +128,7 @@ internal sealed class GameAdmissionStateCommitter(ICacheHelper cacheHelper, ILog
 
             try
             {
-                RedisValue state = await cacheHelper.StringGetAsync(admissionStateKey);
+                RedisValue state = await redisOperations.StringGetAsync(admissionStateKey);
                 if (!state.IsNullOrEmpty &&
                     string.Equals(state.ToString(), MatchingHandoffRedisKeys.AdmissionCompletedState,
                         StringComparison.Ordinal))
@@ -186,7 +186,7 @@ internal sealed class GameAdmissionStateCommitter(ICacheHelper cacheHelper, ILog
         {
             try
             {
-                await cacheHelper.HashSetWithExpiryAsync(
+                await redisOperations.HashSetWithExpiryAsync(
                     key,
                     field,
                     [value],
@@ -198,7 +198,7 @@ internal sealed class GameAdmissionStateCommitter(ICacheHelper cacheHelper, ILog
                 lastError = ex;
                 try
                 {
-                    RedisValue marker = await cacheHelper.HashGetAsync(key, field);
+                    RedisValue marker = await redisOperations.HashGetAsync(key, field);
                     if (!marker.IsNullOrEmpty && ((byte[])marker!).AsSpan().SequenceEqual([value]))
                     {
                         logger.LogWarning(

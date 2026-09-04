@@ -10,7 +10,7 @@ namespace network.gamehandoff;
 ///     발급할 때는 SET NX와 TTL을 적용해 중복 저장과 영구 잔존을 막고,
 ///     소비할 때는 GETDEL로 값을 읽으면서 삭제해 같은 ticket의 재사용을 막는다.
 /// </summary>
-public sealed class RedisGameHandoffTicketStore(ICacheHelper cacheHelper) : IGameHandoffTicketStore
+public sealed class RedisGameHandoffTicketStore(IRedisOperations redisOperations) : IGameHandoffTicketStore
 {
     private const string TicketKeyPrefix = "game_handoff_ticket:";
 
@@ -23,12 +23,12 @@ public sealed class RedisGameHandoffTicketStore(ICacheHelper cacheHelper) : IGam
     {
         ValidateRedisLifetime(lifetime, nameof(lifetime));
         byte[] serializedContext = MessagePackSerializer.Serialize(context, SerializerOptions);
-        return cacheHelper.StringSetIfNotExistsAsync(MakeKey(ticketHash), serializedContext, lifetime);
+        return redisOperations.StringSetIfNotExistsAsync(MakeKey(ticketHash), serializedContext, lifetime);
     }
 
     public async Task<GameHandoffContext?> ConsumeAsync(string ticketHash)
     {
-        var serializedContext = await cacheHelper.StringGetDeleteAsync(MakeKey(ticketHash));
+        var serializedContext = await redisOperations.StringGetDeleteAsync(MakeKey(ticketHash));
         if (serializedContext.IsNullOrEmpty)
             return null;
 

@@ -35,7 +35,8 @@ public partial class GameServer(
     IConfiguration configuration,
     ILogger<GameServer> logger,
     INatsClientFactory natsClientFactory,
-    ICacheHelper cacheHelper,
+    IRedisOperations redisOperations,
+    IRedLockFactory redLockFactory,
     INetworkService networkService,
     ServerConfig serverConfig,
     IGameHandoffTicketService gameHandoffTicketService,
@@ -813,12 +814,11 @@ public partial class GameServer(
 
         try
         {
-            var redLockFactory = cacheHelper.GetRedLockFactory();
             var session = new GameClientSession(
                 token,
                 redLockFactory,
                 logger,
-                cacheHelper,
+                redisOperations,
                 ticket => gameHandoffTicketService.ConsumeAsync(ticket, serverConfig.GameServerNodeId),
                 OnClientSessionLeave,
                 RegisterClientSession,
@@ -1143,8 +1143,8 @@ public partial class GameServer(
     {
         try
         {
-            await cacheHelper.KeyDeleteAsync(MatchingHandoffRedisKeys.Key(matchingId));
-            await cacheHelper.HashDeleteAsync("matching_bots", matchingId);
+            await redisOperations.KeyDeleteAsync(MatchingHandoffRedisKeys.Key(matchingId));
+            await redisOperations.HashDeleteAsync("matching_bots", matchingId);
         }
         catch (Exception ex)
         {

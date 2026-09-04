@@ -31,20 +31,20 @@ internal sealed class DevMatchOverrides
         106000004
     };
 
-    private readonly ICacheHelper _cacheHelper;
+    private readonly IRedisOperations _redisOperations;
     private readonly IRedLockFactory _redLock;
     private readonly ILogger _logger;
 
     public DevMatchOverrides(
         bool twoPlayerTestMatch,
         bool soloMapValidation,
-        ICacheHelper cacheHelper,
+        IRedisOperations redisOperations,
         IRedLockFactory redLock,
         ILogger logger)
     {
         IsTwoPlayerTestMatch = twoPlayerTestMatch;
         IsSoloMapValidation = soloMapValidation;
-        _cacheHelper = cacheHelper;
+        _redisOperations = redisOperations;
         _redLock = redLock;
         _logger = logger;
     }
@@ -71,12 +71,12 @@ internal sealed class DevMatchOverrides
     /// <summary>
     ///     환경 변수를 지금 한 번 읽어 고정한다.
     /// </summary>
-    public static DevMatchOverrides FromEnvironment(ICacheHelper cacheHelper, IRedLockFactory redLock, ILogger logger)
+    public static DevMatchOverrides FromEnvironment(IRedisOperations redisOperations, IRedLockFactory redLock, ILogger logger)
     {
         return new DevMatchOverrides(
             IsEnabled(TwoPlayerTestMatchVariable),
             IsEnabled(SoloMapValidationVariable),
-            cacheHelper,
+            redisOperations,
             redLock,
             logger);
     }
@@ -105,7 +105,7 @@ internal sealed class DevMatchOverrides
 
         await using (await PlayerInfo.Lock(_redLock, targetPlayerId))
         {
-            var targetPlayer = await PlayerInfo.Load(_cacheHelper, targetPlayerId);
+            var targetPlayer = await PlayerInfo.Load(_redisOperations, targetPlayerId);
             if (targetPlayer == null)
             {
                 _logger.LogWarning("Two-player outfit setup failed: target player load failed ({PlayerId})", targetPlayerId);
@@ -120,7 +120,7 @@ internal sealed class DevMatchOverrides
                 var targetItem = targetPlayer.InventoryInfo.ItemDict.Values.FirstOrDefault(item => item.ItemId == itemId);
                 if (targetItem == null)
                 {
-                    long itemUid = await _cacheHelper.StringIncrementAsync("item_uid_counter");
+                    long itemUid = await _redisOperations.StringIncrementAsync("item_uid_counter");
                     targetItem = new ItemInfo(itemUid, itemId, 1);
                     targetPlayer.InventoryInfo.ItemDict.Add(targetItem.ItemUid, targetItem);
                 }
@@ -129,7 +129,7 @@ internal sealed class DevMatchOverrides
                 targetPlayer.WearItemIdList.Add(itemId);
             }
 
-            await targetPlayer.Save(_cacheHelper);
+            await targetPlayer.Save(_redisOperations);
         }
 
         _logger.LogInformation("Two-player outfit fixed: Player2={PlayerId}, Items={Items}",

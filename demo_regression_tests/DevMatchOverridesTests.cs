@@ -10,7 +10,7 @@ namespace demo_regression_tests;
 public sealed class DevMatchOverridesTests
 {
     private static readonly object _environmentLock = new();
-    private readonly InMemoryCacheHelper _cache = new();
+    private readonly InMemoryRedisOperations _cache = new();
     private readonly RecordingLogger _logger = new();
 
     private DevMatchOverrides Create(bool twoPlayer = false, bool solo = false)

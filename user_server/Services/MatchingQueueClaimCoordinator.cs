@@ -12,7 +12,7 @@ namespace user_server.services;
 ///     cancellation fencing, and lifecycle release while delegating the queue-entry Lua transition.
 /// </summary>
 internal sealed class MatchingQueueClaimCoordinator(
-    ICacheHelper cacheHelper,
+    IRedisOperations redisOperations,
     IMatchingQueueClaimStore claimStore,
     ILogger logger)
 {
@@ -21,7 +21,7 @@ internal sealed class MatchingQueueClaimCoordinator(
 
     public async Task<bool> HasClaimAsync(long playerId)
     {
-        var claim = await cacheHelper.StringGetAsync(ClaimKey(playerId));
+        var claim = await redisOperations.StringGetAsync(ClaimKey(playerId));
         return !claim.IsNullOrEmpty;
     }
 
@@ -64,7 +64,7 @@ internal sealed class MatchingQueueClaimCoordinator(
     public async Task<MatchingClaimLease?> TryAcquireCancellationAsync(long playerId)
     {
         string claimId = "cancel_" + Guid.NewGuid().ToString("N");
-        bool acquired = await cacheHelper.StringSetIfNotExistsAsync(
+        bool acquired = await redisOperations.StringSetIfNotExistsAsync(
             ClaimKey(playerId),
             claimId,
             ReservationLifetime);
@@ -76,7 +76,7 @@ internal sealed class MatchingQueueClaimCoordinator(
     public Task ReleaseCancellationAsync(MatchingClaimLease claimLease)
     {
         long playerId = claimLease.PlayerIds.Single();
-        return cacheHelper.StringDeleteIfEqualsAsync(ClaimKey(playerId), claimLease.ClaimId);
+        return redisOperations.StringDeleteIfEqualsAsync(ClaimKey(playerId), claimLease.ClaimId);
     }
 
     public async Task CommitAsync(MatchingClaimLease claimLease, long matchingId)
@@ -86,7 +86,7 @@ internal sealed class MatchingQueueClaimCoordinator(
 
         foreach (long playerId in claimLease.PlayerIds)
         {
-            bool committed = await cacheHelper.StringSetIfEqualsAsync(
+            bool committed = await redisOperations.StringSetIfEqualsAsync(
                 ClaimKey(playerId),
                 claimLease.ClaimId,
                 matchingIdValue,
@@ -105,12 +105,12 @@ internal sealed class MatchingQueueClaimCoordinator(
         {
             try
             {
-                await cacheHelper.StringDeleteIfEqualsAsync(
+                await redisOperations.StringDeleteIfEqualsAsync(
                     ClaimKey(playerId),
                     claimLease.ClaimId);
                 if (claimLease.MatchingId.HasValue)
                 {
-                    await cacheHelper.StringDeleteIfEqualsAsync(
+                    await redisOperations.StringDeleteIfEqualsAsync(
                         ClaimKey(playerId),
                         claimLease.MatchingId.Value.ToString(CultureInfo.InvariantCulture));
                 }
@@ -131,14 +131,14 @@ internal sealed class MatchingQueueClaimCoordinator(
         {
             if (matchingId > 0)
             {
-                await cacheHelper.StringDeleteIfEqualsAsync(
+                await redisOperations.StringDeleteIfEqualsAsync(
                     ClaimKey(playerId),
                     matchingId.ToString(CultureInfo.InvariantCulture));
             }
             else
             {
                 // Rolling compatibility for the previous 8-byte lifecycle payload.
-                await cacheHelper.KeyDeleteAsync(ClaimKey(playerId));
+                await redisOperations.KeyDeleteAsync(ClaimKey(playerId));
             }
         }
         catch (Exception ex)

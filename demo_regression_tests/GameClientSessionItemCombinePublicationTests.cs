@@ -1070,6 +1070,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             null!,
             null!,
             null!,
+            null!,
             new ServerConfig
             {
                 ServerType = "GameServer",

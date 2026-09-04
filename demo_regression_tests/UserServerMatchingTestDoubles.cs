@@ -59,10 +59,10 @@ internal static class UserServerMatchingTestData
 }
 
 /// <summary>
-///     매칭 경로가 쓰는 String/Hash/SortedSet 연산만 메모리로 구현한 ICacheHelper. 나머지는 NotSupported.
+///     매칭 경로가 쓰는 String/Hash/SortedSet 연산만 메모리로 구현한 IRedisOperations. 나머지는 NotSupported.
 ///     한 lock으로 직렬화하며, 실패 주입은 <see cref="HashGetError" />로 한다.
 /// </summary>
-internal sealed class InMemoryCacheHelper : ICacheHelper
+internal sealed class InMemoryRedisOperations : IRedisOperations
 {
     private readonly object _sync = new();
     private readonly Dictionary<string, RedisValue> _strings = new(StringComparer.Ordinal);
@@ -117,8 +117,6 @@ internal sealed class InMemoryCacheHelper : ICacheHelper
             lock (_sync) return _strings.Keys.ToList();
         }
     }
-
-    public IRedLockFactory GetRedLockFactory() => throw new NotSupportedException();
 
     public Task<bool> HashSetAsync(string key, long field, byte[] value, int db = -1) =>
         HashSetAsync(key, field.ToString(), value, db);
@@ -332,9 +330,9 @@ internal sealed class InMemoryCacheHelper : ICacheHelper
 }
 
 /// <summary>
-///     RedisMatchingQueueClaimStore의 Lua(ZSCORE 확인 + SET NX)를 InMemoryCacheHelper 위에서 재현한다.
+///     RedisMatchingQueueClaimStore의 Lua(ZSCORE 확인 + SET NX)를 InMemoryRedisOperations 위에서 재현한다.
 /// </summary>
-internal sealed class InMemoryMatchingClaimStore(InMemoryCacheHelper cache) : IMatchingQueueClaimStore
+internal sealed class InMemoryMatchingClaimStore(InMemoryRedisOperations cache) : IMatchingQueueClaimStore
 {
     public int ClaimAttempts { get; private set; }
 

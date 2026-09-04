@@ -137,7 +137,7 @@ public partial class GameClientSession : SessionBase
         UserToken token,
         IRedLockFactory redLock,
         ILogger logger,
-        ICacheHelper cacheHelper,
+        IRedisOperations redisOperations,
         Func<string?, Task<GameHandoffContext?>> consumeGameHandoffTicket,
         Action<GameClientSession> onLeaveCallback,
         Func<long, GameClientSession, Action?> registerSessionCallback,
@@ -165,7 +165,7 @@ public partial class GameClientSession : SessionBase
         Action<GameClientSession> recordAdmissionFailure,
         GameServerDevOptions devOptions,
         Func<Packet, bool>? trySendConnectSuccessResponse = null)
-        : base(token, logger, cacheHelper, redLock)
+        : base(token, logger, redisOperations, redLock)
     {
         _onLeaveCallback = onLeaveCallback;
         _consumeGameHandoffTicket = consumeGameHandoffTicket;
@@ -188,7 +188,7 @@ public partial class GameClientSession : SessionBase
         _handleSwarmGrowthPick = handleSwarmGrowthPick;
         _handleSwarmOrbDecision = handleSwarmOrbDecision;
         _getItemCombineRandom = getItemCombineRandom;
-        _admissionStateCommitter = new GameAdmissionStateCommitter(cacheHelper, logger);
+        _admissionStateCommitter = new GameAdmissionStateCommitter(redisOperations, logger);
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Token.TrySend;
         _publishPlayerLeft = publishPlayerLeft;
         _prepareGameCompletion = prepareGameCompletion;

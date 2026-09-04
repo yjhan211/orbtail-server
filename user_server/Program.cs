@@ -64,8 +64,8 @@ internal static class Program
         services.AddSingleton<IRedLockFactory>(sp =>
             sp.GetRequiredService<IRedisConnection>().GetRedLockFactory());
 
-        // 헬퍼
-        services.AddSingleton<ICacheHelper, CacheHelper>();
+        // 공용 Redis 연산
+        services.AddSingleton<IRedisOperations, RedisOperations>();
         services.AddSingleton<IMatchingQueueClaimStore, RedisMatchingQueueClaimStore>();
         services.AddSingleton<LogManager>();
         services.AddGameHandoffTicket(hostContext.Configuration);
@@ -94,8 +94,8 @@ internal static class Program
         RedisConfiguration redisConfiguration)
     {
         var logger = sp.GetRequiredService<ILogger<RedisConnection>>();
-        var redisPool = new RedisConnection(logger);
-        redisPool.Initialize(redisConfiguration);
-        return redisPool;
+        var redisConnection = new RedisConnection(logger);
+        redisConnection.Initialize(redisConfiguration);
+        return redisConnection;
     }
 }

@@ -8,7 +8,7 @@ namespace demo_regression_tests;
 /// </summary>
 public sealed class MatchingQueueTests
 {
-    private readonly InMemoryCacheHelper _cache = new();
+    private readonly InMemoryRedisOperations _cache = new();
     private readonly RecordingLogger _logger = new();
     private readonly MatchingQueue _queue;
 

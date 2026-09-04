@@ -822,6 +822,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             null!,
             null!,
             null!,
+            null!,
             new ServerConfig
             {
                 ServerType = "GameServer",

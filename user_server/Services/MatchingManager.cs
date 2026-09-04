@@ -37,7 +37,7 @@ public class MatchingManager : IMatchingManager
     private int _started;
     private int _stopping;
 
-    internal MatchingManager(ILogger logger, ICacheHelper cacheHelper,
+    internal MatchingManager(ILogger logger, IRedisOperations redisOperations,
         IMatchingQueueClaimStore matchingClaimStore, IRedLockFactory redLock,
         IGameHandoffTicketService gameHandoffTicketService,
         IPlayerSessionRouter sessions,
@@ -46,13 +46,13 @@ public class MatchingManager : IMatchingManager
         _logger = logger;
         _sessions = sessions;
         _leaderLease = leaderLease;
-        _matchingClaims = new MatchingQueueClaimCoordinator(cacheHelper, matchingClaimStore, logger);
-        _queue = new MatchingQueue(cacheHelper, redLock, _matchingClaims, logger);
+        _matchingClaims = new MatchingQueueClaimCoordinator(redisOperations, matchingClaimStore, logger);
+        _queue = new MatchingQueue(redisOperations, redLock, _matchingClaims, logger);
 
-        DevMatchOverrides overrides = DevMatchOverrides.FromEnvironment(cacheHelper, redLock, logger);
-        var rosterBuilder = new MatchRosterBuilder(cacheHelper, logger);
+        DevMatchOverrides overrides = DevMatchOverrides.FromEnvironment(redisOperations, redLock, logger);
+        var rosterBuilder = new MatchRosterBuilder(redisOperations, logger);
         _handoff = new MatchHandoffPublisher(
-            cacheHelper,
+            redisOperations,
             gameHandoffTicketService,
             _matchingClaims,
             sessions,
@@ -60,12 +60,12 @@ public class MatchingManager : IMatchingManager
             _shutdownCts.Token,
             logger);
         _pass = new MatchmakingPass(
-            cacheHelper,
+            redisOperations,
             _queue,
             _matchingClaims,
             rosterBuilder,
             _handoff,
-            new GameServerAllocator(new RedisGameServerRegistry(cacheHelper), logger),
+            new GameServerAllocator(new RedisGameServerRegistry(redisOperations), logger),
             overrides,
             _shutdownCts.Token,
             logger);

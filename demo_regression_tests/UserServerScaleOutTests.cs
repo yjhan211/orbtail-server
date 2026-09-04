@@ -16,7 +16,7 @@ public sealed class UserServerScaleOutTests
     [Fact]
     public async Task LeaderLease_OnlyOneNodeHoldsItAndRenewalKeepsIt()
     {
-        var cache = new InMemoryCacheHelper();
+        var cache = new InMemoryRedisOperations();
         var a = new MatchingLeaderLease(cache, "user-server-0", new RecordingLogger());
         var b = new MatchingLeaderLease(cache, "user-server-1", new RecordingLogger());
 
@@ -31,7 +31,7 @@ public sealed class UserServerScaleOutTests
     [Fact]
     public async Task LeaderLease_ReleaseHandsOverAndExpiryIsTakenByAnother()
     {
-        var cache = new InMemoryCacheHelper();
+        var cache = new InMemoryRedisOperations();
         var a = new MatchingLeaderLease(cache, "user-server-0", new RecordingLogger());
         var b = new MatchingLeaderLease(cache, "user-server-1", new RecordingLogger());
         Assert.True(await a.TryAcquireOrRenewAsync());
@@ -50,7 +50,7 @@ public sealed class UserServerScaleOutTests
     [Fact]
     public async Task LeaderLease_RedisFailureStandsDown()
     {
-        var cache = new InMemoryCacheHelper();
+        var cache = new InMemoryRedisOperations();
         var logger = new RecordingLogger();
         var lease = new MatchingLeaderLease(cache, "user-server-0", logger);
         Assert.True(await lease.TryAcquireOrRenewAsync());

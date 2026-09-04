@@ -22,14 +22,14 @@ namespace network.core;
 public abstract class SessionBase(
     UserToken token,
     ILogger logger,
-    ICacheHelper cacheHelper,
+    IRedisOperations redisOperations,
     IRedLockFactory redLock)
     : IPeer
 {
     private static readonly MessagePackSerializerOptions ClientMessagePackOptions =
         MessagePackSerializer.DefaultOptions.WithSecurity(MessagePackSecurity.UntrustedData);
 
-    protected readonly ICacheHelper CacheHelper = cacheHelper;
+    protected readonly IRedisOperations RedisOperations = redisOperations;
     protected readonly ILogger Logger = logger;
     protected readonly IProtocolRouter ProtocolRouter = new ProtocolRouter();
     protected readonly IRedLockFactory RedLock = redLock;

@@ -20,7 +20,7 @@ public class UserServer(
     INatsClientFactory natsClientFactory,
     ILogger<UserServer> logger,
     IConfiguration configuration,
-    ICacheHelper cacheHelper,
+    IRedisOperations redisOperations,
     IMatchingQueueClaimStore matchingClaimStore,
     IRedLockFactory redLock,
     IServerConfig serverConfig,
@@ -144,12 +144,12 @@ public class UserServer(
         _sessionRouter = new NatsPlayerSessionRouter(natsClient, _sessions.Get, nodeId, logger);
         var matchingManager = new MatchingManager(
             logger,
-            cacheHelper,
+            redisOperations,
             matchingClaimStore,
             redLock,
             gameHandoffTicketService,
             _sessionRouter,
-            new MatchingLeaderLease(cacheHelper, nodeId, logger));
+            new MatchingLeaderLease(redisOperations, nodeId, logger));
         _matchingManager = matchingManager;
 
         _matchingLifecycleSubscriber = new MatchingLifecycleSubscriber(
@@ -199,7 +199,7 @@ public class UserServer(
             var session = new GameSession(
                 token,
                 logger,
-                cacheHelper,
+                redisOperations,
                 redLock,
                 playerService,
                 _matchingManager!,

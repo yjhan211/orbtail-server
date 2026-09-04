@@ -39,7 +39,7 @@ public sealed class GameServerRoutingTests
     [Fact]
     public async Task Registry_RoundTripsDescriptorsAndSkipsCorruptEntries()
     {
-        var cache = new InMemoryCacheHelper();
+        var cache = new InMemoryRedisOperations();
         var registry = new RedisGameServerRegistry(cache);
         await registry.PublishAsync(Node("game-server-0", active: 2));
         await registry.PublishAsync(Node("game-server-1", active: 5, accepting: false));
@@ -60,7 +60,7 @@ public sealed class GameServerRoutingTests
     [Fact]
     public async Task Registry_RejectsDescriptorWithoutAddressOrCapacity()
     {
-        var registry = new RedisGameServerRegistry(new InMemoryCacheHelper());
+        var registry = new RedisGameServerRegistry(new InMemoryRedisOperations());
 
         await Assert.ThrowsAsync<ArgumentException>(() => registry.PublishAsync(Node("game-server-0", max: 0)));
         await Assert.ThrowsAsync<ArgumentException>(() => registry.PublishAsync(new GameServerNodeDescriptor

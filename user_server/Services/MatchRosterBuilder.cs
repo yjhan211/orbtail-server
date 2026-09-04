@@ -8,7 +8,7 @@ namespace user_server.services;
 ///     한 매치의 로스터를 조립한다: 성공 패킷용 PlayerInfo 로스터(이름·착용 아이템)와 Game Server가 읽는 매치 manifest.
 ///     스폰·타깃 같은 매치 안의 사실은 여기서 정하지 않는다 — Game Server 권위다. Redis는 PlayerInfo 읽기에만 쓴다.
 /// </summary>
-internal sealed class MatchRosterBuilder(ICacheHelper cacheHelper, ILogger logger)
+internal sealed class MatchRosterBuilder(IRedisOperations redisOperations, ILogger logger)
 {
     /// <summary>
     ///     Game Server가 매치당 한 번 읽는 구성: 사람 ID, 봇 ID, 매치 모드.
@@ -40,7 +40,7 @@ internal sealed class MatchRosterBuilder(ICacheHelper cacheHelper, ILogger logge
                 continue;
             }
 
-            var playerInfo = await PlayerInfo.Load(cacheHelper, entry.PlayerId);
+            var playerInfo = await PlayerInfo.Load(redisOperations, entry.PlayerId);
             if (playerInfo == null)
             {
                 logger.LogWarning("Matching roster fallback: PlayerInfo load failed ({PlayerId})", entry.PlayerId);
