@@ -7,7 +7,7 @@ namespace demo_regression_tests;
 public class MonsterSnapshotBatcherTests
 {
     [Fact]
-    public void CreateAreaChunks_SeparatesAreasAndRespectsPacketLimit()
+    public void GroupByArea_OneGroupPerAreaSortedByMonsterId()
     {
         var states = Enumerable.Range(1, 12)
             .Select(id => State(id, AreaType.S2Classroom2, 48 - id))
@@ -15,16 +15,14 @@ public class MonsterSnapshotBatcherTests
             .Reverse()
             .ToList();
 
-        var chunks = MonsterSnapshotBatcher.CreateAreaChunks(states);
+        var groups = MonsterSnapshotBatcher.GroupByArea(states);
 
-        Assert.Equal(3, chunks.Count);
-        Assert.All(chunks, chunk => Assert.InRange(chunk.Monsters.Count, 1,
-            MonsterSnapshotBatcher.DefaultChunkSize));
-        Assert.All(chunks, chunk => Assert.All(chunk.Monsters,
-            monster => Assert.Equal(chunk.Area, monster.AreaType)));
-        Assert.Equal(Enumerable.Range(1, 12), chunks
-            .Where(chunk => chunk.Area == AreaType.S2Classroom2)
-            .SelectMany(chunk => chunk.Monsters)
+        Assert.Equal(2, groups.Count);
+        Assert.All(groups, group => Assert.All(group.Monsters,
+            monster => Assert.Equal(group.Area, monster.AreaType)));
+        Assert.Equal(Enumerable.Range(1, 12), groups
+            .Single(group => group.Area == AreaType.S2Classroom2)
+            .Monsters
             .Select(monster => monster.MonsterId));
     }
 

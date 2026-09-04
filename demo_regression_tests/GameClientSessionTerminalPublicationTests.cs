@@ -29,7 +29,7 @@ public sealed class GameClientSessionTerminalPublicationTests
     }
 
     [Fact]
-    public async Task TryEndMatch_WaitsForMatchLock_ThenPublishesChunkMajorBeforeCleanupLifecycleAndSummary()
+    public async Task TryEndMatch_WaitsForMatchLock_ThenPublishesResultBeforeCleanupLifecycleAndSummary()
     {
         const long matchingId = 73001;
         const long otherMatchingId = 73901;
@@ -75,42 +75,29 @@ public sealed class GameClientSessionTerminalPublicationTests
         await holder.WaitAsync(TimeSpan.FromSeconds(5));
         await terminal.WaitAsync(TimeSpan.FromSeconds(5));
 
-        IReadOnlyList<G_TO_C_GAME_RESULT> winnerChunks = fixture.TokenFor(winner)
-            .DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT);
-        Assert.True(winnerChunks.Count > 1);
-        Assert.Equal(
-            Enumerable.Range(0, winnerChunks.Count),
-            winnerChunks.Select(chunk => chunk.ResultChunkIndex));
-        Assert.All(winnerChunks, chunk =>
-        {
-            Assert.Equal(winner.PlayerId, chunk.WinnerId);
-            Assert.False(chunk.IsTimeout);
-        });
+        G_TO_C_GAME_RESULT winnerResult = Assert.Single(fixture.TokenFor(winner)
+            .DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT));
+        Assert.Equal(winner.PlayerId, winnerResult.WinnerId);
+        Assert.False(winnerResult.IsTimeout);
+        // 긴 프로필 로스터는 I/O 버퍼(2KB)를 넘는다 — 결과는 나누지 않고 한 메시지로 간다.
+        Assert.True(MessagePackSerializer.Serialize(winnerResult).Length > Config.BUFFER_SIZE);
 
         long[] recipientIds = sessions.Select(session => session.PlayerId!.Value).ToArray();
-        var expectedChunkMajorOrder = Enumerable.Range(0, winnerChunks.Count)
-            .SelectMany(chunkIndex => recipientIds.Select(playerId => (playerId, chunkIndex)))
-            .ToArray();
         Assert.Equal(
-            expectedChunkMajorOrder,
+            recipientIds,
             fixture.Deliveries
                 .Where(delivery => delivery.Protocol == Protocol.G_TO_C_GAME_RESULT)
-                .Select(delivery => (delivery.PlayerId, delivery.ResultChunkIndex!.Value))
+                .Select(delivery => delivery.PlayerId)
                 .ToArray());
         Assert.Equal(
-            Enumerable.Repeat(Protocol.G_TO_C_GAME_RESULT, winnerChunks.Count * sessions.Length)
+            Enumerable.Repeat(Protocol.G_TO_C_GAME_RESULT, sessions.Length)
                 .Concat(Enumerable.Repeat(Protocol.G_TO_C_GAME_END, sessions.Length)),
             fixture.Deliveries.Select(delivery => delivery.Protocol));
 
         foreach (RecordingSession session in sessions)
         {
             RecordingUserToken token = fixture.TokenFor(session);
-            IReadOnlyList<G_TO_C_GAME_RESULT> chunks =
-                token.DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT);
-            Assert.Equal(winnerChunks.Count, chunks.Count);
-            Assert.Equal(
-                winnerChunks.Select(chunk => chunk.ResultChunkIndex),
-                chunks.Select(chunk => chunk.ResultChunkIndex));
+            Assert.Single(token.DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT));
 
             G_TO_C_GAME_END gameEnd =
                 token.DeserializeSingle<G_TO_C_GAME_END>(Protocol.G_TO_C_GAME_END);
@@ -120,12 +107,12 @@ public sealed class GameClientSessionTerminalPublicationTests
         }
 
         GameResultPlayerInfo winnerRow = Assert.Single(
-            winnerChunks.SelectMany(chunk => chunk.Players),
+            winnerResult.Players,
             player => player.PlayerId == winner.PlayerId);
         GameResultPlayerInfo spectatorRow = Assert.Single(
             fixture.TokenFor(spectator)
                 .DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT)
-                .SelectMany(chunk => chunk.Players),
+                .Single().Players,
             player => player.PlayerId == spectator.PlayerId);
         Assert.Equal(1, winnerRow.Rank);
         Assert.Equal(PlayerMatchStatus.SPECTATING, spectatorRow.FinalStatus);
@@ -217,23 +204,18 @@ public sealed class GameClientSessionTerminalPublicationTests
 
         markFailure.TryEndMatch(markFailure.PlayerId!.Value, "isolated_terminal_failures");
 
-        int chunkCount = fixture.TokenFor(markFailure)
-            .DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT)
-            .Count;
-        Assert.True(chunkCount > 1);
+        Assert.Single(fixture.TokenFor(markFailure)
+            .DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT));
 
         RecordingUserToken resultFailureToken = fixture.TokenFor(resultFailure);
         Assert.Equal(
-            chunkCount,
+            1,
             resultFailureToken.AttemptedProtocols.Count(protocol => protocol == Protocol.G_TO_C_GAME_RESULT));
-        IReadOnlyList<G_TO_C_GAME_RESULT> deliveredAfterFailure =
-            resultFailureToken.DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT);
-        Assert.Equal(chunkCount - 1, deliveredAfterFailure.Count);
-        Assert.Contains(deliveredAfterFailure, chunk => chunk.ResultChunkIndex > 0);
+        Assert.Empty(resultFailureToken.DeserializeAll<G_TO_C_GAME_RESULT>(Protocol.G_TO_C_GAME_RESULT));
         Assert.Contains(Protocol.G_TO_C_GAME_END, resultFailureToken.DeliveredProtocols);
 
         RecordingUserToken endFailureToken = fixture.TokenFor(endFailure);
-        Assert.Equal(chunkCount, endFailureToken.DeliveredProtocols.Count(
+        Assert.Equal(1, endFailureToken.DeliveredProtocols.Count(
             protocol => protocol == Protocol.G_TO_C_GAME_RESULT));
         Assert.Contains(Protocol.G_TO_C_GAME_END, endFailureToken.AttemptedProtocols);
         Assert.DoesNotContain(Protocol.G_TO_C_GAME_END, endFailureToken.DeliveredProtocols);
@@ -419,13 +401,10 @@ public sealed class GameClientSessionTerminalPublicationTests
 
         private void RecordDelivery(long playerId, Protocol protocol, byte[] wireBytes)
         {
-            int? resultChunkIndex = protocol == Protocol.G_TO_C_GAME_RESULT
-                ? Deserialize<G_TO_C_GAME_RESULT>(wireBytes, protocol).ResultChunkIndex
-                : null;
             long sequence = Interlocked.Increment(ref _deliverySequence);
-            Timeline.Enqueue($"packet:{protocol}:{playerId}:{resultChunkIndex?.ToString() ?? "-"}");
+            Timeline.Enqueue($"packet:{protocol}:{playerId}");
             _tokens.Values.FirstOrDefault(token => token.PlayerId == playerId)?.RecordDelivery(
-                new TerminalDelivery(sequence, playerId, protocol, resultChunkIndex, wireBytes));
+                new TerminalDelivery(sequence, playerId, protocol, wireBytes));
         }
 
         private static void SetIdentity(
@@ -603,6 +582,5 @@ public sealed class GameClientSessionTerminalPublicationTests
         long Sequence,
         long PlayerId,
         Protocol Protocol,
-        int? ResultChunkIndex,
         byte[] WireBytes);
 }

@@ -115,10 +115,10 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_INTERACTABLE_LIST(AreaType areaType, List<InteractableObjectState> objects, bool isEnd)
+    public static Packet G_TO_C_INTERACTABLE_LIST(AreaType areaType, List<InteractableObjectState> objects)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_INTERACTABLE_LIST);
-        G_TO_C_INTERACTABLE_LIST body = new() { AreaType = areaType, Objects = objects, IsEnd = isEnd };
+        G_TO_C_INTERACTABLE_LIST body = new() { AreaType = areaType, Objects = objects };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

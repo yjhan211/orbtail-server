@@ -14,9 +14,8 @@ namespace network.common.data.models
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("attackerPlayerId")] public long AttackerPlayerId { get; set; }
         [Key("reason")] public EliminationReason Reason { get; set; }
+        // 탈락자에게만 채운다. 결과표 전체가 한 패킷에 들어간다(메시지 상한 MAX_MESSAGE_SIZE).
         [Key("resultPlayers")] public List<GameResultPlayerInfo> ResultPlayers { get; set; } = new();
-        [Key("resultChunkIndex")] public int ResultChunkIndex { get; set; }
-        [Key("isResultEnd")] public bool IsResultEnd { get; set; } = true;
     }
 
     // ===== 게임 결과 =====
@@ -53,7 +52,5 @@ namespace network.common.data.models
         [Key("winnerId")] public long WinnerId { get; set; }
         [Key("isTimeout")] public bool IsTimeout { get; set; }
         [Key("players")] public List<GameResultPlayerInfo> Players { get; set; }
-        [Key("resultChunkIndex")] public int ResultChunkIndex { get; set; }
-        [Key("isResultEnd")] public bool IsResultEnd { get; set; } = true;
     }
 }

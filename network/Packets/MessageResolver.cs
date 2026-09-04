@@ -3,13 +3,20 @@ using network.utils;
 
 namespace network.packets;
 
+/// <summary>
+///     TCP 바이트 흐름을 메시지 단위로 조립한다. 연결마다 하나.
+///     4바이트 길이 프리픽스를 읽고 그 길이만큼 모일 때까지 여러 번의 수신을 이어 붙인다.
+///     조립 버퍼는 I/O 버퍼 크기로 시작해 큰 메시지가 올 때만 MAX_MESSAGE_SIZE까지 자라고,
+///     메시지를 넘긴 뒤에는 기본 크기로 돌아온다. 상한을 넘는 길이는 FATAL로 돌려 연결을 끊게 한다.
+/// </summary>
 internal class MessageResolver
 {
     private const int MinimumMessageSize = sizeof(int) + sizeof(long);
+    private static readonly int MaximumBodySize = Config.MAX_MESSAGE_SIZE - Config.HEADER_SIZE;
 
     public delegate void CompleteMessageCallback(Const<byte[]> buffer);
 
-    private readonly byte[] _messageBuffer = new byte[Config.BUFFER_SIZE];
+    private byte[] _messageBuffer = new byte[Config.BUFFER_SIZE];
     private int _currentPosition;
     private int _remainBytes;
     private int _startPosition;
@@ -34,15 +41,13 @@ internal class MessageResolver
                         return (ErrorCode.SUCCESS, null);
 
                     int messageSize = ParseHeader();
-                    if (messageSize < MinimumMessageSize ||
-                        messageSize > Config.BUFFER_SIZE - Config.HEADER_SIZE)
+                    if (messageSize < MinimumMessageSize || messageSize > MaximumBodySize)
                         return (ErrorCode.FATAL, $"[MessageResolver/OnReceived] Invalid message size {messageSize}");
 
                     _targetPosition += messageSize;
+                    if (_messageBuffer.Length < _targetPosition)
+                        Array.Resize(ref _messageBuffer, _targetPosition);
                 }
-
-                if (_targetPosition > Config.BUFFER_SIZE)
-                    return (ErrorCode.FATAL, "[MessageResolver/OnReceived] Target position exceeds buffer size");
 
                 // 메세지 복사
                 if (!CopyBuffer(buffer, ref _startPosition))
@@ -89,7 +94,10 @@ internal class MessageResolver
 
     private void ClearBuffer()
     {
-        Array.Clear(_messageBuffer, 0, _messageBuffer.Length);
+        if (_messageBuffer.Length > Config.BUFFER_SIZE)
+            _messageBuffer = new byte[Config.BUFFER_SIZE];
+        else
+            Array.Clear(_messageBuffer, 0, _currentPosition);
         _currentPosition = 0;
         _targetPosition = 0;
     }

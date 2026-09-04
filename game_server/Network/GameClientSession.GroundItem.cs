@@ -355,26 +355,13 @@ public partial class GameClientSession
         BroadcastGroundItemsSpawned(outcome.Bot.CurrentArea, outcome.Drop.SpawnedItems);
     }
 
-    // 스냅샷 청크 크기: 패킷 버퍼(2048) 안에 안전히 들어가는 마릿수.
-    // 20개도 초과했다(실측 2523바이트 — 개당 ~125바이트) — 10개면 여유 포함 절반 이하.
-    private const int GroundItemSnapshotChunkSize = 10;
-
     private void SendGroundItemSnapshot(AreaType area)
     {
         if (MatchingId <= 0 || area == AreaType.None) return;
         var items = _groundItemManager.GetSnapshot(MatchingId, area);
         int remaining = _areaItemStockManager.GetRemainingCount(MatchingId, (int)area);
-        // 버퍼 초과 방지 (#226): 웨이브 모드로 바닥 아이템이 수백 개까지 쌓여 단일 패킷이
-        // 2048을 넘었다(실측 9963). 첫 청크는 SNAPSHOT(클라: 구역 교체), 이후 청크는
-        // SPAWN(클라: 누적) — 기존 수신 의미를 그대로 이용해 프로토콜 변경 없이 나눈다.
-        for (int index = 0; index < items.Count || index == 0; index += GroundItemSnapshotChunkSize)
-        {
-            var chunk = items.Skip(index).Take(GroundItemSnapshotChunkSize).ToList();
-            using var packet = index == 0
-                ? PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, remaining, chunk)
-                : PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, chunk);
-            Send(packet);
-        }
+        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, remaining, items.ToList());
+        Send(packet);
     }
 
     private void SendAreaStockStateSnapshot()
@@ -408,17 +395,9 @@ public partial class GameClientSession
         int remaining = _areaItemStockManager.GetRemainingCount(MatchingId, (int)area);
         var sessions = GetSessionsInArea(
             _getSessionsByInstance(CurrentMapId, MatchingId), area, excludeSelf: false);
-        // 청크로 나눠 보낸다 (#229): 드롭 개수가 열려 있어 단일 패킷이 버퍼 2048을 넘길 수 있다.
-        // 넘기면 예외가 호출부까지 올라가 드롭 처리 전체가 죽는다 — 봇 탈락에서 실제로 났다.
-        for (int offset = 0; offset < spawned.Count; offset += GroundItemSpawnBroadcastChunkSize)
-        {
-            var chunk = spawned.Skip(offset).Take(GroundItemSpawnBroadcastChunkSize).ToList();
-            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, chunk);
-            foreach (var session in sessions) session.Send(packet);
-        }
+        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, spawned.ToList());
+        foreach (var session in sessions) session.Send(packet);
     }
-
-    private const int GroundItemSpawnBroadcastChunkSize = 8;
 
     private void BroadcastGroundItemRemoved(GroundItemInfo item, bool autoUsed)
     {

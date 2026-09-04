@@ -67,37 +67,18 @@ public partial class GameClientSession
         else
             DropBotInventoryAtCurrentPosition(eliminatedPlayerId);
 
-        // 1. 전체에게 탈락 알림. 탈락자에게만 결과표를 고정 패킷 예산 안에서 나눠 보낸다.
+        // 1. 전체에게 탈락 알림. 탈락자에게만 결과표를 함께 보낸다.
         var eliminatedResultPlayers = BuildGameResultPlayers(allSessions, MatchingId, 0);
-        var eliminatedResultChunks = GameResultPacketChunker.CreateEliminationChunks(
-            eliminatedPlayerId,
-            resolvedAttackerPlayerId,
-            reason,
-            eliminatedResultPlayers);
 
         foreach (var session in allSessions)
         {
-            if (session.PlayerId == eliminatedPlayerId)
-            {
-                foreach (var resultChunk in eliminatedResultChunks)
-                {
-                    using var resultPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED);
-                    resultPacket.SetBody(MessagePackSerializer.Serialize(resultChunk));
-                    session.Send(resultPacket);
-                }
-
-                continue;
-            }
-
             using var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED);
             var eliminatedMsg = new G_TO_C_PLAYER_ELIMINATED
             {
                 PlayerId = eliminatedPlayerId,
                 AttackerPlayerId = resolvedAttackerPlayerId,
                 Reason = reason,
-                ResultPlayers = [],
-                ResultChunkIndex = 0,
-                IsResultEnd = true
+                ResultPlayers = session.PlayerId == eliminatedPlayerId ? eliminatedResultPlayers : []
             };
             eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
             session.Send(eliminatedPacket);
@@ -192,7 +173,7 @@ public partial class GameClientSession
 
     /// <summary>
     ///     매치 종료 결과를 매치 잠금 안에서 확정·전송한다: 터미널 표시 → 결과표 동결 → 이벤트 로그·요약 캡처 →
-    ///     chunk-major GAME_RESULT → 세션별 GAME_END → MarkGameEnded. 마지막 전투 패킷이 이미 같은 잠금 안에서
+    ///     GAME_RESULT → 세션별 GAME_END → MarkGameEnded. 마지막 전투 패킷이 이미 같은 잠금 안에서
     ///     나갔으므로 결과는 반드시 그 뒤에 온다. lifecycle 발행과 요약 파일 쓰기는 잠금이 풀린 뒤 후처리로 돈다.
     /// </summary>
     private void SendGameResult(long winnerId, bool isTimeout, long matchingId,
@@ -222,10 +203,12 @@ public partial class GameClientSession
 
         List<GameClientSession> sessionSnapshot = _getSessionsByInstance(CurrentMapId, matchingId);
         var players = BuildGameResultPlayers(sessionSnapshot, matchingId, winnerId);
-        byte[][] resultPayloads = GameResultPacketChunker
-            .CreateGameResultChunks(winnerId, isTimeout, players)
-            .Select(resultChunk => MessagePackSerializer.Serialize(resultChunk))
-            .ToArray();
+        byte[] resultPayload = MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT
+        {
+            WinnerId = winnerId,
+            IsTimeout = isTimeout,
+            Players = players
+        });
         MatchTerminalSessionPublication[] sessionPublications = sessionSnapshot
             .Select(session => new MatchTerminalSessionPublication(
                 session,
@@ -237,7 +220,7 @@ public partial class GameClientSession
             .ToArray();
         var terminalPlan = new MatchTerminalPublicationPlan(
             matchingId,
-            resultPayloads,
+            resultPayload,
             sessionPublications);
 
         MatchSummaryPersistenceRequest? summaryRequest = null;
@@ -305,21 +288,18 @@ public partial class GameClientSession
 
     private void PublishTerminalResult(MatchTerminalPublicationPlan plan)
     {
-        foreach (byte[] resultPayload in plan.GameResultPayloads)
+        foreach (MatchTerminalSessionPublication publication in plan.SessionPublications)
         {
-            foreach (MatchTerminalSessionPublication publication in plan.SessionPublications)
-            {
-                RunTerminalPublicationStep(
-                    plan.MatchingId,
-                    publication.Session,
-                    "GAME_RESULT",
-                    () =>
-                    {
-                        using var resultPacket = Packet.Create((int)Protocol.G_TO_C_GAME_RESULT);
-                        resultPacket.SetBody(resultPayload);
-                        publication.Session.Send(resultPacket);
-                    });
-            }
+            RunTerminalPublicationStep(
+                plan.MatchingId,
+                publication.Session,
+                "GAME_RESULT",
+                () =>
+                {
+                    using var resultPacket = Packet.Create((int)Protocol.G_TO_C_GAME_RESULT);
+                    resultPacket.SetBody(plan.GameResultPayload);
+                    publication.Session.Send(resultPacket);
+                });
         }
 
         foreach (MatchTerminalSessionPublication publication in plan.SessionPublications)
@@ -393,7 +373,7 @@ public partial class GameClientSession
 
     private sealed record MatchTerminalPublicationPlan(
         long MatchingId,
-        byte[][] GameResultPayloads,
+        byte[] GameResultPayload,
         MatchTerminalSessionPublication[] SessionPublications)
     {
         public List<Action> LifecyclePublications { get; } = [];

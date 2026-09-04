@@ -5,6 +5,11 @@ using network.utils;
 
 namespace network.packets;
 
+/// <summary>
+///     패킷 하나의 바이트 버퍼. 풀에서 빌려 쓰고 Dispose로 돌려준다.
+///     버퍼는 I/O 버퍼 크기(BUFFER_SIZE)로 시작해 본문이 크면 MAX_MESSAGE_SIZE까지 자란다.
+///     풀로 돌아갈 때는 기본 크기로 줄여 큰 패킷 하나가 풀 전체를 키우지 않게 한다.
+/// </summary>
 public class Packet : IPacket
 {
     private long _playerId;
@@ -16,7 +21,24 @@ public class Packet : IPacket
         Buffer = new byte[Config.BUFFER_SIZE];
     }
 
-    public byte[] Buffer { get; private set; }
+    private void EnsureCapacity(int required)
+    {
+        if (required <= Buffer.Length) return;
+        if (required > Config.MAX_MESSAGE_SIZE)
+            throw new InvalidOperationException(
+                $"Packet size {required} exceeds MAX_MESSAGE_SIZE {Config.MAX_MESSAGE_SIZE}.");
+
+        Array.Resize(ref _buffer, required);
+    }
+
+    private byte[] _buffer = [];
+
+    public byte[] Buffer
+    {
+        get => _buffer;
+        private set => _buffer = value;
+    }
+
     public int Position { get; private set; }
 
     public byte[] ToBytes()
@@ -43,7 +65,7 @@ public class Packet : IPacket
 
     public static Packet Create(Const<byte[]> buffer)
     {
-        if (Config.BUFFER_SIZE < buffer.Value.Length)
+        if (Config.MAX_MESSAGE_SIZE < buffer.Value.Length)
             throw new Exception($"Invalid Buffer Size. size:{buffer.Value.Length}");
 
         var packet = PacketBufferPool.Pop();
@@ -57,10 +79,10 @@ public class Packet : IPacket
 
         const int routingBodySize = sizeof(int) + sizeof(long);
         int minimumPacketSize = Config.HEADER_SIZE + routingBodySize;
-        if (wireBytes.Length < minimumPacketSize || wireBytes.Length > Config.BUFFER_SIZE)
+        if (wireBytes.Length < minimumPacketSize || wireBytes.Length > Config.MAX_MESSAGE_SIZE)
         {
             throw new ArgumentException(
-                $"Wire packet length must be between {minimumPacketSize} and {Config.BUFFER_SIZE} bytes.",
+                $"Wire packet length must be between {minimumPacketSize} and {Config.MAX_MESSAGE_SIZE} bytes.",
                 nameof(wireBytes));
         }
 
@@ -97,6 +119,8 @@ public class Packet : IPacket
     private static void Destroy(Packet packet)
     {
         packet.Position = 0;
+        if (packet.Buffer.Length > Config.BUFFER_SIZE)
+            packet.Buffer = new byte[Config.BUFFER_SIZE];
         packet._readLimit = packet.Buffer.Length;
         PacketBufferPool.Push(packet);
     }
@@ -110,9 +134,10 @@ public class Packet : IPacket
 
     private void Overwrite(byte[] source, int position)
     {
-        if (position < 0 || position > source.Length || position > Buffer.Length)
+        if (position < 0 || position > source.Length)
             throw new ArgumentOutOfRangeException(nameof(position));
 
+        EnsureCapacity(position);
         Array.Copy(source, 0, Buffer, 0, position);
         Position = position;
         _readLimit = position;
@@ -120,9 +145,7 @@ public class Packet : IPacket
 
     private void LoadForReading(byte[] source)
     {
-        if (source.Length > Buffer.Length)
-            throw new ArgumentOutOfRangeException(nameof(source));
-
+        EnsureCapacity(source.Length);
         Array.Copy(source, 0, Buffer, 0, source.Length);
         Position = Config.HEADER_SIZE;
         _readLimit = source.Length;
@@ -164,9 +187,7 @@ public class Packet : IPacket
 
     public void SetBody(byte[] serializedBuffer)
     {
-        if (serializedBuffer.Length > Buffer.Length - Position)
-            throw new Exception($"BUFFER SIZE OVER. {serializedBuffer.Length}");
-
+        EnsureCapacity(Position + serializedBuffer.Length);
         serializedBuffer.CopyTo(Buffer, Position);
         Position += serializedBuffer.Length;
     }

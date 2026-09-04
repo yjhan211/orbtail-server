@@ -18,8 +18,14 @@ namespace network.common
         /// <summary>소켓 당 미리 할당할 버퍼 개수</summary>
         public static readonly int PRE_ALLOC_COUNT = 2;
 
-        /// <summary>패킷 버퍼 크기 (바이트)</summary>
+        /// <summary>소켓 I/O 버퍼 크기 (바이트). 연결마다 수신·송신 하나씩 pin되므로 작게 유지한다.</summary>
         public static readonly int BUFFER_SIZE = 2048;
+
+        /// <summary>
+        ///     메시지 하나의 최대 크기 (헤더 포함, 바이트). I/O 버퍼와 별개다 — 수신 측이 여러 번의 수신을 이어 붙여
+        ///     이 크기까지 조립하고, 송신 측은 I/O 버퍼 크기로 잘라 보낸다. 넘는 길이가 오면 그 연결을 끊는다.
+        /// </summary>
+        public static readonly int MAX_MESSAGE_SIZE = 64 * 1024;
 
         /// <summary>패킷 헤더 크기 (바이트) - 길이 정보</summary>
         public static readonly int HEADER_SIZE = 4;

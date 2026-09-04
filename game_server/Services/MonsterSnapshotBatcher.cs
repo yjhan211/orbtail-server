@@ -3,16 +3,15 @@ using network.common.data.models;
 
 namespace game_server.services;
 
+/// <summary>
+///     몬스터 스냅샷을 구역별로 묶는다. 클라이언트는 자기 구역만 그리므로 패킷도 구역 단위다.
+///     크기 분할은 하지 않는다 — 메시지 상한(MAX_MESSAGE_SIZE) 안에서 한 구역이 한 패킷이다.
+/// </summary>
 public static class MonsterSnapshotBatcher
 {
-    public const int DefaultChunkSize = 10;
-
-    public static IReadOnlyList<MonsterAreaSnapshotChunk> CreateAreaChunks(
-        IEnumerable<MonsterRuntimeInfo> states,
-        int chunkSize = DefaultChunkSize)
+    public static IReadOnlyList<MonsterAreaSnapshot> GroupByArea(IEnumerable<MonsterRuntimeInfo> states)
     {
         ArgumentNullException.ThrowIfNull(states);
-        if (chunkSize <= 0) throw new ArgumentOutOfRangeException(nameof(chunkSize));
 
         var statesByArea = new Dictionary<AreaType, List<MonsterRuntimeInfo>>();
         foreach (var state in states)
@@ -27,18 +26,14 @@ public static class MonsterSnapshotBatcher
             areaStates.Add(state);
         }
 
-        var chunks = new List<MonsterAreaSnapshotChunk>();
+        var groups = new List<MonsterAreaSnapshot>();
         foreach (var (area, areaStates) in statesByArea.OrderBy(entry => entry.Key))
         {
             areaStates.Sort(static (left, right) => left.MonsterId.CompareTo(right.MonsterId));
-            for (int index = 0; index < areaStates.Count; index += chunkSize)
-            {
-                int count = Math.Min(chunkSize, areaStates.Count - index);
-                chunks.Add(new MonsterAreaSnapshotChunk(area, areaStates.GetRange(index, count)));
-            }
+            groups.Add(new MonsterAreaSnapshot(area, areaStates));
         }
-        return chunks;
+        return groups;
     }
 }
 
-public readonly record struct MonsterAreaSnapshotChunk(AreaType Area, List<MonsterRuntimeInfo> Monsters);
+public readonly record struct MonsterAreaSnapshot(AreaType Area, List<MonsterRuntimeInfo> Monsters);

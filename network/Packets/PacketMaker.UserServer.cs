@@ -32,19 +32,19 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_INVENTORY_ITEM_LIST(Dictionary<long, ItemInfo> itemDict, bool isEnd)
+    public static Packet U_TO_C_INVENTORY_ITEM_LIST(Dictionary<long, ItemInfo> itemDict)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_INVENTORY_ITEM_LIST);
-        U_TO_C_INVENTORY_ITEM_LIST body = new() { ItemDict = itemDict, IsEnd = isEnd };
+        U_TO_C_INVENTORY_ITEM_LIST body = new() { ItemDict = itemDict };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
 
-    public static Packet U_TO_C_INVENTORY_UPDATE(List<ItemInfo> updateItems, bool isEnd)
+    public static Packet U_TO_C_INVENTORY_UPDATE(List<ItemInfo> updateItems)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_INVENTORY_UPDATE);
-        U_TO_C_INVENTORY_UPDATE body = new() { UpdateItems = updateItems, IsEnd = isEnd };
+        U_TO_C_INVENTORY_UPDATE body = new() { UpdateItems = updateItems };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

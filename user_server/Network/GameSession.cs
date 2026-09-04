@@ -311,25 +311,16 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
             Logger.LogInformation("Session registered for PlayerId={PlayerId}", PlayerId);
             Send(loginPacket);
 
-            // 인벤토리 아이템 리스트 전송 (청크 단위로 분할)
+            // 인벤토리 아이템 리스트 전송
             if (PlayerInfo.InventoryInfo.ItemDict.Count > 0)
             {
-                const int chunkSize = 20; // 한 번에 20개씩 전송
-                var itemList = PlayerInfo.InventoryInfo.ItemDict.ToList();
-                int totalChunks = (itemList.Count + chunkSize - 1) / chunkSize;
-
-                for (int i = 0; i < totalChunks; i++)
-                {
-                    var chunk = itemList.Skip(i * chunkSize).Take(chunkSize).ToDictionary(x => x.Key, x => x.Value);
-                    bool isEnd = i == totalChunks - 1;
-
-                    using var itemListPacket = PacketMaker.U_TO_C_INVENTORY_ITEM_LIST(chunk, isEnd);
-                    Send(itemListPacket);
-                }
+                using var itemListPacket = PacketMaker.U_TO_C_INVENTORY_ITEM_LIST(
+                    new Dictionary<long, ItemInfo>(PlayerInfo.InventoryInfo.ItemDict));
+                Send(itemListPacket);
 
                 Logger.LogInformation(
-                    "Sent inventory item list in {ChunkCount} packets: PlayerId={PlayerId}, ItemCount={Count}",
-                    totalChunks, PlayerId, PlayerInfo.InventoryInfo.ItemDict.Count);
+                    "Sent inventory item list: PlayerId={PlayerId}, ItemCount={Count}",
+                    PlayerId, PlayerInfo.InventoryInfo.ItemDict.Count);
             }
 
             Logger.LogInformation("Player {PlayerId} logged in successfully", PlayerId);

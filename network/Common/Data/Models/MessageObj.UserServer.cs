@@ -31,15 +31,12 @@ namespace network.common.data.models
     public class U_TO_C_INVENTORY_ITEM_LIST : IMessagePackObject
     {
         [Key("itemDict")] public Dictionary<long, ItemInfo> ItemDict { get; set; }
-
-        [Key("isEnd")] public bool IsEnd { get; set; }
     }
 
     [MessagePackObject]
     public class U_TO_C_INVENTORY_UPDATE : IMessagePackObject
     {
         [Key("updateItemDict")] public List<ItemInfo> UpdateItems { get; set; }
-        [Key("isEnd")] public bool IsEnd { get; set; }
     }
 
     [MessagePackObject]

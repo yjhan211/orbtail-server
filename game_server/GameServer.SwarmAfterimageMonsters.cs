@@ -37,17 +37,17 @@ public partial class GameServer
         // 플레이어의 방까지 훑는데, 내 구역 것만 보내면 클라는 그릴 데이터를 아예 못 받는다 —
         // 발원지에서 나가는 몹이 안 보이던 원인이 여기였다. 카운트다운 5초 동안만이다.
         bool preMatch = !MatchStartGate.IsGameplayActive(matchingId);
-        foreach (var monsterChunk in MonsterSnapshotBatcher.CreateAreaChunks(states))
+        foreach (var areaSnapshot in MonsterSnapshotBatcher.GroupByArea(states))
         {
             using var packet = Packet.Create((int)Protocol.G_TO_C_MONSTER_SNAPSHOT);
             packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MONSTER_SNAPSHOT
             {
-                Monsters = monsterChunk.Monsters
+                Monsters = areaSnapshot.Monsters
             }));
 
             foreach (var session in sessions)
             {
-                if (!preMatch && session.CurrentArea != monsterChunk.Area)
+                if (!preMatch && session.CurrentArea != areaSnapshot.Area)
                     continue;
                 session.Send(packet);
             }

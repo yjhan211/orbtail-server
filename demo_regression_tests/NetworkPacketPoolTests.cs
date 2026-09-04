@@ -28,11 +28,11 @@ public class NetworkPacketPoolTests
     }
 
     [Fact]
-    public void SetBody_RejectsPayloadThatDoesNotLeaveRoomForPacketMetadata()
+    public void SetBody_RejectsPayloadBeyondMaxMessageSize()
     {
         using var packet = Packet.Create((int)Protocol.G_TO_C_HEART_BEAT);
 
-        Assert.ThrowsAny<Exception>(() => packet.SetBody(new byte[Config.BUFFER_SIZE]));
+        Assert.ThrowsAny<Exception>(() => packet.SetBody(new byte[Config.MAX_MESSAGE_SIZE]));
     }
 
     [Fact]

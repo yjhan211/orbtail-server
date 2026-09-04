@@ -471,7 +471,7 @@ public partial class GameServer(
             return;
 
         var (bot, drop) = outcome;
-        BroadcastGroundItemSpawnChunked(
+        BroadcastGroundItemSpawn(
             matchingId, bot.CurrentArea, drop.SpawnedItems,
             matchingSessions.Where(session => session.CurrentArea == bot.CurrentArea));
 
@@ -479,13 +479,7 @@ public partial class GameServer(
             "Bot elimination inventory scattered: MatchingId={MatchingId}, BotId={BotId}, Area={Area}, ItemCount={ItemCount}",
             matchingId, botPlayerId, bot.CurrentArea, drop.DroppedItemIds.Count);
     }
-    // 바닥 아이템 스폰 브로드캐스트는 반드시 청크로 나눈다 (#229).
-    // 단일 패킷은 버퍼 2048에 묶여 있는데 탈락 드롭은 개수가 열려 있다 — 오브 상한이 99로
-    // 오르고 소환석 예산이 커지면서 실제로 넘겼다(실측 2091, 봇 탈락 처리 전체가 예외로 죽어
-    // 드롭이 통째로 사라졌다). 스팟 아레나 세대가 #222에서 같은 이유로 8개씩 나눈 전례를 따른다.
-    private const int GroundItemSpawnBroadcastChunkSize = 8;
-
-    private void BroadcastGroundItemSpawnChunked(
+    private void BroadcastGroundItemSpawn(
         long matchingId, AreaType area, IReadOnlyList<GroundItemInfo> spawned,
         IEnumerable<GameClientSession> targets)
     {
@@ -497,13 +491,9 @@ public partial class GameServer(
             return;
 
         int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)area);
-        for (int offset = 0; offset < spawned.Count; offset += GroundItemSpawnBroadcastChunkSize)
-        {
-            var chunk = spawned.Skip(offset).Take(GroundItemSpawnBroadcastChunkSize).ToList();
-            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, chunk);
-            foreach (var session in receivers)
-                session.Send(packet);
-        }
+        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, spawned.ToList());
+        foreach (var session in receivers)
+            session.Send(packet);
     }
 
     /// <summary>

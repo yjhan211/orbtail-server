@@ -104,7 +104,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         int runtimeLookup = Find(normalFinalization, "_matchRuntimes.Get(matchingId)");
         int lockEntry = Find(normalFinalization, "_matchRuntimes.Enter(runtime)");
         int terminalMark = Find(normalFinalization, "runtime.TryMarkTerminal()");
-        int resultPayload = Find(normalFinalization, ".CreateGameResultChunks(");
+        int resultPayload = Find(normalFinalization, "MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT");
         int preparedTerminalPlan = Find(normalFinalization, "var terminalPlan = new MatchTerminalPublicationPlan(");
         int finalizationClaim = Find(normalFinalization, "_gameEventLogManager.TryBeginFinalization(");
         int normalFinalEvent = Find(normalFinalization, "_gameEventLogManager.LogMatchEnded(");
@@ -179,7 +179,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Assert.Matches(
             new Regex(
                 """
-                foreach\s*\(\s*byte\[\]\s+resultPayload.*?
+                foreach\s*\(\s*MatchTerminalSessionPublication\s+publication.*?
                     Protocol\.G_TO_C_GAME_RESULT.*?
                 foreach\s*\(\s*MatchTerminalSessionPublication\s+publication.*?
                     Protocol\.G_TO_C_GAME_END.*?

@@ -251,7 +251,6 @@ public sealed class SwarmArenaTickOrderTests
             humanElimination,
             "_matchRosterManager.TryEliminatePlayer(",
             "eliminatedSession.DropAllInventoryAtCurrentPosition();",
-            "session.Send(resultPacket);",
             "session.Send(eliminatedPacket);",
             "session.Send(leavePacket);",
             "_matchRosterManager.CheckGameOver(",

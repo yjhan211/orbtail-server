@@ -3594,18 +3594,12 @@ public partial class GameServer
                 isBot: false);
         }
 
-        // 드랍 개수가 늘어도 버퍼(2048)를 넘지 않게 청크로 나눠 보낸다 (#222).
         int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)defeatedWave.AreaType);
-        const int chunkSize = 8;
-        for (int offset = 0; offset < spawned.Count; offset += chunkSize)
-        {
-            var chunk = spawned.Skip(offset).Take(chunkSize).ToList();
-            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
-                (int)defeatedWave.AreaType,
-                remaining,
-                chunk);
-            foreach (var session in sessions.Where(session => session.CurrentArea == defeatedWave.AreaType))
-                session.Send(packet);
-        }
+        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
+            (int)defeatedWave.AreaType,
+            remaining,
+            spawned.ToList());
+        foreach (var session in sessions.Where(session => session.CurrentArea == defeatedWave.AreaType))
+            session.Send(packet);
     }
 }
