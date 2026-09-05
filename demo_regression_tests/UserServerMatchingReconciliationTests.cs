@@ -1,12 +1,15 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
+using MessagePack;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
+using network.common.data.models;
 using network.core;
 using network.packets;
 using user_server.matching;
+using user_server.players;
 using user_server.sessions;
 
 namespace demo_regression_tests;
@@ -16,6 +19,69 @@ namespace demo_regression_tests;
 /// </summary>
 public sealed class UserServerMatchingReconciliationTests
 {
+    [Theory]
+    [InlineData(false, false, false)]
+    [InlineData(true, false, false)]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, true)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    public async Task ItemRequest_ChecksLeaseBeforeCallingPlayerService(bool useItem, bool current, bool lookupError)
+    {
+        using var connection = new ActiveTcpConnection();
+        var store = new FailingLeaseStore { Current = current, CheckError = lookupError };
+        var playerService = new RecordingPlayerService();
+        var session = NewSession(connection.Connection, new RecordingMatchingManager(), store, playerService: playerService);
+        typeof(GameSession).GetProperty("PlayerId", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, 7L);
+        SetField(session, "_sessionLease", new PlayerSessionLease(7, "node", "session", 1, "owner"));
+
+        if (useItem)
+            await Receive(session, Protocol.C_TO_U_USE_ITEM, new C_TO_U_USE_ITEM());
+        else
+            await Receive(session, Protocol.C_TO_U_WEAR_ITEM, new C_TO_U_WEAR_ITEM());
+
+        Assert.Equal(current ? 1 : 0, playerService.Calls);
+        if (current) Assert.Equal(7L, playerService.PlayerId);
+    }
+
+    private sealed class RecordingPlayerService : IPlayerService
+    {
+        public int Calls { get; private set; }
+        public long PlayerId { get; private set; }
+        public Task<(ErrorCode, PlayerInfo?)> WearItem(long playerId, C_TO_U_WEAR_ITEM msg) => Record(playerId);
+        public Task<(ErrorCode, PlayerInfo?)> UseItem(long playerId, C_TO_U_USE_ITEM msg) => Record(playerId);
+        private Task<(ErrorCode, PlayerInfo?)> Record(long playerId)
+        {
+            Calls++;
+            PlayerId = playerId;
+            return Task.FromResult<(ErrorCode, PlayerInfo?)>((ErrorCode.PLAYER_NOT_FOUND, null));
+        }
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task MatchingRequest_InvalidLeaseOrLookupErrorDoesNotChangeQueue(bool cancel, bool lookupError)
+    {
+        using var connection = new ActiveTcpConnection();
+        var matching = new RecordingMatchingManager();
+        var store = new FailingLeaseStore { CheckError = lookupError };
+        var session = NewSession(connection.Connection, matching, store);
+        typeof(GameSession).GetProperty("PlayerId", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, 7L);
+        SetField(session, "_sessionLease", new PlayerSessionLease(7, "node", "session", 1, "owner"));
+
+        if (cancel)
+            await Receive(session, Protocol.C_TO_U_MATCHING_CANCEL, new C_TO_U_MATCHING());
+        else
+            await Receive(session, Protocol.C_TO_U_MATCHING, new C_TO_U_MATCHING());
+
+        Assert.Equal(0, matching.AddCount);
+        Assert.Equal(0, matching.CancelCount);
+        Assert.Null(session.ActiveMatchingRequestId);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -66,6 +132,50 @@ public sealed class UserServerMatchingReconciliationTests
         Assert.False(logger.Contains(LogLevel.Error, "Login"));
     }
 
+    private static async Task Receive<T>(GameSession session, Protocol protocol, T message)
+    {
+        using var packet = Packet.Create((int)protocol);
+        packet.SetBody(MessagePackSerializer.Serialize(message));
+        await session.OnMessageFromClient(packet.ToBytes());
+    }
+
+    [Theory]
+    [InlineData(Protocol.C_TO_U_LOGIN)]
+    [InlineData(Protocol.C_TO_U_HEART_BEAT)]
+    public async Task LoginAndHeartbeat_DoNotReadLease(Protocol protocol)
+    {
+        using var connection = new ActiveTcpConnection();
+        var store = new FailingLeaseStore { CheckError = true };
+        var session = NewSession(connection.Connection, new RecordingMatchingManager(), store);
+        // 로그인은 이미 인증된 경우의 응답 경로를 사용하며 lease 검사는 생략되어야 한다.
+        typeof(GameSession).GetProperty("PlayerId", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, 7L);
+
+        await Receive(session, protocol, new C_TO_U_LOGIN());
+
+        Assert.Equal(0, store.CheckCount);
+    }
+
+    [Fact]
+    public async Task QueuedRequest_ChecksLeaseOnlyAfterPreviousRequestReleasesSessionLock()
+    {
+        using var connection = new ActiveTcpConnection();
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var store = new FailingLeaseStore { FirstCheck = completion.Task };
+        var playerService = new RecordingPlayerService();
+        var session = NewSession(connection.Connection, new RecordingMatchingManager(), store, playerService: playerService);
+        typeof(GameSession).GetProperty("PlayerId", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, 7L);
+        SetField(session, "_sessionLease", new PlayerSessionLease(7, "node", "session", 1, "owner"));
+
+        var first = Receive(session, Protocol.C_TO_U_WEAR_ITEM, new C_TO_U_WEAR_ITEM());
+        var second = Receive(session, Protocol.C_TO_U_USE_ITEM, new C_TO_U_USE_ITEM());
+        Assert.Equal(1, store.CheckCount);
+        completion.SetResult(true);
+        await Task.WhenAll(first, second);
+
+        Assert.Equal(2, store.CheckCount);
+        Assert.Equal(1, playerService.Calls);
+    }
+
     // 상태 준비와 private 경계 호출에만 사용해 프로덕션 API를 테스트용으로 넓히지 않는다.
     private static object? Invoke(GameSession session, string name, params object?[] args) =>
         typeof(GameSession).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, args);
@@ -75,12 +185,24 @@ public sealed class UserServerMatchingReconciliationTests
 
     private sealed class FailingLeaseStore : IPlayerSessionLeaseStore
     {
+        public bool CheckError { get; init; }
+        public bool Current { get; init; }
+        public Task<bool>? FirstCheck { get; init; }
+        public int CheckCount { get; private set; }
         public int ReleaseCount { get; private set; }
         public TimeSpan LeaseLifetime => TimeSpan.FromSeconds(90);
         public TimeSpan RenewalInterval => TimeSpan.FromSeconds(30);
         public Task<PlayerSessionLease?> TryAcquireAsync(long playerId, string nodeId, string sessionId) =>
             throw new NotSupportedException();
         public Task<bool> TryRenewAsync(PlayerSessionLease lease) => throw new NotSupportedException();
+        public Task<bool> IsCurrentAsync(PlayerSessionLease lease)
+        {
+            CheckCount++;
+            if (CheckCount == 1 && FirstCheck != null) return FirstCheck;
+            return CheckError
+                ? Task.FromException<bool>(new InvalidOperationException("Redis unavailable"))
+                : Task.FromResult(Current);
+        }
         public Task<bool> TryReleaseAsync(PlayerSessionLease lease)
         {
             ReleaseCount++;
@@ -166,14 +288,14 @@ public sealed class UserServerMatchingReconciliationTests
     }
 
     private static GameSession NewSession(TcpConnection connection, IMatchingManager matchingManager,
-        IPlayerSessionLeaseStore? store = null, ILogger? logger = null)
+        IPlayerSessionLeaseStore? store = null, ILogger? logger = null, IPlayerService? playerService = null)
     {
         return new GameSession(
             connection,
             logger ?? NullLogger.Instance,
             new InMemoryRedisOperations(),
             new FakeRedLockFactory(),
-            null!,
+            playerService!,
             matchingManager,
             null!,
             store!,
@@ -189,6 +311,7 @@ public sealed class UserServerMatchingReconciliationTests
         public Exception? ClaimError { get; set; }
         public TaskCompletionSource<bool>? ClaimCompletion { get; set; }
         public int ClaimReadCount { get; private set; }
+        public int AddCount { get; private set; }
         public int CancelCount { get; private set; }
         public int ReleaseCount { get; private set; }
 
@@ -200,8 +323,11 @@ public sealed class UserServerMatchingReconciliationTests
             return ClaimCompletion?.Task ?? Task.FromResult(HasClaim);
         }
 
-        public Task<ErrorCode> AddToQueue(long playerId, GameSession session) =>
-            Task.FromResult(ErrorCode.SUCCESS);
+        public Task<ErrorCode> AddToQueue(long playerId, GameSession session)
+        {
+            AddCount++;
+            return Task.FromResult(ErrorCode.SUCCESS);
+        }
 
         public Task<ErrorCode> CancelMatching(long playerId)
         {

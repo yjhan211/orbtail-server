@@ -67,6 +67,18 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
     internal long SessionGeneration => Volatile.Read(ref _sessionGeneration);
     internal string? ActiveMatchingRequestId => _matching.ActiveRequestId;
 
+    protected override async Task<bool> CanProcessMessageAsync(Protocol protocolId)
+    {
+        if (protocolId is Protocol.C_TO_U_LOGIN or Protocol.C_TO_U_HEART_BEAT) return true;
+
+        var lease = _sessionLease;
+        if (lease == null || Connection.IsReleased) return false;
+        if (await _sessionLeaseStore.IsCurrentAsync(lease)) return !Connection.IsReleased;
+
+        SendErrorResponseAndDisconnect(ErrorCode.ALREADY_CONNECTED);
+        return false;
+    }
+
     protected override void InitializeProtocolHandlers()
     {
         // 클라이언트 프로토콜

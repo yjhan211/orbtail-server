@@ -27,6 +27,7 @@ public interface IPlayerSessionLeaseStore
     public TimeSpan RenewalInterval { get; }
 
     public Task<PlayerSessionLease?> TryAcquireAsync(long playerId, string nodeId, string sessionId);
+    public Task<bool> IsCurrentAsync(PlayerSessionLease lease);
     public Task<bool> TryRenewAsync(PlayerSessionLease lease);
     public Task<bool> TryReleaseAsync(PlayerSessionLease lease);
 }
@@ -40,8 +41,8 @@ public sealed class RedisPlayerSessionLeaseStore(
     IRedisOperations redisOperations,
     ILogger<RedisPlayerSessionLeaseStore> logger) : IPlayerSessionLeaseStore
 {
-    internal const string OwnerKeyPrefix = "user_session_owner:";
-    internal const string GenerationKeyPrefix = "user_session_generation:";
+    private const string OwnerKeyPrefix = "user_session_owner:";
+    private const string GenerationKeyPrefix = "user_session_generation:";
     private const int MaxAcquireAttempts = 16;
 
     public TimeSpan LeaseLifetime { get; } = TimeSpan.FromSeconds(90);
@@ -92,6 +93,13 @@ public sealed class RedisPlayerSessionLeaseStore(
 
         throw new InvalidOperationException(
             $"Player session lease changed too often while acquiring player {playerId}.");
+    }
+
+    public async Task<bool> IsCurrentAsync(PlayerSessionLease lease)
+    {
+        ArgumentNullException.ThrowIfNull(lease);
+        var current = await redisOperations.StringGetAsync(OwnerKey(lease.PlayerId));
+        return !current.IsNullOrEmpty && string.Equals(current.ToString(), lease.OwnerValue, StringComparison.Ordinal);
     }
 
     public Task<bool> TryRenewAsync(PlayerSessionLease lease)
