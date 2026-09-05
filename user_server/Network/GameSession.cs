@@ -59,12 +59,11 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         _announceLogin = announceLogin;
         _onSessionRemoved = onSessionRemoved;
 
-        // ReSharper disable once VirtualMemberCallInConstructor
         InitializeProtocolHandlers();
     }
 
-    public new long? PlayerId { get; private set; }
-    public PlayerInfo? PlayerInfo { get; private set; }
+    private new long? PlayerId { get; set; }
+    private PlayerInfo? PlayerInfo { get; set; }
     internal long SessionGeneration => Volatile.Read(ref _sessionGeneration);
     long IMatchingSessionEndpoint.SessionGeneration => SessionGeneration;
     internal string? ActiveMatchingRequestId
@@ -75,7 +74,6 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
                 return _activeMatchingRequestId;
         }
     }
-    internal bool IsConnected => !Connection.IsReleased;
 
     internal bool TryAssignMatching(long matchingId, string requestId)
     {
@@ -85,7 +83,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
 
         lock (_matchingAssignmentLock)
         {
-            if (!IsConnected ||
+            if (Connection.IsReleased ||
                 !string.Equals(_activeMatchingRequestId, requestId, StringComparison.Ordinal) ||
                 (_assignedMatchingId != 0 && _assignedMatchingId != matchingId))
                 return false;
@@ -130,7 +128,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         long assignedMatchingId;
         lock (_matchingAssignmentLock)
         {
-            if (!IsConnected)
+            if (Connection.IsReleased)
                 return null;
 
             assignedMatchingId = _assignedMatchingId;
@@ -151,7 +149,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         string? requestId;
         lock (_matchingAssignmentLock)
         {
-            if (!IsConnected)
+            if (Connection.IsReleased)
                 return null;
 
             // Redis를 기다리는 동안 더 새로운 배정이 생겼으면 그 상태를 건드리지 않는다.
