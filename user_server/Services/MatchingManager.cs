@@ -39,7 +39,7 @@ public class MatchingManager : IMatchingManager
 
     internal MatchingManager(ILogger logger, IRedisOperations redisOperations,
         IMatchingQueueClaimStore matchingClaimStore, IRedLockFactory redLock,
-        IGameHandoffTicketService gameHandoffTicketService,
+        GameHandoffTicketService gameHandoffTicketService,
         IPlayerSessionRouter sessions,
         MatchingLeaderLease leaderLease)
     {

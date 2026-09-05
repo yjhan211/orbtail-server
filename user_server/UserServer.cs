@@ -28,7 +28,7 @@ public class UserServer(
     IRedLockFactory redLock,
     IPlayerService playerService,
     IAccountTokenService accountTokenService,
-    IGameHandoffTicketService gameHandoffTicketService,
+    GameHandoffTicketService gameHandoffTicketService,
     ServerReadinessState readinessState)
     : IHostedService
 {

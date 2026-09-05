@@ -37,7 +37,7 @@ public partial class GameServer(
     NatsClientFactory natsClientFactory,
     IRedisOperations redisOperations,
     NetworkService networkService,
-    IGameHandoffTicketService gameHandoffTicketService,
+    GameHandoffTicketService gameHandoffTicketService,
     ServerReadinessState readinessState,
     IGameServerRegistry gameServerRegistry,
     GameServerNodeOptions nodeOptions,

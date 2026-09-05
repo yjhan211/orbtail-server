@@ -33,7 +33,7 @@ public static class GameHandoffServiceCollectionExtensions
             Lifetime = TimeSpan.FromSeconds(gameHandoffLifetimeSeconds)
         });
         services.AddSingleton<IGameHandoffTicketStore, RedisGameHandoffTicketStore>();
-        services.AddSingleton<IGameHandoffTicketService, GameHandoffTicketService>();
+        services.AddSingleton<GameHandoffTicketService>();
         return services;
     }
 }

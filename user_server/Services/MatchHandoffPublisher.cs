@@ -40,7 +40,7 @@ internal interface IMatchHandoffPublisher
 /// </summary>
 internal sealed class MatchHandoffPublisher(
     IRedisOperations redisOperations,
-    IGameHandoffTicketService gameHandoffTicketService,
+    GameHandoffTicketService gameHandoffTicketService,
     MatchingQueueClaimCoordinator claims,
     IPlayerSessionRouter sessions,
     Func<Func<Task>, string, bool> tryRunBackgroundOperation,

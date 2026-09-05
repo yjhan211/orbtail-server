@@ -13,7 +13,7 @@ public sealed class GameHandoffTicketOptions
 /// </summary>
 public sealed class GameHandoffTicketService(
     IGameHandoffTicketStore ticketStore,
-    GameHandoffTicketOptions options) : IGameHandoffTicketService
+    GameHandoffTicketOptions options)
 {
     private const string TicketPrefix = "game_";
     private const int MaxTicketGenerationAttempts = 5;
