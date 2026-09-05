@@ -40,7 +40,6 @@ internal sealed class UserServer(
     MatchingLifecycleSubscriber matchingLifecycleSubscriber)
     : IHostedService
 {
-    private static readonly TimeSpan NetworkShutdownWarningThreshold = TimeSpan.FromSeconds(5);
     private readonly object _shutdownLock = new();
     private Task? _shutdownTask;
     private int _stopping;
@@ -91,25 +90,9 @@ internal sealed class UserServer(
             logger.LogWarning(ex, "Matching loop stop failed");
         }
 
-        var networkShutdown = networkService.StopAsync(CancellationToken.None);
         try
         {
-            await networkShutdown.WaitAsync(NetworkShutdownWarningThreshold);
-        }
-        catch (TimeoutException ex)
-        {
-            logger.LogWarning(
-                ex,
-                "UserServer network shutdown exceeded {WarningThreshold}; continuing to wait before disposing dependencies",
-                NetworkShutdownWarningThreshold);
-            try
-            {
-                await networkShutdown;
-            }
-            catch (Exception shutdownException)
-            {
-                logger.LogWarning(shutdownException, "UserServer network shutdown failed after timeout");
-            }
+            await networkService.StopAsync(CancellationToken.None);
         }
         catch (Exception ex)
         {
