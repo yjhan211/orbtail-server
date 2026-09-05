@@ -114,10 +114,10 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_ERROR(ErrorCode errorCode, string message = "")
+    public static Packet U_TO_C_ERROR(ErrorCode errorCode)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_ERROR);
-        U_TO_C_ERROR body = new() { ErrorCode = errorCode, Message = message };
+        U_TO_C_ERROR body = new() { ErrorCode = errorCode };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;

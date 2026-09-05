@@ -11,7 +11,7 @@ internal sealed class UserSessionRegistry(ILogger logger)
 {
     private readonly ConcurrentDictionary<long, GameSession> _sessions = new();
 
-    public (bool Accepted, Action? DisconnectSuperseded) Register(long playerId, GameSession session)
+    public (bool Accepted, GameSession? SupersededSession) Register(long playerId, GameSession session)
     {
         if (session.SessionGeneration <= 0)
             throw new InvalidOperationException("A session must own a positive generation before registration.");
@@ -48,7 +48,7 @@ internal sealed class UserSessionRegistry(ILogger logger)
             logger.LogWarning(
                 "Session replaced after duplicate login: PlayerId={PlayerId}, Generation={Generation}, PreviousGeneration={PreviousGeneration}",
                 playerId, session.SessionGeneration, existingSession.SessionGeneration);
-            return (true, existingSession.DisconnectForDuplicateLogin);
+            return (true, existingSession);
         }
     }
 

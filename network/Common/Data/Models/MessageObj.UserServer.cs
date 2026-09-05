@@ -80,6 +80,5 @@ namespace network.common.data.models
     public class U_TO_C_ERROR : IMessagePackObject
     {
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("message")] public string Message { get; set; }
     }
 }

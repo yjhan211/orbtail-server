@@ -21,7 +21,7 @@ public sealed record PlayerSessionLease(
 ///     플레이어별 현재 UserServer 세션을 획득·갱신·해제하는 전역 lease 저장소.
 ///     구현은 이전 세션이 최신 세션의 소유권을 갱신하거나 지우지 못하도록 값 비교를 보장한다.
 /// </summary>
-public interface IPlayerSessionOwnershipStore
+public interface IPlayerSessionLeaseStore
 {
     public TimeSpan LeaseLifetime { get; }
     public TimeSpan RenewalInterval { get; }
@@ -36,9 +36,9 @@ public interface IPlayerSessionOwnershipStore
 ///     세대 번호는 영속 counter에서 발급하고, owner 교체는 기존 값을 조건으로 갱신해
 ///     늦게 끝난 로그인과 종료가 더 최신 세션을 덮거나 삭제하지 못하게 한다.
 /// </summary>
-public sealed class RedisPlayerSessionOwnershipStore(
+public sealed class RedisPlayerSessionLeaseStore(
     IRedisOperations redisOperations,
-    ILogger<RedisPlayerSessionOwnershipStore> logger) : IPlayerSessionOwnershipStore
+    ILogger<RedisPlayerSessionLeaseStore> logger) : IPlayerSessionLeaseStore
 {
     internal const string OwnerKeyPrefix = "user_session_owner:";
     internal const string GenerationKeyPrefix = "user_session_generation:";
@@ -77,7 +77,7 @@ public sealed class RedisPlayerSessionOwnershipStore(
             if (currentGeneration >= generation)
             {
                 logger.LogInformation(
-                    "Session ownership acquisition superseded: PlayerId={PlayerId}, Generation={Generation}, CurrentGeneration={CurrentGeneration}",
+                    "Session lease acquisition superseded: PlayerId={PlayerId}, Generation={Generation}, CurrentGeneration={CurrentGeneration}",
                     playerId, generation, currentGeneration);
                 return null;
             }
@@ -91,7 +91,7 @@ public sealed class RedisPlayerSessionOwnershipStore(
         }
 
         throw new InvalidOperationException(
-            $"Player session ownership changed too often while acquiring player {playerId}.");
+            $"Player session lease changed too often while acquiring player {playerId}.");
     }
 
     public Task<bool> TryRenewAsync(PlayerSessionLease lease)

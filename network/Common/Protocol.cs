@@ -184,6 +184,7 @@ namespace network.common
         PLAYER_NOT_FOUND = 103,
         ALREADY_CONNECTED = 104,
         INVALID_PLAYER_ID = 105,
+        ALREADY_AUTHENTICATED = 106, // 같은 연결에서 로그인 요청을 다시 보냄
 
         // 매칭 (200~299)
         MATCHING_ALREADY_IN_QUEUE = 200,

@@ -207,12 +207,12 @@ public sealed class UserServerScaleOutTests
     }
 
     [Fact]
-    public async Task SessionOwnership_LaterGenerationSupersedesAndOldLeaseCannotRenewOrRelease()
+    public async Task SessionLease_LaterGenerationSupersedesAndOldLeaseCannotRenewOrRelease()
     {
         var cache = new InMemoryRedisOperations();
-        var store = new RedisPlayerSessionOwnershipStore(
+        var store = new RedisPlayerSessionLeaseStore(
             cache,
-            NullLogger<RedisPlayerSessionOwnershipStore>.Instance);
+            NullLogger<RedisPlayerSessionLeaseStore>.Instance);
 
         PlayerSessionLease first = Assert.IsType<PlayerSessionLease>(
             await store.TryAcquireAsync(7, "user-server-0", "session-a"));
@@ -220,21 +220,21 @@ public sealed class UserServerScaleOutTests
             await store.TryAcquireAsync(7, "user-server-1", "session-b"));
 
         Assert.True(second.Generation > first.Generation);
-        Assert.Equal(second.OwnerValue, cache.GetString(RedisPlayerSessionOwnershipStore.OwnerKey(7)));
+        Assert.Equal(second.OwnerValue, cache.GetString(RedisPlayerSessionLeaseStore.OwnerKey(7)));
         Assert.False(await store.TryRenewAsync(first));
         Assert.False(await store.TryReleaseAsync(first));
         Assert.True(await store.TryRenewAsync(second));
         Assert.True(await store.TryReleaseAsync(second));
-        Assert.Null(cache.GetString(RedisPlayerSessionOwnershipStore.OwnerKey(7)));
+        Assert.Null(cache.GetString(RedisPlayerSessionLeaseStore.OwnerKey(7)));
     }
 
     [Fact]
-    public async Task SessionOwnership_ConcurrentClaimsLeaveHighestGenerationAsOwner()
+    public async Task SessionLease_ConcurrentClaimsLeaveHighestGenerationAsOwner()
     {
         var cache = new InMemoryRedisOperations();
-        var store = new RedisPlayerSessionOwnershipStore(
+        var store = new RedisPlayerSessionLeaseStore(
             cache,
-            NullLogger<RedisPlayerSessionOwnershipStore>.Instance);
+            NullLogger<RedisPlayerSessionLeaseStore>.Instance);
 
         PlayerSessionLease?[] leases = await Task.WhenAll(
             Enumerable.Range(0, 16)
@@ -245,7 +245,7 @@ public sealed class UserServerScaleOutTests
             .Select(lease => lease!)
             .MaxBy(lease => lease.Generation)!;
 
-        Assert.Equal(winner.OwnerValue, cache.GetString(RedisPlayerSessionOwnershipStore.OwnerKey(9)));
+        Assert.Equal(winner.OwnerValue, cache.GetString(RedisPlayerSessionLeaseStore.OwnerKey(9)));
         Assert.Equal(16, winner.Generation);
     }
 
@@ -268,7 +268,7 @@ public sealed class UserServerScaleOutTests
             Record("admission", matchingId, string.Empty, packet);
 
         public void ClearMatchingAssignment(long matchingId) => Cleared.Add(matchingId);
-        public void DisconnectIfSuperseded(long newGeneration) =>
+        public void DisconnectIfOlderSession(long newGeneration) =>
             DuplicateDisconnected = newGeneration > SessionGeneration;
 
         private bool Record(string op, long matchingId, string requestId, Packet packet)

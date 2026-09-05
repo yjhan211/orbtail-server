@@ -66,7 +66,7 @@ internal static class Program
         services.AddSingleton<IRedLockFactory>(sp =>
             sp.GetRequiredService<RedisConnection>().GetRedLockFactory());
         services.AddSingleton<IRedisOperations, RedisOperations>();
-        services.AddSingleton<IPlayerSessionOwnershipStore, RedisPlayerSessionOwnershipStore>();
+        services.AddSingleton<IPlayerSessionLeaseStore, RedisPlayerSessionLeaseStore>();
         services.AddSingleton<IMatchingQueueClaimStore, RedisMatchingQueueClaimStore>();
         services.AddGameHandoffTicket(hostContext.Configuration);
         services.AddAccountAuthentication(hostContext.Configuration);

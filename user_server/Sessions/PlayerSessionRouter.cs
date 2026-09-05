@@ -15,7 +15,7 @@ internal interface IMatchingSessionEndpoint
     public bool TryDeliverMatchingFailed(long matchingId, string requestId, Packet packet);
     public bool TryDeliverAdmissionFailed(long matchingId, Packet packet);
     public void ClearMatchingAssignment(long matchingId);
-    public void DisconnectIfSuperseded(long newGeneration);
+    public void DisconnectIfOlderSession(long newGeneration);
 }
 
 /// <summary>
@@ -288,7 +288,7 @@ internal sealed class NatsPlayerSessionRouter(
         if (local == null)
             return;
 
-        local.DisconnectIfSuperseded(notice.SessionGeneration);
+        local.DisconnectIfOlderSession(notice.SessionGeneration);
     }
 
     private SessionNotice? TryReadNotice(byte[] body, string subject)
