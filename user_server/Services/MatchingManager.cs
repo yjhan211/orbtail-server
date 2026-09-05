@@ -1,74 +1,50 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.gamehandoff;
-using network.infrastructure.redis;
-using network.routing;
 using user_server.network;
 
 namespace user_server.services;
 
 /// <summary>
-///     매칭 서브시스템의 composition root이자 수명 조정자. 1초 timer로 <see cref="MatchmakingPass" />를 겹치지 않게
+///     매칭 서브시스템의 수명 조정자. 1초 timer로 <see cref="MatchmakingPass" />를 겹치지 않게
 ///     하나만 실행하고, 큐 등록/취소·claim 해제·입장 실패 통지를 collaborator에 위임하며,
-///     background operation(watchdog·lifecycle handler)을 추적해 quiesce → stop 순서로 배수한다.
+///     quiesce → stop 순서로 background 작업을 배수한다. 조립은 Program.cs(DI)가 하고 여기서는 받기만 한다.
 ///     매칭 규칙·Redis 키·패킷 조립은 소유하지 않는다.
 /// </summary>
-public class MatchingManager : IMatchingManager
+internal sealed class MatchingManager : IMatchingManager
 {
-    private readonly ConcurrentDictionary<long, Task> _backgroundTasks = new();
-    private readonly object _backgroundTaskLock = new();
-    private readonly CancellationTokenSource _shutdownCts = new();
-    private readonly IPlayerSessionRouter _sessions;
     private readonly MatchingLeaderLease _leaderLease;
     private readonly MatchingQueueClaimCoordinator _matchingClaims;
     private readonly MatchingQueue _queue;
     private readonly MatchHandoffPublisher _handoff;
     private readonly MatchmakingPass _pass;
+    private readonly MatchingBackgroundOperations _background;
     private readonly ILogger _logger;
     private Timer? _matchingTimer;
     private readonly object _processingTaskLock = new();
     private int _isProcessing;
     private int _quiescing;
-    private long _nextBackgroundTaskId;
     private Task _processingTask = Task.CompletedTask;
     private readonly object _stopTaskLock = new();
     private Task? _stopTask;
     private int _started;
     private int _stopping;
 
-    internal MatchingManager(ILogger logger, IRedisOperations redisOperations,
-        IMatchingQueueClaimStore matchingClaimStore, IRedLockFactory redLock,
-        GameHandoffTicketService gameHandoffTicketService,
-        IPlayerSessionRouter sessions,
-        MatchingLeaderLease leaderLease)
+    public MatchingManager(
+        ILogger logger,
+        MatchingQueueClaimCoordinator matchingClaims,
+        MatchingQueue queue,
+        MatchHandoffPublisher handoff,
+        MatchmakingPass pass,
+        MatchingLeaderLease leaderLease,
+        MatchingBackgroundOperations background)
     {
         _logger = logger;
-        _sessions = sessions;
+        _matchingClaims = matchingClaims;
+        _queue = queue;
+        _handoff = handoff;
+        _pass = pass;
         _leaderLease = leaderLease;
-        _matchingClaims = new MatchingQueueClaimCoordinator(redisOperations, matchingClaimStore, logger);
-        _queue = new MatchingQueue(redisOperations, redLock, _matchingClaims, logger);
-
-        DevMatchOverrides overrides = DevMatchOverrides.FromEnvironment(redisOperations, redLock, logger);
-        var rosterBuilder = new MatchRosterBuilder(redisOperations, logger);
-        _handoff = new MatchHandoffPublisher(
-            redisOperations,
-            gameHandoffTicketService,
-            _matchingClaims,
-            sessions,
-            TryRunBackgroundOperation,
-            _shutdownCts.Token,
-            logger);
-        _pass = new MatchmakingPass(
-            redisOperations,
-            _queue,
-            _matchingClaims,
-            rosterBuilder,
-            _handoff,
-            new GameServerAllocator(new RedisGameServerRegistry(redisOperations), logger),
-            overrides,
-            _shutdownCts.Token,
-            logger);
+        _background = background;
     }
 
     /// <summary>
@@ -96,7 +72,7 @@ public class MatchingManager : IMatchingManager
             catch
             {
                 Volatile.Write(ref _stopping, 1);
-                _shutdownCts.Cancel();
+                _background.Shutdown();
                 _matchingTimer?.Dispose();
                 _matchingTimer = null;
                 throw;
@@ -175,29 +151,8 @@ public class MatchingManager : IMatchingManager
         await _matchingClaims.ReleaseActiveBestEffortAsync(playerId, matchingId);
     }
 
-    public bool TryRunBackgroundOperation(Func<Task> operation, string operationName)
-    {
-        ArgumentNullException.ThrowIfNull(operation);
-        ArgumentException.ThrowIfNullOrWhiteSpace(operationName);
-
-        lock (_backgroundTaskLock)
-        {
-            if (Volatile.Read(ref _stopping) != 0)
-            {
-                _logger.LogDebug(
-                    "Ignoring matching background operation during shutdown: {OperationName}",
-                    operationName);
-                return false;
-            }
-
-            long operationId = Interlocked.Increment(ref _nextBackgroundTaskId);
-            Task trackedTask = RunBackgroundOperationAsync(operationId, operation, operationName);
-            _backgroundTasks.TryAdd(operationId, trackedTask);
-            if (trackedTask.IsCompleted)
-                _backgroundTasks.TryRemove(operationId, out _);
-            return true;
-        }
-    }
+    public bool TryRunBackgroundOperation(Func<Task> operation, string operationName) =>
+        _background.TryRun(operation, operationName);
 
     public Task StopAsync()
     {
@@ -221,33 +176,11 @@ public class MatchingManager : IMatchingManager
         await processingTask;
     }
 
-    private async Task RunBackgroundOperationAsync(
-        long operationId,
-        Func<Task> operation,
-        string operationName)
-    {
-        try
-        {
-            await operation();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Matching background operation failed: {OperationName}", operationName);
-        }
-        finally
-        {
-            _backgroundTasks.TryRemove(operationId, out _);
-        }
-    }
-
     private async Task StopCoreAsync()
     {
         await QuiesceAsync();
-        lock (_backgroundTaskLock)
-        {
-            Volatile.Write(ref _stopping, 1);
-            _shutdownCts.Cancel();
-        }
+        Volatile.Write(ref _stopping, 1);
+        _background.Shutdown();
 
         if (_matchingTimer != null)
             await _matchingTimer.DisposeAsync();
@@ -259,22 +192,10 @@ public class MatchingManager : IMatchingManager
         }
 
         await processingTask;
-
-        while (true)
-        {
-            Task[] backgroundTasks;
-            lock (_backgroundTaskLock)
-            {
-                backgroundTasks = _backgroundTasks.Values.ToArray();
-            }
-
-            if (backgroundTasks.Length == 0)
-                break;
-            await Task.WhenAll(backgroundTasks);
-        }
+        await _background.DrainAsync();
 
         await _leaderLease.ReleaseAsync();
-        _shutdownCts.Dispose();
+        _background.Dispose();
 
         _logger.LogInformation("MatchingManager stopped");
     }

@@ -4,9 +4,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.common.data.helpers;
 using network.core;
-using network.gamehandoff;
 using network.hosting;
-using network.infrastructure.messaging;
 using network.infrastructure.redis;
 using user_server.network;
 using user_server.services;
@@ -14,32 +12,29 @@ using user_server.services;
 namespace user_server;
 
 /// <summary>
-///     Hosts the UserServer process and orders TCP sessions, matching, lifecycle messaging,
-///     readiness, and shutdown without owning their internal state machines.
+///     UserServer 프로세스의 수명 조정자. 부품은 Program.cs(DI)에서 받고, 여기서는 시작·종료 순서만 정한다:
+///     라우터 → lifecycle 구독 → 매칭 → 리슨, 종료는 매칭 quiesce → 네트워크 배수 → 매칭 stop → NATS 닫기.
 /// </summary>
-public class UserServer(
+internal sealed class UserServer(
     NetworkService networkService,
-    NatsClientFactory natsClientFactory,
     ILogger<UserServer> logger,
     IConfiguration configuration,
     IRedisOperations redisOperations,
     IPlayerSessionOwnershipStore sessionOwnershipStore,
-    IMatchingQueueClaimStore matchingClaimStore,
     IRedLockFactory redLock,
     IPlayerService playerService,
     IAccountTokenService accountTokenService,
-    GameHandoffTicketService gameHandoffTicketService,
-    ServerReadinessState readinessState)
+    ServerReadinessState readinessState,
+    UserServerNodeIdentity node,
+    UserSessionRegistry sessions,
+    NatsPlayerSessionRouter sessionRouter,
+    MatchingManager matchingManager,
+    MatchingLifecycleSubscriber matchingLifecycleSubscriber)
     : IHostedService
 {
     private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(5);
-    private readonly UserSessionRegistry _sessions = new(logger);
     private readonly object _shutdownLock = new();
-    private IMatchingManager? _matchingManager;
-    private MatchingLifecycleSubscriber? _matchingLifecycleSubscriber;
-    private NatsPlayerSessionRouter? _sessionRouter;
     private Task? _shutdownTask;
-    private string _nodeId = string.Empty;
     private int _stopping;
 
     public async Task StartAsync(CancellationToken ct)
@@ -81,8 +76,7 @@ public class UserServer(
         logger.LogInformation("UserServer stopping...");
         try
         {
-            if (_matchingManager != null)
-                await _matchingManager.QuiesceAsync();
+            await matchingManager.QuiesceAsync();
         }
         catch (Exception ex)
         {
@@ -116,16 +110,14 @@ public class UserServer(
 
         try
         {
-            if (_matchingManager != null)
-                await _matchingManager.StopAsync();
+            await matchingManager.StopAsync();
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Matching manager shutdown failed");
         }
 
-        if (_matchingLifecycleSubscriber != null)
-            await _matchingLifecycleSubscriber.StopAsync();
+        await matchingLifecycleSubscriber.StopAsync();
 
         logger.LogInformation("UserServer stopped");
     }
@@ -139,30 +131,11 @@ public class UserServer(
             message => logger.LogError("{Message}", message));
         cancellationToken.ThrowIfCancellationRequested();
 
-        // 라우터·lifecycle 구독은 NATS 연결 하나를 나눠 쓴다. 종료 시 구독자가 닫는다.
-        _nodeId = ResolveNodeId();
-        var natsClient = natsClientFactory.Create();
-        _sessionRouter = new NatsPlayerSessionRouter(natsClient, _sessions.Get, _nodeId, logger);
-        var matchingManager = new MatchingManager(
-            logger,
-            redisOperations,
-            matchingClaimStore,
-            redLock,
-            gameHandoffTicketService,
-            _sessionRouter,
-            new MatchingLeaderLease(redisOperations, _nodeId, logger));
-        _matchingManager = matchingManager;
-
-        _matchingLifecycleSubscriber = new MatchingLifecycleSubscriber(
-            natsClient,
-            _sessionRouter,
-            matchingManager,
-            logger);
         // 세션 전달 요청을 받을 수 있게 된 뒤에 리더가 큐를 읽기 시작해야 한다.
-        _sessionRouter.Start();
-        _matchingLifecycleSubscriber.Start();
+        sessionRouter.Start();
+        matchingLifecycleSubscriber.Start();
         matchingManager.Start();
-        logger.LogInformation("User server node identity: NodeId={NodeId}", _nodeId);
+        logger.LogInformation("User server node identity: NodeId={NodeId}", node.NodeId);
 
         logger.LogInformation("Services initialized successfully");
         return Task.CompletedTask;
@@ -178,20 +151,11 @@ public class UserServer(
 
     /// <summary>TcpConnection 인증 전이와 함께 실행할 로컬 세션 등록. 외부 I/O는 이 콜백 안에서 하지 않는다.</summary>
     private (bool Accepted, Action? DisconnectSuperseded) RegisterSession(long playerId, GameSession session) =>
-        _sessions.Register(playerId, session);
+        sessions.Register(playerId, session);
 
     /// <summary>인증 상태 잠금을 푼 뒤 다른 User Server에 더 높은 로그인 세대를 알린다.</summary>
     private void AnnounceLogin(long playerId, long generation) =>
-        _sessionRouter?.AnnounceLogin(playerId, generation);
-
-    /// <summary>
-    ///     리더 lease 값이자 세션 알림의 origin. <c>USER_SERVER_ID</c>가 없으면 컨테이너 호스트명 — compose·k8s 모두 유일하다.
-    /// </summary>
-    private string ResolveNodeId()
-    {
-        string? configured = configuration["USER_SERVER_ID"];
-        return string.IsNullOrWhiteSpace(configured) ? Environment.MachineName : configured.Trim();
-    }
+        sessionRouter.AnnounceLogin(playerId, generation);
 
     private IConnectionSession? CreateSession(TcpConnection connection)
     {
@@ -203,13 +167,13 @@ public class UserServer(
                 redisOperations,
                 redLock,
                 playerService,
-                _matchingManager!,
+                matchingManager,
                 accountTokenService,
                 sessionOwnershipStore,
-                _nodeId,
+                node.NodeId,
                 RegisterSession,
                 AnnounceLogin,
-                _sessions.Remove);
+                sessions.Remove);
 
             logger.LogInformation("New session created");
             return session;
