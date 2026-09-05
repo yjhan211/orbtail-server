@@ -7,7 +7,7 @@ namespace user_server.services;
 /// <summary>
 ///     매칭 서브시스템의 수명 조정자. 1초 timer로 <see cref="MatchmakingPass" />를 겹치지 않게
 ///     하나만 실행하고, 큐 등록/취소·claim 해제·입장 실패 통지를 collaborator에 위임하며,
-///     quiesce → stop 순서로 background 작업을 배수한다. 조립은 Program.cs(DI)가 하고 여기서는 받기만 한다.
+///     매칭 반복 중단 → 전체 종료 순서로 background 작업을 배수한다. 조립은 Program.cs(DI)가 하고 여기서는 받기만 한다.
 ///     매칭 규칙·Redis 키·패킷 조립은 소유하지 않는다.
 /// </summary>
 internal sealed class MatchingManager : IMatchingManager
@@ -162,7 +162,7 @@ internal sealed class MatchingManager : IMatchingManager
         }
     }
 
-    public async Task QuiesceAsync()
+    public async Task StopMatchingLoopAsync()
     {
         if (Interlocked.Exchange(ref _quiescing, 1) == 0)
             _matchingTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
@@ -178,7 +178,7 @@ internal sealed class MatchingManager : IMatchingManager
 
     private async Task StopCoreAsync()
     {
-        await QuiesceAsync();
+        await StopMatchingLoopAsync();
         Volatile.Write(ref _stopping, 1);
         _background.Shutdown();
 

@@ -20,7 +20,7 @@ public sealed class Listener(ILogger<Listener> logger)
     private Task? _listenTask;
     public event NewClientHandler? ClientConnected;
 
-    public void Start(IPAddress address, short port)
+    public void Start(IPAddress address, int port)
     {
         lock (_lifecycleLock)
         {

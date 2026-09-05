@@ -14,6 +14,67 @@ namespace demo_regression_tests;
 public sealed class NatsClientTests
 {
     [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("abc")]
+    [InlineData("0")]
+    [InlineData("-1")]
+    [InlineData("65536")]
+    [InlineData("2147483648")]
+    public void UserServerRejectsInvalidServicePort(string? value)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["servicePort"] = value }).Build();
+        Assert.Throws<InvalidOperationException>(() => user_server.UserServer.ResolveServicePort(configuration));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(7000)]
+    [InlineData(32768)]
+    [InlineData(65535)]
+    public void UserServerAcceptsFullServicePortRange(int port)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?> { ["servicePort"] = port.ToString() }).Build();
+        Assert.Equal(port, user_server.UserServer.ResolveServicePort(configuration));
+    }
+
+    [Fact]
+    public async Task StartupFailureAndStopSharePendingCleanup()
+    {
+        var (connection, proxy) = RecordingConnectionProxy.Create();
+        var client = new NatsClient(connection, TimeSpan.FromMilliseconds(50));
+        await using var provider = CreateUserServerServices(client).BuildServiceProvider();
+        var server = provider.GetServices<IHostedService>().OfType<user_server.UserServer>().Single();
+        var background = provider.GetRequiredService<MatchingBackgroundOperations>();
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var registration = background.ShutdownToken.Register(() => stopping.TrySetResult());
+        Assert.True(background.TryRun(() => release.Task, "hold cleanup"));
+
+        // servicePort 미설정으로 시작에 실패한 뒤 실제 종료 경로에 진입한다.
+        Task startup = server.StartAsync(CancellationToken.None);
+        try
+        {
+            await stopping.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            Task stop = server.StopAsync(CancellationToken.None);
+            Assert.Same(stop, server.StopAsync(CancellationToken.None));
+            Assert.False(stop.IsCompleted);
+            Assert.False(startup.IsCompleted);
+            Assert.False(proxy.Closed);
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+        await server.StopAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(2));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => startup);
+        Assert.Contains("servicePort", error.Message);
+        Assert.Equal(1, proxy.CloseCalls);
+    }
+
+    [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
     [InlineData(true, false)]

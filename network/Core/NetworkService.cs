@@ -43,7 +43,7 @@ public sealed class NetworkService
 
     public Func<TcpConnection, IConnectionSession?>? SessionFactory { get; set; }
 
-    public void Listen(IPAddress address, short port)
+    public void Listen(IPAddress address, int port)
     {
         lock (_connectionLifecycleLock)
         {

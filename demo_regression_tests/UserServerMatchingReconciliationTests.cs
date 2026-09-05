@@ -122,7 +122,7 @@ public sealed class UserServerMatchingReconciliationTests
         public Task AbortMatchingAdmissionAsync(long playerId, long matchingId) => Task.CompletedTask;
         public Task ReleaseMatchingClaimAsync(long playerId, long matchingId) => Task.CompletedTask;
         public bool TryRunBackgroundOperation(Func<Task> operation, string operationName) => false;
-        public Task QuiesceAsync() => Task.CompletedTask;
+        public Task StopMatchingLoopAsync() => Task.CompletedTask;
         public Task StopAsync() => Task.CompletedTask;
     }
 

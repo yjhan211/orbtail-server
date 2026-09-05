@@ -13,6 +13,6 @@ public interface IMatchingManager
     public Task AbortMatchingAdmissionAsync(long playerId, long matchingId);
     public Task ReleaseMatchingClaimAsync(long playerId, long matchingId);
     public bool TryRunBackgroundOperation(Func<Task> operation, string operationName);
-    public Task QuiesceAsync();
+    public Task StopMatchingLoopAsync();
     public Task StopAsync();
 }

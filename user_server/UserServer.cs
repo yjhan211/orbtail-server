@@ -12,8 +12,16 @@ using user_server.services;
 namespace user_server;
 
 /// <summary>
-///     UserServer 프로세스의 수명 조정자. 부품은 Program.cs(DI)에서 받고, 여기서는 시작·종료 순서만 정한다:
-///     라우터 → lifecycle 구독 → 매칭 → 리슨, 종료는 매칭 quiesce → 네트워크 배수 → 매칭 stop → NATS 닫기.
+///     UserServer의 시작과 종료를 관리하고, 새 TCP 연결마다 GameSession을 생성한다.
+///     필요한 서비스는 Program.cs에서 DI로 전달받는다.
+///
+///     시작할 때 포트 설정을 검증하고 게임 데이터를 불러온 뒤,
+///     서버 간 메시지 구독과 매칭 처리를 시작하고 TCP 접속을 받는다.
+///     모든 준비가 끝나면 서버를 준비 완료 상태로 표시한다.
+///
+///     종료할 때는 새 매칭 처리를 멈추고, 연결과 세션 정리가 끝나기를 기다린다.
+///     이후 매칭의 남은 작업을 정리하고 NATS 연결을 닫는다.
+///     시작 실패와 일반 종료는 같은 정리 절차를 사용한다.
 /// </summary>
 internal sealed class UserServer(
     NetworkService networkService,
@@ -32,7 +40,7 @@ internal sealed class UserServer(
     MatchingLifecycleSubscriber matchingLifecycleSubscriber)
     : IHostedService
 {
-    private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan NetworkShutdownWarningThreshold = TimeSpan.FromSeconds(5);
     private readonly object _shutdownLock = new();
     private Task? _shutdownTask;
     private int _stopping;
@@ -43,8 +51,9 @@ internal sealed class UserServer(
         try
         {
             logger.LogInformation("UserServer starting...");
-            await InitializeServicesAsync(ct);
-            StartNetworkService();
+            int port = ResolveServicePort(configuration);
+            InitializeServices(ct);
+            StartNetworkService(port);
             readinessState.MarkReady();
             logger.LogInformation("UserServer started successfully");
         }
@@ -52,7 +61,7 @@ internal sealed class UserServer(
         {
             readinessState.MarkNotReady("startup_failed");
             logger.LogError(ex, "UserServer start failed");
-            await StopCoreAsync();
+            await StopAsync(CancellationToken.None);
             throw;
         }
     }
@@ -66,7 +75,6 @@ internal sealed class UserServer(
         }
     }
 
-    // 종료 순서: matching quiesce → network/session drain → matching stop → NATS stop
     private async Task StopCoreAsync()
     {
         if (Interlocked.Exchange(ref _stopping, 1) != 0)
@@ -76,24 +84,24 @@ internal sealed class UserServer(
         logger.LogInformation("UserServer stopping...");
         try
         {
-            await matchingManager.QuiesceAsync();
+            await matchingManager.StopMatchingLoopAsync();
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Matching manager quiesce failed");
+            logger.LogWarning(ex, "Matching loop stop failed");
         }
 
-        Task networkShutdown = networkService.StopAsync(CancellationToken.None);
+        var networkShutdown = networkService.StopAsync(CancellationToken.None);
         try
         {
-            await networkShutdown.WaitAsync(ShutdownTimeout);
+            await networkShutdown.WaitAsync(NetworkShutdownWarningThreshold);
         }
         catch (TimeoutException ex)
         {
             logger.LogWarning(
                 ex,
-                "UserServer network shutdown exceeded {Timeout}; continuing to wait before disposing dependencies",
-                ShutdownTimeout);
+                "UserServer network shutdown exceeded {WarningThreshold}; continuing to wait before disposing dependencies",
+                NetworkShutdownWarningThreshold);
             try
             {
                 await networkShutdown;
@@ -122,42 +130,37 @@ internal sealed class UserServer(
         logger.LogInformation("UserServer stopped");
     }
 
-    private Task InitializeServicesAsync(CancellationToken cancellationToken)
+    private void InitializeServices(CancellationToken cancellationToken)
     {
-        // 서버 환경에서 CSV 파일 경로 설정 (bin 디렉토리 기준)
         GameDataHelper.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
         GameDataHelper.Initialize(
             message => logger.LogDebug("{Message}", message),
             message => logger.LogError("{Message}", message));
         cancellationToken.ThrowIfCancellationRequested();
 
-        // 세션 전달 요청을 받을 수 있게 된 뒤에 리더가 큐를 읽기 시작해야 한다.
         sessionRouter.Start();
         matchingLifecycleSubscriber.Start();
         matchingManager.Start();
         logger.LogInformation("User server node identity: NodeId={NodeId}", node.NodeId);
 
         logger.LogInformation("Services initialized successfully");
-        return Task.CompletedTask;
     }
 
-    private void StartNetworkService()
+    internal static int ResolveServicePort(IConfiguration configuration)
     {
-        short port = configuration.GetValue<short>("servicePort");
+        if (!int.TryParse(configuration["servicePort"], out int port) || port is < 1 or > 65535)
+            throw new InvalidOperationException("servicePort must be configured as an integer between 1 and 65535.");
+        return port;
+    }
+
+    private void StartNetworkService(int port)
+    {
         networkService.SessionFactory = CreateSession;
         networkService.Listen(IPAddress.Any, port);
-        logger.LogInformation($"Listening on port {port}");
+        logger.LogInformation("Listening on port {Port}", port);
     }
 
-    /// <summary>TcpConnection 인증 전이와 함께 실행할 로컬 세션 등록. 외부 I/O는 이 콜백 안에서 하지 않는다.</summary>
-    private (bool Accepted, Action? DisconnectSuperseded) RegisterSession(long playerId, GameSession session) =>
-        sessions.Register(playerId, session);
-
-    /// <summary>인증 상태 잠금을 푼 뒤 다른 User Server에 더 높은 로그인 세대를 알린다.</summary>
-    private void AnnounceLogin(long playerId, long generation) =>
-        sessionRouter.AnnounceLogin(playerId, generation);
-
-    private IConnectionSession? CreateSession(TcpConnection connection)
+    private GameSession? CreateSession(TcpConnection connection)
     {
         try
         {
@@ -171,8 +174,8 @@ internal sealed class UserServer(
                 accountTokenService,
                 sessionOwnershipStore,
                 node.NodeId,
-                RegisterSession,
-                AnnounceLogin,
+                sessions.Register,
+                sessionRouter.AnnounceLogin,
                 sessions.Remove);
 
             logger.LogInformation("New session created");
