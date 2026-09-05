@@ -397,7 +397,7 @@ public partial class GameClientSession : SessionBase
         {
             using var packet = Packet.Create((int)Protocol.G_TO_C_SOCIAL_ACTION, session.PlayerId ?? 0);
             packet.SetBody(bodyBytes);
-            session.Send(packet);
+            session.TrySend(packet);
         }
 
         return Task.CompletedTask;
@@ -528,7 +528,7 @@ public partial class GameClientSession : SessionBase
         try
         {
             using var packet = PacketMaker.G_TO_C_ERROR(errorCode, message);
-            Send(packet);
+            TrySend(packet);
         }
         catch (Exception ex)
         {

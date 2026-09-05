@@ -1,7 +1,10 @@
+using System.Net;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.core;
+using network.packets;
+using user_server.sessions;
 using user_server.matching;
 using user_server.network;
 
@@ -20,7 +23,7 @@ public sealed class UserServerMatchingReconciliationTests
         var session = NewSession(connection.Connection, matching);
 
         string firstRequest = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
-        Assert.True(session.TryAssignMatching(42, firstRequest));
+        DeliverMatchingSuccess(session, 42, firstRequest);
 
         string secondRequest = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
 
@@ -37,7 +40,7 @@ public sealed class UserServerMatchingReconciliationTests
         var session = NewSession(connection.Connection, matching);
 
         string firstRequest = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
-        Assert.True(session.TryAssignMatching(42, firstRequest));
+        DeliverMatchingSuccess(session, 42, firstRequest);
         matching.HasClaim = true;
 
         Assert.Null(await session.TryBeginMatchingRequestAsync(7));
@@ -53,12 +56,12 @@ public sealed class UserServerMatchingReconciliationTests
         var session = NewSession(connection.Connection, matching);
 
         string firstRequest = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
-        Assert.True(session.TryAssignMatching(42, firstRequest));
+        DeliverMatchingSuccess(session, 42, firstRequest);
         matching.ClaimCompletion = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         Task<string?> delayedReconciliation = session.TryBeginMatchingRequestAsync(7);
-        session.ClearMatchingAssignment(42);
+        ((IMatchingSessionEndpoint)session).ClearMatchingAssignment(42);
         string concurrentRequest = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
         matching.ClaimCompletion.SetResult(false);
 
@@ -74,11 +77,19 @@ public sealed class UserServerMatchingReconciliationTests
         var session = NewSession(connection.Connection, matching);
 
         string firstRequest = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
-        Assert.True(session.TryAssignMatching(42, firstRequest));
+        DeliverMatchingSuccess(session, 42, firstRequest);
         matching.ClaimError = new InvalidOperationException("redis down");
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => session.TryBeginMatchingRequestAsync(7));
         Assert.Equal(firstRequest, session.ActiveMatchingRequestId);
+    }
+
+    private static void DeliverMatchingSuccess(GameSession session, long matchingId, string requestId)
+    {
+        using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
+            matchingId, "127.0.0.1", 9001, 0, "test-ticket", []);
+        Assert.True(((IMatchingSessionEndpoint)session).TryDeliverMatchingSuccess(
+            matchingId, requestId, packet));
     }
 
     private static GameSession NewSession(TcpConnection connection, IMatchingManager matchingManager)
@@ -128,12 +139,22 @@ public sealed class UserServerMatchingReconciliationTests
 
     private sealed class ActiveTcpConnection : IDisposable
     {
+        private readonly Socket _client = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+
         public ActiveTcpConnection()
         {
+            using var listener = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+            listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+            listener.Listen(1);
+            _client.Connect(listener.LocalEndPoint!);
+            var socket = listener.Accept();
+            var sendArgs = new SocketAsyncEventArgs();
+            sendArgs.SetBuffer(new byte[Config.BUFFER_SIZE], 0, Config.BUFFER_SIZE);
+            sendArgs.Completed += (_, args) => Connection.ProcessSend(args);
             Connection.InitializeConnection(
-                new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp),
+                socket,
                 new SocketAsyncEventArgs(),
-                new SocketAsyncEventArgs(),
+                sendArgs,
                 static (connection, _, _) =>
                 {
                     connection.CloseTransport(static _ => { });
@@ -154,6 +175,8 @@ public sealed class UserServerMatchingReconciliationTests
         public void Dispose()
         {
             Connection.Disconnect();
+            _client.Dispose();
+            Assert.True(Connection.ReleaseTask.Wait(TimeSpan.FromSeconds(5)));
         }
     }
 }

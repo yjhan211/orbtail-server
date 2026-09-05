@@ -254,7 +254,7 @@ public partial class GameServer
                 other.IsEliminated = true;
                 using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(other.PlayerId);
                 foreach (var session in sessions)
-                    session.Send(leavePacket);
+                    session.TrySend(leavePacket);
             }
         }
 
@@ -1145,7 +1145,7 @@ public partial class GameServer
             using var packet = global::network.packets.Packet.Create(
                 (int)Protocol.G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST, session.PlayerId.Value);
             packet.SetBody(body);
-            session.Send(packet);
+            session.TrySend(packet);
         }
     }
 
@@ -1298,7 +1298,7 @@ public partial class GameServer
             if (!session.PlayerId.HasValue || session.CurrentArea != area)
                 continue;
             if (session.PlayerId.Value == victimId || session.PlayerId.Value == cutterId)
-                session.Send(packet);
+                session.TrySend(packet);
         }
     }
 
@@ -1819,7 +1819,7 @@ public partial class GameServer
         foreach (var session in sessions)
         {
             if (session.PlayerId.HasValue && session.CurrentArea == area)
-                session.Send(packet);
+                session.TrySend(packet);
         }
     }
 
@@ -2480,7 +2480,7 @@ public partial class GameServer
             foreach (var vfxSession in allSessions)
             {
                 if (!vfxSession.IsEliminated && vfxSession.CurrentArea == damage.Area)
-                    vfxSession.Send(vfxPacket);
+                    vfxSession.TrySend(vfxPacket);
             }
         }
 
@@ -2712,7 +2712,7 @@ public partial class GameServer
         using var packet = Packet.Create((int)Protocol.G_TO_C_JAM_RANKINGS);
         packet.SetBody(MessagePackSerializer.Serialize(message));
         foreach (var session in sessions)
-            session.Send(packet);
+            session.TrySend(packet);
     }
 
     // ===== 성장 카드 3택 (#226 단계 C) =====
@@ -3528,7 +3528,7 @@ public partial class GameServer
                 AreaType = attack.Area,
                 WeaponItemId = attack.WeaponItemId
             }));
-            observer.Send(packet);
+            observer.TrySend(packet);
         }
     }
 
@@ -3598,6 +3598,6 @@ public partial class GameServer
             remaining,
             spawned.ToList());
         foreach (var session in sessions.Where(session => session.CurrentArea == defeatedWave.AreaType))
-            session.Send(packet);
+            session.TrySend(packet);
     }
 }

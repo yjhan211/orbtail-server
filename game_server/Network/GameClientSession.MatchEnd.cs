@@ -80,7 +80,7 @@ public partial class GameClientSession
                 ResultPlayers = session.PlayerId == eliminatedPlayerId ? eliminatedResultPlayers : []
             };
             eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
-            session.Send(eliminatedPacket);
+            session.TrySend(eliminatedPacket);
         }
 
         // 세션 PlayerMatchStatus 동기화 (탈락자 → SPECTATING으로 관전 전환)
@@ -117,7 +117,7 @@ public partial class GameClientSession
         using (var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(eliminatedPlayerId))
         {
             foreach (var session in allSessions)
-                session.Send(leavePacket);
+                session.TrySend(leavePacket);
         }
 
         // 3. 게임 종료 판정
@@ -297,7 +297,7 @@ public partial class GameClientSession
                 {
                     using var resultPacket = Packet.Create((int)Protocol.G_TO_C_GAME_RESULT);
                     resultPacket.SetBody(plan.GameResultPayload);
-                    publication.Session.Send(resultPacket);
+                    publication.Session.TrySend(resultPacket);
                 });
         }
 
@@ -311,7 +311,7 @@ public partial class GameClientSession
                 {
                     using var endPacket = Packet.Create((int)Protocol.G_TO_C_GAME_END);
                     endPacket.SetBody(publication.GameEndPayload);
-                    publication.Session.Send(endPacket);
+                    publication.Session.TrySend(endPacket);
                 });
         }
 

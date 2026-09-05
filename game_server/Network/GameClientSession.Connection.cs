@@ -359,11 +359,11 @@ public partial class GameClientSession
         if (sessions.Count > 0)
         {
             using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s.CaptureGameObjectInfo()).ToList());
-            Send(others);
+            TrySend(others);
         }
 
         using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([CaptureGameObjectInfo()]))
-            foreach (var session in sessions) session.Send(mine);
+            foreach (var session in sessions) session.TrySend(mine);
 
         var bots = _botPlayerManager.GetBots(MatchingId)
             .Where(b => !b.IsEliminated && b.CurrentArea == CurrentArea).ToList();
@@ -372,12 +372,12 @@ public partial class GameClientSession
         if (objects.Count > 0)
         {
             using var packet = PacketMaker.G_TO_C_OBJECT_INFO(objects);
-            Send(packet);
+            TrySend(packet);
             foreach (var bot in bots)
             {
                 using var appearance = PacketMaker.G_TO_C_PLAYER_APPEARANCE(
                     bot.PlayerId, BotPlayerManager.BuildBotWearItems(bot));
-                Send(appearance);
+                TrySend(appearance);
             }
         }
         return Task.CompletedTask;
@@ -411,7 +411,7 @@ public partial class GameClientSession
             RemainingSeconds = snapshot.RemainingSeconds,
             ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
         }));
-        Send(packet);
+        TrySend(packet);
     }
 
     private Task HandleMatchStartReady()
@@ -429,7 +429,7 @@ public partial class GameClientSession
     {
         // Send the heartbeat response.
         using var packet = PacketMaker.G_TO_C_HEART_BEAT(DateTime.UtcNow);
-        Send(packet);
+        TrySend(packet);
 
         return Task.CompletedTask;
     }
@@ -591,7 +591,7 @@ public partial class GameClientSession
                 AreaType = closedArea,
                 SuppressAlert = true
             }));
-            Send(packet);
+            TrySend(packet);
         }
 
         foreach (var warningArea in snapshot.WarningAreas)
@@ -603,7 +603,7 @@ public partial class GameClientSession
                 SecondsRemaining = snapshot.WarningSeconds,
                 ClosureAtUnixMs = snapshot.ClosureAtUnixMs
             }));
-            Send(packet);
+            TrySend(packet);
         }
         var globalClosure = _areaClosureManager.GetGlobalClosureClientState(MatchingId);
         if (globalClosure.IsKnown)
@@ -617,7 +617,7 @@ public partial class GameClientSession
                 IsGlobalClosure = true,
                 IsGlobalClosureActive = globalClosure.IsActive
             }));
-            Send(packet);
+            TrySend(packet);
         }
 
         // AreaType.None is the generic next-warning clock.
@@ -628,7 +628,7 @@ public partial class GameClientSession
             SecondsRemaining = snapshot.NextWarningSeconds,
             ClosureAtUnixMs = snapshot.NextWarningAtUnixMs
         }));
-        Send(countdownPacket);
+        TrySend(countdownPacket);
 
         // #272 자기장: 수축 시계를 복원한다 — 클라 경계 렌더의 유일한 입력. 폐쇄 시계와
         // 같은 앵커(GameStartTime)라 별도 상태가 없다.
@@ -640,7 +640,7 @@ public partial class GameClientSession
             {
                 StartedAtUnixMs = new DateTimeOffset(closureState.GameStartTime).ToUnixTimeMilliseconds()
             }));
-            Send(fieldPacket);
+            TrySend(fieldPacket);
         }
     }
 

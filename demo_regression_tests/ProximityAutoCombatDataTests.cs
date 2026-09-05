@@ -216,7 +216,7 @@ public class ProximityAutoCombatDataTests
             "_orbVisualStates[key] = state;",
             "_orbVisualStates.TryRemove(key, out _);",
             "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
-            "publication.Recipient!.Send(packet);");
+            "publication.Recipient!.TrySend(packet);");
         Assert.DoesNotContain("catch", append);
         Assert.DoesNotContain("catch", commitAndDispatch);
     }
@@ -256,7 +256,7 @@ public class ProximityAutoCombatDataTests
             "publications.Add(SwarmOrbVisualPublication.Publish(",
             "CaptureSwarmOrbVisualItemIds(visualActor.OrbItemIds)");
         Assert.DoesNotContain("Packet.Create", prepare);
-        Assert.DoesNotContain(".Send(", prepare);
+        Assert.DoesNotContain(".TrySend(", prepare);
         Assert.DoesNotContain("_orbVisualStates[key] = state;", prepare);
         Assert.DoesNotContain("_orbVisualStates.TryRemove(key, out _);", prepare);
 
@@ -267,7 +267,7 @@ public class ProximityAutoCombatDataTests
             "_orbVisualStates.TryRemove(key, out _);",
             "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
             "OrbItemIds = publication.OrbItemIds.ToList()",
-            "publication.Recipient!.Send(packet);");
+            "publication.Recipient!.TrySend(packet);");
         Assert.DoesNotContain("catch", dispatch);
     }
 

@@ -451,7 +451,7 @@ PlayerInGameInventory inventory)
             BodyCorruption = publication.BodyCorruption,
             ArmorMask = publication.ArmorMask
         }));
-        publication.Recipient!.Send(packet);
+        publication.Recipient!.TrySend(packet);
     }
 
     private static ImmutableArray<int> CaptureSwarmOrbVisualItemIds(IEnumerable<int> orbItemIds) =>

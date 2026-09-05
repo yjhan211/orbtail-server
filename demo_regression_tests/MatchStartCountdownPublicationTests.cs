@@ -58,7 +58,7 @@ public sealed class MatchStartCountdownPublicationTests
             "RemainingSeconds = snapshot.RemainingSeconds",
             "ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()",
             "foreach (var session in matchingSessions)",
-            "session.Send(packet);");
+            "session.TrySend(packet);");
         Assert.DoesNotContain("anchorSession.DisconnectForAdmissionFailure();", broadcast);
 
         // 매치 틱은 잠금 안에서 카운트다운을 먼저 보내고 전투·봇 걸음을 잇는다.
@@ -557,12 +557,13 @@ public sealed class MatchStartCountdownPublicationTests
             }
         }
 
-        public override void Send(Packet packet)
+        public override bool TrySend(Packet packet)
         {
             SendCount++;
             if (_throwOnSend)
                 throw new InvalidOperationException("countdown transport failed");
             DeliveredWireBytes.Add(packet.ToBytes());
+            return true;
         }
     }
 }

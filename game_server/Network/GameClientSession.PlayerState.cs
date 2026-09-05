@@ -60,7 +60,7 @@ public partial class GameClientSession
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea);
 
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, msg.State);
-        foreach (var session in sameAreaSessions) session.Send(packet);
+        foreach (var session in sameAreaSessions) session.TrySend(packet);
 
         Logger.LogDebug("Broadcasted PLAYER_STATE to {Count} players in Area {Area}", sameAreaSessions.Count,
             CurrentArea);
@@ -276,7 +276,7 @@ public partial class GameClientSession
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
 
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, state);
-        foreach (var session in sameAreaSessions) session.Send(packet);
+        foreach (var session in sameAreaSessions) session.TrySend(packet);
 
         Logger.LogInformation(
             "Server-driven SLEEP state={Sleep} for Player {PlayerId}, broadcasted to {Count} players in Area {Area}",
@@ -295,12 +295,12 @@ public partial class GameClientSession
         var inventory = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
         var items = inventory.GetAllItems();
         using var packet = PacketMaker.G_TO_C_INGAME_INVENTORY_LIST(items);
-        Send(packet);
+        TrySend(packet);
 
         var equippedItem = inventory.GetEquippedBattleItem();
         using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
             true, equippedItem?.ItemUid ?? 0, ErrorCode.SUCCESS);
-        Send(equippedPacket);
+        TrySend(equippedPacket);
 
         Logger.LogDebug("Sent InGameInventory list to PlayerId={PlayerId}, ItemCount={Count}", PlayerId, items.Count);
     }
@@ -313,7 +313,7 @@ public partial class GameClientSession
         if (!PlayerId.HasValue) return;
 
         using var packet = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE([item]);
-        Send(packet);
+        TrySend(packet);
 
         Logger.LogDebug(
             "Sent InGameInventory update to PlayerId={PlayerId}, ItemUid={ItemUid}, ItemId={ItemId}, Count={Count}",
@@ -330,7 +330,7 @@ public partial class GameClientSession
         {
             using var failPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid,
                 ErrorCode.INVALID_GAME_STATE);
-            Send(failPacket);
+            TrySend(failPacket);
             return;
         }
 
@@ -340,7 +340,7 @@ public partial class GameClientSession
         if (itemInfo == null)
         {
             using var failPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.FATAL);
-            Send(failPacket);
+            TrySend(failPacket);
             Logger.LogWarning("Player {PlayerId} item not found: ItemUid={ItemUid}", PlayerId, msg.ItemUid);
             return;
         }
@@ -353,13 +353,13 @@ public partial class GameClientSession
             {
                 using var failPacket =
                     PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.ITEM_NOT_USABLE);
-                Send(failPacket);
+                TrySend(failPacket);
                 return;
             }
 
             using var resultPacket =
                 PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, equippedItem!.ItemUid, ErrorCode.SUCCESS);
-            Send(resultPacket);
+            TrySend(resultPacket);
             _gameEventLogManager.LogOrbBoardTransition(
                 MatchingId, PlayerId.Value, inventory.GetAllItems(), equippedItem.ItemId,
                 CurrentArea.ToString(), "equip", isBot: false);
@@ -376,7 +376,7 @@ public partial class GameClientSession
         {
             using var failPacket =
                 PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.INVALID_REQUEST);
-            Send(failPacket);
+            TrySend(failPacket);
             return;
         }
 
@@ -393,7 +393,7 @@ public partial class GameClientSession
 
             // 사용 결과 전송
             using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS);
-            Send(resultPacket);
+            TrySend(resultPacket);
 
             Logger.LogInformation("Player {PlayerId} used reusable InGameItem: ItemUid={ItemUid}, ItemId={ItemId}",
                 PlayerId, msg.ItemUid, itemId);
@@ -417,7 +417,7 @@ public partial class GameClientSession
                 // 사용 결과 전송
                 using var resultPacket =
                     PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS);
-                Send(resultPacket);
+                TrySend(resultPacket);
 
                 Logger.LogInformation(
                     "Player {PlayerId} used InGameItem: ItemUid={ItemUid}, ItemId={ItemId}, Count={Count}",
@@ -427,7 +427,7 @@ public partial class GameClientSession
             {
                 // 아이템 사용 실패
                 using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.FATAL);
-                Send(resultPacket);
+                TrySend(resultPacket);
 
                 Logger.LogWarning("Player {PlayerId} failed to use InGameItem: ItemUid={ItemUid}, Count={Count}",
                     PlayerId, msg.ItemUid, msg.Count);
@@ -570,7 +570,7 @@ public partial class GameClientSession
     {
         using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(Stamina, staminaDelta, Corruption, corruptionDelta,
             staminaConverted);
-        Send(packet);
+        TrySend(packet);
         Logger.LogDebug(
             "Sent PLAYER_STATS_UPDATE to Player {PlayerId}: Stamina={Stamina} ({StaminaDelta:+#;-#;0}), Corruption={Corruption} ({CorruptionDelta:+#;-#;0}), Converted={Converted}",
             PlayerId, Stamina, staminaDelta, Corruption, corruptionDelta, staminaConverted);
@@ -582,7 +582,7 @@ public partial class GameClientSession
     private void SendAreaExitBlocked(AreaType areaType, Cell correctedCell)
     {
         using var packet = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(areaType, correctedCell);
-        Send(packet);
+        TrySend(packet);
         Logger.LogDebug("Sent AREA_EXIT_BLOCKED to Player {PlayerId}: Area={Area}, CorrectedCell=({X},{Y})",
             PlayerId, areaType, correctedCell.X, correctedCell.Y);
     }

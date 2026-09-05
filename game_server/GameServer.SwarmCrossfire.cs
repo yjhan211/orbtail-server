@@ -240,7 +240,7 @@ public partial class GameServer
         foreach (var session in allSessions)
         {
             if (session.PlayerId.HasValue && !session.IsEliminated && session.CurrentArea == attack.Area)
-                session.Send(packet);
+                session.TrySend(packet);
         }
     }
 
@@ -381,7 +381,7 @@ public partial class GameServer
         foreach (var session in allSessions)
         {
             if (session.PlayerId.HasValue && !session.IsEliminated && session.CurrentArea == shape.Area)
-                session.Send(packet);
+                session.TrySend(packet);
         }
     }
 

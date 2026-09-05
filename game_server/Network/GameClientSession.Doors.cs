@@ -22,7 +22,7 @@ public partial class GameClientSession
         {
             using var lockedPacket =
                 PacketMaker.G_TO_C_DOOR_STATE_UPDATE(msg.DoorId, false, ErrorCode.INVALID_GAME_STATE);
-            Send(lockedPacket);
+            TrySend(lockedPacket);
             return Task.CompletedTask;
         }
 
@@ -34,7 +34,7 @@ public partial class GameClientSession
             {
                 using var missingDoorPacket =
                     PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.INVALID_GAME_STATE);
-                Send(missingDoorPacket);
+                TrySend(missingDoorPacket);
                 return Task.CompletedTask;
             }
 
@@ -49,7 +49,7 @@ public partial class GameClientSession
             {
                 using var closedAreaPacket =
                     PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.INVALID_GAME_STATE);
-                Send(closedAreaPacket);
+                TrySend(closedAreaPacket);
                 return Task.CompletedTask;
             }
 
@@ -60,7 +60,7 @@ public partial class GameClientSession
             {
                 using var gatedPacket =
                     PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.DOOR_KEY_MISSING);
-                Send(gatedPacket);
+                TrySend(gatedPacket);
                 return Task.CompletedTask;
             }
 
@@ -70,7 +70,7 @@ public partial class GameClientSession
                 Logger.LogDebug("Player {PlayerId} tried to open already open door: DoorId={DoorId}", PlayerId, doorId);
                 using var alreadyOpenPacket =
                     PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.DOOR_ALREADY_OPEN);
-                Send(alreadyOpenPacket);
+                TrySend(alreadyOpenPacket);
                 return Task.CompletedTask;
             }
 
@@ -87,7 +87,7 @@ public partial class GameClientSession
                         PlayerId, doorId, doorInfo.RequiredItemId);
                     using var noKeyPacket =
                         PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.DOOR_KEY_MISSING);
-                    Send(noKeyPacket);
+                    TrySend(noKeyPacket);
                     return Task.CompletedTask;
                 }
             }
@@ -100,7 +100,7 @@ public partial class GameClientSession
             using var updatePacket =
                 PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId.Value);
             var matchingSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
-            foreach (var session in matchingSessions) session.Send(updatePacket);
+            foreach (var session in matchingSessions) session.TrySend(updatePacket);
         }
         catch (Exception ex)
         {
@@ -119,7 +119,7 @@ public partial class GameClientSession
 
         var openDoors = _doorStateManager.GetOpenDoors(MatchingId);
         using var packet = PacketMaker.G_TO_C_DOOR_STATE_LIST(openDoors);
-        Send(packet);
+        TrySend(packet);
         Logger.LogDebug("Sent DOOR_STATE_LIST to Player {PlayerId}: {Count} open doors", PlayerId, openDoors.Count);
     }
 }

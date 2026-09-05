@@ -70,7 +70,7 @@ public partial class TcpConnection
         TrySend(msg);
     }
 
-    public bool TrySend(Packet msg)
+    public virtual bool TrySend(Packet msg)
     {
         var clone = ClonePacket(msg);
         var result = _sendQueue.TryEnqueue(

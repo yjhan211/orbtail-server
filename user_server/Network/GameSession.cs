@@ -18,19 +18,20 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
     private readonly IAccountTokenService _accountTokenService;
     private readonly IRedLockFactory _redLock;
     private readonly IPlayerSessionOwnershipStore _sessionOwnership;
+    private readonly IPlayerService _playerService;
+
+    private readonly Func<long, GameSession, (bool Accepted, Action? DisconnectSuperseded)> _onSessionRegistered;
+    private readonly Action<long, long> _announceLogin;
+    private readonly Func<long, GameSession, bool> _onSessionRemoved;
+
     private readonly string _nodeId;
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
+
+    private readonly MatchingAssignment _matching = new();
     private PlayerSessionLease? _sessionLease;
     private CancellationTokenSource? _ownershipRenewalCts;
     private Task _ownershipRenewalTask = Task.CompletedTask;
     private long _sessionGeneration;
-    private readonly Func<long, GameSession, (bool Accepted, Action? DisconnectSuperseded)> _onSessionRegistered;
-    private readonly Action<long, long> _announceLogin;
-    private readonly Func<long, GameSession, bool> _onSessionRemoved;
-    private readonly IPlayerService _playerService;
-    private readonly object _matchingAssignmentLock = new();
-    private string? _activeMatchingRequestId;
-    private long _assignedMatchingId;
 
     public GameSession(
         TcpConnection connection,
@@ -65,222 +66,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
     private new long? PlayerId { get; set; }
     private PlayerInfo? PlayerInfo { get; set; }
     internal long SessionGeneration => Volatile.Read(ref _sessionGeneration);
-    long IMatchingSessionEndpoint.SessionGeneration => SessionGeneration;
-    internal string? ActiveMatchingRequestId
-    {
-        get
-        {
-            lock (_matchingAssignmentLock)
-                return _activeMatchingRequestId;
-        }
-    }
-
-    internal bool TryAssignMatching(long matchingId, string requestId)
-    {
-        if (matchingId <= 0 ||
-            !MatchingRequestTokens.IsSafeTokenComponent(requestId))
-            return false;
-
-        lock (_matchingAssignmentLock)
-        {
-            if (Connection.IsReleased ||
-                !string.Equals(_activeMatchingRequestId, requestId, StringComparison.Ordinal) ||
-                (_assignedMatchingId != 0 && _assignedMatchingId != matchingId))
-                return false;
-
-            _assignedMatchingId = matchingId;
-            return true;
-        }
-    }
-
-    internal void ClearMatchingAssignment(long matchingId)
-    {
-        if (matchingId <= 0)
-            return;
-
-        lock (_matchingAssignmentLock)
-        {
-            if (_assignedMatchingId == matchingId)
-            {
-                _assignedMatchingId = 0;
-                _activeMatchingRequestId = null;
-            }
-        }
-    }
-
-    private long TakeMatchingAssignment()
-    {
-        lock (_matchingAssignmentLock)
-        {
-            long matchingId = _assignedMatchingId;
-            _assignedMatchingId = 0;
-            _activeMatchingRequestId = null;
-            return matchingId;
-        }
-    }
-
-    /// <summary>
-    ///     새 매칭 요청 fence를 만든다. NATS의 session.clear가 유실돼 로컬 배정만 남았으면 Redis claim을
-    ///     다시 확인하고, claim이 완전히 사라진 경우에만 stale 배정을 지운 뒤 같은 요청을 계속한다.
-    /// </summary>
-    internal async Task<string?> TryBeginMatchingRequestAsync(long playerId)
-    {
-        long assignedMatchingId;
-        lock (_matchingAssignmentLock)
-        {
-            if (Connection.IsReleased)
-                return null;
-
-            assignedMatchingId = _assignedMatchingId;
-            if (assignedMatchingId == 0)
-            {
-                if (_activeMatchingRequestId != null)
-                    return null;
-
-                _activeMatchingRequestId = Guid.NewGuid().ToString("N");
-                return _activeMatchingRequestId;
-            }
-        }
-
-        // claim 값이 다른 경우도 다른 매칭 작업이 진행 중인 것으로 보고 보수적으로 배정을 유지한다.
-        if (await _matchingManager.HasMatchingClaimAsync(playerId))
-            return null;
-
-        string? requestId;
-        lock (_matchingAssignmentLock)
-        {
-            if (Connection.IsReleased)
-                return null;
-
-            // Redis를 기다리는 동안 더 새로운 배정이 생겼으면 그 상태를 건드리지 않는다.
-            if (_assignedMatchingId != 0 && _assignedMatchingId != assignedMatchingId)
-                return null;
-
-            if (_assignedMatchingId == assignedMatchingId)
-            {
-                _assignedMatchingId = 0;
-                _activeMatchingRequestId = null;
-            }
-
-            // clear 알림 등 다른 경로가 먼저 정리했어도 새 요청이 이미 시작됐다면 끼어들지 않는다.
-            if (_assignedMatchingId != 0 || _activeMatchingRequestId != null)
-                return null;
-
-            requestId = Guid.NewGuid().ToString("N");
-            _activeMatchingRequestId = requestId;
-        }
-
-        Logger.LogInformation(
-            "Cleared stale local matching assignment after Redis claim disappeared: PlayerId={PlayerId}, MatchingId={MatchingId}",
-            playerId,
-            assignedMatchingId);
-        return requestId;
-    }
-
-    private bool TryClearMatchingRequest(string requestId)
-    {
-        lock (_matchingAssignmentLock)
-        {
-            if (!string.Equals(_activeMatchingRequestId, requestId, StringComparison.Ordinal))
-                return false;
-
-            _activeMatchingRequestId = null;
-            return true;
-        }
-    }
-
-    private bool TryFailMatchingRequest(string requestId, long matchingId)
-    {
-        lock (_matchingAssignmentLock)
-        {
-            if (!string.Equals(_activeMatchingRequestId, requestId, StringComparison.Ordinal) ||
-                (_assignedMatchingId != 0 && _assignedMatchingId != matchingId))
-            {
-                return false;
-            }
-
-            _activeMatchingRequestId = null;
-            if (_assignedMatchingId == matchingId)
-                _assignedMatchingId = 0;
-            return true;
-        }
-    }
-
-    private bool TryFailMatchingAdmission(long matchingId)
-    {
-        lock (_matchingAssignmentLock)
-        {
-            if (_assignedMatchingId != matchingId)
-                return false;
-
-            _assignedMatchingId = 0;
-            _activeMatchingRequestId = null;
-            return true;
-        }
-    }
-
-    internal bool TrySend(Packet packet)
-    {
-        try
-        {
-            bool sent = Connection.TrySend(packet);
-            if (sent && packet.ProtocolId != (int)Protocol.U_TO_C_HEART_BEAT)
-                Logger.LogInformation("Packet sent: Protocol={Protocol}, PlayerId={PlayerId}",
-                    (Protocol)packet.ProtocolId, PlayerId);
-            return sent;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to send packet: PlayerId={PlayerId}", PlayerId);
-            return false;
-        }
-    }
-
-    /// <summary>
-    ///     매칭 성공 패킷을 보낸다. 요청 ID가 현재 매칭 요청과 다르거나 전송에 실패하면 배정을 남기지 않는다.
-    /// </summary>
-    internal bool TryDeliverMatchingSuccess(long matchingId, string requestId, Packet packet)
-    {
-        if (!TryAssignMatching(matchingId, requestId))
-            return false;
-        if (TrySend(packet))
-            return true;
-
-        ClearMatchingAssignment(matchingId);
-        return false;
-    }
-
-    /// <summary>
-    ///     매칭 롤백 실패 패킷을 보낸다. 요청 ID가 현재 매칭 요청과 다르면 보내지 않는다.
-    /// </summary>
-    internal bool TryDeliverMatchingFailed(long matchingId, string requestId, Packet packet)
-    {
-        if (!TryFailMatchingRequest(requestId, matchingId))
-            return false;
-        return TrySend(packet);
-    }
-
-    /// <summary>
-    ///     입장 실패 패킷을 보낸다. 이 세션이 해당 매치에 배정돼 있지 않으면 보낼 것이 없으므로 성공으로 본다.
-    /// </summary>
-    internal bool TryDeliverAdmissionFailed(long matchingId, Packet packet)
-    {
-        if (!TryFailMatchingAdmission(matchingId))
-            return true;
-        return TrySend(packet);
-    }
-
-    // 라우터 port — 세션이 다른 User Server에 있을 때 같은 fence 규칙으로 대신 처리하게 한다.
-    bool IMatchingSessionEndpoint.TryDeliverMatchingSuccess(long matchingId, string requestId, Packet packet) =>
-        TryDeliverMatchingSuccess(matchingId, requestId, packet);
-
-    bool IMatchingSessionEndpoint.TryDeliverMatchingFailed(long matchingId, string requestId, Packet packet) =>
-        TryDeliverMatchingFailed(matchingId, requestId, packet);
-
-    bool IMatchingSessionEndpoint.TryDeliverAdmissionFailed(long matchingId, Packet packet) =>
-        TryDeliverAdmissionFailed(matchingId, packet);
-
-    void IMatchingSessionEndpoint.ClearMatchingAssignment(long matchingId) => ClearMatchingAssignment(matchingId);
+    internal string? ActiveMatchingRequestId => _matching.ActiveRequestId;
 
     protected override void InitializeProtocolHandlers()
     {
@@ -288,8 +74,6 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         ProtocolRouter.RegisterHandler(Protocol.C_TO_U_HEART_BEAT, HandleHeartBeat);
         ProtocolRouter.RegisterHandler(Protocol.C_TO_U_LOGIN,
             async bytes => await HandleMessage<C_TO_U_LOGIN>(bytes, Login));
-        // 매치 중 객체 정보는 GameServer의 G_TO_C_OBJECT_INFO로 전달한다.
-        // ProtocolRouter.RegisterHandler(Protocol.C_TO_U_PLAYER_INFO, async (bytes) => await HandleMessage<C_TO_U_PLAYER_INFO>(bytes, GetPlayerInfo));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_U_WEAR_ITEM,
             async bytes => await HandleMessage<C_TO_U_WEAR_ITEM>(bytes, WearItem));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_U_USE_ITEM,
@@ -307,7 +91,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
     private Task HandleHeartBeat(byte[] _)
     {
         using var packet = PacketMaker.U_TO_C_HEART_BEAT(DateTime.UtcNow);
-        Send(packet);
+        TrySend(packet);
         return Task.CompletedTask;
     }
 
@@ -325,8 +109,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
             Logger.LogInformation("Login request received: HasAccountCredential={HasAccountCredential}",
                 !string.IsNullOrWhiteSpace(msg.AccountToken));
 
-            AccountTokenResolution account = await _accountTokenService.ResolveAsync(msg.AccountToken);
-            long playerId = account.PlayerId;
+            (long playerId, string accountToken, bool isNewAccount, _) = await _accountTokenService.ResolveAsync(msg.AccountToken);
 
             PlayerId = playerId;
             Logger.LogInformation("PlayerId set to {PlayerId}", PlayerId);
@@ -339,7 +122,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
 
                 if (PlayerInfo == null)
                 {
-                    if (!account.IsNewAccount)
+                    if (!isNewAccount)
                     {
                         Logger.LogWarning(
                             "Recovering a provisioned account with missing PlayerInfo: PlayerId={PlayerId}",
@@ -362,7 +145,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
                 if (PlayerInfo.IsNew) await SetupNewPlayer(PlayerInfo);
             }
 
-            PlayerSessionLease? sessionLease = await _sessionOwnership.TryAcquireAsync(
+            var sessionLease = await _sessionOwnership.TryAcquireAsync(
                 PlayerId.Value,
                 _nodeId,
                 _sessionId);
@@ -380,7 +163,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
 
             // 로그인 응답 전송
             Logger.LogInformation("Creating login packet for PlayerId={PlayerId}", PlayerId);
-            using var loginPacket = PacketMaker.U_TO_C_LOGIN(PlayerInfo, account.AccountToken);
+            using var loginPacket = PacketMaker.U_TO_C_LOGIN(PlayerInfo, accountToken);
             Logger.LogInformation("Sending U_TO_C_LOGIN packet for PlayerId={PlayerId}, Packet size={Size}", PlayerId,
                 loginPacket.ToBytes().Length);
             (bool Accepted, Action? DisconnectSuperseded) registration = default;
@@ -402,14 +185,14 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
             Logger.LogInformation(
                 "Session registered for PlayerId={PlayerId}, Generation={Generation}",
                 PlayerId, SessionGeneration);
-            Send(loginPacket);
+            TrySend(loginPacket);
 
             // 인벤토리 아이템 리스트 전송
             if (PlayerInfo.InventoryInfo.ItemDict.Count > 0)
             {
                 using var itemListPacket = PacketMaker.U_TO_C_INVENTORY_ITEM_LIST(
                     new Dictionary<long, ItemInfo>(PlayerInfo.InventoryInfo.ItemDict));
-                Send(itemListPacket);
+                TrySend(itemListPacket);
 
                 Logger.LogInformation(
                     "Sent inventory item list: PlayerId={PlayerId}, ItemCount={Count}",
@@ -534,7 +317,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         if (errorCode == ErrorCode.SUCCESS && playerInfo != null)
         {
             using var packet = PacketMaker.U_TO_C_WEAR_ITEM(playerInfo);
-            Send(packet);
+            TrySend(packet);
         }
         else
         {
@@ -551,7 +334,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         if (errorCode == ErrorCode.SUCCESS && playerInfo != null)
         {
             using var packet = PacketMaker.U_TO_C_USE_ITEM(playerInfo);
-            Send(packet);
+            TrySend(packet);
         }
         else
         {
@@ -570,7 +353,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         {
             using var alreadyMatchingPacket =
                 PacketMaker.U_TO_C_MATCHING(ErrorCode.MATCHING_ALREADY_IN_QUEUE);
-            Send(alreadyMatchingPacket);
+            TrySend(alreadyMatchingPacket);
             return;
         }
 
@@ -581,14 +364,40 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         }
         catch
         {
-            TryClearMatchingRequest(requestId);
+            _matching.ClearRequest(requestId);
             throw;
         }
         if (errorCode != ErrorCode.SUCCESS)
-            TryClearMatchingRequest(requestId);
+            _matching.ClearRequest(requestId);
 
         using var packet = PacketMaker.U_TO_C_MATCHING(errorCode);
-        Send(packet);
+        TrySend(packet);
+    }
+
+    internal async Task<string?> TryBeginMatchingRequestAsync(long playerId)
+    {
+        if (Connection.IsReleased)
+            return null;
+        if (_matching.TryBegin(out string? requestId, out long assignedMatchingId))
+            return requestId;
+        if (assignedMatchingId == 0)
+            return null;
+
+        if (await _matchingManager.HasMatchingClaimAsync(playerId))
+            return null;
+
+        if (Connection.IsReleased)
+            return null;
+        requestId = _matching.TryReplaceStale(assignedMatchingId);
+        if (requestId == null)
+            return null;
+
+        Logger.LogInformation(
+            "Cleared stale local matching assignment after Redis claim disappeared: PlayerId={PlayerId}, MatchingId={MatchingId}",
+            playerId,
+            assignedMatchingId);
+
+        return requestId;
     }
 
     private async Task HandleMatchingCancel()
@@ -598,13 +407,56 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         string? requestId = ActiveMatchingRequestId;
         var errorCode = await _matchingManager.CancelMatching(PlayerId.Value);
         if (errorCode == ErrorCode.SUCCESS && requestId != null)
-            TryClearMatchingRequest(requestId);
+            _matching.ClearRequest(requestId);
 
         using var packet = PacketMaker.U_TO_C_MATCHING_CANCEL(errorCode);
-        Send(packet);
+        TrySend(packet);
     }
 
+    bool IMatchingSessionEndpoint.TryDeliverMatchingSuccess(long matchingId, string requestId, Packet packet)
+    {
+        if (Connection.IsReleased || !_matching.TryAssign(matchingId, requestId))
+            return false;
+        if (TrySend(packet))
+            return true;
+
+        _matching.Clear(matchingId);
+        return false;
+    }
+
+    bool IMatchingSessionEndpoint.TryDeliverMatchingFailed(long matchingId, string requestId, Packet packet)
+    {
+        if (!_matching.FailRequest(requestId, matchingId))
+            return false;
+        return TrySend(packet);
+    }
+
+    bool IMatchingSessionEndpoint.TryDeliverAdmissionFailed(long matchingId, Packet packet)
+    {
+        if (!_matching.FailAdmission(matchingId))
+            return true;
+        return TrySend(packet);
+    }
+
+    void IMatchingSessionEndpoint.ClearMatchingAssignment(long matchingId) => _matching.Clear(matchingId);
+
     // ========== 기타 ==========
+
+    public override bool TrySend(Packet packet)
+    {
+        try
+        {
+            bool sent = Connection.TrySend(packet);
+            if (sent && packet.ProtocolId != (int)Protocol.U_TO_C_HEART_BEAT)
+                Logger.LogInformation("Packet sent: Protocol={Protocol}, PlayerId={PlayerId}", (Protocol)packet.ProtocolId, PlayerId);
+            return sent;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to send packet: PlayerId={PlayerId}", PlayerId);
+            return false;
+        }
+    }
 
     private void ReceiveDuplicate()
     {
@@ -628,20 +480,6 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         ReceiveDuplicate();
     }
 
-    public override void Send(Packet packet)
-    {
-        try
-        {
-            Connection.Send(packet);
-            if (packet.ProtocolId != (int)Protocol.U_TO_C_HEART_BEAT)
-                Logger.LogInformation("Packet sent: Protocol={Protocol}, PlayerId={PlayerId}",
-                    (Protocol)packet.ProtocolId, PlayerId);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to send packet: PlayerId={PlayerId}", PlayerId);
-        }
-    }
 
     private void Disconnect()
     {
@@ -653,7 +491,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         try
         {
             using var packet = PacketMaker.U_TO_C_ERROR(errorCode, message);
-            Send(packet);
+            TrySend(packet);
         }
         catch (Exception ex)
         {
@@ -685,7 +523,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
     private async Task RenewOwnershipAsync(PlayerSessionLease lease, CancellationToken cancellationToken)
     {
         using var timer = new PeriodicTimer(_sessionOwnership.RenewalInterval);
-        DateTimeOffset lastSuccessfulRenewal = DateTimeOffset.UtcNow;
+        var lastSuccessfulRenewal = DateTimeOffset.UtcNow;
 
         try
         {
@@ -749,7 +587,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
 
     private async Task CleanupRemovedSessionAsync(long playerId, bool cleanupMatching)
     {
-        CancellationTokenSource? renewalCts = Interlocked.Exchange(ref _ownershipRenewalCts, null);
+        var renewalCts = Interlocked.Exchange(ref _ownershipRenewalCts, null);
         if (renewalCts != null)
         {
             await renewalCts.CancelAsync();
@@ -763,7 +601,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
             }
         }
 
-        PlayerSessionLease? lease = Interlocked.Exchange(ref _sessionLease, null);
+        var lease = Interlocked.Exchange(ref _sessionLease, null);
         if (lease != null)
         {
             bool released = await _sessionOwnership.TryReleaseAsync(lease);
@@ -775,7 +613,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         if (!cleanupMatching)
             return;
 
-        long matchingId = TakeMatchingAssignment();
+        long matchingId = _matching.Take();
         if (matchingId > 0)
             await _matchingManager.ReleaseMatchingClaimAsync(playerId, matchingId);
         else
@@ -786,5 +624,4 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
     {
         Logger.LogInformation("Session disconnected: PlayerId={PlayerId}", PlayerId);
     }
-
 }

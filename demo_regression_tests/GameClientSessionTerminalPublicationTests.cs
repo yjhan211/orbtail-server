@@ -521,7 +521,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         public IReadOnlyList<Protocol> DeliveredProtocols =>
             Deliveries.Select(delivery => delivery.Protocol).ToList();
 
-        public override void Send(Packet msg)
+        public override bool TrySend(Packet msg)
         {
             msg.RecordSize();
             var protocol = (Protocol)msg.ProtocolId;
@@ -533,6 +533,7 @@ public sealed class GameClientSessionTerminalPublicationTests
 
             byte[] wireBytes = msg.ToBytes();
             onDelivered(PlayerId, protocol, wireBytes);
+            return true;
         }
 
         public void RecordDelivery(TerminalDelivery delivery)

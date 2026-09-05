@@ -49,7 +49,7 @@ public partial class GameServer
             {
                 if (!preMatch && session.CurrentArea != areaSnapshot.Area)
                     continue;
-                session.Send(packet);
+                session.TrySend(packet);
             }
         }
     }

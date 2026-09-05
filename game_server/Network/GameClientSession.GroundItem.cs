@@ -225,7 +225,7 @@ public partial class GameClientSession
             {
                 using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
                     true, addedItem.ItemUid, ErrorCode.SUCCESS);
-                Send(equippedPacket);
+                TrySend(equippedPacket);
             }
         }
 
@@ -259,7 +259,7 @@ public partial class GameClientSession
         JamCount += amount;
         using var packet = Packet.Create((int)Protocol.G_TO_C_JAM_STATE, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_JAM_STATE { JamCount = JamCount }));
-        Send(packet);
+        TrySend(packet);
     }
 
     /// <summary>열쇠 (#222 M4): 무료 소환 충전 획득 — 상태를 소유자에게 즉시 동기한다.</summary>
@@ -282,7 +282,7 @@ public partial class GameClientSession
         {
             Charges = FreeSummonCharges
         }));
-        Send(packet);
+        TrySend(packet);
     }
 
     internal void ResetJam(bool notify = false)
@@ -293,7 +293,7 @@ public partial class GameClientSession
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_JAM_STATE, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_JAM_STATE { JamCount = 0 }));
-        Send(packet);
+        TrySend(packet);
     }
 
     private Task HandleDropGroundItem(C_TO_G_DROP_GROUND_ITEM msg)
@@ -361,7 +361,7 @@ public partial class GameClientSession
         var items = _groundItemManager.GetSnapshot(MatchingId, area);
         int remaining = _areaItemStockManager.GetRemainingCount(MatchingId, (int)area);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, remaining, items.ToList());
-        Send(packet);
+        TrySend(packet);
     }
 
     private void SendAreaStockStateSnapshot()
@@ -371,7 +371,7 @@ public partial class GameClientSession
         var message = BuildAreaStockStateMessage();
         using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_STOCK_STATE);
         packet.SetBody(MessagePackSerializer.Serialize(message));
-        Send(packet);
+        TrySend(packet);
     }
 
     private G_TO_C_AREA_STOCK_STATE BuildAreaStockStateMessage()
@@ -396,7 +396,7 @@ public partial class GameClientSession
         var sessions = GetSessionsInArea(
             _getSessionsByInstance(CurrentMapId, MatchingId), area, excludeSelf: false);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, spawned.ToList());
-        foreach (var session in sessions) session.Send(packet);
+        foreach (var session in sessions) session.TrySend(packet);
     }
 
     private void BroadcastGroundItemRemoved(GroundItemInfo item, bool autoUsed)
@@ -406,7 +406,7 @@ public partial class GameClientSession
             (AreaType)item.AreaType,
             excludeSelf: false);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(item.GroundItemUid, PlayerId ?? 0, autoUsed);
-        foreach (var session in sessions) session.Send(packet);
+        foreach (var session in sessions) session.TrySend(packet);
     }
 
     private void SendGroundItemPickupResult(long groundItemUid, int itemId, bool success, bool autoUsed,
@@ -414,6 +414,6 @@ public partial class GameClientSession
     {
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_PICKUP_RESULT(
             groundItemUid, itemId, success, autoUsed, errorCode);
-        Send(packet);
+        TrySend(packet);
     }
 }

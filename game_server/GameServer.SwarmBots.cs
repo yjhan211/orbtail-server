@@ -70,7 +70,7 @@ public partial class GameServer
 
                 using var openPacket =
                     PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, bot.PlayerId);
-                foreach (var session in sessions) session.Send(openPacket);
+                foreach (var session in sessions) session.TrySend(openPacket);
                 logger.LogInformation(
                     "Swarm bot unlocked door: MatchingId={MatchingId}, BotId={BotId}, DoorId={DoorId}",
                     matchingId, bot.PlayerId, doorId);
@@ -217,7 +217,7 @@ public partial class GameServer
                 (int)bot.CurrentArea, remaining, dropped.ToList());
             foreach (var session in sessions)
                 if (session.PlayerId.HasValue && session.CurrentArea == bot.CurrentArea)
-                    session.Send(packet);
+                    session.TrySend(packet);
         }
 
         BroadcastSwarmExploreConsumed(spotId, Config.SWARM_EXPLORE_REGEN_SECONDS, sessions);

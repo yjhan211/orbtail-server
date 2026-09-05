@@ -159,7 +159,7 @@ public partial class GameClientSession
         using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(
             PlayerId.Value, area, SwarmAfterimageMonsterAttackDealtEventType, flags,
             weaponItemId, damage, monsterId);
-        Send(packet);
+        TrySend(packet);
     }
     // displayDamage: 오브 HP 모델에서 오염 델타(연출용 1)와 클라 표시 피해량(실제 오브 피해)을 분리한다.
     internal void ApplySwarmAfterimageMonsterHit(int monsterId, int damage, int? displayDamage = null)

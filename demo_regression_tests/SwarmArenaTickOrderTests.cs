@@ -149,7 +149,7 @@ public sealed class SwarmArenaTickOrderTests
             "GrantSwarmStartingOrbs(matchingId, session.PlayerId.Value, session);",
             "session.SendSummonStoneState();",
             "SetupSwarmCutDummy(matchingId);",
-            "session.Send(leavePacket);",
+            "session.TrySend(leavePacket);",
             "_swarmMonsterDirector.Tick(",
             "if (!MatchStartGate.IsGameplayActive(matchingId))",
             "UpdateSwarmOrbTrails(",
@@ -227,7 +227,7 @@ public sealed class SwarmArenaTickOrderTests
             "CommitAndDispatchOrbVisualStatePublication(publication)",
             "_orbVisualStates[key] = state;",
             "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
-            "publication.Recipient!.Send(packet);");
+            "publication.Recipient!.TrySend(packet);");
         Assert.False(ContainsCodeToken(orbPublicationSteps, "catch"));
 
         string botElimination = ReadMethodSlice(
@@ -239,7 +239,7 @@ public sealed class SwarmArenaTickOrderTests
             "try",
             "_matchRosterManager.TryEliminatePlayer(",
             "DropBotInventoryAtCurrentPosition(",
-            "foreach (var s in matchingSessions) s.Send(eliminatedPacket);",
+            "foreach (var s in matchingSessions) s.TrySend(eliminatedPacket);",
             "catch (Exception ex)");
         Assert.DoesNotContain("BestEffortGroup", botElimination);
 
@@ -251,8 +251,8 @@ public sealed class SwarmArenaTickOrderTests
             humanElimination,
             "_matchRosterManager.TryEliminatePlayer(",
             "eliminatedSession.DropAllInventoryAtCurrentPosition();",
-            "session.Send(eliminatedPacket);",
-            "session.Send(leavePacket);",
+            "session.TrySend(eliminatedPacket);",
+            "session.TrySend(leavePacket);",
             "_matchRosterManager.CheckGameOver(",
             "SendGameResult(");
         Assert.False(ContainsCodeToken(humanElimination, "catch"));
@@ -336,7 +336,7 @@ public sealed class SwarmArenaTickOrderTests
             "PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);",
             "DispatchSwarmClosurePublicationPlan(plan, sessionSnapshot)");
         Assert.DoesNotContain("TryEnter", tick);
-        Assert.DoesNotContain(".Send(", tick);
+        Assert.DoesNotContain(".TrySend(", tick);
 
         AssertInOrder(
             prepare,
@@ -352,7 +352,7 @@ public sealed class SwarmArenaTickOrderTests
             "new SwarmClosurePublicationPlan(");
         Assert.DoesNotContain("Packet.Create(", prepare);
         Assert.DoesNotContain("PacketMaker.", prepare);
-        Assert.DoesNotContain(".Send(", prepare);
+        Assert.DoesNotContain(".TrySend(", prepare);
         Assert.Contains("Transport failure never rolls back", arena);
 
         AssertInOrder(
@@ -364,7 +364,7 @@ public sealed class SwarmArenaTickOrderTests
             "_gameEventLogManager.LogSystem(");
         Assert.DoesNotContain("Packet.Create(", orbPrepare);
         Assert.DoesNotContain("PacketMaker.", orbPrepare);
-        Assert.DoesNotContain(".Send(", orbPrepare);
+        Assert.DoesNotContain(".TrySend(", orbPrepare);
         Assert.DoesNotContain("SendInGameInventoryUpdate(", orbPrepare);
         Assert.DoesNotContain("SendSwarmRingVfx(", orbPrepare);
 

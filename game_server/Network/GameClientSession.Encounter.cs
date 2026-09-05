@@ -37,7 +37,7 @@ public partial class GameClientSession
             revealDelayMs,
             damageValue,
             targetCorruption);
-        Send(packet);
+        TrySend(packet);
     }
 
 }

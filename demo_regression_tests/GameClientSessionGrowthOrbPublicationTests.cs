@@ -855,7 +855,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             }
         }
 
-        public override void Send(Packet msg)
+        public override bool TrySend(Packet msg)
         {
             msg.RecordSize();
             var protocol = (Protocol)msg.ProtocolId;
@@ -869,6 +869,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             byte[] wireBytes = msg.ToBytes();
             lock (_gate)
                 _delivered.Add((protocol, wireBytes));
+            return true;
         }
 
         public T DeserializeSingle<T>(Protocol protocol)

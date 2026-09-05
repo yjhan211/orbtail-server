@@ -186,12 +186,12 @@ public partial class GameClientSession
             foreach (var session in sameAreaSessions)
             {
                 if (session.PlayerId != PlayerId)
-                    session.Send(packet);
+                    session.TrySend(packet);
             }
 
             if (requiresClientCorrection || ShouldSendMovementAcknowledgement(receiptTimestamp))
             {
-                Send(packet);
+                TrySend(packet);
                 _lastMoveAcknowledgementTimestamp = receiptTimestamp;
             }
         }
@@ -370,7 +370,7 @@ public partial class GameClientSession
             inputSequence,
             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             OrbOrbitPhaseDegrees);
-        Send(packet);
+        TrySend(packet);
         _lastMoveAcknowledgementTimestamp = Stopwatch.GetTimestamp();
     }
 
@@ -412,13 +412,13 @@ public partial class GameClientSession
                 foreach (var session in oldAreaSessions)
                 {
                     // 이전 Area 플레이어들에게 내 퇴장 알림
-                    session.Send(leavePacket);
+                    session.TrySend(leavePacket);
 
                     // 나에게 이전 Area 플레이어들 삭제 알림
                     if (session.PlayerId.HasValue)
                     {
                         using var removePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(session.PlayerId.Value);
-                        Send(removePacket);
+                        TrySend(removePacket);
                     }
                 }
 
@@ -429,7 +429,7 @@ public partial class GameClientSession
                 foreach (var bot in oldAreaBots)
                 {
                     using var botLeavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(bot.PlayerId);
-                    Send(botLeavePacket);
+                    TrySend(botLeavePacket);
                 }
 
                 Logger.LogDebug("Sent LEAVE to {Count} players + {BotCount} bots in old Area {OldArea}",
@@ -442,7 +442,7 @@ public partial class GameClientSession
                 var newAreaSessions = GetSessionsInArea(allSessions, newArea);
                 using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(CaptureGameObjectInfo());
 
-                foreach (var session in newAreaSessions) session.Send(enterPacket);
+                foreach (var session in newAreaSessions) session.TrySend(enterPacket);
 
                 Logger.LogDebug("Sent ENTER to {Count} players in new Area {NewArea}", newAreaSessions.Count, newArea);
 
@@ -452,7 +452,7 @@ public partial class GameClientSession
                     if (!session.PlayerId.HasValue) continue;
 
                     using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(session.CaptureGameObjectInfo());
-                    Send(otherEnterPacket);
+                    TrySend(otherEnterPacket);
                 }
 
                 Logger.LogDebug("Sent {Count} existing players to Player {PlayerId}", newAreaSessions.Count, PlayerId);
@@ -466,10 +466,10 @@ public partial class GameClientSession
                     var objectInfo = _botPlayerManager.SynthesizeGameObjectInfo(MatchingId, bot.PlayerId);
                     if (objectInfo == null) continue;
                     using var botEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(objectInfo);
-                    Send(botEnterPacket);
+                    TrySend(botEnterPacket);
                     using var appearance = PacketMaker.G_TO_C_PLAYER_APPEARANCE(
                         bot.PlayerId, BotPlayerManager.BuildBotWearItems(bot));
-                    Send(appearance);
+                    TrySend(appearance);
                 }
                 if (newAreaBots.Count > 0)
                     Logger.LogDebug("Sent {Count} bots in new Area {NewArea} to Player {PlayerId}",
@@ -512,7 +512,7 @@ public partial class GameClientSession
                 obj.InteractId, obj.Actions.Count);
 
         using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, objects);
-        Send(packet);
+        TrySend(packet);
 
         Logger.LogDebug(
             "Sent {Count} interactable objects for area {AreaType} to Player {PlayerId} (MatchingId={MatchingId})",

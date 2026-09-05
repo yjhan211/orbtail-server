@@ -13,5 +13,6 @@ public interface IConnectionSession
     public Task OnMessageFromClient(ReadOnlyMemory<byte> buffer);
     public void OnDisconnect();
     public void OnRemoved();
-    public void Send(Packet msg);
+    /// <summary>송신 큐가 패킷을 받아들였는지 반환한다. 클라이언트의 수신 완료를 뜻하지 않는다.</summary>
+    public bool TrySend(Packet msg);
 }

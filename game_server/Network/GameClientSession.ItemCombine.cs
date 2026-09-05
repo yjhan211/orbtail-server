@@ -185,17 +185,17 @@ public partial class GameClientSession
             IsRaceComplete = false
         };
         combinePacket.SetBody(MessagePackSerializer.Serialize(combinedMsg));
-        Send(combinePacket);
+        TrySend(combinePacket);
 
         // Inventory update follows the result packet so the client reveals the server-authoritative outcome.
         using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(changedItems.ToList());
-        Send(inventoryPacket);
+        TrySend(inventoryPacket);
 
         if (shouldReplaceEquippedItem)
         {
             using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
                 true, outputItem!.ItemUid, ErrorCode.SUCCESS);
-            Send(equippedPacket);
+            TrySend(equippedPacket);
         }
     }
 
@@ -213,7 +213,7 @@ public partial class GameClientSession
             IsRaceComplete = false
         };
         failPacket.SetBody(MessagePackSerializer.Serialize(failMsg));
-        Send(failPacket);
+        TrySend(failPacket);
 
         SendErrorResponse(errorCode, "부품 결합 실패");
     }

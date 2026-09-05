@@ -427,7 +427,7 @@ public partial class GameServer(
                     Reason = reason
                 };
                 eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
-                foreach (var s in matchingSessions) s.Send(eliminatedPacket);
+                foreach (var s in matchingSessions) s.TrySend(eliminatedPacket);
             }
 
             // 2) 영향받는 봇/세션 상태 동기화
@@ -497,7 +497,7 @@ public partial class GameServer(
         int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)area);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, spawned.ToList());
         foreach (var session in receivers)
-            session.Send(packet);
+            session.TrySend(packet);
     }
 
     /// <summary>
@@ -521,7 +521,7 @@ public partial class GameServer(
             {
                 using var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_START, session.PlayerId!.Value);
                 packet.SetBody(body);
-                session.Send(packet);
+                session.TrySend(packet);
             }
         }
     }
@@ -545,7 +545,7 @@ public partial class GameServer(
             {
                 using var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_END, session.PlayerId!.Value);
                 packet.SetBody(body);
-                session.Send(packet);
+                session.TrySend(packet);
             }
         }
     }
@@ -574,7 +574,7 @@ public partial class GameServer(
                 ErrorCode.SUCCESS,
                 openerPlayerId);
             foreach (var session in sessions)
-                session.Send(packet);
+                session.TrySend(packet);
         }
     }
 
@@ -683,7 +683,7 @@ public partial class GameServer(
                 }));
 
                 foreach (var session in matchingSessions)
-                    session.Send(packet);
+                    session.TrySend(packet);
             }
         }
     }
@@ -964,7 +964,7 @@ public partial class GameServer(
                         !ReferenceEquals(other, session) &&
                         other.CurrentArea == session.CurrentArea)
                     .ToList();
-                foreach (var other in sameAreaSessions) other.Send(leavePacket);
+                foreach (var other in sameAreaSessions) other.TrySend(leavePacket);
 
                 logger.LogInformation(
                     "Broadcasted disconnected player leave: PlayerId={PlayerId}, MatchingId={MatchingId}, Area={Area}, Receivers={ReceiverCount}",

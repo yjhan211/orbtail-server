@@ -125,8 +125,9 @@ public sealed class TcpConnectionLifecycleTests
         public Task OnMessageFromClient(ReadOnlyMemory<byte> buffer) => Task.CompletedTask;
         public void OnDisconnect() => Interlocked.Increment(ref DisconnectCount);
         public void OnRemoved() => Interlocked.Increment(ref RemovedCount);
-        public void Send(Packet msg)
+        public bool TrySend(Packet msg)
         {
+            return true;
         }
     }
 

@@ -227,7 +227,7 @@ public partial class GameClientSession
             WindCost = windCost,
             WaveCost = waveCost
         }));
-        Send(packet);
+        TrySend(packet);
     }
 
     /// <summary>6칸 빌드 결정 결과 (#232 4단계). targetOrdinal = 강화된 오브의 열 순번(없으면 -1).</summary>
@@ -248,7 +248,7 @@ public partial class GameClientSession
             StoneCount = stones,
             TargetOrdinal = targetOrdinal
         }));
-        Send(packet);
+        TrySend(packet);
     }
 
     /// <summary>성장 카드 오퍼 전송 (#226 단계 C) — 소환석 임계 도달 순간 게임서버가 부른다.</summary>
@@ -269,7 +269,7 @@ public partial class GameClientSession
             EnhanceTargetTier = enhanceTargetTier,
             ArmorCount = armorCount
         }));
-        Send(packet);
+        TrySend(packet);
     }
 
     /// <summary>성장 카드 선택 결과 전송 (#226 단계 C). 실패 시 클라는 오퍼를 유지한다.</summary>
@@ -287,7 +287,7 @@ public partial class GameClientSession
             Success = success,
             StoneCount = stones
         }));
-        Send(packet);
+        TrySend(packet);
     }
 
     private Task HandleDestroyOrb(C_TO_G_DESTROY_ORB request)
@@ -386,7 +386,7 @@ public partial class GameClientSession
             AwardSourceX = awardSourceX,
             AwardSourceY = awardSourceY
         }));
-        Send(packet);
+        TrySend(packet);
     }
 
     private void SendDestroyOrbResult(bool success, ErrorCode errorCode, long itemUid,
@@ -401,7 +401,7 @@ public partial class GameClientSession
             RefundedStones = refundedStones,
             State = ToNetworkState(state)
         }));
-        Send(packet);
+        TrySend(packet);
     }
     private void SendSummonOrbResult(bool success, ErrorCode errorCode, int summonedItemId,
         long summonedItemUid, SummonStoneSnapshot state)
@@ -415,7 +415,7 @@ public partial class GameClientSession
             SummonedItemUid = summonedItemUid,
             State = ToNetworkState(state)
         }));
-        Send(packet);
+        TrySend(packet);
     }
 
     private SummonStoneStateInfo ToNetworkState(SummonStoneSnapshot state) => new()

@@ -130,7 +130,7 @@ public sealed class SwarmBotMovementPlanTests
         Assert.DoesNotContain("PacketMaker", coordinator);
         Assert.DoesNotContain("MessagePackSerializer", coordinator);
         Assert.DoesNotContain("GameClientSession", coordinator);
-        Assert.DoesNotContain(".Send(", coordinator);
+        Assert.DoesNotContain(".TrySend(", coordinator);
         Assert.DoesNotContain("ReservePublication", coordinator);
         Assert.DoesNotContain("DispatchInOrder", coordinator);
         Assert.DoesNotContain("MoveToImmutable()", coordinator);
@@ -159,7 +159,7 @@ public sealed class SwarmBotMovementPlanTests
             "BotTickMetrics.Record(",
             "PublishBotMovementMetrics(batch)");
         Assert.Contains("session.CurrentMapId == Config.SWARM_MATCH_MAP", process);
-        Assert.DoesNotContain(".Send(", process);
+        Assert.DoesNotContain(".TrySend(", process);
         AssertInOrder(
             dispatch,
             "G_TO_C_AREA_PLAYER_LEAVE",

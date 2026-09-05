@@ -76,7 +76,7 @@ public partial class GameClientSession
         var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, state);
-        foreach (var session in sameAreaSessions) session.Send(packet);
+        foreach (var session in sameAreaSessions) session.TrySend(packet);
     }
 
     /// <summary>
@@ -267,7 +267,7 @@ public partial class GameClientSession
         using var updatePacket =
             PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId!.Value);
         foreach (var session in _getSessionsByInstance(CurrentMapId, MatchingId))
-            session.Send(updatePacket);
+            session.TrySend(updatePacket);
 
         SendRngCollectResult(interactId, 0, 0, 0, 0);
         BroadcastPlayerState(PlayerState.IDLE);
@@ -306,7 +306,7 @@ public partial class GameClientSession
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_RNG_COLLECT_ACK, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(msg));
-        Send(packet);
+        TrySend(packet);
     }
 
     private void CancelPendingRngCollect(string reason)
@@ -342,7 +342,7 @@ public partial class GameClientSession
             if (!session.PlayerId.HasValue) continue;
             using var packet = Packet.Create((int)Protocol.G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST, session.PlayerId.Value);
             packet.SetBody(body);
-            session.Send(packet);
+            session.TrySend(packet);
         }
     }
 
@@ -366,7 +366,7 @@ public partial class GameClientSession
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_INTERACT_COOLDOWN_SNAPSHOT, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(msg));
-        Send(packet);
+        TrySend(packet);
 
         Logger.LogInformation("Interact cooldown snapshot sent: PlayerId={PlayerId}, Count={Count}",
             PlayerId.Value, msg.Entries.Count);
@@ -388,6 +388,6 @@ public partial class GameClientSession
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_RNG_COLLECT_RESULT, PlayerId.Value);
         packet.SetBody(MessagePackSerializer.Serialize(msg));
-        Send(packet);
+        TrySend(packet);
     }
 }

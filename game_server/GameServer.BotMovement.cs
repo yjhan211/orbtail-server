@@ -178,7 +178,7 @@ public partial class GameServer
                     encounter.EventType,
                     encounter.CooldownSeconds,
                     encounter.RevealDelayMs);
-                target.Send(encounterPacket);
+                target.TrySend(encounterPacket);
                 logger.LogInformation(
                     "Bot corridor encounter event: Matching={MatchingId}, Bot={Bot}, Target={Target}, " +
                     "Area={Area}, EventType={EventType}",
@@ -215,7 +215,7 @@ public partial class GameServer
         foreach (int ordinal in recipientOrdinals)
         {
             if (TryGetCapturedValue(sessionSnapshot, ordinal, out GameClientSession session))
-                session.Send(packet);
+                session.TrySend(packet);
         }
     }
 

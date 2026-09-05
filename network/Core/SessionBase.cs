@@ -93,7 +93,7 @@ public abstract class SessionBase(
         }
     }
 
-    public virtual void Send(Packet packet) => Connection.Send(packet);
+    public virtual bool TrySend(Packet packet) => Connection.TrySend(packet);
 
     public abstract void OnRemoved();
 

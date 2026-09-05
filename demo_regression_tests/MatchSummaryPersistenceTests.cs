@@ -151,7 +151,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Assert.True(markEnded < lifecyclePreparationCommit);
         Assert.True(lifecyclePreparationCommit < lifecycleDispatch);
         Assert.True(lifecycleDispatch < lifecycleDispatchInvocation);
-        Assert.DoesNotContain(".Send(", normalFinalization);
+        Assert.DoesNotContain(".TrySend(", normalFinalization);
         Assert.DoesNotContain(".MarkGameEnded(", normalFinalization);
         Assert.Single(Regex.Matches(normalFinalization, persistCallPattern));
         Assert.Matches(
@@ -224,7 +224,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             noHumanFinalization);
         Assert.DoesNotContain("PersistMatchSummary(", noHumanFinalization);
         Assert.DoesNotContain("PublishTerminalResult", noHumanFinalization);
-        Assert.DoesNotContain(".Send(", noHumanFinalization);
+        Assert.DoesNotContain(".TrySend(", noHumanFinalization);
     }
 
     [Fact]
