@@ -12,18 +12,6 @@ namespace user_server.network;
 
 public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
 {
-    /// <summary>저장된 플레이어 정보와 별개로 로그인할 때 사용할 로비 위치를 만든다.</summary>
-    internal static GameObjectInfo CreateLobbyObjectInfo(long playerId)
-    {
-        var map = GameMapData.GetMapInfo(MapId.Camp);
-        var spawn = map != null ? map.GetInitialPosition() : (GameRuleData.StartPosition, false);
-        return new GameObjectInfo(ObjectType.PLAYER, playerId, MapId.Camp, 0, spawn.Item1, spawn.Item2)
-        {
-            Position = MapCoordinateConverter.CellToWorld(MapId.Camp, spawn.Item1),
-            State = PlayerState.IDLE
-        };
-    }
-
     private readonly IMatchingManager _matchingManager;
     private readonly IAccountTokenService _accountTokenService;
     private readonly IRedLockFactory _redLock;
@@ -390,12 +378,9 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
             _sessionLease = sessionLease;
             Volatile.Write(ref _sessionGeneration, sessionLease.Generation);
 
-            // 플레이어 저장 정보와 별개로, 로그인할 때마다 로비의 초기 공간 정보를 만든다.
-            var objectInfo = CreateLobbyObjectInfo(PlayerId.Value);
-
             // 로그인 응답 전송
             Logger.LogInformation("Creating login packet for PlayerId={PlayerId}", PlayerId);
-            using var loginPacket = PacketMaker.U_TO_C_LOGIN(PlayerInfo, objectInfo, account.AccountToken);
+            using var loginPacket = PacketMaker.U_TO_C_LOGIN(PlayerInfo, account.AccountToken);
             Logger.LogInformation("Sending U_TO_C_LOGIN packet for PlayerId={PlayerId}, Packet size={Size}", PlayerId,
                 loginPacket.ToBytes().Length);
             (bool Accepted, Action? DisconnectSuperseded) registration = default;

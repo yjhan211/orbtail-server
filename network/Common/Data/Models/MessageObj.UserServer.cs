@@ -22,7 +22,6 @@ namespace network.common.data.models
     [MessagePackObject]
     public class U_TO_C_LOGIN : IMessagePackObject
     {
-        [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
         [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
         [Key("accountToken")] public string AccountToken { get; set; }
     }

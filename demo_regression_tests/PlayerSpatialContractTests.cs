@@ -9,11 +9,10 @@ namespace demo_regression_tests;
 public sealed class PlayerSpatialContractTests
 {
     [Fact]
-    public void LoginPacket_CarriesIndependentProfileAndSpatialData()
+    public void LoginPacket_CarriesProfileAndCredentialWithoutLobbySpatialData()
     {
         var profile = new PlayerInfo(42, false) { Name = "ProfileOnly", Gold = 999 };
-        var objectInfo = CreateObject();
-        using var packet = PacketMaker.U_TO_C_LOGIN(profile, objectInfo, "test-credential");
+        using var packet = PacketMaker.U_TO_C_LOGIN(profile, "test-credential");
         using var wire = Packet.Create(packet.ToBytes());
         Assert.Equal(Protocol.U_TO_C_LOGIN, (Protocol)wire.PopProtocolId());
         wire.PopPlayerId();
@@ -21,9 +20,9 @@ public sealed class PlayerSpatialContractTests
         Assert.Equal("ProfileOnly", login.PlayerInfo.Name);
         Assert.Equal(999, login.PlayerInfo.Gold);
         Assert.Equal("test-credential", login.AccountToken);
-        AssertSpatialData(login.ObjectInfo);
-        login.PlayerInfo = new PlayerInfo(42, false);
-        AssertSpatialData(login.ObjectInfo);
+        Assert.Null(typeof(U_TO_C_LOGIN).GetProperty("ObjectInfo"));
+        string json = MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(login));
+        Assert.DoesNotContain("objectInfo", json, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
