@@ -34,10 +34,10 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_PLAYER_INFO(List<PlayerInfo> playerInfoList)
+    public static Packet G_TO_C_OBJECT_INFO(List<GameObjectInfo> objects)
     {
-        var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_INFO);
-        G_TO_C_PLAYER_INFO body = new() { PlayerInfoList = playerInfoList };
+        var packet = Packet.Create((int)Protocol.G_TO_C_OBJECT_INFO);
+        G_TO_C_OBJECT_INFO body = new() { Objects = objects };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
@@ -63,12 +63,23 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_AREA_PLAYER_ENTER(PlayerInfo playerInfo, Cell cell)
+    public static Packet G_TO_C_AREA_PLAYER_ENTER(GameObjectInfo objectInfo)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_AREA_PLAYER_ENTER);
-        G_TO_C_AREA_PLAYER_ENTER body = new() { PlayerInfo = playerInfo, Cell = cell };
+        G_TO_C_AREA_PLAYER_ENTER body = new() { ObjectInfo = objectInfo };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_PLAYER_APPEARANCE(long playerId, List<int> wearItemIds)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_APPEARANCE);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_PLAYER_APPEARANCE
+        {
+            PlayerId = playerId,
+            WearItemIdList = wearItemIds
+        }));
         return packet;
     }
 

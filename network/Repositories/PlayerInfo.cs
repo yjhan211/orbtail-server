@@ -7,6 +7,18 @@ using StackExchange.Redis;
 // ReSharper disable once CheckNamespace
 namespace network.common.data.models;
 
+/// <summary>
+///     공용 PlayerInfo 모델(Common/Data/Models/PlayerInfo)에 서버 전용 저장·조회·삭제와 분산 잠금 기능을 추가한다.
+///     Unity에는 Common 쪽 모델만 포함되므로 Redis 의존성은 서버에만 남는다.
+///
+///     Save는 인벤토리와 플레이어 정보를 각각 저장한다.
+///     두 저장은 하나의 트랜잭션으로 묶여 있지 않다.
+///
+///     Load는 인벤토리를 별도로 조회한다. 위치는 저장하거나 복원하지 않는다.
+///     로비 위치는 로그인 시, 매치 위치는 GameServer에서 별도로 정한다.
+///     LoadAll은 플레이어 본체만 읽으며, 인벤토리는 조회하지 않는다.
+///     잠금이 필요한 작업은 호출 측에서 Lock을 획득한 뒤 수행한다.
+/// </summary>
 public partial class PlayerInfo
 {
     public static async Task<IRedLock> Lock(IRedLockFactory redLock, long playerId)
@@ -21,8 +33,6 @@ public partial class PlayerInfo
 
     public async Task Save(IRedisOperations redisOperations)
     {
-        // 조회가 빈번해서 메모리에 올려뒀음. 따로 Save함
-        // await GameObjectInfoController.Save(cache_helper, player_info.object_info);
         await InventoryInfo.Save(redisOperations);
         await redisOperations.HashSetAsync(HashKey, PlayerId, MessagePackSerializer.Serialize(this));
     }
@@ -34,30 +44,8 @@ public partial class PlayerInfo
 
         var playerInfo = MessagePackSerializer.Deserialize<PlayerInfo>(serialized);
 
-        playerInfo.ObjectInfo = new GameObjectInfo(playerId);
         playerInfo.InventoryInfo = await InventoryInfo.Load(redisOperations, InventoryOwnerType.PLAYER, playerId) ??
                                    new InventoryInfo(InventoryOwnerType.PLAYER, playerId);
-        // ObjectInfo의 Cell, MapId, MapSubId를 LastCell, LastMapId, LastMapSubId로 동기화 (세션 기반 게임)
-        if (playerInfo.LastMapId != MapId.None)
-        {
-            playerInfo.LastCell ??= new Cell(0, 0);
-            playerInfo.ObjectInfo.Cell = playerInfo.LastCell;
-            // Cell → World Position 변환 (Unity Isometric Z as Y 타일맵)
-            playerInfo.ObjectInfo.Position = CellToWorldPosition(playerInfo.LastMapId, playerInfo.LastCell);
-            playerInfo.ObjectInfo.MapId = playerInfo.LastMapId;
-            playerInfo.ObjectInfo.MapSubId = playerInfo.LastMapSubId;
-
-            // 저장된 셀이 해당 맵의 유효 영역 밖이면 맵 스폰 셀로 보정한다.
-            // (과거 신규 유저가 Camp 영역 밖 StartPosition으로 굳은 경우 로비 복귀 시 영역 밖 스폰되던 문제 교정)
-            var mapInfo = GameMapData.GetMapInfo(playerInfo.LastMapId);
-            if (mapInfo != null && !GameMapData.IsMoveablePosition(playerInfo.LastMapId, playerInfo.ObjectInfo.Cell))
-            {
-                var spawnCell = mapInfo.GetInitialPosition().position;
-                playerInfo.ObjectInfo.Cell = spawnCell;
-                playerInfo.ObjectInfo.Position = CellToWorldPosition(playerInfo.LastMapId, spawnCell);
-                playerInfo.LastCell = spawnCell;
-            }
-        }
 
         return playerInfo;
     }
@@ -75,24 +63,13 @@ public partial class PlayerInfo
 
     public async Task Delete(IRedisOperations redisOperations, PlayerInfo playerInfo)
     {
-        await playerInfo.ObjectInfo.Delete(redisOperations);
         await redisOperations.HashDeleteAsync(HashKey, playerInfo.PlayerId);
     }
 
     public static async Task Delete(IRedisOperations redisOperations, long playerId)
     {
-        string objectField = GameObjectInfo.MakeObjectKey(ObjectType.PLAYER, playerId);
-
-        await GameObjectInfo.Delete(redisOperations, objectField);
         await InventoryInfo.Delete(redisOperations, InventoryOwnerType.PLAYER, playerId);
         await redisOperations.HashDeleteAsync(HashKey, playerId);
     }
 
-    /// <summary>
-    ///     Cell 좌표를 Unity Isometric World Position으로 변환
-    ///     공식: WorldX = (GridCellX - GridCellY) * 0.5
-    ///     WorldY = (GridCellX + GridCellY) * 0.25 + 0.25
-    /// </summary>
-    private static Vector3f CellToWorldPosition(MapId mapId, Cell cell) =>
-        MapCoordinateConverter.CellToWorld(mapId, cell);
 }

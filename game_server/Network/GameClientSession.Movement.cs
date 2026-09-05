@@ -143,6 +143,7 @@ public partial class GameClientSession
             if (_lastValidatedPosition != null)
                 AdvanceOrbOrbit(_lastValidatedPosition, validatedPosition);
             _lastValidatedPosition = validatedPosition;
+            _lastValidatedVelocity = validatedVelocity;
             _groundItemManager.ReleaseSourcePickupBlocks(MatchingId, PlayerId.Value,
                 newArea == AreaType.None ? CurrentArea : newArea, validatedPosition.X, validatedPosition.Y);
             _lastValidatedRotation = msg.Rotation;
@@ -162,7 +163,7 @@ public partial class GameClientSession
                 CurrentArea = newArea; // 먼저 Area 업데이트 (다른 플레이어의 MOVE 수신 가능하도록)
                 _gameEventLogManager.LogMove(MatchingId, PlayerId.Value,
                     oldArea.ToString(), newArea.ToString(), isBot: false);
-                await HandleAreaChange(oldArea, newArea);
+                HandleAreaChange(oldArea, newArea);
             }
 
 
@@ -391,7 +392,7 @@ public partial class GameClientSession
 
     #endregion
 
-    private async Task HandleAreaChange(AreaType oldArea, AreaType newArea)
+    private void HandleAreaChange(AreaType oldArea, AreaType newArea)
     {
         try
         {
@@ -401,20 +402,6 @@ public partial class GameClientSession
                 newArea);
 
             var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
-            var playerInfo = await PlayerInfo.Load(RedisOperations, PlayerId.Value);
-
-            if (playerInfo == null) return;
-
-            ApplyLivePlayerInfoSnapshot(this, playerInfo);
-
-            // 내 최신 위치를 ENTER 패킷 스냅샷에 반영한다 (저장 아님 — Last*는 Game Server가 Redis에 쓰지 않는다)
-            if (_lastValidatedPosition != null)
-            {
-                var latestCell = WorldPositionToCell(_lastValidatedPosition);
-                playerInfo.ObjectInfo.Position = _lastValidatedPosition;
-                playerInfo.ObjectInfo.Cell = latestCell;
-                playerInfo.LastCell = latestCell;
-            }
 
             // 1. 이전 Area의 플레이어들에게 퇴장 알림 + 나에게 기존 플레이어 삭제 알림
             if (oldArea != AreaType.None)
@@ -453,10 +440,7 @@ public partial class GameClientSession
             if (newArea != AreaType.None)
             {
                 var newAreaSessions = GetSessionsInArea(allSessions, newArea);
-                var myCell = _lastValidatedPosition != null
-                    ? WorldPositionToCell(_lastValidatedPosition)
-                    : playerInfo.ObjectInfo.Cell;
-                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(playerInfo, myCell);
+                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(CaptureGameObjectInfo());
 
                 foreach (var session in newAreaSessions) session.Send(enterPacket);
 
@@ -467,22 +451,8 @@ public partial class GameClientSession
                 {
                     if (!session.PlayerId.HasValue) continue;
 
-                    var otherPlayerInfo = await PlayerInfo.Load(RedisOperations, session.PlayerId.Value);
-                    if (otherPlayerInfo != null)
-                    {
-                        ApplyLivePlayerInfoSnapshot(session, otherPlayerInfo);
-
-                        // 세션의 최신 위치에서 Cell 계산 (없으면 캐시된 Cell 사용)
-                        var otherCell = session._lastValidatedPosition != null
-                            ? WorldPositionToCell(session._lastValidatedPosition)
-                            : otherPlayerInfo.ObjectInfo.Cell;
-
-                        Logger.LogInformation("Sending Player {OtherId} to Player {MyId}: Cell=({CellX},{CellY})",
-                            session.PlayerId, PlayerId, otherCell.X, otherCell.Y);
-
-                        using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(otherPlayerInfo, otherCell);
-                        Send(otherEnterPacket);
-                    }
+                    using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(session.CaptureGameObjectInfo());
+                    Send(otherEnterPacket);
                 }
 
                 Logger.LogDebug("Sent {Count} existing players to Player {PlayerId}", newAreaSessions.Count, PlayerId);
@@ -493,10 +463,13 @@ public partial class GameClientSession
                     .ToList();
                 foreach (var bot in newAreaBots)
                 {
-                    var botInfo = _botPlayerManager.SynthesizePlayerInfo(MatchingId, bot.PlayerId);
-                    if (botInfo == null) continue;
-                    using var botEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(botInfo, bot.Cell);
+                    var objectInfo = _botPlayerManager.SynthesizeGameObjectInfo(MatchingId, bot.PlayerId);
+                    if (objectInfo == null) continue;
+                    using var botEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(objectInfo);
                     Send(botEnterPacket);
+                    using var appearance = PacketMaker.G_TO_C_PLAYER_APPEARANCE(
+                        bot.PlayerId, BotPlayerManager.BuildBotWearItems(bot));
+                    Send(appearance);
                 }
                 if (newAreaBots.Count > 0)
                     Logger.LogDebug("Sent {Count} bots in new Area {NewArea} to Player {PlayerId}",

@@ -117,14 +117,14 @@ public partial class GameClientSession
                     matchingId, PlayerId.Value, composition.HumanPlayerIds.Count, composition.Mode);
             });
 
-            // 초기 위치는 매치 구성의 스폰에서 복원한다. PlayerInfo는 존재 확인만 한다 —
-            // Game Server는 PlayerInfo.Save를 부르지 않으므로(호출처는 user_server뿐) Last*를 여기서
-            // 바꿔도 Redis에 남지 않고, 분산 락도 지킬 쓰기가 없어 잡지 않는다 (#335).
+            // 초기 위치는 매치 구성의 스폰으로 정한다. PlayerInfo는 프로필 조회에만 사용한다.
             Cell matchingSpawnCell;
             {
                 var playerInfo = await PlayerInfo.Load(RedisOperations, PlayerId.Value);
                 if (playerInfo == null)
                     throw new InvalidOperationException($"PlayerInfo not found for authenticated player {playerId}.");
+
+                _matchRosterManager.UpdatePlayerProfile(MatchingId, playerId, playerInfo.Name, playerInfo.WearItemIdList);
 
                 matchingSpawnCell = Cell.Clone(composition.SpawnCells[playerId]);
                 _lastValidatedPosition = CellToWorldPosition(matchingSpawnCell);
@@ -347,119 +347,55 @@ public partial class GameClientSession
         }
     }
 
-    private async Task BroadcastPlayerJoin()
+    private Task BroadcastPlayerJoin()
     {
-        if (!PlayerId.HasValue || IsEliminated) return;
+        if (!PlayerId.HasValue || IsEliminated) return Task.CompletedTask;
 
-        try
+        var sessions = _getSessionsByInstance(CurrentMapId, MatchingId)
+            .Where(s => s.PlayerId.HasValue && s.PlayerId != PlayerId &&
+                        !s.IsEliminated && s.CurrentArea == CurrentArea)
+            .ToList();
+
+        if (sessions.Count > 0)
         {
-            var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
-            // Same-area players only
-            var sameAreaSessions = allSessions
-                .Where(s => !s.IsEliminated &&
-                            s.PlayerId != PlayerId &&
-                            s.CurrentArea == CurrentArea &&
-                            s.PlayerId.HasValue)
-                .ToList();
+            using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s.CaptureGameObjectInfo()).ToList());
+            Send(others);
+        }
 
-            // Send other players already present in the same area to this client.
-            if (sameAreaSessions.Count > 0)
+        using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([CaptureGameObjectInfo()]))
+            foreach (var session in sessions) session.Send(mine);
+
+        var bots = _botPlayerManager.GetBots(MatchingId)
+            .Where(b => !b.IsEliminated && b.CurrentArea == CurrentArea).ToList();
+        var objects = bots.Select(b => _botPlayerManager.SynthesizeGameObjectInfo(MatchingId, b.PlayerId))
+            .OfType<GameObjectInfo>().ToList();
+        if (objects.Count > 0)
+        {
+            using var packet = PacketMaker.G_TO_C_OBJECT_INFO(objects);
+            Send(packet);
+            foreach (var bot in bots)
             {
-                var playerInfoList = new List<PlayerInfo>();
-                foreach (var session in sameAreaSessions)
-                {
-                    var playerInfo = await PlayerInfo.Load(RedisOperations, session.PlayerId!.Value);
-                    if (playerInfo == null)
-                        throw new InvalidOperationException(
-                            $"PlayerInfo not found for connected player {session.PlayerId.Value}.");
-
-                    ApplyLivePlayerInfoSnapshot(session, playerInfo);
-                    playerInfoList.Add(playerInfo);
-                }
-
-                if (playerInfoList.Count > 0)
-                {
-                    using var packet = PacketMaker.G_TO_C_PLAYER_INFO(playerInfoList);
-                    Send(packet);
-                    Logger.LogInformation("Sent {Count} PlayerInfo in Area {Area} to PlayerId={L}",
-                        playerInfoList.Count, CurrentArea, PlayerId);
-                }
-            }
-
-            // 내 스냅샷 로드 — 읽기 전용이라 분산 락은 잡지 않는다 (#335).
-            var myPlayerInfo = await PlayerInfo.Load(RedisOperations, PlayerId.Value);
-
-            if (myPlayerInfo == null)
-                throw new InvalidOperationException($"PlayerInfo not found for joining player {PlayerId.Value}.");
-
-            ApplyLivePlayerInfoSnapshot(this, myPlayerInfo);
-
-            // Broadcast this player's snapshot to other players in the same area.
-            using var myPacket = PacketMaker.G_TO_C_PLAYER_INFO([myPlayerInfo]);
-            foreach (var session in sameAreaSessions) session.Send(myPacket);
-            Logger.LogInformation("Broadcasted my PlayerInfo (PlayerId={L}) to {Count} players in Area {Area}",
-                PlayerId, sameAreaSessions.Count, CurrentArea);
-
-            // Send bots already present in the same area to this client.
-            var sameAreaBots = _botPlayerManager.GetBots(MatchingId)
-                .Where(b => !b.IsEliminated && b.CurrentArea == CurrentArea)
-                .ToList();
-            if (sameAreaBots.Count > 0)
-            {
-                var botInfoList = new List<PlayerInfo>();
-                foreach (var bot in sameAreaBots)
-                {
-                    var botInfo = _botPlayerManager.SynthesizePlayerInfo(MatchingId, bot.PlayerId);
-                    if (botInfo != null) botInfoList.Add(botInfo);
-                }
-                if (botInfoList.Count > 0)
-                {
-                    using var botPacket = PacketMaker.G_TO_C_PLAYER_INFO(botInfoList);
-                    Send(botPacket);
-                    Logger.LogInformation("Sent {Count} bot PlayerInfo in Area {Area} to PlayerId={L}",
-                        botInfoList.Count, CurrentArea, PlayerId);
-                }
+                using var appearance = PacketMaker.G_TO_C_PLAYER_APPEARANCE(
+                    bot.PlayerId, BotPlayerManager.BuildBotWearItems(bot));
+                Send(appearance);
             }
         }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to broadcast player join for PlayerId={L}", PlayerId);
-            throw;
-        }
+        return Task.CompletedTask;
     }
 
-    /// <summary>
-    ///     로드한 PlayerInfo에 세션의 현재 위치·상태를 덮어 패킷 스냅샷을 만든다. Last*·ObjectInfo는
-    ///     동봉 패킷(G_TO_C_PLAYER_INFO·AREA_PLAYER_ENTER)용이며 Redis에는 저장하지 않는다 (#335).
-    /// </summary>
-    private void ApplyLivePlayerInfoSnapshot(GameClientSession session, PlayerInfo playerInfo)
+    /// <summary>서버가 승인한 현재 공간 정보를 복사한다. PlayerInfo·Redis 데이터는 건드리지 않는다.</summary>
+    internal GameObjectInfo CaptureGameObjectInfo()
     {
-        var cell = session._lastValidCell ?? playerInfo.LastCell ?? playerInfo.ObjectInfo?.Cell;
-        var position = session._lastValidatedPosition;
-
-        playerInfo.State = session.CurrentState;
-        playerInfo.LastMapId = session.CurrentMapId;
-        playerInfo.LastMapSubId = session.MatchingId;
-        playerInfo.ObjectInfo ??= new GameObjectInfo(playerInfo.PlayerId);
-        playerInfo.ObjectInfo.MapId = session.CurrentMapId;
-        playerInfo.ObjectInfo.MapSubId = session.MatchingId;
-        playerInfo.ObjectInfo.Rotation = session._lastValidatedRotation;
-
-        if (cell != null)
+        var position = _lastValidatedPosition
+            ?? throw new InvalidOperationException("Cannot publish a player before its spawn is initialized.");
+        var cell = _lastValidCell ?? WorldPositionToCell(position);
+        return new GameObjectInfo(ObjectType.PLAYER, PlayerId!.Value, CurrentMapId, MatchingId, cell)
         {
-            playerInfo.LastCell = Cell.Clone(cell);
-            playerInfo.ObjectInfo.Cell = Cell.Clone(cell);
-            position ??= session.CellToWorldPosition(cell);
-        }
-
-        if (position != null)
-            playerInfo.ObjectInfo.Position = position;
-
-        _matchRosterManager.UpdatePlayerProfile(
-            session.MatchingId,
-            playerInfo.PlayerId,
-            playerInfo.Name,
-            playerInfo.WearItemIdList);
+            Position = new Vector3f(position.X, position.Y, position.Z),
+            Velocity = new Vector3f(_lastValidatedVelocity.X, _lastValidatedVelocity.Y, _lastValidatedVelocity.Z),
+            Rotation = _lastValidatedRotation,
+            State = _isSleeping ? PlayerState.SLEEP : CurrentState
+        };
     }
 
     private void SendMatchStartCountdown(long matchingId)

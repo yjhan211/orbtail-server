@@ -58,8 +58,7 @@ namespace network.common.data.models
     [MessagePackObject]
     public class G_TO_C_AREA_PLAYER_ENTER : IMessagePackObject
     {
-        [Key("playerInfo")] public PlayerInfo PlayerInfo { get; set; }
-        [Key("cell")] public Cell Cell { get; set; } // 최신 Cell 위치
+        [Key("objectInfo")] public GameObjectInfo ObjectInfo { get; set; }
     }
 
     [MessagePackObject]
@@ -322,10 +321,19 @@ namespace network.common.data.models
         [Key("exploredBy")] public long ExploredBy { get; set; }
     }
 
+    /// <summary>등장할 객체들의 현재 공간 정보. 이름·외형은 매칭 로스터를 사용한다.</summary>
     [MessagePackObject]
-    public class G_TO_C_PLAYER_INFO : IMessagePackObject
+    public class G_TO_C_OBJECT_INFO : IMessagePackObject
     {
-        [Key("playerInfoList")] public List<PlayerInfo> PlayerInfoList { get; set; }
+        [Key("objects")] public List<GameObjectInfo> Objects { get; set; }
+    }
+
+    /// <summary>인게임 외형 변경만 전달한다. 위치나 PlayerInfo 전체는 보내지 않는다.</summary>
+    [MessagePackObject]
+    public class G_TO_C_PLAYER_APPEARANCE : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("wearItemIdList")] public List<int> WearItemIdList { get; set; }
     }
 
     [MessagePackObject]

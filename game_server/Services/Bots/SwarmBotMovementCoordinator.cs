@@ -130,7 +130,8 @@ internal sealed class SwarmBotMovementCoordinator(
 
             BotPlayerState? bot = botPlayerManager.GetBot(matchingId, pickup.BotPlayerId);
             PlayerInfo? botInfo = botPlayerManager.SynthesizePlayerInfo(matchingId, pickup.BotPlayerId);
-            if (bot == null || botInfo == null)
+            GameObjectInfo? objectInfo = botPlayerManager.SynthesizeGameObjectInfo(matchingId, pickup.BotPlayerId);
+            if (bot == null || botInfo == null || objectInfo == null)
                 continue;
 
             ImmutableArray<int> recipients = RecipientOrdinals(
@@ -140,7 +141,7 @@ internal sealed class SwarmBotMovementCoordinator(
                 continue;
 
             autoEquips.Add(new SwarmBotPlayerInfoDispatch(
-                SwarmBotPlayerInfoSnapshot.Capture(botInfo),
+                SwarmBotPlayerInfoSnapshot.Capture(botInfo, objectInfo),
                 recipients));
         }
 
@@ -192,8 +193,9 @@ internal sealed class SwarmBotMovementCoordinator(
         if (movement.IsAreaTransition)
         {
             PlayerInfo? botInfo = botPlayerManager.SynthesizePlayerInfo(matchingId, movement.BotPlayerId);
-            if (botInfo != null)
-                enteringBot = SwarmBotPlayerInfoSnapshot.Capture(botInfo);
+            GameObjectInfo? objectInfo = botPlayerManager.SynthesizeGameObjectInfo(matchingId, movement.BotPlayerId);
+            if (botInfo != null && objectInfo != null)
+                enteringBot = SwarmBotPlayerInfoSnapshot.Capture(botInfo, objectInfo);
         }
 
         float orbOrbitPhase = bot?.OrbOrbitPhaseDegrees
@@ -377,12 +379,16 @@ internal sealed record SwarmBotPlayerInfoSnapshot(
     long Gold,
     int Hp,
     int Stamina,
-    MapId LastMapId,
-    long LastMapSubId,
-    SwarmCellSnapshot LastCell,
+    MapId MapId,
+    long MapSubId,
+    SwarmCellSnapshot Cell,
+    SwarmVectorSnapshot Position,
+    SwarmVectorSnapshot Velocity,
+    float Rotation,
+    bool IsFlip,
     bool IsNew)
 {
-    public static SwarmBotPlayerInfoSnapshot Capture(PlayerInfo info) => new(
+    public static SwarmBotPlayerInfoSnapshot Capture(PlayerInfo info, GameObjectInfo objectInfo) => new(
         info.PlayerId,
         info.Name,
         info.WearItemIdList.ToImmutableArray(),
@@ -390,9 +396,13 @@ internal sealed record SwarmBotPlayerInfoSnapshot(
         info.Gold,
         info.Hp,
         info.Stamina,
-        info.LastMapId,
-        info.LastMapSubId,
-        SwarmCellSnapshot.Capture(info.LastCell),
+        objectInfo.MapId,
+        objectInfo.MapSubId,
+        SwarmCellSnapshot.Capture(objectInfo.Cell),
+        SwarmVectorSnapshot.Capture(objectInfo.Position),
+        SwarmVectorSnapshot.Capture(objectInfo.Velocity),
+        objectInfo.Rotation,
+        objectInfo.IsFlip,
         info.IsNew);
 
     public PlayerInfo ToPlayerInfo() => new()
@@ -404,10 +414,15 @@ internal sealed record SwarmBotPlayerInfoSnapshot(
         Gold = Gold,
         Hp = Hp,
         Stamina = Stamina,
-        LastMapId = LastMapId,
-        LastMapSubId = LastMapSubId,
-        LastCell = LastCell.ToCell(),
         IsNew = IsNew
+    };
+
+    public GameObjectInfo ToGameObjectInfo() => new(ObjectType.PLAYER, PlayerId, MapId, MapSubId, Cell.ToCell(), IsFlip)
+    {
+        Position = Position.ToVector3f(),
+        Velocity = Velocity.ToVector3f(),
+        Rotation = Rotation,
+        State = State
     };
 }
 

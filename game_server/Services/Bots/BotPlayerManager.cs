@@ -156,7 +156,7 @@ public partial class BotPlayerManager
         103000006
     };
 
-    private static List<int> BuildBotWearItems(BotPlayerState bot)
+    internal static List<int> BuildBotWearItems(BotPlayerState bot)
     {
         var list = new List<int>(BotDefaultWearItemIds);
         int idx = (int)(Math.Abs(bot.PlayerId) % BotCustomizationItems.Length);
@@ -183,20 +183,27 @@ public partial class BotPlayerManager
             PlayerId = bot.PlayerId,
             Name = bot.Name,
             State = state,
-            LastMapId = mapId,
-            LastMapSubId = matchingId,
-            LastCell = bot.Cell,
             Hp = 5000,
             Stamina = bot.Stamina,
             WearItemIdList = BuildBotWearItems(bot)
         };
-        info.ObjectInfo = new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, mapId, matchingId, bot.Cell)
-        {
-            Position = bot.Position,
-            Velocity = new Vector3f(0f, 0f, 0f),
-            Rotation = bot.Rotation
-        };
         return info;
+    }
+
+    public GameObjectInfo? SynthesizeGameObjectInfo(long matchingId, long botPlayerId)
+    {
+        var bot = GetBot(matchingId, botPlayerId);
+        if (bot == null) return null;
+        var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
+            ? PlayerState.SLEEP
+            : bot.RngCollectProgressStartTime != DateTime.MinValue || bot.SwarmExploreStartedAtUtc != DateTime.MinValue
+                ? PlayerState.EXPLORE_1 : PlayerState.IDLE;
+        return new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, GetMatchingMapId(matchingId), matchingId, bot.Cell)
+        {
+            Position = new Vector3f(bot.Position.X, bot.Position.Y, bot.Position.Z),
+            Rotation = bot.Rotation,
+            State = state
+        };
     }
 
     internal static Vector3f CellToWorldPosition(MapId mapId, Cell cell) =>

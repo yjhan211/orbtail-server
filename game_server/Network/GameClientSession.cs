@@ -100,6 +100,7 @@ public partial class GameClientSession : SessionBase
     private DateTime _exploreMoveGraceUntil = DateTime.MinValue;
 
     private Vector3f? _lastValidatedPosition;
+    private Vector3f _lastValidatedVelocity = new(0f, 0f, 0f);
     private Cell? _lastValidCell;
 
     private float _lastValidatedRotation;

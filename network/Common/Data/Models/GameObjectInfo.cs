@@ -6,6 +6,7 @@ using network.common.data;
 
 namespace network.common.data.models
 {
+    /// <summary>게임 공간에 놓인 객체의 현재 맵·위치·속도·회전·행동 상태. PlayerInfo와 별도로 전달한다.</summary>
     [MessagePackObject]
     public partial class GameObjectInfo : IMessagePackObject
     {
@@ -67,7 +68,7 @@ namespace network.common.data.models
         [Key("mapSubId")]
         public long MapSubId { get; set; }
 
-        // 현재 위치한 셀 (Position에서 자동 계산)
+        // 현재 위치한 셀. 위치를 갱신하는 코드가 Position과 함께 설정한다.
         [Key("cell")]
         public Cell Cell { get; set; }
 
@@ -89,6 +90,9 @@ namespace network.common.data.models
 
         [Key("isFlip")]
         public bool IsFlip { get; set; }
+
+        [Key("state")]
+        public PlayerState State { get; set; }
 
         // 하위 호환성을 위한 속성 (Deprecated)
         [IgnoreMember]

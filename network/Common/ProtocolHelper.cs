@@ -17,7 +17,7 @@ namespace network.common
             Protocol.G_TO_C_HEART_BEAT,
             Protocol.C_TO_G_CONNECT,
             Protocol.G_TO_C_CONNECT_RESULT,
-            Protocol.G_TO_C_PLAYER_INFO,
+            Protocol.G_TO_C_OBJECT_INFO,
             Protocol.C_TO_G_MOVE,
             Protocol.G_TO_C_MOVE,
             Protocol.C_TO_G_SUMMON_ORB,

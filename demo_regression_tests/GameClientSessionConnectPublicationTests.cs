@@ -20,6 +20,29 @@ namespace demo_regression_tests;
 public sealed class GameClientSessionConnectPublicationTests
 {
     [Fact]
+    public void ObjectSnapshot_CopiesAuthoritativeCoordinatesWithoutLoadingPlayerInfo()
+    {
+        using var fixture = new ConnectFixture();
+        var session = fixture.CreateSession(74006, 8105, _ => true);
+        var position = new Vector3f(10.25f, 20.75f, 0f);
+        var velocity = new Vector3f(2f, 3f, 0f);
+        var cell = new Cell(10, 20);
+        typeof(GameClientSession).GetField("_lastValidatedPosition", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, position);
+        typeof(GameClientSession).GetField("_lastValidatedVelocity", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, velocity);
+        typeof(GameClientSession).GetField("_lastValidCell", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, cell);
+        var snapshot = session.CaptureGameObjectInfo();
+        position.X = 999;
+        velocity.X = 999;
+        cell.X = 999;
+        Assert.Equal(8105, snapshot.ObjectId);
+        Assert.Equal(74006, snapshot.MapSubId);
+        Assert.Equal(10.25f, snapshot.Position.X);
+        Assert.Equal(20.75f, snapshot.Position.Y);
+        Assert.Equal(2f, snapshot.Velocity.X);
+        Assert.Equal(10, snapshot.Cell.X);
+    }
+
+    [Fact]
     public void CommittedSuccessAck_HasExactPayloadAndPlayerId_AfterAtomicAuthenticationCommit()
     {
         const long matchingId = 74_001;

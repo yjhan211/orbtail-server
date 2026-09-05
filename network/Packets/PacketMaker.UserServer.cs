@@ -17,13 +17,13 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet U_TO_C_LOGIN(PlayerInfo playerInfo, string accountToken)
+    public static Packet U_TO_C_LOGIN(PlayerInfo playerInfo, GameObjectInfo objectInfo, string accountToken)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_LOGIN);
         U_TO_C_LOGIN body =
             new()
             {
-                ObjectInfo = playerInfo.ObjectInfo,
+                ObjectInfo = objectInfo,
                 PlayerInfo = playerInfo,
                 AccountToken = accountToken
             };

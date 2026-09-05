@@ -148,9 +148,11 @@ public partial class GameServer
                 if (movement.EnteringBot != null)
                 {
                     using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(
-                        movement.EnteringBot.ToPlayerInfo(),
-                        movement.ToCell.ToCell());
+                        movement.EnteringBot.ToGameObjectInfo());
                     SendToCapturedRecipients(enterPacket, movement.DestinationRecipientOrdinals, sessionSnapshot);
+                    using var appearance = PacketMaker.G_TO_C_PLAYER_APPEARANCE(
+                        movement.BotPlayerId, movement.EnteringBot.WearItemIds.ToList());
+                    SendToCapturedRecipients(appearance, movement.DestinationRecipientOrdinals, sessionSnapshot);
                 }
             }
 
@@ -199,7 +201,8 @@ public partial class GameServer
 
         foreach (SwarmBotPlayerInfoDispatch autoEquip in plan.AutoEquips)
         {
-            using var packet = PacketMaker.G_TO_C_PLAYER_INFO([autoEquip.PlayerInfo.ToPlayerInfo()]);
+            using var packet = PacketMaker.G_TO_C_PLAYER_APPEARANCE(
+                autoEquip.PlayerInfo.PlayerId, autoEquip.PlayerInfo.WearItemIds.ToList());
             SendToCapturedRecipients(packet, autoEquip.RecipientOrdinals, sessionSnapshot);
         }
     }

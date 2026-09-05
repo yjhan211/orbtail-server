@@ -65,23 +65,29 @@ public sealed class SwarmBotMovementPlanTests
         {
             PlayerId = -20,
             Name = "Bot",
-            WearItemIdList = [101, 202],
-            LastCell = new Cell(7, 8)
+            WearItemIdList = [101, 202]
         };
+        var sourceObject = new GameObjectInfo { Cell = new Cell(7, 8), Position = new Vector3f(1.25f, 2.75f, 0) };
 
-        SwarmBotPlayerInfoSnapshot snapshot = SwarmBotPlayerInfoSnapshot.Capture(source);
+        SwarmBotPlayerInfoSnapshot snapshot = SwarmBotPlayerInfoSnapshot.Capture(source, sourceObject);
         source.WearItemIdList[0] = 999;
-        source.LastCell.X = 999;
+        sourceObject.Cell.X = 999;
+        sourceObject.Position.X = 999;
 
         PlayerInfo firstProjection = snapshot.ToPlayerInfo();
+        GameObjectInfo firstObject = snapshot.ToGameObjectInfo();
         Assert.Equal([101, 202], firstProjection.WearItemIdList);
-        Assert.Equal(new Cell(7, 8), firstProjection.LastCell);
+        Assert.Equal(new Cell(7, 8), firstObject.Cell);
+        Assert.Equal(1.25f, firstObject.Position.X);
 
         firstProjection.WearItemIdList.Clear();
-        firstProjection.LastCell.Y = 999;
+        firstObject.Cell.Y = 999;
+        firstObject.Position.Y = 999;
         PlayerInfo secondProjection = snapshot.ToPlayerInfo();
+        GameObjectInfo secondObject = snapshot.ToGameObjectInfo();
         Assert.Equal([101, 202], secondProjection.WearItemIdList);
-        Assert.Equal(new Cell(7, 8), secondProjection.LastCell);
+        Assert.Equal(new Cell(7, 8), secondObject.Cell);
+        Assert.Equal(2.75f, secondObject.Position.Y);
     }
 
     [Fact]
@@ -161,7 +167,7 @@ public sealed class SwarmBotMovementPlanTests
             "G_TO_C_MOVE",
             "G_TO_C_ENCOUNTER_REVEAL",
             "G_TO_C_GROUND_ITEM_REMOVED",
-            "G_TO_C_PLAYER_INFO");
+            "G_TO_C_PLAYER_APPEARANCE");
     }
 
     [Fact]

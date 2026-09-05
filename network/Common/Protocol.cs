@@ -27,7 +27,7 @@ namespace network.common
         C_TO_G_CONNECT,
         C_TO_G_MATCH_START_READY,
         G_TO_C_CONNECT_RESULT,
-        G_TO_C_PLAYER_INFO,
+        G_TO_C_OBJECT_INFO,
         C_TO_G_MOVE,
         G_TO_C_MOVE,
         G_TO_C_GAME_TIME_WARNING,
@@ -161,6 +161,8 @@ namespace network.common
         // 자기장 시계 (#272) — 수축 시작 시각. 유예·수축 길이·거리 필드는 Common이
         // 단일 출처라 클라가 같은 값으로 경계를 보간한다 (표시 = 판정).
         G_TO_C_SWARM_FIELD_STATE,
+
+        G_TO_C_PLAYER_APPEARANCE, // 인게임 착용 외형 변경 (위치·PlayerInfo 전체 제외)
 
         END
     }
