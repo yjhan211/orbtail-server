@@ -3,7 +3,7 @@ using network.common;
 using network.common.data.models;
 using network.gamehandoff;
 using network.routing;
-using user_server.services;
+using user_server.matching;
 
 namespace demo_regression_tests;
 

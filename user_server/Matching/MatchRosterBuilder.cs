@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using network.common.data.models;
 using network.infrastructure.redis;
 
-namespace user_server.services;
+namespace user_server.matching;
 
 /// <summary>
 ///     한 매치의 로스터를 조립한다: 성공 패킷용 PlayerInfo 로스터(이름·착용 아이템)와 Game Server가 읽는 매치 manifest.

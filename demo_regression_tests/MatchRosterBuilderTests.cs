@@ -1,5 +1,5 @@
 using network.common.data.models;
-using user_server.services;
+using user_server.matching;
 
 namespace demo_regression_tests;
 

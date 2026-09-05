@@ -2,7 +2,7 @@ using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace user_server.services;
+namespace user_server.accounts;
 
 /// <summary>
 ///     계정 토큰 인증(불투명 토큰 ↔ playerId 매핑)은 로그인을 받는 user_server만의 일이다 — game_server는 handoff ticket만 믿는다.

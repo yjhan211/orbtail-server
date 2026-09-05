@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Configuration;
 
-namespace user_server.services;
+namespace user_server;
 
 /// <summary>
 ///     이 프로세스의 노드 ID. 리더 lease 값이자 세션 알림의 origin.

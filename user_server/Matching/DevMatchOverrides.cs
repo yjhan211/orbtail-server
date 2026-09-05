@@ -4,7 +4,7 @@ using network.common.data;
 using network.common.data.models;
 using network.infrastructure.redis;
 
-namespace user_server.services;
+namespace user_server.matching;
 
 /// <summary>
 ///     개발·검증용 매칭 오버라이드 모음. 환경 변수(<c>TEST_TWO_PLAYER_MATCH</c>, <c>SOLO_MAP_VALIDATION</c>)는

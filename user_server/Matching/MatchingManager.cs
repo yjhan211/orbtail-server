@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using user_server.network;
 
-namespace user_server.services;
+namespace user_server.matching;
 
 /// <summary>
 ///     매칭 서브시스템의 수명 조정자. 1초 timer로 <see cref="MatchmakingPass" />를 겹치지 않게

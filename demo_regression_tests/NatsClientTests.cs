@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 using NATS.Client;
 using network.infrastructure.messaging;
 using network.infrastructure.redis;
-using user_server.services;
+using user_server.matching;
 
 namespace demo_regression_tests;
 

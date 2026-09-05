@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace user_server.services;
+namespace user_server.matching;
 
 /// <summary>
 ///     매칭 요청 ID처럼 Redis 키·로그·패킷에 그대로 들어가는 토큰 조각의 허용 문자를 검사한다.

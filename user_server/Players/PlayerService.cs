@@ -4,7 +4,7 @@ using network.common.data;
 using network.common.data.models;
 using network.infrastructure.redis;
 
-namespace user_server.services;
+namespace user_server.players;
 
 /// <summary>
 ///     Redis PlayerInfo를 player lock 안에서 load/mutate/save하여 아이템 착용과 소비 아이템 사용을 처리한다.

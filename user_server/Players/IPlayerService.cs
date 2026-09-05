@@ -1,7 +1,7 @@
 using network.common;
 using network.common.data.models;
 
-namespace user_server.services;
+namespace user_server.players;
 
 public interface IPlayerService
 {

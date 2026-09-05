@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using network.infrastructure.redis;
 
-namespace user_server.services;
+namespace user_server.matching;
 
 /// <summary>
 ///     매칭 pass를 도는 User Server를 한 프로세스로 제한하는 Redis lease. 1초 tick마다 얻거나 갱신하고,

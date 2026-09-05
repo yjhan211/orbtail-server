@@ -1,6 +1,6 @@
 using MessagePack;
 
-namespace user_server.services;
+namespace user_server.matching;
 
 /// <summary>
 ///     Redis 매칭 큐(sorted set)에 저장되는 wire 타입. Key 번호는 기존 entry 호환을 위해 유지한다.

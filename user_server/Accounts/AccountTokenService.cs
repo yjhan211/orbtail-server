@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using network.helpers;
 
-namespace user_server.services;
+namespace user_server.accounts;
 
 public sealed class AccountTokenOptions
 {

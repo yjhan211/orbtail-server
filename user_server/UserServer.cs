@@ -6,8 +6,11 @@ using network.common.data.helpers;
 using network.core;
 using network.hosting;
 using network.infrastructure.redis;
+using user_server.accounts;
+using user_server.matching;
 using user_server.network;
-using user_server.services;
+using user_server.players;
+using user_server.sessions;
 
 namespace user_server;
 

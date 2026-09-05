@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using network.routing;
 
-namespace user_server.services;
+namespace user_server.matching;
 
 /// <summary>
 ///     매치 하나가 배정된 Game Server. 클라이언트에는 주소가, ticket에는 노드 ID가 실린다.

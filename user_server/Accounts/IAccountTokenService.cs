@@ -1,5 +1,5 @@
 
-namespace user_server.services;
+namespace user_server.accounts;
 
 public interface IAccountTokenService
 {

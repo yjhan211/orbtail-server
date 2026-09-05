@@ -9,7 +9,7 @@ using network.infrastructure.redis;
 using network.routing;
 using RedLockNet;
 using StackExchange.Redis;
-using user_server.services;
+using user_server.matching;
 
 namespace demo_regression_tests;
 

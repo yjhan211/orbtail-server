@@ -2,7 +2,7 @@ using Microsoft.Extensions.Logging;
 using network.common.data.models;
 using network.infrastructure.redis;
 
-namespace user_server.services;
+namespace user_server.matching;
 
 /// <summary>
 ///     매치 생성 경로의 출처. 로그·롤백 메시지 구분에만 쓴다.

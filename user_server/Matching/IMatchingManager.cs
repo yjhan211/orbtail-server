@@ -1,7 +1,7 @@
 using network.common;
 using user_server.network;
 
-namespace user_server.services;
+namespace user_server.matching;
 
 public interface IMatchingManager
 {

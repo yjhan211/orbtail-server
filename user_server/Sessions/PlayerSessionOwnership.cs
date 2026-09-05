@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using network.infrastructure.redis;
 using StackExchange.Redis;
 
-namespace user_server.services;
+namespace user_server.sessions;
 
 /// <summary>
 ///     Redis에 기록되는 UserServer 세션 소유권. Generation이 큰 로그인이 최신이며,

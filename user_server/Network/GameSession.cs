@@ -3,10 +3,12 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.core;
-using network.gamehandoff;
 using network.infrastructure.redis;
 using network.packets;
-using user_server.services;
+using user_server.accounts;
+using user_server.matching;
+using user_server.players;
+using user_server.sessions;
 
 namespace user_server.network;
 

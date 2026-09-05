@@ -2,8 +2,9 @@ using System.Buffers.Binary;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.infrastructure.messaging;
+using user_server.sessions;
 
-namespace user_server.services;
+namespace user_server.matching;
 
 /// <summary>
 ///     Game Server가 Core NATS로 보내는 매칭 lifecycle 4종(left/completed/admission_failed/released)을 받아

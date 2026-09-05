@@ -1,6 +1,6 @@
 using MessagePack;
 using network.common;
-using user_server.services;
+using user_server.matching;
 
 namespace demo_regression_tests;
 

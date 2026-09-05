@@ -1,4 +1,4 @@
-namespace user_server.services;
+namespace user_server.accounts;
 
 public sealed record AccountTokenResolution(
     long PlayerId,

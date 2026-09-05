@@ -6,7 +6,7 @@ using network.helpers;
 using network.infrastructure.redis;
 using StackExchange.Redis;
 
-namespace user_server.services;
+namespace user_server.accounts;
 
 public sealed class RedisAccountCredentialStore(
     IRedisOperations redisOperations,

@@ -4,7 +4,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.infrastructure.messaging;
 using network.packets;
-using user_server.services;
+using user_server.matching;
+using user_server.sessions;
 
 namespace demo_regression_tests;
 

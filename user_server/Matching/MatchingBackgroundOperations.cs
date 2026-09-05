@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace user_server.services;
+namespace user_server.matching;
 
 /// <summary>
 ///     매칭 서브시스템의 background 작업(입장 watchdog·lifecycle handler)을 추적하고 종료 토큰을 소유한다.
