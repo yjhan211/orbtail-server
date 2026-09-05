@@ -8,7 +8,6 @@ using network.gamehandoff;
 using network.hosting;
 using network.infrastructure.messaging;
 using network.infrastructure.redis;
-using network.infrastructure.routing;
 using network.routing;
 using Serilog;
 using Serilog.Events;

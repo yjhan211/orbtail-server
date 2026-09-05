@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.gamehandoff;
 using network.infrastructure.redis;
-using network.infrastructure.routing;
+using network.routing;
 using user_server.network;
 
 namespace user_server.services;

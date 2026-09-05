@@ -23,7 +23,7 @@ public sealed class MovementPacketQueueTests
     {
         var clock = new ManualClock();
         var session = CreateSession(clock);
-        var router = (IProtocolRouter)typeof(SessionBase).GetField("ProtocolRouter",
+        var router = (ProtocolRouter)typeof(SessionBase).GetField("ProtocolRouter",
             BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!;
         var positions = new List<float>();
         bool actionProcessed = false;

@@ -30,7 +30,7 @@ public abstract class SessionBase(
 
     protected readonly IRedisOperations RedisOperations = redisOperations;
     protected readonly ILogger Logger = logger;
-    protected readonly IProtocolRouter ProtocolRouter = new ProtocolRouter();
+    protected readonly ProtocolRouter ProtocolRouter = new();
     private readonly SemaphoreSlim _sessionLock = new(1);
     protected readonly TcpConnection Connection = connection;
 

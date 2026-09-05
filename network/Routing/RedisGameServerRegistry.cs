@@ -1,8 +1,7 @@
 using MessagePack;
 using network.infrastructure.redis;
-using network.routing;
 
-namespace network.infrastructure.routing;
+namespace network.routing;
 
 /// <summary>
 ///     Redis에서 GameServerNodeDescriptor를 저장·조회·삭제한다.

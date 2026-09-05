@@ -1,13 +1,14 @@
 namespace network.routing;
 
+/// <summary>
+///     GameServer 노드 정보를 등록·조회·삭제하는 인터페이스.
+///     GameServer는 자신의 상태를 등록하고, UserServer는 등록된 노드를 조회해 매치를 배정한다.
+///
+///     테스트에서는 실제 Redis 없이 노드 목록과 등록·삭제 동작을 대체할 수 있다.
+/// </summary>
 public interface IGameServerRegistry
 {
-    /// <summary>descriptor를 레지스트리에 쓴다(있으면 덮어쓴다).</summary>
     public Task PublishAsync(GameServerNodeDescriptor descriptor);
-
-    /// <summary>노드 항목을 지운다. 정상 종료 마지막 단계에서 부른다.</summary>
     public Task RemoveAsync(string nodeId);
-
-    /// <summary>레지스트리의 모든 항목. 손상된 항목은 건너뛴다. 신선도 판정은 호출자가 한다.</summary>
     public Task<IReadOnlyList<GameServerNodeDescriptor>> DiscoverAsync();
 }
