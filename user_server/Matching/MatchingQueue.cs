@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.infrastructure.redis;
-using user_server.network;
+using user_server.sessions;
 
 namespace user_server.matching;
 

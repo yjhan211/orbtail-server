@@ -6,7 +6,6 @@ using network.gamehandoff;
 using network.helpers;
 using network.infrastructure.redis;
 using network.packets;
-using user_server.network;
 using user_server.sessions;
 
 namespace user_server.matching;

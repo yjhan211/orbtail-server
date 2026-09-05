@@ -1,13 +1,13 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 
-namespace user_server.network;
+namespace user_server.sessions;
 
 /// <summary>
 ///     프로세스 안의 현재 플레이어 세션을 보관한다. Redis에서 발급한 세대를 비교해
 ///     늦게 끝난 로그인이나 이전 세션의 종료가 더 최신 세션을 교체·제거하지 못하게 한다.
 /// </summary>
-internal sealed class UserSessionRegistry(ILogger logger)
+internal sealed class PlayerSessionRegistry(ILogger logger)
 {
     private readonly ConcurrentDictionary<long, GameSession> _sessions = new();
 

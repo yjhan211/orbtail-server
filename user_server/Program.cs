@@ -12,7 +12,6 @@ using Serilog;
 using Serilog.Events;
 using user_server.accounts;
 using user_server.matching;
-using user_server.network;
 using user_server.players;
 using user_server.sessions;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
@@ -73,10 +72,10 @@ internal static class Program
 
         services.AddSingleton<IPlayerService, PlayerService>();
 
-        services.AddSingleton<UserSessionRegistry>();
+        services.AddSingleton<PlayerSessionRegistry>();
         services.AddSingleton<NatsPlayerSessionRouter>(sp => new NatsPlayerSessionRouter(
             sp.GetRequiredService<INatsClient>(),
-            sp.GetRequiredService<UserSessionRegistry>().Get,
+            sp.GetRequiredService<PlayerSessionRegistry>().Get,
             sp.GetRequiredService<UserServerNodeIdentity>().NodeId,
             sp.GetRequiredService<ILogger>()));
         services.AddSingleton<IPlayerSessionRouter>(sp => sp.GetRequiredService<NatsPlayerSessionRouter>());

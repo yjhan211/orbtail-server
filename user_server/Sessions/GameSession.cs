@@ -8,9 +8,8 @@ using network.packets;
 using user_server.accounts;
 using user_server.matching;
 using user_server.players;
-using user_server.sessions;
 
-namespace user_server.network;
+namespace user_server.sessions;
 
 public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
 {

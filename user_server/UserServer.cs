@@ -8,7 +8,6 @@ using network.hosting;
 using network.infrastructure.redis;
 using user_server.accounts;
 using user_server.matching;
-using user_server.network;
 using user_server.players;
 using user_server.sessions;
 
@@ -37,7 +36,7 @@ internal sealed class UserServer(
     IAccountTokenService accountTokenService,
     ServerReadinessState readinessState,
     UserServerNodeIdentity node,
-    UserSessionRegistry sessions,
+    PlayerSessionRegistry sessions,
     NatsPlayerSessionRouter sessionRouter,
     MatchingManager matchingManager,
     MatchingLifecycleSubscriber matchingLifecycleSubscriber)
