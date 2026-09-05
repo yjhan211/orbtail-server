@@ -16,7 +16,7 @@ namespace network.core;
 ///     ProtocolRouter를 통해 서버별 핸들러에 전달한다.
 ///
 ///     공통 송신과 오류 처리, 연결 종료 통보를 제공하고,
-///     실제 프로토콜 등록과 세션 제거 처리는 GameSession과 GameClientSession이 구현한다.
+///     실제 프로토콜 등록과 세션 제거 처리는 PlayerSession과 GameClientSession이 구현한다.
 /// </summary>
 public abstract class SessionBase(
     TcpConnection connection,

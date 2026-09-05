@@ -9,16 +9,16 @@ namespace user_server.sessions;
 /// </summary>
 internal sealed class PlayerSessionRegistry(ILogger logger)
 {
-    private readonly ConcurrentDictionary<long, GameSession> _sessions = new();
+    private readonly ConcurrentDictionary<long, PlayerSession> _sessions = new();
 
-    public (bool Accepted, GameSession? SupersededSession) Register(long playerId, GameSession session)
+    public (bool Accepted, PlayerSession? SupersededSession) Register(long playerId, PlayerSession session)
     {
         if (session.SessionGeneration <= 0)
             throw new InvalidOperationException("A session must own a positive generation before registration.");
 
         while (true)
         {
-            if (!_sessions.TryGetValue(playerId, out GameSession? existingSession))
+            if (!_sessions.TryGetValue(playerId, out PlayerSession? existingSession))
             {
                 if (_sessions.TryAdd(playerId, session))
                 {
@@ -52,10 +52,10 @@ internal sealed class PlayerSessionRegistry(ILogger logger)
         }
     }
 
-    public bool Remove(long playerId, GameSession session)
+    public bool Remove(long playerId, PlayerSession session)
     {
-        bool removed = ((ICollection<KeyValuePair<long, GameSession>>)_sessions)
-            .Remove(new KeyValuePair<long, GameSession>(playerId, session));
+        bool removed = ((ICollection<KeyValuePair<long, PlayerSession>>)_sessions)
+            .Remove(new KeyValuePair<long, PlayerSession>(playerId, session));
         if (removed)
             logger.LogInformation(
                 "Session removed: PlayerId={PlayerId}, Generation={Generation}",
@@ -63,9 +63,9 @@ internal sealed class PlayerSessionRegistry(ILogger logger)
         return removed;
     }
 
-    public GameSession? Get(long playerId)
+    public PlayerSession? Get(long playerId)
     {
-        _sessions.TryGetValue(playerId, out GameSession? session);
+        _sessions.TryGetValue(playerId, out PlayerSession? session);
         return session;
     }
 }

@@ -2,7 +2,7 @@ namespace user_server.matching;
 
 /// <summary>
 ///     세션 하나의 매칭 상태 기계: 요청 중(requestId) → 배정됨(matchingId) → 해제.
-///     잠금 하나로 두 필드를 함께 전이하며, 연결 수명·Redis는 모르고 호출 측(GameSession)이 그 조건을 앞에 둔다.
+///     잠금 하나로 두 필드를 함께 전이하며, 연결 수명·Redis는 모르고 호출 측(PlayerSession)이 그 조건을 앞에 둔다.
 ///     requestId는 늦게 도착한 성공·실패 패킷이 취소된 요청에 붙지 않게 하는 fence다.
 /// </summary>
 internal sealed class MatchingAssignment

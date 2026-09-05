@@ -11,7 +11,7 @@ using user_server.players;
 
 namespace user_server.sessions;
 
-public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
+public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
 {
     private readonly IMatchingManager _matchingManager;
     private readonly IAccountTokenService _accountTokenService;
@@ -19,9 +19,9 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
     private readonly IPlayerSessionLeaseStore _sessionLeaseStore;
     private readonly IPlayerService _playerService;
 
-    private readonly Func<long, GameSession, (bool Accepted, GameSession? SupersededSession)> _onSessionRegistered;
+    private readonly Func<long, PlayerSession, (bool Accepted, PlayerSession? SupersededSession)> _onSessionRegistered;
     private readonly Action<long, long> _announceLogin;
-    private readonly Func<long, GameSession, bool> _onSessionRemoved;
+    private readonly Func<long, PlayerSession, bool> _onSessionRemoved;
 
     private readonly string _nodeId;
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
@@ -32,7 +32,7 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
     private Task _sessionLeaseRenewalTask = Task.CompletedTask;
     private long _sessionGeneration;
 
-    public GameSession(
+    public PlayerSession(
         TcpConnection connection,
         ILogger logger,
         IRedisOperations redisOperations,
@@ -42,9 +42,9 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         IAccountTokenService accountTokenService,
         IPlayerSessionLeaseStore sessionLeaseStore,
         string nodeId,
-        Func<long, GameSession, (bool Accepted, GameSession? SupersededSession)> onSessionRegistered,
+        Func<long, PlayerSession, (bool Accepted, PlayerSession? SupersededSession)> onSessionRegistered,
         Action<long, long> announceLogin,
-        Func<long, GameSession, bool> onSessionRemoved)
+        Func<long, PlayerSession, bool> onSessionRemoved)
         : base(connection, logger, redisOperations)
     {
         _playerService = playerService;
@@ -194,9 +194,9 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
     ///     같은 서버에 더 최신 세션이 이미 등록돼 있으면 이 연결을 끊고 false를 반환한다.
     ///     교체된 이전 세션은 previousSession로 반환하며, 호출자가 연결을 끊는다.
     /// </summary>
-    private bool TryRegisterLocalSession(out GameSession? previousSession)
+    private bool TryRegisterLocalSession(out PlayerSession? previousSession)
     {
-        (bool Accepted, GameSession? SupersededSession) registration = default;
+        (bool Accepted, PlayerSession? SupersededSession) registration = default;
         if (!Connection.TryMarkAuthenticated(() => registration = _onSessionRegistered(PlayerId!.Value, this)))
         {
             previousSession = null;

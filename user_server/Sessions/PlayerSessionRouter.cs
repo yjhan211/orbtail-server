@@ -7,7 +7,7 @@ using network.packets;
 namespace user_server.sessions;
 
 /// <summary>
-///     라우터가 세션에 요구하는 것. <see cref="GameSession" />이 구현하고, 테스트는 가짜로 대신한다.
+///     라우터가 세션에 요구하는 것. <see cref="PlayerSession" />이 구현하고, 테스트는 가짜로 대신한다.
 /// </summary>
 internal interface IMatchingSessionEndpoint
 {

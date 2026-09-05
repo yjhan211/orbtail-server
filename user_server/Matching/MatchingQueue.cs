@@ -19,7 +19,7 @@ internal sealed class MatchingQueue(
     internal const string QueueKey = MatchingHandoffRedisKeys.MatchingQueueKey;
     private const string LockKeyPrefix = "matching_queue_lock:";
 
-    public async Task<ErrorCode> AddToQueueAsync(long playerId, GameSession user)
+    public async Task<ErrorCode> AddToQueueAsync(long playerId, PlayerSession user)
     {
         try
         {

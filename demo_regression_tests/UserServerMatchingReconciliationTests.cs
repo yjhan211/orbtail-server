@@ -15,7 +15,7 @@ using user_server.sessions;
 namespace demo_regression_tests;
 
 /// <summary>
-///     Core NATS의 session.clear 유실 시 GameSession이 Redis claim을 정본으로 로컬 배정을 복구하는 경로.
+///     Core NATS의 session.clear 유실 시 PlayerSession이 Redis claim을 정본으로 로컬 배정을 복구하는 경로.
 /// </summary>
 public sealed class UserServerMatchingReconciliationTests
 {
@@ -32,7 +32,7 @@ public sealed class UserServerMatchingReconciliationTests
         var store = new FailingLeaseStore { Current = current, CheckError = lookupError };
         var playerService = new RecordingPlayerService();
         var session = NewSession(connection.Connection, new RecordingMatchingManager(), store, playerService: playerService);
-        typeof(GameSession).GetProperty("PlayerId", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, 7L);
+        typeof(PlayerSession).GetProperty("PlayerId", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, 7L);
         SetField(session, "_sessionLease", new PlayerSessionLease(7, "node", "session", 1, "owner"));
 
         if (useItem)
@@ -69,7 +69,7 @@ public sealed class UserServerMatchingReconciliationTests
         var matching = new RecordingMatchingManager();
         var store = new FailingLeaseStore { CheckError = lookupError };
         var session = NewSession(connection.Connection, matching, store);
-        typeof(GameSession).GetProperty("PlayerId", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, 7L);
+        typeof(PlayerSession).GetProperty("PlayerId", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, 7L);
         SetField(session, "_sessionLease", new PlayerSessionLease(7, "node", "session", 1, "owner"));
 
         if (cancel)
@@ -132,7 +132,7 @@ public sealed class UserServerMatchingReconciliationTests
         Assert.False(logger.Contains(LogLevel.Error, "Login"));
     }
 
-    private static async Task Receive<T>(GameSession session, Protocol protocol, T message)
+    private static async Task Receive<T>(PlayerSession session, Protocol protocol, T message)
     {
         using var packet = Packet.Create((int)protocol);
         packet.SetBody(MessagePackSerializer.Serialize(message));
@@ -148,7 +148,7 @@ public sealed class UserServerMatchingReconciliationTests
         var store = new FailingLeaseStore { CheckError = true };
         var session = NewSession(connection.Connection, new RecordingMatchingManager(), store);
         // 로그인은 이미 인증된 경우의 응답 경로를 사용하며 lease 검사는 생략되어야 한다.
-        typeof(GameSession).GetProperty("PlayerId", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, 7L);
+        typeof(PlayerSession).GetProperty("PlayerId", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, 7L);
 
         await Receive(session, protocol, new C_TO_U_LOGIN());
 
@@ -163,7 +163,7 @@ public sealed class UserServerMatchingReconciliationTests
         var store = new FailingLeaseStore { FirstCheck = completion.Task };
         var playerService = new RecordingPlayerService();
         var session = NewSession(connection.Connection, new RecordingMatchingManager(), store, playerService: playerService);
-        typeof(GameSession).GetProperty("PlayerId", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, 7L);
+        typeof(PlayerSession).GetProperty("PlayerId", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, 7L);
         SetField(session, "_sessionLease", new PlayerSessionLease(7, "node", "session", 1, "owner"));
 
         var first = Receive(session, Protocol.C_TO_U_WEAR_ITEM, new C_TO_U_WEAR_ITEM());
@@ -177,11 +177,11 @@ public sealed class UserServerMatchingReconciliationTests
     }
 
     // 상태 준비와 private 경계 호출에만 사용해 프로덕션 API를 테스트용으로 넓히지 않는다.
-    private static object? Invoke(GameSession session, string name, params object?[] args) =>
-        typeof(GameSession).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, args);
+    private static object? Invoke(PlayerSession session, string name, params object?[] args) =>
+        typeof(PlayerSession).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, args);
 
-    private static void SetField(GameSession session, string name, object value) =>
-        typeof(GameSession).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, value);
+    private static void SetField(PlayerSession session, string name, object value) =>
+        typeof(PlayerSession).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, value);
 
     private sealed class FailingLeaseStore : IPlayerSessionLeaseStore
     {
@@ -279,7 +279,7 @@ public sealed class UserServerMatchingReconciliationTests
         Assert.Equal(firstRequest, session.ActiveMatchingRequestId);
     }
 
-    private static void DeliverMatchingSuccess(GameSession session, long matchingId, string requestId)
+    private static void DeliverMatchingSuccess(PlayerSession session, long matchingId, string requestId)
     {
         using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
             matchingId, "127.0.0.1", 9001, 0, "test-ticket", []);
@@ -287,10 +287,10 @@ public sealed class UserServerMatchingReconciliationTests
             matchingId, requestId, packet));
     }
 
-    private static GameSession NewSession(TcpConnection connection, IMatchingManager matchingManager,
+    private static PlayerSession NewSession(TcpConnection connection, IMatchingManager matchingManager,
         IPlayerSessionLeaseStore? store = null, ILogger? logger = null, IPlayerService? playerService = null)
     {
-        return new GameSession(
+        return new PlayerSession(
             connection,
             logger ?? NullLogger.Instance,
             new InMemoryRedisOperations(),
@@ -323,7 +323,7 @@ public sealed class UserServerMatchingReconciliationTests
             return ClaimCompletion?.Task ?? Task.FromResult(HasClaim);
         }
 
-        public Task<ErrorCode> AddToQueue(long playerId, GameSession session)
+        public Task<ErrorCode> AddToQueue(long playerId, PlayerSession session)
         {
             AddCount++;
             return Task.FromResult(ErrorCode.SUCCESS);

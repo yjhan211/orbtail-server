@@ -80,7 +80,7 @@ internal sealed class MatchingManager : IMatchingManager
         }
     }
 
-    public Task<ErrorCode> AddToQueue(long playerId, GameSession user)
+    public Task<ErrorCode> AddToQueue(long playerId, PlayerSession user)
     {
         return _queue.AddToQueueAsync(playerId, user);
     }

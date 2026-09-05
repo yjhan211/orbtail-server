@@ -14,7 +14,7 @@ using user_server.sessions;
 namespace user_server;
 
 /// <summary>
-///     UserServer의 시작과 종료를 관리하고, 새 TCP 연결마다 GameSession을 생성한다.
+///     UserServer의 시작과 종료를 관리하고, 새 TCP 연결마다 PlayerSession을 생성한다.
 ///     필요한 서비스는 Program.cs에서 DI로 전달받는다.
 ///
 ///     시작할 때 포트 설정을 검증하고 게임 데이터를 불러온 뒤,
@@ -145,11 +145,11 @@ internal sealed class UserServer(
         logger.LogInformation("Listening on port {Port}", port);
     }
 
-    private GameSession? CreateSession(TcpConnection connection)
+    private PlayerSession? CreateSession(TcpConnection connection)
     {
         try
         {
-            var session = new GameSession(
+            var session = new PlayerSession(
                 connection,
                 logger,
                 redisOperations,
@@ -168,7 +168,7 @@ internal sealed class UserServer(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "GameSession 생성 실패, 연결 종료");
+            logger.LogError(ex, "PlayerSession 생성 실패, 연결 종료");
             connection.Disconnect();
             return null;
         }
