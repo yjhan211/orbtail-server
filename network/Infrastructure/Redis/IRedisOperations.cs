@@ -50,6 +50,7 @@ public interface IRedisOperations
         int db = -1
     );
     public Task<bool> StringDeleteIfEqualsAsync(string key, string expectedValue, int db = -1);
+    public Task<bool> StringSetIfNewerGenerationAsync(string key, string newValue, TimeSpan expiry, int db = -1);
     public Task<bool> KeyDeleteAsync(string key, int db = -1);
     public Task<bool> KeyExpireAsync(string key, TimeSpan? expiry, int db = -1);
     public Task<bool> SortedSetAddAsync(string key, byte[] value, double score, int db = -1);

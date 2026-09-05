@@ -42,7 +42,7 @@ internal interface IPlayerSessionRouter
 ///     원격 응답이 timeout되면 같은 요청을 한 번 재시도한다. 세션 보유 프로세스는 request ID별 첫 처리 결과를
 ///     잠시 보관해 응답만 유실된 재시도가 패킷을 중복 전송하지 않게 한다.
 ///     로그인 알림은 더 높은 세대의 로그인일 때만 옛 세션을 끊는다.
-///     알림이 유실돼도 옛 세션은 다음 lease 갱신 실패 때 종료된다.
+///     알림이 유실돼도 옛 세션은 다음 패킷(하트비트 포함)의 lease 갱신 실패 때 종료된다.
 /// </summary>
 internal sealed class NatsPlayerSessionRouter(
     INatsClient natsClient,

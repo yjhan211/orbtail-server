@@ -104,14 +104,12 @@ public sealed class UserServerMatchingReconciliationTests
     }
 
     [Fact]
-    public async Task Cleanup_FaultedRenewalStillReleasesLeaseAndCancelsMatching()
+    public async Task Cleanup_ReleaseFailureStillCancelsMatchingWithoutRenewalTask()
     {
         var matching = new RecordingMatchingManager();
         var store = new FailingLeaseStore();
         var session = NewSession(new TcpConnection(), matching, store);
         SetField(session, "_sessionLease", new PlayerSessionLease(7, "node", "session", 1, "owner"));
-        SetField(session, "_sessionLeaseRenewalCts", new CancellationTokenSource());
-        SetField(session, "_sessionLeaseRenewalTask", Task.FromException(new InvalidOperationException("renewal failed")));
 
         await (Task)Invoke(session, "CleanupRemovedSessionAsync", 7L, true)!;
 
@@ -142,7 +140,7 @@ public sealed class UserServerMatchingReconciliationTests
     [Theory]
     [InlineData(Protocol.C_TO_U_LOGIN)]
     [InlineData(Protocol.C_TO_U_HEART_BEAT)]
-    public async Task LoginAndHeartbeat_DoNotReadLease(Protocol protocol)
+    public async Task LoginAndPreLoginHeartbeat_DoNotRenewLease(Protocol protocol)
     {
         using var connection = new ActiveTcpConnection();
         var store = new FailingLeaseStore { CheckError = true };
@@ -176,6 +174,22 @@ public sealed class UserServerMatchingReconciliationTests
         Assert.Equal(1, playerService.Calls);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AuthenticatedHeartbeat_RenewsOnlyCurrentSession(bool current)
+    {
+        using var connection = new ActiveTcpConnection();
+        var store = new FailingLeaseStore { Current = current };
+        var session = NewSession(connection.Connection, new RecordingMatchingManager(), store);
+        SetField(session, "_sessionLease", new PlayerSessionLease(7, "node", "session", 1, "owner"));
+
+        await Receive(session, Protocol.C_TO_U_HEART_BEAT, new C_TO_U_LOGIN());
+
+        Assert.Equal(1, store.RenewCount);
+        Assert.Equal(current, connection.Connection.IsAcceptingMessages);
+    }
+
     // 상태 준비와 private 경계 호출에만 사용해 프로덕션 API를 테스트용으로 넓히지 않는다.
     private static object? Invoke(PlayerSession session, string name, params object?[] args) =>
         typeof(PlayerSession).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, args);
@@ -189,12 +203,16 @@ public sealed class UserServerMatchingReconciliationTests
         public bool Current { get; init; }
         public Task<bool>? FirstCheck { get; init; }
         public int CheckCount { get; private set; }
+        public int RenewCount { get; private set; }
         public int ReleaseCount { get; private set; }
         public TimeSpan LeaseLifetime => TimeSpan.FromSeconds(90);
-        public TimeSpan RenewalInterval => TimeSpan.FromSeconds(30);
         public Task<PlayerSessionLease?> TryAcquireAsync(long playerId, string nodeId, string sessionId) =>
             throw new NotSupportedException();
-        public Task<bool> TryRenewAsync(PlayerSessionLease lease) => throw new NotSupportedException();
+        public Task<bool> TryRenewAsync(PlayerSessionLease lease)
+        {
+            RenewCount++;
+            return IsCurrentAsync(lease);
+        }
         public Task<bool> IsCurrentAsync(PlayerSessionLease lease)
         {
             CheckCount++;

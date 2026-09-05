@@ -11,6 +11,11 @@ using user_server.players;
 
 namespace user_server.sessions;
 
+/// <summary>
+///     UserServer에 접속한 클라이언트 한 명의 요청을 처리한다.
+///     아이템 요청은 PlayerService에, 매칭 요청은 MatchingManager에 위임한다.
+///     실제 TCP 송수신과 연결 종료는 TcpConnection이 담당한다.
+/// </summary>
 public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
 {
     private readonly IMatchingManager _matchingManager;
@@ -28,8 +33,6 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
 
     private readonly MatchingAssignment _matching = new();
     private PlayerSessionLease? _sessionLease;
-    private CancellationTokenSource? _sessionLeaseRenewalCts;
-    private Task _sessionLeaseRenewalTask = Task.CompletedTask;
     private long _sessionGeneration;
 
     public PlayerSession(
@@ -69,11 +72,13 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
 
     protected override async Task<bool> CanProcessMessageAsync(Protocol protocolId)
     {
-        if (protocolId is Protocol.C_TO_U_LOGIN or Protocol.C_TO_U_HEART_BEAT) return true;
+        if (protocolId == Protocol.C_TO_U_LOGIN) return true;
 
         var lease = _sessionLease;
-        if (lease == null || Connection.IsReleased) return false;
-        if (await _sessionLeaseStore.IsCurrentAsync(lease)) return !Connection.IsReleased;
+        if (Connection.IsReleased) return false;
+        if (lease == null) return protocolId == Protocol.C_TO_U_HEART_BEAT;
+        // 로그인 이후의 패킷(하트비트 포함)으로 현재 세션 검사와 TTL 갱신을 함께 수행한다.
+        if (await _sessionLeaseStore.TryRenewAsync(lease)) return !Connection.IsReleased;
 
         SendErrorResponseAndDisconnect(ErrorCode.ALREADY_CONNECTED);
         return false;
@@ -134,7 +139,6 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
             }
             previousSession?.DisconnectForDuplicateLogin();
 
-            StartSessionLeaseRenewal(lease);
             _announceLogin(PlayerId.Value, SessionGeneration);
 
             Logger.LogInformation("Session registered for PlayerId={PlayerId}, Generation={Generation}", PlayerId, SessionGeneration);
@@ -514,58 +518,6 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         }
     }
 
-    private void StartSessionLeaseRenewal(PlayerSessionLease lease)
-    {
-        var cts = new CancellationTokenSource();
-        _sessionLeaseRenewalCts = cts;
-        _sessionLeaseRenewalTask = RenewSessionLeaseAsync(lease, cts.Token);
-    }
-
-    /// <summary>
-    ///     이 세션의 Redis 등록이 만료되지 않도록 주기적으로 유효기간을 연장한다.
-    ///     더 최신 로그인으로 교체됐거나 등록이 만료돼 갱신할 수 없으면 자기 연결을 끊는다.
-    ///     Redis 오류는 유효기간 내에서 재시도하며, 그동안 갱신하지 못하면 연결을 끊는다.
-    ///     중복 로그인 알림을 놓쳤을 때도 이 갱신 과정에서 교체 여부를 확인한다.
-    /// </summary>
-    private async Task RenewSessionLeaseAsync(PlayerSessionLease lease, CancellationToken cancellationToken)
-    {
-        using var timer = new PeriodicTimer(_sessionLeaseStore.RenewalInterval);
-        var lastSuccessfulRenewal = DateTimeOffset.UtcNow;
-
-        try
-        {
-            while (await timer.WaitForNextTickAsync(cancellationToken))
-            {
-                try
-                {
-                    if (!await _sessionLeaseStore.TryRenewAsync(lease))
-                    {
-                        Logger.LogWarning("Session lease lost: PlayerId={PlayerId}, Generation={Generation}", lease.PlayerId, lease.Generation);
-                        Connection.Disconnect();
-                        return;
-                    }
-
-                    lastSuccessfulRenewal = DateTimeOffset.UtcNow;
-                }
-                catch (Exception ex)
-                {
-                    if (DateTimeOffset.UtcNow - lastSuccessfulRenewal >= _sessionLeaseStore.LeaseLifetime)
-                    {
-                        Logger.LogError(ex, "Session lease could not be renewed before expiry; disconnecting: PlayerId={PlayerId}, Generation={Generation}",
-                            lease.PlayerId, lease.Generation);
-                        Connection.Disconnect();
-                        return;
-                    }
-
-                    Logger.LogWarning(ex, "Session lease renewal failed; retrying before expiry: PlayerId={PlayerId}, Generation={Generation}",
-                        lease.PlayerId, lease.Generation);
-                }
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-    }
 
     public override void OnRemoved()
     {
@@ -579,32 +531,13 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         if (_sessionLease == null && !removedLocally)
             return;
 
-        bool scheduled = _matchingManager.TryRunBackgroundOperation(
+        _matchingManager.TryRunBackgroundOperation(
             () => CleanupRemovedSessionAsync(playerId, removedLocally),
             $"cleanup disconnected player {playerId}");
-        if (!scheduled)
-            _sessionLeaseRenewalCts?.Cancel();
     }
 
     private async Task CleanupRemovedSessionAsync(long playerId, bool cleanupMatching)
     {
-        var renewalCts = Interlocked.Exchange(ref _sessionLeaseRenewalCts, null);
-        if (renewalCts != null)
-        {
-            try
-            {
-                await renewalCts.CancelAsync();
-                await _sessionLeaseRenewalTask;
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "Session lease renewal cleanup failed; continuing cleanup: PlayerId={PlayerId}", playerId);
-            }
-            finally
-            {
-                renewalCts.Dispose();
-            }
-        }
 
         var lease = Interlocked.Exchange(ref _sessionLease, null);
         if (lease != null)

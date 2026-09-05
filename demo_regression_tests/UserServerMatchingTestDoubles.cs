@@ -255,6 +255,21 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
         }
     }
 
+    public Task<bool> StringSetIfNewerGenerationAsync(string key, string newValue, TimeSpan expiry, int db = -1)
+    {
+        if (StringError != null) throw StringError;
+        static long ReadGeneration(string value) => long.Parse(value[..value.IndexOf('|')], System.Globalization.CultureInfo.InvariantCulture);
+        lock (_sync)
+        {
+            long proposed = ReadGeneration(newValue);
+            if (_strings.TryGetValue(key, out var current) && !current.IsNullOrEmpty &&
+                ReadGeneration(current.ToString()) >= proposed) return Task.FromResult(false);
+            _strings[key] = newValue;
+            _expiries[key] = expiry;
+            return Task.FromResult(true);
+        }
+    }
+
     public Task<bool> StringDeleteIfEqualsAsync(string key, string expectedValue, int db = -1)
     {
         if (StringError != null) throw StringError;

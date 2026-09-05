@@ -200,6 +200,36 @@ public class RedisOperations(RedisConnection redisConnection) : IRedisOperations
         return (long)result == 1;
     }
 
+    public async Task<bool> StringSetIfNewerGenerationAsync(string key, string newValue, TimeSpan expiry, int db = -1)
+    {
+        ArgumentNullException.ThrowIfNull(newValue);
+        if (expiry.TotalMilliseconds < 1) throw new ArgumentOutOfRangeException(nameof(expiry));
+
+        // Lua 숫자는 큰 int64를 정확히 표현하지 못하므로 자릿수와 문자열 순서로 비교한다.
+        const string script = """
+            local function generation(value)
+                local n = string.match(value, '^([0-9]+)|')
+                if n then n = string.gsub(n, '^0+', '') end
+                if not n or n == '' or #n > 19 or (#n == 19 and n > '9223372036854775807') then
+                    error('Invalid generation-prefixed value')
+                end
+                return n
+            end
+            local proposed = generation(ARGV[1])
+            local current = redis.call('GET', KEYS[1])
+            if current and current ~= '' then
+                local existing = generation(current)
+                if #existing > #proposed or (#existing == #proposed and existing >= proposed) then return 0 end
+            end
+            redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2])
+            return 1
+            """;
+        var result = await ExecuteRedisCommandAsync(
+            database => database.ScriptEvaluateAsync(script, [key],
+                [newValue, checked((long)expiry.TotalMilliseconds)], CommandFlags.DemandMaster), db);
+        return (long)result == 1;
+    }
+
     public async Task<bool> StringDeleteIfEqualsAsync(string key, string expectedValue, int db = -1)
     {
         ArgumentNullException.ThrowIfNull(expectedValue);
