@@ -1,7 +1,6 @@
 using System.Net.Sockets;
 using network.common;
 using network.packets;
-using network.utils;
 
 namespace network.core;
 
@@ -22,7 +21,7 @@ public partial class TcpConnection
         return _messageResolver.OnReceived(buffer, offset, transferred, OnMessage);
     }
 
-    private void OnMessage(Const<byte[]> buffer)
+    private void OnMessage(ReadOnlyMemory<byte> buffer)
     {
         if (!IsAcceptingMessages)
             return;
@@ -49,7 +48,7 @@ public partial class TcpConnection
         _ = DispatchMessageAsync(session, buffer);
     }
 
-    private async Task DispatchMessageAsync(IConnectionSession session, Const<byte[]> buffer)
+    private async Task DispatchMessageAsync(IConnectionSession session, ReadOnlyMemory<byte> buffer)
     {
         try
         {

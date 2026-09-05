@@ -1,5 +1,4 @@
 using network.common;
-using network.utils;
 
 namespace network.packets;
 
@@ -20,7 +19,7 @@ internal class MessageResolver
     private const int MinimumMessageSize = sizeof(int) + sizeof(long);
     private static readonly int MaximumBodySize = Config.MAX_MESSAGE_SIZE - Config.HEADER_SIZE;
 
-    public delegate void CompleteMessageCallback(Const<byte[]> buffer);
+    public delegate void CompleteMessageCallback(ReadOnlyMemory<byte> buffer);
 
     private byte[] _messageBuffer = new byte[Config.BUFFER_SIZE];
     private int _currentPosition;
@@ -65,7 +64,7 @@ internal class MessageResolver
                 Array.Copy(_messageBuffer, 0, messageBufferCopy, 0, _targetPosition);
 
                 // 메세지 처리
-                callback(new Const<byte[]>(messageBufferCopy));
+                callback(messageBufferCopy);
 
                 // 메세지 초기화
                 ClearBuffer();

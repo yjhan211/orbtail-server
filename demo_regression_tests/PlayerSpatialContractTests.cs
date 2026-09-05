@@ -3,7 +3,6 @@ using MessagePack;
 using network.common;
 using network.common.data.models;
 using network.packets;
-using network.utils;
 
 namespace demo_regression_tests;
 
@@ -15,7 +14,7 @@ public sealed class PlayerSpatialContractTests
         var profile = new PlayerInfo(42, false) { Name = "ProfileOnly", Gold = 999 };
         var objectInfo = CreateObject();
         using var packet = PacketMaker.U_TO_C_LOGIN(profile, objectInfo, "test-credential");
-        using var wire = Packet.Create(new Const<byte[]>(packet.ToBytes()));
+        using var wire = Packet.Create(packet.ToBytes());
         Assert.Equal(Protocol.U_TO_C_LOGIN, (Protocol)wire.PopProtocolId());
         wire.PopPlayerId();
         var login = MessagePackSerializer.Deserialize<U_TO_C_LOGIN>(wire.PopBody());

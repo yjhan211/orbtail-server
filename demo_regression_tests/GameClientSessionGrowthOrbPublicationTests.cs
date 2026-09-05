@@ -16,7 +16,6 @@ using network.helpers;
 using network.hosting;
 
 using network.packets;
-using network.utils;
 
 namespace demo_regression_tests;
 
@@ -613,7 +612,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             wireBytes = packet.ToBytes();
         }
 
-        await session.OnMessageFromClient(new Const<byte[]>(wireBytes));
+        await session.OnMessageFromClient(wireBytes);
     }
 
     private static string ReadNormalizedSource(string repositoryRoot, params string[] parts) =>
@@ -882,7 +881,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                     entry => entry.Protocol == protocol).WireBytes;
             }
 
-            using var packet = Packet.Create(new Const<byte[]>(wireBytes));
+            using var packet = Packet.Create(wireBytes);
             Assert.Equal((int)protocol, packet.PopProtocolId());
             _ = packet.PopPlayerId();
             return MessagePackSerializer.Deserialize<T>(packet.PopBody());

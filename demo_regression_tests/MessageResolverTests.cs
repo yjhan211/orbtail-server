@@ -2,7 +2,6 @@ using System.Net.Sockets;
 using network.common;
 using network.core;
 using network.packets;
-using network.utils;
 
 namespace demo_regression_tests;
 
@@ -27,7 +26,7 @@ public sealed class MessageResolverTests
         for (int offset = 0; offset < stream.Length; offset += receiveSize)
         {
             int transferred = Math.Min(receiveSize, stream.Length - offset);
-            (lastError, _) = resolver.OnReceived(stream, offset, transferred, buffer => messages.Add(buffer.Value));
+            (lastError, _) = resolver.OnReceived(stream, offset, transferred, buffer => messages.Add(buffer.ToArray()));
             if (lastError != ErrorCode.SUCCESS) break;
         }
 
@@ -84,7 +83,7 @@ public sealed class MessageResolverTests
 
         Assert.True(packet.Buffer.Length >= packet.Position);
         Assert.Equal(Config.HEADER_SIZE + sizeof(int) + sizeof(long) + body.Length, packet.Position);
-        using Packet reloaded = Packet.Create(new Const<byte[]>(packet.ToBytes()));
+        using Packet reloaded = Packet.Create(packet.ToBytes());
         Assert.Equal((int)Protocol.G_TO_C_GAME_RESULT, reloaded.PopProtocolId());
         Assert.Equal(7, reloaded.PopPlayerId());
         Assert.Equal(body, reloaded.PopBody());

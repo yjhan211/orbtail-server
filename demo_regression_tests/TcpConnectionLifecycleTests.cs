@@ -1,7 +1,6 @@
 using System.Net.Sockets;
 using network.core;
 using network.packets;
-using network.utils;
 
 namespace demo_regression_tests;
 
@@ -123,7 +122,7 @@ public sealed class TcpConnectionLifecycleTests
         public int DisconnectCount;
         public int RemovedCount;
 
-        public Task OnMessageFromClient(Const<byte[]> buffer) => Task.CompletedTask;
+        public Task OnMessageFromClient(ReadOnlyMemory<byte> buffer) => Task.CompletedTask;
         public void OnDisconnect() => Interlocked.Increment(ref DisconnectCount);
         public void OnRemoved() => Interlocked.Increment(ref RemovedCount);
         public void Send(Packet msg)

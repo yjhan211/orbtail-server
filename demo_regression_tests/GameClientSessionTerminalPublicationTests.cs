@@ -12,7 +12,6 @@ using network.common.data.models;
 using network.core;
 using network.gamehandoff;
 using network.packets;
-using network.utils;
 
 namespace demo_regression_tests;
 
@@ -572,7 +571,7 @@ public sealed class GameClientSessionTerminalPublicationTests
 
     private static T Deserialize<T>(byte[] wireBytes, Protocol protocol)
     {
-        using var packet = Packet.Create(new Const<byte[]>(wireBytes));
+        using var packet = Packet.Create(wireBytes);
         Assert.Equal((int)protocol, packet.PopProtocolId());
         _ = packet.PopPlayerId();
         return MessagePackSerializer.Deserialize<T>(packet.PopBody());

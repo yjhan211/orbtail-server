@@ -1,5 +1,5 @@
-using System.Threading.Channels;
 using System.Reflection;
+using System.Threading.Channels;
 using game_server.network;
 using game_server.services;
 using MessagePack;
@@ -10,7 +10,6 @@ using network.core;
 using network.gamehandoff;
 using network.packets;
 using network.routing;
-using network.utils;
 
 namespace demo_regression_tests;
 
@@ -62,7 +61,7 @@ public sealed class MovementPacketQueueTests
         using var packet = Packet.Create((int)protocol);
         packet.SetBody(MessagePackSerializer.Serialize(body));
         packet.RecordSize();
-        return session.OnMessageFromClient(new Const<byte[]>(packet.ToBytes()));
+        return session.OnMessageFromClient(packet.ToBytes());
     }
 
     private static GameClientSession CreateSession(ManualClock clock)

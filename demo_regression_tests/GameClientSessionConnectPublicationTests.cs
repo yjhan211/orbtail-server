@@ -9,7 +9,6 @@ using network.common.data.models;
 using network.core;
 using network.gamehandoff;
 using network.packets;
-using network.utils;
 
 namespace demo_regression_tests;
 
@@ -274,7 +273,7 @@ public sealed class GameClientSessionConnectPublicationTests
 
     private static (Protocol Protocol, long PlayerId, G_TO_C_CONNECT_RESULT Body) DeserializeConnectResult(Packet packet)
     {
-        using Packet wirePacket = Packet.Create(new Const<byte[]>(packet.ToBytes()));
+        using Packet wirePacket = Packet.Create(packet.ToBytes());
         Protocol protocol = (Protocol)wirePacket.PopProtocolId();
         long playerId = wirePacket.PopPlayerId();
         return (protocol, playerId, MessagePackSerializer.Deserialize<G_TO_C_CONNECT_RESULT>(wirePacket.PopBody()));
@@ -405,7 +404,7 @@ public sealed class GameClientSessionConnectPublicationTests
 
         public void Record(Packet packet)
         {
-            using Packet wirePacket = Packet.Create(new Const<byte[]>(packet.ToBytes()));
+            using Packet wirePacket = Packet.Create(packet.ToBytes());
             _sentPackets.Add(new SentPacket(
                 (Protocol)wirePacket.PopProtocolId(),
                 wirePacket.PopPlayerId(),

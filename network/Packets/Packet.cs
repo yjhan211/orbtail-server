@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using network.common;
-using network.utils;
 
 namespace network.packets;
 
@@ -72,13 +71,13 @@ public class Packet : IDisposable
         return packet;
     }
 
-    public static Packet Create(Const<byte[]> buffer)
+    public static Packet Create(ReadOnlyMemory<byte> buffer)
     {
-        if (Config.MAX_MESSAGE_SIZE < buffer.Value.Length)
-            throw new Exception($"Invalid Buffer Size. size:{buffer.Value.Length}");
+        if (Config.MAX_MESSAGE_SIZE < buffer.Length)
+            throw new Exception($"Invalid Buffer Size. size:{buffer.Length}");
 
         var packet = PacketBufferPool.Pop();
-        packet.LoadForReading(buffer.Value);
+        packet.LoadForReading(buffer.Span);
         return packet;
     }
 
@@ -152,10 +151,10 @@ public class Packet : IDisposable
         _readLimit = position;
     }
 
-    private void LoadForReading(byte[] source)
+    private void LoadForReading(ReadOnlySpan<byte> source)
     {
         EnsureCapacity(source.Length);
-        Array.Copy(source, 0, Buffer, 0, source.Length);
+        source.CopyTo(Buffer);
         Position = Config.HEADER_SIZE;
         _readLimit = source.Length;
     }

@@ -46,7 +46,7 @@ public class NetworkPacketPoolTests
             raw = outgoing.ToBytes();
         }
 
-        using var incoming = Packet.Create(new network.utils.Const<byte[]>(raw));
+        using var incoming = Packet.Create(raw);
 
         Assert.Equal((int)Protocol.G_TO_C_HEART_BEAT, incoming.PopProtocolId());
         Assert.Equal(91, incoming.PopPlayerId());

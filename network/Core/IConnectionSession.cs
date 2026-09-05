@@ -1,5 +1,4 @@
 using network.packets;
-using network.utils;
 
 namespace network.core;
 
@@ -11,7 +10,7 @@ namespace network.core;
 /// </summary>
 public interface IConnectionSession
 {
-    public Task OnMessageFromClient(Const<byte[]> buffer);
+    public Task OnMessageFromClient(ReadOnlyMemory<byte> buffer);
     public void OnDisconnect();
     public void OnRemoved();
     public void Send(Packet msg);

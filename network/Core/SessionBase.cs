@@ -5,7 +5,6 @@ using network.common.data.models;
 using network.infrastructure.redis;
 using network.packets;
 using network.routing;
-using network.utils;
 
 namespace network.core;
 
@@ -36,7 +35,7 @@ public abstract class SessionBase(
 
     public long? PlayerId { get; protected set; }
 
-    public virtual async Task OnMessageFromClient(Const<byte[]> buffer)
+    public virtual async Task OnMessageFromClient(ReadOnlyMemory<byte> buffer)
     {
         try
         {
