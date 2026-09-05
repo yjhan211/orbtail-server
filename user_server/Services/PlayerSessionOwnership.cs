@@ -23,12 +23,12 @@ public sealed record PlayerSessionLease(
 /// </summary>
 public interface IPlayerSessionOwnershipStore
 {
-    TimeSpan LeaseLifetime { get; }
-    TimeSpan RenewalInterval { get; }
+    public TimeSpan LeaseLifetime { get; }
+    public TimeSpan RenewalInterval { get; }
 
-    Task<PlayerSessionLease?> TryAcquireAsync(long playerId, string nodeId, string sessionId);
-    Task<bool> TryRenewAsync(PlayerSessionLease lease);
-    Task<bool> TryReleaseAsync(PlayerSessionLease lease);
+    public Task<PlayerSessionLease?> TryAcquireAsync(long playerId, string nodeId, string sessionId);
+    public Task<bool> TryRenewAsync(PlayerSessionLease lease);
+    public Task<bool> TryReleaseAsync(PlayerSessionLease lease);
 }
 
 /// <summary>

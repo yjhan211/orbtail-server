@@ -27,7 +27,8 @@ internal static class Program
     private static void ConfigureSerilog(HostBuilderContext hostingContext, LoggerConfiguration loggerConfiguration)
     {
         IConfiguration configuration = hostingContext.Configuration;
-        string serverType = configuration["serverType"] ?? "GameServer";
+        // 이 바이너리는 항상 GameServer다 — 설정으로 다른 이름을 찍을 수 있으면 로그가 거짓말을 한다.
+        const string serverType = "GameServer";
         string nodeId = configuration["gameServerId"] ?? "unconfigured";
         loggerConfiguration
             .MinimumLevel.Is(ResolveMinimumLevel(hostingContext.Configuration))

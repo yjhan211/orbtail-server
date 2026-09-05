@@ -15,7 +15,7 @@ namespace network.infrastructure.messaging;
 ///     JetStream을 사용하지 않으므로 메시지를 저장하거나 재전달하지 않는다.
 ///     따라서 상태의 정본이 아닌 서버 간 알림과 세션 라우팅에 사용한다.
 /// </summary>
-public class NatsClient : INatsClient
+public class NatsClient : INatsClient, IDisposable, IAsyncDisposable
 {
     private static readonly TimeSpan DefaultHandlerShutdownGracePeriod = TimeSpan.FromSeconds(5);
 
@@ -200,6 +200,19 @@ public class NatsClient : INatsClient
         {
             _connection.Close();
         }
+    }
+
+    // 정상 종료는 CloseAsync로 순서를 지킨다. 시작 도중 실패해도 DI 해제 시 연결을 닫는다.
+    public void Dispose()
+    {
+        Close();
+        GC.SuppressFinalize(this);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await CloseAsync();
+        GC.SuppressFinalize(this);
     }
 
     private async Task HandleRequestAsync(

@@ -195,7 +195,7 @@ internal sealed class MatchingManager : IMatchingManager
         await _background.DrainAsync();
 
         await _leaderLease.ReleaseAsync();
-        _background.Dispose();
+        // 작업 종료는 여기서 기다리고, 토큰 소스의 최종 해제는 DI에 맡긴다.
 
         _logger.LogInformation("MatchingManager stopped");
     }

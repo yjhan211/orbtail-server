@@ -46,7 +46,7 @@ public sealed class RedisConnection : IDisposable, IAsyncDisposable
     public void Dispose()
     {
         RedLockFactoryAdapter? redLockFactory;
-        ConnectionMultiplexer? connection = null;
+        ConnectionMultiplexer? connection;
 
         lock (_lock)
         {

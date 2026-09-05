@@ -1,12 +1,115 @@
 using System.Reflection;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NATS.Client;
 using network.infrastructure.messaging;
+using network.infrastructure.redis;
+using user_server.services;
 
 namespace demo_regression_tests;
 
 public sealed class NatsClientTests
 {
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task DiDisposalClosesConnectionExactlyOnce(bool asynchronous, bool closeFirst)
+    {
+        var (connection, proxy) = RecordingConnectionProxy.Create();
+        var client = new NatsClient(connection, TimeSpan.FromMilliseconds(50));
+        var services = new ServiceCollection();
+        services.AddSingleton<INatsClient>(_ => client);
+        var provider = services.BuildServiceProvider();
+        provider.GetRequiredService<INatsClient>().Subscribe("test.events", (_, _) => { });
+        if (closeFirst) await client.CloseAsync();
+
+        if (asynchronous) await provider.DisposeAsync();
+        else provider.Dispose();
+
+        Assert.Equal(1, proxy.CloseCalls);
+        Assert.Equal(1, proxy.UnsubscribeCalls);
+    }
+
+    [Fact]
+    public async Task UserServerRegistrationsResolveAndShareMatchingServices()
+    {
+        var (connection, proxy) = RecordingConnectionProxy.Create();
+        var client = new NatsClient(connection, TimeSpan.FromMilliseconds(50));
+        var services = CreateUserServerServices(client);
+        var provider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateOnBuild = true,
+            ValidateScopes = true
+        });
+        await using (provider)
+        {
+            var hosted = provider.GetServices<IHostedService>().ToArray();
+            Assert.Collection(hosted,
+                item => Assert.IsType<user_server.HealthCheckService>(item),
+                item => Assert.IsType<user_server.UserServer>(item));
+            var manager = provider.GetRequiredService<MatchingManager>();
+            Assert.Same(manager, provider.GetRequiredService<IMatchingManager>());
+            var background = provider.GetRequiredService<MatchingBackgroundOperations>();
+
+            // 시작 전에도 종료 가능하며, 매니저는 토큰 소스를 직접 해제하지 않는다.
+            await manager.StopAsync();
+            Assert.True(background.ShutdownToken.IsCancellationRequested);
+            Assert.False(background.TryRun(() => Task.CompletedTask, "after stop"));
+        }
+        Assert.Equal(1, proxy.CloseCalls);
+    }
+
+    [Fact]
+    public async Task UserServerActivationFailureStillClosesCreatedNatsConnection()
+    {
+        var (connection, proxy) = RecordingConnectionProxy.Create();
+        var client = new NatsClient(connection, TimeSpan.FromMilliseconds(50));
+        var services = CreateUserServerServices(client);
+        services.RemoveAll<MatchingManager>();
+        services.AddSingleton<MatchingManager>(sp =>
+        {
+            Assert.Same(client, sp.GetRequiredService<INatsClient>());
+            throw new InvalidOperationException("simulated activation failure");
+        });
+        await using (var provider = services.BuildServiceProvider())
+        {
+            var error = Assert.Throws<InvalidOperationException>(() =>
+                provider.GetServices<IHostedService>().ToArray());
+            Assert.Equal("simulated activation failure", error.Message);
+            Assert.False(proxy.Closed);
+        }
+        Assert.Equal(1, proxy.CloseCalls);
+    }
+
+    private static ServiceCollection CreateUserServerServices(NatsClient client)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["natsEndPoint"] = "nats://unused:4222",
+                ["USER_SERVER_ID"] = "test-user-node"
+            }).Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IConfiguration>(configuration);
+        user_server.Program.ConfigureServices(new HostBuilderContext(new Dictionary<object, object>())
+        {
+            Configuration = configuration
+        }, services);
+        services.RemoveAll<INatsClient>();
+        services.AddSingleton<INatsClient>(_ => client);
+        services.RemoveAll<IRedisOperations>();
+        services.AddSingleton<IRedisOperations>(_ => new InMemoryRedisOperations());
+        services.RemoveAll<IRedLockFactory>();
+        services.AddSingleton<IRedLockFactory>(_ => new FakeRedLockFactory());
+        return services;
+    }
+
     [Fact]
     public void SubscribeLogsHandlerFailure()
     {
@@ -96,6 +199,7 @@ public sealed class NatsClientTests
         private readonly List<RecordingSubscriptionProxy> _subscriptions = [];
 
         public bool Closed { get; private set; }
+        public int CloseCalls { get; private set; }
         public int UnsubscribeCalls => _subscriptions.Sum(subscription => subscription.UnsubscribeCalls);
 
         public static (IConnection Connection, RecordingConnectionProxy Proxy) Create()
@@ -130,6 +234,7 @@ public sealed class NatsClientTests
                         return subscription;
                     }
                 case nameof(IConnection.Close):
+                    CloseCalls++;
                     Closed = true;
                     return null;
                 case nameof(IDisposable.Dispose):

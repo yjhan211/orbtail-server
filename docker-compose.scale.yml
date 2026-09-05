@@ -20,7 +20,6 @@ services:
       - /App/network/obj
       - match-summary-data-dev-2:/App/match-summaries
     environment:
-      - serverType=GameServer
       - gameServerId=game-server-1
       - GAME_SERVER_PUBLIC_HOST=${GAME_SERVER_IP:-192.168.0.167}
       - GAME_SERVER_PUBLIC_PORT=9003
@@ -51,7 +50,6 @@ services:
       - /App/network/bin
       - /App/network/obj
     environment:
-      - serverType=UserServer
       - USER_SERVER_ID=user-server-1
       - servicePort=7000
       - redisEndPoints=redis:6379
