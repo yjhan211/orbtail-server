@@ -4,30 +4,31 @@ using Microsoft.Extensions.Logging;
 namespace user_server.sessions;
 
 /// <summary>
-///     프로세스 안의 현재 플레이어 세션을 보관한다. Redis에서 발급한 세대를 비교해
-///     늦게 끝난 로그인이나 이전 세션의 종료가 더 최신 세션을 교체·제거하지 못하게 한다.
+///     이 UserServer에 접속한 플레이어의 현재 세션을 플레이어 ID별로 보관한다.
+///     등록 시 로그인 세대 번호를 비교해 더 최신 세션으로 교체하며,
+///     교체된 이전 세션은 호출자가 연결을 끊을 수 있도록 반환한다.
+///
+///     제거 시에는 현재 등록된 세션이 요청한 세션과 같은 경우에만 삭제한다.
+///     이전 연결의 종료 처리가 새 세션을 목록에서 지우지 않도록 하기 위함이다.
 /// </summary>
 internal sealed class PlayerSessionRegistry(ILogger logger)
 {
     private readonly ConcurrentDictionary<long, PlayerSession> _sessions = new();
 
-    public (bool Accepted, PlayerSession? SupersededSession) Register(long playerId, PlayerSession session)
+    public (bool Accepted, PlayerSession? PreviousSession) Register(long playerId, PlayerSession session)
     {
         if (session.SessionGeneration <= 0)
             throw new InvalidOperationException("A session must own a positive generation before registration.");
 
         while (true)
         {
-            if (!_sessions.TryGetValue(playerId, out PlayerSession? existingSession))
+            if (!_sessions.TryGetValue(playerId, out var existingSession))
             {
                 if (_sessions.TryAdd(playerId, session))
                 {
-                    logger.LogInformation(
-                        "Session registered: PlayerId={PlayerId}, Generation={Generation}",
-                        playerId, session.SessionGeneration);
+                    logger.LogInformation("Session registered: PlayerId={PlayerId}, Generation={Generation}", playerId, session.SessionGeneration);
                     return (true, null);
                 }
-
                 continue;
             }
 
@@ -36,8 +37,7 @@ internal sealed class PlayerSessionRegistry(ILogger logger)
 
             if (existingSession.SessionGeneration >= session.SessionGeneration)
             {
-                logger.LogWarning(
-                    "Stale session registration rejected: PlayerId={PlayerId}, Generation={Generation}, CurrentGeneration={CurrentGeneration}",
+                logger.LogWarning("Stale session registration rejected: PlayerId={PlayerId}, Generation={Generation}, CurrentGeneration={CurrentGeneration}",
                     playerId, session.SessionGeneration, existingSession.SessionGeneration);
                 return (false, null);
             }
@@ -45,8 +45,7 @@ internal sealed class PlayerSessionRegistry(ILogger logger)
             if (!_sessions.TryUpdate(playerId, session, existingSession))
                 continue;
 
-            logger.LogWarning(
-                "Session replaced after duplicate login: PlayerId={PlayerId}, Generation={Generation}, PreviousGeneration={PreviousGeneration}",
+            logger.LogWarning("Session replaced after duplicate login: PlayerId={PlayerId}, Generation={Generation}, PreviousGeneration={PreviousGeneration}",
                 playerId, session.SessionGeneration, existingSession.SessionGeneration);
             return (true, existingSession);
         }
@@ -54,18 +53,17 @@ internal sealed class PlayerSessionRegistry(ILogger logger)
 
     public bool Remove(long playerId, PlayerSession session)
     {
-        bool removed = ((ICollection<KeyValuePair<long, PlayerSession>>)_sessions)
-            .Remove(new KeyValuePair<long, PlayerSession>(playerId, session));
+        var entry = new KeyValuePair<long, PlayerSession>(playerId, session);
+        ICollection<KeyValuePair<long, PlayerSession>> entries = _sessions;
+        bool removed = entries.Remove(entry);
         if (removed)
-            logger.LogInformation(
-                "Session removed: PlayerId={PlayerId}, Generation={Generation}",
-                playerId, session.SessionGeneration);
+            logger.LogInformation("Session removed: PlayerId={PlayerId}, Generation={Generation}", playerId, session.SessionGeneration);
         return removed;
     }
 
     public PlayerSession? Get(long playerId)
     {
-        _sessions.TryGetValue(playerId, out PlayerSession? session);
+        _sessions.TryGetValue(playerId, out var session);
         return session;
     }
 }

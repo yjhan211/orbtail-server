@@ -19,7 +19,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
     private readonly IPlayerSessionLeaseStore _sessionLeaseStore;
     private readonly IPlayerService _playerService;
 
-    private readonly Func<long, PlayerSession, (bool Accepted, PlayerSession? SupersededSession)> _onSessionRegistered;
+    private readonly Func<long, PlayerSession, (bool Accepted, PlayerSession? PreviousSession)> _onSessionRegistered;
     private readonly Action<long, long> _announceLogin;
     private readonly Func<long, PlayerSession, bool> _onSessionRemoved;
 
@@ -42,7 +42,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         IAccountTokenService accountTokenService,
         IPlayerSessionLeaseStore sessionLeaseStore,
         string nodeId,
-        Func<long, PlayerSession, (bool Accepted, PlayerSession? SupersededSession)> onSessionRegistered,
+        Func<long, PlayerSession, (bool Accepted, PlayerSession? PreviousSession)> onSessionRegistered,
         Action<long, long> announceLogin,
         Func<long, PlayerSession, bool> onSessionRemoved)
         : base(connection, logger, redisOperations)
@@ -196,7 +196,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
     /// </summary>
     private bool TryRegisterLocalSession(out PlayerSession? previousSession)
     {
-        (bool Accepted, PlayerSession? SupersededSession) registration = default;
+        (bool Accepted, PlayerSession? PreviousSession) registration = default;
         if (!Connection.TryMarkAuthenticated(() => registration = _onSessionRegistered(PlayerId!.Value, this)))
         {
             previousSession = null;
@@ -204,7 +204,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
             return false;
         }
 
-        previousSession = registration.SupersededSession;
+        previousSession = registration.PreviousSession;
         if (registration.Accepted)
         {
             return true;
