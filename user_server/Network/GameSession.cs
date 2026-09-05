@@ -188,7 +188,9 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         (bool Accepted, GameSession? SupersededSession) registration = default;
         if (!Connection.TryMarkAuthenticated(() => registration = _onSessionRegistered(PlayerId!.Value, this)))
         {
-            throw new OperationCanceledException("Connection closed before login admission.");
+            previousSession = null;
+            Logger.LogDebug("Connection closed before login admission: PlayerId={PlayerId}", PlayerId);
+            return false;
         }
 
         previousSession = registration.SupersededSession;
@@ -212,8 +214,6 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
             using var itemListPacket = PacketMaker.U_TO_C_INVENTORY_ITEM_LIST(new Dictionary<long, ItemInfo>(PlayerInfo.InventoryInfo.ItemDict));
             TrySend(itemListPacket);
         }
-
-        Logger.LogInformation("Player {PlayerId} logged in successfully: Items={Count}", PlayerId, PlayerInfo.InventoryInfo.ItemDict.Count);
     }
 
     private async Task SetupNewPlayer(PlayerInfo playerInfo)
@@ -580,10 +580,14 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         var renewalCts = Interlocked.Exchange(ref _sessionLeaseRenewalCts, null);
         if (renewalCts != null)
         {
-            await renewalCts.CancelAsync();
             try
             {
+                await renewalCts.CancelAsync();
                 await _sessionLeaseRenewalTask;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Session lease renewal cleanup failed; continuing cleanup: PlayerId={PlayerId}", playerId);
             }
             finally
             {
@@ -594,9 +598,17 @@ public sealed class GameSession : SessionBase, IMatchingSessionEndpoint
         var lease = Interlocked.Exchange(ref _sessionLease, null);
         if (lease != null)
         {
-            bool released = await _sessionLeaseStore.TryReleaseAsync(lease);
-            Logger.LogInformation("Session lease release completed: PlayerId={PlayerId}, Generation={Generation}, Released={Released}",
-                lease.PlayerId, lease.Generation, released);
+            try
+            {
+                bool released = await _sessionLeaseStore.TryReleaseAsync(lease);
+                Logger.LogInformation("Session lease release completed: PlayerId={PlayerId}, Generation={Generation}, Released={Released}",
+                    lease.PlayerId, lease.Generation, released);
+            }
+            catch (Exception ex)
+            {
+                // Redis 등록은 TTL로 만료된다. 해제 실패와 무관하게 매칭 정리도 시도한다.
+                Logger.LogWarning(ex, "Session lease release failed; continuing matching cleanup: PlayerId={PlayerId}", playerId);
+            }
         }
 
         if (!cleanupMatching)

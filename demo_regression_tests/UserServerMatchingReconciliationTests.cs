@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.core;
@@ -15,6 +17,78 @@ namespace demo_regression_tests;
 /// </summary>
 public sealed class UserServerMatchingReconciliationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cleanup_LeaseReleaseFailureStillCleansMatching(bool assigned)
+    {
+        var matching = new RecordingMatchingManager();
+        using var connection = new ActiveTcpConnection();
+        var session = NewSession(connection.Connection, matching, new FailingLeaseStore());
+        SetField(session, "_sessionLease", new PlayerSessionLease(7, "node", "session", 1, "owner"));
+        if (assigned)
+        {
+            string request = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
+            DeliverMatchingSuccess(session, 42, request);
+        }
+
+        await (Task)Invoke(session, "CleanupRemovedSessionAsync", 7L, true)!;
+
+        Assert.Equal(assigned ? 1 : 0, matching.ReleaseCount);
+        Assert.Equal(assigned ? 0 : 1, matching.CancelCount);
+    }
+
+    [Fact]
+    public async Task Cleanup_FaultedRenewalStillReleasesLeaseAndCancelsMatching()
+    {
+        var matching = new RecordingMatchingManager();
+        var store = new FailingLeaseStore();
+        var session = NewSession(new TcpConnection(), matching, store);
+        SetField(session, "_sessionLease", new PlayerSessionLease(7, "node", "session", 1, "owner"));
+        SetField(session, "_sessionLeaseRenewalCts", new CancellationTokenSource());
+        SetField(session, "_sessionLeaseRenewalTask", Task.FromException(new InvalidOperationException("renewal failed")));
+
+        await (Task)Invoke(session, "CleanupRemovedSessionAsync", 7L, true)!;
+
+        Assert.Equal(1, store.ReleaseCount);
+        Assert.Equal(1, matching.CancelCount);
+    }
+
+    [Fact]
+    public void ClosedConnection_LoginRegistrationReturnsFalseWithoutServerError()
+    {
+        var logger = new RecordingLogger();
+        var session = NewSession(new TcpConnection(), new RecordingMatchingManager(), logger: logger);
+        object?[] arguments = [null];
+
+        Assert.False((bool)Invoke(session, "TryRegisterLocalSession", arguments)!);
+        Assert.Null(arguments[0]);
+        Assert.True(logger.Contains(LogLevel.Debug, "Connection closed before login admission"));
+        Assert.False(logger.Contains(LogLevel.Error, "Login"));
+    }
+
+    // 상태 준비와 private 경계 호출에만 사용해 프로덕션 API를 테스트용으로 넓히지 않는다.
+    private static object? Invoke(GameSession session, string name, params object?[] args) =>
+        typeof(GameSession).GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, args);
+
+    private static void SetField(GameSession session, string name, object value) =>
+        typeof(GameSession).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, value);
+
+    private sealed class FailingLeaseStore : IPlayerSessionLeaseStore
+    {
+        public int ReleaseCount { get; private set; }
+        public TimeSpan LeaseLifetime => TimeSpan.FromSeconds(90);
+        public TimeSpan RenewalInterval => TimeSpan.FromSeconds(30);
+        public Task<PlayerSessionLease?> TryAcquireAsync(long playerId, string nodeId, string sessionId) =>
+            throw new NotSupportedException();
+        public Task<bool> TryRenewAsync(PlayerSessionLease lease) => throw new NotSupportedException();
+        public Task<bool> TryReleaseAsync(PlayerSessionLease lease)
+        {
+            ReleaseCount++;
+            return Task.FromException<bool>(new InvalidOperationException("redis unavailable"));
+        }
+    }
+
     [Fact]
     public async Task MissingClaim_ClearsStaleAssignmentAndStartsNewRequest()
     {
@@ -92,17 +166,18 @@ public sealed class UserServerMatchingReconciliationTests
             matchingId, requestId, packet));
     }
 
-    private static GameSession NewSession(TcpConnection connection, IMatchingManager matchingManager)
+    private static GameSession NewSession(TcpConnection connection, IMatchingManager matchingManager,
+        IPlayerSessionLeaseStore? store = null, ILogger? logger = null)
     {
         return new GameSession(
             connection,
-            NullLogger.Instance,
+            logger ?? NullLogger.Instance,
             new InMemoryRedisOperations(),
             new FakeRedLockFactory(),
             null!,
             matchingManager,
             null!,
-            null!,
+            store!,
             "user-server-test",
             static (_, _) => (true, null),
             static (_, _) => { },
@@ -115,6 +190,8 @@ public sealed class UserServerMatchingReconciliationTests
         public Exception? ClaimError { get; set; }
         public TaskCompletionSource<bool>? ClaimCompletion { get; set; }
         public int ClaimReadCount { get; private set; }
+        public int CancelCount { get; private set; }
+        public int ReleaseCount { get; private set; }
 
         public Task<bool> HasMatchingClaimAsync(long playerId)
         {
@@ -127,11 +204,19 @@ public sealed class UserServerMatchingReconciliationTests
         public Task<ErrorCode> AddToQueue(long playerId, GameSession session) =>
             Task.FromResult(ErrorCode.SUCCESS);
 
-        public Task<ErrorCode> CancelMatching(long playerId) => Task.FromResult(ErrorCode.SUCCESS);
+        public Task<ErrorCode> CancelMatching(long playerId)
+        {
+            CancelCount++;
+            return Task.FromResult(ErrorCode.SUCCESS);
+        }
         public Task RecordGameCompletionAsync(long playerId, long matchingId) => Task.CompletedTask;
         public Task RecordLeaveAsync(long playerId, long matchingId) => Task.CompletedTask;
         public Task AbortMatchingAdmissionAsync(long playerId, long matchingId) => Task.CompletedTask;
-        public Task ReleaseMatchingClaimAsync(long playerId, long matchingId) => Task.CompletedTask;
+        public Task ReleaseMatchingClaimAsync(long playerId, long matchingId)
+        {
+            ReleaseCount++;
+            return Task.CompletedTask;
+        }
         public bool TryRunBackgroundOperation(Func<Task> operation, string operationName) => false;
         public Task StopMatchingLoopAsync() => Task.CompletedTask;
         public Task StopAsync() => Task.CompletedTask;
