@@ -5,6 +5,12 @@ using network.helpers;
 
 namespace user_server.accounts;
 
+public sealed record AccountTokenResolution(
+    long PlayerId,
+    string AccountToken,
+    bool IsNewAccount,
+    bool WasLegacyMigration);
+
 public sealed class AccountTokenOptions
 {
     public bool AllowLegacyNumericMigration { get; set; }
