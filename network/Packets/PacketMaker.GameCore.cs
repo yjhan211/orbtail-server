@@ -8,6 +8,17 @@ namespace network.packets;
 
 public static partial class PacketMaker
 {
+    public static Packet G_TO_C_MATCH_ROSTER(long matchingId, List<PlayerInfo> playerRoster)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_ROSTER);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_ROSTER
+        {
+            MatchingId = matchingId,
+            PlayerRoster = playerRoster
+        }));
+        return packet;
+    }
+
     public static Packet G_TO_C_HEART_BEAT(DateTime utcNow)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_HEART_BEAT);

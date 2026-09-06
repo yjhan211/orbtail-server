@@ -84,7 +84,6 @@ internal static class Program
 
         services.AddSingleton<MatchingReservationCoordinator>();
         services.AddSingleton<MatchingQueue>();
-        services.AddSingleton<MatchRosterBuilder>();
         services.AddSingleton(sp => DevMatchOverrides.FromEnvironment(
             sp.GetRequiredService<IRedisOperations>(),
             sp.GetRequiredService<IRedLockFactory>(),
@@ -109,7 +108,6 @@ internal static class Program
             sp.GetRequiredService<IRedisOperations>(),
             sp.GetRequiredService<MatchingQueue>(),
             sp.GetRequiredService<MatchingReservationCoordinator>(),
-            sp.GetRequiredService<MatchRosterBuilder>(),
             sp.GetRequiredService<IMatchEntryService>(),
             sp.GetRequiredService<IGameServerAllocator>(),
             sp.GetRequiredService<DevMatchOverrides>(),

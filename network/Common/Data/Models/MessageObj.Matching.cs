@@ -36,7 +36,6 @@ namespace network.common.data.models
         [Key("gameServerIp")] public string GameServerIp { get; set; }
         [Key("gameServerPort")] public int GameServerPort { get; set; }
         [Key("gameEndTimestamp")] public long GameEndTimestamp { get; set; }
-        [Key("playerRoster")] public List<PlayerInfo> PlayerRoster { get; set; } = new();
         [Key("gameHandoffTicket")] public string GameHandoffTicket { get; set; }
     }
 
@@ -51,7 +50,7 @@ namespace network.common.data.models
     public class MatchManifest
     {
         [Key(0)] public List<long> HumanPlayerIds { get; set; } = new();
-        [Key(1)] public List<long> BotPlayerIds { get; set; } = new();
+        [Key(1)] public int BotCount { get; set; }
         [Key(2)] public MatchMode Mode { get; set; }
     }
 
@@ -59,5 +58,12 @@ namespace network.common.data.models
     {
         Normal = 0,
         SoloMapValidation = 1
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_MATCH_ROSTER : IMessagePackObject
+    {
+        [Key("matchingId")] public long MatchingId { get; set; }
+        [Key("playerRoster")] public List<PlayerInfo> PlayerRoster { get; set; } = new();
     }
 }

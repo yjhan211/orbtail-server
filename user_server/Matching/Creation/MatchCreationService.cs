@@ -20,13 +20,11 @@ internal enum MatchCreationOrigin
 ///     끝으로 30초 이상 기다린 미달 그룹을 봇으로 채운다. 두 경로는 <see cref="CreateMatchAsync" /> 하나로 합쳐졌으며,
 ///     reservation 획득 → matchingId 발급 → reservation commit → 로스터 조립 → 매치 manifest → 사람별 성공 전달 →
 ///     <c>admission_ready</c> → watchdog 순서와, 실패 시 pending→canceled CAS 뒤 handoff 삭제·실패 통지·reservation 롤백을 지킨다.
-///     봇 PlayerId는 process-wide 음수 카운터에서 발급한다. 그 외 프로세스 상태는 없다.
 /// </summary>
 internal sealed class MatchCreationService(
     IRedisOperations redisOperations,
     MatchingQueue queue,
     MatchingReservationCoordinator reservations,
-    MatchRosterBuilder rosterBuilder,
     IMatchEntryService handoff,
     IGameServerAllocator gameServers,
     DevMatchOverrides overrides,
@@ -37,7 +35,6 @@ internal sealed class MatchCreationService(
     internal const int MatchingTimeoutSeconds = 3;
     internal const int BotFillTimeoutSeconds = 30;
 
-    private static long _botIdCounter; // 봇은 음수 PlayerId를 쓴다.
 
     /// <summary>
     ///     pass 한 번: 정규 그룹 매칭 뒤 봇 채움. 예외는 여기서 삼키고 로그로 남긴다 (다음 tick에 재시도).
@@ -127,7 +124,7 @@ internal sealed class MatchCreationService(
         int deliveredPlayerCount = 0;
         int expectedHumanCount = 0;
         MatchingQueueData[] batchPlayers = groupEntries
-            .Where(entry => entry.IsHuman)
+            .Where(entry => entry.PlayerId > 0)
             .DistinctBy(entry => entry.PlayerId)
             .ToArray();
         try
@@ -135,32 +132,31 @@ internal sealed class MatchCreationService(
             matchingId = await redisOperations.StringIncrementAsync(MatchingIdKey);
             await reservations.CommitAsync(reservationLease, matchingId);
 
-            var allGroupEntries = new List<MatchingQueueData>(groupEntries);
-            for (int b = 0; b < botsNeeded; b++)
-                allGroupEntries.Add(MatchingQueueData.CreateBot(Interlocked.Decrement(ref _botIdCounter)));
 
             logger.LogInformation(
                 "Bot-filled matching: MatchingId={MatchingId}, Real={Real}, Bots={Bot}, Origin={Origin}, GameServer={NodeId}",
                 matchingId, groupEntries.Length, botsNeeded, origin, gameServer.NodeId);
 
-            await overrides.ApplyTwoPlayerTestOutfitAsync(allGroupEntries);
-            List<PlayerInfo> playerRoster = await rosterBuilder.BuildPlayerRosterAsync(allGroupEntries);
-            MatchManifest manifest = MatchRosterBuilder.BuildManifest(allGroupEntries, overrides.MatchMode);
+            await overrides.ApplyTwoPlayerTestOutfitAsync(batchPlayers);
+            var manifest = new MatchManifest
+            {
+                HumanPlayerIds = batchPlayers.Select(entry => entry.PlayerId).ToList(),
+                BotCount = botsNeeded,
+                Mode = overrides.MatchMode
+            };
             expectedHumanCount = manifest.HumanPlayerIds.Count;
 
             // Game Server는 이 manifest로 봇 수·입장 기대 인원·스폰을 정한다.
             await handoff.StoreMatchManifestAsync(matchingId, manifest);
 
             // 사람에게 통지하고 commit된 큐 entry를 제거한다.
-            foreach (MatchingQueueData entry in allGroupEntries)
+            foreach (MatchingQueueData entry in batchPlayers)
             {
-                if (entry.IsBot) continue;
 
                 bool delivered = false;
                 try
                 {
-                    delivered = await handoff.DeliverMatchingSuccessAsync(
-                        entry, matchingId, playerRoster, gameServer);
+                    delivered = await handoff.DeliverMatchingSuccessAsync(entry, matchingId, gameServer);
                     if (delivered)
                         deliveredPlayerCount++;
                 }

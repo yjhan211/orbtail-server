@@ -30,8 +30,7 @@ public sealed class MatchCreationServiceTests
     private MatchCreationService CreatePass(DevMatchOverrides? overrides = null, CancellationToken shutdown = default)
     {
         overrides ??= new DevMatchOverrides(false, false, _cache, new FakeRedLockFactory(), _logger);
-        var rosterBuilder = new MatchRosterBuilder(_cache, _logger);
-        return new MatchCreationService(_cache, _queue, _reservations, rosterBuilder, _handoff, _gameServers, overrides, shutdown, _logger);
+        return new MatchCreationService(_cache, _queue, _reservations, _handoff, _gameServers, overrides, shutdown, _logger);
     }
 
     private async Task<MatchingQueueData[]> EnqueueHumansAsync(int count, double score = 1)
@@ -73,10 +72,9 @@ public sealed class MatchCreationServiceTests
 
         Assert.True(committed);
         Assert.Equal("1", _cache.GetString(MatchCreationService.MatchingIdKey));
-        Assert.Empty(_handoff.StoredManifests[1].BotPlayerIds);
+        Assert.Equal(0, _handoff.StoredManifests[1].BotCount);
         Assert.Equal(humans.Select(h => h.PlayerId).OrderBy(id => id), _handoff.StoredManifests[1].HumanPlayerIds.OrderBy(id => id));
         Assert.Equal(8, _handoff.Deliveries.Count);
-        Assert.All(_handoff.Deliveries, delivery => Assert.Equal(8, delivery.RosterCount));
         Assert.All(_handoff.DeliveredNodeIds, nodeId => Assert.Equal(FixedGameServerAllocator.DefaultNodeId, nodeId));
         Assert.Equal(humans.Select(h => h.PlayerId).OrderBy(id => id), _handoff.Deliveries.Select(d => d.Entry.PlayerId).OrderBy(id => id));
         Assert.All(humans, human => Assert.Equal("1", ReservationOf(human.PlayerId)));
@@ -96,12 +94,9 @@ public sealed class MatchCreationServiceTests
 
         Assert.True(committed);
         network.common.data.models.MatchManifest manifest = _handoff.StoredManifests[1];
-        Assert.Equal(5, manifest.BotPlayerIds.Count);
-        Assert.All(manifest.BotPlayerIds, botId => Assert.True(botId < 0));
-        Assert.Equal(5, manifest.BotPlayerIds.Distinct().Count());
+        Assert.Equal(5, manifest.BotCount);
         Assert.Equal(3, manifest.HumanPlayerIds.Count);
         Assert.Equal(3, _handoff.Deliveries.Count);
-        Assert.All(_handoff.Deliveries, delivery => Assert.Equal(8, delivery.RosterCount));
         Assert.Equal("1", ReservationOf(1_000));
         Assert.Contains("ready:1", _handoff.Events);
     }
@@ -223,7 +218,7 @@ public sealed class MatchCreationServiceTests
 
         Assert.Equal("2", _cache.GetString(MatchCreationService.MatchingIdKey));
         Assert.Equal(2, _handoff.StoredManifests.Count);
-        Assert.All(_handoff.StoredManifests.Values, manifest => Assert.Equal(7, manifest.BotPlayerIds.Count));
+        Assert.All(_handoff.StoredManifests.Values, manifest => Assert.Equal(7, manifest.BotCount));
         Assert.Equal(new long[] { 1, 2 }, _handoff.Deliveries.Select(d => d.Entry.PlayerId));
         Assert.Equal("1", ReservationOf(1));
         Assert.Equal("2", ReservationOf(2));
@@ -245,7 +240,7 @@ public sealed class MatchCreationServiceTests
         MatchManifest manifest = Assert.Single(_handoff.StoredManifests).Value;
         Assert.Equal(MatchMode.SoloMapValidation, manifest.Mode);
         Assert.Equal(new long[] { player.PlayerId }, manifest.HumanPlayerIds);
-        Assert.Empty(manifest.BotPlayerIds);
+        Assert.Equal(0, manifest.BotCount);
         Assert.Single(_handoff.Deliveries);
     }
 

@@ -1,103 +1,58 @@
-using user_server.matching.creation;
-using user_server.matching.queue;
+using game_server.services;
 using network.common.data.models;
-using user_server.matching;
 
 namespace demo_regression_tests;
 
-/// <summary>
-///     MatchRosterBuilder: 매치 manifest(사람·봇 ID), 봇 로스터·코스튬, 성공 패킷용 PlayerInfo 로스터.
-///     스폰·타깃은 여기서 정하지 않는다 — Game Server 권위.
-/// </summary>
 public sealed class MatchRosterBuilderTests
 {
-    private readonly InMemoryRedisOperations _cache = new();
-    private readonly RecordingLogger _logger = new();
-
-    public MatchRosterBuilderTests()
+    [Theory]
+    [InlineData(1, 7)]
+    [InlineData(3, 5)]
+    [InlineData(8, 0)]
+    public void CreateBotIds_AllocatesNegativeIdsOnGameServer(int humans, int bots)
     {
-        UserServerMatchingTestData.EnsureGameDataLoaded();
-    }
-
-    private MatchRosterBuilder CreateBuilder()
-    {
-        return new MatchRosterBuilder(_cache, _logger);
-    }
-
-    private static List<MatchingQueueData> MixedGroup(int humans, int bots)
-    {
-        var entries = new List<MatchingQueueData>();
-        for (int i = 1; i <= humans; i++)
-            entries.Add(UserServerMatchingTestData.HumanEntry(100 + i));
-        for (int i = 1; i <= bots; i++)
-            entries.Add(MatchingQueueData.CreateBot(-i));
-        return entries;
-    }
-
-    [Fact]
-    public void BuildManifest_SplitsHumansAndBotsAndDropsDuplicates()
-    {
-        List<MatchingQueueData> group = MixedGroup(3, 5);
-        group.Add(UserServerMatchingTestData.HumanEntry(101));
-
-        MatchManifest manifest = MatchRosterBuilder.BuildManifest(group);
-
-        Assert.Equal(MatchMode.Normal, manifest.Mode);
-        Assert.Equal(new long[] { 101, 102, 103 }, manifest.HumanPlayerIds);
-        Assert.Equal(new long[] { -1, -2, -3, -4, -5 }, manifest.BotPlayerIds);
-    }
-
-    [Fact]
-    public void BuildManifest_EmptyGroupIsEmpty()
-    {
-        MatchManifest manifest = MatchRosterBuilder.BuildManifest(new List<MatchingQueueData>());
-
-        Assert.Empty(manifest.HumanPlayerIds);
-        Assert.Empty(manifest.BotPlayerIds);
-    }
-
-    [Fact]
-    public void BuildManifest_PreservesRequestedMatchMode()
-    {
-        List<MatchingQueueData> group = MixedGroup(1, 0);
-
-        MatchManifest manifest = MatchRosterBuilder.BuildManifest(group, MatchMode.SoloMapValidation);
-
-        Assert.Equal(MatchMode.SoloMapValidation, manifest.Mode);
-        Assert.Single(manifest.HumanPlayerIds);
-        Assert.Empty(manifest.BotPlayerIds);
+        var manifest = new MatchManifest { HumanPlayerIds = Enumerable.Range(1, humans).Select(x => (long)x).ToList(), BotCount = bots };
+        var ids = MatchRosterBuilder.CreateBotIds(manifest);
+        var otherIds = MatchRosterBuilder.CreateBotIds(manifest);
+        Assert.Equal(bots, ids.Count);
+        Assert.All(ids, id => Assert.True(id < 0));
+        Assert.Equal(bots, ids.Distinct().Count());
+        Assert.Empty(ids.Intersect(otherIds));
     }
 
     [Theory]
-    [InlineData(-4, 103000001)]
-    [InlineData(-1, 103000004)]
-    [InlineData(-2, 103000005)]
-    [InlineData(-3, 103000006)]
-    [InlineData(-7, 103000006)]
-    public void CreateBotRosterInfo_UsesAbsoluteIdNameAndModFourAccessory(long botId, int accessoryId)
+    [InlineData(-1)]
+    [InlineData(8)]
+    [InlineData(int.MaxValue)]
+    public void CreateBotIds_RejectsInvalidCount(int count)
     {
-        PlayerInfo bot = MatchRosterBuilder.CreateBotRosterInfo(botId);
-
-        Assert.Equal(botId, bot.PlayerId);
-        Assert.Equal($"Player{Math.Abs(botId)}", bot.Name);
-        Assert.Equal(new[] { 101000003, 102000003, 104000005, 105000005, 106000003, accessoryId }, bot.WearItemIdList);
+        Assert.Throws<InvalidOperationException>(() => MatchRosterBuilder.CreateBotIds(
+            new MatchManifest { HumanPlayerIds = [1], BotCount = count }));
     }
 
     [Fact]
-    public async Task BuildPlayerRosterAsync_FallsBackToDefaultNameWhenPlayerInfoIsMissing()
+    public void CreateBotIds_ValidatesHumanRosterAndSoloMode()
     {
-        List<MatchingQueueData> group = MixedGroup(2, 1);
+        Assert.Throws<InvalidOperationException>(() => MatchRosterBuilder.CreateBotIds(new MatchManifest { BotCount = 8 }));
+        Assert.Throws<InvalidOperationException>(() => MatchRosterBuilder.CreateBotIds(new MatchManifest { HumanPlayerIds = [1, 1] }));
+        Assert.Throws<InvalidOperationException>(() => MatchRosterBuilder.CreateBotIds(new MatchManifest { HumanPlayerIds = [-1] }));
+        Assert.Throws<InvalidOperationException>(() => MatchRosterBuilder.CreateBotIds(
+            new MatchManifest { HumanPlayerIds = [1], BotCount = 1, Mode = MatchMode.SoloMapValidation }));
+        Assert.Empty(MatchRosterBuilder.CreateBotIds(new MatchManifest { HumanPlayerIds = [1], Mode = MatchMode.SoloMapValidation }));
+    }
 
-        List<PlayerInfo> roster = await CreateBuilder().BuildPlayerRosterAsync(group);
-
-        Assert.Equal(3, roster.Count);
-        Assert.Equal(group.Select(e => e.PlayerId), roster.Select(p => p.PlayerId));
-        PlayerInfo human = roster.Single(p => p.PlayerId == 101);
-        Assert.Equal("Player101", human.Name);
-        Assert.Empty(human.WearItemIdList);
-        PlayerInfo bot = roster.Single(p => p.PlayerId == -1);
-        Assert.Equal("Player1", bot.Name);
-        Assert.Equal(6, bot.WearItemIdList.Count);
-        Assert.True(_logger.Contains(Microsoft.Extensions.Logging.LogLevel.Warning, "Matching roster fallback"));
+    [Fact]
+    public async Task BuildAsync_CombinesHumanProfilesAndActualBotProfiles()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var logger = new RecordingLogger();
+        var builder = new MatchRosterBuilder(new InMemoryRedisOperations(), logger);
+        var bot = new PlayerInfo { PlayerId = -1, Name = "Bot", WearItemIdList = [103000004] };
+        var roster = await builder.BuildAsync([101], [bot]);
+        Assert.Equal(2, roster.Count);
+        Assert.Equal("Player101", roster[0].Name);
+        Assert.Empty(roster[0].WearItemIdList);
+        Assert.Same(bot, roster[1]);
+        Assert.True(logger.Contains(Microsoft.Extensions.Logging.LogLevel.Warning, "Matching roster fallback"));
     }
 }

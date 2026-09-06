@@ -209,7 +209,7 @@ internal sealed class NatsPlayerSessionRouter(
     private static Packet CreateMatchingSuccessPacket(U_TO_C_MATCHING_SUCCESS result) =>
         PacketMaker.U_TO_C_MATCHING_SUCCESS(
             result.MatchingId, result.GameServerIp, result.GameServerPort,
-            result.GameEndTimestamp, result.GameHandoffTicket, result.PlayerRoster);
+            result.GameEndTimestamp, result.GameHandoffTicket);
 
     private static Packet CreateMatchingFailedPacket(ErrorCode errorCode, long matchingId) =>
         PacketMaker.U_TO_C_MATCHING_FAILED(errorCode, matchingId);

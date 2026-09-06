@@ -1,5 +1,3 @@
-using user_server.matching.queue;
-
 namespace user_server.sessions;
 
 /// <summary>
@@ -66,7 +64,7 @@ internal sealed class MatchingAssignment
 
     public bool TryAssign(long matchingId, string requestId)
     {
-        if (matchingId <= 0 || !MatchingQueueData.IsValidRequestId(requestId))
+        if (matchingId <= 0 || string.IsNullOrWhiteSpace(requestId))
         {
             return false;
         }

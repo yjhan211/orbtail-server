@@ -1,8 +1,6 @@
 using System.Globalization;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.common.data.models;
-using network.gamehandoff;
 using network.infrastructure.redis;
 
 namespace user_server.matching.queue;
@@ -27,7 +25,7 @@ internal sealed class MatchingReservationCoordinator(
     public async Task<MatchingReservationLease?> TryAcquireAsync(IEnumerable<MatchingQueueData> entries)
     {
         var reservedEntries = entries
-            .Where(entry => entry.IsHuman)
+            .Where(entry => entry.PlayerId > 0)
             .DistinctBy(entry => entry.PlayerId)
             .ToList();
         string reservationId = Guid.NewGuid().ToString("N");

@@ -260,7 +260,7 @@ public sealed class UserServerScaleOutTests
         Assert.True(await sender.DeliverMatchingSuccessAsync(7, "req7", new U_TO_C_MATCHING_SUCCESS
         {
             MatchingId = 42, GameServerIp = "localhost", GameServerPort = 9001,
-            GameEndTimestamp = 123456, GameHandoffTicket = "test-ticket", PlayerRoster = []
+            GameEndTimestamp = 123456, GameHandoffTicket = "test-ticket"
         }));
         Assert.True(await sender.DeliverMatchingFailedAsync(7, 42, "req7", ErrorCode.MATCHING_FAILED));
         Assert.True(await sender.DeliverAdmissionFailedAsync(7, 42, ErrorCode.MATCHING_FAILED));
@@ -298,7 +298,7 @@ public sealed class UserServerScaleOutTests
             (_, _) => throw new InvalidOperationException("Failed delivery must not start the admission watchdog"),
             CancellationToken.None, logger);
         var pass = new MatchCreationService(
-            cache, queue, reservations, new MatchRosterBuilder(cache, logger), handoff,
+            cache, queue, reservations, handoff,
             new FixedGameServerAllocator(),
             new DevMatchOverrides(false, false, cache, new FakeRedLockFactory(), logger),
             CancellationToken.None, logger);
@@ -335,14 +335,13 @@ public sealed class UserServerScaleOutTests
         var result = new U_TO_C_MATCHING_SUCCESS
         {
             MatchingId = 42, GameServerIp = "game.example", GameServerPort = 9001,
-            GameEndTimestamp = 123456789, GameHandoffTicket = "ticket",
-            PlayerRoster = [new PlayerInfo { PlayerId = 7, Name = "test-player" }]
+            GameEndTimestamp = 123456789, GameHandoffTicket = "ticket"
         };
 
         Assert.True(await sender.DeliverMatchingSuccessAsync(7, "req7", result));
         using (var expected = PacketMaker.U_TO_C_MATCHING_SUCCESS(
             result.MatchingId, result.GameServerIp, result.GameServerPort,
-            result.GameEndTimestamp, result.GameHandoffTicket, result.PlayerRoster))
+            result.GameEndTimestamp, result.GameHandoffTicket))
         {
             expected.RecordSize();
             Assert.Equal(expected.ToBytes(), owner.LastPacketBytes);

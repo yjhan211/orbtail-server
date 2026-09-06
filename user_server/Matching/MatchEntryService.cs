@@ -22,7 +22,6 @@ internal interface IMatchEntryService
     public Task<bool> DeliverMatchingSuccessAsync(
         MatchingQueueData entry,
         long matchingId,
-        List<PlayerInfo> playerRoster,
         GameServerAllocation gameServer);
 
     public Task MarkHandoffReadyAsync(long matchingId);
@@ -69,14 +68,13 @@ internal sealed class MatchEntryService(
     public async Task<bool> DeliverMatchingSuccessAsync(
         MatchingQueueData entry,
         long matchingId,
-        List<PlayerInfo> playerRoster,
         GameServerAllocation gameServer)
     {
         long playerId = entry.PlayerId;
         logger.LogInformation("Processing matched player {DataPlayerId}", playerId);
 
         string requestId = entry.RequestId;
-        if (!MatchingQueueData.IsValidRequestId(requestId))
+        if (string.IsNullOrWhiteSpace(requestId))
         {
             logger.LogWarning("Matched player has no valid matching request id: PlayerId={DataPlayerId}", playerId);
             return false;
@@ -100,8 +98,7 @@ internal sealed class MatchEntryService(
             GameServerIp = gameServer.PublicHost,
             GameServerPort = gameServer.PublicPort,
             GameEndTimestamp = gameEndTimestamp,
-            GameHandoffTicket = gameHandoffTicket,
-            PlayerRoster = playerRoster
+            GameHandoffTicket = gameHandoffTicket
         };
 
         // 세션이 어느 User Server에 있든 라우터가 요청 ID fence를 확인한 뒤 송신 큐에 넣는다.

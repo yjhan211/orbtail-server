@@ -452,7 +452,7 @@ internal sealed class RecordingHandoffPublisher : IMatchEntryService
 {
     public List<string> Events { get; } = new();
     public Dictionary<long, MatchManifest> StoredManifests { get; } = new();
-    public List<(long MatchingId, MatchingQueueData Entry, int RosterCount)> Deliveries { get; } = new();
+    public List<(long MatchingId, MatchingQueueData Entry)> Deliveries { get; } = new();
     public List<string> DeliveredNodeIds { get; } = new();
     public Func<long, bool> DeliverResult { get; set; } = _ => true;
     public HashSet<long> ThrowOnDeliver { get; } = new();
@@ -462,14 +462,14 @@ internal sealed class RecordingHandoffPublisher : IMatchEntryService
     public Task StoreMatchManifestAsync(long matchingId, MatchManifest manifest)
     {
         StoredManifests[matchingId] = manifest;
-        Events.Add($"manifest:{matchingId}:{manifest.HumanPlayerIds.Count}+{manifest.BotPlayerIds.Count}");
+        Events.Add($"manifest:{matchingId}:{manifest.HumanPlayerIds.Count}+{manifest.BotCount}");
         return Task.CompletedTask;
     }
 
-    public Task<bool> DeliverMatchingSuccessAsync(MatchingQueueData entry, long matchingId, List<PlayerInfo> playerRoster,
+    public Task<bool> DeliverMatchingSuccessAsync(MatchingQueueData entry, long matchingId,
         GameServerAllocation gameServer)
     {
-        Deliveries.Add((matchingId, entry, playerRoster.Count));
+        Deliveries.Add((matchingId, entry));
         DeliveredNodeIds.Add(gameServer.NodeId);
         Events.Add($"deliver:{matchingId}:{entry.PlayerId}");
         if (ThrowOnDeliver.Contains(entry.PlayerId))

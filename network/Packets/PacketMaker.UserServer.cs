@@ -87,8 +87,7 @@ public static partial class PacketMaker
 
     public static Packet U_TO_C_MATCHING_SUCCESS(long matchingId,
         string gameServerIp, int gameServerPort, long gameEndTimestamp,
-        string gameHandoffTicket,
-        List<PlayerInfo> playerRoster)
+        string gameHandoffTicket)
     {
         var packet = Packet.Create((int)Protocol.U_TO_C_MATCHING_SUCCESS);
         U_TO_C_MATCHING_SUCCESS body = new()
@@ -97,8 +96,7 @@ public static partial class PacketMaker
             GameServerIp = gameServerIp,
             GameServerPort = gameServerPort,
             GameEndTimestamp = gameEndTimestamp,
-            GameHandoffTicket = gameHandoffTicket,
-            PlayerRoster = playerRoster
+            GameHandoffTicket = gameHandoffTicket
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

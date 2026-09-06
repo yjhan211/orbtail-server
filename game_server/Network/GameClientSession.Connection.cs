@@ -87,6 +87,11 @@ public partial class GameClientSession
                 throw new InvalidOperationException($"Player {playerId} is not part of match {matchingId}.");
             Volatile.Write(ref _matchHumanPlayerIds, composition.HumanPlayerIds.ToArray());
 
+            // 명단을 먼저 전송해야 이후 등장 패킷의 이름과 외형을 클라이언트가 해석할 수 있다.
+            using (var rosterPacket = PacketMaker.G_TO_C_MATCH_ROSTER(matchingId, composition.PlayerRoster.ToList()))
+                if (!TrySend(rosterPacket))
+                    throw new OperationCanceledException("Could not send initial match roster.");
+
             RunUnderLiveMatch(runtime, () =>
             {
                 foreach (var bot in _botPlayerManager.GetBots(matchingId))
@@ -444,7 +449,7 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     매치 구성을 확정한다 — 매치당 한 번. manifest(사람·봇 ID)를 읽고, 스폰을 정하고, 봇과 로스터를 등록한다.
+    ///     매치당 한 번 manifest(사람 ID·봇 수)를 읽고 봇 ID·스폰·최종 명단을 확정한다.
     ///     이후 세션은 런타임에 세워진 구성을 그대로 쓴다. 입장 마커·사람 reservation 확인은 세션마다 다시 한다.
     /// </summary>
     private async Task<MatchComposition> LoadMatchCompositionAsync(long matchingId, MapId mapId, MatchRuntime runtime)
@@ -461,19 +466,8 @@ public partial class GameClientSession
                 return existing;
 
             List<long> humanPlayerIds = manifest.HumanPlayerIds.Distinct().ToList();
-            List<long> botPlayerIds = manifest.BotPlayerIds.Distinct().ToList();
+            List<long> botPlayerIds = MatchRosterBuilder.CreateBotIds(manifest);
             MatchMode mode = manifest.Mode;
-            if (!Enum.IsDefined(mode))
-                throw new InvalidOperationException($"Match manifest mode is invalid for match {matchingId}: {mode}.");
-            if (humanPlayerIds.Count == 0 || humanPlayerIds.Any(id => id <= 0) || botPlayerIds.Any(id => id >= 0))
-                throw new InvalidOperationException($"Match manifest is invalid for match {matchingId}.");
-            if (mode == MatchMode.SoloMapValidation && (humanPlayerIds.Count != 1 || botPlayerIds.Count != 0))
-                throw new InvalidOperationException(
-                    $"Solo map validation manifest must contain one human and no bots for match {matchingId}.");
-            if (humanPlayerIds.Count + botPlayerIds.Count > Config.SWARM_PLAYERS_PER_MATCH)
-                throw new InvalidOperationException(
-                    $"Match manifest exceeds the match capacity for match {matchingId}: " +
-                    $"{humanPlayerIds.Count} humans, {botPlayerIds.Count} bots.");
 
             IReadOnlyDictionary<long, Cell> spawnCells =
                 MatchSpawnPlanner.Plan(
@@ -481,13 +475,20 @@ public partial class GameClientSession
             if (botPlayerIds.Count > 0)
                 _botPlayerManager.RegisterBots(matchingId, mapId, botPlayerIds, spawnCells);
 
+            var roster = await new MatchRosterBuilder(RedisOperations, Logger).BuildAsync(humanPlayerIds,
+                botPlayerIds.Select(id => _botPlayerManager.SynthesizePlayerInfo(matchingId, id)
+                    ?? throw new InvalidOperationException($"Bot {id} was not initialized.")));
+
             RunUnderLiveMatch(runtime, () =>
             {
-                foreach (long participantId in humanPlayerIds.Concat(botPlayerIds))
-                    _matchRosterManager.RegisterEntry(matchingId, new RosterEntry { PlayerId = participantId });
+                foreach (var participant in roster)
+                {
+                    _matchRosterManager.RegisterEntry(matchingId, new RosterEntry { PlayerId = participant.PlayerId });
+                    _matchRosterManager.UpdatePlayerProfile(matchingId, participant.PlayerId, participant.Name, participant.WearItemIdList);
+                }
             });
 
-            var composition = new MatchComposition(humanPlayerIds, botPlayerIds, mode, spawnCells);
+            var composition = new MatchComposition(humanPlayerIds, botPlayerIds, mode, spawnCells, roster);
             runtime.Composition = composition;
             return composition;
         }

@@ -195,6 +195,5 @@ public sealed class MatchingQueueTests
         Assert.Equal(11, entry.PlayerId);
         Assert.Equal("request11", entry.RequestId);
         Assert.Equal(requestTime, entry.RequestTime);
-        Assert.True(entry.IsHuman);
     }
 }

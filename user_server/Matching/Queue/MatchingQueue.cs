@@ -46,7 +46,7 @@ internal sealed class MatchingQueue(
             }
 
             string? requestId = user.ActiveMatchingRequestId;
-            if (!MatchingQueueData.IsValidRequestId(requestId))
+            if (string.IsNullOrWhiteSpace(requestId))
             {
                 logger.LogWarning("Matching queue rejected because the session has no active request fence: PlayerId={PlayerId}", playerId);
                 return ErrorCode.MATCHING_FAILED;
@@ -174,7 +174,7 @@ internal sealed class MatchingQueue(
     private MatchingQueueData? ReadEntry(byte[] member, RedisValue detail)
     {
         string requestId = Encoding.UTF8.GetString(member);
-        if (MatchingQueueData.IsValidRequestId(requestId) && !detail.IsNullOrEmpty)
+        if (!string.IsNullOrWhiteSpace(requestId) && !detail.IsNullOrEmpty)
         {
             try
             {

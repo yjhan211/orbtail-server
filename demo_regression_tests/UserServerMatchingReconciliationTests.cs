@@ -296,7 +296,7 @@ public sealed class UserServerMatchingReconciliationTests
     private static void DeliverMatchingSuccess(PlayerSession session, long matchingId, string requestId)
     {
         using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
-            matchingId, "127.0.0.1", 9001, 0, "test-ticket", []);
+            matchingId, "127.0.0.1", 9001, 0, "test-ticket");
         Assert.True(((IMatchingSessionEndpoint)session).TryDeliverMatchingSuccess(
             matchingId, requestId, packet));
     }

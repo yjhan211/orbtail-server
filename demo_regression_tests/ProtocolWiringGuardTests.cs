@@ -78,6 +78,19 @@ public class ProtocolWiringGuardTests
     }
 
     [Fact]
+    public void MatchRosterIsSentBeforeAreaAndJoinSnapshots()
+    {
+        string root = FindRepositoryRoot();
+        string source = File.ReadAllText(Path.Combine(root, "game_server", "Network", "GameClientSession.Connection.cs"));
+        int roster = source.IndexOf("PacketMaker.G_TO_C_MATCH_ROSTER", StringComparison.Ordinal);
+        int area = source.IndexOf("CurrentArea = GameMapData.GetCurrentArea", StringComparison.Ordinal);
+        int join = source.IndexOf("await BroadcastPlayerJoin()", StringComparison.Ordinal);
+        Assert.True(roster >= 0 && roster < area && roster < join);
+        Assert.True(source.IndexOf("if (runtime.Composition is", StringComparison.Ordinal) <
+                    source.IndexOf("MatchRosterBuilder.CreateBotIds", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void GameConnectionLivenessUsesNetworkTimeoutOnly()
     {
         string root = FindRepositoryRoot();
