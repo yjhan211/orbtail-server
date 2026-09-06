@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using network.common.data.helpers;
 using network.core;
 using network.hosting;
+using network.infrastructure;
 using network.infrastructure.redis;
 using user_server.accounts;
 using user_server.matching;
@@ -40,6 +41,7 @@ internal sealed class UserServer(
     PlayerSessionRegistry sessions,
     NatsPlayerSessionRouter sessionRouter,
     MatchingManager matchingManager,
+    BackgroundTaskTracker taskTracker,
     MatchingLifecycleSubscriber matchingLifecycleSubscriber)
     : IHostedService
 {
@@ -162,7 +164,8 @@ internal sealed class UserServer(
                 node.NodeId,
                 sessions.Register,
                 sessionRouter.AnnounceLogin,
-                sessions.Remove);
+                sessions.Remove,
+                taskTracker.TryRun);
 
             logger.LogInformation("New session created");
             return session;

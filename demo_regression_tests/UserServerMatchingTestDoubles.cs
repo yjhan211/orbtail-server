@@ -427,9 +427,9 @@ internal sealed class FakeRedLockFactory : IRedLockFactory
 }
 
 /// <summary>
-///     MatchmakingPass가 handoff port를 호출한 순서를 기록하는 fake. 전달 결과·예외·admission 취소 결과를 주입한다.
+///     MatchCreationService가 handoff port를 호출한 순서를 기록하는 fake. 전달 결과·예외·admission 취소 결과를 주입한다.
 /// </summary>
-internal sealed class RecordingHandoffPublisher : IMatchHandoffPublisher
+internal sealed class RecordingHandoffPublisher : IMatchEntryService
 {
     public List<string> Events { get; } = new();
     public Dictionary<long, MatchManifest> StoredManifests { get; } = new();

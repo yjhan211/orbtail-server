@@ -13,9 +13,9 @@ namespace user_server.matching.coordination;
 
 /// <summary>
 ///     매치 확정 뒤 Game Server 인계에 필요한 쓰기와 클라이언트 전달을 담당하는 port.
-///     <see cref="MatchmakingPass" />가 테스트에서 전달·마커 순서를 관찰할 수 있도록 분리한다.
+///     <see cref="MatchCreationService" />가 테스트에서 전달·마커 순서를 관찰할 수 있도록 분리한다.
 /// </summary>
-internal interface IMatchHandoffPublisher
+internal interface IMatchEntryService
 {
     public Task StoreMatchManifestAsync(long matchingId, MatchManifest manifest);
 
@@ -36,17 +36,17 @@ internal interface IMatchHandoffPublisher
 ///     매치 handoff 발행자: handoff ticket 발급, 매치 manifest 기록, <c>admission_ready</c> 마커, admission state의
 ///     pending/canceled 전이, handoff 삭제, 사람별 성공·실패 패킷 전달, 45초 process-local 입장 watchdog.
 ///     불변식: 성공 패킷은 전원 인간의 세션 송신 큐에 들어간 뒤에만 <c>admission_ready</c>를 쓴다
-///     (호출 순서는 <see cref="MatchmakingPass" />가 지킨다). Redis 응답 유실은 read-back으로 보정하고,
+///     (호출 순서는 <see cref="MatchCreationService" />가 지킨다). Redis 응답 유실은 read-back으로 보정하고,
 ///     watchdog은 shutdown token으로만 멈춘다. 프로세스 상태는 갖지 않으며 background task 등록은 소유자에게 위임한다.
 /// </summary>
-internal sealed class MatchHandoffPublisher(
+internal sealed class MatchEntryService(
     IRedisOperations redisOperations,
     GameHandoffTicketService gameHandoffTicketService,
     MatchingQueueClaimCoordinator claims,
     IPlayerSessionRouter sessions,
     Func<Func<Task>, string, bool> tryRunBackgroundOperation,
     CancellationToken shutdownToken,
-    ILogger logger) : IMatchHandoffPublisher
+    ILogger logger) : IMatchEntryService
 {
     /// <summary>
     ///     Game Server가 매치당 한 번 읽는 구성(사람·봇 ID)을 기록한다.

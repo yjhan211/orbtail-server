@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using network.infrastructure;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.infrastructure.messaging;
@@ -16,6 +17,7 @@ internal sealed class MatchingLifecycleSubscriber(
     INatsClient natsClient,
     IPlayerSessionRouter sessions,
     IMatchingManager matchingManager,
+    BackgroundTaskTracker taskTracker,
     ILogger logger)
 {
     public const string QueueGroup = "user_server.matching_lifecycle";
@@ -84,7 +86,7 @@ internal sealed class MatchingLifecycleSubscriber(
             : 0;
         if (matchingId > 0 && lifecycleEvent != MatchingLifecycleEvent.PlayerAdmissionFailed)
             sessions.ClearMatchingAssignment(playerId, matchingId);
-        matchingManager.TryRunBackgroundOperation(
+        taskTracker.TryRun(
             () => lifecycleEvent switch
             {
                 MatchingLifecycleEvent.PlayerAdmissionFailed =>

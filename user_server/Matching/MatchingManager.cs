@@ -1,3 +1,4 @@
+using network.infrastructure;
 using user_server.matching.coordination;
 using user_server.matching.creation;
 using user_server.matching.queue;
@@ -17,10 +18,10 @@ internal sealed class MatchingManager(
     ILogger logger,
     MatchingQueueClaimCoordinator matchingClaims,
     MatchingQueue matchingQueue,
-    MatchHandoffPublisher handoffPublisher,
-    MatchmakingPass matchmakingPass,
+    MatchEntryService matchEntryService,
+    MatchCreationService matchCreationService,
     MatchingLeaderLease leaderLease,
-    MatchingTaskTracker taskTracker)
+    BackgroundTaskTracker taskTracker)
     : IMatchingManager
 {
     private readonly object _lifecycleLock = new();
@@ -82,7 +83,7 @@ internal sealed class MatchingManager(
                     continue;
                 }
 
-                await matchmakingPass.RunAsync();
+                await matchCreationService.RunAsync();
             }
             catch (Exception ex)
             {
@@ -93,7 +94,7 @@ internal sealed class MatchingManager(
 
     public async Task HandleEntryFailureAsync(long playerId, long matchingId)
     {
-        await handoffPublisher.NotifyAdmissionFailedAsync(playerId, matchingId);
+        await matchEntryService.NotifyAdmissionFailedAsync(playerId, matchingId);
         await ReleaseMatchingClaimAsync(playerId, matchingId);
     }
 
@@ -101,8 +102,6 @@ internal sealed class MatchingManager(
     {
         await matchingClaims.ReleaseActiveBestEffortAsync(playerId, matchingId);
     }
-
-    public bool TryRunBackgroundOperation(Func<Task> operation, string operationName) => taskTracker.TryRun(operation, operationName);
 
     public Task StopAsync()
     {

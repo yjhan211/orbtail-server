@@ -14,7 +14,6 @@ public interface IMatchingManager
     public Task<bool> HasMatchingClaimAsync(long playerId);
     public Task HandleEntryFailureAsync(long playerId, long matchingId);
     public Task ReleaseMatchingClaimAsync(long playerId, long matchingId);
-    public bool TryRunBackgroundOperation(Func<Task> operation, string operationName);
     public Task StopMatchingLoopAsync();
     public Task StopAsync();
 }

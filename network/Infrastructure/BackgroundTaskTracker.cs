@@ -1,16 +1,14 @@
-using user_server.matching.coordination;
-using user_server.matching.creation;
 using Microsoft.Extensions.Logging;
 
-namespace user_server.matching;
+namespace network.infrastructure;
 
 /// <summary>
 ///     비동기 작업을 추적한다.
-///     입장 대기 시간 확인이나 세션 정리 작업을 실행하고, 완료되면 추적 목록에서 제거한다.
+///     전달받은 작업을 실행하고, 완료되면 추적 목록에서 제거한다.
 ///     종료 시 새 작업을 거부하고 진행 중인 작업에 취소를 요청한다.
 ///     작업이 모두 끝났는지 기다리는 기능을 제공하며, 작업 중 발생한 예외는 로그로 남긴다.
 /// </summary>
-internal sealed class MatchingTaskTracker(ILogger logger) : IDisposable
+public sealed class BackgroundTaskTracker(ILogger logger) : IDisposable
 {
     private readonly Dictionary<long, Task> _tasks = new();
     private readonly object _taskLock = new();
@@ -29,7 +27,7 @@ internal sealed class MatchingTaskTracker(ILogger logger) : IDisposable
         {
             if (Volatile.Read(ref _stopping) != 0)
             {
-                logger.LogDebug("Ignoring matching background operation during shutdown: {OperationName}", operationName);
+                logger.LogDebug("Ignoring background operation during shutdown: {OperationName}", operationName);
                 return false;
             }
 
@@ -83,7 +81,7 @@ internal sealed class MatchingTaskTracker(ILogger logger) : IDisposable
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Matching background operation failed: {OperationName}", operationName);
+            logger.LogWarning(ex, "Background operation failed: {OperationName}", operationName);
         }
         finally
         {

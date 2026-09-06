@@ -27,6 +27,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
     private readonly Func<long, PlayerSession, (bool Accepted, PlayerSession? PreviousSession)> _onSessionRegistered;
     private readonly Action<long, long> _announceLogin;
     private readonly Func<long, PlayerSession, bool> _onSessionRemoved;
+    private readonly Func<Func<Task>, string, bool> _tryRunBackgroundOperation;
 
     private readonly string _nodeId;
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
@@ -47,7 +48,8 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         string nodeId,
         Func<long, PlayerSession, (bool Accepted, PlayerSession? PreviousSession)> onSessionRegistered,
         Action<long, long> announceLogin,
-        Func<long, PlayerSession, bool> onSessionRemoved)
+        Func<long, PlayerSession, bool> onSessionRemoved,
+        Func<Func<Task>, string, bool> tryRunBackgroundOperation)
         : base(connection, logger, redisOperations)
     {
         _playerService = playerService;
@@ -61,6 +63,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         _onSessionRegistered = onSessionRegistered;
         _announceLogin = announceLogin;
         _onSessionRemoved = onSessionRemoved;
+        _tryRunBackgroundOperation = tryRunBackgroundOperation;
 
         InitializeProtocolHandlers();
     }
@@ -556,7 +559,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         if (_sessionLease == null && !removedLocally)
             return;
 
-        _matchingManager.TryRunBackgroundOperation(
+        _tryRunBackgroundOperation(
             () => CleanupRemovedSessionAsync(playerId, removedLocally),
             $"cleanup disconnected player {playerId}");
     }

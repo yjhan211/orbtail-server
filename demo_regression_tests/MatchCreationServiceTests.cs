@@ -8,10 +8,10 @@ using user_server.matching;
 namespace demo_regression_tests;
 
 /// <summary>
-///     #323 MatchmakingPass: 8인 그룹 단일 매치, 3인+봇 5 채움, claim 경합 skip, 전달 실패 롤백,
+///     #323 MatchCreationService: 8인 그룹 단일 매치, 3인+봇 5 채움, claim 경합 skip, 전달 실패 롤백,
 ///     전원 success 전달 뒤 admission_ready, 1초 pass의 cutoff·정원 규칙.
 /// </summary>
-public sealed class MatchmakingPassTests
+public sealed class MatchCreationServiceTests
 {
     private readonly InMemoryRedisOperations _cache = new();
     private readonly InMemoryMatchingClaimStore _claimStore;
@@ -21,7 +21,7 @@ public sealed class MatchmakingPassTests
     private readonly FixedGameServerAllocator _gameServers = new();
     private readonly RecordingLogger _logger = new();
 
-    public MatchmakingPassTests()
+    public MatchCreationServiceTests()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
         _claimStore = new InMemoryMatchingClaimStore(_cache);
@@ -29,11 +29,11 @@ public sealed class MatchmakingPassTests
         _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), _claims, _logger);
     }
 
-    private MatchmakingPass CreatePass(DevMatchOverrides? overrides = null, CancellationToken shutdown = default)
+    private MatchCreationService CreatePass(DevMatchOverrides? overrides = null, CancellationToken shutdown = default)
     {
         overrides ??= new DevMatchOverrides(false, false, _cache, new FakeRedLockFactory(), _logger);
         var rosterBuilder = new MatchRosterBuilder(_cache, _logger);
-        return new MatchmakingPass(_cache, _queue, _claims, rosterBuilder, _handoff, _gameServers, overrides, shutdown, _logger);
+        return new MatchCreationService(_cache, _queue, _claims, rosterBuilder, _handoff, _gameServers, overrides, shutdown, _logger);
     }
 
     private async Task<MatchingQueueEntry[]> EnqueueHumansAsync(int count, double score = 1)
@@ -61,7 +61,7 @@ public sealed class MatchmakingPassTests
         Assert.False(committed);
         Assert.Equal(1, _gameServers.Calls);
         Assert.Equal(8, _cache.SortedSetCount(MatchingQueue.QueueKey));
-        Assert.Null(_cache.GetString(MatchmakingPass.MatchingIdKey));
+        Assert.Null(_cache.GetString(MatchCreationService.MatchingIdKey));
         Assert.All(humans, human => Assert.Null(ClaimOf(human.PlayerId)));
         Assert.Empty(_handoff.Events);
     }
@@ -74,7 +74,7 @@ public sealed class MatchmakingPassTests
         bool committed = await CreatePass().CreateMatchAsync(humans, 0, MatchCreationOrigin.Queue);
 
         Assert.True(committed);
-        Assert.Equal("1", _cache.GetString(MatchmakingPass.MatchingIdKey));
+        Assert.Equal("1", _cache.GetString(MatchCreationService.MatchingIdKey));
         Assert.Empty(_handoff.StoredManifests[1].BotPlayerIds);
         Assert.Equal(humans.Select(h => h.PlayerId).OrderBy(id => id), _handoff.StoredManifests[1].HumanPlayerIds.OrderBy(id => id));
         Assert.Equal(8, _handoff.Deliveries.Count);
@@ -188,7 +188,7 @@ public sealed class MatchmakingPassTests
         bool committed = await CreatePass().CreateMatchAsync(humans, 6, MatchCreationOrigin.Queue);
 
         Assert.False(committed);
-        Assert.Null(_cache.GetString(MatchmakingPass.MatchingIdKey));
+        Assert.Null(_cache.GetString(MatchCreationService.MatchingIdKey));
         Assert.Empty(_handoff.Events);
         Assert.Null(ClaimOf(1_000));
         Assert.Equal("other-worker", ClaimOf(1_001));
@@ -222,7 +222,7 @@ public sealed class MatchmakingPassTests
 
         await CreatePass().RunAsync();
 
-        Assert.Equal("2", _cache.GetString(MatchmakingPass.MatchingIdKey));
+        Assert.Equal("2", _cache.GetString(MatchCreationService.MatchingIdKey));
         Assert.Equal(2, _handoff.StoredManifests.Count);
         Assert.All(_handoff.StoredManifests.Values, manifest => Assert.Equal(7, manifest.BotPlayerIds.Count));
         Assert.Equal(new long[] { 1, 2 }, _handoff.Deliveries.Select(d => d.Entry.PlayerId));
@@ -255,7 +255,7 @@ public sealed class MatchmakingPassTests
     {
         await CreatePass().RunAsync();
 
-        Assert.Null(_cache.GetString(MatchmakingPass.MatchingIdKey));
+        Assert.Null(_cache.GetString(MatchCreationService.MatchingIdKey));
         Assert.Empty(_handoff.Events);
     }
 

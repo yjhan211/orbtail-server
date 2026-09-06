@@ -1,3 +1,4 @@
+using network.infrastructure;
 using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -47,7 +48,7 @@ public sealed class NatsClientTests
         var client = new NatsClient(connection, TimeSpan.FromMilliseconds(50));
         await using var provider = CreateUserServerServices(client).BuildServiceProvider();
         var server = provider.GetServices<IHostedService>().OfType<user_server.UserServer>().Single();
-        var taskTracker = provider.GetRequiredService<MatchingTaskTracker>();
+        var taskTracker = provider.GetRequiredService<BackgroundTaskTracker>();
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var registration = taskTracker.ShutdownToken.Register(() => stopping.TrySetResult());
@@ -115,7 +116,7 @@ public sealed class NatsClientTests
                 item => Assert.IsType<user_server.UserServer>(item));
             var manager = provider.GetRequiredService<MatchingManager>();
             Assert.Same(manager, provider.GetRequiredService<IMatchingManager>());
-            var taskTracker = provider.GetRequiredService<MatchingTaskTracker>();
+            var taskTracker = provider.GetRequiredService<BackgroundTaskTracker>();
 
             // 시작 전에도 종료 가능하며, 매니저는 토큰 소스를 직접 해제하지 않는다.
             await manager.StopAsync();

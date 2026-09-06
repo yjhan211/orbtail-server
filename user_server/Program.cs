@@ -1,3 +1,4 @@
+using network.infrastructure;
 using user_server.matching.coordination;
 using user_server.matching.creation;
 using user_server.matching.queue;
@@ -92,11 +93,11 @@ internal static class Program
             sp.GetRequiredService<ILogger>()));
         services.AddSingleton<IGameServerRegistry, RedisGameServerRegistry>();
         services.AddSingleton<IGameServerAllocator, GameServerAllocator>();
-        services.AddSingleton<MatchingTaskTracker>();
-        services.AddSingleton<MatchHandoffPublisher>(sp =>
+        services.AddSingleton<BackgroundTaskTracker>();
+        services.AddSingleton<MatchEntryService>(sp =>
         {
-            var taskTracker = sp.GetRequiredService<MatchingTaskTracker>();
-            return new MatchHandoffPublisher(
+            var taskTracker = sp.GetRequiredService<BackgroundTaskTracker>();
+            return new MatchEntryService(
                 sp.GetRequiredService<IRedisOperations>(),
                 sp.GetRequiredService<GameHandoffTicketService>(),
                 sp.GetRequiredService<MatchingQueueClaimCoordinator>(),
@@ -105,16 +106,16 @@ internal static class Program
                 taskTracker.ShutdownToken,
                 sp.GetRequiredService<ILogger>());
         });
-        services.AddSingleton<IMatchHandoffPublisher>(sp => sp.GetRequiredService<MatchHandoffPublisher>());
-        services.AddSingleton<MatchmakingPass>(sp => new MatchmakingPass(
+        services.AddSingleton<IMatchEntryService>(sp => sp.GetRequiredService<MatchEntryService>());
+        services.AddSingleton<MatchCreationService>(sp => new MatchCreationService(
             sp.GetRequiredService<IRedisOperations>(),
             sp.GetRequiredService<MatchingQueue>(),
             sp.GetRequiredService<MatchingQueueClaimCoordinator>(),
             sp.GetRequiredService<MatchRosterBuilder>(),
-            sp.GetRequiredService<IMatchHandoffPublisher>(),
+            sp.GetRequiredService<IMatchEntryService>(),
             sp.GetRequiredService<IGameServerAllocator>(),
             sp.GetRequiredService<DevMatchOverrides>(),
-            sp.GetRequiredService<MatchingTaskTracker>().ShutdownToken,
+            sp.GetRequiredService<BackgroundTaskTracker>().ShutdownToken,
             sp.GetRequiredService<ILogger>()));
         services.AddSingleton<MatchingLeaderLease>(sp => new MatchingLeaderLease(
             sp.GetRequiredService<IRedisOperations>(),

@@ -22,12 +22,12 @@ internal enum MatchCreationOrigin
 ///     <c>admission_ready</c> → watchdog 순서와, 실패 시 pending→canceled CAS 뒤 handoff 삭제·실패 통지·claim 롤백을 지킨다.
 ///     봇 PlayerId는 process-wide 음수 카운터에서 발급한다. 그 외 프로세스 상태는 없다.
 /// </summary>
-internal sealed class MatchmakingPass(
+internal sealed class MatchCreationService(
     IRedisOperations redisOperations,
     MatchingQueue queue,
     MatchingQueueClaimCoordinator claims,
     MatchRosterBuilder rosterBuilder,
-    IMatchHandoffPublisher handoff,
+    IMatchEntryService handoff,
     IGameServerAllocator gameServers,
     DevMatchOverrides overrides,
     CancellationToken shutdownToken,

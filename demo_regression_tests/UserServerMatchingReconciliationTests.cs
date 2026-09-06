@@ -316,7 +316,8 @@ public sealed class UserServerMatchingReconciliationTests
             "user-server-test",
             static (_, _) => (true, null),
             static (_, _) => { },
-            static (_, _) => true);
+            static (_, _) => true,
+            static (_, _) => false);
     }
 
     private sealed class RecordingMatchingManager : IMatchingManager
@@ -354,7 +355,6 @@ public sealed class UserServerMatchingReconciliationTests
             ReleaseCount++;
             return Task.CompletedTask;
         }
-        public bool TryRunBackgroundOperation(Func<Task> operation, string operationName) => false;
         public Task StopMatchingLoopAsync() => Task.CompletedTask;
         public Task StopAsync() => Task.CompletedTask;
     }

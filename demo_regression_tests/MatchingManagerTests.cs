@@ -1,3 +1,4 @@
+using network.infrastructure;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using user_server.matching;
@@ -10,7 +11,7 @@ public sealed class MatchingManagerTests
     [Fact]
     public async Task StopBeforeStart_PreventsRestart()
     {
-        using var taskTracker = new MatchingTaskTracker(NullLogger.Instance);
+        using var taskTracker = new BackgroundTaskTracker(NullLogger.Instance);
         var manager = CreateManager(taskTracker, NullLogger.Instance);
         await manager.StopMatchingLoopAsync();
         Assert.Throws<ObjectDisposedException>(manager.Start);
@@ -20,7 +21,7 @@ public sealed class MatchingManagerTests
     [Fact]
     public async Task StopWhileWaiting_CompletesAndIsRepeatable()
     {
-        using var taskTracker = new MatchingTaskTracker(NullLogger.Instance);
+        using var taskTracker = new BackgroundTaskTracker(NullLogger.Instance);
         var manager = CreateManager(taskTracker, NullLogger.Instance);
         manager.Start();
         Assert.Throws<InvalidOperationException>(manager.Start);
@@ -36,7 +37,7 @@ public sealed class MatchingManagerTests
     public async Task StopDuringExecution_WaitsWithoutStartingAnotherPass()
     {
         using var logger = new BlockingLeaderLogger();
-        using var taskTracker = new MatchingTaskTracker(NullLogger.Instance);
+        using var taskTracker = new BackgroundTaskTracker(NullLogger.Instance);
         var manager = CreateManager(taskTracker, logger);
         manager.Start();
         try
@@ -59,7 +60,7 @@ public sealed class MatchingManagerTests
         }
     }
 
-    private static MatchingManager CreateManager(MatchingTaskTracker taskTracker, ILogger logger)
+    private static MatchingManager CreateManager(BackgroundTaskTracker taskTracker, ILogger logger)
     {
         // 리더 획득을 실패시켜 큐 처리 없이 반복 실행과 종료만 확인한다.
         var redis = new InMemoryRedisOperations { StringError = new InvalidOperationException("test failure") };
