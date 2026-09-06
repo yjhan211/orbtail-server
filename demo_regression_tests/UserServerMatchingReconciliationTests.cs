@@ -211,10 +211,6 @@ public sealed class UserServerMatchingReconciliationTests
         public Task<bool> TryRenewAsync(PlayerSessionLease lease)
         {
             RenewCount++;
-            return IsCurrentAsync(lease);
-        }
-        public Task<bool> IsCurrentAsync(PlayerSessionLease lease)
-        {
             CheckCount++;
             if (CheckCount == 1 && FirstCheck != null) return FirstCheck;
             return CheckError

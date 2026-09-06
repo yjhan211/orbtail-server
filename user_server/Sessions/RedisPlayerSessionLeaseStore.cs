@@ -6,7 +6,7 @@ using network.infrastructure.redis;
 namespace user_server.sessions;
 
 /// <summary>
-///     여러 UserServer가 공유하는 플레이어의 현재 세션 정보를 Redis에 등록·조회·갱신·삭제한다.
+///     여러 UserServer가 공유하는 플레이어의 현재 세션 정보를 Redis에 등록·갱신·삭제한다.
 ///     로그인마다 세대 번호를 발급하며, 더 높은 세대의 세션으로만 교체한다.
 ///
 ///     패킷 수신 시 현재 등록된 값과 해당 세션의 값을 비교하고 유효기간을 갱신한다.
@@ -42,13 +42,6 @@ public sealed class RedisPlayerSessionLeaseStore(
         return null;
     }
 
-    public async Task<bool> IsCurrentAsync(PlayerSessionLease lease)
-    {
-        ArgumentNullException.ThrowIfNull(lease);
-        var current = await redisOperations.StringGetAsync(OwnerKey(lease.PlayerId));
-        return !current.IsNullOrEmpty && string.Equals(current.ToString(), lease.OwnerValue, StringComparison.Ordinal);
-    }
-
     public Task<bool> TryRenewAsync(PlayerSessionLease lease)
     {
         ArgumentNullException.ThrowIfNull(lease);
@@ -75,7 +68,6 @@ public sealed class RedisPlayerSessionLeaseStore(
             CultureInfo.InvariantCulture,
             $"{generation}|{encodedNodeId}|{sessionId}");
     }
-
 
     private static void ValidateIdentity(long playerId, string nodeId, string sessionId)
     {

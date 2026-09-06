@@ -9,7 +9,6 @@ public interface IPlayerSessionLeaseStore
     public TimeSpan LeaseLifetime { get; }
 
     public Task<PlayerSessionLease?> TryAcquireAsync(long playerId, string nodeId, string sessionId);
-    public Task<bool> IsCurrentAsync(PlayerSessionLease lease);
     public Task<bool> TryRenewAsync(PlayerSessionLease lease);
     public Task<bool> TryReleaseAsync(PlayerSessionLease lease);
 }
