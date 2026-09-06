@@ -1,21 +1,26 @@
 using MessagePack;
+using System.Text.RegularExpressions;
 
 namespace user_server.matching.queue;
 
 /// <summary>
-///     Redis 매칭 큐(sorted set)에 저장되는 wire 타입. Key 번호는 기존 entry 호환을 위해 유지한다.
+///     Redis 매칭 대기열에 저장하는 플레이어의 매칭 요청 데이터.
 /// </summary>
 [MessagePackObject]
 public class MatchingQueueData
 {
-    [Key(0)]
-    public long PlayerId { get; set; }
+    private static readonly Regex RequestIdPattern = new(
+        "^[A-Za-z0-9_-]{1,64}$",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
-    [Key(1)]
-    public DateTime RequestTime { get; set; }
+    public static bool IsValidRequestId(string? requestId)
+    {
+        return !string.IsNullOrWhiteSpace(requestId) && RequestIdPattern.IsMatch(requestId);
+    }
 
-    // Key 2는 #323에서 삭제된 write-only UserChannel, Key 3~6은 #320에서 삭제된 세션 owner 경로.
-    // 큐 entry 호환을 위해 번호를 유지한다.
-    [Key(7)]
-    public string RequestId { get; set; } = string.Empty;
+    [Key("playerId")] public long PlayerId { get; init; }
+
+    [Key("requestTime")] public DateTime RequestTime { get; init; }
+
+    [Key("requestId")] public string RequestId { get; init; } = string.Empty;
 }

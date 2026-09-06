@@ -260,6 +260,55 @@ public class RedisOperations(RedisConnection redisConnection) : IRedisOperations
         return ExecuteRedisCommandAsync(database => database.KeyExpireAsync(key, expiry), db);
     }
 
+    public async Task<bool> StringSetIfQueueEntryExistsAsync(string queueKey, string detailsKey, string member,
+        string key, string value, TimeSpan expiry, int db = -1)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(member);
+        if (expiry < TimeSpan.FromMilliseconds(1))
+            throw new ArgumentOutOfRangeException(nameof(expiry), "Expiry must be at least one millisecond.");
+        const string script = """
+            if redis.call('ZSCORE', KEYS[1], ARGV[1]) == false then return 0 end
+            if redis.call('HEXISTS', KEYS[2], ARGV[1]) == 0 then return 0 end
+            if redis.call('SET', KEYS[3], ARGV[2], 'PX', ARGV[3], 'NX') then return 1 end
+            return 0
+            """;
+        var result = await ExecuteRedisCommandAsync(database => database.ScriptEvaluateAsync(
+            script, [queueKey, detailsKey, key], [member, value, checked((long)expiry.TotalMilliseconds)],
+            CommandFlags.DemandMaster), db);
+        return (long)result == 1;
+    }
+
+    /// <summary>새 식별자와 상세 데이터를 함께 등록한다. 기존 식별자는 덮어쓰지 않는다.</summary>
+    public async Task<bool> SortedSetAddWithHashAsync(string key, string hashKey, string member, byte[] data, double score, int db = -1)
+    {
+        if (!double.IsFinite(score)) throw new ArgumentOutOfRangeException(nameof(score));
+        const string script = """
+            local score = redis.call('ZSCORE', KEYS[1], ARGV[1])
+            local exists = redis.call('HEXISTS', KEYS[2], ARGV[1])
+            if score or exists == 1 then return 0 end
+            redis.call('HSET', KEYS[2], ARGV[1], ARGV[2])
+            redis.call('ZADD', KEYS[1], ARGV[3], ARGV[1])
+            return 1
+            """;
+        var result = await ExecuteRedisCommandAsync(database => database.ScriptEvaluateAsync(
+            script, [key, hashKey], [member, data, score], CommandFlags.DemandMaster), db);
+        return (long)result == 1;
+    }
+
+    /// <summary>대기열 항목과 같은 식별자의 상세 데이터를 함께 삭제한다.</summary>
+    public async Task<bool> SortedSetRemoveWithHashAsync(string key, string hashKey, byte[] member, int db = -1)
+    {
+        const string script = """
+            redis.call('HEXISTS', KEYS[2], ARGV[1])
+            local removed = redis.call('ZREM', KEYS[1], ARGV[1])
+            redis.call('HDEL', KEYS[2], ARGV[1])
+            return removed
+            """;
+        var result = await ExecuteRedisCommandAsync(database => database.ScriptEvaluateAsync(
+            script, [key, hashKey], [member], CommandFlags.DemandMaster), db);
+        return (long)result == 1;
+    }
+
     public Task<bool> SortedSetAddAsync(string key, byte[] value, double score, int db = -1)
     {
         return ExecuteRedisCommandAsync(database => database.SortedSetAddAsync(key, value, score), db);

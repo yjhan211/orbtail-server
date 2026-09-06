@@ -18,6 +18,7 @@ namespace network.common
         public const string AdmissionCanceledState = "canceled";
         public const string MatchingHashTag = "{matching}";
         public const string MatchingQueueKey = MatchingHashTag + ":queue";
+        public const string MatchingRequestsKey = MatchingHashTag + ":requests";
 
         public static string Key(long matchingId) => $"matching:{matchingId}:handoff";
 

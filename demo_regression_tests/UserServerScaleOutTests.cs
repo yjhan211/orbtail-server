@@ -279,7 +279,7 @@ public sealed class UserServerScaleOutTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var cache = new InMemoryRedisOperations();
         var logger = new RecordingLogger();
-        var reservations = new MatchingReservationCoordinator(cache, new InMemoryMatchingReservationStore(cache), logger);
+        var reservations = new MatchingReservationCoordinator(cache, logger);
         var queue = new MatchingQueue(cache, new FakeRedLockFactory(), reservations, logger);
         var bus = new InMemoryNatsBus
         {
@@ -303,7 +303,7 @@ public sealed class UserServerScaleOutTests
             new DevMatchOverrides(false, false, cache, new FakeRedLockFactory(), logger),
             CancellationToken.None, logger);
         var entry = UserServerMatchingTestData.HumanEntry(7);
-        await cache.SortedSetAddAsync(MatchingQueue.QueueKey, entry.Raw, 1);
+        await UserServerMatchingTestData.AddEntryAsync(cache, entry, 1);
 
         Assert.False(await pass.CreateMatchAsync([entry], 7, MatchCreationOrigin.Queue));
 

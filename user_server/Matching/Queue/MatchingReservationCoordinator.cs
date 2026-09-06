@@ -13,7 +13,6 @@ namespace user_server.matching.queue;
 /// </summary>
 internal sealed class MatchingReservationCoordinator(
     IRedisOperations redisOperations,
-    IMatchingReservationStore reservationStore,
     ILogger logger)
 {
     private static readonly TimeSpan ReservationLifetime = TimeSpan.FromMinutes(2);
@@ -38,9 +37,11 @@ internal sealed class MatchingReservationCoordinator(
         {
             foreach (var reservedEntry in reservedEntries)
             {
-                bool acquired = await reservationStore.TryReserveQueueEntryAsync(
-                    reservedEntry.Raw,
-                    reservedEntry.PlayerId,
+                bool acquired = await redisOperations.StringSetIfQueueEntryExistsAsync(
+                    MatchingHandoffRedisKeys.MatchingQueueKey,
+                    MatchingHandoffRedisKeys.MatchingRequestsKey,
+                    reservedEntry.RequestId,
+                    ReservationKey(reservedEntry.PlayerId),
                     reservationId,
                     ReservationLifetime);
                 if (!acquired)

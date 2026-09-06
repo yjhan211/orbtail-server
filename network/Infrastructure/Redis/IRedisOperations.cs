@@ -54,6 +54,10 @@ public interface IRedisOperations
     public Task<bool> KeyDeleteAsync(string key, int db = -1);
     public Task<bool> KeyExpireAsync(string key, TimeSpan? expiry, int db = -1);
     public Task<bool> SortedSetAddAsync(string key, byte[] value, double score, int db = -1);
+    public Task<bool> StringSetIfQueueEntryExistsAsync(string queueKey, string detailsKey, string member,
+        string key, string value, TimeSpan expiry, int db = -1);
+    public Task<bool> SortedSetAddWithHashAsync(string key, string hashKey, string member, byte[] data, double score, int db = -1);
+    public Task<bool> SortedSetRemoveWithHashAsync(string key, string hashKey, byte[] member, int db = -1);
     public Task<byte[][]> SortedSetRangeByScoreAsync(string key, double start = double.NegativeInfinity, double stop = double.PositiveInfinity, int db = -1);
     public Task<bool> SortedSetRemoveAsync(string key, byte[] value, int db = -1);
 }

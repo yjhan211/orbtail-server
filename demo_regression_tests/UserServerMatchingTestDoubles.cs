@@ -20,6 +20,11 @@ namespace demo_regression_tests;
 /// </summary>
 internal static class UserServerMatchingTestData
 {
+    public static byte[] RequestBytes(MatchingQueueEntry entry) => System.Text.Encoding.UTF8.GetBytes(entry.RequestId);
+
+    public static Task<bool> AddEntryAsync(InMemoryRedisOperations cache, MatchingQueueEntry entry, double score) =>
+        cache.SortedSetAddWithHashAsync(MatchingQueue.QueueKey, MatchingQueue.RequestsKey, entry.RequestId,
+            MessagePack.MessagePackSerializer.Serialize(entry.Data), score);
     private static readonly object _lock = new();
     private static bool _loaded;
 
@@ -305,6 +310,37 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
         }
     }
 
+    public Task<bool> SortedSetAddWithHashAsync(string key, string hashKey, string member, byte[] data, double score, int db = -1)
+    {
+        lock (_sync)
+        {
+            byte[] id = System.Text.Encoding.UTF8.GetBytes(member);
+            if (SortedSetContains(key, id) || GetHash(hashKey, member) != null) return Task.FromResult(false);
+            HashSetAsync(hashKey, member, data, db).GetAwaiter().GetResult();
+            return SortedSetAddAsync(key, id, score, db);
+        }
+    }
+
+    public Task<bool> SortedSetRemoveWithHashAsync(string key, string hashKey, byte[] member, int db = -1)
+    {
+        lock (_sync)
+        {
+            HashDeleteAsync(hashKey, System.Text.Encoding.UTF8.GetString(member), db).GetAwaiter().GetResult();
+            return SortedSetRemoveAsync(key, member, db);
+        }
+    }
+
+    public Task<bool> StringSetIfQueueEntryExistsAsync(string queueKey, string detailsKey, string member,
+        string key, string value, TimeSpan expiry, int db = -1)
+    {
+        lock (_sync)
+        {
+            if (!SortedSetContains(queueKey, System.Text.Encoding.UTF8.GetBytes(member)) ||
+                GetHash(detailsKey, member) == null) return Task.FromResult(false);
+            return StringSetIfNotExistsAsync(key, value, expiry, db);
+        }
+    }
+
     public Task<bool> SortedSetAddAsync(string key, byte[] value, double score, int db = -1)
     {
         lock (_sync)
@@ -358,22 +394,6 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
         public static readonly LexicographicByteComparer Instance = new();
 
         public int Compare(byte[]? x, byte[]? y) => x.AsSpan().SequenceCompareTo(y.AsSpan());
-    }
-}
-
-/// <summary>
-///     RedisMatchingReservationStore의 Lua(ZSCORE 확인 + SET NX)를 InMemoryRedisOperations 위에서 재현한다.
-/// </summary>
-internal sealed class InMemoryMatchingReservationStore(InMemoryRedisOperations cache) : IMatchingReservationStore
-{
-    public int ReservationAttempts { get; private set; }
-
-    public Task<bool> TryReserveQueueEntryAsync(byte[] queueEntry, long playerId, string reservationId, TimeSpan expiry)
-    {
-        ReservationAttempts++;
-        if (!cache.SortedSetContains(MatchingQueue.QueueKey, queueEntry))
-            return Task.FromResult(false);
-        return cache.StringSetIfNotExistsAsync(MatchingHandoffRedisKeys.ReservationKey(playerId), reservationId, expiry);
     }
 }
 

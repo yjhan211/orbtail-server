@@ -3,19 +3,17 @@ using MessagePack;
 namespace user_server.matching.queue;
 
 /// <summary>
-///     매칭 큐 entry 하나를 pass 진입 시 한 번만 역직렬화해 pass 전체에서 재사용하는 typed 모델.
-///     <see cref="Raw" />는 Redis sorted set에서 같은 entry를 제거할 때 쓰는 원본 바이트다
-///     (봇 entry는 큐에 들어가지 않으므로 제거 대상이 아니다).
+///     Redis 상세 데이터에서 읽은 매칭 요청 하나를 나타낸다.
+///     대기열의 예약·삭제에는 RequestId를 사용하며 원본 바이트는 보관하지 않는다.
+///     봇도 같은 타입으로 참가자 목록에 포함하지만, Redis 대기열에는 저장하지 않는다.
 /// </summary>
 internal sealed class MatchingQueueEntry
 {
-    private MatchingQueueEntry(byte[] raw, MatchingQueueData data)
+    private MatchingQueueEntry(MatchingQueueData data)
     {
-        Raw = raw;
         Data = data;
     }
 
-    public byte[] Raw { get; }
     public MatchingQueueData Data { get; }
     public long PlayerId => Data.PlayerId;
     public DateTime RequestTime => Data.RequestTime;
@@ -23,22 +21,19 @@ internal sealed class MatchingQueueEntry
     public bool IsHuman => Data.PlayerId > 0;
     public bool IsBot => Data.PlayerId < 0;
 
-    /// <summary>
-    ///     큐에서 읽은 원본 바이트를 역직렬화한다. 손상된 entry는 MessagePack 예외를 그대로 던진다.
-    /// </summary>
     public static MatchingQueueEntry Parse(byte[] raw)
     {
-        return new MatchingQueueEntry(raw, MessagePackSerializer.Deserialize<MatchingQueueData>(raw));
+        var data = MessagePackSerializer.Deserialize<MatchingQueueData>(raw)
+            ?? throw new MessagePackSerializationException("Matching request details cannot be null.");
+        return new MatchingQueueEntry(data);
     }
 
     public static MatchingQueueEntry FromData(MatchingQueueData data)
     {
-        return new MatchingQueueEntry(MessagePackSerializer.Serialize(data), data);
+        return new MatchingQueueEntry(data);
     }
 
-    /// <summary>
-    ///     음수 PlayerId 봇 entry. 큐에는 존재하지 않고 로스터 조립에만 쓴다.
-    /// </summary>
+    // 음수 PlayerId 봇 entry. 큐에는 존재하지 않고 명단 조립에만 쓴다.
     public static MatchingQueueEntry CreateBot(long botId)
     {
         return FromData(new MatchingQueueData

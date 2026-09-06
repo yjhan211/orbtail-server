@@ -76,7 +76,7 @@ internal sealed class MatchEntryService(
         logger.LogInformation("Processing matched player {DataPlayerId}", playerId);
 
         string requestId = entry.RequestId;
-        if (!MatchingRequestTokens.IsSafeTokenComponent(requestId))
+        if (!MatchingQueueData.IsValidRequestId(requestId))
         {
             logger.LogWarning("Matched player has no valid matching request id: PlayerId={DataPlayerId}", playerId);
             return false;

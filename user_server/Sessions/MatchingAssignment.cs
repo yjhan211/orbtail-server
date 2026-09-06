@@ -66,7 +66,7 @@ internal sealed class MatchingAssignment
 
     public bool TryAssign(long matchingId, string requestId)
     {
-        if (matchingId <= 0 || !MatchingRequestTokens.IsSafeTokenComponent(requestId))
+        if (matchingId <= 0 || !MatchingQueueData.IsValidRequestId(requestId))
         {
             return false;
         }

@@ -1,4 +1,7 @@
 using Microsoft.Extensions.Logging;
+using System.Text;
+using MessagePack;
+using StackExchange.Redis;
 using network.common;
 using network.infrastructure.redis;
 using user_server.sessions;
@@ -17,6 +20,7 @@ internal sealed class MatchingQueue(
     ILogger logger)
 {
     internal const string QueueKey = MatchingHandoffRedisKeys.MatchingQueueKey;
+    internal const string RequestsKey = MatchingHandoffRedisKeys.MatchingRequestsKey;
     private const string LockKeyPrefix = "matching_queue_lock:";
 
     public async Task<ErrorCode> AddToQueueAsync(long playerId, PlayerSession user)
@@ -42,7 +46,7 @@ internal sealed class MatchingQueue(
             }
 
             string? requestId = user.ActiveMatchingRequestId;
-            if (!MatchingRequestTokens.IsSafeTokenComponent(requestId))
+            if (!MatchingQueueData.IsValidRequestId(requestId))
             {
                 logger.LogWarning("Matching queue rejected because the session has no active request fence: PlayerId={PlayerId}", playerId);
                 return ErrorCode.MATCHING_FAILED;
@@ -56,7 +60,12 @@ internal sealed class MatchingQueue(
                 RequestId = requestId!
             });
 
-            await redisOperations.SortedSetAddAsync(QueueKey, entry.Raw, matchingNow.ToUnixTimeSeconds());
+            bool added = await redisOperations.SortedSetAddWithHashAsync(
+                QueueKey, RequestsKey, entry.RequestId, MessagePackSerializer.Serialize(entry.Data), matchingNow.ToUnixTimeSeconds());
+            if (!added)
+            {
+                return ErrorCode.MATCHING_ALREADY_IN_QUEUE;
+            }
             logger.LogInformation("Player {PlayerId} queued for matching", playerId);
 
             return ErrorCode.SUCCESS;
@@ -100,29 +109,16 @@ internal sealed class MatchingQueue(
     public async Task<int> RemovePlayerEntriesAsync(long playerId)
     {
         byte[][] allEntries = await redisOperations.SortedSetRangeByScoreAsync(QueueKey);
+        var details = await ReadDetailsAsync(allEntries);
         int removedCount = 0;
 
-        foreach (byte[] raw in allEntries)
+        for (int i = 0; i < allEntries.Length; i++)
         {
-            try
+            var entry = ReadEntry(allEntries[i], details[i]);
+            if (entry != null && entry.PlayerId != playerId) continue;
+            if (await redisOperations.SortedSetRemoveWithHashAsync(QueueKey, RequestsKey, allEntries[i]))
             {
-                if (MatchingQueueEntry.Parse(raw).PlayerId != playerId)
-                {
-                    continue;
-                }
-
-                if (await redisOperations.SortedSetRemoveAsync(QueueKey, raw))
-                {
-                    removedCount++;
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Invalid matching entry removed while cleaning the queue");
-                if (await redisOperations.SortedSetRemoveAsync(QueueKey, raw))
-                {
-                    removedCount++;
-                }
+                removedCount++;
             }
         }
 
@@ -142,34 +138,22 @@ internal sealed class MatchingQueue(
 
     internal async Task<MatchingQueueEntry[]> CleanUpEntriesAsync(IEnumerable<byte[]> rawEntries)
     {
+        byte[][] requestIds = rawEntries.ToArray();
+        var details = await ReadDetailsAsync(requestIds);
         var validEntries = new List<MatchingQueueEntry>();
         var seenPlayerIds = new HashSet<long>();
 
-        foreach (byte[] raw in rawEntries)
+        for (int i = 0; i < requestIds.Length; i++)
         {
-            bool removeEntry;
-            try
+            var entry = ReadEntry(requestIds[i], details[i]);
+            if (entry != null && seenPlayerIds.Add(entry.PlayerId))
             {
-                var entry = MatchingQueueEntry.Parse(raw);
-                removeEntry = entry.PlayerId <= 0 || !seenPlayerIds.Add(entry.PlayerId);
-                if (!removeEntry)
-                {
-                    validEntries.Add(entry);
-                    continue;
-                }
-
-                logger.LogWarning("Removed duplicate or invalid matching entry: PlayerId={PlayerId}", entry.PlayerId);
+                validEntries.Add(entry);
+                continue;
             }
-            catch (Exception ex)
-            {
-                removeEntry = true;
-                logger.LogWarning(ex, "Removed malformed matching queue entry");
-            }
-
-            if (removeEntry)
-            {
-                await redisOperations.SortedSetRemoveAsync(QueueKey, raw);
-            }
+            if (entry != null)
+                logger.LogWarning("Removed duplicate matching entry: PlayerId={PlayerId}", entry.PlayerId);
+            await redisOperations.SortedSetRemoveWithHashAsync(QueueKey, RequestsKey, requestIds[i]);
         }
 
         return validEntries.ToArray();
@@ -177,7 +161,35 @@ internal sealed class MatchingQueue(
 
     public Task<bool> RemoveEntryAsync(MatchingQueueEntry entry)
     {
-        return redisOperations.SortedSetRemoveAsync(QueueKey, entry.Raw);
+        return redisOperations.SortedSetRemoveWithHashAsync(QueueKey, RequestsKey, Encoding.UTF8.GetBytes(entry.RequestId));
+    }
+
+    private Task<RedisValue[]> ReadDetailsAsync(byte[][] requestIds)
+    {
+        return requestIds.Length == 0
+            ? Task.FromResult(Array.Empty<RedisValue>())
+            : redisOperations.HashGetAsync(RequestsKey, requestIds.Select(id => (RedisValue)id).ToArray());
+    }
+
+    private MatchingQueueEntry? ReadEntry(byte[] member, RedisValue detail)
+    {
+        string requestId = Encoding.UTF8.GetString(member);
+        if (MatchingQueueData.IsValidRequestId(requestId) && !detail.IsNullOrEmpty)
+        {
+            try
+            {
+                var entry = MatchingQueueEntry.Parse((byte[])detail!);
+                if (entry.PlayerId > 0 && string.Equals(entry.RequestId, requestId, StringComparison.Ordinal))
+                    return entry;
+            }
+            catch (MessagePackSerializationException ex)
+            {
+                logger.LogWarning(ex, "Malformed matching request details: RequestId={RequestId}", requestId);
+            }
+        }
+
+        logger.LogWarning("Invalid matching entry removed: request ID or details missing/invalid");
+        return null;
     }
 
     public static MatchingQueueEntry[] SortByRequestTime(IEnumerable<MatchingQueueEntry> entries)

@@ -14,7 +14,6 @@ namespace demo_regression_tests;
 public sealed class MatchCreationServiceTests
 {
     private readonly InMemoryRedisOperations _cache = new();
-    private readonly InMemoryMatchingReservationStore _reservationStore;
     private readonly MatchingReservationCoordinator _reservations;
     private readonly MatchingQueue _queue;
     private readonly RecordingHandoffPublisher _handoff = new();
@@ -24,8 +23,7 @@ public sealed class MatchCreationServiceTests
     public MatchCreationServiceTests()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
-        _reservationStore = new InMemoryMatchingReservationStore(_cache);
-        _reservations = new MatchingReservationCoordinator(_cache, _reservationStore, _logger);
+        _reservations = new MatchingReservationCoordinator(_cache, _logger);
         _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), _reservations, _logger);
     }
 
@@ -42,7 +40,7 @@ public sealed class MatchCreationServiceTests
         for (int i = 0; i < count; i++)
         {
             entries[i] = UserServerMatchingTestData.HumanEntry(1_000 + i);
-            await _cache.SortedSetAddAsync(MatchingQueue.QueueKey, entries[i].Raw, score + i);
+            await UserServerMatchingTestData.AddEntryAsync(_cache, entries[i], score + i);
         }
 
         return entries;
@@ -83,6 +81,7 @@ public sealed class MatchCreationServiceTests
         Assert.Equal(humans.Select(h => h.PlayerId).OrderBy(id => id), _handoff.Deliveries.Select(d => d.Entry.PlayerId).OrderBy(id => id));
         Assert.All(humans, human => Assert.Equal("1", ReservationOf(human.PlayerId)));
         Assert.Equal(0, _cache.SortedSetCount(MatchingQueue.QueueKey));
+        Assert.Empty(await _cache.HashGetAllAsync(MatchingQueue.RequestsKey));
         Assert.Contains("ready:1", _handoff.Events);
         Assert.Contains($"watchdog:1:{string.Join(",", humans.Select(h => h.PlayerId))}", _handoff.Events);
         Assert.DoesNotContain(_handoff.Events, e => e.StartsWith("cancel:", StringComparison.Ordinal));
@@ -216,9 +215,9 @@ public sealed class MatchCreationServiceTests
         MatchingQueueEntry waitedA = UserServerMatchingTestData.HumanEntry(1);
         MatchingQueueEntry waitedB = UserServerMatchingTestData.HumanEntry(2);
         MatchingQueueEntry fresh = UserServerMatchingTestData.HumanEntry(3);
-        await _cache.SortedSetAddAsync(MatchingQueue.QueueKey, waitedA.Raw, now - 10);
-        await _cache.SortedSetAddAsync(MatchingQueue.QueueKey, waitedB.Raw, now - 9);
-        await _cache.SortedSetAddAsync(MatchingQueue.QueueKey, fresh.Raw, now);
+        await UserServerMatchingTestData.AddEntryAsync(_cache, waitedA, now - 10);
+        await UserServerMatchingTestData.AddEntryAsync(_cache, waitedB, now - 9);
+        await UserServerMatchingTestData.AddEntryAsync(_cache, fresh, now);
 
         await CreatePass().RunAsync();
 
@@ -229,7 +228,7 @@ public sealed class MatchCreationServiceTests
         Assert.Equal("1", ReservationOf(1));
         Assert.Equal("2", ReservationOf(2));
         Assert.Null(ReservationOf(3));
-        Assert.True(_cache.SortedSetContains(MatchingQueue.QueueKey, fresh.Raw));
+        Assert.True(_cache.SortedSetContains(MatchingQueue.QueueKey, UserServerMatchingTestData.RequestBytes(fresh)));
         Assert.Equal(1, _cache.SortedSetCount(MatchingQueue.QueueKey));
     }
 
@@ -239,7 +238,7 @@ public sealed class MatchCreationServiceTests
         var overrides = new DevMatchOverrides(false, true, _cache, new FakeRedLockFactory(), _logger);
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         MatchingQueueEntry player = UserServerMatchingTestData.HumanEntry(1);
-        await _cache.SortedSetAddAsync(MatchingQueue.QueueKey, player.Raw, now - 10);
+        await UserServerMatchingTestData.AddEntryAsync(_cache, player, now - 10);
 
         await CreatePass(overrides).RunAsync();
 
@@ -264,7 +263,7 @@ public sealed class MatchCreationServiceTests
     {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         MatchingQueueEntry waited = UserServerMatchingTestData.HumanEntry(1);
-        await _cache.SortedSetAddAsync(MatchingQueue.QueueKey, waited.Raw, now - 10);
+        await UserServerMatchingTestData.AddEntryAsync(_cache, waited, now - 10);
         using var shutdown = new CancellationTokenSource();
         shutdown.Cancel();
 
@@ -280,7 +279,7 @@ public sealed class MatchCreationServiceTests
         var overrides = new DevMatchOverrides(true, false, _cache, new FakeRedLockFactory(), _logger);
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         MatchingQueueEntry alone = UserServerMatchingTestData.HumanEntry(1);
-        await _cache.SortedSetAddAsync(MatchingQueue.QueueKey, alone.Raw, now - 100);
+        await UserServerMatchingTestData.AddEntryAsync(_cache, alone, now - 100);
 
         await CreatePass(overrides).RunAsync();
 
