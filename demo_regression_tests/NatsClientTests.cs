@@ -118,8 +118,10 @@ public sealed class NatsClientTests
             Assert.Same(manager, provider.GetRequiredService<IMatchingManager>());
             var taskTracker = provider.GetRequiredService<BackgroundTaskTracker>();
 
-            // 시작 전에도 종료 가능하며, 매니저는 토큰 소스를 직접 해제하지 않는다.
+            // 매니저 종료는 공용 추적기를 닫지 않는다. UserServer가 종료를 소유한다.
             await manager.StopAsync();
+            Assert.False(taskTracker.ShutdownToken.IsCancellationRequested);
+            await hosted.OfType<user_server.UserServer>().Single().StopAsync(CancellationToken.None);
             Assert.True(taskTracker.ShutdownToken.IsCancellationRequested);
             Assert.False(taskTracker.TryRun(() => Task.CompletedTask, "after stop"));
         }

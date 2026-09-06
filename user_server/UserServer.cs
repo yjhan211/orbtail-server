@@ -24,7 +24,7 @@ namespace user_server;
 ///     모든 준비가 끝나면 서버를 준비 완료 상태로 표시한다.
 ///
 ///     종료할 때는 새 매칭 처리를 멈추고, 연결과 세션 정리가 끝나기를 기다린다.
-///     이후 매칭의 남은 작업을 정리하고 NATS 연결을 닫는다.
+///     이후 추적 중인 작업에 종료를 요청하고 완료를 기다린 뒤, 매칭 리더 등록을 해제하고 NATS 연결을 닫는다.
 ///     시작 실패와 일반 종료는 같은 정리 절차를 사용한다.
 /// </summary>
 internal sealed class UserServer(
@@ -103,6 +103,18 @@ internal sealed class UserServer(
         {
             logger.LogWarning(ex, "UserServer network shutdown failed");
         }
+
+        try
+        {
+            taskTracker.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Background task cancellation failed");
+        }
+
+        // 취소 요청 중 오류가 나더라도 진행 중인 작업은 의존성을 닫기 전에 기다린다.
+        await taskTracker.DrainAsync();
 
         try
         {

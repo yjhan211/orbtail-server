@@ -1,4 +1,3 @@
-using network.infrastructure;
 using user_server.matching.coordination;
 using user_server.matching.creation;
 using user_server.matching.queue;
@@ -12,7 +11,7 @@ namespace user_server.matching;
 ///     매칭의 시작과 종료를 관리하고, 대기열 등록·취소와 배정 해제 요청을 담당 클래스에 전달한다.
 ///     1초 주기의 타이머를 기다렸다가 리더 여부를 확인하고 매칭을 실행한다.
 ///     종료 시 타이머 대기를 중단하고 진행 중인 매칭이 끝날 때까지 기다린다.
-///     이후 백그라운드 작업을 정리하고 리더 등록을 해제한다.
+///     전체 종료 시 리더 등록을 해제한다. 백그라운드 작업의 종료 순서는 UserServer가 관리한다.
 /// </summary>
 internal sealed class MatchingManager(
     ILogger logger,
@@ -20,8 +19,7 @@ internal sealed class MatchingManager(
     MatchingQueue matchingQueue,
     MatchEntryService matchEntryService,
     MatchCreationService matchCreationService,
-    MatchingLeaderLease leaderLease,
-    BackgroundTaskTracker taskTracker)
+    MatchingLeaderLease leaderLease)
     : IMatchingManager
 {
     private readonly object _lifecycleLock = new();
@@ -51,7 +49,6 @@ internal sealed class MatchingManager(
             {
                 _matchingLoopStopped = true;
                 _matchingTimer?.Dispose();
-                taskTracker.Shutdown();
                 throw;
             }
         }
@@ -124,8 +121,6 @@ internal sealed class MatchingManager(
     private async Task StopCoreAsync()
     {
         await StopMatchingLoopAsync();
-        taskTracker.Shutdown();
-        await taskTracker.DrainAsync();
         await leaderLease.ReleaseAsync();
         logger.LogInformation("MatchingManager stopped");
     }

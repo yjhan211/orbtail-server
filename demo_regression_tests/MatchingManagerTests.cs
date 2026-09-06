@@ -1,4 +1,3 @@
-using network.infrastructure;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using user_server.matching;
@@ -11,8 +10,7 @@ public sealed class MatchingManagerTests
     [Fact]
     public async Task StopBeforeStart_PreventsRestart()
     {
-        using var taskTracker = new BackgroundTaskTracker(NullLogger.Instance);
-        var manager = CreateManager(taskTracker, NullLogger.Instance);
+        var manager = CreateManager(NullLogger.Instance);
         await manager.StopMatchingLoopAsync();
         Assert.Throws<ObjectDisposedException>(manager.Start);
         await manager.StopAsync();
@@ -21,24 +19,20 @@ public sealed class MatchingManagerTests
     [Fact]
     public async Task StopWhileWaiting_CompletesAndIsRepeatable()
     {
-        using var taskTracker = new BackgroundTaskTracker(NullLogger.Instance);
-        var manager = CreateManager(taskTracker, NullLogger.Instance);
+        var manager = CreateManager(NullLogger.Instance);
         manager.Start();
         Assert.Throws<InvalidOperationException>(manager.Start);
         await manager.StopMatchingLoopAsync().WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.False(taskTracker.ShutdownToken.IsCancellationRequested);
         Task first = manager.StopAsync();
         Assert.Same(first, manager.StopAsync());
         await first;
-        Assert.True(taskTracker.ShutdownToken.IsCancellationRequested);
     }
 
     [Fact]
     public async Task StopDuringExecution_WaitsWithoutStartingAnotherPass()
     {
         using var logger = new BlockingLeaderLogger();
-        using var taskTracker = new BackgroundTaskTracker(NullLogger.Instance);
-        var manager = CreateManager(taskTracker, logger);
+        var manager = CreateManager(logger);
         manager.Start();
         try
         {
@@ -48,7 +42,6 @@ public sealed class MatchingManagerTests
             Assert.Equal(1, logger.Checks);
             Task stop = manager.StopMatchingLoopAsync();
             Assert.False(stop.IsCompleted);
-            Assert.False(taskTracker.ShutdownToken.IsCancellationRequested);
             logger.Release.Set();
             await stop.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Equal(1, logger.Checks);
@@ -60,12 +53,12 @@ public sealed class MatchingManagerTests
         }
     }
 
-    private static MatchingManager CreateManager(BackgroundTaskTracker taskTracker, ILogger logger)
+    private static MatchingManager CreateManager(ILogger logger)
     {
         // 리더 획득을 실패시켜 큐 처리 없이 반복 실행과 종료만 확인한다.
         var redis = new InMemoryRedisOperations { StringError = new InvalidOperationException("test failure") };
         var leader = new MatchingLeaderLease(redis, "test-node", logger);
-        return new MatchingManager(NullLogger.Instance, null!, null!, null!, null!, leader, taskTracker);
+        return new MatchingManager(NullLogger.Instance, null!, null!, null!, null!, leader);
     }
 
     private sealed class BlockingLeaderLogger : ILogger, IDisposable
