@@ -7,8 +7,8 @@ using network.infrastructure.redis;
 namespace user_server.players;
 
 /// <summary>
-///     Redis PlayerInfo를 player lock 안에서 load/mutate/save하여 아이템 착용과 소비 아이템 사용을 처리한다.
-///     연결, 매칭, 퀘스트, 메일 수명주기는 소유하지 않는다.
+///     플레이어의 아이템 착용·사용 등 게임 기능을 처리한다.
+///     플레이어별 락을 잡고 정보를 조회·변경·저장한 뒤 처리 결과를 반환한다.
 /// </summary>
 public class PlayerService(ILogger<PlayerService> logger, IRedisOperations redisOperations, IRedLockFactory redLock)
     : IPlayerService
@@ -30,6 +30,7 @@ public class PlayerService(ILogger<PlayerService> logger, IRedisOperations redis
 
             // 새 아이템 착용
             foreach (long itemUid in msg.ItemUidList)
+            {
                 if (playerInfo.InventoryInfo.ItemDict.TryGetValue(itemUid, out var item))
                 {
                     item.IsWear = true;
@@ -37,12 +38,11 @@ public class PlayerService(ILogger<PlayerService> logger, IRedisOperations redis
                 }
                 else
                 {
-                    logger.LogWarning(
-                        "Player {PlayerId} tried to wear non-existent item UID: {ItemUid}", playerId, itemUid);
+                    logger.LogWarning("Player {PlayerId} tried to wear non-existent item UID: {ItemUid}", playerId, itemUid);
                 }
+            }
 
-            logger.LogInformation("Player {PlayerId} wearing items: {Join}", playerId,
-                string.Join(", ", msg.ItemUidList));
+            logger.LogInformation("Player {PlayerId} wearing items: {Join}", playerId, string.Join(", ", msg.ItemUidList));
 
             await playerInfo.Save(redisOperations);
             return (ErrorCode.SUCCESS, playerInfo);
@@ -74,8 +74,7 @@ public class PlayerService(ILogger<PlayerService> logger, IRedisOperations redis
             var itemType = GameItemData.GetItemType(itemInfo.ItemId);
             if (itemType != ItemType.CONSUMABLE)
             {
-                logger.LogWarning(
-                    "Player {PlayerId} tried to use non-consumable item: ItemId={ItemInfoItemId}, Type={ItemType}",
+                logger.LogWarning("Player {PlayerId} tried to use non-consumable item: ItemId={ItemInfoItemId}, Type={ItemType}",
                     playerId, itemInfo.ItemId, itemType);
                 return (ErrorCode.INVALID_ITEM_TYPE, playerInfo);
             }
