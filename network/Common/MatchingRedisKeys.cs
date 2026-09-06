@@ -2,7 +2,7 @@ using System;
 
 namespace network.common
 {
-    public static class MatchingHandoffRedisKeys
+    public static class MatchingRedisKeys
     {
         public static readonly TimeSpan HandoffStateLifetime = TimeSpan.FromMinutes(30);
         public static readonly TimeSpan PostAdmissionReservationLifetime =

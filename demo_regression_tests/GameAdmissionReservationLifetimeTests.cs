@@ -9,7 +9,7 @@ public sealed class GameAdmissionReservationLifetimeTests
     [Fact]
     public void ReservationKey_UsesMatchingHashTagAndReservationPrefix()
     {
-        Assert.Equal("{matching}:reservation:1001", MatchingHandoffRedisKeys.ReservationKey(1001));
+        Assert.Equal("{matching}:reservation:1001", MatchingRedisKeys.ReservationKey(1001));
     }
 
     [Fact]
@@ -18,26 +18,26 @@ public sealed class GameAdmissionReservationLifetimeTests
         const long matchingId = 51_001;
         const long playerId = 1_001;
         var redis = new InMemoryRedisOperations();
-        string admissionStateKey = MatchingHandoffRedisKeys.AdmissionStateKey(matchingId);
-        string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
-        string reservationKey = MatchingHandoffRedisKeys.ReservationKey(playerId);
+        string admissionStateKey = MatchingRedisKeys.AdmissionStateKey(matchingId);
+        string handoffKey = MatchingRedisKeys.Key(matchingId);
+        string reservationKey = MatchingRedisKeys.ReservationKey(playerId);
         await redis.StringSetAsync(
             admissionStateKey,
-            MatchingHandoffRedisKeys.AdmissionPendingState,
-            MatchingHandoffRedisKeys.HandoffStateLifetime);
+            MatchingRedisKeys.AdmissionPendingState,
+            MatchingRedisKeys.HandoffStateLifetime);
         await redis.StringSetAsync(
             reservationKey,
             matchingId,
-            MatchingHandoffRedisKeys.AdmissionReservationLifetime);
+            MatchingRedisKeys.AdmissionReservationLifetime);
         var committer = new GameAdmissionStateCommitter(redis, NullLogger.Instance);
 
         await committer.CommitAsync(matchingId, playerId, [playerId]);
 
         TimeSpan expectedReservationLifetime =
             TimeSpan.FromSeconds(Config.SWARM_MATCH_DURATION_SECONDS) + TimeSpan.FromMinutes(3);
-        Assert.Equal(expectedReservationLifetime, MatchingHandoffRedisKeys.PostAdmissionReservationLifetime);
+        Assert.Equal(expectedReservationLifetime, MatchingRedisKeys.PostAdmissionReservationLifetime);
         Assert.Equal(expectedReservationLifetime, redis.Expiries[reservationKey]);
-        Assert.Equal(MatchingHandoffRedisKeys.HandoffStateLifetime, redis.Expiries[handoffKey]);
-        Assert.Equal(MatchingHandoffRedisKeys.HandoffStateLifetime, redis.Expiries[admissionStateKey]);
+        Assert.Equal(MatchingRedisKeys.HandoffStateLifetime, redis.Expiries[handoffKey]);
+        Assert.Equal(MatchingRedisKeys.HandoffStateLifetime, redis.Expiries[admissionStateKey]);
     }
 }

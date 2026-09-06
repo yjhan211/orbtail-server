@@ -167,7 +167,7 @@ public sealed class MatchingQueueTests
     {
         Assert.Equal("{matching}:queue", MatchingQueue.QueueKey);
         Assert.Equal("{matching}:requests", MatchingQueue.RequestsKey);
-        Assert.Equal("{matching}:reservation:42", MatchingHandoffRedisKeys.ReservationKey(42));
+        Assert.Equal("{matching}:reservation:42", MatchingRedisKeys.ReservationKey(42));
     }
 
     [Fact]

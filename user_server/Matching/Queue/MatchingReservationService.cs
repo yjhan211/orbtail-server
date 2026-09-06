@@ -14,8 +14,8 @@ namespace user_server.matching.queue;
 internal sealed class MatchingReservationService(IRedisOperations redisOperations, ILogger logger)
 {
     private static readonly TimeSpan ReservationLifetime = TimeSpan.FromMinutes(2);
-    private static readonly TimeSpan ActiveReservationLifetime = MatchingHandoffRedisKeys.AdmissionReservationLifetime;
-    private static string ReservationKey(long playerId) => MatchingHandoffRedisKeys.ReservationKey(playerId);
+    private static readonly TimeSpan ActiveReservationLifetime = MatchingRedisKeys.AdmissionReservationLifetime;
+    private static string ReservationKey(long playerId) => MatchingRedisKeys.ReservationKey(playerId);
 
     public async Task<bool> HasReservationAsync(long playerId)
     {
@@ -37,8 +37,8 @@ internal sealed class MatchingReservationService(IRedisOperations redisOperation
             foreach (var reservedRequest in reservedRequests)
             {
                 bool acquired = await redisOperations.StringSetIfQueueEntryExistsAsync(
-                    MatchingHandoffRedisKeys.MatchingQueueKey,
-                    MatchingHandoffRedisKeys.MatchingRequestsKey,
+                    MatchingRedisKeys.MatchingQueueKey,
+                    MatchingRedisKeys.MatchingRequestsKey,
                     reservedRequest.RequestId,
                     ReservationKey(reservedRequest.PlayerId),
                     reservationId,
@@ -138,7 +138,6 @@ internal sealed class MatchingReservationService(IRedisOperations redisOperation
             }
             else
             {
-                // Rolling compatibility for the previous 8-byte lifecycle payload.
                 await redisOperations.KeyDeleteAsync(ReservationKey(playerId));
             }
         }

@@ -45,7 +45,7 @@ public sealed class MatchCreationServiceTests
         return entries;
     }
 
-    private string? ReservationOf(long playerId) => _cache.GetString(MatchingHandoffRedisKeys.ReservationKey(playerId));
+    private string? ReservationOf(long playerId) => _cache.GetString(MatchingRedisKeys.ReservationKey(playerId));
 
     [Fact]
     public async Task CreateMatchAsync_WithoutGameServerNodeLeavesQueueAndReservationsUntouched()
@@ -177,7 +177,7 @@ public sealed class MatchCreationServiceTests
     public async Task CreateMatchAsync_ReservationContentionSkipsGroupWithoutIssuingMatchingId()
     {
         MatchingQueueData[] humans = await EnqueueHumansAsync(2);
-        await _cache.StringSetAsync(MatchingHandoffRedisKeys.ReservationKey(1_001), "other-worker");
+        await _cache.StringSetAsync(MatchingRedisKeys.ReservationKey(1_001), "other-worker");
 
         bool committed = await CreatePass().CreateMatchAsync(humans, 6, MatchCreationOrigin.Queue);
 

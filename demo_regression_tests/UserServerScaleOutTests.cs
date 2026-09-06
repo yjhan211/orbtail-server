@@ -311,12 +311,12 @@ public sealed class UserServerScaleOutTests
         Assert.Equal(2, bus.RequestCount); // 성공 요청 1회 + 실패 통지 1회
         Assert.Equal(loseReply ? 1 : 0, owner.Deliveries.Count(d => d.Op == "success"));
         Assert.Single(owner.Deliveries.Where(d => d.Op == "failed"));
-        Assert.Null(cache.GetString(MatchingHandoffRedisKeys.ReservationKey(7)));
+        Assert.Null(cache.GetString(MatchingRedisKeys.ReservationKey(7)));
         Assert.Equal(0, cache.SortedSetCount(MatchingQueue.QueueKey));
         Assert.True((await cache.HashGetAsync(
-            MatchingHandoffRedisKeys.Key(1), MatchingHandoffRedisKeys.AdmissionReadyField)).IsNullOrEmpty);
+            MatchingRedisKeys.Key(1), MatchingRedisKeys.AdmissionReadyField)).IsNullOrEmpty);
         Assert.True((await cache.HashGetAsync(
-            MatchingHandoffRedisKeys.Key(1), MatchingHandoffRedisKeys.ManifestField)).IsNullOrEmpty);
+            MatchingRedisKeys.Key(1), MatchingRedisKeys.ManifestField)).IsNullOrEmpty);
     }
 
     [Theory]

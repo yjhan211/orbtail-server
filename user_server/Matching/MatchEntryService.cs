@@ -50,13 +50,13 @@ internal sealed class MatchEntryService(
     /// </summary>
     public async Task StoreMatchManifestAsync(long matchingId, MatchManifest manifest)
     {
-        string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
+        string handoffKey = MatchingRedisKeys.Key(matchingId);
         byte[] serialized = MessagePack.MessagePackSerializer.Serialize(manifest);
         await redisOperations.HashSetWithExpiryAsync(
             handoffKey,
-            MatchingHandoffRedisKeys.ManifestField,
+            MatchingRedisKeys.ManifestField,
             serialized,
-            MatchingHandoffRedisKeys.HandoffStateLifetime);
+            MatchingRedisKeys.HandoffStateLifetime);
     }
 
     /// <summary>
@@ -118,7 +118,7 @@ internal sealed class MatchEntryService(
     public async Task MarkHandoffReadyAsync(long matchingId)
     {
         await EnsureAdmissionStatePendingAsync(matchingId);
-        string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
+        string handoffKey = MatchingRedisKeys.Key(matchingId);
         Exception? lastError = null;
         for (int attempt = 0; attempt < 3; attempt++)
         {
@@ -126,9 +126,9 @@ internal sealed class MatchEntryService(
             {
                 await redisOperations.HashSetWithExpiryAsync(
                     handoffKey,
-                    MatchingHandoffRedisKeys.AdmissionReadyField,
-                    [MatchingHandoffRedisKeys.AdmissionReadyValue],
-                    MatchingHandoffRedisKeys.HandoffStateLifetime);
+                    MatchingRedisKeys.AdmissionReadyField,
+                    [MatchingRedisKeys.AdmissionReadyValue],
+                    MatchingRedisKeys.HandoffStateLifetime);
                 return;
             }
             catch (Exception ex)
@@ -138,9 +138,9 @@ internal sealed class MatchEntryService(
                 {
                     var marker = await redisOperations.HashGetAsync(
                         handoffKey,
-                        MatchingHandoffRedisKeys.AdmissionReadyField);
+                        MatchingRedisKeys.AdmissionReadyField);
                     if (!marker.IsNullOrEmpty &&
-                        ((byte[])marker!).AsSpan().SequenceEqual([MatchingHandoffRedisKeys.AdmissionReadyValue]))
+                        ((byte[])marker!).AsSpan().SequenceEqual([MatchingRedisKeys.AdmissionReadyValue]))
                     {
                         logger.LogWarning(
                             ex,
@@ -167,7 +167,7 @@ internal sealed class MatchEntryService(
 
     private async Task EnsureAdmissionStatePendingAsync(long matchingId)
     {
-        string stateKey = MatchingHandoffRedisKeys.AdmissionStateKey(matchingId);
+        string stateKey = MatchingRedisKeys.AdmissionStateKey(matchingId);
         Exception? lastError = null;
         for (int attempt = 0; attempt < 3; attempt++)
         {
@@ -176,14 +176,14 @@ internal sealed class MatchEntryService(
             {
                 bool created = await redisOperations.StringSetIfNotExistsAsync(
                     stateKey,
-                    MatchingHandoffRedisKeys.AdmissionPendingState,
-                    MatchingHandoffRedisKeys.HandoffStateLifetime);
+                    MatchingRedisKeys.AdmissionPendingState,
+                    MatchingRedisKeys.HandoffStateLifetime);
                 if (created)
                     return;
 
                 var existing = await redisOperations.StringGetAsync(stateKey);
                 if (!existing.IsNullOrEmpty &&
-                    string.Equals(existing.ToString(), MatchingHandoffRedisKeys.AdmissionPendingState,
+                    string.Equals(existing.ToString(), MatchingRedisKeys.AdmissionPendingState,
                         StringComparison.Ordinal))
                     return;
                 conflictingState = existing.ToString();
@@ -195,7 +195,7 @@ internal sealed class MatchEntryService(
                 {
                     var existing = await redisOperations.StringGetAsync(stateKey);
                     if (!existing.IsNullOrEmpty &&
-                        string.Equals(existing.ToString(), MatchingHandoffRedisKeys.AdmissionPendingState,
+                        string.Equals(existing.ToString(), MatchingRedisKeys.AdmissionPendingState,
                             StringComparison.Ordinal))
                     {
                         logger.LogWarning(
@@ -236,25 +236,25 @@ internal sealed class MatchEntryService(
         if (matchingId <= 0)
             return true;
 
-        string stateKey = MatchingHandoffRedisKeys.AdmissionStateKey(matchingId);
+        string stateKey = MatchingRedisKeys.AdmissionStateKey(matchingId);
         for (int attempt = 0; attempt < 3; attempt++)
         {
             try
             {
                 bool canceled = await redisOperations.StringSetIfEqualsAsync(
                     stateKey,
-                    MatchingHandoffRedisKeys.AdmissionPendingState,
-                    MatchingHandoffRedisKeys.AdmissionCanceledState,
-                    MatchingHandoffRedisKeys.HandoffStateLifetime);
+                    MatchingRedisKeys.AdmissionPendingState,
+                    MatchingRedisKeys.AdmissionCanceledState,
+                    MatchingRedisKeys.HandoffStateLifetime);
                 if (canceled)
                     return true;
 
                 var state = await redisOperations.StringGetAsync(stateKey);
                 if (state.IsNullOrEmpty ||
-                    string.Equals(state.ToString(), MatchingHandoffRedisKeys.AdmissionCanceledState,
+                    string.Equals(state.ToString(), MatchingRedisKeys.AdmissionCanceledState,
                         StringComparison.Ordinal))
                     return true;
-                if (string.Equals(state.ToString(), MatchingHandoffRedisKeys.AdmissionCompletedState,
+                if (string.Equals(state.ToString(), MatchingRedisKeys.AdmissionCompletedState,
                         StringComparison.Ordinal))
                 {
                     logger.LogInformation(
@@ -290,7 +290,7 @@ internal sealed class MatchEntryService(
 
         try
         {
-            await redisOperations.KeyDeleteAsync(MatchingHandoffRedisKeys.Key(matchingId));
+            await redisOperations.KeyDeleteAsync(MatchingRedisKeys.Key(matchingId));
         }
         catch (Exception ex)
         {
@@ -319,32 +319,32 @@ internal sealed class MatchEntryService(
     {
         try
         {
-            await Task.Delay(MatchingHandoffRedisKeys.AdmissionTimeout, shutdownToken);
+            await Task.Delay(MatchingRedisKeys.AdmissionTimeout, shutdownToken);
         }
         catch (OperationCanceledException) when (shutdownToken.IsCancellationRequested)
         {
             return;
         }
 
-        string stateKey = MatchingHandoffRedisKeys.AdmissionStateKey(matchingId);
+        string stateKey = MatchingRedisKeys.AdmissionStateKey(matchingId);
         while (!shutdownToken.IsCancellationRequested)
         {
             try
             {
                 bool canceled = await redisOperations.StringSetIfEqualsAsync(
                     stateKey,
-                    MatchingHandoffRedisKeys.AdmissionPendingState,
-                    MatchingHandoffRedisKeys.AdmissionCanceledState,
-                    MatchingHandoffRedisKeys.HandoffStateLifetime);
+                    MatchingRedisKeys.AdmissionPendingState,
+                    MatchingRedisKeys.AdmissionCanceledState,
+                    MatchingRedisKeys.HandoffStateLifetime);
                 if (!canceled)
                 {
                     var state = await redisOperations.StringGetAsync(stateKey);
                     if (!state.IsNullOrEmpty &&
-                        string.Equals(state.ToString(), MatchingHandoffRedisKeys.AdmissionCompletedState,
+                        string.Equals(state.ToString(), MatchingRedisKeys.AdmissionCompletedState,
                             StringComparison.Ordinal))
                         return;
                     if (state.IsNullOrEmpty ||
-                        !string.Equals(state.ToString(), MatchingHandoffRedisKeys.AdmissionCanceledState,
+                        !string.Equals(state.ToString(), MatchingRedisKeys.AdmissionCanceledState,
                             StringComparison.Ordinal))
                     {
                         throw new InvalidOperationException(

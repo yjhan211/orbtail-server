@@ -19,8 +19,8 @@ internal sealed class MatchingQueue(
     MatchingReservationService reservations,
     ILogger logger)
 {
-    internal const string QueueKey = MatchingHandoffRedisKeys.MatchingQueueKey;
-    internal const string RequestsKey = MatchingHandoffRedisKeys.MatchingRequestsKey;
+    internal const string QueueKey = MatchingRedisKeys.MatchingQueueKey;
+    internal const string RequestsKey = MatchingRedisKeys.MatchingRequestsKey;
     private const string LockKeyPrefix = "matching_queue_lock:";
     internal static string MakeLockKey(long playerId) => LockKeyPrefix + playerId;
 

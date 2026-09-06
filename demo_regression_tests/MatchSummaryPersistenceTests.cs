@@ -297,9 +297,9 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         const long matchingId = 42_104;
         var redis = new InMemoryRedisOperations();
         await redis.StringSetAsync(
-            MatchingHandoffRedisKeys.ReservationKey(playerId),
+            MatchingRedisKeys.ReservationKey(playerId),
             matchingId,
-            MatchingHandoffRedisKeys.PostAdmissionReservationLifetime);
+            MatchingRedisKeys.PostAdmissionReservationLifetime);
         var nats = new RecordingNatsClient
         {
             PublishException = new InvalidOperationException("core failure")
@@ -315,7 +315,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             matchingId);
         await WaitForPendingMatchingRedisCleanupsAsync(server);
 
-        Assert.Null(redis.GetString(MatchingHandoffRedisKeys.ReservationKey(playerId)));
+        Assert.Null(redis.GetString(MatchingRedisKeys.ReservationKey(playerId)));
         Assert.Equal(1, nats.PublishCount);
         Assert.True(logger.Contains(LogLevel.Error, "Matching lifecycle publish failed:"));
     }
@@ -328,9 +328,9 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         const long newerMatchingId = 42_106;
         var redis = new InMemoryRedisOperations();
         await redis.StringSetAsync(
-            MatchingHandoffRedisKeys.ReservationKey(playerId),
+            MatchingRedisKeys.ReservationKey(playerId),
             newerMatchingId,
-            MatchingHandoffRedisKeys.PostAdmissionReservationLifetime);
+            MatchingRedisKeys.PostAdmissionReservationLifetime);
         var nats = new RecordingNatsClient();
         var logger = new RecordingLogger<GameServer>();
         GameServer server = CreateLegacyGameServer(nats, logger, redis);
@@ -345,7 +345,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
 
         Assert.Equal(
             newerMatchingId.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            redis.GetString(MatchingHandoffRedisKeys.ReservationKey(playerId)));
+            redis.GetString(MatchingRedisKeys.ReservationKey(playerId)));
         Assert.Equal(1, nats.PublishCount);
         Assert.True(logger.Contains(LogLevel.Warning, "Matching reservation was absent or changed"));
     }

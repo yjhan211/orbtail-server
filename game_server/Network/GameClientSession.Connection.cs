@@ -507,8 +507,8 @@ public partial class GameClientSession
     {
         // manifest는 ticket 발급보다 먼저 쓰인다. 없으면 만료됐거나 handoff가 지워진 것이다.
         var serialized = await RedisOperations.HashGetAsync(
-            MatchingHandoffRedisKeys.Key(matchingId),
-            MatchingHandoffRedisKeys.ManifestField);
+            MatchingRedisKeys.Key(matchingId),
+            MatchingRedisKeys.ManifestField);
         if (serialized.IsNullOrEmpty)
             throw new InvalidOperationException($"Missing match manifest for match {matchingId}.");
 
@@ -523,26 +523,26 @@ public partial class GameClientSession
         TimeSpan retryDelay = TimeSpan.FromMilliseconds(50);
         int maxAttempts = Math.Max(
             1,
-            (int)Math.Ceiling(MatchingHandoffRedisKeys.AdmissionTimeout.TotalMilliseconds /
+            (int)Math.Ceiling(MatchingRedisKeys.AdmissionTimeout.TotalMilliseconds /
                               retryDelay.TotalMilliseconds));
-        string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
-        string admissionStateKey = MatchingHandoffRedisKeys.AdmissionStateKey(matchingId);
+        string handoffKey = MatchingRedisKeys.Key(matchingId);
+        string admissionStateKey = MatchingRedisKeys.AdmissionStateKey(matchingId);
 
         for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
             var ready = await RedisOperations.HashGetAsync(
                 handoffKey,
-                MatchingHandoffRedisKeys.AdmissionReadyField);
+                MatchingRedisKeys.AdmissionReadyField);
             if (!ready.IsNullOrEmpty)
             {
                 byte[] value = (byte[])ready!;
-                if (value.Length == 1 && value[0] == MatchingHandoffRedisKeys.AdmissionReadyValue)
+                if (value.Length == 1 && value[0] == MatchingRedisKeys.AdmissionReadyValue)
                 {
                     string expectedReservation = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     foreach (long humanPlayerId in expectedHumanPlayerIds)
                     {
                         var reservation = await RedisOperations.StringGetAsync(
-                            MatchingHandoffRedisKeys.ReservationKey(humanPlayerId));
+                            MatchingRedisKeys.ReservationKey(humanPlayerId));
                         if (reservation.IsNullOrEmpty || !string.Equals(reservation.ToString(), expectedReservation,
                                 StringComparison.Ordinal))
                         {
@@ -560,7 +560,7 @@ public partial class GameClientSession
             if (!admissionState.IsNullOrEmpty &&
                 string.Equals(
                     admissionState.ToString(),
-                    MatchingHandoffRedisKeys.AdmissionCanceledState,
+                    MatchingRedisKeys.AdmissionCanceledState,
                     StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(

@@ -823,7 +823,7 @@ public partial class GameServer(
         try
         {
             bool released = await redisOperations.StringDeleteIfEqualsAsync(
-                MatchingHandoffRedisKeys.ReservationKey(playerId),
+                MatchingRedisKeys.ReservationKey(playerId),
                 expectedReservation);
             if (!released)
             {
@@ -1217,7 +1217,7 @@ public partial class GameServer(
     {
         try
         {
-            await redisOperations.KeyDeleteAsync(MatchingHandoffRedisKeys.Key(matchingId));
+            await redisOperations.KeyDeleteAsync(MatchingRedisKeys.Key(matchingId));
             await redisOperations.HashDeleteAsync("matching_bots", matchingId);
         }
         catch (Exception ex)

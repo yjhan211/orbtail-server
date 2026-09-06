@@ -23,10 +23,10 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
         long playerId,
         IReadOnlyCollection<long> expectedHumanPlayerIds)
     {
-        string admissionStateKey = MatchingHandoffRedisKeys.AdmissionStateKey(matchingId);
+        string admissionStateKey = MatchingRedisKeys.AdmissionStateKey(matchingId);
         RedisValue admissionState = await redisOperations.StringGetAsync(admissionStateKey);
         if (admissionState.IsNullOrEmpty ||
-            !string.Equals(admissionState.ToString(), MatchingHandoffRedisKeys.AdmissionPendingState,
+            !string.Equals(admissionState.ToString(), MatchingRedisKeys.AdmissionPendingState,
                 StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
@@ -35,16 +35,16 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
 
         await RenewMatchingReservationAsync(matchingId, playerId);
 
-        string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
-        string admittedField = MatchingHandoffRedisKeys.AdmittedPlayerField(playerId);
+        string handoffKey = MatchingRedisKeys.Key(matchingId);
+        string admittedField = MatchingRedisKeys.AdmittedPlayerField(playerId);
         await WriteMarkerWithReadBackAsync(
             handoffKey,
             admittedField,
-            MatchingHandoffRedisKeys.AdmissionReadyValue,
+            MatchingRedisKeys.AdmissionReadyValue,
             $"player {playerId} admission for match {matchingId}");
 
         RedisValue[] admittedFields = expectedHumanPlayerIds
-            .Select(MatchingHandoffRedisKeys.AdmittedPlayerField)
+            .Select(MatchingRedisKeys.AdmittedPlayerField)
             .Select(field => (RedisValue)field)
             .ToArray();
         RedisValue[] admittedValues = await redisOperations.HashGetAsync(handoffKey, admittedFields);
@@ -52,7 +52,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
                                  admittedValues.All(value =>
                                      !value.IsNullOrEmpty &&
                                      ((byte[])value!).AsSpan().SequenceEqual(
-                                         [MatchingHandoffRedisKeys.AdmissionReadyValue]));
+                                         [MatchingRedisKeys.AdmissionReadyValue]));
         if (allHumansAdmitted)
             await CompleteAdmissionStateAsync(admissionStateKey, matchingId);
     }
@@ -67,10 +67,10 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
             try
             {
                 reservationRenewed = await redisOperations.StringSetIfEqualsAsync(
-                    MatchingHandoffRedisKeys.ReservationKey(playerId),
+                    MatchingRedisKeys.ReservationKey(playerId),
                     expectedReservation,
                     expectedReservation,
-                    MatchingHandoffRedisKeys.PostAdmissionReservationLifetime);
+                    MatchingRedisKeys.PostAdmissionReservationLifetime);
             }
             catch (Exception ex)
             {
@@ -90,7 +90,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
         if (reservationRenewed)
             return;
 
-        RedisValue reservation = await redisOperations.StringGetAsync(MatchingHandoffRedisKeys.ReservationKey(playerId));
+        RedisValue reservation = await redisOperations.StringGetAsync(MatchingRedisKeys.ReservationKey(playerId));
         if (reservation.IsNullOrEmpty || !string.Equals(reservation.ToString(), expectedReservation, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
@@ -115,9 +115,9 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
             {
                 bool completed = await redisOperations.StringSetIfEqualsAsync(
                     admissionStateKey,
-                    MatchingHandoffRedisKeys.AdmissionPendingState,
-                    MatchingHandoffRedisKeys.AdmissionCompletedState,
-                    MatchingHandoffRedisKeys.HandoffStateLifetime);
+                    MatchingRedisKeys.AdmissionPendingState,
+                    MatchingRedisKeys.AdmissionCompletedState,
+                    MatchingRedisKeys.HandoffStateLifetime);
                 if (completed)
                     return;
             }
@@ -130,7 +130,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
             {
                 RedisValue state = await redisOperations.StringGetAsync(admissionStateKey);
                 if (!state.IsNullOrEmpty &&
-                    string.Equals(state.ToString(), MatchingHandoffRedisKeys.AdmissionCompletedState,
+                    string.Equals(state.ToString(), MatchingRedisKeys.AdmissionCompletedState,
                         StringComparison.Ordinal))
                 {
                     if (lastError != null)
@@ -145,7 +145,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
                 }
 
                 if (!state.IsNullOrEmpty &&
-                    string.Equals(state.ToString(), MatchingHandoffRedisKeys.AdmissionCanceledState,
+                    string.Equals(state.ToString(), MatchingRedisKeys.AdmissionCanceledState,
                         StringComparison.Ordinal))
                 {
                     canceledStateObserved = true;
@@ -190,7 +190,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
                     key,
                     field,
                     [value],
-                    MatchingHandoffRedisKeys.HandoffStateLifetime);
+                    MatchingRedisKeys.HandoffStateLifetime);
                 return;
             }
             catch (Exception ex)

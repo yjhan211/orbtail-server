@@ -112,7 +112,7 @@ public static class MatchStartGate
         lock (state.SyncRoot)
         {
             return state.CountdownEndsAtUtc == null &&
-                   utcNow - state.CreatedAtUtc >= MatchingHandoffRedisKeys.AdmissionTimeout;
+                   utcNow - state.CreatedAtUtc >= MatchingRedisKeys.AdmissionTimeout;
         }
     }
 
