@@ -47,11 +47,11 @@ public sealed class NatsClientTests
         var client = new NatsClient(connection, TimeSpan.FromMilliseconds(50));
         await using var provider = CreateUserServerServices(client).BuildServiceProvider();
         var server = provider.GetServices<IHostedService>().OfType<user_server.UserServer>().Single();
-        var background = provider.GetRequiredService<MatchingBackgroundOperations>();
+        var taskTracker = provider.GetRequiredService<MatchingTaskTracker>();
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var stopping = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var registration = background.ShutdownToken.Register(() => stopping.TrySetResult());
-        Assert.True(background.TryRun(() => release.Task, "hold cleanup"));
+        using var registration = taskTracker.ShutdownToken.Register(() => stopping.TrySetResult());
+        Assert.True(taskTracker.TryRun(() => release.Task, "hold cleanup"));
 
         // servicePort 미설정으로 시작에 실패한 뒤 실제 종료 경로에 진입한다.
         Task startup = server.StartAsync(CancellationToken.None);
@@ -115,12 +115,12 @@ public sealed class NatsClientTests
                 item => Assert.IsType<user_server.UserServer>(item));
             var manager = provider.GetRequiredService<MatchingManager>();
             Assert.Same(manager, provider.GetRequiredService<IMatchingManager>());
-            var background = provider.GetRequiredService<MatchingBackgroundOperations>();
+            var taskTracker = provider.GetRequiredService<MatchingTaskTracker>();
 
             // 시작 전에도 종료 가능하며, 매니저는 토큰 소스를 직접 해제하지 않는다.
             await manager.StopAsync();
-            Assert.True(background.ShutdownToken.IsCancellationRequested);
-            Assert.False(background.TryRun(() => Task.CompletedTask, "after stop"));
+            Assert.True(taskTracker.ShutdownToken.IsCancellationRequested);
+            Assert.False(taskTracker.TryRun(() => Task.CompletedTask, "after stop"));
         }
         Assert.Equal(1, proxy.CloseCalls);
     }

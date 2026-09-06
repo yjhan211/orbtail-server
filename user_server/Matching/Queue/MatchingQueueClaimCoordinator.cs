@@ -5,7 +5,7 @@ using network.common.data.models;
 using network.gamehandoff;
 using network.infrastructure.redis;
 
-namespace user_server.matching;
+namespace user_server.matching.queue;
 
 /// <summary>
 ///     Orchestrates matching claim acquisition, matching-id commit, exact rollback,

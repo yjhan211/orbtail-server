@@ -3,7 +3,7 @@ using network.common;
 using network.infrastructure.redis;
 using user_server.sessions;
 
-namespace user_server.matching;
+namespace user_server.matching.queue;
 
 /// <summary>
 ///     Redis 매칭 큐(sorted set <c>{matching}:queue</c>, score = 요청 시각)의 단일 접근 경로.

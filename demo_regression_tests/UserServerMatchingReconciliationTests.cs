@@ -348,9 +348,7 @@ public sealed class UserServerMatchingReconciliationTests
             CancelCount++;
             return Task.FromResult(ErrorCode.SUCCESS);
         }
-        public Task RecordGameCompletionAsync(long playerId, long matchingId) => Task.CompletedTask;
-        public Task RecordLeaveAsync(long playerId, long matchingId) => Task.CompletedTask;
-        public Task AbortMatchingAdmissionAsync(long playerId, long matchingId) => Task.CompletedTask;
+        public Task HandleEntryFailureAsync(long playerId, long matchingId) => Task.CompletedTask;
         public Task ReleaseMatchingClaimAsync(long playerId, long matchingId)
         {
             ReleaseCount++;

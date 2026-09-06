@@ -1,3 +1,6 @@
+using user_server.matching.coordination;
+using user_server.matching.creation;
+using user_server.matching.queue;
 using Microsoft.Extensions.Logging;
 using network.common;
 using user_server.sessions;
@@ -5,76 +8,49 @@ using user_server.sessions;
 namespace user_server.matching;
 
 /// <summary>
-///     매칭 서브시스템의 수명 조정자. 1초 timer로 <see cref="MatchmakingPass" />를 겹치지 않게
-///     하나만 실행하고, 큐 등록/취소·claim 해제·입장 실패 통지를 collaborator에 위임하며,
-///     매칭 반복 중단 → 전체 종료 순서로 background 작업을 배수한다. 조립은 Program.cs(DI)가 하고 여기서는 받기만 한다.
-///     매칭 규칙·Redis 키·패킷 조립은 소유하지 않는다.
+///     매칭의 시작과 종료를 관리하고, 대기열 등록·취소와 배정 해제 요청을 담당 클래스에 전달한다.
+///     1초 주기의 타이머를 기다렸다가 리더 여부를 확인하고 매칭을 실행한다.
+///     종료 시 타이머 대기를 중단하고 진행 중인 매칭이 끝날 때까지 기다린다.
+///     이후 백그라운드 작업을 정리하고 리더 등록을 해제한다.
 /// </summary>
-internal sealed class MatchingManager : IMatchingManager
+internal sealed class MatchingManager(
+    ILogger logger,
+    MatchingQueueClaimCoordinator matchingClaims,
+    MatchingQueue matchingQueue,
+    MatchHandoffPublisher handoffPublisher,
+    MatchmakingPass matchmakingPass,
+    MatchingLeaderLease leaderLease,
+    MatchingTaskTracker taskTracker)
+    : IMatchingManager
 {
-    private readonly MatchingLeaderLease _leaderLease;
-    private readonly MatchingQueueClaimCoordinator _matchingClaims;
-    private readonly MatchingQueue _queue;
-    private readonly MatchHandoffPublisher _handoff;
-    private readonly MatchmakingPass _pass;
-    private readonly MatchingBackgroundOperations _background;
-    private readonly ILogger _logger;
-    private Timer? _matchingTimer;
-    private readonly object _processingTaskLock = new();
-    private int _isProcessing;
-    private int _quiescing;
-    private Task _processingTask = Task.CompletedTask;
-    private readonly object _stopTaskLock = new();
+    private readonly object _lifecycleLock = new();
+
+    private PeriodicTimer? _matchingTimer;
+    private Task _matchingLoopTask = Task.CompletedTask;
+    private bool _matchingLoopStopped;
+    private bool _started;
     private Task? _stopTask;
-    private int _started;
-    private int _stopping;
 
-    public MatchingManager(
-        ILogger logger,
-        MatchingQueueClaimCoordinator matchingClaims,
-        MatchingQueue queue,
-        MatchHandoffPublisher handoff,
-        MatchmakingPass pass,
-        MatchingLeaderLease leaderLease,
-        MatchingBackgroundOperations background)
-    {
-        _logger = logger;
-        _matchingClaims = matchingClaims;
-        _queue = queue;
-        _handoff = handoff;
-        _pass = pass;
-        _leaderLease = leaderLease;
-        _background = background;
-    }
-
-    /// <summary>
-    ///     lifecycle 구독이 준비된 뒤 큐 polling을 시작한다.
-    /// </summary>
     public void Start()
     {
-        lock (_stopTaskLock)
+        lock (_lifecycleLock)
         {
-            ObjectDisposedException.ThrowIf(_stopTask != null || Volatile.Read(ref _stopping) != 0, this);
-            if (Volatile.Read(ref _started) != 0)
+            ObjectDisposedException.ThrowIf(_stopTask != null || _matchingLoopStopped, this);
+            if (_started)
                 throw new InvalidOperationException("MatchingManager is already started.");
 
             try
             {
-                // 매칭 대기열을 1초마다 확인한다.
-                _matchingTimer = new Timer(
-                    OnMatchingTimerTick,
-                    null,
-                    TimeSpan.FromSeconds(1),
-                    TimeSpan.FromSeconds(1));
-                Volatile.Write(ref _started, 1);
-                _logger.LogInformation("MatchingManager started");
+                _matchingTimer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+                _matchingLoopTask = RunMatchingLoopAsync(_matchingTimer);
+                _started = true;
+                logger.LogInformation("MatchingManager started");
             }
             catch
             {
-                Volatile.Write(ref _stopping, 1);
-                _background.Shutdown();
+                _matchingLoopStopped = true;
                 _matchingTimer?.Dispose();
-                _matchingTimer = null;
+                taskTracker.Shutdown();
                 throw;
             }
         }
@@ -82,121 +58,76 @@ internal sealed class MatchingManager : IMatchingManager
 
     public Task<ErrorCode> AddToQueue(long playerId, PlayerSession user)
     {
-        return _queue.AddToQueueAsync(playerId, user);
+        return matchingQueue.AddToQueueAsync(playerId, user);
     }
 
     public Task<ErrorCode> CancelMatching(long playerId)
     {
-        return _queue.CancelMatchingAsync(playerId);
+        return matchingQueue.CancelMatchingAsync(playerId);
     }
 
     public Task<bool> HasMatchingClaimAsync(long playerId)
     {
-        return _matchingClaims.HasClaimAsync(playerId);
+        return matchingClaims.HasClaimAsync(playerId);
     }
-    /// <summary>
-    ///     비동기 매칭 pass 하나를 시작하고 timer callback이 겹치지 않게 막는다.
-    /// </summary>
-    private void OnMatchingTimerTick(object? state)
-    {
-        if (Volatile.Read(ref _stopping) != 0 || Volatile.Read(ref _quiescing) != 0) return;
-        if (Interlocked.CompareExchange(ref _isProcessing, 1, 0) != 0) return;
 
-        lock (_processingTaskLock)
+    private async Task RunMatchingLoopAsync(PeriodicTimer timer)
+    {
+        while (await timer.WaitForNextTickAsync())
         {
-            if (Volatile.Read(ref _stopping) != 0 || Volatile.Read(ref _quiescing) != 0)
+            try
             {
-                Interlocked.Exchange(ref _isProcessing, 0);
-                return;
+                if (!await leaderLease.TryAcquireOrRenewAsync())
+                {
+                    continue;
+                }
+
+                await matchmakingPass.RunAsync();
             }
-
-            _processingTask = RunMatchingPassAsync();
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Matching pass failed before queue processing completed");
+            }
         }
     }
 
-    private async Task RunMatchingPassAsync()
+    public async Task HandleEntryFailureAsync(long playerId, long matchingId)
     {
-        try
-        {
-            // 큐는 리더만 읽는다. 리더가 아니면 이번 tick은 비우고 다음 tick에 다시 lease를 본다.
-            if (!await _leaderLease.TryAcquireOrRenewAsync())
-                return;
-
-            await _pass.RunAsync();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Matching pass failed before queue processing completed");
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _isProcessing, 0);
-        }
-    }
-
-    /// <summary>이탈·완주 모두 Game Server가 보고한 정확한 active claim을 해제한다 — 이탈 페널티는 두지 않는다.</summary>
-    public Task RecordLeaveAsync(long playerId, long matchingId) => ReleaseMatchingClaimAsync(playerId, matchingId);
-
-    public Task RecordGameCompletionAsync(long playerId, long matchingId) => ReleaseMatchingClaimAsync(playerId, matchingId);
-
-    public async Task AbortMatchingAdmissionAsync(long playerId, long matchingId)
-    {
-        // 이 매치에 배정되지 않은 세션은 라우터 쪽에서 보낼 것 없음으로 처리한다.
-        await _handoff.NotifyAdmissionFailedAsync(playerId, matchingId);
+        await handoffPublisher.NotifyAdmissionFailedAsync(playerId, matchingId);
         await ReleaseMatchingClaimAsync(playerId, matchingId);
     }
 
     public async Task ReleaseMatchingClaimAsync(long playerId, long matchingId)
     {
-        await _matchingClaims.ReleaseActiveBestEffortAsync(playerId, matchingId);
+        await matchingClaims.ReleaseActiveBestEffortAsync(playerId, matchingId);
     }
 
-    public bool TryRunBackgroundOperation(Func<Task> operation, string operationName) =>
-        _background.TryRun(operation, operationName);
+    public bool TryRunBackgroundOperation(Func<Task> operation, string operationName) => taskTracker.TryRun(operation, operationName);
 
     public Task StopAsync()
     {
-        lock (_stopTaskLock)
+        lock (_lifecycleLock)
         {
             return _stopTask ??= StopCoreAsync();
         }
     }
 
-    public async Task StopMatchingLoopAsync()
+    public Task StopMatchingLoopAsync()
     {
-        if (Interlocked.Exchange(ref _quiescing, 1) == 0)
-            _matchingTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
-
-        Task processingTask;
-        lock (_processingTaskLock)
+        lock (_lifecycleLock)
         {
-            processingTask = _processingTask;
+            _matchingLoopStopped = true;
+            _matchingTimer?.Dispose();
+            return _matchingLoopTask;
         }
-
-        await processingTask;
     }
 
     private async Task StopCoreAsync()
     {
         await StopMatchingLoopAsync();
-        Volatile.Write(ref _stopping, 1);
-        _background.Shutdown();
-
-        if (_matchingTimer != null)
-            await _matchingTimer.DisposeAsync();
-
-        Task processingTask;
-        lock (_processingTaskLock)
-        {
-            processingTask = _processingTask;
-        }
-
-        await processingTask;
-        await _background.DrainAsync();
-
-        await _leaderLease.ReleaseAsync();
-        // 작업 종료는 여기서 기다리고, 토큰 소스의 최종 해제는 DI에 맡긴다.
-
-        _logger.LogInformation("MatchingManager stopped");
+        taskTracker.Shutdown();
+        await taskTracker.DrainAsync();
+        await leaderLease.ReleaseAsync();
+        logger.LogInformation("MatchingManager stopped");
     }
 }

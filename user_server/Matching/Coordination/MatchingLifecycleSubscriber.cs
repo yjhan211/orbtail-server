@@ -4,7 +4,7 @@ using network.common;
 using network.infrastructure.messaging;
 using user_server.sessions;
 
-namespace user_server.matching;
+namespace user_server.matching.coordination;
 
 /// <summary>
 ///     Game Server가 Core NATS로 보내는 매칭 lifecycle 4종(left/completed/admission_failed/released)을 받아
@@ -87,13 +87,9 @@ internal sealed class MatchingLifecycleSubscriber(
         matchingManager.TryRunBackgroundOperation(
             () => lifecycleEvent switch
             {
-                MatchingLifecycleEvent.PlayerCompleted =>
-                    matchingManager.RecordGameCompletionAsync(playerId, matchingId),
                 MatchingLifecycleEvent.PlayerAdmissionFailed =>
-                    matchingManager.AbortMatchingAdmissionAsync(playerId, matchingId),
-                MatchingLifecycleEvent.PlayerReleased =>
-                    matchingManager.ReleaseMatchingClaimAsync(playerId, matchingId),
-                _ => matchingManager.RecordLeaveAsync(playerId, matchingId)
+                    matchingManager.HandleEntryFailureAsync(playerId, matchingId),
+                _ => matchingManager.ReleaseMatchingClaimAsync(playerId, matchingId)
             },
             $"handle {lifecycleEvent} for player {playerId}, matching {matchingId}");
     }

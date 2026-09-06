@@ -1,3 +1,6 @@
+using user_server.matching.coordination;
+using user_server.matching.creation;
+using user_server.matching.queue;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -89,17 +92,17 @@ internal static class Program
             sp.GetRequiredService<ILogger>()));
         services.AddSingleton<IGameServerRegistry, RedisGameServerRegistry>();
         services.AddSingleton<IGameServerAllocator, GameServerAllocator>();
-        services.AddSingleton<MatchingBackgroundOperations>();
+        services.AddSingleton<MatchingTaskTracker>();
         services.AddSingleton<MatchHandoffPublisher>(sp =>
         {
-            var background = sp.GetRequiredService<MatchingBackgroundOperations>();
+            var taskTracker = sp.GetRequiredService<MatchingTaskTracker>();
             return new MatchHandoffPublisher(
                 sp.GetRequiredService<IRedisOperations>(),
                 sp.GetRequiredService<GameHandoffTicketService>(),
                 sp.GetRequiredService<MatchingQueueClaimCoordinator>(),
                 sp.GetRequiredService<IPlayerSessionRouter>(),
-                background.TryRun,
-                background.ShutdownToken,
+                taskTracker.TryRun,
+                taskTracker.ShutdownToken,
                 sp.GetRequiredService<ILogger>());
         });
         services.AddSingleton<IMatchHandoffPublisher>(sp => sp.GetRequiredService<MatchHandoffPublisher>());
@@ -111,7 +114,7 @@ internal static class Program
             sp.GetRequiredService<IMatchHandoffPublisher>(),
             sp.GetRequiredService<IGameServerAllocator>(),
             sp.GetRequiredService<DevMatchOverrides>(),
-            sp.GetRequiredService<MatchingBackgroundOperations>().ShutdownToken,
+            sp.GetRequiredService<MatchingTaskTracker>().ShutdownToken,
             sp.GetRequiredService<ILogger>()));
         services.AddSingleton<MatchingLeaderLease>(sp => new MatchingLeaderLease(
             sp.GetRequiredService<IRedisOperations>(),

@@ -1,3 +1,5 @@
+using user_server.matching.creation;
+using user_server.matching.queue;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -7,7 +9,7 @@ using network.helpers;
 using network.infrastructure.redis;
 using user_server.sessions;
 
-namespace user_server.matching;
+namespace user_server.matching.coordination;
 
 /// <summary>
 ///     매치 확정 뒤 Game Server 인계에 필요한 쓰기와 클라이언트 전달을 담당하는 port.

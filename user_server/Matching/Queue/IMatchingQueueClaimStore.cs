@@ -1,4 +1,4 @@
-namespace user_server.matching;
+namespace user_server.matching.queue;
 
 /// <summary>
 ///     Owns the atomic Redis transition that reserves one matching-queue entry

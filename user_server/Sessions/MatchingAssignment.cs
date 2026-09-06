@@ -1,4 +1,4 @@
-using user_server.matching;
+using user_server.matching.queue;
 
 namespace user_server.sessions;
 

@@ -1,6 +1,6 @@
 using MessagePack;
 
-namespace user_server.matching;
+namespace user_server.matching.queue;
 
 /// <summary>
 ///     매칭 큐 entry 하나를 pass 진입 시 한 번만 역직렬화해 pass 전체에서 재사용하는 typed 모델.
