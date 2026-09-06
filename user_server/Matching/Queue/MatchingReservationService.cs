@@ -6,9 +6,10 @@ using network.infrastructure.redis;
 namespace user_server.matching.queue;
 
 /// <summary>
-///     Redis에 플레이어별 매칭 예약을 저장해 매치 생성과 취소가 동시에 진행되지 않도록 조율한다.
-///     매치 생성 시 대기 중인 요청을 임시 예약으로 확보하고, 매치 번호가 정해지면 예약 값을 변경한다.
-///     생성 실패·취소·매치 종료 시 예약을 해제하며, 정리에 실패한 예약은 TTL로 만료된다.
+///     플레이어가 다른 매치에 중복 배정되지 않도록 Redis에 예약을 남긴다.
+///     매치 생성 시 대기 중인 요청을 임시로 확보하고, 매치 번호가 정해지면 예약 값으로 기록한다.
+///     취소도 같은 예약 키를 사용하므로 매치 생성과 취소 중 먼저 확보한 작업만 진행할 수 있다.
+///     실패하거나 매치가 끝나면 해당 작업의 예약을 해제하고, 정리에 실패하면 TTL로 만료된다.
 /// </summary>
 internal sealed class MatchingReservationService(IRedisOperations redisOperations, ILogger logger)
 {
@@ -42,6 +43,7 @@ internal sealed class MatchingReservationService(IRedisOperations redisOperation
                     ReservationKey(reservedRequest.PlayerId),
                     reservationId,
                     ReservationLifetime);
+
                 if (!acquired)
                 {
                     await RollbackAsync(new MatchingReservationLease(reservationId, acquiredPlayerIds));
@@ -124,7 +126,7 @@ internal sealed class MatchingReservationService(IRedisOperations redisOperation
         }
     }
 
-    public async Task ReleaseActiveBestEffortAsync(long playerId, long matchingId)
+    public async Task ReleaseMatchingReservationAsync(long playerId, long matchingId)
     {
         try
         {
@@ -149,6 +151,4 @@ internal sealed class MatchingReservationService(IRedisOperations redisOperation
                 matchingId);
         }
     }
-
-
 }

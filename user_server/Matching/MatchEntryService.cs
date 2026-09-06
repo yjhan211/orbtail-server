@@ -373,7 +373,7 @@ internal sealed class MatchEntryService(
                     }
 
                     sessions.ClearMatchingAssignment(playerId, matchingId);
-                    await reservations.ReleaseActiveBestEffortAsync(playerId, matchingId);
+                    await reservations.ReleaseMatchingReservationAsync(playerId, matchingId);
                 }
                 return;
             }

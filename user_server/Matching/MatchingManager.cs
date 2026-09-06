@@ -96,7 +96,7 @@ internal sealed class MatchingManager(
 
     public async Task ReleaseMatchingReservationAsync(long playerId, long matchingId)
     {
-        await matchingReservations.ReleaseActiveBestEffortAsync(playerId, matchingId);
+        await matchingReservations.ReleaseMatchingReservationAsync(playerId, matchingId);
     }
 
     public Task StopAsync()

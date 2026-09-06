@@ -169,7 +169,7 @@ internal sealed class MatchCreationService(
                 finally
                 {
                     if (!delivered)
-                        await reservations.ReleaseActiveBestEffortAsync(request.PlayerId, matchingId);
+                        await reservations.ReleaseMatchingReservationAsync(request.PlayerId, matchingId);
                     await queue.RemoveRequestAsync(request);
                 }
             }
