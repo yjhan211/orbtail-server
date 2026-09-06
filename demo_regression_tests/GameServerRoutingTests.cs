@@ -148,7 +148,7 @@ public sealed class GameServerRoutingTests
         var registry = new RecordingGameServerRegistry();
         registry.Published.Add(Node("game-server-0", active: 0, max: 2, heartbeat: now));
         registry.Published.Add(Node("game-server-1", active: 0, max: 2, heartbeat: now));
-        var allocator = new GameServerAllocator(registry, new RecordingLogger());
+        var allocator = new GameServerAllocator(registry, new RecordingLogger().For<GameServerAllocator>());
 
         var picks = new List<string>();
         for (int i = 0; i < 5; i++)
@@ -166,7 +166,7 @@ public sealed class GameServerRoutingTests
     public async Task Allocator_ReturnsNullAndWarnsOnceWhenNoNodeIsRegistered()
     {
         var logger = new RecordingLogger();
-        var allocator = new GameServerAllocator(new RecordingGameServerRegistry(), logger);
+        var allocator = new GameServerAllocator(new RecordingGameServerRegistry(), logger.For<GameServerAllocator>());
 
         Assert.Null(await allocator.TryAllocateAsync());
         Assert.Null(await allocator.TryAllocateAsync());

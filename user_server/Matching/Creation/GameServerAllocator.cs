@@ -9,7 +9,7 @@ namespace user_server.matching.creation;
 ///     선택 가능한 서버가 없으면 null을 반환한다.
 ///     매칭 작업에서 순차적으로 호출하며, GameServer의 자리를 직접 예약하지는 않는다.
 /// </summary>
-internal sealed class GameServerAllocator(IGameServerRegistry gameServerRegistry, ILogger logger) : IGameServerAllocator
+internal sealed class GameServerAllocator(IGameServerRegistry gameServerRegistry, ILogger<GameServerAllocator> logger) : IGameServerAllocator
 {
     public static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan NoAvailableServerWarningInterval = TimeSpan.FromSeconds(10);

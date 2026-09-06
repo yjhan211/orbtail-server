@@ -29,6 +29,7 @@ namespace user_server;
 internal sealed class UserServer(
     NetworkService networkService,
     ILogger<UserServer> logger,
+    ILogger<PlayerSession> sessionLogger,
     IConfiguration configuration,
     IRedisOperations redisOperations,
     IPlayerSessionLeaseStore sessionLeaseStore,
@@ -165,7 +166,7 @@ internal sealed class UserServer(
         {
             var session = new PlayerSession(
                 connection,
-                logger,
+                sessionLogger,
                 redisOperations,
                 redLock,
                 playerService,

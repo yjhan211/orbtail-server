@@ -23,13 +23,13 @@ public sealed class MatchCreationServiceTests
     public MatchCreationServiceTests()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
-        _reservations = new MatchingReservationService(_cache, _logger);
-        _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), _reservations, _logger);
+        _reservations = new MatchingReservationService(_cache, _logger.For<MatchingReservationService>());
+        _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), _reservations, _logger.For<MatchingQueue>());
     }
 
     private MatchCreationService CreatePass(bool soloMapValidation = false, CancellationToken shutdown = default)
     {
-        return new MatchCreationService(_cache, _queue, _reservations, _handoff, _gameServers, soloMapValidation, _logger, shutdown);
+        return new MatchCreationService(_cache, _queue, _reservations, _handoff, _gameServers, soloMapValidation, _logger.For<MatchCreationService>(), shutdown);
     }
 
     private async Task<MatchingQueueData[]> EnqueueHumansAsync(int count, double score = 1)

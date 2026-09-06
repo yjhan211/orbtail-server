@@ -110,6 +110,8 @@ public sealed class NatsClientTests
         });
         await using (provider)
         {
+            Assert.Null(provider.GetService<ILogger>());
+            Assert.NotNull(provider.GetRequiredService<ILogger<user_server.sessions.PlayerSession>>());
             var hosted = provider.GetServices<IHostedService>().ToArray();
             Assert.Collection(hosted,
                 item => Assert.IsType<user_server.HealthCheckService>(item),

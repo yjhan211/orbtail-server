@@ -23,8 +23,8 @@ public sealed class UserServerScaleOutTests
     public async Task LeaderLease_OnlyOneNodeHoldsItAndRenewalKeepsIt()
     {
         var cache = new InMemoryRedisOperations();
-        var a = new MatchingLeaderLease(cache, "user-server-0", new RecordingLogger());
-        var b = new MatchingLeaderLease(cache, "user-server-1", new RecordingLogger());
+        var a = new MatchingLeaderLease(cache, "user-server-0", new RecordingLogger().For<MatchingLeaderLease>());
+        var b = new MatchingLeaderLease(cache, "user-server-1", new RecordingLogger().For<MatchingLeaderLease>());
 
         Assert.True(await a.TryAcquireOrRenewAsync());
         Assert.False(await b.TryAcquireOrRenewAsync());
@@ -38,8 +38,8 @@ public sealed class UserServerScaleOutTests
     public async Task LeaderLease_ReleaseHandsOverAndExpiryIsTakenByAnother()
     {
         var cache = new InMemoryRedisOperations();
-        var a = new MatchingLeaderLease(cache, "user-server-0", new RecordingLogger());
-        var b = new MatchingLeaderLease(cache, "user-server-1", new RecordingLogger());
+        var a = new MatchingLeaderLease(cache, "user-server-0", new RecordingLogger().For<MatchingLeaderLease>());
+        var b = new MatchingLeaderLease(cache, "user-server-1", new RecordingLogger().For<MatchingLeaderLease>());
         Assert.True(await a.TryAcquireOrRenewAsync());
 
         await a.ReleaseAsync();
@@ -58,7 +58,7 @@ public sealed class UserServerScaleOutTests
     {
         var cache = new InMemoryRedisOperations();
         var logger = new RecordingLogger();
-        var lease = new MatchingLeaderLease(cache, "user-server-0", logger);
+        var lease = new MatchingLeaderLease(cache, "user-server-0", logger.For<MatchingLeaderLease>());
         Assert.True(await lease.TryAcquireOrRenewAsync());
 
         cache.StringError = new InvalidOperationException("redis down");
@@ -72,7 +72,7 @@ public sealed class UserServerScaleOutTests
     {
         var bus = new InMemoryNatsBus();
         var session = new FakeSessionEndpoint();
-        var router = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? session : null, "user-server-0", new RecordingLogger());
+        var router = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? session : null, "user-server-0", new RecordingLogger().For<NatsPlayerSessionRouter>());
         router.Start();
 
         Assert.True(await router.DeliverMatchingFailedAsync(7, 42, "req7", ErrorCode.MATCHING_FAILED));
@@ -86,9 +86,9 @@ public sealed class UserServerScaleOutTests
     {
         var bus = new InMemoryNatsBus();
         var owner = new FakeSessionEndpoint();
-        var leader = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger());
-        var other = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "user-server-1", new RecordingLogger());
-        var bystander = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-2", new RecordingLogger());
+        var leader = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger().For<NatsPlayerSessionRouter>());
+        var other = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "user-server-1", new RecordingLogger().For<NatsPlayerSessionRouter>());
+        var bystander = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-2", new RecordingLogger().For<NatsPlayerSessionRouter>());
         leader.Start();
         other.Start();
         bystander.Start();
@@ -107,8 +107,8 @@ public sealed class UserServerScaleOutTests
     {
         var bus = new InMemoryNatsBus { RequestsToDropBeforeHandling = 1 };
         var owner = new FakeSessionEndpoint();
-        var leader = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger());
-        var other = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "user-server-1", new RecordingLogger());
+        var leader = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger().For<NatsPlayerSessionRouter>());
+        var other = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "user-server-1", new RecordingLogger().For<NatsPlayerSessionRouter>());
         leader.Start();
         other.Start();
 
@@ -125,8 +125,8 @@ public sealed class UserServerScaleOutTests
     {
         var bus = new InMemoryNatsBus { RepliesToDropAfterHandling = 1 };
         var owner = new FakeSessionEndpoint { Accept = accepted };
-        var leader = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger());
-        var other = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "user-server-1", new RecordingLogger());
+        var leader = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger().For<NatsPlayerSessionRouter>());
+        var other = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "user-server-1", new RecordingLogger().For<NatsPlayerSessionRouter>());
         leader.Start();
         other.Start();
 
@@ -141,8 +141,8 @@ public sealed class UserServerScaleOutTests
     public async Task Router_ReturnsFalseWhenNoProcessOwnsTheSession()
     {
         var bus = new InMemoryNatsBus();
-        var leader = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger());
-        var other = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-1", new RecordingLogger());
+        var leader = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger().For<NatsPlayerSessionRouter>());
+        var other = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-1", new RecordingLogger().For<NatsPlayerSessionRouter>());
         leader.Start();
         other.Start();
 
@@ -156,8 +156,8 @@ public sealed class UserServerScaleOutTests
     {
         var bus = new InMemoryNatsBus();
         var owner = new FakeSessionEndpoint { Accept = false };
-        var leader = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger());
-        var other = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "user-server-1", new RecordingLogger());
+        var leader = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger().For<NatsPlayerSessionRouter>());
+        var other = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "user-server-1", new RecordingLogger().For<NatsPlayerSessionRouter>());
         leader.Start();
         other.Start();
 
@@ -171,8 +171,8 @@ public sealed class UserServerScaleOutTests
         var bus = new InMemoryNatsBus();
         var mine = new FakeSessionEndpoint { SessionGeneration = 2 };
         var theirs = new FakeSessionEndpoint { SessionGeneration = 1 };
-        var a = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? mine : null, "user-server-0", new RecordingLogger());
-        var b = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? theirs : null, "user-server-1", new RecordingLogger());
+        var a = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? mine : null, "user-server-0", new RecordingLogger().For<NatsPlayerSessionRouter>());
+        var b = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? theirs : null, "user-server-1", new RecordingLogger().For<NatsPlayerSessionRouter>());
         a.Start();
         b.Start();
 
@@ -190,12 +190,12 @@ public sealed class UserServerScaleOutTests
     {
         var bus = new InMemoryNatsBus();
         var newer = new FakeSessionEndpoint { SessionGeneration = 3 };
-        var oldNode = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger());
+        var oldNode = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "user-server-0", new RecordingLogger().For<NatsPlayerSessionRouter>());
         var newNode = new NatsPlayerSessionRouter(
             bus.Connect(),
             id => id == 7 ? newer : null,
             "user-server-1",
-            new RecordingLogger());
+            new RecordingLogger().For<NatsPlayerSessionRouter>());
         oldNode.Start();
         newNode.Start();
 
@@ -252,8 +252,8 @@ public sealed class UserServerScaleOutTests
     {
         var bus = new InMemoryNatsBus();
         var owner = new FakeSessionEndpoint();
-        var sender = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "sender", new RecordingLogger());
-        var receiver = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "receiver", new RecordingLogger());
+        var sender = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "sender", new RecordingLogger().For<NatsPlayerSessionRouter>());
+        var receiver = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "receiver", new RecordingLogger().For<NatsPlayerSessionRouter>());
         sender.Start();
         receiver.Start();
 
@@ -279,16 +279,16 @@ public sealed class UserServerScaleOutTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var cache = new InMemoryRedisOperations();
         var logger = new RecordingLogger();
-        var reservations = new MatchingReservationService(cache, logger);
-        var queue = new MatchingQueue(cache, new FakeRedLockFactory(), reservations, logger);
+        var reservations = new MatchingReservationService(cache, logger.For<MatchingReservationService>());
+        var queue = new MatchingQueue(cache, new FakeRedLockFactory(), reservations, logger.For<MatchingQueue>());
         var bus = new InMemoryNatsBus
         {
             RequestsToDropBeforeHandling = loseReply ? 0 : 1,
             RepliesToDropAfterHandling = loseReply ? 1 : 0
         };
         var owner = new FakeSessionEndpoint();
-        var sender = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "sender", logger);
-        var receiver = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "receiver", logger);
+        var sender = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "sender", logger.For<NatsPlayerSessionRouter>());
+        var receiver = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "receiver", logger.For<NatsPlayerSessionRouter>());
         sender.Start();
         receiver.Start();
         var handoff = new MatchEntryService(
@@ -296,12 +296,12 @@ public sealed class UserServerScaleOutTests
             new GameHandoffTicketService(new RedisGameHandoffTicketStore(cache), new GameHandoffTicketOptions()),
             reservations, sender,
             (_, _) => throw new InvalidOperationException("Failed delivery must not start the entry watchdog"),
-            logger, CancellationToken.None);
+            logger.For<MatchEntryService>(), CancellationToken.None);
         var pass = new MatchCreationService(
             cache, queue, reservations, handoff,
             new FixedGameServerAllocator(),
             false,
-            logger, CancellationToken.None);
+            logger.For<MatchCreationService>(), CancellationToken.None);
         var entry = UserServerMatchingTestData.HumanEntry(7);
         await UserServerMatchingTestData.AddEntryAsync(cache, entry, 1);
 
@@ -327,9 +327,9 @@ public sealed class UserServerScaleOutTests
         var bus = new InMemoryNatsBus();
         var owner = new FakeSessionEndpoint();
         var sender = new NatsPlayerSessionRouter(bus.Connect(),
-            id => !remote && id == 7 ? owner : null, "sender", new RecordingLogger());
+            id => !remote && id == 7 ? owner : null, "sender", new RecordingLogger().For<NatsPlayerSessionRouter>());
         var receiver = new NatsPlayerSessionRouter(bus.Connect(),
-            id => remote && id == 7 ? owner : null, "receiver", new RecordingLogger());
+            id => remote && id == 7 ? owner : null, "receiver", new RecordingLogger().For<NatsPlayerSessionRouter>());
         sender.Start();
         receiver.Start();
         var result = new U_TO_C_MATCHING_SUCCESS

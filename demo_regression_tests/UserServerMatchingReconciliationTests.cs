@@ -306,7 +306,7 @@ public sealed class UserServerMatchingReconciliationTests
     {
         return new PlayerSession(
             connection,
-            logger ?? NullLogger.Instance,
+            (logger ?? NullLogger.Instance).For<PlayerSession>(),
             new InMemoryRedisOperations(),
             new FakeRedLockFactory(),
             playerService!,

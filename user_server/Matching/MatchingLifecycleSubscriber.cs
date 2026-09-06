@@ -21,7 +21,7 @@ internal sealed class MatchingLifecycleSubscriber(
     IPlayerSessionRouter sessions,
     IMatchingManager matchingManager,
     BackgroundTaskTracker taskTracker,
-    ILogger logger)
+    ILogger<MatchingLifecycleSubscriber> logger)
 {
     private const string QueueGroup = "user_server.matching_lifecycle";
     private static readonly MessagePackSerializerOptions SerializerOptions =

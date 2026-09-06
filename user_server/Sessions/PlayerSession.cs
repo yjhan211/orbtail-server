@@ -38,7 +38,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
 
     public PlayerSession(
         TcpConnection connection,
-        ILogger logger,
+        ILogger<PlayerSession> logger,
         IRedisOperations redisOperations,
         IRedLockFactory redLock,
         IPlayerService playerService,

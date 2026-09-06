@@ -23,7 +23,7 @@ internal sealed class MatchEntryService(
     MatchingReservationService reservations,
     IPlayerSessionRouter sessions,
     Func<Func<Task>, string, bool> tryRunBackgroundOperation,
-    ILogger logger,
+    ILogger<MatchEntryService> logger,
     CancellationToken shutdownToken) : IMatchEntryService
 {
     public async Task StoreMatchManifestAsync(long matchingId, MatchManifest manifest)

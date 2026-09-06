@@ -203,10 +203,10 @@ public sealed class MatchEntryServiceTests
         return new MatchEntryService(
             redis,
             new GameHandoffTicketService(new RedisGameHandoffTicketStore(redis), new GameHandoffTicketOptions()),
-            new MatchingReservationService(redis, logger),
+            new MatchingReservationService(redis, logger.For<MatchingReservationService>()),
             router,
             registerTask ?? ((_, _) => false),
-            logger,
+            logger.For<MatchEntryService>(),
             shutdownToken);
     }
 

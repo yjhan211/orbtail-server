@@ -56,8 +56,8 @@ public sealed class MatchingManagerTests
     {
         // 리더 획득을 실패시켜 큐 처리 없이 반복 실행과 종료만 확인한다.
         var redis = new InMemoryRedisOperations { StringError = new InvalidOperationException("test failure") };
-        var leader = new MatchingLeaderLease(redis, "test-node", logger);
-        return new MatchingManager(NullLogger.Instance, null!, null!, null!, null!, leader);
+        var leader = new MatchingLeaderLease(redis, "test-node", logger.For<MatchingLeaderLease>());
+        return new MatchingManager(NullLogger<MatchingManager>.Instance, null!, null!, null!, null!, leader);
     }
 
     private sealed class BlockingLeaderLogger : ILogger, IDisposable

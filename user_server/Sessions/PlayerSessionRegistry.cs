@@ -11,7 +11,7 @@ namespace user_server.sessions;
 ///     제거 시에는 현재 등록된 세션이 요청한 세션과 같은 경우에만 삭제한다.
 ///     이전 연결의 종료 처리가 새 세션을 목록에서 지우지 않도록 하기 위함이다.
 /// </summary>
-internal sealed class PlayerSessionRegistry(ILogger logger)
+internal sealed class PlayerSessionRegistry(ILogger<PlayerSessionRegistry> logger)
 {
     private readonly ConcurrentDictionary<long, PlayerSession> _sessions = new();
 

@@ -10,7 +10,7 @@ namespace user_server.matching;
 ///     다른 서버가 리더이거나 Redis 확인에 실패하면 해당 회차의 매칭을 실행하지 않는다.
 ///     정상 종료 시 자신의 등록을 해제하며, 갱신이 끊기면 만료 후 다른 서버가 획득할 수 있다.
 /// </summary>
-internal sealed class MatchingLeaderLease(IRedisOperations redisOperations, string nodeId, ILogger logger)
+internal sealed class MatchingLeaderLease(IRedisOperations redisOperations, string nodeId, ILogger<MatchingLeaderLease> logger)
 {
     public const string Key = MatchingRedisKeys.MatchingLeaderKey;
     public static readonly TimeSpan Lifetime = TimeSpan.FromSeconds(5);

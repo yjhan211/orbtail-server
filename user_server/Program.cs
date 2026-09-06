@@ -17,7 +17,6 @@ using user_server.accounts;
 using user_server.matching;
 using user_server.players;
 using user_server.sessions;
-using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace user_server;
 
@@ -40,7 +39,7 @@ internal static class Program
             .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
             .Enrich.WithProperty("serverType", serverType)
             .WriteTo.Console(outputTemplate:
-                "[{Level:u3}] [ServerType:{serverType}] {Message:lj}{NewLine}{Exception}");
+                "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}");
     }
 
     private static LogEventLevel ResolveMinimumLevel(IConfiguration configuration)
@@ -52,7 +51,6 @@ internal static class Program
 
     internal static void ConfigureServices(HostBuilderContext hostContext, IServiceCollection services)
     {
-        services.AddSingleton<ILogger>(sp => sp.GetRequiredService<ILoggerFactory>().CreateLogger("user_server"));
         services.AddSingleton<UserServerNodeIdentity>();
 
         services.AddSingleton<NetworkService>();
@@ -80,7 +78,7 @@ internal static class Program
             sp.GetRequiredService<INatsClient>(),
             sp.GetRequiredService<PlayerSessionRegistry>().Get,
             sp.GetRequiredService<UserServerNodeIdentity>().NodeId,
-            sp.GetRequiredService<ILogger>()));
+            sp.GetRequiredService<ILogger<NatsPlayerSessionRouter>>()));
         services.AddSingleton<IPlayerSessionRouter>(sp => sp.GetRequiredService<NatsPlayerSessionRouter>());
 
         services.AddSingleton<MatchingReservationService>();
@@ -88,7 +86,8 @@ internal static class Program
         bool soloMapValidation = Environment.GetEnvironmentVariable("SOLO_MAP_VALIDATION") == "1";
         services.AddSingleton<IGameServerRegistry, RedisGameServerRegistry>();
         services.AddSingleton<IGameServerAllocator, GameServerAllocator>();
-        services.AddSingleton<BackgroundTaskTracker>();
+        services.AddSingleton<BackgroundTaskTracker>(sp =>
+            new BackgroundTaskTracker(sp.GetRequiredService<ILogger<BackgroundTaskTracker>>()));
         services.AddSingleton<MatchEntryService>(sp =>
         {
             var taskTracker = sp.GetRequiredService<BackgroundTaskTracker>();
@@ -98,7 +97,7 @@ internal static class Program
                 sp.GetRequiredService<MatchingReservationService>(),
                 sp.GetRequiredService<IPlayerSessionRouter>(),
                 taskTracker.TryRun,
-                sp.GetRequiredService<ILogger>(),
+                sp.GetRequiredService<ILogger<MatchEntryService>>(),
                 taskTracker.ShutdownToken);
         });
         services.AddSingleton<IMatchEntryService>(sp => sp.GetRequiredService<MatchEntryService>());
@@ -109,12 +108,12 @@ internal static class Program
             sp.GetRequiredService<IMatchEntryService>(),
             sp.GetRequiredService<IGameServerAllocator>(),
             soloMapValidation,
-            sp.GetRequiredService<ILogger>(),
+            sp.GetRequiredService<ILogger<MatchCreationService>>(),
             sp.GetRequiredService<BackgroundTaskTracker>().ShutdownToken));
         services.AddSingleton<MatchingLeaderLease>(sp => new MatchingLeaderLease(
             sp.GetRequiredService<IRedisOperations>(),
             sp.GetRequiredService<UserServerNodeIdentity>().NodeId,
-            sp.GetRequiredService<ILogger>()));
+            sp.GetRequiredService<ILogger<MatchingLeaderLease>>()));
         services.AddSingleton<MatchingManager>();
         services.AddSingleton<IMatchingManager>(sp => sp.GetRequiredService<MatchingManager>());
         services.AddSingleton<MatchingLifecycleSubscriber>();

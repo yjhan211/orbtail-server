@@ -13,7 +13,7 @@ namespace user_server.matching;
 ///     전체 종료 시 리더 등록을 해제한다. 백그라운드 작업의 종료 순서는 UserServer가 관리한다.
 /// </summary>
 internal sealed class MatchingManager(
-    ILogger logger,
+    ILogger<MatchingManager> logger,
     MatchingReservationService matchingReservations,
     MatchingQueue matchingQueue,
     MatchEntryService matchEntryService,

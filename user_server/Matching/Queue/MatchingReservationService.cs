@@ -11,7 +11,7 @@ namespace user_server.matching.queue;
 ///     취소도 같은 예약 키를 사용하므로 매치 생성과 취소 중 먼저 확보한 작업만 진행할 수 있다.
 ///     실패하거나 매치가 끝나면 해당 작업의 예약을 해제하고, 정리에 실패하면 TTL로 만료된다.
 /// </summary>
-internal sealed class MatchingReservationService(IRedisOperations redisOperations, ILogger logger)
+internal sealed class MatchingReservationService(IRedisOperations redisOperations, ILogger<MatchingReservationService> logger)
 {
     private static readonly TimeSpan ReservationLifetime = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan ActiveReservationLifetime = MatchingRedisKeys.EntryReservationLifetime;

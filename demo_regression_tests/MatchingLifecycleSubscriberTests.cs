@@ -19,7 +19,7 @@ public sealed class MatchingLifecycleSubscriberTests
     {
         var ports = new RecordingPorts();
         using var tracker = new BackgroundTaskTracker(new RecordingLogger());
-        var subscriber = new MatchingLifecycleSubscriber(ports, ports, ports, tracker, new RecordingLogger());
+        var subscriber = new MatchingLifecycleSubscriber(ports, ports, ports, tracker, new RecordingLogger().For<MatchingLifecycleSubscriber>());
         subscriber.Start();
         Assert.Equal(4, ports.Handlers.Count);
         Assert.Single(ports.QueueGroups.Distinct());
@@ -45,7 +45,7 @@ public sealed class MatchingLifecycleSubscriberTests
     {
         var ports = new RecordingPorts();
         using var tracker = new BackgroundTaskTracker(new RecordingLogger());
-        var subscriber = new MatchingLifecycleSubscriber(ports, ports, ports, tracker, new RecordingLogger());
+        var subscriber = new MatchingLifecycleSubscriber(ports, ports, ports, tracker, new RecordingLogger().For<MatchingLifecycleSubscriber>());
         subscriber.Start();
         byte[][] payloads =
         [

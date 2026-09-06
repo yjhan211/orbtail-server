@@ -17,7 +17,7 @@ internal sealed class MatchingQueue(
     IRedisOperations redisOperations,
     IRedLockFactory redLock,
     MatchingReservationService reservations,
-    ILogger logger)
+    ILogger<MatchingQueue> logger)
 {
     internal const string QueueKey = MatchingRedisKeys.MatchingQueueKey;
     internal const string RequestsKey = MatchingRedisKeys.MatchingRequestsKey;

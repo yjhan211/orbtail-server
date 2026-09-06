@@ -17,7 +17,7 @@ internal sealed class NatsPlayerSessionRouter(
     INatsClient natsClient,
     Func<long, IMatchingSessionEndpoint?> getLocalSession,
     string nodeId,
-    ILogger logger) : IPlayerSessionRouter
+    ILogger<NatsPlayerSessionRouter> logger) : IPlayerSessionRouter
 {
     private const string MatchingSuccessSubject = "user_server.session.deliver.matching_success";
     private const string MatchingFailedSubject = "user_server.session.deliver.matching_failed";

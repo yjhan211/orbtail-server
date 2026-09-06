@@ -20,7 +20,7 @@ internal sealed class MatchCreationService(
     IMatchEntryService matchEntryService,
     IGameServerAllocator gameServerAllocator,
     bool soloMapValidation,
-    ILogger logger,
+    ILogger<MatchCreationService> logger,
     CancellationToken shutdownToken)
 {
     private const int MatchingTimeoutSeconds = 5;
