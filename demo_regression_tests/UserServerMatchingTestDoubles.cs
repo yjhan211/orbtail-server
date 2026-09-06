@@ -78,8 +78,17 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
     private readonly Dictionary<string, TimeSpan?> _expiries = new(StringComparer.Ordinal);
 
     public Exception? HashGetError { get; set; }
+    public Exception? HashSetWithExpiryError { get; set; }
+    public bool ApplyHashSetBeforeError { get; set; }
+    public int HashSetWithExpiryCalls { get; private set; }
+    public int HashGetCalls { get; private set; }
     /// <summary>String 조건부 연산(SET NX/IfEquals/DeleteIfEquals) 실패 주입 — 리더 lease 테스트용.</summary>
     public Exception? StringError { get; set; }
+    public Exception? StringGetError { get; set; }
+    public Exception? StringSetIfNotExistsResponseError { get; set; }
+    public int StringSetIfNotExistsCalls { get; private set; }
+    public int StringSetIfEqualsCalls { get; private set; }
+    public int StringGetCalls { get; private set; }
 
     public IReadOnlyDictionary<string, TimeSpan?> Expiries
     {
@@ -146,8 +155,13 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
 
     public async Task HashSetWithExpiryAsync(string key, string field, byte[] value, TimeSpan expiry, int db = -1)
     {
+        HashSetWithExpiryCalls++;
+        if (HashSetWithExpiryError != null && !ApplyHashSetBeforeError)
+            throw HashSetWithExpiryError;
         await HashSetAsync(key, field, value, db);
         lock (_sync) _expiries[key] = expiry;
+        if (HashSetWithExpiryError != null)
+            throw HashSetWithExpiryError;
     }
 
     public Task HashSetPairAtomicAsync(string firstKey, string firstField, RedisValue firstValue, string secondKey,
@@ -155,6 +169,7 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
 
     public Task<RedisValue> HashGetAsync(string key, string field, int db = -1)
     {
+        HashGetCalls++;
         if (HashGetError != null) throw HashGetError;
         byte[]? value = GetHash(key, field);
         return Task.FromResult(value == null ? RedisValue.Null : (RedisValue)value);
@@ -218,6 +233,8 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
 
     public Task<RedisValue> StringGetAsync(string key, int db = -1)
     {
+        StringGetCalls++;
+        if (StringGetError != null) throw StringGetError;
         lock (_sync)
         {
             return Task.FromResult(_strings.TryGetValue(key, out RedisValue value) ? value : RedisValue.Null);
@@ -238,18 +255,21 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
 
     public Task<bool> StringSetIfNotExistsAsync(string key, RedisValue value, TimeSpan? expiry = null, int db = -1)
     {
+        StringSetIfNotExistsCalls++;
         if (StringError != null) throw StringError;
         lock (_sync)
         {
             if (_strings.ContainsKey(key)) return Task.FromResult(false);
             _strings[key] = value;
             _expiries[key] = expiry;
+            if (StringSetIfNotExistsResponseError != null) throw StringSetIfNotExistsResponseError;
             return Task.FromResult(true);
         }
     }
 
     public Task<bool> StringSetIfEqualsAsync(string key, string expectedValue, string newValue, TimeSpan expiry, int db = -1)
     {
+        StringSetIfEqualsCalls++;
         if (StringError != null) throw StringError;
         lock (_sync)
         {
@@ -483,7 +503,7 @@ internal sealed class RecordingHandoffPublisher : IMatchEntryService
         return Task.CompletedTask;
     }
 
-    public bool StartEntryWatchdog(long matchingId, IReadOnlyCollection<long> humanPlayerIds)
+    public bool StartEntryTimeoutCheck(long matchingId, IReadOnlyCollection<long> humanPlayerIds)
     {
         Events.Add($"watchdog:{matchingId}:{string.Join(",", humanPlayerIds.OrderBy(id => id))}");
         return WatchdogResult;
@@ -495,7 +515,7 @@ internal sealed class RecordingHandoffPublisher : IMatchEntryService
         return Task.FromResult(CancelEntryResult);
     }
 
-    public Task DeleteHandoffBestEffortAsync(long matchingId)
+    public Task DeleteMatchEntryDataAsync(long matchingId)
     {
         Events.Add($"delete:{matchingId}");
         return Task.CompletedTask;

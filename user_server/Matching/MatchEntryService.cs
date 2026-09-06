@@ -68,9 +68,7 @@ internal sealed class MatchEntryService(
 
         if (!await sessions.DeliverMatchingSuccessAsync(playerId, requestId, result))
         {
-            logger.LogWarning(
-                "Matching success was not accepted by the exact session owner: PlayerId={DataPlayerId}",
-                playerId);
+            logger.LogWarning("Matching success was not accepted by the exact session owner: PlayerId={DataPlayerId}", playerId);
             return false;
         }
 
@@ -78,173 +76,92 @@ internal sealed class MatchEntryService(
         return true;
     }
 
-    public async Task MarkEntryReadyAsync(long matchingId)
-    {
-        await EnsureEntryStatePendingAsync(matchingId);
-        string handoffKey = MatchingRedisKeys.Key(matchingId);
-        Exception? lastError = null;
-        for (int attempt = 0; attempt < 3; attempt++)
-        {
-            try
-            {
-                await redisOperations.HashSetWithExpiryAsync(
-                    handoffKey,
-                    MatchingRedisKeys.EntryReadyField,
-                    [MatchingRedisKeys.EntryReadyValue],
-                    MatchingRedisKeys.HandoffStateLifetime);
-                return;
-            }
-            catch (Exception ex)
-            {
-                lastError = ex;
-                try
-                {
-                    var marker = await redisOperations.HashGetAsync(
-                        handoffKey,
-                        MatchingRedisKeys.EntryReadyField);
-                    if (!marker.IsNullOrEmpty && ((byte[])marker!).AsSpan().SequenceEqual([MatchingRedisKeys.EntryReadyValue]))
-                    {
-                        logger.LogWarning(ex, "Matching entry marker write response was lost; read-back confirmed commit: MatchingId={MatchingId}",
-                            matchingId);
-                        return;
-                    }
-                }
-                catch (Exception readBackError)
-                {
-                    logger.LogWarning(
-                        readBackError,
-                        "Matching entry marker read-back failed: MatchingId={MatchingId}, Attempt={Attempt}",
-                        matchingId,
-                        attempt + 1);
-                }
-            }
-        }
-
-        throw new InvalidOperationException($"Could not confirm the entry marker for match {matchingId}.", lastError);
-    }
-
     private async Task EnsureEntryStatePendingAsync(long matchingId)
     {
         string stateKey = MatchingRedisKeys.EntryStateKey(matchingId);
-        Exception? lastError = null;
-        for (int attempt = 0; attempt < 3; attempt++)
+        bool created = await redisOperations.StringSetIfNotExistsAsync(
+            stateKey,
+            MatchingRedisKeys.EntryPendingState,
+            MatchingRedisKeys.HandoffStateLifetime);
+        if (created)
         {
-            string? conflictingState;
-            try
-            {
-                bool created = await redisOperations.StringSetIfNotExistsAsync(
-                    stateKey,
-                    MatchingRedisKeys.EntryPendingState,
-                    MatchingRedisKeys.HandoffStateLifetime);
-                if (created)
-                    return;
-
-                var existing = await redisOperations.StringGetAsync(stateKey);
-                if (!existing.IsNullOrEmpty &&
-                    string.Equals(existing.ToString(), MatchingRedisKeys.EntryPendingState,
-                        StringComparison.Ordinal))
-                    return;
-                conflictingState = existing.ToString();
-            }
-            catch (Exception ex)
-            {
-                lastError = ex;
-                try
-                {
-                    var existing = await redisOperations.StringGetAsync(stateKey);
-                    if (!existing.IsNullOrEmpty &&
-                        string.Equals(existing.ToString(), MatchingRedisKeys.EntryPendingState,
-                            StringComparison.Ordinal))
-                    {
-                        logger.LogWarning(
-                            ex,
-                            "Entry state creation response was lost; read-back confirmed pending: MatchingId={MatchingId}",
-                            matchingId);
-                        return;
-                    }
-                }
-                catch (Exception readBackError)
-                {
-                    logger.LogWarning(
-                        readBackError,
-                        "Entry state read-back failed: MatchingId={MatchingId}, Attempt={Attempt}",
-                        matchingId,
-                        attempt + 1);
-                }
-
-                continue;
-            }
-
-            // Redis 연산 자체는 성공했으므로 pending이 아닌 값은 일시 장애가 아니라 확정된 상태 충돌이다.
-            throw new InvalidOperationException(
-                $"Entry state for match {matchingId} is already '{conflictingState}'.");
+            return;
         }
 
-        throw new InvalidOperationException(
-            $"Could not initialize entry state for match {matchingId}.",
-            lastError);
+        var existingState = await redisOperations.StringGetAsync(stateKey);
+        if (string.Equals(existingState.ToString(), MatchingRedisKeys.EntryPendingState, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"Entry state for match {matchingId} is already '{existingState}'.");
     }
 
-    /// <summary>
-    ///     rollback 전에 entry state를 pending → canceled로 CAS한다. Game Server가 먼저 completed로 바꿨거나
-    ///     상태를 확정할 수 없으면 false — 그 매치는 되돌리지 않고 TTL에 맡긴다.
-    /// </summary>
+    public async Task MarkEntryReadyAsync(long matchingId)
+    {
+        await EnsureEntryStatePendingAsync(matchingId);
+        await redisOperations.HashSetWithExpiryAsync(
+            MatchingRedisKeys.Key(matchingId),
+            MatchingRedisKeys.EntryReadyField,
+            [MatchingRedisKeys.EntryReadyValue],
+            MatchingRedisKeys.HandoffStateLifetime);
+    }
+
     public async Task<bool> TryCancelEntryForRollbackAsync(long matchingId)
     {
         if (matchingId <= 0)
-            return true;
-
-        string stateKey = MatchingRedisKeys.EntryStateKey(matchingId);
-        for (int attempt = 0; attempt < 3; attempt++)
         {
-            try
-            {
-                bool canceled = await redisOperations.StringSetIfEqualsAsync(
-                    stateKey,
-                    MatchingRedisKeys.EntryPendingState,
-                    MatchingRedisKeys.EntryCanceledState,
-                    MatchingRedisKeys.HandoffStateLifetime);
-                if (canceled)
-                    return true;
-
-                var state = await redisOperations.StringGetAsync(stateKey);
-                if (state.IsNullOrEmpty ||
-                    string.Equals(state.ToString(), MatchingRedisKeys.EntryCanceledState,
-                        StringComparison.Ordinal))
-                    return true;
-                if (string.Equals(state.ToString(), MatchingRedisKeys.EntryCompletedState,
-                        StringComparison.Ordinal))
-                {
-                    logger.LogInformation(
-                        "Skipped matching rollback because GameServer completed entry first: MatchingId={MatchingId}",
-                        matchingId);
-                    return false;
-                }
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(
-                    ex,
-                    "Could not confirm entry cancellation: MatchingId={MatchingId}, Attempt={Attempt}",
-                    matchingId,
-                    attempt + 1);
-            }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(50));
+            return true;
         }
 
-        // 알 수 없는 terminal 상태는 Game Server가 이미 완료했을 수 있는 매치를 되돌릴 권한이 아니다.
-        // entry/reservation TTL이 복구 fallback으로 남는다.
-        logger.LogError(
-            "Skipped ambiguous matching rollback after bounded entry-state reconciliation: MatchingId={MatchingId}",
-            matchingId);
-        return false;
+        string stateKey = MatchingRedisKeys.EntryStateKey(matchingId);
+        try
+        {
+            bool canceled = await redisOperations.StringSetIfEqualsAsync(
+                stateKey,
+                MatchingRedisKeys.EntryPendingState,
+                MatchingRedisKeys.EntryCanceledState,
+                MatchingRedisKeys.HandoffStateLifetime);
+            if (canceled)
+            {
+                return true;
+            }
+
+            var entryState = await redisOperations.StringGetAsync(stateKey);
+            if (entryState.IsNullOrEmpty || string.Equals(entryState.ToString(), MatchingRedisKeys.EntryCanceledState,
+                    StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            if (string.Equals(entryState.ToString(), MatchingRedisKeys.EntryCompletedState, StringComparison.Ordinal))
+            {
+                logger.LogInformation(
+                    "Skipped matching rollback because GameServer completed entry first: MatchingId={MatchingId}",
+                    matchingId);
+                return false;
+            }
+
+            logger.LogWarning(
+                "Skipped matching rollback because entry state is uncertain: MatchingId={MatchingId}, State={State}",
+                matchingId, entryState.ToString());
+
+            return false;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not confirm entry cancellation; skipping matching rollback: MatchingId={MatchingId}",
+                matchingId);
+            return false;
+        }
     }
 
-    public async Task DeleteHandoffBestEffortAsync(long matchingId)
+    public async Task DeleteMatchEntryDataAsync(long matchingId)
     {
         if (matchingId <= 0)
+        {
             return;
+        }
 
         try
         {
@@ -252,125 +169,109 @@ internal sealed class MatchEntryService(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(
-                ex,
-                "Failed to delete rolled-back matching handoff; TTL remains as fallback: MatchingId={MatchingId}",
-                matchingId);
+            logger.LogWarning(ex, "Failed to delete rolled-back matching handoff; TTL remains as fallback: MatchingId={MatchingId}", matchingId);
         }
     }
 
-    /// <summary>
-    ///     45초 process-local 입장 watchdog을 등록한다. 등록 실패(shutdown)면 false.
-    /// </summary>
-    public bool StartEntryWatchdog(long matchingId, IReadOnlyCollection<long> humanPlayerIds)
+    public bool StartEntryTimeoutCheck(long matchingId, IReadOnlyCollection<long> humanPlayerIds)
     {
-        long[] snapshot = humanPlayerIds
-            .Where(playerId => playerId > 0)
-            .Distinct()
-            .ToArray();
-        return snapshot.Length > 0 && tryRunBackgroundOperation(
-            () => MonitorEntryAsync(matchingId, snapshot),
-            $"matching-entry-watchdog:{matchingId}");
+        if (humanPlayerIds.Count == 0)
+            return false;
+
+        long[] playerIds = humanPlayerIds.ToArray();
+        return tryRunBackgroundOperation(
+            () => CheckEntryTimeoutAsync(matchingId, playerIds),
+            $"matching-entry-timeout:{matchingId}");
     }
 
-    private async Task MonitorEntryAsync(long matchingId, IReadOnlyCollection<long> humanPlayerIds)
+    private async Task CheckEntryTimeoutAsync(long matchingId, long[] humanPlayerIds)
     {
         try
         {
             await Task.Delay(MatchingRedisKeys.EntryTimeout, shutdownToken);
-        }
-        catch (OperationCanceledException) when (shutdownToken.IsCancellationRequested)
-        {
-            return;
-        }
+            shutdownToken.ThrowIfCancellationRequested();
 
-        string stateKey = MatchingRedisKeys.EntryStateKey(matchingId);
-        while (!shutdownToken.IsCancellationRequested)
-        {
-            try
+            string stateKey = MatchingRedisKeys.EntryStateKey(matchingId);
+
+            // 아직 입장 대기중이면 취소 (GameServer에서 completed로 바꿨어야 함)
+            bool canceled = await redisOperations.StringSetIfEqualsAsync(
+                stateKey,
+                MatchingRedisKeys.EntryPendingState,
+                MatchingRedisKeys.EntryCanceledState,
+                MatchingRedisKeys.HandoffStateLifetime);
+            if (!canceled)
             {
-                bool canceled = await redisOperations.StringSetIfEqualsAsync(
-                    stateKey,
-                    MatchingRedisKeys.EntryPendingState,
-                    MatchingRedisKeys.EntryCanceledState,
-                    MatchingRedisKeys.HandoffStateLifetime);
-                if (!canceled)
-                {
-                    var state = await redisOperations.StringGetAsync(stateKey);
-                    if (!state.IsNullOrEmpty &&
-                        string.Equals(state.ToString(), MatchingRedisKeys.EntryCompletedState,
-                            StringComparison.Ordinal))
-                        return;
-                    if (state.IsNullOrEmpty ||
-                        !string.Equals(state.ToString(), MatchingRedisKeys.EntryCanceledState,
-                            StringComparison.Ordinal))
-                    {
-                        throw new InvalidOperationException(
-                            $"Entry state for match {matchingId} is ambiguous: '{state}'.");
-                    }
-                }
-
-                logger.LogWarning(
-                    "Matching entry timed out; rolling back the whole human roster: MatchingId={MatchingId}, Players={PlayerCount}",
-                    matchingId,
-                    humanPlayerIds.Count);
-                await DeleteHandoffBestEffortAsync(matchingId);
-                foreach (long playerId in humanPlayerIds)
-                {
-                    try
-                    {
-                        await NotifyEntryFailedAsync(playerId, matchingId);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(
-                            ex,
-                            "Matching entry timeout notification failed: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                            playerId,
-                            matchingId);
-                    }
-
-                    sessions.ClearMatchingAssignment(playerId, matchingId);
-                    await reservations.ReleaseMatchingReservationAsync(playerId, matchingId);
-                }
-                return;
-            }
-            catch (Exception ex)
-            {
-                // 읽기 실패는 모호하다: Game Server가 entry을 commit했을 수 있다. Redis가 불안정한 동안
-                // 거짓 rollback을 내지 않도록 재시도한다.
-                logger.LogWarning(
-                    ex,
-                    "Could not verify matching entry timeout; retrying: MatchingId={MatchingId}",
-                    matchingId);
-                try
-                {
-                    await Task.Delay(TimeSpan.FromSeconds(1), shutdownToken);
-                }
-                catch (OperationCanceledException) when (shutdownToken.IsCancellationRequested)
+                var entryState = await redisOperations.StringGetAsync(stateKey);
+                if (string.Equals(entryState.ToString(), MatchingRedisKeys.EntryCompletedState, StringComparison.Ordinal))
                 {
                     return;
                 }
+
+                // 취소된 상태가 확인될 때만 정리한다. 없거나 알 수 없는 상태는 임의로 지우지 않는다.
+                if (!string.Equals(entryState.ToString(), MatchingRedisKeys.EntryCanceledState, StringComparison.Ordinal))
+                {
+                    logger.LogWarning(
+                        "Skipped entry timeout cleanup because entry state is uncertain: MatchingId={MatchingId}, State={State}",
+                        matchingId, entryState.ToString());
+                    return;
+                }
             }
+
+            logger.LogWarning(
+                "Matching entry timed out; rolling back the whole human roster: MatchingId={MatchingId}, Players={PlayerCount}",
+                matchingId, humanPlayerIds.Length);
+            await DeleteMatchEntryDataAsync(matchingId);
+            foreach (long playerId in humanPlayerIds)
+            {
+                try
+                {
+                    await NotifyEntryFailedAsync(playerId, matchingId);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Matching entry timeout notification failed: PlayerId={PlayerId}, MatchingId={MatchingId}", playerId, matchingId);
+                }
+
+                try
+                {
+                    sessions.ClearMatchingAssignment(playerId, matchingId);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Matching assignment cleanup failed: PlayerId={PlayerId}, MatchingId={MatchingId}", playerId, matchingId);
+                }
+
+                try
+                {
+                    await reservations.ReleaseMatchingReservationAsync(playerId, matchingId);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Matching reservation cleanup failed; TTL remains as fallback: PlayerId={PlayerId}, MatchingId={MatchingId}", playerId, matchingId);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (shutdownToken.IsCancellationRequested)
+        {
+            // 서버 종료 시 입장 대기를 중단한다.
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not verify entry timeout; TTL remains as fallback: MatchingId={MatchingId}", matchingId);
         }
     }
 
-    /// <summary>
-    ///     rollback된 매치의 인간 전원에게 matchingId가 포함된 실패 패킷을 보낸다. 요청 ID가 다른 세션은 건너뛴다.
-    /// </summary>
     public async Task NotifyBatchFailedAsync(IEnumerable<MatchingQueueData> players, long matchingId)
     {
         try
         {
             foreach (var player in players.DistinctBy(request => request.PlayerId))
             {
-                if (!await sessions.DeliverMatchingFailedAsync(player.PlayerId, matchingId, player.RequestId, ErrorCode.MATCHING_FAILED))
+                if (await sessions.DeliverMatchingFailedAsync(player.PlayerId, matchingId, player.RequestId, ErrorCode.MATCHING_FAILED))
                 {
-                    logger.LogWarning(
-                        "Matching rollback notification was rejected or found no session: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                        player.PlayerId,
-                        matchingId);
+                    return;
                 }
+                logger.LogWarning("Matching rollback notification was rejected or found no session: PlayerId={PlayerId}, MatchingId={MatchingId}", player.PlayerId, matchingId);
             }
         }
         catch (Exception ex)
@@ -379,17 +280,12 @@ internal sealed class MatchEntryService(
         }
     }
 
-    /// <summary>
-    ///     입장 실패 패킷을 보낸다. 이 매치에 배정되지 않은 세션은 보낼 것이 없고, 세션이 아예 없으면 false다.
-    /// </summary>
     public async Task NotifyEntryFailedAsync(long playerId, long matchingId)
     {
-        if (!await sessions.DeliverEntryFailedAsync(playerId, matchingId, ErrorCode.MATCHING_FAILED))
+        if (await sessions.DeliverEntryFailedAsync(playerId, matchingId, ErrorCode.MATCHING_FAILED))
         {
-            logger.LogWarning(
-                "Matching entry failure was rejected or found no session: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                playerId,
-                matchingId);
+            return;
         }
+        logger.LogWarning("Matching entry failure was rejected or found no session: PlayerId={PlayerId}, MatchingId={MatchingId}", playerId, matchingId);
     }
 }

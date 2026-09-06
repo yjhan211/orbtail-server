@@ -5,8 +5,8 @@ using user_server.matching.queue;
 namespace user_server.matching;
 
 /// <summary>
-///     매치 확정 뒤 Game Server 인계에 필요한 쓰기와 클라이언트 전달을 담당하는 port.
-///     <see cref="MatchCreationService" />가 테스트에서 전달·마커 순서를 관찰할 수 있도록 분리한다.
+///     매치 구성 저장, 입장 티켓과 매칭 결과 전달, 입장 준비 및 실패 정리를 제공한다.
+///     매치 생성 흐름을 실제 Redis·티켓 발급·세션 전달 없이 테스트할 수 있도록 인터페이스로 분리.
 /// </summary>
 internal interface IMatchEntryService
 {
@@ -18,8 +18,8 @@ internal interface IMatchEntryService
         GameServerAllocation gameServer);
 
     public Task MarkEntryReadyAsync(long matchingId);
-    public bool StartEntryWatchdog(long matchingId, IReadOnlyCollection<long> humanPlayerIds);
+    public bool StartEntryTimeoutCheck(long matchingId, IReadOnlyCollection<long> humanPlayerIds);
     public Task<bool> TryCancelEntryForRollbackAsync(long matchingId);
-    public Task DeleteHandoffBestEffortAsync(long matchingId);
+    public Task DeleteMatchEntryDataAsync(long matchingId);
     public Task NotifyBatchFailedAsync(IEnumerable<MatchingQueueData> players, long matchingId);
 }
