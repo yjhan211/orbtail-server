@@ -61,7 +61,7 @@ internal sealed class MatchCreationService(
     private async Task RunQueueGroupsAsync()
     {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        MatchingQueueData[] waiting = await queue.ReadWaitingEntriesAsync(now - MatchingTimeoutSeconds);
+        MatchingQueueData[] waiting = await queue.ReadWaitingRequestsAsync(now - MatchingTimeoutSeconds);
         if (waiting.Length == 0) return;
         waiting = MatchingQueue.SortByRequestTime(waiting);
 
@@ -74,10 +74,10 @@ internal sealed class MatchCreationService(
             if (shutdownToken.IsCancellationRequested)
                 return;
 
-            MatchingQueueData[] groupEntries = waiting.Skip(i).Take(playersPerMatch).ToArray();
+            MatchingQueueData[] groupRequests = waiting.Skip(i).Take(playersPerMatch).ToArray();
             // 빈자리는 봇으로 채운다. 솔로 검증은 즉시 1인 자족 매치를 만든다.
-            int botsNeeded = Math.Max(0, overrides.GamePlayersPerMatch - groupEntries.Length);
-            await CreateMatchAsync(groupEntries, botsNeeded, MatchCreationOrigin.Queue);
+            int botsNeeded = Math.Max(0, overrides.GamePlayersPerMatch - groupRequests.Length);
+            await CreateMatchAsync(groupRequests, botsNeeded, MatchCreationOrigin.Queue);
         }
     }
 
@@ -90,12 +90,12 @@ internal sealed class MatchCreationService(
         if (shutdownToken.IsCancellationRequested || !overrides.AllowsBotFill) return;
 
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        MatchingQueueData[] longWaitEntries = await queue.ReadWaitingEntriesAsync(now - BotFillTimeoutSeconds);
+        MatchingQueueData[] longWaitingRequests = await queue.ReadWaitingRequestsAsync(now - BotFillTimeoutSeconds);
 
         int gamePlayersPerMatch = overrides.GamePlayersPerMatch;
-        if (longWaitEntries.Length < overrides.PlayersPerMatch || longWaitEntries.Length >= gamePlayersPerMatch) return;
+        if (longWaitingRequests.Length < overrides.PlayersPerMatch || longWaitingRequests.Length >= gamePlayersPerMatch) return;
 
-        await CreateMatchAsync(longWaitEntries, gamePlayersPerMatch - longWaitEntries.Length, MatchCreationOrigin.BotFill);
+        await CreateMatchAsync(longWaitingRequests, gamePlayersPerMatch - longWaitingRequests.Length, MatchCreationOrigin.BotFill);
     }
 
     /// <summary>
@@ -103,7 +103,7 @@ internal sealed class MatchCreationService(
     ///     전달이 불완전하면 되돌린다(false). matchingId 발급 뒤 예외는 롤백 후 호출자에게 전파돼 이번 pass를 끝낸다.
     /// </summary>
     internal async Task<bool> CreateMatchAsync(
-        MatchingQueueData[] groupEntries,
+        MatchingQueueData[] groupRequests,
         int botsNeeded,
         MatchCreationOrigin origin)
     {
@@ -112,7 +112,7 @@ internal sealed class MatchCreationService(
         if (gameServer == null)
             return false;
 
-        MatchingReservationLease? reservationLease = await reservations.TryAcquireAsync(groupEntries);
+        MatchingReservationLease? reservationLease = await reservations.TryAcquireAsync(groupRequests);
         if (reservationLease == null)
         {
             logger.LogInformation("Matching group skipped because another worker owns a player reservation: Origin={Origin}", origin);
@@ -123,9 +123,9 @@ internal sealed class MatchCreationService(
         long matchingId = 0;
         int deliveredPlayerCount = 0;
         int expectedHumanCount = 0;
-        MatchingQueueData[] batchPlayers = groupEntries
-            .Where(entry => entry.PlayerId > 0)
-            .DistinctBy(entry => entry.PlayerId)
+        MatchingQueueData[] batchPlayers = groupRequests
+            .Where(request => request.PlayerId > 0)
+            .DistinctBy(request => request.PlayerId)
             .ToArray();
         try
         {
@@ -135,12 +135,12 @@ internal sealed class MatchCreationService(
 
             logger.LogInformation(
                 "Bot-filled matching: MatchingId={MatchingId}, Real={Real}, Bots={Bot}, Origin={Origin}, GameServer={NodeId}",
-                matchingId, groupEntries.Length, botsNeeded, origin, gameServer.NodeId);
+                matchingId, groupRequests.Length, botsNeeded, origin, gameServer.NodeId);
 
             await overrides.ApplyTwoPlayerTestOutfitAsync(batchPlayers);
             var manifest = new MatchManifest
             {
-                HumanPlayerIds = batchPlayers.Select(entry => entry.PlayerId).ToList(),
+                HumanPlayerIds = batchPlayers.Select(request => request.PlayerId).ToList(),
                 BotCount = botsNeeded,
                 Mode = overrides.MatchMode
             };
@@ -150,27 +150,27 @@ internal sealed class MatchCreationService(
             await handoff.StoreMatchManifestAsync(matchingId, manifest);
 
             // 사람에게 통지하고 commit된 큐 entry를 제거한다.
-            foreach (MatchingQueueData entry in batchPlayers)
+            foreach (MatchingQueueData request in batchPlayers)
             {
 
                 bool delivered = false;
                 try
                 {
-                    delivered = await handoff.DeliverMatchingSuccessAsync(entry, matchingId, gameServer);
+                    delivered = await handoff.DeliverMatchingSuccessAsync(request, matchingId, gameServer);
                     if (delivered)
                         deliveredPlayerCount++;
                 }
                 catch (Exception ex)
                 {
                     logger.LogError(ex,
-                        "Failed to commit matching entry; removing it from this match: PlayerId={PlayerId}, Origin={Origin}",
-                        entry.PlayerId, origin);
+                        "Failed to commit matching request; removing it from this match: PlayerId={PlayerId}, Origin={Origin}",
+                        request.PlayerId, origin);
                 }
                 finally
                 {
                     if (!delivered)
-                        await reservations.ReleaseActiveBestEffortAsync(entry.PlayerId, matchingId);
-                    await queue.RemoveEntryAsync(entry);
+                        await reservations.ReleaseActiveBestEffortAsync(request.PlayerId, matchingId);
+                    await queue.RemoveRequestAsync(request);
                 }
             }
 
@@ -180,7 +180,7 @@ internal sealed class MatchCreationService(
             if (deliveryComplete)
             {
                 await handoff.MarkHandoffReadyAsync(matchingId);
-                if (!handoff.StartAdmissionWatchdog(matchingId, batchPlayers.Select(entry => entry.PlayerId).ToArray()))
+                if (!handoff.StartAdmissionWatchdog(matchingId, batchPlayers.Select(request => request.PlayerId).ToArray()))
                     throw new OperationCanceledException(
                         "Matching admission watchdog could not start during shutdown.");
                 matchCommitted = true;

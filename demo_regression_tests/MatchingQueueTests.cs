@@ -6,7 +6,7 @@ using user_server.matching;
 namespace demo_regression_tests;
 
 /// <summary>
-///     #323 MatchingQueue: 요청 시각 정렬, sanitize의 손상·무효·중복 entry 제거, cutoff 읽기, player별 제거, lock key.
+///     #323 MatchingQueue: 요청 시각 정렬, sanitize의 손상·무효·중복 request 제거, cutoff 읽기, player별 제거, lock key.
 /// </summary>
 public sealed class MatchingQueueTests
 {
@@ -24,7 +24,7 @@ public sealed class MatchingQueueTests
     public void SortByRequestTime_OrdersByRequestTimeThenPlayerId()
     {
         var baseTime = new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        MatchingQueueData[] entries =
+        MatchingQueueData[] requests =
         {
             UserServerMatchingTestData.HumanEntry(30, baseTime.AddSeconds(2)),
             UserServerMatchingTestData.HumanEntry(20, baseTime.AddSeconds(1)),
@@ -32,25 +32,25 @@ public sealed class MatchingQueueTests
             UserServerMatchingTestData.HumanEntry(40, baseTime)
         };
 
-        MatchingQueueData[] sorted = MatchingQueue.SortByRequestTime(entries);
+        MatchingQueueData[] sorted = MatchingQueue.SortByRequestTime(requests);
 
-        Assert.Equal(new long[] { 40, 20, 10, 30 }, sorted.Select(entry => entry.PlayerId));
+        Assert.Equal(new long[] { 40, 20, 10, 30 }, sorted.Select(request => request.PlayerId));
     }
 
     [Fact]
-    public async Task CleanUpEntriesAsync_RemovesMalformedInvalidAndDuplicateEntriesFromQueue()
+    public async Task CleanUpRequestsAsync_RemovesMalformedInvalidAndDuplicateEntriesFromQueue()
     {
         MatchingQueueData valid = UserServerMatchingTestData.HumanEntry(1);
         MatchingQueueData duplicate = UserServerMatchingTestData.HumanEntry(1, requestId: "dup");
         MatchingQueueData zeroId = UserServerMatchingTestData.HumanEntry(0);
         MatchingQueueData botId = UserServerMatchingTestData.HumanEntry(-5);
         byte[] malformed = { 0xC1, 0xFF, 0x00 };
-        byte[][] rawEntries = { UserServerMatchingTestData.RequestBytes(valid), UserServerMatchingTestData.RequestBytes(duplicate), UserServerMatchingTestData.RequestBytes(zeroId), UserServerMatchingTestData.RequestBytes(botId), malformed };
-        foreach (var entry in new[] { valid, duplicate, zeroId, botId })
-            await UserServerMatchingTestData.AddEntryAsync(_cache, entry, 1);
+        byte[][] rawRequestIds = { UserServerMatchingTestData.RequestBytes(valid), UserServerMatchingTestData.RequestBytes(duplicate), UserServerMatchingTestData.RequestBytes(zeroId), UserServerMatchingTestData.RequestBytes(botId), malformed };
+        foreach (var request in new[] { valid, duplicate, zeroId, botId })
+            await UserServerMatchingTestData.AddEntryAsync(_cache, request, 1);
         await _cache.SortedSetAddAsync(MatchingQueue.QueueKey, malformed, 1);
 
-        MatchingQueueData[] result = await _queue.CleanUpEntriesAsync(rawEntries);
+        MatchingQueueData[] result = await _queue.CleanUpRequestsAsync(rawRequestIds);
 
         Assert.Single(result);
         Assert.Equal(1, result[0].PlayerId);
@@ -64,7 +64,7 @@ public sealed class MatchingQueueTests
     }
 
     [Fact]
-    public async Task ReadWaitingEntriesAsync_ReturnsOnlyEntriesAtOrBelowCutoff()
+    public async Task ReadWaitingRequestsAsync_ReturnsOnlyEntriesAtOrBelowCutoff()
     {
         MatchingQueueData old = UserServerMatchingTestData.HumanEntry(1);
         MatchingQueueData exact = UserServerMatchingTestData.HumanEntry(2);
@@ -73,22 +73,22 @@ public sealed class MatchingQueueTests
         await UserServerMatchingTestData.AddEntryAsync(_cache, exact, 100);
         await UserServerMatchingTestData.AddEntryAsync(_cache, fresh, 101);
 
-        MatchingQueueData[] waiting = await _queue.ReadWaitingEntriesAsync(100);
+        MatchingQueueData[] waiting = await _queue.ReadWaitingRequestsAsync(100);
 
-        Assert.Equal(new long[] { 1, 2 }, waiting.Select(entry => entry.PlayerId));
+        Assert.Equal(new long[] { 1, 2 }, waiting.Select(request => request.PlayerId));
         Assert.Equal(3, _cache.SortedSetCount(MatchingQueue.QueueKey));
     }
 
     [Fact]
-    public async Task ReadWaitingEntriesAsync_EmptyQueueReturnsEmpty()
+    public async Task ReadWaitingRequestsAsync_EmptyQueueReturnsEmpty()
     {
-        MatchingQueueData[] waiting = await _queue.ReadWaitingEntriesAsync(long.MaxValue);
+        MatchingQueueData[] waiting = await _queue.ReadWaitingRequestsAsync(long.MaxValue);
 
         Assert.Empty(waiting);
     }
 
     [Fact]
-    public async Task RemovePlayerEntriesAsync_RemovesOnlyThatPlayerAndMalformedEntries()
+    public async Task RemovePlayerRequestsAsync_RemovesOnlyThatPlayerAndMalformedEntries()
     {
         MatchingQueueData mine = UserServerMatchingTestData.HumanEntry(7);
         MatchingQueueData mineStale = UserServerMatchingTestData.HumanEntry(7, requestId: "stale");
@@ -99,12 +99,12 @@ public sealed class MatchingQueueTests
         await UserServerMatchingTestData.AddEntryAsync(_cache, other, 3);
         await _cache.SortedSetAddAsync(MatchingQueue.QueueKey, malformed, 4);
 
-        int removed = await _queue.RemovePlayerEntriesAsync(7);
+        int removed = await _queue.RemovePlayerRequestsAsync(7);
 
         Assert.Equal(3, removed);
         Assert.True(_cache.SortedSetContains(MatchingQueue.QueueKey, UserServerMatchingTestData.RequestBytes(other)));
         Assert.Equal(1, _cache.SortedSetCount(MatchingQueue.QueueKey));
-        Assert.True(_logger.Contains(Microsoft.Extensions.Logging.LogLevel.Warning, "Invalid matching entry removed"));
+        Assert.True(_logger.Contains(Microsoft.Extensions.Logging.LogLevel.Warning, "Invalid matching request removed"));
     }
 
     [Fact]
@@ -118,45 +118,45 @@ public sealed class MatchingQueueTests
     [InlineData("malformed")]
     [InlineData("null")]
     [InlineData("mismatched")]
-    public async Task ReadWaitingEntriesAsync_RemovesInvalidDetailsAndQueueMember(string kind)
+    public async Task ReadWaitingRequestsAsync_RemovesInvalidDetailsAndQueueMember(string kind)
     {
-        var entry = UserServerMatchingTestData.HumanEntry(42);
-        await UserServerMatchingTestData.AddEntryAsync(_cache, entry, 1);
+        var request = UserServerMatchingTestData.HumanEntry(42);
+        await UserServerMatchingTestData.AddEntryAsync(_cache, request, 1);
         if (kind == "missing")
-            await _cache.HashDeleteAsync(MatchingQueue.RequestsKey, entry.RequestId);
+            await _cache.HashDeleteAsync(MatchingQueue.RequestsKey, request.RequestId);
         else
-            await _cache.HashSetAsync(MatchingQueue.RequestsKey, entry.RequestId, kind switch
+            await _cache.HashSetAsync(MatchingQueue.RequestsKey, request.RequestId, kind switch
             {
                 "malformed" => new byte[] { 0xC1 },
                 "null" => new byte[] { 0xC0 },
                 _ => MessagePackSerializer.Serialize(UserServerMatchingTestData.HumanEntry(42, requestId: "other"))
             });
 
-        Assert.Empty(await _queue.ReadWaitingEntriesAsync(long.MaxValue));
+        Assert.Empty(await _queue.ReadWaitingRequestsAsync(long.MaxValue));
         Assert.Equal(0, _cache.SortedSetCount(MatchingQueue.QueueKey));
-        Assert.Null(_cache.GetHash(MatchingQueue.RequestsKey, entry.RequestId));
+        Assert.Null(_cache.GetHash(MatchingQueue.RequestsKey, request.RequestId));
     }
 
     [Fact]
-    public async Task ReadWaitingEntriesAsync_RedisFailureDoesNotDeleteRequests()
+    public async Task ReadWaitingRequestsAsync_RedisFailureDoesNotDeleteRequests()
     {
-        var entry = UserServerMatchingTestData.HumanEntry(42);
-        await UserServerMatchingTestData.AddEntryAsync(_cache, entry, 1);
+        var request = UserServerMatchingTestData.HumanEntry(42);
+        await UserServerMatchingTestData.AddEntryAsync(_cache, request, 1);
         _cache.HashGetError = new TimeoutException();
-        await Assert.ThrowsAsync<TimeoutException>(() => _queue.ReadWaitingEntriesAsync(long.MaxValue));
+        await Assert.ThrowsAsync<TimeoutException>(() => _queue.ReadWaitingRequestsAsync(long.MaxValue));
         Assert.Equal(1, _cache.SortedSetCount(MatchingQueue.QueueKey));
-        Assert.NotNull(_cache.GetHash(MatchingQueue.RequestsKey, entry.RequestId));
+        Assert.NotNull(_cache.GetHash(MatchingQueue.RequestsKey, request.RequestId));
     }
 
     [Fact]
-    public async Task RemoveEntryAsync_RemovesDetailsButPreservesNewRequest()
+    public async Task RemoveRequestAsync_RemovesDetailsButPreservesNewRequest()
     {
         var old = UserServerMatchingTestData.HumanEntry(42, requestId: "old");
         var current = UserServerMatchingTestData.HumanEntry(42, requestId: "current");
         await UserServerMatchingTestData.AddEntryAsync(_cache, old, 1);
         await UserServerMatchingTestData.AddEntryAsync(_cache, current, 2);
-        Assert.True(await _queue.RemoveEntryAsync(old));
-        Assert.False(await _queue.RemoveEntryAsync(old));
+        Assert.True(await _queue.RemoveRequestAsync(old));
+        Assert.False(await _queue.RemoveRequestAsync(old));
         Assert.Null(_cache.GetHash(MatchingQueue.RequestsKey, old.RequestId));
         Assert.NotNull(_cache.GetHash(MatchingQueue.RequestsKey, current.RequestId));
         Assert.True(_cache.SortedSetContains(MatchingQueue.QueueKey, UserServerMatchingTestData.RequestBytes(current)));
@@ -190,10 +190,10 @@ public sealed class MatchingQueueTests
             reader.Skip();
         }
         Assert.Equal(new[] { "playerId", "requestTime", "requestId" }, keys);
-        MatchingQueueData entry = MatchingQueueData.Parse(raw);
+        MatchingQueueData request = MatchingQueueData.Parse(raw);
 
-        Assert.Equal(11, entry.PlayerId);
-        Assert.Equal("request11", entry.RequestId);
-        Assert.Equal(requestTime, entry.RequestTime);
+        Assert.Equal(11, request.PlayerId);
+        Assert.Equal("request11", request.RequestId);
+        Assert.Equal(requestTime, request.RequestTime);
     }
 }

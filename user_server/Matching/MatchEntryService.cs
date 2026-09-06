@@ -2,10 +2,8 @@ using user_server.matching.creation;
 using user_server.matching.queue;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 using network.gamehandoff;
-using network.helpers;
 using network.infrastructure.redis;
 using user_server.sessions;
 
@@ -20,7 +18,7 @@ internal interface IMatchEntryService
     public Task StoreMatchManifestAsync(long matchingId, MatchManifest manifest);
 
     public Task<bool> DeliverMatchingSuccessAsync(
-        MatchingQueueData entry,
+        MatchingQueueData request,
         long matchingId,
         GameServerAllocation gameServer);
 
@@ -66,14 +64,14 @@ internal sealed class MatchEntryService(
     ///     세션이 없거나 요청 ID가 다르면 false. 전송 실패 시 배정을 남기지 않는 것은 세션 쪽 책임이다.
     /// </summary>
     public async Task<bool> DeliverMatchingSuccessAsync(
-        MatchingQueueData entry,
+        MatchingQueueData request,
         long matchingId,
         GameServerAllocation gameServer)
     {
-        long playerId = entry.PlayerId;
+        long playerId = request.PlayerId;
         logger.LogInformation("Processing matched player {DataPlayerId}", playerId);
 
-        string requestId = entry.RequestId;
+        string requestId = request.RequestId;
         if (string.IsNullOrWhiteSpace(requestId))
         {
             logger.LogWarning("Matched player has no valid matching request id: PlayerId={DataPlayerId}", playerId);
@@ -173,7 +171,7 @@ internal sealed class MatchEntryService(
         Exception? lastError = null;
         for (int attempt = 0; attempt < 3; attempt++)
         {
-            string? conflictingState = null;
+            string? conflictingState;
             try
             {
                 bool created = await redisOperations.StringSetIfNotExistsAsync(
@@ -406,7 +404,7 @@ internal sealed class MatchEntryService(
     {
         try
         {
-            foreach (MatchingQueueData player in players.DistinctBy(entry => entry.PlayerId))
+            foreach (var player in players.DistinctBy(request => request.PlayerId))
             {
                 if (!await sessions.DeliverMatchingFailedAsync(player.PlayerId, matchingId, player.RequestId, ErrorCode.MATCHING_FAILED))
                 {

@@ -7,7 +7,7 @@ namespace user_server.matching.queue;
 
 /// <summary>
 ///     Orchestrates matching reservation acquisition, matching-id commit, exact rollback,
-///     cancellation fencing, and lifecycle release while delegating the queue-entry Lua transition.
+///     cancellation fencing, and lifecycle release while delegating the queue-request Lua transition.
 /// </summary>
 internal sealed class MatchingReservationCoordinator(
     IRedisOperations redisOperations,
@@ -22,24 +22,24 @@ internal sealed class MatchingReservationCoordinator(
         return !reservation.IsNullOrEmpty;
     }
 
-    public async Task<MatchingReservationLease?> TryAcquireAsync(IEnumerable<MatchingQueueData> entries)
+    public async Task<MatchingReservationLease?> TryAcquireAsync(IEnumerable<MatchingQueueData> requests)
     {
-        var reservedEntries = entries
-            .Where(entry => entry.PlayerId > 0)
-            .DistinctBy(entry => entry.PlayerId)
+        var reservedRequests = requests
+            .Where(request => request.PlayerId > 0)
+            .DistinctBy(request => request.PlayerId)
             .ToList();
         string reservationId = Guid.NewGuid().ToString("N");
-        var acquiredPlayerIds = new List<long>(reservedEntries.Count);
+        var acquiredPlayerIds = new List<long>(reservedRequests.Count);
 
         try
         {
-            foreach (var reservedEntry in reservedEntries)
+            foreach (var reservedRequest in reservedRequests)
             {
                 bool acquired = await redisOperations.StringSetIfQueueEntryExistsAsync(
                     MatchingHandoffRedisKeys.MatchingQueueKey,
                     MatchingHandoffRedisKeys.MatchingRequestsKey,
-                    reservedEntry.RequestId,
-                    ReservationKey(reservedEntry.PlayerId),
+                    reservedRequest.RequestId,
+                    ReservationKey(reservedRequest.PlayerId),
                     reservationId,
                     ReservationLifetime);
                 if (!acquired)
@@ -48,7 +48,7 @@ internal sealed class MatchingReservationCoordinator(
                     return null;
                 }
 
-                acquiredPlayerIds.Add(reservedEntry.PlayerId);
+                acquiredPlayerIds.Add(reservedRequest.PlayerId);
             }
 
             return new MatchingReservationLease(reservationId, acquiredPlayerIds);

@@ -152,7 +152,7 @@ public sealed class MatchCreationServiceTests
         Assert.Equal(2, _handoff.Deliveries.Count);
         Assert.Contains("cancel:1", _handoff.Events);
         Assert.All(humans, human => Assert.Null(ReservationOf(human.PlayerId)));
-        Assert.True(_logger.Contains(LogLevel.Error, "Failed to commit matching entry"));
+        Assert.True(_logger.Contains(LogLevel.Error, "Failed to commit matching request"));
     }
 
     [Fact]
