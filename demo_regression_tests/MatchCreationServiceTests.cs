@@ -9,7 +9,7 @@ namespace demo_regression_tests;
 
 /// <summary>
 ///     #323 MatchCreationService: 8인 그룹 단일 매치, 3인+봇 5 채움, reservation 경합 skip, 전달 실패 롤백,
-///     전원 success 전달 뒤 admission_ready, 1초 pass의 cutoff·정원 규칙.
+///     전원 success 전달 뒤 entry_ready, 1초 pass의 cutoff·정원 규칙.
 /// </summary>
 public sealed class MatchCreationServiceTests
 {

@@ -236,7 +236,7 @@ internal sealed class MatchEntryService(
         // 알 수 없는 terminal 상태는 Game Server가 이미 완료했을 수 있는 매치를 되돌릴 권한이 아니다.
         // entry/reservation TTL이 복구 fallback으로 남는다.
         logger.LogError(
-            "Skipped ambiguous matching rollback after bounded admission-state reconciliation: MatchingId={MatchingId}",
+            "Skipped ambiguous matching rollback after bounded entry-state reconciliation: MatchingId={MatchingId}",
             matchingId);
         return false;
     }

@@ -11,8 +11,7 @@ namespace network.common
         public static readonly TimeSpan EntryReservationLifetime = TimeSpan.FromMinutes(2);
 
         public const string ManifestField = "manifest";
-        // 코드 명칭은 Entry로 통일하되, 기존 Redis 데이터와 호환되도록 저장 문자열은 유지한다.
-        public const string EntryReadyField = "admission_ready";
+        public const string EntryReadyField = "entry_ready";
         public const byte EntryReadyValue = 1;
         public const string EntryPendingState = "pending";
         public const string EntryCompletedState = "completed";
@@ -28,9 +27,8 @@ namespace network.common
 
         public static string Key(long matchingId) => $"matching:{matchingId}:handoff";
 
-        // 기존 데이터와 같은 키를 읽는다.
         public static string EntryStateKey(long matchingId) =>
-            $"matching:{matchingId}:admission-state";
+            $"matching:{matchingId}:entry-state";
 
         public static string AdmittedPlayerField(long playerId) => $"admitted:{playerId}";
 

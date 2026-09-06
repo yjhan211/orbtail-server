@@ -21,8 +21,7 @@ internal sealed class NatsPlayerSessionRouter(
 {
     private const string MatchingSuccessSubject = "user_server.session.deliver.matching_success";
     private const string MatchingFailedSubject = "user_server.session.deliver.matching_failed";
-    // 기존 서버와 통신할 수 있도록 subject 문자열은 유지한다.
-    private const string EntryFailedSubject = "user_server.session.deliver.admission_failed";
+    private const string EntryFailedSubject = "user_server.session.deliver.entry_failed";
     private const string ClearSubject = "user_server.session.clear";
     private const string LoginSubject = "user_server.session.login";
 
