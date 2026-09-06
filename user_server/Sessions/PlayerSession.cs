@@ -394,20 +394,34 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
     internal async Task<string?> TryBeginMatchingRequestAsync(long playerId)
     {
         if (Connection.IsReleased)
+        {
             return null;
+        }
+
         if (_matching.TryBegin(out string? requestId, out long assignedMatchingId))
+        {
             return requestId;
+        }
+
         if (assignedMatchingId == 0)
+        {
             return null;
+        }
 
         if (await _matchingManager.HasMatchingClaimAsync(playerId))
+        {
             return null;
+        }
 
         if (Connection.IsReleased)
+        {
             return null;
+        }
         requestId = _matching.TryReplaceStale(assignedMatchingId);
         if (requestId == null)
+        {
             return null;
+        }
 
         Logger.LogInformation("Cleared stale local matching assignment after Redis claim disappeared: PlayerId={PlayerId}, MatchingId={MatchingId}",
             playerId, assignedMatchingId);
@@ -422,7 +436,9 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         string? requestId = ActiveMatchingRequestId;
         var errorCode = await _matchingManager.CancelMatching(PlayerId.Value);
         if (errorCode == ErrorCode.SUCCESS && requestId != null)
+        {
             _matching.ClearRequest(requestId);
+        }
 
         using var packet = PacketMaker.U_TO_C_MATCHING_CANCEL(errorCode);
         TrySend(packet);
@@ -431,9 +447,14 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
     bool IMatchingSessionEndpoint.TryDeliverMatchingSuccess(long matchingId, string requestId, Packet packet)
     {
         if (Connection.IsReleased || !_matching.TryAssign(matchingId, requestId))
+        {
             return false;
+        }
+
         if (TrySend(packet))
+        {
             return true;
+        }
 
         _matching.Clear(matchingId);
         return false;
@@ -442,14 +463,18 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
     bool IMatchingSessionEndpoint.TryDeliverMatchingFailed(long matchingId, string requestId, Packet packet)
     {
         if (!_matching.FailRequest(requestId, matchingId))
+        {
             return false;
+        }
         return TrySend(packet);
     }
 
     bool IMatchingSessionEndpoint.TryDeliverAdmissionFailed(long matchingId, Packet packet)
     {
         if (!_matching.FailAdmission(matchingId))
+        {
             return true;
+        }
         return TrySend(packet);
     }
 

@@ -68,7 +68,7 @@ internal sealed class NatsPlayerSessionRouter(
         var local = getLocalSession(playerId);
         if (local != null)
         {
-            using var packet = PacketMaker.U_TO_C_MATCHING_FAILED(errorCode, matchingId);
+            using var packet = CreateMatchingFailedPacket(errorCode, matchingId);
             return Task.FromResult(local.TryDeliverMatchingFailed(matchingId, requestId, packet));
         }
 
@@ -88,7 +88,7 @@ internal sealed class NatsPlayerSessionRouter(
         var local = getLocalSession(playerId);
         if (local != null)
         {
-            using var packet = PacketMaker.U_TO_C_MATCHING_FAILED(errorCode, matchingId);
+            using var packet = CreateMatchingFailedPacket(errorCode, matchingId);
             return Task.FromResult(local.TryDeliverAdmissionFailed(matchingId, packet));
         }
 
@@ -171,7 +171,7 @@ internal sealed class NatsPlayerSessionRouter(
         }
 
         return HandleDelivery(subject, request.OriginNodeId, request.PlayerId, request.MatchingId,
-            () => PacketMaker.U_TO_C_MATCHING_FAILED(request.ErrorCode, request.MatchingId),
+            () => CreateMatchingFailedPacket(request.ErrorCode, request.MatchingId),
             (session, packet) => session.TryDeliverMatchingFailed(request.MatchingId, request.RequestId, packet));
     }
 
@@ -184,7 +184,7 @@ internal sealed class NatsPlayerSessionRouter(
         }
 
         return HandleDelivery(subject, request.OriginNodeId, request.PlayerId, request.MatchingId,
-            () => PacketMaker.U_TO_C_MATCHING_FAILED(request.ErrorCode, request.MatchingId),
+            () => CreateMatchingFailedPacket(request.ErrorCode, request.MatchingId),
             (session, packet) => session.TryDeliverAdmissionFailed(request.MatchingId, packet));
     }
 
@@ -199,8 +199,7 @@ internal sealed class NatsPlayerSessionRouter(
 
         using var packet = createPacket();
         bool delivered = deliver(localSession, packet);
-        logger.LogInformation(
-            "Remote session delivery handled: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}, From={Origin}, Delivered={Delivered}",
+        logger.LogInformation("Remote session delivery handled: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}, From={Origin}, Delivered={Delivered}",
             subject, playerId, matchingId, originNodeId, delivered);
         return Task.FromResult<byte[]?>(delivered ? Delivered : Rejected);
     }
@@ -211,6 +210,9 @@ internal sealed class NatsPlayerSessionRouter(
         PacketMaker.U_TO_C_MATCHING_SUCCESS(
             result.MatchingId, result.GameServerIp, result.GameServerPort,
             result.GameEndTimestamp, result.GameHandoffTicket, result.PlayerRoster);
+
+    private static Packet CreateMatchingFailedPacket(ErrorCode errorCode, long matchingId) =>
+        PacketMaker.U_TO_C_MATCHING_FAILED(errorCode, matchingId);
 
     private void HandleClear(byte[] body)
     {
