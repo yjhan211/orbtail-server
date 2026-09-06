@@ -31,7 +31,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
     private readonly string _nodeId;
     private readonly string _sessionId = Guid.NewGuid().ToString("N");
 
-    private readonly MatchingAssignment _matching = new();
+    private readonly MatchingAssignment _matchingAssignment = new();
     private PlayerSessionLease? _sessionLease;
     private long _sessionGeneration;
 
@@ -68,7 +68,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
     private new long? PlayerId { get; set; }
     private PlayerInfo? PlayerInfo { get; set; }
     internal long SessionGeneration => Volatile.Read(ref _sessionGeneration);
-    internal string? ActiveMatchingRequestId => _matching.ActiveRequestId;
+    internal string? ActiveMatchingRequestId => _matchingAssignment.ActiveRequestId;
 
     protected override async Task<bool> CanProcessMessageAsync(Protocol protocolId)
     {
@@ -381,11 +381,11 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         }
         catch
         {
-            _matching.ClearRequest(requestId);
+            _matchingAssignment.ClearRequest(requestId);
             throw;
         }
         if (errorCode != ErrorCode.SUCCESS)
-            _matching.ClearRequest(requestId);
+            _matchingAssignment.ClearRequest(requestId);
 
         using var packet = PacketMaker.U_TO_C_MATCHING(errorCode);
         TrySend(packet);
@@ -398,7 +398,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
             return null;
         }
 
-        if (_matching.TryBegin(out string? requestId, out long assignedMatchingId))
+        if (_matchingAssignment.TryBegin(out string? requestId, out long assignedMatchingId))
         {
             return requestId;
         }
@@ -417,7 +417,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         {
             return null;
         }
-        requestId = _matching.TryReplaceStale(assignedMatchingId);
+        requestId = _matchingAssignment.TryRestart(assignedMatchingId);
         if (requestId == null)
         {
             return null;
@@ -437,7 +437,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         var errorCode = await _matchingManager.CancelMatching(PlayerId.Value);
         if (errorCode == ErrorCode.SUCCESS && requestId != null)
         {
-            _matching.ClearRequest(requestId);
+            _matchingAssignment.ClearRequest(requestId);
         }
 
         using var packet = PacketMaker.U_TO_C_MATCHING_CANCEL(errorCode);
@@ -446,7 +446,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
 
     bool IMatchingSessionEndpoint.TryDeliverMatchingSuccess(long matchingId, string requestId, Packet packet)
     {
-        if (Connection.IsReleased || !_matching.TryAssign(matchingId, requestId))
+        if (Connection.IsReleased || !_matchingAssignment.TryAssign(matchingId, requestId))
         {
             return false;
         }
@@ -456,13 +456,13 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
             return true;
         }
 
-        _matching.Clear(matchingId);
+        _matchingAssignment.Clear(matchingId);
         return false;
     }
 
     bool IMatchingSessionEndpoint.TryDeliverMatchingFailed(long matchingId, string requestId, Packet packet)
     {
-        if (!_matching.FailRequest(requestId, matchingId))
+        if (!_matchingAssignment.FailRequest(requestId, matchingId))
         {
             return false;
         }
@@ -471,14 +471,14 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
 
     bool IMatchingSessionEndpoint.TryDeliverAdmissionFailed(long matchingId, Packet packet)
     {
-        if (!_matching.FailAdmission(matchingId))
+        if (!_matchingAssignment.FailEntry(matchingId))
         {
             return true;
         }
         return TrySend(packet);
     }
 
-    void IMatchingSessionEndpoint.ClearMatchingAssignment(long matchingId) => _matching.Clear(matchingId);
+    void IMatchingSessionEndpoint.ClearMatchingAssignment(long matchingId) => _matchingAssignment.Clear(matchingId);
 
     // ========== 기타 ==========
 
@@ -583,7 +583,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         if (!cleanupMatching)
             return;
 
-        long matchingId = _matching.Take();
+        long matchingId = _matchingAssignment.TakeAndClear();
         if (matchingId > 0)
             await _matchingManager.ReleaseMatchingClaimAsync(playerId, matchingId);
         else

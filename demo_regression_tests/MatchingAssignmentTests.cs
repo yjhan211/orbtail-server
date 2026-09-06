@@ -1,4 +1,4 @@
-using user_server.matching;
+using user_server.sessions;
 
 namespace demo_regression_tests;
 
@@ -20,7 +20,7 @@ public sealed class MatchingAssignmentTests
         Assert.False(state.TryBegin(out _, out blocking)); // 배정됨
         Assert.Equal(42, blocking);
 
-        Assert.Equal(42, state.Take());
+        Assert.Equal(42, state.TakeAndClear());
         Assert.Null(state.ActiveRequestId);
         Assert.True(state.TryBegin(out _, out _));
     }
@@ -48,14 +48,14 @@ public sealed class MatchingAssignmentTests
         // 그사이 다른 경로가 배정을 지우고 새 요청을 열었다 — 낡은 복구는 지지 않는다
         state.Clear(42);
         state.TryBegin(out string? concurrent, out _);
-        Assert.Null(state.TryReplaceStale(42));
+        Assert.Null(state.TryRestart(42));
         Assert.Equal(concurrent, state.ActiveRequestId);
 
         // 정상 경로: 배정 그대로면 교체된다
         var fresh = new MatchingAssignment();
         fresh.TryBegin(out string? old, out _);
         fresh.TryAssign(7, old!);
-        string? replaced = fresh.TryReplaceStale(7);
+        string? replaced = fresh.TryRestart(7);
         Assert.NotNull(replaced);
         Assert.NotEqual(old, replaced);
     }
@@ -67,8 +67,8 @@ public sealed class MatchingAssignmentTests
         state.TryBegin(out string? requestId, out _);
         state.TryAssign(42, requestId!);
 
-        Assert.False(state.FailAdmission(99));
-        Assert.True(state.FailAdmission(42));
+        Assert.False(state.FailEntry(99));
+        Assert.True(state.FailEntry(42));
         Assert.Null(state.ActiveRequestId);
 
         state.TryBegin(out requestId, out _);
