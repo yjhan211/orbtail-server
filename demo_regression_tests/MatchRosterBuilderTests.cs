@@ -24,20 +24,20 @@ public sealed class MatchRosterBuilderTests
         return new MatchRosterBuilder(_cache, _logger);
     }
 
-    private static List<MatchingQueueEntry> MixedGroup(int humans, int bots)
+    private static List<MatchingQueueData> MixedGroup(int humans, int bots)
     {
-        var entries = new List<MatchingQueueEntry>();
+        var entries = new List<MatchingQueueData>();
         for (int i = 1; i <= humans; i++)
             entries.Add(UserServerMatchingTestData.HumanEntry(100 + i));
         for (int i = 1; i <= bots; i++)
-            entries.Add(MatchingQueueEntry.CreateBot(-i));
+            entries.Add(MatchingQueueData.CreateBot(-i));
         return entries;
     }
 
     [Fact]
     public void BuildManifest_SplitsHumansAndBotsAndDropsDuplicates()
     {
-        List<MatchingQueueEntry> group = MixedGroup(3, 5);
+        List<MatchingQueueData> group = MixedGroup(3, 5);
         group.Add(UserServerMatchingTestData.HumanEntry(101));
 
         MatchManifest manifest = MatchRosterBuilder.BuildManifest(group);
@@ -50,7 +50,7 @@ public sealed class MatchRosterBuilderTests
     [Fact]
     public void BuildManifest_EmptyGroupIsEmpty()
     {
-        MatchManifest manifest = MatchRosterBuilder.BuildManifest(new List<MatchingQueueEntry>());
+        MatchManifest manifest = MatchRosterBuilder.BuildManifest(new List<MatchingQueueData>());
 
         Assert.Empty(manifest.HumanPlayerIds);
         Assert.Empty(manifest.BotPlayerIds);
@@ -59,7 +59,7 @@ public sealed class MatchRosterBuilderTests
     [Fact]
     public void BuildManifest_PreservesRequestedMatchMode()
     {
-        List<MatchingQueueEntry> group = MixedGroup(1, 0);
+        List<MatchingQueueData> group = MixedGroup(1, 0);
 
         MatchManifest manifest = MatchRosterBuilder.BuildManifest(group, MatchMode.SoloMapValidation);
 
@@ -86,7 +86,7 @@ public sealed class MatchRosterBuilderTests
     [Fact]
     public async Task BuildPlayerRosterAsync_FallsBackToDefaultNameWhenPlayerInfoIsMissing()
     {
-        List<MatchingQueueEntry> group = MixedGroup(2, 1);
+        List<MatchingQueueData> group = MixedGroup(2, 1);
 
         List<PlayerInfo> roster = await CreateBuilder().BuildPlayerRosterAsync(group);
 

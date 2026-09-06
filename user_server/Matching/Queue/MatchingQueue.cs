@@ -53,15 +53,15 @@ internal sealed class MatchingQueue(
             }
 
             var matchingNow = DateTimeOffset.UtcNow;
-            var entry = MatchingQueueEntry.FromData(new MatchingQueueData
+            var entry = new MatchingQueueData
             {
                 PlayerId = playerId,
                 RequestTime = matchingNow.UtcDateTime,
                 RequestId = requestId!
-            });
+            };
 
             bool added = await redisOperations.SortedSetAddWithHashAsync(
-                QueueKey, RequestsKey, entry.RequestId, MessagePackSerializer.Serialize(entry.Data), matchingNow.ToUnixTimeSeconds());
+                QueueKey, RequestsKey, entry.RequestId, MessagePackSerializer.Serialize(entry), matchingNow.ToUnixTimeSeconds());
             if (!added)
             {
                 return ErrorCode.MATCHING_ALREADY_IN_QUEUE;
@@ -125,7 +125,7 @@ internal sealed class MatchingQueue(
         return removedCount;
     }
 
-    public async Task<MatchingQueueEntry[]> ReadWaitingEntriesAsync(long cutoffUnixSeconds)
+    public async Task<MatchingQueueData[]> ReadWaitingEntriesAsync(long cutoffUnixSeconds)
     {
         byte[][] rawEntries = await redisOperations.SortedSetRangeByScoreAsync(
             QueueKey,
@@ -136,11 +136,11 @@ internal sealed class MatchingQueue(
         return await CleanUpEntriesAsync(rawEntries);
     }
 
-    internal async Task<MatchingQueueEntry[]> CleanUpEntriesAsync(IEnumerable<byte[]> rawEntries)
+    internal async Task<MatchingQueueData[]> CleanUpEntriesAsync(IEnumerable<byte[]> rawEntries)
     {
         byte[][] requestIds = rawEntries.ToArray();
         var details = await ReadDetailsAsync(requestIds);
-        var validEntries = new List<MatchingQueueEntry>();
+        var validEntries = new List<MatchingQueueData>();
         var seenPlayerIds = new HashSet<long>();
 
         for (int i = 0; i < requestIds.Length; i++)
@@ -159,7 +159,7 @@ internal sealed class MatchingQueue(
         return validEntries.ToArray();
     }
 
-    public Task<bool> RemoveEntryAsync(MatchingQueueEntry entry)
+    public Task<bool> RemoveEntryAsync(MatchingQueueData entry)
     {
         return redisOperations.SortedSetRemoveWithHashAsync(QueueKey, RequestsKey, Encoding.UTF8.GetBytes(entry.RequestId));
     }
@@ -171,14 +171,14 @@ internal sealed class MatchingQueue(
             : redisOperations.HashGetAsync(RequestsKey, requestIds.Select(id => (RedisValue)id).ToArray());
     }
 
-    private MatchingQueueEntry? ReadEntry(byte[] member, RedisValue detail)
+    private MatchingQueueData? ReadEntry(byte[] member, RedisValue detail)
     {
         string requestId = Encoding.UTF8.GetString(member);
         if (MatchingQueueData.IsValidRequestId(requestId) && !detail.IsNullOrEmpty)
         {
             try
             {
-                var entry = MatchingQueueEntry.Parse((byte[])detail!);
+                var entry = MatchingQueueData.Parse((byte[])detail!);
                 if (entry.PlayerId > 0 && string.Equals(entry.RequestId, requestId, StringComparison.Ordinal))
                     return entry;
             }
@@ -192,7 +192,7 @@ internal sealed class MatchingQueue(
         return null;
     }
 
-    public static MatchingQueueEntry[] SortByRequestTime(IEnumerable<MatchingQueueEntry> entries)
+    public static MatchingQueueData[] SortByRequestTime(IEnumerable<MatchingQueueData> entries)
     {
         return entries
             .OrderBy(entry => entry.RequestTime)

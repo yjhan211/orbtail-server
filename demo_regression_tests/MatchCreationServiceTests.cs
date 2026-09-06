@@ -34,9 +34,9 @@ public sealed class MatchCreationServiceTests
         return new MatchCreationService(_cache, _queue, _reservations, rosterBuilder, _handoff, _gameServers, overrides, shutdown, _logger);
     }
 
-    private async Task<MatchingQueueEntry[]> EnqueueHumansAsync(int count, double score = 1)
+    private async Task<MatchingQueueData[]> EnqueueHumansAsync(int count, double score = 1)
     {
-        var entries = new MatchingQueueEntry[count];
+        var entries = new MatchingQueueData[count];
         for (int i = 0; i < count; i++)
         {
             entries[i] = UserServerMatchingTestData.HumanEntry(1_000 + i);
@@ -51,7 +51,7 @@ public sealed class MatchCreationServiceTests
     [Fact]
     public async Task CreateMatchAsync_WithoutGameServerNodeLeavesQueueAndReservationsUntouched()
     {
-        MatchingQueueEntry[] humans = await EnqueueHumansAsync(8);
+        MatchingQueueData[] humans = await EnqueueHumansAsync(8);
         _gameServers.Allocation = null;
 
         bool committed = await CreatePass().CreateMatchAsync(humans, 0, MatchCreationOrigin.Queue);
@@ -67,7 +67,7 @@ public sealed class MatchCreationServiceTests
     [Fact]
     public async Task CreateMatchAsync_EightHumansMakeOneMatchWithoutBots()
     {
-        MatchingQueueEntry[] humans = await EnqueueHumansAsync(8);
+        MatchingQueueData[] humans = await EnqueueHumansAsync(8);
 
         bool committed = await CreatePass().CreateMatchAsync(humans, 0, MatchCreationOrigin.Queue);
 
@@ -90,7 +90,7 @@ public sealed class MatchCreationServiceTests
     [Fact]
     public async Task CreateMatchAsync_ThreeHumansAreFilledWithFiveBots()
     {
-        MatchingQueueEntry[] humans = await EnqueueHumansAsync(3);
+        MatchingQueueData[] humans = await EnqueueHumansAsync(3);
 
         bool committed = await CreatePass().CreateMatchAsync(humans, 5, MatchCreationOrigin.Queue);
 
@@ -109,7 +109,7 @@ public sealed class MatchCreationServiceTests
     [Fact]
     public async Task CreateMatchAsync_SuccessPacketsReachEveryHumanBeforeAdmissionReady()
     {
-        MatchingQueueEntry[] humans = await EnqueueHumansAsync(4);
+        MatchingQueueData[] humans = await EnqueueHumansAsync(4);
 
         await CreatePass().CreateMatchAsync(humans, 4, MatchCreationOrigin.Queue);
 
@@ -130,7 +130,7 @@ public sealed class MatchCreationServiceTests
     [Fact]
     public async Task CreateMatchAsync_RejectedDeliveryRollsBackReservationsHandoffAndNotifiesBatch()
     {
-        MatchingQueueEntry[] humans = await EnqueueHumansAsync(3);
+        MatchingQueueData[] humans = await EnqueueHumansAsync(3);
         _handoff.DeliverResult = playerId => playerId != 1_001;
 
         bool committed = await CreatePass().CreateMatchAsync(humans, 5, MatchCreationOrigin.Queue);
@@ -148,7 +148,7 @@ public sealed class MatchCreationServiceTests
     [Fact]
     public async Task CreateMatchAsync_DeliveryExceptionIsContainedAndRolledBack()
     {
-        MatchingQueueEntry[] humans = await EnqueueHumansAsync(2);
+        MatchingQueueData[] humans = await EnqueueHumansAsync(2);
         _handoff.ThrowOnDeliver.Add(1_000);
 
         bool committed = await CreatePass().CreateMatchAsync(humans, 6, MatchCreationOrigin.BotFill);
@@ -163,7 +163,7 @@ public sealed class MatchCreationServiceTests
     [Fact]
     public async Task CreateMatchAsync_CompletedAdmissionIsNotRolledBack()
     {
-        MatchingQueueEntry[] humans = await EnqueueHumansAsync(2);
+        MatchingQueueData[] humans = await EnqueueHumansAsync(2);
         _handoff.DeliverResult = playerId => playerId != 1_001;
         _handoff.CancelAdmissionResult = false;
 
@@ -181,7 +181,7 @@ public sealed class MatchCreationServiceTests
     [Fact]
     public async Task CreateMatchAsync_ReservationContentionSkipsGroupWithoutIssuingMatchingId()
     {
-        MatchingQueueEntry[] humans = await EnqueueHumansAsync(2);
+        MatchingQueueData[] humans = await EnqueueHumansAsync(2);
         await _cache.StringSetAsync(MatchingHandoffRedisKeys.ReservationKey(1_001), "other-worker");
 
         bool committed = await CreatePass().CreateMatchAsync(humans, 6, MatchCreationOrigin.Queue);
@@ -197,7 +197,7 @@ public sealed class MatchCreationServiceTests
     [Fact]
     public async Task CreateMatchAsync_WatchdogRefusalDuringShutdownRollsBackAfterReady()
     {
-        MatchingQueueEntry[] humans = await EnqueueHumansAsync(1);
+        MatchingQueueData[] humans = await EnqueueHumansAsync(1);
         _handoff.WatchdogResult = false;
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
@@ -212,9 +212,9 @@ public sealed class MatchCreationServiceTests
     public async Task RunAsync_DefaultRulesMatchEachWaitingHumanSeparatelyWithSevenBots()
     {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        MatchingQueueEntry waitedA = UserServerMatchingTestData.HumanEntry(1);
-        MatchingQueueEntry waitedB = UserServerMatchingTestData.HumanEntry(2);
-        MatchingQueueEntry fresh = UserServerMatchingTestData.HumanEntry(3);
+        MatchingQueueData waitedA = UserServerMatchingTestData.HumanEntry(1);
+        MatchingQueueData waitedB = UserServerMatchingTestData.HumanEntry(2);
+        MatchingQueueData fresh = UserServerMatchingTestData.HumanEntry(3);
         await UserServerMatchingTestData.AddEntryAsync(_cache, waitedA, now - 10);
         await UserServerMatchingTestData.AddEntryAsync(_cache, waitedB, now - 9);
         await UserServerMatchingTestData.AddEntryAsync(_cache, fresh, now);
@@ -237,7 +237,7 @@ public sealed class MatchCreationServiceTests
     {
         var overrides = new DevMatchOverrides(false, true, _cache, new FakeRedLockFactory(), _logger);
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        MatchingQueueEntry player = UserServerMatchingTestData.HumanEntry(1);
+        MatchingQueueData player = UserServerMatchingTestData.HumanEntry(1);
         await UserServerMatchingTestData.AddEntryAsync(_cache, player, now - 10);
 
         await CreatePass(overrides).RunAsync();
@@ -262,7 +262,7 @@ public sealed class MatchCreationServiceTests
     public async Task RunAsync_ShutdownTokenStopsBeforeAnyGroup()
     {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        MatchingQueueEntry waited = UserServerMatchingTestData.HumanEntry(1);
+        MatchingQueueData waited = UserServerMatchingTestData.HumanEntry(1);
         await UserServerMatchingTestData.AddEntryAsync(_cache, waited, now - 10);
         using var shutdown = new CancellationTokenSource();
         shutdown.Cancel();
@@ -278,7 +278,7 @@ public sealed class MatchCreationServiceTests
     {
         var overrides = new DevMatchOverrides(true, false, _cache, new FakeRedLockFactory(), _logger);
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        MatchingQueueEntry alone = UserServerMatchingTestData.HumanEntry(1);
+        MatchingQueueData alone = UserServerMatchingTestData.HumanEntry(1);
         await UserServerMatchingTestData.AddEntryAsync(_cache, alone, now - 100);
 
         await CreatePass(overrides).RunAsync();

@@ -105,7 +105,7 @@ public sealed class DevMatchOverridesTests
     [Fact]
     public async Task ApplyTwoPlayerTestOutfitAsync_IsNoOpWhenDisabled()
     {
-        var entries = new List<MatchingQueueEntry>
+        var entries = new List<MatchingQueueData>
         {
             UserServerMatchingTestData.HumanEntry(1),
             UserServerMatchingTestData.HumanEntry(2)
@@ -123,7 +123,7 @@ public sealed class DevMatchOverridesTests
     public async Task ApplyTwoPlayerTestOutfitAsync_MissingSecondPlayerLogsAndReturns()
     {
         var baseTime = new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var entries = new List<MatchingQueueEntry>
+        var entries = new List<MatchingQueueData>
         {
             UserServerMatchingTestData.HumanEntry(1, baseTime),
             UserServerMatchingTestData.HumanEntry(2, baseTime.AddSeconds(1))

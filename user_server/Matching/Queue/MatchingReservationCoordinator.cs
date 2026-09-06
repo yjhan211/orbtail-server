@@ -24,7 +24,7 @@ internal sealed class MatchingReservationCoordinator(
         return !reservation.IsNullOrEmpty;
     }
 
-    public async Task<MatchingReservationLease?> TryAcquireAsync(IEnumerable<MatchingQueueEntry> entries)
+    public async Task<MatchingReservationLease?> TryAcquireAsync(IEnumerable<MatchingQueueData> entries)
     {
         var reservedEntries = entries
             .Where(entry => entry.IsHuman)

@@ -15,7 +15,7 @@ internal sealed class MatchRosterBuilder(IRedisOperations redisOperations, ILogg
     ///     Game Server가 매치당 한 번 읽는 구성: 사람 ID, 봇 ID, 매치 모드.
     /// </summary>
     public static MatchManifest BuildManifest(
-        IReadOnlyList<MatchingQueueEntry> entries,
+        IReadOnlyList<MatchingQueueData> entries,
         MatchMode mode = MatchMode.Normal)
     {
         return new MatchManifest
@@ -29,7 +29,7 @@ internal sealed class MatchRosterBuilder(IRedisOperations redisOperations, ILogg
     /// <summary>
     ///     성공 패킷에 실을 전원 로스터(이름·착용 아이템). 로드 실패한 사람은 기본 이름으로 대체한다.
     /// </summary>
-    public async Task<List<PlayerInfo>> BuildPlayerRosterAsync(IReadOnlyList<MatchingQueueEntry> entries)
+    public async Task<List<PlayerInfo>> BuildPlayerRosterAsync(IReadOnlyList<MatchingQueueData> entries)
     {
         var roster = new List<PlayerInfo>(entries.Count);
 

@@ -24,7 +24,7 @@ public sealed class MatchingQueueTests
     public void SortByRequestTime_OrdersByRequestTimeThenPlayerId()
     {
         var baseTime = new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        MatchingQueueEntry[] entries =
+        MatchingQueueData[] entries =
         {
             UserServerMatchingTestData.HumanEntry(30, baseTime.AddSeconds(2)),
             UserServerMatchingTestData.HumanEntry(20, baseTime.AddSeconds(1)),
@@ -32,7 +32,7 @@ public sealed class MatchingQueueTests
             UserServerMatchingTestData.HumanEntry(40, baseTime)
         };
 
-        MatchingQueueEntry[] sorted = MatchingQueue.SortByRequestTime(entries);
+        MatchingQueueData[] sorted = MatchingQueue.SortByRequestTime(entries);
 
         Assert.Equal(new long[] { 40, 20, 10, 30 }, sorted.Select(entry => entry.PlayerId));
     }
@@ -40,17 +40,17 @@ public sealed class MatchingQueueTests
     [Fact]
     public async Task CleanUpEntriesAsync_RemovesMalformedInvalidAndDuplicateEntriesFromQueue()
     {
-        MatchingQueueEntry valid = UserServerMatchingTestData.HumanEntry(1);
-        MatchingQueueEntry duplicate = UserServerMatchingTestData.HumanEntry(1, requestId: "dup");
-        MatchingQueueEntry zeroId = UserServerMatchingTestData.HumanEntry(0);
-        MatchingQueueEntry botId = UserServerMatchingTestData.HumanEntry(-5);
+        MatchingQueueData valid = UserServerMatchingTestData.HumanEntry(1);
+        MatchingQueueData duplicate = UserServerMatchingTestData.HumanEntry(1, requestId: "dup");
+        MatchingQueueData zeroId = UserServerMatchingTestData.HumanEntry(0);
+        MatchingQueueData botId = UserServerMatchingTestData.HumanEntry(-5);
         byte[] malformed = { 0xC1, 0xFF, 0x00 };
         byte[][] rawEntries = { UserServerMatchingTestData.RequestBytes(valid), UserServerMatchingTestData.RequestBytes(duplicate), UserServerMatchingTestData.RequestBytes(zeroId), UserServerMatchingTestData.RequestBytes(botId), malformed };
         foreach (var entry in new[] { valid, duplicate, zeroId, botId })
             await UserServerMatchingTestData.AddEntryAsync(_cache, entry, 1);
         await _cache.SortedSetAddAsync(MatchingQueue.QueueKey, malformed, 1);
 
-        MatchingQueueEntry[] result = await _queue.CleanUpEntriesAsync(rawEntries);
+        MatchingQueueData[] result = await _queue.CleanUpEntriesAsync(rawEntries);
 
         Assert.Single(result);
         Assert.Equal(1, result[0].PlayerId);
@@ -66,14 +66,14 @@ public sealed class MatchingQueueTests
     [Fact]
     public async Task ReadWaitingEntriesAsync_ReturnsOnlyEntriesAtOrBelowCutoff()
     {
-        MatchingQueueEntry old = UserServerMatchingTestData.HumanEntry(1);
-        MatchingQueueEntry exact = UserServerMatchingTestData.HumanEntry(2);
-        MatchingQueueEntry fresh = UserServerMatchingTestData.HumanEntry(3);
+        MatchingQueueData old = UserServerMatchingTestData.HumanEntry(1);
+        MatchingQueueData exact = UserServerMatchingTestData.HumanEntry(2);
+        MatchingQueueData fresh = UserServerMatchingTestData.HumanEntry(3);
         await UserServerMatchingTestData.AddEntryAsync(_cache, old, 90);
         await UserServerMatchingTestData.AddEntryAsync(_cache, exact, 100);
         await UserServerMatchingTestData.AddEntryAsync(_cache, fresh, 101);
 
-        MatchingQueueEntry[] waiting = await _queue.ReadWaitingEntriesAsync(100);
+        MatchingQueueData[] waiting = await _queue.ReadWaitingEntriesAsync(100);
 
         Assert.Equal(new long[] { 1, 2 }, waiting.Select(entry => entry.PlayerId));
         Assert.Equal(3, _cache.SortedSetCount(MatchingQueue.QueueKey));
@@ -82,7 +82,7 @@ public sealed class MatchingQueueTests
     [Fact]
     public async Task ReadWaitingEntriesAsync_EmptyQueueReturnsEmpty()
     {
-        MatchingQueueEntry[] waiting = await _queue.ReadWaitingEntriesAsync(long.MaxValue);
+        MatchingQueueData[] waiting = await _queue.ReadWaitingEntriesAsync(long.MaxValue);
 
         Assert.Empty(waiting);
     }
@@ -90,9 +90,9 @@ public sealed class MatchingQueueTests
     [Fact]
     public async Task RemovePlayerEntriesAsync_RemovesOnlyThatPlayerAndMalformedEntries()
     {
-        MatchingQueueEntry mine = UserServerMatchingTestData.HumanEntry(7);
-        MatchingQueueEntry mineStale = UserServerMatchingTestData.HumanEntry(7, requestId: "stale");
-        MatchingQueueEntry other = UserServerMatchingTestData.HumanEntry(8);
+        MatchingQueueData mine = UserServerMatchingTestData.HumanEntry(7);
+        MatchingQueueData mineStale = UserServerMatchingTestData.HumanEntry(7, requestId: "stale");
+        MatchingQueueData other = UserServerMatchingTestData.HumanEntry(8);
         byte[] malformed = { 0xC1 };
         await UserServerMatchingTestData.AddEntryAsync(_cache, mine, 1);
         await UserServerMatchingTestData.AddEntryAsync(_cache, mineStale, 2);
@@ -129,7 +129,7 @@ public sealed class MatchingQueueTests
             {
                 "malformed" => new byte[] { 0xC1 },
                 "null" => new byte[] { 0xC0 },
-                _ => MessagePackSerializer.Serialize(UserServerMatchingTestData.HumanEntry(42, requestId: "other").Data)
+                _ => MessagePackSerializer.Serialize(UserServerMatchingTestData.HumanEntry(42, requestId: "other"))
             });
 
         Assert.Empty(await _queue.ReadWaitingEntriesAsync(long.MaxValue));
@@ -190,11 +190,11 @@ public sealed class MatchingQueueTests
             reader.Skip();
         }
         Assert.Equal(new[] { "playerId", "requestTime", "requestId" }, keys);
-        MatchingQueueEntry entry = MatchingQueueEntry.Parse(raw);
+        MatchingQueueData entry = MatchingQueueData.Parse(raw);
 
         Assert.Equal(11, entry.PlayerId);
         Assert.Equal("request11", entry.RequestId);
-        Assert.Equal(requestTime, entry.Data.RequestTime);
+        Assert.Equal(requestTime, entry.RequestTime);
         Assert.True(entry.IsHuman);
     }
 }

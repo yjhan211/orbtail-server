@@ -64,7 +64,7 @@ internal sealed class MatchCreationService(
     private async Task RunQueueGroupsAsync()
     {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        MatchingQueueEntry[] waiting = await queue.ReadWaitingEntriesAsync(now - MatchingTimeoutSeconds);
+        MatchingQueueData[] waiting = await queue.ReadWaitingEntriesAsync(now - MatchingTimeoutSeconds);
         if (waiting.Length == 0) return;
         waiting = MatchingQueue.SortByRequestTime(waiting);
 
@@ -77,7 +77,7 @@ internal sealed class MatchCreationService(
             if (shutdownToken.IsCancellationRequested)
                 return;
 
-            MatchingQueueEntry[] groupEntries = waiting.Skip(i).Take(playersPerMatch).ToArray();
+            MatchingQueueData[] groupEntries = waiting.Skip(i).Take(playersPerMatch).ToArray();
             // 빈자리는 봇으로 채운다. 솔로 검증은 즉시 1인 자족 매치를 만든다.
             int botsNeeded = Math.Max(0, overrides.GamePlayersPerMatch - groupEntries.Length);
             await CreateMatchAsync(groupEntries, botsNeeded, MatchCreationOrigin.Queue);
@@ -93,7 +93,7 @@ internal sealed class MatchCreationService(
         if (shutdownToken.IsCancellationRequested || !overrides.AllowsBotFill) return;
 
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        MatchingQueueEntry[] longWaitEntries = await queue.ReadWaitingEntriesAsync(now - BotFillTimeoutSeconds);
+        MatchingQueueData[] longWaitEntries = await queue.ReadWaitingEntriesAsync(now - BotFillTimeoutSeconds);
 
         int gamePlayersPerMatch = overrides.GamePlayersPerMatch;
         if (longWaitEntries.Length < overrides.PlayersPerMatch || longWaitEntries.Length >= gamePlayersPerMatch) return;
@@ -106,7 +106,7 @@ internal sealed class MatchCreationService(
     ///     전달이 불완전하면 되돌린다(false). matchingId 발급 뒤 예외는 롤백 후 호출자에게 전파돼 이번 pass를 끝낸다.
     /// </summary>
     internal async Task<bool> CreateMatchAsync(
-        MatchingQueueEntry[] groupEntries,
+        MatchingQueueData[] groupEntries,
         int botsNeeded,
         MatchCreationOrigin origin)
     {
@@ -126,7 +126,7 @@ internal sealed class MatchCreationService(
         long matchingId = 0;
         int deliveredPlayerCount = 0;
         int expectedHumanCount = 0;
-        MatchingQueueEntry[] batchPlayers = groupEntries
+        MatchingQueueData[] batchPlayers = groupEntries
             .Where(entry => entry.IsHuman)
             .DistinctBy(entry => entry.PlayerId)
             .ToArray();
@@ -135,9 +135,9 @@ internal sealed class MatchCreationService(
             matchingId = await redisOperations.StringIncrementAsync(MatchingIdKey);
             await reservations.CommitAsync(reservationLease, matchingId);
 
-            var allGroupEntries = new List<MatchingQueueEntry>(groupEntries);
+            var allGroupEntries = new List<MatchingQueueData>(groupEntries);
             for (int b = 0; b < botsNeeded; b++)
-                allGroupEntries.Add(MatchingQueueEntry.CreateBot(Interlocked.Decrement(ref _botIdCounter)));
+                allGroupEntries.Add(MatchingQueueData.CreateBot(Interlocked.Decrement(ref _botIdCounter)));
 
             logger.LogInformation(
                 "Bot-filled matching: MatchingId={MatchingId}, Real={Real}, Bots={Bot}, Origin={Origin}, GameServer={NodeId}",
@@ -152,7 +152,7 @@ internal sealed class MatchCreationService(
             await handoff.StoreMatchManifestAsync(matchingId, manifest);
 
             // 사람에게 통지하고 commit된 큐 entry를 제거한다.
-            foreach (MatchingQueueEntry entry in allGroupEntries)
+            foreach (MatchingQueueData entry in allGroupEntries)
             {
                 if (entry.IsBot) continue;
 

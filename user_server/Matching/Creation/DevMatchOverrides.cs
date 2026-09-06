@@ -90,7 +90,7 @@ internal sealed class DevMatchOverrides
     /// <summary>
     ///     두 명 테스트 매치에서 두 번째 접속자의 착용 코스튬을 고정한다. 오버라이드가 꺼져 있으면 아무것도 하지 않는다.
     /// </summary>
-    public async Task ApplyTwoPlayerTestOutfitAsync(IReadOnlyList<MatchingQueueEntry> entries)
+    public async Task ApplyTwoPlayerTestOutfitAsync(IReadOnlyList<MatchingQueueData> entries)
     {
         if (!IsTwoPlayerTestMatch) return;
 

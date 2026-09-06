@@ -20,11 +20,11 @@ namespace demo_regression_tests;
 /// </summary>
 internal static class UserServerMatchingTestData
 {
-    public static byte[] RequestBytes(MatchingQueueEntry entry) => System.Text.Encoding.UTF8.GetBytes(entry.RequestId);
+    public static byte[] RequestBytes(MatchingQueueData entry) => System.Text.Encoding.UTF8.GetBytes(entry.RequestId);
 
-    public static Task<bool> AddEntryAsync(InMemoryRedisOperations cache, MatchingQueueEntry entry, double score) =>
+    public static Task<bool> AddEntryAsync(InMemoryRedisOperations cache, MatchingQueueData entry, double score) =>
         cache.SortedSetAddWithHashAsync(MatchingQueue.QueueKey, MatchingQueue.RequestsKey, entry.RequestId,
-            MessagePack.MessagePackSerializer.Serialize(entry.Data), score);
+            MessagePack.MessagePackSerializer.Serialize(entry), score);
     private static readonly object _lock = new();
     private static bool _loaded;
 
@@ -54,14 +54,14 @@ internal static class UserServerMatchingTestData
         throw new DirectoryNotFoundException("Could not locate network/Common/csv.");
     }
 
-    public static MatchingQueueEntry HumanEntry(long playerId, DateTime? requestTime = null, string? requestId = null)
+    public static MatchingQueueData HumanEntry(long playerId, DateTime? requestTime = null, string? requestId = null)
     {
-        return MatchingQueueEntry.FromData(new MatchingQueueData
+        return new MatchingQueueData
         {
             PlayerId = playerId,
             RequestTime = requestTime ?? new DateTime(2030, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddSeconds(playerId),
             RequestId = requestId ?? $"req{playerId}"
-        });
+        };
     }
 }
 
@@ -452,7 +452,7 @@ internal sealed class RecordingHandoffPublisher : IMatchEntryService
 {
     public List<string> Events { get; } = new();
     public Dictionary<long, MatchManifest> StoredManifests { get; } = new();
-    public List<(long MatchingId, MatchingQueueEntry Entry, int RosterCount)> Deliveries { get; } = new();
+    public List<(long MatchingId, MatchingQueueData Entry, int RosterCount)> Deliveries { get; } = new();
     public List<string> DeliveredNodeIds { get; } = new();
     public Func<long, bool> DeliverResult { get; set; } = _ => true;
     public HashSet<long> ThrowOnDeliver { get; } = new();
@@ -466,7 +466,7 @@ internal sealed class RecordingHandoffPublisher : IMatchEntryService
         return Task.CompletedTask;
     }
 
-    public Task<bool> DeliverMatchingSuccessAsync(MatchingQueueEntry entry, long matchingId, List<PlayerInfo> playerRoster,
+    public Task<bool> DeliverMatchingSuccessAsync(MatchingQueueData entry, long matchingId, List<PlayerInfo> playerRoster,
         GameServerAllocation gameServer)
     {
         Deliveries.Add((matchingId, entry, playerRoster.Count));
@@ -501,7 +501,7 @@ internal sealed class RecordingHandoffPublisher : IMatchEntryService
         return Task.CompletedTask;
     }
 
-    public Task NotifyBatchFailedAsync(IEnumerable<MatchingQueueEntry> players, long matchingId)
+    public Task NotifyBatchFailedAsync(IEnumerable<MatchingQueueData> players, long matchingId)
     {
         Events.Add($"notify_failed:{matchingId}:{string.Join(",", players.Select(p => p.PlayerId).OrderBy(id => id))}");
         return Task.CompletedTask;

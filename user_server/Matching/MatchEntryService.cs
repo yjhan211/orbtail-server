@@ -20,7 +20,7 @@ internal interface IMatchEntryService
     public Task StoreMatchManifestAsync(long matchingId, MatchManifest manifest);
 
     public Task<bool> DeliverMatchingSuccessAsync(
-        MatchingQueueEntry entry,
+        MatchingQueueData entry,
         long matchingId,
         List<PlayerInfo> playerRoster,
         GameServerAllocation gameServer);
@@ -29,7 +29,7 @@ internal interface IMatchEntryService
     public bool StartAdmissionWatchdog(long matchingId, IReadOnlyCollection<long> humanPlayerIds);
     public Task<bool> TryCancelAdmissionForRollbackAsync(long matchingId);
     public Task DeleteHandoffBestEffortAsync(long matchingId);
-    public Task NotifyBatchFailedAsync(IEnumerable<MatchingQueueEntry> players, long matchingId);
+    public Task NotifyBatchFailedAsync(IEnumerable<MatchingQueueData> players, long matchingId);
 }
 
 /// <summary>
@@ -67,7 +67,7 @@ internal sealed class MatchEntryService(
     ///     세션이 없거나 요청 ID가 다르면 false. 전송 실패 시 배정을 남기지 않는 것은 세션 쪽 책임이다.
     /// </summary>
     public async Task<bool> DeliverMatchingSuccessAsync(
-        MatchingQueueEntry entry,
+        MatchingQueueData entry,
         long matchingId,
         List<PlayerInfo> playerRoster,
         GameServerAllocation gameServer)
@@ -405,11 +405,11 @@ internal sealed class MatchEntryService(
     /// <summary>
     ///     rollback된 매치의 인간 전원에게 matchingId가 포함된 실패 패킷을 보낸다. 요청 ID가 다른 세션은 건너뛴다.
     /// </summary>
-    public async Task NotifyBatchFailedAsync(IEnumerable<MatchingQueueEntry> players, long matchingId)
+    public async Task NotifyBatchFailedAsync(IEnumerable<MatchingQueueData> players, long matchingId)
     {
         try
         {
-            foreach (MatchingQueueEntry player in players.DistinctBy(entry => entry.PlayerId))
+            foreach (MatchingQueueData player in players.DistinctBy(entry => entry.PlayerId))
             {
                 if (!await sessions.DeliverMatchingFailedAsync(player.PlayerId, matchingId, player.RequestId, ErrorCode.MATCHING_FAILED))
                 {
