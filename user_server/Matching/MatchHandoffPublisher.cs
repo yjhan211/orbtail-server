@@ -5,7 +5,6 @@ using network.common.data.models;
 using network.gamehandoff;
 using network.helpers;
 using network.infrastructure.redis;
-using network.packets;
 using user_server.sessions;
 
 namespace user_server.matching;
@@ -81,7 +80,8 @@ internal sealed class MatchHandoffPublisher(
             return false;
         }
 
-        // ticket은 세션 위치와 무관하게 먼저 발급한다. 전달이 실패하면 아무도 받지 못한 채 3분 TTL로 사라진다.
+        // ticket은 먼저 발급한다. 응답 유실 시 이미 전달됐을 수도 있으나 admission_ready 전에는 입장할 수 없다.
+        // 실패한 매치의 handoff는 롤백으로 정리하고, 소비되지 않은 ticket은 3분 TTL로 사라진다.
         string gameHandoffTicket = await gameHandoffTicketService.IssueAsync(new GameHandoffContext
         {
             PlayerId = playerId,
@@ -92,14 +92,18 @@ internal sealed class MatchHandoffPublisher(
         long gameEndTimestamp = DateTimeOffset.UtcNow.AddMinutes(Config.GAME_DURATION_MINUTES)
             .ToUnixTimeMilliseconds();
 
-        using var packet = PacketMaker.U_TO_C_MATCHING_SUCCESS(
-            matchingId,
-            gameServer.PublicHost, gameServer.PublicPort, gameEndTimestamp,
-            gameHandoffTicket, playerRoster
-        );
+        var result = new U_TO_C_MATCHING_SUCCESS
+        {
+            MatchingId = matchingId,
+            GameServerIp = gameServer.PublicHost,
+            GameServerPort = gameServer.PublicPort,
+            GameEndTimestamp = gameEndTimestamp,
+            GameHandoffTicket = gameHandoffTicket,
+            PlayerRoster = playerRoster
+        };
 
         // 세션이 어느 User Server에 있든 라우터가 요청 ID fence를 확인한 뒤 송신 큐에 넣는다.
-        if (!await sessions.DeliverMatchingSuccessAsync(playerId, matchingId, requestId, packet))
+        if (!await sessions.DeliverMatchingSuccessAsync(playerId, requestId, result))
         {
             logger.LogWarning(
                 "Matching success was not accepted by the exact session owner: PlayerId={DataPlayerId}",
@@ -405,8 +409,7 @@ internal sealed class MatchHandoffPublisher(
         {
             foreach (MatchingQueueEntry player in players.DistinctBy(entry => entry.PlayerId))
             {
-                using var packet = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, matchingId);
-                if (!await sessions.DeliverMatchingFailedAsync(player.PlayerId, matchingId, player.RequestId, packet))
+                if (!await sessions.DeliverMatchingFailedAsync(player.PlayerId, matchingId, player.RequestId, ErrorCode.MATCHING_FAILED))
                 {
                     logger.LogWarning(
                         "Matching rollback notification was rejected or found no session: PlayerId={PlayerId}, MatchingId={MatchingId}",
@@ -426,8 +429,7 @@ internal sealed class MatchHandoffPublisher(
     /// </summary>
     public async Task NotifyAdmissionFailedAsync(long playerId, long matchingId)
     {
-        using var packet = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, matchingId);
-        if (!await sessions.DeliverAdmissionFailedAsync(playerId, matchingId, packet))
+        if (!await sessions.DeliverAdmissionFailedAsync(playerId, matchingId, ErrorCode.MATCHING_FAILED))
         {
             logger.LogWarning(
                 "Matching admission failure was rejected or found no session: PlayerId={PlayerId}, MatchingId={MatchingId}",

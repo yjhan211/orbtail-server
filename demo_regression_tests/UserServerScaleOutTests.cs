@@ -2,6 +2,8 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
+using network.common.data.models;
+using network.gamehandoff;
 using network.infrastructure.messaging;
 using network.packets;
 using user_server.matching;
@@ -11,7 +13,7 @@ namespace demo_regression_tests;
 
 /// <summary>
 ///     #339 2단계 User Server N대: 매칭 리더 lease(획득·갱신·상실·해제), 세션 라우터(로컬 직행, 원격 request는 세션을
-///     가진 프로세스만 응답, timeout 재시도는 첫 결과 재사용, 최종 부재는 false, 해제·로그인 알림은 origin 제외 브로드캐스트).
+///     가진 프로세스만 응답, timeout은 재시도 없이 false, 최종 부재는 false, 해제·로그인 알림은 origin 제외 브로드캐스트).
 /// </summary>
 public sealed class UserServerScaleOutTests
 {
@@ -71,8 +73,7 @@ public sealed class UserServerScaleOutTests
         var router = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? session : null, "user-server-0", new RecordingLogger());
         router.Start();
 
-        using Packet packet = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, 42);
-        Assert.True(await router.DeliverMatchingFailedAsync(7, 42, "req7", packet));
+        Assert.True(await router.DeliverMatchingFailedAsync(7, 42, "req7", ErrorCode.MATCHING_FAILED));
 
         Assert.Equal(("failed", 42L, "req7"), session.Deliveries.Single());
         Assert.Equal(0, bus.RequestCount);
@@ -90,8 +91,7 @@ public sealed class UserServerScaleOutTests
         other.Start();
         bystander.Start();
 
-        using Packet packet = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, 42);
-        Assert.True(await leader.DeliverMatchingFailedAsync(7, 42, "req7", packet));
+        Assert.True(await leader.DeliverMatchingFailedAsync(7, 42, "req7", ErrorCode.MATCHING_FAILED));
 
         (string Op, long MatchingId, string RequestId) delivery = owner.Deliveries.Single();
         Assert.Equal(("failed", 42L, "req7"), delivery);
@@ -101,7 +101,7 @@ public sealed class UserServerScaleOutTests
     }
 
     [Fact]
-    public async Task Router_RetriesRequestLostBeforeTheOwnerHandlesIt()
+    public async Task Router_LostRequestReturnsFalseWithoutRetry()
     {
         var bus = new InMemoryNatsBus { RequestsToDropBeforeHandling = 1 };
         var owner = new FakeSessionEndpoint();
@@ -110,17 +110,16 @@ public sealed class UserServerScaleOutTests
         leader.Start();
         other.Start();
 
-        using Packet packet = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, 42);
-        Assert.True(await leader.DeliverMatchingFailedAsync(7, 42, "req7", packet));
+        Assert.False(await leader.DeliverMatchingFailedAsync(7, 42, "req7", ErrorCode.MATCHING_FAILED));
 
-        Assert.Equal(2, bus.RequestCount);
-        Assert.Single(owner.Deliveries);
+        Assert.Equal(1, bus.RequestCount);
+        Assert.Empty(owner.Deliveries);
     }
 
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task Router_RetriesLostReplyAndReplaysFirstResultWithoutApplyingTwice(bool accepted)
+    public async Task Router_LostReplyReturnsFalseEvenIfAlreadyHandled(bool accepted)
     {
         var bus = new InMemoryNatsBus { RepliesToDropAfterHandling = 1 };
         var owner = new FakeSessionEndpoint { Accept = accepted };
@@ -129,10 +128,9 @@ public sealed class UserServerScaleOutTests
         leader.Start();
         other.Start();
 
-        using Packet packet = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, 42);
-        Assert.Equal(accepted, await leader.DeliverMatchingFailedAsync(7, 42, "req7", packet));
+        Assert.False(await leader.DeliverMatchingFailedAsync(7, 42, "req7", ErrorCode.MATCHING_FAILED));
 
-        Assert.Equal(2, bus.RequestCount);
+        Assert.Equal(1, bus.RequestCount);
         Assert.Single(owner.Deliveries);
         Assert.Equal(("failed", 42L, "req7"), owner.Deliveries[0]);
     }
@@ -146,10 +144,9 @@ public sealed class UserServerScaleOutTests
         leader.Start();
         other.Start();
 
-        using Packet packet = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, 42);
-        Assert.False(await leader.DeliverMatchingFailedAsync(7, 42, "req7", packet));
+        Assert.False(await leader.DeliverMatchingFailedAsync(7, 42, "req7", ErrorCode.MATCHING_FAILED));
         Assert.Equal(0, bus.RepliesForLastRequest);
-        Assert.Equal(NatsPlayerSessionRouter.RemoteDeliveryAttempts, bus.RequestCount);
+        Assert.Equal(1, bus.RequestCount);
     }
 
     [Fact]
@@ -162,8 +159,7 @@ public sealed class UserServerScaleOutTests
         leader.Start();
         other.Start();
 
-        using Packet packet = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, 42);
-        Assert.False(await leader.DeliverAdmissionFailedAsync(7, 42, packet));
+        Assert.False(await leader.DeliverAdmissionFailedAsync(7, 42, ErrorCode.MATCHING_FAILED));
         Assert.Equal(("admission", 42L, ""), owner.Deliveries.Single());
     }
 
@@ -249,6 +245,122 @@ public sealed class UserServerScaleOutTests
         Assert.Equal(16, winner.Generation);
     }
 
+    [Fact]
+    public async Task Router_DeliverySubjectsInvokeTheirOwnSessionMethods()
+    {
+        var bus = new InMemoryNatsBus();
+        var owner = new FakeSessionEndpoint();
+        var sender = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "sender", new RecordingLogger());
+        var receiver = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "receiver", new RecordingLogger());
+        sender.Start();
+        receiver.Start();
+
+        Assert.True(await sender.DeliverMatchingSuccessAsync(7, "req7", new U_TO_C_MATCHING_SUCCESS
+        {
+            MatchingId = 42, GameServerIp = "localhost", GameServerPort = 9001,
+            GameEndTimestamp = 123456, GameHandoffTicket = "test-ticket", PlayerRoster = []
+        }));
+        Assert.True(await sender.DeliverMatchingFailedAsync(7, 42, "req7", ErrorCode.MATCHING_FAILED));
+        Assert.True(await sender.DeliverAdmissionFailedAsync(7, 42, ErrorCode.MATCHING_FAILED));
+        Assert.Equal(3, owner.Deliveries.Count);
+        Assert.Equal(("success", 42L, "req7"), owner.Deliveries[0]);
+        Assert.Equal(("failed", 42L, "req7"), owner.Deliveries[1]);
+        Assert.Equal(("admission", 42L, ""), owner.Deliveries[2]);
+        Assert.Equal(3, bus.RequestCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Router_UnconfirmedSuccessRollsBackMatchWithoutPublishingAdmissionReady(bool loseReply)
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var cache = new InMemoryRedisOperations();
+        var logger = new RecordingLogger();
+        var claims = new MatchingQueueClaimCoordinator(cache, new InMemoryMatchingClaimStore(cache), logger);
+        var queue = new MatchingQueue(cache, new FakeRedLockFactory(), claims, logger);
+        var bus = new InMemoryNatsBus
+        {
+            RequestsToDropBeforeHandling = loseReply ? 0 : 1,
+            RepliesToDropAfterHandling = loseReply ? 1 : 0
+        };
+        var owner = new FakeSessionEndpoint();
+        var sender = new NatsPlayerSessionRouter(bus.Connect(), _ => null, "sender", logger);
+        var receiver = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "receiver", logger);
+        sender.Start();
+        receiver.Start();
+        var handoff = new MatchHandoffPublisher(
+            cache,
+            new GameHandoffTicketService(new RedisGameHandoffTicketStore(cache), new GameHandoffTicketOptions()),
+            claims, sender,
+            (_, _) => throw new InvalidOperationException("Failed delivery must not start the admission watchdog"),
+            CancellationToken.None, logger);
+        var pass = new MatchmakingPass(
+            cache, queue, claims, new MatchRosterBuilder(cache, logger), handoff,
+            new FixedGameServerAllocator(),
+            new DevMatchOverrides(false, false, cache, new FakeRedLockFactory(), logger),
+            CancellationToken.None, logger);
+        var entry = UserServerMatchingTestData.HumanEntry(7);
+        await cache.SortedSetAddAsync(MatchingQueue.QueueKey, entry.Raw, 1);
+
+        Assert.False(await pass.CreateMatchAsync([entry], 7, MatchCreationOrigin.Queue));
+
+        // 성공 응답만 유실돼도 성공 전달을 재시도하지 않고 실패 통지로 진행한다.
+        Assert.Equal(2, bus.RequestCount); // 성공 요청 1회 + 실패 통지 1회
+        Assert.Equal(loseReply ? 1 : 0, owner.Deliveries.Count(d => d.Op == "success"));
+        Assert.Single(owner.Deliveries.Where(d => d.Op == "failed"));
+        Assert.Null(cache.GetString(MatchingHandoffRedisKeys.ClaimKey(7)));
+        Assert.Equal(0, cache.SortedSetCount(MatchingQueue.QueueKey));
+        Assert.True((await cache.HashGetAsync(
+            MatchingHandoffRedisKeys.Key(1), MatchingHandoffRedisKeys.AdmissionReadyField)).IsNullOrEmpty);
+        Assert.True((await cache.HashGetAsync(
+            MatchingHandoffRedisKeys.Key(1), MatchingHandoffRedisKeys.ManifestField)).IsNullOrEmpty);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Router_ResultDataBuildsEquivalentClientPackets(bool remote)
+    {
+        var bus = new InMemoryNatsBus();
+        var owner = new FakeSessionEndpoint();
+        var sender = new NatsPlayerSessionRouter(bus.Connect(),
+            id => !remote && id == 7 ? owner : null, "sender", new RecordingLogger());
+        var receiver = new NatsPlayerSessionRouter(bus.Connect(),
+            id => remote && id == 7 ? owner : null, "receiver", new RecordingLogger());
+        sender.Start();
+        receiver.Start();
+        var result = new U_TO_C_MATCHING_SUCCESS
+        {
+            MatchingId = 42, GameServerIp = "game.example", GameServerPort = 9001,
+            GameEndTimestamp = 123456789, GameHandoffTicket = "ticket",
+            PlayerRoster = [new PlayerInfo { PlayerId = 7, Name = "test-player" }]
+        };
+
+        Assert.True(await sender.DeliverMatchingSuccessAsync(7, "req7", result));
+        using (var expected = PacketMaker.U_TO_C_MATCHING_SUCCESS(
+            result.MatchingId, result.GameServerIp, result.GameServerPort,
+            result.GameEndTimestamp, result.GameHandoffTicket, result.PlayerRoster))
+        {
+            expected.RecordSize();
+            Assert.Equal(expected.ToBytes(), owner.LastPacketBytes);
+        }
+
+        Assert.True(await sender.DeliverMatchingFailedAsync(7, 42, "req7", ErrorCode.AUTH_FAILED));
+        using (var expected = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.AUTH_FAILED, 42))
+        {
+            expected.RecordSize();
+            Assert.Equal(expected.ToBytes(), owner.LastPacketBytes);
+        }
+        Assert.True(await sender.DeliverAdmissionFailedAsync(7, 42, ErrorCode.MATCHING_FAILED));
+        using (var expected = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, 42))
+        {
+            expected.RecordSize();
+            Assert.Equal(expected.ToBytes(), owner.LastPacketBytes);
+        }
+        Assert.Equal(remote ? 3 : 0, bus.RequestCount);
+    }
+
     private sealed class FakeSessionEndpoint : IMatchingSessionEndpoint
     {
         public bool Accept { get; set; } = true;
@@ -256,6 +368,7 @@ public sealed class UserServerScaleOutTests
         public List<(string Op, long MatchingId, string RequestId)> Deliveries { get; } = new();
         public List<long> Cleared { get; } = new();
         public int LastPacketProtocolId { get; private set; }
+        public byte[] LastPacketBytes { get; private set; } = [];
         public bool DuplicateDisconnected { get; private set; }
 
         public bool TryDeliverMatchingSuccess(long matchingId, string requestId, Packet packet) =>
@@ -275,6 +388,8 @@ public sealed class UserServerScaleOutTests
         {
             Deliveries.Add((op, matchingId, requestId));
             LastPacketProtocolId = packet.ProtocolId;
+            packet.RecordSize();
+            LastPacketBytes = packet.ToBytes();
             return Accept;
         }
     }

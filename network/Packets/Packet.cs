@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using network.common;
 
 namespace network.packets;
@@ -79,49 +78,6 @@ public class Packet : IDisposable
         var packet = PacketBufferPool.Pop();
         packet.LoadForReading(buffer.Span);
         return packet;
-    }
-
-    public static Packet CreateForSending(byte[] wireBytes)
-    {
-        ArgumentNullException.ThrowIfNull(wireBytes);
-
-        const int routingBodySize = sizeof(int) + sizeof(long);
-        int minimumPacketSize = Config.HEADER_SIZE + routingBodySize;
-        if (wireBytes.Length < minimumPacketSize || wireBytes.Length > Config.MAX_MESSAGE_SIZE)
-        {
-            throw new ArgumentException(
-                $"Wire packet length must be between {minimumPacketSize} and {Config.MAX_MESSAGE_SIZE} bytes.",
-                nameof(wireBytes));
-        }
-
-        int recordedBodySize = BinaryPrimitives.ReadInt32LittleEndian(
-            wireBytes.AsSpan(0, Config.HEADER_SIZE));
-        if (recordedBodySize != wireBytes.Length - Config.HEADER_SIZE ||
-            recordedBodySize < routingBodySize)
-        {
-            throw new ArgumentException("Wire packet header does not match its body length.", nameof(wireBytes));
-        }
-
-        int protocolId = BinaryPrimitives.ReadInt32LittleEndian(
-            wireBytes.AsSpan(Config.HEADER_SIZE, sizeof(int)));
-        if (!Enum.IsDefined(typeof(Protocol), protocolId))
-            throw new ArgumentException("Wire packet contains an unknown protocol id.", nameof(wireBytes));
-
-        long playerId = BinaryPrimitives.ReadInt64LittleEndian(
-            wireBytes.AsSpan(Config.HEADER_SIZE + sizeof(int), sizeof(long)));
-        var packet = PacketBufferPool.Pop();
-        try
-        {
-            packet.ProtocolId = protocolId;
-            packet._playerId = playerId;
-            packet.Overwrite(wireBytes, wireBytes.Length);
-            return packet;
-        }
-        catch
-        {
-            packet.Dispose();
-            throw;
-        }
     }
 
     private static void Destroy(Packet packet)
