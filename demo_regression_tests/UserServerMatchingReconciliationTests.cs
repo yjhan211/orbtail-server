@@ -126,7 +126,7 @@ public sealed class UserServerMatchingReconciliationTests
 
         Assert.False((bool)Invoke(session, "TryRegisterLocalSession", arguments)!);
         Assert.Null(arguments[0]);
-        Assert.True(logger.Contains(LogLevel.Debug, "Connection closed before login admission"));
+        Assert.True(logger.Contains(LogLevel.Debug, "Connection closed before login entry"));
         Assert.False(logger.Contains(LogLevel.Error, "Login"));
     }
 

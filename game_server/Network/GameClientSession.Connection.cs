@@ -181,7 +181,7 @@ public partial class GameClientSession
             await BroadcastPlayerJoin();
             EnsureConnectionActive();
 
-            await _admissionStateCommitter.CommitAsync(
+            await _entryStateCommitter.CommitAsync(
                 matchingId,
                 PlayerId.Value,
                 composition.HumanPlayerIds);
@@ -197,7 +197,7 @@ public partial class GameClientSession
 
             // Authentication succeeds only after every fallible initialization and initial
             // snapshot step has completed. Build the complete success response before that
-            // commit so serialization failure still follows the admission-abort path.
+            // commit so serialization failure still follows the entry-abort path.
             SendMatchStartCountdown(matchingId);
             using Packet successResponse = CreateConnectResultPacket(
                 true,
@@ -207,7 +207,7 @@ public partial class GameClientSession
                 matchingSpawnCell);
             RunUnderLiveMatch(runtime, () =>
             {
-                if (!Connection.TryMarkAuthenticated(() => Volatile.Write(ref _admissionCompleted, 1)))
+                if (!Connection.TryMarkAuthenticated(() => Volatile.Write(ref _entryCompleted, 1)))
                     throw new OperationCanceledException("Connection closed before authentication commit.");
             });
             if (!TryPublishCommittedConnectResult(successResponse))
@@ -218,12 +218,12 @@ public partial class GameClientSession
         {
             Logger.LogError(ex, "Failed to handle connect");
 
-            // Authentication and the local admission flag commit together. Once visible, an
-            // ACK publication failure is connection-local: never roll admission back or abort
+            // Authentication and the local entry flag commit together. Once visible, an
+            // ACK publication failure is connection-local: never roll entry back or abort
             // the whole match, and never send a contradictory negative CONNECT_RESULT.
-            if (Volatile.Read(ref _admissionCompleted) != 0)
+            if (Volatile.Read(ref _entryCompleted) != 0)
             {
-                CloseAfterCommittedAdmissionResponseFailure();
+                CloseAfterCommittedEntryResponseFailure();
                 return;
             }
 
@@ -231,7 +231,7 @@ public partial class GameClientSession
             // 에러/끊기를 한 번에 소유하므로 여기서 경쟁하는 CONNECT_RESULT를 보내지 않는다.
             if (registered)
             {
-                if (!ReportAdmissionFailureOnce())
+                if (!ReportEntryFailureOnce())
                 {
                     MarkServerInitiatedDisconnect();
                     Connection.Disconnect();
@@ -255,7 +255,7 @@ public partial class GameClientSession
     {
         using MatchScope scope = _matchRuntimes.Enter(runtime);
         if (runtime.IsTerminal)
-            throw new OperationCanceledException("Match became terminal during game admission.");
+            throw new OperationCanceledException("Match became terminal during game entry.");
 
         initialize();
     }
@@ -263,7 +263,7 @@ public partial class GameClientSession
     private void EnsureConnectionActive()
     {
         if (Connection.IsReleased)
-            throw new OperationCanceledException("Connection closed during game admission.");
+            throw new OperationCanceledException("Connection closed during game entry.");
     }
 
     private bool SendConnectResult(bool success, ErrorCode errorCode, string message,
@@ -274,7 +274,7 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     Creates a complete CONNECT_RESULT frame. Successful admission calls this before the authentication commit,
+    ///     Creates a complete CONNECT_RESULT frame. Successful entry calls this before the authentication commit,
     ///     keeping allocation, serialization, and body construction on the pre-commit failure side of the boundary.
     /// </summary>
     private Packet CreateConnectResultPacket(bool success, ErrorCode errorCode, string message,
@@ -314,7 +314,7 @@ public partial class GameClientSession
                 return true;
 
             Logger.LogWarning(
-                "Committed game admission response was not queued; closing connection: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                "Committed game entry response was not queued; closing connection: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 PlayerId,
                 MatchingId);
         }
@@ -322,20 +322,20 @@ public partial class GameClientSession
         {
             Logger.LogError(
                 ex,
-                "Committed game admission response enqueue failed; closing connection: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                "Committed game entry response enqueue failed; closing connection: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 PlayerId,
                 MatchingId);
         }
 
-        CloseAfterCommittedAdmissionResponseFailure();
+        CloseAfterCommittedEntryResponseFailure();
         return false;
     }
 
     /// <summary>
-    ///     Closes a connection whose admission already committed without reporting an admission failure or attempting
+    ///     Closes a connection whose entry already committed without reporting an entry failure or attempting
     ///     a contradictory negative CONNECT_RESULT.
     /// </summary>
-    private void CloseAfterCommittedAdmissionResponseFailure()
+    private void CloseAfterCommittedEntryResponseFailure()
     {
         MarkServerInitiatedDisconnect();
         try
@@ -346,7 +346,7 @@ public partial class GameClientSession
         {
             Logger.LogError(
                 ex,
-                "Failed to close connection after committed admission response failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                "Failed to close connection after committed entry response failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 PlayerId,
                 MatchingId);
         }
@@ -523,20 +523,20 @@ public partial class GameClientSession
         TimeSpan retryDelay = TimeSpan.FromMilliseconds(50);
         int maxAttempts = Math.Max(
             1,
-            (int)Math.Ceiling(MatchingRedisKeys.AdmissionTimeout.TotalMilliseconds /
+            (int)Math.Ceiling(MatchingRedisKeys.EntryTimeout.TotalMilliseconds /
                               retryDelay.TotalMilliseconds));
         string handoffKey = MatchingRedisKeys.Key(matchingId);
-        string admissionStateKey = MatchingRedisKeys.AdmissionStateKey(matchingId);
+        string entryStateKey = MatchingRedisKeys.EntryStateKey(matchingId);
 
         for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
             var ready = await RedisOperations.HashGetAsync(
                 handoffKey,
-                MatchingRedisKeys.AdmissionReadyField);
+                MatchingRedisKeys.EntryReadyField);
             if (!ready.IsNullOrEmpty)
             {
                 byte[] value = (byte[])ready!;
-                if (value.Length == 1 && value[0] == MatchingRedisKeys.AdmissionReadyValue)
+                if (value.Length == 1 && value[0] == MatchingRedisKeys.EntryReadyValue)
                 {
                     string expectedReservation = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     foreach (long humanPlayerId in expectedHumanPlayerIds)
@@ -553,18 +553,18 @@ public partial class GameClientSession
                     return;
                 }
                 throw new InvalidOperationException(
-                    $"Invalid admission marker for match {matchingId}.");
+                    $"Invalid entry marker for match {matchingId}.");
             }
 
-            var admissionState = await RedisOperations.StringGetAsync(admissionStateKey);
-            if (!admissionState.IsNullOrEmpty &&
+            var entryState = await RedisOperations.StringGetAsync(entryStateKey);
+            if (!entryState.IsNullOrEmpty &&
                 string.Equals(
-                    admissionState.ToString(),
-                    MatchingRedisKeys.AdmissionCanceledState,
+                    entryState.ToString(),
+                    MatchingRedisKeys.EntryCanceledState,
                     StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(
-                    $"Matching admission was canceled before the handoff became ready for match {matchingId}.");
+                    $"Matching entry was canceled before the handoff became ready for match {matchingId}.");
             }
 
             if (attempt + 1 < maxAttempts)

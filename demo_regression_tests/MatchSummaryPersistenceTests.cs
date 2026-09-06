@@ -299,7 +299,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         await redis.StringSetAsync(
             MatchingRedisKeys.ReservationKey(playerId),
             matchingId,
-            MatchingRedisKeys.PostAdmissionReservationLifetime);
+            MatchingRedisKeys.PostEntryReservationLifetime);
         var nats = new RecordingNatsClient
         {
             PublishException = new InvalidOperationException("core failure")
@@ -330,7 +330,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         await redis.StringSetAsync(
             MatchingRedisKeys.ReservationKey(playerId),
             newerMatchingId,
-            MatchingRedisKeys.PostAdmissionReservationLifetime);
+            MatchingRedisKeys.PostEntryReservationLifetime);
         var nats = new RecordingNatsClient();
         var logger = new RecordingLogger<GameServer>();
         GameServer server = CreateLegacyGameServer(nats, logger, redis);

@@ -11,7 +11,7 @@ internal interface IPlayerSessionRouter
 {
     public Task<bool> DeliverMatchingSuccessAsync(long playerId, string requestId, U_TO_C_MATCHING_SUCCESS result);
     public Task<bool> DeliverMatchingFailedAsync(long playerId, long matchingId, string requestId, ErrorCode errorCode);
-    public Task<bool> DeliverAdmissionFailedAsync(long playerId, long matchingId, ErrorCode errorCode);
+    public Task<bool> DeliverEntryFailedAsync(long playerId, long matchingId, ErrorCode errorCode);
     public void ClearMatchingAssignment(long playerId, long matchingId);
     public void AnnounceLogin(long playerId, long generation);
 }

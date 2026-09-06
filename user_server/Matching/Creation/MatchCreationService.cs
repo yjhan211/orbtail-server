@@ -131,11 +131,11 @@ internal sealed class MatchCreationService(
             bool deliveryComplete = deliveredPlayerCount == expectedHumanCount;
             if (deliveryComplete)
             {
-                await matchEntryService.MarkHandoffReadyAsync(matchingId);
-                if (!matchEntryService.StartAdmissionWatchdog(matchingId,
+                await matchEntryService.MarkEntryReadyAsync(matchingId);
+                if (!matchEntryService.StartEntryWatchdog(matchingId,
                         batchPlayers.Select(request => request.PlayerId).ToArray()))
                 {
-                    throw new OperationCanceledException("Matching admission watchdog could not start during shutdown.");
+                    throw new OperationCanceledException("Matching entry watchdog could not start during shutdown.");
                 }
                 matchCommitted = true;
             }
@@ -156,7 +156,7 @@ internal sealed class MatchCreationService(
                 {
                     await matchingReservationService.RollbackAsync(reservationLease);
                 }
-                else if (await matchEntryService.TryCancelAdmissionForRollbackAsync(matchingId))
+                else if (await matchEntryService.TryCancelEntryForRollbackAsync(matchingId))
                 {
                     await matchEntryService.DeleteHandoffBestEffortAsync(matchingId);
                     await matchEntryService.NotifyBatchFailedAsync(batchPlayers, matchingId);

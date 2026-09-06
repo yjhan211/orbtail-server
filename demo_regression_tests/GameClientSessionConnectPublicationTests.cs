@@ -63,7 +63,7 @@ public sealed class GameClientSessionConnectPublicationTests
 
         Assert.True(CommitAuthentication(fixture.Store, matchingId, fixture.Connection, session));
         Assert.Equal(1, GetIntField(fixture.Connection, "_authenticated"));
-        Assert.Equal(1, GetIntField(session, "_admissionCompleted"));
+        Assert.Equal(1, GetIntField(session, "_entryCompleted"));
 
         Assert.True(PublishCommittedSuccess(session, packet));
         Assert.Single(fixture.SentPackets);
@@ -100,7 +100,7 @@ public sealed class GameClientSessionConnectPublicationTests
 
         Assert.True(senderEntered.Wait(TimeSpan.FromSeconds(5)));
         Assert.Equal(1, GetIntField(fixture.Connection, "_authenticated"));
-        Assert.Equal(1, GetIntField(session, "_admissionCompleted"));
+        Assert.Equal(1, GetIntField(session, "_entryCompleted"));
 
         // 큐 적재가 막혀 있어도 매치 잠금은 비어 있다 — 같은 매치 작업과 터미널 정리가 그대로 진행된다.
         Assert.True(fixture.Store.TryEnter(matchingId, out MatchScope probe));
@@ -119,7 +119,7 @@ public sealed class GameClientSessionConnectPublicationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void FailedCommittedSuccessAck_FailsForwardWithoutNegativeAckOrAdmissionRollback(bool senderThrows)
+    public void FailedCommittedSuccessAck_FailsForwardWithoutNegativeAckOrEntryRollback(bool senderThrows)
     {
         const long matchingId = 74_004;
         using var fixture = new ConnectFixture();
@@ -141,13 +141,13 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.False(PublishCommittedSuccess(session, packet));
         Assert.Equal(1, Volatile.Read(ref senderCalls));
         Assert.Equal(1, GetIntField(fixture.Connection, "_authenticated"));
-        Assert.Equal(1, GetIntField(session, "_admissionCompleted"));
-        Assert.Equal(0, GetIntField(session, "_admissionFailureReported"));
+        Assert.Equal(1, GetIntField(session, "_entryCompleted"));
+        Assert.Equal(0, GetIntField(session, "_entryFailureReported"));
         Assert.Empty(fixture.SentPackets);
     }
 
     [Fact]
-    public void TerminalBeforeCommit_RejectsSuccessWithoutAuthenticationAdmissionOrAck()
+    public void TerminalBeforeCommit_RejectsSuccessWithoutAuthenticationEntryOrAck()
     {
         const long matchingId = 74_005;
         using var fixture = new ConnectFixture();
@@ -162,12 +162,12 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Null(fixture.Store.Get(matchingId));
         Assert.False(CommitAuthentication(fixture.Store, matchingId, fixture.Connection, session));
         Assert.Equal(0, GetIntField(fixture.Connection, "_authenticated"));
-        Assert.Equal(0, GetIntField(session, "_admissionCompleted"));
+        Assert.Equal(0, GetIntField(session, "_entryCompleted"));
         Assert.Empty(fixture.SentPackets);
     }
 
     [Fact]
-    public void ThrowingAdmissionAbortHook_ReleasesOnlyItsReservations_ForDisconnectRetry()
+    public void ThrowingEntryAbortHook_ReleasesOnlyItsReservations_ForDisconnectRetry()
     {
         const long matchingId = 74_006;
         int hookCalls = 0;
@@ -182,14 +182,14 @@ public sealed class GameClientSessionConnectPublicationTests
                     throw new InvalidOperationException("deferred abort unavailable");
             });
 
-        Assert.False(ReportAdmissionFailure(session));
-        Assert.Equal(0, GetIntField(session, "_admissionFailureReported"));
+        Assert.False(ReportEntryFailure(session));
+        Assert.Equal(0, GetIntField(session, "_entryFailureReported"));
         Assert.Equal(0, GetIntField(session, "_matchingLifecycleTerminalReported"));
 
         session.OnDisconnect();
 
         Assert.Equal(2, Volatile.Read(ref hookCalls));
-        Assert.Equal(1, GetIntField(session, "_admissionFailureReported"));
+        Assert.Equal(1, GetIntField(session, "_entryFailureReported"));
         Assert.Equal(1, GetIntField(session, "_matchingLifecycleTerminalReported"));
     }
 
@@ -205,7 +205,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Contains("ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CONNECT", sessionSource);
         Assert.Contains("async bytes => await HandleMessage<C_TO_G_CONNECT>(bytes, HandleConnect)", sessionSource);
         Assert.Contains("trySendConnectSuccessResponse ?? Connection.TrySend", sessionSource);
-        Assert.Contains("Connection.TryMarkAuthenticated(() => Volatile.Write(ref _admissionCompleted, 1))", connectionSource);
+        Assert.Contains("Connection.TryMarkAuthenticated(() => Volatile.Write(ref _entryCompleted, 1))", connectionSource);
 
         // 세션 등록·초기화 블록·인증 커밋은 매치 잠금 안에서, 성공 ACK 큐 적재는 잠금 밖에서.
         int registration = connectionSource.IndexOf("_matchRuntimes.GetOrCreate(matchingId)", StringComparison.Ordinal);
@@ -220,7 +220,7 @@ public sealed class GameClientSessionConnectPublicationTests
                     authentication < publication);
 
         int registeredFailure = connectionSource.IndexOf("if (registered)", publication, StringComparison.Ordinal);
-        int deferredAbort = connectionSource.IndexOf("ReportAdmissionFailureOnce()", registeredFailure, StringComparison.Ordinal);
+        int deferredAbort = connectionSource.IndexOf("ReportEntryFailureOnce()", registeredFailure, StringComparison.Ordinal);
         int earlyFailureResponse = connectionSource.IndexOf(
             "SendConnectResult(false, ErrorCode.FATAL",
             deferredAbort,
@@ -228,7 +228,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.True(registeredFailure >= 0 &&
                     registeredFailure < deferredAbort &&
                     deferredAbort < earlyFailureResponse);
-        Assert.Contains("throw new OperationCanceledException(\"Match became terminal during game admission.\")", connectionSource);
+        Assert.Contains("throw new OperationCanceledException(\"Match became terminal during game entry.\")", connectionSource);
     }
 
     private static bool CommitAuthentication(
@@ -246,7 +246,7 @@ public sealed class GameClientSessionConnectPublicationTests
             return false;
 
         if (!connection.TryMarkAuthenticated(
-                () => SetIntField(session, "_admissionCompleted", 1)))
+                () => SetIntField(session, "_entryCompleted", 1)))
         {
             throw new OperationCanceledException("Connection closed before authentication commit.");
         }
@@ -266,9 +266,9 @@ public sealed class GameClientSessionConnectPublicationTests
             "TryPublishCommittedConnectResult",
             BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, [packet]));
 
-    private static bool ReportAdmissionFailure(GameClientSession session) =>
+    private static bool ReportEntryFailure(GameClientSession session) =>
         Assert.IsType<bool>(typeof(GameClientSession).GetMethod(
-            "ReportAdmissionFailureOnce",
+            "ReportEntryFailureOnce",
             BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, null));
 
     private static (Protocol Protocol, long PlayerId, G_TO_C_CONNECT_RESULT Body) DeserializeConnectResult(Packet packet)
@@ -362,7 +362,7 @@ public sealed class GameClientSessionConnectPublicationTests
             long matchingId,
             long playerId,
             Func<Packet, bool> sender,
-            Action<GameClientSession>? recordAdmissionFailure = null)
+            Action<GameClientSession>? recordEntryFailure = null)
         {
             Activate(Connection);
             Store.GetOrCreate(matchingId);
@@ -394,7 +394,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 static (_, _) => null,
                 static (_, _) => { },
                 static () => false,
-                recordAdmissionFailure ?? (_ => { }),
+                recordEntryFailure ?? (_ => { }),
                 GameServerDevOptions.Disabled,
                 sender);
             Connection.SetSession(session);

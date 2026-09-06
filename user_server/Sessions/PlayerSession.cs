@@ -186,7 +186,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         var lease = await _sessionLeaseStore.TryAcquireAsync(PlayerId!.Value, _nodeId, _sessionId);
         if (lease == null)
         {
-            Logger.LogWarning("Login lost session lease before admission: PlayerId={PlayerId}", PlayerId);
+            Logger.LogWarning("Login lost session lease before entry: PlayerId={PlayerId}", PlayerId);
             SendErrorResponseAndDisconnect(ErrorCode.ALREADY_CONNECTED);
             return null;
         }
@@ -207,7 +207,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         if (!Connection.TryMarkAuthenticated(() => registration = _onSessionRegistered(PlayerId!.Value, this)))
         {
             previousSession = null;
-            Logger.LogDebug("Connection closed before login admission: PlayerId={PlayerId}", PlayerId);
+            Logger.LogDebug("Connection closed before login entry: PlayerId={PlayerId}", PlayerId);
             return false;
         }
 
@@ -472,7 +472,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         return TrySend(packet);
     }
 
-    bool IMatchingSessionEndpoint.TryDeliverAdmissionFailed(long matchingId, Packet packet)
+    bool IMatchingSessionEndpoint.TryDeliverEntryFailed(long matchingId, Packet packet)
     {
         if (!_matchingAssignment.FailEntry(matchingId))
         {

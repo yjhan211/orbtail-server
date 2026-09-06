@@ -446,7 +446,7 @@ internal sealed class FakeRedLockFactory : IRedLockFactory
 }
 
 /// <summary>
-///     MatchCreationService가 handoff port를 호출한 순서를 기록하는 fake. 전달 결과·예외·admission 취소 결과를 주입한다.
+///     MatchCreationService가 handoff port를 호출한 순서를 기록하는 fake. 전달 결과·예외·entry 취소 결과를 주입한다.
 /// </summary>
 internal sealed class RecordingHandoffPublisher : IMatchEntryService
 {
@@ -456,7 +456,7 @@ internal sealed class RecordingHandoffPublisher : IMatchEntryService
     public List<string> DeliveredNodeIds { get; } = new();
     public Func<long, bool> DeliverResult { get; set; } = _ => true;
     public HashSet<long> ThrowOnDeliver { get; } = new();
-    public bool CancelAdmissionResult { get; set; } = true;
+    public bool CancelEntryResult { get; set; } = true;
     public bool WatchdogResult { get; set; } = true;
 
     public Task StoreMatchManifestAsync(long matchingId, MatchManifest manifest)
@@ -477,22 +477,22 @@ internal sealed class RecordingHandoffPublisher : IMatchEntryService
         return Task.FromResult(DeliverResult(entry.PlayerId));
     }
 
-    public Task MarkHandoffReadyAsync(long matchingId)
+    public Task MarkEntryReadyAsync(long matchingId)
     {
         Events.Add($"ready:{matchingId}");
         return Task.CompletedTask;
     }
 
-    public bool StartAdmissionWatchdog(long matchingId, IReadOnlyCollection<long> humanPlayerIds)
+    public bool StartEntryWatchdog(long matchingId, IReadOnlyCollection<long> humanPlayerIds)
     {
         Events.Add($"watchdog:{matchingId}:{string.Join(",", humanPlayerIds.OrderBy(id => id))}");
         return WatchdogResult;
     }
 
-    public Task<bool> TryCancelAdmissionForRollbackAsync(long matchingId)
+    public Task<bool> TryCancelEntryForRollbackAsync(long matchingId)
     {
         Events.Add($"cancel:{matchingId}");
-        return Task.FromResult(CancelAdmissionResult);
+        return Task.FromResult(CancelEntryResult);
     }
 
     public Task DeleteHandoffBestEffortAsync(long matchingId)

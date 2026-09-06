@@ -94,7 +94,7 @@ public sealed class MatchStartGateTests
 
             Assert.True(MatchStartGate.IsGameplayActive(matchingId));
             Assert.False(MatchStartGate.GetSnapshot(matchingId).IsKnown);
-            Assert.False(MatchStartGate.IsAdmissionTimedOut(matchingId, DateTime.UtcNow.AddMinutes(5)));
+            Assert.False(MatchStartGate.IsEntryTimedOut(matchingId, DateTime.UtcNow.AddMinutes(5)));
             Assert.NotNull(MatchStartGate.GetGameplayStartedAtUtc(matchingId));
 
             MatchStartGate.RemoveMatching(matchingId);

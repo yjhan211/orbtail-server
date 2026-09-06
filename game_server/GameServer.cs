@@ -637,16 +637,16 @@ public partial class GameServer(
     {
         foreach (long matchingId in matchingIds)
         {
-            if (MatchStartGate.IsAdmissionTimedOut(matchingId, DateTime.UtcNow))
+            if (MatchStartGate.IsEntryTimedOut(matchingId, DateTime.UtcNow))
             {
                 var anchorSession = activeSessions.FirstOrDefault(
                     session => session.MatchingId == matchingId && session.PlayerId.HasValue);
                 if (anchorSession != null)
                 {
                     logger.LogWarning(
-                        "Match admission deadline expired before every human became ready: MatchingId={MatchingId}",
+                        "Match entry deadline expired before every human became ready: MatchingId={MatchingId}",
                         matchingId);
-                    AbortMatchAfterAdmissionFailure(anchorSession);
+                    AbortMatchAfterEntryFailure(anchorSession);
                 }
                 continue;
             }
@@ -718,7 +718,7 @@ public partial class GameServer(
     }
 
     /// <summary>
-    ///     한 매치의 한 플레이어는 terminal subject(left/completed/admission_failed/released)를 하나만
+    ///     한 매치의 한 플레이어는 terminal subject(left/completed/entry_failed/released)를 하나만
     ///     발행한다. 서로 다른 종료 원인이 중복되면 세션 통지와 reservation 해제의 의미가 충돌한다.
     /// </summary>
     private bool TryRegisterMatchingLifecycleTerminal(
@@ -923,7 +923,7 @@ public partial class GameServer(
                 (playerId, matchingId) =>
                     PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerReleased, playerId, matchingId),
                 () => Volatile.Read(ref _stopping) != 0,
-                AbortMatchAfterAdmissionFailure,
+                AbortMatchAfterEntryFailure,
                 devOptions: _devOptions);
 
             logger.LogInformation("Game client session created");
@@ -982,9 +982,9 @@ public partial class GameServer(
     /// <summary>
     ///     입장 실패로 매치를 중단한다. 터미널 전이를 이긴 호출이 잠금 안에서 로스터 전원의 lifecycle subject
     ///     선점과 FATAL 응답·끊기를 소유하고(발행은 잠금 밖 후처리), 이미 끝난 매치에 늦게 온 호출은
-    ///     자기 세션의 admission_failed 발행과 끊기만 한다 — 정상 종료가 먼저 선점한 subject는 중복 제거된다.
+    ///     자기 세션의 entry_failed 발행과 끊기만 한다 — 정상 종료가 먼저 선점한 subject는 중복 제거된다.
     /// </summary>
-    private void AbortMatchAfterAdmissionFailure(GameClientSession session)
+    private void AbortMatchAfterEntryFailure(GameClientSession session)
     {
         if (!session.PlayerId.HasValue || session.MatchingId <= 0)
             return;
@@ -994,7 +994,7 @@ public partial class GameServer(
         MatchRuntime? runtime = MatchRuntimes.Get(matchingId);
         if (runtime == null)
         {
-            PublishLateAdmissionFailure(session, playerId, matchingId);
+            PublishLateEntryFailure(session, playerId, matchingId);
             return;
         }
 
@@ -1009,7 +1009,7 @@ public partial class GameServer(
                     currentSession.MatchingId == matchingId)
                 {
                     logger.LogDebug(
-                        "Skipped admission-failed reservation release for superseded session: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                        "Skipped entry-failed reservation release for superseded session: PlayerId={PlayerId}, MatchingId={MatchingId}",
                         playerId,
                         matchingId);
                     return;
@@ -1025,56 +1025,56 @@ public partial class GameServer(
                         ? session.MatchHumanPlayerIds.ToArray()
                         : [playerId];
                 var lifecyclePublications = new List<Action>();
-                PrepareAdmissionFailureLifecycle(matchingId, affectedPlayerIds, lifecyclePublications);
+                PrepareEntryFailureLifecycle(matchingId, affectedPlayerIds, lifecyclePublications);
                 foreach (GameClientSession affectedSession in affectedSessions)
                 {
                     try
                     {
-                        affectedSession.DisconnectForAdmissionFailure();
+                        affectedSession.DisconnectForEntryFailure();
                     }
                     catch (Exception ex)
                     {
                         logger.LogWarning(
                             ex,
-                            "Failed to deliver admission failure disconnect: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                            "Failed to deliver entry failure disconnect: PlayerId={PlayerId}, MatchingId={MatchingId}",
                             affectedSession.PlayerId,
                             matchingId);
                     }
                 }
 
                 runtime.AfterRelease.Add(
-                    () => DispatchPreparedAdmissionFailureLifecycle(matchingId, lifecyclePublications));
+                    () => DispatchPreparedEntryFailureLifecycle(matchingId, lifecyclePublications));
             }
         }
 
         if (wonTerminal)
         {
             logger.LogWarning(
-                "Match aborted after client admission failure: MatchingId={MatchingId}, FailedPlayerId={PlayerId}",
+                "Match aborted after client entry failure: MatchingId={MatchingId}, FailedPlayerId={PlayerId}",
                 matchingId,
                 playerId);
             return;
         }
 
-        PublishLateAdmissionFailure(session, playerId, matchingId);
+        PublishLateEntryFailure(session, playerId, matchingId);
     }
 
     /// <summary>이미 끝난 매치에 늦게 도착한 입장 실패 — 이 세션 한 명만 발행·끊는다.</summary>
-    private void PublishLateAdmissionFailure(GameClientSession session, long playerId, long matchingId)
+    private void PublishLateEntryFailure(GameClientSession session, long playerId, long matchingId)
     {
         PublishMatchingLifecycle(
-            MatchingLifecycleSubjects.PlayerAdmissionFailed,
+            MatchingLifecycleSubjects.PlayerEntryFailed,
             playerId,
             matchingId);
         try
         {
-            session.DisconnectForAdmissionFailure();
+            session.DisconnectForEntryFailure();
         }
         catch (Exception ex)
         {
             logger.LogWarning(
                 ex,
-                "Failed to disconnect late admission failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                "Failed to disconnect late entry failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 playerId,
                 matchingId);
         }
@@ -1086,9 +1086,9 @@ public partial class GameServer(
     /// </summary>    /// <summary>
     ///     Claims each player/subject during pre-finalization and retains only dispatch work for
     ///     post-commit, so a normal winner's already-prepared terminal subject wins over a late
-    ///     admission abort.
+    ///     entry abort.
     /// </summary>
-    private void PrepareAdmissionFailureLifecycle(
+    private void PrepareEntryFailureLifecycle(
         long matchingId,
         IReadOnlyCollection<long> playerIds,
         List<Action> lifecyclePublications)
@@ -1098,7 +1098,7 @@ public partial class GameServer(
             try
             {
                 Action? publication = PrepareMatchingLifecyclePublication(
-                    MatchingLifecycleSubjects.PlayerAdmissionFailed,
+                    MatchingLifecycleSubjects.PlayerEntryFailed,
                     playerId,
                     matchingId);
                 if (publication != null)
@@ -1108,14 +1108,14 @@ public partial class GameServer(
             {
                 logger.LogError(
                     ex,
-                    "Failed to prepare admission failure lifecycle publication: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    "Failed to prepare entry failure lifecycle publication: PlayerId={PlayerId}, MatchingId={MatchingId}",
                     playerId,
                     matchingId);
             }
         }
     }
 
-    private void DispatchPreparedAdmissionFailureLifecycle(
+    private void DispatchPreparedEntryFailureLifecycle(
         long matchingId,
         IReadOnlyList<Action> lifecyclePublications)
     {
@@ -1129,7 +1129,7 @@ public partial class GameServer(
             {
                 logger.LogError(
                     ex,
-                    "Failed to dispatch prepared admission failure lifecycle: MatchingId={MatchingId}",
+                    "Failed to dispatch prepared entry failure lifecycle: MatchingId={MatchingId}",
                     matchingId);
             }
         }

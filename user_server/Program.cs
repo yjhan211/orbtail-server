@@ -97,8 +97,8 @@ internal static class Program
                 sp.GetRequiredService<MatchingReservationService>(),
                 sp.GetRequiredService<IPlayerSessionRouter>(),
                 taskTracker.TryRun,
-                taskTracker.ShutdownToken,
-                sp.GetRequiredService<ILogger>());
+                sp.GetRequiredService<ILogger>(),
+                taskTracker.ShutdownToken);
         });
         services.AddSingleton<IMatchEntryService>(sp => sp.GetRequiredService<MatchEntryService>());
         services.AddSingleton<MatchCreationService>(sp => new MatchCreationService(

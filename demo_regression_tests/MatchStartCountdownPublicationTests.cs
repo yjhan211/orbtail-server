@@ -44,8 +44,8 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.DoesNotContain("_lastMatchStartCountdownBroadcast", server);
         AssertInOrder(
             broadcast,
-            "MatchStartGate.IsAdmissionTimedOut(matchingId, DateTime.UtcNow)",
-            "AbortMatchAfterAdmissionFailure(anchorSession);",
+            "MatchStartGate.IsEntryTimedOut(matchingId, DateTime.UtcNow)",
+            "AbortMatchAfterEntryFailure(anchorSession);",
             "MatchRuntimes.Enter(matchingId, out MatchScope scope)",
             "scope.Runtime.IsTerminal",
             "var snapshot = MatchStartGate.GetSnapshot(matchingId);",
@@ -59,7 +59,7 @@ public sealed class MatchStartCountdownPublicationTests
             "ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()",
             "foreach (var session in matchingSessions)",
             "session.TrySend(packet);");
-        Assert.DoesNotContain("anchorSession.DisconnectForAdmissionFailure();", broadcast);
+        Assert.DoesNotContain("anchorSession.DisconnectForEntryFailure();", broadcast);
 
         // 매치 틱은 잠금 안에서 카운트다운을 먼저 보내고 전투·봇 걸음을 잇는다.
         AssertInOrder(
@@ -96,7 +96,7 @@ public sealed class MatchStartCountdownPublicationTests
         string gameplayActive = ReadMethodSlice(
             startGate,
             "public static bool IsGameplayActive(long matchingId)",
-            "public static bool IsAdmissionTimedOut(");
+            "public static bool IsEntryTimedOut(");
 
         AssertInOrder(
             connect,
@@ -104,7 +104,7 @@ public sealed class MatchStartCountdownPublicationTests
             "SendMatchStartCountdown(matchingId);",
             "using Packet successResponse = CreateConnectResultPacket(",
             "RunUnderLiveMatch(runtime, () =>",
-            "Connection.TryMarkAuthenticated(() => Volatile.Write(ref _admissionCompleted, 1))",
+            "Connection.TryMarkAuthenticated(() => Volatile.Write(ref _entryCompleted, 1))",
             "TryPublishCommittedConnectResult(successResponse)");
         AssertInOrder(
             directCountdown,
@@ -129,7 +129,7 @@ public sealed class MatchStartCountdownPublicationTests
     public async Task PeriodicCountdown_PublishesEachSecondOnceUnderMatchLock()
     {
         const long matchingId = 71_002;
-        GameServer server = CreateAdmissionTestServer();
+        GameServer server = CreateEntryTestServer();
         MatchRuntime runtime = server.MatchRuntimes.GetOrCreate(matchingId);
         MatchStartGate.RegisterHumanPlayer(
             matchingId,
@@ -137,11 +137,11 @@ public sealed class MatchStartCountdownPublicationTests
             botCount: Config.SWARM_PLAYERS_PER_MATCH - 1);
         try
         {
-            var first = new RecordingAdmissionSession();
+            var first = new RecordingEntrySession();
             SetSessionIdentity(first, 301, matchingId);
-            var second = new RecordingAdmissionSession();
+            var second = new RecordingEntrySession();
             SetSessionIdentity(second, 302, matchingId);
-            var differentMatch = new RecordingAdmissionSession();
+            var differentMatch = new RecordingEntrySession();
             SetSessionIdentity(differentMatch, 999, matchingId + 1);
 
             using var lockHeld = new ManualResetEventSlim();
@@ -219,7 +219,7 @@ public sealed class MatchStartCountdownPublicationTests
     public void PeriodicCountdown_TransportFailureCommitsSecondWithoutRetry()
     {
         const long matchingId = 71_004;
-        GameServer server = CreateAdmissionTestServer();
+        GameServer server = CreateEntryTestServer();
         server.MatchRuntimes.GetOrCreate(matchingId);
         MatchStartGate.RegisterHumanPlayer(
             matchingId,
@@ -227,7 +227,7 @@ public sealed class MatchStartCountdownPublicationTests
             botCount: Config.SWARM_PLAYERS_PER_MATCH - 1);
         try
         {
-            var failing = new RecordingAdmissionSession(throwOnSend: true);
+            var failing = new RecordingEntrySession(throwOnSend: true);
             SetSessionIdentity(failing, 501, matchingId);
 
             TargetInvocationException failure = Assert.Throws<TargetInvocationException>(
@@ -249,19 +249,19 @@ public sealed class MatchStartCountdownPublicationTests
     }
 
     [Fact]
-    public void AdmissionFailure_WinnerDisconnectsRosterOnce_AndLateCallsFallBackToSelf()
+    public void EntryFailure_WinnerDisconnectsRosterOnce_AndLateCallsFallBackToSelf()
     {
         const long matchingId = 71_001;
-        GameServer server = CreateAdmissionTestServer();
+        GameServer server = CreateEntryTestServer();
         var sessionRegistry = Assert.IsType<GameSessionRegistry>(
             typeof(GameServer)
                 .GetField("_sessionRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(server));
         MatchRuntime runtime = server.MatchRuntimes.GetOrCreate(matchingId);
 
-        var anchor = new RecordingAdmissionSession();
+        var anchor = new RecordingEntrySession();
         SetSessionIdentity(anchor, playerId: 101, matchingId);
-        var other = new RecordingAdmissionSession();
+        var other = new RecordingEntrySession();
         SetSessionIdentity(other, playerId: 202, matchingId);
         Assert.Null(sessionRegistry.Register(101, anchor, out bool anchorAdded));
         Assert.True(anchorAdded);
@@ -269,7 +269,7 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.True(otherAdded);
         Assert.Equal(2, sessionRegistry.GetByMatch(matchingId).Count);
 
-        InvokeAdmissionAbort(server, anchor);
+        InvokeEntryAbort(server, anchor);
 
         Assert.True(runtime.IsTerminal);
         Assert.Null(server.MatchRuntimes.Get(matchingId));
@@ -279,29 +279,29 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.Equal(1, other.DisconnectCount);
         Assert.Empty(sessionRegistry.GetByMatch(matchingId));
         ConcurrentDictionary<long, string> playerSubjects = GetTerminalSubjects(server)[matchingId];
-        Assert.Equal(MatchingLifecycleSubjects.PlayerAdmissionFailed, playerSubjects[101]);
+        Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[101]);
 
-        // 이미 끝난 매치에 늦게 온 호출은 자기 세션의 admission_failed만 발행하고 끊기는 반복하지 않는다.
-        InvokeAdmissionAbort(server, other);
-        InvokeAdmissionAbort(server, other);
+        // 이미 끝난 매치에 늦게 온 호출은 자기 세션의 entry_failed만 발행하고 끊기는 반복하지 않는다.
+        InvokeEntryAbort(server, other);
+        InvokeEntryAbort(server, other);
 
         Assert.Equal(2, playerSubjects.Count);
-        Assert.Equal(MatchingLifecycleSubjects.PlayerAdmissionFailed, playerSubjects[202]);
+        Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[202]);
         Assert.Equal(1, other.FatalCount);
         Assert.Equal(1, other.DisconnectCount);
     }
 
     [Fact]
-    public void AdmissionFailure_AfterNormalCompletion_KeepsCompletedSubjectAndClosesOnce()
+    public void EntryFailure_AfterNormalCompletion_KeepsCompletedSubjectAndClosesOnce()
     {
         const long matchingId = 71_005;
         const long completedPlayerId = 601;
-        GameServer server = CreateAdmissionTestServer();
+        GameServer server = CreateEntryTestServer();
         var sessionRegistry = Assert.IsType<GameSessionRegistry>(
             typeof(GameServer)
                 .GetField("_sessionRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .GetValue(server));
-        var completedSession = new RecordingAdmissionSession();
+        var completedSession = new RecordingEntrySession();
         SetSessionIdentity(completedSession, completedPlayerId, matchingId);
         Assert.Null(sessionRegistry.Register(completedPlayerId, completedSession, out bool completedAdded));
         Assert.True(completedAdded);
@@ -322,8 +322,8 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.NotNull(completion);
         Assert.Null(server.MatchRuntimes.Get(matchingId));
 
-        InvokeAdmissionAbort(server, completedSession);
-        InvokeAdmissionAbort(server, completedSession);
+        InvokeEntryAbort(server, completedSession);
+        InvokeEntryAbort(server, completedSession);
 
         ConcurrentDictionary<long, string> playerSubjects = GetTerminalSubjects(server)[matchingId];
         Assert.Single(playerSubjects);
@@ -333,7 +333,7 @@ public sealed class MatchStartCountdownPublicationTests
     }
 
     [Fact]
-    public void AdmissionDisconnect_StillBuildsFatalPacketAndRequestsGracefulClose()
+    public void EntryDisconnect_StillBuildsFatalPacketAndRequestsGracefulClose()
     {
         string repositoryRoot = FindRepositoryRoot();
         string session = ReadNormalizedSource(
@@ -343,12 +343,12 @@ public sealed class MatchStartCountdownPublicationTests
             "GameClientSession.cs");
         string method = ReadMethodSlice(
             session,
-            "internal virtual void DisconnectForAdmissionFailure()",
+            "internal virtual void DisconnectForEntryFailure()",
             "internal bool TryMarkMatchingLifecycleHandledExternally()");
 
         AssertInOrder(
             method,
-            "Interlocked.Exchange(ref _admissionDisconnectIssued, 1) != 0",
+            "Interlocked.Exchange(ref _entryDisconnectIssued, 1) != 0",
             "MarkServerInitiatedDisconnect();",
             "PacketMaker.G_TO_C_ERROR(ErrorCode.FATAL",
             "Connection.TrySendAndDisconnect(packet);",
@@ -357,7 +357,7 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.Equal(1, CountOccurrences(method, "Connection.TrySendAndDisconnect(packet);"));
     }
 
-    private static GameServer CreateAdmissionTestServer()
+    private static GameServer CreateEntryTestServer()
     {
         IConfiguration configuration = new ConfigurationBuilder().Build();
         return new GameServer(
@@ -395,11 +395,11 @@ public sealed class MatchStartCountdownPublicationTests
             .Invoke(server, [matchingIds, sessions]);
     }
 
-    private static void InvokeAdmissionAbort(GameServer server, GameClientSession session)
+    private static void InvokeEntryAbort(GameServer server, GameClientSession session)
     {
         typeof(GameServer)
             .GetMethod(
-                "AbortMatchAfterAdmissionFailure",
+                "AbortMatchAfterEntryFailure",
                 BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(server, [session]);
     }
@@ -497,15 +497,15 @@ public sealed class MatchStartCountdownPublicationTests
         throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
     }
 
-    private sealed class RecordingAdmissionSession : GameClientSession
+    private sealed class RecordingEntrySession : GameClientSession
     {
-        private static readonly FieldInfo AdmissionDisconnectIssuedField =
+        private static readonly FieldInfo EntryDisconnectIssuedField =
             typeof(GameClientSession).GetField(
-                "_admissionDisconnectIssued",
+                "_entryDisconnectIssued",
                 BindingFlags.Instance | BindingFlags.NonPublic)!;
         private readonly bool _throwOnSend;
 
-        public RecordingAdmissionSession(bool throwOnSend = false)
+        public RecordingEntrySession(bool throwOnSend = false)
             : base(
                 new TcpConnection(),
                 NullLogger.Instance,
@@ -545,11 +545,11 @@ public sealed class MatchStartCountdownPublicationTests
         public int SendCount { get; private set; }
         public List<byte[]> DeliveredWireBytes { get; } = [];
 
-        internal override void DisconnectForAdmissionFailure()
+        internal override void DisconnectForEntryFailure()
         {
-            int wasIssued = (int)AdmissionDisconnectIssuedField.GetValue(this)!;
-            base.DisconnectForAdmissionFailure();
-            int isIssued = (int)AdmissionDisconnectIssuedField.GetValue(this)!;
+            int wasIssued = (int)EntryDisconnectIssuedField.GetValue(this)!;
+            base.DisconnectForEntryFailure();
+            int isIssued = (int)EntryDisconnectIssuedField.GetValue(this)!;
             if (wasIssued == 0 && isIssued == 1)
             {
                 FatalCount++;

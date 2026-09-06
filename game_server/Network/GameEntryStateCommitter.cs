@@ -6,31 +6,31 @@ using StackExchange.Redis;
 namespace game_server.network;
 
 /// <summary>
-///     Commits a consumed GameServer handoff into Redis admission state.
+///     Commits a consumed GameServer handoff into Redis entry state.
 ///     This class owns the retry and exact read-back rules that make ambiguous Redis write responses safe.
 /// </summary>
-internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperations, ILogger logger)
+internal sealed class GameEntryStateCommitter(IRedisOperations redisOperations, ILogger logger)
 {
     private const int ConfirmationAttempts = 3;
     private static readonly TimeSpan ConfirmationRetryDelay = TimeSpan.FromMilliseconds(50);
 
     /// <summary>
-    ///     Renews the player's exact matching reservation, records the player admission marker, and completes
-    ///     the match admission only after every expected human marker is visible.
+    ///     Renews the player's exact matching reservation, records the player entry marker, and completes
+    ///     the match entry only after every expected human marker is visible.
     /// </summary>
     public async Task CommitAsync(
         long matchingId,
         long playerId,
         IReadOnlyCollection<long> expectedHumanPlayerIds)
     {
-        string admissionStateKey = MatchingRedisKeys.AdmissionStateKey(matchingId);
-        RedisValue admissionState = await redisOperations.StringGetAsync(admissionStateKey);
-        if (admissionState.IsNullOrEmpty ||
-            !string.Equals(admissionState.ToString(), MatchingRedisKeys.AdmissionPendingState,
+        string entryStateKey = MatchingRedisKeys.EntryStateKey(matchingId);
+        RedisValue entryState = await redisOperations.StringGetAsync(entryStateKey);
+        if (entryState.IsNullOrEmpty ||
+            !string.Equals(entryState.ToString(), MatchingRedisKeys.EntryPendingState,
                 StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
-                $"Admission is not pending for match {matchingId}: '{admissionState}'.");
+                $"Entry is not pending for match {matchingId}: '{entryState}'.");
         }
 
         await RenewMatchingReservationAsync(matchingId, playerId);
@@ -40,8 +40,8 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
         await WriteMarkerWithReadBackAsync(
             handoffKey,
             admittedField,
-            MatchingRedisKeys.AdmissionReadyValue,
-            $"player {playerId} admission for match {matchingId}");
+            MatchingRedisKeys.EntryReadyValue,
+            $"player {playerId} entry for match {matchingId}");
 
         RedisValue[] admittedFields = expectedHumanPlayerIds
             .Select(MatchingRedisKeys.AdmittedPlayerField)
@@ -52,9 +52,9 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
                                  admittedValues.All(value =>
                                      !value.IsNullOrEmpty &&
                                      ((byte[])value!).AsSpan().SequenceEqual(
-                                         [MatchingRedisKeys.AdmissionReadyValue]));
+                                         [MatchingRedisKeys.EntryReadyValue]));
         if (allHumansAdmitted)
-            await CompleteAdmissionStateAsync(admissionStateKey, matchingId);
+            await CompleteEntryStateAsync(entryStateKey, matchingId);
     }
 
     private async Task RenewMatchingReservationAsync(long matchingId, long playerId)
@@ -70,7 +70,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
                     MatchingRedisKeys.ReservationKey(playerId),
                     expectedReservation,
                     expectedReservation,
-                    MatchingRedisKeys.PostAdmissionReservationLifetime);
+                    MatchingRedisKeys.PostEntryReservationLifetime);
             }
             catch (Exception ex)
             {
@@ -81,7 +81,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
             if (!reservationRenewed)
             {
                 throw new InvalidOperationException(
-                    $"Matching reservation changed before admission for player {playerId} in match {matchingId}.");
+                    $"Matching reservation changed before entry for player {playerId} in match {matchingId}.");
             }
 
             break;
@@ -105,7 +105,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
             matchingId);
     }
 
-    private async Task CompleteAdmissionStateAsync(string admissionStateKey, long matchingId)
+    private async Task CompleteEntryStateAsync(string entryStateKey, long matchingId)
     {
         Exception? lastError = null;
         for (int attempt = 0; attempt < ConfirmationAttempts; attempt++)
@@ -114,9 +114,9 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
             try
             {
                 bool completed = await redisOperations.StringSetIfEqualsAsync(
-                    admissionStateKey,
-                    MatchingRedisKeys.AdmissionPendingState,
-                    MatchingRedisKeys.AdmissionCompletedState,
+                    entryStateKey,
+                    MatchingRedisKeys.EntryPendingState,
+                    MatchingRedisKeys.EntryCompletedState,
                     MatchingRedisKeys.HandoffStateLifetime);
                 if (completed)
                     return;
@@ -128,16 +128,16 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
 
             try
             {
-                RedisValue state = await redisOperations.StringGetAsync(admissionStateKey);
+                RedisValue state = await redisOperations.StringGetAsync(entryStateKey);
                 if (!state.IsNullOrEmpty &&
-                    string.Equals(state.ToString(), MatchingRedisKeys.AdmissionCompletedState,
+                    string.Equals(state.ToString(), MatchingRedisKeys.EntryCompletedState,
                         StringComparison.Ordinal))
                 {
                     if (lastError != null)
                     {
                         logger.LogWarning(
                             lastError,
-                            "Admission completion response was lost; terminal state read-back confirmed: MatchingId={MatchingId}",
+                            "Entry completion response was lost; terminal state read-back confirmed: MatchingId={MatchingId}",
                             matchingId);
                     }
 
@@ -145,7 +145,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
                 }
 
                 if (!state.IsNullOrEmpty &&
-                    string.Equals(state.ToString(), MatchingRedisKeys.AdmissionCanceledState,
+                    string.Equals(state.ToString(), MatchingRedisKeys.EntryCanceledState,
                         StringComparison.Ordinal))
                 {
                     canceledStateObserved = true;
@@ -156,7 +156,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
                 lastError = ex;
                 logger.LogWarning(
                     ex,
-                    "Admission terminal-state read-back failed: MatchingId={MatchingId}, Attempt={Attempt}",
+                    "Entry terminal-state read-back failed: MatchingId={MatchingId}, Attempt={Attempt}",
                     matchingId,
                     attempt + 1);
             }
@@ -164,14 +164,14 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
             if (canceledStateObserved)
             {
                 throw new InvalidOperationException(
-                    $"Admission timeout canceled match {matchingId} before completion.");
+                    $"Entry timeout canceled match {matchingId} before completion.");
             }
 
             await Task.Delay(ConfirmationRetryDelay);
         }
 
         throw new InvalidOperationException(
-            $"Could not confirm admission completion for match {matchingId}.",
+            $"Could not confirm entry completion for match {matchingId}.",
             lastError);
     }
 

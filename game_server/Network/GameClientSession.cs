@@ -44,7 +44,7 @@ public partial class GameClientSession : SessionBase
     private readonly MatchRuntimeStore _matchRuntimes;
     private readonly GameServerDevOptions _devOptions;
     /// <summary>
-    ///     Queues an already-built successful admission response after authentication has committed. Production uses
+    ///     Queues an already-built successful entry response after authentication has committed. Production uses
     ///     <see cref="TcpConnection.TrySend"/>; tests can inject a sender to verify the match monitor boundary.
     /// </summary>
     private readonly Func<Packet, bool> _trySendConnectSuccessResponse;
@@ -52,7 +52,7 @@ public partial class GameClientSession : SessionBase
     private readonly Action<long, long> _publishPlayerLeft;
     private readonly Func<long, long, Action?> _prepareGameCompletion;
     private readonly Action<long, long> _releaseMatchingReservation;
-    private readonly Action<GameClientSession> _recordAdmissionFailure;
+    private readonly Action<GameClientSession> _recordEntryFailure;
     private readonly Func<bool> _isServerStopping;
     private readonly MatchRosterManager _matchRosterManager;
     private readonly AreaClosureManager _areaClosureManager;
@@ -66,7 +66,7 @@ public partial class GameClientSession : SessionBase
     private readonly Action<GameClientSession, long, int, long, long> _handleSwarmOrbDecision;
     /// <summary>매치 소유 조합 난수 stream — 매치 잠금 안에서만 조회한다.</summary>
     private readonly Func<long, Random> _getItemCombineRandom;
-    private readonly GameAdmissionStateCommitter _admissionStateCommitter;
+    private readonly GameEntryStateCommitter _entryStateCommitter;
 
     private bool _isSleeping;
 
@@ -78,9 +78,9 @@ public partial class GameClientSession : SessionBase
     internal DateTime SwarmHealLockUntilUtc { get; set; } = DateTime.MinValue;
     internal bool IsSleeping => _isSleeping;
     private int _swarmSleepGrantedTicks;
-    private int _admissionCompleted;
-    private int _admissionFailureReported;
-    private int _admissionDisconnectIssued;
+    private int _entryCompleted;
+    private int _entryFailureReported;
+    private int _entryDisconnectIssued;
     private int _matchingLifecycleHandledExternally;
     private int _matchingLifecycleTerminalReported;
     private int _matchingReservationReleaseReported;
@@ -163,7 +163,7 @@ public partial class GameClientSession : SessionBase
         Func<long, long, Action?> prepareGameCompletion,
         Action<long, long> releaseMatchingReservation,
         Func<bool> isServerStopping,
-        Action<GameClientSession> recordAdmissionFailure,
+        Action<GameClientSession> recordEntryFailure,
         GameServerDevOptions devOptions,
         Func<Packet, bool>? trySendConnectSuccessResponse = null,
         TimeProvider? movementTimeProvider = null)
@@ -191,13 +191,13 @@ public partial class GameClientSession : SessionBase
         _handleSwarmGrowthPick = handleSwarmGrowthPick;
         _handleSwarmOrbDecision = handleSwarmOrbDecision;
         _getItemCombineRandom = getItemCombineRandom;
-        _admissionStateCommitter = new GameAdmissionStateCommitter(redisOperations, logger);
+        _entryStateCommitter = new GameEntryStateCommitter(redisOperations, logger);
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
         _publishPlayerLeft = publishPlayerLeft;
         _prepareGameCompletion = prepareGameCompletion;
         _releaseMatchingReservation = releaseMatchingReservation;
         _isServerStopping = isServerStopping;
-        _recordAdmissionFailure = recordAdmissionFailure;
+        _recordEntryFailure = recordEntryFailure;
 
         // ReSharper disable once VirtualMemberCallInConstructor
         InitializeProtocolHandlers();
@@ -417,21 +417,21 @@ public partial class GameClientSession : SessionBase
 
     /// <summary>
     ///     Hands a registered, pre-authentication session to the owning server's deferred
-    ///     admission-abort path. A false result means invoking that hook failed; callers may
+    ///     entry-abort path. A false result means invoking that hook failed; callers may
     ///     close the socket without sending a competing local terminal response.
     /// </summary>
-    private bool ReportAdmissionFailureOnce()
+    private bool ReportEntryFailureOnce()
     {
-        bool admissionFailureClaimed = false;
+        bool entryFailureClaimed = false;
         bool matchingLifecycleTerminalClaimed = false;
-        if (Volatile.Read(ref _admissionCompleted) != 0 ||
+        if (Volatile.Read(ref _entryCompleted) != 0 ||
             !PlayerId.HasValue ||
             MatchingId <= 0)
             return true;
-        if (Interlocked.CompareExchange(ref _admissionFailureReported, 1, 0) != 0)
+        if (Interlocked.CompareExchange(ref _entryFailureReported, 1, 0) != 0)
             return true;
 
-        admissionFailureClaimed = true;
+        entryFailureClaimed = true;
         if (!TryBeginMatchingLifecycleTerminal())
             return true;
 
@@ -439,7 +439,7 @@ public partial class GameClientSession : SessionBase
 
         try
         {
-            _recordAdmissionFailure(this);
+            _recordEntryFailure(this);
             return true;
         }
         catch (Exception ex)
@@ -448,11 +448,11 @@ public partial class GameClientSession : SessionBase
             // can already own either marker when this method returns early above.
             if (matchingLifecycleTerminalClaimed)
                 Volatile.Write(ref _matchingLifecycleTerminalReported, 0);
-            if (admissionFailureClaimed)
-                Volatile.Write(ref _admissionFailureReported, 0);
+            if (entryFailureClaimed)
+                Volatile.Write(ref _entryFailureReported, 0);
             Logger.LogError(
                 ex,
-                "Failed to report game admission failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                "Failed to report game entry failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 PlayerId,
                 MatchingId);
             return false;
@@ -480,9 +480,9 @@ public partial class GameClientSession : SessionBase
         }
     }
 
-    internal virtual void DisconnectForAdmissionFailure()
+    internal virtual void DisconnectForEntryFailure()
     {
-        if (Interlocked.Exchange(ref _admissionDisconnectIssued, 1) != 0)
+        if (Interlocked.Exchange(ref _entryDisconnectIssued, 1) != 0)
             return;
 
         MarkServerInitiatedDisconnect();
@@ -552,9 +552,9 @@ public partial class GameClientSession : SessionBase
             // An infrastructure-level match abort publishes one deterministic terminal event
             // for the whole roster. Do not race it with a per-socket Released event.
         }
-        else if (Volatile.Read(ref _admissionCompleted) == 0)
+        else if (Volatile.Read(ref _entryCompleted) == 0)
         {
-            ReportAdmissionFailureOnce();
+            ReportEntryFailureOnce();
         }
         else if (Volatile.Read(ref _isServerInitiatedDisconnect) || _isServerStopping())
         {

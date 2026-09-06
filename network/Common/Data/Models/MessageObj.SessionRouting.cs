@@ -26,7 +26,7 @@ namespace network.common.data.models
 
     /// User Server간 입장 실패 전달 요청. 대상 세션을 가진 서버가 처리 결과를 응답한다.
     [MessagePackObject]
-    public sealed class U_TO_U_ADMISSION_FAILED
+    public sealed class U_TO_U_ENTRY_FAILED
     {
         [Key("playerId")] public long PlayerId { get; set; }
         [Key("matchingId")] public long MatchingId { get; set; }

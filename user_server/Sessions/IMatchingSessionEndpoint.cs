@@ -10,7 +10,7 @@ internal interface IMatchingSessionEndpoint
 {
     public bool TryDeliverMatchingSuccess(long matchingId, string requestId, Packet packet);
     public bool TryDeliverMatchingFailed(long matchingId, string requestId, Packet packet);
-    public bool TryDeliverAdmissionFailed(long matchingId, Packet packet);
+    public bool TryDeliverEntryFailed(long matchingId, Packet packet);
     public void ClearMatchingAssignment(long matchingId);
     public void DisconnectIfOlderSession(long newGeneration);
 }

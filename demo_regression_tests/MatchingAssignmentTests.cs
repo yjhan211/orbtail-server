@@ -61,7 +61,7 @@ public sealed class MatchingAssignmentTests
     }
 
     [Fact]
-    public void FailRequest_And_FailAdmission_ClearOnlyMatchingState()
+    public void FailRequest_And_FailEntry_ClearOnlyMatchingState()
     {
         var state = new MatchingAssignment();
         state.TryBegin(out string? requestId, out _);

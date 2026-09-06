@@ -101,7 +101,7 @@ public sealed class MatchCreationServiceTests
     }
 
     [Fact]
-    public async Task CreateMatchAsync_SuccessPacketsReachEveryHumanBeforeAdmissionReady()
+    public async Task CreateMatchAsync_SuccessPacketsReachEveryHumanBeforeEntryReady()
     {
         MatchingQueueData[] humans = await EnqueueHumansAsync(4);
 
@@ -155,11 +155,11 @@ public sealed class MatchCreationServiceTests
     }
 
     [Fact]
-    public async Task CreateMatchAsync_CompletedAdmissionIsNotRolledBack()
+    public async Task CreateMatchAsync_CompletedEntryIsNotRolledBack()
     {
         MatchingQueueData[] humans = await EnqueueHumansAsync(2);
         _handoff.DeliverResult = playerId => playerId != 1_001;
-        _handoff.CancelAdmissionResult = false;
+        _handoff.CancelEntryResult = false;
 
         bool committed = await CreatePass().CreateMatchAsync(humans, 6);
 

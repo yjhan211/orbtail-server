@@ -161,8 +161,8 @@ public sealed class UserServerScaleOutTests
         leader.Start();
         other.Start();
 
-        Assert.False(await leader.DeliverAdmissionFailedAsync(7, 42, ErrorCode.MATCHING_FAILED));
-        Assert.Equal(("admission", 42L, ""), owner.Deliveries.Single());
+        Assert.False(await leader.DeliverEntryFailedAsync(7, 42, ErrorCode.MATCHING_FAILED));
+        Assert.Equal(("entry", 42L, ""), owner.Deliveries.Single());
     }
 
     [Fact]
@@ -263,18 +263,18 @@ public sealed class UserServerScaleOutTests
             GameEndTimestamp = 123456, GameHandoffTicket = "test-ticket"
         }));
         Assert.True(await sender.DeliverMatchingFailedAsync(7, 42, "req7", ErrorCode.MATCHING_FAILED));
-        Assert.True(await sender.DeliverAdmissionFailedAsync(7, 42, ErrorCode.MATCHING_FAILED));
+        Assert.True(await sender.DeliverEntryFailedAsync(7, 42, ErrorCode.MATCHING_FAILED));
         Assert.Equal(3, owner.Deliveries.Count);
         Assert.Equal(("success", 42L, "req7"), owner.Deliveries[0]);
         Assert.Equal(("failed", 42L, "req7"), owner.Deliveries[1]);
-        Assert.Equal(("admission", 42L, ""), owner.Deliveries[2]);
+        Assert.Equal(("entry", 42L, ""), owner.Deliveries[2]);
         Assert.Equal(3, bus.RequestCount);
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task Router_UnconfirmedSuccessRollsBackMatchWithoutPublishingAdmissionReady(bool loseReply)
+    public async Task Router_UnconfirmedSuccessRollsBackMatchWithoutPublishingEntryReady(bool loseReply)
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var cache = new InMemoryRedisOperations();
@@ -295,8 +295,8 @@ public sealed class UserServerScaleOutTests
             cache,
             new GameHandoffTicketService(new RedisGameHandoffTicketStore(cache), new GameHandoffTicketOptions()),
             reservations, sender,
-            (_, _) => throw new InvalidOperationException("Failed delivery must not start the admission watchdog"),
-            CancellationToken.None, logger);
+            (_, _) => throw new InvalidOperationException("Failed delivery must not start the entry watchdog"),
+            logger, CancellationToken.None);
         var pass = new MatchCreationService(
             cache, queue, reservations, handoff,
             new FixedGameServerAllocator(),
@@ -314,7 +314,7 @@ public sealed class UserServerScaleOutTests
         Assert.Null(cache.GetString(MatchingRedisKeys.ReservationKey(7)));
         Assert.Equal(0, cache.SortedSetCount(MatchingQueue.QueueKey));
         Assert.True((await cache.HashGetAsync(
-            MatchingRedisKeys.Key(1), MatchingRedisKeys.AdmissionReadyField)).IsNullOrEmpty);
+            MatchingRedisKeys.Key(1), MatchingRedisKeys.EntryReadyField)).IsNullOrEmpty);
         Assert.True((await cache.HashGetAsync(
             MatchingRedisKeys.Key(1), MatchingRedisKeys.ManifestField)).IsNullOrEmpty);
     }
@@ -353,7 +353,7 @@ public sealed class UserServerScaleOutTests
             expected.RecordSize();
             Assert.Equal(expected.ToBytes(), owner.LastPacketBytes);
         }
-        Assert.True(await sender.DeliverAdmissionFailedAsync(7, 42, ErrorCode.MATCHING_FAILED));
+        Assert.True(await sender.DeliverEntryFailedAsync(7, 42, ErrorCode.MATCHING_FAILED));
         using (var expected = PacketMaker.U_TO_C_MATCHING_FAILED(ErrorCode.MATCHING_FAILED, 42))
         {
             expected.RecordSize();
@@ -378,8 +378,8 @@ public sealed class UserServerScaleOutTests
         public bool TryDeliverMatchingFailed(long matchingId, string requestId, Packet packet) =>
             Record("failed", matchingId, requestId, packet);
 
-        public bool TryDeliverAdmissionFailed(long matchingId, Packet packet) =>
-            Record("admission", matchingId, string.Empty, packet);
+        public bool TryDeliverEntryFailed(long matchingId, Packet packet) =>
+            Record("entry", matchingId, string.Empty, packet);
 
         public void ClearMatchingAssignment(long matchingId) => Cleared.Add(matchingId);
         public void DisconnectIfOlderSession(long newGeneration) =>

@@ -14,7 +14,7 @@ namespace user_server.matching.queue;
 internal sealed class MatchingReservationService(IRedisOperations redisOperations, ILogger logger)
 {
     private static readonly TimeSpan ReservationLifetime = TimeSpan.FromMinutes(2);
-    private static readonly TimeSpan ActiveReservationLifetime = MatchingRedisKeys.AdmissionReservationLifetime;
+    private static readonly TimeSpan ActiveReservationLifetime = MatchingRedisKeys.EntryReservationLifetime;
     private static string ReservationKey(long playerId) => MatchingRedisKeys.ReservationKey(playerId);
 
     public async Task<bool> HasReservationAsync(long playerId)

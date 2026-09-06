@@ -21,7 +21,8 @@ internal sealed class NatsPlayerSessionRouter(
 {
     private const string MatchingSuccessSubject = "user_server.session.deliver.matching_success";
     private const string MatchingFailedSubject = "user_server.session.deliver.matching_failed";
-    private const string AdmissionFailedSubject = "user_server.session.deliver.admission_failed";
+    // 기존 서버와 통신할 수 있도록 subject 문자열은 유지한다.
+    private const string EntryFailedSubject = "user_server.session.deliver.admission_failed";
     private const string ClearSubject = "user_server.session.clear";
     private const string LoginSubject = "user_server.session.login";
 
@@ -39,7 +40,7 @@ internal sealed class NatsPlayerSessionRouter(
     {
         natsClient.SubscribeRequest(MatchingSuccessSubject, HandleMatchingSuccessAsync);
         natsClient.SubscribeRequest(MatchingFailedSubject, HandleMatchingFailedAsync);
-        natsClient.SubscribeRequest(AdmissionFailedSubject, HandleAdmissionFailedAsync);
+        natsClient.SubscribeRequest(EntryFailedSubject, HandleEntryFailedAsync);
         natsClient.Subscribe(ClearSubject, (_, body) => HandleClear(body));
         natsClient.Subscribe(LoginSubject, (_, body) => HandleLogin(body));
     }
@@ -83,23 +84,23 @@ internal sealed class NatsPlayerSessionRouter(
         return DeliverRemoteAsync(MatchingFailedSubject, playerId, matchingId, request);
     }
 
-    public Task<bool> DeliverAdmissionFailedAsync(long playerId, long matchingId, ErrorCode errorCode)
+    public Task<bool> DeliverEntryFailedAsync(long playerId, long matchingId, ErrorCode errorCode)
     {
         var local = getLocalSession(playerId);
         if (local != null)
         {
             using var packet = CreateMatchingFailedPacket(errorCode, matchingId);
-            return Task.FromResult(local.TryDeliverAdmissionFailed(matchingId, packet));
+            return Task.FromResult(local.TryDeliverEntryFailed(matchingId, packet));
         }
 
-        var request = new U_TO_U_ADMISSION_FAILED
+        var request = new U_TO_U_ENTRY_FAILED
         {
             PlayerId = playerId,
             MatchingId = matchingId,
             ErrorCode = errorCode,
             OriginNodeId = NodeId
         };
-        return DeliverRemoteAsync(AdmissionFailedSubject, playerId, matchingId, request);
+        return DeliverRemoteAsync(EntryFailedSubject, playerId, matchingId, request);
     }
 
     public void ClearMatchingAssignment(long playerId, long matchingId)
@@ -175,9 +176,9 @@ internal sealed class NatsPlayerSessionRouter(
             (session, packet) => session.TryDeliverMatchingFailed(request.MatchingId, request.RequestId, packet));
     }
 
-    private Task<byte[]?> HandleAdmissionFailedAsync(string subject, byte[] body, CancellationToken cancellationToken)
+    private Task<byte[]?> HandleEntryFailedAsync(string subject, byte[] body, CancellationToken cancellationToken)
     {
-        var request = TryReadMessage<U_TO_U_ADMISSION_FAILED>(body, subject);
+        var request = TryReadMessage<U_TO_U_ENTRY_FAILED>(body, subject);
         if (request == null)
         {
             return Task.FromResult<byte[]?>(null);
@@ -185,7 +186,7 @@ internal sealed class NatsPlayerSessionRouter(
 
         return HandleDelivery(subject, request.OriginNodeId, request.PlayerId, request.MatchingId,
             () => CreateMatchingFailedPacket(request.ErrorCode, request.MatchingId),
-            (session, packet) => session.TryDeliverAdmissionFailed(request.MatchingId, packet));
+            (session, packet) => session.TryDeliverEntryFailed(request.MatchingId, packet));
     }
 
     private Task<byte[]?> HandleDelivery(string subject, string originNodeId, long playerId, long matchingId,

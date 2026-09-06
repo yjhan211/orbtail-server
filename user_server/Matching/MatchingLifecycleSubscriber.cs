@@ -8,7 +8,7 @@ using user_server.sessions;
 namespace user_server.matching;
 
 /// <summary>
-///     Game Server가 Core NATS로 보내는 매칭 lifecycle 4종(left/completed/admission_failed/released)을 받아
+///     Game Server가 Core NATS로 보내는 매칭 lifecycle 4종(left/completed/entry_failed/released)을 받아
 ///     매칭 reservation에 반영한다. payload는 playerId(8바이트 LE) 또는 playerId+matchingId(16바이트 LE)다.
 ///     User Server가 여럿이면 큐 그룹으로 한 프로세스만 받는다. 세션 배정 해제는
 ///     라우터가 세션을 가진 프로세스로 넘긴다.
@@ -26,7 +26,7 @@ internal sealed class MatchingLifecycleSubscriber(
     {
         PlayerLeft,
         PlayerCompleted,
-        PlayerAdmissionFailed,
+        PlayerEntryFailed,
         PlayerReleased
     }
 
@@ -41,8 +41,8 @@ internal sealed class MatchingLifecycleSubscriber(
             (_, body) => HandleLifecycleMessage(body, MatchingLifecycleEvent.PlayerCompleted),
             QueueGroup);
         natsClient.Subscribe(
-            MatchingLifecycleSubjects.PlayerAdmissionFailed,
-            (_, body) => HandleLifecycleMessage(body, MatchingLifecycleEvent.PlayerAdmissionFailed),
+            MatchingLifecycleSubjects.PlayerEntryFailed,
+            (_, body) => HandleLifecycleMessage(body, MatchingLifecycleEvent.PlayerEntryFailed),
             QueueGroup);
         natsClient.Subscribe(
             MatchingLifecycleSubjects.PlayerReleased,
@@ -70,7 +70,7 @@ internal sealed class MatchingLifecycleSubscriber(
             return;
         }
 
-        if (lifecycleEvent is MatchingLifecycleEvent.PlayerAdmissionFailed or MatchingLifecycleEvent.PlayerReleased &&
+        if (lifecycleEvent is MatchingLifecycleEvent.PlayerEntryFailed or MatchingLifecycleEvent.PlayerReleased &&
             body.Length != sizeof(long) * 2)
         {
             logger.LogWarning(
@@ -84,12 +84,12 @@ internal sealed class MatchingLifecycleSubscriber(
         long matchingId = body.Length == sizeof(long) * 2
             ? BinaryPrimitives.ReadInt64LittleEndian(body.AsSpan(sizeof(long)))
             : 0;
-        if (matchingId > 0 && lifecycleEvent != MatchingLifecycleEvent.PlayerAdmissionFailed)
+        if (matchingId > 0 && lifecycleEvent != MatchingLifecycleEvent.PlayerEntryFailed)
             sessions.ClearMatchingAssignment(playerId, matchingId);
         taskTracker.TryRun(
             () => lifecycleEvent switch
             {
-                MatchingLifecycleEvent.PlayerAdmissionFailed =>
+                MatchingLifecycleEvent.PlayerEntryFailed =>
                     matchingManager.HandleEntryFailureAsync(playerId, matchingId),
                 _ => matchingManager.ReleaseMatchingReservationAsync(playerId, matchingId)
             },

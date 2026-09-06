@@ -90,7 +90,7 @@ internal sealed class MatchingManager(
 
     public async Task HandleEntryFailureAsync(long playerId, long matchingId)
     {
-        await matchEntryService.NotifyAdmissionFailedAsync(playerId, matchingId);
+        await matchEntryService.NotifyEntryFailedAsync(playerId, matchingId);
         await ReleaseMatchingReservationAsync(playerId, matchingId);
     }
 

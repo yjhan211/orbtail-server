@@ -104,7 +104,7 @@ public static class MatchStartGate
         }
     }
 
-    public static bool IsAdmissionTimedOut(long matchingId, DateTime utcNow)
+    public static bool IsEntryTimedOut(long matchingId, DateTime utcNow)
     {
         if (!States.TryGetValue(matchingId, out var state))
             return false;
@@ -112,7 +112,7 @@ public static class MatchStartGate
         lock (state.SyncRoot)
         {
             return state.CountdownEndsAtUtc == null &&
-                   utcNow - state.CreatedAtUtc >= MatchingRedisKeys.AdmissionTimeout;
+                   utcNow - state.CreatedAtUtc >= MatchingRedisKeys.EntryTimeout;
         }
     }
 
