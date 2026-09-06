@@ -24,7 +24,7 @@ public sealed class RedisAccountCredentialStore(
 
     public async Task<AccountCredential?> FindByTokenHashAsync(string tokenHash)
     {
-        RedisValue playerIdValue = await redisOperations.HashGetAsync(PlayerByTokenHashKey, tokenHash);
+        var playerIdValue = await redisOperations.HashGetAsync(PlayerByTokenHashKey, tokenHash);
         if (playerIdValue.IsNullOrEmpty ||
             !long.TryParse(Decode(playerIdValue), NumberStyles.None, CultureInfo.InvariantCulture, out long playerId) ||
             playerId <= 0)
@@ -32,38 +32,30 @@ public sealed class RedisAccountCredentialStore(
             return null;
         }
 
-        RedisValue tokenHashValue = await redisOperations.HashGetAsync(
-            TokenHashByPlayerKey,
-            playerId.ToString(CultureInfo.InvariantCulture));
+        var tokenHashValue = await redisOperations.HashGetAsync(TokenHashByPlayerKey, playerId.ToString(CultureInfo.InvariantCulture));
         if (tokenHashValue.IsNullOrEmpty)
+        {
             return null;
+        }
 
         string storedCredential = Decode(tokenHashValue);
         bool containsLegacyPlaintext = OpaqueToken.IsValid(storedCredential, "acct_");
-        string storedTokenHash = containsLegacyPlaintext
-            ? OpaqueToken.Fingerprint(storedCredential)
-            : storedCredential;
+        string storedTokenHash = containsLegacyPlaintext ? OpaqueToken.Fingerprint(storedCredential) : storedCredential;
         if (!string.Equals(storedTokenHash, tokenHash, StringComparison.Ordinal))
+        {
             return null;
+        }
 
         if (containsLegacyPlaintext)
         {
-            await redisOperations.HashSetAsync(
-                TokenHashByPlayerKey,
-                playerId.ToString(CultureInfo.InvariantCulture),
-                Encode(storedTokenHash));
+            await redisOperations.HashSetAsync(TokenHashByPlayerKey, playerId.ToString(CultureInfo.InvariantCulture), Encode(storedTokenHash));
         }
 
         return new AccountCredential(playerId, storedTokenHash);
     }
 
-    public async Task<AccountCredentialProvisionResult> ProvisionAsync(
-        long playerId,
-        string proposedToken,
-        string proposedTokenHash)
+    public async Task<AccountCredentialProvisionResult> ProvisionAsync(long playerId, string proposedToken, string proposedTokenHash)
     {
-        // Different UserServer instances can allocate different playerIds for the same first-login
-        // token. The token-hash lock must therefore be acquired before the player lock.
         await using var tokenLock = await redLockFactory.AcquireLockAsync(
             $"account_token:{proposedTokenHash}",
             Config.LOCK_TTL);
@@ -78,13 +70,13 @@ public sealed class RedisAccountCredentialStore(
             return new AccountCredentialProvisionResult(AccountCredentialProvisionStatus.PlayerAlreadyExists);
         }
 
-        RedisValue existingTokenHashValue = await redisOperations.HashGetAsync(TokenHashByPlayerKey, playerField);
+        var existingTokenHashValue = await redisOperations.HashGetAsync(TokenHashByPlayerKey, playerField);
         if (!existingTokenHashValue.IsNullOrEmpty)
         {
             return new AccountCredentialProvisionResult(AccountCredentialProvisionStatus.PlayerAlreadyExists);
         }
 
-        RedisValue proposedMapping = await redisOperations.HashGetAsync(PlayerByTokenHashKey, proposedTokenHash);
+        var proposedMapping = await redisOperations.HashGetAsync(PlayerByTokenHashKey, proposedTokenHash);
         if (!proposedMapping.IsNullOrEmpty &&
             (!long.TryParse(Decode(proposedMapping), NumberStyles.None, CultureInfo.InvariantCulture,
                  out long proposedMappedPlayerId) || proposedMappedPlayerId != playerId))

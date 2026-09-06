@@ -34,7 +34,7 @@ internal sealed class UserServer(
     IPlayerSessionLeaseStore sessionLeaseStore,
     IRedLockFactory redLock,
     IPlayerService playerService,
-    IAccountTokenService accountTokenService,
+    AccountTokenService accountTokenService,
     ServerReadinessState readinessState,
     UserServerNodeIdentity node,
     PlayerSessionRegistry sessions,

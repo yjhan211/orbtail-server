@@ -19,7 +19,7 @@ namespace user_server.sessions;
 public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
 {
     private readonly IMatchingManager _matchingManager;
-    private readonly IAccountTokenService _accountTokenService;
+    private readonly AccountTokenService _accountTokenService;
     private readonly IRedLockFactory _redLock;
     private readonly IPlayerSessionLeaseStore _sessionLeaseStore;
     private readonly IPlayerService _playerService;
@@ -43,7 +43,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         IRedLockFactory redLock,
         IPlayerService playerService,
         IMatchingManager matchingManager,
-        IAccountTokenService accountTokenService,
+        AccountTokenService accountTokenService,
         IPlayerSessionLeaseStore sessionLeaseStore,
         string nodeId,
         Func<long, PlayerSession, (bool Accepted, PlayerSession? PreviousSession)> onSessionRegistered,

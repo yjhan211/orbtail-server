@@ -71,7 +71,7 @@ internal static class Program
         services.AddSingleton<IPlayerSessionLeaseStore, RedisPlayerSessionLeaseStore>();
         services.AddGameHandoffTicket(hostContext.Configuration);
         services.AddSingleton<IAccountCredentialStore, RedisAccountCredentialStore>();
-        services.AddSingleton<IAccountTokenService, AccountTokenService>();
+        services.AddSingleton<AccountTokenService>();
 
         services.AddSingleton<IPlayerService, PlayerService>();
 
