@@ -3,6 +3,14 @@ using MessagePack;
 
 namespace network.common.data.models
 {
+    /// GameServer가 UserServer에 보내는 매칭 종료·입장 실패 알림. 알림 종류는 NATS subject로 구분한다.
+    [MessagePackObject]
+    public sealed class G_TO_U_MATCHING_LIFECYCLE
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("matchingId")] public long MatchingId { get; set; }
+    }
+
     /// User Server간 매칭 성공 전달 요청. 대상 세션을 가진 서버가 처리 결과를 응답한다.
     [MessagePackObject]
     public sealed class U_TO_U_MATCHING_SUCCESS

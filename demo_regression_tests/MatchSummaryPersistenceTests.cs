@@ -3,6 +3,8 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using game_server;
 using game_server.services;
+using MessagePack;
+using network.common.data.models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -249,9 +251,9 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Assert.Equal(1, nats.PublishCount);
         Assert.Equal(MatchingLifecycleSubjects.PlayerCompleted, nats.LastSubject);
         byte[] payload = Assert.IsType<byte[]>(nats.LastPayload);
-        Assert.Equal(16, payload.Length);
-        Assert.Equal(101L, BitConverter.ToInt64(payload, 0));
-        Assert.Equal(matchingId, BitConverter.ToInt64(payload, 8));
+        var message = MessagePackSerializer.Deserialize<G_TO_U_MATCHING_LIFECYCLE>(payload);
+        Assert.Equal(101L, message.PlayerId);
+        Assert.Equal(matchingId, message.MatchingId);
     }
 
     [Fact]
@@ -482,14 +484,12 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Assert.True(deferredFactory < exactlyOnceGuard);
         Assert.True(exactlyOnceGuard < trackedPublication);
 
-        int firstLittleEndian = Find(corePublish, "BinaryPrimitives.WriteInt64LittleEndian(payload, playerId);");
-        int secondLittleEndian = Find(
-            corePublish,
-            "BinaryPrimitives.WriteInt64LittleEndian(payload.AsSpan(sizeof(long)), matchingId);");
+        int serialization = Find(corePublish, "MessagePackSerializer.Serialize(new G_TO_U_MATCHING_LIFECYCLE");
+        Assert.Contains("PlayerId = playerId", corePublish);
+        Assert.Contains("MatchingId = matchingId", corePublish);
         int corePublishInvocation = Find(corePublish, "_matchingLifecycleNatsClient?.Publish(subject, payload);");
         int failureLog = Find(corePublish, "Matching lifecycle publish failed:");
-        Assert.True(firstLittleEndian < secondLittleEndian);
-        Assert.True(secondLittleEndian < corePublishInvocation);
+        Assert.True(serialization < corePublishInvocation);
         Assert.True(corePublishInvocation < failureLog);
         Assert.DoesNotContain("throw", corePublish, StringComparison.Ordinal);
 

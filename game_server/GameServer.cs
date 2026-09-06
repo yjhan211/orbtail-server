@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
@@ -847,9 +846,11 @@ public partial class GameServer(
     {
         try
         {
-            byte[] payload = new byte[sizeof(long) * 2];
-            BinaryPrimitives.WriteInt64LittleEndian(payload, playerId);
-            BinaryPrimitives.WriteInt64LittleEndian(payload.AsSpan(sizeof(long)), matchingId);
+            byte[] payload = MessagePackSerializer.Serialize(new G_TO_U_MATCHING_LIFECYCLE
+            {
+                PlayerId = playerId,
+                MatchingId = matchingId
+            }, MessagePackSerializerOptions.Standard);
             _matchingLifecycleNatsClient?.Publish(subject, payload);
         }
         catch (Exception ex)

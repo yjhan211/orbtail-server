@@ -1,4 +1,5 @@
-using System.Buffers.Binary;
+using MessagePack;
+using network.common.data.models;
 using network.infrastructure;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -8,10 +9,12 @@ using user_server.sessions;
 namespace user_server.matching;
 
 /// <summary>
-///     Game Server가 Core NATS로 보내는 매칭 lifecycle 4종(left/completed/entry_failed/released)을 받아
-///     매칭 reservation에 반영한다. payload는 playerId(8바이트 LE) 또는 playerId+matchingId(16바이트 LE)다.
-///     User Server가 여럿이면 큐 그룹으로 한 프로세스만 받는다. 세션 배정 해제는
-///     라우터가 세션을 가진 프로세스로 넘긴다.
+///     GameServer가 보내는 퇴장·게임 완료·입장 실패·예약 해제 알림을 NATS로 받는다.
+///     받은 알림에 따라 세션의 매칭 배정을 해제하고, 예약 해제나 입장 실패 처리를 MatchingManager에 요청한다.
+///     비동기 처리 작업은 BackgroundTaskTracker에 등록해 예외와 종료 시 완료 대기를 관리한다.
+///
+///     여러 UserServer 중 하나만 알림을 받도록 큐 그룹을 사용하며,
+///     다른 서버에 연결된 플레이어의 세션 처리는 라우터에 맡긴다.
 /// </summary>
 internal sealed class MatchingLifecycleSubscriber(
     INatsClient natsClient,
@@ -20,7 +23,9 @@ internal sealed class MatchingLifecycleSubscriber(
     BackgroundTaskTracker taskTracker,
     ILogger logger)
 {
-    public const string QueueGroup = "user_server.matching_lifecycle";
+    private const string QueueGroup = "user_server.matching_lifecycle";
+    private static readonly MessagePackSerializerOptions SerializerOptions =
+        MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData);
 
     private enum MatchingLifecycleEvent
     {
@@ -64,28 +69,29 @@ internal sealed class MatchingLifecycleSubscriber(
 
     private void HandleLifecycleMessage(byte[] body, MatchingLifecycleEvent lifecycleEvent)
     {
-        if (body.Length != sizeof(long) && body.Length != sizeof(long) * 2)
+        G_TO_U_MATCHING_LIFECYCLE? message;
+        try
         {
-            logger.LogWarning("Invalid matching lifecycle message length: {Length}", body.Length);
+            message = MessagePackSerializer.Deserialize<G_TO_U_MATCHING_LIFECYCLE>(body, SerializerOptions);
+        }
+        catch (MessagePackSerializationException ex)
+        {
+            logger.LogWarning(ex, "Invalid matching lifecycle message: Event={Event}", lifecycleEvent);
+            return;
+        }
+        if (message.PlayerId <= 0 || message.MatchingId <= 0)
+        {
+            logger.LogWarning("Matching lifecycle message requires positive playerId and matchingId: Event={Event}", lifecycleEvent);
             return;
         }
 
-        if (lifecycleEvent is MatchingLifecycleEvent.PlayerEntryFailed or MatchingLifecycleEvent.PlayerReleased &&
-            body.Length != sizeof(long) * 2)
-        {
-            logger.LogWarning(
-                "Release-only lifecycle message requires playerId + matchingId payload: Event={Event}, Length={Length}",
-                lifecycleEvent,
-                body.Length);
-            return;
-        }
+        long playerId = message.PlayerId;
+        long matchingId = message.MatchingId;
 
-        long playerId = BinaryPrimitives.ReadInt64LittleEndian(body);
-        long matchingId = body.Length == sizeof(long) * 2
-            ? BinaryPrimitives.ReadInt64LittleEndian(body.AsSpan(sizeof(long)))
-            : 0;
-        if (matchingId > 0 && lifecycleEvent != MatchingLifecycleEvent.PlayerEntryFailed)
+        if (lifecycleEvent != MatchingLifecycleEvent.PlayerEntryFailed)
+        {
             sessions.ClearMatchingAssignment(playerId, matchingId);
+        }
         taskTracker.TryRun(
             () => lifecycleEvent switch
             {
