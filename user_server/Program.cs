@@ -69,7 +69,7 @@ internal static class Program
             sp.GetRequiredService<RedisConnection>().GetRedLockFactory());
         services.AddSingleton<IRedisOperations, RedisOperations>();
         services.AddSingleton<IPlayerSessionLeaseStore, RedisPlayerSessionLeaseStore>();
-        services.AddSingleton<IMatchingQueueClaimStore, RedisMatchingQueueClaimStore>();
+        services.AddSingleton<IMatchingReservationStore, RedisMatchingReservationStore>();
         services.AddGameHandoffTicket(hostContext.Configuration);
         services.AddAccountAuthentication(hostContext.Configuration);
 
@@ -83,7 +83,7 @@ internal static class Program
             sp.GetRequiredService<ILogger>()));
         services.AddSingleton<IPlayerSessionRouter>(sp => sp.GetRequiredService<NatsPlayerSessionRouter>());
 
-        services.AddSingleton<MatchingQueueClaimCoordinator>();
+        services.AddSingleton<MatchingReservationCoordinator>();
         services.AddSingleton<MatchingQueue>();
         services.AddSingleton<MatchRosterBuilder>();
         services.AddSingleton(sp => DevMatchOverrides.FromEnvironment(
@@ -99,7 +99,7 @@ internal static class Program
             return new MatchEntryService(
                 sp.GetRequiredService<IRedisOperations>(),
                 sp.GetRequiredService<GameHandoffTicketService>(),
-                sp.GetRequiredService<MatchingQueueClaimCoordinator>(),
+                sp.GetRequiredService<MatchingReservationCoordinator>(),
                 sp.GetRequiredService<IPlayerSessionRouter>(),
                 taskTracker.TryRun,
                 taskTracker.ShutdownToken,
@@ -109,7 +109,7 @@ internal static class Program
         services.AddSingleton<MatchCreationService>(sp => new MatchCreationService(
             sp.GetRequiredService<IRedisOperations>(),
             sp.GetRequiredService<MatchingQueue>(),
-            sp.GetRequiredService<MatchingQueueClaimCoordinator>(),
+            sp.GetRequiredService<MatchingReservationCoordinator>(),
             sp.GetRequiredService<MatchRosterBuilder>(),
             sp.GetRequiredService<IMatchEntryService>(),
             sp.GetRequiredService<IGameServerAllocator>(),

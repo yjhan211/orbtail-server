@@ -15,7 +15,7 @@ using user_server.sessions;
 namespace demo_regression_tests;
 
 /// <summary>
-///     Core NATS의 session.clear 유실 시 PlayerSession이 Redis claim을 정본으로 로컬 배정을 복구하는 경로.
+///     Core NATS의 session.clear 유실 시 PlayerSession이 Redis reservation을 정본으로 로컬 배정을 복구하는 경로.
 /// </summary>
 public sealed class UserServerMatchingReconciliationTests
 {
@@ -225,7 +225,7 @@ public sealed class UserServerMatchingReconciliationTests
     }
 
     [Fact]
-    public async Task MissingClaim_ClearsStaleAssignmentAndStartsNewRequest()
+    public async Task MissingReservation_ClearsStaleAssignmentAndStartsNewRequest()
     {
         var matching = new RecordingMatchingManager();
         using var connection = new ActiveTcpConnection();
@@ -238,11 +238,11 @@ public sealed class UserServerMatchingReconciliationTests
 
         Assert.NotEqual(firstRequest, secondRequest);
         Assert.Equal(secondRequest, session.ActiveMatchingRequestId);
-        Assert.Equal(1, matching.ClaimReadCount);
+        Assert.Equal(1, matching.ReservationReadCount);
     }
 
     [Fact]
-    public async Task ExistingClaim_PreservesAssignmentAndRejectsNewRequest()
+    public async Task ExistingReservation_PreservesAssignmentAndRejectsNewRequest()
     {
         var matching = new RecordingMatchingManager();
         using var connection = new ActiveTcpConnection();
@@ -250,11 +250,11 @@ public sealed class UserServerMatchingReconciliationTests
 
         string firstRequest = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
         DeliverMatchingSuccess(session, 42, firstRequest);
-        matching.HasClaim = true;
+        matching.HasReservation = true;
 
         Assert.Null(await session.TryBeginMatchingRequestAsync(7));
         Assert.Equal(firstRequest, session.ActiveMatchingRequestId);
-        Assert.Equal(1, matching.ClaimReadCount);
+        Assert.Equal(1, matching.ReservationReadCount);
     }
 
     [Fact]
@@ -266,20 +266,20 @@ public sealed class UserServerMatchingReconciliationTests
 
         string firstRequest = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
         DeliverMatchingSuccess(session, 42, firstRequest);
-        matching.ClaimCompletion = new TaskCompletionSource<bool>(
+        matching.ReservationCompletion = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         Task<string?> delayedReconciliation = session.TryBeginMatchingRequestAsync(7);
         ((IMatchingSessionEndpoint)session).ClearMatchingAssignment(42);
         string concurrentRequest = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
-        matching.ClaimCompletion.SetResult(false);
+        matching.ReservationCompletion.SetResult(false);
 
         Assert.Null(await delayedReconciliation);
         Assert.Equal(concurrentRequest, session.ActiveMatchingRequestId);
     }
 
     [Fact]
-    public async Task ClaimReadFailure_FailsClosedWithoutClearingAssignment()
+    public async Task ReservationReadFailure_FailsClosedWithoutClearingAssignment()
     {
         var matching = new RecordingMatchingManager();
         using var connection = new ActiveTcpConnection();
@@ -287,7 +287,7 @@ public sealed class UserServerMatchingReconciliationTests
 
         string firstRequest = Assert.IsType<string>(await session.TryBeginMatchingRequestAsync(7));
         DeliverMatchingSuccess(session, 42, firstRequest);
-        matching.ClaimError = new InvalidOperationException("redis down");
+        matching.ReservationError = new InvalidOperationException("redis down");
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => session.TryBeginMatchingRequestAsync(7));
         Assert.Equal(firstRequest, session.ActiveMatchingRequestId);
@@ -322,20 +322,20 @@ public sealed class UserServerMatchingReconciliationTests
 
     private sealed class RecordingMatchingManager : IMatchingManager
     {
-        public bool HasClaim { get; set; }
-        public Exception? ClaimError { get; set; }
-        public TaskCompletionSource<bool>? ClaimCompletion { get; set; }
-        public int ClaimReadCount { get; private set; }
+        public bool HasReservation { get; set; }
+        public Exception? ReservationError { get; set; }
+        public TaskCompletionSource<bool>? ReservationCompletion { get; set; }
+        public int ReservationReadCount { get; private set; }
         public int AddCount { get; private set; }
         public int CancelCount { get; private set; }
         public int ReleaseCount { get; private set; }
 
-        public Task<bool> HasMatchingClaimAsync(long playerId)
+        public Task<bool> HasReservationAsync(long playerId)
         {
-            ClaimReadCount++;
-            if (ClaimError != null)
-                return Task.FromException<bool>(ClaimError);
-            return ClaimCompletion?.Task ?? Task.FromResult(HasClaim);
+            ReservationReadCount++;
+            if (ReservationError != null)
+                return Task.FromException<bool>(ReservationError);
+            return ReservationCompletion?.Task ?? Task.FromResult(HasReservation);
         }
 
         public Task<ErrorCode> AddToQueue(long playerId, PlayerSession session)
@@ -350,7 +350,7 @@ public sealed class UserServerMatchingReconciliationTests
             return Task.FromResult(ErrorCode.SUCCESS);
         }
         public Task HandleEntryFailureAsync(long playerId, long matchingId) => Task.CompletedTask;
-        public Task ReleaseMatchingClaimAsync(long playerId, long matchingId)
+        public Task ReleaseMatchingReservationAsync(long playerId, long matchingId)
         {
             ReleaseCount++;
             return Task.CompletedTask;

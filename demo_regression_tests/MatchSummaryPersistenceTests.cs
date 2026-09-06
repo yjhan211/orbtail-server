@@ -291,15 +291,15 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     }
 
     [Fact]
-    public async Task LifecyclePublishFailure_StillReleasesExactClaim()
+    public async Task LifecyclePublishFailure_StillReleasesExactReservation()
     {
         const long playerId = 1201;
         const long matchingId = 42_104;
         var redis = new InMemoryRedisOperations();
         await redis.StringSetAsync(
-            MatchingHandoffRedisKeys.ClaimKey(playerId),
+            MatchingHandoffRedisKeys.ReservationKey(playerId),
             matchingId,
-            MatchingHandoffRedisKeys.PostAdmissionClaimLifetime);
+            MatchingHandoffRedisKeys.PostAdmissionReservationLifetime);
         var nats = new RecordingNatsClient
         {
             PublishException = new InvalidOperationException("core failure")
@@ -315,22 +315,22 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             matchingId);
         await WaitForPendingMatchingRedisCleanupsAsync(server);
 
-        Assert.Null(redis.GetString(MatchingHandoffRedisKeys.ClaimKey(playerId)));
+        Assert.Null(redis.GetString(MatchingHandoffRedisKeys.ReservationKey(playerId)));
         Assert.Equal(1, nats.PublishCount);
         Assert.True(logger.Contains(LogLevel.Error, "Matching lifecycle publish failed:"));
     }
 
     [Fact]
-    public async Task LifecycleClaimRelease_DoesNotDeleteDifferentClaim()
+    public async Task LifecycleReservationRelease_DoesNotDeleteDifferentReservation()
     {
         const long playerId = 1202;
         const long endedMatchingId = 42_105;
         const long newerMatchingId = 42_106;
         var redis = new InMemoryRedisOperations();
         await redis.StringSetAsync(
-            MatchingHandoffRedisKeys.ClaimKey(playerId),
+            MatchingHandoffRedisKeys.ReservationKey(playerId),
             newerMatchingId,
-            MatchingHandoffRedisKeys.PostAdmissionClaimLifetime);
+            MatchingHandoffRedisKeys.PostAdmissionReservationLifetime);
         var nats = new RecordingNatsClient();
         var logger = new RecordingLogger<GameServer>();
         GameServer server = CreateLegacyGameServer(nats, logger, redis);
@@ -345,13 +345,13 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
 
         Assert.Equal(
             newerMatchingId.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            redis.GetString(MatchingHandoffRedisKeys.ClaimKey(playerId)));
+            redis.GetString(MatchingHandoffRedisKeys.ReservationKey(playerId)));
         Assert.Equal(1, nats.PublishCount);
-        Assert.True(logger.Contains(LogLevel.Warning, "Matching claim was absent or changed"));
+        Assert.True(logger.Contains(LogLevel.Warning, "Matching reservation was absent or changed"));
     }
 
     [Fact]
-    public async Task LifecycleClaimReleaseFailure_StillPublishesNats()
+    public async Task LifecycleReservationReleaseFailure_StillPublishesNats()
     {
         const long playerId = 1203;
         const long matchingId = 42_107;
@@ -373,7 +373,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
 
         Assert.Equal(1, nats.PublishCount);
         Assert.Equal(MatchingLifecycleSubjects.PlayerReleased, nats.LastSubject);
-        Assert.True(logger.Contains(LogLevel.Warning, "Matching claim release failed before lifecycle publish:"));
+        Assert.True(logger.Contains(LogLevel.Warning, "Matching reservation release failed before lifecycle publish:"));
     }
 
     [Fact]

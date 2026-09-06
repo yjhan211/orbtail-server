@@ -15,7 +15,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
     private static readonly TimeSpan ConfirmationRetryDelay = TimeSpan.FromMilliseconds(50);
 
     /// <summary>
-    ///     Renews the player's exact matching claim, records the player admission marker, and completes
+    ///     Renews the player's exact matching reservation, records the player admission marker, and completes
     ///     the match admission only after every expected human marker is visible.
     /// </summary>
     public async Task CommitAsync(
@@ -33,7 +33,7 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
                 $"Admission is not pending for match {matchingId}: '{admissionState}'.");
         }
 
-        await RenewMatchingClaimAsync(matchingId, playerId);
+        await RenewMatchingReservationAsync(matchingId, playerId);
 
         string handoffKey = MatchingHandoffRedisKeys.Key(matchingId);
         string admittedField = MatchingHandoffRedisKeys.AdmittedPlayerField(playerId);
@@ -57,50 +57,50 @@ internal sealed class GameAdmissionStateCommitter(IRedisOperations redisOperatio
             await CompleteAdmissionStateAsync(admissionStateKey, matchingId);
     }
 
-    private async Task RenewMatchingClaimAsync(long matchingId, long playerId)
+    private async Task RenewMatchingReservationAsync(long matchingId, long playerId)
     {
-        string expectedClaim = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        Exception? claimError = null;
-        bool claimRenewed = false;
+        string expectedReservation = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        Exception? reservationError = null;
+        bool reservationRenewed = false;
         for (int attempt = 0; attempt < ConfirmationAttempts; attempt++)
         {
             try
             {
-                claimRenewed = await redisOperations.StringSetIfEqualsAsync(
-                    MatchingHandoffRedisKeys.ClaimKey(playerId),
-                    expectedClaim,
-                    expectedClaim,
-                    MatchingHandoffRedisKeys.PostAdmissionClaimLifetime);
+                reservationRenewed = await redisOperations.StringSetIfEqualsAsync(
+                    MatchingHandoffRedisKeys.ReservationKey(playerId),
+                    expectedReservation,
+                    expectedReservation,
+                    MatchingHandoffRedisKeys.PostAdmissionReservationLifetime);
             }
             catch (Exception ex)
             {
-                claimError = ex;
+                reservationError = ex;
                 continue;
             }
 
-            if (!claimRenewed)
+            if (!reservationRenewed)
             {
                 throw new InvalidOperationException(
-                    $"Matching claim changed before admission for player {playerId} in match {matchingId}.");
+                    $"Matching reservation changed before admission for player {playerId} in match {matchingId}.");
             }
 
             break;
         }
 
-        if (claimRenewed)
+        if (reservationRenewed)
             return;
 
-        RedisValue claim = await redisOperations.StringGetAsync(MatchingHandoffRedisKeys.ClaimKey(playerId));
-        if (claim.IsNullOrEmpty || !string.Equals(claim.ToString(), expectedClaim, StringComparison.Ordinal))
+        RedisValue reservation = await redisOperations.StringGetAsync(MatchingHandoffRedisKeys.ReservationKey(playerId));
+        if (reservation.IsNullOrEmpty || !string.Equals(reservation.ToString(), expectedReservation, StringComparison.Ordinal))
         {
             throw new InvalidOperationException(
-                $"Could not renew the matching claim for player {playerId} in match {matchingId}.",
-                claimError);
+                $"Could not renew the matching reservation for player {playerId} in match {matchingId}.",
+                reservationError);
         }
 
         logger.LogWarning(
-            claimError,
-            "Matching claim renewal response was lost; exact claim read-back confirmed: PlayerId={PlayerId}, MatchingId={MatchingId}",
+            reservationError,
+            "Matching reservation renewal response was lost; exact reservation read-back confirmed: PlayerId={PlayerId}, MatchingId={MatchingId}",
             playerId,
             matchingId);
     }

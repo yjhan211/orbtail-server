@@ -6,14 +6,15 @@ using user_server.sessions;
 namespace user_server.matching.queue;
 
 /// <summary>
-///     Redis 매칭 큐(sorted set <c>{matching}:queue</c>, score = 요청 시각)의 단일 접근 경로.
-///     등록·취소는 player별 RedLock 안에서 claim 존재를 확인한 뒤 진행하고, 읽기는 손상·중복·무효 entry를
-///     제거(sanitize)한 typed entry 배열로 돌려준다. 프로세스 상태를 갖지 않는다.
+///     Redis에 저장된 매칭 대기열의 등록·취소·조회를 담당한다.
+///     등록과 취소는 플레이어별 락과 reservation 확인을 통해 매치 생성 작업과 충돌하지 않도록 처리한다.
+///     조회 시 손상되거나 중복된 항목을 정리하고, 지정한 시각까지 등록된 대기자를 반환한다.
+///     실제 참가자 구성과 매치 생성은 MatchCreationService가 담당한다.
 /// </summary>
 internal sealed class MatchingQueue(
     IRedisOperations redisOperations,
     IRedLockFactory redLock,
-    MatchingQueueClaimCoordinator claims,
+    MatchingReservationCoordinator reservations,
     ILogger logger)
 {
     internal const string QueueKey = MatchingHandoffRedisKeys.MatchingQueueKey;
@@ -24,27 +25,31 @@ internal sealed class MatchingQueue(
         try
         {
             await using var queueLock = await redLock.AcquireLockAsync(MakeLockKey(playerId), Config.LOCK_TTL);
-            if (await claims.HasClaimAsync(playerId))
+            if (await reservations.HasReservationAsync(playerId))
+            {
                 return ErrorCode.MATCHING_ALREADY_IN_QUEUE;
+            }
 
             int removedCount = await RemovePlayerEntriesAsync(playerId);
             if (removedCount > 0)
+            {
                 logger.LogInformation("Player {PlayerId}: removed {Count} stale matching entries", playerId, removedCount);
+            }
 
-            // 위에서 제거한 snapshot을 다른 worker가 이미 claim했을 수 있다.
-            if (await claims.HasClaimAsync(playerId))
+            // 위에서 제거한 snapshot을 다른 worker가 이미 reservation했을 수 있다.
+            if (await reservations.HasReservationAsync(playerId))
+            {
                 return ErrorCode.MATCHING_ALREADY_IN_QUEUE;
+            }
 
             string? requestId = user.ActiveMatchingRequestId;
             if (!MatchingRequestTokens.IsSafeTokenComponent(requestId))
             {
-                logger.LogWarning(
-                    "Matching queue rejected because the session has no active request fence: PlayerId={PlayerId}",
-                    playerId);
+                logger.LogWarning("Matching queue rejected because the session has no active request fence: PlayerId={PlayerId}", playerId);
                 return ErrorCode.MATCHING_FAILED;
             }
 
-            DateTimeOffset matchingNow = DateTimeOffset.UtcNow;
+            var matchingNow = DateTimeOffset.UtcNow;
             var entry = MatchingQueueEntry.FromData(new MatchingQueueData
             {
                 PlayerId = playerId,
@@ -69,8 +74,8 @@ internal sealed class MatchingQueue(
         try
         {
             await using var queueLock = await redLock.AcquireLockAsync(MakeLockKey(playerId), Config.LOCK_TTL);
-            MatchingClaimLease? cancellationClaim = await claims.TryAcquireCancellationAsync(playerId);
-            if (cancellationClaim == null)
+            MatchingReservationLease? cancellationReservation = await reservations.TryAcquireCancellationAsync(playerId);
+            if (cancellationReservation == null)
                 return ErrorCode.MATCHING_FAILED;
 
             try
@@ -84,7 +89,7 @@ internal sealed class MatchingQueue(
             }
             finally
             {
-                await claims.ReleaseCancellationAsync(cancellationClaim);
+                await reservations.ReleaseCancellationAsync(cancellationReservation);
             }
         }
         catch (Exception ex)

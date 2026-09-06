@@ -362,18 +362,18 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
 }
 
 /// <summary>
-///     RedisMatchingQueueClaimStore의 Lua(ZSCORE 확인 + SET NX)를 InMemoryRedisOperations 위에서 재현한다.
+///     RedisMatchingReservationStore의 Lua(ZSCORE 확인 + SET NX)를 InMemoryRedisOperations 위에서 재현한다.
 /// </summary>
-internal sealed class InMemoryMatchingClaimStore(InMemoryRedisOperations cache) : IMatchingQueueClaimStore
+internal sealed class InMemoryMatchingReservationStore(InMemoryRedisOperations cache) : IMatchingReservationStore
 {
-    public int ClaimAttempts { get; private set; }
+    public int ReservationAttempts { get; private set; }
 
-    public Task<bool> TryClaimQueueEntryAsync(byte[] queueEntry, long playerId, string claimId, TimeSpan expiry)
+    public Task<bool> TryReserveQueueEntryAsync(byte[] queueEntry, long playerId, string reservationId, TimeSpan expiry)
     {
-        ClaimAttempts++;
+        ReservationAttempts++;
         if (!cache.SortedSetContains(MatchingQueue.QueueKey, queueEntry))
             return Task.FromResult(false);
-        return cache.StringSetIfNotExistsAsync(MatchingHandoffRedisKeys.ClaimKey(playerId), claimId, expiry);
+        return cache.StringSetIfNotExistsAsync(MatchingHandoffRedisKeys.ReservationKey(playerId), reservationId, expiry);
     }
 }
 

@@ -16,8 +16,8 @@ public sealed class MatchingQueueTests
 
     public MatchingQueueTests()
     {
-        var claims = new MatchingQueueClaimCoordinator(_cache, new InMemoryMatchingClaimStore(_cache), _logger);
-        _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), claims, _logger);
+        var reservations = new MatchingReservationCoordinator(_cache, new InMemoryMatchingReservationStore(_cache), _logger);
+        _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), reservations, _logger);
     }
 
     [Fact]
@@ -113,10 +113,10 @@ public sealed class MatchingQueueTests
     }
 
     [Fact]
-    public void AtomicClaimKeys_ShareRedisClusterHashTag()
+    public void AtomicReservationKeys_ShareRedisClusterHashTag()
     {
         Assert.Equal("{matching}:queue", MatchingQueue.QueueKey);
-        Assert.Equal("{matching}:claim:42", MatchingHandoffRedisKeys.ClaimKey(42));
+        Assert.Equal("{matching}:reservation:42", MatchingHandoffRedisKeys.ReservationKey(42));
     }
 
     [Fact]

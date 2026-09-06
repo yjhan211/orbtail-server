@@ -11,9 +11,9 @@ public interface IMatchingManager
 {
     public Task<ErrorCode> AddToQueue(long playerId, PlayerSession session);
     public Task<ErrorCode> CancelMatching(long playerId);
-    public Task<bool> HasMatchingClaimAsync(long playerId);
+    public Task<bool> HasReservationAsync(long playerId);
     public Task HandleEntryFailureAsync(long playerId, long matchingId);
-    public Task ReleaseMatchingClaimAsync(long playerId, long matchingId);
+    public Task ReleaseMatchingReservationAsync(long playerId, long matchingId);
     public Task StopMatchingLoopAsync();
     public Task StopAsync();
 }

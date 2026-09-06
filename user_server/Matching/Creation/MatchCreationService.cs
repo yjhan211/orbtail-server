@@ -18,14 +18,14 @@ internal enum MatchCreationOrigin
 /// <summary>
 ///     1초 timer가 호출하는 매칭 pass 한 번의 본체. 큐에서 3초 이상 기다린 entry를 PlayersPerMatch 단위로 묶고,
 ///     끝으로 30초 이상 기다린 미달 그룹을 봇으로 채운다. 두 경로는 <see cref="CreateMatchAsync" /> 하나로 합쳐졌으며,
-///     claim 획득 → matchingId 발급 → claim commit → 로스터 조립 → 매치 manifest → 사람별 성공 전달 →
-///     <c>admission_ready</c> → watchdog 순서와, 실패 시 pending→canceled CAS 뒤 handoff 삭제·실패 통지·claim 롤백을 지킨다.
+///     reservation 획득 → matchingId 발급 → reservation commit → 로스터 조립 → 매치 manifest → 사람별 성공 전달 →
+///     <c>admission_ready</c> → watchdog 순서와, 실패 시 pending→canceled CAS 뒤 handoff 삭제·실패 통지·reservation 롤백을 지킨다.
 ///     봇 PlayerId는 process-wide 음수 카운터에서 발급한다. 그 외 프로세스 상태는 없다.
 /// </summary>
 internal sealed class MatchCreationService(
     IRedisOperations redisOperations,
     MatchingQueue queue,
-    MatchingQueueClaimCoordinator claims,
+    MatchingReservationCoordinator reservations,
     MatchRosterBuilder rosterBuilder,
     IMatchEntryService handoff,
     IGameServerAllocator gameServers,
@@ -102,7 +102,7 @@ internal sealed class MatchCreationService(
     }
 
     /// <summary>
-    ///     그룹 하나를 매치로 확정한다. 받아 줄 Game Server가 없거나 claim을 얻지 못하면 건너뛰고(false),
+    ///     그룹 하나를 매치로 확정한다. 받아 줄 Game Server가 없거나 reservation을 얻지 못하면 건너뛰고(false),
     ///     전달이 불완전하면 되돌린다(false). matchingId 발급 뒤 예외는 롤백 후 호출자에게 전파돼 이번 pass를 끝낸다.
     /// </summary>
     internal async Task<bool> CreateMatchAsync(
@@ -110,15 +110,15 @@ internal sealed class MatchCreationService(
         int botsNeeded,
         MatchCreationOrigin origin)
     {
-        // 배정은 부작용이 없으므로 claim보다 먼저 — 노드가 없으면 큐를 그대로 두고 다음 pass에 다시 본다.
+        // 배정은 부작용이 없으므로 reservation보다 먼저 — 노드가 없으면 큐를 그대로 두고 다음 pass에 다시 본다.
         GameServerAllocation? gameServer = await gameServers.TryAllocateAsync();
         if (gameServer == null)
             return false;
 
-        MatchingClaimLease? claimLease = await claims.TryAcquireAsync(groupEntries);
-        if (claimLease == null)
+        MatchingReservationLease? reservationLease = await reservations.TryAcquireAsync(groupEntries);
+        if (reservationLease == null)
         {
-            logger.LogInformation("Matching group skipped because another worker owns a player claim: Origin={Origin}", origin);
+            logger.LogInformation("Matching group skipped because another worker owns a player reservation: Origin={Origin}", origin);
             return false;
         }
 
@@ -133,7 +133,7 @@ internal sealed class MatchCreationService(
         try
         {
             matchingId = await redisOperations.StringIncrementAsync(MatchingIdKey);
-            await claims.CommitAsync(claimLease, matchingId);
+            await reservations.CommitAsync(reservationLease, matchingId);
 
             var allGroupEntries = new List<MatchingQueueEntry>(groupEntries);
             for (int b = 0; b < botsNeeded; b++)
@@ -173,7 +173,7 @@ internal sealed class MatchCreationService(
                 finally
                 {
                     if (!delivered)
-                        await claims.ReleaseActiveBestEffortAsync(entry.PlayerId, matchingId);
+                        await reservations.ReleaseActiveBestEffortAsync(entry.PlayerId, matchingId);
                     await queue.RemoveEntryAsync(entry);
                 }
             }
@@ -203,16 +203,16 @@ internal sealed class MatchCreationService(
         {
             if (!matchCommitted)
             {
-                // matchingId 발급 전에 실패했으면 handoff·입장 상태가 아직 없으므로 claim만 되돌린다.
+                // matchingId 발급 전에 실패했으면 handoff·입장 상태가 아직 없으므로 reservation만 되돌린다.
                 if (matchingId <= 0)
                 {
-                    await claims.RollbackAsync(claimLease);
+                    await reservations.RollbackAsync(reservationLease);
                 }
                 else if (await handoff.TryCancelAdmissionForRollbackAsync(matchingId))
                 {
                     await handoff.DeleteHandoffBestEffortAsync(matchingId);
                     await handoff.NotifyBatchFailedAsync(batchPlayers, matchingId);
-                    await claims.RollbackAsync(claimLease);
+                    await reservations.RollbackAsync(reservationLease);
                 }
             }
         }

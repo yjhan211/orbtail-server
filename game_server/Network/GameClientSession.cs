@@ -51,7 +51,7 @@ public partial class GameClientSession : SessionBase
     private readonly Func<long, GameClientSession, Action?> _registerSessionCallback;
     private readonly Action<long, long> _publishPlayerLeft;
     private readonly Func<long, long, Action?> _prepareGameCompletion;
-    private readonly Action<long, long> _releaseMatchingClaim;
+    private readonly Action<long, long> _releaseMatchingReservation;
     private readonly Action<GameClientSession> _recordAdmissionFailure;
     private readonly Func<bool> _isServerStopping;
     private readonly MatchRosterManager _matchRosterManager;
@@ -83,7 +83,7 @@ public partial class GameClientSession : SessionBase
     private int _admissionDisconnectIssued;
     private int _matchingLifecycleHandledExternally;
     private int _matchingLifecycleTerminalReported;
-    private int _matchingClaimReleaseReported;
+    private int _matchingReservationReleaseReported;
     private long[] _matchHumanPlayerIds = [];
 
     // #229: 진행 중인 문 잠금해제 게이지. 맞으면 서버가 지워 뒤늦은 FINISH까지 무효로 만든다.
@@ -161,7 +161,7 @@ public partial class GameClientSession : SessionBase
         Func<long, Random> getItemCombineRandom,
         Action<long, long> publishPlayerLeft,
         Func<long, long, Action?> prepareGameCompletion,
-        Action<long, long> releaseMatchingClaim,
+        Action<long, long> releaseMatchingReservation,
         Func<bool> isServerStopping,
         Action<GameClientSession> recordAdmissionFailure,
         GameServerDevOptions devOptions,
@@ -195,7 +195,7 @@ public partial class GameClientSession : SessionBase
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
         _publishPlayerLeft = publishPlayerLeft;
         _prepareGameCompletion = prepareGameCompletion;
-        _releaseMatchingClaim = releaseMatchingClaim;
+        _releaseMatchingReservation = releaseMatchingReservation;
         _isServerStopping = isServerStopping;
         _recordAdmissionFailure = recordAdmissionFailure;
 
@@ -311,7 +311,7 @@ public partial class GameClientSession : SessionBase
     // terminal lifecycle 원인을 고르는 상태 플래그
     /// <summary>게임 결과가 확정된 뒤에는 completed terminal을 유지한다.</summary>
     private bool _isGameEnded;
-    /// <summary>서버 주도 종료는 released terminal로 claim만 해제한다.</summary>
+    /// <summary>서버 주도 종료는 released terminal로 reservation만 해제한다.</summary>
     private bool _isServerInitiatedDisconnect;
 
     /// <summary>
@@ -459,23 +459,23 @@ public partial class GameClientSession : SessionBase
         }
     }
 
-    private void ReleaseMatchingClaimOnce()
+    private void ReleaseMatchingReservationOnce()
     {
         if (!PlayerId.HasValue ||
             MatchingId <= 0 ||
-            Interlocked.CompareExchange(ref _matchingClaimReleaseReported, 1, 0) != 0)
+            Interlocked.CompareExchange(ref _matchingReservationReleaseReported, 1, 0) != 0)
             return;
         if (!TryBeginMatchingLifecycleTerminal())
             return;
 
         try
         {
-            _releaseMatchingClaim(PlayerId.Value, MatchingId);
+            _releaseMatchingReservation(PlayerId.Value, MatchingId);
         }
         catch
         {
             Volatile.Write(ref _matchingLifecycleTerminalReported, 0);
-            Volatile.Write(ref _matchingClaimReleaseReported, 0);
+            Volatile.Write(ref _matchingReservationReleaseReported, 0);
             throw;
         }
     }
@@ -558,9 +558,9 @@ public partial class GameClientSession : SessionBase
         }
         else if (Volatile.Read(ref _isServerInitiatedDisconnect) || _isServerStopping())
         {
-            // Planned shutdown still must not leave the exact matching claim
+            // Planned shutdown still must not leave the exact matching reservation
             // behind until its long TTL expires.
-            ReleaseMatchingClaimOnce();
+            ReleaseMatchingReservationOnce();
         }
         else if (PlayerId.HasValue && MatchingId > 0 && !Volatile.Read(ref _isGameEnded))
         {
@@ -568,8 +568,8 @@ public partial class GameClientSession : SessionBase
             {
                 // Eliminated spectators already paid the gameplay consequence. They still need
                 // a released terminal event if they leave before the final result so the
-                // UserServer can clear the exact matching claim and local assignment.
-                ReleaseMatchingClaimOnce();
+                // UserServer can clear the exact matching reservation and local assignment.
+                ReleaseMatchingReservationOnce();
             }
             else
             {

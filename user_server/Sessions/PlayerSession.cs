@@ -411,7 +411,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
             return null;
         }
 
-        if (await _matchingManager.HasMatchingClaimAsync(playerId))
+        if (await _matchingManager.HasReservationAsync(playerId))
         {
             return null;
         }
@@ -426,7 +426,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
             return null;
         }
 
-        Logger.LogInformation("Cleared stale local matching assignment after Redis claim disappeared: PlayerId={PlayerId}, MatchingId={MatchingId}",
+        Logger.LogInformation("Cleared stale local matching assignment after Redis reservation disappeared: PlayerId={PlayerId}, MatchingId={MatchingId}",
             playerId, assignedMatchingId);
 
         return requestId;
@@ -588,7 +588,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
 
         long matchingId = _matchingAssignment.TakeAndClear();
         if (matchingId > 0)
-            await _matchingManager.ReleaseMatchingClaimAsync(playerId, matchingId);
+            await _matchingManager.ReleaseMatchingReservationAsync(playerId, matchingId);
         else
             await _matchingManager.CancelMatching(playerId);
     }

@@ -42,7 +42,7 @@ internal interface IMatchEntryService
 internal sealed class MatchEntryService(
     IRedisOperations redisOperations,
     GameHandoffTicketService gameHandoffTicketService,
-    MatchingQueueClaimCoordinator claims,
+    MatchingReservationCoordinator reservations,
     IPlayerSessionRouter sessions,
     Func<Func<Task>, string, bool> tryRunBackgroundOperation,
     CancellationToken shutdownToken,
@@ -281,7 +281,7 @@ internal sealed class MatchEntryService(
         }
 
         // 알 수 없는 terminal 상태는 Game Server가 이미 완료했을 수 있는 매치를 되돌릴 권한이 아니다.
-        // admission/claim TTL이 복구 fallback으로 남는다.
+        // admission/reservation TTL이 복구 fallback으로 남는다.
         logger.LogError(
             "Skipped ambiguous matching rollback after bounded admission-state reconciliation: MatchingId={MatchingId}",
             matchingId);
@@ -378,7 +378,7 @@ internal sealed class MatchEntryService(
                     }
 
                     sessions.ClearMatchingAssignment(playerId, matchingId);
-                    await claims.ReleaseActiveBestEffortAsync(playerId, matchingId);
+                    await reservations.ReleaseActiveBestEffortAsync(playerId, matchingId);
                 }
                 return;
             }

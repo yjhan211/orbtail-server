@@ -14,7 +14,7 @@ namespace user_server.matching;
 /// </summary>
 internal sealed class MatchingManager(
     ILogger logger,
-    MatchingQueueClaimCoordinator matchingClaims,
+    MatchingReservationCoordinator matchingReservations,
     MatchingQueue matchingQueue,
     MatchEntryService matchEntryService,
     MatchCreationService matchCreationService,
@@ -63,9 +63,9 @@ internal sealed class MatchingManager(
         return matchingQueue.CancelMatchingAsync(playerId);
     }
 
-    public Task<bool> HasMatchingClaimAsync(long playerId)
+    public Task<bool> HasReservationAsync(long playerId)
     {
-        return matchingClaims.HasClaimAsync(playerId);
+        return matchingReservations.HasReservationAsync(playerId);
     }
 
     private async Task RunMatchingLoopAsync(PeriodicTimer timer)
@@ -91,12 +91,12 @@ internal sealed class MatchingManager(
     public async Task HandleEntryFailureAsync(long playerId, long matchingId)
     {
         await matchEntryService.NotifyAdmissionFailedAsync(playerId, matchingId);
-        await ReleaseMatchingClaimAsync(playerId, matchingId);
+        await ReleaseMatchingReservationAsync(playerId, matchingId);
     }
 
-    public async Task ReleaseMatchingClaimAsync(long playerId, long matchingId)
+    public async Task ReleaseMatchingReservationAsync(long playerId, long matchingId)
     {
-        await matchingClaims.ReleaseActiveBestEffortAsync(playerId, matchingId);
+        await matchingReservations.ReleaseActiveBestEffortAsync(playerId, matchingId);
     }
 
     public Task StopAsync()

@@ -8,14 +8,14 @@ using user_server.matching;
 namespace demo_regression_tests;
 
 /// <summary>
-///     #323 MatchCreationService: 8인 그룹 단일 매치, 3인+봇 5 채움, claim 경합 skip, 전달 실패 롤백,
+///     #323 MatchCreationService: 8인 그룹 단일 매치, 3인+봇 5 채움, reservation 경합 skip, 전달 실패 롤백,
 ///     전원 success 전달 뒤 admission_ready, 1초 pass의 cutoff·정원 규칙.
 /// </summary>
 public sealed class MatchCreationServiceTests
 {
     private readonly InMemoryRedisOperations _cache = new();
-    private readonly InMemoryMatchingClaimStore _claimStore;
-    private readonly MatchingQueueClaimCoordinator _claims;
+    private readonly InMemoryMatchingReservationStore _reservationStore;
+    private readonly MatchingReservationCoordinator _reservations;
     private readonly MatchingQueue _queue;
     private readonly RecordingHandoffPublisher _handoff = new();
     private readonly FixedGameServerAllocator _gameServers = new();
@@ -24,16 +24,16 @@ public sealed class MatchCreationServiceTests
     public MatchCreationServiceTests()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
-        _claimStore = new InMemoryMatchingClaimStore(_cache);
-        _claims = new MatchingQueueClaimCoordinator(_cache, _claimStore, _logger);
-        _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), _claims, _logger);
+        _reservationStore = new InMemoryMatchingReservationStore(_cache);
+        _reservations = new MatchingReservationCoordinator(_cache, _reservationStore, _logger);
+        _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), _reservations, _logger);
     }
 
     private MatchCreationService CreatePass(DevMatchOverrides? overrides = null, CancellationToken shutdown = default)
     {
         overrides ??= new DevMatchOverrides(false, false, _cache, new FakeRedLockFactory(), _logger);
         var rosterBuilder = new MatchRosterBuilder(_cache, _logger);
-        return new MatchCreationService(_cache, _queue, _claims, rosterBuilder, _handoff, _gameServers, overrides, shutdown, _logger);
+        return new MatchCreationService(_cache, _queue, _reservations, rosterBuilder, _handoff, _gameServers, overrides, shutdown, _logger);
     }
 
     private async Task<MatchingQueueEntry[]> EnqueueHumansAsync(int count, double score = 1)
@@ -48,10 +48,10 @@ public sealed class MatchCreationServiceTests
         return entries;
     }
 
-    private string? ClaimOf(long playerId) => _cache.GetString(MatchingHandoffRedisKeys.ClaimKey(playerId));
+    private string? ReservationOf(long playerId) => _cache.GetString(MatchingHandoffRedisKeys.ReservationKey(playerId));
 
     [Fact]
-    public async Task CreateMatchAsync_WithoutGameServerNodeLeavesQueueAndClaimsUntouched()
+    public async Task CreateMatchAsync_WithoutGameServerNodeLeavesQueueAndReservationsUntouched()
     {
         MatchingQueueEntry[] humans = await EnqueueHumansAsync(8);
         _gameServers.Allocation = null;
@@ -62,7 +62,7 @@ public sealed class MatchCreationServiceTests
         Assert.Equal(1, _gameServers.Calls);
         Assert.Equal(8, _cache.SortedSetCount(MatchingQueue.QueueKey));
         Assert.Null(_cache.GetString(MatchCreationService.MatchingIdKey));
-        Assert.All(humans, human => Assert.Null(ClaimOf(human.PlayerId)));
+        Assert.All(humans, human => Assert.Null(ReservationOf(human.PlayerId)));
         Assert.Empty(_handoff.Events);
     }
 
@@ -81,7 +81,7 @@ public sealed class MatchCreationServiceTests
         Assert.All(_handoff.Deliveries, delivery => Assert.Equal(8, delivery.RosterCount));
         Assert.All(_handoff.DeliveredNodeIds, nodeId => Assert.Equal(FixedGameServerAllocator.DefaultNodeId, nodeId));
         Assert.Equal(humans.Select(h => h.PlayerId).OrderBy(id => id), _handoff.Deliveries.Select(d => d.Entry.PlayerId).OrderBy(id => id));
-        Assert.All(humans, human => Assert.Equal("1", ClaimOf(human.PlayerId)));
+        Assert.All(humans, human => Assert.Equal("1", ReservationOf(human.PlayerId)));
         Assert.Equal(0, _cache.SortedSetCount(MatchingQueue.QueueKey));
         Assert.Contains("ready:1", _handoff.Events);
         Assert.Contains($"watchdog:1:{string.Join(",", humans.Select(h => h.PlayerId))}", _handoff.Events);
@@ -103,7 +103,7 @@ public sealed class MatchCreationServiceTests
         Assert.Equal(3, manifest.HumanPlayerIds.Count);
         Assert.Equal(3, _handoff.Deliveries.Count);
         Assert.All(_handoff.Deliveries, delivery => Assert.Equal(8, delivery.RosterCount));
-        Assert.Equal("1", ClaimOf(1_000));
+        Assert.Equal("1", ReservationOf(1_000));
         Assert.Contains("ready:1", _handoff.Events);
     }
 
@@ -129,7 +129,7 @@ public sealed class MatchCreationServiceTests
     }
 
     [Fact]
-    public async Task CreateMatchAsync_RejectedDeliveryRollsBackClaimsHandoffAndNotifiesBatch()
+    public async Task CreateMatchAsync_RejectedDeliveryRollsBackReservationsHandoffAndNotifiesBatch()
     {
         MatchingQueueEntry[] humans = await EnqueueHumansAsync(3);
         _handoff.DeliverResult = playerId => playerId != 1_001;
@@ -141,7 +141,7 @@ public sealed class MatchCreationServiceTests
         Assert.Contains("cancel:1", _handoff.Events);
         Assert.Contains("delete:1", _handoff.Events);
         Assert.Contains("notify_failed:1:1000,1001,1002", _handoff.Events);
-        Assert.All(humans, human => Assert.Null(ClaimOf(human.PlayerId)));
+        Assert.All(humans, human => Assert.Null(ReservationOf(human.PlayerId)));
         Assert.Equal(0, _cache.SortedSetCount(MatchingQueue.QueueKey));
         Assert.True(_logger.Contains(LogLevel.Warning, "Matching rolled back because delivery was incomplete"));
     }
@@ -157,7 +157,7 @@ public sealed class MatchCreationServiceTests
         Assert.False(committed);
         Assert.Equal(2, _handoff.Deliveries.Count);
         Assert.Contains("cancel:1", _handoff.Events);
-        Assert.All(humans, human => Assert.Null(ClaimOf(human.PlayerId)));
+        Assert.All(humans, human => Assert.Null(ReservationOf(human.PlayerId)));
         Assert.True(_logger.Contains(LogLevel.Error, "Failed to commit matching entry"));
     }
 
@@ -174,24 +174,24 @@ public sealed class MatchCreationServiceTests
         Assert.Contains("cancel:1", _handoff.Events);
         Assert.DoesNotContain("delete:1", _handoff.Events);
         Assert.DoesNotContain(_handoff.Events, e => e.StartsWith("notify_failed:", StringComparison.Ordinal));
-        // 전달된 사람의 active claim은 그대로 남고(TTL fallback), 거절된 사람의 claim만 즉시 해제된다.
-        Assert.Equal("1", ClaimOf(1_000));
-        Assert.Null(ClaimOf(1_001));
+        // 전달된 사람의 active reservation은 그대로 남고(TTL fallback), 거절된 사람의 reservation만 즉시 해제된다.
+        Assert.Equal("1", ReservationOf(1_000));
+        Assert.Null(ReservationOf(1_001));
     }
 
     [Fact]
-    public async Task CreateMatchAsync_ClaimContentionSkipsGroupWithoutIssuingMatchingId()
+    public async Task CreateMatchAsync_ReservationContentionSkipsGroupWithoutIssuingMatchingId()
     {
         MatchingQueueEntry[] humans = await EnqueueHumansAsync(2);
-        await _cache.StringSetAsync(MatchingHandoffRedisKeys.ClaimKey(1_001), "other-worker");
+        await _cache.StringSetAsync(MatchingHandoffRedisKeys.ReservationKey(1_001), "other-worker");
 
         bool committed = await CreatePass().CreateMatchAsync(humans, 6, MatchCreationOrigin.Queue);
 
         Assert.False(committed);
         Assert.Null(_cache.GetString(MatchCreationService.MatchingIdKey));
         Assert.Empty(_handoff.Events);
-        Assert.Null(ClaimOf(1_000));
-        Assert.Equal("other-worker", ClaimOf(1_001));
+        Assert.Null(ReservationOf(1_000));
+        Assert.Equal("other-worker", ReservationOf(1_001));
         Assert.Equal(2, _cache.SortedSetCount(MatchingQueue.QueueKey));
     }
 
@@ -206,7 +206,7 @@ public sealed class MatchCreationServiceTests
 
         Assert.Contains("ready:1", _handoff.Events);
         Assert.Contains("cancel:1", _handoff.Events);
-        Assert.Null(ClaimOf(1_000));
+        Assert.Null(ReservationOf(1_000));
     }
 
     [Fact]
@@ -226,9 +226,9 @@ public sealed class MatchCreationServiceTests
         Assert.Equal(2, _handoff.StoredManifests.Count);
         Assert.All(_handoff.StoredManifests.Values, manifest => Assert.Equal(7, manifest.BotPlayerIds.Count));
         Assert.Equal(new long[] { 1, 2 }, _handoff.Deliveries.Select(d => d.Entry.PlayerId));
-        Assert.Equal("1", ClaimOf(1));
-        Assert.Equal("2", ClaimOf(2));
-        Assert.Null(ClaimOf(3));
+        Assert.Equal("1", ReservationOf(1));
+        Assert.Equal("2", ReservationOf(2));
+        Assert.Null(ReservationOf(3));
         Assert.True(_cache.SortedSetContains(MatchingQueue.QueueKey, fresh.Raw));
         Assert.Equal(1, _cache.SortedSetCount(MatchingQueue.QueueKey));
     }

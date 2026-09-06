@@ -203,7 +203,7 @@ public partial class GameServer(
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         // Publish the stopping state before taking the session snapshot. Sessions accepted at
-        // this boundary follow the same claim-release policy in OnDisconnect.
+        // this boundary follow the same reservation-release policy in OnDisconnect.
         Volatile.Write(ref _stopping, 1);
         readinessState.MarkNotReady("stopping");
         logger.LogInformation("Game server stopping...");
@@ -212,7 +212,7 @@ public partial class GameServer(
         if (_nodeAdvertiser != null)
             await RunShutdownStageAsync(_nodeAdvertiser.StopAcceptingAsync(), "node registry draining");
 
-        // 서버 셧다운 시 모든 세션을 서버 주도 종료로 마킹 → released terminal로 claim 해제
+        // 서버 셧다운 시 모든 세션을 서버 주도 종료로 마킹 → released terminal로 reservation 해제
         foreach (var session in _sessionRegistry.SnapshotAll())
             session.MarkServerInitiatedDisconnect();
 
@@ -689,8 +689,8 @@ public partial class GameServer(
     }
 
     /// <summary>
-    ///     플레이어의 exact matching claim 해제를 먼저 시도한 뒤 NATS Core로 종료 사실을 알린다.
-    ///     Redis와 NATS 중 한 경로만 성공해도 user_server가 배정을 복구할 수 있고, 둘 다 실패하면 claim TTL이 남는다.
+    ///     플레이어의 exact matching reservation 해제를 먼저 시도한 뒤 NATS Core로 종료 사실을 알린다.
+    ///     Redis와 NATS 중 한 경로만 성공해도 user_server가 배정을 복구할 수 있고, 둘 다 실패하면 reservation TTL이 남는다.
     /// </summary>
     private void PublishMatchingLifecycle(string subject, long playerId, long matchingId)
     {
@@ -719,7 +719,7 @@ public partial class GameServer(
 
     /// <summary>
     ///     한 매치의 한 플레이어는 terminal subject(left/completed/admission_failed/released)를 하나만
-    ///     발행한다. 서로 다른 종료 원인이 중복되면 세션 통지와 claim 해제의 의미가 충돌한다.
+    ///     발행한다. 서로 다른 종료 원인이 중복되면 세션 통지와 reservation 해제의 의미가 충돌한다.
     /// </summary>
     private bool TryRegisterMatchingLifecycleTerminal(
         string subject,
@@ -794,13 +794,13 @@ public partial class GameServer(
         {
             try
             {
-                await ReleaseMatchingClaimBeforeLifecycleAsync(playerId, matchingId);
+                await ReleaseMatchingReservationBeforeLifecycleAsync(playerId, matchingId);
             }
             catch (Exception ex)
             {
                 logger.LogCritical(
                     ex,
-                    "Unexpected matching claim release failure before lifecycle publish: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    "Unexpected matching reservation release failure before lifecycle publish: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
                     subject,
                     playerId,
                     matchingId);
@@ -814,21 +814,21 @@ public partial class GameServer(
         }
     }
 
-    private async Task ReleaseMatchingClaimBeforeLifecycleAsync(long playerId, long matchingId)
+    private async Task ReleaseMatchingReservationBeforeLifecycleAsync(long playerId, long matchingId)
     {
         if (playerId <= 0 || matchingId <= 0)
             return;
 
-        string expectedClaim = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        string expectedReservation = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         try
         {
             bool released = await redisOperations.StringDeleteIfEqualsAsync(
-                MatchingHandoffRedisKeys.ClaimKey(playerId),
-                expectedClaim);
+                MatchingHandoffRedisKeys.ReservationKey(playerId),
+                expectedReservation);
             if (!released)
             {
                 logger.LogWarning(
-                    "Matching claim was absent or changed before lifecycle publish: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    "Matching reservation was absent or changed before lifecycle publish: PlayerId={PlayerId}, MatchingId={MatchingId}",
                     playerId,
                     matchingId);
             }
@@ -837,7 +837,7 @@ public partial class GameServer(
         {
             logger.LogWarning(
                 ex,
-                "Matching claim release failed before lifecycle publish: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                "Matching reservation release failed before lifecycle publish: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 playerId,
                 matchingId);
         }
@@ -1009,7 +1009,7 @@ public partial class GameServer(
                     currentSession.MatchingId == matchingId)
                 {
                     logger.LogDebug(
-                        "Skipped admission-failed claim release for superseded session: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                        "Skipped admission-failed reservation release for superseded session: PlayerId={PlayerId}, MatchingId={MatchingId}",
                         playerId,
                         matchingId);
                     return;

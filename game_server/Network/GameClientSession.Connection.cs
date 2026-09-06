@@ -445,7 +445,7 @@ public partial class GameClientSession
 
     /// <summary>
     ///     매치 구성을 확정한다 — 매치당 한 번. manifest(사람·봇 ID)를 읽고, 스폰을 정하고, 봇과 로스터를 등록한다.
-    ///     이후 세션은 런타임에 세워진 구성을 그대로 쓴다. 입장 마커·사람 claim 확인은 세션마다 다시 한다.
+    ///     이후 세션은 런타임에 세워진 구성을 그대로 쓴다. 입장 마커·사람 reservation 확인은 세션마다 다시 한다.
     /// </summary>
     private async Task<MatchComposition> LoadMatchCompositionAsync(long matchingId, MapId mapId, MatchRuntime runtime)
     {
@@ -537,16 +537,16 @@ public partial class GameClientSession
                 byte[] value = (byte[])ready!;
                 if (value.Length == 1 && value[0] == MatchingHandoffRedisKeys.AdmissionReadyValue)
                 {
-                    string expectedClaim = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    string expectedReservation = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
                     foreach (long humanPlayerId in expectedHumanPlayerIds)
                     {
-                        var claim = await RedisOperations.StringGetAsync(
-                            MatchingHandoffRedisKeys.ClaimKey(humanPlayerId));
-                        if (claim.IsNullOrEmpty || !string.Equals(claim.ToString(), expectedClaim,
+                        var reservation = await RedisOperations.StringGetAsync(
+                            MatchingHandoffRedisKeys.ReservationKey(humanPlayerId));
+                        if (reservation.IsNullOrEmpty || !string.Equals(reservation.ToString(), expectedReservation,
                                 StringComparison.Ordinal))
                         {
                             throw new InvalidOperationException(
-                                $"Matching claim is not active for player {humanPlayerId} in match {matchingId}.");
+                                $"Matching reservation is not active for player {humanPlayerId} in match {matchingId}.");
                         }
                     }
                     return;

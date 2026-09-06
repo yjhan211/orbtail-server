@@ -5,10 +5,10 @@ namespace network.common
     public static class MatchingHandoffRedisKeys
     {
         public static readonly TimeSpan HandoffStateLifetime = TimeSpan.FromMinutes(30);
-        public static readonly TimeSpan PostAdmissionClaimLifetime =
+        public static readonly TimeSpan PostAdmissionReservationLifetime =
             TimeSpan.FromSeconds(Config.SWARM_MATCH_DURATION_SECONDS) + TimeSpan.FromMinutes(3);
         public static readonly TimeSpan AdmissionTimeout = TimeSpan.FromSeconds(45);
-        public static readonly TimeSpan AdmissionClaimLifetime = TimeSpan.FromMinutes(2);
+        public static readonly TimeSpan AdmissionReservationLifetime = TimeSpan.FromMinutes(2);
 
         public const string ManifestField = "manifest";
         public const string AdmissionReadyField = "admission_ready";
@@ -26,6 +26,6 @@ namespace network.common
 
         public static string AdmittedPlayerField(long playerId) => $"admitted:{playerId}";
 
-        public static string ClaimKey(long playerId) => $"{MatchingHashTag}:claim:{playerId}";
+        public static string ReservationKey(long playerId) => $"{MatchingHashTag}:reservation:{playerId}";
     }
 }

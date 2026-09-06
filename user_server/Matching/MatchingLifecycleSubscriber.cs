@@ -9,7 +9,7 @@ namespace user_server.matching;
 
 /// <summary>
 ///     Game Server가 Core NATS로 보내는 매칭 lifecycle 4종(left/completed/admission_failed/released)을 받아
-///     매칭 claim에 반영한다. payload는 playerId(8바이트 LE) 또는 playerId+matchingId(16바이트 LE)다.
+///     매칭 reservation에 반영한다. payload는 playerId(8바이트 LE) 또는 playerId+matchingId(16바이트 LE)다.
 ///     User Server가 여럿이면 큐 그룹으로 한 프로세스만 받는다. 세션 배정 해제는
 ///     라우터가 세션을 가진 프로세스로 넘긴다.
 /// </summary>
@@ -91,7 +91,7 @@ internal sealed class MatchingLifecycleSubscriber(
             {
                 MatchingLifecycleEvent.PlayerAdmissionFailed =>
                     matchingManager.HandleEntryFailureAsync(playerId, matchingId),
-                _ => matchingManager.ReleaseMatchingClaimAsync(playerId, matchingId)
+                _ => matchingManager.ReleaseMatchingReservationAsync(playerId, matchingId)
             },
             $"handle {lifecycleEvent} for player {playerId}, matching {matchingId}");
     }

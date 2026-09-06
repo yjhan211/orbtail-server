@@ -227,7 +227,7 @@ public sealed class UserServerScaleOutTests
     }
 
     [Fact]
-    public async Task SessionLease_ConcurrentClaimsLeaveHighestGenerationAsOwner()
+    public async Task SessionLease_ConcurrentReservationsLeaveHighestGenerationAsOwner()
     {
         var cache = new InMemoryRedisOperations();
         var store = new RedisPlayerSessionLeaseStore(
@@ -279,8 +279,8 @@ public sealed class UserServerScaleOutTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var cache = new InMemoryRedisOperations();
         var logger = new RecordingLogger();
-        var claims = new MatchingQueueClaimCoordinator(cache, new InMemoryMatchingClaimStore(cache), logger);
-        var queue = new MatchingQueue(cache, new FakeRedLockFactory(), claims, logger);
+        var reservations = new MatchingReservationCoordinator(cache, new InMemoryMatchingReservationStore(cache), logger);
+        var queue = new MatchingQueue(cache, new FakeRedLockFactory(), reservations, logger);
         var bus = new InMemoryNatsBus
         {
             RequestsToDropBeforeHandling = loseReply ? 0 : 1,
@@ -294,11 +294,11 @@ public sealed class UserServerScaleOutTests
         var handoff = new MatchEntryService(
             cache,
             new GameHandoffTicketService(new RedisGameHandoffTicketStore(cache), new GameHandoffTicketOptions()),
-            claims, sender,
+            reservations, sender,
             (_, _) => throw new InvalidOperationException("Failed delivery must not start the admission watchdog"),
             CancellationToken.None, logger);
         var pass = new MatchCreationService(
-            cache, queue, claims, new MatchRosterBuilder(cache, logger), handoff,
+            cache, queue, reservations, new MatchRosterBuilder(cache, logger), handoff,
             new FixedGameServerAllocator(),
             new DevMatchOverrides(false, false, cache, new FakeRedLockFactory(), logger),
             CancellationToken.None, logger);
@@ -311,7 +311,7 @@ public sealed class UserServerScaleOutTests
         Assert.Equal(2, bus.RequestCount); // 성공 요청 1회 + 실패 통지 1회
         Assert.Equal(loseReply ? 1 : 0, owner.Deliveries.Count(d => d.Op == "success"));
         Assert.Single(owner.Deliveries.Where(d => d.Op == "failed"));
-        Assert.Null(cache.GetString(MatchingHandoffRedisKeys.ClaimKey(7)));
+        Assert.Null(cache.GetString(MatchingHandoffRedisKeys.ReservationKey(7)));
         Assert.Equal(0, cache.SortedSetCount(MatchingQueue.QueueKey));
         Assert.True((await cache.HashGetAsync(
             MatchingHandoffRedisKeys.Key(1), MatchingHandoffRedisKeys.AdmissionReadyField)).IsNullOrEmpty);
