@@ -4,127 +4,76 @@ using network.routing;
 namespace user_server.matching.creation;
 
 /// <summary>
-///     매치 하나가 배정된 Game Server. 클라이언트에는 주소가, ticket에는 노드 ID가 실린다.
+///     레지스트리에서 GameServer 목록을 조회하고, 선택 정책에 따라 새 매치를 보낼 서버를 고른다.
+///     하트비트에 아직 반영되지 않았을 수 있는 최근 배정을 기록해 연속 배정이 한 서버로 쏠리는 것을 줄인다.
+///     선택 가능한 서버가 없으면 null을 반환한다.
+///     매칭 작업에서 순차적으로 호출하며, GameServer의 자리를 직접 예약하지는 않는다.
 /// </summary>
-internal sealed record GameServerAllocation(string PublicHost, int PublicPort, string NodeId);
-
-internal interface IGameServerAllocator
+internal sealed class GameServerAllocator(IGameServerRegistry gameServerRegistry, ILogger logger) : IGameServerAllocator
 {
-    /// <summary>배정 가능한 노드가 없으면 null — 호출자는 큐를 건드리지 않고 다음 pass를 기다린다.</summary>
-    public Task<GameServerAllocation?> TryAllocateAsync();
-}
-
-/// <summary>
-///     레지스트리 descriptor만으로 노드를 고르는 순수 정책. 신선하고(accepting, 하트비트가 <paramref name="maxAge" /> 안)
-///     부하 비율(활성 + 아직 하트비트에 반영되지 않은 배정) / 용량이 가장 낮은 노드, 같으면 nodeId 순.
-/// </summary>
-internal static class GameServerSelectionPolicy
-{
-    public static GameServerNodeDescriptor? Select(
-        IReadOnlyList<GameServerNodeDescriptor> nodes,
-        long nowUnixMs,
-        TimeSpan maxAge,
-        Func<GameServerNodeDescriptor, int> pendingAssignments)
-    {
-        GameServerNodeDescriptor? best = null;
-        double bestLoad = double.PositiveInfinity;
-        long staleBefore = nowUnixMs - (long)maxAge.TotalMilliseconds;
-        foreach (GameServerNodeDescriptor node in nodes)
-        {
-            if (!node.Accepting || node.HeartbeatUnixMs < staleBefore)
-                continue;
-
-            int occupied = node.ActiveMatches + Math.Max(0, pendingAssignments(node));
-            if (occupied >= node.MaxConcurrentMatches)
-                continue;
-
-            double load = (double)occupied / node.MaxConcurrentMatches;
-            if (best != null &&
-                (load > bestLoad ||
-                 (load == bestLoad && string.CompareOrdinal(node.NodeId, best.NodeId) >= 0)))
-                continue;
-
-            best = node;
-            bestLoad = load;
-        }
-
-        return best;
-    }
-}
-
-/// <summary>
-///     매칭 pass가 매치마다 부르는 배정자. 정책은 <see cref="GameServerSelectionPolicy" />에 있고, 여기서는
-///     "이 프로세스가 방금 배정했지만 노드의 다음 하트비트에 아직 안 보이는" 매치 수를 노드별로 기억해
-///     2초 창 안의 연속 배정이 한 노드로 쏠리지 않게 한다. 매칭 pass 한 스레드에서만 부른다.
-/// </summary>
-internal sealed class GameServerAllocator(IGameServerRegistry registry, ILogger logger) : IGameServerAllocator
-{
-    /// <summary>하트비트(2초)를 몇 번 놓치면 죽은 노드로 볼지 — 5회.</summary>
-    public static readonly TimeSpan MaximumNodeAge = TimeSpan.FromSeconds(10);
-
-    private static readonly TimeSpan NoNodeWarningInterval = TimeSpan.FromSeconds(10);
-
-    private readonly Dictionary<string, List<long>> _pendingAssignmentsByNode = new(StringComparer.Ordinal);
-    private long _lastNoNodeWarningUnixMs;
+    public static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan NoAvailableServerWarningInterval = TimeSpan.FromSeconds(10);
+    private readonly Dictionary<string, List<long>> _recentAssignmentTimesByNode = new(StringComparer.Ordinal);
+    private long _lastNoAvailableServerWarningUnixMs;
 
     public async Task<GameServerAllocation?> TryAllocateAsync()
     {
-        IReadOnlyList<GameServerNodeDescriptor> nodes = await registry.DiscoverAsync();
-        long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        PruneStaleAssignments(now);
+        var nodes = await gameServerRegistry.DiscoverAsync();
+        long nowUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        RemoveOldAssignmentRecords(nowUnixMs);
 
-        GameServerNodeDescriptor? node = GameServerSelectionPolicy.Select(
+        var node = GameServerSelectionPolicy.Select(
             nodes,
-            now,
-            MaximumNodeAge,
-            candidate => CountPendingAssignments(candidate.NodeId, candidate.HeartbeatUnixMs));
+            nowUnixMs,
+            HeartbeatTimeout,
+            candidate => CountAssignmentsSinceHeartbeat(candidate.NodeId, candidate.HeartbeatUnixMs));
+
         if (node == null)
         {
-            WarnNoNodeAvailable(nodes, now);
+            LogNoAvailableServer(nodes, nowUnixMs);
             return null;
         }
 
-        RecordAssignment(node.NodeId, now);
+        RecordRecentAssignment(node.NodeId, nowUnixMs);
         return new GameServerAllocation(node.PublicHost, node.PublicPort, node.NodeId);
     }
 
-    private int CountPendingAssignments(string nodeId, long heartbeatUnixMs)
+    private int CountAssignmentsSinceHeartbeat(string nodeId, long heartbeatUnixMs)
     {
-        if (!_pendingAssignmentsByNode.TryGetValue(nodeId, out List<long>? assignments))
-            return 0;
-        // 하트비트 이후의 배정만 — 그 전 것은 activeMatches에 이미 들어 있거나 입장에 실패해 사라졌다.
-        // 같은 밀리초는 반영 여부를 알 수 없으니 미반영으로 센다 (과다 계산이 쏠림보다 싸다).
-        return assignments.Count(assignedAt => assignedAt >= heartbeatUnixMs);
+        return !_recentAssignmentTimesByNode.TryGetValue(nodeId, out var assignmentTimes) ? 0
+            : assignmentTimes.Count(assignedAtUnixMs => assignedAtUnixMs >= heartbeatUnixMs);
     }
 
-    private void RecordAssignment(string nodeId, long now)
+    private void RecordRecentAssignment(string nodeId, long nowUnixMs)
     {
-        if (!_pendingAssignmentsByNode.TryGetValue(nodeId, out List<long>? assignments))
+        if (!_recentAssignmentTimesByNode.TryGetValue(nodeId, out List<long>? assignmentTimes))
         {
-            assignments = new List<long>();
-            _pendingAssignmentsByNode[nodeId] = assignments;
+            assignmentTimes = new List<long>();
+            _recentAssignmentTimesByNode[nodeId] = assignmentTimes;
         }
 
-        assignments.Add(now);
+        assignmentTimes.Add(nowUnixMs);
     }
 
-    private void PruneStaleAssignments(long now)
+    private void RemoveOldAssignmentRecords(long nowUnixMs)
     {
-        long keepAfter = now - (long)MaximumNodeAge.TotalMilliseconds;
-        foreach (List<long> assignments in _pendingAssignmentsByNode.Values)
-            assignments.RemoveAll(assignedAt => assignedAt < keepAfter);
+        long oldestAllowedAssignmentUnixMs = nowUnixMs - (long)HeartbeatTimeout.TotalMilliseconds;
+        foreach (var assignmentTimes in _recentAssignmentTimesByNode.Values)
+        {
+            assignmentTimes.RemoveAll(assignedAtUnixMs => assignedAtUnixMs < oldestAllowedAssignmentUnixMs);
+        }
     }
 
-    private void WarnNoNodeAvailable(IReadOnlyList<GameServerNodeDescriptor> nodes, long now)
+    private void LogNoAvailableServer(IReadOnlyList<GameServerNodeDescriptor> nodes, long nowUnixMs)
     {
-        if (now - _lastNoNodeWarningUnixMs < NoNodeWarningInterval.TotalMilliseconds)
+        if (nowUnixMs - _lastNoAvailableServerWarningUnixMs < NoAvailableServerWarningInterval.TotalMilliseconds)
             return;
 
-        _lastNoNodeWarningUnixMs = now;
+        _lastNoAvailableServerWarningUnixMs = nowUnixMs;
         logger.LogWarning(
             "No game server node can take a match; matching waits: Registered={Registered}, Accepting={Accepting}, Fresh={Fresh}",
             nodes.Count,
             nodes.Count(node => node.Accepting),
-            nodes.Count(node => now - node.HeartbeatUnixMs <= MaximumNodeAge.TotalMilliseconds));
+            nodes.Count(node => nowUnixMs - node.HeartbeatUnixMs <= HeartbeatTimeout.TotalMilliseconds));
     }
 }

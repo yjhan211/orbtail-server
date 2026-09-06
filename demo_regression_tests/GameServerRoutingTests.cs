@@ -14,7 +14,7 @@ namespace demo_regression_tests;
 /// </summary>
 public sealed class GameServerRoutingTests
 {
-    private static readonly TimeSpan MaxAge = GameServerAllocator.MaximumNodeAge;
+    private static readonly TimeSpan MaxAge = GameServerAllocator.HeartbeatTimeout;
 
     private static GameServerNodeDescriptor Node(
         string id,
@@ -101,6 +101,32 @@ public sealed class GameServerRoutingTests
 
         Assert.Equal("game-server-3", GameServerSelectionPolicy.Select(nodes, now, MaxAge, _ => 0)?.NodeId);
         Assert.Null(GameServerSelectionPolicy.Select(nodes.Take(3).ToArray(), now, MaxAge, _ => 0));
+    }
+
+    [Fact]
+    public void Policy_EquivalentFractionsUseNodeIdForTie()
+    {
+        var nodes = new[] { Node("b", active: 1, max: 3), Node("a", active: 2, max: 6) };
+        Assert.Equal("a", GameServerSelectionPolicy.Select(nodes, 100_500, MaxAge, _ => 0)?.NodeId);
+        Assert.Equal("a", GameServerSelectionPolicy.Select(nodes.Reverse().ToArray(), 100_500, MaxAge, _ => 0)?.NodeId);
+    }
+
+    [Fact]
+    public void Policy_DistinguishesVeryCloseLargeRatios()
+    {
+        var nodes = new[]
+        {
+            Node("a", active: int.MaxValue - 1, max: int.MaxValue),
+            Node("z", active: int.MaxValue - 2, max: int.MaxValue - 1)
+        };
+        Assert.Equal("z", GameServerSelectionPolicy.Select(nodes, 100_500, MaxAge, _ => 0)?.NodeId);
+    }
+
+    [Fact]
+    public void Policy_LargePendingCountDoesNotOverflowOccupiedCount()
+    {
+        var nodes = new[] { Node("a", active: int.MaxValue - 1, max: int.MaxValue) };
+        Assert.Null(GameServerSelectionPolicy.Select(nodes, 100_500, MaxAge, _ => int.MaxValue));
     }
 
     [Fact]
