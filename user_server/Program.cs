@@ -1,5 +1,4 @@
 using network.infrastructure;
-using user_server.matching.coordination;
 using user_server.matching.creation;
 using user_server.matching.queue;
 using Microsoft.Extensions.Configuration;

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using user_server.matching;
-using user_server.matching.coordination;
 
 namespace demo_regression_tests;
 

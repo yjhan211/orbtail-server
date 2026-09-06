@@ -1,4 +1,4 @@
-using user_server.matching.coordination;
+using user_server.matching;
 using user_server.matching.queue;
 using Microsoft.Extensions.Logging;
 using network.common.data.models;
