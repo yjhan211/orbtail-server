@@ -126,7 +126,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         try
         {
             Logger.LogInformation("Login request received: HasAccountCredential={HasAccountCredential}", !string.IsNullOrWhiteSpace(msg.AccountToken));
-            (long playerId, string accountToken, bool isNewAccount, _) = await _accountTokenService.ResolveAsync(msg.AccountToken);
+            (long playerId, string accountToken, bool isNewAccount) = await _accountTokenService.ResolveAsync(msg.AccountToken);
             PlayerId = playerId;
 
             await LoadOrCreatePlayerAsync(isNewAccount);

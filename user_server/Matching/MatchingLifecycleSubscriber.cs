@@ -79,7 +79,7 @@ internal sealed class MatchingLifecycleSubscriber(
             logger.LogWarning(ex, "Invalid matching lifecycle message: Event={Event}", lifecycleEvent);
             return;
         }
-        if (message.PlayerId <= 0 || message.MatchingId <= 0)
+        if (message == null || message.PlayerId <= 0 || message.MatchingId <= 0)
         {
             logger.LogWarning("Matching lifecycle message requires positive playerId and matchingId: Event={Event}", lifecycleEvent);
             return;

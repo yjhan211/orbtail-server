@@ -6,8 +6,6 @@ public sealed record AccountCredential(long PlayerId, string TokenHash);
 public enum AccountCredentialProvisionStatus
 {
     Created,
-    Existing,
-    PlayerNotFound,
     PlayerAlreadyExists,
     TokenCollision
 }
@@ -23,6 +21,5 @@ public interface IAccountCredentialStore
     public Task<AccountCredentialProvisionResult> ProvisionAsync(
         long playerId,
         string proposedToken,
-        string proposedTokenHash,
-        bool requireExistingPlayer);
+        string proposedTokenHash);
 }

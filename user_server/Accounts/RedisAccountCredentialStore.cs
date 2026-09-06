@@ -60,8 +60,7 @@ public sealed class RedisAccountCredentialStore(
     public async Task<AccountCredentialProvisionResult> ProvisionAsync(
         long playerId,
         string proposedToken,
-        string proposedTokenHash,
-        bool requireExistingPlayer)
+        string proposedTokenHash)
     {
         // Different UserServer instances can allocate different playerIds for the same first-login
         // token. The token-hash lock must therefore be acquired before the player lock.
@@ -74,11 +73,7 @@ public sealed class RedisAccountCredentialStore(
 
         string playerField = playerId.ToString(CultureInfo.InvariantCulture);
         bool playerExists = await redisOperations.HashExistsAsync(PlayerInfo.HashKey, playerField);
-        if (requireExistingPlayer && !playerExists)
-        {
-            return new AccountCredentialProvisionResult(AccountCredentialProvisionStatus.PlayerNotFound);
-        }
-        if (!requireExistingPlayer && playerExists)
+        if (playerExists)
         {
             return new AccountCredentialProvisionResult(AccountCredentialProvisionStatus.PlayerAlreadyExists);
         }
@@ -86,36 +81,7 @@ public sealed class RedisAccountCredentialStore(
         RedisValue existingTokenHashValue = await redisOperations.HashGetAsync(TokenHashByPlayerKey, playerField);
         if (!existingTokenHashValue.IsNullOrEmpty)
         {
-            if (!requireExistingPlayer)
-                return new AccountCredentialProvisionResult(AccountCredentialProvisionStatus.PlayerAlreadyExists);
-
-            string storedCredential = Decode(existingTokenHashValue);
-            bool containsLegacyPlaintext = OpaqueToken.IsValid(storedCredential, "acct_");
-            string existingTokenHash = containsLegacyPlaintext
-                ? OpaqueToken.Fingerprint(storedCredential)
-                : storedCredential;
-            RedisValue mappedPlayerValue = await redisOperations.HashGetAsync(PlayerByTokenHashKey, existingTokenHash);
-            if (!mappedPlayerValue.IsNullOrEmpty &&
-                (!long.TryParse(Decode(mappedPlayerValue), NumberStyles.None, CultureInfo.InvariantCulture,
-                     out long mappedPlayerId) || mappedPlayerId != playerId))
-            {
-                throw new InvalidOperationException("The stored account credential mapping is inconsistent.");
-            }
-
-            await redisOperations.HashSetPairAtomicAsync(
-                TokenHashByPlayerKey,
-                playerField,
-                Encode(existingTokenHash),
-                PlayerByTokenHashKey,
-                existingTokenHash,
-                Encode(playerField));
-            return new AccountCredentialProvisionResult(
-                AccountCredentialProvisionStatus.Existing,
-                containsLegacyPlaintext
-                    ? storedCredential
-                    : string.Equals(existingTokenHash, proposedTokenHash, StringComparison.Ordinal)
-                        ? proposedToken
-                        : null);
+            return new AccountCredentialProvisionResult(AccountCredentialProvisionStatus.PlayerAlreadyExists);
         }
 
         RedisValue proposedMapping = await redisOperations.HashGetAsync(PlayerByTokenHashKey, proposedTokenHash);

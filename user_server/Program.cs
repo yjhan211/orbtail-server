@@ -70,7 +70,8 @@ internal static class Program
         services.AddSingleton<IRedisOperations, RedisOperations>();
         services.AddSingleton<IPlayerSessionLeaseStore, RedisPlayerSessionLeaseStore>();
         services.AddGameHandoffTicket(hostContext.Configuration);
-        services.AddAccountAuthentication(hostContext.Configuration);
+        services.AddSingleton<IAccountCredentialStore, RedisAccountCredentialStore>();
+        services.AddSingleton<IAccountTokenService, AccountTokenService>();
 
         services.AddSingleton<IPlayerService, PlayerService>();
 

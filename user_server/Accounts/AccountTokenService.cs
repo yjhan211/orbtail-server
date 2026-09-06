@@ -1,6 +1,3 @@
-using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using network.helpers;
 
 namespace user_server.accounts;
@@ -8,20 +5,12 @@ namespace user_server.accounts;
 public sealed record AccountTokenResolution(
     long PlayerId,
     string AccountToken,
-    bool IsNewAccount,
-    bool WasLegacyMigration);
-
-public sealed class AccountTokenOptions
-{
-    public bool AllowLegacyNumericMigration { get; set; }
-    public string? LegacyMigrationSecret { get; set; }
-}
+    bool IsNewAccount);
 
 public sealed class AccountAuthenticationException(string message) : InvalidOperationException(message);
 
 public sealed class AccountTokenService(
-    IAccountCredentialStore credentialStore,
-    AccountTokenOptions options) : IAccountTokenService
+    IAccountCredentialStore credentialStore) : IAccountTokenService
 {
     private const string TokenPrefix = "acct_";
     private const int MaxTokenGenerationAttempts = 5;
@@ -35,13 +24,6 @@ public sealed class AccountTokenService(
         if (OpaqueToken.IsValid(token, TokenPrefix))
             return await ResolveOrProvisionOpaqueTokenAsync(token);
 
-        if (options.AllowLegacyNumericMigration &&
-            long.TryParse(token, NumberStyles.None, CultureInfo.InvariantCulture, out long legacyPlayerId) &&
-            legacyPlayerId > 0)
-        {
-            return await MigrateLegacyTokenAsync(legacyPlayerId);
-        }
-
         throw new AccountAuthenticationException("The supplied account credential is invalid.");
     }
 
@@ -54,16 +36,14 @@ public sealed class AccountTokenService(
             var result = await credentialStore.ProvisionAsync(
                 playerId,
                 token,
-                OpaqueToken.Fingerprint(token),
-                requireExistingPlayer: false);
+                OpaqueToken.Fingerprint(token));
 
             if (result.Status == AccountCredentialProvisionStatus.Created)
             {
                 return new AccountTokenResolution(
                     playerId,
                     result.AccountToken ?? token,
-                    IsNewAccount: true,
-                    WasLegacyMigration: false);
+                    IsNewAccount: true);
             }
 
             if (result.Status is not AccountCredentialProvisionStatus.TokenCollision and
@@ -89,16 +69,14 @@ public sealed class AccountTokenService(
             var result = await credentialStore.ProvisionAsync(
                 playerId,
                 token,
-                tokenHash,
-                requireExistingPlayer: false);
+                tokenHash);
 
             if (result.Status == AccountCredentialProvisionStatus.Created)
             {
                 return new AccountTokenResolution(
                     playerId,
                     result.AccountToken ?? token,
-                    IsNewAccount: true,
-                    WasLegacyMigration: false);
+                    IsNewAccount: true);
             }
 
             if (result.Status == AccountCredentialProvisionStatus.TokenCollision)
@@ -131,64 +109,6 @@ public sealed class AccountTokenService(
         return new AccountTokenResolution(
             credential.PlayerId,
             presentedToken,
-            IsNewAccount: isNewAccount,
-            WasLegacyMigration: false);
-    }
-
-    private async Task<AccountTokenResolution> MigrateLegacyTokenAsync(long playerId)
-    {
-        string token = CreateLegacyMigrationToken(playerId);
-        for (int attempt = 0; attempt < MaxTokenGenerationAttempts; attempt++)
-        {
-            var result = await credentialStore.ProvisionAsync(
-                playerId,
-                token,
-                OpaqueToken.Fingerprint(token),
-                requireExistingPlayer: true);
-
-            if (result.Status == AccountCredentialProvisionStatus.Created)
-            {
-                return new AccountTokenResolution(
-                    playerId,
-                    result.AccountToken ?? token,
-                    IsNewAccount: false,
-                    WasLegacyMigration: true);
-            }
-
-            if (result.Status == AccountCredentialProvisionStatus.Existing)
-            {
-                if (!string.IsNullOrWhiteSpace(result.AccountToken))
-                {
-                    return new AccountTokenResolution(
-                        playerId,
-                        result.AccountToken,
-                        IsNewAccount: false,
-                        WasLegacyMigration: true);
-                }
-
-                throw new AccountAuthenticationException(
-                    "The legacy account has already migrated; use its opaque credential.");
-            }
-
-            if (result.Status == AccountCredentialProvisionStatus.PlayerNotFound)
-                throw new AccountAuthenticationException("The legacy account does not exist.");
-
-            if (result.Status != AccountCredentialProvisionStatus.TokenCollision)
-                break;
-        }
-
-        throw new InvalidOperationException("The legacy account credential could not be migrated.");
-    }
-
-    private string CreateLegacyMigrationToken(long playerId)
-    {
-        if (string.IsNullOrWhiteSpace(options.LegacyMigrationSecret))
-            throw new InvalidOperationException("Legacy account migration requires a server secret.");
-
-        byte[] key = Encoding.UTF8.GetBytes(options.LegacyMigrationSecret);
-        byte[] input = Encoding.UTF8.GetBytes(
-            $"manitto-account-migration:v1:{playerId.ToString(CultureInfo.InvariantCulture)}");
-        byte[] digest = HMACSHA256.HashData(key, input);
-        return OpaqueToken.CreateFromBytes(TokenPrefix, digest);
+            IsNewAccount: isNewAccount);
     }
 }
