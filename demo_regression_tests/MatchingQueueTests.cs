@@ -38,7 +38,7 @@ public sealed class MatchingQueueTests
     }
 
     [Fact]
-    public async Task SanitizeAsync_RemovesMalformedInvalidAndDuplicateEntriesFromQueue()
+    public async Task CleanUpEntriesAsync_RemovesMalformedInvalidAndDuplicateEntriesFromQueue()
     {
         MatchingQueueEntry valid = UserServerMatchingTestData.HumanEntry(1);
         MatchingQueueEntry duplicate = UserServerMatchingTestData.HumanEntry(1, requestId: "dup");
@@ -49,7 +49,7 @@ public sealed class MatchingQueueTests
         foreach (byte[] raw in rawEntries)
             await _cache.SortedSetAddAsync(MatchingQueue.QueueKey, raw, 1);
 
-        MatchingQueueEntry[] result = await _queue.SanitizeAsync(rawEntries);
+        MatchingQueueEntry[] result = await _queue.CleanUpEntriesAsync(rawEntries);
 
         Assert.Single(result);
         Assert.Equal(1, result[0].PlayerId);

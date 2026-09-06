@@ -9,7 +9,6 @@ namespace user_server.matching.queue;
 ///     Redis에 저장된 매칭 대기열의 등록·취소·조회를 담당한다.
 ///     등록과 취소는 플레이어별 락과 reservation 확인을 통해 매치 생성 작업과 충돌하지 않도록 처리한다.
 ///     조회 시 손상되거나 중복된 항목을 정리하고, 지정한 시각까지 등록된 대기자를 반환한다.
-///     실제 참가자 구성과 매치 생성은 MatchCreationService가 담당한다.
 /// </summary>
 internal sealed class MatchingQueue(
     IRedisOperations redisOperations,
@@ -74,17 +73,16 @@ internal sealed class MatchingQueue(
         try
         {
             await using var queueLock = await redLock.AcquireLockAsync(MakeLockKey(playerId), Config.LOCK_TTL);
-            MatchingReservationLease? cancellationReservation = await reservations.TryAcquireCancellationAsync(playerId);
+            var cancellationReservation = await reservations.TryAcquireCancellationAsync(playerId);
             if (cancellationReservation == null)
+            {
                 return ErrorCode.MATCHING_FAILED;
+            }
 
             try
             {
                 int removedCount = await RemovePlayerEntriesAsync(playerId);
-                logger.LogInformation(
-                    "Matching cancelled: PlayerId={PlayerId}, RemovedEntries={RemovedEntries}",
-                    playerId,
-                    removedCount);
+                logger.LogInformation("Matching cancelled: PlayerId={PlayerId}, RemovedEntries={RemovedEntries}", playerId, removedCount);
                 return ErrorCode.SUCCESS;
             }
             finally
@@ -99,9 +97,6 @@ internal sealed class MatchingQueue(
         }
     }
 
-    /// <summary>
-    ///     해당 player의 entry를 모두 제거한다. 역직렬화 실패 entry도 함께 제거한다.
-    /// </summary>
     public async Task<int> RemovePlayerEntriesAsync(long playerId)
     {
         byte[][] allEntries = await redisOperations.SortedSetRangeByScoreAsync(QueueKey);
@@ -111,40 +106,41 @@ internal sealed class MatchingQueue(
         {
             try
             {
-                if (MatchingQueueEntry.Parse(raw).PlayerId != playerId) continue;
+                if (MatchingQueueEntry.Parse(raw).PlayerId != playerId)
+                {
+                    continue;
+                }
 
                 if (await redisOperations.SortedSetRemoveAsync(QueueKey, raw))
+                {
                     removedCount++;
+                }
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Invalid matching entry removed while cleaning the queue");
                 if (await redisOperations.SortedSetRemoveAsync(QueueKey, raw))
+                {
                     removedCount++;
+                }
             }
         }
 
         return removedCount;
     }
 
-    /// <summary>
-    ///     score가 cutoff 이하(충분히 기다린) entry를 읽고 sanitize한 결과를 돌려준다. 정렬은 하지 않는다.
-    /// </summary>
     public async Task<MatchingQueueEntry[]> ReadWaitingEntriesAsync(long cutoffUnixSeconds)
     {
         byte[][] rawEntries = await redisOperations.SortedSetRangeByScoreAsync(
             QueueKey,
             double.NegativeInfinity,
             cutoffUnixSeconds);
-        if (rawEntries.Length == 0) return Array.Empty<MatchingQueueEntry>();
+        if (rawEntries.Length == 0) return [];
 
-        return await SanitizeAsync(rawEntries);
+        return await CleanUpEntriesAsync(rawEntries);
     }
 
-    /// <summary>
-    ///     손상·PlayerId 0 이하·중복 PlayerId entry를 큐에서 제거하고 나머지를 한 번만 역직렬화해 돌려준다.
-    /// </summary>
-    internal async Task<MatchingQueueEntry[]> SanitizeAsync(IEnumerable<byte[]> rawEntries)
+    internal async Task<MatchingQueueEntry[]> CleanUpEntriesAsync(IEnumerable<byte[]> rawEntries)
     {
         var validEntries = new List<MatchingQueueEntry>();
         var seenPlayerIds = new HashSet<long>();
@@ -154,7 +150,7 @@ internal sealed class MatchingQueue(
             bool removeEntry;
             try
             {
-                MatchingQueueEntry entry = MatchingQueueEntry.Parse(raw);
+                var entry = MatchingQueueEntry.Parse(raw);
                 removeEntry = entry.PlayerId <= 0 || !seenPlayerIds.Add(entry.PlayerId);
                 if (!removeEntry)
                 {
@@ -171,7 +167,9 @@ internal sealed class MatchingQueue(
             }
 
             if (removeEntry)
+            {
                 await redisOperations.SortedSetRemoveAsync(QueueKey, raw);
+            }
         }
 
         return validEntries.ToArray();
@@ -182,9 +180,6 @@ internal sealed class MatchingQueue(
         return redisOperations.SortedSetRemoveAsync(QueueKey, entry.Raw);
     }
 
-    /// <summary>
-    ///     요청 시각 → PlayerId 순으로 정렬해 안정적인 매칭 순서를 만든다.
-    /// </summary>
     public static MatchingQueueEntry[] SortByRequestTime(IEnumerable<MatchingQueueEntry> entries)
     {
         return entries
