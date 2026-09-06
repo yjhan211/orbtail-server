@@ -20,7 +20,7 @@ public sealed class AreaClosureManagerTests
         const long matchingId = 219001;
         var startedAt = new DateTime(2030, 1, 2, 3, 4, 5, DateTimeKind.Utc);
         DateTime now = startedAt;
-        var manager = new AreaClosureManager(NullLogger.Instance, () => now);
+        var manager = MatchTestServices.Closures(NullLogger.Instance, () => now);
         AreaType[] areas = GameMapData.GetAreas(Config.SWARM_MATCH_MAP)
             .Select(region => region.AreaType)
             .Where(area => area != AreaType.None)

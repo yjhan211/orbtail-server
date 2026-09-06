@@ -1,10 +1,10 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 
 namespace game_server.services;
 
+/// <summary>매치 런타임이 소유한 폐쇄 시간표를 초기화하고 진행·조회한다.</summary>
 public class AreaClosureManager
 {
     public const int ClosureWarningSeconds = 15;
@@ -31,12 +31,13 @@ public class AreaClosureManager
             .ToList();
     }
 
-    private readonly ConcurrentDictionary<long, MatchingClosureState> _states = new();
+    private readonly Func<long, MatchRuntime?> _getMatch;
     private readonly ILogger _logger;
     private readonly Func<DateTime> _utcNow;
 
-    public AreaClosureManager(ILogger logger, Func<DateTime>? utcNow = null)
+    internal AreaClosureManager(Func<long, MatchRuntime?> getMatch, ILogger logger, Func<DateTime>? utcNow = null)
     {
+        _getMatch = getMatch;
         _logger = logger;
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
@@ -51,7 +52,9 @@ public class AreaClosureManager
     {
         // 동일 매치의 뒤늦은 접속(재접속 포함)이 폐쇄 시계와 누적 폐쇄 상태를
         // 처음부터 다시 만들면 안 된다. 최초 접속만 상태를 생성한다.
-        if (_states.TryGetValue(matchingId, out var existingState))
+        var runtime = _getMatch(matchingId)
+            ?? throw new InvalidOperationException($"Match is not available: {matchingId}");
+        if (Volatile.Read(ref runtime.Closure) is { } existingState)
             return existingState;
 
         var mapAreas = GameMapData.GetAreas(Config.SWARM_MATCH_MAP)
@@ -87,7 +90,7 @@ public class AreaClosureManager
         }
 
         // 동시에 접속한 플레이어가 있어도 하나의 웨이브 시계만 사용한다.
-        var actualState = _states.GetOrAdd(matchingId, state);
+        var actualState = Interlocked.CompareExchange(ref runtime.Closure, state, null) ?? state;
         if (!ReferenceEquals(actualState, state)) return actualState;
 
         _logger.LogInformation(
@@ -101,7 +104,7 @@ public class AreaClosureManager
 
     public ClosureClientStateSnapshot GetClientStateSnapshot(long matchingId)
     {
-        if (!_states.TryGetValue(matchingId, out var state))
+        if (_getMatch(matchingId)?.Closure is not { } state)
             return ClosureClientStateSnapshot.Empty;
 
         lock (state.SyncRoot)
@@ -180,7 +183,7 @@ public class AreaClosureManager
     /// </summary>
     public ClosureScheduleTick CheckClosureSchedule(long matchingId)
     {
-        if (!_states.TryGetValue(matchingId, out var state)) return ClosureScheduleTick.Empty;
+        if (_getMatch(matchingId)?.Closure is not { } state) return ClosureScheduleTick.Empty;
 
         lock (state.SyncRoot)
         {
@@ -245,7 +248,7 @@ public class AreaClosureManager
 
     public int GetClosedAreaCorruptionPerTick(long matchingId, AreaType area, int tickSeconds = ResourceTickSeconds)
     {
-        if (tickSeconds <= 0 || !_states.TryGetValue(matchingId, out var state)) return 0;
+        if (tickSeconds <= 0 || _getMatch(matchingId)?.Closure is not { } state) return 0;
 
         lock (state.SyncRoot)
         {
@@ -257,7 +260,7 @@ public class AreaClosureManager
 
     public int GetOvertimeCorruptionPerTick(long matchingId, int tickSeconds = ResourceTickSeconds)
     {
-        if (tickSeconds <= 0 || !_states.TryGetValue(matchingId, out var state)) return 0;
+        if (tickSeconds <= 0 || _getMatch(matchingId)?.Closure is not { } state) return 0;
         lock (state.SyncRoot)
         {
             return GetOvertimeCorruptionPerSecond(state) * tickSeconds;
@@ -297,15 +300,14 @@ public class AreaClosureManager
 
     public MatchingClosureState? GetMatchingState(long matchingId)
     {
-        _states.TryGetValue(matchingId, out var state);
-        return state;
+        return _getMatch(matchingId)?.Closure;
     }
 
     public (List<int> closureSequence, List<int> closedAreaIds, int nextAreaType,
         long nextAtUnix, int secondsLeft, bool warningActive)
         GetClosureSnapshot(long matchingId)
     {
-        if (!_states.TryGetValue(matchingId, out var state))
+        if (_getMatch(matchingId)?.Closure is not { } state)
             return ([], [], -1, -1, -1, false);
 
         lock (state.SyncRoot)
@@ -331,14 +333,10 @@ public class AreaClosureManager
 
     public bool IsAreaClosed(long matchingId, AreaType area)
     {
-        if (!_states.TryGetValue(matchingId, out var state)) return false;
+        if (_getMatch(matchingId)?.Closure is not { } state) return false;
         lock (state.SyncRoot) return state.ClosedAreas.Contains(area);
     }
 
-    public void CleanupMatching(long matchingId)
-    {
-        _states.TryRemove(matchingId, out _);
-    }
 }
 
 public sealed record ClosureWaveDefinition(

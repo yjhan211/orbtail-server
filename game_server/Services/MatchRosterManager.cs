@@ -11,12 +11,13 @@ namespace game_server.services;
 /// </summary>
 public class MatchRosterManager
 {
-    // matchingId → 로스터 상태
-    private readonly ConcurrentDictionary<long, MatchRosterState> _states = new();
+    // 상태는 매치 런타임이 소유하고, 매니저는 로스터 규칙만 처리한다.
+    private readonly Func<long, MatchRuntime?> _getMatch;
     private readonly ILogger _logger;
 
-    public MatchRosterManager(ILogger logger)
+    internal MatchRosterManager(Func<long, MatchRuntime?> getMatch, ILogger logger)
     {
+        _getMatch = getMatch;
         _logger = logger;
     }
 
@@ -25,7 +26,7 @@ public class MatchRosterManager
     /// </summary>
     public void RegisterEntry(long matchingId, RosterEntry link)
     {
-        var state = _states.GetOrAdd(matchingId, _ => new MatchRosterState { MatchingId = matchingId });
+        var state = _getMatch(matchingId)?.Roster ?? throw new InvalidOperationException($"Match is not available: {matchingId}");
 
         if (state.Entries.ContainsKey(link.PlayerId))
         {
@@ -45,7 +46,7 @@ public class MatchRosterManager
     /// </summary>
     public RosterEntry? GetEntry(long matchingId, long playerId)
     {
-        if (!_states.TryGetValue(matchingId, out var state)) return null;
+        if (_getMatch(matchingId)?.Roster is not { } state) return null;
         return state.Entries.GetValueOrDefault(playerId);
     }
 
@@ -55,7 +56,7 @@ public class MatchRosterManager
         string? name,
         IEnumerable<int>? wearItemIds)
     {
-        if (!_states.TryGetValue(matchingId, out var state) ||
+        if (_getMatch(matchingId)?.Roster is not { } state ||
             !state.Entries.TryGetValue(playerId, out var entry))
             return;
 
@@ -68,7 +69,7 @@ public class MatchRosterManager
 
     public MatchPlayerProfile? GetPlayerProfile(long matchingId, long playerId)
     {
-        if (!_states.TryGetValue(matchingId, out var state) ||
+        if (_getMatch(matchingId)?.Roster is not { } state ||
             !state.Entries.TryGetValue(playerId, out var entry))
             return null;
 
@@ -93,7 +94,7 @@ public class MatchRosterManager
     {
         var affected = new Dictionary<long, PlayerMatchStatus>();
 
-        if (!_states.TryGetValue(matchingId, out var state)) return new PlayerEliminationTransition(false, affected);
+        if (_getMatch(matchingId)?.Roster is not { } state) return new PlayerEliminationTransition(false, affected);
         if (!state.Entries.TryGetValue(playerId, out var link)) return new PlayerEliminationTransition(false, affected);
         if (link.Status == PlayerMatchStatus.ELIMINATED) return new PlayerEliminationTransition(false, affected);
 
@@ -122,7 +123,10 @@ public class MatchRosterManager
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.Synchronized)]
     public (bool isGameOver, long? winnerId) CheckGameOver(long matchingId)
     {
-        if (!_states.TryGetValue(matchingId, out var state))
+        if (_getMatch(matchingId)?.Roster is not { } state)
+            return (false, null);
+
+        if (state.Entries.IsEmpty)
             return (false, null);
 
         var activePlayers = state.Entries.Values
@@ -147,7 +151,7 @@ public class MatchRosterManager
         long attackerPlayerId, AreaType eliminatedArea, bool isAreaClosureElimination,
         bool isOvertimeElimination, int eliminationRank, int finalOrbTier)> BuildGameResult(long matchingId)
     {
-        if (!_states.TryGetValue(matchingId, out var state))
+        if (_getMatch(matchingId)?.Roster is not { } state)
             return new();
 
         var result = new List<(long, EliminationReason, PlayerMatchStatus, DateTime?, long,
@@ -164,13 +168,6 @@ public class MatchRosterManager
         return result;
     }
 
-    /// <summary>
-    ///     매칭 정리
-    /// </summary>
-    public void CleanupMatching(long matchingId)
-    {
-        _states.TryRemove(matchingId, out _);
-    }
 }
 
 public sealed record PlayerEliminationTransition(

@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+using OrbVisualState = game_server.services.MatchPresentationState.OrbVisualState;
 using System.Collections.Immutable;
 using game_server.network;
 using game_server.services;
@@ -16,10 +16,6 @@ public partial class GameServer
     private const int ProximityAutoCombatTickIntervalMs = 50;
 
     private readonly ProximityAutoCombatResolver _proximityAutoCombatResolver = new();
-    private readonly ConcurrentDictionary<(long MatchingId, long ObserverPlayerId, long ActorPlayerId),
-        OrbVisualState> _orbVisualStates = new();
-    private readonly ConcurrentDictionary<(long MatchingId, long PlayerId, long ItemUid, int StackIndex), DateTime>
-        _orbRecoveryReadyAtUtc = new();
     private Timer? _proximityAutoCombatTimer;
 
     private void StartProximityAutoCombatTimer()
@@ -217,6 +213,9 @@ PlayerInGameInventory inventory)
         IReadOnlyCollection<BotPlayerState> matchingBots,
         DateTime nowUtc)
     {
+        if (MatchRuntimes.Get(matchingId)?.Presentation is not { } presentation)
+            return;
+        var recoveryTimes = presentation.OrbRecoveryReadyAtUtc;
         var activeRecoveryKeys = new HashSet<(long PlayerId, long ItemUid, int StackIndex)>();
         var dueRecoveryByPlayer = new Dictionary<long, List<(ProximityCombatActor Actor, int Amount)>>();
 
@@ -227,12 +226,12 @@ PlayerInGameInventory inventory)
                 continue;
 
             var actorKey = (actor.PlayerId, actor.WeaponItemUid, actor.WeaponStackIndex);
-            var stateKey = (matchingId, actor.PlayerId, actor.WeaponItemUid, actor.WeaponStackIndex);
+            var stateKey = actorKey;
             activeRecoveryKeys.Add(actorKey);
 
-            if (!_orbRecoveryReadyAtUtc.TryGetValue(stateKey, out var readyAtUtc))
+            if (!recoveryTimes.TryGetValue(stateKey, out var readyAtUtc))
             {
-                _orbRecoveryReadyAtUtc[stateKey] =
+                recoveryTimes[stateKey] =
                     nowUtc.AddSeconds(OrbData.RecoveryTickSeconds);
                 continue;
             }
@@ -240,7 +239,7 @@ PlayerInGameInventory inventory)
             if (nowUtc < readyAtUtc)
                 continue;
 
-            _orbRecoveryReadyAtUtc[stateKey] =
+            recoveryTimes[stateKey] =
                 nowUtc.AddSeconds(OrbData.RecoveryTickSeconds);
 
             if (!dueRecoveryByPlayer.TryGetValue(actor.PlayerId, out var dueRecoveries))
@@ -307,14 +306,12 @@ PlayerInGameInventory inventory)
                 effectiveRecovery);
         }
 
-        foreach (var key in _orbRecoveryReadyAtUtc.Keys
-                     .Where(key => key.MatchingId == matchingId)
-                     .ToArray())
+        foreach (var key in recoveryTimes.Keys.ToArray())
         {
             if (activeRecoveryKeys.Contains((key.PlayerId, key.ItemUid, key.StackIndex)))
                 continue;
 
-            _orbRecoveryReadyAtUtc.TryRemove(key, out _);
+            recoveryTimes.TryRemove(key, out _);
         }
     }
 
@@ -328,6 +325,9 @@ PlayerInGameInventory inventory)
         IReadOnlyCollection<ProximityCombatActor> actors,
         IReadOnlyCollection<GameClientSession> matchingSessions)
     {
+        if (MatchRuntimes.Get(matchingId)?.Presentation is not { } presentation)
+            return [];
+        var visualStates = presentation.OrbVisuals;
         GameClientSession[] recipientSnapshot = matchingSessions.ToArray();
         var publications = ImmutableArray.CreateBuilder<SwarmOrbVisualPublication>();
         var visualActors = actors
@@ -369,7 +369,7 @@ PlayerInGameInventory inventory)
             foreach (var visualActor in visualActors)
             {
                 var actor = visualActor.Actor;
-                var key = (matchingId, observer.PlayerId.Value, actor.PlayerId);
+                var key = (observer.PlayerId.Value, actor.PlayerId);
                 if (observer.CurrentArea != actor.Area)
                 {
                     publications.Add(SwarmOrbVisualPublication.Remove(
@@ -391,7 +391,7 @@ PlayerInGameInventory inventory)
                     jamCount,
                     bodyCorruption,
                     armorMask);
-                if (_orbVisualStates.TryGetValue(key, out var previousState) &&
+                if (visualStates.TryGetValue(key, out var previousState) &&
                     previousState == state)
                 {
                     continue;
@@ -430,11 +430,14 @@ PlayerInGameInventory inventory)
     private void CommitAndDispatchOrbVisualStatePublication(
         SwarmOrbVisualPublication publication)
     {
-        var key = (publication.MatchingId, publication.ObserverPlayerId, publication.ActorPlayerId);
+        if (MatchRuntimes.Get(publication.MatchingId)?.Presentation is not { } presentation)
+            return;
+        var visualStates = presentation.OrbVisuals;
+        var key = (publication.ObserverPlayerId, publication.ActorPlayerId);
         if (publication.State is { } state)
-            _orbVisualStates[key] = state;
+            visualStates[key] = state;
         else
-            _orbVisualStates.TryRemove(key, out _);
+            visualStates.TryRemove(key, out _);
 
         if (publication.State is null)
             return;
@@ -456,22 +459,6 @@ PlayerInGameInventory inventory)
 
     private static ImmutableArray<int> CaptureSwarmOrbVisualItemIds(IEnumerable<int> orbItemIds) =>
         [.. orbItemIds];
-
-    private void RemoveOrbVisualStates(long matchingId)
-    {
-        foreach (var key in _orbVisualStates.Keys
-                     .Where(key => key.MatchingId == matchingId)
-                     .ToArray())
-        {
-            _orbVisualStates.TryRemove(key, out _);
-        }
-        foreach (var key in _orbRecoveryReadyAtUtc.Keys
-                     .Where(key => key.MatchingId == matchingId)
-                     .ToArray())
-        {
-            _orbRecoveryReadyAtUtc.TryRemove(key, out _);
-        }
-    }
 
     private static bool TryCreateSpatialActor(
 long playerId,
@@ -506,16 +493,6 @@ out ProximityCombatActor actor)
             cell);
         return true;
     }
-
-    private readonly record struct OrbVisualState(
-        AreaType Area,
-        int WeaponItemId,
-        bool IsActive,
-        string OrbItemSignature,
-        int FrontOrbHp,
-        int JamCount,
-        int BodyCorruption,
-        long ArmorMask);
 
     private sealed record SwarmOrbVisualPublication(
         long MatchingId,

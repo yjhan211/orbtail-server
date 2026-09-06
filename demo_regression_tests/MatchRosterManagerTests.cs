@@ -10,7 +10,7 @@ public sealed class MatchRosterManagerTests
     public void Elimination_OnlyChangesTheEliminatedPlayer_WhenLegacyChainEffectsAreDisabled()
     {
         const long matchingId = 194001;
-        var manager = new MatchRosterManager(NullLogger.Instance);
+        var manager = MatchTestServices.Roster(NullLogger.Instance);
 
         manager.RegisterEntry(matchingId, CreateLink(1, 2));
         manager.RegisterEntry(matchingId, CreateLink(2, 3));
@@ -28,7 +28,7 @@ public sealed class MatchRosterManagerTests
     public void Elimination_PreservesAttackerAndClosureContextInGameResult()
     {
         const long matchingId = 194002;
-        var manager = new MatchRosterManager(NullLogger.Instance);
+        var manager = MatchTestServices.Roster(NullLogger.Instance);
 
         manager.RegisterEntry(matchingId, CreateLink(1, 2));
         manager.RegisterEntry(matchingId, CreateLink(2, 1));
@@ -46,7 +46,7 @@ public sealed class MatchRosterManagerTests
     public void Elimination_FixesRankTierAndEnvironmentalCauseAtEliminationTime()
     {
         const long matchingId = 194003;
-        var manager = new MatchRosterManager(NullLogger.Instance);
+        var manager = MatchTestServices.Roster(NullLogger.Instance);
 
         manager.RegisterEntry(matchingId, CreateLink(1, 2));
         manager.RegisterEntry(matchingId, CreateLink(2, 3));
@@ -70,7 +70,7 @@ public sealed class MatchRosterManagerTests
     public void Elimination_AppliesOnlyOnceAndPreservesTheFirstResult()
     {
         const long matchingId = 194004;
-        var manager = new MatchRosterManager(NullLogger.Instance);
+        var manager = MatchTestServices.Roster(NullLogger.Instance);
 
         manager.RegisterEntry(matchingId, CreateLink(1, 2));
         manager.RegisterEntry(matchingId, CreateLink(2, 3));
@@ -101,7 +101,7 @@ public sealed class MatchRosterManagerTests
     public void Elimination_SameTickCollision_DecrementsAliveCountOnce()
     {
         const long matchingId = 227001;
-        var manager = new MatchRosterManager(NullLogger.Instance);
+        var manager = MatchTestServices.Roster(NullLogger.Instance);
 
         manager.RegisterEntry(matchingId, CreateLink(1, 2));
         manager.RegisterEntry(matchingId, CreateLink(2, 3));

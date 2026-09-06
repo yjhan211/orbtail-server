@@ -323,39 +323,35 @@ public class MatchingInventoryState(long matchingId)
 }
 
 /// <summary>
-///     MatchingId별로 인게임 인벤토리 상태를 관리하는 매니저
-///     각 매칭 인스턴스는 독립적인 상태를 가짐
+///     매치 런타임의 인벤토리에 아이템 추가·소비·조합 규칙을 적용한다.
+///     매치별 사전은 소유하지 않으며, 종료된 매치의 인벤토리를 다시 만들지 않는다.
 /// </summary>
 public class InGameInventoryManager
 {
-    private readonly ConcurrentDictionary<long, MatchingInventoryState> _matchingStates = new();
+    private readonly Func<long, MatchRuntime?> _getMatch;
     private Action<string>? _logAction;
+
+    internal InGameInventoryManager(Func<long, MatchRuntime?> getMatch) => _getMatch = getMatch;
 
     public void Initialize(Action<string>? logAction = null)
     {
         _logAction = logAction;
-        _matchingStates.Clear();
         _logAction?.Invoke("InGameInventoryManager: Initialized");
     }
 
     /// <summary>
-    ///     매칭 인스턴스의 상태를 가져오거나 새로 생성
+    ///     이미 생성된 매치의 인벤토리 상태를 조회한다.
     /// </summary>
-    private MatchingInventoryState GetOrCreateMatchingState(long matchingId)
-    {
-        return _matchingStates.GetOrAdd(matchingId, id =>
-        {
-            _logAction?.Invoke($"InGameInventoryManager: Creating new state for MatchingId={id}");
-            return new MatchingInventoryState(id);
-        });
-    }
+    private MatchingInventoryState GetMatchingState(long matchingId) =>
+        _getMatch(matchingId)?.Inventory
+        ?? throw new InvalidOperationException($"Match is not available: {matchingId}");
 
     /// <summary>
     ///     플레이어 인벤토리 가져오기
     /// </summary>
     public PlayerInGameInventory GetPlayerInventory(long matchingId, long playerId)
     {
-        var matchingState = GetOrCreateMatchingState(matchingId);
+        var matchingState = GetMatchingState(matchingId);
         return matchingState.GetOrCreatePlayerInventory(playerId);
     }
 
@@ -546,10 +542,5 @@ public class InGameInventoryManager
         _logAction?.Invoke(
             $"InGameInventoryManager: Dropped all items (MatchingId={matchingId}, PlayerId={playerId}, Slots={items.Count})");
         return items;
-    }
-    public void RemoveMatchingState(long matchingId)
-    {
-        if (_matchingStates.TryRemove(matchingId, out _))
-            _logAction?.Invoke($"InGameInventoryManager: Removed state for MatchingId={matchingId}");
     }
 }

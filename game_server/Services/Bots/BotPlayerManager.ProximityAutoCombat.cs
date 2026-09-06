@@ -7,19 +7,6 @@ namespace game_server.services;
 
 public partial class BotPlayerManager
 {
-    public bool TryAutoPickupGroundItem(
-        BotPlayerState bot,
-        long matchingId,
-        InGameInventoryManager inventoryManager,
-        GroundItemManager groundItemManager,
-        out BotGroundItemPickup? pickup) =>
-        TryAutoPickupGroundItem(
-            bot,
-            matchingId,
-            inventoryManager,
-            groundItemManager,
-            new SummonStoneManager(),
-            out pickup);
     /// <summary>
     ///     봇 소환석 반응 지연 (#222): 갓 떨어진 돌은 이 창이 지나야 봇이 반응한다 —
     ///     사람의 눈·조작 시간을 흉내 내 낙수 선점권을 사람에게 준다.

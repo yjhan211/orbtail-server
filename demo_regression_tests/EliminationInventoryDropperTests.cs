@@ -22,8 +22,8 @@ public sealed class EliminationInventoryDropperTests
     public void PlayersAndBotsUseTheSameEliminationScatterPolicy(long playerId)
     {
         const long matchingId = 99001;
-        var inventory = new InGameInventoryManager();
-        var groundItems = new GroundItemManager();
+        var inventory = MatchTestServices.Inventory();
+        var groundItems = MatchTestServices.GroundItems();
         inventory.Initialize();
         inventory.AddItem(matchingId, playerId, HopeOrbT1);
         inventory.AddItem(matchingId, playerId, ForgetOrbT1);
@@ -53,8 +53,8 @@ public sealed class EliminationInventoryDropperTests
     {
         const long matchingId = 99002;
         const long botPlayerId = -7002;
-        var inventory = new InGameInventoryManager();
-        var groundItems = new GroundItemManager();
+        var inventory = MatchTestServices.Inventory();
+        var groundItems = MatchTestServices.GroundItems();
         inventory.Initialize();
         inventory.AddItem(matchingId, botPlayerId, HopeOrbT1);
 

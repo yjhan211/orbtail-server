@@ -227,7 +227,7 @@ public sealed class OrbBoardTests
     public void FirstColoredOrbPickupAutoEquipsWithoutReplacingItOnLaterPickups()
     {
         InitializeBattleCombatData();
-        var manager = new InGameInventoryManager();
+        var manager = MatchTestServices.Inventory();
         manager.Initialize();
 
         Assert.True(manager.TryAddItemWithCapacity(10, 100, 107000010, 6, out var firstOrb));
@@ -259,7 +259,7 @@ public sealed class OrbBoardTests
     public void ReconnectRecomputesTheSameSingleResonanceFromTheAuthoritativeBoard()
     {
         InitializeBattleCombatData();
-        var manager = new InGameInventoryManager();
+        var manager = MatchTestServices.Inventory();
         manager.Initialize();
         Assert.True(manager.TryAddItemWithCapacity(198, 101, 107000010, 6, out _));
         Assert.True(manager.TryAddItemWithCapacity(198, 101, 107000010, 6, out _));
@@ -275,7 +275,7 @@ public sealed class OrbBoardTests
     public async Task ConcurrentRandomMergeConsumesInputsOnlyOnce()
     {
         InitializeBattleCombatData();
-        var manager = new InGameInventoryManager();
+        var manager = MatchTestServices.Inventory();
         manager.Initialize();
         manager.AddItem(10, 100, 107000010);
         manager.AddItem(10, 100, 107000010);
@@ -293,7 +293,7 @@ public sealed class OrbBoardTests
     public void ReconnectingToTheSameMatchReadsTheSingleAuthoritativeMergeResult()
     {
         InitializeBattleCombatData();
-        var manager = new InGameInventoryManager();
+        var manager = MatchTestServices.Inventory();
         manager.Initialize();
         manager.AddItem(198, 100, 107000010);
         manager.AddItem(198, 100, 107000010);

@@ -17,10 +17,21 @@ internal sealed class MatchRuntime
     internal MatchRuntime(long matchingId)
     {
         MatchingId = matchingId;
+        Inventory = new MatchingInventoryState(matchingId);
+        GroundItems = new GroundItemManager.MatchingGroundItemState(matchingId);
+        Roster = new MatchRosterState { MatchingId = matchingId };
     }
 
     public long MatchingId { get; }
     public MatchDoorState Doors { get; } = new();
+    // 매치 종료 시 런타임과 함께 색인에서 빠진다. 매니저별 matchingId 사전은 두지 않는다.
+    public MatchingInventoryState Inventory { get; }
+    public GroundItemManager.MatchingGroundItemState GroundItems { get; }
+    public ConcurrentDictionary<long, SummonStoneManager.PlayerSummonState> SummonStones { get; } = new();
+    public EncounterRevealManager.MatchEncounterState Encounters { get; } = new();
+    public MatchRosterState Roster { get; }
+    public MatchPresentationState Presentation { get; } = new();
+    public MatchingClosureState? Closure;
     public object Sync { get; } = new();
     public bool IsTerminal => Volatile.Read(ref _terminal) != 0;
 

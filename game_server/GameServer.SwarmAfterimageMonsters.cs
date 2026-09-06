@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using game_server.network;
 using game_server.services;
 using MessagePack;
@@ -10,15 +9,15 @@ namespace game_server;
 
 public partial class GameServer
 {
-    private readonly ConcurrentDictionary<long, DateTime> _nextMonsterPositionBroadcastAtUtc = new();
     private static readonly TimeSpan MonsterPositionBroadcastInterval = TimeSpan.FromMilliseconds(100);
 
     private bool TryConsumeMonsterPositionBroadcastSlot(long matchingId, DateTime nowUtc)
     {
-        if (_nextMonsterPositionBroadcastAtUtc.TryGetValue(matchingId, out var nextAtUtc) && nowUtc < nextAtUtc)
+        if (MatchRuntimes.Get(matchingId)?.Presentation is not { } presentation ||
+            nowUtc < presentation.NextMonsterPositionBroadcastAtUtc)
             return false;
 
-        _nextMonsterPositionBroadcastAtUtc[matchingId] = nowUtc + MonsterPositionBroadcastInterval;
+        presentation.NextMonsterPositionBroadcastAtUtc = nowUtc + MonsterPositionBroadcastInterval;
         return true;
     }
 
@@ -54,9 +53,4 @@ public partial class GameServer
         }
     }
 
-    private void CleanupSwarmAfterimageMonsterRuntime(long matchingId)
-    {
-
-        _nextMonsterPositionBroadcastAtUtc.TryRemove(matchingId, out _);
-    }
 }

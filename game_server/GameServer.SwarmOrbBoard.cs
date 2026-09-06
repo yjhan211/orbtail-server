@@ -45,7 +45,7 @@ public partial class GameServer
             int stonesInsteadOfOrbs = 0;
             for (int index = 0; index < Config.SWARM_STARTING_ORB_GRANT_COUNT; index++)
                 stonesInsteadOfOrbs += Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(index));
-            _summonStoneManager.AddStones(matchingId, playerId, stonesInsteadOfOrbs);
+            SummonStones.AddStones(matchingId, playerId, stonesInsteadOfOrbs);
             SendSwarmFamilyLevels(matchingId, playerId, session);
             return;
         }
@@ -59,7 +59,7 @@ public partial class GameServer
             if (session != null)
                 session.GrantSwarmArenaOrb(itemId);
             else
-                _inGameInventoryManager.TryAddItemWithCapacity(
+                InventoryManager.TryAddItemWithCapacity(
                     matchingId, playerId, itemId, Config.SWARM_ORB_CAPACITY, out _);
         }
 
@@ -142,12 +142,12 @@ public partial class GameServer
         if (!OrbData.TryGetColorAndTier(target.ItemId, out _, out int tier) ||
             !OrbData.TryGetItemId(color, tier + 1, out int upgradedItemId))
             return false;
-        if (!_summonStoneManager.TrySpendStones(matchingId, playerId, cost, out _))
+        if (!SummonStones.TrySpendStones(matchingId, playerId, cost, out _))
             return false;
 
         orbBoard.IncrementFamilyUpgradeCount(playerId, color);
 
-        var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
+        var inventory = InventoryManager.GetPlayerInventory(matchingId, playerId);
         bool replaced = inventory.TryReplaceOrb(target.ItemUid, upgradedItemId, out _);
         resultItemId = upgradedItemId;
         targetOrdinal = ordinal;

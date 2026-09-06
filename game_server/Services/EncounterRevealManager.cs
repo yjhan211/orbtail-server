@@ -4,6 +4,7 @@ using network.common.data.models;
 
 namespace game_server.services;
 
+/// <summary>매치 런타임의 플레이어 쌍별 쿨타임을 사용해 복도 발견·힌트를 판정한다.</summary>
 public sealed class EncounterRevealManager
 {
     public const int CorridorHintEventType = 1;
@@ -16,9 +17,9 @@ public sealed class EncounterRevealManager
     private const float CorridorRevealDistance = 1.45f;
     private const int CorridorHintCooldownSeconds = 4;
 
-    private readonly ConcurrentDictionary<PairKey, DateTime> _pairCooldownUntil = new();
-    private readonly ConcurrentDictionary<PairKey, DateTime> _corridorHintCooldownUntil = new();
-    private readonly Random _rng = new();
+    private readonly Func<long, MatchRuntime?> _getMatch;
+
+    internal EncounterRevealManager(Func<long, MatchRuntime?> getMatch) => _getMatch = getMatch;
 
 
     public CorridorEncounterDecision ResolveCorridorEncounter(
@@ -29,6 +30,8 @@ public sealed class EncounterRevealManager
         int riskEventChanceDownPercent = 0,
         int escapeChanceAddPercent = 0)
     {
+        if (_getMatch(matchingId)?.Encounters is not { } state)
+            return CorridorEncounterDecision.None;
         var now = DateTime.UtcNow;
         CorridorEncounterDecision bestHint = CorridorEncounterDecision.None;
 
@@ -39,12 +42,12 @@ public sealed class EncounterRevealManager
 
             float sqrDistance = SqrDistance(actorPosition, candidate.Position);
             if (sqrDistance <= CorridorRevealDistance * CorridorRevealDistance &&
-                !IsPairCoolingDown(matchingId, actorPlayerId, candidate.PlayerId, now))
+                !IsPairCoolingDown(state, actorPlayerId, candidate.PlayerId, now))
             {
-                if (ShouldSuppressReveal(riskEventChanceDownPercent, escapeChanceAddPercent))
+                if (ShouldSuppressReveal(state, riskEventChanceDownPercent, escapeChanceAddPercent))
                     continue;
 
-                SetPairCooldown(matchingId, actorPlayerId, candidate.PlayerId, now);
+                SetPairCooldown(state, actorPlayerId, candidate.PlayerId, now);
                 return new CorridorEncounterDecision(
                     CorridorRevealEventType,
                     candidate.PlayerId,
@@ -55,11 +58,11 @@ public sealed class EncounterRevealManager
             if (sqrDistance > CorridorHintDistance * CorridorHintDistance)
                 continue;
 
-            var key = PairKey.Create(matchingId, actorPlayerId, candidate.PlayerId);
-            if (_corridorHintCooldownUntil.TryGetValue(key, out var hintUntil) && hintUntil > now)
+            var key = PairKey.Create(actorPlayerId, candidate.PlayerId);
+            if (state.CorridorHintCooldownUntil.TryGetValue(key, out var hintUntil) && hintUntil > now)
                 continue;
 
-            _corridorHintCooldownUntil[key] = now.AddSeconds(CorridorHintCooldownSeconds);
+            state.CorridorHintCooldownUntil[key] = now.AddSeconds(CorridorHintCooldownSeconds);
             bestHint = new CorridorEncounterDecision(
                 CorridorHintEventType,
                 candidate.PlayerId,
@@ -71,7 +74,7 @@ public sealed class EncounterRevealManager
         return bestHint;
     }
 
-    private bool ShouldSuppressReveal(int riskEventChanceDownPercent, int escapeChanceAddPercent)
+    private bool ShouldSuppressReveal(MatchEncounterState state, int riskEventChanceDownPercent, int escapeChanceAddPercent)
     {
         int riskReduction = Math.Clamp(riskEventChanceDownPercent, 0, 95);
         int escapeChance = Math.Clamp(escapeChanceAddPercent, 0, 95);
@@ -79,32 +82,32 @@ public sealed class EncounterRevealManager
         if (riskReduction <= 0 && escapeChance <= 0)
             return false;
 
-        lock (_rng)
+        lock (state.Random)
         {
-            if (riskReduction > 0 && _rng.Next(100) < riskReduction)
+            if (riskReduction > 0 && state.Random.Next(100) < riskReduction)
                 return true;
 
-            return escapeChance > 0 && _rng.Next(100) < escapeChance;
+            return escapeChance > 0 && state.Random.Next(100) < escapeChance;
         }
     }
 
-    private bool IsPairCoolingDown(long matchingId, long a, long b, DateTime now)
+    private bool IsPairCoolingDown(MatchEncounterState state, long a, long b, DateTime now)
     {
-        var key = PairKey.Create(matchingId, a, b);
-        if (!_pairCooldownUntil.TryGetValue(key, out var until))
+        var key = PairKey.Create(a, b);
+        if (!state.PairCooldownUntil.TryGetValue(key, out var until))
             return false;
 
         if (until > now)
             return true;
 
-        _pairCooldownUntil.TryRemove(key, out _);
+        state.PairCooldownUntil.TryRemove(key, out _);
         return false;
     }
 
-    private void SetPairCooldown(long matchingId, long a, long b, DateTime now)
+    private void SetPairCooldown(MatchEncounterState state, long a, long b, DateTime now)
     {
-        var key = PairKey.Create(matchingId, a, b);
-        _pairCooldownUntil[key] = now.AddSeconds(PairCooldownSeconds);
+        var key = PairKey.Create(a, b);
+        state.PairCooldownUntil[key] = now.AddSeconds(PairCooldownSeconds);
     }
 
     private static float SqrDistance(Vector3f a, Vector3f b)
@@ -114,20 +117,19 @@ public sealed class EncounterRevealManager
         return dx * dx + dy * dy;
     }
 
-    public void CleanupMatching(long matchingId)
+    internal sealed class MatchEncounterState
     {
-        foreach (var key in _pairCooldownUntil.Keys.Where(key => key.MatchingId == matchingId))
-            _pairCooldownUntil.TryRemove(key, out _);
-        foreach (var key in _corridorHintCooldownUntil.Keys.Where(key => key.MatchingId == matchingId))
-            _corridorHintCooldownUntil.TryRemove(key, out _);
+        public ConcurrentDictionary<PairKey, DateTime> PairCooldownUntil { get; } = new();
+        public ConcurrentDictionary<PairKey, DateTime> CorridorHintCooldownUntil { get; } = new();
+        public Random Random { get; } = new();
     }
-    private readonly record struct PairKey(long MatchingId, long A, long B)
+    internal readonly record struct PairKey(long A, long B)
     {
-        public static PairKey Create(long matchingId, long a, long b)
+        public static PairKey Create(long a, long b)
         {
             return a <= b
-                ? new PairKey(matchingId, a, b)
-                : new PairKey(matchingId, b, a);
+                ? new PairKey(a, b)
+                : new PairKey(b, a);
         }
     }
 

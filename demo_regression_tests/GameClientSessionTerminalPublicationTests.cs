@@ -275,7 +275,12 @@ public sealed class GameClientSessionTerminalPublicationTests
                     })
                 ]);
 
-            Interactables.Initialize();
+            Inventories = new InGameInventoryManager(Store.Get);
+            GroundItems = new GroundItemManager(Store.Get);
+            SummonStones = new SummonStoneManager(Store.Get);
+            Roster = new MatchRosterManager(Store.Get, NullLogger.Instance);
+            Closures = new AreaClosureManager(Store.Get, NullLogger.Instance);
+            Encounters = new EncounterRevealManager(Store.Get);
             Inventories.Initialize();
         }
 
@@ -284,15 +289,15 @@ public sealed class GameClientSessionTerminalPublicationTests
         public ConcurrentDictionary<long, int> LifecycleDispatchCounts { get; } = new();
         public TimelineLogger Logger { get; }
         public InteractableStateManager Interactables { get; } = new();
-        public InGameInventoryManager Inventories { get; } = new();
-        public GroundItemManager GroundItems { get; } = new();
-        public SummonStoneManager SummonStones { get; } = new();
-        public MatchRosterManager Roster { get; } = new(NullLogger.Instance);
-        public AreaClosureManager Closures { get; } = new(NullLogger.Instance);
+        public InGameInventoryManager Inventories { get; }
+        public GroundItemManager GroundItems { get; }
+        public SummonStoneManager SummonStones { get; }
+        public MatchRosterManager Roster { get; }
+        public AreaClosureManager Closures { get; }
         public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
         public GameEventLogManager EventLog { get; } = new();
         public MatchSummaryFileStore Summaries => new(_summaryDirectory);
-        public EncounterRevealManager Encounters { get; } = new();
+        public EncounterRevealManager Encounters { get; }
         public long? ThrowPrepareCompletionForPlayerId { get; set; }
         public MatchRuntime? TrackedRuntime { get; set; }
         public bool? LockHeldDuringLifecycle { get; private set; }
@@ -359,6 +364,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                 });
             }
 
+            Store.GetOrCreate(matchingId);
             for (int index = 0; index < entries.Count; index++)
             {
                 RosterEntry entry = entries[index];

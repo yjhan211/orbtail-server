@@ -91,10 +91,9 @@ public partial class BotPlayerManager
         GroundItemManager groundItemManager,
         IReadOnlyCollection<MonsterCombatTarget>? pveTargets,
         Func<long, long, SwarmBotDirective> spotArenaDirectiveProvider,
-        SummonStoneManager? summonStoneManager = null)
+        SummonStoneManager summonStoneManager)
     {
         var result = new BotWalkingTickResult();
-        summonStoneManager ??= new SummonStoneManager();
         if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
 
         var activeBots = bots.Where(bot => !bot.IsEliminated).ToList();

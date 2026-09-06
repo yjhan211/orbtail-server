@@ -488,7 +488,7 @@ public partial class GameClientSession
 
     private void SendInteractableList(AreaType areaType)
     {
-        var objects = _interactableStateManager.GetAreaObjectStates(MatchingId, areaType);
+        var objects = _interactableStateManager.GetAreaObjectStates(areaType);
 
         // #229 5단계: 스웜은 상자 탐색을 보내지 않는다 — 마커도 빈 상호작용 UI도 뜰 일이 없다.
         // 단 문 잠금해제(door_id > 0)는 예외다. 방을 여는 유일한 수단이라 스웜의 핵심 조작이다.

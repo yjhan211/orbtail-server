@@ -13,7 +13,7 @@ public sealed class InGameInventoryAtomicityTests
     [Fact]
     public async Task ConcurrentQuantityOneConsumptionCannotOverdraw()
     {
-        var manager = new InGameInventoryManager();
+        var manager = MatchTestServices.Inventory();
         manager.Initialize();
         manager.AddItem(matchingId: 10, playerId: 100, itemId: 401000005, count: 1);
 
@@ -29,7 +29,7 @@ public sealed class InGameInventoryAtomicityTests
     [Fact]
     public void QuantityOneConsumptionLeavesRemainingCount()
     {
-        var manager = new InGameInventoryManager();
+        var manager = MatchTestServices.Inventory();
         manager.Initialize();
         manager.AddItem(matchingId: 10, playerId: 100, itemId: 401000005, count: 2);
 
@@ -43,7 +43,7 @@ public sealed class InGameInventoryAtomicityTests
     public void EquippedBattleItemIsStoredAndClearedWithInventoryRemoval()
     {
         InitializeBattleCombatData();
-        var manager = new InGameInventoryManager();
+        var manager = MatchTestServices.Inventory();
         manager.Initialize();
         var item = manager.AddItem(matchingId: 10, playerId: 100, itemId: 107000003);
 
@@ -59,7 +59,7 @@ public sealed class InGameInventoryAtomicityTests
     public void CombiningAnEquippedBattleItemKeepsTheOutputEquipped()
     {
         InitializeBattleCombatData();
-        var manager = new InGameInventoryManager();
+        var manager = MatchTestServices.Inventory();
         manager.Initialize();
         var firstItem = manager.AddItem(matchingId: 10, playerId: 100, itemId: 107000003);
         manager.AddItem(matchingId: 10, playerId: 100, itemId: 107000003);
@@ -77,7 +77,7 @@ public sealed class InGameInventoryAtomicityTests
     public void NonCombatItemCannotBecomeEquippedBattleItem()
     {
         InitializeBattleCombatData();
-        var manager = new InGameInventoryManager();
+        var manager = MatchTestServices.Inventory();
         manager.Initialize();
         var item = manager.AddItem(matchingId: 10, playerId: 100, itemId: 401000005);
 
@@ -88,7 +88,7 @@ public sealed class InGameInventoryAtomicityTests
     [Fact]
     public void RandomRecipeWithMissingMaterialDoesNotDraw()
     {
-        var manager = new InGameInventoryManager();
+        var manager = MatchTestServices.Inventory();
         manager.Initialize();
         manager.AddItem(matchingId: 10, playerId: 100, itemId: Bandage);
         BattleItemRecipe recipe = LoadBattleItemRecipe(BandageRecipeId);
@@ -113,7 +113,7 @@ public sealed class InGameInventoryAtomicityTests
     public void OrbMergeWithMissingMaterialDoesNotDraw()
     {
         InitializeBattleCombatData();
-        var manager = new InGameInventoryManager();
+        var manager = MatchTestServices.Inventory();
         manager.Initialize();
         manager.AddItem(matchingId: 10, playerId: 100, itemId: SunOrbT1);
         var random = new CountingRandom();

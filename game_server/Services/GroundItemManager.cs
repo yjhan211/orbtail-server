@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -22,6 +21,7 @@ public enum GroundItemSpawnLayout
     EliminationScatter
 }
 
+/// <summary>매치 런타임의 바닥 아이템에 생성·조회·획득 규칙을 적용한다. 매치별 사전은 소유하지 않는다.</summary>
 public sealed class GroundItemManager
 {
     public const float PickupRadius = 1.15f;
@@ -29,22 +29,17 @@ public sealed class GroundItemManager
     // 소환석 자석 흡수 (#219): 접촉이 아니라 근처를 지나가면 딸려온다 — SB 코인 흡수 문법.
     public const float SummonStonePickupRadius = 3.5f;
 
-    /// <summary>
-    ///     낙수 수명 (#229). 지금까지는 바닥 아이템이 매치 끝까지 남았다 — 절단 낙수를 오브
-    ///     그대로 떨어뜨리면 후반에 바닥이 오브밭이 되어 회수 경쟁이 사라진다.
-    ///     수명을 지정한 아이템만 만료 대상이고, 나머지는 종전대로 남는다.
-    /// </summary>
-    private readonly ConcurrentDictionary<long, Dictionary<long, DateTimeOffset>> _itemExpiries = new();
-    private readonly ConcurrentDictionary<long, MatchingGroundItemState> _matchingStates = new();
+    private readonly Func<long, MatchRuntime?> _getMatch;
     private readonly TimeProvider _timeProvider;
 
-    public GroundItemManager(TimeProvider? timeProvider = null)
+    internal GroundItemManager(Func<long, MatchRuntime?> getMatch, TimeProvider? timeProvider = null)
     {
+        _getMatch = getMatch;
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public void InitializeMatching(long matchingId) =>
-        _matchingStates.GetOrAdd(matchingId, _ => new MatchingGroundItemState(matchingId));
+        GetRequiredState(matchingId);
 
     public List<GroundItemInfo> SpawnItems(long matchingId, AreaType area, float originX, float originY,
         IReadOnlyList<int> itemIds, long sourcePlayerId = 0, MapId? mapId = null,
@@ -56,7 +51,7 @@ public sealed class GroundItemManager
         if (matchingId <= 0 || area == AreaType.None || itemIds.Count == 0)
             return new List<GroundItemInfo>();
 
-        var state = _matchingStates.GetOrAdd(matchingId, id => new MatchingGroundItemState(id));
+        var state = GetRequiredState(matchingId);
         lock (state.SyncRoot)
         {
             var spawned = new List<GroundItemInfo>(itemIds.Count);
@@ -78,9 +73,7 @@ public sealed class GroundItemManager
                 state.SpawnedAtUtc[item.GroundItemUid] = _timeProvider.GetUtcNow();
                 if (lifetime is { } span && span > TimeSpan.Zero)
                 {
-                    var expiries = _itemExpiries.GetOrAdd(
-                        matchingId,
-                        static _ => new Dictionary<long, DateTimeOffset>());
+                    var expiries = state.ItemExpiries;
                     expiries[item.GroundItemUid] = _timeProvider.GetUtcNow() + span;
                 }
                 if (discovererPlayerId != 0)
@@ -100,7 +93,7 @@ public sealed class GroundItemManager
 
     public List<GroundItemInfo> GetSnapshot(long matchingId, AreaType area)
     {
-        if (!_matchingStates.TryGetValue(matchingId, out var state))
+        if (_getMatch(matchingId)?.GroundItems is not { } state)
             return new List<GroundItemInfo>();
 
         lock (state.SyncRoot)
@@ -117,7 +110,7 @@ public sealed class GroundItemManager
     /// </summary>
     public bool IsYoungerThan(long matchingId, long groundItemUid, TimeSpan age)
     {
-        if (!_matchingStates.TryGetValue(matchingId, out var state)) return false;
+        if (_getMatch(matchingId)?.GroundItems is not { } state) return false;
         lock (state.SyncRoot)
             return state.SpawnedAtUtc.TryGetValue(groundItemUid, out var spawnedAt) &&
                    _timeProvider.GetUtcNow() - spawnedAt < age;
@@ -125,14 +118,14 @@ public sealed class GroundItemManager
 
     public GroundItemInfo? GetItem(long matchingId, long groundItemUid)
     {
-        if (!_matchingStates.TryGetValue(matchingId, out var state))
+        if (_getMatch(matchingId)?.GroundItems is not { } state)
             return null;
         lock (state.SyncRoot)
             return state.Items.TryGetValue(groundItemUid, out var item) ? Clone(item) : null;
     }
     public long GetDiscovererPlayerId(long matchingId, long groundItemUid)
     {
-        if (!_matchingStates.TryGetValue(matchingId, out var state)) return 0;
+        if (_getMatch(matchingId)?.GroundItems is not { } state) return 0;
         lock (state.SyncRoot)
             return state.DiscovererPlayerIds.GetValueOrDefault(groundItemUid);
     }
@@ -142,7 +135,7 @@ public sealed class GroundItemManager
         out GroundItemInfo? claimedItem)
     {
         claimedItem = null;
-        if (!_matchingStates.TryGetValue(matchingId, out var state))
+        if (_getMatch(matchingId)?.GroundItems is not { } state)
             return GroundItemClaimStatus.NotFound;
 
         lock (state.SyncRoot)
@@ -188,7 +181,7 @@ public sealed class GroundItemManager
 
     public void ReleaseSourcePickupBlocks(long matchingId, long playerId, AreaType area, float playerX, float playerY)
     {
-        if (!_matchingStates.TryGetValue(matchingId, out var state)) return;
+        if (_getMatch(matchingId)?.GroundItems is not { } state) return;
         const float releaseRadius = 1.4f;
         lock (state.SyncRoot)
         {
@@ -205,7 +198,7 @@ public sealed class GroundItemManager
 
     public void ReleaseClaimReservationsForPlayer(long matchingId, long playerId)
     {
-        if (playerId == 0 || !_matchingStates.TryGetValue(matchingId, out var state)) return;
+        if (playerId == 0 || _getMatch(matchingId)?.GroundItems is not { } state) return;
 
         lock (state.SyncRoot)
         {
@@ -218,11 +211,9 @@ public sealed class GroundItemManager
         }
     }
 
-    public void RemoveMatchingState(long matchingId)
-    {
-        _itemExpiries.TryRemove(matchingId, out _);
-        _matchingStates.TryRemove(matchingId, out _);
-    }
+    private MatchingGroundItemState GetRequiredState(long matchingId) =>
+        _getMatch(matchingId)?.GroundItems
+        ?? throw new InvalidOperationException($"Match is not available: {matchingId}");
 
     private static (float X, float Y) ResolveLandingPosition(MapId mapId, AreaType area, float originX,
         float originY, int itemIndex, int itemCount, GroundItemSpawnLayout layout)
@@ -321,16 +312,18 @@ public sealed class GroundItemManager
         SourcePlayerId = source.SourcePlayerId
     };
 
-    private sealed class MatchingGroundItemState(long matchingId)
+    internal sealed class MatchingGroundItemState(long matchingId)
     {
         private long _sequence;
         public object SyncRoot { get; } = new();
         public Dictionary<long, GroundItemInfo> Items { get; } = new();
+        // 수명이 지정된 아이템의 만료 시각도 해당 매치 데이터에 함께 보관한다.
+        public Dictionary<long, DateTimeOffset> ItemExpiries { get; } = new();
         public Dictionary<long, GroundItemClaimReservation> ClaimReservations { get; } = new();
         public Dictionary<long, long> DiscovererPlayerIds { get; } = new();
         public Dictionary<long, DateTimeOffset> SpawnedAtUtc { get; } = new();
         public long NextUid() => checked(matchingId * 1_000_000L + ++_sequence);
     }
 
-    private readonly record struct GroundItemClaimReservation(long PlayerId, DateTimeOffset ExpiresAtUtc);
+    internal readonly record struct GroundItemClaimReservation(long PlayerId, DateTimeOffset ExpiresAtUtc);
 }

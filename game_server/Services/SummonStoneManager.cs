@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -6,8 +5,8 @@ using network.common.data.models;
 namespace game_server.services;
 
 /// <summary>
-/// Owns the server-authoritative summon economy for each player in a match.
-/// A failed grant leaves both currency and the deterministic result sequence unchanged.
+///     매치 런타임의 소환석 잔액과 성장 횟수에 지급·소비·소환 규칙을 적용한다.
+///     지급에 실패하면 재화와 소환 결과 순서는 바뀌지 않는다. 상태의 수명은 매치가 관리한다.
 /// </summary>
 public sealed class SummonStoneManager
 {
@@ -34,7 +33,9 @@ public sealed class SummonStoneManager
     private static readonly int[] OpeningAttackPool = SummonPool
         .Where(itemId => !OrbData.IsRecoveryOrb(itemId))
         .ToArray();
-    private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, PlayerSummonState>> _matchingStates = new();
+    private readonly Func<long, MatchRuntime?> _getMatch;
+
+    internal SummonStoneManager(Func<long, MatchRuntime?> getMatch) => _getMatch = getMatch;
 
     public IReadOnlyList<int> PoolItemIds => SummonPool;
     // #219 M2: 시작 소환석 5 — 첫 개봉(비용 5) 한 번을 보장해 개전 직후 드래프트 맛을 먼저 보여준다.
@@ -54,7 +55,9 @@ public sealed class SummonStoneManager
 
     public SummonStoneSnapshot GetSnapshot(long matchingId, long playerId)
     {
-        var state = GetOrCreatePlayerState(matchingId, playerId);
+        if (_getMatch(matchingId)?.SummonStones is not { } players ||
+            !players.TryGetValue(playerId, out var state))
+            return new SummonStoneSnapshot(0, 0, GetCost(0));
         lock (state.SyncRoot)
             return CreateSnapshot(state);
     }
@@ -191,12 +194,10 @@ public sealed class SummonStoneManager
         return [first, second];
     }
 
-    public void RemoveMatchingState(long matchingId) => _matchingStates.TryRemove(matchingId, out _);
-
     private PlayerSummonState GetOrCreatePlayerState(long matchingId, long playerId)
     {
-        var matchingState = _matchingStates.GetOrAdd(matchingId,
-            _ => new ConcurrentDictionary<long, PlayerSummonState>());
+        var matchingState = _getMatch(matchingId)?.SummonStones
+            ?? throw new InvalidOperationException($"Match is not available: {matchingId}");
         return matchingState.GetOrAdd(playerId, _ => new PlayerSummonState());
     }
 
@@ -231,7 +232,7 @@ public sealed class SummonStoneManager
         return pool[(int)(value % (ulong)pool.Length)];
     }
 
-    private sealed class PlayerSummonState
+    internal sealed class PlayerSummonState
     {
         public object SyncRoot { get; } = new();
         public int StoneCount { get; set; }

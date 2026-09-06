@@ -103,7 +103,7 @@ public sealed class SwarmArenaTickOrderTests
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
             "target.Session.EliminateForSettlement(",
             "ProcessBotElimination(",
-            "_matchRosterManager.CheckGameOver(matchingId)",
+            "RosterManager.CheckGameOver(matchingId)",
             "resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);");
         Assert.DoesNotContain("Enter(", matchingSettlement);
         Assert.DoesNotContain("PublicationTurn", matchingSettlement);
@@ -225,7 +225,7 @@ public sealed class SwarmArenaTickOrderTests
             orbPublicationSteps,
             "foreach (SwarmOrbVisualPublication publication in publications)",
             "CommitAndDispatchOrbVisualStatePublication(publication)",
-            "_orbVisualStates[key] = state;",
+            "visualStates[key] = state;",
             "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
             "publication.Recipient!.TrySend(packet);");
         Assert.False(ContainsCodeToken(orbPublicationSteps, "catch"));
@@ -237,7 +237,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             botElimination,
             "try",
-            "_matchRosterManager.TryEliminatePlayer(",
+            "RosterManager.TryEliminatePlayer(",
             "DropBotInventoryAtCurrentPosition(",
             "foreach (var s in matchingSessions) s.TrySend(eliminatedPacket);",
             "catch (Exception ex)");
@@ -249,11 +249,11 @@ public sealed class SwarmArenaTickOrderTests
             "internal void EliminateForSettlement(");
         AssertInOrder(
             humanElimination,
-            "_matchRosterManager.TryEliminatePlayer(",
+            "RosterManager.TryEliminatePlayer(",
             "eliminatedSession.DropAllInventoryAtCurrentPosition();",
             "session.TrySend(eliminatedPacket);",
             "session.TrySend(leavePacket);",
-            "_matchRosterManager.CheckGameOver(",
+            "RosterManager.CheckGameOver(",
             "SendGameResult(");
         Assert.False(ContainsCodeToken(humanElimination, "catch"));
     }
@@ -340,9 +340,9 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             prepare,
-            "_areaClosureManager.InitializeMatching(",
+            "Closures.InitializeMatching(",
             "new SwarmFieldStateOutbound(",
-            "_areaClosureManager.CheckClosureSchedule(matchingId)",
+            "Closures.CheckClosureSchedule(matchingId)",
             "new SwarmClosureWarningOutbound(",
             "_gameEventLogManager.LogClosure(",
             "new SwarmAreaClosedOutbound(",

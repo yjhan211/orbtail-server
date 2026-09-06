@@ -385,7 +385,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             Bandage,
             Bandage,
             ErrorCode.INVALID_GAME_STATE);
-        Assert.Equal(before, fixture.InventorySnapshot(FirstMatchingId, FirstPlayerId));
+        Assert.Equal(before, runtime.Inventory.GetOrCreatePlayerInventory(FirstPlayerId).GetAllItems().OrderBy(item => item.ItemUid).Select(item => (item.ItemUid, item.ItemId, item.Count)).ToArray());
         Assert.Empty(fixture.EventLog.GetForPersistence(FirstMatchingId));
         Assert.Null(fixture.Store.Get(FirstMatchingId));
         Assert.Equal(0, fixture.TotalItemCombineRandomResolverCalls);
@@ -885,10 +885,15 @@ public sealed class GameClientSessionItemCombinePublicationTests
             Store = new MatchRuntimeStore(
                 NullLogger.Instance,
                 cleanupSteps: [new MatchCleanupStep("cleanup", _ => CleanupTimeline?.Enqueue("cleanup"))]);
-            Inventories = GetField<InGameInventoryManager>(Server, "_inGameInventoryManager");
+            typeof(GameServer).GetField("_matchRuntimes", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(Server, Store);
+            Inventories = Server.InventoryManager;
             EventLog = GetField<GameEventLogManager>(Server, "_gameEventLogManager");
 
-            Interactables.Initialize();
+            GroundItems = new GroundItemManager(Store.Get);
+            SummonStones = new SummonStoneManager(Store.Get);
+            Roster = new MatchRosterManager(Store.Get, NullLogger.Instance);
+            Closures = new AreaClosureManager(Store.Get, NullLogger.Instance);
+            Encounters = new EncounterRevealManager(Store.Get);
             Inventories.Initialize();
         }
 
@@ -898,12 +903,12 @@ public sealed class GameClientSessionItemCombinePublicationTests
         public InGameInventoryManager Inventories { get; }
         public GameEventLogManager EventLog { get; }
         public InteractableStateManager Interactables { get; } = new();
-        public GroundItemManager GroundItems { get; } = new();
-        public SummonStoneManager SummonStones { get; } = new();
-        public MatchRosterManager Roster { get; } = new(NullLogger.Instance);
-        public AreaClosureManager Closures { get; } = new(NullLogger.Instance);
+        public GroundItemManager GroundItems { get; }
+        public SummonStoneManager SummonStones { get; }
+        public MatchRosterManager Roster { get; }
+        public AreaClosureManager Closures { get; }
         public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
-        public EncounterRevealManager Encounters { get; } = new();
+        public EncounterRevealManager Encounters { get; }
         public int TotalItemCombineRandomResolverCalls =>
             _itemCombineRandomResolverCalls.Values.Sum();
 

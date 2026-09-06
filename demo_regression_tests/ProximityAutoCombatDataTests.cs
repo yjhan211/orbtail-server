@@ -213,8 +213,8 @@ public class ProximityAutoCombatDataTests
             "CommitAndDispatchOrbVisualStatePublication(publication);");
         AssertInOrder(
             commitAndDispatch,
-            "_orbVisualStates[key] = state;",
-            "_orbVisualStates.TryRemove(key, out _);",
+            "visualStates[key] = state;",
+            "visualStates.TryRemove(key, out _);",
             "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
             "publication.Recipient!.TrySend(packet);");
         Assert.DoesNotContain("catch", append);
@@ -252,19 +252,19 @@ public class ProximityAutoCombatDataTests
             "foreach (var visualActor in visualActors)",
             "if (observer.CurrentArea != actor.Area)",
             "publications.Add(SwarmOrbVisualPublication.Remove(",
-            "_orbVisualStates.TryGetValue(key, out var previousState)",
+            "visualStates.TryGetValue(key, out var previousState)",
             "publications.Add(SwarmOrbVisualPublication.Publish(",
             "CaptureSwarmOrbVisualItemIds(visualActor.OrbItemIds)");
         Assert.DoesNotContain("Packet.Create", prepare);
         Assert.DoesNotContain(".TrySend(", prepare);
-        Assert.DoesNotContain("_orbVisualStates[key] = state;", prepare);
-        Assert.DoesNotContain("_orbVisualStates.TryRemove(key, out _);", prepare);
+        Assert.DoesNotContain("visualStates[key] = state;", prepare);
+        Assert.DoesNotContain("visualStates.TryRemove(key, out _);", prepare);
 
         AssertInOrder(
             dispatch,
             "CommitAndDispatchOrbVisualStatePublication(publication)",
-            "_orbVisualStates[key] = state;",
-            "_orbVisualStates.TryRemove(key, out _);",
+            "visualStates[key] = state;",
+            "visualStates.TryRemove(key, out _);",
             "Packet.Create((int)Protocol.G_TO_C_ORB_EFFECT_STATE)",
             "OrbItemIds = publication.OrbItemIds.ToList()",
             "publication.Recipient!.TrySend(packet);");

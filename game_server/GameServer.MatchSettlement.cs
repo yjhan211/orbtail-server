@@ -47,14 +47,14 @@ public partial class GameServer
             return;
         }
 
-        int overtimeDelta = _areaClosureManager.GetOvertimeCorruptionPerTick(
+        int overtimeDelta = Closures.GetOvertimeCorruptionPerTick(
             matchingId,
             ResourceTickIntervalSeconds);
         var targets = new List<EnvironmentalTarget>(aliveCount);
 
         foreach (var session in humans)
         {
-            int closureDelta = _areaClosureManager.GetClosedAreaCorruptionPerTick(
+            int closureDelta = Closures.GetClosedAreaCorruptionPerTick(
                 matchingId,
                 session.CurrentArea,
                 ResourceTickIntervalSeconds);
@@ -71,7 +71,7 @@ public partial class GameServer
 
         foreach (var bot in bots)
         {
-            int closureDelta = _areaClosureManager.GetClosedAreaCorruptionPerTick(
+            int closureDelta = Closures.GetClosedAreaCorruptionPerTick(
                 matchingId,
                 bot.CurrentArea,
                 ResourceTickIntervalSeconds);
@@ -174,7 +174,7 @@ public partial class GameServer
             rank--;
         }
 
-        (bool isGameOver, long? winnerId) = _matchRosterManager.CheckGameOver(matchingId);
+        (bool isGameOver, long? winnerId) = RosterManager.CheckGameOver(matchingId);
         var resultHost = GetSessionsByMatch(matchingId)
             .FirstOrDefault(session => !session.IsGameEnded);
         if (isGameOver && winnerId.HasValue && resultHost != null)
@@ -187,7 +187,6 @@ public partial class GameServer
     private void CleanupMatchSettlementState(long matchingId)
     {
         _proximityAutoCombatResolver.RemoveMatching(matchingId);
-        RemoveOrbVisualStates(matchingId);
     }
 
     private sealed record EnvironmentalTarget(

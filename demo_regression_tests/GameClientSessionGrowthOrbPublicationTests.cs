@@ -668,8 +668,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         {
             Server = CreateServer();
             Store = Server.MatchRuntimes;
-            Inventories = GetField<InGameInventoryManager>(Server, "_inGameInventoryManager");
-            SummonStones = GetField<SummonStoneManager>(Server, "_summonStoneManager");
+            Inventories = Server.InventoryManager;
+            SummonStones = Server.SummonStones;
             EventLog = GetField<GameEventLogManager>(Server, "_gameEventLogManager");
             Runtimes = GetField<SwarmMatchRuntimeStore>(Server, "_swarmMatchRuntimes");
             _growthHandler = typeof(GameServer).GetMethod(
@@ -681,7 +681,10 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                     BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
                 .CreateDelegate<Action<GameClientSession, long, int, long, long>>(Server);
 
-            Interactables.Initialize();
+            GroundItems = new GroundItemManager(Store.Get);
+            Roster = new MatchRosterManager(Store.Get, NullLogger.Instance);
+            Closures = new AreaClosureManager(Store.Get, NullLogger.Instance);
+            Encounters = new EncounterRevealManager(Store.Get);
             Inventories.Initialize();
         }
 
@@ -692,11 +695,11 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         public SummonStoneManager SummonStones { get; }
         public GameEventLogManager EventLog { get; }
         public InteractableStateManager Interactables { get; } = new();
-        public GroundItemManager GroundItems { get; } = new();
-        public MatchRosterManager Roster { get; } = new(NullLogger.Instance);
-        public AreaClosureManager Closures { get; } = new(NullLogger.Instance);
+        public GroundItemManager GroundItems { get; }
+        public MatchRosterManager Roster { get; }
+        public AreaClosureManager Closures { get; }
         public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
-        public EncounterRevealManager Encounters { get; } = new();
+        public EncounterRevealManager Encounters { get; }
 
         public GameClientSession CreateSession(
             long matchingId,
