@@ -27,10 +27,9 @@ public sealed class MatchCreationServiceTests
         _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), _reservations, _logger);
     }
 
-    private MatchCreationService CreatePass(DevMatchOverrides? overrides = null, CancellationToken shutdown = default)
+    private MatchCreationService CreatePass(bool soloMapValidation = false, CancellationToken shutdown = default)
     {
-        overrides ??= new DevMatchOverrides(false);
-        return new MatchCreationService(_cache, _queue, _reservations, _handoff, _gameServers, overrides, _logger, shutdown);
+        return new MatchCreationService(_cache, _queue, _reservations, _handoff, _gameServers, soloMapValidation, _logger, shutdown);
     }
 
     private async Task<MatchingQueueData[]> EnqueueHumansAsync(int count, double score = 1)
@@ -214,8 +213,8 @@ public sealed class MatchCreationServiceTests
         await UserServerMatchingTestData.AddEntryAsync(_cache, waitedB, now - 9);
         await UserServerMatchingTestData.AddEntryAsync(_cache, fresh, now);
 
-        var overrides = new DevMatchOverrides(false);
-        await CreatePass(overrides).RunAsync();
+        bool soloMapValidation = false;
+        await CreatePass(soloMapValidation).RunAsync();
 
         Assert.Equal("1", _cache.GetString(MatchingRedisKeys.MatchingIdKey));
         Assert.Single(_handoff.StoredManifests);
@@ -231,12 +230,12 @@ public sealed class MatchCreationServiceTests
     [Fact]
     public async Task RunAsync_SoloMapValidationPublishesModeWithoutBots()
     {
-        var overrides = new DevMatchOverrides(true);
+        bool soloMapValidation = true;
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         MatchingQueueData player = UserServerMatchingTestData.HumanEntry(1);
         await UserServerMatchingTestData.AddEntryAsync(_cache, player, now - 10);
 
-        await CreatePass(overrides).RunAsync();
+        await CreatePass(soloMapValidation).RunAsync();
 
         MatchManifest manifest = Assert.Single(_handoff.StoredManifests).Value;
         Assert.Equal(MatchMode.SoloMapValidation, manifest.Mode);
@@ -252,6 +251,21 @@ public sealed class MatchCreationServiceTests
 
         Assert.Null(_cache.GetString(MatchingRedisKeys.MatchingIdKey));
         Assert.Empty(_handoff.Events);
+    }
+
+    [Fact]
+    public async Task RunAsync_SoloValidationCreatesSeparateBotFreeMatches()
+    {
+        await EnqueueHumansAsync(2, DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 10);
+        await CreatePass(soloMapValidation: true).RunAsync();
+
+        Assert.Equal(2, _handoff.StoredManifests.Count);
+        Assert.All(_handoff.StoredManifests.Values, manifest =>
+        {
+            Assert.Single(manifest.HumanPlayerIds);
+            Assert.Equal(0, manifest.BotCount);
+            Assert.Equal(MatchMode.SoloMapValidation, manifest.Mode);
+        });
     }
 
     [Theory]
@@ -298,12 +312,12 @@ public sealed class MatchCreationServiceTests
     [Fact]
     public async Task RunAsync_OneHumanStartsWithBotsWithoutWaitingForSecondHuman()
     {
-        var overrides = new DevMatchOverrides(false);
+        bool soloMapValidation = false;
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         MatchingQueueData alone = UserServerMatchingTestData.HumanEntry(1);
         await UserServerMatchingTestData.AddEntryAsync(_cache, alone, now - 100);
 
-        await CreatePass(overrides).RunAsync();
+        await CreatePass(soloMapValidation).RunAsync();
 
         Assert.Equal(7, Assert.Single(_handoff.StoredManifests).Value.BotCount);
         Assert.Equal(0, _cache.SortedSetCount(MatchingQueue.QueueKey));

@@ -19,7 +19,7 @@ internal sealed class MatchCreationService(
     MatchingReservationService matchingReservationService,
     IMatchEntryService matchEntryService,
     IGameServerAllocator gameServerAllocator,
-    DevMatchOverrides devMatchOverrides,
+    bool soloMapValidation,
     ILogger logger,
     CancellationToken shutdownToken)
 {
@@ -47,7 +47,7 @@ internal sealed class MatchCreationService(
         }
 
         waiting = MatchingQueue.SortByRequestTime(waiting);
-        int playersPerMatch = devMatchOverrides.GamePlayersPerMatch;
+        int playersPerMatch = soloMapValidation ? 1 : Config.SWARM_PLAYERS_PER_MATCH;
 
         for (int i = 0; i < waiting.Length; i += playersPerMatch)
         {
@@ -57,7 +57,7 @@ internal sealed class MatchCreationService(
             }
 
             var groupRequests = waiting.Skip(i).Take(playersPerMatch).ToArray();
-            int botsNeeded = Math.Max(0, devMatchOverrides.GamePlayersPerMatch - groupRequests.Length);
+            int botsNeeded = Math.Max(0, playersPerMatch - groupRequests.Length);
             await CreateMatchAsync(groupRequests, botsNeeded);
         }
     }
@@ -96,7 +96,7 @@ internal sealed class MatchCreationService(
             {
                 HumanPlayerIds = batchPlayers.Select(request => request.PlayerId).ToList(),
                 BotCount = botsNeeded,
-                Mode = devMatchOverrides.MatchMode
+                Mode = soloMapValidation ? MatchMode.SoloMapValidation : MatchMode.Normal
             };
 
             int expectedHumanCount = manifest.HumanPlayerIds.Count;

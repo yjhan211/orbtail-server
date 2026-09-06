@@ -84,7 +84,7 @@ internal static class Program
 
         services.AddSingleton<MatchingReservationService>();
         services.AddSingleton<MatchingQueue>();
-        services.AddSingleton(_ => DevMatchOverrides.FromEnvironment());
+        bool soloMapValidation = Environment.GetEnvironmentVariable("SOLO_MAP_VALIDATION") == "1";
         services.AddSingleton<IGameServerRegistry, RedisGameServerRegistry>();
         services.AddSingleton<IGameServerAllocator, GameServerAllocator>();
         services.AddSingleton<BackgroundTaskTracker>();
@@ -107,7 +107,7 @@ internal static class Program
             sp.GetRequiredService<MatchingReservationService>(),
             sp.GetRequiredService<IMatchEntryService>(),
             sp.GetRequiredService<IGameServerAllocator>(),
-            sp.GetRequiredService<DevMatchOverrides>(),
+            soloMapValidation,
             sp.GetRequiredService<ILogger>(),
             sp.GetRequiredService<BackgroundTaskTracker>().ShutdownToken));
         services.AddSingleton<MatchingLeaderLease>(sp => new MatchingLeaderLease(

@@ -300,7 +300,7 @@ public sealed class UserServerScaleOutTests
         var pass = new MatchCreationService(
             cache, queue, reservations, handoff,
             new FixedGameServerAllocator(),
-            new DevMatchOverrides(false),
+            false,
             logger, CancellationToken.None);
         var entry = UserServerMatchingTestData.HumanEntry(7);
         await UserServerMatchingTestData.AddEntryAsync(cache, entry, 1);
