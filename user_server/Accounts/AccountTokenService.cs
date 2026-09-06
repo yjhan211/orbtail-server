@@ -34,8 +34,8 @@ public sealed class AccountTokenService(IAccountCredentialStore credentialStore)
     {
         long playerId = await credentialStore.AllocatePlayerIdAsync();
         string token = OpaqueToken.Create(TokenPrefix);
-        var result = await credentialStore.ProvisionAsync(playerId, token, OpaqueToken.Fingerprint(token));
-        if (result.Status == AccountCredentialProvisionStatus.Created)
+        var result = await credentialStore.RegisterAsync(playerId, token, OpaqueToken.Fingerprint(token));
+        if (result.Status == AccountRegistrationStatus.Created)
         {
             return new AccountTokenResolution(
                 playerId,
@@ -43,7 +43,7 @@ public sealed class AccountTokenService(IAccountCredentialStore credentialStore)
                 IsNewAccount: true);
         }
 
-        throw new InvalidOperationException("An account credential could not be provisioned.");
+        throw new InvalidOperationException("An account credential could not be registered.");
     }
 
     private async Task<AccountTokenResolution> GetOrCreateAccountAsync(string token)
@@ -56,12 +56,12 @@ public sealed class AccountTokenService(IAccountCredentialStore credentialStore)
         }
 
         long playerId = await credentialStore.AllocatePlayerIdAsync();
-        var result = await credentialStore.ProvisionAsync(playerId, token, tokenHash);
-        if (result.Status == AccountCredentialProvisionStatus.Created)
+        var result = await credentialStore.RegisterAsync(playerId, token, tokenHash);
+        if (result.Status == AccountRegistrationStatus.Created)
         {
             return new AccountTokenResolution(playerId, result.AccountToken ?? token, IsNewAccount: true);
         }
-        if (result.Status == AccountCredentialProvisionStatus.TokenCollision)
+        if (result.Status == AccountRegistrationStatus.TokenCollision)
         {
             credential = await credentialStore.FindByTokenHashAsync(tokenHash);
             if (credential != null)
@@ -70,7 +70,7 @@ public sealed class AccountTokenService(IAccountCredentialStore credentialStore)
             }
         }
 
-        throw new InvalidOperationException("The supplied account credential could not be provisioned.");
+        throw new InvalidOperationException("The supplied account credential could not be registered.");
     }
 
     private static AccountTokenResolution ResolveCredential(AccountCredential credential, string presentedToken, string expectedTokenHash, bool isNewAccount)

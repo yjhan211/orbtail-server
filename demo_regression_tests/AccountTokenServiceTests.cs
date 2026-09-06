@@ -29,26 +29,26 @@ public sealed class AccountTokenServiceTests
     }
 
     [Theory]
-    [InlineData(false, AccountCredentialProvisionStatus.TokenCollision)]
-    [InlineData(false, AccountCredentialProvisionStatus.PlayerAlreadyExists)]
-    [InlineData(true, AccountCredentialProvisionStatus.TokenCollision)]
-    [InlineData(true, AccountCredentialProvisionStatus.PlayerAlreadyExists)]
-    public async Task FailedProvisionIsNotRetried(bool suppliedToken, AccountCredentialProvisionStatus status)
+    [InlineData(false, AccountRegistrationStatus.TokenCollision)]
+    [InlineData(false, AccountRegistrationStatus.PlayerAlreadyExists)]
+    [InlineData(true, AccountRegistrationStatus.TokenCollision)]
+    [InlineData(true, AccountRegistrationStatus.PlayerAlreadyExists)]
+    public async Task FailedRegistrationIsNotRetried(bool suppliedToken, AccountRegistrationStatus status)
     {
-        var store = new FailedProvisionStore(status);
+        var store = new FailedRegistrationStore(status);
         var service = new AccountTokenService(store);
         string? token = suppliedToken ? network.helpers.OpaqueToken.Create("acct_") : null;
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.ResolveAsync(token));
 
         Assert.Equal(1, store.Allocations);
-        Assert.Equal(1, store.Provisions);
+        Assert.Equal(1, store.Registrations);
     }
 
     [Fact]
-    public async Task ConcurrentTokenRegistrationUsesExistingAccountWithoutRetryingProvision()
+    public async Task ConcurrentTokenRegistrationUsesExistingAccountWithoutRetryingRegistration()
     {
-        var store = new FailedProvisionStore(AccountCredentialProvisionStatus.TokenCollision, true);
+        var store = new FailedRegistrationStore(AccountRegistrationStatus.TokenCollision, true);
         var service = new AccountTokenService(store);
         string token = network.helpers.OpaqueToken.Create("acct_");
 
@@ -57,14 +57,14 @@ public sealed class AccountTokenServiceTests
         Assert.Equal(202, result.PlayerId);
         Assert.False(result.IsNewAccount);
         Assert.Equal(1, store.Allocations);
-        Assert.Equal(1, store.Provisions);
+        Assert.Equal(1, store.Registrations);
     }
 
-    private sealed class FailedProvisionStore(AccountCredentialProvisionStatus status, bool concurrentRegistration = false)
+    private sealed class FailedRegistrationStore(AccountRegistrationStatus status, bool concurrentRegistration = false)
         : IAccountCredentialStore
     {
         public int Allocations { get; private set; }
-        public int Provisions { get; private set; }
+        public int Registrations { get; private set; }
 
         public Task<long> AllocatePlayerIdAsync()
         {
@@ -73,13 +73,13 @@ public sealed class AccountTokenServiceTests
         }
 
         public Task<AccountCredential?> FindByTokenHashAsync(string tokenHash) =>
-            Task.FromResult<AccountCredential?>(concurrentRegistration && Provisions > 0
+            Task.FromResult<AccountCredential?>(concurrentRegistration && Registrations > 0
                 ? new AccountCredential(202, tokenHash) : null);
 
-        public Task<AccountCredentialProvisionResult> ProvisionAsync(long playerId, string proposedToken, string proposedTokenHash)
+        public Task<AccountRegistrationResult> RegisterAsync(long playerId, string token, string tokenHash)
         {
-            Provisions++;
-            return Task.FromResult(new AccountCredentialProvisionResult(status));
+            Registrations++;
+            return Task.FromResult(new AccountRegistrationResult(status));
         }
     }
 
@@ -92,12 +92,12 @@ public sealed class AccountTokenServiceTests
         public Task<AccountCredential?> FindByTokenHashAsync(string tokenHash) =>
             Task.FromResult(_credential?.TokenHash == tokenHash ? _credential : null);
 
-        public Task<AccountCredentialProvisionResult> ProvisionAsync(
-            long playerId, string proposedToken, string proposedTokenHash)
+        public Task<AccountRegistrationResult> RegisterAsync(
+            long playerId, string token, string tokenHash)
         {
-            _credential = new AccountCredential(playerId, proposedTokenHash);
-            return Task.FromResult(new AccountCredentialProvisionResult(
-                AccountCredentialProvisionStatus.Created, proposedToken));
+            _credential = new AccountCredential(playerId, tokenHash);
+            return Task.FromResult(new AccountRegistrationResult(
+                AccountRegistrationStatus.Created, token));
         }
     }
 }

@@ -167,7 +167,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         if (PlayerInfo == null)
         {
             if (!isNewAccount)
-                Logger.LogWarning("Recovering a provisioned account with missing PlayerInfo: PlayerId={PlayerId}", PlayerId);
+                Logger.LogWarning("Recovering a registered account with missing PlayerInfo: PlayerId={PlayerId}", PlayerId);
 
             PlayerInfo = new PlayerInfo(PlayerId.Value, false);
             await PlayerInfo.Save(RedisOperations);
