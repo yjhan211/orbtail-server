@@ -3,8 +3,7 @@ using network.common;
 namespace game_server.network;
 
 /// <summary>
-///     운영 어드민용 internal getter 모음.
-///     게임 로직 외부(AdminEndpointsService)에서 세션 상태를 직렬화할 때만 사용한다.
+///     GameServer가 세션 상태 스냅샷을 구성할 때 사용하는 내부 조회 속성.
 /// </summary>
 public partial class GameClientSession
 {

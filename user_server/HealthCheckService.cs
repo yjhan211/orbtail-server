@@ -23,6 +23,8 @@ public class HealthCheckService(
     {
         var builder = WebApplication.CreateBuilder();
 
+        builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+
         builder.Services.AddHealthChecks()
             .AddRedis(redisConfiguration.ConnectionString, "redis", tags: ["ready"])
             .AddCheck(

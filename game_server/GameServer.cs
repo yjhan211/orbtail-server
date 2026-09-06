@@ -1359,10 +1359,10 @@ public partial class GameServer(
     // private async Task ProcessMessage(byte[] message) { ... }
     // private async Task HandleLogout(long playerId, byte[] body) { ... }
 
-    // ===== 운영 어드민 API =====
+    // ===== 내부 매치 조회 및 개발 도구 =====
 
     /// <summary>
-    ///     운영툴 진행 로그 매니저 (AdminEndpoints에서 events 조회용)
+    ///     매치 진행 이벤트 로그 조회용 매니저.
     /// </summary>
     public GameEventLogManager GameEventLogManager => _gameEventLogManager;
     public MatchSummaryFileStore MatchSummaryFileStore => _matchSummaryFileStore;
