@@ -14,7 +14,7 @@ namespace demo_regression_tests;
 public sealed class MatchCreationServiceTests
 {
     private readonly InMemoryRedisOperations _cache = new();
-    private readonly MatchingReservationCoordinator _reservations;
+    private readonly MatchingReservationService _reservations;
     private readonly MatchingQueue _queue;
     private readonly RecordingHandoffPublisher _handoff = new();
     private readonly FixedGameServerAllocator _gameServers = new();
@@ -23,7 +23,7 @@ public sealed class MatchCreationServiceTests
     public MatchCreationServiceTests()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
-        _reservations = new MatchingReservationCoordinator(_cache, _logger);
+        _reservations = new MatchingReservationService(_cache, _logger);
         _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), _reservations, _logger);
     }
 

@@ -279,7 +279,7 @@ public sealed class UserServerScaleOutTests
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var cache = new InMemoryRedisOperations();
         var logger = new RecordingLogger();
-        var reservations = new MatchingReservationCoordinator(cache, logger);
+        var reservations = new MatchingReservationService(cache, logger);
         var queue = new MatchingQueue(cache, new FakeRedLockFactory(), reservations, logger);
         var bus = new InMemoryNatsBus
         {

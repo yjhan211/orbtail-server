@@ -16,7 +16,7 @@ namespace user_server.matching.queue;
 internal sealed class MatchingQueue(
     IRedisOperations redisOperations,
     IRedLockFactory redLock,
-    MatchingReservationCoordinator reservations,
+    MatchingReservationService reservations,
     ILogger logger)
 {
     internal const string QueueKey = MatchingHandoffRedisKeys.MatchingQueueKey;

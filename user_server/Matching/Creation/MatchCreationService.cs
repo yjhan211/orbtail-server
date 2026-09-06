@@ -24,7 +24,7 @@ internal enum MatchCreationOrigin
 internal sealed class MatchCreationService(
     IRedisOperations redisOperations,
     MatchingQueue queue,
-    MatchingReservationCoordinator reservations,
+    MatchingReservationService reservations,
     IMatchEntryService handoff,
     IGameServerAllocator gameServers,
     DevMatchOverrides overrides,

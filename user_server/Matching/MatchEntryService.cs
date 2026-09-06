@@ -39,7 +39,7 @@ internal interface IMatchEntryService
 internal sealed class MatchEntryService(
     IRedisOperations redisOperations,
     GameHandoffTicketService gameHandoffTicketService,
-    MatchingReservationCoordinator reservations,
+    MatchingReservationService reservations,
     IPlayerSessionRouter sessions,
     Func<Func<Task>, string, bool> tryRunBackgroundOperation,
     CancellationToken shutdownToken,

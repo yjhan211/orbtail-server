@@ -6,15 +6,15 @@ using network.infrastructure.redis;
 namespace user_server.matching.queue;
 
 /// <summary>
-///     Orchestrates matching reservation acquisition, matching-id commit, exact rollback,
-///     cancellation fencing, and lifecycle release while delegating the queue-request Lua transition.
+///     Redis에 플레이어별 매칭 예약을 저장해 매치 생성과 취소가 동시에 진행되지 않도록 조율한다.
+///     매치 생성 시 대기 중인 요청을 임시 예약으로 확보하고, 매치 번호가 정해지면 예약 값을 변경한다.
+///     생성 실패·취소·매치 종료 시 예약을 해제하며, 정리에 실패한 예약은 TTL로 만료된다.
 /// </summary>
-internal sealed class MatchingReservationCoordinator(
-    IRedisOperations redisOperations,
-    ILogger logger)
+internal sealed class MatchingReservationService(IRedisOperations redisOperations, ILogger logger)
 {
     private static readonly TimeSpan ReservationLifetime = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan ActiveReservationLifetime = MatchingHandoffRedisKeys.AdmissionReservationLifetime;
+    private static string ReservationKey(long playerId) => MatchingHandoffRedisKeys.ReservationKey(playerId);
 
     public async Task<bool> HasReservationAsync(long playerId)
     {
@@ -150,19 +150,5 @@ internal sealed class MatchingReservationCoordinator(
         }
     }
 
-    private static string ReservationKey(long playerId)
-    {
-        return MatchingHandoffRedisKeys.ReservationKey(playerId);
-    }
-}
 
-/// <summary>
-///     Tracks the exact reservation token and players owned by one queue pass until it is committed
-///     to a matching id or rolled back.
-/// </summary>
-internal sealed class MatchingReservationLease(string reservationId, List<long> playerIds)
-{
-    public string ReservationId { get; } = reservationId;
-    public List<long> PlayerIds { get; } = playerIds;
-    public long? MatchingId { get; set; }
 }

@@ -82,7 +82,7 @@ internal static class Program
             sp.GetRequiredService<ILogger>()));
         services.AddSingleton<IPlayerSessionRouter>(sp => sp.GetRequiredService<NatsPlayerSessionRouter>());
 
-        services.AddSingleton<MatchingReservationCoordinator>();
+        services.AddSingleton<MatchingReservationService>();
         services.AddSingleton<MatchingQueue>();
         services.AddSingleton(sp => DevMatchOverrides.FromEnvironment(
             sp.GetRequiredService<IRedisOperations>(),
@@ -97,7 +97,7 @@ internal static class Program
             return new MatchEntryService(
                 sp.GetRequiredService<IRedisOperations>(),
                 sp.GetRequiredService<GameHandoffTicketService>(),
-                sp.GetRequiredService<MatchingReservationCoordinator>(),
+                sp.GetRequiredService<MatchingReservationService>(),
                 sp.GetRequiredService<IPlayerSessionRouter>(),
                 taskTracker.TryRun,
                 taskTracker.ShutdownToken,
@@ -107,7 +107,7 @@ internal static class Program
         services.AddSingleton<MatchCreationService>(sp => new MatchCreationService(
             sp.GetRequiredService<IRedisOperations>(),
             sp.GetRequiredService<MatchingQueue>(),
-            sp.GetRequiredService<MatchingReservationCoordinator>(),
+            sp.GetRequiredService<MatchingReservationService>(),
             sp.GetRequiredService<IMatchEntryService>(),
             sp.GetRequiredService<IGameServerAllocator>(),
             sp.GetRequiredService<DevMatchOverrides>(),

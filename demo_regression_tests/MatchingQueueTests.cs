@@ -16,7 +16,7 @@ public sealed class MatchingQueueTests
 
     public MatchingQueueTests()
     {
-        var reservations = new MatchingReservationCoordinator(_cache, _logger);
+        var reservations = new MatchingReservationService(_cache, _logger);
         _queue = new MatchingQueue(_cache, new FakeRedLockFactory(), reservations, _logger);
     }
 

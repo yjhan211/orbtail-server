@@ -14,7 +14,7 @@ namespace user_server.matching;
 /// </summary>
 internal sealed class MatchingManager(
     ILogger logger,
-    MatchingReservationCoordinator matchingReservations,
+    MatchingReservationService matchingReservations,
     MatchingQueue matchingQueue,
     MatchEntryService matchEntryService,
     MatchCreationService matchCreationService,
