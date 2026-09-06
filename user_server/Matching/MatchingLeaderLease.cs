@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using network.common;
 using network.infrastructure.redis;
 
 namespace user_server.matching;
@@ -11,7 +12,7 @@ namespace user_server.matching;
 /// </summary>
 internal sealed class MatchingLeaderLease(IRedisOperations redisOperations, string nodeId, ILogger logger)
 {
-    public const string Key = "user_server:matching_leader";
+    public const string Key = MatchingRedisKeys.MatchingLeaderKey;
     public static readonly TimeSpan Lifetime = TimeSpan.FromSeconds(5);
 
     private string NodeId { get; } = nodeId;

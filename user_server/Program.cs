@@ -111,8 +111,8 @@ internal static class Program
             sp.GetRequiredService<IMatchEntryService>(),
             sp.GetRequiredService<IGameServerAllocator>(),
             sp.GetRequiredService<DevMatchOverrides>(),
-            sp.GetRequiredService<BackgroundTaskTracker>().ShutdownToken,
-            sp.GetRequiredService<ILogger>()));
+            sp.GetRequiredService<ILogger>(),
+            sp.GetRequiredService<BackgroundTaskTracker>().ShutdownToken));
         services.AddSingleton<MatchingLeaderLease>(sp => new MatchingLeaderLease(
             sp.GetRequiredService<IRedisOperations>(),
             sp.GetRequiredService<UserServerNodeIdentity>().NodeId,

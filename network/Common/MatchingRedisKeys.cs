@@ -16,9 +16,14 @@ namespace network.common
         public const string AdmissionPendingState = "pending";
         public const string AdmissionCompletedState = "completed";
         public const string AdmissionCanceledState = "canceled";
+        public const string MatchingIdKey = "matching_id";
+        public const string MatchingLeaderKey = "user_server:matching_leader";
+        private const string QueueLockKeyPrefix = "matching_queue_lock:";
         public const string MatchingHashTag = "{matching}";
         public const string MatchingQueueKey = MatchingHashTag + ":queue";
         public const string MatchingRequestsKey = MatchingHashTag + ":requests";
+
+        public static string QueueLockKey(long playerId) => QueueLockKeyPrefix + playerId;
 
         public static string Key(long matchingId) => $"matching:{matchingId}:handoff";
 

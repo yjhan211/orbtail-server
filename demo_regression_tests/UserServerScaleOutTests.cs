@@ -301,11 +301,11 @@ public sealed class UserServerScaleOutTests
             cache, queue, reservations, handoff,
             new FixedGameServerAllocator(),
             new DevMatchOverrides(false, false, cache, new FakeRedLockFactory(), logger),
-            CancellationToken.None, logger);
+            logger, CancellationToken.None);
         var entry = UserServerMatchingTestData.HumanEntry(7);
         await UserServerMatchingTestData.AddEntryAsync(cache, entry, 1);
 
-        Assert.False(await pass.CreateMatchAsync([entry], 7, MatchCreationOrigin.Queue));
+        Assert.False(await pass.CreateMatchAsync([entry], 7));
 
         // 성공 응답만 유실돼도 성공 전달을 재시도하지 않고 실패 통지로 진행한다.
         Assert.Equal(2, bus.RequestCount); // 성공 요청 1회 + 실패 통지 1회

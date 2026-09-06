@@ -30,7 +30,7 @@ public sealed class MatchCreationServiceTests
     private MatchCreationService CreatePass(DevMatchOverrides? overrides = null, CancellationToken shutdown = default)
     {
         overrides ??= new DevMatchOverrides(false, false, _cache, new FakeRedLockFactory(), _logger);
-        return new MatchCreationService(_cache, _queue, _reservations, _handoff, _gameServers, overrides, shutdown, _logger);
+        return new MatchCreationService(_cache, _queue, _reservations, _handoff, _gameServers, overrides, _logger, shutdown);
     }
 
     private async Task<MatchingQueueData[]> EnqueueHumansAsync(int count, double score = 1)
@@ -53,12 +53,12 @@ public sealed class MatchCreationServiceTests
         MatchingQueueData[] humans = await EnqueueHumansAsync(8);
         _gameServers.Allocation = null;
 
-        bool committed = await CreatePass().CreateMatchAsync(humans, 0, MatchCreationOrigin.Queue);
+        bool committed = await CreatePass().CreateMatchAsync(humans, 0);
 
         Assert.False(committed);
         Assert.Equal(1, _gameServers.Calls);
         Assert.Equal(8, _cache.SortedSetCount(MatchingQueue.QueueKey));
-        Assert.Null(_cache.GetString(MatchCreationService.MatchingIdKey));
+        Assert.Null(_cache.GetString(MatchingRedisKeys.MatchingIdKey));
         Assert.All(humans, human => Assert.Null(ReservationOf(human.PlayerId)));
         Assert.Empty(_handoff.Events);
     }
@@ -68,10 +68,10 @@ public sealed class MatchCreationServiceTests
     {
         MatchingQueueData[] humans = await EnqueueHumansAsync(8);
 
-        bool committed = await CreatePass().CreateMatchAsync(humans, 0, MatchCreationOrigin.Queue);
+        bool committed = await CreatePass().CreateMatchAsync(humans, 0);
 
         Assert.True(committed);
-        Assert.Equal("1", _cache.GetString(MatchCreationService.MatchingIdKey));
+        Assert.Equal("1", _cache.GetString(MatchingRedisKeys.MatchingIdKey));
         Assert.Equal(0, _handoff.StoredManifests[1].BotCount);
         Assert.Equal(humans.Select(h => h.PlayerId).OrderBy(id => id), _handoff.StoredManifests[1].HumanPlayerIds.OrderBy(id => id));
         Assert.Equal(8, _handoff.Deliveries.Count);
@@ -90,7 +90,7 @@ public sealed class MatchCreationServiceTests
     {
         MatchingQueueData[] humans = await EnqueueHumansAsync(3);
 
-        bool committed = await CreatePass().CreateMatchAsync(humans, 5, MatchCreationOrigin.Queue);
+        bool committed = await CreatePass().CreateMatchAsync(humans, 5);
 
         Assert.True(committed);
         network.common.data.models.MatchManifest manifest = _handoff.StoredManifests[1];
@@ -106,7 +106,7 @@ public sealed class MatchCreationServiceTests
     {
         MatchingQueueData[] humans = await EnqueueHumansAsync(4);
 
-        await CreatePass().CreateMatchAsync(humans, 4, MatchCreationOrigin.Queue);
+        await CreatePass().CreateMatchAsync(humans, 4);
 
         int botsIndex = _handoff.Events.IndexOf("manifest:1:4+4");
         int readyIndex = _handoff.Events.IndexOf("ready:1");
@@ -128,7 +128,7 @@ public sealed class MatchCreationServiceTests
         MatchingQueueData[] humans = await EnqueueHumansAsync(3);
         _handoff.DeliverResult = playerId => playerId != 1_001;
 
-        bool committed = await CreatePass().CreateMatchAsync(humans, 5, MatchCreationOrigin.Queue);
+        bool committed = await CreatePass().CreateMatchAsync(humans, 5);
 
         Assert.False(committed);
         Assert.DoesNotContain("ready:1", _handoff.Events);
@@ -146,7 +146,7 @@ public sealed class MatchCreationServiceTests
         MatchingQueueData[] humans = await EnqueueHumansAsync(2);
         _handoff.ThrowOnDeliver.Add(1_000);
 
-        bool committed = await CreatePass().CreateMatchAsync(humans, 6, MatchCreationOrigin.BotFill);
+        bool committed = await CreatePass().CreateMatchAsync(humans, 6);
 
         Assert.False(committed);
         Assert.Equal(2, _handoff.Deliveries.Count);
@@ -162,7 +162,7 @@ public sealed class MatchCreationServiceTests
         _handoff.DeliverResult = playerId => playerId != 1_001;
         _handoff.CancelAdmissionResult = false;
 
-        bool committed = await CreatePass().CreateMatchAsync(humans, 6, MatchCreationOrigin.Queue);
+        bool committed = await CreatePass().CreateMatchAsync(humans, 6);
 
         Assert.False(committed);
         Assert.Contains("cancel:1", _handoff.Events);
@@ -179,10 +179,10 @@ public sealed class MatchCreationServiceTests
         MatchingQueueData[] humans = await EnqueueHumansAsync(2);
         await _cache.StringSetAsync(MatchingRedisKeys.ReservationKey(1_001), "other-worker");
 
-        bool committed = await CreatePass().CreateMatchAsync(humans, 6, MatchCreationOrigin.Queue);
+        bool committed = await CreatePass().CreateMatchAsync(humans, 6);
 
         Assert.False(committed);
-        Assert.Null(_cache.GetString(MatchCreationService.MatchingIdKey));
+        Assert.Null(_cache.GetString(MatchingRedisKeys.MatchingIdKey));
         Assert.Empty(_handoff.Events);
         Assert.Null(ReservationOf(1_000));
         Assert.Equal("other-worker", ReservationOf(1_001));
@@ -196,7 +196,7 @@ public sealed class MatchCreationServiceTests
         _handoff.WatchdogResult = false;
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
-            CreatePass().CreateMatchAsync(humans, 7, MatchCreationOrigin.Queue));
+            CreatePass().CreateMatchAsync(humans, 7));
 
         Assert.Contains("ready:1", _handoff.Events);
         Assert.Contains("cancel:1", _handoff.Events);
@@ -216,7 +216,7 @@ public sealed class MatchCreationServiceTests
 
         await CreatePass().RunAsync();
 
-        Assert.Equal("2", _cache.GetString(MatchCreationService.MatchingIdKey));
+        Assert.Equal("2", _cache.GetString(MatchingRedisKeys.MatchingIdKey));
         Assert.Equal(2, _handoff.StoredManifests.Count);
         Assert.All(_handoff.StoredManifests.Values, manifest => Assert.Equal(7, manifest.BotCount));
         Assert.Equal(new long[] { 1, 2 }, _handoff.Deliveries.Select(d => d.Entry.PlayerId));
@@ -249,7 +249,7 @@ public sealed class MatchCreationServiceTests
     {
         await CreatePass().RunAsync();
 
-        Assert.Null(_cache.GetString(MatchCreationService.MatchingIdKey));
+        Assert.Null(_cache.GetString(MatchingRedisKeys.MatchingIdKey));
         Assert.Empty(_handoff.Events);
     }
 

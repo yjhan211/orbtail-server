@@ -1,25 +1,17 @@
-using user_server.matching;
 using user_server.matching.queue;
 using Microsoft.Extensions.Logging;
+using network.common;
 using network.common.data.models;
 using network.infrastructure.redis;
 
 namespace user_server.matching.creation;
 
 /// <summary>
-///     매치 생성 경로의 출처. 로그·롤백 메시지 구분에만 쓴다.
-/// </summary>
-internal enum MatchCreationOrigin
-{
-    Queue,
-    BotFill
-}
-
-/// <summary>
-///     1초 timer가 호출하는 매칭 pass 한 번의 본체. 큐에서 3초 이상 기다린 entry를 PlayersPerMatch 단위로 묶고,
-///     끝으로 30초 이상 기다린 미달 그룹을 봇으로 채운다. 두 경로는 <see cref="CreateMatchAsync" /> 하나로 합쳐졌으며,
-///     reservation 획득 → matchingId 발급 → reservation commit → 로스터 조립 → 매치 manifest → 사람별 성공 전달 →
-///     <c>admission_ready</c> → watchdog 순서와, 실패 시 pending→canceled CAS 뒤 handoff 삭제·실패 통지·reservation 롤백을 지킨다.
+///     매칭 대기열에서 요청들을 모아 매치를 만든다.
+///     일반 매칭과 장기 대기자의 부족한 인원을 봇으로 채우는 매칭을 처리한다.
+///     GameServer 배정 → 플레이어 예약 → 매치 번호 발급 → 구성 정보 저장 → 매칭 결과 전달 순으로 진행한다.
+///     사람 목록과 필요한 봇 수를 전달하며, 실제 봇 생성과 최종 참가자 구성은 GameServer가 담당한다.
+///     결과 전달 후 입장 대기를 시작하고, 생성 과정이 실패하면 예약과 입장 관련 상태를 정리한다.
 /// </summary>
 internal sealed class MatchCreationService(
     IRedisOperations redisOperations,
@@ -28,25 +20,21 @@ internal sealed class MatchCreationService(
     IMatchEntryService handoff,
     IGameServerAllocator gameServers,
     DevMatchOverrides overrides,
-    CancellationToken shutdownToken,
-    ILogger logger)
+    ILogger logger,
+    CancellationToken shutdownToken)
 {
-    internal const string MatchingIdKey = "matching_id";
-    internal const int MatchingTimeoutSeconds = 3;
-    internal const int BotFillTimeoutSeconds = 30;
+    private const int MatchingTimeoutSeconds = 3;
+    private const int BotFillTimeoutSeconds = 30;
 
-
-    /// <summary>
-    ///     pass 한 번: 정규 그룹 매칭 뒤 봇 채움. 예외는 여기서 삼키고 로그로 남긴다 (다음 tick에 재시도).
-    /// </summary>
     public async Task RunAsync()
     {
         try
         {
             await RunQueueGroupsAsync();
-
             if (shutdownToken.IsCancellationRequested)
+            {
                 return;
+            }
             await RunBotFillAsync();
         }
         catch (Exception ex)
@@ -55,13 +43,10 @@ internal sealed class MatchCreationService(
         }
     }
 
-    /// <summary>
-    ///     3초 이상 기다린 entry를 요청 시각 순으로 PlayersPerMatch씩 묶어 매치를 만든다.
-    /// </summary>
     private async Task RunQueueGroupsAsync()
     {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        MatchingQueueData[] waiting = await queue.ReadWaitingRequestsAsync(now - MatchingTimeoutSeconds);
+        var waiting = await queue.ReadWaitingRequestsAsync(now - MatchingTimeoutSeconds);
         if (waiting.Length == 0) return;
         waiting = MatchingQueue.SortByRequestTime(waiting);
 
@@ -74,10 +59,10 @@ internal sealed class MatchCreationService(
             if (shutdownToken.IsCancellationRequested)
                 return;
 
-            MatchingQueueData[] groupRequests = waiting.Skip(i).Take(playersPerMatch).ToArray();
+            var groupRequests = waiting.Skip(i).Take(playersPerMatch).ToArray();
             // 빈자리는 봇으로 채운다. 솔로 검증은 즉시 1인 자족 매치를 만든다.
             int botsNeeded = Math.Max(0, overrides.GamePlayersPerMatch - groupRequests.Length);
-            await CreateMatchAsync(groupRequests, botsNeeded, MatchCreationOrigin.Queue);
+            await CreateMatchAsync(groupRequests, botsNeeded);
         }
     }
 
@@ -95,7 +80,7 @@ internal sealed class MatchCreationService(
         int gamePlayersPerMatch = overrides.GamePlayersPerMatch;
         if (longWaitingRequests.Length < overrides.PlayersPerMatch || longWaitingRequests.Length >= gamePlayersPerMatch) return;
 
-        await CreateMatchAsync(longWaitingRequests, gamePlayersPerMatch - longWaitingRequests.Length, MatchCreationOrigin.BotFill);
+        await CreateMatchAsync(longWaitingRequests, gamePlayersPerMatch - longWaitingRequests.Length);
     }
 
     /// <summary>
@@ -104,8 +89,7 @@ internal sealed class MatchCreationService(
     /// </summary>
     internal async Task<bool> CreateMatchAsync(
         MatchingQueueData[] groupRequests,
-        int botsNeeded,
-        MatchCreationOrigin origin)
+        int botsNeeded)
     {
         // 배정은 부작용이 없으므로 reservation보다 먼저 — 노드가 없으면 큐를 그대로 두고 다음 pass에 다시 본다.
         GameServerAllocation? gameServer = await gameServers.TryAllocateAsync();
@@ -115,7 +99,7 @@ internal sealed class MatchCreationService(
         MatchingReservationLease? reservationLease = await reservations.TryAcquireAsync(groupRequests);
         if (reservationLease == null)
         {
-            logger.LogInformation("Matching group skipped because another worker owns a player reservation: Origin={Origin}", origin);
+            logger.LogInformation("Matching group skipped because another worker owns a player reservation");
             return false;
         }
 
@@ -129,13 +113,13 @@ internal sealed class MatchCreationService(
             .ToArray();
         try
         {
-            matchingId = await redisOperations.StringIncrementAsync(MatchingIdKey);
+            matchingId = await redisOperations.StringIncrementAsync(MatchingRedisKeys.MatchingIdKey);
             await reservations.CommitAsync(reservationLease, matchingId);
 
 
             logger.LogInformation(
-                "Bot-filled matching: MatchingId={MatchingId}, Real={Real}, Bots={Bot}, Origin={Origin}, GameServer={NodeId}",
-                matchingId, groupRequests.Length, botsNeeded, origin, gameServer.NodeId);
+                "Matching created: MatchingId={MatchingId}, Real={Real}, Bots={Bot}, GameServer={NodeId}",
+                matchingId, groupRequests.Length, botsNeeded, gameServer.NodeId);
 
             await overrides.ApplyTwoPlayerTestOutfitAsync(batchPlayers);
             var manifest = new MatchManifest
@@ -163,8 +147,8 @@ internal sealed class MatchCreationService(
                 catch (Exception ex)
                 {
                     logger.LogError(ex,
-                        "Failed to commit matching request; removing it from this match: PlayerId={PlayerId}, Origin={Origin}",
-                        request.PlayerId, origin);
+                        "Failed to commit matching request; removing it from this match: PlayerId={PlayerId}",
+                        request.PlayerId);
                 }
                 finally
                 {
@@ -188,11 +172,10 @@ internal sealed class MatchCreationService(
             if (!deliveryComplete)
             {
                 logger.LogWarning(
-                    "Matching rolled back because delivery was incomplete: MatchingId={MatchingId}, Delivered={Delivered}, Expected={Expected}, Origin={Origin}",
+                    "Matching rolled back because delivery was incomplete: MatchingId={MatchingId}, Delivered={Delivered}, Expected={Expected}",
                     matchingId,
                     deliveredPlayerCount,
-                    expectedHumanCount,
-                    origin);
+                    expectedHumanCount);
             }
         }
         finally

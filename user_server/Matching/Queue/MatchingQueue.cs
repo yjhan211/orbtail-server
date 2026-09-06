@@ -21,8 +21,7 @@ internal sealed class MatchingQueue(
 {
     internal const string QueueKey = MatchingRedisKeys.MatchingQueueKey;
     internal const string RequestsKey = MatchingRedisKeys.MatchingRequestsKey;
-    private const string LockKeyPrefix = "matching_queue_lock:";
-    internal static string MakeLockKey(long playerId) => LockKeyPrefix + playerId;
+    internal static string MakeLockKey(long playerId) => MatchingRedisKeys.QueueLockKey(playerId);
 
     public async Task<ErrorCode> AddToQueueAsync(long playerId, PlayerSession user)
     {
