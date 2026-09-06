@@ -83,7 +83,7 @@ public sealed class RedisAccountCredentialStore(
             (!long.TryParse(Decode(existingPlayerMapping), NumberStyles.None, CultureInfo.InvariantCulture,
                  out long existingPlayerId) || existingPlayerId != playerId))
         {
-            return new AccountRegistrationResult(AccountRegistrationStatus.TokenCollision);
+            return new AccountRegistrationResult(AccountRegistrationStatus.TokenAlreadyRegistered);
         }
 
         await redisOperations.HashSetPairAtomicAsync(

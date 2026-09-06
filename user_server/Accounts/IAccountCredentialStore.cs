@@ -7,7 +7,7 @@ public enum AccountRegistrationStatus
 {
     Created,
     PlayerAlreadyExists,
-    TokenCollision
+    TokenAlreadyRegistered
 }
 
 public sealed record AccountRegistrationResult(AccountRegistrationStatus Status, string? AccountToken = null);

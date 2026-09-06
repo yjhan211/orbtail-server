@@ -29,9 +29,9 @@ public sealed class AccountTokenServiceTests
     }
 
     [Theory]
-    [InlineData(false, AccountRegistrationStatus.TokenCollision)]
+    [InlineData(false, AccountRegistrationStatus.TokenAlreadyRegistered)]
     [InlineData(false, AccountRegistrationStatus.PlayerAlreadyExists)]
-    [InlineData(true, AccountRegistrationStatus.TokenCollision)]
+    [InlineData(true, AccountRegistrationStatus.TokenAlreadyRegistered)]
     [InlineData(true, AccountRegistrationStatus.PlayerAlreadyExists)]
     public async Task FailedRegistrationIsNotRetried(bool suppliedToken, AccountRegistrationStatus status)
     {
@@ -48,7 +48,7 @@ public sealed class AccountTokenServiceTests
     [Fact]
     public async Task ConcurrentTokenRegistrationUsesExistingAccountWithoutRetryingRegistration()
     {
-        var store = new FailedRegistrationStore(AccountRegistrationStatus.TokenCollision, true);
+        var store = new FailedRegistrationStore(AccountRegistrationStatus.TokenAlreadyRegistered, true);
         var service = new AccountTokenService(store);
         string token = network.helpers.OpaqueToken.Create("acct_");
 

@@ -61,7 +61,7 @@ public sealed class AccountTokenService(IAccountCredentialStore credentialStore)
         {
             return new AccountTokenResolution(playerId, result.AccountToken ?? token, IsNewAccount: true);
         }
-        if (result.Status == AccountRegistrationStatus.TokenCollision)
+        if (result.Status == AccountRegistrationStatus.TokenAlreadyRegistered)
         {
             credential = await credentialStore.FindByTokenHashAsync(tokenHash);
             if (credential != null)
