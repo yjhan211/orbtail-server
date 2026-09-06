@@ -101,7 +101,6 @@ public partial class GameClientSession
                     }
 
                 // Initialize match-scoped area state once; manager implementations are idempotent.
-                _areaItemStockManager.InitializeMatching(matchingId);
                 _groundItemManager.InitializeMatching(matchingId);
                 int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
                 _gameEventLogManager.BeginMatch(matchingId, matchSeed);
@@ -170,12 +169,11 @@ public partial class GameClientSession
             // Send the initial door and mission snapshots.
             RunUnderLiveMatch(
                 runtime,
-                () => _doorStateManager.InitializeMatching(MatchingId, Array.Empty<AreaType>()));
+                () => Doors?.Initialize(Array.Empty<AreaType>()));
             SendDoorStateList();
 
             // 스웜 모드(M4)는 시간 웨이브 폐쇄를 쓰므로 폐쇄 스냅샷을 복원해야 한다.
             SendAreaClosureStateSnapshot();
-            SendAreaStockStateSnapshot();
 
             // Send other players and broadcast this player's authoritative snapshot.
             await BroadcastPlayerJoin();

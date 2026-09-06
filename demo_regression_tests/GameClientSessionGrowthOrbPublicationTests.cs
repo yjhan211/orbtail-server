@@ -692,9 +692,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         public SummonStoneManager SummonStones { get; }
         public GameEventLogManager EventLog { get; }
         public InteractableStateManager Interactables { get; } = new();
-        public AreaItemStockManager AreaStocks { get; } = new(false);
         public GroundItemManager GroundItems { get; } = new();
-        public DoorStateManager Doors { get; } = new();
         public MatchRosterManager Roster { get; } = new(NullLogger.Instance);
         public AreaClosureManager Closures { get; } = new(NullLogger.Instance);
         public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
@@ -707,9 +705,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Action<GameClientSession, long, int, long, long>? orbHandler = null)
         {
             Store.GetOrCreate(matchingId);
-            AreaStocks.InitializeMatching(matchingId);
             GroundItems.InitializeMatching(matchingId);
-            Doors.InitializeMatching(matchingId);
+            Store.Get(matchingId)!.Doors.Initialize();
 
             var connection = new RecordingTcpConnection();
             Activate(connection);
@@ -725,10 +722,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                     .ToList(),
                 Interactables,
                 Inventories,
-                AreaStocks,
                 GroundItems,
                 SummonStones,
-                Doors,
                 Roster,
                 Closures,
                 Bots,

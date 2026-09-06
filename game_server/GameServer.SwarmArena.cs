@@ -159,7 +159,7 @@ public partial class GameServer
         // 탐사 모드(SOLO_MAP_VALIDATION=1): 맵 검증용 1인 매치 — 캠프 몹·접촉 피해·
         // 전투·오브 스트림을 전부 끈다. 이동·문·탐색만 남는다.
         // SOLO_MONSTERS=1을 얹으면 캠프 몹만 되살린다 (봇 없이 몹 상대 검증).
-        if (MatchStartGate.IsSoloMapValidation(matchingId) && !_devOptions.SoloMonsters)
+        if (MatchStartGate.IsSoloMapValidation(matchingId) && !devOptions.SoloMonsters)
             return;
 
         var sessions = activeSessions
@@ -822,7 +822,7 @@ public partial class GameServer
             // 그대로다 — "지금 나가야 하는가"의 판단은 경고 15초와 잠긴 문이 만든다.
             // 폐쇄·경고도 수면을 깨우지 않는다 — 수면 중단은 이동뿐이다.
             IReadOnlyList<int> lockedDoorIds =
-                _doorStateManager.CloseDoorsForAreas(matchingId, closureTick.ClosedAreas);
+                MatchRuntimes.Get(matchingId)?.Doors.CloseDoorsForAreas(closureTick.ClosedAreas) ?? [];
             foreach (int doorId in lockedDoorIds.Distinct())
                 outbound.Add(new SwarmDoorStateOutbound(doorId, allRecipients));
 
@@ -2047,13 +2047,13 @@ public partial class GameServer
     // ===== 절단 실험 더미 (#226): 매치의 봇 하나를 운동장 과녁으로 바꾼다 —
     // 정지·불사·오브 10개 일자 꼬리(자동 리필)·비무장·몹 절단 면제. 웨이브 디렉터 제외.
     // 명시적 분리 (단계 0): DEV_CUT_DUMMY=1 환경변수 옵트인 — 일반 매치는 순정으로 돈다. =====
-    private bool SwarmCutDummyAutoSetup => _devOptions.CutDummy;
+    private bool SwarmCutDummyAutoSetup => devOptions.CutDummy;
 
     // 교차사격 샌드박스 (#232 2단계): DEV_CROSSFIRE_SANDBOX=1 — 절단 실험장과 같은 격리
     // (운동장 더미 하나 + 나머지 봇 퇴장)를 쓰되(몹 접촉 피해는 켜 둔다), 더미는 태양 T1 3개·철갑
     // 없음·무장(몹을 쏜다)이다. 사람 오브도 무장 — 실험 대상이 절단 궤적이 아니라
     // 몹을 향한 사격이 만드는 직선이기 때문이다. 같은 플래그로 MatchSpawnPlanner가 전원을 운동장에 스폰한다.
-    private bool SwarmCrossfireSandbox => _devOptions.CrossfireSandbox;
+    private bool SwarmCrossfireSandbox => devOptions.CrossfireSandbox;
     private bool SwarmDummySandboxActive => SwarmCutDummyAutoSetup || SwarmCrossfireSandbox;
     private const int SwarmCutDummyOrbCount = 10;
     private const int SwarmCrossfireDummyOrbCount = 3;
@@ -2139,7 +2139,7 @@ public partial class GameServer
         if (matchingId <= 0)
         {
             // 사람이 있는 매치 우선 — 봇 전용 검증 매치(큰 id)가 최신을 가로채지 않게.
-            var activeIds = GetActiveInstanceIds().ToList();
+            var activeIds = GetActiveMatchingIds().ToList();
             var humanIds = activeIds.Where(id => GetSessionsByInstance(Config.SWARM_MATCH_MAP, id)
                 .Any(session => session.PlayerId.HasValue)).ToList();
             matchingId = (humanIds.Count > 0 ? humanIds : activeIds).DefaultIfEmpty(0).Max();
@@ -2578,7 +2578,7 @@ public partial class GameServer
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots)
     {
-        if (_devOptions.DisableGameEnd || GetSwarmMatchRuntime(matchingId).Pacing.TimeoutEndedMatchings.Contains(matchingId))
+        if (devOptions.DisableGameEnd || GetSwarmMatchRuntime(matchingId).Pacing.TimeoutEndedMatchings.Contains(matchingId))
             return false;
 
         var startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId);
@@ -3592,10 +3592,8 @@ public partial class GameServer
                 isBot: false);
         }
 
-        int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)defeatedWave.AreaType);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
             (int)defeatedWave.AreaType,
-            remaining,
             spawned.ToList());
         foreach (var session in sessions.Where(session => session.CurrentArea == defeatedWave.AreaType))
             session.TrySend(packet);

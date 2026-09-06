@@ -64,7 +64,6 @@ public sealed class MatchTelemetryTests
             corruption: 40,
             inventorySlotsUsed: 5,
             inventorySlotCapacity: 6,
-            areaRemainingStock: 3,
             closureAtUnixMs: DateTimeOffset.UtcNow.AddSeconds(15).ToUnixTimeMilliseconds(),
             isBot: false);
         log.LogExploreStart(matchingId, 202, 88, "Library", isBot: false);
@@ -75,7 +74,6 @@ public sealed class MatchTelemetryTests
         var snapshot = Assert.Single(events, entry => entry.Type == "CLOSURE_WARNING_SNAPSHOT");
         Assert.Equal(40, snapshot.Corruption);
         Assert.Equal(5, snapshot.InventorySlotsUsed);
-        Assert.Equal(3, snapshot.AreaRemainingStock);
 
         var exit = Assert.Single(events, entry => entry.Type == "CLOSURE_WARNING_EXIT");
         Assert.Equal(1, exit.AdditionalExploreCount);

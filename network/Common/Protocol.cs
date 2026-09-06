@@ -120,8 +120,8 @@ namespace network.common
         // 자동 전투 제3자 관전용 투사체 이펙트
         G_TO_C_PROXIMITY_ATTACK_VFX,
         G_TO_C_ORB_EFFECT_STATE,
-        G_TO_C_AREA_STOCK_STATE,
-        G_TO_C_MONSTER_SNAPSHOT,
+        // 제거된 자연 재고 메시지의 번호는 재사용하지 않는다.
+        G_TO_C_MONSTER_SNAPSHOT = G_TO_C_ORB_EFFECT_STATE + 2,
         G_TO_C_MONSTER_ATTACK_VFX,
         G_TO_C_SUMMON_STONE_STATE,
         C_TO_G_SUMMON_ORB,

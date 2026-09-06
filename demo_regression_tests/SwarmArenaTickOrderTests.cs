@@ -346,7 +346,7 @@ public sealed class SwarmArenaTickOrderTests
             "new SwarmClosureWarningOutbound(",
             "_gameEventLogManager.LogClosure(",
             "new SwarmAreaClosedOutbound(",
-            "_doorStateManager.CloseDoorsForAreas(",
+            "MatchRuntimes.Get(matchingId)?.Doors.CloseDoorsForAreas(",
             "new SwarmDoorStateOutbound(",
             "PrepareDestroySwarmOrbsInClosedAreas(",
             "new SwarmClosurePublicationPlan(");

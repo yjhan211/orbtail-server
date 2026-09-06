@@ -10,7 +10,7 @@ public sealed class ServerDeploymentSurfaceTests
         Assert.DoesNotContain("GetInstanceSummary", source);
         Assert.DoesNotContain("GetFullInstanceSnapshot", source);
         Assert.DoesNotContain("GetInstanceSnapshot", source);
-        Assert.Contains("GetActiveInstanceIds", source);
+        Assert.Contains("GetActiveMatchingIds", source);
         Assert.Contains("EndBotOnlyMatchIfSettled", source);
     }
 

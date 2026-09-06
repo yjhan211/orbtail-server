@@ -31,11 +31,9 @@ public partial class GameClientSession : SessionBase
     private static readonly ConcurrentDictionary<long, SemaphoreSlim> MatchInitializationLocks = new();
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly List<int> _activeBuffIds = new();
-    private readonly DoorStateManager _doorStateManager;
     private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
     private readonly InGameInventoryManager _inGameInventoryManager;
     private readonly InteractableStateManager _interactableStateManager;
-    private readonly AreaItemStockManager _areaItemStockManager;
     private readonly GroundItemManager _groundItemManager;
     private readonly Func<string?, Task<GameHandoffContext?>> _consumeGameHandoffTicket;
     private readonly SummonStoneManager _summonStoneManager;
@@ -135,6 +133,8 @@ public partial class GameClientSession : SessionBase
 
     public IReadOnlyCollection<int> ActiveBuffIds => _activeBuffIds;
 
+    private MatchDoorState? Doors => _matchRuntimes.Get(MatchingId)?.Doors;
+
     internal GameClientSession(
         TcpConnection connection,
         ILogger logger,
@@ -145,10 +145,8 @@ public partial class GameClientSession : SessionBase
         Func<MapId, long, List<GameClientSession>> getSessionsByInstance,
         InteractableStateManager interactableStateManager,
         InGameInventoryManager inGameInventoryManager,
-        AreaItemStockManager areaItemStockManager,
         GroundItemManager groundItemManager,
         SummonStoneManager summonStoneManager,
-        DoorStateManager doorStateManager,
         MatchRosterManager matchRosterManager,
         AreaClosureManager areaClosureManager,
         BotPlayerManager botPlayerManager,
@@ -175,10 +173,8 @@ public partial class GameClientSession : SessionBase
         _getSessionsByInstance = getSessionsByInstance;
         _interactableStateManager = interactableStateManager;
         _inGameInventoryManager = inGameInventoryManager;
-        _areaItemStockManager = areaItemStockManager;
         _groundItemManager = groundItemManager;
         _summonStoneManager = summonStoneManager;
-        _doorStateManager = doorStateManager;
         _matchRosterManager = matchRosterManager;
         _areaClosureManager = areaClosureManager;
         _botPlayerManager = botPlayerManager;

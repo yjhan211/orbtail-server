@@ -226,7 +226,6 @@ public sealed class SwarmBotMovementPlanTests
     private static SwarmBotMovementCoordinator CreateCoordinator() => new(
         new BotPlayerManager(NullLogger.Instance),
         new AreaClosureManager(NullLogger.Instance),
-        new AreaItemStockManager(),
         new InGameInventoryManager(),
         new GroundItemManager(),
         new SummonStoneManager(),

@@ -21,7 +21,6 @@ namespace network.common.data.models
     public class G_TO_C_GROUND_ITEM_SNAPSHOT : IMessagePackObject
     {
         [Key("areaType")] public int AreaType { get; set; }
-        [Key("remainingNaturalStock")] public int RemainingNaturalStock { get; set; }
         [Key("items")] public List<GroundItemInfo> Items { get; set; } = new();
     }
 
@@ -29,7 +28,6 @@ namespace network.common.data.models
     public class G_TO_C_GROUND_ITEM_SPAWN : IMessagePackObject
     {
         [Key("areaType")] public int AreaType { get; set; }
-        [Key("remainingNaturalStock")] public int RemainingNaturalStock { get; set; }
         [Key("items")] public List<GroundItemInfo> Items { get; set; } = new();
     }
 

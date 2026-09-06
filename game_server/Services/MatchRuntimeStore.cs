@@ -20,6 +20,7 @@ internal sealed class MatchRuntime
     }
 
     public long MatchingId { get; }
+    public MatchDoorState Doors { get; } = new();
     public object Sync { get; } = new();
     public bool IsTerminal => Volatile.Read(ref _terminal) != 0;
 
@@ -210,6 +211,7 @@ internal sealed class MatchRuntimeStore
             if (runtime.IsTerminal && !runtime.CleanupDone)
             {
                 runtime.CleanupDone = true;
+                runtime.Doors.Clear();
                 RunCleanup(runtime.MatchingId);
                 _runtimes.TryRemove(new KeyValuePair<long, MatchRuntime>(runtime.MatchingId, runtime));
                 if (_afterCleanup != null)

@@ -359,43 +359,17 @@ public partial class GameClientSession
     {
         if (MatchingId <= 0 || area == AreaType.None) return;
         var items = _groundItemManager.GetSnapshot(MatchingId, area);
-        int remaining = _areaItemStockManager.GetRemainingCount(MatchingId, (int)area);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, remaining, items.ToList());
+        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, items.ToList());
         TrySend(packet);
     }
 
-    private void SendAreaStockStateSnapshot()
-    {
-        if (MatchingId <= 0) return;
-
-        var message = BuildAreaStockStateMessage();
-        using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_STOCK_STATE);
-        packet.SetBody(MessagePackSerializer.Serialize(message));
-        TrySend(packet);
-    }
-
-    private G_TO_C_AREA_STOCK_STATE BuildAreaStockStateMessage()
-    {
-        return new G_TO_C_AREA_STOCK_STATE
-        {
-            Areas = _areaItemStockManager.GetPublicDepletionSnapshot(MatchingId)
-                .Select(state => new AreaNaturalStockState
-                {
-                    AreaType = state.AreaType,
-                    IsDepleted = state.IsDepleted,
-                    AvailableOrbColors = state.AvailableOrbColors
-                })
-                .ToList()
-        };
-    }
 
     private void BroadcastGroundItemsSpawned(AreaType area, IReadOnlyList<GroundItemInfo> spawned)
     {
         if (spawned.Count == 0) return;
-        int remaining = _areaItemStockManager.GetRemainingCount(MatchingId, (int)area);
         var sessions = GetSessionsInArea(
             _getSessionsByInstance(CurrentMapId, MatchingId), area, excludeSelf: false);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, spawned.ToList());
+        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, spawned.ToList());
         foreach (var session in sessions) session.TrySend(packet);
     }
 

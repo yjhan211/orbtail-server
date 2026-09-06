@@ -593,7 +593,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             serverSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "new(logger, CreateMatchRuntime, BuildMatchCleanupSteps(), StartMatchingRedisCleanup);",
+            "new(logger, cleanupSteps: BuildMatchCleanupSteps(), afterCleanup: StartMatchingRedisCleanup);",
             serverSource,
             StringComparison.Ordinal);
         Assert.Contains(

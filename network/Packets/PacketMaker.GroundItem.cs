@@ -6,27 +6,25 @@ namespace network.packets;
 
 public static partial class PacketMaker
 {
-    public static Packet G_TO_C_GROUND_ITEM_SNAPSHOT(int areaType, int remainingNaturalStock,
+    public static Packet G_TO_C_GROUND_ITEM_SNAPSHOT(int areaType,
         List<GroundItemInfo> items)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_GROUND_ITEM_SNAPSHOT);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_GROUND_ITEM_SNAPSHOT
         {
             AreaType = areaType,
-            RemainingNaturalStock = remainingNaturalStock,
             Items = items
         }));
         return packet;
     }
 
-    public static Packet G_TO_C_GROUND_ITEM_SPAWN(int areaType, int remainingNaturalStock,
+    public static Packet G_TO_C_GROUND_ITEM_SPAWN(int areaType,
         List<GroundItemInfo> items)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_GROUND_ITEM_SPAWN);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_GROUND_ITEM_SPAWN
         {
             AreaType = areaType,
-            RemainingNaturalStock = remainingNaturalStock,
             Items = items
         }));
         return packet;

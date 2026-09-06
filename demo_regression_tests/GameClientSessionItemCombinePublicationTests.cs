@@ -898,10 +898,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
         public InGameInventoryManager Inventories { get; }
         public GameEventLogManager EventLog { get; }
         public InteractableStateManager Interactables { get; } = new();
-        public AreaItemStockManager AreaStocks { get; } = new(false);
         public GroundItemManager GroundItems { get; } = new();
         public SummonStoneManager SummonStones { get; } = new();
-        public DoorStateManager Doors { get; } = new();
         public MatchRosterManager Roster { get; } = new(NullLogger.Instance);
         public AreaClosureManager Closures { get; } = new(NullLogger.Instance);
         public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
@@ -914,9 +912,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
             Store.GetOrCreate(matchingId);
             // 미등록 매치는 게이트가 막는다 (#335) — 테스트 매치를 카운트다운 없이 즉시 활성으로 등록한다.
             MatchStartGate.RegisterBotOnlyMatch(matchingId);
-            AreaStocks.InitializeMatching(matchingId);
             GroundItems.InitializeMatching(matchingId);
-            Doors.InitializeMatching(matchingId);
+            Store.Get(matchingId)!.Doors.Initialize();
 
             var connection = new RecordingTcpConnection();
             Activate(connection);
@@ -932,10 +929,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
                     .ToList(),
                 Interactables,
                 Inventories,
-                AreaStocks,
                 GroundItems,
                 SummonStones,
-                Doors,
                 Roster,
                 Closures,
                 Bots,

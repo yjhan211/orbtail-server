@@ -222,7 +222,7 @@ public partial class GameClientSession
     /// </summary>
     private Task HandleSwarmDoorUnlockStart(int interactId, int doorId)
     {
-        if (_doorStateManager.IsDoorOpen(MatchingId, doorId))
+        if (Doors?.IsDoorOpen(doorId) == true)
         {
             SendRngCollectAck(interactId, ErrorCode.DOOR_ALREADY_OPEN, 0);
             return Task.CompletedTask;
@@ -253,7 +253,7 @@ public partial class GameClientSession
         _pendingDoorUnlockInteractId = null;
         _swarmDoorUnlockCount++;
 
-        if (!_doorStateManager.OpenDoor(MatchingId, doorId))
+        if (Doors?.OpenDoor(doorId) != true)
         {
             SendRngCollectResult(interactId, 0, 0, 0, 0);
             BroadcastPlayerState(PlayerState.IDLE);

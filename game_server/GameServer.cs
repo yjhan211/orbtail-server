@@ -19,11 +19,12 @@ using network.routing;
 namespace game_server;
 
 /// <summary>
-///     매치 입장·시뮬레이션·종료 수명을 소유하는 호스트. 매치 하나의 권위 상태 변경은 전부
-///     <see cref="MatchRuntime.Sync"/> 잠금 안에서 돌고(타이머 틱·세션 핸들러·종료), 패킷도 그 안에서 큐에
-///     넣어 순서가 곧 변경 순서다. 터미널 정리는 최외곽 잠금 탈출에서 한 번 돌고, lifecycle·Redis·요약 후처리는
-///     잠금 밖에서 이어진다. 노드는 기동 시 레지스트리에 자기를 광고하고 자기 노드에 결합된 ticket만 받는다 (#339);
-///     소유권 fence·durable outbox 계층은 두지 않는다 (태그 pre-stage2-scaling에 보존).
+///     GameServer의 시작과 종료를 관리하고, 게임 세션과 매치 처리에 필요한 구성 요소를 연결한다.
+///     TCP 연결을 받고 게임 진행용 타이머를 실행하며, 노드의 접속 정보와 수용 상태를 등록한다.
+///
+///     매치 상태 변경은 매치별 잠금 안에서 처리한다.
+///     입장 실패 처리는 MatchEntryFailureHandler에,
+///     종료 알림과 Redis 정리는 MatchingLifecycleService에 위임한다.
 /// </summary>
 public partial class GameServer(
     IConfiguration configuration,
@@ -38,41 +39,42 @@ public partial class GameServer(
     GameServerDevOptions devOptions)
     : IHostedService
 {
+    private const int ResourceTickIntervalSeconds = 5;
     private static readonly TimeSpan ShutdownStageTimeout = TimeSpan.FromSeconds(5);
 
     private readonly GameSessionRegistry _sessionRegistry = new();
-    private readonly DoorStateManager _doorStateManager = new();
-    private readonly InGameInventoryManager _inGameInventoryManager = new();
+    private readonly MatchRosterManager _matchRosterManager = new(logger);
+    private readonly SwarmMatchRuntimeStore _swarmMatchRuntimes = new();
+    private MatchRuntimeStore? _matchRuntimes;
+    private MatchEntryFailureHandler? _entryFailureHandler;
 
+    private readonly InGameInventoryManager _inGameInventoryManager = new();
     private readonly InteractableStateManager _interactableStateManager = new();
-    private readonly AreaItemStockManager _areaItemStockManager =
-        new(naturalExploreLootEnabled: !Config.MONSTER_SUMMON_ECONOMY_ENABLED);
     private readonly GroundItemManager _groundItemManager = new();
-    private readonly GameServerDevOptions _devOptions = devOptions;
+    private readonly SummonStoneManager _summonStoneManager = new();
+    private readonly EncounterRevealManager _encounterRevealManager = new();
+    private AreaClosureManager _areaClosureManager = null!;
+
+    // 봇과 몬스터
+    private readonly BotPlayerManager _botPlayerManager = new(logger);
     private readonly SwarmMonsterDirector _swarmMonsterDirector =
         new(monsterSpawnEnabled: devOptions.MonsterSpawnEnabled);
+    private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
 
-    private readonly SwarmMatchRuntimeStore _swarmMatchRuntimes = new();
-    private readonly SummonStoneManager _summonStoneManager = new();
-    private readonly MatchRosterManager _matchRosterManager = new(logger);
-    private AreaClosureManager _areaClosureManager = null!;
-    private readonly BotPlayerManager _botPlayerManager = new(logger);
+    // 매치 기록
     private readonly GameEventLogManager _gameEventLogManager = new();
     private readonly MatchSummaryFileStore _matchSummaryFileStore = new(
         configuration["MATCH_SUMMARY_DIRECTORY"],
         configuration.GetValue<int>("MATCH_SUMMARY_MAX_FILES", MatchSummaryFileStore.DefaultMaxSummaries));
-    private readonly EncounterRevealManager _encounterRevealManager = new();
-    private MatchRuntimeStore? _matchRuntimes;
-    private MatchEntryFailureHandler? _entryFailureHandler;
-    private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
+
+    // 서버 수명과 주기 작업
+    private CancellationTokenSource _cts = new();
+    private Timer? _resourceTickTimer;
+    private Timer? _areaClosureTickTimer;
+    private GameServerNodeAdvertiser? _nodeAdvertiser;
     private int _stopping;
 
     internal MatchingLifecycleService MatchingLifecycle { get; } = new(redisOperations, logger);
-
-    private CancellationTokenSource _cts = new();
-    private Timer? _resourceTickTimer;        // 폐쇄 구역 등 주기성 자원 변화
-    private Timer? _areaClosureTickTimer;     // 구역 폐쇄 체크
-    private GameServerNodeAdvertiser? _nodeAdvertiser; // 레지스트리 광고 — Start/Stop 순서 안에서만 만지고 지운다
 
     private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
         _swarmMatchRuntimes.GetOrCreate(matchingId);
@@ -92,17 +94,7 @@ public partial class GameServer(
             () => new MatchEntryFailureHandler(MatchRuntimes, _sessionRegistry, MatchingLifecycle, logger))!;
 
     private MatchRuntimeStore CreateMatchRuntimeStore() =>
-        new(logger, CreateMatchRuntime, BuildMatchCleanupSteps(), StartMatchingRedisCleanup);
-
-    /// <summary>새 매치 런타임의 모니터 안에서 한 번 실행되는 fail-closed 컴포넌트 등록.</summary>
-    private void CreateMatchRuntime(long matchingId)
-    {
-        if (!_doorStateManager.RegisterMatching(matchingId))
-        {
-            throw new InvalidOperationException(
-                $"Door state was already registered for match {matchingId}.");
-        }
-    }
+        new(logger, cleanupSteps: BuildMatchCleanupSteps(), afterCleanup: StartMatchingRedisCleanup);
 
     /// <summary>
     ///     터미널 정리 순서. 최외곽 잠금 탈출에서 한 번 돌고 단계마다 예외를 격리한다 — 한 컴포넌트 실패가
@@ -116,13 +108,11 @@ public partial class GameServer(
         new MatchCleanupStep("swarm arena", CleanupSwarmArenaState),
         new MatchCleanupStep("area closure", matchingId => _areaClosureManager.CleanupMatching(matchingId)),
         new MatchCleanupStep("bots", _botPlayerManager.CleanupMatching),
-        new MatchCleanupStep("area item stock", _areaItemStockManager.RemoveMatchingState),
         new MatchCleanupStep("ground items", _groundItemManager.RemoveMatchingState),
         new MatchCleanupStep("monster broadcast slots", CleanupSwarmAfterimageMonsterRuntime),
         new MatchCleanupStep("summon stones", _summonStoneManager.RemoveMatchingState),
         new MatchCleanupStep("inventory", _inGameInventoryManager.RemoveMatchingState),
         new MatchCleanupStep("interactables", _interactableStateManager.RemoveMatchingState),
-        new MatchCleanupStep("doors", _doorStateManager.ClearMatching),
         new MatchCleanupStep("roster", _matchRosterManager.CleanupMatching),
         new MatchCleanupStep("encounter reveal", _encounterRevealManager.CleanupMatching),
         new MatchCleanupStep("event log", _gameEventLogManager.Clear)
@@ -131,9 +121,6 @@ public partial class GameServer(
     /// <summary>정리가 끝난 매치의 Redis 인계 키를 잠금 밖에서 지운다 (셧다운이 완료를 기다린다).</summary>
     private void StartMatchingRedisCleanup(long matchingId) =>
         MatchingLifecycle.PrepareRedisCleanup(matchingId).Invoke();
-
-    internal const int ResourceTickIntervalSeconds = 5;
-    // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -145,7 +132,7 @@ public partial class GameServer(
         try
         {
             logger.LogInformation("Game server starting...");
-            IReadOnlyList<string> enabledDevFlags = _devOptions.EnabledVariableNames();
+            IReadOnlyList<string> enabledDevFlags = devOptions.EnabledVariableNames();
             if (enabledDevFlags.Count > 0)
                 logger.LogWarning("[DEV] Game Server flags enabled: {Flags}",
                     string.Join(", ", enabledDevFlags));
@@ -272,7 +259,6 @@ public partial class GameServer(
         _swarmBotMovementCoordinator = new SwarmBotMovementCoordinator(
             _botPlayerManager,
             _areaClosureManager,
-            _areaItemStockManager,
             _inGameInventoryManager,
             _groundItemManager,
             _summonStoneManager,
@@ -306,7 +292,8 @@ public partial class GameServer(
             Action<string> log = msg => logger.LogInformation(msg);
             // 문 상태는 페이즈와 별개다 (2026-08-16). 위 제공자는 ROOM_COMBAT에서만 채워져
             // 군집 모드에서는 항상 비었고, 그래서 봇이 잠긴 문을 그냥 통과했다.
-            _botPlayerManager.SetDoorOpenResolver(_doorStateManager.IsDoorOpen);
+            _botPlayerManager.SetDoorOpenResolver((matchingId, doorId) =>
+                MatchRuntimes.Get(matchingId)?.Doors.IsDoorOpen(doorId) == true);
             // 투사체 회피 반사 (#232 §9): 봇 걸음마다 교차사격 스냅샷을 물어 비켜설 방향을 받는다.
             _botPlayerManager.SetSwarmDodgeResolver(ResolveSwarmBotDodgeDirection);
             _interactableStateManager.Initialize(log);
@@ -481,8 +468,7 @@ public partial class GameServer(
         if (receivers.Count == 0)
             return;
 
-        int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)area);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, remaining, spawned.ToList());
+        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, spawned.ToList());
         foreach (var session in receivers)
             session.TrySend(packet);
     }
@@ -696,10 +682,8 @@ public partial class GameServer(
                 GetSessionsByInstance,
                 _interactableStateManager,
                 _inGameInventoryManager,
-                _areaItemStockManager,
                 _groundItemManager,
                 _summonStoneManager,
-                _doorStateManager,
                 _matchRosterManager,
                 _areaClosureManager,
                 _botPlayerManager,
@@ -721,7 +705,7 @@ public partial class GameServer(
                     MatchingLifecycle.Publish(MatchingLifecycleSubjects.PlayerReleased, playerId, matchingId),
                 () => Volatile.Read(ref _stopping) != 0,
                 EntryFailureHandler.Handle,
-                devOptions: _devOptions);
+                devOptions: devOptions);
 
             logger.LogInformation("Game client session created");
             return session;
@@ -890,38 +874,19 @@ public partial class GameServer(
         return _sessionRegistry.GetByInstance(mapId, mapSubId);
     }
 
-    // MMO 로그아웃 프로토콜 제거됨 - 세션 기반 게임에서는 불필요
-    // private void SubscribeToLogoutEvents() { ... }
-    // private async Task ProcessMessage(byte[] message) { ... }
-    // private async Task HandleLogout(long playerId, byte[] body) { ... }
-
     // ===== 내부 매치 조회 및 개발 도구 =====
-
-    /// <summary>
-    ///     매치 진행 이벤트 로그 조회용 매니저.
-    /// </summary>
-    public GameEventLogManager GameEventLogManager => _gameEventLogManager;
-    public MatchSummaryFileStore MatchSummaryFileStore => _matchSummaryFileStore;
-
-    /// <summary>
-    ///     활성 인스턴스 ID 목록 반환 (MatchingId 기준 dedup)
-    /// </summary>
-    public IReadOnlyList<long> GetActiveInstanceIds()
-    {
-        return GetActiveMatchingIds();
-    }
 
     private List<long> GetActiveMatchingIds()
     {
         var ids = _sessionRegistry.GetActiveMatchingIds().ToHashSet();
-
         foreach (long matchingId in _botPlayerManager.GetActiveMatchingIds())
         {
             if (matchingId > 0)
+            {
                 ids.Add(matchingId);
+            }
         }
 
         return ids.OrderBy(id => id).ToList();
     }
-
 }

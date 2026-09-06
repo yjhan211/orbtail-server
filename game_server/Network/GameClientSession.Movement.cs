@@ -118,7 +118,7 @@ public partial class GameClientSession
                 var transitionDoor = GameDoorData.GetDoorForTransition(
                     CurrentArea, newArea, previousCell, currentCell);
                 if (transitionDoor != null &&
-                    !_doorStateManager.IsDoorOpen(MatchingId, transitionDoor.DoorId))
+                    Doors?.IsDoorOpen(transitionDoor.DoorId) != true)
                 {
                     Logger.LogWarning(
                         "Player {PlayerId} blocked crossing {CurrentArea}→{NewArea} (locked door: {DoorId})",
@@ -498,7 +498,7 @@ public partial class GameClientSession
         // 이미 열린 문의 마커는 보내지 않는다 — 열린 문 앞에서 게이지가 도는 그림은 거짓말이다.
         objects = objects
             .Where(state => GameInteractableData.Get(state.InteractId) is not { DoorId: > 0 } info ||
-                            !_doorStateManager.IsDoorOpen(MatchingId, info.DoorId))
+                            Doors?.IsDoorOpen(info.DoorId) != true)
             .ToList();
         if (objects.Count == 0)
         {

@@ -66,7 +66,7 @@ public partial class GameServer
                 int doorId = bot.SwarmDoorUnlockDoorId;
                 bot.SwarmDoorUnlockDoorId = 0;
                 bot.SwarmDoorUnlockStartedAtUtc = DateTime.MinValue;
-                if (!_doorStateManager.OpenDoor(matchingId, doorId)) continue;
+                if (MatchRuntimes.Get(matchingId)?.Doors.OpenDoor(doorId) != true) continue;
 
                 using var openPacket =
                     PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, bot.PlayerId);
@@ -95,7 +95,7 @@ public partial class GameServer
         foreach (var door in GameDoorData.GetByAreaType(bot.CurrentArea))
         {
             if (!GameInteractableData.IsGaugeGatedDoor(door.DoorId)) continue;
-            if (_doorStateManager.IsDoorOpen(matchingId, door.DoorId)) continue;
+            if (MatchRuntimes.Get(matchingId)?.Doors.IsDoorOpen(door.DoorId) == true) continue;
             // 단방향 문("봇이 바깥에서 문을 따고 들어온다" 제보): 게이지가
             // 놓인 쪽(안쪽)에서만 딴다 — 사람은 게이지 노출 규칙이 이미 막고 있고, 봇도 같은
             // 표를 따른다. 폐쇄 구역 탈출은 예외 (사람 규칙과 동일).
@@ -212,9 +212,8 @@ public partial class GameServer
             layout: GroundItemSpawnLayout.EliminationScatter);
         if (dropped.Count > 0)
         {
-            int remaining = _areaItemStockManager.GetRemainingCount(matchingId, (int)bot.CurrentArea);
             using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
-                (int)bot.CurrentArea, remaining, dropped.ToList());
+                (int)bot.CurrentArea, dropped.ToList());
             foreach (var session in sessions)
                 if (session.PlayerId.HasValue && session.CurrentArea == bot.CurrentArea)
                     session.TrySend(packet);

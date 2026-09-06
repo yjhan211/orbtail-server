@@ -13,7 +13,6 @@ namespace game_server.services;
 internal sealed class SwarmBotMovementCoordinator(
     BotPlayerManager botPlayerManager,
     AreaClosureManager areaClosureManager,
-    AreaItemStockManager areaItemStockManager,
     InGameInventoryManager inGameInventoryManager,
     GroundItemManager groundItemManager,
     SummonStoneManager summonStoneManager,
@@ -36,7 +35,6 @@ internal sealed class SwarmBotMovementCoordinator(
         BotPlayerManager.BotWalkingTickResult movementResult = botPlayerManager.ProcessBotMovementTick(
             matchingId,
             areaClosureManager,
-            areaItemStockManager,
             humanAreas,
             inGameInventoryManager,
             groundItemManager,

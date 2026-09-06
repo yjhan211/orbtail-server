@@ -86,7 +86,6 @@ public partial class BotPlayerManager
     ///     Uses the same fixed movement speed 6.0 as the player and emits an equivalent G_TO_C_MOVE event each tick.
     /// </summary>
     public BotWalkingTickResult ProcessBotMovementTick(long matchingId, AreaClosureManager closureManager,
-        AreaItemStockManager areaItemStockManager,
         IReadOnlyDictionary<long, AreaType> humanAreas,
         InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
@@ -113,7 +112,6 @@ public partial class BotPlayerManager
             activeBots,
             result,
             closureManager,
-            areaItemStockManager,
             inventoryManager,
             groundItemManager,
             summonStoneManager,
@@ -127,7 +125,6 @@ public partial class BotPlayerManager
         IReadOnlyList<BotPlayerState> activeBots,
         BotWalkingTickResult result,
         AreaClosureManager closureManager,
-        AreaItemStockManager areaItemStockManager,
         InGameInventoryManager inventoryManager,
         GroundItemManager groundItemManager,
         SummonStoneManager summonStoneManager,
@@ -209,7 +206,6 @@ public partial class BotPlayerManager
                 bot,
                 matchingId,
                 closureManager,
-                areaItemStockManager,
                 inventoryManager,
                 playerAreas,
                 pveTargets,
@@ -343,7 +339,7 @@ public partial class BotPlayerManager
     ///     일반 셀 walk는 진행 방향 + 속도 포함 MOVE 이벤트 반환.
     /// </summary>
     private BotMovementEvent? WalkStep(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
-        AreaItemStockManager areaItemStockManager, InGameInventoryManager inventoryManager,
+        InGameInventoryManager inventoryManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets,
         bool allowPathPlanning)
@@ -431,7 +427,7 @@ public partial class BotPlayerManager
             if (bot.PendingRngInteractId != 0) return null;
 
             if (!allowPathPlanning) return null;
-            ChooseNewWanderTarget(bot, matchingId, closureManager, areaItemStockManager, inventoryManager, playerAreas,
+            ChooseNewWanderTarget(bot, matchingId, closureManager, inventoryManager, playerAreas,
                 pveTargets);
             if (bot.Path.Count == 0) return null;
 
@@ -698,7 +694,7 @@ public partial class BotPlayerManager
     ///     따라가기(타겟 방)·흩어지기(최저 인원 방)·임의 방. 복도는 목적지가 아니라 통과만(transit).
     /// </summary>
     private void ChooseNewWanderTarget(BotPlayerState bot, long matchingId, AreaClosureManager closureManager,
-        AreaItemStockManager areaItemStockManager, InGameInventoryManager inventoryManager,
+        InGameInventoryManager inventoryManager,
         IReadOnlyDictionary<long, AreaType> playerAreas,
         IReadOnlyCollection<MonsterCombatTarget> pveTargets)
     {

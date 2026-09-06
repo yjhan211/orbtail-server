@@ -285,10 +285,8 @@ public sealed class GameClientSessionTerminalPublicationTests
         public TimelineLogger Logger { get; }
         public InteractableStateManager Interactables { get; } = new();
         public InGameInventoryManager Inventories { get; } = new();
-        public AreaItemStockManager AreaStocks { get; } = new(false);
         public GroundItemManager GroundItems { get; } = new();
         public SummonStoneManager SummonStones { get; } = new();
-        public DoorStateManager Doors { get; } = new();
         public MatchRosterManager Roster { get; } = new(NullLogger.Instance);
         public AreaClosureManager Closures { get; } = new(NullLogger.Instance);
         public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
@@ -320,10 +318,8 @@ public sealed class GameClientSessionTerminalPublicationTests
                 _sessions,
                 Interactables,
                 Inventories,
-                AreaStocks,
                 GroundItems,
                 SummonStones,
-                Doors,
                 Roster,
                 Closures,
                 Bots,
@@ -443,10 +439,8 @@ public sealed class GameClientSessionTerminalPublicationTests
             List<GameClientSession> sessions,
             InteractableStateManager interactables,
             InGameInventoryManager inventories,
-            AreaItemStockManager areaStocks,
             GroundItemManager groundItems,
             SummonStoneManager summonStones,
-            DoorStateManager doors,
             MatchRosterManager roster,
             AreaClosureManager closures,
             BotPlayerManager bots,
@@ -467,10 +461,8 @@ public sealed class GameClientSessionTerminalPublicationTests
                     .ToList(),
                 interactables,
                 inventories,
-                areaStocks,
                 groundItems,
                 summonStones,
-                doors,
                 roster,
                 closures,
                 bots,

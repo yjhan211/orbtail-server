@@ -27,7 +27,7 @@ public partial class GameServer
         int aliveCount = humans.Count + bots.Count;
         if (aliveCount <= 1)
         {
-            if (_devOptions.DisableGameEnd || SwarmDummySandboxActive)
+            if (devOptions.DisableGameEnd || SwarmDummySandboxActive)
                 return;
 
             if (aliveCount == 1 && humans.Count > 0)

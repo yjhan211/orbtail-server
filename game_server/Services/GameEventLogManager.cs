@@ -631,7 +631,7 @@ public class GameEventLogManager
 
     public void LogExploreCancelled(long matchingId, long playerId, int interactId, string area, string reason,
         bool isBot) => LogExploreFinished(matchingId, playerId, interactId, area, "EXPLORE_CANCELLED", reason,
-        [], 0, isBot);
+        [], isBot);
 
     public void LogGroundItemSpawned(long matchingId, long discovererPlayerId, long groundItemUid, int itemId,
         string area, long priorityExpiresAtUnixMs, bool isBot)
@@ -665,7 +665,7 @@ public class GameEventLogManager
 
     public void LogClosureWarningSnapshot(long matchingId, long playerId, IReadOnlyCollection<string> warningAreas,
         string currentArea, int corruption, int inventorySlotsUsed, int inventorySlotCapacity,
-        int areaRemainingStock, long closureAtUnixMs, bool isBot)
+        long closureAtUnixMs, bool isBot)
     {
         var now = DateTimeOffset.UtcNow;
         var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
@@ -677,7 +677,7 @@ public class GameEventLogManager
         }
 
         AppendAt(matchingId, "CLOSURE_WARNING_SNAPSHOT", playerId, isBot,
-            $"Closure warning: areas={string.Join(',', warningAreas)}, current={currentArea}, corruption={corruption}, slots={inventorySlotsUsed}/{inventorySlotCapacity}, stock={areaRemainingStock}.",
+            $"Closure warning: areas={string.Join(',', warningAreas)}, current={currentArea}, corruption={corruption}, slots={inventorySlotsUsed}/{inventorySlotCapacity}.",
             now, entry =>
             {
                 entry.WarningAreas = warningAreas.ToList();
@@ -685,7 +685,6 @@ public class GameEventLogManager
                 entry.Corruption = corruption;
                 entry.InventorySlotsUsed = inventorySlotsUsed;
                 entry.InventorySlotCapacity = inventorySlotCapacity;
-                entry.AreaRemainingStock = areaRemainingStock;
                 entry.ClosureAtUnixMs = closureAtUnixMs;
             });
     }
@@ -1181,7 +1180,7 @@ public class GameEventLogManager
     }
 
     private void LogExploreFinished(long matchingId, long playerId, int interactId, string area, string type,
-        string outcome, IReadOnlyCollection<int> generatedItemIds, int areaRemainingStock, bool isBot)
+        string outcome, IReadOnlyCollection<int> generatedItemIds, bool isBot)
     {
         var now = DateTimeOffset.UtcNow;
         DateTimeOffset? startedAt = null;
@@ -1190,7 +1189,7 @@ public class GameEventLogManager
             if (state.ExploreStarts.Remove((playerId, interactId), out var value)) startedAt = value;
 
         AppendAt(matchingId, type, playerId, isBot,
-            $"Explore {outcome}: interact={interactId}, area={area}, items={string.Join(',', generatedItemIds)}, stock={areaRemainingStock}.",
+            $"Explore {outcome}: interact={interactId}, area={area}, items={string.Join(',', generatedItemIds)}.",
             now, entry =>
             {
                 entry.ActivityId = interactId;
@@ -1201,7 +1200,6 @@ public class GameEventLogManager
                     ? Math.Max(0, (long)(now - startedAt.Value).TotalMilliseconds)
                     : null;
                 entry.GeneratedItemIds = generatedItemIds.ToList();
-                entry.AreaRemainingStock = areaRemainingStock;
                 entry.Outcome = outcome;
             });
     }
@@ -1771,7 +1769,6 @@ public class GameEventEntry
     public int? Corruption { get; set; }
     public int? InventorySlotsUsed { get; set; }
     public int? InventorySlotCapacity { get; set; }
-    public int? AreaRemainingStock { get; set; }
     public long? ClosureAtUnixMs { get; set; }
     public int? AdditionalExploreCount { get; set; }
     public long? ReenteredAtUnixMs { get; set; }

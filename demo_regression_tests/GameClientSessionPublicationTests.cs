@@ -56,7 +56,7 @@ public sealed class GameClientSessionPublicationTests
                 Protocol.G_TO_C_PLAYER_STATE
             ],
             fixture.ConnectionFor(session).DeliveredProtocols);
-        Assert.True(fixture.Doors.IsDoorOpen(70001, 201));
+        Assert.True((fixture.Store.Get(70001)?.Doors.IsDoorOpen(201) == true));
         Assert.False(Monitor.IsEntered(fixture.Store.Get(70001)!.Sync));
     }
 
@@ -220,7 +220,7 @@ public sealed class GameClientSessionPublicationTests
             .DeserializeSingle<G_TO_C_RNG_COLLECT_ACK>(Protocol.G_TO_C_RNG_COLLECT_ACK);
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, ack.ErrorCode);
         Assert.Equal([Protocol.G_TO_C_RNG_COLLECT_ACK], fixture.ConnectionFor(session).DeliveredProtocols);
-        Assert.False(fixture.Doors.IsDoorOpen(70001, 201));
+        Assert.False((fixture.Store.Get(70001)?.Doors.IsDoorOpen(201) == true));
         Assert.Null(fixture.Store.Get(70001));
     }
 
@@ -237,7 +237,7 @@ public sealed class GameClientSessionPublicationTests
             new C_TO_G_RNG_COLLECT_START { InteractId = 702000101 });
 
         Assert.Empty(fixture.ConnectionFor(session).AttemptedProtocols);
-        Assert.False(fixture.Doors.IsDoorOpen(70001, 201));
+        Assert.False((fixture.Store.Get(70001)?.Doors.IsDoorOpen(201) == true));
     }
 
     [Fact]
@@ -581,10 +581,8 @@ public sealed class GameClientSessionPublicationTests
         public ConcurrentQueue<string>? CleanupTimeline { get; set; }
         public InteractableStateManager Interactables { get; } = new();
         public InGameInventoryManager Inventories { get; } = new();
-        public AreaItemStockManager AreaStocks { get; } = new(false);
         public GroundItemManager GroundItems { get; } = new();
         public SummonStoneManager SummonStones { get; } = new();
-        public DoorStateManager Doors { get; } = new();
         public MatchRosterManager Roster { get; } = new(NullLogger.Instance);
         public AreaClosureManager Closures { get; } = new(NullLogger.Instance);
         public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
@@ -595,9 +593,8 @@ public sealed class GameClientSessionPublicationTests
         public RecordingSession CreateSession(long matchingId, long playerId, AreaType area)
         {
             Store.GetOrCreate(matchingId);
-            AreaStocks.InitializeMatching(matchingId);
             GroundItems.InitializeMatching(matchingId);
-            Doors.InitializeMatching(matchingId);
+            Store.Get(matchingId)!.Doors.Initialize();
 
             var connection = new RecordingTcpConnection();
             Activate(connection);
@@ -606,10 +603,8 @@ public sealed class GameClientSessionPublicationTests
                 _sessions,
                 Interactables,
                 Inventories,
-                AreaStocks,
                 GroundItems,
                 SummonStones,
-                Doors,
                 Roster,
                 Closures,
                 Bots,
@@ -714,10 +709,8 @@ public sealed class GameClientSessionPublicationTests
             List<GameClientSession> sessions,
             InteractableStateManager interactables,
             InGameInventoryManager inventories,
-            AreaItemStockManager areaStocks,
             GroundItemManager groundItems,
             SummonStoneManager summonStones,
-            DoorStateManager doors,
             MatchRosterManager roster,
             AreaClosureManager closures,
             BotPlayerManager bots,
@@ -737,10 +730,8 @@ public sealed class GameClientSessionPublicationTests
                     .ToList(),
                 interactables,
                 inventories,
-                areaStocks,
                 groundItems,
                 summonStones,
-                doors,
                 roster,
                 closures,
                 bots,

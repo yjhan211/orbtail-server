@@ -280,23 +280,6 @@ namespace network.common.data.models
         [Key("jamCounts")] public List<int> JamCounts { get; set; } = new();
     }
 
-    /// <summary>
-    /// 공개 미니맵용 지역 자연 재고 상태다. 정확한 잔여 수량은 전송하지 않는다.
-    /// </summary>
-    [MessagePackObject]
-    public class AreaNaturalStockState : IMessagePackObject
-    {
-        [Key("areaType")] public AreaType AreaType { get; set; }
-        [Key("isDepleted")] public bool IsDepleted { get; set; }
-        // 공개 정보는 색상별 소진 여부까지만이다. 정확한 남은 개수는 서버에만 둔다.
-        [Key("availableOrbColors")] public List<OrbColor> AvailableOrbColors { get; set; } = new();
-    }
-
-    [MessagePackObject]
-    public class G_TO_C_AREA_STOCK_STATE : IMessagePackObject
-    {
-        [Key("areas")] public List<AreaNaturalStockState> Areas { get; set; } = new();
-    }
 
     [MessagePackObject]
     public class G_TO_C_AREA_EXIT_BLOCKED : IMessagePackObject
