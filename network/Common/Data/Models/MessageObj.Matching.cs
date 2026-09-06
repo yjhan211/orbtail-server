@@ -49,9 +49,9 @@ namespace network.common.data.models
     [MessagePackObject]
     public class MatchManifest
     {
-        [Key(0)] public List<long> HumanPlayerIds { get; set; } = new();
-        [Key(1)] public int BotCount { get; set; }
-        [Key(2)] public MatchMode Mode { get; set; }
+        [Key("humanPlayerIds")] public List<long> HumanPlayerIds { get; set; } = new();
+        [Key("botCount")] public int BotCount { get; set; }
+        [Key("mode")] public MatchMode Mode { get; set; }
     }
 
     public enum MatchMode

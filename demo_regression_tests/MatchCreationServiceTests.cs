@@ -29,7 +29,7 @@ public sealed class MatchCreationServiceTests
 
     private MatchCreationService CreatePass(DevMatchOverrides? overrides = null, CancellationToken shutdown = default)
     {
-        overrides ??= new DevMatchOverrides(false, false, _cache, new FakeRedLockFactory(), _logger);
+        overrides ??= new DevMatchOverrides(false);
         return new MatchCreationService(_cache, _queue, _reservations, _handoff, _gameServers, overrides, _logger, shutdown);
     }
 
@@ -204,7 +204,7 @@ public sealed class MatchCreationServiceTests
     }
 
     [Fact]
-    public async Task RunAsync_DefaultRulesMatchEachWaitingHumanSeparatelyWithSevenBots()
+    public async Task RunAsync_GroupsWaitingHumansTogetherAndLeavesFreshRequest()
     {
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         MatchingQueueData waitedA = UserServerMatchingTestData.HumanEntry(1);
@@ -214,14 +214,15 @@ public sealed class MatchCreationServiceTests
         await UserServerMatchingTestData.AddEntryAsync(_cache, waitedB, now - 9);
         await UserServerMatchingTestData.AddEntryAsync(_cache, fresh, now);
 
-        await CreatePass().RunAsync();
+        var overrides = new DevMatchOverrides(false);
+        await CreatePass(overrides).RunAsync();
 
-        Assert.Equal("2", _cache.GetString(MatchingRedisKeys.MatchingIdKey));
-        Assert.Equal(2, _handoff.StoredManifests.Count);
-        Assert.All(_handoff.StoredManifests.Values, manifest => Assert.Equal(7, manifest.BotCount));
+        Assert.Equal("1", _cache.GetString(MatchingRedisKeys.MatchingIdKey));
+        Assert.Single(_handoff.StoredManifests);
+        Assert.All(_handoff.StoredManifests.Values, manifest => Assert.Equal(6, manifest.BotCount));
         Assert.Equal(new long[] { 1, 2 }, _handoff.Deliveries.Select(d => d.Entry.PlayerId));
         Assert.Equal("1", ReservationOf(1));
-        Assert.Equal("2", ReservationOf(2));
+        Assert.Equal("1", ReservationOf(2));
         Assert.Null(ReservationOf(3));
         Assert.True(_cache.SortedSetContains(MatchingQueue.QueueKey, UserServerMatchingTestData.RequestBytes(fresh)));
         Assert.Equal(1, _cache.SortedSetCount(MatchingQueue.QueueKey));
@@ -230,7 +231,7 @@ public sealed class MatchCreationServiceTests
     [Fact]
     public async Task RunAsync_SoloMapValidationPublishesModeWithoutBots()
     {
-        var overrides = new DevMatchOverrides(false, true, _cache, new FakeRedLockFactory(), _logger);
+        var overrides = new DevMatchOverrides(true);
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         MatchingQueueData player = UserServerMatchingTestData.HumanEntry(1);
         await UserServerMatchingTestData.AddEntryAsync(_cache, player, now - 10);
@@ -253,6 +254,32 @@ public sealed class MatchCreationServiceTests
         Assert.Empty(_handoff.Events);
     }
 
+    [Theory]
+    [InlineData(1, 0, 0, 1)]
+    [InlineData(1, 5, 1, 0)]
+    [InlineData(3, 10, 1, 0)]
+    [InlineData(7, 20, 1, 0)]
+    [InlineData(8, 20, 1, 0)]
+    [InlineData(1, 60, 1, 0)]
+    [InlineData(7, 60, 1, 0)]
+    [InlineData(10, 60, 2, 0)]
+    public async Task RunAsync_NormalRulesGroupEligibleRequestsAndFillRemainder(
+        int humans, int ageSeconds, int matches, int remaining)
+    {
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        await EnqueueHumansAsync(humans, now - ageSeconds);
+
+        await CreatePass().RunAsync();
+
+        Assert.Equal(matches, _handoff.StoredManifests.Count);
+        Assert.Equal(remaining, _cache.SortedSetCount(MatchingQueue.QueueKey));
+        Assert.All(_handoff.StoredManifests.Values, manifest =>
+            Assert.Equal(8, manifest.HumanPlayerIds.Count + manifest.BotCount));
+        Assert.Equal(humans - remaining, _handoff.Deliveries.Count);
+        if (humans >= 8)
+            Assert.Contains(_handoff.StoredManifests.Values, manifest => manifest.BotCount == 0);
+    }
+
     [Fact]
     public async Task RunAsync_ShutdownTokenStopsBeforeAnyGroup()
     {
@@ -269,16 +296,16 @@ public sealed class MatchCreationServiceTests
     }
 
     [Fact]
-    public async Task RunAsync_TwoPlayerTestWaitsForSecondHuman()
+    public async Task RunAsync_OneHumanStartsWithBotsWithoutWaitingForSecondHuman()
     {
-        var overrides = new DevMatchOverrides(true, false, _cache, new FakeRedLockFactory(), _logger);
+        var overrides = new DevMatchOverrides(false);
         long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         MatchingQueueData alone = UserServerMatchingTestData.HumanEntry(1);
         await UserServerMatchingTestData.AddEntryAsync(_cache, alone, now - 100);
 
         await CreatePass(overrides).RunAsync();
 
-        Assert.Empty(_handoff.Events);
-        Assert.Equal(1, _cache.SortedSetCount(MatchingQueue.QueueKey));
+        Assert.Equal(7, Assert.Single(_handoff.StoredManifests).Value.BotCount);
+        Assert.Equal(0, _cache.SortedSetCount(MatchingQueue.QueueKey));
     }
 }

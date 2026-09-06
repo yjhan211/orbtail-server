@@ -5,6 +5,21 @@ namespace demo_regression_tests;
 
 public sealed class MatchManifestSerializationTests
 {
+    [Fact]
+    public void ManifestUsesStringKeys()
+    {
+        byte[] bytes = MessagePackSerializer.Serialize(new MatchManifest());
+        var reader = new MessagePackReader(bytes);
+        Assert.Equal(3, reader.ReadMapHeader());
+        var keys = new List<string>();
+        for (int i = 0; i < 3; i++)
+        {
+            keys.Add(reader.ReadString()!);
+            reader.Skip();
+        }
+        Assert.Equal(new[] { "humanPlayerIds", "botCount", "mode" }, keys);
+    }
+
     [Theory]
     [InlineData(0, MatchMode.SoloMapValidation)]
     [InlineData(7, MatchMode.Normal)]

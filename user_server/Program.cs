@@ -84,10 +84,7 @@ internal static class Program
 
         services.AddSingleton<MatchingReservationService>();
         services.AddSingleton<MatchingQueue>();
-        services.AddSingleton(sp => DevMatchOverrides.FromEnvironment(
-            sp.GetRequiredService<IRedisOperations>(),
-            sp.GetRequiredService<IRedLockFactory>(),
-            sp.GetRequiredService<ILogger>()));
+        services.AddSingleton(_ => DevMatchOverrides.FromEnvironment());
         services.AddSingleton<IGameServerRegistry, RedisGameServerRegistry>();
         services.AddSingleton<IGameServerAllocator, GameServerAllocator>();
         services.AddSingleton<BackgroundTaskTracker>();
