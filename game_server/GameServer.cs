@@ -1,5 +1,3 @@
-using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Net;
 using game_server.admin.dto;
 using game_server.network;
@@ -14,7 +12,6 @@ using network.common.data.helpers;
 using network.common.data.models;
 using network.core;
 using network.gamehandoff;
-using network.helpers;
 using network.hosting;
 using network.infrastructure.messaging;
 using network.infrastructure.redis;
@@ -43,7 +40,6 @@ public partial class GameServer(
     GameServerDevOptions devOptions)
     : IHostedService
 {
-    private const int MatchingLifecycleTerminalMatchRetention = 4096;
     private static readonly TimeSpan ShutdownStageTimeout = TimeSpan.FromSeconds(5);
 
     private readonly GameSessionRegistry _sessionRegistry = new();
@@ -58,7 +54,6 @@ public partial class GameServer(
     private readonly SwarmMonsterDirector _swarmMonsterDirector =
         new(monsterSpawnEnabled: devOptions.MonsterSpawnEnabled);
 
-    // #294 후속 — Swarm 상태 홀더는 matchingId 소유 런타임 아래에서 함께 생성·제거한다.
     private readonly SwarmMatchRuntimeStore _swarmMatchRuntimes = new();
     private readonly SummonStoneManager _summonStoneManager = new();
     private readonly MatchRosterManager _matchRosterManager = new(logger);
@@ -69,21 +64,13 @@ public partial class GameServer(
         configuration["MATCH_SUMMARY_DIRECTORY"],
         configuration.GetValue<int>("MATCH_SUMMARY_MAX_FILES", MatchSummaryFileStore.DefaultMaxSummaries));
     private readonly EncounterRevealManager _encounterRevealManager = new();
-    private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, string>>
-        _matchingLifecycleTerminalSubjects = new();
-    private readonly ConcurrentQueue<long> _matchingLifecycleTerminalMatchOrder = new();
     private MatchRuntimeStore? _matchRuntimes;
     private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
-    private readonly ConcurrentDictionary<long, Task> _pendingMatchingRedisCleanupTasks = new();
-    // 재시작해도 되감기지 않도록 기동 시각을 섞는다. 고정 시드로 시작하면 서버를 다시
-    // 올릴 때마다 같은 matchingId가 나오고, 매치 요약 파일이 같은 이름을 만나
-    // 저장이 통째로 건너뛰어진다(기존 파일 우선 규칙).
-    private long _adminBotOnlyMatchingIdSeed =
-        9_000_000 + DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond % 900_000;
+    private long _adminBotOnlyMatchingIdSeed = 9_000_000 + DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond % 900_000;
     private long _adminBotOnlyPlayerIdSeed = -900_000_000;
-    private INatsClient? _matchingLifecycleNatsClient;
-    private long _nextMatchingRedisCleanupId;
     private int _stopping;
+
+    internal MatchingLifecycleService MatchingLifecycle { get; } = new(redisOperations, logger);
 
     private CancellationTokenSource _cts = new();
     private Timer? _resourceTickTimer;        // 폐쇄 구역 등 주기성 자원 변화
@@ -142,7 +129,7 @@ public partial class GameServer(
 
     /// <summary>정리가 끝난 매치의 Redis 인계 키를 잠금 밖에서 지운다 (셧다운이 완료를 기다린다).</summary>
     private void StartMatchingRedisCleanup(long matchingId) =>
-        PrepareMatchingRedisCleanup(matchingId).Invoke();
+        MatchingLifecycle.PrepareRedisCleanup(matchingId).Invoke();
 
     internal const int ResourceTickIntervalSeconds = 5;
     // ClosedAreaStaminaPenaltyPerTick 제거 — v0.1.9 #66: 폐쇄 구역 패널티 → 오염도로 변경
@@ -237,7 +224,7 @@ public partial class GameServer(
             "timers");
 
         await RunShutdownStageAsync(
-            WaitForPendingMatchingRedisCleanupsAsync(),
+            MatchingLifecycle.DrainAsync(),
             "matching Redis cleanup");
 
         if (_nodeAdvertiser != null)
@@ -248,7 +235,7 @@ public partial class GameServer(
         }
 
         _cts.Dispose();
-        await CloseMatchingLifecycleNatsClientAsync();
+        await MatchingLifecycle.CloseAsync();
 
         logger.LogInformation("Game server stopped.");
     }
@@ -304,7 +291,7 @@ public partial class GameServer(
 
         try
         {
-            _matchingLifecycleNatsClient = natsClientFactory.Create();
+            MatchingLifecycle.Start(natsClientFactory.Create());
             // 서버 환경에서 CSV 파일 경로 설정
             // Dev: 소스 디렉토리에서 직접 읽기 (Docker 볼륨 마운트 대응)
             string networkSourcePath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..",
@@ -687,198 +674,6 @@ public partial class GameServer(
         }
     }
 
-    /// <summary>
-    ///     플레이어의 exact matching reservation 해제를 먼저 시도한 뒤 NATS Core로 종료 사실을 알린다.
-    ///     Redis와 NATS 중 한 경로만 성공해도 user_server가 배정을 복구할 수 있고, 둘 다 실패하면 reservation TTL이 남는다.
-    /// </summary>
-    private void PublishMatchingLifecycle(string subject, long playerId, long matchingId)
-    {
-        Action? dispatch = PrepareMatchingLifecyclePublication(subject, playerId, matchingId);
-        dispatch?.Invoke();
-    }
-
-    /// <summary>
-    ///     플레이어별 terminal subject를 지금 선점하고, 실제 Core publish는 한 번만 실행되는 Action으로
-    ///     돌려준다. 완료(PlayerCompleted) 이벤트는 match runtime finalization commit 뒤에 dispatch된다.
-    /// </summary>
-    private Action? PrepareMatchingLifecyclePublication(string subject, long playerId, long matchingId)
-    {
-        if (!TryRegisterMatchingLifecycleTerminal(subject, playerId, matchingId))
-            return null;
-
-        int dispatchStarted = 0;
-        return () =>
-        {
-            if (Interlocked.Exchange(ref dispatchStarted, 1) != 0)
-                return;
-
-            StartMatchingLifecyclePublication(subject, playerId, matchingId);
-        };
-    }
-
-    /// <summary>
-    ///     한 매치의 한 플레이어는 terminal subject(left/completed/entry_failed/released)를 하나만
-    ///     발행한다. 서로 다른 종료 원인이 중복되면 세션 통지와 reservation 해제의 의미가 충돌한다.
-    /// </summary>
-    private bool TryRegisterMatchingLifecycleTerminal(
-        string subject,
-        long playerId,
-        long matchingId)
-    {
-        if (playerId <= 0 || matchingId <= 0)
-            return true;
-
-        if (!_matchingLifecycleTerminalSubjects.TryGetValue(
-                matchingId,
-                out ConcurrentDictionary<long, string>? playerSubjects))
-        {
-            var candidate = new ConcurrentDictionary<long, string>();
-            if (_matchingLifecycleTerminalSubjects.TryAdd(matchingId, candidate))
-            {
-                playerSubjects = candidate;
-                _matchingLifecycleTerminalMatchOrder.Enqueue(matchingId);
-                while (_matchingLifecycleTerminalSubjects.Count >
-                       MatchingLifecycleTerminalMatchRetention &&
-                       _matchingLifecycleTerminalMatchOrder.TryDequeue(out long expiredMatchingId))
-                {
-                    _matchingLifecycleTerminalSubjects.TryRemove(expiredMatchingId, out _);
-                }
-            }
-            else
-            {
-                playerSubjects = _matchingLifecycleTerminalSubjects[matchingId];
-            }
-        }
-
-        if (playerSubjects.TryAdd(playerId, subject))
-            return true;
-
-        playerSubjects.TryGetValue(playerId, out string? existingSubject);
-        logger.LogDebug(
-            "Ignored duplicate or conflicting matching lifecycle terminal event: MatchingId={MatchingId}, PlayerId={PlayerId}, ExistingSubject={ExistingSubject}, IgnoredSubject={IgnoredSubject}",
-            matchingId,
-            playerId,
-            existingSubject,
-            subject);
-        return false;
-    }
-
-    private void StartMatchingLifecyclePublication(string subject, long playerId, long matchingId)
-    {
-        long operationId = Interlocked.Increment(ref _nextMatchingRedisCleanupId);
-        var completion = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!_pendingMatchingRedisCleanupTasks.TryAdd(operationId, completion.Task))
-        {
-            throw new InvalidOperationException(
-                $"Duplicate matching lifecycle operation id: {operationId}.");
-        }
-
-        _ = RunTrackedMatchingLifecyclePublicationAsync(
-            subject,
-            playerId,
-            matchingId,
-            operationId,
-            completion);
-    }
-
-    private async Task RunTrackedMatchingLifecyclePublicationAsync(
-        string subject,
-        long playerId,
-        long matchingId,
-        long operationId,
-        TaskCompletionSource<bool> completion)
-    {
-        try
-        {
-            try
-            {
-                await ReleaseMatchingReservationBeforeLifecycleAsync(playerId, matchingId);
-            }
-            catch (Exception ex)
-            {
-                logger.LogCritical(
-                    ex,
-                    "Unexpected matching reservation release failure before lifecycle publish: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    subject,
-                    playerId,
-                    matchingId);
-            }
-
-            PublishMatchingLifecycleCore(subject, playerId, matchingId);
-        }
-        finally
-        {
-            CompleteMatchingRedisCleanup(operationId, completion);
-        }
-    }
-
-    private async Task ReleaseMatchingReservationBeforeLifecycleAsync(long playerId, long matchingId)
-    {
-        if (playerId <= 0 || matchingId <= 0)
-            return;
-
-        string expectedReservation = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        try
-        {
-            bool released = await redisOperations.StringDeleteIfEqualsAsync(
-                MatchingRedisKeys.ReservationKey(playerId),
-                expectedReservation);
-            if (!released)
-            {
-                logger.LogWarning(
-                    "Matching reservation was absent or changed before lifecycle publish: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    playerId,
-                    matchingId);
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(
-                ex,
-                "Matching reservation release failed before lifecycle publish: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                playerId,
-                matchingId);
-        }
-    }
-
-    private void PublishMatchingLifecycleCore(string subject, long playerId, long matchingId)
-    {
-        try
-        {
-            byte[] payload = MessagePackSerializer.Serialize(new G_TO_U_MATCHING_LIFECYCLE
-            {
-                PlayerId = playerId,
-                MatchingId = matchingId
-            }, MessagePackSerializerOptions.Standard);
-            _matchingLifecycleNatsClient?.Publish(subject, payload);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(
-                ex,
-                "Matching lifecycle publish failed: Subject={Subject}, PlayerId={PlayerId}, MatchingId={MatchingId}",
-                subject,
-                playerId,
-                matchingId);
-        }
-    }
-
-    private async Task CloseMatchingLifecycleNatsClientAsync()
-    {
-        INatsClient? natsClient = Interlocked.Exchange(ref _matchingLifecycleNatsClient, null);
-        if (natsClient == null)
-            return;
-
-        try
-        {
-            await natsClient.CloseAsync(CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "NATS close failed during shutdown.");
-        }
-    }
 
     private IConnectionSession? CreateClientSession(TcpConnection connection)
     {
@@ -915,14 +710,14 @@ public partial class GameServer(
                 HandleSwarmOrbDecision,
                 GetItemCombineRandom,
                 (playerId, matchingId) =>
-                    PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerLeft, playerId, matchingId),
+                    MatchingLifecycle.Publish(MatchingLifecycleSubjects.PlayerLeft, playerId, matchingId),
                 (playerId, matchingId) =>
-                    PrepareMatchingLifecyclePublication(
+                    MatchingLifecycle.PreparePublication(
                         MatchingLifecycleSubjects.PlayerCompleted,
                         playerId,
                         matchingId),
                 (playerId, matchingId) =>
-                    PublishMatchingLifecycle(MatchingLifecycleSubjects.PlayerReleased, playerId, matchingId),
+                    MatchingLifecycle.Publish(MatchingLifecycleSubjects.PlayerReleased, playerId, matchingId),
                 () => Volatile.Read(ref _stopping) != 0,
                 AbortMatchAfterEntryFailure,
                 devOptions: _devOptions);
@@ -1063,7 +858,7 @@ public partial class GameServer(
     /// <summary>이미 끝난 매치에 늦게 도착한 입장 실패 — 이 세션 한 명만 발행·끊는다.</summary>
     private void PublishLateEntryFailure(GameClientSession session, long playerId, long matchingId)
     {
-        PublishMatchingLifecycle(
+        MatchingLifecycle.Publish(
             MatchingLifecycleSubjects.PlayerEntryFailed,
             playerId,
             matchingId);
@@ -1098,7 +893,7 @@ public partial class GameServer(
         {
             try
             {
-                Action? publication = PrepareMatchingLifecyclePublication(
+                Action? publication = MatchingLifecycle.PreparePublication(
                     MatchingLifecycleSubjects.PlayerEntryFailed,
                     playerId,
                     matchingId);
@@ -1214,111 +1009,6 @@ public partial class GameServer(
             matchingId, endReason);
     }
 
-    private async Task CleanupAbandonedMatchingRedisAsync(long matchingId)
-    {
-        try
-        {
-            await redisOperations.KeyDeleteAsync(MatchingRedisKeys.Key(matchingId));
-            await redisOperations.HashDeleteAsync("matching_bots", matchingId);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex,
-                "Failed to remove abandoned matching from Redis: MatchingId={MatchingId}",
-                matchingId);
-        }
-    }
-
-    private Action PrepareMatchingRedisCleanup(long matchingId)
-    {
-        long operationId = Interlocked.Increment(ref _nextMatchingRedisCleanupId);
-        var completion = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!_pendingMatchingRedisCleanupTasks.TryAdd(operationId, completion.Task))
-        {
-            throw new InvalidOperationException(
-                $"Duplicate matching Redis cleanup operation id: {operationId}.");
-        }
-
-        int dispatchStarted = 0;
-        return () =>
-        {
-            if (Interlocked.Exchange(ref dispatchStarted, 1) != 0)
-                return;
-
-            try
-            {
-                _ = RunTrackedMatchingRedisCleanupAsync(
-                    matchingId,
-                    operationId,
-                    completion);
-            }
-            catch (Exception ex)
-            {
-                logger.LogCritical(
-                    ex,
-                    "Unexpected matching Redis cleanup dispatch failure: MatchingId={MatchingId}, OperationId={OperationId}",
-                    matchingId,
-                    operationId);
-                CompleteMatchingRedisCleanup(operationId, completion);
-            }
-        };
-    }
-
-    private async Task RunTrackedMatchingRedisCleanupAsync(
-        long matchingId,
-        long operationId,
-        TaskCompletionSource<bool> completion)
-    {
-        try
-        {
-            await CleanupAbandonedMatchingRedisAsync(matchingId);
-        }
-        catch (Exception ex)
-        {
-            logger.LogCritical(
-                ex,
-                "Unexpected matching Redis cleanup failure: MatchingId={MatchingId}, OperationId={OperationId}",
-                matchingId,
-                operationId);
-        }
-        finally
-        {
-            CompleteMatchingRedisCleanup(operationId, completion);
-        }
-    }
-
-    private void CompleteMatchingRedisCleanup(
-        long operationId,
-        TaskCompletionSource<bool> completion)
-    {
-        try
-        {
-            completion.TrySetResult(true);
-        }
-        finally
-        {
-            ((ICollection<KeyValuePair<long, Task>>)_pendingMatchingRedisCleanupTasks)
-                .Remove(new KeyValuePair<long, Task>(operationId, completion.Task));
-        }
-    }
-
-    private async Task WaitForPendingMatchingRedisCleanupsAsync()
-    {
-        while (true)
-        {
-            var pendingCleanups = _pendingMatchingRedisCleanupTasks.ToArray();
-            if (pendingCleanups.Length == 0)
-                return;
-
-            await Task.WhenAll(pendingCleanups.Select(pair => pair.Value));
-            foreach (var pendingCleanup in pendingCleanups)
-            {
-                ((ICollection<KeyValuePair<long, Task>>)_pendingMatchingRedisCleanupTasks)
-                    .Remove(pendingCleanup);
-            }
-        }
-    }
 
     private Action? RegisterClientSession(long playerId, GameClientSession session)
     {

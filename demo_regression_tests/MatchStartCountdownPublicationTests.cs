@@ -35,7 +35,7 @@ public sealed class MatchStartCountdownPublicationTests
         string broadcast = ReadMethodSlice(
             server,
             "private void BroadcastMatchStartCountdowns(",
-            "private void PublishMatchingLifecycle(");
+            "private IConnectionSession? CreateClientSession(");
         string matchTick = ReadMethodSlice(
             combat,
             "private void ProcessProximityAutoCombatTick(object? state)",
@@ -410,22 +410,18 @@ public sealed class MatchStartCountdownPublicationTests
         long playerId,
         long matchingId)
     {
-        return Assert.IsType<Action?>(typeof(GameServer)
-            .GetMethod(
-                "PrepareMatchingLifecyclePublication",
-                BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(server, [subject, playerId, matchingId]));
+        return server.MatchingLifecycle.PreparePublication(subject, playerId, matchingId);
     }
 
     private static ConcurrentDictionary<long, ConcurrentDictionary<long, string>>
         GetTerminalSubjects(GameServer server)
     {
         return Assert.IsType<ConcurrentDictionary<long, ConcurrentDictionary<long, string>>>(
-            typeof(GameServer)
+            typeof(MatchingLifecycleService)
                 .GetField(
                     "_matchingLifecycleTerminalSubjects",
                     BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(server));
+                .GetValue(server.MatchingLifecycle));
     }
 
     private static void SetSessionIdentity(
