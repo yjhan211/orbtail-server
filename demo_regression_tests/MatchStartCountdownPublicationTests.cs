@@ -45,7 +45,7 @@ public sealed class MatchStartCountdownPublicationTests
         AssertInOrder(
             broadcast,
             "MatchStartGate.IsEntryTimedOut(matchingId, DateTime.UtcNow)",
-            "AbortMatchAfterEntryFailure(anchorSession);",
+            "EntryFailureHandler.Handle(anchorSession);",
             "MatchRuntimes.Enter(matchingId, out MatchScope scope)",
             "scope.Runtime.IsTerminal",
             "var snapshot = MatchStartGate.GetSnapshot(matchingId);",
@@ -397,11 +397,7 @@ public sealed class MatchStartCountdownPublicationTests
 
     private static void InvokeEntryAbort(GameServer server, GameClientSession session)
     {
-        typeof(GameServer)
-            .GetMethod(
-                "AbortMatchAfterEntryFailure",
-                BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(server, [session]);
+        server.EntryFailureHandler.Handle(session);
     }
 
     private static Action? PrepareLifecyclePublication(

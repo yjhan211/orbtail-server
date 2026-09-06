@@ -1,5 +1,4 @@
 using System.Net;
-using game_server.admin.dto;
 using game_server.network;
 using game_server.services;
 using MessagePack;
@@ -7,7 +6,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.core;
@@ -65,9 +63,8 @@ public partial class GameServer(
         configuration.GetValue<int>("MATCH_SUMMARY_MAX_FILES", MatchSummaryFileStore.DefaultMaxSummaries));
     private readonly EncounterRevealManager _encounterRevealManager = new();
     private MatchRuntimeStore? _matchRuntimes;
+    private MatchEntryFailureHandler? _entryFailureHandler;
     private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
-    private long _adminBotOnlyMatchingIdSeed = 9_000_000 + DateTime.UtcNow.Ticks / TimeSpan.TicksPerSecond % 900_000;
-    private long _adminBotOnlyPlayerIdSeed = -900_000_000;
     private int _stopping;
 
     internal MatchingLifecycleService MatchingLifecycle { get; } = new(redisOperations, logger);
@@ -89,6 +86,10 @@ public partial class GameServer(
     /// </summary>
     internal MatchRuntimeStore MatchRuntimes =>
         LazyInitializer.EnsureInitialized(ref _matchRuntimes, CreateMatchRuntimeStore)!;
+
+    internal MatchEntryFailureHandler EntryFailureHandler =>
+        LazyInitializer.EnsureInitialized(ref _entryFailureHandler,
+            () => new MatchEntryFailureHandler(MatchRuntimes, _sessionRegistry, MatchingLifecycle, logger))!;
 
     private MatchRuntimeStore CreateMatchRuntimeStore() =>
         new(logger, CreateMatchRuntime, BuildMatchCleanupSteps(), StartMatchingRedisCleanup);
@@ -632,7 +633,7 @@ public partial class GameServer(
                     logger.LogWarning(
                         "Match entry deadline expired before every human became ready: MatchingId={MatchingId}",
                         matchingId);
-                    AbortMatchAfterEntryFailure(anchorSession);
+                    EntryFailureHandler.Handle(anchorSession);
                 }
                 continue;
             }
@@ -719,7 +720,7 @@ public partial class GameServer(
                 (playerId, matchingId) =>
                     MatchingLifecycle.Publish(MatchingLifecycleSubjects.PlayerReleased, playerId, matchingId),
                 () => Volatile.Read(ref _stopping) != 0,
-                AbortMatchAfterEntryFailure,
+                EntryFailureHandler.Handle,
                 devOptions: _devOptions);
 
             logger.LogInformation("Game client session created");
@@ -775,161 +776,6 @@ public partial class GameServer(
         }
     }
 
-    /// <summary>
-    ///     입장 실패로 매치를 중단한다. 터미널 전이를 이긴 호출이 잠금 안에서 로스터 전원의 lifecycle subject
-    ///     선점과 FATAL 응답·끊기를 소유하고(발행은 잠금 밖 후처리), 이미 끝난 매치에 늦게 온 호출은
-    ///     자기 세션의 entry_failed 발행과 끊기만 한다 — 정상 종료가 먼저 선점한 subject는 중복 제거된다.
-    /// </summary>
-    private void AbortMatchAfterEntryFailure(GameClientSession session)
-    {
-        if (!session.PlayerId.HasValue || session.MatchingId <= 0)
-            return;
-
-        long playerId = session.PlayerId.Value;
-        long matchingId = session.MatchingId;
-        MatchRuntime? runtime = MatchRuntimes.Get(matchingId);
-        if (runtime == null)
-        {
-            PublishLateEntryFailure(session, playerId, matchingId);
-            return;
-        }
-
-        bool wonTerminal = false;
-        using (MatchRuntimes.Enter(runtime))
-        {
-            if (!runtime.IsTerminal)
-            {
-                if (_sessionRegistry.TryGetCurrent(playerId, out GameClientSession? currentSession) &&
-                    currentSession != null &&
-                    !ReferenceEquals(currentSession, session) &&
-                    currentSession.MatchingId == matchingId)
-                {
-                    logger.LogDebug(
-                        "Skipped entry-failed reservation release for superseded session: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                        playerId,
-                        matchingId);
-                    return;
-                }
-
-                wonTerminal = runtime.TryMarkTerminal();
-                List<GameClientSession> affectedSessions = GetSessionsByMatch(matchingId);
-                foreach (GameClientSession affectedSession in affectedSessions)
-                    affectedSession.TryMarkMatchingLifecycleHandledExternally();
-
-                IReadOnlyCollection<long> affectedPlayerIds =
-                    session.MatchHumanPlayerIds.Count > 0
-                        ? session.MatchHumanPlayerIds.ToArray()
-                        : [playerId];
-                var lifecyclePublications = new List<Action>();
-                PrepareEntryFailureLifecycle(matchingId, affectedPlayerIds, lifecyclePublications);
-                foreach (GameClientSession affectedSession in affectedSessions)
-                {
-                    try
-                    {
-                        affectedSession.DisconnectForEntryFailure();
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.LogWarning(
-                            ex,
-                            "Failed to deliver entry failure disconnect: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                            affectedSession.PlayerId,
-                            matchingId);
-                    }
-                }
-
-                runtime.AfterRelease.Add(
-                    () => DispatchPreparedEntryFailureLifecycle(matchingId, lifecyclePublications));
-            }
-        }
-
-        if (wonTerminal)
-        {
-            logger.LogWarning(
-                "Match aborted after client entry failure: MatchingId={MatchingId}, FailedPlayerId={PlayerId}",
-                matchingId,
-                playerId);
-            return;
-        }
-
-        PublishLateEntryFailure(session, playerId, matchingId);
-    }
-
-    /// <summary>이미 끝난 매치에 늦게 도착한 입장 실패 — 이 세션 한 명만 발행·끊는다.</summary>
-    private void PublishLateEntryFailure(GameClientSession session, long playerId, long matchingId)
-    {
-        MatchingLifecycle.Publish(
-            MatchingLifecycleSubjects.PlayerEntryFailed,
-            playerId,
-            matchingId);
-        try
-        {
-            session.DisconnectForEntryFailure();
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(
-                ex,
-                "Failed to disconnect late entry failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                playerId,
-                matchingId);
-        }
-    }
-
-    /// <summary>
-    ///     잠금 안에서 플레이어별 subject를 선점하고 발행 작업만 남긴다 — 정상 종료가 먼저 선점한 subject는
-    ///     늦은 입장 중단이 덮어쓰지 못한다.
-    /// </summary>    /// <summary>
-    ///     Claims each player/subject during pre-finalization and retains only dispatch work for
-    ///     post-commit, so a normal winner's already-prepared terminal subject wins over a late
-    ///     entry abort.
-    /// </summary>
-    private void PrepareEntryFailureLifecycle(
-        long matchingId,
-        IReadOnlyCollection<long> playerIds,
-        List<Action> lifecyclePublications)
-    {
-        foreach (long playerId in playerIds)
-        {
-            try
-            {
-                Action? publication = MatchingLifecycle.PreparePublication(
-                    MatchingLifecycleSubjects.PlayerEntryFailed,
-                    playerId,
-                    matchingId);
-                if (publication != null)
-                    lifecyclePublications.Add(publication);
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(
-                    ex,
-                    "Failed to prepare entry failure lifecycle publication: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    playerId,
-                    matchingId);
-            }
-        }
-    }
-
-    private void DispatchPreparedEntryFailureLifecycle(
-        long matchingId,
-        IReadOnlyList<Action> lifecyclePublications)
-    {
-        foreach (Action publication in lifecyclePublications)
-        {
-            try
-            {
-                publication();
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(
-                    ex,
-                    "Failed to dispatch prepared entry failure lifecycle: MatchingId={MatchingId}",
-                    matchingId);
-            }
-        }
-    }
 
     /// <summary>
     ///     사람 세션 없이 진행되는 매치(관리자 봇 전용 인스턴스)를 정산한다.
@@ -1078,211 +924,4 @@ public partial class GameServer(
         return ids.OrderBy(id => id).ToList();
     }
 
-    public InstanceSnapshot? CreateBotOnlyInstance(int botCount = 10)
-    {
-        // 상한 = 매치 정원 (#223 10인 전환) — 스폰 포드 수와 일치.
-        botCount = Math.Clamp(botCount, 2, Config.SWARM_PLAYERS_PER_MATCH);
-        long matchingId = System.Threading.Interlocked.Increment(ref _adminBotOnlyMatchingIdSeed);
-        var playerIds = Enumerable.Range(0, botCount)
-            .Select(_ => System.Threading.Interlocked.Decrement(ref _adminBotOnlyPlayerIdSeed))
-            .ToList();
-
-        var spawnAssignments = MatchSpawnPlanner.Plan(
-            matchingId, Config.SWARM_MATCH_MAP, playerIds, _devOptions.CrossfireSandbox);
-
-        MatchRuntime runtime = MatchRuntimes.GetOrCreate(matchingId);
-        using (MatchRuntimes.Enter(runtime))
-        {
-            if (runtime.IsTerminal)
-                return null;
-
-            // 사람이 없으므로 카운트다운 없이 즉시 활성 — 미등록 매치는 게이트가 막는다 (#335).
-            MatchStartGate.RegisterBotOnlyMatch(matchingId);
-            _botPlayerManager.RegisterBots(matchingId, Config.SWARM_MATCH_MAP, playerIds, spawnAssignments);
-            int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
-            _gameEventLogManager.BeginMatch(matchingId, matchSeed);
-            foreach (var bot in _botPlayerManager.GetBots(matchingId))
-            {
-                _gameEventLogManager.LogSpawnAssignment(
-                    matchingId,
-                    bot.PlayerId,
-                    matchSeed,
-                    MatchSpawnData.GetAnchorIndex(bot.Cell),
-                    bot.Cell.X,
-                    bot.Cell.Y,
-                    bot.CurrentArea.ToString(),
-                    isBot: true);
-            }
-
-            foreach (long botPlayerId in playerIds)
-                _matchRosterManager.RegisterEntry(matchingId, new RosterEntry { PlayerId = botPlayerId });
-
-            _areaItemStockManager.InitializeMatching(matchingId);
-            _groundItemManager.InitializeMatching(matchingId);
-            _doorStateManager.InitializeMatching(matchingId, Array.Empty<AreaType>());
-
-            _gameEventLogManager.LogSystem(matchingId,
-                $"Bot-only instance created: botCount={botCount}, ids=[{string.Join(",", playerIds)}]");
-        }
-
-        logger.LogInformation(
-            "Bot-only instance created: MatchingId={MatchingId}, BotCount={BotCount}, Ids=[{Ids}]",
-            matchingId, botCount, string.Join(",", playerIds));
-
-        return GetInstanceSnapshot(matchingId);
-    }
-
-    private bool IsBotOnlyChainPlayerActive(long matchingId, long playerId)
-    {
-        var link = _matchRosterManager.GetEntry(matchingId, playerId);
-        return link != null
-               && link.Status != PlayerMatchStatus.ELIMINATED
-               && link.Status != PlayerMatchStatus.SPECTATING;
-    }
-
-    /// <summary>
-    ///     인스턴스 요약 (목록 뷰용)
-    /// </summary>
-    public InstanceSummary? GetInstanceSummary(long matchingId)
-    {
-        var sessions = GetSessionsByMatch(matchingId);
-        var bots = _botPlayerManager.GetBots(matchingId);
-
-        if (sessions.Count == 0 && bots.Count == 0) return null;
-
-        var closureState = _areaClosureManager.GetMatchingState(matchingId);
-        double elapsed = closureState != null
-            ? (DateTime.UtcNow - closureState.GameStartTime).TotalSeconds
-            : 0;
-
-        var closedAreas = closureState?.ClosedAreas
-            .Select(a => a.ToString())
-            .ToList() ?? [];
-
-        int aliveCount = sessions.Count(s => !s.IsEliminated) + bots.Count(b => !b.IsEliminated);
-        string mapId = sessions.FirstOrDefault()?.CurrentMapId.ToString()
-                       ?? _botPlayerManager.GetMatchingMapId(matchingId).ToString();
-
-        return new InstanceSummary
-        {
-            MatchingId = matchingId,
-            MapId = mapId,
-            PlayerCount = sessions.Count + bots.Count,
-            AliveCount = aliveCount,
-            ElapsedSeconds = Math.Round(elapsed, 1),
-            RoundNumber = 0, // 라운드 시스템 퇴역(#246)
-            TotalRounds = 0,
-            RoundPhase = "",
-            RoundRemainingSeconds = 0,
-            RoundPhaseDurationSeconds = 0,
-            RoundSessionEnded = false,
-            ClosedAreas = closedAreas
-        };
-    }
-
-    /// <summary>
-    ///     인스턴스 풀 스냅샷 (폐쇄 스케줄 포함)
-    /// </summary>
-    public InstanceSnapshot? GetFullInstanceSnapshot(long matchingId)
-    {
-        var base_ = GetInstanceSnapshot(matchingId);
-        if (base_ == null) return null;
-
-        var (sequence, closedIds, nextArea, nextAtUnix, secondsLeft, warningActive) =
-            _areaClosureManager.GetClosureSnapshot(matchingId);
-
-        // 시퀀스 한글명 목록
-        var areaNames = sequence.Select(a => GameAreaNameData.Get((AreaType)a)).ToList();
-
-        base_.Closure = new ClosureSnapshot
-        {
-            ClosureSequence = sequence,
-            AreaNames = areaNames,
-            ClosedAreaIds = closedIds,
-            NextClosureAreaType = nextArea,
-            NextClosureAtUnix = nextAtUnix,
-            NextClosureSecondsLeft = secondsLeft,
-            WarningActive = warningActive
-        };
-
-        return base_;
-    }
-
-    /// <summary>
-    ///     인스턴스 상세 스냅샷 (플레이어별 코어 상태 포함)
-    /// </summary>
-    public InstanceSnapshot? GetInstanceSnapshot(long matchingId)
-    {
-        var sessions = GetSessionsByMatch(matchingId);
-
-        var bots = _botPlayerManager.GetBots(matchingId);
-
-        if (sessions.Count == 0 && bots.Count == 0) return null;
-
-        var closureState = _areaClosureManager.GetMatchingState(matchingId);
-        double elapsed = closureState != null
-            ? (DateTime.UtcNow - closureState.GameStartTime).TotalSeconds
-            : 0;
-
-        var closedAreas = closureState?.ClosedAreas
-            .Select(a => a.ToString())
-            .ToList() ?? [];
-
-        var playerSnapshots = new List<PlayerSnapshot>();
-
-        // 1) 인간 플레이어
-        foreach (var s in sessions)
-        {
-            var chainLink = _matchRosterManager.GetEntry(matchingId, s.PlayerId!.Value);
-            playerSnapshots.Add(new PlayerSnapshot
-            {
-                PlayerId = s.PlayerId!.Value,
-                Area = s.CurrentArea.ToString(),
-                Stamina = s.AdminStamina,
-                Corruption = s.AdminCorruption,
-                PlayerMatchStatus = s.PlayerMatchStatus.ToString(),
-                IsBot = s.IsBot,
-                IsEliminated = s.IsEliminated,
-                ChainStatus = chainLink?.Status.ToString() ?? ""
-            });
-        }
-
-        // 2) 봇 — TCP 세션이 없으므로 BotPlayerManager._botStates에서 조회
-        foreach (var bot in bots)
-        {
-            var chainLink = _matchRosterManager.GetEntry(matchingId, bot.PlayerId);
-            playerSnapshots.Add(new PlayerSnapshot
-            {
-                PlayerId = bot.PlayerId,
-                Area = bot.CurrentArea.ToString(),
-                Stamina = bot.Stamina,
-                Corruption = bot.Corruption,
-                PlayerMatchStatus = bot.PlayerMatchStatus.ToString(),
-                IsBot = true,
-                IsEliminated = bot.IsEliminated,
-                ChainStatus = chainLink?.Status.ToString() ?? ""
-            });
-        }
-
-        int aliveCount = sessions.Count(s => !s.IsEliminated) + bots.Count(b => !b.IsEliminated);
-        string mapId = sessions.FirstOrDefault()?.CurrentMapId.ToString()
-                       ?? _botPlayerManager.GetMatchingMapId(matchingId).ToString();
-
-        return new InstanceSnapshot
-        {
-            MatchingId = matchingId,
-            MapId = mapId,
-            PlayerCount = sessions.Count + bots.Count,
-            AliveCount = aliveCount,
-            ElapsedSeconds = Math.Round(elapsed, 1),
-            RoundNumber = 0, // 라운드 시스템 퇴역(#246)
-            TotalRounds = 0,
-            RoundPhase = "",
-            RoundRemainingSeconds = 0,
-            RoundPhaseDurationSeconds = 0,
-            RoundSessionEnded = false,
-            ClosedAreas = closedAreas,
-            Players = playerSnapshots
-        };
-    }
 }

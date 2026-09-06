@@ -2,6 +2,18 @@ namespace demo_regression_tests;
 
 public sealed class ServerDeploymentSurfaceTests
 {
+    [Fact]
+    public void GameServerDoesNotKeepUnusedAdminEntryPoints()
+    {
+        string source = Read("game_server/GameServer.cs");
+        Assert.DoesNotContain("CreateBotOnlyInstance", source);
+        Assert.DoesNotContain("GetInstanceSummary", source);
+        Assert.DoesNotContain("GetFullInstanceSnapshot", source);
+        Assert.DoesNotContain("GetInstanceSnapshot", source);
+        Assert.Contains("GetActiveInstanceIds", source);
+        Assert.Contains("EndBotOnlyMatchIfSettled", source);
+    }
+
     [Theory]
     [InlineData("server.sln")]
     [InlineData("docker-compose.local.yml")]
