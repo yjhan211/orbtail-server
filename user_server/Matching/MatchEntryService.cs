@@ -263,20 +263,19 @@ internal sealed class MatchEntryService(
 
     public async Task NotifyBatchFailedAsync(IEnumerable<MatchingQueueData> players, long matchingId)
     {
-        try
+        foreach (var player in players.DistinctBy(request => request.PlayerId))
         {
-            foreach (var player in players.DistinctBy(request => request.PlayerId))
+            try
             {
-                if (await sessions.DeliverMatchingFailedAsync(player.PlayerId, matchingId, player.RequestId, ErrorCode.MATCHING_FAILED))
+                if (!await sessions.DeliverMatchingFailedAsync(player.PlayerId, matchingId, player.RequestId, ErrorCode.MATCHING_FAILED))
                 {
-                    return;
+                    logger.LogWarning("Matching rollback notification was rejected or found no session: PlayerId={PlayerId}, MatchingId={MatchingId}", player.PlayerId, matchingId);
                 }
-                logger.LogWarning("Matching rollback notification was rejected or found no session: PlayerId={PlayerId}, MatchingId={MatchingId}", player.PlayerId, matchingId);
             }
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to send matching batch rollback notification");
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to send matching rollback notification: PlayerId={PlayerId}, MatchingId={MatchingId}", player.PlayerId, matchingId);
+            }
         }
     }
 

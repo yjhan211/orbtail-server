@@ -161,13 +161,45 @@ public sealed class MatchEntryServiceTests
         Assert.Equal(0, redis.StringGetCalls);
     }
 
+    [Theory]
+    [InlineData("success")]
+    [InlineData("rejected")]
+    [InlineData("exception")]
+    public async Task BatchFailure_ContinuesAfterEachOutcomeAndSkipsDuplicatePlayers(string firstOutcome)
+    {
+        var delivered = new List<long>();
+        var router = new UnusedSessionRouter
+        {
+            OnMatchingFailed = (playerId, matchingId, requestId, errorCode) =>
+            {
+                delivered.Add(playerId);
+                Assert.Equal(42, matchingId);
+                Assert.Equal($"request-{playerId}", requestId);
+                Assert.Equal(ErrorCode.MATCHING_FAILED, errorCode);
+                if (playerId == 1 && firstOutcome == "exception")
+                    return Task.FromException<bool>(new InvalidOperationException("Delivery failed"));
+                return Task.FromResult(playerId != 1 || firstOutcome != "rejected");
+            }
+        };
+        var service = CreateService(new InMemoryRedisOperations(), sessionRouter: router);
+        await service.NotifyBatchFailedAsync(
+        [
+            new MatchingQueueData { PlayerId = 1, RequestId = "request-1" },
+            new MatchingQueueData { PlayerId = 2, RequestId = "request-2" },
+            new MatchingQueueData { PlayerId = 1, RequestId = "duplicate" },
+            new MatchingQueueData { PlayerId = 3, RequestId = "request-3" }
+        ], 42);
+        Assert.Equal(new long[] { 1, 2, 3 }, delivered);
+    }
+
     private static MatchEntryService CreateService(
         InMemoryRedisOperations redis,
         Func<Func<Task>, string, bool>? registerTask = null,
-        CancellationToken shutdownToken = default)
+        CancellationToken shutdownToken = default,
+        IPlayerSessionRouter? sessionRouter = null)
     {
         var logger = new RecordingLogger();
-        var router = new UnusedSessionRouter();
+        var router = sessionRouter ?? new UnusedSessionRouter();
         return new MatchEntryService(
             redis,
             new GameHandoffTicketService(new RedisGameHandoffTicketStore(redis), new GameHandoffTicketOptions()),
@@ -180,10 +212,11 @@ public sealed class MatchEntryServiceTests
 
     private sealed class UnusedSessionRouter : IPlayerSessionRouter
     {
+        public Func<long, long, string, ErrorCode, Task<bool>>? OnMatchingFailed { get; init; }
         public Task<bool> DeliverMatchingSuccessAsync(long playerId, string requestId, U_TO_C_MATCHING_SUCCESS result) =>
             throw new NotSupportedException();
         public Task<bool> DeliverMatchingFailedAsync(long playerId, long matchingId, string requestId, ErrorCode errorCode) =>
-            throw new NotSupportedException();
+            OnMatchingFailed?.Invoke(playerId, matchingId, requestId, errorCode) ?? throw new NotSupportedException();
         public Task<bool> DeliverEntryFailedAsync(long playerId, long matchingId, ErrorCode errorCode) =>
             throw new NotSupportedException();
         public void ClearMatchingAssignment(long playerId, long matchingId) => throw new NotSupportedException();
