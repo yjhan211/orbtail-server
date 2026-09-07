@@ -274,6 +274,22 @@ public class PlayerInGameInventory(long matchingId)
         return OrbData.TryGetActivePair(boardItemIds, out color, out pairTier);
     }
 
+    /// <summary>오브 티어별 가중치와 수량을 합산한다. 봇의 추격과 성장 판단이 같은 전력을 사용한다.</summary>
+    internal float GetOrbPower()
+    {
+        float power = 0f;
+        foreach (var item in GetAllItems())
+        {
+            if (item.Count <= 0) continue;
+            int tier = OrbData.TryGetColorAndTier(item.ItemId, out _, out int attackTier)
+                ? attackTier
+                : OrbData.TryGetRecoveryTier(item.ItemId, out int recoveryTier) ? recoveryTier : 0;
+            if (tier <= 0) continue;
+            power += OrbData.GetSwarmStatTierWeight(tier) * item.Count;
+        }
+        return power;
+    }
+
     /// <summary>보유 오브를 ItemUid 순으로 반환한다. 강화 대상과 월드 꼬리 순번이 이 순서를 공유한다.</summary>
     internal List<InGameItemInfo> GetOrderedOrbs() =>
         GetAllItems()

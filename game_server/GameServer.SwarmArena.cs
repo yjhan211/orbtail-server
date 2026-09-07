@@ -368,7 +368,7 @@ internal partial class GameServer
             PrepareOrbVisualStatePublications(matchingId, actors, sessions));
         BroadcastSwarmOrbRankings(matchingId, sessions, bots);
         // 성장 카드 (#226 단계 C): 소환석이 비용에 닿는 즉시 3택 오퍼 — 상자 트리거 퇴역.
-        ProcessSwarmGrowthOffers(matchingId, nowUtc, aliveSessions, aliveBots);
+        growth.ProcessOffers(matchingId, nowUtc, aliveSessions, aliveBots);
         if (ProcessSwarmScoreTimeout(matchingId, nowUtc, sessions, aliveSessions, aliveBots))
             return;
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
@@ -1100,19 +1100,8 @@ internal partial class GameServer
     ///     티어 가중 전력(1/1.75/4 합) — 개수 비교의 왜곡(T3 1개 = T1 1개 취급) 방지.
     ///     상자 시간 등급 도입 후 회피/추격 판단의 단일 기준.
     /// </summary>
-    private float GetSwarmSquadPower(long matchingId, long playerId)
-    {
-        float power = 0f;
-        foreach (var item in matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetAllItems())
-        {
-            if (item.Count <= 0) continue;
-            int tier = GetSquadOrbTier(item.ItemId);
-            if (tier <= 0) continue;
-            power += OrbData.GetSwarmStatTierWeight(tier) * item.Count;
-        }
-
-        return power;
-    }
+    private float GetSwarmSquadPower(long matchingId, long playerId) =>
+        matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetOrbPower();
 
 
     // ===== 오브열 (#226 실험 α/β): 서버 경로 추적 — 오브별 공격 원점·본체 접촉 판정의 좌표 =====
@@ -1700,7 +1689,7 @@ internal partial class GameServer
         // 잃은 만큼 소환 비용을 되돌린다 (#229): 오브 수가 곧 소환 카운터라, 잘려 나간 몫이
         // 값에 남으면 절단당한 쪽이 재건 비용까지 떠안아 격차가 한 방향으로만 벌어진다.
         matchRuntimes.GetRequired(matchingId).SummonStones.RefundGrowthSuccess(
-            bestOwnerId, SwarmGrowthCardMultiply, destroyedItems.Count);
+            bestOwnerId, SwarmGrowthOfferState.CardMultiply, destroyedItems.Count);
 
         eventLogs.LogSwarmTrailCut(
             matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal, destroyedItems.Count,
@@ -1729,13 +1718,8 @@ internal partial class GameServer
     private const int SwarmRingVfxKindRetaliationGuard = 5;
     private const int SwarmRingVfxKindRetaliationBlocked = 6;
 
-    // 즉시 절단: 밟으면 바로 그 지점부터 꼬리가 끊긴다.
-    // 크랙 단계 시스템(1~4 금 + 5타 파괴)은 값만 되돌리면 복원된다.
-    private const int SwarmTrailCutBreakHits = 1;
-    // 오브 체력 모델 (#227): 모든 오브의 최대 내구는 5칸이고, 소환 직후는 1/5로 시작한다.
-    // 방어 강화는 5/5로 채우는 카드다 — 크랙 5단계가 곧 남은 칸이라 표시가 곧 판정.
-    private const int SwarmOrbMaxDurability = 5;
-    private const int SwarmArmorDurabilityBonus = SwarmOrbMaxDurability - SwarmTrailCutBreakHits;
+    // 방어 카드와 샌드박스 초기 외피가 같은 보너스를 사용한다.
+    private const int SwarmArmorDurabilityBonus = MatchGrowthService.ArmorDurabilityBonus;
 
     /// <summary>링 연출 공용 전송 — 포위 완성(대형)·절단 파열(소형)·물폭탄(파랑)이 같은 원형을 쓴다.</summary>
     private void SendSwarmRingVfx(
@@ -2322,7 +2306,7 @@ internal partial class GameServer
     private bool IsSwarmOrbLeader(long matchingId, long playerId)
     {
         int myOrbCount = GetSwarmOrbScore(matchingId, playerId).OrbCount;
-        return myOrbCount > 0 && myOrbCount >= GetSwarmTopOrbCount(matchingId);
+        return myOrbCount > 0 && myOrbCount >= growth.GetTopOrbCount(matchingId);
     }
 
     /// <summary>참가자(사람·봇) 위치 조회 — 피격 반응의 도주 기준점.</summary>
@@ -2613,19 +2597,7 @@ internal partial class GameServer
             session.TrySend(packet);
     }
 
-    // ===== 성장 카드 3택 (#226 단계 C) =====
-    // 소환석이 카드 비용에 도달하면 즉시 오퍼가 뜬다 (상자 개방 트리거 퇴역).
-    // 카드: 0=증식(무작위 T1 +1) · 1=강화(선두 T1→T2, 없으면 T2→T3) · 2=철갑(선두 무외피 오브).
-    // 성장 직후 오퍼 휴지는 없다: 성장이 상시 버튼이라 석이 남아 있는데 오퍼가 서지 않으면 버튼이 "아직 성장할 수
-    // 없습니다"로 답하는 벽이 된다. 성장 속도는 소환석 수입과 비용 곡선(5+2N)이 정한다.
-    // 이중 차감은 오퍼 소유권이 막는다: 픽이 성립하면 오퍼가 사라지고, 같은 OfferId로 온 두 번째
-    // 요청은 대조에서 걸러진다. 클라도 응답 전까지 입력을 잠근다.
-    private const int SwarmGrowthCardMultiply = SwarmGrowthOfferState.CardMultiply;
-    private const int SwarmGrowthCardEnhance = SwarmGrowthOfferState.CardEnhance;
-    private const int SwarmGrowthCardArmor = SwarmGrowthOfferState.CardArmor;
 
-    // 오퍼 서술자(SwarmGrowthOfferState)·오퍼/내구 상태는 #294에서
-    // Services/SwarmArenaStates.cs의 매치별 GrowthOffers·TrailCombat으로 이동.
 
     /// <summary>열 순서의 오브 목록 — 강화·철갑의 "가장 앞" 판정과 트레일 순번의 단일 출처.</summary>
     private List<InGameItemInfo> GetSwarmTrailOrbs(long matchingId, long playerId) =>
@@ -2645,377 +2617,8 @@ internal partial class GameServer
         return mask;
     }
 
-    /// <summary>
-    ///     성장 비용 (#229): 기본 = 5+2N, 오브 수 할증 없음, 최종 = min(21, 기본).
-    ///     0오브는 최종 3으로 T1 재건을 보장한다.
-    /// </summary>
-    /// <summary>
-    ///     카드별 비용 (#229): 소환·공격 강화·방어 강화가 각자 자기 성공 횟수로 값을 매긴다.
-    ///     예전엔 셋이 한 카운터를 공유해 오브를 늘릴수록 강화가 비싸지고 그 반대도 됐다 —
-    ///     한 축에 투자하면 다른 축이 벌을 받는 구조라 빌드를 고르는 의미가 사라진다.
-    ///     BaseCost·Surcharge·FinalCost는 계측 호환을 위해 가장 싼 카드 기준으로 남긴다.
-    /// </summary>
-    private (int BaseCost, int Surcharge, int FinalCost, int OrbCount,
-        int CostSummon, int CostAttack, int CostDefense) GetSwarmGrowthCostBreakdown(
-        long matchingId, long playerId)
-    {
-        var (orbCount, _) = GetSwarmOrbScore(matchingId, playerId);
-        int CardCost(int cardIndex) => Config.GetSwarmGrowthCardCost(
-            matchRuntimes.GetRequired(matchingId).SummonStones.GetGrowthSuccessCount(playerId, cardIndex), orbCount);
 
-        int summon = CardCost(SwarmGrowthCardMultiply);
-        int attack = CardCost(SwarmGrowthCardEnhance);
-        int defense = CardCost(SwarmGrowthCardArmor);
-        int cheapest = Math.Min(summon, Math.Min(attack, defense));
-        int growthCount = matchRuntimes.GetRequired(matchingId).SummonStones.GetGrowthSuccessCount(playerId);
-        return (
-            Config.GetSwarmGrowthBaseCost(growthCount),
-            Config.GetSwarmGrowthScoreSurcharge(orbCount),
-            cheapest,
-            orbCount,
-            summon, attack, defense);
-    }
 
-    /// <summary>
-    ///     오퍼 구성 확정 (#226 C 등급): 품질은 기본 비용 구간이 정한다.
-    ///     오브 생성 = 색 균등 + 티어(기본 5+ T2 20% · 기본 7+ T2 35%/T3 10%),
-    ///     공격 강화 = 선두 유효 대상 티어(I=T1→T2, II=T2→T3),
-    ///     방어 강화 = 외피 장수(기본 1, 기본 5+ 15% · 기본 7+ 30% 확률로 2 — 무외피 수 캡).
-    ///     0오브(재건 보장): 비용 3의 T1 생성만 유효 — 이 재건도 N에 포함된다.
-    /// </summary>
-    private SwarmGrowthOfferState GenerateSwarmGrowthOffer(
-        long matchingId, long playerId, int offerId, int finalCost, int qualityCost, int orbCount,
-        int costSummon, int costAttack, int costDefense)
-    {
-        if (orbCount <= 0)
-        {
-            int rebuildItemId = SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)];
-            return new SwarmGrowthOfferState(
-                offerId, finalCost, rebuildItemId,
-                EnhanceTargetTier: 0, ArmorCount: 0,
-                CostSummon: costSummon, CostAttack: costAttack, CostDefense: costDefense);
-        }
-
-        // 소환은 늘 T1: 티어는 오브마다 계열 버튼으로 따로 산다 — 공유 레벨 상속은 퇴역.
-        // 품질 티어 RNG도 퇴역.
-        _ = qualityCost;
-        int spawnItemId = SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)];
-
-        int armorSlots = GetSwarmTrailOrbs(matchingId, playerId)
-            .Count(item => !matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)));
-        int armorCount = armorSlots <= 0 ? 0 : 1;
-        if (armorCount > 0 && armorSlots >= 2)
-        {
-            int armorRoll = Random.Shared.Next(100);
-            if (qualityCost >= 7 && armorRoll < 30 || qualityCost >= 5 && armorRoll < 15)
-                armorCount = 2;
-        }
-
-        // 6/6 포화 (#232 4단계): 소환 카드가 닫힌다 — 파괴로 빈칸을 만들어야 다시 열린다.
-        if (GetSwarmTrailOrbs(matchingId, playerId).Count >= Config.SWARM_ORB_CAPACITY)
-            spawnItemId = 0;
-
-        return new SwarmGrowthOfferState(
-            offerId,
-            finalCost,
-            spawnItemId,
-            // 개별 강화 퇴역 (#232 4단계) — 계열 강화 버튼이 대신한다.
-            EnhanceTargetTier: 0,
-            armorCount,
-            costSummon,
-            costAttack,
-            costDefense);
-    }
-
-    /// <summary>
-    ///     성장 오퍼 틱: 사람은 소환석이 비용에 닿는 즉시 오퍼 패킷(3택), 봇은 같은 규칙으로
-    ///     즉시 자동 투자한다. 성공한 선택은 다음 카드별 비용 곡선에 바로 반영된다.
-    /// </summary>
-    // 비용 예고·재전송·선택 소유권은 match-owned SwarmGrowthOfferCoordinator가 맡는다.
-
-    private void ProcessSwarmGrowthOffers(
-        long matchingId, DateTime nowUtc,
-        List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
-    {
-        SwarmGrowthOfferCoordinator growthOffers =
-            matchRuntimes.GetRequired(matchingId).Swarm.GrowthOfferCoordinator;
-
-        foreach (var session in aliveSessions)
-        {
-            if (!session.PlayerId.HasValue)
-                continue;
-            long playerId = session.PlayerId.Value;
-            SwarmStandingOfferDecision standing = growthOffers.EvaluateStanding(playerId, nowUtc);
-            if (standing.Action != SwarmStandingOfferAction.Missing)
-            {
-                // 서 있는 오퍼는 주기적으로 다시 보낸다 (#229 7단계): 오퍼는 한 번만 나가므로
-                // UI가 늦게 붙거나 그 한 패킷을 놓치면 버튼이 영영 "못 삼"으로 남는다.
-                // 오퍼가 곧 구매 가능 신호라 이 재전송이 버튼 색의 자가 복구다.
-                if (standing.Action == SwarmStandingOfferAction.Resend)
-                {
-                    SwarmGrowthOfferState standingOffer = standing.Offer;
-                    session.SendSwarmGrowthOffer(
-                        standingOffer.OfferId, standingOffer.Cost, standingOffer.SpawnItemId,
-                        standingOffer.EnhanceTargetTier, standingOffer.ArmorCount,
-                        standingOffer.CostSummon, standingOffer.CostAttack, standingOffer.CostDefense);
-                }
-
-                continue;
-            }
-            var (baseCost, surcharge, finalCost, orbCount, costSummon, costAttack, costDefense) =
-                GetSwarmGrowthCostBreakdown(matchingId, playerId);
-            SwarmGrowthFundingAction funding = growthOffers.EvaluateFunding(
-                playerId,
-                nowUtc,
-                matchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(playerId).StoneCount,
-                finalCost);
-            if (funding != SwarmGrowthFundingAction.ReadyToCreate)
-            {
-                // 비용 예고 (#229 7단계): 아직 못 사도 얼마가 필요한지는 늘 보여야 버튼이
-                // "모으는 중"으로 읽힌다. OfferId 0 = 표시 전용, 고를 수 없음.
-                // 소환석 상태의 NextCost는 구 소환 곡선(삼각수)이라 이 값과 다르다 —
-                // 성장 게이트의 단일 출처는 GetSwarmGrowthCardCost뿐이다.
-                // 값이 바뀔 때만 보내면 UI가 늦게 붙었을 때 그 한 번을 놓치고 비용이 영영 비어
-                // 있다 — 서 있는 오퍼와 같은 주기로 다시 보내 표시가 스스로 복구되게 한다.
-                if (funding == SwarmGrowthFundingAction.SendPreview)
-                    session.SendSwarmGrowthOffer(
-                        0, finalCost, 0, 0, 0, costSummon, costAttack, costDefense);
-
-                continue;
-            }
-
-            var offer = GenerateSwarmGrowthOffer(
-                matchingId, playerId, growthOffers.AllocateOfferId(), finalCost, baseCost, orbCount,
-                costSummon, costAttack, costDefense);
-            growthOffers.RegisterOffer(playerId, offer);
-            eventLogs.LogSwarmGrowthOffered(
-                matchingId, playerId, isBot: false, baseCost, surcharge, finalCost, orbCount);
-            session.SendSwarmGrowthOffer(
-                offer.OfferId, offer.Cost, offer.SpawnItemId, offer.EnhanceTargetTier, offer.ArmorCount,
-                offer.CostSummon, offer.CostAttack, offer.CostDefense);
-        }
-
-        foreach (var bot in aliveBots)
-        {
-            if (bot.IsSwarmCutDummy)
-                continue;
-            var (baseCost, surcharge, finalCost, orbCount, costSummon, costAttack, costDefense) =
-                GetSwarmGrowthCostBreakdown(matchingId, bot.PlayerId);
-            if (matchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(bot.PlayerId).StoneCount < finalCost)
-                continue;
-
-            var offer = GenerateSwarmGrowthOffer(
-                matchingId, bot.PlayerId, growthOffers.AllocateOfferId(), finalCost, baseCost, orbCount,
-                costSummon, costAttack, costDefense);
-            // 계열 강화 (#232 4단계): 6/6 포화면 소환이 닫히므로 강화가 봇의 주 지출이 된다.
-            // 그 전에도 오브 4개 이상이면 셋에 한 번은 강화를 시도한다 — 카드 정책의 공격 강화
-            // 자리를 잇는 셈이다 (개별 강화 카드는 퇴역).
-            bool preferFamilyUpgrade = orbCount >= Config.SWARM_ORB_CAPACITY ||
-                                       (orbCount >= 4 && Random.Shared.Next(3) == 0);
-            if (preferFamilyUpgrade && orbUpgrades.TryUpgradeForBot(matchingId, bot.PlayerId))
-                continue;
-
-            int cardIndex = ChooseSwarmBotGrowthCard(
-                matchingId, bot, offer, orbCount, aliveSessions, aliveBots);
-            if (cardIndex == SwarmGrowthCardEnhance)
-            {
-                orbUpgrades.TryUpgradeForBot(matchingId, bot.PlayerId);
-                continue;
-            }
-            bool applied = ApplySwarmGrowthCard(matchingId, bot.PlayerId, cardIndex, offer, session: null);
-            if (applied)
-            {
-                int successCountBefore = matchRuntimes.GetRequired(matchingId).SummonStones.GetGrowthSuccessCount(bot.PlayerId);
-                // 카드별 카운터는 봇도 함께 민다 (#229) — 안 그러면 봇만 값이 안 올라
-                // 사람보다 싸게 무한 성장하고, 봇 매치로 곡선을 검증할 수도 없다.
-                matchRuntimes.GetRequired(matchingId).SummonStones.RecordGrowthSuccess(bot.PlayerId, cardIndex);
-                eventLogs.LogSwarmGrowthSelected(
-                    matchingId, bot.PlayerId, isBot: true,
-                    GetSwarmGrowthCardRole(cardIndex), GetSwarmGrowthCardGrade(cardIndex, offer),
-                    baseCost, surcharge, offer.GetCost(cardIndex), successCountBefore, orbCount);
-            }
-        }
-    }
-
-    /// <summary>생존자 최다 오브 수 — 봇 성장·추격 판단의 순위 기준.</summary>
-    private int GetSwarmTopOrbCount(long matchingId)
-    {
-        int top = 0;
-        foreach (var session in sessions.GetByMatch(matchingId))
-        {
-            if (session.PlayerId.HasValue && !session.IsEliminated)
-                top = Math.Max(top, GetSwarmOrbScore(matchingId, session.PlayerId.Value).OrbCount);
-        }
-
-        foreach (var bot in matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
-        {
-            if (!bot.IsEliminated && !bot.IsSwarmCutDummy)
-                top = Math.Max(top, GetSwarmOrbScore(matchingId, bot.PlayerId).OrbCount);
-        }
-
-        return top;
-    }
-
-    /// <summary>처치각 판독 (#226 F): 같은 구역에 확실히 약한(전력 ×1.25 미만) 적이 있는가.</summary>
-    private bool HasSwarmPreyInArea(
-        long matchingId, BotPlayerState bot,
-        List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
-    {
-        float myPower = GetSwarmSquadPower(matchingId, bot.PlayerId);
-        if (myPower <= 0f)
-            return false;
-
-        foreach (var session in aliveSessions)
-        {
-            if (session.PlayerId.HasValue && session.CurrentArea == bot.CurrentArea &&
-                GetSwarmSquadPower(matchingId, session.PlayerId.Value) *
-                SwarmBotChasePowerAdvantage <= myPower)
-                return true;
-        }
-
-        foreach (var other in aliveBots)
-        {
-            if (other.PlayerId != bot.PlayerId && !other.IsSwarmCutDummy &&
-                other.CurrentArea == bot.CurrentArea &&
-                GetSwarmSquadPower(matchingId, other.PlayerId) *
-                SwarmBotChasePowerAdvantage <= myPower)
-                return true;
-        }
-
-        return false;
-    }
-
-    /// <summary>계측용 카드 역할 라벨 (#226 F) — 요약의 역할 분포 집계가 이 문자열을 센다.</summary>
-    private static string GetSwarmGrowthCardRole(int cardIndex) => cardIndex switch
-    {
-        SwarmGrowthCardMultiply => "multiply",
-        SwarmGrowthCardEnhance => "enhance",
-        SwarmGrowthCardArmor => "armor",
-        _ => "unknown"
-    };
-
-    /// <summary>계측용 카드 등급 (#226 F) — 생성=지급 티어, 공격=강화 대상 티어(I/II), 방어=내구 증가량(I/II).</summary>
-    private static int GetSwarmGrowthCardGrade(int cardIndex, SwarmGrowthOfferState offer)
-    {
-        switch (cardIndex)
-        {
-            case SwarmGrowthCardMultiply:
-                return OrbData.TryGetColorAndTier(offer.SpawnItemId, out _, out int tier)
-                    ? tier
-                    : 1;
-            case SwarmGrowthCardEnhance:
-                return offer.EnhanceTargetTier;
-            case SwarmGrowthCardArmor:
-                return offer.ArmorCount;
-            default:
-                return 0;
-        }
-    }
-
-    /// <summary>
-    ///     성장 카드 선택 처리 — 이 GameServer instance가 생성한 human session delegate를 통해
-    ///     ordered publication의 authoritative prepare 안에서 호출된다. 실패 시 오퍼는 유지된다.
-    /// </summary>
-    internal void HandleSwarmGrowthPick(GameClientSession session, long matchingId, int offerId, int cardIndex)
-    {
-        if (!session.PlayerId.HasValue || matchingId <= 0)
-            return;
-
-        long playerId = session.PlayerId.Value;
-        int baseCost = 0;
-        int surcharge = 0;
-        int orbCountBefore = 0;
-        SwarmGrowthPickResolution resolution =
-            matchRuntimes.GetRequired(matchingId).Swarm.GrowthOfferCoordinator.TryApplyPick(
-                playerId,
-                offerId,
-                offer =>
-                {
-                    // 선택 시점 상태 (#226 F 계측): 비용 분해·오브 수는 적용 전 값을 남긴다.
-                    (baseCost, surcharge, _, orbCountBefore, _, _, _) =
-                        GetSwarmGrowthCostBreakdown(matchingId, playerId);
-                    return ApplySwarmGrowthCard(matchingId, playerId, cardIndex, offer, session);
-                });
-        if (!resolution.OfferMatched)
-        {
-            session.SendSwarmGrowthResult(offerId, cardIndex, success: false);
-            return;
-        }
-
-        SwarmGrowthOfferState offer = resolution.Offer;
-        bool success = resolution.Applied;
-        if (success)
-        {
-            // N 누적 (#226 C 잔여): 성공한 선택만 — 실패(재검증 탈락)는 비용 곡선을 밀지 않는다.
-            int successCountBefore = matchRuntimes.GetRequired(matchingId).SummonStones.GetGrowthSuccessCount(playerId);
-            matchRuntimes.GetRequired(matchingId).SummonStones.RecordGrowthSuccess(playerId, cardIndex);
-            eventLogs.LogSwarmGrowthSelected(
-                matchingId, playerId, isBot: false,
-                GetSwarmGrowthCardRole(cardIndex), GetSwarmGrowthCardGrade(cardIndex, offer),
-                baseCost, surcharge, offer.GetCost(cardIndex), successCountBefore, orbCountBefore);
-        }
-
-        session.SendSwarmGrowthResult(offerId, cardIndex, success);
-        session.SendSummonStoneState();
-        logger.LogInformation(
-            "Swarm growth pick: MatchingId={MatchingId}, PlayerId={PlayerId}, Card={Card}, Cost={Cost}, Success={Success}",
-            matchingId, playerId, cardIndex, offer.GetCost(cardIndex), success);
-    }
-
-    /// <summary>
-    ///     카드 효과 적용 (사람·봇 공통): 오퍼 시점에 확정된 서술자를 그대로 집행한다.
-    ///     비용 차감이 성립할 때만 효과가 나가고, 픽 시점 재검증 실패면 오퍼가 유지된다.
-    /// </summary>
-    private bool ApplySwarmGrowthCard(
-        long matchingId, long playerId, int cardIndex, SwarmGrowthOfferState offer,
-        GameClientSession? session)
-    {
-        // 차감은 고른 카드의 값으로 (#229): 세 카드가 각자 자기 곡선을 탄다.
-        int cost = offer.GetCost(cardIndex);
-        var inventory = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
-        switch (cardIndex)
-        {
-            case SwarmGrowthCardMultiply:
-                {
-                    // 6/6 포화 (#232 4단계): 소환 불가 — 기존 5회 탭 파괴로 빈칸을 만든 뒤 다시 소환한다.
-                    if (inventory.GetAllItems().Count >= Config.SWARM_ORB_CAPACITY)
-                        return false;
-                    if (!matchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(playerId, cost, out _))
-                        return false;
-                    // 소환은 T1 그대로: 티어는 오브마다 따로 산다 — 공유 레벨 상속은 퇴역.
-                    if (session != null)
-                        session.GrantSwarmArenaOrb(offer.SpawnItemId);
-                    else
-                        inventory.TryAddItemWithCapacity(offer.SpawnItemId, Config.SWARM_ORB_CAPACITY, out _);
-                    orbUpgrades.SendFamilyLevels(matchingId, playerId, session);
-                    return true;
-                }
-            case SwarmGrowthCardEnhance:
-                // 개별 오브 공격 강화 퇴역 (#232 4단계): 강화는 계열 공유 레벨(태양·바람·파도 직접
-                // 버튼 → C_TO_G_SWARM_ORB_DECISION)이 맡는다. 오퍼도 EnhanceTargetTier 0으로 나간다.
-                return false;
-            case SwarmGrowthCardArmor:
-                {
-                    if (offer.ArmorCount <= 0)
-                        return false;
-                    var targets = GetSwarmTrailOrbs(matchingId, playerId)
-                        .Where(item =>
-                            !matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)))
-                        .Take(offer.ArmorCount)
-                        .ToList();
-                    if (targets.Count == 0)
-                        return false;
-                    if (!matchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(playerId, cost, out _))
-                        return false;
-                    foreach (var target in targets)
-                        matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] =
-                            SwarmArmorDurabilityBonus;
-                    return true;
-                }
-            default:
-                return false;
-        }
-    }
 
     /// <summary>
     ///     앞줄 오브의 HP — 오브별 체력바 브로드캐스트용. 오브 HP 전투가 퇴역해 서버는 HP를 깎지 않으므로

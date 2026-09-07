@@ -12,6 +12,7 @@ internal static class GameServerTestAccess
         Read<MatchRuntimeStore>(server);
 
     internal static OrbUpgradeService GetOrbUpgrades(this GameServer server) => Read<OrbUpgradeService>(server);
+    internal static MatchGrowthService GetGrowth(this GameServer server) => Read<MatchGrowthService>(server);
 
     internal static GameEventLogManager GetEventLogs(this GameServer server) =>
         Read<GameEventLogManager>(server);
@@ -46,6 +47,8 @@ internal static class GameServerTestAccess
         var logs = new GameEventLogManager(id => runtimes.Get(id)?.EventLog, archive);
         var summaries = new MatchSummaryFileStore();
         var entryFailure = new MatchEntryFailureHandler(runtimes, sessions, lifecycle, logger);
+        var orbUpgrades = new OrbUpgradeService(runtimes, logs, GameServerDevOptions.Disabled,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbUpgradeService>.Instance);
         return new GameServer(
             configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
             logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServer>.Instance,
@@ -67,8 +70,9 @@ internal static class GameServerTestAccess
             matchCleanup: new MatchCleanupService(runtimes, sessions, logs, summaries, logger),
             botEliminations: new BotEliminationService(sessions, logs, logger),
             countdown: new MatchCountdownService(runtimes, entryFailure, logger),
-            orbUpgrades: new OrbUpgradeService(runtimes, logs, GameServerDevOptions.Disabled,
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbUpgradeService>.Instance),
+            orbUpgrades: orbUpgrades,
+            growth: new MatchGrowthService(runtimes, sessions, logs, orbUpgrades,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchGrowthService>.Instance),
             environmentService: new MatchEnvironmentService(sessions, logs,
                 new MatchCleanupService(runtimes, sessions, logs, summaries, logger),
                 new BotEliminationService(sessions, logs, logger), GameServerDevOptions.Disabled,

@@ -150,7 +150,7 @@ public sealed class SwarmArenaTickOrderTests
             "ProcessOrbRecovery(",
             "DispatchOrbVisualStatePublications(",
             "BroadcastSwarmOrbRankings(",
-            "ProcessSwarmGrowthOffers(",
+            "growth.ProcessOffers(",
             "ProcessSwarmScoreTimeout(",
             "ProcessPendingSwarmMonsterHits(",
             "ProcessSwarmCrossfires(",
@@ -244,14 +244,14 @@ public sealed class SwarmArenaTickOrderTests
     public void GrowthOfferFlow_DelegatesLifecycleAndOwnershipToCoordinator()
     {
         string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
+        string source = ReadNormalizedSource(root, "game_server", "Services", "MatchGrowthService.cs");
         string tickBody = ReadMethodSlice(
             source,
-            "private void ProcessSwarmGrowthOffers(",
-            "private int GetSwarmTopOrbCount(");
+            "public void ProcessOffers(",
+            "public int GetTopOrbCount(");
         string pickBody = ReadMethodSlice(
             source,
-            "internal void HandleSwarmGrowthPick(",
+            "public void HandlePick(",
             "private bool ApplySwarmGrowthCard(");
 
         AssertInOrder(

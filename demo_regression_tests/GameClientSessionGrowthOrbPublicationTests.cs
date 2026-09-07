@@ -21,6 +21,33 @@ namespace demo_regression_tests;
 
 public sealed class GameClientSessionGrowthOrbPublicationTests
 {
+    [Fact]
+    public void GrowthCost_IsReadOnlyAndUsesRequestedMatch()
+    {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var server = GameServerTestAccess.Create(store);
+        var first = store.GetOrCreate(947201);
+        var second = store.GetOrCreate(947202);
+        using (store.Enter(first))
+        {
+            first.Inventory.TryAddItemWithCapacity(101, 107000010, Config.SWARM_ORB_CAPACITY, out _);
+            first.SummonStones.RecordGrowthSuccess(101, SwarmGrowthOfferState.CardMultiply);
+            var before = first.SummonStones.GetGrowthSuccessCount(101);
+            var cost = server.GetGrowth().GetCostBreakdown(first.MatchingId, 101);
+            Assert.Equal(1, cost.OrbCount);
+            Assert.Equal(Config.GetSwarmGrowthCardCost(1, 1), cost.CostSummon);
+            Assert.Equal(before, first.SummonStones.GetGrowthSuccessCount(101));
+            first.TryMarkTerminal();
+        }
+        using (store.Enter(second))
+        {
+            var cost = server.GetGrowth().GetCostBreakdown(second.MatchingId, 101);
+            Assert.Equal(0, cost.OrbCount);
+            Assert.Equal(Config.GetSwarmGrowthCardCost(0, 0), cost.CostSummon);
+            second.TryMarkTerminal();
+        }
+    }
+
     private const long FirstMatchingId = 71001;
     private const long SecondMatchingId = 71002;
     private const long FirstPlayerId = 101;
@@ -666,10 +693,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Server = CreateServer();
             Store = Server.GetMatchRuntimes();
             EventLog = Server.GetEventLogs();
-            _growthHandler = typeof(GameServer).GetMethod(
-                    "HandleSwarmGrowthPick",
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
-                .CreateDelegate<Action<GameClientSession, long, int, int>>(Server);
+            _growthHandler = Server.GetGrowth().HandlePick;
             _orbHandler = Server.GetOrbUpgrades().HandleDecision;
 
         }

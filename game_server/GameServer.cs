@@ -47,6 +47,7 @@ internal partial class GameServer(
     MatchCountdownService countdown,
     MatchEnvironmentService environmentService,
     OrbUpgradeService orbUpgrades,
+    MatchGrowthService growth,
     GameServerTickService tickService,
     BotMovementService botMovement)
     : IHostedService
@@ -232,7 +233,7 @@ internal partial class GameServer(
                 eventLogs,
                 summaryFileStore,
                 matchRuntimes,
-                HandleSwarmGrowthPick,
+                growth.HandlePick,
                 orbUpgrades.HandleDecision,
                 matchingLifecycle,
                 () => Volatile.Read(ref _stopping) != 0,

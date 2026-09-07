@@ -780,7 +780,7 @@ internal partial class GameServer
     /// <summary>이 봇의 스쿼드 오브 총 개수 — 저성장(파밍 부족) 판정용.</summary>
 
     // 추격 우위 임계: 내 전력이 상대의 이 배수 이상일 때만 붙는다.
-    private const float SwarmBotChasePowerAdvantage = 1.25f;
+    private const float SwarmBotChasePowerAdvantage = MatchGrowthService.BotPreyPowerAdvantage;
 
     // 도주 임계: 상대 전력이 내 전력의 이 배수 이상일 때만 피한다. 그 사이(동수·소폭 열세, 1/1.5 ~ 1.25배)는
     // 중립 — 피하지도 붙지도 않고 하던 일을 한다. 오브 손실이 절단 전용이 된 뒤로 동수 대치는 서로의 꼬리 주위를
@@ -946,38 +946,11 @@ internal partial class GameServer
     ///     남는 여유가 있을 때만 상자로 향한다 — 석을 하트에 다 태워 투자를 굶는 사고 방지.
     /// </summary>
     private int GetSwarmBotExploreCost(long matchingId, long botPlayerId) =>
-        GetSwarmGrowthCostBreakdown(matchingId, botPlayerId).FinalCost + Config.SWARM_BOX_OPEN_COST;
+        growth.GetCostBreakdown(matchingId, botPlayerId).FinalCost + Config.SWARM_BOX_OPEN_COST;
 
 
-    /// <summary>
-    ///     봇 투자 정책 (#226 F 상황 판단): 큰 점수 열세(선두와 3+ 격차)는 생성 몰빵,
-    ///     선두는 방어(절단 = 상대의 유일한 역전 수단), 처치각(같은 구역 약자)은 공격 강화,
-    ///     그 외 기존 45/30/25. 무효 카드는 생성으로 대체. 초반(오브 5 미만)은 생성 고정 —
-    ///     발사점·점수가 곧 생존이다.
-    /// </summary>
-    private int ChooseSwarmBotGrowthCard(
-        long matchingId, BotPlayerState bot, SwarmGrowthOfferState offer, int orbCount,
-        List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
-    {
-        if (orbCount < 5)
-            return SwarmGrowthCardMultiply;
 
-        int topOrbCount = GetSwarmTopOrbCount(matchingId);
-        bool isLeader = orbCount >= topOrbCount;
-        int leaderGap = topOrbCount - orbCount;
-        bool hasPrey = HasSwarmPreyInArea(matchingId, bot, aliveSessions, aliveBots);
 
-        var (multiply, enhance) = leaderGap >= 3 ? (70, 20) :
-            isLeader ? (35, 20) :
-            hasPrey ? (35, 45) : (45, 30);
-
-        int roll = Random.Shared.Next(100);
-        if (roll < multiply)
-            return SwarmGrowthCardMultiply;
-        if (roll < multiply + enhance)
-            return offer.EnhanceTargetTier > 0 ? SwarmGrowthCardEnhance : SwarmGrowthCardMultiply;
-        return offer.ArmorCount > 0 ? SwarmGrowthCardArmor : SwarmGrowthCardMultiply;
-    }
 
     /// <summary>
     ///     비접촉 유예를 넘긴 봇의 오염을 1초 단위로 회복한다. 피격이 들어오면
