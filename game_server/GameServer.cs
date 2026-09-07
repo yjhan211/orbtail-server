@@ -67,9 +67,10 @@ internal partial class GameServer(
         {
             logger.LogInformation("Game server starting...");
             cancellationToken.ThrowIfCancellationRequested();
+            int port = ResolveServicePort(configuration);
             InitializeServices(cancellationToken);
 
-            StartNetworkService();
+            StartNetworkService(port);
             StartGameTicks();
 
             await StartNodeAdvertisementAsync();
@@ -177,12 +178,21 @@ internal partial class GameServer(
         logger.LogInformation("Services initialized successfully");
     }
 
-    private void StartNetworkService()
+    internal static int ResolveServicePort(IConfiguration configuration)
     {
-        short port = configuration.GetValue<short>("clientPort", 9001);
+        string? configuredPort = configuration["clientPort"];
+        if (configuredPort == null)
+            return 9001;
+        if (!int.TryParse(configuredPort, out int port) || port is < 1 or > 65535)
+            throw new InvalidOperationException("clientPort must be configured as an integer between 1 and 65535.");
+        return port;
+    }
+
+    private void StartNetworkService(int port)
+    {
         networkService.SessionFactory = CreateClientSession;
         networkService.Listen(IPAddress.Any, port);
-        logger.LogInformation($"TCP server listening on port {port}");
+        logger.LogInformation("Listening on port {Port}", port);
     }
 
     /// <summary>
