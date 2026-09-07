@@ -666,14 +666,11 @@ public partial class GameClientSession : SessionBase
     }
 
     /// <summary>
-    ///     Hands a registered, pre-authentication session to the owning server's deferred
-    ///     entry-abort path. A false result means invoking that hook failed; callers may
-    ///     close the socket without sending a competing local terminal response.
+    /// 입장 실패 처리를 한 호출만 맡는다. 다른 종료 처리가 선점했다면 중복 처리하지 않는다.
     /// </summary>
+    /// <returns>처리가 불필요하거나 다른 호출이 맡았으면 true. 실패 처리 중 예외가 나서 호출자가 직접 연결을 끊어야 하면 false.</returns>
     private bool ReportEntryFailureOnce()
     {
-        bool entryFailureClaimed = false;
-        bool matchingLifecycleTerminalClaimed = false;
         if (Volatile.Read(ref _entryCompleted) != 0 ||
             !PlayerId.HasValue ||
             MatchingId <= 0)
@@ -681,11 +678,13 @@ public partial class GameClientSession : SessionBase
         if (Interlocked.CompareExchange(ref _entryFailureReported, 1, 0) != 0)
             return true;
 
-        entryFailureClaimed = true;
         if (!TryBeginMatchingLifecycleTerminal())
+        {
+            // 실제 처리를 맡지 않았으므로 입장 실패 플래그는 돌려놓는다.
+            // 다른 종료 처리가 실패해 선점을 풀면 다음 호출에서 다시 시도할 수 있다.
+            Volatile.Write(ref _entryFailureReported, 0);
             return true;
-
-        matchingLifecycleTerminalClaimed = true;
+        }
 
         try
         {
@@ -694,12 +693,9 @@ public partial class GameClientSession : SessionBase
         }
         catch (Exception ex)
         {
-            // Only release reservations this invocation acquired. A competing terminal path
-            // can already own either marker when this method returns early above.
-            if (matchingLifecycleTerminalClaimed)
-                Volatile.Write(ref _matchingLifecycleTerminalReported, 0);
-            if (entryFailureClaimed)
-                Volatile.Write(ref _entryFailureReported, 0);
+            // 여기까지 왔다면 두 플래그 모두 이 호출이 선점했다.
+            Volatile.Write(ref _matchingLifecycleTerminalReported, 0);
+            Volatile.Write(ref _entryFailureReported, 0);
             Logger.LogError(
                 ex,
                 "Failed to report game entry failure: PlayerId={PlayerId}, MatchingId={MatchingId}",

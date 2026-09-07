@@ -281,6 +281,41 @@ public sealed class GameClientSessionConnectPublicationTests
     }
 
     [Fact]
+    public void EntryFailure_WhenAnotherTerminalPathOwnsFlag_CanRetryAfterThatPathFails()
+    {
+        int hookCalls = 0;
+        using var fixture = new ConnectFixture();
+        var session = fixture.CreateSession(74_007, 8_106, _ => true, _ => hookCalls++);
+        SetIntField(session, "_matchingLifecycleTerminalReported", 1);
+
+        Assert.True(ReportEntryFailure(session));
+        Assert.Equal(0, hookCalls);
+        Assert.Equal(0, GetIntField(session, "_entryFailureReported"));
+        Assert.Equal(1, GetIntField(session, "_matchingLifecycleTerminalReported"));
+
+        // 선점한 다른 종료 경로가 실패하여 자기 플래그를 반납한 상황.
+        SetIntField(session, "_matchingLifecycleTerminalReported", 0);
+        Assert.True(ReportEntryFailure(session));
+        Assert.True(ReportEntryFailure(session));
+        Assert.Equal(1, hookCalls);
+    }
+
+    [Fact]
+    public void EntryFailure_ReentrantDisconnect_DoesNotInvokeHandlerTwice()
+    {
+        int hookCalls = 0;
+        using var fixture = new ConnectFixture();
+        var session = fixture.CreateSession(74_008, 8_107, _ => true, current =>
+        {
+            hookCalls++;
+            current.OnDisconnect();
+        });
+
+        Assert.True(ReportEntryFailure(session));
+        Assert.Equal(1, hookCalls);
+    }
+
+    [Fact]
     public void ConnectHandler_WiresConnectProtocol_AndQueuesCountdownBeforeCommittedAck()
     {
         string root = FindRepositoryRoot();
