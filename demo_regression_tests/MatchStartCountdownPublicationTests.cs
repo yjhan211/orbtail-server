@@ -365,7 +365,7 @@ public sealed class MatchStartCountdownPublicationTests
         return new GameServer(
             configuration,
             NullLogger<GameServer>.Instance,
-            null!,
+            new MatchingLifecycleService(new InMemoryRedisOperations(), new NoOpNatsClient(), NullLogger.Instance),
             null!,
             null!,
             null!,
@@ -374,6 +374,16 @@ public sealed class MatchStartCountdownPublicationTests
             new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
             GameServerDevOptions.Disabled,
             new GameSessionRegistry());
+    }
+
+    internal sealed class NoOpNatsClient : network.infrastructure.messaging.INatsClient
+    {
+        public void Publish(string subject, byte[] message) { }
+        public void Subscribe(string subject, Action<string, byte[]> handler, string? queue = null) { }
+        public Task<byte[]> RequestAsync(string subject, byte[] message, TimeSpan timeout, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+        public void SubscribeRequest(string subject, Func<string, byte[], CancellationToken, Task<byte[]?>> handler, string? queue = null) => throw new NotSupportedException();
+        public Task CloseAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void Close() { }
     }
 
     private static SwarmMatchPacingState GetPacing(GameServer server, long matchingId)

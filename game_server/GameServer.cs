@@ -29,7 +29,7 @@ namespace game_server;
 public partial class GameServer(
     IConfiguration configuration,
     ILogger<GameServer> logger,
-    NatsClientFactory natsClientFactory,
+    MatchingLifecycleService matchingLifecycle,
     IRedisOperations redisOperations,
     NetworkService networkService,
     GameHandoffTicketService gameHandoffTicketService,
@@ -64,7 +64,7 @@ public partial class GameServer(
     private GameServerNodeAdvertiser? _nodeAdvertiser;
     private int _stopping;
 
-    internal MatchingLifecycleService MatchingLifecycle { get; } = new(redisOperations, logger);
+    internal MatchingLifecycleService MatchingLifecycle { get; } = matchingLifecycle;
 
     private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
         _swarmMatchRuntimes.GetOrCreate(matchingId);
@@ -252,7 +252,6 @@ public partial class GameServer(
 
         try
         {
-            MatchingLifecycle.Start(natsClientFactory.Create());
             // 서버 환경에서 CSV 파일 경로 설정
             // Dev: 소스 디렉토리에서 직접 읽기 (Docker 볼륨 마운트 대응)
             string networkSourcePath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..",

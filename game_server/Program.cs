@@ -70,6 +70,7 @@ internal static class Program
                               ?? throw new InvalidOperationException("natsEndPoint is not configured.");
         services.AddSingleton<NatsClientFactory>(sp =>
             new NatsClientFactory(natsEndpoint, sp.GetRequiredService<ILogger<NatsClient>>()));
+        services.AddSingleton<INatsClient>(sp => sp.GetRequiredService<NatsClientFactory>().Create());
 
         var redisConfiguration = RedisConfigurationParser.Parse(hostContext.Configuration);
         services.AddSingleton(redisConfiguration);
@@ -83,6 +84,10 @@ internal static class Program
 
         services.AddSingleton<IGameServerRegistry, RedisGameServerRegistry>();
         services.AddSingleton<GameSessionRegistry>();
+        services.AddSingleton<MatchingLifecycleService>(sp => new MatchingLifecycleService(
+            sp.GetRequiredService<IRedisOperations>(),
+            sp.GetRequiredService<INatsClient>(),
+            sp.GetRequiredService<ILogger<MatchingLifecycleService>>()));
         services.AddSingleton<GameServer>();
 
         services.AddSingleton<ServerReadinessState>();

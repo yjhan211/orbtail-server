@@ -666,8 +666,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         ILogger<GameServer> logger,
         IRedisOperations? redisOperations = null)
     {
-        var service = new MatchingLifecycleService(redisOperations ?? new InMemoryRedisOperations(), logger);
-        service.Start(nats);
+        var service = new MatchingLifecycleService(redisOperations ?? new InMemoryRedisOperations(), nats, logger);
         return service;
     }
 

@@ -152,6 +152,64 @@ public sealed class NatsClientTests
         Assert.Equal(1, proxy.CloseCalls);
     }
 
+    [Fact]
+    public async Task GameServerRegistrationsShareLifecycleAndCloseNatsOnce()
+    {
+        var (connection, proxy) = RecordingConnectionProxy.Create();
+        var services = CreateGameServerServices(new NatsClient(connection, TimeSpan.FromMilliseconds(50)));
+        await using (var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true }))
+        {
+            var server = provider.GetRequiredService<game_server.GameServer>();
+            var lifecycle = provider.GetRequiredService<game_server.services.MatchingLifecycleService>();
+            Assert.Same(lifecycle, server.MatchingLifecycle);
+            await server.StopAsync(CancellationToken.None);
+            Assert.Equal(1, proxy.CloseCalls);
+        }
+        Assert.Equal(1, proxy.CloseCalls);
+    }
+
+    [Fact]
+    public async Task GameServerActivationFailureStillDisposesNats()
+    {
+        var (connection, proxy) = RecordingConnectionProxy.Create();
+        var services = CreateGameServerServices(new NatsClient(connection, TimeSpan.FromMilliseconds(50)));
+        services.RemoveAll<game_server.GameServer>();
+        services.AddSingleton<game_server.GameServer>(sp =>
+        {
+            sp.GetRequiredService<game_server.services.MatchingLifecycleService>();
+            throw new InvalidOperationException("activation failed");
+        });
+        await using (var provider = services.BuildServiceProvider())
+        {
+            Assert.Throws<InvalidOperationException>(() => provider.GetRequiredService<game_server.GameServer>());
+            Assert.False(proxy.Closed);
+        }
+        Assert.Equal(1, proxy.CloseCalls);
+    }
+
+    private static ServiceCollection CreateGameServerServices(NatsClient client)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["natsEndPoint"] = "nats://unused:4222",
+            ["gameServerId"] = "test-game-node",
+            ["GAME_SERVER_PUBLIC_HOST"] = "127.0.0.1"
+        }).Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IConfiguration>(configuration);
+        game_server.Program.ConfigureServices(new HostBuilderContext(new Dictionary<object, object>())
+        {
+            Configuration = configuration,
+            HostingEnvironment = new Microsoft.Extensions.Hosting.Internal.HostingEnvironment { EnvironmentName = Environments.Production }
+        }, services);
+        services.RemoveAll<INatsClient>();
+        services.AddSingleton<INatsClient>(_ => client);
+        services.RemoveAll<IRedisOperations>();
+        services.AddSingleton<IRedisOperations>(_ => new InMemoryRedisOperations());
+        return services;
+    }
+
     private static ServiceCollection CreateUserServerServices(NatsClient client)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(

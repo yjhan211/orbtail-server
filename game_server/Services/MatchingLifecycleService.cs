@@ -14,17 +14,15 @@ namespace game_server.services;
 ///     GameServer는 연결과 타이머를 멈춘 뒤 DrainAsync로 기다리고 마지막에 NATS를 닫는다.
 ///     매치의 게임 상태나 잠금은 소유하지 않는다.
 /// </summary>
-internal sealed class MatchingLifecycleService(IRedisOperations redisOperations, ILogger logger)
+public sealed class MatchingLifecycleService(IRedisOperations redisOperations, INatsClient natsClient, ILogger logger)
 {
     private const int MatchingLifecycleTerminalMatchRetention = 4096;
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, string>>
         _matchingLifecycleTerminalSubjects = new();
     private readonly ConcurrentQueue<long> _matchingLifecycleTerminalMatchOrder = new();
     private readonly ConcurrentDictionary<long, Task> _pendingMatchingRedisCleanupTasks = new();
-    private INatsClient? _matchingLifecycleNatsClient;
+    private INatsClient? _matchingLifecycleNatsClient = natsClient ?? throw new ArgumentNullException(nameof(natsClient));
     private long _nextMatchingRedisCleanupId;
-
-    internal void Start(INatsClient natsClient) => _matchingLifecycleNatsClient = natsClient;
 
     /// <summary>
     ///     플레이어의 exact matching reservation 해제를 먼저 시도한 뒤 NATS Core로 종료 사실을 알린다.

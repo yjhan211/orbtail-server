@@ -30,7 +30,9 @@ public sealed class GameServerDependencyInjectionTests
             Configuration = configuration,
             HostingEnvironment = new HostingEnvironment { EnvironmentName = Environments.Production }
         }, services);
-        // DI 조립만 검사한다. Redis 연결이나 서버 시작은 실행하지 않는다.
+        // DI 조립만 검사한다. Redis·NATS 연결이나 서버 시작은 실행하지 않는다.
+        services.RemoveAll<network.infrastructure.messaging.INatsClient>();
+        services.AddSingleton<network.infrastructure.messaging.INatsClient>(new MatchStartCountdownPublicationTests.NoOpNatsClient());
         services.RemoveAll<IRedisOperations>();
         services.AddSingleton<IRedisOperations>(new InMemoryRedisOperations());
 
