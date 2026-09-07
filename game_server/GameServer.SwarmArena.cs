@@ -420,7 +420,7 @@ public partial class GameServer
         // 오브마다 제 자리에서 "아직 아무도 안 겨눈" 가장 가까운 몹을 고른다.
         var crossfireAnchoredTargets = CollectSwarmCrossfireAnchoredTargets(matchingId);
 
-        var attacks = _proximityAutoCombatResolver.Resolve(
+        var attacks = MatchRuntimes.GetRequired(matchingId).Combat.Resolve(
             matchingId,
             actors,
             nowUtc,
@@ -512,7 +512,7 @@ public partial class GameServer
                         matchingId, attack, sunOrigin, sunAnchor, monsterId, attack.Damage, nowUtc, sessions))
                 {
                     // 로그는 남기지 않는다 — 상한이 찬 동안 매 틱 되풀이되는 정상 대기라 이벤트 흐름만 메운다.
-                    _proximityAutoCombatResolver.RefundAttack(
+                    MatchRuntimes.GetRequired(matchingId).Combat.RefundAttack(
                         matchingId, attack.AttackerPlayerId, attack.AttackerItemUid, nowUtc);
                 }
                 continue;
@@ -2635,7 +2635,7 @@ public partial class GameServer
         if (resultHost != null)
         {
             resultHost.TryEndMatch(winnerId, "orb_score_timeout");
-            CleanupMatchSettlementState(matchingId);
+            MatchRuntimes.Get(matchingId)?.Combat.Clear();
             return true;
         }
 

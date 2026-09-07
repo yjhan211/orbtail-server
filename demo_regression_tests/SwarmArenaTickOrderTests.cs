@@ -89,7 +89,7 @@ public sealed class SwarmArenaTickOrderTests
         string matchingSettlement = ReadMethodSlice(
             settlement,
             "private void ProcessEnvironmentalTickForMatching(",
-            "private void CleanupMatchSettlementState(");
+            "private sealed record EnvironmentalTarget(");
         AssertInOrder(
             matchingSettlement,
             "long matchingId = match.MatchingId;",
@@ -173,7 +173,7 @@ public sealed class SwarmArenaTickOrderTests
             "ApplySwarmPvpAttack(matchingId, pending.Attack",
             "CollectSwarmCrossfireCappedOwners(",
             "CollectSwarmCrossfireAnchoredTargets(",
-            "_proximityAutoCombatResolver.Resolve(",
+            "Combat.Resolve(",
             "TryScheduleSwarmCrossfire(",
             "attackerSession?.SendSwarmAfterimageMonsterAttackFeedback(",
             "BroadcastSwarmAttackVfxToTargetAndObservers(",

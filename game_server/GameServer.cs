@@ -93,7 +93,6 @@ public partial class GameServer(
     [
         new MatchCleanupStep("session runtime", GameClientSession.CleanupAbandonedMatchingRuntime),
         new MatchCleanupStep("session index", sessions.RemoveMatch),
-        new MatchCleanupStep("settlement", CleanupMatchSettlementState),
         new MatchCleanupStep("event log", EventLogs.Clear)
     ];
 

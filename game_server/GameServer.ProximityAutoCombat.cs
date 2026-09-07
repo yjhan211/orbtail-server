@@ -15,7 +15,6 @@ public partial class GameServer
 {
     private const int ProximityAutoCombatTickIntervalMs = 50;
 
-    private readonly ProximityAutoCombatResolver _proximityAutoCombatResolver = new();
     private Timer? _proximityAutoCombatTimer;
 
     private void StartProximityAutoCombatTimer()

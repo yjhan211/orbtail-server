@@ -62,11 +62,20 @@ public readonly record struct ProximityCombatAttack(
     int AttackerTrailOrdinal = 0);
 
 /// <summary>
-///     Selects the nearest target(s) per armed actor while keeping attack cadence server-authoritative.
-///     Damage application stays outside this class so every volley is selected from one shared snapshot.
+///     매치 하나의 조준·공격 주기·재획득 상태를 보관하고 공격 대상을 고른다.
+///     호출자는 매치 잠금 안에서 실행하며, 실제 피해 적용은 같은 스냅샷의 공격을 모두 고른 뒤 처리한다.
 /// </summary>
 public sealed class ProximityAutoCombatResolver
 {
+    private readonly long _matchingId;
+    private bool _released;
+
+    public ProximityAutoCombatResolver(long matchingId)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
+        _matchingId = matchingId;
+    }
+
     /// <summary>
     ///     조준 지연. 다른 구역 대상에게 "알 수 없는 피해"가 들어가던 문제를 임시로 덮으려고
     ///     2026-07-18에 500ms로 넣었으나, 다음 날 #194가 지역 경계와 벽 너머를 직접 차단하고
@@ -91,7 +100,7 @@ public sealed class ProximityAutoCombatResolver
         DateTime nowUtc,
         Func<ProximityCombatActor, ProximityCombatActor, bool>? hasLineOfSight = null)
     {
-        if (matchingId <= 0)
+        if (_released || matchingId != _matchingId)
             return [];
 
         var attacks = new List<ProximityCombatAttack>();
@@ -343,24 +352,18 @@ public sealed class ProximityAutoCombatResolver
         return 3;
     }
 
-    public void RemoveMatching(long matchingId)
+    /// <summary>현재 조준과 공격 대기 상태를 비운다. 매치 잠금 안에서 호출한다.</summary>
+    public void Clear()
     {
-        foreach (var key in _combatStates.Keys)
-        {
-            if (key.MatchingId != matchingId)
-                continue;
+        _combatStates.Clear();
+        _burstRechargeReadyAtUtc.Clear();
+        _recentlyLostCombatStates.Clear();
+    }
 
-            _combatStates.TryRemove(key, out _);
-            _burstRechargeReadyAtUtc.TryRemove(key, out _);
-        }
-
-        foreach (var key in _recentlyLostCombatStates.Keys)
-        {
-            if (key.MatchingId != matchingId)
-                continue;
-
-            _recentlyLostCombatStates.TryRemove(key, out _);
-        }
+    internal void Release()
+    {
+        _released = true;
+        Clear();
     }
 
     private static int CompareWeaponInstance(ProximityCombatActor left, ProximityCombatActor right)
@@ -379,6 +382,7 @@ public sealed class ProximityAutoCombatResolver
     /// </summary>
     public void RefundAttack(long matchingId, long playerId, long itemUid, DateTime nowUtc)
     {
+        if (_released || matchingId != _matchingId) return;
         foreach (var key in _combatStates.Keys)
         {
             if (key.MatchingId != matchingId || key.PlayerId != playerId || key.ItemUid != itemUid)

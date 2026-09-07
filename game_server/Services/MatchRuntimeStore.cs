@@ -23,6 +23,7 @@ internal sealed class MatchRuntime
     {
         MatchingId = matchingId;
         Bots = new BotPlayerManager(matchingId, logger);
+        Combat = new ProximityAutoCombatResolver(matchingId);
         BotMovement = new SwarmBotMovementCoordinator(this);
         Swarm = new SwarmMatchRuntime(matchingId,
             growthOfferIds ?? new SwarmGrowthOfferIdSequence(),
@@ -49,6 +50,7 @@ internal sealed class MatchRuntime
     /// <summary>이 매치의 오브 전투·성장·봇 전술 상태. 매치와 함께 생성되고 제거된다.</summary>
     public SwarmMatchRuntime Swarm { get; }
     public BotPlayerManager Bots { get; }
+    public ProximityAutoCombatResolver Combat { get; }
     public SwarmBotMovementCoordinator BotMovement { get; }
     public SwarmMonsterDirector Monsters { get; }
     public MatchEventLogState EventLog { get; } = new();
@@ -304,6 +306,7 @@ internal sealed class MatchRuntimeStore
                 runtime.Closures.Release();
                 runtime.Bots.Release();
                 runtime.Monsters.Release();
+                runtime.Combat.Release();
                 _runtimes.TryRemove(new KeyValuePair<long, MatchRuntime>(runtime.MatchingId, runtime));
                 if (_afterCleanup != null)
                 {

@@ -10,9 +10,60 @@ public class ProximityAutoCombatResolverTests
     private static readonly double AimMs = ProximityAutoCombatResolver.AimDuration.TotalMilliseconds;
 
     [Fact]
+    public void MatchOwnedCombat_IsolatesCooldownsAndReleasesAllState()
+    {
+        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var first = store.GetOrCreate(501);
+        var second = store.GetOrCreate(502);
+        var now = DateTime.UtcNow;
+        var actors = new[] { Actor(1, 0, 0, 107000003), Actor(2, 1, 0) };
+        Assert.NotSame(first.Combat, second.Combat);
+        using (store.Enter(first))
+        {
+            Assert.Empty(first.Combat.Resolve(501, actors, now));
+            Assert.Single(first.Combat.Resolve(501, actors, now.AddMilliseconds(AimMs)));
+            Assert.Empty(first.Combat.Resolve(502, actors, now.AddMilliseconds(AimMs)));
+        }
+        using (store.Enter(second))
+        {
+            Assert.Empty(second.Combat.Resolve(502, actors, now.AddMilliseconds(AimMs)));
+            Assert.Single(second.Combat.Resolve(502, actors, now.AddMilliseconds(AimMs * 2)));
+        }
+        using (store.Enter(first))
+        {
+            first.Combat.RefundAttack(501, 1, 0, now.AddMilliseconds(AimMs * 2));
+            Assert.Single(first.Combat.Resolve(501, actors, now.AddMilliseconds(AimMs * 2)));
+            first.TryMarkTerminal();
+        }
+        Assert.Null(store.Get(501));
+        foreach (string field in new[] { "_combatStates", "_burstRechargeReadyAtUtc", "_recentlyLostCombatStates" })
+        {
+            var state = typeof(ProximityAutoCombatResolver).GetField(field,
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(first.Combat)!;
+            Assert.Equal(0, (int)state.GetType().GetProperty("Count")!.GetValue(state)!);
+        }
+        Assert.Empty(first.Combat.Resolve(501, actors, now.AddSeconds(10)));
+        using (store.Enter(second))
+            Assert.Empty(second.Combat.Resolve(502, actors, now.AddMilliseconds(AimMs * 3)));
+    }
+
+    [Fact]
+    public void ClearRestartsAimWithoutReleasingTheMatch()
+    {
+        var resolver = new ProximityAutoCombatResolver(100);
+        var now = DateTime.UtcNow;
+        var actors = new[] { Actor(1, 0, 0, 107000003), Actor(2, 1, 0) };
+        Assert.Empty(resolver.Resolve(100, actors, now));
+        Assert.Single(resolver.Resolve(100, actors, now.AddMilliseconds(AimMs)));
+        resolver.Clear();
+        Assert.Empty(resolver.Resolve(100, actors, now.AddMilliseconds(AimMs)));
+        Assert.Single(resolver.Resolve(100, actors, now.AddMilliseconds(AimMs * 2)));
+    }
+
+    [Fact]
     public void Resolve_ArmedActorTargetsNearestPlayerInRange()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(100);
         var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -35,7 +86,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_UnarmedActorCanBeHitButDoesNotAttack()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(100);
         var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -54,7 +105,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_RespectsAreaRangeAimAndAttackInterval()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(100);
         var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -81,7 +132,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_TargetSwitchInheritsPendingAttackCooldown()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(100);
         var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -114,7 +165,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_TargetDroughtThenNewTargetInheritsPendingCooldown()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(100);
         var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
         var attacker = Actor(1, 0f, 0f, weaponItemId: 107000003);
         var first = Actor(2, 1f, 0f);
@@ -141,7 +192,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_UsesPlayerIdAsDeterministicTieBreaker()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(100);
         var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -159,7 +210,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_PrefersEnemyPlayerOverCloserMonster()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(202);
         var now = new DateTime(2026, 7, 29, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -177,7 +228,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_KeepsCurrentCoreAheadOfOtherMonsters()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(210);
         var now = new DateTime(2026, 7, 31, 0, 0, 0, DateTimeKind.Utc);
         var attacker = Actor(1, 0f, 0f, weaponItemId: 107000010);
         var core = Actor(-202001, 1f, 0f) with
@@ -199,7 +250,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_KeepsCurrentNormalAheadOfOtherMonsters_ButPlayerPreemptsIt()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(211);
         var now = new DateTime(2026, 7, 31, 1, 0, 0, DateTimeKind.Utc);
         var attacker = Actor(1, 0f, 0f, weaponItemId: 107000010);
         var normal = Actor(-202002, 1f, 0f) with { IsMonsterTarget = true };
@@ -237,7 +288,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_TargetChangeRestartsAim()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(100);
         var now = new DateTime(2026, 7, 14, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -263,7 +314,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_WindProfileHitsPrimaryAndTwoAdditionalTargetsWithReducedDamage()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(198);
         var now = new DateTime(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -287,7 +338,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_WaveProfileUsesThreeFastOpeningAttacksThenReturnsToBaseInterval()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(198);
         var now = new DateTime(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -312,7 +363,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_WaveBurstRechargesOnlyAfterZeroTargetsAndDoesNotReturnOnTargetChangeOrGraceReacquire()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(198);
         var now = new DateTime(2026, 7, 24, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -347,7 +398,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_WindProfileChecksLineOfSightForEveryAdditionalTarget()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(198);
         var now = new DateTime(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -377,7 +428,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_ReacquiringSameTargetWithinGraceResumesPausedAim()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(198);
         var now = new DateTime(2026, 7, 22, 1, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -401,7 +452,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_ReacquiringSameTargetAfterGraceRestartsAim()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(198);
         var now = new DateTime(2026, 7, 22, 2, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -423,7 +474,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_PreservesSunAndWaveResonanceMetadataForServerProcResolution()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(200);
         var now = new DateTime(2026, 7, 25, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -446,7 +497,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_MultipleOrbInstancesUseIndependentCooldownsAndOneTargetActor()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(200);
         var now = new DateTime(2026, 7, 24, 3, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {
@@ -485,7 +536,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void Resolve_MultipleOrbInstancesCanStaggerTheirOpeningVolley()
     {
-        var resolver = new ProximityAutoCombatResolver();
+        var resolver = new ProximityAutoCombatResolver(200);
         var now = new DateTime(2026, 7, 27, 0, 0, 0, DateTimeKind.Utc);
         var actors = new[]
         {

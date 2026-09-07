@@ -33,14 +33,14 @@ public partial class GameServer
             if (aliveCount == 1 && humans.Count > 0)
             {
                 humans[0].TryEndMatch(humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
-                CleanupMatchSettlementState(matchingId);
+                MatchRuntimes.Get(matchingId)?.Combat.Clear();
                 return;
             }
 
             if (humans.Count == 0)
             {
                 long winnerPlayerId = bots.Count == 1 ? bots[0].PlayerId : 0;
-                CleanupMatchSettlementState(matchingId);
+                MatchRuntimes.Get(matchingId)?.Combat.Clear();
                 EndBotOnlyMatchIfSettled(matchingId, winnerPlayerId);
             }
 
@@ -177,13 +177,8 @@ public partial class GameServer
         if (isGameOver && winnerId.HasValue && resultHost != null)
         {
             resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);
-            CleanupMatchSettlementState(matchingId);
+            MatchRuntimes.Get(matchingId)?.Combat.Clear();
         }
-    }
-
-    private void CleanupMatchSettlementState(long matchingId)
-    {
-        _proximityAutoCombatResolver.RemoveMatching(matchingId);
     }
 
     private sealed record EnvironmentalTarget(
