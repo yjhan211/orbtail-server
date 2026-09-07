@@ -219,7 +219,7 @@ public partial class GameClientSession : SessionBase
         if (PlayerId.HasValue || MatchingId > 0)
         {
             Logger.LogWarning("Repeated game authentication attempt: PlayerId={PlayerId}, MatchingId={MatchingId}", PlayerId, MatchingId);
-            SendConnectResult(false, ErrorCode.ALREADY_AUTHENTICATED, disconnectAfterSend: true);
+            SendConnectFailure(ErrorCode.ALREADY_AUTHENTICATED);
             return;
         }
 
@@ -231,7 +231,7 @@ public partial class GameClientSession : SessionBase
             {
                 EnsureConnectionActive();
                 Logger.LogWarning("GameServer connection rejected: invalid, expired, replayed, or another node's handoff ticket");
-                SendConnectResult(false, ErrorCode.GAME_ENTRY_TICKET_INVALID, disconnectAfterSend: true);
+                SendConnectFailure(ErrorCode.GAME_ENTRY_TICKET_INVALID);
                 return;
             }
 
@@ -253,7 +253,7 @@ public partial class GameClientSession : SessionBase
                 {
                     Logger.LogWarning("GameServer connection rejected because the match is terminal: PlayerId={PlayerId}, MatchingId={MatchingId}", playerId, matchingId);
                     MarkServerInitiatedDisconnect();
-                    SendConnectResult(false, ErrorCode.GAME_ALREADY_ENDED, disconnectAfterSend: true);
+                    SendConnectFailure(ErrorCode.GAME_ALREADY_ENDED);
                     return;
                 }
 
@@ -366,7 +366,7 @@ public partial class GameClientSession : SessionBase
                 return;
             }
             MarkServerInitiatedDisconnect();
-            SendConnectResult(false, ErrorCode.GAME_ENTRY_FAILED, disconnectAfterSend: true);
+            SendConnectFailure(ErrorCode.GAME_ENTRY_FAILED);
         }
     }
 
@@ -378,10 +378,11 @@ public partial class GameClientSession : SessionBase
             inventory.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
     }
 
-    private bool SendConnectResult(bool success, ErrorCode errorCode, bool disconnectAfterSend = false)
+    /// <summary>입장 실패 응답을 송신 큐에 넣고 전송 후 연결 종료를 예약한다.</summary>
+    private void SendConnectFailure(ErrorCode errorCode)
     {
-        using var packet = CreateConnectResultPacket(success, errorCode);
-        return disconnectAfterSend ? Connection.TrySendAndDisconnect(packet) : Connection.TrySend(packet);
+        using var packet = CreateConnectResultPacket(false, errorCode);
+        Connection.TrySendAndDisconnect(packet);
     }
 
     private Packet CreateConnectResultPacket(bool success, ErrorCode errorCode, long matchingId = 0, Cell? spawnCell = null)
@@ -476,7 +477,8 @@ public partial class GameClientSession : SessionBase
 
     internal IReadOnlyList<long> MatchHumanPlayerIds => Volatile.Read(ref _matchHumanPlayerIds);
 
-    private bool TryBeginMatchingLifecycleTerminal()
+    /// <summary>이 세션의 매치 종료 처리를 한 호출만 맡도록 한다. 입장 실패·퇴장·완료 경로가 공유한다.</summary>
+    private bool TryBeginMatchEndHandling()
     {
         return Interlocked.CompareExchange(ref _matchingLifecycleTerminalReported, 1, 0) == 0;
     }
@@ -494,7 +496,7 @@ public partial class GameClientSession : SessionBase
         if (Interlocked.CompareExchange(ref _entryFailureReported, 1, 0) != 0)
             return;
 
-        if (!TryBeginMatchingLifecycleTerminal())
+        if (!TryBeginMatchEndHandling())
         {
             // 실제 처리를 맡지 않았으므로 입장 실패 플래그는 돌려놓는다.
             // 다른 종료 처리가 실패해 선점을 풀면 다음 호출에서 다시 시도할 수 있다.
@@ -538,7 +540,7 @@ public partial class GameClientSession : SessionBase
             return;
         }
 
-        if (!TryBeginMatchingLifecycleTerminal())
+        if (!TryBeginMatchEndHandling())
         {
             return;
         }
@@ -577,14 +579,14 @@ public partial class GameClientSession : SessionBase
 
     internal void TryMarkMatchingLifecycleHandledExternally()
     {
-        if (!TryBeginMatchingLifecycleTerminal()) return;
+        if (!TryBeginMatchEndHandling()) return;
 
         Volatile.Write(ref _matchingLifecycleHandledExternally, 1);
     }
 
     private void RecordLeaveOnce()
     {
-        if (!PlayerId.HasValue || MatchingId <= 0 || !TryBeginMatchingLifecycleTerminal())
+        if (!PlayerId.HasValue || MatchingId <= 0 || !TryBeginMatchEndHandling())
             return;
 
         try

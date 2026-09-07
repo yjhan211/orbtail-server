@@ -81,7 +81,7 @@ public partial class GameClientSession
     internal Action? MarkGameEndedAndPrepareLifecyclePublication()
     {
         Volatile.Write(ref _isGameEnded, true);
-        if (!PlayerId.HasValue || MatchingId <= 0 || !TryBeginMatchingLifecycleTerminal())
+        if (!PlayerId.HasValue || MatchingId <= 0 || !TryBeginMatchEndHandling())
             return null;
 
         try

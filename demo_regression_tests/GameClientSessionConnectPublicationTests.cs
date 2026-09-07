@@ -348,7 +348,7 @@ public sealed class GameClientSessionConnectPublicationTests
         int registeredFailure = connectionSource.IndexOf("if (registered)", publication, StringComparison.Ordinal);
         int deferredAbort = connectionSource.IndexOf("HandleEntryFailureOnce()", registeredFailure, StringComparison.Ordinal);
         int earlyFailureResponse = connectionSource.IndexOf(
-            "SendConnectResult(false, ErrorCode.GAME_ENTRY_FAILED",
+            "SendConnectFailure(ErrorCode.GAME_ENTRY_FAILED",
             deferredAbort,
             StringComparison.Ordinal);
         Assert.True(registeredFailure >= 0 &&
