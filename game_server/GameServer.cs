@@ -4,7 +4,6 @@ using game_server.services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using network.common;
 using network.common.data.helpers;
 using network.core;
 using network.gamehandoff;
@@ -15,11 +14,15 @@ using network.routing;
 namespace game_server;
 
 /// <summary>
-///     GameServer의 시작과 종료를 관리하고, 게임 세션과 매치 처리에 필요한 구성 요소를 연결한다.
-///     TCP 연결을 받고 게임 진행용 타이머를 실행하며, 노드의 접속 정보와 수용 상태를 등록한다.
-///     매치 상태 변경은 매치별 잠금 안에서 처리한다.
-///     입장 실패는 MatchEntryFailureHandler에, 세션 퇴장은 GameSessionLeaveHandler에 맡긴다.
-///     종료 알림과 Redis 정리는 MatchingLifecycleService에 위임한다.
+///     GameServer의 시작과 종료를 관리하고, 새 TCP 연결마다 GameClientSession을 생성한다.
+///     필요한 서비스는 Program.cs에서 DI로 전달받는다.
+///
+///     시작할 때 게임 데이터를 불러오고 TCP 접속과 매치별 틱 처리를 시작한 뒤,
+///     Redis에 노드 정보를 등록해 매치를 배정받을 준비가 되었음을 알린다.
+///
+///     종료할 때는 새 세션 생성과 매치 배정을 막고, 틱 처리와 연결 정리가 끝나기를 기다린다.
+///     이후 매칭 관련 Redis 정리 작업을 기다리고 노드 등록과 NATS 연결을 정리한다.
+///     시작 실패와 일반 종료는 같은 정리 절차를 사용한다.
 /// </summary>
 internal partial class GameServer(
     NetworkService networkService,
@@ -244,5 +247,4 @@ internal partial class GameServer(
             return null;
         }
     }
-
 }
