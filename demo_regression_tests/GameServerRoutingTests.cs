@@ -175,24 +175,21 @@ public sealed class GameServerRoutingTests
     }
 
     [Fact]
-    public async Task Advertiser_PublishesAcceptingThenDrainingThenRemoves()
+    public async Task Advertiser_PublishesAcceptingThenStopsAndRemoves()
     {
         var registry = new RecordingGameServerRegistry();
         var options = new GameServerNodeOptions { NodeId = "game-server-1", PublicHost = "10.0.0.5", PublicPort = 9002, MaxConcurrentMatches = 3 };
         int active = 1;
-        await using var advertiser = new GameServerNodeAdvertiser(registry, options, () => active, new RecordingLogger());
+        var advertiser = new GameServerNodeAdvertiser(registry, options, () => active, new RecordingLogger());
 
         await advertiser.StartAsync();
         active = 2;
-        await advertiser.StopAcceptingAsync();
-        await advertiser.RemoveAsync();
+        await advertiser.StopAsync();
 
-        Assert.Equal(2, registry.Published.Count);
+        Assert.Single(registry.Published);
         Assert.True(registry.Published[0].Accepting);
         Assert.Equal(1, registry.Published[0].ActiveMatches);
         Assert.Equal(("10.0.0.5", 9002, 3), (registry.Published[0].PublicHost, registry.Published[0].PublicPort, registry.Published[0].MaxConcurrentMatches));
-        Assert.False(registry.Published[1].Accepting);
-        Assert.Equal(2, registry.Published[1].ActiveMatches);
         Assert.Equal(new[] { "game-server-1" }, registry.Removed);
     }
 
@@ -201,7 +198,7 @@ public sealed class GameServerRoutingTests
     {
         var registry = new RecordingGameServerRegistry { PublishError = new InvalidOperationException("redis down") };
         var options = new GameServerNodeOptions { NodeId = "game-server-1", PublicHost = "10.0.0.5" };
-        await using var advertiser = new GameServerNodeAdvertiser(registry, options, () => 0, new RecordingLogger());
+        var advertiser = new GameServerNodeAdvertiser(registry, options, () => 0, new RecordingLogger());
 
         await Assert.ThrowsAsync<InvalidOperationException>(advertiser.StartAsync);
     }

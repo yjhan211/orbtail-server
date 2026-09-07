@@ -113,11 +113,15 @@ internal partial class GameServer(
         {
             try
             {
-                await _nodeAdvertiser.StopAcceptingAsync();
+                await _nodeAdvertiser.StopAsync();
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Game server node draining failed.");
+                logger.LogWarning(ex, "Game server node advertisement shutdown failed.");
+            }
+            finally
+            {
+                _nodeAdvertiser = null;
             }
         }
 
@@ -151,31 +155,6 @@ internal partial class GameServer(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Game server matching Redis cleanup failed.");
-        }
-
-        if (_nodeAdvertiser != null)
-        {
-            try
-            {
-                await _nodeAdvertiser.RemoveAsync();
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Game server node registry removal failed.");
-            }
-
-            try
-            {
-                await _nodeAdvertiser.DisposeAsync();
-            }
-            catch (Exception ex)
-            {
-                logger.LogWarning(ex, "Game server node advertiser disposal failed.");
-            }
-            finally
-            {
-                _nodeAdvertiser = null;
-            }
         }
 
         await matchingLifecycle.CloseAsync();
