@@ -2,6 +2,7 @@ using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
+using network.common.data;
 using network.common.data.models;
 using network.gameentry;
 
@@ -9,6 +10,25 @@ namespace demo_regression_tests;
 
 public sealed class GameMatchEntryServiceTests
 {
+    [Fact]
+    public async Task CompositionInitializesDoorsAndLaterEntryPreservesChanges()
+    {
+        UserServerMatchingTestData.EnsureGameDataLoaded();
+        var (service, redis, store, runtime) = await Prepare(981013);
+        await service.LoadCompositionAsync(runtime.MatchingId, Config.SWARM_MATCH_MAP, runtime);
+        int[] initialDoors = GameDoorData.GetAll().Where(door => door.IsInitiallyOpen)
+            .Select(door => door.DoorId).Order().ToArray();
+        Assert.Equal(initialDoors, runtime.Doors.GetOpenDoors().Order().ToArray());
+
+        using (runtime.Enter())
+        {
+            runtime.Doors.CloseDoorsForAreas(GameDoorData.GetAll().Select(door => door.AreaType));
+            runtime.Doors.OpenDoor(990013);
+        }
+        await service.LoadCompositionAsync(runtime.MatchingId, Config.SWARM_MATCH_MAP, runtime);
+        Assert.Equal(new[] { 990013 }, runtime.Doors.GetOpenDoors());
+    }
+
     [Fact]
     public async Task MissingHumanProfileDoesNotCommitCompositionAndReleasesInitializationLock()
     {

@@ -322,7 +322,6 @@ public partial class GameClientSession : SessionBase
 
             LogInitialInventory();
 
-            InitializeWithMatchLock(runtime, () => Doors?.Initialize([]));
             SendDoorStateList();
             SendAreaClosureStateSnapshot();
 

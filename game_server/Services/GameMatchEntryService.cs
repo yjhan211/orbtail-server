@@ -13,7 +13,7 @@ namespace game_server.services;
 /// <summary>
 ///     현재 노드에 발급된 입장 티켓을 소비하고 manifest·예약·준비 마커를 확인해 사람·봇·스폰 구성을 매치당 한 번 확정한다.
 ///     Redis 조회는 매치별 비동기 초기화 잠금으로 직렬화하고, 메모리 상태 반영은 매치 잠금 안에서 처리한다.
-///     최초 구성 확정 시 매치 로그를 시작하고 봇의 초기 구역·스폰을 기록한다.
+    ///     최초 구성 확정 시 문 상태를 초기화하고 매치 로그와 봇의 초기 구역·스폰을 기록한다.
 ///     연결 인증과 초기 패킷 전송은 세션이 맡으며, 이 서비스는 특정 연결을 보관하지 않는다.
 /// </summary>
 internal sealed class GameMatchEntryService(
@@ -87,6 +87,7 @@ internal sealed class GameMatchEntryService(
                     runtime.Roster.RegisterEntry(new RosterEntry { PlayerId = participant.PlayerId });
                     runtime.Roster.UpdatePlayerProfile(participant.PlayerId, participant.Name, participant.WearItemIdList);
                 }
+                runtime.Doors.Initialize();
                 InitializeMatchLog(runtime);
                 runtime.Composition = composition;
             });
