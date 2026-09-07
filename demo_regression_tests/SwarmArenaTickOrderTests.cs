@@ -288,7 +288,7 @@ public sealed class SwarmArenaTickOrderTests
         string tick = ReadMethodSlice(
             server,
             "private void ProcessAreaClosureForMatching(",
-            "    private IConnectionSession? CreateClientSession(");
+            "    private GameClientSession? CreateClientSession(");
         string prepare = ReadMethodSlice(
             arena,
             "private SwarmClosurePublicationPlan? PrepareSwarmScheduledClosureTick(",
