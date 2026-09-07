@@ -28,6 +28,7 @@ namespace game_server;
 internal partial class GameServer(
     IConfiguration configuration,
     ILogger<GameServer> logger,
+    ILogger<GameClientSession> sessionLogger,
     MatchingLifecycleService matchingLifecycle,
     IRedisOperations redisOperations,
     NetworkService networkService,
@@ -248,7 +249,7 @@ internal partial class GameServer(
         {
             var session = new GameClientSession(
                 connection,
-                logger,
+                sessionLogger,
                 redisOperations,
                 ticket => gameHandoffTicketService.ConsumeAsync(ticket, nodeOptions.NodeId),
                 OnClientSessionLeave,

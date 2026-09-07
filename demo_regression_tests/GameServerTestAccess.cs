@@ -47,6 +47,7 @@ internal static class GameServerTestAccess
         return new GameServer(
             configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
             logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServer>.Instance,
+            sessionLogger: Microsoft.Extensions.Logging.Abstractions.NullLogger<game_server.network.GameClientSession>.Instance,
             matchingLifecycle: lifecycle,
             redisOperations: null!, networkService: null!, gameHandoffTicketService: null!,
             readinessState: new network.hosting.ServerReadinessState(),
