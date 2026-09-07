@@ -799,7 +799,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             new ServerReadinessState(),
             new RecordingGameServerRegistry(),
             new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
-            GameServerDevOptions.Disabled);
+            GameServerDevOptions.Disabled,
+            new GameSessionRegistry());
     }
 
     private sealed class RecordingTcpConnection : TcpConnection

@@ -36,13 +36,14 @@ public partial class GameServer(
     ServerReadinessState readinessState,
     IGameServerRegistry gameServerRegistry,
     GameServerNodeOptions nodeOptions,
-    GameServerDevOptions devOptions)
+    GameServerDevOptions devOptions,
+    GameSessionRegistry sessionRegistry)
     : IHostedService
 {
     private const int ResourceTickIntervalSeconds = 5;
     private static readonly TimeSpan ShutdownStageTimeout = TimeSpan.FromSeconds(5);
 
-    private readonly GameSessionRegistry _sessionRegistry = new();
+    private readonly GameSessionRegistry _sessionRegistry = sessionRegistry;
     private readonly SwarmMatchRuntimeStore _swarmMatchRuntimes = new();
     private MatchRuntimeStore? _matchRuntimes;
     private MatchEntryFailureHandler? _entryFailureHandler;

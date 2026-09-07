@@ -1,3 +1,4 @@
+using game_server.network;
 using game_server.services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -58,7 +59,7 @@ internal static class Program
         };
     }
 
-    private static void ConfigureServices(HostBuilderContext hostContext, IServiceCollection services)
+    internal static void ConfigureServices(HostBuilderContext hostContext, IServiceCollection services)
     {
         var nodeOptions = CreateGameServerNodeOptions(hostContext.Configuration);
         nodeOptions.Validate();
@@ -81,6 +82,7 @@ internal static class Program
         services.AddSingleton(devOptions);
 
         services.AddSingleton<IGameServerRegistry, RedisGameServerRegistry>();
+        services.AddSingleton<GameSessionRegistry>();
         services.AddSingleton<GameServer>();
 
         services.AddSingleton<ServerReadinessState>();

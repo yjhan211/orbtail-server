@@ -370,7 +370,8 @@ public sealed class MatchStartCountdownPublicationTests
             new ServerReadinessState(),
             new RecordingGameServerRegistry(),
             new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
-            GameServerDevOptions.Disabled);
+            GameServerDevOptions.Disabled,
+            new GameSessionRegistry());
     }
 
     private static SwarmMatchPacingState GetPacing(GameServer server, long matchingId)

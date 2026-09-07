@@ -1048,7 +1048,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
             new ServerReadinessState(),
             new RecordingGameServerRegistry(),
             new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
-            GameServerDevOptions.Disabled);
+            GameServerDevOptions.Disabled,
+            new GameSessionRegistry());
     }
 
     [MessagePackObject]

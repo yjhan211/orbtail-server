@@ -8,7 +8,7 @@ namespace game_server.network;
 ///     Mutations are serialized so replacement and reference-equal removal update both indexes in one mutation boundary;
 ///     readers receive snapshots that are safe to enumerate without holding the mutation gate.
 /// </summary>
-internal sealed class GameSessionRegistry
+public sealed class GameSessionRegistry
 {
     private readonly ConcurrentDictionary<long, GameClientSession> _sessionsByPlayer = new();
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, GameClientSession>> _sessionsByMatch =
