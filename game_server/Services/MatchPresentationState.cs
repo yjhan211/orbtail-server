@@ -17,7 +17,6 @@ internal sealed class MatchPresentationState
         bool IsActive,
         string OrbItemSignature,
         int FrontOrbHp,
-        int JamCount,
         int BodyHealth,
         long ArmorMask);
 }

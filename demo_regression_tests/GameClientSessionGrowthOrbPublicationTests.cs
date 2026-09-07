@@ -21,6 +21,39 @@ namespace demo_regression_tests;
 public sealed class GameClientSessionGrowthOrbPublicationTests
 {
     [Fact]
+    public void SleepingPlayer_KeepsAutomaticAttackActors()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
+        var runtime = fixture.Store.GetRequired(FirstMatchingId);
+        var spawnCell = GameMapData.GetMapInfo(Config.SWARM_MATCH_MAP)!.GetInitialPosition().Item1;
+        var spawnArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, spawnCell);
+        typeof(GameClientSession).GetProperty(nameof(GameClientSession.CurrentArea))!
+            .SetValue(session, spawnArea);
+        typeof(GameClientSession).GetField("_lastValidatedPosition", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(session, MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, spawnCell));
+        using var matchLock = runtime.Enter();
+        Assert.True(runtime.Inventory.TryAddItemWithCapacity(
+            FirstPlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out _));
+        var condition = (PlayerCondition)typeof(GameClientSession)
+            .GetField("_condition", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!;
+        var buildActors = typeof(MatchArenaService).GetMethod(
+            "BuildSwarmArenaCombatActors", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var now = DateTime.UtcNow;
+        List<ProximityCombatActor> Build() => (List<ProximityCombatActor>)buildActors.Invoke(
+            fixture.Server.GetArena(),
+            [FirstMatchingId, new List<GameClientSession> { session }, new List<BotPlayerState>(), now])!;
+
+        var awake = Build();
+        Assert.Contains(awake, actor => actor.WeaponItemId != 0 && actor.Damage > 0);
+        condition.IsSleeping = true;
+        var sleeping = Build();
+
+        Assert.Equal(awake, sleeping);
+        Assert.True(condition.IsSleeping);
+    }
+
+    [Fact]
     public async Task ExtractedRuleRequests_PublishWhileHoldingMatchLock()
     {
         using var fixture = new SessionFixture();

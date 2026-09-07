@@ -61,7 +61,6 @@ public partial class GameClientSession : SessionBase
     internal DateTime SwarmLastCombatAtUtc { get => _condition.LastCombatAtUtc; set => _condition.LastCombatAtUtc = value; }
     // 단일 절단 치명상 (#232): 성공 뒤 8초는 수면 진입·회복 틱이 막힌다.
     internal DateTime SwarmHealLockUntilUtc { get => _condition.HealLockUntilUtc; set => _condition.HealLockUntilUtc = value; }
-    internal bool IsSleeping => _condition.IsSleeping;
 
     private int _entryCompleted;
     private int _entryFailureReported;
@@ -97,8 +96,6 @@ public partial class GameClientSession : SessionBase
     /// <summary>열쇠 (#222 M4): 무료 소환 충전 수 — 획득/소비는 GroundItem·OrbSummon partial.</summary>
     public int FreeSummonCharges { get; internal set; }
 
-    /// <summary>잼 승점 지갑 (#222 M3) — 매치 단위, 소환석과 분리된 재화.</summary>
-    public int JamCount { get; private set; }
 
     private Timer? _periodicBuffTimer;
 

@@ -21,7 +21,6 @@ internal static class GroundItemPickupService
         bool autoUsed = false;
         bool autoEquipped = false;
         bool summonStonePickup = false;
-        bool jamPickup = false;
         bool bootsPickup = false;
         bool keyPickup = false;
         int healthRecovery = 0;
@@ -41,12 +40,6 @@ internal static class GroundItemPickupService
                 if (item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
                 {
                     summonStonePickup = true;
-                    return true;
-                }
-
-                if (item.ItemId == Config.JAM_GROUND_ITEM_ID)
-                {
-                    jamPickup = true;
                     return true;
                 }
 
@@ -95,7 +88,7 @@ internal static class GroundItemPickupService
 
         return new(status, rejection, attemptedItem, claimedItem, addedItem,
             discovererPlayerId, autoUsed, autoEquipped, summonStonePickup,
-            jamPickup, bootsPickup, keyPickup, healthRecovery);
+            bootsPickup, keyPickup, healthRecovery);
     }
 }
 
@@ -103,4 +96,4 @@ internal sealed record GroundItemPickupResult(
     GroundItemClaimStatus Status, ErrorCode Rejection,
     GroundItemInfo? AttemptedItem, GroundItemInfo? ClaimedItem, InGameItemInfo? AddedItem,
     long DiscovererPlayerId, bool AutoUsed, bool AutoEquipped, bool SummonStonePickup,
-    bool JamPickup, bool BootsPickup, bool KeyPickup, int HealthRecovery);
+    bool BootsPickup, bool KeyPickup, int HealthRecovery);

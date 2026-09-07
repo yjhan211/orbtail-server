@@ -136,7 +136,6 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Theory]
-    [InlineData(Config.JAM_GROUND_ITEM_ID, Protocol.G_TO_C_JAM_STATE, 1)]
     [InlineData(Config.KEY_GROUND_ITEM_ID, Protocol.G_TO_C_FREE_SUMMON_STATE, 1)]
     [InlineData(Config.SUMMON_STONE_GROUND_ITEM_ID, Protocol.G_TO_C_SUMMON_STONE_STATE, 0)]
     [InlineData(Config.BOOTS_GROUND_ITEM_ID, null, 0)]
@@ -163,9 +162,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT, protocols[^1]);
         Assert.Null(fixture.Store.GetRequired(70001).GroundItems.GetItem(item.GroundItemUid));
 
-        if (itemId == Config.JAM_GROUND_ITEM_ID)
-            Assert.Equal(expectedCounter, session.JamCount);
-        else if (itemId == Config.KEY_GROUND_ITEM_ID)
+        if (itemId == Config.KEY_GROUND_ITEM_ID)
             Assert.Equal(expectedCounter, session.FreeSummonCharges);
         else if (itemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
             Assert.Equal(stonesBefore + 1, fixture.Store.GetRequired(70001).SummonStones.GetSnapshot(101).StoneCount);
@@ -198,12 +195,14 @@ public sealed class GameClientSessionPublicationTests
         Assert.True(session.CurrentHealth > 20);
     }
 
-    [Fact]
-    public async Task GroundPickup_Rejection_LeavesItemAndPublishesOnlyFailureResult()
+    [Theory]
+    [InlineData(Config.HEART_GROUND_ITEM_ID)]
+    [InlineData(Config.JAM_GROUND_ITEM_ID)]
+    public async Task GroundPickup_Rejection_LeavesItemAndPublishesOnlyFailureResult(int itemId)
     {
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
-        GroundItemInfo item = fixture.SpawnAtSession(session, Config.HEART_GROUND_ITEM_ID);
+        GroundItemInfo item = fixture.SpawnAtSession(session, itemId);
 
         await SendAsync(
             session,
@@ -219,6 +218,8 @@ public sealed class GameClientSessionPublicationTests
                 Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT);
         Assert.False(result.Success);
         Assert.Equal(ErrorCode.ITEM_NOT_USABLE, result.ErrorCode);
+        Assert.DoesNotContain(fixture.Store.GetRequired(70001).Inventory.GetAllItems(101),
+            inventoryItem => inventoryItem.ItemId == itemId);
     }
 
     [Fact]
@@ -324,7 +325,7 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
-        GroundItemInfo item = fixture.SpawnAtSession(session, Config.JAM_GROUND_ITEM_ID);
+        GroundItemInfo item = fixture.SpawnAtSession(session, Config.KEY_GROUND_ITEM_ID);
         var enteredDispatch = new ManualResetEventSlim();
         var releaseDispatch = new ManualResetEventSlim();
         var timeline = new ConcurrentQueue<string>();
@@ -333,7 +334,7 @@ public sealed class GameClientSessionPublicationTests
         connection.BeforeSend = protocol =>
         {
             timeline.Enqueue($"send:{protocol}");
-            if (protocol != Protocol.G_TO_C_JAM_STATE)
+            if (protocol != Protocol.G_TO_C_FREE_SUMMON_STATE)
                 return;
             enteredDispatch.Set();
             Assert.True(releaseDispatch.Wait(TimeSpan.FromSeconds(5)));
@@ -362,7 +363,7 @@ public sealed class GameClientSessionPublicationTests
 
         Assert.Equal(
             [
-                "send:G_TO_C_JAM_STATE",
+                "send:G_TO_C_FREE_SUMMON_STATE",
                 "send:G_TO_C_GROUND_ITEM_REMOVED",
                 "send:G_TO_C_GROUND_ITEM_PICKUP_RESULT",
                 "cleanup",
@@ -377,7 +378,7 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
-        GroundItemInfo item = fixture.SpawnAtSession(session, Config.JAM_GROUND_ITEM_ID);
+        GroundItemInfo item = fixture.SpawnAtSession(session, Config.KEY_GROUND_ITEM_ID);
         RecordingTcpConnection connection = fixture.ConnectionFor(session);
         connection.ThrowOnceOn = Protocol.G_TO_C_GROUND_ITEM_REMOVED;
 
@@ -386,11 +387,11 @@ public sealed class GameClientSessionPublicationTests
             Protocol.C_TO_G_GROUND_ITEM_PICKUP,
             new C_TO_G_GROUND_ITEM_PICKUP { GroundItemUid = item.GroundItemUid });
 
-        Assert.Equal(1, session.JamCount);
+        Assert.Equal(1, session.FreeSummonCharges);
         Assert.Null(fixture.Store.GetRequired(70001).GroundItems.GetItem(item.GroundItemUid));
         Assert.Equal(
             [
-                Protocol.G_TO_C_JAM_STATE,
+                Protocol.G_TO_C_FREE_SUMMON_STATE,
                 Protocol.G_TO_C_GROUND_ITEM_REMOVED,
                 Protocol.G_TO_C_ERROR
             ],
@@ -492,13 +493,13 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         RecordingSession first = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         RecordingSession second = fixture.CreateSession(70002, 202, Config.SWARM_MATCH_GROUND_AREA);
-        GroundItemInfo firstItem = fixture.SpawnAtSession(first, Config.JAM_GROUND_ITEM_ID);
+        GroundItemInfo firstItem = fixture.SpawnAtSession(first, Config.KEY_GROUND_ITEM_ID);
         GroundItemInfo secondItem = fixture.SpawnAtSession(second, Config.KEY_GROUND_ITEM_ID);
         var entered = new ManualResetEventSlim();
         var release = new ManualResetEventSlim();
         fixture.ConnectionFor(first).BeforeSend = protocol =>
         {
-            if (protocol != Protocol.G_TO_C_JAM_STATE)
+            if (protocol != Protocol.G_TO_C_FREE_SUMMON_STATE)
                 return;
             entered.Set();
             Assert.True(release.Wait(TimeSpan.FromSeconds(5)));
@@ -520,7 +521,7 @@ public sealed class GameClientSessionPublicationTests
 
         release.Set();
         await firstTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(1, first.JamCount);
+        Assert.Equal(1, first.FreeSummonCharges);
     }
 
     [Fact]

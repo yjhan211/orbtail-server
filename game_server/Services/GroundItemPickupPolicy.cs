@@ -30,6 +30,12 @@ public static class GroundItemPickupPolicy
         long matchingId = 0,
         long playerId = 0)
     {
+        // 사용하지 않는 잼 아이템은 인벤토리에 넣거나 자동 사용하지 않는다.
+        if (itemId == global::network.common.Config.JAM_GROUND_ITEM_ID)
+        {
+            healthRecovery = 0;
+            return GroundItemPickupDisposition.LeaveOnGround;
+        }
         healthRecovery = itemId switch
         {
             BandageItemId => BandageRecovery,

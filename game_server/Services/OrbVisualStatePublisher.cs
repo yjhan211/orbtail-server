@@ -33,25 +33,6 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
             .FirstOrDefault();
     }
 
-    /// <summary>잼 보유량 조회 (#222 M3) — 사람은 세션, 봇은 봇 상태에서. 머리 위 공개 표시용.</summary>
-    private int GetSwarmJamCount(
-        long matchingId, long playerId, IReadOnlyCollection<GameClientSession> matchingSessions)
-    {
-        foreach (var session in matchingSessions)
-        {
-            if (session.PlayerId == playerId)
-                return session.JamCount;
-        }
-
-        foreach (var bot in matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
-        {
-            if (bot.PlayerId == playerId)
-                return bot.JamCount;
-        }
-
-        return 0;
-    }
-
     /// <summary>본체 체력 조회 (#226 가시화) — 세션·봇 공통. 못 찾으면 -1(클라 표시 유지).</summary>
     private int GetSwarmBodyHealth(
         long matchingId, long playerId, IReadOnlyCollection<GameClientSession> matchingSessions)
@@ -167,9 +148,8 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
                     continue;
                 }
 
-                // 앞줄 오브 HP·잼·본체 체력을 시그니처에 포함 — 값 변화가 곧 상태 변화라 갱신이 전송된다.
+                // 앞줄 오브 HP·본체 체력을 시그니처에 포함 — 값 변화가 곧 상태 변화라 갱신이 전송된다.
                 int frontOrbHp = GetSwarmFrontOrbHp(matchingId, actor.PlayerId);
-                int jamCount = GetSwarmJamCount(matchingId, actor.PlayerId, matchingSessions);
                 int bodyHealth = GetSwarmBodyHealth(matchingId, actor.PlayerId, matchingSessions);
                 long armorMask = GetSwarmArmorMask(matchingId, actor.PlayerId);
                 var state = new OrbVisualState(
@@ -178,7 +158,6 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
                     actor.OrbEffectActive,
                     visualActor.OrbItemSignature,
                     frontOrbHp,
-                    jamCount,
                     bodyHealth,
                     armorMask);
                 if (visualStates.TryGetValue(key, out var previousState) &&
@@ -197,7 +176,6 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
                     actor.OrbEffectActive,
                     CaptureSwarmOrbVisualItemIds(visualActor.OrbItemIds),
                     frontOrbHp,
-                    jamCount,
                     bodyHealth,
                     armorMask));
             }
@@ -240,7 +218,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
             IsActive = publication.IsActive,
             OrbItemIds = publication.OrbItemIds.ToList(),
             FrontOrbHp = publication.FrontOrbHp,
-            JamCount = publication.JamCount,
+            JamCount = 0, // 기존 클라이언트 패킷 형식만 유지하며 잼은 집계하지 않는다.
             BodyHealth = publication.BodyHealth,
             ArmorMask = publication.ArmorMask
         }));
@@ -260,7 +238,6 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
         bool IsActive,
         ImmutableArray<int> OrbItemIds,
         int FrontOrbHp,
-        int JamCount,
         int BodyHealth,
         long ArmorMask)
     {
@@ -268,7 +245,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
             long matchingId, long observerPlayerId, long actorPlayerId) =>
             new(
                 matchingId, observerPlayerId, actorPlayerId, null, null,
-                0, false, ImmutableArray<int>.Empty, 0, 0, 0, 0);
+                0, false, ImmutableArray<int>.Empty, 0, 0, 0);
 
         public static SwarmOrbVisualPublication Publish(
             long matchingId,
@@ -280,12 +257,11 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
             bool isActive,
             ImmutableArray<int> orbItemIds,
             int frontOrbHp,
-            int jamCount,
             int bodyHealth,
             long armorMask) =>
             new(
                 matchingId, observerPlayerId, actorPlayerId, state, recipient,
-                weaponItemId, isActive, orbItemIds, frontOrbHp, jamCount, bodyHealth, armorMask);
+                weaponItemId, isActive, orbItemIds, frontOrbHp, bodyHealth, armorMask);
     }
 
 }

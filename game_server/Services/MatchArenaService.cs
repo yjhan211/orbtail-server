@@ -200,8 +200,6 @@ internal sealed class MatchArenaService(
                 !matchRuntimes.GetRequired(matchingId).Swarm.Pacing.StartingOrbGrantedPlayers.Add((matchingId, session.PlayerId.Value)))
                 continue;
 
-            // 잼 지갑 리셋 (#222 M3) — 세션이 매치를 넘어 살아있으므로 시작 지급 시점에 초기화.
-            session.ResetJam();
             session.FreeSummonCharges = 0;
             orbUpgrades.GrantStartingOrbs(matchingId, session.PlayerId.Value, session);
             matchRuntimes.GetRequired(matchingId).SummonStones.AddStones(session.PlayerId.Value, startingStones);
@@ -2059,10 +2057,6 @@ internal sealed class MatchArenaService(
         var actors = new List<ProximityCombatActor>();
         foreach (var session in aliveSessions)
         {
-            // #229 6단계: 수면 중에는 자동 공격이 멈춘다 — 누워서 쏘면 회복이 순수 이득이 된다.
-            if (session.IsSleeping)
-                continue;
-
             if (session.PlayerId.HasValue &&
                 session.LastValidatedPosition != null &&
                 CombatActorFactory.TryCreateSpatialActor(

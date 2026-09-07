@@ -100,11 +100,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        if (pickup.JamPickup)
-        {
-            AddJam(1);
-        }
-        else if (pickup.BootsPickup)
+        if (pickup.BootsPickup)
         {
             // 부츠 (#222 M4): 이속은 클라 이동이 소유한다 — 서버는 픽업 결과만 확정.
             // 클라가 픽업 결과(ItemId)로 10초 버프·HUD 타이머를 시작한다.
@@ -165,7 +161,7 @@ public partial class GameClientSession
             CurrentArea.ToString(),
             pickup.AutoUsed,
             isBot: false);
-        if (!pickup.SummonStonePickup && !pickup.JamPickup && !pickup.BootsPickup && !pickup.KeyPickup)
+        if (!pickup.SummonStonePickup && !pickup.BootsPickup && !pickup.KeyPickup)
         {
             var boardAfterPickup = Match.Inventory.GetPlayerInventory(PlayerId.Value);
             _gameEventLogManager.LogOrbBoardTransition(
@@ -174,18 +170,6 @@ public partial class GameClientSession
         }
         SendGroundItemPickupResult(claimedItem.GroundItemUid, claimedItem.ItemId, true, pickup.AutoUsed, ErrorCode.SUCCESS);
         return Task.CompletedTask;
-    }
-
-    /// <summary>잼 획득 (#222 M3) — 지갑 가산 + 상태 전송. 매치 시작 시 ResetJam으로 초기화.</summary>
-    internal void AddJam(int amount)
-    {
-        if (!PlayerId.HasValue || amount <= 0)
-            return;
-
-        JamCount += amount;
-        using var packet = Packet.Create((int)Protocol.G_TO_C_JAM_STATE, PlayerId.Value);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_JAM_STATE { JamCount = JamCount }));
-        TrySend(packet);
     }
 
     /// <summary>열쇠 (#222 M4): 무료 소환 충전 획득 — 상태를 소유자에게 즉시 동기한다.</summary>
@@ -208,17 +192,6 @@ public partial class GameClientSession
         {
             Charges = FreeSummonCharges
         }));
-        TrySend(packet);
-    }
-
-    internal void ResetJam(bool notify = false)
-    {
-        JamCount = 0;
-        if (!notify || !PlayerId.HasValue)
-            return;
-
-        using var packet = Packet.Create((int)Protocol.G_TO_C_JAM_STATE, PlayerId.Value);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_JAM_STATE { JamCount = 0 }));
         TrySend(packet);
     }
 

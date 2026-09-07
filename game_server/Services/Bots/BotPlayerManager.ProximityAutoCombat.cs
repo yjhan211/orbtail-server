@@ -33,11 +33,10 @@ public partial class BotPlayerManager
             GroundItemPickupDisposition disposition = GroundItemPickupDisposition.LeaveOnGround;
             int healthRecovery = 0;
             bool summonStonePickup = candidate.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID;
-            bool jamPickup = candidate.ItemId == Config.JAM_GROUND_ITEM_ID;
             bool bootsPickup = candidate.ItemId == Config.BOOTS_GROUND_ITEM_ID;
             bool keyPickup = candidate.ItemId == Config.KEY_GROUND_ITEM_ID;
-            // 재화류(소환석·잼·부츠·열쇠)는 봇 반응 지연 공통 — 사람 선점권 (#222)
-            if ((summonStonePickup || jamPickup || bootsPickup || keyPickup) &&
+            // 재화류(소환석·부츠·열쇠)는 봇 반응 지연 공통 — 사람 선점권 (#222)
+            if ((summonStonePickup || bootsPickup || keyPickup) &&
                 groundItemManager.IsYoungerThan(
                     candidate.GroundItemUid, SummonStoneBotReactionDelay))
                 continue;
@@ -53,7 +52,7 @@ public partial class BotPlayerManager
                 bot.Position.Y,
                 item =>
                 {
-                    if (item.ItemId is Config.SUMMON_STONE_GROUND_ITEM_ID or Config.JAM_GROUND_ITEM_ID
+                    if (item.ItemId is Config.SUMMON_STONE_GROUND_ITEM_ID
                         or Config.BOOTS_GROUND_ITEM_ID or Config.KEY_GROUND_ITEM_ID)
                         return true;
 
@@ -75,11 +74,7 @@ public partial class BotPlayerManager
             int effectiveRecovery = 0;
             InGameItemInfo? addedItem = null;
             SummonStoneSnapshot summonStoneState = default;
-            if (jamPickup)
-            {
-                bot.JamCount += 1;
-            }
-            else if (bootsPickup)
+            if (bootsPickup)
             {
                 bot.BootsSpeedUntilUtc =
                     DateTime.UtcNow.AddSeconds(Config.BOOTS_SPEED_DURATION_SECONDS);
