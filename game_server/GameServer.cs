@@ -53,6 +53,7 @@ internal partial class GameServer(
     OrbTrailService orbTrails,
     MatchCombatDamageService combatDamage,
     WindBladeService windBlades,
+    CrossfireService crossfires,
     MatchFieldService fieldService,
     GameServerTickService tickService,
     BotMovementService botMovement)

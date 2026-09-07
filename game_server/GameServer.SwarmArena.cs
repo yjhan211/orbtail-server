@@ -304,7 +304,7 @@ internal partial class GameServer
         }
 
         // 화상 틱 (#268): 교차사격 충격이 남긴 도트 — 발생원이 위 블록과 무관하게 항상 정산한다.
-        ProcessSwarmSunBurns(matchingId, nowUtc, aliveSessions, aliveBots, sessions);
+        crossfires.ProcessSwarmSunBurns(matchingId, nowUtc, aliveSessions, aliveBots, sessions);
         if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
 
@@ -357,7 +357,7 @@ internal partial class GameServer
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.
         ProcessPendingSwarmMonsterHits(matchingId, nowUtc, sessions);
         // 교차사격 판정 (#232 2단계): 예고가 끝난 모양을 이번 틱 위치로 판정한다.
-        ProcessSwarmCrossfires(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+        crossfires.ProcessSwarmCrossfires(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
         if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
             return;
 
@@ -387,10 +387,10 @@ internal partial class GameServer
         // 교차사격 예고 상한 (#232, 명세 "동시 예고 최대 2개"): 상한에 닿은 소유자의 태양 오브는
         // 이번 틱에 표적을 잡지 않는다 — 리졸버가 조준을 유예하고, 자리가 나면 곧 쏜다.
         // 발을 버리지 않으면서 예고 수를 묶는 유일한 자리 (발사 뒤엔 이미 쿨다운이 소모돼 있다).
-        var crossfireCappedOwners = CollectSwarmCrossfireCappedOwners(matchingId, nowUtc);
+        var crossfireCappedOwners = crossfires.CollectSwarmCrossfireCappedOwners(matchingId, nowUtc);
         // 표적 분산 (#232): 내 살아 있는 모양이 이미 겨눈 몹은 내 다른 태양 오브의 후보에서 뺀다 —
         // 오브마다 제 자리에서 "아직 아무도 안 겨눈" 가장 가까운 몹을 고른다.
-        var crossfireAnchoredTargets = CollectSwarmCrossfireAnchoredTargets(matchingId);
+        var crossfireAnchoredTargets = crossfires.CollectSwarmCrossfireAnchoredTargets(matchingId);
 
         var attacks = matchRuntimes.GetRequired(matchingId).Combat.Resolve(
             matchingId,
@@ -406,7 +406,7 @@ internal partial class GameServer
             {
                 if (attacker.IsMonsterTarget || attacker.Area != target.Area)
                     return false;
-                if (IsSwarmCrossfireWeapon(attacker.WeaponItemId))
+                if (CrossfireService.IsSwarmCrossfireWeapon(attacker.WeaponItemId))
                 {
                     if (crossfireCappedOwners.Contains(attacker.PlayerId))
                         return false;
@@ -427,7 +427,7 @@ internal partial class GameServer
                 // 플레이어 최우선 (유저 지시 "반경 내에 다른 플레이어가 있으면 최우선"): 태양은
                 // 앞열 3개 제한·본체 기준 5u 사거리를 걷고, 티어 사거리(위 IsWithinSwarmOrbRange) 안이면
                 // 어느 오브든 사람을 후보에 올린다. 우선순위 0(사람) < 2(몹)이라 후보에 오르면 곧 최우선이다.
-                if (IsSwarmCrossfireWeapon(attacker.WeaponItemId))
+                if (CrossfireService.IsSwarmCrossfireWeapon(attacker.WeaponItemId))
                     return true;
                 if (attacker.TrailOrdinal >= Config.SWARM_PVP_ORB_COUNT)
                     return false;
@@ -458,7 +458,7 @@ internal partial class GameServer
                 continue;
             // 태양은 표적이 몬스터든 플레이어든 교차사격 투사체다 (유저 지시: 오브가 사람도 조준) —
             // 첫 표적에서 폭발. 바람은 조준하지 않는다(회전 칼날), 파도는 물폭탄.
-            if (IsSwarmCrossfireWeapon(attack.WeaponItemId))
+            if (CrossfireService.IsSwarmCrossfireWeapon(attack.WeaponItemId))
             {
                 // 태양 = 교차사격 직선 (#232 2단계): 유도탄이 아니라 예고 뒤 쓸고 지나가는
                 // 큰 공격이다. 미사일 연출·비행시간 착탄·예약을 타지 않고 모양 하나를 잠근다.
@@ -480,7 +480,7 @@ internal partial class GameServer
                 // 두 오브가 같은 몹을 고를 수 있다 — 뒤 오브는 환불하고 다음 틱에 다른 몹을 고르게 한다.
                 bool anchoredThisTick = !crossfireAnchoredTargets.Add((attack.AttackerPlayerId, attack.TargetPlayerId));
                 if (anchoredThisTick ||
-                    !TryScheduleSwarmCrossfire(
+                    !crossfires.TryScheduleSwarmCrossfire(
                         matchingId, attack, sunOrigin, sunAnchor, monsterId, attack.Damage, nowUtc, sessions))
                 {
                     // 로그는 남기지 않는다 — 상한이 찬 동안 매 틱 되풀이되는 정상 대기라 이벤트 흐름만 메운다.
@@ -1385,7 +1385,7 @@ internal partial class GameServer
                     {
                         if (participant.PlayerId == owner.PlayerId || participant.Area != owner.Area ||
                             !SwarmCombatGeometry.IsWithinGroundRadius(
-                                orbPosition, participant.Position, radius + SwarmCrossfirePlayerRadius))
+                                orbPosition, participant.Position, radius + SwarmBotDodgePolicy.SwarmCrossfirePlayerRadius))
                             continue;
                         hasTarget = true;
                         break;
@@ -1482,7 +1482,7 @@ internal partial class GameServer
         {
             if (participant.PlayerId == ownerId || participant.Area != area || participant.Position == null)
                 continue;
-            if (!SwarmCombatGeometry.IsWithinGroundRadius(position, participant.Position, radius + SwarmCrossfirePlayerRadius))
+            if (!SwarmCombatGeometry.IsWithinGroundRadius(position, participant.Position, radius + SwarmBotDodgePolicy.SwarmCrossfirePlayerRadius))
                 continue;
 
             // 충격 면역 없음: 겹친 링에 다 맞는다 — 침수는 지속 갱신이라 중첩 무해.
@@ -2315,7 +2315,7 @@ internal partial class GameServer
 
             // 태양 = 큰 공격 한 번 (#232 2단계): 유도탄 두 발 몫을 한 번에 — 주기 ×2, 피해 ×2.
             // 총 화력은 같고, 예고 → 쓸기 한 사이클이 유도탄 연사보다 읽히는 무게를 갖는다.
-            bool crossfireSun = IsSwarmCrossfireSun(actor.WeaponItemId);
+            bool crossfireSun = CrossfireService.IsSwarmCrossfireSun(actor.WeaponItemId);
             float crossfireDamageMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_DAMAGE_MULTIPLIER : 1f;
             float crossfireCadenceMultiplier = crossfireSun ? Config.SWARM_CROSSFIRE_SUN_CADENCE_MULTIPLIER : 1f;
             OrbData.TryGetColorAndTier(actor.WeaponItemId, out _, out int actorTier);

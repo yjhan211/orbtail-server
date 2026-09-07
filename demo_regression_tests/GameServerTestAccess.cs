@@ -79,6 +79,7 @@ internal static class GameServerTestAccess
             orbTrails: orbTrails,
             combatDamage: combatDamage,
             windBlades: new WindBladeService(runtimes, orbTrails, combatDamage, logs),
+            crossfires: new CrossfireService(runtimes, combatDamage, logs),
             fieldService: new MatchFieldService(runtimes, logs, orbTrails,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchFieldService>.Instance),
             growth: new MatchGrowthService(runtimes, sessions, logs, orbUpgrades,

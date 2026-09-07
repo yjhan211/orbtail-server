@@ -1,23 +1,21 @@
 using game_server.network;
-using game_server.services;
 using MessagePack;
-using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.packets;
 
-namespace game_server;
+namespace game_server.services;
 
 /// <summary>
-///     교차사격 (#232, 뱀서식 관통). 오브는 몬스터만 조준하지만, 태양의 공격은 유도탄이 아니라 큰 투사체가
-///     같은 타일 X/Y축을 공유하는 표적 방향으로 직진하는 공격이다. 길이는 항상 구역 경계(벽)까지다 — 티어
-///     사거리는 표적 획득에만 쓰고, 구역 안 프랍은 통과. 판정은 관통: 선상의 몬스터·플레이어는 앞머리가
-///     지나가는 순간 각각 피해를 입고(한 발에 한 번), 투사체는 멈추지 않는다. 벽에 막힌 직선은 피해 없는
-///     시각 폭발로, 벽 없이 사거리 끝까지 가면 폭발 없이 소멸 — 회피가 프랍·벽 배치 읽기가 되게 한다.
-///     발사 뒤 표적이 죽거나 움직여도 모양은 잠근 직선을 끝까지 쓴다. 태양만 — 바람은 회전 칼날, 파도는 소용돌이.
+///     태양 오브의 직선 예고·관통 판정·벽 폭발·화상 틱을 처리한다.
+///     발사체와 화상 상태는 각 매치가 소유하며 호출자는 매치 잠금을 보유한다.
+///     피해는 공통 전투 서비스에 위임하고, 발사체 제거 뒤 봇 회피 스냅샷을 갱신한다.
 /// </summary>
-internal partial class GameServer
+internal sealed class CrossfireService(
+    MatchRuntimeStore matchRuntimes,
+    MatchCombatDamageService combatDamage,
+    GameEventLogManager eventLogs)
 {
     private static readonly bool SwarmCrossfireEnabled = true;
 
@@ -30,10 +28,10 @@ internal partial class GameServer
     private const float SwarmCrossfirePlayerRadius = SwarmBotDodgePolicy.SwarmCrossfirePlayerRadius;
 
     /// <summary>이 발사가 교차사격 모양(태양 폭발 투사체)으로 처리되는가 — 유도탄 경로를 대체한다.</summary>
-    private static bool IsSwarmCrossfireWeapon(int weaponItemId) => IsSwarmCrossfireSun(weaponItemId);
+    public static bool IsSwarmCrossfireWeapon(int weaponItemId) => IsSwarmCrossfireSun(weaponItemId);
 
     /// <summary>태양: 첫 표적에서 폭발하는 큰 투사체.</summary>
-    private static bool IsSwarmCrossfireSun(int weaponItemId) =>
+    public static bool IsSwarmCrossfireSun(int weaponItemId) =>
         SwarmCrossfireEnabled &&
         OrbData.TryGetColorAndTier(weaponItemId, out var color, out _) &&
         color == OrbColor.Red;
@@ -52,14 +50,14 @@ internal partial class GameServer
     ///     모양이 쓸고 끝나면(제거) 다시 후보가 된다. 예약(PendingDamage) 대신 이 필터를 쓰는 이유:
     ///     쓸기가 빗나가도 풀어 줄 게 없다 — 모양의 수명이 곧 배제 기간이다.
     /// </summary>
-    private HashSet<(long OwnerId, long CombatTargetId)> CollectSwarmCrossfireAnchoredTargets(long matchingId)
+    public HashSet<(long OwnerId, long CombatTargetId)> CollectSwarmCrossfireAnchoredTargets(long matchingId)
         => matchRuntimes.GetRequired(matchingId).Swarm.Crossfire.CollectAnchoredTargets();
 
     /// <summary>
     ///     이번 틱에 예고 상한에 닿은 소유자들 — 리졸버 필터가 이들의 태양 오브 조준을 유예한다.
     ///     틱마다 한 번 만든다 (필터는 공격자×표적 쌍마다 불린다).
     /// </summary>
-    private HashSet<long> CollectSwarmCrossfireCappedOwners(long matchingId, DateTime nowUtc)
+    public HashSet<long> CollectSwarmCrossfireCappedOwners(long matchingId, DateTime nowUtc)
         => matchRuntimes.GetRequired(matchingId).Swarm.Crossfire.CollectCappedOwners(
             nowUtc,
             Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER);
@@ -69,7 +67,7 @@ internal partial class GameServer
     ///     버린다(모양 없는 피해는 없다). 보통은 리졸버 필터가 먼저 막아 여기까지 안 온다 — 같은 틱에
     ///     여러 오브가 함께 준비된 경우만 걸린다.
     /// </summary>
-    private bool TryScheduleSwarmCrossfire(
+    public bool TryScheduleSwarmCrossfire(
         long matchingId,
         ProximityCombatAttack attack,
         Vector3f? origin,
@@ -249,7 +247,7 @@ internal partial class GameServer
     ///     [지난 앞머리, 현재 앞머리] × 반폭 안의 표적을 모두 관통 타격한다(대상당 한 번).
     ///     벽에 닿으면 피해 없는 시각 폭발로, 벽이 없으면 폭발 없이 소멸한다.
     /// </summary>
-    private void ProcessSwarmCrossfires(
+    public void ProcessSwarmCrossfires(
         long matchingId,
         DateTime nowUtc,
         List<SwarmParticipantSpatial> participants,
@@ -527,7 +525,7 @@ internal partial class GameServer
     }
 
     /// <summary>화상 틱 정산 — 초당 한 번, 충격의 0.2배. 지속이 끝나면 걷는다.</summary>
-    private void ProcessSwarmSunBurns(
+    public void ProcessSwarmSunBurns(
         long matchingId,
         DateTime nowUtc,
         List<GameClientSession> aliveSessions,

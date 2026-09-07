@@ -368,7 +368,7 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string windBlade = ReadNormalizedSource(root, "game_server", "Services", "WindBladeService.cs");
-        string crossfire = ReadNormalizedSource(root, "game_server", "GameServer.SwarmCrossfire.cs");
+        string crossfire = ReadNormalizedSource(root, "game_server", "Services", "CrossfireService.cs");
         string orbBoard = ReadNormalizedSource(root, "game_server", "Services", "OrbUpgradeService.cs");
 
         Assert.DoesNotContain("_swarmWindBladeNextTickAtUtc", windBlade);
@@ -384,7 +384,7 @@ public sealed class SwarmArenaTickOrderTests
     public void SwarmCrossfireState_IsMatchOwnedAndDodgeLookupDoesNotCreateRuntime()
     {
         string root = FindRepositoryRoot();
-        string crossfire = ReadNormalizedSource(root, "game_server", "GameServer.SwarmCrossfire.cs");
+        string crossfire = ReadNormalizedSource(root, "game_server", "Services", "CrossfireService.cs");
         string botDodge = ReadNormalizedSource(root, "game_server", "Services", "MatchRuntimeStore.cs");
         string runtimeStates = ReadNormalizedSource(root, "game_server", "Services", "SwarmArenaStates.cs");
 
@@ -412,7 +412,7 @@ public sealed class SwarmArenaTickOrderTests
         string runtimeStates = ReadNormalizedSource(
             root, "game_server", "Services", "SwarmArenaStates.cs");
         string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
-        string crossfire = ReadNormalizedSource(root, "game_server", "GameServer.SwarmCrossfire.cs");
+        string crossfire = ReadNormalizedSource(root, "game_server", "Services", "CrossfireService.cs");
 
         // 매치 하나에 모니터 하나 — 블로킹 진입과 펄스용 TryEnter가 같은 잠금 객체를 쓴다.
         Assert.DoesNotContain("_globalExecutionLock", store);
