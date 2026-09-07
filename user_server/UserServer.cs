@@ -47,7 +47,6 @@ internal sealed class UserServer(
 {
     private readonly object _shutdownLock = new();
     private Task? _shutdownTask;
-    private int _stopping;
 
     public async Task StartAsync(CancellationToken ct)
     {
@@ -81,9 +80,6 @@ internal sealed class UserServer(
 
     private async Task StopCoreAsync()
     {
-        if (Interlocked.Exchange(ref _stopping, 1) != 0)
-            return;
-
         readinessState.MarkNotReady("stopping");
         logger.LogInformation("UserServer stopping...");
         try
