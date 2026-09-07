@@ -3,7 +3,7 @@ using user_server.matching.queue;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
-using network.gamehandoff;
+using network.gameentry;
 using network.infrastructure.redis;
 using user_server.sessions;
 
@@ -19,7 +19,7 @@ namespace user_server.matching;
 /// </summary>
 internal sealed class MatchEntryService(
     IRedisOperations redisOperations,
-    GameHandoffTicketService gameHandoffTicketService,
+    GameEntryTicketService gameEntryTicketService,
     MatchingReservationService reservations,
     IPlayerSessionRouter sessions,
     Func<Func<Task>, string, bool> tryRunBackgroundOperation,
@@ -34,7 +34,7 @@ internal sealed class MatchEntryService(
             handoffKey,
             MatchingRedisKeys.ManifestField,
             serialized,
-            MatchingRedisKeys.HandoffStateLifetime);
+            MatchingRedisKeys.EntryStateLifetime);
     }
 
     public async Task<bool> DeliverMatchingSuccessAsync(MatchingQueueData request, long matchingId, GameServerAllocation gameServer)
@@ -49,7 +49,7 @@ internal sealed class MatchEntryService(
             return false;
         }
 
-        string gameHandoffTicket = await gameHandoffTicketService.IssueAsync(new GameHandoffContext
+        string gameEntryTicket = await gameEntryTicketService.IssueAsync(new GameEntryContext
         {
             PlayerId = playerId,
             MatchingId = matchingId,
@@ -63,7 +63,7 @@ internal sealed class MatchEntryService(
             GameServerIp = gameServer.PublicHost,
             GameServerPort = gameServer.PublicPort,
             GameEndTimestamp = gameEndTimestamp,
-            GameHandoffTicket = gameHandoffTicket
+            GameEntryTicket = gameEntryTicket
         };
 
         if (!await sessions.DeliverMatchingSuccessAsync(playerId, requestId, result))
@@ -82,7 +82,7 @@ internal sealed class MatchEntryService(
         bool created = await redisOperations.StringSetIfNotExistsAsync(
             stateKey,
             MatchingRedisKeys.EntryPendingState,
-            MatchingRedisKeys.HandoffStateLifetime);
+            MatchingRedisKeys.EntryStateLifetime);
         if (created)
         {
             return;
@@ -104,7 +104,7 @@ internal sealed class MatchEntryService(
             MatchingRedisKeys.Key(matchingId),
             MatchingRedisKeys.EntryReadyField,
             [MatchingRedisKeys.EntryReadyValue],
-            MatchingRedisKeys.HandoffStateLifetime);
+            MatchingRedisKeys.EntryStateLifetime);
     }
 
     public async Task<bool> TryCancelEntryForRollbackAsync(long matchingId)
@@ -121,7 +121,7 @@ internal sealed class MatchEntryService(
                 stateKey,
                 MatchingRedisKeys.EntryPendingState,
                 MatchingRedisKeys.EntryCanceledState,
-                MatchingRedisKeys.HandoffStateLifetime);
+                MatchingRedisKeys.EntryStateLifetime);
             if (canceled)
             {
                 return true;
@@ -198,7 +198,7 @@ internal sealed class MatchEntryService(
                 stateKey,
                 MatchingRedisKeys.EntryPendingState,
                 MatchingRedisKeys.EntryCanceledState,
-                MatchingRedisKeys.HandoffStateLifetime);
+                MatchingRedisKeys.EntryStateLifetime);
             if (!canceled)
             {
                 var entryState = await redisOperations.StringGetAsync(stateKey);

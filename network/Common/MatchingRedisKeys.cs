@@ -4,7 +4,7 @@ namespace network.common
 {
     public static class MatchingRedisKeys
     {
-        public static readonly TimeSpan HandoffStateLifetime = TimeSpan.FromMinutes(30);
+        public static readonly TimeSpan EntryStateLifetime = TimeSpan.FromMinutes(30);
         public static readonly TimeSpan PostEntryReservationLifetime =
             TimeSpan.FromSeconds(Config.SWARM_MATCH_DURATION_SECONDS) + TimeSpan.FromMinutes(3);
         public static readonly TimeSpan EntryTimeout = TimeSpan.FromSeconds(45);

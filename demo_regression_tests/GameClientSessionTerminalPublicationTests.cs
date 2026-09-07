@@ -10,7 +10,7 @@ using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.core;
-using network.gamehandoff;
+using network.gameentry;
 using network.packets;
 
 namespace demo_regression_tests;
@@ -430,7 +430,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                 connection,
                 logger,
                 null!,
-                static _ => Task.FromResult<GameHandoffContext?>(null),
+                static _ => Task.FromResult<GameEntryContext?>(null),
                 TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
                 matchingId => sessions

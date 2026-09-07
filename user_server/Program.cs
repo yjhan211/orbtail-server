@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.core;
-using network.gamehandoff;
+using network.gameentry;
 using network.hosting;
 using network.infrastructure.messaging;
 using network.infrastructure.redis;
@@ -67,7 +67,7 @@ internal static class Program
             sp.GetRequiredService<RedisConnection>().GetRedLockFactory());
         services.AddSingleton<IRedisOperations, RedisOperations>();
         services.AddSingleton<IPlayerSessionLeaseStore, RedisPlayerSessionLeaseStore>();
-        services.AddGameHandoffTicket(hostContext.Configuration);
+        services.AddGameEntryTicket(hostContext.Configuration);
         services.AddSingleton<IAccountCredentialStore, RedisAccountCredentialStore>();
         services.AddSingleton<AccountTokenService>();
 
@@ -93,7 +93,7 @@ internal static class Program
             var taskTracker = sp.GetRequiredService<BackgroundTaskTracker>();
             return new MatchEntryService(
                 sp.GetRequiredService<IRedisOperations>(),
-                sp.GetRequiredService<GameHandoffTicketService>(),
+                sp.GetRequiredService<GameEntryTicketService>(),
                 sp.GetRequiredService<MatchingReservationService>(),
                 sp.GetRequiredService<IPlayerSessionRouter>(),
                 taskTracker.TryRun,

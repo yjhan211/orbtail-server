@@ -6,7 +6,7 @@ using StackExchange.Redis;
 namespace game_server.network;
 
 /// <summary>
-///     Commits a consumed GameServer handoff into Redis entry state.
+///     Commits a consumed GameServer entry into Redis entry state.
 ///     This class owns the retry and exact read-back rules that make ambiguous Redis write responses safe.
 /// </summary>
 internal sealed class GameEntryStateCommitter(IRedisOperations redisOperations, ILogger logger)
@@ -117,7 +117,7 @@ internal sealed class GameEntryStateCommitter(IRedisOperations redisOperations, 
                     entryStateKey,
                     MatchingRedisKeys.EntryPendingState,
                     MatchingRedisKeys.EntryCompletedState,
-                    MatchingRedisKeys.HandoffStateLifetime);
+                    MatchingRedisKeys.EntryStateLifetime);
                 if (completed)
                     return;
             }
@@ -190,7 +190,7 @@ internal sealed class GameEntryStateCommitter(IRedisOperations redisOperations, 
                     key,
                     field,
                     [value],
-                    MatchingRedisKeys.HandoffStateLifetime);
+                    MatchingRedisKeys.EntryStateLifetime);
                 return;
             }
             catch (Exception ex)

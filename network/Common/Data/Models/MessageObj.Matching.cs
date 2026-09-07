@@ -36,7 +36,7 @@ namespace network.common.data.models
         [Key("gameServerIp")] public string GameServerIp { get; set; }
         [Key("gameServerPort")] public int GameServerPort { get; set; }
         [Key("gameEndTimestamp")] public long GameEndTimestamp { get; set; }
-        [Key("gameHandoffTicket")] public string GameHandoffTicket { get; set; }
+        [Key("gameHandoffTicket")] public string GameEntryTicket { get; set; }
     }
 
     [MessagePackObject]

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data.models;
-using network.gamehandoff;
+using network.gameentry;
 using network.infrastructure.messaging;
 using network.packets;
 using user_server.matching;
@@ -260,7 +260,7 @@ public sealed class UserServerScaleOutTests
         Assert.True(await sender.DeliverMatchingSuccessAsync(7, "req7", new U_TO_C_MATCHING_SUCCESS
         {
             MatchingId = 42, GameServerIp = "localhost", GameServerPort = 9001,
-            GameEndTimestamp = 123456, GameHandoffTicket = "test-ticket"
+            GameEndTimestamp = 123456, GameEntryTicket = "test-ticket"
         }));
         Assert.True(await sender.DeliverMatchingFailedAsync(7, 42, "req7", ErrorCode.MATCHING_FAILED));
         Assert.True(await sender.DeliverEntryFailedAsync(7, 42, ErrorCode.MATCHING_FAILED));
@@ -291,14 +291,14 @@ public sealed class UserServerScaleOutTests
         var receiver = new NatsPlayerSessionRouter(bus.Connect(), id => id == 7 ? owner : null, "receiver", logger.For<NatsPlayerSessionRouter>());
         sender.Start();
         receiver.Start();
-        var handoff = new MatchEntryService(
+        var entryService = new MatchEntryService(
             cache,
-            new GameHandoffTicketService(new RedisGameHandoffTicketStore(cache), new GameHandoffTicketOptions()),
+            new GameEntryTicketService(new RedisGameEntryTicketStore(cache), new GameEntryTicketOptions()),
             reservations, sender,
             (_, _) => throw new InvalidOperationException("Failed delivery must not start the entry watchdog"),
             logger.For<MatchEntryService>(), CancellationToken.None);
         var pass = new MatchCreationService(
-            cache, queue, reservations, handoff,
+            cache, queue, reservations, entryService,
             new FixedGameServerAllocator(),
             false,
             logger.For<MatchCreationService>(), CancellationToken.None);
@@ -335,13 +335,13 @@ public sealed class UserServerScaleOutTests
         var result = new U_TO_C_MATCHING_SUCCESS
         {
             MatchingId = 42, GameServerIp = "game.example", GameServerPort = 9001,
-            GameEndTimestamp = 123456789, GameHandoffTicket = "ticket"
+            GameEndTimestamp = 123456789, GameEntryTicket = "ticket"
         };
 
         Assert.True(await sender.DeliverMatchingSuccessAsync(7, "req7", result));
         using (var expected = PacketMaker.U_TO_C_MATCHING_SUCCESS(
             result.MatchingId, result.GameServerIp, result.GameServerPort,
-            result.GameEndTimestamp, result.GameHandoffTicket))
+            result.GameEndTimestamp, result.GameEntryTicket))
         {
             expected.RecordSize();
             Assert.Equal(expected.ToBytes(), owner.LastPacketBytes);

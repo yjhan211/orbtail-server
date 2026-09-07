@@ -1,6 +1,6 @@
 using network.common;
 using network.common.data.models;
-using network.gamehandoff;
+using network.gameentry;
 using user_server.matching;
 using user_server.matching.queue;
 using user_server.sessions;
@@ -202,7 +202,7 @@ public sealed class MatchEntryServiceTests
         var router = sessionRouter ?? new UnusedSessionRouter();
         return new MatchEntryService(
             redis,
-            new GameHandoffTicketService(new RedisGameHandoffTicketStore(redis), new GameHandoffTicketOptions()),
+            new GameEntryTicketService(new RedisGameEntryTicketStore(redis), new GameEntryTicketOptions()),
             new MatchingReservationService(redis, logger.For<MatchingReservationService>()),
             router,
             registerTask ?? ((_, _) => false),

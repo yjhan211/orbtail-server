@@ -17,7 +17,7 @@ namespace network.common.data.models
     public class C_TO_G_CONNECT : IMessagePackObject
     {
         // 신원·매치는 ticket이 증명한다. 클라이언트가 말하는 값은 받지 않는다.
-        [Key("gameHandoffTicket")] public string GameHandoffTicket { get; set; }
+        [Key("gameHandoffTicket")] public string GameEntryTicket { get; set; }
     }
 
     [MessagePackObject]

@@ -10,7 +10,7 @@ using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
 using network.core;
-using network.gamehandoff;
+using network.gameentry;
 using network.helpers;
 using network.packets;
 
@@ -772,7 +772,7 @@ public sealed class GameClientSessionPublicationTests
                 connection,
                 NullLogger.Instance,
                 null!,
-                static _ => Task.FromResult<GameHandoffContext?>(null),
+                static _ => Task.FromResult<GameEntryContext?>(null),
                 TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
                 matchingId => sessions

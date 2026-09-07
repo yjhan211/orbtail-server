@@ -76,7 +76,7 @@ internal static class GameServerTestAccess
             logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServer>.Instance,
             sessionLogger: Microsoft.Extensions.Logging.Abstractions.NullLogger<game_server.sessions.GameClientSession>.Instance,
             matchingLifecycle: lifecycle,
-            redisOperations: null!, networkService: null!, gameHandoffTicketService: null!,
+            redisOperations: null!, networkService: null!, gameEntryTicketService: null!,
             readinessState: new network.hosting.ServerReadinessState(),
             gameServerRegistry: new RecordingGameServerRegistry(),
             nodeOptions: new GameServerNodeOptions

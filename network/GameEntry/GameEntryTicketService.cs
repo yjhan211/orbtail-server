@@ -1,8 +1,8 @@
 using network.helpers;
 
-namespace network.gamehandoff;
+namespace network.gameentry;
 
-public sealed class GameHandoffTicketOptions
+public sealed class GameEntryTicketOptions
 {
     public TimeSpan Lifetime { get; set; } = TimeSpan.FromMinutes(3);
 }
@@ -11,14 +11,14 @@ public sealed class GameHandoffTicketOptions
 ///     User Server가 Game Server 입장용 일회성 ticket을 발급하고, Game Server가 이를 소비할 때 유효성을 검사한다.
 ///     ticket에는 플레이어·매치·배정 서버 정보가 연결되며, 원문 대신 fingerprint를 저장소의 키로 사용한다.
 /// </summary>
-public sealed class GameHandoffTicketService(
-    IGameHandoffTicketStore ticketStore,
-    GameHandoffTicketOptions options)
+public sealed class GameEntryTicketService(
+    IGameEntryTicketStore ticketStore,
+    GameEntryTicketOptions options)
 {
     private const string TicketPrefix = "game_";
     private const int MaxTicketGenerationAttempts = 5;
 
-    public async Task<string> IssueAsync(GameHandoffContext context)
+    public async Task<string> IssueAsync(GameEntryContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         if (!TryValidateContext(context, out string validationError))
@@ -35,7 +35,7 @@ public sealed class GameHandoffTicketService(
         throw new InvalidOperationException("A unique game handoff ticket could not be issued.");
     }
 
-    public async Task<GameHandoffContext?> ConsumeAsync(string? ticket, string gameServerNodeId)
+    public async Task<GameEntryContext?> ConsumeAsync(string? ticket, string gameServerNodeId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(gameServerNodeId);
         if (string.IsNullOrWhiteSpace(ticket))
@@ -55,7 +55,7 @@ public sealed class GameHandoffTicketService(
             : null;
     }
 
-    private static bool TryValidateContext(GameHandoffContext context, out string error)
+    private static bool TryValidateContext(GameEntryContext context, out string error)
     {
         if (context.PlayerId <= 0 || context.MatchingId <= 0)
         {

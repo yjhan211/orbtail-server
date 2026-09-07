@@ -43,7 +43,7 @@ internal sealed class GameMatchEntryService(
         try
         {
             MatchManifest manifest = await ReadMatchManifestAsync(matchingId);
-            await WaitForMatchingHandoffReadyAsync(matchingId, manifest.HumanPlayerIds);
+            await WaitForMatchingEntryReadyAsync(matchingId, manifest.HumanPlayerIds);
 
             using (_matchRuntimes.Enter(runtime))
             {
@@ -102,7 +102,7 @@ internal sealed class GameMatchEntryService(
                ?? throw new InvalidOperationException($"Match manifest is empty for match {matchingId}.");
     }
 
-    private async Task WaitForMatchingHandoffReadyAsync(
+    private async Task WaitForMatchingEntryReadyAsync(
         long matchingId,
         IReadOnlyCollection<long> expectedHumanPlayerIds)
     {

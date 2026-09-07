@@ -11,7 +11,7 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.core;
-using network.gamehandoff;
+using network.gameentry;
 using network.helpers;
 using network.hosting;
 using network.packets;
@@ -488,7 +488,7 @@ public sealed class MatchStartCountdownPublicationTests
                 new TcpConnection(),
                 NullLogger.Instance,
                 null!,
-                static _ => Task.FromResult<GameHandoffContext?>(null),
+                static _ => Task.FromResult<GameEntryContext?>(null),
                 TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
                 static _ => [],

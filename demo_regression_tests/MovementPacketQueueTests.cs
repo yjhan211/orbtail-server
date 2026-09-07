@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data.models;
 using network.core;
-using network.gamehandoff;
+using network.gameentry;
 using network.packets;
 using network.routing;
 
@@ -78,7 +78,7 @@ public sealed class MovementPacketQueueTests
             connection,
             NullLogger.Instance,
             null!,
-            static _ => Task.FromResult<GameHandoffContext?>(null),
+            static _ => Task.FromResult<GameEntryContext?>(null),
             TestGameSessionServices.CreateLeaveHandler(),
             static (_, _) => null,
             static _ => [],

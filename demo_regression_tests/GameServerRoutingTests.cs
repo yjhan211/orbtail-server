@@ -2,7 +2,7 @@ using user_server.matching.creation;
 using game_server.services;
 using network.common;
 using network.common.data.models;
-using network.gamehandoff;
+using network.gameentry;
 using network.routing;
 using user_server.matching;
 
@@ -225,8 +225,8 @@ public sealed class GameServerRoutingTests
     [Fact]
     public async Task Ticket_IsConsumedOnlyByTheAssignedNode()
     {
-        var store = new InMemoryGameHandoffTicketStore();
-        var service = new GameHandoffTicketService(store, new GameHandoffTicketOptions());
+        var store = new InMemoryGameEntryTicketStore();
+        var service = new GameEntryTicketService(store, new GameEntryTicketOptions());
         string ticket = await service.IssueAsync(NewContext("game-server-1"));
 
         // 다른 노드가 먼저 받으면 거절되고, ticket은 이미 소비돼 원래 노드도 못 쓴다 (fail closed).
@@ -234,21 +234,21 @@ public sealed class GameServerRoutingTests
         Assert.Null(await service.ConsumeAsync(ticket, "game-server-1"));
 
         string second = await service.IssueAsync(NewContext("game-server-1"));
-        GameHandoffContext? consumed = await service.ConsumeAsync(second, "game-server-1");
+        GameEntryContext? consumed = await service.ConsumeAsync(second, "game-server-1");
         Assert.Equal("game-server-1", consumed?.GameServerNodeId);
     }
 
     [Fact]
     public async Task Ticket_CannotBeIssuedWithoutNodeBinding()
     {
-        var service = new GameHandoffTicketService(new InMemoryGameHandoffTicketStore(), new GameHandoffTicketOptions());
+        var service = new GameEntryTicketService(new InMemoryGameEntryTicketStore(), new GameEntryTicketOptions());
 
         await Assert.ThrowsAsync<ArgumentException>(() => service.IssueAsync(NewContext(string.Empty)));
     }
 
-    private static GameHandoffContext NewContext(string nodeId)
+    private static GameEntryContext NewContext(string nodeId)
     {
-        return new GameHandoffContext
+        return new GameEntryContext
         {
             PlayerId = 7,
             MatchingId = 42,
@@ -256,16 +256,16 @@ public sealed class GameServerRoutingTests
         };
     }
 
-    private sealed class InMemoryGameHandoffTicketStore : IGameHandoffTicketStore
+    private sealed class InMemoryGameEntryTicketStore : IGameEntryTicketStore
     {
-        private readonly Dictionary<string, GameHandoffContext> _tickets = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, GameEntryContext> _tickets = new(StringComparer.Ordinal);
 
-        public Task<bool> TryStoreAsync(string ticketHash, GameHandoffContext context, TimeSpan lifetime) =>
+        public Task<bool> TryStoreAsync(string ticketHash, GameEntryContext context, TimeSpan lifetime) =>
             Task.FromResult(_tickets.TryAdd(ticketHash, context));
 
-        public Task<GameHandoffContext?> ConsumeAsync(string ticketHash)
+        public Task<GameEntryContext?> ConsumeAsync(string ticketHash)
         {
-            _tickets.Remove(ticketHash, out GameHandoffContext? context);
+            _tickets.Remove(ticketHash, out GameEntryContext? context);
             return Task.FromResult(context);
         }
     }

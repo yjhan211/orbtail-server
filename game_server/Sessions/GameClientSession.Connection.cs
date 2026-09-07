@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
-using network.gamehandoff;
+using network.gameentry;
 using network.helpers;
 using network.infrastructure.redis;
 using network.packets;
@@ -30,8 +30,8 @@ public partial class GameClientSession
         bool registered = false;
         try
         {
-            GameHandoffContext? handoff = await _consumeGameHandoffTicket(msg.GameHandoffTicket);
-            if (handoff == null)
+            GameEntryContext? entryContext = await _consumeGameEntryTicket(msg.GameEntryTicket);
+            if (entryContext == null)
             {
                 EnsureConnectionActive();
                 Logger.LogWarning(
@@ -41,8 +41,8 @@ public partial class GameClientSession
                 return;
             }
 
-            long matchingId = handoff.MatchingId;
-            long playerId = handoff.PlayerId;
+            long matchingId = entryContext.MatchingId;
+            long playerId = entryContext.PlayerId;
             // 신원은 소비 응답 직후, 소켓 상태 확인 전에 확정한다. GETDEL 응답이 유실되면 여기에 정확한 신원이
             // 없고, 되돌리기는 user_server의 입장 마감이 맡는다.
             PlayerId = playerId;

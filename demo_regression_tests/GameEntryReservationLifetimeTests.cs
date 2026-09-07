@@ -24,7 +24,7 @@ public sealed class GameEntryReservationLifetimeTests
         await redis.StringSetAsync(
             entryStateKey,
             MatchingRedisKeys.EntryPendingState,
-            MatchingRedisKeys.HandoffStateLifetime);
+            MatchingRedisKeys.EntryStateLifetime);
         await redis.StringSetAsync(
             reservationKey,
             matchingId,
@@ -37,7 +37,7 @@ public sealed class GameEntryReservationLifetimeTests
             TimeSpan.FromSeconds(Config.SWARM_MATCH_DURATION_SECONDS) + TimeSpan.FromMinutes(3);
         Assert.Equal(expectedReservationLifetime, MatchingRedisKeys.PostEntryReservationLifetime);
         Assert.Equal(expectedReservationLifetime, redis.Expiries[reservationKey]);
-        Assert.Equal(MatchingRedisKeys.HandoffStateLifetime, redis.Expiries[handoffKey]);
-        Assert.Equal(MatchingRedisKeys.HandoffStateLifetime, redis.Expiries[entryStateKey]);
+        Assert.Equal(MatchingRedisKeys.EntryStateLifetime, redis.Expiries[handoffKey]);
+        Assert.Equal(MatchingRedisKeys.EntryStateLifetime, redis.Expiries[entryStateKey]);
     }
 }

@@ -6,7 +6,7 @@ using network.common;
 using network.common.data;
 using network.common.data.helpers;
 using network.common.data.models;
-using network.gamehandoff;
+using network.gameentry;
 using network.infrastructure.redis;
 using network.routing;
 using RedLockNet;
@@ -466,9 +466,9 @@ internal sealed class FakeRedLockFactory : IRedLockFactory
 }
 
 /// <summary>
-///     MatchCreationService가 handoff port를 호출한 순서를 기록하는 fake. 전달 결과·예외·entry 취소 결과를 주입한다.
+///     MatchCreationService가 entryService port를 호출한 순서를 기록하는 fake. 전달 결과·예외·entry 취소 결과를 주입한다.
 /// </summary>
-internal sealed class RecordingHandoffPublisher : IMatchEntryService
+internal sealed class RecordingEntryPublisher : IMatchEntryService
 {
     public List<string> Events { get; } = new();
     public Dictionary<long, MatchManifest> StoredManifests { get; } = new();

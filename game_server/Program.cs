@@ -6,7 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.core;
-using network.gamehandoff;
+using network.gameentry;
 using network.hosting;
 using network.infrastructure.messaging;
 using network.infrastructure.redis;
@@ -77,7 +77,7 @@ internal static class Program
         services.AddSingleton(redisConfiguration);
         services.AddSingleton(_ => new RedisConnection(redisConfiguration));
         services.AddSingleton<IRedisOperations, RedisOperations>();
-        services.AddGameHandoffTicket(hostContext.Configuration);
+        services.AddGameEntryTicket(hostContext.Configuration);
 
         var devOptions = GameServerDevOptions.FromConfiguration(hostContext.Configuration);
         devOptions.Validate(hostContext.HostingEnvironment.IsDevelopment());

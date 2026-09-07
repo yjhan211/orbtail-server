@@ -16,7 +16,7 @@ public sealed class MatchCreationServiceTests
     private readonly InMemoryRedisOperations _cache = new();
     private readonly MatchingReservationService _reservations;
     private readonly MatchingQueue _queue;
-    private readonly RecordingHandoffPublisher _handoff = new();
+    private readonly RecordingEntryPublisher _entryService = new();
     private readonly FixedGameServerAllocator _gameServers = new();
     private readonly RecordingLogger _logger = new();
 
@@ -29,7 +29,7 @@ public sealed class MatchCreationServiceTests
 
     private MatchCreationService CreatePass(bool soloMapValidation = false, CancellationToken shutdown = default)
     {
-        return new MatchCreationService(_cache, _queue, _reservations, _handoff, _gameServers, soloMapValidation, _logger.For<MatchCreationService>(), shutdown);
+        return new MatchCreationService(_cache, _queue, _reservations, _entryService, _gameServers, soloMapValidation, _logger.For<MatchCreationService>(), shutdown);
     }
 
     private async Task<MatchingQueueData[]> EnqueueHumansAsync(int count, double score = 1)
@@ -59,7 +59,7 @@ public sealed class MatchCreationServiceTests
         Assert.Equal(8, _cache.SortedSetCount(MatchingQueue.QueueKey));
         Assert.Null(_cache.GetString(MatchingRedisKeys.MatchingIdKey));
         Assert.All(humans, human => Assert.Null(ReservationOf(human.PlayerId)));
-        Assert.Empty(_handoff.Events);
+        Assert.Empty(_entryService.Events);
     }
 
     [Fact]
@@ -71,17 +71,17 @@ public sealed class MatchCreationServiceTests
 
         Assert.True(committed);
         Assert.Equal("1", _cache.GetString(MatchingRedisKeys.MatchingIdKey));
-        Assert.Equal(0, _handoff.StoredManifests[1].BotCount);
-        Assert.Equal(humans.Select(h => h.PlayerId).OrderBy(id => id), _handoff.StoredManifests[1].HumanPlayerIds.OrderBy(id => id));
-        Assert.Equal(8, _handoff.Deliveries.Count);
-        Assert.All(_handoff.DeliveredNodeIds, nodeId => Assert.Equal(FixedGameServerAllocator.DefaultNodeId, nodeId));
-        Assert.Equal(humans.Select(h => h.PlayerId).OrderBy(id => id), _handoff.Deliveries.Select(d => d.Entry.PlayerId).OrderBy(id => id));
+        Assert.Equal(0, _entryService.StoredManifests[1].BotCount);
+        Assert.Equal(humans.Select(h => h.PlayerId).OrderBy(id => id), _entryService.StoredManifests[1].HumanPlayerIds.OrderBy(id => id));
+        Assert.Equal(8, _entryService.Deliveries.Count);
+        Assert.All(_entryService.DeliveredNodeIds, nodeId => Assert.Equal(FixedGameServerAllocator.DefaultNodeId, nodeId));
+        Assert.Equal(humans.Select(h => h.PlayerId).OrderBy(id => id), _entryService.Deliveries.Select(d => d.Entry.PlayerId).OrderBy(id => id));
         Assert.All(humans, human => Assert.Equal("1", ReservationOf(human.PlayerId)));
         Assert.Equal(0, _cache.SortedSetCount(MatchingQueue.QueueKey));
         Assert.Empty(await _cache.HashGetAllAsync(MatchingQueue.RequestsKey));
-        Assert.Contains("ready:1", _handoff.Events);
-        Assert.Contains($"watchdog:1:{string.Join(",", humans.Select(h => h.PlayerId))}", _handoff.Events);
-        Assert.DoesNotContain(_handoff.Events, e => e.StartsWith("cancel:", StringComparison.Ordinal));
+        Assert.Contains("ready:1", _entryService.Events);
+        Assert.Contains($"watchdog:1:{string.Join(",", humans.Select(h => h.PlayerId))}", _entryService.Events);
+        Assert.DoesNotContain(_entryService.Events, e => e.StartsWith("cancel:", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -92,12 +92,12 @@ public sealed class MatchCreationServiceTests
         bool committed = await CreatePass().CreateMatchAsync(humans, 5);
 
         Assert.True(committed);
-        network.common.data.models.MatchManifest manifest = _handoff.StoredManifests[1];
+        network.common.data.models.MatchManifest manifest = _entryService.StoredManifests[1];
         Assert.Equal(5, manifest.BotCount);
         Assert.Equal(3, manifest.HumanPlayerIds.Count);
-        Assert.Equal(3, _handoff.Deliveries.Count);
+        Assert.Equal(3, _entryService.Deliveries.Count);
         Assert.Equal("1", ReservationOf(1_000));
-        Assert.Contains("ready:1", _handoff.Events);
+        Assert.Contains("ready:1", _entryService.Events);
     }
 
     [Fact]
@@ -107,10 +107,10 @@ public sealed class MatchCreationServiceTests
 
         await CreatePass().CreateMatchAsync(humans, 4);
 
-        int botsIndex = _handoff.Events.IndexOf("manifest:1:4+4");
-        int readyIndex = _handoff.Events.IndexOf("ready:1");
-        int watchdogIndex = _handoff.Events.FindIndex(e => e.StartsWith("watchdog:1:", StringComparison.Ordinal));
-        int[] deliverIndexes = _handoff.Events
+        int botsIndex = _entryService.Events.IndexOf("manifest:1:4+4");
+        int readyIndex = _entryService.Events.IndexOf("ready:1");
+        int watchdogIndex = _entryService.Events.FindIndex(e => e.StartsWith("watchdog:1:", StringComparison.Ordinal));
+        int[] deliverIndexes = _entryService.Events
             .Select((e, index) => (e, index))
             .Where(pair => pair.e.StartsWith("deliver:1:", StringComparison.Ordinal))
             .Select(pair => pair.index)
@@ -122,18 +122,18 @@ public sealed class MatchCreationServiceTests
     }
 
     [Fact]
-    public async Task CreateMatchAsync_RejectedDeliveryRollsBackReservationsHandoffAndNotifiesBatch()
+    public async Task CreateMatchAsync_RejectedDeliveryRollsBackReservationsEntryAndNotifiesBatch()
     {
         MatchingQueueData[] humans = await EnqueueHumansAsync(3);
-        _handoff.DeliverResult = playerId => playerId != 1_001;
+        _entryService.DeliverResult = playerId => playerId != 1_001;
 
         bool committed = await CreatePass().CreateMatchAsync(humans, 5);
 
         Assert.False(committed);
-        Assert.DoesNotContain("ready:1", _handoff.Events);
-        Assert.Contains("cancel:1", _handoff.Events);
-        Assert.Contains("delete:1", _handoff.Events);
-        Assert.Contains("notify_failed:1:1000,1001,1002", _handoff.Events);
+        Assert.DoesNotContain("ready:1", _entryService.Events);
+        Assert.Contains("cancel:1", _entryService.Events);
+        Assert.Contains("delete:1", _entryService.Events);
+        Assert.Contains("notify_failed:1:1000,1001,1002", _entryService.Events);
         Assert.All(humans, human => Assert.Null(ReservationOf(human.PlayerId)));
         Assert.Equal(0, _cache.SortedSetCount(MatchingQueue.QueueKey));
         Assert.True(_logger.Contains(LogLevel.Warning, "Matching rolled back because delivery was incomplete"));
@@ -143,13 +143,13 @@ public sealed class MatchCreationServiceTests
     public async Task CreateMatchAsync_DeliveryExceptionIsContainedAndRolledBack()
     {
         MatchingQueueData[] humans = await EnqueueHumansAsync(2);
-        _handoff.ThrowOnDeliver.Add(1_000);
+        _entryService.ThrowOnDeliver.Add(1_000);
 
         bool committed = await CreatePass().CreateMatchAsync(humans, 6);
 
         Assert.False(committed);
-        Assert.Equal(2, _handoff.Deliveries.Count);
-        Assert.Contains("cancel:1", _handoff.Events);
+        Assert.Equal(2, _entryService.Deliveries.Count);
+        Assert.Contains("cancel:1", _entryService.Events);
         Assert.All(humans, human => Assert.Null(ReservationOf(human.PlayerId)));
         Assert.True(_logger.Contains(LogLevel.Error, "Failed to commit matching request"));
     }
@@ -158,15 +158,15 @@ public sealed class MatchCreationServiceTests
     public async Task CreateMatchAsync_CompletedEntryIsNotRolledBack()
     {
         MatchingQueueData[] humans = await EnqueueHumansAsync(2);
-        _handoff.DeliverResult = playerId => playerId != 1_001;
-        _handoff.CancelEntryResult = false;
+        _entryService.DeliverResult = playerId => playerId != 1_001;
+        _entryService.CancelEntryResult = false;
 
         bool committed = await CreatePass().CreateMatchAsync(humans, 6);
 
         Assert.False(committed);
-        Assert.Contains("cancel:1", _handoff.Events);
-        Assert.DoesNotContain("delete:1", _handoff.Events);
-        Assert.DoesNotContain(_handoff.Events, e => e.StartsWith("notify_failed:", StringComparison.Ordinal));
+        Assert.Contains("cancel:1", _entryService.Events);
+        Assert.DoesNotContain("delete:1", _entryService.Events);
+        Assert.DoesNotContain(_entryService.Events, e => e.StartsWith("notify_failed:", StringComparison.Ordinal));
         // 전달된 사람의 active reservation은 그대로 남고(TTL fallback), 거절된 사람의 reservation만 즉시 해제된다.
         Assert.Equal("1", ReservationOf(1_000));
         Assert.Null(ReservationOf(1_001));
@@ -182,7 +182,7 @@ public sealed class MatchCreationServiceTests
 
         Assert.False(committed);
         Assert.Null(_cache.GetString(MatchingRedisKeys.MatchingIdKey));
-        Assert.Empty(_handoff.Events);
+        Assert.Empty(_entryService.Events);
         Assert.Null(ReservationOf(1_000));
         Assert.Equal("other-worker", ReservationOf(1_001));
         Assert.Equal(2, _cache.SortedSetCount(MatchingQueue.QueueKey));
@@ -192,13 +192,13 @@ public sealed class MatchCreationServiceTests
     public async Task CreateMatchAsync_WatchdogRefusalDuringShutdownRollsBackAfterReady()
     {
         MatchingQueueData[] humans = await EnqueueHumansAsync(1);
-        _handoff.WatchdogResult = false;
+        _entryService.WatchdogResult = false;
 
         await Assert.ThrowsAsync<OperationCanceledException>(() =>
             CreatePass().CreateMatchAsync(humans, 7));
 
-        Assert.Contains("ready:1", _handoff.Events);
-        Assert.Contains("cancel:1", _handoff.Events);
+        Assert.Contains("ready:1", _entryService.Events);
+        Assert.Contains("cancel:1", _entryService.Events);
         Assert.Null(ReservationOf(1_000));
     }
 
@@ -217,9 +217,9 @@ public sealed class MatchCreationServiceTests
         await CreatePass(soloMapValidation).RunAsync();
 
         Assert.Equal("1", _cache.GetString(MatchingRedisKeys.MatchingIdKey));
-        Assert.Single(_handoff.StoredManifests);
-        Assert.All(_handoff.StoredManifests.Values, manifest => Assert.Equal(6, manifest.BotCount));
-        Assert.Equal(new long[] { 1, 2 }, _handoff.Deliveries.Select(d => d.Entry.PlayerId));
+        Assert.Single(_entryService.StoredManifests);
+        Assert.All(_entryService.StoredManifests.Values, manifest => Assert.Equal(6, manifest.BotCount));
+        Assert.Equal(new long[] { 1, 2 }, _entryService.Deliveries.Select(d => d.Entry.PlayerId));
         Assert.Equal("1", ReservationOf(1));
         Assert.Equal("1", ReservationOf(2));
         Assert.Null(ReservationOf(3));
@@ -237,11 +237,11 @@ public sealed class MatchCreationServiceTests
 
         await CreatePass(soloMapValidation).RunAsync();
 
-        MatchManifest manifest = Assert.Single(_handoff.StoredManifests).Value;
+        MatchManifest manifest = Assert.Single(_entryService.StoredManifests).Value;
         Assert.Equal(MatchMode.SoloMapValidation, manifest.Mode);
         Assert.Equal(new long[] { player.PlayerId }, manifest.HumanPlayerIds);
         Assert.Equal(0, manifest.BotCount);
-        Assert.Single(_handoff.Deliveries);
+        Assert.Single(_entryService.Deliveries);
     }
 
     [Fact]
@@ -250,7 +250,7 @@ public sealed class MatchCreationServiceTests
         await CreatePass().RunAsync();
 
         Assert.Null(_cache.GetString(MatchingRedisKeys.MatchingIdKey));
-        Assert.Empty(_handoff.Events);
+        Assert.Empty(_entryService.Events);
     }
 
     [Fact]
@@ -259,8 +259,8 @@ public sealed class MatchCreationServiceTests
         await EnqueueHumansAsync(2, DateTimeOffset.UtcNow.ToUnixTimeSeconds() - 10);
         await CreatePass(soloMapValidation: true).RunAsync();
 
-        Assert.Equal(2, _handoff.StoredManifests.Count);
-        Assert.All(_handoff.StoredManifests.Values, manifest =>
+        Assert.Equal(2, _entryService.StoredManifests.Count);
+        Assert.All(_entryService.StoredManifests.Values, manifest =>
         {
             Assert.Single(manifest.HumanPlayerIds);
             Assert.Equal(0, manifest.BotCount);
@@ -285,13 +285,13 @@ public sealed class MatchCreationServiceTests
 
         await CreatePass().RunAsync();
 
-        Assert.Equal(matches, _handoff.StoredManifests.Count);
+        Assert.Equal(matches, _entryService.StoredManifests.Count);
         Assert.Equal(remaining, _cache.SortedSetCount(MatchingQueue.QueueKey));
-        Assert.All(_handoff.StoredManifests.Values, manifest =>
+        Assert.All(_entryService.StoredManifests.Values, manifest =>
             Assert.Equal(8, manifest.HumanPlayerIds.Count + manifest.BotCount));
-        Assert.Equal(humans - remaining, _handoff.Deliveries.Count);
+        Assert.Equal(humans - remaining, _entryService.Deliveries.Count);
         if (humans >= 8)
-            Assert.Contains(_handoff.StoredManifests.Values, manifest => manifest.BotCount == 0);
+            Assert.Contains(_entryService.StoredManifests.Values, manifest => manifest.BotCount == 0);
     }
 
     [Fact]
@@ -305,7 +305,7 @@ public sealed class MatchCreationServiceTests
 
         await CreatePass(shutdown: shutdown.Token).RunAsync();
 
-        Assert.Empty(_handoff.Events);
+        Assert.Empty(_entryService.Events);
         Assert.Equal(1, _cache.SortedSetCount(MatchingQueue.QueueKey));
     }
 
@@ -319,7 +319,7 @@ public sealed class MatchCreationServiceTests
 
         await CreatePass(soloMapValidation).RunAsync();
 
-        Assert.Equal(7, Assert.Single(_handoff.StoredManifests).Value.BotCount);
+        Assert.Equal(7, Assert.Single(_entryService.StoredManifests).Value.BotCount);
         Assert.Equal(0, _cache.SortedSetCount(MatchingQueue.QueueKey));
     }
 }
