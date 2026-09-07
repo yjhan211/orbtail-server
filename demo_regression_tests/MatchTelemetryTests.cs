@@ -141,6 +141,23 @@ public sealed class MatchTelemetryTests
         Assert.False(hit.IsBot);
     }
     [Fact]
+    public void InitialInventoryRecordsConnectionStateWithoutChangingItems()
+    {
+        var log = TestGameEventLogs.Create();
+        var item = new InGameItemInfo { ItemId = 107000010, Count = 1 };
+
+        log.LogInitialInventory(198400, 400, [item], item.ItemId, "Library");
+
+        var entry = Assert.Single(log.GetRecent(198400, 100), entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE");
+        Assert.Equal("connection_sync", entry.Outcome);
+        Assert.Equal("Library", entry.Area);
+        Assert.Equal(107000010, entry.WeaponItemId);
+        Assert.Equal([107000010], entry.BoardItemIds);
+        Assert.False(entry.IsBot);
+        Assert.Equal(1, item.Count);
+    }
+
+    [Fact]
     public void OrbBoardTelemetryCapturesTransitionsMergeWindowsColorRatesAndVolleyTargets()
     {
         const long matchingId = 198401;

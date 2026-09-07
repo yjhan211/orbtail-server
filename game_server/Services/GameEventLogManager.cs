@@ -780,6 +780,13 @@ public class GameEventLogManager
             _ => 0
         });
 
+    /// <summary>사람 플레이어의 입장 당시 아이템과 장비 상태를 기록한다.</summary>
+    public void LogInitialInventory(long matchingId, long playerId,
+        IReadOnlyCollection<InGameItemInfo> items, int equippedItemId, string area)
+    {
+        LogOrbBoardTransition(matchingId, playerId, items, equippedItemId, area, "connection_sync", isBot: false);
+    }
+
     public void LogOrbBoardTransition(long matchingId, long playerId,
         IReadOnlyCollection<InGameItemInfo> items, int equippedItemId, string area, string reason, bool isBot)
     {

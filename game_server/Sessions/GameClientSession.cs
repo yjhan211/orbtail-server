@@ -318,7 +318,9 @@ public partial class GameClientSession : SessionBase
             SendInGameInventoryList();
             SendSummonStoneState();
 
-            LogInitialInventory();
+            var initialInventory = Match.Inventory.GetPlayerInventory(PlayerId.Value);
+            _gameEventLogManager.LogInitialInventory(MatchingId, PlayerId.Value, initialInventory.GetAllItems(),
+                initialInventory.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString());
 
             SendDoorStateList();
             SendPressureFieldState();
@@ -366,14 +368,6 @@ public partial class GameClientSession : SessionBase
             MarkDisconnectedByServer();
             SendConnectFailure(ErrorCode.GAME_ENTRY_FAILED);
         }
-    }
-
-    /// <summary>입장 당시 인벤토리와 장착 상태를 기록한다. 아이템 상태를 변경하거나 패킷을 보내지는 않는다.</summary>
-    private void LogInitialInventory()
-    {
-        var inventory = Match.Inventory.GetPlayerInventory(PlayerId!.Value);
-        _gameEventLogManager.LogOrbBoardTransition(MatchingId, PlayerId.Value, inventory.GetAllItems(),
-            inventory.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
     }
 
     /// <summary>입장 실패 응답을 송신 큐에 넣고 전송 후 연결 종료를 예약한다.</summary>
