@@ -320,9 +320,7 @@ public partial class GameClientSession : SessionBase
             SendInGameInventoryList();
             SendSummonStoneState();
 
-            var connectionBoard = Match.Inventory.GetPlayerInventory(PlayerId.Value);
-            _gameEventLogManager.LogOrbBoardTransition(MatchingId, PlayerId.Value, connectionBoard.GetAllItems(),
-                connectionBoard.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
+            LogInitialInventory();
 
             InitializeWithMatchLock(runtime, () => Doors?.Initialize([]));
             SendDoorStateList();
@@ -378,6 +376,14 @@ public partial class GameClientSession : SessionBase
             MarkServerInitiatedDisconnect();
             SendConnectResult(false, ErrorCode.GAME_ENTRY_FAILED, disconnectAfterSend: true);
         }
+    }
+
+    /// <summary>입장 당시 인벤토리와 장착 상태를 기록한다. 아이템 상태를 변경하거나 패킷을 보내지는 않는다.</summary>
+    private void LogInitialInventory()
+    {
+        var inventory = Match.Inventory.GetPlayerInventory(PlayerId!.Value);
+        _gameEventLogManager.LogOrbBoardTransition(MatchingId, PlayerId.Value, inventory.GetAllItems(),
+            inventory.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
     }
 
     private bool SendConnectResult(bool success, ErrorCode errorCode, bool disconnectAfterSend = false)
