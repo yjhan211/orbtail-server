@@ -556,7 +556,7 @@ public partial class GameClientSession : SessionBase
         MarkDisconnectedByServer();
         try
         {
-            using var packet = PacketMaker.G_TO_C_ERROR(ErrorCode.FATAL, "게임 입장 초기화에 실패했습니다");
+            using var packet = PacketMaker.G_TO_C_ERROR(ErrorCode.GAME_ENTRY_FAILED);
             Connection.TrySendAndDisconnect(packet);
         }
         catch (Exception ex)
@@ -566,14 +566,15 @@ public partial class GameClientSession : SessionBase
         }
     }
 
-    internal void TryMarkMatchingLifecycleHandledExternally()
+    /// <summary>외부에서 매치 종료 처리를 맡았으므로 연결 종료 시 중복 처리하지 않도록 표시한다.</summary>
+    internal void MarkMatchEndHandledExternally()
     {
         if (!TryBeginMatchEndHandling()) return;
 
         Volatile.Write(ref _matchingLifecycleHandledExternally, 1);
     }
 
-    private void RecordLeaveOnce()
+    private void PublishPlayerLeftOnce()
     {
         if (!PlayerId.HasValue || MatchingId <= 0 || !TryBeginMatchEndHandling())
             return;
@@ -635,7 +636,7 @@ public partial class GameClientSession : SessionBase
             }
             else
             {
-                RecordLeaveOnce();
+                PublishPlayerLeftOnce();
             }
         }
         Logger.LogInformation("GameSession disconnected: PlayerId={PlayerId}", PlayerId);

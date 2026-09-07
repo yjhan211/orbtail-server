@@ -55,7 +55,7 @@ internal sealed class MatchEntryFailureHandler(
                 wonTerminal = runtime.TryMarkTerminal();
                 List<GameClientSession> affectedSessions = sessions.GetByMatch(matchingId);
                 foreach (GameClientSession affectedSession in affectedSessions)
-                    affectedSession.TryMarkMatchingLifecycleHandledExternally();
+                    affectedSession.MarkMatchEndHandledExternally();
 
                 IReadOnlyCollection<long> affectedPlayerIds =
                     runtime.Composition is { } composition

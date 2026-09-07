@@ -356,17 +356,18 @@ public sealed class MatchStartCountdownPublicationTests
         string method = ReadMethodSlice(
             session,
             "internal virtual void DisconnectForEntryFailure()",
-            "TryMarkMatchingLifecycleHandledExternally()");
+            "MarkMatchEndHandledExternally()");
 
         AssertInOrder(
             method,
             "Interlocked.Exchange(ref _entryDisconnectIssued, 1) != 0",
             "MarkDisconnectedByServer();",
-            "PacketMaker.G_TO_C_ERROR(ErrorCode.FATAL",
+            "PacketMaker.G_TO_C_ERROR(ErrorCode.GAME_ENTRY_FAILED)",
             "Connection.TrySendAndDisconnect(packet);",
             "catch (Exception ex)",
             "Connection.Disconnect();");
         Assert.Equal(1, CountOccurrences(method, "Connection.TrySendAndDisconnect(packet);"));
+        Assert.DoesNotContain("게임 입장 초기화에 실패했습니다", method);
     }
 
     private static GameServer CreateEntryTestServer() => GameServerTestAccess.Create();
