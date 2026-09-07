@@ -25,7 +25,7 @@ internal partial class GameServer
     // 봇 회피(SwarmBotDodgePolicy)와 같은 기하를 써야 해서 정책 상수를 별칭한다 (#297).
     private const float SwarmGroundYScale = SwarmBotDodgePolicy.SwarmGroundYScale;
     // 몬스터 몸통 여유 — 앞머리가 몸 가장자리를 스쳐도 맞는다 (접촉 반경 0.32와 같은 급).
-    private const float SwarmCrossfireMonsterRadius = 0.3f;
+    private const float SwarmCrossfireMonsterRadius = SwarmCombatGeometry.MonsterRadius;
     // 플레이어 몸통 여유 — 중심점만 재면 캡슐 가장자리가 몸을 스치는 장면에서 "지나갔는데 안 맞는다". 몸 폭의 절반쯤.
     private const float SwarmCrossfirePlayerRadius = SwarmBotDodgePolicy.SwarmCrossfirePlayerRadius;
 
@@ -292,9 +292,9 @@ internal partial class GameServer
                 shape.HitMonsters.Add(monster.CombatTargetId);
                 TrackSwarmCrossfireConvergence(matchingId, monster.CombatTargetId, nowUtc);
                 matchRuntimes.GetRequired(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
-                int monsterDamage = RollSwarmCriticalDamage(
+                int monsterDamage = combatDamage.RollSwarmCriticalDamage(
                     matchingId, shape.Damage, out bool critical);
-                ApplySwarmMonsterHitNow(
+                combatDamage.ApplySwarmMonsterHitNow(
                     matchingId, monster.CombatTargetId, monster.MonsterId, shape.OwnerId,
                     shape.WeaponItemId, shape.Area, monsterDamage, critical, allSessions);
             }
@@ -309,7 +309,7 @@ internal partial class GameServer
                     continue;
 
                 shape.HitVictims.Add(participant.PlayerId);
-                ApplySwarmShock(
+                combatDamage.ApplySwarmShock(
                     matchingId, shape.OwnerId, shape.WeaponItemId, shape.Area, participant.PlayerId,
                     $"ORB_CROSSFIRE_HIT event={shape.EventId} shape=pierce anchor={shape.AnchorMonsterId}",
                     aliveSessions, aliveBots, allSessions);
@@ -393,14 +393,6 @@ internal partial class GameServer
         float length = MathF.Max(shape.GroundLength, 1e-4f);
         float ux = (bx - ax) / length, uy = (by - ay) / length;
         return new Vector3f(ax + ux * along, (ay + uy * along) / SwarmGroundYScale, 0f);
-    }
-
-    /// <summary>바닥면(dy×2) 거리로 반경 안인가 — 물폭탄·접촉과 같은 공간.</summary>
-    private static bool IsWithinSwarmGroundRadius(Vector3f center, Vector3f point, float radius)
-    {
-        float dx = point.X - center.X;
-        float dy = (point.Y - center.Y) * SwarmGroundYScale;
-        return dx * dx + dy * dy <= radius * radius;
     }
 
     // 벽 탐색 표본 간격(바닥면 단위) — 셀(1) 대비 충분히 촘촘하다.
@@ -514,67 +506,6 @@ internal partial class GameServer
         return false;
     }
 
-    /// <summary>
-    ///     즉시 몬스터 타격 (교차사격 쓸기). 착탄 지연 큐와 같은 정산 —
-    ///     결과 집계, 처치 계측(monster_lifetime), 처치 로그, 소환석 드롭. 공격자 화면엔 숫자만
-    ///     띄운다(투사체 없음).
-    /// </summary>
-    private void ApplySwarmMonsterHitNow(
-        long matchingId,
-        long combatTargetId,
-        int monsterId,
-        long attackerId,
-        int weaponItemId,
-        AreaType area,
-        int damage,
-        bool critical,
-        List<GameClientSession> allSessions)
-    {
-        var damageResult = matchRuntimes.GetRequired(matchingId).Monsters.ApplyMonsterDamage(matchingId, combatTargetId, attackerId, damage);
-        if (!damageResult.Applied)
-            return;
-
-        eventLogs.RecordMonsterHit(matchingId, attackerId, damage, damageResult.Killed);
-        var attackerSession = allSessions.FirstOrDefault(session => session.PlayerId == attackerId);
-        attackerSession?.SendSwarmAfterimageMonsterAttackFeedback(
-            monsterId, area, weaponItemId, damage, critical, noProjectile: true);
-
-        if (damageResult.Killed && damageResult.MonsterState != null)
-            SettleSwarmMonsterKill(matchingId, damageResult, attackerId, damage, allSessions);
-    }
-
-    /// <summary>처치 정산 — 착탄 큐와 즉시 타격이 같은 경로를 쓴다.</summary>
-    private void SettleSwarmMonsterKill(
-        long matchingId,
-        SwarmArenaDamageResult damageResult,
-        long attackerId,
-        int damage,
-        List<GameClientSession> allSessions)
-    {
-        if (damageResult.MonsterState == null)
-            return;
-
-        // 기준점 계측 (#232 1단계): 종·생존초·살아 있는 동안 받은 공격 사건 수. 완료 조건
-        // "몬스터당 공격 모양 평균 2회 이상"과 "즉시 지워져 기준점이 못 되는 몹"을 여기서 잰다.
-        eventLogs.LogSystem(
-            matchingId,
-            $"monster_lifetime kind={damageResult.Kind} area={damageResult.MonsterState.AreaType} " +
-            $"aliveSeconds={damageResult.AliveSeconds:F1} attackEvents={damageResult.AttackEventCount} " +
-            $"killer={attackerId}");
-
-        // 처치 계측 (#226 E): 종·구역·처치자 — 요약의 몹 처치 지표가 이 이벤트를 읽는다.
-        eventLogs.LogSwarmAfterimageKilled(
-            matchingId, damageResult.MonsterId,
-            damageResult.MonsterState.AreaType.ToString(),
-            isCore: damageResult.Kind == SwarmMonsterKind.RunawayGoblin,
-            firstAttackerPlayerId: attackerId,
-            lastAttackerPlayerId: attackerId,
-            new Dictionary<long, int> { [attackerId] = damage });
-        SpawnSwarmSummonStone(
-            matchingId, damageResult.MonsterState, allSessions,
-            damageResult.HeartReward, damageResult.BootsReward, damageResult.KeyReward);
-    }
-
     // 충격 면역은 없다 — 태양 다발 화망에서 첫 발 이후가 소리 없이 관통하면 "피격박스가 안 맞는" 오독이 된다.
     // 표시 = 판정: 지나간 발은 다 맞는다. 한 발이 같은 사람을 두 번 치는 것은 발 단위 HitVictims(교차사격)·틱 주기(칼날)가 막는다.
 
@@ -607,83 +538,9 @@ internal partial class GameServer
             nowUtc,
             Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS,
             (victimId, burn) =>
-                ApplySwarmShock(matchingId, burn.OwnerId, burn.WeaponItemId, burn.Area,
+                combatDamage.ApplySwarmShock(matchingId, burn.OwnerId, burn.WeaponItemId, burn.Area,
                     victimId, "SUN_BURN_TICK", aliveSessions, aliveBots, allSessions,
                     Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER, dotTick: true));
-    }
-
-    /// <summary>상처 부여·갱신 — HUD 통지 포함. 효과는 ApplySwarmShock의 치명타 굴림이 읽는다.</summary>
-    private void ApplySwarmWindWound(
-        SwarmWindBladeState windBlade, long ownerId, AreaType area, long victimId,
-        DateTime nowUtc, List<GameClientSession> aliveSessions)
-    {
-        windBlade.ApplyWound(victimId, nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS));
-        aliveSessions.FirstOrDefault(session => session.PlayerId == victimId)
-            ?.SendSwarmWindWound(ownerId, area, (int)(Config.SWARM_WIND_WOUND_SECONDS * 1000f));
-    }
-
-    /// <summary>
-    ///     플레이어 충격 (고정값, 티어 무관): 사격 피격 경로를 재사용해 오염 증가·피격 숫자·탈락 흐름이 그대로
-    ///     따라온다. 봇도 같은 값. 소유자 화면에는 사격 피드백을 보낸다. label은 로그용(어느 모양이 때렸나).
-    /// </summary>
-    private void ApplySwarmShock(
-        long matchingId,
-        long ownerId,
-        int weaponItemId,
-        AreaType area,
-        long victimId,
-        string label,
-        List<GameClientSession> aliveSessions,
-        List<BotPlayerState> aliveBots,
-        List<GameClientSession> allSessions,
-        float damageScale = 1f,
-        bool dotTick = false)
-    {
-        SwarmMatchRuntime runtime = matchRuntimes.GetRequired(matchingId).Swarm;
-        // 받는 피해 배율: 고정 충격 50에 1/3을 곱한다. 태양·바람·파도 충격이 전부 이 한 곳을 지난다.
-        // damageScale: 파도 소용돌이(#268)는 당김이 본체라 피해를 타격 피드백 수준(1/4)으로 줄인다.
-        int shock = Math.Max(1, (int)MathF.Round(
-            Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_CORRUPTION) * damageScale));
-        // 상처 (#268): 상처 입은 피해자만 PvP 충격 치명타가 열린다 — PvE와 같은 2배.
-        if (runtime.WindBlade.IsWounded(victimId, DateTime.UtcNow) &&
-            runtime.Pacing.RollCritical(Config.SWARM_WIND_WOUND_CRIT_CHANCE))
-            shock = Math.Max(shock + 1, (int)MathF.Round(shock * SwarmCriticalMultiplier));
-        int corruptionBefore;
-        int corruptionAfter;
-
-        var victimSession = aliveSessions.FirstOrDefault(session => session.PlayerId == victimId);
-        if (victimSession != null)
-        {
-            corruptionBefore = victimSession.CurrentCorruption;
-            // 사격 피격 경로 재사용 — 오염 증가·피격 숫자·탈락 흐름이 그대로 따라온다.
-            victimSession.ApplyProximityAutoCombatHit(ownerId, area, weaponItemId, shock, dotTick);
-            corruptionAfter = victimSession.CurrentCorruption;
-        }
-        else
-        {
-            var bot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == victimId);
-            if (bot == null)
-                return;
-            corruptionBefore = bot.Corruption;
-            bot.LastProximityAttackerPlayerId = ownerId;
-            runtime.BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
-            bot.LastDamagedAtUtc = DateTime.UtcNow;
-            eventLogs.LogHit(
-                matchingId, ownerId, bot.PlayerId, weaponItemId, shock,
-                bot.Corruption < Config.MAX_CORRUPTION &&
-                bot.Corruption + shock >= Config.MAX_CORRUPTION,
-                BotPlayerManager.IsBotPlayerId(ownerId), DateTimeOffset.UtcNow);
-            bot.Corruption = Math.Min(Config.MAX_CORRUPTION, bot.Corruption + shock);
-            corruptionAfter = bot.Corruption;
-        }
-
-        var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
-        ownerSession?.SendProximityAutoCombatAttackFeedback(victimId, area, weaponItemId, shock, dotTick);
-
-        eventLogs.LogSystem(
-            matchingId,
-            $"{label} owner={ownerId} victim={victimId} weapon={weaponItemId} " +
-            $"corruptionBefore={corruptionBefore} corruptionAfter={corruptionAfter}");
     }
 
     /// <summary>후보 선분(벽까지 잘린 실제 길이) 위의 몹 수와 첫 적중 거리 — 좌우 선택의 근거.</summary>

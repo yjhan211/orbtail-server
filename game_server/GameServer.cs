@@ -51,6 +51,8 @@ internal partial class GameServer(
     OrbRecoveryService orbRecovery,
     OrbVisualStatePublisher orbVisuals,
     OrbTrailService orbTrails,
+    MatchCombatDamageService combatDamage,
+    WindBladeService windBlades,
     MatchFieldService fieldService,
     GameServerTickService tickService,
     BotMovementService botMovement)

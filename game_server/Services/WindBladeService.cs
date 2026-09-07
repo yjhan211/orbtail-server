@@ -1,22 +1,23 @@
 using game_server.network;
-using game_server.services;
 using network.common;
 using network.common.data;
 using network.common.data.models;
 
-namespace game_server;
+namespace game_server.services;
 
 /// <summary>
-///     바람 = 회전 칼날 (#268). 바람 오브는 제자리(열 좌표)에서 돌며 반경 안 전원을 주기 틱으로 간다 — 믹서기.
-///     반경 안 몬스터는 틱 PvE 피해, 소유자 아닌 플레이어는 충격 1회(피해자 0.9초 창 — 바람 전용, 태양에는
-///     면역이 없다). 표적 선택·예고·돌진이 없다 — 판정 반경이 곧 무기다.
-///     연출은 클라(PlayerTool.WindBlade): 오브 자전 + 판정 반경 칼날 원판 — 평시 저속, 적 감지 시
-///     가속·발광. 서버는 별도 연출 패킷을 보내지 않는다 — 피해 틱의 피격 패킷이 곧 신호다.
+///     바람 오브의 반경·시동 시간·공격 주기를 검사하고 몬스터 피해와 플레이어 충격·상처를 적용한다.
+///     시계와 면역 상태는 매치가 소유하며 매치 잠금 안에서 실행한다.
+///     공통 피해 적용은 MatchCombatDamageService에 맡긴다.
 /// </summary>
-internal partial class GameServer
+internal sealed class WindBladeService(
+    MatchRuntimeStore matchRuntimes,
+    OrbTrailService orbTrails,
+    MatchCombatDamageService combatDamage,
+    GameEventLogManager eventLogs)
 {
     // 몸통 여유 — 교차사격과 같은 값.
-    private const float SwarmWindBladeMonsterRadius = 0.3f;
+
     private const float SwarmWindBladePlayerRadius = 0.25f;
 
     // 바람만 피해자 면역 창을 둔다: 칼날은 예고선(회전 링)이 오브 위치 그대로라 표시=판정 어긋남이 없고, 면역까지
@@ -25,7 +26,7 @@ internal partial class GameServer
     private static double SwarmWindBladeVictimImmuneSeconds =>
         SwarmConfigData.GetDouble("SWARM_WIND_BLADE_VICTIM_IMMUNE_SECONDS", 0.9d);
 
-    private void ProcessSwarmWindBlades(
+    public void Process(
         long matchingId,
         DateTime nowUtc,
         List<SwarmParticipantSpatial> participants,
@@ -38,7 +39,7 @@ internal partial class GameServer
 
         foreach (var owner in participants)
         {
-            var trailOrbs = GetSwarmTrailOrbs(matchingId, owner.PlayerId);
+            var trailOrbs = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(owner.PlayerId).GetOrderedOrbs();
             if (trailOrbs.Count == 0)
                 continue;
 
@@ -66,8 +67,8 @@ internal partial class GameServer
                 {
                     if (monster.Area != owner.Area)
                         continue;
-                    if (!IsWithinSwarmGroundRadius(
-                            origin, monster.Position, radius + SwarmWindBladeMonsterRadius))
+                    if (!SwarmCombatGeometry.IsWithinGroundRadius(
+                            origin, monster.Position, radius + SwarmCombatGeometry.MonsterRadius))
                         continue;
                     (monstersInRadius ??= new List<SwarmArenaCombatTarget>()).Add(monster);
                 }
@@ -77,7 +78,7 @@ internal partial class GameServer
                 {
                     if (participant.PlayerId == owner.PlayerId || participant.Area != owner.Area)
                         continue;
-                    if (!IsWithinSwarmGroundRadius(
+                    if (!SwarmCombatGeometry.IsWithinGroundRadius(
                             origin, participant.Position, radius + SwarmWindBladePlayerRadius))
                         continue;
                     (playersInRadius ??= new List<SwarmParticipantSpatial>()).Add(participant);
@@ -108,9 +109,9 @@ internal partial class GameServer
                     {
                         monsterHits++;
                         matchRuntimes.GetRequired(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
-                        int monsterDamage = RollSwarmCriticalDamage(
+                        int monsterDamage = combatDamage.RollSwarmCriticalDamage(
                             matchingId, damage, out bool critical);
-                        ApplySwarmMonsterHitNow(
+                        combatDamage.ApplySwarmMonsterHitNow(
                             matchingId, monster.CombatTargetId, monster.MonsterId, owner.PlayerId,
                             item.ItemId, owner.Area, monsterDamage, critical, allSessions);
                     }
@@ -127,7 +128,7 @@ internal partial class GameServer
 
                         shocks++;
                         // 충격 먼저, 상처는 그다음 — 상처를 낸 그 틱이 자기 충격에 치명타를 걸지 않게.
-                        ApplySwarmShock(matchingId, owner.PlayerId, item.ItemId, owner.Area, participant.PlayerId,
+                        combatDamage.ApplySwarmShock(matchingId, owner.PlayerId, item.ItemId, owner.Area, participant.PlayerId,
                             $"WIND_BLADE_HIT ordinal={ordinal}", aliveSessions, aliveBots, allSessions);
                         ApplySwarmWindWound(
                             windBlade, owner.PlayerId, owner.Area, participant.PlayerId,
@@ -145,6 +146,16 @@ internal partial class GameServer
                 }
             }
         }
+    }
+
+    /// <summary>상처 부여·갱신 — HUD 통지 포함. 효과는 ApplySwarmShock의 치명타 굴림이 읽는다.</summary>
+    private void ApplySwarmWindWound(
+        SwarmWindBladeState windBlade, long ownerId, AreaType area, long victimId,
+        DateTime nowUtc, List<GameClientSession> aliveSessions)
+    {
+        windBlade.ApplyWound(victimId, nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS));
+        aliveSessions.FirstOrDefault(session => session.PlayerId == victimId)
+            ?.SendSwarmWindWound(ownerId, area, (int)(Config.SWARM_WIND_WOUND_SECONDS * 1000f));
     }
 
 }

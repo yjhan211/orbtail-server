@@ -130,6 +130,8 @@ internal static class Program
         services.AddSingleton<OrbRecoveryService>();
         services.AddSingleton<OrbVisualStatePublisher>();
         services.AddSingleton<OrbTrailService>();
+        services.AddSingleton<MatchCombatDamageService>();
+        services.AddSingleton<WindBladeService>();
         services.AddSingleton<MatchFieldService>();
         services.AddSingleton<MatchCountdownService>(sp => new MatchCountdownService(
             sp.GetRequiredService<MatchRuntimeStore>(), sp.GetRequiredService<MatchEntryFailureHandler>(),

@@ -138,7 +138,7 @@ public sealed class SwarmArenaTickOrderTests
             "ProcessSwarmTrailCuts(",
             "ProcessSwarmRetaliationWindows(",
             "ProcessSwarmWaveBombs(",
-            "ProcessSwarmWindBlades(",
+            "windBlades.Process(",
             "ProcessSwarmSunBurns(",
             "ApplySwarmParticipantDamage(",
             "ProcessSwarmBotRecovery(",
@@ -367,7 +367,7 @@ public sealed class SwarmArenaTickOrderTests
     public void WindBladeAndOrbBoardState_AreOwnedBySwarmMatchRuntime()
     {
         string root = FindRepositoryRoot();
-        string windBlade = ReadNormalizedSource(root, "game_server", "GameServer.SwarmWindBlade.cs");
+        string windBlade = ReadNormalizedSource(root, "game_server", "Services", "WindBladeService.cs");
         string crossfire = ReadNormalizedSource(root, "game_server", "GameServer.SwarmCrossfire.cs");
         string orbBoard = ReadNormalizedSource(root, "game_server", "Services", "OrbUpgradeService.cs");
 
@@ -424,8 +424,9 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmCriticalRng", arena);
         Assert.DoesNotContain("_swarmCriticalRng", crossfire);
         Assert.Contains("private readonly Random _criticalRng = new();", runtimeStates);
-        Assert.Contains(".Pacing.RollCritical(", arena);
-        Assert.Contains("runtime.Pacing.RollCritical(", crossfire);
+        string damage = ReadNormalizedSource(root, "game_server", "Services", "MatchCombatDamageService.cs");
+        Assert.Contains(".Pacing.RollCritical(", damage);
+        Assert.Contains("runtime.Pacing.RollCritical(", damage);
 
         string field = ReadNormalizedSource(root, "game_server", "Services", "MatchFieldService.cs");
         Assert.Contains(

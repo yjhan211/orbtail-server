@@ -53,22 +53,6 @@ internal partial class GameServer
         return whole;
     }
 
-    // 치명타 (#229 임시): PvE 전용. 성장 축이 오브 수·티어뿐이라 같은 몹을 같은 속도로 지우는
-    // 감각이 계속된다 — 가끔 크게 터지는 순간을 넣어 파밍에 리듬을 준다. 확률·배율은 임시값이고,
-    // 정식 축(뒤치기·처형 사거리 등 조건부)이 생기면 이 굴림을 그 조건으로 대체한다.
-    // 원천은 swarm_config.csv (#325) — 미등재 시 코드 기본값.
-    private static double SwarmCriticalChance => SwarmConfigData.GetDouble("SWARM_CRITICAL_CHANCE", 0.15d);
-    private static float SwarmCriticalMultiplier => SwarmConfigData.GetFloat("SWARM_CRITICAL_MULTIPLIER", 2f);
-
-    /// <summary>PvE 치명타 굴림 — 적중이면 배율을 적용한 피해를 돌려준다.</summary>
-    private int RollSwarmCriticalDamage(long matchingId, int damage, out bool critical)
-    {
-        critical = matchRuntimes.GetRequired(matchingId).Swarm.Pacing.RollCritical(SwarmCriticalChance);
-        return critical
-            ? Math.Max(damage + 1, (int)MathF.Round(damage * SwarmCriticalMultiplier))
-            : damage;
-    }
-
     // SB 유닛 개별 체력·착탄 지연 대기열·계측 서명 등 매치 상태는 #294에서
     // 상태 홀더(matchRuntimes.GetRequired(matchingId).Swarm.Pacing 등, Services/SwarmArenaStates.cs)로 이동했다.
 
@@ -101,7 +85,7 @@ internal partial class GameServer
 
             // 처치 정산은 교차사격 즉시 타격과 같은 경로 — 계측·처치 로그·소환석 드롭.
             if (damageResult.Applied && damageResult.Killed && damageResult.MonsterState != null)
-                SettleSwarmMonsterKill(matchingId, damageResult, hit.AttackerId, hit.Damage, sessions);
+                combatDamage.SettleSwarmMonsterKill(matchingId, damageResult, hit.AttackerId, hit.Damage, sessions);
         }
     }
 
@@ -314,7 +298,7 @@ internal partial class GameServer
             if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
                 return;
 
-            ProcessSwarmWindBlades(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+            windBlades.Process(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
             if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
                 return;
         }
@@ -508,7 +492,7 @@ internal partial class GameServer
 
             if (monsterId > 0)
             {
-                int monsterDamage = RollSwarmCriticalDamage(
+                int monsterDamage = combatDamage.RollSwarmCriticalDamage(
                     matchingId, attack.Damage, out bool critical);
                 // 발사 연출은 즉시, 피해는 투사체 비행시간 뒤에 — 체력바와 폭발이 일치한다.
                 var attackerSession = sessions.FirstOrDefault(
@@ -1388,8 +1372,8 @@ internal partial class GameServer
                 foreach (var target in vortexTargets)
                 {
                     if (target.Area != owner.Area ||
-                        !IsWithinSwarmGroundRadius(
-                            orbPosition, target.Position, radius + SwarmWindBladeMonsterRadius))
+                        !SwarmCombatGeometry.IsWithinGroundRadius(
+                            orbPosition, target.Position, radius + SwarmCombatGeometry.MonsterRadius))
                         continue;
                     hasTarget = true;
                     break;
@@ -1400,7 +1384,7 @@ internal partial class GameServer
                     foreach (var participant in participants)
                     {
                         if (participant.PlayerId == owner.PlayerId || participant.Area != owner.Area ||
-                            !IsWithinSwarmGroundRadius(
+                            !SwarmCombatGeometry.IsWithinGroundRadius(
                                 orbPosition, participant.Position, radius + SwarmCrossfirePlayerRadius))
                             continue;
                         hasTarget = true;
@@ -1474,7 +1458,7 @@ internal partial class GameServer
             float dy = (target.Position.Y - position.Y) * 2f;
             if (dx * dx + dy * dy > radiusSquared)
                 continue;
-            int monsterDamage = RollSwarmCriticalDamage(matchingId, damage, out bool critical);
+            int monsterDamage = combatDamage.RollSwarmCriticalDamage(matchingId, damage, out bool critical);
             matchRuntimes.GetRequired(matchingId).Monsters.ReserveMonsterDamage(matchingId, target.CombatTargetId, monsterDamage);
             matchRuntimes.GetRequired(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, target.CombatTargetId);
             matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PendingMonsterHits.Add(new PendingSwarmMonsterHit(
@@ -1498,12 +1482,12 @@ internal partial class GameServer
         {
             if (participant.PlayerId == ownerId || participant.Area != area || participant.Position == null)
                 continue;
-            if (!IsWithinSwarmGroundRadius(position, participant.Position, radius + SwarmCrossfirePlayerRadius))
+            if (!SwarmCombatGeometry.IsWithinGroundRadius(position, participant.Position, radius + SwarmCrossfirePlayerRadius))
                 continue;
 
             // 충격 면역 없음: 겹친 링에 다 맞는다 — 침수는 지속 갱신이라 중첩 무해.
             soaked++;
-            ApplySwarmShock(matchingId, ownerId, sourceItemId, area, participant.PlayerId,
+            combatDamage.ApplySwarmShock(matchingId, ownerId, sourceItemId, area, participant.PlayerId,
                 "WAVE_VORTEX_HIT", aliveSessions, aliveBots, allSessions,
                 Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER);
 
@@ -2474,69 +2458,4 @@ internal partial class GameServer
         }
     }
 
-    private void SpawnSwarmSummonStone(
-        long matchingId,
-        MonsterRuntimeInfo defeatedWave,
-        IReadOnlyCollection<GameClientSession> sessions,
-        int heartReward = 0,
-        int bootsReward = 0,
-        int keyReward = 0)
-    {
-        if (defeatedWave.SummonStoneReward <= 0 && heartReward <= 0 &&
-            bootsReward <= 0 && keyReward <= 0)
-            return;
-
-        // #229 5단계: 스웜에서는 이동속도(부츠)·열쇠를 떨구지 않는다. 기동력은 바람 오브가
-        // 맡고, 폐쇄 문은 시간이 여닫는 것이라 열쇠로 뚫는 예외가 없다 — 몹이 떨구면 바닥에
-        // 쓰지 못하는 아이템만 쌓인다.
-        // 하트는 떨군다(회복이 수면밖에 없다는 결정): 상자 탐색을 끈 뒤로 즉시 회복 공급처가 통째로 사라지므로,
-        // 일반 몹 3% 드롭을 이 게이트가 스폰 직전에 지우면 안 된다.
-        if (Config.IsSwarmExploreDisabled())
-        {
-            bootsReward = 0;
-            keyReward = 0;
-        }
-
-        // 소환석은 바닥에 떨어진다 (즉시 귀속 철회): 처치자도 다른 플레이어와 같은 픽업 경쟁 규칙으로 줍는다.
-        // 클라는 재화를 자석 반경에서 몸으로 끌어와 픽업을 요청하므로 동선 부담은 작다.
-        int groundStoneReward = defeatedWave.SummonStoneReward;
-
-        if (groundStoneReward <= 0 && heartReward <= 0 &&
-            bootsReward <= 0 && keyReward <= 0)
-            return;
-
-        // 하트·부츠·열쇠 (#222 M4): 소환석과 함께 흩어진다 — 픽업 경쟁 규칙 공유.
-        // 잼 낙수는 잼 승점 퇴역과 함께 제거 (#226 D).
-        var itemIds = Enumerable.Repeat(
-                Config.SUMMON_STONE_GROUND_ITEM_ID, Math.Max(0, groundStoneReward))
-            .Concat(Enumerable.Repeat(Config.HEART_GROUND_ITEM_ID, Math.Max(0, heartReward)))
-            .Concat(Enumerable.Repeat(Config.BOOTS_GROUND_ITEM_ID, Math.Max(0, bootsReward)))
-            .Concat(Enumerable.Repeat(Config.KEY_GROUND_ITEM_ID, Math.Max(0, keyReward)))
-            .ToArray();
-        var spawned = matchRuntimes.GetRequired(matchingId).GroundItems.SpawnItems(
-            defeatedWave.AreaType,
-            defeatedWave.PositionX,
-            defeatedWave.PositionY,
-            itemIds,
-            mapId: Config.SWARM_MATCH_MAP,
-            layout: GroundItemSpawnLayout.EliminationScatter);
-
-        foreach (var item in spawned)
-        {
-            eventLogs.LogGroundItemSpawned(
-                matchingId,
-                0,
-                item.GroundItemUid,
-                item.ItemId,
-                defeatedWave.AreaType.ToString(),
-                0,
-                isBot: false);
-        }
-
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
-            (int)defeatedWave.AreaType,
-            spawned.ToList());
-        foreach (var session in sessions.Where(session => session.CurrentArea == defeatedWave.AreaType))
-            session.TrySend(packet);
-    }
 }

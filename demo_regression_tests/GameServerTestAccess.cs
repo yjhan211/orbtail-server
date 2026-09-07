@@ -50,6 +50,7 @@ internal static class GameServerTestAccess
         var orbUpgrades = new OrbUpgradeService(runtimes, logs, GameServerDevOptions.Disabled,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbUpgradeService>.Instance);
         var orbTrails = new OrbTrailService(runtimes);
+        var combatDamage = new MatchCombatDamageService(runtimes, logs);
         return new GameServer(
             configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
             logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServer>.Instance,
@@ -76,6 +77,8 @@ internal static class GameServerTestAccess
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
             orbVisuals: new OrbVisualStatePublisher(runtimes),
             orbTrails: orbTrails,
+            combatDamage: combatDamage,
+            windBlades: new WindBladeService(runtimes, orbTrails, combatDamage, logs),
             fieldService: new MatchFieldService(runtimes, logs, orbTrails,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchFieldService>.Instance),
             growth: new MatchGrowthService(runtimes, sessions, logs, orbUpgrades,
