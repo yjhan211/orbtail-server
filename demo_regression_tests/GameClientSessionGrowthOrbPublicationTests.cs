@@ -615,8 +615,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         string arena = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
         string orbBoard = ReadNormalizedSource(root, "game_server", "Services", "OrbUpgradeService.cs");
 
-        Assert.Contains("_handleSwarmGrowthPick", session);
-        Assert.Contains("_handleSwarmOrbDecision", session);
+        Assert.Contains("IPlayerGrowthHandler _growth", session);
+        Assert.Contains("_growth.HandleOrbDecision(", orbSummon);
         Assert.DoesNotContain("SwarmGrowthPickCallback", session);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
         Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
@@ -711,7 +711,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Store = Server.GetMatchRuntimes();
             EventLog = Server.GetEventLogs();
             _growthHandler = Server.GetGrowth().HandlePick;
-            _orbHandler = Server.GetOrbUpgrades().HandleDecision;
+            _orbHandler = Server.GetGrowth().HandleOrbDecision;
 
         }
 
@@ -748,13 +748,11 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                     id => _sessions.Where(session => session.MatchingId == id).ToList(),
                     NullLogger.Instance),
                 Store,
-                growthHandler ?? _growthHandler,
-                orbHandler ?? _orbHandler,
+                new FakePlayerGrowthHandler(growthHandler ?? _growthHandler, orbHandler ?? _orbHandler),
 
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
-                GameServerDevOptions.Disabled,
                 new GameMatchEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
                 new ItemCombinationService(EventLog),
                 new MovementValidationService(NullLogger<MovementValidationService>.Instance));

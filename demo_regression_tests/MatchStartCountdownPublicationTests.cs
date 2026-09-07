@@ -495,12 +495,10 @@ public sealed class MatchStartCountdownPublicationTests
                 null!,
                 null!,
                 new MatchRuntimeStore(NullLogger.Instance),
-                static (_, _, _, _) => { },
-                static (_, _, _, _, _) => { },
+                new FakePlayerGrowthHandler(),
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
-                GameServerDevOptions.Disabled,
                 null!,
                 null!,
                 null!)

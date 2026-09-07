@@ -441,12 +441,10 @@ public sealed class GameClientSessionTerminalPublicationTests
                 TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, GameServerDevOptions.Disabled,
                     id => sessions.Where(session => session.MatchingId == id).ToList(), logger),
                 matchRuntimes,
-                static (_, _, _, _) => { },
-                static (_, _, _, _, _) => { },
+                new FakePlayerGrowthHandler(),
                 new FakeGameSessionLifecycle(prepareGameCompletion),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
-                GameServerDevOptions.Disabled,
                 new GameMatchEntryService(null!, matchRuntimes, GameServerDevOptions.Disabled, NullLogger.Instance),
                 new ItemCombinationService(eventLog),
                 new MovementValidationService(NullLogger<MovementValidationService>.Instance))

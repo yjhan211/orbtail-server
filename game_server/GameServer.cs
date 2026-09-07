@@ -48,7 +48,6 @@ internal sealed class GameServer(
     GameSessionLeaveHandler sessionLeaveHandler,
     MatchCountdownService countdown,
     MatchEnvironmentService environmentService,
-    OrbUpgradeService orbUpgrades,
     MatchGrowthService growth,
     MatchFieldService fieldService,
     MatchArenaService arena,
@@ -229,12 +228,11 @@ internal sealed class GameServer(
                 eventLogs,
                 matchEliminations,
                 matchRuntimes,
-                growth.HandlePick,
-                orbUpgrades.HandleDecision,
+                growth,
                 matchingLifecycle,
                 () => Volatile.Read(ref _stopping) != 0,
                 entryFailureHandler,
-                devOptions: devOptions, matchEntry: matchEntry, itemCombinations: itemCombinations, movementValidation: movementValidation);
+                matchEntry: matchEntry, itemCombinations: itemCombinations, movementValidation: movementValidation);
 
             logger.LogInformation("Game client session created");
             return session;

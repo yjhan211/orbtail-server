@@ -35,7 +35,6 @@ public partial class GameClientSession : SessionBase
     private readonly GameSessionLeaveHandler _sessionLeaveHandler;
     /// <summary>매치별 잠금·수명 색인 (#331) — 핸들러 직렬화·터미널 게이트·종료 정리의 단일 원천.</summary>
     private readonly MatchRuntimeStore _matchRuntimes;
-    private readonly GameServerDevOptions _devOptions;
     /// <summary>
     ///     Queues an already-built successful entry response after authentication has committed. Production uses
     ///     <see cref="TcpConnection.TrySend"/>; tests can inject a sender to verify the match monitor boundary.
@@ -47,10 +46,7 @@ public partial class GameClientSession : SessionBase
     private readonly Func<bool> _isServerStopping;
     private readonly GameEventLogManager _gameEventLogManager;
     private readonly MatchEliminationService _matchEliminations;
-    /// <summary>성장 카드 픽 — 매치 잠금 안에서 부르는 GameServer 인스턴스 위임.</summary>
-    private readonly Action<GameClientSession, long, int, int> _handleSwarmGrowthPick;
-    /// <summary>6칸 빌드 결정 — 매치 잠금 안에서 부르는 GameServer 인스턴스 위임.</summary>
-    private readonly Action<GameClientSession, long, int, long, long> _handleSwarmOrbDecision;
+    private readonly IPlayerGrowthHandler _growth;
 
     private readonly GameMatchEntryService _matchEntry;
     private readonly ItemCombinationService _itemCombinations;
@@ -129,13 +125,11 @@ public partial class GameClientSession : SessionBase
         GameEventLogManager gameEventLogManager,
         MatchEliminationService matchEliminations,
         MatchRuntimeStore matchRuntimes,
-        Action<GameClientSession, long, int, int> handleSwarmGrowthPick,
-        Action<GameClientSession, long, int, long, long> handleSwarmOrbDecision,
+        IPlayerGrowthHandler growth,
 
         IGameSessionLifecycle matchingLifecycle,
         Func<bool> isServerStopping,
         IMatchEntryFailureHandler entryFailureHandler,
-        GameServerDevOptions devOptions,
         GameMatchEntryService matchEntry,
         ItemCombinationService itemCombinations,
         MovementValidationService movementValidation,
@@ -151,10 +145,8 @@ public partial class GameClientSession : SessionBase
         _gameEventLogManager = gameEventLogManager;
         _matchEliminations = matchEliminations;
         _matchRuntimes = matchRuntimes;
-        _devOptions = devOptions;
         _movementPacketQueue = new MovementPacketQueue(() => Connection.IsAcceptingMessages, movementTimeProvider);
-        _handleSwarmGrowthPick = handleSwarmGrowthPick;
-        _handleSwarmOrbDecision = handleSwarmOrbDecision;
+        _growth = growth;
 
         _matchEntry = matchEntry;
         _itemCombinations = itemCombinations;

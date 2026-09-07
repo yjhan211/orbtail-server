@@ -5,6 +5,17 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace demo_regression_tests;
 
+internal sealed class FakePlayerGrowthHandler(
+    Action<GameClientSession, long, int, int>? pick = null,
+    Action<GameClientSession, long, int, long, long>? orbDecision = null) : IPlayerGrowthHandler
+{
+    public void HandlePick(GameClientSession session, long matchingId, int offerId, int cardIndex) =>
+        pick?.Invoke(session, matchingId, offerId, cardIndex);
+
+    public void HandleOrbDecision(GameClientSession session, long matchingId, int action, long targetItemUid, long secondItemUid) =>
+        orbDecision?.Invoke(session, matchingId, action, targetItemUid, secondItemUid);
+}
+
 internal static class TestGameSessionServices
 {
     public static MatchEliminationService CreateEliminationService(

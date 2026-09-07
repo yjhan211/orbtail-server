@@ -956,13 +956,11 @@ public sealed class GameClientSessionItemCombinePublicationTests
                     id => _sessions.Where(session => session.MatchingId == id).ToList(),
                     NullLogger.Instance),
                 Store,
-                static (_, _, _, _) => { },
-                static (_, _, _, _, _) => { },
+                new FakePlayerGrowthHandler(),
 
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
-                GameServerDevOptions.Disabled,
                 new GameMatchEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
                 new ItemCombinationService(EventLog),
                 new MovementValidationService(NullLogger<MovementValidationService>.Instance));

@@ -17,12 +17,16 @@ internal sealed class MatchGrowthService(
     GameSessionRegistry sessions,
     GameEventLogManager eventLogs,
     OrbUpgradeService orbUpgrades,
-    ILogger<MatchGrowthService> logger)
+    ILogger<MatchGrowthService> logger) : IPlayerGrowthHandler
 {
     // 방어 카드가 부여하는 외피 보너스. 샌드박스도 같은 값을 사용한다.
     internal const int ArmorDurabilityBonus = 4;
     internal const float BotPreyPowerAdvantage = 1.25f;
     private static readonly int[] SwarmStartingOrbPool = OrbUpgradeService.CreateStartingOrbPool();
+
+    /// <summary>플레이어의 오브 강화 요청을 전용 서비스에 전달한다. 호출자의 매치 잠금을 그대로 사용한다.</summary>
+    public void HandleOrbDecision(GameClientSession session, long matchingId, int action, long targetItemUid, long secondItemUid) =>
+        orbUpgrades.HandleDecision(session, matchingId, action, targetItemUid, secondItemUid);
 
     /// <summary>현재 오브 수와 카드별 구매 횟수로 비용을 계산한다. 차감이나 카운터 변경은 하지 않는다.</summary>
     public (int BaseCost, int Surcharge, int FinalCost, int OrbCount,

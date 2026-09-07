@@ -13,7 +13,6 @@ internal static class GameServerTestAccess
         Read<MatchRuntimeStore>(server);
 
     internal static MatchArenaService GetArena(this GameServer server) => Read<MatchArenaService>(server);
-    internal static OrbUpgradeService GetOrbUpgrades(this GameServer server) => Read<OrbUpgradeService>(server);
     internal static MatchGrowthService GetGrowth(this GameServer server) => Read<MatchGrowthService>(server);
 
     internal static GameEventLogManager GetEventLogs(this GameServer server) =>
@@ -93,7 +92,6 @@ internal static class GameServerTestAccess
             sessionLeaveHandler: new GameSessionLeaveHandler(sessions, cleanup,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionLeaveHandler>.Instance),
             countdown: new MatchCountdownService(runtimes, entryFailure, logger),
-            orbUpgrades: orbUpgrades,
             fieldService: field,
             growth: growth,
             arena: arena,
