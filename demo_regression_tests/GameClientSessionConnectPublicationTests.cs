@@ -380,7 +380,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 Store,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
-                static _ => Random.Shared,
+
                 static (_, _) => { },
                 static (_, _) => null,
                 static (_, _) => { },

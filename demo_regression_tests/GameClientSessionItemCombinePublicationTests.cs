@@ -150,7 +150,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
         Assert.Equal(1, itemCombineRandom.DrawCount);
         Assert.Equal([0], itemCombineRandom.DrawResults);
-        Assert.Equal(1, fixture.ItemCombineRandomResolverCallCount(FirstMatchingId));
+        Assert.Equal(1, fixture.ItemCombineDrawCount(FirstMatchingId));
     }
 
     [Fact]
@@ -216,7 +216,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(outputItemId, events[3].WeaponItemId);
         Assert.Equal(1, itemCombineRandom.DrawCount);
         Assert.Equal([1], itemCombineRandom.DrawResults);
-        Assert.Equal(1, fixture.ItemCombineRandomResolverCallCount(FirstMatchingId));
+        Assert.Equal(1, fixture.ItemCombineDrawCount(FirstMatchingId));
     }
 
     [Fact]
@@ -251,7 +251,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Contains($"{Bandage} + {Bandage} => {CompressionBandage}", mission.Description);
         Assert.Equal(1, itemCombineRandom.DrawCount);
         Assert.Equal([0], itemCombineRandom.DrawResults);
-        Assert.Equal(1, fixture.ItemCombineRandomResolverCallCount(FirstMatchingId));
+        Assert.Equal(1, fixture.ItemCombineDrawCount(FirstMatchingId));
     }
 
     [Theory]
@@ -340,7 +340,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             ErrorCode.INVALID_GAME_STATE);
         Assert.Equal(before, fixture.InventorySnapshot(SecondMatchingId, SecondPlayerId));
         Assert.Empty(fixture.EventLog.GetForPersistence(SecondMatchingId));
-        Assert.Equal(0, fixture.TotalItemCombineRandomResolverCalls);
+        Assert.Equal(0, fixture.TotalItemCombineDraws);
     }
 
     [Fact]
@@ -387,7 +387,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(before, inventoryBeforeRemoval.GetAllItems().OrderBy(item => item.ItemUid).Select(item => (item.ItemUid, item.ItemId, item.Count)).ToArray());
         Assert.Empty(fixture.EventLog.GetForPersistence(FirstMatchingId));
         Assert.Null(fixture.Store.Get(FirstMatchingId));
-        Assert.Equal(0, fixture.TotalItemCombineRandomResolverCalls);
+        Assert.Equal(0, fixture.TotalItemCombineDraws);
     }
 
     [Fact]
@@ -621,7 +621,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
 
         Assert.Equal([0, 1], itemCombineRandom.DrawResults);
         Assert.Equal(2, itemCombineRandom.DrawCount);
-        Assert.Equal(2, fixture.ItemCombineRandomResolverCallCount(FirstMatchingId));
+        Assert.Equal(2, fixture.ItemCombineDrawCount(FirstMatchingId));
         Assert.Equal(
             SunOrbT2,
             fixture.ConnectionFor(first).DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
@@ -712,8 +712,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
             WaveOrbT2,
             fixture.ConnectionFor(first).DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
                 Protocol.G_TO_C_ITEMS_COMBINED).OutputItemId);
-        Assert.Equal(1, fixture.ItemCombineRandomResolverCallCount(FirstMatchingId));
-        Assert.Equal(1, fixture.ItemCombineRandomResolverCallCount(SecondMatchingId));
+        Assert.Equal(1, fixture.ItemCombineDrawCount(FirstMatchingId));
+        Assert.Equal(1, fixture.ItemCombineDrawCount(SecondMatchingId));
     }
 
     [Fact]
@@ -870,7 +870,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         private readonly List<GameClientSession> _sessions = [];
         private readonly Dictionary<GameClientSession, RecordingTcpConnection> _connections = [];
         private readonly ConcurrentDictionary<long, CountingRandom> _itemCombineRandoms = new();
-        private readonly ConcurrentDictionary<long, int> _itemCombineRandomResolverCalls = new();
+
         private readonly string _summaryDirectory = Path.Combine(
             Path.GetTempPath(),
             "orbtail-item-combine-publication-tests",
@@ -891,12 +891,14 @@ public sealed class GameClientSessionItemCombinePublicationTests
         public ConcurrentQueue<string>? CleanupTimeline { get; set; }
         public GameEventLogManager EventLog { get; }
 
-        public int TotalItemCombineRandomResolverCalls =>
-            _itemCombineRandomResolverCalls.Values.Sum();
+        public int TotalItemCombineDraws =>
+            _itemCombineRandoms.Values.Sum(random => random.DrawCount);
 
         public GameClientSession CreateSession(long matchingId, long playerId)
         {
             Store.GetOrCreate(matchingId);
+            if (!_itemCombineRandoms.ContainsKey(matchingId))
+                ConfigureItemCombineRandom(matchingId);
             // 미등록 매치는 게이트가 막는다 (#335) — 테스트 매치를 카운트다운 없이 즉시 활성으로 등록한다.
             MatchStartGate.RegisterBotOnlyMatch(matchingId);
             Store.Get(matchingId)!.Doors.Initialize();
@@ -919,7 +921,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 Store,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
-                ResolveItemCombineRandom,
+
                 static (_, _) => { },
                 static (_, _) => null,
                 static (_, _) => { },
@@ -948,12 +950,20 @@ public sealed class GameClientSessionItemCombinePublicationTests
         public CountingRandom ConfigureItemCombineRandom(long matchingId, params int[] drawResults)
         {
             var random = new CountingRandom(drawResults);
-            _itemCombineRandoms[matchingId] = random;
+            var runtime = Store.GetOrCreate(matchingId);
+            using (Store.Enter(runtime))
+            {
+                // 테스트만 고정 난수를 설치한다. 운영 API에는 난수 교체 기능을 노출하지 않는다.
+                typeof(SwarmMatchRuntime)
+                    .GetField("<ItemCombineRandom>k__BackingField", BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .SetValue(runtime.Swarm, random);
+                _itemCombineRandoms[matchingId] = random;
+            }
             return random;
         }
 
-        public int ItemCombineRandomResolverCallCount(long matchingId) =>
-            _itemCombineRandomResolverCalls.GetValueOrDefault(matchingId);
+        public int ItemCombineDrawCount(long matchingId) =>
+            _itemCombineRandoms.GetValueOrDefault(matchingId)?.DrawCount ?? 0;
 
         public (InGameItemInfo First, InGameItemInfo Second) SeedPair(
             long matchingId,
@@ -991,16 +1001,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 Directory.Delete(_summaryDirectory, recursive: true);
         }
 
-        private Random ResolveItemCombineRandom(long matchingId)
-        {
-            _itemCombineRandomResolverCalls.AddOrUpdate(
-                matchingId,
-                1,
-                static (_, count) => count + 1);
-            return _itemCombineRandoms.GetOrAdd(
-                matchingId,
-                static _ => new CountingRandom());
-        }
+
 
         private static void SetIdentity(GameClientSession session, long matchingId, long playerId)
         {

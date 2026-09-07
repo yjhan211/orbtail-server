@@ -63,14 +63,14 @@ public partial class GameClientSession
 
         long matchingId = MatchingId;
         long playerId = PlayerId.Value;
-        // 조합 난수는 매치 소유 stream 하나뿐이다 (#325 — matchingId 없는 legacy core 삭제).
-        Random ResolveRandom() => _getItemCombineRandom(matchingId);
+        // RunUnderMatch가 잡은 매치 잠금 안에서 인벤토리와 합성 난수를 함께 사용한다.
+        var runtime = _matchRuntimes.GetRequired(matchingId);
 
         bool isOrbRequest = OrbData.IsOrbItem(msg.ItemA) ||
                                     OrbData.IsOrbItem(msg.ItemB);
         if (isOrbRequest)
         {
-            var inventory = _matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
+            var inventory = runtime.Inventory.GetPlayerInventory(playerId);
             if (!OrbData.CanMerge(msg.ItemA, msg.ItemB) ||
                 !inventory.HasItems([msg.ItemA, msg.ItemB]))
             {
@@ -80,11 +80,11 @@ public partial class GameClientSession
 
             bool hadResonance = inventory.TryGetActiveOrbPair(out OrbColor previousResonanceColor,
                 out int previousSupportTier);
-            bool combined = _matchRuntimes.GetRequired(matchingId).Inventory.TryCombineOrbs(
+            bool combined = runtime.Inventory.TryCombineOrbs(
                 playerId,
                 msg.ItemA,
                 msg.ItemB,
-                ResolveRandom(),
+                runtime.Swarm.ItemCombineRandom,
                 out int outputItemId,
                 out List<InGameItemInfo> changedItems);
             if (!combined)
@@ -127,17 +127,17 @@ public partial class GameClientSession
         if (candidates.Count == 0)
             return false;
 
-        var recipeInventory = _matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
+        var recipeInventory = runtime.Inventory.GetPlayerInventory(playerId);
         if (!recipeInventory.HasItems(candidates[0].InputItemIds))
         {
             SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INSUFFICIENT_ITEM);
             return true;
         }
 
-        if (!_matchRuntimes.GetRequired(matchingId).Inventory.TryCombineRandomRecipe(
+        if (!runtime.Inventory.TryCombineRandomRecipe(
                 playerId,
                 candidates,
-                ResolveRandom(),
+                runtime.Swarm.ItemCombineRandom,
                 out BattleItemRecipe? recipe,
                 out List<InGameItemInfo> recipeChangedItems))
         {

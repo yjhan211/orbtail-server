@@ -442,7 +442,6 @@ public sealed class GameClientSessionTerminalPublicationTests
                 matchRuntimes,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
-                static _ => Random.Shared,
                 static (_, _) => { },
                 prepareGameCompletion,
                 static (_, _) => { },

@@ -60,9 +60,6 @@ internal partial class GameServer(
     private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
         matchRuntimes.GetRequired(matchingId).Swarm;
 
-    private Random GetItemCombineRandom(long matchingId) =>
-        GetSwarmMatchRuntime(matchingId).ItemCombineRandom;
-
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         Volatile.Write(ref _stopping, 0);
@@ -388,7 +385,6 @@ internal partial class GameServer(
                 matchRuntimes,
                 HandleSwarmGrowthPick,
                 HandleSwarmOrbDecision,
-                GetItemCombineRandom,
                 (playerId, matchingId) =>
                     matchingLifecycle.Publish(MatchingLifecycleSubjects.PlayerLeft, playerId, matchingId),
                 (playerId, matchingId) =>

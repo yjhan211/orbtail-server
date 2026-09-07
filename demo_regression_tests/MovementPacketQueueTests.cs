@@ -86,7 +86,7 @@ public sealed class MovementPacketQueueTests
             new MatchRuntimeStore(NullLogger.Instance),
             static (_, _, _, _) => { },
             static (_, _, _, _, _) => { },
-            static _ => Random.Shared,
+
             static (_, _) => { },
             static (_, _) => null,
             static (_, _) => { },

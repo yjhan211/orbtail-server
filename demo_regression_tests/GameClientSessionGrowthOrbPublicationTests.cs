@@ -709,7 +709,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 Store,
                 growthHandler ?? _growthHandler,
                 orbHandler ?? _orbHandler,
-                static _ => Random.Shared,
+
                 static (_, _) => { },
                 static (_, _) => null,
                 static (_, _) => { },
