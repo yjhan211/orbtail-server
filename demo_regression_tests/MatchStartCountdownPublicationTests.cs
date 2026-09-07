@@ -83,7 +83,7 @@ public sealed class MatchStartCountdownPublicationTests
         string connect = ReadMethodSlice(
             connection,
             "private async Task HandleConnect(C_TO_G_CONNECT msg)",
-            "private void RunUnderLiveMatch(");
+            "private void InitializeWithMatchLock(");
         string directCountdown = ReadMethodSlice(
             connection,
             "private void SendMatchStartCountdown(long matchingId)",
@@ -98,7 +98,7 @@ public sealed class MatchStartCountdownPublicationTests
             "MatchStartGate.MarkHumanReady(matchingId, PlayerId.Value);",
             "SendMatchStartCountdown(matchingId);",
             "using Packet successResponse = CreateConnectResultPacket(",
-            "RunUnderLiveMatch(runtime, () =>",
+            "InitializeWithMatchLock(runtime, () =>",
             "Connection.TryMarkAuthenticated(() => Volatile.Write(ref _entryCompleted, 1))",
             "TryPublishCommittedConnectResult(successResponse)");
         AssertInOrder(

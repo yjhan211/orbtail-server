@@ -561,7 +561,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
         Assert.Equal(1, CountOccurrences(doors, "RunWithMatchLock("));
         Assert.DoesNotContain("RunWithMatchLock(", ReadMethodSlice(connection,
-            "private async Task HandleConnect(", "private void RunUnderLiveMatch("));
+            "private async Task HandleConnect(", "private void InitializeWithMatchLock("));
         Assert.DoesNotContain("RunWithMatchLock", arena);
         Assert.DoesNotContain("RunWithMatchLock", bots);
         Assert.DoesNotContain("RunWithMatchLock", botPickup);

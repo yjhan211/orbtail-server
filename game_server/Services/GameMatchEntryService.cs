@@ -37,7 +37,8 @@ internal sealed class GameMatchEntryService(
     public Task CommitAsync(long matchingId, long playerId, IReadOnlyCollection<long> humanPlayerIds) =>
         _entryStateCommitter.CommitAsync(matchingId, playerId, humanPlayerIds);
 
-    private void RunUnderLiveMatch(MatchRuntime runtime, Action initialize)
+    /// <summary>매치 잠금 안에서 입장 상태를 초기화한다. 매치가 종료됐으면 예외로 입장 절차를 중단한다.</summary>
+    private void InitializeWithMatchLock(MatchRuntime runtime, Action initialize)
     {
         using MatchScope scope = _matchRuntimes.Enter(runtime);
         if (runtime.IsTerminal)
@@ -72,14 +73,14 @@ internal sealed class GameMatchEntryService(
                 MatchSpawnPlanner.Plan(
                     matchingId, mapId, humanPlayerIds.Concat(botPlayerIds), _devOptions.CrossfireSandbox);
             if (botPlayerIds.Count > 0)
-                RunUnderLiveMatch(runtime, () => runtime.Bots.RegisterBots(matchingId, mapId, botPlayerIds, spawnCells));
+                InitializeWithMatchLock(runtime, () => runtime.Bots.RegisterBots(matchingId, mapId, botPlayerIds, spawnCells));
 
             var roster = await new MatchRosterBuilder(RedisOperations, Logger).BuildAsync(humanPlayerIds,
                 botPlayerIds.Select(id => _matchRuntimes.GetRequired(matchingId).Bots.SynthesizePlayerInfo(matchingId, id)
                     ?? throw new InvalidOperationException($"Bot {id} was not initialized.")));
 
             var composition = new MatchComposition(humanPlayerIds, botPlayerIds, mode, spawnCells, roster);
-            RunUnderLiveMatch(runtime, () =>
+            InitializeWithMatchLock(runtime, () =>
             {
                 foreach (var participant in roster)
                 {

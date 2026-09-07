@@ -343,7 +343,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Contains("sessions.Register,", File.ReadAllText(Path.Combine(root, "game_server", "GameServer.cs")));
         int countdown = connectionSource.IndexOf("SendMatchStartCountdown(matchingId);", disconnect, StringComparison.Ordinal);
         int response = connectionSource.IndexOf("CreateConnectResultPacket(", countdown, StringComparison.Ordinal);
-        int commitScope = connectionSource.IndexOf("RunUnderLiveMatch(runtime, () =>", response, StringComparison.Ordinal);
+        int commitScope = connectionSource.IndexOf("InitializeWithMatchLock(runtime, () =>", response, StringComparison.Ordinal);
         int authentication = connectionSource.IndexOf("Connection.TryMarkAuthenticated", commitScope, StringComparison.Ordinal);
         int publication = connectionSource.IndexOf("TryPublishCommittedConnectResult(successResponse)", authentication, StringComparison.Ordinal);
         Assert.True(registration >= 0 && registration < registerCallback && registerCallback < countdown &&

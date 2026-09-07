@@ -155,11 +155,7 @@ public partial class GameClientSession : SessionBase
         Logger.LogInformation("GameClientSession created");
     }
 
-    /// <summary>
-    ///     권위 상태를 바꾸는 핸들러 core를 매치 잠금 안에서 동기로 돌린다 — 50ms 전투 틱과 같은 잠금이라
-    ///     이 안의 Send 순서가 곧 상태 변경 순서다. 런타임이 없거나 터미널이면 core 대신 거부 응답만 보낸다.
-    ///     core가 던지면 잠금을 풀고 SessionBase가 G_TO_C_ERROR를 보낸다(앞서 보낸 패킷은 그대로).
-    /// </summary>
+    /// <summary>매치 잠금 안에서 작업을 동기 실행한다. 매치가 없거나 종료됐으면 대체 처리를 실행한다.</summary>
     private Task RunWithMatchLock(Func<Task> handleRequest, Action rejectRequest)
     {
         ArgumentNullException.ThrowIfNull(handleRequest);
@@ -351,7 +347,7 @@ public partial class GameClientSession : SessionBase
                 if (!TrySend(rosterPacket))
                     throw new OperationCanceledException("Could not send initial match roster.");
 
-            RunUnderLiveMatch(runtime, () =>
+            InitializeWithMatchLock(runtime, () =>
             {
                 MatchStartGate.RegisterHumanPlayer(
                     matchingId, PlayerId.Value, composition.HumanPlayerIds.Count, composition.Mode);
@@ -402,7 +398,7 @@ public partial class GameClientSession : SessionBase
                 connectionBoard.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
 
             // Send the initial door and mission snapshots.
-            RunUnderLiveMatch(
+            InitializeWithMatchLock(
                 runtime,
                 () => Doors?.Initialize(Array.Empty<AreaType>()));
             SendDoorStateList();
@@ -437,7 +433,7 @@ public partial class GameClientSession : SessionBase
                 ErrorCode.SUCCESS,
                 matchingId,
                 matchingSpawnCell);
-            RunUnderLiveMatch(runtime, () =>
+            InitializeWithMatchLock(runtime, () =>
             {
                 if (!Connection.TryMarkAuthenticated(() => Volatile.Write(ref _entryCompleted, 1)))
                     throw new OperationCanceledException("Connection closed before authentication commit.");
@@ -479,11 +475,8 @@ public partial class GameClientSession : SessionBase
         }
     }
 
-    /// <summary>
-    ///     입장 초기화 블록을 매치 잠금 안에서 돌린다 — await 사이에 매치가 끝났으면 상태를 되살리는 대신
-    ///     입장을 중단한다.
-    /// </summary>
-    private void RunUnderLiveMatch(MatchRuntime runtime, Action initialize)
+    /// <summary>매치 잠금 안에서 입장 상태를 초기화한다. 매치가 종료됐으면 예외로 입장 절차를 중단한다.</summary>
+    private void InitializeWithMatchLock(MatchRuntime runtime, Action initialize)
     {
         using MatchScope scope = runtime.Enter();
         if (runtime.IsTerminal)
