@@ -1144,7 +1144,7 @@ internal sealed class MatchArenaService(
         {
             cutterSession.ApplyProximityAutoCombatHit(
                 cutterId, cutterArea, destroyedItem.ItemId, SwarmSingleCutHealthCost);
-            cutterSession.SwarmHealLockUntilUtc = healLockUntil;
+            cutterSession.BlockHealingUntil(healLockUntil);
             cutterHealthAfter = cutterSession.CurrentHealth;
         }
         else if (cutterBot != null)

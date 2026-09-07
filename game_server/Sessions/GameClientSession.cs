@@ -37,8 +37,6 @@ public partial class GameClientSession : SessionBase
     private readonly ItemCombinationService _itemCombinations;
     private readonly MovementValidationService _movementValidation;
 
-    internal DateTime SwarmLastCombatAtUtc { get => _condition.LastCombatAtUtc; set => _condition.LastCombatAtUtc = value; }
-    internal DateTime SwarmHealLockUntilUtc { get => _condition.HealLockUntilUtc; set => _condition.HealLockUntilUtc = value; }
 
     private int _entryCompleted;
     private int _entryFailureReported;

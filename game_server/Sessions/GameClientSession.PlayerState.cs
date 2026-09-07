@@ -155,7 +155,10 @@ public partial class GameClientSession
     }
 
     /// <summary>교전 시각 기록 — 가해·피격 뒤 3초 수면 진입 잠금의 기준. 수면 자체는 깨지 않는다.</summary>
-    internal void MarkSwarmCombat(DateTime nowUtc) => SwarmLastCombatAtUtc = nowUtc;
+    internal void MarkSwarmCombat(DateTime nowUtc) => _condition.LastCombatAtUtc = nowUtc;
+
+    /// <summary>지정한 시각까지 수면 진입과 수면 회복을 차단한다.</summary>
+    internal void BlockHealingUntil(DateTime untilUtc) => _condition.HealLockUntilUtc = untilUtc;
 
     private void StopAllPeriodicBuffs()
     {

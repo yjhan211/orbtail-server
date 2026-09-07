@@ -45,7 +45,7 @@ public class SwarmDamagePathTests
         Assert.Equal("35", ReadSwarmConfigValue("SWARM_SINGLE_CUT_HEALTH_COST"));
         Assert.Equal("8", ReadSwarmConfigValue("SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS"));
         Assert.Contains("ORB_SINGLE_CUT_REFUSED", cutBody);
-        Assert.Contains("SwarmHealLockUntilUtc = healLockUntil", cutBody);
+        Assert.Contains("BlockHealingUntil(healLockUntil)", cutBody);
         Assert.Contains("ORB_TAIL_CUT ", cutBody);
         // 0.8초 재접촉 억제 시작값.
         Assert.Contains("SwarmConfigData.GetDouble(\"SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS\", 0.8d)", source);
