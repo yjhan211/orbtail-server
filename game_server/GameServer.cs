@@ -44,15 +44,13 @@ internal partial class GameServer(
     MatchEntryFailureHandler entryFailureHandler,
     MatchCleanupService matchCleanup,
     BotEliminationService botEliminations,
-    MatchCountdownService countdown)
+    MatchCountdownService countdown,
+    GameServerTickService tickService)
     : IHostedService
 {
     private static readonly TimeSpan ShutdownWarningThreshold = TimeSpan.FromSeconds(5);
 
     // 서버 수명과 주기 작업
-    private const int ProximityAutoCombatTickIntervalMs = 50;
-    private Timer? _proximityAutoCombatTimer;
-    private Timer? _areaClosureTickTimer;
     private GameServerNodeAdvertiser? _nodeAdvertiser;
     private int _stopping;
 
@@ -70,8 +68,7 @@ internal partial class GameServer(
             InitializeServices();
 
             StartNetworkService();
-            StartAreaClosureTickTimer();
-            StartProximityAutoCombatTimer();
+            StartGameTicks();
 
             await StartNodeAdvertisementAsync();
 
@@ -117,17 +114,7 @@ internal partial class GameServer(
             networkService.StopAsync(CancellationToken.None),
             "network connections");
 
-        Timer?[] timers =
-        [
-            _areaClosureTickTimer,
-            _proximityAutoCombatTimer
-        ];
-        _areaClosureTickTimer = null;
-        _proximityAutoCombatTimer = null;
-        await RunShutdownStageAsync(
-            Task.WhenAll(timers.Where(timer => timer != null)
-                .Select(timer => timer!.DisposeAsync().AsTask())),
-            "timers");
+        await RunShutdownStageAsync(tickService.StopAsync(), "timers");
 
         await RunShutdownStageAsync(
             matchingLifecycle.DrainAsync(),
@@ -255,7 +242,7 @@ internal partial class GameServer(
 
     // ===== 구역 폐쇄 틱 =====
 
-    private void StartProximityAutoCombatTimer()
+    private void StartGameTicks()
     {
         var tickRunner = new MatchTickRunner(
             matchRuntimes, sessions, logger,
@@ -263,20 +250,7 @@ internal partial class GameServer(
             ProcessSwarmArenaForMatching,
             ProcessEnvironmentalTickForMatching,
             ProcessBotMovementForMatching);
-        _proximityAutoCombatTimer = new Timer(
-            _ => tickRunner.Run(),
-            null,
-            TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs),
-            TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs));
-        logger.LogInformation("Match tick timer started: TickMs={TickMs}", ProximityAutoCombatTickIntervalMs);
-    }
-
-    private void StartAreaClosureTickTimer()
-    {
-        // 1초 간격 — 클라 카운트다운 종료 시점과 실제 폐쇄 트리거 사이 지연을 최소화
-        _areaClosureTickTimer = new Timer(ProcessAreaClosureTick, null,
-            TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
-        logger.LogInformation("구역 폐쇄 타이머 시작 (1초 간격)");
+        tickService.Start(ProcessAreaClosureTick, tickRunner.Run);
     }
 
     private void BroadcastDoorStateChanges(
@@ -301,7 +275,7 @@ internal partial class GameServer(
     ///     1초 폐쇄 틱. 매치 잠금 안에서 폐쇄 상태를 확정하고 같은 순서로 송신한다 — 폐쇄는 50ms
     ///     전투 틱보다 드물어 잠금을 기다려도 된다.
     /// </summary>
-    private void ProcessAreaClosureTick(object? state)
+    private void ProcessAreaClosureTick()
     {
         try
         {

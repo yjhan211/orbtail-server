@@ -60,6 +60,7 @@ internal static class GameServerTestAccess
             entryFailureHandler: entryFailure,
             matchCleanup: new MatchCleanupService(runtimes, sessions, logs, summaries, logger),
             botEliminations: new BotEliminationService(sessions, logs, logger),
-            countdown: new MatchCountdownService(runtimes, entryFailure, logger));
+            countdown: new MatchCountdownService(runtimes, entryFailure, logger),
+            tickService: new GameServerTickService(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServerTickService>.Instance));
     }
 }

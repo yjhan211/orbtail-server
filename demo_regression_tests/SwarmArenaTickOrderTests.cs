@@ -8,16 +8,17 @@ public sealed class SwarmArenaTickOrderTests
         string root = FindRepositoryRoot();
         string source = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string runner = ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs");
-        Assert.Contains("private const int ProximityAutoCombatTickIntervalMs = 50;", source);
-        Assert.Contains("_ => tickRunner.Run(),", source);
-        Assert.Equal(2, CountOccurrences(source, "TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs)"));
+        string timers = ReadNormalizedSource(root, "game_server", "Services", "GameServerTickService.cs");
+        Assert.Contains("TimeSpan.FromMilliseconds(50)", timers);
+        Assert.Contains("MatchTickInterval, MatchTickInterval", timers);
+        Assert.Contains("tickService.StopAsync()", source);
         AssertInOrder(source,
             "var tickRunner = new MatchTickRunner(",
             "countdown.Broadcast,",
             "ProcessSwarmArenaForMatching,",
             "ProcessEnvironmentalTickForMatching,",
             "ProcessBotMovementForMatching);",
-            "_proximityAutoCombatTimer = new Timer(");
+            "tickService.Start(ProcessAreaClosureTick, tickRunner.Run);");
         AssertInOrder(runner,
             "sessions.SnapshotWhere(",
             "matchRuntimes.ActiveIds()",
@@ -290,7 +291,7 @@ public sealed class SwarmArenaTickOrderTests
         string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
         string tick = ReadMethodSlice(
             server,
-            "private void ProcessAreaClosureTick(object? state)",
+            "private void ProcessAreaClosureTick()",
             "    private static double CalculatePercentile(");
         string prepare = ReadMethodSlice(
             arena,

@@ -6,7 +6,7 @@ namespace game_server.services;
 /// <summary>
 ///     매치마다 잠금을 잡고 카운트다운, 전투, 환경 정산, 봇 이동을 순서대로 실행한다.
 ///     잠금이 바쁜 매치는 이번 틱을 건너뛰며, 종료된 매치는 처리하지 않는다.
-///     GameServer가 타이머 수명을 관리하고 이 클래스에는 각 단계의 처리 함수를 전달한다.
+///     GameServerTickService가 주기적으로 호출하며, 이 클래스는 각 단계의 처리 함수를 전달받는다.
 /// </summary>
 internal sealed class MatchTickRunner(
     MatchRuntimeStore matchRuntimes,

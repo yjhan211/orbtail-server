@@ -126,6 +126,7 @@ internal static class Program
         services.AddSingleton<MatchCountdownService>(sp => new MatchCountdownService(
             sp.GetRequiredService<MatchRuntimeStore>(), sp.GetRequiredService<MatchEntryFailureHandler>(),
             sp.GetRequiredService<ILogger<MatchCountdownService>>()));
+        services.AddSingleton<GameServerTickService>();
         services.AddSingleton<GameServer>();
 
         services.AddSingleton<ServerReadinessState>();
