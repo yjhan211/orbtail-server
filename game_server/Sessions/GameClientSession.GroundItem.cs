@@ -41,87 +41,15 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        InGameItemInfo? addedItem = null;
-        bool autoUsed = false;
-        bool autoEquipped = false;
-        bool summonStonePickup = false;
-        bool jamPickup = false;
-        bool bootsPickup = false;
-        bool keyPickup = false;
-        int staminaRecovery = 0;
-        int corruptionRecovery = 0;
-        ErrorCode rejection = ErrorCode.INVENTORY_FULL;
         var position = _lastValidatedPosition;
-        long discovererPlayerId = _matchRuntimes.GetRequired(MatchingId).GroundItems.GetDiscovererPlayerId(
-            msg.GroundItemUid);
-        var attemptedItem = _matchRuntimes.GetRequired(MatchingId).GroundItems.GetItem(msg.GroundItemUid);
-        var status = _matchRuntimes.GetRequired(MatchingId).GroundItems.TryClaim(
-            msg.GroundItemUid,
-            PlayerId.Value,
-            CurrentArea,
-            position.X,
-            position.Y,
-            item =>
-            {
-                if (item.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
-                {
-                    summonStonePickup = true;
-                    return true;
-                }
+        var pickup = GroundItemPickupService.TryPickup(
+            _matchRuntimes.GetRequired(MatchingId), PlayerId.Value, CurrentArea,
+            position, Stamina, MaxStamina, Corruption, msg.GroundItemUid);
+        var claimedItem = pickup.ClaimedItem;
+        var attemptedItem = pickup.AttemptedItem;
+        var addedItem = pickup.AddedItem;
 
-                if (item.ItemId == Config.JAM_GROUND_ITEM_ID)
-                {
-                    jamPickup = true;
-                    return true;
-                }
-
-                if (item.ItemId == Config.BOOTS_GROUND_ITEM_ID)
-                {
-                    bootsPickup = true;
-                    return true;
-                }
-
-                if (item.ItemId == Config.KEY_GROUND_ITEM_ID)
-                {
-                    keyPickup = true;
-                    return true;
-                }
-
-                var disposition = GroundItemPickupPolicy.Resolve(
-                    item.ItemId,
-                    Stamina,
-                    MaxStamina,
-                    Corruption,
-                    out staminaRecovery,
-                    out corruptionRecovery,
-                    MatchingId,
-                    PlayerId.Value);
-                if (disposition == GroundItemPickupDisposition.LeaveOnGround)
-                {
-                    rejection = ErrorCode.ITEM_NOT_USABLE;
-                    return false;
-                }
-                if (disposition == GroundItemPickupDisposition.AutoUse)
-                {
-                    autoUsed = true;
-                    return true;
-                }
-
-                bool added = _matchRuntimes.GetRequired(MatchingId).Inventory.TryAddItemWithCapacity(
-                    PlayerId.Value, item.ItemId, Config.GetOrbCapacity(),
-                    out addedItem);
-                if (!added) rejection = ErrorCode.INVENTORY_FULL;
-                else if (addedItem != null)
-                {
-                    var equippedItem = _matchRuntimes.GetRequired(MatchingId).Inventory.GetEquippedBattleItem(
-                        PlayerId.Value);
-                    autoEquipped = equippedItem?.ItemUid == addedItem.ItemUid;
-                }
-                return added;
-            },
-            out var claimedItem);
-
-        if (status != GroundItemClaimStatus.Success || claimedItem == null)
+        if (pickup.Status != GroundItemClaimStatus.Success || claimedItem == null)
         {
             if (attemptedItem?.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
             {
@@ -130,7 +58,7 @@ public partial class GameClientSession
                     MatchingId,
                     PlayerId.Value,
                     msg.GroundItemUid,
-                    status,
+                    pickup.Status,
                     CurrentArea,
                     attemptedItem.AreaType,
                     position.X,
@@ -139,11 +67,11 @@ public partial class GameClientSession
                     attemptedItem.PositionY);
             }
 
-            ErrorCode error = status switch
+            ErrorCode error = pickup.Status switch
             {
                 GroundItemClaimStatus.AreaMismatch => ErrorCode.AREA_MISMATCH,
                 GroundItemClaimStatus.TooFar => ErrorCode.INVALID_POSITION,
-                GroundItemClaimStatus.Rejected => rejection,
+                GroundItemClaimStatus.Rejected => pickup.Rejection,
                 GroundItemClaimStatus.SourceBlocked => ErrorCode.INVALID_GAME_STATE,
                 GroundItemClaimStatus.Reserved => ErrorCode.ITEM_NOT_FOUND,
                 _ => ErrorCode.ITEM_NOT_FOUND
@@ -155,7 +83,7 @@ public partial class GameClientSession
                 _gameEventLogManager.LogPelletPickupOutcome(
                     MatchingId, PlayerId.Value, attemptedItem.ItemId,
                     deniedStaminaRecovery + deniedCorruptionRecovery, 0,
-                    $"denied_{status.ToString().ToLowerInvariant()}", isBot: false);
+                    $"denied_{pickup.Status.ToString().ToLowerInvariant()}", isBot: false);
             }
             if (attemptedItem != null && error == ErrorCode.INVENTORY_FULL)
             {
@@ -172,20 +100,20 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        if (jamPickup)
+        if (pickup.JamPickup)
         {
             AddJam(1);
         }
-        else if (bootsPickup)
+        else if (pickup.BootsPickup)
         {
             // 부츠 (#222 M4): 이속은 클라 이동이 소유한다 — 서버는 픽업 결과만 확정.
             // 클라가 픽업 결과(ItemId)로 10초 버프·HUD 타이머를 시작한다.
         }
-        else if (keyPickup)
+        else if (pickup.KeyPickup)
         {
             AddFreeSummonCharge(1);
         }
-        else if (summonStonePickup)
+        else if (pickup.SummonStonePickup)
         {
             var summonState = _matchRuntimes.GetRequired(MatchingId).SummonStones.AddStones(PlayerId.Value, 1);
             SendSummonStoneState(1, claimedItem.PositionX, claimedItem.PositionY);
@@ -199,13 +127,13 @@ public partial class GameClientSession
                 isCore: false,
                 isBot: false);
         }
-        else if (autoUsed)
+        else if (pickup.AutoUsed)
         {
-            int effectiveStaminaRecovery = Math.Min(staminaRecovery, Math.Max(0, MaxStamina - Stamina));
-            int effectiveCorruptionRecovery = Math.Min(corruptionRecovery, Math.Max(0, Corruption));
-            int requestedRecovery = staminaRecovery + corruptionRecovery;
+            int effectiveStaminaRecovery = Math.Min(pickup.StaminaRecovery, Math.Max(0, MaxStamina - Stamina));
+            int effectiveCorruptionRecovery = Math.Min(pickup.CorruptionRecovery, Math.Max(0, Corruption));
+            int requestedRecovery = pickup.StaminaRecovery + pickup.CorruptionRecovery;
             int effectiveRecovery = effectiveStaminaRecovery + effectiveCorruptionRecovery;
-            ModifyStats(staminaDelta: staminaRecovery, corruptionDelta: -corruptionRecovery);
+            ModifyStats(staminaDelta: pickup.StaminaRecovery, corruptionDelta: -pickup.CorruptionRecovery);
             // 하트는 앞줄 오브 HP도 만충으로 (#222 M4) — 원작 하트의 스쿼드 회복.
             if (claimedItem.ItemId == Config.HEART_GROUND_ITEM_ID)
                 SwarmHeartPickupCallback?.Invoke(MatchingId, PlayerId.Value);
@@ -220,7 +148,7 @@ public partial class GameClientSession
         else if (addedItem != null)
         {
             SendInGameInventoryUpdate(addedItem);
-            if (autoEquipped)
+            if (pickup.AutoEquipped)
             {
                 using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
                     true, addedItem.ItemUid, ErrorCode.SUCCESS);
@@ -228,24 +156,24 @@ public partial class GameClientSession
             }
         }
 
-        BroadcastGroundItemRemoved(claimedItem, autoUsed);
+        BroadcastGroundItemRemoved(claimedItem, pickup.AutoUsed);
         _gameEventLogManager.LogGroundItemPickup(
             MatchingId,
             PlayerId.Value,
-            discovererPlayerId,
+            pickup.DiscovererPlayerId,
             claimedItem.GroundItemUid,
             claimedItem.ItemId,
             CurrentArea.ToString(),
-            autoUsed,
+            pickup.AutoUsed,
             isBot: false);
-        if (!summonStonePickup && !jamPickup && !bootsPickup && !keyPickup)
+        if (!pickup.SummonStonePickup && !pickup.JamPickup && !pickup.BootsPickup && !pickup.KeyPickup)
         {
             var boardAfterPickup = _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId.Value);
             _gameEventLogManager.LogOrbBoardTransition(
                 MatchingId, PlayerId.Value, boardAfterPickup.GetAllItems(),
                 boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "pickup", isBot: false);
         }
-        SendGroundItemPickupResult(claimedItem.GroundItemUid, claimedItem.ItemId, true, autoUsed, ErrorCode.SUCCESS);
+        SendGroundItemPickupResult(claimedItem.GroundItemUid, claimedItem.ItemId, true, pickup.AutoUsed, ErrorCode.SUCCESS);
         return Task.CompletedTask;
     }
 
