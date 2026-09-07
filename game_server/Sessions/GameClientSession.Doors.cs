@@ -15,14 +15,14 @@ public partial class GameClientSession
     private Task HandleDoorOpenRequest(C_TO_G_DOOR_OPEN_REQUEST msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        return RunUnderMatch(() => HandleDoorOpenRequestCore(msg), () =>
+        return RunWithMatchLock(() => ProcessDoorOpenRequest(msg), () =>
         {
             using var packet = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(msg.DoorId, false, ErrorCode.INVALID_GAME_STATE);
             TrySend(packet);
         });
     }
 
-    private Task HandleDoorOpenRequestCore(C_TO_G_DOOR_OPEN_REQUEST msg)
+    private Task ProcessDoorOpenRequest(C_TO_G_DOOR_OPEN_REQUEST msg)
     {
         if (!PlayerId.HasValue)
         {

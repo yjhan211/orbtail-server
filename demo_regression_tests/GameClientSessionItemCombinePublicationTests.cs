@@ -784,23 +784,23 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Contains(
             "Protocol.C_TO_G_COMBINE_ITEMS,\n            async bytes => await HandleMessage<C_TO_G_COMBINE_ITEMS>(bytes, HandleCombineItems)",
             session);
-        Assert.Equal(1, CountOccurrences(combine, "RunUnderMatch("));
-        Assert.Contains("private Task HandleCombineItemsCore(", combine);
+        Assert.Equal(1, CountOccurrences(combine, "RunWithMatchLock("));
+        Assert.Contains("private Task ProcessCombineItems(", combine);
         Assert.Contains("MatchingId <= 0", ReadMethodSlice(
             combine,
             "private Task HandleCombineItems(",
-            "private Task HandleCombineItemsCore("));
-        Assert.DoesNotContain("RunUnderMatch", ReadMethodSlice(
+            "private Task ProcessCombineItems("));
+        Assert.DoesNotContain("RunWithMatchLock", ReadMethodSlice(
             combine,
-            "private Task HandleCombineItemsCore(",
+            "private Task ProcessCombineItems(",
             "private void SendBattleItemCombineResult("));
-        Assert.Contains("RunUnderMatch", ReadMethodSlice(orbSummon,
+        Assert.Contains("RunWithMatchLock", ReadMethodSlice(orbSummon,
             "private Task HandleSummonOrb(",
             "internal bool ExecuteDraftOrbSummon("));
-        Assert.Contains("RunUnderMatch", ReadMethodSlice(orbSummon,
+        Assert.Contains("RunWithMatchLock", ReadMethodSlice(orbSummon,
             "private Task HandleDestroyOrb(",
             "private void SendDestroyOrbResult("));
-        Assert.Contains("RunUnderMatch", ReadMethodSlice(playerState,
+        Assert.Contains("RunWithMatchLock", ReadMethodSlice(playerState,
             "private async Task HandleUseInGameItem(",
             "private bool ApplyItemBuffs("));
         Assert.DoesNotContain("msg.ClientStartUnixMs", combine);

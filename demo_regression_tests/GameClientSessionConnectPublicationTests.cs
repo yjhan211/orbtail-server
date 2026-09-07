@@ -79,7 +79,7 @@ public sealed class GameClientSessionConnectPublicationTests
         var session = fixture.CreateSession(74009, 8109, _ => true);
         var original = fixture.Store.GetRequired(74009);
         var flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        var run = typeof(GameClientSession).GetMethod("RunUnderMatch", flags)!;
+        var run = typeof(GameClientSession).GetMethod("RunWithMatchLock", flags)!;
         bool executed = false;
         bool rejected = false;
         Func<Task> action = () =>

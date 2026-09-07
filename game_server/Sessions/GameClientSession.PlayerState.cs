@@ -17,10 +17,10 @@ public partial class GameClientSession
     private async Task HandlePlayerState(C_TO_G_PLAYER_STATE msg)
     {
         if (!PlayerId.HasValue) return;
-        await RunUnderMatch(() => HandlePlayerStateCore(msg), () => { });
+        await RunWithMatchLock(() => ProcessPlayerState(msg), () => { });
     }
 
-    private async Task HandlePlayerStateCore(C_TO_G_PLAYER_STATE msg)
+    private async Task ProcessPlayerState(C_TO_G_PLAYER_STATE msg)
     {
         if (!PlayerId.HasValue) return;
         if (IsRoundActionLocked(out string lockReason))
@@ -93,7 +93,7 @@ public partial class GameClientSession
 
     private void OnPeriodicBuffTick()
     {
-        _ = RunUnderMatch(() =>
+        _ = RunWithMatchLock(() =>
         {
             try
             {
@@ -229,14 +229,14 @@ public partial class GameClientSession
     private async Task HandleUseInGameItem(C_TO_G_USE_INGAME_ITEM msg)
     {
         if (!PlayerId.HasValue) return;
-        await RunUnderMatch(() => HandleUseInGameItemCore(msg), () =>
+        await RunWithMatchLock(() => ProcessUseInGameItem(msg), () =>
         {
             using var packet = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.INVALID_GAME_STATE);
             TrySend(packet);
         });
     }
 
-    private async Task HandleUseInGameItemCore(C_TO_G_USE_INGAME_ITEM msg)
+    private async Task ProcessUseInGameItem(C_TO_G_USE_INGAME_ITEM msg)
     {
         if (!PlayerId.HasValue) return;
         if (IsRoundActionLocked(out _))

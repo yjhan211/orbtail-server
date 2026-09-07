@@ -14,10 +14,10 @@ public partial class GameClientSession
     private Task HandleSocialAction(C_TO_G_SOCIAL_ACTION msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        return RunUnderMatch(() => HandleSocialActionCore(msg), () => { });
+        return RunWithMatchLock(() => ProcessSocialAction(msg), () => { });
     }
 
-    private Task HandleSocialActionCore(C_TO_G_SOCIAL_ACTION msg)
+    private Task ProcessSocialAction(C_TO_G_SOCIAL_ACTION msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
         if (IsRoundActionLocked(out _))

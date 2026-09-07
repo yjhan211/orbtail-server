@@ -23,8 +23,8 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        return RunUnderMatch(
-            () => HandleGroundItemPickupCore(msg),
+        return RunWithMatchLock(
+            () => ProcessGroundItemPickup(msg),
             () => SendGroundItemPickupResult(
                 msg.GroundItemUid,
                 0,
@@ -33,7 +33,7 @@ public partial class GameClientSession
                 ErrorCode.INVALID_GAME_STATE));
     }
 
-    private Task HandleGroundItemPickupCore(C_TO_G_GROUND_ITEM_PICKUP msg)
+    private Task ProcessGroundItemPickup(C_TO_G_GROUND_ITEM_PICKUP msg)
     {
         if (!PlayerId.HasValue || IsEliminated || IsGameEnded || _lastValidatedPosition == null)
         {

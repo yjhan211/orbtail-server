@@ -33,8 +33,8 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        return RunUnderMatch(
-            () => HandleCombineItemsCore(msg),
+        return RunWithMatchLock(
+            () => ProcessCombineItems(msg),
             () => SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INVALID_GAME_STATE));
     }
 
@@ -42,7 +42,7 @@ public partial class GameClientSession
     ///     매치 잠금 안에서 동기 완료해야 하는 권위 조합 core.
     ///     미션 부품 결합은 퇴역(#238)했고 배틀아이템·오브 조합과 기존 packet/log 순서만 유지한다.
     /// </summary>
-    private Task HandleCombineItemsCore(C_TO_G_COMBINE_ITEMS msg)
+    private Task ProcessCombineItems(C_TO_G_COMBINE_ITEMS msg)
     {
         if (IsRoundActionLocked(out _))
         {

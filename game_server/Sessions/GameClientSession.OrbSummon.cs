@@ -16,11 +16,11 @@ public partial class GameClientSession
     private Task HandleSummonOrb(C_TO_G_SUMMON_ORB request)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        return RunUnderMatch(() => HandleSummonOrbCore(request),
+        return RunWithMatchLock(() => ProcessSummonOrb(request),
             () => SendSummonOrbResult(false, ErrorCode.INVALID_GAME_STATE, 0, 0, GetSummonStoneSnapshot()));
     }
 
-    private Task HandleSummonOrbCore(C_TO_G_SUMMON_ORB request)
+    private Task ProcessSummonOrb(C_TO_G_SUMMON_ORB request)
     {
         if (!PlayerId.HasValue)
             return Task.CompletedTask;
@@ -156,7 +156,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
 
         long matchingId = MatchingId;
-        return RunUnderMatch(
+        return RunWithMatchLock(
             () =>
             {
                 _growth.HandlePick(this, matchingId, request.OfferId, request.CardIndex);
@@ -175,7 +175,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
 
         long matchingId = MatchingId;
-        return RunUnderMatch(
+        return RunWithMatchLock(
             () =>
             {
                 _growth.HandleOrbDecision(
@@ -277,11 +277,11 @@ public partial class GameClientSession
     private Task HandleDestroyOrb(C_TO_G_DESTROY_ORB request)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        return RunUnderMatch(() => HandleDestroyOrbCore(request),
+        return RunWithMatchLock(() => ProcessDestroyOrb(request),
             () => SendDestroyOrbResult(false, ErrorCode.INVALID_GAME_STATE, request.ItemUid, 0, GetSummonStoneSnapshot()));
     }
 
-    private Task HandleDestroyOrbCore(C_TO_G_DESTROY_ORB request)
+    private Task ProcessDestroyOrb(C_TO_G_DESTROY_ORB request)
     {
         if (!PlayerId.HasValue)
             return Task.CompletedTask;

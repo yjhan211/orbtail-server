@@ -551,35 +551,35 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("IsMessageLifecycleActive", session);
         Assert.DoesNotContain("IsMessageLifecycleActive",
             ReadNormalizedSource(root, "network", "Core", "SessionBase.cs"));
-        Assert.Contains("private Task RunUnderMatch(Func<Task> core, Action rejectIfTerminal)", session);
-        Assert.Equal(2, CountOccurrences(rng, "RunUnderMatch("));
-        Assert.Equal(1, CountOccurrences(ground, "RunUnderMatch("));
-        Assert.Equal(4, CountOccurrences(orbSummon, "RunUnderMatch("));
+        Assert.Contains("private Task RunWithMatchLock(Func<Task> handleRequest, Action rejectRequest)", session);
+        Assert.Equal(2, CountOccurrences(rng, "RunWithMatchLock("));
+        Assert.Equal(1, CountOccurrences(ground, "RunWithMatchLock("));
+        Assert.Equal(4, CountOccurrences(orbSummon, "RunWithMatchLock("));
         Assert.DoesNotContain("SwarmGrowthPickCallback", session);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
         Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
-        Assert.Equal(1, CountOccurrences(doors, "RunUnderMatch("));
-        Assert.DoesNotContain("RunUnderMatch(", ReadMethodSlice(connection,
+        Assert.Equal(1, CountOccurrences(doors, "RunWithMatchLock("));
+        Assert.DoesNotContain("RunWithMatchLock(", ReadMethodSlice(connection,
             "private async Task HandleConnect(", "private void RunUnderLiveMatch("));
-        Assert.DoesNotContain("RunUnderMatch", arena);
-        Assert.DoesNotContain("RunUnderMatch", bots);
-        Assert.DoesNotContain("RunUnderMatch", botPickup);
+        Assert.DoesNotContain("RunWithMatchLock", arena);
+        Assert.DoesNotContain("RunWithMatchLock", bots);
+        Assert.DoesNotContain("RunWithMatchLock", botPickup);
         Assert.Contains("session.BreakDoorUnlockGauge();", arena);
         Assert.DoesNotContain(
-            "RunUnderMatch",
+            "RunWithMatchLock",
             ReadMethodSlice(
                 rng,
                 "private void CancelPendingRngCollect(",
                 "private void BroadcastRngCollectCooldown("));
         Assert.DoesNotContain(
-            "RunUnderMatch",
+            "RunWithMatchLock",
             ReadMethodSlice(
                 rng,
                 "internal void BreakDoorUnlockGauge()",
                 "private void SendRngCollectAck("));
         Assert.DoesNotContain(
-            "RunUnderMatch",
+            "RunWithMatchLock",
             ReadMethodSlice(
                 ground,
                 "private Task HandleDropGroundItem(",

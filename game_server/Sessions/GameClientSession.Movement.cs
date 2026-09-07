@@ -35,10 +35,10 @@ public partial class GameClientSession
     private Task HandleMove(C_TO_G_MOVE msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        return RunUnderMatch(() => HandleMoveCore(msg), () => { });
+        return RunWithMatchLock(() => ProcessMove(msg), () => { });
     }
 
-    private async Task HandleMoveCore(C_TO_G_MOVE msg)
+    private async Task ProcessMove(C_TO_G_MOVE msg)
     {
         if (PlayerId == null) return;
         if (IsEliminated) return;

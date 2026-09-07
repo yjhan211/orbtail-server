@@ -16,7 +16,7 @@ namespace game_server.sessions;
 
 /// <summary>
 ///     GameServer 인계 뒤의 TCP 클라이언트 연결 하나. 프로토콜 검증과 연결별 상태를 소유하고, 매치 공유 상태는
-///     GameServer 매니저에 남긴다. 권위 상태를 바꾸는 핸들러(채집·픽업·성장·조합)는 <see cref="RunUnderMatch"/>로
+///     GameServer 매니저에 남긴다. 권위 상태를 바꾸는 핸들러(채집·픽업·성장·조합)는 <see cref="RunWithMatchLock"/>로
 ///     매치 잠금(<see cref="MatchRuntime.Sync"/>) 안에서 동기 실행되며 응답도 그 안에서 보낸다 — 잠금 안 송신은
 ///     큐 적재뿐이라 I/O를 기다리지 않는다. 인증은 Redis 입장 커밋과 초기 스냅샷이 끝난 뒤에만 보이고, 성공 응답은
 ///     잠금 밖에서 큐에 넣는다. 매치 종료 결과·GAME_END는 같은 잠금 안에서 보내고 영속·lifecycle 발행은 잠금이
@@ -160,34 +160,34 @@ public partial class GameClientSession : SessionBase
     ///     이 안의 Send 순서가 곧 상태 변경 순서다. 런타임이 없거나 터미널이면 core 대신 거부 응답만 보낸다.
     ///     core가 던지면 잠금을 풀고 SessionBase가 G_TO_C_ERROR를 보낸다(앞서 보낸 패킷은 그대로).
     /// </summary>
-    private Task RunUnderMatch(Func<Task> core, Action rejectIfTerminal)
+    private Task RunWithMatchLock(Func<Task> handleRequest, Action rejectRequest)
     {
-        ArgumentNullException.ThrowIfNull(core);
-        ArgumentNullException.ThrowIfNull(rejectIfTerminal);
+        ArgumentNullException.ThrowIfNull(handleRequest);
+        ArgumentNullException.ThrowIfNull(rejectRequest);
 
         MatchRuntime? runtime = Volatile.Read(ref _match);
         if (runtime == null)
         {
-            rejectIfTerminal();
+            rejectRequest();
             return Task.CompletedTask;
         }
 
         using MatchScope scope = runtime.Enter();
         if (runtime.IsTerminal)
         {
-            rejectIfTerminal();
+            rejectRequest();
             return Task.CompletedTask;
         }
 
-        Task prepared = core() ??
-            throw new InvalidOperationException("Match handler core returned a null task.");
-        if (!prepared.IsCompleted)
+        Task handlingTask = handleRequest() ??
+            throw new InvalidOperationException("Match request handler returned a null task.");
+        if (!handlingTask.IsCompleted)
         {
             throw new InvalidOperationException(
-                "Match handler core must complete synchronously under the match lock.");
+                "Match request handler must complete synchronously under the match lock.");
         }
 
-        prepared.GetAwaiter().GetResult();
+        handlingTask.GetAwaiter().GetResult();
         return Task.CompletedTask;
     }
 
@@ -627,7 +627,7 @@ public partial class GameClientSession : SessionBase
     private Task HandleMatchStartReady()
     {
         if (!PlayerId.HasValue || MatchingId <= 0) return Task.CompletedTask;
-        return RunUnderMatch(() =>
+        return RunWithMatchLock(() =>
         {
             MatchStartGate.MarkHumanReady(MatchingId, PlayerId.Value);
             SendMatchStartCountdown(MatchingId);
@@ -788,7 +788,7 @@ public partial class GameClientSession : SessionBase
 
     public override void OnRemoved()
     {
-        _ = RunUnderMatch(() =>
+        _ = RunWithMatchLock(() =>
         {
             StopAllPeriodicBuffs();
             return Task.CompletedTask;

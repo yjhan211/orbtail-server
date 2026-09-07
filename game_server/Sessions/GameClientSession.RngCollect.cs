@@ -37,7 +37,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        return RunUnderMatch(
+        return RunWithMatchLock(
             () => HandleSwarmRngCollectStart(msg),
             () => SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0));
     }
@@ -52,7 +52,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        return RunUnderMatch(
+        return RunWithMatchLock(
             () => HandleSwarmRngCollectFinish(msg),
             () =>
             {

@@ -654,7 +654,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
         Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
-        Assert.Equal(4, CountOccurrences(orbSummon, "RunUnderMatch("));
+        Assert.Equal(4, CountOccurrences(orbSummon, "RunWithMatchLock("));
         Assert.Contains("MatchingId <= 0", ReadMethodSlice(
             orbSummon,
             "private Task HandleSwarmGrowthPick(",
@@ -663,14 +663,14 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             orbSummon,
             "private Task HandleSwarmOrbDecision(",
             "internal void SendSwarmFamilyLevels("));
-        Assert.Contains("RunUnderMatch", ReadMethodSlice(orbSummon,
+        Assert.Contains("RunWithMatchLock", ReadMethodSlice(orbSummon,
             "private Task HandleSummonOrb(",
             "internal bool ExecuteDraftOrbSummon("));
-        Assert.Contains("RunUnderMatch", ReadMethodSlice(orbSummon,
+        Assert.Contains("RunWithMatchLock", ReadMethodSlice(orbSummon,
             "private Task HandleDestroyOrb(",
             "internal void SendSummonStoneState("));
-        Assert.DoesNotContain("RunUnderMatch", arena);
-        Assert.DoesNotContain("RunUnderMatch", orbBoard);
+        Assert.DoesNotContain("RunWithMatchLock", arena);
+        Assert.DoesNotContain("RunWithMatchLock", orbBoard);
     }
 
     private static async Task SendAsync<T>(
