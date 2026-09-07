@@ -34,7 +34,7 @@ internal partial class GameServer
         List<GameClientSession> allSessions)
     {
         IReadOnlyList<SwarmArenaCombatTarget>? monsters = null;
-        SwarmWindBladeState windBlade = GetSwarmMatchRuntime(matchingId).WindBlade;
+        SwarmWindBladeState windBlade = matchRuntimes.GetRequired(matchingId).Swarm.WindBlade;
 
         foreach (var owner in participants)
         {

@@ -47,7 +47,6 @@ internal partial class GameServer(
     : IHostedService
 {
     private GameServerNodeAdvertiser? _nodeAdvertiser;
-    private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) => matchRuntimes.GetRequired(matchingId).Swarm;
     private readonly object _shutdownLock = new();
     private Task? _shutdownTask;
     private int _stopping;

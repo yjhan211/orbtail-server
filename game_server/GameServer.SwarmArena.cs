@@ -60,10 +60,10 @@ internal partial class GameServer
     private int ConsumeSwarmPvpCorruption(long matchingId, long victimId, int rawDamage)
     {
         var key = (matchingId, victimId);
-        float total = (GetSwarmMatchRuntime(matchingId).Pacing.PvpCorruptionCarry.TryGetValue(key, out float carry) ? carry : 0f) +
+        float total = (matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PvpCorruptionCarry.TryGetValue(key, out float carry) ? carry : 0f) +
                       rawDamage * SwarmPvpCorruptionPerDamage;
         int whole = (int)total;
-        GetSwarmMatchRuntime(matchingId).Pacing.PvpCorruptionCarry[key] = total - whole;
+        matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PvpCorruptionCarry[key] = total - whole;
         return whole;
     }
 
@@ -77,25 +77,25 @@ internal partial class GameServer
     /// <summary>PvE 치명타 굴림 — 적중이면 배율을 적용한 피해를 돌려준다.</summary>
     private int RollSwarmCriticalDamage(long matchingId, int damage, out bool critical)
     {
-        critical = GetSwarmMatchRuntime(matchingId).Pacing.RollCritical(SwarmCriticalChance);
+        critical = matchRuntimes.GetRequired(matchingId).Swarm.Pacing.RollCritical(SwarmCriticalChance);
         return critical
             ? Math.Max(damage + 1, (int)MathF.Round(damage * SwarmCriticalMultiplier))
             : damage;
     }
 
     // SB 유닛 개별 체력·착탄 지연 대기열·계측 서명 등 매치 상태는 #294에서
-    // 상태 홀더(GetSwarmMatchRuntime(matchingId).Pacing 등, Services/SwarmArenaStates.cs)로 이동했다.
+    // 상태 홀더(matchRuntimes.GetRequired(matchingId).Swarm.Pacing 등, Services/SwarmArenaStates.cs)로 이동했다.
 
     private void ProcessPendingSwarmMonsterHits(
         long matchingId, DateTime nowUtc, List<GameClientSession> sessions)
     {
-        for (int index = GetSwarmMatchRuntime(matchingId).Pacing.PendingMonsterHits.Count - 1; index >= 0; index--)
+        for (int index = matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PendingMonsterHits.Count - 1; index >= 0; index--)
         {
-            var hit = GetSwarmMatchRuntime(matchingId).Pacing.PendingMonsterHits[index];
+            var hit = matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PendingMonsterHits[index];
             if (hit.MatchingId != matchingId || nowUtc < hit.ApplyAtUtc)
                 continue;
 
-            GetSwarmMatchRuntime(matchingId).Pacing.PendingMonsterHits.RemoveAt(index);
+            matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PendingMonsterHits.RemoveAt(index);
             var damageResult = matchRuntimes.GetRequired(matchingId).Monsters.ApplyMonsterDamage(
                 matchingId, hit.CombatTargetId, hit.AttackerId, hit.Damage);
 
@@ -127,15 +127,15 @@ internal partial class GameServer
     private void ResolveSwarmAttackAtLockedAnchor(long matchingId, PendingSwarmMonsterHit hit, DateTime nowUtc)
     {
         _ = hit;
-        GetSwarmMatchRuntime(matchingId).Pacing.AnchorOrphanCount[matchingId] =
-            (GetSwarmMatchRuntime(matchingId).Pacing.AnchorOrphanCount.TryGetValue(matchingId, out int count) ? count : 0) + 1;
+        matchRuntimes.GetRequired(matchingId).Swarm.Pacing.AnchorOrphanCount[matchingId] =
+            (matchRuntimes.GetRequired(matchingId).Swarm.Pacing.AnchorOrphanCount.TryGetValue(matchingId, out int count) ? count : 0) + 1;
 
-        if (GetSwarmMatchRuntime(matchingId).Pacing.AnchorProbeAtUtc.TryGetValue(matchingId, out var probeAt) && nowUtc < probeAt)
+        if (matchRuntimes.GetRequired(matchingId).Swarm.Pacing.AnchorProbeAtUtc.TryGetValue(matchingId, out var probeAt) && nowUtc < probeAt)
             return;
-        GetSwarmMatchRuntime(matchingId).Pacing.AnchorProbeAtUtc[matchingId] = nowUtc.AddSeconds(10);
+        matchRuntimes.GetRequired(matchingId).Swarm.Pacing.AnchorProbeAtUtc[matchingId] = nowUtc.AddSeconds(10);
         eventLogs.LogSystem(
             matchingId,
-            $"anchor_probe orphanResolved={GetSwarmMatchRuntime(matchingId).Pacing.AnchorOrphanCount[matchingId]}");
+            $"anchor_probe orphanResolved={matchRuntimes.GetRequired(matchingId).Swarm.Pacing.AnchorOrphanCount[matchingId]}");
     }
 
     // 티어별 오브 HP는 Common(OrbData.GetSquadOrbMaxHp)이 단일 출처 — 클라 체력바와 공유.
@@ -154,7 +154,7 @@ internal partial class GameServer
         long matchingId,
         List<GameClientSession> activeSessions)
     {
-        // 정리된 매치의 상태를 되살리지 않는다 — 아래 GetSwarmMatchRuntime은 GetOrCreate다.
+        // 종료되었거나 이미 정리된 매치는 틱 처리를 건너뛴다.
         if (IsMatchTerminal(matchingId))
             return;
 
@@ -203,7 +203,7 @@ internal partial class GameServer
         foreach (var session in sessions)
         {
             if (!session.PlayerId.HasValue ||
-                !GetSwarmMatchRuntime(matchingId).Pacing.StartingOrbGrantedPlayers.Add((matchingId, session.PlayerId.Value)))
+                !matchRuntimes.GetRequired(matchingId).Swarm.Pacing.StartingOrbGrantedPlayers.Add((matchingId, session.PlayerId.Value)))
                 continue;
 
             // 잼 지갑 리셋 (#222 M3) — 세션이 매치를 넘어 살아있으므로 시작 지급 시점에 초기화.
@@ -216,7 +216,7 @@ internal partial class GameServer
 
         foreach (var bot in bots)
         {
-            if (!GetSwarmMatchRuntime(matchingId).Pacing.StartingOrbGrantedPlayers.Add((matchingId, bot.PlayerId)))
+            if (!matchRuntimes.GetRequired(matchingId).Swarm.Pacing.StartingOrbGrantedPlayers.Add((matchingId, bot.PlayerId)))
                 continue;
 
             GrantSwarmStartingOrbs(matchingId, bot.PlayerId, session: null);
@@ -238,7 +238,7 @@ internal partial class GameServer
         // 실험장 자동 세팅 (#226): 사람이 있는 매치는 첫 틱에 실험장이 자동으로 차려진다.
         // 봇 전용 검증 매치는 제외 — 게이트 계측이 오염되지 않게.
         if (SwarmDummySandboxActive && aliveSessions.Count > 0 && aliveBots.Count > 0 &&
-            GetSwarmMatchRuntime(matchingId).Pacing.CutDummyAutoSetupDone.Add(matchingId))
+            matchRuntimes.GetRequired(matchingId).Swarm.Pacing.CutDummyAutoSetupDone.Add(matchingId))
         {
             // 무장 과녁은 절단 실험장(DEV_CUT_DUMMY)에만 세운다. 교차사격 샌드박스는 더미 없이
             // 사람 + 몹만 남긴다 (유저 지시 "더미 유저 없애줘") — 단독 생존 종료는
@@ -339,11 +339,11 @@ internal partial class GameServer
 
         // 접촉 계측: 접촉이 성립하는지 층별로 남긴다. 이 줄들이 "봇은 접촉 피해를
         // 안 받는다"는 오독을 두 번 걷어냈다 — 실제로는 로깅이 없었고, 그다음엔 배율이 깎고 있었다.
-        if (tick.PlayerDamage.Count > 0 && GetSwarmMatchRuntime(matchingId).Pacing.ContactProbeAtUtc.TryGetValue(matchingId, out var probeAt)
+        if (tick.PlayerDamage.Count > 0 && matchRuntimes.GetRequired(matchingId).Swarm.Pacing.ContactProbeAtUtc.TryGetValue(matchingId, out var probeAt)
                 ? nowUtc >= probeAt
                 : true)
         {
-            GetSwarmMatchRuntime(matchingId).Pacing.ContactProbeAtUtc[matchingId] = nowUtc.AddSeconds(10);
+            matchRuntimes.GetRequired(matchingId).Swarm.Pacing.ContactProbeAtUtc[matchingId] = nowUtc.AddSeconds(10);
             int toBots = tick.PlayerDamage.Count(entry => entry.TargetPlayerId < 0);
             int toHumans = tick.PlayerDamage.Count - toBots;
             eventLogs.LogSystem(
@@ -393,12 +393,12 @@ internal partial class GameServer
 
         // 비행 중인 PvP 탄은 여기서 착탄 처리한다 — 매 틱 지우면 안 된다. "리졸버는 PvE 전용"이라는 전제의 청소가
         // 리졸버가 사람 표적도 내보내게 바뀐 뒤 방금 발사한 탄을 다음 틱에 통째로 삭제해 PvP가 한 발도 착탄하지 못했다.
-        for (int index = GetSwarmMatchRuntime(matchingId).Pacing.PendingPvpHits.Count - 1; index >= 0; index--)
+        for (int index = matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PendingPvpHits.Count - 1; index >= 0; index--)
         {
-            var pending = GetSwarmMatchRuntime(matchingId).Pacing.PendingPvpHits[index];
+            var pending = matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PendingPvpHits[index];
             if (pending.MatchingId != matchingId || nowUtc < pending.DueAtUtc)
                 continue;
-            GetSwarmMatchRuntime(matchingId).Pacing.PendingPvpHits.RemoveAt(index);
+            matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PendingPvpHits.RemoveAt(index);
             ApplySwarmPvpAttack(matchingId, pending.Attack, aliveSessions, aliveBots, sessions,
                 broadcastVfx: false);
             if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
@@ -565,7 +565,7 @@ internal partial class GameServer
                 // 기준점 계측 + 잠금 (#232 1단계): 발사 순간 몹의 공격 사건 수를 올리고,
                 // 원점·기준 위치·무기를 박제해 착탄 정산까지 들고 간다.
                 matchRuntimes.GetRequired(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, attack.TargetPlayerId);
-                GetSwarmMatchRuntime(matchingId).Pacing.PendingMonsterHits.Add(new PendingSwarmMonsterHit(
+                matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PendingMonsterHits.Add(new PendingSwarmMonsterHit(
                     matchingId, attack.TargetPlayerId, attack.AttackerPlayerId,
                     monsterDamage, nowUtc.AddSeconds(delaySeconds),
                     attack.WeaponItemId, attack.AttackerItemUid, origin, anchor));
@@ -592,7 +592,7 @@ internal partial class GameServer
                     : Config.SWARM_ORB_ATTACK_RANGE;
                 double pvpDelaySeconds =
                     OrbData.GetPvpProjectileImpactDelaySeconds(attack.WeaponItemId, pvpDistance);
-                GetSwarmMatchRuntime(matchingId).Pacing.PendingPvpHits.Add((matchingId, attack, nowUtc.AddSeconds(pvpDelaySeconds)));
+                matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PendingPvpHits.Add((matchingId, attack, nowUtc.AddSeconds(pvpDelaySeconds)));
                 continue;
             }
 
@@ -792,7 +792,7 @@ internal partial class GameServer
             static _ => true);
         var closureState = matchRuntimes.GetRequired(matchingId).Closures.InitializeMatching(
             wavesOverride: SwarmFieldEnabled ? GetSwarmFieldWaves() : null);
-        if (SwarmFieldEnabled && GetSwarmMatchRuntime(matchingId).Pacing.FieldStateAnnounced.Add(matchingId))
+        if (SwarmFieldEnabled && matchRuntimes.GetRequired(matchingId).Swarm.Pacing.FieldStateAnnounced.Add(matchingId))
         {
             outbound.Add(new SwarmFieldStateOutbound(
                 new DateTimeOffset(closureState.GameStartTime).ToUnixTimeMilliseconds(),
@@ -1003,7 +1003,7 @@ internal partial class GameServer
             var destroyed = DestroySwarmOrbsFromOrdinal(matchingId, playerId, suffixStart);
             foreach (var destroyedItem in destroyed)
             {
-                GetSwarmMatchRuntime(matchingId).TrailCombat.OrbDurabilityBonus.Remove((matchingId, playerId, destroyedItem.ItemUid));
+                matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.Remove((matchingId, playerId, destroyedItem.ItemUid));
                 if (ownerSessionOrdinal >= 0)
                 {
                     outbound.Add(new SwarmInventoryUpdateOutbound(
@@ -1086,7 +1086,7 @@ internal partial class GameServer
     {
         var startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId);
         if (startedAtUtc == null &&
-            GetSwarmMatchRuntime(matchingId).Pacing.MatchFallbackAnchorUtc.TryGetValue(matchingId, out var fallbackAnchor))
+            matchRuntimes.GetRequired(matchingId).Swarm.Pacing.MatchFallbackAnchorUtc.TryGetValue(matchingId, out var fallbackAnchor))
             startedAtUtc = fallbackAnchor;
         if (startedAtUtc == null)
             return 1;
@@ -1210,12 +1210,12 @@ internal partial class GameServer
     // 절단 파열 플래시 반경 — 포위 링과 같은 원형을 작게 띄운다.
     private const float SwarmTrailCutFlashRadius = 0.7f;
 
-    // 오브 트레일·절단 래치·반격 창 상태는 GetSwarmMatchRuntime(matchingId).TrailCombat (#294 상태 홀더).
+    // 오브 트레일·절단 래치·반격 창 상태는 matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat (#294 상태 홀더).
 
     /// <summary>이 절단자가 이 피해자에게 손댈 수 없는 상태인가 — 절단·본체 피해 공통 관문.</summary>
     private bool IsSwarmRetaliationGuarded(long matchingId, long cutterId, long victimId, DateTime nowUtc)
     {
-        return GetSwarmMatchRuntime(matchingId).TrailCombat.CutRetaliationWindows.TryGetValue((matchingId, cutterId, victimId), out var window) &&
+        return matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.CutRetaliationWindows.TryGetValue((matchingId, cutterId, victimId), out var window) &&
                nowUtc < window.ExpiresAtUtc;
     }
 
@@ -1227,15 +1227,15 @@ internal partial class GameServer
         long matchingId, long cutterId, long victimId, AreaType area, DateTime nowUtc,
         List<GameClientSession> allSessions)
     {
-        if (GetSwarmMatchRuntime(matchingId).TrailCombat.CutRetaliationWindows.TryGetValue((matchingId, victimId, cutterId), out var opposite) &&
+        if (matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.CutRetaliationWindows.TryGetValue((matchingId, victimId, cutterId), out var opposite) &&
             nowUtc < opposite.ExpiresAtUtc)
             opposite.Retaliated = true;
 
         var key = (matchingId, cutterId, victimId);
-        if (!GetSwarmMatchRuntime(matchingId).TrailCombat.CutRetaliationWindows.TryGetValue(key, out var window))
+        if (!matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.CutRetaliationWindows.TryGetValue(key, out var window))
         {
             window = new SwarmRetaliationWindow { OpenedAtUtc = nowUtc, OpenedArea = area };
-            GetSwarmMatchRuntime(matchingId).TrailCombat.CutRetaliationWindows[key] = window;
+            matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.CutRetaliationWindows[key] = window;
         }
 
         window.ExpiresAtUtc = nowUtc.AddSeconds(SwarmCutRetaliationWindowSeconds);
@@ -1250,12 +1250,12 @@ internal partial class GameServer
     private void ProcessSwarmRetaliationWindows(
         long matchingId, DateTime nowUtc, List<SwarmParticipantSpatial> participants)
     {
-        var expired = GetSwarmMatchRuntime(matchingId).TrailCombat.CutRetaliationWindows
+        var expired = matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.CutRetaliationWindows
             .Where(pair => pair.Key.MatchingId == matchingId && nowUtc >= pair.Value.ExpiresAtUtc)
             .ToList();
         foreach (var (key, window) in expired)
         {
-            GetSwarmMatchRuntime(matchingId).TrailCombat.CutRetaliationWindows.Remove(key);
+            matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.CutRetaliationWindows.Remove(key);
 
             // 양측 이탈: 창이 닫히는 시점에 둘이 같은 구역에 없다 = 싸움을 접고 갈라섰다.
             SwarmParticipantSpatial? cutter = participants
@@ -1309,10 +1309,10 @@ internal partial class GameServer
         foreach (var participant in participants)
         {
             var key = (matchingId, participant.PlayerId);
-            if (!GetSwarmMatchRuntime(matchingId).TrailCombat.OrbTrails.TryGetValue(key, out var points))
+            if (!matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbTrails.TryGetValue(key, out var points))
             {
                 points = new List<Vector3f>();
-                GetSwarmMatchRuntime(matchingId).TrailCombat.OrbTrails[key] = points;
+                matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbTrails[key] = points;
             }
 
             var center = participant.Position;
@@ -1377,7 +1377,7 @@ internal partial class GameServer
     private Vector3f GetSwarmTrailPositionAtDistance(
         long matchingId, long playerId, float targetDistance, Vector3f anchor)
     {
-        if (!GetSwarmMatchRuntime(matchingId).TrailCombat.OrbTrails.TryGetValue((matchingId, playerId), out var points) || points.Count == 0)
+        if (!matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbTrails.TryGetValue((matchingId, playerId), out var points) || points.Count == 0)
             return new Vector3f(anchor.X, anchor.Y - targetDistance * 0.2f, 0f);
 
         Vector3f previous = anchor;
@@ -1467,8 +1467,8 @@ internal partial class GameServer
         foreach (var cutter in participants)
         {
             var positionKey = (matchingId, cutter.PlayerId);
-            bool hasPrevious = GetSwarmMatchRuntime(matchingId).TrailCombat.TrailLastTickPositions.TryGetValue(positionKey, out var previous);
-            GetSwarmMatchRuntime(matchingId).TrailCombat.TrailLastTickPositions[positionKey] =
+            bool hasPrevious = matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.TrailLastTickPositions.TryGetValue(positionKey, out var previous);
+            matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.TrailLastTickPositions[positionKey] =
                 new Vector3f(cutter.Position.X, cutter.Position.Y, 0f);
             if (!hasPrevious)
                 continue;
@@ -1612,7 +1612,7 @@ internal partial class GameServer
 
                 // ItemUid별 래치 (단계 A): 0.12초 내부 중복 억제 + 이탈 재무장 —
                 // 선분 시작점이 아직 판정 타원 안이면(겹친 채 체류) 같은 오브 재타는 없다.
-                if (GetSwarmMatchRuntime(matchingId).TrailCombat.OrbCutLatches.TryGetValue(
+                if (matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbCutLatches.TryGetValue(
                         (matchingId, cutterId, chain.Uids[ordinal]), out var lastHitAtUtc) &&
                     ((nowUtc - lastHitAtUtc).TotalSeconds < SwarmTrailCutSameOrbDebounceSeconds ||
                      IsInsideOrbHitEllipse(previous, hitPoint)))
@@ -1630,7 +1630,7 @@ internal partial class GameServer
                 if (guarded)
                 {
                     // 이 교차는 보호 창이 삼켰다 — 한 번의 통과당 1회만 센다.
-                    if (GetSwarmMatchRuntime(matchingId).TrailCombat.CutRetaliationWindows.TryGetValue(
+                    if (matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.CutRetaliationWindows.TryGetValue(
                             (matchingId, cutterId, ownerId), out var guardWindow))
                         guardWindow.BlockedCuts++;
                     break;
@@ -1671,11 +1671,11 @@ internal partial class GameServer
         // 거절된 통과는 래치를 찍어 같은 오브를 이번 통과에서 다시 판정하지 않는다 — 사람의 절단은 이 규칙과 무관하다.
         if (cutterBot != null && !IsSwarmBotCutAllowed(matchingId, cutterId, cutterCorruptionBefore, nowUtc))
         {
-            GetSwarmMatchRuntime(matchingId).TrailCombat.OrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
+            matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
             return;
         }
 
-        GetSwarmMatchRuntime(matchingId).TrailCombat.OrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
+        matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
 
         // #229 6단계: 절단은 내가 몸으로 지르는 가해다 — 교전 잠금을 찍어 절단하고 바로 눕는
         // 도주 회복을 막는다. 수면 해제는 안 건다 — 절단하러 움직인 순간 이동이 이미 깨웠다.
@@ -1704,7 +1704,7 @@ internal partial class GameServer
         var ownerChain = chains[bestOwnerId];
         foreach (var lost in destroyedItems)
         {
-            GetSwarmMatchRuntime(matchingId).TrailCombat.OrbDurabilityBonus.Remove((matchingId, bestOwnerId, lost.ItemUid));
+            matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.Remove((matchingId, bestOwnerId, lost.ItemUid));
             ownerSession?.SendInGameInventoryUpdate(lost);
         }
         // 절단 낙수 없음 (#232): 소환석·드롭·점수·웨이브 기여를 지급하지 않는다. 잃은 것은 그냥 사라진다.
@@ -1731,9 +1731,9 @@ internal partial class GameServer
             cutterBot.Corruption = Math.Min(
                 Config.MAX_CORRUPTION, cutterBot.Corruption + SwarmSingleCutCorruptionCost);
             cutterBot.LastDamagedAtUtc = nowUtc;
-            GetSwarmMatchRuntime(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
+            matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.LastDamagedAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
             // 봇 절단 시각 — 절단 자제 쿨다운(IsSwarmBotCutAllowed)과 절단 후 회수 창이 읽는다.
-            GetSwarmMatchRuntime(matchingId).BotTactics.LastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
+            matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.LastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
             cutterCorruptionAfter = cutterBot.Corruption;
         }
         else
@@ -1747,7 +1747,7 @@ internal partial class GameServer
             // 절단당한 봇은 피격 반응(도주 판단)으로 즉시 넘어간다.
             ownerBot.LastProximityAttackerPlayerId = creditPlayerId;
             ownerBot.LastDamagedAtUtc = nowUtc;
-            GetSwarmMatchRuntime(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, ownerBot.PlayerId)] = nowUtc;
+            matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.LastDamagedAtUtc[(matchingId, ownerBot.PlayerId)] = nowUtc;
             ownerBot.CancelChannelHold();
         }
 
@@ -1832,7 +1832,7 @@ internal partial class GameServer
     private static double SwarmWaveBombFuseSeconds =>
         SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_FUSE_SECONDS", 0.65d);
 
-    // 오브별 독립 시계("다같이 터지는 게 어색"). 파도 폭탄 상태(위상·대기열)는 GetSwarmMatchRuntime(matchingId).TrailCombat.
+    // 오브별 독립 시계("다같이 터지는 게 어색"). 파도 폭탄 상태(위상·대기열)는 matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.
 
     private void ProcessSwarmWaveBombs(
         long matchingId,
@@ -1843,12 +1843,12 @@ internal partial class GameServer
         List<GameClientSession> allSessions)
     {
         // 1) 기폭: 예약된 소용돌이 정산.
-        for (int index = GetSwarmMatchRuntime(matchingId).TrailCombat.PendingWaveBombs.Count - 1; index >= 0; index--)
+        for (int index = matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.PendingWaveBombs.Count - 1; index >= 0; index--)
         {
-            var vortex = GetSwarmMatchRuntime(matchingId).TrailCombat.PendingWaveBombs[index];
+            var vortex = matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.PendingWaveBombs[index];
             if (vortex.MatchingId != matchingId || nowUtc < vortex.ExplodeAtUtc)
                 continue;
-            GetSwarmMatchRuntime(matchingId).TrailCombat.PendingWaveBombs.RemoveAt(index);
+            matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.PendingWaveBombs.RemoveAt(index);
             DetonateSwarmWaveVortex(matchingId, vortex.OwnerId, vortex.Area, vortex.Position,
                 vortex.Damage, vortex.Radius, vortex.SourceItemId, nowUtc,
                 participants, aliveSessions, aliveBots, allSessions);
@@ -1873,11 +1873,11 @@ internal partial class GameServer
                     continue;
 
                 var orbKey = (matchingId, owner.PlayerId, item.ItemUid);
-                if (!GetSwarmMatchRuntime(matchingId).TrailCombat.WaveBombNextDropAtUtc.TryGetValue(orbKey, out var nextDropAtUtc))
+                if (!matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.WaveBombNextDropAtUtc.TryGetValue(orbKey, out var nextDropAtUtc))
                 {
                     // 고유 위상: 첫 발동을 0.5~1.5주기 사이에 흩뿌린다 — uid라 재접속에도 안정.
                     double phase = 0.5d + item.ItemUid % 977 / 977d;
-                    GetSwarmMatchRuntime(matchingId).TrailCombat.WaveBombNextDropAtUtc[orbKey] =
+                    matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.WaveBombNextDropAtUtc[orbKey] =
                         nowUtc.AddSeconds(SwarmWaveBombIntervalSeconds * phase);
                     continue;
                 }
@@ -1925,7 +1925,7 @@ internal partial class GameServer
                     continue;
 
                 // 비무장(소환·채집 중)이어도 시계는 돈다 — 칼날·미사일과 같은 규칙.
-                GetSwarmMatchRuntime(matchingId).TrailCombat.WaveBombNextDropAtUtc[orbKey] = nowUtc.AddSeconds(SwarmWaveBombIntervalSeconds);
+                matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.WaveBombNextDropAtUtc[orbKey] = nowUtc.AddSeconds(SwarmWaveBombIntervalSeconds);
 
                 if (sunMultiplier < 0f)
                     sunMultiplier = OrbData.GetSunPveAttackMultiplier(trailOrbs);
@@ -1933,7 +1933,7 @@ internal partial class GameServer
                     baseDamage * sunMultiplier * Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER));
 
                 // 스폰 = 그 오브의 현재 열 좌표(사거리 게이트가 계산한 그 지점) — 스폰 순간 고정.
-                GetSwarmMatchRuntime(matchingId).TrailCombat.PendingWaveBombs.Add((
+                matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.PendingWaveBombs.Add((
                     matchingId,
                     owner.PlayerId,
                     owner.Area,
@@ -1990,7 +1990,7 @@ internal partial class GameServer
             int monsterDamage = RollSwarmCriticalDamage(matchingId, damage, out bool critical);
             matchRuntimes.GetRequired(matchingId).Monsters.ReserveMonsterDamage(matchingId, target.CombatTargetId, monsterDamage);
             matchRuntimes.GetRequired(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, target.CombatTargetId);
-            GetSwarmMatchRuntime(matchingId).Pacing.PendingMonsterHits.Add(new PendingSwarmMonsterHit(
+            matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PendingMonsterHits.Add(new PendingSwarmMonsterHit(
                 matchingId, target.CombatTargetId, ownerId, monsterDamage, nowUtc));
             matchRuntimes.GetRequired(matchingId).Monsters.TrySlowMonster(
                 matchingId, target.CombatTargetId, OrbData.WaveSlowSeconds, nowUtc);
@@ -2074,20 +2074,20 @@ internal partial class GameServer
         var key = (matchingId, dummy.PlayerId);
         if (CountSwarmSquadOrbs(matchingId, dummy.PlayerId) >= SwarmDummyOrbCount)
         {
-            GetSwarmMatchRuntime(matchingId).Pacing.CutDummyRefillAtUtc.Remove(key);
+            matchRuntimes.GetRequired(matchingId).Swarm.Pacing.CutDummyRefillAtUtc.Remove(key);
             return;
         }
 
-        if (!GetSwarmMatchRuntime(matchingId).Pacing.CutDummyRefillAtUtc.TryGetValue(key, out var refillAtUtc))
+        if (!matchRuntimes.GetRequired(matchingId).Swarm.Pacing.CutDummyRefillAtUtc.TryGetValue(key, out var refillAtUtc))
         {
-            GetSwarmMatchRuntime(matchingId).Pacing.CutDummyRefillAtUtc[key] = nowUtc.AddSeconds(SwarmCutDummyRefillDelaySeconds);
+            matchRuntimes.GetRequired(matchingId).Swarm.Pacing.CutDummyRefillAtUtc[key] = nowUtc.AddSeconds(SwarmCutDummyRefillDelaySeconds);
             return;
         }
 
         if (nowUtc < refillAtUtc)
             return;
 
-        GetSwarmMatchRuntime(matchingId).Pacing.CutDummyRefillAtUtc.Remove(key);
+        matchRuntimes.GetRequired(matchingId).Swarm.Pacing.CutDummyRefillAtUtc.Remove(key);
         RefillSwarmCutDummyOrbs(matchingId, dummy);
     }
 
@@ -2125,9 +2125,9 @@ internal partial class GameServer
         {
             var key = (matchingId, dummy.PlayerId, trailOrbs[ordinal].ItemUid);
             if (ordinal < armoredCount)
-                GetSwarmMatchRuntime(matchingId).TrailCombat.OrbDurabilityBonus[key] = SwarmArmorDurabilityBonus;
+                matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus[key] = SwarmArmorDurabilityBonus;
             else
-                GetSwarmMatchRuntime(matchingId).TrailCombat.OrbDurabilityBonus.Remove(key);
+                matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.Remove(key);
         }
     }
 
@@ -2182,12 +2182,12 @@ internal partial class GameServer
         var trailPoints = new List<Vector3f>();
         for (float distance = 0f; distance <= 12f; distance += 0.3f)
             trailPoints.Add(new Vector3f(dummy.Position.X - distance, dummy.Position.Y, 0f));
-        GetSwarmMatchRuntime(matchingId).TrailCombat.OrbTrails[(matchingId, dummy.PlayerId)] = trailPoints;
-        GetSwarmMatchRuntime(matchingId).TrailCombat.TrailLastTickPositions[(matchingId, dummy.PlayerId)] =
+        matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbTrails[(matchingId, dummy.PlayerId)] = trailPoints;
+        matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.TrailLastTickPositions[(matchingId, dummy.PlayerId)] =
             new Vector3f(dummy.Position.X, dummy.Position.Y, 0f);
         // 시작 지급의 무작위 색(파도 포함)을 비우고 단색 태양 열로 재구성한다 (#227).
         matchRuntimes.GetRequired(matchingId).Inventory.TakeAllItems(dummy.PlayerId);
-        GetSwarmMatchRuntime(matchingId).Pacing.CutDummyRefillAtUtc.Remove((matchingId, dummy.PlayerId));
+        matchRuntimes.GetRequired(matchingId).Swarm.Pacing.CutDummyRefillAtUtc.Remove((matchingId, dummy.PlayerId));
         RefillSwarmCutDummyOrbs(matchingId, dummy);
 
         movement = new BotMovementEvent
@@ -2419,11 +2419,11 @@ internal partial class GameServer
     {
         var now = DateTime.UtcNow;
         var key = (matchingId, chaserId, targetId);
-        if (GetSwarmMatchRuntime(matchingId).BotTactics.ChaseLogThrottle.TryGetValue(key, out var lastAtUtc) &&
+        if (matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.ChaseLogThrottle.TryGetValue(key, out var lastAtUtc) &&
             (now - lastAtUtc).TotalSeconds < 3d)
             return;
 
-        GetSwarmMatchRuntime(matchingId).BotTactics.ChaseLogThrottle[key] = now;
+        matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.ChaseLogThrottle[key] = now;
         eventLogs.LogSystem(matchingId,
             $"swarm_chase chaser={chaserId} target={targetId} " +
             $"targetOrbs={CountSwarmSquadOrbs(matchingId, targetId)} " +
@@ -2483,7 +2483,7 @@ internal partial class GameServer
         int botDamage = Math.Max(1, (int)MathF.Round(damage.Damage * SwarmBotContactDamageMultiplier));
         int legacyBefore = bot.Corruption;
         bot.Corruption = Math.Min(Config.MAX_CORRUPTION, bot.Corruption + botDamage);
-        GetSwarmMatchRuntime(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
+        matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
         // 세 번째 봇 경로도 남긴다 — 앞의 두 경로만 로그를 붙여 놓으면 여기로 빠진 피해가
         // 그대로 안 보인다.
         eventLogs.LogSwarmAfterimageHit(
@@ -2554,16 +2554,16 @@ internal partial class GameServer
         List<GameClientSession> aliveSessions,
         List<BotPlayerState> aliveBots)
     {
-        if (devOptions.DisableGameEnd || GetSwarmMatchRuntime(matchingId).Pacing.TimeoutEndedMatchings.Contains(matchingId))
+        if (devOptions.DisableGameEnd || matchRuntimes.GetRequired(matchingId).Swarm.Pacing.TimeoutEndedMatchings.Contains(matchingId))
             return false;
 
         var startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId);
         if (startedAtUtc == null)
         {
             // 봇 전용 매치(어드민 검증)는 게이트가 없다 — 스웜 첫 틱을 앵커로 대신 쓴다.
-            if (!GetSwarmMatchRuntime(matchingId).Pacing.MatchFallbackAnchorUtc.TryGetValue(matchingId, out var fallbackAnchor))
+            if (!matchRuntimes.GetRequired(matchingId).Swarm.Pacing.MatchFallbackAnchorUtc.TryGetValue(matchingId, out var fallbackAnchor))
             {
-                GetSwarmMatchRuntime(matchingId).Pacing.MatchFallbackAnchorUtc[matchingId] = nowUtc;
+                matchRuntimes.GetRequired(matchingId).Swarm.Pacing.MatchFallbackAnchorUtc[matchingId] = nowUtc;
                 return false;
             }
             startedAtUtc = fallbackAnchor;
@@ -2587,7 +2587,7 @@ internal partial class GameServer
             .OrderByDescending(candidate => candidate.OrbCount)
             .ThenByDescending(candidate => candidate.TierSum)
             // 철갑(내구 보너스 합) 3차 키 (#226): 같은 열이면 방어 투자한 쪽이 앞선다.
-            .ThenByDescending(candidate => GetSwarmMatchRuntime(matchingId).TrailCombat.OrbDurabilityBonus
+            .ThenByDescending(candidate => matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus
                 .Where(pair => pair.Key.MatchingId == matchingId &&
                                pair.Key.PlayerId == candidate.PlayerId)
                 .Sum(pair => pair.Value))
@@ -2595,7 +2595,7 @@ internal partial class GameServer
             .ThenBy(candidate => candidate.PlayerId)
             .ToList();
         long winnerId = candidates.Count > 0 ? candidates[0].PlayerId : 0;
-        GetSwarmMatchRuntime(matchingId).Pacing.TimeoutEndedMatchings.Add(matchingId);
+        matchRuntimes.GetRequired(matchingId).Swarm.Pacing.TimeoutEndedMatchings.Add(matchingId);
         // 최종 점수표 (#226 F 계측): 순위 순 pid:오브:티어합 — 300초 목표(1위 11~15) 검증 근거.
         eventLogs.LogSystem(
             matchingId,
@@ -2656,11 +2656,11 @@ internal partial class GameServer
             return;
 
         string signature = string.Join("|", entries.Select(entry => $"{entry.PlayerId}:{entry.Orbs}"));
-        bool isFirstBroadcast = !GetSwarmMatchRuntime(matchingId).Pacing.JamRankingsSignature.TryGetValue(matchingId, out var previous);
+        bool isFirstBroadcast = !matchRuntimes.GetRequired(matchingId).Swarm.Pacing.JamRankingsSignature.TryGetValue(matchingId, out var previous);
         if (!isFirstBroadcast && previous == signature)
             return;
 
-        GetSwarmMatchRuntime(matchingId).Pacing.JamRankingsSignature[matchingId] = signature;
+        matchRuntimes.GetRequired(matchingId).Swarm.Pacing.JamRankingsSignature[matchingId] = signature;
         if (isFirstBroadcast)
             logger.LogInformation(
                 "Orb rankings broadcast armed: MatchingId={MatchingId}, Participants={Count}, Sessions={Sessions}",
@@ -2708,7 +2708,7 @@ internal partial class GameServer
         long mask = 0;
         var orbs = GetSwarmTrailOrbs(matchingId, playerId);
         for (int ordinal = 0; ordinal < orbs.Count && ordinal < 64; ordinal++)
-            if (GetSwarmMatchRuntime(matchingId).TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, orbs[ordinal].ItemUid)))
+            if (matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, orbs[ordinal].ItemUid)))
                 mask |= 1L << ordinal;
         return mask;
     }
@@ -2770,7 +2770,7 @@ internal partial class GameServer
         int spawnItemId = SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)];
 
         int armorSlots = GetSwarmTrailOrbs(matchingId, playerId)
-            .Count(item => !GetSwarmMatchRuntime(matchingId).TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)));
+            .Count(item => !matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)));
         int armorCount = armorSlots <= 0 ? 0 : 1;
         if (armorCount > 0 && armorSlots >= 2)
         {
@@ -2806,7 +2806,7 @@ internal partial class GameServer
         List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
     {
         SwarmGrowthOfferCoordinator growthOffers =
-            GetSwarmMatchRuntime(matchingId).GrowthOfferCoordinator;
+            matchRuntimes.GetRequired(matchingId).Swarm.GrowthOfferCoordinator;
 
         foreach (var session in aliveSessions)
         {
@@ -2994,7 +2994,7 @@ internal partial class GameServer
         int surcharge = 0;
         int orbCountBefore = 0;
         SwarmGrowthPickResolution resolution =
-            GetSwarmMatchRuntime(matchingId).GrowthOfferCoordinator.TryApplyPick(
+            matchRuntimes.GetRequired(matchingId).Swarm.GrowthOfferCoordinator.TryApplyPick(
                 playerId,
                 offerId,
                 offer =>
@@ -3068,7 +3068,7 @@ internal partial class GameServer
                         return false;
                     var targets = GetSwarmTrailOrbs(matchingId, playerId)
                         .Where(item =>
-                            !GetSwarmMatchRuntime(matchingId).TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)))
+                            !matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)))
                         .Take(offer.ArmorCount)
                         .ToList();
                     if (targets.Count == 0)
@@ -3076,7 +3076,7 @@ internal partial class GameServer
                     if (!matchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(playerId, cost, out _))
                         return false;
                     foreach (var target in targets)
-                        GetSwarmMatchRuntime(matchingId).TrailCombat.OrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] =
+                        matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] =
                             SwarmArmorDurabilityBonus;
                     return true;
                 }
@@ -3121,7 +3121,7 @@ internal partial class GameServer
         // 착탄 시점에 보므로 창이 열리기 '전에' 발사된 대기 투사체도 함께 걸린다.
         // 제3자·잔상·폐쇄는 이 경로를 타지 않아 종전대로 들어간다.
         var nowUtc = DateTime.UtcNow;
-        if (GetSwarmMatchRuntime(matchingId).TrailCombat.CutRetaliationWindows.TryGetValue(
+        if (matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.CutRetaliationWindows.TryGetValue(
                 (matchingId, attack.AttackerPlayerId, attack.TargetPlayerId), out var guardWindow) &&
             nowUtc < guardWindow.ExpiresAtUtc)
         {
@@ -3157,7 +3157,7 @@ internal partial class GameServer
 
             // 오염이 0으로 이월돼도 "피격 중" 스탬프는 매 발 — 피격 반응 판단의 입력.
             bot.LastProximityAttackerPlayerId = attack.AttackerPlayerId;
-            GetSwarmMatchRuntime(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
+            matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
             bot.LastDamagedAtUtc = DateTime.UtcNow;
             if (corruption > 0)
             {

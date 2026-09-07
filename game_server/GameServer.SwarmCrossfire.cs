@@ -43,7 +43,7 @@ internal partial class GameServer
     ///     리졸버 필터(상한이면 태양이 표적을 잡지 않음)와 예약 가드가 같은 수를 본다.
     /// </summary>
     private int CountSwarmCrossfireTelegraphing(long matchingId, long ownerId, DateTime nowUtc)
-        => GetSwarmMatchRuntime(matchingId).Crossfire.CountTelegraphing(ownerId, nowUtc);
+        => matchRuntimes.GetRequired(matchingId).Swarm.Crossfire.CountTelegraphing(ownerId, nowUtc);
 
     /// <summary>
     ///     표적 분산 (#232, "한번에 같은 걸 겨냥하지 말 것"): 소유자의 살아 있는
@@ -53,14 +53,14 @@ internal partial class GameServer
     ///     쓸기가 빗나가도 풀어 줄 게 없다 — 모양의 수명이 곧 배제 기간이다.
     /// </summary>
     private HashSet<(long OwnerId, long CombatTargetId)> CollectSwarmCrossfireAnchoredTargets(long matchingId)
-        => GetSwarmMatchRuntime(matchingId).Crossfire.CollectAnchoredTargets();
+        => matchRuntimes.GetRequired(matchingId).Swarm.Crossfire.CollectAnchoredTargets();
 
     /// <summary>
     ///     이번 틱에 예고 상한에 닿은 소유자들 — 리졸버 필터가 이들의 태양 오브 조준을 유예한다.
     ///     틱마다 한 번 만든다 (필터는 공격자×표적 쌍마다 불린다).
     /// </summary>
     private HashSet<long> CollectSwarmCrossfireCappedOwners(long matchingId, DateTime nowUtc)
-        => GetSwarmMatchRuntime(matchingId).Crossfire.CollectCappedOwners(
+        => matchRuntimes.GetRequired(matchingId).Swarm.Crossfire.CollectCappedOwners(
             nowUtc,
             Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER);
 
@@ -82,7 +82,7 @@ internal partial class GameServer
         if (origin == null || anchor == null || !IsSwarmCrossfireWeapon(attack.WeaponItemId))
             return false;
         OrbData.TryGetColorAndTier(attack.WeaponItemId, out _, out int tier);
-        SwarmCrossfireState crossfire = GetSwarmMatchRuntime(matchingId).Crossfire;
+        SwarmCrossfireState crossfire = matchRuntimes.GetRequired(matchingId).Swarm.Crossfire;
 
         if (CountSwarmCrossfireTelegraphing(matchingId, attack.AttackerPlayerId, nowUtc) >=
             Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
@@ -260,7 +260,7 @@ internal partial class GameServer
         if (!SwarmCrossfireEnabled)
             return;
 
-        SwarmCrossfireState crossfire = GetSwarmMatchRuntime(matchingId).Crossfire;
+        SwarmCrossfireState crossfire = matchRuntimes.GetRequired(matchingId).Swarm.Crossfire;
         IReadOnlyList<SwarmArenaCombatTarget>? monsters = null;
         int shapesBefore = crossfire.ShapeCount;
         for (int index = crossfire.ShapeCount - 1; index >= 0; index--)
@@ -583,7 +583,7 @@ internal partial class GameServer
         long matchingId, long ownerId, int weaponItemId, AreaType area, long victimId,
         DateTime nowUtc, List<GameClientSession> aliveSessions)
     {
-        GetSwarmMatchRuntime(matchingId).Crossfire.SetSunBurn(
+        matchRuntimes.GetRequired(matchingId).Swarm.Crossfire.SetSunBurn(
             victimId,
             ownerId,
             weaponItemId,
@@ -603,7 +603,7 @@ internal partial class GameServer
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        GetSwarmMatchRuntime(matchingId).Crossfire.ProcessSunBurns(
+        matchRuntimes.GetRequired(matchingId).Swarm.Crossfire.ProcessSunBurns(
             nowUtc,
             Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS,
             (victimId, burn) =>
@@ -639,7 +639,7 @@ internal partial class GameServer
         float damageScale = 1f,
         bool dotTick = false)
     {
-        SwarmMatchRuntime runtime = GetSwarmMatchRuntime(matchingId);
+        SwarmMatchRuntime runtime = matchRuntimes.GetRequired(matchingId).Swarm;
         // 받는 피해 배율: 고정 충격 50에 1/3을 곱한다. 태양·바람·파도 충격이 전부 이 한 곳을 지난다.
         // damageScale: 파도 소용돌이(#268)는 당김이 본체라 피해를 타격 피드백 수준(1/4)으로 줄인다.
         int shock = Math.Max(1, (int)MathF.Round(
@@ -734,7 +734,7 @@ internal partial class GameServer
     private void TrackSwarmCrossfireConvergence(long matchingId, long targetId, DateTime nowUtc)
     {
         SwarmCrossfireConvergenceObservation observation =
-            GetSwarmMatchRuntime(matchingId).Crossfire.TrackConvergence(targetId, nowUtc);
+            matchRuntimes.GetRequired(matchingId).Swarm.Crossfire.TrackConvergence(targetId, nowUtc);
         if (observation.HitCount >= 2)
         {
             eventLogs.LogSystem(

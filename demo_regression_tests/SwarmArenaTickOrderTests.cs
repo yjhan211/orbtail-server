@@ -378,8 +378,8 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmWindBladeVictimImmuneUntilUtc", windBlade);
         Assert.DoesNotContain("_swarmWindWoundsUntilUtc", crossfire);
         Assert.DoesNotContain("_swarmFamilyUpgradeCounts", orbBoard);
-        Assert.Contains("GetSwarmMatchRuntime(matchingId).WindBlade", windBlade);
-        Assert.Contains("GetSwarmMatchRuntime(matchingId).OrbBoard", orbBoard);
+        Assert.Contains("matchRuntimes.GetRequired(matchingId).Swarm.WindBlade", windBlade);
+        Assert.Contains("matchRuntimes.GetRequired(matchingId).Swarm.OrbBoard", orbBoard);
     }
 
     [Fact]
@@ -396,12 +396,12 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmSunBurns", crossfire);
         Assert.DoesNotContain("_swarmCrossfireConvergeWindows", crossfire);
         Assert.DoesNotContain("ClearSwarmCrossfireState(", crossfire);
-        Assert.Contains("SwarmCrossfireState crossfire = GetSwarmMatchRuntime(matchingId).Crossfire;", crossfire);
+        Assert.Contains("SwarmCrossfireState crossfire = matchRuntimes.GetRequired(matchingId).Swarm.Crossfire;", crossfire);
         Assert.Contains("public SwarmCrossfireState Crossfire { get; }", runtimeStates);
 
         Assert.Contains("matchRuntimes.Get(matchingId)", botDodge);
         Assert.Contains("runtime.Swarm.Crossfire.DodgeSnapshot", botDodge);
-        Assert.DoesNotContain("GetSwarmMatchRuntime(", botDodge);
+        Assert.DoesNotContain("matchRuntimes.GetRequired(matchingId).Swarm", botDodge);
         Assert.DoesNotContain("GetOrCreate(", botDodge);
     }
 

@@ -107,7 +107,7 @@ internal partial class GameServer
     /// <summary>이 계열의 다음 강화 비용. 강화할 오브(T3 미만)가 없으면 0(강화 불가).</summary>
     private int GetSwarmFamilyUpgradeCost(long matchingId, long playerId, OrbColor color) =>
         GetSwarmFamilyUpgradeCost(
-            matchingId, playerId, color, GetSwarmMatchRuntime(matchingId).OrbBoard);
+            matchingId, playerId, color, matchRuntimes.GetRequired(matchingId).Swarm.OrbBoard);
 
     private int GetSwarmFamilyUpgradeCost(
         long matchingId, long playerId, OrbColor color, SwarmOrbBoardState orbBoard)
@@ -135,7 +135,7 @@ internal partial class GameServer
         int ordinal = FindSwarmUpgradeTargetOrdinal(matchingId, playerId, color, out var target);
         if (ordinal < 0 || target == null)
             return false;
-        SwarmOrbBoardState orbBoard = GetSwarmMatchRuntime(matchingId).OrbBoard;
+        SwarmOrbBoardState orbBoard = matchRuntimes.GetRequired(matchingId).Swarm.OrbBoard;
         int cost = GetSwarmFamilyUpgradeCost(matchingId, playerId, color, orbBoard);
         if (cost <= 0)
             return false;
@@ -164,7 +164,7 @@ internal partial class GameServer
     /// <summary>계열 레벨·비용 스냅샷 전송 — 시작·강화·오브 증감 때.</summary>
     private void SendSwarmFamilyLevels(long matchingId, long playerId, GameClientSession? session)
     {
-        SwarmOrbBoardState orbBoard = GetSwarmMatchRuntime(matchingId).OrbBoard;
+        SwarmOrbBoardState orbBoard = matchRuntimes.GetRequired(matchingId).Swarm.OrbBoard;
         session?.SendSwarmFamilyLevels(
             GetSwarmFamilyLevel(matchingId, playerId, OrbColor.Red),
             GetSwarmFamilyLevel(matchingId, playerId, OrbColor.Green),
@@ -219,7 +219,7 @@ internal partial class GameServer
             return false;
 
         // 최다 보유 계열이 전부 T3이면 강화 가능한 다른 계열을 찾는다.
-        SwarmOrbBoardState orbBoard = GetSwarmMatchRuntime(matchingId).OrbBoard;
+        SwarmOrbBoardState orbBoard = matchRuntimes.GetRequired(matchingId).Swarm.OrbBoard;
         if (GetSwarmFamilyUpgradeCost(matchingId, playerId, favorite, orbBoard) <= 0)
         {
             favorite = SwarmFamilyColors.FirstOrDefault(color =>
