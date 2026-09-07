@@ -300,7 +300,7 @@ public partial class GameClientSession : SessionBase
                     throw new InvalidOperationException($"PlayerInfo not found for authenticated player {playerId}.");
                 }
 
-                Match.Roster.UpdatePlayerProfile(playerId, playerInfo.Name, playerInfo.WearItemIdList);
+                // 프로필 존재만 확인한다. 이 매치의 이름·외형은 최초 구성에서 확정한 로스터를 유지한다.
                 matchingSpawnCell = Cell.Clone(composition.SpawnCells[playerId]);
                 LastValidatedPosition = CellToWorldPosition(matchingSpawnCell);
                 _lastValidCell = Cell.Clone(matchingSpawnCell);

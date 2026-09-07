@@ -423,6 +423,21 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.True(inventorySnapshot > statementEnd);
         string initialization = source[statementEnd..inventorySnapshot];
         Assert.Equal(1, initialization.Split("EnsureConnectionActive();").Length - 1);
+        Assert.DoesNotContain("UpdatePlayerProfile(", initialization);
+    }
+
+    [Fact]
+    public void ClientMatchAppearanceUsesRosterAndIgnoresLateLobbyWearForGameCharacter()
+    {
+        string scripts = Path.Combine(FindRepositoryRoot(), "client", "Assets", "Scripts");
+        string packets = File.ReadAllText(Path.Combine(scripts, "Managers", "Map", "MapManager.Packets.cs"));
+        Assert.Contains("objectInfo.MapId == MapId.Camp &&", packets);
+        string map = File.ReadAllText(Path.Combine(scripts, "Managers", "Map", "MapManager.cs"));
+        Assert.Contains("SetPlayer(CreatePlayerInfoFromRoster(GameUser.Instance.ObjectInfo))", map);
+        string inventory = File.ReadAllText(Path.Combine(scripts, "GameUser.Inventory.cs"));
+        Assert.Contains("playerComponent && ObjectInfo?.MapId == MapId.Camp", inventory);
+        string network = File.ReadAllText(Path.Combine(scripts, "GameUser.Network.cs"));
+        Assert.Contains("WearItemIdList = new List<int>(ownProfile.Wear)", network);
     }
 
     private static Packet CreateSuccessPacket(GameClientSession session) =>

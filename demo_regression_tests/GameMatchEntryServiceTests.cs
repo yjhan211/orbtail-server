@@ -9,6 +9,30 @@ namespace demo_regression_tests;
 
 public sealed class GameMatchEntryServiceTests
 {
+    [Fact]
+    public async Task MatchAppearanceUsesLatestProfileAtCompositionAndRemainsFixedForLaterEntries()
+    {
+        var (service, redis, store, runtime) = await Prepare(981011);
+        var profile = new PlayerInfo(1001, false) { Name = "Before", WearItemIdList = [101] };
+        await profile.Save(redis);
+        profile.Name = "AtEntry";
+        profile.WearItemIdList = [202];
+        await profile.Save(redis);
+
+        var composition = await service.LoadCompositionAsync(runtime.MatchingId, Config.SWARM_MATCH_MAP, runtime);
+        profile.Name = "NextMatch";
+        profile.WearItemIdList = [303];
+        await profile.Save(redis);
+        var laterEntry = await service.LoadCompositionAsync(runtime.MatchingId, Config.SWARM_MATCH_MAP, runtime);
+
+        Assert.Same(composition, laterEntry);
+        var human = Assert.Single(laterEntry.PlayerRoster, entry => entry.PlayerId == 1001);
+        Assert.Equal("AtEntry", human.Name);
+        Assert.Equal(new[] { 202 }, human.WearItemIdList);
+        Assert.Equal(new[] { 202 }, runtime.Roster.GetPlayerProfile(1001)!.WearItemIdList);
+        Assert.Equal(new[] { 303 }, (await PlayerInfo.Load(redis, 1001))!.WearItemIdList);
+    }
+
     [Theory]
     [InlineData("game-server-test", true)]
     [InlineData("another-node", false)]
