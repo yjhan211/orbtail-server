@@ -31,13 +31,16 @@ public class AreaClosureManager
             .ToList();
     }
 
-    private readonly Func<long, MatchRuntime?> _getMatch;
+    private readonly long _matchingId;
+    private MatchingClosureState? _state;
+    private readonly object _initializationLock = new();
+    private bool _released;
     private readonly ILogger _logger;
     private readonly Func<DateTime> _utcNow;
 
-    internal AreaClosureManager(Func<long, MatchRuntime?> getMatch, ILogger logger, Func<DateTime>? utcNow = null)
+    internal AreaClosureManager(long matchingId, ILogger logger, Func<DateTime>? utcNow = null)
     {
-        _getMatch = getMatch;
+        _matchingId = matchingId;
         _logger = logger;
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
@@ -46,65 +49,75 @@ public class AreaClosureManager
     /// 매치별 고정 P0 웨이브를 만든다.
     /// </summary>
     public MatchingClosureState InitializeMatching(
-        long matchingId,
         IEnumerable<AreaType>? initiallyOpenAreas = null,
         IReadOnlyList<ClosureWaveDefinition>? wavesOverride = null)
     {
         // 동일 매치의 뒤늦은 접속(재접속 포함)이 폐쇄 시계와 누적 폐쇄 상태를
         // 처음부터 다시 만들면 안 된다. 최초 접속만 상태를 생성한다.
-        var runtime = _getMatch(matchingId)
-            ?? throw new InvalidOperationException($"Match is not available: {matchingId}");
-        if (Volatile.Read(ref runtime.Closure) is { } existingState)
-            return existingState;
-
-        var mapAreas = GameMapData.GetAreas(Config.SWARM_MATCH_MAP)
-            .Select(region => region.AreaType)
-            .ToHashSet();
-        // wavesOverride 미지정(자기장 비활성)은 폐쇄 없음 — 레거시 School 폴백 시절에도
-        // School2 구역과 교집합이 없어 빈 웨이브였다 (#310).
-        var waves = (wavesOverride ?? [])
-            .Select(wave => wave with
-            {
-                Areas = wave.Areas.Where(mapAreas.Contains).ToArray()
-            })
-            .Where(wave => wave.Areas.Count > 0)
-            .ToList();
-
-        var state = new MatchingClosureState
+        lock (_initializationLock)
         {
-            MatchingId = matchingId,
-            Waves = waves,
-            ClosureOrder = waves.SelectMany(wave => wave.Areas).ToList(),
-            ClosedAreas = new HashSet<AreaType>(),
-            NextClosureIndex = 0,
-            GameStartTime = _utcNow()
-        };
+            if (_released)
+                throw new InvalidOperationException($"Match is not available: {_matchingId}");
+            if (Volatile.Read(ref _state) is { } existingState)
+                return existingState;
 
-        if (initiallyOpenAreas != null)
-        {
-            var openAreas = initiallyOpenAreas.ToHashSet();
-            state.PhaseDriven = true;
-            state.ClosedAreas = mapAreas
-                .Where(area => area != AreaType.None && !openAreas.Contains(area))
+            var mapAreas = GameMapData.GetAreas(Config.SWARM_MATCH_MAP)
+                .Select(region => region.AreaType)
                 .ToHashSet();
+            // wavesOverride 미지정(자기장 비활성)은 폐쇄 없음 — 레거시 School 폴백 시절에도
+            // School2 구역과 교집합이 없어 빈 웨이브였다 (#310).
+            var waves = (wavesOverride ?? [])
+                .Select(wave => wave with
+                {
+                    Areas = wave.Areas.Where(mapAreas.Contains).ToArray()
+                })
+                .Where(wave => wave.Areas.Count > 0)
+                .ToList();
+
+            var state = new MatchingClosureState
+            {
+                MatchingId = _matchingId,
+                Waves = waves,
+                ClosureOrder = waves.SelectMany(wave => wave.Areas).ToList(),
+                ClosedAreas = new HashSet<AreaType>(),
+                NextClosureIndex = 0,
+                GameStartTime = _utcNow()
+            };
+
+            if (initiallyOpenAreas != null)
+            {
+                var openAreas = initiallyOpenAreas.ToHashSet();
+                state.PhaseDriven = true;
+                state.ClosedAreas = mapAreas
+                    .Where(area => area != AreaType.None && !openAreas.Contains(area))
+                    .ToHashSet();
+            }
+
+            // 동시에 접속한 플레이어가 있어도 하나의 웨이브 시계만 사용한다.
+            Volatile.Write(ref _state, state);
+
+            _logger.LogInformation(
+                "Swarm closure schedule initialized: MatchingId={MatchingId}, Waves={Waves}",
+                _matchingId,
+                string.Join(" | ", waves.Select(wave =>
+                    $"{wave.ClosureAtSeconds}s:{string.Join(',', wave.Areas)}@{wave.ClosedAreaCorruptionPerSecond}/s")));
+
+            return state;
         }
-
-        // 동시에 접속한 플레이어가 있어도 하나의 웨이브 시계만 사용한다.
-        var actualState = Interlocked.CompareExchange(ref runtime.Closure, state, null) ?? state;
-        if (!ReferenceEquals(actualState, state)) return actualState;
-
-        _logger.LogInformation(
-            "Swarm closure schedule initialized: MatchingId={MatchingId}, Waves={Waves}",
-            matchingId,
-            string.Join(" | ", waves.Select(wave =>
-                $"{wave.ClosureAtSeconds}s:{string.Join(',', wave.Areas)}@{wave.ClosedAreaCorruptionPerSecond}/s")));
-
-        return state;
     }
 
-    public ClosureClientStateSnapshot GetClientStateSnapshot(long matchingId)
+    internal void Release()
     {
-        if (_getMatch(matchingId)?.Closure is not { } state)
+        lock (_initializationLock)
+        {
+            _released = true;
+            Interlocked.Exchange(ref _state, null);
+        }
+    }
+
+    public ClosureClientStateSnapshot GetClientStateSnapshot()
+    {
+        if (Volatile.Read(ref _state) is not { } state)
             return ClosureClientStateSnapshot.Empty;
 
         lock (state.SyncRoot)
@@ -181,9 +194,9 @@ public class AreaClosureManager
     /// <summary>
     /// 현재 시각에 발생한 경고와 폐쇄를 반환한다. 타이머 지연이 있어도 지나간 웨이브를 한 번에 반영한다.
     /// </summary>
-    public ClosureScheduleTick CheckClosureSchedule(long matchingId)
+    public ClosureScheduleTick CheckClosureSchedule()
     {
-        if (_getMatch(matchingId)?.Closure is not { } state) return ClosureScheduleTick.Empty;
+        if (Volatile.Read(ref _state) is not { } state) return ClosureScheduleTick.Empty;
 
         lock (state.SyncRoot)
         {
@@ -205,7 +218,7 @@ public class AreaClosureManager
                 state.NextClosureIndex++;
                 _logger.LogInformation(
                     "Swarm closure wave applied: MatchingId={MatchingId}, CloseAt={CloseAt}s, Areas={Areas}, Rate={Rate}/s",
-                    matchingId, wave.ClosureAtSeconds, string.Join(',', wave.Areas), wave.ClosedAreaCorruptionPerSecond);
+                    _matchingId, wave.ClosureAtSeconds, string.Join(',', wave.Areas), wave.ClosedAreaCorruptionPerSecond);
             }
 
             if (closedAreas.Count > 0)
@@ -241,14 +254,14 @@ public class AreaClosureManager
                 .ToUnixTimeMilliseconds();
             _logger.LogInformation(
                 "Swarm closure warning: MatchingId={MatchingId}, CloseAt={CloseAt}s, Areas={Areas}, Remaining={Remaining}s",
-                matchingId, earliestClosureAtSeconds, string.Join(',', warnAreas), remainingSeconds);
+                _matchingId, earliestClosureAtSeconds, string.Join(',', warnAreas), remainingSeconds);
             return new ClosureScheduleTick(warnAreas, remainingSeconds, closureAtUnixMs, []);
         }
     }
 
-    public int GetClosedAreaCorruptionPerTick(long matchingId, AreaType area, int tickSeconds = ResourceTickSeconds)
+    public int GetClosedAreaCorruptionPerTick(AreaType area, int tickSeconds = ResourceTickSeconds)
     {
-        if (tickSeconds <= 0 || _getMatch(matchingId)?.Closure is not { } state) return 0;
+        if (tickSeconds <= 0 || Volatile.Read(ref _state) is not { } state) return 0;
 
         lock (state.SyncRoot)
         {
@@ -258,18 +271,18 @@ public class AreaClosureManager
         }
     }
 
-    public int GetOvertimeCorruptionPerTick(long matchingId, int tickSeconds = ResourceTickSeconds)
+    public int GetOvertimeCorruptionPerTick(int tickSeconds = ResourceTickSeconds)
     {
-        if (tickSeconds <= 0 || _getMatch(matchingId)?.Closure is not { } state) return 0;
+        if (tickSeconds <= 0 || Volatile.Read(ref _state) is not { } state) return 0;
         lock (state.SyncRoot)
         {
             return GetOvertimeCorruptionPerSecond(state) * tickSeconds;
         }
     }
 
-    public GlobalClosureClientState GetGlobalClosureClientState(long matchingId)
+    public GlobalClosureClientState GetGlobalClosureClientState()
     {
-        _ = matchingId;
+        _ = _matchingId;
         return GlobalClosureClientState.Empty;
     }
 
@@ -298,16 +311,16 @@ public class AreaClosureManager
             : 0;
     }
 
-    public MatchingClosureState? GetMatchingState(long matchingId)
+    public MatchingClosureState? GetMatchingState()
     {
-        return _getMatch(matchingId)?.Closure;
+        return Volatile.Read(ref _state);
     }
 
     public (List<int> closureSequence, List<int> closedAreaIds, int nextAreaType,
         long nextAtUnix, int secondsLeft, bool warningActive)
-        GetClosureSnapshot(long matchingId)
+        GetClosureSnapshot()
     {
-        if (_getMatch(matchingId)?.Closure is not { } state)
+        if (Volatile.Read(ref _state) is not { } state)
             return ([], [], -1, -1, -1, false);
 
         lock (state.SyncRoot)
@@ -331,9 +344,9 @@ public class AreaClosureManager
         }
     }
 
-    public bool IsAreaClosed(long matchingId, AreaType area)
+    public bool IsAreaClosed(AreaType area)
     {
-        if (_getMatch(matchingId)?.Closure is not { } state) return false;
+        if (Volatile.Read(ref _state) is not { } state) return false;
         lock (state.SyncRoot) return state.ClosedAreas.Contains(area);
     }
 

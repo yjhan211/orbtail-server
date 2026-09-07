@@ -25,8 +25,8 @@ public partial class BotPlayerManager
         if (bot.IsEliminated || bot.CurrentArea == AreaType.None)
             return false;
 
-        var inventory = inventoryManager.GetPlayerInventory(matchingId, bot.PlayerId);
-        foreach (var candidate in groundItemManager.GetSnapshot(matchingId, bot.CurrentArea)
+        var inventory = inventoryManager.GetPlayerInventory(bot.PlayerId);
+        foreach (var candidate in groundItemManager.GetSnapshot(bot.CurrentArea)
                      .OrderBy(item => DistanceSquared(bot.Position, item.PositionX, item.PositionY)))
         {
             GroundItemPickupDisposition disposition = GroundItemPickupDisposition.LeaveOnGround;
@@ -39,14 +39,13 @@ public partial class BotPlayerManager
             // 재화류(소환석·잼·부츠·열쇠)는 봇 반응 지연 공통 — 사람 선점권 (#222)
             if ((summonStonePickup || jamPickup || bootsPickup || keyPickup) &&
                 groundItemManager.IsYoungerThan(
-                    matchingId, candidate.GroundItemUid, SummonStoneBotReactionDelay))
+                    candidate.GroundItemUid, SummonStoneBotReactionDelay))
                 continue;
             bool canStore = inventory.GetAllItems().Count < Config.GetOrbCapacity();
 
             long discovererPlayerId = groundItemManager.GetDiscovererPlayerId(
-                matchingId, candidate.GroundItemUid);
+                candidate.GroundItemUid);
             var status = groundItemManager.TryClaim(
-                matchingId,
                 candidate.GroundItemUid,
                 bot.PlayerId,
                 bot.CurrentArea,
@@ -94,7 +93,7 @@ public partial class BotPlayerManager
             }
             else if (summonStonePickup)
             {
-                summonStoneState = summonStoneManager.AddStones(matchingId, bot.PlayerId, 1);
+                summonStoneState = summonStoneManager.AddStones(bot.PlayerId, 1);
             }
             else if (autoUsed)
             {
@@ -109,7 +108,6 @@ public partial class BotPlayerManager
                         matchingId, bot.PlayerId);
             }
             else if (!inventoryManager.TryAddItemWithCapacity(
-                         matchingId,
                          bot.PlayerId,
                          claimedItem.ItemId,
                          Config.GetOrbCapacity(),

@@ -144,14 +144,14 @@ public partial class GameClientSession
                 AdvanceOrbOrbit(_lastValidatedPosition, validatedPosition);
             _lastValidatedPosition = validatedPosition;
             _lastValidatedVelocity = validatedVelocity;
-            _groundItemManager.ReleaseSourcePickupBlocks(MatchingId, PlayerId.Value,
+            _matchRuntimes.GetRequired(MatchingId).GroundItems.ReleaseSourcePickupBlocks(PlayerId.Value,
                 newArea == AreaType.None ? CurrentArea : newArea, validatedPosition.X, validatedPosition.Y);
             _lastValidatedRotation = msg.Rotation;
 
             if (newArea != CurrentArea && newArea != AreaType.None)
             {
                 // 폐쇄 구역 진입 경고 (지속 페널티는 ResourceTick에서 처리)
-                if (_areaClosureManager.IsAreaClosed(MatchingId, newArea))
+                if (_matchRuntimes.GetRequired(MatchingId).Closures.IsAreaClosed(newArea))
                 {
                     Logger.LogInformation("폐쇄 구역 진입: PlayerId={PlayerId}, Area={Area} (체류 시 오염도 지속 증가)",
                         PlayerId, newArea);

@@ -225,11 +225,7 @@ public sealed class SwarmBotMovementPlanTests
 
     private static SwarmBotMovementCoordinator CreateCoordinator() => new(
         new BotPlayerManager(NullLogger.Instance),
-        MatchTestServices.Closures(NullLogger.Instance),
-        MatchTestServices.Inventory(),
-        MatchTestServices.GroundItems(),
-        MatchTestServices.SummonStones(),
-        MatchTestServices.Encounters(),
+        new MatchRuntimeStore(NullLogger.Instance),
         new GameEventLogManager());
 
     private static void AssertInOrder(string source, params string[] markers)

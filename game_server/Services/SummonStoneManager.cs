@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -33,18 +34,21 @@ public sealed class SummonStoneManager
     private static readonly int[] OpeningAttackPool = SummonPool
         .Where(itemId => !OrbData.IsRecoveryOrb(itemId))
         .ToArray();
-    private readonly Func<long, MatchRuntime?> _getMatch;
+    private readonly long _matchingId;
+    private ConcurrentDictionary<long, PlayerSummonState>? _players = new();
 
-    internal SummonStoneManager(Func<long, MatchRuntime?> getMatch) => _getMatch = getMatch;
+    internal SummonStoneManager(long matchingId) => _matchingId = matchingId;
+
+    internal void Release() => Interlocked.Exchange(ref _players, null);
 
     public IReadOnlyList<int> PoolItemIds => SummonPool;
     // #219 M2: 시작 소환석 5 — 첫 개봉(비용 5) 한 번을 보장해 개전 직후 드래프트 맛을 먼저 보여준다.
     // 이후 소환석은 몹 처치로 번다 (빈손이 되면 개봉 무료 규칙이 재기를 보장).
     public static int InitialSummonStoneCount => 5;
 
-    public SummonStoneSnapshot AddStones(long matchingId, long playerId, int amount)
+    public SummonStoneSnapshot AddStones(long playerId, int amount)
     {
-        var state = GetOrCreatePlayerState(matchingId, playerId);
+        var state = GetOrCreatePlayerState(playerId);
         lock (state.SyncRoot)
         {
             if (amount > 0)
@@ -53,19 +57,21 @@ public sealed class SummonStoneManager
         }
     }
 
-    public SummonStoneSnapshot GetSnapshot(long matchingId, long playerId)
+    internal static SummonStoneSnapshot EmptySnapshot => new(0, 0, GetCost(0));
+
+    public SummonStoneSnapshot GetSnapshot(long playerId)
     {
-        if (_getMatch(matchingId)?.SummonStones is not { } players ||
+        if (Volatile.Read(ref _players) is not { } players ||
             !players.TryGetValue(playerId, out var state))
-            return new SummonStoneSnapshot(0, 0, GetCost(0));
+            return EmptySnapshot;
         lock (state.SyncRoot)
             return CreateSnapshot(state);
     }
 
     /// <summary>성장 성공 카운트 N 조회 (#226 C 잔여) — 비용 곡선·HUD 표시의 단일 출처.</summary>
-    public int GetGrowthSuccessCount(long matchingId, long playerId)
+    public int GetGrowthSuccessCount(long playerId)
     {
-        var state = GetOrCreatePlayerState(matchingId, playerId);
+        var state = GetOrCreatePlayerState(playerId);
         lock (state.SyncRoot)
             return state.GrowthSuccessCount;
     }
@@ -75,17 +81,17 @@ public sealed class SummonStoneManager
     ///     하나로 묶으면 오브를 늘릴수록 강화가 비싸지고 강화할수록 소환이 비싸져,
     ///     세 선택이 서로의 값을 밀어 올리는 경제가 된다.
     /// </summary>
-    public int GetGrowthSuccessCount(long matchingId, long playerId, int cardIndex)
+    public int GetGrowthSuccessCount(long playerId, int cardIndex)
     {
-        var state = GetOrCreatePlayerState(matchingId, playerId);
+        var state = GetOrCreatePlayerState(playerId);
         lock (state.SyncRoot)
             return state.GrowthSuccessByCard.GetValueOrDefault(cardIndex);
     }
 
     /// <summary>성장 카드 성공 적용 시 1회 호출 — 전체 N과 카드별 N을 함께 누적한다.</summary>
-    public void RecordGrowthSuccess(long matchingId, long playerId, int cardIndex = -1)
+    public void RecordGrowthSuccess(long playerId, int cardIndex = -1)
     {
-        var state = GetOrCreatePlayerState(matchingId, playerId);
+        var state = GetOrCreatePlayerState(playerId);
         lock (state.SyncRoot)
         {
             state.GrowthSuccessCount++;
@@ -101,12 +107,12 @@ public sealed class SummonStoneManager
     ///     잃은 개수만큼만 내린다 — 한 개만 잃어도 곡선이 0으로 리셋되면 싼 오브를 일부러
     ///     내주고 값을 초기화하는 수가 최적해가 된다.
     /// </summary>
-    public void RefundGrowthSuccess(long matchingId, long playerId, int cardIndex, int count)
+    public void RefundGrowthSuccess(long playerId, int cardIndex, int count)
     {
         if (count <= 0)
             return;
 
-        var state = GetOrCreatePlayerState(matchingId, playerId);
+        var state = GetOrCreatePlayerState(playerId);
         lock (state.SyncRoot)
         {
             int current = state.GrowthSuccessByCard.GetValueOrDefault(cardIndex);
@@ -119,9 +125,9 @@ public sealed class SummonStoneManager
     ///     소환 없이 소환석만 차감 (#226 단계 C): 성장 카드(강화·철갑)와 상자 개봉이 쓴다.
     ///     잔액 부족이면 아무것도 바꾸지 않는다.
     /// </summary>
-    public bool TrySpendStones(long matchingId, long playerId, int amount, out SummonStoneSnapshot snapshot)
+    public bool TrySpendStones(long playerId, int amount, out SummonStoneSnapshot snapshot)
     {
-        var state = GetOrCreatePlayerState(matchingId, playerId);
+        var state = GetOrCreatePlayerState(playerId);
         lock (state.SyncRoot)
         {
             if (amount < 0 || state.StoneCount < amount)
@@ -136,11 +142,11 @@ public sealed class SummonStoneManager
         }
     }
 
-    public SummonOrbAttempt TrySummon(long matchingId, long playerId, Func<int, InGameItemInfo?> grantItem,
+    public SummonOrbAttempt TrySummon(long playerId, Func<int, InGameItemInfo?> grantItem,
         int choiceIndex = 0, int? costOverride = null, int? exactItemId = null)
     {
         ArgumentNullException.ThrowIfNull(grantItem);
-        var state = GetOrCreatePlayerState(matchingId, playerId);
+        var state = GetOrCreatePlayerState(playerId);
         lock (state.SyncRoot)
         {
             // costOverride: 스웜 P0-c의 보유 오브 비례 비용. 기본 곡선(소환 횟수 삼각수)을 대체한다.
@@ -156,7 +162,7 @@ public sealed class SummonStoneManager
             }
             else
             {
-                int[] candidates = ComputeSummonCandidates(matchingId, playerId, state.SuccessfulSummonCount);
+                int[] candidates = ComputeSummonCandidates(_matchingId, playerId, state.SuccessfulSummonCount);
                 itemId = candidates[Math.Clamp(choiceIndex, 0, candidates.Length - 1)];
             }
             InGameItemInfo? item = grantItem(itemId);
@@ -174,11 +180,11 @@ public sealed class SummonStoneManager
     ///     대기 상태·만료 타이머 없이 미리 공개할 수 있고, 재접속에도 같은 값이 복원된다.
     ///     후보 0은 기존 단일 소환 스트림과 동일해 선택 인덱스를 보내지 않는 요청과 호환된다.
     /// </summary>
-    public int[] GetSummonCandidates(long matchingId, long playerId)
+    public int[] GetSummonCandidates(long playerId)
     {
-        var state = GetOrCreatePlayerState(matchingId, playerId);
+        var state = GetOrCreatePlayerState(playerId);
         lock (state.SyncRoot)
-            return ComputeSummonCandidates(matchingId, playerId, state.SuccessfulSummonCount);
+            return ComputeSummonCandidates(_matchingId, playerId, state.SuccessfulSummonCount);
     }
 
     private static int[] ComputeSummonCandidates(long matchingId, long playerId, int successfulSummonCount)
@@ -194,10 +200,10 @@ public sealed class SummonStoneManager
         return [first, second];
     }
 
-    private PlayerSummonState GetOrCreatePlayerState(long matchingId, long playerId)
+    private PlayerSummonState GetOrCreatePlayerState(long playerId)
     {
-        var matchingState = _getMatch(matchingId)?.SummonStones
-            ?? throw new InvalidOperationException($"Match is not available: {matchingId}");
+        var matchingState = Volatile.Read(ref _players)
+            ?? throw new InvalidOperationException($"Match is not available: {_matchingId}");
         return matchingState.GetOrAdd(playerId, _ => new PlayerSummonState());
     }
 

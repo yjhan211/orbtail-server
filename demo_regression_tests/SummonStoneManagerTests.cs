@@ -15,20 +15,20 @@ public class SummonStoneManagerTests
     [Fact]
     public void StartingStones_GrantTwoOpeningSummons()
     {
-        var manager = MatchTestServices.SummonStones();
+        var manager = MatchTestServices.SummonStones(202);
 
-        var granted = manager.AddStones(202, 10, SummonStoneManager.InitialSummonStoneCount);
+        var granted = manager.AddStones(10, SummonStoneManager.InitialSummonStoneCount);
 
         Assert.Equal(5, granted.StoneCount);
 
-        var summon = manager.TrySummon(202, 10,
+        var summon = manager.TrySummon(10,
             itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
 
         Assert.True(summon.Success);
         Assert.Equal(3, summon.State.StoneCount);
         Assert.Equal(3, summon.State.NextCost);
 
-        var secondSummon = manager.TrySummon(202, 10,
+        var secondSummon = manager.TrySummon(10,
             itemId => new InGameItemInfo { ItemUid = 2, ItemId = itemId, Count = 1 });
         Assert.True(secondSummon.Success);
         Assert.Equal(0, secondSummon.State.StoneCount);
@@ -39,12 +39,12 @@ public class SummonStoneManagerTests
     [Fact]
     public void SummonCandidates_AreDeterministicDistinctAndChoiceOneIsGranted()
     {
-        var manager = MatchTestServices.SummonStones();
-        manager.AddStones(214, 10, SummonStoneManager.InitialSummonStoneCount);
+        var manager = MatchTestServices.SummonStones(214);
+        manager.AddStones(10, SummonStoneManager.InitialSummonStoneCount);
 
         // 결정론: 같은 상태에서 몇 번을 조회해도 같은 후보. 재접속 복원의 전제다.
-        var candidates = manager.GetSummonCandidates(214, 10);
-        Assert.Equal(candidates, manager.GetSummonCandidates(214, 10));
+        var candidates = manager.GetSummonCandidates(10);
+        Assert.Equal(candidates, manager.GetSummonCandidates(10));
         Assert.Equal(2, candidates.Length);
 
         // 같은 오브 두 개는 선택이 아니다 — 단, 공급 차단 토글로 풀이 1색이면 성립 불가.
@@ -55,7 +55,7 @@ public class SummonStoneManagerTests
             Assert.NotEqual(candidates[0], candidates[1]);
 
         // 선택 인덱스 1이 실제로 두 번째 후보를 지급한다.
-        var summon = manager.TrySummon(214, 10,
+        var summon = manager.TrySummon(10,
             itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 },
             choiceIndex: 1);
         Assert.True(summon.Success);
@@ -63,16 +63,16 @@ public class SummonStoneManagerTests
 
         // 소환 후에는 다음 소환 횟수 기준의 새 후보가 나온다 (풀 1색이면 같을 수밖에 없다).
         if (enabledPoolSize > 1)
-            Assert.NotEqual(candidates, manager.GetSummonCandidates(214, 10));
+            Assert.NotEqual(candidates, manager.GetSummonCandidates(10));
     }
 
     [Fact]
     public void FirstSummon_Candidates_AreBothAttackOrbs()
     {
-        var manager = MatchTestServices.SummonStones();
+        var manager = MatchTestServices.SummonStones(214);
         for (long playerId = 1; playerId <= 40; playerId++)
         {
-            var candidates = manager.GetSummonCandidates(214, playerId);
+            var candidates = manager.GetSummonCandidates(playerId);
             Assert.All(candidates, itemId => Assert.False(OrbData.IsRecoveryOrb(itemId)));
         }
     }
@@ -83,10 +83,10 @@ public class SummonStoneManagerTests
         for (long matchingId = 1; matchingId <= 16; matchingId++)
             for (long playerId = 1; playerId <= 16; playerId++)
             {
-                var manager = MatchTestServices.SummonStones();
-                manager.AddStones(matchingId, playerId, SummonStoneManager.InitialSummonStoneCount);
+                var manager = MatchTestServices.SummonStones(matchingId);
+                manager.AddStones(playerId, SummonStoneManager.InitialSummonStoneCount);
 
-                var summon = manager.TrySummon(matchingId, playerId,
+                var summon = manager.TrySummon(playerId,
                     itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
 
                 Assert.True(summon.Success);
@@ -97,10 +97,10 @@ public class SummonStoneManagerTests
     [Fact]
     public void MonsterRewards_AccumulateInOneAuthoritativeBalance()
     {
-        var manager = MatchTestServices.SummonStones();
+        var manager = MatchTestServices.SummonStones(202);
 
-        manager.AddStones(202, 10, SummonStoneManager.NormalMonsterReward);
-        var state = manager.AddStones(202, 10, SummonStoneManager.CoreMonsterReward);
+        manager.AddStones(10, SummonStoneManager.NormalMonsterReward);
+        var state = manager.AddStones(10, SummonStoneManager.CoreMonsterReward);
 
         Assert.Equal(4, state.StoneCount);
         Assert.Equal(0, state.SuccessfulSummonCount);
@@ -110,14 +110,14 @@ public class SummonStoneManagerTests
     [Fact]
     public void SuccessfulSummons_IncreaseCostWithoutCap()
     {
-        var manager = MatchTestServices.SummonStones();
-        manager.AddStones(202, 10, 100);
+        var manager = MatchTestServices.SummonStones(202);
+        manager.AddStones(10, 100);
         long nextUid = 1;
         int[] expectedNextCosts = [3, 6, 10, 15, 21, 28];
 
         for (int index = 0; index < expectedNextCosts.Length; index++)
         {
-            var attempt = manager.TrySummon(202, 10,
+            var attempt = manager.TrySummon(10,
                 itemId => new InGameItemInfo { ItemUid = nextUid++, ItemId = itemId, Count = 1 });
 
             Assert.True(attempt.Success);
@@ -125,22 +125,22 @@ public class SummonStoneManagerTests
             Assert.Contains(attempt.ItemId, manager.PoolItemIds);
         }
 
-        Assert.Equal(43, manager.GetSnapshot(202, 10).StoneCount);
+        Assert.Equal(43, manager.GetSnapshot(10).StoneCount);
     }
 
     [Fact]
     public void FullInventory_DoesNotSpendStonesOrAdvanceRandomResult()
     {
-        var blockedManager = MatchTestServices.SummonStones();
-        blockedManager.AddStones(202, 10, 10);
+        var blockedManager = MatchTestServices.SummonStones(202);
+        blockedManager.AddStones(10, 10);
 
-        var blocked = blockedManager.TrySummon(202, 10, _ => null);
-        var retry = blockedManager.TrySummon(202, 10,
+        var blocked = blockedManager.TrySummon(10, _ => null);
+        var retry = blockedManager.TrySummon(10,
             itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
 
-        var controlManager = MatchTestServices.SummonStones();
-        controlManager.AddStones(202, 10, 10);
-        var control = controlManager.TrySummon(202, 10,
+        var controlManager = MatchTestServices.SummonStones(202);
+        controlManager.AddStones(10, 10);
+        var control = controlManager.TrySummon(10,
             itemId => new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 });
 
         Assert.False(blocked.Success);
@@ -155,11 +155,11 @@ public class SummonStoneManagerTests
     [Fact]
     public void InsufficientStones_DoesNotInvokeGrantOrChangeState()
     {
-        var manager = MatchTestServices.SummonStones();
-        manager.AddStones(202, 10, 1);
+        var manager = MatchTestServices.SummonStones(202);
+        manager.AddStones(10, 1);
         bool grantCalled = false;
 
-        var attempt = manager.TrySummon(202, 10, itemId =>
+        var attempt = manager.TrySummon(10, itemId =>
         {
             grantCalled = true;
             return new InGameItemInfo { ItemUid = 1, ItemId = itemId, Count = 1 };
@@ -174,12 +174,12 @@ public class SummonStoneManagerTests
     [Fact]
     public void ConcurrentSummons_CannotSpendTheSameStonesTwice()
     {
-        var manager = MatchTestServices.SummonStones();
-        manager.AddStones(202, 10, 2);
+        var manager = MatchTestServices.SummonStones(202);
+        manager.AddStones(10, 2);
         long nextUid = 0;
         var attempts = new System.Collections.Concurrent.ConcurrentBag<SummonOrbAttempt>();
 
-        Parallel.For(0, 2, _ => attempts.Add(manager.TrySummon(202, 10,
+        Parallel.For(0, 2, _ => attempts.Add(manager.TrySummon(10,
             itemId => new InGameItemInfo
             {
                 ItemUid = Interlocked.Increment(ref nextUid),
@@ -189,7 +189,7 @@ public class SummonStoneManagerTests
 
         Assert.Single(attempts, attempt => attempt.Success);
         Assert.Single(attempts, attempt => attempt.ErrorCode == ErrorCode.INSUFFICIENT_CURRENCY);
-        Assert.Equal(new SummonStoneSnapshot(0, 1, 3), manager.GetSnapshot(202, 10));
+        Assert.Equal(new SummonStoneSnapshot(0, 1, 3), manager.GetSnapshot(10));
     }
 
     [Fact]
@@ -197,25 +197,25 @@ public class SummonStoneManagerTests
     {
         var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         var runtime = store.GetOrCreate(202);
-        var manager = new SummonStoneManager(store.Get);
-        manager.AddStones(202, 10, 9);
-        manager.AddStones(202, 20, 7);
+        var manager = runtime.SummonStones;
+        manager.AddStones(10, 9);
+        manager.AddStones(20, 7);
 
         using (store.Enter(runtime)) { runtime.TryMarkTerminal(); }
 
-        Assert.Equal(new SummonStoneSnapshot(0, 0, 2), manager.GetSnapshot(202, 10));
-        Assert.Equal(new SummonStoneSnapshot(0, 0, 2), manager.GetSnapshot(202, 20));
-        Assert.Throws<InvalidOperationException>(() => manager.AddStones(202, 10, 1));
+        Assert.Equal(new SummonStoneSnapshot(0, 0, 2), manager.GetSnapshot(10));
+        Assert.Equal(new SummonStoneSnapshot(0, 0, 2), manager.GetSnapshot(20));
+        Assert.Throws<InvalidOperationException>(() => manager.AddStones(10, 1));
         Assert.Null(store.Get(202));
     }
 
     [Fact]
     public void ConcurrentRewards_DoNotLoseUpdates()
     {
-        var manager = MatchTestServices.SummonStones();
+        var manager = MatchTestServices.SummonStones(202);
 
-        Parallel.For(0, 100, _ => manager.AddStones(202, 10, 1));
+        Parallel.For(0, 100, _ => manager.AddStones(10, 1));
 
-        Assert.Equal(100, manager.GetSnapshot(202, 10).StoneCount);
+        Assert.Equal(100, manager.GetSnapshot(10).StoneCount);
     }
 }

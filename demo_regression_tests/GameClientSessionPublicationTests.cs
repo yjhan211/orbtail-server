@@ -74,7 +74,7 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         GroundItemInfo item = fixture.SpawnAtSession(session, itemId);
-        int stonesBefore = fixture.SummonStones.GetSnapshot(70001, 101).StoneCount;
+        int stonesBefore = fixture.Store.GetRequired(70001).SummonStones.GetSnapshot(101).StoneCount;
 
         await SendAsync(
             session,
@@ -86,17 +86,17 @@ public sealed class GameClientSessionPublicationTests
             Assert.Equal(expectedPrefix.Value, protocols[0]);
         Assert.Equal(Protocol.G_TO_C_GROUND_ITEM_REMOVED, protocols[^2]);
         Assert.Equal(Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT, protocols[^1]);
-        Assert.Null(fixture.GroundItems.GetItem(70001, item.GroundItemUid));
+        Assert.Null(fixture.Store.GetRequired(70001).GroundItems.GetItem(item.GroundItemUid));
 
         if (itemId == Config.JAM_GROUND_ITEM_ID)
             Assert.Equal(expectedCounter, session.JamCount);
         else if (itemId == Config.KEY_GROUND_ITEM_ID)
             Assert.Equal(expectedCounter, session.FreeSummonCharges);
         else if (itemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
-            Assert.Equal(stonesBefore + 1, fixture.SummonStones.GetSnapshot(70001, 101).StoneCount);
+            Assert.Equal(stonesBefore + 1, fixture.Store.GetRequired(70001).SummonStones.GetSnapshot(101).StoneCount);
         else if (itemId == 107000010)
             Assert.Contains(
-                fixture.Inventories.GetAllItems(70001, 101),
+                fixture.Store.GetRequired(70001).Inventory.GetAllItems(101),
                 inventoryItem => inventoryItem.ItemId == itemId);
     }
 
@@ -138,7 +138,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(
             [Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT],
             fixture.ConnectionFor(session).DeliveredProtocols);
-        Assert.NotNull(fixture.GroundItems.GetItem(70001, item.GroundItemUid));
+        Assert.NotNull(fixture.Store.GetRequired(70001).GroundItems.GetItem(item.GroundItemUid));
         G_TO_C_GROUND_ITEM_PICKUP_RESULT result = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_GROUND_ITEM_PICKUP_RESULT>(
                 Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT);
@@ -308,7 +308,7 @@ public sealed class GameClientSessionPublicationTests
             new C_TO_G_GROUND_ITEM_PICKUP { GroundItemUid = item.GroundItemUid });
 
         Assert.Equal(1, session.JamCount);
-        Assert.Null(fixture.GroundItems.GetItem(70001, item.GroundItemUid));
+        Assert.Null(fixture.Store.GetRequired(70001).GroundItems.GetItem(item.GroundItemUid));
         Assert.Equal(
             [
                 Protocol.G_TO_C_JAM_STATE,
@@ -338,7 +338,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(
             [Protocol.G_TO_C_PLAYER_STATS_UPDATE, Protocol.G_TO_C_ERROR],
             fixture.ConnectionFor(session).DeliveredProtocols);
-        Assert.Null(fixture.GroundItems.GetItem(70001, item.GroundItemUid));
+        Assert.Null(fixture.Store.GetRequired(70001).GroundItems.GetItem(item.GroundItemUid));
         Assert.True(session.CurrentCorruption < 20);
     }
 
@@ -348,8 +348,8 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         const int interactId = 701000001;
         RecordingSession session = fixture.CreateSession(70001, 101, (AreaType)13);
-        int stones = fixture.SummonStones.GetSnapshot(70001, 101).StoneCount;
-        Assert.True(fixture.SummonStones.TrySpendStones(70001, 101, stones, out _));
+        int stones = fixture.Store.GetRequired(70001).SummonStones.GetSnapshot(101).StoneCount;
+        Assert.True(fixture.Store.GetRequired(70001).SummonStones.TrySpendStones(101, stones, out _));
         fixture.SeedPendingFinish(session, interactId);
 
         await SendAsync(
@@ -367,7 +367,7 @@ public sealed class GameClientSessionPublicationTests
         G_TO_C_RNG_COLLECT_RESULT result = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_RNG_COLLECT_RESULT>(Protocol.G_TO_C_RNG_COLLECT_RESULT);
         Assert.Equal(0, result.CooldownSeconds);
-        Assert.Empty(fixture.GroundItems.GetSnapshot(70001, (AreaType)13));
+        Assert.Empty(fixture.Store.GetRequired(70001).GroundItems.GetSnapshot((AreaType)13));
     }
 
     [Fact]
@@ -377,8 +377,8 @@ public sealed class GameClientSessionPublicationTests
         const int interactId = 701000001;
         RecordingSession session = fixture.CreateSession(70001, 101, (AreaType)13);
         fixture.SeedPendingFinish(session, interactId);
-        fixture.SummonStones.AddStones(70001, 101, Config.SWARM_BOX_OPEN_COST);
-        int stonesBefore = fixture.SummonStones.GetSnapshot(70001, 101).StoneCount;
+        fixture.Store.GetRequired(70001).SummonStones.AddStones(101, Config.SWARM_BOX_OPEN_COST);
+        int stonesBefore = fixture.Store.GetRequired(70001).SummonStones.GetSnapshot(101).StoneCount;
 
         await SendAsync(
             session,
@@ -396,8 +396,8 @@ public sealed class GameClientSessionPublicationTests
             fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.Equal(
             stonesBefore - Config.SWARM_BOX_OPEN_COST,
-            fixture.SummonStones.GetSnapshot(70001, 101).StoneCount);
-        GroundItemInfo spawned = Assert.Single(fixture.GroundItems.GetSnapshot(70001, (AreaType)13));
+            fixture.Store.GetRequired(70001).SummonStones.GetSnapshot(101).StoneCount);
+        GroundItemInfo spawned = Assert.Single(fixture.Store.GetRequired(70001).GroundItems.GetSnapshot((AreaType)13));
         Assert.Contains(
             spawned.ItemId,
             new[] { Config.HEART_GROUND_ITEM_ID, Config.BOOTS_GROUND_ITEM_ID });
@@ -572,33 +572,19 @@ public sealed class GameClientSessionPublicationTests
                 NullLogger.Instance,
                 cleanupSteps: [new MatchCleanupStep("cleanup", _ => CleanupTimeline?.Enqueue("cleanup"))]);
 
-            Inventories = new InGameInventoryManager(Store.Get);
-            GroundItems = new GroundItemManager(Store.Get);
-            SummonStones = new SummonStoneManager(Store.Get);
-            Roster = new MatchRosterManager(Store.Get, NullLogger.Instance);
-            Closures = new AreaClosureManager(Store.Get, NullLogger.Instance);
-            Encounters = new EncounterRevealManager(Store.Get);
-            Inventories.Initialize();
             GameClientSession.SwarmHeartPickupCallback = null;
         }
 
         public MatchRuntimeStore Store { get; }
         public ConcurrentQueue<string>? CleanupTimeline { get; set; }
         public InteractableStateManager Interactables { get; } = new();
-        public InGameInventoryManager Inventories { get; }
-        public GroundItemManager GroundItems { get; }
-        public SummonStoneManager SummonStones { get; }
-        public MatchRosterManager Roster { get; }
-        public AreaClosureManager Closures { get; }
         public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
         public GameEventLogManager EventLog { get; } = new();
         public MatchSummaryFileStore Summaries => new(_summaryDirectory);
-        public EncounterRevealManager Encounters { get; }
 
         public RecordingSession CreateSession(long matchingId, long playerId, AreaType area)
         {
             Store.GetOrCreate(matchingId);
-            GroundItems.InitializeMatching(matchingId);
             Store.Get(matchingId)!.Doors.Initialize();
 
             var connection = new RecordingTcpConnection();
@@ -607,15 +593,9 @@ public sealed class GameClientSessionPublicationTests
                 connection,
                 _sessions,
                 Interactables,
-                Inventories,
-                GroundItems,
-                SummonStones,
-                Roster,
-                Closures,
                 Bots,
                 EventLog,
                 Summaries,
-                Encounters,
                 Store);
             SetIdentity(session, matchingId, playerId, area);
             _sessions.Add(session);
@@ -637,8 +617,7 @@ public sealed class GameClientSessionPublicationTests
 
         public GroundItemInfo SpawnAtSession(RecordingSession session, int itemId)
         {
-            GroundItemInfo item = GroundItems.SpawnItems(
-                session.MatchingId,
+            GroundItemInfo item = Store.GetRequired(session.MatchingId).GroundItems.SpawnItems(
                 session.CurrentArea,
                 0f,
                 0f,
@@ -713,15 +692,9 @@ public sealed class GameClientSessionPublicationTests
             TcpConnection connection,
             List<GameClientSession> sessions,
             InteractableStateManager interactables,
-            InGameInventoryManager inventories,
-            GroundItemManager groundItems,
-            SummonStoneManager summonStones,
-            MatchRosterManager roster,
-            AreaClosureManager closures,
             BotPlayerManager bots,
             GameEventLogManager eventLog,
             MatchSummaryFileStore summaries,
-            EncounterRevealManager encounters,
             MatchRuntimeStore matchRuntimes)
             : base(
                 connection,
@@ -734,15 +707,9 @@ public sealed class GameClientSessionPublicationTests
                     .Where(session => session.MatchingId == matchingId)
                     .ToList(),
                 interactables,
-                inventories,
-                groundItems,
-                summonStones,
-                roster,
-                closures,
                 bots,
                 eventLog,
                 summaries,
-                encounters,
                 matchRuntimes,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },

@@ -91,7 +91,7 @@ public partial class GameServer
         float best = float.MaxValue;
         // 폐쇄 문 규칙은 사람과 같다: 밖에서 폐쇄 구역으로 들어가는 문은 못 따고,
         // 내가 폐쇄 구역 안이면 어느 문이든 따서 나간다.
-        bool insideClosed = Closures.IsAreaClosed(matchingId, bot.CurrentArea);
+        bool insideClosed = MatchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(bot.CurrentArea);
         foreach (var door in GameDoorData.GetByAreaType(bot.CurrentArea))
         {
             if (!GameInteractableData.IsGaugeGatedDoor(door.DoorId)) continue;
@@ -103,8 +103,8 @@ public partial class GameServer
                 !GameInteractableData.IsGaugeDoorOperableFrom(door.DoorId, (int)bot.CurrentArea))
                 continue;
             if (!insideClosed &&
-                (Closures.IsAreaClosed(matchingId, door.AreaType) ||
-                 Closures.IsAreaClosed(matchingId, door.AreaTypeB)))
+                (MatchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(door.AreaType) ||
+                 MatchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(door.AreaTypeB)))
                 continue;
 
             // door_info의 좌표는 셀 단위다 — 봇 위치(월드)와 직접 비교하면 절대 닿지 않는다.
@@ -163,7 +163,7 @@ public partial class GameServer
 
             int exploreCost = GetSwarmBotExploreCost(matchingId, bot.PlayerId);
             // 열쇠 (#222 M4): 충전이 있으면 자금 없이도 개봉을 연다.
-            if (SummonStones.GetSnapshot(matchingId, bot.PlayerId).StoneCount < exploreCost &&
+            if (MatchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(bot.PlayerId).StoneCount < exploreCost &&
                 bot.FreeSummonCharges <= 0)
                 continue;
 
@@ -196,8 +196,8 @@ public partial class GameServer
         }
 
         // #226 단계 C: 상자 = 소모품 공급처 (사람과 같은 규칙) — 오브 성장은 성장 카드가 맡는다.
-        if (!SummonStones.TrySpendStones(
-                matchingId, bot.PlayerId, Config.SWARM_BOX_OPEN_COST, out _))
+        if (!MatchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(
+                bot.PlayerId, Config.SWARM_BOX_OPEN_COST, out _))
         {
             RngCollectCooldownStore.ClearCooldown(matchingId, spotId);
             return;
@@ -206,8 +206,8 @@ public partial class GameServer
         int dropItemId = Random.Shared.Next(100) < 60
             ? Config.HEART_GROUND_ITEM_ID
             : Config.BOOTS_GROUND_ITEM_ID;
-        var dropped = GroundItems.SpawnItems(
-            matchingId, bot.CurrentArea, bot.Position.X, bot.Position.Y, [dropItemId],
+        var dropped = MatchRuntimes.GetRequired(matchingId).GroundItems.SpawnItems(
+            bot.CurrentArea, bot.Position.X, bot.Position.Y, [dropItemId],
             mapId: Config.SWARM_MATCH_MAP,
             layout: GroundItemSpawnLayout.EliminationScatter);
         if (dropped.Count > 0)
@@ -432,7 +432,7 @@ public partial class GameServer
         }
 
         // 0.3) 폐쇄 조기 철수 (#226 F): 경고 구역에서는 꼬리 길이에 비례해 일찍 나간다.
-        var closureSnapshot = Closures.GetClientStateSnapshot(matchingId);
+        var closureSnapshot = MatchRuntimes.GetRequired(matchingId).Closures.GetClientStateSnapshot();
         if (closureSnapshot.WarningAreas.Contains(bot.CurrentArea))
         {
             int trailOrbCount = CountSwarmSquadOrbs(matchingId, botPlayerId);
@@ -650,7 +650,7 @@ public partial class GameServer
         //    폐쇄 필터는 스팟 탐색 안에서 처리한다 — 최근접이 폐쇄라고 순례가 멈추면 안 된다.
         if (TryFindNearestAvailableExploreSpot(
                 matchingId, area: null, bot.Position, out var spot, out _) &&
-            SummonStones.GetSnapshot(matchingId, botPlayerId).StoneCount >=
+            MatchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(botPlayerId).StoneCount >=
             // 비용은 봇 자신의 궤도 크기 기준 — spot.Id를 넘기던 오배선(빈 인벤=0비용) 수리
             GetSwarmBotExploreCost(matchingId, botPlayerId))
         {
@@ -696,7 +696,7 @@ public partial class GameServer
         //      지역 공급 (#226 단계 B): 몹이 남은 가장 가까운 공급 무리로 향한다 — 몹은
         //      찾아가는 공유 자원이고, 미니맵 스냅샷으로 사람에게도 같은 정보가 보인다.
         //      빈손 봇은 개봉이 무료라 1)에서 이미 스팟 순례로 빠진다.
-        if (SummonStones.GetSnapshot(matchingId, botPlayerId).StoneCount <
+        if (MatchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(botPlayerId).StoneCount <
             GetSwarmBotExploreCost(matchingId, botPlayerId) &&
             hasSquadOrbs)
         {

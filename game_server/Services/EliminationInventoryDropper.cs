@@ -25,13 +25,12 @@ public static class EliminationInventoryDropper
         MapId? mapId = null)
     {
         mapId ??= Config.SWARM_MATCH_MAP;
-        var removedItems = inventoryManager.TakeAllItems(matchingId, playerId);
+        var removedItems = inventoryManager.TakeAllItems(playerId);
         var droppedItemIds = removedItems
             .SelectMany(item => Enumerable.Repeat(item.ItemId, item.Count))
             .Where(GroundItemPickupPolicy.ShouldDropOnElimination)
             .ToList();
         var spawnedItems = groundItemManager.SpawnItems(
-            matchingId,
             area,
             originX,
             originY,
@@ -70,7 +69,7 @@ public static class EliminationInventoryDropper
         if (drop.RemovedItems.Count == 0)
             return null;
 
-        var emptyBoard = inventoryManager.GetPlayerInventory(matchingId, botPlayerId);
+        var emptyBoard = inventoryManager.GetPlayerInventory(botPlayerId);
         gameEventLogManager.LogOrbBoardTransition(
             matchingId, botPlayerId, emptyBoard.GetAllItems(), 0, bot.CurrentArea.ToString(), "elimination_drop",
             isBot: true);

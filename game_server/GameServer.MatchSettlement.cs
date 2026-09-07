@@ -47,15 +47,13 @@ public partial class GameServer
             return;
         }
 
-        int overtimeDelta = Closures.GetOvertimeCorruptionPerTick(
-            matchingId,
+        int overtimeDelta = MatchRuntimes.GetRequired(matchingId).Closures.GetOvertimeCorruptionPerTick(
             ResourceTickIntervalSeconds);
         var targets = new List<EnvironmentalTarget>(aliveCount);
 
         foreach (var session in humans)
         {
-            int closureDelta = Closures.GetClosedAreaCorruptionPerTick(
-                matchingId,
+            int closureDelta = MatchRuntimes.GetRequired(matchingId).Closures.GetClosedAreaCorruptionPerTick(
                 session.CurrentArea,
                 ResourceTickIntervalSeconds);
             if (session.LastValidatedPosition != null)
@@ -71,8 +69,7 @@ public partial class GameServer
 
         foreach (var bot in bots)
         {
-            int closureDelta = Closures.GetClosedAreaCorruptionPerTick(
-                matchingId,
+            int closureDelta = MatchRuntimes.GetRequired(matchingId).Closures.GetClosedAreaCorruptionPerTick(
                 bot.CurrentArea,
                 ResourceTickIntervalSeconds);
             closureDelta += GetSwarmFieldCorruptionPerTick(matchingId, bot.Position);
@@ -174,7 +171,7 @@ public partial class GameServer
             rank--;
         }
 
-        (bool isGameOver, long? winnerId) = RosterManager.CheckGameOver(matchingId);
+        (bool isGameOver, long? winnerId) = MatchRuntimes.GetRequired(matchingId).Roster.CheckGameOver();
         var resultHost = GetSessionsByMatch(matchingId)
             .FirstOrDefault(session => !session.IsGameEnded);
         if (isGameOver && winnerId.HasValue && resultHost != null)

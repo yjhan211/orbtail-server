@@ -29,7 +29,7 @@ public partial class GameClientSession
     // 개봉 비용 = SB 크기 비례: 현재 궤도 오브 슬롯 수 기준. 장소별 재개봉 가산은 퇴역.
     private int GetSwarmExploreCost() =>
         Config.GetSwarmExploreCost(
-            _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId!.Value)
+            _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId!.Value)
                 .GetAllItems().Count);
 
     private Task HandleRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
@@ -124,7 +124,7 @@ public partial class GameClientSession
 
         // 소환석 부족이면 게이지를 시작하지 않는다 — 헛 채널 방지.
         // #226 단계 C: 상자 = 소모품 공급처(고정 저가) — 궤도 포화 게이트는 오브를 안 주므로 퇴역.
-        if (_summonStoneManager.GetSnapshot(MatchingId, PlayerId!.Value).StoneCount <
+        if (_matchRuntimes.GetRequired(MatchingId).SummonStones.GetSnapshot(PlayerId!.Value).StoneCount <
             Config.SWARM_BOX_OPEN_COST)
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.INSUFFICIENT_CURRENCY, 0);
@@ -176,8 +176,8 @@ public partial class GameClientSession
 
         // #226 단계 C: 상자 = 소모품 공급처 — 개봉하면 하트·부츠가 바닥에 터져 나온다.
         // 오브 성장은 소환석 임계의 성장 카드 3택이 맡는다 (상자 개방 트리거·자동 소환 퇴역).
-        if (!_summonStoneManager.TrySpendStones(
-                MatchingId, PlayerId.Value, Config.SWARM_BOX_OPEN_COST, out _))
+        if (!_matchRuntimes.GetRequired(MatchingId).SummonStones.TrySpendStones(
+                PlayerId.Value, Config.SWARM_BOX_OPEN_COST, out _))
         {
             // 석 부족 — 쿨다운을 풀어 나중에 다시 열 수 있게 한다.
             RngCollectCooldownStore.ClearCooldown(MatchingId, msg.InteractId);
@@ -195,8 +195,8 @@ public partial class GameClientSession
         var dropAnchor = LastValidatedPosition;
         if (dropAnchor != null)
         {
-            var spawned = _groundItemManager.SpawnItems(
-                MatchingId, CurrentArea, dropAnchor.X, dropAnchor.Y, [dropItemId],
+            var spawned = _matchRuntimes.GetRequired(MatchingId).GroundItems.SpawnItems(
+                CurrentArea, dropAnchor.X, dropAnchor.Y, [dropItemId],
                 mapId: Config.SWARM_MATCH_MAP,
                 layout: GroundItemSpawnLayout.EliminationScatter);
             BroadcastGroundItemsSpawned(CurrentArea, spawned);
@@ -231,10 +231,10 @@ public partial class GameClientSession
         // 폐쇄된 구역의 문은 밖에서는 열리지 않는다 — 폐쇄 잠금이 게이지보다 위다.
         // 단 내가 그 폐쇄 구역 안에 있으면 연다 (2026-08-18 유저 결정: 갇히면 틱 오염을 받으며 문을 따고 나간다).
         var door = GameDoorData.Get(doorId);
-        if (door != null && _areaClosureManager != null &&
-            (_areaClosureManager.IsAreaClosed(MatchingId, door.AreaType) ||
-             _areaClosureManager.IsAreaClosed(MatchingId, door.AreaTypeB)) &&
-            !_areaClosureManager.IsAreaClosed(MatchingId, CurrentArea))
+        if (door != null &&
+            (_matchRuntimes.GetRequired(MatchingId).Closures.IsAreaClosed(door.AreaType) ||
+             _matchRuntimes.GetRequired(MatchingId).Closures.IsAreaClosed(door.AreaTypeB)) &&
+            !_matchRuntimes.GetRequired(MatchingId).Closures.IsAreaClosed(CurrentArea))
         {
             SendRngCollectAck(interactId, ErrorCode.INVALID_GAME_STATE, 0);
             return Task.CompletedTask;

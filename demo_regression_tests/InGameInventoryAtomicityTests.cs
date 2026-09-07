@@ -14,29 +14,27 @@ public sealed class InGameInventoryAtomicityTests
     public async Task ConcurrentQuantityOneConsumptionCannotOverdraw()
     {
         var manager = MatchTestServices.Inventory();
-        manager.Initialize();
-        manager.AddItem(matchingId: 10, playerId: 100, itemId: 401000005, count: 1);
+        manager.AddItem(playerId: 100, itemId: 401000005, count: 1);
 
         var attempts = await Task.WhenAll(
-            Task.Run(() => manager.TryRemoveOneByItemId(10, 100, 401000005, out _)),
-            Task.Run(() => manager.TryRemoveOneByItemId(10, 100, 401000005, out _)));
+            Task.Run(() => manager.TryRemoveOneByItemId(100, 401000005, out _)),
+            Task.Run(() => manager.TryRemoveOneByItemId(100, 401000005, out _)));
 
         Assert.Single(attempts, success => success);
         Assert.Single(attempts, success => !success);
-        Assert.Equal(0, manager.GetPlayerInventory(10, 100).GetItemCount(401000005));
+        Assert.Equal(0, manager.GetPlayerInventory(100).GetItemCount(401000005));
     }
 
     [Fact]
     public void QuantityOneConsumptionLeavesRemainingCount()
     {
         var manager = MatchTestServices.Inventory();
-        manager.Initialize();
-        manager.AddItem(matchingId: 10, playerId: 100, itemId: 401000005, count: 2);
+        manager.AddItem(playerId: 100, itemId: 401000005, count: 2);
 
-        Assert.True(manager.TryRemoveOneByItemId(10, 100, 401000005, out var updated));
+        Assert.True(manager.TryRemoveOneByItemId(100, 401000005, out var updated));
         Assert.NotNull(updated);
         Assert.Equal(1, updated.Count);
-        Assert.Equal(1, manager.GetPlayerInventory(10, 100).GetItemCount(401000005));
+        Assert.Equal(1, manager.GetPlayerInventory(100).GetItemCount(401000005));
     }
 
     [Fact]
@@ -44,15 +42,14 @@ public sealed class InGameInventoryAtomicityTests
     {
         InitializeBattleCombatData();
         var manager = MatchTestServices.Inventory();
-        manager.Initialize();
-        var item = manager.AddItem(matchingId: 10, playerId: 100, itemId: 107000003);
+        var item = manager.AddItem(playerId: 100, itemId: 107000003);
 
-        Assert.True(manager.TryEquipBattleItem(10, 100, item.ItemUid, out var equipped));
+        Assert.True(manager.TryEquipBattleItem(100, item.ItemUid, out var equipped));
         Assert.Equal(item.ItemUid, equipped!.ItemUid);
-        Assert.Equal(107000003, manager.GetEquippedBattleItem(10, 100)!.ItemId);
+        Assert.Equal(107000003, manager.GetEquippedBattleItem(100)!.ItemId);
 
-        Assert.True(manager.TryRemoveItem(10, 100, item.ItemUid, 1, out _));
-        Assert.Null(manager.GetEquippedBattleItem(10, 100));
+        Assert.True(manager.TryRemoveItem(100, item.ItemUid, 1, out _));
+        Assert.Null(manager.GetEquippedBattleItem(100));
     }
 
     [Fact]
@@ -60,15 +57,14 @@ public sealed class InGameInventoryAtomicityTests
     {
         InitializeBattleCombatData();
         var manager = MatchTestServices.Inventory();
-        manager.Initialize();
-        var firstItem = manager.AddItem(matchingId: 10, playerId: 100, itemId: 107000003);
-        manager.AddItem(matchingId: 10, playerId: 100, itemId: 107000003);
+        var firstItem = manager.AddItem(playerId: 100, itemId: 107000003);
+        manager.AddItem(playerId: 100, itemId: 107000003);
 
-        Assert.True(manager.TryEquipBattleItem(10, 100, firstItem.ItemUid, out _));
-        Assert.True(manager.TryCombineItems(10, 100, [107000003, 107000003], 107000004, out var changedItems));
+        Assert.True(manager.TryEquipBattleItem(100, firstItem.ItemUid, out _));
+        Assert.True(manager.TryCombineItems(100, [107000003, 107000003], 107000004, out var changedItems));
 
         var outputItem = Assert.Single(changedItems, item => item.ItemId == 107000004);
-        var equippedItem = manager.GetEquippedBattleItem(10, 100);
+        var equippedItem = manager.GetEquippedBattleItem(100);
         Assert.NotNull(equippedItem);
         Assert.Equal(outputItem.ItemUid, equippedItem!.ItemUid);
     }
@@ -78,24 +74,21 @@ public sealed class InGameInventoryAtomicityTests
     {
         InitializeBattleCombatData();
         var manager = MatchTestServices.Inventory();
-        manager.Initialize();
-        var item = manager.AddItem(matchingId: 10, playerId: 100, itemId: 401000005);
+        var item = manager.AddItem(playerId: 100, itemId: 401000005);
 
-        Assert.False(manager.TryEquipBattleItem(10, 100, item.ItemUid, out _));
-        Assert.Null(manager.GetEquippedBattleItem(10, 100));
+        Assert.False(manager.TryEquipBattleItem(100, item.ItemUid, out _));
+        Assert.Null(manager.GetEquippedBattleItem(100));
     }
 
     [Fact]
     public void RandomRecipeWithMissingMaterialDoesNotDraw()
     {
         var manager = MatchTestServices.Inventory();
-        manager.Initialize();
-        manager.AddItem(matchingId: 10, playerId: 100, itemId: Bandage);
+        manager.AddItem(playerId: 100, itemId: Bandage);
         BattleItemRecipe recipe = LoadBattleItemRecipe(BandageRecipeId);
         var random = new CountingRandom();
 
         bool combined = manager.TryCombineRandomRecipe(
-            matchingId: 10,
             playerId: 100,
             [recipe],
             random,
@@ -106,7 +99,7 @@ public sealed class InGameInventoryAtomicityTests
         Assert.Null(selectedRecipe);
         Assert.Empty(changedItems);
         Assert.Equal(0, random.DrawCount);
-        Assert.Equal(1, manager.GetPlayerInventory(10, 100).GetItemCount(Bandage));
+        Assert.Equal(1, manager.GetPlayerInventory(100).GetItemCount(Bandage));
     }
 
     [Fact]
@@ -114,12 +107,10 @@ public sealed class InGameInventoryAtomicityTests
     {
         InitializeBattleCombatData();
         var manager = MatchTestServices.Inventory();
-        manager.Initialize();
-        manager.AddItem(matchingId: 10, playerId: 100, itemId: SunOrbT1);
+        manager.AddItem(playerId: 100, itemId: SunOrbT1);
         var random = new CountingRandom();
 
         bool combined = manager.TryCombineOrbs(
-            matchingId: 10,
             playerId: 100,
             SunOrbT1,
             SunOrbT1,
@@ -131,7 +122,7 @@ public sealed class InGameInventoryAtomicityTests
         Assert.Equal(0, outputItemId);
         Assert.Empty(changedItems);
         Assert.Equal(0, random.DrawCount);
-        Assert.Equal(1, manager.GetPlayerInventory(10, 100).GetItemCount(SunOrbT1));
+        Assert.Equal(1, manager.GetPlayerInventory(100).GetItemCount(SunOrbT1));
     }
 
     private static void InitializeBattleCombatData()

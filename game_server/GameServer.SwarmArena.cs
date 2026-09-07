@@ -208,7 +208,7 @@ public partial class GameServer
             session.ResetJam();
             session.FreeSummonCharges = 0;
             GrantSwarmStartingOrbs(matchingId, session.PlayerId.Value, session);
-            SummonStones.AddStones(matchingId, session.PlayerId.Value, startingStones);
+            MatchRuntimes.GetRequired(matchingId).SummonStones.AddStones(session.PlayerId.Value, startingStones);
             session.SendSummonStoneState();
         }
 
@@ -218,7 +218,7 @@ public partial class GameServer
                 continue;
 
             GrantSwarmStartingOrbs(matchingId, bot.PlayerId, session: null);
-            SummonStones.AddStones(matchingId, bot.PlayerId, startingStones);
+            MatchRuntimes.GetRequired(matchingId).SummonStones.AddStones(bot.PlayerId, startingStones);
         }
 
         DateTime nowUtc = DateTime.UtcNow;
@@ -642,7 +642,7 @@ public partial class GameServer
     {
         if (!SwarmFieldEnabled)
             return double.MaxValue;
-        var closureState = Closures.GetMatchingState(matchingId);
+        var closureState = MatchRuntimes.GetRequired(matchingId).Closures.GetMatchingState();
         if (closureState == null)
             return double.MaxValue;
 
@@ -655,7 +655,7 @@ public partial class GameServer
 
     /// <summary>구역 전체가 현재 경계 밖(폐쇄·자기장)인가 — 봇 대피·스팟 필터의 기준.</summary>
     private bool IsSwarmAreaOutside(long matchingId, AreaType area) =>
-        Closures.IsAreaClosed(matchingId, area) ||
+        MatchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(area) ||
         SwarmPressureField.GetAreaMinDistance(area) > GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
 
     /// <summary>자기장 오염 (리소스 틱당). 경계 안이면 0, 밖이면 기본 + 초과 거리 비례.</summary>
@@ -788,8 +788,7 @@ public partial class GameServer
         ImmutableArray<int> allRecipients = CaptureSwarmClosureRecipientOrdinals(
             sessions,
             static _ => true);
-        var closureState = Closures.InitializeMatching(
-            matchingId,
+        var closureState = MatchRuntimes.GetRequired(matchingId).Closures.InitializeMatching(
             wavesOverride: SwarmFieldEnabled ? GetSwarmFieldWaves() : null);
         if (SwarmFieldEnabled && GetSwarmMatchRuntime(matchingId).Pacing.FieldStateAnnounced.Add(matchingId))
         {
@@ -798,7 +797,7 @@ public partial class GameServer
                 allRecipients));
         }
 
-        var closureTick = Closures.CheckClosureSchedule(matchingId);
+        var closureTick = MatchRuntimes.GetRequired(matchingId).Closures.CheckClosureSchedule();
         foreach (var area in closureTick.WarningAreas)
         {
             outbound.Add(new SwarmClosureWarningOutbound(
@@ -1152,7 +1151,7 @@ public partial class GameServer
 
     private int CountSwarmSquadOrbs(long matchingId, long playerId)
     {
-        return InventoryManager.GetPlayerInventory(matchingId, playerId)
+        return MatchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
             .GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
             .Sum(item => item.Count);
@@ -1165,7 +1164,7 @@ public partial class GameServer
     private float GetSwarmSquadPower(long matchingId, long playerId)
     {
         float power = 0f;
-        foreach (var item in InventoryManager.GetPlayerInventory(matchingId, playerId).GetAllItems())
+        foreach (var item in MatchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetAllItems())
         {
             if (item.Count <= 0) continue;
             int tier = GetSquadOrbTier(item.ItemId);
@@ -1354,7 +1353,7 @@ public partial class GameServer
     /// </summary>
     private List<int> GetSwarmOrbTiersInOrder(long matchingId, long playerId)
     {
-        return InventoryManager.GetPlayerInventory(matchingId, playerId)
+        return MatchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
             .GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
             .OrderBy(item => item.ItemUid)
@@ -1441,7 +1440,7 @@ public partial class GameServer
                 List<long> Uids, List<int> ItemIds)>();
         foreach (var owner in participants)
         {
-            var orbs = InventoryManager.GetPlayerInventory(matchingId, owner.PlayerId)
+            var orbs = MatchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(owner.PlayerId)
                 .GetAllItems()
                 .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
                 .OrderBy(item => item.ItemUid)
@@ -1496,7 +1495,7 @@ public partial class GameServer
     /// <summary>열 순서대로의 아이템 ID — 절단 후 재조회용.</summary>
     private List<int> GetSwarmOrbItemIdsInOrder(long matchingId, long playerId)
     {
-        return InventoryManager.GetPlayerInventory(matchingId, playerId)
+        return MatchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
             .GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
             .OrderBy(item => item.ItemUid)
@@ -1761,8 +1760,8 @@ public partial class GameServer
 
         // 잃은 만큼 소환 비용을 되돌린다 (#229): 오브 수가 곧 소환 카운터라, 잘려 나간 몫이
         // 값에 남으면 절단당한 쪽이 재건 비용까지 떠안아 격차가 한 방향으로만 벌어진다.
-        SummonStones.RefundGrowthSuccess(
-            matchingId, bestOwnerId, SwarmGrowthCardMultiply, destroyedItems.Count);
+        MatchRuntimes.GetRequired(matchingId).SummonStones.RefundGrowthSuccess(
+            bestOwnerId, SwarmGrowthCardMultiply, destroyedItems.Count);
 
         _gameEventLogManager.LogSwarmTrailCut(
             matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal, destroyedItems.Count,
@@ -2109,8 +2108,8 @@ public partial class GameServer
         for (int index = CountSwarmSquadOrbs(matchingId, dummy.PlayerId);
              index < SwarmDummyOrbCount;
              index++)
-            InventoryManager.TryAddItemWithCapacity(
-                matchingId, dummy.PlayerId, SwarmCutDummyOrbItemId, Config.SWARM_ORB_CAPACITY, out _);
+            MatchRuntimes.GetRequired(matchingId).Inventory.TryAddItemWithCapacity(
+                dummy.PlayerId, SwarmCutDummyOrbItemId, Config.SWARM_ORB_CAPACITY, out _);
 
         // 교차사격 샌드박스는 철갑을 안 씌운다 — 절단이 꺼져 있어 내구는 의미가 없다.
         if (SwarmCrossfireSandbox)
@@ -2210,7 +2209,7 @@ public partial class GameServer
         GetSwarmMatchRuntime(matchingId).TrailCombat.TrailLastTickPositions[(matchingId, dummy.PlayerId)] =
             new Vector3f(dummy.Position.X, dummy.Position.Y, 0f);
         // 시작 지급의 무작위 색(파도 포함)을 비우고 단색 태양 열로 재구성한다 (#227).
-        InventoryManager.TakeAllItems(matchingId, dummy.PlayerId);
+        MatchRuntimes.GetRequired(matchingId).Inventory.TakeAllItems(dummy.PlayerId);
         GetSwarmMatchRuntime(matchingId).Pacing.CutDummyRefillAtUtc.Remove((matchingId, dummy.PlayerId));
         RefillSwarmCutDummyOrbs(matchingId, dummy);
 
@@ -2309,7 +2308,7 @@ public partial class GameServer
     private List<InGameItemInfo> DestroySwarmOrbsFromOrdinal(long matchingId, long playerId, int fromOrdinal)
     {
         var destroyed = new List<InGameItemInfo>();
-        var inventory = InventoryManager.GetPlayerInventory(matchingId, playerId);
+        var inventory = MatchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
         var orbs = inventory.GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
             .OrderBy(item => item.ItemUid)
@@ -2385,11 +2384,11 @@ public partial class GameServer
     {
         position = null!;
         float bestDistanceSquared = float.MaxValue;
-        foreach (var item in GroundItems.GetSnapshot(matchingId, bot.CurrentArea))
+        foreach (var item in MatchRuntimes.GetRequired(matchingId).GroundItems.GetSnapshot(bot.CurrentArea))
         {
             if (item.ItemId != Config.SUMMON_STONE_GROUND_ITEM_ID ||
-                GroundItems.IsYoungerThan(
-                    matchingId, item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
+                MatchRuntimes.GetRequired(matchingId).GroundItems.IsYoungerThan(
+                    item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
                 continue;
 
             float dx = item.PositionX - bot.Position.X;
@@ -2519,7 +2518,7 @@ public partial class GameServer
     /// <summary>앞줄 오브 = 최저 티어·선입(ItemUid) — 피해·표시가 같은 기준을 읽는다.</summary>
     private InGameItemInfo? FindSwarmFrontOrb(long matchingId, long playerId)
     {
-        return InventoryManager.GetPlayerInventory(matchingId, playerId)
+        return MatchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
             .GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
             .OrderBy(item => GetSquadOrbTier(item.ItemId))
@@ -2650,7 +2649,7 @@ public partial class GameServer
     /// </summary>
     private (int OrbCount, int TierSum) GetSwarmOrbScore(long matchingId, long playerId)
     {
-        var inventory = InventoryManager.GetPlayerInventory(matchingId, playerId);
+        var inventory = MatchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
         int orbCount = 0;
         int tierSum = 0;
         foreach (var item in inventory.GetAllItems())
@@ -2731,7 +2730,7 @@ public partial class GameServer
 
     /// <summary>열 순서의 오브 목록 — 강화·철갑의 "가장 앞" 판정과 트레일 순번의 단일 출처.</summary>
     private List<InGameItemInfo> GetSwarmTrailOrbs(long matchingId, long playerId) =>
-        InventoryManager.GetPlayerInventory(matchingId, playerId)
+        MatchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
             .GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
             // uid 오름차순 = 열 순번·링 마스크·카드 대상의 단일 정렬 (통일)
@@ -2768,13 +2767,13 @@ public partial class GameServer
     {
         var (orbCount, _) = GetSwarmOrbScore(matchingId, playerId);
         int CardCost(int cardIndex) => Config.GetSwarmGrowthCardCost(
-            SummonStones.GetGrowthSuccessCount(matchingId, playerId, cardIndex), orbCount);
+            MatchRuntimes.GetRequired(matchingId).SummonStones.GetGrowthSuccessCount(playerId, cardIndex), orbCount);
 
         int summon = CardCost(SwarmGrowthCardMultiply);
         int attack = CardCost(SwarmGrowthCardEnhance);
         int defense = CardCost(SwarmGrowthCardArmor);
         int cheapest = Math.Min(summon, Math.Min(attack, defense));
-        int growthCount = SummonStones.GetGrowthSuccessCount(matchingId, playerId);
+        int growthCount = MatchRuntimes.GetRequired(matchingId).SummonStones.GetGrowthSuccessCount(playerId);
         return (
             Config.GetSwarmGrowthBaseCost(growthCount),
             Config.GetSwarmGrowthScoreSurcharge(orbCount),
@@ -2874,7 +2873,7 @@ public partial class GameServer
             SwarmGrowthFundingAction funding = growthOffers.EvaluateFunding(
                 playerId,
                 nowUtc,
-                SummonStones.GetSnapshot(matchingId, playerId).StoneCount,
+                MatchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(playerId).StoneCount,
                 finalCost);
             if (funding != SwarmGrowthFundingAction.ReadyToCreate)
             {
@@ -2908,7 +2907,7 @@ public partial class GameServer
                 continue;
             var (baseCost, surcharge, finalCost, orbCount, costSummon, costAttack, costDefense) =
                 GetSwarmGrowthCostBreakdown(matchingId, bot.PlayerId);
-            if (SummonStones.GetSnapshot(matchingId, bot.PlayerId).StoneCount < finalCost)
+            if (MatchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(bot.PlayerId).StoneCount < finalCost)
                 continue;
 
             var offer = GenerateSwarmGrowthOffer(
@@ -2932,10 +2931,10 @@ public partial class GameServer
             bool applied = ApplySwarmGrowthCard(matchingId, bot.PlayerId, cardIndex, offer, session: null);
             if (applied)
             {
-                int successCountBefore = SummonStones.GetGrowthSuccessCount(matchingId, bot.PlayerId);
+                int successCountBefore = MatchRuntimes.GetRequired(matchingId).SummonStones.GetGrowthSuccessCount(bot.PlayerId);
                 // 카드별 카운터는 봇도 함께 민다 (#229) — 안 그러면 봇만 값이 안 올라
                 // 사람보다 싸게 무한 성장하고, 봇 매치로 곡선을 검증할 수도 없다.
-                SummonStones.RecordGrowthSuccess(matchingId, bot.PlayerId, cardIndex);
+                MatchRuntimes.GetRequired(matchingId).SummonStones.RecordGrowthSuccess(bot.PlayerId, cardIndex);
                 _gameEventLogManager.LogSwarmGrowthSelected(
                     matchingId, bot.PlayerId, isBot: true,
                     GetSwarmGrowthCardRole(cardIndex), GetSwarmGrowthCardGrade(cardIndex, offer),
@@ -3054,8 +3053,8 @@ public partial class GameServer
         if (success)
         {
             // N 누적 (#226 C 잔여): 성공한 선택만 — 실패(재검증 탈락)는 비용 곡선을 밀지 않는다.
-            int successCountBefore = SummonStones.GetGrowthSuccessCount(matchingId, playerId);
-            SummonStones.RecordGrowthSuccess(matchingId, playerId, cardIndex);
+            int successCountBefore = MatchRuntimes.GetRequired(matchingId).SummonStones.GetGrowthSuccessCount(playerId);
+            MatchRuntimes.GetRequired(matchingId).SummonStones.RecordGrowthSuccess(playerId, cardIndex);
             _gameEventLogManager.LogSwarmGrowthSelected(
                 matchingId, playerId, isBot: false,
                 GetSwarmGrowthCardRole(cardIndex), GetSwarmGrowthCardGrade(cardIndex, offer),
@@ -3079,7 +3078,7 @@ public partial class GameServer
     {
         // 차감은 고른 카드의 값으로 (#229): 세 카드가 각자 자기 곡선을 탄다.
         int cost = offer.GetCost(cardIndex);
-        var inventory = InventoryManager.GetPlayerInventory(matchingId, playerId);
+        var inventory = MatchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
         switch (cardIndex)
         {
             case SwarmGrowthCardMultiply:
@@ -3087,7 +3086,7 @@ public partial class GameServer
                     // 6/6 포화 (#232 4단계): 소환 불가 — 기존 5회 탭 파괴로 빈칸을 만든 뒤 다시 소환한다.
                     if (inventory.GetAllItems().Count >= Config.SWARM_ORB_CAPACITY)
                         return false;
-                    if (!SummonStones.TrySpendStones(matchingId, playerId, cost, out _))
+                    if (!MatchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(playerId, cost, out _))
                         return false;
                     // 소환은 T1 그대로: 티어는 오브마다 따로 산다 — 공유 레벨 상속은 퇴역.
                     if (session != null)
@@ -3112,7 +3111,7 @@ public partial class GameServer
                         .ToList();
                     if (targets.Count == 0)
                         return false;
-                    if (!SummonStones.TrySpendStones(matchingId, playerId, cost, out _))
+                    if (!MatchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(playerId, cost, out _))
                         return false;
                     foreach (var target in targets)
                         GetSwarmMatchRuntime(matchingId).TrailCombat.OrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] =
@@ -3136,7 +3135,7 @@ public partial class GameServer
 
     private bool HasAnySquadOrb(long matchingId, long playerId)
     {
-        return InventoryManager.GetPlayerInventory(matchingId, playerId)
+        return MatchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
             .GetAllItems()
             .Any(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0);
     }
@@ -3331,7 +3330,7 @@ public partial class GameServer
             // 사거리 판정을 이미 필터가 하므로, 후보에 올라온 사람은 곧 사정권 안이다.
             TargetPriority = 0
         };
-        var inventory = InventoryManager.GetPlayerInventory(matchingId, spatial.PlayerId);
+        var inventory = MatchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(spatial.PlayerId);
         var inventoryItems = inventory.GetAllItems().Where(item => item.Count > 0).ToList();
         if (inventoryItems.Count == 0)
         {
@@ -3571,8 +3570,7 @@ public partial class GameServer
             .Concat(Enumerable.Repeat(Config.BOOTS_GROUND_ITEM_ID, Math.Max(0, bootsReward)))
             .Concat(Enumerable.Repeat(Config.KEY_GROUND_ITEM_ID, Math.Max(0, keyReward)))
             .ToArray();
-        var spawned = GroundItems.SpawnItems(
-            matchingId,
+        var spawned = MatchRuntimes.GetRequired(matchingId).GroundItems.SpawnItems(
             defeatedWave.AreaType,
             defeatedWave.PositionX,
             defeatedWave.PositionY,

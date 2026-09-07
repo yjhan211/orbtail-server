@@ -29,29 +29,30 @@ public sealed class GroundItemManager
     // 소환석 자석 흡수 (#219): 접촉이 아니라 근처를 지나가면 딸려온다 — SB 코인 흡수 문법.
     public const float SummonStonePickupRadius = 3.5f;
 
-    private readonly Func<long, MatchRuntime?> _getMatch;
+    private readonly long _matchingId;
+    private MatchingGroundItemState? _state;
     private readonly TimeProvider _timeProvider;
 
-    internal GroundItemManager(Func<long, MatchRuntime?> getMatch, TimeProvider? timeProvider = null)
+    internal GroundItemManager(long matchingId, TimeProvider? timeProvider = null)
     {
-        _getMatch = getMatch;
+        _matchingId = matchingId;
+        _state = new MatchingGroundItemState(matchingId);
         _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
-    public void InitializeMatching(long matchingId) =>
-        GetRequiredState(matchingId);
+    internal void Release() => Interlocked.Exchange(ref _state, null);
 
-    public List<GroundItemInfo> SpawnItems(long matchingId, AreaType area, float originX, float originY,
+    public List<GroundItemInfo> SpawnItems(AreaType area, float originX, float originY,
         IReadOnlyList<int> itemIds, long sourcePlayerId = 0, MapId? mapId = null,
         TimeSpan? lifetime = null,
         long discovererPlayerId = 0, TimeSpan? discovererPickupWindow = null,
         GroundItemSpawnLayout layout = GroundItemSpawnLayout.Default)
     {
         mapId ??= Config.SWARM_MATCH_MAP;
-        if (matchingId <= 0 || area == AreaType.None || itemIds.Count == 0)
+        if (_matchingId <= 0 || area == AreaType.None || itemIds.Count == 0)
             return new List<GroundItemInfo>();
 
-        var state = GetRequiredState(matchingId);
+        var state = GetRequiredState();
         lock (state.SyncRoot)
         {
             var spawned = new List<GroundItemInfo>(itemIds.Count);
@@ -91,9 +92,9 @@ public sealed class GroundItemManager
         }
     }
 
-    public List<GroundItemInfo> GetSnapshot(long matchingId, AreaType area)
+    public List<GroundItemInfo> GetSnapshot(AreaType area)
     {
-        if (_getMatch(matchingId)?.GroundItems is not { } state)
+        if (Volatile.Read(ref _state) is not { } state)
             return new List<GroundItemInfo>();
 
         lock (state.SyncRoot)
@@ -108,34 +109,34 @@ public sealed class GroundItemManager
     ///     스폰 후 경과가 age 미만인지 — 봇 줍기 반응 지연(#222)용. 봇은 이 창이 지나야
     ///     소환석에 반응한다. 사람의 눈·조작 시간을 흉내 내 낙수 선점권을 사람에게 준다.
     /// </summary>
-    public bool IsYoungerThan(long matchingId, long groundItemUid, TimeSpan age)
+    public bool IsYoungerThan(long groundItemUid, TimeSpan age)
     {
-        if (_getMatch(matchingId)?.GroundItems is not { } state) return false;
+        if (Volatile.Read(ref _state) is not { } state) return false;
         lock (state.SyncRoot)
             return state.SpawnedAtUtc.TryGetValue(groundItemUid, out var spawnedAt) &&
                    _timeProvider.GetUtcNow() - spawnedAt < age;
     }
 
-    public GroundItemInfo? GetItem(long matchingId, long groundItemUid)
+    public GroundItemInfo? GetItem(long groundItemUid)
     {
-        if (_getMatch(matchingId)?.GroundItems is not { } state)
+        if (Volatile.Read(ref _state) is not { } state)
             return null;
         lock (state.SyncRoot)
             return state.Items.TryGetValue(groundItemUid, out var item) ? Clone(item) : null;
     }
-    public long GetDiscovererPlayerId(long matchingId, long groundItemUid)
+    public long GetDiscovererPlayerId(long groundItemUid)
     {
-        if (_getMatch(matchingId)?.GroundItems is not { } state) return 0;
+        if (Volatile.Read(ref _state) is not { } state) return 0;
         lock (state.SyncRoot)
             return state.DiscovererPlayerIds.GetValueOrDefault(groundItemUid);
     }
 
-    public GroundItemClaimStatus TryClaim(long matchingId, long groundItemUid, long claimingPlayerId, AreaType playerArea,
+    public GroundItemClaimStatus TryClaim(long groundItemUid, long claimingPlayerId, AreaType playerArea,
         float playerX, float playerY, Func<GroundItemInfo, bool> accept,
         out GroundItemInfo? claimedItem)
     {
         claimedItem = null;
-        if (_getMatch(matchingId)?.GroundItems is not { } state)
+        if (Volatile.Read(ref _state) is not { } state)
             return GroundItemClaimStatus.NotFound;
 
         lock (state.SyncRoot)
@@ -179,9 +180,9 @@ public sealed class GroundItemManager
         }
     }
 
-    public void ReleaseSourcePickupBlocks(long matchingId, long playerId, AreaType area, float playerX, float playerY)
+    public void ReleaseSourcePickupBlocks(long playerId, AreaType area, float playerX, float playerY)
     {
-        if (_getMatch(matchingId)?.GroundItems is not { } state) return;
+        if (Volatile.Read(ref _state) is not { } state) return;
         const float releaseRadius = 1.4f;
         lock (state.SyncRoot)
         {
@@ -196,9 +197,9 @@ public sealed class GroundItemManager
         }
     }
 
-    public void ReleaseClaimReservationsForPlayer(long matchingId, long playerId)
+    public void ReleaseClaimReservationsForPlayer(long playerId)
     {
-        if (playerId == 0 || _getMatch(matchingId)?.GroundItems is not { } state) return;
+        if (playerId == 0 || Volatile.Read(ref _state) is not { } state) return;
 
         lock (state.SyncRoot)
         {
@@ -211,9 +212,9 @@ public sealed class GroundItemManager
         }
     }
 
-    private MatchingGroundItemState GetRequiredState(long matchingId) =>
-        _getMatch(matchingId)?.GroundItems
-        ?? throw new InvalidOperationException($"Match is not available: {matchingId}");
+    private MatchingGroundItemState GetRequiredState() =>
+        Volatile.Read(ref _state)
+        ?? throw new InvalidOperationException($"Match is not available: {_matchingId}");
 
     private static (float X, float Y) ResolveLandingPosition(MapId mapId, AreaType area, float originX,
         float originY, int itemIndex, int itemCount, GroundItemSpawnLayout layout)

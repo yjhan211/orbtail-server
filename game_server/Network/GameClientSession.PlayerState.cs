@@ -292,7 +292,7 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return;
 
-        var inventory = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
+        var inventory = _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId.Value);
         var items = inventory.GetAllItems();
         using var packet = PacketMaker.G_TO_C_INGAME_INVENTORY_LIST(items);
         TrySend(packet);
@@ -335,7 +335,7 @@ public partial class GameClientSession
         }
 
         // 아이템 정보 먼저 조회 (제거 전에 ItemId 확인 필요)
-        var inventory = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
+        var inventory = _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId.Value);
         var itemInfo = inventory.GetItem(msg.ItemUid);
         if (itemInfo == null)
         {
@@ -400,7 +400,7 @@ public partial class GameClientSession
         }
         else
         {
-            bool success = _inGameInventoryManager.TryRemoveItem(MatchingId, PlayerId.Value, msg.ItemUid,
+            bool success = _matchRuntimes.GetRequired(MatchingId).Inventory.TryRemoveItem(PlayerId.Value, msg.ItemUid,
                 msg.Count, out var updatedItem);
 
             if (success && updatedItem != null)

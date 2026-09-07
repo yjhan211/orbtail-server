@@ -32,11 +32,8 @@ public partial class GameClientSession : SessionBase
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly List<int> _activeBuffIds = new();
     private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
-    private readonly InGameInventoryManager _inGameInventoryManager;
     private readonly InteractableStateManager _interactableStateManager;
-    private readonly GroundItemManager _groundItemManager;
     private readonly Func<string?, Task<GameHandoffContext?>> _consumeGameHandoffTicket;
-    private readonly SummonStoneManager _summonStoneManager;
     private readonly Action<GameClientSession> _onLeaveCallback;
     /// <summary>매치별 잠금·수명 색인 (#331) — 핸들러 직렬화·터미널 게이트·종료 정리의 단일 원천.</summary>
     private readonly MatchRuntimeStore _matchRuntimes;
@@ -52,12 +49,9 @@ public partial class GameClientSession : SessionBase
     private readonly Action<long, long> _releaseMatchingReservation;
     private readonly Action<GameClientSession> _recordEntryFailure;
     private readonly Func<bool> _isServerStopping;
-    private readonly MatchRosterManager _matchRosterManager;
-    private readonly AreaClosureManager _areaClosureManager;
     private readonly BotPlayerManager _botPlayerManager;
     private readonly GameEventLogManager _gameEventLogManager;
     private readonly MatchSummaryFileStore _matchSummaryFileStore;
-    private readonly EncounterRevealManager _encounterRevealManager;
     /// <summary>성장 카드 픽 — 매치 잠금 안에서 부르는 GameServer 인스턴스 위임.</summary>
     private readonly Action<GameClientSession, long, int, int> _handleSwarmGrowthPick;
     /// <summary>6칸 빌드 결정 — 매치 잠금 안에서 부르는 GameServer 인스턴스 위임.</summary>
@@ -144,15 +138,9 @@ public partial class GameClientSession : SessionBase
         Func<long, GameClientSession, Action?> registerSessionCallback,
         Func<MapId, long, List<GameClientSession>> getSessionsByInstance,
         InteractableStateManager interactableStateManager,
-        InGameInventoryManager inGameInventoryManager,
-        GroundItemManager groundItemManager,
-        SummonStoneManager summonStoneManager,
-        MatchRosterManager matchRosterManager,
-        AreaClosureManager areaClosureManager,
         BotPlayerManager botPlayerManager,
         GameEventLogManager gameEventLogManager,
         MatchSummaryFileStore matchSummaryFileStore,
-        EncounterRevealManager encounterRevealManager,
         MatchRuntimeStore matchRuntimes,
         Action<GameClientSession, long, int, int> handleSwarmGrowthPick,
         Action<GameClientSession, long, int, long, long> handleSwarmOrbDecision,
@@ -172,15 +160,9 @@ public partial class GameClientSession : SessionBase
         _registerSessionCallback = registerSessionCallback;
         _getSessionsByInstance = getSessionsByInstance;
         _interactableStateManager = interactableStateManager;
-        _inGameInventoryManager = inGameInventoryManager;
-        _groundItemManager = groundItemManager;
-        _summonStoneManager = summonStoneManager;
-        _matchRosterManager = matchRosterManager;
-        _areaClosureManager = areaClosureManager;
         _botPlayerManager = botPlayerManager;
         _gameEventLogManager = gameEventLogManager;
         _matchSummaryFileStore = matchSummaryFileStore;
-        _encounterRevealManager = encounterRevealManager;
         _matchRuntimes = matchRuntimes;
         _devOptions = devOptions;
         _movementPacketQueue = new MovementPacketQueue(() => Connection.IsAcceptingMessages, movementTimeProvider);

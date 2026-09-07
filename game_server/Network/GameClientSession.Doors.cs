@@ -42,10 +42,9 @@ public partial class GameClientSession
             // 잠근 문을 상호작용 한 번으로 되열 수 있었다 — 잠금이 사실상 없는 것과 같았다.
             // 양쪽 중 한쪽이라도 닫혔으면 거절한다(간선이므로 한쪽만 닫혀도 통행이 막혀야 한다).
             // 단 내가 그 폐쇄 구역 안에 있으면 예외 (2026-08-18): 갇힌 사람은 문을 따고 나갈 수 있다.
-            if (_areaClosureManager != null &&
-                (_areaClosureManager.IsAreaClosed(MatchingId, doorInfo.AreaType) ||
-                 _areaClosureManager.IsAreaClosed(MatchingId, doorInfo.AreaTypeB)) &&
-                !_areaClosureManager.IsAreaClosed(MatchingId, CurrentArea))
+            if ((_matchRuntimes.GetRequired(MatchingId).Closures.IsAreaClosed(doorInfo.AreaType) ||
+                 _matchRuntimes.GetRequired(MatchingId).Closures.IsAreaClosed(doorInfo.AreaTypeB)) &&
+                !_matchRuntimes.GetRequired(MatchingId).Closures.IsAreaClosed(CurrentArea))
             {
                 using var closedAreaPacket =
                     PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.INVALID_GAME_STATE);
@@ -77,7 +76,7 @@ public partial class GameClientSession
             // 열쇠 보유 확인 (required_item_id가 0이면 열쇠 불필요)
             if (doorInfo.RequiredItemId > 0)
             {
-                var playerInventory = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
+                var playerInventory = _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId.Value);
                 bool hasKey = playerInventory.GetItemCount(doorInfo.RequiredItemId) > 0;
 
                 if (!hasKey)

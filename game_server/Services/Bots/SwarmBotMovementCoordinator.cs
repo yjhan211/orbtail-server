@@ -12,11 +12,7 @@ namespace game_server.services;
 /// </summary>
 internal sealed class SwarmBotMovementCoordinator(
     BotPlayerManager botPlayerManager,
-    AreaClosureManager areaClosureManager,
-    InGameInventoryManager inGameInventoryManager,
-    GroundItemManager groundItemManager,
-    SummonStoneManager summonStoneManager,
-    EncounterRevealManager encounterRevealManager,
+    MatchRuntimeStore matchRuntimes,
     GameEventLogManager gameEventLogManager)
 {
     public SwarmBotMovementPlan PrepareTick(
@@ -27,6 +23,7 @@ internal sealed class SwarmBotMovementCoordinator(
         ArgumentNullException.ThrowIfNull(observers);
         ArgumentNullException.ThrowIfNull(directiveProvider);
 
+        var match = matchRuntimes.GetRequired(matchingId);
         long snapshotStartedAt = Stopwatch.GetTimestamp();
         var humanAreas = observers.ToDictionary(observer => observer.PlayerId, observer => observer.Area);
         double snapshotElapsedMilliseconds =
@@ -34,13 +31,13 @@ internal sealed class SwarmBotMovementCoordinator(
         IReadOnlyCollection<MonsterCombatTarget> pveTargets = [];
         BotPlayerManager.BotWalkingTickResult movementResult = botPlayerManager.ProcessBotMovementTick(
             matchingId,
-            areaClosureManager,
+            match.Closures,
             humanAreas,
-            inGameInventoryManager,
-            groundItemManager,
+            match.Inventory,
+            match.GroundItems,
             pveTargets,
             directiveProvider,
-            summonStoneManager);
+            match.SummonStones);
 
         long preparationStartedAt = Stopwatch.GetTimestamp();
         SwarmBotMovementPlan plan = PrepareResult(
@@ -239,8 +236,7 @@ internal sealed class SwarmBotMovementCoordinator(
         if (candidates.Count == 0)
             return null;
 
-        CorridorEncounterDecision decision = encounterRevealManager.ResolveCorridorEncounter(
-            matchingId,
+        CorridorEncounterDecision decision = matchRuntimes.GetRequired(matchingId).Encounters.ResolveCorridorEncounter(
             movement.BotPlayerId,
             new Vector3f(movement.Position.X, movement.Position.Y, movement.Position.Z),
             candidates,
@@ -323,7 +319,7 @@ internal sealed class SwarmBotMovementCoordinator(
             return;
         }
 
-        var boardAfterPickup = inGameInventoryManager.GetPlayerInventory(matchingId, pickup.BotPlayerId);
+        var boardAfterPickup = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(pickup.BotPlayerId);
         gameEventLogManager.LogOrbBoardTransition(
             matchingId,
             pickup.BotPlayerId,

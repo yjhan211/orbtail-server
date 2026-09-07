@@ -43,34 +43,14 @@ public partial class GameServer(
     private static readonly TimeSpan ShutdownStageTimeout = TimeSpan.FromSeconds(5);
 
     private readonly GameSessionRegistry _sessionRegistry = new();
-    private MatchRosterManager? _matchRosterManager;
-    internal MatchRosterManager RosterManager => LazyInitializer.EnsureInitialized(ref _matchRosterManager,
-        () => new MatchRosterManager(MatchRuntimes.Get, logger))!;
     private readonly SwarmMatchRuntimeStore _swarmMatchRuntimes = new();
     private MatchRuntimeStore? _matchRuntimes;
     private MatchEntryFailureHandler? _entryFailureHandler;
-
-    private InGameInventoryManager? _inGameInventoryManager;
-    internal InGameInventoryManager InventoryManager => LazyInitializer.EnsureInitialized(ref _inGameInventoryManager,
-        () => new InGameInventoryManager(MatchRuntimes.Get))!;
     private readonly InteractableStateManager _interactableStateManager = new();
-    private GroundItemManager? _groundItemManager;
-    internal GroundItemManager GroundItems => LazyInitializer.EnsureInitialized(ref _groundItemManager,
-        () => new GroundItemManager(MatchRuntimes.Get))!;
-    private SummonStoneManager? _summonStoneManager;
-    internal SummonStoneManager SummonStones => LazyInitializer.EnsureInitialized(ref _summonStoneManager,
-        () => new SummonStoneManager(MatchRuntimes.Get))!;
-    private EncounterRevealManager? _encounterRevealManager;
-    internal EncounterRevealManager Encounters => LazyInitializer.EnsureInitialized(ref _encounterRevealManager,
-        () => new EncounterRevealManager(MatchRuntimes.Get))!;
-    private AreaClosureManager? _areaClosureManager;
-    internal AreaClosureManager Closures => LazyInitializer.EnsureInitialized(ref _areaClosureManager,
-        () => new AreaClosureManager(MatchRuntimes.Get, logger))!;
 
     // 봇과 몬스터
     private readonly BotPlayerManager _botPlayerManager = new(logger);
-    private readonly SwarmMonsterDirector _swarmMonsterDirector =
-        new(monsterSpawnEnabled: devOptions.MonsterSpawnEnabled);
+    private readonly SwarmMonsterDirector _swarmMonsterDirector = new(monsterSpawnEnabled: devOptions.MonsterSpawnEnabled);
     private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
 
     // 매치 기록
@@ -261,15 +241,11 @@ public partial class GameServer(
     {
         _swarmBotMovementCoordinator = new SwarmBotMovementCoordinator(
             _botPlayerManager,
-            Closures,
-            InventoryManager,
-            GroundItems,
-            SummonStones,
-            Encounters,
+            MatchRuntimes,
             _gameEventLogManager);
         // M4: 폐쇄 구역은 스웜 신규 스폰을 멈춘다 (잔존 몹은 ReclaimStrandedMonsters가 걷어냄)
         _swarmMonsterDirector.IsAreaClosedResolver =
-            (matchingId, area) => Closures.IsAreaClosed(matchingId, area);
+            (matchingId, area) => MatchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(area);
         // 인트로 산개 (2026-08-16): 카운트다운 동안에는 전 방을 공급 대상으로 열어
         // 운동장에서 열 방향으로 실제 몹이 뻗어 나가게 한다.
         _swarmMonsterDirector.IsGameplayActiveResolver = MatchStartGate.IsGameplayActive;
@@ -299,7 +275,6 @@ public partial class GameServer(
                 MatchRuntimes.Get(matchingId)?.Doors.IsDoorOpen(doorId) == true);
             // 투사체 회피 반사 (#232 §9): 봇 걸음마다 교차사격 스냅샷을 물어 비켜설 방향을 받는다.
             _botPlayerManager.SetSwarmDodgeResolver(ResolveSwarmBotDodgeDirection);
-            InventoryManager.Initialize(log);
         }
         catch (Exception ex)
         {
@@ -366,10 +341,11 @@ public partial class GameServer(
     {
         try
         {
+            var match = MatchRuntimes.GetRequired(matchingId);
             var eliminatedBot = _botPlayerManager.GetBot(matchingId, botId);
             AreaType eliminatedArea = eliminatedBot?.CurrentArea ?? AreaType.None;
-            int finalOrbTier = InventoryManager.GetEquippedBattleItemTier(matchingId, botId);
-            var transition = RosterManager.TryEliminatePlayer(matchingId, botId, reason,
+            int finalOrbTier = match.Inventory.GetEquippedBattleItemTier(botId);
+            var transition = match.Roster.TryEliminatePlayer(botId, reason,
                 attackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
                 finalOrbTier);
             if (!transition.Applied)
@@ -381,7 +357,7 @@ public partial class GameServer(
             }
 
             var affected = transition.AffectedPlayers;
-            GroundItems.ReleaseClaimReservationsForPlayer(matchingId, botId);
+            match.GroundItems.ReleaseClaimReservationsForPlayer(botId);
             _gameEventLogManager.LogElimination(
                 matchingId,
                 botId,
@@ -425,7 +401,7 @@ public partial class GameServer(
 
 
             // 3) 게임 종료 판정 — 봇 탈락으로 최후 1인 결정 가능
-            var (isGameOver, winnerId) = RosterManager.CheckGameOver(matchingId);
+            var (isGameOver, winnerId) = match.Roster.CheckGameOver();
             if (!deferGameOver && isGameOver && matchingSessions.Count > 0)
             {
                 logger.LogInformation("게임 종료(봇 탈락 후): MatchingId={MatchingId}, Winner={WinnerId}",
@@ -444,8 +420,9 @@ public partial class GameServer(
         long botPlayerId,
         IReadOnlyCollection<GameClientSession> matchingSessions)
     {
+        var match = MatchRuntimes.GetRequired(matchingId);
         var outcome = EliminationInventoryDropper.DropBotInventoryWithLogs(
-            _botPlayerManager, InventoryManager, GroundItems, _gameEventLogManager,
+            _botPlayerManager, match.Inventory, match.GroundItems, _gameEventLogManager,
             matchingId, botPlayerId);
         if (outcome == null)
             return;
@@ -683,15 +660,9 @@ public partial class GameServer(
                 RegisterClientSession,
                 GetSessionsByInstance,
                 _interactableStateManager,
-                InventoryManager,
-                GroundItems,
-                SummonStones,
-                RosterManager,
-                Closures,
                 _botPlayerManager,
                 _gameEventLogManager,
                 _matchSummaryFileStore,
-                Encounters,
                 MatchRuntimes,
                 HandleSwarmGrowthPick,
                 HandleSwarmOrbDecision,
@@ -802,8 +773,8 @@ public partial class GameServer(
         {
             DateTime endedAtUtc = DateTime.UtcNow;
             DateTime startedAtUtc =
-                Closures.GetMatchingState(matchingId)?.GameStartTime ?? endedAtUtc;
-            var finalPlayerStats = RosterManager.BuildGameResult(matchingId)
+                runtime.Closures.GetMatchingState()?.GameStartTime ?? endedAtUtc;
+            var finalPlayerStats = runtime.Roster.BuildGameResult()
                 .Select(row =>
                 {
                     var stats = _gameEventLogManager.GetResultStats(matchingId, row.playerId);

@@ -6,31 +6,33 @@ using network.helpers;
 namespace game_server.services;
 
 /// <summary>
-///     인스턴스별 매치 로스터 관리.
+///     매치 하나의 참가 명단과 탈락 기록을 관리한다.
 ///     탈락 기록, 최후 1인 판정, 게임 결과 생성.
 /// </summary>
 public class MatchRosterManager
 {
-    // 상태는 매치 런타임이 소유하고, 매니저는 로스터 규칙만 처리한다.
-    private readonly Func<long, MatchRuntime?> _getMatch;
+    // MatchRuntime마다 별도 객체를 만들므로 다른 매치의 참가자가 섞이지 않는다.
+    private readonly long _matchingId;
+    private MatchRosterState? _state;
     private readonly ILogger _logger;
 
-    internal MatchRosterManager(Func<long, MatchRuntime?> getMatch, ILogger logger)
+    internal MatchRosterManager(long matchingId, ILogger logger)
     {
-        _getMatch = getMatch;
+        _matchingId = matchingId;
+        _state = new MatchRosterState { MatchingId = matchingId };
         _logger = logger;
     }
 
-    /// <summary>
-    ///     플레이어 접속 시 로스터 엔트리 등록 (누적)
-    /// </summary>
-    public void RegisterEntry(long matchingId, RosterEntry link)
+    internal void Release() => Interlocked.Exchange(ref _state, null);
+
+    /// <summary>플레이어 접속 시 참가 명단에 등록한다.</summary>
+    public void RegisterEntry(RosterEntry link)
     {
-        var state = _getMatch(matchingId)?.Roster ?? throw new InvalidOperationException($"Match is not available: {matchingId}");
+        var state = Volatile.Read(ref _state) ?? throw new InvalidOperationException($"Match is not available: {_matchingId}");
 
         if (state.Entries.ContainsKey(link.PlayerId))
         {
-            _logger.LogDebug("Roster entry already registered: MatchingId={MatchingId}, PlayerId={PlayerId}", matchingId,
+            _logger.LogDebug("Roster entry already registered: MatchingId={MatchingId}, PlayerId={PlayerId}", _matchingId,
                 link.PlayerId);
             return;
         }
@@ -38,25 +40,24 @@ public class MatchRosterManager
         state.Entries[link.PlayerId] = link;
         state.AliveCount = state.Entries.Count;
         _logger.LogInformation("로스터 엔트리 등록: MatchingId={MatchingId}, PlayerId={PlayerId}, 현재 {Count}명",
-            matchingId, link.PlayerId, state.AliveCount);
+            _matchingId, link.PlayerId, state.AliveCount);
     }
 
     /// <summary>
     ///     플레이어의 로스터 엔트리 조회
     /// </summary>
-    public RosterEntry? GetEntry(long matchingId, long playerId)
+    public RosterEntry? GetEntry(long playerId)
     {
-        if (_getMatch(matchingId)?.Roster is not { } state) return null;
+        if (Volatile.Read(ref _state) is not { } state) return null;
         return state.Entries.GetValueOrDefault(playerId);
     }
 
     public void UpdatePlayerProfile(
-        long matchingId,
         long playerId,
         string? name,
         IEnumerable<int>? wearItemIds)
     {
-        if (_getMatch(matchingId)?.Roster is not { } state ||
+        if (Volatile.Read(ref _state) is not { } state ||
             !state.Entries.TryGetValue(playerId, out var entry))
             return;
 
@@ -67,9 +68,9 @@ public class MatchRosterManager
         }
     }
 
-    public MatchPlayerProfile? GetPlayerProfile(long matchingId, long playerId)
+    public MatchPlayerProfile? GetPlayerProfile(long playerId)
     {
-        if (_getMatch(matchingId)?.Roster is not { } state ||
+        if (Volatile.Read(ref _state) is not { } state ||
             !state.Entries.TryGetValue(playerId, out var entry))
             return null;
 
@@ -88,13 +89,13 @@ public class MatchRosterManager
     ///     플레이어 탈락 처리. 로스터에 탈락 사유·순위를 기록한다.
     /// </summary>
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.Synchronized)]
-    public PlayerEliminationTransition TryEliminatePlayer(long matchingId, long playerId, EliminationReason reason,
+    public PlayerEliminationTransition TryEliminatePlayer(long playerId, EliminationReason reason,
         long attackerPlayerId = 0, AreaType eliminatedArea = AreaType.None, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false, int forcedRank = 0, int finalOrbTier = 0)
     {
         var affected = new Dictionary<long, PlayerMatchStatus>();
 
-        if (_getMatch(matchingId)?.Roster is not { } state) return new PlayerEliminationTransition(false, affected);
+        if (Volatile.Read(ref _state) is not { } state) return new PlayerEliminationTransition(false, affected);
         if (!state.Entries.TryGetValue(playerId, out var link)) return new PlayerEliminationTransition(false, affected);
         if (link.Status == PlayerMatchStatus.ELIMINATED) return new PlayerEliminationTransition(false, affected);
 
@@ -110,7 +111,7 @@ public class MatchRosterManager
         state.AliveCount--;
 
         _logger.LogInformation("플레이어 탈락: MatchingId={MatchingId}, PlayerId={PlayerId}, 사유={Reason}, 생존={Alive}",
-            matchingId, playerId, reason, state.AliveCount);
+            _matchingId, playerId, reason, state.AliveCount);
 
         affected[playerId] = PlayerMatchStatus.ELIMINATED;
 
@@ -121,9 +122,9 @@ public class MatchRosterManager
     ///     최후의 1인 판정
     /// </summary>
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.Synchronized)]
-    public (bool isGameOver, long? winnerId) CheckGameOver(long matchingId)
+    public (bool isGameOver, long? winnerId) CheckGameOver()
     {
-        if (_getMatch(matchingId)?.Roster is not { } state)
+        if (Volatile.Read(ref _state) is not { } state)
             return (false, null);
 
         if (state.Entries.IsEmpty)
@@ -149,9 +150,9 @@ public class MatchRosterManager
     public List<(long playerId,
         EliminationReason reason, PlayerMatchStatus finalStatus, DateTime? eliminatedAt,
         long attackerPlayerId, AreaType eliminatedArea, bool isAreaClosureElimination,
-        bool isOvertimeElimination, int eliminationRank, int finalOrbTier)> BuildGameResult(long matchingId)
+        bool isOvertimeElimination, int eliminationRank, int finalOrbTier)> BuildGameResult()
     {
-        if (_getMatch(matchingId)?.Roster is not { } state)
+        if (Volatile.Read(ref _state) is not { } state)
             return new();
 
         var result = new List<(long, EliminationReason, PlayerMatchStatus, DateTime?, long,

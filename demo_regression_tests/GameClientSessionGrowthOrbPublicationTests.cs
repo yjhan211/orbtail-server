@@ -49,7 +49,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             CostAttack: 4,
             CostDefense: 5);
         runtime.GrowthOfferCoordinator.RegisterOffer(FirstPlayerId, offer);
-        fixture.SummonStones.AddStones(FirstMatchingId, FirstPlayerId, 20);
+        fixture.Store.GetRequired(FirstMatchingId).SummonStones.AddStones(FirstPlayerId, 20);
 
         await SendAsync(
             session,
@@ -68,7 +68,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.False(stale.Success);
         Assert.Equal(20, stale.StoneCount);
         Assert.Equal(offer, runtime.GrowthOffers.Offers[(FirstMatchingId, FirstPlayerId)]);
-        Assert.Empty(fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId));
+        Assert.Empty(fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId));
 
         connection.ClearPackets();
         await SendAsync(
@@ -90,7 +90,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.False(rejected.Success);
         Assert.Equal(20, rejected.StoneCount);
         Assert.Equal(offer, runtime.GrowthOffers.Offers[(FirstMatchingId, FirstPlayerId)]);
-        Assert.Equal(0, fixture.SummonStones.GetGrowthSuccessCount(FirstMatchingId, FirstPlayerId));
+        Assert.Equal(0, fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetGrowthSuccessCount(FirstPlayerId));
 
         connection.ClearPackets();
         await SendAsync(
@@ -112,14 +112,13 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             ],
             connection.DeliveredProtocols);
         InGameItemInfo added = Assert.Single(
-            fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId));
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId));
         Assert.Equal(offer.SpawnItemId, added.ItemId);
-        Assert.Equal(17, fixture.SummonStones.GetSnapshot(FirstMatchingId, FirstPlayerId).StoneCount);
-        Assert.Equal(1, fixture.SummonStones.GetGrowthSuccessCount(FirstMatchingId, FirstPlayerId));
+        Assert.Equal(17, fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
+        Assert.Equal(1, fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetGrowthSuccessCount(FirstPlayerId));
         Assert.Equal(
             1,
-            fixture.SummonStones.GetGrowthSuccessCount(
-                FirstMatchingId,
+            fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetGrowthSuccessCount(
                 FirstPlayerId,
                 SwarmGrowthOfferState.CardMultiply));
         Assert.DoesNotContain((FirstMatchingId, FirstPlayerId), runtime.GrowthOffers.Offers.Keys);
@@ -142,14 +141,13 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         using var fixture = new SessionFixture();
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         RecordingTcpConnection connection = fixture.ConnectionFor(session);
-        Assert.True(fixture.Inventories.TryAddItemWithCapacity(
-            FirstMatchingId,
+        Assert.True(fixture.Store.GetRequired(FirstMatchingId).Inventory.TryAddItemWithCapacity(
             FirstPlayerId,
             107000010,
             Config.SWARM_ORB_CAPACITY,
             out InGameItemInfo? original));
         Assert.NotNull(original);
-        fixture.SummonStones.AddStones(FirstMatchingId, FirstPlayerId, 20);
+        fixture.Store.GetRequired(FirstMatchingId).SummonStones.AddStones(FirstPlayerId, 20);
 
         await SendAsync(
             session,
@@ -172,7 +170,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(20, invalid.StoneCount);
         Assert.Equal(-1, invalid.TargetOrdinal);
         Assert.Equal(107000010, Assert.Single(
-            fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId)).ItemId);
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId)).ItemId);
         Assert.Equal(0, fixture.Runtime(FirstMatchingId).OrbBoard.GetFamilyUpgradeCount(
             FirstPlayerId,
             OrbColor.Red));
@@ -201,12 +199,12 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             ],
             connection.DeliveredProtocols);
         InGameItemInfo upgraded = Assert.Single(
-            fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId));
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId));
         Assert.Equal(original!.ItemUid, upgraded.ItemUid);
         Assert.Equal(upgradedItemId, upgraded.ItemId);
         Assert.Equal(
             20 - upgradeCost,
-            fixture.SummonStones.GetSnapshot(FirstMatchingId, FirstPlayerId).StoneCount);
+            fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
         Assert.Equal(1, fixture.Runtime(FirstMatchingId).OrbBoard.GetFamilyUpgradeCount(
             FirstPlayerId,
             OrbColor.Red));
@@ -311,7 +309,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             CostAttack: 4,
             CostDefense: 5);
         runtime.GrowthOfferCoordinator.RegisterOffer(FirstPlayerId, offer);
-        fixture.SummonStones.AddStones(FirstMatchingId, FirstPlayerId, 20);
+        fixture.Store.GetRequired(FirstMatchingId).SummonStones.AddStones(FirstPlayerId, 20);
         connection.ThrowOnceOn = Protocol.G_TO_C_SWARM_FAMILY_LEVELS;
 
         await SendAsync(
@@ -341,11 +339,11 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.DoesNotContain(Protocol.G_TO_C_SWARM_GROWTH_RESULT, connection.AttemptedProtocols);
         Assert.DoesNotContain(Protocol.G_TO_C_SUMMON_STONE_STATE, connection.AttemptedProtocols);
         Assert.Equal(offer.SpawnItemId, Assert.Single(
-            fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId)).ItemId);
-        Assert.Equal(17, fixture.SummonStones.GetSnapshot(FirstMatchingId, FirstPlayerId).StoneCount);
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId)).ItemId);
+        Assert.Equal(17, fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
         // 송신이 잠금 안에서 바로 나가므로 FAMILY_LEVELS Send 실패 뒤의 단계(성공 카운트·오퍼 회수)는
         // 돌지 않는다 — 앞선 인벤토리·소환석 변경은 남는다.
-        Assert.Equal(0, fixture.SummonStones.GetGrowthSuccessCount(FirstMatchingId, FirstPlayerId));
+        Assert.Equal(0, fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetGrowthSuccessCount(FirstPlayerId));
         Assert.Contains((FirstMatchingId, FirstPlayerId), runtime.GrowthOffers.Offers.Keys);
         Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
     }
@@ -356,14 +354,13 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         using var fixture = new SessionFixture();
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         RecordingTcpConnection connection = fixture.ConnectionFor(session);
-        Assert.True(fixture.Inventories.TryAddItemWithCapacity(
-            FirstMatchingId,
+        Assert.True(fixture.Store.GetRequired(FirstMatchingId).Inventory.TryAddItemWithCapacity(
             FirstPlayerId,
             107000010,
             Config.SWARM_ORB_CAPACITY,
             out InGameItemInfo? original));
         Assert.NotNull(original);
-        fixture.SummonStones.AddStones(FirstMatchingId, FirstPlayerId, 20);
+        fixture.Store.GetRequired(FirstMatchingId).SummonStones.AddStones(FirstPlayerId, 20);
         int upgradeCost = Math.Min(
             Config.SWARM_GROWTH_COST_CAP,
             Config.GetSwarmGrowthBaseCost(0));
@@ -396,12 +393,12 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             connection.DeliveredProtocols);
         Assert.DoesNotContain(Protocol.G_TO_C_SWARM_ORB_DECISION_RESULT, connection.AttemptedProtocols);
         InGameItemInfo upgraded = Assert.Single(
-            fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId));
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId));
         Assert.Equal(original!.ItemUid, upgraded.ItemUid);
         Assert.Equal(upgradedItemId, upgraded.ItemId);
         Assert.Equal(
             20 - upgradeCost,
-            fixture.SummonStones.GetSnapshot(FirstMatchingId, FirstPlayerId).StoneCount);
+            fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
         Assert.Equal(1, fixture.Runtime(FirstMatchingId).OrbBoard.GetFamilyUpgradeCount(
             FirstPlayerId,
             OrbColor.Red));
@@ -668,8 +665,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         {
             Server = CreateServer();
             Store = Server.MatchRuntimes;
-            Inventories = Server.InventoryManager;
-            SummonStones = Server.SummonStones;
             EventLog = GetField<GameEventLogManager>(Server, "_gameEventLogManager");
             Runtimes = GetField<SwarmMatchRuntimeStore>(Server, "_swarmMatchRuntimes");
             _growthHandler = typeof(GameServer).GetMethod(
@@ -681,25 +676,14 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                     BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
                 .CreateDelegate<Action<GameClientSession, long, int, long, long>>(Server);
 
-            GroundItems = new GroundItemManager(Store.Get);
-            Roster = new MatchRosterManager(Store.Get, NullLogger.Instance);
-            Closures = new AreaClosureManager(Store.Get, NullLogger.Instance);
-            Encounters = new EncounterRevealManager(Store.Get);
-            Inventories.Initialize();
         }
 
         public GameServer Server { get; }
         public MatchRuntimeStore Store { get; }
         public SwarmMatchRuntimeStore Runtimes { get; }
-        public InGameInventoryManager Inventories { get; }
-        public SummonStoneManager SummonStones { get; }
         public GameEventLogManager EventLog { get; }
         public InteractableStateManager Interactables { get; } = new();
-        public GroundItemManager GroundItems { get; }
-        public MatchRosterManager Roster { get; }
-        public AreaClosureManager Closures { get; }
         public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
-        public EncounterRevealManager Encounters { get; }
 
         public GameClientSession CreateSession(
             long matchingId,
@@ -708,7 +692,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Action<GameClientSession, long, int, long, long>? orbHandler = null)
         {
             Store.GetOrCreate(matchingId);
-            GroundItems.InitializeMatching(matchingId);
             Store.Get(matchingId)!.Doors.Initialize();
 
             var connection = new RecordingTcpConnection();
@@ -724,15 +707,9 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                     .Where(candidate => candidate.MatchingId == instanceId)
                     .ToList(),
                 Interactables,
-                Inventories,
-                GroundItems,
-                SummonStones,
-                Roster,
-                Closures,
                 Bots,
                 EventLog,
                 new MatchSummaryFileStore(_summaryDirectory),
-                Encounters,
                 Store,
                 growthHandler ?? _growthHandler,
                 orbHandler ?? _orbHandler,

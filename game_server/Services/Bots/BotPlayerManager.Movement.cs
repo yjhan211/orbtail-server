@@ -292,7 +292,7 @@ public partial class BotPlayerManager
 
     private bool HasOpenNonCorridorRefuge(long matchingId, AreaClosureManager closureManager)
     {
-        var closure = closureManager.GetClientStateSnapshot(matchingId);
+        var closure = closureManager.GetClientStateSnapshot();
         var unavailableAreas = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
         return GameMapData.GetAreas(GetMatchingMapId(matchingId))
             .Select(region => region.AreaType)
@@ -329,7 +329,7 @@ public partial class BotPlayerManager
         if (area == AreaType.None)
             return false;
 
-        var closure = closureManager.GetClientStateSnapshot(matchingId);
+        var closure = closureManager.GetClientStateSnapshot();
         return closure.ClosedAreas.Contains(area) || closure.WarningAreas.Contains(area);
     }
     /// <summary>
@@ -787,9 +787,9 @@ public partial class BotPlayerManager
         if (bot.CurrentArea == AreaType.None || pveTargets.Count == 0)
             return false;
 
-        var closure = closureManager.GetClientStateSnapshot(matchingId);
+        var closure = closureManager.GetClientStateSnapshot();
         var unavailable = closure.ClosedAreas.Concat(closure.WarningAreas).ToHashSet();
-        var boardItemIds = inventoryManager.GetPlayerInventory(matchingId, bot.PlayerId)
+        var boardItemIds = inventoryManager.GetPlayerInventory(bot.PlayerId)
             .GetAllItems()
             .Select(item => item.ItemId)
             .ToArray();

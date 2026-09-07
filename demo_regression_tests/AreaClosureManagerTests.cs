@@ -20,7 +20,7 @@ public sealed class AreaClosureManagerTests
         const long matchingId = 219001;
         var startedAt = new DateTime(2030, 1, 2, 3, 4, 5, DateTimeKind.Utc);
         DateTime now = startedAt;
-        var manager = MatchTestServices.Closures(NullLogger.Instance, () => now);
+        var manager = MatchTestServices.Closures(matchingId, NullLogger.Instance, () => now);
         AreaType[] areas = GameMapData.GetAreas(Config.SWARM_MATCH_MAP)
             .Select(region => region.AreaType)
             .Where(area => area != AreaType.None)
@@ -34,9 +34,9 @@ public sealed class AreaClosureManagerTests
             new ClosureWaveDefinition(20, [areas[0]], 0),
             new ClosureWaveDefinition(40, [areas[1]], 0)
         };
-        manager.InitializeMatching(matchingId, wavesOverride: waves);
+        manager.InitializeMatching(wavesOverride: waves);
 
-        var initial = manager.GetClosureSnapshot(matchingId);
+        var initial = manager.GetClosureSnapshot();
         Assert.Equal(areas.Select(area => (int)area), initial.closureSequence);
         Assert.Empty(initial.closedAreaIds);
         Assert.Equal((int)areas[0], initial.nextAreaType);
@@ -45,19 +45,19 @@ public sealed class AreaClosureManagerTests
         Assert.False(initial.warningActive);
 
         now = startedAt.AddSeconds(5);
-        var firstWarningTick = manager.CheckClosureSchedule(matchingId);
+        var firstWarningTick = manager.CheckClosureSchedule();
         Assert.Equal([areas[0]], firstWarningTick.WarningAreas);
         Assert.Equal(15, firstWarningTick.WarningSeconds);
 
-        var firstWarning = manager.GetClosureSnapshot(matchingId);
+        var firstWarning = manager.GetClosureSnapshot();
         Assert.Equal(15, firstWarning.secondsLeft);
         Assert.True(firstWarning.warningActive);
 
         now = startedAt.AddSeconds(20);
-        var firstClosureTick = manager.CheckClosureSchedule(matchingId);
+        var firstClosureTick = manager.CheckClosureSchedule();
         Assert.Equal([areas[0]], firstClosureTick.ClosedAreas);
 
-        var afterFirstClosure = manager.GetClosureSnapshot(matchingId);
+        var afterFirstClosure = manager.GetClosureSnapshot();
         Assert.Equal([(int)areas[0]], afterFirstClosure.closedAreaIds);
         Assert.Equal((int)areas[1], afterFirstClosure.nextAreaType);
         Assert.Equal(new DateTimeOffset(startedAt.AddSeconds(40)).ToUnixTimeSeconds(), afterFirstClosure.nextAtUnix);
@@ -65,16 +65,16 @@ public sealed class AreaClosureManagerTests
         Assert.False(afterFirstClosure.warningActive);
 
         now = startedAt.AddSeconds(25);
-        manager.CheckClosureSchedule(matchingId);
-        var secondWarning = manager.GetClosureSnapshot(matchingId);
+        manager.CheckClosureSchedule();
+        var secondWarning = manager.GetClosureSnapshot();
         Assert.Equal(15, secondWarning.secondsLeft);
         Assert.True(secondWarning.warningActive);
 
         now = startedAt.AddSeconds(40);
-        var finalClosureTick = manager.CheckClosureSchedule(matchingId);
+        var finalClosureTick = manager.CheckClosureSchedule();
         Assert.Equal([areas[1]], finalClosureTick.ClosedAreas);
 
-        var completed = manager.GetClosureSnapshot(matchingId);
+        var completed = manager.GetClosureSnapshot();
         Assert.Equal(
             areas.Select(area => (int)area).OrderBy(area => area),
             completed.closedAreaIds.OrderBy(area => area));

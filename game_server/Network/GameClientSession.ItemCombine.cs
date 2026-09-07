@@ -70,7 +70,7 @@ public partial class GameClientSession
                                     OrbData.IsOrbItem(msg.ItemB);
         if (isOrbRequest)
         {
-            var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
+            var inventory = _matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
             if (!OrbData.CanMerge(msg.ItemA, msg.ItemB) ||
                 !inventory.HasItems([msg.ItemA, msg.ItemB]))
             {
@@ -80,8 +80,7 @@ public partial class GameClientSession
 
             bool hadResonance = inventory.TryGetActiveOrbPair(out OrbColor previousResonanceColor,
                 out int previousSupportTier);
-            bool combined = _inGameInventoryManager.TryCombineOrbs(
-                matchingId,
+            bool combined = _matchRuntimes.GetRequired(matchingId).Inventory.TryCombineOrbs(
                 playerId,
                 msg.ItemA,
                 msg.ItemB,
@@ -128,15 +127,14 @@ public partial class GameClientSession
         if (candidates.Count == 0)
             return false;
 
-        var recipeInventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
+        var recipeInventory = _matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
         if (!recipeInventory.HasItems(candidates[0].InputItemIds))
         {
             SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INSUFFICIENT_ITEM);
             return true;
         }
 
-        if (!_inGameInventoryManager.TryCombineRandomRecipe(
-                matchingId,
+        if (!_matchRuntimes.GetRequired(matchingId).Inventory.TryCombineRandomRecipe(
                 playerId,
                 candidates,
                 ResolveRandom(),
@@ -169,7 +167,7 @@ public partial class GameClientSession
         IReadOnlyCollection<InGameItemInfo> changedItems, int recipeId)
     {
         var outputItem = changedItems.LastOrDefault(item => item.ItemId == outputItemId && item.Count > 0);
-        var equippedBattleItem = _inGameInventoryManager.GetEquippedBattleItem(MatchingId, PlayerId!.Value);
+        var equippedBattleItem = _matchRuntimes.GetRequired(MatchingId).Inventory.GetEquippedBattleItem(PlayerId!.Value);
         bool shouldReplaceEquippedItem = outputItem != null && equippedBattleItem?.ItemUid == outputItem.ItemUid;
 
         using var combinePacket = Packet.Create((int)Protocol.G_TO_C_ITEMS_COMBINED, PlayerId.Value);

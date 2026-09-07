@@ -227,14 +227,13 @@ public sealed class OrbBoardTests
     public void FirstColoredOrbPickupAutoEquipsWithoutReplacingItOnLaterPickups()
     {
         InitializeBattleCombatData();
-        var manager = MatchTestServices.Inventory();
-        manager.Initialize();
+        var manager = MatchTestServices.Inventory(10);
 
-        Assert.True(manager.TryAddItemWithCapacity(10, 100, 107000010, 6, out var firstOrb));
-        Assert.Equal(firstOrb!.ItemUid, manager.GetEquippedBattleItem(10, 100)!.ItemUid);
+        Assert.True(manager.TryAddItemWithCapacity(100, 107000010, 6, out var firstOrb));
+        Assert.Equal(firstOrb!.ItemUid, manager.GetEquippedBattleItem(100)!.ItemUid);
 
-        Assert.True(manager.TryAddItemWithCapacity(10, 100, 107000020, 6, out _));
-        Assert.Equal(firstOrb.ItemUid, manager.GetEquippedBattleItem(10, 100)!.ItemUid);
+        Assert.True(manager.TryAddItemWithCapacity(100, 107000020, 6, out _));
+        Assert.Equal(firstOrb.ItemUid, manager.GetEquippedBattleItem(100)!.ItemUid);
     }
 
     [Fact]
@@ -259,14 +258,13 @@ public sealed class OrbBoardTests
     public void ReconnectRecomputesTheSameSingleResonanceFromTheAuthoritativeBoard()
     {
         InitializeBattleCombatData();
-        var manager = MatchTestServices.Inventory();
-        manager.Initialize();
-        Assert.True(manager.TryAddItemWithCapacity(198, 101, 107000010, 6, out _));
-        Assert.True(manager.TryAddItemWithCapacity(198, 101, 107000010, 6, out _));
-        Assert.True(manager.TryAddItemWithCapacity(198, 101, 107000020, 6, out _));
-        Assert.True(manager.TryAddItemWithCapacity(198, 101, 107000020, 6, out _));
+        var manager = MatchTestServices.Inventory(198);
+        Assert.True(manager.TryAddItemWithCapacity(101, 107000010, 6, out _));
+        Assert.True(manager.TryAddItemWithCapacity(101, 107000010, 6, out _));
+        Assert.True(manager.TryAddItemWithCapacity(101, 107000020, 6, out _));
+        Assert.True(manager.TryAddItemWithCapacity(101, 107000020, 6, out _));
 
-        var reconnectedInventory = manager.GetPlayerInventory(198, 101);
+        var reconnectedInventory = manager.GetPlayerInventory(101);
         Assert.True(reconnectedInventory.TryGetActiveOrbPair(out var color, out int supportTier));
         Assert.Equal(OrbColor.Red, color);
         Assert.Equal(1, supportTier);
@@ -275,38 +273,36 @@ public sealed class OrbBoardTests
     public async Task ConcurrentRandomMergeConsumesInputsOnlyOnce()
     {
         InitializeBattleCombatData();
-        var manager = MatchTestServices.Inventory();
-        manager.Initialize();
-        manager.AddItem(10, 100, 107000010);
-        manager.AddItem(10, 100, 107000010);
+        var manager = MatchTestServices.Inventory(10);
+        manager.AddItem(100, 107000010);
+        manager.AddItem(100, 107000010);
 
         var attempts = await Task.WhenAll(
-            Task.Run(() => manager.TryCombineOrbs(10, 100, 107000010, 107000010, new Random(1), out _, out _)),
-            Task.Run(() => manager.TryCombineOrbs(10, 100, 107000010, 107000010, new Random(2), out _, out _)));
+            Task.Run(() => manager.TryCombineOrbs(100, 107000010, 107000010, new Random(1), out _, out _)),
+            Task.Run(() => manager.TryCombineOrbs(100, 107000010, 107000010, new Random(2), out _, out _)));
 
         Assert.Single(attempts, success => success);
         Assert.Single(attempts, success => !success);
-        Assert.Equal(1, manager.GetPlayerInventory(10, 100).GetAllItems().Sum(item => item.Count));
+        Assert.Equal(1, manager.GetPlayerInventory(100).GetAllItems().Sum(item => item.Count));
     }
 
     [Fact]
     public void ReconnectingToTheSameMatchReadsTheSingleAuthoritativeMergeResult()
     {
         InitializeBattleCombatData();
-        var manager = MatchTestServices.Inventory();
-        manager.Initialize();
-        manager.AddItem(198, 100, 107000010);
-        manager.AddItem(198, 100, 107000010);
+        var manager = MatchTestServices.Inventory(198);
+        manager.AddItem(100, 107000010);
+        manager.AddItem(100, 107000010);
 
-        Assert.True(manager.TryCombineOrbs(198, 100, 107000010, 107000010,
+        Assert.True(manager.TryCombineOrbs(100, 107000010, 107000010,
             new Random(198), out int outputItemId, out _));
 
         // A new session retrieves the same matching/player inventory; it must not replay the merge.
-        var reconnectedInventory = manager.GetPlayerInventory(198, 100);
+        var reconnectedInventory = manager.GetPlayerInventory(100);
         var output = Assert.Single(reconnectedInventory.GetAllItems());
         Assert.Equal(outputItemId, output.ItemId);
         Assert.Equal(1, output.Count);
-        Assert.False(manager.TryCombineOrbs(198, 100, 107000010, 107000010,
+        Assert.False(manager.TryCombineOrbs(100, 107000010, 107000010,
             new Random(199), out _, out _));
     }
 

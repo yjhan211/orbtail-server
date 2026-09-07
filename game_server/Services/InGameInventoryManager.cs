@@ -323,117 +323,118 @@ public class MatchingInventoryState(long matchingId)
 }
 
 /// <summary>
-///     매치 런타임의 인벤토리에 아이템 추가·소비·조합 규칙을 적용한다.
-///     매치별 사전은 소유하지 않으며, 종료된 매치의 인벤토리를 다시 만들지 않는다.
+///     매치 하나의 플레이어 인벤토리를 보관하고 아이템 추가·소비·조합을 처리한다.
+///     MatchRuntime마다 별도 객체를 만들며, 매치 종료 후에는 인벤토리를 다시 만들지 않는다.
 /// </summary>
 public class InGameInventoryManager
 {
-    private readonly Func<long, MatchRuntime?> _getMatch;
-    private Action<string>? _logAction;
+    private readonly long _matchingId;
+    private MatchingInventoryState? _state;
+    private readonly Action<string>? _logAction;
 
-    internal InGameInventoryManager(Func<long, MatchRuntime?> getMatch) => _getMatch = getMatch;
-
-    public void Initialize(Action<string>? logAction = null)
+    internal InGameInventoryManager(long matchingId, Action<string>? logAction = null)
     {
+        _matchingId = matchingId;
+        _state = new MatchingInventoryState(matchingId);
         _logAction = logAction;
-        _logAction?.Invoke("InGameInventoryManager: Initialized");
     }
+
+    internal void Release() => Interlocked.Exchange(ref _state, null);
 
     /// <summary>
     ///     이미 생성된 매치의 인벤토리 상태를 조회한다.
     /// </summary>
-    private MatchingInventoryState GetMatchingState(long matchingId) =>
-        _getMatch(matchingId)?.Inventory
-        ?? throw new InvalidOperationException($"Match is not available: {matchingId}");
+    private MatchingInventoryState GetMatchingState() =>
+        Volatile.Read(ref _state)
+        ?? throw new InvalidOperationException($"Match is not available: {_matchingId}");
 
     /// <summary>
     ///     플레이어 인벤토리 가져오기
     /// </summary>
-    public PlayerInGameInventory GetPlayerInventory(long matchingId, long playerId)
+    public PlayerInGameInventory GetPlayerInventory(long playerId)
     {
-        var matchingState = GetMatchingState(matchingId);
+        var matchingState = GetMatchingState();
         return matchingState.GetOrCreatePlayerInventory(playerId);
     }
 
     /// <summary>
     ///     아이템 추가
     /// </summary>
-    public InGameItemInfo AddItem(long matchingId, long playerId, int itemId, int count = 1,
+    public InGameItemInfo AddItem(long playerId, int itemId, int count = 1,
         GiftState giftState = GiftState.None)
     {
-        var inventory = GetPlayerInventory(matchingId, playerId);
+        var inventory = GetPlayerInventory(playerId);
         var item = inventory.AddItem(itemId, count, giftState);
         _logAction?.Invoke(
-            $"InGameInventoryManager: Added item (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, Count={count}, GiftState={giftState}, ItemUid={item.ItemUid})");
+            $"InGameInventoryManager: Added item (MatchingId={_matchingId}, PlayerId={playerId}, ItemId={itemId}, Count={count}, GiftState={giftState}, ItemUid={item.ItemUid})");
         return item;
     }
 
     /// <summary>
     ///     아이템 사용/제거
     /// </summary>
-    public bool TryRemoveItem(long matchingId, long playerId, long itemUid, int count, out InGameItemInfo? updatedItem)
+    public bool TryRemoveItem(long playerId, long itemUid, int count, out InGameItemInfo? updatedItem)
     {
-        var inventory = GetPlayerInventory(matchingId, playerId);
+        var inventory = GetPlayerInventory(playerId);
         bool result = inventory.TryRemoveItem(itemUid, count, out updatedItem);
         if (result)
             _logAction?.Invoke(
-                $"InGameInventoryManager: Removed item (MatchingId={matchingId}, PlayerId={playerId}, ItemUid={itemUid}, Count={count})");
+                $"InGameInventoryManager: Removed item (MatchingId={_matchingId}, PlayerId={playerId}, ItemUid={itemUid}, Count={count})");
         return result;
     }
 
-    public bool TryAddItemWithCapacity(long matchingId, long playerId, int itemId, int maxSlots,
+    public bool TryAddItemWithCapacity(long playerId, int itemId, int maxSlots,
         out InGameItemInfo? addedItem, GiftState giftState = GiftState.None)
     {
-        var inventory = GetPlayerInventory(matchingId, playerId);
+        var inventory = GetPlayerInventory(playerId);
         bool result = inventory.TryAddItemWithCapacity(itemId, maxSlots, out addedItem, giftState);
         if (result && addedItem != null)
-            _logAction?.Invoke($"InGameInventoryManager: Added capacity-limited item (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, ItemUid={addedItem.ItemUid}, MaxSlots={maxSlots})");
+            _logAction?.Invoke($"InGameInventoryManager: Added capacity-limited item (MatchingId={_matchingId}, PlayerId={playerId}, ItemId={itemId}, ItemUid={addedItem.ItemUid}, MaxSlots={maxSlots})");
         return result;
     }
     /// <summary>
     ///     ItemId로 아이템 제거 (탈출 아이템 전달용)
     /// </summary>
-    public bool TryRemoveOneByItemId(long matchingId, long playerId, int itemId, out InGameItemInfo? updatedItem)
+    public bool TryRemoveOneByItemId(long playerId, int itemId, out InGameItemInfo? updatedItem)
     {
-        var inventory = GetPlayerInventory(matchingId, playerId);
+        var inventory = GetPlayerInventory(playerId);
         bool result = inventory.TryRemoveOneByItemId(itemId, out updatedItem);
         if (result)
             _logAction?.Invoke(
-                $"InGameInventoryManager: Removed one item by ItemId (MatchingId={matchingId}, PlayerId={playerId}, ItemId={itemId}, ItemUid={updatedItem?.ItemUid})");
+                $"InGameInventoryManager: Removed one item by ItemId (MatchingId={_matchingId}, PlayerId={playerId}, ItemId={itemId}, ItemUid={updatedItem?.ItemUid})");
         return result;
     }
 
-    public bool TryCombineItems(long matchingId, long playerId, IReadOnlyCollection<int> inputItemIds,
+    public bool TryCombineItems(long playerId, IReadOnlyCollection<int> inputItemIds,
         int outputItemId, out List<InGameItemInfo> changedItems)
     {
-        var inventory = GetPlayerInventory(matchingId, playerId);
+        var inventory = GetPlayerInventory(playerId);
         bool result = inventory.TryCombineItems(inputItemIds, outputItemId, out changedItems);
         if (result)
             _logAction?.Invoke(
-                $"InGameInventoryManager: Combined items (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{string.Join(',', inputItemIds)}], Output={outputItemId})");
+                $"InGameInventoryManager: Combined items (MatchingId={_matchingId}, PlayerId={playerId}, Inputs=[{string.Join(',', inputItemIds)}], Output={outputItemId})");
         return result;
     }
 
-    public bool TryCombineOrbs(long matchingId, long playerId, int inputA, int inputB,
+    public bool TryCombineOrbs(long playerId, int inputA, int inputB,
         Random random, out int outputItemId, out List<InGameItemInfo> changedItems)
     {
-        var inventory = GetPlayerInventory(matchingId, playerId);
+        var inventory = GetPlayerInventory(playerId);
         bool result = inventory.TryCombineOrbs(inputA, inputB, random, out outputItemId, out changedItems);
         if (result)
             _logAction?.Invoke(
-                $"InGameInventoryManager: Random Swarm orb merge (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{inputA},{inputB}], Output={outputItemId})");
+                $"InGameInventoryManager: Random Swarm orb merge (MatchingId={_matchingId}, PlayerId={playerId}, Inputs=[{inputA},{inputB}], Output={outputItemId})");
         return result;
     }
 
     public bool TryCombineRandomRecipe(
-        long matchingId,
         long playerId,
         IReadOnlyList<BattleItemRecipe> candidates,
         Random random,
         out BattleItemRecipe? selectedRecipe,
         out List<InGameItemInfo> changedItems)
     {
-        var inventory = GetPlayerInventory(matchingId, playerId);
+        var inventory = GetPlayerInventory(playerId);
         bool result = inventory.TryCombineRandomRecipe(
             candidates,
             random,
@@ -441,7 +442,7 @@ public class InGameInventoryManager
             out changedItems);
         if (result)
             _logAction?.Invoke(
-                $"InGameInventoryManager: Combined items (MatchingId={matchingId}, PlayerId={playerId}, Inputs=[{string.Join(',', selectedRecipe!.InputItemIds)}], Output={selectedRecipe.OutputItemId})");
+                $"InGameInventoryManager: Combined items (MatchingId={_matchingId}, PlayerId={playerId}, Inputs=[{string.Join(',', selectedRecipe!.InputItemIds)}], Output={selectedRecipe.OutputItemId})");
         return result;
     }
 
@@ -450,10 +451,10 @@ public class InGameInventoryManager
     ///     즉시 합성한다 (SB 3머지 문법). 보드 관리를 실시간 태스크에서 제거하고,
     ///     드래프트(무슨 색을 쌓나)는 개봉 선택에 남는다. 반환은 변경 목록(클라 전송용).
     /// </summary>
-    public List<InGameItemInfo> AutoMergeOrbs(long matchingId, long playerId)
+    public List<InGameItemInfo> AutoMergeOrbs(long playerId)
     {
         var allChanged = new List<InGameItemInfo>();
-        var inventory = GetPlayerInventory(matchingId, playerId);
+        var inventory = GetPlayerInventory(playerId);
         while (true)
         {
             int mergeItemId = inventory.GetAllItems()
@@ -473,7 +474,7 @@ public class InGameInventoryManager
 
             allChanged.AddRange(changedItems);
             _logAction?.Invoke(
-                $"InGameInventoryManager: Auto-merged orbs (MatchingId={matchingId}, PlayerId={playerId}, Input={mergeItemId}x3, Output={outputItemId})");
+                $"InGameInventoryManager: Auto-merged orbs (MatchingId={_matchingId}, PlayerId={playerId}, Input={mergeItemId}x3, Output={outputItemId})");
         }
     }
 
@@ -496,29 +497,29 @@ public class InGameInventoryManager
                tier < 3 &&
                OrbData.TryGetItemId(color, tier + 1, out outputItemId);
     }
-    public bool TryEquipBattleItem(long matchingId, long playerId, long itemUid,
+    public bool TryEquipBattleItem(long playerId, long itemUid,
         out InGameItemInfo? equippedItem)
     {
-        var inventory = GetPlayerInventory(matchingId, playerId);
+        var inventory = GetPlayerInventory(playerId);
         bool result = inventory.TryEquipBattleItem(itemUid, out equippedItem);
         if (result)
         {
             _logAction?.Invoke(
-                $"InGameInventoryManager: Equipped battle item (MatchingId={matchingId}, PlayerId={playerId}, ItemId={equippedItem?.ItemId}, ItemUid={itemUid})");
+                $"InGameInventoryManager: Equipped battle item (MatchingId={_matchingId}, PlayerId={playerId}, ItemId={equippedItem?.ItemId}, ItemUid={itemUid})");
         }
 
         return result;
     }
 
-    public InGameItemInfo? GetEquippedBattleItem(long matchingId, long playerId)
+    public InGameItemInfo? GetEquippedBattleItem(long playerId)
     {
-        return GetPlayerInventory(matchingId, playerId).GetEquippedBattleItem();
+        return GetPlayerInventory(playerId).GetEquippedBattleItem();
     }
 
     /// <summary>장착 배틀아이템의 티어 (미장착 0) — 매치 정산의 최종 오브 티어 산정 공용 경로 (#297 중복 단일화).</summary>
-    public int GetEquippedBattleItemTier(long matchingId, long playerId)
+    public int GetEquippedBattleItemTier(long playerId)
     {
-        var equippedItem = GetEquippedBattleItem(matchingId, playerId);
+        var equippedItem = GetEquippedBattleItem(playerId);
         return equippedItem == null ? 0 : BattleItemCombatData.Get(equippedItem.ItemId)?.Tier ?? 0;
     }
 
@@ -526,21 +527,21 @@ public class InGameInventoryManager
     /// <summary>
     ///     플레이어의 전체 아이템 목록
     /// </summary>
-    public List<InGameItemInfo> GetAllItems(long matchingId, long playerId)
+    public List<InGameItemInfo> GetAllItems(long playerId)
     {
-        var inventory = GetPlayerInventory(matchingId, playerId);
+        var inventory = GetPlayerInventory(playerId);
         return inventory.GetAllItems();
     }
 
     /// <summary>
     ///     매칭 종료 시 해당 매칭의 상태 정리
     /// </summary>
-    public List<InGameItemInfo> TakeAllItems(long matchingId, long playerId)
+    public List<InGameItemInfo> TakeAllItems(long playerId)
     {
-        var inventory = GetPlayerInventory(matchingId, playerId);
+        var inventory = GetPlayerInventory(playerId);
         var items = inventory.TakeAllItems();
         _logAction?.Invoke(
-            $"InGameInventoryManager: Dropped all items (MatchingId={matchingId}, PlayerId={playerId}, Slots={items.Count})");
+            $"InGameInventoryManager: Dropped all items (MatchingId={_matchingId}, PlayerId={playerId}, Slots={items.Count})");
         return items;
     }
 }

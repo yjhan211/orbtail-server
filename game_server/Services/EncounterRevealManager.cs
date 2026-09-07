@@ -17,20 +17,19 @@ public sealed class EncounterRevealManager
     private const float CorridorRevealDistance = 1.45f;
     private const int CorridorHintCooldownSeconds = 4;
 
-    private readonly Func<long, MatchRuntime?> _getMatch;
+    private MatchEncounterState? _state = new();
 
-    internal EncounterRevealManager(Func<long, MatchRuntime?> getMatch) => _getMatch = getMatch;
+    internal void Release() => Interlocked.Exchange(ref _state, null);
 
 
     public CorridorEncounterDecision ResolveCorridorEncounter(
-        long matchingId,
         long actorPlayerId,
         Vector3f actorPosition,
         IEnumerable<(long PlayerId, Vector3f Position)> candidates,
         int riskEventChanceDownPercent = 0,
         int escapeChanceAddPercent = 0)
     {
-        if (_getMatch(matchingId)?.Encounters is not { } state)
+        if (Volatile.Read(ref _state) is not { } state)
             return CorridorEncounterDecision.None;
         var now = DateTime.UtcNow;
         CorridorEncounterDecision bestHint = CorridorEncounterDecision.None;

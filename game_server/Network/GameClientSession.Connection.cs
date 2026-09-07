@@ -101,7 +101,6 @@ public partial class GameClientSession
                     }
 
                 // Initialize match-scoped area state once; manager implementations are idempotent.
-                _groundItemManager.InitializeMatching(matchingId);
                 int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
                 _gameEventLogManager.BeginMatch(matchingId, matchSeed);
                 foreach (var bot in _botPlayerManager.GetBots(matchingId))
@@ -128,7 +127,7 @@ public partial class GameClientSession
                 if (playerInfo == null)
                     throw new InvalidOperationException($"PlayerInfo not found for authenticated player {playerId}.");
 
-                _matchRosterManager.UpdatePlayerProfile(MatchingId, playerId, playerInfo.Name, playerInfo.WearItemIdList);
+                _matchRuntimes.GetRequired(MatchingId).Roster.UpdatePlayerProfile(playerId, playerInfo.Name, playerInfo.WearItemIdList);
 
                 matchingSpawnCell = Cell.Clone(composition.SpawnCells[playerId]);
                 _lastValidatedPosition = CellToWorldPosition(matchingSpawnCell);
@@ -161,7 +160,7 @@ public partial class GameClientSession
 
             SendInGameInventoryList();
             SendSummonStoneState();
-            var connectionBoard = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
+            var connectionBoard = _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId.Value);
             _gameEventLogManager.LogOrbBoardTransition(
                 MatchingId, PlayerId.Value, connectionBoard.GetAllItems(),
                 connectionBoard.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
@@ -481,8 +480,8 @@ public partial class GameClientSession
             {
                 foreach (var participant in roster)
                 {
-                    _matchRosterManager.RegisterEntry(matchingId, new RosterEntry { PlayerId = participant.PlayerId });
-                    _matchRosterManager.UpdatePlayerProfile(matchingId, participant.PlayerId, participant.Name, participant.WearItemIdList);
+                    _matchRuntimes.GetRequired(matchingId).Roster.RegisterEntry(new RosterEntry { PlayerId = participant.PlayerId });
+                    _matchRuntimes.GetRequired(matchingId).Roster.UpdatePlayerProfile(participant.PlayerId, participant.Name, participant.WearItemIdList);
                 }
             });
 
@@ -581,7 +580,7 @@ public partial class GameClientSession
     {
         if (MatchingId <= 0) return;
 
-        var snapshot = _areaClosureManager.GetClientStateSnapshot(MatchingId);
+        var snapshot = _matchRuntimes.GetRequired(MatchingId).Closures.GetClientStateSnapshot();
         foreach (var closedArea in snapshot.ClosedAreas)
         {
             using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
@@ -604,7 +603,7 @@ public partial class GameClientSession
             }));
             TrySend(packet);
         }
-        var globalClosure = _areaClosureManager.GetGlobalClosureClientState(MatchingId);
+        var globalClosure = _matchRuntimes.GetRequired(MatchingId).Closures.GetGlobalClosureClientState();
         if (globalClosure.IsKnown)
         {
             using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
@@ -631,7 +630,7 @@ public partial class GameClientSession
 
         // #272 자기장: 수축 시계를 복원한다 — 클라 경계 렌더의 유일한 입력. 폐쇄 시계와
         // 같은 앵커(GameStartTime)라 별도 상태가 없다.
-        var closureState = _areaClosureManager.GetMatchingState(MatchingId);
+        var closureState = _matchRuntimes.GetRequired(MatchingId).Closures.GetMatchingState();
         if (Config.SWARM_PRESSURE_FIELD_ENABLED && closureState != null)
         {
             using var fieldPacket = Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);

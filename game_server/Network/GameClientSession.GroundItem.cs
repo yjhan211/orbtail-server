@@ -52,11 +52,10 @@ public partial class GameClientSession
         int corruptionRecovery = 0;
         ErrorCode rejection = ErrorCode.INVENTORY_FULL;
         var position = _lastValidatedPosition;
-        long discovererPlayerId = _groundItemManager.GetDiscovererPlayerId(
-            MatchingId, msg.GroundItemUid);
-        var attemptedItem = _groundItemManager.GetItem(MatchingId, msg.GroundItemUid);
-        var status = _groundItemManager.TryClaim(
-            MatchingId,
+        long discovererPlayerId = _matchRuntimes.GetRequired(MatchingId).GroundItems.GetDiscovererPlayerId(
+            msg.GroundItemUid);
+        var attemptedItem = _matchRuntimes.GetRequired(MatchingId).GroundItems.GetItem(msg.GroundItemUid);
+        var status = _matchRuntimes.GetRequired(MatchingId).GroundItems.TryClaim(
             msg.GroundItemUid,
             PlayerId.Value,
             CurrentArea,
@@ -108,14 +107,14 @@ public partial class GameClientSession
                     return true;
                 }
 
-                bool added = _inGameInventoryManager.TryAddItemWithCapacity(
-                    MatchingId, PlayerId.Value, item.ItemId, Config.GetOrbCapacity(),
+                bool added = _matchRuntimes.GetRequired(MatchingId).Inventory.TryAddItemWithCapacity(
+                    PlayerId.Value, item.ItemId, Config.GetOrbCapacity(),
                     out addedItem);
                 if (!added) rejection = ErrorCode.INVENTORY_FULL;
                 else if (addedItem != null)
                 {
-                    var equippedItem = _inGameInventoryManager.GetEquippedBattleItem(
-                        MatchingId, PlayerId.Value);
+                    var equippedItem = _matchRuntimes.GetRequired(MatchingId).Inventory.GetEquippedBattleItem(
+                        PlayerId.Value);
                     autoEquipped = equippedItem?.ItemUid == addedItem.ItemUid;
                 }
                 return added;
@@ -160,7 +159,7 @@ public partial class GameClientSession
             }
             if (attemptedItem != null && error == ErrorCode.INVENTORY_FULL)
             {
-                var board = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
+                var board = _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId.Value);
                 _gameEventLogManager.LogOrbPickupBlockedFull(
                     MatchingId,
                     PlayerId.Value,
@@ -188,7 +187,7 @@ public partial class GameClientSession
         }
         else if (summonStonePickup)
         {
-            var summonState = _summonStoneManager.AddStones(MatchingId, PlayerId.Value, 1);
+            var summonState = _matchRuntimes.GetRequired(MatchingId).SummonStones.AddStones(PlayerId.Value, 1);
             SendSummonStoneState(1, claimedItem.PositionX, claimedItem.PositionY);
             _gameEventLogManager.LogSummonStoneAward(
                 MatchingId,
@@ -241,7 +240,7 @@ public partial class GameClientSession
             isBot: false);
         if (!summonStonePickup && !jamPickup && !bootsPickup && !keyPickup)
         {
-            var boardAfterPickup = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
+            var boardAfterPickup = _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId.Value);
             _gameEventLogManager.LogOrbBoardTransition(
                 MatchingId, PlayerId.Value, boardAfterPickup.GetAllItems(),
                 boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "pickup", isBot: false);
@@ -308,8 +307,8 @@ public partial class GameClientSession
 
         var position = _lastValidatedPosition;
         var drop = EliminationInventoryDropper.DropAll(
-            _inGameInventoryManager,
-            _groundItemManager,
+            _matchRuntimes.GetRequired(MatchingId).Inventory,
+            _matchRuntimes.GetRequired(MatchingId).GroundItems,
             MatchingId,
             PlayerId.Value,
             CurrentArea,
@@ -318,7 +317,7 @@ public partial class GameClientSession
             CurrentMapId);
         if (drop.RemovedItems.Count == 0) return;
 
-        var emptyBoard = _inGameInventoryManager.GetPlayerInventory(MatchingId, PlayerId.Value);
+        var emptyBoard = _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId.Value);
         _gameEventLogManager.LogOrbBoardTransition(
             MatchingId, PlayerId.Value, emptyBoard.GetAllItems(), 0, CurrentArea.ToString(), "elimination_drop",
             isBot: false);
@@ -347,7 +346,7 @@ public partial class GameClientSession
     internal void DropBotInventoryAtCurrentPosition(long botPlayerId)
     {
         var outcome = EliminationInventoryDropper.DropBotInventoryWithLogs(
-            _botPlayerManager, _inGameInventoryManager, _groundItemManager, _gameEventLogManager,
+            _botPlayerManager, _matchRuntimes.GetRequired(MatchingId).Inventory, _matchRuntimes.GetRequired(MatchingId).GroundItems, _gameEventLogManager,
             MatchingId, botPlayerId);
         if (outcome == null)
             return;
@@ -358,7 +357,7 @@ public partial class GameClientSession
     private void SendGroundItemSnapshot(AreaType area)
     {
         if (MatchingId <= 0 || area == AreaType.None) return;
-        var items = _groundItemManager.GetSnapshot(MatchingId, area);
+        var items = _matchRuntimes.GetRequired(MatchingId).GroundItems.GetSnapshot(area);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, items.ToList());
         TrySend(packet);
     }

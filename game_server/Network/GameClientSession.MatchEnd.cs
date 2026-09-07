@@ -29,8 +29,8 @@ public partial class GameClientSession
         AreaType eliminatedArea = eliminatedSession?.CurrentArea ?? eliminatedBot?.CurrentArea ?? AreaType.None;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
-        int finalOrbTier = _inGameInventoryManager.GetEquippedBattleItemTier(MatchingId, eliminatedPlayerId);
-        var transition = _matchRosterManager.TryEliminatePlayer(MatchingId, eliminatedPlayerId, reason,
+        int finalOrbTier = _matchRuntimes.GetRequired(MatchingId).Inventory.GetEquippedBattleItemTier(eliminatedPlayerId);
+        var transition = _matchRuntimes.GetRequired(MatchingId).Roster.TryEliminatePlayer(eliminatedPlayerId, reason,
             resolvedAttackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
             finalOrbTier);
         if (!transition.Applied)
@@ -51,7 +51,7 @@ public partial class GameClientSession
         }
 
         var affected = transition.AffectedPlayers;
-        _groundItemManager.ReleaseClaimReservationsForPlayer(MatchingId, eliminatedPlayerId);
+        _matchRuntimes.GetRequired(MatchingId).GroundItems.ReleaseClaimReservationsForPlayer(eliminatedPlayerId);
         _gameEventLogManager.LogElimination(
             MatchingId,
             eliminatedPlayerId,
@@ -121,7 +121,7 @@ public partial class GameClientSession
         }
 
         // 3. 게임 종료 판정
-        var (isGameOver, winnerId) = _matchRosterManager.CheckGameOver(MatchingId);
+        var (isGameOver, winnerId) = _matchRuntimes.GetRequired(MatchingId).Roster.CheckGameOver();
         if (!deferGameOver && isGameOver)
         {
             Logger.LogInformation("게임 종료! 최후의 1인: {WinnerId}", winnerId);
@@ -387,7 +387,7 @@ public partial class GameClientSession
     {
         DateTime endedAtUtc = DateTime.UtcNow;
         DateTime startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId) ?? endedAtUtc;
-        var resultRows = _matchRosterManager.BuildGameResult(matchingId);
+        var resultRows = _matchRuntimes.GetRequired(matchingId).Roster.BuildGameResult();
         var killCountsByPlayerId = resultRows
             .Where(row => row.attackerPlayerId != 0 && row.reason == EliminationReason.MENTAL_ZERO)
             .GroupBy(row => row.attackerPlayerId)
@@ -399,7 +399,7 @@ public partial class GameClientSession
                 var session = allSessions.FirstOrDefault(s => s.PlayerId == d.playerId);
                 var bot = _botPlayerManager.GetBot(matchingId, d.playerId);
                 var playerInfo = bot == null ? null : _botPlayerManager.SynthesizePlayerInfo(matchingId, d.playerId);
-                var playerProfile = _matchRosterManager.GetPlayerProfile(matchingId, d.playerId);
+                var playerProfile = _matchRuntimes.GetRequired(matchingId).Roster.GetPlayerProfile(d.playerId);
                 var stats = _gameEventLogManager.GetResultStats(matchingId, d.playerId);
                 var orbScore = ResolveResultOrbScore(matchingId, d.playerId);
                 DateTime survivalEndUtc = d.eliminatedAt ?? endedAtUtc;
@@ -432,7 +432,7 @@ public partial class GameClientSession
                         IsAreaClosureElimination = d.isAreaClosureElimination,
                         IsOvertimeElimination = d.isOvertimeElimination,
                         Rank = d.playerId == winnerId ? 1 : d.eliminationRank,
-                        FinalOrbTier = d.playerId == winnerId ? _inGameInventoryManager.GetEquippedBattleItemTier(matchingId, d.playerId) : d.finalOrbTier,
+                        FinalOrbTier = d.playerId == winnerId ? _matchRuntimes.GetRequired(matchingId).Inventory.GetEquippedBattleItemTier(d.playerId) : d.finalOrbTier,
                         // 결과 승점은 오브 수 (#229): 인게임 순위와 같은 눈금을 쓴다.
                         OrbCount = orbScore.OrbCount
                     },
@@ -451,7 +451,7 @@ public partial class GameClientSession
     /// </summary>
     private (int OrbCount, int TierSum) ResolveResultOrbScore(long matchingId, long playerId)
     {
-        var inventory = _inGameInventoryManager.GetPlayerInventory(matchingId, playerId);
+        var inventory = _matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
         int orbCount = 0;
         int tierSum = 0;
         foreach (var item in inventory.GetAllItems())

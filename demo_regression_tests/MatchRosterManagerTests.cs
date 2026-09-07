@@ -10,33 +10,33 @@ public sealed class MatchRosterManagerTests
     public void Elimination_OnlyChangesTheEliminatedPlayer_WhenLegacyChainEffectsAreDisabled()
     {
         const long matchingId = 194001;
-        var manager = MatchTestServices.Roster(NullLogger.Instance);
+        var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
 
-        manager.RegisterEntry(matchingId, CreateLink(1, 2));
-        manager.RegisterEntry(matchingId, CreateLink(2, 3));
-        manager.RegisterEntry(matchingId, CreateLink(3, 1));
+        manager.RegisterEntry(CreateLink(1, 2));
+        manager.RegisterEntry(CreateLink(2, 3));
+        manager.RegisterEntry(CreateLink(3, 1));
 
-        var affected = manager.TryEliminatePlayer(matchingId, 2, EliminationReason.MENTAL_ZERO).AffectedPlayers;
+        var affected = manager.TryEliminatePlayer(2, EliminationReason.MENTAL_ZERO).AffectedPlayers;
 
         Assert.Equal(new[] { 2L }, affected.Keys);
         Assert.Equal(PlayerMatchStatus.ELIMINATED, affected[2]);
-        Assert.Equal(PlayerMatchStatus.ACTIVE, manager.GetEntry(matchingId, 1)!.Status);
-        Assert.Equal(PlayerMatchStatus.ACTIVE, manager.GetEntry(matchingId, 3)!.Status);
+        Assert.Equal(PlayerMatchStatus.ACTIVE, manager.GetEntry(1)!.Status);
+        Assert.Equal(PlayerMatchStatus.ACTIVE, manager.GetEntry(3)!.Status);
     }
 
     [Fact]
     public void Elimination_PreservesAttackerAndClosureContextInGameResult()
     {
         const long matchingId = 194002;
-        var manager = MatchTestServices.Roster(NullLogger.Instance);
+        var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
 
-        manager.RegisterEntry(matchingId, CreateLink(1, 2));
-        manager.RegisterEntry(matchingId, CreateLink(2, 1));
+        manager.RegisterEntry(CreateLink(1, 2));
+        manager.RegisterEntry(CreateLink(2, 1));
 
-        manager.TryEliminatePlayer(matchingId, 2, EliminationReason.MENTAL_ZERO,
+        manager.TryEliminatePlayer(2, EliminationReason.MENTAL_ZERO,
             attackerPlayerId: 1, eliminatedArea: AreaType.S2Library1, isAreaClosureElimination: true);
 
-        var result = Assert.Single(manager.BuildGameResult(matchingId), row => row.playerId == 2);
+        var result = Assert.Single(manager.BuildGameResult(), row => row.playerId == 2);
 
         Assert.Equal(1, result.attackerPlayerId);
         Assert.Equal(AreaType.S2Library1, result.eliminatedArea);
@@ -46,21 +46,20 @@ public sealed class MatchRosterManagerTests
     public void Elimination_FixesRankTierAndEnvironmentalCauseAtEliminationTime()
     {
         const long matchingId = 194003;
-        var manager = MatchTestServices.Roster(NullLogger.Instance);
+        var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
 
-        manager.RegisterEntry(matchingId, CreateLink(1, 2));
-        manager.RegisterEntry(matchingId, CreateLink(2, 3));
-        manager.RegisterEntry(matchingId, CreateLink(3, 1));
+        manager.RegisterEntry(CreateLink(1, 2));
+        manager.RegisterEntry(CreateLink(2, 3));
+        manager.RegisterEntry(CreateLink(3, 1));
 
         manager.TryEliminatePlayer(
-            matchingId,
             2,
             EliminationReason.MENTAL_ZERO,
             isOvertimeElimination: true,
             forcedRank: 3,
             finalOrbTier: 2);
 
-        var result = Assert.Single(manager.BuildGameResult(matchingId), row => row.playerId == 2);
+        var result = Assert.Single(manager.BuildGameResult(), row => row.playerId == 2);
         Assert.Equal(3, result.eliminationRank);
         Assert.Equal(2, result.finalOrbTier);
         Assert.True(result.isOvertimeElimination);
@@ -70,24 +69,24 @@ public sealed class MatchRosterManagerTests
     public void Elimination_AppliesOnlyOnceAndPreservesTheFirstResult()
     {
         const long matchingId = 194004;
-        var manager = MatchTestServices.Roster(NullLogger.Instance);
+        var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
 
-        manager.RegisterEntry(matchingId, CreateLink(1, 2));
-        manager.RegisterEntry(matchingId, CreateLink(2, 3));
-        manager.RegisterEntry(matchingId, CreateLink(3, 1));
+        manager.RegisterEntry(CreateLink(1, 2));
+        manager.RegisterEntry(CreateLink(2, 3));
+        manager.RegisterEntry(CreateLink(3, 1));
 
         var first = manager.TryEliminatePlayer(
-            matchingId, 2, EliminationReason.MENTAL_ZERO,
+            2, EliminationReason.MENTAL_ZERO,
             attackerPlayerId: 1, forcedRank: 3, finalOrbTier: 2);
         var duplicate = manager.TryEliminatePlayer(
-            matchingId, 2, EliminationReason.DETECTED,
+            2, EliminationReason.DETECTED,
             attackerPlayerId: 3, forcedRank: 2, finalOrbTier: 3);
 
         Assert.True(first.Applied);
         Assert.False(duplicate.Applied);
         Assert.Empty(duplicate.AffectedPlayers);
 
-        var result = Assert.Single(manager.BuildGameResult(matchingId), row => row.playerId == 2);
+        var result = Assert.Single(manager.BuildGameResult(), row => row.playerId == 2);
         Assert.Equal(EliminationReason.MENTAL_ZERO, result.reason);
         Assert.Equal(1, result.attackerPlayerId);
         Assert.Equal(3, result.eliminationRank);
@@ -101,29 +100,29 @@ public sealed class MatchRosterManagerTests
     public void Elimination_SameTickCollision_DecrementsAliveCountOnce()
     {
         const long matchingId = 227001;
-        var manager = MatchTestServices.Roster(NullLogger.Instance);
+        var manager = MatchTestServices.Roster(matchingId, NullLogger.Instance);
 
-        manager.RegisterEntry(matchingId, CreateLink(1, 2));
-        manager.RegisterEntry(matchingId, CreateLink(2, 3));
-        manager.RegisterEntry(matchingId, CreateLink(3, 1));
+        manager.RegisterEntry(CreateLink(1, 2));
+        manager.RegisterEntry(CreateLink(2, 3));
+        manager.RegisterEntry(CreateLink(3, 1));
 
         // 본체 HP 0 — 첫 확정.
         var byBodyHp = manager.TryEliminatePlayer(
-            matchingId, 2, EliminationReason.MENTAL_ZERO, attackerPlayerId: 1);
+            2, EliminationReason.MENTAL_ZERO, attackerPlayerId: 1);
         // 같은 틱의 시간 종료·폐쇄 정산이 같은 사람을 다시 밀어 넣는다.
         var byOvertime = manager.TryEliminatePlayer(
-            matchingId, 2, EliminationReason.MENTAL_ZERO, isOvertimeElimination: true);
+            2, EliminationReason.MENTAL_ZERO, isOvertimeElimination: true);
         var byClosure = manager.TryEliminatePlayer(
-            matchingId, 2, EliminationReason.MENTAL_ZERO, isAreaClosureElimination: true);
+            2, EliminationReason.MENTAL_ZERO, isAreaClosureElimination: true);
 
         Assert.True(byBodyHp.Applied);
         Assert.False(byOvertime.Applied);
         Assert.False(byClosure.Applied);
 
         // 생존 수가 한 번만 줄었다면 다음 탈락자의 등수는 2다 — 세 번 줄었으면 0으로 밀린다.
-        Assert.True(manager.TryEliminatePlayer(matchingId, 3, EliminationReason.MENTAL_ZERO).Applied);
+        Assert.True(manager.TryEliminatePlayer(3, EliminationReason.MENTAL_ZERO).Applied);
 
-        var results = manager.BuildGameResult(matchingId);
+        var results = manager.BuildGameResult();
         var second = Assert.Single(results, row => row.playerId == 2);
         Assert.Equal(3, second.eliminationRank);
         // 첫 확정의 맥락(공격자)이 뒤 호출에 덮이지 않아야 전리품 정산도 한 번으로 남는다.

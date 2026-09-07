@@ -14,24 +14,26 @@ internal sealed class MatchRuntime
 {
     private int _terminal;
 
-    internal MatchRuntime(long matchingId)
+    internal MatchRuntime(long matchingId, ILogger logger)
     {
         MatchingId = matchingId;
-        Inventory = new MatchingInventoryState(matchingId);
-        GroundItems = new GroundItemManager.MatchingGroundItemState(matchingId);
-        Roster = new MatchRosterState { MatchingId = matchingId };
+        Inventory = new InGameInventoryManager(matchingId, message => logger.LogInformation("{Message}", message));
+        GroundItems = new GroundItemManager(matchingId);
+        Roster = new MatchRosterManager(matchingId, logger);
+        SummonStones = new SummonStoneManager(matchingId);
+        Closures = new AreaClosureManager(matchingId, logger);
     }
 
     public long MatchingId { get; }
     public MatchDoorState Doors { get; } = new();
-    // 매치 종료 시 런타임과 함께 색인에서 빠진다. 매니저별 matchingId 사전은 두지 않는다.
-    public MatchingInventoryState Inventory { get; }
-    public GroundItemManager.MatchingGroundItemState GroundItems { get; }
-    public ConcurrentDictionary<long, SummonStoneManager.PlayerSummonState> SummonStones { get; } = new();
-    public EncounterRevealManager.MatchEncounterState Encounters { get; } = new();
-    public MatchRosterState Roster { get; }
+    // 데이터와 처리 객체를 함께 소유한다. 호출자는 이 매치를 고른 뒤 playerId만 넘긴다.
+    public InGameInventoryManager Inventory { get; }
+    public GroundItemManager GroundItems { get; }
+    public SummonStoneManager SummonStones { get; }
+    public EncounterRevealManager Encounters { get; } = new();
+    public MatchRosterManager Roster { get; }
     public MatchPresentationState Presentation { get; } = new();
-    public MatchingClosureState? Closure;
+    public AreaClosureManager Closures { get; }
     public object Sync { get; } = new();
     public bool IsTerminal => Volatile.Read(ref _terminal) != 0;
 
@@ -138,7 +140,7 @@ internal sealed class MatchRuntimeStore
         if (_runtimes.TryGetValue(matchingId, out MatchRuntime? existing))
             return existing;
 
-        var candidate = new MatchRuntime(matchingId);
+        var candidate = new MatchRuntime(matchingId, _logger);
         lock (candidate.Sync)
         {
             MatchRuntime runtime = _runtimes.GetOrAdd(matchingId, candidate);
@@ -158,6 +160,10 @@ internal sealed class MatchRuntimeStore
             return candidate;
         }
     }
+
+    /// <summary>진행 중인 처리에서 필요한 기존 매치를 찾는다. 없다고 새로 만들지는 않는다.</summary>
+    public MatchRuntime GetRequired(long matchingId) =>
+        Get(matchingId) ?? throw new InvalidOperationException($"Match is not available: {matchingId}");
 
     public MatchRuntime? Get(long matchingId) =>
         matchingId > 0 && _runtimes.TryGetValue(matchingId, out MatchRuntime? runtime) ? runtime : null;
@@ -224,6 +230,12 @@ internal sealed class MatchRuntimeStore
                 runtime.CleanupDone = true;
                 runtime.Doors.Clear();
                 RunCleanup(runtime.MatchingId);
+                runtime.Inventory.Release();
+                runtime.GroundItems.Release();
+                runtime.SummonStones.Release();
+                runtime.Encounters.Release();
+                runtime.Roster.Release();
+                runtime.Closures.Release();
                 _runtimes.TryRemove(new KeyValuePair<long, MatchRuntime>(runtime.MatchingId, runtime));
                 if (_afterCleanup != null)
                 {

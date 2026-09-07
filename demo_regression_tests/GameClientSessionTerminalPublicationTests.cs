@@ -275,13 +275,6 @@ public sealed class GameClientSessionTerminalPublicationTests
                     })
                 ]);
 
-            Inventories = new InGameInventoryManager(Store.Get);
-            GroundItems = new GroundItemManager(Store.Get);
-            SummonStones = new SummonStoneManager(Store.Get);
-            Roster = new MatchRosterManager(Store.Get, NullLogger.Instance);
-            Closures = new AreaClosureManager(Store.Get, NullLogger.Instance);
-            Encounters = new EncounterRevealManager(Store.Get);
-            Inventories.Initialize();
         }
 
         public MatchRuntimeStore Store { get; }
@@ -289,15 +282,9 @@ public sealed class GameClientSessionTerminalPublicationTests
         public ConcurrentDictionary<long, int> LifecycleDispatchCounts { get; } = new();
         public TimelineLogger Logger { get; }
         public InteractableStateManager Interactables { get; } = new();
-        public InGameInventoryManager Inventories { get; }
-        public GroundItemManager GroundItems { get; }
-        public SummonStoneManager SummonStones { get; }
-        public MatchRosterManager Roster { get; }
-        public AreaClosureManager Closures { get; }
         public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
         public GameEventLogManager EventLog { get; } = new();
         public MatchSummaryFileStore Summaries => new(_summaryDirectory);
-        public EncounterRevealManager Encounters { get; }
         public long? ThrowPrepareCompletionForPlayerId { get; set; }
         public MatchRuntime? TrackedRuntime { get; set; }
         public bool? LockHeldDuringLifecycle { get; private set; }
@@ -322,15 +309,9 @@ public sealed class GameClientSessionTerminalPublicationTests
                 Logger,
                 _sessions,
                 Interactables,
-                Inventories,
-                GroundItems,
-                SummonStones,
-                Roster,
-                Closures,
                 Bots,
                 EventLog,
                 Summaries,
-                Encounters,
                 Store,
                 PrepareGameCompletion);
             SetIdentity(session, matchingId, playerId, status);
@@ -368,12 +349,11 @@ public sealed class GameClientSessionTerminalPublicationTests
             for (int index = 0; index < entries.Count; index++)
             {
                 RosterEntry entry = entries[index];
-                Roster.RegisterEntry(matchingId, entry);
+                Store.GetRequired(matchingId).Roster.RegisterEntry(entry);
                 string name = useLongProfiles
                     ? $"Player{entry.PlayerId}_{new string('x', 300)}"
                     : $"Player{entry.PlayerId}";
-                Roster.UpdatePlayerProfile(
-                    matchingId,
+                Store.GetRequired(matchingId).Roster.UpdatePlayerProfile(
                     entry.PlayerId,
                     name,
                     [1001, 1002, 1003, 1004]);
@@ -444,15 +424,9 @@ public sealed class GameClientSessionTerminalPublicationTests
             ILogger logger,
             List<GameClientSession> sessions,
             InteractableStateManager interactables,
-            InGameInventoryManager inventories,
-            GroundItemManager groundItems,
-            SummonStoneManager summonStones,
-            MatchRosterManager roster,
-            AreaClosureManager closures,
             BotPlayerManager bots,
             GameEventLogManager eventLog,
             MatchSummaryFileStore summaries,
-            EncounterRevealManager encounters,
             MatchRuntimeStore matchRuntimes,
             Func<long, long, Action?> prepareGameCompletion)
             : base(
@@ -466,15 +440,9 @@ public sealed class GameClientSessionTerminalPublicationTests
                     .Where(session => session.MatchingId == matchingId)
                     .ToList(),
                 interactables,
-                inventories,
-                groundItems,
-                summonStones,
-                roster,
-                closures,
                 bots,
                 eventLog,
                 summaries,
-                encounters,
                 matchRuntimes,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },

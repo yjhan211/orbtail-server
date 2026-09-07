@@ -87,8 +87,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             FirstMatchingId,
             FirstPlayerId,
             RecoveryOrbT1);
-        Assert.True(fixture.Inventories.TryEquipBattleItem(
-            FirstMatchingId,
+        Assert.True(fixture.Store.GetRequired(FirstMatchingId).Inventory.TryEquipBattleItem(
             FirstPlayerId,
             first.ItemUid,
             out _));
@@ -128,12 +127,12 @@ public sealed class GameClientSessionItemCombinePublicationTests
             item => item.ItemId == RecoveryOrbT2 && item.Count == 1);
 
         InGameItemInfo liveOutput = Assert.Single(
-            fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId));
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId));
         Assert.Equal(outputUpdate.ItemUid, liveOutput.ItemUid);
         Assert.Equal(RecoveryOrbT2, liveOutput.ItemId);
         Assert.Equal(
             liveOutput.ItemUid,
-            fixture.Inventories.GetEquippedBattleItem(FirstMatchingId, FirstPlayerId)!.ItemUid);
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetEquippedBattleItem(FirstPlayerId)!.ItemUid);
 
         G_TO_C_USE_INGAME_ITEM_RESULT equipped =
             connection.DeserializeSingle<G_TO_C_USE_INGAME_ITEM_RESULT>(
@@ -165,8 +164,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             FirstMatchingId,
             FirstPlayerId,
             SunOrbT1);
-        Assert.True(fixture.Inventories.TryEquipBattleItem(
-            FirstMatchingId,
+        Assert.True(fixture.Store.GetRequired(FirstMatchingId).Inventory.TryEquipBattleItem(
             FirstPlayerId,
             first.ItemUid,
             out _));
@@ -192,11 +190,11 @@ public sealed class GameClientSessionItemCombinePublicationTests
         int outputItemId = combined.OutputItemId;
 
         InGameItemInfo output = Assert.Single(
-            fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId));
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId));
         Assert.Equal(outputItemId, output.ItemId);
         Assert.Equal(
             output.ItemUid,
-            fixture.Inventories.GetEquippedBattleItem(FirstMatchingId, FirstPlayerId)!.ItemUid);
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetEquippedBattleItem(FirstPlayerId)!.ItemUid);
         Assert.Equal(
             output.ItemUid,
             connection.DeserializeSingle<G_TO_C_USE_INGAME_ITEM_RESULT>(
@@ -242,7 +240,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(Bandage, result.InputItemB);
         Assert.Equal(CompressionBandage, result.OutputItemId);
         Assert.Equal(CompressionBandage, Assert.Single(
-            fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId)).ItemId);
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId)).ItemId);
         G_TO_C_INGAME_INVENTORY_UPDATE update =
             connection.DeserializeSingle<G_TO_C_INGAME_INVENTORY_UPDATE>(
                 Protocol.G_TO_C_INGAME_INVENTORY_UPDATE);
@@ -277,19 +275,19 @@ public sealed class GameClientSessionItemCombinePublicationTests
             case "invalid-orb":
                 itemA = SunOrbT1;
                 itemB = SunOrbT2;
-                fixture.Inventories.AddItem(FirstMatchingId, FirstPlayerId, itemA);
-                fixture.Inventories.AddItem(FirstMatchingId, FirstPlayerId, itemB);
+                fixture.Store.GetRequired(FirstMatchingId).Inventory.AddItem(FirstPlayerId, itemA);
+                fixture.Store.GetRequired(FirstMatchingId).Inventory.AddItem(FirstPlayerId, itemB);
                 break;
             case "no-recipe":
                 itemA = Bandage;
                 itemB = CannedCoffee;
-                fixture.Inventories.AddItem(FirstMatchingId, FirstPlayerId, itemA);
-                fixture.Inventories.AddItem(FirstMatchingId, FirstPlayerId, itemB);
+                fixture.Store.GetRequired(FirstMatchingId).Inventory.AddItem(FirstPlayerId, itemA);
+                fixture.Store.GetRequired(FirstMatchingId).Inventory.AddItem(FirstPlayerId, itemB);
                 break;
             case "missing-material":
                 itemA = Bandage;
                 itemB = Bandage;
-                fixture.Inventories.AddItem(FirstMatchingId, FirstPlayerId, itemA);
+                fixture.Store.GetRequired(FirstMatchingId).Inventory.AddItem(FirstPlayerId, itemA);
                 break;
             case "round-locked":
                 itemA = Bandage;
@@ -357,6 +355,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         var timeline = new ConcurrentQueue<string>();
         fixture.ConnectionFor(session).BeforeSend = protocol => timeline.Enqueue($"send:{protocol}");
         MatchRuntime runtime = fixture.Store.Get(FirstMatchingId)!;
+        var inventoryBeforeRemoval = runtime.Inventory.GetPlayerInventory(FirstPlayerId);
         using var lockHeld = new ManualResetEventSlim();
         using var markTerminal = new ManualResetEventSlim();
         Task holder = Task.Run(() =>
@@ -385,7 +384,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             Bandage,
             Bandage,
             ErrorCode.INVALID_GAME_STATE);
-        Assert.Equal(before, runtime.Inventory.GetOrCreatePlayerInventory(FirstPlayerId).GetAllItems().OrderBy(item => item.ItemUid).Select(item => (item.ItemUid, item.ItemId, item.Count)).ToArray());
+        Assert.Equal(before, inventoryBeforeRemoval.GetAllItems().OrderBy(item => item.ItemUid).Select(item => (item.ItemUid, item.ItemId, item.Count)).ToArray());
         Assert.Empty(fixture.EventLog.GetForPersistence(FirstMatchingId));
         Assert.Null(fixture.Store.Get(FirstMatchingId));
         Assert.Equal(0, fixture.TotalItemCombineRandomResolverCalls);
@@ -400,8 +399,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             FirstMatchingId,
             FirstPlayerId,
             RecoveryOrbT1);
-        Assert.True(fixture.Inventories.TryEquipBattleItem(
-            FirstMatchingId,
+        Assert.True(fixture.Store.GetRequired(FirstMatchingId).Inventory.TryEquipBattleItem(
             FirstPlayerId,
             first.ItemUid,
             out _));
@@ -462,8 +460,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             FirstMatchingId,
             FirstPlayerId,
             RecoveryOrbT1);
-        Assert.True(fixture.Inventories.TryEquipBattleItem(
-            FirstMatchingId,
+        Assert.True(fixture.Store.GetRequired(FirstMatchingId).Inventory.TryEquipBattleItem(
             FirstPlayerId,
             first.ItemUid,
             out _));
@@ -484,11 +481,11 @@ public sealed class GameClientSessionItemCombinePublicationTests
             bundle.Take(failingIndex).Append(Protocol.G_TO_C_ERROR),
             connection.DeliveredProtocols);
         InGameItemInfo output = Assert.Single(
-            fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId));
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId));
         Assert.Equal(RecoveryOrbT2, output.ItemId);
         Assert.Equal(
             output.ItemUid,
-            fixture.Inventories.GetEquippedBattleItem(FirstMatchingId, FirstPlayerId)!.ItemUid);
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetEquippedBattleItem(FirstPlayerId)!.ItemUid);
         // 송신이 잠금 안에서 바로 나가므로 실패한 Send 뒤의 로그 단계는 돌지 않는다 — 인벤토리 변경은 남는다.
         Assert.Empty(fixture.EventLog.GetForPersistence(FirstMatchingId));
         G_TO_C_ERROR error = connection.DeserializeSingle<G_TO_C_ERROR>(Protocol.G_TO_C_ERROR);
@@ -543,8 +540,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
             Assert.False(secondWaiterTask.IsCompleted);
             Assert.Empty(fixture.ConnectionFor(firstWaiter).AttemptedProtocols);
             Assert.Empty(fixture.ConnectionFor(secondWaiter).AttemptedProtocols);
-            Assert.Equal(2, fixture.Inventories.GetAllItems(FirstMatchingId, SecondPlayerId).Count);
-            Assert.Equal(2, fixture.Inventories.GetAllItems(FirstMatchingId, ThirdPlayerId).Count);
+            Assert.Equal(2, fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(SecondPlayerId).Count);
+            Assert.Equal(2, fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(ThirdPlayerId).Count);
         }
         finally
         {
@@ -569,11 +566,11 @@ public sealed class GameClientSessionItemCombinePublicationTests
             ["first-waiter", "second-waiter"],
             entries.Skip(2).Select(entry => entry[..entry.IndexOf(':')]).Distinct().Order());
         Assert.Equal(CompressionBandage, Assert.Single(
-            fixture.Inventories.GetAllItems(FirstMatchingId, FirstPlayerId)).ItemId);
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId)).ItemId);
         Assert.Equal(CompressionBandage, Assert.Single(
-            fixture.Inventories.GetAllItems(FirstMatchingId, SecondPlayerId)).ItemId);
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(SecondPlayerId)).ItemId);
         Assert.Equal(CompressionBandage, Assert.Single(
-            fixture.Inventories.GetAllItems(FirstMatchingId, ThirdPlayerId)).ItemId);
+            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(ThirdPlayerId)).ItemId);
     }
 
     [Fact]
@@ -613,7 +610,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             await Task.Delay(100);
             Assert.False(secondTask.IsCompleted);
             Assert.Equal(1, itemCombineRandom.DrawCount);
-            Assert.Equal(2, fixture.Inventories.GetAllItems(FirstMatchingId, SecondPlayerId).Count);
+            Assert.Equal(2, fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(SecondPlayerId).Count);
         }
         finally
         {
@@ -886,29 +883,16 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 NullLogger.Instance,
                 cleanupSteps: [new MatchCleanupStep("cleanup", _ => CleanupTimeline?.Enqueue("cleanup"))]);
             typeof(GameServer).GetField("_matchRuntimes", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(Server, Store);
-            Inventories = Server.InventoryManager;
             EventLog = GetField<GameEventLogManager>(Server, "_gameEventLogManager");
 
-            GroundItems = new GroundItemManager(Store.Get);
-            SummonStones = new SummonStoneManager(Store.Get);
-            Roster = new MatchRosterManager(Store.Get, NullLogger.Instance);
-            Closures = new AreaClosureManager(Store.Get, NullLogger.Instance);
-            Encounters = new EncounterRevealManager(Store.Get);
-            Inventories.Initialize();
         }
 
         public GameServer Server { get; }
         public MatchRuntimeStore Store { get; }
         public ConcurrentQueue<string>? CleanupTimeline { get; set; }
-        public InGameInventoryManager Inventories { get; }
         public GameEventLogManager EventLog { get; }
         public InteractableStateManager Interactables { get; } = new();
-        public GroundItemManager GroundItems { get; }
-        public SummonStoneManager SummonStones { get; }
-        public MatchRosterManager Roster { get; }
-        public AreaClosureManager Closures { get; }
         public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
-        public EncounterRevealManager Encounters { get; }
         public int TotalItemCombineRandomResolverCalls =>
             _itemCombineRandomResolverCalls.Values.Sum();
 
@@ -917,7 +901,6 @@ public sealed class GameClientSessionItemCombinePublicationTests
             Store.GetOrCreate(matchingId);
             // 미등록 매치는 게이트가 막는다 (#335) — 테스트 매치를 카운트다운 없이 즉시 활성으로 등록한다.
             MatchStartGate.RegisterBotOnlyMatch(matchingId);
-            GroundItems.InitializeMatching(matchingId);
             Store.Get(matchingId)!.Doors.Initialize();
 
             var connection = new RecordingTcpConnection();
@@ -933,15 +916,9 @@ public sealed class GameClientSessionItemCombinePublicationTests
                     .Where(candidate => candidate.MatchingId == instanceId)
                     .ToList(),
                 Interactables,
-                Inventories,
-                GroundItems,
-                SummonStones,
-                Roster,
-                Closures,
                 Bots,
                 EventLog,
                 new MatchSummaryFileStore(_summaryDirectory),
-                Encounters,
                 Store,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
@@ -986,8 +963,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
             long playerId,
             int itemId)
         {
-            InGameItemInfo first = Inventories.AddItem(matchingId, playerId, itemId);
-            InGameItemInfo second = Inventories.AddItem(matchingId, playerId, itemId);
+            InGameItemInfo first = Store.GetRequired(matchingId).Inventory.AddItem(playerId, itemId);
+            InGameItemInfo second = Store.GetRequired(matchingId).Inventory.AddItem(playerId, itemId);
             Assert.NotEqual(first.ItemUid, second.ItemUid);
             return (first, second);
         }
@@ -995,7 +972,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         public (long ItemUid, int ItemId, int Count)[] InventorySnapshot(
             long matchingId,
             long playerId) =>
-            Inventories.GetAllItems(matchingId, playerId)
+            Store.GetRequired(matchingId).Inventory.GetAllItems(playerId)
                 .OrderBy(item => item.ItemUid)
                 .Select(item => (item.ItemUid, item.ItemId, item.Count))
                 .ToArray();

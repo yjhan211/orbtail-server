@@ -22,12 +22,11 @@ public sealed class EliminationInventoryDropperTests
     public void PlayersAndBotsUseTheSameEliminationScatterPolicy(long playerId)
     {
         const long matchingId = 99001;
-        var inventory = MatchTestServices.Inventory();
-        var groundItems = MatchTestServices.GroundItems();
-        inventory.Initialize();
-        inventory.AddItem(matchingId, playerId, HopeOrbT1);
-        inventory.AddItem(matchingId, playerId, ForgetOrbT1);
-        inventory.AddItem(matchingId, playerId, CannedCoffee);
+        var inventory = MatchTestServices.Inventory(matchingId);
+        var groundItems = MatchTestServices.GroundItems(matchingId);
+        inventory.AddItem(playerId, HopeOrbT1);
+        inventory.AddItem(playerId, ForgetOrbT1);
+        inventory.AddItem(playerId, CannedCoffee);
 
         var result = EliminationInventoryDropper.DropAll(
             inventory,
@@ -45,7 +44,7 @@ public sealed class EliminationInventoryDropperTests
         Assert.Equal(
             new[] { HopeOrbT1, ForgetOrbT1 },
             result.SpawnedItems.Select(item => item.ItemId).OrderBy(id => id).ToArray());
-        Assert.Empty(inventory.GetAllItems(matchingId, playerId));
+        Assert.Empty(inventory.GetAllItems(playerId));
     }
 
     [Fact]
@@ -53,10 +52,9 @@ public sealed class EliminationInventoryDropperTests
     {
         const long matchingId = 99002;
         const long botPlayerId = -7002;
-        var inventory = MatchTestServices.Inventory();
-        var groundItems = MatchTestServices.GroundItems();
-        inventory.Initialize();
-        inventory.AddItem(matchingId, botPlayerId, HopeOrbT1);
+        var inventory = MatchTestServices.Inventory(matchingId);
+        var groundItems = MatchTestServices.GroundItems(matchingId);
+        inventory.AddItem(botPlayerId, HopeOrbT1);
 
         var first = EliminationInventoryDropper.DropAll(
             inventory,
@@ -78,7 +76,7 @@ public sealed class EliminationInventoryDropperTests
         Assert.Single(first.SpawnedItems);
         Assert.Empty(duplicate.RemovedItems);
         Assert.Empty(duplicate.SpawnedItems);
-        Assert.Single(groundItems.GetSnapshot(matchingId, AreaType.S2Classroom1));
+        Assert.Single(groundItems.GetSnapshot(AreaType.S2Classroom1));
     }
 
     private static string FindNetworkBasePath()
