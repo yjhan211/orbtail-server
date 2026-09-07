@@ -812,7 +812,7 @@ public partial class GameClientSession : SessionBase
             // behind until its long TTL expires.
             ReleaseMatchingReservationOnce();
         }
-        else if (PlayerId.HasValue && MatchingId > 0 && !Volatile.Read(ref _isGameEnded))
+        else if (PlayerId.HasValue && MatchingId > 0 && !IsGameEnded)
         {
             if (IsEliminated)
             {

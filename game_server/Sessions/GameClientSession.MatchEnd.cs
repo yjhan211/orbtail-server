@@ -33,7 +33,7 @@ public partial class GameClientSession
 
     internal void TryEndMatch(long winnerId, string criterion)
     {
-        if (Volatile.Read(ref _isGameEnded) || MatchingId <= 0)
+        if (IsGameEnded || MatchingId <= 0)
             return;
         _matchEliminations.EndMatch(CurrentMapId, MatchingId, winnerId, criterion);
     }
@@ -52,7 +52,7 @@ public partial class GameClientSession
     public void CheckResourceElimination(long attackerPlayerId = 0, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false)
     {
-        if (!PlayerId.HasValue || Volatile.Read(ref _isGameEnded) || IsEliminated) return;
+        if (!PlayerId.HasValue || IsGameEnded || IsEliminated) return;
         if (Health > 0) return;
 
         Logger.LogInformation(

@@ -437,7 +437,7 @@ public partial class GameClientSession
             return true;
         }
 
-        if (Volatile.Read(ref _isGameEnded))
+        if (IsGameEnded)
         {
             reason = "Game has already ended";
             return true;
