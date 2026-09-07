@@ -152,7 +152,7 @@ public sealed class SwarmBotMovementPlanTests
             "ProcessBotMovementForMatching(matchingId);");
         AssertInOrder(
             process,
-            "_sessionRegistry.GetByMatch(matchingId)",
+            "sessions.GetByMatch(matchingId)",
             "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
             "_swarmBotMovementCoordinator.PrepareTick(",
             "DispatchSwarmBotMovementPlan(plan, sessionSnapshot)",
@@ -207,7 +207,7 @@ public sealed class SwarmBotMovementPlanTests
             "DispatchSwarmExternalBotMovement(matchingId, movement)");
         AssertInOrder(
             external,
-            "_sessionRegistry.GetByMatch(matchingId)",
+            "sessions.GetByMatch(matchingId)",
             "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
             "PrepareExternalMovement(",
             "DispatchSwarmBotMovementPlan(plan, sessionSnapshot)");

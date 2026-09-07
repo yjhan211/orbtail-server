@@ -255,7 +255,8 @@ public sealed class MatchStartCountdownPublicationTests
         GameServer server = CreateEntryTestServer();
         var sessionRegistry = Assert.IsType<GameSessionRegistry>(
             typeof(GameServer)
-                .GetField("_sessionRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Single(field => field.FieldType == typeof(GameSessionRegistry))
                 .GetValue(server));
         MatchRuntime runtime = server.MatchRuntimes.GetOrCreate(matchingId);
 
@@ -299,7 +300,8 @@ public sealed class MatchStartCountdownPublicationTests
         GameServer server = CreateEntryTestServer();
         var sessionRegistry = Assert.IsType<GameSessionRegistry>(
             typeof(GameServer)
-                .GetField("_sessionRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Single(field => field.FieldType == typeof(GameSessionRegistry))
                 .GetValue(server));
         var completedSession = new RecordingEntrySession();
         SetSessionIdentity(completedSession, completedPlayerId, matchingId);

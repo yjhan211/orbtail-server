@@ -38,7 +38,8 @@ public sealed class GameServerDependencyInjectionTests
         var registry = provider.GetRequiredService<GameSessionRegistry>();
         var server = provider.GetRequiredService<GameServer>();
         var injectedRegistry = typeof(GameServer)
-            .GetField("_sessionRegistry", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+            .Single(field => field.FieldType == typeof(GameSessionRegistry))
             .GetValue(server);
 
         Assert.Same(registry, provider.GetRequiredService<GameSessionRegistry>());

@@ -44,7 +44,7 @@ public partial class GameServer
         IReadOnlyList<long> activeMatchingIds;
         try
         {
-            countdownSessions = _sessionRegistry.SnapshotWhere(static session => session.PlayerId.HasValue);
+            countdownSessions = sessions.SnapshotWhere(static session => session.PlayerId.HasValue);
             activeSessions = countdownSessions
                 .Where(static session => !session.IsEliminated && !session.IsGameEnded)
                 .ToList();

@@ -2165,7 +2165,7 @@ public partial class GameServer
     /// <summary>수동 더미 이동을 매치 잠금 안에서 계획·송신한다 — 궤도는 돌리지 않는다.</summary>
     private void DispatchSwarmExternalBotMovement(long matchingId, BotMovementEvent movement)
     {
-        GameClientSession[] sessionSnapshot = _sessionRegistry.GetByMatch(matchingId)
+        GameClientSession[] sessionSnapshot = sessions.GetByMatch(matchingId)
             .Where(session =>
                 session.PlayerId is > 0 &&
                 session.CurrentMapId == Config.SWARM_MATCH_MAP &&

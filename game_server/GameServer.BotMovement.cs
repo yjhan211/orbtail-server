@@ -29,7 +29,7 @@ public partial class GameServer
     private void ProcessBotMovementForMatching(long matchingId)
     {
         long tickStartedAt = Stopwatch.GetTimestamp();
-        GameClientSession[] sessionSnapshot = _sessionRegistry.GetByMatch(matchingId)
+        GameClientSession[] sessionSnapshot = sessions.GetByMatch(matchingId)
             .Where(session =>
                 session.PlayerId is > 0 &&
                 session.CurrentMapId == Config.SWARM_MATCH_MAP &&

@@ -24,7 +24,7 @@ public sealed class SwarmArenaTickOrderTests
         // 바쁜 매치는 이 펄스를 버리고(TryEnter), 들어간 매치는 잠금 안에서 틱을 돌린다.
         AssertInOrder(
             tickBody,
-            "_sessionRegistry.SnapshotWhere(",
+            "sessions.SnapshotWhere(",
             "MatchRuntimes.ActiveIds()",
             "MatchRuntimes.TryEnter(matchingId, out MatchScope scope)",
             "continue;",
@@ -58,7 +58,7 @@ public sealed class SwarmArenaTickOrderTests
             "private void ProcessProximityAutoCombatForMatching(");
         AssertInOrder(
             proximityTick,
-            "_sessionRegistry.SnapshotWhere(",
+            "sessions.SnapshotWhere(",
             "activeMatchingIds = MatchRuntimes.ActiveIds();",
             "Proximity auto combat snapshot failed",
             "foreach (long matchingId in activeMatchingIds)",
@@ -80,7 +80,7 @@ public sealed class SwarmArenaTickOrderTests
             "/// <summary>\n    ///     #26: 봇 탈락 처리 + 게임 종료 판정.");
         AssertInOrder(
             resourceTick,
-            "_sessionRegistry.SnapshotWhere(",
+            "sessions.SnapshotWhere(",
             "MatchRuntimes.ActiveIds()",
             "if (!MatchStartGate.IsGameplayActive(matchingId))",
             "MatchRuntimes.Enter(matchingId, out MatchScope scope)",

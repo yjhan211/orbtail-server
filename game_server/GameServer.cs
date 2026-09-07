@@ -37,13 +37,12 @@ public partial class GameServer(
     IGameServerRegistry gameServerRegistry,
     GameServerNodeOptions nodeOptions,
     GameServerDevOptions devOptions,
-    GameSessionRegistry sessionRegistry)
+    GameSessionRegistry sessions)
     : IHostedService
 {
     private const int ResourceTickIntervalSeconds = 5;
     private static readonly TimeSpan ShutdownStageTimeout = TimeSpan.FromSeconds(5);
 
-    private readonly GameSessionRegistry _sessionRegistry = sessionRegistry;
     private readonly SwarmMatchRuntimeStore _swarmMatchRuntimes = new();
     private MatchRuntimeStore? _matchRuntimes;
     private MatchEntryFailureHandler? _entryFailureHandler;
@@ -84,7 +83,7 @@ public partial class GameServer(
 
     internal MatchEntryFailureHandler EntryFailureHandler =>
         LazyInitializer.EnsureInitialized(ref _entryFailureHandler,
-            () => new MatchEntryFailureHandler(MatchRuntimes, _sessionRegistry, MatchingLifecycle, logger))!;
+            () => new MatchEntryFailureHandler(MatchRuntimes, sessions, MatchingLifecycle, logger))!;
 
     private MatchRuntimeStore CreateMatchRuntimeStore() =>
         new(logger, cleanupSteps: BuildMatchCleanupSteps(), afterCleanup: StartMatchingRedisCleanup);
@@ -96,7 +95,7 @@ public partial class GameServer(
     private IReadOnlyList<MatchCleanupStep> BuildMatchCleanupSteps() =>
     [
         new MatchCleanupStep("session runtime", GameClientSession.CleanupAbandonedMatchingRuntime),
-        new MatchCleanupStep("session index", _sessionRegistry.RemoveMatch),
+        new MatchCleanupStep("session index", sessions.RemoveMatch),
         new MatchCleanupStep("settlement", CleanupMatchSettlementState),
         new MatchCleanupStep("swarm arena", CleanupSwarmArenaState),
         new MatchCleanupStep("bots", _botPlayerManager.CleanupMatching),
@@ -172,7 +171,7 @@ public partial class GameServer(
             await RunShutdownStageAsync(_nodeAdvertiser.StopAcceptingAsync(), "node registry draining");
 
         // 서버 셧다운 시 모든 세션을 서버 주도 종료로 마킹 → released terminal로 reservation 해제
-        foreach (var session in _sessionRegistry.SnapshotAll())
+        foreach (var session in sessions.SnapshotAll())
             session.MarkServerInitiatedDisconnect();
 
         // Host cancellation must not skip later cleanup stages. Log slow stages at a fixed
@@ -305,7 +304,7 @@ public partial class GameServer(
     {
         try
         {
-            var activeSessions = _sessionRegistry.SnapshotWhere(
+            var activeSessions = sessions.SnapshotWhere(
                 static session => session.PlayerId.HasValue && !session.IsEliminated);
 
             // Environmental damage and eliminations are settled per matching below.
@@ -696,7 +695,7 @@ public partial class GameServer(
     {
         if (session.PlayerId.HasValue)
         {
-            bool removed = _sessionRegistry.Remove(session);
+            bool removed = sessions.Remove(session);
 
             if (!removed)
             {
@@ -816,7 +815,7 @@ public partial class GameServer(
 
     private Action? RegisterClientSession(long playerId, GameClientSession session)
     {
-        GameClientSession? existingSession = _sessionRegistry.Register(playerId, session, out bool added);
+        GameClientSession? existingSession = sessions.Register(playerId, session, out bool added);
         if (existingSession == null)
         {
             if (added)
@@ -835,24 +834,24 @@ public partial class GameServer(
     /// <summary>같은 매치 인스턴스의 인증된 세션 스냅샷 — 색인 조회라 전체 세션 스캔이 없다.</summary>
     private List<GameClientSession> GetSessionsByMatch(long matchingId)
     {
-        return _sessionRegistry.GetByMatch(matchingId);
+        return sessions.GetByMatch(matchingId);
     }
 
     private bool HasHumanSessions(long matchingId)
     {
-        return _sessionRegistry.HasSessions(matchingId);
+        return sessions.HasSessions(matchingId);
     }
 
     private List<GameClientSession> GetSessionsByInstance(MapId mapId, long mapSubId)
     {
-        return _sessionRegistry.GetByInstance(mapId, mapSubId);
+        return sessions.GetByInstance(mapId, mapSubId);
     }
 
     // ===== 내부 매치 조회 및 개발 도구 =====
 
     private List<long> GetActiveMatchingIds()
     {
-        var ids = _sessionRegistry.GetActiveMatchingIds().ToHashSet();
+        var ids = sessions.GetActiveMatchingIds().ToHashSet();
         foreach (long matchingId in _botPlayerManager.GetActiveMatchingIds())
         {
             if (matchingId > 0)
