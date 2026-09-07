@@ -34,8 +34,8 @@ public sealed class GameServerDependencyInjectionTests
             typeof(game_server.services.GameEventLogManager),
             typeof(game_server.services.MatchSummaryFileStore),
             typeof(game_server.services.MatchEntryFailureHandler),
-            typeof(game_server.services.MatchCleanupService),
-            typeof(game_server.services.BotEliminationService),
+            typeof(game_server.services.MatchArenaService),
+            typeof(game_server.services.BotDecisionService),
             typeof(game_server.services.MatchCountdownService),
             typeof(game_server.services.GameServerTickService),
             typeof(game_server.services.BotMovementService)

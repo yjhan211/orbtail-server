@@ -11,6 +11,14 @@ namespace game_server.services;
 /// </summary>
 internal sealed class OrbTrailService(MatchRuntimeStore matchRuntimes)
 {
+    public int CountSwarmSquadOrbs(long matchingId, long playerId)
+    {
+        return matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
+            .GetAllItems()
+            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
+            .Sum(item => item.Count);
+    }
+
     internal const float CutFlashRadius = 0.7f;
     internal const int CutVfxKind = 1;
     public List<int> GetSwarmOrbTiersInOrder(long matchingId, long playerId)

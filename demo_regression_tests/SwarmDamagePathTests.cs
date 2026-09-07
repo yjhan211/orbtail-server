@@ -21,7 +21,7 @@ public class SwarmDamagePathTests
     public void TailCut_RemovesSuffixAndChargesAttacker()
     {
         string source = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "GameServer.SwarmArena.cs"));
+            Path.Combine(FindRepositoryRoot(), "game_server", "Services", "MatchArenaService.cs"));
 
         // 2026-09-02 재무장 — 절단은 켜져 있어야 한다 (끌 때는 이 어서션도 같이 바꾼다).
         Assert.Contains("SwarmTrailCutEnabled = true", source);
@@ -83,8 +83,8 @@ public class SwarmDamagePathTests
                          "private void SendInteractableList"),
                      (Path.Combine("game_server", "Network", "GameClientSession.RngCollect.cs"),
                          "private Task HandleSwarmRngCollectStart"),
-                     (Path.Combine("game_server", "GameServer.SwarmBots.cs"),
-                         "private void ProcessSwarmBotExplores"),
+                     (Path.Combine("game_server", "Services", "Bots", "BotDecisionService.cs"),
+                         "public void ProcessSwarmBotExplores"),
                      (Path.Combine("game_server", "Services", "MatchCombatDamageService.cs"),
                          "private void SpawnSwarmSummonStone")
                  })
@@ -110,9 +110,9 @@ public class SwarmDamagePathTests
     {
         // #312 분리: 절단 기계는 SwarmArena, 봇 판단(자제·도주·치명상)은 SwarmBots가 소유한다.
         string source = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "GameServer.SwarmArena.cs"));
+            Path.Combine(FindRepositoryRoot(), "game_server", "Services", "MatchArenaService.cs"));
         string botSource = File.ReadAllText(
-            Path.Combine(FindRepositoryRoot(), "game_server", "GameServer.SwarmBots.cs"));
+            Path.Combine(FindRepositoryRoot(), "game_server", "Services", "Bots", "BotDecisionService.cs"));
 
         // ① 절단 자제: 봇 전용, 래치 앞에서 걸린다.
         Assert.Contains("SwarmBotCutMaxCorruptionRatio = 0.5f", botSource);
@@ -120,7 +120,7 @@ public class SwarmDamagePathTests
         int cutMethodStart = source.IndexOf("private void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
         int cutMethodEnd = source.IndexOf("// 링 연출 종류", cutMethodStart, StringComparison.Ordinal);
         string cutBody = source.Substring(cutMethodStart, cutMethodEnd - cutMethodStart);
-        Assert.Contains("cutterBot != null && !IsSwarmBotCutAllowed(", cutBody);
+        Assert.Contains("cutterBot != null && !botDecisions.IsSwarmBotCutAllowed(", cutBody);
         Assert.Contains("BotTactics.LastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc", cutBody);
         // 사람 절단은 자제 규칙을 타지 않는다 — 봇 분기 안에서만 호출된다.
         Assert.Single(Regex.Matches(cutBody, @"IsSwarmBotCutAllowed\("));
@@ -161,7 +161,7 @@ public class SwarmDamagePathTests
         Assert.Contains("BreakSwarmSleep()", movement);
 
         string arena = File.ReadAllText(
-            Path.Combine(root, "game_server", "GameServer.SwarmArena.cs"));
+            Path.Combine(root, "game_server", "Services", "MatchArenaService.cs"));
         // 피격·절단 가해는 수면을 깨지 않고 교전 잠금만 찍는다.
         Assert.Contains("MarkSwarmCombat(DateTime.UtcNow)", arena);
         Assert.Contains("MarkSwarmCombat(nowUtc)", arena);
@@ -170,7 +170,7 @@ public class SwarmDamagePathTests
         Assert.Contains("ProcessSwarmSleepRecovery(aliveSessions, nowUtc)", arena);
         // 봇 파셜(#312)도 같은 계약을 진다.
         Assert.DoesNotContain("BreakSwarmSleep", File.ReadAllText(
-            Path.Combine(root, "game_server", "GameServer.SwarmBots.cs")));
+            Path.Combine(root, "game_server", "Services", "Bots", "BotDecisionService.cs")));
     }
 
     /// <summary>

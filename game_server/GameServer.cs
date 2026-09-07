@@ -24,7 +24,7 @@ namespace game_server;
 ///     이후 매칭 관련 Redis 정리 작업을 기다리고 노드 등록과 NATS 연결을 정리한다.
 ///     시작 실패와 일반 종료는 같은 정리 절차를 사용한다.
 /// </summary>
-internal partial class GameServer(
+internal sealed class GameServer(
     NetworkService networkService,
     ILogger<GameServer> logger,
     ILogger<GameClientSession> sessionLogger,
@@ -42,19 +42,13 @@ internal partial class GameServer(
     MatchSummaryFileStore summaryFileStore,
     MatchEntryFailureHandler entryFailureHandler,
     GameSessionLeaveHandler sessionLeaveHandler,
-    MatchCleanupService matchCleanup,
-    BotEliminationService botEliminations,
     MatchCountdownService countdown,
     MatchEnvironmentService environmentService,
     OrbUpgradeService orbUpgrades,
     MatchGrowthService growth,
-    OrbRecoveryService orbRecovery,
-    OrbVisualStatePublisher orbVisuals,
-    OrbTrailService orbTrails,
-    MatchCombatDamageService combatDamage,
-    WindBladeService windBlades,
-    CrossfireService crossfires,
     MatchFieldService fieldService,
+    MatchArenaService arena,
+    BotDecisionService botDecisions,
     GameServerTickService tickService,
     BotMovementService botMovement)
     : IHostedService
@@ -203,9 +197,9 @@ internal partial class GameServer(
         var tickRunner = new MatchTickRunner(
             matchRuntimes, sessions, logger,
             countdown.Broadcast,
-            ProcessSwarmArenaForMatching,
+            arena.ProcessSwarmArenaForMatching,
             environmentService.Process,
-            runtime => botMovement.Process(runtime, ResolveSwarmBotDirective),
+            runtime => botMovement.Process(runtime, botDecisions.ResolveSwarmBotDirective),
             fieldService.Process);
         tickService.Start(tickRunner.Run);
     }

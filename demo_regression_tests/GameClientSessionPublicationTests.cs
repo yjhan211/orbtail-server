@@ -532,8 +532,8 @@ public sealed class GameClientSessionPublicationTests
             "GameClientSession.OrbSummon.cs");
         string doors = ReadNormalizedSource(root, "game_server", "Network", "GameClientSession.Doors.cs");
         string connection = ReadNormalizedSource(root, "game_server", "Network", "GameClientSession.Connection.cs");
-        string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
-        string bots = ReadNormalizedSource(root, "game_server", "GameServer.SwarmBots.cs");
+        string arena = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
+        string bots = ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotDecisionService.cs");
         string botPickup = ReadNormalizedSource(
             root,
             "game_server",

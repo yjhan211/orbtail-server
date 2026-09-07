@@ -593,7 +593,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             "game_server",
             "Network",
             "GameClientSession.OrbSummon.cs");
-        string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
+        string arena = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
         string orbBoard = ReadNormalizedSource(root, "game_server", "Services", "OrbUpgradeService.cs");
 
         Assert.Contains("_handleSwarmGrowthPick", session);

@@ -138,6 +138,8 @@ internal static class Program
             sp.GetRequiredService<MatchRuntimeStore>(), sp.GetRequiredService<MatchEntryFailureHandler>(),
             sp.GetRequiredService<ILogger<MatchCountdownService>>()));
         services.AddSingleton<BotMovementService>();
+        services.AddSingleton<BotDecisionService>();
+        services.AddSingleton<MatchArenaService>();
         services.AddSingleton<GameServerTickService>();
         services.AddSingleton<GameServer>();
 

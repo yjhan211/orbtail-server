@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using game_server.network;
-using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
@@ -10,11 +9,35 @@ using network.packets;
 
 using static game_server.network.SessionSnapshotDelivery;
 
-namespace game_server;
+namespace game_server.services;
 
-internal partial class GameServer
+/// <summary>
+///     매치의 전투 틱 순서를 조율하고 꼬리 절단·파도·점수 만료·개발 샌드박스를 처리한다.
+///     상태는 MatchRuntime이 소유하며 틱 호출자는 해당 매치 잠금을 보유한다.
+///     봇 판단과 개별 무기·성장·피해 규칙은 각 서비스에 위임한다.
+/// </summary>
+internal sealed class MatchArenaService(
+    MatchRuntimeStore matchRuntimes,
+    GameServerDevOptions devOptions,
+    GameEventLogManager eventLogs,
+    MatchCleanupService matchCleanup,
+    BotEliminationService botEliminations,
+    OrbUpgradeService orbUpgrades,
+    MatchGrowthService growth,
+    OrbRecoveryService orbRecovery,
+    OrbVisualStatePublisher orbVisuals,
+    OrbTrailService orbTrails,
+    MatchCombatDamageService combatDamage,
+    WindBladeService windBlades,
+    CrossfireService crossfires,
+    MatchFieldService fieldService,
+    BotMovementService botMovement,
+    BotDecisionService botDecisions,
+    ILogger<MatchArenaService> logger)
 {
     private const int SwarmArenaBasicDamage = 12;
+    // 봇도 사람과 동일한 접촉 피해 규칙을 적용한다.
+    private const float SwarmBotContactDamageMultiplier = 1f;
     // 사거리는 클라 표시(PlayerRangeRing)와 공유 — Config가 단일 출처다.
     private static float SwarmArenaBasicRange => Config.SWARM_ORB_ATTACK_RANGE;
     private const float SwarmArenaBasicAttackIntervalSeconds = 1f;
@@ -120,7 +143,7 @@ internal partial class GameServer
     ///     흐름이 소유하고, 여기서는 스웜 디렉터 틱·접촉 피해·전투 액터·PvP만 돌린다.
     ///     호출자(50ms 전투 틱·5초 정산 틱)가 매치 잠금을 쥔 채 부른다.
     /// </summary>
-    private void ProcessSwarmArenaForMatching(
+    public void ProcessSwarmArenaForMatching(
         long matchingId,
         List<GameClientSession> activeSessions)
     {
@@ -336,12 +359,12 @@ internal partial class GameServer
                     return;
             }
         }
-        ProcessSwarmBotRecovery(matchingId, aliveBots, nowUtc);
+        botDecisions.ProcessSwarmBotRecovery(matchingId, aliveBots, nowUtc);
         ProcessSwarmSleepRecovery(aliveSessions, nowUtc);
 
         // 봇도 사람과 같은 규칙으로 성장한다: 소환석 5개 + 스팟 소진. 공짜 버튼 소환 없음.
-        ProcessSwarmBotExplores(matchingId, aliveBots, sessions);
-        ProcessSwarmBotDoorUnlocks(matchingId, aliveBots, sessions, nowUtc);
+        botDecisions.ProcessSwarmBotExplores(matchingId, aliveBots, sessions);
+        botDecisions.ProcessSwarmBotDoorUnlocks(matchingId, aliveBots, sessions, nowUtc);
 
         if (MonsterSnapshotPublisher.TryConsumeBroadcastSlot(matchRuntimes.GetRequired(matchingId), nowUtc))
             MonsterSnapshotPublisher.Broadcast(matchingId, sessions, matchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId));
@@ -589,11 +612,6 @@ internal partial class GameServer
     // 스팟 예산 선소진(#217 성장곡선 v3, 21개)은 퇴역 — SB에는 인위적 봉인이 없고,
     // 희소성은 리젠(60초)과 크기 비례 비용이 담당한다. 배치된 스팟은 전부 살아 있다.
 
-    /// <summary>구역 전체가 현재 경계 밖(폐쇄·자기장)인가 — 봇 대피·스팟 필터의 기준.</summary>
-    private bool IsSwarmAreaOutside(long matchingId, AreaType area) =>
-        matchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(area) ||
-        SwarmPressureField.GetAreaMinDistance(area) >
-        MatchPressureFieldPolicy.GetSafeDistance(matchRuntimes.GetRequired(matchingId), DateTime.UtcNow);
     // 쌍 깔때기: 시작방 → 만남 구역. 거리 편차의 보정값(잔상 스폰 시점)은 이 로그를 계측한 뒤 정한다.
     // #272 School2: 복도 연결 정의와 1:1 — 시작방 2곳이 합류 1곳을 공유한다.
     private static readonly (AreaType StartRoom, AreaType PairZone)[] SwarmPairZones =
@@ -649,77 +667,6 @@ internal partial class GameServer
 
         return OrbData.GetDraftTierByElapsed((DateTime.UtcNow - startedAtUtc.Value).TotalSeconds);
     }
-
-    private bool TryFindNearestAvailableExploreSpot(
-        long matchingId,
-        AreaType? area,
-        Vector3f position,
-        out InteractableInfoData spot,
-        out float distance)
-    {
-        spot = null!;
-        distance = float.MaxValue;
-        var onCooldown = matchRuntimes.GetRequired(matchingId).CollectCooldowns.GetSnapshot()
-            .Where(entry => entry.RemainingSeconds > 0)
-            .Select(entry => entry.InteractId)
-            .ToHashSet();
-        foreach (var info in GameInteractableData.GetAll())
-        {
-            if ((area.HasValue && info.ZoneId != (int)area.Value) ||
-                info.InteractionType != InteractionType.RNG_COLLECT ||
-                onCooldown.Contains(info.Id) ||
-                // 경계 밖 구역 스팟은 후보에서 제외 — 최근접이 밖이라고 순례 전체가 멈추면 안 된다.
-                IsSwarmAreaOutside(matchingId, (AreaType)info.ZoneId))
-                continue;
-
-            var world = BotPlayerManager.CellToWorldPosition(
-                Config.SWARM_MATCH_MAP, new Cell(info.CellX, info.CellY));
-            float dx = world.X - position.X;
-            float dy = world.Y - position.Y;
-            float candidateDistance = MathF.Sqrt(dx * dx + dy * dy);
-            if (candidateDistance < distance)
-            {
-                distance = candidateDistance;
-                spot = info;
-            }
-        }
-
-        return spot != null;
-    }
-
-    private static void BroadcastSwarmExploreConsumed(
-        int interactId, int cooldownSeconds, List<GameClientSession> sessions)
-    {
-        var body = MessagePack.MessagePackSerializer.Serialize(new G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST
-        {
-            InteractId = interactId,
-            CooldownSeconds = cooldownSeconds
-        });
-        foreach (var session in sessions)
-        {
-            if (!session.PlayerId.HasValue)
-                continue;
-            using var packet = global::network.packets.Packet.Create(
-                (int)Protocol.G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST, session.PlayerId.Value);
-            packet.SetBody(body);
-            session.TrySend(packet);
-        }
-    }
-
-    private int CountSwarmSquadOrbs(long matchingId, long playerId)
-    {
-        return matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
-            .GetAllItems()
-            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
-            .Sum(item => item.Count);
-    }
-
-    /// <summary>
-    ///     티어 가중 전력(1/1.75/4 합) — 개수 비교의 왜곡(T3 1개 = T1 1개 취급) 방지.
-    ///     상자 시간 등급 도입 후 회피/추격 판단의 단일 기준.
-    /// </summary>
-    private float GetSwarmSquadPower(long matchingId, long playerId) =>
-        matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetOrbPower();
 
     // ===== 오브열 (#226 실험 α/β): 서버 경로 추적 — 오브별 공격 원점·본체 접촉 판정의 좌표 =====
 
@@ -877,7 +824,7 @@ internal partial class GameServer
                 points.Insert(0, new Vector3f(center.X, center.Y, 0f));
 
             // 실제 오브 수 기준 트림 — 상한(99) 기준이면 참가자당 수천 포인트가 쌓인다.
-            int trailOrbCount = Math.Max(CountSwarmSquadOrbs(matchingId, participant.PlayerId) + 2, 4);
+            int trailOrbCount = Math.Max(orbTrails.CountSwarmSquadOrbs(matchingId, participant.PlayerId) + 2, 4);
             float neededLength = Config.SWARM_ORB_TRAIL_FIRST_OFFSET +
                                  trailOrbCount * Config.SWARM_ORB_TRAIL_SPACING + 1f;
             float accumulated = 0f;
@@ -1145,7 +1092,7 @@ internal partial class GameServer
         // 봇 절단 자제: 봇은 오염이 절반 아래일 때, 봇 1인당 6초에 한 번만 자른다. 봇끼리 몇 초 간격으로 서로 자르며
         // 자해로 죽어 나가면 사람 카메라에 남는 긴 꼬리가 없다 — 봇의 절단은 '한 번 지르는 사건'으로 읽혀야 한다.
         // 거절된 통과는 래치를 찍어 같은 오브를 이번 통과에서 다시 판정하지 않는다 — 사람의 절단은 이 규칙과 무관하다.
-        if (cutterBot != null && !IsSwarmBotCutAllowed(matchingId, cutterId, cutterCorruptionBefore, nowUtc))
+        if (cutterBot != null && !botDecisions.IsSwarmBotCutAllowed(matchingId, cutterId, cutterCorruptionBefore, nowUtc, SwarmSingleCutCorruptionCost))
         {
             matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
             return;
@@ -1232,7 +1179,7 @@ internal partial class GameServer
         // 전략이 먹혔는지 로그만으로 판정할 수 있다. 전은 파괴 직전 체인, 후는 재조회다.
         int attackOrbsBefore = CountSwarmAttackOrbs(ownerChain.ItemIds);
         int orbsBefore = ownerChain.ItemIds.Count;
-        int orbsAfter = CountSwarmSquadOrbs(matchingId, bestOwnerId);
+        int orbsAfter = orbTrails.CountSwarmSquadOrbs(matchingId, bestOwnerId);
         int attackOrbsAfter = CountSwarmAttackOrbs(GetSwarmOrbItemIdsInOrder(matchingId, bestOwnerId));
         int rankAfter = GetSwarmPlayerRank(matchingId, bestOwnerId, aliveSessions, aliveBots);
 
@@ -1543,7 +1490,7 @@ internal partial class GameServer
     private void ProcessSwarmCutDummyRefill(long matchingId, BotPlayerState dummy, DateTime nowUtc)
     {
         var key = (matchingId, dummy.PlayerId);
-        if (CountSwarmSquadOrbs(matchingId, dummy.PlayerId) >= SwarmDummyOrbCount)
+        if (orbTrails.CountSwarmSquadOrbs(matchingId, dummy.PlayerId) >= SwarmDummyOrbCount)
         {
             matchRuntimes.GetRequired(matchingId).Swarm.Pacing.CutDummyRefillAtUtc.Remove(key);
             return;
@@ -1578,7 +1525,7 @@ internal partial class GameServer
 
     private void RefillSwarmCutDummyOrbs(long matchingId, BotPlayerState dummy)
     {
-        for (int index = CountSwarmSquadOrbs(matchingId, dummy.PlayerId);
+        for (int index = orbTrails.CountSwarmSquadOrbs(matchingId, dummy.PlayerId);
              index < SwarmDummyOrbCount;
              index++)
             matchRuntimes.GetRequired(matchingId).Inventory.TryAddItemWithCapacity(
@@ -1804,82 +1751,9 @@ internal partial class GameServer
     }
 
     /// <summary>
-    ///     같은 구역의 반응 지연 지난 최근접 바닥 소환석 — 봇 회수 지시의 목적지.
-    ///     반응 지연 (#222): 갓 떨어진 돌은 무시 — 사람이 먼저 주울 시간을 준다.
-    /// </summary>
-    private bool TryFindNearestSwarmGroundStone(
-        long matchingId, BotPlayerState bot, out Vector3f position)
-    {
-        position = null!;
-        float bestDistanceSquared = float.MaxValue;
-        foreach (var item in matchRuntimes.GetRequired(matchingId).GroundItems.GetSnapshot(bot.CurrentArea))
-        {
-            if (item.ItemId != Config.SUMMON_STONE_GROUND_ITEM_ID ||
-                matchRuntimes.GetRequired(matchingId).GroundItems.IsYoungerThan(
-                    item.GroundItemUid, BotPlayerManager.SummonStoneBotReactionDelay))
-                continue;
-
-            float dx = item.PositionX - bot.Position.X;
-            float dy = item.PositionY - bot.Position.Y;
-            float distanceSquared = dx * dx + dy * dy;
-            if (distanceSquared >= bestDistanceSquared)
-                continue;
-
-            bestDistanceSquared = distanceSquared;
-            position = new Vector3f(item.PositionX, item.PositionY, 0f);
-        }
-
-        return position != null;
-    }
-
-    /// <summary>오브 선두 판독 (#226 F): 내 오브 수가 생존자 최다와 같거나 크면 선두다.</summary>
-    private bool IsSwarmOrbLeader(long matchingId, long playerId)
-    {
-        int myOrbCount = GetSwarmOrbScore(matchingId, playerId).OrbCount;
-        return myOrbCount > 0 && myOrbCount >= growth.GetTopOrbCount(matchingId);
-    }
-
-    /// <summary>참가자(사람·봇) 위치 조회 — 피격 반응의 도주 기준점.</summary>
-    private bool TryGetSwarmParticipantPosition(long matchingId, long playerId, out Vector3f position)
-    {
-        position = null!;
-        foreach (var other in matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
-        {
-            if (other.PlayerId != playerId || other.IsEliminated) continue;
-            position = other.Position;
-            return true;
-        }
-
-        foreach (var session in sessions.GetByInstance(Config.SWARM_MATCH_MAP, matchingId))
-        {
-            if (session.PlayerId != playerId || session.IsEliminated ||
-                session.LastValidatedPosition == null) continue;
-            position = session.LastValidatedPosition;
-            return true;
-        }
-
-        return false;
-    }
-
-    /// <summary>
     ///     반경 내 라이벌 탐색 — 티어 가중 전력 기준. 동수 이상인 최근접(강자)과 확실히 약한
     ///     (×1.25 우위) 최근접(약자)을 함께 찾는다. 빈손이면 살아있는 몹도 강자로 취급한다.
     /// </summary>
-
-    private void LogSwarmChaseIssued(long matchingId, long chaserId, long targetId, Vector3f aimPoint)
-    {
-        var now = DateTime.UtcNow;
-        var key = (matchingId, chaserId, targetId);
-        if (matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.ChaseLogThrottle.TryGetValue(key, out var lastAtUtc) &&
-            (now - lastAtUtc).TotalSeconds < 3d)
-            return;
-
-        matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.ChaseLogThrottle[key] = now;
-        eventLogs.LogSystem(matchingId,
-            $"swarm_chase chaser={chaserId} target={targetId} " +
-            $"targetOrbs={CountSwarmSquadOrbs(matchingId, targetId)} " +
-            $"aim=({aimPoint.X:F1},{aimPoint.Y:F1})");
-    }
 
     private void ApplySwarmParticipantDamage(
         long matchingId,

@@ -174,7 +174,7 @@ public sealed class SwarmBotMovementPlanTests
     public void DummySetupAndMove_UseLockedExternalPlansWithoutOrbitAdvance()
     {
         string root = FindRepositoryRoot();
-        string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
+        string arena = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
         string coordinator = ReadNormalizedSource(
             root, "game_server", "Services", "Bots", "SwarmBotMovementCoordinator.cs");
         string callback = ReadMethodSlice(

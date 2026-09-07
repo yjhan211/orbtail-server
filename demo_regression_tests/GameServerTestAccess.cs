@@ -11,6 +11,7 @@ internal static class GameServerTestAccess
     internal static MatchRuntimeStore GetMatchRuntimes(this GameServer server) =>
         Read<MatchRuntimeStore>(server);
 
+    internal static MatchArenaService GetArena(this GameServer server) => Read<MatchArenaService>(server);
     internal static OrbUpgradeService GetOrbUpgrades(this GameServer server) => Read<OrbUpgradeService>(server);
     internal static MatchGrowthService GetGrowth(this GameServer server) => Read<MatchGrowthService>(server);
 
@@ -51,6 +52,24 @@ internal static class GameServerTestAccess
             Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbUpgradeService>.Instance);
         var orbTrails = new OrbTrailService(runtimes);
         var combatDamage = new MatchCombatDamageService(runtimes, logs);
+        var cleanup = new MatchCleanupService(runtimes, sessions, logs, summaries, logger);
+        var eliminations = new BotEliminationService(sessions, logs, logger);
+        var growth = new MatchGrowthService(runtimes, sessions, logs, orbUpgrades,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchGrowthService>.Instance);
+        var field = new MatchFieldService(runtimes, logs, orbTrails,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchFieldService>.Instance);
+        var movement = new BotMovementService(sessions, logs,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance);
+        var decisions = new BotDecisionService(runtimes, sessions, logs, growth, orbTrails,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<BotDecisionService>.Instance);
+        var arena = new MatchArenaService(runtimes, GameServerDevOptions.Disabled, logs, cleanup,
+            eliminations, orbUpgrades, growth,
+            new OrbRecoveryService(runtimes, logs,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
+            new OrbVisualStatePublisher(runtimes), orbTrails, combatDamage,
+            new WindBladeService(runtimes, orbTrails, combatDamage, logs),
+            new CrossfireService(runtimes, combatDamage, logs), field, movement, decisions,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchArenaService>.Instance);
         return new GameServer(
             configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
             logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServer>.Instance,
@@ -61,34 +80,24 @@ internal static class GameServerTestAccess
             gameServerRegistry: new RecordingGameServerRegistry(),
             nodeOptions: new GameServerNodeOptions
             {
-                NodeId = "game-server-test", PublicHost = "127.0.0.1"
+                NodeId = "game-server-test",
+                PublicHost = "127.0.0.1"
             },
             devOptions: GameServerDevOptions.Disabled,
             sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, summaryFileStore: summaries,
             entryFailureHandler: entryFailure,
-            sessionLeaveHandler: new GameSessionLeaveHandler(sessions,
-                new MatchCleanupService(runtimes, sessions, logs, summaries, logger),
+            sessionLeaveHandler: new GameSessionLeaveHandler(sessions, cleanup,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionLeaveHandler>.Instance),
-            matchCleanup: new MatchCleanupService(runtimes, sessions, logs, summaries, logger),
-            botEliminations: new BotEliminationService(sessions, logs, logger),
             countdown: new MatchCountdownService(runtimes, entryFailure, logger),
             orbUpgrades: orbUpgrades,
-            orbRecovery: new OrbRecoveryService(runtimes, logs,
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
-            orbVisuals: new OrbVisualStatePublisher(runtimes),
-            orbTrails: orbTrails,
-            combatDamage: combatDamage,
-            windBlades: new WindBladeService(runtimes, orbTrails, combatDamage, logs),
-            crossfires: new CrossfireService(runtimes, combatDamage, logs),
-            fieldService: new MatchFieldService(runtimes, logs, orbTrails,
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchFieldService>.Instance),
-            growth: new MatchGrowthService(runtimes, sessions, logs, orbUpgrades,
-                Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchGrowthService>.Instance),
+            fieldService: field,
+            growth: growth,
+            arena: arena,
+            botDecisions: decisions,
             environmentService: new MatchEnvironmentService(sessions, logs,
-                new MatchCleanupService(runtimes, sessions, logs, summaries, logger),
-                new BotEliminationService(sessions, logs, logger), GameServerDevOptions.Disabled,
+                cleanup, eliminations, GameServerDevOptions.Disabled,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchEnvironmentService>.Instance),
-tickService: new GameServerTickService(runtimes, Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServerTickService>.Instance),
-            botMovement: new BotMovementService(sessions, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance));
+            tickService: new GameServerTickService(runtimes, Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServerTickService>.Instance),
+            botMovement: movement);
     }
 }

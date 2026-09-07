@@ -15,9 +15,9 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(source,
             "var tickRunner = new MatchTickRunner(",
             "countdown.Broadcast,",
-            "ProcessSwarmArenaForMatching,",
+            "arena.ProcessSwarmArenaForMatching,",
             "environmentService.Process,",
-            "runtime => botMovement.Process(runtime, ResolveSwarmBotDirective),",
+            "runtime => botMovement.Process(runtime, botDecisions.ResolveSwarmBotDirective),",
             "tickService.Start(tickRunner.Run);");
         AssertInOrder(runner,
             "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
@@ -269,7 +269,7 @@ public sealed class SwarmArenaTickOrderTests
     public void SwarmCleanup_AlwaysDropsMatchOwnedRuntimeAfterMonsterCleanup()
     {
         string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
+        string source = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
         string cleanupBody = ReadNormalizedSource(root, "game_server", "Services", "MatchRuntimeStore.cs");
         Assert.Contains("runtime.Monsters.Release();", cleanupBody);
         Assert.DoesNotContain("CleanupSwarmArenaState", source);
@@ -411,7 +411,7 @@ public sealed class SwarmArenaTickOrderTests
             root, "game_server", "Services", "MatchRuntimeStore.cs");
         string runtimeStates = ReadNormalizedSource(
             root, "game_server", "Services", "SwarmArenaStates.cs");
-        string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
+        string arena = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
         string crossfire = ReadNormalizedSource(root, "game_server", "Services", "CrossfireService.cs");
 
         // 매치 하나에 모니터 하나 — 블로킹 진입과 펄스용 TryEnter가 같은 잠금 객체를 쓴다.
@@ -445,11 +445,11 @@ public sealed class SwarmArenaTickOrderTests
     private static string ReadSwarmArenaTick()
     {
         string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
+        string source = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
         return ReadMethodSlice(
             source,
-            "private void ProcessSwarmArenaForMatching(",
-            "private bool IsSwarmAreaOutside(");
+            "public void ProcessSwarmArenaForMatching(",
+            "// 쌍 깔때기:");
     }
 
     private static string ReadBracedBlockAfterMarker(string source, string marker)

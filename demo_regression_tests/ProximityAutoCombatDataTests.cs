@@ -143,7 +143,7 @@ public class ProximityAutoCombatDataTests
     {
         string repoRoot = FindRepositoryRoot();
         string gameServerSource = ReadNormalizedSource(
-            repoRoot, "game_server", "GameServer.SwarmArena.cs");
+            repoRoot, "game_server", "Services", "MatchArenaService.cs");
         string sessionSource = ReadNormalizedSource(
             repoRoot, "game_server", "Network", "GameClientSession.ProximityAutoCombat.cs");
         string mapSource = ReadMapManagerSources(repoRoot);
@@ -228,7 +228,7 @@ public class ProximityAutoCombatDataTests
         string root = FindRepositoryRoot();
         string proximity = ReadNormalizedSource(
             root, "game_server", "Services", "OrbVisualStatePublisher.cs");
-        string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
+        string arena = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
         int prepareStart = proximity.IndexOf(
             "private ImmutableArray<SwarmOrbVisualPublication> PrepareOrbVisualStatePublications(",
             StringComparison.Ordinal);
@@ -302,7 +302,7 @@ public class ProximityAutoCombatDataTests
         string mapSource = ReadMapManagerSources(repoRoot);
 
         // #238: 레거시 잔상 공격 파이프라인 퇴역 — 현행 스웜의 몬스터 공격 피드백 계약을 검사한다.
-        string swarmSource = ReadNormalizedSource(repoRoot, "game_server", "GameServer.SwarmArena.cs");
+        string swarmSource = ReadNormalizedSource(repoRoot, "game_server", "Services", "MatchArenaService.cs");
         Assert.Contains("SendSwarmAfterimageMonsterAttackFeedback(", swarmSource);
         // 봇 플레이어 ID도 음수라 플레이어 맵 우선 해석이 계약이다 (#219 봇전 연출 증발 수리)
         Assert.Contains(
