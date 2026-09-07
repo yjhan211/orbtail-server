@@ -125,6 +125,15 @@ internal partial class GameServer(
             }
         }
 
+        try
+        {
+            await tickService.StopAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Game server tick shutdown failed.");
+        }
+
         foreach (var session in sessions.SnapshotAll())
         {
             session.MarkServerInitiatedDisconnect();
@@ -137,15 +146,6 @@ internal partial class GameServer(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Game server network shutdown failed.");
-        }
-
-        try
-        {
-            await tickService.StopAsync();
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Game server tick shutdown failed.");
         }
 
         try
@@ -201,8 +201,9 @@ internal partial class GameServer(
             countdown.Broadcast,
             ProcessSwarmArenaForMatching,
             ProcessEnvironmentalTickForMatching,
-            runtime => botMovement.Process(runtime, ResolveSwarmBotDirective));
-        tickService.Start(ProcessAreaClosureTick, tickRunner.Run);
+            runtime => botMovement.Process(runtime, ResolveSwarmBotDirective),
+            ProcessAreaClosureForMatching);
+        tickService.Start(tickRunner.Run);
     }
 
     private void BroadcastDoorStateChanges(
@@ -224,38 +225,14 @@ internal partial class GameServer(
     }
 
     /// <summary>
-    ///     1초 폐쇄 틱. 매치 잠금 안에서 폐쇄 상태를 확정하고 같은 순서로 송신한다 — 폐쇄는 50ms
-    ///     전투 틱보다 드물어 잠금을 기다려도 된다.
+    ///     매치 루프가 같은 매치 잠금을 보유한 상태에서 호출한다.
+    ///     구역 폐쇄 상태를 확정하고 같은 순서로 송신한다.
     /// </summary>
-    private void ProcessAreaClosureTick()
+    private void ProcessAreaClosureForMatching(long matchingId, GameClientSession[] sessionSnapshot)
     {
-        try
-        {
-            foreach (long matchingId in matchRuntimes.ActiveIds())
-            {
-                // #272 자기장 폐쇄: 자기장에서 파생한 구역 시간표 하나로만 닫는다 —
-                // 필드 오염은 정산 리소스 틱(GetSwarmFieldCorruptionPerTick)이 준다.
-                if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
-                if (!matchRuntimes.Enter(matchingId, out MatchScope scope))
-                    continue;
-
-                using (scope)
-                {
-                    if (scope.Runtime.IsTerminal)
-                        continue;
-
-                    GameClientSession[] sessionSnapshot = GetSessionsByMatch(matchingId).ToArray();
-                    SwarmClosurePublicationPlan? plan =
-                        PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);
-                    if (plan != null)
-                        DispatchSwarmClosurePublicationPlan(plan, sessionSnapshot);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "구역 폐쇄 틱 처리 중 오류");
-        }
+        var plan = PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);
+        if (plan != null)
+            DispatchSwarmClosurePublicationPlan(plan, sessionSnapshot);
     }
 
 

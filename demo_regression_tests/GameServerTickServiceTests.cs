@@ -6,102 +6,233 @@ namespace demo_regression_tests;
 public sealed class GameServerTickServiceTests
 {
     [Fact]
-    public async Task StartsTwoSharedTimersAndWaitsForBothToFinish()
+    public async Task CreatesOneLoopPerExistingOrNewMatchAndStopsAll()
     {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var first = store.GetOrCreate(101);
         var clock = new ManualTimers();
-        var service = new GameServerTickService(NullLogger<GameServerTickService>.Instance, clock);
-        int closureTicks = 0, matchTicks = 0;
-        service.Start(() => closureTicks++, () => matchTicks++);
+        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
+        var firstTick = Signal();
+        var secondTick = Signal();
+        service.Start(runtime => (runtime.MatchingId == 101 ? firstTick : secondTick).TrySetResult());
+        var second = store.GetOrCreate(102);
         Assert.Equal(2, clock.Timers.Count);
-        var closure = clock.Timers[0];
-        var match = clock.Timers[1];
-        Assert.Equal(TimeSpan.FromSeconds(1), closure.Period);
-        Assert.Equal(TimeSpan.FromMilliseconds(50), match.Period);
-        Assert.Equal(closure.Period, closure.DueTime);
-        Assert.Equal(match.Period, match.DueTime);
-        closure.Fire();
-        match.Fire();
-        Assert.Equal(1, closureTicks);
-        Assert.Equal(1, matchTicks);
-
+        Assert.Same(first, store.GetOrCreate(101));
+        Assert.Equal(2, clock.Timers.Count);
+        foreach (var timer in clock.Timers)
+        {
+            Assert.Equal(TimeSpan.FromMilliseconds(50), timer.Period);
+            timer.Fire();
+        }
+        await Task.WhenAll(firstTick.Task, secondTick.Task).WaitAsync(TimeSpan.FromSeconds(5));
         Task stopping = service.StopAsync();
         Assert.Same(stopping, service.StopAsync());
-        Assert.True(closure.DisposalRequested);
-        Assert.True(match.DisposalRequested);
-        Assert.False(stopping.IsCompleted);
-        closure.CompleteDisposal();
-        Assert.False(stopping.IsCompleted);
-        match.CompleteDisposal();
         await stopping;
-        Assert.Throws<InvalidOperationException>(() => service.Start(() => { }, () => { }));
+        Assert.True(first.TickLoop!.Completion.IsCompleted);
+        Assert.True(second.TickLoop!.Completion.IsCompleted);
+        Assert.All(clock.Timers, timer => Assert.True(timer.Disposed));
+        Assert.Null(store.GetOrCreate(103).TickLoop);
     }
 
     [Fact]
-    public async Task StopBeforeStartIsSafeAndPreventsLateStart()
+    public async Task SlowMatchDoesNotBlockOtherMatchAndShutdownWaitsWithoutOverlap()
+    {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var clock = new ManualTimers();
+        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
+        var entered = Signal();
+        var otherRan = Signal();
+        using var release = new ManualResetEventSlim();
+        int firstCalls = 0;
+        service.Start(runtime =>
+        {
+            if (runtime.MatchingId != 201)
+            {
+                otherRan.TrySetResult();
+                return;
+            }
+            Interlocked.Increment(ref firstCalls);
+            entered.TrySetResult();
+            release.Wait(TimeSpan.FromSeconds(10));
+        });
+        var first = store.GetOrCreate(201);
+        store.GetOrCreate(202);
+        try
+        {
+            clock.Timers[0].Fire();
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            for (int i = 0; i < 10; i++) clock.Timers[0].Fire();
+            clock.Timers[1].Fire();
+            await otherRan.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(1, Volatile.Read(ref firstCalls));
+
+            Task stopping = service.StopAsync();
+            Assert.False(stopping.IsCompleted);
+            release.Set();
+            await stopping.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal(1, firstCalls);
+            Assert.True(first.TickLoop!.Completion.IsCompleted);
+        }
+        finally
+        {
+            release.Set();
+            await service.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task TerminalInsideTickStopsOwnLoopBeforeCleanupWithoutDeadlock()
     {
         var clock = new ManualTimers();
-        var service = new GameServerTickService(NullLogger<GameServerTickService>.Instance, clock);
+        bool workFinished = false;
+        var cleaned = Signal();
+        MatchRuntime? match = null;
+        var store = new MatchRuntimeStore(NullLogger.Instance, cleanupSteps:
+        [
+            new("test", _ =>
+            {
+                Assert.True(workFinished);
+                Assert.True(clock.Timers[0].Disposed);
+                cleaned.TrySetResult();
+            })
+        ]);
+        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
+        int calls = 0;
+        service.Start(runtime =>
+        {
+            using (store.Enter(runtime))
+            {
+                calls++;
+                runtime.TryMarkTerminal();
+                workFinished = true;
+            }
+        });
+        match = store.GetOrCreate(301);
+        try
+        {
+            clock.Timers[0].Fire();
+            await cleaned.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await match.TickLoop!.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+            clock.Timers[0].Fire();
+            Assert.Equal(1, calls);
+            Assert.Null(store.Get(301));
+        }
+        finally { await service.StopAsync(); }
+    }
+
+    [Fact]
+    public async Task RemovalStopsWaitingLoop()
+    {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var clock = new ManualTimers();
+        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
+        int calls = 0;
+        service.Start(_ => calls++);
+        var match = store.GetOrCreate(401);
+        Assert.True(store.Remove(401));
+        await match.TickLoop!.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        clock.Timers[0].Fire();
+        Assert.Equal(0, calls);
         await service.StopAsync();
-        Assert.Throws<InvalidOperationException>(() => service.Start(() => { }, () => { }));
+    }
+
+    [Fact]
+    public async Task TickFailureDoesNotEndTheLoop()
+    {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var clock = new ManualTimers();
+        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
+        var failed = Signal();
+        var recovered = Signal();
+        int calls = 0;
+        service.Start(_ =>
+        {
+            if (Interlocked.Increment(ref calls) == 1)
+            {
+                failed.TrySetResult();
+                throw new InvalidOperationException("tick failure");
+            }
+            recovered.TrySetResult();
+        });
+        store.GetOrCreate(501);
+        try
+        {
+            clock.Timers[0].Fire();
+            await failed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            clock.Timers[0].Fire();
+            await recovered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally { await service.StopAsync(); }
+    }
+
+    [Fact]
+    public async Task StopBeforeStartPreventsRegistration()
+    {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var clock = new ManualTimers();
+        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
+        await service.StopAsync();
+        Assert.Throws<InvalidOperationException>(() => service.Start(_ => { }));
+        Assert.Null(store.GetOrCreate(601).TickLoop);
         Assert.Empty(clock.Timers);
     }
 
     [Fact]
-    public async Task PartialStartFailureStillDisposesTheFirstTimer()
+    public async Task ConcurrentCreationAndShutdownLeaveNoRunningLoops()
     {
-        var clock = new ManualTimers { FailSecondCreation = true };
-        var service = new GameServerTickService(NullLogger<GameServerTickService>.Instance, clock);
-        Assert.Throws<InvalidOperationException>(() => service.Start(() => { }, () => { }));
-        Task stopping = service.StopAsync();
-        var first = Assert.Single(clock.Timers);
-        Assert.True(first.DisposalRequested);
-        first.CompleteDisposal();
-        await stopping;
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var clock = new ManualTimers();
+        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
+        service.Start(_ => { });
+        var creation = Enumerable.Range(1001, 100)
+            .Select(id => Task.Run(() => store.GetOrCreate(id))).ToArray();
+        Task stopping = Task.Run(async () => await service.StopAsync());
+        var matches = await Task.WhenAll(creation);
+        await stopping.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.All(clock.Timers, timer => Assert.True(timer.Disposed));
+        foreach (var match in matches)
+            if (match.TickLoop is { } loop)
+                Assert.True(loop.Completion.IsCompleted);
     }
 
     [Fact]
-    public async Task CallbackFailureDoesNotEscapeTimerOrBlockOtherTicks()
+    public async Task FailedDuplicateStartStillAllowsExistingLoopToStop()
     {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var first = store.GetOrCreate(1101);
         var clock = new ManualTimers();
-        var service = new GameServerTickService(NullLogger<GameServerTickService>.Instance, clock);
-        int count = 0;
-        service.Start(() => throw new InvalidOperationException("tick failed"), () => count++);
-        Assert.Null(Record.Exception(clock.Timers[0].Fire));
-        clock.Timers[1].Fire();
-        Assert.Equal(1, count);
-        Task stopping = service.StopAsync();
-        foreach (var timer in clock.Timers) timer.CompleteDisposal();
-        await stopping;
+        var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
+        service.Start(_ => { });
+        Assert.Throws<InvalidOperationException>(() => service.Start(_ => { }));
+        await service.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(Assert.Single(clock.Timers).Disposed);
+        Assert.True(first.TickLoop!.Completion.IsCompleted);
+        Assert.Null(store.GetOrCreate(1103).TickLoop);
     }
 
-    private sealed class ManualTimers : TimeProvider
+    private static TaskCompletionSource Signal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal sealed class ManualTimers : TimeProvider
     {
         public List<ManualTimer> Timers { get; } = [];
-        public bool FailSecondCreation { get; init; }
+
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
-            if (FailSecondCreation && Timers.Count == 1)
-                throw new InvalidOperationException("timer creation failed");
-            var timer = new ManualTimer(callback, state, dueTime, period);
+
+            var timer = new ManualTimer(callback, state, period);
             Timers.Add(timer);
             return timer;
         }
     }
 
-    private sealed class ManualTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period) : ITimer
+    internal sealed class ManualTimer(TimerCallback callback, object? state, TimeSpan period) : ITimer
     {
-        private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public TimeSpan DueTime { get; } = dueTime;
         public TimeSpan Period { get; } = period;
-        public bool DisposalRequested { get; private set; }
-        public void Fire() => callback(state);
-        public bool Change(TimeSpan dueTime, TimeSpan period) => throw new NotSupportedException();
-        public void Dispose() => CompleteDisposal();
-        public ValueTask DisposeAsync()
-        {
-            DisposalRequested = true;
-            return new ValueTask(_completion.Task);
-        }
-        public void CompleteDisposal() => _completion.TrySetResult();
+        private int _disposed;
+        public bool Disposed => Volatile.Read(ref _disposed) != 0;
+        public void Fire() { if (!Disposed) callback(state); }
+        public bool Change(TimeSpan dueTime, TimeSpan interval) => !Disposed;
+        public void Dispose() => Volatile.Write(ref _disposed, 1);
+        public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
     }
 }

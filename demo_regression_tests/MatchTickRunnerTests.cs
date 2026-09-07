@@ -40,14 +40,14 @@ public sealed class MatchTickRunnerTests
             {
                 Assert.Same(fixture.Match, runtime);
                 Record("movement");
-            });
+            }, (_, _) => { });
 
-        runner.Run();
+        runner.Run(fixture.Match);
         Assert.Equal(new[] { "countdown", "combat", "environment", "movement" }, steps);
         Assert.All(locksHeld, Assert.True);
 
         steps.Clear();
-        runner.Run();
+        runner.Run(fixture.Match);
         Assert.Equal(new[] { "countdown", "combat", "movement" }, steps);
     }
 
@@ -67,9 +67,10 @@ public sealed class MatchTickRunnerTests
                     throw new InvalidOperationException("test combat failure");
             },
             (_, _) => throw new InvalidOperationException("environment should not be due"),
-            _ => movements++);
+            _ => movements++, (_, _) => { });
 
-        runner.Run();
+        runner.Run(first.Match);
+        runner.Run(second);
         Assert.Contains(first.Match.MatchingId, combatIds);
         Assert.Contains(second.MatchingId, combatIds);
         Assert.Equal(1, movements);
@@ -89,10 +90,10 @@ public sealed class MatchTickRunnerTests
                 fixture.Match.TryMarkTerminal();
             },
             (_, _) => { },
-            _ => movements++);
+            _ => movements++, (_, _) => { });
 
-        runner.Run();
-        runner.Run();
+        runner.Run(fixture.Match);
+        runner.Run(fixture.Match);
         Assert.Equal(1, combats);
         Assert.Equal(0, movements);
         Assert.Null(fixture.Store.Get(fixture.Match.MatchingId));
@@ -107,7 +108,7 @@ public sealed class MatchTickRunnerTests
         using var release = new ManualResetEventSlim();
         var combatIds = new List<long>();
         var runner = new MatchTickRunner(fixture.Store, new GameSessionRegistry(), NullLogger.Instance,
-            (_, _) => { }, (id, _) => combatIds.Add(id), (_, _) => { }, _ => { });
+            (_, _) => { }, (id, _) => combatIds.Add(id), (_, _) => { }, _ => { }, (_, _) => { });
         Task holder = Task.Run(() =>
         {
             using (fixture.Store.Enter(fixture.Match))
@@ -119,7 +120,7 @@ public sealed class MatchTickRunnerTests
         try
         {
             Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
-            await Task.Run(runner.Run).WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.Run(() => { runner.Run(fixture.Match); runner.Run(other); }).WaitAsync(TimeSpan.FromSeconds(5));
             Assert.DoesNotContain(fixture.Match.MatchingId, combatIds);
             Assert.Contains(other.MatchingId, combatIds);
         }
@@ -129,7 +130,7 @@ public sealed class MatchTickRunnerTests
             await holder.WaitAsync(TimeSpan.FromSeconds(5));
         }
         combatIds.Clear();
-        runner.Run();
+        runner.Run(fixture.Match);
         Assert.Equal(1, combatIds.Count(id => id == fixture.Match.MatchingId));
     }
 
@@ -142,9 +143,9 @@ public sealed class MatchTickRunnerTests
         var steps = new List<string>();
         var runner = new MatchTickRunner(fixture.Store, new GameSessionRegistry(), NullLogger.Instance,
             (_, _) => steps.Add("countdown"), (_, _) => steps.Add("combat"),
-            (_, _) => steps.Add("environment"), _ => steps.Add("movement"));
+            (_, _) => steps.Add("environment"), _ => steps.Add("movement"), (_, _) => { });
 
-        runner.Run();
+        runner.Run(fixture.Match);
         Assert.Equal(new[] { "countdown", "combat" }, steps);
     }
 
@@ -172,6 +173,22 @@ public sealed class MatchTickRunnerTests
             first.TryMarkTerminal();
         }
         using (store.Enter(second)) second.TryMarkTerminal();
+    }
+
+    [Fact]
+    public void TerminalDuringCountdownDoesNotRunCombatOrOtherStages()
+    {
+        using var fixture = new Fixture(945110);
+        int laterStages = 0;
+        var runner = new MatchTickRunner(fixture.Store, new GameSessionRegistry(), NullLogger.Instance,
+            (_, _) => fixture.Match.TryMarkTerminal(),
+            (_, _) => laterStages++,
+            (_, _) => laterStages++,
+            _ => laterStages++,
+            (_, _) => laterStages++);
+        runner.Run(fixture.Match);
+        Assert.Equal(0, laterStages);
+        Assert.Null(fixture.Store.Get(fixture.Match.MatchingId));
     }
 
     private sealed class Fixture : IDisposable

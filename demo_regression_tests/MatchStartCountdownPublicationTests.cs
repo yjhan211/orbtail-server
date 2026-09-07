@@ -32,7 +32,7 @@ public sealed class MatchStartCountdownPublicationTests
         string broadcast = ReadNormalizedSource(repositoryRoot, "game_server", "Services", "MatchCountdownService.cs");
         string matchTick = ReadMethodSlice(
             ReadNormalizedSource(repositoryRoot, "game_server", "Services", "MatchTickRunner.cs"),
-            "public void Run()",
+"public void Run(MatchRuntime runtime)",
             "private static bool ShouldMoveBots(");
 
         Assert.DoesNotContain("_lastMatchStartCountdownBroadcast", server);

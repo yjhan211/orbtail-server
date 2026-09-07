@@ -60,41 +60,38 @@ public sealed class GameServerShutdownTests
         Assert.Same(stopping, server.StopAsync(CancellationToken.None));
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task TickShutdownFailureStillReachesNatsClose(bool synchronousFailure)
+    [Fact]
+    public async Task ShutdownWaitsForMatchLoopBeforeClosingNats()
     {
         var nats = new BlockingCloseClient();
         using var provider = GameServerDependencyInjectionTests.CreateProvider(nats);
         var server = provider.GetRequiredService<GameServer>();
         var ticks = provider.GetRequiredService<game_server.services.GameServerTickService>();
-        typeof(game_server.services.GameServerTickService)
-            .GetField("_matchTimer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .SetValue(ticks, new FailingTimer(synchronousFailure));
-        Task stopping = server.StopAsync(CancellationToken.None);
+        var matches = provider.GetRequiredService<game_server.services.MatchRuntimeStore>();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        ticks.Start(_ =>
+        {
+            entered.TrySetResult();
+            release.Wait(TimeSpan.FromSeconds(10));
+        });
+        matches.GetOrCreate(701);
         try
         {
-            await nats.CloseStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Task stopping = server.StopAsync(CancellationToken.None);
             Assert.False(stopping.IsCompleted);
-            Assert.Equal(1, nats.CloseCount);
+            Assert.False(nats.CloseStarted.Task.IsCompleted);
+            release.Set();
+            await nats.CloseStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            nats.Completion.TrySetResult();
+            await stopping.WaitAsync(TimeSpan.FromSeconds(5));
         }
         finally
         {
+            release.Set();
             nats.Completion.TrySetResult();
-        }
-        await stopping.WaitAsync(TimeSpan.FromSeconds(5));
-    }
-
-    private sealed class FailingTimer(bool synchronousFailure) : ITimer
-    {
-        public bool Change(TimeSpan dueTime, TimeSpan period) => throw new NotSupportedException();
-        public void Dispose() { }
-        public ValueTask DisposeAsync()
-        {
-            if (synchronousFailure)
-                throw new InvalidOperationException("timer disposal failed before returning a task");
-            return new ValueTask(Task.FromException(new InvalidOperationException("timer disposal failed")));
+            await server.StopAsync(CancellationToken.None);
         }
     }
 

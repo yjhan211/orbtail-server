@@ -8,22 +8,20 @@ public sealed class SwarmArenaTickOrderTests
         string root = FindRepositoryRoot();
         string source = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string runner = ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs");
-        string timers = ReadNormalizedSource(root, "game_server", "Services", "GameServerTickService.cs");
+        string timers = ReadNormalizedSource(root, "game_server", "Services", "MatchTickLoop.cs");
         Assert.Contains("TimeSpan.FromMilliseconds(50)", timers);
-        Assert.Contains("MatchTickInterval, MatchTickInterval", timers);
+        Assert.Contains("new PeriodicTimer(", timers);
         Assert.Contains("tickService.StopAsync()", source);
         AssertInOrder(source,
             "var tickRunner = new MatchTickRunner(",
             "countdown.Broadcast,",
             "ProcessSwarmArenaForMatching,",
             "ProcessEnvironmentalTickForMatching,",
-            "runtime => botMovement.Process(runtime, ResolveSwarmBotDirective));",
-            "tickService.Start(ProcessAreaClosureTick, tickRunner.Run);");
+            "runtime => botMovement.Process(runtime, ResolveSwarmBotDirective),",
+            "tickService.Start(tickRunner.Run);");
         AssertInOrder(runner,
-            "sessions.SnapshotWhere(",
-            "matchRuntimes.ActiveIds()",
             "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
-            "continue;",
+            "return;",
             "using (scope)",
             "scope.Runtime.IsTerminal",
             "processCombat(matchingId, activeSessions);");
@@ -42,15 +40,13 @@ public sealed class SwarmArenaTickOrderTests
 
         string proximityTick = ReadMethodSlice(
             ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs"),
-            "public void Run()",
+            "public void Run(MatchRuntime runtime)",
             "private static bool ShouldMoveBots(");
         AssertInOrder(
             proximityTick,
-            "sessions.SnapshotWhere(",
-            "activeMatchingIds = matchRuntimes.ActiveIds();",
-            "Proximity auto combat snapshot failed",
-            "foreach (long matchingId in activeMatchingIds)",
             "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "sessions.GetByMatch(matchingId)",
+            "Match session snapshot failed",
             "try",
             "processCombat(matchingId, activeSessions);",
             "catch (Exception ex)",
@@ -291,7 +287,7 @@ public sealed class SwarmArenaTickOrderTests
         string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
         string tick = ReadMethodSlice(
             server,
-            "private void ProcessAreaClosureTick()",
+            "private void ProcessAreaClosureForMatching(",
             "    private IConnectionSession? CreateClientSession(");
         string prepare = ReadMethodSlice(
             arena,
@@ -306,12 +302,15 @@ public sealed class SwarmArenaTickOrderTests
             "private void PrepareDestroySwarmOrbsInClosedAreas(",
             "// 쌍 깔때기:");
 
-        // 매치 잠금 안에서 상태 확정 → 같은 순서로 송신 (#331). 폐쇄는 1초 틱이라 잠금을 기다린다.
+        // 독립 루프의 매치 잠금 안에서 1초 주기를 확인하고 상태 확정 → 송신한다.
+        string runner = ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs");
+        AssertInOrder(runner,
+            "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "using (scope)",
+            "TryBeginAreaClosureTick(",
+            "processAreaClosure(matchingId, countdownSessions.ToArray());");
         AssertInOrder(
             tick,
-            "matchRuntimes.Enter(matchingId, out MatchScope scope)",
-            "scope.Runtime.IsTerminal",
-            "GetSessionsByMatch(matchingId).ToArray();",
             "PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);",
             "DispatchSwarmClosurePublicationPlan(plan, sessionSnapshot)");
         Assert.DoesNotContain("TryEnter", tick);

@@ -15,6 +15,27 @@ internal sealed class MatchRuntime
 {
     public const int EnvironmentalTickIntervalSeconds = 5;
     private int _terminal;
+    private MatchTickLoop? _tickLoop;
+    internal MatchTickLoop? TickLoop
+    {
+        get => Volatile.Read(ref _tickLoop);
+        set => Volatile.Write(ref _tickLoop, value);
+    }
+
+    public DateTime? NextAreaClosureTickAtUtc { get; private set; }
+
+    /// <summary>매치 잠금 안에서 구역 폐쇄를 1초마다 실행한다. 놓친 구간을 몰아서 처리하지 않는다.</summary>
+    public bool TryBeginAreaClosureTick(DateTime utcNow, DateTime? gameplayStartedAtUtc)
+    {
+        if (!Monitor.IsEntered(Sync))
+            throw new InvalidOperationException("Area closure tick requires the match monitor to be held.");
+        if (IsTerminal || gameplayStartedAtUtc is not { } startedAt || utcNow < startedAt.AddSeconds(1))
+            return false;
+        if (NextAreaClosureTickAtUtc is { } next && utcNow < next)
+            return false;
+        NextAreaClosureTickAtUtc = utcNow.AddSeconds(1);
+        return true;
+    }
 
     internal MatchRuntime(long matchingId, ILogger logger,
         SwarmGrowthOfferIdSequence? growthOfferIds = null,
@@ -217,6 +238,9 @@ internal sealed class MatchRuntimeStore
         _afterCleanup = afterCleanup;
     }
 
+    // 런타임 초기화가 끝난 뒤 알린다. 구독자는 잠금 안에서 게임 처리를 직접 실행하지 않는다.
+    internal event Action<MatchRuntime>? Created;
+
     public int Count => _runtimes.Count;
 
     /// <summary>
@@ -239,9 +263,11 @@ internal sealed class MatchRuntimeStore
             try
             {
                 _initializeMatch?.Invoke(matchingId);
+                Created?.Invoke(candidate);
             }
             catch
             {
+                candidate.TickLoop?.Stop();
                 _runtimes.TryRemove(new KeyValuePair<long, MatchRuntime>(matchingId, candidate));
                 throw;
             }
@@ -303,7 +329,19 @@ internal sealed class MatchRuntimeStore
         return true;
     }
 
-    public bool Remove(long matchingId) => _runtimes.TryRemove(matchingId, out _);
+    public bool Remove(long matchingId)
+    {
+        var runtime = Get(matchingId);
+        if (runtime == null)
+            return false;
+        lock (runtime.Sync)
+        {
+            if (!_runtimes.TryRemove(new KeyValuePair<long, MatchRuntime>(matchingId, runtime)))
+                return false;
+            runtime.TickLoop?.Stop();
+            return true;
+        }
+    }
 
     internal void Exit(MatchRuntime runtime)
     {
@@ -316,6 +354,9 @@ internal sealed class MatchRuntimeStore
 
             if (runtime.IsTerminal && !runtime.CleanupDone)
             {
+                // 같은 잠금을 쓰는 틱의 게임 처리는 여기까지 끝났다. 자기 루프를 await하지 않고
+                // 다음 틱을 막은 뒤 정리한다. 서버 종료는 별도로 루프 Completion까지 기다린다.
+                runtime.TickLoop?.Stop();
                 runtime.CleanupDone = true;
                 runtime.Doors.Clear();
                 RunCleanup(runtime.MatchingId);

@@ -4,9 +4,8 @@ using Microsoft.Extensions.Logging;
 namespace game_server.services;
 
 /// <summary>
-///     매치마다 잠금을 잡고 카운트다운, 전투, 환경 정산, 봇 이동을 순서대로 실행한다.
-///     잠금이 바쁜 매치는 이번 틱을 건너뛰며, 종료된 매치는 처리하지 않는다.
-///     GameServerTickService가 주기적으로 호출하며, 이 클래스는 각 단계의 처리 함수를 전달받는다.
+///     전달받은 매치 하나의 잠금 안에서 카운트다운·전투·환경 정산·구역 폐쇄·봇 이동을 순서대로 실행한다.
+///     바쁜 매치는 해당 틱을 건너뛰며 다른 매치를 순회하거나 기다리지 않는다.
 /// </summary>
 internal sealed class MatchTickRunner(
     MatchRuntimeStore matchRuntimes,
@@ -15,70 +14,85 @@ internal sealed class MatchTickRunner(
     Action<IEnumerable<long>, IReadOnlyCollection<GameClientSession>> publishCountdown,
     Action<long, List<GameClientSession>> processCombat,
     Action<MatchRuntime, List<GameClientSession>> processEnvironment,
-    Action<MatchRuntime> moveBots)
+    Action<MatchRuntime> moveBots,
+    Action<long, GameClientSession[]> processAreaClosure)
 {
-    public void Run()
+    public void Run(MatchRuntime runtime)
     {
-        List<GameClientSession> activeSessions;
-        List<GameClientSession> countdownSessions;
-        IReadOnlyList<long> activeMatchingIds;
-        try
+        long matchingId = runtime.MatchingId;
+        if (!ReferenceEquals(matchRuntimes.Get(matchingId), runtime) || runtime.IsTerminal)
+            return;
+        if (!matchRuntimes.TryEnter(matchingId, out MatchScope scope))
         {
-            countdownSessions = sessions.SnapshotWhere(static session => session.PlayerId.HasValue);
-            activeSessions = countdownSessions
-                .Where(static session => !session.IsEliminated && !session.IsGameEnded)
-                .ToList();
-            activeMatchingIds = matchRuntimes.ActiveIds();
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Proximity auto combat snapshot failed");
+            RecordBotTickBusySkip(matchingId);
             return;
         }
 
-        foreach (long matchingId in activeMatchingIds)
+        using (scope)
         {
-            // 카운트다운 중에도 몬스터 연출을 진행한다. 실제 전투 허용 여부는 전투 처리기가 판단한다.
-            if (!matchRuntimes.TryEnter(matchingId, out MatchScope scope))
+            if (!ReferenceEquals(scope.Runtime, runtime) || scope.Runtime.IsTerminal)
+                return;
+
+            List<GameClientSession> countdownSessions;
+            List<GameClientSession> activeSessions;
+            try
             {
-                RecordBotTickBusySkip(matchingId);
-                continue;
+                countdownSessions = sessions.GetByMatch(matchingId)
+                    .Where(static session => session.PlayerId.HasValue).ToList();
+                activeSessions = countdownSessions
+                    .Where(static session => !session.IsEliminated && !session.IsGameEnded).ToList();
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Match session snapshot failed: MatchingId={MatchingId}", matchingId);
+                return;
             }
 
-            using (scope)
+            try
             {
+                publishCountdown([matchingId], countdownSessions);
                 if (scope.Runtime.IsTerminal)
-                    continue;
+                    return;
+                processCombat(matchingId, activeSessions);
+                if (scope.Runtime.IsTerminal)
+                    return;
+                if (scope.Runtime.TryBeginEnvironmentalTick(
+                        DateTime.UtcNow, MatchStartGate.GetGameplayStartedAtUtc(matchingId)))
+                {
+                    processEnvironment(scope.Runtime, activeSessions);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Match combat tick failed: MatchingId={MatchingId}", matchingId);
+            }
 
-                try
-                {
-                    publishCountdown([matchingId], countdownSessions);
-                    processCombat(matchingId, activeSessions);
-                    if (scope.Runtime.TryBeginEnvironmentalTick(
-                            DateTime.UtcNow, MatchStartGate.GetGameplayStartedAtUtc(matchingId)))
-                    {
-                        processEnvironment(scope.Runtime, activeSessions);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(
-                        ex,
-                        "Proximity auto combat tick failed: MatchingId={MatchingId}",
-                        matchingId);
-                }
+            if (scope.Runtime.IsTerminal)
+                return;
 
-                if (scope.Runtime.IsTerminal || !ShouldMoveBots(scope.Runtime))
-                    continue;
+            try
+            {
+                if (scope.Runtime.TryBeginAreaClosureTick(
+                        DateTime.UtcNow, MatchStartGate.GetGameplayStartedAtUtc(matchingId)))
+                {
+                    processAreaClosure(matchingId, countdownSessions.ToArray());
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Match area closure tick failed: MatchingId={MatchingId}", matchingId);
+            }
 
-                try
-                {
-                    moveBots(scope.Runtime);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Bot walking tick failed: MatchingId={MatchingId}", matchingId);
-                }
+            if (scope.Runtime.IsTerminal || !ShouldMoveBots(scope.Runtime))
+                return;
+
+            try
+            {
+                moveBots(scope.Runtime);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Bot walking tick failed: MatchingId={MatchingId}", matchingId);
             }
         }
     }

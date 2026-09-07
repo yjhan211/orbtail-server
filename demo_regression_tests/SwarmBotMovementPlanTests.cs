@@ -116,7 +116,7 @@ public sealed class SwarmBotMovementPlanTests
         string combat = ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs");
         string tick = ReadMethodSlice(
             combat,
-            "public void Run()",
+"public void Run(MatchRuntime runtime)",
             "private static bool ShouldMoveBots(");
         string process = ReadMethodSlice(
             server,
@@ -144,7 +144,7 @@ public sealed class SwarmBotMovementPlanTests
             tick,
             "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
             "RecordBotTickBusySkip(matchingId);",
-            "continue;",
+            "return;",
             "using (scope)",
             "scope.Runtime.IsTerminal",
             "processCombat(matchingId, activeSessions);",
