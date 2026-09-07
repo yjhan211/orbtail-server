@@ -86,7 +86,7 @@ public partial class GameClientSession
 
             // 매치 구성(사람·봇·스폰)은 manifest에서 매치당 한 번 확정한다. ticket은 신원만 증명하므로
             // 이 사람이 정말 이 매치의 참가자인지도 여기서 가른다.
-            MatchComposition composition = await LoadMatchCompositionAsync(matchingId, CurrentMapId, runtime);
+            MatchComposition composition = await _matchEntry.LoadCompositionAsync(matchingId, CurrentMapId, runtime);
             EnsureConnectionActive();
             if (!composition.HumanPlayerIds.Contains(playerId))
                 throw new InvalidOperationException($"Player {playerId} is not part of match {matchingId}.");
@@ -183,7 +183,7 @@ public partial class GameClientSession
             await BroadcastPlayerJoin();
             EnsureConnectionActive();
 
-            await _entryStateCommitter.CommitAsync(
+            await _matchEntry.CommitAsync(
                 matchingId,
                 PlayerId.Value,
                 composition.HumanPlayerIds);
@@ -448,133 +448,6 @@ public partial class GameClientSession
     {
         Logger.LogWarning("Force disconnecting PlayerId={PlayerId}", PlayerId);
         Connection.Disconnect();
-    }
-
-    /// <summary>
-    ///     매치당 한 번 manifest(사람 ID·봇 수)를 읽고 봇 ID·스폰·최종 명단을 확정한다.
-    ///     이후 세션은 런타임에 세워진 구성을 그대로 쓴다. 입장 마커·사람 reservation 확인은 세션마다 다시 한다.
-    /// </summary>
-    private async Task<MatchComposition> LoadMatchCompositionAsync(long matchingId, MapId mapId, MatchRuntime runtime)
-    {
-        var initializationLock =
-            MatchInitializationLocks.GetOrAdd(matchingId, static _ => new SemaphoreSlim(1, 1));
-        await initializationLock.WaitAsync();
-        try
-        {
-            MatchManifest manifest = await ReadMatchManifestAsync(matchingId);
-            await WaitForMatchingHandoffReadyAsync(matchingId, manifest.HumanPlayerIds);
-
-            if (runtime.Composition is { } existing)
-                return existing;
-
-            List<long> humanPlayerIds = manifest.HumanPlayerIds.Distinct().ToList();
-            List<long> botPlayerIds = MatchRosterBuilder.CreateBotIds(manifest);
-            MatchMode mode = manifest.Mode;
-
-            IReadOnlyDictionary<long, Cell> spawnCells =
-                MatchSpawnPlanner.Plan(
-                    matchingId, mapId, humanPlayerIds.Concat(botPlayerIds), _devOptions.CrossfireSandbox);
-            if (botPlayerIds.Count > 0)
-                _matchRuntimes.GetRequired(matchingId).Bots.RegisterBots(matchingId, mapId, botPlayerIds, spawnCells);
-
-            var roster = await new MatchRosterBuilder(RedisOperations, Logger).BuildAsync(humanPlayerIds,
-                botPlayerIds.Select(id => _matchRuntimes.GetRequired(matchingId).Bots.SynthesizePlayerInfo(matchingId, id)
-                    ?? throw new InvalidOperationException($"Bot {id} was not initialized.")));
-
-            RunUnderLiveMatch(runtime, () =>
-            {
-                foreach (var participant in roster)
-                {
-                    _matchRuntimes.GetRequired(matchingId).Roster.RegisterEntry(new RosterEntry { PlayerId = participant.PlayerId });
-                    _matchRuntimes.GetRequired(matchingId).Roster.UpdatePlayerProfile(participant.PlayerId, participant.Name, participant.WearItemIdList);
-                }
-            });
-
-            var composition = new MatchComposition(humanPlayerIds, botPlayerIds, mode, spawnCells, roster);
-            runtime.Composition = composition;
-            return composition;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to load match composition: MatchingId={MatchingId}", matchingId);
-            throw;
-        }
-        finally
-        {
-            initializationLock.Release();
-        }
-    }
-
-    private async Task<MatchManifest> ReadMatchManifestAsync(long matchingId)
-    {
-        // manifest는 ticket 발급보다 먼저 쓰인다. 없으면 만료됐거나 handoff가 지워진 것이다.
-        var serialized = await RedisOperations.HashGetAsync(
-            MatchingRedisKeys.Key(matchingId),
-            MatchingRedisKeys.ManifestField);
-        if (serialized.IsNullOrEmpty)
-            throw new InvalidOperationException($"Missing match manifest for match {matchingId}.");
-
-        return MessagePackSerializer.Deserialize<MatchManifest>((byte[])serialized!)
-               ?? throw new InvalidOperationException($"Match manifest is empty for match {matchingId}.");
-    }
-
-    private async Task WaitForMatchingHandoffReadyAsync(
-        long matchingId,
-        IReadOnlyCollection<long> expectedHumanPlayerIds)
-    {
-        TimeSpan retryDelay = TimeSpan.FromMilliseconds(50);
-        int maxAttempts = Math.Max(
-            1,
-            (int)Math.Ceiling(MatchingRedisKeys.EntryTimeout.TotalMilliseconds /
-                              retryDelay.TotalMilliseconds));
-        string handoffKey = MatchingRedisKeys.Key(matchingId);
-        string entryStateKey = MatchingRedisKeys.EntryStateKey(matchingId);
-
-        for (int attempt = 0; attempt < maxAttempts; attempt++)
-        {
-            var ready = await RedisOperations.HashGetAsync(
-                handoffKey,
-                MatchingRedisKeys.EntryReadyField);
-            if (!ready.IsNullOrEmpty)
-            {
-                byte[] value = (byte[])ready!;
-                if (value.Length == 1 && value[0] == MatchingRedisKeys.EntryReadyValue)
-                {
-                    string expectedReservation = matchingId.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                    foreach (long humanPlayerId in expectedHumanPlayerIds)
-                    {
-                        var reservation = await RedisOperations.StringGetAsync(
-                            MatchingRedisKeys.ReservationKey(humanPlayerId));
-                        if (reservation.IsNullOrEmpty || !string.Equals(reservation.ToString(), expectedReservation,
-                                StringComparison.Ordinal))
-                        {
-                            throw new InvalidOperationException(
-                                $"Matching reservation is not active for player {humanPlayerId} in match {matchingId}.");
-                        }
-                    }
-                    return;
-                }
-                throw new InvalidOperationException(
-                    $"Invalid entry marker for match {matchingId}.");
-            }
-
-            var entryState = await RedisOperations.StringGetAsync(entryStateKey);
-            if (!entryState.IsNullOrEmpty &&
-                string.Equals(
-                    entryState.ToString(),
-                    MatchingRedisKeys.EntryCanceledState,
-                    StringComparison.Ordinal))
-            {
-                throw new InvalidOperationException(
-                    $"Matching entry was canceled before the handoff became ready for match {matchingId}.");
-            }
-
-            if (attempt + 1 < maxAttempts)
-                await Task.Delay(retryDelay);
-        }
-
-        throw new TimeoutException(
-            $"Matching handoff was not committed for match {matchingId}.");
     }
 
     /// <summary>

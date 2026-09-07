@@ -41,7 +41,7 @@ internal static class GameServerTestAccess
         runtimes ??= new MatchRuntimeStore(logger,
             cleanupSteps:
             [
-                new("session runtime", game_server.sessions.GameClientSession.CleanupAbandonedMatchingRuntime),
+                new("session runtime", MatchStartGate.RemoveMatching),
                 new("session index", sessions.RemoveMatch)
             ],
             afterCleanup: id => lifecycle.PrepareRedisCleanup(id).Invoke(),
@@ -85,7 +85,8 @@ internal static class GameServerTestAccess
                 PublicHost = "127.0.0.1"
             },
             devOptions: GameServerDevOptions.Disabled,
-            sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, matchResults: new MatchResultService(runtimes, logs, summaries, GameServerDevOptions.Disabled, sessions.GetByInstance, logger),
+            sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, matchEliminations: TestGameSessionServices.CreateEliminationService(runtimes, logs, summaries, GameServerDevOptions.Disabled, sessions.GetByInstance, logger),
+            matchEntry: new GameMatchEntryService(new InMemoryRedisOperations(), runtimes, GameServerDevOptions.Disabled, logger),
             entryFailureHandler: entryFailure,
             sessionLeaveHandler: new GameSessionLeaveHandler(sessions, cleanup,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionLeaveHandler>.Instance),

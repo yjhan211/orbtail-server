@@ -438,7 +438,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                     .ToList(),
 
                 eventLog,
-                new MatchResultService(matchRuntimes, eventLog, summaries, GameServerDevOptions.Disabled,
+                TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, GameServerDevOptions.Disabled,
                     (_, id) => sessions.Where(session => session.MatchingId == id).ToList(), logger),
                 matchRuntimes,
                 static (_, _, _, _) => { },
@@ -446,7 +446,8 @@ public sealed class GameClientSessionTerminalPublicationTests
                 new FakeGameSessionLifecycle(prepareGameCompletion),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
-                GameServerDevOptions.Disabled)
+                GameServerDevOptions.Disabled,
+                new GameMatchEntryService(null!, matchRuntimes, GameServerDevOptions.Disabled, NullLogger.Instance))
         {
         }
     }

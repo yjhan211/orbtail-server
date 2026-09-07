@@ -175,7 +175,7 @@ public sealed class SwarmArenaTickOrderTests
         string sessionCombat = ReadNormalizedSource(
             root, "game_server", "Sessions", "GameClientSession.ProximityAutoCombat.cs");
         string sessionMatchEnd = ReadNormalizedSource(
-            root, "game_server", "Sessions", "GameClientSession.MatchEnd.cs");
+            root, "game_server", "Services", "MatchEliminationService.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string proximity = ReadNormalizedSource(
             root, "game_server", "Services", "OrbVisualStatePublisher.cs");
@@ -228,8 +228,8 @@ public sealed class SwarmArenaTickOrderTests
 
         string humanElimination = ReadMethodSlice(
             sessionMatchEnd,
-            "private void ProcessElimination(",
-            "internal void EliminateForSettlement(");
+            "public void Process(",
+            "public void EndMatch(");
         AssertInOrder(
             humanElimination,
             "Roster.TryEliminatePlayer(",

@@ -916,7 +916,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
                     .ToList(),
 
                 EventLog,
-                new MatchResultService(Store, EventLog, new MatchSummaryFileStore(_summaryDirectory),
+                TestGameSessionServices.CreateEliminationService(Store, EventLog, new MatchSummaryFileStore(_summaryDirectory),
                     GameServerDevOptions.Disabled,
                     (_, id) => _sessions.Where(session => session.MatchingId == id).ToList(),
                     NullLogger.Instance),
@@ -927,7 +927,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
-                GameServerDevOptions.Disabled);
+                GameServerDevOptions.Disabled,
+                new GameMatchEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance));
             connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);
             _sessions.Add(session);

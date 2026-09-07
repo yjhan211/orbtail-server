@@ -87,8 +87,9 @@ public class ProtocolWiringGuardTests
         int area = source.IndexOf("CurrentArea = GameMapData.GetCurrentArea", StringComparison.Ordinal);
         int join = source.IndexOf("await BroadcastPlayerJoin()", StringComparison.Ordinal);
         Assert.True(roster >= 0 && roster < area && roster < join);
-        Assert.True(source.IndexOf("if (runtime.Composition is", StringComparison.Ordinal) <
-                    source.IndexOf("MatchRosterBuilder.CreateBotIds", StringComparison.Ordinal));
+        string entry = File.ReadAllText(Path.Combine(root, "game_server", "Services", "GameMatchEntryService.cs"));
+        Assert.True(entry.IndexOf("if (runtime.Composition is", StringComparison.Ordinal) <
+                    entry.IndexOf("MatchRosterBuilder.CreateBotIds", StringComparison.Ordinal));
     }
 
     [Fact]

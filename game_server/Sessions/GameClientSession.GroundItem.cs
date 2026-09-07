@@ -343,17 +343,6 @@ public partial class GameClientSession
         BroadcastGroundItemsSpawned(CurrentArea, drop.SpawnedItems);
     }
 
-    internal void DropBotInventoryAtCurrentPosition(long botPlayerId)
-    {
-        var outcome = EliminationInventoryDropper.DropBotInventoryWithLogs(
-            _matchRuntimes.GetRequired(MatchingId).Bots, _matchRuntimes.GetRequired(MatchingId).Inventory, _matchRuntimes.GetRequired(MatchingId).GroundItems, _gameEventLogManager,
-            MatchingId, botPlayerId);
-        if (outcome == null)
-            return;
-
-        BroadcastGroundItemsSpawned(outcome.Bot.CurrentArea, outcome.Drop.SpawnedItems);
-    }
-
     private void SendGroundItemSnapshot(AreaType area)
     {
         if (MatchingId <= 0 || area == AreaType.None) return;

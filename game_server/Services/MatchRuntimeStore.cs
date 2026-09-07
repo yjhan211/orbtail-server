@@ -138,6 +138,9 @@ internal sealed class MatchRuntime
         return true;
     }
 
+    // await를 포함하는 입장 초기화만 직렬화한다. Sync 안에서는 이 잠금을 기다리지 않는다.
+    // 종료 중 기다리는 작업이 있을 수 있으므로 Dispose하지 않고 런타임과 함께 회수된다.
+    public SemaphoreSlim EntryInitializationLock { get; } = new(1, 1);
     private MatchComposition? _composition;
 
     /// <summary>

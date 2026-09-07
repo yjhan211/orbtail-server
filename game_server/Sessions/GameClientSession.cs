@@ -31,7 +31,7 @@ public partial class GameClientSession : SessionBase
     private const int InitialCorruption = 0;
     private static readonly TimeSpan ExploreMoveGracePeriod = TimeSpan.FromMilliseconds(750);
 
-    private static readonly ConcurrentDictionary<long, SemaphoreSlim> MatchInitializationLocks = new();
+
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly List<int> _activeBuffIds = new();
     private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
@@ -51,13 +51,13 @@ public partial class GameClientSession : SessionBase
     private readonly IMatchEntryFailureHandler _entryFailureHandler;
     private readonly Func<bool> _isServerStopping;
     private readonly GameEventLogManager _gameEventLogManager;
-    private readonly MatchResultService _matchResults;
+    private readonly MatchEliminationService _matchEliminations;
     /// <summary>성장 카드 픽 — 매치 잠금 안에서 부르는 GameServer 인스턴스 위임.</summary>
     private readonly Action<GameClientSession, long, int, int> _handleSwarmGrowthPick;
     /// <summary>6칸 빌드 결정 — 매치 잠금 안에서 부르는 GameServer 인스턴스 위임.</summary>
     private readonly Action<GameClientSession, long, int, long, long> _handleSwarmOrbDecision;
 
-    private readonly GameEntryStateCommitter _entryStateCommitter;
+    private readonly GameMatchEntryService _matchEntry;
 
     private bool _isSleeping;
 
@@ -138,7 +138,7 @@ public partial class GameClientSession : SessionBase
         Func<MapId, long, List<GameClientSession>> getSessionsByInstance,
 
         GameEventLogManager gameEventLogManager,
-        MatchResultService matchResults,
+        MatchEliminationService matchEliminations,
         MatchRuntimeStore matchRuntimes,
         Action<GameClientSession, long, int, int> handleSwarmGrowthPick,
         Action<GameClientSession, long, int, long, long> handleSwarmOrbDecision,
@@ -147,6 +147,7 @@ public partial class GameClientSession : SessionBase
         Func<bool> isServerStopping,
         IMatchEntryFailureHandler entryFailureHandler,
         GameServerDevOptions devOptions,
+        GameMatchEntryService matchEntry,
         Func<Packet, bool>? trySendConnectSuccessResponse = null,
         TimeProvider? movementTimeProvider = null)
         : base(connection, logger, redisOperations)
@@ -157,14 +158,14 @@ public partial class GameClientSession : SessionBase
         _getSessionsByInstance = getSessionsByInstance;
 
         _gameEventLogManager = gameEventLogManager;
-        _matchResults = matchResults;
+        _matchEliminations = matchEliminations;
         _matchRuntimes = matchRuntimes;
         _devOptions = devOptions;
         _movementPacketQueue = new MovementPacketQueue(() => Connection.IsAcceptingMessages, movementTimeProvider);
         _handleSwarmGrowthPick = handleSwarmGrowthPick;
         _handleSwarmOrbDecision = handleSwarmOrbDecision;
 
-        _entryStateCommitter = new GameEntryStateCommitter(redisOperations, logger);
+        _matchEntry = matchEntry;
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
         _matchingLifecycle = matchingLifecycle;
         _isServerStopping = isServerStopping;
@@ -216,13 +217,6 @@ public partial class GameClientSession : SessionBase
 
         prepared.GetAwaiter().GetResult();
         return Task.CompletedTask;
-    }
-
-    internal static void CleanupAbandonedMatchingRuntime(long matchingId)
-    {
-        MatchStartGate.RemoveMatching(matchingId);
-        if (MatchInitializationLocks.TryRemove(matchingId, out var initializationLock))
-            initializationLock.Dispose();
     }
 
     private bool IsRoundActionLocked(out string reason)

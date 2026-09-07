@@ -500,7 +500,8 @@ public sealed class MatchStartCountdownPublicationTests
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
-                GameServerDevOptions.Disabled)
+                GameServerDevOptions.Disabled,
+                null!)
         {
             _throwOnSend = throwOnSend;
         }

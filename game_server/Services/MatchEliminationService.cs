@@ -1,0 +1,175 @@
+using game_server.sessions;
+using MessagePack;
+using Microsoft.Extensions.Logging;
+using network.common;
+using network.common.data.models;
+using network.packets;
+
+namespace game_server.services;
+
+/// <summary>
+///     매치 잠금 안에서 탈락을 확정하고 인벤토리 드롭·탈락 알림·승자 판정을 순서대로 처리한다.
+///     세션의 관전 상태는 전용 메서드로 반영하며, 결과 발행은 MatchResultService에 맡긴다.
+///     호출자는 해당 매치 잠금을 소유해야 한다.
+/// </summary>
+internal sealed class MatchEliminationService(
+    MatchRuntimeStore _matchRuntimes,
+    GameEventLogManager _gameEventLogManager,
+    MatchResultService _matchResults,
+    GameServerDevOptions _devOptions,
+    Func<MapId, long, List<GameClientSession>> _getSessionsByInstance,
+    ILogger Logger)
+{
+    /// <summary>
+    ///     플레이어 탈락 처리 + 탈락 브로드캐스트
+    /// </summary>
+    public void Process(MapId mapId, long matchingId, long eliminatedPlayerId, EliminationReason reason, long? causePlayerId = null,
+        bool deferGameOver = false, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
+        bool isOvertimeElimination = false, int forcedRank = 0)
+    {
+        var allSessions = _getSessionsByInstance(mapId, matchingId);
+        var eliminatedSession = allSessions.FirstOrDefault(session => session.PlayerId == eliminatedPlayerId);
+        var eliminatedBot = _matchRuntimes.GetRequired(matchingId).Bots.GetBot(matchingId, eliminatedPlayerId);
+        AreaType eliminatedArea = eliminatedSession?.CurrentArea ?? eliminatedBot?.CurrentArea ?? AreaType.None;
+        long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
+
+        int finalOrbTier = _matchRuntimes.GetRequired(matchingId).Inventory.GetEquippedBattleItemTier(eliminatedPlayerId);
+        var transition = _matchRuntimes.GetRequired(matchingId).Roster.TryEliminatePlayer(eliminatedPlayerId, reason,
+            resolvedAttackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
+            finalOrbTier);
+        if (!transition.Applied)
+        {
+            Logger.LogDebug(
+                "Duplicate elimination ignored: matchingId={MatchingId}, PlayerId={PlayerId}, Reason={Reason}",
+                matchingId, eliminatedPlayerId, reason);
+            return;
+        }
+
+        // Keep the live session state authoritative as soon as elimination is accepted.
+        if (eliminatedSession != null)
+            eliminatedSession.ApplyMatchStatus(PlayerMatchStatus.ELIMINATED);
+        if (eliminatedBot != null)
+        {
+            eliminatedBot.PlayerMatchStatus = PlayerMatchStatus.SPECTATING;
+            eliminatedBot.IsEliminated = true;
+        }
+
+        var affected = transition.AffectedPlayers;
+        _matchRuntimes.GetRequired(matchingId).GroundItems.ReleaseClaimReservationsForPlayer(eliminatedPlayerId);
+        _gameEventLogManager.LogElimination(
+            matchingId,
+            eliminatedPlayerId,
+            reason.ToString(),
+            isBot: eliminatedBot != null,
+            attackerPlayerId: resolvedAttackerPlayerId,
+            isAreaClosureElimination: isAreaClosureElimination,
+            isOvertimeElimination: isOvertimeElimination);
+
+        if (eliminatedSession != null)
+            eliminatedSession.DropAllInventoryAtCurrentPosition();
+        else
+            DropBotInventoryAtCurrentPosition(mapId, matchingId, eliminatedPlayerId);
+
+        // 1. 전체에게 탈락 알림. 탈락자에게만 결과표를 함께 보낸다.
+        var eliminatedResultPlayers = _matchResults.BuildGameResultPlayers(allSessions, matchingId, 0);
+
+        foreach (var session in allSessions)
+        {
+            using var eliminatedPacket = Packet.Create((int)Protocol.G_TO_C_PLAYER_ELIMINATED);
+            var eliminatedMsg = new G_TO_C_PLAYER_ELIMINATED
+            {
+                PlayerId = eliminatedPlayerId,
+                AttackerPlayerId = resolvedAttackerPlayerId,
+                Reason = reason,
+                ResultPlayers = session.PlayerId == eliminatedPlayerId ? eliminatedResultPlayers : []
+            };
+            eliminatedPacket.SetBody(MessagePackSerializer.Serialize(eliminatedMsg));
+            session.TrySend(eliminatedPacket);
+        }
+
+        // 세션 PlayerMatchStatus 동기화 (탈락자 → SPECTATING으로 관전 전환)
+        // #26: 봇 상태도 함께 동기화 (BotPlayerManager)
+        foreach (var (playerId, newStatus) in affected)
+        {
+            var s = allSessions.FirstOrDefault(s => s.PlayerId == playerId);
+            if (s != null)
+            {
+                s.ApplyMatchStatus(newStatus);
+                continue;
+            }
+
+            // 봇 상태 동기화
+            var bot = _matchRuntimes.GetRequired(matchingId).Bots.GetBot(matchingId, playerId);
+            if (bot != null)
+            {
+                if (newStatus == PlayerMatchStatus.ELIMINATED)
+                {
+                    bot.IsEliminated = true;
+                    bot.PlayerMatchStatus = PlayerMatchStatus.SPECTATING;
+                }
+                else
+                {
+                    bot.PlayerMatchStatus = newStatus;
+                }
+            }
+        }
+
+        // Elimination removes the actor from the live world immediately. The eliminated session
+        // remains connected for the result screen, so a dedicated leave packet is required.
+        using (var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(eliminatedPlayerId))
+        {
+            foreach (var session in allSessions)
+                session.TrySend(leavePacket);
+        }
+
+        // 3. 게임 종료 판정
+        var (isGameOver, winnerId) = _matchRuntimes.GetRequired(matchingId).Roster.CheckGameOver();
+        if (!deferGameOver && isGameOver)
+        {
+            Logger.LogInformation("게임 종료! 최후의 1인: {WinnerId}", winnerId);
+            _matchResults.SendGameResult(mapId, winnerId ?? 0, false, matchingId);
+        }
+
+    }
+
+    public void EndMatch(MapId mapId, long matchingId, long winnerId, string criterion)
+    {
+        if (_devOptions.DisableGameEnd)
+        {
+            Logger.LogWarning(
+                "[DEV] 게임 종료 차단됨 (DISABLE_GAME_END=1): TryEndMatch winner={WinnerId}, criterion={Criterion}",
+                winnerId, criterion);
+            return;
+        }
+        if (matchingId <= 0)
+            return;
+
+        Logger.LogInformation(
+            "Swarm match resolved: matchingId={MatchingId}, WinnerId={WinnerId}, Criterion={Criterion}",
+            matchingId, winnerId, criterion);
+        _gameEventLogManager.LogSystem(
+            matchingId,
+            $"survivor_settlement winner={winnerId} criterion={criterion}");
+        // 오브 점수 만료(#226 단계 B)는 요약 EndReason에도 그대로 남긴다 — 계측에서
+        // 연장전 정산과 섞이면 5분 판정 발화율을 셀 수 없다.
+        string endReason = criterion == "orb_score_timeout" ? criterion : "overtime_settlement";
+        _matchResults.SendGameResult(mapId, winnerId, false, matchingId, endReason, criterion);
+    }
+
+    private void DropBotInventoryAtCurrentPosition(MapId mapId, long matchingId, long botPlayerId)
+    {
+        var runtime = _matchRuntimes.GetRequired(matchingId);
+        var outcome = EliminationInventoryDropper.DropBotInventoryWithLogs(
+            runtime.Bots, runtime.Inventory, runtime.GroundItems, _gameEventLogManager,
+            matchingId, botPlayerId);
+        if (outcome == null || outcome.Drop.SpawnedItems.Count == 0)
+            return;
+
+        var targets = _getSessionsByInstance(mapId, matchingId)
+            .Where(session => !session.IsEliminated && session.CurrentArea == outcome.Bot.CurrentArea);
+        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
+            (int)outcome.Bot.CurrentArea, outcome.Drop.SpawnedItems.ToList());
+        foreach (var session in targets)
+            session.TrySend(packet);
+    }
+}

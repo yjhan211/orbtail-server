@@ -98,7 +98,7 @@ internal static class Program
                 sp.GetRequiredService<ILogger<MatchRuntimeStore>>(),
                 cleanupSteps:
                 [
-                    new("session runtime", GameClientSession.CleanupAbandonedMatchingRuntime),
+                    new("session runtime", MatchStartGate.RemoveMatching),
                     new("session index", sessions.RemoveMatch)
                 ],
                 afterCleanup: id => lifecycle.PrepareRedisCleanup(id).Invoke(),
@@ -122,6 +122,11 @@ internal static class Program
             sp.GetRequiredService<GameEventLogManager>(), sp.GetRequiredService<MatchSummaryFileStore>(),
             sp.GetRequiredService<ILogger<MatchCleanupService>>()));
         services.AddSingleton<GameSessionLeaveHandler>();
+        services.AddSingleton<GameMatchEntryService>(sp => new GameMatchEntryService(
+            sp.GetRequiredService<IRedisOperations>(),
+            sp.GetRequiredService<MatchRuntimeStore>(),
+            sp.GetRequiredService<GameServerDevOptions>(),
+            sp.GetRequiredService<ILogger<GameMatchEntryService>>()));
         services.AddSingleton<MatchResultService>(sp => new MatchResultService(
             sp.GetRequiredService<MatchRuntimeStore>(),
             sp.GetRequiredService<GameEventLogManager>(),
@@ -129,6 +134,13 @@ internal static class Program
             sp.GetRequiredService<GameServerDevOptions>(),
             sp.GetRequiredService<GameSessionRegistry>().GetByInstance,
             sp.GetRequiredService<ILogger<MatchResultService>>()));
+        services.AddSingleton<MatchEliminationService>(sp => new MatchEliminationService(
+            sp.GetRequiredService<MatchRuntimeStore>(),
+            sp.GetRequiredService<GameEventLogManager>(),
+            sp.GetRequiredService<MatchResultService>(),
+            sp.GetRequiredService<GameServerDevOptions>(),
+            sp.GetRequiredService<GameSessionRegistry>().GetByInstance,
+            sp.GetRequiredService<ILogger<MatchEliminationService>>()));
         services.AddSingleton<BotEliminationService>(sp => new BotEliminationService(
             sp.GetRequiredService<GameSessionRegistry>(), sp.GetRequiredService<GameEventLogManager>(),
             sp.GetRequiredService<ILogger<BotEliminationService>>()));

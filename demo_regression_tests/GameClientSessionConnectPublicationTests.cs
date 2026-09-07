@@ -385,7 +385,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 static (_, _) => [],
 
                 TestGameEventLogs.Create(),
-                new MatchResultService(Store, TestGameEventLogs.Create(),
+                TestGameSessionServices.CreateEliminationService(Store, TestGameEventLogs.Create(),
                     new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
                     GameServerDevOptions.Disabled, static (_, _) => [], NullLogger.Instance),
                 Store,
@@ -396,6 +396,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 static () => false,
                 new FakeMatchEntryFailureHandler(recordEntryFailure),
                 GameServerDevOptions.Disabled,
+                new GameMatchEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
                 sender);
             Connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);

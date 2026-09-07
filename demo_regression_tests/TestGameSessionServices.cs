@@ -7,6 +7,17 @@ namespace demo_regression_tests;
 
 internal static class TestGameSessionServices
 {
+    public static MatchEliminationService CreateEliminationService(
+        MatchRuntimeStore store,
+        GameEventLogManager logs,
+        MatchSummaryFileStore summaries,
+        GameServerDevOptions options,
+        Func<network.common.MapId, long, List<GameClientSession>> getSessions,
+        Microsoft.Extensions.Logging.ILogger logger)
+    {
+        var results = new MatchResultService(store, logs, summaries, options, getSessions, logger);
+        return new MatchEliminationService(store, logs, results, options, getSessions, logger);
+    }
     public static GameSessionLeaveHandler CreateLeaveHandler()
     {
         var sessions = new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance);

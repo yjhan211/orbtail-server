@@ -84,7 +84,7 @@ public sealed class MovementPacketQueueTests
             static (_, _) => [],
 
             logs,
-            new MatchResultService(store, logs,
+            TestGameSessionServices.CreateEliminationService(store, logs,
                 new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
                 GameServerDevOptions.Disabled, static (_, _) => [], NullLogger.Instance),
             store,
@@ -95,6 +95,7 @@ public sealed class MovementPacketQueueTests
             static () => false,
             new FakeMatchEntryFailureHandler(),
             GameServerDevOptions.Disabled,
+            matchEntry: new GameMatchEntryService(null!, store, GameServerDevOptions.Disabled, NullLogger.Instance),
             movementTimeProvider: clock);
         connection.SetSession(session);
         return session;
