@@ -7,6 +7,18 @@ namespace demo_regression_tests;
 
 public sealed class OrbTrailServiceTests
 {
+    public OrbTrailServiceTests()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null && !File.Exists(Path.Combine(directory.FullName, "server.sln")))
+            directory = directory.Parent;
+        if (directory == null)
+            throw new DirectoryNotFoundException("Repository root not found.");
+
+        network.common.data.helpers.GameDataHelper.SetBasePath(Path.Combine(directory.FullName, "network"));
+        network.common.data.helpers.GameDataHelper.Initialize();
+    }
+
     [Fact]
     public void Trail_InterpolatesAndExtrapolatesWithoutSharingMatches()
     {
