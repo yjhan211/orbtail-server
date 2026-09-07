@@ -12,7 +12,7 @@ public sealed class ServerDeploymentSurfaceTests
         Assert.DoesNotContain("GetInstanceSnapshot", source);
         Assert.DoesNotContain("GetActiveMatchingIds", source);
         Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Services/MatchArenaService.cs"));
-        Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Network/GameSessionRegistry.cs"));
+        Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Sessions/GameSessionRegistry.cs"));
         Assert.Contains("EndBotOnlyMatchIfSettled", Read("game_server/Services/MatchCleanupService.cs"));
     }
 

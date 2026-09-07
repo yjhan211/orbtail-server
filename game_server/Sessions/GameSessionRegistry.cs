@@ -1,8 +1,7 @@
 using System.Collections.Concurrent;
-using game_server.sessions;
 using Microsoft.Extensions.Logging;
 
-namespace game_server.network;
+namespace game_server.sessions;
 
 /// <summary>
 ///     이 GameServer의 플레이어별 현재 세션을 관리하고 매치 소유 목록의 등록·교체·제거를 조율한다.

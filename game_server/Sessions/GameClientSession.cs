@@ -118,7 +118,7 @@ public partial class GameClientSession : SessionBase
     internal int CurrentHealth => Health;
     public bool IsEliminated => PlayerMatchStatus is PlayerMatchStatus.ELIMINATED or PlayerMatchStatus.SPECTATING;
 
-    private int Health { get => _condition.Health; set => _condition.Health = value; }
+    private int Health => _condition.Health;
 
     private void InitializeProtocolHandlers()
     {

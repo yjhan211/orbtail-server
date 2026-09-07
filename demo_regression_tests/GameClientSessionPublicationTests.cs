@@ -803,10 +803,12 @@ public sealed class GameClientSessionPublicationTests
             return item;
         }
 
-        public void SetHealth(RecordingSession session, int health) =>
-            typeof(GameClientSession).GetProperty(
-                "Health",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, health);
+        public void SetHealth(RecordingSession session, int health)
+        {
+            var condition = (PlayerCondition)typeof(GameClientSession).GetField(
+                "_condition", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!;
+            condition.Health = health;
+        }
 
         public void SetMatchingId(RecordingSession session, long matchingId)
         {
