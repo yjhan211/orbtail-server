@@ -12,9 +12,6 @@ namespace game_server.sessions;
 public partial class GameClientSession
 {
     // #219 3택 드래프트의 색 → 아이템 매핑. 클라 카드 순서(태양·파도·바람)와 일치해야 한다.
-    private const int DraftSunOrbItemId = 107000010;
-    private const int DraftWaveOrbItemId = 107000030;
-    private const int DraftWindOrbItemId = 107000020;
 
     private Task HandleSummonOrb(C_TO_G_SUMMON_ORB request)
     {
@@ -45,14 +42,7 @@ public partial class GameClientSession
             return false;
 
         // 상자 시간 등급 (#222 M3): 개전 후 80초/160초를 넘기면 같은 색의 T2/T3가 나온다.
-        int draftItemId = OrbData.ApplyDraftTier(
-            choiceIndex switch
-            {
-                1 => DraftWaveOrbItemId,
-                2 => DraftWindOrbItemId,
-                _ => DraftSunOrbItemId
-            },
-            GetSwarmDraftTier());
+        int draftItemId = OrbInventoryService.GetDraftItem(choiceIndex, GetSwarmDraftTier());
         // 열쇠 (#222 M4): 충전이 있으면 이번 소환 비용을 0으로 — 성공 시 1 소비.
         int draftCost = _pendingOrbDraftCost;
         bool useFreeSummon = FreeSummonCharges > 0 && draftCost > 0;
@@ -95,18 +85,7 @@ public partial class GameClientSession
     internal SummonOrbAttempt ExecuteOrbSummon(int choiceIndex, int? costOverride, int? exactItemId = null)
     {
         long playerId = PlayerId!.Value;
-        var attempt = _matchRuntimes.GetRequired(MatchingId).SummonStones.TrySummon(
-            playerId,
-            itemId => _matchRuntimes.GetRequired(MatchingId).Inventory.TryAddItemWithCapacity(
-                playerId,
-                itemId,
-                Config.SWARM_ORB_CAPACITY,
-                out var addedItem)
-                ? addedItem
-                : null,
-            choiceIndex,
-            costOverride,
-            exactItemId);
+        var attempt = OrbInventoryService.Summon(_matchRuntimes.GetRequired(MatchingId), playerId, choiceIndex, costOverride, exactItemId);
 
         if (attempt.Success && attempt.AddedItem != null)
         {
@@ -301,41 +280,16 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        var inventory = _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(playerId);
-        var item = inventory.GetItem(request.ItemUid);
-        if (item == null || item.Count <= 0)
+        var runtime = _matchRuntimes.GetRequired(MatchingId);
+        var result = OrbInventoryService.Destroy(runtime, playerId, request.ItemUid);
+        if (result.Error != ErrorCode.SUCCESS)
         {
-            SendDestroyOrbResult(false, ErrorCode.ITEM_NOT_FOUND, request.ItemUid, 0,
-                GetSummonStoneSnapshot());
+            SendDestroyOrbResult(false, result.Error, request.ItemUid, 0, result.State);
             return Task.CompletedTask;
         }
-
-        int tier;
-        bool isDestroyableOrb =
-            OrbData.TryGetColorAndTier(item.ItemId, out _, out tier) ||
-            OrbData.TryGetRecoveryTier(item.ItemId, out tier);
-        if (!isDestroyableOrb)
-        {
-            SendDestroyOrbResult(false, ErrorCode.ITEM_NOT_USABLE, request.ItemUid, 0,
-                GetSummonStoneSnapshot());
-            return Task.CompletedTask;
-        }
-
-        if (!_matchRuntimes.GetRequired(MatchingId).Inventory.TryRemoveItem(
-                playerId, request.ItemUid, 1, out var removedItem) ||
-            removedItem == null)
-        {
-            SendDestroyOrbResult(false, ErrorCode.ITEM_NOT_OWNED, request.ItemUid, 0,
-                GetSummonStoneSnapshot());
-            return Task.CompletedTask;
-        }
-
-        // 스웜 (#232 4단계): 계열 공유 레벨이 플레이어 귀속이라 표시 티어와 무관하게 1로 고정 —
-        // 강화한 오브를 부숴도 레벨은 남으므로 티어 환급이면 강화-파괴 재판매가 성립한다.
-        int refundedStones = Config.SWARM_ORB_DESTROY_REFUND_STONES;
-        var state = _matchRuntimes.GetRequired(MatchingId).SummonStones.AddStones(playerId, refundedStones);
-        SendInGameInventoryUpdate(removedItem);
-        SendDestroyOrbResult(true, ErrorCode.SUCCESS, request.ItemUid, refundedStones, state);
+        var inventory = runtime.Inventory.GetPlayerInventory(playerId);
+        SendInGameInventoryUpdate(result.RemovedItem!);
+        SendDestroyOrbResult(true, ErrorCode.SUCCESS, request.ItemUid, result.RefundedStones, result.State);
 
         _gameEventLogManager.LogOrbBoardTransition(
             MatchingId,
@@ -349,10 +303,10 @@ public partial class GameClientSession
             "Orb destroyed for summon stones: MatchingId={MatchingId}, PlayerId={PlayerId}, ItemId={ItemId}, ItemUid={ItemUid}, Tier={Tier}, RefundedStones={RefundedStones}",
             MatchingId,
             playerId,
-            item.ItemId,
+            result.ItemId,
             request.ItemUid,
-            tier,
-            refundedStones);
+            result.Tier,
+            result.RefundedStones);
         return Task.CompletedTask;
     }
     internal void SendSummonStoneState(int awardedStones = 0, float awardSourceX = 0f, float awardSourceY = 0f)
@@ -442,8 +396,7 @@ public partial class GameClientSession
         // 개별 스택 강제 (#226 단계 C 수리): AddItem은 같은 색·티어를 한 항목으로 합쳐
         // 오브별 ItemUid 정체성(열 순번·절단 래치·강화·철갑 대상)을 깨뜨렸다 — 봇 지급
         // 경로(TryAddItemWithCapacity)와 같은 규칙으로 오브 1개 = 항목 1개를 보장한다.
-        _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId.Value)
-            .TryAddItemWithCapacity(itemId, Config.SWARM_ORB_CAPACITY, out _);
+        OrbInventoryService.Grant(_matchRuntimes.GetRequired(MatchingId), PlayerId.Value, itemId);
         SendInGameInventoryList();
     }
 }
