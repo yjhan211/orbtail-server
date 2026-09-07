@@ -50,7 +50,9 @@ public partial class GameServer(
     private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
 
     // 매치 기록
-    private readonly GameEventLogManager _gameEventLogManager = new();
+    private GameEventLogManager? _eventLogs;
+    internal GameEventLogManager EventLogs => LazyInitializer.EnsureInitialized(ref _eventLogs,
+        () => new GameEventLogManager(id => MatchRuntimes.Get(id)?.EventLog))!;
     private readonly MatchSummaryFileStore _matchSummaryFileStore = new(
         configuration["MATCH_SUMMARY_DIRECTORY"],
         configuration.GetValue<int>("MATCH_SUMMARY_MAX_FILES", MatchSummaryFileStore.DefaultMaxSummaries));
@@ -101,7 +103,7 @@ public partial class GameServer(
         new MatchCleanupStep("session runtime", GameClientSession.CleanupAbandonedMatchingRuntime),
         new MatchCleanupStep("session index", sessions.RemoveMatch),
         new MatchCleanupStep("settlement", CleanupMatchSettlementState),
-        new MatchCleanupStep("event log", _gameEventLogManager.Clear)
+        new MatchCleanupStep("event log", EventLogs.Clear)
     ];
 
     /// <summary>정리가 끝난 매치의 Redis 인계 키를 잠금 밖에서 지운다 (셧다운이 완료를 기다린다).</summary>
@@ -240,7 +242,7 @@ public partial class GameServer(
     {
         _swarmBotMovementCoordinator = new SwarmBotMovementCoordinator(
             MatchRuntimes,
-            _gameEventLogManager);
+            EventLogs);
         try
         {
             // 서버 환경에서 CSV 파일 경로 설정
@@ -296,7 +298,7 @@ public partial class GameServer(
 
             var affected = transition.AffectedPlayers;
             match.GroundItems.ReleaseClaimReservationsForPlayer(botId);
-            _gameEventLogManager.LogElimination(
+            EventLogs.LogElimination(
                 matchingId,
                 botId,
                 reason.ToString(),
@@ -360,7 +362,7 @@ public partial class GameServer(
     {
         var match = MatchRuntimes.GetRequired(matchingId);
         var outcome = EliminationInventoryDropper.DropBotInventoryWithLogs(
-            match.Bots, match.Inventory, match.GroundItems, _gameEventLogManager,
+            match.Bots, match.Inventory, match.GroundItems, EventLogs,
             matchingId, botPlayerId);
         if (outcome == null)
             return;
@@ -598,7 +600,7 @@ public partial class GameServer(
                 RegisterClientSession,
                 GetSessionsByInstance,
                 _interactableStateManager,
-                    _gameEventLogManager,
+                    EventLogs,
                 _matchSummaryFileStore,
                 MatchRuntimes,
                 HandleSwarmGrowthPick,
@@ -706,7 +708,7 @@ public partial class GameServer(
             return;
 
         runtime.TryMarkTerminal();
-        if (_gameEventLogManager.TryBeginFinalization(matchingId))
+        if (EventLogs.TryBeginFinalization(matchingId))
         {
             DateTime endedAtUtc = DateTime.UtcNow;
             DateTime startedAtUtc =
@@ -714,7 +716,7 @@ public partial class GameServer(
             var finalPlayerStats = runtime.Roster.BuildGameResult()
                 .Select(row =>
                 {
-                    var stats = _gameEventLogManager.GetResultStats(matchingId, row.playerId);
+                    var stats = EventLogs.GetResultStats(matchingId, row.playerId);
                     DateTime survivalEndUtc = row.eliminatedAt ?? endedAtUtc;
                     return new MatchFinalPlayerStats(
                         row.playerId,
@@ -728,9 +730,9 @@ public partial class GameServer(
                         GetSwarmOrbScore(matchingId, row.playerId).OrbCount);
                 })
                 .ToList();
-            _gameEventLogManager.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);
+            EventLogs.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);
             MatchSummaryPersistenceRequest? summaryRequest = MatchSummaryPersistence.Capture(
-                _gameEventLogManager,
+                EventLogs,
                 logger,
                 matchingId,
                 endReason,

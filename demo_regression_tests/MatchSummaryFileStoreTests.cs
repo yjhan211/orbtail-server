@@ -150,7 +150,7 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
     public void FullPersistenceKeepsEarlyEventsBeyondTheLiveFiveThousandEventWindow()
     {
         const long matchingId = 210001;
-        var log = new GameEventLogManager();
+        var log = TestGameEventLogs.Create();
         log.BeginMatch(matchingId, 210);
         for (int index = 0; index < 5_100; index++)
             log.LogSystem(matchingId, $"event-{index}");
@@ -324,7 +324,7 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
     [Fact]
     public void CoreAfterimageKillRecordsFirstLastAndDamageContributors()
     {
-        var log = new GameEventLogManager();
+        var log = TestGameEventLogs.Create();
 
         log.LogSwarmAfterimageKilled(
             210003,
@@ -413,7 +413,7 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
     [Fact]
     public void FinalizationGate_AcceptsOnlyTheFirstCaller()
     {
-        var events = new GameEventLogManager();
+        var events = TestGameEventLogs.Create();
 
         Assert.True(events.TryBeginFinalization(206003));
         Assert.False(events.TryBeginFinalization(206003));

@@ -110,7 +110,7 @@ public partial class GameServer
             matchingId,
             eliminatedTargets.Select(target =>
             {
-                int damage = _gameEventLogManager
+                int damage = EventLogs
                     .GetResultStats(matchingId, target.PlayerId)
                     .TotalDamageDealt;
                 return new MatchSettlementCandidate(
@@ -133,7 +133,7 @@ public partial class GameServer
                 matchingId,
                 resolution.DecisiveCriterion,
                 orderedPlayers);
-            _gameEventLogManager.LogSystem(
+            EventLogs.LogSystem(
                 matchingId,
                 $"environment_tiebreak criterion={resolution.DecisiveCriterion} best_to_worst={orderedPlayers}");
         }

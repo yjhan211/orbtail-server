@@ -227,7 +227,7 @@ public sealed class SwarmBotMovementPlanTests
     {
         var matches = new MatchRuntimeStore(NullLogger.Instance);
         matches.GetOrCreate(44_001);
-        return new SwarmBotMovementCoordinator(matches, new GameEventLogManager());
+        return new SwarmBotMovementCoordinator(matches, TestGameEventLogs.Create());
     }
 
     private static void AssertInOrder(string source, params string[] markers)

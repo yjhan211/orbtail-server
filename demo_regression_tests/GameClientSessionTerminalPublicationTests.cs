@@ -282,7 +282,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         public ConcurrentDictionary<long, int> LifecycleDispatchCounts { get; } = new();
         public TimelineLogger Logger { get; }
         public InteractableStateManager Interactables { get; } = new();
-        public GameEventLogManager EventLog { get; } = new();
+        public GameEventLogManager EventLog { get; } = TestGameEventLogs.Create();
         public MatchSummaryFileStore Summaries => new(_summaryDirectory);
         public long? ThrowPrepareCompletionForPlayerId { get; set; }
         public MatchRuntime? TrackedRuntime { get; set; }

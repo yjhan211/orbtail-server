@@ -26,7 +26,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     public void Capture_FreezesMetadataAndMutableEventGraphAcrossCleanup()
     {
         const long matchingId = 42001;
-        var eventLogs = new GameEventLogManager();
+        var eventLogs = TestGameEventLogs.Create();
         eventLogs.BeginMatch(matchingId, seed: 17);
         eventLogs.LogMatchEnded(
             matchingId,
@@ -203,7 +203,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
 
         int noHumanLock = Find(noHumanFinalization, "MatchRuntimes.Enter(runtime)");
         int noHumanTerminalMark = Find(noHumanFinalization, "runtime.TryMarkTerminal();");
-        int abandonedEvent = Find(noHumanFinalization, "_gameEventLogManager.LogMatchAbandoned(");
+        int abandonedEvent = Find(noHumanFinalization, "EventLogs.LogMatchAbandoned(");
         int noHumanCapture = Find(noHumanFinalization, "MatchSummaryPersistence.Capture(");
         int noHumanAfterRelease = Find(noHumanFinalization, "runtime.AfterRelease.Add(");
 

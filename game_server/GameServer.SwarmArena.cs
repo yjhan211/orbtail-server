@@ -101,7 +101,7 @@ public partial class GameServer
             // 결과 화면이 수백 킬을 "처치 0회"로 표시한다.
             if (damageResult.Applied)
             {
-                _gameEventLogManager.RecordMonsterHit(
+                EventLogs.RecordMonsterHit(
                     matchingId, hit.AttackerId, hit.Damage, damageResult.Killed);
             }
 
@@ -131,7 +131,7 @@ public partial class GameServer
         if (GetSwarmMatchRuntime(matchingId).Pacing.AnchorProbeAtUtc.TryGetValue(matchingId, out var probeAt) && nowUtc < probeAt)
             return;
         GetSwarmMatchRuntime(matchingId).Pacing.AnchorProbeAtUtc[matchingId] = nowUtc.AddSeconds(10);
-        _gameEventLogManager.LogSystem(
+        EventLogs.LogSystem(
             matchingId,
             $"anchor_probe orphanResolved={GetSwarmMatchRuntime(matchingId).Pacing.AnchorOrphanCount[matchingId]}");
     }
@@ -269,7 +269,7 @@ public partial class GameServer
 
         // 정지 감시: 8초 이상 제자리인 몹을 매치 로그로 남긴다 — 회귀 감지선.
         foreach (string report in tick.StuckReports)
-            _gameEventLogManager.LogSystem(matchingId, report);
+            EventLogs.LogSystem(matchingId, report);
 
         // 공급 스폰 계측 (#229 4단계): 공급지·페이즈·마릿수·석 보상 + 스폰 직후 전역 생존 수.
         // alive는 상한 48 준수와 구역 목표 유지를 한 줄로 읽기 위한 값이다.
@@ -277,7 +277,7 @@ public partial class GameServer
         {
             int aliveAfter = MatchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId).Count(state => state.IsAlive);
             foreach (var supplySpawn in tick.SupplyPackSpawns)
-                _gameEventLogManager.LogSystem(
+                EventLogs.LogSystem(
                     matchingId,
                     $"supply_pack area={supplySpawn.Area} phase={supplySpawn.PackIndex} " +
                     $"monsters={supplySpawn.MonsterCount} stones={supplySpawn.StoneTotal} " +
@@ -344,7 +344,7 @@ public partial class GameServer
             GetSwarmMatchRuntime(matchingId).Pacing.ContactProbeAtUtc[matchingId] = nowUtc.AddSeconds(10);
             int toBots = tick.PlayerDamage.Count(entry => entry.TargetPlayerId < 0);
             int toHumans = tick.PlayerDamage.Count - toBots;
-            _gameEventLogManager.LogSystem(
+            EventLogs.LogSystem(
                 matchingId,
                 $"contact_probe damage={tick.PlayerDamage.Count} toBots={toBots} toHumans={toHumans} " +
                 $"dummies={dummyIds.Count} aliveBots={aliveBots.Count} aliveSessions={aliveSessions.Count} " +
@@ -809,7 +809,7 @@ public partial class GameServer
 
         foreach (var area in closureTick.ClosedAreas)
         {
-            _gameEventLogManager.LogClosure(matchingId, area.ToString());
+            EventLogs.LogClosure(matchingId, area.ToString());
             outbound.Add(new SwarmAreaClosedOutbound(area, allRecipients));
         }
 
@@ -1026,7 +1026,7 @@ public partial class GameServer
                 playerId,
                 suffixStart,
                 ringRecipients));
-            _gameEventLogManager.LogSystem(
+            EventLogs.LogSystem(
                 matchingId,
                 $"closure_orb_destroyed player={playerId} from={suffixStart} count={destroyed.Count}");
             logger.LogInformation(
@@ -1269,7 +1269,7 @@ public partial class GameServer
                 !victim.HasValue ||
                 cutter.Value.Area != victim.Value.Area;
 
-            _gameEventLogManager.LogSwarmRetaliationWindow(
+            EventLogs.LogSwarmRetaliationWindow(
                 matchingId, key.CutterId, key.VictimId,
                 window.BlockedDamage, window.BlockedHits, window.BlockedCuts,
                 window.Retaliated, bothDisengaged, window.OpenedArea.ToString());
@@ -1657,7 +1657,7 @@ public partial class GameServer
         int cutterCorruptionBefore = cutterSession?.CurrentCorruption ?? cutterBot?.Corruption ?? int.MaxValue;
         if (cutterCorruptionBefore + SwarmSingleCutCorruptionCost >= Config.MAX_CORRUPTION)
         {
-            _gameEventLogManager.LogSystem(
+            EventLogs.LogSystem(
                 matchingId,
                 $"ORB_SINGLE_CUT_REFUSED attacker={creditPlayerId} victim={bestOwnerId} targetOrbUid={bestOrbUid} " +
                 $"targetIndex={bestTailOrdinal} reason=cost attackerCorruption={cutterCorruptionBefore}");
@@ -1681,7 +1681,7 @@ public partial class GameServer
 
         // 절단 진입 계측 (#227 3·6단계): 공격자·피해자·후보 ordinal·그 자리를 덮던 적 오브
         // 사거리 수(국소 화망). 내구 1·즉시 파괴, 손실 = 후보 순번부터 꼬리 끝까지.
-        _gameEventLogManager.LogSwarmCutAttempt(
+        EventLogs.LogSwarmCutAttempt(
             matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal,
             CountSwarmOrbGunsCovering(chains, cutterId, cutterArea, current),
             CountSwarmOrbGunsCovering(chains, cutterId, cutterArea, current, bestOwnerId),
@@ -1763,12 +1763,12 @@ public partial class GameServer
         MatchRuntimes.GetRequired(matchingId).SummonStones.RefundGrowthSuccess(
             bestOwnerId, SwarmGrowthCardMultiply, destroyedItems.Count);
 
-        _gameEventLogManager.LogSwarmTrailCut(
+        EventLogs.LogSwarmTrailCut(
             matchingId, creditPlayerId, bestOwnerId, bestTailOrdinal, destroyedItems.Count,
             orbsBefore, orbsAfter, attackOrbsBefore, attackOrbsAfter, rankAfter,
             bestArea.ToString());
         // 필수 로그 (#232 §11): 절단 한 건 = 공격자·피해자·절단 순번·잃은 수·공격자 오염 전후·회복 차단 만료.
-        _gameEventLogManager.LogSystem(
+        EventLogs.LogSystem(
             matchingId,
             $"ORB_TAIL_CUT attacker={creditPlayerId} victim={bestOwnerId} cutIndex={bestTailOrdinal} " +
             $"lostOrbs={destroyedItems.Count} firstOrbUid={destroyedItem.ItemUid} " +
@@ -1943,7 +1943,7 @@ public partial class GameServer
                 SendSwarmRingVfx(owner.Area, owner.PlayerId, orbPosition.X, orbPosition.Y,
                     radius, allSessions, SwarmRingVfxKindWaveBomb,
                     victimId: 0, fromOrdinal: ordinal);
-                _gameEventLogManager.LogSystem(
+                EventLogs.LogSystem(
                     matchingId,
                     $"wave_vortex_spawn owner={owner.PlayerId} ordinal={ordinal} " +
                     $"at=({orbPosition.X:F2},{orbPosition.Y:F2}) radius={radius:F2} damage={damage}");
@@ -2035,7 +2035,7 @@ public partial class GameServer
 
         if (hitCount > 0 || soaked > 0)
         {
-            _gameEventLogManager.LogSystem(
+            EventLogs.LogSystem(
                 matchingId,
                 $"wave_vortex_hit owner={ownerId} area={area} monsters={hitCount} " +
                 $"notified={notifiedCount} playersSoaked={soaked} radius={radius:F2} " +
@@ -2447,7 +2447,7 @@ public partial class GameServer
             return;
 
         GetSwarmMatchRuntime(matchingId).BotTactics.ChaseLogThrottle[key] = now;
-        _gameEventLogManager.LogSystem(matchingId,
+        EventLogs.LogSystem(matchingId,
             $"swarm_chase chaser={chaserId} target={targetId} " +
             $"targetOrbs={CountSwarmSquadOrbs(matchingId, targetId)} " +
             $"aim=({aimPoint.X:F1},{aimPoint.Y:F1})");
@@ -2509,7 +2509,7 @@ public partial class GameServer
         GetSwarmMatchRuntime(matchingId).BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
         // 세 번째 봇 경로도 남긴다 — 앞의 두 경로만 로그를 붙여 놓으면 여기로 빠진 피해가
         // 그대로 안 보인다.
-        _gameEventLogManager.LogSwarmAfterimageHit(
+        EventLogs.LogSwarmAfterimageHit(
             matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
             botDamage, legacyBefore, bot.Corruption,
             bot.Corruption >= Config.MAX_CORRUPTION, isBot: true, DateTimeOffset.UtcNow);
@@ -2620,7 +2620,7 @@ public partial class GameServer
         long winnerId = candidates.Count > 0 ? candidates[0].PlayerId : 0;
         GetSwarmMatchRuntime(matchingId).Pacing.TimeoutEndedMatchings.Add(matchingId);
         // 최종 점수표 (#226 F 계측): 순위 순 pid:오브:티어합 — 300초 목표(1위 11~15) 검증 근거.
-        _gameEventLogManager.LogSystem(
+        EventLogs.LogSystem(
             matchingId,
             "match_score_result " + string.Join(",", candidates.Select(candidate =>
                 $"{candidate.PlayerId}:{candidate.OrbCount}:{candidate.TierSum}")));
@@ -2894,7 +2894,7 @@ public partial class GameServer
                 matchingId, playerId, growthOffers.AllocateOfferId(), finalCost, baseCost, orbCount,
                 costSummon, costAttack, costDefense);
             growthOffers.RegisterOffer(playerId, offer);
-            _gameEventLogManager.LogSwarmGrowthOffered(
+            EventLogs.LogSwarmGrowthOffered(
                 matchingId, playerId, isBot: false, baseCost, surcharge, finalCost, orbCount);
             session.SendSwarmGrowthOffer(
                 offer.OfferId, offer.Cost, offer.SpawnItemId, offer.EnhanceTargetTier, offer.ArmorCount,
@@ -2935,7 +2935,7 @@ public partial class GameServer
                 // 카드별 카운터는 봇도 함께 민다 (#229) — 안 그러면 봇만 값이 안 올라
                 // 사람보다 싸게 무한 성장하고, 봇 매치로 곡선을 검증할 수도 없다.
                 MatchRuntimes.GetRequired(matchingId).SummonStones.RecordGrowthSuccess(bot.PlayerId, cardIndex);
-                _gameEventLogManager.LogSwarmGrowthSelected(
+                EventLogs.LogSwarmGrowthSelected(
                     matchingId, bot.PlayerId, isBot: true,
                     GetSwarmGrowthCardRole(cardIndex), GetSwarmGrowthCardGrade(cardIndex, offer),
                     baseCost, surcharge, offer.GetCost(cardIndex), successCountBefore, orbCount);
@@ -3055,7 +3055,7 @@ public partial class GameServer
             // N 누적 (#226 C 잔여): 성공한 선택만 — 실패(재검증 탈락)는 비용 곡선을 밀지 않는다.
             int successCountBefore = MatchRuntimes.GetRequired(matchingId).SummonStones.GetGrowthSuccessCount(playerId);
             MatchRuntimes.GetRequired(matchingId).SummonStones.RecordGrowthSuccess(playerId, cardIndex);
-            _gameEventLogManager.LogSwarmGrowthSelected(
+            EventLogs.LogSwarmGrowthSelected(
                 matchingId, playerId, isBot: false,
                 GetSwarmGrowthCardRole(cardIndex), GetSwarmGrowthCardGrade(cardIndex, offer),
                 baseCost, surcharge, offer.GetCost(cardIndex), successCountBefore, orbCountBefore);
@@ -3208,7 +3208,7 @@ public partial class GameServer
             {
                 // 킬 크레딧 (#226 F 계측): 봇 표적도 사람 표적과 같은 피격 로그를 남긴다 —
                 // 이게 빠지면 사람이 봇을 잡아도 killCount·totalDamageDealt가 0으로 남는다.
-                _gameEventLogManager.LogHit(
+                EventLogs.LogHit(
                     matchingId, attack.AttackerPlayerId, bot.PlayerId, attack.WeaponItemId,
                     corruption,
                     bot.Corruption < Config.MAX_CORRUPTION &&
@@ -3567,7 +3567,7 @@ public partial class GameServer
 
         foreach (var item in spawned)
         {
-            _gameEventLogManager.LogGroundItemSpawned(
+            EventLogs.LogGroundItemSpawned(
                 matchingId,
                 0,
                 item.GroundItemUid,

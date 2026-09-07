@@ -172,7 +172,7 @@ public class ProximityAutoCombatDataTests
         Assert.Contains(
             "if (session == null)\n" +
             "            {\n" +
-            "                _gameEventLogManager.RecordRecovery(\n" +
+            "                EventLogs.RecordRecovery(\n" +
             "                    matchingId, playerId, effectiveRecovery);\n" +
             "            }",
             source);

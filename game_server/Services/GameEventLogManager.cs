@@ -7,33 +7,64 @@ using network.common.data.models;
 namespace game_server.services;
 
 /// <summary>
-///     매치별 최근 인게임 이벤트 로그(운영·디버깅용)와 이동에서 파생하는 AREA_ENTER, 전투·오브 보드·
-///     폐쇄 텔레메트리 상태를 보관한다. 마니또 세대의 사회적 증거 파생(AREA_STAY·ENCOUNTER·
-///     FOLLOW_IN_CANDIDATE)은 #325에서 삭제했다 — 매치 요약은 MOVE·AREA_ENTER만 읽는다.
+///     이벤트 기록과 전투·계측 통계를 계산한다. 진행 중 상태는 MatchRuntime.EventLog에 쓰며,
+///     이 객체는 종료된 최근 50개 매치의 기록과 프로세스 공용 이벤트 순번만 보관한다.
+///     기록 변경과 보관 전환은 호출자가 해당 매치 잠금 안에서 실행한다.
 /// </summary>
 public class GameEventLogManager
 {
     private const int MaxEventsPerMatching = 5_000;
     private const int MaxArchivedMatchings = 50;
 
-    private readonly ConcurrentDictionary<long, MatchingEventLog> _logs = new();
+    private readonly Func<long, MatchEventLogState?> _getMatchState;
     private readonly ConcurrentDictionary<long, MatchingEventLog> _archivedLogs = new();
-    private readonly ConcurrentDictionary<long, byte> _finalizedMatchings = new();
-    private readonly ConcurrentDictionary<long, MatchCombatState> _matchCombatStates = new();
-    private readonly ConcurrentDictionary<long, MatchTelemetryState> _telemetryStates = new();
     private readonly Queue<long> _archivedMatchingIds = new();
     private readonly object _archiveLock = new();
     private long _nextSeq;
 
+    internal GameEventLogManager(Func<long, MatchEventLogState?> getMatchState)
+    {
+        _getMatchState = getMatchState ?? throw new ArgumentNullException(nameof(getMatchState));
+    }
+
+    private MatchEventLogState GetActiveState(long matchingId)
+    {
+        var state = _getMatchState(matchingId);
+        if (state == null || Volatile.Read(ref state.Archived) != 0)
+            throw new InvalidOperationException($"Match event state is not active: {matchingId}");
+        return state;
+    }
+
+    private MatchingEventLog GetLog(long matchingId) =>
+        LazyInitializer.EnsureInitialized(ref GetActiveState(matchingId).Log, static () => new MatchingEventLog());
+
+    private MatchCombatState GetCombat(long matchingId) =>
+        LazyInitializer.EnsureInitialized(ref GetActiveState(matchingId).Combat, static () => new MatchCombatState());
+
+    private MatchTelemetryState GetTelemetry(long matchingId) =>
+        LazyInitializer.EnsureInitialized(ref GetActiveState(matchingId).Telemetry, static () => new MatchTelemetryState());
+
+    private bool TryGetTelemetry(long matchingId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out MatchTelemetryState? state)
+    {
+        state = _getMatchState(matchingId)?.Telemetry;
+        return state != null;
+    }
+
+    private bool TryGetCombat(long matchingId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out MatchCombatState? state)
+    {
+        state = _getMatchState(matchingId)?.Combat;
+        return state != null;
+    }
+
     public void SetPlayerArea(long matchingId, long playerId, string area)
     {
-        var log = _logs.GetOrAdd(matchingId, _ => new MatchingEventLog());
+        var log = GetLog(matchingId);
         log.SetPlayerArea(playerId, area, DateTimeOffset.UtcNow);
     }
 
     public void LogMove(long matchingId, long playerId, string fromArea, string toArea, bool isBot)
     {
-        var log = _logs.GetOrAdd(matchingId, _ => new MatchingEventLog());
+        var log = GetLog(matchingId);
         var now = DateTimeOffset.UtcNow;
 
         log.AddMoveAndDerived(
@@ -102,7 +133,7 @@ public class GameEventLogManager
             return;
 
         var timestamp = occurredAt ?? DateTimeOffset.UtcNow;
-        var state = _matchCombatStates.GetOrAdd(matchingId, _ => new MatchCombatState());
+        var state = GetCombat(matchingId);
         lock (state.SyncRoot)
         {
             state.KnownPlayerIds.Add(playerId);
@@ -147,7 +178,7 @@ public class GameEventLogManager
         DateTimeOffset occurredAt,
         string? damageSourceType = null)
     {
-        var state = _matchCombatStates.GetOrAdd(matchingId, _ => new MatchCombatState());
+        var state = GetCombat(matchingId);
         int weaponTier = BattleItemCombatData.Get(weaponItemId)?.Tier ?? 0;
         int targetWeaponTier;
         int hitCount;
@@ -569,7 +600,7 @@ public class GameEventLogManager
     {
         if (matchingId <= 0) return;
         _archivedLogs.TryRemove(matchingId, out _);
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
+        var state = GetTelemetry(matchingId);
         var startedAt = DateTimeOffset.UtcNow;
         lock (state.SyncRoot)
         {
@@ -578,7 +609,7 @@ public class GameEventLogManager
             state.MatchStartedAtUtc = startedAt;
         }
 
-        _finalizedMatchings.TryRemove(matchingId, out _);
+        Interlocked.Exchange(ref GetLog(matchingId).Finalized, 0);
 
         Append(matchingId, "MATCH_STARTED", 0, false, $"Match started: seed={seed}.", entry =>
         {
@@ -590,7 +621,7 @@ public class GameEventLogManager
     public void LogSpawnAssignment(long matchingId, long playerId, int seed, int anchorIndex, int cellX, int cellY,
         string area, bool isBot)
     {
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
+        var state = GetTelemetry(matchingId);
         lock (state.SyncRoot)
         {
             if (!state.SpawnLoggedPlayerIds.Add(playerId)) return;
@@ -610,7 +641,7 @@ public class GameEventLogManager
     public void LogExploreStart(long matchingId, long playerId, int interactId, string area, bool isBot)
     {
         var now = DateTimeOffset.UtcNow;
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
+        var state = GetTelemetry(matchingId);
         lock (state.SyncRoot)
         {
             state.ExploreStarts[(playerId, interactId)] = now;
@@ -668,7 +699,7 @@ public class GameEventLogManager
         long closureAtUnixMs, bool isBot)
     {
         var now = DateTimeOffset.UtcNow;
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
+        var state = GetTelemetry(matchingId);
         lock (state.SyncRoot)
         {
             foreach (string warningArea in warningAreas)
@@ -737,7 +768,7 @@ public class GameEventLogManager
         if (droppedItems.Count == 0)
             return;
 
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
+        var state = GetTelemetry(matchingId);
         lock (state.SyncRoot)
             state.PendingEliminationDrops.Add(new PendingEliminationDrop(
                 playerId, area, isBot, now.AddSeconds(3), droppedItems));
@@ -850,7 +881,7 @@ public class GameEventLogManager
         if (amount <= 0) return;
 
         var now = DateTimeOffset.UtcNow;
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
+        var state = GetTelemetry(matchingId);
         bool firstStone;
         long? elapsedMilliseconds;
         lock (state.SyncRoot)
@@ -879,7 +910,7 @@ public class GameEventLogManager
         int summonedItemId, int stoneBalance, int nextCost, int successfulSummonCount, string area, bool isBot)
     {
         var now = DateTimeOffset.UtcNow;
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
+        var state = GetTelemetry(matchingId);
         bool firstSuccessfulSummon = false;
         long? elapsedMilliseconds;
         lock (state.SyncRoot)
@@ -968,7 +999,7 @@ public class GameEventLogManager
     private OrbTransitionSnapshot TrackOrbTelemetry(long matchingId, long playerId, IReadOnlyList<int> itemIds,
         int equippedItemId, bool active, OrbColor color)
     {
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
+        var state = GetTelemetry(matchingId);
         var now = DateTimeOffset.UtcNow;
         lock (state.SyncRoot)
         {
@@ -1039,7 +1070,7 @@ public class GameEventLogManager
 
     private void LogOrbTelemetrySummaries(long matchingId, IReadOnlyCollection<MatchFinalPlayerStats> players)
     {
-        if (!_telemetryStates.TryGetValue(matchingId, out var state)) return;
+        if (!TryGetTelemetry(matchingId, out var state)) return;
         var now = DateTimeOffset.UtcNow;
         lock (state.SyncRoot)
         {
@@ -1097,7 +1128,7 @@ public class GameEventLogManager
     public void LogOvertimeStageChanged(long matchingId, int stage, int corruptionPerSecond)
     {
         if (stage <= 0 || corruptionPerSecond <= 0) return;
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
+        var state = GetTelemetry(matchingId);
         lock (state.SyncRoot)
         {
             if (state.OvertimeStage >= stage) return;
@@ -1141,26 +1172,39 @@ public class GameEventLogManager
             LogOrbTelemetrySummaries(matchingId, players);
     }
 
-    public bool TryBeginFinalization(long matchingId) =>
-        matchingId > 0 && _finalizedMatchings.TryAdd(matchingId, 0);
+    public bool TryBeginFinalization(long matchingId)
+    {
+        if (matchingId <= 0) return false;
+        if (_archivedLogs.TryGetValue(matchingId, out var archived))
+            return Interlocked.CompareExchange(ref archived.Finalized, 1, 0) == 0;
+        if (_getMatchState(matchingId) is not { Archived: 0 }) return false;
+        return Interlocked.CompareExchange(ref GetLog(matchingId).Finalized, 1, 0) == 0;
+    }
 
     public List<GameEventEntry> GetRecent(long matchingId, int limit = MaxEventsPerMatching, long? sinceSeq = null)
     {
-        if (!_logs.TryGetValue(matchingId, out var log) && !_archivedLogs.TryGetValue(matchingId, out log))
+        var log = _getMatchState(matchingId)?.Log;
+        if (log == null && !_archivedLogs.TryGetValue(matchingId, out log))
             return new List<GameEventEntry>();
         return log.Snapshot(limit, sinceSeq);
     }
 
     public List<GameEventEntry> GetForPersistence(long matchingId)
     {
-        if (!_logs.TryGetValue(matchingId, out var log) && !_archivedLogs.TryGetValue(matchingId, out log))
+        var log = _getMatchState(matchingId)?.Log;
+        if (log == null && !_archivedLogs.TryGetValue(matchingId, out log))
             return new List<GameEventEntry>();
         return log.FullSnapshot();
     }
 
     public void Clear(long matchingId)
     {
-        if (_logs.TryRemove(matchingId, out var log))
+        var state = _getMatchState(matchingId);
+        if (state == null || Interlocked.Exchange(ref state.Archived, 1) != 0) return;
+        var log = Interlocked.Exchange(ref state.Log, null);
+        state.Combat = null;
+        state.Telemetry = null;
+        if (log != null)
         {
             log.CompactForArchive();
             _archivedLogs[matchingId] = log;
@@ -1171,12 +1215,9 @@ public class GameEventLogManager
                 {
                     long removedMatchingId = _archivedMatchingIds.Dequeue();
                     _archivedLogs.TryRemove(removedMatchingId, out _);
-                    _finalizedMatchings.TryRemove(removedMatchingId, out _);
                 }
             }
         }
-        _matchCombatStates.TryRemove(matchingId, out _);
-        _telemetryStates.TryRemove(matchingId, out _);
     }
 
     private void LogExploreFinished(long matchingId, long playerId, int interactId, string area, string type,
@@ -1184,7 +1225,7 @@ public class GameEventLogManager
     {
         var now = DateTimeOffset.UtcNow;
         DateTimeOffset? startedAt = null;
-        var state = _telemetryStates.GetOrAdd(matchingId, _ => new MatchTelemetryState());
+        var state = GetTelemetry(matchingId);
         lock (state.SyncRoot)
             if (state.ExploreStarts.Remove((playerId, interactId), out var value)) startedAt = value;
 
@@ -1207,7 +1248,7 @@ public class GameEventLogManager
     private void LogClosureMovement(long matchingId, long playerId, string fromArea, string toArea, bool isBot,
         DateTimeOffset now)
     {
-        if (!_telemetryStates.TryGetValue(matchingId, out var state)) return;
+        if (!TryGetTelemetry(matchingId, out var state)) return;
         var derived = new List<(string Type, ClosureWarningResponse Warning)>();
         lock (state.SyncRoot)
         {
@@ -1250,7 +1291,7 @@ public class GameEventLogManager
         DateTimeOffset timestamp, Action<GameEventEntry>? configure = null)
     {
         var entry = CreateEntry(type, playerId, isBot, description, timestamp, configure);
-        var log = _logs.GetOrAdd(matchingId, _ => new MatchingEventLog());
+        var log = GetLog(matchingId);
         log.Add(entry);
         return entry;
     }
@@ -1280,7 +1321,7 @@ public class GameEventLogManager
         bool isBot,
         DateTimeOffset occurredAt)
     {
-        var state = _matchCombatStates.GetOrAdd(matchingId, _ => new MatchCombatState());
+        var state = GetCombat(matchingId);
         bool isFirstElimination;
         lock (state.SyncRoot)
         {
@@ -1321,7 +1362,7 @@ public class GameEventLogManager
         if (playerId == 0 || amount <= 0)
             return;
 
-        var state = _matchCombatStates.GetOrAdd(matchingId, _ => new MatchCombatState());
+        var state = GetCombat(matchingId);
         lock (state.SyncRoot)
         {
             state.KnownPlayerIds.Add(playerId);
@@ -1340,7 +1381,7 @@ public class GameEventLogManager
         if (playerId == 0)
             return;
 
-        var state = _matchCombatStates.GetOrAdd(matchingId, _ => new MatchCombatState());
+        var state = GetCombat(matchingId);
         lock (state.SyncRoot)
         {
             state.KnownPlayerIds.Add(playerId);
@@ -1359,7 +1400,7 @@ public class GameEventLogManager
 
     public ResultStats GetResultStats(long matchingId, long playerId)
     {
-        if (!_matchCombatStates.TryGetValue(matchingId, out var state))
+        if (!TryGetCombat(matchingId, out var state))
             return default;
 
         lock (state.SyncRoot)
@@ -1373,7 +1414,7 @@ public class GameEventLogManager
         }
     }
 
-    private sealed class MatchCombatState
+    internal sealed class MatchCombatState
     {
         public object SyncRoot { get; } = new();
         public long? FirstEncounterAtUnixMs { get; set; }
@@ -1392,7 +1433,7 @@ public class GameEventLogManager
         public Dictionary<long, MatchCombatEngagement> EngagementsByAttacker { get; } = new();
     }
 
-    private sealed class MatchTelemetryState
+    internal sealed class MatchTelemetryState
     {
         public object SyncRoot { get; } = new();
         public bool MatchStarted { get; set; }
@@ -1412,7 +1453,7 @@ public class GameEventLogManager
 
     private void TrackEliminationDropPickup(long matchingId, long groundItemUid, long pickerPlayerId)
     {
-        if (!_telemetryStates.TryGetValue(matchingId, out var state))
+        if (!TryGetTelemetry(matchingId, out var state))
             return;
 
         lock (state.SyncRoot)
@@ -1428,7 +1469,7 @@ public class GameEventLogManager
         }
     }
 
-    private sealed class PendingEliminationDrop(
+    internal sealed class PendingEliminationDrop(
         long playerId, string area, bool isBot, DateTimeOffset observeAtUtc, List<EliminationDroppedItem> items)
     {
         public long PlayerId { get; } = playerId;
@@ -1439,7 +1480,7 @@ public class GameEventLogManager
         public List<EliminationDropPickup> PickupOrder { get; } = new();
     }
 
-    private sealed class OrbTelemetry
+    internal sealed class OrbTelemetry
     {
         public bool Active;
         public OrbColor ActiveColor;
@@ -1469,7 +1510,7 @@ public class GameEventLogManager
         bool BoardReachedCapacity,
         int BoardItemCount,
         long? MatchElapsedMilliseconds);
-    private sealed class ClosureWarningResponse(long playerId, string area, DateTimeOffset warnedAt)
+    internal sealed class ClosureWarningResponse(long playerId, string area, DateTimeOffset warnedAt)
     {
         public long PlayerId { get; } = playerId;
         public string Area { get; } = area;
@@ -1486,7 +1527,7 @@ public class GameEventLogManager
         int MonsterKillCount = 0,
         int MonsterDamageDealt = 0);
 
-    private sealed class MatchCombatEngagement
+    internal sealed class MatchCombatEngagement
     {
         public MatchCombatEngagement(
             long targetPlayerId,
@@ -1516,8 +1557,9 @@ public class GameEventLogManager
 
     private static string FormatPlayer(long playerId) => $"Player{playerId}";
 
-    private sealed class MatchingEventLog
+    internal sealed class MatchingEventLog
     {
+        internal int Finalized;
         private readonly LinkedList<GameEventEntry> _entries = new();
         private readonly List<GameEventEntry> _fullEntries = new();
         private readonly Dictionary<long, AreaPresenceState> _playerAreas = new();

@@ -1,0 +1,14 @@
+using System.Collections.Concurrent;
+using game_server.services;
+
+namespace demo_regression_tests;
+
+// 로그 계산 단위 테스트에서만 매치 상태를 대신 제공한다.
+internal static class TestGameEventLogs
+{
+    public static GameEventLogManager Create()
+    {
+        var states = new ConcurrentDictionary<long, MatchEventLogState>();
+        return new GameEventLogManager(id => states.GetOrAdd(id, _ => new MatchEventLogState()));
+    }
+}

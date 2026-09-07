@@ -578,7 +578,7 @@ public sealed class GameClientSessionPublicationTests
         public MatchRuntimeStore Store { get; }
         public ConcurrentQueue<string>? CleanupTimeline { get; set; }
         public InteractableStateManager Interactables { get; } = new();
-        public GameEventLogManager EventLog { get; } = new();
+        public GameEventLogManager EventLog { get; } = TestGameEventLogs.Create();
         public MatchSummaryFileStore Summaries => new(_summaryDirectory);
 
         public RecordingSession CreateSession(long matchingId, long playerId, AreaType area)

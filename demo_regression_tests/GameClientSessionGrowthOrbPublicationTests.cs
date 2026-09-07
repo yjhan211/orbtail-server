@@ -665,7 +665,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         {
             Server = CreateServer();
             Store = Server.MatchRuntimes;
-            EventLog = GetField<GameEventLogManager>(Server, "_gameEventLogManager");
+            EventLog = Server.EventLogs;
             _growthHandler = typeof(GameServer).GetMethod(
                     "HandleSwarmGrowthPick",
                     BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!

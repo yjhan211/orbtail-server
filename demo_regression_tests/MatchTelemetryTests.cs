@@ -17,7 +17,7 @@ public sealed class MatchTelemetryTests
     public void MatchTelemetrySurvivesCleanupWithSeedExploreRecoveryAndFinalStats()
     {
         const long matchingId = 195001;
-        var log = new GameEventLogManager();
+        var log = TestGameEventLogs.Create();
         int seed = MatchSpawnData.GetDeterministicSeed(matchingId);
         var anchor = MatchSpawnData.GetCorridorAnchors()[0];
 
@@ -54,7 +54,7 @@ public sealed class MatchTelemetryTests
     public void ClosureWarningTracksAdditionalExploreExitAndReentry()
     {
         const long matchingId = 195002;
-        var log = new GameEventLogManager();
+        var log = TestGameEventLogs.Create();
 
         log.LogClosureWarningSnapshot(
             matchingId,
@@ -89,7 +89,7 @@ public sealed class MatchTelemetryTests
     {
         const long matchingId = 195003;
         var now = DateTimeOffset.UtcNow;
-        var log = new GameEventLogManager();
+        var log = TestGameEventLogs.Create();
 
         log.LogTierReached(matchingId, 301, 107000004, 2, false, now.AddSeconds(1));
         log.LogTierReached(matchingId, 301, 107000005, 3, false, now.AddSeconds(2));
@@ -113,7 +113,7 @@ public sealed class MatchTelemetryTests
     public void AfterimageHitTelemetryCapturesTargetKindCorruptionAndLethalOutcome()
     {
         const long matchingId = 195004;
-        var log = new GameEventLogManager();
+        var log = TestGameEventLogs.Create();
         var now = DateTimeOffset.UtcNow;
 
         log.LogSwarmAfterimageHit(
@@ -145,7 +145,7 @@ public sealed class MatchTelemetryTests
     {
         const long matchingId = 198401;
         const long playerId = 401;
-        var log = new GameEventLogManager();
+        var log = TestGameEventLogs.Create();
         var redPair = new[]
         {
             new InGameItemInfo { ItemId = 107000010, Count = 1 },
@@ -192,7 +192,7 @@ public sealed class MatchTelemetryTests
     {
         const long matchingId = 200401;
         const long playerId = 401;
-        var log = new GameEventLogManager();
+        var log = TestGameEventLogs.Create();
         log.BeginMatch(matchingId, seed: 200);
 
         log.LogOrbBoardTransition(

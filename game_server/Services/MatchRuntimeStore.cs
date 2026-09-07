@@ -43,6 +43,7 @@ internal sealed class MatchRuntime
     public SwarmMatchRuntime Swarm { get; }
     public BotPlayerManager Bots { get; }
     public SwarmMonsterDirector Monsters { get; }
+    public MatchEventLogState EventLog { get; } = new();
     // 데이터와 처리 객체를 함께 소유한다. 호출자는 이 매치를 고른 뒤 playerId만 넘긴다.
     public InGameInventoryManager Inventory { get; }
     public GroundItemManager GroundItems { get; }

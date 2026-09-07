@@ -298,7 +298,7 @@ PlayerInGameInventory inventory)
             // Bots mutate their state directly, so only that path needs explicit telemetry.
             if (session == null)
             {
-                _gameEventLogManager.RecordRecovery(
+                EventLogs.RecordRecovery(
                     matchingId, playerId, effectiveRecovery);
             }
             logger.LogDebug(

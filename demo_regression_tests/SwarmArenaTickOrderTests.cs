@@ -335,7 +335,7 @@ public sealed class SwarmArenaTickOrderTests
             "new SwarmFieldStateOutbound(",
             "Closures.CheckClosureSchedule()",
             "new SwarmClosureWarningOutbound(",
-            "_gameEventLogManager.LogClosure(",
+            "EventLogs.LogClosure(",
             "new SwarmAreaClosedOutbound(",
             "MatchRuntimes.Get(matchingId)?.Doors.CloseDoorsForAreas(",
             "new SwarmDoorStateOutbound(",
@@ -352,7 +352,7 @@ public sealed class SwarmArenaTickOrderTests
             ".OrbDurabilityBonus.Remove(",
             "new SwarmInventoryUpdateOutbound(",
             "new SwarmRingVfxOutbound(",
-            "_gameEventLogManager.LogSystem(");
+            "EventLogs.LogSystem(");
         Assert.DoesNotContain("Packet.Create(", orbPrepare);
         Assert.DoesNotContain("PacketMaker.", orbPrepare);
         Assert.DoesNotContain(".TrySend(", orbPrepare);

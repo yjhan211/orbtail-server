@@ -154,7 +154,7 @@ public partial class GameServer
 
         session?.SendInGameInventoryList();
         SendSwarmFamilyLevels(matchingId, playerId, session);
-        _gameEventLogManager.LogSystem(
+        EventLogs.LogSystem(
             matchingId,
             $"ORB_UPGRADED player={playerId} bot={session == null} family={color} ordinal={ordinal} " +
             $"uid={target.ItemUid} tier={tier}->{tier + 1} cost={cost} replaced={replaced}");

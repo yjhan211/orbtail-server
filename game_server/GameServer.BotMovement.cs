@@ -93,7 +93,7 @@ public partial class GameServer
             planningP95Milliseconds,
             walkingP95Milliseconds,
             broadcastP95Milliseconds);
-        _gameEventLogManager.LogBotMovementTickPerformance(
+        EventLogs.LogBotMovementTickPerformance(
             batch.MatchingId,
             p50Milliseconds,
             p95Milliseconds,

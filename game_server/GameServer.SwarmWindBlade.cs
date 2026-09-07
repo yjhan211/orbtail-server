@@ -138,7 +138,7 @@ public partial class GameServer
                 // 빈 틱은 남기지 않는다 — 상시 무기라 매 틱 로그를 남기면 이벤트 흐름이 이것으로 찬다.
                 if (monsterHits > 0 || shocks > 0)
                 {
-                    _gameEventLogManager.LogSystem(
+                    EventLogs.LogSystem(
                         matchingId,
                         $"WIND_BLADE owner={owner.PlayerId} ordinal={ordinal} at=({origin.X:F2},{origin.Y:F2}) " +
                         $"radius={radius:F2} damage={damage} monsters={monsterHits} shocks={shocks}");
