@@ -28,7 +28,7 @@ public partial class GameClientSession : SessionBase
     private const int InitialCorruption = 0;
 
 
-    private readonly PlayerConditionState _condition = new();
+    private readonly PlayerCondition _condition = new();
     private readonly List<int> _activeBuffIds = new();
     private readonly Func<long, List<GameClientSession>> _getSessionsByMatch;
 

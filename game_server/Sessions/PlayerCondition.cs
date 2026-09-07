@@ -1,14 +1,14 @@
+using game_server.services;
 using network.common;
 using network.common.data;
-using network.common.data.models;
 
-namespace game_server.services;
+namespace game_server.sessions;
 
 /// <summary>
 ///     사람 플레이어 하나의 자원·수면·주기 버프 상태와 계산 규칙.
 ///     세션이 소유하며 매치 잠금 안에서 갱신한다. 타이머·패킷·로그·탈락 처리는 소유자가 맡는다.
 /// </summary>
-internal sealed class PlayerConditionState
+internal sealed class PlayerCondition
 {
     private const double SwarmSleepWarmupSeconds = 1d;
     private const double SwarmSleepCombatLockSeconds = 3d;

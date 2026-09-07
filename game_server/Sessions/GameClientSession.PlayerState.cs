@@ -9,7 +9,7 @@ namespace game_server.sessions;
 
 /// <summary>
 ///     플레이어 상태 요청과 회복 결과의 패킷·로그·탈락 통지를 처리한다.
-///     자원·수면·버프 계산은 PlayerConditionState가 담당한다.
+///     자원·수면·버프 계산은 PlayerCondition가 담당한다.
 /// </summary>
 public partial class GameClientSession
 {
