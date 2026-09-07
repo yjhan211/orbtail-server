@@ -56,9 +56,10 @@ public partial class GameClientSession
                 matchingId);
 
             // 세션 등록은 매치 잠금 안에서 — 사람 없음 정리가 등록과 발행 사이로 끼어들 수 없다.
-            MatchRuntime runtime = _matchRuntimes.GetOrCreate(matchingId);
+            MatchRuntime runtime = _matchEntry.GetOrCreateMatch(matchingId);
+            Volatile.Write(ref _match, runtime);
             GameClientSession? previousSession = null;
-            using (_matchRuntimes.Enter(runtime))
+            using (runtime.Enter())
             {
                 if (runtime.IsTerminal)
                 {
@@ -99,7 +100,7 @@ public partial class GameClientSession
 
             RunUnderLiveMatch(runtime, () =>
             {
-                foreach (var bot in _matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
+                foreach (var bot in Match.Bots.GetBots(matchingId))
                     if (!bot.IsEliminated)
                     {
                         _gameEventLogManager.SetPlayerArea(matchingId, bot.PlayerId, bot.CurrentArea.ToString());
@@ -108,7 +109,7 @@ public partial class GameClientSession
                 // Initialize match-scoped area state once; manager implementations are idempotent.
                 int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
                 _gameEventLogManager.BeginMatch(matchingId, matchSeed);
-                foreach (var bot in _matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
+                foreach (var bot in Match.Bots.GetBots(matchingId))
                 {
                     _gameEventLogManager.LogSpawnAssignment(
                         matchingId,
@@ -132,7 +133,7 @@ public partial class GameClientSession
                 if (playerInfo == null)
                     throw new InvalidOperationException($"PlayerInfo not found for authenticated player {playerId}.");
 
-                _matchRuntimes.GetRequired(MatchingId).Roster.UpdatePlayerProfile(playerId, playerInfo.Name, playerInfo.WearItemIdList);
+                Match.Roster.UpdatePlayerProfile(playerId, playerInfo.Name, playerInfo.WearItemIdList);
 
                 matchingSpawnCell = Cell.Clone(composition.SpawnCells[playerId]);
                 _lastValidatedPosition = CellToWorldPosition(matchingSpawnCell);
@@ -165,7 +166,7 @@ public partial class GameClientSession
 
             SendInGameInventoryList();
             SendSummonStoneState();
-            var connectionBoard = _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId.Value);
+            var connectionBoard = Match.Inventory.GetPlayerInventory(PlayerId.Value);
             _gameEventLogManager.LogOrbBoardTransition(
                 MatchingId, PlayerId.Value, connectionBoard.GetAllItems(),
                 connectionBoard.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
@@ -255,7 +256,7 @@ public partial class GameClientSession
     /// </summary>
     private void RunUnderLiveMatch(MatchRuntime runtime, Action initialize)
     {
-        using MatchScope scope = _matchRuntimes.Enter(runtime);
+        using MatchScope scope = runtime.Enter();
         if (runtime.IsTerminal)
             throw new OperationCanceledException("Match became terminal during game entry.");
 
@@ -372,9 +373,9 @@ public partial class GameClientSession
         using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([CaptureGameObjectInfo()]))
             foreach (var session in sessions) session.TrySend(mine);
 
-        var bots = _matchRuntimes.GetRequired(MatchingId).Bots.GetBots(MatchingId)
+        var bots = Match.Bots.GetBots(MatchingId)
             .Where(b => !b.IsEliminated && b.CurrentArea == CurrentArea).ToList();
-        var objects = bots.Select(b => _matchRuntimes.GetRequired(MatchingId).Bots.SynthesizeGameObjectInfo(MatchingId, b.PlayerId))
+        var objects = bots.Select(b => Match.Bots.SynthesizeGameObjectInfo(MatchingId, b.PlayerId))
             .OfType<GameObjectInfo>().ToList();
         if (objects.Count > 0)
         {
@@ -458,7 +459,7 @@ public partial class GameClientSession
     {
         if (MatchingId <= 0) return;
 
-        var snapshot = _matchRuntimes.GetRequired(MatchingId).Closures.GetClientStateSnapshot();
+        var snapshot = Match.Closures.GetClientStateSnapshot();
         foreach (var closedArea in snapshot.ClosedAreas)
         {
             using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
@@ -481,7 +482,7 @@ public partial class GameClientSession
             }));
             TrySend(packet);
         }
-        var globalClosure = _matchRuntimes.GetRequired(MatchingId).Closures.GetGlobalClosureClientState();
+        var globalClosure = Match.Closures.GetGlobalClosureClientState();
         if (globalClosure.IsKnown)
         {
             using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
@@ -508,7 +509,7 @@ public partial class GameClientSession
 
         // #272 자기장: 수축 시계를 복원한다 — 클라 경계 렌더의 유일한 입력. 폐쇄 시계와
         // 같은 앵커(GameStartTime)라 별도 상태가 없다.
-        var closureState = _matchRuntimes.GetRequired(MatchingId).Closures.GetMatchingState();
+        var closureState = Match.Closures.GetMatchingState();
         if (Config.SWARM_PRESSURE_FIELD_ENABLED && closureState != null)
         {
             using var fieldPacket = Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);

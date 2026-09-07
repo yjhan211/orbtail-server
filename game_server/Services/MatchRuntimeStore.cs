@@ -13,6 +13,11 @@ namespace game_server.services;
 /// </summary>
 internal sealed class MatchRuntime
 {
+    private readonly MatchRuntimeStore _owner;
+
+    /// <summary>이 매치의 잠금에 진입한다. 마지막 스코프가 끝날 때 Store가 종료 정리를 수행한다.</summary>
+    public MatchScope Enter() => _owner.Enter(this);
+
     public const int EnvironmentalTickIntervalSeconds = 5;
     private int _terminal;
     private MatchTickLoop? _tickLoop;
@@ -37,11 +42,12 @@ internal sealed class MatchRuntime
         return true;
     }
 
-    internal MatchRuntime(long matchingId, ILogger logger,
+    internal MatchRuntime(MatchRuntimeStore owner, long matchingId, ILogger logger,
         SwarmGrowthOfferIdSequence? growthOfferIds = null,
         SwarmCrossfireEventIdSequence? crossfireEventIds = null,
         bool monsterSpawnEnabled = true)
     {
+        _owner = owner;
         MatchingId = matchingId;
         Bots = new BotPlayerManager(matchingId, logger);
         Combat = new ProximityAutoCombatResolver(matchingId);
@@ -256,7 +262,7 @@ internal sealed class MatchRuntimeStore
         if (_runtimes.TryGetValue(matchingId, out MatchRuntime? existing))
             return existing;
 
-        var candidate = new MatchRuntime(matchingId, _logger, _growthOfferIds, _crossfireEventIds, _monsterSpawnEnabled);
+        var candidate = new MatchRuntime(this, matchingId, _logger, _growthOfferIds, _crossfireEventIds, _monsterSpawnEnabled);
         lock (candidate.Sync)
         {
             MatchRuntime runtime = _runtimes.GetOrAdd(matchingId, candidate);

@@ -86,7 +86,6 @@ public sealed class MovementPacketQueueTests
             TestGameSessionServices.CreateEliminationService(store, logs,
                 new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
                 GameServerDevOptions.Disabled, static _ => [], NullLogger.Instance),
-            store,
             new FakePlayerGrowthHandler(),
 
             new FakeGameSessionLifecycle(),

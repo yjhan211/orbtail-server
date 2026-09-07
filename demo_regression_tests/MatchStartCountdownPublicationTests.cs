@@ -133,11 +133,11 @@ public sealed class MatchStartCountdownPublicationTests
         try
         {
             var first = new RecordingEntrySession();
-            SetSessionIdentity(first, 301, matchingId);
+            SetSessionIdentity(server.GetMatchRuntimes(), first, 301, matchingId);
             var second = new RecordingEntrySession();
-            SetSessionIdentity(second, 302, matchingId);
+            SetSessionIdentity(server.GetMatchRuntimes(), second, 302, matchingId);
             var differentMatch = new RecordingEntrySession();
-            SetSessionIdentity(differentMatch, 999, matchingId + 1);
+            SetSessionIdentity(server.GetMatchRuntimes(), differentMatch, 999, matchingId + 1);
 
             using var lockHeld = new ManualResetEventSlim();
             using var releaseLock = new ManualResetEventSlim();
@@ -223,7 +223,7 @@ public sealed class MatchStartCountdownPublicationTests
         try
         {
             var failing = new RecordingEntrySession(throwOnSend: true);
-            SetSessionIdentity(failing, 501, matchingId);
+            SetSessionIdentity(server.GetMatchRuntimes(), failing, 501, matchingId);
 
             Assert.Throws<InvalidOperationException>(
                 () => InvokePeriodicBroadcast(server, [matchingId], [failing]));
@@ -255,9 +255,9 @@ public sealed class MatchStartCountdownPublicationTests
         MatchRuntime runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);
 
         var anchor = new RecordingEntrySession();
-        SetSessionIdentity(anchor, playerId: 101, matchingId);
+        SetSessionIdentity(server.GetMatchRuntimes(), anchor, playerId: 101, matchingId);
         var other = new RecordingEntrySession();
-        SetSessionIdentity(other, playerId: 202, matchingId);
+        SetSessionIdentity(server.GetMatchRuntimes(), other, playerId: 202, matchingId);
         Assert.Null(sessionRegistry.Register(101, anchor));
         Assert.Null(sessionRegistry.Register(202, other));
         Assert.Equal(2, sessionRegistry.GetByMatch(matchingId).Count);
@@ -296,7 +296,7 @@ public sealed class MatchStartCountdownPublicationTests
                 .Single(field => field.FieldType == typeof(GameSessionRegistry))
                 .GetValue(server));
         var completedSession = new RecordingEntrySession();
-        SetSessionIdentity(completedSession, completedPlayerId, matchingId);
+        SetSessionIdentity(server.GetMatchRuntimes(), completedSession, completedPlayerId, matchingId);
         Assert.Null(sessionRegistry.Register(completedPlayerId, completedSession));
         Assert.Same(completedSession, Assert.Single(sessionRegistry.GetByMatch(matchingId)));
 
@@ -404,6 +404,7 @@ public sealed class MatchStartCountdownPublicationTests
     }
 
     private static void SetSessionIdentity(
+        MatchRuntimeStore store,
         GameClientSession session,
         long playerId,
         long matchingId)
@@ -418,6 +419,7 @@ public sealed class MatchStartCountdownPublicationTests
                 nameof(GameClientSession.MatchingId),
                 BindingFlags.Instance | BindingFlags.Public)!
             .SetValue(session, matchingId);
+        TestGameSessionServices.BindMatch(session, matchingId, store);
     }
 
     private static void AssertInOrder(string source, params string[] markers)
@@ -493,7 +495,6 @@ public sealed class MatchStartCountdownPublicationTests
                 static _ => [],
                 null!,
                 null!,
-                new MatchRuntimeStore(NullLogger.Instance),
                 new FakePlayerGrowthHandler(),
                 new FakeGameSessionLifecycle(),
                 static () => false,

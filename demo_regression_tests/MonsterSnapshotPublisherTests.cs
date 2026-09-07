@@ -8,8 +8,8 @@ public sealed class MonsterSnapshotPublisherTests
     [Fact]
     public void BroadcastSlot_IsIndependentPerMatchAndAllowsBoundary()
     {
-        var first = new MatchRuntime(947101, NullLogger.Instance);
-        var second = new MatchRuntime(947102, NullLogger.Instance);
+        var first = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(947101);
+        var second = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(947102);
         var now = new DateTime(2026, 9, 7, 0, 0, 0, DateTimeKind.Utc);
         lock (first.Sync)
         {

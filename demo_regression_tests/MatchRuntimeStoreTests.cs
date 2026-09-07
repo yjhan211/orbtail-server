@@ -9,6 +9,36 @@ namespace demo_regression_tests;
 /// </summary>
 public sealed class MatchRuntimeStoreTests
 {
+    [Fact]
+    public void RuntimeAndStoreScopes_ShareDepthAndCleanupOnlyOnOutermostExit()
+    {
+        int cleanupCount = 0;
+        int afterCount = 0;
+        MatchRuntime? runtime = null;
+        var store = CreateStore(
+            cleanupSteps: [new MatchCleanupStep("test", _ => cleanupCount++)],
+            afterCleanup: _ =>
+            {
+                Assert.False(Monitor.IsEntered(runtime!.Sync));
+                afterCount++;
+            });
+        runtime = store.GetOrCreate(90001);
+        using (runtime.Enter())
+        {
+            using (store.Enter(runtime))
+                Assert.True(runtime.TryMarkTerminal());
+            Assert.Equal(0, cleanupCount);
+            Assert.Same(runtime, store.Get(90001));
+        }
+        Assert.Equal(1, cleanupCount);
+        Assert.Equal(1, afterCount);
+        Assert.Null(store.Get(90001));
+        using (runtime.Enter())
+            Assert.True(runtime.IsTerminal);
+        Assert.Equal(1, cleanupCount);
+        Assert.Equal(1, afterCount);
+    }
+
     private static MatchRuntimeStore CreateStore(
         IReadOnlyList<MatchCleanupStep>? cleanupSteps = null,
         Action<long>? initializeMatch = null,

@@ -705,8 +705,11 @@ public sealed class GameClientSessionPublicationTests
                 "Health",
                 BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, health);
 
-        public void SetMatchingId(RecordingSession session, long matchingId) =>
+        public void SetMatchingId(RecordingSession session, long matchingId)
+        {
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
+            TestGameSessionServices.BindMatch(session, matchingId);
+        }
 
         public void SeedPendingFinish(RecordingSession session, int interactId)
         {
@@ -732,6 +735,7 @@ public sealed class GameClientSessionPublicationTests
         {
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
+            TestGameSessionServices.BindMatch(session, matchingId);
             SetProperty(session, nameof(GameClientSession.CurrentMapId), Config.SWARM_MATCH_MAP);
             SetProperty(session, nameof(GameClientSession.CurrentArea), area);
             SetPosition(session, new Vector3f(0f, 0f, 0f));
@@ -781,7 +785,6 @@ public sealed class GameClientSessionPublicationTests
                 eventLog,
                 TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, GameServerDevOptions.Disabled,
                     id => sessions.Where(session => session.MatchingId == id).ToList(), NullLogger.Instance),
-                matchRuntimes,
                 new FakePlayerGrowthHandler(),
                 new FakeGameSessionLifecycle(),
                 static () => false,

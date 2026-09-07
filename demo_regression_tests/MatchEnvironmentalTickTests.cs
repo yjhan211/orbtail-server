@@ -10,7 +10,7 @@ public sealed class MatchEnvironmentalTickTests
     [Fact]
     public void UnregisteredAndCountdownMatches_DoNotStartEnvironmentalClock()
     {
-        var match = new MatchRuntime(101, NullLogger.Instance);
+        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(101);
         lock (match.Sync)
         {
             Assert.False(match.TryBeginEnvironmentalTick(StartedAt, null));
@@ -22,7 +22,7 @@ public sealed class MatchEnvironmentalTickTests
     [Fact]
     public void FirstSettlement_IsFiveSecondsAfterGameplayStarts()
     {
-        var match = new MatchRuntime(102, NullLogger.Instance);
+        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(102);
         lock (match.Sync)
         {
             Assert.False(match.TryBeginEnvironmentalTick(StartedAt, StartedAt));
@@ -35,7 +35,7 @@ public sealed class MatchEnvironmentalTickTests
     [Fact]
     public void RepeatedPulses_DoNotApplyTheSameIntervalTwice()
     {
-        var match = new MatchRuntime(103, NullLogger.Instance);
+        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(103);
         lock (match.Sync)
         {
             Assert.True(match.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt));
@@ -48,7 +48,7 @@ public sealed class MatchEnvironmentalTickTests
     [Fact]
     public void DelayedPulse_AppliesOnceAndKeepsTheMatchStartBoundaries()
     {
-        var match = new MatchRuntime(104, NullLogger.Instance);
+        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(104);
         lock (match.Sync)
         {
             Assert.False(match.TryBeginEnvironmentalTick(StartedAt, StartedAt));
@@ -63,8 +63,8 @@ public sealed class MatchEnvironmentalTickTests
     [Fact]
     public void DifferentMatches_HaveIndependentDeadlines()
     {
-        var first = new MatchRuntime(105, NullLogger.Instance);
-        var second = new MatchRuntime(106, NullLogger.Instance);
+        var first = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(105);
+        var second = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(106);
         lock (first.Sync)
             Assert.True(first.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt));
         lock (second.Sync)
@@ -78,7 +78,7 @@ public sealed class MatchEnvironmentalTickTests
     [Fact]
     public void TerminalMatch_DoesNotAdvanceDeadlineOrSettleAgain()
     {
-        var match = new MatchRuntime(107, NullLogger.Instance);
+        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(107);
         lock (match.Sync)
         {
             Assert.False(match.TryBeginEnvironmentalTick(StartedAt, StartedAt));
@@ -91,7 +91,7 @@ public sealed class MatchEnvironmentalTickTests
     [Fact]
     public void SchedulingRequiresTheMatchLock()
     {
-        var match = new MatchRuntime(108, NullLogger.Instance);
+        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(108);
         Assert.Throws<InvalidOperationException>(() =>
             match.TryBeginEnvironmentalTick(StartedAt.AddSeconds(5), StartedAt));
     }

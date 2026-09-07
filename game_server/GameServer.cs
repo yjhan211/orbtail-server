@@ -224,7 +224,6 @@ internal sealed class GameServer(
                 sessions.GetByMatch,
                 eventLogs,
                 matchEliminations,
-                matchRuntimes,
                 growth,
                 matchingLifecycle,
                 () => Volatile.Read(ref _stopping) != 0,

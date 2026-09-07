@@ -746,7 +746,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                     GameServerDevOptions.Disabled,
                     id => _sessions.Where(session => session.MatchingId == id).ToList(),
                     NullLogger.Instance),
-                Store,
                 new FakePlayerGrowthHandler(growthHandler ?? _growthHandler, orbHandler ?? _orbHandler),
 
                 new FakeGameSessionLifecycle(),
@@ -776,8 +775,11 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             }
         }
 
-        public void SetMatchingId(GameClientSession session, long matchingId) =>
+        public void SetMatchingId(GameClientSession session, long matchingId)
+        {
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
+            TestGameSessionServices.BindMatch(session, matchingId);
+        }
 
         public void SetPlayerId(GameClientSession session, long? playerId) =>
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
@@ -795,6 +797,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         {
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
+            TestGameSessionServices.BindMatch(session, matchingId);
             SetProperty(session, nameof(GameClientSession.CurrentMapId), Config.SWARM_MATCH_MAP);
             SetProperty(session, nameof(GameClientSession.CurrentArea), Config.SWARM_MATCH_GROUND_AREA);
             typeof(GameClientSession).GetField(

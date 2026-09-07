@@ -25,7 +25,7 @@ public partial class GameClientSession
     // 개봉 비용 = SB 크기 비례: 현재 궤도 오브 슬롯 수 기준. 장소별 재개봉 가산은 퇴역.
     private int GetSwarmExploreCost() =>
         Config.GetSwarmExploreCost(
-            _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId!.Value)
+            Match.Inventory.GetPlayerInventory(PlayerId!.Value)
                 .GetAllItems().Count);
 
     private Task HandleRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
@@ -94,7 +94,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
         var result = MatchInteractionService.Start(
-            _matchRuntimes.GetRequired(MatchingId), PlayerId!.Value, CurrentArea, msg.InteractId);
+            Match, PlayerId!.Value, CurrentArea, msg.InteractId);
         if (result.Error != ErrorCode.SUCCESS)
         {
             SendRngCollectAck(msg.InteractId, result.Error, result.Remaining);
@@ -137,7 +137,7 @@ public partial class GameClientSession
             return HandleSwarmDoorUnlockFinish(msg.InteractId, doorInfo.DoorId);
 
         int dropItemId = MatchInteractionService.OpenBox(
-            _matchRuntimes.GetRequired(MatchingId), PlayerId.Value, CurrentArea, msg.InteractId,
+            Match, PlayerId.Value, CurrentArea, msg.InteractId,
             LastValidatedPosition, () => SendSummonStoneState(),
             spawned => BroadcastGroundItemsSpawned(CurrentArea, spawned));
         if (dropItemId == 0)
@@ -162,7 +162,7 @@ SendRngCollectResult(msg.InteractId, 0, 0, SwarmExploreCooldownSeconds);
 
     private Task HandleSwarmDoorUnlockFinish(int interactId, int doorId)
     {
-        if (!MatchInteractionService.FinishDoor(_matchRuntimes.GetRequired(MatchingId), _interactions, doorId))
+        if (!MatchInteractionService.FinishDoor(Match, _interactions, doorId))
         {
 SendRngCollectResult(interactId, 0, 0, 0);
             BroadcastPlayerState(PlayerState.IDLE);
@@ -223,7 +223,7 @@ SendRngCollectResult(interactId, 0, 0, 0);
         {
             _gameEventLogManager.LogExploreCancelled(
                 MatchingId, PlayerId.GetValueOrDefault(), interactId, CurrentArea.ToString(), reason, isBot: false);
-            _matchRuntimes.Get(MatchingId)?.CollectCooldowns.ClearCooldown(interactId);
+            Volatile.Read(ref _match)?.CollectCooldowns.ClearCooldown(interactId);
             BroadcastRngCollectCooldown(interactId, 0);
         }
 
@@ -255,7 +255,7 @@ SendRngCollectResult(interactId, 0, 0, 0);
     {
         if (!PlayerId.HasValue) return;
 
-        var snapshot = _matchRuntimes.Get(MatchingId)?.CollectCooldowns.GetSnapshot();
+        var snapshot = Volatile.Read(ref _match)?.CollectCooldowns.GetSnapshot();
         if (snapshot == null || snapshot.Count == 0) return;
 
         var msg = new G_TO_C_INTERACT_COOLDOWN_SNAPSHOT

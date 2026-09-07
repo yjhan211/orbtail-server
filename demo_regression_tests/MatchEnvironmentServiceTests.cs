@@ -10,7 +10,7 @@ public sealed class MatchEnvironmentServiceTests
     [Fact]
     public void Process_RequiresTheSuppliedMatchLock()
     {
-        var match = new MatchRuntime(947001, NullLogger.Instance);
+        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(947001);
         var service = CreateService(GameServerDevOptions.Disabled);
         Assert.Throws<InvalidOperationException>(() => service.Process(match, []));
     }
@@ -18,7 +18,7 @@ public sealed class MatchEnvironmentServiceTests
     [Fact]
     public void Process_DoesNothingAfterMatchEnded()
     {
-        var match = new MatchRuntime(947002, NullLogger.Instance);
+        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(947002);
         var service = CreateService(GameServerDevOptions.Disabled);
         lock (match.Sync)
         {
@@ -34,7 +34,7 @@ public sealed class MatchEnvironmentServiceTests
     [InlineData(false, false, true)]
     public void Process_PreservesDeveloperModesWithoutSurvivors(bool disableEnd, bool cutDummy, bool crossfire)
     {
-        var match = new MatchRuntime(947003, NullLogger.Instance);
+        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(947003);
         var service = CreateService(new GameServerDevOptions
         {
             DisableGameEnd = disableEnd, CutDummy = cutDummy, CrossfireSandbox = crossfire
@@ -49,7 +49,7 @@ public sealed class MatchEnvironmentServiceTests
     [Fact]
     public void PressureField_WithoutStartTimeIsSafe()
     {
-        var match = new MatchRuntime(947004, NullLogger.Instance);
+        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(947004);
         Assert.Equal(double.MaxValue, MatchPressureFieldPolicy.GetSafeDistance(match, DateTime.UtcNow));
         Assert.Equal(0, MatchPressureFieldPolicy.GetDamagePerTick(match, null, DateTime.UtcNow));
     }
@@ -57,8 +57,8 @@ public sealed class MatchEnvironmentServiceTests
     [Fact]
     public void PressureField_UsesEachMatchStartTimeAndClampsAtEnd()
     {
-        var first = new MatchRuntime(947005, NullLogger.Instance);
-        var second = new MatchRuntime(947006, NullLogger.Instance);
+        var first = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(947005);
+        var second = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(947006);
         var now = new DateTime(2026, 9, 7, 0, 0, 0, DateTimeKind.Utc);
         first.Closures.InitializeMatching().GameStartTime =
             now.AddSeconds(-MatchPressureFieldPolicy.HoldSeconds - MatchPressureFieldPolicy.ShrinkSeconds / 2);

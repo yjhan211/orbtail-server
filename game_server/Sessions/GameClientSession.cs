@@ -31,8 +31,9 @@ public partial class GameClientSession : SessionBase
     private readonly Func<long, List<GameClientSession>> _getSessionsByMatch;
 
     private readonly GameSessionLeaveHandler _sessionLeaveHandler;
-    /// <summary>매치별 잠금·수명 색인 (#331) — 핸들러 직렬화·터미널 게이트·종료 정리의 단일 원천.</summary>
-    private readonly MatchRuntimeStore _matchRuntimes;
+    // 입장 전에는 null. 입장 후에는 Store를 재조회하지 않고 같은 매치 인스턴스를 사용한다.
+    private MatchRuntime? _match;
+    private MatchRuntime Match => Volatile.Read(ref _match) ?? throw new InvalidOperationException("Session has not entered a match.");
     /// <summary>
     ///     Queues an already-built successful entry response after authentication has committed. Production uses
     ///     <see cref="TcpConnection.TrySend"/>; tests can inject a sender to verify the match monitor boundary.
@@ -109,7 +110,7 @@ public partial class GameClientSession : SessionBase
     internal static Action<long, long>? SwarmHeartPickupCallback { get; set; }
 
 
-    private MatchDoorState? Doors => _matchRuntimes.Get(MatchingId)?.Doors;
+    private MatchDoorState? Doors => Volatile.Read(ref _match)?.Doors;
 
     internal GameClientSession(
         TcpConnection connection,
@@ -121,7 +122,6 @@ public partial class GameClientSession : SessionBase
 
         GameEventLogManager gameEventLogManager,
         MatchEliminationService matchEliminations,
-        MatchRuntimeStore matchRuntimes,
         IPlayerGrowthHandler growth,
 
         IGameSessionLifecycle matchingLifecycle,
@@ -140,7 +140,6 @@ public partial class GameClientSession : SessionBase
 
         _gameEventLogManager = gameEventLogManager;
         _matchEliminations = matchEliminations;
-        _matchRuntimes = matchRuntimes;
         _movementPacketQueue = new MovementPacketQueue(() => Connection.IsAcceptingMessages, movementTimeProvider);
         _growth = growth;
 
@@ -161,7 +160,7 @@ public partial class GameClientSession : SessionBase
     protected override bool IsMessageLifecycleActive()
     {
         long matchingId = MatchingId;
-        return matchingId <= 0 || _matchRuntimes.Get(matchingId) is { IsTerminal: false };
+        return matchingId <= 0 || Volatile.Read(ref _match) is { IsTerminal: false };
     }
 
     /// <summary>
@@ -174,14 +173,14 @@ public partial class GameClientSession : SessionBase
         ArgumentNullException.ThrowIfNull(core);
         ArgumentNullException.ThrowIfNull(rejectIfTerminal);
 
-        MatchRuntime? runtime = _matchRuntimes.Get(MatchingId);
+        MatchRuntime? runtime = Volatile.Read(ref _match);
         if (runtime == null)
         {
             rejectIfTerminal();
             return Task.CompletedTask;
         }
 
-        using MatchScope scope = _matchRuntimes.Enter(runtime);
+        using MatchScope scope = runtime.Enter();
         if (runtime.IsTerminal)
         {
             rejectIfTerminal();

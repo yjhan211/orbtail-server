@@ -394,6 +394,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         {
             SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
+            TestGameSessionServices.BindMatch(session, matchingId);
             SetProperty(session, nameof(GameClientSession.CurrentMapId), Config.SWARM_MATCH_MAP);
             SetProperty(session, nameof(GameClientSession.CurrentArea), Config.SWARM_MATCH_GROUND_AREA);
             SetProperty(session, nameof(GameClientSession.PlayerMatchStatus), status);
@@ -439,7 +440,6 @@ public sealed class GameClientSessionTerminalPublicationTests
                 eventLog,
                 TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, GameServerDevOptions.Disabled,
                     id => sessions.Where(session => session.MatchingId == id).ToList(), logger),
-                matchRuntimes,
                 new FakePlayerGrowthHandler(),
                 new FakeGameSessionLifecycle(prepareGameCompletion),
                 static () => false,

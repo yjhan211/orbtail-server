@@ -20,6 +20,15 @@ internal sealed class FakePlayerGrowthHandler(
 
 internal static class TestGameSessionServices
 {
+    // 입장 프로토콜을 생략하는 단위 테스트에서도 실제 입장과 같은 런타임을 세션에 연결한다.
+    public static void BindMatch(GameClientSession session, long matchingId, MatchRuntimeStore? store = null)
+    {
+        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        var entry = (GameMatchEntryService?)typeof(GameClientSession).GetField("_matchEntry", flags)!.GetValue(session);
+        typeof(GameClientSession).GetField("_match", flags)!.SetValue(session,
+            matchingId > 0 ? (store?.GetOrCreate(matchingId) ?? entry!.GetOrCreateMatch(matchingId)) : null);
+    }
+
     public static GameMatchEntryService CreateEntryService(
         IRedisOperations? redis, MatchRuntimeStore store, GameServerDevOptions options,
         Microsoft.Extensions.Logging.ILogger logger)

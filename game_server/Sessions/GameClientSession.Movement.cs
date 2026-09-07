@@ -116,14 +116,14 @@ public partial class GameClientSession
             _lastValidCell = validation.ValidCell;
             _lastValidatedPosition = validatedPosition;
             _lastValidatedVelocity = validatedVelocity;
-            _matchRuntimes.GetRequired(MatchingId).GroundItems.ReleaseSourcePickupBlocks(PlayerId.Value,
+            Match.GroundItems.ReleaseSourcePickupBlocks(PlayerId.Value,
                 newArea == AreaType.None ? CurrentArea : newArea, validatedPosition.X, validatedPosition.Y);
             _lastValidatedRotation = msg.Rotation;
 
             if (newArea != CurrentArea && newArea != AreaType.None)
             {
                 // 폐쇄 구역 진입 경고 (지속 페널티는 ResourceTick에서 처리)
-                if (_matchRuntimes.GetRequired(MatchingId).Closures.IsAreaClosed(newArea))
+                if (Match.Closures.IsAreaClosed(newArea))
                 {
                     Logger.LogInformation("폐쇄 구역 진입: PlayerId={PlayerId}, Area={Area} (체류 시 오염도 지속 증가)",
                         PlayerId, newArea);
@@ -281,7 +281,7 @@ public partial class GameClientSession
                 }
 
                 // #79: 나에게 이전 Area의 봇들 삭제 알림 (봇은 TCP 세션이 없어 별도 처리)
-                var oldAreaBots = _matchRuntimes.GetRequired(MatchingId).Bots.GetBots(MatchingId)
+                var oldAreaBots = Match.Bots.GetBots(MatchingId)
                     .Where(b => !b.IsEliminated && b.CurrentArea == oldArea)
                     .ToList();
                 foreach (var bot in oldAreaBots)
@@ -316,12 +316,12 @@ public partial class GameClientSession
                 Logger.LogDebug("Sent {Count} existing players to Player {PlayerId}", newAreaSessions.Count, PlayerId);
 
                 // 4. #125: 새 Area의 봇들 ENTER도 나에게 전송 (실제 플레이어 동등)
-                var newAreaBots = _matchRuntimes.GetRequired(MatchingId).Bots.GetBots(MatchingId)
+                var newAreaBots = Match.Bots.GetBots(MatchingId)
                     .Where(b => !b.IsEliminated && b.CurrentArea == newArea)
                     .ToList();
                 foreach (var bot in newAreaBots)
                 {
-                    var objectInfo = _matchRuntimes.GetRequired(MatchingId).Bots.SynthesizeGameObjectInfo(MatchingId, bot.PlayerId);
+                    var objectInfo = Match.Bots.SynthesizeGameObjectInfo(MatchingId, bot.PlayerId);
                     if (objectInfo == null) continue;
                     using var botEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(objectInfo);
                     TrySend(botEnterPacket);

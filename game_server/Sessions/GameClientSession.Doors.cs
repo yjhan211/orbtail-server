@@ -41,7 +41,7 @@ public partial class GameClientSession
         {
             int doorId = msg.DoorId;
             var error = MatchInteractionService.OpenDoor(
-                _matchRuntimes.GetRequired(MatchingId), PlayerId.Value, CurrentArea, doorId);
+                Match, PlayerId.Value, CurrentArea, doorId);
             if (error != ErrorCode.SUCCESS)
             {
                 using var rejected = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(

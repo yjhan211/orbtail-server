@@ -43,7 +43,7 @@ public partial class GameClientSession
 
         var position = _lastValidatedPosition;
         var pickup = GroundItemPickupService.TryPickup(
-            _matchRuntimes.GetRequired(MatchingId), PlayerId.Value, CurrentArea,
+            Match, PlayerId.Value, CurrentArea,
             position, Health, msg.GroundItemUid);
         var claimedItem = pickup.ClaimedItem;
         var attemptedItem = pickup.AttemptedItem;
@@ -87,7 +87,7 @@ public partial class GameClientSession
             }
             if (attemptedItem != null && error == ErrorCode.INVENTORY_FULL)
             {
-                var board = _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId.Value);
+                var board = Match.Inventory.GetPlayerInventory(PlayerId.Value);
                 _gameEventLogManager.LogOrbPickupBlockedFull(
                     MatchingId,
                     PlayerId.Value,
@@ -115,7 +115,7 @@ public partial class GameClientSession
         }
         else if (pickup.SummonStonePickup)
         {
-            var summonState = _matchRuntimes.GetRequired(MatchingId).SummonStones.AddStones(PlayerId.Value, 1);
+            var summonState = Match.SummonStones.AddStones(PlayerId.Value, 1);
             SendSummonStoneState(1, claimedItem.PositionX, claimedItem.PositionY);
             _gameEventLogManager.LogSummonStoneAward(
                 MatchingId,
@@ -167,7 +167,7 @@ public partial class GameClientSession
             isBot: false);
         if (!pickup.SummonStonePickup && !pickup.JamPickup && !pickup.BootsPickup && !pickup.KeyPickup)
         {
-            var boardAfterPickup = _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId.Value);
+            var boardAfterPickup = Match.Inventory.GetPlayerInventory(PlayerId.Value);
             _gameEventLogManager.LogOrbBoardTransition(
                 MatchingId, PlayerId.Value, boardAfterPickup.GetAllItems(),
                 boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "pickup", isBot: false);
@@ -234,8 +234,8 @@ public partial class GameClientSession
 
         var position = _lastValidatedPosition;
         var drop = EliminationInventoryDropper.DropAll(
-            _matchRuntimes.GetRequired(MatchingId).Inventory,
-            _matchRuntimes.GetRequired(MatchingId).GroundItems,
+            Match.Inventory,
+            Match.GroundItems,
             MatchingId,
             PlayerId.Value,
             CurrentArea,
@@ -244,7 +244,7 @@ public partial class GameClientSession
             CurrentMapId);
         if (drop.RemovedItems.Count == 0) return;
 
-        var emptyBoard = _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId.Value);
+        var emptyBoard = Match.Inventory.GetPlayerInventory(PlayerId.Value);
         _gameEventLogManager.LogOrbBoardTransition(
             MatchingId, PlayerId.Value, emptyBoard.GetAllItems(), 0, CurrentArea.ToString(), "elimination_drop",
             isBot: false);
@@ -273,7 +273,7 @@ public partial class GameClientSession
     private void SendGroundItemSnapshot(AreaType area)
     {
         if (MatchingId <= 0 || area == AreaType.None) return;
-        var items = _matchRuntimes.GetRequired(MatchingId).GroundItems.GetSnapshot(area);
+        var items = Match.GroundItems.GetSnapshot(area);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SNAPSHOT((int)area, items.ToList());
         TrySend(packet);
     }

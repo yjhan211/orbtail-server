@@ -19,6 +19,40 @@ namespace demo_regression_tests;
 public sealed class GameClientSessionConnectPublicationTests
 {
     [Fact]
+    public async Task SessionKeepsOriginalRuntime_AndRejectsItAfterCleanupEvenIfIdIsRecreated()
+    {
+        using var fixture = new ConnectFixture();
+        var session = fixture.CreateSession(74009, 8109, _ => true);
+        var original = fixture.Store.GetRequired(74009);
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var run = typeof(GameClientSession).GetMethod("RunUnderMatch", flags)!;
+        bool executed = false;
+        bool rejected = false;
+        Func<Task> action = () =>
+        {
+            Assert.True(Monitor.IsEntered(original.Sync));
+            executed = true;
+            return Task.CompletedTask;
+        };
+        Action reject = () => rejected = true;
+        await (Task)run.Invoke(session, [action, reject])!;
+        Assert.True(executed);
+        Assert.False(rejected);
+
+        using (original.Enter())
+            Assert.True(original.TryMarkTerminal());
+        Assert.Null(fixture.Store.Get(74009));
+        var replacement = fixture.Store.GetOrCreate(74009);
+        Assert.NotSame(original, replacement);
+        Assert.Same(original, typeof(GameClientSession).GetField("_match", flags)!.GetValue(session));
+        Assert.False((bool)typeof(GameClientSession).GetMethod("IsMessageLifecycleActive", flags)!.Invoke(session, null)!);
+        executed = false;
+        await (Task)run.Invoke(session, [action, reject])!;
+        Assert.False(executed);
+        Assert.True(rejected);
+    }
+
+    [Fact]
     public void ObjectSnapshot_CopiesAuthoritativeCoordinatesWithoutLoadingPlayerInfo()
     {
         using var fixture = new ConnectFixture();
@@ -208,7 +242,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Contains("Connection.TryMarkAuthenticated(() => Volatile.Write(ref _entryCompleted, 1))", connectionSource);
 
         // 세션 등록·초기화 블록·인증 커밋은 매치 잠금 안에서, 성공 ACK 큐 적재는 잠금 밖에서.
-        int registration = connectionSource.IndexOf("_matchRuntimes.GetOrCreate(matchingId)", StringComparison.Ordinal);
+        int registration = connectionSource.IndexOf("_matchEntry.GetOrCreateMatch(matchingId)", StringComparison.Ordinal);
         int registerCallback = connectionSource.IndexOf("_registerSessionCallback(playerId, this)", registration, StringComparison.Ordinal);
         // 등록 콜백은 이전 세션을 반환하고, 매치·연결 잠금을 벗어난 뒤 이전 연결을 끊는다.
         string normalized = connectionSource.Replace("\r\n", "\n");
@@ -325,6 +359,7 @@ public sealed class GameClientSessionConnectPublicationTests
         SetProperty(session, nameof(GameClientSession.PlayerId), playerId);
         SetProperty(session, nameof(GameClientSession.CurrentMapId), Config.SWARM_MATCH_MAP);
         SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);
+        TestGameSessionServices.BindMatch(session, matchingId);
     }
 
     private static void SetProperty(GameClientSession session, string name, object value) =>
@@ -387,7 +422,6 @@ public sealed class GameClientSessionConnectPublicationTests
                 TestGameSessionServices.CreateEliminationService(Store, TestGameEventLogs.Create(),
                     new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
                     GameServerDevOptions.Disabled, static _ => [], NullLogger.Instance),
-                Store,
                 new FakePlayerGrowthHandler(),
 
                 new FakeGameSessionLifecycle(),

@@ -26,7 +26,7 @@ public partial class GameClientSession
             if (targetSession != null)
                 targetHealth = targetSession.Health;
             else
-                targetHealth = _matchRuntimes.GetRequired(MatchingId).Bots.GetBot(MatchingId, targetPlayerId)?.Health ?? -1;
+                targetHealth = Match.Bots.GetBot(MatchingId, targetPlayerId)?.Health ?? -1;
         }
 
         using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(

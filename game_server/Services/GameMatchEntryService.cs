@@ -25,6 +25,9 @@ internal sealed class GameMatchEntryService(
 {
     private readonly GameEntryStateCommitter _entryStateCommitter = new(RedisOperations, Logger);
 
+    /// <summary>입장할 매치를 찾거나 생성한다. 세션은 반환된 런타임을 입장 후에도 보관한다.</summary>
+    public MatchRuntime GetOrCreateMatch(long matchingId) => _matchRuntimes.GetOrCreate(matchingId);
+
     /// <summary>티켓을 한 번 소비하고 현재 GameServer 노드에 배정된 입장인지 확인한다.</summary>
     public Task<GameEntryContext?> ConsumeTicketAsync(string? ticket) =>
         ticketService.ConsumeAsync(ticket, nodeOptions.NodeId);

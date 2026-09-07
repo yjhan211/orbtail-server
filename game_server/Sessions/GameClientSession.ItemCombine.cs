@@ -51,7 +51,7 @@ public partial class GameClientSession
         }
 
         if (_itemCombinations.TryCombine(
-                _matchRuntimes.GetRequired(MatchingId), PlayerId!.Value, CurrentArea, msg,
+                Match, PlayerId!.Value, CurrentArea, msg,
                 (outputItemId, changedItems, recipeId) =>
                     SendBattleItemCombineResult(msg, outputItemId, changedItems, recipeId),
                 errorCode => SendCombineItemsFailure(msg.ItemA, msg.ItemB, errorCode)))
@@ -65,7 +65,7 @@ public partial class GameClientSession
         IReadOnlyCollection<InGameItemInfo> changedItems, int recipeId)
     {
         var outputItem = changedItems.LastOrDefault(item => item.ItemId == outputItemId && item.Count > 0);
-        var equippedBattleItem = _matchRuntimes.GetRequired(MatchingId).Inventory.GetEquippedBattleItem(PlayerId!.Value);
+        var equippedBattleItem = Match.Inventory.GetEquippedBattleItem(PlayerId!.Value);
         bool shouldReplaceEquippedItem = outputItem != null && equippedBattleItem?.ItemUid == outputItem.ItemUid;
 
         using var combinePacket = Packet.Create((int)Protocol.G_TO_C_ITEMS_COMBINED, PlayerId.Value);
