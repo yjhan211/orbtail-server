@@ -945,14 +945,10 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 null!,
                 TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
-                matchingId => _sessions
-                    .Where(candidate => candidate.MatchingId == matchingId)
-                    .ToList(),
 
                 EventLog,
                 TestGameSessionServices.CreateEliminationService(Store, EventLog, new MatchSummaryFileStore(_summaryDirectory),
                     GameServerDevOptions.Disabled,
-                    id => _sessions.Where(session => session.MatchingId == id).ToList(),
                     NullLogger.Instance),
                 new FakePlayerGrowthHandler(),
 
@@ -965,6 +961,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);
             _sessions.Add(session);
+            session.Match.Sessions.Add(playerId, session);
             _connections.Add(session, connection);
             return session;
         }
@@ -1047,9 +1044,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
             TestGameSessionServices.BindMatch(session, matchingId);
             SetProperty(session, nameof(GameClientSession.CurrentMapId), Config.SWARM_MATCH_MAP);
             SetProperty(session, nameof(GameClientSession.CurrentArea), Config.SWARM_MATCH_GROUND_AREA);
-            typeof(GameClientSession).GetField(
-                "_lastValidatedPosition",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(
+            typeof(GameClientSession).GetProperty(nameof(GameClientSession.LastValidatedPosition), BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.SetValue(
                 session,
                 new Vector3f(0f, 0f, 0f));
         }

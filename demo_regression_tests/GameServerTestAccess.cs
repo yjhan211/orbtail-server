@@ -40,8 +40,7 @@ internal static class GameServerTestAccess
         runtimes ??= new MatchRuntimeStore(logger,
             cleanupSteps:
             [
-                new("session runtime", MatchStartGate.RemoveMatching),
-                new("session index", sessions.RemoveMatch)
+                new("session runtime", MatchStartGate.RemoveMatching)
             ],
             afterCleanup: id => lifecycle.PrepareRedisCleanup(id).Invoke(),
             eventArchive: archive);
@@ -52,15 +51,15 @@ internal static class GameServerTestAccess
             Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbUpgradeService>.Instance);
         var orbTrails = new OrbTrailService(runtimes);
         var combatDamage = new MatchCombatDamageService(runtimes, logs);
-        var cleanup = new MatchCleanupService(runtimes, sessions, logs, summaries, logger);
-        var eliminations = new BotEliminationService(sessions, logs, logger);
-        var growth = new MatchGrowthService(runtimes, sessions, logs, orbUpgrades,
+        var cleanup = new MatchCleanupService(runtimes, logs, summaries, logger);
+        var eliminations = new BotEliminationService( logs, logger);
+        var growth = new MatchGrowthService(runtimes, logs, orbUpgrades,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchGrowthService>.Instance);
         var field = new MatchFieldService(runtimes, logs, orbTrails,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchFieldService>.Instance);
-        var movement = new BotMovementService(sessions, logs,
+        var movement = new BotMovementService( logs,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance);
-        var decisions = new BotDecisionService(runtimes, sessions, logs, growth, orbTrails,
+        var decisions = new BotDecisionService(runtimes, logs, growth, orbTrails,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<BotDecisionService>.Instance);
         var arena = new MatchArenaService(runtimes, GameServerDevOptions.Disabled, logs, cleanup,
             eliminations, orbUpgrades, growth,
@@ -84,7 +83,7 @@ internal static class GameServerTestAccess
                 PublicHost = "127.0.0.1"
             },
             devOptions: GameServerDevOptions.Disabled,
-            sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, matchEliminations: TestGameSessionServices.CreateEliminationService(runtimes, logs, summaries, GameServerDevOptions.Disabled, sessions.GetByMatch, logger),
+            sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, matchEliminations: TestGameSessionServices.CreateEliminationService(runtimes, logs, summaries, GameServerDevOptions.Disabled, logger),
             matchEntry: TestGameSessionServices.CreateEntryService(new InMemoryRedisOperations(), runtimes, GameServerDevOptions.Disabled, logger),
             itemCombinations: new ItemCombinationService(logs),
             movementValidation: new MovementValidationService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MovementValidationService>.Instance),
@@ -96,7 +95,7 @@ internal static class GameServerTestAccess
             growth: growth,
             arena: arena,
             botDecisions: decisions,
-            environmentService: new MatchEnvironmentService(sessions, logs,
+            environmentService: new MatchEnvironmentService( logs,
                 cleanup, eliminations, GameServerDevOptions.Disabled,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchEnvironmentService>.Instance),
             tickService: new GameServerTickService(runtimes, Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServerTickService>.Instance),

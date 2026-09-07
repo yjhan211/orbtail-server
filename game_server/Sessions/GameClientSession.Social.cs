@@ -23,8 +23,7 @@ public partial class GameClientSession
         if (IsRoundActionLocked(out _))
             return Task.CompletedTask;
 
-        var allSessions = _getSessionsByMatch(MatchingId);
-        var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
+        var sameAreaSessions = Match.Sessions.GetInArea(CurrentArea);
 
         var broadcast = new G_TO_C_SOCIAL_ACTION
         {

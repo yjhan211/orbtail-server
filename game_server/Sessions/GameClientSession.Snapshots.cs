@@ -14,7 +14,7 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue || IsEliminated) return Task.CompletedTask;
 
-        var sessions = _getSessionsByMatch(MatchingId)
+        var sessions = Match.Sessions.Snapshot()
             .Where(s => s.PlayerId.HasValue && s.PlayerId != PlayerId &&
                         !s.IsEliminated && s.CurrentArea == CurrentArea)
             .ToList();

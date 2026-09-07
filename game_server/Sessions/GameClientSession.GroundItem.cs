@@ -255,18 +255,14 @@ public partial class GameClientSession
     private void BroadcastGroundItemsSpawned(AreaType area, IReadOnlyList<GroundItemInfo> spawned)
     {
         if (spawned.Count == 0) return;
-        var sessions = GetSessionsInArea(
-            _getSessionsByMatch(MatchingId), area, excludeSelf: false);
+        var sessions = Match.Sessions.GetInArea(area);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, spawned.ToList());
         foreach (var session in sessions) session.TrySend(packet);
     }
 
     private void BroadcastGroundItemRemoved(GroundItemInfo item, bool autoUsed)
     {
-        var sessions = GetSessionsInArea(
-            _getSessionsByMatch(MatchingId),
-            (AreaType)item.AreaType,
-            excludeSelf: false);
+        var sessions = Match.Sessions.GetInArea((AreaType)item.AreaType);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(item.GroundItemUid, PlayerId ?? 0, autoUsed);
         foreach (var session in sessions) session.TrySend(packet);
     }

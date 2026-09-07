@@ -18,12 +18,11 @@ namespace game_server.sessions;
 /// </summary>
 public partial class GameClientSession : SessionBase
 {
-    private readonly Func<long, List<GameClientSession>> _getSessionsByMatch;
     private readonly GameMatchEntryService _matchEntry;
     private readonly GameSessionLeaveHandler _sessionLeaveHandler;
 
     private MatchRuntime? _match;
-    private MatchRuntime Match => Volatile.Read(ref _match) ?? throw new InvalidOperationException("Session has not entered a match.");
+    internal MatchRuntime Match => Volatile.Read(ref _match) ?? throw new InvalidOperationException("Session has not entered a match.");
 
     private readonly Func<Packet, bool> _trySendConnectSuccessResponse;
     private readonly Func<long, GameClientSession, GameClientSession?> _registerSessionCallback;
@@ -71,7 +70,6 @@ public partial class GameClientSession : SessionBase
         IRedisOperations redisOperations,
         GameSessionLeaveHandler sessionLeaveHandler,
         Func<long, GameClientSession, GameClientSession?> registerSessionCallback,
-        Func<long, List<GameClientSession>> getSessionsByMatch,
         GameEventLogManager gameEventLogManager,
         MatchEliminationService matchEliminations,
         IPlayerGrowthHandler growth,
@@ -87,7 +85,6 @@ public partial class GameClientSession : SessionBase
     {
         _sessionLeaveHandler = sessionLeaveHandler;
         _registerSessionCallback = registerSessionCallback;
-        _getSessionsByMatch = getSessionsByMatch;
 
         _gameEventLogManager = gameEventLogManager;
         _matchEliminations = matchEliminations;
@@ -644,14 +641,5 @@ public partial class GameClientSession : SessionBase
             }
         }
         Logger.LogInformation("GameSession disconnected: PlayerId={PlayerId}", PlayerId);
-    }
-
-    private List<GameClientSession> GetSessionsInArea(List<GameClientSession> allSessions, AreaType area, bool excludeSelf = true)
-    {
-        return allSessions
-            .Where(s => !s.IsEliminated &&
-                        s.CurrentArea == area &&
-                        (!excludeSelf || s.PlayerId != PlayerId))
-            .ToList();
     }
 }

@@ -38,7 +38,7 @@ internal sealed class GameSessionLeaveHandler(
             if (session.MatchingId > 0 && session.CurrentArea != AreaType.None)
             {
                 using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(session.PlayerId.Value);
-                var sameAreaSessions = sessions.GetByMatch(session.MatchingId)
+                var sameAreaSessions = session.Match.Sessions.Snapshot()
                     .Where(other =>
                         !ReferenceEquals(other, session) &&
                         other.CurrentArea == session.CurrentArea)

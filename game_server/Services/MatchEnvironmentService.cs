@@ -11,7 +11,6 @@ namespace game_server.services;
 ///     매치 상태는 전달받은 MatchRuntime을 사용하며 별도 상태나 타이머를 소유하지 않는다.
 /// </summary>
 internal sealed class MatchEnvironmentService(
-    GameSessionRegistry sessions,
     GameEventLogManager eventLogs,
     MatchCleanupService matchCleanup,
     BotEliminationService botEliminations,
@@ -187,7 +186,7 @@ internal sealed class MatchEnvironmentService(
         }
 
         (bool isGameOver, long? winnerId) = match.Roster.CheckGameOver();
-        var resultHost = sessions.GetByMatch(matchingId)
+        var resultHost = match.Sessions.Snapshot()
             .FirstOrDefault(session => !session.IsGameEnded);
         if (isGameOver && winnerId.HasValue && resultHost != null)
         {

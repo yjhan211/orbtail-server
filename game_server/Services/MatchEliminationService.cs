@@ -17,7 +17,6 @@ internal sealed class MatchEliminationService(
     GameEventLogManager _gameEventLogManager,
     MatchResultService _matchResults,
     GameServerDevOptions _devOptions,
-    Func<long, List<GameClientSession>> _getSessionsByMatch,
     ILogger Logger)
 {
     /// <summary>
@@ -27,7 +26,7 @@ internal sealed class MatchEliminationService(
         bool deferGameOver = false, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false, int forcedRank = 0)
     {
-        var allSessions = _getSessionsByMatch(matchingId);
+        var allSessions = _matchRuntimes.GetRequired(matchingId).Sessions.Snapshot();
         var eliminatedSession = allSessions.FirstOrDefault(session => session.PlayerId == eliminatedPlayerId);
         var eliminatedBot = _matchRuntimes.GetRequired(matchingId).Bots.GetBot(matchingId, eliminatedPlayerId);
         AreaType eliminatedArea = eliminatedSession?.CurrentArea ?? eliminatedBot?.CurrentArea ?? AreaType.None;
@@ -165,7 +164,7 @@ internal sealed class MatchEliminationService(
         if (outcome == null || outcome.Drop.SpawnedItems.Count == 0)
             return;
 
-        var targets = _getSessionsByMatch(matchingId)
+        var targets = _matchRuntimes.GetRequired(matchingId).Sessions.Snapshot()
             .Where(session => !session.IsEliminated && session.CurrentArea == outcome.Bot.CurrentArea);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
             (int)outcome.Bot.CurrentArea, outcome.Drop.SpawnedItems.ToList());

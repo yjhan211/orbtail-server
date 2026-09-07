@@ -80,12 +80,11 @@ public sealed class MovementPacketQueueTests
             null!,
             TestGameSessionServices.CreateLeaveHandler(),
             static (_, _) => null,
-            static _ => [],
 
             logs,
             TestGameSessionServices.CreateEliminationService(store, logs,
                 new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
-                GameServerDevOptions.Disabled, static _ => [], NullLogger.Instance),
+                GameServerDevOptions.Disabled, NullLogger.Instance),
             new FakePlayerGrowthHandler(),
 
             new FakeGameSessionLifecycle(),

@@ -17,7 +17,6 @@ namespace game_server.services;
 /// </summary>
 internal sealed class BotDecisionService(
     MatchRuntimeStore matchRuntimes,
-    GameSessionRegistry sessions,
     GameEventLogManager eventLogs,
     MatchGrowthService growth,
     OrbTrailService orbTrails,
@@ -905,7 +904,7 @@ internal sealed class BotDecisionService(
             Consider(other.PlayerId, other.Position, other.CurrentArea);
         }
 
-        foreach (var session in sessions.GetByMatch(matchingId))
+        foreach (var session in matchRuntimes.GetRequired(matchingId).Sessions.Snapshot())
         {
             if (!session.PlayerId.HasValue || session.IsEliminated ||
                 session.LastValidatedPosition == null)
@@ -1081,7 +1080,7 @@ internal sealed class BotDecisionService(
             return true;
         }
 
-        foreach (var session in sessions.GetByMatch(matchingId))
+        foreach (var session in matchRuntimes.GetRequired(matchingId).Sessions.Snapshot())
         {
             if (session.PlayerId != playerId || session.IsEliminated ||
                 session.LastValidatedPosition == null) continue;

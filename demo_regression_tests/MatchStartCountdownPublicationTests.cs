@@ -83,11 +83,11 @@ public sealed class MatchStartCountdownPublicationTests
         string connect = ReadMethodSlice(
             connection,
             "private async Task HandleConnect(C_TO_G_CONNECT msg)",
-            "private void InitializeWithMatchLock(");
+            "private void LogInitialInventory(");
         string directCountdown = ReadMethodSlice(
             connection,
             "private void SendMatchStartCountdown(long matchingId)",
-            "private Task HandleHeartbeat()");
+            "private void ForceDisconnect()");
         string gameplayActive = ReadMethodSlice(
             startGate,
             "public static bool IsGameplayActive(long matchingId)",
@@ -97,7 +97,7 @@ public sealed class MatchStartCountdownPublicationTests
             connect,
             "MatchStartGate.MarkHumanReady(matchingId, PlayerId.Value);",
             "SendMatchStartCountdown(matchingId);",
-            "using Packet successResponse = CreateConnectResultPacket(",
+            "using var successResponse = CreateConnectResultPacket(",
             "InitializeWithMatchLock(runtime, () =>",
             "Connection.TryMarkAuthenticated(() => Volatile.Write(ref _entryCompleted, 1))",
             "_trySendConnectSuccessResponse(successResponse)");
@@ -106,7 +106,7 @@ public sealed class MatchStartCountdownPublicationTests
             "private void SendMatchStartCountdown(long matchingId)",
             "MatchStartGate.GetSnapshot(matchingId)",
             "Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN, PlayerId ?? 0)",
-            "Send(packet);",
+            "TrySend(packet);",
             "private Task HandleMatchStartReady()",
             "MatchStartGate.MarkHumanReady(MatchingId, PlayerId.Value);",
             "SendMatchStartCountdown(MatchingId);");
@@ -267,7 +267,7 @@ public sealed class MatchStartCountdownPublicationTests
         SetSessionIdentity(server.GetMatchRuntimes(), other, playerId: 202, matchingId);
         Assert.Null(sessionRegistry.Register(101, anchor));
         Assert.Null(sessionRegistry.Register(202, other));
-        Assert.Equal(2, sessionRegistry.GetByMatch(matchingId).Count);
+        Assert.Equal(2, anchor.Match.Sessions.Snapshot().Count);
 
         InvokeEntryAbort(server, anchor);
 
@@ -277,7 +277,7 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.Equal(1, anchor.DisconnectCount);
         Assert.Equal(1, other.FatalCount);
         Assert.Equal(1, other.DisconnectCount);
-        Assert.Empty(sessionRegistry.GetByMatch(matchingId));
+        Assert.Empty(anchor.Match.Sessions.Snapshot());
         ConcurrentDictionary<long, string> playerSubjects = GetTerminalSubjects(server)[matchingId];
         Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[101]);
         if (hasComposition)
@@ -316,7 +316,7 @@ public sealed class MatchStartCountdownPublicationTests
         var completedSession = new RecordingEntrySession();
         SetSessionIdentity(server.GetMatchRuntimes(), completedSession, completedPlayerId, matchingId);
         Assert.Null(sessionRegistry.Register(completedPlayerId, completedSession));
-        Assert.Same(completedSession, Assert.Single(sessionRegistry.GetByMatch(matchingId)));
+        Assert.Same(completedSession, Assert.Single(completedSession.Match.Sessions.Snapshot()));
 
         // 정상 종료가 잠금 안에서 subject를 먼저 선점하고 터미널로 끝난다.
         MatchRuntime runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);
@@ -511,7 +511,6 @@ public sealed class MatchStartCountdownPublicationTests
                 null!,
                 TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
-                static _ => [],
                 null!,
                 null!,
                 new FakePlayerGrowthHandler(),

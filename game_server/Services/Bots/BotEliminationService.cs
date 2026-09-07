@@ -13,7 +13,6 @@ namespace game_server.services;
 ///     호출자는 해당 매치의 잠금을 잡은 상태로 호출한다. 매치 상태는 전달받은 MatchRuntime에만 기록한다.
 /// </summary>
 internal sealed class BotEliminationService(
-    GameSessionRegistry sessions,
     GameEventLogManager eventLogs,
     ILogger logger)
 {
@@ -47,7 +46,7 @@ internal sealed class BotEliminationService(
                 attackerPlayerId: attackerPlayerId,
                 isAreaClosureElimination: isAreaClosureElimination,
                 isOvertimeElimination: isOvertimeElimination);
-            var matchingSessions = sessions.GetByMatch(matchingId);
+            var matchingSessions = match.Sessions.Snapshot();
             DropBotInventoryAtCurrentPosition(match, botId, matchingSessions);
 
             // 1) 전체에게 봇 탈락 알림 (G_TO_C_PLAYER_ELIMINATED)

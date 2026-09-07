@@ -5,15 +5,13 @@ using Microsoft.Extensions.Logging;
 namespace game_server.network;
 
 /// <summary>
-///     이 GameServer의 현재 플레이어 세션과 매치별 세션 목록을 함께 관리한다.
-///     등록·교체·제거는 같은 잠금 안에서 두 색인에 반영하고 조회 결과는 스냅샷으로 반환한다.
+///     이 GameServer의 플레이어별 현재 세션을 관리하고 매치 소유 목록의 등록·교체·제거를 조율한다.
+///     등록 잠금 순서는 대상 매치 → 레지스트리 → 세션 목록이다. 이전 매치의 실행 잠금은 잡지 않는다.
 ///     교체된 이전 세션은 반환만 하며, 연결 종료는 호출자가 잠금 밖에서 처리한다.
 /// </summary>
 public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
 {
     private readonly ConcurrentDictionary<long, GameClientSession> _sessionsByPlayer = new();
-    private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, GameClientSession>> _sessionsByMatch =
-        new();
     private readonly object _mutationGate = new();
 
     /// <summary>
@@ -21,12 +19,18 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
     /// </summary>
     public GameClientSession? Register(long playerId, GameClientSession session)
     {
+        var match = session.Match;
+        using var scope = match.Enter();
+        if (match.IsTerminal)
+            throw new InvalidOperationException("Cannot register a session in a terminal match.");
+        if (session.PlayerId != playerId || session.MatchingId != match.MatchingId)
+            throw new InvalidOperationException("Session identity does not match its bound match.");
         lock (_mutationGate)
         {
             if (!_sessionsByPlayer.TryGetValue(playerId, out GameClientSession? existingSession))
             {
+                match.Sessions.Add(playerId, session);
                 _sessionsByPlayer[playerId] = session;
-                AddToMatchIndex(playerId, session);
                 logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
                 return null;
             }
@@ -34,9 +38,9 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
             if (ReferenceEquals(existingSession, session))
                 return null;
 
+            match.Sessions.Add(playerId, session);
             _sessionsByPlayer[playerId] = session;
-            RemoveFromMatchIndex(existingSession);
-            AddToMatchIndex(playerId, session);
+            existingSession.Match.Sessions.Remove(playerId, existingSession);
             logger.LogWarning("Game client session replaced: PlayerId={PlayerId}", playerId);
             return existingSession;
         }
@@ -56,7 +60,7 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
                 ((ICollection<KeyValuePair<long, GameClientSession>>)_sessionsByPlayer)
                 .Remove(new KeyValuePair<long, GameClientSession>(session.PlayerId.Value, session));
             if (removed)
-                RemoveFromMatchIndex(session);
+                session.Match.Sessions.Remove(session.PlayerId.Value, session);
             return removed;
         }
     }
@@ -80,46 +84,4 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
         return snapshot;
     }
 
-    public List<GameClientSession> GetByMatch(long matchingId) =>
-        _sessionsByMatch.TryGetValue(matchingId, out ConcurrentDictionary<long, GameClientSession>? bucket)
-            ? bucket.Values.ToList()
-            : [];
-
-    public bool HasSessions(long matchingId) =>
-        _sessionsByMatch.TryGetValue(matchingId, out ConcurrentDictionary<long, GameClientSession>? bucket) &&
-        !bucket.IsEmpty;
-
-    /// <summary>
-    ///     Drops the match mirror after the match runtime has won its terminal transition.
-    /// </summary>
-    public void RemoveMatch(long matchingId)
-    {
-        lock (_mutationGate)
-            _sessionsByMatch.TryRemove(matchingId, out _);
-    }
-
-    private void AddToMatchIndex(long playerId, GameClientSession session)
-    {
-        if (session.MatchingId <= 0)
-            return;
-
-        _sessionsByMatch
-            .GetOrAdd(session.MatchingId, _ => new ConcurrentDictionary<long, GameClientSession>())
-            [playerId] = session;
-    }
-
-    private void RemoveFromMatchIndex(GameClientSession session)
-    {
-        if (!session.PlayerId.HasValue)
-            return;
-        if (!_sessionsByMatch.TryGetValue(
-                session.MatchingId,
-                out ConcurrentDictionary<long, GameClientSession>? bucket))
-        {
-            return;
-        }
-
-        ((ICollection<KeyValuePair<long, GameClientSession>>)bucket)
-            .Remove(new KeyValuePair<long, GameClientSession>(session.PlayerId.Value, session));
-    }
 }

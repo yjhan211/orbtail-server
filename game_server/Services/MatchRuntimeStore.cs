@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common.data;
 using network.common.data.models;
@@ -73,6 +74,7 @@ internal sealed class MatchRuntime
     }
 
     public long MatchingId { get; }
+    public MatchSessionCollection Sessions { get; } = new();
     public MatchDoorState Doors { get; } = new();
     /// <summary>이 매치의 오브 전투·성장·봇 전술 상태. 매치와 함께 생성되고 제거된다.</summary>
     public SwarmMatchRuntime Swarm { get; }
@@ -348,6 +350,7 @@ internal sealed class MatchRuntimeStore
             if (!_runtimes.TryRemove(new KeyValuePair<long, MatchRuntime>(matchingId, runtime)))
                 return false;
             runtime.TickLoop?.Stop();
+            runtime.Sessions.Close();
             return true;
         }
     }
@@ -367,6 +370,7 @@ internal sealed class MatchRuntimeStore
                 // 다음 틱을 막은 뒤 정리한다. 서버 종료는 별도로 루프 Completion까지 기다린다.
                 runtime.TickLoop?.Stop();
                 runtime.CleanupDone = true;
+                runtime.Sessions.Close();
                 runtime.Doors.Clear();
                 RunCleanup(runtime.MatchingId);
                 try

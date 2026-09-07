@@ -15,7 +15,6 @@ namespace game_server.services;
 ///     봇의 전술 판단은 전달받은 함수에 위임한다.
 /// </summary>
 internal sealed class BotMovementService(
-    GameSessionRegistry sessions,
     GameEventLogManager eventLogs,
     ILogger<BotMovementService> logger)
 {
@@ -26,7 +25,7 @@ internal sealed class BotMovementService(
     {
         long matchingId = runtime.MatchingId;
         long tickStartedAt = Stopwatch.GetTimestamp();
-        GameClientSession[] sessionSnapshot = sessions.GetByMatch(matchingId)
+        GameClientSession[] sessionSnapshot = runtime.Sessions.Snapshot()
             .Where(session =>
                 session.PlayerId is > 0 &&
                 session.CurrentMapId == Config.SWARM_MATCH_MAP &&
@@ -207,7 +206,7 @@ internal sealed class BotMovementService(
     public void DispatchExternalMovement(MatchRuntime runtime, BotMovementEvent movement)
     {
         long matchingId = runtime.MatchingId;
-        GameClientSession[] sessionSnapshot = sessions.GetByMatch(matchingId)
+        GameClientSession[] sessionSnapshot = runtime.Sessions.Snapshot()
             .Where(session =>
                 session.PlayerId is > 0 &&
                 session.CurrentMapId == Config.SWARM_MATCH_MAP &&

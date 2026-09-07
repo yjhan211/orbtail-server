@@ -158,8 +158,7 @@ public partial class GameClientSession
                 OrbOrbitPhaseDegrees
             );
 
-            var otherSessions = _getSessionsByMatch(MatchingId);
-            var sameAreaSessions = GetSessionsInArea(otherSessions, CurrentArea);
+            var sameAreaSessions = Match.Sessions.GetInArea(CurrentArea, PlayerId);
 
             foreach (var session in sameAreaSessions)
             {
@@ -265,12 +264,12 @@ public partial class GameClientSession
             Logger.LogInformation("Player {PlayerId} moved from Area {OldArea} to {NewArea}", PlayerId, oldArea,
                 newArea);
 
-            var allSessions = _getSessionsByMatch(MatchingId);
+            var allSessions = Match.Sessions.Snapshot();
 
             // 1. 이전 Area의 플레이어들에게 퇴장 알림 + 나에게 기존 플레이어 삭제 알림
             if (oldArea != AreaType.None)
             {
-                var oldAreaSessions = GetSessionsInArea(allSessions, oldArea);
+                var oldAreaSessions = MatchSessionCollection.FilterInArea(allSessions, oldArea, PlayerId);
                 using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(PlayerId.Value);
 
                 foreach (var session in oldAreaSessions)
@@ -303,7 +302,7 @@ public partial class GameClientSession
             // 2. 새 Area의 플레이어들에게 진입 알림 (내 최신 Cell 포함)
             if (newArea != AreaType.None)
             {
-                var newAreaSessions = GetSessionsInArea(allSessions, newArea);
+                var newAreaSessions = MatchSessionCollection.FilterInArea(allSessions, newArea, PlayerId);
                 using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(CaptureGameObjectInfo());
 
                 foreach (var session in newAreaSessions) session.TrySend(enterPacket);

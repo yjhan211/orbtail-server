@@ -45,18 +45,17 @@ internal static class TestGameSessionServices
         GameEventLogManager logs,
         MatchSummaryFileStore summaries,
         GameServerDevOptions options,
-        Func<long, List<GameClientSession>> getSessions,
         Microsoft.Extensions.Logging.ILogger logger)
     {
-        var results = new MatchResultService(store, logs, summaries, options, getSessions, logger);
-        return new MatchEliminationService(store, logs, results, options, getSessions, logger);
+        var results = new MatchResultService(store, logs, summaries, options, logger);
+        return new MatchEliminationService(store, logs, results, options, logger);
     }
     public static GameSessionLeaveHandler CreateLeaveHandler()
     {
         var sessions = new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance);
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
-        var cleanup = new MatchCleanupService(store, sessions, logs,
+        var cleanup = new MatchCleanupService(store, logs,
             new MatchSummaryFileStore(), NullLogger.Instance);
         return new GameSessionLeaveHandler(sessions, cleanup, NullLogger<GameSessionLeaveHandler>.Instance);
     }

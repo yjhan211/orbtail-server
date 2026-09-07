@@ -10,14 +10,13 @@ namespace game_server.services;
 /// </summary>
 internal sealed class MatchCleanupService(
     MatchRuntimeStore matchRuntimes,
-    GameSessionRegistry sessions,
     GameEventLogManager eventLogs,
     MatchSummaryFileStore summaryFileStore,
     ILogger logger)
 {
     public void EndBotOnlyMatchIfSettled(long matchingId, long winnerPlayerId)
     {
-        if (sessions.HasSessions(matchingId))
+        if (matchRuntimes.Get(matchingId)?.Sessions.HasSessions == true)
             return;
 
         CleanupIfNoHumanSessionsRemain(matchingId, "last_survivor_bot_only", winnerPlayerId);
@@ -32,7 +31,7 @@ internal sealed class MatchCleanupService(
     /// </summary>
     private void CleanupIfNoHumanSessionsRemain(long matchingId, string endReason, long winnerPlayerId)
     {
-        if (sessions.HasSessions(matchingId))
+        if (matchRuntimes.Get(matchingId)?.Sessions.HasSessions == true)
             return;
 
         var runtime = matchRuntimes.Get(matchingId);
@@ -40,7 +39,7 @@ internal sealed class MatchCleanupService(
             return;
 
         using var scope = matchRuntimes.Enter(runtime);
-        if (runtime.IsTerminal || sessions.HasSessions(matchingId))
+        if (runtime.IsTerminal || runtime.Sessions.HasSessions)
             return;
 
         runtime.TryMarkTerminal();

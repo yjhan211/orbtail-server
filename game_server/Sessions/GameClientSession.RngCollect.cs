@@ -69,8 +69,7 @@ public partial class GameClientSession
         if (!PlayerId.HasValue) return;
         CurrentState = state;
 
-        var allSessions = _getSessionsByMatch(MatchingId);
-        var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
+        var sameAreaSessions = Match.Sessions.GetInArea(CurrentArea);
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, state);
         foreach (var session in sameAreaSessions) session.TrySend(packet);
     }
@@ -175,7 +174,7 @@ SendRngCollectResult(interactId, 0, 0, 0);
 
         using var updatePacket =
             PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId!.Value);
-        foreach (var session in _getSessionsByMatch(MatchingId))
+        foreach (var session in Match.Sessions.Snapshot())
             session.TrySend(updatePacket);
 
 SendRngCollectResult(interactId, 0, 0, 0);
@@ -235,7 +234,7 @@ SendRngCollectResult(interactId, 0, 0, 0);
 
     private void BroadcastRngCollectCooldown(int interactId, int cooldownSeconds)
     {
-        var sessions = _getSessionsByMatch(MatchingId);
+        var sessions = Match.Sessions.Snapshot();
         var msg = new G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST
         {
             InteractId = interactId,

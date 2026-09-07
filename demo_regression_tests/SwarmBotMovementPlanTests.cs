@@ -153,7 +153,7 @@ public sealed class SwarmBotMovementPlanTests
             "moveBots(scope.Runtime);");
         AssertInOrder(
             process,
-            "sessions.GetByMatch(matchingId)",
+            "runtime.Sessions.Snapshot()",
             "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
             "BotMovement.PrepareTick(",
             "DispatchSwarmBotMovementPlan(plan, sessionSnapshot)",
@@ -208,7 +208,7 @@ public sealed class SwarmBotMovementPlanTests
             "botMovement.DispatchExternalMovement(scope.Runtime, movement)");
         AssertInOrder(
             external,
-            "sessions.GetByMatch(matchingId)",
+            "runtime.Sessions.Snapshot()",
             "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
             "PrepareExternalMovement(",
             "DispatchSwarmBotMovementPlan(plan, sessionSnapshot)");

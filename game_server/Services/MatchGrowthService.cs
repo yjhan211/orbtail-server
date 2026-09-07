@@ -14,7 +14,6 @@ namespace game_server.services;
 /// </summary>
 internal sealed class MatchGrowthService(
     MatchRuntimeStore matchRuntimes,
-    GameSessionRegistry sessions,
     GameEventLogManager eventLogs,
     OrbUpgradeService orbUpgrades,
     ILogger<MatchGrowthService> logger) : IPlayerGrowthHandler
@@ -213,7 +212,7 @@ internal sealed class MatchGrowthService(
     public int GetTopOrbCount(long matchingId)
     {
         int top = 0;
-        foreach (var session in sessions.GetByMatch(matchingId))
+        foreach (var session in matchRuntimes.GetRequired(matchingId).Sessions.Snapshot())
         {
             if (session.PlayerId.HasValue && !session.IsEliminated)
                 top = Math.Max(top, matchRuntimes.GetRequired(matchingId).GetOrbScore(session.PlayerId.Value).OrbCount);

@@ -10,7 +10,6 @@ namespace game_server.services;
 /// </summary>
 internal sealed class MatchTickRunner(
     MatchRuntimeStore matchRuntimes,
-    GameSessionRegistry sessions,
     ILogger logger,
     Action<IEnumerable<long>, IReadOnlyCollection<GameClientSession>> publishCountdown,
     Action<long, List<GameClientSession>> processCombat,
@@ -38,7 +37,7 @@ internal sealed class MatchTickRunner(
             List<GameClientSession> activeSessions;
             try
             {
-                countdownSessions = sessions.GetByMatch(matchingId)
+                countdownSessions = runtime.Sessions.Snapshot()
                     .Where(static session => session.PlayerId.HasValue).ToList();
                 activeSessions = countdownSessions
                     .Where(static session => !session.IsEliminated && !session.IsGameEnded).ToList();

@@ -113,7 +113,7 @@ public sealed class GameClientSessionConnectPublicationTests
         var position = new Vector3f(10.25f, 20.75f, 0f);
         var velocity = new Vector3f(2f, 3f, 0f);
         var cell = new Cell(10, 20);
-        typeof(GameClientSession).GetField("_lastValidatedPosition", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, position);
+        typeof(GameClientSession).GetProperty(nameof(GameClientSession.LastValidatedPosition), BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!.SetValue(session, position);
         typeof(GameClientSession).GetField("_lastValidatedVelocity", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, velocity);
         typeof(GameClientSession).GetField("_lastValidCell", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, cell);
         var snapshot = session.CaptureGameObjectInfo();
@@ -330,7 +330,7 @@ public sealed class GameClientSessionConnectPublicationTests
         // 등록 콜백은 이전 세션을 반환하고, 매치·연결 잠금을 벗어난 뒤 이전 연결을 끊는다.
         string normalized = connectionSource.Replace("\r\n", "\n");
         Assert.Contains(
-            "registered = true;\n            }\n            // 이전 연결 종료는 새 연결의 상태 잠금과 매치 잠금을 벗어난 뒤 실행한다.",
+            "registered = true;\n            }\n\n            if (previousSession != null)",
             normalized);
         int disconnect = connectionSource.IndexOf("previousSession.ForceDisconnect();", registerCallback, StringComparison.Ordinal);
         int markServerDisconnect = connectionSource.IndexOf("previousSession.MarkDisconnectedByServer();", registerCallback, StringComparison.Ordinal);
@@ -564,12 +564,11 @@ public sealed class GameClientSessionConnectPublicationTests
                 null!,
                 TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
-                static _ => [],
 
                 TestGameEventLogs.Create(),
                 TestGameSessionServices.CreateEliminationService(Store, TestGameEventLogs.Create(),
                     new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
-                    GameServerDevOptions.Disabled, static _ => [], NullLogger.Instance),
+                    GameServerDevOptions.Disabled, NullLogger.Instance),
                 new FakePlayerGrowthHandler(),
 
                 new FakeGameSessionLifecycle(),

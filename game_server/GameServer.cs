@@ -196,7 +196,7 @@ internal sealed class GameServer(
     private void StartGameTicks()
     {
         var tickRunner = new MatchTickRunner(
-            matchRuntimes, sessions, logger,
+            matchRuntimes, logger,
             countdown.Broadcast,
             arena.ProcessSwarmArenaForMatching,
             environmentService.Process,
@@ -221,7 +221,6 @@ internal sealed class GameServer(
                 redisOperations,
                 sessionLeaveHandler,
                 sessions.Register,
-                sessions.GetByMatch,
                 eventLogs,
                 matchEliminations,
                 growth,

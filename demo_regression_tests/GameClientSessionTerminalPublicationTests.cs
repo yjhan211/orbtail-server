@@ -314,6 +314,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                 PrepareGameCompletion);
             SetIdentity(session, matchingId, playerId, status);
             _sessions.Add(session);
+            session.Match.Sessions.Add(playerId, session);
             _connections.Add(session, connection);
             return session;
         }
@@ -433,13 +434,9 @@ public sealed class GameClientSessionTerminalPublicationTests
                 null!,
                 TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
-                matchingId => sessions
-                    .Where(session => session.MatchingId == matchingId)
-                    .ToList(),
 
                 eventLog,
-                TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, GameServerDevOptions.Disabled,
-                    id => sessions.Where(session => session.MatchingId == id).ToList(), logger),
+                TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, GameServerDevOptions.Disabled, logger),
                 new FakePlayerGrowthHandler(),
                 new FakeGameSessionLifecycle(prepareGameCompletion),
                 static () => false,

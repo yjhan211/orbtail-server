@@ -155,7 +155,7 @@ public sealed class MatchOwnedStateTests
             runtime.Inventory.AddItem(botId, 107000010);
         }
         var bot = match.Bots.GetBot(match.MatchingId, botId)!;
-        var service = new BotEliminationService(new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance),
+        var service = new BotEliminationService(
             new GameEventLogManager(id => store.Get(id)?.EventLog), NullLogger.Instance);
         using (store.Enter(match))
         {

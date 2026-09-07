@@ -16,7 +16,6 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(source,
             "var tickRunner = new MatchTickRunner(",
             "countdown.Broadcast,",
-            "arena.ProcessSwarmArenaForMatching,",
             "environmentService.Process,",
             "runtime => botMovement.Process(runtime, botDecisions.ResolveSwarmBotDirective),",
             "tickService.Start(tickRunner.Run);");
@@ -46,7 +45,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             proximityTick,
             "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
-            "sessions.GetByMatch(matchingId)",
+            "runtime.Sessions.Snapshot()",
             "Match session snapshot failed",
             "try",
             "processCombat(matchingId, activeSessions);",
