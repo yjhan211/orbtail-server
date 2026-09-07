@@ -162,15 +162,15 @@ public sealed class ConsumableInventoryMergeTests
     }
 
     [Fact]
-    public void CorruptionRecoveryBuffsUseCorruptionSlotVisuals()
+    public void HealthRecoveryBuffsUseHealthSlotVisuals()
     {
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(), "client", "Assets", "Scripts", "UserInterfaces", "Lobby", "ItemSlot.cs"));
 
-        Assert.Contains("BuffSubType.CORRUPTION_DOWN", source);
+        Assert.Contains("BuffSubType.HEALTH_ADD", source);
         Assert.DoesNotContain("ConsumableBuffList[0]", source);
-        Assert.Contains("SetSlotVisuals(isCondition, isCorruption, showWear);", source);
-        Assert.Contains("SetSlotVisuals(isCondition, isCorruption, false);", source); // 선물 부품(PART_GIFT) 시각 분기는 part 레이어와 함께 삭제(#255)
+        Assert.Contains("SetSlotVisuals(isCondition, isHealth, showWear);", source);
+        Assert.Contains("SetSlotVisuals(isCondition, isHealth, false);", source); // 선물 부품(PART_GIFT) 시각 분기는 part 레이어와 함께 삭제(#255)
     }
 
     private static string FindRepositoryRoot()

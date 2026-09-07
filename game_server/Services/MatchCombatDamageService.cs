@@ -153,7 +153,7 @@ internal sealed class MatchCombatDamageService(MatchRuntimeStore matchRuntimes, 
     }
 
     /// <summary>
-    ///     플레이어 충격 (고정값, 티어 무관): 사격 피격 경로를 재사용해 오염 증가·피격 숫자·탈락 흐름이 그대로
+    ///     플레이어 충격 (고정값, 티어 무관): 사격 피격 경로를 재사용해 체력 감소·피격 숫자·탈락 흐름이 그대로
     ///     따라온다. 봇도 같은 값. 소유자 화면에는 사격 피드백을 보낸다. label은 로그용(어느 모양이 때렸나).
     /// </summary>
     public void ApplySwarmShock(
@@ -173,38 +173,38 @@ internal sealed class MatchCombatDamageService(MatchRuntimeStore matchRuntimes, 
         // 받는 피해 배율: 고정 충격 50에 1/3을 곱한다. 태양·바람·파도 충격이 전부 이 한 곳을 지난다.
         // damageScale: 파도 소용돌이(#268)는 당김이 본체라 피해를 타격 피드백 수준(1/4)으로 줄인다.
         int shock = Math.Max(1, (int)MathF.Round(
-            Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_CORRUPTION) * damageScale));
+            Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE) * damageScale));
         // 상처 (#268): 상처 입은 피해자만 PvP 충격 치명타가 열린다 — PvE와 같은 2배.
         if (runtime.WindBlade.IsWounded(victimId, DateTime.UtcNow) &&
             runtime.Pacing.RollCritical(Config.SWARM_WIND_WOUND_CRIT_CHANCE))
             shock = Math.Max(shock + 1, (int)MathF.Round(shock * SwarmCriticalMultiplier));
-        int corruptionBefore;
-        int corruptionAfter;
+        int healthBefore;
+        int healthAfter;
 
         var victimSession = aliveSessions.FirstOrDefault(session => session.PlayerId == victimId);
         if (victimSession != null)
         {
-            corruptionBefore = victimSession.CurrentCorruption;
-            // 사격 피격 경로 재사용 — 오염 증가·피격 숫자·탈락 흐름이 그대로 따라온다.
+            healthBefore = victimSession.CurrentHealth;
+            // 사격 피격 경로 재사용 — 체력 감소·피격 숫자·탈락 흐름이 그대로 따라온다.
             victimSession.ApplyProximityAutoCombatHit(ownerId, area, weaponItemId, shock, dotTick);
-            corruptionAfter = victimSession.CurrentCorruption;
+            healthAfter = victimSession.CurrentHealth;
         }
         else
         {
             var bot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == victimId);
             if (bot == null)
                 return;
-            corruptionBefore = bot.Corruption;
+            healthBefore = bot.Health;
             bot.LastProximityAttackerPlayerId = ownerId;
             runtime.BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
             bot.LastDamagedAtUtc = DateTime.UtcNow;
             eventLogs.LogHit(
                 matchingId, ownerId, bot.PlayerId, weaponItemId, shock,
-                bot.Corruption < Config.MAX_CORRUPTION &&
-                bot.Corruption + shock >= Config.MAX_CORRUPTION,
+                bot.Health > 0 &&
+                bot.Health - shock <= 0,
                 BotPlayerManager.IsBotPlayerId(ownerId), DateTimeOffset.UtcNow);
-            bot.Corruption = Math.Min(Config.MAX_CORRUPTION, bot.Corruption + shock);
-            corruptionAfter = bot.Corruption;
+            bot.Health = Math.Max(0, bot.Health - shock);
+            healthAfter = bot.Health;
         }
 
         var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
@@ -213,7 +213,7 @@ internal sealed class MatchCombatDamageService(MatchRuntimeStore matchRuntimes, 
         eventLogs.LogSystem(
             matchingId,
             $"{label} owner={ownerId} victim={victimId} weapon={weaponItemId} " +
-            $"corruptionBefore={corruptionBefore} corruptionAfter={corruptionAfter}");
+            $"healthBefore={healthBefore} healthAfter={healthAfter}");
     }
 
 }

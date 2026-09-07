@@ -10,7 +10,7 @@ using OrbVisualState = game_server.services.MatchPresentationState.OrbVisualStat
 namespace game_server.services;
 
 /// <summary>
-///     관전자별 오브·오염·외피 표시 상태를 계산하고 변경된 항목만 전송한다.
+///     관전자별 오브·체력·외피 표시 상태를 계산하고 변경된 항목만 전송한다.
 ///     캐시는 매치의 Presentation이 소유한다. 호출자는 매치 잠금을 보유하며
 ///     항목별 캐시 반영 직후 전송하는 순서와 전송 실패 경계를 유지한다.
 /// </summary>
@@ -52,20 +52,20 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
         return 0;
     }
 
-    /// <summary>본체 오염 조회 (#226 가시화) — 세션·봇 공통. 못 찾으면 -1(클라 표시 유지).</summary>
-    private int GetSwarmBodyCorruption(
+    /// <summary>본체 체력 조회 (#226 가시화) — 세션·봇 공통. 못 찾으면 -1(클라 표시 유지).</summary>
+    private int GetSwarmBodyHealth(
         long matchingId, long playerId, IReadOnlyCollection<GameClientSession> matchingSessions)
     {
         foreach (var session in matchingSessions)
         {
             if (session.PlayerId == playerId)
-                return session.CurrentCorruption;
+                return session.CurrentHealth;
         }
 
         foreach (var bot in matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
         {
             if (bot.PlayerId == playerId)
-                return bot.Corruption;
+                return bot.Health;
         }
 
         return -1;
@@ -167,10 +167,10 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
                     continue;
                 }
 
-                // 앞줄 오브 HP·잼·본체 오염을 시그니처에 포함 — 값 변화가 곧 상태 변화라 갱신이 전송된다.
+                // 앞줄 오브 HP·잼·본체 체력을 시그니처에 포함 — 값 변화가 곧 상태 변화라 갱신이 전송된다.
                 int frontOrbHp = GetSwarmFrontOrbHp(matchingId, actor.PlayerId);
                 int jamCount = GetSwarmJamCount(matchingId, actor.PlayerId, matchingSessions);
-                int bodyCorruption = GetSwarmBodyCorruption(matchingId, actor.PlayerId, matchingSessions);
+                int bodyHealth = GetSwarmBodyHealth(matchingId, actor.PlayerId, matchingSessions);
                 long armorMask = GetSwarmArmorMask(matchingId, actor.PlayerId);
                 var state = new OrbVisualState(
                     actor.Area,
@@ -179,7 +179,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
                     visualActor.OrbItemSignature,
                     frontOrbHp,
                     jamCount,
-                    bodyCorruption,
+                    bodyHealth,
                     armorMask);
                 if (visualStates.TryGetValue(key, out var previousState) &&
                     previousState == state)
@@ -198,7 +198,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
                     CaptureSwarmOrbVisualItemIds(visualActor.OrbItemIds),
                     frontOrbHp,
                     jamCount,
-                    bodyCorruption,
+                    bodyHealth,
                     armorMask));
             }
         }
@@ -241,7 +241,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
             OrbItemIds = publication.OrbItemIds.ToList(),
             FrontOrbHp = publication.FrontOrbHp,
             JamCount = publication.JamCount,
-            BodyCorruption = publication.BodyCorruption,
+            BodyHealth = publication.BodyHealth,
             ArmorMask = publication.ArmorMask
         }));
         publication.Recipient!.TrySend(packet);
@@ -261,7 +261,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
         ImmutableArray<int> OrbItemIds,
         int FrontOrbHp,
         int JamCount,
-        int BodyCorruption,
+        int BodyHealth,
         long ArmorMask)
     {
         public static SwarmOrbVisualPublication Remove(
@@ -281,11 +281,11 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
             ImmutableArray<int> orbItemIds,
             int frontOrbHp,
             int jamCount,
-            int bodyCorruption,
+            int bodyHealth,
             long armorMask) =>
             new(
                 matchingId, observerPlayerId, actorPlayerId, state, recipient,
-                weaponItemId, isActive, orbItemIds, frontOrbHp, jamCount, bodyCorruption, armorMask);
+                weaponItemId, isActive, orbItemIds, frontOrbHp, jamCount, bodyHealth, armorMask);
     }
 
 }

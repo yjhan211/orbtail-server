@@ -48,7 +48,7 @@ public partial class BotPlayerManager
 
     private const int BotMissionTickIntervalSeconds = 1;
     private const int InitialStamina = 100;
-    private const int InitialCorruption = 0;
+    private static int InitialHealth => Config.MAX_HEALTH;
 
     private readonly long _matchingId;
     private List<BotPlayerState> _bots = [];
@@ -105,7 +105,7 @@ public partial class BotPlayerManager
                 Position = startPosition,
                 Rotation = 0f,
                 Stamina = InitialStamina,
-                Corruption = InitialCorruption,
+                Health = InitialHealth,
                 PlayerMatchStatus = PlayerMatchStatus.ACTIVE,
                 GameStartTime = now,
                 LoopWaitUntil = now.AddSeconds(RandomRange(
@@ -249,7 +249,7 @@ public class BotPlayerState
 
     public AreaType CurrentArea { get; set; }
     public int Stamina { get; set; } = 100;
-    public int Corruption { get; set; } = 0;
+    public int Health { get; set; } = Config.MAX_HEALTH;
     public long LastProximityAttackerPlayerId { get; set; }
     public bool IsEliminated { get; set; }
     public PlayerMatchStatus PlayerMatchStatus { get; set; } = PlayerMatchStatus.ACTIVE;

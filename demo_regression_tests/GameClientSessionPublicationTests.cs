@@ -180,7 +180,7 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
-        fixture.SetCorruption(session, 20);
+        fixture.SetHealth(session, 20);
         GroundItemInfo item = fixture.SpawnAtSession(session, Config.HEART_GROUND_ITEM_ID);
 
         await SendAsync(
@@ -195,7 +195,7 @@ public sealed class GameClientSessionPublicationTests
                 Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT
             ],
             fixture.ConnectionFor(session).DeliveredProtocols);
-        Assert.True(session.CurrentCorruption < 20);
+        Assert.True(session.CurrentHealth > 20);
     }
 
     [Fact]
@@ -400,7 +400,7 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
-        fixture.SetCorruption(session, 20);
+        fixture.SetHealth(session, 20);
         GroundItemInfo item = fixture.SpawnAtSession(session, Config.HEART_GROUND_ITEM_ID);
         GameClientSession.SwarmHeartPickupCallback = static (_, _) =>
             throw new InvalidOperationException("heart callback failed");
@@ -414,7 +414,7 @@ public sealed class GameClientSessionPublicationTests
             [Protocol.G_TO_C_PLAYER_STATS_UPDATE, Protocol.G_TO_C_ERROR],
             fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.Null(fixture.Store.GetRequired(70001).GroundItems.GetItem(item.GroundItemUid));
-        Assert.True(session.CurrentCorruption < 20);
+        Assert.True(session.CurrentHealth > 20);
     }
 
     [Fact]
@@ -700,10 +700,10 @@ public sealed class GameClientSessionPublicationTests
             return item;
         }
 
-        public void SetCorruption(RecordingSession session, int corruption) =>
+        public void SetHealth(RecordingSession session, int health) =>
             typeof(GameClientSession).GetProperty(
-                "Corruption",
-                BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, corruption);
+                "Health",
+                BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(session, health);
 
         public void SetMatchingId(RecordingSession session, long matchingId) =>
             SetProperty(session, nameof(GameClientSession.MatchingId), matchingId);

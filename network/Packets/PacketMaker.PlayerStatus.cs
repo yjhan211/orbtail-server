@@ -21,7 +21,7 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_PLAYER_STATS_UPDATE(int stamina, int staminaDelta, int corruption, int corruptionDelta,
+    public static Packet G_TO_C_PLAYER_STATS_UPDATE(int stamina, int staminaDelta, int health, int healthDelta,
         bool staminaConverted = false)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_STATS_UPDATE);
@@ -29,8 +29,8 @@ public static partial class PacketMaker
         {
             Stamina = stamina,
             StaminaDelta = staminaDelta,
-            Corruption = corruption,
-            CorruptionDelta = corruptionDelta,
+            Health = health,
+            HealthDelta = healthDelta,
             StaminaConverted = staminaConverted
         };
 

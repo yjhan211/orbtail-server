@@ -2,7 +2,7 @@ namespace game_server.services;
 
 public readonly record struct MatchSettlementCandidate(
     long PlayerId,
-    int PreDamageCorruption,
+    int PreDamageHealth,
     int TotalPvpDamage);
 
 public sealed class MatchSettlementResolution
@@ -19,7 +19,7 @@ public static class MatchSettlementResolver
     {
         var ordered = candidates
             .DistinctBy(candidate => candidate.PlayerId)
-            .OrderBy(candidate => candidate.PreDamageCorruption)
+            .OrderByDescending(candidate => candidate.PreDamageHealth)
             .ThenByDescending(candidate => candidate.TotalPvpDamage)
             .ThenBy(candidate => GetMatchSeedPriority(matchingId, candidate.PlayerId))
             .ThenBy(candidate => candidate.PlayerId)
@@ -30,8 +30,8 @@ public static class MatchSettlementResolver
         {
             var first = ordered[0];
             var second = ordered[1];
-            criterion = first.PreDamageCorruption != second.PreDamageCorruption
-                ? "pre_damage_corruption"
+            criterion = first.PreDamageHealth != second.PreDamageHealth
+                ? "pre_damage_health"
                 : first.TotalPvpDamage != second.TotalPvpDamage
                     ? "cumulative_pvp_damage"
                     : "match_seed_priority";

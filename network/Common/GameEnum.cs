@@ -104,14 +104,14 @@ namespace network.common
     {
         NONE = 0,
         CONDITION_ADD,
-        CORRUPTION_DOWN,
+        HEALTH_ADD,
         DURABILITY_ADD,
-        CORRUPTION_ADD,
+        HEALTH_DOWN,
         ITEM_GAIN_CHANCE_ADD = 5,
         RISK_EVENT_CHANCE_DOWN = 6,
         RECOVERY_ITEM_EFFECT_ADD = 7,
         ENCOUNTER_ESCAPE_CHANCE_ADD = 8,
-        ISOLATION_CORRUPTION_GAIN_DOWN = 9,
+        ISOLATION_DAMAGE_DOWN = 9,
         UNFAVORABLE_SUCCESS_CHANCE_ADD = 10,
     }
 
@@ -187,7 +187,7 @@ namespace network.common
     {
         NONE = 0,
         DETECTED = 1,
-        MENTAL_ZERO = 2,
+        HEALTH_ZERO = 2,
         STAMINA_ZERO = 3,
         RACE_LOST = 4,
         SETTLEMENT_LOW_CONTRIBUTION = 5,
@@ -217,9 +217,9 @@ namespace network.common
     {
         NONE = 0,
         REWARD_POOL = 1,
-        DEBUFF_CORRUPTION = 2,
+        DEBUFF_HEALTH = 2,
         DEBUFF_STAMINA = 3,
-        BUFF_CORRUPTION = 4,
+        BUFF_HEALTH = 4,
         BUFF_STAMINA = 5,
     }
 

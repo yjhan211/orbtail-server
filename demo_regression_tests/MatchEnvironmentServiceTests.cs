@@ -51,7 +51,7 @@ public sealed class MatchEnvironmentServiceTests
     {
         var match = new MatchRuntime(947004, NullLogger.Instance);
         Assert.Equal(double.MaxValue, MatchPressureFieldPolicy.GetSafeDistance(match, DateTime.UtcNow));
-        Assert.Equal(0, MatchPressureFieldPolicy.GetCorruptionPerTick(match, null, DateTime.UtcNow));
+        Assert.Equal(0, MatchPressureFieldPolicy.GetDamagePerTick(match, null, DateTime.UtcNow));
     }
 
     [Fact]

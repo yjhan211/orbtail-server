@@ -159,7 +159,7 @@ public sealed class MatchOwnedStateTests
             new GameEventLogManager(id => store.Get(id)?.EventLog), NullLogger.Instance);
         using (store.Enter(match))
         {
-            service.Process(match, botId, EliminationReason.MENTAL_ZERO, attackerPlayerId: 11);
+            service.Process(match, botId, EliminationReason.HEALTH_ZERO, attackerPlayerId: 11);
             var entry = match.Roster.GetEntry(botId)!;
             Assert.Equal(PlayerMatchStatus.ELIMINATED, entry.Status);
             Assert.True(bot.IsEliminated);
@@ -167,7 +167,7 @@ public sealed class MatchOwnedStateTests
             int drops = match.GroundItems.GetSnapshot(bot.CurrentArea).Count;
             var eliminatedAt = entry.EliminatedAt;
 
-            service.Process(match, botId, EliminationReason.MENTAL_ZERO, attackerPlayerId: 99);
+            service.Process(match, botId, EliminationReason.HEALTH_ZERO, attackerPlayerId: 99);
             Assert.Equal(drops, match.GroundItems.GetSnapshot(bot.CurrentArea).Count);
             Assert.Equal(eliminatedAt, entry.EliminatedAt);
             Assert.Equal(11, entry.AttackerPlayerId);

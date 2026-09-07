@@ -54,20 +54,20 @@ public sealed class MatchGameplayServiceTests
         var now = DateTime.UtcNow;
         using (store.Enter(first))
         {
-            var bot = new BotPlayerState { PlayerId = 11, Corruption = 10 };
+            var bot = new BotPlayerState { PlayerId = 11, Health = 10 };
             first.Swarm.BotTactics.LastDamagedAtUtc[(first.MatchingId, 11)] = now;
             service.ProcessSwarmBotRecovery(first.MatchingId, [bot], now.AddSeconds(5));
-            Assert.Equal(10, bot.Corruption);
+            Assert.Equal(10, bot.Health);
             service.ProcessSwarmBotRecovery(first.MatchingId, [bot], now.AddSeconds(6));
-            Assert.Equal(8, bot.Corruption);
+            Assert.Equal(12, bot.Health);
             service.ProcessSwarmBotRecovery(first.MatchingId, [bot], now.AddSeconds(6));
-            Assert.Equal(8, bot.Corruption);
+            Assert.Equal(12, bot.Health);
         }
         using (store.Enter(second))
         {
-            var bot = new BotPlayerState { PlayerId = 11, Corruption = 10 };
+            var bot = new BotPlayerState { PlayerId = 11, Health = 10 };
             service.ProcessSwarmBotRecovery(second.MatchingId, [bot], now.AddSeconds(6));
-            Assert.Equal(8, bot.Corruption);
+            Assert.Equal(12, bot.Health);
             second.TryMarkTerminal();
         }
         using (store.Enter(first)) first.TryMarkTerminal();
@@ -83,12 +83,12 @@ public sealed class MatchGameplayServiceTests
         var now = DateTime.UtcNow;
         using (store.Enter(match))
         {
-            int half = (int)(network.common.Config.MAX_CORRUPTION * 0.5f);
-            Assert.True(service.IsSwarmBotCutAllowed(match.MatchingId, 11, half - 5, now, 5));
-            Assert.False(service.IsSwarmBotCutAllowed(match.MatchingId, 11, half - 5, now, 6));
+            int half = (int)(network.common.Config.MAX_HEALTH * 0.5f);
+            Assert.True(service.IsSwarmBotCutAllowed(match.MatchingId, 11, half + 5, now, 5));
+            Assert.False(service.IsSwarmBotCutAllowed(match.MatchingId, 11, half + 5, now, 6));
             match.Swarm.BotTactics.LastTrailCutAtUtc[(match.MatchingId, 11)] = now;
-            Assert.False(service.IsSwarmBotCutAllowed(match.MatchingId, 11, 0, now.AddSeconds(5), 5));
-            Assert.True(service.IsSwarmBotCutAllowed(match.MatchingId, 11, 0, now.AddSeconds(6), 5));
+            Assert.False(service.IsSwarmBotCutAllowed(match.MatchingId, 11, network.common.Config.MAX_HEALTH, now.AddSeconds(5), 5));
+            Assert.True(service.IsSwarmBotCutAllowed(match.MatchingId, 11, network.common.Config.MAX_HEALTH, now.AddSeconds(6), 5));
             match.TryMarkTerminal();
         }
     }

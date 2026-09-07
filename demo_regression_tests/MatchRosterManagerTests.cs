@@ -16,7 +16,7 @@ public sealed class MatchRosterManagerTests
         manager.RegisterEntry(CreateLink(2, 3));
         manager.RegisterEntry(CreateLink(3, 1));
 
-        var affected = manager.TryEliminatePlayer(2, EliminationReason.MENTAL_ZERO).AffectedPlayers;
+        var affected = manager.TryEliminatePlayer(2, EliminationReason.HEALTH_ZERO).AffectedPlayers;
 
         Assert.Equal(new[] { 2L }, affected.Keys);
         Assert.Equal(PlayerMatchStatus.ELIMINATED, affected[2]);
@@ -33,7 +33,7 @@ public sealed class MatchRosterManagerTests
         manager.RegisterEntry(CreateLink(1, 2));
         manager.RegisterEntry(CreateLink(2, 1));
 
-        manager.TryEliminatePlayer(2, EliminationReason.MENTAL_ZERO,
+        manager.TryEliminatePlayer(2, EliminationReason.HEALTH_ZERO,
             attackerPlayerId: 1, eliminatedArea: AreaType.S2Library1, isAreaClosureElimination: true);
 
         var result = Assert.Single(manager.BuildGameResult(), row => row.playerId == 2);
@@ -54,7 +54,7 @@ public sealed class MatchRosterManagerTests
 
         manager.TryEliminatePlayer(
             2,
-            EliminationReason.MENTAL_ZERO,
+            EliminationReason.HEALTH_ZERO,
             isOvertimeElimination: true,
             forcedRank: 3,
             finalOrbTier: 2);
@@ -76,7 +76,7 @@ public sealed class MatchRosterManagerTests
         manager.RegisterEntry(CreateLink(3, 1));
 
         var first = manager.TryEliminatePlayer(
-            2, EliminationReason.MENTAL_ZERO,
+            2, EliminationReason.HEALTH_ZERO,
             attackerPlayerId: 1, forcedRank: 3, finalOrbTier: 2);
         var duplicate = manager.TryEliminatePlayer(
             2, EliminationReason.DETECTED,
@@ -87,7 +87,7 @@ public sealed class MatchRosterManagerTests
         Assert.Empty(duplicate.AffectedPlayers);
 
         var result = Assert.Single(manager.BuildGameResult(), row => row.playerId == 2);
-        Assert.Equal(EliminationReason.MENTAL_ZERO, result.reason);
+        Assert.Equal(EliminationReason.HEALTH_ZERO, result.reason);
         Assert.Equal(1, result.attackerPlayerId);
         Assert.Equal(3, result.eliminationRank);
         Assert.Equal(2, result.finalOrbTier);
@@ -108,19 +108,19 @@ public sealed class MatchRosterManagerTests
 
         // 본체 HP 0 — 첫 확정.
         var byBodyHp = manager.TryEliminatePlayer(
-            2, EliminationReason.MENTAL_ZERO, attackerPlayerId: 1);
+            2, EliminationReason.HEALTH_ZERO, attackerPlayerId: 1);
         // 같은 틱의 시간 종료·폐쇄 정산이 같은 사람을 다시 밀어 넣는다.
         var byOvertime = manager.TryEliminatePlayer(
-            2, EliminationReason.MENTAL_ZERO, isOvertimeElimination: true);
+            2, EliminationReason.HEALTH_ZERO, isOvertimeElimination: true);
         var byClosure = manager.TryEliminatePlayer(
-            2, EliminationReason.MENTAL_ZERO, isAreaClosureElimination: true);
+            2, EliminationReason.HEALTH_ZERO, isAreaClosureElimination: true);
 
         Assert.True(byBodyHp.Applied);
         Assert.False(byOvertime.Applied);
         Assert.False(byClosure.Applied);
 
         // 생존 수가 한 번만 줄었다면 다음 탈락자의 등수는 2다 — 세 번 줄었으면 0으로 밀린다.
-        Assert.True(manager.TryEliminatePlayer(3, EliminationReason.MENTAL_ZERO).Applied);
+        Assert.True(manager.TryEliminatePlayer(3, EliminationReason.HEALTH_ZERO).Applied);
 
         var results = manager.BuildGameResult();
         var second = Assert.Single(results, row => row.playerId == 2);

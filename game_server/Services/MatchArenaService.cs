@@ -49,7 +49,7 @@ internal sealed class MatchArenaService(
     // 늦게 합류해도 첫 등장 틱에 각자 1회 받는다 (상태는 Pacing.StartingOrbGrantedPlayers).
 
     // 고위험 절단 (#232 무한 꼬리): 몸으로 상대 꼬리를 유효하게 가로지르면 밟은 지점부터 꼬리 끝까지(접미 전체)
-    // 깨지고 나는 정신오염 +35를 낸다. 크랙·방어 장갑·절단 낙수는 쓰지 않는다 (TryPerformSwarmTrailCut).
+    // 깨지고 나는 체력 35를 낸다. 크랙·방어 장갑·절단 낙수는 쓰지 않는다 (TryPerformSwarmTrailCut).
     // 끄려면 절단 계약 테스트(SwarmDamagePathTests.TailCut_RemovesSuffixAndChargesAttacker)의 플래그 어서션도 같이 바꾼다.
     private static readonly bool SwarmTrailCutEnabled = true;
     // 오브는 플레이어(봇)도 조준한다 — 아래 PvP 사거리·앞열 규칙이 산다.
@@ -62,17 +62,17 @@ internal sealed class MatchArenaService(
     // 막는다. 0.12는 TTK 60초대 — 몹이 사형집행자고 사람은 서로를 몹 앞에 밀어넣는 구조라, 사격은 깎는 수단이고
     // 마무리는 몹과 절단이 가져간다(값을 올리면 원거리로 끝나 몸으로 파고들 이유가 사라진다).
     // 원천은 swarm_config.csv (#325) — 미등재 시 코드 기본값.
-    private static float SwarmPvpCorruptionPerDamage =>
-        SwarmConfigData.GetFloat("SWARM_PVP_CORRUPTION_PER_DAMAGE", 0.12f);
+    private static float SwarmPvpDamagePerDamage =>
+        SwarmConfigData.GetFloat("SWARM_PVP_DAMAGE_PER_DAMAGE", 0.12f);
 
-    /// <summary>PvP 피해 → 본체 오염 이월 누산. 반환 = 이번 타에 실제 적용할 오염(0 가능).</summary>
-    private int ConsumeSwarmPvpCorruption(long matchingId, long victimId, int rawDamage)
+    /// <summary>PvP 피해 → 본체 체력 이월 누산. 반환 = 이번 타에 실제 적용할 오염(0 가능).</summary>
+    private int ConsumeSwarmPvpDamage(long matchingId, long victimId, int rawDamage)
     {
         var key = (matchingId, victimId);
-        float total = (matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PvpCorruptionCarry.TryGetValue(key, out float carry) ? carry : 0f) +
-                      rawDamage * SwarmPvpCorruptionPerDamage;
+        float total = (matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PvpDamageCarry.TryGetValue(key, out float carry) ? carry : 0f) +
+                      rawDamage * SwarmPvpDamagePerDamage;
         int whole = (int)total;
-        matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PvpCorruptionCarry[key] = total - whole;
+        matchRuntimes.GetRequired(matchingId).Swarm.Pacing.PvpDamageCarry[key] = total - whole;
         return whole;
     }
 
@@ -297,7 +297,7 @@ internal sealed class MatchArenaService(
         {
             if (!dummyBot.IsSwarmCutDummy)
                 continue;
-            dummyBot.Corruption = 0;
+            dummyBot.Health = Config.MAX_HEALTH;
             ProcessSwarmCutDummyRefill(matchingId, dummyBot, nowUtc);
         }
 
@@ -601,7 +601,7 @@ internal sealed class MatchArenaService(
             if (!matchRuntimes.GetRequired(matchingId).Bots.TryFinalizeProximityAutoCombatElimination(bot, matchingId))
                 continue;
 
-            botEliminations.Process(matchRuntimes.GetRequired(matchingId), bot.PlayerId, EliminationReason.MENTAL_ZERO,
+            botEliminations.Process(matchRuntimes.GetRequired(matchingId), bot.PlayerId, EliminationReason.HEALTH_ZERO,
                 attackerPlayerId: bot.LastProximityAttackerPlayerId);
             if (IsMatchTerminal(matchingId) ||
                 activeSessions.Any(session => session.IsGameEnded))
@@ -645,8 +645,8 @@ internal sealed class MatchArenaService(
     }
 
     /// <summary>
-    ///     수면 회복 틱 (#229 6단계). 실제 정산은 세션이 소유한다 — 오염도·최대치가 세션 내부값이라
-    ///     밖에서 만지면 접근자를 열어야 하고, 그러면 다른 경로도 오염도를 직접 건드릴 수 있게 된다.
+    ///     수면 회복 틱 (#229 6단계). 실제 정산은 세션이 소유한다 — 체력·최대치가 세션 내부값이라
+    ///     밖에서 만지면 접근자를 열어야 하고, 그러면 다른 경로도 체력을 직접 건드릴 수 있게 된다.
     /// </summary>
     private static void ProcessSwarmSleepRecovery(
         List<GameClientSession> aliveSessions, DateTime nowUtc)
@@ -680,10 +680,10 @@ internal sealed class MatchArenaService(
     private static double SwarmTrailCutSameOrbDebounceSeconds =>
         SwarmConfigData.GetDouble("SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS", 0.8d);
     private const float SwarmTrailCutMaxSegmentLength = 2f;
-    // 고위험 단일 절단 (#232): 성공한 공격자는 정신오염 +35를 내고 8초 동안 수면 회복을 잃는다.
+    // 고위험 단일 절단 (#232): 성공한 공격자는 체력 35를 내고 8초 동안 수면 회복을 잃는다.
     // 비용을 감당할 수 없으면(만충으로 탈락) 절단도 비용도 발생하지 않는다.
-    private static int SwarmSingleCutCorruptionCost =>
-        SwarmConfigData.GetInt("SWARM_SINGLE_CUT_CORRUPTION_COST", 35);
+    private static int SwarmSingleCutHealthCost =>
+        SwarmConfigData.GetInt("SWARM_SINGLE_CUT_HEALTH_COST", 35);
     private static double SwarmSingleCutHealLockSeconds =>
         SwarmConfigData.GetDouble("SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS", 8d);
     // 절단자 한정 반격 보호 (#227 7단계): 실제 꼬리 상실 순간부터 1.2초.
@@ -846,7 +846,7 @@ internal sealed class MatchArenaService(
 
     /// <summary>
     ///     열 절단: 본체 이동 선분이 상대 오브 링크(오브i-오브i+1)를 가로지르면 밟힌 순번부터 꼬리 끝까지 파괴한다.
-    ///     이동이 곧 공격 동사이고, 비용은 "상대 성장물이 끊김"과 절단자의 정신오염 +35다. 본체-첫 오브 링크는
+    ///     이동이 곧 공격 동사이고, 비용은 "상대 성장물이 끊김"과 절단자의 체력 35다. 본체-첫 오브 링크는
     ///     절단 불가. 한 이동 선분당 가장 먼저 교차한 링크 하나만 처리한다.
     /// </summary>
     private void ProcessSwarmTrailCuts(
@@ -1079,20 +1079,20 @@ internal sealed class MatchArenaService(
         var cutterBot = cutterSession == null
             ? aliveBots.FirstOrDefault(candidate => candidate.PlayerId == cutterId)
             : null;
-        int cutterCorruptionBefore = cutterSession?.CurrentCorruption ?? cutterBot?.Corruption ?? int.MaxValue;
-        if (cutterCorruptionBefore + SwarmSingleCutCorruptionCost >= Config.MAX_CORRUPTION)
+        int cutterHealthBefore = cutterSession?.CurrentHealth ?? cutterBot?.Health ?? 0;
+        if (cutterHealthBefore - SwarmSingleCutHealthCost <= 0)
         {
             eventLogs.LogSystem(
                 matchingId,
                 $"ORB_SINGLE_CUT_REFUSED attacker={creditPlayerId} victim={bestOwnerId} targetOrbUid={bestOrbUid} " +
-                $"targetIndex={bestTailOrdinal} reason=cost attackerCorruption={cutterCorruptionBefore}");
+                $"targetIndex={bestTailOrdinal} reason=cost attackerHealth={cutterHealthBefore}");
             return;
         }
 
-        // 봇 절단 자제: 봇은 오염이 절반 아래일 때, 봇 1인당 6초에 한 번만 자른다. 봇끼리 몇 초 간격으로 서로 자르며
+        // 봇 절단 자제: 봇은 체력이 절반 이상일 때, 봇 1인당 6초에 한 번만 자른다. 봇끼리 몇 초 간격으로 서로 자르며
         // 자해로 죽어 나가면 사람 카메라에 남는 긴 꼬리가 없다 — 봇의 절단은 '한 번 지르는 사건'으로 읽혀야 한다.
         // 거절된 통과는 래치를 찍어 같은 오브를 이번 통과에서 다시 판정하지 않는다 — 사람의 절단은 이 규칙과 무관하다.
-        if (cutterBot != null && !botDecisions.IsSwarmBotCutAllowed(matchingId, cutterId, cutterCorruptionBefore, nowUtc, SwarmSingleCutCorruptionCost))
+        if (cutterBot != null && !botDecisions.IsSwarmBotCutAllowed(matchingId, cutterId, cutterHealthBefore, nowUtc, SwarmSingleCutHealthCost))
         {
             matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbCutLatches[(matchingId, cutterId, bestOrbUid)] = nowUtc;
             return;
@@ -1138,30 +1138,30 @@ internal sealed class MatchArenaService(
             SwarmTrailCutFlashRadius, allSessions, SwarmRingVfxKindCut,
             victimId: bestOwnerId, fromOrdinal: bestTailOrdinal);
 
-        // 공격자 치명상 (#232): 같은 사건으로 +35. 사람은 사격 피격 경로(오염 증가·피격 숫자)를 타고
-        // 8초 수면 회복 차단이 걸린다. 봇은 오염만 오른다.
+        // 공격자 치명상 (#232): 같은 사건으로 +35. 사람은 사격 피격 경로(체력 감소·피격 숫자)를 타고
+        // 8초 수면 회복 차단이 걸린다. 봇은 체력만 감소한다.
         DateTime healLockUntil = nowUtc.AddSeconds(SwarmSingleCutHealLockSeconds);
-        int cutterCorruptionAfter;
+        int cutterHealthAfter;
         if (cutterSession != null)
         {
             cutterSession.ApplyProximityAutoCombatHit(
-                cutterId, cutterArea, destroyedItem.ItemId, SwarmSingleCutCorruptionCost);
+                cutterId, cutterArea, destroyedItem.ItemId, SwarmSingleCutHealthCost);
             cutterSession.SwarmHealLockUntilUtc = healLockUntil;
-            cutterCorruptionAfter = cutterSession.CurrentCorruption;
+            cutterHealthAfter = cutterSession.CurrentHealth;
         }
         else if (cutterBot != null)
         {
-            cutterBot.Corruption = Math.Min(
-                Config.MAX_CORRUPTION, cutterBot.Corruption + SwarmSingleCutCorruptionCost);
+            cutterBot.Health = Math.Max(
+                0, cutterBot.Health - SwarmSingleCutHealthCost);
             cutterBot.LastDamagedAtUtc = nowUtc;
             matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.LastDamagedAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
             // 봇 절단 시각 — 절단 자제 쿨다운(IsSwarmBotCutAllowed)과 절단 후 회수 창이 읽는다.
             matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.LastTrailCutAtUtc[(matchingId, cutterBot.PlayerId)] = nowUtc;
-            cutterCorruptionAfter = cutterBot.Corruption;
+            cutterHealthAfter = cutterBot.Health;
         }
         else
         {
-            cutterCorruptionAfter = cutterCorruptionBefore;
+            cutterHealthAfter = cutterHealthBefore;
         }
 
         var ownerBot = aliveBots.FirstOrDefault(candidate => candidate.PlayerId == bestOwnerId);
@@ -1197,12 +1197,12 @@ internal sealed class MatchArenaService(
             matchingId,
             $"ORB_TAIL_CUT attacker={creditPlayerId} victim={bestOwnerId} cutIndex={bestTailOrdinal} " +
             $"lostOrbs={destroyedItems.Count} firstOrbUid={destroyedItem.ItemUid} " +
-            $"attackerCorruptionBefore={cutterCorruptionBefore} attackerCorruptionAfter={cutterCorruptionAfter} " +
+            $"attackerHealthBefore={cutterHealthBefore} attackerHealthAfter={cutterHealthAfter} " +
             $"healLockUntil={healLockUntil:O} victimOrbsBefore={orbsBefore} victimOrbsAfter={orbsAfter} area={bestArea}");
         logger.LogInformation(
-            "Swarm tail cut: MatchingId={MatchingId}, CutterId={CutterId}, OwnerId={OwnerId}, TailOrdinal={TailOrdinal}, Lost={Lost}, AttackerCorruption={Before}->{After}",
+            "Swarm tail cut: MatchingId={MatchingId}, CutterId={CutterId}, OwnerId={OwnerId}, TailOrdinal={TailOrdinal}, Lost={Lost}, AttackerHealth={Before}->{After}",
             matchingId, cutterId, bestOwnerId, bestTailOrdinal, destroyedItems.Count,
-            cutterCorruptionBefore, cutterCorruptionAfter);
+            cutterHealthBefore, cutterHealthAfter);
     }
 
     // 링 연출 종류: 클라가 색·효과음을 분기한다. 크랙(3)은 링 없이 슬롯 크랙 + 크랙음만 —
@@ -1593,7 +1593,7 @@ internal sealed class MatchArenaService(
         dummy.Cell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, dummy.Position);
         dummy.Path.Clear();
         dummy.PathIndex = 0;
-        dummy.Corruption = 0;
+        dummy.Health = Config.MAX_HEALTH;
 
         // 꼬리: 동→서 일자 경로를 미리 심는다 — points[0] = 현재 위치(최신).
         var trailPoints = new List<Vector3f>();
@@ -1793,7 +1793,7 @@ internal sealed class MatchArenaService(
             session.MarkSwarmCombat(DateTime.UtcNow);
             // #229: 문 게이지도 같이 끊는다 — 문 앞을 비우지 못하면 방을 못 연다.
             session.BreakDoorUnlockGauge();
-            // 오염 경로 — 오염 증가·피격 피드백·일반 탈락 흐름까지 담당한다.
+            // 오염 경로 — 체력 감소·피격 피드백·일반 탈락 흐름까지 담당한다.
             session.ApplySwarmAfterimageMonsterHit(damage.MonsterId, damage.Damage);
             return;
         }
@@ -1805,15 +1805,15 @@ internal sealed class MatchArenaService(
         // 반올림으로 맞춘다 (#229 4단계-보정): 잘라내기라 raw 6(배율 통과 3)이 1로, raw 8(4)이
         // 2로 뭉개져 페이즈별 접촉 곡선이 봇에게는 통째로 평평했다. 사람 경로는 Round를 쓴다.
         int botDamage = Math.Max(1, (int)MathF.Round(damage.Damage * SwarmBotContactDamageMultiplier));
-        int legacyBefore = bot.Corruption;
-        bot.Corruption = Math.Min(Config.MAX_CORRUPTION, bot.Corruption + botDamage);
+        int legacyBefore = bot.Health;
+        bot.Health = Math.Max(0, bot.Health - botDamage);
         matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
         // 세 번째 봇 경로도 남긴다 — 앞의 두 경로만 로그를 붙여 놓으면 여기로 빠진 피해가
         // 그대로 안 보인다.
         eventLogs.LogSwarmAfterimageHit(
             matchingId, damage.MonsterId, bot.PlayerId, damage.Area.ToString(),
-            botDamage, legacyBefore, bot.Corruption,
-            bot.Corruption >= Config.MAX_CORRUPTION, isBot: true, DateTimeOffset.UtcNow);
+            botDamage, legacyBefore, bot.Health,
+            bot.Health <= 0, isBot: true, DateTimeOffset.UtcNow);
     }
 
     /// <summary>
@@ -1851,13 +1851,13 @@ internal sealed class MatchArenaService(
             .Where(session => session.PlayerId.HasValue)
             .Select(session => (
                 PlayerId: session.PlayerId!.Value,
-                Corruption: session.CurrentCorruption))
-            .Concat(aliveBots.Select(bot => (bot.PlayerId, bot.Corruption)))
+                Health: session.CurrentHealth))
+            .Concat(aliveBots.Select(bot => (bot.PlayerId, bot.Health)))
             .Select(candidate =>
             {
                 var (orbCount, tierSum) = GetSwarmOrbScore(matchingId, candidate.PlayerId);
                 return (candidate.PlayerId, OrbCount: orbCount, TierSum: tierSum,
-                    candidate.Corruption);
+                    candidate.Health);
             })
             .OrderByDescending(candidate => candidate.OrbCount)
             .ThenByDescending(candidate => candidate.TierSum)
@@ -1866,7 +1866,7 @@ internal sealed class MatchArenaService(
                 .Where(pair => pair.Key.MatchingId == matchingId &&
                                pair.Key.PlayerId == candidate.PlayerId)
                 .Sum(pair => pair.Value))
-            .ThenBy(candidate => candidate.Corruption)
+            .ThenByDescending(candidate => candidate.Health)
             .ThenBy(candidate => candidate.PlayerId)
             .ToList();
         long winnerId = candidates.Count > 0 ? candidates[0].PlayerId : 0;
@@ -1963,7 +1963,7 @@ internal sealed class MatchArenaService(
     }
 
     /// <summary>
-    ///     PvP 미사일 적용 (#226 재개편): 오브 HP·본체 보호 퇴역 — 모든 발은 본체 오염으로
+    ///     PvP 미사일 적용 (#226 재개편): 오브 HP·본체 보호 퇴역 — 모든 발은 본체 체력으로
     ///     환산(이월 누산)되어 직행한다. 오브 파괴는 열 절단 전용. 옛 PvpDamageScale(0.65)은
     ///     오염 환산 상수가 대체해 퇴역했다 (#325에서 상수 삭제).
     /// </summary>
@@ -1994,19 +1994,19 @@ internal sealed class MatchArenaService(
             return 0;
         }
 
-        int corruption = ConsumeSwarmPvpCorruption(matchingId, attack.TargetPlayerId, attack.Damage);
+        int healthDamage = ConsumeSwarmPvpDamage(matchingId, attack.TargetPlayerId, attack.Damage);
         var targetSession = aliveSessions.FirstOrDefault(session =>
             session.PlayerId == attack.TargetPlayerId);
         if (targetSession != null)
         {
-            if (corruption > 0)
+            if (healthDamage > 0)
             {
                 if (aggregateEventFeedback)
                     targetSession.ApplySwarmAttackEventHit(
-                        attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, corruption);
+                        attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, healthDamage);
                 else
                     targetSession.ApplyProximityAutoCombatHit(
-                        attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, corruption);
+                        attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, healthDamage);
             }
         }
         else
@@ -2019,35 +2019,35 @@ internal sealed class MatchArenaService(
             bot.LastProximityAttackerPlayerId = attack.AttackerPlayerId;
             matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
             bot.LastDamagedAtUtc = DateTime.UtcNow;
-            if (corruption > 0)
+            if (healthDamage > 0)
             {
                 // 킬 크레딧 (#226 F 계측): 봇 표적도 사람 표적과 같은 피격 로그를 남긴다 —
                 // 이게 빠지면 사람이 봇을 잡아도 killCount·totalDamageDealt가 0으로 남는다.
                 eventLogs.LogHit(
                     matchingId, attack.AttackerPlayerId, bot.PlayerId, attack.WeaponItemId,
-                    corruption,
-                    bot.Corruption < Config.MAX_CORRUPTION &&
-                    bot.Corruption + corruption >= Config.MAX_CORRUPTION,
+                    healthDamage,
+                    bot.Health > 0 &&
+                    bot.Health - healthDamage <= 0,
                     BotPlayerManager.IsBotPlayerId(attack.AttackerPlayerId), DateTimeOffset.UtcNow);
-                bot.Corruption = Math.Min(Config.MAX_CORRUPTION, bot.Corruption + corruption);
+                bot.Health = Math.Max(0, bot.Health - healthDamage);
             }
         }
 
-        if (corruption > 0 && sendAttackerFeedback)
+        if (healthDamage > 0 && sendAttackerFeedback)
         {
             var attackerSession = allSessions.FirstOrDefault(session =>
                 session.PlayerId == attack.AttackerPlayerId);
             if (aggregateEventFeedback)
                 attackerSession?.SendSwarmAttackEventFeedback(
-                    attack.TargetPlayerId, attack.Area, attack.WeaponItemId, corruption);
+                    attack.TargetPlayerId, attack.Area, attack.WeaponItemId, healthDamage);
             else
                 attackerSession?.SendProximityAutoCombatAttackFeedback(
-                    attack.TargetPlayerId, attack.Area, attack.WeaponItemId, corruption);
+                    attack.TargetPlayerId, attack.Area, attack.WeaponItemId, healthDamage);
         }
         // 태양 착탄(#226)은 발사 시점에 이미 연출을 쐈다 — 이중 투사체 방지.
         if (broadcastVfx)
             BroadcastSwarmAttackVfxToTargetAndObservers(attack, allSessions);
-        return corruption;
+        return healthDamage;
     }
 
     private List<ProximityCombatActor> BuildSwarmArenaCombatActors(

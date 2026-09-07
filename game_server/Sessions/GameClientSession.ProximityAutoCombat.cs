@@ -70,11 +70,11 @@ public partial class GameClientSession
             PlayerId.Value,
             weaponItemId,
             damage,
-            Corruption < MaxCorruption && Corruption + damage >= MaxCorruption,
+            Health > 0 && Health - damage <= 0,
             BotPlayerManager.IsBotPlayerId(sourcePlayerId),
             DateTimeOffset.UtcNow);
 
-        ModifyStats(corruptionDelta: damage, attackerPlayerId: sourcePlayerId);
+        ModifyStats(healthDelta: -damage, attackerPlayerId: sourcePlayerId);
 
         // RevealDelayMs carries weapon metadata; DamageValue preserves the authoritative hit result.
         SendEncounterEvent(
@@ -114,11 +114,11 @@ public partial class GameClientSession
             PlayerId.Value,
             weaponItemId,
             damage,
-            Corruption < MaxCorruption && Corruption + damage >= MaxCorruption,
+            Health > 0 && Health - damage <= 0,
             BotPlayerManager.IsBotPlayerId(sourcePlayerId),
             DateTimeOffset.UtcNow,
             damageSourceType: "swarm_attack_event");
-        ModifyStats(corruptionDelta: damage, attackerPlayerId: sourcePlayerId);
+        ModifyStats(healthDelta: -damage, attackerPlayerId: sourcePlayerId);
         SendEncounterEvent(
             sourcePlayerId,
             area,
@@ -150,7 +150,7 @@ public partial class GameClientSession
         if (!PlayerId.HasValue || IsEliminated || monsterId < 0 || weaponItemId <= 0 || damage <= 0)
             return;
 
-        // targetCorruption is event-specific metadata here: zero means a Wave splash hit,
+        // targetHealth is event-specific metadata here: zero means a Wave splash hit,
         // so the client preserves its damage feedback without replaying the projectile.
         // cooldownSeconds는 이 이벤트에서 안 쓰는 자리라 플래그 비트로 빌려 쓴다 (#229 임시):
         // bit0 = 치명타, bit1 = 투사체 없음(#232 교차사격 쓸기 — 모양이 이미 그 자리를 지나갔다,
@@ -167,31 +167,31 @@ public partial class GameClientSession
         if (!PlayerId.HasValue || IsEliminated || monsterId <= 0 || damage <= 0)
             return;
 
-        int corruptionBefore = Corruption;
-        int corruptionAfter = Math.Min(MaxCorruption, corruptionBefore + damage);
-        bool isLethal = corruptionBefore < MaxCorruption && corruptionAfter >= MaxCorruption;
+        int healthBefore = Health;
+        int healthAfter = Math.Max(0, healthBefore - damage);
+        bool isLethal = healthBefore > 0 && healthAfter <= 0;
         _gameEventLogManager.LogSwarmAfterimageHit(
             MatchingId,
             monsterId,
             PlayerId.Value,
             CurrentArea.ToString(),
             damage,
-            corruptionBefore,
-            corruptionAfter,
+            healthBefore,
+            healthAfter,
             isLethal,
             isBot: false,
             DateTimeOffset.UtcNow);
         Logger.LogInformation(
-            "Emotion afterimage attack: MatchingId={MatchingId}, MonsterId={MonsterId}, Target={Target}, TargetKind=Human, Damage={Damage}, CorruptionBefore={CorruptionBefore}, CorruptionAfter={CorruptionAfter}, Killed={Killed}",
+            "Emotion afterimage attack: MatchingId={MatchingId}, MonsterId={MonsterId}, Target={Target}, TargetKind=Human, Damage={Damage}, HealthBefore={HealthBefore}, HealthAfter={HealthAfter}, Killed={Killed}",
             MatchingId,
             monsterId,
             PlayerId.Value,
             damage,
-            corruptionBefore,
-            corruptionAfter,
+            healthBefore,
+            healthAfter,
             isLethal);
         // Monster damage has no survivor source, so final PvP damage accounting remains correct.
-        ModifyStats(corruptionDelta: damage);
+        ModifyStats(healthDelta: -damage);
         // The encounter envelope carries the visual source (monster id) and the authoritative damage value.
         SendEncounterEvent(PlayerId.Value, CurrentArea, SwarmAfterimageMonsterAttackTakenEventType,
             0, monsterId, displayDamage ?? damage);

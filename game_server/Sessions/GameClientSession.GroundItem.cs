@@ -44,7 +44,7 @@ public partial class GameClientSession
         var position = _lastValidatedPosition;
         var pickup = GroundItemPickupService.TryPickup(
             _matchRuntimes.GetRequired(MatchingId), PlayerId.Value, CurrentArea,
-            position, Stamina, MaxStamina, Corruption, msg.GroundItemUid);
+            position, Stamina, MaxStamina, Health, msg.GroundItemUid);
         var claimedItem = pickup.ClaimedItem;
         var attemptedItem = pickup.AttemptedItem;
         var addedItem = pickup.AddedItem;
@@ -78,11 +78,11 @@ public partial class GameClientSession
             };
             if (attemptedItem != null && GroundItemPickupPolicy.IsImmediateUseItem(attemptedItem.ItemId))
             {
-                GroundItemPickupPolicy.Resolve(attemptedItem.ItemId, Stamina, MaxStamina, Corruption,
-                    out int deniedStaminaRecovery, out int deniedCorruptionRecovery);
+                GroundItemPickupPolicy.Resolve(attemptedItem.ItemId, Stamina, MaxStamina, Health,
+                    out int deniedStaminaRecovery, out int deniedHealthRecovery);
                 _gameEventLogManager.LogPelletPickupOutcome(
                     MatchingId, PlayerId.Value, attemptedItem.ItemId,
-                    deniedStaminaRecovery + deniedCorruptionRecovery, 0,
+                    deniedStaminaRecovery + deniedHealthRecovery, 0,
                     $"denied_{pickup.Status.ToString().ToLowerInvariant()}", isBot: false);
             }
             if (attemptedItem != null && error == ErrorCode.INVENTORY_FULL)
@@ -130,10 +130,10 @@ public partial class GameClientSession
         else if (pickup.AutoUsed)
         {
             int effectiveStaminaRecovery = Math.Min(pickup.StaminaRecovery, Math.Max(0, MaxStamina - Stamina));
-            int effectiveCorruptionRecovery = Math.Min(pickup.CorruptionRecovery, Math.Max(0, Corruption));
-            int requestedRecovery = pickup.StaminaRecovery + pickup.CorruptionRecovery;
-            int effectiveRecovery = effectiveStaminaRecovery + effectiveCorruptionRecovery;
-            ModifyStats(staminaDelta: pickup.StaminaRecovery, corruptionDelta: -pickup.CorruptionRecovery);
+            int effectiveHealthRecovery = Math.Min(pickup.HealthRecovery, Math.Max(0, MaxHealth - Health));
+            int requestedRecovery = pickup.StaminaRecovery + pickup.HealthRecovery;
+            int effectiveRecovery = effectiveStaminaRecovery + effectiveHealthRecovery;
+            ModifyStats(staminaDelta: pickup.StaminaRecovery, healthDelta: pickup.HealthRecovery);
             // 하트는 앞줄 오브 HP도 만충으로 (#222 M4) — 원작 하트의 스쿼드 회복.
             if (claimedItem.ItemId == Config.HEART_GROUND_ITEM_ID)
                 SwarmHeartPickupCallback?.Invoke(MatchingId, PlayerId.Value);

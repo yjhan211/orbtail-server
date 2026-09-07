@@ -28,8 +28,8 @@ namespace network.common.data.models
         [Key("eliminationReason")] public EliminationReason EliminationReason { get; set; }
         [Key("survivalTimeSeconds")] public int SurvivalTimeSeconds { get; set; }
         [Key("finalStatus")] public PlayerMatchStatus FinalStatus { get; set; }
-        [Key("corruption")] public int Corruption { get; set; }
-        [Key("maxCorruption")] public int MaxCorruption { get; set; }
+        [Key("health")] public int Health { get; set; }
+        [Key("maxHealth")] public int MaxHealth { get; set; }
         [Key("wearItemIdList")] public List<int> WearItemIdList { get; set; } = new();
         [Key("killCount")] public int KillCount { get; set; }
         [Key("totalDamageDealt")] public int TotalDamageDealt { get; set; }

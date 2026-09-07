@@ -149,7 +149,7 @@ namespace network.common
         public static float SWARM_ORB_TRAIL_FIRST_OFFSET => SwarmConfigData.GetFloat("SWARM_ORB_TRAIL_FIRST_OFFSET", 0.7f);
 
         /// <summary>Swarm match combat and closure elimination threshold.</summary>
-        public static int MAX_CORRUPTION => SwarmConfigData.GetInt("MAX_CORRUPTION", 420);
+        public static int MAX_HEALTH => SwarmConfigData.GetInt("MAX_HEALTH", 420);
 
         /// <summary>
         /// Swarm match (#202) uses monster rewards as summon currency instead of direct orb exploration loot.
@@ -352,8 +352,8 @@ namespace network.common
         // 고정 충격을 받는다. 티어는 모양의 크기만 키우고 충격값은 안 키운다.
         // 서버 판정과 클라 예고 표시가 같은 값을 읽어야 "표시 = 판정"이 성립한다.
 
-        /// <summary>교차사격 충격 1회의 정신오염. 티어·공격 강화와 무관한 고정값.</summary>
-        public static int SWARM_CROSSFIRE_SHOCK_CORRUPTION => SwarmConfigData.GetInt("SWARM_CROSSFIRE_SHOCK_CORRUPTION", 50);
+        /// <summary>교차사격 충격 1회의 체력 피해. 티어·공격 강화와 무관한 고정값.</summary>
+        public static int SWARM_CROSSFIRE_SHOCK_DAMAGE => SwarmConfigData.GetInt("SWARM_CROSSFIRE_SHOCK_DAMAGE", 50);
 
         /// <summary>
         ///     받는 피해 배율(봇·플레이어 전부 1/3만 받게 결정): 사람·봇 공통,

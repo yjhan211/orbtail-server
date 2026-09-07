@@ -15,7 +15,7 @@ public sealed class PlayerEliminationCauseTests
         {
             PlayerId = 20,
             AttackerPlayerId = 10,
-            Reason = EliminationReason.MENTAL_ZERO
+            Reason = EliminationReason.HEALTH_ZERO
         };
 
         byte[] bytes = MessagePackSerializer.Serialize(source);
@@ -23,7 +23,7 @@ public sealed class PlayerEliminationCauseTests
 
         Assert.Equal(20, result.PlayerId);
         Assert.Equal(10, result.AttackerPlayerId);
-        Assert.Equal(EliminationReason.MENTAL_ZERO, result.Reason);
+        Assert.Equal(EliminationReason.HEALTH_ZERO, result.Reason);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public sealed class PlayerEliminationCauseTests
         var bot = new BotPlayerState
         {
             PlayerId = -1,
-            Corruption = Config.MAX_CORRUPTION - 10
+            Health = 10
         };
 
         manager.ApplyProximityAutoCombatDamage(bot, 9, attackerPlayerId: 101);

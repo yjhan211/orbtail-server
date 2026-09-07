@@ -240,7 +240,7 @@ internal sealed class MatchResultService(
         DateTime startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId) ?? endedAtUtc;
         var resultRows = _matchRuntimes.GetRequired(matchingId).Roster.BuildGameResult();
         var killCountsByPlayerId = resultRows
-            .Where(row => row.attackerPlayerId != 0 && row.reason == EliminationReason.MENTAL_ZERO)
+            .Where(row => row.attackerPlayerId != 0 && row.reason == EliminationReason.HEALTH_ZERO)
             .GroupBy(row => row.attackerPlayerId)
             .ToDictionary(group => group.Key, group => group.Count());
 
@@ -264,8 +264,8 @@ internal sealed class MatchResultService(
                         Name = ResolveResultPlayerName(d.playerId, playerInfo, playerProfile, bot),
                         EliminationReason = d.reason,
                         FinalStatus = d.finalStatus,
-                        Corruption = session?.CurrentCorruption ?? bot?.Corruption ?? 0,
-                        MaxCorruption = Config.MAX_CORRUPTION,
+                        Health = session?.CurrentHealth ?? bot?.Health ?? 0,
+                        MaxHealth = Config.MAX_HEALTH,
                         WearItemIdList = playerProfile?.WearItemIdList is { Count: > 0 }
                             ? new List<int>(playerProfile.WearItemIdList)
                             : playerInfo?.WearItemIdList != null

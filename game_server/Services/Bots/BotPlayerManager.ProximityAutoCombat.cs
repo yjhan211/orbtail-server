@@ -32,7 +32,7 @@ public partial class BotPlayerManager
         {
             GroundItemPickupDisposition disposition = GroundItemPickupDisposition.LeaveOnGround;
             int staminaRecovery = 0;
-            int corruptionRecovery = 0;
+            int healthRecovery = 0;
             bool summonStonePickup = candidate.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID;
             bool jamPickup = candidate.ItemId == Config.JAM_GROUND_ITEM_ID;
             bool bootsPickup = candidate.ItemId == Config.BOOTS_GROUND_ITEM_ID;
@@ -62,9 +62,9 @@ public partial class BotPlayerManager
                         item.ItemId,
                         bot.Stamina,
                         100,
-                        bot.Corruption,
+                        bot.Health,
                         out staminaRecovery,
-                        out corruptionRecovery,
+                        out healthRecovery,
                         matchingId,
                         bot.PlayerId);
                     return disposition == GroundItemPickupDisposition.AutoUse ||
@@ -75,7 +75,7 @@ public partial class BotPlayerManager
                 continue;
 
             bool autoUsed = disposition == GroundItemPickupDisposition.AutoUse;
-            int requestedRecovery = staminaRecovery + corruptionRecovery;
+            int requestedRecovery = staminaRecovery + healthRecovery;
             int effectiveRecovery = 0;
             InGameItemInfo? addedItem = null;
             SummonStoneSnapshot summonStoneState = default;
@@ -99,10 +99,10 @@ public partial class BotPlayerManager
             else if (autoUsed)
             {
                 int effectiveStaminaRecovery = Math.Min(staminaRecovery, Math.Max(0, 100 - bot.Stamina));
-                int effectiveCorruptionRecovery = Math.Min(corruptionRecovery, Math.Max(0, bot.Corruption));
-                effectiveRecovery = effectiveStaminaRecovery + effectiveCorruptionRecovery;
+                int effectiveHealthRecovery = Math.Min(healthRecovery, Math.Max(0, Config.MAX_HEALTH - bot.Health));
+                effectiveRecovery = effectiveStaminaRecovery + effectiveHealthRecovery;
                 bot.Stamina = Math.Min(100, bot.Stamina + staminaRecovery);
-                bot.Corruption = Math.Max(0, bot.Corruption - corruptionRecovery);
+                bot.Health = Math.Min(Config.MAX_HEALTH, bot.Health + healthRecovery);
                 // 하트는 앞줄 오브 HP도 만충으로 (#222 M4) — 사람과 같은 규칙.
                 if (claimedItem.ItemId == global::network.common.Config.HEART_GROUND_ITEM_ID)
                     game_server.sessions.GameClientSession.SwarmHeartPickupCallback?.Invoke(
@@ -133,7 +133,7 @@ public partial class BotPlayerManager
                 bot.PlayerId,
                 claimedItem,
                 autoUsed,
-                corruptionRecovery,
+                healthRecovery,
                 discovererPlayerId,
                 autoEquippedItemId,
                 requestedRecovery,
@@ -161,15 +161,15 @@ public partial class BotPlayerManager
         if (bot.IsEliminated || damage <= 0)
             return;
 
-        int previousCorruption = bot.Corruption;
-        bot.Corruption = Math.Clamp(bot.Corruption + damage, 0, Config.MAX_CORRUPTION);
-        if (previousCorruption < Config.MAX_CORRUPTION && bot.Corruption >= Config.MAX_CORRUPTION)
+        int previousHealth = bot.Health;
+        bot.Health = Math.Clamp(bot.Health - damage, 0, Config.MAX_HEALTH);
+        if (previousHealth > 0 && bot.Health <= 0)
             bot.LastProximityAttackerPlayerId = attackerPlayerId;
     }
 
     public bool TryFinalizeProximityAutoCombatElimination(BotPlayerState bot, long matchingId)
     {
-        if (bot.IsEliminated || bot.Corruption < Config.MAX_CORRUPTION)
+        if (bot.IsEliminated || bot.Health > 0)
             return false;
 
         bot.IsEliminated = true;
@@ -180,10 +180,10 @@ public partial class BotPlayerManager
         bot.LoopWaitUntil = DateTime.MinValue;
 
         _logger.LogInformation(
-            "Bot eliminated by proximity auto combat: MatchingId={MatchingId}, BotId={BotId}, Corruption={Corruption}",
+            "Bot eliminated by proximity auto combat: MatchingId={MatchingId}, BotId={BotId}, Health={Health}",
             matchingId,
             bot.PlayerId,
-            bot.Corruption);
+            bot.Health);
         return true;
     }
 }
@@ -191,7 +191,7 @@ public readonly record struct BotGroundItemPickup(
     long BotPlayerId,
     GroundItemInfo Item,
     bool AutoUsed,
-    int CorruptionRecovery,
+    int HealthRecovery,
     long DiscovererPlayerId,
     int AutoEquippedItemId = 0,
     int RequestedRecovery = 0,

@@ -18,15 +18,15 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue || targetPlayerId == 0) return;
 
-        int targetCorruption = -1;
+        int targetHealth = -1;
         if (eventType == ProximityAutoAttackDealtEventType || eventType == ProximityAutoAttackTakenEventType)
         {
             var targetSession = _getSessionsByInstance(CurrentMapId, MatchingId)
                 .FirstOrDefault(session => session.PlayerId == targetPlayerId);
             if (targetSession != null)
-                targetCorruption = targetSession.Corruption;
+                targetHealth = targetSession.Health;
             else
-                targetCorruption = _matchRuntimes.GetRequired(MatchingId).Bots.GetBot(MatchingId, targetPlayerId)?.Corruption ?? -1;
+                targetHealth = _matchRuntimes.GetRequired(MatchingId).Bots.GetBot(MatchingId, targetPlayerId)?.Health ?? -1;
         }
 
         using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(
@@ -36,7 +36,7 @@ public partial class GameClientSession
             cooldownSeconds,
             revealDelayMs,
             damageValue,
-            targetCorruption);
+            targetHealth);
         TrySend(packet);
     }
 

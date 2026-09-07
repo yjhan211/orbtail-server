@@ -111,7 +111,7 @@ public partial class GameClientSession
                     StopAllPeriodicBuffs();
                     return Task.CompletedTask;
                 }
-                _condition.TickPeriodicBuffs(MaxStamina, MaxCorruption, (stamina, corruption) => ModifyStats(stamina, corruption));
+                _condition.TickPeriodicBuffs(MaxStamina, MaxHealth, (stamina, health) => ModifyStats(stamina, health));
                 if (!_condition.HasPeriodicBuffs)
                 {
                     if (_condition.IsSleeping) _ = BroadcastSleepState(false);
@@ -138,9 +138,9 @@ public partial class GameClientSession
     /// </summary>
     internal void TickSwarmSleepRecovery(DateTime nowUtc)
     {
-        int recovered = _condition.GetSleepRecovery(nowUtc, IsEliminated, MaxCorruption);
+        int recovered = _condition.GetSleepRecovery(nowUtc, IsEliminated, MaxHealth);
         if (recovered <= 0) return;
-        ModifyStats(corruptionDelta: -recovered);
+        ModifyStats(healthDelta: recovered);
         SendEncounterEvent(PlayerId ?? 0, CurrentArea, SwarmSleepRecoveryEventType, 0, 0, recovered);
     }
 
@@ -365,9 +365,9 @@ public partial class GameClientSession
         var effect = _condition.ApplyItemBuffs(itemId, ActiveBuffIds);
         if (effect.Periodic)
             _periodicBuffTimer ??= new Timer(_ => OnPeriodicBuffTick(), null, 1000, 1000);
-        int before = Corruption;
-        if (effect.Stamina != 0 || effect.Corruption != 0) ModifyStats(effect.Stamina, effect.Corruption);
-        int recovered = Math.Max(0, before - Corruption);
+        int before = Health;
+        if (effect.Stamina != 0 || effect.Health != 0) ModifyStats(effect.Stamina, effect.Health);
+        int recovered = Math.Max(0, Health - before);
         if (PlayerId.HasValue && recovered > 0)
             _gameEventLogManager.LogRecoveryUse(MatchingId, PlayerId.Value, itemId, recovered,
                 source: "inventory_consumable", isBot: false);
@@ -376,44 +376,44 @@ public partial class GameClientSession
 
     /// <summary>
     ///     스탯 변경 (외부에서 호출 가능 - 환경 효과 등).
-    ///     2026-05-05 권고안 B: 스태미나 부족 시 부족분만큼 Corruption 1:2 변환.
+    ///     스태미나가 부족하면 부족분의 두 배만큼 체력을 차감한다.
     ///     단, 양수 staminaDelta(회복)는 그대로 처리.
     /// </summary>
-    public void ModifyStats(int staminaDelta = 0, int corruptionDelta = 0, long attackerPlayerId = 0,
+    public void ModifyStats(int staminaDelta = 0, int healthDelta = 0, long attackerPlayerId = 0,
         bool isAreaClosureElimination = false, bool isOvertimeElimination = false, bool deferElimination = false)
     {
         int oldStamina = Stamina;
-        int oldCorruption = Corruption;
-        int conversionCor = _condition.ChangeResources(staminaDelta, corruptionDelta, MaxStamina, MaxCorruption);
-        int totalCorDelta = corruptionDelta + conversionCor;
+        int oldHealth = Health;
+        int conversionDamage = _condition.ChangeResources(staminaDelta, healthDelta, MaxStamina, MaxHealth);
+        int totalHealthDelta = healthDelta - conversionDamage;
 
         // 값이 변경되지 않았으면 패킷 전송 안함
-        if (Stamina == oldStamina && Corruption == oldCorruption) return;
+        if (Stamina == oldStamina && Health == oldHealth) return;
 
-        if (conversionCor > 0)
+        if (conversionDamage > 0)
         {
             Logger.LogInformation(
-                "Player {PlayerId} Stamina 부족 → Cor 대체: 요청 ΔSt={DeltaS}, 변환 ΔCor=+{ConvCor}",
-                PlayerId, staminaDelta, conversionCor);
+                "Player {PlayerId} Stamina 부족에 따른 체력 피해: 요청 ΔSt={DeltaS}, 피해={ConversionDamage}",
+                PlayerId, staminaDelta, conversionDamage);
         }
 
         Logger.LogInformation(
-            "Player {PlayerId} Stats: Stamina {OldS}→{NewS} ({DeltaS:+#;-#;0}), Corruption {OldC}→{NewC} ({DeltaC:+#;-#;0})",
-            PlayerId, oldStamina, Stamina, staminaDelta, oldCorruption, Corruption, totalCorDelta);
+            "Player {PlayerId} Stats: Stamina {OldS}→{NewS} ({DeltaS:+#;-#;0}), Health {OldC}→{NewC} ({DeltaC:+#;-#;0})",
+            PlayerId, oldStamina, Stamina, staminaDelta, oldHealth, Health, totalHealthDelta);
 
         // 아이템 스펙 그대로 델타값 전송 (이펙트 표시용). 변환 발생 시 플래그 전달 (클라 경고 알럿용).
-        SendPlayerStatsUpdate(staminaDelta, totalCorDelta, conversionCor > 0);
+        SendPlayerStatsUpdate(staminaDelta, totalHealthDelta, conversionDamage > 0);
 
         // 운영툴 진행 로그
         if (PlayerId.HasValue)
         {
-            int recoveredCorruption = Math.Max(0, oldCorruption - Corruption);
-            if (recoveredCorruption > 0)
-                _gameEventLogManager.RecordRecovery(MatchingId, PlayerId.Value, recoveredCorruption);
+            int recoveredHealth = Math.Max(0, Health - oldHealth);
+            if (recoveredHealth > 0)
+                _gameEventLogManager.RecordRecovery(MatchingId, PlayerId.Value, recoveredHealth);
 
             _gameEventLogManager.LogResource(MatchingId, PlayerId.Value,
-                staminaDelta, totalCorDelta, Stamina, Corruption,
-                conversionCor > 0, reason: "", isBot: false);
+                staminaDelta, totalHealthDelta, Stamina, Health,
+                conversionDamage > 0, reason: "", isBot: false);
         }
 
         if (!deferElimination)
@@ -423,14 +423,14 @@ public partial class GameClientSession
     /// <summary>
     ///     스탯 업데이트 패킷 전송
     /// </summary>
-    private void SendPlayerStatsUpdate(int staminaDelta, int corruptionDelta, bool staminaConverted = false)
+    private void SendPlayerStatsUpdate(int staminaDelta, int healthDelta, bool staminaConverted = false)
     {
-        using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(Stamina, staminaDelta, Corruption, corruptionDelta,
+        using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(Stamina, staminaDelta, Health, healthDelta,
             staminaConverted);
         TrySend(packet);
         Logger.LogDebug(
-            "Sent PLAYER_STATS_UPDATE to Player {PlayerId}: Stamina={Stamina} ({StaminaDelta:+#;-#;0}), Corruption={Corruption} ({CorruptionDelta:+#;-#;0}), Converted={Converted}",
-            PlayerId, Stamina, staminaDelta, Corruption, corruptionDelta, staminaConverted);
+            "Sent PLAYER_STATS_UPDATE to Player {PlayerId}: Stamina={Stamina} ({StaminaDelta:+#;-#;0}), Health={Health} ({HealthDelta:+#;-#;0}), Converted={Converted}",
+            PlayerId, Stamina, staminaDelta, Health, healthDelta, staminaConverted);
     }
 
     /// <summary>

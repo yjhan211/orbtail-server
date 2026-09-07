@@ -346,7 +346,7 @@ public sealed class MatchSummaryFileStore
         if (hasNearbyCombatElimination)
             return "pvp";
 
-        return string.Equals(elimination.Outcome ?? elimination.Description, "MENTAL_ZERO",
+        return string.Equals(elimination.Outcome ?? elimination.Description, "HEALTH_ZERO",
             StringComparison.OrdinalIgnoreCase)
             ? "mental"
             : "other";

@@ -197,7 +197,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             applyProximityHit,
             "_gameEventLogManager.LogHit(",
-            "ModifyStats(corruptionDelta: damage, attackerPlayerId: sourcePlayerId);",
+            "ModifyStats(healthDelta: -damage, attackerPlayerId: sourcePlayerId);",
             "SendEncounterEvent(");
 
         string orbPublicationSteps = ReadMethodSlice(

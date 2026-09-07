@@ -13,7 +13,7 @@ public class AreaClosureManager
     /// <summary>
     ///     #272 자기장 파생 웨이브: 구역별 완전-밖 시각(안전 반경이 구역 최근접 셀 거리
     ///     아래로 내려가는 순간)을 폐쇄 시각으로 삼는다 — 기존 웨이브 배선(경고 15초·문 잠금·
-    ///     꼬리 파괴·봇 대피·재접속 스냅샷)이 그대로 소비한다. 폐쇄 구역 틱 오염은 0 —
+    ///     꼬리 파괴·봇 대피·재접속 스냅샷)이 그대로 소비한다. 폐쇄 구역 틱 피해은 0 —
     ///     압박은 자기장 경사(경계 초과 거리 비례)가 전담한다.
     ///     운동장(중심 거리 0)은 수축 완료 시각에 닫힌다 — 최종 폐쇄 = 타이머 만료 = 오버타임 개시.
     /// </summary>
@@ -100,7 +100,7 @@ public class AreaClosureManager
                 "Swarm closure schedule initialized: MatchingId={MatchingId}, Waves={Waves}",
                 _matchingId,
                 string.Join(" | ", waves.Select(wave =>
-                    $"{wave.ClosureAtSeconds}s:{string.Join(',', wave.Areas)}@{wave.ClosedAreaCorruptionPerSecond}/s")));
+                    $"{wave.ClosureAtSeconds}s:{string.Join(',', wave.Areas)}@{wave.ClosedAreaDamagePerSecond}/s")));
 
             return state;
         }
@@ -218,7 +218,7 @@ public class AreaClosureManager
                 state.NextClosureIndex++;
                 _logger.LogInformation(
                     "Swarm closure wave applied: MatchingId={MatchingId}, CloseAt={CloseAt}s, Areas={Areas}, Rate={Rate}/s",
-                    _matchingId, wave.ClosureAtSeconds, string.Join(',', wave.Areas), wave.ClosedAreaCorruptionPerSecond);
+                    _matchingId, wave.ClosureAtSeconds, string.Join(',', wave.Areas), wave.ClosedAreaDamagePerSecond);
             }
 
             if (closedAreas.Count > 0)
@@ -259,24 +259,24 @@ public class AreaClosureManager
         }
     }
 
-    public int GetClosedAreaCorruptionPerTick(AreaType area, int tickSeconds = ResourceTickSeconds)
+    public int GetClosedAreaDamagePerTick(AreaType area, int tickSeconds = ResourceTickSeconds)
     {
         if (tickSeconds <= 0 || Volatile.Read(ref _state) is not { } state) return 0;
 
         lock (state.SyncRoot)
         {
             return state.ClosedAreas.Contains(area)
-                ? GetCurrentClosedAreaCorruptionPerSecond(state) * tickSeconds
+                ? GetCurrentClosedAreaDamagePerSecond(state) * tickSeconds
                 : 0;
         }
     }
 
-    public int GetOvertimeCorruptionPerTick(int tickSeconds = ResourceTickSeconds)
+    public int GetOvertimeDamagePerTick(int tickSeconds = ResourceTickSeconds)
     {
         if (tickSeconds <= 0 || Volatile.Read(ref _state) is not { } state) return 0;
         lock (state.SyncRoot)
         {
-            return GetOvertimeCorruptionPerSecond(state) * tickSeconds;
+            return GetOvertimeDamagePerSecond(state) * tickSeconds;
         }
     }
 
@@ -288,7 +288,7 @@ public class AreaClosureManager
 
 
     /// <summary>전역 오버타임 단계. 마지막 복도 폐쇄 완료 시각(5:20)부터 시작한다.</summary>
-    private int GetOvertimeCorruptionPerSecond(MatchingClosureState state)
+    private int GetOvertimeDamagePerSecond(MatchingClosureState state)
     {
         if (state.PhaseDriven || state.Waves.Count == 0) return 0;
 
@@ -301,13 +301,13 @@ public class AreaClosureManager
         return 16;
     }
 
-    private static int GetCurrentClosedAreaCorruptionPerSecond(MatchingClosureState state)
+    private static int GetCurrentClosedAreaDamagePerSecond(MatchingClosureState state)
     {
         if (state.PhaseDriven) return 4;
 
         int lastClosedWaveIndex = state.NextClosureIndex - 1;
         return lastClosedWaveIndex >= 0 && lastClosedWaveIndex < state.Waves.Count
-            ? state.Waves[lastClosedWaveIndex].ClosedAreaCorruptionPerSecond
+            ? state.Waves[lastClosedWaveIndex].ClosedAreaDamagePerSecond
             : 0;
     }
 
@@ -355,7 +355,7 @@ public class AreaClosureManager
 public sealed record ClosureWaveDefinition(
     int ClosureAtSeconds,
     IReadOnlyList<AreaType> Areas,
-    int ClosedAreaCorruptionPerSecond);
+    int ClosedAreaDamagePerSecond);
 
 public sealed record ClosureScheduleTick(
     IReadOnlyList<AreaType> WarningAreas,

@@ -40,9 +40,9 @@ public class SwarmDamagePathTests
         Assert.DoesNotContain("ScatterSwarmOrbBreakStones", cutBody);
         // 공격자 비용: 선결 검사 → 치명상 → 회복 차단이 같은 사건 안에 있다.
         // 값의 원천은 swarm_config.csv(#335) — CSV 행과 코드 폴백 기본값을 함께 잠근다.
-        Assert.Contains("SwarmConfigData.GetInt(\"SWARM_SINGLE_CUT_CORRUPTION_COST\", 35)", source);
+        Assert.Contains("SwarmConfigData.GetInt(\"SWARM_SINGLE_CUT_HEALTH_COST\", 35)", source);
         Assert.Contains("SwarmConfigData.GetDouble(\"SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS\", 8d)", source);
-        Assert.Equal("35", ReadSwarmConfigValue("SWARM_SINGLE_CUT_CORRUPTION_COST"));
+        Assert.Equal("35", ReadSwarmConfigValue("SWARM_SINGLE_CUT_HEALTH_COST"));
         Assert.Equal("8", ReadSwarmConfigValue("SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS"));
         Assert.Contains("ORB_SINGLE_CUT_REFUSED", cutBody);
         Assert.Contains("SwarmHealLockUntilUtc = healLockUntil", cutBody);
@@ -116,7 +116,7 @@ public class SwarmDamagePathTests
             Path.Combine(FindRepositoryRoot(), "game_server", "Services", "Bots", "BotDecisionService.cs"));
 
         // ① 절단 자제: 봇 전용, 래치 앞에서 걸린다.
-        Assert.Contains("SwarmBotCutMaxCorruptionRatio = 0.5f", botSource);
+        Assert.Contains("SwarmBotCutMinHealthRatio = 0.5f", botSource);
         Assert.Contains("SwarmBotCutCooldownSeconds = 6d", botSource);
         int cutMethodStart = source.IndexOf("private void TryPerformSwarmTrailCut(", StringComparison.Ordinal);
         int cutMethodEnd = source.IndexOf("// 링 연출 종류", cutMethodStart, StringComparison.Ordinal);
@@ -132,8 +132,8 @@ public class SwarmDamagePathTests
         Assert.Contains("wounded || attackerPower >= squadPower * SwarmBotFleePowerRatio", botSource);
 
         // ③ 치명상 이탈: 히스테리시스 + 전력 0으로 스캔.
-        Assert.Contains("SwarmBotWoundedEnterRatio = 0.6f", botSource);
-        Assert.Contains("SwarmBotWoundedExitRatio = 0.45f", botSource);
+        Assert.Contains("SwarmBotWoundedEnterRatio = 0.4f", botSource);
+        Assert.Contains("SwarmBotWoundedExitRatio = 0.55f", botSource);
         Assert.Contains("wounded ? 0f : squadPower", botSource);
     }
 

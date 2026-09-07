@@ -73,22 +73,22 @@ internal sealed class OrbRecoveryService(
                 candidate.PlayerId == playerId && !candidate.IsEliminated);
             if (session != null)
             {
-                int previousCorruption = session.CurrentCorruption;
-                if (previousCorruption > 0)
+                int previousHealth = session.CurrentHealth;
+                if (previousHealth < Config.MAX_HEALTH)
                 {
-                    session.ModifyStats(corruptionDelta: -requestedRecovery);
-                    effectiveRecovery = previousCorruption - session.CurrentCorruption;
+                    session.ModifyStats(healthDelta: requestedRecovery);
+                    effectiveRecovery = session.CurrentHealth - previousHealth;
                 }
             }
             else
             {
                 var bot = matchingBots.FirstOrDefault(candidate =>
                     candidate.PlayerId == playerId && !candidate.IsEliminated);
-                if (bot != null && bot.Corruption > 0)
+                if (bot != null && bot.Health < Config.MAX_HEALTH)
                 {
-                    int previousCorruption = bot.Corruption;
-                    bot.Corruption = Math.Max(0, bot.Corruption - requestedRecovery);
-                    effectiveRecovery = previousCorruption - bot.Corruption;
+                    int previousHealth = bot.Health;
+                    bot.Health = Math.Min(Config.MAX_HEALTH, bot.Health + requestedRecovery);
+                    effectiveRecovery = bot.Health - previousHealth;
                 }
             }
 

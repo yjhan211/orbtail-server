@@ -127,7 +127,7 @@ internal sealed class MatchFieldService(
     /// <summary>
     ///     #272 자기장 폐쇄: 구역 웨이브는 자기장에서 파생한 시간표로 닫는다 (MatchPressureFieldPolicy.Enabled=false면
     ///     폐쇄 없음 — 레거시 DefaultP0Waves 폴백은 #310에서 제거). 경고 15초 → 폐쇄 브로드캐스트. 폐쇄 구역 오염은 자기장
-    ///     경사(정산 틱의 MatchPressureFieldPolicy.GetCorruptionPerTick)가 전담하고, 신규 몹 스폰 정지는 캠프
+    ///     경사(정산 틱의 MatchPressureFieldPolicy.GetDamagePerTick)가 전담하고, 신규 몹 스폰 정지는 캠프
     ///     리졸버, 봇·스팟 제외는 IsSwarmAreaOutside가 담당한다.
     /// </summary>
     /// <summary>
@@ -170,8 +170,8 @@ internal sealed class MatchFieldService(
 
         if (closureTick.ClosedAreas.Count > 0)
         {
-            // 폐쇄 = 문 잠금 + 틱 오염 (즉사 없음, #227): 닫히는 순간 안에 있어도 죽지
-            // 않는다. 정산 틱(GetClosedAreaCorruptionPerTick)이 5초마다 오염을 얹고, 안에 있는 사람은 자기 구역
+            // 폐쇄 = 문 잠금 + 틱 피해 (즉사 없음, #227): 닫히는 순간 안에 있어도 죽지
+            // 않는다. 정산 틱(GetClosedAreaDamagePerTick)이 5초마다 피해를 주고, 안에 있는 사람은 자기 구역
             // 문을 게이지로 따고 나갈 수 있다(밖에서 들어오는 문 따기는 여전히 거절). 자기 구역 문이 잠기는 것은
             // 그대로다 — "지금 나가야 하는가"의 판단은 경고 15초와 잠긴 문이 만든다.
             // 폐쇄·경고도 수면을 깨우지 않는다 — 수면 중단은 이동뿐이다.
@@ -181,7 +181,7 @@ internal sealed class MatchFieldService(
                 outbound.Add(new SwarmDoorStateOutbound(doorId, allRecipients));
 
             // 꼬리 파괴: 본인은 밖에 있고 꼬리만 남은 경우가 무보상 파괴 대상이다. 안에 있는 사람의 꼬리는
-            // 본인과 함께 남는다 — 틱 오염이 그 사람의 비용이다.
+            // 본인과 함께 남는다 — 틱 피해이 그 사람의 비용이다.
             PrepareDestroySwarmOrbsInClosedAreas(
                 matchingId,
                 closureTick.ClosedAreas,
@@ -325,7 +325,7 @@ internal sealed class MatchFieldService(
 
         foreach (var (playerId, ownerPosition, ownerSessionOrdinal) in owners)
         {
-            // 본인이 폐쇄 구역 안이면 꼬리는 그대로 둔다: 즉사가 퇴역해 본인은 틱 오염을 받으며
+            // 본인이 폐쇄 구역 안이면 꼬리는 그대로 둔다: 즉사가 퇴역해 본인은 틱 피해을 받으며
             // 문을 따고 나가는 중이다 — 여기서 꼬리까지 지우면 나가도 빈손이라 살아남을 이유가 없다.
             var ownerCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, ownerPosition);
             if (closed.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, ownerCell)))

@@ -27,21 +27,21 @@ public sealed class WindBladeServiceTests
             List<SwarmParticipantSpatial> participants =
                 [new(11, AreaType.None, new Vector3f(0, 0, 0)), new(12, AreaType.None, origin)];
             service.Process(match.MatchingId, now, participants, [], [owner, victim], []);
-            Assert.Equal(0, victim.Corruption);
+            Assert.Equal(Config.MAX_HEALTH, victim.Health);
             Assert.False(match.Swarm.WindBlade.IsWounded(12, now));
 
             var hitAt = now.AddSeconds(Math.Max(Config.SWARM_WIND_BLADE_TICK_SECONDS,
                 Config.SWARM_WIND_BLADE_SPINUP_SECONDS) + 0.001);
             service.Process(match.MatchingId, hitAt, participants, [], [owner, victim], []);
             int expected = Math.Max(1, (int)MathF.Round(
-                Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_CORRUPTION)));
-            Assert.Equal(expected, victim.Corruption);
+                Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE)));
+            Assert.Equal(Config.MAX_HEALTH - expected, victim.Health);
             Assert.True(match.Swarm.WindBlade.IsWounded(12, hitAt));
-            Assert.Equal(0, owner.Corruption);
+            Assert.Equal(Config.MAX_HEALTH, owner.Health);
 
             service.Process(match.MatchingId, hitAt.AddSeconds(Config.SWARM_WIND_BLADE_TICK_SECONDS + 0.001),
                 participants, [], [owner, victim], []);
-            Assert.Equal(expected, victim.Corruption);
+            Assert.Equal(Config.MAX_HEALTH - expected, victim.Health);
             match.TryMarkTerminal();
         }
     }
@@ -66,7 +66,7 @@ public sealed class WindBladeServiceTests
             var now = DateTime.UtcNow;
             service.Process(match.MatchingId, now, participants, [], [victim], []);
             service.Process(match.MatchingId, now.AddSeconds(1), participants, [], [victim], []);
-            Assert.Equal(0, victim.Corruption);
+            Assert.Equal(Config.MAX_HEALTH, victim.Health);
             Assert.False(match.Swarm.WindBlade.IsWounded(12, now.AddSeconds(1)));
             match.TryMarkTerminal();
         }

@@ -25,7 +25,7 @@ internal sealed class BotDecisionService(
 {
     // 봇은 매치 참가자다. 각 처리 단계의 호출 순서는 MatchArenaService가 정한다.
 
-    // 봇 오염 자연 회복: 회복 오브 운에 기대지 않는 생존 바닥. 마지막 피격 후 유예가 지나면 초당 일정량
+    // 봇 체력 자연 회복: 회복 오브 운에 기대지 않는 생존 바닥. 마지막 피격 후 유예가 지나면 초당 일정량
     // 회복한다 — "도망 성공"이 실제 생존이 되게. 사람은 위로 오브가 같은 역할을 하므로 제외. 유예 6초·초당 2는
     // 접촉 피해 최대치(1.25~2.5/초)를 앞지르지 않는 값이다 — 앞지르면 봇이 잔상에게 수학적으로 죽을 수 없고,
     // 사람은 이만한 수동 회복이 없다(수면은 정지·무피격을 요구하고 맞으면 끊긴다).
@@ -477,7 +477,7 @@ internal sealed class BotDecisionService(
             bot.SwarmBareSpeedUntilUtc =
                 DateTime.UtcNow.AddSeconds(Config.SWARM_BARE_MOVE_SPEED_SECONDS);
         bot.IsSwarmBareHanded = !hasSquadOrbs;
-        // 치명상 이탈: 오염이 60%를 넘긴 봇은 전력 비교 없이 모든 상대를 강자로 보고 물러나며(추격도 압박도 없음),
+        // 치명상 이탈: 체력이 40% 이하인 봇은 전력 비교 없이 모든 상대를 강자로 보고 물러나며(추격도 압박도 없음),
         // 45% 아래로 회복해야 다시 싸운다 — 다친 쪽이 등을 보이고 성한 쪽이 쫓는 그림이 서야 하고, 후반까지
         // 살아 있는 봇이 있어야 폐쇄 수렴전이 선다.
         bool wounded = UpdateSwarmBotWoundedState(matchingId, bot);
@@ -793,24 +793,24 @@ internal sealed class BotDecisionService(
     // 도는 코어 동사라 동수를 강자로 보지 않는다. 빈손(전력 0)은 여전히 모두를 강자로 본다.
     private const float SwarmBotFleePowerRatio = 1.5f;
 
-    // 치명상 이탈: 오염이 최대의 60%(252)에 닿으면 치명상, 45%(189) 아래로 내려와야
+    // 치명상 이탈: 체력이 최대의 40% 이하이면 치명상, 55% 이상으로 회복해야
     // 해제 — 회복 1틱에 상태가 뒤집혀 "도망↔복귀"가 떨리지 않게 히스테리시스를 둔다.
-    private const float SwarmBotWoundedEnterRatio = 0.6f;
-    private const float SwarmBotWoundedExitRatio = 0.45f;
+    private const float SwarmBotWoundedEnterRatio = 0.4f;
+    private const float SwarmBotWoundedExitRatio = 0.55f;
 
-    /// <summary>봇의 치명상 상태를 갱신하고 돌려준다 — 진입 60%, 해제 45%.</summary>
+    /// <summary>봇의 치명상 상태를 갱신하고 돌려준다 — 남은 체력 40% 이하에서 진입, 55% 이상에서 해제.</summary>
     private bool UpdateSwarmBotWoundedState(long matchingId, BotPlayerState bot)
     {
         var key = (matchingId, bot.PlayerId);
         bool wounded = matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.Wounded.Contains(key);
-        float ratio = bot.Corruption / (float)Config.MAX_CORRUPTION;
-        if (!wounded && ratio >= SwarmBotWoundedEnterRatio)
+        float ratio = bot.Health / (float)Config.MAX_HEALTH;
+        if (!wounded && ratio <= SwarmBotWoundedEnterRatio)
         {
             matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.Wounded.Add(key);
             return true;
         }
 
-        if (wounded && ratio <= SwarmBotWoundedExitRatio)
+        if (wounded && ratio >= SwarmBotWoundedExitRatio)
         {
             matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.Wounded.Remove(key);
             return false;
@@ -827,19 +827,19 @@ internal sealed class BotDecisionService(
     // 스트레이프(수직 와리가리)는 퇴역 (#226): 1초 반전은 좌우 연타, 3초 버킷도 촐싹거림 —
     // 우세 피격 반응은 압박 전진(ChooseSwarmBotDirective)으로 대체됐다.
 
-    // 봇 절단 자제: 절단 뒤 오염이 이 비율(최대 420의 절반 = 210)을 넘으면 봇은 자르지
+    // 봇 절단 자제: 절단 뒤 체력이 이 비율(최대 체력의 절반)보다 적으면 봇은 자르지
     // 않고, 자른 뒤 이 시간 동안은 다시 자르지 않는다. 사람에게는 적용하지 않는다.
-    private const float SwarmBotCutMaxCorruptionRatio = 0.5f;
+    private const float SwarmBotCutMinHealthRatio = 0.5f;
     private const double SwarmBotCutCooldownSeconds = 6d;
 
     /// <summary>
-    ///     봇이 지금 절단을 질러도 되는가 — 비용을 내고도 오염 절반 아래이고, 직전 절단에서 쿨다운이 지났는가.
-    ///     사람 판정이 아니다: 사람의 절단은 만충 탈락만 아니면 언제나 성립한다.
+    ///     봇이 지금 절단을 질러도 되는가 — 비용을 내고도 체력이 절반 이상이고, 직전 절단에서 쿨다운이 지났는가.
+    ///     사람 판정이 아니다: 사람의 절단은 체력이 0이 되지만 않으면 언제나 성립한다.
     /// </summary>
-    public bool IsSwarmBotCutAllowed(long matchingId, long botPlayerId, int corruptionBefore, DateTime nowUtc, int cutCost)
+    public bool IsSwarmBotCutAllowed(long matchingId, long botPlayerId, int healthBefore, DateTime nowUtc, int cutCost)
     {
-        if (corruptionBefore + cutCost >
-            Config.MAX_CORRUPTION * SwarmBotCutMaxCorruptionRatio)
+        if (healthBefore - cutCost <
+            Config.MAX_HEALTH * SwarmBotCutMinHealthRatio)
             return false;
         return !matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.LastTrailCutAtUtc.TryGetValue((matchingId, botPlayerId), out var lastCutAtUtc) ||
                (nowUtc - lastCutAtUtc).TotalSeconds >= SwarmBotCutCooldownSeconds;
@@ -955,14 +955,14 @@ internal sealed class BotDecisionService(
         growth.GetCostBreakdown(matchingId, botPlayerId).FinalCost + Config.SWARM_BOX_OPEN_COST;
 
     /// <summary>
-    ///     비접촉 유예를 넘긴 봇의 오염을 1초 단위로 회복한다. 피격이 들어오면
+    ///     비접촉 유예를 넘긴 봇의 체력을 1초 단위로 회복한다. 피격이 들어오면
     ///     유예가 리셋되므로, 스웜에 물려 있는 동안에는 회복되지 않는다.
     /// </summary>
     public void ProcessSwarmBotRecovery(long matchingId, List<BotPlayerState> aliveBots, DateTime nowUtc)
     {
         foreach (var bot in aliveBots)
         {
-            if (bot.Corruption <= 0)
+            if (bot.Health >= Config.MAX_HEALTH)
                 continue;
 
             var key = (matchingId, bot.PlayerId);
@@ -974,7 +974,7 @@ internal sealed class BotDecisionService(
                 continue;
 
             matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.NextRecoveryAtUtc[key] = nowUtc.AddSeconds(1d);
-            bot.Corruption = Math.Max(0, bot.Corruption - SwarmBotRecoveryPerSecond);
+            bot.Health = Math.Min(Config.MAX_HEALTH, bot.Health + SwarmBotRecoveryPerSecond);
         }
     }
 

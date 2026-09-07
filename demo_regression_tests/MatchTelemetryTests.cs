@@ -61,7 +61,7 @@ public sealed class MatchTelemetryTests
             202,
             ["Library"],
             "Library",
-            corruption: 40,
+            health: 40,
             inventorySlotsUsed: 5,
             inventorySlotCapacity: 6,
             closureAtUnixMs: DateTimeOffset.UtcNow.AddSeconds(15).ToUnixTimeMilliseconds(),
@@ -72,7 +72,7 @@ public sealed class MatchTelemetryTests
 
         var events = log.GetRecent(matchingId, 5_000);
         var snapshot = Assert.Single(events, entry => entry.Type == "CLOSURE_WARNING_SNAPSHOT");
-        Assert.Equal(40, snapshot.Corruption);
+        Assert.Equal(40, snapshot.Health);
         Assert.Equal(5, snapshot.InventorySlotsUsed);
 
         var exit = Assert.Single(events, entry => entry.Type == "CLOSURE_WARNING_EXIT");
@@ -110,7 +110,7 @@ public sealed class MatchTelemetryTests
     }
 
     [Fact]
-    public void AfterimageHitTelemetryCapturesTargetKindCorruptionAndLethalOutcome()
+    public void AfterimageHitTelemetryCapturesTargetKindHealthAndLethalOutcome()
     {
         const long matchingId = 195004;
         var log = TestGameEventLogs.Create();
@@ -122,8 +122,8 @@ public sealed class MatchTelemetryTests
             targetPlayerId: 401,
             area: "Library",
             damage: 7,
-            corruptionBefore: 94,
-            corruptionAfter: 100,
+            healthBefore: 6,
+            healthAfter: 0,
             isLethal: true,
             isBot: false,
             occurredAt: now);
@@ -135,8 +135,8 @@ public sealed class MatchTelemetryTests
         Assert.Equal(401, hit.TargetPlayerId);
         Assert.Equal("Library", hit.Area);
         Assert.Equal(7, hit.Damage);
-        Assert.Equal(94, hit.CorruptionBefore);
-        Assert.Equal(100, hit.CorruptionAfter);
+        Assert.Equal(6, hit.HealthBefore);
+        Assert.Equal(0, hit.HealthAfter);
         Assert.Equal("eliminated", hit.Outcome);
         Assert.False(hit.IsBot);
     }

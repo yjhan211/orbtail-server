@@ -73,12 +73,12 @@ public partial class BotPlayerManager
         public double WalkingElapsedMilliseconds { get; set; }
     }
 
-    public void ApplyEnvironmentalCorruption(BotPlayerState bot, int corruptionDelta)
+    public void ApplyEnvironmentalDamage(BotPlayerState bot, int damage)
     {
-        if (bot.IsEliminated || corruptionDelta == 0)
+        if (bot.IsEliminated || damage == 0)
             return;
 
-        bot.Corruption = Math.Clamp(bot.Corruption + corruptionDelta, 0, Config.MAX_CORRUPTION);
+        bot.Health = Math.Clamp(bot.Health - damage, 0, Config.MAX_HEALTH);
     }
 
     /// <summary>

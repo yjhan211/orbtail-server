@@ -1,5 +1,5 @@
 id,value,comment
-MAX_CORRUPTION,420,전투·폐쇄 탈락 오염 임계
+MAX_HEALTH,420,플레이어 최대 체력 — 0이면 탈락
 SWARM_MATCH_DURATION_SECONDS,300,매치 길이(초) — 5분 오브 점수전
 SWARM_PLAYERS_PER_MATCH,8,매치 정원 — School2 시작방 수
 SWARM_FIELD_HOLD_SECONDS,0,자기장 수축 유예(초)
@@ -23,7 +23,7 @@ SWARM_PVP_ORB_COUNT,3,유저간 사격 참여 오브 수 (앞열)
 SWARM_BOSS_ATTACK_RANGE,4.1,보스 사거리 — swarm_monster.csv 보스 행과 동기
 SWARM_ORB_TRAIL_SPACING,0.7,오브열 간격
 SWARM_ORB_TRAIL_FIRST_OFFSET,0.7,오브열 첫 오브 오프셋
-SWARM_CROSSFIRE_SHOCK_CORRUPTION,50,교차사격 충격 1회 오염 (티어 무관 고정)
+SWARM_CROSSFIRE_SHOCK_DAMAGE,50,교차사격 충격 1회 피해 (티어 무관 고정)
 SWARM_DAMAGE_TAKEN_MULTIPLIER,0.33333334,받는 피해 배율 (1/3의 float 정확값) — 최솟값 1 보정은 코드
 SWARM_SUN_BURN_SECONDS,3,화상 지속(초)
 SWARM_SUN_BURN_TICK_INTERVAL_SECONDS,1,화상 틱 간격(초)
@@ -51,12 +51,12 @@ SWARM_MONSTER_MOVE_SPEED,4.2,잔상 이동 속도 (행군·추격 공통)
 SWARM_MONSTER_AGGRO_RADIUS,2.5,잔상 근접 개전 반경 — 남의 몹 근접 난입에도 같은 값
 SWARM_MONSTER_BOWLER_SPLASH_RADIUS,1.5,볼러·골렘 접촉 스플래시 반경
 SWARM_MONSTER_WAVE_SPLASH_RADIUS,2.2,파도 문양 잔상 접촉 스플래시 반경
-SWARM_PVP_CORRUPTION_PER_DAMAGE,0.12,PvP 피해 1당 본체 오염 환산 (이월 누산)
+SWARM_PVP_DAMAGE_PER_DAMAGE,0.12,PvP 피해 1당 본체 체력 피해 환산 (이월 누산)
 SWARM_CRITICAL_CHANCE,0.15,PvE 치명타 확률
 SWARM_CRITICAL_MULTIPLIER,2,PvE 치명타 피해 배수
-SWARM_FIELD_BASE_CORRUPTION_PER_TICK,12,자기장 경계 밖 오염 기본값 (리소스 틱 5초당)
-SWARM_FIELD_CORRUPTION_PER_EXTRA_CELL,5,자기장 경계 초과 셀당 오염 가산
-SWARM_SINGLE_CUT_CORRUPTION_COST,35,꼬리 절단 성공 시 절단자 정신오염 비용
+SWARM_FIELD_BASE_DAMAGE_PER_TICK,12,자기장 경계 밖 피해 기본값 (리소스 틱 5초당)
+SWARM_FIELD_DAMAGE_PER_EXTRA_CELL,5,자기장 경계 초과 셀당 피해 가산
+SWARM_SINGLE_CUT_HEALTH_COST,35,꼬리 절단 성공 시 절단자 체력 비용
 SWARM_SINGLE_CUT_HEAL_LOCK_SECONDS,8,꼬리 절단 뒤 절단자 수면 회복 차단(초)
 SWARM_TRAIL_CUT_SAME_ORB_DEBOUNCE_SECONDS,0.8,같은 오브 재절단 억제 창(초) — 한 통과 = 한 절단
 SWARM_CUT_RETALIATION_WINDOW_SECONDS,1.2,꼬리 상실 뒤 절단자 한정 반격 보호 창(초)

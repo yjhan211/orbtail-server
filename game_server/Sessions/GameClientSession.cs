@@ -26,7 +26,7 @@ namespace game_server.sessions;
 public partial class GameClientSession : SessionBase
 {
     private const int MaxStamina = 100;
-    private static int MaxCorruption => Config.MAX_CORRUPTION;
+    private static int MaxHealth => Config.MAX_HEALTH;
     private const int InitialStamina = MaxStamina;
     private const int InitialCorruption = 0;
     private static readonly TimeSpan ExploreMoveGracePeriod = TimeSpan.FromMilliseconds(750);
@@ -282,12 +282,12 @@ public partial class GameClientSession : SessionBase
     ///     탈락/관전 상태에서 행동 가능한지 체크
     /// </summary>
     internal bool IsGameEnded => Volatile.Read(ref _isGameEnded);
-    internal int CurrentCorruption => Corruption;
+    internal int CurrentHealth => Health;
     public bool IsEliminated => PlayerMatchStatus == PlayerMatchStatus.ELIMINATED || PlayerMatchStatus == PlayerMatchStatus.SPECTATING;
 
     // 인게임 스탯 (게임 종료 시 초기화)
     private int Stamina { get => _condition.Stamina; set => _condition.Stamina = value; }
-    private int Corruption { get => _condition.Corruption; set => _condition.Corruption = value; }
+    private int Health { get => _condition.Health; set => _condition.Health = value; }
 
     private void InitializeProtocolHandlers()
     {

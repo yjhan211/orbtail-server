@@ -63,20 +63,20 @@ internal sealed class MatchEnvironmentService(
             return;
         }
 
-        int overtimeDelta = match.Closures.GetOvertimeCorruptionPerTick(
+        int overtimeDelta = match.Closures.GetOvertimeDamagePerTick(
             MatchRuntime.EnvironmentalTickIntervalSeconds);
         var targets = new List<EnvironmentalTarget>(aliveCount);
 
         foreach (var session in humans)
         {
-            int closureDelta = match.Closures.GetClosedAreaCorruptionPerTick(
+            int closureDelta = match.Closures.GetClosedAreaDamagePerTick(
                 session.CurrentArea,
                 MatchRuntime.EnvironmentalTickIntervalSeconds);
             if (session.LastValidatedPosition != null)
-                closureDelta += MatchPressureFieldPolicy.GetCorruptionPerTick(match, session.LastValidatedPosition, DateTime.UtcNow);
+                closureDelta += MatchPressureFieldPolicy.GetDamagePerTick(match, session.LastValidatedPosition, DateTime.UtcNow);
             targets.Add(new EnvironmentalTarget(
                 session.PlayerId!.Value,
-                session.CurrentCorruption,
+                session.CurrentHealth,
                 closureDelta,
                 overtimeDelta,
                 session,
@@ -85,13 +85,13 @@ internal sealed class MatchEnvironmentService(
 
         foreach (var bot in bots)
         {
-            int closureDelta = match.Closures.GetClosedAreaCorruptionPerTick(
+            int closureDelta = match.Closures.GetClosedAreaDamagePerTick(
                 bot.CurrentArea,
                 MatchRuntime.EnvironmentalTickIntervalSeconds);
-            closureDelta += MatchPressureFieldPolicy.GetCorruptionPerTick(match, bot.Position, DateTime.UtcNow);
+            closureDelta += MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Position, DateTime.UtcNow);
             targets.Add(new EnvironmentalTarget(
                 bot.PlayerId,
-                bot.Corruption,
+                bot.Health,
                 closureDelta,
                 overtimeDelta,
                 null,
@@ -107,17 +107,17 @@ internal sealed class MatchEnvironmentService(
             if (target.Session != null)
             {
                 target.Session.ModifyStats(
-                    corruptionDelta: totalDelta,
+                    healthDelta: -totalDelta,
                     deferElimination: true);
             }
             else if (target.Bot != null)
             {
-                match.Bots.ApplyEnvironmentalCorruption(target.Bot, totalDelta);
+                match.Bots.ApplyEnvironmentalDamage(target.Bot, totalDelta);
             }
         }
 
         var eliminatedTargets = targets
-            .Where(target => target.PreDamageCorruption + target.ClosureDelta + target.OvertimeDelta >= Config.MAX_CORRUPTION)
+            .Where(target => target.PreDamageHealth - target.ClosureDelta - target.OvertimeDelta <= 0)
             .ToList();
         if (eliminatedTargets.Count == 0)
             return;
@@ -131,7 +131,7 @@ internal sealed class MatchEnvironmentService(
                     .TotalDamageDealt;
                 return new MatchSettlementCandidate(
                     target.PlayerId,
-                    target.PreDamageCorruption,
+                    target.PreDamageHealth,
                     damage);
             }));
 
@@ -160,7 +160,7 @@ internal sealed class MatchEnvironmentService(
             var target = eliminatedTargets.First(entry => entry.PlayerId == candidate.PlayerId);
             bool closureElimination =
                 target.ClosureDelta > 0 &&
-                target.PreDamageCorruption + target.ClosureDelta >= Config.MAX_CORRUPTION;
+                target.PreDamageHealth - target.ClosureDelta <= 0;
             bool overtimeElimination = !closureElimination && target.OvertimeDelta > 0;
 
             if (target.Session != null)
@@ -176,7 +176,7 @@ internal sealed class MatchEnvironmentService(
                 botEliminations.Process(
                     match,
                     target.PlayerId,
-                    EliminationReason.MENTAL_ZERO,
+                    EliminationReason.HEALTH_ZERO,
                     isAreaClosureElimination: closureElimination,
                     isOvertimeElimination: overtimeElimination,
                     deferGameOver: true,
@@ -198,10 +198,9 @@ internal sealed class MatchEnvironmentService(
 
     private sealed record EnvironmentalTarget(
         long PlayerId,
-        int PreDamageCorruption,
+        int PreDamageHealth,
         int ClosureDelta,
         int OvertimeDelta,
         GameClientSession? Session,
         BotPlayerState? Bot);
 }
-

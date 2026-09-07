@@ -76,13 +76,13 @@ public class GameEventLogManager
         LogClosureMovement(matchingId, playerId, fromArea, toArea, isBot, now);
     }
 
-    public void LogResource(long matchingId, long playerId, int staminaDelta, int corruptionDelta,
-        int stamina, int corruption, bool staminaConverted, string reason, bool isBot)
+    public void LogResource(long matchingId, long playerId, int staminaDelta, int healthDelta,
+        int stamina, int health, bool staminaConverted, string reason, bool isBot)
     {
         var parts = new List<string>();
         if (staminaDelta != 0) parts.Add($"체력{(staminaDelta >= 0 ? "+" : "")}{staminaDelta}");
-        if (corruptionDelta != 0) parts.Add($"오염{(corruptionDelta >= 0 ? "+" : "")}{corruptionDelta}");
-        parts.Add($"(체력 {stamina}/오염 {corruption})");
+        if (healthDelta != 0) parts.Add($"체력{(healthDelta >= 0 ? "+" : "")}{healthDelta}");
+        parts.Add($"(스태미나 {stamina}/체력 {health})");
         if (staminaConverted) parts.Add("[전환]");
         if (!string.IsNullOrEmpty(reason)) parts.Add($"<{reason}>");
         Append(matchingId, "RESOURCE", playerId, isBot, string.Join(" ", parts));
@@ -494,8 +494,8 @@ public class GameEventLogManager
         long targetPlayerId,
         string area,
         int damage,
-        int corruptionBefore,
-        int corruptionAfter,
+        int healthBefore,
+        int healthAfter,
         bool isLethal,
         bool isBot,
         DateTimeOffset occurredAt)
@@ -505,7 +505,7 @@ public class GameEventLogManager
             "AFTERIMAGE_HIT",
             targetPlayerId,
             isBot,
-            $"Afterimage {monsterId} hit {FormatPlayer(targetPlayerId)} for {damage}; corruption={corruptionBefore}->{corruptionAfter}.",
+            $"Afterimage {monsterId} hit {FormatPlayer(targetPlayerId)} for {damage}; health={healthBefore}->{healthAfter}.",
             occurredAt,
             entry =>
             {
@@ -514,8 +514,8 @@ public class GameEventLogManager
                 entry.MonsterId = monsterId;
                 entry.DamageSourceType = "emotion_afterimage";
                 entry.Damage = damage;
-                entry.CorruptionBefore = corruptionBefore;
-                entry.CorruptionAfter = corruptionAfter;
+                entry.HealthBefore = healthBefore;
+                entry.HealthAfter = healthAfter;
                 entry.Outcome = isLethal ? "eliminated" : "hit";
                 entry.OccurredAtUnixMs = entry.TimestampUnixMs;
             });
@@ -694,7 +694,7 @@ public class GameEventLogManager
     }
 
     public void LogClosureWarningSnapshot(long matchingId, long playerId, IReadOnlyCollection<string> warningAreas,
-        string currentArea, int corruption, int inventorySlotsUsed, int inventorySlotCapacity,
+        string currentArea, int health, int inventorySlotsUsed, int inventorySlotCapacity,
         long closureAtUnixMs, bool isBot)
     {
         var now = DateTimeOffset.UtcNow;
@@ -707,12 +707,12 @@ public class GameEventLogManager
         }
 
         AppendAt(matchingId, "CLOSURE_WARNING_SNAPSHOT", playerId, isBot,
-            $"Closure warning: areas={string.Join(',', warningAreas)}, current={currentArea}, corruption={corruption}, slots={inventorySlotsUsed}/{inventorySlotCapacity}.",
+            $"Closure warning: areas={string.Join(',', warningAreas)}, current={currentArea}, health={health}, slots={inventorySlotsUsed}/{inventorySlotCapacity}.",
             now, entry =>
             {
                 entry.WarningAreas = warningAreas.ToList();
                 entry.Area = currentArea;
-                entry.Corruption = corruption;
+                entry.Health = health;
                 entry.InventorySlotsUsed = inventorySlotsUsed;
                 entry.InventorySlotCapacity = inventorySlotCapacity;
                 entry.ClosureAtUnixMs = closureAtUnixMs;
@@ -1124,9 +1124,9 @@ public class GameEventLogManager
         OrbColor.Blue => "wave_burst",
         _ => "none"
     };
-    public void LogOvertimeStageChanged(long matchingId, int stage, int corruptionPerSecond)
+    public void LogOvertimeStageChanged(long matchingId, int stage, int damagePerSecond)
     {
-        if (stage <= 0 || corruptionPerSecond <= 0) return;
+        if (stage <= 0 || damagePerSecond <= 0) return;
         var state = GetTelemetry(matchingId);
         lock (state.SyncRoot)
         {
@@ -1135,10 +1135,10 @@ public class GameEventLogManager
         }
 
         Append(matchingId, "OVERTIME_STAGE_CHANGED", 0, false,
-            $"Overtime stage {stage}: corruption={corruptionPerSecond}/s.", entry =>
+            $"Overtime stage {stage}: damage={damagePerSecond}/s.", entry =>
             {
                 entry.OvertimeStage = stage;
-                entry.CorruptionPerSecond = corruptionPerSecond;
+                entry.DamagePerSecond = damagePerSecond;
             });
     }
 
@@ -1736,8 +1736,8 @@ public class GameEventEntry
     public List<MonsterDamageContribution>? MonsterDamageContributions { get; set; }
     public bool? IsAreaClosureElimination { get; set; }
     public bool? IsOvertimeElimination { get; set; }
-    public int? CorruptionBefore { get; set; }
-    public int? CorruptionAfter { get; set; }
+    public int? HealthBefore { get; set; }
+    public int? HealthAfter { get; set; }
     public int? Damage { get; set; }
     public long? ElapsedMilliseconds { get; set; }
     public long? PreviousHitGapMilliseconds { get; set; }
@@ -1786,7 +1786,7 @@ public class GameEventEntry
     public bool? AutoUsed { get; set; }
     public List<string>? WarningAreas { get; set; }
     public List<string>? OpenAreas { get; set; }
-    public int? Corruption { get; set; }
+    public int? Health { get; set; }
     public int? InventorySlotsUsed { get; set; }
     public int? InventorySlotCapacity { get; set; }
     public long? ClosureAtUnixMs { get; set; }
@@ -1799,7 +1799,7 @@ public class GameEventEntry
     public List<EliminationDropPickup>? DropPickupOrder { get; set; }
     public List<long>? UncollectedDroppedItemUids { get; set; }
     public int? OvertimeStage { get; set; }
-    public int? CorruptionPerSecond { get; set; }
+    public int? DamagePerSecond { get; set; }
     public long? WinnerPlayerId { get; set; }
     public string? EndReason { get; set; }
     public string? TieBreakCriterion { get; set; }

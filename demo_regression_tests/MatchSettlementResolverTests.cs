@@ -5,20 +5,20 @@ namespace demo_regression_tests;
 public sealed class MatchSettlementResolverTests
 {
     [Fact]
-    public void Resolve_PrefersLowerPreDamageCorruption()
+    public void Resolve_PrefersHigherPreDamageHealth()
     {
         var result = MatchSettlementResolver.Resolve(195001, new[]
         {
-            new MatchSettlementCandidate(1, 70, 500),
-            new MatchSettlementCandidate(2, 60, 10)
+            new MatchSettlementCandidate(1, 60, 500),
+            new MatchSettlementCandidate(2, 70, 10)
         });
 
         Assert.Equal(2, result.BestToWorst[0].PlayerId);
-        Assert.Equal("pre_damage_corruption", result.DecisiveCriterion);
+        Assert.Equal("pre_damage_health", result.DecisiveCriterion);
     }
 
     [Fact]
-    public void Resolve_PrefersHigherPvpDamageWhenCorruptionMatches()
+    public void Resolve_PrefersHigherPvpDamageWhenHealthMatches()
     {
         var result = MatchSettlementResolver.Resolve(195002, new[]
         {

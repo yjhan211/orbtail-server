@@ -12,7 +12,7 @@ internal static class GroundItemPickupService
 {
     public static GroundItemPickupResult TryPickup(
         MatchRuntime runtime, long playerId, AreaType area, Vector3f position,
-        int stamina, int maxStamina, int corruption, long groundItemUid)
+        int stamina, int maxStamina, int health, long groundItemUid)
     {
         if (!Monitor.IsEntered(runtime.Sync))
             throw new InvalidOperationException("Ground item pickup requires the match lock.");
@@ -25,7 +25,7 @@ internal static class GroundItemPickupService
         bool bootsPickup = false;
         bool keyPickup = false;
         int staminaRecovery = 0;
-        int corruptionRecovery = 0;
+        int healthRecovery = 0;
         ErrorCode rejection = ErrorCode.INVENTORY_FULL;
 
         long discovererPlayerId = runtime.GroundItems.GetDiscovererPlayerId(
@@ -67,9 +67,9 @@ internal static class GroundItemPickupService
                     item.ItemId,
                     stamina,
                     maxStamina,
-                    corruption,
+                    health,
                     out staminaRecovery,
-                    out corruptionRecovery,
+                    out healthRecovery,
                     runtime.MatchingId,
                     playerId);
                 if (disposition == GroundItemPickupDisposition.LeaveOnGround)
@@ -99,7 +99,7 @@ internal static class GroundItemPickupService
 
         return new(status, rejection, attemptedItem, claimedItem, addedItem,
             discovererPlayerId, autoUsed, autoEquipped, summonStonePickup,
-            jamPickup, bootsPickup, keyPickup, staminaRecovery, corruptionRecovery);
+            jamPickup, bootsPickup, keyPickup, staminaRecovery, healthRecovery);
     }
 }
 
@@ -107,4 +107,4 @@ internal sealed record GroundItemPickupResult(
     GroundItemClaimStatus Status, ErrorCode Rejection,
     GroundItemInfo? AttemptedItem, GroundItemInfo? ClaimedItem, InGameItemInfo? AddedItem,
     long DiscovererPlayerId, bool AutoUsed, bool AutoEquipped, bool SummonStonePickup,
-    bool JamPickup, bool BootsPickup, bool KeyPickup, int StaminaRecovery, int CorruptionRecovery);
+    bool JamPickup, bool BootsPickup, bool KeyPickup, int StaminaRecovery, int HealthRecovery);

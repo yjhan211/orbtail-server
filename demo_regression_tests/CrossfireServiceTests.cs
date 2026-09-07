@@ -34,24 +34,24 @@ public sealed class CrossfireServiceTests
                 new(12, AreaType.S2Ground, new Vector3f(2, Config.SWARM_ORB_ORBIT_CENTER_OFFSET_Y, 0))
             ];
             service.ProcessSwarmCrossfires(match.MatchingId, now, participants, [], [owner, victim], []);
-            Assert.Equal(0, victim.Corruption);
+            Assert.Equal(Config.MAX_HEALTH, victim.Health);
             Assert.Empty(shape.HitVictims);
 
             var hitAt = now.AddSeconds(1.6);
             service.ProcessSwarmCrossfires(match.MatchingId, hitAt, participants, [], [owner, victim], []);
-            int firstDamage = victim.Corruption;
-            Assert.True(firstDamage > 0);
-            Assert.Equal(0, owner.Corruption);
+            int healthAfterHit = victim.Health;
+            Assert.InRange(healthAfterHit, 1, Config.MAX_HEALTH - 1);
+            Assert.Equal(Config.MAX_HEALTH, owner.Health);
             Assert.Equal(12L, Assert.Single(shape.HitVictims));
             Assert.True(match.Swarm.Crossfire.TryGetSunBurn(12, out var burn));
             Assert.Equal(hitAt.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS), burn!.NextTickAtUtc);
 
             service.ProcessSwarmCrossfires(match.MatchingId, hitAt.AddSeconds(0.1),
                 participants, [], [owner, victim], []);
-            Assert.Equal(firstDamage, victim.Corruption);
+            Assert.Equal(healthAfterHit, victim.Health);
             service.ProcessSwarmCrossfires(match.MatchingId, now.AddSeconds(3),
                 participants, [], [owner, victim], []);
-            Assert.Equal(firstDamage, victim.Corruption);
+            Assert.Equal(healthAfterHit, victim.Health);
             Assert.Equal(0, match.Swarm.Crossfire.ShapeCount);
             Assert.Empty(match.Swarm.Crossfire.DodgeSnapshot);
             match.TryMarkTerminal();
@@ -75,21 +75,21 @@ public sealed class CrossfireServiceTests
         {
             var victim = new BotPlayerState { PlayerId = 12 };
             service.ProcessSwarmSunBurns(second.MatchingId, due, [], [victim], []);
-            Assert.Equal(0, victim.Corruption);
+            Assert.Equal(Config.MAX_HEALTH, victim.Health);
             second.TryMarkTerminal();
         }
         using (store.Enter(first))
         {
             var victim = new BotPlayerState { PlayerId = 12 };
             service.ProcessSwarmSunBurns(first.MatchingId, now, [], [victim], []);
-            Assert.Equal(0, victim.Corruption);
+            Assert.Equal(Config.MAX_HEALTH, victim.Health);
             service.ProcessSwarmSunBurns(first.MatchingId, due, [], [victim], []);
             int expected = Math.Max(1, (int)MathF.Round(
-                Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_CORRUPTION) *
+                Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE) *
                 Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER));
-            Assert.Equal(expected, victim.Corruption);
+            Assert.Equal(Config.MAX_HEALTH - expected, victim.Health);
             service.ProcessSwarmSunBurns(first.MatchingId, due, [], [victim], []);
-            Assert.Equal(expected, victim.Corruption);
+            Assert.Equal(Config.MAX_HEALTH - expected, victim.Health);
             first.TryMarkTerminal();
         }
     }

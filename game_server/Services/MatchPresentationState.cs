@@ -18,6 +18,6 @@ internal sealed class MatchPresentationState
         string OrbItemSignature,
         int FrontOrbHp,
         int JamCount,
-        int BodyCorruption,
+        int BodyHealth,
         long ArmorMask);
 }

@@ -24,7 +24,7 @@ public partial class GameClientSession
     {
         _matchEliminations.Process(CurrentMapId, MatchingId,
             eliminatedPlayerId,
-            EliminationReason.MENTAL_ZERO,
+            EliminationReason.HEALTH_ZERO,
             deferGameOver: true,
             isAreaClosureElimination: isAreaClosureElimination,
             isOvertimeElimination: isOvertimeElimination,
@@ -46,19 +46,19 @@ public partial class GameClientSession
             : status;
     }
     /// <summary>
-    ///     정신력 100 도달 시 탈락 체크. 권고안 B(2026-05-05): Stamina 0 단독으로는 탈락 트리거 안 됨
-    ///     (대신 ModifyStats가 Stamina 부족분을 Corruption 1:2 변환).
+    ///     체력이 0이면 탈락한다. 스태미나가 0이라는 이유만으로는 탈락하지 않는다.
+    ///     스태미나 부족에 따른 추가 체력 피해는 ModifyStats가 적용한다.
     /// </summary>
     public void CheckResourceElimination(long attackerPlayerId = 0, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false)
     {
         if (!PlayerId.HasValue || Volatile.Read(ref _isGameEnded) || IsEliminated) return;
-        if (Corruption < MaxCorruption) return;
+        if (Health > 0) return;
 
         Logger.LogInformation(
-            "[Resource] Mental depleted: PlayerId={PlayerId}, Corruption={Corruption}/{MaxCorruption}. Eliminating player.",
-            PlayerId.Value, Corruption, MaxCorruption);
-        _matchEliminations.Process(CurrentMapId, MatchingId, PlayerId.Value, EliminationReason.MENTAL_ZERO,
+            "[Resource] Health depleted: PlayerId={PlayerId}, Health={Health}/{MaxHealth}. Eliminating player.",
+            PlayerId.Value, Health, MaxHealth);
+        _matchEliminations.Process(CurrentMapId, MatchingId, PlayerId.Value, EliminationReason.HEALTH_ZERO,
             attackerPlayerId: attackerPlayerId, isAreaClosureElimination: isAreaClosureElimination,
             isOvertimeElimination: isOvertimeElimination);
     }

@@ -12,7 +12,7 @@
 10,2,탈출 절차가 갱신되었습니다,Escape procedure updated.,脱出手順が更新されました。
 11,2,필수 아이템을 획득했습니다,Required item acquired.,必須アイテムを獲得しました。
 12,2,규칙 쪽지를 획득했습니다,Rule note acquired.,規則のメモを獲得しました。
-13,2,정신오염도가 상승했습니다,Mental corruption increased.,精神汚染度が上昇しました。
+13,2,체력이 감소했습니다,Health decreased.,体力が減少しました。
 14,2,스태미나가 소모되었습니다,Stamina was consumed.,スタミナが消費されました。
 20,3,강당 열쇠를 확보하십시오,Secure the Gym key.,講堂の鍵を確保してください。
 21,3,A의 이름과 목소리를 파악해야 합니다,You must identify A's name and voice.,Aの名前と声を突き止めなければなりません。
@@ -86,13 +86,13 @@
 10034,4,<color=#A8D4E0>{0}</color> 사용하기{1},Use <color=#A8D4E0>{0}</color>{1},<color=#A8D4E0>{0}</color>を使用する{1}
 10035,4,다른 아이템 사용하기,Use another item,他のアイテムを使用する
 10036,4,(체력 +{0}),(HP +{0}),(体力 +{0})
-10037,4,(정신오염 -{0}),(Corruption -{0}),(精神汚染 -{0})
+10037,4,(체력 +{0}),(Health +{0}),(体力 +{0})
 10038,4,<color=#FF7E9A>질문 선택지</color>가 아직 도착하지 않았습니다.,<color=#FF7E9A>Question options</color> have not arrived yet.,<color=#FF7E9A>質問の選択肢</color>がまだ到着していません。
 10039,4,상대방이 말을 고르고 있습니다...,The other player is choosing words...,相手が言葉を選んでいます...
 10040,4,<color=#A8D4E0>체력이 {0} 증가합니다.</color>,<color=#A8D4E0>HP increases by {0}.</color>,<color=#A8D4E0>体力が{0}増加します。</color>
-10041,4,<color=#A8D4E0>정신오염도가 {0} 감소합니다.</color>,<color=#A8D4E0>Corruption decreases by {0}.</color>,<color=#A8D4E0>精神汚染度が{0}減少します。</color>
+10041,4,<color=#A8D4E0>체력이 {0} 회복됩니다.</color>,<color=#A8D4E0>Restores {0} health.</color>,<color=#A8D4E0>体力が{0}回復します。</color>
 10042,4,<color=#A8D4E0>상대방이 당신에게 {0} 아이템을 사용했습니다.</color>,<color=#A8D4E0>The other player used {0} on you.</color>,<color=#A8D4E0>相手があなたに{0}を使用しました。</color>
-10065,4,<color=#FF7E9A>정신오염도가 {0} 증가합니다.</color>,<color=#FF7E9A>Corruption increases by {0}.</color>,<color=#FF7E9A>精神汚染度が{0}増加します。</color>
+10065,4,<color=#FF7E9A>체력이 {0} 감소합니다.</color>,<color=#FF7E9A>Reduces health by {0}.</color>,<color=#FF7E9A>体力が{0}減少します。</color>
 10043,4,상대방이 행동 수칙을 공유합니다.,The other player shares a conduct rule.,相手が行動規則を共有します。
 10044,4,학생 수첩에 증언으로 기록합니다.,Recorded as testimony in the student notebook.,学生手帳に証言として記録します。
 10045,4,<color=#A8D4E0>{0}</color>님이 <color=#A8D4E0>대화</color>를 <color=#A8D4E0>수락</color>했습니다.,<color=#A8D4E0>{0}</color> <color=#A8D4E0>accepted</color> the <color=#A8D4E0>conversation</color>.,<color=#A8D4E0>{0}</color>さんが<color=#A8D4E0>対話</color>を<color=#A8D4E0>承諾</color>しました。

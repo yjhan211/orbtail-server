@@ -204,13 +204,13 @@ public sealed class MatchSummaryFileStoreTests : IDisposable
             {
                 Seq = 9, TimestampUnixMs = startedAt + 180_000, Type = "ELIMINATE",
                 PlayerId = 2, TargetPlayerId = 2, ActorPlayerId = 1, DamageSourceType = "pvp",
-                Outcome = "MENTAL_ZERO"
+                Outcome = "HEALTH_ZERO"
             },
             new()
             {
                 Seq = 10, TimestampUnixMs = startedAt + 200_000, Type = "ELIMINATE",
                 PlayerId = 1, TargetPlayerId = 1, DamageSourceType = "closure",
-                IsAreaClosureElimination = true, Outcome = "MENTAL_ZERO"
+                IsAreaClosureElimination = true, Outcome = "HEALTH_ZERO"
             },
             new()
             {

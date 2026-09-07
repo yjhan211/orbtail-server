@@ -15,10 +15,10 @@ internal static class MatchPressureFieldPolicy
     internal static double HoldSeconds => Config.SWARM_FIELD_HOLD_SECONDS;
     internal static double ShrinkSeconds => Config.SWARM_MATCH_DURATION_SECONDS - HoldSeconds;
 
-    private static int BaseCorruptionPerTick =>
-        SwarmConfigData.GetInt("SWARM_FIELD_BASE_CORRUPTION_PER_TICK", 12);
-    private static int CorruptionPerExtraCell =>
-        SwarmConfigData.GetInt("SWARM_FIELD_CORRUPTION_PER_EXTRA_CELL", 5);
+    private static int BaseDamagePerTick =>
+        SwarmConfigData.GetInt("SWARM_FIELD_BASE_DAMAGE_PER_TICK", 12);
+    private static int DamagePerExtraCell =>
+        SwarmConfigData.GetInt("SWARM_FIELD_DAMAGE_PER_EXTRA_CELL", 5);
 
     /// <summary>수축 전이거나 시작 시각이 없으면 전체 맵을 안전한 것으로 취급한다.</summary>
     internal static double GetSafeDistance(MatchRuntime match, DateTime nowUtc)
@@ -38,7 +38,7 @@ internal static class MatchPressureFieldPolicy
     }
 
     /// <summary>안전 경계 밖이면 5초 정산당 기본 피해에 초과 거리 비례 피해를 더한다.</summary>
-    internal static int GetCorruptionPerTick(MatchRuntime match, Vector3f? worldPosition, DateTime nowUtc)
+    internal static int GetDamagePerTick(MatchRuntime match, Vector3f? worldPosition, DateTime nowUtc)
     {
         if (worldPosition == null)
             return 0;
@@ -50,6 +50,6 @@ internal static class MatchPressureFieldPolicy
         double over = SwarmPressureField.GetDistance(cell) - safeDistance;
         if (over <= 0)
             return 0;
-        return BaseCorruptionPerTick + (int)(over * CorruptionPerExtraCell);
+        return BaseDamagePerTick + (int)(over * DamagePerExtraCell);
     }
 }

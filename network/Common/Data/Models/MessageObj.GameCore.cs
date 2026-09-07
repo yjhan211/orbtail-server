@@ -78,8 +78,8 @@ namespace network.common.data.models
         [Key("cooldownSeconds")] public int CooldownSeconds { get; set; }
         [Key("revealDelayMs")] public int RevealDelayMs { get; set; }
         [Key("damageValue")] public int DamageValue { get; set; }
-        /// <summary>자동전투로 공개된 대상의 현재 오염도. -1이면 공개 정보가 없다.</summary>
-        [Key("targetCorruption")] public int TargetCorruption { get; set; } = -1;
+        /// <summary>자동전투로 공개된 대상의 현재 체력. -1이면 미공개. 몬스터 공격 등 특수 이벤트에서는 기존 이벤트 메타데이터로 사용한다.</summary>
+        [Key("targetHealth")] public int TargetHealth { get; set; } = -1;
     }
 
     /// <summary>
@@ -109,9 +109,9 @@ namespace network.common.data.models
         // 잼 보유량 (#222 M3) — SB처럼 머리 위에 공개되는 점수. 같은 구역 관전자에게 동기화.
         [Key("jamCount")] public int JamCount { get; set; }
 
-        // 본체 오염 (#226 단계 B 가시화): 같은 구역 상대의 머리 위 게이지를 상시 구동한다 —
+        // 본체 체력: 같은 구역 상대의 머리 위 게이지를 상시 구동한다 —
         // "때리면 닳는 게 보인다". -1 = 미동기(표시 유지).
-        [Key("gauge")] public int BodyCorruption { get; set; } = -1;
+        [Key("gauge")] public int BodyHealth { get; set; } = -1;
 
         // 방어 강화(내구 2+) 오브 순번 비트마스크 (#226): 은백 링 표시의 단일 출처.
         // OrbItemIds 순서 기준 — 64번째 이후 순번은 표시 생략(실전 상한 밖 안전 절단).
