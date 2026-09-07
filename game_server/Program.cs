@@ -124,6 +124,7 @@ internal static class Program
         services.AddSingleton<BotEliminationService>(sp => new BotEliminationService(
             sp.GetRequiredService<GameSessionRegistry>(), sp.GetRequiredService<GameEventLogManager>(),
             sp.GetRequiredService<ILogger<BotEliminationService>>()));
+        services.AddSingleton<MatchEnvironmentService>();
         services.AddSingleton<MatchCountdownService>(sp => new MatchCountdownService(
             sp.GetRequiredService<MatchRuntimeStore>(), sp.GetRequiredService<MatchEntryFailureHandler>(),
             sp.GetRequiredService<ILogger<MatchCountdownService>>()));

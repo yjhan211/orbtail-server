@@ -1,17 +1,32 @@
 using game_server.network;
-using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
 
-namespace game_server;
+namespace game_server.services;
 
-internal partial class GameServer
+/// <summary>
+///     매치의 환경 피해와 동시 탈락 순위를 정산하고 승자를 확정한다.
+///     MatchTickRunner가 매치 잠금 안에서 5초 간격으로 호출한다.
+///     매치 상태는 전달받은 MatchRuntime을 사용하며 별도 상태나 타이머를 소유하지 않는다.
+/// </summary>
+internal sealed class MatchEnvironmentService(
+    GameSessionRegistry sessions,
+    GameEventLogManager eventLogs,
+    MatchCleanupService matchCleanup,
+    BotEliminationService botEliminations,
+    GameServerDevOptions devOptions,
+    ILogger<MatchEnvironmentService> logger)
 {
     /// <summary>매치의 5초 환경 정산. 50ms 틱이 전투 처리 후 같은 매치 잠금 안에서 호출한다.</summary>
-    private void ProcessEnvironmentalTickForMatching(
+    public void Process(
         MatchRuntime match,
         List<GameClientSession> activeSessions)
     {
+        if (!Monitor.IsEntered(match.Sync))
+            throw new InvalidOperationException("Environmental settlement requires the match lock.");
+        if (match.IsTerminal)
+            return;
+
         long matchingId = match.MatchingId;
 
         var humans = activeSessions
@@ -20,27 +35,27 @@ internal partial class GameServer
                 !session.IsEliminated &&
                 !session.IsGameEnded)
             .ToList();
-        var bots = matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)
+        var bots = match.Bots.GetBots(matchingId)
             .Where(bot => !bot.IsEliminated)
             .ToList();
 
         int aliveCount = humans.Count + bots.Count;
         if (aliveCount <= 1)
         {
-            if (devOptions.DisableGameEnd || SwarmDummySandboxActive)
+            if (devOptions.DisableGameEnd || devOptions.CutDummy || devOptions.CrossfireSandbox)
                 return;
 
             if (aliveCount == 1 && humans.Count > 0)
             {
                 humans[0].TryEndMatch(humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
-                matchRuntimes.Get(matchingId)?.Combat.Clear();
+                match.Combat.Clear();
                 return;
             }
 
             if (humans.Count == 0)
             {
                 long winnerPlayerId = bots.Count == 1 ? bots[0].PlayerId : 0;
-                matchRuntimes.Get(matchingId)?.Combat.Clear();
+                match.Combat.Clear();
                 matchCleanup.EndBotOnlyMatchIfSettled(matchingId, winnerPlayerId);
             }
 
@@ -57,7 +72,7 @@ internal partial class GameServer
                 session.CurrentArea,
                 MatchRuntime.EnvironmentalTickIntervalSeconds);
             if (session.LastValidatedPosition != null)
-                closureDelta += GetSwarmFieldCorruptionPerTick(matchingId, session.LastValidatedPosition);
+                closureDelta += MatchPressureFieldPolicy.GetCorruptionPerTick(match, session.LastValidatedPosition, DateTime.UtcNow);
             targets.Add(new EnvironmentalTarget(
                 session.PlayerId!.Value,
                 session.CurrentCorruption,
@@ -72,7 +87,7 @@ internal partial class GameServer
             int closureDelta = match.Closures.GetClosedAreaCorruptionPerTick(
                 bot.CurrentArea,
                 MatchRuntime.EnvironmentalTickIntervalSeconds);
-            closureDelta += GetSwarmFieldCorruptionPerTick(matchingId, bot.Position);
+            closureDelta += MatchPressureFieldPolicy.GetCorruptionPerTick(match, bot.Position, DateTime.UtcNow);
             targets.Add(new EnvironmentalTarget(
                 bot.PlayerId,
                 bot.Corruption,
@@ -96,7 +111,7 @@ internal partial class GameServer
             }
             else if (target.Bot != null)
             {
-                matchRuntimes.GetRequired(matchingId).Bots.ApplyEnvironmentalCorruption(target.Bot, totalDelta);
+                match.Bots.ApplyEnvironmentalCorruption(target.Bot, totalDelta);
             }
         }
 
@@ -158,7 +173,7 @@ internal partial class GameServer
             else if (target.Bot != null)
             {
                 botEliminations.Process(
-                    matchRuntimes.GetRequired(matchingId),
+                    match,
                     target.PlayerId,
                     EliminationReason.MENTAL_ZERO,
                     isAreaClosureElimination: closureElimination,
@@ -176,7 +191,7 @@ internal partial class GameServer
         if (isGameOver && winnerId.HasValue && resultHost != null)
         {
             resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);
-            matchRuntimes.Get(matchingId)?.Combat.Clear();
+            match.Combat.Clear();
         }
     }
 
@@ -188,3 +203,4 @@ internal partial class GameServer
         GameClientSession? Session,
         BotPlayerState? Bot);
 }
+

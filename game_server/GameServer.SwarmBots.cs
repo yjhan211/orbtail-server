@@ -265,7 +265,7 @@ internal partial class GameServer
     /// </summary>
     private (AreaType Area, Cell Cell) ResolveSwarmFieldEvacuationTarget(long matchingId, Vector3f botPosition)
     {
-        double safeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
+        double safeDistance = MatchPressureFieldPolicy.GetSafeDistance(matchRuntimes.GetRequired(matchingId), DateTime.UtcNow);
         AreaType bestArea = Config.SWARM_MATCH_GROUND_AREA;
         Cell bestCell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, Config.SWARM_MATCH_GROUND_AREA);
         float bestSq = float.MaxValue;
@@ -369,13 +369,13 @@ internal partial class GameServer
         //      신호(완전-밖·경고)만 보면 경계가 방을 관통하는 동안 빨간 쪽에 선 봇이 오염을
         //      그대로 마신다. 내 셀이 경계 밖이거나 여유(3셀) 안이면 같은 구역의 안쪽 셀로
         //      물러나고, 구역에 안전 셀이 없으면 경계 안 이웃 구역으로 나간다.
-        double fieldSafeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
+        double fieldSafeDistance = MatchPressureFieldPolicy.GetSafeDistance(matchRuntimes.GetRequired(matchingId), DateTime.UtcNow);
         if (fieldSafeDistance < double.MaxValue)
         {
             // 0.15) 방 마감 선제 탈출 (#272, 봇 매치 9831482 실측: 3-2교실 폐쇄 39초 뒤에도 봇이
             //       남아 420 사망): 경고(15초 전) 기반 철수는 큰 방·문 경유 이동에 너무 늦다 —
             //       내 구역이 잠기기까지 25초 안이면 지금 나간다. 수축은 선형이라 시각이 정확하다.
-            double shrinkRatePerSecond = SwarmPressureField.MaxDistance / SwarmFieldShrinkSeconds;
+            double shrinkRatePerSecond = SwarmPressureField.MaxDistance / MatchPressureFieldPolicy.ShrinkSeconds;
             int currentAreaMinDistance = SwarmPressureField.GetAreaMinDistance(bot.CurrentArea);
             double secondsUntilAreaOutside =
                 (fieldSafeDistance - currentAreaMinDistance) / shrinkRatePerSecond;

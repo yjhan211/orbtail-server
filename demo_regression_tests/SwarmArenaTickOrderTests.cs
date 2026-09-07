@@ -16,7 +16,7 @@ public sealed class SwarmArenaTickOrderTests
             "var tickRunner = new MatchTickRunner(",
             "countdown.Broadcast,",
             "ProcessSwarmArenaForMatching,",
-            "ProcessEnvironmentalTickForMatching,",
+            "environmentService.Process,",
             "runtime => botMovement.Process(runtime, ResolveSwarmBotDirective),",
             "tickService.Start(tickRunner.Run);");
         AssertInOrder(runner,
@@ -36,7 +36,7 @@ public sealed class SwarmArenaTickOrderTests
             root, "game_server", "GameServer.ProximityAutoCombat.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string settlement = ReadNormalizedSource(
-            root, "game_server", "GameServer.MatchSettlement.cs");
+            root, "game_server", "Services", "MatchEnvironmentService.cs");
 
         string proximityTick = ReadMethodSlice(
             ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs"),
@@ -72,13 +72,13 @@ public sealed class SwarmArenaTickOrderTests
 
         string matchingSettlement = ReadMethodSlice(
             settlement,
-            "private void ProcessEnvironmentalTickForMatching(",
+            "public void Process(",
             "private sealed record EnvironmentalTarget(");
         AssertInOrder(
             matchingSettlement,
             "long matchingId = match.MatchingId;",
             "var humans = activeSessions",
-            "var bots = matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)",
+            "var bots = match.Bots.GetBots(matchingId)",
             "target.Session.ModifyStats(",
             "var eliminatedTargets = targets",
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
@@ -449,7 +449,7 @@ public sealed class SwarmArenaTickOrderTests
         return ReadMethodSlice(
             source,
             "private void ProcessSwarmArenaForMatching(",
-            "private double GetSwarmSafeDistance(");
+            "private bool IsSwarmAreaOutside(");
     }
 
     private static string ReadBracedBlockAfterMarker(string source, string marker)

@@ -35,9 +35,6 @@ internal partial class GameServer
     // 플레이어 단위 지급: 매칭 단위 1회 지급은 지급 틱에 아직 접속 전인 사람을 영영 빈손으로 만든다 —
     // 늦게 합류해도 첫 등장 틱에 각자 1회 받는다 (상태는 Pacing.StartingOrbGrantedPlayers).
 
-    // #272 자기장 재무장: 원형 수축 필드가 폐쇄 시간표의 단일 원천 — 구역 웨이브는 필드에서
-    // 파생한다(GetSwarmFieldWaves). 토글은 클라 경계 렌더와 공유하므로 Config가 단일 출처.
-    private static readonly bool SwarmFieldEnabled = Config.SWARM_PRESSURE_FIELD_ENABLED;
 
     // 고위험 절단 (#232 무한 꼬리): 몸으로 상대 꼬리를 유효하게 가로지르면 밟은 지점부터 꼬리 끝까지(접미 전체)
     // 깨지고 나는 정신오염 +35를 낸다. 크랙·방어 장갑·절단 낙수는 쓰지 않는다 (TryPerformSwarmTrailCut).
@@ -191,7 +188,7 @@ internal partial class GameServer
             logger.LogInformation(
                 "Swarm pressure field armed: MatchingId={MatchingId}, MaxDistance={MaxDistance}, " +
                 "HoldSeconds={Hold}, ShrinkSeconds={Shrink}",
-                matchingId, SwarmPressureField.MaxDistance, SwarmFieldHoldSeconds, SwarmFieldShrinkSeconds);
+                matchingId, SwarmPressureField.MaxDistance, MatchPressureFieldPolicy.HoldSeconds, MatchPressureFieldPolicy.ShrinkSeconds);
             logger.LogInformation(
                 "Swarm arena initialized: MatchingId={MatchingId}, Humans={HumanCount}, Bots={BotCount}",
                 matchingId, sessions.Count, bots.Count);
@@ -620,61 +617,11 @@ internal partial class GameServer
     // 스팟 예산 선소진(#217 성장곡선 v3, 21개)은 퇴역 — SB에는 인위적 봉인이 없고,
     // 희소성은 리젠(60초)과 크기 비례 비용이 담당한다. 배치된 스팟은 전부 살아 있다.
 
-    // 자기장 스케줄 (#272 재무장, 원형): 유예 후 안전 반경이 최대치에서 0까지 선형 수축한다 —
-    // 매치 종료(SWARM_MATCH_DURATION_SECONDS)에 운동장 중심만 안전, 최종 폐쇄 = 타이머 만료 = 오버타임 개시.
-    // 깔때기 순서(외곽 방 → 복도 밴드 → 운동장)는 중심 거리가 먼 순서로 자연 재현된다.
-    private static double SwarmFieldHoldSeconds => Config.SWARM_FIELD_HOLD_SECONDS;
-    private static double SwarmFieldShrinkSeconds =>
-        Config.SWARM_MATCH_DURATION_SECONDS - Config.SWARM_FIELD_HOLD_SECONDS;
-
-    // 경계 밖 오염 (리소스 틱 5초당): 기본 + 초과 셀당 가산. 문턱에서 즉사가 아니라 "슬슬 따가움에서 깊을수록
-    // 아픔"의 경사 — 외곽 마지막 개봉 도박이 성립해야 한다. 구 웨이브 폐쇄 오염 대신 이 경사가 압박을 전담한다
-    // (#272). 기본 12: 유예가 없어 상시 노출 시간이 길므로 경계 스침은 오래 살고 깊이 20셀 방치는 20초 안에 죽는다.
-    // 원천은 swarm_config.csv (#335) — 미등재 시 코드 기본값.
-    private static int SwarmFieldBaseCorruptionPerTick =>
-        SwarmConfigData.GetInt("SWARM_FIELD_BASE_CORRUPTION_PER_TICK", 12);
-    private static int SwarmFieldCorruptionPerExtraCell =>
-        SwarmConfigData.GetInt("SWARM_FIELD_CORRUPTION_PER_EXTRA_CELL", 5);
-
-    /// <summary>현재 안전 반경. 수축 전에는 double.MaxValue(전 맵 안전). 폐쇄 시계(GameStartTime)와
-    ///     같은 앵커를 쓴다 — 파생 웨이브의 구역 완전-밖 시각과 필드 오염이 어긋나지 않는다.
-    ///     양자화 없는 연속식(유저 결정: 주기 단위가 아니라 계속 줄어드는 원) —
-    ///     클라 경계 렌더(ClosureFieldOverlay.ComputeSafeDistance)와 같은 식이다.</summary>
-    private double GetSwarmSafeDistance(long matchingId, DateTime nowUtc)
-    {
-        if (!SwarmFieldEnabled)
-            return double.MaxValue;
-        var closureState = matchRuntimes.GetRequired(matchingId).Closures.GetMatchingState();
-        if (closureState == null)
-            return double.MaxValue;
-
-        double shrinkElapsed = (nowUtc - closureState.GameStartTime).TotalSeconds - SwarmFieldHoldSeconds;
-        if (shrinkElapsed <= 0) return double.MaxValue;
-
-        double progress = Math.Min(1d, shrinkElapsed / SwarmFieldShrinkSeconds);
-        return SwarmPressureField.GetSafeDistanceAtProgress(progress);
-    }
-
     /// <summary>구역 전체가 현재 경계 밖(폐쇄·자기장)인가 — 봇 대피·스팟 필터의 기준.</summary>
     private bool IsSwarmAreaOutside(long matchingId, AreaType area) =>
         matchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(area) ||
-        SwarmPressureField.GetAreaMinDistance(area) > GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
-
-    /// <summary>자기장 오염 (리소스 틱당). 경계 안이면 0, 밖이면 기본 + 초과 거리 비례.</summary>
-    private int GetSwarmFieldCorruptionPerTick(long matchingId, Vector3f worldPosition)
-    {
-        if (worldPosition == null)
-            return 0;
-
-        double safeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
-        if (safeDistance >= double.MaxValue)
-            return 0;
-
-        var cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, worldPosition);
-        double over = SwarmPressureField.GetDistance(cell) - safeDistance;
-        if (over <= 0) return 0;
-        return SwarmFieldBaseCorruptionPerTick + (int)(over * SwarmFieldCorruptionPerExtraCell);
-    }
+        SwarmPressureField.GetAreaMinDistance(area) >
+        MatchPressureFieldPolicy.GetSafeDistance(matchRuntimes.GetRequired(matchingId), DateTime.UtcNow);
 
     // #272 경계 토출 스폰: 구역별 walkable 셀을 중심 거리 오름차순으로 캐시 — 리졸버가 띠를 자른다.
     // Config 초기화 뒤 첫 접근까지 계산을 미루되, 서로 다른 매치의 동시 최초 접근은 한 번만 게시한다.
@@ -724,8 +671,8 @@ internal partial class GameServer
     /// </summary>
     private (Cell Spawn, Cell Anchor)? ResolveSwarmFieldSpawn(long matchingId, AreaType area)
     {
-        if (!SwarmFieldEnabled) return null;
-        double safeDistance = GetSwarmSafeDistance(matchingId, DateTime.UtcNow);
+        if (!MatchPressureFieldPolicy.Enabled) return null;
+        double safeDistance = MatchPressureFieldPolicy.GetSafeDistance(matchRuntimes.GetRequired(matchingId), DateTime.UtcNow);
 
         var cells = GetSwarmAreaCellsByDistance(area);
         if (cells.Count == 0) return null;
@@ -761,7 +708,7 @@ internal partial class GameServer
     private static readonly Lazy<IReadOnlyList<ClosureWaveDefinition>> _swarmFieldDerivedWaves =
         new(
             () => AreaClosureManager
-                .BuildSwarmFieldWaves(SwarmFieldHoldSeconds, SwarmFieldShrinkSeconds)
+                .BuildSwarmFieldWaves(MatchPressureFieldPolicy.HoldSeconds, MatchPressureFieldPolicy.ShrinkSeconds)
                 .AsReadOnly(),
             LazyThreadSafetyMode.ExecutionAndPublication);
 
@@ -772,9 +719,9 @@ internal partial class GameServer
     // 겹칠 수 있으므로 authoritative commit은 match monitor, outbound 순서는 field FIFO가 맡는다.
 
     /// <summary>
-    ///     #272 자기장 폐쇄: 구역 웨이브는 자기장에서 파생한 시간표로 닫는다 (SwarmFieldEnabled=false면
+    ///     #272 자기장 폐쇄: 구역 웨이브는 자기장에서 파생한 시간표로 닫는다 (MatchPressureFieldPolicy.Enabled=false면
     ///     폐쇄 없음 — 레거시 DefaultP0Waves 폴백은 #310에서 제거). 경고 15초 → 폐쇄 브로드캐스트. 폐쇄 구역 오염은 자기장
-    ///     경사(정산 틱의 GetSwarmFieldCorruptionPerTick)가 전담하고, 신규 몹 스폰 정지는 캠프
+    ///     경사(정산 틱의 MatchPressureFieldPolicy.GetCorruptionPerTick)가 전담하고, 신규 몹 스폰 정지는 캠프
     ///     리졸버, 봇·스팟 제외는 IsSwarmAreaOutside가 담당한다.
     /// </summary>
     /// <summary>
@@ -791,8 +738,8 @@ internal partial class GameServer
             sessions,
             static _ => true);
         var closureState = matchRuntimes.GetRequired(matchingId).Closures.InitializeMatching(
-            wavesOverride: SwarmFieldEnabled ? GetSwarmFieldWaves() : null);
-        if (SwarmFieldEnabled && matchRuntimes.GetRequired(matchingId).Swarm.Pacing.FieldStateAnnounced.Add(matchingId))
+            wavesOverride: MatchPressureFieldPolicy.Enabled ? GetSwarmFieldWaves() : null);
+        if (MatchPressureFieldPolicy.Enabled && matchRuntimes.GetRequired(matchingId).Swarm.Pacing.FieldStateAnnounced.Add(matchingId))
         {
             outbound.Add(new SwarmFieldStateOutbound(
                 new DateTimeOffset(closureState.GameStartTime).ToUnixTimeMilliseconds(),

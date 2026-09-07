@@ -65,6 +65,10 @@ internal static class GameServerTestAccess
             matchCleanup: new MatchCleanupService(runtimes, sessions, logs, summaries, logger),
             botEliminations: new BotEliminationService(sessions, logs, logger),
             countdown: new MatchCountdownService(runtimes, entryFailure, logger),
+            environmentService: new MatchEnvironmentService(sessions, logs,
+                new MatchCleanupService(runtimes, sessions, logs, summaries, logger),
+                new BotEliminationService(sessions, logs, logger), GameServerDevOptions.Disabled,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchEnvironmentService>.Instance),
 tickService: new GameServerTickService(runtimes, Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServerTickService>.Instance),
             botMovement: new BotMovementService(sessions, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<BotMovementService>.Instance));
     }

@@ -45,6 +45,7 @@ internal partial class GameServer(
     MatchCleanupService matchCleanup,
     BotEliminationService botEliminations,
     MatchCountdownService countdown,
+    MatchEnvironmentService environmentService,
     GameServerTickService tickService,
     BotMovementService botMovement)
     : IHostedService
@@ -194,7 +195,7 @@ internal partial class GameServer(
             matchRuntimes, sessions, logger,
             countdown.Broadcast,
             ProcessSwarmArenaForMatching,
-            ProcessEnvironmentalTickForMatching,
+            environmentService.Process,
             runtime => botMovement.Process(runtime, ResolveSwarmBotDirective),
             ProcessAreaClosureForMatching);
         tickService.Start(tickRunner.Run);
