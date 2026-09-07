@@ -10,6 +10,17 @@ namespace demo_regression_tests;
 public sealed class GameMatchEntryServiceTests
 {
     [Fact]
+    public async Task MissingHumanProfileDoesNotCommitCompositionAndReleasesInitializationLock()
+    {
+        var (service, redis, store, runtime) = await Prepare(981012);
+        await redis.HashDeleteAsync(PlayerInfo.HashKey, "1001");
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.LoadCompositionAsync(runtime.MatchingId, Config.SWARM_MATCH_MAP, runtime));
+        Assert.Null(runtime.Composition);
+        Assert.Equal(1, runtime.EntryInitializationLock.CurrentCount);
+    }
+
+    [Fact]
     public async Task MatchAppearanceUsesLatestProfileAtCompositionAndRemainsFixedForLaterEntries()
     {
         var (service, redis, store, runtime) = await Prepare(981011);
@@ -209,6 +220,7 @@ public sealed class GameMatchEntryServiceTests
 
     private static async Task Seed(InMemoryRedisOperations redis, long id)
     {
+        await new PlayerInfo(1001, false) { Name = "Human" }.Save(redis);
         await redis.HashSetAsync(MatchingRedisKeys.Key(id), MatchingRedisKeys.ManifestField,
             MessagePackSerializer.Serialize(new MatchManifest { HumanPlayerIds = [1001], BotCount = 1, Mode = MatchMode.Normal }));
         await redis.HashSetAsync(MatchingRedisKeys.Key(id), MatchingRedisKeys.EntryReadyField,

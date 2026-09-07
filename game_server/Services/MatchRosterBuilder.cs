@@ -5,7 +5,7 @@ using network.infrastructure.redis;
 
 namespace game_server.services;
 
-/// <summary>GameServer가 매치 초기화 시 봇 ID와 사람·봇의 최종 프로필 명단을 만든다.</summary>
+/// <summary>매치 최초 구성 시 사람 프로필을 검증하고 사람·봇의 이름과 외형을 확정한다. 사람 프로필이 없으면 입장을 실패시킨다.</summary>
 internal sealed class MatchRosterBuilder(IRedisOperations redisOperations, ILogger logger)
 {
     private static long _botIdCounter;
@@ -32,12 +32,15 @@ internal sealed class MatchRosterBuilder(IRedisOperations redisOperations, ILogg
         {
             var info = await PlayerInfo.Load(redisOperations, playerId);
             if (info == null)
-                logger.LogWarning("Matching roster fallback: PlayerInfo load failed ({PlayerId})", playerId);
+            {
+                logger.LogWarning("Match entry rejected: PlayerInfo missing ({PlayerId})", playerId);
+                throw new InvalidOperationException($"PlayerInfo not found for match participant {playerId}.");
+            }
             roster.Add(new PlayerInfo
             {
                 PlayerId = playerId,
-                Name = info?.Name ?? $"Player{playerId}",
-                WearItemIdList = info?.WearItemIdList?.ToList() ?? new List<int>()
+                Name = info.Name,
+                WearItemIdList = info.WearItemIdList?.ToList() ?? new List<int>()
             });
         }
         roster.AddRange(bots);

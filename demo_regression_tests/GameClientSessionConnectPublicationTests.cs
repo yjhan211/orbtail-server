@@ -411,11 +411,12 @@ public sealed class GameClientSessionConnectPublicationTests
     }
 
     [Fact]
-    public void PlayerProfileLoad_ChecksConnectionBeforeApplyingSpawnOrSendingSnapshots()
+    public void CompositionLoad_ChecksConnectionAndSessionDoesNotReloadProfile()
     {
         string source = File.ReadAllText(Path.Combine(
             FindRepositoryRoot(), "game_server", "Sessions", "GameClientSession.cs"));
-        int load = source.IndexOf("await PlayerInfo.Load(", StringComparison.Ordinal);
+        Assert.DoesNotContain("await PlayerInfo.Load(", source);
+        int load = source.IndexOf("await _matchEntry.LoadCompositionAsync(", StringComparison.Ordinal);
         Assert.True(load >= 0);
         int statementEnd = source.IndexOf(';', load);
         Assert.StartsWith("EnsureConnectionActive();", source[(statementEnd + 1)..].TrimStart());

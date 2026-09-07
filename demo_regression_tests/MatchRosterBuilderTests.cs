@@ -46,13 +46,21 @@ public sealed class MatchRosterBuilderTests
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();
         var logger = new RecordingLogger();
-        var builder = new MatchRosterBuilder(new InMemoryRedisOperations(), logger);
+        var redis = new InMemoryRedisOperations();
+        await new PlayerInfo(101, false) { Name = "Human", WearItemIdList = [123] }.Save(redis);
+        var builder = new MatchRosterBuilder(redis, logger);
         var bot = new PlayerInfo { PlayerId = -1, Name = "Bot", WearItemIdList = [103000004] };
         var roster = await builder.BuildAsync([101], [bot]);
         Assert.Equal(2, roster.Count);
-        Assert.Equal("Player101", roster[0].Name);
-        Assert.Empty(roster[0].WearItemIdList);
+        Assert.Equal("Human", roster[0].Name);
+        Assert.Equal(new[] { 123 }, roster[0].WearItemIdList);
         Assert.Same(bot, roster[1]);
-        Assert.True(logger.Contains(Microsoft.Extensions.Logging.LogLevel.Warning, "Matching roster fallback"));
+    }
+
+    [Fact]
+    public async Task BuildAsync_RejectsMissingHumanProfile()
+    {
+        var builder = new MatchRosterBuilder(new InMemoryRedisOperations(), new RecordingLogger());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => builder.BuildAsync([101], []));
     }
 }

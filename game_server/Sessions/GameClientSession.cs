@@ -291,45 +291,34 @@ public partial class GameClientSession : SessionBase
                 MatchStartGate.RegisterHumanPlayer(matchingId, PlayerId.Value, composition.HumanPlayerIds.Count, composition.Mode);
             });
 
-            Cell matchingSpawnCell;
+            var matchingSpawnCell = Cell.Clone(composition.SpawnCells[playerId]);
+            LastValidatedPosition = CellToWorldPosition(matchingSpawnCell);
+            _lastValidCell = Cell.Clone(matchingSpawnCell);
+            _lastValidatedRotation = 0f;
+            CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, matchingSpawnCell);
+
+            Logger.LogInformation(
+                "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
+                PlayerId, CurrentArea, LastValidatedPosition?.X, LastValidatedPosition?.Y, _lastValidCell?.X,
+                _lastValidCell?.Y);
+
+            _gameEventLogManager.LogSpawnAssignment(
+                MatchingId,
+                PlayerId.Value,
+                MatchSpawnData.GetDeterministicSeed(MatchingId),
+                MatchSpawnData.GetAnchorIndex(matchingSpawnCell),
+                matchingSpawnCell.X,
+                matchingSpawnCell.Y,
+                CurrentArea.ToString(),
+                isBot: false);
+
+            _gameEventLogManager.SetPlayerArea(MatchingId, PlayerId.Value, CurrentArea.ToString());
+
+            if (CurrentArea != AreaType.None)
             {
-                var playerInfo = await PlayerInfo.Load(RedisOperations, PlayerId.Value);
-                EnsureConnectionActive();
-                if (playerInfo == null)
-                {
-                    throw new InvalidOperationException($"PlayerInfo not found for authenticated player {playerId}.");
-                }
-
-                // 프로필 존재만 확인한다. 이 매치의 이름·외형은 최초 구성에서 확정한 로스터를 유지한다.
-                matchingSpawnCell = Cell.Clone(composition.SpawnCells[playerId]);
-                LastValidatedPosition = CellToWorldPosition(matchingSpawnCell);
-                _lastValidCell = Cell.Clone(matchingSpawnCell);
-                _lastValidatedRotation = 0f;
-                CurrentArea = GameMapData.GetCurrentArea(CurrentMapId, matchingSpawnCell);
-
-                Logger.LogInformation(
-                    "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
-                    PlayerId, CurrentArea, LastValidatedPosition?.X, LastValidatedPosition?.Y, _lastValidCell?.X,
-                    _lastValidCell?.Y);
-
-                _gameEventLogManager.LogSpawnAssignment(
-                    MatchingId,
-                    PlayerId.Value,
-                    MatchSpawnData.GetDeterministicSeed(MatchingId),
-                    MatchSpawnData.GetAnchorIndex(matchingSpawnCell),
-                    matchingSpawnCell.X,
-                    matchingSpawnCell.Y,
-                    CurrentArea.ToString(),
-                    isBot: false);
-
-                _gameEventLogManager.SetPlayerArea(MatchingId, PlayerId.Value, CurrentArea.ToString());
-
-                if (CurrentArea != AreaType.None)
-                {
-                    SendInteractableList(CurrentArea);
-                    SendInteractCooldownSnapshot();
-                    SendGroundItemSnapshot(CurrentArea);
-                }
+                SendInteractableList(CurrentArea);
+                SendInteractCooldownSnapshot();
+                SendGroundItemSnapshot(CurrentArea);
             }
             SendInGameInventoryList();
             SendSummonStoneState();
