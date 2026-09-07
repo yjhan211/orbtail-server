@@ -42,6 +42,61 @@ public sealed class NatsClientTests
     }
 
     [Fact]
+    public async Task UserServerRejectsSessionWhileMatchingLoopIsStopping()
+    {
+        var (natsConnection, _) = RecordingConnectionProxy.Create();
+        var client = new NatsClient(natsConnection, TimeSpan.FromMilliseconds(50));
+        await using var provider = CreateUserServerServices(client).BuildServiceProvider();
+        var server = provider.GetServices<IHostedService>().OfType<user_server.UserServer>().Single();
+        var manager = provider.GetRequiredService<MatchingManager>();
+        var network = provider.GetRequiredService<network.core.NetworkService>();
+        var finishMatching = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        typeof(MatchingManager).GetField("_matchingLoopTask", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(manager, finishMatching.Task);
+
+        using var socket = new System.Net.Sockets.Socket(
+            System.Net.Sockets.AddressFamily.InterNetwork,
+            System.Net.Sockets.SocketType.Stream,
+            System.Net.Sockets.ProtocolType.Tcp);
+        using var receiveArgs = new System.Net.Sockets.SocketAsyncEventArgs();
+        using var sendArgs = new System.Net.Sockets.SocketAsyncEventArgs();
+        var connection = new network.core.TcpConnection();
+        connection.InitializeConnection(socket, receiveArgs, sendArgs,
+            (current, _, _) =>
+            {
+                current.CloseTransport(_ => { });
+                current.MarkClosePrepared();
+            },
+            current =>
+            {
+                current.NotifySessionClosed(_ => { });
+                current.DetachEventArgs(out _, out _);
+                current.MarkReleased();
+            });
+
+        Task shutdown = server.StopAsync(CancellationToken.None);
+        try
+        {
+            Assert.False(shutdown.IsCompleted);
+            Assert.Equal(0, (int)typeof(network.core.NetworkService)
+                .GetField("_stopping", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(network)!);
+
+            var session = typeof(user_server.UserServer)
+                .GetMethod("CreateSession", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(server, [connection]);
+
+            Assert.Null(session);
+            Assert.True(connection.IsReleased);
+        }
+        finally
+        {
+            connection.Disconnect();
+            finishMatching.TrySetResult();
+            await shutdown.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [Fact]
     public async Task StartupFailureAndStopSharePendingCleanup()
     {
         var (connection, proxy) = RecordingConnectionProxy.Create();

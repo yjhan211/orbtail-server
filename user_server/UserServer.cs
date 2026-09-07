@@ -22,7 +22,7 @@ namespace user_server;
 ///     서버 간 메시지 구독과 매칭 처리를 시작하고 TCP 접속을 받는다.
 ///     모든 준비가 끝나면 서버를 준비 완료 상태로 표시한다.
 ///
-///     종료할 때는 새 매칭 처리를 멈추고, 연결과 세션 정리가 끝나기를 기다린다.
+///     종료 시작부터 새 세션 생성을 거부하고, 새 매칭 처리를 멈춘 뒤 연결과 세션 정리가 끝나기를 기다린다.
 ///     이후 추적 중인 작업에 종료를 요청하고 완료를 기다린 뒤, 매칭 리더 등록을 해제하고 NATS 연결을 닫는다.
 ///     시작 실패와 일반 종료는 같은 정리 절차를 사용한다.
 /// </summary>
@@ -47,6 +47,7 @@ internal sealed class UserServer(
 {
     private readonly object _shutdownLock = new();
     private Task? _shutdownTask;
+    private int _stopping;
 
     public async Task StartAsync(CancellationToken ct)
     {
@@ -80,6 +81,7 @@ internal sealed class UserServer(
 
     private async Task StopCoreAsync()
     {
+        Volatile.Write(ref _stopping, 1);
         readinessState.MarkNotReady("stopping");
         logger.LogInformation("UserServer stopping...");
         try
@@ -158,6 +160,12 @@ internal sealed class UserServer(
 
     private PlayerSession? CreateSession(TcpConnection connection)
     {
+        if (Volatile.Read(ref _stopping) != 0)
+        {
+            connection.Disconnect();
+            return null;
+        }
+
         try
         {
             var session = new PlayerSession(
