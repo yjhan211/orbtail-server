@@ -50,7 +50,6 @@ internal partial class GameServer(
     private static readonly TimeSpan ShutdownWarningThreshold = TimeSpan.FromSeconds(5);
 
     // 서버 수명과 주기 작업
-    private CancellationTokenSource _cts = new();
     private const int ProximityAutoCombatTickIntervalMs = 50;
     private Timer? _proximityAutoCombatTimer;
     private Timer? _areaClosureTickTimer;
@@ -64,8 +63,6 @@ internal partial class GameServer(
     {
         Volatile.Write(ref _stopping, 0);
         readinessState.MarkNotReady("starting");
-        _cts.Dispose();
-        _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
         try
         {
@@ -132,7 +129,6 @@ internal partial class GameServer(
         await RunShutdownStageAsync(
             networkService.StopAsync(CancellationToken.None),
             "network connections");
-        await RunShutdownStageAsync(_cts.CancelAsync(), "server cancellation");
 
         Timer?[] timers =
         [
@@ -157,7 +153,6 @@ internal partial class GameServer(
             _nodeAdvertiser = null;
         }
 
-        _cts.Dispose();
         await matchingLifecycle.CloseAsync();
 
         logger.LogInformation("Game server stopped.");
