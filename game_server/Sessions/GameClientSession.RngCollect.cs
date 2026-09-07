@@ -67,7 +67,7 @@ public partial class GameClientSession
     private void BroadcastPlayerState(PlayerState state)
     {
         if (!PlayerId.HasValue) return;
-        SetMovementLockState(state == PlayerState.EXPLORE_1);
+        CurrentState = state;
 
         var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);

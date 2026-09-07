@@ -57,7 +57,7 @@ public partial class GameClientSession
 
         Logger.LogInformation(
             "[Resource] Health depleted: PlayerId={PlayerId}, Health={Health}/{MaxHealth}. Eliminating player.",
-            PlayerId.Value, Health, MaxHealth);
+            PlayerId.Value, Health, Config.MAX_HEALTH);
         _matchEliminations.Process(CurrentMapId, MatchingId, PlayerId.Value, EliminationReason.HEALTH_ZERO,
             attackerPlayerId: attackerPlayerId, isAreaClosureElimination: isAreaClosureElimination,
             isOvertimeElimination: isOvertimeElimination);

@@ -25,9 +25,7 @@ namespace game_server.sessions;
 /// </summary>
 public partial class GameClientSession : SessionBase
 {
-    private static int MaxHealth => Config.MAX_HEALTH;
     private const int InitialCorruption = 0;
-    private static readonly TimeSpan ExploreMoveGracePeriod = TimeSpan.FromMilliseconds(750);
 
 
     private readonly PlayerConditionState _condition = new();
@@ -82,7 +80,6 @@ public partial class GameClientSession : SessionBase
 
     private int _pendingOrbDraftCost = 0;
 
-    private DateTime _exploreMoveGraceUntil = DateTime.MinValue;
 
     private Vector3f? _lastValidatedPosition;
     private Vector3f _lastValidatedVelocity = new(0f, 0f, 0f);
@@ -246,7 +243,7 @@ public partial class GameClientSession : SessionBase
     public MapId CurrentMapId { get; private set; }
     public long MatchingId { get; private set; }
     public AreaType CurrentArea { get; private set; } = AreaType.None;
-    // 이동 잠금 판정용 — IDLE/EXPLORE_1 두 값만 저장한다 (SLEEP 등은 _condition.IsSleeping이 별도 추적).
+    // 접속 스냅샷에 포함할 행동 상태. 수면 여부는 _condition.IsSleeping에서 별도로 확인한다.
     private PlayerState CurrentState { get; set; } = PlayerState.IDLE;
 
     /// <summary>마지막 검증된 월드 좌표 — 근접 전투·드랍 위치 등 거리 판정용.</summary>

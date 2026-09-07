@@ -129,7 +129,7 @@ public partial class GameClientSession
         }
         else if (pickup.AutoUsed)
         {
-            int effectiveHealthRecovery = Math.Min(pickup.HealthRecovery, Math.Max(0, MaxHealth - Health));
+            int effectiveHealthRecovery = Math.Min(pickup.HealthRecovery, Math.Max(0, Config.MAX_HEALTH - Health));
             int requestedRecovery = pickup.HealthRecovery;
             int effectiveRecovery = effectiveHealthRecovery;
             ModifyStats(healthDelta: pickup.HealthRecovery);

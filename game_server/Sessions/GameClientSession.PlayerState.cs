@@ -55,7 +55,7 @@ public partial class GameClientSession
         if (!isExploreState)
             CancelPendingRngCollect($"PlayerState:{msg.State}");
 
-        SetMovementLockState(isExploreState);
+        CurrentState = isExploreState ? PlayerState.EXPLORE_1 : PlayerState.IDLE;
 
         // 같은 Area의 다른 플레이어들에게 상태 브로드캐스트
         var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
@@ -72,15 +72,6 @@ public partial class GameClientSession
 
         // SLEEP 해제 시 주기적 버프 타이머 정리
         if (!_condition.IsSleeping) StopAllPeriodicBuffs();
-    }
-
-    /// <summary>이동 잠금 상태 갱신 — EXPLORE_1만 잠그고, 진입 직후 짧은 유예로 이동 패킷 경합을 흡수한다.</summary>
-    private void SetMovementLockState(bool exploring)
-    {
-        CurrentState = exploring ? PlayerState.EXPLORE_1 : PlayerState.IDLE;
-        _exploreMoveGraceUntil = exploring
-            ? DateTime.UtcNow + ExploreMoveGracePeriod
-            : DateTime.MinValue;
     }
 
     private async Task HandleRestStateRequest()
@@ -111,7 +102,7 @@ public partial class GameClientSession
                     StopAllPeriodicBuffs();
                     return Task.CompletedTask;
                 }
-                _condition.TickPeriodicBuffs(MaxHealth, health => ModifyStats(health));
+                _condition.TickPeriodicBuffs(Config.MAX_HEALTH, health => ModifyStats(health));
                 if (!_condition.HasPeriodicBuffs)
                 {
                     if (_condition.IsSleeping) _ = BroadcastSleepState(false);
@@ -138,7 +129,7 @@ public partial class GameClientSession
     /// </summary>
     internal void TickSwarmSleepRecovery(DateTime nowUtc)
     {
-        int recovered = _condition.GetSleepRecovery(nowUtc, IsEliminated, MaxHealth);
+        int recovered = _condition.GetSleepRecovery(nowUtc, IsEliminated, Config.MAX_HEALTH);
         if (recovered <= 0) return;
         ModifyStats(healthDelta: recovered);
         SendEncounterEvent(PlayerId ?? 0, CurrentArea, SwarmSleepRecoveryEventType, 0, 0, recovered);
@@ -388,7 +379,7 @@ public partial class GameClientSession
         bool isAreaClosureElimination = false, bool isOvertimeElimination = false, bool deferElimination = false)
     {
         int oldHealth = Health;
-        _condition.ChangeHealth(healthDelta, MaxHealth);
+        _condition.ChangeHealth(healthDelta, Config.MAX_HEALTH);
 
         // 값이 변경되지 않았으면 패킷 전송 안함
         if (Health == oldHealth) return;
