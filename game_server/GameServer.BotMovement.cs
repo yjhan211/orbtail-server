@@ -21,8 +21,8 @@ public partial class GameServer
     private void RecordBotTickBusySkip(long matchingId)
     {
         if (ShouldTrackBotTickBusySkip(matchingId) &&
-            _swarmMatchRuntimes.TryGet(matchingId, out SwarmMatchRuntime? busyRuntime))
-            busyRuntime.BotTickMetrics.RecordBusySkip();
+            MatchRuntimes.Get(matchingId) is { IsTerminal: false } runtime)
+            runtime.Swarm.BotTickMetrics.RecordBusySkip();
     }
 
     /// <summary>매치 잠금 안에서 봇 걸음을 확정하고 같은 순서로 바로 송신한다.</summary>

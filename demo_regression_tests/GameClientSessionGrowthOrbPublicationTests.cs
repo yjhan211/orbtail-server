@@ -407,7 +407,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         // 실패한 핸들러가 잠금을 풀었으므로 종료 정리가 바로 진행된다.
         fixture.MarkTerminal(FirstMatchingId);
         Assert.Null(fixture.Store.Get(FirstMatchingId));
-        Assert.False(fixture.Runtimes.TryGet(FirstMatchingId, out _));
+        Assert.Null(fixture.Store.Get(FirstMatchingId));
     }
 
     [Fact]
@@ -666,7 +666,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Server = CreateServer();
             Store = Server.MatchRuntimes;
             EventLog = GetField<GameEventLogManager>(Server, "_gameEventLogManager");
-            Runtimes = GetField<SwarmMatchRuntimeStore>(Server, "_swarmMatchRuntimes");
             _growthHandler = typeof(GameServer).GetMethod(
                     "HandleSwarmGrowthPick",
                     BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
@@ -680,7 +679,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
         public GameServer Server { get; }
         public MatchRuntimeStore Store { get; }
-        public SwarmMatchRuntimeStore Runtimes { get; }
         public GameEventLogManager EventLog { get; }
         public InteractableStateManager Interactables { get; } = new();
         public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
@@ -729,7 +727,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
         public RecordingTcpConnection ConnectionFor(GameClientSession session) => _connections[session];
 
-        public SwarmMatchRuntime Runtime(long matchingId) => Runtimes.GetOrCreate(matchingId);
+        public SwarmMatchRuntime Runtime(long matchingId) => Store.GetOrCreate(matchingId).Swarm;
 
         /// <summary>잠금 안에서 터미널로 표시하고 나온다 — 정리는 깊이 0 탈출에서 바로 돈다.</summary>
         public void MarkTerminal(long matchingId)
@@ -790,17 +788,17 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         }
 
         private static GameServer CreateServer() => new(
-            new ConfigurationBuilder().Build(),
-            NullLogger<GameServer>.Instance,
-            null!,
-            null!,
-            null!,
-            null!,
-            new ServerReadinessState(),
-            new RecordingGameServerRegistry(),
-            new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
-            GameServerDevOptions.Disabled,
-            new GameSessionRegistry());
+            configuration: new ConfigurationBuilder().Build(),
+            logger: NullLogger<GameServer>.Instance,
+            matchingLifecycle: null!,
+            redisOperations: null!,
+            networkService: null!,
+            gameHandoffTicketService: null!,
+            readinessState: new ServerReadinessState(),
+            gameServerRegistry: new RecordingGameServerRegistry(),
+            nodeOptions: new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
+            devOptions: GameServerDevOptions.Disabled,
+            sessions: new GameSessionRegistry());
     }
 
     private sealed class RecordingTcpConnection : TcpConnection

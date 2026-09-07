@@ -1,18 +1,13 @@
-using System.Collections.Concurrent;
-using System.Diagnostics.CodeAnalysis;
 using network.common;
 using network.common.data;
 using network.common.data.models;
 
 namespace game_server.services;
 
-// #294 후속 — GameServer.SwarmArena 파셜에 산개돼 있던 상태를 도메인별 홀더로 묶고,
-// matchingId가 소유하는 aggregate에서 함께 생성·폐기한다. 기존 key shape는 단계적으로 줄인다.
-
 /// <summary>
-///     Owns the mutable Swarm state for exactly one matching id. The initial state holders keep
-///     their established key shapes while the migration is in progress; newly migrated holders use
-///     match-local keys. Every holder lifetime is bounded by this aggregate instead of GameServer.
+///     매치 하나의 오브 전투·성장 카드·봇 전술 상태를 묶는다.
+///     MatchRuntime이 소유하며, 별도 저장소 없이 매치와 함께 생성되고 제거된다.
+///     상태 변경은 해당 매치의 잠금 안에서 처리한다.
 /// </summary>
 public sealed class SwarmMatchRuntime
 {
@@ -49,38 +44,6 @@ public sealed class SwarmMatchRuntime
     public SwarmCrossfireState Crossfire { get; }
 }
 
-/// <summary>
-///     Process-local index for match-owned Swarm runtimes. Removal drops the complete aggregate so
-///     a match cannot leak one forgotten collection into the next match using the same process.
-/// </summary>
-public sealed class SwarmMatchRuntimeStore
-{
-    private readonly ConcurrentDictionary<long, SwarmMatchRuntime> _runtimes = new();
-    private readonly SwarmGrowthOfferIdSequence _growthOfferIds = new();
-    private readonly SwarmCrossfireEventIdSequence _crossfireEventIds = new();
-
-    public int Count => _runtimes.Count;
-
-    public SwarmMatchRuntime GetOrCreate(long matchingId)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
-        return _runtimes.GetOrAdd(
-            matchingId,
-            static (id, sequences) => new SwarmMatchRuntime(
-                id,
-                sequences.GrowthOfferIds,
-                sequences.CrossfireEventIds),
-            (GrowthOfferIds: _growthOfferIds,
-                CrossfireEventIds: _crossfireEventIds));
-    }
-
-    public bool TryGet(
-        long matchingId,
-        [NotNullWhen(true)] out SwarmMatchRuntime? runtime) =>
-        _runtimes.TryGetValue(matchingId, out runtime);
-
-    public bool Remove(long matchingId) => _runtimes.TryRemove(matchingId, out _);
-}
 
 /// <summary>
 ///     반격 보호 창 (#227 7단계): 절단자–피해자 <b>쌍</b>으로 연다. 같은 키가 다시 열리면

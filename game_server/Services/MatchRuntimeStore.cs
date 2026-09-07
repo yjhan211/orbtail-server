@@ -15,9 +15,14 @@ internal sealed class MatchRuntime
     public const int EnvironmentalTickIntervalSeconds = 5;
     private int _terminal;
 
-    internal MatchRuntime(long matchingId, ILogger logger)
+    internal MatchRuntime(long matchingId, ILogger logger,
+        SwarmGrowthOfferIdSequence? growthOfferIds = null,
+        SwarmCrossfireEventIdSequence? crossfireEventIds = null)
     {
         MatchingId = matchingId;
+        Swarm = new SwarmMatchRuntime(matchingId,
+            growthOfferIds ?? new SwarmGrowthOfferIdSequence(),
+            crossfireEventIds ?? new SwarmCrossfireEventIdSequence());
         Inventory = new InGameInventoryManager(matchingId, message => logger.LogInformation("{Message}", message));
         GroundItems = new GroundItemManager(matchingId);
         Roster = new MatchRosterManager(matchingId, logger);
@@ -27,6 +32,8 @@ internal sealed class MatchRuntime
 
     public long MatchingId { get; }
     public MatchDoorState Doors { get; } = new();
+    /// <summary>이 매치의 오브 전투·성장·봇 전술 상태. 매치와 함께 생성되고 제거된다.</summary>
+    public SwarmMatchRuntime Swarm { get; }
     // 데이터와 처리 객체를 함께 소유한다. 호출자는 이 매치를 고른 뒤 playerId만 넘긴다.
     public InGameInventoryManager Inventory { get; }
     public GroundItemManager GroundItems { get; }
@@ -133,6 +140,9 @@ internal readonly struct MatchScope : IDisposable
 internal sealed class MatchRuntimeStore
 {
     private readonly ConcurrentDictionary<long, MatchRuntime> _runtimes = new();
+    // 늦은 이전 매치 메시지와 ID가 겹치지 않도록 시퀀스는 매치 밖에서 공유한다.
+    private readonly SwarmGrowthOfferIdSequence _growthOfferIds = new();
+    private readonly SwarmCrossfireEventIdSequence _crossfireEventIds = new();
     private readonly Action<long>? _initializeMatch;
     private readonly IReadOnlyList<MatchCleanupStep> _cleanupSteps;
     private readonly Action<long>? _afterCleanup;
@@ -165,7 +175,7 @@ internal sealed class MatchRuntimeStore
         if (_runtimes.TryGetValue(matchingId, out MatchRuntime? existing))
             return existing;
 
-        var candidate = new MatchRuntime(matchingId, _logger);
+        var candidate = new MatchRuntime(matchingId, _logger, _growthOfferIds, _crossfireEventIds);
         lock (candidate.Sync)
         {
             MatchRuntime runtime = _runtimes.GetOrAdd(matchingId, candidate);

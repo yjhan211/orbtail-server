@@ -291,12 +291,8 @@ public sealed class SwarmArenaTickOrderTests
             "private void CleanupSwarmArenaState(",
             "private List<ProximityCombatActor> BuildSwarmArenaCombatActors(");
 
-        AssertInOrder(
-            cleanupBody,
-            "try",
-            "_swarmMonsterDirector.RemoveMatching(matchingId);",
-            "finally",
-            "_swarmMatchRuntimes.Remove(matchingId);");
+        Assert.Contains("_swarmMonsterDirector.RemoveMatching(matchingId);", cleanupBody);
+        Assert.DoesNotContain("_swarmMatchRuntimes", source);
         Assert.DoesNotContain("ClearSwarmCrossfireState", cleanupBody);
         Assert.DoesNotContain("ClearSwarmWindBladeState", cleanupBody);
         Assert.DoesNotContain("ClearSwarmOrbBoardState", cleanupBody);
@@ -419,8 +415,8 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Contains("SwarmCrossfireState crossfire = GetSwarmMatchRuntime(matchingId).Crossfire;", crossfire);
         Assert.Contains("public SwarmCrossfireState Crossfire { get; }", runtimeStates);
 
-        Assert.Contains("_swarmMatchRuntimes.TryGet(", botDodge);
-        Assert.Contains("runtime.Crossfire.DodgeSnapshot", botDodge);
+        Assert.Contains("MatchRuntimes.Get(matchingId)", botDodge);
+        Assert.Contains("runtime.Swarm.Crossfire.DodgeSnapshot", botDodge);
         Assert.DoesNotContain("GetSwarmMatchRuntime(", botDodge);
         Assert.DoesNotContain("GetOrCreate(", botDodge);
     }

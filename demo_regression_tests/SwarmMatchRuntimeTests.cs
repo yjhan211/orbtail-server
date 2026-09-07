@@ -6,8 +6,28 @@ using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public sealed class SwarmMatchRuntimeStoreTests
+public sealed class SwarmMatchRuntimeTests
 {
+    [Fact]
+    public void TerminalCleanup_RemovesSwarmWithItsMatchEvenIfACleanupStepFails()
+    {
+        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+            cleanupSteps: [new MatchCleanupStep("failing director", _ => throw new InvalidOperationException())]);
+        var ended = store.GetOrCreate(91001);
+        var sibling = store.GetOrCreate(91002);
+        ended.Swarm.OrbBoard.IncrementFamilyUpgradeCount(1, OrbColor.Red);
+        using (var scope = store.Enter(ended))
+        {
+            Assert.Same(ended.Swarm, scope.Runtime.Swarm);
+            ended.TryMarkTerminal();
+        }
+        Assert.Null(store.Get(91001));
+        Assert.Throws<InvalidOperationException>(() => store.GetRequired(91001));
+        Assert.False(store.TryEnter(91001, out _));
+        Assert.Same(sibling, store.Get(91002));
+        Assert.Equal(1, store.Count);
+    }
+
     [Fact]
     public void WindBladeState_PreservesTimingBoundariesAndEngagementReset()
     {
@@ -52,9 +72,9 @@ public sealed class SwarmMatchRuntimeStoreTests
     [Fact]
     public void MatchLocalState_IsIsolatedWhenTwoRuntimesUseTheSameKeys()
     {
-        var store = new SwarmMatchRuntimeStore();
-        SwarmMatchRuntime first = store.GetOrCreate(42001);
-        SwarmMatchRuntime second = store.GetOrCreate(42002);
+        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        SwarmMatchRuntime first = store.GetOrCreate(42001).Swarm;
+        SwarmMatchRuntime second = store.GetOrCreate(42002).Swarm;
         const long playerId = 501;
         const long itemUid = 9001;
         DateTime nowUtc = new(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc);
@@ -127,13 +147,13 @@ public sealed class SwarmMatchRuntimeStoreTests
     [Fact]
     public void GetOrCreate_ReturnsSameRuntimeForSameIdAndIsolatesDifferentIds()
     {
-        var store = new SwarmMatchRuntimeStore();
+        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         const long firstMatchingId = 42001;
         const long secondMatchingId = 42002;
 
-        SwarmMatchRuntime first = store.GetOrCreate(firstMatchingId);
-        SwarmMatchRuntime firstAgain = store.GetOrCreate(firstMatchingId);
-        SwarmMatchRuntime second = store.GetOrCreate(secondMatchingId);
+        SwarmMatchRuntime first = store.GetOrCreate(firstMatchingId).Swarm;
+        SwarmMatchRuntime firstAgain = store.GetOrCreate(firstMatchingId).Swarm;
+        SwarmMatchRuntime second = store.GetOrCreate(secondMatchingId).Swarm;
 
         Assert.Same(first, firstAgain);
         Assert.NotSame(first, second);
@@ -147,44 +167,44 @@ public sealed class SwarmMatchRuntimeStoreTests
     [Fact]
     public void Remove_PreservesSiblingAndNextGetOrCreateBuildsNewAggregate()
     {
-        var store = new SwarmMatchRuntimeStore();
+        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         const long removedMatchingId = 42003;
         const long siblingMatchingId = 42004;
 
-        SwarmMatchRuntime removed = store.GetOrCreate(removedMatchingId);
-        SwarmMatchRuntime sibling = store.GetOrCreate(siblingMatchingId);
+        SwarmMatchRuntime removed = store.GetOrCreate(removedMatchingId).Swarm;
+        SwarmMatchRuntime sibling = store.GetOrCreate(siblingMatchingId).Swarm;
         Random removedItemCombineRandom = removed.ItemCombineRandom;
         Random siblingItemCombineRandom = sibling.ItemCombineRandom;
 
         Assert.True(store.Remove(removedMatchingId));
-        Assert.False(store.TryGet(removedMatchingId, out SwarmMatchRuntime? missing));
+        SwarmMatchRuntime? missing = store.Get(removedMatchingId)?.Swarm;
         Assert.Null(missing);
-        Assert.True(store.TryGet(siblingMatchingId, out SwarmMatchRuntime? preservedSibling));
+        SwarmMatchRuntime? preservedSibling = store.Get(siblingMatchingId)?.Swarm;
         Assert.Same(sibling, preservedSibling);
         Assert.Equal(1, store.Count);
 
-        SwarmMatchRuntime recreated = store.GetOrCreate(removedMatchingId);
+        SwarmMatchRuntime recreated = store.GetOrCreate(removedMatchingId).Swarm;
 
         Assert.NotSame(removed, recreated);
         Assert.NotSame(removedItemCombineRandom, recreated.ItemCombineRandom);
         Assert.Same(siblingItemCombineRandom, sibling.ItemCombineRandom);
         Assert.Equal(removedMatchingId, recreated.MatchingId);
-        Assert.Same(sibling, store.GetOrCreate(siblingMatchingId));
+        Assert.Same(sibling, store.GetOrCreate(siblingMatchingId).Swarm);
         Assert.Equal(2, store.Count);
     }
 
     [Fact]
     public void Remove_DropsWholeAggregateWithoutTouchingSiblingHolderState()
     {
-        var store = new SwarmMatchRuntimeStore();
+        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         const long removedMatchingId = 42005;
         const long siblingMatchingId = 42006;
         const long removedPlayerId = 501;
         const long siblingPlayerId = 601;
         DateTime crossfireNowUtc = new(2026, 9, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        SwarmMatchRuntime removed = store.GetOrCreate(removedMatchingId);
-        SwarmMatchRuntime sibling = store.GetOrCreate(siblingMatchingId);
+        SwarmMatchRuntime removed = store.GetOrCreate(removedMatchingId).Swarm;
+        SwarmMatchRuntime sibling = store.GetOrCreate(siblingMatchingId).Swarm;
 
         removed.TrailCombat.OrbTrails[(removedMatchingId, removedPlayerId)] = [];
         removed.GrowthOffers.PreviewCost[(removedMatchingId, removedPlayerId)] = 3;
@@ -230,9 +250,9 @@ public sealed class SwarmMatchRuntimeStoreTests
 
         Assert.True(store.Remove(removedMatchingId));
 
-        Assert.False(store.TryGet(removedMatchingId, out SwarmMatchRuntime? missing));
+        SwarmMatchRuntime? missing = store.Get(removedMatchingId)?.Swarm;
         Assert.Null(missing);
-        Assert.True(store.TryGet(siblingMatchingId, out SwarmMatchRuntime? preservedSibling));
+        SwarmMatchRuntime? preservedSibling = store.Get(siblingMatchingId)?.Swarm;
         Assert.Same(sibling, preservedSibling);
         Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.TrailCombat.OrbTrails.Keys);
         Assert.Equal(7, sibling.GrowthOffers.PreviewCost[(siblingMatchingId, siblingPlayerId)]);
@@ -250,7 +270,7 @@ public sealed class SwarmMatchRuntimeStoreTests
         Assert.Equal(siblingPlayerId, siblingBurn!.OwnerId);
         Assert.Equal(1, store.Count);
 
-        SwarmMatchRuntime replacement = store.GetOrCreate(removedMatchingId);
+        SwarmMatchRuntime replacement = store.GetOrCreate(removedMatchingId).Swarm;
         Assert.NotSame(removed, replacement);
         Assert.Empty(replacement.TrailCombat.OrbTrails);
         Assert.Empty(replacement.GrowthOffers.PreviewCost);
@@ -266,18 +286,18 @@ public sealed class SwarmMatchRuntimeStoreTests
     [Fact]
     public void OfferIds_RemainProcessWideAcrossMatchesAndRuntimeRecreation()
     {
-        var store = new SwarmMatchRuntimeStore();
+        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         const long firstMatchingId = 42007;
         const long secondMatchingId = 42008;
 
-        SwarmMatchRuntime first = store.GetOrCreate(firstMatchingId);
-        SwarmMatchRuntime second = store.GetOrCreate(secondMatchingId);
+        SwarmMatchRuntime first = store.GetOrCreate(firstMatchingId).Swarm;
+        SwarmMatchRuntime second = store.GetOrCreate(secondMatchingId).Swarm;
 
         Assert.Equal(1, first.GrowthOfferCoordinator.AllocateOfferId());
         Assert.Equal(2, second.GrowthOfferCoordinator.AllocateOfferId());
 
         Assert.True(store.Remove(firstMatchingId));
-        SwarmMatchRuntime recreated = store.GetOrCreate(firstMatchingId);
+        SwarmMatchRuntime recreated = store.GetOrCreate(firstMatchingId).Swarm;
 
         Assert.Equal(3, recreated.GrowthOfferCoordinator.AllocateOfferId());
     }
@@ -285,18 +305,18 @@ public sealed class SwarmMatchRuntimeStoreTests
     [Fact]
     public void CrossfireEventIds_RemainProcessWideAndThreadSafeAcrossRuntimeRecreation()
     {
-        var store = new SwarmMatchRuntimeStore();
+        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         const long firstMatchingId = 42011;
         const long secondMatchingId = 42012;
 
-        SwarmMatchRuntime first = store.GetOrCreate(firstMatchingId);
-        SwarmMatchRuntime second = store.GetOrCreate(secondMatchingId);
+        SwarmMatchRuntime first = store.GetOrCreate(firstMatchingId).Swarm;
+        SwarmMatchRuntime second = store.GetOrCreate(secondMatchingId).Swarm;
 
         Assert.Equal(1L, first.Crossfire.AllocateEventId());
         Assert.Equal(2L, second.Crossfire.AllocateEventId());
 
         Assert.True(store.Remove(firstMatchingId));
-        SwarmMatchRuntime recreated = store.GetOrCreate(firstMatchingId);
+        SwarmMatchRuntime recreated = store.GetOrCreate(firstMatchingId).Swarm;
         Assert.Equal(3L, recreated.Crossfire.AllocateEventId());
 
         var allocated = new ConcurrentBag<long>();

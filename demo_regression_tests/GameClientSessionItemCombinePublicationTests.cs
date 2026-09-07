@@ -1039,17 +1039,17 @@ public sealed class GameClientSessionItemCombinePublicationTests
         }
 
         private static GameServer CreateServer() => new(
-            new ConfigurationBuilder().Build(),
-            NullLogger<GameServer>.Instance,
-            null!,
-            null!,
-            null!,
-            null!,
-            new ServerReadinessState(),
-            new RecordingGameServerRegistry(),
-            new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
-            GameServerDevOptions.Disabled,
-            new GameSessionRegistry());
+            configuration: new ConfigurationBuilder().Build(),
+            logger: NullLogger<GameServer>.Instance,
+            matchingLifecycle: null!,
+            redisOperations: null!,
+            networkService: null!,
+            gameHandoffTicketService: null!,
+            readinessState: new ServerReadinessState(),
+            gameServerRegistry: new RecordingGameServerRegistry(),
+            nodeOptions: new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
+            devOptions: GameServerDevOptions.Disabled,
+            sessions: new GameSessionRegistry());
     }
 
     [MessagePackObject]

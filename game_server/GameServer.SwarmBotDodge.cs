@@ -14,10 +14,10 @@ public partial class GameServer
     internal SwarmBotDodgeAdvice? ResolveSwarmBotDodgeDirection(
         long matchingId, long botPlayerId, Vector3f position, AreaType area, DateTime nowUtc)
     {
-        if (!_swarmMatchRuntimes.TryGet(matchingId, out SwarmMatchRuntime? runtime))
+        if (MatchRuntimes.Get(matchingId) is not { IsTerminal: false } runtime)
             return null;
 
         return SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(
-            runtime.Crossfire.DodgeSnapshot, matchingId, botPlayerId, position, area, nowUtc);
+            runtime.Swarm.Crossfire.DodgeSnapshot, matchingId, botPlayerId, position, area, nowUtc);
     }
 }

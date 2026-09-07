@@ -42,7 +42,6 @@ public partial class GameServer(
 {
     private static readonly TimeSpan ShutdownWarningThreshold = TimeSpan.FromSeconds(5);
 
-    private readonly SwarmMatchRuntimeStore _swarmMatchRuntimes = new();
     private MatchRuntimeStore? _matchRuntimes;
     private MatchEntryFailureHandler? _entryFailureHandler;
     private readonly InteractableStateManager _interactableStateManager = new();
@@ -67,7 +66,7 @@ public partial class GameServer(
     internal MatchingLifecycleService MatchingLifecycle { get; } = matchingLifecycle;
 
     private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
-        _swarmMatchRuntimes.GetOrCreate(matchingId);
+        MatchRuntimes.GetRequired(matchingId).Swarm;
 
     private Random GetItemCombineRandom(long matchingId) =>
         GetSwarmMatchRuntime(matchingId).ItemCombineRandom;

@@ -3238,15 +3238,8 @@ public partial class GameServer
 
     private void CleanupSwarmArenaState(long matchingId)
     {
-        try
-        {
-            _swarmMonsterDirector.RemoveMatching(matchingId);
-        }
-        finally
-        {
-            // director cleanup이 실패해도 Crossfire를 포함한 match-owned aggregate는 남기지 않는다.
-            _swarmMatchRuntimes.Remove(matchingId);
-        }
+        // 스웜 상태는 MatchRuntime과 함께 제거된다. 여기서는 외부 디렉터만 정리한다.
+        _swarmMonsterDirector.RemoveMatching(matchingId);
     }
 
     private List<ProximityCombatActor> BuildSwarmArenaCombatActors(

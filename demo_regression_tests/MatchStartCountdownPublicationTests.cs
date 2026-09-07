@@ -363,17 +363,17 @@ public sealed class MatchStartCountdownPublicationTests
     {
         IConfiguration configuration = new ConfigurationBuilder().Build();
         return new GameServer(
-            configuration,
-            NullLogger<GameServer>.Instance,
-            new MatchingLifecycleService(new InMemoryRedisOperations(), new NoOpNatsClient(), NullLogger.Instance),
-            null!,
-            null!,
-            null!,
-            new ServerReadinessState(),
-            new RecordingGameServerRegistry(),
-            new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
-            GameServerDevOptions.Disabled,
-            new GameSessionRegistry());
+            configuration: configuration,
+            logger: NullLogger<GameServer>.Instance,
+            matchingLifecycle: new MatchingLifecycleService(new InMemoryRedisOperations(), new NoOpNatsClient(), NullLogger.Instance),
+            redisOperations: null!,
+            networkService: null!,
+            gameHandoffTicketService: null!,
+            readinessState: new ServerReadinessState(),
+            gameServerRegistry: new RecordingGameServerRegistry(),
+            nodeOptions: new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
+            devOptions: GameServerDevOptions.Disabled,
+            sessions: new GameSessionRegistry());
     }
 
     internal sealed class NoOpNatsClient : network.infrastructure.messaging.INatsClient
@@ -388,12 +388,7 @@ public sealed class MatchStartCountdownPublicationTests
 
     private static SwarmMatchPacingState GetPacing(GameServer server, long matchingId)
     {
-        var runtimes = Assert.IsType<SwarmMatchRuntimeStore>(
-            typeof(GameServer)
-                .GetField("_swarmMatchRuntimes", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(server));
-        Assert.True(runtimes.TryGet(matchingId, out SwarmMatchRuntime? runtime));
-        return runtime!.Pacing;
+        return server.MatchRuntimes.GetRequired(matchingId).Swarm.Pacing;
     }
 
     private static void InvokePeriodicBroadcast(
