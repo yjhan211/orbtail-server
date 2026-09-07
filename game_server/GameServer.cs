@@ -69,7 +69,7 @@ internal partial class GameServer(
             cancellationToken.ThrowIfCancellationRequested();
             InitializeServices();
 
-            StartTcpServer();
+            StartNetworkService();
             StartAreaClosureTickTimer();
             StartProximityAutoCombatTimer();
 
@@ -208,7 +208,7 @@ internal partial class GameServer(
         }
     }
 
-    private void StartTcpServer()
+    private void StartNetworkService()
     {
         short port = configuration.GetValue<short>("clientPort", 9001);
         networkService.SessionFactory = CreateClientSession;
