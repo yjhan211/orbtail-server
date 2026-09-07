@@ -42,6 +42,7 @@ internal partial class GameServer(
     GameEventLogManager eventLogs,
     MatchSummaryFileStore summaryFileStore,
     MatchEntryFailureHandler entryFailureHandler,
+    GameSessionLeaveHandler sessionLeaveHandler,
     MatchCleanupService matchCleanup,
     BotEliminationService botEliminations,
     MatchCountdownService countdown,
@@ -252,7 +253,7 @@ internal partial class GameServer(
                 sessionLogger,
                 redisOperations,
                 ticket => gameHandoffTicketService.ConsumeAsync(ticket, nodeOptions.NodeId),
-                OnClientSessionLeave,
+                sessionLeaveHandler.Handle,
                 RegisterClientSession,
                 GetSessionsByInstance,
 
@@ -282,48 +283,6 @@ internal partial class GameServer(
             logger.LogError(ex, "Failed to create game client session");
             connection.Disconnect();
             return null;
-        }
-    }
-
-    private void OnClientSessionLeave(GameClientSession session)
-    {
-        if (session.PlayerId.HasValue)
-        {
-            bool removed = sessions.Remove(session);
-
-            if (!removed)
-            {
-                logger.LogDebug(
-                    "Ignored removal from a superseded game session: PlayerId={PlayerId}, MatchingId={MatchingId}",
-                    session.PlayerId.Value,
-                    session.MatchingId);
-                if (session.MatchingId > 0)
-                    matchCleanup.CleanupIfNoHumanSessionsRemain(session.MatchingId);
-                return;
-            }
-
-            logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", session.PlayerId.Value);
-
-            if (session.MatchingId > 0 && session.CurrentArea != AreaType.None)
-            {
-                using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(session.PlayerId.Value);
-                var sameAreaSessions = GetSessionsByMatch(session.MatchingId)
-                    .Where(other =>
-                        !ReferenceEquals(other, session) &&
-                        other.CurrentArea == session.CurrentArea)
-                    .ToList();
-                foreach (var other in sameAreaSessions) other.TrySend(leavePacket);
-
-                logger.LogInformation(
-                    "Broadcasted disconnected player leave: PlayerId={PlayerId}, MatchingId={MatchingId}, Area={Area}, Receivers={ReceiverCount}",
-                    session.PlayerId.Value,
-                    session.MatchingId,
-                    session.CurrentArea,
-                    sameAreaSessions.Count);
-            }
-
-            if (session.MatchingId > 0)
-                matchCleanup.CleanupIfNoHumanSessionsRemain(session.MatchingId);
         }
     }
 

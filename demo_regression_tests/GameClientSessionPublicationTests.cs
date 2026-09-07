@@ -24,6 +24,59 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
+    public void SessionLeave_NotifiesOnlySameMatchAndArea_AndCleansLastHumanMatch()
+    {
+        using var fixture = new SessionFixture();
+        var leaving = fixture.CreateSession(70001, 101, (AreaType)50);
+        var nearby = fixture.CreateSession(70001, 102, (AreaType)50);
+        var otherArea = fixture.CreateSession(70001, 103, (AreaType)51);
+        var otherMatch = fixture.CreateSession(70002, 104, (AreaType)50);
+        var registry = new GameSessionRegistry();
+        foreach (var session in new[] { leaving, nearby, otherArea, otherMatch })
+            registry.Register(session.PlayerId!.Value, session, out _);
+        var cleanup = new MatchCleanupService(fixture.Store, registry, fixture.EventLog,
+            fixture.Summaries, NullLogger.Instance);
+        var handler = new GameSessionLeaveHandler(registry, cleanup, NullLogger<GameSessionLeaveHandler>.Instance);
+
+        handler.Handle(leaving);
+
+        Assert.False(registry.TryGetCurrent(101, out _));
+        Assert.Equal([Protocol.G_TO_C_AREA_PLAYER_LEAVE], fixture.ConnectionFor(nearby).DeliveredProtocols);
+        Assert.Empty(fixture.ConnectionFor(otherArea).DeliveredProtocols);
+        Assert.Empty(fixture.ConnectionFor(otherMatch).DeliveredProtocols);
+        Assert.NotNull(fixture.Store.Get(70001));
+
+        handler.Handle(nearby);
+        handler.Handle(otherArea);
+
+        Assert.Null(fixture.Store.Get(70001));
+        Assert.NotNull(fixture.Store.Get(70002));
+    }
+
+    [Fact]
+    public void SessionLeave_PreviousSessionDoesNotRemoveReplacementOrNotifyPeers()
+    {
+        using var fixture = new SessionFixture();
+        var previous = fixture.CreateSession(70001, 101, (AreaType)50);
+        var replacement = fixture.CreateSession(70001, 101, (AreaType)50);
+        var peer = fixture.CreateSession(70001, 102, (AreaType)50);
+        var registry = new GameSessionRegistry();
+        registry.Register(101, previous, out _);
+        registry.Register(101, replacement, out _);
+        registry.Register(102, peer, out _);
+        var cleanup = new MatchCleanupService(fixture.Store, registry, fixture.EventLog,
+            fixture.Summaries, NullLogger.Instance);
+        var handler = new GameSessionLeaveHandler(registry, cleanup, NullLogger<GameSessionLeaveHandler>.Instance);
+
+        handler.Handle(previous);
+
+        Assert.True(registry.TryGetCurrent(101, out var current));
+        Assert.Same(replacement, current);
+        Assert.Empty(fixture.ConnectionFor(peer).DeliveredProtocols);
+        Assert.NotNull(fixture.Store.Get(70001));
+    }
+
+    [Fact]
     public async Task RngDoor_StartAndFinish_PreserveOrderedGaugePublication()
     {
         using var fixture = new SessionFixture();
