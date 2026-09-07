@@ -9,22 +9,57 @@ namespace demo_regression_tests;
 internal static class GameServerTestAccess
 {
     internal static MatchRuntimeStore GetMatchRuntimes(this GameServer server) =>
-        Read<MatchRuntimeStore>(server, "MatchRuntimes");
+        Read<MatchRuntimeStore>(server);
 
     internal static GameEventLogManager GetEventLogs(this GameServer server) =>
-        Read<GameEventLogManager>(server, "EventLogs");
+        Read<GameEventLogManager>(server);
 
     internal static MatchEntryFailureHandler GetEntryFailureHandler(this GameServer server) =>
-        Read<MatchEntryFailureHandler>(server, "EntryFailureHandler");
+        Read<MatchEntryFailureHandler>(server);
 
     internal static MatchingLifecycleService GetMatchingLifecycle(this GameServer server) =>
-        Read<MatchingLifecycleService>(server, "MatchingLifecycle");
+        Read<MatchingLifecycleService>(server);
 
-    private static T Read<T>(GameServer server, string name) where T : class
+    private static T Read<T>(GameServer server) where T : class =>
+        Assert.IsType<T>(typeof(GameServer)
+            .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+            .Single(field => field.FieldType == typeof(T))
+            .GetValue(server));
+
+    internal static GameServer Create(MatchRuntimeStore? runtimes = null)
     {
-        var property = typeof(GameServer).GetProperty(name,
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        Assert.NotNull(property);
-        return Assert.IsType<T>(property.GetValue(server));
+        var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+        var sessions = new game_server.network.GameSessionRegistry();
+        var lifecycle = new MatchingLifecycleService(new InMemoryRedisOperations(),
+            new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
+        var archive = new MatchEventArchive();
+        runtimes ??= new MatchRuntimeStore(logger,
+            cleanupSteps:
+            [
+                new("session runtime", game_server.network.GameClientSession.CleanupAbandonedMatchingRuntime),
+                new("session index", sessions.RemoveMatch)
+            ],
+            afterCleanup: id => lifecycle.PrepareRedisCleanup(id).Invoke(),
+            eventArchive: archive);
+        var logs = new GameEventLogManager(id => runtimes.Get(id)?.EventLog, archive);
+        var summaries = new MatchSummaryFileStore();
+        var entryFailure = new MatchEntryFailureHandler(runtimes, sessions, lifecycle, logger);
+        return new GameServer(
+            configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
+            logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServer>.Instance,
+            matchingLifecycle: lifecycle,
+            redisOperations: null!, networkService: null!, gameHandoffTicketService: null!,
+            readinessState: new network.hosting.ServerReadinessState(),
+            gameServerRegistry: new RecordingGameServerRegistry(),
+            nodeOptions: new GameServerNodeOptions
+            {
+                NodeId = "game-server-test", PublicHost = "127.0.0.1"
+            },
+            devOptions: GameServerDevOptions.Disabled,
+            sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, summaryFileStore: summaries,
+            entryFailureHandler: entryFailure,
+            matchCleanup: new MatchCleanupService(runtimes, sessions, logs, summaries, logger),
+            botEliminations: new BotEliminationService(sessions, logs, logger),
+            countdown: new MatchCountdownService(runtimes, entryFailure, logger));
     }
 }

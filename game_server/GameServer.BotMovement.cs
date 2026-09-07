@@ -8,7 +8,7 @@ using network.packets;
 
 namespace game_server;
 
-public partial class GameServer
+internal partial class GameServer
 {
     // MatchTickRunner가 전투 뒤 같은 매치 잠금 안에서 봇 이동을 실행한다.
 
@@ -26,8 +26,8 @@ public partial class GameServer
             CaptureSwarmBotObservers(matchingId, sessionSnapshot);
         double sessionSnapshotElapsedMilliseconds =
             Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds;
-        SwarmBotMovementPlan plan = MatchRuntimes.GetRequired(matchingId).BotMovement.PrepareTick(
-            EventLogs,
+        SwarmBotMovementPlan plan = matchRuntimes.GetRequired(matchingId).BotMovement.PrepareTick(
+            eventLogs,
             observers,
             ResolveSwarmBotDirective);
 
@@ -80,7 +80,7 @@ public partial class GameServer
             planningP95Milliseconds,
             walkingP95Milliseconds,
             broadcastP95Milliseconds);
-        EventLogs.LogBotMovementTickPerformance(
+        eventLogs.LogBotMovementTickPerformance(
             batch.MatchingId,
             p50Milliseconds,
             p95Milliseconds,

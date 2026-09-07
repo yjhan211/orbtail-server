@@ -88,6 +88,44 @@ internal static class Program
             sp.GetRequiredService<IRedisOperations>(),
             sp.GetRequiredService<INatsClient>(),
             sp.GetRequiredService<ILogger<MatchingLifecycleService>>()));
+        services.AddSingleton<MatchEventArchive>();
+        services.AddSingleton<MatchRuntimeStore>(sp =>
+        {
+            var sessions = sp.GetRequiredService<GameSessionRegistry>();
+            var lifecycle = sp.GetRequiredService<MatchingLifecycleService>();
+            return new MatchRuntimeStore(
+                sp.GetRequiredService<ILogger<MatchRuntimeStore>>(),
+                cleanupSteps:
+                [
+                    new("session runtime", GameClientSession.CleanupAbandonedMatchingRuntime),
+                    new("session index", sessions.RemoveMatch)
+                ],
+                afterCleanup: id => lifecycle.PrepareRedisCleanup(id).Invoke(),
+                monsterSpawnEnabled: devOptions.MonsterSpawnEnabled,
+                eventArchive: sp.GetRequiredService<MatchEventArchive>());
+        });
+        services.AddSingleton<GameEventLogManager>(sp =>
+        {
+            var runtimes = sp.GetRequiredService<MatchRuntimeStore>();
+            return new GameEventLogManager(id => runtimes.Get(id)?.EventLog,
+                sp.GetRequiredService<MatchEventArchive>());
+        });
+        services.AddSingleton<MatchSummaryFileStore>(_ => new MatchSummaryFileStore(
+            hostContext.Configuration["MATCH_SUMMARY_DIRECTORY"],
+            hostContext.Configuration.GetValue("MATCH_SUMMARY_MAX_FILES", MatchSummaryFileStore.DefaultMaxSummaries)));
+        services.AddSingleton<MatchEntryFailureHandler>(sp => new MatchEntryFailureHandler(
+            sp.GetRequiredService<MatchRuntimeStore>(), sp.GetRequiredService<GameSessionRegistry>(),
+            sp.GetRequiredService<MatchingLifecycleService>(), sp.GetRequiredService<ILogger<MatchEntryFailureHandler>>()));
+        services.AddSingleton<MatchCleanupService>(sp => new MatchCleanupService(
+            sp.GetRequiredService<MatchRuntimeStore>(), sp.GetRequiredService<GameSessionRegistry>(),
+            sp.GetRequiredService<GameEventLogManager>(), sp.GetRequiredService<MatchSummaryFileStore>(),
+            sp.GetRequiredService<ILogger<MatchCleanupService>>()));
+        services.AddSingleton<BotEliminationService>(sp => new BotEliminationService(
+            sp.GetRequiredService<GameSessionRegistry>(), sp.GetRequiredService<GameEventLogManager>(),
+            sp.GetRequiredService<ILogger<BotEliminationService>>()));
+        services.AddSingleton<MatchCountdownService>(sp => new MatchCountdownService(
+            sp.GetRequiredService<MatchRuntimeStore>(), sp.GetRequiredService<MatchEntryFailureHandler>(),
+            sp.GetRequiredService<ILogger<MatchCountdownService>>()));
         services.AddSingleton<GameServer>();
 
         services.AddSingleton<ServerReadinessState>();

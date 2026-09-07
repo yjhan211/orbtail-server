@@ -20,7 +20,7 @@ namespace game_server;
 ///     - 강화할 오브(T3 미만)가 없는 계열은 강화 불가(비용 0)
 ///     이동과 자동 PvE 공격은 이 과정에서 멈추지 않는다.
 /// </summary>
-public partial class GameServer
+internal partial class GameServer
 {
     // 샌드박스 고정 시작 세트 (#232 P0-A): 태양·바람·파도 한 개씩 — 세 모양이 다 보이게 (2026-08-17 저녁).
     private static readonly int[] SwarmSandboxStartingOrbs = BuildSwarmSupplyOrbPool();
@@ -45,7 +45,7 @@ public partial class GameServer
             int stonesInsteadOfOrbs = 0;
             for (int index = 0; index < Config.SWARM_STARTING_ORB_GRANT_COUNT; index++)
                 stonesInsteadOfOrbs += Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(index));
-            MatchRuntimes.GetRequired(matchingId).SummonStones.AddStones(playerId, stonesInsteadOfOrbs);
+            matchRuntimes.GetRequired(matchingId).SummonStones.AddStones(playerId, stonesInsteadOfOrbs);
             SendSwarmFamilyLevels(matchingId, playerId, session);
             return;
         }
@@ -59,7 +59,7 @@ public partial class GameServer
             if (session != null)
                 session.GrantSwarmArenaOrb(itemId);
             else
-                MatchRuntimes.GetRequired(matchingId).Inventory.TryAddItemWithCapacity(
+                matchRuntimes.GetRequired(matchingId).Inventory.TryAddItemWithCapacity(
                     playerId, itemId, Config.SWARM_ORB_CAPACITY, out _);
         }
 
@@ -142,19 +142,19 @@ public partial class GameServer
         if (!OrbData.TryGetColorAndTier(target.ItemId, out _, out int tier) ||
             !OrbData.TryGetItemId(color, tier + 1, out int upgradedItemId))
             return false;
-        if (!MatchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(playerId, cost, out _))
+        if (!matchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(playerId, cost, out _))
             return false;
 
         orbBoard.IncrementFamilyUpgradeCount(playerId, color);
 
-        var inventory = MatchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
+        var inventory = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
         bool replaced = inventory.TryReplaceOrb(target.ItemUid, upgradedItemId, out _);
         resultItemId = upgradedItemId;
         targetOrdinal = ordinal;
 
         session?.SendInGameInventoryList();
         SendSwarmFamilyLevels(matchingId, playerId, session);
-        EventLogs.LogSystem(
+        eventLogs.LogSystem(
             matchingId,
             $"ORB_UPGRADED player={playerId} bot={session == null} family={color} ordinal={ordinal} " +
             $"uid={target.ItemUid} tier={tier}->{tier + 1} cost={cost} replaced={replaced}");

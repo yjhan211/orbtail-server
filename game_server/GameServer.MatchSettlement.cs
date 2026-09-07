@@ -5,7 +5,7 @@ using network.common;
 
 namespace game_server;
 
-public partial class GameServer
+internal partial class GameServer
 {
     /// <summary>매치의 5초 환경 정산. 50ms 틱이 전투 처리 후 같은 매치 잠금 안에서 호출한다.</summary>
     private void ProcessEnvironmentalTickForMatching(
@@ -20,7 +20,7 @@ public partial class GameServer
                 !session.IsEliminated &&
                 !session.IsGameEnded)
             .ToList();
-        var bots = MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)
+        var bots = matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)
             .Where(bot => !bot.IsEliminated)
             .ToList();
 
@@ -33,15 +33,15 @@ public partial class GameServer
             if (aliveCount == 1 && humans.Count > 0)
             {
                 humans[0].TryEndMatch(humans[0].PlayerId ?? 0, "last_survivor_before_overtime");
-                MatchRuntimes.Get(matchingId)?.Combat.Clear();
+                matchRuntimes.Get(matchingId)?.Combat.Clear();
                 return;
             }
 
             if (humans.Count == 0)
             {
                 long winnerPlayerId = bots.Count == 1 ? bots[0].PlayerId : 0;
-                MatchRuntimes.Get(matchingId)?.Combat.Clear();
-                MatchCleanup.EndBotOnlyMatchIfSettled(matchingId, winnerPlayerId);
+                matchRuntimes.Get(matchingId)?.Combat.Clear();
+                matchCleanup.EndBotOnlyMatchIfSettled(matchingId, winnerPlayerId);
             }
 
             return;
@@ -96,7 +96,7 @@ public partial class GameServer
             }
             else if (target.Bot != null)
             {
-                MatchRuntimes.GetRequired(matchingId).Bots.ApplyEnvironmentalCorruption(target.Bot, totalDelta);
+                matchRuntimes.GetRequired(matchingId).Bots.ApplyEnvironmentalCorruption(target.Bot, totalDelta);
             }
         }
 
@@ -110,7 +110,7 @@ public partial class GameServer
             matchingId,
             eliminatedTargets.Select(target =>
             {
-                int damage = EventLogs
+                int damage = eventLogs
                     .GetResultStats(matchingId, target.PlayerId)
                     .TotalDamageDealt;
                 return new MatchSettlementCandidate(
@@ -133,7 +133,7 @@ public partial class GameServer
                 matchingId,
                 resolution.DecisiveCriterion,
                 orderedPlayers);
-            EventLogs.LogSystem(
+            eventLogs.LogSystem(
                 matchingId,
                 $"environment_tiebreak criterion={resolution.DecisiveCriterion} best_to_worst={orderedPlayers}");
         }
@@ -157,8 +157,8 @@ public partial class GameServer
             }
             else if (target.Bot != null)
             {
-                BotEliminations.Process(
-                    MatchRuntimes.GetRequired(matchingId),
+                botEliminations.Process(
+                    matchRuntimes.GetRequired(matchingId),
                     target.PlayerId,
                     EliminationReason.MENTAL_ZERO,
                     isAreaClosureElimination: closureElimination,
@@ -176,7 +176,7 @@ public partial class GameServer
         if (isGameOver && winnerId.HasValue && resultHost != null)
         {
             resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);
-            MatchRuntimes.Get(matchingId)?.Combat.Clear();
+            matchRuntimes.Get(matchingId)?.Combat.Clear();
         }
     }
 

@@ -7,13 +7,13 @@ using network.packets;
 
 namespace game_server;
 
-public partial class GameServer
+internal partial class GameServer
 {
     private static readonly TimeSpan MonsterPositionBroadcastInterval = TimeSpan.FromMilliseconds(100);
 
     private bool TryConsumeMonsterPositionBroadcastSlot(long matchingId, DateTime nowUtc)
     {
-        if (MatchRuntimes.Get(matchingId)?.Presentation is not { } presentation ||
+        if (matchRuntimes.Get(matchingId)?.Presentation is not { } presentation ||
             nowUtc < presentation.NextMonsterPositionBroadcastAtUtc)
             return false;
 

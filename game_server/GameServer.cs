@@ -26,7 +26,7 @@ namespace game_server;
 ///     입장 실패 처리는 MatchEntryFailureHandler에,
 ///     종료 알림과 Redis 정리는 MatchingLifecycleService에 위임한다.
 /// </summary>
-public partial class GameServer(
+internal partial class GameServer(
     IConfiguration configuration,
     ILogger<GameServer> logger,
     MatchingLifecycleService matchingLifecycle,
@@ -37,33 +37,17 @@ public partial class GameServer(
     IGameServerRegistry gameServerRegistry,
     GameServerNodeOptions nodeOptions,
     GameServerDevOptions devOptions,
-    GameSessionRegistry sessions)
+    GameSessionRegistry sessions,
+    MatchRuntimeStore matchRuntimes,
+    GameEventLogManager eventLogs,
+    MatchSummaryFileStore summaryFileStore,
+    MatchEntryFailureHandler entryFailureHandler,
+    MatchCleanupService matchCleanup,
+    BotEliminationService botEliminations,
+    MatchCountdownService countdown)
     : IHostedService
 {
     private static readonly TimeSpan ShutdownWarningThreshold = TimeSpan.FromSeconds(5);
-
-    private MatchRuntimeStore? _matchRuntimes;
-    private MatchEntryFailureHandler? _entryFailureHandler;
-    private MatchCleanupService? _matchCleanup;
-    private MatchCleanupService MatchCleanup =>
-        LazyInitializer.EnsureInitialized(ref _matchCleanup,
-            () => new MatchCleanupService(MatchRuntimes, sessions, EventLogs, _matchSummaryFileStore,
-                logger, (matchingId, playerId) => GetSwarmOrbScore(matchingId, playerId).OrbCount));
-    private BotEliminationService? _botEliminations;
-    private BotEliminationService BotEliminations =>
-        LazyInitializer.EnsureInitialized(ref _botEliminations,
-            () => new BotEliminationService(sessions, EventLogs, logger));
-
-
-    // 봇과 몬스터
-
-    // 매치 기록
-    private GameEventLogManager? _eventLogs;
-    internal GameEventLogManager EventLogs => LazyInitializer.EnsureInitialized(ref _eventLogs,
-        () => new GameEventLogManager(id => MatchRuntimes.Get(id)?.EventLog))!;
-    private readonly MatchSummaryFileStore _matchSummaryFileStore = new(
-        configuration["MATCH_SUMMARY_DIRECTORY"],
-        configuration.GetValue<int>("MATCH_SUMMARY_MAX_FILES", MatchSummaryFileStore.DefaultMaxSummaries));
 
     // 서버 수명과 주기 작업
     private CancellationTokenSource _cts = new();
@@ -73,43 +57,11 @@ public partial class GameServer(
     private GameServerNodeAdvertiser? _nodeAdvertiser;
     private int _stopping;
 
-    internal MatchingLifecycleService MatchingLifecycle { get; } = matchingLifecycle;
-
     private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
-        MatchRuntimes.GetRequired(matchingId).Swarm;
+        matchRuntimes.GetRequired(matchingId).Swarm;
 
     private Random GetItemCombineRandom(long matchingId) =>
         GetSwarmMatchRuntime(matchingId).ItemCombineRandom;
-
-    /// <summary>
-    ///     매치별 잠금·수명 색인 (#331). 필드 초기화자는 this를 참조할 수 없어 첫 접근에서 만든다 —
-    ///     정리 단계가 매니저 인스턴스를 잡아야 하기 때문이다.
-    /// </summary>
-    internal MatchRuntimeStore MatchRuntimes =>
-        LazyInitializer.EnsureInitialized(ref _matchRuntimes, CreateMatchRuntimeStore)!;
-
-    internal MatchEntryFailureHandler EntryFailureHandler =>
-        LazyInitializer.EnsureInitialized(ref _entryFailureHandler,
-            () => new MatchEntryFailureHandler(MatchRuntimes, sessions, MatchingLifecycle, logger))!;
-
-    private MatchRuntimeStore CreateMatchRuntimeStore() => new(logger,
-        cleanupSteps: BuildMatchCleanupSteps(),
-        afterCleanup: StartMatchingRedisCleanup, monsterSpawnEnabled: devOptions.MonsterSpawnEnabled);
-
-    /// <summary>
-    ///     터미널 정리 순서. 최외곽 잠금 탈출에서 한 번 돌고 단계마다 예외를 격리한다 — 한 컴포넌트 실패가
-    ///     나머지 매니저의 matchingId 상태 해제를 막지 않는다.
-    /// </summary>
-    private IReadOnlyList<MatchCleanupStep> BuildMatchCleanupSteps() =>
-    [
-        new MatchCleanupStep("session runtime", GameClientSession.CleanupAbandonedMatchingRuntime),
-        new MatchCleanupStep("session index", sessions.RemoveMatch),
-        new MatchCleanupStep("event log", EventLogs.Clear)
-    ];
-
-    /// <summary>정리가 끝난 매치의 Redis 인계 키를 잠금 밖에서 지운다 (셧다운이 완료를 기다린다).</summary>
-    private void StartMatchingRedisCleanup(long matchingId) =>
-        MatchingLifecycle.PrepareRedisCleanup(matchingId).Invoke();
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
@@ -136,7 +88,7 @@ public partial class GameServer(
             _nodeAdvertiser = new GameServerNodeAdvertiser(
                 gameServerRegistry,
                 nodeOptions,
-                () => MatchRuntimes.ActiveIds().Count,
+                () => matchRuntimes.ActiveIds().Count,
                 logger);
             await _nodeAdvertiser.StartAsync();
 
@@ -198,7 +150,7 @@ public partial class GameServer(
             "timers");
 
         await RunShutdownStageAsync(
-            MatchingLifecycle.DrainAsync(),
+            matchingLifecycle.DrainAsync(),
             "matching Redis cleanup");
 
         if (_nodeAdvertiser != null)
@@ -209,7 +161,7 @@ public partial class GameServer(
         }
 
         _cts.Dispose();
-        await MatchingLifecycle.CloseAsync();
+        await matchingLifecycle.CloseAsync();
 
         logger.LogInformation("Game server stopped.");
     }
@@ -323,9 +275,8 @@ public partial class GameServer(
 
     private void StartProximityAutoCombatTimer()
     {
-        var countdown = new MatchCountdownService(MatchRuntimes, EntryFailureHandler, logger);
         var tickRunner = new MatchTickRunner(
-            MatchRuntimes, sessions, logger,
+            matchRuntimes, sessions, logger,
             countdown.Broadcast,
             ProcessSwarmArenaForMatching,
             ProcessEnvironmentalTickForMatching,
@@ -372,12 +323,12 @@ public partial class GameServer(
     {
         try
         {
-            foreach (long matchingId in MatchRuntimes.ActiveIds())
+            foreach (long matchingId in matchRuntimes.ActiveIds())
             {
                 // #272 자기장 폐쇄: 자기장에서 파생한 구역 시간표 하나로만 닫는다 —
                 // 필드 오염은 정산 리소스 틱(GetSwarmFieldCorruptionPerTick)이 준다.
                 if (!MatchStartGate.IsGameplayActive(matchingId)) continue;
-                if (!MatchRuntimes.Enter(matchingId, out MatchScope scope))
+                if (!matchRuntimes.Enter(matchingId, out MatchScope scope))
                     continue;
 
                 using (scope)
@@ -432,23 +383,23 @@ public partial class GameServer(
                 RegisterClientSession,
                 GetSessionsByInstance,
 
-                    EventLogs,
-                _matchSummaryFileStore,
-                MatchRuntimes,
+                    eventLogs,
+                summaryFileStore,
+                matchRuntimes,
                 HandleSwarmGrowthPick,
                 HandleSwarmOrbDecision,
                 GetItemCombineRandom,
                 (playerId, matchingId) =>
-                    MatchingLifecycle.Publish(MatchingLifecycleSubjects.PlayerLeft, playerId, matchingId),
+                    matchingLifecycle.Publish(MatchingLifecycleSubjects.PlayerLeft, playerId, matchingId),
                 (playerId, matchingId) =>
-                    MatchingLifecycle.PreparePublication(
+                    matchingLifecycle.PreparePublication(
                         MatchingLifecycleSubjects.PlayerCompleted,
                         playerId,
                         matchingId),
                 (playerId, matchingId) =>
-                    MatchingLifecycle.Publish(MatchingLifecycleSubjects.PlayerReleased, playerId, matchingId),
+                    matchingLifecycle.Publish(MatchingLifecycleSubjects.PlayerReleased, playerId, matchingId),
                 () => Volatile.Read(ref _stopping) != 0,
-                EntryFailureHandler.Handle,
+                entryFailureHandler.Handle,
                 devOptions: devOptions);
 
             logger.LogInformation("Game client session created");
@@ -475,7 +426,7 @@ public partial class GameServer(
                     session.PlayerId.Value,
                     session.MatchingId);
                 if (session.MatchingId > 0)
-                    MatchCleanup.CleanupIfNoHumanSessionsRemain(session.MatchingId);
+                    matchCleanup.CleanupIfNoHumanSessionsRemain(session.MatchingId);
                 return;
             }
 
@@ -500,10 +451,9 @@ public partial class GameServer(
             }
 
             if (session.MatchingId > 0)
-                MatchCleanup.CleanupIfNoHumanSessionsRemain(session.MatchingId);
+                matchCleanup.CleanupIfNoHumanSessionsRemain(session.MatchingId);
         }
     }
-
 
     private Action? RegisterClientSession(long playerId, GameClientSession session)
     {
@@ -529,8 +479,6 @@ public partial class GameServer(
         return sessions.GetByMatch(matchingId);
     }
 
-
-
     private List<GameClientSession> GetSessionsByInstance(MapId mapId, long mapSubId)
     {
         return sessions.GetByInstance(mapId, mapSubId);
@@ -541,7 +489,7 @@ public partial class GameServer(
     private List<long> GetActiveMatchingIds()
     {
         var ids = sessions.GetActiveMatchingIds().ToHashSet();
-        foreach (long matchingId in MatchRuntimes.ActiveIds())
+        foreach (long matchingId in matchRuntimes.ActiveIds())
         {
             if (matchingId > 0)
             {

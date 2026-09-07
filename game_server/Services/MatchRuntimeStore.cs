@@ -76,6 +76,23 @@ internal sealed class MatchRuntime
                 : OrbData.TryGetRecoveryTier(item.ItemId, out int recoveryTier) && recoveryTier > 0));
     }
 
+    /// <summary>이 매치의 보유 오브 수량과 티어 합계를 계산한다. 호출자는 매치 잠금을 보유한다.</summary>
+    public (int OrbCount, int TierSum) GetOrbScore(long playerId)
+    {
+        int orbCount = 0;
+        int tierSum = 0;
+        foreach (var item in Inventory.GetPlayerInventory(playerId).GetAllItems())
+        {
+            int tier = OrbData.TryGetColorAndTier(item.ItemId, out _, out int attackTier)
+                ? attackTier
+                : OrbData.TryGetRecoveryTier(item.ItemId, out int recoveryTier) ? recoveryTier : 0;
+            if (item.Count <= 0 || tier <= 0)
+                continue;
+            orbCount += item.Count;
+            tierSum += tier * item.Count;
+        }
+        return (orbCount, tierSum);
+    }
     public DateTime? NextEnvironmentalTickAtUtc { get; private set; }
 
     /// <summary>
@@ -179,6 +196,7 @@ internal sealed class MatchRuntimeStore
     private readonly Action<long>? _afterCleanup;
     private readonly ILogger _logger;
     private readonly bool _monsterSpawnEnabled;
+    private readonly MatchEventArchive? _eventArchive;
 
     /// <param name="initializeMatch">런타임이 처음 만들어질 때 그 모니터 안에서 한 번 실행되는 훅.</param>
     /// <param name="cleanupSteps">터미널 정리 단계 — 순서대로, 각 단계 예외는 격리·로그.</param>
@@ -188,10 +206,12 @@ internal sealed class MatchRuntimeStore
         Action<long>? initializeMatch = null,
         IReadOnlyList<MatchCleanupStep>? cleanupSteps = null,
         Action<long>? afterCleanup = null,
-        bool monsterSpawnEnabled = true)
+        bool monsterSpawnEnabled = true,
+        MatchEventArchive? eventArchive = null)
     {
         _logger = logger;
         _monsterSpawnEnabled = monsterSpawnEnabled;
+        _eventArchive = eventArchive;
         _initializeMatch = initializeMatch;
         _cleanupSteps = cleanupSteps ?? [];
         _afterCleanup = afterCleanup;
@@ -299,6 +319,14 @@ internal sealed class MatchRuntimeStore
                 runtime.CleanupDone = true;
                 runtime.Doors.Clear();
                 RunCleanup(runtime.MatchingId);
+                try
+                {
+                    _eventArchive?.Archive(runtime.MatchingId, runtime.EventLog);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Match event log archive failed: MatchingId={MatchingId}", runtime.MatchingId);
+                }
                 runtime.Inventory.Release();
                 runtime.GroundItems.Release();
                 runtime.SummonStones.Release();

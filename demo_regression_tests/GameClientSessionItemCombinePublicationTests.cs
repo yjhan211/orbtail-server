@@ -878,11 +878,10 @@ public sealed class GameClientSessionItemCombinePublicationTests
 
         public SessionFixture()
         {
-            Server = CreateServer();
             Store = new MatchRuntimeStore(
                 NullLogger.Instance,
                 cleanupSteps: [new MatchCleanupStep("cleanup", _ => CleanupTimeline?.Enqueue("cleanup"))]);
-            typeof(GameServer).GetField("_matchRuntimes", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(Server, Store);
+            Server = CreateServer(Store);
             EventLog = Server.GetEventLogs();
 
         }
@@ -1036,18 +1035,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(connection, active);
         }
 
-        private static GameServer CreateServer() => new(
-            configuration: new ConfigurationBuilder().Build(),
-            logger: NullLogger<GameServer>.Instance,
-            matchingLifecycle: null!,
-            redisOperations: null!,
-            networkService: null!,
-            gameHandoffTicketService: null!,
-            readinessState: new ServerReadinessState(),
-            gameServerRegistry: new RecordingGameServerRegistry(),
-            nodeOptions: new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
-            devOptions: GameServerDevOptions.Disabled,
-            sessions: new GameSessionRegistry());
+        private static GameServer CreateServer(MatchRuntimeStore? runtimes = null) => GameServerTestAccess.Create(runtimes);
     }
 
     [MessagePackObject]

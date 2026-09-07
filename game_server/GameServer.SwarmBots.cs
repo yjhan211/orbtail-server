@@ -10,7 +10,7 @@ using network.packets;
 
 namespace game_server;
 
-public partial class GameServer
+internal partial class GameServer
 {
     // #312 봇/몹 소유권 분리: SwarmArena 파셜에서 이주한 봇 틱 페이즈·판단 로직.
     // 봇 = 가짜 플레이어(참가자 레이어). 호출 순서는 여전히 SwarmArena 틱 본체가 소유한다.
@@ -66,7 +66,7 @@ public partial class GameServer
                 int doorId = bot.SwarmDoorUnlockDoorId;
                 bot.SwarmDoorUnlockDoorId = 0;
                 bot.SwarmDoorUnlockStartedAtUtc = DateTime.MinValue;
-                if (MatchRuntimes.Get(matchingId)?.Doors.OpenDoor(doorId) != true) continue;
+                if (matchRuntimes.Get(matchingId)?.Doors.OpenDoor(doorId) != true) continue;
 
                 using var openPacket =
                     PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, bot.PlayerId);
@@ -91,11 +91,11 @@ public partial class GameServer
         float best = float.MaxValue;
         // 폐쇄 문 규칙은 사람과 같다: 밖에서 폐쇄 구역으로 들어가는 문은 못 따고,
         // 내가 폐쇄 구역 안이면 어느 문이든 따서 나간다.
-        bool insideClosed = MatchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(bot.CurrentArea);
+        bool insideClosed = matchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(bot.CurrentArea);
         foreach (var door in GameDoorData.GetByAreaType(bot.CurrentArea))
         {
             if (!GameInteractableData.IsGaugeGatedDoor(door.DoorId)) continue;
-            if (MatchRuntimes.Get(matchingId)?.Doors.IsDoorOpen(door.DoorId) == true) continue;
+            if (matchRuntimes.Get(matchingId)?.Doors.IsDoorOpen(door.DoorId) == true) continue;
             // 단방향 문("봇이 바깥에서 문을 따고 들어온다" 제보): 게이지가
             // 놓인 쪽(안쪽)에서만 딴다 — 사람은 게이지 노출 규칙이 이미 막고 있고, 봇도 같은
             // 표를 따른다. 폐쇄 구역 탈출은 예외 (사람 규칙과 동일).
@@ -103,8 +103,8 @@ public partial class GameServer
                 !GameInteractableData.IsGaugeDoorOperableFrom(door.DoorId, (int)bot.CurrentArea))
                 continue;
             if (!insideClosed &&
-                (MatchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(door.AreaType) ||
-                 MatchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(door.AreaTypeB)))
+                (matchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(door.AreaType) ||
+                 matchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(door.AreaTypeB)))
                 continue;
 
             // door_info의 좌표는 셀 단위다 — 봇 위치(월드)와 직접 비교하면 절대 닿지 않는다.
@@ -163,11 +163,11 @@ public partial class GameServer
 
             int exploreCost = GetSwarmBotExploreCost(matchingId, bot.PlayerId);
             // 열쇠 (#222 M4): 충전이 있으면 자금 없이도 개봉을 연다.
-            if (MatchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(bot.PlayerId).StoneCount < exploreCost &&
+            if (matchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(bot.PlayerId).StoneCount < exploreCost &&
                 bot.FreeSummonCharges <= 0)
                 continue;
 
-            if (!MatchRuntimes.GetRequired(matchingId).CollectCooldowns.TryAcquireCooldown(
+            if (!matchRuntimes.GetRequired(matchingId).CollectCooldowns.TryAcquireCooldown(
                     spot.Id, Config.SWARM_EXPLORE_REGEN_SECONDS, out _))
                 continue;
 
@@ -191,22 +191,22 @@ public partial class GameServer
         // #229 5단계: 봇도 사람과 같은 규칙 — 스웜에서는 상자를 열지 않는다.
         if (Config.IsSwarmExploreDisabled())
         {
-            MatchRuntimes.Get(matchingId)?.CollectCooldowns.ClearCooldown(spotId);
+            matchRuntimes.Get(matchingId)?.CollectCooldowns.ClearCooldown(spotId);
             return;
         }
 
         // #226 단계 C: 상자 = 소모품 공급처 (사람과 같은 규칙) — 오브 성장은 성장 카드가 맡는다.
-        if (!MatchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(
+        if (!matchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(
                 bot.PlayerId, Config.SWARM_BOX_OPEN_COST, out _))
         {
-            MatchRuntimes.Get(matchingId)?.CollectCooldowns.ClearCooldown(spotId);
+            matchRuntimes.Get(matchingId)?.CollectCooldowns.ClearCooldown(spotId);
             return;
         }
 
         int dropItemId = Random.Shared.Next(100) < 60
             ? Config.HEART_GROUND_ITEM_ID
             : Config.BOOTS_GROUND_ITEM_ID;
-        var dropped = MatchRuntimes.GetRequired(matchingId).GroundItems.SpawnItems(
+        var dropped = matchRuntimes.GetRequired(matchingId).GroundItems.SpawnItems(
             bot.CurrentArea, bot.Position.X, bot.Position.Y, [dropItemId],
             mapId: Config.SWARM_MATCH_MAP,
             layout: GroundItemSpawnLayout.EliminationScatter);
@@ -294,7 +294,7 @@ public partial class GameServer
     private SwarmBotDirective ResolveSwarmBotDirective(long matchingId, long botPlayerId)
     {
         var directive = ResolveSwarmBotDirectiveCore(matchingId, botPlayerId);
-        var bot = MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)
+        var bot = matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)
             .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
         if (bot == null || bot.IsEliminated || bot.CurrentArea == AreaType.None)
             return directive;
@@ -337,9 +337,9 @@ public partial class GameServer
     private SwarmBotDirective ResolveSwarmBotDirectiveCore(long matchingId, long botPlayerId)
     {
         GetSwarmMatchRuntime(matchingId).BotTactics.FleeDirective.Remove((matchingId, botPlayerId));
-        var directive = MatchRuntimes.GetRequired(matchingId).Monsters.GetBotDirective(matchingId, botPlayerId);
+        var directive = matchRuntimes.GetRequired(matchingId).Monsters.GetBotDirective(matchingId, botPlayerId);
 
-        var bot = MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)
+        var bot = matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)
             .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
         if (bot == null || bot.IsEliminated)
             return directive;
@@ -432,7 +432,7 @@ public partial class GameServer
         }
 
         // 0.3) 폐쇄 조기 철수 (#226 F): 경고 구역에서는 꼬리 길이에 비례해 일찍 나간다.
-        var closureSnapshot = MatchRuntimes.GetRequired(matchingId).Closures.GetClientStateSnapshot();
+        var closureSnapshot = matchRuntimes.GetRequired(matchingId).Closures.GetClientStateSnapshot();
         if (closureSnapshot.WarningAreas.Contains(bot.CurrentArea))
         {
             int trailOrbCount = CountSwarmSquadOrbs(matchingId, botPlayerId);
@@ -650,7 +650,7 @@ public partial class GameServer
         //    폐쇄 필터는 스팟 탐색 안에서 처리한다 — 최근접이 폐쇄라고 순례가 멈추면 안 된다.
         if (TryFindNearestAvailableExploreSpot(
                 matchingId, area: null, bot.Position, out var spot, out _) &&
-            MatchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(botPlayerId).StoneCount >=
+            matchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(botPlayerId).StoneCount >=
             // 비용은 봇 자신의 궤도 크기 기준 — spot.Id를 넘기던 오배선(빈 인벤=0비용) 수리
             GetSwarmBotExploreCost(matchingId, botPlayerId))
         {
@@ -696,7 +696,7 @@ public partial class GameServer
         //      지역 공급 (#226 단계 B): 몹이 남은 가장 가까운 공급 무리로 향한다 — 몹은
         //      찾아가는 공유 자원이고, 미니맵 스냅샷으로 사람에게도 같은 정보가 보인다.
         //      빈손 봇은 개봉이 무료라 1)에서 이미 스팟 순례로 빠진다.
-        if (MatchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(botPlayerId).StoneCount <
+        if (matchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(botPlayerId).StoneCount <
             GetSwarmBotExploreCost(matchingId, botPlayerId) &&
             hasSquadOrbs)
         {
@@ -713,7 +713,7 @@ public partial class GameServer
 
         // 4) 마른 방 탈출: 현재 구역에 살아있는 몹도, 열 수 있는 스팟 용무도 없으면
         //    몹이 남은 공급 구역으로 이주 — 스폰이 멈춘 종반에는 지시 없이 배회(디렉터 몫).
-        bool currentAreaHasSupply = MatchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId)
+        bool currentAreaHasSupply = matchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId)
             .Any(monster => monster.IsAlive && monster.AreaType == bot.CurrentArea);
         if (!currentAreaHasSupply &&
             TryFindNearestSwarmSupplyMonster(matchingId, bot, out var migrateArea,
@@ -740,7 +740,7 @@ public partial class GameServer
         area = AreaType.None;
         position = null!;
         float bestSquared = float.MaxValue;
-        foreach (var monster in MatchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId))
+        foreach (var monster in matchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId))
         {
             if (!monster.IsAlive || IsSwarmAreaOutside(matchingId, monster.AreaType))
                 continue;
@@ -893,7 +893,7 @@ public partial class GameServer
             }
         }
 
-        foreach (var other in MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
+        foreach (var other in matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
         {
             if (other.PlayerId == bot.PlayerId || other.IsEliminated) continue;
             Consider(other.PlayerId, other.Position, other.CurrentArea);
@@ -909,7 +909,7 @@ public partial class GameServer
 
         if (includeMonstersAsStronger)
         {
-            foreach (var monster in MatchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId))
+            foreach (var monster in matchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId))
             {
                 if (!monster.IsAlive) continue;
                 float dx = monster.PositionX - bot.Position.X;
@@ -928,7 +928,7 @@ public partial class GameServer
     private bool HasSwarmMonsterInBasicRange(long matchingId, BotPlayerState bot)
     {
         float rangeSquared = SwarmArenaBasicRange * SwarmArenaBasicRange;
-        foreach (var target in MatchRuntimes.GetRequired(matchingId).Monsters.GetCombatTargets(matchingId))
+        foreach (var target in matchRuntimes.GetRequired(matchingId).Monsters.GetCombatTargets(matchingId))
         {
             if (target.Area != bot.CurrentArea)
                 continue;

@@ -8,10 +8,9 @@ public sealed class MatchOwnedEventLogTests
     [Fact]
     public void ActiveStateBelongsToMatchAndOnlyArchivedEventsSurviveCleanup()
     {
-        GameEventLogManager logs = null!;
-        var store = new MatchRuntimeStore(NullLogger.Instance,
-            cleanupSteps: [new("event log", id => logs.Clear(id))]);
-        logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var archive = new MatchEventArchive();
+        var store = new MatchRuntimeStore(NullLogger.Instance, eventArchive: archive);
+        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog, archive);
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
         using (store.Enter(first))
@@ -44,10 +43,9 @@ public sealed class MatchOwnedEventLogTests
     [Fact]
     public void ArchiveKeepsOnlyLatestFiftyMatches()
     {
-        GameEventLogManager logs = null!;
-        var store = new MatchRuntimeStore(NullLogger.Instance,
-            cleanupSteps: [new("event log", id => logs.Clear(id))]);
-        logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var archive = new MatchEventArchive();
+        var store = new MatchRuntimeStore(NullLogger.Instance, eventArchive: archive);
+        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog, archive);
         for (long id = 1; id <= 51; id++)
         {
             var match = store.GetOrCreate(id);

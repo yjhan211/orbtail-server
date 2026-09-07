@@ -35,15 +35,8 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
         logs.BeginMatch(matchingId, seed: 17);
         var summaries = new MatchSummaryFileStore(_directory);
-        int scoreReads = 0;
-        bool scoreReadUnderLock = false;
         var service = new MatchCleanupService(store, new game_server.network.GameSessionRegistry(),
-            logs, summaries, NullLogger.Instance, (_, _) =>
-            {
-                scoreReads++;
-                scoreReadUnderLock = Monitor.IsEntered(runtime.Sync);
-                return 6;
-            });
+            logs, summaries, NullLogger.Instance);
         using (store.Enter(runtime))
         {
             if (botOnly)
@@ -56,14 +49,13 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             Assert.Null(summaries.Read(matchingId));
             Assert.Same(runtime, store.Get(matchingId));
         }
-        Assert.Equal(1, scoreReads);
-        Assert.True(scoreReadUnderLock);
+        Assert.Equal(1, summaries.ReadRawEvents(matchingId).Count(entry => entry.Type == "MATCH_ABANDONED"));
         Assert.Null(store.Get(matchingId));
         var summary = Assert.IsType<MatchSummaryDocument>(summaries.Read(matchingId));
         Assert.Equal(expectedReason, summary.EndReason);
         Assert.Equal(expectedWinner, summary.WinnerPlayerId);
         service.CleanupIfNoHumanSessionsRemain(matchingId);
-        Assert.Equal(1, scoreReads);
+        Assert.Equal(1, summaries.ReadRawEvents(matchingId).Count(entry => entry.Type == "MATCH_ABANDONED"));
     }
     [Fact]
     public void Capture_FreezesMetadataAndMutableEventGraphAcrossCleanup()
@@ -494,7 +486,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     public void Lifecycle_SourceContract_ClaimsTerminalBeforeOneShotCorePublish()
     {
         string root = FindRepositoryRoot();
-        string serverSource = ReadNormalizedSource(root, "game_server", "GameServer.cs") + ReadNormalizedSource(root, "game_server", "Services", "MatchingLifecycleService.cs");
+        string serverSource = ReadNormalizedSource(root, "game_server", "Program.cs") + ReadNormalizedSource(root, "game_server", "GameServer.cs") + ReadNormalizedSource(root, "game_server", "Services", "MatchingLifecycleService.cs");
         string immediateWrapper = ReadMethodSlice(
             serverSource,
             "internal void Publish(",
@@ -549,8 +541,8 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             "public async Task StopAsync(",
             "private async Task RunShutdownStageAsync(");
         int timerDisposal = Find(shutdown, "\"timers\");");
-        int redisCleanupDrain = Find(shutdown, "MatchingLifecycle.DrainAsync()");
-        int natsClose = Find(shutdown, "MatchingLifecycle.CloseAsync();");
+        int redisCleanupDrain = Find(shutdown, "matchingLifecycle.DrainAsync()");
+        int natsClose = Find(shutdown, "matchingLifecycle.CloseAsync();");
         Assert.True(timerDisposal < redisCleanupDrain);
         Assert.True(redisCleanupDrain < natsClose);
     }
@@ -559,7 +551,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     public void RedisCleanup_SourceContract_RegistersBeforeDeferredDispatchAndAlwaysCompletesTracker()
     {
         string root = FindRepositoryRoot();
-        string serverSource = ReadNormalizedSource(root, "game_server", "GameServer.cs") + ReadNormalizedSource(root, "game_server", "Services", "MatchingLifecycleService.cs");
+        string serverSource = ReadNormalizedSource(root, "game_server", "Program.cs") + ReadNormalizedSource(root, "game_server", "GameServer.cs") + ReadNormalizedSource(root, "game_server", "Services", "MatchingLifecycleService.cs");
         string preparation = ReadMethodSlice(
             serverSource,
             "internal Action PrepareRedisCleanup(",
@@ -633,11 +625,11 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             serverSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "afterCleanup: StartMatchingRedisCleanup, monsterSpawnEnabled: devOptions.MonsterSpawnEnabled);",
+            "afterCleanup: id => lifecycle.PrepareRedisCleanup(id).Invoke(),",
             serverSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "MatchingLifecycle.PrepareRedisCleanup(matchingId).Invoke();",
+            "eventArchive: sp.GetRequiredService<MatchEventArchive>()",
             serverSource,
             StringComparison.Ordinal);
 

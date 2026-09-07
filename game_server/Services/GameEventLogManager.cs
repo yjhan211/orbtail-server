@@ -8,23 +8,22 @@ namespace game_server.services;
 
 /// <summary>
 ///     이벤트 기록과 전투·계측 통계를 계산한다. 진행 중 상태는 MatchRuntime.EventLog에 쓰며,
-///     이 객체는 종료된 최근 50개 매치의 기록과 프로세스 공용 이벤트 순번만 보관한다.
+///     종료 기록은 MatchEventArchive에서 조회하며, 이 객체는 프로세스 공용 이벤트 순번을 관리한다.
 ///     기록 변경과 보관 전환은 호출자가 해당 매치 잠금 안에서 실행한다.
 /// </summary>
 public class GameEventLogManager
 {
     private const int MaxEventsPerMatching = 5_000;
-    private const int MaxArchivedMatchings = 50;
+
 
     private readonly Func<long, MatchEventLogState?> _getMatchState;
-    private readonly ConcurrentDictionary<long, MatchingEventLog> _archivedLogs = new();
-    private readonly Queue<long> _archivedMatchingIds = new();
-    private readonly object _archiveLock = new();
+    private readonly MatchEventArchive _archive;
     private long _nextSeq;
 
-    internal GameEventLogManager(Func<long, MatchEventLogState?> getMatchState)
+    internal GameEventLogManager(Func<long, MatchEventLogState?> getMatchState, MatchEventArchive? archive = null)
     {
         _getMatchState = getMatchState ?? throw new ArgumentNullException(nameof(getMatchState));
+        _archive = archive ?? new MatchEventArchive();
     }
 
     private MatchEventLogState GetActiveState(long matchingId)
@@ -599,7 +598,7 @@ public class GameEventLogManager
     public void BeginMatch(long matchingId, int seed)
     {
         if (matchingId <= 0) return;
-        _archivedLogs.TryRemove(matchingId, out _);
+        _archive.Remove(matchingId);
         var state = GetTelemetry(matchingId);
         var startedAt = DateTimeOffset.UtcNow;
         lock (state.SyncRoot)
@@ -1175,7 +1174,7 @@ public class GameEventLogManager
     public bool TryBeginFinalization(long matchingId)
     {
         if (matchingId <= 0) return false;
-        if (_archivedLogs.TryGetValue(matchingId, out var archived))
+        if (_archive.TryGet(matchingId, out var archived))
             return Interlocked.CompareExchange(ref archived.Finalized, 1, 0) == 0;
         if (_getMatchState(matchingId) is not { Archived: 0 }) return false;
         return Interlocked.CompareExchange(ref GetLog(matchingId).Finalized, 1, 0) == 0;
@@ -1184,7 +1183,7 @@ public class GameEventLogManager
     public List<GameEventEntry> GetRecent(long matchingId, int limit = MaxEventsPerMatching, long? sinceSeq = null)
     {
         var log = _getMatchState(matchingId)?.Log;
-        if (log == null && !_archivedLogs.TryGetValue(matchingId, out log))
+        if (log == null && !_archive.TryGet(matchingId, out log))
             return new List<GameEventEntry>();
         return log.Snapshot(limit, sinceSeq);
     }
@@ -1192,33 +1191,12 @@ public class GameEventLogManager
     public List<GameEventEntry> GetForPersistence(long matchingId)
     {
         var log = _getMatchState(matchingId)?.Log;
-        if (log == null && !_archivedLogs.TryGetValue(matchingId, out log))
+        if (log == null && !_archive.TryGet(matchingId, out log))
             return new List<GameEventEntry>();
         return log.FullSnapshot();
     }
 
-    public void Clear(long matchingId)
-    {
-        var state = _getMatchState(matchingId);
-        if (state == null || Interlocked.Exchange(ref state.Archived, 1) != 0) return;
-        var log = Interlocked.Exchange(ref state.Log, null);
-        state.Combat = null;
-        state.Telemetry = null;
-        if (log != null)
-        {
-            log.CompactForArchive();
-            _archivedLogs[matchingId] = log;
-            lock (_archiveLock)
-            {
-                _archivedMatchingIds.Enqueue(matchingId);
-                while (_archivedMatchingIds.Count > MaxArchivedMatchings)
-                {
-                    long removedMatchingId = _archivedMatchingIds.Dequeue();
-                    _archivedLogs.TryRemove(removedMatchingId, out _);
-                }
-            }
-        }
-    }
+    public void Clear(long matchingId) => _archive.Archive(matchingId, _getMatchState(matchingId));
 
     private void LogExploreFinished(long matchingId, long playerId, int interactId, string area, string type,
         string outcome, IReadOnlyCollection<int> generatedItemIds, bool isBot)

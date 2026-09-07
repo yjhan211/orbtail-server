@@ -11,7 +11,7 @@ using network.packets;
 
 namespace game_server;
 
-public partial class GameServer
+internal partial class GameServer
 {
 
 
@@ -120,7 +120,7 @@ PlayerInGameInventory inventory)
         IReadOnlyCollection<BotPlayerState> matchingBots,
         DateTime nowUtc)
     {
-        if (MatchRuntimes.Get(matchingId)?.Presentation is not { } presentation)
+        if (matchRuntimes.Get(matchingId)?.Presentation is not { } presentation)
             return;
         var recoveryTimes = presentation.OrbRecoveryReadyAtUtc;
         var activeRecoveryKeys = new HashSet<(long PlayerId, long ItemUid, int StackIndex)>();
@@ -200,7 +200,7 @@ PlayerInGameInventory inventory)
             // Bots mutate their state directly, so only that path needs explicit telemetry.
             if (session == null)
             {
-                EventLogs.RecordRecovery(
+                eventLogs.RecordRecovery(
                     matchingId, playerId, effectiveRecovery);
             }
             logger.LogDebug(
@@ -232,7 +232,7 @@ PlayerInGameInventory inventory)
         IReadOnlyCollection<ProximityCombatActor> actors,
         IReadOnlyCollection<GameClientSession> matchingSessions)
     {
-        if (MatchRuntimes.Get(matchingId)?.Presentation is not { } presentation)
+        if (matchRuntimes.Get(matchingId)?.Presentation is not { } presentation)
             return [];
         var visualStates = presentation.OrbVisuals;
         GameClientSession[] recipientSnapshot = matchingSessions.ToArray();
@@ -337,7 +337,7 @@ PlayerInGameInventory inventory)
     private void CommitAndDispatchOrbVisualStatePublication(
         SwarmOrbVisualPublication publication)
     {
-        if (MatchRuntimes.Get(publication.MatchingId)?.Presentation is not { } presentation)
+        if (matchRuntimes.Get(publication.MatchingId)?.Presentation is not { } presentation)
             return;
         var visualStates = presentation.OrbVisuals;
         var key = (publication.ObserverPlayerId, publication.ActorPlayerId);

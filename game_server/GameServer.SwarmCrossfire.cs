@@ -17,7 +17,7 @@ namespace game_server;
 ///     시각 폭발로, 벽 없이 사거리 끝까지 가면 폭발 없이 소멸 — 회피가 프랍·벽 배치 읽기가 되게 한다.
 ///     발사 뒤 표적이 죽거나 움직여도 모양은 잠근 직선을 끝까지 쓴다. 태양만 — 바람은 회전 칼날, 파도는 소용돌이.
 /// </summary>
-public partial class GameServer
+internal partial class GameServer
 {
     private static readonly bool SwarmCrossfireEnabled = true;
 
@@ -110,7 +110,7 @@ public partial class GameServer
         ReadOnlySpan<float> directionY = stackalloc float[]
             { diagonalUnit, -diagonalUnit, diagonalUnit, -diagonalUnit };
 
-        var combatTargets = MatchRuntimes.GetRequired(matchingId).Monsters.GetCombatTargets(matchingId);
+        var combatTargets = matchRuntimes.GetRequired(matchingId).Monsters.GetCombatTargets(matchingId);
         float unitX = 0f;
         float unitY = 0f;
         float groundLength = 0f;
@@ -197,7 +197,7 @@ public partial class GameServer
         BroadcastSwarmCrossfireTelegraph(
             eventId, attack, origin, end, width, sweepSeconds, anchorMonsterId, allSessions);
 
-        EventLogs.LogSystem(
+        eventLogs.LogSystem(
             matchingId,
             $"ORB_CROSSFIRE_TELEGRAPH event={eventId} owner={attack.AttackerPlayerId} " +
             $"ordinal={attack.AttackerTrailOrdinal} " +
@@ -277,7 +277,7 @@ public partial class GameServer
             front = MathF.Min(front, sweepEnd);
             float lastFront = shape.LastFront;
             shape.LastFront = front;
-            monsters ??= MatchRuntimes.GetRequired(matchingId).Monsters.GetCombatTargets(matchingId);
+            monsters ??= matchRuntimes.GetRequired(matchingId).Monsters.GetCombatTargets(matchingId);
 
             // 관통 (뱀서식): 이번 틱 구간에 걸린 표적 전부를 지나가며 때린다 —
             // 첫 표적 폭발은 퇴역. 투사체는 멈추지 않고, 폭발은 벽에 닿을 때만.
@@ -291,7 +291,7 @@ public partial class GameServer
 
                 shape.HitMonsters.Add(monster.CombatTargetId);
                 TrackSwarmCrossfireConvergence(matchingId, monster.CombatTargetId, nowUtc);
-                MatchRuntimes.GetRequired(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
+                matchRuntimes.GetRequired(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
                 int monsterDamage = RollSwarmCriticalDamage(
                     matchingId, shape.Damage, out bool critical);
                 ApplySwarmMonsterHitNow(
@@ -332,7 +332,7 @@ public partial class GameServer
             {
                 // 벽 없이 사거리 소진 — 폭발 없이 소멸. 클라 투사체도 같은 시간에 끝에 닿아
                 // 스스로 사라지므로 통지는 없다.
-                EventLogs.LogSystem(
+                eventLogs.LogSystem(
                     matchingId, $"ORB_CROSSFIRE_VANISH event={shape.EventId} owner={shape.OwnerId}");
             }
         }
@@ -352,7 +352,7 @@ public partial class GameServer
         List<GameClientSession> allSessions)
     {
         BroadcastSwarmCrossfireDetonation(shape, detonation, allSessions);
-        EventLogs.LogSystem(
+        eventLogs.LogSystem(
             matchingId,
             $"ORB_CROSSFIRE_DETONATE event={shape.EventId} owner={shape.OwnerId} " +
             $"at=({detonation.X:F2},{detonation.Y:F2}) radius={shape.BlastRadius:F2} visualOnly=true");
@@ -530,11 +530,11 @@ public partial class GameServer
         bool critical,
         List<GameClientSession> allSessions)
     {
-        var damageResult = MatchRuntimes.GetRequired(matchingId).Monsters.ApplyMonsterDamage(matchingId, combatTargetId, attackerId, damage);
+        var damageResult = matchRuntimes.GetRequired(matchingId).Monsters.ApplyMonsterDamage(matchingId, combatTargetId, attackerId, damage);
         if (!damageResult.Applied)
             return;
 
-        EventLogs.RecordMonsterHit(matchingId, attackerId, damage, damageResult.Killed);
+        eventLogs.RecordMonsterHit(matchingId, attackerId, damage, damageResult.Killed);
         var attackerSession = allSessions.FirstOrDefault(session => session.PlayerId == attackerId);
         attackerSession?.SendSwarmAfterimageMonsterAttackFeedback(
             monsterId, area, weaponItemId, damage, critical, noProjectile: true);
@@ -556,14 +556,14 @@ public partial class GameServer
 
         // 기준점 계측 (#232 1단계): 종·생존초·살아 있는 동안 받은 공격 사건 수. 완료 조건
         // "몬스터당 공격 모양 평균 2회 이상"과 "즉시 지워져 기준점이 못 되는 몹"을 여기서 잰다.
-        EventLogs.LogSystem(
+        eventLogs.LogSystem(
             matchingId,
             $"monster_lifetime kind={damageResult.Kind} area={damageResult.MonsterState.AreaType} " +
             $"aliveSeconds={damageResult.AliveSeconds:F1} attackEvents={damageResult.AttackEventCount} " +
             $"killer={attackerId}");
 
         // 처치 계측 (#226 E): 종·구역·처치자 — 요약의 몹 처치 지표가 이 이벤트를 읽는다.
-        EventLogs.LogSwarmAfterimageKilled(
+        eventLogs.LogSwarmAfterimageKilled(
             matchingId, damageResult.MonsterId,
             damageResult.MonsterState.AreaType.ToString(),
             isCore: damageResult.Kind == SwarmMonsterKind.RunawayGoblin,
@@ -668,7 +668,7 @@ public partial class GameServer
             bot.LastProximityAttackerPlayerId = ownerId;
             runtime.BotTactics.LastDamagedAtUtc[(matchingId, bot.PlayerId)] = DateTime.UtcNow;
             bot.LastDamagedAtUtc = DateTime.UtcNow;
-            EventLogs.LogHit(
+            eventLogs.LogHit(
                 matchingId, ownerId, bot.PlayerId, weaponItemId, shock,
                 bot.Corruption < Config.MAX_CORRUPTION &&
                 bot.Corruption + shock >= Config.MAX_CORRUPTION,
@@ -680,7 +680,7 @@ public partial class GameServer
         var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
         ownerSession?.SendProximityAutoCombatAttackFeedback(victimId, area, weaponItemId, shock, dotTick);
 
-        EventLogs.LogSystem(
+        eventLogs.LogSystem(
             matchingId,
             $"{label} owner={ownerId} victim={victimId} weapon={weaponItemId} " +
             $"corruptionBefore={corruptionBefore} corruptionAfter={corruptionAfter}");
@@ -737,7 +737,7 @@ public partial class GameServer
             GetSwarmMatchRuntime(matchingId).Crossfire.TrackConvergence(targetId, nowUtc);
         if (observation.HitCount >= 2)
         {
-            EventLogs.LogSystem(
+            eventLogs.LogSystem(
                 matchingId,
                 $"crossfire_converge target={targetId} hits={observation.HitCount} " +
                 $"windowMs={observation.WindowMilliseconds:F0}");

@@ -13,7 +13,7 @@ namespace game_server;
 ///     연출은 클라(PlayerTool.WindBlade): 오브 자전 + 판정 반경 칼날 원판 — 평시 저속, 적 감지 시
 ///     가속·발광. 서버는 별도 연출 패킷을 보내지 않는다 — 피해 틱의 피격 패킷이 곧 신호다.
 /// </summary>
-public partial class GameServer
+internal partial class GameServer
 {
     // 몸통 여유 — 교차사격과 같은 값.
     private const float SwarmWindBladeMonsterRadius = 0.3f;
@@ -58,7 +58,7 @@ public partial class GameServer
                 tiers ??= GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
                 var origin = GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position, tiers);
                 float radius = Config.SWARM_WIND_BLADE_RADIUS_BY_TIER[Math.Clamp(tier, 1, 3) - 1];
-                monsters ??= MatchRuntimes.GetRequired(matchingId).Monsters.GetCombatTargets(matchingId);
+                monsters ??= matchRuntimes.GetRequired(matchingId).Monsters.GetCombatTargets(matchingId);
 
                 // 판정 전에 반경 안 표적부터 수집한다 — 시동 게이트가 표적 유무를 먼저 물어야 한다.
                 List<SwarmArenaCombatTarget>? monstersInRadius = null;
@@ -107,7 +107,7 @@ public partial class GameServer
                     foreach (var monster in monstersInRadius)
                     {
                         monsterHits++;
-                        MatchRuntimes.GetRequired(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
+                        matchRuntimes.GetRequired(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
                         int monsterDamage = RollSwarmCriticalDamage(
                             matchingId, damage, out bool critical);
                         ApplySwarmMonsterHitNow(
@@ -138,7 +138,7 @@ public partial class GameServer
                 // 빈 틱은 남기지 않는다 — 상시 무기라 매 틱 로그를 남기면 이벤트 흐름이 이것으로 찬다.
                 if (monsterHits > 0 || shocks > 0)
                 {
-                    EventLogs.LogSystem(
+                    eventLogs.LogSystem(
                         matchingId,
                         $"WIND_BLADE owner={owner.PlayerId} ordinal={ordinal} at=({origin.X:F2},{origin.Y:F2}) " +
                         $"radius={radius:F2} damage={damage} monsters={monsterHits} shocks={shocks}");

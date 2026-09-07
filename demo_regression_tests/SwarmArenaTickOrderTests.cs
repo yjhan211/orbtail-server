@@ -81,12 +81,12 @@ public sealed class SwarmArenaTickOrderTests
             matchingSettlement,
             "long matchingId = match.MatchingId;",
             "var humans = activeSessions",
-            "var bots = MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)",
+            "var bots = matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)",
             "target.Session.ModifyStats(",
             "var eliminatedTargets = targets",
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
             "target.Session.EliminateForSettlement(",
-            "BotEliminations.Process(",
+            "botEliminations.Process(",
             "Roster.CheckGameOver()",
             "resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);");
         Assert.DoesNotContain("Enter(", matchingSettlement);
@@ -102,7 +102,7 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             arenaCode,
-            "MatchRuntimes.GetRequired(matchingId).Monsters.Tick(",
+            "matchRuntimes.GetRequired(matchingId).Monsters.Tick(",
             "if (!MatchStartGate.IsGameplayActive(matchingId))");
 
         string inactiveGameplayBranch = MaskCommentsAndLiterals(
@@ -135,7 +135,7 @@ public sealed class SwarmArenaTickOrderTests
             "session.SendSummonStoneState();",
             "SetupSwarmCutDummy(matchingId);",
             "session.TrySend(leavePacket);",
-            "MatchRuntimes.GetRequired(matchingId).Monsters.Tick(",
+            "matchRuntimes.GetRequired(matchingId).Monsters.Tick(",
             "if (!MatchStartGate.IsGameplayActive(matchingId))",
             "UpdateSwarmOrbTrails(",
             "ProcessSwarmTrailCuts(",
@@ -164,8 +164,8 @@ public sealed class SwarmArenaTickOrderTests
             "TryScheduleSwarmCrossfire(",
             "attackerSession?.SendSwarmAfterimageMonsterAttackFeedback(",
             "BroadcastSwarmAttackVfxToTargetAndObservers(",
-            "MatchRuntimes.GetRequired(matchingId).Bots.TryFinalizeProximityAutoCombatElimination(",
-            "BotEliminations.Process(");
+            "matchRuntimes.GetRequired(matchingId).Bots.TryFinalizeProximityAutoCombatElimination(",
+            "botEliminations.Process(");
     }
 
     [Fact]
@@ -308,7 +308,7 @@ public sealed class SwarmArenaTickOrderTests
         // 매치 잠금 안에서 상태 확정 → 같은 순서로 송신 (#331). 폐쇄는 1초 틱이라 잠금을 기다린다.
         AssertInOrder(
             tick,
-            "MatchRuntimes.Enter(matchingId, out MatchScope scope)",
+            "matchRuntimes.Enter(matchingId, out MatchScope scope)",
             "scope.Runtime.IsTerminal",
             "GetSessionsByMatch(matchingId).ToArray();",
             "PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);",
@@ -322,9 +322,9 @@ public sealed class SwarmArenaTickOrderTests
             "new SwarmFieldStateOutbound(",
             "Closures.CheckClosureSchedule()",
             "new SwarmClosureWarningOutbound(",
-            "EventLogs.LogClosure(",
+            "eventLogs.LogClosure(",
             "new SwarmAreaClosedOutbound(",
-            "MatchRuntimes.Get(matchingId)?.Doors.CloseDoorsForAreas(",
+            "matchRuntimes.Get(matchingId)?.Doors.CloseDoorsForAreas(",
             "new SwarmDoorStateOutbound(",
             "PrepareDestroySwarmOrbsInClosedAreas(",
             "new SwarmClosurePublicationPlan(");
@@ -339,7 +339,7 @@ public sealed class SwarmArenaTickOrderTests
             ".OrbDurabilityBonus.Remove(",
             "new SwarmInventoryUpdateOutbound(",
             "new SwarmRingVfxOutbound(",
-            "EventLogs.LogSystem(");
+            "eventLogs.LogSystem(");
         Assert.DoesNotContain("Packet.Create(", orbPrepare);
         Assert.DoesNotContain("PacketMaker.", orbPrepare);
         Assert.DoesNotContain(".TrySend(", orbPrepare);
@@ -399,7 +399,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Contains("SwarmCrossfireState crossfire = GetSwarmMatchRuntime(matchingId).Crossfire;", crossfire);
         Assert.Contains("public SwarmCrossfireState Crossfire { get; }", runtimeStates);
 
-        Assert.Contains("MatchRuntimes.Get(matchingId)", botDodge);
+        Assert.Contains("matchRuntimes.Get(matchingId)", botDodge);
         Assert.Contains("runtime.Swarm.Crossfire.DodgeSnapshot", botDodge);
         Assert.DoesNotContain("GetSwarmMatchRuntime(", botDodge);
         Assert.DoesNotContain("GetOrCreate(", botDodge);
@@ -697,7 +697,7 @@ public sealed class SwarmArenaTickOrderTests
         return File.ReadAllText(Path.Combine(fullPathParts))
             .Replace("\r\n", "\n")
             // 표기 차이만 정규화하고 잠금·상태 확정·발행 순서 검사는 유지한다.
-            .Replace("MatchRuntimes.Enter(matchingId, out var scope)",
-                "MatchRuntimes.Enter(matchingId, out MatchScope scope)", StringComparison.Ordinal);
+            .Replace("matchRuntimes.Enter(matchingId, out var scope)",
+                "matchRuntimes.Enter(matchingId, out MatchScope scope)", StringComparison.Ordinal);
     }
 }

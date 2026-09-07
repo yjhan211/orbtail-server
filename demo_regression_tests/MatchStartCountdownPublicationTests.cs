@@ -40,7 +40,7 @@ public sealed class MatchStartCountdownPublicationTests
             broadcast,
             "MatchStartGate.IsEntryTimedOut(matchingId, DateTime.UtcNow)",
             "entryFailureHandler.Handle(anchorSession);",
-            "matchRuntimes.Enter(matchingId, out var scope)",
+            "matchRuntimes.Enter(matchingId, out MatchScope scope)",
             "scope.Runtime.IsTerminal",
             "var snapshot = MatchStartGate.GetSnapshot(matchingId);",
             "pacing.LastCountdownSecondsPublished == snapshot.RemainingSeconds",
@@ -352,22 +352,7 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.Equal(1, CountOccurrences(method, "Connection.TrySendAndDisconnect(packet);"));
     }
 
-    private static GameServer CreateEntryTestServer()
-    {
-        IConfiguration configuration = new ConfigurationBuilder().Build();
-        return new GameServer(
-            configuration: configuration,
-            logger: NullLogger<GameServer>.Instance,
-            matchingLifecycle: new MatchingLifecycleService(new InMemoryRedisOperations(), new NoOpNatsClient(), NullLogger.Instance),
-            redisOperations: null!,
-            networkService: null!,
-            gameHandoffTicketService: null!,
-            readinessState: new ServerReadinessState(),
-            gameServerRegistry: new RecordingGameServerRegistry(),
-            nodeOptions: new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
-            devOptions: GameServerDevOptions.Disabled,
-            sessions: new GameSessionRegistry());
-    }
+    private static GameServer CreateEntryTestServer() => GameServerTestAccess.Create();
 
     internal sealed class NoOpNatsClient : network.infrastructure.messaging.INatsClient
     {
@@ -474,8 +459,8 @@ public sealed class MatchStartCountdownPublicationTests
         return File.ReadAllText(Path.Combine([repositoryRoot, .. parts]))
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             // 명시 타입과 var 표기는 같은 잠금 호출로 취급한다.
-            .Replace("MatchRuntimes.Enter(matchingId, out var scope)",
-                "MatchRuntimes.Enter(matchingId, out MatchScope scope)", StringComparison.Ordinal);
+            .Replace("matchRuntimes.Enter(matchingId, out var scope)",
+                "matchRuntimes.Enter(matchingId, out MatchScope scope)", StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

@@ -201,7 +201,7 @@ public sealed class SwarmBotMovementPlanTests
         Assert.Contains("MoveSwarmCutDummy(dummyMatchingId, dirX, dirY);", callback);
         AssertInOrder(
             adminSetup,
-            "MatchRuntimes.Enter(matchingId, out MatchScope scope)",
+            "matchRuntimes.Enter(matchingId, out MatchScope scope)",
             "scope.Runtime.IsTerminal",
             "SetupSwarmCutDummyCore(",
             "DispatchSwarmExternalBotMovement(matchingId, movement)");
@@ -213,7 +213,7 @@ public sealed class SwarmBotMovementPlanTests
             "DispatchSwarmBotMovementPlan(plan, sessionSnapshot)");
         AssertInOrder(
             move,
-            "MatchRuntimes.Enter(matchingId, out MatchScope scope)",
+            "matchRuntimes.Enter(matchingId, out MatchScope scope)",
             "scope.Runtime.IsTerminal",
             "MoveSwarmCutDummyCore(",
             "DispatchSwarmExternalBotMovement(matchingId, movement)");

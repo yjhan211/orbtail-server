@@ -37,6 +37,8 @@ public sealed class GameServerDependencyInjectionTests
         services.AddSingleton<IRedisOperations>(new InMemoryRedisOperations());
 
         using var provider = services.BuildServiceProvider();
+        // 로그를 먼저 요청해도 저장소와 순환 없이 조립되어야 한다.
+        provider.GetRequiredService<game_server.services.GameEventLogManager>();
         var registry = provider.GetRequiredService<GameSessionRegistry>();
         var server = provider.GetRequiredService<GameServer>();
         var injectedRegistry = typeof(GameServer)
@@ -47,5 +49,21 @@ public sealed class GameServerDependencyInjectionTests
         Assert.Same(registry, provider.GetRequiredService<GameSessionRegistry>());
         Assert.Same(registry, injectedRegistry);
         Assert.Same(server, provider.GetRequiredService<GameServer>());
+        Type[] serviceTypes =
+        [
+            typeof(game_server.services.MatchRuntimeStore),
+            typeof(game_server.services.GameEventLogManager),
+            typeof(game_server.services.MatchSummaryFileStore),
+            typeof(game_server.services.MatchEntryFailureHandler),
+            typeof(game_server.services.MatchCleanupService),
+            typeof(game_server.services.BotEliminationService),
+            typeof(game_server.services.MatchCountdownService)
+        ];
+        foreach (var type in serviceTypes)
+        {
+            var field = typeof(GameServer).GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                .Single(field => field.FieldType == type);
+            Assert.Same(provider.GetRequiredService(type), field.GetValue(server));
+        }
     }
 }

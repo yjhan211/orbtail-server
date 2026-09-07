@@ -13,8 +13,7 @@ internal sealed class MatchCleanupService(
     GameSessionRegistry sessions,
     GameEventLogManager eventLogs,
     MatchSummaryFileStore summaryFileStore,
-    ILogger logger,
-    Func<long, long, int> getOrbCount)
+    ILogger logger)
 {
     public void EndBotOnlyMatchIfSettled(long matchingId, long winnerPlayerId)
     {
@@ -64,7 +63,7 @@ internal sealed class MatchCleanupService(
                         stats.TotalRecovery,
                         // 승점 (#229): 사람이 나간 매치도 오브 수를 남긴다 — 봇 매치가 유일한
                         // 자동 검증 창구라 여기서 빠지면 결과 집계를 로그로 확인할 수 없다.
-                        getOrbCount(matchingId, row.playerId));
+                        runtime.GetOrbScore(row.playerId).OrbCount);
                 })
                 .ToList();
             eventLogs.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);
