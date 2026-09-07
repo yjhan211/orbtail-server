@@ -161,7 +161,7 @@ public sealed class NatsClientTests
         {
             var server = provider.GetRequiredService<game_server.GameServer>();
             var lifecycle = provider.GetRequiredService<game_server.services.MatchingLifecycleService>();
-            Assert.Same(lifecycle, server.MatchingLifecycle);
+            Assert.Same(lifecycle, server.GetMatchingLifecycle());
             await server.StopAsync(CancellationToken.None);
             Assert.Equal(1, proxy.CloseCalls);
         }

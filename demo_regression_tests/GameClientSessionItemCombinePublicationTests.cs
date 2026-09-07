@@ -883,7 +883,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 NullLogger.Instance,
                 cleanupSteps: [new MatchCleanupStep("cleanup", _ => CleanupTimeline?.Enqueue("cleanup"))]);
             typeof(GameServer).GetField("_matchRuntimes", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(Server, Store);
-            EventLog = Server.EventLogs;
+            EventLog = Server.GetEventLogs();
 
         }
 

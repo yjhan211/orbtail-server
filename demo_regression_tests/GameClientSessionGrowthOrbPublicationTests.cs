@@ -664,8 +664,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         public SessionFixture()
         {
             Server = CreateServer();
-            Store = Server.MatchRuntimes;
-            EventLog = Server.EventLogs;
+            Store = Server.GetMatchRuntimes();
+            EventLog = Server.GetEventLogs();
             _growthHandler = typeof(GameServer).GetMethod(
                     "HandleSwarmGrowthPick",
                     BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!

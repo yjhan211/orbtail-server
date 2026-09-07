@@ -130,7 +130,7 @@ public sealed class MatchStartCountdownPublicationTests
     {
         const long matchingId = 71_002;
         GameServer server = CreateEntryTestServer();
-        MatchRuntime runtime = server.MatchRuntimes.GetOrCreate(matchingId);
+        MatchRuntime runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);
         MatchStartGate.RegisterHumanPlayer(
             matchingId,
             playerId: 301,
@@ -148,7 +148,7 @@ public sealed class MatchStartCountdownPublicationTests
             using var releaseLock = new ManualResetEventSlim();
             Task holder = Task.Run(() =>
             {
-                using (server.MatchRuntimes.Enter(runtime))
+                using (server.GetMatchRuntimes().Enter(runtime))
                 {
                     lockHeld.Set();
                     Assert.True(releaseLock.Wait(TimeSpan.FromSeconds(5)));
@@ -194,7 +194,7 @@ public sealed class MatchStartCountdownPublicationTests
 
             // 수신자가 없어도 초는 기록된다 — 늦게 붙은 세션이 옛 초를 받지 않는다.
             const long noRecipientMatchingId = 71_003;
-            server.MatchRuntimes.GetOrCreate(noRecipientMatchingId);
+            server.GetMatchRuntimes().GetOrCreate(noRecipientMatchingId);
             MatchStartGate.RegisterHumanPlayer(
                 noRecipientMatchingId,
                 playerId: 401,
@@ -220,7 +220,7 @@ public sealed class MatchStartCountdownPublicationTests
     {
         const long matchingId = 71_004;
         GameServer server = CreateEntryTestServer();
-        server.MatchRuntimes.GetOrCreate(matchingId);
+        server.GetMatchRuntimes().GetOrCreate(matchingId);
         MatchStartGate.RegisterHumanPlayer(
             matchingId,
             playerId: 501,
@@ -236,7 +236,7 @@ public sealed class MatchStartCountdownPublicationTests
             Assert.Equal(1, failing.SendCount);
             Assert.Equal(-1, GetPacing(server, matchingId).LastCountdownSecondsPublished);
             // 실패해도 잠금은 풀린다.
-            Assert.True(server.MatchRuntimes.TryEnter(matchingId, out MatchScope scope));
+            Assert.True(server.GetMatchRuntimes().TryEnter(matchingId, out MatchScope scope));
             scope.Dispose();
 
             InvokePeriodicBroadcast(server, [matchingId], [failing]);
@@ -258,7 +258,7 @@ public sealed class MatchStartCountdownPublicationTests
                 .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
                 .Single(field => field.FieldType == typeof(GameSessionRegistry))
                 .GetValue(server));
-        MatchRuntime runtime = server.MatchRuntimes.GetOrCreate(matchingId);
+        MatchRuntime runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);
 
         var anchor = new RecordingEntrySession();
         SetSessionIdentity(anchor, playerId: 101, matchingId);
@@ -273,7 +273,7 @@ public sealed class MatchStartCountdownPublicationTests
         InvokeEntryAbort(server, anchor);
 
         Assert.True(runtime.IsTerminal);
-        Assert.Null(server.MatchRuntimes.Get(matchingId));
+        Assert.Null(server.GetMatchRuntimes().Get(matchingId));
         Assert.Equal(1, anchor.FatalCount);
         Assert.Equal(1, anchor.DisconnectCount);
         Assert.Equal(1, other.FatalCount);
@@ -309,9 +309,9 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.True(completedAdded);
 
         // 정상 종료가 잠금 안에서 subject를 먼저 선점하고 터미널로 끝난다.
-        MatchRuntime runtime = server.MatchRuntimes.GetOrCreate(matchingId);
+        MatchRuntime runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);
         Action? completion;
-        using (server.MatchRuntimes.Enter(runtime))
+        using (server.GetMatchRuntimes().Enter(runtime))
         {
             completion = PrepareLifecyclePublication(
                 server,
@@ -322,7 +322,7 @@ public sealed class MatchStartCountdownPublicationTests
         }
 
         Assert.NotNull(completion);
-        Assert.Null(server.MatchRuntimes.Get(matchingId));
+        Assert.Null(server.GetMatchRuntimes().Get(matchingId));
 
         InvokeEntryAbort(server, completedSession);
         InvokeEntryAbort(server, completedSession);
@@ -388,7 +388,7 @@ public sealed class MatchStartCountdownPublicationTests
 
     private static SwarmMatchPacingState GetPacing(GameServer server, long matchingId)
     {
-        return server.MatchRuntimes.GetRequired(matchingId).Swarm.Pacing;
+        return server.GetMatchRuntimes().GetRequired(matchingId).Swarm.Pacing;
     }
 
     private static void InvokePeriodicBroadcast(
@@ -405,7 +405,7 @@ public sealed class MatchStartCountdownPublicationTests
 
     private static void InvokeEntryAbort(GameServer server, GameClientSession session)
     {
-        server.EntryFailureHandler.Handle(session);
+        server.GetEntryFailureHandler().Handle(session);
     }
 
     private static Action? PrepareLifecyclePublication(
@@ -414,7 +414,7 @@ public sealed class MatchStartCountdownPublicationTests
         long playerId,
         long matchingId)
     {
-        return server.MatchingLifecycle.PreparePublication(subject, playerId, matchingId);
+        return server.GetMatchingLifecycle().PreparePublication(subject, playerId, matchingId);
     }
 
     private static ConcurrentDictionary<long, ConcurrentDictionary<long, string>>
@@ -425,7 +425,7 @@ public sealed class MatchStartCountdownPublicationTests
                 .GetField(
                     "_matchingLifecycleTerminalSubjects",
                     BindingFlags.Instance | BindingFlags.NonPublic)!
-                .GetValue(server.MatchingLifecycle));
+                .GetValue(server.GetMatchingLifecycle()));
     }
 
     private static void SetSessionIdentity(
@@ -481,7 +481,10 @@ public sealed class MatchStartCountdownPublicationTests
     private static string ReadNormalizedSource(string repositoryRoot, params string[] parts)
     {
         return File.ReadAllText(Path.Combine([repositoryRoot, .. parts]))
-            .Replace("\r\n", "\n", StringComparison.Ordinal);
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            // 명시 타입과 var 표기는 같은 잠금 호출로 취급한다.
+            .Replace("MatchRuntimes.Enter(matchingId, out var scope)",
+                "MatchRuntimes.Enter(matchingId, out MatchScope scope)", StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

@@ -708,6 +708,9 @@ public sealed class SwarmArenaTickOrderTests
     {
         string[] fullPathParts = [repositoryRoot, .. pathParts];
         return File.ReadAllText(Path.Combine(fullPathParts))
-            .Replace("\r\n", "\n");
+            .Replace("\r\n", "\n")
+            // 표기 차이만 정규화하고 잠금·상태 확정·발행 순서 검사는 유지한다.
+            .Replace("MatchRuntimes.Enter(matchingId, out var scope)",
+                "MatchRuntimes.Enter(matchingId, out MatchScope scope)", StringComparison.Ordinal);
     }
 }
