@@ -40,7 +40,7 @@ public partial class GameServer(
     GameSessionRegistry sessions)
     : IHostedService
 {
-    private static readonly TimeSpan ShutdownStageTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ShutdownWarningThreshold = TimeSpan.FromSeconds(5);
 
     private readonly SwarmMatchRuntimeStore _swarmMatchRuntimes = new();
     private MatchRuntimeStore? _matchRuntimes;
@@ -211,12 +211,12 @@ public partial class GameServer(
     {
         try
         {
-            await operation.WaitAsync(ShutdownStageTimeout);
+            await operation.WaitAsync(ShutdownWarningThreshold);
         }
         catch (TimeoutException ex)
         {
             logger.LogWarning(ex, "Shutdown stage exceeded warning threshold: Stage={Stage}, Timeout={Timeout}",
-                stage, ShutdownStageTimeout);
+                stage, ShutdownWarningThreshold);
             try
             {
                 await operation;
