@@ -899,7 +899,7 @@ internal partial class GameServer
             Consider(other.PlayerId, other.Position, other.CurrentArea);
         }
 
-        foreach (var session in GetSessionsByInstance(Config.SWARM_MATCH_MAP, matchingId))
+        foreach (var session in sessions.GetByInstance(Config.SWARM_MATCH_MAP, matchingId))
         {
             if (!session.PlayerId.HasValue || session.IsEliminated ||
                 session.LastValidatedPosition == null)

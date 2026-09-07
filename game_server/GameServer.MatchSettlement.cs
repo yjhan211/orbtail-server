@@ -171,7 +171,7 @@ internal partial class GameServer
         }
 
         (bool isGameOver, long? winnerId) = match.Roster.CheckGameOver();
-        var resultHost = GetSessionsByMatch(matchingId)
+        var resultHost = sessions.GetByMatch(matchingId)
             .FirstOrDefault(session => !session.IsGameEnded);
         if (isGameOver && winnerId.HasValue && resultHost != null)
         {

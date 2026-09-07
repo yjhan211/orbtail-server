@@ -224,7 +224,7 @@ internal partial class GameServer(
                 ticket => gameHandoffTicketService.ConsumeAsync(ticket, nodeOptions.NodeId),
                 sessionLeaveHandler,
                 RegisterClientSession,
-                GetSessionsByInstance,
+                sessions.GetByInstance,
                 eventLogs,
                 summaryFileStore,
                 matchRuntimes,
@@ -266,14 +266,5 @@ internal partial class GameServer(
         };
     }
 
-    /// <summary>같은 매치 인스턴스의 인증된 세션 스냅샷 — 색인 조회라 전체 세션 스캔이 없다.</summary>
-    private List<GameClientSession> GetSessionsByMatch(long matchingId)
-    {
-        return sessions.GetByMatch(matchingId);
-    }
 
-    private List<GameClientSession> GetSessionsByInstance(MapId mapId, long mapSubId)
-    {
-        return sessions.GetByInstance(mapId, mapSubId);
-    }
 }

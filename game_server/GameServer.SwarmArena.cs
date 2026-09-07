@@ -2399,7 +2399,7 @@ internal partial class GameServer
             return true;
         }
 
-        foreach (var session in GetSessionsByInstance(Config.SWARM_MATCH_MAP, matchingId))
+        foreach (var session in sessions.GetByInstance(Config.SWARM_MATCH_MAP, matchingId))
         {
             if (session.PlayerId != playerId || session.IsEliminated ||
                 session.LastValidatedPosition == null) continue;
@@ -2909,7 +2909,7 @@ internal partial class GameServer
     private int GetSwarmTopOrbCount(long matchingId)
     {
         int top = 0;
-        foreach (var session in GetSessionsByMatch(matchingId))
+        foreach (var session in sessions.GetByMatch(matchingId))
         {
             if (session.PlayerId.HasValue && !session.IsEliminated)
                 top = Math.Max(top, GetSwarmOrbScore(matchingId, session.PlayerId.Value).OrbCount);
