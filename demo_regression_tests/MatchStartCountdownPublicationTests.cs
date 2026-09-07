@@ -100,7 +100,7 @@ public sealed class MatchStartCountdownPublicationTests
             "using Packet successResponse = CreateConnectResultPacket(",
             "InitializeWithMatchLock(runtime, () =>",
             "Connection.TryMarkAuthenticated(() => Volatile.Write(ref _entryCompleted, 1))",
-            "TryPublishCommittedConnectResult(successResponse)");
+            "_trySendConnectSuccessResponse(successResponse)");
         AssertInOrder(
             directCountdown,
             "private void SendMatchStartCountdown(long matchingId)",

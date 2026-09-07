@@ -346,10 +346,8 @@ public partial class GameClientSession : SessionBase
                 }
             });
 
-            if (!TryPublishCommittedConnectResult(successResponse))
-            {
-                return;
-            }
+            if (!_trySendConnectSuccessResponse(successResponse))
+                throw new IOException("Failed to queue the game entry response.");
             Logger.LogInformation("Client connected successfully: PlayerId={PlayerId}", PlayerId);
         }
         catch (Exception ex)
@@ -412,26 +410,6 @@ public partial class GameClientSession : SessionBase
             packet.Dispose();
             throw;
         }
-    }
-
-    private bool TryPublishCommittedConnectResult(Packet packet)
-    {
-        try
-        {
-            if (_trySendConnectSuccessResponse(packet))
-            {
-                return true;
-            }
-
-            Logger.LogWarning("Committed game entry response was not queued; closing connection: PlayerId={PlayerId}, MatchingId={MatchingId}", PlayerId, MatchingId);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Committed game entry response enqueue failed; closing connection: PlayerId={PlayerId}, MatchingId={MatchingId}", PlayerId, MatchingId);
-        }
-
-        CloseAfterCommittedEntryResponseFailure();
-        return false;
     }
 
     private void CloseAfterCommittedEntryResponseFailure()

@@ -129,7 +129,7 @@ public sealed class GameClientSessionConnectPublicationTests
     }
 
     [Fact]
-    public void CommittedSuccessAck_HasExactPayloadAndPlayerId_AfterAtomicAuthenticationCommit()
+    public async Task CommittedSuccessAck_HasExactPayloadAndPlayerId_AfterAtomicAuthenticationCommit()
     {
         const long matchingId = 74_001;
         const long playerId = 8_101;
@@ -148,11 +148,10 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Equal(ErrorCode.SUCCESS, body.ErrorCode);
         Assert.DoesNotContain("\"message\"", MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(body)));
 
-        Assert.True(CommitAuthentication(fixture.Store, matchingId, fixture.Connection, session));
+        await fixture.ConnectAsync(session, matchingId, playerId);
         Assert.Equal(1, GetIntField(fixture.Connection, "_authenticated"));
         Assert.Equal(1, GetIntField(session, "_entryCompleted"));
 
-        Assert.True(PublishCommittedSuccess(session, packet));
         Assert.Single(fixture.SentPackets);
         Assert.Equal(Protocol.G_TO_C_CONNECT_RESULT, fixture.SentPackets[0].Protocol);
     }
@@ -178,12 +177,7 @@ public sealed class GameClientSessionConnectPublicationTests
         int cleanupCount = 0;
         fixture.CleanupSteps.Add(new MatchCleanupStep("count", _ => Interlocked.Increment(ref cleanupCount)));
 
-        Task<bool> connect = Task.Run(() =>
-        {
-            using Packet packet = CreateSuccessPacket(session);
-            Assert.True(CommitAuthentication(fixture.Store, matchingId, fixture.Connection, session));
-            return PublishCommittedSuccess(session, packet);
-        });
+        Task connect = Task.Run(() => fixture.ConnectAsync(session, matchingId, playerId));
 
         Assert.True(senderEntered.Wait(TimeSpan.FromSeconds(5)));
         Assert.Equal(1, GetIntField(fixture.Connection, "_authenticated"));
@@ -200,13 +194,13 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Null(fixture.Store.Get(matchingId));
 
         releaseSender.Set();
-        Assert.True(await connect.WaitAsync(TimeSpan.FromSeconds(5)));
+        await connect.WaitAsync(TimeSpan.FromSeconds(5));
     }
 
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void FailedCommittedSuccessAck_FailsForwardWithoutNegativeAckOrEntryRollback(bool senderThrows)
+    public async Task FailedCommittedSuccessAck_FailsForwardWithoutNegativeAckOrEntryRollback(bool senderThrows)
     {
         const long matchingId = 74_004;
         using var fixture = new ConnectFixture();
@@ -222,14 +216,14 @@ public sealed class GameClientSessionConnectPublicationTests
                 return false;
             });
 
-        Assert.True(CommitAuthentication(fixture.Store, matchingId, fixture.Connection, session));
-        using Packet packet = CreateSuccessPacket(session);
-
-        Assert.False(PublishCommittedSuccess(session, packet));
+        await fixture.ConnectAsync(session, matchingId, 8_103);
         Assert.Equal(1, Volatile.Read(ref senderCalls));
         Assert.Equal(1, GetIntField(fixture.Connection, "_authenticated"));
         Assert.Equal(1, GetIntField(session, "_entryCompleted"));
         Assert.Equal(0, GetIntField(session, "_entryFailureReported"));
+        Assert.True(fixture.Connection.IsReleased);
+        Assert.Equal(MatchingRedisKeys.EntryCompletedState,
+            (await fixture.Redis.StringGetAsync(MatchingRedisKeys.EntryStateKey(matchingId))).ToString());
         Assert.Empty(fixture.SentPackets);
     }
 
@@ -345,7 +339,7 @@ public sealed class GameClientSessionConnectPublicationTests
         int response = connectionSource.IndexOf("CreateConnectResultPacket(", countdown, StringComparison.Ordinal);
         int commitScope = connectionSource.IndexOf("InitializeWithMatchLock(runtime, () =>", response, StringComparison.Ordinal);
         int authentication = connectionSource.IndexOf("Connection.TryMarkAuthenticated", commitScope, StringComparison.Ordinal);
-        int publication = connectionSource.IndexOf("TryPublishCommittedConnectResult(successResponse)", authentication, StringComparison.Ordinal);
+        int publication = connectionSource.IndexOf("_trySendConnectSuccessResponse(successResponse)", authentication, StringComparison.Ordinal);
         Assert.True(registration >= 0 && registration < registerCallback && registerCallback < countdown &&
                     countdown < response && response < commitScope && commitScope < authentication &&
                     authentication < publication);
@@ -461,11 +455,6 @@ public sealed class GameClientSessionConnectPublicationTests
             session,
             [true, ErrorCode.SUCCESS, 0L, null]));
 
-    private static bool PublishCommittedSuccess(GameClientSession session, Packet packet) =>
-        Assert.IsType<bool>(typeof(GameClientSession).GetMethod(
-            "TryPublishCommittedConnectResult",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, [packet]));
-
     private static bool ReportEntryFailure(GameClientSession session) =>
         Assert.IsType<bool>(typeof(GameClientSession).GetMethod(
             "ReportEntryFailureOnce",
@@ -556,7 +545,8 @@ public sealed class GameClientSessionConnectPublicationTests
 
         public List<MatchCleanupStep> CleanupSteps { get; } = [];
         public MatchRuntimeStore Store { get; }
-        public TcpConnection Connection { get; } = new();
+        public TcpConnection Connection { get; } = new AcceptingConnection();
+        public InMemoryRedisOperations Redis { get; } = new();
         public IReadOnlyList<SentPacket> SentPackets => _sentPackets.ToList();
 
         public GameClientSession CreateSession(
@@ -584,13 +574,35 @@ public sealed class GameClientSessionConnectPublicationTests
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(recordEntryFailure),
-                TestGameSessionServices.CreateEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
+                TestGameSessionServices.CreateEntryService(Redis, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
                 new ItemCombinationService(TestGameEventLogs.Create()),
                 new MovementValidationService(NullLogger<MovementValidationService>.Instance),
                 sender);
             Connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);
             return session;
+        }
+
+        public async Task ConnectAsync(GameClientSession session, long matchingId, long playerId)
+        {
+            UserServerMatchingTestData.EnsureGameDataLoaded();
+            await new PlayerInfo(playerId, false) { Name = "Human" }.Save(Redis);
+            await Redis.HashSetAsync(MatchingRedisKeys.Key(matchingId), MatchingRedisKeys.ManifestField,
+                MessagePackSerializer.Serialize(new MatchManifest { HumanPlayerIds = [playerId], BotCount = 0 }));
+            await Redis.HashSetAsync(MatchingRedisKeys.Key(matchingId), MatchingRedisKeys.EntryReadyField,
+                new byte[] { MatchingRedisKeys.EntryReadyValue });
+            await Redis.StringSetAsync(MatchingRedisKeys.ReservationKey(playerId), matchingId, TimeSpan.FromMinutes(2));
+            await Redis.StringSetAsync(MatchingRedisKeys.EntryStateKey(matchingId),
+                MatchingRedisKeys.EntryPendingState, TimeSpan.FromMinutes(2));
+            var tickets = new GameEntryTicketService(new RedisGameEntryTicketStore(Redis), new GameEntryTicketOptions());
+            string ticket = await tickets.IssueAsync(new GameEntryContext
+            {
+                MatchingId = matchingId, PlayerId = playerId, GameServerNodeId = "game-server-test"
+            });
+            typeof(GameClientSession).GetProperty(nameof(GameClientSession.PlayerId))!.SetValue(session, null);
+            SetProperty(session, nameof(GameClientSession.MatchingId), 0L);
+            await (Task)typeof(GameClientSession).GetMethod("HandleConnect", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(session, [new C_TO_G_CONNECT { GameEntryTicket = ticket }])!;
         }
 
         public void Record(Packet packet)
@@ -605,6 +617,12 @@ public sealed class GameClientSessionConnectPublicationTests
         public void Dispose()
         {
         }
+    }
+
+    // 초기 스냅샷은 소켓 없이 수락하고 성공 응답은 생성자로 주입한 sender에서 별도 검증한다.
+    private sealed class AcceptingConnection : TcpConnection
+    {
+        public override bool TrySend(Packet packet) => true;
     }
 
     private sealed record SentPacket(Protocol Protocol, long PlayerId, byte[] Body);
