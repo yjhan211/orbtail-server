@@ -41,7 +41,7 @@ public partial class GameServer
             {
                 long winnerPlayerId = bots.Count == 1 ? bots[0].PlayerId : 0;
                 MatchRuntimes.Get(matchingId)?.Combat.Clear();
-                EndBotOnlyMatchIfSettled(matchingId, winnerPlayerId);
+                MatchCleanup.EndBotOnlyMatchIfSettled(matchingId, winnerPlayerId);
             }
 
             return;

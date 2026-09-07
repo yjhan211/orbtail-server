@@ -44,6 +44,11 @@ public partial class GameServer(
 
     private MatchRuntimeStore? _matchRuntimes;
     private MatchEntryFailureHandler? _entryFailureHandler;
+    private MatchCleanupService? _matchCleanup;
+    private MatchCleanupService MatchCleanup =>
+        LazyInitializer.EnsureInitialized(ref _matchCleanup,
+            () => new MatchCleanupService(MatchRuntimes, sessions, EventLogs, _matchSummaryFileStore,
+                logger, (matchingId, playerId) => GetSwarmOrbScore(matchingId, playerId).OrbCount));
     private BotEliminationService? _botEliminations;
     private BotEliminationService BotEliminations =>
         LazyInitializer.EnsureInitialized(ref _botEliminations,
@@ -531,7 +536,7 @@ public partial class GameServer(
                     session.PlayerId.Value,
                     session.MatchingId);
                 if (session.MatchingId > 0)
-                    CleanupMatchingIfNoHumanSessionsRemain(session.MatchingId);
+                    MatchCleanup.CleanupIfNoHumanSessionsRemain(session.MatchingId);
                 return;
             }
 
@@ -556,87 +561,8 @@ public partial class GameServer(
             }
 
             if (session.MatchingId > 0)
-                CleanupMatchingIfNoHumanSessionsRemain(session.MatchingId);
+                MatchCleanup.CleanupIfNoHumanSessionsRemain(session.MatchingId);
         }
-    }
-
-
-    /// <summary>
-    ///     사람 세션 없이 진행되는 매치(관리자 봇 전용 인스턴스)를 정산한다.
-    ///     승리 판정이 사람 세션에 의존해 최후 1인이 남아도 끝나지 않고, 오염도가 한계에
-    ///     닿은 봇이 계속 살아 있는 상태로 매치가 무한히 이어지던 것을 막는다.
-    ///     정산 틱 안에서 불리면 재진입이라 정리는 그 틱이 끝난 뒤에 돈다.
-    /// </summary>
-    public void EndBotOnlyMatchIfSettled(long matchingId, long winnerPlayerId)
-    {
-        if (HasHumanSessions(matchingId))
-            return;
-
-        CleanupMatchingIfNoHumanSessionsRemain(matchingId, "last_survivor_bot_only", winnerPlayerId);
-    }
-
-    private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId) =>
-        CleanupMatchingIfNoHumanSessionsRemain(matchingId, "last_human_left", 0);
-
-    /// <summary>
-    ///     사람 세션이 하나도 남지 않은 매치를 잠금 안에서 터미널로 표시한다. 마지막 이벤트·요약은 잠금 안에서
-    ///     캡처하고 파일 쓰기는 잠금 밖 후처리로 돈다. 사람 수신자가 없으므로 결과 패킷은 없다.
-    /// </summary>
-    private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId, string endReason, long winnerPlayerId)
-    {
-        if (HasHumanSessions(matchingId))
-            return;
-
-        MatchRuntime? runtime = MatchRuntimes.Get(matchingId);
-        if (runtime == null)
-            return;
-
-        using MatchScope scope = MatchRuntimes.Enter(runtime);
-        if (runtime.IsTerminal || HasHumanSessions(matchingId))
-            return;
-
-        runtime.TryMarkTerminal();
-        if (EventLogs.TryBeginFinalization(matchingId))
-        {
-            DateTime endedAtUtc = DateTime.UtcNow;
-            DateTime startedAtUtc =
-                runtime.Closures.GetMatchingState()?.GameStartTime ?? endedAtUtc;
-            var finalPlayerStats = runtime.Roster.BuildGameResult()
-                .Select(row =>
-                {
-                    var stats = EventLogs.GetResultStats(matchingId, row.playerId);
-                    DateTime survivalEndUtc = row.eliminatedAt ?? endedAtUtc;
-                    return new MatchFinalPlayerStats(
-                        row.playerId,
-                        row.eliminationRank,
-                        Math.Max(0, (int)Math.Floor((survivalEndUtc - startedAtUtc).TotalSeconds)),
-                        stats.KillCount + stats.MonsterKillCount,
-                        stats.TotalDamageDealt + stats.MonsterDamageDealt,
-                        stats.TotalRecovery,
-                        // 승점 (#229): 사람이 나간 매치도 오브 수를 남긴다 — 봇 매치가 유일한
-                        // 자동 검증 창구라 여기서 빠지면 결과 집계를 로그로 확인할 수 없다.
-                        GetSwarmOrbScore(matchingId, row.playerId).OrbCount);
-                })
-                .ToList();
-            EventLogs.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);
-            MatchSummaryPersistenceRequest? summaryRequest = MatchSummaryPersistence.Capture(
-                EventLogs,
-                logger,
-                matchingId,
-                endReason,
-                winnerPlayerId);
-            if (summaryRequest != null)
-            {
-                runtime.AfterRelease.Add(() => MatchSummaryPersistence.Persist(
-                    summaryRequest,
-                    _matchSummaryFileStore,
-                    logger));
-            }
-        }
-
-        logger.LogInformation(
-            "Removed matching without human sessions: MatchingId={MatchingId}, EndReason={EndReason}",
-            matchingId, endReason);
     }
 
 
@@ -664,10 +590,7 @@ public partial class GameServer(
         return sessions.GetByMatch(matchingId);
     }
 
-    private bool HasHumanSessions(long matchingId)
-    {
-        return sessions.HasSessions(matchingId);
-    }
+
 
     private List<GameClientSession> GetSessionsByInstance(MapId mapId, long mapSubId)
     {

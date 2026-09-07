@@ -2639,7 +2639,7 @@ public partial class GameServer
             return true;
         }
 
-        EndBotOnlyMatchIfSettled(matchingId, winnerId);
+        MatchCleanup.EndBotOnlyMatchIfSettled(matchingId, winnerId);
         return true;
     }
 

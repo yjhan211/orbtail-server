@@ -22,6 +22,49 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Path.GetTempPath(),
         $"manitto-match-summary-persistence-tests-{Guid.NewGuid():N}");
 
+    [Theory]
+    [InlineData(false, "last_human_left", 0)]
+    [InlineData(true, "last_survivor_bot_only", 11)]
+    public void NoHumanCleanup_CapturesOnce_AndPersistsAfterOuterLock(
+        bool botOnly, string expectedReason, long expectedWinner)
+    {
+        const long matchingId = 42091;
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(matchingId);
+        runtime.Roster.RegisterEntry(new RosterEntry { PlayerId = 11 });
+        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        logs.BeginMatch(matchingId, seed: 17);
+        var summaries = new MatchSummaryFileStore(_directory);
+        int scoreReads = 0;
+        bool scoreReadUnderLock = false;
+        var service = new MatchCleanupService(store, new game_server.network.GameSessionRegistry(),
+            logs, summaries, NullLogger.Instance, (_, _) =>
+            {
+                scoreReads++;
+                scoreReadUnderLock = Monitor.IsEntered(runtime.Sync);
+                return 6;
+            });
+        using (store.Enter(runtime))
+        {
+            if (botOnly)
+                service.EndBotOnlyMatchIfSettled(matchingId, 11);
+            else
+                service.CleanupIfNoHumanSessionsRemain(matchingId);
+            service.CleanupIfNoHumanSessionsRemain(matchingId);
+
+            Assert.True(runtime.IsTerminal);
+            Assert.Null(summaries.Read(matchingId));
+            Assert.Same(runtime, store.Get(matchingId));
+        }
+        Assert.Equal(1, scoreReads);
+        Assert.True(scoreReadUnderLock);
+        Assert.Null(store.Get(matchingId));
+        var summary = Assert.IsType<MatchSummaryDocument>(summaries.Read(matchingId));
+        Assert.Equal(expectedReason, summary.EndReason);
+        Assert.Equal(expectedWinner, summary.WinnerPlayerId);
+        service.CleanupIfNoHumanSessionsRemain(matchingId);
+        Assert.Equal(1, scoreReads);
+    }
     [Fact]
     public void Capture_FreezesMetadataAndMutableEventGraphAcrossCleanup()
     {
@@ -195,15 +238,12 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 sourceContractOptions),
             terminalPublication);
 
-        string serverSource = ReadNormalizedSource(root, "game_server", "GameServer.cs");
-        string noHumanFinalization = ReadMethodSlice(
-            serverSource,
-            "private void CleanupMatchingIfNoHumanSessionsRemain(long matchingId, string endReason",
-            "private Action? RegisterClientSession(");
+        string serverSource = ReadNormalizedSource(root, "game_server", "Services", "MatchCleanupService.cs");
+        string noHumanFinalization = serverSource;
 
-        int noHumanLock = Find(noHumanFinalization, "MatchRuntimes.Enter(runtime)");
+        int noHumanLock = Find(noHumanFinalization, "matchRuntimes.Enter(runtime)");
         int noHumanTerminalMark = Find(noHumanFinalization, "runtime.TryMarkTerminal();");
-        int abandonedEvent = Find(noHumanFinalization, "EventLogs.LogMatchAbandoned(");
+        int abandonedEvent = Find(noHumanFinalization, "eventLogs.LogMatchAbandoned(");
         int noHumanCapture = Find(noHumanFinalization, "MatchSummaryPersistence.Capture(");
         int noHumanAfterRelease = Find(noHumanFinalization, "runtime.AfterRelease.Add(");
 
@@ -218,7 +258,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 runtime\.AfterRelease\.Add\s*\(\s*\(\s*\)\s*=>\s*MatchSummaryPersistence\.Persist\s*
                 \(\s*
                     summaryRequest\s*,\s*
-                    _matchSummaryFileStore\s*,\s*
+                    summaryFileStore\s*,\s*
                     logger\s*
                 \)\s*\)\s*;
                 """,
