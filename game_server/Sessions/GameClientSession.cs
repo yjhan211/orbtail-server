@@ -276,7 +276,7 @@ public partial class GameClientSession : SessionBase
                 "Repeated game authentication attempt: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 PlayerId,
                 MatchingId);
-            SendConnectResult(false, ErrorCode.AUTH_FAILED, "이미 인증된 세션입니다", disconnectAfterSend: true);
+            SendConnectResult(false, ErrorCode.ALREADY_AUTHENTICATED, disconnectAfterSend: true);
             return;
         }
 
@@ -289,7 +289,7 @@ public partial class GameClientSession : SessionBase
                 EnsureConnectionActive();
                 Logger.LogWarning(
                     "GameServer connection rejected: invalid, expired, replayed, or another node's handoff ticket");
-                SendConnectResult(false, ErrorCode.AUTH_FAILED, "게임 접속 인증에 실패했습니다",
+                SendConnectResult(false, ErrorCode.GAME_ENTRY_TICKET_INVALID,
                     disconnectAfterSend: true);
                 return;
             }
@@ -321,7 +321,7 @@ public partial class GameClientSession : SessionBase
                         playerId,
                         matchingId);
                     MarkServerInitiatedDisconnect();
-                    SendConnectResult(false, ErrorCode.GAME_ALREADY_ENDED, "이미 종료된 게임입니다",
+                    SendConnectResult(false, ErrorCode.GAME_ALREADY_ENDED,
                         disconnectAfterSend: true);
                     return;
                 }
@@ -458,7 +458,6 @@ public partial class GameClientSession : SessionBase
             using Packet successResponse = CreateConnectResultPacket(
                 true,
                 ErrorCode.SUCCESS,
-                "Connected to GameServer",
                 matchingId,
                 matchingSpawnCell);
             RunUnderLiveMatch(runtime, () =>
@@ -498,7 +497,7 @@ public partial class GameClientSession : SessionBase
             // 등록 전 실패(거부된 인계 티켓 등)는 어떤 수신자 스냅샷도 이 소켓을 소유하지 않으므로
             // 직접 응답한다.
             MarkServerInitiatedDisconnect();
-            SendConnectResult(false, ErrorCode.FATAL, "게임 서버 연결 처리 중 오류가 발생했습니다",
+            SendConnectResult(false, ErrorCode.GAME_ENTRY_FAILED,
                 disconnectAfterSend: true);
         }
     }
@@ -522,10 +521,10 @@ public partial class GameClientSession : SessionBase
             throw new OperationCanceledException("Connection closed during game entry.");
     }
 
-    private bool SendConnectResult(bool success, ErrorCode errorCode, string message,
+    private bool SendConnectResult(bool success, ErrorCode errorCode,
         bool disconnectAfterSend = false)
     {
-        using Packet packet = CreateConnectResultPacket(success, errorCode, message);
+        using Packet packet = CreateConnectResultPacket(success, errorCode);
         return disconnectAfterSend ? Connection.TrySendAndDisconnect(packet) : Connection.TrySend(packet);
     }
 
@@ -533,14 +532,13 @@ public partial class GameClientSession : SessionBase
     ///     Creates a complete CONNECT_RESULT frame. Successful entry calls this before the authentication commit,
     ///     keeping allocation, serialization, and body construction on the pre-commit failure side of the boundary.
     /// </summary>
-    private Packet CreateConnectResultPacket(bool success, ErrorCode errorCode, string message,
+    private Packet CreateConnectResultPacket(bool success, ErrorCode errorCode,
         long matchingId = 0, Cell? spawnCell = null)
     {
         var response = new G_TO_C_CONNECT_RESULT
         {
             Success = success,
             ErrorCode = errorCode,
-            Message = message,
             MatchingId = matchingId,
             SpawnCell = spawnCell ?? new Cell(0, 0)
         };

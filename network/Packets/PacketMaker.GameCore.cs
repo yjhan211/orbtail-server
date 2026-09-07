@@ -28,7 +28,7 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_CONNECT_RESULT(bool success, ErrorCode errorCode, string message = "",
+    public static Packet G_TO_C_CONNECT_RESULT(bool success, ErrorCode errorCode,
         long matchingId = 0, Cell? spawnCell = null)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_CONNECT_RESULT);
@@ -36,7 +36,6 @@ public static partial class PacketMaker
         {
             Success = success,
             ErrorCode = errorCode,
-            Message = message,
             MatchingId = matchingId,
             SpawnCell = spawnCell ?? new Cell(0, 0)
         };

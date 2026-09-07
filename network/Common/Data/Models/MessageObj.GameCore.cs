@@ -25,7 +25,6 @@ namespace network.common.data.models
     {
         [Key("success")] public bool Success { get; set; }
         [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-        [Key("message")] public string Message { get; set; }
 
         // 성공 시에만 채운다. 스폰은 Game Server가 매치 첫 접속 때 결정하므로 클라이언트는 여기서 처음 안다.
         [Key("matchingId")] public long MatchingId { get; set; }

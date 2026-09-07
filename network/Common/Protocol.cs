@@ -186,6 +186,7 @@ namespace network.common
         ALREADY_CONNECTED = 104,
         INVALID_PLAYER_ID = 105,
         ALREADY_AUTHENTICATED = 106, // 같은 연결에서 로그인 요청을 다시 보냄
+        GAME_ENTRY_TICKET_INVALID = 107, // 입장 티켓이 유효하지 않음(만료·재사용·노드 불일치 포함)
 
         // 매칭 (200~299)
         MATCHING_ALREADY_IN_QUEUE = 200,
@@ -203,6 +204,7 @@ namespace network.common
         PLAYER_DEAD = 304,
         ACTION_COOLDOWN = 305,
         INVALID_GAME_STATE = 306,
+        GAME_ENTRY_FAILED = 307, // 게임 입장 초기화 중 실패
 
         // 상호작용/탐색 (400~499)
         INTERACTABLE_NOT_FOUND = 400,

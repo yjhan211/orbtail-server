@@ -146,7 +146,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Equal(playerId, packetPlayerId);
         Assert.True(body.Success);
         Assert.Equal(ErrorCode.SUCCESS, body.ErrorCode);
-        Assert.Equal("Connected to GameServer", body.Message);
+        Assert.DoesNotContain("\"message\"", MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(body)));
 
         Assert.True(CommitAuthentication(fixture.Store, matchingId, fixture.Connection, session));
         Assert.Equal(1, GetIntField(fixture.Connection, "_authenticated"));
@@ -353,7 +353,7 @@ public sealed class GameClientSessionConnectPublicationTests
         int registeredFailure = connectionSource.IndexOf("if (registered)", publication, StringComparison.Ordinal);
         int deferredAbort = connectionSource.IndexOf("ReportEntryFailureOnce()", registeredFailure, StringComparison.Ordinal);
         int earlyFailureResponse = connectionSource.IndexOf(
-            "SendConnectResult(false, ErrorCode.FATAL",
+            "SendConnectResult(false, ErrorCode.GAME_ENTRY_FAILED",
             deferredAbort,
             StringComparison.Ordinal);
         Assert.True(registeredFailure >= 0 &&
@@ -385,12 +385,37 @@ public sealed class GameClientSessionConnectPublicationTests
         return true;
     }
 
+    [Theory]
+    [InlineData(ErrorCode.ALREADY_AUTHENTICATED)]
+    [InlineData(ErrorCode.GAME_ENTRY_TICKET_INVALID)]
+    [InlineData(ErrorCode.GAME_ALREADY_ENDED)]
+    [InlineData(ErrorCode.GAME_ENTRY_FAILED)]
+    public void ConnectFailurePacket_ContainsErrorCodeWithoutMessage(ErrorCode errorCode)
+    {
+        using var fixture = new ConnectFixture();
+        var session = fixture.CreateSession(74_009, 8_108, _ => true);
+        using var packet = (Packet)typeof(GameClientSession).GetMethod(
+            "CreateConnectResultPacket", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(session, [false, errorCode, 0L, null])!;
+        using var wire = Packet.Create(packet.ToBytes());
+        Assert.Equal((int)Protocol.G_TO_C_CONNECT_RESULT, wire.PopProtocolId());
+        wire.PopPlayerId();
+        byte[] bodyBytes = wire.PopBody();
+        var body = MessagePackSerializer.Deserialize<G_TO_C_CONNECT_RESULT>(bodyBytes);
+        Assert.False(body.Success);
+        Assert.Equal(errorCode, body.ErrorCode);
+        Assert.DoesNotContain("\"message\"", MessagePackSerializer.ConvertToJson(bodyBytes));
+
+        using var makerPacket = PacketMaker.G_TO_C_CONNECT_RESULT(false, errorCode);
+        Assert.Equal(errorCode, DeserializeConnectResult(makerPacket).Body.ErrorCode);
+    }
+
     private static Packet CreateSuccessPacket(GameClientSession session) =>
         Assert.IsType<Packet>(typeof(GameClientSession).GetMethod(
             "CreateConnectResultPacket",
             BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(
             session,
-            [true, ErrorCode.SUCCESS, "Connected to GameServer", 0L, null]));
+            [true, ErrorCode.SUCCESS, 0L, null]));
 
     private static bool PublishCommittedSuccess(GameClientSession session, Packet packet) =>
         Assert.IsType<bool>(typeof(GameClientSession).GetMethod(
