@@ -100,9 +100,6 @@ public abstract class SessionBase(
 
     public abstract void OnRemoved();
 
-    // InitializeProtocolHandlers()는 서브클래스 생성자에서 호출
-    protected abstract void InitializeProtocolHandlers();
-
     protected abstract bool ShouldSkipLogging(Protocol protocolId);
 
     protected virtual bool IsMessageLifecycleActive() => true;

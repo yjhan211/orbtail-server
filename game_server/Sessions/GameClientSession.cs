@@ -289,7 +289,7 @@ public partial class GameClientSession : SessionBase
     private int Stamina { get => _condition.Stamina; set => _condition.Stamina = value; }
     private int Corruption { get => _condition.Corruption; set => _condition.Corruption = value; }
 
-    protected override void InitializeProtocolHandlers()
+    private void InitializeProtocolHandlers()
     {
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_HEART_BEAT, async _ => await HandleHeartbeat());
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CONNECT,

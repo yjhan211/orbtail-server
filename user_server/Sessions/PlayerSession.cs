@@ -87,7 +87,7 @@ public sealed class PlayerSession : SessionBase, IMatchingSessionEndpoint
         return false;
     }
 
-    protected override void InitializeProtocolHandlers()
+    private void InitializeProtocolHandlers()
     {
         // 클라이언트 프로토콜
         ProtocolRouter.RegisterHandler(Protocol.C_TO_U_HEART_BEAT, HandleHeartBeat);
