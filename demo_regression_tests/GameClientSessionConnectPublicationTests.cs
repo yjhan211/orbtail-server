@@ -333,7 +333,7 @@ public sealed class GameClientSessionConnectPublicationTests
             "registered = true;\n            }\n            // 이전 연결 종료는 새 연결의 상태 잠금과 매치 잠금을 벗어난 뒤 실행한다.",
             normalized);
         int disconnect = connectionSource.IndexOf("previousSession.ForceDisconnect();", registerCallback, StringComparison.Ordinal);
-        int markServerDisconnect = connectionSource.IndexOf("previousSession.MarkServerInitiatedDisconnect();", registerCallback, StringComparison.Ordinal);
+        int markServerDisconnect = connectionSource.IndexOf("previousSession.MarkDisconnectedByServer();", registerCallback, StringComparison.Ordinal);
         Assert.True(registerCallback < markServerDisconnect && markServerDisconnect < disconnect);
         Assert.Contains("sessions.Register,", File.ReadAllText(Path.Combine(root, "game_server", "GameServer.cs")));
         int countdown = connectionSource.IndexOf("SendMatchStartCountdown(matchingId);", disconnect, StringComparison.Ordinal);

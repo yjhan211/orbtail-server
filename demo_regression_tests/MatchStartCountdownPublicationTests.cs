@@ -343,7 +343,7 @@ public sealed class MatchStartCountdownPublicationTests
         AssertInOrder(
             method,
             "Interlocked.Exchange(ref _entryDisconnectIssued, 1) != 0",
-            "MarkServerInitiatedDisconnect();",
+            "MarkDisconnectedByServer();",
             "PacketMaker.G_TO_C_ERROR(ErrorCode.FATAL",
             "Connection.TrySendAndDisconnect(packet);",
             "catch (Exception ex)",

@@ -119,7 +119,7 @@ public partial class GameClientSession : SessionBase
 
     public PlayerMatchStatus PlayerMatchStatus { get; private set; } = PlayerMatchStatus.ACTIVE;
     private bool _isGameEnded;
-    private bool _isServerInitiatedDisconnect;
+    private bool _disconnectedByServer;
 
     internal bool IsGameEnded => Volatile.Read(ref _isGameEnded);
     internal int CurrentHealth => Health;
@@ -252,7 +252,7 @@ public partial class GameClientSession : SessionBase
                 if (runtime.IsTerminal)
                 {
                     Logger.LogWarning("GameServer connection rejected because the match is terminal: PlayerId={PlayerId}, MatchingId={MatchingId}", playerId, matchingId);
-                    MarkServerInitiatedDisconnect();
+                    MarkDisconnectedByServer();
                     SendConnectFailure(ErrorCode.GAME_ALREADY_ENDED);
                     return;
                 }
@@ -266,7 +266,7 @@ public partial class GameClientSession : SessionBase
 
             if (previousSession != null)
             {
-                previousSession.MarkServerInitiatedDisconnect();
+                previousSession.MarkDisconnectedByServer();
                 previousSession.ForceDisconnect();
             }
 
@@ -365,7 +365,7 @@ public partial class GameClientSession : SessionBase
                 HandleEntryFailureOnce();
                 return;
             }
-            MarkServerInitiatedDisconnect();
+            MarkDisconnectedByServer();
             SendConnectFailure(ErrorCode.GAME_ENTRY_FAILED);
         }
     }
@@ -410,7 +410,7 @@ public partial class GameClientSession : SessionBase
 
     private void CloseAfterCommittedEntryResponseFailure()
     {
-        MarkServerInitiatedDisconnect();
+        MarkDisconnectedByServer();
         try
         {
             Connection.Disconnect();
@@ -518,7 +518,7 @@ public partial class GameClientSession : SessionBase
                 "Failed to report game entry failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 PlayerId,
                 MatchingId);
-            MarkServerInitiatedDisconnect();
+            MarkDisconnectedByServer();
             try
             {
                 Connection.Disconnect();
@@ -564,7 +564,7 @@ public partial class GameClientSession : SessionBase
             return;
         }
 
-        MarkServerInitiatedDisconnect();
+        MarkDisconnectedByServer();
         try
         {
             using var packet = PacketMaker.G_TO_C_ERROR(ErrorCode.FATAL, "게임 입장 초기화에 실패했습니다");
@@ -634,7 +634,7 @@ public partial class GameClientSession : SessionBase
         {
             HandleEntryFailureOnce();
         }
-        else if (Volatile.Read(ref _isServerInitiatedDisconnect) || _isServerStopping())
+        else if (Volatile.Read(ref _disconnectedByServer) || _isServerStopping())
         {
             ReleaseMatchingReservationOnce();
         }
@@ -652,9 +652,9 @@ public partial class GameClientSession : SessionBase
         Logger.LogInformation("GameSession disconnected: PlayerId={PlayerId}", PlayerId);
     }
 
-    public void MarkServerInitiatedDisconnect()
+    public void MarkDisconnectedByServer()
     {
-        Volatile.Write(ref _isServerInitiatedDisconnect, true);
+        Volatile.Write(ref _disconnectedByServer, true);
     }
 
     private List<GameClientSession> GetSessionsInArea(List<GameClientSession> allSessions, AreaType area, bool excludeSelf = true)

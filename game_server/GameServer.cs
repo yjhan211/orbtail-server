@@ -131,7 +131,7 @@ internal sealed class GameServer(
 
         foreach (var session in sessions.SnapshotAll())
         {
-            session.MarkServerInitiatedDisconnect();
+            session.MarkDisconnectedByServer();
         }
 
         try
