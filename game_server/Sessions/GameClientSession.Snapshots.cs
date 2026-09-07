@@ -61,73 +61,18 @@ public partial class GameClientSession
         };
     }
 
-    /// <summary>
-    /// 새 접속과 재접속 시 현재 방송 대상·남은 시간·누적 폐쇄 지역을 복원한다.
-    /// 미래 웨이브는 아직 보내지 않아 다음 방송 전까지 대상이 드러나지 않는다.
-    /// </summary>
-    private void SendAreaClosureStateSnapshot()
+    /// <summary>입장한 클라이언트에 자기장 수축 시작 시각을 보낸다. 경계는 공용 규칙으로 계산한다.</summary>
+    private void SendPressureFieldStateSnapshot()
     {
-        if (MatchingId <= 0) return;
+        if (MatchingId <= 0 || !Config.SWARM_PRESSURE_FIELD_ENABLED) return;
+        var state = Match.Closures.GetMatchingState();
+        if (state == null) return;
 
-        var snapshot = Match.Closures.GetClientStateSnapshot();
-        foreach (var closedArea in snapshot.ClosedAreas)
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_FIELD_STATE
         {
-            using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED
-            {
-                AreaType = closedArea,
-                SuppressAlert = true
-            }));
-            TrySend(packet);
-        }
-
-        foreach (var warningArea in snapshot.WarningAreas)
-        {
-            using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
-            {
-                AreaType = warningArea,
-                SecondsRemaining = snapshot.WarningSeconds,
-                ClosureAtUnixMs = snapshot.ClosureAtUnixMs
-            }));
-            TrySend(packet);
-        }
-        var globalClosure = Match.Closures.GetGlobalClosureClientState();
-        if (globalClosure.IsKnown)
-        {
-            using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
-            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
-            {
-                AreaType = AreaType.None,
-                SecondsRemaining = globalClosure.SecondsRemaining,
-                ClosureAtUnixMs = globalClosure.ClosureAtUnixMs,
-                IsGlobalClosure = true,
-                IsGlobalClosureActive = globalClosure.IsActive
-            }));
-            TrySend(packet);
-        }
-
-        // AreaType.None is the generic next-warning clock.
-        using var countdownPacket = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
-        countdownPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
-        {
-            AreaType = AreaType.None,
-            SecondsRemaining = snapshot.NextWarningSeconds,
-            ClosureAtUnixMs = snapshot.NextWarningAtUnixMs
+            StartedAtUnixMs = new DateTimeOffset(state.GameStartTime).ToUnixTimeMilliseconds()
         }));
-        TrySend(countdownPacket);
-
-        // #272 자기장: 수축 시계를 복원한다 — 클라 경계 렌더의 유일한 입력. 폐쇄 시계와
-        // 같은 앵커(GameStartTime)라 별도 상태가 없다.
-        var closureState = Match.Closures.GetMatchingState();
-        if (Config.SWARM_PRESSURE_FIELD_ENABLED && closureState != null)
-        {
-            using var fieldPacket = Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);
-            fieldPacket.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_FIELD_STATE
-            {
-                StartedAtUnixMs = new DateTimeOffset(closureState.GameStartTime).ToUnixTimeMilliseconds()
-            }));
-            TrySend(fieldPacket);
-        }
+        TrySend(packet);
     }
 }

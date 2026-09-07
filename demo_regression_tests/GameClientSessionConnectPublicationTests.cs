@@ -441,6 +441,19 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Contains("WearItemIdList = new List<int>(ownProfile.Wear)", network);
     }
 
+    [Fact]
+    public void EntrySnapshotPublishesOnlyPressureFieldClock()
+    {
+        string directory = Path.Combine(FindRepositoryRoot(), "game_server", "Sessions");
+        string source = File.ReadAllText(Path.Combine(directory, "GameClientSession.Snapshots.cs"));
+        string field = source[source.IndexOf("private void SendPressureFieldStateSnapshot()", StringComparison.Ordinal)..];
+        Assert.Contains("Protocol.G_TO_C_SWARM_FIELD_STATE", field);
+        Assert.Contains("state.GameStartTime", field);
+        Assert.DoesNotContain("Protocol.G_TO_C_AREA_CLOSED", field);
+        Assert.DoesNotContain("Protocol.G_TO_C_AREA_CLOSURE_WARNING", field);
+        Assert.Contains("SendPressureFieldStateSnapshot();", File.ReadAllText(Path.Combine(directory, "GameClientSession.cs")));
+    }
+
     private static Packet CreateSuccessPacket(GameClientSession session) =>
         Assert.IsType<Packet>(typeof(GameClientSession).GetMethod(
             "CreateConnectResultPacket",

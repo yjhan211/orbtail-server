@@ -323,7 +323,7 @@ public partial class GameClientSession : SessionBase
             LogInitialInventory();
 
             SendDoorStateList();
-            SendAreaClosureStateSnapshot();
+            SendPressureFieldStateSnapshot();
 
             await BroadcastPlayerJoin();
             EnsureConnectionActive();
