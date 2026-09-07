@@ -21,7 +21,7 @@ public partial class GameClientSession
         int targetHealth = -1;
         if (eventType == ProximityAutoAttackDealtEventType || eventType == ProximityAutoAttackTakenEventType)
         {
-            var targetSession = _getSessionsByInstance(CurrentMapId, MatchingId)
+            var targetSession = _getSessionsByMatch(MatchingId)
                 .FirstOrDefault(session => session.PlayerId == targetPlayerId);
             if (targetSession != null)
                 targetHealth = targetSession.Health;

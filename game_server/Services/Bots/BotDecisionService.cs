@@ -905,7 +905,7 @@ internal sealed class BotDecisionService(
             Consider(other.PlayerId, other.Position, other.CurrentArea);
         }
 
-        foreach (var session in sessions.GetByInstance(Config.SWARM_MATCH_MAP, matchingId))
+        foreach (var session in sessions.GetByMatch(matchingId))
         {
             if (!session.PlayerId.HasValue || session.IsEliminated ||
                 session.LastValidatedPosition == null)
@@ -1081,7 +1081,7 @@ internal sealed class BotDecisionService(
             return true;
         }
 
-        foreach (var session in sessions.GetByInstance(Config.SWARM_MATCH_MAP, matchingId))
+        foreach (var session in sessions.GetByMatch(matchingId))
         {
             if (session.PlayerId != playerId || session.IsEliminated ||
                 session.LastValidatedPosition == null) continue;

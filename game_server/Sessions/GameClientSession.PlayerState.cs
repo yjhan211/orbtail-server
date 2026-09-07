@@ -58,7 +58,7 @@ public partial class GameClientSession
         CurrentState = isExploreState ? PlayerState.EXPLORE_1 : PlayerState.IDLE;
 
         // 같은 Area의 다른 플레이어들에게 상태 브로드캐스트
-        var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
+        var allSessions = _getSessionsByMatch(MatchingId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea);
 
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, msg.State);
@@ -177,7 +177,7 @@ public partial class GameClientSession
         var state = sleep ? PlayerState.SLEEP : PlayerState.IDLE;
 
         // 같은 Area의 모든 플레이어에게 상태 브로드캐스트 (본인 포함)
-        var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
+        var allSessions = _getSessionsByMatch(MatchingId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
 
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, state);

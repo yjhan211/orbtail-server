@@ -225,7 +225,7 @@ internal sealed class GameServer(
                 ticket => gameHandoffTicketService.ConsumeAsync(ticket, nodeOptions.NodeId),
                 sessionLeaveHandler,
                 sessions.Register,
-                sessions.GetByInstance,
+                sessions.GetByMatch,
                 eventLogs,
                 matchEliminations,
                 matchRuntimes,

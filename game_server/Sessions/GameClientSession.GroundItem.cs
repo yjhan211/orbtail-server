@@ -283,7 +283,7 @@ public partial class GameClientSession
     {
         if (spawned.Count == 0) return;
         var sessions = GetSessionsInArea(
-            _getSessionsByInstance(CurrentMapId, MatchingId), area, excludeSelf: false);
+            _getSessionsByMatch(MatchingId), area, excludeSelf: false);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)area, spawned.ToList());
         foreach (var session in sessions) session.TrySend(packet);
     }
@@ -291,7 +291,7 @@ public partial class GameClientSession
     private void BroadcastGroundItemRemoved(GroundItemInfo item, bool autoUsed)
     {
         var sessions = GetSessionsInArea(
-            _getSessionsByInstance(CurrentMapId, MatchingId),
+            _getSessionsByMatch(MatchingId),
             (AreaType)item.AreaType,
             excludeSelf: false);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(item.GroundItemUid, PlayerId ?? 0, autoUsed);

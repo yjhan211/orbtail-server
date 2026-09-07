@@ -30,7 +30,7 @@ public partial class GameClientSession : SessionBase
 
     private readonly PlayerConditionState _condition = new();
     private readonly List<int> _activeBuffIds = new();
-    private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
+    private readonly Func<long, List<GameClientSession>> _getSessionsByMatch;
 
     private readonly Func<string?, Task<GameHandoffContext?>> _consumeGameHandoffTicket;
     private readonly GameSessionLeaveHandler _sessionLeaveHandler;
@@ -126,7 +126,7 @@ public partial class GameClientSession : SessionBase
         Func<string?, Task<GameHandoffContext?>> consumeGameHandoffTicket,
         GameSessionLeaveHandler sessionLeaveHandler,
         Func<long, GameClientSession, GameClientSession?> registerSessionCallback,
-        Func<MapId, long, List<GameClientSession>> getSessionsByInstance,
+        Func<long, List<GameClientSession>> getSessionsByMatch,
 
         GameEventLogManager gameEventLogManager,
         MatchEliminationService matchEliminations,
@@ -148,7 +148,7 @@ public partial class GameClientSession : SessionBase
         _sessionLeaveHandler = sessionLeaveHandler;
         _consumeGameHandoffTicket = consumeGameHandoffTicket;
         _registerSessionCallback = registerSessionCallback;
-        _getSessionsByInstance = getSessionsByInstance;
+        _getSessionsByMatch = getSessionsByMatch;
 
         _gameEventLogManager = gameEventLogManager;
         _matchEliminations = matchEliminations;
@@ -341,7 +341,7 @@ public partial class GameClientSession : SessionBase
         if (IsRoundActionLocked(out _))
             return Task.CompletedTask;
 
-        var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
+        var allSessions = _getSessionsByMatch(MatchingId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea, excludeSelf: false);
 
         var broadcast = new G_TO_C_SOCIAL_ACTION

@@ -85,7 +85,7 @@ internal static class GameServerTestAccess
                 PublicHost = "127.0.0.1"
             },
             devOptions: GameServerDevOptions.Disabled,
-            sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, matchEliminations: TestGameSessionServices.CreateEliminationService(runtimes, logs, summaries, GameServerDevOptions.Disabled, sessions.GetByInstance, logger),
+            sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, matchEliminations: TestGameSessionServices.CreateEliminationService(runtimes, logs, summaries, GameServerDevOptions.Disabled, sessions.GetByMatch, logger),
             matchEntry: new GameMatchEntryService(new InMemoryRedisOperations(), runtimes, GameServerDevOptions.Disabled, logger),
             itemCombinations: new ItemCombinationService(logs),
             movementValidation: new MovementValidationService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MovementValidationService>.Instance),

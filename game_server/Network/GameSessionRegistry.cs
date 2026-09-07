@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
-using network.common;
 
 namespace game_server.network;
 
@@ -89,21 +88,6 @@ public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
     public bool HasSessions(long matchingId) =>
         _sessionsByMatch.TryGetValue(matchingId, out ConcurrentDictionary<long, GameClientSession>? bucket) &&
         !bucket.IsEmpty;
-
-    public List<GameClientSession> GetByInstance(MapId mapId, long mapSubId)
-    {
-        if (!_sessionsByMatch.TryGetValue(
-                mapSubId,
-                out ConcurrentDictionary<long, GameClientSession>? bucket))
-        {
-            return [];
-        }
-
-        return bucket.Values
-            .Where(session => session.CurrentMapId == mapId)
-            .ToList();
-    }
-
 
     /// <summary>
     ///     Drops the match mirror after the match runtime has won its terminal transition.

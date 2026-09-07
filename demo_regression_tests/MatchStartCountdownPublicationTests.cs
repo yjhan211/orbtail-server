@@ -491,7 +491,7 @@ public sealed class MatchStartCountdownPublicationTests
                 static _ => Task.FromResult<GameHandoffContext?>(null),
                 TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
-                static (_, _) => [],
+                static _ => [],
                 null!,
                 null!,
                 new MatchRuntimeStore(NullLogger.Instance),

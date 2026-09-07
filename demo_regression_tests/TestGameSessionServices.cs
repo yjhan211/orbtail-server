@@ -12,7 +12,7 @@ internal static class TestGameSessionServices
         GameEventLogManager logs,
         MatchSummaryFileStore summaries,
         GameServerDevOptions options,
-        Func<network.common.MapId, long, List<GameClientSession>> getSessions,
+        Func<long, List<GameClientSession>> getSessions,
         Microsoft.Extensions.Logging.ILogger logger)
     {
         var results = new MatchResultService(store, logs, summaries, options, getSessions, logger);

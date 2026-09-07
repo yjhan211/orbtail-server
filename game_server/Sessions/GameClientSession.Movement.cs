@@ -152,7 +152,7 @@ public partial class GameClientSession
                 OrbOrbitPhaseDegrees
             );
 
-            var otherSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
+            var otherSessions = _getSessionsByMatch(MatchingId);
             var sameAreaSessions = GetSessionsInArea(otherSessions, CurrentArea);
 
             foreach (var session in sameAreaSessions)
@@ -259,7 +259,7 @@ public partial class GameClientSession
             Logger.LogInformation("Player {PlayerId} moved from Area {OldArea} to {NewArea}", PlayerId, oldArea,
                 newArea);
 
-            var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
+            var allSessions = _getSessionsByMatch(MatchingId);
 
             // 1. 이전 Area의 플레이어들에게 퇴장 알림 + 나에게 기존 플레이어 삭제 알림
             if (oldArea != AreaType.None)

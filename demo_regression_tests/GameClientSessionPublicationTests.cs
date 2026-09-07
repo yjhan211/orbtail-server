@@ -775,13 +775,13 @@ public sealed class GameClientSessionPublicationTests
                 static _ => Task.FromResult<GameHandoffContext?>(null),
                 TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
-                (_, matchingId) => sessions
+                matchingId => sessions
                     .Where(session => session.MatchingId == matchingId)
                     .ToList(),
 
                 eventLog,
                 TestGameSessionServices.CreateEliminationService(matchRuntimes, eventLog, summaries, GameServerDevOptions.Disabled,
-                    (_, id) => sessions.Where(session => session.MatchingId == id).ToList(), NullLogger.Instance),
+                    id => sessions.Where(session => session.MatchingId == id).ToList(), NullLogger.Instance),
                 matchRuntimes,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },

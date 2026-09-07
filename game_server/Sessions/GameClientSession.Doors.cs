@@ -54,7 +54,7 @@ public partial class GameClientSession
             // 같은 매칭의 모든 플레이어에게 브로드캐스트
             using var updatePacket =
                 PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId.Value);
-            var matchingSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
+            var matchingSessions = _getSessionsByMatch(MatchingId);
             foreach (var session in matchingSessions) session.TrySend(updatePacket);
         }
         catch (Exception ex)

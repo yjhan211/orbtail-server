@@ -738,14 +738,14 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 static _ => Task.FromResult<GameHandoffContext?>(null),
                 TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
-                (_, instanceId) => _sessions
-                    .Where(candidate => candidate.MatchingId == instanceId)
+                matchingId => _sessions
+                    .Where(candidate => candidate.MatchingId == matchingId)
                     .ToList(),
 
                 EventLog,
                 TestGameSessionServices.CreateEliminationService(Store, EventLog, new MatchSummaryFileStore(_summaryDirectory),
                     GameServerDevOptions.Disabled,
-                    (_, id) => _sessions.Where(session => session.MatchingId == id).ToList(),
+                    id => _sessions.Where(session => session.MatchingId == id).ToList(),
                     NullLogger.Instance),
                 Store,
                 growthHandler ?? _growthHandler,

@@ -18,7 +18,7 @@ internal sealed class MatchResultService(
     GameEventLogManager _gameEventLogManager,
     MatchSummaryFileStore _matchSummaryFileStore,
     GameServerDevOptions _devOptions,
-    Func<MapId, long, List<GameClientSession>> _getSessionsByInstance,
+    Func<long, List<GameClientSession>> _getSessionsByMatch,
     ILogger Logger)
 {
     /// <summary>
@@ -51,7 +51,7 @@ internal sealed class MatchResultService(
             return;
         }
 
-        List<GameClientSession> sessionSnapshot = _getSessionsByInstance(mapId, matchingId);
+        List<GameClientSession> sessionSnapshot = _getSessionsByMatch(matchingId);
         var players = BuildGameResultPlayers(sessionSnapshot, matchingId, winnerId);
         byte[] resultPayload = MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT
         {

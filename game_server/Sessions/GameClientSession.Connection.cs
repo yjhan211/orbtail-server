@@ -358,7 +358,7 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue || IsEliminated) return Task.CompletedTask;
 
-        var sessions = _getSessionsByInstance(CurrentMapId, MatchingId)
+        var sessions = _getSessionsByMatch(MatchingId)
             .Where(s => s.PlayerId.HasValue && s.PlayerId != PlayerId &&
                         !s.IsEliminated && s.CurrentArea == CurrentArea)
             .ToList();
