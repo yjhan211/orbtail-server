@@ -32,7 +32,7 @@ public partial class GameClientSession : SessionBase
     private static readonly TimeSpan ExploreMoveGracePeriod = TimeSpan.FromMilliseconds(750);
 
 
-    private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
+    private readonly PlayerConditionState _condition = new();
     private readonly List<int> _activeBuffIds = new();
     private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
 
@@ -61,16 +61,16 @@ public partial class GameClientSession : SessionBase
     private readonly ItemCombinationService _itemCombinations;
     private readonly MovementValidationService _movementValidation;
 
-    private bool _isSleeping;
+    private bool _isSleeping { get => _condition.IsSleeping; set => _condition.IsSleeping = value; }
 
     // #229 6단계 수면 회복 → 2026-08-17 재조정: 진입 시각(준비 1초)과 마지막 교전 시각
     // (가해·피해 뒤 3초 진입 잠금)을 세션이 들고, 회복 정산(1초 틱)은 아레나 틱이 돈다.
-    internal DateTime SwarmSleepStartedAtUtc { get; set; } = DateTime.MinValue;
-    internal DateTime SwarmLastCombatAtUtc { get; set; } = DateTime.MinValue;
+    internal DateTime SwarmSleepStartedAtUtc { get => _condition.SleepStartedAtUtc; set => _condition.SleepStartedAtUtc = value; }
+    internal DateTime SwarmLastCombatAtUtc { get => _condition.LastCombatAtUtc; set => _condition.LastCombatAtUtc = value; }
     // 단일 절단 치명상 (#232): 성공 뒤 8초는 수면 진입·회복 틱이 막힌다.
-    internal DateTime SwarmHealLockUntilUtc { get; set; } = DateTime.MinValue;
+    internal DateTime SwarmHealLockUntilUtc { get => _condition.HealLockUntilUtc; set => _condition.HealLockUntilUtc = value; }
     internal bool IsSleeping => _isSleeping;
-    private int _swarmSleepGrantedTicks;
+
     private int _entryCompleted;
     private int _entryFailureReported;
     private int _entryDisconnectIssued;
@@ -292,8 +292,8 @@ public partial class GameClientSession : SessionBase
     public bool IsEliminated => PlayerMatchStatus == PlayerMatchStatus.ELIMINATED || PlayerMatchStatus == PlayerMatchStatus.SPECTATING;
 
     // 인게임 스탯 (게임 종료 시 초기화)
-    private int Stamina { get; set; } = InitialStamina;
-    private int Corruption { get; set; } = InitialCorruption;
+    private int Stamina { get => _condition.Stamina; set => _condition.Stamina = value; }
+    private int Corruption { get => _condition.Corruption; set => _condition.Corruption = value; }
 
     protected override void InitializeProtocolHandlers()
     {
@@ -606,13 +606,5 @@ public partial class GameClientSession : SessionBase
             .ToList();
     }
 
-    private class PeriodicBuffEntry
-    {
-        public float ElapsedSeconds;
-        public int DurationSeconds;
-        public int IntervalSeconds;
-        public int RemainingSeconds;
-        public BuffSubType SubType;
-        public int Value;
-    }
+
 }

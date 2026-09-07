@@ -14,8 +14,8 @@ namespace game_server.sessions;
 public partial class GameClientSession
 {
     /// <summary>고양이 베개 (401000003): 휴식 주기 버프의 지속 시간 특례.</summary>
-    private const int CatPillowItemId = 401000003;
-    private const int CatPillowRestDurationSeconds = 15;
+
+
 
     private async Task HandlePlayerState(C_TO_G_PLAYER_STATE msg)
     {
@@ -93,88 +93,40 @@ public partial class GameClientSession
         if (!CanEnterSwarmSleep(DateTime.UtcNow))
             return;
 
-        SwarmSleepStartedAtUtc = DateTime.MinValue;
-        _swarmSleepGrantedTicks = 0;
+        _condition.ResetSleep();
         await BroadcastSleepState(true);
         return;
     }
 
-    private void AddPeriodicBuff(BuffSubType subType, int value, int intervalSeconds, int durationSeconds = 0)
-    {
-        _activePeriodicBuffs.RemoveAll(buff => buff.SubType == subType);
-        _activePeriodicBuffs.Add(new PeriodicBuffEntry
-        {
-            SubType = subType,
-            Value = value,
-            IntervalSeconds = intervalSeconds,
-            DurationSeconds = durationSeconds,
-            RemainingSeconds = durationSeconds
-        });
 
-        // 마스터 타이머가 없으면 시작 (1초 틱)
-        _periodicBuffTimer ??= new Timer(_ => OnPeriodicBuffTick(), null, 1000, 1000);
-    }
 
     private void OnPeriodicBuffTick()
     {
-        try
+        _ = RunUnderMatch(() =>
         {
-            foreach (var buff in _activePeriodicBuffs.ToList())
+            try
             {
-                buff.ElapsedSeconds += 1;
-                if (buff.DurationSeconds > 0 && buff.RemainingSeconds > 0)
-                    buff.RemainingSeconds -= 1;
-
-                if (buff.ElapsedSeconds >= buff.IntervalSeconds)
+                _condition.TickPeriodicBuffs(MaxStamina, MaxCorruption, (stamina, corruption) => ModifyStats(stamina, corruption));
+                if (!_condition.HasPeriodicBuffs)
                 {
-                    buff.ElapsedSeconds = 0;
-                    switch (buff.SubType)
-                    {
-                        case BuffSubType.CONDITION_ADD:
-                            if (Stamina < MaxStamina)
-                                ModifyStats(buff.Value);
-                            else if (buff.DurationSeconds <= 0)
-                                _activePeriodicBuffs.Remove(buff);
-                            break;
-                        case BuffSubType.CORRUPTION_DOWN:
-                            if (Corruption > 0)
-                                ModifyStats(corruptionDelta: -buff.Value);
-                            else if (buff.DurationSeconds <= 0)
-                                _activePeriodicBuffs.Remove(buff);
-                            break;
-                        case BuffSubType.CORRUPTION_ADD:
-                            if (Corruption < MaxCorruption)
-                                ModifyStats(corruptionDelta: buff.Value);
-                            else if (buff.DurationSeconds <= 0)
-                                _activePeriodicBuffs.Remove(buff);
-                            break;
-                    }
+                    if (_isSleeping) _ = BroadcastSleepState(false);
+                    else StopAllPeriodicBuffs();
                 }
-
-                if (buff.DurationSeconds > 0 && buff.RemainingSeconds <= 0)
-                    _activePeriodicBuffs.Remove(buff);
             }
-
-            if (_activePeriodicBuffs.Count == 0)
+            catch (Exception ex)
             {
-                if (_isSleeping)
-                    _ = BroadcastSleepState(false);
-                else
-                    StopAllPeriodicBuffs();
+                Logger.LogWarning(ex, "Periodic buff timer error, stopping all");
+                StopAllPeriodicBuffs();
             }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "Periodic buff timer error, stopping all");
-            StopAllPeriodicBuffs();
-        }
+            return Task.CompletedTask;
+        }, StopAllPeriodicBuffs);
     }
 
     // #229 6단계 수면 회복 → 2026-08-17 재조정: 준비 1초, 회복은 1초에 한 번.
     // 중단은 이동뿐이다 — 움직이지 않는 한 피격·폐쇄로는 깨지 않는다.
-    private const double SwarmSleepWarmupSeconds = 1d;
-    private const double SwarmSleepCombatLockSeconds = 3d;
-    private const float SwarmSleepRecoveryRatioPerSecond = 0.05f;
+
+
+
     private const int SwarmSleepRecoveryEventType = 28;
 
     /// <summary>
@@ -183,46 +135,9 @@ public partial class GameClientSession
     /// </summary>
     internal void TickSwarmSleepRecovery(DateTime nowUtc)
     {
-        if (IsEliminated || !_isSleeping)
-        {
-            SwarmSleepStartedAtUtc = DateTime.MinValue;
-            _swarmSleepGrantedTicks = 0;
-            return;
-        }
-
-        if (SwarmSleepStartedAtUtc == DateTime.MinValue)
-        {
-            SwarmSleepStartedAtUtc = nowUtc;
-            _swarmSleepGrantedTicks = 0;
-            return;
-        }
-
-        // 준비 1초: 눌렀다 떼는 것만으로 피해를 무시할 수 없어야 한다.
-        double asleepSeconds = (nowUtc - SwarmSleepStartedAtUtc).TotalSeconds;
-        if (asleepSeconds < SwarmSleepWarmupSeconds)
-            return;
-
-        // 절단 치명상 회복 차단 (#232): 8초 동안은 틱이 지나도 회복이 없다 — 지난 틱은 소멸한다.
-        if (nowUtc < SwarmHealLockUntilUtc)
-        {
-            _swarmSleepGrantedTicks = (int)Math.Floor(asleepSeconds - SwarmSleepWarmupSeconds) + 1;
-            return;
-        }
-
-        // 1초에 한 번 — 준비가 끝나는 순간이 첫 회복이다. 아레나 틱이 밀렸으면 한 번에 정산한다.
-        int dueTicks = (int)Math.Floor(asleepSeconds - SwarmSleepWarmupSeconds) + 1;
-        int pendingTicks = dueTicks - _swarmSleepGrantedTicks;
-        if (pendingTicks <= 0)
-            return;
-
-        _swarmSleepGrantedTicks = dueTicks;
-        if (Corruption <= 0)
-            return;
-
-        int perTick = Math.Max(1, (int)MathF.Round(MaxCorruption * SwarmSleepRecoveryRatioPerSecond));
-        int recovered = Math.Min(perTick * pendingTicks, Corruption);
+        int recovered = _condition.GetSleepRecovery(nowUtc, IsEliminated, MaxCorruption);
+        if (recovered <= 0) return;
         ModifyStats(corruptionDelta: -recovered);
-        // 회복량은 본인과 같은 구역 사람 모두 읽는다 — 수면은 남에게 보이는 표적이어야 한다.
         SendEncounterEvent(PlayerId ?? 0, CurrentArea, SwarmSleepRecoveryEventType, 0, 0, recovered);
     }
 
@@ -230,9 +145,7 @@ public partial class GameClientSession
     ///     수면 진입 가능 여부 (#229 6단계) — 가해·피해 뒤 3초는 눕지 못한다.
     ///     절단 치명상(#232) 8초 회복 차단 중에도 눕지 못한다 — 누워도 회복이 없다.
     /// </summary>
-    internal bool CanEnterSwarmSleep(DateTime nowUtc) =>
-        (nowUtc - SwarmLastCombatAtUtc).TotalSeconds >= SwarmSleepCombatLockSeconds &&
-        nowUtc >= SwarmHealLockUntilUtc;
+    internal bool CanEnterSwarmSleep(DateTime nowUtc) => _condition.CanSleep(nowUtc);
 
     /// <summary>
     ///     수면 중단 (2026-08-17 재조정): 부르는 곳은 이동뿐이다 — 누워서 도망칠 수 없다.
@@ -243,8 +156,7 @@ public partial class GameClientSession
         if (!_isSleeping)
             return;
 
-        SwarmSleepStartedAtUtc = DateTime.MinValue;
-        _swarmSleepGrantedTicks = 0;
+        _condition.ResetSleep();
         _ = BroadcastSleepState(false);
     }
 
@@ -253,7 +165,7 @@ public partial class GameClientSession
 
     private void StopAllPeriodicBuffs()
     {
-        _activePeriodicBuffs.Clear();
+        _condition.ClearPeriodicBuffs();
         _periodicBuffTimer?.Dispose();
         _periodicBuffTimer = null;
     }
@@ -442,62 +354,20 @@ public partial class GameClientSession
     /// </summary>
     private bool ApplyItemBuffs(int itemId)
     {
-        var itemData = GameItemData.Get(itemId);
-        if (itemData.ConsumableBuffList.Count == 0) return false;
-
-        int staminaDelta = 0;
-        int corruptionDelta = 0;
-        bool hasPeriodicBuff = false;
-
-        foreach ((int buffId, int value, int interval) in itemData.ConsumableBuffList)
-        {
-            var buffData = GameBuffData.Get(buffId);
-
-            // 주기적 버프 → 마스터 타이머에 등록
-            if (buffData.Type == BuffType.PERIODIC && interval > 0)
-            {
-                int durationSeconds = itemId == CatPillowItemId ? CatPillowRestDurationSeconds : 0;
-                AddPeriodicBuff(buffData.SubType, value, interval, durationSeconds);
-                hasPeriodicBuff = true;
-                continue;
-            }
-
-            // 즉시 버프
-            switch (buffData.SubType)
-            {
-                case BuffSubType.CONDITION_ADD:
-                    staminaDelta += PassiveBuffUtility.ApplyIncrease(
-                        value,
-                        ActiveBuffIds,
-                        BuffSubType.RECOVERY_ITEM_EFFECT_ADD);
-                    break;
-
-                case BuffSubType.CORRUPTION_DOWN:
-                    corruptionDelta -= PassiveBuffUtility.ApplyIncrease(
-                        value,
-                        ActiveBuffIds,
-                        BuffSubType.RECOVERY_ITEM_EFFECT_ADD);
-                    break;
-
-                case BuffSubType.CORRUPTION_ADD:
-                    corruptionDelta += value;
-                    break;
-            }
-        }
-
-        int corruptionBeforeBuffs = Corruption;
-        if (staminaDelta != 0 || corruptionDelta != 0) ModifyStats(staminaDelta, corruptionDelta);
-        int recoveredCorruption = Math.Max(0, corruptionBeforeBuffs - Corruption);
-        if (PlayerId.HasValue && recoveredCorruption > 0)
-            _gameEventLogManager.LogRecoveryUse(
-                MatchingId, PlayerId.Value, itemId, recoveredCorruption,
+        var effect = _condition.ApplyItemBuffs(itemId, ActiveBuffIds);
+        if (effect.Periodic)
+            _periodicBuffTimer ??= new Timer(_ => OnPeriodicBuffTick(), null, 1000, 1000);
+        int before = Corruption;
+        if (effect.Stamina != 0 || effect.Corruption != 0) ModifyStats(effect.Stamina, effect.Corruption);
+        int recovered = Math.Max(0, before - Corruption);
+        if (PlayerId.HasValue && recovered > 0)
+            _gameEventLogManager.LogRecoveryUse(MatchingId, PlayerId.Value, itemId, recovered,
                 source: "inventory_consumable", isBot: false);
-
-        return hasPeriodicBuff;
+        return effect.Periodic;
     }
 
     /// <summary>스태미나 부족 시 코럽션 대체 변환비 (1 stamina deficit = StaminaToCorruptionRatio cor). 권고안 B (2026-05-05).</summary>
-    private const int StaminaToCorruptionRatio = 2;
+
 
     /// <summary>
     ///     스탯 변경 (외부에서 호출 가능 - 환경 효과 등).
@@ -509,26 +379,8 @@ public partial class GameClientSession
     {
         int oldStamina = Stamina;
         int oldCorruption = Corruption;
-        int conversionCor = 0;
-
-        if (staminaDelta != 0)
-        {
-            int newStamina = Stamina + staminaDelta;
-            if (newStamina < 0)
-            {
-                // 부족분만큼 Corruption 대체 (1:2 변환)
-                int deficit = -newStamina;
-                conversionCor = deficit * StaminaToCorruptionRatio;
-                Stamina = 0;
-            }
-            else
-            {
-                Stamina = Math.Min(newStamina, MaxStamina);
-            }
-        }
-
+        int conversionCor = _condition.ChangeResources(staminaDelta, corruptionDelta, MaxStamina, MaxCorruption);
         int totalCorDelta = corruptionDelta + conversionCor;
-        if (totalCorDelta != 0) Corruption = Math.Clamp(Corruption + totalCorDelta, 0, MaxCorruption);
 
         // 값이 변경되지 않았으면 패킷 전송 안함
         if (Stamina == oldStamina && Corruption == oldCorruption) return;

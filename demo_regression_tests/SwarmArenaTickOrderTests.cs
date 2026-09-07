@@ -186,7 +186,7 @@ public sealed class SwarmArenaTickOrderTests
             "private void SendPlayerStatsUpdate(");
         AssertInOrder(
             modifyStats,
-            "Corruption = Math.Clamp(",
+            "_condition.ChangeResources(",
             "SendPlayerStatsUpdate(",
             "CheckResourceElimination(");
 
