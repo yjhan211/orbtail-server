@@ -49,14 +49,14 @@ internal sealed class UserServer(
     private Task? _shutdownTask;
     private int _stopping;
 
-    public async Task StartAsync(CancellationToken ct)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         readinessState.MarkNotReady("starting");
         try
         {
             logger.LogInformation("UserServer starting...");
             int port = ResolveServicePort(configuration);
-            InitializeServices(ct);
+            InitializeServices(cancellationToken);
             StartNetworkService(port);
             readinessState.MarkReady();
             logger.LogInformation("UserServer started successfully");
@@ -146,8 +146,15 @@ internal sealed class UserServer(
 
     internal static int ResolveServicePort(IConfiguration configuration)
     {
-        if (!int.TryParse(configuration["servicePort"], out int port) || port is < 1 or > 65535)
-            throw new InvalidOperationException("servicePort must be configured as an integer between 1 and 65535.");
+        string? configuredPort = configuration["clientPort"];
+        if (configuredPort == null)
+        {
+            return 9001;
+        }
+        if (!int.TryParse(configuredPort, out int port) || port is < 1 or > 65535)
+        {
+            throw new InvalidOperationException("clientPort must be configured as an integer between 1 and 65535.");
+        }
         return port;
     }
 

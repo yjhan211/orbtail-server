@@ -6,13 +6,10 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.helpers;
-using network.common.data.models;
 using network.core;
 using network.gamehandoff;
 using network.hosting;
-using network.infrastructure.messaging;
 using network.infrastructure.redis;
-using network.packets;
 using network.routing;
 
 namespace game_server;
@@ -20,18 +17,17 @@ namespace game_server;
 /// <summary>
 ///     GameServer의 시작과 종료를 관리하고, 게임 세션과 매치 처리에 필요한 구성 요소를 연결한다.
 ///     TCP 연결을 받고 게임 진행용 타이머를 실행하며, 노드의 접속 정보와 수용 상태를 등록한다.
-///
 ///     매치 상태 변경은 매치별 잠금 안에서 처리한다.
-///     입장 실패 처리는 MatchEntryFailureHandler에,
+///     입장 실패는 MatchEntryFailureHandler에, 세션 퇴장은 GameSessionLeaveHandler에 맡긴다.
 ///     종료 알림과 Redis 정리는 MatchingLifecycleService에 위임한다.
 /// </summary>
 internal partial class GameServer(
-    IConfiguration configuration,
+    NetworkService networkService,
     ILogger<GameServer> logger,
     ILogger<GameClientSession> sessionLogger,
-    MatchingLifecycleService matchingLifecycle,
+    IConfiguration configuration,
     IRedisOperations redisOperations,
-    NetworkService networkService,
+    MatchingLifecycleService matchingLifecycle,
     GameHandoffTicketService gameHandoffTicketService,
     ServerReadinessState readinessState,
     IGameServerRegistry gameServerRegistry,
@@ -50,32 +46,24 @@ internal partial class GameServer(
     BotMovementService botMovement)
     : IHostedService
 {
-
-    // 서버 수명과 주기 작업
     private GameServerNodeAdvertiser? _nodeAdvertiser;
+    private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) => matchRuntimes.GetRequired(matchingId).Swarm;
     private readonly object _shutdownLock = new();
     private Task? _shutdownTask;
     private int _stopping;
 
-    private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
-        matchRuntimes.GetRequired(matchingId).Swarm;
-
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         readinessState.MarkNotReady("starting");
-
         try
         {
             logger.LogInformation("Game server starting...");
             cancellationToken.ThrowIfCancellationRequested();
             int port = ResolveServicePort(configuration);
             InitializeServices(cancellationToken);
-
             StartNetworkService(port);
             StartGameTicks();
-
             await StartNodeAdvertisementAsync();
-
             readinessState.MarkReady();
             logger.LogInformation("Game server started successfully.");
         }
@@ -88,11 +76,9 @@ internal partial class GameServer(
         }
     }
 
-    // TCP 접속과 게임 타이머가 준비된 뒤에만 새 매치를 배정받는다.
     private async Task StartNodeAdvertisementAsync()
     {
-        _nodeAdvertiser = new GameServerNodeAdvertiser(
-            gameServerRegistry, nodeOptions, () => matchRuntimes.ActiveIds().Count, logger);
+        _nodeAdvertiser = new GameServerNodeAdvertiser(gameServerRegistry, nodeOptions, () => matchRuntimes.ActiveIds().Count, logger);
         await _nodeAdvertiser.StartAsync();
     }
 
@@ -183,9 +169,13 @@ internal partial class GameServer(
     {
         string? configuredPort = configuration["clientPort"];
         if (configuredPort == null)
+        {
             return 9001;
+        }
         if (!int.TryParse(configuredPort, out int port) || port is < 1 or > 65535)
+        {
             throw new InvalidOperationException("clientPort must be configured as an integer between 1 and 65535.");
+        }
         return port;
     }
 
@@ -208,37 +198,16 @@ internal partial class GameServer(
         tickService.Start(tickRunner.Run);
     }
 
-    private void BroadcastDoorStateChanges(
-        IReadOnlyCollection<GameClientSession> sessions,
-        IEnumerable<int> doorIds,
-        bool isOpen,
-        long openerPlayerId)
-    {
-        foreach (int doorId in doorIds.Distinct())
-        {
-            using var packet = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(
-                doorId,
-                isOpen,
-                ErrorCode.SUCCESS,
-                openerPlayerId);
-            foreach (var session in sessions)
-                session.TrySend(packet);
-        }
-    }
-
-    /// <summary>
-    ///     매치 루프가 같은 매치 잠금을 보유한 상태에서 호출한다.
-    ///     구역 폐쇄 상태를 확정하고 같은 순서로 송신한다.
-    /// </summary>
     private void ProcessAreaClosureForMatching(long matchingId, GameClientSession[] sessionSnapshot)
     {
         var plan = PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);
         if (plan != null)
+        {
             DispatchSwarmClosurePublicationPlan(plan, sessionSnapshot);
+        }
     }
 
-
-    private IConnectionSession? CreateClientSession(TcpConnection connection)
+    private GameClientSession? CreateClientSession(TcpConnection connection)
     {
         if (Volatile.Read(ref _stopping) != 0)
         {
@@ -256,8 +225,7 @@ internal partial class GameServer(
                 sessionLeaveHandler,
                 RegisterClientSession,
                 GetSessionsByInstance,
-
-                    eventLogs,
+                eventLogs,
                 summaryFileStore,
                 matchRuntimes,
                 HandleSwarmGrowthPick,
@@ -280,11 +248,13 @@ internal partial class GameServer(
 
     private Action? RegisterClientSession(long playerId, GameClientSession session)
     {
-        GameClientSession? existingSession = sessions.Register(playerId, session, out bool added);
+        var existingSession = sessions.Register(playerId, session, out bool added);
         if (existingSession == null)
         {
             if (added)
+            {
                 logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
+            }
             return null;
         }
 
@@ -306,5 +276,4 @@ internal partial class GameServer(
     {
         return sessions.GetByInstance(mapId, mapSubId);
     }
-
 }
