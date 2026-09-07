@@ -273,7 +273,7 @@ internal partial class GameServer
         {
             var area = region.AreaType;
             if (area == AreaType.None) continue;
-            var cells = GetSwarmAreaCellsByDistance(area);
+            var cells = MatchFieldService.GetSwarmAreaCellsByDistance(area);
             if (cells.Count == 0 ||
                 cells[0].Distance > safeDistance - SwarmBotFieldEvacuateMarginCells * 2)
                 continue;
@@ -400,7 +400,7 @@ internal partial class GameServer
                 // 같은 구역에서 여유 두 배(6셀)까지 안전한 셀 중 가장 가까운 곳으로.
                 Cell? retreatCell = null;
                 float retreatBestSq = float.MaxValue;
-                foreach (var entry in GetSwarmAreaCellsByDistance(bot.CurrentArea))
+                foreach (var entry in MatchFieldService.GetSwarmAreaCellsByDistance(bot.CurrentArea))
                 {
                     if (entry.Distance > fieldSafeDistance - SwarmBotFieldEvacuateMarginCells * 2)
                         break;
@@ -851,7 +851,7 @@ internal partial class GameServer
 
         // 중간 순번을 노린다 — 꼬리 끝은 손실이 적고, 머리 바로 뒤는 도달 전에 흔들린다.
         int aimOrdinal = Math.Max(1, orbCount / 2);
-        return GetSwarmOrbTrailPosition(matchingId, targetPlayerId, aimOrdinal, targetPosition)
+        return orbTrails.GetSwarmOrbTrailPosition(matchingId, targetPlayerId, aimOrdinal, targetPosition)
                ?? targetPosition;
     }
 

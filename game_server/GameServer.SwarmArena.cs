@@ -25,7 +25,6 @@ internal partial class GameServer
     // 플레이어 단위 지급: 매칭 단위 1회 지급은 지급 틱에 아직 접속 전인 사람을 영영 빈손으로 만든다 —
     // 늦게 합류해도 첫 등장 틱에 각자 1회 받는다 (상태는 Pacing.StartingOrbGrantedPlayers).
 
-
     // 고위험 절단 (#232 무한 꼬리): 몸으로 상대 꼬리를 유효하게 가로지르면 밟은 지점부터 꼬리 끝까지(접미 전체)
     // 깨지고 나는 정신오염 +35를 낸다. 크랙·방어 장갑·절단 낙수는 쓰지 않는다 (TryPerformSwarmTrailCut).
     // 끄려면 절단 계약 테스트(SwarmDamagePathTests.TailCut_RemovesSuffixAndChargesAttacker)의 플래그 어서션도 같이 바꾼다.
@@ -170,8 +169,9 @@ internal partial class GameServer
             GameClientSession.SwarmDummyMoveCallback ??=
                 (dummyMatchingId, dirX, dirY) =>
                     MoveSwarmCutDummy(dummyMatchingId, dirX, dirY);
-            // #272 경계 토출 스폰: 자기장 경계가 관통 중인 구역의 캠프는 빨간 지대에서 태어난다.
-            SwarmMonsterDirector.FieldSpawnCellResolver ??= ResolveSwarmFieldSpawn;
+
+            // 자기장 경계 스폰 규칙을 이 매치의 몬스터 처리기에 연결한다.
+            matchRuntimes.GetRequired(matchingId).Monsters.FieldSpawnCellResolver ??= fieldService.ResolveSpawn;
             LogSwarmPairZoneDistances(matchingId);
             // #272 자기장: 수축 시계는 폐쇄 시계와 같은 앵커(AreaClosureManager.GameStartTime)를 쓴다 —
             // 무장은 폐쇄 틱(PrepareSwarmScheduledClosureTick)의 최초 InitializeMatching이 담당한다.
@@ -602,7 +602,6 @@ internal partial class GameServer
         }
     }
 
-
     // 스팟 예산 선소진(#217 성장곡선 v3, 21개)은 퇴역 — SB에는 인위적 봉인이 없고,
     // 희소성은 리젠(60초)과 크기 비례 비용이 담당한다. 배치된 스팟은 전부 살아 있다.
 
@@ -611,368 +610,6 @@ internal partial class GameServer
         matchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(area) ||
         SwarmPressureField.GetAreaMinDistance(area) >
         MatchPressureFieldPolicy.GetSafeDistance(matchRuntimes.GetRequired(matchingId), DateTime.UtcNow);
-
-    // #272 경계 토출 스폰: 구역별 walkable 셀을 중심 거리 오름차순으로 캐시 — 리졸버가 띠를 자른다.
-    // Config 초기화 뒤 첫 접근까지 계산을 미루되, 서로 다른 매치의 동시 최초 접근은 한 번만 게시한다.
-    private static readonly Lazy<IReadOnlyDictionary<AreaType, IReadOnlyList<(Cell Cell, int Distance)>>>
-        _swarmAreaCellsByDistance = new(
-            BuildSwarmAreaCellsByDistance,
-            LazyThreadSafetyMode.ExecutionAndPublication);
-
-    private static IReadOnlyDictionary<AreaType, IReadOnlyList<(Cell Cell, int Distance)>>
-        BuildSwarmAreaCellsByDistance()
-    {
-        var byArea = new Dictionary<AreaType, List<(Cell Cell, int Distance)>>();
-        foreach (var pair in SwarmPressureField.DistancesByCell)
-        {
-            var cell = new Cell(pair.Key.X, pair.Key.Y);
-            var cellArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell);
-            if (cellArea == AreaType.None) continue;
-            if (!byArea.TryGetValue(cellArea, out var list))
-                byArea[cellArea] = list = new List<(Cell, int)>();
-            list.Add((cell, pair.Value));
-        }
-
-        foreach (var list in byArea.Values)
-            list.Sort((left, right) => left.Distance.CompareTo(right.Distance));
-
-        return byArea.ToDictionary(
-            pair => pair.Key,
-            pair => (IReadOnlyList<(Cell Cell, int Distance)>)pair.Value.AsReadOnly());
-    }
-
-    private static IReadOnlyList<(Cell Cell, int Distance)> GetSwarmAreaCellsByDistance(AreaType area)
-    {
-        return _swarmAreaCellsByDistance.Value.TryGetValue(area, out var cells)
-            ? cells
-            : [];
-    }
-
-    // 경계 토출 띠 폭 (셀): 스폰은 경계 바로 밖, 복귀 앵커는 경계 바로 안 — 태어나서 걸어 들어온다.
-    private const int SwarmFieldSpawnBandCells = 6;
-
-    /// <summary>
-    ///     #272 경계 토출 스폰 ("안전 구역 예외 제거" 결정 포함): 캠프
-    ///     신규 스폰은 항상 바깥(자기장이 올 방향)에서 태어나 안쪽 앵커로 걸어 들어온다 —
-    ///     경계가 구역을 관통 중이면 경계 밖 빨간 띠, 아직 온전히 안전한 구역이면 그 구역의
-    ///     가장 바깥 띠. 저작 캠프 앵커는 자기장 모드에서 쓰지 않는다 (단일 문법).
-    ///     온전히 밖인 구역은 폐쇄 스폰 정지 규칙이 이미 막는다.
-    /// </summary>
-    private (Cell Spawn, Cell Anchor)? ResolveSwarmFieldSpawn(long matchingId, AreaType area)
-    {
-        if (!MatchPressureFieldPolicy.Enabled) return null;
-        double safeDistance = MatchPressureFieldPolicy.GetSafeDistance(matchRuntimes.GetRequired(matchingId), DateTime.UtcNow);
-
-        var cells = GetSwarmAreaCellsByDistance(area);
-        if (cells.Count == 0) return null;
-
-        bool boundaryCrossing = safeDistance < cells[^1].Distance;
-        double spawnMin = boundaryCrossing ? safeDistance : cells[^1].Distance - SwarmFieldSpawnBandCells;
-        double spawnMax = boundaryCrossing ? safeDistance + SwarmFieldSpawnBandCells : cells[^1].Distance;
-
-        var spawnBand = cells
-            .Where(entry => entry.Distance > spawnMin && entry.Distance <= spawnMax)
-            .ToList();
-        if (spawnBand.Count == 0)
-            spawnBand = boundaryCrossing
-                ? cells.Where(entry => entry.Distance > safeDistance).ToList()
-                : [cells[^1]];
-
-        // 앵커(도착지)는 구역에서 자기장 중심에 가장 가까운 띠 (#269-A):
-        // 스폰 띠 바로 안쪽으로 잡으면 복도처럼 좁은 구역에서 스폰과 도착이 사실상 같은 자리라
-        // "즉시 젠 후 제자리"로 읽힌다 — 구역을 최대로 가로질러 걸어 들어오게 한다.
-        var anchorBand = cells
-            .Where(entry => entry.Distance < cells[0].Distance + SwarmFieldSpawnBandCells)
-            .ToList();
-        if (anchorBand.Count == 0)
-            anchorBand = [cells[0]];
-
-        return (
-            spawnBand[Random.Shared.Next(spawnBand.Count)].Cell,
-            anchorBand[Random.Shared.Next(anchorBand.Count)].Cell);
-    }
-
-    // 자기장 파생 웨이브 (#272): 계산은 AreaClosureManager.BuildSwarmFieldWaves가 담당한다.
-    // 거리 필드·상수가 프로세스 수명 동안 불변이라 한 번만 계산해 캐시한다.
-    private static readonly Lazy<IReadOnlyList<ClosureWaveDefinition>> _swarmFieldDerivedWaves =
-        new(
-            () => AreaClosureManager
-                .BuildSwarmFieldWaves(MatchPressureFieldPolicy.HoldSeconds, MatchPressureFieldPolicy.ShrinkSeconds)
-                .AsReadOnly(),
-            LazyThreadSafetyMode.ExecutionAndPublication);
-
-    private static IReadOnlyList<ClosureWaveDefinition> GetSwarmFieldWaves() =>
-        _swarmFieldDerivedWaves.Value;
-
-    // 자기장 상태 패킷은 매칭당 개전 1회 브로드캐스트 (재접속은 스냅샷이 복원). Timer 콜백은
-    // 겹칠 수 있으므로 authoritative commit은 match monitor, outbound 순서는 field FIFO가 맡는다.
-
-    /// <summary>
-    ///     #272 자기장 폐쇄: 구역 웨이브는 자기장에서 파생한 시간표로 닫는다 (MatchPressureFieldPolicy.Enabled=false면
-    ///     폐쇄 없음 — 레거시 DefaultP0Waves 폴백은 #310에서 제거). 경고 15초 → 폐쇄 브로드캐스트. 폐쇄 구역 오염은 자기장
-    ///     경사(정산 틱의 MatchPressureFieldPolicy.GetCorruptionPerTick)가 전담하고, 신규 몹 스폰 정지는 캠프
-    ///     리졸버, 봇·스팟 제외는 IsSwarmAreaOutside가 담당한다.
-    /// </summary>
-    /// <summary>
-    ///     Commits closure, door, inventory, and event-log state under the match monitor, then
-    ///     freezes its ordered best-effort packet projection. Transport failure never rolls back
-    ///     these authoritative changes.
-    /// </summary>
-    private SwarmClosurePublicationPlan? PrepareSwarmScheduledClosureTick(
-        long matchingId,
-        IReadOnlyList<GameClientSession> sessions)
-    {
-        var outbound = ImmutableArray.CreateBuilder<SwarmClosureOutbound>();
-        ImmutableArray<int> allRecipients = CaptureSwarmClosureRecipientOrdinals(
-            sessions,
-            static _ => true);
-        var closureState = matchRuntimes.GetRequired(matchingId).Closures.InitializeMatching(
-            wavesOverride: MatchPressureFieldPolicy.Enabled ? GetSwarmFieldWaves() : null);
-        if (MatchPressureFieldPolicy.Enabled && matchRuntimes.GetRequired(matchingId).Swarm.Pacing.FieldStateAnnounced.Add(matchingId))
-        {
-            outbound.Add(new SwarmFieldStateOutbound(
-                new DateTimeOffset(closureState.GameStartTime).ToUnixTimeMilliseconds(),
-                allRecipients));
-        }
-
-        var closureTick = matchRuntimes.GetRequired(matchingId).Closures.CheckClosureSchedule();
-        foreach (var area in closureTick.WarningAreas)
-        {
-            outbound.Add(new SwarmClosureWarningOutbound(
-                area,
-                closureTick.WarningSeconds,
-                closureTick.ClosureAtUnixMs,
-                allRecipients));
-        }
-
-        foreach (var area in closureTick.ClosedAreas)
-        {
-            eventLogs.LogClosure(matchingId, area.ToString());
-            outbound.Add(new SwarmAreaClosedOutbound(area, allRecipients));
-        }
-
-        if (closureTick.ClosedAreas.Count > 0)
-        {
-            // 폐쇄 = 문 잠금 + 틱 오염 (즉사 없음, #227): 닫히는 순간 안에 있어도 죽지
-            // 않는다. 정산 틱(GetClosedAreaCorruptionPerTick)이 5초마다 오염을 얹고, 안에 있는 사람은 자기 구역
-            // 문을 게이지로 따고 나갈 수 있다(밖에서 들어오는 문 따기는 여전히 거절). 자기 구역 문이 잠기는 것은
-            // 그대로다 — "지금 나가야 하는가"의 판단은 경고 15초와 잠긴 문이 만든다.
-            // 폐쇄·경고도 수면을 깨우지 않는다 — 수면 중단은 이동뿐이다.
-            IReadOnlyList<int> lockedDoorIds =
-                matchRuntimes.Get(matchingId)?.Doors.CloseDoorsForAreas(closureTick.ClosedAreas) ?? [];
-            foreach (int doorId in lockedDoorIds.Distinct())
-                outbound.Add(new SwarmDoorStateOutbound(doorId, allRecipients));
-
-            // 꼬리 파괴: 본인은 밖에 있고 꼬리만 남은 경우가 무보상 파괴 대상이다. 안에 있는 사람의 꼬리는
-            // 본인과 함께 남는다 — 틱 오염이 그 사람의 비용이다.
-            PrepareDestroySwarmOrbsInClosedAreas(
-                matchingId,
-                closureTick.ClosedAreas,
-                sessions,
-                outbound);
-        }
-
-        return outbound.Count == 0
-            ? null
-            : new SwarmClosurePublicationPlan(matchingId, outbound.ToImmutable());
-    }
-
-    private static ImmutableArray<int> CaptureSwarmClosureRecipientOrdinals(
-        IReadOnlyList<GameClientSession> sessions,
-        Func<GameClientSession, bool> predicate)
-    {
-        var recipients = ImmutableArray.CreateBuilder<int>();
-        for (int ordinal = 0; ordinal < sessions.Count; ordinal++)
-        {
-            if (predicate(sessions[ordinal]))
-                recipients.Add(ordinal);
-        }
-
-        return recipients.ToImmutable();
-    }
-
-    /// <summary>
-    ///     Dispatches one frozen closure plan in legacy packet order. The first transport exception
-    ///     aborts the remaining projection; the surrounding FIFO/lease finally paths still advance.
-    /// </summary>
-    private void DispatchSwarmClosurePublicationPlan(
-        SwarmClosurePublicationPlan plan,
-        IReadOnlyList<GameClientSession> sessions)
-    {
-        foreach (SwarmClosureOutbound outbound in plan.Outbound)
-        {
-            switch (outbound)
-            {
-                case SwarmFieldStateOutbound fieldState:
-                    {
-                        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);
-                        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_FIELD_STATE
-                        {
-                            StartedAtUnixMs = fieldState.StartedAtUnixMs
-                        }));
-                        SendToCapturedRecipients(packet, fieldState.RecipientOrdinals, sessions);
-                        break;
-                    }
-                case SwarmClosureWarningOutbound warning:
-                    {
-                        using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSURE_WARNING);
-                        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSURE_WARNING
-                        {
-                            AreaType = warning.Area,
-                            SecondsRemaining = warning.SecondsRemaining,
-                            ClosureAtUnixMs = warning.ClosureAtUnixMs
-                        }));
-                        SendToCapturedRecipients(packet, warning.RecipientOrdinals, sessions);
-                        break;
-                    }
-                case SwarmAreaClosedOutbound closed:
-                    {
-                        using var packet = Packet.Create((int)Protocol.G_TO_C_AREA_CLOSED);
-                        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_AREA_CLOSED
-                        {
-                            AreaType = closed.Area,
-                            IsClosed = true
-                        }));
-                        SendToCapturedRecipients(packet, closed.RecipientOrdinals, sessions);
-                        break;
-                    }
-                case SwarmDoorStateOutbound door:
-                    {
-                        using var packet = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(
-                            door.DoorId,
-                            false,
-                            ErrorCode.SUCCESS,
-                            0);
-                        SendToCapturedRecipients(packet, door.RecipientOrdinals, sessions);
-                        break;
-                    }
-                case SwarmInventoryUpdateOutbound inventory:
-                    {
-                        foreach (int ordinal in inventory.RecipientOrdinals)
-                        {
-                            if (TryGetCapturedValue(sessions, ordinal, out GameClientSession session))
-                                session.SendInGameInventoryUpdate(inventory.Item.ToModel());
-                        }
-
-                        break;
-                    }
-                case SwarmRingVfxOutbound ring:
-                    {
-                        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_ENCIRCLE_VFX);
-                        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_ENCIRCLE_VFX
-                        {
-                            OwnerPlayerId = ring.OwnerPlayerId,
-                            CenterX = ring.CenterX,
-                            CenterY = ring.CenterY,
-                            Radius = ring.Radius,
-                            Kind = ring.Kind,
-                            VictimPlayerId = ring.VictimPlayerId,
-                            FromOrdinal = ring.FromOrdinal
-                        }));
-                        SendToCapturedRecipients(packet, ring.RecipientOrdinals, sessions);
-                        break;
-                    }
-                default:
-                    throw new InvalidOperationException(
-                        $"Unknown closure outbound type {outbound.GetType().Name} for matching {plan.MatchingId}.");
-            }
-        }
-    }
-
-    /// <summary>
-    ///     폐쇄 잔류 오브 파괴 (#226 E): 폐쇄 완료 순간, 폐쇄 구역에 남아 있는 꼬리 접미를
-    ///     끝에서부터 무보상 파괴한다 — 소환석 낙수 없음. 긴 꼬리는 점수·화력이 높지만
-    ///     폐쇄 전에 더 일찍 철수해야 한다는 관리 비용이 여기서 성립한다.
-    /// </summary>
-    private void PrepareDestroySwarmOrbsInClosedAreas(
-        long matchingId,
-        IReadOnlyCollection<AreaType> closedAreas,
-        IReadOnlyList<GameClientSession> sessions,
-        ImmutableArray<SwarmClosureOutbound>.Builder outbound)
-    {
-        var closed = closedAreas.ToHashSet();
-        var owners = new List<(long PlayerId, Vector3f Position, int SessionOrdinal)>();
-        for (int ordinal = 0; ordinal < sessions.Count; ordinal++)
-        {
-            GameClientSession session = sessions[ordinal];
-            if (session.PlayerId.HasValue && !session.IsEliminated &&
-                session.LastValidatedPosition != null)
-                owners.Add((session.PlayerId.Value, session.LastValidatedPosition, ordinal));
-        }
-
-        foreach (var bot in matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
-        {
-            if (!bot.IsEliminated && !bot.IsSwarmCutDummy)
-                owners.Add((bot.PlayerId, bot.Position, -1));
-        }
-
-        foreach (var (playerId, ownerPosition, ownerSessionOrdinal) in owners)
-        {
-            // 본인이 폐쇄 구역 안이면 꼬리는 그대로 둔다: 즉사가 퇴역해 본인은 틱 오염을 받으며
-            // 문을 따고 나가는 중이다 — 여기서 꼬리까지 지우면 나가도 빈손이라 살아남을 이유가 없다.
-            var ownerCell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, ownerPosition);
-            if (closed.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, ownerCell)))
-                continue;
-
-            int orbCount = CountSwarmSquadOrbs(matchingId, playerId);
-            if (orbCount == 0)
-                continue;
-            var closureTiers = GetSwarmOrbTiersInOrder(matchingId, playerId);
-
-            // 꼬리는 경로를 따르므로 폐쇄 구역 잔류분은 항상 접미다 — 끝에서부터 스캔한다.
-            int suffixStart = orbCount;
-            Vector3f? suffixPosition = null;
-            for (int ordinal = orbCount - 1; ordinal >= 0; ordinal--)
-            {
-                var position = GetSwarmOrbTrailPosition(
-                    matchingId, playerId, ordinal, ownerPosition, closureTiers);
-                var cell = ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, position);
-                if (!closed.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell)))
-                    break;
-                suffixStart = ordinal;
-                suffixPosition = position;
-            }
-
-            if (suffixStart >= orbCount || suffixPosition == null)
-                continue;
-
-            var destroyed = DestroySwarmOrbsFromOrdinal(matchingId, playerId, suffixStart);
-            foreach (var destroyedItem in destroyed)
-            {
-                matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.Remove((matchingId, playerId, destroyedItem.ItemUid));
-                if (ownerSessionOrdinal >= 0)
-                {
-                    outbound.Add(new SwarmInventoryUpdateOutbound(
-                        SwarmInGameItemSnapshot.Capture(destroyedItem),
-                        [ownerSessionOrdinal]));
-                }
-            }
-
-            // 파열 연출은 절단 링 재사용 — 전리품은 흩뿌리지 않는다 (폐쇄 파괴 무보상).
-            var closedArea = GameMapData.GetCurrentArea(
-                Config.SWARM_MATCH_MAP,
-                ProximityCombatLineOfSight.WorldPositionToCell(Config.SWARM_MATCH_MAP, suffixPosition));
-            ImmutableArray<int> ringRecipients = CaptureSwarmClosureRecipientOrdinals(
-                sessions,
-                session => session.PlayerId.HasValue && session.CurrentArea == closedArea);
-            outbound.Add(new SwarmRingVfxOutbound(
-                playerId,
-                suffixPosition.X,
-                suffixPosition.Y,
-                SwarmTrailCutFlashRadius,
-                SwarmRingVfxKindCut,
-                playerId,
-                suffixStart,
-                ringRecipients));
-            eventLogs.LogSystem(
-                matchingId,
-                $"closure_orb_destroyed player={playerId} from={suffixStart} count={destroyed.Count}");
-            logger.LogInformation(
-                "Swarm closure orb destruction: MatchingId={MatchingId}, PlayerId={PlayerId}, FromOrdinal={FromOrdinal}, Count={Count}",
-                matchingId, playerId, suffixStart, destroyed.Count);
-        }
-    }
-
     // 쌍 깔때기: 시작방 → 만남 구역. 거리 편차의 보정값(잔상 스폰 시점)은 이 로그를 계측한 뒤 정한다.
     // #272 School2: 복도 연결 정의와 1:1 — 시작방 2곳이 합류 1곳을 공유한다.
     private static readonly (AreaType StartRoom, AreaType PairZone)[] SwarmPairZones =
@@ -1015,7 +652,6 @@ internal partial class GameServer
         foreach (var session in aliveSessions)
             session.TickSwarmSleepRecovery(nowUtc);
     }
-
 
     /// <summary>상자 시간 등급 (#222 M3): 개전 앵커(게이트, 봇 전용은 스웜 첫 틱) 경과로 티어 결정.</summary>
     private int GetSwarmDraftTier(long matchingId)
@@ -1086,7 +722,6 @@ internal partial class GameServer
         }
     }
 
-
     private int CountSwarmSquadOrbs(long matchingId, long playerId)
     {
         return matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
@@ -1101,7 +736,6 @@ internal partial class GameServer
     /// </summary>
     private float GetSwarmSquadPower(long matchingId, long playerId) =>
         matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetOrbPower();
-
 
     // ===== 오브열 (#226 실험 α/β): 서버 경로 추적 — 오브별 공격 원점·본체 접촉 판정의 좌표 =====
 
@@ -1133,7 +767,7 @@ internal partial class GameServer
     private const float SwarmTrailCutOrbHitRadiusY = 0.42f;
     private const float SwarmTrailCutOrbHitYOffset = 0.15f;
     // 절단 파열 플래시 반경 — 포위 링과 같은 원형을 작게 띄운다.
-    private const float SwarmTrailCutFlashRadius = 0.7f;
+    private const float SwarmTrailCutFlashRadius = OrbTrailService.CutFlashRadius;
 
     // 오브 트레일·절단 래치·반격 창 상태는 matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat (#294 상태 홀더).
 
@@ -1278,73 +912,6 @@ internal partial class GameServer
     ///     열 순서대로의 티어 목록 — 간격이 오브 크기를 따르므로 좌표 계산의 입력이다 (#227).
     ///     인벤토리 정렬(ItemUid 오름차순)은 절단 체인·전투 액터가 쓰는 순서와 같다.
     /// </summary>
-    private List<int> GetSwarmOrbTiersInOrder(long matchingId, long playerId)
-    {
-        return matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
-            .GetAllItems()
-            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
-            .OrderBy(item => item.ItemUid)
-            .Select(item => GetSquadOrbTier(item.ItemId))
-            .ToList();
-    }
-
-    private Vector3f GetSwarmOrbTrailPosition(
-        long matchingId, long playerId, int ordinal, Vector3f anchor,
-        IReadOnlyList<int>? orderedTiers = null)
-    {
-        // 호출부가 목록을 들고 있으면 그걸 쓴다 — 순번마다 인벤토리를 다시 훑지 않게.
-        float targetDistance = OrbData.GetSwarmTrailDistance(
-            orderedTiers ?? GetSwarmOrbTiersInOrder(matchingId, playerId), ordinal);
-        return GetSwarmTrailPositionAtDistance(matchingId, playerId, targetDistance, anchor);
-    }
-
-    /// <summary>경로를 지정 거리만큼 거슬러 올라간 지점 — 오브 열 좌표와 소용돌이 스폰이 공용.</summary>
-    private Vector3f GetSwarmTrailPositionAtDistance(
-        long matchingId, long playerId, float targetDistance, Vector3f anchor)
-    {
-        if (!matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbTrails.TryGetValue((matchingId, playerId), out var points) || points.Count == 0)
-            return new Vector3f(anchor.X, anchor.Y - targetDistance * 0.2f, 0f);
-
-        Vector3f previous = anchor;
-        float accumulated = 0f;
-        // 인덱스로 훑는다 (#229): 폐쇄 틱은 아레나 틱과 다른 스레드에서 돈다 — foreach로 열거하는
-        // 사이 아레나가 이 궤적에 점을 추가하면 "Collection was modified"로 폐쇄 정산이 통째로
-        // 죽는다 — 순차 폐쇄로 폐쇄 횟수가 늘면서 실제로 터졌다.
-        // 길이 변화는 이번 프레임 계산에서만 무시하면 되고, 다음 틱이 새 값을 읽는다.
-        for (int index = 0; index < points.Count; index++)
-        {
-            var point = points[index];
-            float segment = Vector3f.Distance(previous, point);
-            if (segment > 0.0001f && accumulated + segment >= targetDistance)
-            {
-                float t = (targetDistance - accumulated) / segment;
-                return new Vector3f(
-                    previous.X + (point.X - previous.X) * t,
-                    previous.Y + (point.Y - previous.Y) * t,
-                    0f);
-            }
-
-            accumulated += segment;
-            previous = point;
-        }
-
-        Vector3f tailDirection = new(0f, -0.5f, 0f);
-        if (points.Count >= 2)
-        {
-            var last = points[^1];
-            var beforeLast = points[^2];
-            float dx = last.X - beforeLast.X;
-            float dy = last.Y - beforeLast.Y;
-            float length = MathF.Sqrt(dx * dx + dy * dy);
-            if (length > 0.0001f) tailDirection = new Vector3f(dx / length, dy / length, 0f);
-        }
-
-        float remaining = targetDistance - accumulated;
-        return new Vector3f(
-            previous.X + tailDirection.X * remaining,
-            previous.Y + tailDirection.Y * remaining,
-            0f);
-    }
 
     /// <summary>
     ///     열 절단: 본체 이동 선분이 상대 오브 링크(오브i-오브i+1)를 가로지르면 밟힌 순번부터 꼬리 끝까지 파괴한다.
@@ -1380,7 +947,7 @@ internal partial class GameServer
             var chainTiers = orbs.Select(item => GetSquadOrbTier(item.ItemId)).ToList();
             for (int ordinal = 0; ordinal < orbs.Count; ordinal++)
             {
-                points.Add(GetSwarmOrbTrailPosition(
+                points.Add(orbTrails.GetSwarmOrbTrailPosition(
                     matchingId, owner.PlayerId, ordinal, owner.Position, chainTiers));
                 uids.Add(orbs[ordinal].ItemUid);
                 itemIds.Add(orbs[ordinal].ItemId);
@@ -1619,7 +1186,7 @@ internal partial class GameServer
 
         // 접미 절단 (스네이크 문법, "오브 절단면 다 깨지게" 결정): 밟힌 오브(몸체) 또는
         // 링크 뒤쪽 첫 오브부터 꼬리 끝까지 전부 사라진다. 절단 지점이 머리에 가까울수록 손실이 크다.
-        var destroyedItems = DestroySwarmOrbsFromOrdinal(matchingId, bestOwnerId, bestTailOrdinal);
+        var destroyedItems = orbTrails.DestroySwarmOrbsFromOrdinal(matchingId, bestOwnerId, bestTailOrdinal);
         if (destroyedItems.Count == 0)
             return;
         var destroyedItem = destroyedItems[0];
@@ -1710,7 +1277,7 @@ internal partial class GameServer
     // 링 연출 종류: 클라가 색·효과음을 분기한다. 크랙(3)은 링 없이 슬롯 크랙 + 크랙음만 —
     // Radius 필드에 단계(1~4)를 실어 보낸다.
     private const int SwarmRingVfxKindEncircle = 0;
-    private const int SwarmRingVfxKindCut = 1;
+    private const int SwarmRingVfxKindCut = OrbTrailService.CutVfxKind;
     private const int SwarmRingVfxKindWaveBomb = 2;
     // 반격 보호 (#227 7단계): 5 = 피해자 남은 꼬리의 유리 잔광 개시(Radius에 지속 초),
     // 6 = 그 절단자의 투사체가 잔광 앞에서 깨짐(피해 숫자 없음).
@@ -1813,8 +1380,8 @@ internal partial class GameServer
                 // 사거리 게이트 (유저 결정, 태양·바람과 동일): 소용돌이 반경 안에
                 // 표적(몹 또는 소유자 아닌 플레이어)이 있어야 깐다. 없으면 시계를 소모하지 않고
                 // 대기 — 표적이 들어오는 순간 바로 발동한다.
-                tiers ??= GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
-                var orbPosition = GetSwarmOrbTrailPosition(
+                tiers ??= orbTrails.GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
+                var orbPosition = orbTrails.GetSwarmOrbTrailPosition(
                     matchingId, owner.PlayerId, ordinal, owner.Position, tiers);
                 vortexTargets ??= matchRuntimes.GetRequired(matchingId).Monsters.GetCombatTargets(matchingId);
                 bool hasTarget = false;
@@ -2076,7 +1643,6 @@ internal partial class GameServer
         }
     }
 
-
     private object SetupSwarmCutDummyCore(long matchingId, out BotMovementEvent? movement)
     {
         movement = null;
@@ -2202,25 +1768,6 @@ internal partial class GameServer
     ///     열 순번부터 꼬리 끝까지 인벤토리에서 즉시 파괴한다 (스네이크 문법). 순번 매핑은
     ///     전투 액터·클라 슬롯과 같은 인벤토리 순서(스쿼드 오브 필터).
     /// </summary>
-    private List<InGameItemInfo> DestroySwarmOrbsFromOrdinal(long matchingId, long playerId, int fromOrdinal)
-    {
-        var destroyed = new List<InGameItemInfo>();
-        var inventory = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
-        var orbs = inventory.GetAllItems()
-            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
-            .OrderBy(item => item.ItemUid)
-            .ToList();
-        if (fromOrdinal < 0 || fromOrdinal >= orbs.Count)
-            return destroyed;
-
-        for (int ordinal = fromOrdinal; ordinal < orbs.Count; ordinal++)
-        {
-            if (inventory.TryRemoveItem(orbs[ordinal].ItemUid, 1, out var destroyedItem) &&
-                destroyedItem != null)
-                destroyed.Add(destroyedItem);
-        }
-        return destroyed;
-    }
 
     /// <summary>점이 오브 판정 타원 안에 있는지 — 래치 이탈 재무장 판정.</summary>
     private static bool IsInsideOrbHitEllipse(Vector3f point, Vector3f orbHitPoint)
@@ -2350,7 +1897,6 @@ internal partial class GameServer
             $"aim=({aimPoint.X:F1},{aimPoint.Y:F1})");
     }
 
-
     private void ApplySwarmParticipantDamage(
         long matchingId,
         SwarmPlayerDamage damage,
@@ -2411,8 +1957,6 @@ internal partial class GameServer
             botDamage, legacyBefore, bot.Corruption,
             bot.Corruption >= Config.MAX_CORRUPTION, isBot: true, DateTimeOffset.UtcNow);
     }
-
-
 
     /// <summary>
     ///     5분 점수 만료 판정 (#226 단계 B): 개전 후 5분이 지나면 생존자 중 오브 최다
@@ -2549,13 +2093,9 @@ internal partial class GameServer
             session.TrySend(packet);
     }
 
-
-
     /// <summary>열 순서의 오브 목록 — 강화·철갑의 "가장 앞" 판정과 트레일 순번의 단일 출처.</summary>
     private List<InGameItemInfo> GetSwarmTrailOrbs(long matchingId, long playerId) =>
         matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs();
-
-
 
     private static int GetSquadOrbTier(int itemId)
     {
@@ -2651,8 +2191,6 @@ internal partial class GameServer
             BroadcastSwarmAttackVfxToTargetAndObservers(attack, allSessions);
         return corruption;
     }
-
-
 
     private List<ProximityCombatActor> BuildSwarmArenaCombatActors(
         long matchingId,
@@ -2763,7 +2301,7 @@ internal partial class GameServer
         // #229: 태양·바람은 티어별 원시 피해·주기·탄속이 같은 유도탄이다. 차이는 보드
         // 패시브뿐이며, 태양 보너스는 모든 PvE 공격에 적용된다. 파도는 별도 물폭탄 시스템.
         float sunAttackMultiplier = OrbData.GetSunPveAttackMultiplier(inventoryItems);
-        var actorTiers = GetSwarmOrbTiersInOrder(matchingId, spatial.PlayerId);
+        var actorTiers = orbTrails.GetSwarmOrbTiersInOrder(matchingId, spatial.PlayerId);
         int orbCount = actors.Count - before;
         long nowUnixMs = (long)(nowUtc - DateTime.UnixEpoch).TotalMilliseconds;
         for (int index = before; index < actors.Count; index++)
@@ -2771,7 +2309,7 @@ internal partial class GameServer
             var actor = actors[index];
             // 오브열 (#226 α+): 공격 원점·피격 위치 = 각 오브의 열 좌표 — 표시가 곧 판정.
             // 오브마다 제 자리에서 가장 가까운 몹을 고르고, 예고선은 그 오브에서 나간다.
-            var trailPosition = GetSwarmOrbTrailPosition(
+            var trailPosition = orbTrails.GetSwarmOrbTrailPosition(
                 matchingId, spatial.PlayerId, index - before, spatial.Position, actorTiers);
             actor = actor with
             {

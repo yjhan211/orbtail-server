@@ -247,10 +247,10 @@ public sealed class SwarmMonsterDirector
     public bool MonsterSpawnEnabled { get; }
 
     /// <summary>
-    ///     #272 경계 토출 스폰 리졸버 — GameServer가 주입한다. 자기장 경계가 구역을 관통 중이면
-    ///     (스폰 셀 = 경계 밖 빨간 띠, 앵커 셀 = 경계 안 띠)를 주고, 구역이 온전히 안전하면 null.
+    ///     이 매치의 자기장 스폰 위치 계산 함수. MatchFieldService의 규칙을 연결한다.
+    ///     경계가 통과 중이면 경계 바깥에서, 안전한 구역이면 바깥쪽 띠에서 스폰해 안쪽으로 이동한다.
     /// </summary>
-    public static Func<long, AreaType, (Cell Spawn, Cell Anchor)?>? FieldSpawnCellResolver { get; set; }
+    public Func<long, AreaType, (Cell Spawn, Cell Anchor)?>? FieldSpawnCellResolver { get; set; }
 
     /// <summary>폐쇄된 구역은 신규 스폰을 멈춘다 — 잔존 몹은 이주로 처리된다.</summary>
     public Func<long, AreaType, bool>? IsAreaClosedResolver { get; set; }
@@ -1172,7 +1172,7 @@ public sealed class SwarmMonsterDirector
     ///     HP·접촉 피해는 페이즈 곡선을 따르고, 소환석은 구역·페이즈 예산이 남아 있을 때만 붙는다.
     /// </summary>
     /// <returns>실제로 세운 마릿수.</returns>
-    private static int SpawnSupplyMonsters(
+    private int SpawnSupplyMonsters(
         MatchState state, AreaType area, int normals, bool includeCore,
         int phaseIndex, DateTime now, SwarmArenaTickResult result,
         Func<AreaType, bool>? isAreaBlocked = null, bool infiltrate = true,

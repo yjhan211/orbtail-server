@@ -55,8 +55,8 @@ internal partial class GameServer
                         owner.PlayerId, item.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_TICK_SECONDS))
                     continue;
 
-                tiers ??= GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
-                var origin = GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position, tiers);
+                tiers ??= orbTrails.GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
+                var origin = orbTrails.GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position, tiers);
                 float radius = Config.SWARM_WIND_BLADE_RADIUS_BY_TIER[Math.Clamp(tier, 1, 3) - 1];
                 monsters ??= matchRuntimes.GetRequired(matchingId).Monsters.GetCombatTargets(matchingId);
 

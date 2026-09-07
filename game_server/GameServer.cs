@@ -50,6 +50,8 @@ internal partial class GameServer(
     MatchGrowthService growth,
     OrbRecoveryService orbRecovery,
     OrbVisualStatePublisher orbVisuals,
+    OrbTrailService orbTrails,
+    MatchFieldService fieldService,
     GameServerTickService tickService,
     BotMovementService botMovement)
     : IHostedService
@@ -201,17 +203,8 @@ internal partial class GameServer(
             ProcessSwarmArenaForMatching,
             environmentService.Process,
             runtime => botMovement.Process(runtime, ResolveSwarmBotDirective),
-            ProcessAreaClosureForMatching);
+            fieldService.Process);
         tickService.Start(tickRunner.Run);
-    }
-
-    private void ProcessAreaClosureForMatching(long matchingId, GameClientSession[] sessionSnapshot)
-    {
-        var plan = PrepareSwarmScheduledClosureTick(matchingId, sessionSnapshot);
-        if (plan != null)
-        {
-            DispatchSwarmClosurePublicationPlan(plan, sessionSnapshot);
-        }
     }
 
     private GameClientSession? CreateClientSession(TcpConnection connection)

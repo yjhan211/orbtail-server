@@ -284,23 +284,21 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
-        string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
+        string field = ReadNormalizedSource(root, "game_server", "Services", "MatchFieldService.cs");
+        Assert.Contains("fieldService.Process", server);
         string tick = ReadMethodSlice(
-            server,
-            "private void ProcessAreaClosureForMatching(",
-            "    private GameClientSession? CreateClientSession(");
+            field,
+            "public void Process(",
+            "    // #272 경계 토출 스폰: 구역별");
         string prepare = ReadMethodSlice(
-            arena,
+            field,
             "private SwarmClosurePublicationPlan? PrepareSwarmScheduledClosureTick(",
             "private static ImmutableArray<int> CaptureSwarmClosureRecipientOrdinals(");
         string dispatch = ReadMethodSlice(
-            arena,
+            field,
             "private void DispatchSwarmClosurePublicationPlan(",
             "private void PrepareDestroySwarmOrbsInClosedAreas(");
-        string orbPrepare = ReadMethodSlice(
-            arena,
-            "private void PrepareDestroySwarmOrbsInClosedAreas(",
-            "// 쌍 깔때기:");
+        string orbPrepare = field[field.IndexOf("private void PrepareDestroySwarmOrbsInClosedAreas(", StringComparison.Ordinal)..];
 
         // 독립 루프의 매치 잠금 안에서 1초 주기를 확인하고 상태 확정 → 송신한다.
         string runner = ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs");
@@ -331,7 +329,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("Packet.Create(", prepare);
         Assert.DoesNotContain("PacketMaker.", prepare);
         Assert.DoesNotContain(".TrySend(", prepare);
-        Assert.Contains("Transport failure never rolls back", arena);
+        Assert.Contains("Transport failure never rolls back", field);
 
         AssertInOrder(
             orbPrepare,
@@ -362,7 +360,7 @@ public sealed class SwarmArenaTickOrderTests
             "Protocol.G_TO_C_SWARM_ENCIRCLE_VFX");
         Assert.Contains("SendToCapturedRecipients(", dispatch);
         Assert.DoesNotContain("catch", dispatch);
-        Assert.Contains("first transport exception", arena);
+        Assert.Contains("first transport exception", field);
     }
 
     [Fact]
@@ -429,17 +427,18 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Contains(".Pacing.RollCritical(", arena);
         Assert.Contains("runtime.Pacing.RollCritical(", crossfire);
 
+        string field = ReadNormalizedSource(root, "game_server", "Services", "MatchFieldService.cs");
         Assert.Contains(
             "Lazy<IReadOnlyDictionary<AreaType, IReadOnlyList<(Cell Cell, int Distance)>>>",
-            arena);
+            field);
         Assert.Contains(
             "Lazy<IReadOnlyList<ClosureWaveDefinition>> _swarmFieldDerivedWaves",
-            arena);
+            field);
         Assert.Equal(
             2,
-            CountOccurrences(arena, "LazyThreadSafetyMode.ExecutionAndPublication"));
-        Assert.DoesNotContain("_swarmAreaCellsByDistance == null", arena);
-        Assert.DoesNotContain("_swarmFieldDerivedWaves ??=", arena);
+            CountOccurrences(field, "LazyThreadSafetyMode.ExecutionAndPublication"));
+        Assert.DoesNotContain("_swarmAreaCellsByDistance == null", field);
+        Assert.DoesNotContain("_swarmFieldDerivedWaves ??=", field);
     }
 
     private static string ReadSwarmArenaTick()
