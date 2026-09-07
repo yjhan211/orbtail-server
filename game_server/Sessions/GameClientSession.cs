@@ -29,7 +29,6 @@ public partial class GameClientSession : SessionBase
 
 
     private readonly PlayerCondition _condition = new();
-    private readonly List<int> _activeBuffIds = new();
     private readonly Func<long, List<GameClientSession>> _getSessionsByMatch;
 
     private readonly Func<string?, Task<GameEntryContext?>> _consumeGameEntryTicket;
@@ -115,7 +114,6 @@ public partial class GameClientSession : SessionBase
     /// </summary>
     internal static Action<long, long>? SwarmHeartPickupCallback { get; set; }
 
-    public IReadOnlyCollection<int> ActiveBuffIds => _activeBuffIds;
 
     private MatchDoorState? Doors => _matchRuntimes.Get(MatchingId)?.Doors;
 

@@ -1,4 +1,3 @@
-using game_server.services;
 using network.common;
 using network.common.data;
 
@@ -92,7 +91,7 @@ internal sealed class PlayerCondition
         }
     }
 
-    public (int Health, bool Periodic) ApplyItemBuffs(int itemId, IReadOnlyCollection<int> activeBuffIds)
+    public (int Health, bool Periodic) ApplyItemBuffs(int itemId)
     {
         int health = 0;
         bool periodic = false;
@@ -108,7 +107,7 @@ internal sealed class PlayerCondition
             switch (buff.SubType)
             {
                 case BuffSubType.HEALTH_ADD:
-                    health += PassiveBuffUtility.ApplyIncrease(value, activeBuffIds, BuffSubType.RECOVERY_ITEM_EFFECT_ADD);
+                    health += value;
                     break;
                 case BuffSubType.HEALTH_DOWN:
                     health -= value;

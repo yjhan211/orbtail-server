@@ -360,7 +360,7 @@ public partial class GameClientSession
     /// </summary>
     private bool ApplyItemBuffs(int itemId)
     {
-        var effect = _condition.ApplyItemBuffs(itemId, ActiveBuffIds);
+        var effect = _condition.ApplyItemBuffs(itemId);
         if (effect.Periodic)
             _periodicBuffTimer ??= new Timer(_ => OnPeriodicBuffTick(), null, 1000, 1000);
         int before = Health;
