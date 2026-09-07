@@ -253,7 +253,7 @@ internal partial class GameServer(
                 sessionLogger,
                 redisOperations,
                 ticket => gameHandoffTicketService.ConsumeAsync(ticket, nodeOptions.NodeId),
-                sessionLeaveHandler.Handle,
+                sessionLeaveHandler,
                 RegisterClientSession,
                 GetSessionsByInstance,
 
@@ -262,17 +262,9 @@ internal partial class GameServer(
                 matchRuntimes,
                 HandleSwarmGrowthPick,
                 HandleSwarmOrbDecision,
-                (playerId, matchingId) =>
-                    matchingLifecycle.Publish(MatchingLifecycleSubjects.PlayerLeft, playerId, matchingId),
-                (playerId, matchingId) =>
-                    matchingLifecycle.PreparePublication(
-                        MatchingLifecycleSubjects.PlayerCompleted,
-                        playerId,
-                        matchingId),
-                (playerId, matchingId) =>
-                    matchingLifecycle.Publish(MatchingLifecycleSubjects.PlayerReleased, playerId, matchingId),
+                matchingLifecycle,
                 () => Volatile.Read(ref _stopping) != 0,
-                entryFailureHandler.Handle,
+                entryFailureHandler,
                 devOptions: devOptions);
 
             logger.LogInformation("Game client session created");

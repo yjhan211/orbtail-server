@@ -371,7 +371,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 NullLogger.Instance,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),
-                static _ => { },
+                TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
                 static (_, _) => [],
 
@@ -381,11 +381,9 @@ public sealed class GameClientSessionConnectPublicationTests
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
 
-                static (_, _) => { },
-                static (_, _) => null,
-                static (_, _) => { },
+                new FakeGameSessionLifecycle(),
                 static () => false,
-                recordEntryFailure ?? (_ => { }),
+                new FakeMatchEntryFailureHandler(recordEntryFailure),
                 GameServerDevOptions.Disabled,
                 sender);
             Connection.SetSession(session);

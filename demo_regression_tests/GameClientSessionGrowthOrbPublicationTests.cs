@@ -698,7 +698,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 NullLogger.Instance,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),
-                static _ => { },
+                TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
                 (_, instanceId) => _sessions
                     .Where(candidate => candidate.MatchingId == instanceId)
@@ -710,11 +710,9 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 growthHandler ?? _growthHandler,
                 orbHandler ?? _orbHandler,
 
-                static (_, _) => { },
-                static (_, _) => null,
-                static (_, _) => { },
+                new FakeGameSessionLifecycle(),
                 static () => false,
-                static _ => { },
+                new FakeMatchEntryFailureHandler(),
                 GameServerDevOptions.Disabled);
             connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);

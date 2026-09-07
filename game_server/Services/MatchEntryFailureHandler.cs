@@ -13,14 +13,14 @@ internal sealed class MatchEntryFailureHandler(
     MatchRuntimeStore matchRuntimes,
     GameSessionRegistry sessions,
     MatchingLifecycleService lifecycle,
-    ILogger logger)
+    ILogger logger) : IMatchEntryFailureHandler
 {
     /// <summary>
     ///     입장 실패로 매치를 중단한다. 터미널 전이를 이긴 호출이 잠금 안에서 로스터 전원의 lifecycle subject
     ///     선점과 FATAL 응답·끊기를 소유하고(발행은 잠금 밖 후처리), 이미 끝난 매치에 늦게 온 호출은
     ///     자기 세션의 entry_failed 발행과 끊기만 한다 — 정상 종료가 먼저 선점한 subject는 중복 제거된다.
     /// </summary>
-    internal void Handle(GameClientSession session)
+    public void Handle(GameClientSession session)
     {
         if (!session.PlayerId.HasValue || session.MatchingId <= 0)
             return;

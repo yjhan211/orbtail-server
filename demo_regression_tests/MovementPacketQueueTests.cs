@@ -77,7 +77,7 @@ public sealed class MovementPacketQueueTests
             NullLogger.Instance,
             null!,
             static _ => Task.FromResult<GameHandoffContext?>(null),
-            static _ => { },
+            TestGameSessionServices.CreateLeaveHandler(),
             static (_, _) => null,
             static (_, _) => [],
 
@@ -87,11 +87,9 @@ public sealed class MovementPacketQueueTests
             static (_, _, _, _) => { },
             static (_, _, _, _, _) => { },
 
-            static (_, _) => { },
-            static (_, _) => null,
-            static (_, _) => { },
+            new FakeGameSessionLifecycle(),
             static () => false,
-            static _ => { },
+            new FakeMatchEntryFailureHandler(),
             GameServerDevOptions.Disabled,
             movementTimeProvider: clock);
         connection.SetSession(session);

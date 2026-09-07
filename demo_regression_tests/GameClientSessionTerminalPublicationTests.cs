@@ -431,7 +431,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                 logger,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),
-                static _ => { },
+                TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
                 (_, matchingId) => sessions
                     .Where(session => session.MatchingId == matchingId)
@@ -442,11 +442,9 @@ public sealed class GameClientSessionTerminalPublicationTests
                 matchRuntimes,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
-                static (_, _) => { },
-                prepareGameCompletion,
-                static (_, _) => { },
+                new FakeGameSessionLifecycle(prepareGameCompletion),
                 static () => false,
-                static _ => { },
+                new FakeMatchEntryFailureHandler(),
                 GameServerDevOptions.Disabled)
         {
         }

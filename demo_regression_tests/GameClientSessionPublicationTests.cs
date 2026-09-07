@@ -749,7 +749,7 @@ public sealed class GameClientSessionPublicationTests
                 NullLogger.Instance,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),
-                static _ => { },
+                TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
                 (_, matchingId) => sessions
                     .Where(session => session.MatchingId == matchingId)
@@ -760,11 +760,9 @@ public sealed class GameClientSessionPublicationTests
                 matchRuntimes,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
-                static (_, _) => { },
-                static (_, _) => null,
-                static (_, _) => { },
+                new FakeGameSessionLifecycle(),
                 static () => false,
-                static _ => { },
+                new FakeMatchEntryFailureHandler(),
                 GameServerDevOptions.Disabled)
         {
         }

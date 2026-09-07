@@ -15,7 +15,10 @@ namespace game_server.services;
 ///     매치의 게임 상태나 잠금은 소유하지 않는다.
 /// </summary>
 public sealed class MatchingLifecycleService(IRedisOperations redisOperations, INatsClient natsClient, ILogger logger)
+    : IGameSessionLifecycle
 {
+
+
     private const int MatchingLifecycleTerminalMatchRetention = 4096;
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, string>>
         _matchingLifecycleTerminalSubjects = new();
@@ -23,6 +26,15 @@ public sealed class MatchingLifecycleService(IRedisOperations redisOperations, I
     private readonly ConcurrentDictionary<long, Task> _pendingMatchingRedisCleanupTasks = new();
     private INatsClient? _matchingLifecycleNatsClient = natsClient ?? throw new ArgumentNullException(nameof(natsClient));
     private long _nextMatchingRedisCleanupId;
+
+    void IGameSessionLifecycle.PublishPlayerLeft(long playerId, long matchingId) =>
+        Publish(MatchingLifecycleSubjects.PlayerLeft, playerId, matchingId);
+
+    Action? IGameSessionLifecycle.PrepareGameCompletion(long playerId, long matchingId) =>
+        PreparePublication(MatchingLifecycleSubjects.PlayerCompleted, playerId, matchingId);
+
+    void IGameSessionLifecycle.ReleaseMatchingReservation(long playerId, long matchingId) =>
+        Publish(MatchingLifecycleSubjects.PlayerReleased, playerId, matchingId);
 
     /// <summary>
     ///     플레이어의 exact matching reservation 해제를 먼저 시도한 뒤 NATS Core로 종료 사실을 알린다.

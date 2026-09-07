@@ -490,7 +490,7 @@ public sealed class MatchStartCountdownPublicationTests
                 NullLogger.Instance,
                 null!,
                 static _ => Task.FromResult<GameHandoffContext?>(null),
-                static _ => { },
+                TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
                 static (_, _) => [],
                 null!,
@@ -498,11 +498,9 @@ public sealed class MatchStartCountdownPublicationTests
                 new MatchRuntimeStore(NullLogger.Instance),
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },
-                static (_, _) => { },
-                static (_, _) => null,
-                static (_, _) => { },
+                new FakeGameSessionLifecycle(),
                 static () => false,
-                static _ => { },
+                new FakeMatchEntryFailureHandler(),
                 GameServerDevOptions.Disabled)
         {
             _throwOnSend = throwOnSend;

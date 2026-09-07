@@ -261,6 +261,45 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Assert.DoesNotContain(".TrySend(", noHumanFinalization);
     }
 
+    [Theory]
+    [InlineData(MatchingLifecycleSubjects.PlayerLeft)]
+    [InlineData(MatchingLifecycleSubjects.PlayerCompleted)]
+    [InlineData(MatchingLifecycleSubjects.PlayerReleased)]
+    public async Task SessionLifecycle_UsesExpectedSubjectAndPreservesDeferredCompletion(string subject)
+    {
+        var nats = new RecordingNatsClient();
+        var service = CreateLifecycleService(nats, new RecordingLogger<GameServer>());
+        IGameSessionLifecycle lifecycle = service;
+        const long playerId = 101;
+        const long matchingId = 42003;
+
+        switch (subject)
+        {
+            case MatchingLifecycleSubjects.PlayerLeft:
+                lifecycle.PublishPlayerLeft(playerId, matchingId);
+                lifecycle.PublishPlayerLeft(playerId, matchingId);
+                break;
+            case MatchingLifecycleSubjects.PlayerCompleted:
+                Action dispatch = Assert.IsType<Action>(lifecycle.PrepareGameCompletion(playerId, matchingId));
+                Assert.Equal(0, nats.PublishCount);
+                dispatch();
+                dispatch();
+                break;
+            case MatchingLifecycleSubjects.PlayerReleased:
+                lifecycle.ReleaseMatchingReservation(playerId, matchingId);
+                lifecycle.ReleaseMatchingReservation(playerId, matchingId);
+                break;
+        }
+
+        await service.DrainAsync();
+
+        Assert.Equal(1, nats.PublishCount);
+        Assert.Equal(subject, nats.LastSubject);
+        var message = MessagePackSerializer.Deserialize<G_TO_U_MATCHING_LIFECYCLE>(nats.LastPayload!);
+        Assert.Equal(playerId, message.PlayerId);
+        Assert.Equal(matchingId, message.MatchingId);
+    }
+
     [Fact]
     public async Task LifecycleCompletion_PrepareDefersOneShotCorePublish()
     {

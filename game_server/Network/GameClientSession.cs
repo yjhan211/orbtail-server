@@ -19,6 +19,8 @@ namespace game_server.network;
 ///     큐 적재뿐이라 I/O를 기다리지 않는다. 인증은 Redis 입장 커밋과 초기 스냅샷이 끝난 뒤에만 보이고, 성공 응답은
 ///     잠금 밖에서 큐에 넣는다. 매치 종료 결과·GAME_END는 같은 잠금 안에서 보내고 영속·lifecycle 발행은 잠금이
 ///     풀린 뒤 후처리로 돈다.
+///     퇴장은 GameSessionLeaveHandler에, 입장 실패는 IMatchEntryFailureHandler에,
+///     퇴장·완료 알림과 예약 해제는 IGameSessionLifecycle에 요청한다.
 /// </summary>
 public partial class GameClientSession : SessionBase
 {
@@ -34,7 +36,7 @@ public partial class GameClientSession : SessionBase
     private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
 
     private readonly Func<string?, Task<GameHandoffContext?>> _consumeGameHandoffTicket;
-    private readonly Action<GameClientSession> _onLeaveCallback;
+    private readonly GameSessionLeaveHandler _sessionLeaveHandler;
     /// <summary>매치별 잠금·수명 색인 (#331) — 핸들러 직렬화·터미널 게이트·종료 정리의 단일 원천.</summary>
     private readonly MatchRuntimeStore _matchRuntimes;
     private readonly GameServerDevOptions _devOptions;
@@ -44,10 +46,8 @@ public partial class GameClientSession : SessionBase
     /// </summary>
     private readonly Func<Packet, bool> _trySendConnectSuccessResponse;
     private readonly Func<long, GameClientSession, Action?> _registerSessionCallback;
-    private readonly Action<long, long> _publishPlayerLeft;
-    private readonly Func<long, long, Action?> _prepareGameCompletion;
-    private readonly Action<long, long> _releaseMatchingReservation;
-    private readonly Action<GameClientSession> _recordEntryFailure;
+    private readonly IGameSessionLifecycle _matchingLifecycle;
+    private readonly IMatchEntryFailureHandler _entryFailureHandler;
     private readonly Func<bool> _isServerStopping;
     private readonly GameEventLogManager _gameEventLogManager;
     private readonly MatchSummaryFileStore _matchSummaryFileStore;
@@ -132,7 +132,7 @@ public partial class GameClientSession : SessionBase
         ILogger logger,
         IRedisOperations redisOperations,
         Func<string?, Task<GameHandoffContext?>> consumeGameHandoffTicket,
-        Action<GameClientSession> onLeaveCallback,
+        GameSessionLeaveHandler sessionLeaveHandler,
         Func<long, GameClientSession, Action?> registerSessionCallback,
         Func<MapId, long, List<GameClientSession>> getSessionsByInstance,
 
@@ -142,17 +142,15 @@ public partial class GameClientSession : SessionBase
         Action<GameClientSession, long, int, int> handleSwarmGrowthPick,
         Action<GameClientSession, long, int, long, long> handleSwarmOrbDecision,
 
-        Action<long, long> publishPlayerLeft,
-        Func<long, long, Action?> prepareGameCompletion,
-        Action<long, long> releaseMatchingReservation,
+        IGameSessionLifecycle matchingLifecycle,
         Func<bool> isServerStopping,
-        Action<GameClientSession> recordEntryFailure,
+        IMatchEntryFailureHandler entryFailureHandler,
         GameServerDevOptions devOptions,
         Func<Packet, bool>? trySendConnectSuccessResponse = null,
         TimeProvider? movementTimeProvider = null)
         : base(connection, logger, redisOperations)
     {
-        _onLeaveCallback = onLeaveCallback;
+        _sessionLeaveHandler = sessionLeaveHandler;
         _consumeGameHandoffTicket = consumeGameHandoffTicket;
         _registerSessionCallback = registerSessionCallback;
         _getSessionsByInstance = getSessionsByInstance;
@@ -167,11 +165,9 @@ public partial class GameClientSession : SessionBase
 
         _entryStateCommitter = new GameEntryStateCommitter(redisOperations, logger);
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
-        _publishPlayerLeft = publishPlayerLeft;
-        _prepareGameCompletion = prepareGameCompletion;
-        _releaseMatchingReservation = releaseMatchingReservation;
+        _matchingLifecycle = matchingLifecycle;
         _isServerStopping = isServerStopping;
-        _recordEntryFailure = recordEntryFailure;
+        _entryFailureHandler = entryFailureHandler;
 
         // ReSharper disable once VirtualMemberCallInConstructor
         InitializeProtocolHandlers();
@@ -412,7 +408,7 @@ public partial class GameClientSession : SessionBase
 
         try
         {
-            _recordEntryFailure(this);
+            _entryFailureHandler.Handle(this);
             return true;
         }
         catch (Exception ex)
@@ -443,7 +439,7 @@ public partial class GameClientSession : SessionBase
 
         try
         {
-            _releaseMatchingReservation(PlayerId.Value, MatchingId);
+            _matchingLifecycle.ReleaseMatchingReservation(PlayerId.Value, MatchingId);
         }
         catch
         {
@@ -487,7 +483,7 @@ public partial class GameClientSession : SessionBase
 
         try
         {
-            _publishPlayerLeft(PlayerId.Value, MatchingId);
+            _matchingLifecycle.PublishPlayerLeft(PlayerId.Value, MatchingId);
         }
         catch
         {
@@ -513,7 +509,7 @@ public partial class GameClientSession : SessionBase
     {
         StopAllPeriodicBuffs();
         Logger.LogInformation("GameClient removed: PlayerId={PlayerId}", PlayerId);
-        _onLeaveCallback(this);
+        _sessionLeaveHandler.Handle(this);
     }
 
     public override void OnDisconnect()
@@ -576,7 +572,7 @@ public partial class GameClientSession : SessionBase
 
         try
         {
-            return _prepareGameCompletion(PlayerId.Value, MatchingId);
+            return _matchingLifecycle.PrepareGameCompletion(PlayerId.Value, MatchingId);
         }
         catch
         {
