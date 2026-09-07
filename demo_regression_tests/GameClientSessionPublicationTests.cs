@@ -547,12 +547,12 @@ public sealed class GameClientSessionPublicationTests
         Assert.Contains("private Task RunUnderMatch(Func<Task> core, Action rejectIfTerminal)", session);
         Assert.Equal(2, CountOccurrences(rng, "RunUnderMatch("));
         Assert.Equal(1, CountOccurrences(ground, "RunUnderMatch("));
-        Assert.Equal(2, CountOccurrences(orbSummon, "RunUnderMatch("));
+        Assert.Equal(4, CountOccurrences(orbSummon, "RunUnderMatch("));
         Assert.DoesNotContain("SwarmGrowthPickCallback", session);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
         Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
-        Assert.DoesNotContain("RunUnderMatch", doors);
+        Assert.Equal(1, CountOccurrences(doors, "RunUnderMatch("));
         Assert.DoesNotContain("RunUnderMatch(", connection);
         Assert.DoesNotContain("RunUnderMatch", arena);
         Assert.DoesNotContain("RunUnderMatch", bots);
@@ -710,11 +710,11 @@ public sealed class GameClientSessionPublicationTests
 
         public void SeedPendingFinish(RecordingSession session, int interactId)
         {
-            var pending = Assert.IsType<HashSet<int>>(
+            var pending = Assert.IsType<PlayerInteractionState>(
                 typeof(GameClientSession).GetField(
-                    "_pendingFinish",
+                    "_interactions",
                     BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session));
-            pending.Add(interactId);
+            pending.Begin(interactId);
         }
 
         public void Dispose()

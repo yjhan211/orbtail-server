@@ -8,16 +8,19 @@ using network.packets;
 namespace game_server.sessions;
 
 /// <summary>
-///     플레이어 상태 파셜: C_TO_G_PLAYER_STATE(수면·휴식 요청)·스웜 수면 회복 틱·인게임 아이템
-///     사용(C_TO_G_USE_INGAME_ITEM)·주기 버프 타이머·스탯 통지. (구 Combat.cs — 수동 공격 퇴역 후 #304 개명)
+///     플레이어 상태 요청과 회복 결과의 패킷·로그·탈락 통지를 처리한다.
+///     자원·수면·버프 계산은 PlayerConditionState가 담당한다.
 /// </summary>
 public partial class GameClientSession
 {
-    /// <summary>고양이 베개 (401000003): 휴식 주기 버프의 지속 시간 특례.</summary>
-
-
 
     private async Task HandlePlayerState(C_TO_G_PLAYER_STATE msg)
+    {
+        if (!PlayerId.HasValue) return;
+        await RunUnderMatch(() => HandlePlayerStateCore(msg), () => { });
+    }
+
+    private async Task HandlePlayerStateCore(C_TO_G_PLAYER_STATE msg)
     {
         if (!PlayerId.HasValue) return;
         if (IsRoundActionLocked(out string lockReason))
@@ -34,7 +37,7 @@ public partial class GameClientSession
         bool isExploreState = msg.State == PlayerState.EXPLORE_1;
         if (!isExploreState &&
             msg.State != PlayerState.IDLE &&
-            _pendingFinish.Count > 0)
+            _interactions.Count > 0)
         {
             Logger.LogDebug(
                 "Ignored state change while RNG collect is pending: PlayerId={PlayerId}, State={State}",
@@ -54,7 +57,6 @@ public partial class GameClientSession
 
         SetMovementLockState(isExploreState);
 
-
         // 같은 Area의 다른 플레이어들에게 상태 브로드캐스트
         var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
         var sameAreaSessions = GetSessionsInArea(allSessions, CurrentArea);
@@ -66,10 +68,10 @@ public partial class GameClientSession
             CurrentArea);
 
         // SLEEP 상태 추적
-        _isSleeping = msg.State == PlayerState.SLEEP;
+        _condition.IsSleeping = msg.State == PlayerState.SLEEP;
 
         // SLEEP 해제 시 주기적 버프 타이머 정리
-        if (!_isSleeping) StopAllPeriodicBuffs();
+        if (!_condition.IsSleeping) StopAllPeriodicBuffs();
     }
 
     /// <summary>이동 잠금 상태 갱신 — EXPLORE_1만 잠그고, 진입 직후 짧은 유예로 이동 패킷 경합을 흡수한다.</summary>
@@ -83,7 +85,7 @@ public partial class GameClientSession
 
     private async Task HandleRestStateRequest()
     {
-        if (_isSleeping) return;
+        if (_condition.IsSleeping) return;
 
         // #229 6단계: 스웜 수면은 스태미나 0 휴식이 아니라 본체 HP 회복 행동이다.
         // 조건은 하나 — 가해·피해 뒤 3초가 지났는가. 회복량 정산은 아레나 틱이 센다.
@@ -98,18 +100,21 @@ public partial class GameClientSession
         return;
     }
 
-
-
     private void OnPeriodicBuffTick()
     {
         _ = RunUnderMatch(() =>
         {
             try
             {
+                if (!Connection.IsAcceptingMessages)
+                {
+                    StopAllPeriodicBuffs();
+                    return Task.CompletedTask;
+                }
                 _condition.TickPeriodicBuffs(MaxStamina, MaxCorruption, (stamina, corruption) => ModifyStats(stamina, corruption));
                 if (!_condition.HasPeriodicBuffs)
                 {
-                    if (_isSleeping) _ = BroadcastSleepState(false);
+                    if (_condition.IsSleeping) _ = BroadcastSleepState(false);
                     else StopAllPeriodicBuffs();
                 }
             }
@@ -124,8 +129,6 @@ public partial class GameClientSession
 
     // #229 6단계 수면 회복 → 2026-08-17 재조정: 준비 1초, 회복은 1초에 한 번.
     // 중단은 이동뿐이다 — 움직이지 않는 한 피격·폐쇄로는 깨지 않는다.
-
-
 
     private const int SwarmSleepRecoveryEventType = 28;
 
@@ -153,7 +156,7 @@ public partial class GameClientSession
     /// </summary>
     internal void BreakSwarmSleep()
     {
-        if (!_isSleeping)
+        if (!_condition.IsSleeping)
             return;
 
         _condition.ResetSleep();
@@ -177,11 +180,10 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return;
 
-        _isSleeping = sleep;
+        _condition.IsSleeping = sleep;
         if (!sleep) StopAllPeriodicBuffs();
 
         var state = sleep ? PlayerState.SLEEP : PlayerState.IDLE;
-
 
         // 같은 Area의 모든 플레이어에게 상태 브로드캐스트 (본인 포함)
         var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
@@ -194,8 +196,6 @@ public partial class GameClientSession
             "Server-driven SLEEP state={Sleep} for Player {PlayerId}, broadcasted to {Count} players in Area {Area}",
             sleep, PlayerId, sameAreaSessions.Count, CurrentArea);
     }
-
-
 
     /// <summary>
     ///     인게임 인벤토리 전체 목록 전송
@@ -236,6 +236,16 @@ public partial class GameClientSession
     ///     인게임 아이템 사용 요청 처리
     /// </summary>
     private async Task HandleUseInGameItem(C_TO_G_USE_INGAME_ITEM msg)
+    {
+        if (!PlayerId.HasValue) return;
+        await RunUnderMatch(() => HandleUseInGameItemCore(msg), () =>
+        {
+            using var packet = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.INVALID_GAME_STATE);
+            TrySend(packet);
+        });
+    }
+
+    private async Task HandleUseInGameItemCore(C_TO_G_USE_INGAME_ITEM msg)
     {
         if (!PlayerId.HasValue) return;
         if (IsRoundActionLocked(out _))
@@ -347,8 +357,6 @@ public partial class GameClientSession
         }
     }
 
-
-
     /// <summary>
     ///     아이템 버프 효과 적용. 주기적 버프가 등록되면 true 반환
     /// </summary>
@@ -365,9 +373,6 @@ public partial class GameClientSession
                 source: "inventory_consumable", isBot: false);
         return effect.Periodic;
     }
-
-    /// <summary>스태미나 부족 시 코럽션 대체 변환비 (1 stamina deficit = StaminaToCorruptionRatio cor). 권고안 B (2026-05-05).</summary>
-
 
     /// <summary>
     ///     스탯 변경 (외부에서 호출 가능 - 환경 효과 등).

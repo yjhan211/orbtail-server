@@ -21,6 +21,26 @@ namespace demo_regression_tests;
 public sealed class GameClientSessionGrowthOrbPublicationTests
 {
     [Fact]
+    public async Task ExtractedRuleRequests_PublishWhileHoldingMatchLock()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
+        var connection = fixture.ConnectionFor(session);
+        var runtime = fixture.Store.GetRequired(FirstMatchingId);
+        var locks = new List<bool>();
+        connection.BeforeSend = _ => locks.Add(Monitor.IsEntered(runtime.Sync));
+        await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB { ChoiceIndex = 0 });
+        await SendAsync(session, Protocol.C_TO_G_DESTROY_ORB, new C_TO_G_DESTROY_ORB { ItemUid = long.MaxValue });
+        await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_REQUEST, new C_TO_G_DOOR_OPEN_REQUEST { DoorId = int.MaxValue });
+        await SendAsync(session, Protocol.C_TO_G_USE_INGAME_ITEM, new C_TO_G_USE_INGAME_ITEM { ItemUid = long.MaxValue, Count = 1 });
+        Assert.Contains(Protocol.G_TO_C_SUMMON_ORB_RESULT, connection.DeliveredProtocols);
+        Assert.Contains(Protocol.G_TO_C_DESTROY_ORB_RESULT, connection.DeliveredProtocols);
+        Assert.Contains(Protocol.G_TO_C_DOOR_STATE_UPDATE, connection.DeliveredProtocols);
+        Assert.Contains(Protocol.G_TO_C_USE_INGAME_ITEM_RESULT, connection.DeliveredProtocols);
+        Assert.NotEmpty(locks);
+        Assert.All(locks, held => Assert.True(held));
+    }
+    [Fact]
     public void GrowthCost_IsReadOnlyAndUsesRequestedMatch()
     {
         var store = new MatchRuntimeStore(NullLogger.Instance);
@@ -601,7 +621,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
         Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
-        Assert.Equal(2, CountOccurrences(orbSummon, "RunUnderMatch("));
+        Assert.Equal(4, CountOccurrences(orbSummon, "RunUnderMatch("));
         Assert.Contains("MatchingId <= 0", ReadMethodSlice(
             orbSummon,
             "private Task HandleSwarmGrowthPick(",
@@ -610,12 +630,10 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             orbSummon,
             "private Task HandleSwarmOrbDecision(",
             "internal void SendSwarmFamilyLevels("));
-        Assert.DoesNotContain("RunUnderMatch", ReadMethodSlice(
-            orbSummon,
+        Assert.Contains("RunUnderMatch", ReadMethodSlice(orbSummon,
             "private Task HandleSummonOrb(",
             "internal bool ExecuteDraftOrbSummon("));
-        Assert.DoesNotContain("RunUnderMatch", ReadMethodSlice(
-            orbSummon,
+        Assert.Contains("RunUnderMatch", ReadMethodSlice(orbSummon,
             "private Task HandleDestroyOrb(",
             "internal void SendSummonStoneState("));
         Assert.DoesNotContain("RunUnderMatch", arena);

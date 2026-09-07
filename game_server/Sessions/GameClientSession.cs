@@ -61,7 +61,7 @@ public partial class GameClientSession : SessionBase
     private readonly ItemCombinationService _itemCombinations;
     private readonly MovementValidationService _movementValidation;
 
-    private bool _isSleeping { get => _condition.IsSleeping; set => _condition.IsSleeping = value; }
+
 
     // #229 6단계 수면 회복 → 2026-08-17 재조정: 진입 시각(준비 1초)과 마지막 교전 시각
     // (가해·피해 뒤 3초 진입 잠금)을 세션이 들고, 회복 정산(1초 틱)은 아레나 틱이 돈다.
@@ -69,7 +69,7 @@ public partial class GameClientSession : SessionBase
     internal DateTime SwarmLastCombatAtUtc { get => _condition.LastCombatAtUtc; set => _condition.LastCombatAtUtc = value; }
     // 단일 절단 치명상 (#232): 성공 뒤 8초는 수면 진입·회복 틱이 막힌다.
     internal DateTime SwarmHealLockUntilUtc { get => _condition.HealLockUntilUtc; set => _condition.HealLockUntilUtc = value; }
-    internal bool IsSleeping => _isSleeping;
+    internal bool IsSleeping => _condition.IsSleeping;
 
     private int _entryCompleted;
     private int _entryFailureReported;
@@ -79,15 +79,9 @@ public partial class GameClientSession : SessionBase
     private int _matchingReservationReleaseReported;
     private long[] _matchHumanPlayerIds = [];
 
-    // #229: 진행 중인 문 잠금해제 게이지. 맞으면 서버가 지워 뒤늦은 FINISH까지 무효로 만든다.
-    private int? _pendingDoorUnlockInteractId;
+    /// <summary>START/FINISH 대기와 문 게이지 상태. 연결별로 소유하고 매치 잠금 안에서 사용한다.</summary>
+    private readonly PlayerInteractionState _interactions = new();
 
-    /// <summary>START 처리됐으나 FINISH 대기 중인 InteractId — RngCollect 파셜이 사용.
-    /// FINISH 도착 시 이 set에 있어야 결과 산출 진행.</summary>
-    private readonly HashSet<int> _pendingFinish = new();
-
-    // 이 매치에서 연 문 수 — 첫 문은 피격으로 게이지가 끊기지 않는다 (2026-08-16).
-    private int _swarmDoorUnlockCount;
     private int _pendingOrbDraftCost = 0;
 
     private DateTime _exploreMoveGraceUntil = DateTime.MinValue;
@@ -254,7 +248,7 @@ public partial class GameClientSession : SessionBase
     public MapId CurrentMapId { get; private set; }
     public long MatchingId { get; private set; }
     public AreaType CurrentArea { get; private set; } = AreaType.None;
-    // 이동 잠금 판정용 — IDLE/EXPLORE_1 두 값만 저장한다 (SLEEP 등은 _isSleeping이 별도 추적).
+    // 이동 잠금 판정용 — IDLE/EXPLORE_1 두 값만 저장한다 (SLEEP 등은 _condition.IsSleeping이 별도 추적).
     private PlayerState CurrentState { get; set; } = PlayerState.IDLE;
 
     /// <summary>마지막 검증된 월드 좌표 — 근접 전투·드랍 위치 등 거리 판정용.</summary>
@@ -508,7 +502,11 @@ public partial class GameClientSession : SessionBase
 
     public override void OnRemoved()
     {
-        StopAllPeriodicBuffs();
+        _ = RunUnderMatch(() =>
+        {
+            StopAllPeriodicBuffs();
+            return Task.CompletedTask;
+        }, StopAllPeriodicBuffs);
         Logger.LogInformation("GameClient removed: PlayerId={PlayerId}", PlayerId);
         _sessionLeaveHandler.Handle(this);
     }

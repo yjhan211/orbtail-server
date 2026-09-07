@@ -1,3 +1,4 @@
+using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -12,6 +13,16 @@ public partial class GameClientSession
     ///     문 열기 요청 처리
     /// </summary>
     private Task HandleDoorOpenRequest(C_TO_G_DOOR_OPEN_REQUEST msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+        return RunUnderMatch(() => HandleDoorOpenRequestCore(msg), () =>
+        {
+            using var packet = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(msg.DoorId, false, ErrorCode.INVALID_GAME_STATE);
+            TrySend(packet);
+        });
+    }
+
+    private Task HandleDoorOpenRequestCore(C_TO_G_DOOR_OPEN_REQUEST msg)
     {
         if (!PlayerId.HasValue)
         {
@@ -29,70 +40,15 @@ public partial class GameClientSession
         try
         {
             int doorId = msg.DoorId;
-            var doorInfo = GameDoorData.Get(doorId);
-            if (doorInfo == null)
+            var error = MatchInteractionService.OpenDoor(
+                _matchRuntimes.GetRequired(MatchingId), PlayerId.Value, CurrentArea, doorId);
+            if (error != ErrorCode.SUCCESS)
             {
-                using var missingDoorPacket =
-                    PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.INVALID_GAME_STATE);
-                TrySend(missingDoorPacket);
+                using var rejected = PacketMaker.G_TO_C_DOOR_STATE_UPDATE(
+                    doorId, error == ErrorCode.DOOR_ALREADY_OPEN, error);
+                TrySend(rejected);
                 return Task.CompletedTask;
             }
-
-            // 폐쇄 구역 문은 밖에서 다시 열 수 없다 (#229): 모든 문이 required_item_id=0이라, 폐쇄로
-            // 잠근 문을 상호작용 한 번으로 되열 수 있었다 — 잠금이 사실상 없는 것과 같았다.
-            // 양쪽 중 한쪽이라도 닫혔으면 거절한다(간선이므로 한쪽만 닫혀도 통행이 막혀야 한다).
-            // 단 내가 그 폐쇄 구역 안에 있으면 예외 (2026-08-18): 갇힌 사람은 문을 따고 나갈 수 있다.
-            if ((_matchRuntimes.GetRequired(MatchingId).Closures.IsAreaClosed(doorInfo.AreaType) ||
-                 _matchRuntimes.GetRequired(MatchingId).Closures.IsAreaClosed(doorInfo.AreaTypeB)) &&
-                !_matchRuntimes.GetRequired(MatchingId).Closures.IsAreaClosed(CurrentArea))
-            {
-                using var closedAreaPacket =
-                    PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.INVALID_GAME_STATE);
-                TrySend(closedAreaPacket);
-                return Task.CompletedTask;
-            }
-
-            // 탐색 게이지가 붙은 문은 근접만으로 열리지 않는다 (#229). Door.CheckProximityAndRequestOpen이
-            // 사거리 안에 들면 자동으로 요청을 쏘기 때문에, 여기서 막지 않으면 게이지가 무의미해진다.
-            if (GameInteractableData.IsGaugeGatedDoor(doorId) &&
-                Doors?.IsDoorOpen(doorId) != true)
-            {
-                using var gatedPacket =
-                    PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.DOOR_KEY_MISSING);
-                TrySend(gatedPacket);
-                return Task.CompletedTask;
-            }
-
-            // 이미 열려있는지 확인
-            if (Doors?.IsDoorOpen(doorId) == true)
-            {
-                Logger.LogDebug("Player {PlayerId} tried to open already open door: DoorId={DoorId}", PlayerId, doorId);
-                using var alreadyOpenPacket =
-                    PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.DOOR_ALREADY_OPEN);
-                TrySend(alreadyOpenPacket);
-                return Task.CompletedTask;
-            }
-
-            // 열쇠 보유 확인 (required_item_id가 0이면 열쇠 불필요)
-            if (doorInfo.RequiredItemId > 0)
-            {
-                var playerInventory = _matchRuntimes.GetRequired(MatchingId).Inventory.GetPlayerInventory(PlayerId.Value);
-                bool hasKey = playerInventory.GetItemCount(doorInfo.RequiredItemId) > 0;
-
-                if (!hasKey)
-                {
-                    Logger.LogWarning(
-                        "Player {PlayerId} missing key for door: DoorId={DoorId}, RequiredItemId={ItemId}",
-                        PlayerId, doorId, doorInfo.RequiredItemId);
-                    using var noKeyPacket =
-                        PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, false, ErrorCode.DOOR_KEY_MISSING);
-                    TrySend(noKeyPacket);
-                    return Task.CompletedTask;
-                }
-            }
-
-            // 문 열기
-            Doors?.OpenDoor(doorId);
             Logger.LogInformation("Player {PlayerId} opened door: DoorId={DoorId}", PlayerId, doorId);
 
             // 같은 매칭의 모든 플레이어에게 브로드캐스트

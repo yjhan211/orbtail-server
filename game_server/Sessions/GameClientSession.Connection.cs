@@ -401,7 +401,7 @@ public partial class GameClientSession
             Position = new Vector3f(position.X, position.Y, position.Z),
             Velocity = new Vector3f(_lastValidatedVelocity.X, _lastValidatedVelocity.Y, _lastValidatedVelocity.Z),
             Rotation = _lastValidatedRotation,
-            State = _isSleeping ? PlayerState.SLEEP : CurrentState
+            State = _condition.IsSleeping ? PlayerState.SLEEP : CurrentState
         };
     }
 

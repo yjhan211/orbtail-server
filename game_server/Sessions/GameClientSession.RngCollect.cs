@@ -12,12 +12,8 @@ using network.packets;
 namespace game_server.sessions;
 
 /// <summary>
-///     RNG 채집 2단계 흐름 (#134):
-///       1) C_TO_G_RNG_COLLECT_START — RippleMarker 클릭 즉시
-///          → stamina 차감 + cooldown 등록(short, 4초) + EXPLORE_START broadcast + cooldown broadcast + ACK
-///       2) C_TO_G_RNG_COLLECT_FINISH — progress 1.5~2초 후
-///          → RNG 결과 산출 + cooldown 갱신(30초) + EXPLORE_END broadcast + cooldown broadcast + RESULT
-///     PendingFinish dict로 START가 미처리된 FINISH 거부 + 부정행위 차단.
+///     상자·문 요청의 START/FINISH를 받아 세션 대기 상태와 응답을 연결한다.
+///     비용·보상·문 판정은 MatchInteractionService, 대기 권리는 PlayerInteractionState가 담당한다.
 /// </summary>
 public partial class GameClientSession
 {
@@ -51,7 +47,7 @@ public partial class GameClientSession
         if (!PlayerId.HasValue) return Task.CompletedTask;
         if (MatchingId <= 0)
         {
-            _pendingFinish.Remove(msg.InteractId);
+            _interactions.TryFinish(msg.InteractId);
             SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
             return Task.CompletedTask;
         }
@@ -60,7 +56,7 @@ public partial class GameClientSession
             () => HandleSwarmRngCollectFinish(msg),
             () =>
             {
-                _pendingFinish.Remove(msg.InteractId);
+                _interactions.TryFinish(msg.InteractId);
                 SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
             });
     }
@@ -97,49 +93,15 @@ public partial class GameClientSession
             SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
             return Task.CompletedTask;
         }
-
-        var info = GameInteractableData.Get(msg.InteractId);
-        if (info == null)
+        var result = MatchInteractionService.Start(
+            _matchRuntimes.GetRequired(MatchingId), PlayerId!.Value, CurrentArea, msg.InteractId);
+        if (result.Error != ErrorCode.SUCCESS)
         {
-            SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
+            SendRngCollectAck(msg.InteractId, result.Error, result.Remaining);
             return Task.CompletedTask;
         }
-
-        // #229 5단계: 스웜 상자 탐색은 중단 상태다. 문 잠금해제만 예외로 통과시킨다 —
-        // 방을 여는 유일한 수단이라 이게 막히면 폐쇄에 갇힌다.
-        if (Config.IsSwarmExploreDisabled() && info.DoorId <= 0)
-        {
-            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
-            return Task.CompletedTask;
-        }
-
-        if (info.ZoneId != (int)CurrentArea)
-        {
-            SendRngCollectAck(msg.InteractId, ErrorCode.AREA_MISMATCH, 0);
-            return Task.CompletedTask;
-        }
-
-        if (info.DoorId > 0)
-            return HandleSwarmDoorUnlockStart(msg.InteractId, info.DoorId);
-
-        // 소환석 부족이면 게이지를 시작하지 않는다 — 헛 채널 방지.
-        // #226 단계 C: 상자 = 소모품 공급처(고정 저가) — 궤도 포화 게이트는 오브를 안 주므로 퇴역.
-        if (_matchRuntimes.GetRequired(MatchingId).SummonStones.GetSnapshot(PlayerId!.Value).StoneCount <
-            Config.SWARM_BOX_OPEN_COST)
-        {
-            SendRngCollectAck(msg.InteractId, ErrorCode.INSUFFICIENT_CURRENCY, 0);
-            return Task.CompletedTask;
-        }
-
-        if (!_matchRuntimes.GetRequired(MatchingId).CollectCooldowns.TryAcquireCooldown(
-                msg.InteractId, RngCollectCooldownStore.DefaultCooldownSeconds,
-                out int remaining))
-        {
-            SendRngCollectAck(msg.InteractId, ErrorCode.ACTION_ALREADY_EXPLORED, remaining);
-            return Task.CompletedTask;
-        }
-
-        _pendingFinish.Add(msg.InteractId);
+        if (result.Door) _interactions.BeginDoor(msg.InteractId);
+        else _interactions.Begin(msg.InteractId);
         _gameEventLogManager.LogExploreStart(
             MatchingId, PlayerId.Value, msg.InteractId, CurrentArea.ToString(), isBot: false);
         SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
@@ -160,12 +122,12 @@ public partial class GameClientSession
         // 탈락 후 도착한 FINISH가 소환에 성공하면 드랍된 인벤토리와 상태가 꼬인다
         if (IsEliminated || IsGameEnded)
         {
-            _pendingFinish.Remove(msg.InteractId);
+            _interactions.TryFinish(msg.InteractId);
             SendRngCollectAck(msg.InteractId, ErrorCode.FATAL, 0);
             return Task.CompletedTask;
         }
 
-        if (!_pendingFinish.Remove(msg.InteractId))
+        if (!_interactions.TryFinish(msg.InteractId))
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
             return Task.CompletedTask;
@@ -174,38 +136,18 @@ public partial class GameClientSession
         if (GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } doorInfo)
             return HandleSwarmDoorUnlockFinish(msg.InteractId, doorInfo.DoorId);
 
-        // #226 단계 C: 상자 = 소모품 공급처 — 개봉하면 하트·부츠가 바닥에 터져 나온다.
-        // 오브 성장은 소환석 임계의 성장 카드 3택이 맡는다 (상자 개방 트리거·자동 소환 퇴역).
-        if (!_matchRuntimes.GetRequired(MatchingId).SummonStones.TrySpendStones(
-                PlayerId.Value, Config.SWARM_BOX_OPEN_COST, out _))
+        int dropItemId = MatchInteractionService.OpenBox(
+            _matchRuntimes.GetRequired(MatchingId), PlayerId.Value, CurrentArea, msg.InteractId,
+            LastValidatedPosition, () => SendSummonStoneState(),
+            spawned => BroadcastGroundItemsSpawned(CurrentArea, spawned));
+        if (dropItemId == 0)
         {
-            // 석 부족 — 쿨다운을 풀어 나중에 다시 열 수 있게 한다.
-            _matchRuntimes.Get(MatchingId)?.CollectCooldowns.ClearCooldown(msg.InteractId);
             BroadcastRngCollectCooldown(msg.InteractId, 0);
             SendRngCollectResult(msg.InteractId, 0, 0, 0, 0);
             BroadcastPlayerState(PlayerState.IDLE);
             return Task.CompletedTask;
         }
 
-        SendSummonStoneState();
-        // 드롭 테이블: 하트 60 / 부츠 40 — 즉시 회복과 기동이 상자의 정체성이다.
-        int dropItemId = Random.Shared.Next(100) < 60
-            ? Config.HEART_GROUND_ITEM_ID
-            : Config.BOOTS_GROUND_ITEM_ID;
-        var dropAnchor = LastValidatedPosition;
-        if (dropAnchor != null)
-        {
-            var spawned = _matchRuntimes.GetRequired(MatchingId).GroundItems.SpawnItems(
-                CurrentArea, dropAnchor.X, dropAnchor.Y, [dropItemId],
-                mapId: Config.SWARM_MATCH_MAP,
-                layout: GroundItemSpawnLayout.EliminationScatter);
-            BroadcastGroundItemsSpawned(CurrentArea, spawned);
-        }
-
-        // 스팟은 소진되지 않는다 — 리젠 시간 뒤 다시 나온다.
-        _matchRuntimes.GetRequired(MatchingId).CollectCooldowns.ClearCooldown(msg.InteractId);
-        _matchRuntimes.GetRequired(MatchingId).CollectCooldowns.TryAcquireCooldown(
-            msg.InteractId, SwarmExploreCooldownSeconds, out _);
         BroadcastRngCollectCooldown(msg.InteractId, SwarmExploreCooldownSeconds);
         SendRngCollectResult(msg.InteractId, 0, 0, 0, SwarmExploreCooldownSeconds);
         BroadcastPlayerState(PlayerState.IDLE);
@@ -216,44 +158,11 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    ///     문 잠금해제 게이지 시작 (#229). 소환석을 받지 않는다 — 탈출은 성장의 결과지 구매가 아니다.
-    ///     대신 맞으면 풀린다: 문 앞을 비울 화력이 곧 탈출 조건이다.
-    /// </summary>
-    private Task HandleSwarmDoorUnlockStart(int interactId, int doorId)
-    {
-        if (Doors?.IsDoorOpen(doorId) == true)
-        {
-            SendRngCollectAck(interactId, ErrorCode.DOOR_ALREADY_OPEN, 0);
-            return Task.CompletedTask;
-        }
-
-        // 폐쇄된 구역의 문은 밖에서는 열리지 않는다 — 폐쇄 잠금이 게이지보다 위다.
-        // 단 내가 그 폐쇄 구역 안에 있으면 연다 (2026-08-18 유저 결정: 갇히면 틱 오염을 받으며 문을 따고 나간다).
-        var door = GameDoorData.Get(doorId);
-        if (door != null &&
-            (_matchRuntimes.GetRequired(MatchingId).Closures.IsAreaClosed(door.AreaType) ||
-             _matchRuntimes.GetRequired(MatchingId).Closures.IsAreaClosed(door.AreaTypeB)) &&
-            !_matchRuntimes.GetRequired(MatchingId).Closures.IsAreaClosed(CurrentArea))
-        {
-            SendRngCollectAck(interactId, ErrorCode.INVALID_GAME_STATE, 0);
-            return Task.CompletedTask;
-        }
-
-        _pendingFinish.Add(interactId);
-        _pendingDoorUnlockInteractId = interactId;
-        _gameEventLogManager.LogExploreStart(
-            MatchingId, PlayerId!.Value, interactId, CurrentArea.ToString(), isBot: false);
-        SendRngCollectAck(interactId, ErrorCode.SUCCESS, 0);
-        return Task.CompletedTask;
-    }
+    /// <summary>승인된 문 게이지 완료 결과를 같은 매치에 전송한다.</summary>
 
     private Task HandleSwarmDoorUnlockFinish(int interactId, int doorId)
     {
-        _pendingDoorUnlockInteractId = null;
-        _swarmDoorUnlockCount++;
-
-        if (Doors?.OpenDoor(doorId) != true)
+        if (!MatchInteractionService.FinishDoor(_matchRuntimes.GetRequired(MatchingId), _interactions, doorId))
         {
             SendRngCollectResult(interactId, 0, 0, 0, 0);
             BroadcastPlayerState(PlayerState.IDLE);
@@ -282,11 +191,7 @@ public partial class GameClientSession
     /// </summary>
     internal void BreakDoorUnlockGauge()
     {
-        if (_pendingDoorUnlockInteractId is not { } interactId) return;
-        if (_swarmDoorUnlockCount == 0) return;
-
-        _pendingDoorUnlockInteractId = null;
-        _pendingFinish.Remove(interactId);
+        if (_interactions.InterruptDoor() is not { } interactId) return;
         _gameEventLogManager.LogExploreCancelled(
             MatchingId, PlayerId ?? 0, interactId, CurrentArea.ToString(), "door_unlock_hit",
             isBot: false);
@@ -311,10 +216,10 @@ public partial class GameClientSession
 
     private void CancelPendingRngCollect(string reason)
     {
-        if (_pendingFinish.Count == 0)
+        if (_interactions.Count == 0)
             return;
 
-        foreach (int interactId in _pendingFinish.ToArray())
+        foreach (int interactId in _interactions.Snapshot())
         {
             _gameEventLogManager.LogExploreCancelled(
                 MatchingId, PlayerId.GetValueOrDefault(), interactId, CurrentArea.ToString(), reason, isBot: false);
@@ -324,8 +229,8 @@ public partial class GameClientSession
 
         Logger.LogInformation(
             "RNG collect pending cancelled: PlayerId={PlayerId}, Count={Count}, Reason={Reason}",
-            PlayerId, _pendingFinish.Count, reason);
-        _pendingFinish.Clear();
+            PlayerId, _interactions.Count, reason);
+        _interactions.Clear();
     }
 
     private void BroadcastRngCollectCooldown(int interactId, int cooldownSeconds)

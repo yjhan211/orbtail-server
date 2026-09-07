@@ -82,8 +82,8 @@ public class SwarmDamagePathTests
                  {
                      (Path.Combine("game_server", "Sessions", "GameClientSession.Movement.cs"),
                          "private void SendInteractableList"),
-                     (Path.Combine("game_server", "Sessions", "GameClientSession.RngCollect.cs"),
-                         "private Task HandleSwarmRngCollectStart"),
+                     (Path.Combine("game_server", "Services", "MatchInteractionService.cs"),
+                         "public static (ErrorCode Error, int Remaining, bool Door) Start"),
                      (Path.Combine("game_server", "Services", "Bots", "BotDecisionService.cs"),
                          "public void ProcessSwarmBotExplores"),
                      (Path.Combine("game_server", "Services", "MatchCombatDamageService.cs"),

@@ -15,6 +15,13 @@ public partial class GameClientSession
 
     private Task HandleSummonOrb(C_TO_G_SUMMON_ORB request)
     {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+        return RunUnderMatch(() => HandleSummonOrbCore(request),
+            () => SendSummonOrbResult(false, ErrorCode.INVALID_GAME_STATE, 0, 0, GetSummonStoneSnapshot()));
+    }
+
+    private Task HandleSummonOrbCore(C_TO_G_SUMMON_ORB request)
+    {
         if (!PlayerId.HasValue)
             return Task.CompletedTask;
 
@@ -268,6 +275,13 @@ public partial class GameClientSession
     }
 
     private Task HandleDestroyOrb(C_TO_G_DESTROY_ORB request)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+        return RunUnderMatch(() => HandleDestroyOrbCore(request),
+            () => SendDestroyOrbResult(false, ErrorCode.INVALID_GAME_STATE, request.ItemUid, 0, GetSummonStoneSnapshot()));
+    }
+
+    private Task HandleDestroyOrbCore(C_TO_G_DESTROY_ORB request)
     {
         if (!PlayerId.HasValue)
             return Task.CompletedTask;

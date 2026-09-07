@@ -795,16 +795,13 @@ public sealed class GameClientSessionItemCombinePublicationTests
             combine,
             "private Task HandleCombineItemsCore(",
             "private void SendBattleItemCombineResult("));
-        Assert.DoesNotContain("RunUnderMatch", ReadMethodSlice(
-            orbSummon,
+        Assert.Contains("RunUnderMatch", ReadMethodSlice(orbSummon,
             "private Task HandleSummonOrb(",
             "internal bool ExecuteDraftOrbSummon("));
-        Assert.DoesNotContain("RunUnderMatch", ReadMethodSlice(
-            orbSummon,
+        Assert.Contains("RunUnderMatch", ReadMethodSlice(orbSummon,
             "private Task HandleDestroyOrb(",
             "private void SendDestroyOrbResult("));
-        Assert.DoesNotContain("RunUnderMatch", ReadMethodSlice(
-            playerState,
+        Assert.Contains("RunUnderMatch", ReadMethodSlice(playerState,
             "private async Task HandleUseInGameItem(",
             "private bool ApplyItemBuffs("));
         Assert.DoesNotContain("msg.ClientStartUnixMs", combine);
