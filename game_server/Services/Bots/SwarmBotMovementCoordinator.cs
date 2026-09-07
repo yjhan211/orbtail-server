@@ -382,7 +382,6 @@ internal sealed record SwarmBotPlayerInfoSnapshot(
     PlayerState State,
     long Gold,
     int Hp,
-    int Stamina,
     MapId MapId,
     long MapSubId,
     SwarmCellSnapshot Cell,
@@ -399,7 +398,6 @@ internal sealed record SwarmBotPlayerInfoSnapshot(
         info.State,
         info.Gold,
         info.Hp,
-        info.Stamina,
         objectInfo.MapId,
         objectInfo.MapSubId,
         SwarmCellSnapshot.Capture(objectInfo.Cell),
@@ -417,7 +415,6 @@ internal sealed record SwarmBotPlayerInfoSnapshot(
         State = State,
         Gold = Gold,
         Hp = Hp,
-        Stamina = Stamina,
         IsNew = IsNew
     };
 

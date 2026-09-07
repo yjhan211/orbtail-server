@@ -61,7 +61,6 @@ namespace network.common.data.models
         [Key("inputPartB")] public int InputItemB { get; set; }
         [Key("outputPartId")] public int OutputItemId { get; set; }
         [Key("outputPartNameKr")] public string OutputItemName { get; set; }
-        [Key("staminaReward")] public int StaminaReward { get; set; }
         [Key("isRaceComplete")] public bool IsRaceComplete { get; set; }
     }
 

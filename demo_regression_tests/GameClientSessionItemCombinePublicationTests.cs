@@ -148,7 +148,6 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(RecoveryOrbT1, combined.InputItemB);
         Assert.Equal(RecoveryOrbT2, combined.OutputItemId);
         Assert.Equal("각성한 회복 오브", combined.OutputItemName);
-        Assert.Equal(0, combined.StaminaReward);
         Assert.False(combined.IsRaceComplete);
 
         G_TO_C_INGAME_INVENTORY_UPDATE inventoryUpdate =
@@ -856,7 +855,6 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(itemB, result.InputItemB);
         Assert.Equal(0, result.OutputItemId);
         Assert.Equal(string.Empty, result.OutputItemName);
-        Assert.Equal(0, result.StaminaReward);
         Assert.False(result.IsRaceComplete);
         G_TO_C_ERROR error = connection.DeserializeSingle<G_TO_C_ERROR>(Protocol.G_TO_C_ERROR);
         Assert.Equal(errorCode, error.ErrorCode);

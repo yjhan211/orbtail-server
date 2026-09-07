@@ -25,9 +25,7 @@ namespace game_server.sessions;
 /// </summary>
 public partial class GameClientSession : SessionBase
 {
-    private const int MaxStamina = 100;
     private static int MaxHealth => Config.MAX_HEALTH;
-    private const int InitialStamina = MaxStamina;
     private const int InitialCorruption = 0;
     private static readonly TimeSpan ExploreMoveGracePeriod = TimeSpan.FromMilliseconds(750);
 
@@ -286,7 +284,6 @@ public partial class GameClientSession : SessionBase
     public bool IsEliminated => PlayerMatchStatus == PlayerMatchStatus.ELIMINATED || PlayerMatchStatus == PlayerMatchStatus.SPECTATING;
 
     // 인게임 스탯 (게임 종료 시 초기화)
-    private int Stamina { get => _condition.Stamina; set => _condition.Stamina = value; }
     private int Health { get => _condition.Health; set => _condition.Health = value; }
 
     private void InitializeProtocolHandlers()

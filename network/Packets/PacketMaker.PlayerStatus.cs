@@ -21,17 +21,13 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_PLAYER_STATS_UPDATE(int stamina, int staminaDelta, int health, int healthDelta,
-        bool staminaConverted = false)
+    public static Packet G_TO_C_PLAYER_STATS_UPDATE(int health, int healthDelta)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_STATS_UPDATE);
         G_TO_C_PLAYER_STATS_UPDATE body = new()
         {
-            Stamina = stamina,
-            StaminaDelta = staminaDelta,
             Health = health,
-            HealthDelta = healthDelta,
-            StaminaConverted = staminaConverted
+            HealthDelta = healthDelta
         };
 
         packet.SetBody(MessagePackSerializer.Serialize(body));

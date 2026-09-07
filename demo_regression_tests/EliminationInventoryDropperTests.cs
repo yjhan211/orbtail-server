@@ -8,7 +8,7 @@ public sealed class EliminationInventoryDropperTests
 {
     private const int HopeOrbT1 = 107000010;
     private const int ForgetOrbT1 = 107000020;
-    private const int CannedCoffee = 201000011;
+    private const int Bandage = 201000008;
 
     public EliminationInventoryDropperTests()
     {
@@ -26,7 +26,7 @@ public sealed class EliminationInventoryDropperTests
         var groundItems = MatchTestServices.GroundItems(matchingId);
         inventory.AddItem(playerId, HopeOrbT1);
         inventory.AddItem(playerId, ForgetOrbT1);
-        inventory.AddItem(playerId, CannedCoffee);
+        inventory.AddItem(playerId, Bandage);
 
         var result = EliminationInventoryDropper.DropAll(
             inventory,

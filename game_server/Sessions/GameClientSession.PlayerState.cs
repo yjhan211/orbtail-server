@@ -111,7 +111,7 @@ public partial class GameClientSession
                     StopAllPeriodicBuffs();
                     return Task.CompletedTask;
                 }
-                _condition.TickPeriodicBuffs(MaxStamina, MaxHealth, (stamina, health) => ModifyStats(stamina, health));
+                _condition.TickPeriodicBuffs(MaxHealth, health => ModifyStats(health));
                 if (!_condition.HasPeriodicBuffs)
                 {
                     if (_condition.IsSleeping) _ = BroadcastSleepState(false);
@@ -303,6 +303,13 @@ public partial class GameClientSession
         }
 
         var itemData = GameItemData.Get(itemId);
+        if (itemData?.ConsumableBuffList is not { Count: > 0 })
+        {
+            using var failPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid,
+                ErrorCode.ITEM_NOT_USABLE);
+            TrySend(failPacket);
+            return;
+        }
 
         // Reusable 아이템은 소모하지 않음
         if (itemData.Reusable)
@@ -366,7 +373,7 @@ public partial class GameClientSession
         if (effect.Periodic)
             _periodicBuffTimer ??= new Timer(_ => OnPeriodicBuffTick(), null, 1000, 1000);
         int before = Health;
-        if (effect.Stamina != 0 || effect.Health != 0) ModifyStats(effect.Stamina, effect.Health);
+        if (effect.Health != 0) ModifyStats(effect.Health);
         int recovered = Math.Max(0, Health - before);
         if (PlayerId.HasValue && recovered > 0)
             _gameEventLogManager.LogRecoveryUse(MatchingId, PlayerId.Value, itemId, recovered,
@@ -375,34 +382,23 @@ public partial class GameClientSession
     }
 
     /// <summary>
-    ///     스탯 변경 (외부에서 호출 가능 - 환경 효과 등).
-    ///     스태미나가 부족하면 부족분의 두 배만큼 체력을 차감한다.
-    ///     단, 양수 staminaDelta(회복)는 그대로 처리.
+    ///     체력을 변경하고 결과를 전송한다. 체력이 0이면 탈락 처리한다.
     /// </summary>
-    public void ModifyStats(int staminaDelta = 0, int healthDelta = 0, long attackerPlayerId = 0,
+    public void ModifyStats(int healthDelta = 0, long attackerPlayerId = 0,
         bool isAreaClosureElimination = false, bool isOvertimeElimination = false, bool deferElimination = false)
     {
-        int oldStamina = Stamina;
         int oldHealth = Health;
-        int conversionDamage = _condition.ChangeResources(staminaDelta, healthDelta, MaxStamina, MaxHealth);
-        int totalHealthDelta = healthDelta - conversionDamage;
+        _condition.ChangeHealth(healthDelta, MaxHealth);
 
         // 값이 변경되지 않았으면 패킷 전송 안함
-        if (Stamina == oldStamina && Health == oldHealth) return;
-
-        if (conversionDamage > 0)
-        {
-            Logger.LogInformation(
-                "Player {PlayerId} Stamina 부족에 따른 체력 피해: 요청 ΔSt={DeltaS}, 피해={ConversionDamage}",
-                PlayerId, staminaDelta, conversionDamage);
-        }
+        if (Health == oldHealth) return;
 
         Logger.LogInformation(
-            "Player {PlayerId} Stats: Stamina {OldS}→{NewS} ({DeltaS:+#;-#;0}), Health {OldC}→{NewC} ({DeltaC:+#;-#;0})",
-            PlayerId, oldStamina, Stamina, staminaDelta, oldHealth, Health, totalHealthDelta);
+            "Player {PlayerId} Health: {OldHealth}→{Health} ({Delta:+#;-#;0})",
+            PlayerId, oldHealth, Health, healthDelta);
 
-        // 아이템 스펙 그대로 델타값 전송 (이펙트 표시용). 변환 발생 시 플래그 전달 (클라 경고 알럿용).
-        SendPlayerStatsUpdate(staminaDelta, totalHealthDelta, conversionDamage > 0);
+        // 효과 표시에는 요청한 변화량을, 상태에는 적용 후 체력을 보낸다.
+        SendPlayerStatsUpdate(healthDelta);
 
         // 운영툴 진행 로그
         if (PlayerId.HasValue)
@@ -412,8 +408,7 @@ public partial class GameClientSession
                 _gameEventLogManager.RecordRecovery(MatchingId, PlayerId.Value, recoveredHealth);
 
             _gameEventLogManager.LogResource(MatchingId, PlayerId.Value,
-                staminaDelta, totalHealthDelta, Stamina, Health,
-                conversionDamage > 0, reason: "", isBot: false);
+                healthDelta, Health, reason: "", isBot: false);
         }
 
         if (!deferElimination)
@@ -423,14 +418,10 @@ public partial class GameClientSession
     /// <summary>
     ///     스탯 업데이트 패킷 전송
     /// </summary>
-    private void SendPlayerStatsUpdate(int staminaDelta, int healthDelta, bool staminaConverted = false)
+    private void SendPlayerStatsUpdate(int healthDelta)
     {
-        using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(Stamina, staminaDelta, Health, healthDelta,
-            staminaConverted);
+        using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(Health, healthDelta);
         TrySend(packet);
-        Logger.LogDebug(
-            "Sent PLAYER_STATS_UPDATE to Player {PlayerId}: Stamina={Stamina} ({StaminaDelta:+#;-#;0}), Health={Health} ({HealthDelta:+#;-#;0}), Converted={Converted}",
-            PlayerId, Stamina, staminaDelta, Health, healthDelta, staminaConverted);
     }
 
     /// <summary>

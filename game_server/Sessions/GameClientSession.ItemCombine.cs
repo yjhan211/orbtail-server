@@ -77,7 +77,6 @@ public partial class GameClientSession
             InputItemB = msg.ItemB,
             OutputItemId = outputItemId,
             OutputItemName = itemData?.Name?.Kr ?? "",
-            StaminaReward = 0,
             IsRaceComplete = false
         };
         combinePacket.SetBody(MessagePackSerializer.Serialize(combinedMsg));
@@ -105,7 +104,6 @@ public partial class GameClientSession
             InputItemB = partB,
             OutputItemId = 0,
             OutputItemName = "",
-            StaminaReward = 0,
             IsRaceComplete = false
         };
         failPacket.SetBody(MessagePackSerializer.Serialize(failMsg));

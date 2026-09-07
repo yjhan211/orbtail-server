@@ -22,15 +22,11 @@ namespace network.common.data.models
         [Key("state")] public PlayerState State { get; set; }
     }
 
-    // 플레이어 스태미나·체력 업데이트. 체력 델타는 피해 시 음수, 회복 시 양수.
+    // 플레이어 체력 업데이트. 델타는 피해 시 음수, 회복 시 양수.
     [MessagePackObject]
     public class G_TO_C_PLAYER_STATS_UPDATE : IMessagePackObject
     {
-        [Key("stamina")] public int Stamina { get; set; }
-        [Key("staminaDelta")] public int StaminaDelta { get; set; }
         [Key("health")] public int Health { get; set; }
         [Key("healthDelta")] public int HealthDelta { get; set; }
-        /// <summary>스태미나 부족분으로 추가 체력 피해가 발생했는지 여부.</summary>
-        [Key("staminaConverted")] public bool StaminaConverted { get; set; }
     }
 }

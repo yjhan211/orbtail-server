@@ -236,7 +236,6 @@ namespace network.common.data
         public int ResultAmount { get; private set; }
 
         public int PortalTriggerId { get; private set; }
-        public int StaminaCost { get; private set; }
         public int RequireItemId { get; private set; }  // 0이면 조건 없음, 0보다 크면 해당 아이템 필요
         public string RequireAction { get; private set; }  // 빈 문자열이면 조건 없음, "interactableId_actionId" 형식
 
@@ -262,7 +261,6 @@ namespace network.common.data
                 ResultId = resultId,
                 ResultAmount = resultAmount,
                 PortalTriggerId = row.ContainsKey("portal_trigger_id") ? int.Parse(row["portal_trigger_id"]) : 0,
-                StaminaCost = row.ContainsKey("stamina_cost") ? int.Parse(row["stamina_cost"]) : 0,
                 RequireItemId = row.ContainsKey("require_item_id") && !string.IsNullOrEmpty(row["require_item_id"]) ? int.Parse(row["require_item_id"]) : 0,
                 RequireAction = row.ContainsKey("require_action") ? row["require_action"]?.Trim() ?? "" : ""
             };

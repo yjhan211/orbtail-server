@@ -85,9 +85,7 @@ public sealed class ConsumableInventoryMergeTests
 
     [Theory]
     [InlineData(BandageItemId, 3, 15)]
-    [InlineData(CannedCoffeeItemId, 1, 15)]
     [InlineData(CompressionBandageItemId, 3, 30)]
-    [InlineData(DoubleShotCoffeeItemId, 1, 30)]
     public void StoredConsumablesKeepTheirRecoveryValue(int itemId, int expectedBuffId, int expectedValue)
     {
         var item = GameItemData.Get(itemId);
@@ -98,6 +96,19 @@ public sealed class ConsumableInventoryMergeTests
         Assert.Equal(expectedBuffId, buff.id);
         Assert.Equal(expectedValue, buff.value);
         Assert.Equal(0, buff.interval);
+    }
+
+    [Theory]
+    [InlineData(CannedCoffeeItemId)]
+    [InlineData(DoubleShotCoffeeItemId)]
+    public void CoffeeKeepsItsIdentityWithoutResourceRecovery(int itemId)
+    {
+        var item = GameItemData.Get(itemId);
+        Assert.NotNull(item);
+        Assert.Empty(item.ConsumableBuffList);
+        Assert.Equal(GroundItemPickupDisposition.Store,
+            GroundItemPickupPolicy.Resolve(itemId, 1, out int recovery));
+        Assert.Equal(0, recovery);
     }
 
     [Fact]

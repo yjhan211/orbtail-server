@@ -8,11 +8,11 @@ public sealed class PlayerConditionStateTests
     public void HeartPickupRequiresMissingHealth()
     {
         Assert.Equal(GroundItemPickupDisposition.LeaveOnGround,
-            GroundItemPickupPolicy.Resolve(GroundItemPickupPolicy.HeartItemId, 100, 100,
-                Config.MAX_HEALTH, out _, out _));
+            GroundItemPickupPolicy.Resolve(GroundItemPickupPolicy.HeartItemId,
+                Config.MAX_HEALTH, out _));
         Assert.Equal(GroundItemPickupDisposition.AutoUse,
-            GroundItemPickupPolicy.Resolve(GroundItemPickupPolicy.HeartItemId, 100, 100,
-                Config.MAX_HEALTH - 1, out _, out int recovery));
+            GroundItemPickupPolicy.Resolve(GroundItemPickupPolicy.HeartItemId,
+                Config.MAX_HEALTH - 1, out int recovery));
         Assert.Equal(GroundItemPickupPolicy.HeartRecovery, recovery);
     }
 
@@ -21,7 +21,7 @@ public sealed class PlayerConditionStateTests
     {
         var sent = new network.common.data.models.G_TO_C_PLAYER_STATS_UPDATE
         {
-            Stamina = 100, Health = 70, HealthDelta = -30
+            Health = 70, HealthDelta = -30
         };
         byte[] bytes = MessagePack.MessagePackSerializer.Serialize(sent);
         var received = MessagePack.MessagePackSerializer.Deserialize<network.common.data.models.G_TO_C_PLAYER_STATS_UPDATE>(bytes);
@@ -40,11 +40,11 @@ public sealed class PlayerConditionStateTests
     public void HealthDamageAndRecoveryClampToResourceBounds()
     {
         var state = new PlayerConditionState { Health = 80 };
-        state.ChangeResources(0, -30, 100, 100);
+        state.ChangeHealth(-30, 100);
         Assert.Equal(50, state.Health);
-        state.ChangeResources(0, 70, 100, 100);
+        state.ChangeHealth(70, 100);
         Assert.Equal(100, state.Health);
-        state.ChangeResources(0, -150, 100, 100);
+        state.ChangeHealth(-150, 100);
         Assert.Equal(0, state.Health);
     }
 
@@ -52,12 +52,12 @@ public sealed class PlayerConditionStateTests
     public void PeriodicHealingAddsHealthAndDamageRemovesHealth()
     {
         var state = new PlayerConditionState { Health = 50 };
-        void Apply(int stamina, int health) => state.ChangeResources(stamina, health, 100, 100);
+        void Apply(int health) => state.ChangeHealth(health, 100);
         state.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 10, 1, 1);
-        state.TickPeriodicBuffs(100, 100, Apply);
+        state.TickPeriodicBuffs(100, Apply);
         Assert.Equal(60, state.Health);
         state.AddPeriodicBuff(BuffSubType.HEALTH_DOWN, 15, 1, 1);
-        state.TickPeriodicBuffs(100, 100, Apply);
+        state.TickPeriodicBuffs(100, Apply);
         Assert.Equal(45, state.Health);
     }
 
@@ -73,13 +73,12 @@ public sealed class PlayerConditionStateTests
     }
 
     [Fact]
-    public void ResourceDeficitConvertsWithoutSharingPlayers()
+    public void HealthChangesDoNotAffectOtherPlayers()
     {
-        var state = new PlayerConditionState { Stamina = 3, Health = 100 };
-        Assert.Equal(4, state.ChangeResources(-5, -1, 100, 100));
-        Assert.Equal(0, state.Stamina);
-        Assert.Equal(95, state.Health);
-        Assert.Equal(100, new PlayerConditionState().Stamina);
+        var state = new PlayerConditionState { Health = 100 };
+        state.ChangeHealth(-1, 100);
+        Assert.Equal(99, state.Health);
+        Assert.Equal(Config.MAX_HEALTH, new PlayerConditionState().Health);
     }
 
     [Fact]
@@ -102,14 +101,14 @@ public sealed class PlayerConditionStateTests
     [Fact]
     public void PeriodicBuffReplacementAndExpiryKeepOneEffect()
     {
-        var state = new PlayerConditionState { Stamina = 0 };
-        state.AddPeriodicBuff(BuffSubType.CONDITION_ADD, 10, 1, 2);
-        state.AddPeriodicBuff(BuffSubType.CONDITION_ADD, 3, 1, 2);
-        void Apply(int stamina, int health) => state.ChangeResources(stamina, health, 100, 100);
-        state.TickPeriodicBuffs(100, 100, Apply);
-        Assert.Equal(3, state.Stamina);
-        state.TickPeriodicBuffs(100, 100, Apply);
-        Assert.Equal(6, state.Stamina);
+        var state = new PlayerConditionState { Health = 0 };
+        state.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 10, 1, 2);
+        state.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 3, 1, 2);
+        void Apply(int health) => state.ChangeHealth(health, 100);
+        state.TickPeriodicBuffs(100, Apply);
+        Assert.Equal(3, state.Health);
+        state.TickPeriodicBuffs(100, Apply);
+        Assert.Equal(6, state.Health);
         Assert.False(state.HasPeriodicBuffs);
     }
 }

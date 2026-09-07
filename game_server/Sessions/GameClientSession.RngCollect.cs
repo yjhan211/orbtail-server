@@ -143,13 +143,13 @@ public partial class GameClientSession
         if (dropItemId == 0)
         {
             BroadcastRngCollectCooldown(msg.InteractId, 0);
-            SendRngCollectResult(msg.InteractId, 0, 0, 0, 0);
+SendRngCollectResult(msg.InteractId, 0, 0, 0);
             BroadcastPlayerState(PlayerState.IDLE);
             return Task.CompletedTask;
         }
 
         BroadcastRngCollectCooldown(msg.InteractId, SwarmExploreCooldownSeconds);
-        SendRngCollectResult(msg.InteractId, 0, 0, 0, SwarmExploreCooldownSeconds);
+SendRngCollectResult(msg.InteractId, 0, 0, SwarmExploreCooldownSeconds);
         BroadcastPlayerState(PlayerState.IDLE);
         Logger.LogInformation(
             "Swarm box consumable: PlayerId={PlayerId}, InteractId={InteractId}, Cost={Cost}, Drop={DropItemId}",
@@ -164,7 +164,7 @@ public partial class GameClientSession
     {
         if (!MatchInteractionService.FinishDoor(_matchRuntimes.GetRequired(MatchingId), _interactions, doorId))
         {
-            SendRngCollectResult(interactId, 0, 0, 0, 0);
+SendRngCollectResult(interactId, 0, 0, 0);
             BroadcastPlayerState(PlayerState.IDLE);
             return Task.CompletedTask;
         }
@@ -178,7 +178,7 @@ public partial class GameClientSession
         foreach (var session in _getSessionsByInstance(CurrentMapId, MatchingId))
             session.TrySend(updatePacket);
 
-        SendRngCollectResult(interactId, 0, 0, 0, 0);
+SendRngCollectResult(interactId, 0, 0, 0);
         BroadcastPlayerState(PlayerState.IDLE);
         return Task.CompletedTask;
     }
@@ -278,7 +278,7 @@ public partial class GameClientSession
     }
 
     private void SendRngCollectResult(int interactId, int resultType, int itemId,
-        int staminaReward, int cooldownSeconds)
+        int cooldownSeconds)
     {
         if (!PlayerId.HasValue) return;
 
@@ -287,7 +287,6 @@ public partial class GameClientSession
             InteractId = interactId,
             ResultType = resultType,
             ItemId = itemId,
-            StaminaReward = staminaReward,
             CooldownSeconds = cooldownSeconds
         };
 

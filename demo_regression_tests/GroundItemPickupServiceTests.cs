@@ -12,7 +12,7 @@ public sealed class GroundItemPickupServiceTests
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984201);
         Assert.Throws<InvalidOperationException>(() => GroundItemPickupService.TryPickup(
-            runtime, 1, AreaType.None, new Vector3f(0, 0, 0), 100, 100, 0, 1));
+            runtime, 1, AreaType.None, new Vector3f(0, 0, 0), 0, 1));
         using (store.Enter(runtime)) runtime.TryMarkTerminal();
     }
 
@@ -24,12 +24,12 @@ public sealed class GroundItemPickupServiceTests
         using (store.Enter(runtime))
         {
             var result = GroundItemPickupService.TryPickup(
-                runtime, 1, AreaType.None, new Vector3f(0, 0, 0), 100, 100, 0, long.MaxValue);
+                runtime, 1, AreaType.None, new Vector3f(0, 0, 0), 0, long.MaxValue);
             Assert.NotEqual(GroundItemClaimStatus.Success, result.Status);
             Assert.Null(result.ClaimedItem);
             Assert.Null(result.AddedItem);
             Assert.False(result.AutoUsed);
-            Assert.Equal(0, result.StaminaRecovery);
+            Assert.Equal(0, result.HealthRecovery);
             runtime.TryMarkTerminal();
         }
     }

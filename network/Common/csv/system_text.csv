@@ -3,7 +3,7 @@
 "11061","6","아이템 사용 [- {0}]","Use item [- {0}]","アイテム使用 [- {0}]"
 "11062","6","상대방의 행동에 대비하기","Prepare for the other person's action","相手の行動に備える"
 "11063","6","상대를 유심히 살펴본다","Watch closely","相手をよく観察する"
-"11064","6","장소 이탈하기 (스태미나 -5)","Leave the area (Stamina -5)","場所を離れる（スタミナ -5）"
+"11064","6","장소 이탈하기","Leave the area","場所を離れる"
 1,1,강당 문이 열렸습니다,The Gym door has been opened.,講堂の扉が開かれました。
 2,1,교실2 문이 열렸습니다,The Classroom 2 door has been opened.,教室2の扉が開かれました。
 3,1,교무실 문이 열렸습니다,The Staff Room door has been opened.,職員室の扉が開かれました。
@@ -13,7 +13,7 @@
 11,2,필수 아이템을 획득했습니다,Required item acquired.,必須アイテムを獲得しました。
 12,2,규칙 쪽지를 획득했습니다,Rule note acquired.,規則のメモを獲得しました。
 13,2,체력이 감소했습니다,Health decreased.,体力が減少しました。
-14,2,스태미나가 소모되었습니다,Stamina was consumed.,スタミナが消費されました。
+14,2,행동을 완료했습니다.,Action completed.,行動が完了しました。
 20,3,강당 열쇠를 확보하십시오,Secure the Gym key.,講堂の鍵を確保してください。
 21,3,A의 이름과 목소리를 파악해야 합니다,You must identify A's name and voice.,Aの名前と声を突き止めなければなりません。
 22,3,교무실에서 학생증을 획득하십시오,Acquire the student ID from the Staff Room.,職員室で学生証を獲得してください。
@@ -61,7 +61,7 @@
 10009,4,<color=#A8D4E0>{0}</color>을(를) 사용했습니다.,Used <color=#A8D4E0>{0}</color>.,<color=#A8D4E0>{0}</color>を使用しました。
 10010,4,새로운 <color=#A8D4E0>행동 수칙</color>을 발견했습니다!,Discovered a new <color=#A8D4E0>conduct rule</color>!,新たな<color=#A8D4E0>行動規則</color>を発見しました!
 10011,4,<color=#FF7E9A>사칭 발각</color> {0},<color=#FF7E9A>Impersonation Exposed</color> {0},<color=#FF7E9A>なりすまし発覚</color> {0}
-10012,4,<color=#FF7E9A>가용 체력</color>이 모두 <color=#FF7E9A>소진</color>되었습니다.,<color=#FF7E9A>Available stamina</color> fully <color=#FF7E9A>depleted</color>.,<color=#FF7E9A>使用可能な体力</color>が全て<color=#FF7E9A>尽きました</color>。
+10012,4,체력이 모두 소진되었습니다.,Health has been depleted.,体力が尽きました。
 10013,4,공유할 수 있는 <color=#FF7E9A>행동 수칙</color>이 없습니다.,No <color=#FF7E9A>conduct rules</color> available to share.,共有できる<color=#FF7E9A>行動規則</color>がありません。
 10014,4,사용할 수 있는 <color=#FF7E9A>아이템</color>이 없습니다.,No usable <color=#FF7E9A>items</color>.,使用可能な<color=#FF7E9A>アイテム</color>がありません。
 10015,4,<color=#A8D4E0>게임 매칭</color>을 시작합니다.,<color=#A8D4E0>Matching</color> started.,<color=#A8D4E0>マッチング</color>を開始します。
@@ -128,7 +128,7 @@
 11033,6,{0}에 온 이유가 무엇입니까?,Why did you come to {0}?,{0}に来た理由は何ですか?
 11034,6,구역 폐쇄로 인해 지나가는 도중이었습니다.,Passing through due to closure.,区域閉鎖のため通りかかっているところでした。
 11035,6,<color=#A8D4E0>{0}</color> 미션을 수행하는 도중이었습니다.,I was working on the <color=#A8D4E0>{0}</color> mission.,<color=#A8D4E0>{0}</color>のミッションを遂行しているところでした。
-11036,6,스태미나 회복 물품을 수집하는 중입니다.,I am collecting stamina recovery items.,スタミナ回復アイテムを集めています。
+11036,6,물품을 수집하는 중입니다.,Collecting items.,アイテムを集めています。
 11037,6,<color=#A8D4E0>기록</color>을 확인하러 왔습니다.,I came to check the <color=#A8D4E0>records</color>.,<color=#A8D4E0>記録</color>を確認しに来ました。
 11040,6,저는 <color=#A8D4E0>{0}</color>입니다.,I am a <color=#A8D4E0>{0}</color>.,私は<color=#A8D4E0>{0}</color>です。
 11041,6,저는 그때 <color=#A8D4E0>{0}</color>에 있었습니다.,I was at the <color=#A8D4E0>{0}</color> at that time.,私はその時<color=#A8D4E0>{0}</color>にいました。
@@ -183,7 +183,7 @@
 12043,7,그리운 친구,Dear Old Friend,懐かしい友達
 12044,7,당신은 승리했습니다.,You won.,あなたは勝利しました。
 12045,7,당신은 <color={0}>색출</color>되어 <color={0}>탈락</color>했습니다.,You were <color={0}>exposed</color> and <color={0}>eliminated</color>.,あなたは<color={0}>正体を暴かれて</color><color={0}>脱落</color>しました。
-12046,7,당신은 <color={0}>체력이 모두 소모</color>되어 <color={0}>탈락</color>했습니다.,Your <color={0}>stamina was fully depleted</color> and you were <color={0}>eliminated</color>.,あなたは<color={0}>体力がすべて尽きた</color>ため、<color={0}>脱落</color>しました。
+12046,7,당신은 <color={0}>체력이 모두 소모</color>되어 <color={0}>탈락</color>했습니다.,Your <color={0}>health was depleted</color> and you were <color={0}>eliminated</color>.,あなたは<color={0}>体力がすべて尽きた</color>ため<color={0}>脱落</color>しました。
 12047,7,다른 플레이어가 먼저 탈출하여 <color={0}>패배</color>했습니다.,Another player escaped first and you <color={0}>lost</color>.,他のプレイヤーが先に脱出したため、<color={0}>敗北</color>しました。
 12048,7,당신은 <color={0}>정신력이 모두 소모</color>되어 <color={0}>탈락</color>했습니다.,Your <color={0}>sanity was fully depleted</color> and you were <color={0}>eliminated</color>.,あなたは<color={0}>精神力がすべて尽きた</color>ため、<color={0}>脱落</color>しました。
 12161,7,기여도가 가장 낮아 <color={0}>탈락</color>했습니다.,You had the lowest contribution and were <color={0}>eliminated</color>.,貢献度が最も低く、<color={0}>脱落</color>しました。
@@ -210,7 +210,7 @@
 "12069","7","먼저 완료할 업무: {0}","Task to complete first: {0}","先に完了する作業: {0}"
 "12070","7","필요한 아이템: {0}","Required item: {0}","必要なアイテム: {0}"
 "12071","7","타겟을 잃은 뒤 사용할 수 있습니다.","Available after losing your target.","ターゲットを失った後に使用できます。"
-"12072","7","가용 체력이 부족합니다.","Not enough available stamina.","使用可能な体力が足りません。"
+"12072","7","지금은 사용할 수 없습니다.","Cannot use this now.","今は使用できません。"
 "12073","7","아직 이 행동을 할 수 없습니다.","This action is not available yet.","まだこの行動はできません。"
 "12074","7","업무를 처리했습니다.","Task handled.","作業を処理しました。"
 "12075","7","탈출의 실마리 확보","Secure Escape Lead","脱出の糸口を確保"
@@ -256,10 +256,10 @@
 "12133","7","폐쇄 구역","Closed Zone","閉鎖区域"
 "12134","7","<color=#F1325A>폐쇄된 구역</color>에 머무르고 있습니다.\n정신력이 <color=#F1325A>급격히 감소</color>합니다.","You are in a <color=#F1325A>closed zone</color>.\nSanity is <color=#F1325A>draining rapidly</color>.","<color=#F1325A>閉鎖区域</color>に留まっています。\n精神力が<color=#F1325A>急激に低下</color>します。"
 "12135","7","휴식","Rest","休息"
-"12136","7","잠시 눈을 붙이는 중입니다.\n체력이 서서히 회복됩니다.","Taking a short rest.\nStamina slowly recovers.","少し目を閉じています。\n体力がゆっくり回復します。"
+"12136","7","잠시 눈을 붙이는 중입니다.\n체력이 서서히 회복됩니다.","Taking a short rest.\nHealth slowly recovers.","少し目を閉じています。\n体力がゆっくり回復します。"
 "12137","7","마니또의 선물","Manitto's Gift","マニットの贈り物"
 "12138","7","당신을 쫓는 누군가의 흔적을 발견했습니다.\n정신력이 급격히 감소합니다.","You found a trace of someone chasing you.\nSanity drops sharply.","あなたを追う誰かの痕跡を見つけました。\n精神力が急激に低下します。"
-"12139","7","<color=#FF7E9A>스태미나를 소모</color>하여 <color=#FF7E9A>{0}</color>의 기척을 <color=#FF7E9A>경계</color>합니다.","<color=#FF7E9A>Spend stamina</color> to <color=#FF7E9A>watch</color> <color=#FF7E9A>{0}</color>'s presence.","<color=#FF7E9A>スタミナを消費</color>して<color=#FF7E9A>{0}</color>の気配を<color=#FF7E9A>警戒</color>します。"
+"12139","7","<color=#FF7E9A>{0}</color>의 기척을 경계합니다.","Watching <color=#FF7E9A>{0}</color>.","<color=#FF7E9A>{0}</color>の気配を警戒します。"
 "12140","7","경계하는 시선","Watchful Gaze","警戒する視線"
 "12141","7","{PlayerName}이 당신을 경계하고 있습니다.\n곁에 머물 때의 정신력 회복량이 감소합니다.","{PlayerName} is wary of you.\nSanity recovery while staying nearby is reduced.","{PlayerName}があなたを警戒しています。\nそばにいる時の精神力回復量が低下します。"
 "12142","7","경계심","Wariness","警戒心"
@@ -271,7 +271,7 @@
 "12150","7","마니또를 색출하였습니다.","You have exposed your Manitto.","マニットを暴き出しました。"
 "12151","7","마니또를 색출하지 못했습니다.","You failed to expose your Manitto.","マニットを暴き出せませんでした。"
 "12152","7","{0}은 당신의 마니또가 아닙니다.","{0} is not your Manitto.","{0}はあなたのマニットではありません。"
-"12153","7","<color=#A8D4E0>{0}을</color> 경계하려면 다시 선택하세요. <color=#A8D4E0>스태미나가 소모됩니다.</color>","<color=#A8D4E0>Select {0} again</color> to watch them. <color=#A8D4E0>Stamina will be consumed.</color>","<color=#A8D4E0>{0}を警戒</color>するにはもう一度選択してください。<color=#A8D4E0>スタミナが消費されます。</color>"
+"12153","7","{0}을 경계하려면 다시 선택하세요.","Select {0} again to watch them.","{0}を警戒するにはもう一度選択してください。"
 "12154","7","더 이상 색출할 수 없습니다.","You can no longer expose anyone.","これ以上は暴けません。"
 "12155","7","<color=#A8D4E0>{0}을</color> 당신의 마니또로 지목합니다. <color=#A8D4E0>기회는 한 번뿐입니다.</color>","<color=#A8D4E0>Accuse {0}</color> of being your Manitto. <color=#A8D4E0>You only get one chance.</color>","<color=#A8D4E0>{0}</color>をあなたのマニットだと<color=#A8D4E0>指名</color>します。<color=#A8D4E0>機会は一度きりです。</color>"
 "12156","7","<color=#A8D4E0>색출</color>","<color=#A8D4E0>Expose</color>","<color=#A8D4E0>暴く</color>"

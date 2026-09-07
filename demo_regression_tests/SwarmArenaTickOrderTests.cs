@@ -186,7 +186,7 @@ public sealed class SwarmArenaTickOrderTests
             "private void SendPlayerStatsUpdate(");
         AssertInOrder(
             modifyStats,
-            "_condition.ChangeResources(",
+            "_condition.ChangeHealth(",
             "SendPlayerStatsUpdate(",
             "CheckResourceElimination(");
 

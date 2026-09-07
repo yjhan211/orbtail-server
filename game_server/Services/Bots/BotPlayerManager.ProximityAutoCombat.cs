@@ -31,7 +31,6 @@ public partial class BotPlayerManager
                      .OrderBy(item => DistanceSquared(bot.Position, item.PositionX, item.PositionY)))
         {
             GroundItemPickupDisposition disposition = GroundItemPickupDisposition.LeaveOnGround;
-            int staminaRecovery = 0;
             int healthRecovery = 0;
             bool summonStonePickup = candidate.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID;
             bool jamPickup = candidate.ItemId == Config.JAM_GROUND_ITEM_ID;
@@ -60,10 +59,7 @@ public partial class BotPlayerManager
 
                     disposition = GroundItemPickupPolicy.Resolve(
                         item.ItemId,
-                        bot.Stamina,
-                        100,
                         bot.Health,
-                        out staminaRecovery,
                         out healthRecovery,
                         matchingId,
                         bot.PlayerId);
@@ -75,7 +71,7 @@ public partial class BotPlayerManager
                 continue;
 
             bool autoUsed = disposition == GroundItemPickupDisposition.AutoUse;
-            int requestedRecovery = staminaRecovery + healthRecovery;
+            int requestedRecovery = healthRecovery;
             int effectiveRecovery = 0;
             InGameItemInfo? addedItem = null;
             SummonStoneSnapshot summonStoneState = default;
@@ -98,10 +94,8 @@ public partial class BotPlayerManager
             }
             else if (autoUsed)
             {
-                int effectiveStaminaRecovery = Math.Min(staminaRecovery, Math.Max(0, 100 - bot.Stamina));
                 int effectiveHealthRecovery = Math.Min(healthRecovery, Math.Max(0, Config.MAX_HEALTH - bot.Health));
-                effectiveRecovery = effectiveStaminaRecovery + effectiveHealthRecovery;
-                bot.Stamina = Math.Min(100, bot.Stamina + staminaRecovery);
+                effectiveRecovery = effectiveHealthRecovery;
                 bot.Health = Math.Min(Config.MAX_HEALTH, bot.Health + healthRecovery);
                 // 하트는 앞줄 오브 HP도 만충으로 (#222 M4) — 사람과 같은 규칙.
                 if (claimedItem.ItemId == global::network.common.Config.HEART_GROUND_ITEM_ID)

@@ -16,7 +16,6 @@ internal sealed class PlayerConditionState
     private readonly List<PeriodicBuffEntry> _periodicBuffs = [];
     private int _swarmSleepGrantedTicks;
 
-    public int Stamina { get; set; } = 100;
     public int Health { get; set; } = Config.MAX_HEALTH;
     public bool IsSleeping { get; set; }
     public DateTime SleepStartedAtUtc { get; set; } = DateTime.MinValue;
@@ -24,18 +23,9 @@ internal sealed class PlayerConditionState
     public DateTime HealLockUntilUtc { get; set; } = DateTime.MinValue;
     public bool HasPeriodicBuffs => _periodicBuffs.Count != 0;
 
-    public int ChangeResources(int staminaDelta, int healthDelta, int maxStamina, int maxHealth)
+    public void ChangeHealth(int healthDelta, int maxHealth)
     {
-        int conversion = 0;
-        if (staminaDelta != 0)
-        {
-            int next = Stamina + staminaDelta;
-            conversion = next < 0 ? -next * 2 : 0;
-            Stamina = Math.Clamp(next, 0, maxStamina);
-        }
-        int total = healthDelta - conversion;
-        if (total != 0) Health = Math.Clamp(Health + total, 0, maxHealth);
-        return conversion;
+        Health = Math.Clamp(Health + healthDelta, 0, maxHealth);
     }
 
     public bool CanSleep(DateTime nowUtc) =>
@@ -76,7 +66,7 @@ internal sealed class PlayerConditionState
 
     public void ClearPeriodicBuffs() => _periodicBuffs.Clear();
 
-    public void TickPeriodicBuffs(int maxStamina, int maxHealth, Action<int, int> apply)
+    public void TickPeriodicBuffs(int maxHealth, Action<int> apply)
     {
         foreach (var buff in _periodicBuffs.ToArray())
         {
@@ -87,26 +77,24 @@ internal sealed class PlayerConditionState
                 buff.Elapsed = 0;
                 bool canApply = buff.Type switch
                 {
-                    BuffSubType.CONDITION_ADD => Stamina < maxStamina,
                     BuffSubType.HEALTH_ADD => Health < maxHealth,
                     BuffSubType.HEALTH_DOWN => Health > 0,
                     _ => false
                 };
                 if (canApply)
                 {
-                    if (buff.Type == BuffSubType.CONDITION_ADD) apply(buff.Value, 0);
-                    else apply(0, buff.Type == BuffSubType.HEALTH_ADD ? buff.Value : -buff.Value);
+                    apply(buff.Type == BuffSubType.HEALTH_ADD ? buff.Value : -buff.Value);
                 }
-                else if (buff.Duration <= 0 && buff.Type is BuffSubType.CONDITION_ADD or BuffSubType.HEALTH_ADD or BuffSubType.HEALTH_DOWN)
+                else if (buff.Duration <= 0 && buff.Type is BuffSubType.HEALTH_ADD or BuffSubType.HEALTH_DOWN)
                     _periodicBuffs.Remove(buff);
             }
             if (buff.Duration > 0 && buff.Remaining <= 0) _periodicBuffs.Remove(buff);
         }
     }
 
-    public (int Stamina, int Health, bool Periodic) ApplyItemBuffs(int itemId, IReadOnlyCollection<int> activeBuffIds)
+    public (int Health, bool Periodic) ApplyItemBuffs(int itemId, IReadOnlyCollection<int> activeBuffIds)
     {
-        int stamina = 0, health = 0;
+        int health = 0;
         bool periodic = false;
         foreach ((int buffId, int value, int interval) in GameItemData.Get(itemId).ConsumableBuffList)
         {
@@ -119,9 +107,6 @@ internal sealed class PlayerConditionState
             }
             switch (buff.SubType)
             {
-                case BuffSubType.CONDITION_ADD:
-                    stamina += PassiveBuffUtility.ApplyIncrease(value, activeBuffIds, BuffSubType.RECOVERY_ITEM_EFFECT_ADD);
-                    break;
                 case BuffSubType.HEALTH_ADD:
                     health += PassiveBuffUtility.ApplyIncrease(value, activeBuffIds, BuffSubType.RECOVERY_ITEM_EFFECT_ADD);
                     break;
@@ -130,7 +115,7 @@ internal sealed class PlayerConditionState
                     break;
             }
         }
-        return (stamina, health, periodic);
+        return (health, periodic);
     }
 
     private sealed class PeriodicBuffEntry(BuffSubType type, int value, int interval, int duration)

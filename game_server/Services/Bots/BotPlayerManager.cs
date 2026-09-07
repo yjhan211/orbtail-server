@@ -47,7 +47,6 @@ public partial class BotPlayerManager
     private const double BotRoomDwellMaxSeconds = 2.25;
 
     private const int BotMissionTickIntervalSeconds = 1;
-    private const int InitialStamina = 100;
     private static int InitialHealth => Config.MAX_HEALTH;
 
     private readonly long _matchingId;
@@ -104,7 +103,6 @@ public partial class BotPlayerManager
                 Cell = startCell,
                 Position = startPosition,
                 Rotation = 0f,
-                Stamina = InitialStamina,
                 Health = InitialHealth,
                 PlayerMatchStatus = PlayerMatchStatus.ACTIVE,
                 GameStartTime = now,
@@ -192,7 +190,6 @@ public partial class BotPlayerManager
             Name = bot.Name,
             State = state,
             Hp = 5000,
-            Stamina = bot.Stamina,
             WearItemIdList = BuildBotWearItems(bot)
         };
         return info;
@@ -248,7 +245,6 @@ public class BotPlayerState
     public bool IsSwarmCutDummy { get; set; }
 
     public AreaType CurrentArea { get; set; }
-    public int Stamina { get; set; } = 100;
     public int Health { get; set; } = Config.MAX_HEALTH;
     public long LastProximityAttackerPlayerId { get; set; }
     public bool IsEliminated { get; set; }

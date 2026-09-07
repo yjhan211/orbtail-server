@@ -21,7 +21,6 @@ namespace network.common.data.models
         [Key("resultType")] public int ResultType { get; set; }
         /// <summary>부품/선행/지역 아이템의 식별자 (resultType 0/1은 0). 클라가 csv로 텍스트 조회.</summary>
         [Key("itemId")] public int ItemId { get; set; }
-        [Key("staminaReward")] public int StaminaReward { get; set; }
         /// <summary>다음 채집 가능까지 쿨타임 (초). 30초 표준, 0이면 클라 기본값 사용</summary>
         [Key("cooldownSeconds")] public int CooldownSeconds { get; set; }
     }
@@ -55,7 +54,7 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    ///     #134 — RNG 채집 시작 요청. RippleMarker 클릭 즉시 송신. 서버가 stamina 차감 + 쿨타임 등록 + ACK 응답.
+    ///     RNG 채집 시작 요청. 클릭 시 송신하며 서버가 쿨타임을 등록하고 ACK를 보낸다.
     /// </summary>
     [MessagePackObject]
     public class C_TO_G_RNG_COLLECT_START : IMessagePackObject

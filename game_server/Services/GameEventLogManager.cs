@@ -76,14 +76,12 @@ public class GameEventLogManager
         LogClosureMovement(matchingId, playerId, fromArea, toArea, isBot, now);
     }
 
-    public void LogResource(long matchingId, long playerId, int staminaDelta, int healthDelta,
-        int stamina, int health, bool staminaConverted, string reason, bool isBot)
+    public void LogResource(long matchingId, long playerId, int healthDelta,
+        int health, string reason, bool isBot)
     {
         var parts = new List<string>();
-        if (staminaDelta != 0) parts.Add($"체력{(staminaDelta >= 0 ? "+" : "")}{staminaDelta}");
         if (healthDelta != 0) parts.Add($"체력{(healthDelta >= 0 ? "+" : "")}{healthDelta}");
-        parts.Add($"(스태미나 {stamina}/체력 {health})");
-        if (staminaConverted) parts.Add("[전환]");
+        parts.Add($"(체력 {health})");
         if (!string.IsNullOrEmpty(reason)) parts.Add($"<{reason}>");
         Append(matchingId, "RESOURCE", playerId, isBot, string.Join(" ", parts));
     }

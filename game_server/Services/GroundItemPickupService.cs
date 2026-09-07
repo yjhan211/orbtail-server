@@ -12,7 +12,7 @@ internal static class GroundItemPickupService
 {
     public static GroundItemPickupResult TryPickup(
         MatchRuntime runtime, long playerId, AreaType area, Vector3f position,
-        int stamina, int maxStamina, int health, long groundItemUid)
+        int health, long groundItemUid)
     {
         if (!Monitor.IsEntered(runtime.Sync))
             throw new InvalidOperationException("Ground item pickup requires the match lock.");
@@ -24,7 +24,6 @@ internal static class GroundItemPickupService
         bool jamPickup = false;
         bool bootsPickup = false;
         bool keyPickup = false;
-        int staminaRecovery = 0;
         int healthRecovery = 0;
         ErrorCode rejection = ErrorCode.INVENTORY_FULL;
 
@@ -65,10 +64,7 @@ internal static class GroundItemPickupService
 
                 var disposition = GroundItemPickupPolicy.Resolve(
                     item.ItemId,
-                    stamina,
-                    maxStamina,
                     health,
-                    out staminaRecovery,
                     out healthRecovery,
                     runtime.MatchingId,
                     playerId);
@@ -99,7 +95,7 @@ internal static class GroundItemPickupService
 
         return new(status, rejection, attemptedItem, claimedItem, addedItem,
             discovererPlayerId, autoUsed, autoEquipped, summonStonePickup,
-            jamPickup, bootsPickup, keyPickup, staminaRecovery, healthRecovery);
+            jamPickup, bootsPickup, keyPickup, healthRecovery);
     }
 }
 
@@ -107,4 +103,4 @@ internal sealed record GroundItemPickupResult(
     GroundItemClaimStatus Status, ErrorCode Rejection,
     GroundItemInfo? AttemptedItem, GroundItemInfo? ClaimedItem, InGameItemInfo? AddedItem,
     long DiscovererPlayerId, bool AutoUsed, bool AutoEquipped, bool SummonStonePickup,
-    bool JamPickup, bool BootsPickup, bool KeyPickup, int StaminaRecovery, int HealthRecovery);
+    bool JamPickup, bool BootsPickup, bool KeyPickup, int HealthRecovery);

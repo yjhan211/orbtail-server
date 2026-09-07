@@ -103,8 +103,7 @@ namespace network.common
     public enum BuffSubType
     {
         NONE = 0,
-        CONDITION_ADD,
-        HEALTH_ADD,
+        HEALTH_ADD = 2,
         DURABILITY_ADD,
         HEALTH_DOWN,
         ITEM_GAIN_CHANCE_ADD = 5,
@@ -188,7 +187,6 @@ namespace network.common
         NONE = 0,
         DETECTED = 1,
         HEALTH_ZERO = 2,
-        STAMINA_ZERO = 3,
         RACE_LOST = 4,
         SETTLEMENT_LOW_CONTRIBUTION = 5,
     }
@@ -218,9 +216,7 @@ namespace network.common
         NONE = 0,
         REWARD_POOL = 1,
         DEBUFF_HEALTH = 2,
-        DEBUFF_STAMINA = 3,
         BUFF_HEALTH = 4,
-        BUFF_STAMINA = 5,
     }
 
     /// <summary>시스템 텍스트 카테고리.</summary>

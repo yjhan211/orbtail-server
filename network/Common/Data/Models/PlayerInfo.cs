@@ -23,7 +23,6 @@ namespace network.common.data.models
             InventoryInfo = new InventoryInfo();
             Gold = 0;
             Hp = 0;
-            Stamina = 0;
         }
 
         public PlayerInfo(long playerId, bool isDummy)
@@ -38,7 +37,6 @@ namespace network.common.data.models
             InventoryInfo = new InventoryInfo(InventoryOwnerType.PLAYER, PlayerId);
             Gold = 1000;
             Hp = 5000;
-            Stamina = 100;
             IsNew = true;
         }
 
@@ -56,7 +54,6 @@ namespace network.common.data.models
 
         [Key("hp")] public int Hp { get; set; }
 
-        [Key("stamina")] public int Stamina { get; set; }
 
         // 신규 계정 초기화가 완전히 저장될 때까지 true로 유지한다.
         // 서버가 중간 실패 후 재시도할 수 있어야 하므로 Redis 직렬화 대상이다.
