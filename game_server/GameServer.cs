@@ -82,7 +82,7 @@ internal partial class GameServer(
         {
             readinessState.MarkNotReady("startup_failed");
             logger.LogError(ex, "Game server starting failed.");
-            await CleanupAfterStartupFailureAsync();
+            await StopAsync(CancellationToken.None);
             throw;
         }
     }
@@ -93,19 +93,6 @@ internal partial class GameServer(
         _nodeAdvertiser = new GameServerNodeAdvertiser(
             gameServerRegistry, nodeOptions, () => matchRuntimes.ActiveIds().Count, logger);
         await _nodeAdvertiser.StartAsync();
-    }
-
-    // 정리 중 오류가 나더라도 최초 시작 오류를 호출자에게 전달한다.
-    private async Task CleanupAfterStartupFailureAsync()
-    {
-        try
-        {
-            await StopAsync(CancellationToken.None);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Game server cleanup after startup failure did not complete cleanly.");
-        }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
