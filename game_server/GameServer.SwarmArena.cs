@@ -19,18 +19,8 @@ internal partial class GameServer
     private static float SwarmArenaBasicRange => Config.SWARM_ORB_ATTACK_RANGE;
     private const float SwarmArenaBasicAttackIntervalSeconds = 1f;
     private const int SwarmArenaWeaponItemId = 107000010;
-    // 세 색(태양·파도·바람) 소환·시작·재건 풀 (#232).
-    private static readonly int[] SwarmStartingOrbPool = BuildSwarmSupplyOrbPool();
-
-    /// <summary>공급 차단 토글을 반영한 색 풀 — 소환·시작 지급·샌드박스 세트가 공유한다.</summary>
-    private static int[] BuildSwarmSupplyOrbPool()
-    {
-        var pool = new List<int>();
-        if (Config.SWARM_SUN_ORB_ENABLED) pool.Add(107000010);
-        if (Config.SWARM_WIND_ORB_ENABLED) pool.Add(107000020);
-        if (Config.SWARM_WAVE_ORB_ENABLED) pool.Add(107000030);
-        return pool.ToArray();
-    }
+    // 소환·시작 지급·재건에 동일한 공급 색 설정을 사용한다.
+    private static readonly int[] SwarmStartingOrbPool = OrbUpgradeService.CreateStartingOrbPool();
 
     // 플레이어 단위 지급: 매칭 단위 1회 지급은 지급 틱에 아직 접속 전인 사람을 영영 빈손으로 만든다 —
     // 늦게 합류해도 첫 등장 틱에 각자 1회 받는다 (상태는 Pacing.StartingOrbGrantedPlayers).
@@ -206,7 +196,7 @@ internal partial class GameServer
             // 잼 지갑 리셋 (#222 M3) — 세션이 매치를 넘어 살아있으므로 시작 지급 시점에 초기화.
             session.ResetJam();
             session.FreeSummonCharges = 0;
-            GrantSwarmStartingOrbs(matchingId, session.PlayerId.Value, session);
+            orbUpgrades.GrantStartingOrbs(matchingId, session.PlayerId.Value, session);
             matchRuntimes.GetRequired(matchingId).SummonStones.AddStones(session.PlayerId.Value, startingStones);
             session.SendSummonStoneState();
         }
@@ -216,7 +206,7 @@ internal partial class GameServer
             if (!matchRuntimes.GetRequired(matchingId).Swarm.Pacing.StartingOrbGrantedPlayers.Add((matchingId, bot.PlayerId)))
                 continue;
 
-            GrantSwarmStartingOrbs(matchingId, bot.PlayerId, session: null);
+            orbUpgrades.GrantStartingOrbs(matchingId, bot.PlayerId, session: null);
             matchRuntimes.GetRequired(matchingId).SummonStones.AddStones(bot.PlayerId, startingStones);
         }
 
@@ -2639,12 +2629,7 @@ internal partial class GameServer
 
     /// <summary>열 순서의 오브 목록 — 강화·철갑의 "가장 앞" 판정과 트레일 순번의 단일 출처.</summary>
     private List<InGameItemInfo> GetSwarmTrailOrbs(long matchingId, long playerId) =>
-        matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
-            .GetAllItems()
-            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
-            // uid 오름차순 = 열 순번·링 마스크·카드 대상의 단일 정렬 (통일)
-            .OrderBy(item => item.ItemUid)
-            .ToList();
+        matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs();
 
     /// <summary>
     ///     방어 강화(내구 2+) 오브 순번 마스크 — 클라 은백 링 표시용 (#226).
@@ -2827,14 +2812,14 @@ internal partial class GameServer
             // 자리를 잇는 셈이다 (개별 강화 카드는 퇴역).
             bool preferFamilyUpgrade = orbCount >= Config.SWARM_ORB_CAPACITY ||
                                        (orbCount >= 4 && Random.Shared.Next(3) == 0);
-            if (preferFamilyUpgrade && TryUpgradeSwarmFamilyForBot(matchingId, bot.PlayerId))
+            if (preferFamilyUpgrade && orbUpgrades.TryUpgradeForBot(matchingId, bot.PlayerId))
                 continue;
 
             int cardIndex = ChooseSwarmBotGrowthCard(
                 matchingId, bot, offer, orbCount, aliveSessions, aliveBots);
             if (cardIndex == SwarmGrowthCardEnhance)
             {
-                TryUpgradeSwarmFamilyForBot(matchingId, bot.PlayerId);
+                orbUpgrades.TryUpgradeForBot(matchingId, bot.PlayerId);
                 continue;
             }
             bool applied = ApplySwarmGrowthCard(matchingId, bot.PlayerId, cardIndex, offer, session: null);
@@ -3002,7 +2987,7 @@ internal partial class GameServer
                         session.GrantSwarmArenaOrb(offer.SpawnItemId);
                     else
                         inventory.TryAddItemWithCapacity(offer.SpawnItemId, Config.SWARM_ORB_CAPACITY, out _);
-                    SendSwarmFamilyLevels(matchingId, playerId, session);
+                    orbUpgrades.SendFamilyLevels(matchingId, playerId, session);
                     return true;
                 }
             case SwarmGrowthCardEnhance:

@@ -125,6 +125,7 @@ internal static class Program
             sp.GetRequiredService<GameSessionRegistry>(), sp.GetRequiredService<GameEventLogManager>(),
             sp.GetRequiredService<ILogger<BotEliminationService>>()));
         services.AddSingleton<MatchEnvironmentService>();
+        services.AddSingleton<OrbUpgradeService>();
         services.AddSingleton<MatchCountdownService>(sp => new MatchCountdownService(
             sp.GetRequiredService<MatchRuntimeStore>(), sp.GetRequiredService<MatchEntryFailureHandler>(),
             sp.GetRequiredService<ILogger<MatchCountdownService>>()));

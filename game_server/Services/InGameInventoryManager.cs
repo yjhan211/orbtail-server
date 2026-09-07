@@ -274,9 +274,17 @@ public class PlayerInGameInventory(long matchingId)
         return OrbData.TryGetActivePair(boardItemIds, out color, out pairTier);
     }
 
-    /// <summary>
-    ///     전체 아이템 목록
-    /// </summary>
+    /// <summary>보유 오브를 ItemUid 순으로 반환한다. 강화 대상과 월드 꼬리 순번이 이 순서를 공유한다.</summary>
+    internal List<InGameItemInfo> GetOrderedOrbs() =>
+        GetAllItems()
+            .Where(item => item.Count > 0 &&
+                (OrbData.TryGetColorAndTier(item.ItemId, out _, out int tier)
+                    ? tier > 0
+                    : OrbData.TryGetRecoveryTier(item.ItemId, out int recoveryTier) && recoveryTier > 0))
+            .OrderBy(item => item.ItemUid)
+            .ToList();
+
+    /// <summary>전체 아이템 목록.</summary>
     [MethodImpl(MethodImplOptions.Synchronized)]
     public List<InGameItemInfo> GetAllItems()
     {

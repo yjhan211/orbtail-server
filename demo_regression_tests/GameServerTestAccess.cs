@@ -11,6 +11,8 @@ internal static class GameServerTestAccess
     internal static MatchRuntimeStore GetMatchRuntimes(this GameServer server) =>
         Read<MatchRuntimeStore>(server);
 
+    internal static OrbUpgradeService GetOrbUpgrades(this GameServer server) => Read<OrbUpgradeService>(server);
+
     internal static GameEventLogManager GetEventLogs(this GameServer server) =>
         Read<GameEventLogManager>(server);
 
@@ -65,6 +67,8 @@ internal static class GameServerTestAccess
             matchCleanup: new MatchCleanupService(runtimes, sessions, logs, summaries, logger),
             botEliminations: new BotEliminationService(sessions, logs, logger),
             countdown: new MatchCountdownService(runtimes, entryFailure, logger),
+            orbUpgrades: new OrbUpgradeService(runtimes, logs, GameServerDevOptions.Disabled,
+                Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbUpgradeService>.Instance),
             environmentService: new MatchEnvironmentService(sessions, logs,
                 new MatchCleanupService(runtimes, sessions, logs, summaries, logger),
                 new BotEliminationService(sessions, logs, logger), GameServerDevOptions.Disabled,

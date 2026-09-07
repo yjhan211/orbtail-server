@@ -567,7 +567,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             "Network",
             "GameClientSession.OrbSummon.cs");
         string arena = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
-        string orbBoard = ReadNormalizedSource(root, "game_server", "GameServer.SwarmOrbBoard.cs");
+        string orbBoard = ReadNormalizedSource(root, "game_server", "Services", "OrbUpgradeService.cs");
 
         Assert.Contains("_handleSwarmGrowthPick", session);
         Assert.Contains("_handleSwarmOrbDecision", session);
@@ -670,10 +670,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                     "HandleSwarmGrowthPick",
                     BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
                 .CreateDelegate<Action<GameClientSession, long, int, int>>(Server);
-            _orbHandler = typeof(GameServer).GetMethod(
-                    "HandleSwarmOrbDecision",
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!
-                .CreateDelegate<Action<GameClientSession, long, int, long, long>>(Server);
+            _orbHandler = Server.GetOrbUpgrades().HandleDecision;
 
         }
 

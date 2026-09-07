@@ -128,7 +128,7 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             arenaTick,
-            "GrantSwarmStartingOrbs(matchingId, session.PlayerId.Value, session);",
+            "orbUpgrades.GrantStartingOrbs(matchingId, session.PlayerId.Value, session);",
             "session.SendSummonStoneState();",
             "SetupSwarmCutDummy(matchingId);",
             "session.TrySend(leavePacket);",
@@ -371,7 +371,7 @@ public sealed class SwarmArenaTickOrderTests
         string root = FindRepositoryRoot();
         string windBlade = ReadNormalizedSource(root, "game_server", "GameServer.SwarmWindBlade.cs");
         string crossfire = ReadNormalizedSource(root, "game_server", "GameServer.SwarmCrossfire.cs");
-        string orbBoard = ReadNormalizedSource(root, "game_server", "GameServer.SwarmOrbBoard.cs");
+        string orbBoard = ReadNormalizedSource(root, "game_server", "Services", "OrbUpgradeService.cs");
 
         Assert.DoesNotContain("_swarmWindBladeNextTickAtUtc", windBlade);
         Assert.DoesNotContain("_swarmWindBladeEngagedAtUtc", windBlade);
