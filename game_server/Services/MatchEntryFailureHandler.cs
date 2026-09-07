@@ -58,8 +58,8 @@ internal sealed class MatchEntryFailureHandler(
                     affectedSession.TryMarkMatchingLifecycleHandledExternally();
 
                 IReadOnlyCollection<long> affectedPlayerIds =
-                    session.MatchHumanPlayerIds.Count > 0
-                        ? session.MatchHumanPlayerIds.ToArray()
+                    runtime.Composition is { } composition
+                        ? composition.HumanPlayerIds.ToArray()
                         : [playerId];
                 var lifecyclePublications = new List<Action>();
                 PrepareEntryFailureLifecycle(matchingId, affectedPlayerIds, lifecyclePublications);

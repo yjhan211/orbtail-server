@@ -46,7 +46,6 @@ public partial class GameClientSession : SessionBase
     private int _matchingLifecycleHandledExternally;
     private int _matchingLifecycleTerminalReported;
     private int _matchingReservationReleaseReported;
-    private long[] _matchHumanPlayerIds = [];
 
     private readonly PlayerInteractionState _interactions = new();
     private const int PendingOrbDraftCost = 0;
@@ -276,7 +275,6 @@ public partial class GameClientSession : SessionBase
             {
                 throw new InvalidOperationException($"Player {playerId} is not part of match {matchingId}.");
             }
-            Volatile.Write(ref _matchHumanPlayerIds, composition.HumanPlayerIds.ToArray());
 
             using (var rosterPacket = PacketMaker.G_TO_C_MATCH_ROSTER(matchingId, composition.PlayerRoster.ToList()))
             {
@@ -475,7 +473,6 @@ public partial class GameClientSession : SessionBase
         return protocolId == Protocol.C_TO_G_HEART_BEAT || protocolId == Protocol.C_TO_G_MOVE;
     }
 
-    internal IReadOnlyList<long> MatchHumanPlayerIds => Volatile.Read(ref _matchHumanPlayerIds);
 
     /// <summary>이 세션의 매치 종료 처리를 한 호출만 맡도록 한다. 입장 실패·퇴장·완료 경로가 공유한다.</summary>
     private bool TryBeginMatchEndHandling()

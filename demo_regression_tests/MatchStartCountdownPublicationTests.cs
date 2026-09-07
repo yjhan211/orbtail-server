@@ -242,8 +242,10 @@ public sealed class MatchStartCountdownPublicationTests
         }
     }
 
-    [Fact]
-    public void EntryFailure_WinnerDisconnectsRosterOnce_AndLateCallsFallBackToSelf()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EntryFailure_WinnerDisconnectsRosterOnce_AndLateCallsFallBackToSelf(bool hasComposition)
     {
         const long matchingId = 71_001;
         GameServer server = CreateEntryTestServer();
@@ -253,6 +255,11 @@ public sealed class MatchStartCountdownPublicationTests
                 .Single(field => field.FieldType == typeof(GameSessionRegistry))
                 .GetValue(server));
         MatchRuntime runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);
+        if (hasComposition)
+        {
+            runtime.Composition = new MatchComposition(
+                [101, 202, 303], [404], default, new Dictionary<long, Cell>(), []);
+        }
 
         var anchor = new RecordingEntrySession();
         SetSessionIdentity(server.GetMatchRuntimes(), anchor, playerId: 101, matchingId);
@@ -273,12 +280,23 @@ public sealed class MatchStartCountdownPublicationTests
         Assert.Empty(sessionRegistry.GetByMatch(matchingId));
         ConcurrentDictionary<long, string> playerSubjects = GetTerminalSubjects(server)[matchingId];
         Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[101]);
+        if (hasComposition)
+        {
+            // 아직 접속하지 않은 사람도 정리하고 봇은 포함하지 않는다.
+            Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[202]);
+            Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[303]);
+            Assert.False(playerSubjects.ContainsKey(404));
+        }
+        else
+        {
+            Assert.Single(playerSubjects);
+        }
 
         // 이미 끝난 매치에 늦게 온 호출은 자기 세션의 entry_failed만 발행하고 끊기는 반복하지 않는다.
         InvokeEntryAbort(server, other);
         InvokeEntryAbort(server, other);
 
-        Assert.Equal(2, playerSubjects.Count);
+        Assert.Equal(hasComposition ? 3 : 2, playerSubjects.Count);
         Assert.Equal(MatchingLifecycleSubjects.PlayerEntryFailed, playerSubjects[202]);
         Assert.Equal(1, other.FatalCount);
         Assert.Equal(1, other.DisconnectCount);
