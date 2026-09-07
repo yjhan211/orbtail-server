@@ -44,7 +44,7 @@ public partial class GameServer(
 
     private MatchRuntimeStore? _matchRuntimes;
     private MatchEntryFailureHandler? _entryFailureHandler;
-    private readonly InteractableStateManager _interactableStateManager = new();
+
 
     // 봇과 몬스터
 
@@ -586,7 +586,7 @@ public partial class GameServer(
                 OnClientSessionLeave,
                 RegisterClientSession,
                 GetSessionsByInstance,
-                _interactableStateManager,
+
                     EventLogs,
                 _matchSummaryFileStore,
                 MatchRuntimes,

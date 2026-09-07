@@ -519,7 +519,6 @@ public sealed class MatchStartCountdownPublicationTests
                 static (_, _) => [],
                 null!,
                 null!,
-                null!,
                 new MatchRuntimeStore(NullLogger.Instance),
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },

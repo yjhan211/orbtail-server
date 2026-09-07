@@ -80,7 +80,7 @@ public sealed class MovementPacketQueueTests
             static _ => { },
             static (_, _) => null,
             static (_, _) => [],
-            new InteractableStateManager(),
+
             TestGameEventLogs.Create(),
             new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
             new MatchRuntimeStore(NullLogger.Instance),

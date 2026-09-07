@@ -9,9 +9,9 @@ namespace game_server.services;
 ///     탐색 상태를 변경하는 기능은 없으므로 매치별 복사본이나 종료 시 정리가 필요하지 않다.
 ///     호출마다 새 DTO를 반환해 응답 수정이 다른 세션에 영향을 주지 않게 한다.
 /// </summary>
-public sealed class InteractableStateManager
+public static class InteractableStateManager
 {
-    public List<InteractableObjectState> GetAreaObjectStates(AreaType areaType) =>
+    public static List<InteractableObjectState> GetAreaObjectStates(AreaType areaType) =>
         GameInteractableData.GetAll()
             .Where(interactable => interactable.ZoneId == (int)areaType &&
                                    interactable.Actions.Any(action => action.State == 0))

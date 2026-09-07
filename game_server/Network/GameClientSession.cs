@@ -32,7 +32,7 @@ public partial class GameClientSession : SessionBase
     private readonly List<PeriodicBuffEntry> _activePeriodicBuffs = new();
     private readonly List<int> _activeBuffIds = new();
     private readonly Func<MapId, long, List<GameClientSession>> _getSessionsByInstance;
-    private readonly InteractableStateManager _interactableStateManager;
+
     private readonly Func<string?, Task<GameHandoffContext?>> _consumeGameHandoffTicket;
     private readonly Action<GameClientSession> _onLeaveCallback;
     /// <summary>매치별 잠금·수명 색인 (#331) — 핸들러 직렬화·터미널 게이트·종료 정리의 단일 원천.</summary>
@@ -136,7 +136,7 @@ public partial class GameClientSession : SessionBase
         Action<GameClientSession> onLeaveCallback,
         Func<long, GameClientSession, Action?> registerSessionCallback,
         Func<MapId, long, List<GameClientSession>> getSessionsByInstance,
-        InteractableStateManager interactableStateManager,
+
         GameEventLogManager gameEventLogManager,
         MatchSummaryFileStore matchSummaryFileStore,
         MatchRuntimeStore matchRuntimes,
@@ -157,7 +157,7 @@ public partial class GameClientSession : SessionBase
         _consumeGameHandoffTicket = consumeGameHandoffTicket;
         _registerSessionCallback = registerSessionCallback;
         _getSessionsByInstance = getSessionsByInstance;
-        _interactableStateManager = interactableStateManager;
+
         _gameEventLogManager = gameEventLogManager;
         _matchSummaryFileStore = matchSummaryFileStore;
         _matchRuntimes = matchRuntimes;

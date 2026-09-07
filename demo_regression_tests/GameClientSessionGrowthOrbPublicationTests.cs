@@ -680,7 +680,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         public GameServer Server { get; }
         public MatchRuntimeStore Store { get; }
         public GameEventLogManager EventLog { get; }
-        public InteractableStateManager Interactables { get; } = new();
+
 
         public GameClientSession CreateSession(
             long matchingId,
@@ -703,7 +703,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 (_, instanceId) => _sessions
                     .Where(candidate => candidate.MatchingId == instanceId)
                     .ToList(),
-                Interactables,
+
                 EventLog,
                 new MatchSummaryFileStore(_summaryDirectory),
                 Store,

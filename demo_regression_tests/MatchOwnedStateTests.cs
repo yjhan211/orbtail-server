@@ -139,11 +139,11 @@ public sealed class MatchOwnedStateTests
     [Fact]
     public void InteractableSnapshots_AreIndependentCopiesOfSharedDefinitions()
     {
-        var manager = new InteractableStateManager();
+
         var definition = GameInteractableData.GetAll().First(item => item.Actions.Any(action => action.State == 0));
         var area = (AreaType)definition.ZoneId;
-        var first = manager.GetAreaObjectStates(area);
-        var second = manager.GetAreaObjectStates(area);
+        var first = InteractableStateManager.GetAreaObjectStates(area);
+        var second = InteractableStateManager.GetAreaObjectStates(area);
         Assert.NotEmpty(first);
         Assert.Equal(first.Count, second.Count);
         first[0].Actions[0].IsExplored = true;

@@ -281,7 +281,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         public ConcurrentQueue<string> Timeline { get; } = new();
         public ConcurrentDictionary<long, int> LifecycleDispatchCounts { get; } = new();
         public TimelineLogger Logger { get; }
-        public InteractableStateManager Interactables { get; } = new();
+
         public GameEventLogManager EventLog { get; } = TestGameEventLogs.Create();
         public MatchSummaryFileStore Summaries => new(_summaryDirectory);
         public long? ThrowPrepareCompletionForPlayerId { get; set; }
@@ -307,7 +307,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                 connection,
                 Logger,
                 _sessions,
-                Interactables,
+
                 EventLog,
                 Summaries,
                 Store,
@@ -421,7 +421,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             TcpConnection connection,
             ILogger logger,
             List<GameClientSession> sessions,
-            InteractableStateManager interactables,
+
             GameEventLogManager eventLog,
             MatchSummaryFileStore summaries,
             MatchRuntimeStore matchRuntimes,
@@ -436,7 +436,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                 (_, matchingId) => sessions
                     .Where(session => session.MatchingId == matchingId)
                     .ToList(),
-                interactables,
+
                 eventLog,
                 summaries,
                 matchRuntimes,
