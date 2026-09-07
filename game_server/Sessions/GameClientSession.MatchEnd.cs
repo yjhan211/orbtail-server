@@ -9,7 +9,7 @@ using network.common.data;
 using network.common.data.models;
 using network.packets;
 
-namespace game_server.network;
+namespace game_server.sessions;
 
 /// <summary>
 ///     매치 종료 파이프라인: 탈락 처리(ProcessElimination) → 생존자 승리 판정(TryEndMatch) → 결과 전송(SendGameResult)·요약 영속·Redis 정리, 로스터 상태 브로드캐스트.

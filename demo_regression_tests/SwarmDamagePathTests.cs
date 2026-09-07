@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using game_server;
+using game_server.sessions;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
@@ -79,9 +80,9 @@ public class SwarmDamagePathTests
         // 게이트가 실제로 물려 있어야 한다: 목록 전송·탐색 시작·봇 자동 탐색·소비품 드롭 네 곳.
         foreach (var (file, marker) in new[]
                  {
-                     (Path.Combine("game_server", "Network", "GameClientSession.Movement.cs"),
+                     (Path.Combine("game_server", "Sessions", "GameClientSession.Movement.cs"),
                          "private void SendInteractableList"),
-                     (Path.Combine("game_server", "Network", "GameClientSession.RngCollect.cs"),
+                     (Path.Combine("game_server", "Sessions", "GameClientSession.RngCollect.cs"),
                          "private Task HandleSwarmRngCollectStart"),
                      (Path.Combine("game_server", "Services", "Bots", "BotDecisionService.cs"),
                          "public void ProcessSwarmBotExplores"),
@@ -146,7 +147,7 @@ public class SwarmDamagePathTests
     {
         string root = FindRepositoryRoot();
         string combat = File.ReadAllText(
-            Path.Combine(root, "game_server", "Network", "GameClientSession.PlayerState.cs"));
+            Path.Combine(root, "game_server", "Sessions", "GameClientSession.PlayerState.cs"));
 
         // 수치 계약: 1초 준비 · 1초 틱당 최대 HP 5% · 가해·피해 뒤 3초 진입 잠금.
         Assert.Contains("SwarmSleepWarmupSeconds = 1d", combat);
@@ -157,7 +158,7 @@ public class SwarmDamagePathTests
 
         // 중단 경로는 이동 하나뿐이다.
         string movement = File.ReadAllText(
-            Path.Combine(root, "game_server", "Network", "GameClientSession.Movement.cs"));
+            Path.Combine(root, "game_server", "Sessions", "GameClientSession.Movement.cs"));
         Assert.Contains("BreakSwarmSleep()", movement);
 
         string arena = File.ReadAllText(

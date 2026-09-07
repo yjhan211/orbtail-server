@@ -1,10 +1,11 @@
-using game_server.services;
 using game_server.network;
-using network.common.data.models;
+using game_server.services;
+using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data;
 using network.common.data.helpers;
+using network.common.data.models;
 
 namespace demo_regression_tests;
 
@@ -124,7 +125,7 @@ public sealed class MatchOwnedStateTests
         Type[] components = [typeof(InGameInventoryManager), typeof(GroundItemManager),
             typeof(SummonStoneManager), typeof(MatchRosterManager), typeof(AreaClosureManager),
             typeof(EncounterRevealManager)];
-        foreach (Type owner in new[] { typeof(game_server.GameServer), typeof(game_server.network.GameClientSession) })
+        foreach (Type owner in new[] { typeof(game_server.GameServer), typeof(game_server.sessions.GameClientSession) })
         {
             var fields = owner.GetFields(System.Reflection.BindingFlags.Instance |
                                          System.Reflection.BindingFlags.Public |

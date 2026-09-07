@@ -3,6 +3,7 @@ using System.Reflection;
 using game_server;
 using game_server.network;
 using game_server.services;
+using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -72,7 +73,7 @@ public sealed class MatchStartCountdownPublicationTests
         string connection = ReadNormalizedSource(
             repositoryRoot,
             "game_server",
-            "Network",
+            "Sessions",
             "GameClientSession.Connection.cs");
         string startGate = ReadNormalizedSource(
             repositoryRoot,
@@ -332,7 +333,7 @@ public sealed class MatchStartCountdownPublicationTests
         string session = ReadNormalizedSource(
             repositoryRoot,
             "game_server",
-            "Network",
+            "Sessions",
             "GameClientSession.cs");
         string method = ReadMethodSlice(
             session,

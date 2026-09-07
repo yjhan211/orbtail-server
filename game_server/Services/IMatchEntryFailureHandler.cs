@@ -1,4 +1,4 @@
-using game_server.network;
+using game_server.sessions;
 
 namespace game_server.services;
 

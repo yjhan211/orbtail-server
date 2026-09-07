@@ -1,3 +1,4 @@
+using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -104,7 +105,7 @@ public partial class BotPlayerManager
                 bot.Corruption = Math.Max(0, bot.Corruption - corruptionRecovery);
                 // 하트는 앞줄 오브 HP도 만충으로 (#222 M4) — 사람과 같은 규칙.
                 if (claimedItem.ItemId == global::network.common.Config.HEART_GROUND_ITEM_ID)
-                    game_server.network.GameClientSession.SwarmHeartPickupCallback?.Invoke(
+                    game_server.sessions.GameClientSession.SwarmHeartPickupCallback?.Invoke(
                         matchingId, bot.PlayerId);
             }
             else if (!inventoryManager.TryAddItemWithCapacity(

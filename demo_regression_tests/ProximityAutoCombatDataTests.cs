@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text.Json;
 using game_server;
 using game_server.services;
+using game_server.sessions;
 using network.common.data;
 using network.common.data.helpers;
 
@@ -145,7 +146,7 @@ public class ProximityAutoCombatDataTests
         string gameServerSource = ReadNormalizedSource(
             repoRoot, "game_server", "Services", "MatchArenaService.cs");
         string sessionSource = ReadNormalizedSource(
-            repoRoot, "game_server", "Network", "GameClientSession.ProximityAutoCombat.cs");
+            repoRoot, "game_server", "Sessions", "GameClientSession.ProximityAutoCombat.cs");
         string mapSource = ReadMapManagerSources(repoRoot);
         string playerSource = ReadNormalizedSource(
             repoRoot, "client", "Assets", "Scripts", "Components", "Player", "Player.cs");

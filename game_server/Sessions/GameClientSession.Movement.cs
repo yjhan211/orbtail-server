@@ -9,7 +9,7 @@ using network.common.data.models;
 using network.infrastructure.redis;
 using network.packets;
 
-namespace game_server.network;
+namespace game_server.sessions;
 
 public partial class GameClientSession
 {

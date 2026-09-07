@@ -1,6 +1,7 @@
 using System.Reflection;
 using game_server;
 using game_server.services;
+using game_server.sessions;
 
 namespace demo_regression_tests;
 
@@ -40,7 +41,7 @@ internal static class GameServerTestAccess
         runtimes ??= new MatchRuntimeStore(logger,
             cleanupSteps:
             [
-                new("session runtime", game_server.network.GameClientSession.CleanupAbandonedMatchingRuntime),
+                new("session runtime", game_server.sessions.GameClientSession.CleanupAbandonedMatchingRuntime),
                 new("session index", sessions.RemoveMatch)
             ],
             afterCleanup: id => lifecycle.PrepareRedisCleanup(id).Invoke(),
@@ -73,7 +74,7 @@ internal static class GameServerTestAccess
         return new GameServer(
             configuration: new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
             logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServer>.Instance,
-            sessionLogger: Microsoft.Extensions.Logging.Abstractions.NullLogger<game_server.network.GameClientSession>.Instance,
+            sessionLogger: Microsoft.Extensions.Logging.Abstractions.NullLogger<game_server.sessions.GameClientSession>.Instance,
             matchingLifecycle: lifecycle,
             redisOperations: null!, networkService: null!, gameHandoffTicketService: null!,
             readinessState: new network.hosting.ServerReadinessState(),

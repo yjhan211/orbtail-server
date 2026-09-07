@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 using game_server;
-using game_server.network;
 using game_server.services;
+using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -14,7 +14,6 @@ using network.core;
 using network.gamehandoff;
 using network.helpers;
 using network.hosting;
-
 using network.packets;
 
 namespace demo_regression_tests;
@@ -720,21 +719,21 @@ public sealed class GameClientSessionItemCombinePublicationTests
     public void SourceScope_ActivatesOnlyCombineOuterHandler()
     {
         string root = FindRepositoryRoot();
-        string session = ReadNormalizedSource(root, "game_server", "Network", "GameClientSession.cs");
+        string session = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
         string combine = ReadNormalizedSource(
             root,
             "game_server",
-            "Network",
+            "Sessions",
             "GameClientSession.ItemCombine.cs");
         string orbSummon = ReadNormalizedSource(
             root,
             "game_server",
-            "Network",
+            "Sessions",
             "GameClientSession.OrbSummon.cs");
         string playerState = ReadNormalizedSource(
             root,
             "game_server",
-            "Network",
+            "Sessions",
             "GameClientSession.PlayerState.cs");
         string clientCombine = ReadNormalizedSource(
             root,

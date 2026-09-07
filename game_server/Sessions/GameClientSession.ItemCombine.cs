@@ -10,7 +10,7 @@ using network.common.data.models;
 using network.helpers;
 using network.packets;
 
-namespace game_server.network;
+namespace game_server.sessions;
 
 /// <summary>
 ///     사람 아이템 조합 (C_TO_G_COMBINE_ITEMS): 배틀아이템·오브 조합을 매치 잠금 안에서 판정하고

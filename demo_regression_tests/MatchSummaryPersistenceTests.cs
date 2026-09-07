@@ -3,12 +3,13 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using game_server;
 using game_server.services;
+using game_server.sessions;
 using MessagePack;
-using network.common.data.models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
+using network.common.data.models;
 using network.hosting;
 using network.infrastructure.messaging;
 using network.infrastructure.redis;
@@ -128,7 +129,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         string sessionSource = ReadNormalizedSource(
             root,
             "game_server",
-            "Network",
+            "Sessions",
             "GameClientSession.MatchEnd.cs");
         string normalFinalization = ReadMethodSlice(
             sessionSource,

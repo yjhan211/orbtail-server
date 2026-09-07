@@ -4,7 +4,7 @@ using network.common;
 using network.common.data;
 using network.packets;
 
-namespace game_server.network;
+namespace game_server.sessions;
 
 public partial class GameClientSession
 {

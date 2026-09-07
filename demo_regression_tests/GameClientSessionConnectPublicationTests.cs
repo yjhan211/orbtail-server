@@ -1,6 +1,6 @@
 using System.Reflection;
-using game_server.network;
 using game_server.services;
+using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -198,9 +198,9 @@ public sealed class GameClientSessionConnectPublicationTests
     {
         string root = FindRepositoryRoot();
         string sessionSource = File.ReadAllText(
-            Path.Combine(root, "game_server", "Network", "GameClientSession.cs"));
+            Path.Combine(root, "game_server", "Sessions", "GameClientSession.cs"));
         string connectionSource = File.ReadAllText(
-            Path.Combine(root, "game_server", "Network", "GameClientSession.Connection.cs"));
+            Path.Combine(root, "game_server", "Sessions", "GameClientSession.Connection.cs"));
 
         Assert.Contains("ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CONNECT", sessionSource);
         Assert.Contains("async bytes => await HandleMessage<C_TO_G_CONNECT>(bytes, HandleConnect)", sessionSource);
@@ -345,7 +345,7 @@ public sealed class GameClientSessionConnectPublicationTests
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory != null)
         {
-            if (Directory.Exists(Path.Combine(directory.FullName, "game_server", "Network")))
+            if (Directory.Exists(Path.Combine(directory.FullName, "game_server", "Sessions")))
                 return directory.FullName;
             directory = directory.Parent;
         }

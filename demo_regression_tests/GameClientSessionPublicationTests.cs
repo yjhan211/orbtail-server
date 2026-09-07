@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using game_server.network;
 using game_server.services;
+using game_server.sessions;
 using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
@@ -522,16 +523,16 @@ public sealed class GameClientSessionPublicationTests
     public void SourceScope_ActivatesOnlySelectedPlayerOuterHandlers()
     {
         string root = FindRepositoryRoot();
-        string session = ReadNormalizedSource(root, "game_server", "Network", "GameClientSession.cs");
-        string rng = ReadNormalizedSource(root, "game_server", "Network", "GameClientSession.RngCollect.cs");
-        string ground = ReadNormalizedSource(root, "game_server", "Network", "GameClientSession.GroundItem.cs");
+        string session = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
+        string rng = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.RngCollect.cs");
+        string ground = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.GroundItem.cs");
         string orbSummon = ReadNormalizedSource(
             root,
             "game_server",
-            "Network",
+            "Sessions",
             "GameClientSession.OrbSummon.cs");
-        string doors = ReadNormalizedSource(root, "game_server", "Network", "GameClientSession.Doors.cs");
-        string connection = ReadNormalizedSource(root, "game_server", "Network", "GameClientSession.Connection.cs");
+        string doors = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Doors.cs");
+        string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Connection.cs");
         string arena = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
         string bots = ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotDecisionService.cs");
         string botPickup = ReadNormalizedSource(

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using game_server.sessions;
 using Xunit;
 
 namespace demo_regression_tests;
@@ -57,7 +58,7 @@ public class ProtocolWiringGuardTests
     {
         string root = FindRepositoryRoot();
         string clientSource = ReadAllSources(Path.Combine(root, "client", "Assets", "Scripts"));
-        string serverSource = ReadAllSources(Path.Combine(root, "game_server", "Network"));
+        string serverSource = ReadAllSources(Path.Combine(root, "game_server", "Sessions"));
 
         var sent = new SortedSet<string>();
         foreach (Match m in Regex.Matches(clientSource, @"Protocol\.(C_TO_G_[A-Z0-9_]+)"))
@@ -81,7 +82,7 @@ public class ProtocolWiringGuardTests
     public void MatchRosterIsSentBeforeAreaAndJoinSnapshots()
     {
         string root = FindRepositoryRoot();
-        string source = File.ReadAllText(Path.Combine(root, "game_server", "Network", "GameClientSession.Connection.cs"));
+        string source = File.ReadAllText(Path.Combine(root, "game_server", "Sessions", "GameClientSession.Connection.cs"));
         int roster = source.IndexOf("PacketMaker.G_TO_C_MATCH_ROSTER", StringComparison.Ordinal);
         int area = source.IndexOf("CurrentArea = GameMapData.GetCurrentArea", StringComparison.Ordinal);
         int join = source.IndexOf("await BroadcastPlayerJoin()", StringComparison.Ordinal);
@@ -96,9 +97,9 @@ public class ProtocolWiringGuardTests
         string root = FindRepositoryRoot();
         string gameServer = File.ReadAllText(Path.Combine(root, "game_server", "GameServer.cs"));
         string gameSession = File.ReadAllText(Path.Combine(
-            root, "game_server", "Network", "GameClientSession.cs"));
+            root, "game_server", "Sessions", "GameClientSession.cs"));
         string gameConnection = File.ReadAllText(Path.Combine(
-            root, "game_server", "Network", "GameClientSession.Connection.cs"));
+            root, "game_server", "Sessions", "GameClientSession.Connection.cs"));
 
         Assert.DoesNotContain("HeartbeatCheckIntervalSeconds", gameServer);
         Assert.DoesNotContain("StartHeartbeatChecker", gameServer);

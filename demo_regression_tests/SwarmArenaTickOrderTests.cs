@@ -1,3 +1,4 @@
+using game_server.sessions;
 namespace demo_regression_tests;
 
 public sealed class SwarmArenaTickOrderTests
@@ -170,11 +171,11 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string playerState = ReadNormalizedSource(
-            root, "game_server", "Network", "GameClientSession.PlayerState.cs");
+            root, "game_server", "Sessions", "GameClientSession.PlayerState.cs");
         string sessionCombat = ReadNormalizedSource(
-            root, "game_server", "Network", "GameClientSession.ProximityAutoCombat.cs");
+            root, "game_server", "Sessions", "GameClientSession.ProximityAutoCombat.cs");
         string sessionMatchEnd = ReadNormalizedSource(
-            root, "game_server", "Network", "GameClientSession.MatchEnd.cs");
+            root, "game_server", "Sessions", "GameClientSession.MatchEnd.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string proximity = ReadNormalizedSource(
             root, "game_server", "Services", "OrbVisualStatePublisher.cs");

@@ -9,7 +9,7 @@ using network.common.data;
 using network.common.data.models;
 using network.packets;
 
-namespace game_server.network;
+namespace game_server.sessions;
 
 /// <summary>
 ///     RNG 채집 2단계 흐름 (#134):

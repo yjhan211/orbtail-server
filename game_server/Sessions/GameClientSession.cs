@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using game_server.network;
 using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -10,7 +11,7 @@ using network.gamehandoff;
 using network.infrastructure.redis;
 using network.packets;
 
-namespace game_server.network;
+namespace game_server.sessions;
 
 /// <summary>
 ///     GameServer 인계 뒤의 TCP 클라이언트 연결 하나. 프로토콜 검증과 연결별 상태를 소유하고, 매치 공유 상태는

@@ -5,7 +5,7 @@ using network.common.data;
 using network.common.data.models;
 using network.packets;
 
-namespace game_server.network;
+namespace game_server.sessions;
 
 /// <summary>
 ///     플레이어 상태 파셜: C_TO_G_PLAYER_STATE(수면·휴식 요청)·스웜 수면 회복 틱·인게임 아이템

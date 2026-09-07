@@ -1,4 +1,4 @@
-using game_server.network;
+using game_server.sessions;
 using MessagePack;
 using network.common;
 using network.common.data.models;
