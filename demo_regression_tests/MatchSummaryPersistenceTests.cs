@@ -129,11 +129,11 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         string sessionSource = ReadNormalizedSource(
             root,
             "game_server",
-            "Sessions",
-            "GameClientSession.MatchEnd.cs");
+            "Services",
+            "MatchResultService.cs");
         string normalFinalization = ReadMethodSlice(
             sessionSource,
-            "private void SendGameResult(",
+            "public void SendGameResult(",
             "private void PublishTerminalResult(");
         string terminalPublication = ReadMethodSlice(
             sessionSource,

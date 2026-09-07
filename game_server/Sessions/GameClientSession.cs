@@ -51,7 +51,7 @@ public partial class GameClientSession : SessionBase
     private readonly IMatchEntryFailureHandler _entryFailureHandler;
     private readonly Func<bool> _isServerStopping;
     private readonly GameEventLogManager _gameEventLogManager;
-    private readonly MatchSummaryFileStore _matchSummaryFileStore;
+    private readonly MatchResultService _matchResults;
     /// <summary>성장 카드 픽 — 매치 잠금 안에서 부르는 GameServer 인스턴스 위임.</summary>
     private readonly Action<GameClientSession, long, int, int> _handleSwarmGrowthPick;
     /// <summary>6칸 빌드 결정 — 매치 잠금 안에서 부르는 GameServer 인스턴스 위임.</summary>
@@ -138,7 +138,7 @@ public partial class GameClientSession : SessionBase
         Func<MapId, long, List<GameClientSession>> getSessionsByInstance,
 
         GameEventLogManager gameEventLogManager,
-        MatchSummaryFileStore matchSummaryFileStore,
+        MatchResultService matchResults,
         MatchRuntimeStore matchRuntimes,
         Action<GameClientSession, long, int, int> handleSwarmGrowthPick,
         Action<GameClientSession, long, int, long, long> handleSwarmOrbDecision,
@@ -157,7 +157,7 @@ public partial class GameClientSession : SessionBase
         _getSessionsByInstance = getSessionsByInstance;
 
         _gameEventLogManager = gameEventLogManager;
-        _matchSummaryFileStore = matchSummaryFileStore;
+        _matchResults = matchResults;
         _matchRuntimes = matchRuntimes;
         _devOptions = devOptions;
         _movementPacketQueue = new MovementPacketQueue(() => Connection.IsAcceptingMessages, movementTimeProvider);

@@ -780,7 +780,8 @@ public sealed class GameClientSessionPublicationTests
                     .ToList(),
 
                 eventLog,
-                summaries,
+                new MatchResultService(matchRuntimes, eventLog, summaries, GameServerDevOptions.Disabled,
+                    (_, id) => sessions.Where(session => session.MatchingId == id).ToList(), NullLogger.Instance),
                 matchRuntimes,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },

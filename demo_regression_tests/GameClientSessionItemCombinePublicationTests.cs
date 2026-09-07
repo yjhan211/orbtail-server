@@ -916,7 +916,10 @@ public sealed class GameClientSessionItemCombinePublicationTests
                     .ToList(),
 
                 EventLog,
-                new MatchSummaryFileStore(_summaryDirectory),
+                new MatchResultService(Store, EventLog, new MatchSummaryFileStore(_summaryDirectory),
+                    GameServerDevOptions.Disabled,
+                    (_, id) => _sessions.Where(session => session.MatchingId == id).ToList(),
+                    NullLogger.Instance),
                 Store,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },

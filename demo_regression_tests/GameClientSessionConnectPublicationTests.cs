@@ -385,7 +385,9 @@ public sealed class GameClientSessionConnectPublicationTests
                 static (_, _) => [],
 
                 TestGameEventLogs.Create(),
-                new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
+                new MatchResultService(Store, TestGameEventLogs.Create(),
+                    new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
+                    GameServerDevOptions.Disabled, static (_, _) => [], NullLogger.Instance),
                 Store,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },

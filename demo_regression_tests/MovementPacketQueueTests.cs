@@ -72,6 +72,8 @@ public sealed class MovementPacketQueueTests
         var flags = BindingFlags.Static | BindingFlags.NonPublic;
         var active = (int)typeof(TcpConnection).GetField("StateActive", flags)!.GetRawConstantValue()!;
         typeof(TcpConnection).GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(connection, active);
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var logs = TestGameEventLogs.Create();
         var session = new GameClientSession(
             connection,
             NullLogger.Instance,
@@ -81,9 +83,11 @@ public sealed class MovementPacketQueueTests
             static (_, _) => null,
             static (_, _) => [],
 
-            TestGameEventLogs.Create(),
-            new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
-            new MatchRuntimeStore(NullLogger.Instance),
+            logs,
+            new MatchResultService(store, logs,
+                new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
+                GameServerDevOptions.Disabled, static (_, _) => [], NullLogger.Instance),
+            store,
             static (_, _, _, _) => { },
             static (_, _, _, _, _) => { },
 

@@ -85,7 +85,7 @@ internal static class GameServerTestAccess
                 PublicHost = "127.0.0.1"
             },
             devOptions: GameServerDevOptions.Disabled,
-            sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, summaryFileStore: summaries,
+            sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, matchResults: new MatchResultService(runtimes, logs, summaries, GameServerDevOptions.Disabled, sessions.GetByInstance, logger),
             entryFailureHandler: entryFailure,
             sessionLeaveHandler: new GameSessionLeaveHandler(sessions, cleanup,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionLeaveHandler>.Instance),

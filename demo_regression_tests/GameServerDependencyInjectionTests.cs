@@ -32,7 +32,7 @@ public sealed class GameServerDependencyInjectionTests
         [
             typeof(game_server.services.MatchRuntimeStore),
             typeof(game_server.services.GameEventLogManager),
-            typeof(game_server.services.MatchSummaryFileStore),
+            typeof(game_server.services.MatchResultService),
             typeof(game_server.services.MatchEntryFailureHandler),
             typeof(game_server.services.MatchArenaService),
             typeof(game_server.services.BotDecisionService),
@@ -46,6 +46,22 @@ public sealed class GameServerDependencyInjectionTests
                 .Single(field => field.FieldType == type);
             Assert.Same(provider.GetRequiredService(type), field.GetValue(server));
         }
+    }
+    [Fact]
+    public void MatchResultServiceDoesNotOwnAConnectionOrDependOnGameServer()
+    {
+        using var provider = CreateProvider();
+        var results = provider.GetRequiredService<game_server.services.MatchResultService>();
+        Assert.Same(results, provider.GetRequiredService<game_server.services.MatchResultService>());
+
+        var fields = typeof(game_server.services.MatchResultService)
+            .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        Assert.DoesNotContain(fields, field => field.FieldType == typeof(GameServer));
+        Assert.DoesNotContain(fields, field => field.FieldType == typeof(game_server.sessions.GameClientSession));
+        Assert.DoesNotContain(
+            typeof(game_server.sessions.GameClientSession)
+                .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
+            field => field.FieldType == typeof(game_server.services.MatchSummaryFileStore));
     }
     internal static ServiceProvider CreateProvider(network.infrastructure.messaging.INatsClient? natsClient = null)
     {

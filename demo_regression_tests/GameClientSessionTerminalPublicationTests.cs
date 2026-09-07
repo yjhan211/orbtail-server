@@ -438,7 +438,8 @@ public sealed class GameClientSessionTerminalPublicationTests
                     .ToList(),
 
                 eventLog,
-                summaries,
+                new MatchResultService(matchRuntimes, eventLog, summaries, GameServerDevOptions.Disabled,
+                    (_, id) => sessions.Where(session => session.MatchingId == id).ToList(), logger),
                 matchRuntimes,
                 static (_, _, _, _) => { },
                 static (_, _, _, _, _) => { },

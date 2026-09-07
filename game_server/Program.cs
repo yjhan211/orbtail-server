@@ -122,6 +122,13 @@ internal static class Program
             sp.GetRequiredService<GameEventLogManager>(), sp.GetRequiredService<MatchSummaryFileStore>(),
             sp.GetRequiredService<ILogger<MatchCleanupService>>()));
         services.AddSingleton<GameSessionLeaveHandler>();
+        services.AddSingleton<MatchResultService>(sp => new MatchResultService(
+            sp.GetRequiredService<MatchRuntimeStore>(),
+            sp.GetRequiredService<GameEventLogManager>(),
+            sp.GetRequiredService<MatchSummaryFileStore>(),
+            sp.GetRequiredService<GameServerDevOptions>(),
+            sp.GetRequiredService<GameSessionRegistry>().GetByInstance,
+            sp.GetRequiredService<ILogger<MatchResultService>>()));
         services.AddSingleton<BotEliminationService>(sp => new BotEliminationService(
             sp.GetRequiredService<GameSessionRegistry>(), sp.GetRequiredService<GameEventLogManager>(),
             sp.GetRequiredService<ILogger<BotEliminationService>>()));
