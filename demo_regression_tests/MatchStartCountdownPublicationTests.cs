@@ -74,7 +74,7 @@ public sealed class MatchStartCountdownPublicationTests
             repositoryRoot,
             "game_server",
             "Sessions",
-            "GameClientSession.Connection.cs");
+            "GameClientSession.cs");
         string startGate = ReadNormalizedSource(
             repositoryRoot,
             "game_server",

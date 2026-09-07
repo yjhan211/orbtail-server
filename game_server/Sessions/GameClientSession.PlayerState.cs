@@ -426,4 +426,29 @@ public partial class GameClientSession
             PlayerId, areaType, correctedCell.X, correctedCell.Y);
     }
 
+
+    private bool IsRoundActionLocked(out string reason)
+    {
+        reason = string.Empty;
+
+        if (IsEliminated)
+        {
+            reason = "Eliminated players cannot act";
+            return true;
+        }
+
+        if (Volatile.Read(ref _isGameEnded))
+        {
+            reason = "Game has already ended";
+            return true;
+        }
+
+        if (MatchingId > 0 && !MatchStartGate.IsGameplayActive(MatchingId))
+        {
+            reason = "Waiting for match start";
+            return true;
+        }
+
+        return false; // 라운드 시스템 퇴역(#246)
+    }
 }

@@ -19,6 +19,25 @@ namespace demo_regression_tests;
 public sealed class GameClientSessionConnectPublicationTests
 {
     [Fact]
+    public void SessionSource_KeepsConnectionLifecycleTogetherAndSeparatesGameplayMethods()
+    {
+        string directory = Path.Combine(FindRepositoryRoot(), "game_server", "Sessions");
+        string main = File.ReadAllText(Path.Combine(directory, "GameClientSession.cs"));
+        Assert.False(File.Exists(Path.Combine(directory, "GameClientSession.Connection.cs")));
+        Assert.Contains("private async Task HandleConnect(", main);
+        Assert.Contains("public override void OnDisconnect()", main);
+        Assert.Contains("public override void OnRemoved()", main);
+        Assert.DoesNotContain("private Task HandleSocialAction(", main);
+        Assert.DoesNotContain("private void AdvanceOrbOrbit(", main);
+        Assert.DoesNotContain("internal Action? MarkGameEndedAndPrepareLifecyclePublication()", main);
+        Assert.DoesNotContain("private Task BroadcastPlayerJoin()", main);
+        Assert.Contains("private Task HandleSocialAction(", File.ReadAllText(Path.Combine(directory, "GameClientSession.Social.cs")));
+        Assert.Contains("private void AdvanceOrbOrbit(", File.ReadAllText(Path.Combine(directory, "GameClientSession.Movement.cs")));
+        Assert.Contains("internal Action? MarkGameEndedAndPrepareLifecyclePublication()", File.ReadAllText(Path.Combine(directory, "GameClientSession.MatchEnd.cs")));
+        Assert.Contains("private Task BroadcastPlayerJoin()", File.ReadAllText(Path.Combine(directory, "GameClientSession.Snapshots.cs")));
+    }
+
+    [Fact]
     public async Task SessionKeepsOriginalRuntime_AndRejectsItAfterCleanupEvenIfIdIsRecreated()
     {
         using var fixture = new ConnectFixture();
@@ -234,7 +253,7 @@ public sealed class GameClientSessionConnectPublicationTests
         string sessionSource = File.ReadAllText(
             Path.Combine(root, "game_server", "Sessions", "GameClientSession.cs"));
         string connectionSource = File.ReadAllText(
-            Path.Combine(root, "game_server", "Sessions", "GameClientSession.Connection.cs"));
+            Path.Combine(root, "game_server", "Sessions", "GameClientSession.cs"));
 
         Assert.Contains("ProtocolRouter.RegisterHandler(Protocol.C_TO_G_CONNECT", sessionSource);
         Assert.Contains("async bytes => await HandleMessage<C_TO_G_CONNECT>(bytes, HandleConnect)", sessionSource);

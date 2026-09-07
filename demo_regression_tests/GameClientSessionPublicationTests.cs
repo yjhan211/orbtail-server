@@ -532,7 +532,7 @@ public sealed class GameClientSessionPublicationTests
             "Sessions",
             "GameClientSession.OrbSummon.cs");
         string doors = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Doors.cs");
-        string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Connection.cs");
+        string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
         string arena = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
         string bots = ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotDecisionService.cs");
         string botPickup = ReadNormalizedSource(
@@ -553,7 +553,8 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
         Assert.Equal(1, CountOccurrences(doors, "RunUnderMatch("));
-        Assert.DoesNotContain("RunUnderMatch(", connection);
+        Assert.DoesNotContain("RunUnderMatch(", ReadMethodSlice(connection,
+            "private async Task HandleConnect(", "private void RunUnderLiveMatch("));
         Assert.DoesNotContain("RunUnderMatch", arena);
         Assert.DoesNotContain("RunUnderMatch", bots);
         Assert.DoesNotContain("RunUnderMatch", botPickup);

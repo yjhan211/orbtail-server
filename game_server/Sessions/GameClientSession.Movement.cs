@@ -377,4 +377,20 @@ public partial class GameClientSession
             objects.Count, areaType, PlayerId, MatchingId);
     }
 
+
+    /// <summary>
+    ///     오브 궤도 위상 (#232): 이동할 때 돌고 멈추면 선다 — 검증 이동 거리를 적산한다.
+    ///     서버 전투가 오브별 자리(SwarmOrbOrbit)를 계산하는 근거이자, G_TO_C_MOVE로 클라에 보내는 보정값.
+    /// </summary>
+    public float OrbOrbitPhaseDegrees =>
+        _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(PlayerId ?? 0L);
+
+    /// <summary>검증된 이동만큼 궤도를 돌린다 (텔레포트급 점프는 SwarmOrbOrbit이 무시한다).</summary>
+    private void AdvanceOrbOrbit(Vector3f from, Vector3f to)
+    {
+        float dx = to.X - from.X;
+        float dy = to.Y - from.Y;
+        _orbOrbitPhaseDegrees = SwarmOrbOrbit.AdvancePhase(
+            OrbOrbitPhaseDegrees, MathF.Sqrt(dx * dx + dy * dy));
+    }
 }
