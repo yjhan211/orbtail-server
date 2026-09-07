@@ -60,6 +60,44 @@ public sealed class GameServerShutdownTests
         Assert.Same(stopping, server.StopAsync(CancellationToken.None));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task TickShutdownFailureStillReachesNatsClose(bool synchronousFailure)
+    {
+        var nats = new BlockingCloseClient();
+        using var provider = GameServerDependencyInjectionTests.CreateProvider(nats);
+        var server = provider.GetRequiredService<GameServer>();
+        var ticks = provider.GetRequiredService<game_server.services.GameServerTickService>();
+        typeof(game_server.services.GameServerTickService)
+            .GetField("_matchTimer", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(ticks, new FailingTimer(synchronousFailure));
+        Task stopping = server.StopAsync(CancellationToken.None);
+        try
+        {
+            await nats.CloseStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.False(stopping.IsCompleted);
+            Assert.Equal(1, nats.CloseCount);
+        }
+        finally
+        {
+            nats.Completion.TrySetResult();
+        }
+        await stopping.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    private sealed class FailingTimer(bool synchronousFailure) : ITimer
+    {
+        public bool Change(TimeSpan dueTime, TimeSpan period) => throw new NotSupportedException();
+        public void Dispose() { }
+        public ValueTask DisposeAsync()
+        {
+            if (synchronousFailure)
+                throw new InvalidOperationException("timer disposal failed before returning a task");
+            return new ValueTask(Task.FromException(new InvalidOperationException("timer disposal failed")));
+        }
+    }
+
     private sealed class BlockingCloseClient : INatsClient
     {
         private int _closeCount;

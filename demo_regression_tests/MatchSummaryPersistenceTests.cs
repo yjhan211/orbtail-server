@@ -539,8 +539,8 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         string shutdown = ReadMethodSlice(
             serverSource,
             "private async Task StopCoreAsync(",
-            "private async Task RunShutdownStageAsync(");
-        int timerDisposal = Find(shutdown, "\"timers\");");
+            "private void InitializeServices(");
+        int timerDisposal = Find(shutdown, "await tickService.StopAsync();");
         int redisCleanupDrain = Find(shutdown, "matchingLifecycle.DrainAsync()");
         int natsClose = Find(shutdown, "matchingLifecycle.CloseAsync();");
         Assert.True(timerDisposal < redisCleanupDrain);

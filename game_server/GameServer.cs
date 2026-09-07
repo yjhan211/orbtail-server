@@ -105,54 +105,82 @@ internal partial class GameServer(
 
     private async Task StopCoreAsync()
     {
-        // Publish the stopping state before taking the session snapshot. Sessions accepted at
-        // this boundary follow the same reservation-release policy in OnDisconnect.
         Volatile.Write(ref _stopping, 1);
         readinessState.MarkNotReady("stopping");
         logger.LogInformation("Game server stopping...");
 
-        // 새 배정을 먼저 막는다 — 이 뒤로 발급되는 ticket은 다른 노드를 가리킨다.
         if (_nodeAdvertiser != null)
-            await RunShutdownStageAsync(_nodeAdvertiser.StopAcceptingAsync(), "node registry draining");
+        {
+            try
+            {
+                await _nodeAdvertiser.StopAcceptingAsync();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Game server node draining failed.");
+            }
+        }
 
-        // 서버 셧다운 시 모든 세션을 서버 주도 종료로 마킹 → released terminal로 reservation 해제
         foreach (var session in sessions.SnapshotAll())
+        {
             session.MarkServerInitiatedDisconnect();
+        }
 
-        // Host cancellation must not skip later cleanup stages. Log slow stages at a fixed
-        // threshold, but keep dependencies alive until the stage actually quiesces.
-        await RunShutdownStageAsync(
-            networkService.StopAsync(CancellationToken.None),
-            "network connections");
+        try
+        {
+            await networkService.StopAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Game server network shutdown failed.");
+        }
 
-        await RunShutdownStageAsync(tickService.StopAsync(), "timers");
+        try
+        {
+            await tickService.StopAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Game server tick shutdown failed.");
+        }
 
-        await RunShutdownStageAsync(
-            matchingLifecycle.DrainAsync(),
-            "matching Redis cleanup");
+        try
+        {
+            await matchingLifecycle.DrainAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Game server matching Redis cleanup failed.");
+        }
 
         if (_nodeAdvertiser != null)
         {
-            await RunShutdownStageAsync(_nodeAdvertiser.RemoveAsync(), "node registry removal");
-            await _nodeAdvertiser.DisposeAsync();
-            _nodeAdvertiser = null;
+            try
+            {
+                await _nodeAdvertiser.RemoveAsync();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Game server node registry removal failed.");
+            }
+
+            try
+            {
+                await _nodeAdvertiser.DisposeAsync();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Game server node advertiser disposal failed.");
+            }
+            finally
+            {
+                _nodeAdvertiser = null;
+            }
         }
 
         await matchingLifecycle.CloseAsync();
 
         logger.LogInformation("Game server stopped.");
-    }
-
-    private async Task RunShutdownStageAsync(Task operation, string stage)
-    {
-        try
-        {
-            await operation;
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Shutdown stage failed: Stage={Stage}", stage);
-        }
     }
 
     private void InitializeServices()
