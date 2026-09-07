@@ -362,12 +362,7 @@ public partial class GameClientSession : SessionBase
 
             if (registered)
             {
-                if (ReportEntryFailureOnce())
-                {
-                    return;
-                }
-                MarkServerInitiatedDisconnect();
-                Connection.Disconnect();
+                HandleEntryFailureOnce();
                 return;
             }
             MarkServerInitiatedDisconnect();
@@ -488,29 +483,28 @@ public partial class GameClientSession : SessionBase
 
     /// <summary>
     /// 입장 실패 처리를 한 호출만 맡는다. 다른 종료 처리가 선점했다면 중복 처리하지 않는다.
+    /// 실패 처리 중 예외가 나면 로그를 남기고 이 연결을 직접 종료한다.
     /// </summary>
-    /// <returns>처리가 불필요하거나 다른 호출이 맡았으면 true. 실패 처리 중 예외가 나서 호출자가 직접 연결을 끊어야 하면 false.</returns>
-    private bool ReportEntryFailureOnce()
+    private void HandleEntryFailureOnce()
     {
         if (Volatile.Read(ref _entryCompleted) != 0 ||
             !PlayerId.HasValue ||
             MatchingId <= 0)
-            return true;
+            return;
         if (Interlocked.CompareExchange(ref _entryFailureReported, 1, 0) != 0)
-            return true;
+            return;
 
         if (!TryBeginMatchingLifecycleTerminal())
         {
             // 실제 처리를 맡지 않았으므로 입장 실패 플래그는 돌려놓는다.
             // 다른 종료 처리가 실패해 선점을 풀면 다음 호출에서 다시 시도할 수 있다.
             Volatile.Write(ref _entryFailureReported, 0);
-            return true;
+            return;
         }
 
         try
         {
             _entryFailureHandler.Handle(this);
-            return true;
         }
         catch (Exception ex)
         {
@@ -522,7 +516,17 @@ public partial class GameClientSession : SessionBase
                 "Failed to report game entry failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
                 PlayerId,
                 MatchingId);
-            return false;
+            MarkServerInitiatedDisconnect();
+            try
+            {
+                Connection.Disconnect();
+            }
+            catch (Exception disconnectException)
+            {
+                Logger.LogError(disconnectException,
+                    "Failed to close connection after entry failure: PlayerId={PlayerId}, MatchingId={MatchingId}",
+                    PlayerId, MatchingId);
+            }
         }
     }
 
@@ -626,7 +630,7 @@ public partial class GameClientSession : SessionBase
         }
         else if (Volatile.Read(ref _entryCompleted) == 0)
         {
-            ReportEntryFailureOnce();
+            HandleEntryFailureOnce();
         }
         else if (Volatile.Read(ref _isServerInitiatedDisconnect) || _isServerStopping())
         {

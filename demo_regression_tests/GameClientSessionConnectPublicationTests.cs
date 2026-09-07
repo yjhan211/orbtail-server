@@ -248,7 +248,7 @@ public sealed class GameClientSessionConnectPublicationTests
     }
 
     [Fact]
-    public void ThrowingEntryAbortHook_ReleasesOnlyItsReservations_ForDisconnectRetry()
+    public void ThrowingEntryAbortHook_ClosesConnectionAndRetriesThroughDisconnect()
     {
         const long matchingId = 74_006;
         int hookCalls = 0;
@@ -263,9 +263,10 @@ public sealed class GameClientSessionConnectPublicationTests
                     throw new InvalidOperationException("deferred abort unavailable");
             });
 
-        Assert.False(ReportEntryFailure(session));
-        Assert.Equal(0, GetIntField(session, "_entryFailureReported"));
-        Assert.Equal(0, GetIntField(session, "_matchingLifecycleTerminalReported"));
+        HandleEntryFailure(session);
+        Assert.True(fixture.Connection.IsReleased);
+        // 내부 Disconnect가 OnDisconnect를 호출해 이미 한 번 재시도했다.
+        Assert.Equal(2, Volatile.Read(ref hookCalls));
 
         session.OnDisconnect();
 
@@ -282,15 +283,15 @@ public sealed class GameClientSessionConnectPublicationTests
         var session = fixture.CreateSession(74_007, 8_106, _ => true, _ => hookCalls++);
         SetIntField(session, "_matchingLifecycleTerminalReported", 1);
 
-        Assert.True(ReportEntryFailure(session));
+        HandleEntryFailure(session);
         Assert.Equal(0, hookCalls);
         Assert.Equal(0, GetIntField(session, "_entryFailureReported"));
         Assert.Equal(1, GetIntField(session, "_matchingLifecycleTerminalReported"));
 
         // 선점한 다른 종료 경로가 실패하여 자기 플래그를 반납한 상황.
         SetIntField(session, "_matchingLifecycleTerminalReported", 0);
-        Assert.True(ReportEntryFailure(session));
-        Assert.True(ReportEntryFailure(session));
+        HandleEntryFailure(session);
+        HandleEntryFailure(session);
         Assert.Equal(1, hookCalls);
     }
 
@@ -305,7 +306,7 @@ public sealed class GameClientSessionConnectPublicationTests
             current.OnDisconnect();
         });
 
-        Assert.True(ReportEntryFailure(session));
+        HandleEntryFailure(session);
         Assert.Equal(1, hookCalls);
     }
 
@@ -345,7 +346,7 @@ public sealed class GameClientSessionConnectPublicationTests
                     authentication < publication);
 
         int registeredFailure = connectionSource.IndexOf("if (registered)", publication, StringComparison.Ordinal);
-        int deferredAbort = connectionSource.IndexOf("ReportEntryFailureOnce()", registeredFailure, StringComparison.Ordinal);
+        int deferredAbort = connectionSource.IndexOf("HandleEntryFailureOnce()", registeredFailure, StringComparison.Ordinal);
         int earlyFailureResponse = connectionSource.IndexOf(
             "SendConnectResult(false, ErrorCode.GAME_ENTRY_FAILED",
             deferredAbort,
@@ -455,10 +456,10 @@ public sealed class GameClientSessionConnectPublicationTests
             session,
             [true, ErrorCode.SUCCESS, 0L, null]));
 
-    private static bool ReportEntryFailure(GameClientSession session) =>
-        Assert.IsType<bool>(typeof(GameClientSession).GetMethod(
-            "ReportEntryFailureOnce",
-            BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, null));
+    private static void HandleEntryFailure(GameClientSession session) =>
+        typeof(GameClientSession).GetMethod(
+            "HandleEntryFailureOnce",
+            BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, null);
 
     private static (Protocol Protocol, long PlayerId, G_TO_C_CONNECT_RESULT Body) DeserializeConnectResult(Packet packet)
     {
