@@ -49,7 +49,7 @@ public partial class GameClientSession
     /// <summary>서버가 승인한 현재 공간 정보를 복사한다. PlayerInfo·Redis 데이터는 건드리지 않는다.</summary>
     internal GameObjectInfo CaptureGameObjectInfo()
     {
-        var position = _lastValidatedPosition
+        var position = LastValidatedPosition
             ?? throw new InvalidOperationException("Cannot publish a player before its spawn is initialized.");
         var cell = _lastValidCell ?? WorldPositionToCell(position);
         return new GameObjectInfo(ObjectType.PLAYER, PlayerId!.Value, CurrentMapId, MatchingId, cell)

@@ -35,13 +35,13 @@ public partial class GameClientSession
 
     private Task ProcessGroundItemPickup(C_TO_G_GROUND_ITEM_PICKUP msg)
     {
-        if (!PlayerId.HasValue || IsEliminated || IsGameEnded || _lastValidatedPosition == null)
+        if (!PlayerId.HasValue || IsEliminated || IsGameEnded || LastValidatedPosition == null)
         {
             SendGroundItemPickupResult(msg.GroundItemUid, 0, false, false, ErrorCode.INVALID_GAME_STATE);
             return Task.CompletedTask;
         }
 
-        var position = _lastValidatedPosition;
+        var position = LastValidatedPosition;
         var pickup = GroundItemPickupService.TryPickup(
             Match, PlayerId.Value, CurrentArea,
             position, Health, msg.GroundItemUid);
@@ -203,9 +203,9 @@ public partial class GameClientSession
     }
     internal void DropAllInventoryAtCurrentPosition()
     {
-        if (!PlayerId.HasValue || _lastValidatedPosition == null || CurrentArea == AreaType.None) return;
+        if (!PlayerId.HasValue || LastValidatedPosition == null || CurrentArea == AreaType.None) return;
 
-        var position = _lastValidatedPosition;
+        var position = LastValidatedPosition;
         var drop = EliminationInventoryDropper.DropAll(
             Match.Inventory,
             Match.GroundItems,

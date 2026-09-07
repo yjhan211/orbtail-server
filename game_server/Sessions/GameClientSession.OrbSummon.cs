@@ -51,7 +51,7 @@ public partial class GameClientSession
         // 상자 시간 등급 (#222 M3): 개전 후 80초/160초를 넘기면 같은 색의 T2/T3가 나온다.
         int draftItemId = OrbInventoryService.GetDraftItem(choiceIndex, GetSwarmDraftTier());
         // 열쇠 (#222 M4): 충전이 있으면 이번 소환 비용을 0으로 — 성공 시 1 소비.
-        int draftCost = _pendingOrbDraftCost;
+        int draftCost = PendingOrbDraftCost;
         bool useFreeSummon = FreeSummonCharges > 0 && draftCost > 0;
         if (useFreeSummon)
             draftCost = 0;

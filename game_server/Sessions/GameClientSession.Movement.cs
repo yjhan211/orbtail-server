@@ -87,7 +87,7 @@ public partial class GameClientSession
             float deltaTime = GetServerReceiptDeltaSeconds(receiptTimestamp);
 
             var validation = _movementValidation.ValidatePosition(
-                PlayerId.Value, CurrentMapId, _lastValidatedPosition, _lastValidCell,
+                PlayerId.Value, CurrentMapId, LastValidatedPosition, _lastValidCell,
                 msg.Position, msg.Velocity, deltaTime);
             var validatedPosition = validation.Position;
             var validatedVelocity = validation.Velocity;
@@ -100,8 +100,8 @@ public partial class GameClientSession
             // 3. Area 변경 처리 (퇴장 조건 통과한 경우만)
             long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-            var previousCell = _lastValidatedPosition != null
-                ? WorldPositionToCell(_lastValidatedPosition)
+            var previousCell = LastValidatedPosition != null
+                ? WorldPositionToCell(LastValidatedPosition)
                 : currentCell;
             var blockedCell = _movementValidation.GetBlockedTransitionCell(
                 PlayerId.Value, CurrentArea, newArea, previousCell, currentCell, Doors);
@@ -117,10 +117,10 @@ public partial class GameClientSession
             if (_condition.IsSleeping)
                 BreakSwarmSleep();
             // 오브 궤도 (#232): 검증된 이동 거리만큼 돈다 — 멈추면 이동 패킷이 없으니 저절로 선다.
-            if (_lastValidatedPosition != null)
-                AdvanceOrbOrbit(_lastValidatedPosition, validatedPosition);
+            if (LastValidatedPosition != null)
+                AdvanceOrbOrbit(LastValidatedPosition, validatedPosition);
             _lastValidCell = validation.ValidCell;
-            _lastValidatedPosition = validatedPosition;
+            LastValidatedPosition = validatedPosition;
             _lastValidatedVelocity = validatedVelocity;
             Match.GroundItems.ReleaseSourcePickupBlocks(PlayerId.Value,
                 newArea == AreaType.None ? CurrentArea : newArea, validatedPosition.X, validatedPosition.Y);
@@ -221,7 +221,7 @@ public partial class GameClientSession
 
     private void SendMovementCorrection(uint inputSequence)
     {
-        if (!PlayerId.HasValue || _lastValidatedPosition is not { } position)
+        if (!PlayerId.HasValue || LastValidatedPosition is not { } position)
             return;
 
         var cell = _lastValidCell ?? WorldPositionToCell(position);
@@ -388,7 +388,7 @@ public partial class GameClientSession
     ///     오브 궤도 위상 (#232): 이동할 때 돌고 멈추면 선다 — 검증 이동 거리를 적산한다.
     ///     서버 전투가 오브별 자리(SwarmOrbOrbit)를 계산하는 근거이자, G_TO_C_MOVE로 클라에 보내는 보정값.
     /// </summary>
-    public float OrbOrbitPhaseDegrees =>
+    private float OrbOrbitPhaseDegrees =>
         _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(PlayerId ?? 0L);
 
     /// <summary>검증된 이동만큼 궤도를 돌린다 (텔레포트급 점프는 SwarmOrbOrbit이 무시한다).</summary>
