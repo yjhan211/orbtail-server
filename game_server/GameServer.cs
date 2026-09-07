@@ -1,7 +1,6 @@
 using System.Net;
 using game_server.network;
 using game_server.services;
-using MessagePack;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -194,58 +193,6 @@ internal partial class GameServer(
         networkService.Listen(IPAddress.Any, port);
         logger.LogInformation("Listening on port {Port}", port);
     }
-
-    /// <summary>
-    ///     #134 — 봇 RNG progress 시작을 같은 영역 인간 세션에 G_TO_C_EXPLORE_START broadcast.
-    ///     클라가 봇 캐릭터를 EXPLORE_1 상태로 설정 → 탐색 애니메이션 + 사운드 자동 재생.
-    /// </summary>
-    private void BroadcastBotExploreStarts(long matchingId,
-        List<(long botId, int interactId, AreaType area)> starts,
-        List<GameClientSession> activeSessions)
-    {
-        foreach (var (botId, interactId, area) in starts)
-        {
-            var sameAreaSessions = activeSessions
-                .Where(s => s.PlayerId.HasValue && s.MatchingId == matchingId && s.CurrentArea == area)
-                .ToList();
-            if (sameAreaSessions.Count == 0) continue;
-
-            var msg = new G_TO_C_EXPLORE_START { PlayerId = botId, InteractId = interactId };
-            var body = MessagePackSerializer.Serialize(msg);
-            foreach (var session in sameAreaSessions)
-            {
-                using var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_START, session.PlayerId!.Value);
-                packet.SetBody(body);
-                session.TrySend(packet);
-            }
-        }
-    }
-
-    /// <summary>
-    ///     #134 — 봇 RNG progress 종료 broadcast. 클라가 봇 캐릭터 EXPLORE_1 → IDLE 복귀.
-    /// </summary>
-    private void BroadcastBotExploreEnds(long matchingId,
-        List<(long botId, AreaType area)> ends, List<GameClientSession> activeSessions)
-    {
-        foreach (var (botId, area) in ends)
-        {
-            var sameAreaSessions = activeSessions
-                .Where(s => s.PlayerId.HasValue && s.MatchingId == matchingId && s.CurrentArea == area)
-                .ToList();
-            if (sameAreaSessions.Count == 0) continue;
-
-            var msg = new G_TO_C_EXPLORE_END { PlayerId = botId };
-            var body = MessagePackSerializer.Serialize(msg);
-            foreach (var session in sameAreaSessions)
-            {
-                using var packet = Packet.Create((int)Protocol.G_TO_C_EXPLORE_END, session.PlayerId!.Value);
-                packet.SetBody(body);
-                session.TrySend(packet);
-            }
-        }
-    }
-
-    // ===== 구역 폐쇄 틱 =====
 
     private void StartGameTicks()
     {

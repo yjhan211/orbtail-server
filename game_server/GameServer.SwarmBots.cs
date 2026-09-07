@@ -174,8 +174,8 @@ internal partial class GameServer
             bot.SwarmExploreSpotId = spot.Id;
             bot.SwarmExploreStartedAtUtc = DateTime.UtcNow;
             bot.HoldForChannel(TimeSpan.FromSeconds(SwarmBotExploreChannelSeconds + 0.5d));
-            BroadcastBotExploreStarts(
-                matchingId, [(bot.PlayerId, spot.Id, bot.CurrentArea)], sessions);
+            BotExploreNotifier.NotifyStarted(
+                matchingId, bot.PlayerId, spot.Id, bot.CurrentArea, sessions);
         }
     }
 
@@ -184,7 +184,7 @@ internal partial class GameServer
         int spotId = bot.SwarmExploreSpotId;
         bot.SwarmExploreSpotId = 0;
         bot.SwarmExploreStartedAtUtc = DateTime.MinValue;
-        BroadcastBotExploreEnds(matchingId, [(bot.PlayerId, bot.CurrentArea)], sessions);
+        BotExploreNotifier.NotifyEnded(matchingId, bot.PlayerId, bot.CurrentArea, sessions);
         if (spotId <= 0)
             return;
 
