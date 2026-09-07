@@ -37,7 +37,6 @@ public partial class GameClientSession : SessionBase
     private readonly ItemCombinationService _itemCombinations;
     private readonly MovementValidationService _movementValidation;
 
-
     private int _entryCompleted;
     private int _entryFailureReported;
     private int _entryDisconnectIssued;
@@ -120,7 +119,7 @@ public partial class GameClientSession : SessionBase
 
     internal bool IsGameEnded => Volatile.Read(ref _isGameEnded);
     internal int CurrentHealth => Health;
-    public bool IsEliminated => PlayerMatchStatus == PlayerMatchStatus.ELIMINATED || PlayerMatchStatus == PlayerMatchStatus.SPECTATING;
+    public bool IsEliminated => PlayerMatchStatus is PlayerMatchStatus.ELIMINATED or PlayerMatchStatus.SPECTATING;
 
     private int Health { get => _condition.Health; set => _condition.Health = value; }
 
@@ -163,6 +162,18 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_SOCIAL_ACTION>(bytes, HandleSocialAction));
     }
 
+    protected override bool ShouldSkipLogging(Protocol protocolId)
+    {
+        return protocolId == Protocol.C_TO_G_HEART_BEAT || protocolId == Protocol.C_TO_G_MOVE;
+    }
+
+    private Task HandleHeartbeat()
+    {
+        using var packet = PacketMaker.G_TO_C_HEART_BEAT(DateTime.UtcNow);
+        TrySend(packet);
+        return Task.CompletedTask;
+    }
+
     private static void InitializeWithMatchLock(MatchRuntime runtime, Action initialize)
     {
         using var scope = runtime.Enter();
@@ -201,6 +212,11 @@ public partial class GameClientSession : SessionBase
 
         handlingTask.GetAwaiter().GetResult();
         return Task.CompletedTask;
+    }
+
+    public void MarkDisconnectedByServer()
+    {
+        Volatile.Write(ref _disconnectedByServer, true);
     }
 
     private void EnsureConnectionActive()
@@ -315,13 +331,9 @@ public partial class GameClientSession : SessionBase
             SendGroundItemSnapshot(CurrentArea);
             SendInGameInventoryList();
             SendSummonStoneState();
-
-            var initialInventory = Match.Inventory.GetPlayerInventory(PlayerId.Value);
-            _gameEventLogManager.LogInitialInventory(MatchingId, PlayerId.Value, initialInventory.GetAllItems(),
-                initialInventory.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString());
-
             SendDoorStateList();
             SendPressureFieldState();
+            LogInitialInventory();
 
             await BroadcastPlayerJoin();
             EnsureConnectionActive();
@@ -345,7 +357,9 @@ public partial class GameClientSession : SessionBase
             });
 
             if (!_trySendConnectSuccessResponse(successResponse))
+            {
                 throw new IOException("Failed to queue the game entry response.");
+            }
             Logger.LogInformation("Client connected successfully: PlayerId={PlayerId}", PlayerId);
         }
         catch (Exception ex)
@@ -368,7 +382,13 @@ public partial class GameClientSession : SessionBase
         }
     }
 
-    /// <summary>입장 실패 응답을 송신 큐에 넣고 전송 후 연결 종료를 예약한다.</summary>
+    private void LogInitialInventory()
+    {
+        var inventory = Match.Inventory.GetPlayerInventory(PlayerId!.Value);
+        _gameEventLogManager.LogOrbBoardTransition(MatchingId, PlayerId.Value, inventory.GetAllItems(),
+            inventory.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
+    }
+
     private void SendConnectFailure(ErrorCode errorCode)
     {
         using var packet = CreateConnectResultPacket(false, errorCode);
@@ -419,7 +439,9 @@ public partial class GameClientSession : SessionBase
     {
         var snapshot = MatchStartGate.GetSnapshot(matchingId);
         if (!snapshot.IsKnown)
+        {
             return;
+        }
 
         using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN, PlayerId ?? 0);
         packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
@@ -433,7 +455,10 @@ public partial class GameClientSession : SessionBase
 
     private Task HandleMatchStartReady()
     {
-        if (!PlayerId.HasValue || MatchingId <= 0) return Task.CompletedTask;
+        if (!PlayerId.HasValue || MatchingId <= 0)
+        {
+            return Task.CompletedTask;
+        }
         return RunWithMatchLock(() =>
         {
             MatchStartGate.MarkHumanReady(MatchingId, PlayerId.Value);
@@ -442,53 +467,31 @@ public partial class GameClientSession : SessionBase
         }, () => { });
     }
 
-    private Task HandleHeartbeat()
-    {
-        // Send the heartbeat response.
-        using var packet = PacketMaker.G_TO_C_HEART_BEAT(DateTime.UtcNow);
-        TrySend(packet);
-
-        return Task.CompletedTask;
-    }
-
-    /// <summary>
-    ///     세션의 TCP 연결을 즉시 종료한다.
-    /// </summary>
     private void ForceDisconnect()
     {
         Logger.LogWarning("Force disconnecting PlayerId={PlayerId}", PlayerId);
         Connection.Disconnect();
     }
 
-    protected override bool ShouldSkipLogging(Protocol protocolId)
-    {
-        return protocolId == Protocol.C_TO_G_HEART_BEAT || protocolId == Protocol.C_TO_G_MOVE;
-    }
-
-
-    /// <summary>이 세션의 매치 종료 처리를 한 호출만 맡도록 한다. 입장 실패·퇴장·완료 경로가 공유한다.</summary>
     private bool TryBeginMatchEndHandling()
     {
         return Interlocked.CompareExchange(ref _matchingLifecycleTerminalReported, 1, 0) == 0;
     }
 
-    /// <summary>
-    /// 입장 실패 처리를 한 호출만 맡는다. 다른 종료 처리가 선점했다면 중복 처리하지 않는다.
-    /// 실패 처리 중 예외가 나면 로그를 남기고 이 연결을 직접 종료한다.
-    /// </summary>
     private void HandleEntryFailureOnce()
     {
-        if (Volatile.Read(ref _entryCompleted) != 0 ||
-            !PlayerId.HasValue ||
-            MatchingId <= 0)
+        if (Volatile.Read(ref _entryCompleted) != 0 || !PlayerId.HasValue || MatchingId <= 0)
+        {
             return;
+        }
+
         if (Interlocked.CompareExchange(ref _entryFailureReported, 1, 0) != 0)
+        {
             return;
+        }
 
         if (!TryBeginMatchEndHandling())
         {
-            // 실제 처리를 맡지 않았으므로 입장 실패 플래그는 돌려놓는다.
-            // 다른 종료 처리가 실패해 선점을 풀면 다음 호출에서 다시 시도할 수 있다.
             Volatile.Write(ref _entryFailureReported, 0);
             return;
         }
@@ -499,7 +502,6 @@ public partial class GameClientSession : SessionBase
         }
         catch (Exception ex)
         {
-            // 여기까지 왔다면 두 플래그 모두 이 호출이 선점했다.
             Volatile.Write(ref _matchingLifecycleTerminalReported, 0);
             Volatile.Write(ref _entryFailureReported, 0);
             Logger.LogError(
@@ -523,8 +525,7 @@ public partial class GameClientSession : SessionBase
 
     private void ReleaseMatchingReservationOnce()
     {
-        if (!PlayerId.HasValue || MatchingId <= 0 ||
-            Interlocked.CompareExchange(ref _matchingReservationReleaseReported, 1, 0) != 0)
+        if (!PlayerId.HasValue || MatchingId <= 0 || Interlocked.CompareExchange(ref _matchingReservationReleaseReported, 1, 0) != 0)
         {
             return;
         }
@@ -569,7 +570,10 @@ public partial class GameClientSession : SessionBase
     /// <summary>외부에서 매치 종료 처리를 맡았으므로 연결 종료 시 중복 처리하지 않도록 표시한다.</summary>
     internal void MarkMatchEndHandledExternally()
     {
-        if (!TryBeginMatchEndHandling()) return;
+        if (!TryBeginMatchEndHandling())
+        {
+            return;
+        }
 
         Volatile.Write(ref _matchingLifecycleHandledExternally, 1);
     }
@@ -640,11 +644,6 @@ public partial class GameClientSession : SessionBase
             }
         }
         Logger.LogInformation("GameSession disconnected: PlayerId={PlayerId}", PlayerId);
-    }
-
-    public void MarkDisconnectedByServer()
-    {
-        Volatile.Write(ref _disconnectedByServer, true);
     }
 
     private List<GameClientSession> GetSessionsInArea(List<GameClientSession> allSessions, AreaType area, bool excludeSelf = true)
