@@ -36,7 +36,8 @@ internal static class TestGameSessionServices
         redis ??= new InMemoryRedisOperations();
         return new GameMatchEntryService(redis, store, options, logger,
             new GameEntryTicketService(new RedisGameEntryTicketStore(redis), new GameEntryTicketOptions()),
-            new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" });
+            new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
+            new GameEventLogManager(id => store.Get(id)?.EventLog));
     }
 
     public static MatchEliminationService CreateEliminationService(

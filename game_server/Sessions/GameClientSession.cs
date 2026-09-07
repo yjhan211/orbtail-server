@@ -353,28 +353,6 @@ public partial class GameClientSession : SessionBase
 
             RunUnderLiveMatch(runtime, () =>
             {
-                foreach (var bot in Match.Bots.GetBots(matchingId))
-                    if (!bot.IsEliminated)
-                    {
-                        _gameEventLogManager.SetPlayerArea(matchingId, bot.PlayerId, bot.CurrentArea.ToString());
-                    }
-
-                // Initialize match-scoped area state once; manager implementations are idempotent.
-                int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
-                _gameEventLogManager.BeginMatch(matchingId, matchSeed);
-                foreach (var bot in Match.Bots.GetBots(matchingId))
-                {
-                    _gameEventLogManager.LogSpawnAssignment(
-                        matchingId,
-                        bot.PlayerId,
-                        matchSeed,
-                        MatchSpawnData.GetAnchorIndex(bot.Cell),
-                        bot.Cell.X,
-                        bot.Cell.Y,
-                        bot.CurrentArea.ToString(),
-                        isBot: true);
-                }
-
                 MatchStartGate.RegisterHumanPlayer(
                     matchingId, PlayerId.Value, composition.HumanPlayerIds.Count, composition.Mode);
             });

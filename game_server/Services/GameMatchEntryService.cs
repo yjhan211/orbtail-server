@@ -13,6 +13,7 @@ namespace game_server.services;
 /// <summary>
 ///     현재 노드에 발급된 입장 티켓을 소비하고 manifest·예약·준비 마커를 확인해 사람·봇·스폰 구성을 매치당 한 번 확정한다.
 ///     Redis 조회는 매치별 비동기 초기화 잠금으로 직렬화하고, 메모리 상태 반영은 매치 잠금 안에서 처리한다.
+///     최초 구성 확정 시 매치 로그를 시작하고 봇의 초기 구역·스폰을 기록한다.
 ///     연결 인증과 초기 패킷 전송은 세션이 맡으며, 이 서비스는 특정 연결을 보관하지 않는다.
 /// </summary>
 internal sealed class GameMatchEntryService(
@@ -21,7 +22,8 @@ internal sealed class GameMatchEntryService(
     GameServerDevOptions _devOptions,
     ILogger Logger,
     GameEntryTicketService ticketService,
-    GameServerNodeOptions nodeOptions)
+    GameServerNodeOptions nodeOptions,
+    GameEventLogManager eventLogs)
 {
     private readonly GameEntryStateCommitter _entryStateCommitter = new(RedisOperations, Logger);
 
@@ -84,6 +86,7 @@ internal sealed class GameMatchEntryService(
                     runtime.Roster.RegisterEntry(new RosterEntry { PlayerId = participant.PlayerId });
                     runtime.Roster.UpdatePlayerProfile(participant.PlayerId, participant.Name, participant.WearItemIdList);
                 }
+                InitializeMatchLog(runtime);
                 runtime.Composition = composition;
             });
             return composition;
@@ -96,6 +99,23 @@ internal sealed class GameMatchEntryService(
         finally
         {
             initializationLock.Release();
+        }
+    }
+
+    /// <summary>최초 구성 확정 시 매치 잠금 안에서만 호출한다. 사람별 입장에서는 다시 실행하지 않는다.</summary>
+    private void InitializeMatchLog(MatchRuntime runtime)
+    {
+        long matchingId = runtime.MatchingId;
+        int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
+        eventLogs.BeginMatch(matchingId, matchSeed);
+        foreach (var bot in runtime.Bots.GetBots(matchingId))
+        {
+            if (!bot.IsEliminated)
+                eventLogs.SetPlayerArea(matchingId, bot.PlayerId, bot.CurrentArea.ToString());
+            eventLogs.LogSpawnAssignment(
+                matchingId, bot.PlayerId, matchSeed,
+                MatchSpawnData.GetAnchorIndex(bot.Cell), bot.Cell.X, bot.Cell.Y,
+                bot.CurrentArea.ToString(), isBot: true);
         }
     }
 
