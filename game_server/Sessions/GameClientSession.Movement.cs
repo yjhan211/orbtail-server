@@ -90,13 +90,12 @@ public partial class GameClientSession
             RecordMoveInputSequence(msg.InputSequence);
             float deltaTime = GetServerReceiptDeltaSeconds(receiptTimestamp);
 
-            var validatedPosition = ValidatePosition(
-                msg.Position,
-                msg.Velocity,
-                deltaTime,
-                out bool requiresClientCorrection,
-                out var validatedVelocity);
-
+            var validation = _movementValidation.ValidatePosition(
+                PlayerId.Value, CurrentMapId, _lastValidatedPosition, _lastValidCell,
+                msg.Position, msg.Velocity, deltaTime);
+            var validatedPosition = validation.Position;
+            var validatedVelocity = validation.Velocity;
+            bool requiresClientCorrection = validation.RequiresCorrection;
             // 2. Area 변경 시 퇴장 조건 체크 (치팅 방지)
             var currentCell = WorldPositionToCell(validatedPosition);
             var newArea = GameMapData.GetStableCurrentArea(CurrentMapId, currentCell, CurrentArea);
@@ -105,34 +104,16 @@ public partial class GameClientSession
             // 3. Area 변경 처리 (퇴장 조건 통과한 경우만)
             long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-            // 셀이 어떤 영역에도 속하지 않으면 (영역 경계 바로 밖 등) CurrentArea를 None으로 덮어쓰지 않음
-            // — 일시적 None 상태에서 마커 클릭 시 IsAdjacent(None, X) = false로 INVALID_AREA 거절되는 문제 방지
-            if (newArea != CurrentArea && newArea != AreaType.None)
+            var previousCell = _lastValidatedPosition != null
+                ? WorldPositionToCell(_lastValidatedPosition)
+                : currentCell;
+            var blockedCell = _movementValidation.GetBlockedTransitionCell(
+                PlayerId.Value, CurrentArea, newArea, previousCell, currentCell, Doors);
+            if (blockedCell != null)
             {
-                // 이 전이를 관장하는 문 기준으로 잠김 체크 (클라이언트 IsAreaExitBlocked와 동일 판정).
-                // "영역의 가장 가까운 문" 휴리스틱은 열린 문과 잠긴 문이 공존하는 방에서
-                // 열린 문 통과까지 오차단한다 (예: 창고1의 열린 111 옆 잠긴 113).
-                var previousCell = _lastValidatedPosition != null
-                    ? WorldPositionToCell(_lastValidatedPosition)
-                    : currentCell;
-                var transitionDoor = GameDoorData.GetDoorForTransition(
-                    CurrentArea, newArea, previousCell, currentCell);
-                if (transitionDoor != null &&
-                    Doors?.IsDoorOpen(transitionDoor.DoorId) != true)
-                {
-                    Logger.LogWarning(
-                        "Player {PlayerId} blocked crossing {CurrentArea}→{NewArea} (locked door: {DoorId})",
-                        PlayerId, CurrentArea, newArea, transitionDoor.DoorId);
-
-                    // 문 소속 방에서 나가려던 경우 안쪽(door cell), 들어가려던 경우 바깥(fallback)으로 보정
-                    var blockedCell = transitionDoor.AreaType == CurrentArea
-                        ? new Cell((int)transitionDoor.PositionX, (int)transitionDoor.PositionY)
-                        : new Cell(transitionDoor.FallbackCellX, transitionDoor.FallbackCellY);
-                    SendAreaExitBlocked(newArea, blockedCell);
-                    return;
-                }
+                SendAreaExitBlocked(newArea, blockedCell);
+                return;
             }
-
             // 잠긴 문 검증이 끝난 뒤 위치를 게시한다. 폐쇄 구역도 문이 열려 있으면
             // 진입할 수 있으며, 체류 페널티는 ResourceTick에서 서버 권위로 적용한다.
             // #229 6단계: 이동 입력이 곧 수면 해제다 — 누워서 도망칠 수 없다.
@@ -142,6 +123,7 @@ public partial class GameClientSession
             // 오브 궤도 (#232): 검증된 이동 거리만큼 돈다 — 멈추면 이동 패킷이 없으니 저절로 선다.
             if (_lastValidatedPosition != null)
                 AdvanceOrbOrbit(_lastValidatedPosition, validatedPosition);
+            _lastValidCell = validation.ValidCell;
             _lastValidatedPosition = validatedPosition;
             _lastValidatedVelocity = validatedVelocity;
             _matchRuntimes.GetRequired(MatchingId).GroundItems.ReleaseSourcePickupBlocks(PlayerId.Value,
@@ -200,120 +182,6 @@ public partial class GameClientSession
             Logger.LogError(ex, $"HandleMove error for player {PlayerId}");
             SendErrorResponse(ErrorCode.SERVER_INTERNAL_ERROR, "이동 처리 오류");
         }
-    }
-
-    /// <summary>
-    ///     클라이언트 Position 검증 (치트 방지)
-    ///     정상이면 클라이언트 Position 사용, 비정상이면 서버 계산 Position 사용
-    /// </summary>
-    private Vector3f ValidatePosition(
-        Vector3f clientPos,
-        Vector3f velocity,
-        float deltaTime,
-        out bool requiresClientCorrection,
-        out Vector3f validatedVelocity)
-    {
-        requiresClientCorrection = false;
-        validatedVelocity = MovementValidationPolicy.ClampVelocity(velocity);
-
-        const float maxSpeed = MovementValidationPolicy.MaximumSpeedUnitsPerSecond;
-
-        // clientPos, velocity는 호출 전에 null 체크 완료
-
-        // Z값은 항상 0으로 고정
-        clientPos.Z = 0;
-
-        // 1. 속도 제한 체크
-        float speed = velocity.Magnitude();
-        if (speed > maxSpeed)
-        {
-            Logger.LogWarning("Player {PlayerId} 속도 초과: {Speed:F2} > {MaxSpeed}", PlayerId, speed, maxSpeed);
-            if (_lastValidatedPosition != null)
-            {
-                clientPos = new Vector3f(
-                    _lastValidatedPosition.X + validatedVelocity.X * deltaTime,
-                    _lastValidatedPosition.Y + validatedVelocity.Y * deltaTime,
-                    0
-                );
-                requiresClientCorrection = true;
-            }
-        }
-
-        // 2. 서버가 관측한 시간 안에 가능한 거리만 허용한다. 클라이언트 timestamp는
-        // 이 예산을 늘릴 수 없으며, 첫 이동도 서버가 세션에 저장한 스폰 위치에서 시작한다.
-        if (_lastValidatedPosition != null)
-        {
-            var delta = clientPos - _lastValidatedPosition;
-            float distance = delta.Magnitude();
-            float maxDistance = maxSpeed * deltaTime;
-
-            if (distance > maxDistance)
-            {
-                Logger.LogWarning(
-                    "Player {PlayerId} teleport detected: distance={Distance:F2}, maxAllowed={MaxDistance:F2}",
-                    PlayerId, distance, maxDistance);
-                var direction = delta.Normalized();
-                clientPos = new Vector3f(
-                    _lastValidatedPosition.X + direction.X * maxDistance,
-                    _lastValidatedPosition.Y + direction.Y * maxDistance,
-                    0
-                );
-                validatedVelocity = direction * maxSpeed;
-                requiresClientCorrection = true;
-            }
-        }
-
-        // 3. Cell 기반 이동 가능 여부 검증 (맵 밖 이탈 방지)
-        var clientCell = WorldPositionToCell(clientPos);
-        if (!GameMapData.IsMoveablePosition(CurrentMapId, clientCell))
-        {
-            if (_lastValidatedPosition is not null && _lastValidCell is not null)
-            {
-                Logger.LogWarning(
-                    "Player {PlayerId} 이동 불가 위치 감지: ClientPos=({CX:F2},{CY:F2}), Cell=({CellX},{CellY}), 보정 → ({VX:F2},{VY:F2})",
-                    PlayerId, clientPos.X, clientPos.Y, clientCell.X, clientCell.Y,
-                    _lastValidatedPosition.X, _lastValidatedPosition.Y);
-                requiresClientCorrection = true;
-                validatedVelocity = new Vector3f(0f, 0f, 0f);
-                return _lastValidatedPosition;
-            }
-
-            Logger.LogWarning(
-                "Player {PlayerId} 이동 불가 위치 감지 (초기 위치): ClientPos=({CX:F2},{CY:F2}), Cell=({CellX},{CellY})",
-                PlayerId, clientPos.X, clientPos.Y, clientCell.X, clientCell.Y);
-            requiresClientCorrection = true;
-            validatedVelocity = new Vector3f(0f, 0f, 0f);
-            return _lastValidatedPosition ?? clientPos;
-        }
-
-        // 4. 중간 벽 셀을 건너뛰는 이동 차단
-        if (_lastValidatedPosition is not null && _lastValidCell is not null &&
-            !GridMovementTraversal.IsTraversable(
-                _lastValidCell,
-                clientCell,
-                candidate => GameMapData.IsMoveablePosition(CurrentMapId, candidate)))
-        {
-            Logger.LogWarning(
-                "Player {PlayerId} attempted to cross an impassable cell: From=({FromX},{FromY}), To=({ToX},{ToY})",
-                PlayerId, _lastValidCell.X, _lastValidCell.Y, clientCell.X, clientCell.Y);
-            requiresClientCorrection = true;
-            validatedVelocity = new Vector3f(0f, 0f, 0f);
-            return _lastValidatedPosition;
-        }
-
-        // 원본 속도가 아니라 서버가 승인한 위치 변화에서 원격 표시용 속도를 산출한다.
-        if (_lastValidatedPosition is not null && deltaTime > 0f)
-        {
-            var acceptedDelta = clientPos - _lastValidatedPosition;
-            validatedVelocity = MovementValidationPolicy.ClampVelocity(new Vector3f(
-                acceptedDelta.X / deltaTime,
-                acceptedDelta.Y / deltaTime,
-                0f));
-        }
-        _lastValidCell = clientCell;
-
-        // 검증 통과: 클라이언트 Position 사용
-        return clientPos;
     }
 
     private bool IsStaleMoveInputSequence(uint sequence)

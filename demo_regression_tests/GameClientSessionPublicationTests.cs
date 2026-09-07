@@ -790,7 +790,8 @@ public sealed class GameClientSessionPublicationTests
                 new FakeMatchEntryFailureHandler(),
                 GameServerDevOptions.Disabled,
                 new GameMatchEntryService(null!, matchRuntimes, GameServerDevOptions.Disabled, NullLogger.Instance),
-                new ItemCombinationService(eventLog))
+                new ItemCombinationService(eventLog),
+                new MovementValidationService(NullLogger<MovementValidationService>.Instance))
         {
         }
     }

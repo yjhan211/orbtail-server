@@ -398,6 +398,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 GameServerDevOptions.Disabled,
                 new GameMatchEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
                 new ItemCombinationService(TestGameEventLogs.Create()),
+                new MovementValidationService(NullLogger<MovementValidationService>.Instance),
                 sender);
             Connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);

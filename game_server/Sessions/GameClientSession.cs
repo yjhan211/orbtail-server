@@ -59,6 +59,7 @@ public partial class GameClientSession : SessionBase
 
     private readonly GameMatchEntryService _matchEntry;
     private readonly ItemCombinationService _itemCombinations;
+    private readonly MovementValidationService _movementValidation;
 
     private bool _isSleeping;
 
@@ -150,6 +151,7 @@ public partial class GameClientSession : SessionBase
         GameServerDevOptions devOptions,
         GameMatchEntryService matchEntry,
         ItemCombinationService itemCombinations,
+        MovementValidationService movementValidation,
         Func<Packet, bool>? trySendConnectSuccessResponse = null,
         TimeProvider? movementTimeProvider = null)
         : base(connection, logger, redisOperations)
@@ -169,6 +171,7 @@ public partial class GameClientSession : SessionBase
 
         _matchEntry = matchEntry;
         _itemCombinations = itemCombinations;
+        _movementValidation = movementValidation;
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
         _matchingLifecycle = matchingLifecycle;
         _isServerStopping = isServerStopping;

@@ -502,6 +502,7 @@ public sealed class MatchStartCountdownPublicationTests
                 new FakeMatchEntryFailureHandler(),
                 GameServerDevOptions.Disabled,
                 null!,
+                null!,
                 null!)
         {
             _throwOnSend = throwOnSend;

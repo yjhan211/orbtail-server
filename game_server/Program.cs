@@ -123,6 +123,7 @@ internal static class Program
             sp.GetRequiredService<ILogger<MatchCleanupService>>()));
         services.AddSingleton<GameSessionLeaveHandler>();
         services.AddSingleton<ItemCombinationService>();
+        services.AddSingleton<MovementValidationService>();
         services.AddSingleton<GameMatchEntryService>(sp => new GameMatchEntryService(
             sp.GetRequiredService<IRedisOperations>(),
             sp.GetRequiredService<MatchRuntimeStore>(),
