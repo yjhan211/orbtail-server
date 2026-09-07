@@ -18,6 +18,41 @@ namespace demo_regression_tests;
 /// </summary>
 public sealed class GameClientSessionConnectPublicationTests
 {
+    [Theory]
+    [InlineData("HandleMove")]
+    [InlineData("HandleSocialAction")]
+    [InlineData("HandleMatchStartReady")]
+    public async Task GameplayHandler_WaitsForMatchLock_AndRejectsMatchEndedWhileWaiting(string handlerName)
+    {
+        using var fixture = new ConnectFixture();
+        var session = fixture.CreateSession(74010, 8110, _ => true);
+        var runtime = fixture.Store.GetRequired(74010);
+        var method = typeof(GameClientSession).GetMethod(handlerName, BindingFlags.Instance | BindingFlags.NonPublic)!;
+        object?[] arguments = handlerName switch
+        {
+            "HandleMove" => [new C_TO_G_MOVE()],
+            "HandleSocialAction" => [new C_TO_G_SOCIAL_ACTION()],
+            _ => []
+        };
+        using var started = new ManualResetEventSlim();
+        Task request;
+        using (runtime.Enter())
+        {
+            request = Task.Run(async () =>
+            {
+                started.Set();
+                await (Task)method.Invoke(session, arguments)!;
+            });
+            Assert.True(started.Wait(TimeSpan.FromSeconds(5)));
+            Assert.False(request.Wait(TimeSpan.FromMilliseconds(100)));
+            Assert.True(runtime.TryMarkTerminal());
+        }
+        await request.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Null(fixture.Store.Get(74010));
+        Assert.Null(session.LastValidatedPosition);
+        Assert.False((bool)typeof(GameClientSession).GetField("_hasProcessedMoveInputSequence", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!);
+    }
+
     [Fact]
     public void SessionSource_KeepsConnectionLifecycleTogetherAndSeparatesGameplayMethods()
     {

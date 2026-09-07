@@ -636,13 +636,13 @@ public partial class GameClientSession : SessionBase
 
     private Task HandleMatchStartReady()
     {
-        if (PlayerId.HasValue && MatchingId > 0)
+        if (!PlayerId.HasValue || MatchingId <= 0) return Task.CompletedTask;
+        return RunUnderMatch(() =>
         {
             MatchStartGate.MarkHumanReady(MatchingId, PlayerId.Value);
             SendMatchStartCountdown(MatchingId);
-        }
-
-        return Task.CompletedTask;
+            return Task.CompletedTask;
+        }, () => { });
     }
 
     private Task HandleHeartbeat()

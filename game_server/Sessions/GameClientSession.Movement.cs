@@ -32,7 +32,13 @@ public partial class GameClientSession
         return _movementPacketQueue.EnqueueAsync(dispatch, sequence);
     }
 
-    private async Task HandleMove(C_TO_G_MOVE msg)
+    private Task HandleMove(C_TO_G_MOVE msg)
+    {
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+        return RunUnderMatch(() => HandleMoveCore(msg), () => { });
+    }
+
+    private async Task HandleMoveCore(C_TO_G_MOVE msg)
     {
         if (PlayerId == null) return;
         if (IsEliminated) return;
