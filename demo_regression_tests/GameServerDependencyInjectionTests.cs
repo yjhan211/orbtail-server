@@ -58,7 +58,8 @@ public sealed class GameServerDependencyInjectionTests
             typeof(game_server.services.MatchCleanupService),
             typeof(game_server.services.BotEliminationService),
             typeof(game_server.services.MatchCountdownService),
-            typeof(game_server.services.GameServerTickService)
+            typeof(game_server.services.GameServerTickService),
+            typeof(game_server.services.BotMovementService)
         ];
         foreach (var type in serviceTypes)
         {

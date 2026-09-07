@@ -1,20 +1,29 @@
 using System.Collections.Immutable;
 using System.Diagnostics;
 using game_server.network;
-using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.packets;
+using static game_server.network.SessionSnapshotDelivery;
 
-namespace game_server;
+namespace game_server.services;
 
-internal partial class GameServer
+/// <summary>
+///     전달받은 매치의 봇 이동 계획을 실행하고 수신자 스냅샷에 패킷을 보낸 뒤 처리 시간을 기록한다.
+///     호출자는 매치 잠금을 보유한다. 다른 매치 조회나 타이머 관리는 하지 않는다.
+///     봇의 전술 판단은 전달받은 함수에 위임한다.
+/// </summary>
+internal sealed class BotMovementService(
+    GameSessionRegistry sessions,
+    GameEventLogManager eventLogs,
+    ILogger<BotMovementService> logger)
 {
     // MatchTickRunner가 전투 뒤 같은 매치 잠금 안에서 봇 이동을 실행한다.
 
     /// <summary>매치 잠금 안에서 봇 걸음을 확정하고 같은 순서로 바로 송신한다.</summary>
-    private void ProcessBotMovementForMatching(long matchingId)
+    public void Process(MatchRuntime runtime, Func<long, long, SwarmBotDirective> resolveDirective)
     {
+        long matchingId = runtime.MatchingId;
         long tickStartedAt = Stopwatch.GetTimestamp();
         GameClientSession[] sessionSnapshot = sessions.GetByMatch(matchingId)
             .Where(session =>
@@ -26,10 +35,10 @@ internal partial class GameServer
             CaptureSwarmBotObservers(matchingId, sessionSnapshot);
         double sessionSnapshotElapsedMilliseconds =
             Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds;
-        SwarmBotMovementPlan plan = matchRuntimes.GetRequired(matchingId).BotMovement.PrepareTick(
+        SwarmBotMovementPlan plan = runtime.BotMovement.PrepareTick(
             eventLogs,
             observers,
-            ResolveSwarmBotDirective);
+            resolveDirective);
 
         long dispatchStartedAt = Stopwatch.GetTimestamp();
         DispatchSwarmBotMovementPlan(plan, sessionSnapshot);
@@ -37,7 +46,7 @@ internal partial class GameServer
             plan.DispatchPreparationElapsedMilliseconds +
             Stopwatch.GetElapsedTime(dispatchStartedAt).TotalMilliseconds;
 
-        SwarmBotTickMetricsBatch? batch = GetSwarmMatchRuntime(matchingId).BotTickMetrics.Record(
+        SwarmBotTickMetricsBatch? batch = runtime.Swarm.BotTickMetrics.Record(
             matchingId,
             new SwarmBotTickSample(
                 Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds,
@@ -194,30 +203,35 @@ internal partial class GameServer
         }
     }
 
-    private static void SendToCapturedRecipients(
-        Packet packet,
-        ImmutableArray<int> recipientOrdinals,
-        IReadOnlyList<GameClientSession> sessionSnapshot)
+    public void DispatchExternalMovement(MatchRuntime runtime, BotMovementEvent movement)
     {
-        foreach (int ordinal in recipientOrdinals)
-        {
-            if (TryGetCapturedValue(sessionSnapshot, ordinal, out GameClientSession session))
-                session.TrySend(packet);
-        }
+        long matchingId = runtime.MatchingId;
+        GameClientSession[] sessionSnapshot = sessions.GetByMatch(matchingId)
+            .Where(session =>
+                session.PlayerId is > 0 &&
+                session.CurrentMapId == Config.SWARM_MATCH_MAP &&
+                session.MatchingId == matchingId)
+            .ToArray();
+        ImmutableArray<SwarmBotObserverSnapshot> observers =
+            CaptureSwarmBotObservers(matchingId, sessionSnapshot);
+        SwarmBotMovementPlan plan = runtime.BotMovement.PrepareExternalMovement(
+            eventLogs,
+            movement,
+            observers);
+        DispatchSwarmBotMovementPlan(plan, sessionSnapshot);
     }
 
-    internal static bool TryGetCapturedValue<T>(
-        IReadOnlyList<T> values,
-        int ordinal,
-        out T value)
+    private static double CalculatePercentile(IReadOnlyList<double> sortedValues, double percentile)
     {
-        if ((uint)ordinal < (uint)values.Count)
-        {
-            value = values[ordinal];
-            return true;
-        }
+        if (sortedValues.Count == 0)
+            return 0d;
 
-        value = default!;
-        return false;
+        double position = (sortedValues.Count - 1) * Math.Clamp(percentile, 0d, 1d);
+        int lowerIndex = (int)Math.Floor(position);
+        int upperIndex = (int)Math.Ceiling(position);
+        if (lowerIndex == upperIndex)
+            return sortedValues[lowerIndex];
+        double fraction = position - lowerIndex;
+        return sortedValues[lowerIndex] + (sortedValues[upperIndex] - sortedValues[lowerIndex]) * fraction;
     }
 }

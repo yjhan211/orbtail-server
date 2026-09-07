@@ -99,7 +99,7 @@ public sealed class SwarmBotMovementPlanTests
 
         foreach (int ordinal in ordinals)
         {
-            if (GameServer.TryGetCapturedValue(snapshot, ordinal, out string value))
+            if (game_server.network.SessionSnapshotDelivery.TryGetCapturedValue(snapshot, ordinal, out string value))
                 resolved.Add(value);
         }
 
@@ -112,7 +112,7 @@ public sealed class SwarmBotMovementPlanTests
         string root = FindRepositoryRoot();
         string coordinator = ReadNormalizedSource(
             root, "game_server", "Services", "Bots", "SwarmBotMovementCoordinator.cs");
-        string server = ReadNormalizedSource(root, "game_server", "GameServer.BotMovement.cs");
+        string server = ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotMovementService.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs");
         string tick = ReadMethodSlice(
             combat,
@@ -120,12 +120,12 @@ public sealed class SwarmBotMovementPlanTests
             "private static bool ShouldMoveBots(");
         string process = ReadMethodSlice(
             server,
-            "private void ProcessBotMovementForMatching(",
+            "public void Process(",
             "private void PublishBotMovementMetrics(");
         string dispatch = ReadMethodSlice(
             server,
             "private void DispatchSwarmBotMovementPlan(",
-            "private static void SendToCapturedRecipients(");
+            "public void DispatchExternalMovement(");
 
         Assert.DoesNotContain("PacketMaker", coordinator);
         Assert.DoesNotContain("MessagePackSerializer", coordinator);
@@ -149,7 +149,7 @@ public sealed class SwarmBotMovementPlanTests
             "scope.Runtime.IsTerminal",
             "processCombat(matchingId, activeSessions);",
             "ShouldMoveBots(scope.Runtime)",
-            "moveBots(matchingId);");
+            "moveBots(scope.Runtime);");
         AssertInOrder(
             process,
             "sessions.GetByMatch(matchingId)",
@@ -184,11 +184,11 @@ public sealed class SwarmBotMovementPlanTests
         string adminSetup = ReadMethodSlice(
             arena,
             "public object SetupSwarmCutDummy(long matchingId)",
-            "private void DispatchSwarmExternalBotMovement(");
-        string external = ReadMethodSlice(
-            arena,
-            "private void DispatchSwarmExternalBotMovement(",
             "private object SetupSwarmCutDummyCore(");
+        string external = ReadMethodSlice(
+            ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotMovementService.cs"),
+            "public void DispatchExternalMovement(",
+            "private static double CalculatePercentile(");
         string move = ReadMethodSlice(
             arena,
             "private void MoveSwarmCutDummy(long matchingId, float dirX, float dirY)",
@@ -204,7 +204,7 @@ public sealed class SwarmBotMovementPlanTests
             "matchRuntimes.Enter(matchingId, out MatchScope scope)",
             "scope.Runtime.IsTerminal",
             "SetupSwarmCutDummyCore(",
-            "DispatchSwarmExternalBotMovement(matchingId, movement)");
+            "botMovement.DispatchExternalMovement(scope.Runtime, movement)");
         AssertInOrder(
             external,
             "sessions.GetByMatch(matchingId)",
@@ -216,7 +216,7 @@ public sealed class SwarmBotMovementPlanTests
             "matchRuntimes.Enter(matchingId, out MatchScope scope)",
             "scope.Runtime.IsTerminal",
             "MoveSwarmCutDummyCore(",
-            "DispatchSwarmExternalBotMovement(matchingId, movement)");
+            "botMovement.DispatchExternalMovement(scope.Runtime, movement)");
         Assert.Contains("advanceOrbOrbit: false", externalPrepare);
         Assert.Contains("session.CurrentMapId == Config.SWARM_MATCH_MAP", external);
         Assert.DoesNotContain("PacketMaker", external);

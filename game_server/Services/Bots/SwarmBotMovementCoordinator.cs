@@ -8,7 +8,7 @@ namespace game_server.services;
 
 /// <summary>
 ///     매치 잠금 안에서 자신이 속한 매치의 봇 이동과 송신 계획을 만든다. 다른 매치는 조회하지 않는다. 패킷 생성·전송은
-///     GameServer가 같은 잠금 안에서 계획 순서대로 한다.
+///     BotMovementService가 같은 잠금 안에서 계획 순서대로 한다.
 /// </summary>
 internal sealed class SwarmBotMovementCoordinator(MatchRuntime match)
 {

@@ -15,7 +15,7 @@ internal sealed class MatchTickRunner(
     Action<IEnumerable<long>, IReadOnlyCollection<GameClientSession>> publishCountdown,
     Action<long, List<GameClientSession>> processCombat,
     Action<MatchRuntime, List<GameClientSession>> processEnvironment,
-    Action<long> moveBots)
+    Action<MatchRuntime> moveBots)
 {
     public void Run()
     {
@@ -73,7 +73,7 @@ internal sealed class MatchTickRunner(
 
                 try
                 {
-                    moveBots(matchingId);
+                    moveBots(scope.Runtime);
                 }
                 catch (Exception ex)
                 {

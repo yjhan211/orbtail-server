@@ -62,7 +62,7 @@ public sealed class MatchStartCountdownPublicationTests
             "using (scope)",
             "publishCountdown([matchingId], countdownSessions);",
             "processCombat(matchingId, activeSessions);",
-            "moveBots(matchingId)");
+            "moveBots(scope.Runtime)");
     }
 
     [Fact]

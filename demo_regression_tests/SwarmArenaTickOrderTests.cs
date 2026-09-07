@@ -17,7 +17,7 @@ public sealed class SwarmArenaTickOrderTests
             "countdown.Broadcast,",
             "ProcessSwarmArenaForMatching,",
             "ProcessEnvironmentalTickForMatching,",
-            "ProcessBotMovementForMatching);",
+            "runtime => botMovement.Process(runtime, ResolveSwarmBotDirective));",
             "tickService.Start(ProcessAreaClosureTick, tickRunner.Run);");
         AssertInOrder(runner,
             "sessions.SnapshotWhere(",
@@ -72,7 +72,7 @@ public sealed class SwarmArenaTickOrderTests
             "MatchStartGate.GetGameplayStartedAtUtc(matchingId)",
             "processEnvironment(scope.Runtime, activeSessions);",
             "scope.Runtime.IsTerminal ||",
-            "moveBots(matchingId);");
+            "moveBots(scope.Runtime);");
 
         string matchingSettlement = ReadMethodSlice(
             settlement,
@@ -292,7 +292,7 @@ public sealed class SwarmArenaTickOrderTests
         string tick = ReadMethodSlice(
             server,
             "private void ProcessAreaClosureTick()",
-            "    private static double CalculatePercentile(");
+            "    private IConnectionSession? CreateClientSession(");
         string prepare = ReadMethodSlice(
             arena,
             "private SwarmClosurePublicationPlan? PrepareSwarmScheduledClosureTick(",

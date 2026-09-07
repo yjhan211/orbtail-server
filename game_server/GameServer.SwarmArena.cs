@@ -8,6 +8,8 @@ using network.common.data;
 using network.common.data.models;
 using network.packets;
 
+using static game_server.network.SessionSnapshotDelivery;
+
 namespace game_server;
 
 internal partial class GameServer
@@ -2157,28 +2159,11 @@ internal partial class GameServer
 
             object result = SetupSwarmCutDummyCore(matchingId, out BotMovementEvent? movement);
             if (movement != null)
-                DispatchSwarmExternalBotMovement(matchingId, movement);
+                botMovement.DispatchExternalMovement(scope.Runtime, movement);
             return result;
         }
     }
 
-    /// <summary>수동 더미 이동을 매치 잠금 안에서 계획·송신한다 — 궤도는 돌리지 않는다.</summary>
-    private void DispatchSwarmExternalBotMovement(long matchingId, BotMovementEvent movement)
-    {
-        GameClientSession[] sessionSnapshot = sessions.GetByMatch(matchingId)
-            .Where(session =>
-                session.PlayerId is > 0 &&
-                session.CurrentMapId == Config.SWARM_MATCH_MAP &&
-                session.MatchingId == matchingId)
-            .ToArray();
-        ImmutableArray<SwarmBotObserverSnapshot> observers =
-            CaptureSwarmBotObservers(matchingId, sessionSnapshot);
-        SwarmBotMovementPlan plan = matchRuntimes.GetRequired(matchingId).BotMovement.PrepareExternalMovement(
-            eventLogs,
-            movement,
-            observers);
-        DispatchSwarmBotMovementPlan(plan, sessionSnapshot);
-    }
 
     private object SetupSwarmCutDummyCore(long matchingId, out BotMovementEvent? movement)
     {
@@ -2254,7 +2239,7 @@ internal partial class GameServer
 
             BotMovementEvent? movement = MoveSwarmCutDummyCore(matchingId, dirX, dirY);
             if (movement != null)
-                DispatchSwarmExternalBotMovement(matchingId, movement);
+                botMovement.DispatchExternalMovement(scope.Runtime, movement);
         }
     }
 

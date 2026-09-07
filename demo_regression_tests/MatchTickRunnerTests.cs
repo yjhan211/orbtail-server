@@ -36,7 +36,11 @@ public sealed class MatchTickRunnerTests
             (_, _) => Record("countdown"),
             (_, _) => Record("combat"),
             (_, _) => Record("environment"),
-            _ => Record("movement"));
+            runtime =>
+            {
+                Assert.Same(fixture.Match, runtime);
+                Record("movement");
+            });
 
         runner.Run();
         Assert.Equal(new[] { "countdown", "combat", "environment", "movement" }, steps);
@@ -142,6 +146,32 @@ public sealed class MatchTickRunnerTests
 
         runner.Run();
         Assert.Equal(new[] { "countdown", "combat" }, steps);
+    }
+
+    [Fact]
+    public void BotMovementService_RecordsOnlyTheSuppliedMatchAndPublishesItsMetrics()
+    {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var first = store.GetOrCreate(945108);
+        var second = store.GetOrCreate(945109);
+        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var service = new BotMovementService(new GameSessionRegistry(), logs,
+            NullLogger<BotMovementService>.Instance);
+        using (store.Enter(first))
+        {
+            service.Process(first, (_, _) => throw new InvalidOperationException("No bots should request a directive."));
+            Assert.Equal(1, first.Swarm.BotTickMetrics.SampleCount);
+            Assert.Equal(0, second.Swarm.BotTickMetrics.SampleCount);
+            for (int i = 1; i < SwarmBotTickMetrics.WindowSize; i++)
+                service.Process(first, (_, _) => throw new InvalidOperationException("No bots."));
+            Assert.Equal(0, first.Swarm.BotTickMetrics.SampleCount);
+            var entry = Assert.Single(logs.GetRecent(first.MatchingId),
+                e => e.Type == "SURVIVOR_BOT_MOVEMENT_TICK_PERFORMANCE");
+            Assert.Equal(SwarmBotTickMetrics.WindowSize, entry.BotMovementTickSampleCount);
+            Assert.Empty(logs.GetRecent(second.MatchingId));
+            first.TryMarkTerminal();
+        }
+        using (store.Enter(second)) second.TryMarkTerminal();
     }
 
     private sealed class Fixture : IDisposable

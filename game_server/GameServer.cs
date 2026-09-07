@@ -45,7 +45,8 @@ internal partial class GameServer(
     MatchCleanupService matchCleanup,
     BotEliminationService botEliminations,
     MatchCountdownService countdown,
-    GameServerTickService tickService)
+    GameServerTickService tickService,
+    BotMovementService botMovement)
     : IHostedService
 {
     private static readonly TimeSpan ShutdownWarningThreshold = TimeSpan.FromSeconds(5);
@@ -249,7 +250,7 @@ internal partial class GameServer(
             countdown.Broadcast,
             ProcessSwarmArenaForMatching,
             ProcessEnvironmentalTickForMatching,
-            ProcessBotMovementForMatching);
+            runtime => botMovement.Process(runtime, ResolveSwarmBotDirective));
         tickService.Start(ProcessAreaClosureTick, tickRunner.Run);
     }
 
@@ -306,19 +307,6 @@ internal partial class GameServer(
         }
     }
 
-    private static double CalculatePercentile(IReadOnlyList<double> sortedValues, double percentile)
-    {
-        if (sortedValues.Count == 0)
-            return 0d;
-
-        double position = (sortedValues.Count - 1) * Math.Clamp(percentile, 0d, 1d);
-        int lowerIndex = (int)Math.Floor(position);
-        int upperIndex = (int)Math.Ceiling(position);
-        if (lowerIndex == upperIndex)
-            return sortedValues[lowerIndex];
-        double fraction = position - lowerIndex;
-        return sortedValues[lowerIndex] + (sortedValues[upperIndex] - sortedValues[lowerIndex]) * fraction;
-    }
 
     private IConnectionSession? CreateClientSession(TcpConnection connection)
     {
