@@ -108,7 +108,7 @@ public sealed class SwarmArenaTickOrderTests
                 "if (!MatchStartGate.IsGameplayActive(matchingId))"));
         AssertInOrder(
             inactiveGameplayBranch,
-            "BroadcastMonsterMinimapSnapshot(",
+            "MonsterSnapshotPublisher.Broadcast(",
             "return;");
     }
 
@@ -123,7 +123,7 @@ public sealed class SwarmArenaTickOrderTests
                 "if (!MatchStartGate.IsGameplayActive(matchingId))"));
         AssertInOrder(
             inactiveGameplayBranch,
-            "BroadcastMonsterMinimapSnapshot(",
+            "MonsterSnapshotPublisher.Broadcast(",
             "return;");
 
         AssertInOrder(
@@ -145,7 +145,7 @@ public sealed class SwarmArenaTickOrderTests
             "ProcessSwarmSleepRecovery(",
             "ProcessSwarmBotExplores(",
             "ProcessSwarmBotDoorUnlocks(",
-            "BroadcastMonsterMinimapSnapshot(",
+            "MonsterSnapshotPublisher.Broadcast(",
             "BuildSwarmArenaCombatActors(",
             "ProcessOrbRecovery(",
             "DispatchOrbVisualStatePublications(",
@@ -387,7 +387,7 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string crossfire = ReadNormalizedSource(root, "game_server", "GameServer.SwarmCrossfire.cs");
-        string botDodge = ReadNormalizedSource(root, "game_server", "GameServer.SwarmBotDodge.cs");
+        string botDodge = ReadNormalizedSource(root, "game_server", "Services", "MatchRuntimeStore.cs");
         string runtimeStates = ReadNormalizedSource(root, "game_server", "Services", "SwarmArenaStates.cs");
 
         Assert.DoesNotContain("_swarmCrossfireShapes", crossfire);
@@ -399,10 +399,10 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Contains("SwarmCrossfireState crossfire = matchRuntimes.GetRequired(matchingId).Swarm.Crossfire;", crossfire);
         Assert.Contains("public SwarmCrossfireState Crossfire { get; }", runtimeStates);
 
-        Assert.Contains("matchRuntimes.Get(matchingId)", botDodge);
-        Assert.Contains("runtime.Swarm.Crossfire.DodgeSnapshot", botDodge);
+        Assert.Contains("Bots.SetSwarmDodgeResolver", botDodge);
+        Assert.Contains("Swarm.Crossfire.DodgeSnapshot, id, botId, position, area, now", botDodge);
         Assert.DoesNotContain("matchRuntimes.GetRequired(matchingId).Swarm", botDodge);
-        Assert.DoesNotContain("GetOrCreate(", botDodge);
+        Assert.False(File.Exists(Path.Combine(root, "game_server", "GameServer.SwarmBotDodge.cs")));
     }
 
     [Fact]

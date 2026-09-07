@@ -288,7 +288,7 @@ internal partial class GameServer
         // 운동장에서 각 방으로 걸어 나가는 그림만 만들면 되고, 그 사이 누가 맞아서는 안 된다.
         if (!MatchStartGate.IsGameplayActive(matchingId))
         {
-            BroadcastMonsterMinimapSnapshot(
+            MonsterSnapshotPublisher.Broadcast(
                 matchingId, sessions, matchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId));
             return;
         }
@@ -369,8 +369,8 @@ internal partial class GameServer
         ProcessSwarmBotExplores(matchingId, aliveBots, sessions);
         ProcessSwarmBotDoorUnlocks(matchingId, aliveBots, sessions, nowUtc);
 
-        if (TryConsumeMonsterPositionBroadcastSlot(matchingId, nowUtc))
-            BroadcastMonsterMinimapSnapshot(matchingId, sessions, matchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId));
+        if (MonsterSnapshotPublisher.TryConsumeBroadcastSlot(matchRuntimes.GetRequired(matchingId), nowUtc))
+            MonsterSnapshotPublisher.Broadcast(matchingId, sessions, matchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId));
 
         var actors = BuildSwarmArenaCombatActors(matchingId, aliveSessions, aliveBots, nowUtc);
         ProcessOrbRecovery(matchingId, actors, aliveSessions, aliveBots, nowUtc);

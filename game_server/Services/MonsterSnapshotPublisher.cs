@@ -1,20 +1,24 @@
 using game_server.network;
-using game_server.services;
 using MessagePack;
 using network.common;
 using network.common.data.models;
 using network.packets;
 
-namespace game_server;
+namespace game_server.services;
 
-internal partial class GameServer
+/// <summary>
+///     몬스터 위치 스냅샷을 구역별 패킷으로 나누어 전송한다.
+///     시작 전에는 모든 구역을 보내고, 시작 후에는 수신자의 현재 구역만 보낸다.
+///     전송 주기는 MatchRuntime.Presentation이 소유하며 호출자는 매치 잠금을 보유한다.
+/// </summary>
+internal static class MonsterSnapshotPublisher
 {
     private static readonly TimeSpan MonsterPositionBroadcastInterval = TimeSpan.FromMilliseconds(100);
 
-    private bool TryConsumeMonsterPositionBroadcastSlot(long matchingId, DateTime nowUtc)
+    internal static bool TryConsumeBroadcastSlot(MatchRuntime match, DateTime nowUtc)
     {
-        if (matchRuntimes.Get(matchingId)?.Presentation is not { } presentation ||
-            nowUtc < presentation.NextMonsterPositionBroadcastAtUtc)
+        var presentation = match.Presentation;
+        if (nowUtc < presentation.NextMonsterPositionBroadcastAtUtc)
             return false;
 
         presentation.NextMonsterPositionBroadcastAtUtc = nowUtc + MonsterPositionBroadcastInterval;
@@ -28,7 +32,7 @@ internal partial class GameServer
     ///     몹은 같은 구역만 추격하고 클라도 자기 구역만 그리므로 내 구역 것만 보낸다.
     ///     이게 "서버 시뮬 개체와 클라 동기화 개체 분리"의 실체다 — 시뮬은 전역, 동기화는 구역.
     /// </summary>
-    private static void BroadcastMonsterMinimapSnapshot(
+    internal static void Broadcast(
         long matchingId,
         IReadOnlyCollection<GameClientSession> sessions, IEnumerable<MonsterRuntimeInfo> states)
     {
@@ -54,3 +58,4 @@ internal partial class GameServer
     }
 
 }
+
