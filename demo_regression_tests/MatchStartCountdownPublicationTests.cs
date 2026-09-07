@@ -29,10 +29,7 @@ public sealed class MatchStartCountdownPublicationTests
         string repositoryRoot = FindRepositoryRoot();
         string server = ReadNormalizedSource(repositoryRoot, "game_server", "GameServer.cs");
 
-        string broadcast = ReadMethodSlice(
-            server,
-            "private void BroadcastMatchStartCountdowns(",
-            "private IConnectionSession? CreateClientSession(");
+        string broadcast = ReadNormalizedSource(repositoryRoot, "game_server", "Services", "MatchCountdownService.cs");
         string matchTick = ReadMethodSlice(
             ReadNormalizedSource(repositoryRoot, "game_server", "Services", "MatchTickRunner.cs"),
             "public void Run()",
@@ -42,8 +39,8 @@ public sealed class MatchStartCountdownPublicationTests
         AssertInOrder(
             broadcast,
             "MatchStartGate.IsEntryTimedOut(matchingId, DateTime.UtcNow)",
-            "EntryFailureHandler.Handle(anchorSession);",
-            "MatchRuntimes.Enter(matchingId, out MatchScope scope)",
+            "entryFailureHandler.Handle(anchorSession);",
+            "matchRuntimes.Enter(matchingId, out var scope)",
             "scope.Runtime.IsTerminal",
             "var snapshot = MatchStartGate.GetSnapshot(matchingId);",
             "pacing.LastCountdownSecondsPublished == snapshot.RemainingSeconds",
@@ -227,9 +224,8 @@ public sealed class MatchStartCountdownPublicationTests
             var failing = new RecordingEntrySession(throwOnSend: true);
             SetSessionIdentity(failing, 501, matchingId);
 
-            TargetInvocationException failure = Assert.Throws<TargetInvocationException>(
+            Assert.Throws<InvalidOperationException>(
                 () => InvokePeriodicBroadcast(server, [matchingId], [failing]));
-            Assert.IsType<InvalidOperationException>(failure.InnerException);
             Assert.Equal(1, failing.SendCount);
             Assert.Equal(-1, GetPacing(server, matchingId).LastCountdownSecondsPublished);
             // 실패해도 잠금은 풀린다.
@@ -393,11 +389,9 @@ public sealed class MatchStartCountdownPublicationTests
         IReadOnlyCollection<long> matchingIds,
         IReadOnlyCollection<GameClientSession> sessions)
     {
-        typeof(GameServer)
-            .GetMethod(
-                "BroadcastMatchStartCountdowns",
-                BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(server, [matchingIds, sessions]);
+        var countdown = new MatchCountdownService(
+            server.GetMatchRuntimes(), server.GetEntryFailureHandler(), NullLogger.Instance);
+        countdown.Broadcast(matchingIds, sessions);
     }
 
     private static void InvokeEntryAbort(GameServer server, GameClientSession session)

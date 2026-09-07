@@ -323,9 +323,10 @@ public partial class GameServer(
 
     private void StartProximityAutoCombatTimer()
     {
+        var countdown = new MatchCountdownService(MatchRuntimes, EntryFailureHandler, logger);
         var tickRunner = new MatchTickRunner(
             MatchRuntimes, sessions, logger,
-            BroadcastMatchStartCountdowns,
+            countdown.Broadcast,
             ProcessSwarmArenaForMatching,
             ProcessEnvironmentalTickForMatching,
             ProcessBotMovementForMatching);
@@ -411,68 +412,6 @@ public partial class GameServer(
         double fraction = position - lowerIndex;
         return sortedValues[lowerIndex] + (sortedValues[upperIndex] - sortedValues[lowerIndex]) * fraction;
     }
-
-    /// <summary>
-    ///     카운트다운 초 방송 — 봇 이동 워커가 매치 잠금 안에서 부른다(직접 호출도 잠금을 잡는다). 남은 초가
-    ///     마지막 방송과 같으면 보내지 않고, 초가 바뀌면 수신자가 없어도 방송한 것으로 기록한다(재시도 없음).
-    /// </summary>
-    private void BroadcastMatchStartCountdowns(
-        IEnumerable<long> matchingIds,
-        IReadOnlyCollection<GameClientSession> activeSessions)
-    {
-        foreach (long matchingId in matchingIds)
-        {
-            if (MatchStartGate.IsEntryTimedOut(matchingId, DateTime.UtcNow))
-            {
-                var anchorSession = activeSessions.FirstOrDefault(
-                    session => session.MatchingId == matchingId && session.PlayerId.HasValue);
-                if (anchorSession != null)
-                {
-                    logger.LogWarning(
-                        "Match entry deadline expired before every human became ready: MatchingId={MatchingId}",
-                        matchingId);
-                    EntryFailureHandler.Handle(anchorSession);
-                }
-                continue;
-            }
-
-            if (!MatchRuntimes.Enter(matchingId, out MatchScope scope))
-                continue;
-
-            using (scope)
-            {
-                if (scope.Runtime.IsTerminal)
-                    continue;
-
-                var snapshot = MatchStartGate.GetSnapshot(matchingId);
-                if (!snapshot.IsKnown)
-                    continue;
-
-                SwarmMatchPacingState pacing = GetSwarmMatchRuntime(matchingId).Pacing;
-                if (pacing.LastCountdownSecondsPublished == snapshot.RemainingSeconds)
-                    continue;
-
-                pacing.LastCountdownSecondsPublished = snapshot.RemainingSeconds;
-                var matchingSessions = activeSessions
-                    .Where(session => session.MatchingId == matchingId)
-                    .ToList();
-                if (matchingSessions.Count == 0)
-                    continue;
-
-                using var packet = Packet.Create((int)Protocol.G_TO_C_MATCH_START_COUNTDOWN);
-                packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_MATCH_START_COUNTDOWN
-                {
-                    MatchingId = matchingId,
-                    RemainingSeconds = snapshot.RemainingSeconds,
-                    ServerUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-                }));
-
-                foreach (var session in matchingSessions)
-                    session.TrySend(packet);
-            }
-        }
-    }
-
 
     private IConnectionSession? CreateClientSession(TcpConnection connection)
     {

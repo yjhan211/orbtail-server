@@ -13,7 +13,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.Equal(2, CountOccurrences(source, "TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs)"));
         AssertInOrder(source,
             "var tickRunner = new MatchTickRunner(",
-            "BroadcastMatchStartCountdowns,",
+            "countdown.Broadcast,",
             "ProcessSwarmArenaForMatching,",
             "ProcessEnvironmentalTickForMatching,",
             "ProcessBotMovementForMatching);",
