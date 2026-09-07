@@ -67,7 +67,7 @@ internal partial class GameServer(
         {
             logger.LogInformation("Game server starting...");
             cancellationToken.ThrowIfCancellationRequested();
-            InitializeServices();
+            InitializeServices(cancellationToken);
 
             StartNetworkService();
             StartGameTicks();
@@ -162,29 +162,19 @@ internal partial class GameServer(
         logger.LogInformation("Game server stopped.");
     }
 
-    private void InitializeServices()
+    private void InitializeServices(CancellationToken cancellationToken)
     {
         var enabledDevFlags = devOptions.EnabledVariableNames();
         if (enabledDevFlags.Count > 0)
             logger.LogWarning("[DEV] Game Server flags enabled: {Flags}", string.Join(", ", enabledDevFlags));
-        try
-        {
-            // 서버 환경에서 CSV 파일 경로 설정
-            // Dev: 소스 디렉토리에서 직접 읽기 (Docker 볼륨 마운트 대응)
-            string networkSourcePath = Path.GetFullPath(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..",
-                "..", "..", "network"));
-            GameDataHelper.SetBasePath(Directory.Exists(Path.Combine(networkSourcePath, "Common", "csv"))
-                ? networkSourcePath
-                : AppDomain.CurrentDomain.BaseDirectory);
-            GameDataHelper.Initialize(
-                message => logger.LogDebug("{Message}", message),
-                message => logger.LogError("{Message}", message));
-            Action<string> log = msg => logger.LogInformation(msg);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException("Failed to initialize services.", ex);
-        }
+
+        GameDataHelper.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
+        GameDataHelper.Initialize(
+            message => logger.LogDebug("{Message}", message),
+            message => logger.LogError("{Message}", message));
+        cancellationToken.ThrowIfCancellationRequested();
+
+        logger.LogInformation("Services initialized successfully");
     }
 
     private void StartNetworkService()
