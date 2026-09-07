@@ -338,7 +338,7 @@ public sealed class MatchStartCountdownPublicationTests
         string method = ReadMethodSlice(
             session,
             "internal virtual void DisconnectForEntryFailure()",
-            "internal bool TryMarkMatchingLifecycleHandledExternally()");
+            "TryMarkMatchingLifecycleHandledExternally()");
 
         AssertInOrder(
             method,
