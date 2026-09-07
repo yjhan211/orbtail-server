@@ -47,7 +47,6 @@ public partial class GameServer(
     private readonly InteractableStateManager _interactableStateManager = new();
 
     // 봇과 몬스터
-    private readonly SwarmMonsterDirector _swarmMonsterDirector = new(monsterSpawnEnabled: devOptions.MonsterSpawnEnabled);
     private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
 
     // 매치 기록
@@ -81,8 +80,17 @@ public partial class GameServer(
         LazyInitializer.EnsureInitialized(ref _entryFailureHandler,
             () => new MatchEntryFailureHandler(MatchRuntimes, sessions, MatchingLifecycle, logger))!;
 
-    private MatchRuntimeStore CreateMatchRuntimeStore() =>
-        new(logger, cleanupSteps: BuildMatchCleanupSteps(), afterCleanup: StartMatchingRedisCleanup);
+    private MatchRuntimeStore CreateMatchRuntimeStore() => new(logger,
+        initializeMatch: InitializeMatchServices, cleanupSteps: BuildMatchCleanupSteps(),
+        afterCleanup: StartMatchingRedisCleanup, monsterSpawnEnabled: devOptions.MonsterSpawnEnabled);
+
+    private void InitializeMatchServices(long matchingId)
+    {
+        var match = MatchRuntimes.GetRequired(matchingId);
+        match.Monsters.IsAreaClosedResolver = (_, area) => match.Closures.IsAreaClosed(area);
+        match.Monsters.IsGameplayActiveResolver = MatchStartGate.IsGameplayActive;
+        match.Monsters.IsPlayerOrblessResolver = (_, playerId) => !HasAnySquadOrb(matchingId, playerId);
+    }
 
     /// <summary>
     ///     터미널 정리 순서. 최외곽 잠금 탈출에서 한 번 돌고 단계마다 예외를 격리한다 — 한 컴포넌트 실패가
@@ -93,7 +101,6 @@ public partial class GameServer(
         new MatchCleanupStep("session runtime", GameClientSession.CleanupAbandonedMatchingRuntime),
         new MatchCleanupStep("session index", sessions.RemoveMatch),
         new MatchCleanupStep("settlement", CleanupMatchSettlementState),
-        new MatchCleanupStep("swarm arena", CleanupSwarmArenaState),
         new MatchCleanupStep("event log", _gameEventLogManager.Clear)
     ];
 
@@ -234,18 +241,6 @@ public partial class GameServer(
         _swarmBotMovementCoordinator = new SwarmBotMovementCoordinator(
             MatchRuntimes,
             _gameEventLogManager);
-        // M4: 폐쇄 구역은 스웜 신규 스폰을 멈춘다 (잔존 몹은 ReclaimStrandedMonsters가 걷어냄)
-        _swarmMonsterDirector.IsAreaClosedResolver =
-            (matchingId, area) => MatchRuntimes.GetRequired(matchingId).Closures.IsAreaClosed(area);
-        // 인트로 산개 (2026-08-16): 카운트다운 동안에는 전 방을 공급 대상으로 열어
-        // 운동장에서 열 방향으로 실제 몹이 뻗어 나가게 한다.
-        _swarmMonsterDirector.IsGameplayActiveResolver = MatchStartGate.IsGameplayActive;
-        // 무오브 우선 표적 (2026-08-16 유저 명세): 잔상 주인 배정·재배정이 이걸 본다.
-        // 무오브는 자동 공격도 절단도 못 하므로, 잔상까지 남을 쫓으면 재건하는 동안
-        // 아무 압력도 안 받아 무오브가 안전지대가 된다.
-        _swarmMonsterDirector.IsPlayerOrblessResolver =
-            (matchingId, playerId) => !HasAnySquadOrb(matchingId, playerId);
-
         try
         {
             // 서버 환경에서 CSV 파일 경로 설정

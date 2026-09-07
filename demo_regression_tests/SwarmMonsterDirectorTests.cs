@@ -81,7 +81,7 @@ public class SwarmMonsterDirectorTests
         // 일반 22 · 핵 120 · 접촉 40. 단단하게 만드는 방향은 되돌리고 위협은 접촉이 진다.
         // 전역 상한은 구역 목표(= 인당 목표 × 구역 인원)의 합이되 서버 천장 420을 넘지 않는다.
         DateTime now = StartUtc.AddSeconds(255);
-        var manager = new SwarmMonsterDirector(() => now);
+        var manager = new SwarmMonsterDirector(217002, () => now);
         Assert.True(manager.InitializeMatching(217002, 1, StartUtc));
 
         var lateTick = manager.Tick(217002, ManyParticipants(8, AreaCenter(Config.SWARM_MATCH_GROUND_AREA)), now);
@@ -113,7 +113,7 @@ public class SwarmMonsterDirectorTests
     public void RegionSupply_ReclaimsStrandedMonstersAfterZoneIsVacated()
     {
         DateTime now = StartUtc;
-        var manager = new SwarmMonsterDirector(() => now);
+        var manager = new SwarmMonsterDirector(217004, () => now);
         Assert.True(manager.InitializeMatching(217004, 1, StartUtc));
         var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
         Vector3f roomCenter = AreaCenter(room);
@@ -159,7 +159,7 @@ public class SwarmMonsterDirectorTests
         // 예산이 리셋되면 안 된다 — 실측(매치 9687066)에서 한 구역이 페이즈 1 예산 11석 대신
         // 56석을 받았다. 보충 타이머는 버리되 예산 원장은 남긴다.
         DateTime now = StartUtc;
-        var manager = new SwarmMonsterDirector(() => now);
+        var manager = new SwarmMonsterDirector(217003, () => now);
         Assert.True(manager.InitializeMatching(217003, 1, StartUtc));
         var room = MatchSpawnData.GetPhaseRoomCandidates()[0];
         Vector3f roomCenter = AreaCenter(room);
@@ -364,7 +364,7 @@ public class SwarmMonsterDirectorTests
 
     private static SwarmMonsterDirector CreateManager(Func<DateTime> clock)
     {
-        var manager = new SwarmMonsterDirector(clock);
+        var manager = new SwarmMonsterDirector(217001, clock);
         Assert.True(manager.InitializeMatching(217001, 1, StartUtc));
         return manager;
     }

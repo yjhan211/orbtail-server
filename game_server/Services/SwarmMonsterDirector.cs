@@ -6,7 +6,7 @@ using network.common.data.models;
 namespace game_server.services;
 
 /// <summary>
-///     스웜 디렉터. 매치 수명(탈락·최후 1인·타이머)은 GameServer가 소유하고, 이 매니저는 잔상 스웜만 담당한다:
+///     매치 하나의 몬스터 상태를 소유한다. MatchRuntime이 생성하고 종료 시 함께 정리한다.
 ///     점유 구역 지속 공급, 주인 할당 추격, 접촉 피해. 잔상은 공급이 아니라 회피해야 하는 압력이다.
 /// </summary>
 public sealed class SwarmMonsterDirector
@@ -216,7 +216,7 @@ public sealed class SwarmMonsterDirector
     /// <summary>파도 문양 몹인가 — 접촉 강타가 스플래시로 튀므로 공격 연출을 따로 보내야 읽힌다.</summary>
     public bool IsWavePatternMonster(long matchingId, int monsterId)
     {
-        if (!_matches.TryGetValue(matchingId, out var state))
+        if (!TryGetState(matchingId, out var state))
             return false;
         lock (state.SyncRoot)
         {
@@ -273,21 +273,30 @@ public sealed class SwarmMonsterDirector
         elapsedSeconds >= EscalationStage2AtSeconds ? 2 :
         elapsedSeconds >= EscalationStage1AtSeconds ? 1 : 0;
 
-    private readonly ConcurrentDictionary<long, MatchState> _matches = new();
+    private readonly long _matchingId;
+    private MatchState? _state;
     private readonly Func<DateTime> _utcNow;
 
-    public SwarmMonsterDirector(Func<DateTime>? utcNow = null, bool monsterSpawnEnabled = true)
+    public SwarmMonsterDirector(long matchingId, Func<DateTime>? utcNow = null, bool monsterSpawnEnabled = true)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
+        _matchingId = matchingId;
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
         MonsterSpawnEnabled = monsterSpawnEnabled;
     }
 
-    public bool HasMatching(long matchingId) => _matches.ContainsKey(matchingId);
+    public bool HasMatching(long matchingId) => matchingId == _matchingId && Volatile.Read(ref _state) != null;
+
+    private bool TryGetState(long matchingId, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out MatchState? state)
+    {
+        state = matchingId == _matchingId ? Volatile.Read(ref _state) : null;
+        return state != null;
+    }
 
     public bool InitializeMatching(long matchingId, long humanPlayerId, DateTime startsAtUtc)
     {
         // 봇 전용 검증 매치는 대표 참가자가 봇(음수 id)이다 — 0만 거부한다.
-        if (matchingId <= 0 || humanPlayerId == 0)
+        if (matchingId != _matchingId || humanPlayerId == 0)
             return false;
 
         var state = new MatchState
@@ -298,7 +307,7 @@ public sealed class SwarmMonsterDirector
             LastTickAtUtc = startsAtUtc,
             Rng = new Random(unchecked((int)(matchingId ^ 0x5A7A_17)))
         };
-        return _matches.TryAdd(matchingId, state);
+        return Interlocked.CompareExchange(ref _state, state, null) == null;
     }
 
     public SwarmArenaTickResult Tick(
@@ -307,7 +316,7 @@ public sealed class SwarmMonsterDirector
         DateTime? nowUtc = null)
     {
         var result = new SwarmArenaTickResult();
-        if (!_matches.TryGetValue(matchingId, out var state))
+        if (!TryGetState(matchingId, out var state))
             return result;
 
         DateTime now = nowUtc ?? _utcNow();
@@ -480,7 +489,7 @@ public sealed class SwarmMonsterDirector
     /// </summary>
     public void ReserveMonsterDamage(long matchingId, long combatTargetId, int damage)
     {
-        if (damage <= 0 || !_matches.TryGetValue(matchingId, out var state))
+        if (damage <= 0 || !TryGetState(matchingId, out var state))
             return;
 
         lock (state.SyncRoot)
@@ -502,7 +511,7 @@ public sealed class SwarmMonsterDirector
     /// </summary>
     public void RecordMonsterAttackEvent(long matchingId, long combatTargetId)
     {
-        if (!_matches.TryGetValue(matchingId, out var state))
+        if (!TryGetState(matchingId, out var state))
             return;
         lock (state.SyncRoot)
         {
@@ -519,7 +528,7 @@ public sealed class SwarmMonsterDirector
         long attackerPlayerId,
         int damage)
     {
-        if (damage <= 0 || !_matches.TryGetValue(matchingId, out var state))
+        if (damage <= 0 || !TryGetState(matchingId, out var state))
             return SwarmArenaDamageResult.None;
 
         lock (state.SyncRoot)
@@ -579,7 +588,7 @@ public sealed class SwarmMonsterDirector
     /// </summary>
     public SwarmBotDirective GetBotDirective(long matchingId, long botPlayerId)
     {
-        if (!_matches.TryGetValue(matchingId, out var state))
+        if (!TryGetState(matchingId, out var state))
             return SwarmBotDirective.None;
 
         lock (state.SyncRoot)
@@ -718,7 +727,7 @@ public sealed class SwarmMonsterDirector
 
     public IReadOnlyList<MonsterRuntimeInfo> GetVisualStates(long matchingId)
     {
-        if (!_matches.TryGetValue(matchingId, out var state))
+        if (!TryGetState(matchingId, out var state))
             return [];
         lock (state.SyncRoot)
             return state.Monsters.Values
@@ -728,7 +737,7 @@ public sealed class SwarmMonsterDirector
 
     public IReadOnlyList<SwarmArenaCombatTarget> GetCombatTargets(long matchingId)
     {
-        if (!_matches.TryGetValue(matchingId, out var state))
+        if (!TryGetState(matchingId, out var state))
             return [];
         lock (state.SyncRoot)
         {
@@ -748,7 +757,7 @@ public sealed class SwarmMonsterDirector
     /// <summary>착탄 지연 피해의 발사 연출용 — 전투 대상 id로 몬스터 id를 조회한다. 없으면 0.</summary>
     public int GetMonsterIdForCombatTarget(long matchingId, long combatTargetId)
     {
-        if (!_matches.TryGetValue(matchingId, out var state))
+        if (!TryGetState(matchingId, out var state))
             return 0;
         lock (state.SyncRoot)
         {
@@ -764,7 +773,7 @@ public sealed class SwarmMonsterDirector
     /// </summary>
     public bool TrySlowMonster(long matchingId, long combatTargetId, float slowSeconds, DateTime nowUtc)
     {
-        if (!_matches.TryGetValue(matchingId, out var state))
+        if (!TryGetState(matchingId, out var state))
             return false;
         lock (state.SyncRoot)
         {
@@ -780,7 +789,7 @@ public sealed class SwarmMonsterDirector
 
     public SwarmMonsterSummary GetSummary(long matchingId)
     {
-        if (!_matches.TryGetValue(matchingId, out var state))
+        if (!TryGetState(matchingId, out var state))
             return SwarmMonsterSummary.Empty;
         lock (state.SyncRoot)
         {
@@ -791,7 +800,7 @@ public sealed class SwarmMonsterDirector
         }
     }
 
-    public void RemoveMatching(long matchingId) => _matches.TryRemove(matchingId, out _);
+    internal void Release() => Interlocked.Exchange(ref _state, null);
 
     /// <summary>
     ///     같은 구역 참가자에게 직선이 뚫려 있는가 — 뚫렸으면 경로를 탈 이유가 없다.

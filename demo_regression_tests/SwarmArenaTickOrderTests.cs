@@ -115,7 +115,7 @@ public sealed class SwarmArenaTickOrderTests
 
         AssertInOrder(
             arenaCode,
-            "_swarmMonsterDirector.Tick(",
+            "MatchRuntimes.GetRequired(matchingId).Monsters.Tick(",
             "if (!MatchStartGate.IsGameplayActive(matchingId))");
 
         string inactiveGameplayBranch = MaskCommentsAndLiterals(
@@ -148,7 +148,7 @@ public sealed class SwarmArenaTickOrderTests
             "session.SendSummonStoneState();",
             "SetupSwarmCutDummy(matchingId);",
             "session.TrySend(leavePacket);",
-            "_swarmMonsterDirector.Tick(",
+            "MatchRuntimes.GetRequired(matchingId).Monsters.Tick(",
             "if (!MatchStartGate.IsGameplayActive(matchingId))",
             "UpdateSwarmOrbTrails(",
             "ProcessSwarmTrailCuts(",
@@ -286,12 +286,9 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string source = ReadNormalizedSource(root, "game_server", "GameServer.SwarmArena.cs");
-        string cleanupBody = ReadMethodSlice(
-            source,
-            "private void CleanupSwarmArenaState(",
-            "private List<ProximityCombatActor> BuildSwarmArenaCombatActors(");
-
-        Assert.Contains("_swarmMonsterDirector.RemoveMatching(matchingId);", cleanupBody);
+        string cleanupBody = ReadNormalizedSource(root, "game_server", "Services", "MatchRuntimeStore.cs");
+        Assert.Contains("runtime.Monsters.Release();", cleanupBody);
+        Assert.DoesNotContain("CleanupSwarmArenaState", source);
         Assert.DoesNotContain("_swarmMatchRuntimes", source);
         Assert.DoesNotContain("ClearSwarmCrossfireState", cleanupBody);
         Assert.DoesNotContain("ClearSwarmWindBladeState", cleanupBody);

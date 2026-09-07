@@ -337,7 +337,7 @@ public partial class GameServer
     private SwarmBotDirective ResolveSwarmBotDirectiveCore(long matchingId, long botPlayerId)
     {
         GetSwarmMatchRuntime(matchingId).BotTactics.FleeDirective.Remove((matchingId, botPlayerId));
-        var directive = _swarmMonsterDirector.GetBotDirective(matchingId, botPlayerId);
+        var directive = MatchRuntimes.GetRequired(matchingId).Monsters.GetBotDirective(matchingId, botPlayerId);
 
         var bot = MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)
             .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
@@ -713,7 +713,7 @@ public partial class GameServer
 
         // 4) 마른 방 탈출: 현재 구역에 살아있는 몹도, 열 수 있는 스팟 용무도 없으면
         //    몹이 남은 공급 구역으로 이주 — 스폰이 멈춘 종반에는 지시 없이 배회(디렉터 몫).
-        bool currentAreaHasSupply = _swarmMonsterDirector.GetVisualStates(matchingId)
+        bool currentAreaHasSupply = MatchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId)
             .Any(monster => monster.IsAlive && monster.AreaType == bot.CurrentArea);
         if (!currentAreaHasSupply &&
             TryFindNearestSwarmSupplyMonster(matchingId, bot, out var migrateArea,
@@ -740,7 +740,7 @@ public partial class GameServer
         area = AreaType.None;
         position = null!;
         float bestSquared = float.MaxValue;
-        foreach (var monster in _swarmMonsterDirector.GetVisualStates(matchingId))
+        foreach (var monster in MatchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId))
         {
             if (!monster.IsAlive || IsSwarmAreaOutside(matchingId, monster.AreaType))
                 continue;
@@ -909,7 +909,7 @@ public partial class GameServer
 
         if (includeMonstersAsStronger)
         {
-            foreach (var monster in _swarmMonsterDirector.GetVisualStates(matchingId))
+            foreach (var monster in MatchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId))
             {
                 if (!monster.IsAlive) continue;
                 float dx = monster.PositionX - bot.Position.X;
@@ -928,7 +928,7 @@ public partial class GameServer
     private bool HasSwarmMonsterInBasicRange(long matchingId, BotPlayerState bot)
     {
         float rangeSquared = SwarmArenaBasicRange * SwarmArenaBasicRange;
-        foreach (var target in _swarmMonsterDirector.GetCombatTargets(matchingId))
+        foreach (var target in MatchRuntimes.GetRequired(matchingId).Monsters.GetCombatTargets(matchingId))
         {
             if (target.Area != bot.CurrentArea)
                 continue;

@@ -17,10 +17,12 @@ internal sealed class MatchRuntime
 
     internal MatchRuntime(long matchingId, ILogger logger,
         SwarmGrowthOfferIdSequence? growthOfferIds = null,
-        SwarmCrossfireEventIdSequence? crossfireEventIds = null)
+        SwarmCrossfireEventIdSequence? crossfireEventIds = null,
+        bool monsterSpawnEnabled = true)
     {
         MatchingId = matchingId;
         Bots = new BotPlayerManager(matchingId, logger);
+        Monsters = new SwarmMonsterDirector(matchingId, monsterSpawnEnabled: monsterSpawnEnabled);
         Swarm = new SwarmMatchRuntime(matchingId,
             growthOfferIds ?? new SwarmGrowthOfferIdSequence(),
             crossfireEventIds ?? new SwarmCrossfireEventIdSequence());
@@ -40,6 +42,7 @@ internal sealed class MatchRuntime
     /// <summary>이 매치의 오브 전투·성장·봇 전술 상태. 매치와 함께 생성되고 제거된다.</summary>
     public SwarmMatchRuntime Swarm { get; }
     public BotPlayerManager Bots { get; }
+    public SwarmMonsterDirector Monsters { get; }
     // 데이터와 처리 객체를 함께 소유한다. 호출자는 이 매치를 고른 뒤 playerId만 넘긴다.
     public InGameInventoryManager Inventory { get; }
     public GroundItemManager GroundItems { get; }
@@ -153,6 +156,7 @@ internal sealed class MatchRuntimeStore
     private readonly IReadOnlyList<MatchCleanupStep> _cleanupSteps;
     private readonly Action<long>? _afterCleanup;
     private readonly ILogger _logger;
+    private readonly bool _monsterSpawnEnabled;
 
     /// <param name="initializeMatch">런타임이 처음 만들어질 때 그 모니터 안에서 한 번 실행되는 훅.</param>
     /// <param name="cleanupSteps">터미널 정리 단계 — 순서대로, 각 단계 예외는 격리·로그.</param>
@@ -161,9 +165,11 @@ internal sealed class MatchRuntimeStore
         ILogger logger,
         Action<long>? initializeMatch = null,
         IReadOnlyList<MatchCleanupStep>? cleanupSteps = null,
-        Action<long>? afterCleanup = null)
+        Action<long>? afterCleanup = null,
+        bool monsterSpawnEnabled = true)
     {
         _logger = logger;
+        _monsterSpawnEnabled = monsterSpawnEnabled;
         _initializeMatch = initializeMatch;
         _cleanupSteps = cleanupSteps ?? [];
         _afterCleanup = afterCleanup;
@@ -181,7 +187,7 @@ internal sealed class MatchRuntimeStore
         if (_runtimes.TryGetValue(matchingId, out MatchRuntime? existing))
             return existing;
 
-        var candidate = new MatchRuntime(matchingId, _logger, _growthOfferIds, _crossfireEventIds);
+        var candidate = new MatchRuntime(matchingId, _logger, _growthOfferIds, _crossfireEventIds, _monsterSpawnEnabled);
         lock (candidate.Sync)
         {
             MatchRuntime runtime = _runtimes.GetOrAdd(matchingId, candidate);
@@ -278,6 +284,7 @@ internal sealed class MatchRuntimeStore
                 runtime.Roster.Release();
                 runtime.Closures.Release();
                 runtime.Bots.Release();
+                runtime.Monsters.Release();
                 _runtimes.TryRemove(new KeyValuePair<long, MatchRuntime>(runtime.MatchingId, runtime));
                 if (_afterCleanup != null)
                 {

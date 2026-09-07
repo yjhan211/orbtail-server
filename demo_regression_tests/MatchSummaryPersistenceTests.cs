@@ -593,7 +593,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             serverSource,
             StringComparison.Ordinal);
         Assert.Contains(
-            "new(logger, cleanupSteps: BuildMatchCleanupSteps(), afterCleanup: StartMatchingRedisCleanup);",
+            "afterCleanup: StartMatchingRedisCleanup, monsterSpawnEnabled: devOptions.MonsterSpawnEnabled);",
             serverSource,
             StringComparison.Ordinal);
         Assert.Contains(
