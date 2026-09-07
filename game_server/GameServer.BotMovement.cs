@@ -39,8 +39,8 @@ public partial class GameServer
             CaptureSwarmBotObservers(matchingId, sessionSnapshot);
         double sessionSnapshotElapsedMilliseconds =
             Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds;
-        SwarmBotMovementPlan plan = _swarmBotMovementCoordinator.PrepareTick(
-            matchingId,
+        SwarmBotMovementPlan plan = MatchRuntimes.GetRequired(matchingId).BotMovement.PrepareTick(
+            EventLogs,
             observers,
             ResolveSwarmBotDirective);
 

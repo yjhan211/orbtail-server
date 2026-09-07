@@ -2173,8 +2173,8 @@ public partial class GameServer
             .ToArray();
         ImmutableArray<SwarmBotObserverSnapshot> observers =
             CaptureSwarmBotObservers(matchingId, sessionSnapshot);
-        SwarmBotMovementPlan plan = _swarmBotMovementCoordinator.PrepareExternalMovement(
-            matchingId,
+        SwarmBotMovementPlan plan = MatchRuntimes.GetRequired(matchingId).BotMovement.PrepareExternalMovement(
+            EventLogs,
             movement,
             observers);
         DispatchSwarmBotMovementPlan(plan, sessionSnapshot);

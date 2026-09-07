@@ -47,7 +47,6 @@ public partial class GameServer(
     private readonly InteractableStateManager _interactableStateManager = new();
 
     // 봇과 몬스터
-    private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
 
     // 매치 기록
     private GameEventLogManager? _eventLogs;
@@ -240,9 +239,6 @@ public partial class GameServer(
 
     private void InitializeServices()
     {
-        _swarmBotMovementCoordinator = new SwarmBotMovementCoordinator(
-            MatchRuntimes,
-            EventLogs);
         try
         {
             // 서버 환경에서 CSV 파일 경로 설정

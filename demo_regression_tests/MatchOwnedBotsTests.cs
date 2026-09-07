@@ -8,6 +8,24 @@ namespace demo_regression_tests;
 public sealed class MatchOwnedBotsTests
 {
     [Fact]
+    public void MovementCoordinatorIsBoundToItsMatchAndRejectsTerminalWork()
+    {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var first = store.GetOrCreate(1);
+        var second = store.GetOrCreate(2);
+        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        Assert.NotSame(first.BotMovement, second.BotMovement);
+        using (store.Enter(first))
+            Assert.Equal(1L, first.BotMovement.PrepareTick(logs, [], (_, _) => default).MatchingId);
+        using (store.Enter(second))
+            Assert.Equal(2L, second.BotMovement.PrepareTick(logs, [], (_, _) => default).MatchingId);
+        using (store.Enter(first)) first.TryMarkTerminal();
+        Assert.Throws<InvalidOperationException>(() => first.BotMovement.PrepareTick(logs, [], (_, _) => default));
+        using (store.Enter(second))
+            Assert.Equal(2L, second.BotMovement.PrepareTick(logs, [], (_, _) => default).MatchingId);
+    }
+
+    [Fact]
     public void MonstersAreIsolatedAndReleasedWithTheirMatch()
     {
         var store = new MatchRuntimeStore(NullLogger.Instance, monsterSpawnEnabled: false);

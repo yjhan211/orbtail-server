@@ -22,6 +22,7 @@ internal sealed class MatchRuntime
     {
         MatchingId = matchingId;
         Bots = new BotPlayerManager(matchingId, logger);
+        BotMovement = new SwarmBotMovementCoordinator(this);
         Monsters = new SwarmMonsterDirector(matchingId, monsterSpawnEnabled: monsterSpawnEnabled);
         Swarm = new SwarmMatchRuntime(matchingId,
             growthOfferIds ?? new SwarmGrowthOfferIdSequence(),
@@ -42,6 +43,7 @@ internal sealed class MatchRuntime
     /// <summary>이 매치의 오브 전투·성장·봇 전술 상태. 매치와 함께 생성되고 제거된다.</summary>
     public SwarmMatchRuntime Swarm { get; }
     public BotPlayerManager Bots { get; }
+    public SwarmBotMovementCoordinator BotMovement { get; }
     public SwarmMonsterDirector Monsters { get; }
     public MatchEventLogState EventLog { get; } = new();
     // 데이터와 처리 객체를 함께 소유한다. 호출자는 이 매치를 고른 뒤 playerId만 넘긴다.

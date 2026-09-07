@@ -7,28 +7,33 @@ using network.common.data.models;
 namespace game_server.services;
 
 /// <summary>
-///     매치 잠금 안에서 봇 이동 권위 상태를 확정하고 불변 송신 계획을 만든다. 패킷 생성·전송은
+///     매치 잠금 안에서 자신이 속한 매치의 봇 이동과 송신 계획을 만든다. 다른 매치는 조회하지 않는다. 패킷 생성·전송은
 ///     GameServer가 같은 잠금 안에서 계획 순서대로 한다.
 /// </summary>
-internal sealed class SwarmBotMovementCoordinator(
-    MatchRuntimeStore matchRuntimes,
-    GameEventLogManager gameEventLogManager)
+internal sealed class SwarmBotMovementCoordinator(MatchRuntime match)
 {
+    private long GetActiveMatchingId()
+    {
+        if (match.IsTerminal)
+            throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
+        return match.MatchingId;
+    }
+
     public SwarmBotMovementPlan PrepareTick(
-        long matchingId,
+        GameEventLogManager gameEventLogManager,
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
         Func<long, long, SwarmBotDirective> directiveProvider)
     {
         ArgumentNullException.ThrowIfNull(observers);
         ArgumentNullException.ThrowIfNull(directiveProvider);
 
-        var match = matchRuntimes.GetRequired(matchingId);
+        long matchingId = GetActiveMatchingId();
         long snapshotStartedAt = Stopwatch.GetTimestamp();
         var humanAreas = observers.ToDictionary(observer => observer.PlayerId, observer => observer.Area);
         double snapshotElapsedMilliseconds =
             Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
         IReadOnlyCollection<MonsterCombatTarget> pveTargets = [];
-        BotPlayerManager.BotWalkingTickResult movementResult = matchRuntimes.GetRequired(matchingId).Bots.ProcessBotMovementTick(
+        BotPlayerManager.BotWalkingTickResult movementResult = match.Bots.ProcessBotMovementTick(
             matchingId,
             match.Closures,
             humanAreas,
@@ -40,6 +45,7 @@ internal sealed class SwarmBotMovementCoordinator(
 
         long preparationStartedAt = Stopwatch.GetTimestamp();
         SwarmBotMovementPlan plan = PrepareResult(
+            gameEventLogManager,
             matchingId,
             movementResult.Movements,
             movementResult.GroundItemPickups,
@@ -60,15 +66,17 @@ internal sealed class SwarmBotMovementCoordinator(
     ///     not advance the orb orbit because the existing cut-dummy controls never did so.
     /// </summary>
     public SwarmBotMovementPlan PrepareExternalMovement(
-        long matchingId,
+        GameEventLogManager gameEventLogManager,
         BotMovementEvent movement,
         IReadOnlyList<SwarmBotObserverSnapshot> observers)
     {
         ArgumentNullException.ThrowIfNull(movement);
         ArgumentNullException.ThrowIfNull(observers);
+        long matchingId = GetActiveMatchingId();
 
         long preparationStartedAt = Stopwatch.GetTimestamp();
         SwarmBotMovementPlan plan = PrepareResult(
+            gameEventLogManager,
             matchingId,
             [movement],
             [],
@@ -84,6 +92,7 @@ internal sealed class SwarmBotMovementCoordinator(
     }
 
     private SwarmBotMovementPlan PrepareResult(
+        GameEventLogManager gameEventLogManager,
         long matchingId,
         IReadOnlyCollection<BotMovementEvent> movements,
         IReadOnlyCollection<BotGroundItemPickup> pickups,
@@ -96,6 +105,7 @@ internal sealed class SwarmBotMovementCoordinator(
         foreach (BotMovementEvent movement in movements)
         {
             SwarmBotMovementDispatch? dispatch = PrepareMovement(
+                gameEventLogManager,
                 matchingId,
                 movement,
                 observers,
@@ -107,7 +117,7 @@ internal sealed class SwarmBotMovementCoordinator(
         var removals = ImmutableArray.CreateBuilder<SwarmBotGroundItemRemovalDispatch>();
         foreach (BotGroundItemPickup pickup in pickups)
         {
-            LogGroundItemPickup(matchingId, pickup);
+            LogGroundItemPickup(gameEventLogManager, matchingId, pickup);
             var area = (AreaType)pickup.Item.AreaType;
             removals.Add(new SwarmBotGroundItemRemovalDispatch(
                 pickup.Item.GroundItemUid,
@@ -122,9 +132,9 @@ internal sealed class SwarmBotMovementCoordinator(
             if (pickup.AutoEquippedItemId <= 0)
                 continue;
 
-            BotPlayerState? bot = matchRuntimes.GetRequired(matchingId).Bots.GetBot(matchingId, pickup.BotPlayerId);
-            PlayerInfo? botInfo = matchRuntimes.GetRequired(matchingId).Bots.SynthesizePlayerInfo(matchingId, pickup.BotPlayerId);
-            GameObjectInfo? objectInfo = matchRuntimes.GetRequired(matchingId).Bots.SynthesizeGameObjectInfo(matchingId, pickup.BotPlayerId);
+            BotPlayerState? bot = match.Bots.GetBot(matchingId, pickup.BotPlayerId);
+            PlayerInfo? botInfo = match.Bots.SynthesizePlayerInfo(matchingId, pickup.BotPlayerId);
+            GameObjectInfo? objectInfo = match.Bots.SynthesizeGameObjectInfo(matchingId, pickup.BotPlayerId);
             if (bot == null || botInfo == null || objectInfo == null)
                 continue;
 
@@ -151,12 +161,13 @@ internal sealed class SwarmBotMovementCoordinator(
     }
 
     private SwarmBotMovementDispatch? PrepareMovement(
+        GameEventLogManager gameEventLogManager,
         long matchingId,
         BotMovementEvent movement,
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
         bool advanceOrbOrbit)
     {
-        BotPlayerState? bot = matchRuntimes.GetRequired(matchingId).Bots.GetBot(matchingId, movement.BotPlayerId);
+        BotPlayerState? bot = match.Bots.GetBot(matchingId, movement.BotPlayerId);
         if (advanceOrbOrbit)
             bot?.AdvanceOrbOrbit(movement.Position);
 
@@ -186,8 +197,8 @@ internal sealed class SwarmBotMovementCoordinator(
         SwarmBotPlayerInfoSnapshot? enteringBot = null;
         if (movement.IsAreaTransition)
         {
-            PlayerInfo? botInfo = matchRuntimes.GetRequired(matchingId).Bots.SynthesizePlayerInfo(matchingId, movement.BotPlayerId);
-            GameObjectInfo? objectInfo = matchRuntimes.GetRequired(matchingId).Bots.SynthesizeGameObjectInfo(matchingId, movement.BotPlayerId);
+            PlayerInfo? botInfo = match.Bots.SynthesizePlayerInfo(matchingId, movement.BotPlayerId);
+            GameObjectInfo? objectInfo = match.Bots.SynthesizeGameObjectInfo(matchingId, movement.BotPlayerId);
             if (botInfo != null && objectInfo != null)
                 enteringBot = SwarmBotPlayerInfoSnapshot.Capture(botInfo, objectInfo);
         }
@@ -235,7 +246,7 @@ internal sealed class SwarmBotMovementCoordinator(
         if (candidates.Count == 0)
             return null;
 
-        CorridorEncounterDecision decision = matchRuntimes.GetRequired(matchingId).Encounters.ResolveCorridorEncounter(
+        CorridorEncounterDecision decision = match.Encounters.ResolveCorridorEncounter(
             movement.BotPlayerId,
             new Vector3f(movement.Position.X, movement.Position.Y, movement.Position.Z),
             candidates,
@@ -270,7 +281,7 @@ internal sealed class SwarmBotMovementCoordinator(
             decision.RevealDelayMs);
     }
 
-    private void LogGroundItemPickup(long matchingId, BotGroundItemPickup pickup)
+    private void LogGroundItemPickup(GameEventLogManager gameEventLogManager, long matchingId, BotGroundItemPickup pickup)
     {
         if (pickup.CorruptionRecovery > 0)
             gameEventLogManager.RecordRecovery(matchingId, pickup.BotPlayerId, pickup.CorruptionRecovery);
@@ -318,7 +329,7 @@ internal sealed class SwarmBotMovementCoordinator(
             return;
         }
 
-        var boardAfterPickup = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(pickup.BotPlayerId);
+        var boardAfterPickup = match.Inventory.GetPlayerInventory(pickup.BotPlayerId);
         gameEventLogManager.LogOrbBoardTransition(
             matchingId,
             pickup.BotPlayerId,

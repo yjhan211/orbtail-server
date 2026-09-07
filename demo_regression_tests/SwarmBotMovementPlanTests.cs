@@ -38,7 +38,7 @@ public sealed class SwarmBotMovementPlanTests
         };
 
         SwarmBotMovementPlan plan = CreateCoordinator().PrepareExternalMovement(
-            matchingId,
+            TestGameEventLogs.Create(),
             movement,
             observers);
 
@@ -154,7 +154,7 @@ public sealed class SwarmBotMovementPlanTests
             process,
             "sessions.GetByMatch(matchingId)",
             "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
-            "_swarmBotMovementCoordinator.PrepareTick(",
+            "BotMovement.PrepareTick(",
             "DispatchSwarmBotMovementPlan(plan, sessionSnapshot)",
             "BotTickMetrics.Record(",
             "PublishBotMovementMetrics(batch)");
@@ -226,8 +226,7 @@ public sealed class SwarmBotMovementPlanTests
     private static SwarmBotMovementCoordinator CreateCoordinator()
     {
         var matches = new MatchRuntimeStore(NullLogger.Instance);
-        matches.GetOrCreate(44_001);
-        return new SwarmBotMovementCoordinator(matches, TestGameEventLogs.Create());
+        return matches.GetOrCreate(44_001).BotMovement;
     }
 
     private static void AssertInOrder(string source, params string[] markers)
