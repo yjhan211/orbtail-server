@@ -383,6 +383,7 @@ public partial class GameClientSession : SessionBase
             Cell matchingSpawnCell;
             {
                 var playerInfo = await PlayerInfo.Load(RedisOperations, PlayerId.Value);
+                EnsureConnectionActive();
                 if (playerInfo == null)
                     throw new InvalidOperationException($"PlayerInfo not found for authenticated player {playerId}.");
 
@@ -415,8 +416,6 @@ public partial class GameClientSession : SessionBase
                     SendGroundItemSnapshot(CurrentArea);
                 }
             }
-            EnsureConnectionActive();
-
             SendInGameInventoryList();
             SendSummonStoneState();
             var connectionBoard = Match.Inventory.GetPlayerInventory(PlayerId.Value);

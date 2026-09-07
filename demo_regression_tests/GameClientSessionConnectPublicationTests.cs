@@ -410,6 +410,21 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Equal(errorCode, DeserializeConnectResult(makerPacket).Body.ErrorCode);
     }
 
+    [Fact]
+    public void PlayerProfileLoad_ChecksConnectionBeforeApplyingSpawnOrSendingSnapshots()
+    {
+        string source = File.ReadAllText(Path.Combine(
+            FindRepositoryRoot(), "game_server", "Sessions", "GameClientSession.cs"));
+        int load = source.IndexOf("await PlayerInfo.Load(", StringComparison.Ordinal);
+        Assert.True(load >= 0);
+        int statementEnd = source.IndexOf(';', load);
+        Assert.StartsWith("EnsureConnectionActive();", source[(statementEnd + 1)..].TrimStart());
+        int inventorySnapshot = source.IndexOf("SendInGameInventoryList();", statementEnd, StringComparison.Ordinal);
+        Assert.True(inventorySnapshot > statementEnd);
+        string initialization = source[statementEnd..inventorySnapshot];
+        Assert.Equal(1, initialization.Split("EnsureConnectionActive();").Length - 1);
+    }
+
     private static Packet CreateSuccessPacket(GameClientSession session) =>
         Assert.IsType<Packet>(typeof(GameClientSession).GetMethod(
             "CreateConnectResultPacket",
