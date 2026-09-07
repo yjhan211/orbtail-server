@@ -61,30 +61,19 @@ internal partial class GameServer(
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
-        Volatile.Write(ref _stopping, 0);
         readinessState.MarkNotReady("starting");
 
         try
         {
             logger.LogInformation("Game server starting...");
-            IReadOnlyList<string> enabledDevFlags = devOptions.EnabledVariableNames();
-            if (enabledDevFlags.Count > 0)
-                logger.LogWarning("[DEV] Game Server flags enabled: {Flags}",
-                    string.Join(", ", enabledDevFlags));
-
+            cancellationToken.ThrowIfCancellationRequested();
             InitializeServices();
 
             StartTcpServer();
             StartAreaClosureTickTimer();
             StartProximityAutoCombatTimer();
 
-            // 광고는 리슨·타이머가 모두 선 뒤에 — 배정받은 클라이언트가 바로 접속할 수 있어야 한다.
-            _nodeAdvertiser = new GameServerNodeAdvertiser(
-                gameServerRegistry,
-                nodeOptions,
-                () => matchRuntimes.ActiveIds().Count,
-                logger);
-            await _nodeAdvertiser.StartAsync();
+            await StartNodeAdvertisementAsync();
 
             readinessState.MarkReady();
             logger.LogInformation("Game server started successfully.");
@@ -93,18 +82,29 @@ internal partial class GameServer(
         {
             readinessState.MarkNotReady("startup_failed");
             logger.LogError(ex, "Game server starting failed.");
-            Volatile.Write(ref _stopping, 1);
-            try
-            {
-                await StopAsync(CancellationToken.None);
-            }
-            catch (Exception shutdownException)
-            {
-                logger.LogWarning(
-                    shutdownException,
-                    "Game server cleanup after startup failure did not complete cleanly.");
-            }
+            await CleanupAfterStartupFailureAsync();
             throw;
+        }
+    }
+
+    // TCP 접속과 게임 타이머가 준비된 뒤에만 새 매치를 배정받는다.
+    private async Task StartNodeAdvertisementAsync()
+    {
+        _nodeAdvertiser = new GameServerNodeAdvertiser(
+            gameServerRegistry, nodeOptions, () => matchRuntimes.ActiveIds().Count, logger);
+        await _nodeAdvertiser.StartAsync();
+    }
+
+    // 정리 중 오류가 나더라도 최초 시작 오류를 호출자에게 전달한다.
+    private async Task CleanupAfterStartupFailureAsync()
+    {
+        try
+        {
+            await StopAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Game server cleanup after startup failure did not complete cleanly.");
         }
     }
 
@@ -185,6 +185,9 @@ internal partial class GameServer(
 
     private void InitializeServices()
     {
+        var enabledDevFlags = devOptions.EnabledVariableNames();
+        if (enabledDevFlags.Count > 0)
+            logger.LogWarning("[DEV] Game Server flags enabled: {Flags}", string.Join(", ", enabledDevFlags));
         try
         {
             // 서버 환경에서 CSV 파일 경로 설정
