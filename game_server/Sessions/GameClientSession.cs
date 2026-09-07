@@ -158,13 +158,6 @@ public partial class GameClientSession : SessionBase
         Logger.LogInformation("GameClientSession created");
     }
 
-    /// <summary>터미널 매치의 늦은 패킷은 잠금 없이 거른다 — 매치 밖 세션(로비 전)은 그대로 통과.</summary>
-    protected override bool IsMessageLifecycleActive()
-    {
-        long matchingId = MatchingId;
-        return matchingId <= 0 || Volatile.Read(ref _match) is { IsTerminal: false };
-    }
-
     /// <summary>
     ///     권위 상태를 바꾸는 핸들러 core를 매치 잠금 안에서 동기로 돌린다 — 50ms 전투 틱과 같은 잠금이라
     ///     이 안의 Send 순서가 곧 상태 변경 순서다. 런타임이 없거나 터미널이면 core 대신 거부 응답만 보낸다.

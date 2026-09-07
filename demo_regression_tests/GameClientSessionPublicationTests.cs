@@ -300,7 +300,7 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
-    public async Task TerminalMatch_DropsLateMessagesWithoutResponse()
+    public async Task TerminalMatch_RejectsLateCollectRequestWithoutRecreatingRuntime()
     {
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, (AreaType)50);
@@ -311,8 +311,12 @@ public sealed class GameClientSessionPublicationTests
             Protocol.C_TO_G_RNG_COLLECT_START,
             new C_TO_G_RNG_COLLECT_START { InteractId = 702000101 });
 
-        Assert.Empty(fixture.ConnectionFor(session).AttemptedProtocols);
-        Assert.False((fixture.Store.Get(70001)?.Doors.IsDoorOpen(201) == true));
+        Assert.Equal([Protocol.G_TO_C_RNG_COLLECT_ACK], fixture.ConnectionFor(session).AttemptedProtocols);
+        var ack = fixture.ConnectionFor(session)
+            .DeserializeSingle<G_TO_C_RNG_COLLECT_ACK>(Protocol.G_TO_C_RNG_COLLECT_ACK);
+        Assert.Equal(ErrorCode.INVALID_GAME_STATE, ack.ErrorCode);
+        Assert.Equal(702000101, ack.InteractId);
+        Assert.Null(fixture.Store.Get(70001));
     }
 
     [Fact]
@@ -543,7 +547,9 @@ public sealed class GameClientSessionPublicationTests
             "BotPlayerManager.ProximityAutoCombat.cs");
 
         Assert.DoesNotContain("AsyncLocal", session);
-        Assert.Contains("protected override bool IsMessageLifecycleActive()", session);
+        Assert.DoesNotContain("IsMessageLifecycleActive", session);
+        Assert.DoesNotContain("IsMessageLifecycleActive",
+            ReadNormalizedSource(root, "network", "Core", "SessionBase.cs"));
         Assert.Contains("private Task RunUnderMatch(Func<Task> core, Action rejectIfTerminal)", session);
         Assert.Equal(2, CountOccurrences(rng, "RunUnderMatch("));
         Assert.Equal(1, CountOccurrences(ground, "RunUnderMatch("));

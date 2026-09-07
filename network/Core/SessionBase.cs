@@ -77,10 +77,10 @@ public abstract class SessionBase(
         await _sessionLock.WaitAsync();
         try
         {
-            if (!Connection.IsAcceptingMessages || !IsMessageLifecycleActive()) return;
+            if (!Connection.IsAcceptingMessages) return;
 
             if (!await CanProcessMessageAsync(protocolId)) return;
-            if (!Connection.IsAcceptingMessages || !IsMessageLifecycleActive()) return;
+            if (!Connection.IsAcceptingMessages) return;
 
             if (!ShouldSkipLogging(protocolId))
                 Logger.LogInformation("[Receive] Protocol: {Protocol}, PlayerId: {PlayerId}", protocolId, playerId);
@@ -101,8 +101,6 @@ public abstract class SessionBase(
     public abstract void OnRemoved();
 
     protected abstract bool ShouldSkipLogging(Protocol protocolId);
-
-    protected virtual bool IsMessageLifecycleActive() => true;
 
     protected virtual Task<bool> CanProcessMessageAsync(Protocol protocolId) => Task.FromResult(true);
 

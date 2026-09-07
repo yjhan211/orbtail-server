@@ -99,7 +99,6 @@ public sealed class GameClientSessionConnectPublicationTests
         var replacement = fixture.Store.GetOrCreate(74009);
         Assert.NotSame(original, replacement);
         Assert.Same(original, typeof(GameClientSession).GetField("_match", flags)!.GetValue(session));
-        Assert.False((bool)typeof(GameClientSession).GetMethod("IsMessageLifecycleActive", flags)!.Invoke(session, null)!);
         executed = false;
         await (Task)run.Invoke(session, [action, reject])!;
         Assert.False(executed);
