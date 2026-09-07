@@ -15,28 +15,7 @@ public sealed class GameServerDependencyInjectionTests
     [Fact]
     public void GameServerUsesTheRegistrySingletonRegisteredByProgram()
     {
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
-            new Dictionary<string, string?>
-            {
-                ["gameServerId"] = "test-game-node",
-                ["GAME_SERVER_PUBLIC_HOST"] = "127.0.0.1",
-                ["natsEndPoint"] = "nats://unused:4222"
-            }).Build();
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddSingleton<IConfiguration>(configuration);
-        game_server.Program.ConfigureServices(new HostBuilderContext(new Dictionary<object, object>())
-        {
-            Configuration = configuration,
-            HostingEnvironment = new HostingEnvironment { EnvironmentName = Environments.Production }
-        }, services);
-        // DI 조립만 검사한다. Redis·NATS 연결이나 서버 시작은 실행하지 않는다.
-        services.RemoveAll<network.infrastructure.messaging.INatsClient>();
-        services.AddSingleton<network.infrastructure.messaging.INatsClient>(new MatchStartCountdownPublicationTests.NoOpNatsClient());
-        services.RemoveAll<IRedisOperations>();
-        services.AddSingleton<IRedisOperations>(new InMemoryRedisOperations());
-
-        using var provider = services.BuildServiceProvider();
+        using var provider = CreateProvider();
         // 로그를 먼저 요청해도 저장소와 순환 없이 조립되어야 한다.
         provider.GetRequiredService<game_server.services.GameEventLogManager>();
         var registry = provider.GetRequiredService<GameSessionRegistry>();
@@ -67,5 +46,30 @@ public sealed class GameServerDependencyInjectionTests
                 .Single(field => field.FieldType == type);
             Assert.Same(provider.GetRequiredService(type), field.GetValue(server));
         }
+    }
+    internal static ServiceProvider CreateProvider(network.infrastructure.messaging.INatsClient? natsClient = null)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["gameServerId"] = "test-game-node",
+                ["GAME_SERVER_PUBLIC_HOST"] = "127.0.0.1",
+                ["natsEndPoint"] = "nats://unused:4222"
+            }).Build();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IConfiguration>(configuration);
+        game_server.Program.ConfigureServices(new HostBuilderContext(new Dictionary<object, object>())
+        {
+            Configuration = configuration,
+            HostingEnvironment = new HostingEnvironment { EnvironmentName = Environments.Production }
+        }, services);
+        // DI 조립만 검사한다. Redis·NATS 연결이나 서버 시작은 실행하지 않는다.
+        services.RemoveAll<network.infrastructure.messaging.INatsClient>();
+        services.AddSingleton<network.infrastructure.messaging.INatsClient>(natsClient ?? new MatchStartCountdownPublicationTests.NoOpNatsClient());
+        services.RemoveAll<IRedisOperations>();
+        services.AddSingleton<IRedisOperations>(new InMemoryRedisOperations());
+
+        return services.BuildServiceProvider();
     }
 }

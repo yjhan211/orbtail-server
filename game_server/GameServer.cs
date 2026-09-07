@@ -53,6 +53,8 @@ internal partial class GameServer(
 
     // 서버 수명과 주기 작업
     private GameServerNodeAdvertiser? _nodeAdvertiser;
+    private readonly object _shutdownLock = new();
+    private Task? _shutdownTask;
     private int _stopping;
 
     private SwarmMatchRuntime GetSwarmMatchRuntime(long matchingId) =>
@@ -93,7 +95,16 @@ internal partial class GameServer(
         await _nodeAdvertiser.StartAsync();
     }
 
-    public async Task StopAsync(CancellationToken cancellationToken)
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        lock (_shutdownLock)
+        {
+            _shutdownTask ??= StopCoreAsync();
+            return _shutdownTask;
+        }
+    }
+
+    private async Task StopCoreAsync()
     {
         // Publish the stopping state before taking the session snapshot. Sessions accepted at
         // this boundary follow the same reservation-release policy in OnDisconnect.
