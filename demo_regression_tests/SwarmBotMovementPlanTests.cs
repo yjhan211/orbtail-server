@@ -113,11 +113,11 @@ public sealed class SwarmBotMovementPlanTests
         string coordinator = ReadNormalizedSource(
             root, "game_server", "Services", "Bots", "SwarmBotMovementCoordinator.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.BotMovement.cs");
-        string combat = ReadNormalizedSource(root, "game_server", "GameServer.ProximityAutoCombat.cs");
+        string combat = ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs");
         string tick = ReadMethodSlice(
             combat,
-            "private void ProcessProximityAutoCombatTick(object? state)",
-            "private void ProcessProximityAutoCombatForMatching(");
+            "public void Run()",
+            "private static bool ShouldMoveBots(");
         string process = ReadMethodSlice(
             server,
             "private void ProcessBotMovementForMatching(",
@@ -142,14 +142,14 @@ public sealed class SwarmBotMovementPlanTests
         // 바쁜 펄스는 버리고(따라잡기 없음) 스킵만 센다; 잠금 안에서 전투→걸음, 준비→송신이 한 순서다.
         AssertInOrder(
             tick,
-            "MatchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
             "RecordBotTickBusySkip(matchingId);",
             "continue;",
             "using (scope)",
             "scope.Runtime.IsTerminal",
-            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
-            "ShouldTrackBotTickBusySkip(matchingId)",
-            "ProcessBotMovementForMatching(matchingId);");
+            "processCombat(matchingId, activeSessions);",
+            "ShouldMoveBots(scope.Runtime)",
+            "moveBots(matchingId);");
         AssertInOrder(
             process,
             "sessions.GetByMatch(matchingId)",

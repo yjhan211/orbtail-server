@@ -10,20 +10,7 @@ namespace game_server;
 
 public partial class GameServer
 {
-    // 봇 걸음은 별도 타이머가 아니라 50ms 매치 틱(ProcessProximityAutoCombatTick)이 전투 뒤에 같은 잠금 안에서
-    // 이어 돌린다. 이 파셜은 그 틱이 부르는 걸음 처리·계측·송신만 담는다.
-
-    /// <summary>봇이 실제로 걷는 매치만 바쁜 펄스를 계측한다 — 카운트다운·봇 없는 매치는 계측 잡음이다.</summary>
-    private bool ShouldTrackBotTickBusySkip(long matchingId) =>
-        MatchStartGate.IsGameplayActive(matchingId) && MatchRuntimes.GetRequired(matchingId).Bots.HasBots(matchingId);
-
-    /// <summary>잠금이 바빠 펄스를 버렸다 — 걷는 매치에만 skip으로 남긴다.</summary>
-    private void RecordBotTickBusySkip(long matchingId)
-    {
-        if (ShouldTrackBotTickBusySkip(matchingId) &&
-            MatchRuntimes.Get(matchingId) is { IsTerminal: false } runtime)
-            runtime.Swarm.BotTickMetrics.RecordBusySkip();
-    }
+    // MatchTickRunner가 전투 뒤 같은 매치 잠금 안에서 봇 이동을 실행한다.
 
     /// <summary>매치 잠금 안에서 봇 걸음을 확정하고 같은 순서로 바로 송신한다.</summary>
     private void ProcessBotMovementForMatching(long matchingId)

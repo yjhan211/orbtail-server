@@ -28,18 +28,15 @@ public sealed class MatchStartCountdownPublicationTests
     {
         string repositoryRoot = FindRepositoryRoot();
         string server = ReadNormalizedSource(repositoryRoot, "game_server", "GameServer.cs");
-        string combat = ReadNormalizedSource(
-            repositoryRoot,
-            "game_server",
-            "GameServer.ProximityAutoCombat.cs");
+
         string broadcast = ReadMethodSlice(
             server,
             "private void BroadcastMatchStartCountdowns(",
             "private IConnectionSession? CreateClientSession(");
         string matchTick = ReadMethodSlice(
-            combat,
-            "private void ProcessProximityAutoCombatTick(object? state)",
-            "private void ProcessProximityAutoCombatForMatching(");
+            ReadNormalizedSource(repositoryRoot, "game_server", "Services", "MatchTickRunner.cs"),
+            "public void Run()",
+            "private static bool ShouldMoveBots(");
 
         Assert.DoesNotContain("_lastMatchStartCountdownBroadcast", server);
         AssertInOrder(
@@ -64,11 +61,11 @@ public sealed class MatchStartCountdownPublicationTests
         // 매치 틱은 잠금 안에서 카운트다운을 먼저 보내고 전투·봇 걸음을 잇는다.
         AssertInOrder(
             matchTick,
-            "MatchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
             "using (scope)",
-            "BroadcastMatchStartCountdowns([matchingId], countdownSessions);",
-            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
-            "ProcessBotMovementForMatching(matchingId)");
+            "publishCountdown([matchingId], countdownSessions);",
+            "processCombat(matchingId, activeSessions);",
+            "moveBots(matchingId)");
     }
 
     [Fact]

@@ -6,40 +6,27 @@ public sealed class SwarmArenaTickOrderTests
     public void ProximityAutoCombatTimer_UsesFiftyMillisecondMatchLockPulse()
     {
         string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(
-            root, "game_server", "GameServer.ProximityAutoCombat.cs");
-
+        string source = ReadNormalizedSource(root, "game_server", "GameServer.cs");
+        string runner = ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs");
         Assert.Contains("private const int ProximityAutoCombatTickIntervalMs = 50;", source);
-        Assert.Contains("ProcessProximityAutoCombatTick,", source);
-        Assert.Equal(
-            2,
-            CountOccurrences(
-                source,
-                "TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs)"));
-
-        string tickBody = ReadMethodSlice(
-            source,
-            "private void ProcessProximityAutoCombatTick(object? state)",
-            "private void ProcessProximityAutoCombatForMatching(");
-        // 바쁜 매치는 이 펄스를 버리고(TryEnter), 들어간 매치는 잠금 안에서 틱을 돌린다.
-        AssertInOrder(
-            tickBody,
+        Assert.Contains("_ => tickRunner.Run(),", source);
+        Assert.Equal(2, CountOccurrences(source, "TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs)"));
+        AssertInOrder(source,
+            "var tickRunner = new MatchTickRunner(",
+            "BroadcastMatchStartCountdowns,",
+            "ProcessSwarmArenaForMatching,",
+            "ProcessEnvironmentalTickForMatching,",
+            "ProcessBotMovementForMatching);",
+            "_proximityAutoCombatTimer = new Timer(");
+        AssertInOrder(runner,
             "sessions.SnapshotWhere(",
-            "MatchRuntimes.ActiveIds()",
-            "MatchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "matchRuntimes.ActiveIds()",
+            "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
             "continue;",
             "using (scope)",
             "scope.Runtime.IsTerminal",
-            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);");
-        Assert.DoesNotContain("MatchRuntimes.Enter(", tickBody);
-
-        string matchingBody = ReadMethodSlice(
-            source,
-            "private void ProcessProximityAutoCombatForMatching(",
-            "private static void AddInventoryCombatActors(");
-        Assert.Contains(
-            "ProcessSwarmArenaForMatching(matchingId, activeSessions);",
-            matchingBody);
+            "processCombat(matchingId, activeSessions);");
+        Assert.DoesNotContain("matchRuntimes.Enter(", runner);
     }
 
     [Fact]
@@ -53,18 +40,18 @@ public sealed class SwarmArenaTickOrderTests
             root, "game_server", "GameServer.MatchSettlement.cs");
 
         string proximityTick = ReadMethodSlice(
-            proximity,
-            "private void ProcessProximityAutoCombatTick(object? state)",
-            "private void ProcessProximityAutoCombatForMatching(");
+            ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs"),
+            "public void Run()",
+            "private static bool ShouldMoveBots(");
         AssertInOrder(
             proximityTick,
             "sessions.SnapshotWhere(",
-            "activeMatchingIds = MatchRuntimes.ActiveIds();",
+            "activeMatchingIds = matchRuntimes.ActiveIds();",
             "Proximity auto combat snapshot failed",
             "foreach (long matchingId in activeMatchingIds)",
-            "MatchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
             "try",
-            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
+            "processCombat(matchingId, activeSessions);",
             "catch (Exception ex)",
             "MatchingId={MatchingId}");
         Assert.DoesNotContain("_proximityAutoCombatProcessing", proximity);
@@ -79,12 +66,12 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             proximityTick,
             "using (scope)",
-            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
+            "processCombat(matchingId, activeSessions);",
             "scope.Runtime.TryBeginEnvironmentalTick(",
             "MatchStartGate.GetGameplayStartedAtUtc(matchingId)",
-            "ProcessEnvironmentalTickForMatching(scope.Runtime, activeSessions);",
+            "processEnvironment(scope.Runtime, activeSessions);",
             "scope.Runtime.IsTerminal ||",
-            "ProcessBotMovementForMatching(matchingId);");
+            "moveBots(matchingId);");
 
         string matchingSettlement = ReadMethodSlice(
             settlement,

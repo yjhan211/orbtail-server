@@ -62,6 +62,8 @@ public partial class GameServer(
 
     // 서버 수명과 주기 작업
     private CancellationTokenSource _cts = new();
+    private const int ProximityAutoCombatTickIntervalMs = 50;
+    private Timer? _proximityAutoCombatTimer;
     private Timer? _areaClosureTickTimer;
     private GameServerNodeAdvertiser? _nodeAdvertiser;
     private int _stopping;
@@ -313,6 +315,22 @@ public partial class GameServer(
     }
 
     // ===== 구역 폐쇄 틱 =====
+
+    private void StartProximityAutoCombatTimer()
+    {
+        var tickRunner = new MatchTickRunner(
+            MatchRuntimes, sessions, logger,
+            BroadcastMatchStartCountdowns,
+            ProcessSwarmArenaForMatching,
+            ProcessEnvironmentalTickForMatching,
+            ProcessBotMovementForMatching);
+        _proximityAutoCombatTimer = new Timer(
+            _ => tickRunner.Run(),
+            null,
+            TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs),
+            TimeSpan.FromMilliseconds(ProximityAutoCombatTickIntervalMs));
+        logger.LogInformation("Match tick timer started: TickMs={TickMs}", ProximityAutoCombatTickIntervalMs);
+    }
 
     private void StartAreaClosureTickTimer()
     {
