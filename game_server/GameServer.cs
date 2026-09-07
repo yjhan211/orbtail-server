@@ -49,7 +49,6 @@ internal partial class GameServer(
     BotMovementService botMovement)
     : IHostedService
 {
-    private static readonly TimeSpan ShutdownWarningThreshold = TimeSpan.FromSeconds(5);
 
     // 서버 수명과 주기 작업
     private GameServerNodeAdvertiser? _nodeAdvertiser;
@@ -148,20 +147,7 @@ internal partial class GameServer(
     {
         try
         {
-            await operation.WaitAsync(ShutdownWarningThreshold);
-        }
-        catch (TimeoutException ex)
-        {
-            logger.LogWarning(ex, "Shutdown stage exceeded warning threshold: Stage={Stage}, Timeout={Timeout}",
-                stage, ShutdownWarningThreshold);
-            try
-            {
-                await operation;
-            }
-            catch (Exception completionException)
-            {
-                logger.LogWarning(completionException, "Shutdown stage failed after timeout: Stage={Stage}", stage);
-            }
+            await operation;
         }
         catch (Exception ex)
         {
