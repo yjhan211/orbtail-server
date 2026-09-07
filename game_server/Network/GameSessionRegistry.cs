@@ -102,11 +102,6 @@ public sealed class GameSessionRegistry
             .ToList();
     }
 
-    public IReadOnlyCollection<long> GetActiveMatchingIds() =>
-        _sessionsByMatch
-            .Where(pair => !pair.Value.IsEmpty)
-            .Select(pair => pair.Key)
-            .ToArray();
 
     /// <summary>
     ///     Drops the match mirror after the match runtime has won its terminal transition.

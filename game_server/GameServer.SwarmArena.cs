@@ -2132,20 +2132,11 @@ internal partial class GameServer
     }
 
     /// <summary>
-    ///     절단 실험 더미 세팅 (어드민): 매치의 봇 하나를 운동장 중앙 동쪽에 고정하고
+    ///     지정한 매치의 절단 실험 더미를 설정한다. 봇 하나를 운동장 중앙 동쪽에 고정하고
     ///     서쪽으로 일자 꼬리를 심는다. 같은 봇에 재호출하면 위치·꼬리를 재정렬한다.
     /// </summary>
     public object SetupSwarmCutDummy(long matchingId)
     {
-        if (matchingId <= 0)
-        {
-            // 사람이 있는 매치 우선 — 봇 전용 검증 매치(큰 id)가 최신을 가로채지 않게.
-            var activeIds = GetActiveMatchingIds().ToList();
-            var humanIds = activeIds.Where(id => GetSessionsByInstance(Config.SWARM_MATCH_MAP, id)
-                .Any(session => session.PlayerId.HasValue)).ToList();
-            matchingId = (humanIds.Count > 0 ? humanIds : activeIds).DefaultIfEmpty(0).Max();
-        }
-
         if (matchingId <= 0)
             return new { error = "no active match" };
 

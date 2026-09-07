@@ -307,19 +307,4 @@ internal partial class GameServer(
         return sessions.GetByInstance(mapId, mapSubId);
     }
 
-    // ===== 내부 매치 조회 및 개발 도구 =====
-
-    private List<long> GetActiveMatchingIds()
-    {
-        var ids = sessions.GetActiveMatchingIds().ToHashSet();
-        foreach (long matchingId in matchRuntimes.ActiveIds())
-        {
-            if (matchingId > 0)
-            {
-                ids.Add(matchingId);
-            }
-        }
-
-        return ids.OrderBy(id => id).ToList();
-    }
 }
