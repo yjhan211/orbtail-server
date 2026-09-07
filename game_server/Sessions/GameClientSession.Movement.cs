@@ -352,6 +352,8 @@ public partial class GameClientSession
 
     private void SendInteractableList(AreaType areaType)
     {
+        if (areaType == AreaType.None) return;
+
         var objects = InteractableStateManager.GetAreaObjectStates(areaType);
 
         // #229 5단계: 스웜은 상자 탐색을 보내지 않는다 — 마커도 빈 상호작용 UI도 뜰 일이 없다.

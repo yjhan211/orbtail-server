@@ -314,12 +314,9 @@ public partial class GameClientSession : SessionBase
 
             _gameEventLogManager.SetPlayerArea(MatchingId, PlayerId.Value, CurrentArea.ToString());
 
-            if (CurrentArea != AreaType.None)
-            {
-                SendInteractableList(CurrentArea);
-                SendInteractCooldownSnapshot();
-                SendGroundItemSnapshot(CurrentArea);
-            }
+            SendInteractableList(CurrentArea);
+            SendInteractCooldownSnapshot();
+            SendGroundItemSnapshot(CurrentArea);
             SendInGameInventoryList();
             SendSummonStoneState();
 
