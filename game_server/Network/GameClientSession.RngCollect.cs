@@ -131,8 +131,8 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        if (!RngCollectCooldownStore.TryAcquireCooldown(
-                MatchingId, msg.InteractId, RngCollectCooldownStore.DefaultCooldownSeconds,
+        if (!_matchRuntimes.GetRequired(MatchingId).CollectCooldowns.TryAcquireCooldown(
+                msg.InteractId, RngCollectCooldownStore.DefaultCooldownSeconds,
                 out int remaining))
         {
             SendRngCollectAck(msg.InteractId, ErrorCode.ACTION_ALREADY_EXPLORED, remaining);
@@ -180,7 +180,7 @@ public partial class GameClientSession
                 PlayerId.Value, Config.SWARM_BOX_OPEN_COST, out _))
         {
             // 석 부족 — 쿨다운을 풀어 나중에 다시 열 수 있게 한다.
-            RngCollectCooldownStore.ClearCooldown(MatchingId, msg.InteractId);
+            _matchRuntimes.Get(MatchingId)?.CollectCooldowns.ClearCooldown(msg.InteractId);
             BroadcastRngCollectCooldown(msg.InteractId, 0);
             SendRngCollectResult(msg.InteractId, 0, 0, 0, 0);
             BroadcastPlayerState(PlayerState.IDLE);
@@ -203,9 +203,9 @@ public partial class GameClientSession
         }
 
         // 스팟은 소진되지 않는다 — 리젠 시간 뒤 다시 나온다.
-        RngCollectCooldownStore.ClearCooldown(MatchingId, msg.InteractId);
-        RngCollectCooldownStore.TryAcquireCooldown(
-            MatchingId, msg.InteractId, SwarmExploreCooldownSeconds, out _);
+        _matchRuntimes.GetRequired(MatchingId).CollectCooldowns.ClearCooldown(msg.InteractId);
+        _matchRuntimes.GetRequired(MatchingId).CollectCooldowns.TryAcquireCooldown(
+            msg.InteractId, SwarmExploreCooldownSeconds, out _);
         BroadcastRngCollectCooldown(msg.InteractId, SwarmExploreCooldownSeconds);
         SendRngCollectResult(msg.InteractId, 0, 0, 0, SwarmExploreCooldownSeconds);
         BroadcastPlayerState(PlayerState.IDLE);
@@ -318,7 +318,7 @@ public partial class GameClientSession
         {
             _gameEventLogManager.LogExploreCancelled(
                 MatchingId, PlayerId.GetValueOrDefault(), interactId, CurrentArea.ToString(), reason, isBot: false);
-            RngCollectCooldownStore.ClearCooldown(MatchingId, interactId);
+            _matchRuntimes.Get(MatchingId)?.CollectCooldowns.ClearCooldown(interactId);
             BroadcastRngCollectCooldown(interactId, 0);
         }
 
@@ -350,8 +350,8 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue) return;
 
-        var snapshot = RngCollectCooldownStore.GetSnapshot(MatchingId);
-        if (snapshot.Count == 0) return;
+        var snapshot = _matchRuntimes.Get(MatchingId)?.CollectCooldowns.GetSnapshot();
+        if (snapshot == null || snapshot.Count == 0) return;
 
         var msg = new G_TO_C_INTERACT_COOLDOWN_SNAPSHOT
         {

@@ -167,8 +167,8 @@ public partial class GameServer
                 bot.FreeSummonCharges <= 0)
                 continue;
 
-            if (!RngCollectCooldownStore.TryAcquireCooldown(
-                    matchingId, spot.Id, Config.SWARM_EXPLORE_REGEN_SECONDS, out _))
+            if (!MatchRuntimes.GetRequired(matchingId).CollectCooldowns.TryAcquireCooldown(
+                    spot.Id, Config.SWARM_EXPLORE_REGEN_SECONDS, out _))
                 continue;
 
             bot.SwarmExploreSpotId = spot.Id;
@@ -191,7 +191,7 @@ public partial class GameServer
         // #229 5단계: 봇도 사람과 같은 규칙 — 스웜에서는 상자를 열지 않는다.
         if (Config.IsSwarmExploreDisabled())
         {
-            RngCollectCooldownStore.ClearCooldown(matchingId, spotId);
+            MatchRuntimes.Get(matchingId)?.CollectCooldowns.ClearCooldown(spotId);
             return;
         }
 
@@ -199,7 +199,7 @@ public partial class GameServer
         if (!MatchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(
                 bot.PlayerId, Config.SWARM_BOX_OPEN_COST, out _))
         {
-            RngCollectCooldownStore.ClearCooldown(matchingId, spotId);
+            MatchRuntimes.Get(matchingId)?.CollectCooldowns.ClearCooldown(spotId);
             return;
         }
 

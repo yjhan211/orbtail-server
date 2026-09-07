@@ -1101,7 +1101,7 @@ public partial class GameServer
     {
         spot = null!;
         distance = float.MaxValue;
-        var onCooldown = RngCollectCooldownStore.GetSnapshot(matchingId)
+        var onCooldown = MatchRuntimes.GetRequired(matchingId).CollectCooldowns.GetSnapshot()
             .Where(entry => entry.RemainingSeconds > 0)
             .Select(entry => entry.InteractId)
             .ToHashSet();

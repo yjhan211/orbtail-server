@@ -225,7 +225,6 @@ public partial class GameClientSession : SessionBase
     internal static void CleanupAbandonedMatchingRuntime(long matchingId)
     {
         MatchStartGate.RemoveMatching(matchingId);
-        RngCollectCooldownStore.ClearMatching(matchingId);
         if (MatchInitializationLocks.TryRemove(matchingId, out var initializationLock))
             initializationLock.Dispose();
     }

@@ -21,8 +21,6 @@ public sealed class GameClientSessionPublicationTests
     {
         GameDataHelper.SetBasePath(Path.Combine(FindRepositoryRoot(), "network"));
         GameDataHelper.Initialize();
-        RngCollectCooldownStore.ClearMatching(70001);
-        RngCollectCooldownStore.ClearMatching(70002);
     }
 
     [Fact]
@@ -404,7 +402,7 @@ public sealed class GameClientSessionPublicationTests
         G_TO_C_RNG_COLLECT_RESULT result = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_RNG_COLLECT_RESULT>(Protocol.G_TO_C_RNG_COLLECT_RESULT);
         Assert.Equal(Config.SWARM_EXPLORE_REGEN_SECONDS, result.CooldownSeconds);
-        Assert.NotEmpty(RngCollectCooldownStore.GetSnapshot(70001));
+        Assert.NotEmpty(fixture.Store.GetRequired(70001).CollectCooldowns.GetSnapshot());
     }
 
     [Fact]

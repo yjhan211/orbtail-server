@@ -51,6 +51,7 @@ internal sealed class MatchRuntime
     public SwarmMatchRuntime Swarm { get; }
     public BotPlayerManager Bots { get; }
     public ProximityAutoCombatResolver Combat { get; }
+    public RngCollectCooldownStore CollectCooldowns { get; } = new();
     public SwarmBotMovementCoordinator BotMovement { get; }
     public SwarmMonsterDirector Monsters { get; }
     public MatchEventLogState EventLog { get; } = new();
@@ -307,6 +308,7 @@ internal sealed class MatchRuntimeStore
                 runtime.Bots.Release();
                 runtime.Monsters.Release();
                 runtime.Combat.Release();
+                runtime.CollectCooldowns.Release();
                 _runtimes.TryRemove(new KeyValuePair<long, MatchRuntime>(runtime.MatchingId, runtime));
                 if (_afterCleanup != null)
                 {
