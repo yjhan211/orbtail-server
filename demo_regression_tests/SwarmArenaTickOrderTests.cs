@@ -94,7 +94,7 @@ public sealed class SwarmArenaTickOrderTests
             matchingSettlement,
             "long matchingId = match.MatchingId;",
             "var humans = activeSessions",
-            "var bots = _botPlayerManager.GetBots(matchingId)",
+            "var bots = MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)",
             "target.Session.ModifyStats(",
             "var eliminatedTargets = targets",
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
@@ -177,7 +177,7 @@ public sealed class SwarmArenaTickOrderTests
             "TryScheduleSwarmCrossfire(",
             "attackerSession?.SendSwarmAfterimageMonsterAttackFeedback(",
             "BroadcastSwarmAttackVfxToTargetAndObservers(",
-            "_botPlayerManager.TryFinalizeProximityAutoCombatElimination(",
+            "MatchRuntimes.GetRequired(matchingId).Bots.TryFinalizeProximityAutoCombatElimination(",
             "ProcessBotElimination(");
     }
 

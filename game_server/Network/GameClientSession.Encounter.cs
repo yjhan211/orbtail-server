@@ -26,7 +26,7 @@ public partial class GameClientSession
             if (targetSession != null)
                 targetCorruption = targetSession.Corruption;
             else
-                targetCorruption = _botPlayerManager.GetBot(MatchingId, targetPlayerId)?.Corruption ?? -1;
+                targetCorruption = _matchRuntimes.GetRequired(MatchingId).Bots.GetBot(MatchingId, targetPlayerId)?.Corruption ?? -1;
         }
 
         using var packet = PacketMaker.G_TO_C_ENCOUNTER_REVEAL(

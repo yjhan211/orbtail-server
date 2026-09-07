@@ -681,7 +681,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         public MatchRuntimeStore Store { get; }
         public GameEventLogManager EventLog { get; }
         public InteractableStateManager Interactables { get; } = new();
-        public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
 
         public GameClientSession CreateSession(
             long matchingId,
@@ -705,7 +704,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                     .Where(candidate => candidate.MatchingId == instanceId)
                     .ToList(),
                 Interactables,
-                Bots,
                 EventLog,
                 new MatchSummaryFileStore(_summaryDirectory),
                 Store,

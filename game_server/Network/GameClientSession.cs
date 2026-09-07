@@ -49,7 +49,6 @@ public partial class GameClientSession : SessionBase
     private readonly Action<long, long> _releaseMatchingReservation;
     private readonly Action<GameClientSession> _recordEntryFailure;
     private readonly Func<bool> _isServerStopping;
-    private readonly BotPlayerManager _botPlayerManager;
     private readonly GameEventLogManager _gameEventLogManager;
     private readonly MatchSummaryFileStore _matchSummaryFileStore;
     /// <summary>성장 카드 픽 — 매치 잠금 안에서 부르는 GameServer 인스턴스 위임.</summary>
@@ -138,7 +137,6 @@ public partial class GameClientSession : SessionBase
         Func<long, GameClientSession, Action?> registerSessionCallback,
         Func<MapId, long, List<GameClientSession>> getSessionsByInstance,
         InteractableStateManager interactableStateManager,
-        BotPlayerManager botPlayerManager,
         GameEventLogManager gameEventLogManager,
         MatchSummaryFileStore matchSummaryFileStore,
         MatchRuntimeStore matchRuntimes,
@@ -160,7 +158,6 @@ public partial class GameClientSession : SessionBase
         _registerSessionCallback = registerSessionCallback;
         _getSessionsByInstance = getSessionsByInstance;
         _interactableStateManager = interactableStateManager;
-        _botPlayerManager = botPlayerManager;
         _gameEventLogManager = gameEventLogManager;
         _matchSummaryFileStore = matchSummaryFileStore;
         _matchRuntimes = matchRuntimes;

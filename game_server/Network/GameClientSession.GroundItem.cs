@@ -346,7 +346,7 @@ public partial class GameClientSession
     internal void DropBotInventoryAtCurrentPosition(long botPlayerId)
     {
         var outcome = EliminationInventoryDropper.DropBotInventoryWithLogs(
-            _botPlayerManager, _matchRuntimes.GetRequired(MatchingId).Inventory, _matchRuntimes.GetRequired(MatchingId).GroundItems, _gameEventLogManager,
+            _matchRuntimes.GetRequired(MatchingId).Bots, _matchRuntimes.GetRequired(MatchingId).Inventory, _matchRuntimes.GetRequired(MatchingId).GroundItems, _gameEventLogManager,
             MatchingId, botPlayerId);
         if (outcome == null)
             return;

@@ -11,7 +11,6 @@ namespace game_server.services;
 ///     GameServer가 같은 잠금 안에서 계획 순서대로 한다.
 /// </summary>
 internal sealed class SwarmBotMovementCoordinator(
-    BotPlayerManager botPlayerManager,
     MatchRuntimeStore matchRuntimes,
     GameEventLogManager gameEventLogManager)
 {
@@ -29,7 +28,7 @@ internal sealed class SwarmBotMovementCoordinator(
         double snapshotElapsedMilliseconds =
             Stopwatch.GetElapsedTime(snapshotStartedAt).TotalMilliseconds;
         IReadOnlyCollection<MonsterCombatTarget> pveTargets = [];
-        BotPlayerManager.BotWalkingTickResult movementResult = botPlayerManager.ProcessBotMovementTick(
+        BotPlayerManager.BotWalkingTickResult movementResult = matchRuntimes.GetRequired(matchingId).Bots.ProcessBotMovementTick(
             matchingId,
             match.Closures,
             humanAreas,
@@ -123,9 +122,9 @@ internal sealed class SwarmBotMovementCoordinator(
             if (pickup.AutoEquippedItemId <= 0)
                 continue;
 
-            BotPlayerState? bot = botPlayerManager.GetBot(matchingId, pickup.BotPlayerId);
-            PlayerInfo? botInfo = botPlayerManager.SynthesizePlayerInfo(matchingId, pickup.BotPlayerId);
-            GameObjectInfo? objectInfo = botPlayerManager.SynthesizeGameObjectInfo(matchingId, pickup.BotPlayerId);
+            BotPlayerState? bot = matchRuntimes.GetRequired(matchingId).Bots.GetBot(matchingId, pickup.BotPlayerId);
+            PlayerInfo? botInfo = matchRuntimes.GetRequired(matchingId).Bots.SynthesizePlayerInfo(matchingId, pickup.BotPlayerId);
+            GameObjectInfo? objectInfo = matchRuntimes.GetRequired(matchingId).Bots.SynthesizeGameObjectInfo(matchingId, pickup.BotPlayerId);
             if (bot == null || botInfo == null || objectInfo == null)
                 continue;
 
@@ -157,7 +156,7 @@ internal sealed class SwarmBotMovementCoordinator(
         IReadOnlyList<SwarmBotObserverSnapshot> observers,
         bool advanceOrbOrbit)
     {
-        BotPlayerState? bot = botPlayerManager.GetBot(matchingId, movement.BotPlayerId);
+        BotPlayerState? bot = matchRuntimes.GetRequired(matchingId).Bots.GetBot(matchingId, movement.BotPlayerId);
         if (advanceOrbOrbit)
             bot?.AdvanceOrbOrbit(movement.Position);
 
@@ -187,8 +186,8 @@ internal sealed class SwarmBotMovementCoordinator(
         SwarmBotPlayerInfoSnapshot? enteringBot = null;
         if (movement.IsAreaTransition)
         {
-            PlayerInfo? botInfo = botPlayerManager.SynthesizePlayerInfo(matchingId, movement.BotPlayerId);
-            GameObjectInfo? objectInfo = botPlayerManager.SynthesizeGameObjectInfo(matchingId, movement.BotPlayerId);
+            PlayerInfo? botInfo = matchRuntimes.GetRequired(matchingId).Bots.SynthesizePlayerInfo(matchingId, movement.BotPlayerId);
+            GameObjectInfo? objectInfo = matchRuntimes.GetRequired(matchingId).Bots.SynthesizeGameObjectInfo(matchingId, movement.BotPlayerId);
             if (botInfo != null && objectInfo != null)
                 enteringBot = SwarmBotPlayerInfoSnapshot.Capture(botInfo, objectInfo);
         }

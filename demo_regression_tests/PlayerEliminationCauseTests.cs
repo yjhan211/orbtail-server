@@ -49,7 +49,7 @@ public sealed class PlayerEliminationCauseTests
     [Fact]
     public void BotDamage_RemembersFirstAttackerThatReachesEliminationThreshold()
     {
-        var manager = new BotPlayerManager(NullLogger.Instance);
+        var manager = new BotPlayerManager(1, NullLogger.Instance);
         var bot = new BotPlayerState
         {
             PlayerId = -1,

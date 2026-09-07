@@ -578,7 +578,6 @@ public sealed class GameClientSessionPublicationTests
         public MatchRuntimeStore Store { get; }
         public ConcurrentQueue<string>? CleanupTimeline { get; set; }
         public InteractableStateManager Interactables { get; } = new();
-        public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
         public GameEventLogManager EventLog { get; } = new();
         public MatchSummaryFileStore Summaries => new(_summaryDirectory);
 
@@ -593,7 +592,6 @@ public sealed class GameClientSessionPublicationTests
                 connection,
                 _sessions,
                 Interactables,
-                Bots,
                 EventLog,
                 Summaries,
                 Store);
@@ -692,7 +690,6 @@ public sealed class GameClientSessionPublicationTests
             TcpConnection connection,
             List<GameClientSession> sessions,
             InteractableStateManager interactables,
-            BotPlayerManager bots,
             GameEventLogManager eventLog,
             MatchSummaryFileStore summaries,
             MatchRuntimeStore matchRuntimes)
@@ -707,7 +704,6 @@ public sealed class GameClientSessionPublicationTests
                     .Where(session => session.MatchingId == matchingId)
                     .ToList(),
                 interactables,
-                bots,
                 eventLog,
                 summaries,
                 matchRuntimes,

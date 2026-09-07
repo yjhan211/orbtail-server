@@ -20,7 +20,7 @@ public partial class GameServer
                 !session.IsEliminated &&
                 !session.IsGameEnded)
             .ToList();
-        var bots = _botPlayerManager.GetBots(matchingId)
+        var bots = MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)
             .Where(bot => !bot.IsEliminated)
             .ToList();
 
@@ -96,7 +96,7 @@ public partial class GameServer
             }
             else if (target.Bot != null)
             {
-                _botPlayerManager.ApplyEnvironmentalCorruption(target.Bot, totalDelta);
+                MatchRuntimes.GetRequired(matchingId).Bots.ApplyEnvironmentalCorruption(target.Bot, totalDelta);
             }
         }
 

@@ -20,9 +20,14 @@ internal sealed class MatchRuntime
         SwarmCrossfireEventIdSequence? crossfireEventIds = null)
     {
         MatchingId = matchingId;
+        Bots = new BotPlayerManager(matchingId, logger);
         Swarm = new SwarmMatchRuntime(matchingId,
             growthOfferIds ?? new SwarmGrowthOfferIdSequence(),
             crossfireEventIds ?? new SwarmCrossfireEventIdSequence());
+        Bots.SetDoorOpenResolver((_, doorId) => Doors.IsDoorOpen(doorId));
+        Bots.SetSwarmDodgeResolver((id, botId, position, area, now) =>
+            SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(
+                Swarm.Crossfire.DodgeSnapshot, id, botId, position, area, now));
         Inventory = new InGameInventoryManager(matchingId, message => logger.LogInformation("{Message}", message));
         GroundItems = new GroundItemManager(matchingId);
         Roster = new MatchRosterManager(matchingId, logger);
@@ -34,6 +39,7 @@ internal sealed class MatchRuntime
     public MatchDoorState Doors { get; } = new();
     /// <summary>이 매치의 오브 전투·성장·봇 전술 상태. 매치와 함께 생성되고 제거된다.</summary>
     public SwarmMatchRuntime Swarm { get; }
+    public BotPlayerManager Bots { get; }
     // 데이터와 처리 객체를 함께 소유한다. 호출자는 이 매치를 고른 뒤 playerId만 넘긴다.
     public InGameInventoryManager Inventory { get; }
     public GroundItemManager GroundItems { get; }
@@ -271,6 +277,7 @@ internal sealed class MatchRuntimeStore
                 runtime.Encounters.Release();
                 runtime.Roster.Release();
                 runtime.Closures.Release();
+                runtime.Bots.Release();
                 _runtimes.TryRemove(new KeyValuePair<long, MatchRuntime>(runtime.MatchingId, runtime));
                 if (_afterCleanup != null)
                 {

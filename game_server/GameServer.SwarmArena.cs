@@ -167,7 +167,7 @@ public partial class GameServer
                               session.MatchingId == matchingId &&
                               !session.IsGameEnded)
             .ToList();
-        var bots = _botPlayerManager.GetBots(matchingId).ToList();
+        var bots = MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId).ToList();
         // 봇 전용 매치(어드민 검증)에서도 스웜을 돌린다 — 생존·완주 계측의 기반.
         if (sessions.Count == 0 && bots.Count == 0)
             return;
@@ -247,7 +247,7 @@ public partial class GameServer
                 SetupSwarmCutDummy(matchingId);
             }
             // 실험장 격리: 더미 외 봇은 조용히 퇴장 — 순위·드롭 이벤트 없이 화면에서 사라진다.
-            foreach (var other in _botPlayerManager.GetBots(matchingId))
+            foreach (var other in MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
             {
                 if (other.IsSwarmCutDummy || other.IsEliminated)
                     continue;
@@ -603,7 +603,7 @@ public partial class GameServer
         // 봇 탈락 확정은 기존 근접전투 파이프라인과 동일한 경로를 쓴다.
         foreach (var bot in aliveBots)
         {
-            if (!_botPlayerManager.TryFinalizeProximityAutoCombatElimination(bot, matchingId))
+            if (!MatchRuntimes.GetRequired(matchingId).Bots.TryFinalizeProximityAutoCombatElimination(bot, matchingId))
                 continue;
 
             ProcessBotElimination(matchingId, bot.PlayerId, EliminationReason.MENTAL_ZERO, activeSessions,
@@ -962,7 +962,7 @@ public partial class GameServer
                 owners.Add((session.PlayerId.Value, session.LastValidatedPosition, ordinal));
         }
 
-        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        foreach (var bot in MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
         {
             if (!bot.IsEliminated && !bot.IsSwarmCutDummy)
                 owners.Add((bot.PlayerId, bot.Position, -1));
@@ -2094,7 +2094,7 @@ public partial class GameServer
     {
         if (playerId >= 0)
             return false;
-        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        foreach (var bot in MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
         {
             if (bot.PlayerId == playerId)
                 return bot.IsSwarmCutDummy;
@@ -2183,7 +2183,7 @@ public partial class GameServer
     private object SetupSwarmCutDummyCore(long matchingId, out BotMovementEvent? movement)
     {
         movement = null;
-        var bots = _botPlayerManager.GetBots(matchingId)
+        var bots = MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)
             .Where(bot => !bot.IsEliminated).ToList();
         var dummy = bots.FirstOrDefault(bot => bot.IsSwarmCutDummy) ?? bots.FirstOrDefault();
         if (dummy == null)
@@ -2260,7 +2260,7 @@ public partial class GameServer
 
     private BotMovementEvent? MoveSwarmCutDummyCore(long matchingId, float dirX, float dirY)
     {
-        var dummy = _botPlayerManager.GetBots(matchingId)
+        var dummy = MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)
             .FirstOrDefault(bot => bot.IsSwarmCutDummy && !bot.IsEliminated);
         if (dummy == null)
             return null;
@@ -2415,7 +2415,7 @@ public partial class GameServer
     private bool TryGetSwarmParticipantPosition(long matchingId, long playerId, out Vector3f position)
     {
         position = null!;
-        foreach (var other in _botPlayerManager.GetBots(matchingId))
+        foreach (var other in MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
         {
             if (other.PlayerId != playerId || other.IsEliminated) continue;
             position = other.Position;
@@ -2536,7 +2536,7 @@ public partial class GameServer
                 return session.JamCount;
         }
 
-        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        foreach (var bot in MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
         {
             if (bot.PlayerId == playerId)
                 return bot.JamCount;
@@ -2555,7 +2555,7 @@ public partial class GameServer
                 return session.CurrentCorruption;
         }
 
-        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        foreach (var bot in MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
         {
             if (bot.PlayerId == playerId)
                 return bot.Corruption;
@@ -2953,7 +2953,7 @@ public partial class GameServer
                 top = Math.Max(top, GetSwarmOrbScore(matchingId, session.PlayerId.Value).OrbCount);
         }
 
-        foreach (var bot in _botPlayerManager.GetBots(matchingId))
+        foreach (var bot in MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
         {
             if (!bot.IsEliminated && !bot.IsSwarmCutDummy)
                 top = Math.Max(top, GetSwarmOrbScore(matchingId, bot.PlayerId).OrbCount);
@@ -3268,7 +3268,7 @@ public partial class GameServer
             }
         }
 
-        MapId botMapId = _botPlayerManager.GetMatchingMapId(matchingId);
+        MapId botMapId = MatchRuntimes.GetRequired(matchingId).Bots.GetMatchingMapId(matchingId);
         foreach (var bot in aliveBots)
         {
             if (TryCreateSpatialActor(bot.PlayerId, botMapId, bot.CurrentArea, bot.Position, out var botSpatial))

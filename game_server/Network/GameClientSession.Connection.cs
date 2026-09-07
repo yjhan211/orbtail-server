@@ -94,7 +94,7 @@ public partial class GameClientSession
 
             RunUnderLiveMatch(runtime, () =>
             {
-                foreach (var bot in _botPlayerManager.GetBots(matchingId))
+                foreach (var bot in _matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
                     if (!bot.IsEliminated)
                     {
                         _gameEventLogManager.SetPlayerArea(matchingId, bot.PlayerId, bot.CurrentArea.ToString());
@@ -103,7 +103,7 @@ public partial class GameClientSession
                 // Initialize match-scoped area state once; manager implementations are idempotent.
                 int matchSeed = MatchSpawnData.GetDeterministicSeed(matchingId);
                 _gameEventLogManager.BeginMatch(matchingId, matchSeed);
-                foreach (var bot in _botPlayerManager.GetBots(matchingId))
+                foreach (var bot in _matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
                 {
                     _gameEventLogManager.LogSpawnAssignment(
                         matchingId,
@@ -367,9 +367,9 @@ public partial class GameClientSession
         using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([CaptureGameObjectInfo()]))
             foreach (var session in sessions) session.TrySend(mine);
 
-        var bots = _botPlayerManager.GetBots(MatchingId)
+        var bots = _matchRuntimes.GetRequired(MatchingId).Bots.GetBots(MatchingId)
             .Where(b => !b.IsEliminated && b.CurrentArea == CurrentArea).ToList();
-        var objects = bots.Select(b => _botPlayerManager.SynthesizeGameObjectInfo(MatchingId, b.PlayerId))
+        var objects = bots.Select(b => _matchRuntimes.GetRequired(MatchingId).Bots.SynthesizeGameObjectInfo(MatchingId, b.PlayerId))
             .OfType<GameObjectInfo>().ToList();
         if (objects.Count > 0)
         {
@@ -470,10 +470,10 @@ public partial class GameClientSession
                 MatchSpawnPlanner.Plan(
                     matchingId, mapId, humanPlayerIds.Concat(botPlayerIds), _devOptions.CrossfireSandbox);
             if (botPlayerIds.Count > 0)
-                _botPlayerManager.RegisterBots(matchingId, mapId, botPlayerIds, spawnCells);
+                _matchRuntimes.GetRequired(matchingId).Bots.RegisterBots(matchingId, mapId, botPlayerIds, spawnCells);
 
             var roster = await new MatchRosterBuilder(RedisOperations, Logger).BuildAsync(humanPlayerIds,
-                botPlayerIds.Select(id => _botPlayerManager.SynthesizePlayerInfo(matchingId, id)
+                botPlayerIds.Select(id => _matchRuntimes.GetRequired(matchingId).Bots.SynthesizePlayerInfo(matchingId, id)
                     ?? throw new InvalidOperationException($"Bot {id} was not initialized.")));
 
             RunUnderLiveMatch(runtime, () =>

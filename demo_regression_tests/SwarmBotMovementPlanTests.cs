@@ -223,10 +223,12 @@ public sealed class SwarmBotMovementPlanTests
         Assert.DoesNotContain("BroadcastBotMovement(", arena);
     }
 
-    private static SwarmBotMovementCoordinator CreateCoordinator() => new(
-        new BotPlayerManager(NullLogger.Instance),
-        new MatchRuntimeStore(NullLogger.Instance),
-        new GameEventLogManager());
+    private static SwarmBotMovementCoordinator CreateCoordinator()
+    {
+        var matches = new MatchRuntimeStore(NullLogger.Instance);
+        matches.GetOrCreate(44_001);
+        return new SwarmBotMovementCoordinator(matches, new GameEventLogManager());
+    }
 
     private static void AssertInOrder(string source, params string[] markers)
     {

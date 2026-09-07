@@ -81,7 +81,6 @@ public sealed class MovementPacketQueueTests
             static (_, _) => null,
             static (_, _) => [],
             new InteractableStateManager(),
-            new BotPlayerManager(NullLogger.Instance),
             new GameEventLogManager(),
             new MatchSummaryFileStore(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))),
             new MatchRuntimeStore(NullLogger.Instance),

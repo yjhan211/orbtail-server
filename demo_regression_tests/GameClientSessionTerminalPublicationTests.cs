@@ -282,7 +282,6 @@ public sealed class GameClientSessionTerminalPublicationTests
         public ConcurrentDictionary<long, int> LifecycleDispatchCounts { get; } = new();
         public TimelineLogger Logger { get; }
         public InteractableStateManager Interactables { get; } = new();
-        public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
         public GameEventLogManager EventLog { get; } = new();
         public MatchSummaryFileStore Summaries => new(_summaryDirectory);
         public long? ThrowPrepareCompletionForPlayerId { get; set; }
@@ -309,7 +308,6 @@ public sealed class GameClientSessionTerminalPublicationTests
                 Logger,
                 _sessions,
                 Interactables,
-                Bots,
                 EventLog,
                 Summaries,
                 Store,
@@ -424,7 +422,6 @@ public sealed class GameClientSessionTerminalPublicationTests
             ILogger logger,
             List<GameClientSession> sessions,
             InteractableStateManager interactables,
-            BotPlayerManager bots,
             GameEventLogManager eventLog,
             MatchSummaryFileStore summaries,
             MatchRuntimeStore matchRuntimes,
@@ -440,7 +437,6 @@ public sealed class GameClientSessionTerminalPublicationTests
                     .Where(session => session.MatchingId == matchingId)
                     .ToList(),
                 interactables,
-                bots,
                 eventLog,
                 summaries,
                 matchRuntimes,

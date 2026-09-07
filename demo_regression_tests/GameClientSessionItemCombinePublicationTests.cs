@@ -892,7 +892,6 @@ public sealed class GameClientSessionItemCombinePublicationTests
         public ConcurrentQueue<string>? CleanupTimeline { get; set; }
         public GameEventLogManager EventLog { get; }
         public InteractableStateManager Interactables { get; } = new();
-        public BotPlayerManager Bots { get; } = new(NullLogger.Instance);
         public int TotalItemCombineRandomResolverCalls =>
             _itemCombineRandomResolverCalls.Values.Sum();
 
@@ -916,7 +915,6 @@ public sealed class GameClientSessionItemCombinePublicationTests
                     .Where(candidate => candidate.MatchingId == instanceId)
                     .ToList(),
                 Interactables,
-                Bots,
                 EventLog,
                 new MatchSummaryFileStore(_summaryDirectory),
                 Store,

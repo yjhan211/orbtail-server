@@ -15,7 +15,7 @@ public partial class GameServer
 
     /// <summary>봇이 실제로 걷는 매치만 바쁜 펄스를 계측한다 — 카운트다운·봇 없는 매치는 계측 잡음이다.</summary>
     private bool ShouldTrackBotTickBusySkip(long matchingId) =>
-        MatchStartGate.IsGameplayActive(matchingId) && _botPlayerManager.HasBots(matchingId);
+        MatchStartGate.IsGameplayActive(matchingId) && MatchRuntimes.GetRequired(matchingId).Bots.HasBots(matchingId);
 
     /// <summary>잠금이 바빠 펄스를 버렸다 — 걷는 매치에만 skip으로 남긴다.</summary>
     private void RecordBotTickBusySkip(long matchingId)

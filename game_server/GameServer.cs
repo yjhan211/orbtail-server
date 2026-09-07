@@ -47,7 +47,6 @@ public partial class GameServer(
     private readonly InteractableStateManager _interactableStateManager = new();
 
     // 봇과 몬스터
-    private readonly BotPlayerManager _botPlayerManager = new(logger);
     private readonly SwarmMonsterDirector _swarmMonsterDirector = new(monsterSpawnEnabled: devOptions.MonsterSpawnEnabled);
     private SwarmBotMovementCoordinator _swarmBotMovementCoordinator = null!;
 
@@ -95,7 +94,6 @@ public partial class GameServer(
         new MatchCleanupStep("session index", sessions.RemoveMatch),
         new MatchCleanupStep("settlement", CleanupMatchSettlementState),
         new MatchCleanupStep("swarm arena", CleanupSwarmArenaState),
-        new MatchCleanupStep("bots", _botPlayerManager.CleanupMatching),
         new MatchCleanupStep("event log", _gameEventLogManager.Clear)
     ];
 
@@ -234,7 +232,6 @@ public partial class GameServer(
     private void InitializeServices()
     {
         _swarmBotMovementCoordinator = new SwarmBotMovementCoordinator(
-            _botPlayerManager,
             MatchRuntimes,
             _gameEventLogManager);
         // M4: 폐쇄 구역은 스웜 신규 스폰을 멈춘다 (잔존 몹은 ReclaimStrandedMonsters가 걷어냄)
@@ -262,12 +259,6 @@ public partial class GameServer(
                 message => logger.LogDebug("{Message}", message),
                 message => logger.LogError("{Message}", message));
             Action<string> log = msg => logger.LogInformation(msg);
-            // 문 상태는 페이즈와 별개다 (2026-08-16). 위 제공자는 ROOM_COMBAT에서만 채워져
-            // 군집 모드에서는 항상 비었고, 그래서 봇이 잠긴 문을 그냥 통과했다.
-            _botPlayerManager.SetDoorOpenResolver((matchingId, doorId) =>
-                MatchRuntimes.Get(matchingId)?.Doors.IsDoorOpen(doorId) == true);
-            // 투사체 회피 반사 (#232 §9): 봇 걸음마다 교차사격 스냅샷을 물어 비켜설 방향을 받는다.
-            _botPlayerManager.SetSwarmDodgeResolver(ResolveSwarmBotDodgeDirection);
         }
         catch (Exception ex)
         {
@@ -294,7 +285,7 @@ public partial class GameServer(
         try
         {
             var match = MatchRuntimes.GetRequired(matchingId);
-            var eliminatedBot = _botPlayerManager.GetBot(matchingId, botId);
+            var eliminatedBot = MatchRuntimes.GetRequired(matchingId).Bots.GetBot(matchingId, botId);
             AreaType eliminatedArea = eliminatedBot?.CurrentArea ?? AreaType.None;
             int finalOrbTier = match.Inventory.GetEquippedBattleItemTier(botId);
             var transition = match.Roster.TryEliminatePlayer(botId, reason,
@@ -338,7 +329,7 @@ public partial class GameServer(
             foreach (var (affectedId, newStatus) in affected)
             {
                 // 봇 영향
-                var bot = _botPlayerManager.GetBot(matchingId, affectedId);
+                var bot = MatchRuntimes.GetRequired(matchingId).Bots.GetBot(matchingId, affectedId);
                 if (bot == null) continue;
                 if (newStatus == PlayerMatchStatus.ELIMINATED)
                 {
@@ -374,7 +365,7 @@ public partial class GameServer(
     {
         var match = MatchRuntimes.GetRequired(matchingId);
         var outcome = EliminationInventoryDropper.DropBotInventoryWithLogs(
-            _botPlayerManager, match.Inventory, match.GroundItems, _gameEventLogManager,
+            match.Bots, match.Inventory, match.GroundItems, _gameEventLogManager,
             matchingId, botPlayerId);
         if (outcome == null)
             return;
@@ -612,8 +603,7 @@ public partial class GameServer(
                 RegisterClientSession,
                 GetSessionsByInstance,
                 _interactableStateManager,
-                _botPlayerManager,
-                _gameEventLogManager,
+                    _gameEventLogManager,
                 _matchSummaryFileStore,
                 MatchRuntimes,
                 HandleSwarmGrowthPick,
@@ -804,7 +794,7 @@ public partial class GameServer(
     private List<long> GetActiveMatchingIds()
     {
         var ids = sessions.GetActiveMatchingIds().ToHashSet();
-        foreach (long matchingId in _botPlayerManager.GetActiveMatchingIds())
+        foreach (long matchingId in MatchRuntimes.ActiveIds())
         {
             if (matchingId > 0)
             {

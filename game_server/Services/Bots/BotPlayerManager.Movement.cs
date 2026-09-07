@@ -94,7 +94,7 @@ public partial class BotPlayerManager
         SummonStoneManager summonStoneManager)
     {
         var result = new BotWalkingTickResult();
-        if (!_botStates.TryGetValue(matchingId, out var bots)) return result;
+        var bots = GetBots(matchingId);
 
         var activeBots = bots.Where(bot => !bot.IsEliminated).ToList();
         if (activeBots.Count == 0) return result;
@@ -283,10 +283,7 @@ public partial class BotPlayerManager
 
     private long SelectMovementPlanningBot(long matchingId, IReadOnlyList<BotPlayerState> activeBots)
     {
-        int cursor = _botMovementPlanningCursors.AddOrUpdate(
-            matchingId,
-            0,
-            (_, current) => (current + 1) % activeBots.Count);
+        int cursor = _movementPlanningCursor = (_movementPlanningCursor + 1) % activeBots.Count;
         return activeBots[cursor % activeBots.Count].PlayerId;
     }
 
@@ -306,8 +303,7 @@ public partial class BotPlayerManager
     /// </summary>
     private int CountAreaPressure(long matchingId, AreaType area, long excludeBotPlayerId = 0)
     {
-        return _botStates.TryGetValue(matchingId, out var bots)
-            ? bots.Count(other =>
+        return GetBots(matchingId).Count(other =>
             {
                 if (other.IsEliminated || (excludeBotPlayerId != 0 && other.PlayerId == excludeBotPlayerId))
                     return false;
@@ -319,8 +315,7 @@ public partial class BotPlayerManager
                         ? other.MovementDestination
                         : other.CurrentArea;
                 return committedArea == area;
-            })
-            : 0;
+            });
     }
 
 

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
@@ -13,6 +12,7 @@ namespace game_server.services;
 /// </summary>
 public readonly record struct SwarmBotDodgeAdvice(float DirectionX, float DirectionY, float HoldSeconds);
 
+/// <summary>매치 하나의 봇과 이동 계획 상태를 관리한다. 호출은 해당 매치 잠금 안에서 실행한다.</summary>
 public partial class BotPlayerManager
 {
     /// <summary>
@@ -49,20 +49,24 @@ public partial class BotPlayerManager
     private const int InitialStamina = 100;
     private const int InitialCorruption = 0;
 
-    private readonly ConcurrentDictionary<long, List<BotPlayerState>> _botStates = new();
+    private readonly long _matchingId;
+    private List<BotPlayerState> _bots = [];
+    private bool _registered;
 
     // Cell BFS is expensive enough that replanning every bot in one 50 ms tick stalls broadcasts.
     // Rotate one planning slot per matching while every bot keeps walking its existing path.
-    private readonly ConcurrentDictionary<long, int> _botMovementPlanningCursors = new();
+    private int _movementPlanningCursor;
 
-    private readonly ConcurrentDictionary<long, MapId> _botMapIds = new();
+    private MapId _mapId = Config.SWARM_MATCH_MAP;
 
     private readonly ILogger _logger;
 
     private readonly Random _rng = Random.Shared;
 
-    public BotPlayerManager(ILogger logger)
+    public BotPlayerManager(long matchingId, ILogger logger)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
+        _matchingId = matchingId;
         _logger = logger;
     }
 
@@ -72,7 +76,9 @@ public partial class BotPlayerManager
     public void RegisterBots(long matchingId, MapId mapId, IReadOnlyList<long> botPlayerIds,
         IReadOnlyDictionary<long, Cell> spawnCells)
     {
-        _botMapIds[matchingId] = mapId;
+        if (matchingId != _matchingId)
+            throw new InvalidOperationException("Cannot register bots from another match.");
+        _mapId = mapId;
 
         var bots = botPlayerIds.Select(botPlayerId =>
         {
@@ -107,8 +113,9 @@ public partial class BotPlayerManager
             };
         }).ToList();
 
-        _botStates[matchingId] = bots;
-        _botMovementPlanningCursors[matchingId] = 0;
+        _bots = bots;
+        _registered = true;
+        _movementPlanningCursor = 0;
 
         _logger.LogInformation(
             "Bots registered: Count={Count}, MatchingId={MatchingId}, MapId={MapId}, IDs=[{Ids}]",
@@ -136,7 +143,7 @@ public partial class BotPlayerManager
 
     public MapId GetMatchingMapId(long matchingId)
     {
-        return _botMapIds.TryGetValue(matchingId, out var mapId) ? mapId : Config.SWARM_MATCH_MAP;
+        return matchingId == _matchingId ? _mapId : Config.SWARM_MATCH_MAP;
     }
 
     private static readonly int[] BotDefaultWearItemIds =
@@ -211,27 +218,21 @@ public partial class BotPlayerManager
 
     public List<BotPlayerState> GetBots(long matchingId)
     {
-        return _botStates.TryGetValue(matchingId, out var bots) ? bots : [];
-    }
-
-    public IReadOnlyList<long> GetActiveMatchingIds()
-    {
-        return _botStates.Keys.ToList();
+        return matchingId == _matchingId ? _bots : [];
     }
 
     public BotPlayerState? GetBot(long matchingId, long playerId)
     {
-        if (!_botStates.TryGetValue(matchingId, out var bots)) return null;
-        return bots.FirstOrDefault(b => b.PlayerId == playerId);
+        return GetBots(matchingId).FirstOrDefault(b => b.PlayerId == playerId);
     }
 
-    public bool HasBots(long matchingId) => _botStates.ContainsKey(matchingId);
+    public bool HasBots(long matchingId) => matchingId == _matchingId && _registered;
 
-    public void CleanupMatching(long matchingId)
+    internal void Release()
     {
-        _botStates.TryRemove(matchingId, out _);
-        _botMapIds.TryRemove(matchingId, out _);
-        _botMovementPlanningCursors.TryRemove(matchingId, out _);
+        _bots.Clear();
+        _registered = false;
+        _movementPlanningCursor = 0;
     }
 
     public static bool IsBotPlayerId(long playerId) => playerId < 0;

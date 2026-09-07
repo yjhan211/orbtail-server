@@ -294,7 +294,7 @@ public partial class GameServer
     private SwarmBotDirective ResolveSwarmBotDirective(long matchingId, long botPlayerId)
     {
         var directive = ResolveSwarmBotDirectiveCore(matchingId, botPlayerId);
-        var bot = _botPlayerManager.GetBots(matchingId)
+        var bot = MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)
             .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
         if (bot == null || bot.IsEliminated || bot.CurrentArea == AreaType.None)
             return directive;
@@ -339,7 +339,7 @@ public partial class GameServer
         GetSwarmMatchRuntime(matchingId).BotTactics.FleeDirective.Remove((matchingId, botPlayerId));
         var directive = _swarmMonsterDirector.GetBotDirective(matchingId, botPlayerId);
 
-        var bot = _botPlayerManager.GetBots(matchingId)
+        var bot = MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)
             .FirstOrDefault(candidate => candidate.PlayerId == botPlayerId);
         if (bot == null || bot.IsEliminated)
             return directive;
@@ -893,7 +893,7 @@ public partial class GameServer
             }
         }
 
-        foreach (var other in _botPlayerManager.GetBots(matchingId))
+        foreach (var other in MatchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
         {
             if (other.PlayerId == bot.PlayerId || other.IsEliminated) continue;
             Consider(other.PlayerId, other.Position, other.CurrentArea);

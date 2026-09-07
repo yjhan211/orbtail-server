@@ -423,7 +423,7 @@ public partial class GameClientSession
                 }
 
                 // #79: 나에게 이전 Area의 봇들 삭제 알림 (봇은 TCP 세션이 없어 별도 처리)
-                var oldAreaBots = _botPlayerManager.GetBots(MatchingId)
+                var oldAreaBots = _matchRuntimes.GetRequired(MatchingId).Bots.GetBots(MatchingId)
                     .Where(b => !b.IsEliminated && b.CurrentArea == oldArea)
                     .ToList();
                 foreach (var bot in oldAreaBots)
@@ -458,12 +458,12 @@ public partial class GameClientSession
                 Logger.LogDebug("Sent {Count} existing players to Player {PlayerId}", newAreaSessions.Count, PlayerId);
 
                 // 4. #125: 새 Area의 봇들 ENTER도 나에게 전송 (실제 플레이어 동등)
-                var newAreaBots = _botPlayerManager.GetBots(MatchingId)
+                var newAreaBots = _matchRuntimes.GetRequired(MatchingId).Bots.GetBots(MatchingId)
                     .Where(b => !b.IsEliminated && b.CurrentArea == newArea)
                     .ToList();
                 foreach (var bot in newAreaBots)
                 {
-                    var objectInfo = _botPlayerManager.SynthesizeGameObjectInfo(MatchingId, bot.PlayerId);
+                    var objectInfo = _matchRuntimes.GetRequired(MatchingId).Bots.SynthesizeGameObjectInfo(MatchingId, bot.PlayerId);
                     if (objectInfo == null) continue;
                     using var botEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(objectInfo);
                     TrySend(botEnterPacket);

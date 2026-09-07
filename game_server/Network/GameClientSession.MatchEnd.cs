@@ -25,7 +25,7 @@ public partial class GameClientSession
     {
         var allSessions = _getSessionsByInstance(CurrentMapId, MatchingId);
         var eliminatedSession = allSessions.FirstOrDefault(session => session.PlayerId == eliminatedPlayerId);
-        var eliminatedBot = _botPlayerManager.GetBot(MatchingId, eliminatedPlayerId);
+        var eliminatedBot = _matchRuntimes.GetRequired(MatchingId).Bots.GetBot(MatchingId, eliminatedPlayerId);
         AreaType eliminatedArea = eliminatedSession?.CurrentArea ?? eliminatedBot?.CurrentArea ?? AreaType.None;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
@@ -97,7 +97,7 @@ public partial class GameClientSession
             }
 
             // 봇 상태 동기화
-            var bot = _botPlayerManager.GetBot(MatchingId, playerId);
+            var bot = _matchRuntimes.GetRequired(MatchingId).Bots.GetBot(MatchingId, playerId);
             if (bot != null)
             {
                 if (newStatus == PlayerMatchStatus.ELIMINATED)
@@ -397,8 +397,8 @@ public partial class GameClientSession
             .Select(d =>
             {
                 var session = allSessions.FirstOrDefault(s => s.PlayerId == d.playerId);
-                var bot = _botPlayerManager.GetBot(matchingId, d.playerId);
-                var playerInfo = bot == null ? null : _botPlayerManager.SynthesizePlayerInfo(matchingId, d.playerId);
+                var bot = _matchRuntimes.GetRequired(matchingId).Bots.GetBot(matchingId, d.playerId);
+                var playerInfo = bot == null ? null : _matchRuntimes.GetRequired(matchingId).Bots.SynthesizePlayerInfo(matchingId, d.playerId);
                 var playerProfile = _matchRuntimes.GetRequired(matchingId).Roster.GetPlayerProfile(d.playerId);
                 var stats = _gameEventLogManager.GetResultStats(matchingId, d.playerId);
                 var orbScore = ResolveResultOrbScore(matchingId, d.playerId);
