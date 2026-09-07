@@ -3,11 +3,56 @@ using MessagePack;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data.models;
+using network.gameentry;
 
 namespace demo_regression_tests;
 
 public sealed class GameMatchEntryServiceTests
 {
+    [Theory]
+    [InlineData("game-server-test", true)]
+    [InlineData("another-node", false)]
+    public async Task ConsumeTicketUsesCurrentNodeAndConsumesOnlyOnce(string targetNode, bool accepted)
+    {
+        var redis = new InMemoryRedisOperations();
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var service = TestGameSessionServices.CreateEntryService(
+            redis, store, GameServerDevOptions.Disabled, NullLogger.Instance);
+        var tickets = new GameEntryTicketService(new RedisGameEntryTicketStore(redis), new GameEntryTicketOptions());
+        string ticket = await tickets.IssueAsync(new GameEntryContext
+        {
+            PlayerId = 1001, MatchingId = 981008, GameServerNodeId = targetNode
+        });
+
+        var context = await service.ConsumeTicketAsync(ticket);
+        if (accepted)
+        {
+            Assert.NotNull(context);
+            Assert.Equal(1001, context.PlayerId);
+            Assert.Equal(981008, context.MatchingId);
+        }
+        else
+        {
+            Assert.Null(context);
+        }
+
+        Assert.Null(await service.ConsumeTicketAsync(ticket));
+        Assert.Null(await tickets.ConsumeAsync(ticket, targetNode));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("invalid-ticket")]
+    public async Task ConsumeTicketRejectsMissingOrMalformedTicket(string? ticket)
+    {
+        var service = TestGameSessionServices.CreateEntryService(
+            new InMemoryRedisOperations(), new MatchRuntimeStore(NullLogger.Instance),
+            GameServerDevOptions.Disabled, NullLogger.Instance);
+
+        Assert.Null(await service.ConsumeTicketAsync(ticket));
+    }
+
     [Fact]
     public async Task ConcurrentEntriesShareOneCompositionAndBotRoster()
     {
@@ -24,6 +69,22 @@ public sealed class GameMatchEntryServiceTests
         Assert.Same(results[0], runtime.Composition);
         Assert.Single(results[0].BotPlayerIds);
         Assert.Single(runtime.Bots.GetBots(runtime.MatchingId));
+    }
+
+    [Fact]
+    public async Task ConsumeTicketPropagatesStoreFailureToSession()
+    {
+        var redis = new InMemoryRedisOperations();
+        var service = TestGameSessionServices.CreateEntryService(
+            redis, new MatchRuntimeStore(NullLogger.Instance), GameServerDevOptions.Disabled, NullLogger.Instance);
+        var tickets = new GameEntryTicketService(new RedisGameEntryTicketStore(redis), new GameEntryTicketOptions());
+        string ticket = await tickets.IssueAsync(new GameEntryContext
+        {
+            PlayerId = 1001, MatchingId = 981009, GameServerNodeId = "game-server-test"
+        });
+        redis.StringGetError = new IOException("Redis unavailable");
+
+        await Assert.ThrowsAsync<IOException>(() => service.ConsumeTicketAsync(ticket));
     }
 
     [Fact]
@@ -94,7 +155,7 @@ public sealed class GameMatchEntryServiceTests
         var redis = new InMemoryRedisOperations();
         await Seed(redis, id);
         var store = new MatchRuntimeStore(NullLogger.Instance);
-        return (new GameMatchEntryService(redis, store, GameServerDevOptions.Disabled, NullLogger.Instance),
+        return (TestGameSessionServices.CreateEntryService(redis, store, GameServerDevOptions.Disabled, NullLogger.Instance),
             redis, store, store.GetOrCreate(id));
     }
 

@@ -75,7 +75,7 @@ internal static class GameServerTestAccess
             logger: Microsoft.Extensions.Logging.Abstractions.NullLogger<GameServer>.Instance,
             sessionLogger: Microsoft.Extensions.Logging.Abstractions.NullLogger<game_server.sessions.GameClientSession>.Instance,
             matchingLifecycle: lifecycle,
-            redisOperations: null!, networkService: null!, gameEntryTicketService: null!,
+            redisOperations: null!, networkService: null!,
             readinessState: new network.hosting.ServerReadinessState(),
             gameServerRegistry: new RecordingGameServerRegistry(),
             nodeOptions: new GameServerNodeOptions
@@ -85,7 +85,7 @@ internal static class GameServerTestAccess
             },
             devOptions: GameServerDevOptions.Disabled,
             sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, matchEliminations: TestGameSessionServices.CreateEliminationService(runtimes, logs, summaries, GameServerDevOptions.Disabled, sessions.GetByMatch, logger),
-            matchEntry: new GameMatchEntryService(new InMemoryRedisOperations(), runtimes, GameServerDevOptions.Disabled, logger),
+            matchEntry: TestGameSessionServices.CreateEntryService(new InMemoryRedisOperations(), runtimes, GameServerDevOptions.Disabled, logger),
             itemCombinations: new ItemCombinationService(logs),
             movementValidation: new MovementValidationService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MovementValidationService>.Instance),
             entryFailureHandler: entryFailure,

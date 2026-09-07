@@ -30,7 +30,7 @@ public partial class GameClientSession
         bool registered = false;
         try
         {
-            GameEntryContext? entryContext = await _consumeGameEntryTicket(msg.GameEntryTicket);
+            GameEntryContext? entryContext = await _matchEntry.ConsumeTicketAsync(msg.GameEntryTicket);
             if (entryContext == null)
             {
                 EnsureConnectionActive();

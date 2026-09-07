@@ -772,7 +772,6 @@ public sealed class GameClientSessionPublicationTests
                 connection,
                 NullLogger.Instance,
                 null!,
-                static _ => Task.FromResult<GameEntryContext?>(null),
                 TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
                 matchingId => sessions
@@ -787,7 +786,7 @@ public sealed class GameClientSessionPublicationTests
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
-                new GameMatchEntryService(null!, matchRuntimes, GameServerDevOptions.Disabled, NullLogger.Instance),
+                TestGameSessionServices.CreateEntryService(null!, matchRuntimes, GameServerDevOptions.Disabled, NullLogger.Instance),
                 new ItemCombinationService(eventLog),
                 new MovementValidationService(NullLogger<MovementValidationService>.Instance))
         {

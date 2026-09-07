@@ -241,7 +241,16 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
         }
     }
 
-    public Task<RedisValue> StringGetDeleteAsync(string key, int db = -1) => throw new NotSupportedException();
+    public Task<RedisValue> StringGetDeleteAsync(string key, int db = -1)
+    {
+        if (StringGetError != null) throw StringGetError;
+        lock (_sync)
+        {
+            bool found = _strings.Remove(key, out RedisValue value);
+            _expiries.Remove(key);
+            return Task.FromResult(found ? value : RedisValue.Null);
+        }
+    }
 
     public Task<bool> StringSetAsync(string key, RedisValue value, TimeSpan? expiry = null, int db = -1)
     {

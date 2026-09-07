@@ -943,7 +943,6 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 connection,
                 NullLogger.Instance,
                 null!,
-                static _ => Task.FromResult<GameEntryContext?>(null),
                 TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
                 matchingId => _sessions
@@ -961,7 +960,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 new FakeGameSessionLifecycle(),
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
-                new GameMatchEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
+                TestGameSessionServices.CreateEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
                 new ItemCombinationService(EventLog),
                 new MovementValidationService(NullLogger<MovementValidationService>.Instance));
             connection.SetSession(session);

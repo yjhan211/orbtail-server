@@ -4,13 +4,14 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.gameentry;
 using network.helpers;
 using network.infrastructure.redis;
 
 namespace game_server.services;
 
 /// <summary>
-///     입장에 필요한 manifest·예약·준비 마커를 확인하고 사람·봇·스폰 구성을 매치당 한 번 확정한다.
+///     현재 노드에 발급된 입장 티켓을 소비하고 manifest·예약·준비 마커를 확인해 사람·봇·스폰 구성을 매치당 한 번 확정한다.
 ///     Redis 조회는 매치별 비동기 초기화 잠금으로 직렬화하고, 메모리 상태 반영은 매치 잠금 안에서 처리한다.
 ///     연결 인증과 초기 패킷 전송은 세션이 맡으며, 이 서비스는 특정 연결을 보관하지 않는다.
 /// </summary>
@@ -18,9 +19,15 @@ internal sealed class GameMatchEntryService(
     IRedisOperations RedisOperations,
     MatchRuntimeStore _matchRuntimes,
     GameServerDevOptions _devOptions,
-    ILogger Logger)
+    ILogger Logger,
+    GameEntryTicketService ticketService,
+    GameServerNodeOptions nodeOptions)
 {
     private readonly GameEntryStateCommitter _entryStateCommitter = new(RedisOperations, Logger);
+
+    /// <summary>티켓을 한 번 소비하고 현재 GameServer 노드에 배정된 입장인지 확인한다.</summary>
+    public Task<GameEntryContext?> ConsumeTicketAsync(string? ticket) =>
+        ticketService.ConsumeAsync(ticket, nodeOptions.NodeId);
 
     public Task CommitAsync(long matchingId, long playerId, IReadOnlyCollection<long> humanPlayerIds) =>
         _entryStateCommitter.CommitAsync(matchingId, playerId, humanPlayerIds);

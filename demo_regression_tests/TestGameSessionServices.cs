@@ -2,6 +2,8 @@ using game_server.network;
 using game_server.services;
 using game_server.sessions;
 using Microsoft.Extensions.Logging.Abstractions;
+using network.gameentry;
+using network.infrastructure.redis;
 
 namespace demo_regression_tests;
 
@@ -18,6 +20,16 @@ internal sealed class FakePlayerGrowthHandler(
 
 internal static class TestGameSessionServices
 {
+    public static GameMatchEntryService CreateEntryService(
+        IRedisOperations? redis, MatchRuntimeStore store, GameServerDevOptions options,
+        Microsoft.Extensions.Logging.ILogger logger)
+    {
+        redis ??= new InMemoryRedisOperations();
+        return new GameMatchEntryService(redis, store, options, logger,
+            new GameEntryTicketService(new RedisGameEntryTicketStore(redis), new GameEntryTicketOptions()),
+            new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" });
+    }
+
     public static MatchEliminationService CreateEliminationService(
         MatchRuntimeStore store,
         GameEventLogManager logs,

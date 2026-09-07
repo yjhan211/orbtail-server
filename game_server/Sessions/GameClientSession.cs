@@ -7,7 +7,6 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.core;
-using network.gameentry;
 using network.infrastructure.redis;
 using network.packets;
 
@@ -31,7 +30,6 @@ public partial class GameClientSession : SessionBase
     private readonly PlayerCondition _condition = new();
     private readonly Func<long, List<GameClientSession>> _getSessionsByMatch;
 
-    private readonly Func<string?, Task<GameEntryContext?>> _consumeGameEntryTicket;
     private readonly GameSessionLeaveHandler _sessionLeaveHandler;
     /// <summary>매치별 잠금·수명 색인 (#331) — 핸들러 직렬화·터미널 게이트·종료 정리의 단일 원천.</summary>
     private readonly MatchRuntimeStore _matchRuntimes;
@@ -117,7 +115,6 @@ public partial class GameClientSession : SessionBase
         TcpConnection connection,
         ILogger logger,
         IRedisOperations redisOperations,
-        Func<string?, Task<GameEntryContext?>> consumeGameEntryTicket,
         GameSessionLeaveHandler sessionLeaveHandler,
         Func<long, GameClientSession, GameClientSession?> registerSessionCallback,
         Func<long, List<GameClientSession>> getSessionsByMatch,
@@ -138,7 +135,6 @@ public partial class GameClientSession : SessionBase
         : base(connection, logger, redisOperations)
     {
         _sessionLeaveHandler = sessionLeaveHandler;
-        _consumeGameEntryTicket = consumeGameEntryTicket;
         _registerSessionCallback = registerSessionCallback;
         _getSessionsByMatch = getSessionsByMatch;
 

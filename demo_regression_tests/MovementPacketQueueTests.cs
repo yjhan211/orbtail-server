@@ -78,7 +78,6 @@ public sealed class MovementPacketQueueTests
             connection,
             NullLogger.Instance,
             null!,
-            static _ => Task.FromResult<GameEntryContext?>(null),
             TestGameSessionServices.CreateLeaveHandler(),
             static (_, _) => null,
             static _ => [],
@@ -93,7 +92,7 @@ public sealed class MovementPacketQueueTests
             new FakeGameSessionLifecycle(),
             static () => false,
             new FakeMatchEntryFailureHandler(),
-            matchEntry: new GameMatchEntryService(null!, store, GameServerDevOptions.Disabled, NullLogger.Instance),
+            matchEntry: TestGameSessionServices.CreateEntryService(null!, store, GameServerDevOptions.Disabled, NullLogger.Instance),
             itemCombinations: new ItemCombinationService(logs),
             movementValidation: new MovementValidationService(NullLogger<MovementValidationService>.Instance),
             movementTimeProvider: clock);

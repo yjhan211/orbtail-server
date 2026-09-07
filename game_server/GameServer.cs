@@ -7,7 +7,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using network.common.data.helpers;
 using network.core;
-using network.gameentry;
 using network.hosting;
 using network.infrastructure.redis;
 using network.routing;
@@ -32,7 +31,6 @@ internal sealed class GameServer(
     IConfiguration configuration,
     IRedisOperations redisOperations,
     MatchingLifecycleService matchingLifecycle,
-    GameEntryTicketService gameEntryTicketService,
     ServerReadinessState readinessState,
     IGameServerRegistry gameServerRegistry,
     GameServerNodeOptions nodeOptions,
@@ -221,7 +219,6 @@ internal sealed class GameServer(
                 connection,
                 sessionLogger,
                 redisOperations,
-                ticket => gameEntryTicketService.ConsumeAsync(ticket, nodeOptions.NodeId),
                 sessionLeaveHandler,
                 sessions.Register,
                 sessions.GetByMatch,

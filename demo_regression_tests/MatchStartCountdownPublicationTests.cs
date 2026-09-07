@@ -488,7 +488,6 @@ public sealed class MatchStartCountdownPublicationTests
                 new TcpConnection(),
                 NullLogger.Instance,
                 null!,
-                static _ => Task.FromResult<GameEntryContext?>(null),
                 TestGameSessionServices.CreateLeaveHandler(),
                 static (_, _) => null,
                 static _ => [],
