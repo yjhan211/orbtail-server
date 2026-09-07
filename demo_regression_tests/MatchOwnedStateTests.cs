@@ -1,4 +1,6 @@
 using game_server.services;
+using game_server.network;
+using network.common.data.models;
 using Microsoft.Extensions.Logging.Abstractions;
 using network.common;
 using network.common.data;
@@ -136,6 +138,43 @@ public sealed class MatchOwnedStateTests
         }
     }
 
+    [Fact]
+    public void BotElimination_RemovesInventoryOnce_AndKeepsOtherMatchesUntouched()
+    {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(941101);
+        var sibling = store.GetOrCreate(941102);
+        const long botId = -42;
+        foreach (var runtime in new[] { match, sibling })
+        {
+            runtime.Bots.RegisterBots(runtime.MatchingId, Config.SWARM_MATCH_MAP,
+                [botId], new Dictionary<long, Cell> { [botId] = new(0, 0) });
+            runtime.Roster.RegisterEntry(new RosterEntry { PlayerId = botId });
+            runtime.Roster.RegisterEntry(new RosterEntry { PlayerId = 11 });
+            runtime.Inventory.AddItem(botId, 107000010);
+        }
+        var bot = match.Bots.GetBot(match.MatchingId, botId)!;
+        var service = new BotEliminationService(new GameSessionRegistry(),
+            new GameEventLogManager(id => store.Get(id)?.EventLog), NullLogger.Instance);
+        using (store.Enter(match))
+        {
+            service.Process(match, botId, EliminationReason.MENTAL_ZERO, attackerPlayerId: 11);
+            var entry = match.Roster.GetEntry(botId)!;
+            Assert.Equal(PlayerMatchStatus.ELIMINATED, entry.Status);
+            Assert.True(bot.IsEliminated);
+            Assert.Empty(match.Inventory.GetPlayerInventory(botId).GetAllItems());
+            int drops = match.GroundItems.GetSnapshot(bot.CurrentArea).Count;
+            var eliminatedAt = entry.EliminatedAt;
+
+            service.Process(match, botId, EliminationReason.MENTAL_ZERO, attackerPlayerId: 99);
+            Assert.Equal(drops, match.GroundItems.GetSnapshot(bot.CurrentArea).Count);
+            Assert.Equal(eliminatedAt, entry.EliminatedAt);
+            Assert.Equal(11, entry.AttackerPlayerId);
+        }
+        Assert.False(sibling.Bots.GetBot(sibling.MatchingId, botId)!.IsEliminated);
+        Assert.NotEmpty(sibling.Inventory.GetPlayerInventory(botId).GetAllItems());
+        Assert.NotEqual(PlayerMatchStatus.ELIMINATED, sibling.Roster.GetEntry(botId)!.Status);
+    }
     [Fact]
     public void InteractableSnapshots_AreIndependentCopiesOfSharedDefinitions()
     {

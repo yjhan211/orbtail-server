@@ -99,7 +99,7 @@ public sealed class SwarmArenaTickOrderTests
             "var eliminatedTargets = targets",
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
             "target.Session.EliminateForSettlement(",
-            "ProcessBotElimination(",
+            "BotEliminations.Process(",
             "Roster.CheckGameOver()",
             "resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);");
         Assert.DoesNotContain("Enter(", matchingSettlement);
@@ -178,7 +178,7 @@ public sealed class SwarmArenaTickOrderTests
             "attackerSession?.SendSwarmAfterimageMonsterAttackFeedback(",
             "BroadcastSwarmAttackVfxToTargetAndObservers(",
             "MatchRuntimes.GetRequired(matchingId).Bots.TryFinalizeProximityAutoCombatElimination(",
-            "ProcessBotElimination(");
+            "BotEliminations.Process(");
     }
 
     [Fact]
@@ -229,8 +229,8 @@ public sealed class SwarmArenaTickOrderTests
         Assert.False(ContainsCodeToken(orbPublicationSteps, "catch"));
 
         string botElimination = ReadMethodSlice(
-            server,
-            "private void ProcessBotElimination(",
+            ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotEliminationService.cs"),
+            "public void Process(",
             "private void DropBotInventoryAtCurrentPosition(");
         AssertInOrder(
             botElimination,

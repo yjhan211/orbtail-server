@@ -606,7 +606,7 @@ public partial class GameServer
             if (!MatchRuntimes.GetRequired(matchingId).Bots.TryFinalizeProximityAutoCombatElimination(bot, matchingId))
                 continue;
 
-            ProcessBotElimination(matchingId, bot.PlayerId, EliminationReason.MENTAL_ZERO, activeSessions,
+            BotEliminations.Process(MatchRuntimes.GetRequired(matchingId), bot.PlayerId, EliminationReason.MENTAL_ZERO,
                 attackerPlayerId: bot.LastProximityAttackerPlayerId);
             if (IsMatchTerminal(matchingId) ||
                 activeSessions.Any(session => session.IsGameEnded))

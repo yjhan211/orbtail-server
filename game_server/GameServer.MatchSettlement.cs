@@ -157,11 +157,10 @@ public partial class GameServer
             }
             else if (target.Bot != null)
             {
-                ProcessBotElimination(
-                    matchingId,
+                BotEliminations.Process(
+                    MatchRuntimes.GetRequired(matchingId),
                     target.PlayerId,
                     EliminationReason.MENTAL_ZERO,
-                    activeSessions,
                     isAreaClosureElimination: closureElimination,
                     isOvertimeElimination: overtimeElimination,
                     deferGameOver: true,
