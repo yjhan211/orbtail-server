@@ -3133,13 +3133,6 @@ public partial class GameServer
         return frontOrb == null ? -1 : GetSquadOrbMaxHp(GetSquadOrbTier(frontOrb.ItemId));
     }
 
-    private bool HasAnySquadOrb(long matchingId, long playerId)
-    {
-        return MatchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
-            .GetAllItems()
-            .Any(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0);
-    }
-
     private static int GetSquadOrbTier(int itemId)
     {
         if (OrbData.TryGetColorAndTier(itemId, out _, out int tier))

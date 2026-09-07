@@ -82,16 +82,8 @@ public partial class GameServer(
             () => new MatchEntryFailureHandler(MatchRuntimes, sessions, MatchingLifecycle, logger))!;
 
     private MatchRuntimeStore CreateMatchRuntimeStore() => new(logger,
-        initializeMatch: InitializeMatchServices, cleanupSteps: BuildMatchCleanupSteps(),
+        cleanupSteps: BuildMatchCleanupSteps(),
         afterCleanup: StartMatchingRedisCleanup, monsterSpawnEnabled: devOptions.MonsterSpawnEnabled);
-
-    private void InitializeMatchServices(long matchingId)
-    {
-        var match = MatchRuntimes.GetRequired(matchingId);
-        match.Monsters.IsAreaClosedResolver = (_, area) => match.Closures.IsAreaClosed(area);
-        match.Monsters.IsGameplayActiveResolver = MatchStartGate.IsGameplayActive;
-        match.Monsters.IsPlayerOrblessResolver = (_, playerId) => !HasAnySquadOrb(matchingId, playerId);
-    }
 
     /// <summary>
     ///     터미널 정리 순서. 최외곽 잠금 탈출에서 한 번 돌고 단계마다 예외를 격리한다 — 한 컴포넌트 실패가

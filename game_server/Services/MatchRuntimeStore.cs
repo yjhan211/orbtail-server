@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
+using network.common.data;
 using network.common.data.models;
 
 namespace game_server.services;
@@ -23,7 +24,6 @@ internal sealed class MatchRuntime
         MatchingId = matchingId;
         Bots = new BotPlayerManager(matchingId, logger);
         BotMovement = new SwarmBotMovementCoordinator(this);
-        Monsters = new SwarmMonsterDirector(matchingId, monsterSpawnEnabled: monsterSpawnEnabled);
         Swarm = new SwarmMatchRuntime(matchingId,
             growthOfferIds ?? new SwarmGrowthOfferIdSequence(),
             crossfireEventIds ?? new SwarmCrossfireEventIdSequence());
@@ -36,6 +36,12 @@ internal sealed class MatchRuntime
         Roster = new MatchRosterManager(matchingId, logger);
         SummonStones = new SummonStoneManager(matchingId);
         Closures = new AreaClosureManager(matchingId, logger);
+        Monsters = new SwarmMonsterDirector(matchingId, monsterSpawnEnabled: monsterSpawnEnabled)
+        {
+            IsAreaClosedResolver = (_, area) => Closures.IsAreaClosed(area),
+            IsGameplayActiveResolver = _ => MatchStartGate.IsGameplayActive(MatchingId),
+            IsPlayerOrblessResolver = (_, playerId) => !HasAnySquadOrb(playerId)
+        };
     }
 
     public long MatchingId { get; }
@@ -56,6 +62,16 @@ internal sealed class MatchRuntime
     public AreaClosureManager Closures { get; }
     public object Sync { get; } = new();
     public bool IsTerminal => Volatile.Read(ref _terminal) != 0;
+
+    /// <summary>이 매치의 인벤토리에 수량이 남은 공격·회복 오브가 있는지 확인한다.</summary>
+    public bool HasAnySquadOrb(long playerId)
+    {
+        return Inventory.GetPlayerInventory(playerId).GetAllItems().Any(item =>
+            item.Count > 0 &&
+            (OrbData.TryGetColorAndTier(item.ItemId, out _, out int tier)
+                ? tier > 0
+                : OrbData.TryGetRecoveryTier(item.ItemId, out int recoveryTier) && recoveryTier > 0));
+    }
 
     public DateTime? NextEnvironmentalTickAtUtc { get; private set; }
 
