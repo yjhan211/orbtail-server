@@ -73,29 +73,26 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("PrepareAndDispatch", proximity);
         Assert.DoesNotContain("Coordinator", proximity);
 
-        // 5초 정산 틱은 잠금을 기다린다 — 전투 펄스보다 드물어 버릴 이유가 없다.
-        string resourceTick = ReadMethodSlice(
-            server,
-            "private void ProcessResourceTick(object? state)",
-            "/// <summary>\n    ///     #26: 봇 탈락 처리 + 게임 종료 판정.");
+        // 환경 정산은 같은 50ms 펄스 안에서 전투 다음, 봇 걸음 전에 실행한다.
+        Assert.DoesNotContain("_resourceTickTimer", server);
+        Assert.DoesNotContain("StartResourceTickTimer", server);
         AssertInOrder(
-            resourceTick,
-            "sessions.SnapshotWhere(",
-            "MatchRuntimes.ActiveIds()",
-            "if (!MatchStartGate.IsGameplayActive(matchingId))",
-            "MatchRuntimes.Enter(matchingId, out MatchScope scope)",
-            "scope.Runtime.IsTerminal",
-            "ProcessResourceTickForMatching(matchingId, activeSessions);",
-            "catch (Exception ex)");
-        Assert.DoesNotContain("TryEnter", resourceTick);
+            proximityTick,
+            "using (scope)",
+            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
+            "scope.Runtime.TryBeginEnvironmentalTick(",
+            "MatchStartGate.GetGameplayStartedAtUtc(matchingId)",
+            "ProcessEnvironmentalTickForMatching(scope.Runtime, activeSessions);",
+            "scope.Runtime.IsTerminal ||",
+            "ProcessBotMovementForMatching(matchingId);");
 
         string matchingSettlement = ReadMethodSlice(
             settlement,
-            "private void ProcessResourceTickForMatching(",
+            "private void ProcessEnvironmentalTickForMatching(",
             "private void CleanupMatchSettlementState(");
         AssertInOrder(
             matchingSettlement,
-            "ProcessProximityAutoCombatForMatching(matchingId, activeSessions);",
+            "long matchingId = match.MatchingId;",
             "var humans = activeSessions",
             "var bots = _botPlayerManager.GetBots(matchingId)",
             "target.Session.ModifyStats(",
@@ -106,6 +103,7 @@ public sealed class SwarmArenaTickOrderTests
             "Roster.CheckGameOver()",
             "resultHost.TryEndMatch(winnerId.Value, resolution.DecisiveCriterion);");
         Assert.DoesNotContain("Enter(", matchingSettlement);
+        Assert.DoesNotContain("ProcessProximityAutoCombatForMatching(", matchingSettlement);
         Assert.DoesNotContain("PublicationTurn", matchingSettlement);
     }
 

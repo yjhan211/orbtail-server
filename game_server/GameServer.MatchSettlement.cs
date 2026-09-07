@@ -7,12 +7,12 @@ namespace game_server;
 
 public partial class GameServer
 {
-    /// <summary>5초 정산 틱 본체 — 호출자가 매치 잠금을 쥔 채 부른다. 전투 틱을 먼저 돌린 뒤 환경 오염을 정산한다.</summary>
-    private void ProcessResourceTickForMatching(
-        long matchingId,
+    /// <summary>매치의 5초 환경 정산. 50ms 틱이 전투 처리 후 같은 매치 잠금 안에서 호출한다.</summary>
+    private void ProcessEnvironmentalTickForMatching(
+        MatchRuntime match,
         List<GameClientSession> activeSessions)
     {
-        ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
+        long matchingId = match.MatchingId;
 
         var humans = activeSessions
             .Where(session =>
@@ -47,15 +47,15 @@ public partial class GameServer
             return;
         }
 
-        int overtimeDelta = MatchRuntimes.GetRequired(matchingId).Closures.GetOvertimeCorruptionPerTick(
-            ResourceTickIntervalSeconds);
+        int overtimeDelta = match.Closures.GetOvertimeCorruptionPerTick(
+            MatchRuntime.EnvironmentalTickIntervalSeconds);
         var targets = new List<EnvironmentalTarget>(aliveCount);
 
         foreach (var session in humans)
         {
-            int closureDelta = MatchRuntimes.GetRequired(matchingId).Closures.GetClosedAreaCorruptionPerTick(
+            int closureDelta = match.Closures.GetClosedAreaCorruptionPerTick(
                 session.CurrentArea,
-                ResourceTickIntervalSeconds);
+                MatchRuntime.EnvironmentalTickIntervalSeconds);
             if (session.LastValidatedPosition != null)
                 closureDelta += GetSwarmFieldCorruptionPerTick(matchingId, session.LastValidatedPosition);
             targets.Add(new EnvironmentalTarget(
@@ -69,9 +69,9 @@ public partial class GameServer
 
         foreach (var bot in bots)
         {
-            int closureDelta = MatchRuntimes.GetRequired(matchingId).Closures.GetClosedAreaCorruptionPerTick(
+            int closureDelta = match.Closures.GetClosedAreaCorruptionPerTick(
                 bot.CurrentArea,
-                ResourceTickIntervalSeconds);
+                MatchRuntime.EnvironmentalTickIntervalSeconds);
             closureDelta += GetSwarmFieldCorruptionPerTick(matchingId, bot.Position);
             targets.Add(new EnvironmentalTarget(
                 bot.PlayerId,
@@ -171,7 +171,7 @@ public partial class GameServer
             rank--;
         }
 
-        (bool isGameOver, long? winnerId) = MatchRuntimes.GetRequired(matchingId).Roster.CheckGameOver();
+        (bool isGameOver, long? winnerId) = match.Roster.CheckGameOver();
         var resultHost = GetSessionsByMatch(matchingId)
             .FirstOrDefault(session => !session.IsGameEnded);
         if (isGameOver && winnerId.HasValue && resultHost != null)

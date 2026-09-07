@@ -12,6 +12,7 @@ namespace game_server.services;
 /// </summary>
 internal sealed class MatchRuntime
 {
+    public const int EnvironmentalTickIntervalSeconds = 5;
     private int _terminal;
 
     internal MatchRuntime(long matchingId, ILogger logger)
@@ -36,6 +37,30 @@ internal sealed class MatchRuntime
     public AreaClosureManager Closures { get; }
     public object Sync { get; } = new();
     public bool IsTerminal => Volatile.Read(ref _terminal) != 0;
+
+    public DateTime? NextEnvironmentalTickAtUtc { get; private set; }
+
+    /// <summary>
+    ///     매치 시작 기준 5초마다 환경 정산을 한 번 허용한다. 반드시 매치 잠금 안에서 호출한다.
+    ///     지연된 구간은 몰아서 정산하지 않고 다음 5초 경계로 건너뛴다.
+    ///     실행 전에 시각을 넘겨 예외가 나더라도 매 50ms마다 같은 정산을 반복하지 않는다.
+    /// </summary>
+    public bool TryBeginEnvironmentalTick(DateTime utcNow, DateTime? gameplayStartedAtUtc)
+    {
+        if (!Monitor.IsEntered(Sync))
+            throw new InvalidOperationException("Environmental tick requires the match monitor to be held.");
+        if (IsTerminal || gameplayStartedAtUtc is not { } startedAt || utcNow < startedAt)
+            return false;
+
+        NextEnvironmentalTickAtUtc ??= startedAt.AddSeconds(EnvironmentalTickIntervalSeconds);
+        if (utcNow < NextEnvironmentalTickAtUtc.Value)
+            return false;
+
+        long intervalTicks = TimeSpan.TicksPerSecond * EnvironmentalTickIntervalSeconds;
+        long nextInterval = (utcNow.Ticks - startedAt.Ticks) / intervalTicks + 1;
+        NextEnvironmentalTickAtUtc = startedAt.AddTicks(nextInterval * intervalTicks);
+        return true;
+    }
 
     private MatchComposition? _composition;
 

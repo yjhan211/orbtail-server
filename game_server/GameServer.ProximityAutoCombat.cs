@@ -32,9 +32,9 @@ public partial class GameServer
     }
 
     /// <summary>
-    ///     50ms 매치 틱 — 한 매치의 카운트다운 방송·전투·봇 걸음을 같은 잠금 한 번으로 이어 돌린다. 예전처럼
+    ///     50ms 매치 틱 — 카운트다운 방송·전투·5초 환경 정산·봇 걸음을 같은 잠금 안에서 순서대로 처리한다. 예전처럼
     ///     전투와 봇 걸음을 별도 타이머로 두면 두 타이머가 같은 주기로 맞물려 뒤에 오는 쪽이 매 펄스 잠금을
-    ///     놓친다. 잠금이 바쁜 매치(세션 핸들러·정산 틱)는 이 펄스를 버리고 밀린 틱을 따라잡지 않는다.
+    ///     놓친다. 잠금이 바쁜 매치는 이 펄스를 버린다. 환경 정산 시각은 잠금에 들어간 뒤에만 갱신한다.
     ///     틱 안의 Send는 잠금 안에서 그대로 나가므로 패킷 순서가 곧 상태 변경 순서다.
     /// </summary>
     private void ProcessProximityAutoCombatTick(object? state)
@@ -77,6 +77,11 @@ public partial class GameServer
                 {
                     BroadcastMatchStartCountdowns([matchingId], countdownSessions);
                     ProcessProximityAutoCombatForMatching(matchingId, activeSessions);
+                    if (scope.Runtime.TryBeginEnvironmentalTick(
+                            DateTime.UtcNow, MatchStartGate.GetGameplayStartedAtUtc(matchingId)))
+                    {
+                        ProcessEnvironmentalTickForMatching(scope.Runtime, activeSessions);
+                    }
                 }
                 catch (Exception ex)
                 {

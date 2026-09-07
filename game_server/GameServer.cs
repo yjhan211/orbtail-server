@@ -40,7 +40,6 @@ public partial class GameServer(
     GameSessionRegistry sessions)
     : IHostedService
 {
-    private const int ResourceTickIntervalSeconds = 5;
     private static readonly TimeSpan ShutdownStageTimeout = TimeSpan.FromSeconds(5);
 
     private readonly SwarmMatchRuntimeStore _swarmMatchRuntimes = new();
@@ -61,7 +60,6 @@ public partial class GameServer(
 
     // 서버 수명과 주기 작업
     private CancellationTokenSource _cts = new();
-    private Timer? _resourceTickTimer;
     private Timer? _areaClosureTickTimer;
     private GameServerNodeAdvertiser? _nodeAdvertiser;
     private int _stopping;
@@ -124,7 +122,6 @@ public partial class GameServer(
             InitializeServices();
 
             StartTcpServer();
-            StartResourceTickTimer();
             StartAreaClosureTickTimer();
             StartProximityAutoCombatTimer();
 
@@ -183,11 +180,9 @@ public partial class GameServer(
 
         Timer?[] timers =
         [
-            _resourceTickTimer,
             _areaClosureTickTimer,
             _proximityAutoCombatTimer
         ];
-        _resourceTickTimer = null;
         _areaClosureTickTimer = null;
         _proximityAutoCombatTimer = null;
         await RunShutdownStageAsync(
@@ -288,47 +283,6 @@ public partial class GameServer(
         networkService.SessionFactory = CreateClientSession;
         networkService.Listen(IPAddress.Any, port);
         logger.LogInformation($"TCP server listening on port {port}");
-    }
-
-    // ===== 자원 틱 (폐쇄 구역 등 주기성 자원 변화) =====
-
-    private void StartResourceTickTimer()
-    {
-        _resourceTickTimer = new Timer(ProcessResourceTick, null,
-            TimeSpan.FromSeconds(ResourceTickIntervalSeconds),
-            TimeSpan.FromSeconds(ResourceTickIntervalSeconds));
-        logger.LogInformation("자원 틱 타이머 시작 ({Interval}초)", ResourceTickIntervalSeconds);
-    }
-
-    private void ProcessResourceTick(object? state)
-    {
-        try
-        {
-            var activeSessions = sessions.SnapshotWhere(
-                static session => session.PlayerId.HasValue && !session.IsEliminated);
-
-            // Environmental damage and eliminations are settled per matching below.
-            foreach (long matchingId in MatchRuntimes.ActiveIds())
-            {
-                // #222 M3-2: 폐쇄·오버타임 오염은 이 정산 틱이 적용한다.
-                if (!MatchStartGate.IsGameplayActive(matchingId))
-                    continue;
-                if (!MatchRuntimes.Enter(matchingId, out MatchScope scope))
-                    continue;
-
-                using (scope)
-                {
-                    if (scope.Runtime.IsTerminal)
-                        continue;
-
-                    ProcessResourceTickForMatching(matchingId, activeSessions);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "자원 틱 처리 중 오류");
-        }
     }
 
     /// <summary>
