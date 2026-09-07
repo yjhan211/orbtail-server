@@ -96,6 +96,7 @@ public sealed class MovementPacketQueueTests
             new FakeMatchEntryFailureHandler(),
             GameServerDevOptions.Disabled,
             matchEntry: new GameMatchEntryService(null!, store, GameServerDevOptions.Disabled, NullLogger.Instance),
+            itemCombinations: new ItemCombinationService(logs),
             movementTimeProvider: clock);
         connection.SetSession(session);
         return session;

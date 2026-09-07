@@ -42,6 +42,7 @@ internal sealed class GameServer(
     GameEventLogManager eventLogs,
     MatchEliminationService matchEliminations,
     GameMatchEntryService matchEntry,
+    ItemCombinationService itemCombinations,
     MatchEntryFailureHandler entryFailureHandler,
     GameSessionLeaveHandler sessionLeaveHandler,
     MatchCountdownService countdown,
@@ -232,7 +233,7 @@ internal sealed class GameServer(
                 matchingLifecycle,
                 () => Volatile.Read(ref _stopping) != 0,
                 entryFailureHandler,
-                devOptions: devOptions, matchEntry: matchEntry);
+                devOptions: devOptions, matchEntry: matchEntry, itemCombinations: itemCombinations);
 
             logger.LogInformation("Game client session created");
             return session;

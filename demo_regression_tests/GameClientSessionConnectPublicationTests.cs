@@ -397,6 +397,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 new FakeMatchEntryFailureHandler(recordEntryFailure),
                 GameServerDevOptions.Disabled,
                 new GameMatchEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
+                new ItemCombinationService(TestGameEventLogs.Create()),
                 sender);
             Connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);

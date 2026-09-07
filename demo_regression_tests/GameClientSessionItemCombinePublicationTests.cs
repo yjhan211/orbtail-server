@@ -44,6 +44,46 @@ public sealed class GameClientSessionItemCombinePublicationTests
     }
 
     [Fact]
+    public void CombinationServiceRejectsCallsOutsideMatchLock()
+    {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(FirstMatchingId);
+        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var service = new ItemCombinationService(logs);
+        bool published = false;
+        Assert.Throws<InvalidOperationException>(() => service.TryCombine(
+            runtime, FirstPlayerId, AreaType.None,
+            new C_TO_G_COMBINE_ITEMS { ItemA = SunOrbT1, ItemB = SunOrbT1 },
+            (_, _, _) => published = true, _ => published = true));
+        Assert.False(published);
+        using (store.Enter(runtime))
+            runtime.TryMarkTerminal();
+    }
+
+    [Fact]
+    public void CombinationServiceRejectsMissingSecondOrbWithoutChangingInventory()
+    {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(FirstMatchingId);
+        var service = new ItemCombinationService(new GameEventLogManager(id => store.Get(id)?.EventLog));
+        using (store.Enter(runtime))
+        {
+            var inventory = runtime.Inventory.GetPlayerInventory(FirstPlayerId);
+            inventory.AddItem(SunOrbT1);
+            var before = inventory.GetAllItems().Select(item => (item.ItemUid, item.ItemId, item.Count)).ToArray();
+            ErrorCode? rejected = null;
+            bool published = false;
+            Assert.True(service.TryCombine(
+                runtime, FirstPlayerId, AreaType.None,
+                new C_TO_G_COMBINE_ITEMS { ItemA = SunOrbT1, ItemB = SunOrbT1 },
+                (_, _, _) => published = true, error => rejected = error));
+            Assert.Equal(ErrorCode.INVALID_PARAMETER, rejected);
+            Assert.False(published);
+            Assert.Equal(before, inventory.GetAllItems().Select(item => (item.ItemUid, item.ItemId, item.Count)).ToArray());
+            runtime.TryMarkTerminal();
+        }
+    }
+    [Fact]
     public void LegacyPayloadKeyAndInt64Shape_RemainCompatible()
     {
         var legacyRequest = new LegacyCombineRequest
@@ -754,7 +794,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.DoesNotContain("RunUnderMatch", ReadMethodSlice(
             combine,
             "private Task HandleCombineItemsCore(",
-            "private bool TryHandleBattleItemCombine("));
+            "private void SendBattleItemCombineResult("));
         Assert.DoesNotContain("RunUnderMatch", ReadMethodSlice(
             orbSummon,
             "private Task HandleSummonOrb(",
@@ -928,7 +968,8 @@ public sealed class GameClientSessionItemCombinePublicationTests
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
                 GameServerDevOptions.Disabled,
-                new GameMatchEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance));
+                new GameMatchEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
+                new ItemCombinationService(EventLog));
             connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);
             _sessions.Add(session);

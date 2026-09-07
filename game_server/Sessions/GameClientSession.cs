@@ -58,6 +58,7 @@ public partial class GameClientSession : SessionBase
     private readonly Action<GameClientSession, long, int, long, long> _handleSwarmOrbDecision;
 
     private readonly GameMatchEntryService _matchEntry;
+    private readonly ItemCombinationService _itemCombinations;
 
     private bool _isSleeping;
 
@@ -148,6 +149,7 @@ public partial class GameClientSession : SessionBase
         IMatchEntryFailureHandler entryFailureHandler,
         GameServerDevOptions devOptions,
         GameMatchEntryService matchEntry,
+        ItemCombinationService itemCombinations,
         Func<Packet, bool>? trySendConnectSuccessResponse = null,
         TimeProvider? movementTimeProvider = null)
         : base(connection, logger, redisOperations)
@@ -166,6 +168,7 @@ public partial class GameClientSession : SessionBase
         _handleSwarmOrbDecision = handleSwarmOrbDecision;
 
         _matchEntry = matchEntry;
+        _itemCombinations = itemCombinations;
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
         _matchingLifecycle = matchingLifecycle;
         _isServerStopping = isServerStopping;

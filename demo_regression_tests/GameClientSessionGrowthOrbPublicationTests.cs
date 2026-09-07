@@ -737,7 +737,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
                 GameServerDevOptions.Disabled,
-                new GameMatchEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance));
+                new GameMatchEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
+                new ItemCombinationService(EventLog));
             connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);
             _sessions.Add(session);
