@@ -127,6 +127,8 @@ internal static class Program
         services.AddSingleton<MatchEnvironmentService>();
         services.AddSingleton<OrbUpgradeService>();
         services.AddSingleton<MatchGrowthService>();
+        services.AddSingleton<OrbRecoveryService>();
+        services.AddSingleton<OrbVisualStatePublisher>();
         services.AddSingleton<MatchCountdownService>(sp => new MatchCountdownService(
             sp.GetRequiredService<MatchRuntimeStore>(), sp.GetRequiredService<MatchEntryFailureHandler>(),
             sp.GetRequiredService<ILogger<MatchCountdownService>>()));

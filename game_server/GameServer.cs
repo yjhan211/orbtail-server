@@ -48,6 +48,8 @@ internal partial class GameServer(
     MatchEnvironmentService environmentService,
     OrbUpgradeService orbUpgrades,
     MatchGrowthService growth,
+    OrbRecoveryService orbRecovery,
+    OrbVisualStatePublisher orbVisuals,
     GameServerTickService tickService,
     BotMovementService botMovement)
     : IHostedService

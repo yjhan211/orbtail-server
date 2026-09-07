@@ -33,7 +33,7 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string proximity = ReadNormalizedSource(
-            root, "game_server", "GameServer.ProximityAutoCombat.cs");
+            root, "game_server", "Services", "OrbVisualStatePublisher.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string settlement = ReadNormalizedSource(
             root, "game_server", "Services", "MatchEnvironmentService.cs");
@@ -147,8 +147,8 @@ public sealed class SwarmArenaTickOrderTests
             "ProcessSwarmBotDoorUnlocks(",
             "MonsterSnapshotPublisher.Broadcast(",
             "BuildSwarmArenaCombatActors(",
-            "ProcessOrbRecovery(",
-            "DispatchOrbVisualStatePublications(",
+            "orbRecovery.Process(",
+            "orbVisuals.Publish(",
             "BroadcastSwarmOrbRankings(",
             "growth.ProcessOffers(",
             "ProcessSwarmScoreTimeout(",
@@ -177,7 +177,7 @@ public sealed class SwarmArenaTickOrderTests
             root, "game_server", "Network", "GameClientSession.MatchEnd.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string proximity = ReadNormalizedSource(
-            root, "game_server", "GameServer.ProximityAutoCombat.cs");
+            root, "game_server", "Services", "OrbVisualStatePublisher.cs");
 
         string modifyStats = ReadMethodSlice(
             playerState,

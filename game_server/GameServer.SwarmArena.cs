@@ -363,9 +363,8 @@ internal partial class GameServer
             MonsterSnapshotPublisher.Broadcast(matchingId, sessions, matchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId));
 
         var actors = BuildSwarmArenaCombatActors(matchingId, aliveSessions, aliveBots, nowUtc);
-        ProcessOrbRecovery(matchingId, actors, aliveSessions, aliveBots, nowUtc);
-        DispatchOrbVisualStatePublications(
-            PrepareOrbVisualStatePublications(matchingId, actors, sessions));
+        orbRecovery.Process(matchingId, actors, aliveSessions, aliveBots, nowUtc);
+        orbVisuals.Publish(matchingId, actors, sessions);
         BroadcastSwarmOrbRankings(matchingId, sessions, bots);
         // 성장 카드 (#226 단계 C): 소환석이 비용에 닿는 즉시 3택 오퍼 — 상자 트리거 퇴역.
         growth.ProcessOffers(matchingId, nowUtc, aliveSessions, aliveBots);
@@ -2413,54 +2412,7 @@ internal partial class GameServer
             bot.Corruption >= Config.MAX_CORRUPTION, isBot: true, DateTimeOffset.UtcNow);
     }
 
-    /// <summary>앞줄 오브 = 최저 티어·선입(ItemUid) — 피해·표시가 같은 기준을 읽는다.</summary>
-    private InGameItemInfo? FindSwarmFrontOrb(long matchingId, long playerId)
-    {
-        return matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
-            .GetAllItems()
-            .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
-            .OrderBy(item => GetSquadOrbTier(item.ItemId))
-            .ThenBy(item => item.ItemUid)
-            .FirstOrDefault();
-    }
 
-    /// <summary>잼 보유량 조회 (#222 M3) — 사람은 세션, 봇은 봇 상태에서. 머리 위 공개 표시용.</summary>
-    private int GetSwarmJamCount(
-        long matchingId, long playerId, IReadOnlyCollection<GameClientSession> matchingSessions)
-    {
-        foreach (var session in matchingSessions)
-        {
-            if (session.PlayerId == playerId)
-                return session.JamCount;
-        }
-
-        foreach (var bot in matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
-        {
-            if (bot.PlayerId == playerId)
-                return bot.JamCount;
-        }
-
-        return 0;
-    }
-
-    /// <summary>본체 오염 조회 (#226 가시화) — 세션·봇 공통. 못 찾으면 -1(클라 표시 유지).</summary>
-    private int GetSwarmBodyCorruption(
-        long matchingId, long playerId, IReadOnlyCollection<GameClientSession> matchingSessions)
-    {
-        foreach (var session in matchingSessions)
-        {
-            if (session.PlayerId == playerId)
-                return session.CurrentCorruption;
-        }
-
-        foreach (var bot in matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
-        {
-            if (bot.PlayerId == playerId)
-                return bot.Corruption;
-        }
-
-        return -1;
-    }
 
     /// <summary>
     ///     5분 점수 만료 판정 (#226 단계 B): 개전 후 5분이 지나면 생존자 중 오브 최다
@@ -2603,32 +2555,7 @@ internal partial class GameServer
     private List<InGameItemInfo> GetSwarmTrailOrbs(long matchingId, long playerId) =>
         matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs();
 
-    /// <summary>
-    ///     방어 강화(내구 2+) 오브 순번 마스크 — 클라 은백 링 표시용 (#226).
-    ///     순서는 비주얼 브로드캐스트의 OrbItemIds와 동일한 ItemUid 오름차순 — 슬롯 인덱스 정합.
-    /// </summary>
-    private long GetSwarmArmorMask(long matchingId, long playerId)
-    {
-        long mask = 0;
-        var orbs = GetSwarmTrailOrbs(matchingId, playerId);
-        for (int ordinal = 0; ordinal < orbs.Count && ordinal < 64; ordinal++)
-            if (matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, orbs[ordinal].ItemUid)))
-                mask |= 1L << ordinal;
-        return mask;
-    }
 
-
-
-
-    /// <summary>
-    ///     앞줄 오브의 HP — 오브별 체력바 브로드캐스트용. 오브 HP 전투가 퇴역해 서버는 HP를 깎지 않으므로
-    ///     항상 만충을 보낸다. 빈손은 -1.
-    /// </summary>
-    private int GetSwarmFrontOrbHp(long matchingId, long playerId)
-    {
-        var frontOrb = FindSwarmFrontOrb(matchingId, playerId);
-        return frontOrb == null ? -1 : GetSquadOrbMaxHp(GetSquadOrbTier(frontOrb.ItemId));
-    }
 
     private static int GetSquadOrbTier(int itemId)
     {
@@ -2742,7 +2669,7 @@ internal partial class GameServer
 
             if (session.PlayerId.HasValue &&
                 session.LastValidatedPosition != null &&
-                TryCreateSpatialActor(
+                CombatActorFactory.TryCreateSpatialActor(
                     session.PlayerId.Value,
                     session.CurrentMapId,
                     session.CurrentArea,
@@ -2756,7 +2683,7 @@ internal partial class GameServer
         MapId botMapId = matchRuntimes.GetRequired(matchingId).Bots.GetMatchingMapId(matchingId);
         foreach (var bot in aliveBots)
         {
-            if (TryCreateSpatialActor(bot.PlayerId, botMapId, bot.CurrentArea, bot.Position, out var botSpatial))
+            if (CombatActorFactory.TryCreateSpatialActor(bot.PlayerId, botMapId, bot.CurrentArea, bot.Position, out var botSpatial))
                 AddSwarmParticipantCombatActors(actors, matchingId, botSpatial, nowUtc);
         }
 
@@ -2824,7 +2751,7 @@ internal partial class GameServer
         actors.Add(fallback with { WeaponItemId = 0, Damage = 0 });
 
         int before = actors.Count;
-        AddInventoryCombatActors(
+        CombatActorFactory.AddInventoryCombatActors(
             actors,
             fallback with
             {
