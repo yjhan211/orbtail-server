@@ -62,7 +62,7 @@ public partial class GameClientSession
     }
 
     /// <summary>입장한 클라이언트에 자기장 수축 시작 시각을 보낸다. 경계는 공용 규칙으로 계산한다.</summary>
-    private void SendPressureFieldStateSnapshot()
+    private void SendPressureFieldState()
     {
         if (MatchingId <= 0 || !Config.SWARM_PRESSURE_FIELD_ENABLED) return;
         var state = Match.Closures.GetMatchingState();
