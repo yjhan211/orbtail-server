@@ -223,7 +223,7 @@ internal partial class GameServer(
                 redisOperations,
                 ticket => gameHandoffTicketService.ConsumeAsync(ticket, nodeOptions.NodeId),
                 sessionLeaveHandler,
-                RegisterClientSession,
+                sessions.Register,
                 sessions.GetByInstance,
                 eventLogs,
                 summaryFileStore,
@@ -245,26 +245,5 @@ internal partial class GameServer(
             return null;
         }
     }
-
-    private Action? RegisterClientSession(long playerId, GameClientSession session)
-    {
-        var existingSession = sessions.Register(playerId, session, out bool added);
-        if (existingSession == null)
-        {
-            if (added)
-            {
-                logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
-            }
-            return null;
-        }
-
-        logger.LogWarning("Game client session replaced: PlayerId={PlayerId}", playerId);
-        return () =>
-        {
-            existingSession.MarkServerInitiatedDisconnect();
-            existingSession.ForceDisconnect();
-        };
-    }
-
 
 }

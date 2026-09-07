@@ -1,14 +1,15 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using network.common;
 
 namespace game_server.network;
 
 /// <summary>
-///     Owns the process-local current player-to-session registry and its match-scoped mirror index.
-///     Mutations are serialized so replacement and reference-equal removal update both indexes in one mutation boundary;
-///     readers receive snapshots that are safe to enumerate without holding the mutation gate.
+///     이 GameServer의 현재 플레이어 세션과 매치별 세션 목록을 함께 관리한다.
+///     등록·교체·제거는 같은 잠금 안에서 두 색인에 반영하고 조회 결과는 스냅샷으로 반환한다.
+///     교체된 이전 세션은 반환만 하며, 연결 종료는 호출자가 잠금 밖에서 처리한다.
 /// </summary>
-public sealed class GameSessionRegistry
+public sealed class GameSessionRegistry(ILogger<GameSessionRegistry> logger)
 {
     private readonly ConcurrentDictionary<long, GameClientSession> _sessionsByPlayer = new();
     private readonly ConcurrentDictionary<long, ConcurrentDictionary<long, GameClientSession>> _sessionsByMatch =
@@ -16,9 +17,9 @@ public sealed class GameSessionRegistry
     private readonly object _mutationGate = new();
 
     /// <summary>
-    ///     Registers a session as the current connection for a player and returns the session it superseded.
+    ///     현재 세션을 등록하고 교체된 이전 세션을 반환한다. 신규·동일 세션 등록이면 null을 반환한다.
     /// </summary>
-    public GameClientSession? Register(long playerId, GameClientSession session, out bool added)
+    public GameClientSession? Register(long playerId, GameClientSession session)
     {
         lock (_mutationGate)
         {
@@ -26,17 +27,17 @@ public sealed class GameSessionRegistry
             {
                 _sessionsByPlayer[playerId] = session;
                 AddToMatchIndex(playerId, session);
-                added = true;
+                logger.LogInformation("Game client session registered: PlayerId={PlayerId}", playerId);
                 return null;
             }
 
-            added = false;
             if (ReferenceEquals(existingSession, session))
                 return null;
 
             _sessionsByPlayer[playerId] = session;
             RemoveFromMatchIndex(existingSession);
             AddToMatchIndex(playerId, session);
+            logger.LogWarning("Game client session replaced: PlayerId={PlayerId}", playerId);
             return existingSession;
         }
     }

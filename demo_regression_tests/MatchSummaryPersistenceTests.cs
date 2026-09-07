@@ -35,7 +35,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
         logs.BeginMatch(matchingId, seed: 17);
         var summaries = new MatchSummaryFileStore(_directory);
-        var service = new MatchCleanupService(store, new game_server.network.GameSessionRegistry(),
+        var service = new MatchCleanupService(store, new game_server.network.GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<game_server.network.GameSessionRegistry>.Instance),
             logs, summaries, NullLogger.Instance);
         using (store.Enter(runtime))
         {

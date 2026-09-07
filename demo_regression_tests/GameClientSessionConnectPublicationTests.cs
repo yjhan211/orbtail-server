@@ -210,7 +210,16 @@ public sealed class GameClientSessionConnectPublicationTests
         // 세션 등록·초기화 블록·인증 커밋은 매치 잠금 안에서, 성공 ACK 큐 적재는 잠금 밖에서.
         int registration = connectionSource.IndexOf("_matchRuntimes.GetOrCreate(matchingId)", StringComparison.Ordinal);
         int registerCallback = connectionSource.IndexOf("_registerSessionCallback(playerId, this)", registration, StringComparison.Ordinal);
-        int countdown = connectionSource.IndexOf("SendMatchStartCountdown(matchingId);", registerCallback, StringComparison.Ordinal);
+        // 등록 콜백은 이전 세션을 반환하고, 매치·연결 잠금을 벗어난 뒤 이전 연결을 끊는다.
+        string normalized = connectionSource.Replace("\r\n", "\n");
+        Assert.Contains(
+            "registered = true;\n            }\n            // 이전 연결 종료는 새 연결의 상태 잠금과 매치 잠금을 벗어난 뒤 실행한다.",
+            normalized);
+        int disconnect = connectionSource.IndexOf("previousSession.ForceDisconnect();", registerCallback, StringComparison.Ordinal);
+        int markServerDisconnect = connectionSource.IndexOf("previousSession.MarkServerInitiatedDisconnect();", registerCallback, StringComparison.Ordinal);
+        Assert.True(registerCallback < markServerDisconnect && markServerDisconnect < disconnect);
+        Assert.Contains("sessions.Register,", File.ReadAllText(Path.Combine(root, "game_server", "GameServer.cs")));
+        int countdown = connectionSource.IndexOf("SendMatchStartCountdown(matchingId);", disconnect, StringComparison.Ordinal);
         int response = connectionSource.IndexOf("CreateConnectResultPacket(", countdown, StringComparison.Ordinal);
         int commitScope = connectionSource.IndexOf("RunUnderLiveMatch(runtime, () =>", response, StringComparison.Ordinal);
         int authentication = connectionSource.IndexOf("Connection.TryMarkAuthenticated", commitScope, StringComparison.Ordinal);

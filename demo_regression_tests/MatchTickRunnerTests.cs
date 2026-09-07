@@ -32,7 +32,7 @@ public sealed class MatchTickRunnerTests
         // 실제 시간을 기다리지 않고 환경 정산 시각이 지난 상태를 준비한다.
         typeof(MatchRuntime).GetProperty(nameof(MatchRuntime.NextEnvironmentalTickAtUtc))!
             .SetValue(fixture.Match, DateTime.UtcNow.AddSeconds(-1));
-        var runner = new MatchTickRunner(fixture.Store, new GameSessionRegistry(), NullLogger.Instance,
+        var runner = new MatchTickRunner(fixture.Store, new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance), NullLogger.Instance,
             (_, _) => Record("countdown"),
             (_, _) => Record("combat"),
             (_, _) => Record("environment"),
@@ -58,7 +58,7 @@ public sealed class MatchTickRunnerTests
         var second = first.Store.GetOrCreate(945103);
         var combatIds = new List<long>();
         int movements = 0;
-        var runner = new MatchTickRunner(first.Store, new GameSessionRegistry(), NullLogger.Instance,
+        var runner = new MatchTickRunner(first.Store, new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance), NullLogger.Instance,
             (_, _) => { },
             (id, _) =>
             {
@@ -82,7 +82,7 @@ public sealed class MatchTickRunnerTests
         using var fixture = new Fixture(945104);
         int movements = 0;
         int combats = 0;
-        var runner = new MatchTickRunner(fixture.Store, new GameSessionRegistry(), NullLogger.Instance,
+        var runner = new MatchTickRunner(fixture.Store, new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance), NullLogger.Instance,
             (_, _) => { },
             (_, _) =>
             {
@@ -107,7 +107,7 @@ public sealed class MatchTickRunnerTests
         using var entered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
         var combatIds = new List<long>();
-        var runner = new MatchTickRunner(fixture.Store, new GameSessionRegistry(), NullLogger.Instance,
+        var runner = new MatchTickRunner(fixture.Store, new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance), NullLogger.Instance,
             (_, _) => { }, (id, _) => combatIds.Add(id), (_, _) => { }, _ => { }, (_, _) => { });
         Task holder = Task.Run(() =>
         {
@@ -141,7 +141,7 @@ public sealed class MatchTickRunnerTests
         MatchStartGate.RemoveMatching(fixture.Match.MatchingId);
         MatchStartGate.RegisterHumanPlayer(fixture.Match.MatchingId, 11, botCount: 7);
         var steps = new List<string>();
-        var runner = new MatchTickRunner(fixture.Store, new GameSessionRegistry(), NullLogger.Instance,
+        var runner = new MatchTickRunner(fixture.Store, new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance), NullLogger.Instance,
             (_, _) => steps.Add("countdown"), (_, _) => steps.Add("combat"),
             (_, _) => steps.Add("environment"), _ => steps.Add("movement"), (_, _) => { });
 
@@ -156,7 +156,7 @@ public sealed class MatchTickRunnerTests
         var first = store.GetOrCreate(945108);
         var second = store.GetOrCreate(945109);
         var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
-        var service = new BotMovementService(new GameSessionRegistry(), logs,
+        var service = new BotMovementService(new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance), logs,
             NullLogger<BotMovementService>.Instance);
         using (store.Enter(first))
         {
@@ -180,7 +180,7 @@ public sealed class MatchTickRunnerTests
     {
         using var fixture = new Fixture(945110);
         int laterStages = 0;
-        var runner = new MatchTickRunner(fixture.Store, new GameSessionRegistry(), NullLogger.Instance,
+        var runner = new MatchTickRunner(fixture.Store, new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance), NullLogger.Instance,
             (_, _) => fixture.Match.TryMarkTerminal(),
             (_, _) => laterStages++,
             (_, _) => laterStages++,

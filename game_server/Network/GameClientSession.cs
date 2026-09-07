@@ -45,7 +45,7 @@ public partial class GameClientSession : SessionBase
     ///     <see cref="TcpConnection.TrySend"/>; tests can inject a sender to verify the match monitor boundary.
     /// </summary>
     private readonly Func<Packet, bool> _trySendConnectSuccessResponse;
-    private readonly Func<long, GameClientSession, Action?> _registerSessionCallback;
+    private readonly Func<long, GameClientSession, GameClientSession?> _registerSessionCallback;
     private readonly IGameSessionLifecycle _matchingLifecycle;
     private readonly IMatchEntryFailureHandler _entryFailureHandler;
     private readonly Func<bool> _isServerStopping;
@@ -133,7 +133,7 @@ public partial class GameClientSession : SessionBase
         IRedisOperations redisOperations,
         Func<string?, Task<GameHandoffContext?>> consumeGameHandoffTicket,
         GameSessionLeaveHandler sessionLeaveHandler,
-        Func<long, GameClientSession, Action?> registerSessionCallback,
+        Func<long, GameClientSession, GameClientSession?> registerSessionCallback,
         Func<MapId, long, List<GameClientSession>> getSessionsByInstance,
 
         GameEventLogManager gameEventLogManager,

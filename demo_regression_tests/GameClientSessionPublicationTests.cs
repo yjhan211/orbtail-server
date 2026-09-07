@@ -24,6 +24,29 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
+    public void SessionRegistration_ReturnsPreviousWithoutClosingIt_AndUpdatesBothIndexes()
+    {
+        using var fixture = new SessionFixture();
+        var previous = fixture.CreateSession(70001, 101, (AreaType)50);
+        var replacement = fixture.CreateSession(70002, 101, (AreaType)50);
+        var registry = new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance);
+
+        Assert.Null(registry.Register(101, previous));
+        Assert.Null(registry.Register(101, previous));
+        Assert.Same(previous, Assert.Single(registry.GetByMatch(70001)));
+
+        Assert.Same(previous, registry.Register(101, replacement));
+
+        Assert.False(fixture.ConnectionFor(previous).IsReleased);
+        Assert.True(registry.TryGetCurrent(101, out var current));
+        Assert.Same(replacement, current);
+        Assert.Empty(registry.GetByMatch(70001));
+        Assert.Same(replacement, Assert.Single(registry.GetByMatch(70002)));
+        Assert.False(registry.Remove(previous));
+        Assert.Same(replacement, Assert.Single(registry.GetByMatch(70002)));
+    }
+
+    [Fact]
     public void SessionLeave_NotifiesOnlySameMatchAndArea_AndCleansLastHumanMatch()
     {
         using var fixture = new SessionFixture();
@@ -31,9 +54,9 @@ public sealed class GameClientSessionPublicationTests
         var nearby = fixture.CreateSession(70001, 102, (AreaType)50);
         var otherArea = fixture.CreateSession(70001, 103, (AreaType)51);
         var otherMatch = fixture.CreateSession(70002, 104, (AreaType)50);
-        var registry = new GameSessionRegistry();
+        var registry = new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance);
         foreach (var session in new[] { leaving, nearby, otherArea, otherMatch })
-            registry.Register(session.PlayerId!.Value, session, out _);
+            registry.Register(session.PlayerId!.Value, session);
         var cleanup = new MatchCleanupService(fixture.Store, registry, fixture.EventLog,
             fixture.Summaries, NullLogger.Instance);
         var handler = new GameSessionLeaveHandler(registry, cleanup, NullLogger<GameSessionLeaveHandler>.Instance);
@@ -60,10 +83,10 @@ public sealed class GameClientSessionPublicationTests
         var previous = fixture.CreateSession(70001, 101, (AreaType)50);
         var replacement = fixture.CreateSession(70001, 101, (AreaType)50);
         var peer = fixture.CreateSession(70001, 102, (AreaType)50);
-        var registry = new GameSessionRegistry();
-        registry.Register(101, previous, out _);
-        registry.Register(101, replacement, out _);
-        registry.Register(102, peer, out _);
+        var registry = new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance);
+        registry.Register(101, previous);
+        registry.Register(101, replacement);
+        registry.Register(102, peer);
         var cleanup = new MatchCleanupService(fixture.Store, registry, fixture.EventLog,
             fixture.Summaries, NullLogger.Instance);
         var handler = new GameSessionLeaveHandler(registry, cleanup, NullLogger<GameSessionLeaveHandler>.Instance);

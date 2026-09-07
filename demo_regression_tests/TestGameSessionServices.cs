@@ -8,7 +8,7 @@ internal static class TestGameSessionServices
 {
     public static GameSessionLeaveHandler CreateLeaveHandler()
     {
-        var sessions = new GameSessionRegistry();
+        var sessions = new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance);
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
         var cleanup = new MatchCleanupService(store, sessions, logs,

@@ -29,7 +29,7 @@ internal static class GameServerTestAccess
     internal static GameServer Create(MatchRuntimeStore? runtimes = null)
     {
         var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-        var sessions = new game_server.network.GameSessionRegistry();
+        var sessions = new game_server.network.GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<game_server.network.GameSessionRegistry>.Instance);
         var lifecycle = new MatchingLifecycleService(new InMemoryRedisOperations(),
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
         var archive = new MatchEventArchive();

@@ -57,7 +57,7 @@ public partial class GameClientSession
 
             // 세션 등록은 매치 잠금 안에서 — 사람 없음 정리가 등록과 발행 사이로 끼어들 수 없다.
             MatchRuntime runtime = _matchRuntimes.GetOrCreate(matchingId);
-            Action? disconnectSupersededSession = null;
+            GameClientSession? previousSession = null;
             using (_matchRuntimes.Enter(runtime))
             {
                 if (runtime.IsTerminal)
@@ -73,11 +73,16 @@ public partial class GameClientSession
                 }
 
                 if (!Connection.TryRunIfActive(
-                        () => disconnectSupersededSession = _registerSessionCallback(playerId, this)))
+                        () => previousSession = _registerSessionCallback(playerId, this)))
                     throw new OperationCanceledException("Connection closed before session registration.");
                 registered = true;
             }
-            disconnectSupersededSession?.Invoke();
+            // 이전 연결 종료는 새 연결의 상태 잠금과 매치 잠금을 벗어난 뒤 실행한다.
+            if (previousSession != null)
+            {
+                previousSession.MarkServerInitiatedDisconnect();
+                previousSession.ForceDisconnect();
+            }
 
             // 매치 구성(사람·봇·스폰)은 manifest에서 매치당 한 번 확정한다. ticket은 신원만 증명하므로
             // 이 사람이 정말 이 매치의 참가자인지도 여기서 가른다.

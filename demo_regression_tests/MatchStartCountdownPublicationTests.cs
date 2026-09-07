@@ -257,10 +257,8 @@ public sealed class MatchStartCountdownPublicationTests
         SetSessionIdentity(anchor, playerId: 101, matchingId);
         var other = new RecordingEntrySession();
         SetSessionIdentity(other, playerId: 202, matchingId);
-        Assert.Null(sessionRegistry.Register(101, anchor, out bool anchorAdded));
-        Assert.True(anchorAdded);
-        Assert.Null(sessionRegistry.Register(202, other, out bool otherAdded));
-        Assert.True(otherAdded);
+        Assert.Null(sessionRegistry.Register(101, anchor));
+        Assert.Null(sessionRegistry.Register(202, other));
         Assert.Equal(2, sessionRegistry.GetByMatch(matchingId).Count);
 
         InvokeEntryAbort(server, anchor);
@@ -298,8 +296,8 @@ public sealed class MatchStartCountdownPublicationTests
                 .GetValue(server));
         var completedSession = new RecordingEntrySession();
         SetSessionIdentity(completedSession, completedPlayerId, matchingId);
-        Assert.Null(sessionRegistry.Register(completedPlayerId, completedSession, out bool completedAdded));
-        Assert.True(completedAdded);
+        Assert.Null(sessionRegistry.Register(completedPlayerId, completedSession));
+        Assert.Same(completedSession, Assert.Single(sessionRegistry.GetByMatch(matchingId)));
 
         // 정상 종료가 잠금 안에서 subject를 먼저 선점하고 터미널로 끝난다.
         MatchRuntime runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);
