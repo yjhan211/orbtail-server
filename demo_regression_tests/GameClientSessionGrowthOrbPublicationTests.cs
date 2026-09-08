@@ -27,7 +27,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        var runtime = fixture.Store.GetRequired(FirstMatchingId);
+        var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
         var connection = fixture.ConnectionFor(session);
         MatchStartGate.RegisterBotOnlyMatch(FirstMatchingId);
         try
@@ -58,7 +58,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        var runtime = fixture.Store.GetRequired(FirstMatchingId);
+        var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
         var connection = fixture.ConnectionFor(session);
         MatchStartGate.RegisterBotOnlyMatch(FirstMatchingId);
         try
@@ -90,7 +90,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        var runtime = fixture.Store.GetRequired(FirstMatchingId);
+        var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
         MatchStartGate.RegisterBotOnlyMatch(FirstMatchingId);
         try
         {
@@ -203,7 +203,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        var runtime = fixture.Store.GetRequired(FirstMatchingId);
+        var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
         using (runtime.Enter())
         {
             session.Condition.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 2, 1, 10);
@@ -228,7 +228,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        var runtime = fixture.Store.GetRequired(FirstMatchingId);
+        var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
         var spawnCell = GameMapData.GetMapInfo(Config.SWARM_MATCH_MAP)!.GetInitialPosition().Item1;
         var spawnArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, spawnCell);
         TestGameSessionServices.SetMovementProperty(session, "CurrentArea", spawnArea);
@@ -260,7 +260,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         var connection = fixture.ConnectionFor(session);
-        var runtime = fixture.Store.GetRequired(FirstMatchingId);
+        var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
         var locks = new List<bool>();
         connection.BeforeSend = _ => locks.Add(Monitor.IsEntered(runtime.Sync));
         await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
@@ -277,7 +277,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var server = GameServerTestAccess.Create(store);
         var first = store.GetOrCreate(947201);
         var second = store.GetOrCreate(947202);
-        using (store.Enter(first))
+        using (MatchRuntimeStore.Enter(first))
         {
             first.Inventory.TryAddItemWithCapacity(101, 107000010, Config.SWARM_ORB_CAPACITY, out _);
             first.SummonStones.RecordGrowthSuccess(101, SwarmGrowthOfferState.CardMultiply);
@@ -288,7 +288,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Assert.Equal(before, first.SummonStones.GetGrowthSuccessCount(101));
             first.TryMarkTerminal();
         }
-        using (store.Enter(second))
+        using (MatchRuntimeStore.Enter(second))
         {
             var cost = server.GetGrowth().GetCostBreakdown(second.MatchingId, 101);
             Assert.Equal(0, cost.OrbCount);
@@ -320,13 +320,13 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         RecordingTcpConnection connection = fixture.ConnectionFor(session);
         Assert.True(OrbData.TryGetItemId(color, 1, out int originalItemId));
-        Assert.True(fixture.Store.GetRequired(FirstMatchingId).Inventory.TryAddItemWithCapacity(
+        Assert.True(fixture.Store.GetOrThrow(FirstMatchingId).Inventory.TryAddItemWithCapacity(
             FirstPlayerId,
             originalItemId,
             Config.SWARM_ORB_CAPACITY,
             out InGameItemInfo? original));
         Assert.NotNull(original);
-        fixture.Store.GetRequired(FirstMatchingId).SummonStones.AddStones(FirstPlayerId, 20);
+        fixture.Store.GetOrThrow(FirstMatchingId).SummonStones.AddStones(FirstPlayerId, 20);
 
         await SendAsync(
             session,
@@ -349,7 +349,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(20, invalid.StoneCount);
         Assert.Equal(-1, invalid.TargetOrdinal);
         Assert.Equal(originalItemId, Assert.Single(
-            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId)).ItemId);
+            fixture.Store.GetOrThrow(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId)).ItemId);
         Assert.Equal(0, fixture.Runtime(FirstMatchingId).OrbBoard.GetFamilyUpgradeCount(
             FirstPlayerId,
             color));
@@ -377,12 +377,12 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             ],
             connection.DeliveredProtocols);
         InGameItemInfo upgraded = Assert.Single(
-            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId));
+            fixture.Store.GetOrThrow(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId));
         Assert.Equal(original!.ItemUid, upgraded.ItemUid);
         Assert.Equal(upgradedItemId, upgraded.ItemId);
         Assert.Equal(
             20 - upgradeCost,
-            fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
+            fixture.Store.GetOrThrow(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
         Assert.Equal(1, fixture.Runtime(FirstMatchingId).OrbBoard.GetFamilyUpgradeCount(
             FirstPlayerId,
             color));
@@ -396,7 +396,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal((long)color, success.TargetItemUid);
         Assert.Equal(20 - upgradeCost, success.StoneCount);
         Assert.Equal(0, success.TargetOrdinal);
-        Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
+        Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(FirstMatchingId)!.Sync));
     }
 
     [Fact]
@@ -407,12 +407,12 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId,
             orbHandler: (_, _, _, _, _) => { orbCalls++; return (false, 0, -1); });
         var connection = fixture.ConnectionFor(session);
-        var runtime = fixture.Store.GetRequired(FirstMatchingId);
+        var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
         using var lockHeld = new ManualResetEventSlim();
         using var markTerminal = new ManualResetEventSlim();
         Task holder = Task.Run(() =>
         {
-            using (fixture.Store.Enter(runtime))
+            using (MatchRuntimeStore.Enter(runtime))
             {
                 lockHeld.Set();
                 Assert.True(markTerminal.Wait(TimeSpan.FromSeconds(5)));
@@ -437,7 +437,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Protocol.G_TO_C_UPGRADE_ORB_RESULT);
         Assert.False(result.Success);
         Assert.Equal(-1, result.TargetOrdinal);
-        Assert.Null(fixture.Store.Get(FirstMatchingId));
+        Assert.Null(fixture.Store.GetOrNull(FirstMatchingId));
     }
 
 
@@ -448,13 +448,13 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         using var fixture = new SessionFixture();
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         RecordingTcpConnection connection = fixture.ConnectionFor(session);
-        Assert.True(fixture.Store.GetRequired(FirstMatchingId).Inventory.TryAddItemWithCapacity(
+        Assert.True(fixture.Store.GetOrThrow(FirstMatchingId).Inventory.TryAddItemWithCapacity(
             FirstPlayerId,
             107000010,
             Config.SWARM_ORB_CAPACITY,
             out InGameItemInfo? original));
         Assert.NotNull(original);
-        fixture.Store.GetRequired(FirstMatchingId).SummonStones.AddStones(FirstPlayerId, 20);
+        fixture.Store.GetOrThrow(FirstMatchingId).SummonStones.AddStones(FirstPlayerId, 20);
         int upgradeCost = Math.Min(
             Config.SWARM_GROWTH_COST_CAP,
             Config.GetSwarmGrowthBaseCost(0));
@@ -485,21 +485,21 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             connection.DeliveredProtocols);
         Assert.DoesNotContain(Protocol.G_TO_C_UPGRADE_ORB_RESULT, connection.AttemptedProtocols);
         InGameItemInfo upgraded = Assert.Single(
-            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId));
+            fixture.Store.GetOrThrow(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId));
         Assert.Equal(original!.ItemUid, upgraded.ItemUid);
         Assert.Equal(upgradedItemId, upgraded.ItemId);
         Assert.Equal(
             20 - upgradeCost,
-            fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
+            fixture.Store.GetOrThrow(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
         Assert.Equal(1, fixture.Runtime(FirstMatchingId).OrbBoard.GetFamilyUpgradeCount(
             FirstPlayerId,
             OrbColor.Red));
-        Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
+        Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(FirstMatchingId)!.Sync));
 
         // 실패한 핸들러가 잠금을 풀었으므로 종료 정리가 바로 진행된다.
         fixture.MarkTerminal(FirstMatchingId);
-        Assert.Null(fixture.Store.Get(FirstMatchingId));
-        Assert.Null(fixture.Store.Get(FirstMatchingId));
+        Assert.Null(fixture.Store.GetOrNull(FirstMatchingId));
+        Assert.Null(fixture.Store.GetOrNull(FirstMatchingId));
     }
 
     [Fact]
@@ -758,7 +758,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Func<GameClientSession, long, int, long, long, (bool Success, int ResultItemId, int TargetOrdinal)>? orbHandler = null)
         {
             Store.GetOrCreate(matchingId);
-            Store.Get(matchingId)!.Doors.Initialize();
+            Store.GetOrNull(matchingId)!.Doors.Initialize();
 
             var connection = new RecordingTcpConnection();
             Activate(connection);
@@ -796,8 +796,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         /// <summary>잠금 안에서 터미널로 표시하고 나온다 — 정리는 깊이 0 탈출에서 바로 돈다.</summary>
         public void MarkTerminal(long matchingId)
         {
-            MatchRuntime runtime = Store.Get(matchingId)!;
-            using (Store.Enter(runtime))
+            MatchRuntime runtime = Store.GetOrNull(matchingId)!;
+            using (MatchRuntimeStore.Enter(runtime))
             {
                 Assert.True(runtime.TryMarkTerminal());
             }

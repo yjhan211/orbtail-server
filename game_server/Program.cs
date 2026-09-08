@@ -96,10 +96,7 @@ internal static class Program
             var lifecycle = sp.GetRequiredService<MatchingLifecycleService>();
             return new MatchRuntimeStore(
                 sp.GetRequiredService<ILogger<MatchRuntimeStore>>(),
-                cleanupSteps:
-                [
-                    new("session runtime", MatchStartGate.RemoveMatching)
-                ],
+
                 afterCleanup: id => lifecycle.PrepareRedisCleanup(id).Invoke(),
                 monsterSpawnEnabled: devOptions.MonsterSpawnEnabled,
                 eventArchive: sp.GetRequiredService<MatchEventArchive>());
@@ -107,7 +104,7 @@ internal static class Program
         services.AddSingleton<GameEventLogManager>(sp =>
         {
             var runtimes = sp.GetRequiredService<MatchRuntimeStore>();
-            return new GameEventLogManager(id => runtimes.Get(id)?.EventLog,
+            return new GameEventLogManager(id => runtimes.GetOrNull(id)?.EventLog,
                 sp.GetRequiredService<MatchEventArchive>());
         });
         services.AddSingleton<MatchSummaryFileStore>(_ => new MatchSummaryFileStore(

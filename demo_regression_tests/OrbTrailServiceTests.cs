@@ -28,7 +28,7 @@ public sealed class OrbTrailServiceTests
         var second = store.GetOrCreate(947402);
         var service = new OrbTrailService(store);
         var anchor = new Vector3f(0, 0, 0);
-        using (store.Enter(first))
+        using (MatchRuntimeStore.Enter(first))
         {
             first.Swarm.TrailCombat.OrbTrails[(first.MatchingId, 11)] =
                 [new Vector3f(2, 0, 0), new Vector3f(4, 0, 0)];
@@ -39,14 +39,14 @@ public sealed class OrbTrailServiceTests
             Assert.Equal(6f, beyond.X);
             Assert.Equal(0f, beyond.Y);
         }
-        using (store.Enter(second))
+        using (MatchRuntimeStore.Enter(second))
         {
             var fallback = service.GetSwarmTrailPositionAtDistance(second.MatchingId, 11, 5, anchor);
             Assert.Equal(0f, fallback.X);
             Assert.Equal(-1f, fallback.Y);
             second.TryMarkTerminal();
         }
-        using (store.Enter(first)) first.TryMarkTerminal();
+        using (MatchRuntimeStore.Enter(first)) first.TryMarkTerminal();
     }
 
     [Fact]
@@ -55,7 +55,7 @@ public sealed class OrbTrailServiceTests
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947403);
         var service = new OrbTrailService(store);
-        using (store.Enter(match))
+        using (MatchRuntimeStore.Enter(match))
         {
             var inventory = match.Inventory.GetPlayerInventory(11);
             inventory.AddItem(107000010, forceSeparateStack: true);
@@ -77,15 +77,15 @@ public sealed class OrbTrailServiceTests
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(947404);
         var second = store.GetOrCreate(947405);
-        using (store.Enter(first))
+        using (MatchRuntimeStore.Enter(first))
             first.Monsters.FieldSpawnCellResolver = (_, _) => (new Cell(1, 2), new Cell(3, 4));
-        using (store.Enter(second))
+        using (MatchRuntimeStore.Enter(second))
         {
             Assert.Null(second.Monsters.FieldSpawnCellResolver);
             second.Monsters.FieldSpawnCellResolver = (_, _) => null;
             second.TryMarkTerminal();
         }
-        using (store.Enter(first))
+        using (MatchRuntimeStore.Enter(first))
         {
             Assert.NotNull(first.Monsters.FieldSpawnCellResolver!(first.MatchingId, AreaType.None));
             first.TryMarkTerminal();

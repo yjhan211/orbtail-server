@@ -48,7 +48,7 @@ internal sealed class OrbUpgradeService(
             int stonesInsteadOfOrbs = 0;
             for (int index = 0; index < Config.SWARM_STARTING_ORB_GRANT_COUNT; index++)
                 stonesInsteadOfOrbs += Math.Min(Config.SWARM_GROWTH_COST_CAP, Config.GetSwarmGrowthBaseCost(index));
-            matchRuntimes.GetRequired(matchingId).SummonStones.AddStones(playerId, stonesInsteadOfOrbs);
+            matchRuntimes.GetOrThrow(matchingId).SummonStones.AddStones(playerId, stonesInsteadOfOrbs);
             return;
         }
 
@@ -58,7 +58,7 @@ internal sealed class OrbUpgradeService(
             int itemId = fixedSet
                 ? StartingOrbPool[index % StartingOrbPool.Length]
                 : StartingOrbPool[Random.Shared.Next(StartingOrbPool.Length)];
-            matchRuntimes.GetRequired(matchingId).Inventory.TryAddItemWithCapacity(
+            matchRuntimes.GetOrThrow(matchingId).Inventory.TryAddItemWithCapacity(
                 playerId, itemId, Config.SWARM_ORB_CAPACITY, out _);
         }
 
@@ -71,7 +71,7 @@ internal sealed class OrbUpgradeService(
     private int GetFamilyLevel(long matchingId, long playerId, OrbColor color)
     {
         int best = 1;
-        foreach (var item in matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs())
+        foreach (var item in matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs())
         {
             if (OrbData.TryGetColorAndTier(item.ItemId, out var itemColor, out int tier) &&
                 itemColor == color && tier > best)
@@ -88,7 +88,7 @@ internal sealed class OrbUpgradeService(
     private int FindUpgradeTargetOrdinal(
         long matchingId, long playerId, OrbColor color, out InGameItemInfo? target)
     {
-        var orbs = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs();
+        var orbs = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs();
         for (int ordinal = 0; ordinal < orbs.Count; ordinal++)
         {
             if (!OrbData.TryGetColorAndTier(orbs[ordinal].ItemId, out var itemColor, out int tier) ||
@@ -130,19 +130,19 @@ internal sealed class OrbUpgradeService(
         int ordinal = FindUpgradeTargetOrdinal(matchingId, playerId, color, out var target);
         if (ordinal < 0 || target == null)
             return false;
-        SwarmOrbBoardState orbBoard = matchRuntimes.GetRequired(matchingId).Swarm.OrbBoard;
+        SwarmOrbBoardState orbBoard = matchRuntimes.GetOrThrow(matchingId).Swarm.OrbBoard;
         int cost = GetUpgradeCost(matchingId, playerId, color, orbBoard);
         if (cost <= 0)
             return false;
         if (!OrbData.TryGetColorAndTier(target.ItemId, out _, out int tier) ||
             !OrbData.TryGetItemId(color, tier + 1, out int upgradedItemId))
             return false;
-        if (!matchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(playerId, cost, out _))
+        if (!matchRuntimes.GetOrThrow(matchingId).SummonStones.TrySpendStones(playerId, cost, out _))
             return false;
 
         orbBoard.IncrementFamilyUpgradeCount(playerId, color);
 
-        var inventory = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
+        var inventory = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId);
         bool replaced = inventory.TryReplaceOrb(target.ItemUid, upgradedItemId, out _);
         resultItemId = upgradedItemId;
         targetOrdinal = ordinal;
@@ -157,7 +157,7 @@ internal sealed class OrbUpgradeService(
     /// <summary>현재 계열별 레벨·비용 데이터를 반환한다. 상태 변경과 전송은 하지 않는다.</summary>
     public G_TO_C_ORB_UPGRADE_INFO GetOrbUpgradeInfo(long matchingId, long playerId)
     {
-        SwarmOrbBoardState orbBoard = matchRuntimes.GetRequired(matchingId).Swarm.OrbBoard;
+        SwarmOrbBoardState orbBoard = matchRuntimes.GetOrThrow(matchingId).Swarm.OrbBoard;
         return new G_TO_C_ORB_UPGRADE_INFO
         {
             SunLevel = GetFamilyLevel(matchingId, playerId, OrbColor.Red),
@@ -199,7 +199,7 @@ internal sealed class OrbUpgradeService(
     /// </summary>
     public bool TryUpgradeForBot(long matchingId, long playerId)
     {
-        var favorite = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs()
+        var favorite = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs()
             .Select(item => OrbData.TryGetColorAndTier(item.ItemId, out var color, out _)
                 ? color
                 : OrbColor.None)
@@ -212,7 +212,7 @@ internal sealed class OrbUpgradeService(
             return false;
 
         // 최다 보유 계열이 전부 T3이면 강화 가능한 다른 계열을 찾는다.
-        SwarmOrbBoardState orbBoard = matchRuntimes.GetRequired(matchingId).Swarm.OrbBoard;
+        SwarmOrbBoardState orbBoard = matchRuntimes.GetOrThrow(matchingId).Swarm.OrbBoard;
         if (GetUpgradeCost(matchingId, playerId, favorite, orbBoard) <= 0)
         {
             favorite = FamilyColors.FirstOrDefault(color =>

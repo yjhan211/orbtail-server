@@ -100,7 +100,7 @@ public sealed class MatchTickRunnerTests
         runner.Run(fixture.Match);
         Assert.Equal(1, combats);
         Assert.Equal(0, movements);
-        Assert.Null(fixture.Store.Get(fixture.Match.MatchingId));
+        Assert.Null(fixture.Store.GetOrNull(fixture.Match.MatchingId));
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public sealed class MatchTickRunnerTests
             (_, _) => { }, (id, _) => combatIds.Add(id), (_, _) => { }, _ => { }, (_, _) => { });
         Task holder = Task.Run(() =>
         {
-            using (fixture.Store.Enter(fixture.Match))
+            using (MatchRuntimeStore.Enter(fixture.Match))
             {
                 entered.Set();
                 release.Wait(TimeSpan.FromSeconds(10));
@@ -161,10 +161,10 @@ public sealed class MatchTickRunnerTests
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(945108);
         var second = store.GetOrCreate(945109);
-        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var service = new BotMovementService( logs,
             NullLogger<BotMovementService>.Instance);
-        using (store.Enter(first))
+        using (MatchRuntimeStore.Enter(first))
         {
             service.Process(first, (_, _) => throw new InvalidOperationException("No bots should request a directive."));
             Assert.Equal(1, first.Swarm.BotTickMetrics.SampleCount);
@@ -178,7 +178,7 @@ public sealed class MatchTickRunnerTests
             Assert.Empty(logs.GetRecent(second.MatchingId));
             first.TryMarkTerminal();
         }
-        using (store.Enter(second)) second.TryMarkTerminal();
+        using (MatchRuntimeStore.Enter(second)) second.TryMarkTerminal();
     }
 
     [Fact]
@@ -195,7 +195,7 @@ public sealed class MatchTickRunnerTests
             (_, _) => laterStages++);
         runner.Run(fixture.Match);
         Assert.Equal(0, laterStages);
-        Assert.Null(fixture.Store.Get(fixture.Match.MatchingId));
+        Assert.Null(fixture.Store.GetOrNull(fixture.Match.MatchingId));
     }
 
     private sealed class Fixture : IDisposable

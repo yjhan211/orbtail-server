@@ -37,21 +37,21 @@ internal sealed class MatchResultService(
             return;
         }
 
-        MatchRuntime? runtime = _matchRuntimes.Get(matchingId);
+        MatchRuntime? runtime = _matchRuntimes.GetOrNull(matchingId);
         if (runtime == null)
         {
             Logger.LogDebug("Terminal match result preparation rejected: MatchingId={MatchingId}", matchingId);
             return;
         }
 
-        using MatchScope scope = _matchRuntimes.Enter(runtime);
+        using MatchScope scope = runtime.Enter();
         if (!runtime.TryMarkTerminal())
         {
             Logger.LogDebug("Duplicate match finalization ignored: MatchingId={MatchingId}", matchingId);
             return;
         }
 
-        List<GameClientSession> sessionSnapshot = _matchRuntimes.GetRequired(matchingId).Sessions.Snapshot();
+        List<GameClientSession> sessionSnapshot = _matchRuntimes.GetOrThrow(matchingId).Sessions.Snapshot();
         var players = BuildGameResultPlayers(sessionSnapshot, matchingId, winnerId);
         byte[] resultPayload = MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT
         {
@@ -238,7 +238,7 @@ internal sealed class MatchResultService(
     {
         DateTime endedAtUtc = DateTime.UtcNow;
         DateTime startedAtUtc = MatchStartGate.GetGameplayStartedAtUtc(matchingId) ?? endedAtUtc;
-        var resultRows = _matchRuntimes.GetRequired(matchingId).Roster.BuildGameResult();
+        var resultRows = _matchRuntimes.GetOrThrow(matchingId).Roster.BuildGameResult();
         var killCountsByPlayerId = resultRows
             .Where(row => row.attackerPlayerId != 0 && row.reason == EliminationReason.HEALTH_ZERO)
             .GroupBy(row => row.attackerPlayerId)
@@ -248,9 +248,9 @@ internal sealed class MatchResultService(
             .Select(d =>
             {
                 var session = allSessions.FirstOrDefault(s => s.PlayerId == d.playerId);
-                var bot = _matchRuntimes.GetRequired(matchingId).Bots.GetBot(matchingId, d.playerId);
-                var playerInfo = bot == null ? null : _matchRuntimes.GetRequired(matchingId).Bots.SynthesizePlayerInfo(matchingId, d.playerId);
-                var playerProfile = _matchRuntimes.GetRequired(matchingId).Roster.GetPlayerProfile(d.playerId);
+                var bot = _matchRuntimes.GetOrThrow(matchingId).Bots.GetBot(matchingId, d.playerId);
+                var playerInfo = bot == null ? null : _matchRuntimes.GetOrThrow(matchingId).Bots.SynthesizePlayerInfo(matchingId, d.playerId);
+                var playerProfile = _matchRuntimes.GetOrThrow(matchingId).Roster.GetPlayerProfile(d.playerId);
                 var stats = _gameEventLogManager.GetResultStats(matchingId, d.playerId);
                 var orbScore = ResolveResultOrbScore(matchingId, d.playerId);
                 DateTime survivalEndUtc = d.eliminatedAt ?? endedAtUtc;
@@ -283,7 +283,7 @@ internal sealed class MatchResultService(
                         IsAreaClosureElimination = d.isAreaClosureElimination,
                         IsOvertimeElimination = d.isOvertimeElimination,
                         Rank = d.playerId == winnerId ? 1 : d.eliminationRank,
-                        FinalOrbTier = d.playerId == winnerId ? _matchRuntimes.GetRequired(matchingId).Inventory.GetHighestOrbTier(d.playerId) : d.finalOrbTier,
+                        FinalOrbTier = d.playerId == winnerId ? _matchRuntimes.GetOrThrow(matchingId).Inventory.GetHighestOrbTier(d.playerId) : d.finalOrbTier,
                         // 결과 승점은 오브 수 (#229): 인게임 순위와 같은 눈금을 쓴다.
                         OrbCount = orbScore.OrbCount
                     },
@@ -302,7 +302,7 @@ internal sealed class MatchResultService(
     /// </summary>
     private (int OrbCount, int TierSum) ResolveResultOrbScore(long matchingId, long playerId)
     {
-        var inventory = _matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
+        var inventory = _matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId);
         int orbCount = 0;
         int tierSum = 0;
         foreach (var item in inventory.GetAllItems())

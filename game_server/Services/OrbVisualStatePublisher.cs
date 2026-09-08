@@ -26,7 +26,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
     /// <summary>앞줄 오브 = 최저 티어·선입(ItemUid) — 피해·표시가 같은 기준을 읽는다.</summary>
     private InGameItemInfo? FindSwarmFrontOrb(long matchingId, long playerId)
     {
-        return matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
+        return matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId)
             .GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
             .OrderBy(item => GetSquadOrbTier(item.ItemId))
@@ -44,7 +44,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
                 return session.CurrentHealth;
         }
 
-        foreach (var bot in matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
+        foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
         {
             if (bot.PlayerId == playerId)
                 return bot.Health;
@@ -60,9 +60,9 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
     private long GetSwarmArmorMask(long matchingId, long playerId)
     {
         long mask = 0;
-        var orbs = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs();
+        var orbs = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs();
         for (int ordinal = 0; ordinal < orbs.Count && ordinal < 64; ordinal++)
-            if (matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, orbs[ordinal].ItemUid)))
+            if (matchRuntimes.GetOrThrow(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, orbs[ordinal].ItemUid)))
                 mask |= 1L << ordinal;
         return mask;
     }
@@ -97,7 +97,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
         IReadOnlyCollection<ProximityCombatActor> actors,
         IReadOnlyCollection<GameClientSession> matchingSessions)
     {
-        if (matchRuntimes.Get(matchingId)?.Presentation is not { } presentation)
+        if (matchRuntimes.GetOrNull(matchingId)?.Presentation is not { } presentation)
             return [];
         var visualStates = presentation.OrbVisuals;
         GameClientSession[] recipientSnapshot = matchingSessions.ToArray();
@@ -199,7 +199,7 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
     private void CommitAndDispatchOrbVisualStatePublication(
         SwarmOrbVisualPublication publication)
     {
-        if (matchRuntimes.Get(publication.MatchingId)?.Presentation is not { } presentation)
+        if (matchRuntimes.GetOrNull(publication.MatchingId)?.Presentation is not { } presentation)
             return;
         var visualStates = presentation.OrbVisuals;
         var key = (publication.ObserverPlayerId, publication.ActorPlayerId);

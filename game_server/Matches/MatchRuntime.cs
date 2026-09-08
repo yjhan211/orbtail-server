@@ -2,64 +2,51 @@ using game_server.services;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common.data;
-using network.common.data.models;
 
 namespace game_server.matches;
 
 /// <summary>
-///     매치 하나의 직렬화 경계. 같은 matchingId의 권위 상태 변경은 전부 <see cref="Sync"/> 모니터 안에서
-///     돌고(타이머 틱·세션 핸들러·종료), 서로 다른 매치는 병렬이다. 수명은 <see cref="MatchRuntimeStore"/>가
-///     소유한다 — 생성은 접속/봇 전용 인스턴스, 제거는 터미널 정리가 끝난 최외곽 스코프 탈출 시점.
-///     <see cref="IsTerminal"/>은 Sync 안에서만 바뀌고 잠금 밖 읽기는 늦은 패킷을 거르는 게이트로만 쓴다.
+///     게임 한 판의 참가 세션, 봇, 전투, 아이템, 문 등 상태와 처리 객체를 소유한다.
+///     같은 매치의 패킷 처리와 틱은 매치 잠금 안에서 실행하고, 서로 다른 매치는 독립적으로 처리한다.
+///
+///     Enter()로 잠금에 진입하며, 입장 초기화처럼 await가 필요한 작업은 EntryInitializationLock을 사용한다.
+///     종료 표시 후 가장 바깥쪽 잠금 범위를 벗어나면 자원을 정리하고 Store에서 자신을 제거한다.
 /// </summary>
 internal sealed class MatchRuntime
 {
-    private readonly MatchRuntimeStore _owner;
-
-    /// <summary>이 매치의 잠금에 진입한다. 마지막 스코프가 끝날 때 Store가 종료 정리를 수행한다.</summary>
-    public MatchScope Enter() => _owner.Enter(this);
-
     public const int EnvironmentalTickIntervalSeconds = 5;
+
+    private readonly MatchRuntimeStore _runtimeStore;
+    private readonly ILogger _logger;
+    private readonly Action<long>? _afterCleanup;
+    private readonly MatchEventArchive? _eventArchive;
     private int _terminal;
     private MatchTickLoop? _tickLoop;
-    internal MatchTickLoop? TickLoop
-    {
-        get => Volatile.Read(ref _tickLoop);
-        set => Volatile.Write(ref _tickLoop, value);
-    }
+    private MatchComposition? _composition;
 
-    public DateTime? NextAreaClosureTickAtUtc { get; private set; }
+    private int _lockDepth;
+    private bool _cleanupDone;
+    internal readonly List<Action> AfterRelease = new();
 
-    /// <summary>매치 잠금 안에서 구역 폐쇄를 1초마다 실행한다. 놓친 구간을 몰아서 처리하지 않는다.</summary>
-    public bool TryBeginAreaClosureTick(DateTime utcNow, DateTime? gameplayStartedAtUtc)
-    {
-        if (!Monitor.IsEntered(Sync))
-            throw new InvalidOperationException("Area closure tick requires the match monitor to be held.");
-        if (IsTerminal || gameplayStartedAtUtc is not { } startedAt || utcNow < startedAt.AddSeconds(1))
-            return false;
-        if (NextAreaClosureTickAtUtc is { } next && utcNow < next)
-            return false;
-        NextAreaClosureTickAtUtc = utcNow.AddSeconds(1);
-        return true;
-    }
-
-    internal MatchRuntime(MatchRuntimeStore owner, long matchingId, ILogger logger,
+    internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger logger,
         SwarmGrowthOfferIdSequence? growthOfferIds = null,
         SwarmCrossfireEventIdSequence? crossfireEventIds = null,
-        bool monsterSpawnEnabled = true)
+        bool monsterSpawnEnabled = true,
+        Action<long>? afterCleanup = null,
+        MatchEventArchive? eventArchive = null)
     {
-        _owner = owner;
+        _runtimeStore = runtimeStore;
+        _logger = logger;
+        _afterCleanup = afterCleanup;
+        _eventArchive = eventArchive;
         MatchingId = matchingId;
         Bots = new BotPlayerManager(matchingId, logger);
         Combat = new ProximityAutoCombatResolver(matchingId);
         BotMovement = new SwarmBotMovementCoordinator(this);
-        Swarm = new SwarmMatchRuntime(matchingId,
-            growthOfferIds ?? new SwarmGrowthOfferIdSequence(),
-            crossfireEventIds ?? new SwarmCrossfireEventIdSequence());
+        Swarm = new SwarmMatchRuntime(matchingId, growthOfferIds ?? new SwarmGrowthOfferIdSequence(), crossfireEventIds ?? new SwarmCrossfireEventIdSequence());
         Bots.SetDoorOpenResolver((_, doorId) => Doors.IsDoorOpen(doorId));
         Bots.SetSwarmDodgeResolver((id, botId, position, area, now) =>
-            SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(
-                Swarm.Crossfire.DodgeSnapshot, id, botId, position, area, now));
+            SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(Swarm.Crossfire.DodgeSnapshot, id, botId, position, area, now));
         Inventory = new InGameInventoryManager(matchingId, message => logger.LogInformation("{Message}", message));
         GroundItems = new GroundItemManager(matchingId);
         Roster = new MatchRosterManager(matchingId, logger);
@@ -80,11 +67,9 @@ internal sealed class MatchRuntime
     public SwarmMatchRuntime Swarm { get; }
     public BotPlayerManager Bots { get; }
     public ProximityAutoCombatResolver Combat { get; }
-
     public SwarmBotMovementCoordinator BotMovement { get; }
     public SwarmMonsterDirector Monsters { get; }
     public MatchEventLogState EventLog { get; } = new();
-    // 데이터와 처리 객체를 함께 소유한다. 호출자는 이 매치를 고른 뒤 playerId만 넘긴다.
     public InGameInventoryManager Inventory { get; }
     public GroundItemManager GroundItems { get; }
     internal Dictionary<GameClientSession, GroundItemPickupCandidates> GroundItemPickupCandidates { get; } = new();
@@ -95,6 +80,90 @@ internal sealed class MatchRuntime
     public AreaClosureManager Closures { get; }
     public object Sync { get; } = new();
     public bool IsTerminal => Volatile.Read(ref _terminal) != 0;
+    public SemaphoreSlim EntryInitializationLock { get; } = new(1, 1);
+
+    /// <summary>
+    ///     매치 구성 — 사람 ID·모드와 GameServer가 만든 봇 ID·스폰·최종 명단. 매치 초기화 잠금 안에서 한 번 세우고
+    ///     이후 사람 세션은 읽기만 한다. 개발 모드도 프로세스 전역이 아니라 이 매치 구성에 고정된다.
+    /// </summary>
+    public MatchComposition? Composition
+    {
+        get => Volatile.Read(ref _composition);
+        set => Volatile.Write(ref _composition, value);
+    }
+
+    internal MatchTickLoop? TickLoop
+    {
+        get => Volatile.Read(ref _tickLoop);
+        set => Volatile.Write(ref _tickLoop, value);
+    }
+
+    public DateTime? NextAreaClosureTickAtUtc { get; private set; }
+    public DateTime? NextEnvironmentalTickAtUtc { get; private set; }
+
+    /// <summary>이 매치의 잠금을 잡는다. 스코프가 끝나면 잠금을 해제하고 필요한 종료 정리를 수행한다.</summary>
+    public MatchScope Enter()
+    {
+        Monitor.Enter(Sync);
+        _lockDepth++;
+        return new MatchScope(this);
+    }
+
+    /// <summary>기다리지 않고 매치 잠금을 잡는다. 다른 스레드가 사용 중이면 false를 반환한다.</summary>
+    public bool TryEnter(out MatchScope scope)
+    {
+        scope = default;
+        bool lockTaken = false;
+        Monitor.TryEnter(Sync, ref lockTaken);
+        if (!lockTaken)
+            return false;
+
+        _lockDepth++;
+        scope = new MatchScope(this);
+        return true;
+    }
+
+    public bool TryBeginAreaClosureTick(DateTime utcNow, DateTime? gameplayStartedAtUtc)
+    {
+        if (!Monitor.IsEntered(Sync))
+        {
+            throw new InvalidOperationException("Area closure tick requires the match monitor to be held.");
+        }
+
+        if (IsTerminal || gameplayStartedAtUtc is not { } startedAt || utcNow < startedAt.AddSeconds(1))
+        {
+            return false;
+        }
+
+        if (NextAreaClosureTickAtUtc is { } next && utcNow < next)
+        {
+            return false;
+        }
+        NextAreaClosureTickAtUtc = utcNow.AddSeconds(1);
+        return true;
+    }
+
+    /// <summary>
+    ///     매치 시작 기준 5초마다 환경 정산을 한 번 허용한다. 반드시 매치 잠금 안에서 호출한다.
+    ///     지연된 구간은 몰아서 정산하지 않고 다음 5초 경계로 건너뛴다.
+    ///     실행 전에 시각을 넘겨 예외가 나더라도 매 50ms마다 같은 정산을 반복하지 않는다.
+    /// </summary>
+    public bool TryBeginEnvironmentalTick(DateTime utcNow, DateTime? gameplayStartedAtUtc)
+    {
+        if (!Monitor.IsEntered(Sync))
+            throw new InvalidOperationException("Environmental tick requires the match monitor to be held.");
+        if (IsTerminal || gameplayStartedAtUtc is not { } startedAt || utcNow < startedAt)
+            return false;
+
+        NextEnvironmentalTickAtUtc ??= startedAt.AddSeconds(EnvironmentalTickIntervalSeconds);
+        if (utcNow < NextEnvironmentalTickAtUtc.Value)
+            return false;
+
+        long intervalTicks = TimeSpan.TicksPerSecond * EnvironmentalTickIntervalSeconds;
+        long nextInterval = (utcNow.Ticks - startedAt.Ticks) / intervalTicks + 1;
+        NextEnvironmentalTickAtUtc = startedAt.AddTicks(nextInterval * intervalTicks);
+        return true;
+    }
 
     /// <summary>이 매치의 인벤토리에 수량이 남은 공격·회복 오브가 있는지 확인한다.</summary>
     public bool HasAnySquadOrb(long playerId)
@@ -123,54 +192,6 @@ internal sealed class MatchRuntime
         }
         return (orbCount, tierSum);
     }
-    public DateTime? NextEnvironmentalTickAtUtc { get; private set; }
-
-    /// <summary>
-    ///     매치 시작 기준 5초마다 환경 정산을 한 번 허용한다. 반드시 매치 잠금 안에서 호출한다.
-    ///     지연된 구간은 몰아서 정산하지 않고 다음 5초 경계로 건너뛴다.
-    ///     실행 전에 시각을 넘겨 예외가 나더라도 매 50ms마다 같은 정산을 반복하지 않는다.
-    /// </summary>
-    public bool TryBeginEnvironmentalTick(DateTime utcNow, DateTime? gameplayStartedAtUtc)
-    {
-        if (!Monitor.IsEntered(Sync))
-            throw new InvalidOperationException("Environmental tick requires the match monitor to be held.");
-        if (IsTerminal || gameplayStartedAtUtc is not { } startedAt || utcNow < startedAt)
-            return false;
-
-        NextEnvironmentalTickAtUtc ??= startedAt.AddSeconds(EnvironmentalTickIntervalSeconds);
-        if (utcNow < NextEnvironmentalTickAtUtc.Value)
-            return false;
-
-        long intervalTicks = TimeSpan.TicksPerSecond * EnvironmentalTickIntervalSeconds;
-        long nextInterval = (utcNow.Ticks - startedAt.Ticks) / intervalTicks + 1;
-        NextEnvironmentalTickAtUtc = startedAt.AddTicks(nextInterval * intervalTicks);
-        return true;
-    }
-
-    // await를 포함하는 입장 초기화만 직렬화한다. Sync 안에서는 이 잠금을 기다리지 않는다.
-    // 종료 중 기다리는 작업이 있을 수 있으므로 Dispose하지 않고 런타임과 함께 회수된다.
-    public SemaphoreSlim EntryInitializationLock { get; } = new(1, 1);
-    private MatchComposition? _composition;
-
-    /// <summary>
-    ///     매치 구성 — 사람 ID·모드와 GameServer가 만든 봇 ID·스폰·최종 명단. 매치 초기화 잠금 안에서 한 번 세우고
-    ///     이후 사람 세션은 읽기만 한다. 개발 모드도 프로세스 전역이 아니라 이 매치 구성에 고정된다.
-    /// </summary>
-    public MatchComposition? Composition
-    {
-        get => Volatile.Read(ref _composition);
-        set => Volatile.Write(ref _composition, value);
-    }
-
-    /// <summary>재진입 깊이 — Sync 안에서만 읽고 쓴다. 0으로 돌아오는 순간이 정리·후처리 시점이다.</summary>
-    internal int Depth;
-    internal bool CleanupDone;
-
-    /// <summary>
-    ///     최외곽 스코프가 잠금을 놓은 뒤 한 번만 실행할 후처리 (요약 파일 쓰기·NATS 발행·Redis 정리).
-    ///     Sync 안에서만 추가한다.
-    /// </summary>
-    internal readonly List<Action> AfterRelease = new();
 
     /// <summary>터미널 전이 — Sync를 쥔 호출자만 부를 수 있고 첫 호출자만 true를 받는다.</summary>
     public bool TryMarkTerminal()
@@ -179,5 +200,85 @@ internal sealed class MatchRuntime
             throw new InvalidOperationException("TryMarkTerminal requires the match monitor to be held.");
 
         return Interlocked.CompareExchange(ref _terminal, 1, 0) == 0;
+    }
+
+    internal void Exit()
+    {
+        Action[]? afterRelease = null;
+        try
+        {
+            _lockDepth--;
+            if (_lockDepth > 0)
+                return;
+
+            if (IsTerminal && !_cleanupDone)
+            {
+                // 같은 잠금을 쓰는 틱의 게임 처리는 여기까지 끝났다. 자기 루프를 await하지 않고
+                // 다음 틱을 막은 뒤 정리한다. 서버 종료는 별도로 루프 Completion까지 기다린다.
+                TickLoop?.Stop();
+                _cleanupDone = true;
+                Sessions.Close();
+                Doors.Clear();
+                try
+                {
+                    MatchStartGate.RemoveMatching(MatchingId);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Match start state cleanup failed: MatchingId={MatchingId}", MatchingId);
+                }
+                try
+                {
+                    _eventArchive?.Archive(MatchingId, EventLog);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Match event log archive failed: MatchingId={MatchingId}", MatchingId);
+                }
+                Inventory.Release();
+                GroundItems.Release();
+                GroundItemPickupCandidates.Clear();
+                SummonStones.Release();
+                Encounters.Release();
+                Roster.Release();
+                Closures.Release();
+                Bots.Release();
+                Monsters.Release();
+                Combat.Release();
+
+                _runtimeStore.RemoveCompleted(this);
+                if (_afterCleanup != null)
+                {
+                    Action<long> afterCleanup = _afterCleanup;
+                    long matchingId = MatchingId;
+                    AfterRelease.Add(() => afterCleanup(matchingId));
+                }
+            }
+
+            if (AfterRelease.Count == 0)
+                return;
+
+            afterRelease = AfterRelease.ToArray();
+            AfterRelease.Clear();
+        }
+        finally
+        {
+            Monitor.Exit(Sync);
+        }
+
+        foreach (Action action in afterRelease)
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Match post-release action failed: MatchingId={MatchingId}",
+                    MatchingId);
+            }
+        }
     }
 }

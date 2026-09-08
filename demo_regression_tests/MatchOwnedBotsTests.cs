@@ -14,15 +14,15 @@ public sealed class MatchOwnedBotsTests
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
-        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         Assert.NotSame(first.BotMovement, second.BotMovement);
-        using (store.Enter(first))
+        using (MatchRuntimeStore.Enter(first))
             Assert.Equal(1L, first.BotMovement.PrepareTick(logs, [], (_, _) => default).MatchingId);
-        using (store.Enter(second))
+        using (MatchRuntimeStore.Enter(second))
             Assert.Equal(2L, second.BotMovement.PrepareTick(logs, [], (_, _) => default).MatchingId);
-        using (store.Enter(first)) first.TryMarkTerminal();
+        using (MatchRuntimeStore.Enter(first)) first.TryMarkTerminal();
         Assert.Throws<InvalidOperationException>(() => first.BotMovement.PrepareTick(logs, [], (_, _) => default));
-        using (store.Enter(second))
+        using (MatchRuntimeStore.Enter(second))
             Assert.Equal(2L, second.BotMovement.PrepareTick(logs, [], (_, _) => default).MatchingId);
     }
 
@@ -38,7 +38,7 @@ public sealed class MatchOwnedBotsTests
         Assert.False(first.Monsters.InitializeMatching(2, 20, DateTime.UtcNow));
         Assert.False(second.Monsters.HasMatching(2));
         Assert.True(second.Monsters.InitializeMatching(2, 20, DateTime.UtcNow));
-        using (store.Enter(first)) first.TryMarkTerminal();
+        using (MatchRuntimeStore.Enter(first)) first.TryMarkTerminal();
         Assert.False(first.Monsters.HasMatching(1));
         Assert.True(second.Monsters.HasMatching(2));
     }
@@ -56,9 +56,9 @@ public sealed class MatchOwnedBotsTests
         Assert.Empty(second.Bots.GetBots(2));
         Assert.Empty(first.Bots.GetBots(2));
         Assert.Throws<InvalidOperationException>(() => first.Bots.RegisterBots(2, Config.SWARM_MATCH_MAP, [], new Dictionary<long, Cell>()));
-        using (store.Enter(first)) first.TryMarkTerminal();
-        Assert.Null(store.Get(1));
+        using (MatchRuntimeStore.Enter(first)) first.TryMarkTerminal();
+        Assert.Null(store.GetOrNull(1));
         Assert.Empty(first.Bots.GetBots(1));
-        Assert.Same(second, store.Get(2));
+        Assert.Same(second, store.GetOrNull(2));
     }
 }

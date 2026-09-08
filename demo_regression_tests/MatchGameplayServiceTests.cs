@@ -32,16 +32,16 @@ public sealed class MatchGameplayServiceTests
         var arena = provider.GetRequiredService<MatchArenaService>();
         var store = provider.GetRequiredService<MatchRuntimeStore>();
         arena.ProcessSwarmArenaForMatching(947701, []);
-        Assert.Null(store.Get(947701));
+        Assert.Null(store.GetOrNull(947701));
         var match = store.GetOrCreate(947702);
-        using (store.Enter(match))
+        using (MatchRuntimeStore.Enter(match))
         {
             match.TryMarkTerminal();
             arena.ProcessSwarmArenaForMatching(match.MatchingId, []);
         }
-        Assert.Null(store.Get(match.MatchingId));
+        Assert.Null(store.GetOrNull(match.MatchingId));
         arena.ProcessSwarmArenaForMatching(match.MatchingId, []);
-        Assert.Null(store.Get(match.MatchingId));
+        Assert.Null(store.GetOrNull(match.MatchingId));
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public sealed class MatchGameplayServiceTests
         var first = store.GetOrCreate(947703);
         var second = store.GetOrCreate(947704);
         var now = DateTime.UtcNow;
-        using (store.Enter(first))
+        using (MatchRuntimeStore.Enter(first))
         {
             var bot = new BotPlayerState { PlayerId = 11, Health = 10 };
             first.Swarm.BotTactics.LastDamagedAtUtc[(first.MatchingId, 11)] = now;
@@ -64,14 +64,14 @@ public sealed class MatchGameplayServiceTests
             service.ProcessSwarmBotRecovery(first.MatchingId, [bot], now.AddSeconds(6));
             Assert.Equal(12, bot.Health);
         }
-        using (store.Enter(second))
+        using (MatchRuntimeStore.Enter(second))
         {
             var bot = new BotPlayerState { PlayerId = 11, Health = 10 };
             service.ProcessSwarmBotRecovery(second.MatchingId, [bot], now.AddSeconds(6));
             Assert.Equal(12, bot.Health);
             second.TryMarkTerminal();
         }
-        using (store.Enter(first)) first.TryMarkTerminal();
+        using (MatchRuntimeStore.Enter(first)) first.TryMarkTerminal();
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public sealed class MatchGameplayServiceTests
         var store = provider.GetRequiredService<MatchRuntimeStore>();
         var match = store.GetOrCreate(947705);
         var now = DateTime.UtcNow;
-        using (store.Enter(match))
+        using (MatchRuntimeStore.Enter(match))
         {
             int half = (int)(network.common.Config.MAX_HEALTH * 0.5f);
             Assert.True(service.IsSwarmBotCutAllowed(match.MatchingId, 11, half + 5, now, 5));

@@ -13,12 +13,12 @@ public sealed class CrossfireServiceTests
     {
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947601);
-        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var service = new CrossfireService(store, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
         var victim = new BotPlayerState { PlayerId = 12 };
-        using (store.Enter(match))
+        using (MatchRuntimeStore.Enter(match))
         {
             var shape = new SwarmCrossfireShape
             {
@@ -65,21 +65,21 @@ public sealed class CrossfireServiceTests
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(947602);
         var second = store.GetOrCreate(947603);
-        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var service = new CrossfireService(store, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
         var now = DateTime.UtcNow;
-        using (store.Enter(first))
+        using (MatchRuntimeStore.Enter(first))
             first.Swarm.Crossfire.SetSunBurn(12, 11, 107000010, AreaType.S2Ground,
                 now, Config.SWARM_SUN_BURN_SECONDS, Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS);
         var due = now.AddSeconds(Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS);
-        using (store.Enter(second))
+        using (MatchRuntimeStore.Enter(second))
         {
             var victim = new BotPlayerState { PlayerId = 12 };
             service.ProcessSwarmSunBurns(second.MatchingId, due, [], [victim], []);
             Assert.Equal(Config.MAX_HEALTH, victim.Health);
             second.TryMarkTerminal();
         }
-        using (store.Enter(first))
+        using (MatchRuntimeStore.Enter(first))
         {
             var victim = new BotPlayerState { PlayerId = 12 };
             service.ProcessSwarmSunBurns(first.MatchingId, now, [], [victim], []);

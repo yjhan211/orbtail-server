@@ -37,11 +37,11 @@ internal sealed class WindBladeService(
         List<GameClientSession> allSessions)
     {
         IReadOnlyList<SwarmArenaCombatTarget>? monsters = null;
-        SwarmWindBladeState windBlade = matchRuntimes.GetRequired(matchingId).Swarm.WindBlade;
+        SwarmWindBladeState windBlade = matchRuntimes.GetOrThrow(matchingId).Swarm.WindBlade;
 
         foreach (var owner in participants)
         {
-            var trailOrbs = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(owner.PlayerId).GetOrderedOrbs();
+            var trailOrbs = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(owner.PlayerId).GetOrderedOrbs();
             if (trailOrbs.Count == 0)
                 continue;
 
@@ -61,7 +61,7 @@ internal sealed class WindBladeService(
                 tiers ??= orbTrails.GetSwarmOrbTiersInOrder(matchingId, owner.PlayerId);
                 var origin = orbTrails.GetSwarmOrbTrailPosition(matchingId, owner.PlayerId, ordinal, owner.Position, tiers);
                 float radius = Config.SWARM_WIND_BLADE_RADIUS_BY_TIER[Math.Clamp(tier, 1, 3) - 1];
-                monsters ??= matchRuntimes.GetRequired(matchingId).Monsters.GetCombatTargets(matchingId);
+                monsters ??= matchRuntimes.GetOrThrow(matchingId).Monsters.GetCombatTargets(matchingId);
 
                 // 판정 전에 반경 안 표적부터 수집한다 — 시동 게이트가 표적 유무를 먼저 물어야 한다.
                 List<SwarmArenaCombatTarget>? monstersInRadius = null;
@@ -110,7 +110,7 @@ internal sealed class WindBladeService(
                     foreach (var monster in monstersInRadius)
                     {
                         monsterHits++;
-                        matchRuntimes.GetRequired(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
+                        matchRuntimes.GetOrThrow(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
                         int monsterDamage = combatDamage.RollSwarmCriticalDamage(
                             matchingId, damage, out bool critical);
                         combatDamage.ApplySwarmMonsterHitNow(

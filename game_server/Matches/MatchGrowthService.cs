@@ -36,15 +36,15 @@ internal sealed class MatchGrowthService(
         int CostSummon, int CostAttack, int CostDefense) GetCostBreakdown(
         long matchingId, long playerId)
     {
-        var (orbCount, _) = matchRuntimes.GetRequired(matchingId).GetOrbScore(playerId);
+        var (orbCount, _) = matchRuntimes.GetOrThrow(matchingId).GetOrbScore(playerId);
         int CardCost(int cardIndex) => Config.GetSwarmGrowthCardCost(
-            matchRuntimes.GetRequired(matchingId).SummonStones.GetGrowthSuccessCount(playerId, cardIndex), orbCount);
+            matchRuntimes.GetOrThrow(matchingId).SummonStones.GetGrowthSuccessCount(playerId, cardIndex), orbCount);
 
         int summon = CardCost(SwarmGrowthOfferState.CardMultiply);
         int attack = CardCost(SwarmGrowthOfferState.CardEnhance);
         int defense = CardCost(SwarmGrowthOfferState.CardArmor);
         int cheapest = Math.Min(summon, Math.Min(attack, defense));
-        int growthCount = matchRuntimes.GetRequired(matchingId).SummonStones.GetGrowthSuccessCount(playerId);
+        int growthCount = matchRuntimes.GetOrThrow(matchingId).SummonStones.GetGrowthSuccessCount(playerId);
         return (
             Config.GetSwarmGrowthBaseCost(growthCount),
             Config.GetSwarmGrowthScoreSurcharge(orbCount),
@@ -76,8 +76,8 @@ internal sealed class MatchGrowthService(
         _ = qualityCost;
         int spawnItemId = SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)];
 
-        int armorSlots = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs()
-            .Count(item => !matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)));
+        int armorSlots = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs()
+            .Count(item => !matchRuntimes.GetOrThrow(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)));
         int armorCount = armorSlots <= 0 ? 0 : 1;
         if (armorCount > 0 && armorSlots >= 2)
         {
@@ -87,7 +87,7 @@ internal sealed class MatchGrowthService(
         }
 
         // 6/6 포화 (#232 4단계): 소환 카드가 닫힌다 — 파괴로 빈칸을 만들어야 다시 열린다.
-        if (matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs().Count >= Config.SWARM_ORB_CAPACITY)
+        if (matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs().Count >= Config.SWARM_ORB_CAPACITY)
             spawnItemId = 0;
 
         return new SwarmGrowthOfferState(
@@ -113,7 +113,7 @@ internal sealed class MatchGrowthService(
         List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
     {
         SwarmGrowthOfferCoordinator growthOffers =
-            matchRuntimes.GetRequired(matchingId).Swarm.GrowthOfferCoordinator;
+            matchRuntimes.GetOrThrow(matchingId).Swarm.GrowthOfferCoordinator;
 
         foreach (var bot in aliveBots)
         {
@@ -121,7 +121,7 @@ internal sealed class MatchGrowthService(
                 continue;
             var (baseCost, surcharge, finalCost, orbCount, costSummon, costAttack, costDefense) =
                 GetCostBreakdown(matchingId, bot.PlayerId);
-            if (matchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(bot.PlayerId).StoneCount < finalCost)
+            if (matchRuntimes.GetOrThrow(matchingId).SummonStones.GetSnapshot(bot.PlayerId).StoneCount < finalCost)
                 continue;
 
             var offer = GenerateSwarmGrowthOffer(
@@ -145,10 +145,10 @@ internal sealed class MatchGrowthService(
             bool applied = ApplySwarmGrowthCard(matchingId, bot.PlayerId, cardIndex, offer);
             if (applied)
             {
-                int successCountBefore = matchRuntimes.GetRequired(matchingId).SummonStones.GetGrowthSuccessCount(bot.PlayerId);
+                int successCountBefore = matchRuntimes.GetOrThrow(matchingId).SummonStones.GetGrowthSuccessCount(bot.PlayerId);
                 // 카드별 카운터는 봇도 함께 민다 (#229) — 안 그러면 봇만 값이 안 올라
                 // 사람보다 싸게 무한 성장하고, 봇 매치로 곡선을 검증할 수도 없다.
-                matchRuntimes.GetRequired(matchingId).SummonStones.RecordGrowthSuccess(bot.PlayerId, cardIndex);
+                matchRuntimes.GetOrThrow(matchingId).SummonStones.RecordGrowthSuccess(bot.PlayerId, cardIndex);
                 eventLogs.LogSwarmGrowthSelected(
                     matchingId, bot.PlayerId, isBot: true,
                     GetSwarmGrowthCardRole(cardIndex), GetSwarmGrowthCardGrade(cardIndex, offer),
@@ -161,16 +161,16 @@ internal sealed class MatchGrowthService(
     public int GetTopOrbCount(long matchingId)
     {
         int top = 0;
-        foreach (var session in matchRuntimes.GetRequired(matchingId).Sessions.Snapshot())
+        foreach (var session in matchRuntimes.GetOrThrow(matchingId).Sessions.Snapshot())
         {
             if (session.PlayerId.HasValue && !session.IsEliminated)
-                top = Math.Max(top, matchRuntimes.GetRequired(matchingId).GetOrbScore(session.PlayerId.Value).OrbCount);
+                top = Math.Max(top, matchRuntimes.GetOrThrow(matchingId).GetOrbScore(session.PlayerId.Value).OrbCount);
         }
 
-        foreach (var bot in matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
+        foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
         {
             if (!bot.IsEliminated && !bot.IsSwarmCutDummy)
-                top = Math.Max(top, matchRuntimes.GetRequired(matchingId).GetOrbScore(bot.PlayerId).OrbCount);
+                top = Math.Max(top, matchRuntimes.GetOrThrow(matchingId).GetOrbScore(bot.PlayerId).OrbCount);
         }
 
         return top;
@@ -181,14 +181,14 @@ internal sealed class MatchGrowthService(
         long matchingId, BotPlayerState bot,
         List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
     {
-        float myPower = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(bot.PlayerId).GetOrbPower();
+        float myPower = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(bot.PlayerId).GetOrbPower();
         if (myPower <= 0f)
             return false;
 
         foreach (var session in aliveSessions)
         {
             if (session.PlayerId.HasValue && session.CurrentArea == bot.CurrentArea &&
-                matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(session.PlayerId.Value).GetOrbPower() *
+                matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(session.PlayerId.Value).GetOrbPower() *
                 BotPreyPowerAdvantage <= myPower)
                 return true;
         }
@@ -197,7 +197,7 @@ internal sealed class MatchGrowthService(
         {
             if (other.PlayerId != bot.PlayerId && !other.IsSwarmCutDummy &&
                 other.CurrentArea == bot.CurrentArea &&
-                matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(other.PlayerId).GetOrbPower() *
+                matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(other.PlayerId).GetOrbPower() *
                 BotPreyPowerAdvantage <= myPower)
                 return true;
         }
@@ -244,7 +244,7 @@ internal sealed class MatchGrowthService(
     {
         // 차감은 고른 카드의 값으로 (#229): 세 카드가 각자 자기 곡선을 탄다.
         int cost = offer.GetCost(cardIndex);
-        var inventory = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
+        var inventory = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId);
         switch (cardIndex)
         {
             case SwarmGrowthOfferState.CardMultiply:
@@ -252,7 +252,7 @@ internal sealed class MatchGrowthService(
                     // 6/6 포화 (#232 4단계): 소환 불가 — 기존 5회 탭 파괴로 빈칸을 만든 뒤 다시 소환한다.
                     if (inventory.GetAllItems().Count >= Config.SWARM_ORB_CAPACITY)
                         return false;
-                    if (!matchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(playerId, cost, out _))
+                    if (!matchRuntimes.GetOrThrow(matchingId).SummonStones.TrySpendStones(playerId, cost, out _))
                         return false;
                     // 소환은 T1 그대로: 티어는 오브마다 따로 산다 — 공유 레벨 상속은 퇴역.
                     inventory.TryAddItemWithCapacity(offer.SpawnItemId, Config.SWARM_ORB_CAPACITY, out _);
@@ -266,17 +266,17 @@ internal sealed class MatchGrowthService(
                 {
                     if (offer.ArmorCount <= 0)
                         return false;
-                    var targets = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs()
+                    var targets = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs()
                         .Where(item =>
-                            !matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)))
+                            !matchRuntimes.GetOrThrow(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.ContainsKey((matchingId, playerId, item.ItemUid)))
                         .Take(offer.ArmorCount)
                         .ToList();
                     if (targets.Count == 0)
                         return false;
-                    if (!matchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(playerId, cost, out _))
+                    if (!matchRuntimes.GetOrThrow(matchingId).SummonStones.TrySpendStones(playerId, cost, out _))
                         return false;
                     foreach (var target in targets)
-                        matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] =
+                        matchRuntimes.GetOrThrow(matchingId).Swarm.TrailCombat.OrbDurabilityBonus[(matchingId, playerId, target.ItemUid)] =
                             ArmorDurabilityBonus;
                     return true;
                 }

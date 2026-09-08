@@ -144,7 +144,7 @@ public sealed class MatchStartCountdownPublicationTests
             using var releaseLock = new ManualResetEventSlim();
             Task holder = Task.Run(() =>
             {
-                using (server.GetMatchRuntimes().Enter(runtime))
+                using (runtime.Enter())
                 {
                     lockHeld.Set();
                     Assert.True(releaseLock.Wait(TimeSpan.FromSeconds(5)));
@@ -273,7 +273,7 @@ public sealed class MatchStartCountdownPublicationTests
         InvokeEntryAbort(server, anchor);
 
         Assert.True(runtime.IsTerminal);
-        Assert.Null(server.GetMatchRuntimes().Get(matchingId));
+        Assert.Null(server.GetMatchRuntimes().GetOrNull(matchingId));
         Assert.Equal(1, anchor.FatalCount);
         Assert.Equal(1, anchor.DisconnectCount);
         Assert.Equal(1, other.FatalCount);
@@ -322,7 +322,7 @@ public sealed class MatchStartCountdownPublicationTests
         // 정상 종료가 잠금 안에서 subject를 먼저 선점하고 터미널로 끝난다.
         MatchRuntime runtime = server.GetMatchRuntimes().GetOrCreate(matchingId);
         Action? completion;
-        using (server.GetMatchRuntimes().Enter(runtime))
+        using (runtime.Enter())
         {
             completion = PrepareLifecyclePublication(
                 server,
@@ -333,7 +333,7 @@ public sealed class MatchStartCountdownPublicationTests
         }
 
         Assert.NotNull(completion);
-        Assert.Null(server.GetMatchRuntimes().Get(matchingId));
+        Assert.Null(server.GetMatchRuntimes().GetOrNull(matchingId));
 
         InvokeEntryAbort(server, completedSession);
         InvokeEntryAbort(server, completedSession);
@@ -385,7 +385,7 @@ public sealed class MatchStartCountdownPublicationTests
 
     private static SwarmMatchPacingState GetPacing(GameServer server, long matchingId)
     {
-        return server.GetMatchRuntimes().GetRequired(matchingId).Swarm.Pacing;
+        return server.GetMatchRuntimes().GetOrThrow(matchingId).Swarm.Pacing;
     }
 
     private static void InvokePeriodicBroadcast(

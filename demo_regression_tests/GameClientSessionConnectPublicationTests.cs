@@ -74,7 +74,7 @@ public sealed class GameClientSessionConnectPublicationTests
     {
         using var fixture = new ConnectFixture();
         var session = fixture.CreateSession(74010, 8110, _ => true);
-        var runtime = fixture.Store.GetRequired(74010);
+        var runtime = fixture.Store.GetOrThrow(74010);
         var method = typeof(GameClientSession).GetMethod(handlerName, BindingFlags.Instance | BindingFlags.NonPublic)!;
         object?[] arguments = handlerName switch
         {
@@ -96,7 +96,7 @@ public sealed class GameClientSessionConnectPublicationTests
             Assert.True(runtime.TryMarkTerminal());
         }
         await request.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Null(fixture.Store.Get(74010));
+        Assert.Null(fixture.Store.GetOrNull(74010));
         Assert.Null(session.LastValidatedPosition);
     }
 
@@ -124,7 +124,7 @@ public sealed class GameClientSessionConnectPublicationTests
     {
         using var fixture = new ConnectFixture();
         var session = fixture.CreateSession(74009, 8109, _ => true);
-        var original = fixture.Store.GetRequired(74009);
+        var original = fixture.Store.GetOrThrow(74009);
         var flags = BindingFlags.Instance | BindingFlags.NonPublic;
         var handle = typeof(GameClientSession).GetMethod("HandleMatchStartReady", flags)!;
         MatchStartGate.RegisterHumanPlayer(74009, 8109, 1, MatchMode.Normal);
@@ -139,7 +139,7 @@ public sealed class GameClientSessionConnectPublicationTests
 
         using (original.Enter())
             Assert.True(original.TryMarkTerminal());
-        Assert.Null(fixture.Store.Get(74009));
+        Assert.Null(fixture.Store.GetOrNull(74009));
         var replacement = fixture.Store.GetOrCreate(74009);
         Assert.NotSame(original, replacement);
         Assert.Same(original, typeof(GameClientSession).GetField("_match", flags)!.GetValue(session));
@@ -268,8 +268,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 Assert.True(releaseSender.Wait(TimeSpan.FromSeconds(5)));
                 return true;
             });
-        int cleanupCount = 0;
-        fixture.CleanupSteps.Add(new MatchCleanupStep("count", _ => Interlocked.Increment(ref cleanupCount)));
+
 
         Task connect = Task.Run(() => fixture.ConnectAsync(session, matchingId, playerId));
 
@@ -284,8 +283,8 @@ public sealed class GameClientSessionConnectPublicationTests
             Assert.True(probe.Runtime.TryMarkTerminal());
         }
 
-        Assert.Equal(1, Volatile.Read(ref cleanupCount));
-        Assert.Null(fixture.Store.Get(matchingId));
+        Assert.False(MatchStartGate.IsGameplayActive(matchingId));
+        Assert.Null(fixture.Store.GetOrNull(matchingId));
 
         releaseSender.Set();
         await connect.WaitAsync(TimeSpan.FromSeconds(5));
@@ -329,12 +328,12 @@ public sealed class GameClientSessionConnectPublicationTests
         GameClientSession session = fixture.CreateSession(matchingId, 8_104, _ => true);
 
         MatchRuntime runtime = fixture.Store.GetOrCreate(matchingId);
-        using (fixture.Store.Enter(runtime))
+        using (MatchRuntimeStore.Enter(runtime))
         {
             Assert.True(runtime.TryMarkTerminal());
         }
 
-        Assert.Null(fixture.Store.Get(matchingId));
+        Assert.Null(fixture.Store.GetOrNull(matchingId));
         Assert.False(CommitAuthentication(fixture.Store, matchingId, fixture.Connection, session));
         Assert.Equal(0, GetIntField(fixture.Connection, "_authenticated"));
         Assert.Equal(0, GetIntField(session, "_entryCompleted"));
@@ -457,11 +456,11 @@ public sealed class GameClientSessionConnectPublicationTests
         TcpConnection connection,
         GameClientSession session)
     {
-        MatchRuntime? runtime = store.Get(matchingId);
+        MatchRuntime? runtime = store.GetOrNull(matchingId);
         if (runtime == null)
             return false;
 
-        using MatchScope scope = store.Enter(runtime);
+        using MatchScope scope = MatchRuntimeStore.Enter(runtime);
         if (runtime.IsTerminal)
             return false;
 
@@ -642,10 +641,9 @@ public sealed class GameClientSessionConnectPublicationTests
 
         public ConnectFixture()
         {
-            Store = new MatchRuntimeStore(NullLogger.Instance, cleanupSteps: CleanupSteps);
+            Store = new MatchRuntimeStore(NullLogger.Instance);
         }
 
-        public List<MatchCleanupStep> CleanupSteps { get; } = [];
         public MatchRuntimeStore Store { get; }
         public TcpConnection Connection { get; } = new AcceptingConnection();
         public InMemoryRedisOperations Redis { get; } = new();

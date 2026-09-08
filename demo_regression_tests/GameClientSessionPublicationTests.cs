@@ -228,17 +228,17 @@ public sealed class GameClientSessionPublicationTests
 
         Assert.Null(registry.Register(101, previous));
         Assert.Null(registry.Register(101, previous));
-        Assert.Same(previous, Assert.Single(fixture.Store.GetRequired(70001).Sessions.Snapshot()));
+        Assert.Same(previous, Assert.Single(fixture.Store.GetOrThrow(70001).Sessions.Snapshot()));
 
         Assert.Same(previous, registry.Register(101, replacement));
 
         Assert.False(fixture.ConnectionFor(previous).IsReleased);
         Assert.True(registry.TryGetSession(101, out var current));
         Assert.Same(replacement, current);
-        Assert.Empty(fixture.Store.GetRequired(70001).Sessions.Snapshot());
-        Assert.Same(replacement, Assert.Single(fixture.Store.GetRequired(70002).Sessions.Snapshot()));
+        Assert.Empty(fixture.Store.GetOrThrow(70001).Sessions.Snapshot());
+        Assert.Same(replacement, Assert.Single(fixture.Store.GetOrThrow(70002).Sessions.Snapshot()));
         Assert.False(registry.Remove(previous));
-        Assert.Same(replacement, Assert.Single(fixture.Store.GetRequired(70002).Sessions.Snapshot()));
+        Assert.Same(replacement, Assert.Single(fixture.Store.GetOrThrow(70002).Sessions.Snapshot()));
     }
 
     [Fact]
@@ -330,7 +330,7 @@ public sealed class GameClientSessionPublicationTests
         await Task.WhenAll(register, terminate).WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.Empty(runtime.Sessions.Snapshot());
-        Assert.Null(fixture.Store.Get(70001));
+        Assert.Null(fixture.Store.GetOrNull(70001));
         registry.Remove(session);
         Assert.Empty(registry.GetAllSessions());
     }
@@ -353,13 +353,13 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal([Protocol.G_TO_C_AREA_PLAYER_LEAVE], fixture.ConnectionFor(nearby).DeliveredProtocols);
         Assert.Empty(fixture.ConnectionFor(otherArea).DeliveredProtocols);
         Assert.Empty(fixture.ConnectionFor(otherMatch).DeliveredProtocols);
-        Assert.NotNull(fixture.Store.Get(70001));
+        Assert.NotNull(fixture.Store.GetOrNull(70001));
 
         nearby.OnRemoved();
         otherArea.OnRemoved();
 
-        Assert.Null(fixture.Store.Get(70001));
-        Assert.NotNull(fixture.Store.Get(70002));
+        Assert.Null(fixture.Store.GetOrNull(70001));
+        Assert.NotNull(fixture.Store.GetOrNull(70002));
     }
 
     [Fact]
@@ -379,7 +379,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.True(registry.TryGetSession(101, out var current));
         Assert.Same(replacement, current);
         Assert.Empty(fixture.ConnectionFor(peer).DeliveredProtocols);
-        Assert.NotNull(fixture.Store.Get(70001));
+        Assert.NotNull(fixture.Store.GetOrNull(70001));
     }
 
     [Fact]
@@ -428,10 +428,10 @@ public sealed class GameClientSessionPublicationTests
                 Protocol.G_TO_C_PLAYER_STATE
             ],
             fixture.ConnectionFor(session).DeliveredProtocols);
-        Assert.True((fixture.Store.Get(70001)?.Doors.IsDoorOpen(201) == true));
+        Assert.True((fixture.Store.GetOrNull(70001)?.Doors.IsDoorOpen(201) == true));
         Assert.True(fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK).Completed);
-        Assert.False(Monitor.IsEntered(fixture.Store.Get(70001)!.Sync));
+        Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(70001)!.Sync));
     }
 
     [Theory]
@@ -445,7 +445,7 @@ public sealed class GameClientSessionPublicationTests
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
         GroundItemInfo item = fixture.SpawnAtSession(session, itemId);
-        int stonesBefore = fixture.Store.GetRequired(70001).SummonStones.GetSnapshot(101).StoneCount;
+        int stonesBefore = fixture.Store.GetOrThrow(70001).SummonStones.GetSnapshot(101).StoneCount;
 
         await RunPickupTickAsync(session, fixture.EventLog);
 
@@ -454,13 +454,13 @@ public sealed class GameClientSessionPublicationTests
             Assert.Equal(expectedPrefix.Value, protocols[0]);
         Assert.Equal(Protocol.G_TO_C_GROUND_ITEM_REMOVED, protocols[^2]);
         Assert.Equal(Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT, protocols[^1]);
-        Assert.Null(fixture.Store.GetRequired(70001).GroundItems.GetItem(item.GroundItemUid));
+        Assert.Null(fixture.Store.GetOrThrow(70001).GroundItems.GetItem(item.GroundItemUid));
 
         if (itemId == Config.SUMMON_STONE_GROUND_ITEM_ID)
-            Assert.Equal(stonesBefore + 1, fixture.Store.GetRequired(70001).SummonStones.GetSnapshot(101).StoneCount);
+            Assert.Equal(stonesBefore + 1, fixture.Store.GetOrThrow(70001).SummonStones.GetSnapshot(101).StoneCount);
         else if (itemId == 107000010)
             Assert.Contains(
-                fixture.Store.GetRequired(70001).Inventory.GetAllItems(101),
+                fixture.Store.GetOrThrow(70001).Inventory.GetAllItems(101),
                 inventoryItem => inventoryItem.ItemId == itemId);
     }
 
@@ -497,8 +497,8 @@ public sealed class GameClientSessionPublicationTests
 
         await RunPickupTickAsync(session, fixture.EventLog);
         Assert.Empty(fixture.ConnectionFor(session).DeliveredProtocols);
-        Assert.NotNull(fixture.Store.GetRequired(70001).GroundItems.GetItem(item.GroundItemUid));
-        Assert.DoesNotContain(fixture.Store.GetRequired(70001).Inventory.GetAllItems(101),
+        Assert.NotNull(fixture.Store.GetOrThrow(70001).GroundItems.GetItem(item.GroundItemUid));
+        Assert.DoesNotContain(fixture.Store.GetOrThrow(70001).Inventory.GetAllItems(101),
             inventoryItem => inventoryItem.ItemId == itemId);
     }
 
@@ -561,12 +561,12 @@ public sealed class GameClientSessionPublicationTests
     {
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, (AreaType)50);
-        MatchRuntime runtime = fixture.Store.Get(70001)!;
+        MatchRuntime runtime = fixture.Store.GetOrNull(70001)!;
         using var lockHeld = new ManualResetEventSlim();
         using var markTerminal = new ManualResetEventSlim();
         Task holder = Task.Run(() =>
         {
-            using (fixture.Store.Enter(runtime))
+            using (MatchRuntimeStore.Enter(runtime))
             {
                 lockHeld.Set();
                 Assert.True(markTerminal.Wait(TimeSpan.FromSeconds(5)));
@@ -590,8 +590,8 @@ public sealed class GameClientSessionPublicationTests
             .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK);
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, ack.ErrorCode);
         Assert.Equal([Protocol.G_TO_C_DOOR_OPEN_ACK], fixture.ConnectionFor(session).DeliveredProtocols);
-        Assert.False((fixture.Store.Get(70001)?.Doors.IsDoorOpen(201) == true));
-        Assert.Null(fixture.Store.Get(70001));
+        Assert.False((fixture.Store.GetOrNull(70001)?.Doors.IsDoorOpen(201) == true));
+        Assert.Null(fixture.Store.GetOrNull(70001));
     }
 
     [Fact]
@@ -611,7 +611,7 @@ public sealed class GameClientSessionPublicationTests
             .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK);
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, ack.ErrorCode);
         Assert.Equal(702000101, ack.InteractId);
-        Assert.Null(fixture.Store.Get(70001));
+        Assert.Null(fixture.Store.GetOrNull(70001));
     }
 
     [Fact]
@@ -661,7 +661,7 @@ public sealed class GameClientSessionPublicationTests
                 "after"
             ],
             timeline);
-        Assert.Null(fixture.Store.Get(70001));
+        Assert.Null(fixture.Store.GetOrNull(70001));
     }
 
     [Fact]
@@ -676,7 +676,7 @@ public sealed class GameClientSessionPublicationTests
         await Assert.ThrowsAsync<InvalidOperationException>(() => RunPickupTickAsync(session, fixture.EventLog));
 
         Assert.Equal(1, session.Match.SummonStones.GetSnapshot(session.PlayerId!.Value).StoneCount);
-        Assert.Null(fixture.Store.GetRequired(70001).GroundItems.GetItem(item.GroundItemUid));
+        Assert.Null(fixture.Store.GetOrThrow(70001).GroundItems.GetItem(item.GroundItemUid));
         Assert.Equal(
             [
                 Protocol.G_TO_C_SUMMON_STONE_STATE,
@@ -684,7 +684,7 @@ public sealed class GameClientSessionPublicationTests
             ],
             connection.AttemptedProtocols);
         Assert.DoesNotContain(Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT, connection.AttemptedProtocols);
-        Assert.False(Monitor.IsEntered(fixture.Store.Get(70001)!.Sync));
+        Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(70001)!.Sync));
     }
 
     [Fact]
@@ -702,7 +702,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(
             [Protocol.G_TO_C_PLAYER_STATS_UPDATE],
             fixture.ConnectionFor(session).DeliveredProtocols);
-        Assert.Null(fixture.Store.GetRequired(70001).GroundItems.GetItem(item.GroundItemUid));
+        Assert.Null(fixture.Store.GetOrThrow(70001).GroundItems.GetItem(item.GroundItemUid));
         Assert.True(session.CurrentHealth > 20);
     }
 
@@ -1136,7 +1136,7 @@ public sealed class GameClientSessionPublicationTests
         {
             Store = new MatchRuntimeStore(
                 NullLogger.Instance,
-                cleanupSteps: [new MatchCleanupStep("cleanup", _ => CleanupTimeline?.Enqueue("cleanup"))]);
+                afterCleanup: _ => CleanupTimeline?.Enqueue("cleanup"));
 
             GameClientSession.SwarmHeartPickupCallback = null;
         }
@@ -1150,7 +1150,7 @@ public sealed class GameClientSessionPublicationTests
         public RecordingSession CreateSession(long matchingId, long playerId, AreaType area, Func<GameClientSession, bool>? removeSession = null)
         {
             Store.GetOrCreate(matchingId);
-            Store.Get(matchingId)!.Doors.Initialize();
+            Store.GetOrNull(matchingId)!.Doors.Initialize();
 
             var connection = new RecordingTcpConnection();
             Activate(connection);
@@ -1173,8 +1173,8 @@ public sealed class GameClientSessionPublicationTests
         /// <summary>잠금 안에서 터미널로 표시하고 나온다 — 정리는 깊이 0 탈출에서 바로 돈다.</summary>
         public void MarkTerminal(long matchingId)
         {
-            MatchRuntime runtime = Store.Get(matchingId)!;
-            using (Store.Enter(runtime))
+            MatchRuntime runtime = Store.GetOrNull(matchingId)!;
+            using (MatchRuntimeStore.Enter(runtime))
             {
                 Assert.True(runtime.TryMarkTerminal());
             }
@@ -1182,7 +1182,7 @@ public sealed class GameClientSessionPublicationTests
 
         public GroundItemInfo SpawnAtSession(RecordingSession session, int itemId)
         {
-            GroundItemInfo item = Store.GetRequired(session.MatchingId).GroundItems.SpawnItems(
+            GroundItemInfo item = Store.GetOrThrow(session.MatchingId).GroundItems.SpawnItems(
                 session.CurrentArea,
                 0f,
                 0f,

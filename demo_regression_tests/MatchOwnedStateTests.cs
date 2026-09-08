@@ -42,9 +42,9 @@ public sealed class MatchOwnedStateTests
         roster.RegisterEntry(new RosterEntry { PlayerId = 11 });
 
         Assert.Same(inventory.GetPlayerInventory(11),
-            store.GetRequired(first.MatchingId).Inventory.GetPlayerInventory(11));
+            store.GetOrThrow(first.MatchingId).Inventory.GetPlayerInventory(11));
         Assert.Empty(second.Inventory.GetAllItems(11));
-        Assert.Equal(9, store.GetRequired(first.MatchingId).SummonStones.GetSnapshot(11).StoneCount);
+        Assert.Equal(9, store.GetOrThrow(first.MatchingId).SummonStones.GetSnapshot(11).StoneCount);
         Assert.Equal(0, second.SummonStones.GetSnapshot(11).StoneCount);
         Assert.Null(second.Roster.GetEntry(11));
         Assert.Equal((false, (long?)null), second.Roster.CheckGameOver());
@@ -71,10 +71,10 @@ public sealed class MatchOwnedStateTests
         roster.RegisterEntry(new RosterEntry { PlayerId = 11 });
         closures.InitializeMatching();
 
-        using (store.Enter(runtime))
+        using (MatchRuntimeStore.Enter(runtime))
             Assert.True(runtime.TryMarkTerminal());
 
-        Assert.Null(store.Get(runtime.MatchingId));
+        Assert.Null(store.GetOrNull(runtime.MatchingId));
         Assert.Empty(ground.GetSnapshot(area));
         Assert.Null(roster.GetEntry(11));
         Assert.Null(closures.GetMatchingState());
@@ -156,12 +156,12 @@ public sealed class MatchOwnedStateTests
             runtime.Inventory.AddItem(botId, 107000010);
         }
         var bot = match.Bots.GetBot(match.MatchingId, botId)!;
-        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var service = new BotEliminationService(logs,
             TestGameSessionServices.CreateEliminationService(
                 store, logs, new MatchSummaryFileStore(), GameServerDevOptions.Disabled, NullLogger.Instance),
             NullLogger.Instance);
-        using (store.Enter(match))
+        using (MatchRuntimeStore.Enter(match))
         {
             service.Process(match, botId, EliminationReason.HEALTH_ZERO, attackerPlayerId: 11);
             var entry = match.Roster.GetEntry(botId)!;

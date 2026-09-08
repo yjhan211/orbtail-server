@@ -79,7 +79,7 @@ internal sealed class MatchFieldService(
     public (Cell Spawn, Cell Anchor)? ResolveSpawn(long matchingId, AreaType area)
     {
         if (!MatchPressureFieldPolicy.Enabled) return null;
-        double safeDistance = MatchPressureFieldPolicy.GetSafeDistance(matchRuntimes.GetRequired(matchingId), DateTime.UtcNow);
+        double safeDistance = MatchPressureFieldPolicy.GetSafeDistance(matchRuntimes.GetOrThrow(matchingId), DateTime.UtcNow);
 
         var cells = GetSwarmAreaCellsByDistance(area);
         if (cells.Count == 0) return null;
@@ -144,16 +144,16 @@ internal sealed class MatchFieldService(
         ImmutableArray<int> allRecipients = CaptureSwarmClosureRecipientOrdinals(
             sessions,
             static _ => true);
-        var closureState = matchRuntimes.GetRequired(matchingId).Closures.InitializeMatching(
+        var closureState = matchRuntimes.GetOrThrow(matchingId).Closures.InitializeMatching(
             wavesOverride: MatchPressureFieldPolicy.Enabled ? GetSwarmFieldWaves() : null);
-        if (MatchPressureFieldPolicy.Enabled && matchRuntimes.GetRequired(matchingId).Swarm.Pacing.FieldStateAnnounced.Add(matchingId))
+        if (MatchPressureFieldPolicy.Enabled && matchRuntimes.GetOrThrow(matchingId).Swarm.Pacing.FieldStateAnnounced.Add(matchingId))
         {
             outbound.Add(new SwarmFieldStateOutbound(
                 new DateTimeOffset(closureState.GameStartTime).ToUnixTimeMilliseconds(),
                 allRecipients));
         }
 
-        var closureTick = matchRuntimes.GetRequired(matchingId).Closures.CheckClosureSchedule();
+        var closureTick = matchRuntimes.GetOrThrow(matchingId).Closures.CheckClosureSchedule();
         foreach (var area in closureTick.WarningAreas)
         {
             outbound.Add(new SwarmClosureWarningOutbound(
@@ -177,7 +177,7 @@ internal sealed class MatchFieldService(
             // 그대로다 — "지금 나가야 하는가"의 판단은 경고 15초와 잠긴 문이 만든다.
             // 폐쇄·경고도 수면을 깨우지 않는다 — 수면 중단은 이동뿐이다.
             IReadOnlyList<int> lockedDoorIds =
-                matchRuntimes.Get(matchingId)?.Doors.CloseDoorsForAreas(closureTick.ClosedAreas) ?? [];
+                matchRuntimes.GetOrNull(matchingId)?.Doors.CloseDoorsForAreas(closureTick.ClosedAreas) ?? [];
             foreach (int doorId in lockedDoorIds.Distinct())
                 outbound.Add(new SwarmDoorStateOutbound(doorId, allRecipients));
 
@@ -318,7 +318,7 @@ internal sealed class MatchFieldService(
                 owners.Add((session.PlayerId.Value, session.LastValidatedPosition, ordinal));
         }
 
-        foreach (var bot in matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId))
+        foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
         {
             if (!bot.IsEliminated && !bot.IsSwarmCutDummy)
                 owners.Add((bot.PlayerId, bot.Position, -1));
@@ -332,7 +332,7 @@ internal sealed class MatchFieldService(
             if (closed.Contains(GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, ownerCell)))
                 continue;
 
-            int orbCount = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs().Sum(item => item.Count);
+            int orbCount = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId).GetOrderedOrbs().Sum(item => item.Count);
             if (orbCount == 0)
                 continue;
             var closureTiers = orbTrails.GetSwarmOrbTiersInOrder(matchingId, playerId);
@@ -357,7 +357,7 @@ internal sealed class MatchFieldService(
             var destroyed = orbTrails.DestroySwarmOrbsFromOrdinal(matchingId, playerId, suffixStart);
             foreach (var destroyedItem in destroyed)
             {
-                matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.Remove((matchingId, playerId, destroyedItem.ItemUid));
+                matchRuntimes.GetOrThrow(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.Remove((matchingId, playerId, destroyedItem.ItemUid));
                 if (ownerSessionOrdinal >= 0)
                 {
                     outbound.Add(new SwarmInventoryUpdateOutbound(

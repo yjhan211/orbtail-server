@@ -148,7 +148,7 @@ public sealed class GameMatchEntryServiceTests
         Assert.Same(results[0], runtime.Composition);
         Assert.Single(results[0].BotPlayerIds);
         Assert.Single(runtime.Bots.GetBots(runtime.MatchingId));
-        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var events = logs.GetRecent(runtime.MatchingId);
         Assert.Single(events, entry => entry.Type == "MATCH_STARTED");
         var spawn = Assert.Single(events, entry => entry.Type == "SPAWN_ASSIGNMENT");
@@ -169,7 +169,7 @@ public sealed class GameMatchEntryServiceTests
         await redis.HashSetAsync(MatchingRedisKeys.Key(runtime.MatchingId), MatchingRedisKeys.ManifestField,
             MessagePackSerializer.Serialize(new MatchManifest { HumanPlayerIds = [1001], BotCount = 0, Mode = MatchMode.Normal }));
         await service.LoadCompositionAsync(runtime.MatchingId, Config.SWARM_MATCH_MAP, runtime);
-        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         Assert.Single(logs.GetRecent(runtime.MatchingId), entry => entry.Type == "MATCH_STARTED");
         Assert.DoesNotContain(logs.GetRecent(runtime.MatchingId), entry => entry.Type == "SPAWN_ASSIGNMENT");
     }
@@ -208,13 +208,13 @@ public sealed class GameMatchEntryServiceTests
         var (service, redis, store, runtime) = await Prepare(981003);
         await runtime.EntryInitializationLock.WaitAsync();
         Task<MatchComposition> pending = service.LoadCompositionAsync(runtime.MatchingId, Config.SWARM_MATCH_MAP, runtime);
-        using (store.Enter(runtime))
+        using (MatchRuntimeStore.Enter(runtime))
             Assert.True(runtime.TryMarkTerminal());
         runtime.EntryInitializationLock.Release();
 
         await Assert.ThrowsAsync<OperationCanceledException>(() => pending);
         Assert.Null(runtime.Composition);
-        Assert.Null(store.Get(runtime.MatchingId));
+        Assert.Null(store.GetOrNull(runtime.MatchingId));
         Assert.Equal(1, runtime.EntryInitializationLock.CurrentCount);
     }
 

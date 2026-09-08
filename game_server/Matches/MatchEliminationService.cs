@@ -27,14 +27,14 @@ internal sealed class MatchEliminationService(
         bool deferGameOver = false, long attackerPlayerId = 0, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false, int forcedRank = 0)
     {
-        var allSessions = _matchRuntimes.GetRequired(matchingId).Sessions.Snapshot();
+        var allSessions = _matchRuntimes.GetOrThrow(matchingId).Sessions.Snapshot();
         var eliminatedSession = allSessions.FirstOrDefault(session => session.PlayerId == eliminatedPlayerId);
-        var eliminatedBot = _matchRuntimes.GetRequired(matchingId).Bots.GetBot(matchingId, eliminatedPlayerId);
+        var eliminatedBot = _matchRuntimes.GetOrThrow(matchingId).Bots.GetBot(matchingId, eliminatedPlayerId);
         AreaType eliminatedArea = eliminatedSession?.CurrentArea ?? eliminatedBot?.CurrentArea ?? AreaType.None;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
-        int finalOrbTier = _matchRuntimes.GetRequired(matchingId).Inventory.GetHighestOrbTier(eliminatedPlayerId);
-        var transition = _matchRuntimes.GetRequired(matchingId).Roster.TryEliminatePlayer(eliminatedPlayerId, reason,
+        int finalOrbTier = _matchRuntimes.GetOrThrow(matchingId).Inventory.GetHighestOrbTier(eliminatedPlayerId);
+        var transition = _matchRuntimes.GetOrThrow(matchingId).Roster.TryEliminatePlayer(eliminatedPlayerId, reason,
             resolvedAttackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
             finalOrbTier);
         if (!transition.Applied)
@@ -55,7 +55,7 @@ internal sealed class MatchEliminationService(
         }
 
         var affected = transition.AffectedPlayers;
-        _matchRuntimes.GetRequired(matchingId).GroundItems.ReleaseClaimReservationsForPlayer(eliminatedPlayerId);
+        _matchRuntimes.GetOrThrow(matchingId).GroundItems.ReleaseClaimReservationsForPlayer(eliminatedPlayerId);
         _gameEventLogManager.LogElimination(
             matchingId,
             eliminatedPlayerId,
@@ -99,7 +99,7 @@ internal sealed class MatchEliminationService(
             }
 
             // 봇 상태 동기화
-            var bot = _matchRuntimes.GetRequired(matchingId).Bots.GetBot(matchingId, playerId);
+            var bot = _matchRuntimes.GetOrThrow(matchingId).Bots.GetBot(matchingId, playerId);
             if (bot != null)
             {
                 if (newStatus == PlayerMatchStatus.ELIMINATED)
@@ -123,7 +123,7 @@ internal sealed class MatchEliminationService(
         }
 
         // 3. 게임 종료 판정
-        var (isGameOver, winnerId) = _matchRuntimes.GetRequired(matchingId).Roster.CheckGameOver();
+        var (isGameOver, winnerId) = _matchRuntimes.GetOrThrow(matchingId).Roster.CheckGameOver();
         if (!deferGameOver && isGameOver)
         {
             Logger.LogInformation("게임 종료! 최후의 1인: {WinnerId}", winnerId);
@@ -141,7 +141,7 @@ internal sealed class MatchEliminationService(
                 winnerId, criterion);
             return;
         }
-        var runtime = _matchRuntimes.Get(matchingId);
+        var runtime = _matchRuntimes.GetOrNull(matchingId);
         if (runtime == null)
             return;
         using var scope = runtime.Enter();
@@ -162,14 +162,14 @@ internal sealed class MatchEliminationService(
 
     private void DropBotInventoryAtCurrentPosition(long matchingId, long botPlayerId)
     {
-        var runtime = _matchRuntimes.GetRequired(matchingId);
+        var runtime = _matchRuntimes.GetOrThrow(matchingId);
         var outcome = EliminationInventoryDropper.DropBotInventoryWithLogs(
             runtime.Bots, runtime.Inventory, runtime.GroundItems, _gameEventLogManager,
             matchingId, botPlayerId);
         if (outcome == null || outcome.Drop.SpawnedItems.Count == 0)
             return;
 
-        var targets = _matchRuntimes.GetRequired(matchingId).Sessions.Snapshot()
+        var targets = _matchRuntimes.GetOrThrow(matchingId).Sessions.Snapshot()
             .Where(session => !session.IsEliminated && session.CurrentArea == outcome.Bot.CurrentArea);
         using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
             (int)outcome.Bot.CurrentArea, outcome.Drop.SpawnedItems.ToList());

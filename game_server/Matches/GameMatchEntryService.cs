@@ -52,7 +52,7 @@ internal sealed class GameMatchEntryService(
             MatchManifest manifest = await ReadMatchManifestAsync(matchingId);
             await WaitForMatchingEntryReadyAsync(matchingId, manifest.HumanPlayerIds);
 
-            using (_matchRuntimes.Enter(runtime))
+            using (runtime.Enter())
             {
                 if (runtime.IsTerminal)
                     throw new OperationCanceledException("Match became terminal during game entry.");
@@ -79,7 +79,7 @@ internal sealed class GameMatchEntryService(
             }
 
             var roster = await new MatchRosterBuilder(RedisOperations, Logger).BuildAsync(humanPlayerIds,
-                botPlayerIds.Select(id => _matchRuntimes.GetRequired(matchingId).Bots.SynthesizePlayerInfo(matchingId, id)
+                botPlayerIds.Select(id => _matchRuntimes.GetOrThrow(matchingId).Bots.SynthesizePlayerInfo(matchingId, id)
                     ?? throw new InvalidOperationException($"Bot {id} was not initialized.")));
 
             var composition = new MatchComposition(humanPlayerIds, botPlayerIds, mode, spawnCells, roster);

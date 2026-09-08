@@ -24,7 +24,7 @@ internal sealed class OrbRecoveryService(
         IReadOnlyCollection<BotPlayerState> matchingBots,
         DateTime nowUtc)
     {
-        if (matchRuntimes.Get(matchingId)?.Presentation is not { } presentation)
+        if (matchRuntimes.GetOrNull(matchingId)?.Presentation is not { } presentation)
             return;
         var recoveryTimes = presentation.OrbRecoveryReadyAtUtc;
         var activeRecoveryKeys = new HashSet<(long PlayerId, long ItemUid, int StackIndex)>();

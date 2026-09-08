@@ -22,7 +22,7 @@ internal sealed class MatchTickRunner(
     public void Run(MatchRuntime runtime)
     {
         long matchingId = runtime.MatchingId;
-        if (!ReferenceEquals(matchRuntimes.Get(matchingId), runtime) || runtime.IsTerminal)
+        if (!ReferenceEquals(matchRuntimes.GetOrNull(matchingId), runtime) || runtime.IsTerminal)
             return;
         if (!matchRuntimes.TryEnter(matchingId, out MatchScope scope))
         {
@@ -107,7 +107,7 @@ internal sealed class MatchTickRunner(
 
     private void RecordBotTickBusySkip(long matchingId)
     {
-        if (matchRuntimes.Get(matchingId) is { IsTerminal: false } runtime && ShouldMoveBots(runtime))
+        if (matchRuntimes.GetOrNull(matchingId) is { IsTerminal: false } runtime && ShouldMoveBots(runtime))
             runtime.Swarm.BotTickMetrics.RecordBusySkip();
     }
 }

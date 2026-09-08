@@ -34,12 +34,12 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(matchingId);
         runtime.Roster.RegisterEntry(new RosterEntry { PlayerId = 11 });
-        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         logs.BeginMatch(matchingId, seed: 17);
         var summaries = new MatchSummaryFileStore(_directory);
         var service = new MatchCleanupService(store,
             logs, summaries, NullLogger.Instance);
-        using (store.Enter(runtime))
+        using (MatchRuntimeStore.Enter(runtime))
         {
             if (botOnly)
                 service.EndBotOnlyMatchIfSettled(matchingId, 11);
@@ -49,10 +49,10 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
 
             Assert.True(runtime.IsTerminal);
             Assert.Null(summaries.Read(matchingId));
-            Assert.Same(runtime, store.Get(matchingId));
+            Assert.Same(runtime, store.GetOrNull(matchingId));
         }
         Assert.Equal(1, summaries.ReadRawEvents(matchingId).Count(entry => entry.Type == "MATCH_ABANDONED"));
-        Assert.Null(store.Get(matchingId));
+        Assert.Null(store.GetOrNull(matchingId));
         var summary = Assert.IsType<MatchSummaryDocument>(summaries.Read(matchingId));
         Assert.Equal(expectedReason, summary.EndReason);
         Assert.Equal(expectedWinner, summary.WinnerPlayerId);
@@ -141,8 +141,8 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             "private void PublishTerminalResult(",
             "private void RunTerminalPublicationStep(");
 
-        int runtimeLookup = Find(normalFinalization, "_matchRuntimes.Get(matchingId)");
-        int lockEntry = Find(normalFinalization, "_matchRuntimes.Enter(runtime)");
+        int runtimeLookup = Find(normalFinalization, "_matchRuntimes.GetOrNull(matchingId)");
+        int lockEntry = Find(normalFinalization, "runtime.Enter()");
         int terminalMark = Find(normalFinalization, "runtime.TryMarkTerminal()");
         int resultPayload = Find(normalFinalization, "MessagePackSerializer.Serialize(new G_TO_C_GAME_RESULT");
         int preparedTerminalPlan = Find(normalFinalization, "var terminalPlan = new MatchTerminalPublicationPlan(");
@@ -235,7 +235,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         string serverSource = ReadNormalizedSource(root, "game_server", "Matches", "MatchCleanupService.cs");
         string noHumanFinalization = serverSource;
 
-        int noHumanLock = Find(noHumanFinalization, "matchRuntimes.Enter(runtime)");
+        int noHumanLock = Find(noHumanFinalization, "runtime.Enter()");
         int noHumanTerminalMark = Find(noHumanFinalization, "runtime.TryMarkTerminal();");
         int abandonedEvent = Find(noHumanFinalization, "eventLogs.LogMatchAbandoned(");
         int noHumanCapture = Find(noHumanFinalization, "MatchSummaryPersistence.Capture(");
@@ -679,13 +679,13 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             root,
             "game_server",
             "Matches",
-            "MatchRuntimeStore.cs");
-        string exit = ReadMethodSlice(storeSource, "internal void Exit(MatchRuntime runtime)", "private void RunCleanup(");
-        int cleanupSteps = Find(exit, "RunCleanup(runtime.MatchingId);");
-        int storeRemoval = Find(exit, "_runtimes.TryRemove(");
-        int afterCleanupQueue = Find(exit, "runtime.AfterRelease.Add(() => afterCleanup(matchingId));");
-        int monitorExit = Find(exit, "Monitor.Exit(runtime.Sync);");
-        Assert.True(cleanupSteps < storeRemoval);
+            "MatchRuntime.cs");
+        string exit = storeSource.Substring(storeSource.IndexOf("internal void Exit()", StringComparison.Ordinal));
+        int startStateCleanup = Find(exit, "MatchStartGate.RemoveMatching(MatchingId);");
+        int storeRemoval = Find(exit, "_runtimeStore.RemoveCompleted(this);");
+        int afterCleanupQueue = Find(exit, "AfterRelease.Add(() => afterCleanup(matchingId));");
+        int monitorExit = Find(exit, "Monitor.Exit(Sync);");
+        Assert.True(startStateCleanup < storeRemoval);
         Assert.True(storeRemoval < afterCleanupQueue);
         Assert.True(afterCleanupQueue < monitorExit);
     }

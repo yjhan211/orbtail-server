@@ -30,7 +30,7 @@ public sealed class ServerDeploymentSurfaceTests
         object result = server.GetArena().SetupSwarmCutDummy(matchingId);
 
         Assert.Equal("no active match", result.GetType().GetProperty("error")!.GetValue(result));
-        Assert.Same(runtime, store.Get(70001));
+        Assert.Same(runtime, store.GetOrNull(70001));
         Assert.False(runtime.IsTerminal);
     }
 

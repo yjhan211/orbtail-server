@@ -19,24 +19,24 @@ public class ProximityAutoCombatResolverTests
         var now = DateTime.UtcNow;
         var actors = new[] { Actor(1, 0, 0, 107000003), Actor(2, 1, 0) };
         Assert.NotSame(first.Combat, second.Combat);
-        using (store.Enter(first))
+        using (MatchRuntimeStore.Enter(first))
         {
             Assert.Empty(first.Combat.Resolve(501, actors, now));
             Assert.Single(first.Combat.Resolve(501, actors, now.AddMilliseconds(AimMs)));
             Assert.Empty(first.Combat.Resolve(502, actors, now.AddMilliseconds(AimMs)));
         }
-        using (store.Enter(second))
+        using (MatchRuntimeStore.Enter(second))
         {
             Assert.Empty(second.Combat.Resolve(502, actors, now.AddMilliseconds(AimMs)));
             Assert.Single(second.Combat.Resolve(502, actors, now.AddMilliseconds(AimMs * 2)));
         }
-        using (store.Enter(first))
+        using (MatchRuntimeStore.Enter(first))
         {
             first.Combat.RefundAttack(501, 1, 0, now.AddMilliseconds(AimMs * 2));
             Assert.Single(first.Combat.Resolve(501, actors, now.AddMilliseconds(AimMs * 2)));
             first.TryMarkTerminal();
         }
-        Assert.Null(store.Get(501));
+        Assert.Null(store.GetOrNull(501));
         foreach (string field in new[] { "_combatStates", "_burstRechargeReadyAtUtc", "_recentlyLostCombatStates" })
         {
             var state = typeof(ProximityAutoCombatResolver).GetField(field,
@@ -44,7 +44,7 @@ public class ProximityAutoCombatResolverTests
             Assert.Equal(0, (int)state.GetType().GetProperty("Count")!.GetValue(state)!);
         }
         Assert.Empty(first.Combat.Resolve(501, actors, now.AddSeconds(10)));
-        using (store.Enter(second))
+        using (MatchRuntimeStore.Enter(second))
             Assert.Empty(second.Combat.Resolve(502, actors, now.AddMilliseconds(AimMs * 3)));
     }
 

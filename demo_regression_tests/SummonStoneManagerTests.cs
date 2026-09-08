@@ -202,12 +202,12 @@ public class SummonStoneManagerTests
         manager.AddStones(10, 9);
         manager.AddStones(20, 7);
 
-        using (store.Enter(runtime)) { runtime.TryMarkTerminal(); }
+        using (MatchRuntimeStore.Enter(runtime)) { runtime.TryMarkTerminal(); }
 
         Assert.Equal(new SummonStoneSnapshot(0, 0, 2), manager.GetSnapshot(10));
         Assert.Equal(new SummonStoneSnapshot(0, 0, 2), manager.GetSnapshot(20));
         Assert.Throws<InvalidOperationException>(() => manager.AddStones(10, 1));
-        Assert.Null(store.Get(202));
+        Assert.Null(store.GetOrNull(202));
     }
 
     [Fact]

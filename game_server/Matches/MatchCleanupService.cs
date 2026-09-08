@@ -17,7 +17,7 @@ internal sealed class MatchCleanupService(
 {
     public void EndBotOnlyMatchIfSettled(long matchingId, long winnerPlayerId)
     {
-        if (matchRuntimes.Get(matchingId)?.Sessions.HasSessions == true)
+        if (matchRuntimes.GetOrNull(matchingId)?.Sessions.HasSessions == true)
             return;
 
         CleanupIfNoHumanSessionsRemain(matchingId, "last_survivor_bot_only", winnerPlayerId);
@@ -32,14 +32,14 @@ internal sealed class MatchCleanupService(
     /// </summary>
     private void CleanupIfNoHumanSessionsRemain(long matchingId, string endReason, long winnerPlayerId)
     {
-        if (matchRuntimes.Get(matchingId)?.Sessions.HasSessions == true)
+        if (matchRuntimes.GetOrNull(matchingId)?.Sessions.HasSessions == true)
             return;
 
-        var runtime = matchRuntimes.Get(matchingId);
+        var runtime = matchRuntimes.GetOrNull(matchingId);
         if (runtime == null)
             return;
 
-        using var scope = matchRuntimes.Enter(runtime);
+        using var scope = runtime.Enter();
         if (runtime.IsTerminal || runtime.Sessions.HasSessions)
             return;
 

@@ -14,7 +14,7 @@ internal sealed class OrbTrailService(MatchRuntimeStore matchRuntimes)
 {
     public int CountSwarmSquadOrbs(long matchingId, long playerId)
     {
-        return matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
+        return matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId)
             .GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
             .Sum(item => item.Count);
@@ -24,7 +24,7 @@ internal sealed class OrbTrailService(MatchRuntimeStore matchRuntimes)
     internal const int CutVfxKind = 1;
     public List<int> GetSwarmOrbTiersInOrder(long matchingId, long playerId)
     {
-        return matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId)
+        return matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId)
             .GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
             .OrderBy(item => item.ItemUid)
@@ -46,7 +46,7 @@ internal sealed class OrbTrailService(MatchRuntimeStore matchRuntimes)
     public Vector3f GetSwarmTrailPositionAtDistance(
         long matchingId, long playerId, float targetDistance, Vector3f anchor)
     {
-        if (!matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbTrails.TryGetValue((matchingId, playerId), out var points) || points.Count == 0)
+        if (!matchRuntimes.GetOrThrow(matchingId).Swarm.TrailCombat.OrbTrails.TryGetValue((matchingId, playerId), out var points) || points.Count == 0)
             return new Vector3f(anchor.X, anchor.Y - targetDistance * 0.2f, 0f);
 
         Vector3f previous = anchor;
@@ -90,7 +90,7 @@ internal sealed class OrbTrailService(MatchRuntimeStore matchRuntimes)
     public List<InGameItemInfo> DestroySwarmOrbsFromOrdinal(long matchingId, long playerId, int fromOrdinal)
     {
         var destroyed = new List<InGameItemInfo>();
-        var inventory = matchRuntimes.GetRequired(matchingId).Inventory.GetPlayerInventory(playerId);
+        var inventory = matchRuntimes.GetOrThrow(matchingId).Inventory.GetPlayerInventory(playerId);
         var orbs = inventory.GetAllItems()
             .Where(item => item.Count > 0 && GetSquadOrbTier(item.ItemId) > 0)
             .OrderBy(item => item.ItemUid)

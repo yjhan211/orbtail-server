@@ -88,20 +88,17 @@ public sealed class GameServerTickServiceTests
         bool workFinished = false;
         var cleaned = Signal();
         MatchRuntime? match = null;
-        var store = new MatchRuntimeStore(NullLogger.Instance, cleanupSteps:
-        [
-            new("test", _ =>
-            {
-                Assert.True(workFinished);
-                Assert.True(clock.Timers[0].Disposed);
-                cleaned.TrySetResult();
-            })
-        ]);
+        var store = new MatchRuntimeStore(NullLogger.Instance, afterCleanup: _ =>
+        {
+            Assert.True(workFinished);
+            Assert.True(clock.Timers[0].Disposed);
+            cleaned.TrySetResult();
+        });
         var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
         int calls = 0;
         service.Start(runtime =>
         {
-            using (store.Enter(runtime))
+            using (MatchRuntimeStore.Enter(runtime))
             {
                 calls++;
                 runtime.TryMarkTerminal();
@@ -116,7 +113,7 @@ public sealed class GameServerTickServiceTests
             await match.TickLoop!.Completion.WaitAsync(TimeSpan.FromSeconds(5));
             clock.Timers[0].Fire();
             Assert.Equal(1, calls);
-            Assert.Null(store.Get(301));
+            Assert.Null(store.GetOrNull(301));
         }
         finally { await service.StopAsync(); }
     }

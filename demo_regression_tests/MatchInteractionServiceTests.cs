@@ -87,7 +87,7 @@ public sealed class MatchInteractionServiceTests
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984403);
         var state = new PlayerInteractionState();
-        using (store.Enter(runtime))
+        using (MatchRuntimeStore.Enter(runtime))
         {
             state.Begin(10);
             state.BeginDoor(11, 0);
@@ -116,7 +116,7 @@ public sealed class MatchInteractionServiceTests
             MatchInteractionService.CancelPendingInteractions(runtime, state));
         Assert.Equal(1, state.Count);
 
-        using (store.Enter(runtime))
+        using (MatchRuntimeStore.Enter(runtime))
         {
             MatchInteractionService.CancelPendingInteractions(runtime, state);
             runtime.TryMarkTerminal();
@@ -129,7 +129,7 @@ public sealed class MatchInteractionServiceTests
         var runtime = store.GetOrCreate(984401);
         Assert.Throws<InvalidOperationException>(() =>
             MatchInteractionService.CheckDoorGauge(runtime, AreaType.None, int.MaxValue));
-        using (store.Enter(runtime))
+        using (MatchRuntimeStore.Enter(runtime))
         {
 
             Assert.Equal(ErrorCode.INVALID_GAME_STATE, MatchInteractionService.CheckDoorGauge(runtime, AreaType.None, int.MaxValue));

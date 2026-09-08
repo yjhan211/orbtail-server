@@ -45,7 +45,7 @@ internal static class TestGameSessionServices
         return new GameMatchEntryService(redis, store, options, logger,
             new GameEntryTicketService(new RedisGameEntryTicketStore(redis), new GameEntryTicketOptions()),
             new GameServerNodeOptions { NodeId = "game-server-test", PublicHost = "127.0.0.1" },
-            new GameEventLogManager(id => store.Get(id)?.EventLog));
+            new GameEventLogManager(id => store.GetOrNull(id)?.EventLog));
     }
 
     public static MatchEliminationService CreateEliminationService(
@@ -61,7 +61,7 @@ internal static class TestGameSessionServices
     public static MatchCleanupService CreateMatchCleanupService()
     {
         var store = new MatchRuntimeStore(NullLogger.Instance);
-        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var cleanup = new MatchCleanupService(store, logs,
             new MatchSummaryFileStore(), NullLogger.Instance);
         return cleanup;

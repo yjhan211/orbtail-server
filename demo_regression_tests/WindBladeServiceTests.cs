@@ -15,13 +15,13 @@ public sealed class WindBladeServiceTests
     {
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947501);
-        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var trails = new OrbTrailService(store);
         var service = new WindBladeService(store, trails, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
         var victim = new BotPlayerState { PlayerId = 12 };
-        using (store.Enter(match))
+        using (MatchRuntimeStore.Enter(match))
         {
             match.Inventory.GetPlayerInventory(11).AddItem(107000020, forceSeparateStack: true);
             var origin = trails.GetSwarmOrbTrailPosition(match.MatchingId, 11, 0, new Vector3f(0, 0, 0));
@@ -54,10 +54,10 @@ public sealed class WindBladeServiceTests
     {
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947502);
-        var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var trails = new OrbTrailService(store);
         var service = new WindBladeService(store, trails, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
-        using (store.Enter(match))
+        using (MatchRuntimeStore.Enter(match))
         {
             match.Inventory.GetPlayerInventory(11).AddItem(itemId, forceSeparateStack: true);
             var victim = new BotPlayerState { PlayerId = 12 };

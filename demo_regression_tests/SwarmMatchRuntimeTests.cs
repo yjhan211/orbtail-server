@@ -10,22 +10,22 @@ namespace demo_regression_tests;
 public sealed class SwarmMatchRuntimeTests
 {
     [Fact]
-    public void TerminalCleanup_RemovesSwarmWithItsMatchEvenIfACleanupStepFails()
+    public void TerminalCleanup_RemovesSwarmWithItsMatchEvenIfPostCleanupFails()
     {
         var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
-            cleanupSteps: [new MatchCleanupStep("failing director", _ => throw new InvalidOperationException())]);
+            afterCleanup: _ => throw new InvalidOperationException());
         var ended = store.GetOrCreate(91001);
         var sibling = store.GetOrCreate(91002);
         ended.Swarm.OrbBoard.IncrementFamilyUpgradeCount(1, OrbColor.Red);
-        using (var scope = store.Enter(ended))
+        using (var scope = MatchRuntimeStore.Enter(ended))
         {
             Assert.Same(ended.Swarm, scope.Runtime.Swarm);
             ended.TryMarkTerminal();
         }
-        Assert.Null(store.Get(91001));
-        Assert.Throws<InvalidOperationException>(() => store.GetRequired(91001));
+        Assert.Null(store.GetOrNull(91001));
+        Assert.Throws<InvalidOperationException>(() => store.GetOrThrow(91001));
         Assert.False(store.TryEnter(91001, out _));
-        Assert.Same(sibling, store.Get(91002));
+        Assert.Same(sibling, store.GetOrNull(91002));
         Assert.Equal(1, store.Count);
     }
 
@@ -174,9 +174,9 @@ public sealed class SwarmMatchRuntimeTests
         SwarmMatchRuntime sibling = store.GetOrCreate(siblingMatchingId).Swarm;
 
         Assert.True(store.Remove(removedMatchingId));
-        SwarmMatchRuntime? missing = store.Get(removedMatchingId)?.Swarm;
+        SwarmMatchRuntime? missing = store.GetOrNull(removedMatchingId)?.Swarm;
         Assert.Null(missing);
-        SwarmMatchRuntime? preservedSibling = store.Get(siblingMatchingId)?.Swarm;
+        SwarmMatchRuntime? preservedSibling = store.GetOrNull(siblingMatchingId)?.Swarm;
         Assert.Same(sibling, preservedSibling);
         Assert.Equal(1, store.Count);
 
@@ -245,9 +245,9 @@ public sealed class SwarmMatchRuntimeTests
 
         Assert.True(store.Remove(removedMatchingId));
 
-        SwarmMatchRuntime? missing = store.Get(removedMatchingId)?.Swarm;
+        SwarmMatchRuntime? missing = store.GetOrNull(removedMatchingId)?.Swarm;
         Assert.Null(missing);
-        SwarmMatchRuntime? preservedSibling = store.Get(siblingMatchingId)?.Swarm;
+        SwarmMatchRuntime? preservedSibling = store.GetOrNull(siblingMatchingId)?.Swarm;
         Assert.Same(sibling, preservedSibling);
         Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.TrailCombat.OrbTrails.Keys);
         Assert.Equal(7, sibling.GrowthOffers.PreviewCost[(siblingMatchingId, siblingPlayerId)]);

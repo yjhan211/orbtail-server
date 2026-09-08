@@ -120,7 +120,7 @@ internal sealed class MatchCombatDamageService(
     /// <summary>PvE 치명타 굴림 — 적중이면 배율을 적용한 피해를 돌려준다.</summary>
     public int RollSwarmCriticalDamage(long matchingId, int damage, out bool critical)
     {
-        critical = matchRuntimes.GetRequired(matchingId).Swarm.Pacing.RollCritical(SwarmCriticalChance);
+        critical = matchRuntimes.GetOrThrow(matchingId).Swarm.Pacing.RollCritical(SwarmCriticalChance);
         return critical
             ? Math.Max(damage + 1, (int)MathF.Round(damage * SwarmCriticalMultiplier))
             : damage;
@@ -162,7 +162,7 @@ internal sealed class MatchCombatDamageService(
             .Concat(Enumerable.Repeat(Config.HEART_GROUND_ITEM_ID, Math.Max(0, heartReward)))
             .Concat(Enumerable.Repeat(Config.BOOTS_GROUND_ITEM_ID, Math.Max(0, bootsReward)))
             .ToArray();
-        var spawned = matchRuntimes.GetRequired(matchingId).GroundItems.SpawnItems(
+        var spawned = matchRuntimes.GetOrThrow(matchingId).GroundItems.SpawnItems(
             defeatedWave.AreaType,
             defeatedWave.PositionX,
             defeatedWave.PositionY,
@@ -205,7 +205,7 @@ internal sealed class MatchCombatDamageService(
         bool critical,
         List<GameClientSession> allSessions)
     {
-        var damageResult = matchRuntimes.GetRequired(matchingId).Monsters.ApplyMonsterDamage(matchingId, combatTargetId, attackerId, damage);
+        var damageResult = matchRuntimes.GetOrThrow(matchingId).Monsters.ApplyMonsterDamage(matchingId, combatTargetId, attackerId, damage);
         if (!damageResult.Applied)
             return;
 
@@ -267,7 +267,7 @@ internal sealed class MatchCombatDamageService(
         float damageScale = 1f,
         bool isPeriodicDamage = false)
     {
-        SwarmMatchRuntime runtime = matchRuntimes.GetRequired(matchingId).Swarm;
+        SwarmMatchRuntime runtime = matchRuntimes.GetOrThrow(matchingId).Swarm;
         // 받는 피해 배율: 고정 충격 50에 1/3을 곱한다. 태양·바람·파도 충격이 전부 이 한 곳을 지난다.
         // damageScale: 파도 소용돌이(#268)는 당김이 본체라 피해를 타격 피드백 수준(1/4)으로 줄인다.
         int shock = Math.Max(1, (int)MathF.Round(

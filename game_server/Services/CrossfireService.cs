@@ -42,7 +42,7 @@ internal sealed class CrossfireService(
     ///     리졸버 필터(상한이면 태양이 표적을 잡지 않음)와 예약 가드가 같은 수를 본다.
     /// </summary>
     private int CountSwarmCrossfireTelegraphing(long matchingId, long ownerId, DateTime nowUtc)
-        => matchRuntimes.GetRequired(matchingId).Swarm.Crossfire.CountTelegraphing(ownerId, nowUtc);
+        => matchRuntimes.GetOrThrow(matchingId).Swarm.Crossfire.CountTelegraphing(ownerId, nowUtc);
 
     /// <summary>
     ///     표적 분산 (#232, "한번에 같은 걸 겨냥하지 말 것"): 소유자의 살아 있는
@@ -52,14 +52,14 @@ internal sealed class CrossfireService(
     ///     쓸기가 빗나가도 풀어 줄 게 없다 — 모양의 수명이 곧 배제 기간이다.
     /// </summary>
     public HashSet<(long OwnerId, long CombatTargetId)> CollectSwarmCrossfireAnchoredTargets(long matchingId)
-        => matchRuntimes.GetRequired(matchingId).Swarm.Crossfire.CollectAnchoredTargets();
+        => matchRuntimes.GetOrThrow(matchingId).Swarm.Crossfire.CollectAnchoredTargets();
 
     /// <summary>
     ///     이번 틱에 예고 상한에 닿은 소유자들 — 리졸버 필터가 이들의 태양 오브 조준을 유예한다.
     ///     틱마다 한 번 만든다 (필터는 공격자×표적 쌍마다 불린다).
     /// </summary>
     public HashSet<long> CollectSwarmCrossfireCappedOwners(long matchingId, DateTime nowUtc)
-        => matchRuntimes.GetRequired(matchingId).Swarm.Crossfire.CollectCappedOwners(
+        => matchRuntimes.GetOrThrow(matchingId).Swarm.Crossfire.CollectCappedOwners(
             nowUtc,
             Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER);
 
@@ -81,7 +81,7 @@ internal sealed class CrossfireService(
         if (origin == null || anchor == null || !IsSwarmCrossfireWeapon(attack.WeaponItemId))
             return false;
         OrbData.TryGetColorAndTier(attack.WeaponItemId, out _, out int tier);
-        SwarmCrossfireState crossfire = matchRuntimes.GetRequired(matchingId).Swarm.Crossfire;
+        SwarmCrossfireState crossfire = matchRuntimes.GetOrThrow(matchingId).Swarm.Crossfire;
 
         if (CountSwarmCrossfireTelegraphing(matchingId, attack.AttackerPlayerId, nowUtc) >=
             Config.SWARM_CROSSFIRE_MAX_TELEGRAPHS_PER_OWNER)
@@ -109,7 +109,7 @@ internal sealed class CrossfireService(
         ReadOnlySpan<float> directionY = stackalloc float[]
             { diagonalUnit, -diagonalUnit, diagonalUnit, -diagonalUnit };
 
-        var combatTargets = matchRuntimes.GetRequired(matchingId).Monsters.GetCombatTargets(matchingId);
+        var combatTargets = matchRuntimes.GetOrThrow(matchingId).Monsters.GetCombatTargets(matchingId);
         float unitX = 0f;
         float unitY = 0f;
         float groundLength = 0f;
@@ -259,7 +259,7 @@ internal sealed class CrossfireService(
         if (!SwarmCrossfireEnabled)
             return;
 
-        SwarmCrossfireState crossfire = matchRuntimes.GetRequired(matchingId).Swarm.Crossfire;
+        SwarmCrossfireState crossfire = matchRuntimes.GetOrThrow(matchingId).Swarm.Crossfire;
         IReadOnlyList<SwarmArenaCombatTarget>? monsters = null;
         int shapesBefore = crossfire.ShapeCount;
         for (int index = crossfire.ShapeCount - 1; index >= 0; index--)
@@ -276,7 +276,7 @@ internal sealed class CrossfireService(
             front = MathF.Min(front, sweepEnd);
             float lastFront = shape.LastFront;
             shape.LastFront = front;
-            monsters ??= matchRuntimes.GetRequired(matchingId).Monsters.GetCombatTargets(matchingId);
+            monsters ??= matchRuntimes.GetOrThrow(matchingId).Monsters.GetCombatTargets(matchingId);
 
             // 관통 (뱀서식): 이번 틱 구간에 걸린 표적 전부를 지나가며 때린다 —
             // 첫 표적 폭발은 퇴역. 투사체는 멈추지 않고, 폭발은 벽에 닿을 때만.
@@ -290,7 +290,7 @@ internal sealed class CrossfireService(
 
                 shape.HitMonsters.Add(monster.CombatTargetId);
                 TrackSwarmCrossfireConvergence(matchingId, monster.CombatTargetId, nowUtc);
-                matchRuntimes.GetRequired(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
+                matchRuntimes.GetOrThrow(matchingId).Monsters.RecordMonsterAttackEvent(matchingId, monster.CombatTargetId);
                 int monsterDamage = combatDamage.RollSwarmCriticalDamage(
                     matchingId, shape.Damage, out bool critical);
                 combatDamage.ApplySwarmMonsterHitNow(
@@ -513,7 +513,7 @@ internal sealed class CrossfireService(
         long matchingId, long ownerId, int weaponItemId, AreaType area, long victimId,
         DateTime nowUtc, List<GameClientSession> aliveSessions)
     {
-        matchRuntimes.GetRequired(matchingId).Swarm.Crossfire.SetSunBurn(
+        matchRuntimes.GetOrThrow(matchingId).Swarm.Crossfire.SetSunBurn(
             victimId,
             ownerId,
             weaponItemId,
@@ -543,7 +543,7 @@ internal sealed class CrossfireService(
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions)
     {
-        matchRuntimes.GetRequired(matchingId).Swarm.Crossfire.ProcessSunBurns(
+        matchRuntimes.GetOrThrow(matchingId).Swarm.Crossfire.ProcessSunBurns(
             nowUtc,
             Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS,
             (victimId, burn) =>
@@ -600,7 +600,7 @@ internal sealed class CrossfireService(
     private void TrackSwarmCrossfireConvergence(long matchingId, long targetId, DateTime nowUtc)
     {
         SwarmCrossfireConvergenceObservation observation =
-            matchRuntimes.GetRequired(matchingId).Swarm.Crossfire.TrackConvergence(targetId, nowUtc);
+            matchRuntimes.GetOrThrow(matchingId).Swarm.Crossfire.TrackConvergence(targetId, nowUtc);
         if (observation.HitCount >= 2)
         {
             eventLogs.LogSystem(

@@ -13,11 +13,9 @@ public sealed class MatchRuntimeStoreTests
     [Fact]
     public void RuntimeAndStoreScopes_ShareDepthAndCleanupOnlyOnOutermostExit()
     {
-        int cleanupCount = 0;
         int afterCount = 0;
         MatchRuntime? runtime = null;
         var store = CreateStore(
-            cleanupSteps: [new MatchCleanupStep("test", _ => cleanupCount++)],
             afterCleanup: _ =>
             {
                 Assert.False(Monitor.IsEntered(runtime!.Sync));
@@ -26,25 +24,22 @@ public sealed class MatchRuntimeStoreTests
         runtime = store.GetOrCreate(90001);
         using (runtime.Enter())
         {
-            using (store.Enter(runtime))
+            using (runtime.Enter())
                 Assert.True(runtime.TryMarkTerminal());
-            Assert.Equal(0, cleanupCount);
-            Assert.Same(runtime, store.Get(90001));
+            Assert.Equal(0, afterCount);
+            Assert.Same(runtime, store.GetOrNull(90001));
         }
-        Assert.Equal(1, cleanupCount);
         Assert.Equal(1, afterCount);
-        Assert.Null(store.Get(90001));
+        Assert.Null(store.GetOrNull(90001));
         using (runtime.Enter())
             Assert.True(runtime.IsTerminal);
-        Assert.Equal(1, cleanupCount);
         Assert.Equal(1, afterCount);
     }
 
     private static MatchRuntimeStore CreateStore(
-        IReadOnlyList<MatchCleanupStep>? cleanupSteps = null,
         Action<long>? initializeMatch = null,
         Action<long>? afterCleanup = null) =>
-        new(NullLogger.Instance, initializeMatch, cleanupSteps, afterCleanup);
+        new(NullLogger.Instance, initializeMatch, afterCleanup);
 
     [Fact]
     public void SameMatch_Serializes()
@@ -145,7 +140,7 @@ public sealed class MatchRuntimeStoreTests
 
         Parallel.For(0, 32, _ =>
         {
-            using MatchScope scope = store.Enter(runtime);
+            using MatchScope scope = runtime.Enter();
             if (runtime.TryMarkTerminal())
                 Interlocked.Increment(ref winners);
         });
@@ -160,22 +155,22 @@ public sealed class MatchRuntimeStoreTests
     {
         var cleanupCalls = new List<long>();
         MatchRuntimeStore store = CreateStore(
-            [new MatchCleanupStep("record", cleanupCalls.Add)]);
+            afterCleanup: cleanupCalls.Add);
         MatchRuntime runtime = store.GetOrCreate(7);
 
-        using (MatchScope scope = store.Enter(runtime))
+        using (MatchScope scope = runtime.Enter())
         {
             Assert.True(runtime.TryMarkTerminal());
             Assert.Empty(cleanupCalls);
-            Assert.NotNull(store.Get(7));
+            Assert.NotNull(store.GetOrNull(7));
         }
 
         Assert.Equal([7L], cleanupCalls);
-        Assert.Null(store.Get(7));
+        Assert.Null(store.GetOrNull(7));
         Assert.DoesNotContain(7L, store.ActiveIds());
 
         // 잡아 둔 런타임으로 다시 들어가도 정리는 반복되지 않는다.
-        using (store.Enter(runtime))
+        using (runtime.Enter())
         {
         }
 
@@ -187,12 +182,12 @@ public sealed class MatchRuntimeStoreTests
     {
         var cleanupCalls = new List<long>();
         MatchRuntimeStore store = CreateStore(
-            [new MatchCleanupStep("record", cleanupCalls.Add)]);
+            afterCleanup: cleanupCalls.Add);
         MatchRuntime runtime = store.GetOrCreate(3);
 
-        using (MatchScope outer = store.Enter(runtime))
+        using (MatchScope outer = runtime.Enter())
         {
-            using (MatchScope inner = store.Enter(runtime))
+            using (MatchScope inner = runtime.Enter())
             {
                 Assert.True(runtime.TryMarkTerminal());
             }
@@ -200,11 +195,11 @@ public sealed class MatchRuntimeStoreTests
             // 안쪽 스코프가 닫혀도 바깥이 아직 상태를 만지고 있으므로 정리는 미뤄진다.
             Assert.Empty(cleanupCalls);
             Assert.True(runtime.IsTerminal);
-            Assert.NotNull(store.Get(3));
+            Assert.NotNull(store.GetOrNull(3));
         }
 
         Assert.Equal([3L], cleanupCalls);
-        Assert.Null(store.Get(3));
+        Assert.Null(store.GetOrNull(3));
     }
 
     [Fact]
@@ -215,9 +210,9 @@ public sealed class MatchRuntimeStoreTests
         int runs = 0;
         bool heldDuringRun = true;
 
-        using (MatchScope outer = store.Enter(runtime))
+        using (MatchScope outer = runtime.Enter())
         {
-            using (MatchScope inner = store.Enter(runtime))
+            using (MatchScope inner = runtime.Enter())
             {
                 runtime.AfterRelease.Add(() =>
                 {
@@ -232,7 +227,7 @@ public sealed class MatchRuntimeStoreTests
         Assert.Equal(1, runs);
         Assert.False(heldDuringRun);
 
-        using (store.Enter(runtime))
+        using (runtime.Enter())
         {
         }
 
@@ -240,49 +235,53 @@ public sealed class MatchRuntimeStoreTests
     }
 
     [Fact]
-    public void AfterCleanup_RunsOutsideLockAfterSteps()
+    public void AfterCleanup_RunsOutsideLockAfterRemoval()
     {
         var order = new List<string>();
         bool heldDuringAfterCleanup = true;
         MatchRuntime? runtime = null;
         MatchRuntimeStore store = CreateStore(
-            [new MatchCleanupStep("step", _ => order.Add("step"))],
             afterCleanup: _ =>
             {
+                Assert.False(MatchStartGate.IsGameplayActive(11));
                 order.Add("after");
                 heldDuringAfterCleanup = Monitor.IsEntered(runtime!.Sync);
             });
         runtime = store.GetOrCreate(11);
 
-        using (store.Enter(runtime))
+        using (runtime.Enter())
         {
             runtime.TryMarkTerminal();
             runtime.AfterRelease.Add(() => order.Add("release"));
         }
 
-        Assert.Equal(["step", "release", "after"], order);
+        Assert.Equal(["release", "after"], order);
         Assert.False(heldDuringAfterCleanup);
     }
 
     [Fact]
-    public void CleanupStepFailure_DoesNotStopLaterSteps()
+    public void TerminalCleanup_RemovesStartStateOnlyAfterOutermostScope()
     {
-        var order = new List<string>();
-        MatchRuntimeStore store = CreateStore(
-        [
-            new MatchCleanupStep("first", _ => order.Add("first")),
-            new MatchCleanupStep("broken", _ => throw new InvalidOperationException("boom")),
-            new MatchCleanupStep("last", _ => order.Add("last"))
-        ]);
-        MatchRuntime runtime = store.GetOrCreate(9);
-
-        using (store.Enter(runtime))
+        const long matchingId = 90009;
+        var store = CreateStore();
+        var runtime = store.GetOrCreate(matchingId);
+        MatchStartGate.RegisterBotOnlyMatch(matchingId);
+        try
         {
-            runtime.TryMarkTerminal();
+            using (runtime.Enter())
+            {
+                using (runtime.Enter())
+                    runtime.TryMarkTerminal();
+                Assert.True(MatchStartGate.IsGameplayActive(matchingId));
+                Assert.Same(runtime, store.GetOrNull(matchingId));
+            }
+            Assert.False(MatchStartGate.IsGameplayActive(matchingId));
+            Assert.Null(store.GetOrNull(matchingId));
         }
-
-        Assert.Equal(["first", "last"], order);
-        Assert.Null(store.Get(9));
+        finally
+        {
+            MatchStartGate.RemoveMatching(matchingId);
+        }
     }
 
     [Fact]
@@ -292,12 +291,12 @@ public sealed class MatchRuntimeStoreTests
         MatchRuntimeStore store = CreateStore(initializeMatch: _ => initializations++);
         MatchRuntime runtime = store.GetOrCreate(4);
 
-        using (store.Enter(runtime))
+        using (runtime.Enter())
         {
             runtime.TryMarkTerminal();
         }
 
-        Assert.Null(store.Get(4));
+        Assert.Null(store.GetOrNull(4));
         Assert.False(store.Enter(4, out _));
         Assert.False(store.TryEnter(4, out _));
         Assert.Equal(1, initializations);
@@ -329,7 +328,7 @@ public sealed class MatchRuntimeStoreTests
             initializeMatch: _ => throw new InvalidOperationException("register failed"));
 
         Assert.Throws<InvalidOperationException>(() => store.GetOrCreate(6));
-        Assert.Null(store.Get(6));
+        Assert.Null(store.GetOrNull(6));
         Assert.Equal(0, store.Count);
     }
 

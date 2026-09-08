@@ -47,7 +47,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         using var releaseLock = new ManualResetEventSlim();
         Task holder = Task.Run(() =>
         {
-            using (fixture.Store.Enter(runtime))
+            using (MatchRuntimeStore.Enter(runtime))
             {
                 lockHeld.Set();
                 Assert.True(releaseLock.Wait(TimeSpan.FromSeconds(5)));
@@ -119,19 +119,17 @@ public sealed class GameClientSessionTerminalPublicationTests
 
         Assert.Equal(1, fixture.CleanupCount);
         Assert.True(runtime.IsTerminal);
-        Assert.Null(fixture.Store.Get(matchingId));
+        Assert.Null(fixture.Store.GetOrNull(matchingId));
         Assert.Single(fixture.SummaryFiles);
         Assert.All(recipientIds, playerId =>
             Assert.Equal(1, fixture.LifecycleDispatchCounts.GetValueOrDefault(playerId)));
 
         string[] timeline = fixture.Timeline.ToArray();
         int lastPacket = Array.FindLastIndex(timeline, entry => entry.StartsWith("packet:", StringComparison.Ordinal));
-        int clear = Array.IndexOf(timeline, "clear");
         int firstLifecycle = Array.FindIndex(timeline, entry => entry.StartsWith("lifecycle:", StringComparison.Ordinal));
         int lastLifecycle = Array.FindLastIndex(timeline, entry => entry.StartsWith("lifecycle:", StringComparison.Ordinal));
         int summary = Array.IndexOf(timeline, "summary");
-        Assert.True(lastPacket >= 0 && lastPacket < clear, string.Join(" | ", timeline));
-        Assert.True(clear < firstLifecycle, string.Join(" | ", timeline));
+        Assert.True(lastPacket >= 0 && lastPacket < firstLifecycle, string.Join(" | ", timeline));
         Assert.True(lastLifecycle < summary, string.Join(" | ", timeline));
         Assert.False(fixture.LockHeldDuringLifecycle ?? true);
     }
@@ -181,7 +179,7 @@ public sealed class GameClientSessionTerminalPublicationTests
 
         Assert.Equal(1, fixture.CleanupCount);
         Assert.Single(fixture.SummaryFiles);
-        Assert.Null(fixture.Store.Get(matchingId));
+        Assert.Null(fixture.Store.GetOrNull(matchingId));
     }
 
     [Fact]
@@ -226,7 +224,7 @@ public sealed class GameClientSessionTerminalPublicationTests
         Assert.All(sessions, session => Assert.True(session.IsGameEnded));
         Assert.Equal(1, fixture.CleanupCount);
         Assert.Single(fixture.SummaryFiles);
-        Assert.Null(fixture.Store.Get(matchingId));
+        Assert.Null(fixture.Store.GetOrNull(matchingId));
 
         TerminalDelivery[] deliveries = fixture.Deliveries.ToArray();
         int lastResult = Array.FindLastIndex(
@@ -292,14 +290,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             Logger = new TimelineLogger(Timeline);
             Store = new MatchRuntimeStore(
                 Logger,
-                cleanupSteps:
-                [
-                    new MatchCleanupStep("clear", _ =>
-                    {
-                        Timeline.Enqueue("clear");
-                        Interlocked.Increment(ref _cleanupCount);
-                    })
-                ]);
+                afterCleanup: _ => Interlocked.Increment(ref _cleanupCount));
 
         }
 
@@ -376,11 +367,11 @@ public sealed class GameClientSessionTerminalPublicationTests
             for (int index = 0; index < entries.Count; index++)
             {
                 RosterEntry entry = entries[index];
-                Store.GetRequired(matchingId).Roster.RegisterEntry(entry);
+                Store.GetOrThrow(matchingId).Roster.RegisterEntry(entry);
                 string name = useLongProfiles
                     ? $"Player{entry.PlayerId}_{new string('x', 300)}"
                     : $"Player{entry.PlayerId}";
-                Store.GetRequired(matchingId).Roster.UpdatePlayerProfile(
+                Store.GetOrThrow(matchingId).Roster.UpdatePlayerProfile(
                     entry.PlayerId,
                     name,
                     [1001, 1002, 1003, 1004]);
@@ -402,6 +393,8 @@ public sealed class GameClientSessionTerminalPublicationTests
             {
                 if (TrackedRuntime != null)
                     LockHeldDuringLifecycle = Monitor.IsEntered(TrackedRuntime.Sync);
+                Assert.Null(Store.GetOrNull(matchingId));
+                Assert.False(MatchStartGate.IsGameplayActive(matchingId));
                 LifecycleDispatchCounts.AddOrUpdate(playerId, 1, static (_, count) => count + 1);
                 Timeline.Enqueue($"lifecycle:{playerId}");
             };

@@ -39,13 +39,10 @@ internal static class GameServerTestAccess
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
         var archive = new MatchEventArchive();
         runtimes ??= new MatchRuntimeStore(logger,
-            cleanupSteps:
-            [
-                new("session runtime", MatchStartGate.RemoveMatching)
-            ],
+
             afterCleanup: id => lifecycle.PrepareRedisCleanup(id).Invoke(),
             eventArchive: archive);
-        var logs = new GameEventLogManager(id => runtimes.Get(id)?.EventLog, archive);
+        var logs = new GameEventLogManager(id => runtimes.GetOrNull(id)?.EventLog, archive);
         var summaries = new MatchSummaryFileStore();
         var entryFailure = new MatchEntryFailureHandler(runtimes, sessions, lifecycle, logger);
         var orbUpgrades = new OrbUpgradeService(runtimes, logs, GameServerDevOptions.Disabled,

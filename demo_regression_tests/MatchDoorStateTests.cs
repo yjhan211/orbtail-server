@@ -82,7 +82,7 @@ public sealed class MatchDoorStateTests
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(231004);
         var doors = runtime.Doors;
-        using (store.Enter(runtime))
+        using (MatchRuntimeStore.Enter(runtime))
         {
             doors.Initialize();
             Assert.True(doors.OpenDoor(990004));
@@ -92,14 +92,14 @@ public sealed class MatchDoorStateTests
         Assert.False(doors.OpenDoor(990004));
         Assert.False(doors.IsDoorOpen(990004));
         Assert.Empty(doors.GetOpenDoors());
-        Assert.Null(store.Get(231004));
+        Assert.Null(store.GetOrNull(231004));
     }
 
     [Fact]
     public void RuntimeOwnsIndependentDoorStateWithoutRegistration()
     {
         var store = new MatchRuntimeStore(NullLogger.Instance);
-        Assert.Null(store.Get(231005));
+        Assert.Null(store.GetOrNull(231005));
         var first = store.GetOrCreate(231005).Doors;
         var second = store.GetOrCreate(231006).Doors;
         Assert.NotSame(first, second);
@@ -116,15 +116,15 @@ public sealed class MatchDoorStateTests
         var sibling = store.GetOrCreate(231010);
         ended.Doors.OpenDoor(990009);
         sibling.Doors.OpenDoor(990009);
-        using (store.Enter(ended))
+        using (MatchRuntimeStore.Enter(ended))
         {
-            using (store.Enter(ended))
+            using (MatchRuntimeStore.Enter(ended))
                 ended.TryMarkTerminal();
             Assert.True(ended.Doors.IsDoorOpen(990009));
         }
         Assert.False(ended.Doors.IsDoorOpen(990009));
         Assert.True(sibling.Doors.IsDoorOpen(990009));
-        Assert.Same(sibling, store.Get(231010));
+        Assert.Same(sibling, store.GetOrNull(231010));
     }
 
     [Fact]

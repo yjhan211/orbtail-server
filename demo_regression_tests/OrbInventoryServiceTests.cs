@@ -22,7 +22,7 @@ public sealed class OrbInventoryServiceTests
     {
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984301);
-        using (store.Enter(runtime))
+        using (MatchRuntimeStore.Enter(runtime))
         {
             int cost = runtime.SummonStones.GetSnapshot(1).NextCost;
             runtime.SummonStones.AddStones(1, cost);
@@ -48,7 +48,7 @@ public sealed class OrbInventoryServiceTests
         var runtime = store.GetOrCreate(984302);
         var service = new OrbInventoryService(TestGameEventLogs.Create());
         Assert.Throws<InvalidOperationException>(() => service.Grant(runtime, 1, 107000010));
-        using (store.Enter(runtime))
+        using (MatchRuntimeStore.Enter(runtime))
         {
             service.Grant(runtime, 1, 107000010);
             service.Grant(runtime, 1, 107000010);

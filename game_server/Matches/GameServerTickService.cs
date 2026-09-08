@@ -31,7 +31,7 @@ internal sealed class GameServerTickService(
         // 구독 직전 만들어진 매치도 포함한다. 구독과 목록 조회 양쪽에 잡힌 매치는 한 번만 시작한다.
         foreach (long matchingId in matchRuntimes.ActiveIds())
         {
-            if (matchRuntimes.Get(matchingId) is { } runtime)
+            if (matchRuntimes.GetOrNull(matchingId) is { } runtime)
                 StartMatch(runtime);
         }
         logger.LogInformation("Per-match tick loops started: IntervalMs=50");
@@ -44,7 +44,7 @@ internal sealed class GameServerTickService(
         lock (_lifecycleLock)
         {
             if (_stopTask != null || runtime.IsTerminal || _loops.ContainsKey(runtime) ||
-                !ReferenceEquals(matchRuntimes.Get(runtime.MatchingId), runtime))
+                !ReferenceEquals(matchRuntimes.GetOrNull(runtime.MatchingId), runtime))
                 return;
 
             var loop = new MatchTickLoop(runtime, _tick!, logger, _timeProvider);

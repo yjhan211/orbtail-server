@@ -28,7 +28,7 @@ internal sealed class MatchEntryFailureHandler(
 
         long playerId = session.PlayerId.Value;
         long matchingId = session.MatchingId;
-        MatchRuntime? runtime = matchRuntimes.Get(matchingId);
+        MatchRuntime? runtime = matchRuntimes.GetOrNull(matchingId);
         if (runtime == null)
         {
             PublishLateEntryFailure(session, playerId, matchingId);
@@ -36,7 +36,7 @@ internal sealed class MatchEntryFailureHandler(
         }
 
         bool wonTerminal = false;
-        using (matchRuntimes.Enter(runtime))
+        using (runtime.Enter())
         {
             if (!runtime.IsTerminal)
             {
