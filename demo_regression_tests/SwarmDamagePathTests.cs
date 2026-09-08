@@ -77,15 +77,11 @@ public class SwarmDamagePathTests
             Config.IsSwarmExploreDisabled(),
             "스웜 탐색·소비품이 다시 켜졌다 — 회복은 수면이, 기동력은 바람 오브가 맡는다 (#229 5단계).");
 
-        // 게이트가 실제로 물려 있어야 한다: 목록 전송·탐색 시작·봇 자동 탐색·소비품 드롭 네 곳.
+        // 게이트가 실제로 물려 있어야 한다: 문 목록 필터와 몬스터 소비품 드롭. 상자 시작·봇 개봉 코드는 제거됐다.
         foreach (var (file, marker) in new[]
                  {
                      (Path.Combine("game_server", "Services", "PlayerMovementService.cs"),
                          "public void SendInteractableList"),
-                     (Path.Combine("game_server", "Services", "MatchInteractionService.cs"),
-                         "public static (ErrorCode Error, int Remaining, bool Door) Start"),
-                     (Path.Combine("game_server", "Services", "Bots", "BotDecisionService.cs"),
-                         "public void ProcessSwarmBotExplores"),
                      (Path.Combine("game_server", "Services", "MatchCombatDamageService.cs"),
                          "private void SpawnSwarmSummonStone")
                  })

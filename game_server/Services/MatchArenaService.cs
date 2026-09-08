@@ -359,8 +359,8 @@ internal sealed class MatchArenaService(
             return;
         ProcessSwarmSleepRecovery(aliveSessions, nowUtc);
 
-        // 봇도 사람과 같은 규칙으로 성장한다: 소환석 5개 + 스팟 소진. 공짜 버튼 소환 없음.
-        botDecisions.ProcessSwarmBotExplores(matchingId, aliveBots, sessions);
+        // 봇도 사람과 같은 문 게이지 규칙으로 잠긴 문을 연다.
+
         botDecisions.ProcessSwarmBotDoorUnlocks(matchingId, aliveBots, sessions, nowUtc);
 
         if (MonsterSnapshotPublisher.TryConsumeBroadcastSlot(matchRuntimes.GetRequired(matchingId), nowUtc))

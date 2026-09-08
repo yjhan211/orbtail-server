@@ -143,7 +143,6 @@ public sealed class SwarmArenaTickOrderTests
             "ApplySwarmParticipantDamage(",
             "ProcessSwarmBotRecovery(",
             "ProcessSwarmSleepRecovery(",
-            "ProcessSwarmBotExplores(",
             "ProcessSwarmBotDoorUnlocks(",
             "MonsterSnapshotPublisher.Broadcast(",
             "BuildSwarmArenaCombatActors(",

@@ -155,7 +155,6 @@ public partial class BotPlayerManager
         bot.Path.Clear();
         bot.PathIndex = 0;
         bot.PendingRngInteractId = 0;
-        bot.RngCollectProgressStartTime = DateTime.MinValue;
         bot.LoopWaitUntil = DateTime.MinValue;
 
         _logger.LogInformation(

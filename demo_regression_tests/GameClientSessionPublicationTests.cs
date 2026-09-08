@@ -493,22 +493,22 @@ public sealed class GameClientSessionPublicationTests
 
         await SendAsync(
             session,
-            Protocol.C_TO_G_RNG_COLLECT_START,
-            new C_TO_G_RNG_COLLECT_START { InteractId = 702000101 });
+            Protocol.C_TO_G_DOOR_OPEN_START,
+            new C_TO_G_DOOR_OPEN_START { InteractId = 702000101 });
         await SendAsync(
             session,
-            Protocol.C_TO_G_RNG_COLLECT_FINISH,
-            new C_TO_G_RNG_COLLECT_FINISH { InteractId = 702000101 });
+            Protocol.C_TO_G_DOOR_OPEN_FINISH,
+            new C_TO_G_DOOR_OPEN_FINISH { InteractId = 702000101 });
 
         Assert.Equal(
             [
-                Protocol.G_TO_C_RNG_COLLECT_ACK,
-                Protocol.G_TO_C_RNG_COLLECT_ACK
+                Protocol.G_TO_C_DOOR_OPEN_ACK,
+                Protocol.G_TO_C_DOOR_OPEN_ACK
             ],
             fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.DoesNotContain(Protocol.G_TO_C_ERROR, fixture.ConnectionFor(session).AttemptedProtocols);
-        foreach (G_TO_C_RNG_COLLECT_ACK ack in fixture.ConnectionFor(session)
-                     .DeserializeAll<G_TO_C_RNG_COLLECT_ACK>(Protocol.G_TO_C_RNG_COLLECT_ACK))
+        foreach (G_TO_C_DOOR_OPEN_ACK ack in fixture.ConnectionFor(session)
+                     .DeserializeAll<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK))
         {
             Assert.Equal(ErrorCode.INVALID_GAME_STATE, ack.ErrorCode);
         }
@@ -536,24 +536,24 @@ public sealed class GameClientSessionPublicationTests
         // 잠금을 기다리는 사이 매치가 끝나면 core 대신 거부 응답만 나간다.
         Task message = Task.Run(() => SendAsync(
             session,
-            Protocol.C_TO_G_RNG_COLLECT_START,
-            new C_TO_G_RNG_COLLECT_START { InteractId = 702000101 }));
+            Protocol.C_TO_G_DOOR_OPEN_START,
+            new C_TO_G_DOOR_OPEN_START { InteractId = 702000101 }));
         await Task.Delay(100);
         Assert.False(message.IsCompleted);
         markTerminal.Set();
         await holder.WaitAsync(TimeSpan.FromSeconds(5));
         await message.WaitAsync(TimeSpan.FromSeconds(5));
 
-        G_TO_C_RNG_COLLECT_ACK ack = fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_RNG_COLLECT_ACK>(Protocol.G_TO_C_RNG_COLLECT_ACK);
+        G_TO_C_DOOR_OPEN_ACK ack = fixture.ConnectionFor(session)
+            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK);
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, ack.ErrorCode);
-        Assert.Equal([Protocol.G_TO_C_RNG_COLLECT_ACK], fixture.ConnectionFor(session).DeliveredProtocols);
+        Assert.Equal([Protocol.G_TO_C_DOOR_OPEN_ACK], fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.False((fixture.Store.Get(70001)?.Doors.IsDoorOpen(201) == true));
         Assert.Null(fixture.Store.Get(70001));
     }
 
     [Fact]
-    public async Task TerminalMatch_RejectsLateCollectRequestWithoutRecreatingRuntime()
+    public async Task TerminalMatch_RejectsLateDoorRequestWithoutRecreatingRuntime()
     {
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(70001, 101, (AreaType)50);
@@ -561,12 +561,12 @@ public sealed class GameClientSessionPublicationTests
 
         await SendAsync(
             session,
-            Protocol.C_TO_G_RNG_COLLECT_START,
-            new C_TO_G_RNG_COLLECT_START { InteractId = 702000101 });
+            Protocol.C_TO_G_DOOR_OPEN_START,
+            new C_TO_G_DOOR_OPEN_START { InteractId = 702000101 });
 
-        Assert.Equal([Protocol.G_TO_C_RNG_COLLECT_ACK], fixture.ConnectionFor(session).AttemptedProtocols);
+        Assert.Equal([Protocol.G_TO_C_DOOR_OPEN_ACK], fixture.ConnectionFor(session).AttemptedProtocols);
         var ack = fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_RNG_COLLECT_ACK>(Protocol.G_TO_C_RNG_COLLECT_ACK);
+            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK);
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, ack.ErrorCode);
         Assert.Equal(702000101, ack.InteractId);
         Assert.Null(fixture.Store.Get(70001));
@@ -665,71 +665,6 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
-    public async Task DormantBoxFinish_InsufficientStonesPreservesLegacyOrderedFailureSuffix()
-    {
-        using var fixture = new SessionFixture();
-        const int interactId = 701000001;
-        RecordingSession session = fixture.CreateSession(70001, 101, (AreaType)13);
-        int stones = fixture.Store.GetRequired(70001).SummonStones.GetSnapshot(101).StoneCount;
-        Assert.True(fixture.Store.GetRequired(70001).SummonStones.TrySpendStones(101, stones, out _));
-        fixture.SeedPendingFinish(session, interactId);
-
-        await SendAsync(
-            session,
-            Protocol.C_TO_G_RNG_COLLECT_FINISH,
-            new C_TO_G_RNG_COLLECT_FINISH { InteractId = interactId });
-
-        Assert.Equal(
-            [
-                Protocol.G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST,
-                Protocol.G_TO_C_RNG_COLLECT_RESULT,
-                Protocol.G_TO_C_PLAYER_STATE
-            ],
-            fixture.ConnectionFor(session).DeliveredProtocols);
-        G_TO_C_RNG_COLLECT_RESULT result = fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_RNG_COLLECT_RESULT>(Protocol.G_TO_C_RNG_COLLECT_RESULT);
-        Assert.Equal(0, result.CooldownSeconds);
-        Assert.Empty(fixture.Store.GetRequired(70001).GroundItems.GetSnapshot((AreaType)13));
-    }
-
-    [Fact]
-    public async Task DormantBoxFinish_SuccessPreservesStoneSpawnCooldownResultIdleOrder()
-    {
-        using var fixture = new SessionFixture();
-        const int interactId = 701000001;
-        RecordingSession session = fixture.CreateSession(70001, 101, (AreaType)13);
-        fixture.SeedPendingFinish(session, interactId);
-        fixture.Store.GetRequired(70001).SummonStones.AddStones(101, Config.SWARM_BOX_OPEN_COST);
-        int stonesBefore = fixture.Store.GetRequired(70001).SummonStones.GetSnapshot(101).StoneCount;
-
-        await SendAsync(
-            session,
-            Protocol.C_TO_G_RNG_COLLECT_FINISH,
-            new C_TO_G_RNG_COLLECT_FINISH { InteractId = interactId });
-
-        Assert.Equal(
-            [
-                Protocol.G_TO_C_SUMMON_STONE_STATE,
-                Protocol.G_TO_C_GROUND_ITEM_SPAWN,
-                Protocol.G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST,
-                Protocol.G_TO_C_RNG_COLLECT_RESULT,
-                Protocol.G_TO_C_PLAYER_STATE
-            ],
-            fixture.ConnectionFor(session).DeliveredProtocols);
-        Assert.Equal(
-            stonesBefore - Config.SWARM_BOX_OPEN_COST,
-            fixture.Store.GetRequired(70001).SummonStones.GetSnapshot(101).StoneCount);
-        GroundItemInfo spawned = Assert.Single(fixture.Store.GetRequired(70001).GroundItems.GetSnapshot((AreaType)13));
-        Assert.Contains(
-            spawned.ItemId,
-            new[] { Config.HEART_GROUND_ITEM_ID, Config.BOOTS_GROUND_ITEM_ID });
-        G_TO_C_RNG_COLLECT_RESULT result = fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_RNG_COLLECT_RESULT>(Protocol.G_TO_C_RNG_COLLECT_RESULT);
-        Assert.Equal(Config.SWARM_EXPLORE_REGEN_SECONDS, result.CooldownSeconds);
-        Assert.NotEmpty(fixture.Store.GetRequired(70001).CollectCooldowns.GetSnapshot());
-    }
-
-    [Fact]
     public async Task DifferentMatches_DispatchIndependentlyWhileOneTransportIsBlocked()
     {
         using var fixture = new SessionFixture();
@@ -765,7 +700,7 @@ public sealed class GameClientSessionPublicationTests
     {
         string root = FindRepositoryRoot();
         string session = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
-        string rng = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.RngCollect.cs");
+        Assert.False(File.Exists(Path.Combine(root, "game_server", "Sessions", "GameClientSession.RngCollect.cs")));
         Assert.False(File.Exists(Path.Combine(root, "game_server", "Sessions", "GameClientSession.GroundItem.cs")));
         string orbSummon = ReadNormalizedSource(
             root,
@@ -788,7 +723,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("IsMessageLifecycleActive",
             ReadNormalizedSource(root, "network", "Core", "SessionBase.cs"));
         Assert.Contains("private Task RunWithMatchLock(Func<Task> handleRequest, Action rejectRequest)", session);
-        Assert.Equal(2, CountOccurrences(rng, "RunWithMatchLock("));
+        Assert.DoesNotContain(Enum.GetNames<Protocol>(), name => name.Contains("RNG_COLLECT") || name.Contains("INTERACT_COOLDOWN"));
         var autoPickup = ReadNormalizedSource(root, "game_server", "Services", "GroundItemAutoPickupService.cs");
         Assert.Contains("Monitor.IsEntered(match.Sync)", autoPickup);
         Assert.Contains("match.IsTerminal", autoPickup);
@@ -808,7 +743,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Contains("ProcessPeriodicBuffs(matchingId, aliveSessions, nowUtc)", arena);
         Assert.Contains("session.Condition.UpdatePeriodicBuffs(nowUtc", arena);
         Assert.Equal(2, CountOccurrences(playerState, "MatchInteractionService.CancelPendingInteractions(match, _interactions)"));
-        Assert.DoesNotContain("MatchInteractionService.CancelPendingInteractions", rng);
+
         Assert.DoesNotContain("ProcessUseInGameItem", playerState);
         Assert.DoesNotContain("HandleUseInGameItem", playerState);
         Assert.DoesNotContain("HandleHealthChanged", playerState);
@@ -829,12 +764,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("RunWithMatchLock", bots);
         Assert.DoesNotContain("RunWithMatchLock", botPickup);
         Assert.Contains("session.BreakDoorUnlockGauge();", arena);
-        Assert.DoesNotContain(
-            "RunWithMatchLock",
-            ReadMethodSlice(
-                rng,
-                "private void SendInteractionCanceled(",
-                "private void BroadcastRngCollectCooldown("));
+
         Assert.DoesNotContain(
             "RunWithMatchLock",
             ReadMethodSlice(
@@ -873,36 +803,6 @@ public sealed class GameClientSessionPublicationTests
         Assert.False(Monitor.IsEntered(runtime.Sync));
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Door_CannotBypassStartOrUseLegacyCollectFinish(bool legacy)
-    {
-        using var fixture = new SessionFixture();
-        var session = fixture.CreateSession(70001, 101, (AreaType)50);
-        MatchStartGate.RegisterBotOnlyMatch(70001);
-        if (legacy)
-        {
-            await SendAsync(session, Protocol.C_TO_G_RNG_COLLECT_START,
-                new C_TO_G_RNG_COLLECT_START { InteractId = 702000101 });
-            Assert.Equal(ErrorCode.INVALID_GAME_STATE, fixture.ConnectionFor(session)
-                .DeserializeSingle<G_TO_C_RNG_COLLECT_ACK>(Protocol.G_TO_C_RNG_COLLECT_ACK).ErrorCode);
-            fixture.ConnectionFor(session).ClearPackets();
-            await SendAsync(session, Protocol.C_TO_G_RNG_COLLECT_FINISH,
-                new C_TO_G_RNG_COLLECT_FINISH { InteractId = 702000101 });
-            Assert.Equal(ErrorCode.INVALID_GAME_STATE, fixture.ConnectionFor(session)
-                .DeserializeSingle<G_TO_C_RNG_COLLECT_ACK>(Protocol.G_TO_C_RNG_COLLECT_ACK).ErrorCode);
-        }
-        else
-        {
-            await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_FINISH,
-                new C_TO_G_DOOR_OPEN_FINISH { InteractId = 702000101 });
-            Assert.Equal(ErrorCode.INVALID_GAME_STATE, fixture.ConnectionFor(session)
-                .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK).ErrorCode);
-        }
-        Assert.False(session.Match.Doors.IsDoorOpen(201));
-    }
-
     [Fact]
     public void DoorHit_ReportsInterruptedAndInvalidatesPendingFinish()
     {
@@ -924,6 +824,44 @@ public sealed class GameClientSessionPublicationTests
         Assert.False(ack.Completed);
     }
 
+    [Fact]
+    public async Task DoorFinishWithoutStartIsRejected()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        MatchStartGate.RegisterBotOnlyMatch(70001);
+        await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_FINISH,
+            new C_TO_G_DOOR_OPEN_FINISH { InteractId = 702000101 });
+        Assert.Equal(ErrorCode.INVALID_GAME_STATE, fixture.ConnectionFor(session)
+            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK).ErrorCode);
+        Assert.False(session.Match.Doors.IsDoorOpen(201));
+    }
+
+    [Fact]
+    public async Task IdleCancelsDoorGaugeAndReportsDoorAckOnlyOnce()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        MatchStartGate.RegisterBotOnlyMatch(70001);
+        var interactions = (PlayerInteractionState)typeof(GameClientSession).GetField(
+            "_interactions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!;
+        using (session.Match.Enter())
+            interactions.BeginDoor(702000101, 0);
+
+        await SendAsync(session, Protocol.C_TO_G_PLAYER_STATE,
+            new C_TO_G_PLAYER_STATE { State = PlayerState.IDLE });
+        await SendAsync(session, Protocol.C_TO_G_PLAYER_STATE,
+            new C_TO_G_PLAYER_STATE { State = PlayerState.IDLE });
+
+        var ack = fixture.ConnectionFor(session)
+            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK);
+        Assert.Equal(702000101, ack.InteractId);
+        Assert.Equal(ErrorCode.DOOR_OPEN_INTERRUPTED, ack.ErrorCode);
+        Assert.False(ack.Completed);
+        using (session.Match.Enter())
+            Assert.False(interactions.TryFinishDoor(702000101, 3000, TimeSpan.FromSeconds(3), out _));
+        Assert.False(session.Match.Doors.IsDoorOpen(201));
+    }
     private static async Task SendAsync<T>(
         GameClientSession session,
         Protocol protocol,

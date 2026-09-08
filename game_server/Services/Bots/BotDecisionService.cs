@@ -11,7 +11,7 @@ using network.packets;
 namespace game_server.services;
 
 /// <summary>
-///     봇의 대피·추격·탐색·문 열기·회복과 절단 가능 여부를 판단한다.
+///     봇의 대피·추격·아이템 회수·문 열기·회복과 절단 가능 여부를 판단한다.
 ///     기억과 재사용 대기 시간은 매치가 소유하며 호출자는 매치 잠금을 보유한다.
 ///     이동 지시의 실제 실행은 BotMovementService가 맡는다.
 /// </summary>
@@ -30,16 +30,6 @@ internal sealed class BotDecisionService(
     // 사람은 이만한 수동 회복이 없다(수면은 정지·무피격을 요구하고 맞으면 끊긴다).
     private const double SwarmBotRecoveryGraceSeconds = 6d;
     private const int SwarmBotRecoveryPerSecond = 2;
-
-    private const float SwarmBotOpenRange = 1.6f;
-
-    /// <summary>
-    ///     봇의 스팟 개봉: 게이지 없이 반경 안에서 즉시 연다. 소진 스팟은 사람·봇 공용
-    ///     쿨다운 저장소로 잠기므로, 유한 스팟을 둘러싼 경쟁이 성립한다.
-    /// </summary>
-    // 봇 채집 채널 (#219 탐색 모션): 즉시 개봉은 모션도 없고 사람(1.5초 채집)보다 빨랐다.
-    // 사람 클라와 같은 1.5초 채널 동안 EXPLORE_1 상태로 서 있다가 개봉을 확정한다.
-    private const double SwarmBotExploreChannelSeconds = 1.5d;
 
     // 봇 문 잠금해제 (#229). 사람과 같은 규칙을 봇에도 건다 — 봇만 잠긴 문을 통과하면
     // 폐쇄 압력이 봇에게만 무의미해지고, 봇 매치로 이 메카닉을 검증할 수도 없다.
@@ -128,106 +118,6 @@ internal sealed class BotDecisionService(
         return doorId > 0;
     }
 
-    public void ProcessSwarmBotExplores(
-        long matchingId,
-        List<BotPlayerState> bots,
-        List<GameClientSession> sessions)
-    {
-        // #229 5단계: 자동 탐색 임시 중단. 상자 앞에 걸어가 서 있는 봇이 남지 않게
-        // 채널 시작 자체를 막는다.
-        if (Config.IsSwarmExploreDisabled())
-            return;
-
-        foreach (var bot in bots)
-        {
-            // (2) 채널 진행 중 — 1.5초가 지나면 개봉 확정
-            if (bot.SwarmExploreStartedAtUtc != DateTime.MinValue)
-            {
-                if ((DateTime.UtcNow - bot.SwarmExploreStartedAtUtc).TotalSeconds <
-                    SwarmBotExploreChannelSeconds)
-                    continue;
-
-                FinishSwarmBotExplore(matchingId, bot, sessions);
-                continue;
-            }
-
-            // (1) 채널 시작: 근접 + 자금 + 스팟 가용이면 쿨다운을 선점하고 채집 자세로 선다
-            if (!TryFindNearestAvailableExploreSpot(
-                    matchingId, bot.CurrentArea, bot.Position, out var spot, out float distance) ||
-                distance > SwarmBotOpenRange)
-                continue;
-
-            // 위협 사거리 안에서는 채집을 열지 않는다 — 채널 홀드 채로 얻어맞는 사고 방지
-            // (매치 2376 봇 -108: 빈손으로 채집 반복하며 인지 밖 파도 사거리에 일방 피격).
-            float channelPower = GetSwarmSquadPower(matchingId, bot.PlayerId);
-            FindNearbySwarmRivals(matchingId, bot, channelPower,
-                includeMonstersAsStronger: channelPower <= 0f,
-                out var channelThreatPosition, out _);
-            if (channelThreatPosition != null)
-                continue;
-
-            int exploreCost = GetSwarmBotExploreCost(matchingId, bot.PlayerId);
-            if (matchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(bot.PlayerId).StoneCount < exploreCost)
-                continue;
-
-            if (!matchRuntimes.GetRequired(matchingId).CollectCooldowns.TryAcquireCooldown(
-                    spot.Id, Config.SWARM_EXPLORE_REGEN_SECONDS, out _))
-                continue;
-
-            bot.SwarmExploreSpotId = spot.Id;
-            bot.SwarmExploreStartedAtUtc = DateTime.UtcNow;
-            bot.HoldForChannel(TimeSpan.FromSeconds(SwarmBotExploreChannelSeconds + 0.5d));
-            BotExploreNotifier.NotifyStarted(
-                matchingId, bot.PlayerId, spot.Id, bot.CurrentArea, sessions);
-        }
-    }
-
-    private void FinishSwarmBotExplore(long matchingId, BotPlayerState bot, List<GameClientSession> sessions)
-    {
-        int spotId = bot.SwarmExploreSpotId;
-        bot.SwarmExploreSpotId = 0;
-        bot.SwarmExploreStartedAtUtc = DateTime.MinValue;
-        BotExploreNotifier.NotifyEnded(matchingId, bot.PlayerId, bot.CurrentArea, sessions);
-        if (spotId <= 0)
-            return;
-
-        // #229 5단계: 봇도 사람과 같은 규칙 — 스웜에서는 상자를 열지 않는다.
-        if (Config.IsSwarmExploreDisabled())
-        {
-            matchRuntimes.Get(matchingId)?.CollectCooldowns.ClearCooldown(spotId);
-            return;
-        }
-
-        // #226 단계 C: 상자 = 소모품 공급처 (사람과 같은 규칙) — 오브 성장은 성장 카드가 맡는다.
-        if (!matchRuntimes.GetRequired(matchingId).SummonStones.TrySpendStones(
-                bot.PlayerId, Config.SWARM_BOX_OPEN_COST, out _))
-        {
-            matchRuntimes.Get(matchingId)?.CollectCooldowns.ClearCooldown(spotId);
-            return;
-        }
-
-        int dropItemId = Random.Shared.Next(100) < 60
-            ? Config.HEART_GROUND_ITEM_ID
-            : Config.BOOTS_GROUND_ITEM_ID;
-        var dropped = matchRuntimes.GetRequired(matchingId).GroundItems.SpawnItems(
-            bot.CurrentArea, bot.Position.X, bot.Position.Y, [dropItemId],
-            mapId: Config.SWARM_MATCH_MAP,
-            layout: GroundItemSpawnLayout.EliminationScatter);
-        if (dropped.Count > 0)
-        {
-            using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN(
-                (int)bot.CurrentArea, dropped.ToList());
-            foreach (var session in sessions)
-                if (session.PlayerId.HasValue && session.CurrentArea == bot.CurrentArea)
-                    session.TrySend(packet);
-        }
-
-        BroadcastSwarmExploreConsumed(spotId, Config.SWARM_EXPLORE_REGEN_SECONDS, sessions);
-        logger.LogInformation(
-            "Swarm bot box consumable: MatchingId={MatchingId}, BotId={BotId}, InteractId={InteractId}, Drop={DropItemId}",
-            matchingId, bot.PlayerId, spotId, dropItemId);
-    }
-
     // 시작방 팩이 마르면 봇이 이주할 무한 스폰 사냥터.
     // #272 School2: 합류 구역 4곳 + 운동장 — 순례 목적지가 곧 수렴 동선이다.
     private static readonly AreaType[] SwarmHuntingAreas =
@@ -237,7 +127,7 @@ internal sealed class BotDecisionService(
     ];
 
     /// <summary>
-    ///     봇 이동 지시 라우팅: 도주(생존) > 바닥 소환석 줍기 > 전 구역 스팟 순례 >
+    ///     봇 이동 지시 라우팅: 도주(생존) > 바닥 소환석 줍기 >
     ///     마른 방 탈출(사냥터 이주) > 스웜 디렉터 배회.
     /// </summary>
     // 왕복 억제 (#226 F): 방금 떠난 구역으로 수 초 내 복귀하는 지시는 판단 떨림이다 —
@@ -542,29 +432,11 @@ internal sealed class BotDecisionService(
                 fleeLength = 1f;
             }
 
-            // 도주 방향으로 앞선 가상 지점에서 최근접 스팟을 찾으면 "위협 반대편 스팟"이 된다.
+            // 위협 반대 방향의 이동 가능한 셀로 도주한다.
             var fleeProbe = new Vector3f(
                 bot.Position.X + fleeDx / fleeLength * SwarmBotFleeProbeDistance,
                 bot.Position.Y + fleeDy / fleeLength * SwarmBotFleeProbeDistance,
                 0f);
-            if (TryFindNearestAvailableExploreSpot(
-                    matchingId, area: null, fleeProbe, out var fleeSpot, out _))
-            {
-                var fleeArea = (AreaType)fleeSpot.ZoneId;
-                Cell fleeCell = new(fleeSpot.CellX, fleeSpot.CellY);
-                if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, fleeCell))
-                {
-                    fleeCell = fleeCell.GetAdjacentCells().FirstOrDefault(cell =>
-                        GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell) &&
-                        GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == fleeArea) ?? fleeCell;
-                }
-
-                var fleeWorld = BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, fleeCell);
-                // 도주지가 제자리면 도주가 아니다 (#223 구석 정지 수리) — 다음 폴백으로 넘긴다.
-                if (IsFarEnoughSwarmFleeTarget(bot, fleeWorld))
-                    return new SwarmBotDirective(
-                        SwarmBotMode.Escort, fleeArea, fleeCell, fleeWorld);
-            }
 
             // 폴백 (#222): 도주 방향에 열린 스팟이 없어도 무조건 이탈한다 — 스팟 부재로
             // 지시 없이 낙하해 제자리에서 얻어맞던 구멍(매치 2372 봇 -78) 수리.
@@ -648,32 +520,7 @@ internal sealed class BotDecisionService(
                 chaseCellUsable ? chaseTarget : weakerRival.Value.Position);
         }
 
-        // 1) 지갑이 차면 줍기보다 개봉이 먼저 — 열린 구역 중 가장 가까운 스팟으로 순례한다.
-        //    줍기가 이 단계를 선점하면 봇이 수십 석을 들고도 개봉을 영영 미룬다 (매치 2221 계측).
-        //    폐쇄 필터는 스팟 탐색 안에서 처리한다 — 최근접이 폐쇄라고 순례가 멈추면 안 된다.
-        if (TryFindNearestAvailableExploreSpot(
-                matchingId, area: null, bot.Position, out var spot, out _) &&
-            matchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(botPlayerId).StoneCount >=
-            // 비용은 봇 자신의 궤도 크기 기준 — spot.Id를 넘기던 오배선(빈 인벤=0비용) 수리
-            GetSwarmBotExploreCost(matchingId, botPlayerId))
-        {
-            var spotArea = (AreaType)spot.ZoneId;
-            Cell spotCell = new(spot.CellX, spot.CellY);
-            if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, spotCell))
-            {
-                spotCell = spotCell.GetAdjacentCells().FirstOrDefault(cell =>
-                    GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, cell) &&
-                    GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, cell) == spotArea) ?? spotCell;
-            }
-
-            return new SwarmBotDirective(
-                SwarmBotMode.Escort,
-                spotArea,
-                spotCell,
-                BotPlayerManager.CellToWorldPosition(Config.SWARM_MATCH_MAP, spotCell));
-        }
-
-        // 2) 같은 구역 바닥 소환석 — 걸어가면 자동 픽업 반경이 줍는다.
+        // 같은 구역 바닥 소환석 — 걸어가면 자동 픽업 반경이 줍는다.
         if (TryFindNearestSwarmGroundStone(matchingId, bot, out Vector3f stonePosition))
         {
             return new SwarmBotDirective(
@@ -683,7 +530,7 @@ internal sealed class BotDecisionService(
                 stonePosition);
         }
 
-        // 3) 사냥 정지: 도주·개봉·줍기 용무가 없고 사거리 안에 몹이 있으면 제자리에 선다.
+        // 사냥 정지: 도주·줍기 용무가 없고 사거리 안에 몹이 있으면 제자리에 선다.
         //    정지 공격 규칙에서 서야 쏘고, 잠든 공급 무리 옆이 안전 사격 지점이다.
         //    빈손은 제외 — 화력 없이 몹 옆에 서는 건 자살이다 (#222).
         if (hasSquadOrbs && HasSwarmMonsterInBasicRange(matchingId, bot))
@@ -695,12 +542,12 @@ internal sealed class BotDecisionService(
                 bot.Position);
         }
 
-        // 3.5) 소환석 기근 (#219): 다음 개봉 비용이 부족하면 사냥을 나간다.
+        // 다음 오브 성장 비용이 부족하면 사냥을 나간다.
         //      지역 공급 (#226 단계 B): 몹이 남은 가장 가까운 공급 무리로 향한다 — 몹은
         //      찾아가는 공유 자원이고, 미니맵 스냅샷으로 사람에게도 같은 정보가 보인다.
-        //      빈손 봇은 개봉이 무료라 1)에서 이미 스팟 순례로 빠진다.
+
         if (matchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(botPlayerId).StoneCount <
-            GetSwarmBotExploreCost(matchingId, botPlayerId) &&
+            growth.GetCostBreakdown(matchingId, botPlayerId).FinalCost &&
             hasSquadOrbs)
         {
             if (TryFindNearestSwarmSupplyMonster(matchingId, bot, out var supplyArea,
@@ -714,7 +561,7 @@ internal sealed class BotDecisionService(
             }
         }
 
-        // 4) 마른 방 탈출: 현재 구역에 살아있는 몹도, 열 수 있는 스팟 용무도 없으면
+        // 마른 방 탈출: 현재 구역에 살아있는 몹이 없으면
         //    몹이 남은 공급 구역으로 이주 — 스폰이 멈춘 종반에는 지시 없이 배회(디렉터 몫).
         bool currentAreaHasSupply = matchRuntimes.GetRequired(matchingId).Monsters.GetVisualStates(matchingId)
             .Any(monster => monster.IsAlive && monster.AreaType == bot.CurrentArea);
@@ -945,13 +792,6 @@ internal sealed class BotDecisionService(
     }
 
     /// <summary>
-    ///     봇 개봉 문턱 (#226 단계 C): 실지불은 상자 고정가(1)지만, 성장 카드 비용을 지키고도
-    ///     남는 여유가 있을 때만 상자로 향한다 — 석을 하트에 다 태워 투자를 굶는 사고 방지.
-    /// </summary>
-    private int GetSwarmBotExploreCost(long matchingId, long botPlayerId) =>
-        growth.GetCostBreakdown(matchingId, botPlayerId).FinalCost + Config.SWARM_BOX_OPEN_COST;
-
-    /// <summary>
     ///     비접촉 유예를 넘긴 봇의 체력을 1초 단위로 회복한다. 피격이 들어오면
     ///     유예가 리셋되므로, 스웜에 물려 있는 동안에는 회복되지 않는다.
     /// </summary>
@@ -972,62 +812,6 @@ internal sealed class BotDecisionService(
 
             matchRuntimes.GetRequired(matchingId).Swarm.BotTactics.NextRecoveryAtUtc[key] = nowUtc.AddSeconds(1d);
             bot.Health = Math.Min(Config.MAX_HEALTH, bot.Health + SwarmBotRecoveryPerSecond);
-        }
-    }
-
-    private bool TryFindNearestAvailableExploreSpot(
-        long matchingId,
-        AreaType? area,
-        Vector3f position,
-        out InteractableInfoData spot,
-        out float distance)
-    {
-        spot = null!;
-        distance = float.MaxValue;
-        var onCooldown = matchRuntimes.GetRequired(matchingId).CollectCooldowns.GetSnapshot()
-            .Where(entry => entry.RemainingSeconds > 0)
-            .Select(entry => entry.InteractId)
-            .ToHashSet();
-        foreach (var info in GameInteractableData.GetAll())
-        {
-            if ((area.HasValue && info.ZoneId != (int)area.Value) ||
-                info.InteractionType != InteractionType.RNG_COLLECT ||
-                onCooldown.Contains(info.Id) ||
-                // 경계 밖 구역 스팟은 후보에서 제외 — 최근접이 밖이라고 순례 전체가 멈추면 안 된다.
-                IsSwarmAreaOutside(matchingId, (AreaType)info.ZoneId))
-                continue;
-
-            var world = BotPlayerManager.CellToWorldPosition(
-                Config.SWARM_MATCH_MAP, new Cell(info.CellX, info.CellY));
-            float dx = world.X - position.X;
-            float dy = world.Y - position.Y;
-            float candidateDistance = MathF.Sqrt(dx * dx + dy * dy);
-            if (candidateDistance < distance)
-            {
-                distance = candidateDistance;
-                spot = info;
-            }
-        }
-
-        return spot != null;
-    }
-
-    private static void BroadcastSwarmExploreConsumed(
-        int interactId, int cooldownSeconds, List<GameClientSession> sessions)
-    {
-        var body = MessagePack.MessagePackSerializer.Serialize(new G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST
-        {
-            InteractId = interactId,
-            CooldownSeconds = cooldownSeconds
-        });
-        foreach (var session in sessions)
-        {
-            if (!session.PlayerId.HasValue)
-                continue;
-            using var packet = global::network.packets.Packet.Create(
-                (int)Protocol.G_TO_C_RNG_COLLECT_COOLDOWN_BROADCAST, session.PlayerId.Value);
-            packet.SetBody(body);
-            session.TrySend(packet);
         }
     }
 

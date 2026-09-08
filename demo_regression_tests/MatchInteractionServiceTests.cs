@@ -81,7 +81,7 @@ public sealed class MatchInteractionServiceTests
     }
 
     [Fact]
-    public void CancelPendingInteractionsClearsBoxAndDoorButPreservesOtherCooldowns()
+    public void CancelPendingInteractionsInvalidatesDoorFinish()
     {
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984403);
@@ -90,8 +90,6 @@ public sealed class MatchInteractionServiceTests
         {
             state.Begin(10);
             state.BeginDoor(11, 0);
-            foreach (int id in new[] { 10, 11, 12 })
-                Assert.True(runtime.CollectCooldowns.TryAcquireCooldown(id, 60, out _));
 
             int[] canceled = MatchInteractionService.CancelPendingInteractions(runtime, state);
 
@@ -99,7 +97,7 @@ public sealed class MatchInteractionServiceTests
             Assert.Equal(0, state.Count);
             Assert.False(state.TryFinish(10));
             Assert.False(state.TryFinishDoor(11, 6000, TimeSpan.FromSeconds(3), out _));
-            Assert.Equal(12, Assert.Single(runtime.CollectCooldowns.GetSnapshot()).InteractId);
+
             Assert.Empty(MatchInteractionService.CancelPendingInteractions(runtime, state));
             runtime.TryMarkTerminal();
         }
@@ -132,33 +130,10 @@ public sealed class MatchInteractionServiceTests
             MatchInteractionService.CheckDoorGauge(runtime, AreaType.None, int.MaxValue));
         using (store.Enter(runtime))
         {
-            Assert.Equal(ErrorCode.FATAL, MatchInteractionService.Start(runtime, 1, AreaType.None, int.MaxValue).Error);
+
             Assert.Equal(ErrorCode.INVALID_GAME_STATE, MatchInteractionService.CheckDoorGauge(runtime, AreaType.None, int.MaxValue));
             runtime.TryMarkTerminal();
         }
     }
 
-    [Fact]
-    public void BoxChargesBeforePublicationAndInsufficientFundsDoNotPublish()
-    {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
-        var runtime = store.GetOrCreate(984402);
-        using (store.Enter(runtime))
-        {
-            int before = runtime.SummonStones.AddStones(1, Config.SWARM_BOX_OPEN_COST).StoneCount;
-            int publications = 0;
-            int itemId = MatchInteractionService.OpenBox(runtime, 1, AreaType.None, 12, null, () =>
-            {
-                publications++;
-                Assert.Equal(before - Config.SWARM_BOX_OPEN_COST, runtime.SummonStones.GetSnapshot(1).StoneCount);
-            }, _ => throw new InvalidOperationException("No position, no ground spawn."));
-            Assert.Contains(itemId, new[] { Config.HEART_GROUND_ITEM_ID, Config.BOOTS_GROUND_ITEM_ID });
-            Assert.Equal(1, publications);
-            int balance = runtime.SummonStones.GetSnapshot(1).StoneCount;
-            runtime.SummonStones.TrySpendStones(1, balance, out _);
-            Assert.Equal(0, MatchInteractionService.OpenBox(runtime, 1, AreaType.None, 12, null,
-                () => throw new InvalidOperationException("No funds, no publication."), _ => { }));
-            runtime.TryMarkTerminal();
-        }
-    }
 }

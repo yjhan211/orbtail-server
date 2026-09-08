@@ -127,10 +127,6 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_DOOR_OPEN_START>(bytes, HandleDoorOpenStart));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DOOR_OPEN_FINISH,
             async bytes => await HandleMessage<C_TO_G_DOOR_OPEN_FINISH>(bytes, HandleDoorOpenFinish));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RNG_COLLECT_START,
-            async bytes => await HandleMessage<C_TO_G_RNG_COLLECT_START>(bytes, HandleRngCollectStart));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RNG_COLLECT_FINISH,
-            async bytes => await HandleMessage<C_TO_G_RNG_COLLECT_FINISH>(bytes, HandleRngCollectFinish));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SOCIAL_ACTION,
             async bytes => await HandleMessage<C_TO_G_SOCIAL_ACTION>(bytes, HandleSocialAction));
     }
@@ -322,7 +318,7 @@ public partial class GameClientSession : SessionBase
             _gameEventLogManager.SetPlayerArea(MatchingId, PlayerId.Value, CurrentArea.ToString());
 
             _playerMovement.SendInteractableList(CurrentArea);
-            SendInteractCooldownSnapshot();
+
             GroundItemNotificationService.SendSnapshot(this, CurrentArea);
             SendOrbList();
             SendSummonStoneState();

@@ -176,4 +176,19 @@ public partial class GameClientSession
             Logger.LogDebug("Sent DOOR_STATE_LIST to Player {PlayerId}: {Count} open doors", PlayerId, openDoors.Count);
         }
     }
+
+    private void SendInteractionCanceled(int[] canceledIds, string reason)
+    {
+        foreach (int interactId in canceledIds)
+        {
+            _gameEventLogManager.LogExploreCancelled(MatchingId, PlayerId.GetValueOrDefault(), interactId, CurrentArea.ToString(), reason, isBot: false);
+            using var packet = Packet.Create((int)Protocol.G_TO_C_DOOR_OPEN_ACK, PlayerId.GetValueOrDefault());
+            packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_DOOR_OPEN_ACK
+            {
+                InteractId = interactId,
+                ErrorCode = ErrorCode.DOOR_OPEN_INTERRUPTED
+            }));
+            TrySend(packet);
+        }
+    }
 }

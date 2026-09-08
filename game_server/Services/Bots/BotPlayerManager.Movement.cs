@@ -239,21 +239,20 @@ public partial class BotPlayerManager
         _logger.LogInformation(
             "Swarm bot idle: BotId={BotId}, Area={Area}, IdleSeconds={IdleSeconds:F0}, " +
             "Mode={Mode}, DirectiveArea={DirectiveArea}, PathRemaining={PathRemaining}, " +
-            "InInteraction={InInteraction}, ExploreSpot={ExploreSpot}",
+            "InInteraction={InInteraction}",
             bot.PlayerId,
             bot.CurrentArea,
             (nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds,
             directive.Mode,
             directive.DestinationArea,
             Math.Max(0, bot.Path.Count - bot.PathIndex),
-            bot.IsChannelHeld,
-            bot.SwarmExploreSpotId);
+            bot.IsChannelHeld);
     }
 
     /// <summary>유휴 배회 (#222): 제자리 4초 이상이면 같은 구역 인근 셀로 짧은 산책 경로를 만든다.</summary>
     private void TryStartSwarmIdleWander(BotPlayerState bot, long matchingId, DateTime nowUtc)
     {
-        if (bot.IsChannelHeld || bot.SwarmExploreSpotId != 0)
+        if (bot.IsChannelHeld)
             return;
         if ((nowUtc - bot.IdleWatchLastMovedAtUtc).TotalSeconds < 4d || nowUtc < bot.NextIdleWanderAtUtc)
             return;
@@ -1038,7 +1037,6 @@ public partial class BotPlayerManager
             bot.PathIndex = 0;
             bot.MovementDestination = AreaType.None;
             bot.PendingRngInteractId = interactId;
-            bot.RngCollectProgressStartTime = DateTime.MinValue;
             bot.IsChannelHeld = false;
             bot.ChannelHoldUntil = DateTime.MinValue;
             bot.PendingForcedInteractArea = AreaType.None;
@@ -1061,7 +1059,6 @@ public partial class BotPlayerManager
         bot.PathIndex = 0;
         bot.MovementDestination = area;
         bot.PendingRngInteractId = interactId;
-        bot.RngCollectProgressStartTime = DateTime.MinValue;
         bot.IsChannelHeld = false;
         bot.ChannelHoldUntil = DateTime.MinValue;
         bot.PendingForcedInteractArea = AreaType.None;

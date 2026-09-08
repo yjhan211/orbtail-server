@@ -179,10 +179,7 @@ public partial class BotPlayerManager
         var mapId = GetMatchingMapId(matchingId);
         var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
             ? PlayerState.SLEEP
-            : bot.RngCollectProgressStartTime != DateTime.MinValue ||
-              bot.SwarmExploreStartedAtUtc != DateTime.MinValue
-                ? PlayerState.EXPLORE_1
-                : PlayerState.IDLE;
+            : PlayerState.IDLE;
         var info = new PlayerInfo
         {
             PlayerId = bot.PlayerId,
@@ -200,8 +197,7 @@ public partial class BotPlayerManager
         if (bot == null) return null;
         var state = bot.RestUntil != DateTime.MinValue && DateTime.UtcNow < bot.RestUntil
             ? PlayerState.SLEEP
-            : bot.RngCollectProgressStartTime != DateTime.MinValue || bot.SwarmExploreStartedAtUtc != DateTime.MinValue
-                ? PlayerState.EXPLORE_1 : PlayerState.IDLE;
+            : PlayerState.IDLE;
         return new GameObjectInfo(ObjectType.PLAYER, bot.PlayerId, GetMatchingMapId(matchingId), matchingId, bot.Cell)
         {
             Position = new Vector3f(bot.Position.X, bot.Position.Y, bot.Position.Z),
@@ -405,17 +401,6 @@ public class BotPlayerState
     /// <summary>Temporary movement slow applied by a wave counter.</summary>
     public DateTime WaveSlowUntilUtc { get; set; }
 
-
-    public DateTime RngCollectProgressStartTime { get; set; } = DateTime.MinValue;
-
-
-
-    // === #219 스웜 개봉 채집 채널 (레거시 RNG 필드와 분리 — 미션 틱 간섭 방지) ===
-    /// <summary>채집 중인 스웜 스팟 Id. 0이면 채널 없음.</summary>
-    public int SwarmExploreSpotId { get; set; }
-
-    /// <summary>스웜 채집 채널 시작 시각. MinValue면 채널 없음 — 시작 후 1.5초 경과 시 개봉 확정.</summary>
-    public DateTime SwarmExploreStartedAtUtc { get; set; } = DateTime.MinValue;
 
     // #229: 문 잠금해제 게이지. 사람과 같은 규칙 — 맞으면 풀린다(LastDamagedAtUtc 참조).
     public int SwarmDoorUnlockDoorId { get; set; }

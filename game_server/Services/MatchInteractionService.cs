@@ -5,63 +5,19 @@ using network.common.data.models;
 namespace game_server.services;
 
 /// <summary>
-///     매치 잠금 안에서 상자 비용·보상·쿨다운과 문 열기 조건을 처리한다.
+///     매치 잠금 안에서 문 열기 조건과 진행 중인 상호작용 취소를 처리한다.
 ///     연결의 START/FINISH 권리는 PlayerInteractionState가, 패킷 전송은 세션이 맡는다.
 /// </summary>
 internal static class MatchInteractionService
 {
-    public static (ErrorCode Error, int Remaining, bool Door) Start(
-        MatchRuntime runtime, long playerId, AreaType area, int interactId)
-    {
-        RequireLock(runtime);
-        var info = GameInteractableData.Get(interactId);
-        if (info == null) return (ErrorCode.FATAL, 0, false);
-        if (Config.IsSwarmExploreDisabled() && info.DoorId <= 0)
-            return (ErrorCode.INVALID_GAME_STATE, 0, false);
-        if (info.ZoneId != (int)area) return (ErrorCode.AREA_MISMATCH, 0, false);
-        // 문은 전용 START/FINISH 경로에서만 처리한다.
-        if (info.DoorId > 0) return (ErrorCode.INVALID_GAME_STATE, 0, false);
-        if (runtime.SummonStones.GetSnapshot(playerId).StoneCount < Config.SWARM_BOX_OPEN_COST)
-            return (ErrorCode.INSUFFICIENT_CURRENCY, 0, false);
-        if (!runtime.CollectCooldowns.TryAcquireCooldown(interactId,
-                RngCollectCooldownStore.DefaultCooldownSeconds, out int remaining))
-            return (ErrorCode.ACTION_ALREADY_EXPLORED, remaining, false);
-        return (ErrorCode.SUCCESS, 0, false);
-    }
-
-    public static int OpenBox(MatchRuntime runtime, long playerId, AreaType area, int interactId,
-        Vector3f? position, Action stonesChanged, Action<IReadOnlyList<GroundItemInfo>> publishSpawn)
-    {
-        RequireLock(runtime);
-        if (!runtime.SummonStones.TrySpendStones(playerId, Config.SWARM_BOX_OPEN_COST, out _))
-        {
-            runtime.CollectCooldowns.ClearCooldown(interactId);
-            return 0;
-        }
-        // 재화 통지 → 보상 생성·통지 → 쿨다운 갱신 순서를 유지한다.
-        stonesChanged();
-        int itemId = Random.Shared.Next(100) < 60 ? Config.HEART_GROUND_ITEM_ID : Config.BOOTS_GROUND_ITEM_ID;
-        if (position != null)
-        {
-            var spawned = runtime.GroundItems.SpawnItems(area, position.X, position.Y, [itemId],
-                mapId: Config.SWARM_MATCH_MAP, layout: GroundItemSpawnLayout.EliminationScatter);
-            publishSpawn(spawned);
-        }
-        runtime.CollectCooldowns.ClearCooldown(interactId);
-        runtime.CollectCooldowns.TryAcquireCooldown(interactId, Config.SWARM_EXPLORE_REGEN_SECONDS, out _);
-        return itemId;
-    }
-
     /// <summary>
-    ///     대기 중인 상자·문 상호작용과 해당 쿨다운을 정리하고 취소한 ID를 반환한다.
+    ///     진행 중인 문 상호작용을 정리하고 취소한 ID를 반환한다.
     ///     호출자는 매치 잠금을 유지한 채 반환된 ID로 로그와 취소 알림을 보낸다.
     /// </summary>
     public static int[] CancelPendingInteractions(MatchRuntime runtime, PlayerInteractionState state)
     {
         RequireLock(runtime);
         int[] canceledIds = state.Snapshot();
-        foreach (int interactId in canceledIds)
-            runtime.CollectCooldowns.ClearCooldown(interactId);
         state.Clear();
         return canceledIds;
     }

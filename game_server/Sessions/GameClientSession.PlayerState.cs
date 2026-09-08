@@ -42,7 +42,7 @@ public partial class GameClientSession
             bool isExploreState = msg.State == PlayerState.EXPLORE_1;
             if (!isExploreState && msg.State != PlayerState.IDLE && _interactions.Count > 0)
             {
-                Logger.LogWarning("Ignored state change while RNG collect is pending: PlayerId={PlayerId}, State={State}", PlayerId, msg.State);
+                Logger.LogWarning("Ignored state change while door opening is pending: PlayerId={PlayerId}, State={State}", PlayerId, msg.State);
                 return Task.CompletedTask;
             }
 
