@@ -159,8 +159,8 @@ public sealed class GameClientSessionPublicationTests
         using (session.Match.Enter())
         {
             Assert.True(session.Condition.TryStartSleep(now));
-            session.TickSwarmSleepRecovery(now);
-            session.TickSwarmSleepRecovery(now.AddSeconds(1));
+            MatchArenaService.ProcessSwarmSleepRecovery([session], now);
+            MatchArenaService.ProcessSwarmSleepRecovery([session], now.AddSeconds(1));
         }
         var packet = fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_HEALTH_RECOVERY>(Protocol.G_TO_C_HEALTH_RECOVERY);

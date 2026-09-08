@@ -73,6 +73,12 @@ internal sealed class PlayerCondition
         return true;
     }
 
+    /// <summary>교전 시각을 기록한다. 이후 3초 동안 수면 진입을 막지만 현재 수면을 깨우지는 않는다.</summary>
+    public void MarkSwarmCombat(DateTime nowUtc) => LastCombatAtUtc = nowUtc;
+
+    /// <summary>지정한 시각까지 수면 진입과 회복을 차단한다.</summary>
+    public void BlockHealingUntil(DateTime untilUtc) => HealLockUntilUtc = untilUtc;
+
     public bool CanSleep(DateTime nowUtc) =>
         (nowUtc - LastCombatAtUtc).TotalSeconds >= SwarmSleepCombatLockSeconds && nowUtc >= HealLockUntilUtc;
 

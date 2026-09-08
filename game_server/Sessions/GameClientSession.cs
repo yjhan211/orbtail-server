@@ -102,7 +102,6 @@ public partial class GameClientSession : SessionBase
     internal int CurrentHealth => Health;
     internal bool IsConnectionReleased => Connection.IsReleased;
     internal bool IsAcceptingMessages => Connection.IsAcceptingMessages;
-    /// <summary>플레이어 상태. 읽기·변경과 결과 처리는 같은 매치 잠금 안에서 수행한다.</summary>
     internal PlayerCondition Condition => _condition;
     public bool IsEliminated => PlayerMatchStatus is PlayerMatchStatus.ELIMINATED or PlayerMatchStatus.SPECTATING;
 
@@ -147,6 +146,31 @@ public partial class GameClientSession : SessionBase
         using var packet = PacketMaker.G_TO_C_HEART_BEAT(DateTime.UtcNow);
         TrySend(packet);
         return Task.CompletedTask;
+    }
+
+    private bool IsGameplayActionBlocked(out ErrorCode errorCode)
+    {
+        errorCode = ErrorCode.SUCCESS;
+
+        if (IsEliminated)
+        {
+            errorCode = ErrorCode.PLAYER_DEAD;
+            return true;
+        }
+
+        if (IsGameEnded)
+        {
+            errorCode = ErrorCode.GAME_ALREADY_ENDED;
+            return true;
+        }
+
+        if (MatchingId > 0 && !MatchStartGate.IsGameplayActive(MatchingId))
+        {
+            errorCode = ErrorCode.GAME_NOT_STARTED;
+            return true;
+        }
+
+        return false;
     }
 
     private static void InitializeWithMatchLock(MatchRuntime runtime, Action initialize)

@@ -28,9 +28,9 @@ public partial class GameClientSession
             {
                 return Task.CompletedTask;
             }
-            if (IsGameplayActionBlocked(out string lockReason))
+            if (IsGameplayActionBlocked(out var errorCode))
             {
-                Logger.LogWarning("Ignored player state while gameplay is locked: PlayerId={PlayerId}, State={State}, Reason={Reason}", PlayerId, msg.State, lockReason);
+                Logger.LogWarning("Ignored player state while gameplay is locked: PlayerId={PlayerId}, State={State}, ErrorCode={ErrorCode}", PlayerId, msg.State, errorCode);
                 return Task.CompletedTask;
             }
 
@@ -67,44 +67,12 @@ public partial class GameClientSession
                 session.TrySend(packet);
             }
         }
+
         return Task.CompletedTask;
     }
 
 
 
-    // #229 6단계 수면 회복 → 2026-08-17 재조정: 준비 1초, 회복은 1초에 한 번.
-    // 중단은 이동뿐이다 — 움직이지 않는 한 피격·폐쇄로는 깨지 않는다.
-
-    /// <summary>
-    ///     수면 중 본체 HP 회복. 진입 1초 뒤 첫 회복, 이후 1초마다 최대 HP 5%씩.
-    ///     중단(이동)은 BreakSwarmSleep이 맡고 여기서는 회복만 센다.
-    /// </summary>
-    internal void TickSwarmSleepRecovery(DateTime nowUtc)
-    {
-        int recovered = _condition.GetSleepRecovery(nowUtc, IsEliminated, Config.MAX_HEALTH);
-        if (recovered <= 0) return;
-        HandleHealthChanged(_condition.Recover(recovered));
-        if (!PlayerId.HasValue) return;
-        using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new()
-        {
-            PlayerId = PlayerId.Value,
-            AreaType = CurrentArea,
-            Amount = recovered,
-            Source = HealthRecoveryKind.Sleep
-        });
-        TrySend(packet);
-    }
-
-    /// <summary>
-    ///     수면 진입 가능 여부 (#229 6단계) — 가해·피해 뒤 3초는 눕지 못한다.
-    ///     절단 치명상(#232) 8초 회복 차단 중에도 눕지 못한다 — 누워도 회복이 없다.
-    /// </summary>
-    internal bool CanEnterSwarmSleep(DateTime nowUtc) => _condition.CanSleep(nowUtc);
-
-    /// <summary>
-    ///     수면 중단 (2026-08-17 재조정): 부르는 곳은 이동뿐이다 — 누워서 도망칠 수 없다.
-    ///     피격·폐쇄는 깨우지 않는다. 움직이지 않는 수면은 스스로 깨지 않는다.
-    /// </summary>
     internal void BreakSwarmSleep()
     {
         if (!_condition.IsSleeping)
@@ -112,13 +80,6 @@ public partial class GameClientSession
 
         BroadcastSleepState(false);
     }
-
-    /// <summary>교전 시각 기록 — 가해·피격 뒤 3초 수면 진입 잠금의 기준. 수면 자체는 깨지 않는다.</summary>
-    internal void MarkSwarmCombat(DateTime nowUtc) => _condition.LastCombatAtUtc = nowUtc;
-
-    /// <summary>지정한 시각까지 수면 진입과 수면 회복을 차단한다.</summary>
-    internal void BlockHealingUntil(DateTime untilUtc) => _condition.HealLockUntilUtc = untilUtc;
-
 
 
     /// <summary>
@@ -372,28 +333,5 @@ public partial class GameClientSession
         TrySend(packet);
     }
 
-    private bool IsGameplayActionBlocked(out string reason)
-    {
-        reason = string.Empty;
 
-        if (IsEliminated)
-        {
-            reason = "Eliminated players cannot act";
-            return true;
-        }
-
-        if (IsGameEnded)
-        {
-            reason = "Game has already ended";
-            return true;
-        }
-
-        if (MatchingId > 0 && !MatchStartGate.IsGameplayActive(MatchingId))
-        {
-            reason = "Waiting for match start";
-            return true;
-        }
-
-        return false; // 라운드 시스템 퇴역(#246)
-    }
 }

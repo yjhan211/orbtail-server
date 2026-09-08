@@ -31,7 +31,7 @@ public partial class GameClientSession
 
         using (match.Enter())
         {
-            if (match.IsTerminal || PlayerId == null || IsEliminated || IsGameplayActionBlocked(out _))
+            if (match.IsTerminal || PlayerId == null || IsGameplayActionBlocked(out _))
             {
                 return Task.CompletedTask;
             }

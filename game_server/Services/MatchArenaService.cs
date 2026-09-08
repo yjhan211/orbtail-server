@@ -672,11 +672,25 @@ internal sealed class MatchArenaService(
         }
     }
     /// <summary>생존 플레이어의 수면 회복을 갱신한다.</summary>
-    private static void ProcessSwarmSleepRecovery(
+    internal static void ProcessSwarmSleepRecovery(
         List<GameClientSession> aliveSessions, DateTime nowUtc)
     {
         foreach (var session in aliveSessions)
-            session.TickSwarmSleepRecovery(nowUtc);
+        {
+            int recovered = session.Condition.GetSleepRecovery(nowUtc, session.IsEliminated, Config.MAX_HEALTH);
+            if (recovered <= 0) continue;
+            session.HandleHealthChanged(session.Condition.Recover(recovered));
+            if (!session.PlayerId.HasValue) continue;
+
+            using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new()
+            {
+                PlayerId = session.PlayerId.Value,
+                AreaType = session.CurrentArea,
+                Amount = recovered,
+                Source = HealthRecoveryKind.Sleep
+            });
+            session.TrySend(packet);
+        }
     }
 
     /// <summary>상자 시간 등급 (#222 M3): 개전 앵커(게이트, 봇 전용은 스웜 첫 틱) 경과로 티어 결정.</summary>
@@ -1123,7 +1137,7 @@ internal sealed class MatchArenaService(
 
         // #229 6단계: 절단은 내가 몸으로 지르는 가해다 — 교전 잠금을 찍어 절단하고 바로 눕는
         // 도주 회복을 막는다. 수면 해제는 안 건다 — 절단하러 움직인 순간 이동이 이미 깨웠다.
-        cutterSession?.MarkSwarmCombat(nowUtc);
+        cutterSession?.Condition.MarkSwarmCombat(nowUtc);
 
         // 절단 진입 계측 (#227 3·6단계): 공격자·피해자·후보 ordinal·그 자리를 덮던 적 오브
         // 사거리 수(국소 화망). 내구 1·즉시 파괴, 손실 = 후보 순번부터 꼬리 끝까지.
@@ -1167,7 +1181,7 @@ internal sealed class MatchArenaService(
         {
             combatDamage.ApplyProximityAutoCombatHit(cutterSession,
                 cutterId, cutterArea, destroyedItem.ItemId, SwarmSingleCutHealthCost);
-            cutterSession.BlockHealingUntil(healLockUntil);
+            cutterSession.Condition.BlockHealingUntil(healLockUntil);
             cutterHealthAfter = cutterSession.CurrentHealth;
         }
         else if (cutterBot != null)
@@ -1762,7 +1776,7 @@ internal sealed class MatchArenaService(
         {
             // 피격은 수면을 깨지 않는다 — 자면서 맞는 건 본인의 선택이다.
             // 3초 진입 잠금만 찍어 맞자마자 새로 눕는 것은 계속 막는다.
-            session.MarkSwarmCombat(DateTime.UtcNow);
+            session.Condition.MarkSwarmCombat(DateTime.UtcNow);
             // #229: 문 게이지도 같이 끊는다 — 문 앞을 비우지 못하면 방을 못 연다.
             session.BreakDoorUnlockGauge();
             // 오염 경로 — 체력 감소·피격 피드백·일반 탈락 흐름까지 담당한다.
