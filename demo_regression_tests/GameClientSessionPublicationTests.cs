@@ -50,7 +50,7 @@ public sealed class GameClientSessionPublicationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task PlayerJoinHoldsMatchLockAndReleasesItAfterSend(bool sendThrows)
+    public void PlayerJoinHoldsMatchLockAndReleasesItAfterSend(bool sendThrows)
     {
         using var fixture = new SessionFixture();
         var joining = fixture.CreateSession(70001, 101, (AreaType)50);
@@ -70,12 +70,12 @@ public sealed class GameClientSessionPublicationTests
         if (sendThrows)
             fixture.ConnectionFor(joining).ThrowOnceOn = Protocol.G_TO_C_OBJECT_INFO;
         var broadcast = typeof(GameClientSession).GetMethod(
-            "BroadcastPlayerJoin", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            "SyncPlayersOnEntry", BindingFlags.Instance | BindingFlags.NonPublic)!;
         if (sendThrows)
             Assert.IsType<InvalidOperationException>(
                 Assert.Throws<TargetInvocationException>(() => broadcast.Invoke(joining, null)).InnerException);
         else
-            await (Task)broadcast.Invoke(joining, null)!;
+            broadcast.Invoke(joining, null);
 
         Assert.Equal(sendThrows ? 1 : 2, sendCount);
         Assert.False(Monitor.IsEntered(runtime.Sync));
@@ -83,14 +83,14 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
-    public async Task PlayerJoinDoesNotPublishAfterMatchEnds()
+    public void PlayerJoinDoesNotPublishAfterMatchEnds()
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(70001, 101, (AreaType)50);
         fixture.MarkTerminal(70001);
         var broadcast = typeof(GameClientSession).GetMethod(
-            "BroadcastPlayerJoin", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        await (Task)broadcast.Invoke(session, null)!;
+            "SyncPlayersOnEntry", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        broadcast.Invoke(session, null);
         Assert.Empty(fixture.ConnectionFor(session).AttemptedProtocols);
     }
     [Fact]

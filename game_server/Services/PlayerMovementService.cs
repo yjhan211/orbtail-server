@@ -78,6 +78,7 @@ internal sealed class PlayerMovementService(
         LastValidatedRotation = rotation;
     }
 
+    /// <summary>이동 정보와 전달받은 행동 상태를 복사한다. 호출자는 매치 잠금을 보유해야 한다.</summary>
     public GameObjectInfo CaptureGameObjectInfo(PlayerState state)
     {
         var position = LastValidatedPosition
@@ -211,7 +212,7 @@ internal sealed class PlayerMovementService(
             if (newArea != AreaType.None)
             {
                 var newAreaSessions = MatchSessionCollection.FilterInArea(allSessions, newArea, player.PlayerId);
-                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(player.CaptureGameObjectInfo());
+                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(CaptureGameObjectInfo(player.Condition.State));
 
                 foreach (var session in newAreaSessions) session.TrySend(enterPacket);
 
@@ -222,7 +223,7 @@ internal sealed class PlayerMovementService(
                 {
                     if (!session.PlayerId.HasValue) continue;
 
-                    using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(session.CaptureGameObjectInfo());
+                    using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(session.Movement.CaptureGameObjectInfo(session.Condition.State));
                     player.TrySend(otherEnterPacket);
                 }
 

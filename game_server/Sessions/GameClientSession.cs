@@ -103,6 +103,7 @@ public partial class GameClientSession : SessionBase
     internal bool IsConnectionReleased => Connection.IsReleased;
     internal bool IsAcceptingMessages => Connection.IsAcceptingMessages;
     internal PlayerCondition Condition => _condition;
+    internal PlayerMovementService Movement => _playerMovement;
     public bool IsEliminated => PlayerMatchStatus is PlayerMatchStatus.ELIMINATED or PlayerMatchStatus.SPECTATING;
 
     private int Health => _condition.Health;
@@ -284,50 +285,56 @@ public partial class GameClientSession : SessionBase
                 throw new InvalidOperationException($"Player {playerId} is not part of match {matchingId}.");
             }
 
-            using (var rosterPacket = PacketMaker.G_TO_C_MATCH_ROSTER(matchingId, composition.PlayerRoster.ToList()))
-            {
-                if (!TrySend(rosterPacket))
-                {
-                    throw new OperationCanceledException("Could not send initial match roster.");
-                }
-            }
-
-            InitializeWithMatchLock(runtime, () =>
-            {
-                MatchStartGate.RegisterHumanPlayer(matchingId, PlayerId.Value, composition.HumanPlayerIds.Count, composition.Mode);
-            });
-
             var matchingSpawnCell = Cell.Clone(composition.SpawnCells[playerId]);
-            _playerMovement.InitializeSpawn(matchingSpawnCell);
+            using (runtime.Enter())
+            {
+                if (runtime.IsTerminal)
+                {
+                    throw new OperationCanceledException("Match became terminal during game entry initialization.");
+                }
+                EnsureConnectionActive();
 
-            Logger.LogInformation(
-                "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
-                PlayerId, CurrentArea, LastValidatedPosition?.X, LastValidatedPosition?.Y, _playerMovement.LastValidatedCell?.X,
-                _playerMovement.LastValidatedCell?.Y);
+                using (var rosterPacket = PacketMaker.G_TO_C_MATCH_ROSTER(matchingId, composition.PlayerRoster.ToList()))
+                {
+                    if (!TrySend(rosterPacket))
+                    {
+                        throw new OperationCanceledException("Could not send initial match roster.");
+                    }
+                }
 
-            _gameEventLogManager.LogSpawnAssignment(
-                MatchingId,
-                PlayerId.Value,
-                MatchSpawnData.GetDeterministicSeed(MatchingId),
-                MatchSpawnData.GetAnchorIndex(matchingSpawnCell),
-                matchingSpawnCell.X,
-                matchingSpawnCell.Y,
-                CurrentArea.ToString(),
-                isBot: false);
+                MatchStartGate.RegisterHumanPlayer(matchingId, PlayerId.Value, composition.HumanPlayerIds.Count, composition.Mode);
 
-            _gameEventLogManager.SetPlayerArea(MatchingId, PlayerId.Value, CurrentArea.ToString());
+                _playerMovement.InitializeSpawn(matchingSpawnCell);
 
-            _playerMovement.SendInteractableList(CurrentArea);
+                Logger.LogInformation(
+                    "Player {PlayerId} initial Area: {Area}, Position: ({PosX:F2},{PosY:F2}), Cell: ({CellX},{CellY})",
+                    PlayerId, CurrentArea, LastValidatedPosition?.X, LastValidatedPosition?.Y, _playerMovement.LastValidatedCell?.X,
+                    _playerMovement.LastValidatedCell?.Y);
 
-            GroundItemNotificationService.SendSnapshot(this, CurrentArea);
-            SendOrbList();
-            SendSummonStoneState();
-            SendDoorStateList();
-            SendPressureFieldState();
-            LogInitialInventory();
+                _gameEventLogManager.LogSpawnAssignment(
+                    MatchingId,
+                    PlayerId.Value,
+                    MatchSpawnData.GetDeterministicSeed(MatchingId),
+                    MatchSpawnData.GetAnchorIndex(matchingSpawnCell),
+                    matchingSpawnCell.X,
+                    matchingSpawnCell.Y,
+                    CurrentArea.ToString(),
+                    isBot: false);
 
-            await BroadcastPlayerJoin();
-            EnsureConnectionActive();
+                _gameEventLogManager.SetPlayerArea(MatchingId, PlayerId.Value, CurrentArea.ToString());
+
+                _playerMovement.SendInteractableList(CurrentArea);
+
+                GroundItemNotificationService.SendSnapshot(this, CurrentArea);
+                SendOrbList();
+                SendSummonStoneState();
+                SendDoorStateList();
+                SendPressureFieldState();
+                LogInitialInventory();
+
+                SyncPlayersOnEntry();
+                EnsureConnectionActive();
+            }
 
             await _matchEntry.CommitAsync(matchingId, PlayerId.Value, composition.HumanPlayerIds);
             EnsureConnectionActive();
@@ -371,6 +378,87 @@ public partial class GameClientSession : SessionBase
             MarkDisconnectedByServer();
             SendConnectFailure(ErrorCode.GAME_ENTRY_FAILED);
         }
+    }
+
+    private void SyncPlayersOnEntry()
+    {
+        if (!PlayerId.HasValue || IsEliminated)
+        {
+            return;
+        }
+
+        var match = Volatile.Read(ref _match);
+        if (match == null)
+        {
+            return;
+        }
+
+        using (match.Enter())
+        {
+            if (match.IsTerminal || !PlayerId.HasValue || IsEliminated)
+            {
+                return;
+            }
+
+            var sessions = new List<GameClientSession>();
+            foreach (var session in match.Sessions.Snapshot())
+            {
+                if (!session.PlayerId.HasValue || session.PlayerId == PlayerId)
+                {
+                    continue;
+                }
+                if (session.IsEliminated || session.CurrentArea != CurrentArea)
+                {
+                    continue;
+                }
+                sessions.Add(session);
+            }
+
+            if (sessions.Count > 0)
+            {
+                using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s.Movement.CaptureGameObjectInfo(s.Condition.State)).ToList());
+                TrySend(others);
+            }
+
+            using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([_playerMovement.CaptureGameObjectInfo(_condition.State)]))
+            {
+                foreach (var session in sessions)
+                {
+                    session.TrySend(mine);
+                }
+            }
+
+            var bots = match.Bots.GetBots(MatchingId).Where(bot => !bot.IsEliminated && bot.CurrentArea == CurrentArea).ToList();
+            var objects = bots.Select(bot => match.Bots.SynthesizeGameObjectInfo(MatchingId, bot.PlayerId)).OfType<GameObjectInfo>().ToList();
+            if (objects.Count <= 0)
+            {
+                return;
+            }
+
+            using var packet = PacketMaker.G_TO_C_OBJECT_INFO(objects);
+            TrySend(packet);
+        }
+
+    }
+
+    private void SendPressureFieldState()
+    {
+        if (MatchingId <= 0 || !Config.SWARM_PRESSURE_FIELD_ENABLED)
+        {
+            return;
+        }
+        var state = Match.Closures.GetMatchingState();
+        if (state == null)
+        {
+            return;
+        }
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_FIELD_STATE);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_FIELD_STATE
+        {
+            StartedAtUnixMs = new DateTimeOffset(state.GameStartTime).ToUnixTimeMilliseconds()
+        }));
+        TrySend(packet);
     }
 
     private void LogInitialInventory()

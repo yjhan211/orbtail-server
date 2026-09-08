@@ -19,6 +19,53 @@ namespace demo_regression_tests;
 public sealed class GameClientSessionConnectPublicationTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ConnectInitialStateUsesMatchLockAndReleasesItOnFailure(bool failInitialSend)
+    {
+        using var fixture = new ConnectFixture();
+        bool successSent = false;
+        bool successHeldLock = false;
+        var runtime = fixture.Store.GetOrCreate(74011);
+        var session = fixture.CreateSession(74011, 8111, _ =>
+        {
+            successSent = true;
+            successHeldLock = Monitor.IsEntered(runtime.Sync);
+            return true;
+        });
+        var initialPackets = new List<(Protocol Protocol, bool HeldLock)>();
+        bool spawnInitialized = false;
+        ((AcceptingConnection)fixture.Connection).BeforeSend = packet =>
+        {
+            using var wire = Packet.Create(packet.ToBytes());
+            var protocol = (Protocol)wire.PopProtocolId();
+            if (protocol is Protocol.G_TO_C_MATCH_ROSTER or Protocol.G_TO_C_ORB_LIST or Protocol.G_TO_C_OBJECT_INFO)
+                initialPackets.Add((protocol, Monitor.IsEntered(runtime.Sync)));
+            if (protocol == Protocol.G_TO_C_ORB_LIST)
+            {
+                spawnInitialized = session.LastValidatedPosition != null;
+                if (failInitialSend)
+                    throw new IOException("Initial state send failed.");
+            }
+        };
+
+        await fixture.ConnectAsync(session, 74011, 8111);
+
+        Assert.Contains(initialPackets, packet => packet.Protocol == Protocol.G_TO_C_MATCH_ROSTER);
+        Assert.Contains(initialPackets, packet => packet.Protocol == Protocol.G_TO_C_ORB_LIST);
+        Assert.All(initialPackets, packet => Assert.True(packet.HeldLock));
+        Assert.True(spawnInitialized);
+        Assert.Equal(!failInitialSend, successSent);
+        Assert.False(successHeldLock);
+        await Task.Run(() =>
+        {
+            bool acquired = Monitor.TryEnter(runtime.Sync, TimeSpan.FromSeconds(2));
+            try { Assert.True(acquired); }
+            finally { if (acquired) Monitor.Exit(runtime.Sync); }
+        }).WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Theory]
     [InlineData("HandleMove")]
     [InlineData("HandleSocialAction")]
     [InlineData("HandleMatchStartReady")]
@@ -64,11 +111,11 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.DoesNotContain("private Task HandleSocialAction(", main);
         Assert.DoesNotContain("private void AdvanceOrbOrbit(", main);
         Assert.Contains("internal Action? MarkGameEndedAndPrepareLifecyclePublication()", main);
-        Assert.DoesNotContain("private Task BroadcastPlayerJoin()", main);
+        Assert.Contains("private void SyncPlayersOnEntry()", main);
         Assert.Contains("private Task HandleSocialAction(", File.ReadAllText(Path.Combine(directory, "GameClientSession.Social.cs")));
         Assert.Contains("private void AdvanceOrbOrbit(", File.ReadAllText(Path.Combine(FindRepositoryRoot(), "game_server", "Services", "PlayerMovementService.cs")));
         Assert.False(File.Exists(Path.Combine(directory, "GameClientSession.MatchEnd.cs")));
-        Assert.Contains("private Task BroadcastPlayerJoin()", File.ReadAllText(Path.Combine(directory, "GameClientSession.Snapshots.cs")));
+        Assert.False(File.Exists(Path.Combine(directory, "GameClientSession.Snapshots.cs")));
     }
 
     [Fact]
@@ -144,7 +191,7 @@ public sealed class GameClientSessionConnectPublicationTests
         using (session.Match.Enter())
         {
             TestGameSessionServices.GetMovement(session).ApplyValidatedMovement(movement, 45f);
-            var snapshot = session.CaptureGameObjectInfo();
+            var snapshot = session.Movement.CaptureGameObjectInfo(session.Condition.State);
             Assert.Equal(10.25f, snapshot.Position.X);
             Assert.Equal(20.75f, snapshot.Position.Y);
             Assert.Equal(2f, snapshot.Velocity.X);
@@ -166,7 +213,7 @@ public sealed class GameClientSessionConnectPublicationTests
         TestGameSessionServices.SetMovementProperty(session, "LastValidatedPosition", position);
         TestGameSessionServices.SetMovementProperty(session, "LastValidatedVelocity", velocity);
         TestGameSessionServices.SetMovementProperty(session, "LastValidatedCell", cell);
-        var snapshot = session.CaptureGameObjectInfo();
+        var snapshot = session.Movement.CaptureGameObjectInfo(session.Condition.State);
         position.X = 999;
         velocity.X = 999;
         cell.X = 999;
@@ -468,7 +515,14 @@ public sealed class GameClientSessionConnectPublicationTests
         int inventorySnapshot = source.IndexOf("SendOrbList();", statementEnd, StringComparison.Ordinal);
         Assert.True(inventorySnapshot > statementEnd);
         string initialization = source[statementEnd..inventorySnapshot];
-        Assert.Equal(1, initialization.Split("EnsureConnectionActive();").Length - 1);
+        Assert.Equal(2, initialization.Split("EnsureConnectionActive();").Length - 1);
+        Assert.Contains("using (runtime.Enter())", initialization);
+        Assert.Contains("if (runtime.IsTerminal)", initialization);
+        int synchronization = source.IndexOf("SyncPlayersOnEntry();", inventorySnapshot, StringComparison.Ordinal);
+        int commit = source.IndexOf("await _matchEntry.CommitAsync(", synchronization, StringComparison.Ordinal);
+        Assert.True(synchronization > inventorySnapshot && commit > synchronization);
+        Assert.DoesNotContain("await ", source[inventorySnapshot..commit]);
+        Assert.EndsWith("}", source[synchronization..commit].TrimEnd());
         Assert.DoesNotContain("UpdatePlayerProfile(", initialization);
     }
 
@@ -490,7 +544,7 @@ public sealed class GameClientSessionConnectPublicationTests
     public void EntrySnapshotPublishesOnlyPressureFieldClock()
     {
         string directory = Path.Combine(FindRepositoryRoot(), "game_server", "Sessions");
-        string source = File.ReadAllText(Path.Combine(directory, "GameClientSession.Snapshots.cs"));
+        string source = File.ReadAllText(Path.Combine(directory, "GameClientSession.cs"));
         string field = source[source.IndexOf("private void SendPressureFieldState()", StringComparison.Ordinal)..];
         Assert.Contains("Protocol.G_TO_C_SWARM_FIELD_STATE", field);
         Assert.Contains("state.GameStartTime", field);
@@ -672,7 +726,12 @@ public sealed class GameClientSessionConnectPublicationTests
     // 초기 스냅샷은 소켓 없이 수락하고 성공 응답은 생성자로 주입한 sender에서 별도 검증한다.
     private sealed class AcceptingConnection : TcpConnection
     {
-        public override bool TrySend(Packet packet) => true;
+        public Action<Packet>? BeforeSend { get; set; }
+        public override bool TrySend(Packet packet)
+        {
+            BeforeSend?.Invoke(packet);
+            return true;
+        }
     }
 
     private sealed record SentPacket(Protocol Protocol, long PlayerId, byte[] Body);
