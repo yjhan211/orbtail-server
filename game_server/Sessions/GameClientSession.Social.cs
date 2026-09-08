@@ -13,32 +13,37 @@ public partial class GameClientSession
     /// </summary>
     private Task HandleSocialAction(C_TO_G_SOCIAL_ACTION msg)
     {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
-        return RunWithMatchLock(() => ProcessSocialAction(msg), () => { });
-    }
-
-    private Task ProcessSocialAction(C_TO_G_SOCIAL_ACTION msg)
-    {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (IsGameplayActionBlocked(out _))
+        if (!PlayerId.HasValue)
+        {
             return Task.CompletedTask;
-
-        var sameAreaSessions = Match.Sessions.GetInArea(CurrentArea);
-
-        var broadcast = new G_TO_C_SOCIAL_ACTION
+        }
+        var match = Volatile.Read(ref _match);
+        if (match == null)
         {
-            PlayerId = PlayerId.Value,
-            SocialActionType = msg.SocialActionType
-        };
-
-        var bodyBytes = MessagePackSerializer.Serialize(broadcast);
-        foreach (var session in sameAreaSessions)
-        {
-            using var packet = Packet.Create((int)Protocol.G_TO_C_SOCIAL_ACTION, session.PlayerId ?? 0);
-            packet.SetBody(bodyBytes);
-            session.TrySend(packet);
+            return Task.CompletedTask;
         }
 
+        using (match.Enter())
+        {
+            if (match.IsTerminal || IsGameplayActionBlocked(out _))
+            {
+                return Task.CompletedTask;
+            }
+
+            var sameAreaSessions = match.Sessions.GetInArea(CurrentArea);
+            var broadcast = new G_TO_C_SOCIAL_ACTION
+            {
+                PlayerId = PlayerId.Value,
+                SocialActionType = msg.SocialActionType
+            };
+            var bodyBytes = MessagePackSerializer.Serialize(broadcast);
+            foreach (var session in sameAreaSessions)
+            {
+                using var packet = Packet.Create((int)Protocol.G_TO_C_SOCIAL_ACTION, session.PlayerId ?? 0);
+                packet.SetBody(bodyBytes);
+                session.TrySend(packet);
+            }
+        }
         return Task.CompletedTask;
     }
 }

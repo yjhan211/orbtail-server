@@ -47,8 +47,6 @@ public partial class GameClientSession : SessionBase
     private int _matchingReservationReleaseReported;
 
     private readonly PlayerInteractionState _interactions = new();
-
-
     internal static Action<long, long>? SwarmHeartPickupCallback { get; set; }
 
     internal GameClientSession(
@@ -167,46 +165,6 @@ public partial class GameClientSession : SessionBase
         }
 
         return false;
-    }
-
-    private static void InitializeWithMatchLock(MatchRuntime runtime, Action initialize)
-    {
-        using var scope = runtime.Enter();
-        if (runtime.IsTerminal)
-        {
-            throw new OperationCanceledException("Match became terminal during game entry.");
-        }
-
-        initialize();
-    }
-
-    private Task RunWithMatchLock(Func<Task> handleRequest, Action rejectRequest)
-    {
-        ArgumentNullException.ThrowIfNull(handleRequest);
-        ArgumentNullException.ThrowIfNull(rejectRequest);
-
-        var runtime = Volatile.Read(ref _match);
-        if (runtime == null)
-        {
-            rejectRequest();
-            return Task.CompletedTask;
-        }
-
-        using var scope = runtime.Enter();
-        if (runtime.IsTerminal)
-        {
-            rejectRequest();
-            return Task.CompletedTask;
-        }
-
-        var handlingTask = handleRequest() ?? throw new InvalidOperationException("Match request handler returned a null task.");
-        if (!handlingTask.IsCompleted)
-        {
-            throw new InvalidOperationException("Match request handler must complete synchronously under the match lock.");
-        }
-
-        handlingTask.GetAwaiter().GetResult();
-        return Task.CompletedTask;
     }
 
     public void MarkDisconnectedByServer()
@@ -346,13 +304,17 @@ public partial class GameClientSession : SessionBase
 
             SendMatchStartCountdown(matchingId);
             using var successResponse = CreateConnectResultPacket(true, ErrorCode.SUCCESS, matchingId, matchingSpawnCell);
-            InitializeWithMatchLock(runtime, () =>
+            using (runtime.Enter())
             {
+                if (runtime.IsTerminal)
+                {
+                    throw new OperationCanceledException("Match became terminal during game entry.");
+                }
                 if (!Connection.TryMarkAuthenticated(() => Volatile.Write(ref _entryCompleted, 1)))
                 {
                     throw new OperationCanceledException("Connection closed before authentication commit.");
                 }
-            });
+            }
 
             if (!_trySendConnectSuccessResponse(successResponse))
             {
@@ -538,12 +500,22 @@ public partial class GameClientSession : SessionBase
         {
             return Task.CompletedTask;
         }
-        return RunWithMatchLock(() =>
+        var match = Volatile.Read(ref _match);
+        if (match == null)
         {
+            return Task.CompletedTask;
+        }
+
+        using (match.Enter())
+        {
+            if (match.IsTerminal)
+            {
+                return Task.CompletedTask;
+            }
             MatchStartGate.MarkHumanReady(MatchingId, PlayerId.Value);
             SendMatchStartCountdown(MatchingId);
-            return Task.CompletedTask;
-        }, () => { });
+        }
+        return Task.CompletedTask;
     }
 
     private void ForceDisconnect()
@@ -689,11 +661,18 @@ public partial class GameClientSession : SessionBase
     {
         Logger.LogInformation("GameClient removed: PlayerId={PlayerId}", PlayerId);
 
-        _ = RunWithMatchLock(() =>
+        var match = Volatile.Read(ref _match);
+        if (match == null)
         {
             _condition.ClearPeriodicBuffs();
-            return Task.CompletedTask;
-        }, _condition.ClearPeriodicBuffs);
+        }
+        else
+        {
+            using (match.Enter())
+            {
+                _condition.ClearPeriodicBuffs();
+            }
+        }
         _sessionLeaveHandler.Handle(this);
     }
 

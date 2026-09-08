@@ -37,14 +37,7 @@ internal sealed class GameMatchEntryService(
     public Task CommitAsync(long matchingId, long playerId, IReadOnlyCollection<long> humanPlayerIds) =>
         _entryStateCommitter.CommitAsync(matchingId, playerId, humanPlayerIds);
 
-    /// <summary>매치 잠금 안에서 입장 상태를 초기화한다. 매치가 종료됐으면 예외로 입장 절차를 중단한다.</summary>
-    private void InitializeWithMatchLock(MatchRuntime runtime, Action initialize)
-    {
-        using MatchScope scope = _matchRuntimes.Enter(runtime);
-        if (runtime.IsTerminal)
-            throw new OperationCanceledException("Match became terminal during game entry.");
-        initialize();
-    }
+
     /// <summary>
     ///     매치당 한 번 manifest(사람 ID·봇 수)를 읽고 봇 ID·스폰·최종 명단을 확정한다.
     ///     이후 세션은 런타임에 세워진 구성을 그대로 쓴다. 입장 마커·사람 reservation 확인은 세션마다 다시 한다.
@@ -73,15 +66,28 @@ internal sealed class GameMatchEntryService(
                 MatchSpawnPlanner.Plan(
                     matchingId, mapId, humanPlayerIds.Concat(botPlayerIds), _devOptions.CrossfireSandbox);
             if (botPlayerIds.Count > 0)
-                InitializeWithMatchLock(runtime, () => runtime.Bots.RegisterBots(matchingId, mapId, botPlayerIds, spawnCells));
+            {
+                using (runtime.Enter())
+                {
+                    if (runtime.IsTerminal)
+                    {
+                        throw new OperationCanceledException("Match became terminal during game entry.");
+                    }
+                    runtime.Bots.RegisterBots(matchingId, mapId, botPlayerIds, spawnCells);
+                }
+            }
 
             var roster = await new MatchRosterBuilder(RedisOperations, Logger).BuildAsync(humanPlayerIds,
                 botPlayerIds.Select(id => _matchRuntimes.GetRequired(matchingId).Bots.SynthesizePlayerInfo(matchingId, id)
                     ?? throw new InvalidOperationException($"Bot {id} was not initialized.")));
 
             var composition = new MatchComposition(humanPlayerIds, botPlayerIds, mode, spawnCells, roster);
-            InitializeWithMatchLock(runtime, () =>
+            using (runtime.Enter())
             {
+                if (runtime.IsTerminal)
+                {
+                    throw new OperationCanceledException("Match became terminal during game entry.");
+                }
                 foreach (var participant in roster)
                 {
                     runtime.Roster.RegisterEntry(new RosterEntry { PlayerId = participant.PlayerId });
@@ -90,7 +96,7 @@ internal sealed class GameMatchEntryService(
                 runtime.Doors.Initialize();
                 InitializeMatchLog(runtime);
                 runtime.Composition = composition;
-            });
+            }
             return composition;
         }
         catch (Exception ex)

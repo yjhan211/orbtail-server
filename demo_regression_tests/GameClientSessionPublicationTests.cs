@@ -768,7 +768,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("IsMessageLifecycleActive", session);
         Assert.DoesNotContain("IsMessageLifecycleActive",
             ReadNormalizedSource(root, "network", "Core", "SessionBase.cs"));
-        Assert.Contains("private Task RunWithMatchLock(Func<Task> handleRequest, Action rejectRequest)", session);
+        Assert.DoesNotContain("RunWithMatchLock", session);
         Assert.DoesNotContain(Enum.GetNames<Protocol>(), name => name.Contains("RNG_COLLECT") || name.Contains("INTERACT_COOLDOWN"));
         var autoPickup = ReadNormalizedSource(root, "game_server", "Services", "GroundItemAutoPickupService.cs");
         Assert.Contains("Monitor.IsEntered(match.Sync)", autoPickup);

@@ -98,7 +98,7 @@ public sealed class MatchStartCountdownPublicationTests
             "MatchStartGate.MarkHumanReady(matchingId, PlayerId.Value);",
             "SendMatchStartCountdown(matchingId);",
             "using var successResponse = CreateConnectResultPacket(",
-            "InitializeWithMatchLock(runtime, () =>",
+            "using (runtime.Enter())",
             "Connection.TryMarkAuthenticated(() => Volatile.Write(ref _entryCompleted, 1))",
             "_trySendConnectSuccessResponse(successResponse)");
         AssertInOrder(

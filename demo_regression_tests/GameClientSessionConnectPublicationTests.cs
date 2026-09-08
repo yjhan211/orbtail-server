@@ -125,19 +125,16 @@ public sealed class GameClientSessionConnectPublicationTests
         var session = fixture.CreateSession(74009, 8109, _ => true);
         var original = fixture.Store.GetRequired(74009);
         var flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        var run = typeof(GameClientSession).GetMethod("RunWithMatchLock", flags)!;
-        bool executed = false;
-        bool rejected = false;
-        Func<Task> action = () =>
+        var handle = typeof(GameClientSession).GetMethod("HandleMatchStartReady", flags)!;
+        MatchStartGate.RegisterHumanPlayer(74009, 8109, 1, MatchMode.Normal);
+        int sent = 0;
+        ((AcceptingConnection)fixture.Connection).BeforeSend = _ =>
         {
             Assert.True(Monitor.IsEntered(original.Sync));
-            executed = true;
-            return Task.CompletedTask;
+            sent++;
         };
-        Action reject = () => rejected = true;
-        await (Task)run.Invoke(session, [action, reject])!;
-        Assert.True(executed);
-        Assert.False(rejected);
+        await (Task)handle.Invoke(session, null)!;
+        Assert.Equal(1, sent);
 
         using (original.Enter())
             Assert.True(original.TryMarkTerminal());
@@ -145,10 +142,9 @@ public sealed class GameClientSessionConnectPublicationTests
         var replacement = fixture.Store.GetOrCreate(74009);
         Assert.NotSame(original, replacement);
         Assert.Same(original, typeof(GameClientSession).GetField("_match", flags)!.GetValue(session));
-        executed = false;
-        await (Task)run.Invoke(session, [action, reject])!;
-        Assert.False(executed);
-        Assert.True(rejected);
+        await (Task)handle.Invoke(session, null)!;
+        Assert.Equal(1, sent);
+        MatchStartGate.RemoveMatching(74009);
     }
 
     [Fact]
@@ -435,7 +431,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Contains("sessions.Register,", File.ReadAllText(Path.Combine(root, "game_server", "GameServer.cs")));
         int countdown = connectionSource.IndexOf("SendMatchStartCountdown(matchingId);", disconnect, StringComparison.Ordinal);
         int response = connectionSource.IndexOf("CreateConnectResultPacket(", countdown, StringComparison.Ordinal);
-        int commitScope = connectionSource.IndexOf("InitializeWithMatchLock(runtime, () =>", response, StringComparison.Ordinal);
+        int commitScope = connectionSource.IndexOf("using (runtime.Enter())", response, StringComparison.Ordinal);
         int authentication = connectionSource.IndexOf("Connection.TryMarkAuthenticated", commitScope, StringComparison.Ordinal);
         int publication = connectionSource.IndexOf("_trySendConnectSuccessResponse(successResponse)", authentication, StringComparison.Ordinal);
         Assert.True(registration >= 0 && registration < registerCallback && registerCallback < countdown &&
