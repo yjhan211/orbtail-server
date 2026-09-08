@@ -7,6 +7,11 @@ using network.packets;
 
 namespace game_server.sessions;
 
+/// <summary>
+///     오브 소환과 강화 요청을 처리한다.
+///     매치 잠금 안에서 소환·강화 서비스를 호출하고 결과를 클라이언트에 보낸다.
+///     소환석 보유량·다음 소환 비용과 오브 계열별 강화 정보도 전송한다.
+/// </summary>
 public partial class GameClientSession
 {
     private Task HandleSummonOrb(C_TO_G_SUMMON_ORB request)
