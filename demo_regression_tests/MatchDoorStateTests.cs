@@ -22,15 +22,26 @@ public sealed class MatchDoorStateTests
     public async Task SlowInitializationForOneMatch_DoesNotBlockAnotherMatch()
     {
         var store = new MatchRuntimeStore(NullLogger.Instance);
-        var slow = store.GetOrCreate(231001).Doors;
-        var sibling = store.GetOrCreate(231002).Doors;
+        var slow = store.GetOrCreate(231001);
+        var sibling = store.GetOrCreate(231002);
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var release = new ManualResetEventSlim(false);
-        Task initialization = Task.Run(() => slow.Initialize(new BlockingAreaSequence(entered, release)));
+        Task initialization = Task.Run(() =>
+        {
+            using (slow.Enter())
+                slow.Doors.Initialize(new BlockingAreaSequence(entered, release));
+        });
         try
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Task<bool> other = Task.Run(() => { sibling.Initialize(); return sibling.OpenDoor(990002); });
+            Task<bool> other = Task.Run(() =>
+            {
+                using (sibling.Enter())
+                {
+                    sibling.Doors.Initialize();
+                    return sibling.Doors.OpenDoor(990002);
+                }
+            });
             Assert.True(await other.WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.False(initialization.IsCompleted);
         }
@@ -44,15 +55,24 @@ public sealed class MatchDoorStateTests
     [Fact]
     public async Task ConcurrentOpenDoor_HasOneWinnerAndReturnsSnapshotCopy()
     {
-        var doors = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(231003).Doors;
-        doors.Initialize();
+        var runtime = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(231003);
+        var doors = runtime.Doors;
+        using (runtime.Enter())
+            doors.Initialize();
         bool[] results = await Task.WhenAll(Enumerable.Range(0, 32)
-            .Select(_ => Task.Run(() => doors.OpenDoor(990003))));
+            .Select(_ => Task.Run(() =>
+            {
+                using (runtime.Enter())
+                    return doors.OpenDoor(990003);
+            })));
         Assert.Equal(1, results.Count(result => result));
-        List<int> snapshot = doors.GetOpenDoors();
-        Assert.Contains(990003, snapshot);
-        snapshot.Clear();
-        Assert.True(doors.IsDoorOpen(990003));
+        using (runtime.Enter())
+        {
+            List<int> snapshot = doors.GetOpenDoors();
+            Assert.Contains(990003, snapshot);
+            snapshot.Clear();
+            Assert.True(doors.IsDoorOpen(990003));
+        }
     }
 
     [Fact]

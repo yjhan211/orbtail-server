@@ -316,6 +316,30 @@ public sealed class GameClientSessionPublicationTests
             inventoryItem => inventoryItem.ItemId == itemId);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DoorOpen_UnavailableMatchSendsFailureAndReleasesLock(bool terminal)
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        var runtime = session.Match;
+        if (terminal)
+            fixture.MarkTerminal(70001);
+        else
+            fixture.SetMatchingId(session, 0);
+
+        await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_REQUEST,
+            new C_TO_G_DOOR_OPEN_REQUEST { DoorId = 201 });
+
+        var result = fixture.ConnectionFor(session)
+            .DeserializeSingle<G_TO_C_DOOR_STATE_UPDATE>(Protocol.G_TO_C_DOOR_STATE_UPDATE);
+        Assert.Equal(201, result.DoorId);
+        Assert.False(result.IsOpen);
+        Assert.Equal(ErrorCode.INVALID_GAME_STATE, result.ErrorCode);
+        Assert.False(Monitor.IsEntered(runtime.Sync));
+    }
+
     [Fact]
     public async Task NoMatchingRuntime_PreservesProtocolSpecificRejections()
     {
@@ -653,7 +677,9 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
         Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
-        Assert.Equal(1, CountOccurrences(doors, "RunWithMatchLock("));
+        Assert.DoesNotContain("RunWithMatchLock(", doors);
+        Assert.Contains("using (match.Enter())", doors);
+        Assert.DoesNotContain("ProcessDoorOpenRequest", doors);
         Assert.DoesNotContain("RunWithMatchLock(", ReadMethodSlice(connection,
             "private async Task HandleConnect(", "private void LogInitialInventory("));
         Assert.DoesNotContain("RunWithMatchLock", arena);
@@ -678,6 +704,36 @@ public sealed class GameClientSessionPublicationTests
                 ground,
                 "private Task HandleDropGroundItem(",
                 "internal void DropAllInventoryAtCurrentPosition("));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DoorStateList_HoldsMatchLockDuringSendAndReleasesIt(bool sendThrows)
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        var runtime = session.Match;
+        var connection = fixture.ConnectionFor(session);
+        bool sentUnderLock = false;
+        connection.BeforeSend = protocol =>
+        {
+            if (protocol == Protocol.G_TO_C_DOOR_STATE_LIST)
+                sentUnderLock = Monitor.IsEntered(runtime.Sync);
+        };
+        if (sendThrows)
+            connection.ThrowOnceOn = Protocol.G_TO_C_DOOR_STATE_LIST;
+
+        var send = typeof(GameClientSession).GetMethod(
+            "SendDoorStateList", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        if (sendThrows)
+            Assert.IsType<InvalidOperationException>(
+                Assert.Throws<TargetInvocationException>(() => send.Invoke(session, null)).InnerException);
+        else
+            send.Invoke(session, null);
+
+        Assert.True(sentUnderLock);
+        Assert.False(Monitor.IsEntered(runtime.Sync));
     }
 
     private static async Task SendAsync<T>(

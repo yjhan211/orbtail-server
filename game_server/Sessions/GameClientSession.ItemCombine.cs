@@ -44,7 +44,7 @@ public partial class GameClientSession
     /// </summary>
     private Task ProcessCombineItems(C_TO_G_COMBINE_ITEMS msg)
     {
-        if (IsRoundActionLocked(out _))
+        if (IsGameplayActionBlocked(out _))
         {
             SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INVALID_GAME_STATE);
             return Task.CompletedTask;

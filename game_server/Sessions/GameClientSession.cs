@@ -11,10 +11,13 @@ using network.packets;
 namespace game_server.sessions;
 
 /// <summary>
-///     Game Server에 접속한 클라이언트의 TCP 세션.
-///     입장 티켓으로 플레이어와 매치를 확인하고, 수신한 요청을 담당 서비스에 전달한다.
-///     플레이어의 세션 상태를 관리하며, 처리 결과를 클라이언트에 보내고 연결 종료 시 매치 이탈을 처리한다.
-///     매치 전체의 상태와 게임 규칙은 매치 런타임과 각 서비스가 담당한다.
+///     GameServer에 접속한 플레이어 한 명의 TCP 세션.
+///     입장 티켓으로 플레이어와 매치를 확인하고, 해당 MatchRuntime에 연결한다.
+///     수신 패킷을 처리하거나 담당 서비스에 전달하고, 결과를 클라이언트에 전송한다.
+///     연결 종료 시에는 입장 실패·퇴장·서버 종료 상황에 맞게 정리를 요청한다.
+///
+///     플레이어 개인 상태는 세션이, 참가 세션 목록과 매치 전체 상태는 MatchRuntime이 관리한다.
+///     기능별 요청 처리와 상태 전송 코드는 GameClientSession.* partial 파일에 나누어 둔다.
 /// </summary>
 public partial class GameClientSession : SessionBase
 {
@@ -564,7 +567,6 @@ public partial class GameClientSession : SessionBase
         }
     }
 
-    /// <summary>외부에서 매치 종료 처리를 맡았으므로 연결 종료 시 중복 처리하지 않도록 표시한다.</summary>
     internal void MarkMatchEndHandledExternally()
     {
         if (!TryBeginMatchEndHandling())

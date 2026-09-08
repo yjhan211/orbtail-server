@@ -287,7 +287,7 @@ public partial class GameClientSession
             return Task.CompletedTask;
 
         long playerId = PlayerId.Value;
-        if (IsRoundActionLocked(out _))
+        if (IsGameplayActionBlocked(out _))
         {
             SendDestroyOrbResult(false, ErrorCode.INVALID_GAME_STATE, request.ItemUid, 0,
                 GetSummonStoneSnapshot());

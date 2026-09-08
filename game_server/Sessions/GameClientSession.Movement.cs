@@ -42,7 +42,7 @@ public partial class GameClientSession
     {
         if (PlayerId == null) return;
         if (IsEliminated) return;
-        if (IsRoundActionLocked(out _)) return;
+        if (IsGameplayActionBlocked(out _)) return;
 
         // SLEEP 중에는 이동 불가
         if (_condition.IsSleeping)
@@ -353,35 +353,43 @@ public partial class GameClientSession
     {
         if (areaType == AreaType.None) return;
 
-        var objects = InteractableStateManager.GetAreaObjectStates(areaType);
+        var match = Volatile.Read(ref _match);
+        if (match == null) return;
 
-        // #229 5단계: 스웜은 상자 탐색을 보내지 않는다 — 마커도 빈 상호작용 UI도 뜰 일이 없다.
-        // 단 문 잠금해제(door_id > 0)는 예외다. 방을 여는 유일한 수단이라 스웜의 핵심 조작이다.
-        if (Config.IsSwarmExploreDisabled())
-            objects = objects.Where(state => IsDoorUnlockInteractable(state.InteractId)).ToList();
-
-        // 이미 열린 문의 마커는 보내지 않는다 — 열린 문 앞에서 게이지가 도는 그림은 거짓말이다.
-        objects = objects
-            .Where(state => GameInteractableData.Get(state.InteractId) is not { DoorId: > 0 } info ||
-                            Doors?.IsDoorOpen(info.DoorId) != true)
-            .ToList();
-        if (objects.Count == 0)
+        using (match.Enter())
         {
-            Logger.LogDebug("No interactable objects in area {AreaType}", areaType);
-            return;
+            if (match.IsTerminal) return;
+
+            var objects = InteractableStateManager.GetAreaObjectStates(areaType);
+
+            // #229 5단계: 스웜은 상자 탐색을 보내지 않는다 — 마커도 빈 상호작용 UI도 뜰 일이 없다.
+            // 단 문 잠금해제(door_id > 0)는 예외다. 방을 여는 유일한 수단이라 스웜의 핵심 조작이다.
+            if (Config.IsSwarmExploreDisabled())
+                objects = objects.Where(state => IsDoorUnlockInteractable(state.InteractId)).ToList();
+
+            // 이미 열린 문의 마커는 보내지 않는다 — 열린 문 앞에서 게이지가 도는 그림은 거짓말이다.
+            objects = objects
+                .Where(state => GameInteractableData.Get(state.InteractId) is not { DoorId: > 0 } info ||
+                                !match.Doors.IsDoorOpen(info.DoorId))
+                .ToList();
+            if (objects.Count == 0)
+            {
+                Logger.LogDebug("No interactable objects in area {AreaType}", areaType);
+                return;
+            }
+
+            // 각 오브젝트의 액션 개수 로그
+            foreach (var obj in objects)
+                Logger.LogDebug("InteractableObject Id={InteractId}: {ActionCount} actions",
+                    obj.InteractId, obj.Actions.Count);
+
+            using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, objects);
+            TrySend(packet);
+
+            Logger.LogDebug(
+                "Sent {Count} interactable objects for area {AreaType} to Player {PlayerId} (MatchingId={MatchingId})",
+                objects.Count, areaType, PlayerId, MatchingId);
         }
-
-        // 각 오브젝트의 액션 개수 로그
-        foreach (var obj in objects)
-            Logger.LogDebug("InteractableObject Id={InteractId}: {ActionCount} actions",
-                obj.InteractId, obj.Actions.Count);
-
-        using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, objects);
-        TrySend(packet);
-
-        Logger.LogDebug(
-            "Sent {Count} interactable objects for area {AreaType} to Player {PlayerId} (MatchingId={MatchingId})",
-            objects.Count, areaType, PlayerId, MatchingId);
     }
 
 

@@ -20,7 +20,7 @@ public partial class GameClientSession
     private Task ProcessSocialAction(C_TO_G_SOCIAL_ACTION msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (IsRoundActionLocked(out _))
+        if (IsGameplayActionBlocked(out _))
             return Task.CompletedTask;
 
         var sameAreaSessions = Match.Sessions.GetInArea(CurrentArea);

@@ -23,7 +23,7 @@ public partial class GameClientSession
     private async Task ProcessPlayerState(C_TO_G_PLAYER_STATE msg)
     {
         if (!PlayerId.HasValue) return;
-        if (IsRoundActionLocked(out string lockReason))
+        if (IsGameplayActionBlocked(out string lockReason))
         {
             // EXPLORE_1 is a collection-side state sync. The following collection ACK reports
             // the actionable result, so do not surface a second generic alert to the player.
@@ -240,7 +240,7 @@ public partial class GameClientSession
     private async Task ProcessUseInGameItem(C_TO_G_USE_INGAME_ITEM msg)
     {
         if (!PlayerId.HasValue) return;
-        if (IsRoundActionLocked(out _))
+        if (IsGameplayActionBlocked(out _))
         {
             using var failPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid,
                 ErrorCode.INVALID_GAME_STATE);
@@ -428,7 +428,7 @@ public partial class GameClientSession
     }
 
 
-    private bool IsRoundActionLocked(out string reason)
+    private bool IsGameplayActionBlocked(out string reason)
     {
         reason = string.Empty;
 
