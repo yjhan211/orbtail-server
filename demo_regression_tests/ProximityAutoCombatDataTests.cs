@@ -12,7 +12,7 @@ namespace demo_regression_tests;
 public class ProximityAutoCombatDataTests
 {
     [Fact]
-    public void ChalkWeaponDamageIncreasesWithEachMergeTier()
+    public void ChalkWeaponVariantsHaveDistinctDamage()
     {
         string csvRoot = Path.Combine(FindRepositoryRoot(), "network", "Common", "csv");
         var damageByItemId = CsvHelper.LoadCsv(Path.Combine(csvRoot, "item_info_consumable.csv"))
@@ -24,22 +24,6 @@ public class ProximityAutoCombatDataTests
         Assert.Equal(6, damageByItemId[201000015]);
         Assert.Equal(10, damageByItemId[201000016]);
         Assert.Equal(14, damageByItemId[201000017]);
-    }
-
-    [Fact]
-    public void ChalkMergeRouteBuildsTowardTheStrongestWeapon()
-    {
-        string csvRoot = Path.Combine(FindRepositoryRoot(), "network", "Common", "csv");
-        var recipes = CsvHelper.LoadCsv(Path.Combine(csvRoot, "battle_item_recipe.csv"))
-            .Where(row => row["category"] == "chalk")
-            .ToDictionary(row => int.Parse(row["output_item_id"]));
-
-        Assert.Equal(
-            [201000015, 201000015],
-            JsonSerializer.Deserialize<List<int>>(recipes[201000016]["input_item_ids"]));
-        Assert.Equal(
-            [201000016, 201000016],
-            JsonSerializer.Deserialize<List<int>>(recipes[201000017]["input_item_ids"]));
     }
 
     [Fact]

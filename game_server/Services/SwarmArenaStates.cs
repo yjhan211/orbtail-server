@@ -36,7 +36,6 @@ public sealed class SwarmMatchRuntime
     ///     separate from combat critical rolls and is consumed only while the match runtime
     ///     monitor is held. The default seed is not a deterministic replay contract.
     /// </summary>
-    internal Random ItemCombineRandom { get; } = new();
     /// <summary>봇 이동 틱 계측 창 — 기록은 매치 잠금 안, 바쁜 펄스 카운트는 잠금 밖 Interlocked.</summary>
     internal SwarmBotTickMetrics BotTickMetrics { get; } = new();
     public SwarmWindBladeState WindBlade { get; } = new();

@@ -6,9 +6,6 @@ namespace demo_regression_tests;
 
 public sealed class InGameInventoryAtomicityTests
 {
-    private const int SunOrbT1 = 107000010;
-    private const int Bandage = 201000008;
-    private const int BandageRecipeId = 193031;
 
     [Fact]
     public async Task ConcurrentQuantityOneConsumptionCannotOverdraw()
@@ -53,23 +50,6 @@ public sealed class InGameInventoryAtomicityTests
     }
 
     [Fact]
-    public void CombiningAnEquippedBattleItemKeepsTheOutputEquipped()
-    {
-        InitializeBattleCombatData();
-        var manager = MatchTestServices.Inventory();
-        var firstItem = manager.AddItem(playerId: 100, itemId: 107000003);
-        manager.AddItem(playerId: 100, itemId: 107000003);
-
-        Assert.True(manager.TryEquipBattleItem(100, firstItem.ItemUid, out _));
-        Assert.True(manager.TryCombineItems(100, [107000003, 107000003], 107000004, out var changedItems));
-
-        var outputItem = Assert.Single(changedItems, item => item.ItemId == 107000004);
-        var equippedItem = manager.GetEquippedBattleItem(100);
-        Assert.NotNull(equippedItem);
-        Assert.Equal(outputItem.ItemUid, equippedItem!.ItemUid);
-    }
-
-    [Fact]
     public void NonCombatItemCannotBecomeEquippedBattleItem()
     {
         InitializeBattleCombatData();
@@ -80,41 +60,10 @@ public sealed class InGameInventoryAtomicityTests
         Assert.Null(manager.GetEquippedBattleItem(100));
     }
 
-    [Fact]
-    public void RandomRecipeWithMissingMaterialDoesNotDraw()
-    {
-        var manager = MatchTestServices.Inventory();
-        manager.AddItem(playerId: 100, itemId: Bandage);
-        BattleItemRecipe recipe = LoadBattleItemRecipe(BandageRecipeId);
-        var random = new CountingRandom();
-
-        bool combined = manager.TryCombineRandomRecipe(
-            playerId: 100,
-            [recipe],
-            random,
-            out BattleItemRecipe? selectedRecipe,
-            out var changedItems);
-
-        Assert.False(combined);
-        Assert.Null(selectedRecipe);
-        Assert.Empty(changedItems);
-        Assert.Equal(0, random.DrawCount);
-        Assert.Equal(1, manager.GetPlayerInventory(100).GetItemCount(Bandage));
-    }
-
-
     private static void InitializeBattleCombatData()
     {
         BattleItemCombatData.Initialize(CsvHelper.LoadCsv(Path.Combine(
             FindRepositoryRoot(), "network", "Common", "csv", "battle_item_combat.csv")));
-    }
-
-    private static BattleItemRecipe LoadBattleItemRecipe(int recipeId)
-    {
-        return Assert.Single(CsvHelper.LoadCsv(Path.Combine(
-                FindRepositoryRoot(), "network", "Common", "csv", "battle_item_recipe.csv"))
-            .Where(row => row["recipe_id"] == recipeId.ToString())
-            .Select(BattleItemRecipe.CreateFromData));
     }
 
     private static string FindRepositoryRoot()
@@ -130,16 +79,4 @@ public sealed class InGameInventoryAtomicityTests
                throw new DirectoryNotFoundException("Could not locate repository root from test output path.");
     }
 
-    private sealed class CountingRandom : Random
-    {
-        private int _drawCount;
-
-        public int DrawCount => Volatile.Read(ref _drawCount);
-
-        public override int Next(int maxValue)
-        {
-            Interlocked.Increment(ref _drawCount);
-            return 0;
-        }
-    }
 }

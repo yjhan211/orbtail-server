@@ -575,7 +575,6 @@ public sealed class GameClientSessionConnectPublicationTests
                 static () => false,
                 new FakeMatchEntryFailureHandler(recordEntryFailure),
                 TestGameSessionServices.CreateEntryService(Redis, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
-                new ItemCombinationService(TestGameEventLogs.Create()),
                 new MovementValidationService(NullLogger<MovementValidationService>.Instance),
                 sender);
             Connection.SetSession(session);

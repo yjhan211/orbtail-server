@@ -85,7 +85,6 @@ internal static class GameServerTestAccess
             devOptions: GameServerDevOptions.Disabled,
             sessions: sessions, matchRuntimes: runtimes, eventLogs: logs, matchEliminations: TestGameSessionServices.CreateEliminationService(runtimes, logs, summaries, GameServerDevOptions.Disabled, logger),
             matchEntry: TestGameSessionServices.CreateEntryService(new InMemoryRedisOperations(), runtimes, GameServerDevOptions.Disabled, logger),
-            itemCombinations: new ItemCombinationService(logs),
             groundItemAutoPickup: new GroundItemAutoPickupService(logs,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<GroundItemAutoPickupService>.Instance),
             movementValidation: new MovementValidationService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MovementValidationService>.Instance),

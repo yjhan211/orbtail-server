@@ -68,8 +68,6 @@ namespace network.common
         // 플레이어 상호작용 프로토콜
 
         // 배틀아이템 조합 프로토콜
-        G_TO_C_ITEMS_COMBINED,         // 조합 결과
-        C_TO_G_COMBINE_ITEMS,         // 조합 요청
 
         // 구역 폐쇄 프로토콜
         G_TO_C_AREA_CLOSURE_WARNING,  // 폐쇄 30초 전 경고

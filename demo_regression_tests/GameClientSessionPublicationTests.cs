@@ -804,11 +804,6 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("RunWithMatchLock(", doors);
         Assert.Contains("using (match.Enter())", doors);
         Assert.DoesNotContain("ProcessDoorOpenRequest", doors);
-        var itemCombine = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.ItemCombine.cs");
-        Assert.DoesNotContain("RunWithMatchLock", itemCombine);
-        Assert.DoesNotContain("ProcessCombineItems", itemCombine);
-        Assert.Contains("using (match.Enter())", itemCombine);
-        Assert.Contains("!match.IsTerminal && !IsGameplayActionBlocked(out _)", itemCombine);
         Assert.DoesNotContain("RunWithMatchLock(", ReadMethodSlice(connection,
             "private async Task HandleConnect(", "private void LogInitialInventory("));
         Assert.DoesNotContain("RunWithMatchLock", arena);
@@ -1289,7 +1284,6 @@ public sealed class GameClientSessionPublicationTests
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
                 TestGameSessionServices.CreateEntryService(null!, matchRuntimes, GameServerDevOptions.Disabled, NullLogger.Instance),
-                new ItemCombinationService(eventLog),
                 new MovementValidationService(NullLogger<MovementValidationService>.Instance))
         {
         }

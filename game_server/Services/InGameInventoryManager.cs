@@ -18,7 +18,7 @@ public class PlayerInGameInventory(long matchingId)
     private long _equippedBattleItemUid;
     private static bool ShouldKeepSeparateStack(int itemId, GiftState giftState) =>
         giftState == GiftState.None &&
-        (OrbData.IsOrbItem(itemId) || BattleItemRecipeData.IsRecipeInputItem(itemId));
+        OrbData.IsOrbItem(itemId);
 
     /// <summary>
     ///     ItemUid 생성: MatchingId * 100000 + Sequence
@@ -41,7 +41,7 @@ public class PlayerInGameInventory(long matchingId)
     {
         bool keepSeparateStack = forceSeparateStack || ShouldKeepSeparateStack(itemId, giftState);
 
-        // 오브 열의 개별 UID와 조합 재료 선택을 위해 각각 독립된 슬롯을 유지한다.
+        // 오브는 개별 UID와 슬롯을 유지하고, 일반 아이템은 수량을 합친다.
         if (!keepSeparateStack)
         {
             foreach (var kvp in _items)
@@ -131,77 +131,6 @@ public class PlayerInGameInventory(long matchingId)
         updatedItem = null;
         var item = _items.Values.FirstOrDefault(candidate => candidate.ItemId == itemId && candidate.Count > 0);
         return item != null && TryRemoveItem(item.ItemUid, 1, out updatedItem);
-    }
-
-    [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryCombineItems(IReadOnlyCollection<int> inputItemIds, int outputItemId,
-        out List<InGameItemInfo> changedItems)
-    {
-        changedItems = new List<InGameItemInfo>();
-        if (inputItemIds.Count < 2 || outputItemId <= 0) return false;
-
-        bool replaceEquippedBattleItem = _equippedBattleItemUid != 0 &&
-                                          _items.TryGetValue(_equippedBattleItemUid, out var equippedItem) &&
-                                          inputItemIds.Contains(equippedItem.ItemId);
-
-        if (!HasItems(inputItemIds))
-            return false;
-
-        foreach (int inputItemId in inputItemIds)
-        {
-            if (!TryRemoveOneByItemId(inputItemId, out var removed) || removed == null)
-                throw new InvalidOperationException("Inventory changed during atomic battle item combine.");
-            changedItems.Add(removed);
-        }
-
-        var outputItem = AddItem(outputItemId, 1, forceSeparateStack: true);
-        changedItems.Add(outputItem);
-        if (replaceEquippedBattleItem && BattleItemCombatData.IsCombatItem(outputItemId))
-            _equippedBattleItemUid = outputItem.ItemUid;
-        return true;
-    }
-
-
-    /// <summary>
-    ///     Checks a matching recipe's materials, draws its outcome, and consumes the inputs under
-    ///     one inventory monitor so a rejected combine cannot advance the supplied random stream.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryCombineRandomRecipe(
-        IReadOnlyList<BattleItemRecipe> candidates,
-        Random random,
-        out BattleItemRecipe? selectedRecipe,
-        out List<InGameItemInfo> changedItems)
-    {
-        ArgumentNullException.ThrowIfNull(random);
-        selectedRecipe = null;
-        changedItems = new List<InGameItemInfo>();
-        if (candidates.Count == 0)
-            return false;
-
-        int[] expectedInputs = candidates[0].InputItemIds.OrderBy(itemId => itemId).ToArray();
-        if (candidates.Skip(1).Any(candidate =>
-                !candidate.InputItemIds.OrderBy(itemId => itemId).SequenceEqual(expectedInputs)))
-        {
-            throw new ArgumentException(
-                "Random recipe candidates must describe the same input multiset.",
-                nameof(candidates));
-        }
-
-        if (!HasItems(candidates[0].InputItemIds))
-            return false;
-
-        selectedRecipe = candidates[random.Next(candidates.Count)];
-        if (!TryCombineItems(
-                selectedRecipe.InputItemIds,
-                selectedRecipe.OutputItemId,
-                out changedItems))
-        {
-            throw new InvalidOperationException(
-                "Inventory changed during atomic random recipe combine.");
-        }
-
-        return true;
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -304,17 +233,6 @@ public class PlayerInGameInventory(long matchingId)
         return _items.Values.Where(i => i.ItemId == itemId).Sum(i => i.Count);
     }
 
-    /// <summary>Checks duplicate-aware material quantities without mutating the inventory.</summary>
-    [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool HasItems(IReadOnlyCollection<int> itemIds)
-    {
-        if (itemIds.Count == 0)
-            return false;
-
-        return itemIds
-            .GroupBy(itemId => itemId)
-            .All(required => GetItemCount(required.Key) >= required.Count());
-    }
 }
 
 /// <summary>
@@ -335,7 +253,7 @@ public class MatchingInventoryState(long matchingId)
 }
 
 /// <summary>
-///     매치 하나의 플레이어 인벤토리를 보관하고 아이템 추가·소비·조합을 처리한다.
+///     매치 하나의 플레이어 인벤토리를 보관하고 아이템 추가·소비와 장착 상태를 관리한다.
 ///     MatchRuntime마다 별도 객체를 만들며, 매치 종료 후에는 인벤토리를 다시 만들지 않는다.
 /// </summary>
 public class InGameInventoryManager
@@ -417,37 +335,6 @@ public class InGameInventoryManager
         return result;
     }
 
-    public bool TryCombineItems(long playerId, IReadOnlyCollection<int> inputItemIds,
-        int outputItemId, out List<InGameItemInfo> changedItems)
-    {
-        var inventory = GetPlayerInventory(playerId);
-        bool result = inventory.TryCombineItems(inputItemIds, outputItemId, out changedItems);
-        if (result)
-            _logAction?.Invoke(
-                $"InGameInventoryManager: Combined items (MatchingId={_matchingId}, PlayerId={playerId}, Inputs=[{string.Join(',', inputItemIds)}], Output={outputItemId})");
-        return result;
-    }
-
-
-    public bool TryCombineRandomRecipe(
-        long playerId,
-        IReadOnlyList<BattleItemRecipe> candidates,
-        Random random,
-        out BattleItemRecipe? selectedRecipe,
-        out List<InGameItemInfo> changedItems)
-    {
-        var inventory = GetPlayerInventory(playerId);
-        bool result = inventory.TryCombineRandomRecipe(
-            candidates,
-            random,
-            out selectedRecipe,
-            out changedItems);
-        if (result)
-            _logAction?.Invoke(
-                $"InGameInventoryManager: Combined items (MatchingId={_matchingId}, PlayerId={playerId}, Inputs=[{string.Join(',', selectedRecipe!.InputItemIds)}], Output={selectedRecipe.OutputItemId})");
-        return result;
-    }
-
     public bool TryEquipBattleItem(long playerId, long itemUid,
         out InGameItemInfo? equippedItem)
     {
@@ -473,7 +360,6 @@ public class InGameInventoryManager
         var equippedItem = GetEquippedBattleItem(playerId);
         return equippedItem == null ? 0 : BattleItemCombatData.Get(equippedItem.ItemId)?.Tier ?? 0;
     }
-
 
     /// <summary>
     ///     플레이어의 전체 아이템 목록

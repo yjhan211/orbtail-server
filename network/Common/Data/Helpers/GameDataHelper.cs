@@ -199,7 +199,6 @@ namespace network.common.data.helpers
                 loadedData[DataFiles.Item.Consumable],
                 new List<CsvRow>() // Put (unused)
             );
-            BattleItemRecipeData.Initialize(loadedData[DataFiles.Item.BattleRecipe]);
             BattleItemCombatData.Initialize(loadedData[DataFiles.Item.BattleCombat]);
 
             // Map data — 신맵(School2) 리전은 별도 파일이라 병합해 넘긴다 (행에 map_id가 있어 안전).
@@ -274,7 +273,6 @@ namespace network.common.data.helpers
                 }
             }
 
-            BattleItemRecipeData.ValidateReferentialIntegrity(errors, itemIds);
 
             if (errors.Count > 0)
             {
@@ -319,10 +317,9 @@ namespace network.common.data.helpers
                 public const string Base = "item_info.csv";
                 public const string Equipment = "item_info_equipment.csv";
                 public const string Consumable = "item_info_consumable.csv";
-                public const string BattleRecipe = "battle_item_recipe.csv";
                 public const string BattleCombat = "battle_item_combat.csv";
 
-                public static readonly string[] ALL = new[] { Base, Equipment, Consumable, BattleRecipe, BattleCombat };
+                public static readonly string[] ALL = new[] { Base, Equipment, Consumable, BattleCombat };
             }
 
             public static class Map

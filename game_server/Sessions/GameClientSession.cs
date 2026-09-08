@@ -36,7 +36,6 @@ public partial class GameClientSession : SessionBase
     private readonly MatchEliminationService _matchEliminations;
     private readonly PlayerCondition _condition = new();
     private readonly IPlayerGrowthHandler _growth;
-    private readonly ItemCombinationService _itemCombinations;
     private readonly MovementValidationService _movementValidation;
 
     private int _entryCompleted;
@@ -80,7 +79,6 @@ public partial class GameClientSession : SessionBase
         Func<bool> isServerStopping,
         IMatchEntryFailureHandler entryFailureHandler,
         GameMatchEntryService matchEntry,
-        ItemCombinationService itemCombinations,
         MovementValidationService movementValidation,
         Func<Packet, bool>? trySendConnectSuccessResponse = null,
         TimeProvider? movementTimeProvider = null)
@@ -95,7 +93,6 @@ public partial class GameClientSession : SessionBase
         _growth = growth;
 
         _matchEntry = matchEntry;
-        _itemCombinations = itemCombinations;
         _movementValidation = movementValidation;
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
         _matchingLifecycle = matchingLifecycle;
@@ -145,8 +142,6 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_SWARM_GROWTH_PICK>(bytes, HandleSwarmGrowthPick));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SWARM_ORB_DECISION,
             async bytes => await HandleMessage<C_TO_G_SWARM_ORB_DECISION>(bytes, HandleSwarmOrbDecision));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_COMBINE_ITEMS,
-            async bytes => await HandleMessage<C_TO_G_COMBINE_ITEMS>(bytes, HandleCombineItems));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,
             async bytes => await HandleMessage<C_TO_G_USE_INGAME_ITEM>(bytes, HandleUseInGameItem));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_STATE,
