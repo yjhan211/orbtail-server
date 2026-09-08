@@ -104,9 +104,13 @@ public abstract class SessionBase(
 
     protected virtual Task<bool> CanProcessMessageAsync(Protocol protocolId) => Task.FromResult(true);
 
+    /// <summary>클라이언트 패킷 본문을 공통 UntrustedData 보안 옵션으로 읽는다.</summary>
+    protected static T DeserializeClientMessage<T>(byte[] body) where T : IMessagePackObject =>
+        MessagePackSerializer.Deserialize<T>(body, ClientMessagePackOptions);
+
     protected static async Task HandleMessage<T>(byte[] body, Func<T, Task> handler) where T : IMessagePackObject
     {
-        var message = MessagePackSerializer.Deserialize<T>(body, ClientMessagePackOptions);
+        var message = DeserializeClientMessage<T>(body);
         await handler(message);
     }
 

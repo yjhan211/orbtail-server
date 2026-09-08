@@ -1,27 +1,21 @@
 using System.Diagnostics;
 using game_server.services;
-using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
-using network.common.data.helpers;
 using network.common.data.models;
-using network.infrastructure.redis;
 using network.packets;
 
 namespace game_server.sessions;
 
 public partial class GameClientSession
 {
-    private static readonly MessagePackSerializerOptions MovementMessagePackOptions =
-        MessagePackSerializer.DefaultOptions.WithSecurity(MessagePackSecurity.UntrustedData);
-
     protected override Task ScheduleMessageAsync(Protocol protocolId, byte[] body, Func<Task> dispatch)
     {
         uint? sequence = null;
         if (protocolId == Protocol.C_TO_G_MOVE)
         {
-            var move = MessagePackSerializer.Deserialize<C_TO_G_MOVE>(body, MovementMessagePackOptions);
+            var move = DeserializeClientMessage<C_TO_G_MOVE>(body);
             // 잘못된 값이 보류 중인 정상 이동을 덮어쓰지 않도록 합치기 전에 확인한다.
             if (move?.Position == null || move.Velocity == null ||
                 !MovementValidationPolicy.IsFinite(move.Position) ||
