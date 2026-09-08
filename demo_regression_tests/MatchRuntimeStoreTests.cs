@@ -293,7 +293,7 @@ public sealed class MatchRuntimeStoreTests
     {
         int createdCount = 0;
         MatchRuntimeStore store = CreateStore();
-        store.Created += _ => createdCount++;
+        store.MatchCreated += _ => createdCount++;
         MatchRuntime runtime = store.GetOrCreate(4);
 
         using (runtime.Enter())
@@ -313,7 +313,7 @@ public sealed class MatchRuntimeStoreTests
     {
         int createdCount = 0;
         MatchRuntimeStore store = CreateStore();
-        store.Created += runtime =>
+        store.MatchCreated += runtime =>
         {
             Assert.True(Monitor.IsEntered(runtime.Sync));
             Interlocked.Increment(ref createdCount);
@@ -332,7 +332,7 @@ public sealed class MatchRuntimeStoreTests
     public void GetOrCreate_CreatedHandlerFailure_LeavesNoRuntime()
     {
         MatchRuntimeStore store = CreateStore();
-        store.Created += _ => throw new InvalidOperationException("register failed");
+        store.MatchCreated += _ => throw new InvalidOperationException("register failed");
 
         Assert.Throws<InvalidOperationException>(() => store.GetOrCreate(6));
         Assert.Null(store.GetOrNull(6));

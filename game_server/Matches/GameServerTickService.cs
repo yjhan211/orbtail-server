@@ -25,19 +25,19 @@ internal sealed class GameServerTickService(
             if (_tick != null || _stopTask != null)
                 throw new InvalidOperationException("Game server ticks cannot be started again.");
             _tick = tick;
-            matchRuntimes.Created += StartMatch;
+            matchRuntimes.MatchCreated += StartMatchTickLoop;
         }
 
         // 구독 직전 만들어진 매치도 포함한다. 구독과 목록 조회 양쪽에 잡힌 매치는 한 번만 시작한다.
         foreach (long matchingId in matchRuntimes.ActiveIds())
         {
             if (matchRuntimes.GetOrNull(matchingId) is { } runtime)
-                StartMatch(runtime);
+                StartMatchTickLoop(runtime);
         }
         logger.LogInformation("Per-match tick loops started: IntervalMs=50");
     }
 
-    private void StartMatch(MatchRuntime runtime)
+    private void StartMatchTickLoop(MatchRuntime runtime)
     {
         // 생성·제거와 루프 연결이 엇갈리지 않게 매치 잠금을 먼저 잡는다.
         lock (runtime.Sync)
@@ -81,7 +81,7 @@ internal sealed class GameServerTickService(
                 return _stopTask;
             var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             _stopTask = completion.Task;
-            matchRuntimes.Created -= StartMatch;
+            matchRuntimes.MatchCreated -= StartMatchTickLoop;
             _ = StopLoopsAsync(_loops.Values.ToArray(), completion);
             return _stopTask;
         }

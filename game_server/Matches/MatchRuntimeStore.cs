@@ -13,8 +13,7 @@ internal sealed class MatchRuntimeStore(ILogger logger, MatchingLifecycleService
 {
     private readonly MatchingLifecycleService _matchingLifecycle = matchingLifecycle ?? throw new ArgumentNullException(nameof(matchingLifecycle));
     private readonly ConcurrentDictionary<long, MatchRuntime> _runtimes = new();
-
-    internal event Action<MatchRuntime>? Created;
+    internal event Action<MatchRuntime>? MatchCreated;
 
     public int Count => _runtimes.Count;
 
@@ -37,7 +36,7 @@ internal sealed class MatchRuntimeStore(ILogger logger, MatchingLifecycleService
 
             try
             {
-                Created?.Invoke(candidate);
+                MatchCreated?.Invoke(candidate);
             }
             catch
             {
