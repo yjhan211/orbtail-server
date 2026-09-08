@@ -1,9 +1,10 @@
 using game_server.matches;
+using game_server.services;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
 
-namespace game_server.services;
+namespace game_server.players;
 
 /// <summary>
 /// 한 플레이어의 체력 변경 결과를 전송·기록하고 필요하면 탈락시킨다.

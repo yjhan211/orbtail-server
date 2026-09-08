@@ -1,3 +1,4 @@
+using game_server.players;
 using game_server.matches;
 using game_server.sessions;
 namespace demo_regression_tests;
@@ -180,7 +181,7 @@ public sealed class SwarmArenaTickOrderTests
             root, "game_server", "Services", "OrbVisualStatePublisher.cs");
 
         string healthNotification = ReadBracedBlockAfterMarker(
-            ReadNormalizedSource(root, "game_server", "Services", "PlayerHealthChangeService.cs"),
+            ReadNormalizedSource(root, "game_server", "Players", "PlayerHealthChangeService.cs"),
             "public void Handle(");
         AssertInOrder(
             healthNotification,

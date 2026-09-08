@@ -1,7 +1,7 @@
 using network.common;
 using network.common.data;
 
-namespace game_server.sessions;
+namespace game_server.players;
 
 /// <summary>
 ///     사람 플레이어 하나의 체력·행동·주기 버프 상태와 변경 규칙.
