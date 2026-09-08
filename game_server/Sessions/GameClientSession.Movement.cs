@@ -7,6 +7,13 @@ using network.packets;
 
 namespace game_server.sessions;
 
+/// <summary>
+///     클라이언트의 이동 요청을 처리한다.
+///     매치 잠금 안에서 이동 값과 플레이 가능 상태를 확인하고,
+///     이동 검증과 상태 반영은 PlayerMovementService에 맡긴다.
+///     처리 결과는 주변 플레이어에게 전송하며,
+///     본인에게는 보정이 필요하거나 응답 간격이 지났을 때 전송한다.
+/// </summary>
 public partial class GameClientSession
 {
     private Task HandleMove(C_TO_G_MOVE msg)
