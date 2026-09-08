@@ -8,6 +8,12 @@ using network.packets;
 
 namespace game_server.sessions;
 
+/// <summary>
+///     문 열기 요청과 문 상태 전송을 담당한다.
+///     게이지 문은 START에서 시작 시각을 기록하고, FINISH에서 대기 시간이 지났는지 확인한 뒤 연다.
+///     피격으로 게이지가 중단되면 요청자에게 알리고, 문이 열리면 같은 매치의 모든 플레이어에게 알린다.
+///     문 상태 조회와 변경은 매치 잠금 안에서 처리한다.
+/// </summary>
 public partial class GameClientSession
 {
     private Task HandleDoorOpenStart(C_TO_G_DOOR_OPEN_START msg)
