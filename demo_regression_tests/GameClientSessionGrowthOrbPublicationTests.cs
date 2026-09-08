@@ -20,6 +20,122 @@ namespace demo_regression_tests;
 
 public sealed class GameClientSessionGrowthOrbPublicationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OrbEvents_AreRecordedBeforeInventorySendFailure(bool destroy)
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
+        var runtime = fixture.Store.GetRequired(FirstMatchingId);
+        var connection = fixture.ConnectionFor(session);
+        MatchStartGate.RegisterBotOnlyMatch(FirstMatchingId);
+        try
+        {
+            long itemUid = 0;
+            if (destroy)
+            {
+                using (runtime.Enter())
+                {
+                    Assert.True(runtime.Inventory.TryAddItemWithCapacity(
+                        FirstPlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out var item));
+                    itemUid = item!.ItemUid;
+                }
+            }
+            else
+            {
+                runtime.SummonStones.AddStones(FirstPlayerId, 20);
+            }
+
+            connection.ThrowOnceOn = Protocol.G_TO_C_INGAME_INVENTORY_UPDATE;
+            connection.BeforeSend = protocol =>
+            {
+                if (protocol != Protocol.G_TO_C_INGAME_INVENTORY_UPDATE) return;
+                Assert.Contains(fixture.EventLog.GetRecent(FirstMatchingId),
+                    entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" &&
+                             entry.Outcome == (destroy ? "destroy" : "summon"));
+            };
+            if (destroy)
+                await SendAsync(session, Protocol.C_TO_G_DESTROY_ORB, new C_TO_G_DESTROY_ORB { ItemUid = itemUid });
+            else
+                await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
+
+            var events = fixture.EventLog.GetRecent(FirstMatchingId);
+            Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" &&
+                                          entry.Outcome == (destroy ? "destroy" : "summon"));
+            if (!destroy)
+                Assert.Single(events, entry => entry.Type == "ORB_SUMMON_SUCCEEDED");
+            Assert.Contains(Protocol.G_TO_C_INGAME_INVENTORY_UPDATE, connection.AttemptedProtocols);
+            Assert.DoesNotContain(Protocol.G_TO_C_INGAME_INVENTORY_UPDATE, connection.DeliveredProtocols);
+        }
+        finally
+        {
+            MatchStartGate.RemoveMatching(FirstMatchingId);
+        }
+    }
+
+    [Fact]
+    public async Task AutomaticSummon_ChargesPublishedCostWithoutDraftOrChoice()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
+        var runtime = fixture.Store.GetRequired(FirstMatchingId);
+        var connection = fixture.ConnectionFor(session);
+        MatchStartGate.RegisterBotOnlyMatch(FirstMatchingId);
+        try
+        {
+            runtime.SummonStones.AddStones(FirstPlayerId, 20);
+            session.FreeSummonCharges = 1; // 자동 소환은 과거 무료 충전 상태와 무관하게 유료다.
+            for (int index = 0; index < 2; index++)
+            {
+                connection.ClearPackets();
+                var before = runtime.SummonStones.GetSnapshot(FirstPlayerId);
+                session.SendSummonStoneState();
+                var state = connection.DeserializeSingle<G_TO_C_SUMMON_STONE_STATE>(Protocol.G_TO_C_SUMMON_STONE_STATE);
+                Assert.Equal(before.NextCost, state.State.NextCost);
+                await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
+                var result = connection.DeserializeSingle<G_TO_C_SUMMON_ORB_RESULT>(Protocol.G_TO_C_SUMMON_ORB_RESULT);
+                Assert.True(result.Success);
+                Assert.Equal(before.StoneCount - state.State.NextCost, result.State.StoneCount);
+                Assert.Equal(before.SuccessfulSummonCount + 1, result.State.SuccessfulSummonCount);
+                Assert.Equal(index + 1, runtime.Inventory.GetPlayerInventory(FirstPlayerId).GetAllItems().Count);
+            }
+        }
+        finally
+        {
+            MatchStartGate.RemoveMatching(FirstMatchingId);
+        }
+    }
+
+    [Fact]
+    public async Task AutomaticSummon_RejectsInsufficientCurrencyWithoutGrantingItem()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
+        var runtime = fixture.Store.GetRequired(FirstMatchingId);
+        MatchStartGate.RegisterBotOnlyMatch(FirstMatchingId);
+        try
+        {
+            await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
+            var result = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_SUMMON_ORB_RESULT>(Protocol.G_TO_C_SUMMON_ORB_RESULT);
+            Assert.False(result.Success);
+            Assert.Equal(ErrorCode.INSUFFICIENT_CURRENCY, result.ErrorCode);
+            Assert.Equal(0, result.State.SuccessfulSummonCount);
+            Assert.Empty(runtime.Inventory.GetPlayerInventory(FirstPlayerId).GetAllItems());
+        }
+        finally
+        {
+            MatchStartGate.RemoveMatching(FirstMatchingId);
+        }
+    }
+
+    [Fact]
+    public void AutomaticSummonRequest_HasNoChoiceIndex()
+    {
+        Assert.Equal("[]", MessagePackSerializer.ConvertToJson(MessagePackSerializer.Serialize(new C_TO_G_SUMMON_ORB())));
+        Assert.NotNull(MessagePackSerializer.Deserialize<C_TO_G_SUMMON_ORB>(new byte[] { 0x90 }));
+    }
+
     [Fact]
     public void SleepingPlayer_KeepsAutomaticAttackActors()
     {
@@ -60,7 +176,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var runtime = fixture.Store.GetRequired(FirstMatchingId);
         var locks = new List<bool>();
         connection.BeforeSend = _ => locks.Add(Monitor.IsEntered(runtime.Sync));
-        await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB { ChoiceIndex = 0 });
+        await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
         await SendAsync(session, Protocol.C_TO_G_DESTROY_ORB, new C_TO_G_DESTROY_ORB { ItemUid = long.MaxValue });
         await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_START, new C_TO_G_DOOR_OPEN_START { InteractId = int.MaxValue });
         await SendAsync(session, Protocol.C_TO_G_USE_INGAME_ITEM, new C_TO_G_USE_INGAME_ITEM { ItemUid = long.MaxValue, Count = 1 });
@@ -652,7 +768,9 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
         Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
-        Assert.Equal(4, CountOccurrences(orbSummon, "RunWithMatchLock("));
+        Assert.DoesNotContain("RunWithMatchLock", orbSummon);
+        Assert.Equal(4, CountOccurrences(orbSummon, "using (match.Enter())"));
+        Assert.Equal(4, CountOccurrences(orbSummon, "if (match.IsTerminal"));
         Assert.Contains("MatchingId <= 0", ReadMethodSlice(
             orbSummon,
             "private Task HandleSwarmGrowthPick(",
@@ -661,10 +779,10 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             orbSummon,
             "private Task HandleSwarmOrbDecision(",
             "internal void SendSwarmFamilyLevels("));
-        Assert.Contains("RunWithMatchLock", ReadMethodSlice(orbSummon,
+        Assert.Contains("using (match.Enter())", ReadMethodSlice(orbSummon,
             "private Task HandleSummonOrb(",
-            "internal bool ExecuteDraftOrbSummon("));
-        Assert.Contains("RunWithMatchLock", ReadMethodSlice(orbSummon,
+            "private Task HandleDevDummyMove("));
+        Assert.Contains("using (match.Enter())", ReadMethodSlice(orbSummon,
             "private Task HandleDestroyOrb(",
             "internal void SendSummonStoneState("));
         Assert.DoesNotContain("RunWithMatchLock", arena);
@@ -779,7 +897,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
                 TestGameSessionServices.CreateEntryService(null!, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
-                new MovementValidationService(NullLogger<MovementValidationService>.Instance));
+                new MovementValidationService(NullLogger<MovementValidationService>.Instance),
+                orbInventory: new OrbInventoryService(EventLog));
             connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);
             _sessions.Add(session);

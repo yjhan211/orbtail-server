@@ -469,7 +469,8 @@ public sealed class GameClientSessionTerminalPublicationTests
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
                 TestGameSessionServices.CreateEntryService(null!, matchRuntimes, GameServerDevOptions.Disabled, NullLogger.Instance),
-                new MovementValidationService(NullLogger<MovementValidationService>.Instance))
+                new MovementValidationService(NullLogger<MovementValidationService>.Instance),
+                orbInventory: new OrbInventoryService(eventLog))
         {
         }
     }

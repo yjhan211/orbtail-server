@@ -65,11 +65,6 @@ public partial class TcpConnection
         }
     }
 
-    public virtual void Send(Packet msg)
-    {
-        TrySend(msg);
-    }
-
     public virtual bool TrySend(Packet msg)
     {
         var clone = ClonePacket(msg);

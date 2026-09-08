@@ -33,11 +33,6 @@ namespace network.common.data.models
     [MessagePackObject]
     public sealed class C_TO_G_SUMMON_ORB : IMessagePackObject
     {
-        /// <summary>
-        ///     소환 2택 선택 인덱스 (0 또는 1). 미지정(기본 0)이면 후보 0이 뽑히며,
-        ///     이는 기존 단일 소환 스트림과 동일해 구버전 요청과 호환된다.
-        /// </summary>
-        [Key("choiceIndex")] public int ChoiceIndex { get; set; }
     }
 
     [MessagePackObject]

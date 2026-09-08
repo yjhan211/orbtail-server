@@ -37,6 +37,7 @@ public partial class GameClientSession : SessionBase
     private readonly PlayerCondition _condition = new();
     private readonly IPlayerGrowthHandler _growth;
     private readonly PlayerMovementService _playerMovement;
+    private readonly OrbInventoryService _orbInventory;
 
     private int _entryCompleted;
     private int _entryFailureReported;
@@ -46,9 +47,7 @@ public partial class GameClientSession : SessionBase
     private int _matchingReservationReleaseReported;
 
     private readonly PlayerInteractionState _interactions = new();
-    private const int PendingOrbDraftCost = 0;
 
-    private bool _hasPendingOrbDraft;
     public int FreeSummonCharges { get; internal set; }
 
     private Timer? _periodicBuffTimer;
@@ -69,6 +68,7 @@ public partial class GameClientSession : SessionBase
         IMatchEntryFailureHandler entryFailureHandler,
         GameMatchEntryService matchEntry,
         MovementValidationService movementValidation,
+        OrbInventoryService orbInventory,
         Func<Packet, bool>? trySendConnectSuccessResponse = null)
         : base(connection, logger, redisOperations)
     {
@@ -81,6 +81,7 @@ public partial class GameClientSession : SessionBase
 
         _matchEntry = matchEntry;
         _playerMovement = new PlayerMovementService(this, movementValidation, gameEventLogManager, logger);
+        _orbInventory = orbInventory;
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
         _matchingLifecycle = matchingLifecycle;
         _isServerStopping = isServerStopping;

@@ -626,7 +626,8 @@ public sealed class GameClientSessionConnectPublicationTests
                 new FakeMatchEntryFailureHandler(recordEntryFailure),
                 TestGameSessionServices.CreateEntryService(Redis, Store, GameServerDevOptions.Disabled, NullLogger.Instance),
                 new MovementValidationService(NullLogger<MovementValidationService>.Instance),
-                sender);
+                orbInventory: new OrbInventoryService(TestGameEventLogs.Create()),
+                trySendConnectSuccessResponse: sender);
             Connection.SetSession(session);
             SetIdentity(session, matchingId, playerId);
             return session;

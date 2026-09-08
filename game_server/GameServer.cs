@@ -42,6 +42,7 @@ internal sealed class GameServer(
     GameMatchEntryService matchEntry,
     GroundItemAutoPickupService groundItemAutoPickup,
     MovementValidationService movementValidation,
+    OrbInventoryService orbInventory,
     MatchEntryFailureHandler entryFailureHandler,
     GameSessionLeaveHandler sessionLeaveHandler,
     MatchCountdownService countdown,
@@ -227,7 +228,7 @@ internal sealed class GameServer(
                 matchingLifecycle,
                 () => Volatile.Read(ref _stopping) != 0,
                 entryFailureHandler,
-                matchEntry: matchEntry, movementValidation: movementValidation);
+                matchEntry: matchEntry, movementValidation: movementValidation, orbInventory: orbInventory);
 
             logger.LogInformation("Game client session created");
             return session;

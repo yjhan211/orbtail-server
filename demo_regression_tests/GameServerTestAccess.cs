@@ -90,6 +90,7 @@ internal static class GameServerTestAccess
             groundItemAutoPickup: new GroundItemAutoPickupService(logs,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<GroundItemAutoPickupService>.Instance),
             movementValidation: new MovementValidationService(Microsoft.Extensions.Logging.Abstractions.NullLogger<MovementValidationService>.Instance),
+            orbInventory: new OrbInventoryService(logs),
             entryFailureHandler: entryFailure,
             sessionLeaveHandler: new GameSessionLeaveHandler(sessions, cleanup,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionLeaveHandler>.Instance),

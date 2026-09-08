@@ -796,7 +796,9 @@ public sealed class GameClientSessionPublicationTests
         var autoPickup = ReadNormalizedSource(root, "game_server", "Services", "GroundItemAutoPickupService.cs");
         Assert.Contains("Monitor.IsEntered(match.Sync)", autoPickup);
         Assert.Contains("match.IsTerminal", autoPickup);
-        Assert.Equal(4, CountOccurrences(orbSummon, "RunWithMatchLock("));
+        Assert.DoesNotContain("RunWithMatchLock", orbSummon);
+        Assert.Equal(4, CountOccurrences(orbSummon, "using (match.Enter())"));
+        Assert.Equal(4, CountOccurrences(orbSummon, "if (match.IsTerminal"));
         Assert.DoesNotContain("SwarmGrowthPickCallback", session);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
         Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
@@ -1282,7 +1284,8 @@ public sealed class GameClientSessionPublicationTests
                 static () => false,
                 new FakeMatchEntryFailureHandler(),
                 TestGameSessionServices.CreateEntryService(null!, matchRuntimes, GameServerDevOptions.Disabled, NullLogger.Instance),
-                new MovementValidationService(NullLogger<MovementValidationService>.Instance))
+                new MovementValidationService(NullLogger<MovementValidationService>.Instance),
+                orbInventory: new OrbInventoryService(eventLog))
         {
         }
     }

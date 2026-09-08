@@ -661,10 +661,7 @@ internal sealed class MatchArenaService(
         if (startedAtUtc == null &&
             matchRuntimes.GetRequired(matchingId).Swarm.Pacing.MatchFallbackAnchorUtc.TryGetValue(matchingId, out var fallbackAnchor))
             startedAtUtc = fallbackAnchor;
-        if (startedAtUtc == null)
-            return 1;
-
-        return OrbData.GetDraftTierByElapsed((DateTime.UtcNow - startedAtUtc.Value).TotalSeconds);
+        return OrbData.GetDraftTierByElapsed((DateTime.UtcNow - startedAtUtc)?.TotalSeconds);
     }
 
     // ===== 오브열 (#226 실험 α/β): 서버 경로 추적 — 오브별 공격 원점·본체 접촉 판정의 좌표 =====

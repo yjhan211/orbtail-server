@@ -113,7 +113,8 @@ public sealed class SessionPacketProcessingTests
             static () => false,
             new FakeMatchEntryFailureHandler(),
             matchEntry: TestGameSessionServices.CreateEntryService(null!, store, GameServerDevOptions.Disabled, NullLogger.Instance),
-            movementValidation: new MovementValidationService(NullLogger<MovementValidationService>.Instance));
+            movementValidation: new MovementValidationService(NullLogger<MovementValidationService>.Instance),
+                orbInventory: new OrbInventoryService(logs));
         connection.SetSession(session);
         return session;
     }

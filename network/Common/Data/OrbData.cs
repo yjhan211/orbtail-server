@@ -127,7 +127,8 @@ namespace network.common.data
         public const int DraftTierTwoAtSeconds = 80;
         public const int DraftTierThreeAtSeconds = 160;
 
-        public static int GetDraftTierByElapsed(double elapsedSeconds) =>
+        /// <summary>경과 초에 따른 드래프트 등급을 반환한다. 시작 전(null)은 1등급이다.</summary>
+        public static int GetDraftTierByElapsed(double? elapsedSeconds) =>
             elapsedSeconds >= DraftTierThreeAtSeconds ? 3 :
             elapsedSeconds >= DraftTierTwoAtSeconds ? 2 : 1;
 
