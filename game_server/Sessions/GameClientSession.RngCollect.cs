@@ -141,7 +141,7 @@ public partial class GameClientSession
         int dropItemId = MatchInteractionService.OpenBox(
             Match, PlayerId.Value, CurrentArea, msg.InteractId,
             LastValidatedPosition, () => SendSummonStoneState(),
-            spawned => BroadcastGroundItemsSpawned(CurrentArea, spawned));
+            spawned => GroundItemNotificationService.BroadcastSpawned(Match, CurrentArea, spawned));
         if (dropItemId == 0)
         {
             BroadcastRngCollectCooldown(msg.InteractId, 0);

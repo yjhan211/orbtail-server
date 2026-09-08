@@ -770,7 +770,7 @@ public sealed class GameClientSessionPublicationTests
         string root = FindRepositoryRoot();
         string session = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
         string rng = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.RngCollect.cs");
-        string ground = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.GroundItem.cs");
+        Assert.False(File.Exists(Path.Combine(root, "game_server", "Sessions", "GameClientSession.GroundItem.cs")));
         string orbSummon = ReadNormalizedSource(
             root,
             "game_server",
@@ -793,9 +793,6 @@ public sealed class GameClientSessionPublicationTests
             ReadNormalizedSource(root, "network", "Core", "SessionBase.cs"));
         Assert.Contains("private Task RunWithMatchLock(Func<Task> handleRequest, Action rejectRequest)", session);
         Assert.Equal(2, CountOccurrences(rng, "RunWithMatchLock("));
-        Assert.DoesNotContain("RunWithMatchLock(", ground);
-        Assert.DoesNotContain("ProcessAutomaticGroundItemPickup", ground);
-        Assert.DoesNotContain("_groundItemPickupCandidates", ground);
         var autoPickup = ReadNormalizedSource(root, "game_server", "Services", "GroundItemAutoPickupService.cs");
         Assert.Contains("Monitor.IsEntered(match.Sync)", autoPickup);
         Assert.Contains("match.IsTerminal", autoPickup);
@@ -825,8 +822,6 @@ public sealed class GameClientSessionPublicationTests
                 doors,
                 "internal void BreakDoorUnlockGauge()",
                 "private Task HandleDoorOpenRequest("));
-        Assert.DoesNotContain("HandleDropGroundItem", ground);
-        Assert.DoesNotContain("DropAllInventoryAtCurrentPosition", ground);
     }
 
     [Theory]
@@ -1081,6 +1076,41 @@ public sealed class GameClientSessionPublicationTests
         }
         Assert.Equal([Protocol.G_TO_C_INGAME_INVENTORY_UPDATE], fixture.ConnectionFor(eliminated).DeliveredProtocols);
         Assert.Equal([Protocol.G_TO_C_GROUND_ITEM_SPAWN], fixture.ConnectionFor(observer).DeliveredProtocols);
+    }
+
+    [Fact]
+    public void GroundItemSnapshotOnlyGoesToRequestedSession()
+    {
+        using var fixture = new SessionFixture();
+        var owner = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
+        var other = fixture.CreateSession(70001, 102, Config.SWARM_MATCH_GROUND_AREA);
+        var item = fixture.SpawnAtSession(owner, Config.KEY_GROUND_ITEM_ID);
+        using (owner.Match.Enter())
+            GroundItemNotificationService.SendSnapshot(owner, owner.CurrentArea);
+        var snapshot = fixture.ConnectionFor(owner).DeserializeSingle<G_TO_C_GROUND_ITEM_SNAPSHOT>(
+            Protocol.G_TO_C_GROUND_ITEM_SNAPSHOT);
+        Assert.Equal(item.GroundItemUid, Assert.Single(snapshot.Items).GroundItemUid);
+        Assert.Empty(fixture.ConnectionFor(other).DeliveredProtocols);
+    }
+
+    [Fact]
+    public void GroundItemSpawnOnlyGoesToLivePlayersInTheSameArea()
+    {
+        using var fixture = new SessionFixture();
+        var owner = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
+        var otherArea = fixture.CreateSession(70001, 102, (AreaType)999);
+        var eliminated = fixture.CreateSession(70001, 103, Config.SWARM_MATCH_GROUND_AREA);
+        eliminated.ApplyMatchStatus(PlayerMatchStatus.ELIMINATED);
+        var item = fixture.SpawnAtSession(owner, Config.KEY_GROUND_ITEM_ID);
+        using (owner.Match.Enter())
+        {
+            GroundItemNotificationService.BroadcastSpawned(owner.Match, owner.CurrentArea, []);
+            Assert.Empty(fixture.ConnectionFor(owner).DeliveredProtocols);
+            GroundItemNotificationService.BroadcastSpawned(owner.Match, owner.CurrentArea, [item]);
+        }
+        Assert.Equal([Protocol.G_TO_C_GROUND_ITEM_SPAWN], fixture.ConnectionFor(owner).DeliveredProtocols);
+        Assert.Empty(fixture.ConnectionFor(otherArea).DeliveredProtocols);
+        Assert.Empty(fixture.ConnectionFor(eliminated).DeliveredProtocols);
     }
 
     private static MatchTickRunner CreatePickupTickRunner(SessionFixture fixture) =>

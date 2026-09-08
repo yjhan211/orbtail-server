@@ -1,7 +1,6 @@
 using game_server.sessions;
 using network.common;
 using network.common.data.models;
-using network.packets;
 
 namespace game_server.services;
 
@@ -50,8 +49,6 @@ internal sealed class GroundItemDropService(GameEventLogManager eventLogs)
             drop.SpawnedItems,
             GameEventLogManager.CalculateDropRecoveryTotal(drop.DroppedItemIds),
             isBot: false);
-        using var packet = PacketMaker.G_TO_C_GROUND_ITEM_SPAWN((int)session.CurrentArea, drop.SpawnedItems.ToList());
-        foreach (var other in session.Match.Sessions.GetInArea(session.CurrentArea))
-            other.TrySend(packet);
+        GroundItemNotificationService.BroadcastSpawned(session.Match, session.CurrentArea, drop.SpawnedItems);
     }
 }

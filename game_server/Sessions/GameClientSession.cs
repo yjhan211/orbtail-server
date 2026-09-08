@@ -331,7 +331,7 @@ public partial class GameClientSession : SessionBase
 
             SendInteractableList(CurrentArea);
             SendInteractCooldownSnapshot();
-            SendGroundItemSnapshot(CurrentArea);
+            GroundItemNotificationService.SendSnapshot(this, CurrentArea);
             SendInGameInventoryList();
             SendSummonStoneState();
             SendDoorStateList();

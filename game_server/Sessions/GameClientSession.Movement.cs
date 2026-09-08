@@ -344,7 +344,7 @@ public partial class GameClientSession
 
                 // 5. 나에게 새 Area의 Interactable 목록 전송
                 SendInteractableList(newArea);
-                SendGroundItemSnapshot(newArea);
+                GroundItemNotificationService.SendSnapshot(this, newArea);
             }
         }
         catch (Exception ex)
