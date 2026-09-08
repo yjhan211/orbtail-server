@@ -10,7 +10,7 @@ using network.packets;
 using static game_server.network.SessionSnapshotDelivery;
 using System.Collections.Immutable;
 
-namespace game_server.matches;
+namespace game_server.matches.field;
 
 /// <summary>
 ///     자기장 스폰 위치와 폐쇄 시간표를 계산하고 구역·문·잔류 오브를 정리한다.

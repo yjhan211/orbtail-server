@@ -1,3 +1,5 @@
+using game_server.matches.entry;
+using game_server.matches.lifecycle;
 using game_server.matches.states;
 using game_server.matches;
 using System.Collections.Concurrent;
@@ -32,7 +34,7 @@ public sealed class MatchStartCountdownPublicationTests
         string repositoryRoot = FindRepositoryRoot();
         string server = ReadNormalizedSource(repositoryRoot, "game_server", "GameServer.cs");
 
-        string broadcast = ReadNormalizedSource(repositoryRoot, "game_server", "Matches", "MatchCountdownService.cs");
+        string broadcast = ReadNormalizedSource(repositoryRoot, "game_server", "Matches", "Entry", "MatchCountdownService.cs");
         string matchTick = ReadMethodSlice(
             ReadNormalizedSource(repositoryRoot, "game_server", "Matches", "MatchTickRunner.cs"),
 "public void Run(MatchRuntime runtime)",
@@ -81,6 +83,7 @@ public sealed class MatchStartCountdownPublicationTests
             repositoryRoot,
             "game_server",
             "Matches",
+            "Entry",
             "MatchStartGate.cs");
         string connect = ReadMethodSlice(
             connection,

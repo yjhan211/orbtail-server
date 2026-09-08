@@ -1,3 +1,5 @@
+using game_server.matches.lifecycle;
+using game_server.matches.results;
 using game_server.matches;
 using System.Collections.Concurrent;
 using System.Reflection;
@@ -131,6 +133,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
             root,
             "game_server",
             "Matches",
+            "Results",
             "MatchResultService.cs");
         string normalFinalization = ReadMethodSlice(
             sessionSource,
@@ -232,7 +235,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 sourceContractOptions),
             terminalPublication);
 
-        string serverSource = ReadNormalizedSource(root, "game_server", "Matches", "MatchCleanupService.cs");
+        string serverSource = ReadNormalizedSource(root, "game_server", "Matches", "Results", "MatchCleanupService.cs");
         string noHumanFinalization = serverSource;
 
         int noHumanLock = Find(noHumanFinalization, "runtime.Enter()");
@@ -536,7 +539,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     public void Lifecycle_SourceContract_ClaimsTerminalBeforeOneShotCorePublish()
     {
         string root = FindRepositoryRoot();
-        string serverSource = ReadNormalizedSource(root, "game_server", "Program.cs") + ReadNormalizedSource(root, "game_server", "GameServer.cs") + ReadNormalizedSource(root, "game_server", "Matches", "MatchingLifecycleService.cs");
+        string serverSource = ReadNormalizedSource(root, "game_server", "Program.cs") + ReadNormalizedSource(root, "game_server", "GameServer.cs") + ReadNormalizedSource(root, "game_server", "Matches", "Lifecycle", "MatchingLifecycleService.cs");
         string immediateWrapper = ReadMethodSlice(
             serverSource,
             "internal void Publish(",
@@ -601,7 +604,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     public void RedisCleanup_SourceContract_StartsAfterUnlockAndTracksBeforeDispatch()
     {
         string root = FindRepositoryRoot();
-        string lifecycle = ReadNormalizedSource(root, "game_server", "Matches", "MatchingLifecycleService.cs");
+        string lifecycle = ReadNormalizedSource(root, "game_server", "Matches", "Lifecycle", "MatchingLifecycleService.cs");
         string start = ReadMethodSlice(lifecycle, "internal void StartRedisCleanup(", "private async Task RunTrackedMatchingRedisCleanupAsync(");
         Assert.True(Find(start, "_pendingMatchingRedisCleanupTasks.TryAdd") < Find(start, "_ = RunTrackedMatchingRedisCleanupAsync("));
         string worker = ReadMethodSlice(lifecycle, "private async Task RunTrackedMatchingRedisCleanupAsync(", "private void CompleteMatchingRedisCleanup(");

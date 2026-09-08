@@ -2,7 +2,7 @@ using network.common;
 using network.common.data.models;
 using System.Collections.Concurrent;
 
-namespace game_server.matches;
+namespace game_server.matches.entry;
 
 /// <summary>
 ///     Keeps a match inert until every expected human client has connected, then releases all

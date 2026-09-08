@@ -1,3 +1,6 @@
+using game_server.matches.combat;
+using game_server.matches.entry;
+using game_server.matches.results;
 using game_server.players;
 using game_server.matches;
 using System.Collections.Concurrent;
@@ -647,7 +650,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             "game_server",
             "Sessions",
             "GameClientSession.OrbSummon.cs");
-        string arena = ReadNormalizedSource(root, "game_server", "Matches", "MatchArenaService.cs");
+        string arena = ReadNormalizedSource(root, "game_server", "Matches", "Combat", "MatchArenaService.cs");
         string orbBoard = ReadNormalizedSource(root, "game_server", "Services", "OrbUpgradeService.cs");
 
         Assert.Contains("IPlayerGrowthHandler _growth", session);

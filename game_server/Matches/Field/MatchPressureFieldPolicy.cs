@@ -3,7 +3,7 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 
-namespace game_server.matches;
+namespace game_server.matches.field;
 
 /// <summary>
 ///     매치 시작 시각으로 자기장 안전 반경을 계산하고 경계 밖 위치의 환경 피해를 구한다.

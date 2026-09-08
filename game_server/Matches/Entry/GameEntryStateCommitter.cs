@@ -3,7 +3,7 @@ using network.common;
 using network.infrastructure.redis;
 using StackExchange.Redis;
 
-namespace game_server.matches;
+namespace game_server.matches.entry;
 
 /// <summary>
 ///     Commits a consumed GameServer entry into Redis entry state.

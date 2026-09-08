@@ -1,3 +1,4 @@
+using game_server.matches.entry;
 using game_server.matches;
 using System;
 using System.Collections.Generic;
@@ -88,7 +89,7 @@ public class ProtocolWiringGuardTests
         int area = source.IndexOf("_playerMovement.InitializeSpawn(matchingSpawnCell)", StringComparison.Ordinal);
         int join = source.IndexOf("SyncPlayersOnEntry()", StringComparison.Ordinal);
         Assert.True(roster >= 0 && roster < area && roster < join);
-        string entry = File.ReadAllText(Path.Combine(root, "game_server", "Matches", "GameMatchEntryService.cs"));
+        string entry = File.ReadAllText(Path.Combine(root, "game_server", "Matches", "Entry", "GameMatchEntryService.cs"));
         Assert.True(entry.IndexOf("if (runtime.IsSetupComplete", StringComparison.Ordinal) <
                     entry.IndexOf("MatchRosterBuilder.CreateBotIds", StringComparison.Ordinal));
     }

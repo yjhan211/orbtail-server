@@ -6,7 +6,7 @@ using network.common.data;
 using network.common.data.models;
 using network.packets;
 
-namespace game_server.matches;
+namespace game_server.matches.combat;
 
 /// <summary>
 ///     오브 공격의 치명타·몬스터 피해·처치 보상과 플레이어 충격을 적용한다.

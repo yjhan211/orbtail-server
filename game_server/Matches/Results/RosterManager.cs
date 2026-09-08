@@ -3,7 +3,7 @@ using network.common;
 using network.helpers;
 using System.Collections.Concurrent;
 
-namespace game_server.matches;
+namespace game_server.matches.results;
 
 /// <summary>
 ///     매치 하나의 참가 명단과 탈락 기록을 관리한다.

@@ -1,3 +1,5 @@
+using game_server.matches.combat;
+using game_server.matches.field;
 using game_server.matches;
 using game_server.network;
 using game_server.sessions;

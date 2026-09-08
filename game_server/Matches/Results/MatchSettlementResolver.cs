@@ -1,5 +1,5 @@
 
-namespace game_server.matches;
+namespace game_server.matches.results;
 
 public readonly record struct MatchSettlementCandidate(
     long PlayerId,

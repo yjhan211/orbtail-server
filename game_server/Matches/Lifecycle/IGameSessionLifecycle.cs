@@ -1,5 +1,5 @@
 
-namespace game_server.matches;
+namespace game_server.matches.lifecycle;
 
 /// <summary>
 ///     게임 세션의 퇴장·완료·예약 해제를 알리는 경계.

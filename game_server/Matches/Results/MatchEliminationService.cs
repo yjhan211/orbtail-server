@@ -5,7 +5,7 @@ using network.common;
 using network.common.data.models;
 using network.packets;
 
-namespace game_server.matches;
+namespace game_server.matches.results;
 
 /// <summary>
 ///     매치 잠금 안에서 탈락을 확정하고 인벤토리 드롭·탈락 알림·승자 판정을 순서대로 처리한다.

@@ -1,3 +1,4 @@
+using game_server.matches.entry;
 using game_server.services;
 using game_server.sessions;
 using MessagePack;
@@ -7,7 +8,7 @@ using network.common.data;
 using network.common.data.models;
 using network.packets;
 
-namespace game_server.matches;
+namespace game_server.matches.results;
 
 /// <summary>
 ///     매치 결과표를 만들고 종료를 한 번만 확정한다.

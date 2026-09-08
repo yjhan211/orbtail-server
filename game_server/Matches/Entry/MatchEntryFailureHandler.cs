@@ -1,9 +1,10 @@
+using game_server.matches.lifecycle;
 using game_server.network;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
 
-namespace game_server.matches;
+namespace game_server.matches.entry;
 
 /// <summary>
 ///     입장에 실패한 매치를 중단하고 관련 세션에 실패를 알린다.

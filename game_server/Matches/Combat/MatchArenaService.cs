@@ -1,3 +1,6 @@
+using game_server.matches.entry;
+using game_server.matches.field;
+using game_server.matches.results;
 using game_server.matches.states;
 using game_server.network;
 using game_server.services;
@@ -11,7 +14,7 @@ using network.packets;
 using static game_server.network.SessionSnapshotDelivery;
 using System.Collections.Immutable;
 
-namespace game_server.matches;
+namespace game_server.matches.combat;
 
 /// <summary>
 ///     매치의 전투 틱 순서를 조율하고 꼬리 절단·파도·점수 만료·개발 샌드박스를 처리한다.

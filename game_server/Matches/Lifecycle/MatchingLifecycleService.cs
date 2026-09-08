@@ -6,7 +6,7 @@ using network.infrastructure.messaging;
 using network.infrastructure.redis;
 using System.Collections.Concurrent;
 
-namespace game_server.matches;
+namespace game_server.matches.lifecycle;
 
 /// <summary>
 ///     매치 종료 후 Redis 예약·인계 정보를 정리하고 UserServer에 종료 사실을 알린다.

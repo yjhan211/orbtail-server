@@ -1,3 +1,4 @@
+using game_server.matches.results;
 using game_server.network;
 using game_server.services;
 using MessagePack;
@@ -9,7 +10,7 @@ using network.gameentry;
 using network.helpers;
 using network.infrastructure.redis;
 
-namespace game_server.matches;
+namespace game_server.matches.entry;
 
 /// <summary>
 ///     현재 노드에 발급된 입장 티켓을 소비하고 manifest·예약·준비 마커를 확인해 사람·봇·스폰 구성을 매치당 한 번 확정한다.

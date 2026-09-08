@@ -3,7 +3,7 @@ using network.common;
 using network.common.data.models;
 using network.infrastructure.redis;
 
-namespace game_server.matches;
+namespace game_server.matches.entry;
 
 /// <summary>매치 최초 구성 시 사람 프로필을 검증하고 사람·봇의 이름과 외형을 확정한다. 사람 프로필이 없으면 입장을 실패시킨다.</summary>
 internal sealed class MatchRosterBuilder(IRedisOperations redisOperations, ILogger logger)

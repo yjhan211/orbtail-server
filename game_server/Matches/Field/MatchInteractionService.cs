@@ -3,7 +3,7 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 
-namespace game_server.matches;
+namespace game_server.matches.field;
 
 /// <summary>
 ///     매치 잠금 안에서 문 열기 조건과 진행 중인 상호작용 취소를 처리한다.

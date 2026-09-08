@@ -6,7 +6,7 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 
-namespace game_server.matches;
+namespace game_server.matches.combat;
 
 /// <summary>
 ///     성장 카드의 비용·제안·선택·효과 적용과 봇의 자동 투자를 처리한다.

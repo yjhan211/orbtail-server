@@ -2,7 +2,7 @@ using game_server.services;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
 
-namespace game_server.matches;
+namespace game_server.matches.results;
 
 /// <summary>
 ///     Cleanup-safe snapshot of the metadata and events used to write one match summary.

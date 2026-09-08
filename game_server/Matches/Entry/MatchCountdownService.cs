@@ -5,7 +5,7 @@ using network.common;
 using network.common.data.models;
 using network.packets;
 
-namespace game_server.matches;
+namespace game_server.matches.entry;
 
 /// <summary>
 ///     매치 입장 마감을 확인하고 시작까지 남은 초를 참가자에게 보낸다.

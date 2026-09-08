@@ -2,7 +2,7 @@ using game_server.services;
 using network.common;
 using System.Text.Json;
 
-namespace game_server.matches;
+namespace game_server.matches.results;
 
 public sealed class MatchSummaryFileStore
 {

@@ -1,6 +1,6 @@
 using game_server.sessions;
 
-namespace game_server.matches;
+namespace game_server.matches.entry;
 
 /// <summary>
 ///     입장 실패 처리를 세션에서 요청하는 경계.

@@ -1,10 +1,11 @@
+using game_server.matches.results;
 using game_server.network;
 using game_server.services;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
 using network.common;
 
-namespace game_server.matches;
+namespace game_server.matches.field;
 
 /// <summary>
 ///     매치의 환경 피해와 동시 탈락 순위를 정산하고 승자를 확정한다.
