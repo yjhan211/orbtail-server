@@ -13,7 +13,7 @@ namespace game_server.services;
 ///     시계와 면역 상태는 매치가 소유하며 매치 잠금 안에서 실행한다.
 ///     공통 피해 적용은 MatchCombatDamageService에 맡긴다.
 /// </summary>
-internal sealed class WindBladeService(
+internal sealed class WindOrbAttackService(
     MatchRuntimeStore matchRuntimes,
     OrbTrailService orbTrails,
     MatchCombatDamageService combatDamage,
@@ -38,7 +38,7 @@ internal sealed class WindBladeService(
         List<GameClientSession> allSessions)
     {
         IReadOnlyList<SwarmArenaCombatTarget>? monsters = null;
-        WindBladeState windBlade = matchRuntimes.GetOrThrow(matchingId).WindBlade;
+        WindOrbAttackState windOrbAttacks = matchRuntimes.GetOrThrow(matchingId).WindOrbAttacks;
 
         foreach (var owner in participants)
         {
@@ -55,7 +55,7 @@ internal sealed class WindBladeService(
                     color != OrbColor.Green)
                     continue;
 
-                if (!windBlade.TryBeginTick(
+                if (!windOrbAttacks.TryBeginTick(
                         owner.PlayerId, item.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_TICK_SECONDS))
                     continue;
 
@@ -91,11 +91,11 @@ internal sealed class WindBladeService(
                 // 클라 회전 20% 도달에 맞춘 0.2초만 기다린다. 반경이 비면 리셋.
                 if (monstersInRadius == null && playersInRadius == null)
                 {
-                    windBlade.ResetEngagement(owner.PlayerId, item.ItemUid);
+                    windOrbAttacks.ResetEngagement(owner.PlayerId, item.ItemUid);
                     continue;
                 }
 
-                if (!windBlade.HasCompletedSpinup(
+                if (!windOrbAttacks.HasCompletedSpinup(
                         owner.PlayerId, item.ItemUid, nowUtc, Config.SWARM_WIND_BLADE_SPINUP_SECONDS))
                     continue;
 
@@ -125,7 +125,7 @@ internal sealed class WindBladeService(
                 {
                     foreach (var participant in playersInRadius)
                     {
-                        if (!windBlade.TryClaimVictimShock(
+                        if (!windOrbAttacks.TryClaimVictimShock(
                                 participant.PlayerId, nowUtc, SwarmWindBladeVictimImmuneSeconds))
                             continue;
 
@@ -133,8 +133,8 @@ internal sealed class WindBladeService(
                         // 충격 먼저, 상처는 그다음 — 상처를 낸 그 틱이 자기 충격에 치명타를 걸지 않게.
                         combatDamage.ApplySwarmShock(matchingId, owner.PlayerId, item.ItemId, owner.Area, participant.PlayerId,
                             $"WIND_BLADE_HIT ordinal={ordinal}", aliveSessions, aliveBots, allSessions);
-                        ApplySwarmWindWound(
-                            windBlade, owner.PlayerId, owner.Area, participant.PlayerId,
+                        ApplyWindOrbWound(
+                            windOrbAttacks, owner.PlayerId, owner.Area, participant.PlayerId,
                             nowUtc, aliveSessions);
                     }
                 }
@@ -152,11 +152,11 @@ internal sealed class WindBladeService(
     }
 
     /// <summary>상처 부여·갱신 — HUD 통지 포함. 효과는 ApplySwarmShock의 치명타 굴림이 읽는다.</summary>
-    private void ApplySwarmWindWound(
-        WindBladeState windBlade, long ownerId, AreaType area, long victimId,
+    private void ApplyWindOrbWound(
+        WindOrbAttackState windOrbAttacks, long ownerId, AreaType area, long victimId,
         DateTime nowUtc, List<GameClientSession> aliveSessions)
     {
-        windBlade.ApplyWound(victimId, nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS));
+        windOrbAttacks.ApplyWound(victimId, nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS));
         var victimSession = aliveSessions.FirstOrDefault(session => session.PlayerId == victimId);
         if (victimSession == null || !victimSession.PlayerId.HasValue || ownerId == 0) return;
 
@@ -165,7 +165,7 @@ internal sealed class WindBladeService(
             SourcePlayerId = ownerId,
             TargetPlayerId = victimId,
             AreaType = area,
-            Effect = CombatStatusEffectKind.WindWound,
+            Effect = CombatStatusEffectKind.WindOrbWound,
             DurationMs = (int)(Config.SWARM_WIND_WOUND_SECONDS * 1000f)
         });
         victimSession.TrySend(packet);

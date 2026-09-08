@@ -31,9 +31,9 @@ public sealed class MatchGameplayStateTests
     }
 
     [Fact]
-    public void WindBladeState_PreservesTimingBoundariesAndEngagementReset()
+    public void WindOrbAttackState_PreservesTimingBoundariesAndEngagementReset()
     {
-        var state = new WindBladeState();
+        var state = new WindOrbAttackState();
         DateTime nowUtc = new(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc);
 
         Assert.True(state.TryBeginTick(10, 100, nowUtc, 1d));
@@ -81,18 +81,18 @@ public sealed class MatchGameplayStateTests
         const long itemUid = 9001;
         DateTime nowUtc = new(2026, 8, 31, 0, 0, 0, DateTimeKind.Utc);
 
-        first.WindBlade.ApplyWound(playerId, nowUtc.AddMinutes(1));
-        Assert.True(first.WindBlade.IsWounded(playerId, nowUtc));
-        Assert.False(second.WindBlade.IsWounded(playerId, nowUtc));
-        Assert.False(first.WindBlade.HasCompletedSpinup(playerId, itemUid, nowUtc, 1d));
-        Assert.False(second.WindBlade.HasCompletedSpinup(playerId, itemUid, nowUtc.AddSeconds(2), 1d));
+        first.WindOrbAttacks.ApplyWound(playerId, nowUtc.AddMinutes(1));
+        Assert.True(first.WindOrbAttacks.IsWounded(playerId, nowUtc));
+        Assert.False(second.WindOrbAttacks.IsWounded(playerId, nowUtc));
+        Assert.False(first.WindOrbAttacks.HasCompletedSpinup(playerId, itemUid, nowUtc, 1d));
+        Assert.False(second.WindOrbAttacks.HasCompletedSpinup(playerId, itemUid, nowUtc.AddSeconds(2), 1d));
 
-        Assert.True(first.WindBlade.TryBeginTick(playerId, itemUid, nowUtc, 1d));
-        Assert.False(first.WindBlade.TryBeginTick(playerId, itemUid, nowUtc, 1d));
-        Assert.True(second.WindBlade.TryBeginTick(playerId, itemUid, nowUtc, 1d));
-        Assert.True(first.WindBlade.TryClaimVictimShock(playerId, nowUtc, 1d));
-        Assert.False(first.WindBlade.TryClaimVictimShock(playerId, nowUtc, 1d));
-        Assert.True(second.WindBlade.TryClaimVictimShock(playerId, nowUtc, 1d));
+        Assert.True(first.WindOrbAttacks.TryBeginTick(playerId, itemUid, nowUtc, 1d));
+        Assert.False(first.WindOrbAttacks.TryBeginTick(playerId, itemUid, nowUtc, 1d));
+        Assert.True(second.WindOrbAttacks.TryBeginTick(playerId, itemUid, nowUtc, 1d));
+        Assert.True(first.WindOrbAttacks.TryClaimVictimShock(playerId, nowUtc, 1d));
+        Assert.False(first.WindOrbAttacks.TryClaimVictimShock(playerId, nowUtc, 1d));
+        Assert.True(second.WindOrbAttacks.TryClaimVictimShock(playerId, nowUtc, 1d));
 
         Assert.Equal(1, first.OrbUpgrades.IncrementFamilyUpgradeCount(playerId, OrbColor.Red));
         Assert.Equal(0, second.OrbUpgrades.GetFamilyUpgradeCount(playerId, OrbColor.Red));
@@ -205,7 +205,7 @@ public sealed class MatchGameplayStateTests
         removed.TrailCombat.OrbTrails[(removedMatchingId, removedPlayerId)] = [];
         removed.BotTactics.FleeDirective.Add((removedMatchingId, removedPlayerId));
         removed.Progress.StartingOrbGrantedPlayers.Add((removedMatchingId, removedPlayerId));
-        removed.WindBlade.ApplyWound(removedPlayerId, DateTime.MaxValue);
+        removed.WindOrbAttacks.ApplyWound(removedPlayerId, DateTime.MaxValue);
         removed.OrbUpgrades.IncrementFamilyUpgradeCount(removedPlayerId, OrbColor.Green);
         removed.SunOrbAttacks.AddShape(CreateCrossfireShape(
             eventId: 11,
@@ -225,7 +225,7 @@ public sealed class MatchGameplayStateTests
         sibling.TrailCombat.OrbTrails[(siblingMatchingId, siblingPlayerId)] = [];
         sibling.BotTactics.FleeDirective.Add((siblingMatchingId, siblingPlayerId));
         sibling.Progress.StartingOrbGrantedPlayers.Add((siblingMatchingId, siblingPlayerId));
-        sibling.WindBlade.ApplyWound(siblingPlayerId, DateTime.MaxValue);
+        sibling.WindOrbAttacks.ApplyWound(siblingPlayerId, DateTime.MaxValue);
         sibling.OrbUpgrades.IncrementFamilyUpgradeCount(siblingPlayerId, OrbColor.Blue);
         sibling.SunOrbAttacks.AddShape(CreateCrossfireShape(
             eventId: 12,
@@ -251,7 +251,7 @@ public sealed class MatchGameplayStateTests
         Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.TrailCombat.OrbTrails.Keys);
         Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.BotTactics.FleeDirective);
         Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.Progress.StartingOrbGrantedPlayers);
-        Assert.True(sibling.WindBlade.IsWounded(siblingPlayerId, DateTime.UtcNow));
+        Assert.True(sibling.WindOrbAttacks.IsWounded(siblingPlayerId, DateTime.UtcNow));
         Assert.Equal(1, sibling.OrbUpgrades.GetFamilyUpgradeCount(siblingPlayerId, OrbColor.Blue));
         Assert.Equal(1, sibling.SunOrbAttacks.ShapeCount);
         Assert.Equal(1, sibling.SunOrbAttacks.SunBurnCount);
@@ -268,7 +268,7 @@ public sealed class MatchGameplayStateTests
         Assert.Empty(replacement.TrailCombat.OrbTrails);
         Assert.Empty(replacement.BotTactics.FleeDirective);
         Assert.Empty(replacement.Progress.StartingOrbGrantedPlayers);
-        Assert.False(replacement.WindBlade.IsWounded(removedPlayerId, DateTime.UtcNow));
+        Assert.False(replacement.WindOrbAttacks.IsWounded(removedPlayerId, DateTime.UtcNow));
         Assert.Equal(0, replacement.OrbUpgrades.GetFamilyUpgradeCount(removedPlayerId, OrbColor.Green));
         Assert.NotSame(removed.SunOrbAttacks, replacement.SunOrbAttacks);
         Assert.True(replacement.SunOrbAttacks.IsEmpty);

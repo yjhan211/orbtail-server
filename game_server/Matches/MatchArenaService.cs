@@ -31,7 +31,7 @@ internal sealed class MatchArenaService(
     OrbVisualStatePublisher orbVisuals,
     OrbTrailService orbTrails,
     MatchCombatDamageService combatDamage,
-    WindBladeService windBlades,
+    WindOrbAttackService windOrbAttacks,
     SunOrbAttackService sunOrbAttacks,
     MatchFieldService fieldService,
     BotMovementService botMovement,
@@ -315,11 +315,11 @@ internal sealed class MatchArenaService(
         // 교차사격 샌드박스(#232)는 켠다 — 파도·바람이 실험 대상이다 (저녁 유저 지시).
         if (!SwarmCutDummyAutoSetup && (dummyIds.Count == 0 || SwarmCrossfireSandbox))
         {
-            ProcessSwarmWaveBombs(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+            ProcessWaveOrbAttacks(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
             if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
                 return;
 
-            windBlades.Process(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
+            windOrbAttacks.Process(matchingId, nowUtc, participants, aliveSessions, aliveBots, sessions);
             if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
                 return;
         }
@@ -812,8 +812,8 @@ internal sealed class MatchArenaService(
         long cutterId, long victimId, AreaType area, int kind, float seconds,
         List<GameClientSession> allSessions)
     {
-        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_ENCIRCLE_VFX);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_ENCIRCLE_VFX
+        using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_RING_EFFECT);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RING_EFFECT
         {
             OwnerPlayerId = cutterId,
             CenterX = 0f,
@@ -1172,7 +1172,7 @@ internal sealed class MatchArenaService(
         // 절단 낙수 없음 (#232): 소환석·드롭·점수·웨이브 기여를 지급하지 않는다. 잃은 것은 그냥 사라진다.
 
         // 절단 파열 플래시: 링 + 잘린 꼬리 오브 섬광 — "어디부터 끊겼다"가 화면에서 읽히게.
-        SendSwarmRingVfx(
+        SendOrbRingEffect(
             bestArea, creditPlayerId, bestOrbPosition.X, bestOrbPosition.Y,
             SwarmTrailCutFlashRadius, allSessions, SwarmRingVfxKindCut,
             victimId: bestOwnerId, fromOrdinal: bestTailOrdinal);
@@ -1248,7 +1248,7 @@ internal sealed class MatchArenaService(
     // Radius 필드에 단계(1~4)를 실어 보낸다.
     private const int SwarmRingVfxKindEncircle = 0;
     private const int SwarmRingVfxKindCut = OrbTrailService.CutVfxKind;
-    private const int SwarmRingVfxKindWaveBomb = 2;
+    private const int OrbRingEffectKindWaveOrb = 2;
     // 반격 보호 (#227 7단계): 5 = 피해자 남은 꼬리의 유리 잔광 개시(Radius에 지속 초),
     // 6 = 그 절단자의 투사체가 잔광 앞에서 깨짐(피해 숫자 없음).
     private const int SwarmRingVfxKindRetaliationGuard = 5;
@@ -1258,13 +1258,13 @@ internal sealed class MatchArenaService(
     private const int SwarmArmorDurabilityBonus = MatchGrowthService.ArmorDurabilityBonus;
 
     /// <summary>링 연출 공용 전송 — 포위 완성(대형)·절단 파열(소형)·물폭탄(파랑)이 같은 원형을 쓴다.</summary>
-    private void SendSwarmRingVfx(
+    private void SendOrbRingEffect(
         AreaType area, long ownerId, float centerX, float centerY, float radius,
         List<GameClientSession> sessions, int kind = SwarmRingVfxKindEncircle,
         long victimId = 0, int fromOrdinal = 0)
     {
-        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_ENCIRCLE_VFX);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_ENCIRCLE_VFX
+        using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_RING_EFFECT);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RING_EFFECT
         {
             OwnerPlayerId = ownerId,
             CenterX = centerX,
@@ -1284,14 +1284,14 @@ internal sealed class MatchArenaService(
     // ===== 파도 = 소용돌이 (#268): 파도 오브 각각이 주기(2초)마다 자기 열 위치에 소용돌이를 깐다 — 오브가 곧
     // 무기 위치라는 점에서 바람 회전 칼날과 같은 문법. 예고(0.65초 림 링) 후 반경 안 전원을 잠깐 늦춘다(침수) —
     // 피해는 타격 피드백 수준(1/4). 예고 원점은 스폰 순간 고정. 주기·예고의 원천은 swarm_config.csv (#335). =====
-    private static double SwarmWaveBombIntervalSeconds =>
+    private static double WaveOrbAttackIntervalSeconds =>
         SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_INTERVAL_SECONDS", 2d);
-    private static double SwarmWaveBombFuseSeconds =>
+    private static double WaveOrbDetonationDelaySeconds =>
         SwarmConfigData.GetDouble("SWARM_WAVE_VORTEX_FUSE_SECONDS", 0.65d);
 
     // 오브별 독립 시계("다같이 터지는 게 어색"). 파도 폭탄 상태(위상·대기열)는 matchRuntimes.GetOrThrow(matchingId).TrailCombat.
 
-    private void ProcessSwarmWaveBombs(
+    private void ProcessWaveOrbAttacks(
         long matchingId,
         DateTime nowUtc,
         List<SwarmParticipantSpatial> participants,
@@ -1300,13 +1300,13 @@ internal sealed class MatchArenaService(
         List<GameClientSession> allSessions)
     {
         // 1) 기폭: 예약된 소용돌이 정산.
-        for (int index = matchRuntimes.GetOrThrow(matchingId).TrailCombat.PendingWaveBombs.Count - 1; index >= 0; index--)
+        for (int index = matchRuntimes.GetOrThrow(matchingId).TrailCombat.PendingWaveOrbAttacks.Count - 1; index >= 0; index--)
         {
-            var vortex = matchRuntimes.GetOrThrow(matchingId).TrailCombat.PendingWaveBombs[index];
+            var vortex = matchRuntimes.GetOrThrow(matchingId).TrailCombat.PendingWaveOrbAttacks[index];
             if (vortex.MatchingId != matchingId || nowUtc < vortex.ExplodeAtUtc)
                 continue;
-            matchRuntimes.GetOrThrow(matchingId).TrailCombat.PendingWaveBombs.RemoveAt(index);
-            DetonateSwarmWaveVortex(matchingId, vortex.OwnerId, vortex.Area, vortex.Position,
+            matchRuntimes.GetOrThrow(matchingId).TrailCombat.PendingWaveOrbAttacks.RemoveAt(index);
+            DetonateWaveOrbVortex(matchingId, vortex.OwnerId, vortex.Area, vortex.Position,
                 vortex.Damage, vortex.Radius, vortex.SourceItemId, nowUtc,
                 participants, aliveSessions, aliveBots, allSessions);
         }
@@ -1330,12 +1330,12 @@ internal sealed class MatchArenaService(
                     continue;
 
                 var orbKey = (matchingId, owner.PlayerId, item.ItemUid);
-                if (!matchRuntimes.GetOrThrow(matchingId).TrailCombat.WaveBombNextDropAtUtc.TryGetValue(orbKey, out var nextDropAtUtc))
+                if (!matchRuntimes.GetOrThrow(matchingId).TrailCombat.WaveOrbNextAttackAtUtc.TryGetValue(orbKey, out var nextDropAtUtc))
                 {
                     // 고유 위상: 첫 발동을 0.5~1.5주기 사이에 흩뿌린다 — uid라 재접속에도 안정.
                     double phase = 0.5d + item.ItemUid % 977 / 977d;
-                    matchRuntimes.GetOrThrow(matchingId).TrailCombat.WaveBombNextDropAtUtc[orbKey] =
-                        nowUtc.AddSeconds(SwarmWaveBombIntervalSeconds * phase);
+                    matchRuntimes.GetOrThrow(matchingId).TrailCombat.WaveOrbNextAttackAtUtc[orbKey] =
+                        nowUtc.AddSeconds(WaveOrbAttackIntervalSeconds * phase);
                     continue;
                 }
 
@@ -1382,7 +1382,7 @@ internal sealed class MatchArenaService(
                     continue;
 
                 // 비무장(소환·채집 중)이어도 시계는 돈다 — 칼날·미사일과 같은 규칙.
-                matchRuntimes.GetOrThrow(matchingId).TrailCombat.WaveBombNextDropAtUtc[orbKey] = nowUtc.AddSeconds(SwarmWaveBombIntervalSeconds);
+                matchRuntimes.GetOrThrow(matchingId).TrailCombat.WaveOrbNextAttackAtUtc[orbKey] = nowUtc.AddSeconds(WaveOrbAttackIntervalSeconds);
 
                 if (sunMultiplier < 0f)
                     sunMultiplier = OrbData.GetSunPveAttackMultiplier(trailOrbs);
@@ -1390,7 +1390,7 @@ internal sealed class MatchArenaService(
                     baseDamage * sunMultiplier * Config.SWARM_WAVE_VORTEX_DAMAGE_MULTIPLIER));
 
                 // 스폰 = 그 오브의 현재 열 좌표(사거리 게이트가 계산한 그 지점) — 스폰 순간 고정.
-                matchRuntimes.GetOrThrow(matchingId).TrailCombat.PendingWaveBombs.Add((
+                matchRuntimes.GetOrThrow(matchingId).TrailCombat.PendingWaveOrbAttacks.Add((
                     matchingId,
                     owner.PlayerId,
                     owner.Area,
@@ -1398,9 +1398,9 @@ internal sealed class MatchArenaService(
                     damage,
                     radius,
                     item.ItemId,
-                    nowUtc.AddSeconds(SwarmWaveBombFuseSeconds)));
-                SendSwarmRingVfx(owner.Area, owner.PlayerId, orbPosition.X, orbPosition.Y,
-                    radius, allSessions, SwarmRingVfxKindWaveBomb,
+                    nowUtc.AddSeconds(WaveOrbDetonationDelaySeconds)));
+                SendOrbRingEffect(owner.Area, owner.PlayerId, orbPosition.X, orbPosition.Y,
+                    radius, allSessions, OrbRingEffectKindWaveOrb,
                     victimId: 0, fromOrdinal: ordinal);
                 eventLogs.LogSystem(
                     matchingId,
@@ -1416,7 +1416,7 @@ internal sealed class MatchArenaService(
     ///     기각(유저 판정). 플레이어는 충격 면역 창(0.9초)이 연쇄 피격을 막는다 —
     ///     면역이면 감속·피해 전부 없음.
     /// </summary>
-    private void DetonateSwarmWaveVortex(
+    private void DetonateWaveOrbVortex(
         long matchingId,
         long ownerId,
         AreaType area,
@@ -1489,7 +1489,7 @@ internal sealed class MatchArenaService(
                         SourcePlayerId = ownerId,
                         TargetPlayerId = participant.PlayerId,
                         AreaType = area,
-                        Effect = CombatStatusEffectKind.WaveSlow,
+                        Effect = CombatStatusEffectKind.WaveOrbSlow,
                         DurationMs = (int)(OrbData.WaveSlowSeconds * 1000f)
                     });
                     victimSession.TrySend(packet);

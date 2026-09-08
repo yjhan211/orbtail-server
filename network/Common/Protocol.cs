@@ -120,13 +120,13 @@ namespace network.common
         G_TO_C_JAM_RANKINGS,
 
 
-        // 포위 사격 연출 (#226 B) — 완성 순간 포위 링 표시
-        G_TO_C_SWARM_ENCIRCLE_VFX,
+        // 오브 공용 링 연출 — 파도 공격 예고, 꼬리 절단, 포위 효과.
+        G_TO_C_ORB_RING_EFFECT,
 
 
-        // 교차사격 예고 (#232 2단계) — 몬스터를 향한 오브 공격이 만드는 모양(직선 등)의
+        // 태양오브 공격 예고·폭발 — 서버가 확정한 공격의
         // 원점·끝·폭·예고/판정 시간. 같은 구역 전원에게 브로드캐스트, 표시 = 판정.
-        G_TO_C_SWARM_CROSSFIRE_TELEGRAPH,
+        G_TO_C_SUN_ORB_ATTACK,
 
         // 6칸 빌드 (#232 4단계) — 계열 공유 레벨(태양·바람·파도 T1~T3)과 직접 강화.
         G_TO_C_ORB_UPGRADE_INFO,

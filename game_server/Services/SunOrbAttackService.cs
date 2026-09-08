@@ -218,8 +218,8 @@ internal sealed class SunOrbAttackService(
         int anchorMonsterId,
         List<GameClientSession> allSessions)
     {
-        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_CROSSFIRE_TELEGRAPH);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_CROSSFIRE_TELEGRAPH
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SUN_ORB_ATTACK);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SUN_ORB_ATTACK
         {
             EventId = eventId,
             OwnerPlayerId = attack.AttackerPlayerId,
@@ -361,8 +361,8 @@ internal sealed class SunOrbAttackService(
     private static void BroadcastSwarmCrossfireDetonation(
         SwarmCrossfireShape shape, Vector3f detonation, List<GameClientSession> allSessions)
     {
-        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_CROSSFIRE_TELEGRAPH);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_CROSSFIRE_TELEGRAPH
+        using var packet = Packet.Create((int)Protocol.G_TO_C_SUN_ORB_ATTACK);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SUN_ORB_ATTACK
         {
             EventId = shape.EventId,
             OwnerPlayerId = shape.OwnerId,

@@ -273,7 +273,7 @@ internal sealed class MatchCombatDamageService(
         int shock = Math.Max(1, (int)MathF.Round(
             Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE) * damageScale));
         // 상처 (#268): 상처 입은 피해자만 PvP 충격 치명타가 열린다 — PvE와 같은 2배.
-        if (runtime.WindBlade.IsWounded(victimId, DateTime.UtcNow) &&
+        if (runtime.WindOrbAttacks.IsWounded(victimId, DateTime.UtcNow) &&
             runtime.Progress.RollCritical(Config.SWARM_WIND_WOUND_CRIT_CHANCE))
             shock = Math.Max(shock + 1, (int)MathF.Round(shock * SwarmCriticalMultiplier));
         int healthBefore;

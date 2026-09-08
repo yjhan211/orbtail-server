@@ -149,7 +149,7 @@ internal static class Program
         services.AddSingleton<OrbVisualStatePublisher>();
         services.AddSingleton<OrbTrailService>();
         services.AddSingleton<MatchCombatDamageService>();
-        services.AddSingleton<WindBladeService>();
+        services.AddSingleton<WindOrbAttackService>();
         services.AddSingleton<SunOrbAttackService>();
         services.AddSingleton<MatchFieldService>();
         services.AddSingleton<MatchCountdownService>(sp => new MatchCountdownService(

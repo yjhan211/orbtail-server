@@ -6,9 +6,9 @@ using network.common.data.models;
 
 namespace demo_regression_tests;
 
-public sealed class WindBladeServiceTests
+public sealed class WindOrbAttackServiceTests
 {
-    public WindBladeServiceTests() => TestGameData.EnsureBattleItemCombatLoaded();
+    public WindOrbAttackServiceTests() => TestGameData.EnsureBattleItemCombatLoaded();
 
     [Fact]
     public void Process_WaitsForSpinupThenShocksBeforeWoundingAndHonorsImmunity()
@@ -17,7 +17,7 @@ public sealed class WindBladeServiceTests
         var match = store.GetOrCreate(947501);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var trails = new OrbTrailService(store);
-        var service = new WindBladeService(store, trails, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
+        var service = new WindOrbAttackService(store, trails, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
         var victim = new BotPlayerState { PlayerId = 12 };
@@ -29,7 +29,7 @@ public sealed class WindBladeServiceTests
                 [new(11, AreaType.None, new Vector3f(0, 0, 0)), new(12, AreaType.None, origin)];
             service.Process(match.MatchingId, now, participants, [], [owner, victim], []);
             Assert.Equal(Config.MAX_HEALTH, victim.Health);
-            Assert.False(match.WindBlade.IsWounded(12, now));
+            Assert.False(match.WindOrbAttacks.IsWounded(12, now));
 
             var hitAt = now.AddSeconds(Math.Max(Config.SWARM_WIND_BLADE_TICK_SECONDS,
                 Config.SWARM_WIND_BLADE_SPINUP_SECONDS) + 0.001);
@@ -37,7 +37,7 @@ public sealed class WindBladeServiceTests
             int expected = Math.Max(1, (int)MathF.Round(
                 Config.ScaleSwarmDamageTaken(Config.SWARM_CROSSFIRE_SHOCK_DAMAGE)));
             Assert.Equal(Config.MAX_HEALTH - expected, victim.Health);
-            Assert.True(match.WindBlade.IsWounded(12, hitAt));
+            Assert.True(match.WindOrbAttacks.IsWounded(12, hitAt));
             Assert.Equal(Config.MAX_HEALTH, owner.Health);
 
             service.Process(match.MatchingId, hitAt.AddSeconds(Config.SWARM_WIND_BLADE_TICK_SECONDS + 0.001),
@@ -56,7 +56,7 @@ public sealed class WindBladeServiceTests
         var match = store.GetOrCreate(947502);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var trails = new OrbTrailService(store);
-        var service = new WindBladeService(store, trails, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
+        var service = new WindOrbAttackService(store, trails, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
         using (MatchRuntimeStore.Enter(match))
         {
             match.Inventory.GetPlayerInventory(11).AddItem(itemId, forceSeparateStack: true);
@@ -68,7 +68,7 @@ public sealed class WindBladeServiceTests
             service.Process(match.MatchingId, now, participants, [], [victim], []);
             service.Process(match.MatchingId, now.AddSeconds(1), participants, [], [victim], []);
             Assert.Equal(Config.MAX_HEALTH, victim.Health);
-            Assert.False(match.WindBlade.IsWounded(12, now.AddSeconds(1)));
+            Assert.False(match.WindOrbAttacks.IsWounded(12, now.AddSeconds(1)));
             match.TryMarkEnded();
         }
     }

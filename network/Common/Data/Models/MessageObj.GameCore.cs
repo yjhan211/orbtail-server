@@ -9,7 +9,7 @@ namespace network.common.data.models
 {
     public enum CombatEntityKind { Player = 0, Monster = 1 }
     public enum HealthRecoveryKind { Orb = 0, Sleep = 1 }
-    public enum CombatStatusEffectKind { WaveSlow = 0, SunBurn = 1, WindWound = 2 }
+    public enum CombatStatusEffectKind { WaveOrbSlow = 0, SunBurn = 1, WindOrbWound = 2 }
 
     // 사람과 봇은 Player ID를, 몬스터는 Monster ID를 사용한다. 체력 -1은 정보 없음이다.
     [MessagePackObject]
@@ -173,11 +173,11 @@ namespace network.common.data.models
 
 
     /// <summary>
-    ///     스웜 링 연출 (#226). 같은 구역에 브로드캐스트 — 링 중심·반경.
-    ///     Kind: 0=포위 완성, 1=절단 파열, 2=파도 물폭탄 — 클라가 색·효과음을 분기한다.
+    ///     오브 공용 링 연출. 같은 구역에 브로드캐스트 — 링 중심·반경.
+    ///     Kind: 0=포위 완성, 1=절단 파열, 2=파도오브 소용돌이 예고 — 클라가 색·효과음을 분기한다.
     /// </summary>
     [MessagePackObject]
-    public class G_TO_C_SWARM_ENCIRCLE_VFX : IMessagePackObject
+    public class G_TO_C_ORB_RING_EFFECT : IMessagePackObject
     {
         [Key("ownerId")] public long OwnerPlayerId { get; set; }
         [Key("centerX")] public float CenterX { get; set; }
@@ -191,13 +191,13 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    ///     교차사격 예고 (#232 2단계). 오브가 몬스터를 향해 쏘는 순간 서버가 모양을 잠그고
-    ///     같은 구역 전원에게 보낸다. Shape 1 = 직선(태양): Origin→End 선분에 폭 Width의 캡슐.
+    ///     태양오브 공격 예고와 폭발 통지. 발사 시 서버가 공격 경로를 확정하고
+    ///     같은 구역 전원에게 보낸다. Shape 1 = 직선 공격 예고, Shape 2 = 폭발 통지.
     ///     클라는 TelegraphSeconds 동안 예고색으로 그리다 ActiveSeconds 동안 판정색으로 바꾼다.
     ///     서버 판정은 같은 좌표·같은 시간을 쓴다 — 표시 = 판정.
     /// </summary>
     [MessagePackObject]
-    public class G_TO_C_SWARM_CROSSFIRE_TELEGRAPH : IMessagePackObject
+    public class G_TO_C_SUN_ORB_ATTACK : IMessagePackObject
     {
         [Key("eventId")] public long EventId { get; set; }
         [Key("ownerId")] public long OwnerPlayerId { get; set; }

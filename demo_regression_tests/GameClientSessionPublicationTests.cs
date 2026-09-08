@@ -182,7 +182,7 @@ public sealed class GameClientSessionPublicationTests
             SourcePlayerId = 102,
             TargetPlayerId = 101,
             AreaType = (AreaType)50,
-            Effect = CombatStatusEffectKind.WaveSlow,
+            Effect = CombatStatusEffectKind.WaveOrbSlow,
             DurationMs = 1500
         });
         Assert.True(session.TrySend(packet));
@@ -193,7 +193,7 @@ public sealed class GameClientSessionPublicationTests
         var effect = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_STATUS_EFFECT>(Protocol.G_TO_C_STATUS_EFFECT);
         Assert.Equal(102, effect.SourcePlayerId);
         Assert.Equal(101, effect.TargetPlayerId);
-        Assert.Equal(CombatStatusEffectKind.WaveSlow, effect.Effect);
+        Assert.Equal(CombatStatusEffectKind.WaveOrbSlow, effect.Effect);
         Assert.Equal(1500, effect.DurationMs);
     }
 

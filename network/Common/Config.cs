@@ -466,7 +466,7 @@ namespace network.common
         public const int SWARM_CROSSFIRE_SHAPE_LINE = 1;
 
         /// <summary>
-        ///     교차사격 폭발 통지 — 같은 패킷(G_TO_C_SWARM_CROSSFIRE_TELEGRAPH)을 재사용한다: EventId = 터진 모양,
+        ///     교차사격 폭발 통지 — 같은 패킷(G_TO_C_SUN_ORB_ATTACK)을 재사용한다: EventId = 터진 모양,
         ///     OriginX/Y = 폭발 지점(월드), Width = 폭발 반경(바닥면). 클라는 날아가던 투사체를 그 자리에서 터뜨린다.
         /// </summary>
         public const int SWARM_CROSSFIRE_SHAPE_DETONATE = 2;

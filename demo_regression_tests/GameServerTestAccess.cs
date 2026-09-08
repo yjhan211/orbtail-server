@@ -64,7 +64,7 @@ internal static class GameServerTestAccess
             new OrbRecoveryService(runtimes, logs,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbRecoveryService>.Instance),
             new OrbVisualStatePublisher(runtimes), orbTrails, combatDamage,
-            new WindBladeService(runtimes, orbTrails, combatDamage, logs),
+            new WindOrbAttackService(runtimes, orbTrails, combatDamage, logs),
             new SunOrbAttackService(runtimes, combatDamage, logs), field, movement, decisions,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchArenaService>.Instance);
         return new GameServer(

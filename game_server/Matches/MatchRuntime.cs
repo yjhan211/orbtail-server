@@ -60,7 +60,7 @@ internal sealed class MatchRuntime
     public BotTacticalState BotTactics { get; } = new();
     public MatchProgressState Progress { get; } = new();
     internal SwarmBotTickMetrics BotTickMetrics { get; } = new();
-    public WindBladeState WindBlade { get; } = new();
+    public WindOrbAttackState WindOrbAttacks { get; } = new();
     public OrbUpgradeState OrbUpgrades { get; } = new();
     public SunOrbAttackState SunOrbAttacks { get; }
     public BotPlayerManager Bots { get; }

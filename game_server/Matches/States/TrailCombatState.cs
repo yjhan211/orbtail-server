@@ -37,7 +37,7 @@ public sealed class TrailCombatState
 
     // 파도 폭탄: 오브 uid 기반 고유 위상으로 첫 발동을 흩뿌린다.
     public readonly Dictionary<(long MatchingId, long PlayerId, long ItemUid), DateTime>
-        WaveBombNextDropAtUtc = new();
+        WaveOrbNextAttackAtUtc = new();
     public readonly List<(long MatchingId, long OwnerId, AreaType Area, Vector3f Position, int Damage,
-        float Radius, int SourceItemId, DateTime ExplodeAtUtc)> PendingWaveBombs = new();
+        float Radius, int SourceItemId, DateTime ExplodeAtUtc)> PendingWaveOrbAttacks = new();
 }

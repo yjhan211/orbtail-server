@@ -276,8 +276,8 @@ internal sealed class MatchFieldService(
                     }
                 case SwarmRingVfxOutbound ring:
                     {
-                        using var packet = Packet.Create((int)Protocol.G_TO_C_SWARM_ENCIRCLE_VFX);
-                        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_SWARM_ENCIRCLE_VFX
+                        using var packet = Packet.Create((int)Protocol.G_TO_C_ORB_RING_EFFECT);
+                        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ORB_RING_EFFECT
                         {
                             OwnerPlayerId = ring.OwnerPlayerId,
                             CenterX = ring.CenterX,

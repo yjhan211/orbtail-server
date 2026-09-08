@@ -9,7 +9,7 @@ namespace game_server.matches.states;
 ///     바람 칼날의 틱·시동·피해자 면역·상처 상태. 이 객체 자체가 한 매치에 귀속되므로 내부 key에는
 ///     matching id를 반복하지 않는다. enclosing match execution gate가 모든 변경을 직렬화한다.
 /// </summary>
-public sealed class WindBladeState
+public sealed class WindOrbAttackState
 {
     private readonly Dictionary<(long PlayerId, long ItemUid), DateTime> _nextTickAtUtc = new();
     private readonly Dictionary<(long PlayerId, long ItemUid), DateTime> _engagedAtUtc = new();

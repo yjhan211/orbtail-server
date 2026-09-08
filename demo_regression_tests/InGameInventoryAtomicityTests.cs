@@ -6,6 +6,11 @@ namespace demo_regression_tests;
 
 public sealed class InGameInventoryAtomicityTests
 {
+    public InGameInventoryAtomicityTests()
+    {
+        // 오브 판별에 필요한 데이터를 직접 준비해 다른 테스트의 실행 순서에 의존하지 않는다.
+        InitializeBattleCombatData();
+    }
 
     [Fact]
     public async Task ConcurrentQuantityOneConsumptionCannotOverdraw()

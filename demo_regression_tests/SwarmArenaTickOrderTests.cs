@@ -140,8 +140,8 @@ public sealed class SwarmArenaTickOrderTests
             "UpdateSwarmOrbTrails(",
             "ProcessSwarmTrailCuts(",
             "ProcessSwarmRetaliationWindows(",
-            "ProcessSwarmWaveBombs(",
-            "windBlades.Process(",
+            "ProcessWaveOrbAttacks(",
+            "windOrbAttacks.Process(",
             "ProcessSwarmSunBurns(",
             "ApplySwarmParticipantDamage(",
             "ProcessSwarmBotRecovery(",
@@ -274,7 +274,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("CleanupSwarmArenaState", source);
         Assert.DoesNotContain("_swarmMatchRuntimes", source);
         Assert.DoesNotContain("ClearSunOrbAttackState", cleanupBody);
-        Assert.DoesNotContain("ClearWindBladeState", cleanupBody);
+        Assert.DoesNotContain("ClearWindOrbAttackState", cleanupBody);
         Assert.DoesNotContain("ClearOrbUpgradeState", cleanupBody);
     }
 
@@ -341,7 +341,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("PacketMaker.", orbPrepare);
         Assert.DoesNotContain(".TrySend(", orbPrepare);
         Assert.DoesNotContain("SendOrbUpdate(", orbPrepare);
-        Assert.DoesNotContain("SendSwarmRingVfx(", orbPrepare);
+        Assert.DoesNotContain("SendOrbRingEffect(", orbPrepare);
 
         AssertInOrder(
             dispatch,
@@ -356,7 +356,7 @@ public sealed class SwarmArenaTickOrderTests
             "case SwarmInventoryUpdateOutbound",
             "session.SendOrbUpdate(",
             "case SwarmRingVfxOutbound",
-            "Protocol.G_TO_C_SWARM_ENCIRCLE_VFX");
+            "Protocol.G_TO_C_ORB_RING_EFFECT");
         Assert.Contains("SendToCapturedRecipients(", dispatch);
         Assert.DoesNotContain("catch", dispatch);
         Assert.Contains("first transport exception", field);
@@ -366,7 +366,7 @@ public sealed class SwarmArenaTickOrderTests
     public void WindBladeAndOrbBoardState_AreOwnedByMatchRuntime()
     {
         string root = FindRepositoryRoot();
-        string windBlade = ReadNormalizedSource(root, "game_server", "Services", "WindBladeService.cs");
+        string windBlade = ReadNormalizedSource(root, "game_server", "Services", "WindOrbAttackService.cs");
         string crossfire = ReadNormalizedSource(root, "game_server", "Services", "SunOrbAttackService.cs");
         string orbBoard = ReadNormalizedSource(root, "game_server", "Services", "OrbUpgradeService.cs");
 
@@ -375,7 +375,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmWindBladeVictimImmuneUntilUtc", windBlade);
         Assert.DoesNotContain("_swarmWindWoundsUntilUtc", crossfire);
         Assert.DoesNotContain("_swarmFamilyUpgradeCounts", orbBoard);
-        Assert.Contains("matchRuntimes.GetOrThrow(matchingId).WindBlade", windBlade);
+        Assert.Contains("matchRuntimes.GetOrThrow(matchingId).WindOrbAttacks", windBlade);
         Assert.Contains("matchRuntimes.GetOrThrow(matchingId).OrbUpgrades", orbBoard);
     }
 
