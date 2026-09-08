@@ -27,7 +27,7 @@ internal sealed class PlayerHealthChangeService(
             session.PlayerId, change.Before, change.After, change.RequestedDelta);
 
         // 효과 표시에는 요청한 변화량을, 상태에는 적용 후 체력을 보낸다.
-        session.Notifications.SendStats(change);
+        session.SendHealth(change);
 
         // 회복량과 체력 변경 기록
         if (session.PlayerId.HasValue)

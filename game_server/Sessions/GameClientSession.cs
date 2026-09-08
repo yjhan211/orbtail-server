@@ -33,7 +33,6 @@ public partial class GameClientSession : SessionBase
     private readonly IMatchEntryFailureHandler _entryFailureHandler;
     private readonly Func<bool> _isServerStopping;
     private readonly GameEventLogManager _gameEventLogManager;
-    internal PlayerNotificationService Notifications { get; }
     internal PlayerHealthChangeService HealthChanges { get; }
     private readonly PlayerCondition _condition = new();
     private readonly IPlayerGrowthHandler _growth;
@@ -74,7 +73,6 @@ public partial class GameClientSession : SessionBase
         _registerSessionCallback = registerSessionCallback;
 
         _gameEventLogManager = gameEventLogManager;
-        Notifications = new PlayerNotificationService(this, logger);
         HealthChanges = new PlayerHealthChangeService(this, gameEventLogManager, matchEliminations, logger);
         _growth = growth;
 
@@ -326,7 +324,7 @@ public partial class GameClientSession : SessionBase
             _playerMovement.SendInteractableList(CurrentArea);
             SendInteractCooldownSnapshot();
             GroundItemNotificationService.SendSnapshot(this, CurrentArea);
-            Notifications.SendInventoryList();
+            SendOrbList();
             SendSummonStoneState();
             SendDoorStateList();
             SendPressureFieldState();

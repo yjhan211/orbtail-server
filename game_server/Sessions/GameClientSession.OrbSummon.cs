@@ -10,7 +10,7 @@ namespace game_server.sessions;
 /// <summary>
 ///     오브 소환과 강화 요청을 처리한다.
 ///     매치 잠금 안에서 소환·강화 서비스를 호출하고 결과를 클라이언트에 보낸다.
-///     소환석 보유량·다음 소환 비용과 오브 계열별 강화 정보도 전송한다.
+///     보유 오브 목록·변경 내역, 소환석 보유량·다음 소환 비용과 계열별 강화 정보도 전송한다.
 /// </summary>
 public partial class GameClientSession
 {
@@ -69,7 +69,7 @@ public partial class GameClientSession
 
             if (attempt is { Success: true, AddedItem: not null })
             {
-                Notifications.SendInventoryUpdate(attempt.AddedItem);
+                SendOrbUpdate(attempt.AddedItem);
             }
 
             using var packet = Packet.Create((int)Protocol.G_TO_C_SUMMON_ORB_RESULT, PlayerId ?? 0);
@@ -211,5 +211,32 @@ public partial class GameClientSession
             AwardSourceY = awardSourceY
         }));
         TrySend(packet);
+    }
+
+    internal void SendOrbList()
+    {
+        if (!PlayerId.HasValue)
+        {
+            return;
+        }
+
+        var items = Match.Inventory.GetPlayerInventory(PlayerId.Value).GetAllItems();
+        using var packet = PacketMaker.G_TO_C_ORB_LIST(items);
+        TrySend(packet);
+
+        Logger.LogDebug("Sent orb list to PlayerId={PlayerId}, ItemCount={Count}", PlayerId, items.Count);
+    }
+
+    internal void SendOrbUpdate(InGameItemInfo item)
+    {
+        if (!PlayerId.HasValue)
+        {
+            return;
+        }
+
+        using var packet = PacketMaker.G_TO_C_ORB_UPDATE([item]);
+        TrySend(packet);
+
+        Logger.LogDebug("Sent orb update to PlayerId={PlayerId}, ItemUid={ItemUid}, ItemId={ItemId}, Count={Count}", PlayerId, item.ItemUid, item.ItemId, item.Count);
     }
 }

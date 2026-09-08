@@ -43,9 +43,9 @@ namespace network.common
         G_TO_C_EXPLORE_END, // 탐색 종료 브로드캐스트
         G_TO_C_INTERACTABLE_STATE_CHANGE, // Interactable state 변경 알림 (사보타주 등)
 
-        // 인게임 인벤토리 프로토콜 (게임 내 배낭 - 게임 종료 시 초기화)
-        G_TO_C_INGAME_INVENTORY_LIST, // 게임 시작 시 배낭 전체 목록
-        G_TO_C_INGAME_INVENTORY_UPDATE, // 아이템 추가/제거 시 업데이트
+        // 보유 오브 동기화
+        G_TO_C_ORB_LIST, // 입장·강화 후 보유 목록
+        G_TO_C_ORB_UPDATE, // 획득·변경·제거 내역
 
         // 플레이어 상태 프로토콜
         C_TO_G_PLAYER_STATE, // 플레이어 상태 변경 요청 (MAKE 등)

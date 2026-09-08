@@ -131,7 +131,7 @@ internal sealed class PlayerMovementService(
         // #229 6단계: 이동 입력이 곧 수면 해제다 — 누워서 도망칠 수 없다.
         // 2026-08-17 재조정: 수면을 깨우는 건 이 이동뿐이다 (피격·폐쇄는 깨우지 않는다).
         if (player.Condition.TryStopSleep())
-            player.Notifications.SendState();
+            player.SendPlayerState();
         // 오브 궤도 (#232): 검증된 이동 거리만큼 돈다 — 멈추면 이동 패킷이 없으니 저절로 선다.
         if (LastValidatedPosition != null)
             AdvanceOrbOrbit(LastValidatedPosition, validatedPosition);

@@ -31,10 +31,10 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         try
         {
             runtime.SummonStones.AddStones(FirstPlayerId, 20);
-            connection.ThrowOnceOn = Protocol.G_TO_C_INGAME_INVENTORY_UPDATE;
+            connection.ThrowOnceOn = Protocol.G_TO_C_ORB_UPDATE;
             connection.BeforeSend = protocol =>
             {
-                if (protocol != Protocol.G_TO_C_INGAME_INVENTORY_UPDATE) return;
+                if (protocol != Protocol.G_TO_C_ORB_UPDATE) return;
                 Assert.Contains(fixture.EventLog.GetRecent(FirstMatchingId),
                     entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" && entry.Outcome == "summon");
             };
@@ -42,8 +42,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             var events = fixture.EventLog.GetRecent(FirstMatchingId);
             Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" && entry.Outcome == "summon");
             Assert.Single(events, entry => entry.Type == "ORB_SUMMON_SUCCEEDED");
-            Assert.Contains(Protocol.G_TO_C_INGAME_INVENTORY_UPDATE, connection.AttemptedProtocols);
-            Assert.DoesNotContain(Protocol.G_TO_C_INGAME_INVENTORY_UPDATE, connection.DeliveredProtocols);
+            Assert.Contains(Protocol.G_TO_C_ORB_UPDATE, connection.AttemptedProtocols);
+            Assert.DoesNotContain(Protocol.G_TO_C_ORB_UPDATE, connection.DeliveredProtocols);
         }
         finally
         {
@@ -140,7 +140,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Assert.Equal(PlayerState.SLEEP, session.CaptureGameObjectInfo().State);
 
             Assert.True(session.Condition.TryStopSleep());
-            session.Notifications.SendState();
+            session.SendPlayerState();
 
             Assert.Equal(PlayerState.IDLE, session.Condition.State);
             Assert.False(session.Condition.IsSleeping);
@@ -300,7 +300,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
         Assert.Equal(
             [
-                Protocol.G_TO_C_INGAME_INVENTORY_LIST,
+                Protocol.G_TO_C_ORB_LIST,
                 Protocol.G_TO_C_SWARM_FAMILY_LEVELS,
                 Protocol.G_TO_C_UPGRADE_ORB_RESULT
             ],
@@ -401,14 +401,14 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
         Assert.Equal(
             [
-                Protocol.G_TO_C_INGAME_INVENTORY_LIST,
+                Protocol.G_TO_C_ORB_LIST,
                 Protocol.G_TO_C_SWARM_FAMILY_LEVELS,
                 Protocol.G_TO_C_ERROR
             ],
             connection.AttemptedProtocols);
         Assert.Equal(
             [
-                Protocol.G_TO_C_INGAME_INVENTORY_LIST,
+                Protocol.G_TO_C_ORB_LIST,
                 Protocol.G_TO_C_ERROR
             ],
             connection.DeliveredProtocols);

@@ -2,10 +2,16 @@ using game_server.services;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;
+using network.packets;
 
 namespace game_server.sessions;
 
-/// <summary>행동 상태 변경 요청을 검증하고 상호작용 취소·상태 변경·전송을 조율한다.</summary>
+/// <summary>
+///     플레이어의 행동 상태 변경 요청을 처리하고, 체력과 행동 상태를 전송한다.
+///     행동 변경 시 매치 상태를 확인하고 필요한 상호작용을 취소한다.
+///     체력은 본인에게, 행동 상태는 같은 구역의 플레이어들에게 전송한다.
+///     전송 메서드를 호출할 때는 매치 잠금을 유지해야 한다.
+/// </summary>
 public partial class GameClientSession
 {
     private Task HandlePlayerState(C_TO_G_PLAYER_STATE msg)
@@ -46,7 +52,7 @@ public partial class GameClientSession
                 SendInteractionCanceled(canceledIds, "PlayerState:SLEEP");
                 if (!_condition.IsSleeping && _condition.TryStartSleep(DateTime.UtcNow))
                 {
-                    Notifications.SendState();
+                    SendPlayerState();
                 }
                 return Task.CompletedTask;
             }
@@ -58,9 +64,30 @@ public partial class GameClientSession
             }
 
             _condition.State = isExploreState ? PlayerState.EXPLORE_1 : PlayerState.IDLE;
-            Notifications.SendState(includeSelf: false);
+            SendPlayerState(includeSelf: false);
         }
 
         return Task.CompletedTask;
+    }
+
+    internal void SendHealth(PlayerCondition.HealthChange change)
+    {
+        using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(change.After, change.RequestedDelta);
+        TrySend(packet);
+    }
+
+    internal void SendPlayerState(bool includeSelf = true)
+    {
+        if (!PlayerId.HasValue)
+        {
+            return;
+        }
+        var targetSessions = Match.Sessions.GetInArea(CurrentArea, includeSelf ? null : PlayerId);
+        using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, Condition.State);
+        foreach (var targetSession in targetSessions)
+        {
+            targetSession.TrySend(packet);
+        }
+        Logger.LogInformation("Player state sent: PlayerId={PlayerId}, State={State}, Recipients={Count}", PlayerId, Condition.State, targetSessions.Count);
     }
 }

@@ -1163,7 +1163,7 @@ internal sealed class MatchArenaService(
         foreach (var lost in destroyedItems)
         {
             matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.Remove((matchingId, bestOwnerId, lost.ItemUid));
-            ownerSession?.Notifications.SendInventoryUpdate(lost);
+            ownerSession?.SendOrbUpdate(lost);
         }
         // 절단 낙수 없음 (#232): 소환석·드롭·점수·웨이브 기여를 지급하지 않는다. 잃은 것은 그냥 사라진다.
 

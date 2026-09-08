@@ -17,16 +17,16 @@ namespace network.common.data.models
         [Key("giftState")] public GiftState GiftState { get; set; }
     }
 
-    // 인게임 배낭 전체 목록 (게임 시작 시)
+    // 보유 오브 목록 (입장·강화 후 동기화)
     [MessagePackObject]
-    public class G_TO_C_INGAME_INVENTORY_LIST : IMessagePackObject
+    public class G_TO_C_ORB_LIST : IMessagePackObject
     {
         [Key("items")] public List<InGameItemInfo> Items { get; set; }
     }
 
-    // 인게임 배낭 업데이트 (아이템 획득/사용 시)
+    // 보유 오브 변경 내역 (Count가 0이면 제거)
     [MessagePackObject]
-    public class G_TO_C_INGAME_INVENTORY_UPDATE : IMessagePackObject
+    public class G_TO_C_ORB_UPDATE : IMessagePackObject
     {
         [Key("items")] public List<InGameItemInfo> Items { get; set; }
     }

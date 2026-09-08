@@ -60,7 +60,7 @@ internal sealed class OrbUpgradeService(
                 : StartingOrbPool[Random.Shared.Next(StartingOrbPool.Length)];
             matchRuntimes.GetRequired(matchingId).Inventory.TryAddItemWithCapacity(
                 playerId, itemId, Config.SWARM_ORB_CAPACITY, out _);
-            session?.Notifications.SendInventoryList();
+            session?.SendOrbList();
         }
 
         SendFamilyLevels(matchingId, playerId, session);
@@ -149,7 +149,7 @@ internal sealed class OrbUpgradeService(
         resultItemId = upgradedItemId;
         targetOrdinal = ordinal;
 
-        session?.Notifications.SendInventoryList();
+        session?.SendOrbList();
         SendFamilyLevels(matchingId, playerId, session);
         eventLogs.LogSystem(
             matchingId,

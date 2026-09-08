@@ -185,7 +185,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             healthNotification,
             "if (!change.Changed) return;",
-            "session.Notifications.SendStats(",
+            "session.SendHealth(",
             "eliminations.Process(");
 
         string applyProximityHit = ReadMethodSlice(
@@ -338,7 +338,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("Packet.Create(", orbPrepare);
         Assert.DoesNotContain("PacketMaker.", orbPrepare);
         Assert.DoesNotContain(".TrySend(", orbPrepare);
-        Assert.DoesNotContain("Notifications.SendInventoryUpdate(", orbPrepare);
+        Assert.DoesNotContain("SendOrbUpdate(", orbPrepare);
         Assert.DoesNotContain("SendSwarmRingVfx(", orbPrepare);
 
         AssertInOrder(
@@ -352,7 +352,7 @@ public sealed class SwarmArenaTickOrderTests
             "case SwarmDoorStateOutbound",
             "PacketMaker.G_TO_C_DOOR_STATE_UPDATE(",
             "case SwarmInventoryUpdateOutbound",
-            "session.Notifications.SendInventoryUpdate(",
+            "session.SendOrbUpdate(",
             "case SwarmRingVfxOutbound",
             "Protocol.G_TO_C_SWARM_ENCIRCLE_VFX");
         Assert.Contains("SendToCapturedRecipients(", dispatch);

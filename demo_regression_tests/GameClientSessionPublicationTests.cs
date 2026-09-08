@@ -395,7 +395,7 @@ public sealed class GameClientSessionPublicationTests
     [Theory]
     [InlineData(Config.SUMMON_STONE_GROUND_ITEM_ID, Protocol.G_TO_C_SUMMON_STONE_STATE)]
     [InlineData(Config.BOOTS_GROUND_ITEM_ID, null)]
-    [InlineData(107000010, Protocol.G_TO_C_INGAME_INVENTORY_UPDATE)]
+    [InlineData(107000010, Protocol.G_TO_C_ORB_UPDATE)]
     public async Task GroundPickup_SuccessBranches_PreserveSubtypePrefixAndCommonSuffix(
         int itemId,
         Protocol? expectedPrefix)
@@ -1091,7 +1091,7 @@ public sealed class GameClientSessionPublicationTests
             Assert.Empty(match.Inventory.GetAllItems(101));
             Assert.Single(match.GroundItems.GetSnapshot(eliminated.CurrentArea));
         }
-        Assert.Equal([Protocol.G_TO_C_INGAME_INVENTORY_UPDATE], fixture.ConnectionFor(eliminated).DeliveredProtocols);
+        Assert.Equal([Protocol.G_TO_C_ORB_UPDATE], fixture.ConnectionFor(eliminated).DeliveredProtocols);
         Assert.Equal([Protocol.G_TO_C_GROUND_ITEM_SPAWN], fixture.ConnectionFor(observer).DeliveredProtocols);
     }
 

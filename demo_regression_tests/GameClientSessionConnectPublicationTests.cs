@@ -465,7 +465,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.True(load >= 0);
         int statementEnd = source.IndexOf(';', load);
         Assert.StartsWith("EnsureConnectionActive();", source[(statementEnd + 1)..].TrimStart());
-        int inventorySnapshot = source.IndexOf("Notifications.SendInventoryList();", statementEnd, StringComparison.Ordinal);
+        int inventorySnapshot = source.IndexOf("SendOrbList();", statementEnd, StringComparison.Ordinal);
         Assert.True(inventorySnapshot > statementEnd);
         string initialization = source[statementEnd..inventorySnapshot];
         Assert.Equal(1, initialization.Split("EnsureConnectionActive();").Length - 1);

@@ -128,7 +128,7 @@ internal sealed class GroundItemAutoPickupService(
         }
         else if (addedItem != null)
         {
-            session.Notifications.SendInventoryUpdate(addedItem);
+            session.SendOrbUpdate(addedItem);
 
         }
 
