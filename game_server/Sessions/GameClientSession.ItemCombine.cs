@@ -50,6 +50,7 @@ public partial class GameClientSession
         using var combinePacket = Packet.Create((int)Protocol.G_TO_C_ITEMS_COMBINED, PlayerId.Value);
         var combinedMsg = new G_TO_C_ITEMS_COMBINED
         {
+            ErrorCode = ErrorCode.SUCCESS,
             RecipeId = recipeId,
             InputItemA = msg.ItemA,
             InputItemB = msg.ItemB,
@@ -74,6 +75,7 @@ public partial class GameClientSession
         using var failPacket = Packet.Create((int)Protocol.G_TO_C_ITEMS_COMBINED, PlayerId!.Value);
         var failMsg = new G_TO_C_ITEMS_COMBINED
         {
+            ErrorCode = errorCode,
             RecipeId = 0,
             InputItemA = partA,
             InputItemB = partB,
@@ -81,7 +83,5 @@ public partial class GameClientSession
         };
         failPacket.SetBody(MessagePackSerializer.Serialize(failMsg));
         TrySend(failPacket);
-
-        SendErrorResponse(errorCode, "부품 결합 실패");
     }
 }

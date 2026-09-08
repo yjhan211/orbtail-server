@@ -44,7 +44,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
     }
 
     [Fact]
-    public void CombineResultContainsOnlyRecipeAndItemIds()
+    public void CombineResultContainsErrorCodeAndRecipeAndItemIds()
     {
         byte[] bytes = MessagePackSerializer.Serialize(new G_TO_C_ITEMS_COMBINED
         {
@@ -54,14 +54,14 @@ public sealed class GameClientSessionItemCombinePublicationTests
             OutputItemId = CompressionBandage
         });
         var reader = new MessagePackReader(bytes);
-        Assert.Equal(4, reader.ReadMapHeader());
+        Assert.Equal(5, reader.ReadMapHeader());
         var keys = new HashSet<string>();
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 5; i++)
         {
             keys.Add(reader.ReadString()!);
             reader.Skip();
         }
-        Assert.True(keys.SetEquals(["recipeId", "inputPartA", "inputPartB", "outputPartId"]));
+        Assert.True(keys.SetEquals(["errorCode", "recipeId", "inputPartA", "inputPartB", "outputPartId"]));
         Assert.True(reader.End);
     }
 
@@ -160,6 +160,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         G_TO_C_ITEMS_COMBINED combined = connection.DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
             Protocol.G_TO_C_ITEMS_COMBINED);
         Assert.Equal(193401, combined.RecipeId);
+        Assert.Equal(ErrorCode.SUCCESS, combined.ErrorCode);
         Assert.Equal(RecoveryOrbT1, combined.InputItemA);
         Assert.Equal(RecoveryOrbT1, combined.InputItemB);
         Assert.Equal(RecoveryOrbT2, combined.OutputItemId);
@@ -311,7 +312,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
     [InlineData("no-recipe", ErrorCode.INSUFFICIENT_ITEM)]
     [InlineData("missing-material", ErrorCode.INSUFFICIENT_ITEM)]
     [InlineData("round-locked", ErrorCode.INVALID_GAME_STATE)]
-    public async Task Rejections_PreserveExactTwoPacketFailureAndDoNotMutate(
+    public async Task Rejections_SendSingleResultWithErrorCodeAndDoNotMutate(
         string scenario,
         ErrorCode expectedError)
     {
@@ -429,7 +430,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         await message.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal(
-            ["send:G_TO_C_ITEMS_COMBINED", "send:G_TO_C_ERROR"],
+            ["send:G_TO_C_ITEMS_COMBINED"],
             timeline);
         AssertCombineFailure(
             fixture.ConnectionFor(session),
@@ -860,7 +861,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         ErrorCode errorCode)
     {
         Assert.Equal(
-            [Protocol.G_TO_C_ITEMS_COMBINED, Protocol.G_TO_C_ERROR],
+            [Protocol.G_TO_C_ITEMS_COMBINED],
             connection.DeliveredProtocols);
         G_TO_C_ITEMS_COMBINED result = connection.DeserializeSingle<G_TO_C_ITEMS_COMBINED>(
             Protocol.G_TO_C_ITEMS_COMBINED);
@@ -868,9 +869,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(itemA, result.InputItemA);
         Assert.Equal(itemB, result.InputItemB);
         Assert.Equal(0, result.OutputItemId);
-        G_TO_C_ERROR error = connection.DeserializeSingle<G_TO_C_ERROR>(Protocol.G_TO_C_ERROR);
-        Assert.Equal(errorCode, error.ErrorCode);
-        Assert.Equal("부품 결합 실패", error.Message);
+        Assert.Equal(errorCode, result.ErrorCode);
     }
 
     private static string ReadNormalizedSource(string repositoryRoot, params string[] parts) =>

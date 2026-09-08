@@ -51,11 +51,12 @@ namespace network.common.data.models
     // ===== 배틀아이템 조합 =====
 
     /// <summary>
-    ///     아이템 조합 결과. 결과 아이템 ID가 0이면 조합 실패를 나타낸다.
+    ///     아이템 조합의 성공·실패와 결과 아이템을 전달한다. 실패 이유는 ErrorCode로 확인한다.
     /// </summary>
     [MessagePackObject]
     public class G_TO_C_ITEMS_COMBINED : IMessagePackObject
     {
+        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
         [Key("recipeId")] public int RecipeId { get; set; }
         [Key("inputPartA")] public int InputItemA { get; set; }
         [Key("inputPartB")] public int InputItemB { get; set; }
