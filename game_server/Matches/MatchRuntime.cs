@@ -39,7 +39,6 @@ internal sealed class MatchRuntime
         SunOrbAttacks = new SunOrbAttackState(matchingId);
         Bots = new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks);
         AutoAttack = new AutoAttackController(matchingId);
-        BotMovement = new SwarmBotMovementCoordinator(this);
         Inventory = new InGameInventoryManager(matchingId, message => logger.LogInformation("{Message}", message));
         GroundItems = new GroundItemManager(matchingId);
         Roster = new RosterManager(matchingId, logger);
@@ -65,7 +64,6 @@ internal sealed class MatchRuntime
     public SunOrbAttackState SunOrbAttacks { get; }
     public BotPlayerManager Bots { get; }
     public AutoAttackController AutoAttack { get; }
-    public SwarmBotMovementCoordinator BotMovement { get; }
     public SwarmMonsterDirector Monsters { get; }
     public EventLogState EventLog { get; } = new();
     public InGameInventoryManager Inventory { get; }

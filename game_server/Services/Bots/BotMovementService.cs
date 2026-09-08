@@ -24,6 +24,8 @@ internal sealed class BotMovementService(
     /// <summary>매치 잠금 안에서 봇 걸음을 확정하고 같은 순서로 바로 송신한다.</summary>
     public void Process(MatchRuntime runtime, Func<long, long, SwarmBotDirective> resolveDirective)
     {
+        if (runtime.IsEnded)
+            throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
         long matchingId = runtime.MatchingId;
         long tickStartedAt = Stopwatch.GetTimestamp();
         GameClientSession[] sessionSnapshot = runtime.Sessions.Snapshot()
@@ -36,7 +38,8 @@ internal sealed class BotMovementService(
             CaptureSwarmBotObservers(matchingId, sessionSnapshot);
         double sessionSnapshotElapsedMilliseconds =
             Stopwatch.GetElapsedTime(tickStartedAt).TotalMilliseconds;
-        SwarmBotMovementPlan plan = runtime.BotMovement.PrepareTick(
+        SwarmBotMovementPlan plan = runtime.Bots.PrepareMovementTick(
+            runtime.Closures, runtime.Inventory, runtime.GroundItems, runtime.SummonStones, runtime.Encounters,
             eventLogs,
             observers,
             resolveDirective);
@@ -197,6 +200,8 @@ internal sealed class BotMovementService(
 
     public void DispatchExternalMovement(MatchRuntime runtime, BotMovementEvent movement)
     {
+        if (runtime.IsEnded)
+            throw new InvalidOperationException("Cannot process bot movement after the match has ended.");
         long matchingId = runtime.MatchingId;
         GameClientSession[] sessionSnapshot = runtime.Sessions.Snapshot()
             .Where(session =>
@@ -206,7 +211,8 @@ internal sealed class BotMovementService(
             .ToArray();
         ImmutableArray<SwarmBotObserverSnapshot> observers =
             CaptureSwarmBotObservers(matchingId, sessionSnapshot);
-        SwarmBotMovementPlan plan = runtime.BotMovement.PrepareExternalMovement(
+        SwarmBotMovementPlan plan = runtime.Bots.PrepareExternalMovement(
+            runtime.Inventory, runtime.Encounters,
             eventLogs,
             movement,
             observers);

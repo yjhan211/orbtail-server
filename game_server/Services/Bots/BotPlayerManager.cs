@@ -38,6 +38,7 @@ public partial class BotPlayerManager
     private readonly long _matchingId;
     private List<BotPlayerState> _bots = [];
     private bool _registered;
+    private bool _released;
 
     // Cell BFS is expensive enough that replanning every bot in one 50 ms tick stalls broadcasts.
     // Rotate one planning slot per matching while every bot keeps walking its existing path.
@@ -211,6 +212,7 @@ public partial class BotPlayerManager
 
     internal void Release()
     {
+        _released = true;
         _bots.Clear();
         _registered = false;
         _movementPlanningCursor = 0;

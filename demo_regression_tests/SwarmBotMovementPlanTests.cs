@@ -39,7 +39,9 @@ public sealed class SwarmBotMovementPlanTests
             new(3, 202, AreaType.S2Ground, false, null)
         };
 
-        SwarmBotMovementPlan plan = CreateCoordinator().PrepareExternalMovement(
+        var match = CreateMatch();
+        SwarmBotMovementPlan plan = match.Bots.PrepareExternalMovement(
+            match.Inventory, match.Encounters,
             TestGameEventLogs.Create(),
             movement,
             observers);
@@ -113,7 +115,7 @@ public sealed class SwarmBotMovementPlanTests
     {
         string root = FindRepositoryRoot();
         string coordinator = ReadNormalizedSource(
-            root, "game_server", "Services", "Bots", "SwarmBotMovementCoordinator.cs");
+            root, "game_server", "Services", "Bots", "BotPlayerManager.MovementPlan.cs");
         string server = ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotMovementService.cs");
         string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickRunner.cs");
         string tick = ReadMethodSlice(
@@ -129,6 +131,7 @@ public sealed class SwarmBotMovementPlanTests
             "private void DispatchSwarmBotMovementPlan(",
             "public void DispatchExternalMovement(");
 
+        Assert.DoesNotContain("MatchRuntime", coordinator);
         Assert.DoesNotContain("PacketMaker", coordinator);
         Assert.DoesNotContain("MessagePackSerializer", coordinator);
         Assert.DoesNotContain("GameClientSession", coordinator);
@@ -156,7 +159,7 @@ public sealed class SwarmBotMovementPlanTests
             process,
             "runtime.Sessions.Snapshot()",
             "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
-            "BotMovement.PrepareTick(",
+            "Bots.PrepareMovementTick(",
             "DispatchSwarmBotMovementPlan(plan, sessionSnapshot)",
             "BotTickMetrics.Record(",
             "PublishBotMovementMetrics(batch)");
@@ -178,7 +181,7 @@ public sealed class SwarmBotMovementPlanTests
         string root = FindRepositoryRoot();
         string arena = ReadNormalizedSource(root, "game_server", "Matches", "MatchArenaService.cs");
         string coordinator = ReadNormalizedSource(
-            root, "game_server", "Services", "Bots", "SwarmBotMovementCoordinator.cs");
+            root, "game_server", "Services", "Bots", "BotPlayerManager.MovementPlan.cs");
         string adminSetup = ReadMethodSlice(
             arena,
             "public object SetupSwarmCutDummy(long matchingId)",
@@ -189,7 +192,7 @@ public sealed class SwarmBotMovementPlanTests
             "private static double CalculatePercentile(");
         string externalPrepare = ReadMethodSlice(
             coordinator,
-            "public SwarmBotMovementPlan PrepareExternalMovement(",
+            "internal SwarmBotMovementPlan PrepareExternalMovement(",
             "private SwarmBotMovementPlan PrepareResult(");
 
         AssertInOrder(
@@ -210,10 +213,10 @@ public sealed class SwarmBotMovementPlanTests
         Assert.DoesNotContain("BroadcastBotMovement(", arena);
     }
 
-    private static SwarmBotMovementCoordinator CreateCoordinator()
+    private static MatchRuntime CreateMatch()
     {
         var matches = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
-        return matches.GetOrCreate(44_001).BotMovement;
+        return matches.GetOrCreate(44_001);
     }
 
     private static void AssertInOrder(string source, params string[] markers)
