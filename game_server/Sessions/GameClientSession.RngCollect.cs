@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
@@ -11,23 +8,9 @@ using network.packets;
 
 namespace game_server.sessions;
 
-/// <summary>
-///     상자 채집 요청의 START/FINISH와 응답을 연결한다. 문 게이지 요청은 Doors partial이 담당한다.
-///     비용·보상 판정은 MatchInteractionService, 대기 권리는 PlayerInteractionState가 담당한다.
-/// </summary>
 public partial class GameClientSession
 {
-
-    // #217 P0-c: 스웜 아레나 탐색 스팟 — 비용·리젠 규칙은 봇과 공유하므로 Config에 있다.
     private static int SwarmExploreCooldownSeconds => Config.SWARM_EXPLORE_REGEN_SECONDS;
-
-    /// <summary>개봉 비용은 장소에 붙는다: 기본가 + 그 스팟의 재개봉 가산.</summary>
-    // 개봉 비용 = SB 크기 비례: 현재 궤도 오브 슬롯 수 기준. 장소별 재개봉 가산은 퇴역.
-    private int GetSwarmExploreCost() =>
-        Config.GetSwarmExploreCost(
-            Match.Inventory.GetPlayerInventory(PlayerId!.Value)
-                .GetAllItems().Count);
-
     private Task HandleRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
@@ -61,29 +44,7 @@ public partial class GameClientSession
             });
     }
 
-    /// <summary>
-    ///     같은 영역 모든 클라(본인 포함)에 G_TO_C_PLAYER_STATE broadcast.
-    /// </summary>
-    private void BroadcastPlayerState(PlayerState state)
-    {
-        if (!PlayerId.HasValue) return;
-        _condition.State = state;
-
-        var sameAreaSessions = Match.Sessions.GetInArea(CurrentArea);
-        using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, state);
-        foreach (var session in sameAreaSessions) session.TrySend(packet);
-    }
-
-    /// <summary>
-    ///     #217 P0-c: 스웜 아레나에서 탐색 오브젝트는 소환석 5개짜리 오브 드래프트 상자다.
-    ///     기존 자동탐색 UX(접근 → 게이지 → 완료)를 그대로 쓰고, 완료 시 오브를 소환한다.
-    ///     스태미나·미션·선물·조우 등 레거시 채집 결과는 사용하지 않는다.
-    /// </summary>
-    /// <summary>
-    ///     문 잠금해제 오브젝트인가 (#229). door_id가 붙은 행만 스웜에서 살아 있다.
-    /// </summary>
-    private static bool IsDoorUnlockInteractable(int interactId) =>
-        GameInteractableData.Get(interactId) is { DoorId: > 0 };
+    private static bool IsDoorUnlockInteractable(int interactId) => GameInteractableData.Get(interactId) is { DoorId: > 0 };
 
     private Task HandleSwarmRngCollectStart(C_TO_G_RNG_COLLECT_START msg)
     {
@@ -146,13 +107,15 @@ public partial class GameClientSession
         {
             BroadcastRngCollectCooldown(msg.InteractId, 0);
 SendRngCollectResult(msg.InteractId, 0, 0, 0);
-            BroadcastPlayerState(PlayerState.IDLE);
+            _condition.State = PlayerState.IDLE;
+            SendPlayerState();
             return Task.CompletedTask;
         }
 
         BroadcastRngCollectCooldown(msg.InteractId, SwarmExploreCooldownSeconds);
 SendRngCollectResult(msg.InteractId, 0, 0, SwarmExploreCooldownSeconds);
-        BroadcastPlayerState(PlayerState.IDLE);
+        _condition.State = PlayerState.IDLE;
+        SendPlayerState();
         Logger.LogInformation(
             "Swarm box consumable: PlayerId={PlayerId}, InteractId={InteractId}, Cost={Cost}, Drop={DropItemId}",
             PlayerId, msg.InteractId, Config.SWARM_BOX_OPEN_COST, dropItemId);

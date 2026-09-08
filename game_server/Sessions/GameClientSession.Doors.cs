@@ -123,7 +123,8 @@ public partial class GameClientSession
 
             if (completed)
             {
-                BroadcastPlayerState(PlayerState.IDLE);
+                _condition.State = PlayerState.IDLE;
+                SendPlayerState();
             }
         }
         return Task.CompletedTask;
