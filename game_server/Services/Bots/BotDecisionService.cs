@@ -167,9 +167,7 @@ internal sealed class BotDecisionService(
                 continue;
 
             int exploreCost = GetSwarmBotExploreCost(matchingId, bot.PlayerId);
-            // 열쇠 (#222 M4): 충전이 있으면 자금 없이도 개봉을 연다.
-            if (matchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(bot.PlayerId).StoneCount < exploreCost &&
-                bot.FreeSummonCharges <= 0)
+            if (matchRuntimes.GetRequired(matchingId).SummonStones.GetSnapshot(bot.PlayerId).StoneCount < exploreCost)
                 continue;
 
             if (!matchRuntimes.GetRequired(matchingId).CollectCooldowns.TryAcquireCooldown(

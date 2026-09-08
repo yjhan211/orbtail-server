@@ -48,7 +48,6 @@ public partial class GameClientSession : SessionBase
 
     private readonly PlayerInteractionState _interactions = new();
 
-    public int FreeSummonCharges { get; internal set; }
 
     private Timer? _periodicBuffTimer;
     internal static Action<long, long>? SwarmHeartPickupCallback { get; set; }
@@ -121,12 +120,8 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_MOVE>(bytes, HandleMove));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SUMMON_ORB,
             async bytes => await HandleMessage<C_TO_G_SUMMON_ORB>(bytes, HandleSummonOrb));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DESTROY_ORB,
-            async bytes => await HandleMessage<C_TO_G_DESTROY_ORB>(bytes, HandleDestroyOrb));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SWARM_GROWTH_PICK,
-            async bytes => await HandleMessage<C_TO_G_SWARM_GROWTH_PICK>(bytes, HandleSwarmGrowthPick));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SWARM_ORB_DECISION,
-            async bytes => await HandleMessage<C_TO_G_SWARM_ORB_DECISION>(bytes, HandleSwarmOrbDecision));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_UPGRADE_ORB,
+            async bytes => await HandleMessage<C_TO_G_UPGRADE_ORB>(bytes, HandleUpgradeOrb));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,
             async bytes => await HandleMessage<C_TO_G_USE_INGAME_ITEM>(bytes, HandleUseInGameItem));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_STATE,

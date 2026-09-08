@@ -17,7 +17,7 @@ public sealed class OrbInventoryServiceTests
     }
 
     [Fact]
-    public void SummonAndDestroyApplyCurrencyAndInventoryOnce()
+    public void SummonAppliesCurrencyAndInventoryOnce()
     {
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984301);
@@ -29,14 +29,13 @@ public sealed class OrbInventoryServiceTests
             var attempt = service.Summon(runtime, 1, AreaType.None);
             Assert.True(attempt.Success);
             Assert.Equal(0, attempt.State.StoneCount);
-            long uid = attempt.AddedItem!.ItemUid;
-            int before = runtime.SummonStones.GetSnapshot(1).StoneCount;
-            var result = service.Destroy(runtime, 1, uid, AreaType.None);
-            Assert.Equal(ErrorCode.SUCCESS, result.Error);
-            Assert.Equal(before + Config.SWARM_ORB_DESTROY_REFUND_STONES, result.State.StoneCount);
-            var again = service.Destroy(runtime, 1, uid, AreaType.None);
-            Assert.Equal(ErrorCode.ITEM_NOT_FOUND, again.Error);
-            Assert.Equal(result.State.StoneCount, again.State.StoneCount);
+            Assert.Equal(attempt.AddedItem!.ItemUid,
+                Assert.Single(runtime.Inventory.GetAllItems(1)).ItemUid);
+            var again = service.Summon(runtime, 1, AreaType.None);
+            Assert.False(again.Success);
+            Assert.Equal(ErrorCode.INSUFFICIENT_CURRENCY, again.ErrorCode);
+            Assert.Equal(0, again.State.StoneCount);
+            Assert.Single(runtime.Inventory.GetAllItems(1));
             runtime.TryMarkTerminal();
         }
     }

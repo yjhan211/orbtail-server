@@ -58,11 +58,9 @@ internal sealed class OrbUpgradeService(
             int itemId = fixedSet
                 ? StartingOrbPool[index % StartingOrbPool.Length]
                 : StartingOrbPool[Random.Shared.Next(StartingOrbPool.Length)];
-            if (session != null)
-                session.GrantSwarmArenaOrb(itemId);
-            else
-                matchRuntimes.GetRequired(matchingId).Inventory.TryAddItemWithCapacity(
-                    playerId, itemId, Config.SWARM_ORB_CAPACITY, out _);
+            matchRuntimes.GetRequired(matchingId).Inventory.TryAddItemWithCapacity(
+                playerId, itemId, Config.SWARM_ORB_CAPACITY, out _);
+            session?.SendInGameInventoryList();
         }
 
         SendFamilyLevels(matchingId, playerId, session);
@@ -175,27 +173,27 @@ internal sealed class OrbUpgradeService(
 
     /// <summary>
     ///     세션이 매치 잠금 안에서 호출하는 강화 요청 처리.
-    ///     강화 결과와 대상 순번을 응답하고 거절한 요청은 Success=false로 돌려준다.
+    ///     강화 결과와 대상 순번을 반환한다. 요청 응답 패킷은 호출한 핸들러가 전송한다.
     /// </summary>
-    public void HandleDecision(
+    public (bool Success, int ResultItemId, int TargetOrdinal) HandleUpgradeOrb(
         GameClientSession session, long matchingId, int action, long targetUid, long secondUid)
     {
         _ = secondUid;
         if (!session.PlayerId.HasValue || session.IsEliminated)
-            return;
+            return (false, 0, -1);
         long playerId = session.PlayerId.Value;
 
         bool success = false;
         int resultItemId = 0;
         int targetOrdinal = -1;
-        if (action == Config.SWARM_ORB_DECISION_FAMILY_UPGRADE)
+        if (action == Config.ORB_UPGRADE_FAMILY)
             success = TryUpgrade(
                 matchingId, playerId, (OrbColor)targetUid, session, out resultItemId, out targetOrdinal);
 
-        session.SendSwarmOrbDecisionResult(action, success, resultItemId, targetUid, targetOrdinal);
         logger.LogInformation(
-            "Swarm orb decision: MatchingId={MatchingId}, PlayerId={PlayerId}, Action={Action}, Target={Target}, Success={Success}, Result={Result}, Ordinal={Ordinal}",
+            "Orb upgrade: MatchingId={MatchingId}, PlayerId={PlayerId}, Action={Action}, Target={Target}, Success={Success}, Result={Result}, Ordinal={Ordinal}",
             matchingId, playerId, action, targetUid, success, resultItemId, targetOrdinal);
+        return (success, resultItemId, targetOrdinal);
     }
 
     /// <summary>

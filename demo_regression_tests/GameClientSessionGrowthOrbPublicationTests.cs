@@ -20,10 +20,8 @@ namespace demo_regression_tests;
 
 public sealed class GameClientSessionGrowthOrbPublicationTests
 {
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task OrbEvents_AreRecordedBeforeInventorySendFailure(bool destroy)
+    [Fact]
+    public async Task SummonEvents_AreRecordedBeforeInventorySendFailure()
     {
         using var fixture = new SessionFixture();
         var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
@@ -32,39 +30,18 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         MatchStartGate.RegisterBotOnlyMatch(FirstMatchingId);
         try
         {
-            long itemUid = 0;
-            if (destroy)
-            {
-                using (runtime.Enter())
-                {
-                    Assert.True(runtime.Inventory.TryAddItemWithCapacity(
-                        FirstPlayerId, 107000010, Config.SWARM_ORB_CAPACITY, out var item));
-                    itemUid = item!.ItemUid;
-                }
-            }
-            else
-            {
-                runtime.SummonStones.AddStones(FirstPlayerId, 20);
-            }
-
+            runtime.SummonStones.AddStones(FirstPlayerId, 20);
             connection.ThrowOnceOn = Protocol.G_TO_C_INGAME_INVENTORY_UPDATE;
             connection.BeforeSend = protocol =>
             {
                 if (protocol != Protocol.G_TO_C_INGAME_INVENTORY_UPDATE) return;
                 Assert.Contains(fixture.EventLog.GetRecent(FirstMatchingId),
-                    entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" &&
-                             entry.Outcome == (destroy ? "destroy" : "summon"));
+                    entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" && entry.Outcome == "summon");
             };
-            if (destroy)
-                await SendAsync(session, Protocol.C_TO_G_DESTROY_ORB, new C_TO_G_DESTROY_ORB { ItemUid = itemUid });
-            else
-                await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
-
+            await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
             var events = fixture.EventLog.GetRecent(FirstMatchingId);
-            Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" &&
-                                          entry.Outcome == (destroy ? "destroy" : "summon"));
-            if (!destroy)
-                Assert.Single(events, entry => entry.Type == "ORB_SUMMON_SUCCEEDED");
+            Assert.Single(events, entry => entry.Type == "SURVIVOR_ORB_BOARD_STATE" && entry.Outcome == "summon");
+            Assert.Single(events, entry => entry.Type == "ORB_SUMMON_SUCCEEDED");
             Assert.Contains(Protocol.G_TO_C_INGAME_INVENTORY_UPDATE, connection.AttemptedProtocols);
             Assert.DoesNotContain(Protocol.G_TO_C_INGAME_INVENTORY_UPDATE, connection.DeliveredProtocols);
         }
@@ -85,7 +62,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         try
         {
             runtime.SummonStones.AddStones(FirstPlayerId, 20);
-            session.FreeSummonCharges = 1; // 자동 소환은 과거 무료 충전 상태와 무관하게 유료다.
             for (int index = 0; index < 2; index++)
             {
                 connection.ClearPackets();
@@ -127,6 +103,21 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         {
             MatchStartGate.RemoveMatching(FirstMatchingId);
         }
+    }
+
+    [Fact]
+    public void SummonStoneStatePacket_OnlyContainsCurrencyCountAndCost()
+    {
+        var state = new SummonStoneStateInfo
+        {
+            StoneCount = 7, SuccessfulSummonCount = 2, NextCost = 6
+        };
+        var fields = MessagePackSerializer.Deserialize<Dictionary<string, int>>(
+            MessagePackSerializer.Serialize(state));
+        Assert.Equal(3, fields.Count);
+        Assert.Equal(7, fields["stoneCount"]);
+        Assert.Equal(2, fields["successfulSummonCount"]);
+        Assert.Equal(6, fields["nextCost"]);
     }
 
     [Fact]
@@ -177,11 +168,9 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var locks = new List<bool>();
         connection.BeforeSend = _ => locks.Add(Monitor.IsEntered(runtime.Sync));
         await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
-        await SendAsync(session, Protocol.C_TO_G_DESTROY_ORB, new C_TO_G_DESTROY_ORB { ItemUid = long.MaxValue });
         await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_START, new C_TO_G_DOOR_OPEN_START { InteractId = int.MaxValue });
         await SendAsync(session, Protocol.C_TO_G_USE_INGAME_ITEM, new C_TO_G_USE_INGAME_ITEM { ItemUid = long.MaxValue, Count = 1 });
         Assert.Contains(Protocol.G_TO_C_SUMMON_ORB_RESULT, connection.DeliveredProtocols);
-        Assert.Contains(Protocol.G_TO_C_DESTROY_ORB_RESULT, connection.DeliveredProtocols);
         Assert.Contains(Protocol.G_TO_C_DOOR_OPEN_ACK, connection.DeliveredProtocols);
         Assert.Contains(Protocol.G_TO_C_USE_INGAME_ITEM_RESULT, connection.DeliveredProtocols);
         Assert.NotEmpty(locks);
@@ -225,118 +214,21 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         GameDataHelper.Initialize();
     }
 
-    [Fact]
-    public async Task GrowthPick_StaleRejectAndMultiply_PreserveExactStateAndWire()
+
+
+    [Theory]
+    [InlineData(OrbColor.Red)]
+    [InlineData(OrbColor.Green)]
+    [InlineData(OrbColor.Blue)]
+    public async Task OrbUpgrade_InvalidAndSuccess_PreserveExactStateAndWire(OrbColor color)
     {
         using var fixture = new SessionFixture();
         GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
         RecordingTcpConnection connection = fixture.ConnectionFor(session);
-        SwarmMatchRuntime runtime = fixture.Runtime(FirstMatchingId);
-        var offer = new SwarmGrowthOfferState(
-            OfferId: runtime.GrowthOfferCoordinator.AllocateOfferId(),
-            Cost: 3,
-            SpawnItemId: 107000010,
-            EnhanceTargetTier: 0,
-            ArmorCount: 1,
-            CostSummon: 3,
-            CostAttack: 4,
-            CostDefense: 5);
-        runtime.GrowthOfferCoordinator.RegisterOffer(FirstPlayerId, offer);
-        fixture.Store.GetRequired(FirstMatchingId).SummonStones.AddStones(FirstPlayerId, 20);
-
-        await SendAsync(
-            session,
-            Protocol.C_TO_G_SWARM_GROWTH_PICK,
-            new C_TO_G_SWARM_GROWTH_PICK
-            {
-                OfferId = offer.OfferId + 100,
-                CardIndex = SwarmGrowthOfferState.CardMultiply
-            });
-
-        Assert.Equal([Protocol.G_TO_C_SWARM_GROWTH_RESULT], connection.DeliveredProtocols);
-        G_TO_C_SWARM_GROWTH_RESULT stale = connection.DeserializeSingle<G_TO_C_SWARM_GROWTH_RESULT>(
-            Protocol.G_TO_C_SWARM_GROWTH_RESULT);
-        Assert.Equal(offer.OfferId + 100, stale.OfferId);
-        Assert.Equal(SwarmGrowthOfferState.CardMultiply, stale.CardIndex);
-        Assert.False(stale.Success);
-        Assert.Equal(20, stale.StoneCount);
-        Assert.Equal(offer, runtime.GrowthOffers.Offers[(FirstMatchingId, FirstPlayerId)]);
-        Assert.Empty(fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId));
-
-        connection.ClearPackets();
-        await SendAsync(
-            session,
-            Protocol.C_TO_G_SWARM_GROWTH_PICK,
-            new C_TO_G_SWARM_GROWTH_PICK
-            {
-                OfferId = offer.OfferId,
-                CardIndex = SwarmGrowthOfferState.CardEnhance
-            });
-
-        Assert.Equal(
-            [Protocol.G_TO_C_SWARM_GROWTH_RESULT, Protocol.G_TO_C_SUMMON_STONE_STATE],
-            connection.DeliveredProtocols);
-        G_TO_C_SWARM_GROWTH_RESULT rejected = connection.DeserializeSingle<G_TO_C_SWARM_GROWTH_RESULT>(
-            Protocol.G_TO_C_SWARM_GROWTH_RESULT);
-        Assert.Equal(offer.OfferId, rejected.OfferId);
-        Assert.Equal(SwarmGrowthOfferState.CardEnhance, rejected.CardIndex);
-        Assert.False(rejected.Success);
-        Assert.Equal(20, rejected.StoneCount);
-        Assert.Equal(offer, runtime.GrowthOffers.Offers[(FirstMatchingId, FirstPlayerId)]);
-        Assert.Equal(0, fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetGrowthSuccessCount(FirstPlayerId));
-
-        connection.ClearPackets();
-        await SendAsync(
-            session,
-            Protocol.C_TO_G_SWARM_GROWTH_PICK,
-            new C_TO_G_SWARM_GROWTH_PICK
-            {
-                OfferId = offer.OfferId,
-                CardIndex = SwarmGrowthOfferState.CardMultiply
-            });
-
-        Assert.Equal(
-            [
-                Protocol.G_TO_C_INGAME_INVENTORY_LIST,
-                Protocol.G_TO_C_USE_INGAME_ITEM_RESULT,
-                Protocol.G_TO_C_SWARM_FAMILY_LEVELS,
-                Protocol.G_TO_C_SWARM_GROWTH_RESULT,
-                Protocol.G_TO_C_SUMMON_STONE_STATE
-            ],
-            connection.DeliveredProtocols);
-        InGameItemInfo added = Assert.Single(
-            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId));
-        Assert.Equal(offer.SpawnItemId, added.ItemId);
-        Assert.Equal(17, fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
-        Assert.Equal(1, fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetGrowthSuccessCount(FirstPlayerId));
-        Assert.Equal(
-            1,
-            fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetGrowthSuccessCount(
-                FirstPlayerId,
-                SwarmGrowthOfferState.CardMultiply));
-        Assert.DoesNotContain((FirstMatchingId, FirstPlayerId), runtime.GrowthOffers.Offers.Keys);
-
-        G_TO_C_SWARM_GROWTH_RESULT applied = connection.DeserializeSingle<G_TO_C_SWARM_GROWTH_RESULT>(
-            Protocol.G_TO_C_SWARM_GROWTH_RESULT);
-        Assert.Equal(offer.OfferId, applied.OfferId);
-        Assert.Equal(SwarmGrowthOfferState.CardMultiply, applied.CardIndex);
-        Assert.True(applied.Success);
-        Assert.Equal(17, applied.StoneCount);
-        G_TO_C_SUMMON_STONE_STATE stoneState = connection.DeserializeSingle<G_TO_C_SUMMON_STONE_STATE>(
-            Protocol.G_TO_C_SUMMON_STONE_STATE);
-        Assert.Equal(17, stoneState.State.StoneCount);
-        Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
-    }
-
-    [Fact]
-    public async Task OrbDecision_InvalidAndSuccess_PreserveExactStateAndWire()
-    {
-        using var fixture = new SessionFixture();
-        GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        RecordingTcpConnection connection = fixture.ConnectionFor(session);
+        Assert.True(OrbData.TryGetItemId(color, 1, out int originalItemId));
         Assert.True(fixture.Store.GetRequired(FirstMatchingId).Inventory.TryAddItemWithCapacity(
             FirstPlayerId,
-            107000010,
+            originalItemId,
             Config.SWARM_ORB_CAPACITY,
             out InGameItemInfo? original));
         Assert.NotNull(original);
@@ -344,42 +236,42 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
         await SendAsync(
             session,
-            Protocol.C_TO_G_SWARM_ORB_DECISION,
-            new C_TO_G_SWARM_ORB_DECISION
+            Protocol.C_TO_G_UPGRADE_ORB,
+            new C_TO_G_UPGRADE_ORB
             {
                 Action = 999,
-                TargetItemUid = (long)OrbColor.Red,
+                TargetItemUid = (long)color,
                 SecondItemUid = 123
             });
 
-        Assert.Equal([Protocol.G_TO_C_SWARM_ORB_DECISION_RESULT], connection.DeliveredProtocols);
-        G_TO_C_SWARM_ORB_DECISION_RESULT invalid =
-            connection.DeserializeSingle<G_TO_C_SWARM_ORB_DECISION_RESULT>(
-                Protocol.G_TO_C_SWARM_ORB_DECISION_RESULT);
+        Assert.Equal([Protocol.G_TO_C_UPGRADE_ORB_RESULT], connection.DeliveredProtocols);
+        G_TO_C_UPGRADE_ORB_RESULT invalid =
+            connection.DeserializeSingle<G_TO_C_UPGRADE_ORB_RESULT>(
+                Protocol.G_TO_C_UPGRADE_ORB_RESULT);
         Assert.Equal(999, invalid.Action);
         Assert.False(invalid.Success);
         Assert.Equal(0, invalid.ResultItemId);
-        Assert.Equal((long)OrbColor.Red, invalid.TargetItemUid);
+        Assert.Equal((long)color, invalid.TargetItemUid);
         Assert.Equal(20, invalid.StoneCount);
         Assert.Equal(-1, invalid.TargetOrdinal);
-        Assert.Equal(107000010, Assert.Single(
+        Assert.Equal(originalItemId, Assert.Single(
             fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId)).ItemId);
         Assert.Equal(0, fixture.Runtime(FirstMatchingId).OrbBoard.GetFamilyUpgradeCount(
             FirstPlayerId,
-            OrbColor.Red));
+            color));
 
         connection.ClearPackets();
         int upgradeCost = Math.Min(
             Config.SWARM_GROWTH_COST_CAP,
             Config.GetSwarmGrowthBaseCost(0));
-        Assert.True(OrbData.TryGetItemId(OrbColor.Red, 2, out int upgradedItemId));
+        Assert.True(OrbData.TryGetItemId(color, 2, out int upgradedItemId));
         await SendAsync(
             session,
-            Protocol.C_TO_G_SWARM_ORB_DECISION,
-            new C_TO_G_SWARM_ORB_DECISION
+            Protocol.C_TO_G_UPGRADE_ORB,
+            new C_TO_G_UPGRADE_ORB
             {
-                Action = Config.SWARM_ORB_DECISION_FAMILY_UPGRADE,
-                TargetItemUid = (long)OrbColor.Red,
+                Action = Config.ORB_UPGRADE_FAMILY,
+                TargetItemUid = (long)color,
                 SecondItemUid = 0
             });
 
@@ -388,7 +280,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 Protocol.G_TO_C_INGAME_INVENTORY_LIST,
                 Protocol.G_TO_C_USE_INGAME_ITEM_RESULT,
                 Protocol.G_TO_C_SWARM_FAMILY_LEVELS,
-                Protocol.G_TO_C_SWARM_ORB_DECISION_RESULT
+                Protocol.G_TO_C_UPGRADE_ORB_RESULT
             ],
             connection.DeliveredProtocols);
         InGameItemInfo upgraded = Assert.Single(
@@ -400,35 +292,29 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
         Assert.Equal(1, fixture.Runtime(FirstMatchingId).OrbBoard.GetFamilyUpgradeCount(
             FirstPlayerId,
-            OrbColor.Red));
+            color));
 
-        G_TO_C_SWARM_ORB_DECISION_RESULT success =
-            connection.DeserializeSingle<G_TO_C_SWARM_ORB_DECISION_RESULT>(
-                Protocol.G_TO_C_SWARM_ORB_DECISION_RESULT);
-        Assert.Equal(Config.SWARM_ORB_DECISION_FAMILY_UPGRADE, success.Action);
+        G_TO_C_UPGRADE_ORB_RESULT success =
+            connection.DeserializeSingle<G_TO_C_UPGRADE_ORB_RESULT>(
+                Protocol.G_TO_C_UPGRADE_ORB_RESULT);
+        Assert.Equal(Config.ORB_UPGRADE_FAMILY, success.Action);
         Assert.True(success.Success);
         Assert.Equal(upgradedItemId, success.ResultItemId);
-        Assert.Equal((long)OrbColor.Red, success.TargetItemUid);
+        Assert.Equal((long)color, success.TargetItemUid);
         Assert.Equal(20 - upgradeCost, success.StoneCount);
         Assert.Equal(0, success.TargetOrdinal);
         Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task TerminalWhileWaitingForLock_RejectsWithoutCallingHandler(bool orbDecision)
+    [Fact]
+    public async Task TerminalWhileWaitingForLock_RejectsWithoutCallingHandler()
     {
         using var fixture = new SessionFixture();
-        int growthCalls = 0;
         int orbCalls = 0;
-        GameClientSession session = fixture.CreateSession(
-            FirstMatchingId,
-            FirstPlayerId,
-            growthHandler: (_, _, _, _) => growthCalls++,
-            orbHandler: (_, _, _, _, _) => orbCalls++);
-        RecordingTcpConnection connection = fixture.ConnectionFor(session);
-        MatchRuntime runtime = fixture.Store.Get(FirstMatchingId)!;
+        var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId,
+            orbHandler: (_, _, _, _, _) => { orbCalls++; return (false, 0, -1); });
+        var connection = fixture.ConnectionFor(session);
+        var runtime = fixture.Store.GetRequired(FirstMatchingId);
         using var lockHeld = new ManualResetEventSlim();
         using var markTerminal = new ManualResetEventSlim();
         Task holder = Task.Run(() =>
@@ -441,105 +327,27 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             }
         });
         Assert.True(lockHeld.Wait(TimeSpan.FromSeconds(5)));
-
-        Task message = orbDecision
-            ? Task.Run(() => SendAsync(
-                session,
-                Protocol.C_TO_G_SWARM_ORB_DECISION,
-                new C_TO_G_SWARM_ORB_DECISION
-                {
-                    Action = Config.SWARM_ORB_DECISION_FAMILY_UPGRADE,
-                    TargetItemUid = (long)OrbColor.Red
-                }))
-            : Task.Run(() => SendAsync(
-                session,
-                Protocol.C_TO_G_SWARM_GROWTH_PICK,
-                new C_TO_G_SWARM_GROWTH_PICK { OfferId = 17, CardIndex = 2 }));
+        Task message = Task.Run(() => SendAsync(session, Protocol.C_TO_G_UPGRADE_ORB,
+            new C_TO_G_UPGRADE_ORB
+            {
+                Action = Config.ORB_UPGRADE_FAMILY,
+                TargetItemUid = (long)OrbColor.Red
+            }));
         await Task.Delay(100);
         Assert.False(message.IsCompleted);
         markTerminal.Set();
         await holder.WaitAsync(TimeSpan.FromSeconds(5));
         await message.WaitAsync(TimeSpan.FromSeconds(5));
-
-        Protocol expected = orbDecision
-            ? Protocol.G_TO_C_SWARM_ORB_DECISION_RESULT
-            : Protocol.G_TO_C_SWARM_GROWTH_RESULT;
-        Assert.Equal([expected], connection.DeliveredProtocols);
-        Assert.Equal(0, growthCalls);
+        Assert.Equal([Protocol.G_TO_C_UPGRADE_ORB_RESULT], connection.DeliveredProtocols);
         Assert.Equal(0, orbCalls);
-        if (orbDecision)
-        {
-            G_TO_C_SWARM_ORB_DECISION_RESULT result =
-                connection.DeserializeSingle<G_TO_C_SWARM_ORB_DECISION_RESULT>(expected);
-            Assert.False(result.Success);
-            Assert.Equal(-1, result.TargetOrdinal);
-        }
-        else
-        {
-            G_TO_C_SWARM_GROWTH_RESULT result =
-                connection.DeserializeSingle<G_TO_C_SWARM_GROWTH_RESULT>(expected);
-            Assert.False(result.Success);
-            Assert.Equal(17, result.OfferId);
-            Assert.Equal(2, result.CardIndex);
-        }
+        var result = connection.DeserializeSingle<G_TO_C_UPGRADE_ORB_RESULT>(
+            Protocol.G_TO_C_UPGRADE_ORB_RESULT);
+        Assert.False(result.Success);
+        Assert.Equal(-1, result.TargetOrdinal);
         Assert.Null(fixture.Store.Get(FirstMatchingId));
     }
 
-    [Fact]
-    public async Task GrowthTransportFailure_KeepsCommittedPrefixAndStopsWireAndStateSuffix()
-    {
-        using var fixture = new SessionFixture();
-        GameClientSession session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
-        RecordingTcpConnection connection = fixture.ConnectionFor(session);
-        SwarmMatchRuntime runtime = fixture.Runtime(FirstMatchingId);
-        var offer = new SwarmGrowthOfferState(
-            OfferId: runtime.GrowthOfferCoordinator.AllocateOfferId(),
-            Cost: 3,
-            SpawnItemId: 107000010,
-            EnhanceTargetTier: 0,
-            ArmorCount: 1,
-            CostSummon: 3,
-            CostAttack: 4,
-            CostDefense: 5);
-        runtime.GrowthOfferCoordinator.RegisterOffer(FirstPlayerId, offer);
-        fixture.Store.GetRequired(FirstMatchingId).SummonStones.AddStones(FirstPlayerId, 20);
-        connection.ThrowOnceOn = Protocol.G_TO_C_SWARM_FAMILY_LEVELS;
 
-        await SendAsync(
-            session,
-            Protocol.C_TO_G_SWARM_GROWTH_PICK,
-            new C_TO_G_SWARM_GROWTH_PICK
-            {
-                OfferId = offer.OfferId,
-                CardIndex = SwarmGrowthOfferState.CardMultiply
-            });
-
-        Assert.Equal(
-            [
-                Protocol.G_TO_C_INGAME_INVENTORY_LIST,
-                Protocol.G_TO_C_USE_INGAME_ITEM_RESULT,
-                Protocol.G_TO_C_SWARM_FAMILY_LEVELS,
-                Protocol.G_TO_C_ERROR
-            ],
-            connection.AttemptedProtocols);
-        Assert.Equal(
-            [
-                Protocol.G_TO_C_INGAME_INVENTORY_LIST,
-                Protocol.G_TO_C_USE_INGAME_ITEM_RESULT,
-                Protocol.G_TO_C_ERROR
-            ],
-            connection.DeliveredProtocols);
-        Assert.DoesNotContain(Protocol.G_TO_C_SWARM_GROWTH_RESULT, connection.AttemptedProtocols);
-        Assert.DoesNotContain(Protocol.G_TO_C_SUMMON_STONE_STATE, connection.AttemptedProtocols);
-        Assert.Equal(offer.SpawnItemId, Assert.Single(
-            fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId)).ItemId);
-        Assert.Equal(17, fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetSnapshot(FirstPlayerId).StoneCount);
-        // 송신이 잠금 안에서 바로 나가므로 FAMILY_LEVELS Send 실패 뒤의 단계(성공 카운트·오퍼 회수)는
-        // 돌지 않는다 — 앞선 인벤토리·소환석 변경은 남는다.
-        Assert.Equal(0, fixture.Store.GetRequired(FirstMatchingId).SummonStones.GetGrowthSuccessCount(FirstPlayerId));
-        Assert.Contains((FirstMatchingId, FirstPlayerId), runtime.GrowthOffers.Offers.Keys);
-        Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));
-    }
 
     [Fact]
     public async Task OrbTransportFailure_CommitsUpgradeStopsWireSuffixAndReleasesLock()
@@ -562,10 +370,10 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
         await SendAsync(
             session,
-            Protocol.C_TO_G_SWARM_ORB_DECISION,
-            new C_TO_G_SWARM_ORB_DECISION
+            Protocol.C_TO_G_UPGRADE_ORB,
+            new C_TO_G_UPGRADE_ORB
             {
-                Action = Config.SWARM_ORB_DECISION_FAMILY_UPGRADE,
+                Action = Config.ORB_UPGRADE_FAMILY,
                 TargetItemUid = (long)OrbColor.Red
             });
 
@@ -584,7 +392,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 Protocol.G_TO_C_ERROR
             ],
             connection.DeliveredProtocols);
-        Assert.DoesNotContain(Protocol.G_TO_C_SWARM_ORB_DECISION_RESULT, connection.AttemptedProtocols);
+        Assert.DoesNotContain(Protocol.G_TO_C_UPGRADE_ORB_RESULT, connection.AttemptedProtocols);
         InGameItemInfo upgraded = Assert.Single(
             fixture.Store.GetRequired(FirstMatchingId).Inventory.GetAllItems(FirstPlayerId));
         Assert.Equal(original!.ItemUid, upgraded.ItemUid);
@@ -604,153 +412,138 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
     }
 
     [Fact]
+    public async Task OrbHandler_SendsReturnedResultAfterServiceCompletes()
+    {
+        using var fixture = new SessionFixture();
+        bool serviceCompleted = false;
+        var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId,
+            orbHandler: (current, _, _, _, _) =>
+            {
+                Assert.Empty(fixture.ConnectionFor(current).DeliveredProtocols);
+                serviceCompleted = true;
+                return (true, 107000020, 2);
+            });
+        var connection = fixture.ConnectionFor(session);
+        connection.BeforeSend = _ => Assert.True(serviceCompleted);
+        session.Match.SummonStones.AddStones(FirstPlayerId, 7);
+        await SendAsync(session, Protocol.C_TO_G_UPGRADE_ORB,
+            new C_TO_G_UPGRADE_ORB
+            {
+                Action = Config.ORB_UPGRADE_FAMILY,
+                TargetItemUid = (long)OrbColor.Red
+            });
+        var result = connection.DeserializeSingle<G_TO_C_UPGRADE_ORB_RESULT>(
+            Protocol.G_TO_C_UPGRADE_ORB_RESULT);
+        Assert.True(result.Success);
+        Assert.Equal(107000020, result.ResultItemId);
+        Assert.Equal(2, result.TargetOrdinal);
+        Assert.Equal(7, result.StoneCount);
+        Assert.Equal((long)OrbColor.Red, result.TargetItemUid);
+        Assert.Equal(Config.ORB_UPGRADE_FAMILY, result.Action);
+    }
+
+    [Fact]
     public async Task PreparationFailure_KeepsAlreadySentPrefixAndStopsPreparationSuffix()
     {
         using var fixture = new SessionFixture();
         bool prefixCommitted = false;
         bool suffixCommitted = false;
-        GameClientSession session = fixture.CreateSession(
-            FirstMatchingId,
-            FirstPlayerId,
-            growthHandler: (current, _, offerId, cardIndex) =>
+        var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId,
+            orbHandler: (current, _, action, target, _) =>
             {
                 prefixCommitted = true;
-                current.SendSwarmGrowthResult(offerId, cardIndex, success: false);
-                throw new InvalidOperationException("growth preparation failed");
+                current.SendSwarmFamilyLevels(1, 1, 1, 2, 2, 2);
+                throw new InvalidOperationException("upgrade preparation failed");
 #pragma warning disable CS0162
                 suffixCommitted = true;
+                return (false, 0, -1);
 #pragma warning restore CS0162
             });
-
-        await SendAsync(
-            session,
-            Protocol.C_TO_G_SWARM_GROWTH_PICK,
-            new C_TO_G_SWARM_GROWTH_PICK { OfferId = 23, CardIndex = 2 });
-
+        await SendAsync(session, Protocol.C_TO_G_UPGRADE_ORB,
+            new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_FAMILY, TargetItemUid = (long)OrbColor.Red });
         Assert.True(prefixCommitted);
         Assert.False(suffixCommitted);
-        Assert.Equal(
-            [Protocol.G_TO_C_SWARM_GROWTH_RESULT, Protocol.G_TO_C_ERROR],
+        Assert.Equal([Protocol.G_TO_C_SWARM_FAMILY_LEVELS, Protocol.G_TO_C_ERROR],
             fixture.ConnectionFor(session).DeliveredProtocols);
     }
 
     [Fact]
-    public async Task DifferentMatches_DispatchIndependentlyWhileFirstGrowthTransportIsBlocked()
+    public async Task DifferentMatches_DispatchIndependentlyWhileFirstUpgradeTransportIsBlocked()
     {
         using var fixture = new SessionFixture();
-        GameClientSession first = fixture.CreateSession(
-            FirstMatchingId,
-            FirstPlayerId,
-            growthHandler: static (session, _, offerId, cardIndex) =>
-                session.SendSwarmGrowthResult(offerId, cardIndex, success: false));
-        GameClientSession second = fixture.CreateSession(
-            SecondMatchingId,
-            SecondPlayerId,
-            growthHandler: static (session, _, offerId, cardIndex) =>
-                session.SendSwarmGrowthResult(offerId, cardIndex, success: false));
-        var entered = new ManualResetEventSlim();
-        var release = new ManualResetEventSlim();
+        var first = fixture.CreateSession(FirstMatchingId, FirstPlayerId,
+            orbHandler: static (session, _, action, target, _) =>
+                (false, 0, -1));
+        var second = fixture.CreateSession(SecondMatchingId, SecondPlayerId,
+            orbHandler: static (session, _, action, target, _) =>
+                (false, 0, -1));
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
         fixture.ConnectionFor(first).BeforeSend = protocol =>
         {
-            if (protocol != Protocol.G_TO_C_SWARM_GROWTH_RESULT)
-                return;
+            if (protocol != Protocol.G_TO_C_UPGRADE_ORB_RESULT) return;
             entered.Set();
             Assert.True(release.Wait(TimeSpan.FromSeconds(5)));
         };
-
-        Task firstTask = Task.Run(() => SendAsync(
-            first,
-            Protocol.C_TO_G_SWARM_GROWTH_PICK,
-            new C_TO_G_SWARM_GROWTH_PICK { OfferId = 1, CardIndex = 0 }));
+        var request = new C_TO_G_UPGRADE_ORB
+        {
+            Action = Config.ORB_UPGRADE_FAMILY, TargetItemUid = (long)OrbColor.Red
+        };
+        Task firstTask = Task.Run(() => SendAsync(first, Protocol.C_TO_G_UPGRADE_ORB, request));
         Assert.True(entered.Wait(TimeSpan.FromSeconds(5)));
-
-        Task secondTask = SendAsync(
-            second,
-            Protocol.C_TO_G_SWARM_GROWTH_PICK,
-            new C_TO_G_SWARM_GROWTH_PICK { OfferId = 2, CardIndex = 1 });
-        await secondTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Equal(
-            [Protocol.G_TO_C_SWARM_GROWTH_RESULT],
-            fixture.ConnectionFor(second).DeliveredProtocols);
-        Assert.False(firstTask.IsCompleted);
-
-        release.Set();
-        await firstTask.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            await SendAsync(second, Protocol.C_TO_G_UPGRADE_ORB, request).WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.Equal([Protocol.G_TO_C_UPGRADE_ORB_RESULT], fixture.ConnectionFor(second).DeliveredProtocols);
+            Assert.False(firstTask.IsCompleted);
+        }
+        finally
+        {
+            release.Set();
+            await firstTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
     }
 
     [Fact]
     public async Task InjectedHandlers_AreSessionLocal_AndIdentitySemanticsStayUnchanged()
     {
         using var fixture = new SessionFixture();
-        int firstGrowthCalls = 0;
-        int secondGrowthCalls = 0;
-        int firstOrbCalls = 0;
-        int secondOrbCalls = 0;
-        GameClientSession first = fixture.CreateSession(
-            FirstMatchingId,
-            FirstPlayerId,
-            growthHandler: (_, _, _, _) => firstGrowthCalls++,
-            orbHandler: (_, _, _, _, _) => firstOrbCalls++);
-        GameClientSession second = fixture.CreateSession(
-            SecondMatchingId,
-            SecondPlayerId,
-            growthHandler: (_, _, _, _) => secondGrowthCalls++,
-            orbHandler: (_, _, _, _, _) => secondOrbCalls++);
-
-        await SendAsync(
-            first,
-            Protocol.C_TO_G_SWARM_GROWTH_PICK,
-            new C_TO_G_SWARM_GROWTH_PICK { OfferId = 1, CardIndex = 0 });
-        await SendAsync(
-            second,
-            Protocol.C_TO_G_SWARM_ORB_DECISION,
-            new C_TO_G_SWARM_ORB_DECISION { Action = 999 });
-
-        Assert.Equal(1, firstGrowthCalls);
-        Assert.Equal(0, secondGrowthCalls);
-        Assert.Equal(0, firstOrbCalls);
-        Assert.Equal(1, secondOrbCalls);
+        int firstCalls = 0;
+        int secondCalls = 0;
+        var first = fixture.CreateSession(FirstMatchingId, FirstPlayerId,
+            orbHandler: (_, _, _, _, _) => { firstCalls++; return (false, 0, -1); });
+        var second = fixture.CreateSession(SecondMatchingId, SecondPlayerId,
+            orbHandler: (_, _, _, _, _) => { secondCalls++; return (false, 0, -1); });
+        var request = new C_TO_G_UPGRADE_ORB { Action = Config.ORB_UPGRADE_FAMILY, TargetItemUid = (long)OrbColor.Red };
+        await SendAsync(first, Protocol.C_TO_G_UPGRADE_ORB, request);
+        Assert.Equal(1, firstCalls);
+        Assert.Equal(0, secondCalls);
+        await SendAsync(second, Protocol.C_TO_G_UPGRADE_ORB, request);
+        Assert.Equal(1, secondCalls);
 
         fixture.SetPlayerId(first, null);
         fixture.SetMatchingId(second, 0);
-        await SendAsync(
-            first,
-            Protocol.C_TO_G_SWARM_GROWTH_PICK,
-            new C_TO_G_SWARM_GROWTH_PICK { OfferId = 2, CardIndex = 0 });
-        await SendAsync(
-            second,
-            Protocol.C_TO_G_SWARM_ORB_DECISION,
-            new C_TO_G_SWARM_ORB_DECISION { Action = 999 });
-        Assert.Equal(1, firstGrowthCalls);
-        Assert.Equal(1, secondOrbCalls);
+        await SendAsync(first, Protocol.C_TO_G_UPGRADE_ORB, request);
+        await SendAsync(second, Protocol.C_TO_G_UPGRADE_ORB, request);
+        Assert.Equal(1, firstCalls);
+        Assert.Equal(1, secondCalls);
 
         fixture.SetPlayerId(first, FirstPlayerId);
         fixture.SetMatchingId(second, SecondMatchingId);
         fixture.SetPlayerMatchStatus(first, PlayerMatchStatus.ELIMINATED);
         fixture.SetPlayerMatchStatus(second, PlayerMatchStatus.ELIMINATED);
-        await SendAsync(
-            first,
-            Protocol.C_TO_G_SWARM_GROWTH_PICK,
-            new C_TO_G_SWARM_GROWTH_PICK { OfferId = 3, CardIndex = 0 });
-        await SendAsync(
-            second,
-            Protocol.C_TO_G_SWARM_ORB_DECISION,
-            new C_TO_G_SWARM_ORB_DECISION { Action = 999 });
-
-        Assert.Equal(2, firstGrowthCalls);
-        Assert.Equal(1, secondOrbCalls);
-        Assert.Empty(fixture.ConnectionFor(first).DeliveredProtocols);
-        Assert.Empty(fixture.ConnectionFor(second).DeliveredProtocols);
+        await SendAsync(first, Protocol.C_TO_G_UPGRADE_ORB, request);
+        await SendAsync(second, Protocol.C_TO_G_UPGRADE_ORB, request);
+        Assert.Equal(1, firstCalls);
+        Assert.Equal(1, secondCalls);
+        Assert.Equal([Protocol.G_TO_C_UPGRADE_ORB_RESULT], fixture.ConnectionFor(first).DeliveredProtocols);
+        Assert.Equal([Protocol.G_TO_C_UPGRADE_ORB_RESULT], fixture.ConnectionFor(second).DeliveredProtocols);
         Assert.Null(typeof(GameClientSession).GetProperty(
-            "SwarmGrowthPickCallback",
-            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic));
-        Assert.Null(typeof(GameClientSession).GetProperty(
-            "SwarmOrbDecisionCallback",
-            BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic));
+            "SwarmOrbDecisionCallback", BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic));
     }
 
     [Fact]
-    public void SourceScope_ActivatesOnlyHumanGrowthAndOrbOuterHandlers()
+    public void SourceScope_UsesMatchLocksAndHasNoGrowthPickHandler()
     {
         string root = FindRepositoryRoot();
         string session = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
@@ -763,28 +556,25 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         string orbBoard = ReadNormalizedSource(root, "game_server", "Services", "OrbUpgradeService.cs");
 
         Assert.Contains("IPlayerGrowthHandler _growth", session);
-        Assert.Contains("_growth.HandleOrbDecision(", orbSummon);
+        Assert.Contains("_growth.HandleUpgradeOrb(", orbSummon);
         Assert.DoesNotContain("SwarmGrowthPickCallback", session);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
         Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
         Assert.DoesNotContain("RunWithMatchLock", orbSummon);
-        Assert.Equal(4, CountOccurrences(orbSummon, "using (match.Enter())"));
-        Assert.Equal(4, CountOccurrences(orbSummon, "if (match.IsTerminal"));
-        Assert.Contains("MatchingId <= 0", ReadMethodSlice(
-            orbSummon,
-            "private Task HandleSwarmGrowthPick(",
-            "private Task HandleSwarmOrbDecision("));
+        Assert.Equal(2, CountOccurrences(orbSummon, "using (match.Enter())"));
+        Assert.Equal(2, CountOccurrences(orbSummon, "if (match.IsTerminal"));
+        Assert.DoesNotContain("HandleSwarmGrowthPick", orbSummon);
+        Assert.DoesNotContain("C_TO_G_SWARM_GROWTH_PICK", session);
         Assert.Contains("IsEliminated", ReadMethodSlice(
             orbSummon,
-            "private Task HandleSwarmOrbDecision(",
+            "private Task HandleUpgradeOrb(",
             "internal void SendSwarmFamilyLevels("));
         Assert.Contains("using (match.Enter())", ReadMethodSlice(orbSummon,
             "private Task HandleSummonOrb(",
-            "private Task HandleSwarmGrowthPick("));
-        Assert.Contains("using (match.Enter())", ReadMethodSlice(orbSummon,
-            "private Task HandleDestroyOrb(",
-            "internal void SendSummonStoneState("));
+            "private Task HandleUpgradeOrb("));
+        Assert.DoesNotContain("HandleDestroyOrb", orbSummon);
+        Assert.DoesNotContain("C_TO_G_DESTROY_ORB", session);
         Assert.DoesNotContain("RunWithMatchLock", arena);
         Assert.DoesNotContain("RunWithMatchLock", orbBoard);
     }
@@ -851,16 +641,14 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Path.GetTempPath(),
             "orbtail-growth-orb-publication-tests",
             Guid.NewGuid().ToString("N"));
-        private readonly Action<GameClientSession, long, int, int> _growthHandler;
-        private readonly Action<GameClientSession, long, int, long, long> _orbHandler;
+        private readonly Func<GameClientSession, long, int, long, long, (bool Success, int ResultItemId, int TargetOrdinal)> _orbHandler;
 
         public SessionFixture()
         {
             Server = CreateServer();
             Store = Server.GetMatchRuntimes();
             EventLog = Server.GetEventLogs();
-            _growthHandler = Server.GetGrowth().HandlePick;
-            _orbHandler = Server.GetGrowth().HandleOrbDecision;
+            _orbHandler = Server.GetGrowth().HandleUpgradeOrb;
 
         }
 
@@ -872,8 +660,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         public GameClientSession CreateSession(
             long matchingId,
             long playerId,
-            Action<GameClientSession, long, int, int>? growthHandler = null,
-            Action<GameClientSession, long, int, long, long>? orbHandler = null)
+            Func<GameClientSession, long, int, long, long, (bool Success, int ResultItemId, int TargetOrdinal)>? orbHandler = null)
         {
             Store.GetOrCreate(matchingId);
             Store.Get(matchingId)!.Doors.Initialize();
@@ -891,7 +678,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 TestGameSessionServices.CreateEliminationService(Store, EventLog, new MatchSummaryFileStore(_summaryDirectory),
                     GameServerDevOptions.Disabled,
                     NullLogger.Instance),
-                new FakePlayerGrowthHandler(growthHandler ?? _growthHandler, orbHandler ?? _orbHandler),
+                new FakePlayerGrowthHandler(orbHandler ?? _orbHandler),
 
                 new FakeGameSessionLifecycle(),
                 static () => false,

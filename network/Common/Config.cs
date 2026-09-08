@@ -479,14 +479,9 @@ namespace network.common
         public static int SWARM_STARTING_ORB_GRANT_COUNT => SwarmConfigData.GetInt("SWARM_STARTING_ORB_GRANT_COUNT", 3);
         public static int SWARM_STARTING_STONE_GRANT => SwarmConfigData.GetInt("SWARM_STARTING_STONE_GRANT", 5);
 
-        /// <summary>
-        ///     오브 파괴 환급 (#232 4단계): 계열 공유 레벨은 플레이어에게 귀속되므로 표시 티어와
-        ///     무관하게 오브 한 개당 소환석 1로 고정한다 — 강화한 오브를 부숴도 레벨은 남는다.
-        /// </summary>
-        public static int SWARM_ORB_DESTROY_REFUND_STONES => SwarmConfigData.GetInt("SWARM_ORB_DESTROY_REFUND_STONES", 1);
 
         /// <summary>결정 패킷 액션 — 클라·서버·로그 공유. TargetItemUid = OrbColor 값.</summary>
-        public const int SWARM_ORB_DECISION_FAMILY_UPGRADE = 1;
+        public const int ORB_UPGRADE_FAMILY = 1;
 
     }
 }

@@ -161,55 +161,16 @@ namespace network.common.data.models
         [Key("jamCount")] public int JamCount { get; set; }
     }
 
-    /// <summary>열쇠 무료 소환 충전 상태 (#222 M4). 획득·소비 시 소유자에게 전송.</summary>
-    [MessagePackObject]
-    public class G_TO_C_FREE_SUMMON_STATE : IMessagePackObject
-    {
-        [Key("charges")] public int Charges { get; set; }
-    }
 
 
 
-    /// <summary>
-    ///     성장 카드 오퍼 (#226 단계 C). 소환석이 비용에 도달하면 서버가 내린다.
-    ///     SpawnItemId: 오브 생성 카드가 지급할 오브(색·티어 명시) — 픽 시 그대로 지급.
-    ///     EnhanceTargetTier: 0=공격 강화 무효(대상 없음), 1=T1→T2(등급 I), 2=T2→T3(등급 II).
-    ///     ArmorCount: 방어 강화가 부여할 외피 장수(0=무효) — 등급 = 장수.
-    /// </summary>
-    [MessagePackObject]
-    public class G_TO_C_SWARM_GROWTH_OFFER : IMessagePackObject
-    {
-        [Key("offerId")] public int OfferId { get; set; }
-        /// <summary>대표 비용(가장 싼 카드). 실제 차감·표시는 Costs가 한다 — 구 클라 호환용.</summary>
-        [Key("cost")] public int Cost { get; set; }
-        /// <summary>
-        ///     카드별 비용 (#229): [0]=소환 · [1]=공격 강화 · [2]=방어 강화.
-        ///     셋이 한 곡선을 공유하면 오브를 늘릴수록 강화가 비싸지고 그 반대도 된다 —
-        ///     한 축에 투자하면 다른 축이 벌을 받는 구조라 빌드 선택의 의미가 사라진다.
-        /// </summary>
-        [Key("costs")] public List<int> Costs { get; set; } = new();
-        [Key("spawnId")] public int SpawnItemId { get; set; }
-        [Key("enhTier")] public int EnhanceTargetTier { get; set; }
-        [Key("armorN")] public int ArmorCount { get; set; }
-    }
 
-    /// <summary>성장 카드 선택 (#226 단계 C). CardIndex: 0=증식, 1=강화, 2=철갑.</summary>
-    [MessagePackObject]
-    public class C_TO_G_SWARM_GROWTH_PICK : IMessagePackObject
-    {
-        [Key("offerId")] public int OfferId { get; set; }
-        [Key("cardIndex")] public int CardIndex { get; set; }
-    }
 
-    /// <summary>성장 카드 선택 결과 (#226 단계 C). 실패 시 오퍼는 유지된다.</summary>
-    [MessagePackObject]
-    public class G_TO_C_SWARM_GROWTH_RESULT : IMessagePackObject
-    {
-        [Key("offerId")] public int OfferId { get; set; }
-        [Key("cardIndex")] public int CardIndex { get; set; }
-        [Key("success")] public bool Success { get; set; }
-        [Key("stones")] public int StoneCount { get; set; }
-    }
+
+
+
+
+
 
     /// <summary>
     ///     스웜 링 연출 (#226). 같은 구역에 브로드캐스트 — 링 중심·반경.
@@ -272,12 +233,12 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    ///     6칸 빌드 결정 (#232 4단계). Action 1 = 오브 강화, TargetItemUid = OrbColor 값 —
+    ///     오브 강화 요청. Action 1 = 계열 내 오브 강화, TargetItemUid = OrbColor 값 —
     ///     그 계열에서 몸체에 가장 가까운 T3 미만 오브 하나가 한 티어 오른다 (2026-08-18, 구 계열 일괄 강화).
     ///     서버 권위 — 강화할 오브 없음·소환석 부족이면 거절.
     /// </summary>
     [MessagePackObject]
-    public class C_TO_G_SWARM_ORB_DECISION : IMessagePackObject
+    public class C_TO_G_UPGRADE_ORB : IMessagePackObject
     {
         [Key("action")] public int Action { get; set; }
         [Key("targetUid")] public long TargetItemUid { get; set; }
@@ -285,11 +246,11 @@ namespace network.common.data.models
     }
 
     /// <summary>
-    ///     결정 결과 (#232 4단계). ResultItemId: 강화된 오브의 새 아이템, TargetOrdinal: 그 오브의 열 순번
+    ///     오브 강화 결과. ResultItemId: 강화된 오브의 새 아이템, TargetOrdinal: 그 오브의 열 순번
     ///     (0 = 몸체 바로 뒤; 실패·해당 없음 -1) — 클라가 강화 이펙트를 그 오브 위에 띄운다.
     /// </summary>
     [MessagePackObject]
-    public class G_TO_C_SWARM_ORB_DECISION_RESULT : IMessagePackObject
+    public class G_TO_C_UPGRADE_ORB_RESULT : IMessagePackObject
     {
         [Key("action")] public int Action { get; set; }
         [Key("success")] public bool Success { get; set; }

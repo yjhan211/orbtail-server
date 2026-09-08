@@ -95,11 +95,6 @@ internal sealed class GroundItemAutoPickupService(
             // 부츠 (#222 M4): 이속은 클라 이동이 소유한다 — 서버는 픽업 결과만 확정.
             // 클라가 픽업 결과(ItemId)로 10초 버프·HUD 타이머를 시작한다.
         }
-        else if (pickup.KeyPickup)
-        {
-            session.FreeSummonCharges += 1;
-            session.SendFreeSummonState();
-        }
         else if (pickup.SummonStonePickup)
         {
             var summonState = session.Match.SummonStones.AddStones(session.PlayerId.Value, 1);
@@ -157,7 +152,7 @@ internal sealed class GroundItemAutoPickupService(
             session.CurrentArea.ToString(),
             pickup.AutoUsed,
             isBot: false);
-        if (!pickup.SummonStonePickup && !pickup.BootsPickup && !pickup.KeyPickup)
+        if (!pickup.SummonStonePickup && !pickup.BootsPickup)
         {
             var boardAfterPickup = session.Match.Inventory.GetPlayerInventory(session.PlayerId.Value);
             eventLogs.LogOrbBoardTransition(

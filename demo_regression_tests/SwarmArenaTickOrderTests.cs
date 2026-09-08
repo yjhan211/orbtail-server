@@ -243,7 +243,7 @@ public sealed class SwarmArenaTickOrderTests
     }
 
     [Fact]
-    public void GrowthOfferFlow_DelegatesLifecycleAndOwnershipToCoordinator()
+    public void GrowthOfferFlow_OnlyBotsGenerateOffers()
     {
         string root = FindRepositoryRoot();
         string source = ReadNormalizedSource(root, "game_server", "Services", "MatchGrowthService.cs");
@@ -251,20 +251,16 @@ public sealed class SwarmArenaTickOrderTests
             source,
             "public void ProcessOffers(",
             "public int GetTopOrbCount(");
-        string pickBody = ReadMethodSlice(
-            source,
-            "public void HandlePick(",
-            "private bool ApplySwarmGrowthCard(");
+        Assert.DoesNotContain("public void HandlePick(", source);
 
         AssertInOrder(
             tickBody,
-            ".EvaluateStanding(",
-            ".EvaluateFunding(",
+            "foreach (var bot in aliveBots)",
             ".AllocateOfferId()",
-            ".RegisterOffer(");
-        Assert.Contains(".TryApplyPick(", pickBody);
+            "ChooseSwarmBotGrowthCard(");
+        Assert.DoesNotContain("foreach (var session in aliveSessions)", tickBody);
+        Assert.DoesNotContain("SendSwarmGrowthOffer", tickBody);
         Assert.DoesNotContain(".GrowthOffers.Offers", tickBody);
-        Assert.DoesNotContain(".GrowthOffers.Offers", pickBody);
     }
 
     [Fact]

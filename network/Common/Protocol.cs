@@ -124,34 +124,24 @@ namespace network.common
         G_TO_C_SUMMON_STONE_STATE,
         C_TO_G_SUMMON_ORB,
         G_TO_C_SUMMON_ORB_RESULT,
-        C_TO_G_DESTROY_ORB,
-        G_TO_C_DESTROY_ORB_RESULT,
 
         // 잼 승점 재화 (#222 M3) — 소환석과 분리된 지갑 상태
         G_TO_C_JAM_STATE,
         G_TO_C_JAM_RANKINGS,
 
-        // 열쇠 (#222 M4) — 무료 소환 충전 상태
-        G_TO_C_FREE_SUMMON_STATE,
 
         // 포위 사격 연출 (#226 B) — 완성 순간 포위 링 표시
         G_TO_C_SWARM_ENCIRCLE_VFX,
 
-        // 성장 카드 3택 (#226 단계 C) — 소환석 임계 도달 시 서버가 오퍼를 내리고,
-        // 선택은 서버 권위로 적용된다 (증식·강화·철갑, 강화·철갑은 선두 유효 오브 자동 적용)
-        G_TO_C_SWARM_GROWTH_OFFER,
-        C_TO_G_SWARM_GROWTH_PICK,
-        G_TO_C_SWARM_GROWTH_RESULT,
 
         // 교차사격 예고 (#232 2단계) — 몬스터를 향한 오브 공격이 만드는 모양(직선 등)의
         // 원점·끝·폭·예고/판정 시간. 같은 구역 전원에게 브로드캐스트, 표시 = 판정.
         G_TO_C_SWARM_CROSSFIRE_TELEGRAPH,
 
         // 6칸 빌드 (#232 4단계) — 계열 공유 레벨(태양·바람·파도 T1~T3)과 직접 강화.
-        // 6/6 포화는 소환 불가, 기존 5회 탭 파괴로 빈칸을 만든다.
         G_TO_C_SWARM_FAMILY_LEVELS,
-        C_TO_G_SWARM_ORB_DECISION,
-        G_TO_C_SWARM_ORB_DECISION_RESULT,
+        C_TO_G_UPGRADE_ORB,
+        G_TO_C_UPGRADE_ORB_RESULT,
 
         // 자기장 시계 (#272) — 수축 시작 시각. 유예·수축 길이·거리 필드는 Common이
         // 단일 출처라 클라가 같은 값으로 경계를 보간한다 (표시 = 판정).

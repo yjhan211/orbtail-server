@@ -379,9 +379,8 @@ public class BotPlayerState
     // 유휴 배회 (#222): 도착 대기(캠프 리스폰·사격 대기)로 서 있지 않게 주변을 서성인다.
     public DateTime NextIdleWanderAtUtc { get; set; } = DateTime.MinValue;
 
-    // 부츠·열쇠 (#222 M4): 사람과 같은 규칙으로 봇도 쓴다.
+    // 부츠: 사람과 같은 규칙으로 봇도 쓴다.
     public DateTime BootsSpeedUntilUtc { get; set; } = DateTime.MinValue;
-    public int FreeSummonCharges { get; set; }
 
     // 빈손 이속 (#223): 지시 판단 틱이 갱신 — 사람과 같은 배율로 도주가 성립하게.
     public bool IsSwarmBareHanded { get; set; }

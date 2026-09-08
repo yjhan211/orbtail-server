@@ -8,6 +8,26 @@ namespace demo_regression_tests;
 public sealed class GroundItemPickupCandidatesTests
 {
     [Fact]
+    public void RemovedFreeSummonKeyCannotBePickedUp()
+    {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var match = store.GetOrCreate(984399);
+        using (match.Enter())
+        {
+            var item = Assert.Single(match.GroundItems.SpawnItems(
+                Config.SWARM_MATCH_GROUND_AREA, 0, 0, [Config.KEY_GROUND_ITEM_ID]));
+            TestGroundItemLanding.Complete(match.GroundItems);
+            var result = GroundItemPickupService.TryPickup(match, 1, Config.SWARM_MATCH_GROUND_AREA,
+                At(item, 0, 0), 100, item.GroundItemUid);
+            Assert.Equal(GroundItemClaimStatus.Rejected, result.Status);
+            Assert.Equal(ErrorCode.ITEM_NOT_USABLE, result.Rejection);
+            Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));
+            Assert.Empty(match.Inventory.GetAllItems(1));
+            match.TryMarkTerminal();
+        }
+    }
+
+    [Fact]
     public void SweptPathFindsItemEvenWhenBothEndpointsAreOutsideRadius()
     {
         var store = new MatchRuntimeStore(NullLogger.Instance);
@@ -98,7 +118,7 @@ public sealed class GroundItemPickupCandidatesTests
     private static GroundItemInfo Spawn(MatchRuntime match, long sourcePlayerId = 0)
     {
         var item = Assert.Single(match.GroundItems.SpawnItems(Config.SWARM_MATCH_GROUND_AREA, 0, 0,
-            [Config.KEY_GROUND_ITEM_ID], sourcePlayerId));
+            [Config.SUMMON_STONE_GROUND_ITEM_ID], sourcePlayerId));
         TestGroundItemLanding.Complete(match.GroundItems);
         return item;
     }

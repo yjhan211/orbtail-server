@@ -197,7 +197,6 @@ internal sealed class MatchArenaService(
                 !matchRuntimes.GetRequired(matchingId).Swarm.Pacing.StartingOrbGrantedPlayers.Add((matchingId, session.PlayerId.Value)))
                 continue;
 
-            session.FreeSummonCharges = 0;
             orbUpgrades.GrantStartingOrbs(matchingId, session.PlayerId.Value, session);
             matchRuntimes.GetRequired(matchingId).SummonStones.AddStones(session.PlayerId.Value, startingStones);
             session.SendSummonStoneState();
@@ -369,7 +368,7 @@ internal sealed class MatchArenaService(
         orbVisuals.Publish(matchingId, actors, sessions);
         BroadcastSwarmOrbRankings(matchingId, sessions, bots);
         // 성장 카드 (#226 단계 C): 소환석이 비용에 닿는 즉시 3택 오퍼 — 상자 트리거 퇴역.
-        growth.ProcessOffers(matchingId, nowUtc, aliveSessions, aliveBots);
+        growth.ProcessOffers(matchingId, aliveSessions, aliveBots);
         if (ProcessSwarmScoreTimeout(matchingId, nowUtc, sessions, aliveSessions, aliveBots))
             return;
         // 지난 틱에 예약된 착탄들을 먼저 정산한다 — 체력바가 폭발 시점에 맞춰 닳는다.

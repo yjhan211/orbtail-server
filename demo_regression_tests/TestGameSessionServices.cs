@@ -8,14 +8,11 @@ using network.infrastructure.redis;
 namespace demo_regression_tests;
 
 internal sealed class FakePlayerGrowthHandler(
-    Action<GameClientSession, long, int, int>? pick = null,
-    Action<GameClientSession, long, int, long, long>? orbDecision = null) : IPlayerGrowthHandler
+    Func<GameClientSession, long, int, long, long, (bool Success, int ResultItemId, int TargetOrdinal)>? orbDecision = null) : IPlayerGrowthHandler
 {
-    public void HandlePick(GameClientSession session, long matchingId, int offerId, int cardIndex) =>
-        pick?.Invoke(session, matchingId, offerId, cardIndex);
 
-    public void HandleOrbDecision(GameClientSession session, long matchingId, int action, long targetItemUid, long secondItemUid) =>
-        orbDecision?.Invoke(session, matchingId, action, targetItemUid, secondItemUid);
+    public (bool Success, int ResultItemId, int TargetOrdinal) HandleUpgradeOrb(GameClientSession session, long matchingId, int action, long targetItemUid, long secondItemUid) =>
+        orbDecision?.Invoke(session, matchingId, action, targetItemUid, secondItemUid) ?? (false, 0, -1);
 }
 
 internal static class TestGameSessionServices

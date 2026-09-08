@@ -22,7 +22,6 @@ internal static class GroundItemPickupService
         bool autoEquipped = false;
         bool summonStonePickup = false;
         bool bootsPickup = false;
-        bool keyPickup = false;
         int healthRecovery = 0;
         ErrorCode rejection = ErrorCode.INVENTORY_FULL;
 
@@ -51,8 +50,8 @@ internal static class GroundItemPickupService
 
                 if (item.ItemId == Config.KEY_GROUND_ITEM_ID)
                 {
-                    keyPickup = true;
-                    return true;
+                    rejection = ErrorCode.ITEM_NOT_USABLE;
+                    return false;
                 }
 
                 var disposition = GroundItemPickupPolicy.Resolve(
@@ -88,7 +87,7 @@ internal static class GroundItemPickupService
 
         return new(status, rejection, attemptedItem, claimedItem, addedItem,
             discovererPlayerId, autoUsed, autoEquipped, summonStonePickup,
-            bootsPickup, keyPickup, healthRecovery);
+            bootsPickup, healthRecovery);
     }
 }
 
@@ -96,4 +95,4 @@ internal sealed record GroundItemPickupResult(
     GroundItemClaimStatus Status, ErrorCode Rejection,
     GroundItemInfo? AttemptedItem, GroundItemInfo? ClaimedItem, InGameItemInfo? AddedItem,
     long DiscovererPlayerId, bool AutoUsed, bool AutoEquipped, bool SummonStonePickup,
-    bool BootsPickup, bool KeyPickup, int HealthRecovery);
+    bool BootsPickup, int HealthRecovery);

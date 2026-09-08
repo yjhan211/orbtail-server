@@ -34,9 +34,9 @@ public partial class BotPlayerManager
             int healthRecovery = 0;
             bool summonStonePickup = candidate.ItemId == Config.SUMMON_STONE_GROUND_ITEM_ID;
             bool bootsPickup = candidate.ItemId == Config.BOOTS_GROUND_ITEM_ID;
-            bool keyPickup = candidate.ItemId == Config.KEY_GROUND_ITEM_ID;
-            // 재화류(소환석·부츠·열쇠)는 봇 반응 지연 공통 — 사람 선점권 (#222)
-            if ((summonStonePickup || bootsPickup || keyPickup) &&
+            if (candidate.ItemId == Config.KEY_GROUND_ITEM_ID) continue;
+            // 재화류(소환석·부츠)는 봇 반응 지연 공통 — 사람 선점권 (#222)
+            if ((summonStonePickup || bootsPickup) &&
                 groundItemManager.IsYoungerThan(
                     candidate.GroundItemUid, SummonStoneBotReactionDelay))
                 continue;
@@ -53,7 +53,7 @@ public partial class BotPlayerManager
                 item =>
                 {
                     if (item.ItemId is Config.SUMMON_STONE_GROUND_ITEM_ID
-                        or Config.BOOTS_GROUND_ITEM_ID or Config.KEY_GROUND_ITEM_ID)
+                        or Config.BOOTS_GROUND_ITEM_ID)
                         return true;
 
                     disposition = GroundItemPickupPolicy.Resolve(
@@ -78,10 +78,6 @@ public partial class BotPlayerManager
             {
                 bot.BootsSpeedUntilUtc =
                     DateTime.UtcNow.AddSeconds(Config.BOOTS_SPEED_DURATION_SECONDS);
-            }
-            else if (keyPickup)
-            {
-                bot.FreeSummonCharges += 1;
             }
             else if (summonStonePickup)
             {
