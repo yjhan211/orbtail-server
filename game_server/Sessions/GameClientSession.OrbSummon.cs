@@ -81,17 +81,12 @@ public partial class GameClientSession
         }
     }
 
-    private Task HandleDevDummyMove(C_TO_G_DEV_DUMMY_MOVE request)
-    {
-        if (PlayerId.HasValue && MatchingId > 0)
-            SwarmDummyMoveCallback?.Invoke(MatchingId, request.DirX, request.DirY);
-        return Task.CompletedTask;
-    }
-
     private Task HandleSwarmGrowthPick(C_TO_G_SWARM_GROWTH_PICK request)
     {
         if (!PlayerId.HasValue || MatchingId <= 0)
+        {
             return Task.CompletedTask;
+        }
 
         long matchingId = MatchingId;
         var match = Volatile.Read(ref _match);

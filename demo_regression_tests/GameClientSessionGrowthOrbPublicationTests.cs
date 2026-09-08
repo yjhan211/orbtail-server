@@ -781,7 +781,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             "internal void SendSwarmFamilyLevels("));
         Assert.Contains("using (match.Enter())", ReadMethodSlice(orbSummon,
             "private Task HandleSummonOrb(",
-            "private Task HandleDevDummyMove("));
+            "private Task HandleSwarmGrowthPick("));
         Assert.Contains("using (match.Enter())", ReadMethodSlice(orbSummon,
             "private Task HandleDestroyOrb(",
             "internal void SendSummonStoneState("));

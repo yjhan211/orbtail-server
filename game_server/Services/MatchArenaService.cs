@@ -174,10 +174,6 @@ internal sealed class MatchArenaService(
             if (!matchRuntimes.GetRequired(matchingId).Monsters.InitializeMatching(matchingId, humanPlayerId, DateTime.UtcNow))
                 return;
 
-            GameClientSession.SwarmDummyMoveCallback ??=
-                (dummyMatchingId, dirX, dirY) =>
-                    MoveSwarmCutDummy(dummyMatchingId, dirX, dirY);
-
             // 자기장 경계 스폰 규칙을 이 매치의 몬스터 처리기에 연결한다.
             matchRuntimes.GetRequired(matchingId).Monsters.FieldSpawnCellResolver ??= fieldService.ResolveSpawn;
             LogSwarmPairZoneDistances(matchingId);
@@ -1638,68 +1634,9 @@ internal sealed class MatchArenaService(
         };
     }
 
-    /// <summary>
-    ///     더미 WASD 조종 (#226 실험장): 클라 방향 입력을 스텝 이동으로 적용하고 걷기를
-    ///     브로드캐스트한다 — 더미가 움직여야 클라 열이 자연 간격(0.9)으로 펼쳐진다.
-    /// </summary>
-    private void MoveSwarmCutDummy(long matchingId, float dirX, float dirY)
-    {
-        if (!matchRuntimes.Enter(matchingId, out MatchScope scope))
-            return;
 
-        using (scope)
-        {
-            if (scope.Runtime.IsTerminal)
-                return;
 
-            BotMovementEvent? movement = MoveSwarmCutDummyCore(matchingId, dirX, dirY);
-            if (movement != null)
-                botMovement.DispatchExternalMovement(scope.Runtime, movement);
-        }
-    }
 
-    private BotMovementEvent? MoveSwarmCutDummyCore(long matchingId, float dirX, float dirY)
-    {
-        var dummy = matchRuntimes.GetRequired(matchingId).Bots.GetBots(matchingId)
-            .FirstOrDefault(bot => bot.IsSwarmCutDummy && !bot.IsEliminated);
-        if (dummy == null)
-            return null;
-
-        float length = MathF.Sqrt(dirX * dirX + dirY * dirY);
-        if (length < 0.01f)
-            return null;
-
-        // 10Hz 전송 기준 스텝 0.5 = 5u/s — 플레이어 달리기와 동급.
-        const float step = 0.5f;
-        var proposed = new Vector3f(
-            dummy.Position.X + dirX / length * step,
-            dummy.Position.Y + dirY / length * step,
-            0f);
-        var proposedCell = MapCoordinateConverter.WorldToCell(Config.SWARM_MATCH_MAP, proposed);
-        if (!GameMapData.IsMoveablePosition(Config.SWARM_MATCH_MAP, proposedCell))
-            return null;
-
-        var fromArea = dummy.CurrentArea;
-        var fromCell = dummy.Cell;
-        dummy.Position = proposed;
-        dummy.Cell = proposedCell;
-        var currentArea = GameMapData.GetCurrentArea(Config.SWARM_MATCH_MAP, proposedCell);
-        if (currentArea != AreaType.None)
-            dummy.CurrentArea = currentArea;
-
-        return new BotMovementEvent
-        {
-            BotPlayerId = dummy.PlayerId,
-            FromArea = fromArea,
-            ToArea = dummy.CurrentArea,
-            FromCell = fromCell,
-            ToCell = proposedCell,
-            Position = proposed,
-            Velocity = new Vector3f(dirX / length * 5f, dirY / length * 5f, 0f),
-            Rotation = 0f,
-            IsAreaTransition = fromArea != dummy.CurrentArea
-        };
-    }
 
     /// <summary>
     ///     열 순번부터 꼬리 끝까지 인벤토리에서 즉시 파괴한다 (스네이크 문법). 순번 매핑은

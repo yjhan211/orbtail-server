@@ -172,16 +172,12 @@ public sealed class SwarmBotMovementPlanTests
     }
 
     [Fact]
-    public void DummySetupAndMove_UseLockedExternalPlansWithoutOrbitAdvance()
+    public void DummySetup_UsesLockedExternalPlanWithoutOrbitAdvance()
     {
         string root = FindRepositoryRoot();
         string arena = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
         string coordinator = ReadNormalizedSource(
             root, "game_server", "Services", "Bots", "SwarmBotMovementCoordinator.cs");
-        string callback = ReadMethodSlice(
-            arena,
-            "GameClientSession.SwarmDummyMoveCallback ??=",
-            "matchRuntimes.GetRequired(matchingId).Monsters.FieldSpawnCellResolver ??=");
         string adminSetup = ReadMethodSlice(
             arena,
             "public object SetupSwarmCutDummy(long matchingId)",
@@ -190,16 +186,11 @@ public sealed class SwarmBotMovementPlanTests
             ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotMovementService.cs"),
             "public void DispatchExternalMovement(",
             "private static double CalculatePercentile(");
-        string move = ReadMethodSlice(
-            arena,
-            "private void MoveSwarmCutDummy(long matchingId, float dirX, float dirY)",
-            "private BotMovementEvent? MoveSwarmCutDummyCore(");
         string externalPrepare = ReadMethodSlice(
             coordinator,
             "public SwarmBotMovementPlan PrepareExternalMovement(",
             "private SwarmBotMovementPlan PrepareResult(");
 
-        Assert.Contains("MoveSwarmCutDummy(dummyMatchingId, dirX, dirY);", callback);
         AssertInOrder(
             adminSetup,
             "matchRuntimes.Enter(matchingId, out MatchScope scope)",
@@ -212,12 +203,6 @@ public sealed class SwarmBotMovementPlanTests
             "CaptureSwarmBotObservers(matchingId, sessionSnapshot)",
             "PrepareExternalMovement(",
             "DispatchSwarmBotMovementPlan(plan, sessionSnapshot)");
-        AssertInOrder(
-            move,
-            "matchRuntimes.Enter(matchingId, out MatchScope scope)",
-            "scope.Runtime.IsTerminal",
-            "MoveSwarmCutDummyCore(",
-            "botMovement.DispatchExternalMovement(scope.Runtime, movement)");
         Assert.Contains("advanceOrbOrbit: false", externalPrepare);
         Assert.Contains("session.CurrentMapId == Config.SWARM_MATCH_MAP", external);
         Assert.DoesNotContain("PacketMaker", external);

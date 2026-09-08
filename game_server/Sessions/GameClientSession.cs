@@ -51,7 +51,6 @@ public partial class GameClientSession : SessionBase
     public int FreeSummonCharges { get; internal set; }
 
     private Timer? _periodicBuffTimer;
-    internal static Action<long, float, float>? SwarmDummyMoveCallback { get; set; }
     internal static Action<long, long>? SwarmHeartPickupCallback { get; set; }
 
     internal GameClientSession(
@@ -124,8 +123,6 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_SUMMON_ORB>(bytes, HandleSummonOrb));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DESTROY_ORB,
             async bytes => await HandleMessage<C_TO_G_DESTROY_ORB>(bytes, HandleDestroyOrb));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DEV_DUMMY_MOVE,
-            async bytes => await HandleMessage<C_TO_G_DEV_DUMMY_MOVE>(bytes, HandleDevDummyMove));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SWARM_GROWTH_PICK,
             async bytes => await HandleMessage<C_TO_G_SWARM_GROWTH_PICK>(bytes, HandleSwarmGrowthPick));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_SWARM_ORB_DECISION,

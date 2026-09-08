@@ -168,13 +168,7 @@ namespace network.common.data.models
         [Key("charges")] public int Charges { get; set; }
     }
 
-    /// <summary>절단 실험 더미 조종 (#226 실험장, 개발용). WASD 방향 — 서버가 더미를 스텝 이동.</summary>
-    [MessagePackObject]
-    public class C_TO_G_DEV_DUMMY_MOVE : IMessagePackObject
-    {
-        [Key("dirX")] public float DirX { get; set; }
-        [Key("dirY")] public float DirY { get; set; }
-    }
+
 
     /// <summary>
     ///     성장 카드 오퍼 (#226 단계 C). 소환석이 비용에 도달하면 서버가 내린다.
