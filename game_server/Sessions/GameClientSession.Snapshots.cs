@@ -1,7 +1,6 @@
 using game_server.services;
 using MessagePack;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 using network.packets;
 
@@ -12,41 +11,67 @@ public partial class GameClientSession
 {
     private Task BroadcastPlayerJoin()
     {
-        if (!PlayerId.HasValue || IsEliminated) return Task.CompletedTask;
-
-        var sessions = Match.Sessions.Snapshot()
-            .Where(s => s.PlayerId.HasValue && s.PlayerId != PlayerId &&
-                        !s.IsEliminated && s.CurrentArea == CurrentArea)
-            .ToList();
-
-        if (sessions.Count > 0)
+        if (!PlayerId.HasValue || IsEliminated)
         {
-            using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s.CaptureGameObjectInfo()).ToList());
-            TrySend(others);
+            return Task.CompletedTask;
         }
 
-        using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([CaptureGameObjectInfo()]))
-            foreach (var session in sessions) session.TrySend(mine);
-
-        var bots = Match.Bots.GetBots(MatchingId)
-            .Where(b => !b.IsEliminated && b.CurrentArea == CurrentArea).ToList();
-        var objects = bots.Select(b => Match.Bots.SynthesizeGameObjectInfo(MatchingId, b.PlayerId))
-            .OfType<GameObjectInfo>().ToList();
-        if (objects.Count > 0)
+        var match = Volatile.Read(ref _match);
+        if (match == null)
         {
+            return Task.CompletedTask;
+        }
+
+        using (match.Enter())
+        {
+            if (match.IsTerminal || !PlayerId.HasValue || IsEliminated)
+            {
+                return Task.CompletedTask;
+            }
+
+            var sessions = new List<GameClientSession>();
+            foreach (var session in match.Sessions.Snapshot())
+            {
+                if (!session.PlayerId.HasValue || session.PlayerId == PlayerId)
+                {
+                    continue;
+                }
+                if (session.IsEliminated || session.CurrentArea != CurrentArea)
+                {
+                    continue;
+                }
+                sessions.Add(session);
+            }
+
+            if (sessions.Count > 0)
+            {
+                using var others = PacketMaker.G_TO_C_OBJECT_INFO(sessions.Select(s => s.CaptureGameObjectInfo()).ToList());
+                TrySend(others);
+            }
+
+            using (var mine = PacketMaker.G_TO_C_OBJECT_INFO([CaptureGameObjectInfo()]))
+            {
+                foreach (var session in sessions)
+                {
+                    session.TrySend(mine);
+                }
+            }
+
+            var bots = match.Bots.GetBots(MatchingId).Where(bot => !bot.IsEliminated && bot.CurrentArea == CurrentArea).ToList();
+            var objects = bots.Select(bot => match.Bots.SynthesizeGameObjectInfo(MatchingId, bot.PlayerId)).OfType<GameObjectInfo>().ToList();
+            if (objects.Count <= 0)
+            {
+                return Task.CompletedTask;
+            }
+
             using var packet = PacketMaker.G_TO_C_OBJECT_INFO(objects);
             TrySend(packet);
-            foreach (var bot in bots)
-            {
-                using var appearance = PacketMaker.G_TO_C_PLAYER_APPEARANCE(
-                    bot.PlayerId, BotPlayerManager.BuildBotWearItems(bot));
-                TrySend(appearance);
-            }
         }
+
         return Task.CompletedTask;
     }
 
-    /// <summary>이동 서비스가 보관한 공간 정보를 현재 행동 상태와 함께 복사한다.</summary>
+    /// <summary>이동 정보와 현재 행동 상태를 복사한다. 호출자는 매치 잠금을 보유해야 한다.</summary>
     internal GameObjectInfo CaptureGameObjectInfo() =>
         _playerMovement.CaptureGameObjectInfo(_condition.State);
 

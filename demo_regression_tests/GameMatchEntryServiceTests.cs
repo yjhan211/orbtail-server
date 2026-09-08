@@ -11,6 +11,29 @@ namespace demo_regression_tests;
 public sealed class GameMatchEntryServiceTests
 {
     [Fact]
+    public async Task EntryRosterContainsBotAppearanceWithoutSeparateAppearancePacket()
+    {
+        var (service, redis, store, runtime) = await Prepare(981014);
+        var composition = await service.LoadCompositionAsync(runtime.MatchingId, Config.SWARM_MATCH_MAP, runtime);
+        long botId = Assert.Single(composition.BotPlayerIds);
+        var bot = Assert.Single(composition.PlayerRoster, profile => profile.PlayerId == botId);
+        Assert.False(string.IsNullOrWhiteSpace(bot.Name));
+        Assert.NotEmpty(bot.WearItemIdList);
+        Assert.Equal(runtime.Bots.SynthesizePlayerInfo(runtime.MatchingId, botId)!.WearItemIdList, bot.WearItemIdList);
+
+        var restored = MessagePackSerializer.Deserialize<G_TO_C_MATCH_ROSTER>(
+            MessagePackSerializer.Serialize(new G_TO_C_MATCH_ROSTER
+            {
+                MatchingId = runtime.MatchingId,
+                PlayerRoster = composition.PlayerRoster.ToList()
+            }));
+        var restoredBot = Assert.Single(restored.PlayerRoster, profile => profile.PlayerId == botId);
+        Assert.Equal(bot.Name, restoredBot.Name);
+        Assert.Equal(bot.WearItemIdList, restoredBot.WearItemIdList);
+        Assert.DoesNotContain("G_TO_C_PLAYER_APPEARANCE", Enum.GetNames<Protocol>());
+    }
+
+    [Fact]
     public async Task CompositionInitializesDoorsAndLaterEntryPreservesChanges()
     {
         UserServerMatchingTestData.EnsureGameDataLoaded();

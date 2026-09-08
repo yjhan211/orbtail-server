@@ -81,17 +81,6 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_PLAYER_APPEARANCE(long playerId, List<int> wearItemIds)
-    {
-        var packet = Packet.Create((int)Protocol.G_TO_C_PLAYER_APPEARANCE);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_PLAYER_APPEARANCE
-        {
-            PlayerId = playerId,
-            WearItemIdList = wearItemIds
-        }));
-        return packet;
-    }
-
     public static Packet G_TO_C_AREA_PLAYER_LEAVE(long playerId)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_AREA_PLAYER_LEAVE);

@@ -238,9 +238,6 @@ internal sealed class PlayerMovementService(
                     if (objectInfo == null) continue;
                     using var botEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(objectInfo);
                     player.TrySend(botEnterPacket);
-                    using var appearance = PacketMaker.G_TO_C_PLAYER_APPEARANCE(
-                        bot.PlayerId, BotPlayerManager.BuildBotWearItems(bot));
-                    player.TrySend(appearance);
                 }
                 if (newAreaBots.Count > 0)
                     logger.LogDebug("Sent {Count} bots in new Area {NewArea} to Player {PlayerId}",

@@ -165,7 +165,6 @@ public sealed class SwarmBotMovementPlanTests
             dispatch,
             "G_TO_C_AREA_PLAYER_LEAVE",
             "G_TO_C_AREA_PLAYER_ENTER",
-            "G_TO_C_PLAYER_APPEARANCE",
             "G_TO_C_MOVE",
             "G_TO_C_ENCOUNTER_REVEAL",
             "G_TO_C_GROUND_ITEM_REMOVED");

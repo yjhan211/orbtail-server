@@ -137,7 +137,6 @@ namespace network.common
         // 단일 출처라 클라가 같은 값으로 경계를 보간한다 (표시 = 판정).
         G_TO_C_SWARM_FIELD_STATE,
 
-        G_TO_C_PLAYER_APPEARANCE, // 인게임 착용 외형 변경 (위치·PlayerInfo 전체 제외)
 
         G_TO_C_MATCH_ROSTER, // GameServer가 확정한 사람·봇 이름과 외형 명단
         G_TO_C_COMBAT_HIT,

@@ -146,9 +146,6 @@ internal sealed class BotMovementService(
                     using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(
                         movement.EnteringBot.ToGameObjectInfo());
                     SendToCapturedRecipients(enterPacket, movement.DestinationRecipientOrdinals, sessionSnapshot);
-                    using var appearance = PacketMaker.G_TO_C_PLAYER_APPEARANCE(
-                        movement.BotPlayerId, movement.EnteringBot.WearItemIds.ToList());
-                    SendToCapturedRecipients(appearance, movement.DestinationRecipientOrdinals, sessionSnapshot);
                 }
             }
 

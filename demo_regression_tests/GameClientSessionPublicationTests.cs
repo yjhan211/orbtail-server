@@ -47,6 +47,52 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(10, packet.HealthDelta);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PlayerJoinHoldsMatchLockAndReleasesItAfterSend(bool sendThrows)
+    {
+        using var fixture = new SessionFixture();
+        var joining = fixture.CreateSession(70001, 101, (AreaType)50);
+        var existing = fixture.CreateSession(70001, 102, (AreaType)50);
+        var otherArea = fixture.CreateSession(70001, 103, (AreaType)51);
+        var runtime = joining.Match;
+        int sendCount = 0;
+        foreach (var session in new[] { joining, existing })
+        {
+            fixture.ConnectionFor(session).BeforeSend = protocol =>
+            {
+                Assert.Equal(Protocol.G_TO_C_OBJECT_INFO, protocol);
+                Assert.True(Monitor.IsEntered(runtime.Sync));
+                sendCount++;
+            };
+        }
+        if (sendThrows)
+            fixture.ConnectionFor(joining).ThrowOnceOn = Protocol.G_TO_C_OBJECT_INFO;
+        var broadcast = typeof(GameClientSession).GetMethod(
+            "BroadcastPlayerJoin", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        if (sendThrows)
+            Assert.IsType<InvalidOperationException>(
+                Assert.Throws<TargetInvocationException>(() => broadcast.Invoke(joining, null)).InnerException);
+        else
+            await (Task)broadcast.Invoke(joining, null)!;
+
+        Assert.Equal(sendThrows ? 1 : 2, sendCount);
+        Assert.False(Monitor.IsEntered(runtime.Sync));
+        Assert.Empty(fixture.ConnectionFor(otherArea).AttemptedProtocols);
+    }
+
+    [Fact]
+    public async Task PlayerJoinDoesNotPublishAfterMatchEnds()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        fixture.MarkTerminal(70001);
+        var broadcast = typeof(GameClientSession).GetMethod(
+            "BroadcastPlayerJoin", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        await (Task)broadcast.Invoke(session, null)!;
+        Assert.Empty(fixture.ConnectionFor(session).AttemptedProtocols);
+    }
     [Fact]
     public void CombatHit_UsesConfirmedHealthAndExplicitDotFlag()
     {

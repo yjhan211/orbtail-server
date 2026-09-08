@@ -302,14 +302,6 @@ namespace network.common.data.models
         [Key("objects")] public List<GameObjectInfo> Objects { get; set; }
     }
 
-    /// <summary>인게임 외형 변경만 전달한다. 위치나 PlayerInfo 전체는 보내지 않는다.</summary>
-    [MessagePackObject]
-    public class G_TO_C_PLAYER_APPEARANCE : IMessagePackObject
-    {
-        [Key("playerId")] public long PlayerId { get; set; }
-        [Key("wearItemIdList")] public List<int> WearItemIdList { get; set; }
-    }
-
     [MessagePackObject]
     public class G_TO_C_GAME_TIME_WARNING : IMessagePackObject
     {
