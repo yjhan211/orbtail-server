@@ -50,12 +50,9 @@ public sealed class GameClientSessionItemCombinePublicationTests
         var runtime = store.GetOrCreate(FirstMatchingId);
         var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
         var service = new ItemCombinationService(logs);
-        bool published = false;
-        Assert.Throws<InvalidOperationException>(() => service.TryCombine(
+        Assert.Throws<InvalidOperationException>(() => service.Combine(
             runtime, FirstPlayerId, AreaType.None,
-            new C_TO_G_COMBINE_ITEMS { ItemA = SunOrbT1, ItemB = SunOrbT1 },
-            (_, _, _) => published = true, _ => published = true));
-        Assert.False(published);
+            new C_TO_G_COMBINE_ITEMS { ItemA = SunOrbT1, ItemB = SunOrbT1 }));
         using (store.Enter(runtime))
             runtime.TryMarkTerminal();
     }
@@ -71,14 +68,11 @@ public sealed class GameClientSessionItemCombinePublicationTests
             var inventory = runtime.Inventory.GetPlayerInventory(FirstPlayerId);
             inventory.AddItem(SunOrbT1);
             var before = inventory.GetAllItems().Select(item => (item.ItemUid, item.ItemId, item.Count)).ToArray();
-            ErrorCode? rejected = null;
-            bool published = false;
-            Assert.True(service.TryCombine(
+            var result = service.Combine(
                 runtime, FirstPlayerId, AreaType.None,
-                new C_TO_G_COMBINE_ITEMS { ItemA = SunOrbT1, ItemB = SunOrbT1 },
-                (_, _, _) => published = true, error => rejected = error));
-            Assert.Equal(ErrorCode.INVALID_PARAMETER, rejected);
-            Assert.False(published);
+                new C_TO_G_COMBINE_ITEMS { ItemA = SunOrbT1, ItemB = SunOrbT1 });
+            Assert.Equal(ErrorCode.INVALID_PARAMETER, result.ErrorCode);
+            Assert.Null(result.ChangedItems);
             Assert.Equal(before, inventory.GetAllItems().Select(item => (item.ItemUid, item.ItemId, item.Count)).ToArray());
             runtime.TryMarkTerminal();
         }
@@ -487,7 +481,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
     [InlineData(Protocol.G_TO_C_ITEMS_COMBINED, 0)]
     [InlineData(Protocol.G_TO_C_INGAME_INVENTORY_UPDATE, 1)]
     [InlineData(Protocol.G_TO_C_USE_INGAME_ITEM_RESULT, 2)]
-    public async Task TransportFailure_CommitsStateButStopsWireAndLogSuffix(
+    public async Task TransportFailure_PreservesCommittedStateAndLogsButStopsWireSuffix(
         Protocol failingProtocol,
         int failingIndex)
     {
@@ -524,8 +518,9 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(
             output.ItemUid,
             fixture.Store.GetRequired(FirstMatchingId).Inventory.GetEquippedBattleItem(FirstPlayerId)!.ItemUid);
-        // 송신이 잠금 안에서 바로 나가므로 실패한 Send 뒤의 로그 단계는 돌지 않는다 — 인벤토리 변경은 남는다.
-        Assert.Empty(fixture.EventLog.GetForPersistence(FirstMatchingId));
+        // 조합과 로그 기록을 마친 뒤 전송하므로 전송 예외가 발생해도 변경 이력은 남는다.
+        Assert.Equal(["MISSION", "SURVIVOR_FIRST_T2"],
+            fixture.EventLog.GetForPersistence(FirstMatchingId).Select(entry => entry.Type));
         G_TO_C_ERROR error = connection.DeserializeSingle<G_TO_C_ERROR>(Protocol.G_TO_C_ERROR);
         Assert.Equal(ErrorCode.SERVER_INTERNAL_ERROR, error.ErrorCode);
         Assert.False(Monitor.IsEntered(fixture.Store.Get(FirstMatchingId)!.Sync));

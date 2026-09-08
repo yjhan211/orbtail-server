@@ -10,7 +10,10 @@ public partial class GameClientSession
 {
     private Task HandleCombineItems(C_TO_G_COMBINE_ITEMS msg)
     {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
+        if (!PlayerId.HasValue)
+        {
+            return Task.CompletedTask;
+        }
         var match = Volatile.Read(ref _match);
         if (MatchingId <= 0 || match == null)
         {
@@ -26,14 +29,14 @@ public partial class GameClientSession
                 return Task.CompletedTask;
             }
 
-            if (!_itemCombinations.TryCombine(
-                    match, PlayerId.Value, CurrentArea, msg,
-                    (outputItemId, changedItems, recipeId) =>
-                        SendBattleItemCombineResult(msg, outputItemId, changedItems, recipeId),
-                    errorCode => SendCombineItemsFailure(msg.ItemA, msg.ItemB, errorCode)))
+            var result = _itemCombinations.Combine(match, PlayerId.Value, CurrentArea, msg);
+            if (result.ErrorCode != ErrorCode.SUCCESS)
             {
-                SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INSUFFICIENT_ITEM);
+                SendCombineItemsFailure(msg.ItemA, msg.ItemB, result.ErrorCode);
+                return Task.CompletedTask;
             }
+
+            SendBattleItemCombineResult(msg, result.OutputItemId, result.ChangedItems!, result.RecipeId);
         }
 
         return Task.CompletedTask;

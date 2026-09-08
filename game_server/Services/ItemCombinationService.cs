@@ -7,17 +7,21 @@ namespace game_server.services;
 /// <summary>
 ///     사람의 오브·배틀아이템 조합 조건을 검사하고 매치 인벤토리와 합성 난수를 사용해 결과를 확정한다.
 ///     호출자가 매치 잠금을 소유해야 하며, 세션이나 TCP 연결은 보관하지 않는다.
-///     패킷 전송은 전달받은 콜백에 맡긴다. 기존 순서대로 결과를 발행한 뒤 로그를 기록한다.
+///     조합과 로그 기록을 마친 뒤 결과를 반환하며, 패킷 전송은 호출자가 담당한다.
 /// </summary>
 internal sealed class ItemCombinationService(GameEventLogManager eventLogs)
 {
-    public bool TryCombine(
+    public sealed record CombinationResult(
+        ErrorCode ErrorCode,
+        int OutputItemId = 0,
+        IReadOnlyCollection<InGameItemInfo>? ChangedItems = null,
+        int RecipeId = 0);
+
+    public CombinationResult Combine(
         MatchRuntime runtime,
         long playerId,
         AreaType area,
-        C_TO_G_COMBINE_ITEMS msg,
-        Action<int, IReadOnlyCollection<InGameItemInfo>, int> publishResult,
-        Action<ErrorCode> publishFailure)
+        C_TO_G_COMBINE_ITEMS msg)
     {
         if (!Monitor.IsEntered(runtime.Sync))
             throw new InvalidOperationException("Item combination requires the match lock.");
@@ -30,8 +34,7 @@ internal sealed class ItemCombinationService(GameEventLogManager eventLogs)
             if (!OrbData.CanMerge(msg.ItemA, msg.ItemB) ||
                 !inventory.HasItems([msg.ItemA, msg.ItemB]))
             {
-                publishFailure(ErrorCode.INVALID_PARAMETER);
-                return true;
+                return new CombinationResult(ErrorCode.INVALID_PARAMETER);
             }
 
             bool hadResonance = inventory.TryGetActiveOrbPair(out OrbColor previousResonanceColor,
@@ -45,11 +48,8 @@ internal sealed class ItemCombinationService(GameEventLogManager eventLogs)
                 out List<InGameItemInfo> changedItems);
             if (!combined)
             {
-                publishFailure(ErrorCode.INVALID_PARAMETER);
-                return true;
+                return new CombinationResult(ErrorCode.INVALID_PARAMETER);
             }
-
-            publishResult(outputItemId, changedItems, 0);
 
             bool resonanceActive = inventory.TryGetActiveOrbPair(out OrbColor resonanceColor,
                 out int supportTier);
@@ -74,20 +74,19 @@ internal sealed class ItemCombinationService(GameEventLogManager eventLogs)
                 outputItemId,
                 outputCombatData?.Tier ?? 0,
                 isBot: false);
-            return true;
+            return new CombinationResult(ErrorCode.SUCCESS, outputItemId, changedItems);
         }
 
         var candidates = BattleItemRecipeData.GetAvailableRecipes(
             [msg.ItemA, msg.ItemB],
             area);
         if (candidates.Count == 0)
-            return false;
+            return new CombinationResult(ErrorCode.INSUFFICIENT_ITEM);
 
         var recipeInventory = runtime.Inventory.GetPlayerInventory(playerId);
         if (!recipeInventory.HasItems(candidates[0].InputItemIds))
         {
-            publishFailure(ErrorCode.INSUFFICIENT_ITEM);
-            return true;
+            return new CombinationResult(ErrorCode.INSUFFICIENT_ITEM);
         }
 
         if (!runtime.Inventory.TryCombineRandomRecipe(
@@ -97,14 +96,12 @@ internal sealed class ItemCombinationService(GameEventLogManager eventLogs)
                 out BattleItemRecipe? recipe,
                 out List<InGameItemInfo> recipeChangedItems))
         {
-            publishFailure(ErrorCode.INSUFFICIENT_ITEM);
-            return true;
+            return new CombinationResult(ErrorCode.INSUFFICIENT_ITEM);
         }
 
         if (recipe == null)
             throw new InvalidOperationException("Successful random recipe combine did not select a recipe.");
 
-        publishResult(recipe.OutputItemId, recipeChangedItems, recipe.RecipeId);
         eventLogs.LogMission(matchingId, playerId,
             $"Battle item combine: {msg.ItemA} + {msg.ItemB} => {recipe.OutputItemId}",
             isBot: false);
@@ -116,7 +113,7 @@ internal sealed class ItemCombinationService(GameEventLogManager eventLogs)
             recipe.OutputItemId,
             combinedCombatData?.Tier ?? 0,
             isBot: false);
-        return true;
+        return new CombinationResult(ErrorCode.SUCCESS, recipe.OutputItemId, recipeChangedItems, recipe.RecipeId);
     }
 
 }
