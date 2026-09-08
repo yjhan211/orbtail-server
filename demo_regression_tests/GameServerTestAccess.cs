@@ -37,12 +37,10 @@ internal static class GameServerTestAccess
         var sessions = new game_server.sessions.GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<game_server.sessions.GameSessionRegistry>.Instance);
         var lifecycle = new MatchingLifecycleService(new InMemoryRedisOperations(),
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
-        var archive = new MatchEventArchive();
         runtimes ??= new MatchRuntimeStore(logger,
 
-            matchingLifecycle: lifecycle,
-            eventArchive: archive);
-        var logs = new GameEventLogManager(id => runtimes.GetOrNull(id)?.EventLog, archive);
+            matchingLifecycle: lifecycle);
+        var logs = new GameEventLogManager(id => runtimes.GetOrNull(id)?.EventLog);
         var summaries = new MatchSummaryFileStore();
         var entryFailure = new MatchEntryFailureHandler(runtimes, sessions, lifecycle, logger);
         var orbUpgrades = new OrbUpgradeService(runtimes, logs, GameServerDevOptions.Disabled,

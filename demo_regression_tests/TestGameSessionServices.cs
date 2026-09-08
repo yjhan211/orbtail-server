@@ -24,9 +24,7 @@ internal static class TestGameSessionServices
     // 단위 테스트도 실제 Lifecycle을 사용한다. Redis/NATS만 인메모리 구현으로 대체한다.
     public static MatchRuntimeStore CreateMatchRuntimeStore(
         Microsoft.Extensions.Logging.ILogger logger,
-        Action<long>? onRedisCleanup = null,
-        bool monsterSpawnEnabled = true,
-        MatchEventArchive? eventArchive = null)
+        Action<long>? onRedisCleanup = null)
     {
         var redis = new InMemoryRedisOperations();
         if (onRedisCleanup != null)
@@ -40,7 +38,7 @@ internal static class TestGameSessionServices
         }
         var lifecycle = new MatchingLifecycleService(redis,
             new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
-        return new MatchRuntimeStore(logger, lifecycle, monsterSpawnEnabled, eventArchive);
+        return new MatchRuntimeStore(logger, lifecycle);
     }
     public static PlayerMovementService GetMovement(GameClientSession session) =>
         (PlayerMovementService)typeof(GameClientSession).GetField("_playerMovement",

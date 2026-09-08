@@ -9,16 +9,10 @@ namespace game_server.matches;
 ///     ID로 잠금 진입을 요청하면 해당 매치를 찾아 위임하며,
 ///     실제 잠금과 종료 정리는 MatchRuntime이 담당한다.
 /// </summary>
-internal sealed class MatchRuntimeStore(
-    ILogger logger,
-    MatchingLifecycleService matchingLifecycle,
-    bool monsterSpawnEnabled = true,
-    MatchEventArchive? eventArchive = null)
+internal sealed class MatchRuntimeStore(ILogger logger, MatchingLifecycleService matchingLifecycle)
 {
     private readonly MatchingLifecycleService _matchingLifecycle = matchingLifecycle ?? throw new ArgumentNullException(nameof(matchingLifecycle));
     private readonly ConcurrentDictionary<long, MatchRuntime> _runtimes = new();
-    private readonly SwarmGrowthOfferIdSequence _growthOfferIds = new();
-    private readonly SwarmCrossfireEventIdSequence _crossfireEventIds = new();
 
     internal event Action<MatchRuntime>? Created;
 
@@ -32,7 +26,7 @@ internal sealed class MatchRuntimeStore(
             return existing;
         }
 
-        var candidate = new MatchRuntime(this, matchingId, logger, _matchingLifecycle, _growthOfferIds, _crossfireEventIds, monsterSpawnEnabled, eventArchive);
+        var candidate = new MatchRuntime(this, matchingId, logger, _matchingLifecycle);
         lock (candidate.Sync)
         {
             var runtime = _runtimes.GetOrAdd(matchingId, candidate);

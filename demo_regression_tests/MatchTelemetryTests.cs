@@ -14,7 +14,7 @@ public sealed class MatchTelemetryTests
     }
 
     [Fact]
-    public void MatchTelemetrySurvivesCleanupWithSeedExploreRecoveryAndFinalStats()
+    public void CapturedTelemetrySurvivesCleanupWithSeedExploreRecoveryAndFinalStats()
     {
         const long matchingId = 195001;
         var log = TestGameEventLogs.Create();
@@ -35,9 +35,10 @@ public sealed class MatchTelemetryTests
             "not_required",
             [new MatchFinalPlayerStats(101, 1, 301, 2, 45, 15)]);
 
+        var events = log.GetForPersistence(matchingId);
         log.Clear(matchingId);
-
-        var events = log.GetRecent(matchingId, 5_000);
+        Assert.Empty(log.GetRecent(matchingId));
+        Assert.Empty(log.GetForPersistence(matchingId));
         Assert.Contains(events, entry =>
             entry.Type == "MATCH_STARTED" && entry.MatchSeed == seed);
         Assert.Contains(events, entry =>

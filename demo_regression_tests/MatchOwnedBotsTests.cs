@@ -29,11 +29,10 @@ public sealed class MatchOwnedBotsTests
     [Fact]
     public void MonstersAreIsolatedAndReleasedWithTheirMatch()
     {
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance, monsterSpawnEnabled: false);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
         Assert.NotSame(first.Monsters, second.Monsters);
-        Assert.False(first.Monsters.MonsterSpawnEnabled);
         Assert.True(first.Monsters.InitializeMatching(1, 10, DateTime.UtcNow));
         Assert.False(first.Monsters.InitializeMatching(2, 20, DateTime.UtcNow));
         Assert.False(second.Monsters.HasMatching(2));

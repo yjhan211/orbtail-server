@@ -9,8 +9,8 @@ namespace game_server.services;
 
 /// <summary>
 ///     이벤트 기록과 전투·계측 통계를 계산한다. 진행 중 상태는 MatchRuntime.EventLog에 쓰며,
-///     종료 기록은 MatchEventArchive에서 조회하며, 이 객체는 프로세스 공용 이벤트 순번을 관리한다.
-///     기록 변경과 보관 전환은 호출자가 해당 매치 잠금 안에서 실행한다.
+///     이 객체는 프로세스 공용 이벤트 순번을 관리한다. 종료 기록은 별도 파일 저장 경로에서 남긴다.
+///     기록 변경과 해제는 호출자가 해당 매치 잠금 안에서 실행한다.
 /// </summary>
 public class GameEventLogManager
 {
@@ -18,19 +18,17 @@ public class GameEventLogManager
 
 
     private readonly Func<long, MatchEventLogState?> _getMatchState;
-    private readonly MatchEventArchive _archive;
     private long _nextSeq;
 
-    internal GameEventLogManager(Func<long, MatchEventLogState?> getMatchState, MatchEventArchive? archive = null)
+    internal GameEventLogManager(Func<long, MatchEventLogState?> getMatchState)
     {
         _getMatchState = getMatchState ?? throw new ArgumentNullException(nameof(getMatchState));
-        _archive = archive ?? new MatchEventArchive();
     }
 
     private MatchEventLogState GetActiveState(long matchingId)
     {
         var state = _getMatchState(matchingId);
-        if (state == null || Volatile.Read(ref state.Archived) != 0)
+        if (state == null || state.IsReleased)
             throw new InvalidOperationException($"Match event state is not active: {matchingId}");
         return state;
     }
@@ -597,7 +595,6 @@ public class GameEventLogManager
     public void BeginMatch(long matchingId, int seed)
     {
         if (matchingId <= 0) return;
-        _archive.Remove(matchingId);
         var state = GetTelemetry(matchingId);
         var startedAt = DateTimeOffset.UtcNow;
         lock (state.SyncRoot)
@@ -1147,16 +1144,14 @@ public class GameEventLogManager
     public bool TryBeginFinalization(long matchingId)
     {
         if (matchingId <= 0) return false;
-        if (_archive.TryGet(matchingId, out var archived))
-            return Interlocked.CompareExchange(ref archived.Finalized, 1, 0) == 0;
-        if (_getMatchState(matchingId) is not { Archived: 0 }) return false;
+        if (_getMatchState(matchingId) is not { IsReleased: false }) return false;
         return Interlocked.CompareExchange(ref GetLog(matchingId).Finalized, 1, 0) == 0;
     }
 
     public List<GameEventEntry> GetRecent(long matchingId, int limit = MaxEventsPerMatching, long? sinceSeq = null)
     {
         var log = _getMatchState(matchingId)?.Log;
-        if (log == null && !_archive.TryGet(matchingId, out log))
+        if (log == null)
             return new List<GameEventEntry>();
         return log.Snapshot(limit, sinceSeq);
     }
@@ -1164,12 +1159,12 @@ public class GameEventLogManager
     public List<GameEventEntry> GetForPersistence(long matchingId)
     {
         var log = _getMatchState(matchingId)?.Log;
-        if (log == null && !_archive.TryGet(matchingId, out log))
+        if (log == null)
             return new List<GameEventEntry>();
         return log.FullSnapshot();
     }
 
-    public void Clear(long matchingId) => _archive.Archive(matchingId, _getMatchState(matchingId));
+    public void Clear(long matchingId) => _getMatchState(matchingId)?.Release();
 
     private void LogExploreFinished(long matchingId, long playerId, int interactId, string area, string type,
         string outcome, IReadOnlyCollection<int> generatedItemIds, bool isBot)
@@ -1608,15 +1603,6 @@ public class GameEventLogManager
         {
             lock (_lock)
                 return _fullEntries.ToList();
-        }
-
-        public void CompactForArchive()
-        {
-            lock (_lock)
-            {
-                _fullEntries.Clear();
-                _fullEntries.AddRange(_entries);
-            }
         }
 
         private void AddNoLock(GameEventEntry entry)

@@ -19,7 +19,6 @@ internal sealed class MatchRuntime
     private readonly MatchRuntimeStore _runtimeStore;
     private readonly ILogger _logger;
     private readonly MatchingLifecycleService _matchingLifecycle;
-    private readonly MatchEventArchive? _eventArchive;
     private int _terminal;
     private MatchTickLoop? _tickLoop;
     private MatchComposition? _composition;
@@ -29,21 +28,16 @@ internal sealed class MatchRuntime
     internal readonly List<Action> AfterRelease = new();
 
     internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger logger,
-        MatchingLifecycleService matchingLifecycle,
-        SwarmGrowthOfferIdSequence? growthOfferIds = null,
-        SwarmCrossfireEventIdSequence? crossfireEventIds = null,
-        bool monsterSpawnEnabled = true,
-        MatchEventArchive? eventArchive = null)
+        MatchingLifecycleService matchingLifecycle)
     {
         _runtimeStore = runtimeStore;
         _logger = logger;
         _matchingLifecycle = matchingLifecycle ?? throw new ArgumentNullException(nameof(matchingLifecycle));
-        _eventArchive = eventArchive;
         MatchingId = matchingId;
         Bots = new BotPlayerManager(matchingId, logger);
         Combat = new ProximityAutoCombatResolver(matchingId);
         BotMovement = new SwarmBotMovementCoordinator(this);
-        Swarm = new SwarmMatchRuntime(matchingId, growthOfferIds ?? new SwarmGrowthOfferIdSequence(), crossfireEventIds ?? new SwarmCrossfireEventIdSequence());
+        Swarm = new SwarmMatchRuntime(matchingId);
         Bots.SetDoorOpenResolver((_, doorId) => Doors.IsDoorOpen(doorId));
         Bots.SetSwarmDodgeResolver((id, botId, position, area, now) =>
             SwarmBotDodgePolicy.ResolveSwarmBotDodgeDirection(Swarm.Crossfire.DodgeSnapshot, id, botId, position, area, now));
@@ -52,7 +46,7 @@ internal sealed class MatchRuntime
         Roster = new MatchRosterManager(matchingId, logger);
         SummonStones = new SummonStoneManager(matchingId);
         Closures = new AreaClosureManager(matchingId, logger);
-        Monsters = new SwarmMonsterDirector(matchingId, monsterSpawnEnabled: monsterSpawnEnabled)
+        Monsters = new SwarmMonsterDirector(matchingId)
         {
             IsAreaClosedResolver = (_, area) => Closures.IsAreaClosed(area),
             IsGameplayActiveResolver = _ => MatchStartGate.IsGameplayActive(MatchingId),
@@ -228,14 +222,7 @@ internal sealed class MatchRuntime
                 {
                     _logger.LogWarning(ex, "Match start state cleanup failed: MatchingId={MatchingId}", MatchingId);
                 }
-                try
-                {
-                    _eventArchive?.Archive(MatchingId, EventLog);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Match event log archive failed: MatchingId={MatchingId}", MatchingId);
-                }
+                EventLog.Release();
                 Inventory.Release();
                 GroundItems.Release();
                 GroundItemPickupCandidates.Clear();

@@ -11,24 +11,14 @@ namespace game_server.services;
 /// </summary>
 public sealed class SwarmMatchRuntime
 {
-    internal SwarmMatchRuntime(
-        long matchingId,
-        SwarmGrowthOfferIdSequence growthOfferIds,
-        SwarmCrossfireEventIdSequence crossfireEventIds)
+    internal SwarmMatchRuntime(long matchingId)
     {
         MatchingId = matchingId;
-        GrowthOffers = new SwarmGrowthOfferStore();
-        GrowthOfferCoordinator = new SwarmGrowthOfferCoordinator(
-            matchingId,
-            GrowthOffers,
-            growthOfferIds);
-        Crossfire = new SwarmCrossfireState(matchingId, crossfireEventIds);
+        Crossfire = new SwarmCrossfireState(matchingId);
     }
 
     public long MatchingId { get; }
     public SwarmTrailCombatState TrailCombat { get; } = new();
-    public SwarmGrowthOfferStore GrowthOffers { get; }
-    public SwarmGrowthOfferCoordinator GrowthOfferCoordinator { get; }
     public SwarmBotTacticalState BotTactics { get; } = new();
     public SwarmMatchPacingState Pacing { get; } = new();
     /// <summary>
@@ -42,7 +32,6 @@ public sealed class SwarmMatchRuntime
     public SwarmOrbBoardState OrbBoard { get; } = new();
     public SwarmCrossfireState Crossfire { get; }
 }
-
 
 /// <summary>
 ///     반격 보호 창 (#227 7단계): 절단자–피해자 <b>쌍</b>으로 연다. 같은 키가 다시 열리면
@@ -73,10 +62,10 @@ public readonly record struct PendingSwarmMonsterHit(
     Vector3f? Origin = null,
     Vector3f? AnchorPosition = null);
 
-/// <summary>오퍼 시점에 확정되는 성장 카드 구성 (#226 C 등급): 픽은 이 서술자를 그대로 집행한다.</summary>
+/// <summary>봇이 즉시 선택하고 적용할 성장 카드 구성과 비용.</summary>
 // Cost는 대표값(가장 싼 카드)이고, 실제 차감·표시는 카드별 비용이 한다 (#229).
 public readonly record struct SwarmGrowthOfferState(
-    int OfferId, int Cost, int SpawnItemId, int EnhanceTargetTier, int ArmorCount,
+    int Cost, int SpawnItemId, int EnhanceTargetTier, int ArmorCount,
     int CostSummon, int CostAttack, int CostDefense)
 {
     // 카드 인덱스 — 클라·서버·로그 공유 (증식/강화/철갑).
@@ -115,13 +104,6 @@ public sealed class SwarmTrailCombatState
         float Radius, int SourceItemId, DateTime ExplodeAtUtc)> PendingWaveBombs = new();
 }
 
-/// <summary>성장 카드 3택 오퍼 상태 (#226 단계 C).</summary>
-public sealed class SwarmGrowthOfferStore
-{
-    public readonly Dictionary<(long MatchingId, long PlayerId), SwarmGrowthOfferState> Offers = new();
-    public readonly Dictionary<(long MatchingId, long PlayerId), int> PreviewCost = new();
-    public readonly Dictionary<(long MatchingId, long PlayerId), DateTime> OfferResentAtUtc = new();
-}
 
 /// <summary>봇 전술 상태 — 도주·부상·구역 기억·캠프 순례·회복 페이싱.</summary>
 public sealed class SwarmBotTacticalState

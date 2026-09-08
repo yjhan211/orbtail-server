@@ -10,7 +10,6 @@ public sealed class GameServerDevOptions
 {
     public const string DisableGameEndVariable = "DISABLE_GAME_END";
     public const string CrossfireSandboxVariable = "DEV_CROSSFIRE_SANDBOX";
-    public const string DisableMonstersVariable = "DEV_NO_MONSTERS";
     public const string SoloMonstersVariable = "SOLO_MONSTERS";
     public const string CutDummyVariable = "DEV_CUT_DUMMY";
 
@@ -18,10 +17,8 @@ public sealed class GameServerDevOptions
 
     public bool DisableGameEnd { get; init; }
     public bool CrossfireSandbox { get; init; }
-    public bool DisableMonsters { get; init; }
     public bool SoloMonsters { get; init; }
     public bool CutDummy { get; init; }
-    public bool MonsterSpawnEnabled => !DisableMonsters;
 
     public static GameServerDevOptions FromConfiguration(IConfiguration configuration)
     {
@@ -31,7 +28,6 @@ public sealed class GameServerDevOptions
         {
             DisableGameEnd = IsEnabled(configuration, DisableGameEndVariable),
             CrossfireSandbox = IsEnabled(configuration, CrossfireSandboxVariable),
-            DisableMonsters = IsEnabled(configuration, DisableMonstersVariable),
             SoloMonsters = IsEnabled(configuration, SoloMonstersVariable),
             CutDummy = IsEnabled(configuration, CutDummyVariable)
         };
@@ -42,10 +38,6 @@ public sealed class GameServerDevOptions
         if (CrossfireSandbox && CutDummy)
             throw new InvalidOperationException(
                 $"{CrossfireSandboxVariable} and {CutDummyVariable} cannot both be enabled.");
-
-        if (DisableMonsters && SoloMonsters)
-            throw new InvalidOperationException(
-                $"{DisableMonstersVariable} and {SoloMonstersVariable} cannot both be enabled.");
 
         if (isDevelopmentEnvironment)
             return;
@@ -58,10 +50,9 @@ public sealed class GameServerDevOptions
 
     public IReadOnlyList<string> EnabledVariableNames()
     {
-        var names = new List<string>(5);
+        var names = new List<string>(4);
         if (DisableGameEnd) names.Add(DisableGameEndVariable);
         if (CrossfireSandbox) names.Add(CrossfireSandboxVariable);
-        if (DisableMonsters) names.Add(DisableMonstersVariable);
         if (SoloMonsters) names.Add(SoloMonstersVariable);
         if (CutDummy) names.Add(CutDummyVariable);
         return names;

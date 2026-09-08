@@ -3,17 +3,6 @@ using network.common.data.models;
 
 namespace game_server.services;
 
-/// <summary>
-///     Preserves process-wide Crossfire event ids. A match runtime can be removed and recreated
-///     while old telegraph or detonation packets still exist, so ids must not restart per match.
-/// </summary>
-internal sealed class SwarmCrossfireEventIdSequence
-{
-    private long _lastEventId;
-
-    public long Allocate() => Interlocked.Increment(ref _lastEventId);
-}
-
 /// <summary>One locked Crossfire line. Mutable hit/front fields advance under the match gate.</summary>
 internal sealed class SwarmCrossfireShape
 {
@@ -57,17 +46,17 @@ internal readonly record struct SwarmCrossfireConvergenceObservation(
 public sealed class SwarmCrossfireState
 {
     private readonly long _matchingId;
-    private readonly SwarmCrossfireEventIdSequence _eventIds;
+    // 매치가 제거·재생성돼도 공격 이벤트 ID를 재사용하지 않는다.
+    private static long _lastEventId;
     private readonly List<SwarmCrossfireShape> _shapes = new();
     private readonly Dictionary<long, SwarmSunBurnState> _sunBurns = new();
     private readonly Dictionary<long, (DateTime WindowStartUtc, int Count)> _convergenceWindows = new();
     private SwarmBotDodgePolicy.SwarmCrossfireDodgeThreat[] _dodgeSnapshot = [];
 
-    internal SwarmCrossfireState(long matchingId, SwarmCrossfireEventIdSequence eventIds)
+    internal SwarmCrossfireState(long matchingId)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         _matchingId = matchingId;
-        _eventIds = eventIds ?? throw new ArgumentNullException(nameof(eventIds));
     }
 
     public bool IsEmpty =>
@@ -82,7 +71,7 @@ public sealed class SwarmCrossfireState
     internal IReadOnlyList<SwarmBotDodgePolicy.SwarmCrossfireDodgeThreat> DodgeSnapshot =>
         Volatile.Read(ref _dodgeSnapshot);
 
-    internal long AllocateEventId() => _eventIds.Allocate();
+    internal long AllocateEventId() => Interlocked.Increment(ref _lastEventId);
 
     internal int CountTelegraphing(long ownerId, DateTime nowUtc)
     {

@@ -34,21 +34,13 @@ public sealed class GameServerDevOptionsTests
         Assert.Contains(GameServerDevOptions.DisableGameEndVariable, error.Message);
     }
 
-    [Theory]
-    [InlineData(true, true, false, false)]
-    [InlineData(false, false, true, true)]
-    public void Validate_RejectsConflictingSandboxFlags(
-        bool crossfireSandbox,
-        bool cutDummy,
-        bool disableMonsters,
-        bool soloMonsters)
+    [Fact]
+    public void Validate_RejectsConflictingSandboxFlags()
     {
         var options = new GameServerDevOptions
         {
-            CrossfireSandbox = crossfireSandbox,
-            CutDummy = cutDummy,
-            DisableMonsters = disableMonsters,
-            SoloMonsters = soloMonsters
+            CrossfireSandbox = true,
+            CutDummy = true
         };
 
         Assert.Throws<InvalidOperationException>(() => options.Validate(true));

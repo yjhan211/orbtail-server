@@ -244,7 +244,6 @@ public sealed class SwarmMonsterDirector
     /// <summary>
     ///     몹 스폰 스위치 (촬영용). GameServer 기동 시 확정되며 실행 중에는 바뀌지 않는다.
     /// </summary>
-    public bool MonsterSpawnEnabled { get; }
 
     /// <summary>
     ///     이 매치의 자기장 스폰 위치 계산 함수. MatchFieldService의 규칙을 연결한다.
@@ -277,12 +276,11 @@ public sealed class SwarmMonsterDirector
     private MatchState? _state;
     private readonly Func<DateTime> _utcNow;
 
-    public SwarmMonsterDirector(long matchingId, Func<DateTime>? utcNow = null, bool monsterSpawnEnabled = true)
+    public SwarmMonsterDirector(long matchingId, Func<DateTime>? utcNow = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         _matchingId = matchingId;
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
-        MonsterSpawnEnabled = monsterSpawnEnabled;
     }
 
     public bool HasMatching(long matchingId) => matchingId == _matchingId && Volatile.Read(ref _state) != null;
@@ -334,10 +332,7 @@ public sealed class SwarmMonsterDirector
                 ? deltaSeconds * EscalationStage2MoveSpeedMultiplier
                 : deltaSeconds;
 
-            // 몹 스폰 끄기 (DEV_NO_MONSTERS=1, 촬영용): 공급 경로를 세우지 않는다.
-            // 봇·전투·폐쇄는 그대로 돈다 — 잔상 없는 판이 필요할 때(영상·PvP만 검증) 쓴다.
-            if (MonsterSpawnEnabled)
-                ProcessRegionSupply(state, now, result);
+            ProcessRegionSupply(state, now, result);
 
             int probeAlive = 0, probeAggro = 0, probeChasing = 0, probeSameArea = 0, probeCooldown = 0;
             int probeInRange = 0, probeImmuneBlocked = 0, probeWithinOne = 0;

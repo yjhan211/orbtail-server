@@ -59,14 +59,14 @@ internal sealed class MatchGrowthService(
     ///     공격 강화는 별도 계열 버튼으로 처리하므로 제안의 EnhanceTargetTier는 0이다.
     /// </summary>
     private SwarmGrowthOfferState GenerateSwarmGrowthOffer(
-        long matchingId, long playerId, int offerId, int finalCost, int qualityCost, int orbCount,
+        long matchingId, long playerId, int finalCost, int qualityCost, int orbCount,
         int costSummon, int costAttack, int costDefense)
     {
         if (orbCount <= 0)
         {
             int rebuildItemId = SwarmStartingOrbPool[Random.Shared.Next(SwarmStartingOrbPool.Length)];
             return new SwarmGrowthOfferState(
-                offerId, finalCost, rebuildItemId,
+                finalCost, rebuildItemId,
                 EnhanceTargetTier: 0, ArmorCount: 0,
                 CostSummon: costSummon, CostAttack: costAttack, CostDefense: costDefense);
         }
@@ -91,7 +91,6 @@ internal sealed class MatchGrowthService(
             spawnItemId = 0;
 
         return new SwarmGrowthOfferState(
-            offerId,
             finalCost,
             spawnItemId,
             // 개별 강화 퇴역 (#232 4단계) — 계열 강화 버튼이 대신한다.
@@ -112,9 +111,6 @@ internal sealed class MatchGrowthService(
         long matchingId,
         List<GameClientSession> aliveSessions, List<BotPlayerState> aliveBots)
     {
-        SwarmGrowthOfferCoordinator growthOffers =
-            matchRuntimes.GetOrThrow(matchingId).Swarm.GrowthOfferCoordinator;
-
         foreach (var bot in aliveBots)
         {
             if (bot.IsSwarmCutDummy)
@@ -125,7 +121,7 @@ internal sealed class MatchGrowthService(
                 continue;
 
             var offer = GenerateSwarmGrowthOffer(
-                matchingId, bot.PlayerId, growthOffers.AllocateOfferId(), finalCost, baseCost, orbCount,
+                matchingId, bot.PlayerId, finalCost, baseCost, orbCount,
                 costSummon, costAttack, costDefense);
             // 계열 강화 (#232 4단계): 6/6 포화면 소환이 닫히므로 강화가 봇의 주 지출이 된다.
             // 그 전에도 오브 4개 이상이면 셋에 한 번은 강화를 시도한다 — 카드 정책의 공격 강화

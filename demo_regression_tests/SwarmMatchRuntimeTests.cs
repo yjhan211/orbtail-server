@@ -202,7 +202,6 @@ public sealed class SwarmMatchRuntimeTests
         SwarmMatchRuntime sibling = store.GetOrCreate(siblingMatchingId).Swarm;
 
         removed.TrailCombat.OrbTrails[(removedMatchingId, removedPlayerId)] = [];
-        removed.GrowthOffers.PreviewCost[(removedMatchingId, removedPlayerId)] = 3;
         removed.BotTactics.FleeDirective.Add((removedMatchingId, removedPlayerId));
         removed.Pacing.StartingOrbGrantedPlayers.Add((removedMatchingId, removedPlayerId));
         removed.WindBlade.ApplyWound(removedPlayerId, DateTime.MaxValue);
@@ -223,7 +222,6 @@ public sealed class SwarmMatchRuntimeTests
         removed.Crossfire.TrackConvergence(7001, crossfireNowUtc);
 
         sibling.TrailCombat.OrbTrails[(siblingMatchingId, siblingPlayerId)] = [];
-        sibling.GrowthOffers.PreviewCost[(siblingMatchingId, siblingPlayerId)] = 7;
         sibling.BotTactics.FleeDirective.Add((siblingMatchingId, siblingPlayerId));
         sibling.Pacing.StartingOrbGrantedPlayers.Add((siblingMatchingId, siblingPlayerId));
         sibling.WindBlade.ApplyWound(siblingPlayerId, DateTime.MaxValue);
@@ -250,7 +248,6 @@ public sealed class SwarmMatchRuntimeTests
         SwarmMatchRuntime? preservedSibling = store.GetOrNull(siblingMatchingId)?.Swarm;
         Assert.Same(sibling, preservedSibling);
         Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.TrailCombat.OrbTrails.Keys);
-        Assert.Equal(7, sibling.GrowthOffers.PreviewCost[(siblingMatchingId, siblingPlayerId)]);
         Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.BotTactics.FleeDirective);
         Assert.Contains((siblingMatchingId, siblingPlayerId), sibling.Pacing.StartingOrbGrantedPlayers);
         Assert.True(sibling.WindBlade.IsWounded(siblingPlayerId, DateTime.UtcNow));
@@ -268,7 +265,6 @@ public sealed class SwarmMatchRuntimeTests
         SwarmMatchRuntime replacement = store.GetOrCreate(removedMatchingId).Swarm;
         Assert.NotSame(removed, replacement);
         Assert.Empty(replacement.TrailCombat.OrbTrails);
-        Assert.Empty(replacement.GrowthOffers.PreviewCost);
         Assert.Empty(replacement.BotTactics.FleeDirective);
         Assert.Empty(replacement.Pacing.StartingOrbGrantedPlayers);
         Assert.False(replacement.WindBlade.IsWounded(removedPlayerId, DateTime.UtcNow));
@@ -276,25 +272,6 @@ public sealed class SwarmMatchRuntimeTests
         Assert.NotSame(removed.Crossfire, replacement.Crossfire);
         Assert.True(replacement.Crossfire.IsEmpty);
         Assert.Empty(replacement.Crossfire.DodgeSnapshot);
-    }
-
-    [Fact]
-    public void OfferIds_RemainProcessWideAcrossMatchesAndRuntimeRecreation()
-    {
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
-        const long firstMatchingId = 42007;
-        const long secondMatchingId = 42008;
-
-        SwarmMatchRuntime first = store.GetOrCreate(firstMatchingId).Swarm;
-        SwarmMatchRuntime second = store.GetOrCreate(secondMatchingId).Swarm;
-
-        Assert.Equal(1, first.GrowthOfferCoordinator.AllocateOfferId());
-        Assert.Equal(2, second.GrowthOfferCoordinator.AllocateOfferId());
-
-        Assert.True(store.Remove(firstMatchingId));
-        SwarmMatchRuntime recreated = store.GetOrCreate(firstMatchingId).Swarm;
-
-        Assert.Equal(3, recreated.GrowthOfferCoordinator.AllocateOfferId());
     }
 
     [Fact]
@@ -307,12 +284,14 @@ public sealed class SwarmMatchRuntimeTests
         SwarmMatchRuntime first = store.GetOrCreate(firstMatchingId).Swarm;
         SwarmMatchRuntime second = store.GetOrCreate(secondMatchingId).Swarm;
 
-        Assert.Equal(1L, first.Crossfire.AllocateEventId());
-        Assert.Equal(2L, second.Crossfire.AllocateEventId());
+        long firstId = first.Crossfire.AllocateEventId();
+        long secondId = second.Crossfire.AllocateEventId();
+        Assert.True(secondId > firstId);
 
         Assert.True(store.Remove(firstMatchingId));
         SwarmMatchRuntime recreated = store.GetOrCreate(firstMatchingId).Swarm;
-        Assert.Equal(3L, recreated.Crossfire.AllocateEventId());
+        long recreatedId = recreated.Crossfire.AllocateEventId();
+        Assert.True(recreatedId > secondId);
 
         var allocated = new ConcurrentBag<long>();
         Parallel.For(
@@ -325,8 +304,7 @@ public sealed class SwarmMatchRuntimeTests
 
         Assert.Equal(1000, allocated.Count);
         Assert.Equal(1000, allocated.Distinct().Count());
-        Assert.Equal(4L, allocated.Min());
-        Assert.Equal(1003L, allocated.Max());
+        Assert.True(allocated.Min() > recreatedId);
     }
 
     private static SwarmCrossfireShape CreateCrossfireShape(

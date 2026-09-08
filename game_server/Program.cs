@@ -90,22 +90,18 @@ internal static class Program
             sp.GetRequiredService<IRedisOperations>(),
             sp.GetRequiredService<INatsClient>(),
             sp.GetRequiredService<ILogger<MatchingLifecycleService>>()));
-        services.AddSingleton<MatchEventArchive>();
         services.AddSingleton<MatchRuntimeStore>(sp =>
         {
             var lifecycle = sp.GetRequiredService<MatchingLifecycleService>();
             return new MatchRuntimeStore(
                 sp.GetRequiredService<ILogger<MatchRuntimeStore>>(),
 
-                matchingLifecycle: lifecycle,
-                monsterSpawnEnabled: devOptions.MonsterSpawnEnabled,
-                eventArchive: sp.GetRequiredService<MatchEventArchive>());
+                matchingLifecycle: lifecycle);
         });
         services.AddSingleton<GameEventLogManager>(sp =>
         {
             var runtimes = sp.GetRequiredService<MatchRuntimeStore>();
-            return new GameEventLogManager(id => runtimes.GetOrNull(id)?.EventLog,
-                sp.GetRequiredService<MatchEventArchive>());
+            return new GameEventLogManager(id => runtimes.GetOrNull(id)?.EventLog);
         });
         services.AddSingleton<MatchSummaryFileStore>(_ => new MatchSummaryFileStore(
             hostContext.Configuration["MATCH_SUMMARY_DIRECTORY"],

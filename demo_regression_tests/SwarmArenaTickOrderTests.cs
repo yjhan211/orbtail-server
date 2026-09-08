@@ -256,11 +256,11 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             tickBody,
             "foreach (var bot in aliveBots)",
-            ".AllocateOfferId()",
+            "GenerateSwarmGrowthOffer(",
             "ChooseSwarmBotGrowthCard(");
         Assert.DoesNotContain("foreach (var session in aliveSessions)", tickBody);
         Assert.DoesNotContain("SendSwarmGrowthOffer", tickBody);
-        Assert.DoesNotContain(".GrowthOffers.Offers", tickBody);
+        Assert.DoesNotContain("OfferId", tickBody);
     }
 
     [Fact]

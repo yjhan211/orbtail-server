@@ -7,11 +7,10 @@ namespace demo_regression_tests;
 public sealed class MatchOwnedEventLogTests
 {
     [Fact]
-    public void ActiveStateBelongsToMatchAndOnlyArchivedEventsSurviveCleanup()
+    public void ActiveStateBelongsToMatchAndIsReleasedDuringCleanup()
     {
-        var archive = new MatchEventArchive();
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance, eventArchive: archive);
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog, archive);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
         using (MatchRuntimeStore.Enter(first))
@@ -28,13 +27,14 @@ public sealed class MatchOwnedEventLogTests
         Assert.NotSame(first.EventLog.Log, second.EventLog.Log);
         Assert.NotSame(first.EventLog.Combat, second.EventLog.Combat);
         Assert.NotSame(first.EventLog.Telemetry, second.EventLog.Telemetry);
-        var events = logs.GetForPersistence(1);
+        Assert.NotEmpty(logs.GetForPersistence(1));
         using (MatchRuntimeStore.Enter(first)) first.TryMarkTerminal();
         Assert.Null(store.GetOrNull(1));
         Assert.Null(first.EventLog.Log);
         Assert.Null(first.EventLog.Combat);
         Assert.Null(first.EventLog.Telemetry);
-        Assert.Equal(events.Select(e => e.Seq), logs.GetRecent(1).Select(e => e.Seq));
+        Assert.Empty(logs.GetRecent(1));
+        Assert.Empty(logs.GetForPersistence(1));
         Assert.False(logs.TryBeginFinalization(1));
         Assert.Throws<InvalidOperationException>(() => logs.LogSystem(1, "late"));
         Assert.NotEmpty(logs.GetRecent(2));
@@ -42,11 +42,10 @@ public sealed class MatchOwnedEventLogTests
     }
 
     [Fact]
-    public void ArchiveKeepsOnlyLatestFiftyMatches()
+    public void FinishedMatchesDoNotRetainQueryableLogs()
     {
-        var archive = new MatchEventArchive();
-        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance, eventArchive: archive);
-        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog, archive);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
+        var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         for (long id = 1; id <= 51; id++)
         {
             var match = store.GetOrCreate(id);
@@ -58,7 +57,7 @@ public sealed class MatchOwnedEventLogTests
         }
         Assert.Equal(0, store.Count);
         Assert.Empty(logs.GetRecent(1));
-        Assert.Single(logs.GetRecent(2));
-        Assert.Single(logs.GetRecent(51));
+        Assert.Empty(logs.GetRecent(2));
+        Assert.Empty(logs.GetRecent(51));
     }
 }
