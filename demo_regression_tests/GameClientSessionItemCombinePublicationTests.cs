@@ -784,7 +784,7 @@ public sealed class GameClientSessionItemCombinePublicationTests
         string handler = ReadMethodSlice(
             combine,
             "private Task HandleCombineItems(",
-            "private void SendBattleItemCombineResult(");
+            "private void SendCombineItemsSuccess(");
         Assert.Contains("MatchingId <= 0", handler);
         Assert.Contains("using (match.Enter())", handler);
         Assert.Contains("match.IsTerminal || IsGameplayActionBlocked(out _)", handler);

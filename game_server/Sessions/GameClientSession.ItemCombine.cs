@@ -36,14 +36,13 @@ public partial class GameClientSession
                 return Task.CompletedTask;
             }
 
-            SendBattleItemCombineResult(msg, result.OutputItemId, result.ChangedItems!, result.RecipeId);
+            SendCombineItemsSuccess(msg, result.OutputItemId, result.ChangedItems!, result.RecipeId);
         }
 
         return Task.CompletedTask;
     }
 
-    private void SendBattleItemCombineResult(C_TO_G_COMBINE_ITEMS msg, int outputItemId,
-        IReadOnlyCollection<InGameItemInfo> changedItems, int recipeId)
+    private void SendCombineItemsSuccess(C_TO_G_COMBINE_ITEMS msg, int outputItemId, IReadOnlyCollection<InGameItemInfo> changedItems, int recipeId)
     {
         var outputItem = changedItems.LastOrDefault(item => item.ItemId == outputItemId && item.Count > 0);
         var equippedBattleItem = Match.Inventory.GetEquippedBattleItem(PlayerId!.Value);
@@ -63,16 +62,15 @@ public partial class GameClientSession
         combinePacket.SetBody(MessagePackSerializer.Serialize(combinedMsg));
         TrySend(combinePacket);
 
-        // Inventory update follows the result packet so the client reveals the server-authoritative outcome.
         using var inventoryPacket = PacketMaker.G_TO_C_INGAME_INVENTORY_UPDATE(changedItems.ToList());
         TrySend(inventoryPacket);
 
-        if (shouldReplaceEquippedItem)
+        if (!shouldReplaceEquippedItem)
         {
-            using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
-                true, outputItem!.ItemUid, ErrorCode.SUCCESS);
-            TrySend(equippedPacket);
+            return;
         }
+        using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, outputItem!.ItemUid, ErrorCode.SUCCESS);
+        TrySend(equippedPacket);
     }
 
     private void SendCombineItemsFailure(int partA, int partB, ErrorCode errorCode)
