@@ -424,18 +424,6 @@ public partial class GameClientSession
         TrySend(packet);
     }
 
-    /// <summary>
-    ///     Area 퇴장 불가 알림 전송 (위치 보정 포함)
-    /// </summary>
-    private void SendAreaExitBlocked(AreaType areaType, Cell correctedCell)
-    {
-        using var packet = PacketMaker.G_TO_C_AREA_EXIT_BLOCKED(areaType, correctedCell);
-        TrySend(packet);
-        Logger.LogDebug("Sent AREA_EXIT_BLOCKED to Player {PlayerId}: Area={Area}, CorrectedCell=({X},{Y})",
-            PlayerId, areaType, correctedCell.X, correctedCell.Y);
-    }
-
-
     private bool IsGameplayActionBlocked(out string reason)
     {
         reason = string.Empty;

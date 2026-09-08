@@ -36,7 +36,7 @@ public partial class GameClientSession : SessionBase
     private readonly MatchEliminationService _matchEliminations;
     private readonly PlayerCondition _condition = new();
     private readonly IPlayerGrowthHandler _growth;
-    private readonly MovementValidationService _movementValidation;
+    private readonly PlayerMovementService _playerMovement;
 
     private int _entryCompleted;
     private int _entryFailureReported;
@@ -93,7 +93,7 @@ public partial class GameClientSession : SessionBase
         _growth = growth;
 
         _matchEntry = matchEntry;
-        _movementValidation = movementValidation;
+        _playerMovement = new PlayerMovementService(this, movementValidation, gameEventLogManager, logger);
         _trySendConnectSuccessResponse = trySendConnectSuccessResponse ?? Connection.TrySend;
         _matchingLifecycle = matchingLifecycle;
         _isServerStopping = isServerStopping;
@@ -322,7 +322,7 @@ public partial class GameClientSession : SessionBase
 
             _gameEventLogManager.SetPlayerArea(MatchingId, PlayerId.Value, CurrentArea.ToString());
 
-            SendInteractableList(CurrentArea);
+            _playerMovement.SendInteractableList(CurrentArea);
             SendInteractCooldownSnapshot();
             GroundItemNotificationService.SendSnapshot(this, CurrentArea);
             SendInGameInventoryList();

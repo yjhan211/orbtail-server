@@ -67,7 +67,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Contains("internal Action? MarkGameEndedAndPrepareLifecyclePublication()", main);
         Assert.DoesNotContain("private Task BroadcastPlayerJoin()", main);
         Assert.Contains("private Task HandleSocialAction(", File.ReadAllText(Path.Combine(directory, "GameClientSession.Social.cs")));
-        Assert.Contains("private void AdvanceOrbOrbit(", File.ReadAllText(Path.Combine(directory, "GameClientSession.Movement.cs")));
+        Assert.Contains("internal void AdvanceOrbOrbit(", File.ReadAllText(Path.Combine(directory, "GameClientSession.Movement.cs")));
         Assert.False(File.Exists(Path.Combine(directory, "GameClientSession.MatchEnd.cs")));
         Assert.Contains("private Task BroadcastPlayerJoin()", File.ReadAllText(Path.Combine(directory, "GameClientSession.Snapshots.cs")));
     }
@@ -103,6 +103,29 @@ public sealed class GameClientSessionConnectPublicationTests
         await (Task)run.Invoke(session, [action, reject])!;
         Assert.False(executed);
         Assert.True(rejected);
+    }
+
+    [Fact]
+    public void AppliedMovement_UpdatesTheAuthoritativeSnapshotTogether()
+    {
+        using var fixture = new ConnectFixture();
+        var session = fixture.CreateSession(74016, 8115, _ => true);
+        var movement = new ValidatedMovement(
+            new Vector3f(10.25f, 20.75f, 0f), new Vector3f(2f, 3f, 0f),
+            new Cell(10, 20), false);
+
+        using (session.Match.Enter())
+        {
+            session.ApplyValidatedMovement(movement, 45f);
+            var snapshot = session.CaptureGameObjectInfo();
+            Assert.Equal(10.25f, snapshot.Position.X);
+            Assert.Equal(20.75f, snapshot.Position.Y);
+            Assert.Equal(2f, snapshot.Velocity.X);
+            Assert.Equal(3f, snapshot.Velocity.Y);
+            Assert.Equal(45f, snapshot.Rotation);
+            Assert.Equal(10, snapshot.Cell.X);
+            Assert.Equal(20, snapshot.Cell.Y);
+        }
     }
 
     [Fact]

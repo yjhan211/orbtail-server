@@ -10,6 +10,107 @@ namespace game_server.sessions;
 
 public partial class GameClientSession
 {
+    private Task HandleMove(C_TO_G_MOVE msg)
+    {
+        if (!PlayerId.HasValue)
+        {
+            return Task.CompletedTask;
+        }
+
+        var match = Volatile.Read(ref _match);
+        if (match == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        using (match.Enter())
+        {
+            if (match.IsTerminal || PlayerId == null || IsEliminated || IsGameplayActionBlocked(out _))
+            {
+                return Task.CompletedTask;
+            }
+
+            try
+            {
+                if (msg.Position == null! || msg.Velocity == null!)
+                {
+                    Logger.LogWarning("Player {PlayerId} HandleMove: null Position/Velocity", PlayerId);
+                    return Task.CompletedTask;
+                }
+
+                if (!MovementValidationPolicy.IsFinite(msg.Position) || !MovementValidationPolicy.IsFinite(msg.Velocity) || !float.IsFinite(msg.Rotation))
+                {
+                    Logger.LogWarning("Player {PlayerId} sent a non-finite movement packet", PlayerId);
+                    if (PlayerId.HasValue && LastValidatedPosition is { } position)
+                    {
+                        var cell = _lastValidCell ?? WorldPositionToCell(position);
+                        using var correctionPacket = PacketMaker.G_TO_C_MOVE(PlayerId.Value, position, new Vector3f(), _lastValidatedRotation, cell, msg.InputSequence, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), OrbOrbitPhaseDegrees);
+                        TrySend(correctionPacket);
+                        _lastMoveAcknowledgementTimestamp = Stopwatch.GetTimestamp();
+                    }
+                    return Task.CompletedTask;
+                }
+
+                if (IsStaleMoveInputSequence(msg.InputSequence))
+                {
+                    Logger.LogWarning("Player {PlayerId} sent stale movement sequence {Sequence}",
+                        PlayerId, msg.InputSequence);
+                    if (PlayerId.HasValue && LastValidatedPosition is { } position)
+                    {
+                        var cell = _lastValidCell ?? WorldPositionToCell(position);
+                        using var correctionPacket = PacketMaker.G_TO_C_MOVE(
+                            PlayerId.Value, position, new Vector3f(0f, 0f, 0f),
+                            _lastValidatedRotation, cell, _lastProcessedMoveInputSequence,
+                            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), OrbOrbitPhaseDegrees);
+                        TrySend(correctionPacket);
+                        _lastMoveAcknowledgementTimestamp = Stopwatch.GetTimestamp();
+                    }
+                    return Task.CompletedTask;
+                }
+
+                long receiptTimestamp = Stopwatch.GetTimestamp();
+                RecordMoveInputSequence(msg.InputSequence);
+                float deltaTime = GetServerReceiptDeltaSeconds(receiptTimestamp);
+
+                var result = _playerMovement.Apply(msg, deltaTime);
+                if (result == null)
+                    return Task.CompletedTask;
+
+                var (validation, currentCell, serverTimestamp) = result.Value;
+                var validatedPosition = validation.Position;
+                var validatedVelocity = validation.Velocity;
+                bool requiresClientCorrection = validation.RequiresCorrection;
+
+                // 5. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
+                using var packet = PacketMaker.G_TO_C_MOVE(
+                    PlayerId.Value,
+                    validatedPosition,
+                    validatedVelocity,
+                    msg.Rotation,
+                    currentCell,
+                    msg.InputSequence,
+                    serverTimestamp,
+                    OrbOrbitPhaseDegrees
+                );
+
+                _playerMovement.Broadcast(packet);
+
+                if (requiresClientCorrection || ShouldSendMovementAcknowledgement(receiptTimestamp))
+                {
+                    TrySend(packet);
+                    _lastMoveAcknowledgementTimestamp = receiptTimestamp;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, $"HandleMove error for player {PlayerId}");
+                SendErrorResponse(ErrorCode.SERVER_INTERNAL_ERROR, "이동 처리 오류");
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
     protected override Task ScheduleMessageAsync(Protocol protocolId, byte[] body, Func<Task> dispatch)
     {
         uint? sequence = null;
@@ -24,157 +125,6 @@ public partial class GameClientSession
             sequence = move.InputSequence;
         }
         return _movementPacketQueue.EnqueueAsync(dispatch, sequence);
-    }
-
-    private Task HandleMove(C_TO_G_MOVE msg)
-    {
-        if (!PlayerId.HasValue) return Task.CompletedTask;
-        return RunWithMatchLock(() => ProcessMove(msg), () => { });
-    }
-
-    private async Task ProcessMove(C_TO_G_MOVE msg)
-    {
-        if (PlayerId == null) return;
-        if (IsEliminated) return;
-        if (IsGameplayActionBlocked(out _)) return;
-
-        // SLEEP 중에는 이동 불가
-        if (_condition.IsSleeping)
-        {
-            Logger.LogDebug("Player {PlayerId} tried to move while sleeping, ignoring", PlayerId);
-            SendErrorResponse(ErrorCode.INVALID_GAME_STATE, "수면 중에는 이동할 수 없습니다");
-            return;
-        }
-
-        try
-        {
-            // Client timestamps are diagnostic data only. Movement authority is bounded by
-            // the server's monotonic receipt time so a forged future timestamp cannot expand
-            // the distance budget.
-            if (msg.Position == null! || msg.Velocity == null!)
-            {
-                Logger.LogWarning("Player {PlayerId} HandleMove: null Position/Velocity", PlayerId);
-                return;
-            }
-
-            if (!MovementValidationPolicy.IsFinite(msg.Position) ||
-                !MovementValidationPolicy.IsFinite(msg.Velocity) ||
-                !float.IsFinite(msg.Rotation))
-            {
-                Logger.LogWarning("Player {PlayerId} sent a non-finite movement packet", PlayerId);
-                SendMovementCorrection(msg.InputSequence);
-                return;
-            }
-
-            if (IsStaleMoveInputSequence(msg.InputSequence))
-            {
-                Logger.LogWarning("Player {PlayerId} sent stale movement sequence {Sequence}",
-                    PlayerId, msg.InputSequence);
-                SendMovementCorrection(_lastProcessedMoveInputSequence);
-                return;
-            }
-
-            // 대기 중인 이동은 MovementPacketQueue가 최신 값으로 합치고 최소 간격 뒤에 넘긴다.
-            // 여기서는 실제로 처리하는 이동만 순번·시각을 기록한다.
-            long receiptTimestamp = Stopwatch.GetTimestamp();
-            RecordMoveInputSequence(msg.InputSequence);
-            float deltaTime = GetServerReceiptDeltaSeconds(receiptTimestamp);
-
-            var validation = _movementValidation.ValidatePosition(
-                PlayerId.Value, CurrentMapId, LastValidatedPosition, _lastValidCell,
-                msg.Position, msg.Velocity, deltaTime);
-            var validatedPosition = validation.Position;
-            var validatedVelocity = validation.Velocity;
-            bool requiresClientCorrection = validation.RequiresCorrection;
-            // 2. Area 변경 시 퇴장 조건 체크 (치팅 방지)
-            var currentCell = WorldPositionToCell(validatedPosition);
-            var newArea = GameMapData.GetStableCurrentArea(CurrentMapId, currentCell, CurrentArea);
-
-
-            // 3. Area 변경 처리 (퇴장 조건 통과한 경우만)
-            long serverTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-            var previousCell = LastValidatedPosition != null
-                ? WorldPositionToCell(LastValidatedPosition)
-                : currentCell;
-            var blockedCell = _movementValidation.GetBlockedTransitionCell(
-                PlayerId.Value, CurrentArea, newArea, previousCell, currentCell, Doors);
-            if (blockedCell != null)
-            {
-                SendAreaExitBlocked(newArea, blockedCell);
-                return;
-            }
-            // 잠긴 문 검증이 끝난 뒤 위치를 게시한다. 폐쇄 구역도 문이 열려 있으면
-            // 진입할 수 있으며, 체류 페널티는 ResourceTick에서 서버 권위로 적용한다.
-            // #229 6단계: 이동 입력이 곧 수면 해제다 — 누워서 도망칠 수 없다.
-            // 2026-08-17 재조정: 수면을 깨우는 건 이 이동뿐이다 (피격·폐쇄는 깨우지 않는다).
-            if (_condition.IsSleeping)
-                BreakSwarmSleep();
-            // 오브 궤도 (#232): 검증된 이동 거리만큼 돈다 — 멈추면 이동 패킷이 없으니 저절로 선다.
-            if (LastValidatedPosition != null)
-                AdvanceOrbOrbit(LastValidatedPosition, validatedPosition);
-            // 승인된 구간마다 후보를 기록한다. 구역을 넘으면 경로 위 좌표가 속한 구역도 확인한다.
-            var pickupArea = newArea == AreaType.None ? CurrentArea : newArea;
-            GroundItemAutoPickupService.RecordMovement(this,
-                LastValidatedPosition ?? validatedPosition, validatedPosition, pickupArea);
-            _lastValidCell = validation.ValidCell;
-            LastValidatedPosition = validatedPosition;
-            _lastValidatedVelocity = validatedVelocity;
-            Match.GroundItems.ReleaseSourcePickupBlocks(PlayerId.Value,
-                newArea == AreaType.None ? CurrentArea : newArea, validatedPosition.X, validatedPosition.Y);
-            _lastValidatedRotation = msg.Rotation;
-
-            if (newArea != CurrentArea && newArea != AreaType.None)
-            {
-                // 폐쇄 구역 진입 경고 (지속 페널티는 ResourceTick에서 처리)
-                if (Match.Closures.IsAreaClosed(newArea))
-                {
-                    Logger.LogInformation("폐쇄 구역 진입: PlayerId={PlayerId}, Area={Area} (체류 시 오염도 지속 증가)",
-                        PlayerId, newArea);
-                }
-
-                Logger.LogInformation("Player {PlayerId} Area change at Cell({CellX},{CellY}): {OldArea} → {NewArea}",
-                    PlayerId, currentCell.X, currentCell.Y, CurrentArea, newArea);
-                var oldArea = CurrentArea;
-                CurrentArea = newArea; // 먼저 Area 업데이트 (다른 플레이어의 MOVE 수신 가능하도록)
-                _gameEventLogManager.LogMove(MatchingId, PlayerId.Value,
-                    oldArea.ToString(), newArea.ToString(), isBot: false);
-                HandleAreaChange(oldArea, newArea);
-            }
-
-
-
-            // 5. 브로드캐스트 (같은 Area의 플레이어에게만 전송)
-            using var packet = PacketMaker.G_TO_C_MOVE(
-                PlayerId.Value,
-                validatedPosition,
-                validatedVelocity,
-                msg.Rotation,
-                currentCell,
-                msg.InputSequence,
-                serverTimestamp,
-                OrbOrbitPhaseDegrees
-            );
-
-            var sameAreaSessions = Match.Sessions.GetInArea(CurrentArea, PlayerId);
-
-            foreach (var session in sameAreaSessions)
-            {
-                if (session.PlayerId != PlayerId)
-                    session.TrySend(packet);
-            }
-
-            if (requiresClientCorrection || ShouldSendMovementAcknowledgement(receiptTimestamp))
-            {
-                TrySend(packet);
-                _lastMoveAcknowledgementTimestamp = receiptTimestamp;
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, $"HandleMove error for player {PlayerId}");
-            SendErrorResponse(ErrorCode.SERVER_INTERNAL_ERROR, "이동 처리 오류");
-        }
     }
 
     private bool IsStaleMoveInputSequence(uint sequence)
@@ -216,25 +166,6 @@ public partial class GameClientSession
         return elapsedSeconds >= MovementValidationPolicy.MovementAcknowledgementIntervalSeconds;
     }
 
-    private void SendMovementCorrection(uint inputSequence)
-    {
-        if (!PlayerId.HasValue || LastValidatedPosition is not { } position)
-            return;
-
-        var cell = _lastValidCell ?? WorldPositionToCell(position);
-        using var packet = PacketMaker.G_TO_C_MOVE(
-            PlayerId.Value,
-            position,
-            new Vector3f(0f, 0f, 0f),
-            _lastValidatedRotation,
-            cell,
-            inputSequence,
-            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            OrbOrbitPhaseDegrees);
-        TrySend(packet);
-        _lastMoveAcknowledgementTimestamp = Stopwatch.GetTimestamp();
-    }
-
     #region Isometric 좌표 변환 (Unity Isometric Z as Y 타일맵)
 
     /// <summary>
@@ -253,142 +184,9 @@ public partial class GameClientSession
 
     #endregion
 
-    private void HandleAreaChange(AreaType oldArea, AreaType newArea)
-    {
-        try
-        {
-            if (!PlayerId.HasValue) return;
 
-            Logger.LogInformation("Player {PlayerId} moved from Area {OldArea} to {NewArea}", PlayerId, oldArea,
-                newArea);
 
-            var allSessions = Match.Sessions.Snapshot();
 
-            // 1. 이전 Area의 플레이어들에게 퇴장 알림 + 나에게 기존 플레이어 삭제 알림
-            if (oldArea != AreaType.None)
-            {
-                var oldAreaSessions = MatchSessionCollection.FilterInArea(allSessions, oldArea, PlayerId);
-                using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(PlayerId.Value);
-
-                foreach (var session in oldAreaSessions)
-                {
-                    // 이전 Area 플레이어들에게 내 퇴장 알림
-                    session.TrySend(leavePacket);
-
-                    // 나에게 이전 Area 플레이어들 삭제 알림
-                    if (session.PlayerId.HasValue)
-                    {
-                        using var removePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(session.PlayerId.Value);
-                        TrySend(removePacket);
-                    }
-                }
-
-                // #79: 나에게 이전 Area의 봇들 삭제 알림 (봇은 TCP 세션이 없어 별도 처리)
-                var oldAreaBots = Match.Bots.GetBots(MatchingId)
-                    .Where(b => !b.IsEliminated && b.CurrentArea == oldArea)
-                    .ToList();
-                foreach (var bot in oldAreaBots)
-                {
-                    using var botLeavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(bot.PlayerId);
-                    TrySend(botLeavePacket);
-                }
-
-                Logger.LogDebug("Sent LEAVE to {Count} players + {BotCount} bots in old Area {OldArea}",
-                    oldAreaSessions.Count, oldAreaBots.Count, oldArea);
-            }
-
-            // 2. 새 Area의 플레이어들에게 진입 알림 (내 최신 Cell 포함)
-            if (newArea != AreaType.None)
-            {
-                var newAreaSessions = MatchSessionCollection.FilterInArea(allSessions, newArea, PlayerId);
-                using var enterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(CaptureGameObjectInfo());
-
-                foreach (var session in newAreaSessions) session.TrySend(enterPacket);
-
-                Logger.LogDebug("Sent ENTER to {Count} players in new Area {NewArea}", newAreaSessions.Count, newArea);
-
-                // 3. 나에게 새 Area의 다른 플레이어 정보 전송 (세션의 최신 Cell 사용)
-                foreach (var session in newAreaSessions)
-                {
-                    if (!session.PlayerId.HasValue) continue;
-
-                    using var otherEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(session.CaptureGameObjectInfo());
-                    TrySend(otherEnterPacket);
-                }
-
-                Logger.LogDebug("Sent {Count} existing players to Player {PlayerId}", newAreaSessions.Count, PlayerId);
-
-                // 4. #125: 새 Area의 봇들 ENTER도 나에게 전송 (실제 플레이어 동등)
-                var newAreaBots = Match.Bots.GetBots(MatchingId)
-                    .Where(b => !b.IsEliminated && b.CurrentArea == newArea)
-                    .ToList();
-                foreach (var bot in newAreaBots)
-                {
-                    var objectInfo = Match.Bots.SynthesizeGameObjectInfo(MatchingId, bot.PlayerId);
-                    if (objectInfo == null) continue;
-                    using var botEnterPacket = PacketMaker.G_TO_C_AREA_PLAYER_ENTER(objectInfo);
-                    TrySend(botEnterPacket);
-                    using var appearance = PacketMaker.G_TO_C_PLAYER_APPEARANCE(
-                        bot.PlayerId, BotPlayerManager.BuildBotWearItems(bot));
-                    TrySend(appearance);
-                }
-                if (newAreaBots.Count > 0)
-                    Logger.LogDebug("Sent {Count} bots in new Area {NewArea} to Player {PlayerId}",
-                        newAreaBots.Count, newArea, PlayerId);
-
-                // 5. 나에게 새 Area의 Interactable 목록 전송
-                SendInteractableList(newArea);
-                GroundItemNotificationService.SendSnapshot(this, newArea);
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "HandleAreaChange error for player {PlayerId}", PlayerId);
-        }
-    }
-
-    private void SendInteractableList(AreaType areaType)
-    {
-        if (areaType == AreaType.None) return;
-
-        var match = Volatile.Read(ref _match);
-        if (match == null) return;
-
-        using (match.Enter())
-        {
-            if (match.IsTerminal) return;
-
-            var objects = InteractableStateManager.GetAreaObjectStates(areaType);
-
-            // #229 5단계: 스웜은 상자 탐색을 보내지 않는다 — 마커도 빈 상호작용 UI도 뜰 일이 없다.
-            // 단 문 잠금해제(door_id > 0)는 예외다. 방을 여는 유일한 수단이라 스웜의 핵심 조작이다.
-            if (Config.IsSwarmExploreDisabled())
-                objects = objects.Where(state => IsDoorUnlockInteractable(state.InteractId)).ToList();
-
-            // 이미 열린 문의 마커는 보내지 않는다 — 열린 문 앞에서 게이지가 도는 그림은 거짓말이다.
-            objects = objects
-                .Where(state => GameInteractableData.Get(state.InteractId) is not { DoorId: > 0 } info ||
-                                !match.Doors.IsDoorOpen(info.DoorId))
-                .ToList();
-            if (objects.Count == 0)
-            {
-                Logger.LogDebug("No interactable objects in area {AreaType}", areaType);
-                return;
-            }
-
-            // 각 오브젝트의 액션 개수 로그
-            foreach (var obj in objects)
-                Logger.LogDebug("InteractableObject Id={InteractId}: {ActionCount} actions",
-                    obj.InteractId, obj.Actions.Count);
-
-            using var packet = PacketMaker.G_TO_C_INTERACTABLE_LIST(areaType, objects);
-            TrySend(packet);
-
-            Logger.LogDebug(
-                "Sent {Count} interactable objects for area {AreaType} to Player {PlayerId} (MatchingId={MatchingId})",
-                objects.Count, areaType, PlayerId, MatchingId);
-        }
-    }
 
 
     /// <summary>
@@ -399,7 +197,7 @@ public partial class GameClientSession
         _orbOrbitPhaseDegrees ?? SwarmOrbOrbit.InitialPhaseDegrees(PlayerId ?? 0L);
 
     /// <summary>검증된 이동만큼 궤도를 돌린다 (텔레포트급 점프는 SwarmOrbOrbit이 무시한다).</summary>
-    private void AdvanceOrbOrbit(Vector3f from, Vector3f to)
+    internal void AdvanceOrbOrbit(Vector3f from, Vector3f to)
     {
         float dx = to.X - from.X;
         float dy = to.Y - from.Y;

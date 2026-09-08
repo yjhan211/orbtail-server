@@ -8,7 +8,8 @@ namespace game_server.services;
 
 /// <summary>
 ///     서버 수신 간격으로 이동 거리·속도를 제한하고 목적 셀·이동 경로·구역 사이의 잠긴 문을 검사한다.
-///     세션 상태를 변경하지 않고 검증 결과만 반환한다. 입력 순번·수신 시각·최종 위치 반영은 세션이 맡는다.
+///     세션 상태를 변경하지 않고 검증 결과만 반환한다. 입력 순번·수신 시각은 세션이,
+///     검증 이후 처리는 PlayerMovementService가 맡는다.
 /// </summary>
 internal sealed class MovementValidationService(ILogger<MovementValidationService> logger)
 {
@@ -148,6 +149,6 @@ internal sealed class MovementValidationService(ILogger<MovementValidationServic
     }
 }
 
-/// <summary>세션이 문 통과까지 확인한 뒤 반영할 위치·속도·셀과 보정 필요 여부.</summary>
+/// <summary>이동 서비스가 문 통과까지 확인한 뒤 반영할 위치·속도·셀과 보정 필요 여부.</summary>
 internal readonly record struct ValidatedMovement(
     Vector3f Position, Vector3f Velocity, Cell? ValidCell, bool RequiresCorrection);

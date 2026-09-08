@@ -46,6 +46,19 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
+    internal Cell? LastValidatedCell => _lastValidCell;
+
+    /// <summary>검증된 위치·셀·속도·회전을 함께 반영한다. 호출자는 매치 잠금을 잡아야 한다.</summary>
+    internal void ApplyValidatedMovement(ValidatedMovement movement, float rotation)
+    {
+        _lastValidCell = movement.ValidCell;
+        LastValidatedPosition = movement.Position;
+        _lastValidatedVelocity = movement.Velocity;
+        _lastValidatedRotation = rotation;
+    }
+
+    internal void ChangeMovementArea(AreaType area) => CurrentArea = area;
+
     /// <summary>서버가 승인한 현재 공간 정보를 복사한다. PlayerInfo·Redis 데이터는 건드리지 않는다.</summary>
     internal GameObjectInfo CaptureGameObjectInfo()
     {

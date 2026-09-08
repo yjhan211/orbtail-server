@@ -80,8 +80,8 @@ public class SwarmDamagePathTests
         // 게이트가 실제로 물려 있어야 한다: 목록 전송·탐색 시작·봇 자동 탐색·소비품 드롭 네 곳.
         foreach (var (file, marker) in new[]
                  {
-                     (Path.Combine("game_server", "Sessions", "GameClientSession.Movement.cs"),
-                         "private void SendInteractableList"),
+                     (Path.Combine("game_server", "Services", "PlayerMovementService.cs"),
+                         "public void SendInteractableList"),
                      (Path.Combine("game_server", "Services", "MatchInteractionService.cs"),
                          "public static (ErrorCode Error, int Remaining, bool Door) Start"),
                      (Path.Combine("game_server", "Services", "Bots", "BotDecisionService.cs"),
@@ -158,7 +158,7 @@ public class SwarmDamagePathTests
 
         // 중단 경로는 이동 하나뿐이다.
         string movement = File.ReadAllText(
-            Path.Combine(root, "game_server", "Sessions", "GameClientSession.Movement.cs"));
+            Path.Combine(root, "game_server", "Services", "PlayerMovementService.cs"));
         Assert.Contains("BreakSwarmSleep()", movement);
 
         string arena = File.ReadAllText(
