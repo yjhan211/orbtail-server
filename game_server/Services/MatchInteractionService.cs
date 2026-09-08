@@ -19,7 +19,8 @@ internal static class MatchInteractionService
         if (Config.IsSwarmExploreDisabled() && info.DoorId <= 0)
             return (ErrorCode.INVALID_GAME_STATE, 0, false);
         if (info.ZoneId != (int)area) return (ErrorCode.AREA_MISMATCH, 0, false);
-        if (info.DoorId > 0) return (CheckDoorGauge(runtime, area, info.DoorId), 0, true);
+        // 문은 전용 START/FINISH 경로에서만 처리한다.
+        if (info.DoorId > 0) return (ErrorCode.INVALID_GAME_STATE, 0, false);
         if (runtime.SummonStones.GetSnapshot(playerId).StoneCount < Config.SWARM_BOX_OPEN_COST)
             return (ErrorCode.INSUFFICIENT_CURRENCY, 0, false);
         if (!runtime.CollectCooldowns.TryAcquireCooldown(interactId,

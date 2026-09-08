@@ -6,7 +6,7 @@ using network.common.data;
 
 namespace network.common.data.models
 {
-    // ===== RNG 채집 (상자/문 게이지) =====
+    // ===== RNG 채집 (상자). 문 게이지는 MessageObj.Door의 전용 프로토콜을 사용한다. =====
 
     /// <summary>
     ///     v0.2.1 (#79) — RNG 채집 결과 통합 패킷. 5종 결과(부품/선행/디코이/빈손/지역 아이템) 단일 응답.

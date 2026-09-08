@@ -23,6 +23,9 @@ namespace network.common
             Protocol.G_TO_C_MOVE,
             Protocol.C_TO_G_SUMMON_ORB,
             Protocol.C_TO_G_DESTROY_ORB,
+            Protocol.C_TO_G_DOOR_OPEN_START,
+            Protocol.C_TO_G_DOOR_OPEN_FINISH,
+            Protocol.G_TO_C_DOOR_OPEN_ACK,
             Protocol.G_TO_C_ERROR,
         };
 

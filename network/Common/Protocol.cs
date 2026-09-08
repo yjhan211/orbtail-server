@@ -60,6 +60,9 @@ namespace network.common
         C_TO_G_DOOR_OPEN_REQUEST, // 문 열기 요청
         G_TO_C_DOOR_STATE_UPDATE, // 문 상태 변경 브로드캐스트
         G_TO_C_DOOR_STATE_LIST, // 입장 시 열린 문 목록
+        C_TO_G_DOOR_OPEN_START, // 문 게이지 시작
+        C_TO_G_DOOR_OPEN_FINISH, // 문 게이지 완료 요청
+        G_TO_C_DOOR_OPEN_ACK, // 시작 승인·완료·중단 결과
 
         // 복도 규칙 프로토콜
 
@@ -234,6 +237,8 @@ namespace network.common
         DOOR_ALREADY_OPEN = 651,
         DOOR_KEY_MISSING = 652,
         DOOR_TOO_FAR = 653,
+        DOOR_OPEN_INTERRUPTED = 654, // 피격으로 문 게이지 중단
+        DOOR_OPEN_TOO_EARLY = 655, // 문 게이지 대기 시간 전에 완료 요청
 
         // 퀘스트 (700~799)
         QUEST_NOT_FOUND = 700,

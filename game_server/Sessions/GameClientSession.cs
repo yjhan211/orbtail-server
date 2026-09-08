@@ -154,6 +154,10 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_PLAYER_STATE>(bytes, HandlePlayerState));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DOOR_OPEN_REQUEST,
             async bytes => await HandleMessage<C_TO_G_DOOR_OPEN_REQUEST>(bytes, HandleDoorOpenRequest));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DOOR_OPEN_START,
+            async bytes => await HandleMessage<C_TO_G_DOOR_OPEN_START>(bytes, HandleDoorOpenStart));
+        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DOOR_OPEN_FINISH,
+            async bytes => await HandleMessage<C_TO_G_DOOR_OPEN_FINISH>(bytes, HandleDoorOpenFinish));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RNG_COLLECT_START,
             async bytes => await HandleMessage<C_TO_G_RNG_COLLECT_START>(bytes, HandleRngCollectStart));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_RNG_COLLECT_FINISH,

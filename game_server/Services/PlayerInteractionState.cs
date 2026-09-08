@@ -1,3 +1,5 @@
+using network.common;
+
 namespace game_server.services;
 
 /// <summary>
@@ -9,16 +11,41 @@ internal sealed class PlayerInteractionState
     private readonly HashSet<int> _pending = [];
     private int? _pendingDoor;
     private int _openedDoors;
+    private long _doorStartedAt;
     public int Count => _pending.Count;
     public void Begin(int interactId) => _pending.Add(interactId);
     public bool TryFinish(int interactId) => _pending.Remove(interactId);
     public int[] Snapshot() => _pending.ToArray();
-    public void Clear() => _pending.Clear();
-
-    public void BeginDoor(int interactId)
+    public void Clear()
     {
+        _pending.Clear();
+        _pendingDoor = null;
+    }
+
+    public void BeginDoor(int interactId, long startedAt)
+    {
+        if (_pendingDoor is { } previous)
+            _pending.Remove(previous);
         Begin(interactId);
         _pendingDoor = interactId;
+        _doorStartedAt = startedAt;
+    }
+
+    public bool TryFinishDoor(int interactId, long now, TimeSpan duration, out ErrorCode error)
+    {
+        error = ErrorCode.INVALID_GAME_STATE;
+        if (_pendingDoor != interactId || !_pending.Contains(interactId))
+            return false;
+        if (now - _doorStartedAt < duration.TotalMilliseconds)
+        {
+            error = ErrorCode.DOOR_OPEN_TOO_EARLY;
+            return false;
+        }
+
+        _pendingDoor = null;
+        _pending.Remove(interactId);
+        error = ErrorCode.SUCCESS;
+        return true;
     }
 
     public void CompleteDoor()

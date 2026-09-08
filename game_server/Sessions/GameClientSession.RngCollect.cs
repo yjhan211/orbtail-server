@@ -12,8 +12,8 @@ using network.packets;
 namespace game_server.sessions;
 
 /// <summary>
-///     상자·문 요청의 START/FINISH를 받아 세션 대기 상태와 응답을 연결한다.
-///     비용·보상·문 판정은 MatchInteractionService, 대기 권리는 PlayerInteractionState가 담당한다.
+///     상자 채집 요청의 START/FINISH와 응답을 연결한다. 문 게이지 요청은 Doors partial이 담당한다.
+///     비용·보상 판정은 MatchInteractionService, 대기 권리는 PlayerInteractionState가 담당한다.
 /// </summary>
 public partial class GameClientSession
 {
@@ -99,8 +99,7 @@ public partial class GameClientSession
             SendRngCollectAck(msg.InteractId, result.Error, result.Remaining);
             return Task.CompletedTask;
         }
-        if (result.Door) _interactions.BeginDoor(msg.InteractId);
-        else _interactions.Begin(msg.InteractId);
+        _interactions.Begin(msg.InteractId);
         _gameEventLogManager.LogExploreStart(
             MatchingId, PlayerId.Value, msg.InteractId, CurrentArea.ToString(), isBot: false);
         SendRngCollectAck(msg.InteractId, ErrorCode.SUCCESS, 0);
@@ -111,6 +110,13 @@ public partial class GameClientSession
     {
         if (!PlayerId.HasValue)
             return Task.CompletedTask;
+
+        // 이전 채집 패킷으로 문 게이지의 시간 검증을 우회할 수 없다.
+        if (IsDoorUnlockInteractable(msg.InteractId))
+        {
+            SendRngCollectAck(msg.InteractId, ErrorCode.INVALID_GAME_STATE, 0);
+            return Task.CompletedTask;
+        }
 
         if (msg.EncounterCheckOnly)
         {
@@ -132,9 +138,6 @@ public partial class GameClientSession
             return Task.CompletedTask;
         }
 
-        if (GameInteractableData.Get(msg.InteractId) is { DoorId: > 0 } doorInfo)
-            return HandleSwarmDoorUnlockFinish(msg.InteractId, doorInfo.DoorId);
-
         int dropItemId = MatchInteractionService.OpenBox(
             Match, PlayerId.Value, CurrentArea, msg.InteractId,
             LastValidatedPosition, () => SendSummonStoneState(),
@@ -155,46 +158,6 @@ SendRngCollectResult(msg.InteractId, 0, 0, SwarmExploreCooldownSeconds);
             PlayerId, msg.InteractId, Config.SWARM_BOX_OPEN_COST, dropItemId);
 
         return Task.CompletedTask;
-    }
-
-    /// <summary>승인된 문 게이지 완료 결과를 같은 매치에 전송한다.</summary>
-
-    private Task HandleSwarmDoorUnlockFinish(int interactId, int doorId)
-    {
-        if (!MatchInteractionService.FinishDoor(Match, _interactions, doorId))
-        {
-SendRngCollectResult(interactId, 0, 0, 0);
-            BroadcastPlayerState(PlayerState.IDLE);
-            return Task.CompletedTask;
-        }
-
-        Logger.LogInformation(
-            "Swarm door unlocked by gauge: PlayerId={PlayerId}, DoorId={DoorId}, InteractId={InteractId}",
-            PlayerId, doorId, interactId);
-
-        using var updatePacket =
-            PacketMaker.G_TO_C_DOOR_STATE_UPDATE(doorId, true, ErrorCode.SUCCESS, PlayerId!.Value);
-        foreach (var session in Match.Sessions.Snapshot())
-            session.TrySend(updatePacket);
-
-SendRngCollectResult(interactId, 0, 0, 0);
-        BroadcastPlayerState(PlayerState.IDLE);
-        return Task.CompletedTask;
-    }
-
-    /// <summary>
-    ///     피격으로 문 게이지를 끊는다 (#229). 서버가 pending을 지우면 뒤늦게 온 FINISH도 무효가 된다.
-    ///     단 첫 문은 끊지 않는다 (2026-08-16 유저 판정): 침투로 몹이 상시 붙게 되면서 시작 화력으로는
-    ///     3초를 비울 수 없어 시작 구역에서 아예 못 나가는 상태가 됐다. 첫 문은 성장 이전의 관문이라
-    ///     화력을 조건으로 걸 수 없다 — 두 번째 문부터 리스크 창이 돌아온다.
-    /// </summary>
-    internal void BreakDoorUnlockGauge()
-    {
-        if (_interactions.InterruptDoor() is not { } interactId) return;
-        _gameEventLogManager.LogExploreCancelled(
-            MatchingId, PlayerId ?? 0, interactId, CurrentArea.ToString(), "door_unlock_hit",
-            isBot: false);
-        SendRngCollectAck(interactId, ErrorCode.INVALID_GAME_STATE, 0);
     }
 
     private void SendRngCollectAck(int interactId, ErrorCode errorCode, int cooldownRemain)

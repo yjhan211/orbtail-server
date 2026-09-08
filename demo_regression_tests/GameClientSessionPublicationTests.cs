@@ -195,7 +195,7 @@ public sealed class GameClientSessionPublicationTests
     }
 
     [Fact]
-    public async Task RngDoor_StartAndFinish_PreserveOrderedGaugePublication()
+    public async Task Door_StartAndFinish_RejectEarlyFinishThenPublishAfterElapsedTime()
     {
         using var fixture = new SessionFixture();
         RecordingSession session = fixture.CreateSession(
@@ -203,29 +203,46 @@ public sealed class GameClientSessionPublicationTests
             playerId: 101,
             area: (AreaType)50);
 
+        MatchStartGate.RegisterBotOnlyMatch(70001); // 테스트에서만 카운트다운을 생략한다.
+
         await SendAsync(
             session,
-            Protocol.C_TO_G_RNG_COLLECT_START,
-            new C_TO_G_RNG_COLLECT_START { InteractId = 702000101 });
+            Protocol.C_TO_G_DOOR_OPEN_START,
+            new C_TO_G_DOOR_OPEN_START { InteractId = 702000101 });
 
-        G_TO_C_RNG_COLLECT_ACK startAck = fixture.ConnectionFor(session)
-            .DeserializeSingle<G_TO_C_RNG_COLLECT_ACK>(Protocol.G_TO_C_RNG_COLLECT_ACK);
+        G_TO_C_DOOR_OPEN_ACK startAck = fixture.ConnectionFor(session)
+            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK);
         Assert.Equal(ErrorCode.SUCCESS, startAck.ErrorCode);
+        Assert.False(startAck.Completed);
+
+        fixture.ConnectionFor(session).ClearPackets();
+        await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_FINISH,
+            new C_TO_G_DOOR_OPEN_FINISH { InteractId = 702000101 });
+        Assert.Equal(ErrorCode.DOOR_OPEN_TOO_EARLY, fixture.ConnectionFor(session)
+            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK).ErrorCode);
+        Assert.False(session.Match.Doors.IsDoorOpen(201));
+
+        // 실제로 잠들지 않고 서버가 기록한 시작 시각만 앞당긴다.
+        var interactions = (PlayerInteractionState)typeof(GameClientSession).GetField(
+            "_interactions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!;
+        interactions.BeginDoor(702000101, Environment.TickCount64 - 3000);
 
         fixture.ConnectionFor(session).ClearPackets();
         await SendAsync(
             session,
-            Protocol.C_TO_G_RNG_COLLECT_FINISH,
-            new C_TO_G_RNG_COLLECT_FINISH { InteractId = 702000101 });
+            Protocol.C_TO_G_DOOR_OPEN_FINISH,
+            new C_TO_G_DOOR_OPEN_FINISH { InteractId = 702000101 });
 
         Assert.Equal(
             [
                 Protocol.G_TO_C_DOOR_STATE_UPDATE,
-                Protocol.G_TO_C_RNG_COLLECT_RESULT,
+                Protocol.G_TO_C_DOOR_OPEN_ACK,
                 Protocol.G_TO_C_PLAYER_STATE
             ],
             fixture.ConnectionFor(session).DeliveredProtocols);
         Assert.True((fixture.Store.Get(70001)?.Doors.IsDoorOpen(201) == true));
+        Assert.True(fixture.ConnectionFor(session)
+            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK).Completed);
         Assert.False(Monitor.IsEntered(fixture.Store.Get(70001)!.Sync));
     }
 
@@ -695,9 +712,9 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain(
             "RunWithMatchLock",
             ReadMethodSlice(
-                rng,
+                doors,
                 "internal void BreakDoorUnlockGauge()",
-                "private void SendRngCollectAck("));
+                "private Task HandleDoorOpenRequest("));
         Assert.DoesNotContain(
             "RunWithMatchLock",
             ReadMethodSlice(
@@ -734,6 +751,57 @@ public sealed class GameClientSessionPublicationTests
 
         Assert.True(sentUnderLock);
         Assert.False(Monitor.IsEntered(runtime.Sync));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Door_CannotBypassStartOrUseLegacyCollectFinish(bool legacy)
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        MatchStartGate.RegisterBotOnlyMatch(70001);
+        if (legacy)
+        {
+            await SendAsync(session, Protocol.C_TO_G_RNG_COLLECT_START,
+                new C_TO_G_RNG_COLLECT_START { InteractId = 702000101 });
+            Assert.Equal(ErrorCode.INVALID_GAME_STATE, fixture.ConnectionFor(session)
+                .DeserializeSingle<G_TO_C_RNG_COLLECT_ACK>(Protocol.G_TO_C_RNG_COLLECT_ACK).ErrorCode);
+            fixture.ConnectionFor(session).ClearPackets();
+            await SendAsync(session, Protocol.C_TO_G_RNG_COLLECT_FINISH,
+                new C_TO_G_RNG_COLLECT_FINISH { InteractId = 702000101 });
+            Assert.Equal(ErrorCode.INVALID_GAME_STATE, fixture.ConnectionFor(session)
+                .DeserializeSingle<G_TO_C_RNG_COLLECT_ACK>(Protocol.G_TO_C_RNG_COLLECT_ACK).ErrorCode);
+        }
+        else
+        {
+            await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_FINISH,
+                new C_TO_G_DOOR_OPEN_FINISH { InteractId = 702000101 });
+            Assert.Equal(ErrorCode.INVALID_GAME_STATE, fixture.ConnectionFor(session)
+                .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK).ErrorCode);
+        }
+        Assert.False(session.Match.Doors.IsDoorOpen(201));
+    }
+
+    [Fact]
+    public void DoorHit_ReportsInterruptedAndInvalidatesPendingFinish()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        var interactions = (PlayerInteractionState)typeof(GameClientSession).GetField(
+            "_interactions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!;
+        using (session.Match.Enter())
+        {
+            interactions.CompleteDoor(); // 첫 문 피격 면제 이후의 문을 검사한다.
+            interactions.BeginDoor(702000101, 0);
+            session.BreakDoorUnlockGauge();
+            Assert.False(interactions.TryFinishDoor(702000101, 3000, TimeSpan.FromSeconds(3), out var error));
+            Assert.Equal(ErrorCode.INVALID_GAME_STATE, error);
+        }
+        var ack = fixture.ConnectionFor(session)
+            .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK);
+        Assert.Equal(ErrorCode.DOOR_OPEN_INTERRUPTED, ack.ErrorCode);
+        Assert.False(ack.Completed);
     }
 
     private static async Task SendAsync<T>(
@@ -884,6 +952,8 @@ public sealed class GameClientSessionPublicationTests
         public void Dispose()
         {
             GameClientSession.SwarmHeartPickupCallback = null;
+            foreach (long matchingId in _sessions.Select(session => session.MatchingId).Distinct())
+                MatchStartGate.RemoveMatching(matchingId);
             if (Directory.Exists(_summaryDirectory))
                 Directory.Delete(_summaryDirectory, recursive: true);
         }

@@ -34,13 +34,50 @@ public sealed class MatchInteractionServiceTests
     public void FirstDoorSurvivesHitButLaterDoorDoesNot()
     {
         var state = new PlayerInteractionState();
-        state.BeginDoor(10);
+        state.BeginDoor(10, 0);
         Assert.Null(state.InterruptDoor());
-        Assert.True(state.TryFinish(10));
+        Assert.True(state.TryFinishDoor(10, 3000, TimeSpan.FromSeconds(3), out _));
         state.CompleteDoor();
-        state.BeginDoor(11);
+        state.BeginDoor(11, 3000);
         Assert.Equal(11, state.InterruptDoor());
         Assert.False(state.TryFinish(11));
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(12)]
+    public void DoorFinishRequiresServerElapsedTimeAndIsSingleUse(int seconds)
+    {
+        var state = new PlayerInteractionState();
+        var duration = TimeSpan.FromSeconds(seconds);
+        state.BeginDoor(10, 1000);
+        Assert.False(state.TryFinishDoor(10, 1000, duration, out var error));
+        Assert.Equal(ErrorCode.DOOR_OPEN_TOO_EARLY, error);
+        Assert.False(state.TryFinishDoor(10, 1000 + seconds * 1000 - 1, duration, out error));
+        Assert.Equal(ErrorCode.DOOR_OPEN_TOO_EARLY, error);
+        Assert.False(state.TryFinishDoor(11, 1000 + seconds * 1000, duration, out error));
+        Assert.Equal(ErrorCode.INVALID_GAME_STATE, error);
+        Assert.True(state.TryFinishDoor(10, 1000 + seconds * 1000, duration, out error));
+        Assert.Equal(ErrorCode.SUCCESS, error);
+        Assert.False(state.TryFinishDoor(10, 1000 + seconds * 1000, duration, out error));
+        Assert.Equal(ErrorCode.INVALID_GAME_STATE, error);
+    }
+
+    [Fact]
+    public void DoorRestartResetsTimeAndCancelInvalidatesFinish()
+    {
+        var state = new PlayerInteractionState();
+        var duration = TimeSpan.FromSeconds(3);
+        state.BeginDoor(10, 0);
+        state.BeginDoor(10, 2000);
+        Assert.False(state.TryFinishDoor(10, 3000, duration, out var error));
+        Assert.Equal(ErrorCode.DOOR_OPEN_TOO_EARLY, error);
+        state.BeginDoor(11, 3000);
+        Assert.False(state.TryFinishDoor(10, 6000, duration, out error));
+        Assert.Equal(ErrorCode.INVALID_GAME_STATE, error);
+        state.Clear();
+        Assert.False(state.TryFinishDoor(11, 6000, duration, out error));
+        Assert.Equal(ErrorCode.INVALID_GAME_STATE, error);
     }
 
     [Fact]
