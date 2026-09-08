@@ -5,12 +5,11 @@ using network.packets;
 
 namespace game_server.sessions;
 
-// 같은 구역에 있는 플레이어에게 소셜 액션을 전달한다.
+/// <summary>
+///     플레이어의 소셜 액션 요청을 받아 같은 구역의 플레이어들(본인 포함)에게 전달한다.
+/// </summary>
 public partial class GameClientSession
 {
-    /// <summary>
-    ///     본인이 SOCIAL 액션 요청 → 같은 area 모든 클라(본인 포함)에 G_TO_C_SOCIAL_ACTION broadcast.
-    /// </summary>
     private Task HandleSocialAction(C_TO_G_SOCIAL_ACTION msg)
     {
         if (!PlayerId.HasValue)
@@ -36,7 +35,7 @@ public partial class GameClientSession
                 PlayerId = PlayerId.Value,
                 SocialActionType = msg.SocialActionType
             };
-            var bodyBytes = MessagePackSerializer.Serialize(broadcast);
+            byte[] bodyBytes = MessagePackSerializer.Serialize(broadcast);
             foreach (var session in sameAreaSessions)
             {
                 using var packet = Packet.Create((int)Protocol.G_TO_C_SOCIAL_ACTION, session.PlayerId ?? 0);
