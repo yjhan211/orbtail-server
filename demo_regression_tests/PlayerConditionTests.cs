@@ -77,6 +77,50 @@ public sealed class PlayerConditionTests
     }
 
     [Fact]
+    public void MatchTicksPreservePeriodicBuffScheduleAndExpiry()
+    {
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var condition = new PlayerCondition { Health = 20 };
+        condition.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 3, 2, 4, now);
+        void Apply(int amount) => condition.ChangeHealth(amount, 100);
+
+        condition.UpdatePeriodicBuffs(now.AddMilliseconds(999), 100, Apply);
+        Assert.Equal(20, condition.Health);
+        condition.UpdatePeriodicBuffs(now.AddSeconds(1), 100, Apply);
+        Assert.Equal(20, condition.Health);
+        condition.UpdatePeriodicBuffs(now.AddSeconds(2), 100, Apply);
+        Assert.Equal(23, condition.Health);
+        condition.UpdatePeriodicBuffs(now.AddSeconds(2), 100, Apply);
+        Assert.Equal(23, condition.Health);
+        condition.UpdatePeriodicBuffs(now.AddSeconds(4), 100, Apply);
+        Assert.Equal(26, condition.Health);
+        Assert.False(condition.HasPeriodicBuffs);
+        condition.UpdatePeriodicBuffs(now.AddSeconds(9), 100, Apply);
+        Assert.Equal(26, condition.Health);
+    }
+
+    [Fact]
+    public void ClearingBuffsResetsScheduleAndCancellationStopsCatchUp()
+    {
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var condition = new PlayerCondition { Health = 20 };
+        condition.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 3, 1, 10, now);
+        condition.ClearPeriodicBuffs();
+        condition.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 3, 1, 10, now.AddSeconds(10));
+        int applied = 0;
+        void Apply(int amount)
+        {
+            applied++;
+            condition.ClearPeriodicBuffs();
+        }
+        condition.UpdatePeriodicBuffs(now.AddSeconds(10.9), 100, Apply);
+        Assert.Equal(0, applied);
+        condition.UpdatePeriodicBuffs(now.AddSeconds(20), 100, Apply);
+        Assert.Equal(1, applied);
+        Assert.False(condition.HasPeriodicBuffs);
+    }
+
+    [Fact]
     public void HeartPickupRequiresMissingHealth()
     {
         Assert.Equal(GroundItemPickupDisposition.LeaveOnGround,

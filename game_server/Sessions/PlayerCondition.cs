@@ -6,7 +6,7 @@ namespace game_server.sessions;
 /// <summary>
 ///     사람 플레이어 하나의 체력·행동·주기 버프 상태와 변경 규칙.
 ///     피해·회복은 적용 결과를 반환한다. 요청한 변화량과 실제 변화량은 구분한다.
-///     세션이 소유하며 매치 잠금 안에서 갱신한다. 타이머·패킷·로그·탈락 처리는 소유자가 맡는다.
+///     세션이 소유하며 매치 잠금 안에서 갱신한다. 매치 틱이 실행을 구동하며 패킷·로그·탈락 처리는 호출자가 맡는다.
 /// </summary>
 internal sealed class PlayerCondition
 {
@@ -15,6 +15,7 @@ internal sealed class PlayerCondition
     private const float SwarmSleepRecoveryRatioPerSecond = 0.05f;
     private readonly List<PeriodicBuffEntry> _periodicBuffs = [];
     private int _swarmSleepGrantedTicks;
+    private DateTime? _nextPeriodicBuffTickAtUtc;
 
     private PlayerState _state = PlayerState.IDLE;
 
@@ -102,18 +103,37 @@ internal sealed class PlayerCondition
         return Math.Min(perTick * pending, maxHealth - Health);
     }
 
-    public void AddPeriodicBuff(BuffSubType type, int value, int interval, int duration = 0)
+    public void AddPeriodicBuff(BuffSubType type, int value, int interval, int duration = 0, DateTime? nowUtc = null)
     {
+        if (!HasPeriodicBuffs)
+            _nextPeriodicBuffTickAtUtc = (nowUtc ?? DateTime.UtcNow).AddSeconds(1);
         _periodicBuffs.RemoveAll(buff => buff.Type == type);
         _periodicBuffs.Add(new PeriodicBuffEntry(type, value, interval, duration));
     }
 
-    public void ClearPeriodicBuffs() => _periodicBuffs.Clear();
+    public void ClearPeriodicBuffs()
+    {
+        _periodicBuffs.Clear();
+        _nextPeriodicBuffTickAtUtc = null;
+    }
+
+    /// <summary>등록 후 첫 1초부터 기존 매치 틱에서 초 단위 버프 처리를 실행한다.</summary>
+    public void UpdatePeriodicBuffs(DateTime nowUtc, int maxHealth, Action<int> apply)
+    {
+        while (HasPeriodicBuffs && _nextPeriodicBuffTickAtUtc is { } next && nowUtc >= next)
+        {
+            _nextPeriodicBuffTickAtUtc = next.AddSeconds(1);
+            TickPeriodicBuffs(maxHealth, apply);
+        }
+        if (!HasPeriodicBuffs)
+            _nextPeriodicBuffTickAtUtc = null;
+    }
 
     public void TickPeriodicBuffs(int maxHealth, Action<int> apply)
     {
         foreach (var buff in _periodicBuffs.ToArray())
         {
+            if (!_periodicBuffs.Contains(buff)) continue;
             buff.Elapsed++;
             if (buff.Duration > 0 && buff.Remaining > 0) buff.Remaining--;
             if (buff.Elapsed >= buff.Interval)

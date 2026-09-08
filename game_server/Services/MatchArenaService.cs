@@ -354,6 +354,9 @@ internal sealed class MatchArenaService(
             }
         }
         botDecisions.ProcessSwarmBotRecovery(matchingId, aliveBots, nowUtc);
+        ProcessPeriodicBuffs(matchingId, aliveSessions, nowUtc);
+        if (IsMatchTerminal(matchingId) || sessions.Any(session => session.IsGameEnded))
+            return;
         ProcessSwarmSleepRecovery(aliveSessions, nowUtc);
 
         // 봇도 사람과 같은 규칙으로 성장한다: 소환석 5개 + 스팟 소진. 공짜 버튼 소환 없음.
@@ -638,10 +641,37 @@ internal sealed class MatchArenaService(
         }
     }
 
-    /// <summary>
-    ///     수면 회복 틱 (#229 6단계). 실제 정산은 세션이 소유한다 — 체력·최대치가 세션 내부값이라
-    ///     밖에서 만지면 접근자를 열어야 하고, 그러면 다른 경로도 체력을 직접 건드릴 수 있게 된다.
-    /// </summary>
+
+    /// <summary>매치 잠금 안에서 플레이어별 버프 실행 시각을 확인하고 체력 변경을 적용한다.</summary>
+    private void ProcessPeriodicBuffs(long matchingId, List<GameClientSession> sessions, DateTime nowUtc)
+    {
+        foreach (var session in sessions)
+        {
+            if (IsMatchTerminal(matchingId)) return;
+            if (session.IsEliminated || session.IsGameEnded || !session.IsAcceptingMessages)
+            {
+                session.Condition.ClearPeriodicBuffs();
+                continue;
+            }
+
+            try
+            {
+                session.Condition.UpdatePeriodicBuffs(nowUtc, Config.MAX_HEALTH, health =>
+                {
+                    session.HandleHealthChanged(session.Condition.ChangeHealth(health, Config.MAX_HEALTH));
+                    if (session.IsEliminated || session.IsGameEnded || IsMatchTerminal(matchingId))
+                        session.Condition.ClearPeriodicBuffs();
+                });
+            }
+            catch (Exception ex)
+            {
+                session.Condition.ClearPeriodicBuffs();
+                logger.LogWarning(ex, "Periodic buff processing failed: MatchingId={MatchingId}, PlayerId={PlayerId}",
+                    matchingId, session.PlayerId);
+            }
+        }
+    }
+    /// <summary>생존 플레이어의 수면 회복을 갱신한다.</summary>
     private static void ProcessSwarmSleepRecovery(
         List<GameClientSession> aliveSessions, DateTime nowUtc)
     {

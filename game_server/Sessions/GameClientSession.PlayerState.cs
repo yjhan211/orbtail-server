@@ -70,44 +70,7 @@ public partial class GameClientSession
         return Task.CompletedTask;
     }
 
-    private void OnPeriodicBuffTick()
-    {
-        var match = Volatile.Read(ref _match);
-        if (match == null)
-        {
-            StopAllPeriodicBuffs();
-            return;
-        }
 
-        using (match.Enter())
-        {
-            if (match.IsTerminal)
-            {
-                StopAllPeriodicBuffs();
-                return;
-            }
-
-            try
-            {
-                if (!Connection.IsAcceptingMessages)
-                {
-                    StopAllPeriodicBuffs();
-                    return;
-                }
-                _condition.TickPeriodicBuffs(Config.MAX_HEALTH,
-                    health => HandleHealthChanged(_condition.ChangeHealth(health, Config.MAX_HEALTH)));
-                if (!_condition.HasPeriodicBuffs)
-                {
-                    StopAllPeriodicBuffs();
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "Periodic buff timer error, stopping all");
-                StopAllPeriodicBuffs();
-            }
-        }
-    }
 
     // #229 6단계 수면 회복 → 2026-08-17 재조정: 준비 1초, 회복은 1초에 한 번.
     // 중단은 이동뿐이다 — 움직이지 않는 한 피격·폐쇄로는 깨지 않는다.
@@ -156,12 +119,7 @@ public partial class GameClientSession
     /// <summary>지정한 시각까지 수면 진입과 수면 회복을 차단한다.</summary>
     internal void BlockHealingUntil(DateTime untilUtc) => _condition.HealLockUntilUtc = untilUtc;
 
-    private void StopAllPeriodicBuffs()
-    {
-        _condition.ClearPeriodicBuffs();
-        _periodicBuffTimer?.Dispose();
-        _periodicBuffTimer = null;
-    }
+
 
     /// <summary>
     ///     SLEEP 상태 변경을 서버에서 감지하여 브로드캐스트 (본인 포함)
@@ -360,8 +318,6 @@ public partial class GameClientSession
     private bool ApplyItemBuffs(int itemId)
     {
         var effect = _condition.ApplyItemBuffs(itemId);
-        if (effect.Periodic)
-            _periodicBuffTimer ??= new Timer(_ => OnPeriodicBuffTick(), null, 1000, 1000);
         var change = _condition.ChangeHealth(effect.Health, Config.MAX_HEALTH);
         HandleHealthChanged(change);
         if (PlayerId.HasValue && change.Recovered > 0)
