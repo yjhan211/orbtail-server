@@ -52,6 +52,20 @@ internal static class MatchInteractionService
         return itemId;
     }
 
+    /// <summary>
+    ///     대기 중인 상자·문 상호작용과 해당 쿨다운을 정리하고 취소한 ID를 반환한다.
+    ///     호출자는 매치 잠금을 유지한 채 반환된 ID로 로그와 취소 알림을 보낸다.
+    /// </summary>
+    public static int[] CancelPendingInteractions(MatchRuntime runtime, PlayerInteractionState state)
+    {
+        RequireLock(runtime);
+        int[] canceledIds = state.Snapshot();
+        foreach (int interactId in canceledIds)
+            runtime.CollectCooldowns.ClearCooldown(interactId);
+        state.Clear();
+        return canceledIds;
+    }
+
     public static ErrorCode CheckDoorGauge(MatchRuntime runtime, AreaType area, int doorId)
     {
         RequireLock(runtime);

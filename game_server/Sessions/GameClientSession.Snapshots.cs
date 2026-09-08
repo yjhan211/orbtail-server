@@ -48,7 +48,7 @@ public partial class GameClientSession
 
     /// <summary>이동 서비스가 보관한 공간 정보를 현재 행동 상태와 함께 복사한다.</summary>
     internal GameObjectInfo CaptureGameObjectInfo() =>
-        _playerMovement.CaptureGameObjectInfo(_condition.IsSleeping ? PlayerState.SLEEP : CurrentState);
+        _playerMovement.CaptureGameObjectInfo(_condition.State);
 
     /// <summary>입장한 클라이언트에 자기장 수축 시작 시각을 보낸다. 경계는 공용 규칙으로 계산한다.</summary>
     private void SendPressureFieldState()

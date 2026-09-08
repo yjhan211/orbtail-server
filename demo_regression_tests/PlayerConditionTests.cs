@@ -19,6 +19,32 @@ public sealed class PlayerConditionTests
         Assert.False(condition.Recover(10).Changed);
     }
 
+    [Theory]
+    [InlineData(PlayerState.IDLE)]
+    [InlineData(PlayerState.EXPLORE_1)]
+    public void LeavingSleepResetsRecoveryButPreservesPeriodicBuffs(PlayerState nextState)
+    {
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var condition = new PlayerCondition { Health = 50 };
+        condition.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 2, 1, 10);
+        Assert.True(condition.TryStartSleep(now));
+        Assert.Equal(PlayerState.SLEEP, condition.State);
+        condition.GetSleepRecovery(now, false, 100);
+        Assert.Equal(5, condition.GetSleepRecovery(now.AddSeconds(1), false, 100));
+
+        condition.State = nextState;
+        Assert.False(condition.IsSleeping);
+        Assert.Equal(DateTime.MinValue, condition.SleepStartedAtUtc);
+        Assert.True(condition.HasPeriodicBuffs);
+        Assert.Equal(0, condition.GetSleepRecovery(now.AddSeconds(10), false, 100));
+        condition.TickPeriodicBuffs(100, amount => condition.Recover(amount));
+        Assert.Equal(52, condition.Health);
+
+        Assert.True(condition.TryStartSleep(now.AddSeconds(10)));
+        Assert.Equal(0, condition.GetSleepRecovery(now.AddSeconds(10), false, 100));
+        Assert.Equal(5, condition.GetSleepRecovery(now.AddSeconds(11), false, 100));
+    }
+
     [Fact]
     public void DamageResultClampsAtZeroAndDoesNotOverflow()
     {
@@ -110,7 +136,7 @@ public sealed class PlayerConditionTests
     [Fact]
     public void SleepOnlyRecoversMissingHealth()
     {
-        var state = new PlayerCondition { Health = 99, IsSleeping = true };
+        var state = new PlayerCondition { Health = 99, State = PlayerState.SLEEP };
         var now = DateTime.UtcNow;
         state.GetSleepRecovery(now, false, 100);
         Assert.Equal(1, state.GetSleepRecovery(now.AddSeconds(1), false, 100));
@@ -131,7 +157,7 @@ public sealed class PlayerConditionTests
     public void SleepWaitsForWarmupAndDoesNotReplayBlockedTicks()
     {
         var start = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var state = new PlayerCondition { IsSleeping = true, Health = 80 };
+        var state = new PlayerCondition { State = PlayerState.SLEEP, Health = 80 };
         Assert.Equal(0, state.GetSleepRecovery(start, false, 100));
         Assert.Equal(0, state.GetSleepRecovery(start.AddMilliseconds(999), false, 100));
         Assert.Equal(5, state.GetSleepRecovery(start.AddSeconds(1), false, 100));

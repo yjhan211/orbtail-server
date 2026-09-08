@@ -4,7 +4,7 @@ using network.common.data;
 namespace game_server.sessions;
 
 /// <summary>
-///     사람 플레이어 하나의 체력·수면·주기 버프 상태와 변경 규칙.
+///     사람 플레이어 하나의 체력·행동·주기 버프 상태와 변경 규칙.
 ///     피해·회복은 적용 결과를 반환한다. 요청한 변화량과 실제 변화량은 구분한다.
 ///     세션이 소유하며 매치 잠금 안에서 갱신한다. 타이머·패킷·로그·탈락 처리는 소유자가 맡는다.
 /// </summary>
@@ -16,8 +16,22 @@ internal sealed class PlayerCondition
     private readonly List<PeriodicBuffEntry> _periodicBuffs = [];
     private int _swarmSleepGrantedTicks;
 
+    private PlayerState _state = PlayerState.IDLE;
+
     public int Health { get; set; } = Config.MAX_HEALTH;
-    public bool IsSleeping { get; set; }
+
+    public PlayerState State
+    {
+        get => _state;
+        set
+        {
+            if (_state == value) return;
+            _state = value;
+            ResetSleep();
+        }
+    }
+
+    public bool IsSleeping => State == PlayerState.SLEEP;
     public DateTime SleepStartedAtUtc { get; set; } = DateTime.MinValue;
     public DateTime LastCombatAtUtc { get; set; } = DateTime.MinValue;
     public DateTime HealLockUntilUtc { get; set; } = DateTime.MinValue;
@@ -54,15 +68,14 @@ internal sealed class PlayerCondition
     public bool TryStartSleep(DateTime nowUtc)
     {
         if (IsSleeping || !CanSleep(nowUtc)) return false;
-        ResetSleep();
-        IsSleeping = true;
+        State = PlayerState.SLEEP;
         return true;
     }
 
     public bool CanSleep(DateTime nowUtc) =>
         (nowUtc - LastCombatAtUtc).TotalSeconds >= SwarmSleepCombatLockSeconds && nowUtc >= HealLockUntilUtc;
 
-    public void ResetSleep()
+    private void ResetSleep()
     {
         SleepStartedAtUtc = DateTime.MinValue;
         _swarmSleepGrantedTicks = 0;

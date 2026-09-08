@@ -67,7 +67,7 @@ public partial class GameClientSession
     private void BroadcastPlayerState(PlayerState state)
     {
         if (!PlayerId.HasValue) return;
-        CurrentState = state;
+        _condition.State = state;
 
         var sameAreaSessions = Match.Sessions.GetInArea(CurrentArea);
         using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, state);
@@ -176,23 +176,21 @@ SendRngCollectResult(msg.InteractId, 0, 0, SwarmExploreCooldownSeconds);
         TrySend(packet);
     }
 
-    private void CancelPendingRngCollect(string reason)
+    private void SendInteractionCanceled(int[] canceledIds, string reason)
     {
-        if (_interactions.Count == 0)
+        if (canceledIds.Length == 0)
             return;
 
-        foreach (int interactId in _interactions.Snapshot())
+        foreach (int interactId in canceledIds)
         {
             _gameEventLogManager.LogExploreCancelled(
                 MatchingId, PlayerId.GetValueOrDefault(), interactId, CurrentArea.ToString(), reason, isBot: false);
-            Volatile.Read(ref _match)?.CollectCooldowns.ClearCooldown(interactId);
             BroadcastRngCollectCooldown(interactId, 0);
         }
 
         Logger.LogInformation(
-            "RNG collect pending cancelled: PlayerId={PlayerId}, Count={Count}, Reason={Reason}",
-            PlayerId, _interactions.Count, reason);
-        _interactions.Clear();
+            "Pending interactions cancelled: PlayerId={PlayerId}, Count={Count}, Reason={Reason}",
+            PlayerId, canceledIds.Length, reason);
     }
 
     private void BroadcastRngCollectCooldown(int interactId, int cooldownSeconds)

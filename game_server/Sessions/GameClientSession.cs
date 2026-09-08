@@ -93,7 +93,6 @@ public partial class GameClientSession : SessionBase
     public MapId CurrentMapId { get; private set; }
     public long MatchingId { get; private set; }
     public AreaType CurrentArea => _playerMovement.CurrentArea;
-    private PlayerState CurrentState { get; set; } = PlayerState.IDLE;
     public Vector3f? LastValidatedPosition => _playerMovement.LastValidatedPosition;
 
     public PlayerMatchStatus PlayerMatchStatus { get; private set; } = PlayerMatchStatus.ACTIVE;

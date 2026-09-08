@@ -128,6 +128,30 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
     }
 
     [Fact]
+    public void MovementWakeAndSnapshotsUseConditionStateWithoutClearingBuffs()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(FirstMatchingId, FirstPlayerId);
+        var runtime = fixture.Store.GetRequired(FirstMatchingId);
+        using (runtime.Enter())
+        {
+            session.Condition.AddPeriodicBuff(BuffSubType.HEALTH_ADD, 2, 1, 10);
+            Assert.True(session.Condition.TryStartSleep(DateTime.UtcNow));
+            Assert.Equal(PlayerState.SLEEP, session.CaptureGameObjectInfo().State);
+
+            session.BreakSwarmSleep();
+
+            Assert.Equal(PlayerState.IDLE, session.Condition.State);
+            Assert.False(session.Condition.IsSleeping);
+            Assert.True(session.Condition.HasPeriodicBuffs);
+            Assert.Equal(PlayerState.IDLE, session.CaptureGameObjectInfo().State);
+
+            session.Condition.State = PlayerState.EXPLORE_1;
+            Assert.Equal(PlayerState.EXPLORE_1, session.CaptureGameObjectInfo().State);
+        }
+    }
+
+    [Fact]
     public void SleepingPlayer_KeepsAutomaticAttackActors()
     {
         using var fixture = new SessionFixture();
@@ -151,7 +175,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
 
         var awake = Build();
         Assert.Contains(awake, actor => actor.WeaponItemId != 0 && actor.Damage > 0);
-        condition.IsSleeping = true;
+        condition.State = PlayerState.SLEEP;
         var sleeping = Build();
 
         Assert.Equal(awake, sleeping);

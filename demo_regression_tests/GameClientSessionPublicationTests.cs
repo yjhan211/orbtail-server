@@ -799,6 +799,16 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("SwarmOrbDecisionCallback", session);
         Assert.DoesNotContain("SwarmGrowthPickCallback", arena);
         Assert.DoesNotContain("SwarmOrbDecisionCallback", arena);
+        string playerState = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.PlayerState.cs");
+        Assert.DoesNotContain("RunWithMatchLock", playerState);
+        Assert.DoesNotContain("ProcessPlayerState", playerState);
+        Assert.Equal(2, CountOccurrences(playerState, "MatchInteractionService.CancelPendingInteractions(match, _interactions)"));
+        Assert.DoesNotContain("MatchInteractionService.CancelPendingInteractions", rng);
+        Assert.DoesNotContain("ProcessUseInGameItem", playerState);
+        Assert.DoesNotContain("HandleRestStateRequest", playerState);
+        Assert.DoesNotContain("await ", playerState);
+        Assert.Equal(3, CountOccurrences(playerState, "using (match.Enter())"));
+        Assert.Equal(3, CountOccurrences(playerState, "if (match.IsTerminal"));
         Assert.DoesNotContain("RunWithMatchLock(", doors);
         Assert.Contains("using (match.Enter())", doors);
         Assert.DoesNotContain("ProcessDoorOpenRequest", doors);
@@ -812,7 +822,7 @@ public sealed class GameClientSessionPublicationTests
             "RunWithMatchLock",
             ReadMethodSlice(
                 rng,
-                "private void CancelPendingRngCollect(",
+                "private void SendInteractionCanceled(",
                 "private void BroadcastRngCollectCooldown("));
         Assert.DoesNotContain(
             "RunWithMatchLock",

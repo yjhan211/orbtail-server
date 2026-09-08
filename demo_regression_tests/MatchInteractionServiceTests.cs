@@ -81,6 +81,49 @@ public sealed class MatchInteractionServiceTests
     }
 
     [Fact]
+    public void CancelPendingInteractionsClearsBoxAndDoorButPreservesOtherCooldowns()
+    {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(984403);
+        var state = new PlayerInteractionState();
+        using (store.Enter(runtime))
+        {
+            state.Begin(10);
+            state.BeginDoor(11, 0);
+            foreach (int id in new[] { 10, 11, 12 })
+                Assert.True(runtime.CollectCooldowns.TryAcquireCooldown(id, 60, out _));
+
+            int[] canceled = MatchInteractionService.CancelPendingInteractions(runtime, state);
+
+            Assert.Equal(new[] { 10, 11 }, canceled.OrderBy(id => id));
+            Assert.Equal(0, state.Count);
+            Assert.False(state.TryFinish(10));
+            Assert.False(state.TryFinishDoor(11, 6000, TimeSpan.FromSeconds(3), out _));
+            Assert.Equal(12, Assert.Single(runtime.CollectCooldowns.GetSnapshot()).InteractId);
+            Assert.Empty(MatchInteractionService.CancelPendingInteractions(runtime, state));
+            runtime.TryMarkTerminal();
+        }
+    }
+
+    [Fact]
+    public void CancelPendingInteractionsRequiresMatchLock()
+    {
+        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var runtime = store.GetOrCreate(984404);
+        var state = new PlayerInteractionState();
+        state.Begin(10);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            MatchInteractionService.CancelPendingInteractions(runtime, state));
+        Assert.Equal(1, state.Count);
+
+        using (store.Enter(runtime))
+        {
+            MatchInteractionService.CancelPendingInteractions(runtime, state);
+            runtime.TryMarkTerminal();
+        }
+    }
+    [Fact]
     public void UnknownInteractionAndDoorAreRejected()
     {
         var store = new MatchRuntimeStore(NullLogger.Instance);

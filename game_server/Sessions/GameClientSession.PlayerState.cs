@@ -7,105 +7,98 @@ using network.packets;
 
 namespace game_server.sessions;
 
-/// <summary>
-///     플레이어 상태 요청과 회복 결과의 패킷·로그·탈락 통지를 처리한다.
-///     자원·수면·버프 계산은 PlayerCondition가 담당한다.
-/// </summary>
 public partial class GameClientSession
 {
-
-    private async Task HandlePlayerState(C_TO_G_PLAYER_STATE msg)
+    private Task HandlePlayerState(C_TO_G_PLAYER_STATE msg)
     {
-        if (!PlayerId.HasValue) return;
-        await RunWithMatchLock(() => ProcessPlayerState(msg), () => { });
-    }
-
-    private async Task ProcessPlayerState(C_TO_G_PLAYER_STATE msg)
-    {
-        if (!PlayerId.HasValue) return;
-        if (IsGameplayActionBlocked(out string lockReason))
+        if (!PlayerId.HasValue)
         {
-            // EXPLORE_1 is a collection-side state sync. The following collection ACK reports
-            // the actionable result, so do not surface a second generic alert to the player.
-            Logger.LogDebug("Ignored player state while gameplay is locked: PlayerId={PlayerId}, State={State}, Reason={Reason}",
-                PlayerId, msg.State, lockReason);
-            return;
+            return Task.CompletedTask;
         }
 
-        Logger.LogInformation("Player {PlayerId} state change request: {State}", PlayerId, msg.State);
-
-        bool isExploreState = msg.State == PlayerState.EXPLORE_1;
-        if (!isExploreState &&
-            msg.State != PlayerState.IDLE &&
-            _interactions.Count > 0)
+        var match = Volatile.Read(ref _match);
+        if (match == null)
         {
-            Logger.LogDebug(
-                "Ignored state change while RNG collect is pending: PlayerId={PlayerId}, State={State}",
-                PlayerId, msg.State);
-            return;
+            return Task.CompletedTask;
         }
 
-        if (msg.State == PlayerState.SLEEP)
+        using (match.Enter())
         {
-            CancelPendingRngCollect("PlayerState:SLEEP");
-            await HandleRestStateRequest();
-            return;
+            if (match.IsTerminal)
+            {
+                return Task.CompletedTask;
+            }
+            if (IsGameplayActionBlocked(out string lockReason))
+            {
+                Logger.LogWarning("Ignored player state while gameplay is locked: PlayerId={PlayerId}, State={State}, Reason={Reason}", PlayerId, msg.State, lockReason);
+                return Task.CompletedTask;
+            }
+
+            bool isExploreState = msg.State == PlayerState.EXPLORE_1;
+            if (!isExploreState && msg.State != PlayerState.IDLE && _interactions.Count > 0)
+            {
+                Logger.LogWarning("Ignored state change while RNG collect is pending: PlayerId={PlayerId}, State={State}", PlayerId, msg.State);
+                return Task.CompletedTask;
+            }
+
+            if (msg.State == PlayerState.SLEEP)
+            {
+                int[] canceledIds = MatchInteractionService.CancelPendingInteractions(match, _interactions);
+                SendInteractionCanceled(canceledIds, "PlayerState:SLEEP");
+                if (!_condition.IsSleeping && _condition.TryStartSleep(DateTime.UtcNow))
+                {
+                    BroadcastSleepState(true);
+                }
+                return Task.CompletedTask;
+            }
+
+            if (!isExploreState)
+            {
+                int[] canceledIds = MatchInteractionService.CancelPendingInteractions(match, _interactions);
+                SendInteractionCanceled(canceledIds, $"PlayerState:{msg.State}");
+            }
+
+            _condition.State = isExploreState ? PlayerState.EXPLORE_1 : PlayerState.IDLE;
+            var sameAreaSessions = Match.Sessions.GetInArea(CurrentArea, PlayerId);
+
+            using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, _condition.State);
+            foreach (var session in sameAreaSessions)
+            {
+                session.TrySend(packet);
+            }
         }
-
-        if (!isExploreState)
-            CancelPendingRngCollect($"PlayerState:{msg.State}");
-
-        CurrentState = isExploreState ? PlayerState.EXPLORE_1 : PlayerState.IDLE;
-
-        // 같은 Area의 다른 플레이어들에게 상태 브로드캐스트
-        var sameAreaSessions = Match.Sessions.GetInArea(CurrentArea, PlayerId);
-
-        using var packet = PacketMaker.G_TO_C_PLAYER_STATE(PlayerId.Value, msg.State);
-        foreach (var session in sameAreaSessions) session.TrySend(packet);
-
-        Logger.LogDebug("Broadcasted PLAYER_STATE to {Count} players in Area {Area}", sameAreaSessions.Count,
-            CurrentArea);
-
-        // SLEEP 상태 추적
-        _condition.IsSleeping = msg.State == PlayerState.SLEEP;
-
-        // SLEEP 해제 시 주기적 버프 타이머 정리
-        if (!_condition.IsSleeping) StopAllPeriodicBuffs();
-    }
-
-    private async Task HandleRestStateRequest()
-    {
-        if (_condition.IsSleeping) return;
-
-        // #229 6단계: 스웜 수면은 스태미나 0 휴식이 아니라 본체 HP 회복 행동이다.
-        // 조건은 하나 — 가해·피해 뒤 3초가 지났는가. 회복량 정산은 아레나 틱이 센다.
-        // 교전 직후에는 조용히 무시한다 (#229): 실패 팝업을 띄우면 전투 중에 수면 버튼을
-        // 잘못 누를 때마다 "유효하지 않은 게임 상태" 창이 화면을 막는다. 버튼이 이미 클릭
-        // 피드백을 줬으므로 아무 일도 안 일어나는 것 자체가 답이다.
-        if (!_condition.TryStartSleep(DateTime.UtcNow))
-            return;
-
-        await BroadcastSleepState(true);
-        return;
+        return Task.CompletedTask;
     }
 
     private void OnPeriodicBuffTick()
     {
-        _ = RunWithMatchLock(() =>
+        var match = Volatile.Read(ref _match);
+        if (match == null)
         {
+            StopAllPeriodicBuffs();
+            return;
+        }
+
+        using (match.Enter())
+        {
+            if (match.IsTerminal)
+            {
+                StopAllPeriodicBuffs();
+                return;
+            }
+
             try
             {
                 if (!Connection.IsAcceptingMessages)
                 {
                     StopAllPeriodicBuffs();
-                    return Task.CompletedTask;
+                    return;
                 }
                 _condition.TickPeriodicBuffs(Config.MAX_HEALTH,
                     health => HandleHealthChanged(_condition.ChangeHealth(health, Config.MAX_HEALTH)));
                 if (!_condition.HasPeriodicBuffs)
                 {
-                    if (_condition.IsSleeping) _ = BroadcastSleepState(false);
-                    else StopAllPeriodicBuffs();
+                    StopAllPeriodicBuffs();
                 }
             }
             catch (Exception ex)
@@ -113,8 +106,7 @@ public partial class GameClientSession
                 Logger.LogWarning(ex, "Periodic buff timer error, stopping all");
                 StopAllPeriodicBuffs();
             }
-            return Task.CompletedTask;
-        }, StopAllPeriodicBuffs);
+        }
     }
 
     // #229 6단계 수면 회복 → 2026-08-17 재조정: 준비 1초, 회복은 1초에 한 번.
@@ -155,8 +147,7 @@ public partial class GameClientSession
         if (!_condition.IsSleeping)
             return;
 
-        _condition.ResetSleep();
-        _ = BroadcastSleepState(false);
+        BroadcastSleepState(false);
     }
 
     /// <summary>교전 시각 기록 — 가해·피격 뒤 3초 수면 진입 잠금의 기준. 수면 자체는 깨지 않는다.</summary>
@@ -175,14 +166,12 @@ public partial class GameClientSession
     /// <summary>
     ///     SLEEP 상태 변경을 서버에서 감지하여 브로드캐스트 (본인 포함)
     /// </summary>
-    private async Task BroadcastSleepState(bool sleep)
+    private void BroadcastSleepState(bool sleep)
     {
         if (!PlayerId.HasValue) return;
 
-        _condition.IsSleeping = sleep;
-        if (!sleep) StopAllPeriodicBuffs();
-
-        var state = sleep ? PlayerState.SLEEP : PlayerState.IDLE;
+        _condition.State = sleep ? PlayerState.SLEEP : PlayerState.IDLE;
+        var state = _condition.State;
 
         // 같은 Area의 모든 플레이어에게 상태 브로드캐스트 (본인 포함)
         var sameAreaSessions = Match.Sessions.GetInArea(CurrentArea);
@@ -233,133 +222,136 @@ public partial class GameClientSession
     /// <summary>
     ///     인게임 아이템 사용 요청 처리
     /// </summary>
-    private async Task HandleUseInGameItem(C_TO_G_USE_INGAME_ITEM msg)
+
+    private Task HandleUseInGameItem(C_TO_G_USE_INGAME_ITEM msg)
     {
-        if (!PlayerId.HasValue) return;
-        await RunWithMatchLock(() => ProcessUseInGameItem(msg), () =>
+        if (!PlayerId.HasValue) return Task.CompletedTask;
+        var match = Volatile.Read(ref _match);
+        if (match == null)
         {
             using var packet = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.INVALID_GAME_STATE);
             TrySend(packet);
-        });
-    }
-
-    private async Task ProcessUseInGameItem(C_TO_G_USE_INGAME_ITEM msg)
-    {
-        if (!PlayerId.HasValue) return;
-        if (IsGameplayActionBlocked(out _))
-        {
-            using var failPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid,
-                ErrorCode.INVALID_GAME_STATE);
-            TrySend(failPacket);
-            return;
+            return Task.CompletedTask;
         }
 
-        // 아이템 정보 먼저 조회 (제거 전에 ItemId 확인 필요)
-        var inventory = Match.Inventory.GetPlayerInventory(PlayerId.Value);
-        var itemInfo = inventory.GetItem(msg.ItemUid);
-        if (itemInfo == null)
+        using (match.Enter())
         {
-            using var failPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.FATAL);
-            TrySend(failPacket);
-            Logger.LogWarning("Player {PlayerId} item not found: ItemUid={ItemUid}", PlayerId, msg.ItemUid);
-            return;
-        }
-
-        int itemId = itemInfo.ItemId;
-        if (msg.Count == 0)
-        {
-            if (!BattleItemCombatData.IsCombatItem(itemId) ||
-                !inventory.TryEquipBattleItem(msg.ItemUid, out var equippedItem))
+            if (match.IsTerminal || IsGameplayActionBlocked(out _))
             {
-                using var failPacket =
-                    PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.ITEM_NOT_USABLE);
+                using var failPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid,
+                    ErrorCode.INVALID_GAME_STATE);
                 TrySend(failPacket);
-                return;
+                return Task.CompletedTask;
             }
 
-            using var resultPacket =
-                PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, equippedItem!.ItemUid, ErrorCode.SUCCESS);
-            TrySend(resultPacket);
-            _gameEventLogManager.LogOrbBoardTransition(
-                MatchingId, PlayerId.Value, inventory.GetAllItems(), equippedItem.ItemId,
-                CurrentArea.ToString(), "equip", isBot: false);
-            Logger.LogInformation(
-                "Player {PlayerId} equipped battle item: ItemUid={ItemUid}, ItemId={ItemId}",
-                PlayerId, equippedItem.ItemUid, equippedItem.ItemId);
-            var equippedCombatData = BattleItemCombatData.Get(equippedItem.ItemId);
-            _gameEventLogManager.LogTierReached(
-                MatchingId, PlayerId.Value, equippedItem.ItemId, equippedCombatData?.Tier ?? 0, isBot: false);
-            return;
-        }
-
-        if (msg.Count < 1)
-        {
-            using var failPacket =
-                PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.INVALID_REQUEST);
-            TrySend(failPacket);
-            return;
-        }
-
-        var itemData = GameItemData.Get(itemId);
-        if (itemData?.ConsumableBuffList is not { Count: > 0 })
-        {
-            using var failPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid,
-                ErrorCode.ITEM_NOT_USABLE);
-            TrySend(failPacket);
-            return;
-        }
-
-        // Reusable 아이템은 소모하지 않음
-        if (itemData.Reusable)
-        {
-            // 버프 효과 적용
-            bool hasPeriodicBuff = ApplyItemBuffs(itemId);
-
-            // 주기적 버프 등록 시 SLEEP 상태로 전환 + 브로드캐스트
-            if (hasPeriodicBuff) await BroadcastSleepState(true);
-
-            // 사용 결과 전송
-            using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS);
-            TrySend(resultPacket);
-
-            Logger.LogInformation("Player {PlayerId} used reusable InGameItem: ItemUid={ItemUid}, ItemId={ItemId}",
-                PlayerId, msg.ItemUid, itemId);
-        }
-        else
-        {
-            bool success = Match.Inventory.TryRemoveItem(PlayerId.Value, msg.ItemUid,
-                msg.Count, out var updatedItem);
-
-            if (success && updatedItem != null)
+            // 아이템 정보 먼저 조회 (제거 전에 ItemId 확인 필요)
+            var inventory = Match.Inventory.GetPlayerInventory(PlayerId.Value);
+            var itemInfo = inventory.GetItem(msg.ItemUid);
+            if (itemInfo == null)
             {
-                // 아이템 사용 성공 - 인벤토리 업데이트 전송
-                SendInGameInventoryUpdate(updatedItem);
+                using var failPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.FATAL);
+                TrySend(failPacket);
+                Logger.LogWarning("Player {PlayerId} item not found: ItemUid={ItemUid}", PlayerId, msg.ItemUid);
+                return Task.CompletedTask;
+            }
 
+            int itemId = itemInfo.ItemId;
+            if (msg.Count == 0)
+            {
+                if (!BattleItemCombatData.IsCombatItem(itemId) ||
+                    !inventory.TryEquipBattleItem(msg.ItemUid, out var equippedItem))
+                {
+                    using var failPacket =
+                        PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.ITEM_NOT_USABLE);
+                    TrySend(failPacket);
+                    return Task.CompletedTask;
+                }
+
+                using var resultPacket =
+                    PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, equippedItem!.ItemUid, ErrorCode.SUCCESS);
+                TrySend(resultPacket);
+                _gameEventLogManager.LogOrbBoardTransition(
+                    MatchingId, PlayerId.Value, inventory.GetAllItems(), equippedItem.ItemId,
+                    CurrentArea.ToString(), "equip", isBot: false);
+                Logger.LogInformation(
+                    "Player {PlayerId} equipped battle item: ItemUid={ItemUid}, ItemId={ItemId}",
+                    PlayerId, equippedItem.ItemUid, equippedItem.ItemId);
+                var equippedCombatData = BattleItemCombatData.Get(equippedItem.ItemId);
+                _gameEventLogManager.LogTierReached(
+                    MatchingId, PlayerId.Value, equippedItem.ItemId, equippedCombatData?.Tier ?? 0, isBot: false);
+                return Task.CompletedTask;
+            }
+
+            if (msg.Count < 1)
+            {
+                using var failPacket =
+                    PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.INVALID_REQUEST);
+                TrySend(failPacket);
+                return Task.CompletedTask;
+            }
+
+            var itemData = GameItemData.Get(itemId);
+            if (itemData?.ConsumableBuffList is not { Count: > 0 })
+            {
+                using var failPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid,
+                    ErrorCode.ITEM_NOT_USABLE);
+                TrySend(failPacket);
+                return Task.CompletedTask;
+            }
+
+            // Reusable 아이템은 소모하지 않음
+            if (itemData.Reusable)
+            {
                 // 버프 효과 적용
                 bool hasPeriodicBuff = ApplyItemBuffs(itemId);
 
                 // 주기적 버프 등록 시 SLEEP 상태로 전환 + 브로드캐스트
-                if (hasPeriodicBuff) await BroadcastSleepState(true);
+                if (hasPeriodicBuff) BroadcastSleepState(true);
 
                 // 사용 결과 전송
-                using var resultPacket =
-                    PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS);
+                using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS);
                 TrySend(resultPacket);
 
-                Logger.LogInformation(
-                    "Player {PlayerId} used InGameItem: ItemUid={ItemUid}, ItemId={ItemId}, Count={Count}",
-                    PlayerId, msg.ItemUid, itemId, msg.Count);
+                Logger.LogInformation("Player {PlayerId} used reusable InGameItem: ItemUid={ItemUid}, ItemId={ItemId}",
+                    PlayerId, msg.ItemUid, itemId);
             }
             else
             {
-                // 아이템 사용 실패
-                using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.FATAL);
-                TrySend(resultPacket);
+                bool success = Match.Inventory.TryRemoveItem(PlayerId.Value, msg.ItemUid,
+                    msg.Count, out var updatedItem);
 
-                Logger.LogWarning("Player {PlayerId} failed to use InGameItem: ItemUid={ItemUid}, Count={Count}",
-                    PlayerId, msg.ItemUid, msg.Count);
+                if (success && updatedItem != null)
+                {
+                    // 아이템 사용 성공 - 인벤토리 업데이트 전송
+                    SendInGameInventoryUpdate(updatedItem);
+
+                    // 버프 효과 적용
+                    bool hasPeriodicBuff = ApplyItemBuffs(itemId);
+
+                    // 주기적 버프 등록 시 SLEEP 상태로 전환 + 브로드캐스트
+                    if (hasPeriodicBuff) BroadcastSleepState(true);
+
+                    // 사용 결과 전송
+                    using var resultPacket =
+                        PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(true, msg.ItemUid, ErrorCode.SUCCESS);
+                    TrySend(resultPacket);
+
+                    Logger.LogInformation(
+                        "Player {PlayerId} used InGameItem: ItemUid={ItemUid}, ItemId={ItemId}, Count={Count}",
+                        PlayerId, msg.ItemUid, itemId, msg.Count);
+                }
+                else
+                {
+                    // 아이템 사용 실패
+                    using var resultPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(false, msg.ItemUid, ErrorCode.FATAL);
+                    TrySend(resultPacket);
+
+                    Logger.LogWarning("Player {PlayerId} failed to use InGameItem: ItemUid={ItemUid}, Count={Count}",
+                        PlayerId, msg.ItemUid, msg.Count);
+                }
             }
         }
+        return Task.CompletedTask;
     }
 
     /// <summary>
