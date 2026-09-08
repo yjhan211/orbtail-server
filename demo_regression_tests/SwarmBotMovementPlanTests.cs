@@ -147,7 +147,7 @@ public sealed class SwarmBotMovementPlanTests
         // 바쁜 펄스는 버리고(따라잡기 없음) 스킵만 센다; 잠금 안에서 전투→걸음, 준비→송신이 한 순서다.
         AssertInOrder(
             tick,
-            "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "matchRuntimes.TryEnter(matchingId, out MatchLockScope scope)",
             "RecordBotTickBusySkip(matchingId);",
             "return;",
             "using (scope)",
@@ -197,7 +197,7 @@ public sealed class SwarmBotMovementPlanTests
 
         AssertInOrder(
             adminSetup,
-            "matchRuntimes.Enter(matchingId, out MatchScope scope)",
+            "matchRuntimes.Enter(matchingId, out MatchLockScope scope)",
             "scope.Runtime.IsEnded",
             "SetupSwarmCutDummyCore(",
             "botMovement.DispatchExternalMovement(scope.Runtime, movement)");

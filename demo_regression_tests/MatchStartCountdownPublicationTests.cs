@@ -43,7 +43,7 @@ public sealed class MatchStartCountdownPublicationTests
             broadcast,
             "MatchStartGate.IsEntryTimedOut(matchingId, DateTime.UtcNow)",
             "entryFailureHandler.Handle(anchorSession);",
-            "matchRuntimes.Enter(matchingId, out MatchScope scope)",
+            "matchRuntimes.Enter(matchingId, out MatchLockScope scope)",
             "scope.Runtime.IsEnded",
             "var snapshot = MatchStartGate.GetSnapshot(matchingId);",
             "pacing.LastCountdownSecondsPublished == snapshot.RemainingSeconds",
@@ -61,7 +61,7 @@ public sealed class MatchStartCountdownPublicationTests
         // 매치 틱은 잠금 안에서 카운트다운을 먼저 보내고 전투·봇 걸음을 잇는다.
         AssertInOrder(
             matchTick,
-            "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "matchRuntimes.TryEnter(matchingId, out MatchLockScope scope)",
             "using (scope)",
             "publishCountdown([matchingId], countdownSessions);",
             "processCombat(matchingId, activeSessions);",
@@ -232,7 +232,7 @@ public sealed class MatchStartCountdownPublicationTests
             Assert.Equal(1, failing.SendCount);
             Assert.Equal(-1, GetPacing(server, matchingId).LastCountdownSecondsPublished);
             // 실패해도 잠금은 풀린다.
-            Assert.True(server.GetMatchRuntimes().TryEnter(matchingId, out MatchScope scope));
+            Assert.True(server.GetMatchRuntimes().TryEnter(matchingId, out MatchLockScope scope));
             scope.Dispose();
 
             InvokePeriodicBroadcast(server, [matchingId], [failing]);
@@ -482,7 +482,7 @@ public sealed class MatchStartCountdownPublicationTests
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             // 명시 타입과 var 표기는 같은 잠금 호출로 취급한다.
             .Replace("matchRuntimes.Enter(matchingId, out var scope)",
-                "matchRuntimes.Enter(matchingId, out MatchScope scope)", StringComparison.Ordinal);
+                "matchRuntimes.Enter(matchingId, out MatchLockScope scope)", StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

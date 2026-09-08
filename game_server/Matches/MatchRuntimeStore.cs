@@ -25,7 +25,7 @@ internal sealed class MatchRuntimeStore(ILogger<MatchRuntime> runtimeLogger, Mat
         }
 
         var candidate = new MatchRuntime(this, matchingId, runtimeLogger, _matchingLifecycle);
-        lock (candidate.Sync)
+        lock (candidate.MatchLock)
         {
             var runtime = _runtimes.GetOrAdd(matchingId, candidate);
             if (!ReferenceEquals(runtime, candidate))
@@ -54,7 +54,7 @@ internal sealed class MatchRuntimeStore(ILogger<MatchRuntime> runtimeLogger, Mat
 
     public IReadOnlyList<long> ActiveIds() => _runtimes.Keys.OrderBy(id => id).ToList();
 
-    public bool Enter(long matchingId, out MatchScope scope)
+    public bool Enter(long matchingId, out MatchLockScope scope)
     {
         var runtime = GetOrNull(matchingId);
         if (runtime == null)
@@ -67,13 +67,13 @@ internal sealed class MatchRuntimeStore(ILogger<MatchRuntime> runtimeLogger, Mat
         return true;
     }
 
-    public static MatchScope Enter(MatchRuntime runtime)
+    public static MatchLockScope Enter(MatchRuntime runtime)
     {
         ArgumentNullException.ThrowIfNull(runtime);
         return runtime.Enter();
     }
 
-    public bool TryEnter(long matchingId, out MatchScope scope)
+    public bool TryEnter(long matchingId, out MatchLockScope scope)
     {
         scope = default;
         var runtime = GetOrNull(matchingId);
@@ -87,7 +87,7 @@ internal sealed class MatchRuntimeStore(ILogger<MatchRuntime> runtimeLogger, Mat
         {
             return false;
         }
-        lock (runtime.Sync)
+        lock (runtime.MatchLock)
         {
             if (!_runtimes.TryRemove(new KeyValuePair<long, MatchRuntime>(matchingId, runtime)))
             {

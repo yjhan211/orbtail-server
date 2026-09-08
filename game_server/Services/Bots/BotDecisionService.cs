@@ -848,7 +848,7 @@ internal sealed class BotDecisionService(
     /// <summary>오브 선두 판독 (#226 F): 내 오브 수가 생존자 최다와 같거나 크면 선두다.</summary>
     private bool IsSwarmOrbLeader(long matchingId, long playerId)
     {
-        int myOrbCount = matchRuntimes.GetOrThrow(matchingId).GetOrbScore(playerId).OrbCount;
+        int myOrbCount = matchRuntimes.GetOrThrow(matchingId).Inventory.GetOrbScore(playerId).OrbCount;
         return myOrbCount > 0 && myOrbCount >= growth.GetTopOrbCount(matchingId);
     }
 

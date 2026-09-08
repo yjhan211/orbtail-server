@@ -24,7 +24,7 @@ internal sealed class MatchEnvironmentService(
         MatchRuntime match,
         List<GameClientSession> activeSessions)
     {
-        if (!Monitor.IsEntered(match.Sync))
+        if (!Monitor.IsEntered(match.MatchLock))
             throw new InvalidOperationException("Environmental settlement requires the match lock.");
         if (match.IsEnded)
             return;
@@ -65,14 +65,14 @@ internal sealed class MatchEnvironmentService(
         }
 
         int overtimeDelta = match.Closures.GetOvertimeDamagePerTick(
-            MatchRuntime.EnvironmentalTickIntervalSeconds);
+            MatchTickSchedule.EnvironmentalTickIntervalSeconds);
         var targets = new List<EnvironmentalTarget>(aliveCount);
 
         foreach (var session in humans)
         {
             int closureDelta = match.Closures.GetClosedAreaDamagePerTick(
                 session.CurrentArea,
-                MatchRuntime.EnvironmentalTickIntervalSeconds);
+                MatchTickSchedule.EnvironmentalTickIntervalSeconds);
             if (session.LastValidatedPosition != null)
                 closureDelta += MatchPressureFieldPolicy.GetDamagePerTick(match, session.LastValidatedPosition, DateTime.UtcNow);
             targets.Add(new EnvironmentalTarget(
@@ -88,7 +88,7 @@ internal sealed class MatchEnvironmentService(
         {
             int closureDelta = match.Closures.GetClosedAreaDamagePerTick(
                 bot.CurrentArea,
-                MatchRuntime.EnvironmentalTickIntervalSeconds);
+                MatchTickSchedule.EnvironmentalTickIntervalSeconds);
             closureDelta += MatchPressureFieldPolicy.GetDamagePerTick(match, bot.Position, DateTime.UtcNow);
             targets.Add(new EnvironmentalTarget(
                 bot.PlayerId,

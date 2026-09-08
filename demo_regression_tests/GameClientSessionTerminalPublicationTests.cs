@@ -63,7 +63,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             Assert.All(sessions, session => Assert.Empty(fixture.ConnectionFor(session).AttemptedProtocols));
 
             // 다른 매치는 잠금이 독립이라 그대로 진행한다.
-            Assert.True(fixture.Store.TryEnter(otherMatchingId, out MatchScope otherScope));
+            Assert.True(fixture.Store.TryEnter(otherMatchingId, out MatchLockScope otherScope));
             otherScope.Dispose();
             Assert.False(fixture.Store.TryEnter(matchingId, out _));
         }
@@ -392,7 +392,7 @@ public sealed class GameClientSessionTerminalPublicationTests
             return () =>
             {
                 if (TrackedRuntime != null)
-                    LockHeldDuringLifecycle = Monitor.IsEntered(TrackedRuntime.Sync);
+                    LockHeldDuringLifecycle = Monitor.IsEntered(TrackedRuntime.MatchLock);
                 Assert.Null(Store.GetOrNull(matchingId));
                 Assert.False(MatchStartGate.IsGameplayActive(matchingId));
                 LifecycleDispatchCounts.AddOrUpdate(playerId, 1, static (_, count) => count + 1);

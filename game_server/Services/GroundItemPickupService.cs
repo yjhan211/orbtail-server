@@ -15,7 +15,7 @@ internal static class GroundItemPickupService
         MatchRuntime runtime, long playerId, AreaType area, Vector3f position,
         int health, long groundItemUid)
     {
-        if (!Monitor.IsEntered(runtime.Sync))
+        if (!Monitor.IsEntered(runtime.MatchLock))
             throw new InvalidOperationException("Ground item pickup requires the match lock.");
 
         InGameItemInfo? addedItem = null;

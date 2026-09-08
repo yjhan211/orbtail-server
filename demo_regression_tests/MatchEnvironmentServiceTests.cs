@@ -22,7 +22,7 @@ public sealed class MatchEnvironmentServiceTests
     {
         var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947002);
         var service = CreateService(GameServerDevOptions.Disabled);
-        lock (match.Sync)
+        lock (match.MatchLock)
         {
             match.TryMarkEnded();
             service.Process(match, []);
@@ -41,7 +41,7 @@ public sealed class MatchEnvironmentServiceTests
         {
             DisableGameEnd = disableEnd, CutDummy = cutDummy, CrossfireSandbox = crossfire
         });
-        lock (match.Sync)
+        lock (match.MatchLock)
         {
             service.Process(match, []);
             Assert.False(match.IsEnded);

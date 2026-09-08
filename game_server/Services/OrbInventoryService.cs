@@ -45,7 +45,7 @@ internal sealed class OrbInventoryService(GameEventLogManager eventLog)
 
     private static void RequireLock(MatchRuntime runtime)
     {
-        if (!Monitor.IsEntered(runtime.Sync))
+        if (!Monitor.IsEntered(runtime.MatchLock))
             throw new InvalidOperationException("Orb inventory changes require the match lock.");
     }
 }

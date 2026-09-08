@@ -9,7 +9,7 @@ namespace game_server.services;
 public class AreaClosureManager
 {
     public const int ClosureWarningSeconds = 15;
-    public const int ResourceTickSeconds = MatchRuntime.EnvironmentalTickIntervalSeconds;
+    public const int ResourceTickSeconds = MatchTickSchedule.EnvironmentalTickIntervalSeconds;
 
     /// <summary>
     ///     #272 자기장 파생 웨이브: 구역별 완전-밖 시각(안전 반경이 구역 최근접 셀 거리

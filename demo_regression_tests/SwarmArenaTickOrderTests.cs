@@ -23,7 +23,7 @@ public sealed class SwarmArenaTickOrderTests
             "runtime => botMovement.Process(runtime, botDecisions.ResolveSwarmBotDirective),",
             "tickService.Start(tickRunner.Run);");
         AssertInOrder(runner,
-            "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "matchRuntimes.TryEnter(matchingId, out MatchLockScope scope)",
             "return;",
             "using (scope)",
             "scope.Runtime.IsEnded",
@@ -47,7 +47,7 @@ public sealed class SwarmArenaTickOrderTests
             "private static bool ShouldMoveBots(");
         AssertInOrder(
             proximityTick,
-            "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "matchRuntimes.TryEnter(matchingId, out MatchLockScope scope)",
             "runtime.Sessions.Snapshot()",
             "Match session snapshot failed",
             "try",
@@ -67,7 +67,7 @@ public sealed class SwarmArenaTickOrderTests
             proximityTick,
             "using (scope)",
             "processCombat(matchingId, activeSessions);",
-            "scope.Runtime.TryBeginEnvironmentalTick(",
+            "scope.Runtime.TickSchedule.TryBeginEnvironmentalTick(",
             "MatchStartGate.GetGameplayStartedAtUtc(matchingId)",
             "processEnvironment(scope.Runtime, activeSessions);",
             "scope.Runtime.IsEnded ||",
@@ -302,7 +302,7 @@ public sealed class SwarmArenaTickOrderTests
         // 독립 루프의 매치 잠금 안에서 1초 주기를 확인하고 상태 확정 → 송신한다.
         string runner = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickRunner.cs");
         AssertInOrder(runner,
-            "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
+            "matchRuntimes.TryEnter(matchingId, out MatchLockScope scope)",
             "using (scope)",
             "TryBeginAreaClosureTick(",
             "processAreaClosure(matchingId, countdownSessions.ToArray());");
@@ -416,9 +416,9 @@ public sealed class SwarmArenaTickOrderTests
 
         // 매치 하나에 모니터 하나 — 블로킹 진입과 펄스용 TryEnter가 같은 잠금 객체를 쓴다.
         Assert.DoesNotContain("_globalExecutionLock", store);
-        Assert.Contains("Monitor.Enter(Sync);", store);
-        Assert.Contains("Monitor.TryEnter(Sync, ref lockTaken);", store);
-        Assert.Contains("Monitor.Exit(Sync);", store);
+        Assert.Contains("Monitor.Enter(MatchLock);", store);
+        Assert.Contains("Monitor.TryEnter(MatchLock, ref lockTaken);", store);
+        Assert.Contains("Monitor.Exit(MatchLock);", store);
         Assert.Contains("if (IsMatchTerminal(matchingId))", arena);
 
         Assert.DoesNotContain("_swarmCriticalRng", arena);
@@ -698,6 +698,6 @@ public sealed class SwarmArenaTickOrderTests
             .Replace("\r\n", "\n")
             // 표기 차이만 정규화하고 잠금·상태 확정·발행 순서 검사는 유지한다.
             .Replace("matchRuntimes.Enter(matchingId, out var scope)",
-                "matchRuntimes.Enter(matchingId, out MatchScope scope)", StringComparison.Ordinal);
+                "matchRuntimes.Enter(matchingId, out MatchLockScope scope)", StringComparison.Ordinal);
     }
 }

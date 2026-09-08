@@ -24,7 +24,7 @@ internal sealed class MatchTickRunner(
         long matchingId = runtime.MatchingId;
         if (!ReferenceEquals(matchRuntimes.GetOrNull(matchingId), runtime) || runtime.IsEnded)
             return;
-        if (!matchRuntimes.TryEnter(matchingId, out MatchScope scope))
+        if (!matchRuntimes.TryEnter(matchingId, out MatchLockScope scope))
         {
             RecordBotTickBusySkip(matchingId);
             return;
@@ -61,8 +61,8 @@ internal sealed class MatchTickRunner(
                 processCombat(matchingId, activeSessions);
                 if (scope.Runtime.IsEnded)
                     return;
-                if (scope.Runtime.TryBeginEnvironmentalTick(
-                        DateTime.UtcNow, MatchStartGate.GetGameplayStartedAtUtc(matchingId)))
+                if (scope.Runtime.TickSchedule.TryBeginEnvironmentalTick(
+                        DateTime.UtcNow, MatchStartGate.GetGameplayStartedAtUtc(matchingId), scope.Runtime.IsEnded))
                 {
                     processEnvironment(scope.Runtime, activeSessions);
                 }
@@ -77,8 +77,8 @@ internal sealed class MatchTickRunner(
 
             try
             {
-                if (scope.Runtime.TryBeginAreaClosureTick(
-                        DateTime.UtcNow, MatchStartGate.GetGameplayStartedAtUtc(matchingId)))
+                if (scope.Runtime.TickSchedule.TryBeginAreaClosureTick(
+                        DateTime.UtcNow, MatchStartGate.GetGameplayStartedAtUtc(matchingId), scope.Runtime.IsEnded))
                 {
                     processAreaClosure(matchingId, countdownSessions.ToArray());
                 }

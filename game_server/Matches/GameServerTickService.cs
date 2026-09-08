@@ -40,7 +40,7 @@ internal sealed class GameServerTickService(
     private void StartMatchTickLoop(MatchRuntime runtime)
     {
         // 생성·제거와 루프 연결이 엇갈리지 않게 매치 잠금을 먼저 잡는다.
-        lock (runtime.Sync)
+        lock (runtime.MatchLock)
         lock (_lifecycleLock)
         {
             if (_stopTask != null || runtime.IsEnded || _loops.ContainsKey(runtime) ||

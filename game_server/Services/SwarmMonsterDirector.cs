@@ -242,44 +242,30 @@ public sealed class SwarmMonsterDirector
     private const float EscalationStage2MoveSpeedMultiplier = 1.1f;
 
     /// <summary>
-    ///     몹 스폰 스위치 (촬영용). GameServer 기동 시 확정되며 실행 중에는 바뀌지 않는다.
-    /// </summary>
-
-    /// <summary>
     ///     이 매치의 자기장 스폰 위치 계산 함수. MatchFieldService의 규칙을 연결한다.
     ///     경계가 통과 중이면 경계 바깥에서, 안전한 구역이면 바깥쪽 띠에서 스폰해 안쪽으로 이동한다.
     /// </summary>
     public Func<long, AreaType, (Cell Spawn, Cell Anchor)?>? FieldSpawnCellResolver { get; set; }
 
-    /// <summary>폐쇄된 구역은 신규 스폰을 멈춘다 — 잔존 몹은 이주로 처리된다.</summary>
-    public Func<long, AreaType, bool>? IsAreaClosedResolver { get; set; }
-
-    /// <summary>매치가 시작됐는가. 없으면 시작된 것으로 본다 — 봇 전용 매치는 게이트가 없다.</summary>
-    public Func<long, bool>? IsGameplayActiveResolver { get; set; }
-
-    /// <summary>
-    ///     오브가 하나도 없는가 (유저 명세: 무오브는 잔상의 우선 표적).
-    ///     무오브는 자동 공격도 절단도 못 하므로, 잔상까지 남을 쫓으면 구석에서 재건하는
-    ///     동안 아무 압력도 안 받는다 — 그러면 무오브가 안전지대가 된다.
-    ///     주인 배정·재배정에서 무오브를 먼저 채운다.
-    /// </summary>
-    public Func<long, long, bool>? IsPlayerOrblessResolver { get; set; }
-
-    private bool IsOrbless(long matchingId, long playerId) =>
-        IsPlayerOrblessResolver?.Invoke(matchingId, playerId) == true;
+    /// <summary>공격·회복 오브가 없는 플레이어를 우선 추격 대상으로 판정한다.</summary>
+    internal bool IsPlayerOrbless(long playerId) => !_inventory.HasAnySquadOrb(playerId);
 
     private static int GetEscalationStage(double elapsedSeconds) =>
         elapsedSeconds >= EscalationStage2AtSeconds ? 2 :
         elapsedSeconds >= EscalationStage1AtSeconds ? 1 : 0;
 
     private readonly long _matchingId;
+    private readonly AreaClosureManager _closures;
+    private readonly InGameInventoryManager _inventory;
     private MatchState? _state;
     private readonly Func<DateTime> _utcNow;
 
-    public SwarmMonsterDirector(long matchingId, Func<DateTime>? utcNow = null)
+    public SwarmMonsterDirector(long matchingId, AreaClosureManager closures, InGameInventoryManager inventory, Func<DateTime>? utcNow = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(matchingId);
         _matchingId = matchingId;
+        _closures = closures ?? throw new ArgumentNullException(nameof(closures));
+        _inventory = inventory ?? throw new ArgumentNullException(nameof(inventory));
         _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 
@@ -308,9 +294,11 @@ public sealed class SwarmMonsterDirector
         return Interlocked.CompareExchange(ref _state, state, null) == null;
     }
 
+    /// <summary>시작 여부에 따라 시작 전 예열 또는 진행 중 추격·공급을 처리한다.</summary>
     public SwarmArenaTickResult Tick(
         long matchingId,
         IReadOnlyCollection<SwarmParticipantSpatial> participants,
+        bool isGameplayActive,
         DateTime? nowUtc = null)
     {
         var result = new SwarmArenaTickResult();
@@ -325,14 +313,14 @@ public sealed class SwarmMonsterDirector
             state.LastParticipants = participants.ToArray();
 
             // 인트로 예열 구간인가 — 침투가 문턱에서 멈춘다 (유저 판정).
-            bool preMatch = IsGameplayActiveResolver?.Invoke(matchingId) == false;
+            bool preMatch = !isGameplayActive;
 
             // 격화 2단계: 이속만 소폭 상승 — 접촉 데미지는 불변 (M4).
             double moveDeltaSeconds = GetEscalationStage((now - state.StartsAtUtc).TotalSeconds) >= 2
                 ? deltaSeconds * EscalationStage2MoveSpeedMultiplier
                 : deltaSeconds;
 
-            ProcessRegionSupply(state, now, result);
+            ProcessRegionSupply(state, now, result, preMatch);
 
             int probeAlive = 0, probeAggro = 0, probeChasing = 0, probeSameArea = 0, probeCooldown = 0;
             int probeInRange = 0, probeImmuneBlocked = 0, probeWithinOne = 0;
@@ -345,7 +333,7 @@ public sealed class SwarmMonsterDirector
 
                 UpdateSupplyMonsterMovement(
                     state, monster, state.LastParticipants, now, moveDeltaSeconds, preMatch,
-                    playerId => IsOrbless(state.MatchingId, playerId));
+                    IsPlayerOrbless);
                 // 벽 탈출 안전망 (유저 제보: 운동장에 벽에 낀 몹이 많다).
                 // 스폰·행군·추격 어느 경로로 들어갔든, 비보행 칸에 선 개체는 매 틱
                 // 보행 가능한 자리로 당긴다 — 원인을 하나 놓쳐도 화면에는 남지 않는다.
@@ -908,7 +896,7 @@ public sealed class SwarmMonsterDirector
     ///     지역 공급 디렉터: 살아 있는 참가자가 선 열린 구역마다 페이즈별 인당 목표(SupplyPhases)까지 웨이브로
     ///     채운다. 0초부터 보충이 돌아 오브가 첫 틱부터 쏠 것을 갖는다 — 시작 침묵 창은 없다.
     /// </summary>
-    private void ProcessRegionSupply(MatchState state, DateTime now, SwarmArenaTickResult result)
+    private void ProcessRegionSupply(MatchState state, DateTime now, SwarmArenaTickResult result, bool preMatch)
     {
         double elapsed = (now - state.StartsAtUtc).TotalSeconds;
         state.MaxParticipantCount = Math.Max(state.MaxParticipantCount, state.LastParticipants.Length);
@@ -923,7 +911,7 @@ public sealed class SwarmMonsterDirector
         foreach (var participant in state.LastParticipants)
         {
             if (participant.Area == AreaType.None ||
-                IsAreaClosedResolver?.Invoke(state.MatchingId, participant.Area) == true)
+                _closures.IsAreaClosed(participant.Area))
                 continue;
             if (!occupied.TryGetValue(participant.Area, out var roster))
             {
@@ -934,8 +922,6 @@ public sealed class SwarmMonsterDirector
             roster.Add(participant.PlayerId);
         }
 
-        bool preMatch = IsGameplayActiveResolver?.Invoke(state.MatchingId) == false;
-
         // 인트로 산개 (유저 결정): 매치 시작 전에는 열린 방 전부를 공급 대상으로 본다.
         // 점유 구역만 채우면 발원지에서 나가는 줄기가 플레이어가 선 방 하나뿐이라 "운동장에서
         // 열 방향으로 뻗어 나간다"가 성립하지 않는다. 게이트가 풀리면 점유 규칙으로 돌아가고,
@@ -944,7 +930,7 @@ public sealed class SwarmMonsterDirector
         {
             foreach (var room in MatchSpawnData.GetPhaseRoomCandidates())
             {
-                if (IsAreaClosedResolver?.Invoke(state.MatchingId, room) == true)
+                if (_closures.IsAreaClosed(room))
                     continue;
                 occupied.TryAdd(room, new List<long>());
             }
@@ -1030,10 +1016,10 @@ public sealed class SwarmMonsterDirector
             // 공백은 카운트다운이 메운다 — 게이트 전에도 디렉터가 돌아 5초를 미리 걷는다.
             int spawned = SpawnSupplyMonsters(
                 state, zone, want, includeCore, phaseIndex, now, result,
-                candidate => IsAreaClosedResolver?.Invoke(state.MatchingId, candidate) == true,
+                _closures.IsAreaClosed,
                 infiltrate: true,
                 roster: roster,
-                isOrbless: playerId => IsOrbless(state.MatchingId, playerId));
+                isOrbless: IsPlayerOrbless);
             if (spawned == 0)
             {
                 // 전 앵커가 플레이어 2.5m 안 — 1초 뒤 재검사.
@@ -1076,7 +1062,7 @@ public sealed class SwarmMonsterDirector
             if (monster.Infiltrating && monster.MarchIsPursuit)
                 continue;
 
-            if (IsAreaClosedResolver?.Invoke(state.MatchingId, monster.HomeArea) != true)
+            if (!_closures.IsAreaClosed(monster.HomeArea))
             {
                 if (!state.ZoneVacatedAtUtc.TryGetValue(monster.HomeArea, out var vacatedAtUtc))
                 {

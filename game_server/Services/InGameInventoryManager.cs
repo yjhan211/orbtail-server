@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
 using network.common;
 using network.common.data;
@@ -227,13 +228,13 @@ public class InGameInventoryManager
 {
     private readonly long _matchingId;
     private MatchingInventoryState? _state;
-    private readonly Action<string>? _logAction;
+    private readonly ILogger _logger;
 
-    internal InGameInventoryManager(long matchingId, Action<string>? logAction = null)
+    internal InGameInventoryManager(long matchingId, ILogger logger)
     {
         _matchingId = matchingId;
         _state = new MatchingInventoryState(matchingId);
-        _logAction = logAction;
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     internal void Release() => Interlocked.Exchange(ref _state, null);
@@ -262,8 +263,9 @@ public class InGameInventoryManager
     {
         var inventory = GetPlayerInventory(playerId);
         var item = inventory.AddItem(itemId, count, giftState);
-        _logAction?.Invoke(
-            $"InGameInventoryManager: Added item (MatchingId={_matchingId}, PlayerId={playerId}, ItemId={itemId}, Count={count}, GiftState={giftState}, ItemUid={item.ItemUid})");
+        _logger.LogInformation(
+            "InGameInventoryManager: Added item (MatchingId={MatchingId}, PlayerId={PlayerId}, ItemId={ItemId}, Count={Count}, GiftState={GiftState}, ItemUid={ItemUid})",
+            _matchingId, playerId, itemId, count, giftState, item.ItemUid);
         return item;
     }
 
@@ -275,8 +277,9 @@ public class InGameInventoryManager
         var inventory = GetPlayerInventory(playerId);
         bool result = inventory.TryRemoveItem(itemUid, count, out updatedItem);
         if (result)
-            _logAction?.Invoke(
-                $"InGameInventoryManager: Removed item (MatchingId={_matchingId}, PlayerId={playerId}, ItemUid={itemUid}, Count={count})");
+            _logger.LogInformation(
+                "InGameInventoryManager: Removed item (MatchingId={MatchingId}, PlayerId={PlayerId}, ItemUid={ItemUid}, Count={Count})",
+                _matchingId, playerId, itemUid, count);
         return result;
     }
 
@@ -286,7 +289,9 @@ public class InGameInventoryManager
         var inventory = GetPlayerInventory(playerId);
         bool result = inventory.TryAddItemWithCapacity(itemId, maxSlots, out addedItem, giftState);
         if (result && addedItem != null)
-            _logAction?.Invoke($"InGameInventoryManager: Added capacity-limited item (MatchingId={_matchingId}, PlayerId={playerId}, ItemId={itemId}, ItemUid={addedItem.ItemUid}, MaxSlots={maxSlots})");
+            _logger.LogInformation(
+                "InGameInventoryManager: Added capacity-limited item (MatchingId={MatchingId}, PlayerId={PlayerId}, ItemId={ItemId}, ItemUid={ItemUid}, MaxSlots={MaxSlots})",
+                _matchingId, playerId, itemId, addedItem.ItemUid, maxSlots);
         return result;
     }
     /// <summary>
@@ -297,9 +302,36 @@ public class InGameInventoryManager
         var inventory = GetPlayerInventory(playerId);
         bool result = inventory.TryRemoveOneByItemId(itemId, out updatedItem);
         if (result)
-            _logAction?.Invoke(
-                $"InGameInventoryManager: Removed one item by ItemId (MatchingId={_matchingId}, PlayerId={playerId}, ItemId={itemId}, ItemUid={updatedItem?.ItemUid})");
+            _logger.LogInformation(
+                "InGameInventoryManager: Removed one item by ItemId (MatchingId={MatchingId}, PlayerId={PlayerId}, ItemId={ItemId}, ItemUid={ItemUid})",
+                _matchingId, playerId, itemId, updatedItem?.ItemUid);
         return result;
+    }
+
+    /// <summary>수량이 남은 공격·회복 오브가 하나라도 있는지 확인한다.</summary>
+    public bool HasAnySquadOrb(long playerId) =>
+        GetPlayerInventory(playerId).GetAllItems().Any(item =>
+            item.Count > 0 &&
+            (OrbData.TryGetColorAndTier(item.ItemId, out _, out int tier)
+                ? tier > 0
+                : OrbData.TryGetRecoveryTier(item.ItemId, out int recoveryTier) && recoveryTier > 0));
+
+    /// <summary>보유한 공격·회복 오브의 수량과 티어 합계를 계산한다. 호출자는 매치 잠금을 보유한다.</summary>
+    public (int OrbCount, int TierSum) GetOrbScore(long playerId)
+    {
+        int orbCount = 0;
+        int tierSum = 0;
+        foreach (var item in GetPlayerInventory(playerId).GetAllItems())
+        {
+            int tier = OrbData.TryGetColorAndTier(item.ItemId, out _, out int attackTier) ? attackTier : OrbData.TryGetRecoveryTier(item.ItemId, out int recoveryTier) ? recoveryTier : 0;
+            if (item.Count <= 0 || tier <= 0)
+            {
+                continue;
+            }
+            orbCount += item.Count;
+            tierSum += tier * item.Count;
+        }
+        return (orbCount, tierSum);
     }
 
     /// <summary>현재 보유 오브 중 최고 티어. 오브가 없으면 0을 반환한다.</summary>
@@ -327,8 +359,9 @@ public class InGameInventoryManager
     {
         var inventory = GetPlayerInventory(playerId);
         var items = inventory.TakeAllItems();
-        _logAction?.Invoke(
-            $"InGameInventoryManager: Dropped all items (MatchingId={_matchingId}, PlayerId={playerId}, Slots={items.Count})");
+        _logger.LogInformation(
+            "InGameInventoryManager: Dropped all items (MatchingId={MatchingId}, PlayerId={PlayerId}, Slots={Slots})",
+            _matchingId, playerId, items.Count);
         return items;
     }
 }

@@ -23,7 +23,7 @@ public sealed class MatchRuntimeStoreTests
         var store = CreateStore(
             onRedisCleanup: _ =>
             {
-                Assert.False(Monitor.IsEntered(runtime!.Sync));
+                Assert.False(Monitor.IsEntered(runtime!.MatchLock));
                 afterCount++;
             });
         runtime = store.GetOrCreate(90001);
@@ -56,7 +56,7 @@ public sealed class MatchRuntimeStoreTests
 
         Parallel.For(0, 64, _ =>
         {
-            Assert.True(store.Enter(1, out MatchScope scope));
+            Assert.True(store.Enter(1, out MatchLockScope scope));
             using (scope)
             {
                 int now = Interlocked.Increment(ref concurrent);
@@ -82,7 +82,7 @@ public sealed class MatchRuntimeStoreTests
 
         Task holder = Task.Run(() =>
         {
-            Assert.True(store.Enter(1, out MatchScope scope));
+            Assert.True(store.Enter(1, out MatchLockScope scope));
             using (scope)
             {
                 firstEntered.Set();
@@ -91,7 +91,7 @@ public sealed class MatchRuntimeStoreTests
         });
 
         Assert.True(firstEntered.Wait(TimeSpan.FromSeconds(5)));
-        Assert.True(store.TryEnter(2, out MatchScope other));
+        Assert.True(store.TryEnter(2, out MatchLockScope other));
         other.Dispose();
         release.Set();
         await holder.WaitAsync(TimeSpan.FromSeconds(5));
@@ -108,7 +108,7 @@ public sealed class MatchRuntimeStoreTests
 
         Task holder = Task.Run(() =>
         {
-            Assert.True(store.Enter(1, out MatchScope scope));
+            Assert.True(store.Enter(1, out MatchLockScope scope));
             using (scope)
             {
                 pulsesRun++;
@@ -124,7 +124,7 @@ public sealed class MatchRuntimeStoreTests
         await holder.WaitAsync(TimeSpan.FromSeconds(5));
 
         // 놓친 두 펄스는 밀리지 않는다 — 다음 진입은 그냥 한 번이다.
-        Assert.True(store.TryEnter(1, out MatchScope next));
+        Assert.True(store.TryEnter(1, out MatchLockScope next));
         using (next)
         {
             pulsesRun++;
@@ -144,7 +144,7 @@ public sealed class MatchRuntimeStoreTests
 
         Parallel.For(0, 32, _ =>
         {
-            using MatchScope scope = runtime.Enter();
+            using MatchLockScope scope = runtime.Enter();
             if (runtime.TryMarkEnded())
                 Interlocked.Increment(ref winners);
         });
@@ -162,7 +162,7 @@ public sealed class MatchRuntimeStoreTests
             onRedisCleanup: cleanupCalls.Add);
         MatchRuntime runtime = store.GetOrCreate(7);
 
-        using (MatchScope scope = runtime.Enter())
+        using (MatchLockScope scope = runtime.Enter())
         {
             Assert.True(runtime.TryMarkEnded());
             Assert.Empty(cleanupCalls);
@@ -189,9 +189,9 @@ public sealed class MatchRuntimeStoreTests
             onRedisCleanup: cleanupCalls.Add);
         MatchRuntime runtime = store.GetOrCreate(3);
 
-        using (MatchScope outer = runtime.Enter())
+        using (MatchLockScope outer = runtime.Enter())
         {
-            using (MatchScope inner = runtime.Enter())
+            using (MatchLockScope inner = runtime.Enter())
             {
                 Assert.True(runtime.TryMarkEnded());
             }
@@ -214,14 +214,14 @@ public sealed class MatchRuntimeStoreTests
         int runs = 0;
         bool heldDuringRun = true;
 
-        using (MatchScope outer = runtime.Enter())
+        using (MatchLockScope outer = runtime.Enter())
         {
-            using (MatchScope inner = runtime.Enter())
+            using (MatchLockScope inner = runtime.Enter())
             {
                 runtime.AfterRelease.Add(() =>
                 {
                     runs++;
-                    heldDuringRun = Monitor.IsEntered(runtime.Sync);
+                    heldDuringRun = Monitor.IsEntered(runtime.MatchLock);
                 });
             }
 
@@ -249,7 +249,7 @@ public sealed class MatchRuntimeStoreTests
             {
                 Assert.False(MatchStartGate.IsGameplayActive(11));
                 order.Add("after");
-                heldDuringAfterCleanup = Monitor.IsEntered(runtime!.Sync);
+                heldDuringAfterCleanup = Monitor.IsEntered(runtime!.MatchLock);
             });
         runtime = store.GetOrCreate(11);
 
@@ -315,7 +315,7 @@ public sealed class MatchRuntimeStoreTests
         MatchRuntimeStore store = CreateStore();
         store.MatchCreated += runtime =>
         {
-            Assert.True(Monitor.IsEntered(runtime.Sync));
+            Assert.True(Monitor.IsEntered(runtime.MatchLock));
             Interlocked.Increment(ref createdCount);
             Thread.SpinWait(5000);
         };

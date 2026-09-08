@@ -259,7 +259,7 @@ internal sealed class MatchArenaService(
             ? participants
             : participants.Where(participant => !dummyIds.Contains(participant.PlayerId)).ToList();
         // 실험장 (#226): 몹은 나오되(색 무기 과녁) 공격 피해만 아래 게이트에서 꺼진다.
-        var tick = matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(matchingId, directorParticipants, nowUtc);
+        var tick = matchRuntimes.GetOrThrow(matchingId).Monsters.Tick(matchingId, directorParticipants, MatchStartGate.IsGameplayActive(matchingId), nowUtc);
 
         // 정지 감시: 8초 이상 제자리인 몹을 매치 로그로 남긴다 — 회귀 감지선.
         foreach (string report in tick.StuckReports)
@@ -1608,7 +1608,7 @@ internal sealed class MatchArenaService(
         if (matchingId <= 0)
             return new { error = "no active match" };
 
-        if (!matchRuntimes.Enter(matchingId, out MatchScope scope))
+        if (!matchRuntimes.Enter(matchingId, out MatchLockScope scope))
             return new { error = "match is no longer active " + matchingId };
 
         using (scope)
@@ -1889,7 +1889,7 @@ internal sealed class MatchArenaService(
     ///     (봇도 같은 인게임 인벤토리를 쓴다).
     /// </summary>
     private (int OrbCount, int TierSum) GetSwarmOrbScore(long matchingId, long playerId) =>
-        matchRuntimes.GetOrThrow(matchingId).GetOrbScore(playerId);
+        matchRuntimes.GetOrThrow(matchingId).Inventory.GetOrbScore(playerId);
 
     /// <summary>
     ///     오브 순위 브로드캐스트 (#226 단계 B): 오브 수가 곧 점수다. 패킷은 잼 순위 시절의

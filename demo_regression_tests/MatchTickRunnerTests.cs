@@ -28,11 +28,11 @@ public sealed class MatchTickRunnerTests
         void Record(string step)
         {
             steps.Add(step);
-            locksHeld.Add(Monitor.IsEntered(fixture.Match.Sync));
+            locksHeld.Add(Monitor.IsEntered(fixture.Match.MatchLock));
         }
         // 실제 시간을 기다리지 않고 환경 정산 시각이 지난 상태를 준비한다.
-        typeof(MatchRuntime).GetProperty(nameof(MatchRuntime.NextEnvironmentalTickAtUtc))!
-            .SetValue(fixture.Match, DateTime.UtcNow.AddSeconds(-1));
+        typeof(MatchTickSchedule).GetProperty(nameof(MatchTickSchedule.NextEnvironmentalTickAtUtc))!
+            .SetValue(fixture.Match.TickSchedule, DateTime.UtcNow.AddSeconds(-1));
         var runner = new MatchTickRunner(fixture.Store, NullLogger.Instance,
             new GroundItemAutoPickupService(TestGameEventLogs.Create(), NullLogger<GroundItemAutoPickupService>.Instance),
             (_, _) => Record("countdown"),

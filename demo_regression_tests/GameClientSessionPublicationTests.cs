@@ -65,7 +65,7 @@ public sealed class GameClientSessionPublicationTests
             fixture.ConnectionFor(session).BeforeSend = protocol =>
             {
                 Assert.Equal(Protocol.G_TO_C_OBJECT_INFO, protocol);
-                Assert.True(Monitor.IsEntered(runtime.Sync));
+                Assert.True(Monitor.IsEntered(runtime.MatchLock));
                 sendCount++;
             };
         }
@@ -80,7 +80,7 @@ public sealed class GameClientSessionPublicationTests
             broadcast.Invoke(joining, null);
 
         Assert.Equal(sendThrows ? 1 : 2, sendCount);
-        Assert.False(Monitor.IsEntered(runtime.Sync));
+        Assert.False(Monitor.IsEntered(runtime.MatchLock));
         Assert.Empty(fixture.ConnectionFor(otherArea).AttemptedProtocols);
     }
 
@@ -431,7 +431,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.True((fixture.Store.GetOrNull(70001)?.Doors.IsDoorOpen(201) == true));
         Assert.True(fixture.ConnectionFor(session)
             .DeserializeSingle<G_TO_C_DOOR_OPEN_ACK>(Protocol.G_TO_C_DOOR_OPEN_ACK).Completed);
-        Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(70001)!.Sync));
+        Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(70001)!.MatchLock));
     }
 
     [Theory]
@@ -523,7 +523,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(201, result.InteractId);
         Assert.False(result.Completed);
         Assert.Equal(ErrorCode.INVALID_GAME_STATE, result.ErrorCode);
-        Assert.False(Monitor.IsEntered(runtime.Sync));
+        Assert.False(Monitor.IsEntered(runtime.MatchLock));
     }
 
     [Fact]
@@ -684,7 +684,7 @@ public sealed class GameClientSessionPublicationTests
             ],
             connection.AttemptedProtocols);
         Assert.DoesNotContain(Protocol.G_TO_C_GROUND_ITEM_PICKUP_RESULT, connection.AttemptedProtocols);
-        Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(70001)!.Sync));
+        Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(70001)!.MatchLock));
     }
 
     [Fact]
@@ -767,7 +767,7 @@ public sealed class GameClientSessionPublicationTests
         Assert.DoesNotContain("RunWithMatchLock", session);
         Assert.DoesNotContain(Enum.GetNames<Protocol>(), name => name.Contains("RNG_COLLECT") || name.Contains("INTERACT_COOLDOWN"));
         var autoPickup = ReadNormalizedSource(root, "game_server", "Services", "GroundItemAutoPickupService.cs");
-        Assert.Contains("Monitor.IsEntered(match.Sync)", autoPickup);
+        Assert.Contains("Monitor.IsEntered(match.MatchLock)", autoPickup);
         Assert.Contains("match.IsEnded", autoPickup);
         Assert.DoesNotContain("RunWithMatchLock", orbSummon);
         Assert.Equal(2, CountOccurrences(orbSummon, "using (match.Enter())"));
@@ -828,7 +828,7 @@ public sealed class GameClientSessionPublicationTests
         connection.BeforeSend = protocol =>
         {
             if (protocol == Protocol.G_TO_C_DOOR_STATE_LIST)
-                sentUnderLock = Monitor.IsEntered(runtime.Sync);
+                sentUnderLock = Monitor.IsEntered(runtime.MatchLock);
         };
         if (sendThrows)
             connection.ThrowOnceOn = Protocol.G_TO_C_DOOR_STATE_LIST;
@@ -842,7 +842,7 @@ public sealed class GameClientSessionPublicationTests
             send.Invoke(session, null);
 
         Assert.True(sentUnderLock);
-        Assert.False(Monitor.IsEntered(runtime.Sync));
+        Assert.False(Monitor.IsEntered(runtime.MatchLock));
     }
 
     [Fact]
@@ -1010,7 +1010,7 @@ public sealed class GameClientSessionPublicationTests
 
         Assert.Equal(1, first.Match.SummonStones.GetSnapshot(first.PlayerId!.Value).StoneCount);
         Assert.Equal(1, second.Match.SummonStones.GetSnapshot(second.PlayerId!.Value).StoneCount);
-        Assert.False(Monitor.IsEntered(first.Match.Sync));
+        Assert.False(Monitor.IsEntered(first.Match.MatchLock));
     }
 
     [Fact]

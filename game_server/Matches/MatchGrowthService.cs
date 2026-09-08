@@ -36,7 +36,7 @@ internal sealed class MatchGrowthService(
         int CostSummon, int CostAttack, int CostDefense) GetCostBreakdown(
         long matchingId, long playerId)
     {
-        var (orbCount, _) = matchRuntimes.GetOrThrow(matchingId).GetOrbScore(playerId);
+        var (orbCount, _) = matchRuntimes.GetOrThrow(matchingId).Inventory.GetOrbScore(playerId);
         int CardCost(int cardIndex) => Config.GetSwarmGrowthCardCost(
             matchRuntimes.GetOrThrow(matchingId).SummonStones.GetGrowthSuccessCount(playerId, cardIndex), orbCount);
 
@@ -160,13 +160,13 @@ internal sealed class MatchGrowthService(
         foreach (var session in matchRuntimes.GetOrThrow(matchingId).Sessions.Snapshot())
         {
             if (session.PlayerId.HasValue && !session.IsEliminated)
-                top = Math.Max(top, matchRuntimes.GetOrThrow(matchingId).GetOrbScore(session.PlayerId.Value).OrbCount);
+                top = Math.Max(top, matchRuntimes.GetOrThrow(matchingId).Inventory.GetOrbScore(session.PlayerId.Value).OrbCount);
         }
 
         foreach (var bot in matchRuntimes.GetOrThrow(matchingId).Bots.GetBots(matchingId))
         {
             if (!bot.IsEliminated && !bot.IsSwarmCutDummy)
-                top = Math.Max(top, matchRuntimes.GetOrThrow(matchingId).GetOrbScore(bot.PlayerId).OrbCount);
+                top = Math.Max(top, matchRuntimes.GetOrThrow(matchingId).Inventory.GetOrbScore(bot.PlayerId).OrbCount);
         }
 
         return top;

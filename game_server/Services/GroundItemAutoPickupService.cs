@@ -82,7 +82,7 @@ internal sealed class GroundItemAutoPickupService(
 
     private static void RequireMatchLock(MatchRuntime match)
     {
-        if (!Monitor.IsEntered(match.Sync))
+        if (!Monitor.IsEntered(match.MatchLock))
             throw new InvalidOperationException("Automatic pickup requires the match lock.");
     }
 

@@ -31,7 +31,7 @@ public sealed class GameClientSessionConnectPublicationTests
         var session = fixture.CreateSession(74011, 8111, _ =>
         {
             successSent = true;
-            successHeldLock = Monitor.IsEntered(runtime.Sync);
+            successHeldLock = Monitor.IsEntered(runtime.MatchLock);
             return true;
         });
         var initialPackets = new List<(Protocol Protocol, bool HeldLock)>();
@@ -41,7 +41,7 @@ public sealed class GameClientSessionConnectPublicationTests
             using var wire = Packet.Create(packet.ToBytes());
             var protocol = (Protocol)wire.PopProtocolId();
             if (protocol is Protocol.G_TO_C_MATCH_ROSTER or Protocol.G_TO_C_ORB_LIST or Protocol.G_TO_C_OBJECT_INFO)
-                initialPackets.Add((protocol, Monitor.IsEntered(runtime.Sync)));
+                initialPackets.Add((protocol, Monitor.IsEntered(runtime.MatchLock)));
             if (protocol == Protocol.G_TO_C_ORB_LIST)
             {
                 spawnInitialized = session.LastValidatedPosition != null;
@@ -60,9 +60,9 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.False(successHeldLock);
         await Task.Run(() =>
         {
-            bool acquired = Monitor.TryEnter(runtime.Sync, TimeSpan.FromSeconds(2));
+            bool acquired = Monitor.TryEnter(runtime.MatchLock, TimeSpan.FromSeconds(2));
             try { Assert.True(acquired); }
-            finally { if (acquired) Monitor.Exit(runtime.Sync); }
+            finally { if (acquired) Monitor.Exit(runtime.MatchLock); }
         }).WaitAsync(TimeSpan.FromSeconds(5));
     }
 
@@ -131,7 +131,7 @@ public sealed class GameClientSessionConnectPublicationTests
         int sent = 0;
         ((AcceptingConnection)fixture.Connection).BeforeSend = _ =>
         {
-            Assert.True(Monitor.IsEntered(original.Sync));
+            Assert.True(Monitor.IsEntered(original.MatchLock));
             sent++;
         };
         await (Task)handle.Invoke(session, null)!;
@@ -277,7 +277,7 @@ public sealed class GameClientSessionConnectPublicationTests
         Assert.Equal(1, GetIntField(session, "_entryCompleted"));
 
         // 큐 적재가 막혀 있어도 매치 잠금은 비어 있다 — 같은 매치 작업과 터미널 정리가 그대로 진행된다.
-        Assert.True(fixture.Store.TryEnter(matchingId, out MatchScope probe));
+        Assert.True(fixture.Store.TryEnter(matchingId, out MatchLockScope probe));
         using (probe)
         {
             Assert.True(probe.Runtime.TryMarkEnded());
@@ -460,7 +460,7 @@ public sealed class GameClientSessionConnectPublicationTests
         if (runtime == null)
             return false;
 
-        using MatchScope scope = MatchRuntimeStore.Enter(runtime);
+        using MatchLockScope scope = MatchRuntimeStore.Enter(runtime);
         if (runtime.IsEnded)
             return false;
 

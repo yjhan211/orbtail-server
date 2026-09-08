@@ -46,7 +46,7 @@ internal static class MatchInteractionService
 
     private static void RequireLock(MatchRuntime runtime)
     {
-        if (!Monitor.IsEntered(runtime.Sync))
+        if (!Monitor.IsEntered(runtime.MatchLock))
             throw new InvalidOperationException("Interaction changes require the match lock.");
     }
 }

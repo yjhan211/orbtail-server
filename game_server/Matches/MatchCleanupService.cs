@@ -63,7 +63,7 @@ internal sealed class MatchCleanupService(
                         stats.TotalRecovery,
                         // 승점 (#229): 사람이 나간 매치도 오브 수를 남긴다 — 봇 매치가 유일한
                         // 자동 검증 창구라 여기서 빠지면 결과 집계를 로그로 확인할 수 없다.
-                        runtime.GetOrbScore(row.playerId).OrbCount);
+                        runtime.Inventory.GetOrbScore(row.playerId).OrbCount);
                 })
                 .ToList();
             eventLogs.LogMatchAbandoned(matchingId, endReason, finalPlayerStats);

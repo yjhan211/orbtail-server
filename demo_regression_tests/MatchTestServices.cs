@@ -1,6 +1,7 @@
 using game_server.matches;
 using game_server.services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace demo_regression_tests;
 
@@ -10,7 +11,7 @@ namespace demo_regression_tests;
 /// </summary>
 internal static class MatchTestServices
 {
-    public static InGameInventoryManager Inventory(long matchingId = 1) => new(matchingId);
+    public static InGameInventoryManager Inventory(long matchingId = 1) => new(matchingId, NullLogger.Instance);
     public static GroundItemManager GroundItems(long matchingId = 1, TimeProvider? timeProvider = null) => new(matchingId, timeProvider);
     public static SummonStoneManager SummonStones(long matchingId = 1) => new(matchingId);
     public static EncounterRevealManager Encounters() => new();

@@ -2,7 +2,6 @@ using game_server.matches.states;
 using game_server.services;
 using game_server.sessions;
 using Microsoft.Extensions.Logging;
-using network.common.data;
 
 namespace game_server.matches;
 
@@ -15,8 +14,6 @@ namespace game_server.matches;
 /// </summary>
 internal sealed class MatchRuntime
 {
-    public const int EnvironmentalTickIntervalSeconds = 5;
-
     private readonly MatchRuntimeStore _runtimeStore;
     private readonly ILogger<MatchRuntime> _logger;
 
@@ -36,20 +33,16 @@ internal sealed class MatchRuntime
         _logger = logger;
         _matchingLifecycle = matchingLifecycle;
         MatchingId = matchingId;
+        TickSchedule = new MatchTickSchedule(MatchLock);
         SunOrbAttacks = new SunOrbAttackState(matchingId);
         Bots = new BotPlayerManager(matchingId, logger, Doors, SunOrbAttacks);
         AutoAttack = new AutoAttackController(matchingId);
-        Inventory = new InGameInventoryManager(matchingId, message => logger.LogInformation("{Message}", message));
+        Inventory = new InGameInventoryManager(matchingId, logger);
         GroundItems = new GroundItemManager(matchingId);
         Roster = new RosterManager(matchingId, logger);
         SummonStones = new SummonStoneManager(matchingId);
         Closures = new AreaClosureManager(matchingId, logger);
-        Monsters = new SwarmMonsterDirector(matchingId)
-        {
-            IsAreaClosedResolver = (_, area) => Closures.IsAreaClosed(area),
-            IsGameplayActiveResolver = _ => MatchStartGate.IsGameplayActive(MatchingId),
-            IsPlayerOrblessResolver = (_, playerId) => !HasAnySquadOrb(playerId)
-        };
+        Monsters = new SwarmMonsterDirector(matchingId, Closures, Inventory);
     }
 
     public long MatchingId { get; }
@@ -74,14 +67,10 @@ internal sealed class MatchRuntime
     public RosterManager Roster { get; }
     public PresentationState Presentation { get; } = new();
     public AreaClosureManager Closures { get; }
-    public object Sync { get; } = new();
+    public object MatchLock { get; } = new();
     public bool IsEnded => Volatile.Read(ref _ended) != 0;
     public SemaphoreSlim EntryInitializationLock { get; } = new(1, 1);
 
-    /// <summary>
-    ///     매치 구성 — 사람 ID·모드와 GameServer가 만든 봇 ID·스폰·최종 명단. 매치 초기화 잠금 안에서 한 번 세우고
-    ///     이후 사람 세션은 읽기만 한다. 개발 모드도 프로세스 전역이 아니라 이 매치 구성에 고정된다.
-    /// </summary>
     public MatchComposition? Composition
     {
         get => Volatile.Read(ref _composition);
@@ -94,126 +83,55 @@ internal sealed class MatchRuntime
         set => Volatile.Write(ref _tickLoop, value);
     }
 
-    public DateTime? NextAreaClosureTickAtUtc { get; private set; }
-    public DateTime? NextEnvironmentalTickAtUtc { get; private set; }
+    public MatchTickSchedule TickSchedule { get; }
 
-    /// <summary>이 매치의 잠금을 잡는다. 스코프가 끝나면 잠금을 해제하고 필요한 종료 정리를 수행한다.</summary>
-    public MatchScope Enter()
+    public MatchLockScope Enter()
     {
-        Monitor.Enter(Sync);
+        Monitor.Enter(MatchLock);
         _lockDepth++;
-        return new MatchScope(this);
+        return new MatchLockScope(this);
     }
 
-    /// <summary>기다리지 않고 매치 잠금을 잡는다. 다른 스레드가 사용 중이면 false를 반환한다.</summary>
-    public bool TryEnter(out MatchScope scope)
+    public bool TryEnter(out MatchLockScope scope)
     {
         scope = default;
         bool lockTaken = false;
-        Monitor.TryEnter(Sync, ref lockTaken);
+        Monitor.TryEnter(MatchLock, ref lockTaken);
         if (!lockTaken)
+        {
             return false;
-
+        }
         _lockDepth++;
-        scope = new MatchScope(this);
+        scope = new MatchLockScope(this);
         return true;
     }
 
-    public bool TryBeginAreaClosureTick(DateTime utcNow, DateTime? gameplayStartedAtUtc)
-    {
-        if (!Monitor.IsEntered(Sync))
-        {
-            throw new InvalidOperationException("Area closure tick requires the match monitor to be held.");
-        }
-
-        if (IsEnded || gameplayStartedAtUtc is not { } startedAt || utcNow < startedAt.AddSeconds(1))
-        {
-            return false;
-        }
-
-        if (NextAreaClosureTickAtUtc is { } next && utcNow < next)
-        {
-            return false;
-        }
-        NextAreaClosureTickAtUtc = utcNow.AddSeconds(1);
-        return true;
-    }
-
-    /// <summary>
-    ///     매치 시작 기준 5초마다 환경 정산을 한 번 허용한다. 반드시 매치 잠금 안에서 호출한다.
-    ///     지연된 구간은 몰아서 정산하지 않고 다음 5초 경계로 건너뛴다.
-    ///     실행 전에 시각을 넘겨 예외가 나더라도 매 50ms마다 같은 정산을 반복하지 않는다.
-    /// </summary>
-    public bool TryBeginEnvironmentalTick(DateTime utcNow, DateTime? gameplayStartedAtUtc)
-    {
-        if (!Monitor.IsEntered(Sync))
-            throw new InvalidOperationException("Environmental tick requires the match monitor to be held.");
-        if (IsEnded || gameplayStartedAtUtc is not { } startedAt || utcNow < startedAt)
-            return false;
-
-        NextEnvironmentalTickAtUtc ??= startedAt.AddSeconds(EnvironmentalTickIntervalSeconds);
-        if (utcNow < NextEnvironmentalTickAtUtc.Value)
-            return false;
-
-        long intervalTicks = TimeSpan.TicksPerSecond * EnvironmentalTickIntervalSeconds;
-        long nextInterval = (utcNow.Ticks - startedAt.Ticks) / intervalTicks + 1;
-        NextEnvironmentalTickAtUtc = startedAt.AddTicks(nextInterval * intervalTicks);
-        return true;
-    }
-
-    /// <summary>이 매치의 인벤토리에 수량이 남은 공격·회복 오브가 있는지 확인한다.</summary>
-    public bool HasAnySquadOrb(long playerId)
-    {
-        return Inventory.GetPlayerInventory(playerId).GetAllItems().Any(item =>
-            item.Count > 0 &&
-            (OrbData.TryGetColorAndTier(item.ItemId, out _, out int tier)
-                ? tier > 0
-                : OrbData.TryGetRecoveryTier(item.ItemId, out int recoveryTier) && recoveryTier > 0));
-    }
-
-    /// <summary>이 매치의 보유 오브 수량과 티어 합계를 계산한다. 호출자는 매치 잠금을 보유한다.</summary>
-    public (int OrbCount, int TierSum) GetOrbScore(long playerId)
-    {
-        int orbCount = 0;
-        int tierSum = 0;
-        foreach (var item in Inventory.GetPlayerInventory(playerId).GetAllItems())
-        {
-            int tier = OrbData.TryGetColorAndTier(item.ItemId, out _, out int attackTier)
-                ? attackTier
-                : OrbData.TryGetRecoveryTier(item.ItemId, out int recoveryTier) ? recoveryTier : 0;
-            if (item.Count <= 0 || tier <= 0)
-                continue;
-            orbCount += item.Count;
-            tierSum += tier * item.Count;
-        }
-        return (orbCount, tierSum);
-    }
-
-    /// <summary>매치를 종료 상태로 표시한다. 매치 잠금 안에서 호출하며 처음 표시한 호출자만 true를 받는다.</summary>
     public bool TryMarkEnded()
     {
-        if (!Monitor.IsEntered(Sync))
+        if (!Monitor.IsEntered(MatchLock))
+        {
             throw new InvalidOperationException("TryMarkEnded requires the match monitor to be held.");
+        }
 
         return Interlocked.CompareExchange(ref _ended, 1, 0) == 0;
     }
 
     internal void Exit()
     {
-        Action[] afterRelease = [];
+        Action[] afterRelease;
         bool startRedisCleanup = false;
         try
         {
             _lockDepth--;
             if (_lockDepth > 0)
+            {
                 return;
+            }
 
             if (IsEnded && !_cleanupStarted)
             {
-                // 같은 잠금을 쓰는 틱의 게임 처리는 여기까지 끝났다. 자기 루프를 await하지 않고
-                // 다음 틱을 막은 뒤 정리한다. 서버 종료는 별도로 루프 Completion까지 기다린다.
-                TickLoop?.Stop();
                 _cleanupStarted = true;
+                TickLoop?.Stop();
                 Sessions.Close();
                 Doors.Clear();
                 try
@@ -235,23 +153,24 @@ internal sealed class MatchRuntime
                 Bots.Release();
                 Monsters.Release();
                 AutoAttack.Release();
-
                 _runtimeStore.RemoveCompleted(this);
                 startRedisCleanup = true;
             }
 
             if (AfterRelease.Count == 0 && !startRedisCleanup)
+            {
                 return;
+            }
 
             afterRelease = AfterRelease.ToArray();
             AfterRelease.Clear();
         }
         finally
         {
-            Monitor.Exit(Sync);
+            Monitor.Exit(MatchLock);
         }
 
-        foreach (Action action in afterRelease)
+        foreach (var action in afterRelease)
         {
             try
             {
@@ -259,22 +178,22 @@ internal sealed class MatchRuntime
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(
-                    ex,
-                    "Match post-release action failed: MatchingId={MatchingId}",
-                    MatchingId);
+                _logger.LogWarning(ex, "Match post-release action failed: MatchingId={MatchingId}", MatchingId);
             }
         }
-        if (startRedisCleanup)
+
+        if (!startRedisCleanup)
         {
-            try
-            {
-                _matchingLifecycle.StartRedisCleanup(MatchingId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogWarning(ex, "Match Redis cleanup could not be started: MatchingId={MatchingId}", MatchingId);
-            }
+            return;
+        }
+
+        try
+        {
+            _matchingLifecycle.StartRedisCleanup(MatchingId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Match Redis cleanup could not be started: MatchingId={MatchingId}", MatchingId);
         }
     }
 }

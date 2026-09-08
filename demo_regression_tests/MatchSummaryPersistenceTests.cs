@@ -608,9 +608,9 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         Assert.True(Find(worker, "finally") < Find(worker, "CompleteMatchingRedisCleanup(operationId, completion);"));
         string runtime = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntime.cs");
         string exit = runtime.Substring(runtime.IndexOf("internal void Exit()", StringComparison.Ordinal));
-        Assert.True(Find(exit, "_runtimeStore.RemoveCompleted(this);") < Find(exit, "Monitor.Exit(Sync);"));
-        Assert.True(Find(exit, "Monitor.Exit(Sync);") < Find(exit, "foreach (Action action in afterRelease)"));
-        Assert.True(Find(exit, "foreach (Action action in afterRelease)") < Find(exit, "_matchingLifecycle.StartRedisCleanup(MatchingId);"));
+        Assert.True(Find(exit, "_runtimeStore.RemoveCompleted(this);") < Find(exit, "Monitor.Exit(MatchLock);"));
+        Assert.True(Find(exit, "Monitor.Exit(MatchLock);") < Find(exit, "foreach (var action in afterRelease)"));
+        Assert.True(Find(exit, "foreach (var action in afterRelease)") < Find(exit, "_matchingLifecycle.StartRedisCleanup(MatchingId);"));
         Assert.Contains("if (IsEnded && !_cleanupStarted)", exit);
         Assert.Contains("startRedisCleanup = true;", exit);
     }

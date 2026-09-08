@@ -262,7 +262,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         var connection = fixture.ConnectionFor(session);
         var runtime = fixture.Store.GetOrThrow(FirstMatchingId);
         var locks = new List<bool>();
-        connection.BeforeSend = _ => locks.Add(Monitor.IsEntered(runtime.Sync));
+        connection.BeforeSend = _ => locks.Add(Monitor.IsEntered(runtime.MatchLock));
         await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
         await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_START, new C_TO_G_DOOR_OPEN_START { InteractId = int.MaxValue });
         Assert.Contains(Protocol.G_TO_C_SUMMON_ORB_RESULT, connection.DeliveredProtocols);
@@ -396,7 +396,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal((long)color, success.TargetItemUid);
         Assert.Equal(20 - upgradeCost, success.StoneCount);
         Assert.Equal(0, success.TargetOrdinal);
-        Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(FirstMatchingId)!.Sync));
+        Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(FirstMatchingId)!.MatchLock));
     }
 
     [Fact]
@@ -494,7 +494,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(1, fixture.Runtime(FirstMatchingId).OrbUpgrades.GetFamilyUpgradeCount(
             FirstPlayerId,
             OrbColor.Red));
-        Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(FirstMatchingId)!.Sync));
+        Assert.False(Monitor.IsEntered(fixture.Store.GetOrNull(FirstMatchingId)!.MatchLock));
 
         // 실패한 핸들러가 잠금을 풀었으므로 종료 정리가 바로 진행된다.
         fixture.MarkTerminal(FirstMatchingId);
