@@ -784,16 +784,15 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Contains(
             "Protocol.C_TO_G_COMBINE_ITEMS,\n            async bytes => await HandleMessage<C_TO_G_COMBINE_ITEMS>(bytes, HandleCombineItems)",
             session);
-        Assert.Equal(1, CountOccurrences(combine, "RunWithMatchLock("));
-        Assert.Contains("private Task ProcessCombineItems(", combine);
-        Assert.Contains("MatchingId <= 0", ReadMethodSlice(
+        Assert.DoesNotContain("RunWithMatchLock", combine);
+        Assert.DoesNotContain("ProcessCombineItems", combine);
+        string handler = ReadMethodSlice(
             combine,
             "private Task HandleCombineItems(",
-            "private Task ProcessCombineItems("));
-        Assert.DoesNotContain("RunWithMatchLock", ReadMethodSlice(
-            combine,
-            "private Task ProcessCombineItems(",
-            "private void SendBattleItemCombineResult("));
+            "private void SendBattleItemCombineResult(");
+        Assert.Contains("MatchingId <= 0", handler);
+        Assert.Contains("using (match.Enter())", handler);
+        Assert.Contains("match.IsTerminal || IsGameplayActionBlocked(out _)", handler);
         Assert.Contains("RunWithMatchLock", ReadMethodSlice(orbSummon,
             "private Task HandleSummonOrb(",
             "internal bool ExecuteDraftOrbSummon("));

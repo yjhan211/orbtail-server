@@ -1,63 +1,41 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using game_server.services;
 using MessagePack;
-using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
-using network.helpers;
 using network.packets;
 
 namespace game_server.sessions;
 
-/// <summary>
-///     사람 아이템 조합 요청을 받아 ItemCombinationService를 매치 잠금 안에서 호출하고
-///     결과/실패 bundle을 같은 순서로 보낸다.
-/// </summary>
 public partial class GameClientSession
 {
-    /// <summary>
-    ///     조합 요청의 outer 경계. PlayerId가 없으면 조용히 끝내고 matchingId가 없으면 터미널과 같은
-    ///     INVALID_GAME_STATE 거부 bundle을 보낸다 (매치 밖 조합 core는 없다). 유효한 매치는 잠금 안에서
-    ///     core를 돌리고, 터미널이면 같은 거부 bundle을 보낸다.
-    ///     ClientStartUnixMs는 legacy payload key/Int64 shape 보존 필드이며 순서 결정에는 사용하지 않는다.
-    /// </summary>
     private Task HandleCombineItems(C_TO_G_COMBINE_ITEMS msg)
     {
         if (!PlayerId.HasValue) return Task.CompletedTask;
-        if (MatchingId <= 0)
+        var match = Volatile.Read(ref _match);
+        if (MatchingId <= 0 || match == null)
         {
             SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INVALID_GAME_STATE);
             return Task.CompletedTask;
         }
 
-        return RunWithMatchLock(
-            () => ProcessCombineItems(msg),
-            () => SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INVALID_GAME_STATE));
-    }
-
-    /// <summary>
-    ///     매치 잠금 안에서 동기 완료해야 하는 권위 조합 core.
-    ///     미션 부품 결합은 퇴역(#238)했고 배틀아이템·오브 조합과 기존 packet/log 순서만 유지한다.
-    /// </summary>
-    private Task ProcessCombineItems(C_TO_G_COMBINE_ITEMS msg)
-    {
-        if (IsGameplayActionBlocked(out _))
+        using (match.Enter())
         {
-            SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INVALID_GAME_STATE);
-            return Task.CompletedTask;
+            if (match.IsTerminal || IsGameplayActionBlocked(out _))
+            {
+                SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INVALID_GAME_STATE);
+                return Task.CompletedTask;
+            }
+
+            if (!_itemCombinations.TryCombine(
+                    match, PlayerId.Value, CurrentArea, msg,
+                    (outputItemId, changedItems, recipeId) =>
+                        SendBattleItemCombineResult(msg, outputItemId, changedItems, recipeId),
+                    errorCode => SendCombineItemsFailure(msg.ItemA, msg.ItemB, errorCode)))
+            {
+                SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INSUFFICIENT_ITEM);
+            }
         }
 
-        if (_itemCombinations.TryCombine(
-                Match, PlayerId!.Value, CurrentArea, msg,
-                (outputItemId, changedItems, recipeId) =>
-                    SendBattleItemCombineResult(msg, outputItemId, changedItems, recipeId),
-                errorCode => SendCombineItemsFailure(msg.ItemA, msg.ItemB, errorCode)))
-            return Task.CompletedTask;
-
-        SendCombineItemsFailure(msg.ItemA, msg.ItemB, ErrorCode.INSUFFICIENT_ITEM);
         return Task.CompletedTask;
     }
 
