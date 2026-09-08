@@ -12,8 +12,8 @@ public sealed class SwarmMatchRuntimeTests
     [Fact]
     public void TerminalCleanup_RemovesSwarmWithItsMatchEvenIfPostCleanupFails()
     {
-        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
-            afterCleanup: _ => throw new InvalidOperationException());
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+            onRedisCleanup: _ => throw new InvalidOperationException());
         var ended = store.GetOrCreate(91001);
         var sibling = store.GetOrCreate(91002);
         ended.Swarm.OrbBoard.IncrementFamilyUpgradeCount(1, OrbColor.Red);
@@ -73,7 +73,7 @@ public sealed class SwarmMatchRuntimeTests
     [Fact]
     public void MatchLocalState_IsIsolatedWhenTwoRuntimesUseTheSameKeys()
     {
-        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         SwarmMatchRuntime first = store.GetOrCreate(42001).Swarm;
         SwarmMatchRuntime second = store.GetOrCreate(42002).Swarm;
         const long playerId = 501;
@@ -148,7 +148,7 @@ public sealed class SwarmMatchRuntimeTests
     [Fact]
     public void GetOrCreate_ReturnsSameRuntimeForSameIdAndIsolatesDifferentIds()
     {
-        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         const long firstMatchingId = 42001;
         const long secondMatchingId = 42002;
 
@@ -166,7 +166,7 @@ public sealed class SwarmMatchRuntimeTests
     [Fact]
     public void Remove_PreservesSiblingAndNextGetOrCreateBuildsNewAggregate()
     {
-        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         const long removedMatchingId = 42003;
         const long siblingMatchingId = 42004;
 
@@ -191,7 +191,7 @@ public sealed class SwarmMatchRuntimeTests
     [Fact]
     public void Remove_DropsWholeAggregateWithoutTouchingSiblingHolderState()
     {
-        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         const long removedMatchingId = 42005;
         const long siblingMatchingId = 42006;
         const long removedPlayerId = 501;
@@ -281,7 +281,7 @@ public sealed class SwarmMatchRuntimeTests
     [Fact]
     public void OfferIds_RemainProcessWideAcrossMatchesAndRuntimeRecreation()
     {
-        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         const long firstMatchingId = 42007;
         const long secondMatchingId = 42008;
 
@@ -300,7 +300,7 @@ public sealed class SwarmMatchRuntimeTests
     [Fact]
     public void CrossfireEventIds_RemainProcessWideAndThreadSafeAcrossRuntimeRecreation()
     {
-        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         const long firstMatchingId = 42011;
         const long secondMatchingId = 42012;
 

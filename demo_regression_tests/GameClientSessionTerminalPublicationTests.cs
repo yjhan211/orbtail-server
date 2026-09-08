@@ -288,9 +288,9 @@ public sealed class GameClientSessionTerminalPublicationTests
         public TerminalFixture()
         {
             Logger = new TimelineLogger(Timeline);
-            Store = new MatchRuntimeStore(
+            Store = TestGameSessionServices.CreateMatchRuntimeStore(
                 Logger,
-                afterCleanup: _ => Interlocked.Increment(ref _cleanupCount));
+                onRedisCleanup: _ => Interlocked.Increment(ref _cleanupCount));
 
         }
 

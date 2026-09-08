@@ -273,7 +273,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
     [Fact]
     public void GrowthCost_IsReadOnlyAndUsesRequestedMatch()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var server = GameServerTestAccess.Create(store);
         var first = store.GetOrCreate(947201);
         var second = store.GetOrCreate(947202);

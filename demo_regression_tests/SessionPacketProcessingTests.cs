@@ -95,7 +95,7 @@ public sealed class SessionPacketProcessingTests
         var flags = BindingFlags.Static | BindingFlags.NonPublic;
         var active = (int)typeof(TcpConnection).GetField("StateActive", flags)!.GetRawConstantValue()!;
         typeof(TcpConnection).GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(connection, active);
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var logs = TestGameEventLogs.Create();
         var session = new GameClientSession(
             connection,

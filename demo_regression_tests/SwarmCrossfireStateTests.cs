@@ -242,7 +242,7 @@ public sealed class SwarmCrossfireStateTests
     }
 
     private static SwarmCrossfireState CreateState(long matchingId = 43000) =>
-        new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)
+        TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance)
             .GetOrCreate(matchingId).Swarm.Crossfire;
 
     private static SwarmCrossfireShape CreateShape(

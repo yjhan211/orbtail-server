@@ -196,7 +196,7 @@ public class SummonStoneManagerTests
     [Fact]
     public void RuntimeRemoval_PreventsRecreatingPlayerBalances()
     {
-        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         var runtime = store.GetOrCreate(202);
         var manager = runtime.SummonStones;
         manager.AddStones(10, 9);

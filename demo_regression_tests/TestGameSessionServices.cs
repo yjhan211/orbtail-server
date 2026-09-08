@@ -21,6 +21,27 @@ internal sealed class FakePlayerGrowthHandler(
 
 internal static class TestGameSessionServices
 {
+    // 단위 테스트도 실제 Lifecycle을 사용한다. Redis/NATS만 인메모리 구현으로 대체한다.
+    public static MatchRuntimeStore CreateMatchRuntimeStore(
+        Microsoft.Extensions.Logging.ILogger logger,
+        Action<long>? onRedisCleanup = null,
+        bool monsterSpawnEnabled = true,
+        MatchEventArchive? eventArchive = null)
+    {
+        var redis = new InMemoryRedisOperations();
+        if (onRedisCleanup != null)
+        {
+            redis.BeforeKeyDeleteAsync = key =>
+            {
+                long matchingId = long.Parse(key.Split(':')[1], System.Globalization.CultureInfo.InvariantCulture);
+                onRedisCleanup(matchingId);
+                return Task.CompletedTask;
+            };
+        }
+        var lifecycle = new MatchingLifecycleService(redis,
+            new MatchStartCountdownPublicationTests.NoOpNatsClient(), logger);
+        return new MatchRuntimeStore(logger, lifecycle, monsterSpawnEnabled, eventArchive);
+    }
     public static PlayerMovementService GetMovement(GameClientSession session) =>
         (PlayerMovementService)typeof(GameClientSession).GetField("_playerMovement",
             System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(session)!;
@@ -60,7 +81,7 @@ internal static class TestGameSessionServices
     }
     public static MatchCleanupService CreateMatchCleanupService()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = CreateMatchRuntimeStore(NullLogger.Instance);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var cleanup = new MatchCleanupService(store, logs,
             new MatchSummaryFileStore(), NullLogger.Instance);

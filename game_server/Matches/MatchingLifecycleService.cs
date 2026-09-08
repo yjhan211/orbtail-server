@@ -244,40 +244,25 @@ public sealed class MatchingLifecycleService(IRedisOperations redisOperations, I
         }
     }
 
-    internal Action PrepareRedisCleanup(long matchingId)
+    /// <summary>Redis 정리를 추적 목록에 등록한 뒤 시작한다. 서버 종료는 DrainAsync로 완료를 기다린다.</summary>
+    internal void StartRedisCleanup(long matchingId)
     {
         long operationId = Interlocked.Increment(ref _nextMatchingRedisCleanupId);
-        var completion = new TaskCompletionSource<bool>(
-            TaskCreationOptions.RunContinuationsAsynchronously);
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_pendingMatchingRedisCleanupTasks.TryAdd(operationId, completion.Task))
+            throw new InvalidOperationException($"Duplicate matching Redis cleanup operation id: {operationId}.");
+
+        try
         {
-            throw new InvalidOperationException(
-                $"Duplicate matching Redis cleanup operation id: {operationId}.");
+            _ = RunTrackedMatchingRedisCleanupAsync(matchingId, operationId, completion);
         }
-
-        int dispatchStarted = 0;
-        return () =>
+        catch (Exception ex)
         {
-            if (Interlocked.Exchange(ref dispatchStarted, 1) != 0)
-                return;
-
-            try
-            {
-                _ = RunTrackedMatchingRedisCleanupAsync(
-                    matchingId,
-                    operationId,
-                    completion);
-            }
-            catch (Exception ex)
-            {
-                logger.LogCritical(
-                    ex,
-                    "Unexpected matching Redis cleanup dispatch failure: MatchingId={MatchingId}, OperationId={OperationId}",
-                    matchingId,
-                    operationId);
-                CompleteMatchingRedisCleanup(operationId, completion);
-            }
-        };
+            logger.LogCritical(ex,
+                "Unexpected matching Redis cleanup dispatch failure: MatchingId={MatchingId}, OperationId={OperationId}",
+                matchingId, operationId);
+            CompleteMatchingRedisCleanup(operationId, completion);
+        }
     }
 
     private async Task RunTrackedMatchingRedisCleanupAsync(

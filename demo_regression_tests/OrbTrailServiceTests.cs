@@ -23,7 +23,7 @@ public sealed class OrbTrailServiceTests
     [Fact]
     public void Trail_InterpolatesAndExtrapolatesWithoutSharingMatches()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(947401);
         var second = store.GetOrCreate(947402);
         var service = new OrbTrailService(store);
@@ -52,7 +52,7 @@ public sealed class OrbTrailServiceTests
     [Fact]
     public void Destroy_RemovesOnlySuffixAndRejectsInvalidOrdinal()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947403);
         var service = new OrbTrailService(store);
         using (MatchRuntimeStore.Enter(match))
@@ -74,7 +74,7 @@ public sealed class OrbTrailServiceTests
     [Fact]
     public void MonsterSpawnCallback_BelongsToEachMatch()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(947404);
         var second = store.GetOrCreate(947405);
         using (MatchRuntimeStore.Enter(first))

@@ -13,7 +13,7 @@ public sealed class WindBladeServiceTests
     [Fact]
     public void Process_WaitsForSpinupThenShocksBeforeWoundingAndHonorsImmunity()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947501);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var trails = new OrbTrailService(store);
@@ -52,7 +52,7 @@ public sealed class WindBladeServiceTests
     [InlineData(107000020, true)]
     public void Process_DoesNotHitWithOtherColorOrAcrossAreas(int itemId, bool otherArea)
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947502);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var trails = new OrbTrailService(store);

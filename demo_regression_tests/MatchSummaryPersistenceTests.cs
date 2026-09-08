@@ -31,7 +31,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         bool botOnly, string expectedReason, long expectedWinner)
     {
         const long matchingId = 42091;
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(matchingId);
         runtime.Roster.RegisterEntry(new RosterEntry { PlayerId = 11 });
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
@@ -497,18 +497,27 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     }
 
     [Fact]
-    public async Task RedisCleanup_DrainWaitsForPreparedActionToRun()
+    public async Task RedisCleanup_DrainWaitsForStartedWorkToFinish()
     {
-        var service = CreateLifecycleService(new RecordingNatsClient(), new RecordingLogger<GameServer>());
-        Action cleanup = service.PrepareRedisCleanup(12345);
-
+        var release = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var redis = new InMemoryRedisOperations { BeforeKeyDeleteAsync = _ => release.Task };
+        var service = new MatchingLifecycleService(redis, new RecordingNatsClient(), new RecordingLogger<GameServer>());
+        await redis.StringSetAsync(network.common.MatchingRedisKeys.Key(12345), "pending");
+        await redis.HashSetAsync("matching_bots", 12345, new byte[] { 1 });
+        service.StartRedisCleanup(12345);
         Task drain = service.DrainAsync();
-        Assert.False(drain.IsCompleted);
-
-        cleanup();
-        cleanup(); // 같은 후처리를 다시 호출해도 한 번만 실행한다.
+        try
+        {
+            Assert.False(drain.IsCompleted);
+        }
+        finally
+        {
+            release.TrySetResult(true);
+        }
         await drain.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.True(service.DrainAsync().IsCompletedSuccessfully);
+        Assert.Null(redis.GetString(network.common.MatchingRedisKeys.Key(12345)));
+        Assert.Null(redis.GetHash("matching_bots", 12345));
     }
 
     [Fact]
@@ -589,107 +598,22 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     }
 
     [Fact]
-    public void RedisCleanup_SourceContract_RegistersBeforeDeferredDispatchAndAlwaysCompletesTracker()
+    public void RedisCleanup_SourceContract_StartsAfterUnlockAndTracksBeforeDispatch()
     {
         string root = FindRepositoryRoot();
-        string serverSource = ReadNormalizedSource(root, "game_server", "Program.cs") + ReadNormalizedSource(root, "game_server", "GameServer.cs") + ReadNormalizedSource(root, "game_server", "Matches", "MatchingLifecycleService.cs");
-        string preparation = ReadMethodSlice(
-            serverSource,
-            "internal Action PrepareRedisCleanup(",
-            "private async Task RunTrackedMatchingRedisCleanupAsync(");
-        string trackedCleanup = ReadMethodSlice(
-            serverSource,
-            "private async Task RunTrackedMatchingRedisCleanupAsync(",
-            "private void CompleteMatchingRedisCleanup(");
-        string completion = ReadMethodSlice(
-            serverSource,
-            "private void CompleteMatchingRedisCleanup(",
-            "internal async Task DrainAsync(");
-
-        int completionSource = Find(preparation, "new TaskCompletionSource<bool>(");
-        int pendingRegistration = Find(
-            preparation,
-            "_pendingMatchingRedisCleanupTasks.TryAdd(operationId, completion.Task)");
-        int deferredFactory = Find(preparation, "return () =>");
-        int exactlyOnceGuard = Find(
-            preparation,
-            "Interlocked.Exchange(ref dispatchStarted, 1)");
-        int trackedDispatch = Find(
-            preparation,
-            "_ = RunTrackedMatchingRedisCleanupAsync(");
-
-        Assert.True(completionSource < pendingRegistration);
-        Assert.True(pendingRegistration < deferredFactory);
-        Assert.True(deferredFactory < exactlyOnceGuard);
-        Assert.True(exactlyOnceGuard < trackedDispatch);
-        Assert.DoesNotContain(
-            "CleanupAbandonedMatchingRedisAsync(",
-            preparation,
-            StringComparison.Ordinal);
-
-        int cleanupInvocation = Find(
-            trackedCleanup,
-            "await CleanupAbandonedMatchingRedisAsync(matchingId);");
-        int cleanupFinally = Find(trackedCleanup, "finally");
-        int trackedCompletion = Find(
-            trackedCleanup,
-            "CompleteMatchingRedisCleanup(operationId, completion);");
-        Assert.True(cleanupInvocation < cleanupFinally);
-        Assert.True(cleanupFinally < trackedCompletion);
-
-        int completionSignal = Find(completion, "completion.TrySetResult(true);");
-        int pendingRemoval = Find(
-            completion,
-            "_pendingMatchingRedisCleanupTasks)");
-        Assert.True(completionSignal < pendingRemoval);
-        Assert.Matches(
-            new Regex(
-                """
-                try\s*
-                \{\s*
-                    completion\.TrySetResult\s*\(\s*true\s*\)\s*;\s*
-                \}\s*
-                finally\s*
-                \{.*?
-                    _pendingMatchingRedisCleanupTasks.*?
-                    Remove\s*\(\s*new\s+KeyValuePair<long,\s*Task>\s*
-                    \(\s*operationId\s*,\s*completion\.Task\s*\)\s*\)\s*;\s*
-                \}
-                """,
-                RegexOptions.Singleline |
-                RegexOptions.IgnorePatternWhitespace |
-                RegexOptions.CultureInvariant),
-            completion);
-
-        Assert.DoesNotContain(
-            "\"Redis cleanup scheduling\"",
-            serverSource,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "afterCleanup: id => lifecycle.PrepareRedisCleanup(id).Invoke(),",
-            serverSource,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "eventArchive: sp.GetRequiredService<MatchEventArchive>()",
-            serverSource,
-            StringComparison.Ordinal);
-
-        // 저장소는 정리 단계를 잠금 안에서 돌린 뒤 Redis 정리를 잠금 밖 후처리로 넘긴다.
-        string storeSource = ReadNormalizedSource(
-            root,
-            "game_server",
-            "Matches",
-            "MatchRuntime.cs");
-        string exit = storeSource.Substring(storeSource.IndexOf("internal void Exit()", StringComparison.Ordinal));
-        int startStateCleanup = Find(exit, "MatchStartGate.RemoveMatching(MatchingId);");
-        int storeRemoval = Find(exit, "_runtimeStore.RemoveCompleted(this);");
-        int afterCleanupQueue = Find(exit, "AfterRelease.Add(() => afterCleanup(matchingId));");
-        int monitorExit = Find(exit, "Monitor.Exit(Sync);");
-        Assert.True(startStateCleanup < storeRemoval);
-        Assert.True(storeRemoval < afterCleanupQueue);
-        Assert.True(afterCleanupQueue < monitorExit);
+        string lifecycle = ReadNormalizedSource(root, "game_server", "Matches", "MatchingLifecycleService.cs");
+        string start = ReadMethodSlice(lifecycle, "internal void StartRedisCleanup(", "private async Task RunTrackedMatchingRedisCleanupAsync(");
+        Assert.True(Find(start, "_pendingMatchingRedisCleanupTasks.TryAdd") < Find(start, "_ = RunTrackedMatchingRedisCleanupAsync("));
+        string worker = ReadMethodSlice(lifecycle, "private async Task RunTrackedMatchingRedisCleanupAsync(", "private void CompleteMatchingRedisCleanup(");
+        Assert.True(Find(worker, "finally") < Find(worker, "CompleteMatchingRedisCleanup(operationId, completion);"));
+        string runtime = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntime.cs");
+        string exit = runtime.Substring(runtime.IndexOf("internal void Exit()", StringComparison.Ordinal));
+        Assert.True(Find(exit, "_runtimeStore.RemoveCompleted(this);") < Find(exit, "Monitor.Exit(Sync);"));
+        Assert.True(Find(exit, "Monitor.Exit(Sync);") < Find(exit, "foreach (Action action in afterRelease)"));
+        Assert.True(Find(exit, "foreach (Action action in afterRelease)") < Find(exit, "_matchingLifecycle.StartRedisCleanup(MatchingId);"));
+        Assert.Contains("if (IsTerminal && !_cleanupDone)", exit);
+        Assert.Contains("startRedisCleanup = true;", exit);
     }
-
     public void Dispose()
     {
         if (Directory.Exists(_directory))

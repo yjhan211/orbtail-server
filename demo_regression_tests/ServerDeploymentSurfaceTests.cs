@@ -22,7 +22,7 @@ public sealed class ServerDeploymentSurfaceTests
     [InlineData(-1)]
     public void CutDummyRejectsMissingMatchIdEvenWhenAnotherMatchExists(long matchingId)
     {
-        var store = new game_server.matches.MatchRuntimeStore(
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(
             Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         var runtime = store.GetOrCreate(70001);
         var server = GameServerTestAccess.Create(store);

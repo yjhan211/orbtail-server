@@ -22,7 +22,7 @@ public sealed class MatchDoorStateTests
     [Fact]
     public async Task SlowInitializationForOneMatch_DoesNotBlockAnotherMatch()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var slow = store.GetOrCreate(231001);
         var sibling = store.GetOrCreate(231002);
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -56,7 +56,7 @@ public sealed class MatchDoorStateTests
     [Fact]
     public async Task ConcurrentOpenDoor_HasOneWinnerAndReturnsSnapshotCopy()
     {
-        var runtime = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(231003);
+        var runtime = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(231003);
         var doors = runtime.Doors;
         using (runtime.Enter())
             doors.Initialize();
@@ -79,7 +79,7 @@ public sealed class MatchDoorStateTests
     [Fact]
     public void RuntimeFinalization_ClearsStateAndLateReferenceCannotReinitializeIt()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(231004);
         var doors = runtime.Doors;
         using (MatchRuntimeStore.Enter(runtime))
@@ -98,7 +98,7 @@ public sealed class MatchDoorStateTests
     [Fact]
     public void RuntimeOwnsIndependentDoorStateWithoutRegistration()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         Assert.Null(store.GetOrNull(231005));
         var first = store.GetOrCreate(231005).Doors;
         var second = store.GetOrCreate(231006).Doors;
@@ -111,7 +111,7 @@ public sealed class MatchDoorStateTests
     [Fact]
     public void NestedFinalization_ClearsOnlyEndedMatchAtOutermostExit()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var ended = store.GetOrCreate(231009);
         var sibling = store.GetOrCreate(231010);
         ended.Doors.OpenDoor(990009);
@@ -136,7 +136,7 @@ public sealed class MatchDoorStateTests
         GameDoorData.Initialize([CreateDoorRow(openId, area, true), CreateDoorRow(closedId, area, false)]);
         try
         {
-            var store = new MatchRuntimeStore(NullLogger.Instance);
+            var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
             var unlocked = store.GetOrCreate(231007).Doors;
             var locked = store.GetOrCreate(231008).Doors;
             unlocked.Initialize();

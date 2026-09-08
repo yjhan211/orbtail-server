@@ -18,7 +18,7 @@ internal sealed class MatchRuntime
 
     private readonly MatchRuntimeStore _runtimeStore;
     private readonly ILogger _logger;
-    private readonly Action<long>? _afterCleanup;
+    private readonly MatchingLifecycleService _matchingLifecycle;
     private readonly MatchEventArchive? _eventArchive;
     private int _terminal;
     private MatchTickLoop? _tickLoop;
@@ -29,15 +29,15 @@ internal sealed class MatchRuntime
     internal readonly List<Action> AfterRelease = new();
 
     internal MatchRuntime(MatchRuntimeStore runtimeStore, long matchingId, ILogger logger,
+        MatchingLifecycleService matchingLifecycle,
         SwarmGrowthOfferIdSequence? growthOfferIds = null,
         SwarmCrossfireEventIdSequence? crossfireEventIds = null,
         bool monsterSpawnEnabled = true,
-        Action<long>? afterCleanup = null,
         MatchEventArchive? eventArchive = null)
     {
         _runtimeStore = runtimeStore;
         _logger = logger;
-        _afterCleanup = afterCleanup;
+        _matchingLifecycle = matchingLifecycle ?? throw new ArgumentNullException(nameof(matchingLifecycle));
         _eventArchive = eventArchive;
         MatchingId = matchingId;
         Bots = new BotPlayerManager(matchingId, logger);
@@ -204,7 +204,8 @@ internal sealed class MatchRuntime
 
     internal void Exit()
     {
-        Action[]? afterRelease = null;
+        Action[] afterRelease = [];
+        bool startRedisCleanup = false;
         try
         {
             _lockDepth--;
@@ -247,15 +248,10 @@ internal sealed class MatchRuntime
                 Combat.Release();
 
                 _runtimeStore.RemoveCompleted(this);
-                if (_afterCleanup != null)
-                {
-                    Action<long> afterCleanup = _afterCleanup;
-                    long matchingId = MatchingId;
-                    AfterRelease.Add(() => afterCleanup(matchingId));
-                }
+                startRedisCleanup = true;
             }
 
-            if (AfterRelease.Count == 0)
+            if (AfterRelease.Count == 0 && !startRedisCleanup)
                 return;
 
             afterRelease = AfterRelease.ToArray();
@@ -278,6 +274,17 @@ internal sealed class MatchRuntime
                     ex,
                     "Match post-release action failed: MatchingId={MatchingId}",
                     MatchingId);
+            }
+        }
+        if (startRedisCleanup)
+        {
+            try
+            {
+                _matchingLifecycle.StartRedisCleanup(MatchingId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Match Redis cleanup could not be started: MatchingId={MatchingId}", MatchingId);
             }
         }
     }

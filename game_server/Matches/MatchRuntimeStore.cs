@@ -11,11 +11,11 @@ namespace game_server.matches;
 /// </summary>
 internal sealed class MatchRuntimeStore(
     ILogger logger,
-    Action<long>? initializeMatch = null,
-    Action<long>? afterCleanup = null,
+    MatchingLifecycleService matchingLifecycle,
     bool monsterSpawnEnabled = true,
     MatchEventArchive? eventArchive = null)
 {
+    private readonly MatchingLifecycleService _matchingLifecycle = matchingLifecycle ?? throw new ArgumentNullException(nameof(matchingLifecycle));
     private readonly ConcurrentDictionary<long, MatchRuntime> _runtimes = new();
     private readonly SwarmGrowthOfferIdSequence _growthOfferIds = new();
     private readonly SwarmCrossfireEventIdSequence _crossfireEventIds = new();
@@ -32,7 +32,7 @@ internal sealed class MatchRuntimeStore(
             return existing;
         }
 
-        var candidate = new MatchRuntime(this, matchingId, logger, _growthOfferIds, _crossfireEventIds, monsterSpawnEnabled, afterCleanup, eventArchive);
+        var candidate = new MatchRuntime(this, matchingId, logger, _matchingLifecycle, _growthOfferIds, _crossfireEventIds, monsterSpawnEnabled, eventArchive);
         lock (candidate.Sync)
         {
             var runtime = _runtimes.GetOrAdd(matchingId, candidate);
@@ -43,7 +43,6 @@ internal sealed class MatchRuntimeStore(
 
             try
             {
-                initializeMatch?.Invoke(matchingId);
                 Created?.Invoke(candidate);
             }
             catch

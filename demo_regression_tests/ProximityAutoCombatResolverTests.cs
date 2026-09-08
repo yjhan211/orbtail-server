@@ -13,7 +13,7 @@ public class ProximityAutoCombatResolverTests
     [Fact]
     public void MatchOwnedCombat_IsolatesCooldownsAndReleasesAllState()
     {
-        var store = new MatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         var first = store.GetOrCreate(501);
         var second = store.GetOrCreate(502);
         var now = DateTime.UtcNow;

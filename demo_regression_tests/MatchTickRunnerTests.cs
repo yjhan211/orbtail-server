@@ -158,7 +158,7 @@ public sealed class MatchTickRunnerTests
     [Fact]
     public void BotMovementService_RecordsOnlyTheSuppliedMatchAndPublishesItsMetrics()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(945108);
         var second = store.GetOrCreate(945109);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
@@ -200,7 +200,7 @@ public sealed class MatchTickRunnerTests
 
     private sealed class Fixture : IDisposable
     {
-        public MatchRuntimeStore Store { get; } = new(NullLogger.Instance);
+        public MatchRuntimeStore Store { get; } = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         public MatchRuntime Match { get; }
 
         public Fixture(long id)

@@ -11,12 +11,17 @@ namespace demo_regression_tests;
 public sealed class MatchRuntimeStoreTests
 {
     [Fact]
+    public void Constructor_RejectsMissingLifecycleService()
+    {
+        Assert.Throws<ArgumentNullException>(() => new MatchRuntimeStore(NullLogger.Instance, null!));
+    }
+    [Fact]
     public void RuntimeAndStoreScopes_ShareDepthAndCleanupOnlyOnOutermostExit()
     {
         int afterCount = 0;
         MatchRuntime? runtime = null;
         var store = CreateStore(
-            afterCleanup: _ =>
+            onRedisCleanup: _ =>
             {
                 Assert.False(Monitor.IsEntered(runtime!.Sync));
                 afterCount++;
@@ -37,9 +42,8 @@ public sealed class MatchRuntimeStoreTests
     }
 
     private static MatchRuntimeStore CreateStore(
-        Action<long>? initializeMatch = null,
-        Action<long>? afterCleanup = null) =>
-        new(NullLogger.Instance, initializeMatch, afterCleanup);
+        Action<long>? onRedisCleanup = null) =>
+        TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance, onRedisCleanup);
 
     [Fact]
     public void SameMatch_Serializes()
@@ -155,7 +159,7 @@ public sealed class MatchRuntimeStoreTests
     {
         var cleanupCalls = new List<long>();
         MatchRuntimeStore store = CreateStore(
-            afterCleanup: cleanupCalls.Add);
+            onRedisCleanup: cleanupCalls.Add);
         MatchRuntime runtime = store.GetOrCreate(7);
 
         using (MatchScope scope = runtime.Enter())
@@ -182,7 +186,7 @@ public sealed class MatchRuntimeStoreTests
     {
         var cleanupCalls = new List<long>();
         MatchRuntimeStore store = CreateStore(
-            afterCleanup: cleanupCalls.Add);
+            onRedisCleanup: cleanupCalls.Add);
         MatchRuntime runtime = store.GetOrCreate(3);
 
         using (MatchScope outer = runtime.Enter())
@@ -205,7 +209,7 @@ public sealed class MatchRuntimeStoreTests
     [Fact]
     public void AfterRelease_RunsOutsideLockOnce()
     {
-        MatchRuntimeStore store = CreateStore(afterCleanup: null);
+        MatchRuntimeStore store = CreateStore(onRedisCleanup: null);
         MatchRuntime runtime = store.GetOrCreate(5);
         int runs = 0;
         bool heldDuringRun = true;
@@ -241,7 +245,7 @@ public sealed class MatchRuntimeStoreTests
         bool heldDuringAfterCleanup = true;
         MatchRuntime? runtime = null;
         MatchRuntimeStore store = CreateStore(
-            afterCleanup: _ =>
+            onRedisCleanup: _ =>
             {
                 Assert.False(MatchStartGate.IsGameplayActive(11));
                 order.Add("after");
@@ -287,8 +291,9 @@ public sealed class MatchRuntimeStoreTests
     [Fact]
     public void GetAfterRemove_IsNull_NoRecreate()
     {
-        int initializations = 0;
-        MatchRuntimeStore store = CreateStore(initializeMatch: _ => initializations++);
+        int createdCount = 0;
+        MatchRuntimeStore store = CreateStore();
+        store.Created += _ => createdCount++;
         MatchRuntime runtime = store.GetOrCreate(4);
 
         using (runtime.Enter())
@@ -299,33 +304,35 @@ public sealed class MatchRuntimeStoreTests
         Assert.Null(store.GetOrNull(4));
         Assert.False(store.Enter(4, out _));
         Assert.False(store.TryEnter(4, out _));
-        Assert.Equal(1, initializations);
+        Assert.Equal(1, createdCount);
         Assert.Equal(0, store.Count);
     }
 
     [Fact]
-    public void GetOrCreate_ConcurrentCallers_OneInit()
+    public void GetOrCreate_ConcurrentCallers_RaisesCreatedOnce()
     {
-        int initializations = 0;
-        MatchRuntimeStore store = CreateStore(initializeMatch: _ =>
+        int createdCount = 0;
+        MatchRuntimeStore store = CreateStore();
+        store.Created += runtime =>
         {
-            Interlocked.Increment(ref initializations);
+            Assert.True(Monitor.IsEntered(runtime.Sync));
+            Interlocked.Increment(ref createdCount);
             Thread.SpinWait(5000);
-        });
+        };
 
         MatchRuntime[] runtimes = new MatchRuntime[32];
         Parallel.For(0, runtimes.Length, index => runtimes[index] = store.GetOrCreate(8));
 
-        Assert.Equal(1, initializations);
+        Assert.Equal(1, createdCount);
         Assert.All(runtimes, runtime => Assert.Same(runtimes[0], runtime));
         Assert.Equal(1, store.Count);
     }
 
     [Fact]
-    public void GetOrCreate_InitializerFailure_LeavesNoRuntime()
+    public void GetOrCreate_CreatedHandlerFailure_LeavesNoRuntime()
     {
-        MatchRuntimeStore store = CreateStore(
-            initializeMatch: _ => throw new InvalidOperationException("register failed"));
+        MatchRuntimeStore store = CreateStore();
+        store.Created += _ => throw new InvalidOperationException("register failed");
 
         Assert.Throws<InvalidOperationException>(() => store.GetOrCreate(6));
         Assert.Null(store.GetOrNull(6));

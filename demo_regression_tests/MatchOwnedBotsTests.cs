@@ -11,7 +11,7 @@ public sealed class MatchOwnedBotsTests
     [Fact]
     public void MovementCoordinatorIsBoundToItsMatchAndRejectsTerminalWork()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
@@ -29,7 +29,7 @@ public sealed class MatchOwnedBotsTests
     [Fact]
     public void MonstersAreIsolatedAndReleasedWithTheirMatch()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance, monsterSpawnEnabled: false);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance, monsterSpawnEnabled: false);
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
         Assert.NotSame(first.Monsters, second.Monsters);
@@ -46,7 +46,7 @@ public sealed class MatchOwnedBotsTests
     [Fact]
     public void BotsAreIsolatedAndReleasedWithTheirMatch()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(1);
         var second = store.GetOrCreate(2);
         first.Bots.RegisterBots(1, Config.SWARM_MATCH_MAP, [], new Dictionary<long, Cell>());

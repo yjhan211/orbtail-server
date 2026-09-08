@@ -97,7 +97,7 @@ internal static class Program
             return new MatchRuntimeStore(
                 sp.GetRequiredService<ILogger<MatchRuntimeStore>>(),
 
-                afterCleanup: id => lifecycle.PrepareRedisCleanup(id).Invoke(),
+                matchingLifecycle: lifecycle,
                 monsterSpawnEnabled: devOptions.MonsterSpawnEnabled,
                 eventArchive: sp.GetRequiredService<MatchEventArchive>());
         });

@@ -40,7 +40,7 @@ internal static class GameServerTestAccess
         var archive = new MatchEventArchive();
         runtimes ??= new MatchRuntimeStore(logger,
 
-            afterCleanup: id => lifecycle.PrepareRedisCleanup(id).Invoke(),
+            matchingLifecycle: lifecycle,
             eventArchive: archive);
         var logs = new GameEventLogManager(id => runtimes.GetOrNull(id)?.EventLog, archive);
         var summaries = new MatchSummaryFileStore();

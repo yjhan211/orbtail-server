@@ -12,7 +12,7 @@ public sealed class MatchEnvironmentServiceTests
     [Fact]
     public void Process_RequiresTheSuppliedMatchLock()
     {
-        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(947001);
+        var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947001);
         var service = CreateService(GameServerDevOptions.Disabled);
         Assert.Throws<InvalidOperationException>(() => service.Process(match, []));
     }
@@ -20,7 +20,7 @@ public sealed class MatchEnvironmentServiceTests
     [Fact]
     public void Process_DoesNothingAfterMatchEnded()
     {
-        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(947002);
+        var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947002);
         var service = CreateService(GameServerDevOptions.Disabled);
         lock (match.Sync)
         {
@@ -36,7 +36,7 @@ public sealed class MatchEnvironmentServiceTests
     [InlineData(false, false, true)]
     public void Process_PreservesDeveloperModesWithoutSurvivors(bool disableEnd, bool cutDummy, bool crossfire)
     {
-        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(947003);
+        var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947003);
         var service = CreateService(new GameServerDevOptions
         {
             DisableGameEnd = disableEnd, CutDummy = cutDummy, CrossfireSandbox = crossfire
@@ -51,7 +51,7 @@ public sealed class MatchEnvironmentServiceTests
     [Fact]
     public void PressureField_WithoutStartTimeIsSafe()
     {
-        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(947004);
+        var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947004);
         Assert.Equal(double.MaxValue, MatchPressureFieldPolicy.GetSafeDistance(match, DateTime.UtcNow));
         Assert.Equal(0, MatchPressureFieldPolicy.GetDamagePerTick(match, null, DateTime.UtcNow));
     }
@@ -59,8 +59,8 @@ public sealed class MatchEnvironmentServiceTests
     [Fact]
     public void PressureField_UsesEachMatchStartTimeAndClampsAtEnd()
     {
-        var first = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(947005);
-        var second = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(947006);
+        var first = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947005);
+        var second = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(947006);
         var now = new DateTime(2026, 9, 7, 0, 0, 0, DateTimeKind.Utc);
         first.Closures.InitializeMatching().GameStartTime =
             now.AddSeconds(-MatchPressureFieldPolicy.HoldSeconds - MatchPressureFieldPolicy.ShrinkSeconds / 2);
@@ -79,7 +79,7 @@ public sealed class MatchEnvironmentServiceTests
 
     private static MatchEnvironmentService CreateService(GameServerDevOptions options)
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var sessions = new GameSessionRegistry(NullLogger<GameSessionRegistry>.Instance);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var eliminations = TestGameSessionServices.CreateEliminationService(

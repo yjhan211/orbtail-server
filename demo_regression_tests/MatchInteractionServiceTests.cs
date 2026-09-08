@@ -84,7 +84,7 @@ public sealed class MatchInteractionServiceTests
     [Fact]
     public void CancelPendingInteractionsInvalidatesDoorFinish()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984403);
         var state = new PlayerInteractionState();
         using (MatchRuntimeStore.Enter(runtime))
@@ -107,7 +107,7 @@ public sealed class MatchInteractionServiceTests
     [Fact]
     public void CancelPendingInteractionsRequiresMatchLock()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984404);
         var state = new PlayerInteractionState();
         state.Begin(10);
@@ -125,7 +125,7 @@ public sealed class MatchInteractionServiceTests
     [Fact]
     public void UnknownInteractionAndDoorAreRejected()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984401);
         Assert.Throws<InvalidOperationException>(() =>
             MatchInteractionService.CheckDoorGauge(runtime, AreaType.None, int.MaxValue));

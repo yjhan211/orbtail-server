@@ -9,7 +9,7 @@ public sealed class GameServerTickServiceTests
     [Fact]
     public async Task CreatesOneLoopPerExistingOrNewMatchAndStopsAll()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(101);
         var clock = new ManualTimers();
         var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
@@ -38,7 +38,7 @@ public sealed class GameServerTickServiceTests
     [Fact]
     public async Task SlowMatchDoesNotBlockOtherMatchAndShutdownWaitsWithoutOverlap()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var clock = new ManualTimers();
         var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
         var entered = Signal();
@@ -88,7 +88,7 @@ public sealed class GameServerTickServiceTests
         bool workFinished = false;
         var cleaned = Signal();
         MatchRuntime? match = null;
-        var store = new MatchRuntimeStore(NullLogger.Instance, afterCleanup: _ =>
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance, onRedisCleanup: _ =>
         {
             Assert.True(workFinished);
             Assert.True(clock.Timers[0].Disposed);
@@ -121,7 +121,7 @@ public sealed class GameServerTickServiceTests
     [Fact]
     public async Task RemovalStopsWaitingLoop()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var clock = new ManualTimers();
         var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
         int calls = 0;
@@ -137,7 +137,7 @@ public sealed class GameServerTickServiceTests
     [Fact]
     public async Task TickFailureDoesNotEndTheLoop()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var clock = new ManualTimers();
         var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
         var failed = Signal();
@@ -166,7 +166,7 @@ public sealed class GameServerTickServiceTests
     [Fact]
     public async Task StopBeforeStartPreventsRegistration()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var clock = new ManualTimers();
         var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
         await service.StopAsync();
@@ -178,7 +178,7 @@ public sealed class GameServerTickServiceTests
     [Fact]
     public async Task ConcurrentCreationAndShutdownLeaveNoRunningLoops()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var clock = new ManualTimers();
         var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);
         service.Start(_ => { });
@@ -196,7 +196,7 @@ public sealed class GameServerTickServiceTests
     [Fact]
     public async Task FailedDuplicateStartStillAllowsExistingLoopToStop()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(1101);
         var clock = new ManualTimers();
         var service = new GameServerTickService(store, NullLogger<GameServerTickService>.Instance, clock);

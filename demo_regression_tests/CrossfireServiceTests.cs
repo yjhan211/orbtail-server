@@ -11,7 +11,7 @@ public sealed class CrossfireServiceTests
     [Fact]
     public void Process_WaitsForTelegraphHitsOnceAndRemovesExpiredDodgeSnapshot()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947601);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);
         var service = new CrossfireService(store, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
@@ -62,7 +62,7 @@ public sealed class CrossfireServiceTests
     [Fact]
     public void BurnTick_AppliesOnlyToOwningMatchAndDoesNotRepeatAtSameTime()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(947602);
         var second = store.GetOrCreate(947603);
         var logs = new GameEventLogManager(id => store.GetOrNull(id)?.EventLog);

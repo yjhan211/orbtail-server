@@ -1134,9 +1134,9 @@ public sealed class GameClientSessionPublicationTests
 
         public SessionFixture()
         {
-            Store = new MatchRuntimeStore(
+            Store = TestGameSessionServices.CreateMatchRuntimeStore(
                 NullLogger.Instance,
-                afterCleanup: _ => CleanupTimeline?.Enqueue("cleanup"));
+                onRedisCleanup: _ => CleanupTimeline?.Enqueue("cleanup"));
 
             GameClientSession.SwarmHeartPickupCallback = null;
         }

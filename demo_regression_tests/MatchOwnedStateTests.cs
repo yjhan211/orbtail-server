@@ -24,7 +24,7 @@ public sealed class MatchOwnedStateTests
     [Fact]
     public void RuntimeOwnsServiceInstances_AndDifferentMatchesStayIsolated()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(941001);
         var second = store.GetOrCreate(941002);
         Assert.NotSame(first.Inventory, second.Inventory);
@@ -53,7 +53,7 @@ public sealed class MatchOwnedStateTests
     [Fact]
     public void TerminalRemoval_DetachesAllState_AndLateCallsCannotRecreateMatch()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(941003);
         var sibling = store.GetOrCreate(941004);
         var inventory = runtime.Inventory;
@@ -92,7 +92,7 @@ public sealed class MatchOwnedStateTests
     [Fact]
     public void ConcurrentClosureInitialization_UsesOneStateInRuntime()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(941005);
         var states = new MatchingClosureState[16];
         Parallel.For(0, states.Length, i => states[i] =
@@ -103,7 +103,7 @@ public sealed class MatchOwnedStateTests
     [Fact]
     public void EncounterCooldownAndPresentationCaches_BelongToOneMatch()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(941006);
         var second = store.GetOrCreate(941007);
         var encounters = first.Encounters;
@@ -143,7 +143,7 @@ public sealed class MatchOwnedStateTests
     [Fact]
     public void BotElimination_RemovesInventoryOnce_AndKeepsOtherMatchesUntouched()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(941101);
         var sibling = store.GetOrCreate(941102);
         const long botId = -42;

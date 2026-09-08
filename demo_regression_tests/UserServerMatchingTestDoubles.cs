@@ -77,6 +77,7 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
     private readonly Dictionary<string, List<(byte[] Value, double Score)>> _sortedSets = new(StringComparer.Ordinal);
     private readonly Dictionary<string, TimeSpan?> _expiries = new(StringComparer.Ordinal);
 
+    public Func<string, Task>? BeforeKeyDeleteAsync { get; set; }
     public Exception? HashGetError { get; set; }
     public Exception? HashSetWithExpiryError { get; set; }
     public bool ApplyHashSetBeforeError { get; set; }
@@ -320,13 +321,15 @@ internal sealed class InMemoryRedisOperations : IRedisOperations
         }
     }
 
-    public Task<bool> KeyDeleteAsync(string key, int db = -1)
+    public async Task<bool> KeyDeleteAsync(string key, int db = -1)
     {
+        if (BeforeKeyDeleteAsync != null)
+            await BeforeKeyDeleteAsync(key);
         lock (_sync)
         {
             bool removed = _strings.Remove(key) | _hashes.Remove(key) | _sortedSets.Remove(key);
             _expiries.Remove(key);
-            return Task.FromResult(removed);
+            return removed;
         }
     }
 

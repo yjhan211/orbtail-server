@@ -20,7 +20,7 @@ public sealed class OrbInventoryServiceTests
     [Fact]
     public void SummonAppliesCurrencyAndInventoryOnce()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984301);
         using (MatchRuntimeStore.Enter(runtime))
         {
@@ -44,7 +44,7 @@ public sealed class OrbInventoryServiceTests
     [Fact]
     public void GrantKeepsIndependentOrbUids()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984302);
         var service = new OrbInventoryService(TestGameEventLogs.Create());
         Assert.Throws<InvalidOperationException>(() => service.Grant(runtime, 1, 107000010));

@@ -11,7 +11,7 @@ public sealed class GroundItemPickupCandidatesTests
     [Fact]
     public void RemovedFreeSummonKeyCannotBePickedUp()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(984399);
         using (match.Enter())
         {
@@ -31,7 +31,7 @@ public sealed class GroundItemPickupCandidatesTests
     [Fact]
     public void SweptPathFindsItemEvenWhenBothEndpointsAreOutsideRadius()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(984301);
         using (match.Enter())
         {
@@ -52,7 +52,7 @@ public sealed class GroundItemPickupCandidatesTests
     [Fact]
     public void TurningPathDoesNotUseShortcutBetweenFirstAndLastPoint()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(984302);
         using (match.Enter())
         {
@@ -69,7 +69,7 @@ public sealed class GroundItemPickupCandidatesTests
     [Fact]
     public void SpawnAfterPassingDoesNotRetroactivelyBecomeCandidate()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(984303);
         using (match.Enter())
         {
@@ -85,7 +85,7 @@ public sealed class GroundItemPickupCandidatesTests
     [Fact]
     public void StationaryPlayerFindsSpawnedItemAndDuplicateSegmentsOnlyYieldOneCandidate()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(984304);
         using (match.Enter())
         {
@@ -101,7 +101,7 @@ public sealed class GroundItemPickupCandidatesTests
     [Fact]
     public void SourceBlockedItemIsNotRememberedWhenPlayerMovesAway()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(984305);
         using (match.Enter())
         {

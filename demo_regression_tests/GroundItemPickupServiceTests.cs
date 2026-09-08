@@ -10,7 +10,7 @@ public sealed class GroundItemPickupServiceTests
     [Fact]
     public void PickupRequiresOwningMatchLock()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984201);
         Assert.Throws<InvalidOperationException>(() => GroundItemPickupService.TryPickup(
             runtime, 1, AreaType.None, new Vector3f(0, 0, 0), 0, 1));
@@ -20,7 +20,7 @@ public sealed class GroundItemPickupServiceTests
     [Fact]
     public void MissingItemDoesNotCreateInventoryOrRecovery()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var runtime = store.GetOrCreate(984202);
         using (MatchRuntimeStore.Enter(runtime))
         {

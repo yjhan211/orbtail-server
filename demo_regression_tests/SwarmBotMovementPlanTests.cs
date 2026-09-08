@@ -212,7 +212,7 @@ public sealed class SwarmBotMovementPlanTests
 
     private static SwarmBotMovementCoordinator CreateCoordinator()
     {
-        var matches = new MatchRuntimeStore(NullLogger.Instance);
+        var matches = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         return matches.GetOrCreate(44_001).BotMovement;
     }
 

@@ -12,7 +12,7 @@ public sealed class MatchRuntimeInitializationTests
     [Fact]
     public void MonsterResolversAreReadyWithoutServerInitialization()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(940001);
         var second = store.GetOrCreate(940002);
         Assert.NotNull(first.Monsters.IsAreaClosedResolver);
@@ -40,7 +40,7 @@ public sealed class MatchRuntimeInitializationTests
     [InlineData(-1, false)]
     public void OrbOwnershipUsesOnlyOwnMatchInventory(int itemId, bool isOrb)
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var first = store.GetOrCreate(940003);
         var second = store.GetOrCreate(940004);
         const long playerId = 10;

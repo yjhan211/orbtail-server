@@ -20,7 +20,7 @@ public sealed class OrbRecoveryServiceTests
     [Fact]
     public void Recovery_AggregatesDueOrbsAndRemovesMissingOrbClocks()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947301);
         var service = new OrbRecoveryService(store,
             new GameEventLogManager(id => store.GetOrNull(id)?.EventLog), NullLogger<OrbRecoveryService>.Instance);
@@ -45,7 +45,7 @@ public sealed class OrbRecoveryServiceTests
     [Fact]
     public void Recovery_DoesNotShareClocksBetweenMatches()
     {
-        var store = new MatchRuntimeStore(NullLogger.Instance);
+        var store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         var firstMatch = store.GetOrCreate(947302);
         var secondMatch = store.GetOrCreate(947303);
         var service = new OrbRecoveryService(store,

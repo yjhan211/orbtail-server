@@ -11,7 +11,7 @@ public sealed class MatchAreaClosureTickTests
     [Fact]
     public void RequiresMatchLockAndDoesNotRunBeforeGameplay()
     {
-        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(801);
+        var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(801);
         Assert.Throws<InvalidOperationException>(() => match.TryBeginAreaClosureTick(StartedAt, StartedAt));
         lock (match.Sync)
         {
@@ -24,7 +24,7 @@ public sealed class MatchAreaClosureTickTests
     [Fact]
     public void RunsOncePerSecondAndDoesNotReplayMissedIntervals()
     {
-        var match = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(802);
+        var match = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(802);
         lock (match.Sync)
         {
             Assert.True(match.TryBeginAreaClosureTick(StartedAt.AddSeconds(1), StartedAt));
@@ -40,8 +40,8 @@ public sealed class MatchAreaClosureTickTests
     [Fact]
     public void EachMatchHasItsOwnClosureSchedule()
     {
-        var first = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(803);
-        var second = new MatchRuntimeStore(NullLogger.Instance).GetOrCreate(804);
+        var first = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(803);
+        var second = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance).GetOrCreate(804);
         lock (first.Sync)
             Assert.True(first.TryBeginAreaClosureTick(StartedAt.AddSeconds(1), StartedAt));
         Assert.Null(second.NextAreaClosureTickAtUtc);

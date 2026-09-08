@@ -641,7 +641,7 @@ public sealed class GameClientSessionConnectPublicationTests
 
         public ConnectFixture()
         {
-            Store = new MatchRuntimeStore(NullLogger.Instance);
+            Store = TestGameSessionServices.CreateMatchRuntimeStore(NullLogger.Instance);
         }
 
         public MatchRuntimeStore Store { get; }
