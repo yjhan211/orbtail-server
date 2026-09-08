@@ -1,3 +1,4 @@
+using game_server.matches;
 using System.Collections.Immutable;
 using game_server.sessions;
 using MessagePack;
@@ -5,7 +6,7 @@ using network.common;
 using network.common.data;
 using network.common.data.models;
 using network.packets;
-using OrbVisualState = game_server.services.MatchPresentationState.OrbVisualState;
+using OrbVisualState = game_server.matches.MatchPresentationState.OrbVisualState;
 
 namespace game_server.services;
 
@@ -265,4 +266,3 @@ internal sealed class OrbVisualStatePublisher(MatchRuntimeStore matchRuntimes)
     }
 
 }
-

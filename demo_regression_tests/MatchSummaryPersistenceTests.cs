@@ -1,3 +1,4 @@
+using game_server.matches;
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.RegularExpressions;
@@ -129,7 +130,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         string sessionSource = ReadNormalizedSource(
             root,
             "game_server",
-            "Services",
+            "Matches",
             "MatchResultService.cs");
         string normalFinalization = ReadMethodSlice(
             sessionSource,
@@ -231,7 +232,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
                 sourceContractOptions),
             terminalPublication);
 
-        string serverSource = ReadNormalizedSource(root, "game_server", "Services", "MatchCleanupService.cs");
+        string serverSource = ReadNormalizedSource(root, "game_server", "Matches", "MatchCleanupService.cs");
         string noHumanFinalization = serverSource;
 
         int noHumanLock = Find(noHumanFinalization, "matchRuntimes.Enter(runtime)");
@@ -526,7 +527,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     public void Lifecycle_SourceContract_ClaimsTerminalBeforeOneShotCorePublish()
     {
         string root = FindRepositoryRoot();
-        string serverSource = ReadNormalizedSource(root, "game_server", "Program.cs") + ReadNormalizedSource(root, "game_server", "GameServer.cs") + ReadNormalizedSource(root, "game_server", "Services", "MatchingLifecycleService.cs");
+        string serverSource = ReadNormalizedSource(root, "game_server", "Program.cs") + ReadNormalizedSource(root, "game_server", "GameServer.cs") + ReadNormalizedSource(root, "game_server", "Matches", "MatchingLifecycleService.cs");
         string immediateWrapper = ReadMethodSlice(
             serverSource,
             "internal void Publish(",
@@ -591,7 +592,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
     public void RedisCleanup_SourceContract_RegistersBeforeDeferredDispatchAndAlwaysCompletesTracker()
     {
         string root = FindRepositoryRoot();
-        string serverSource = ReadNormalizedSource(root, "game_server", "Program.cs") + ReadNormalizedSource(root, "game_server", "GameServer.cs") + ReadNormalizedSource(root, "game_server", "Services", "MatchingLifecycleService.cs");
+        string serverSource = ReadNormalizedSource(root, "game_server", "Program.cs") + ReadNormalizedSource(root, "game_server", "GameServer.cs") + ReadNormalizedSource(root, "game_server", "Matches", "MatchingLifecycleService.cs");
         string preparation = ReadMethodSlice(
             serverSource,
             "internal Action PrepareRedisCleanup(",
@@ -677,7 +678,7 @@ public sealed class MatchSummaryPersistenceTests : IDisposable
         string storeSource = ReadNormalizedSource(
             root,
             "game_server",
-            "Services",
+            "Matches",
             "MatchRuntimeStore.cs");
         string exit = ReadMethodSlice(storeSource, "internal void Exit(MatchRuntime runtime)", "private void RunCleanup(");
         int cleanupSteps = Find(exit, "RunCleanup(runtime.MatchingId);");

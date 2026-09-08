@@ -1,3 +1,4 @@
+using game_server.matches;
 using network.infrastructure;
 using System.Reflection;
 using Microsoft.Extensions.Configuration;
@@ -215,7 +216,7 @@ public sealed class NatsClientTests
         await using (var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true }))
         {
             var server = provider.GetRequiredService<game_server.GameServer>();
-            var lifecycle = provider.GetRequiredService<game_server.services.MatchingLifecycleService>();
+            var lifecycle = provider.GetRequiredService<game_server.matches.MatchingLifecycleService>();
             Assert.Same(lifecycle, server.GetMatchingLifecycle());
             await server.StopAsync(CancellationToken.None);
             Assert.Equal(1, proxy.CloseCalls);
@@ -231,7 +232,7 @@ public sealed class NatsClientTests
         services.RemoveAll<game_server.GameServer>();
         services.AddSingleton<game_server.GameServer>(sp =>
         {
-            sp.GetRequiredService<game_server.services.MatchingLifecycleService>();
+            sp.GetRequiredService<game_server.matches.MatchingLifecycleService>();
             throw new InvalidOperationException("activation failed");
         });
         await using (var provider = services.BuildServiceProvider())

@@ -1,3 +1,4 @@
+using game_server.matches;
 namespace demo_regression_tests;
 
 public sealed class ServerDeploymentSurfaceTests
@@ -11,9 +12,9 @@ public sealed class ServerDeploymentSurfaceTests
         Assert.DoesNotContain("GetFullInstanceSnapshot", source);
         Assert.DoesNotContain("GetInstanceSnapshot", source);
         Assert.DoesNotContain("GetActiveMatchingIds", source);
-        Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Services/MatchArenaService.cs"));
+        Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Matches/MatchArenaService.cs"));
         Assert.DoesNotContain("GetActiveMatchingIds", Read("game_server/Sessions/GameSessionRegistry.cs"));
-        Assert.Contains("EndBotOnlyMatchIfSettled", Read("game_server/Services/MatchCleanupService.cs"));
+        Assert.Contains("EndBotOnlyMatchIfSettled", Read("game_server/Matches/MatchCleanupService.cs"));
     }
 
     [Theory]
@@ -21,7 +22,7 @@ public sealed class ServerDeploymentSurfaceTests
     [InlineData(-1)]
     public void CutDummyRejectsMissingMatchIdEvenWhenAnotherMatchExists(long matchingId)
     {
-        var store = new game_server.services.MatchRuntimeStore(
+        var store = new game_server.matches.MatchRuntimeStore(
             Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance);
         var runtime = store.GetOrCreate(70001);
         var server = GameServerTestAccess.Create(store);

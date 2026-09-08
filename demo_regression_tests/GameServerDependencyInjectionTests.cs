@@ -1,3 +1,4 @@
+using game_server.matches;
 using game_server.sessions;
 using System.Reflection;
 using game_server;
@@ -31,16 +32,16 @@ public sealed class GameServerDependencyInjectionTests
         Assert.Same(server, provider.GetRequiredService<GameServer>());
         Type[] serviceTypes =
         [
-            typeof(game_server.services.MatchRuntimeStore),
+            typeof(game_server.matches.MatchRuntimeStore),
             typeof(game_server.services.GameEventLogManager),
-            typeof(game_server.services.MatchEliminationService),
-            typeof(game_server.services.GameMatchEntryService),
+            typeof(game_server.matches.MatchEliminationService),
+            typeof(game_server.matches.GameMatchEntryService),
             typeof(game_server.services.MovementValidationService),
-            typeof(game_server.services.MatchEntryFailureHandler),
-            typeof(game_server.services.MatchArenaService),
+            typeof(game_server.matches.MatchEntryFailureHandler),
+            typeof(game_server.matches.MatchArenaService),
             typeof(game_server.services.BotDecisionService),
-            typeof(game_server.services.MatchCountdownService),
-            typeof(game_server.services.GameServerTickService),
+            typeof(game_server.matches.MatchCountdownService),
+            typeof(game_server.matches.GameServerTickService),
             typeof(game_server.services.BotMovementService)
         ];
         foreach (var type in serviceTypes)
@@ -54,17 +55,17 @@ public sealed class GameServerDependencyInjectionTests
     public void MatchResultServiceDoesNotOwnAConnectionOrDependOnGameServer()
     {
         using var provider = CreateProvider();
-        var results = provider.GetRequiredService<game_server.services.MatchResultService>();
-        Assert.Same(results, provider.GetRequiredService<game_server.services.MatchResultService>());
+        var results = provider.GetRequiredService<game_server.matches.MatchResultService>();
+        Assert.Same(results, provider.GetRequiredService<game_server.matches.MatchResultService>());
 
-        var fields = typeof(game_server.services.MatchResultService)
+        var fields = typeof(game_server.matches.MatchResultService)
             .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
         Assert.DoesNotContain(fields, field => field.FieldType == typeof(GameServer));
         Assert.DoesNotContain(fields, field => field.FieldType == typeof(game_server.sessions.GameClientSession));
         Assert.DoesNotContain(
             typeof(game_server.sessions.GameClientSession)
                 .GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic),
-            field => field.FieldType == typeof(game_server.services.MatchSummaryFileStore));
+            field => field.FieldType == typeof(game_server.matches.MatchSummaryFileStore));
     }
     internal static ServiceProvider CreateProvider(network.infrastructure.messaging.INatsClient? natsClient = null)
     {

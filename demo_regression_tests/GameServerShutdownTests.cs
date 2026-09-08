@@ -1,3 +1,4 @@
+using game_server.matches;
 using game_server;
 using Microsoft.Extensions.DependencyInjection;
 using network.infrastructure.messaging;
@@ -66,8 +67,8 @@ public sealed class GameServerShutdownTests
         var nats = new BlockingCloseClient();
         using var provider = GameServerDependencyInjectionTests.CreateProvider(nats);
         var server = provider.GetRequiredService<GameServer>();
-        var ticks = provider.GetRequiredService<game_server.services.GameServerTickService>();
-        var matches = provider.GetRequiredService<game_server.services.MatchRuntimeStore>();
+        var ticks = provider.GetRequiredService<game_server.matches.GameServerTickService>();
+        var matches = provider.GetRequiredService<game_server.matches.MatchRuntimeStore>();
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var release = new ManualResetEventSlim();
         ticks.Start(_ =>

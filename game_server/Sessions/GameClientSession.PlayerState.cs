@@ -1,4 +1,4 @@
-using game_server.services;
+using game_server.matches;
 using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data.models;

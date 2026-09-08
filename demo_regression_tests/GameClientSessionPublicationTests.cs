@@ -1,3 +1,4 @@
+using game_server.matches;
 using System.Collections.Concurrent;
 using System.Reflection;
 using game_server.network;
@@ -755,7 +756,7 @@ public sealed class GameClientSessionPublicationTests
             "GameClientSession.OrbSummon.cs");
         string doors = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.Doors.cs");
         string connection = ReadNormalizedSource(root, "game_server", "Sessions", "GameClientSession.cs");
-        string arena = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
+        string arena = ReadNormalizedSource(root, "game_server", "Matches", "MatchArenaService.cs");
         string bots = ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotDecisionService.cs");
         string botPickup = ReadNormalizedSource(
             root,

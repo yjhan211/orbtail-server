@@ -1,3 +1,4 @@
+using game_server.matches;
 using System.Collections.Immutable;
 using game_server;
 using game_server.services;
@@ -114,7 +115,7 @@ public sealed class SwarmBotMovementPlanTests
         string coordinator = ReadNormalizedSource(
             root, "game_server", "Services", "Bots", "SwarmBotMovementCoordinator.cs");
         string server = ReadNormalizedSource(root, "game_server", "Services", "Bots", "BotMovementService.cs");
-        string combat = ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs");
+        string combat = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickRunner.cs");
         string tick = ReadMethodSlice(
             combat,
 "public void Run(MatchRuntime runtime)",
@@ -175,7 +176,7 @@ public sealed class SwarmBotMovementPlanTests
     public void DummySetup_UsesLockedExternalPlanWithoutOrbitAdvance()
     {
         string root = FindRepositoryRoot();
-        string arena = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
+        string arena = ReadNormalizedSource(root, "game_server", "Matches", "MatchArenaService.cs");
         string coordinator = ReadNormalizedSource(
             root, "game_server", "Services", "Bots", "SwarmBotMovementCoordinator.cs");
         string adminSetup = ReadMethodSlice(

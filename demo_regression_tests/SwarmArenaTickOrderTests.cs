@@ -1,3 +1,4 @@
+using game_server.matches;
 using game_server.sessions;
 namespace demo_regression_tests;
 
@@ -8,8 +9,8 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string source = ReadNormalizedSource(root, "game_server", "GameServer.cs");
-        string runner = ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs");
-        string timers = ReadNormalizedSource(root, "game_server", "Services", "MatchTickLoop.cs");
+        string runner = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickRunner.cs");
+        string timers = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickLoop.cs");
         Assert.Contains("TimeSpan.FromMilliseconds(50)", timers);
         Assert.Contains("new PeriodicTimer(", timers);
         Assert.Contains("tickService.StopAsync()", source);
@@ -36,10 +37,10 @@ public sealed class SwarmArenaTickOrderTests
             root, "game_server", "Services", "OrbVisualStatePublisher.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string settlement = ReadNormalizedSource(
-            root, "game_server", "Services", "MatchEnvironmentService.cs");
+            root, "game_server", "Matches", "MatchEnvironmentService.cs");
 
         string proximityTick = ReadMethodSlice(
-            ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs"),
+            ReadNormalizedSource(root, "game_server", "Matches", "MatchTickRunner.cs"),
             "public void Run(MatchRuntime runtime)",
             "private static bool ShouldMoveBots(");
         AssertInOrder(
@@ -171,9 +172,9 @@ public sealed class SwarmArenaTickOrderTests
         string playerState = ReadNormalizedSource(
             root, "game_server", "Sessions", "GameClientSession.PlayerState.cs");
         string sessionCombat = ReadNormalizedSource(
-            root, "game_server", "Services", "MatchCombatDamageService.cs");
+            root, "game_server", "Matches", "MatchCombatDamageService.cs");
         string sessionMatchEnd = ReadNormalizedSource(
-            root, "game_server", "Services", "MatchEliminationService.cs");
+            root, "game_server", "Matches", "MatchEliminationService.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string proximity = ReadNormalizedSource(
             root, "game_server", "Services", "OrbVisualStatePublisher.cs");
@@ -244,7 +245,7 @@ public sealed class SwarmArenaTickOrderTests
     public void GrowthOfferFlow_OnlyBotsGenerateOffers()
     {
         string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(root, "game_server", "Services", "MatchGrowthService.cs");
+        string source = ReadNormalizedSource(root, "game_server", "Matches", "MatchGrowthService.cs");
         string tickBody = ReadMethodSlice(
             source,
             "public void ProcessOffers(",
@@ -265,8 +266,8 @@ public sealed class SwarmArenaTickOrderTests
     public void SwarmCleanup_AlwaysDropsMatchOwnedRuntimeAfterMonsterCleanup()
     {
         string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
-        string cleanupBody = ReadNormalizedSource(root, "game_server", "Services", "MatchRuntimeStore.cs");
+        string source = ReadNormalizedSource(root, "game_server", "Matches", "MatchArenaService.cs");
+        string cleanupBody = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntimeStore.cs");
         Assert.Contains("runtime.Monsters.Release();", cleanupBody);
         Assert.DoesNotContain("CleanupSwarmArenaState", source);
         Assert.DoesNotContain("_swarmMatchRuntimes", source);
@@ -280,7 +281,7 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
-        string field = ReadNormalizedSource(root, "game_server", "Services", "MatchFieldService.cs");
+        string field = ReadNormalizedSource(root, "game_server", "Matches", "MatchFieldService.cs");
         Assert.Contains("fieldService.Process", server);
         string tick = ReadMethodSlice(
             field,
@@ -297,7 +298,7 @@ public sealed class SwarmArenaTickOrderTests
         string orbPrepare = field[field.IndexOf("private void PrepareDestroySwarmOrbsInClosedAreas(", StringComparison.Ordinal)..];
 
         // 독립 루프의 매치 잠금 안에서 1초 주기를 확인하고 상태 확정 → 송신한다.
-        string runner = ReadNormalizedSource(root, "game_server", "Services", "MatchTickRunner.cs");
+        string runner = ReadNormalizedSource(root, "game_server", "Matches", "MatchTickRunner.cs");
         AssertInOrder(runner,
             "matchRuntimes.TryEnter(matchingId, out MatchScope scope)",
             "using (scope)",
@@ -381,7 +382,7 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string crossfire = ReadNormalizedSource(root, "game_server", "Services", "CrossfireService.cs");
-        string botDodge = ReadNormalizedSource(root, "game_server", "Services", "MatchRuntimeStore.cs");
+        string botDodge = ReadNormalizedSource(root, "game_server", "Matches", "MatchRuntimeStore.cs");
         string runtimeStates = ReadNormalizedSource(root, "game_server", "Services", "SwarmArenaStates.cs");
 
         Assert.DoesNotContain("_swarmCrossfireShapes", crossfire);
@@ -404,10 +405,10 @@ public sealed class SwarmArenaTickOrderTests
     {
         string root = FindRepositoryRoot();
         string store = ReadNormalizedSource(
-            root, "game_server", "Services", "MatchRuntimeStore.cs");
+            root, "game_server", "Matches", "MatchRuntimeStore.cs");
         string runtimeStates = ReadNormalizedSource(
             root, "game_server", "Services", "SwarmArenaStates.cs");
-        string arena = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
+        string arena = ReadNormalizedSource(root, "game_server", "Matches", "MatchArenaService.cs");
         string crossfire = ReadNormalizedSource(root, "game_server", "Services", "CrossfireService.cs");
 
         // 매치 하나에 모니터 하나 — 블로킹 진입과 펄스용 TryEnter가 같은 잠금 객체를 쓴다.
@@ -420,11 +421,11 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("_swarmCriticalRng", arena);
         Assert.DoesNotContain("_swarmCriticalRng", crossfire);
         Assert.Contains("private readonly Random _criticalRng = new();", runtimeStates);
-        string damage = ReadNormalizedSource(root, "game_server", "Services", "MatchCombatDamageService.cs");
+        string damage = ReadNormalizedSource(root, "game_server", "Matches", "MatchCombatDamageService.cs");
         Assert.Contains(".Pacing.RollCritical(", damage);
         Assert.Contains("runtime.Pacing.RollCritical(", damage);
 
-        string field = ReadNormalizedSource(root, "game_server", "Services", "MatchFieldService.cs");
+        string field = ReadNormalizedSource(root, "game_server", "Matches", "MatchFieldService.cs");
         Assert.Contains(
             "Lazy<IReadOnlyDictionary<AreaType, IReadOnlyList<(Cell Cell, int Distance)>>>",
             field);
@@ -441,7 +442,7 @@ public sealed class SwarmArenaTickOrderTests
     private static string ReadSwarmArenaTick()
     {
         string root = FindRepositoryRoot();
-        string source = ReadNormalizedSource(root, "game_server", "Services", "MatchArenaService.cs");
+        string source = ReadNormalizedSource(root, "game_server", "Matches", "MatchArenaService.cs");
         return ReadMethodSlice(
             source,
             "public void ProcessSwarmArenaForMatching(",
