@@ -19,7 +19,6 @@ internal static class GroundItemPickupService
 
         InGameItemInfo? addedItem = null;
         bool autoUsed = false;
-        bool autoEquipped = false;
         bool summonStonePickup = false;
         bool bootsPickup = false;
         int healthRecovery = 0;
@@ -75,18 +74,13 @@ internal static class GroundItemPickupService
                     playerId, item.ItemId, Config.GetOrbCapacity(),
                     out addedItem);
                 if (!added) rejection = ErrorCode.INVENTORY_FULL;
-                else if (addedItem != null)
-                {
-                    var equippedItem = runtime.Inventory.GetEquippedBattleItem(
-                        playerId);
-                    autoEquipped = equippedItem?.ItemUid == addedItem.ItemUid;
-                }
+
                 return added;
             },
             out var claimedItem);
 
         return new(status, rejection, attemptedItem, claimedItem, addedItem,
-            discovererPlayerId, autoUsed, autoEquipped, summonStonePickup,
+            discovererPlayerId, autoUsed, summonStonePickup,
             bootsPickup, healthRecovery);
     }
 }
@@ -94,5 +88,5 @@ internal static class GroundItemPickupService
 internal sealed record GroundItemPickupResult(
     GroundItemClaimStatus Status, ErrorCode Rejection,
     GroundItemInfo? AttemptedItem, GroundItemInfo? ClaimedItem, InGameItemInfo? AddedItem,
-    long DiscovererPlayerId, bool AutoUsed, bool AutoEquipped, bool SummonStonePickup,
+    long DiscovererPlayerId, bool AutoUsed, bool SummonStonePickup,
     bool BootsPickup, int HealthRecovery);

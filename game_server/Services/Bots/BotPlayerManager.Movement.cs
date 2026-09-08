@@ -697,7 +697,7 @@ public partial class BotPlayerManager
         bot.PathIndex = 0;
         bot.PendingRngInteractId = 0;
 
-        bool needsGuardianOrb = bot.EquippedBattleItemId <= 0;
+        bool needsGuardianOrb = !inventoryManager.GetPlayerInventory(bot.PlayerId).GetOrderedOrbs().Any(item => OrbData.IsOrbItem(item.ItemId));
 
         // 복도는 통로다. 잔상 분포로 목적지를 정할 수 있으면 그것이 우선이고,
         // 못 정할 때만 가장 가까운 방으로 나간다. 이전에는 복도 탈출이 먼저 걸려

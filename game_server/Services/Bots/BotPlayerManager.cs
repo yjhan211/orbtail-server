@@ -167,8 +167,7 @@ public partial class BotPlayerManager
         var list = new List<int>(BotDefaultWearItemIds);
         int idx = (int)(Math.Abs(bot.PlayerId) % BotCustomizationItems.Length);
         list.Add(BotCustomizationItems[idx]);
-        if (bot.EquippedBattleItemId > 0)
-            list.Add(bot.EquippedBattleItemId);
+
         return list;
     }
 
@@ -398,8 +397,7 @@ public class BotPlayerState
 
 
 
-    /// <summary>Current equipped battle tool, used to synchronize remote bot visuals.</summary>
-    public int EquippedBattleItemId { get; set; }
+
 
     /// <summary>Server-authoritative movement multiplier from currently living Wind orbs.</summary>
     public float WindMoveSpeedMultiplier { get; set; } = 1f;

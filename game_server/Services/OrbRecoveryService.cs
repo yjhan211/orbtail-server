@@ -78,7 +78,7 @@ internal sealed class OrbRecoveryService(
                 if (previousHealth < Config.MAX_HEALTH)
                 {
                     var change = session.Condition.Recover(requestedRecovery);
-                    session.HandleHealthChanged(change);
+                    session.HealthChanges.Handle(change);
                     effectiveRecovery = change.Recovered;
                 }
             }
@@ -111,7 +111,7 @@ internal sealed class OrbRecoveryService(
                 session.TrySend(packet);
             }
 
-            // Human sessions already record effective recovery inside HandleHealthChanged.
+            // Human sessions already record effective recovery inside PlayerHealthChangeService.Handle.
             // Bots mutate their state directly, so only that path needs explicit telemetry.
             if (session == null)
             {

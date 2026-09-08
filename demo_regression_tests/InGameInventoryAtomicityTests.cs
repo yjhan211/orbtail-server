@@ -35,29 +35,26 @@ public sealed class InGameInventoryAtomicityTests
     }
 
     [Fact]
-    public void EquippedBattleItemIsStoredAndClearedWithInventoryRemoval()
+    public void HighestOrbTierFollowsTheWholeInventory()
     {
-        InitializeBattleCombatData();
         var manager = MatchTestServices.Inventory();
-        var item = manager.AddItem(playerId: 100, itemId: 107000003);
-
-        Assert.True(manager.TryEquipBattleItem(100, item.ItemUid, out var equipped));
-        Assert.Equal(item.ItemUid, equipped!.ItemUid);
-        Assert.Equal(107000003, manager.GetEquippedBattleItem(100)!.ItemId);
-
-        Assert.True(manager.TryRemoveItem(100, item.ItemUid, 1, out _));
-        Assert.Null(manager.GetEquippedBattleItem(100));
+        Assert.Equal(0, manager.GetHighestOrbTier(100));
+        var first = manager.AddItem(100, 107000010);
+        var highest = manager.AddItem(100, 107000032);
+        Assert.Equal(3, manager.GetHighestOrbTier(100));
+        Assert.True(manager.TryRemoveItem(100, highest.ItemUid, 1, out _));
+        Assert.Equal(1, manager.GetHighestOrbTier(100));
+        Assert.True(manager.TryRemoveItem(100, first.ItemUid, 1, out _));
+        Assert.Equal(0, manager.GetHighestOrbTier(100));
     }
 
     [Fact]
-    public void NonCombatItemCannotBecomeEquippedBattleItem()
+    public void NonOrbItemsDoNotAffectFinalOrbTier()
     {
-        InitializeBattleCombatData();
         var manager = MatchTestServices.Inventory();
-        var item = manager.AddItem(playerId: 100, itemId: 401000005);
-
-        Assert.False(manager.TryEquipBattleItem(100, item.ItemUid, out _));
-        Assert.Null(manager.GetEquippedBattleItem(100));
+        manager.AddItem(100, 401000005);
+        Assert.Empty(manager.GetPlayerInventory(100).GetOrderedOrbs());
+        Assert.Equal(0, manager.GetHighestOrbTier(100));
     }
 
     private static void InitializeBattleCombatData()

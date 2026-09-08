@@ -282,7 +282,7 @@ internal sealed class MatchResultService(
                         IsAreaClosureElimination = d.isAreaClosureElimination,
                         IsOvertimeElimination = d.isOvertimeElimination,
                         Rank = d.playerId == winnerId ? 1 : d.eliminationRank,
-                        FinalOrbTier = d.playerId == winnerId ? _matchRuntimes.GetRequired(matchingId).Inventory.GetEquippedBattleItemTier(d.playerId) : d.finalOrbTier,
+                        FinalOrbTier = d.playerId == winnerId ? _matchRuntimes.GetRequired(matchingId).Inventory.GetHighestOrbTier(d.playerId) : d.finalOrbTier,
                         // 결과 승점은 오브 수 (#229): 인게임 순위와 같은 눈금을 쓴다.
                         OrbCount = orbScore.OrbCount
                     },

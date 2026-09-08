@@ -31,21 +31,10 @@ namespace network.common.data.models
         [Key("items")] public List<InGameItemInfo> Items { get; set; }
     }
 
-    // 인게임 아이템 사용 요청
-    [MessagePackObject]
-    public class C_TO_G_USE_INGAME_ITEM : IMessagePackObject
-    {
-        [Key("itemUid")] public long ItemUid { get; set; }
-        [Key("count")] public int Count { get; set; }
-    }
 
-    // 인게임 아이템 사용 결과
-    [MessagePackObject]
-    public class G_TO_C_USE_INGAME_ITEM_RESULT : IMessagePackObject
-    {
-        [Key("success")] public bool Success { get; set; }
-        [Key("itemUid")] public long ItemUid { get; set; }
-        [Key("errorCode")] public ErrorCode ErrorCode { get; set; }
-    }
+
+
+
+
 
 }

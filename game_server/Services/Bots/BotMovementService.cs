@@ -194,12 +194,7 @@ internal sealed class BotMovementService(
             SendToCapturedRecipients(packet, removal.RecipientOrdinals, sessionSnapshot);
         }
 
-        foreach (SwarmBotPlayerInfoDispatch autoEquip in plan.AutoEquips)
-        {
-            using var packet = PacketMaker.G_TO_C_PLAYER_APPEARANCE(
-                autoEquip.PlayerInfo.PlayerId, autoEquip.PlayerInfo.WearItemIds.ToList());
-            SendToCapturedRecipients(packet, autoEquip.RecipientOrdinals, sessionSnapshot);
-        }
+
     }
 
     public void DispatchExternalMovement(MatchRuntime runtime, BotMovementEvent movement)

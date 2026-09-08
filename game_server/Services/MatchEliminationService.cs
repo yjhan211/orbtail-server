@@ -33,7 +33,7 @@ internal sealed class MatchEliminationService(
         AreaType eliminatedArea = eliminatedSession?.CurrentArea ?? eliminatedBot?.CurrentArea ?? AreaType.None;
         long resolvedAttackerPlayerId = attackerPlayerId != 0 ? attackerPlayerId : causePlayerId ?? 0;
 
-        int finalOrbTier = _matchRuntimes.GetRequired(matchingId).Inventory.GetEquippedBattleItemTier(eliminatedPlayerId);
+        int finalOrbTier = _matchRuntimes.GetRequired(matchingId).Inventory.GetHighestOrbTier(eliminatedPlayerId);
         var transition = _matchRuntimes.GetRequired(matchingId).Roster.TryEliminatePlayer(eliminatedPlayerId, reason,
             resolvedAttackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
             finalOrbTier);

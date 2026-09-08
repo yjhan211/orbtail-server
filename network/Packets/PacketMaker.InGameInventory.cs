@@ -26,17 +26,5 @@ public static partial class PacketMaker
         return packet;
     }
 
-    public static Packet G_TO_C_USE_INGAME_ITEM_RESULT(bool success, long itemUid, ErrorCode errorCode)
-    {
-        var packet = Packet.Create((int)Protocol.G_TO_C_USE_INGAME_ITEM_RESULT);
-        G_TO_C_USE_INGAME_ITEM_RESULT body = new()
-        {
-            Success = success,
-            ItemUid = itemUid,
-            ErrorCode = errorCode
-        };
 
-        packet.SetBody(MessagePackSerializer.Serialize(body));
-        return packet;
-    }
 }

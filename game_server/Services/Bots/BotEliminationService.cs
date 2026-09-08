@@ -25,7 +25,7 @@ internal sealed class BotEliminationService(
         {
             var eliminatedBot = match.Bots.GetBot(matchingId, botId);
             var eliminatedArea = eliminatedBot?.CurrentArea ?? AreaType.None;
-            int finalOrbTier = match.Inventory.GetEquippedBattleItemTier(botId);
+            int finalOrbTier = match.Inventory.GetHighestOrbTier(botId);
             var transition = match.Roster.TryEliminatePlayer(botId, reason,
                 attackerPlayerId, eliminatedArea, isAreaClosureElimination, isOvertimeElimination, forcedRank,
                 finalOrbTier);

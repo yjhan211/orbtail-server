@@ -33,7 +33,8 @@ public partial class GameClientSession : SessionBase
     private readonly IMatchEntryFailureHandler _entryFailureHandler;
     private readonly Func<bool> _isServerStopping;
     private readonly GameEventLogManager _gameEventLogManager;
-    private readonly MatchEliminationService _matchEliminations;
+    internal PlayerNotificationService Notifications { get; }
+    internal PlayerHealthChangeService HealthChanges { get; }
     private readonly PlayerCondition _condition = new();
     private readonly IPlayerGrowthHandler _growth;
     private readonly PlayerMovementService _playerMovement;
@@ -73,7 +74,8 @@ public partial class GameClientSession : SessionBase
         _registerSessionCallback = registerSessionCallback;
 
         _gameEventLogManager = gameEventLogManager;
-        _matchEliminations = matchEliminations;
+        Notifications = new PlayerNotificationService(this, logger);
+        HealthChanges = new PlayerHealthChangeService(this, gameEventLogManager, matchEliminations, logger);
         _growth = growth;
 
         _matchEntry = matchEntry;
@@ -120,8 +122,7 @@ public partial class GameClientSession : SessionBase
             async bytes => await HandleMessage<C_TO_G_SUMMON_ORB>(bytes, HandleSummonOrb));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_UPGRADE_ORB,
             async bytes => await HandleMessage<C_TO_G_UPGRADE_ORB>(bytes, HandleUpgradeOrb));
-        ProtocolRouter.RegisterHandler(Protocol.C_TO_G_USE_INGAME_ITEM,
-            async bytes => await HandleMessage<C_TO_G_USE_INGAME_ITEM>(bytes, HandleUseInGameItem));
+
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_PLAYER_STATE,
             async bytes => await HandleMessage<C_TO_G_PLAYER_STATE>(bytes, HandlePlayerState));
         ProtocolRouter.RegisterHandler(Protocol.C_TO_G_DOOR_OPEN_START,
@@ -325,7 +326,7 @@ public partial class GameClientSession : SessionBase
             _playerMovement.SendInteractableList(CurrentArea);
             SendInteractCooldownSnapshot();
             GroundItemNotificationService.SendSnapshot(this, CurrentArea);
-            SendInGameInventoryList();
+            Notifications.SendInventoryList();
             SendSummonStoneState();
             SendDoorStateList();
             SendPressureFieldState();
@@ -382,7 +383,7 @@ public partial class GameClientSession : SessionBase
     {
         var inventory = Match.Inventory.GetPlayerInventory(PlayerId!.Value);
         _gameEventLogManager.LogOrbBoardTransition(MatchingId, PlayerId.Value, inventory.GetAllItems(),
-            inventory.GetEquippedBattleItem()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
+            inventory.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, CurrentArea.ToString(), "connection_sync", isBot: false);
     }
 
     private void SendConnectFailure(ErrorCode errorCode)

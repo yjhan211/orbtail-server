@@ -15,7 +15,6 @@ public class PlayerInGameInventory(long matchingId)
     private readonly object _sequenceLock = new();
     private int _nextSequence = 1;
 
-    private long _equippedBattleItemUid;
     private static bool ShouldKeepSeparateStack(int itemId, GiftState giftState) =>
         giftState == GiftState.None &&
         OrbData.IsOrbItem(itemId);
@@ -93,8 +92,7 @@ public class PlayerInGameInventory(long matchingId)
         if (item.Count <= 0)
         {
             _items.TryRemove(itemUid, out _);
-            if (_equippedBattleItemUid == itemUid)
-                _equippedBattleItemUid = 0;
+
             updatedItem = new InGameItemInfo
             {
                 ItemUid = itemUid,
@@ -118,8 +116,7 @@ public class PlayerInGameInventory(long matchingId)
         addedItem = null;
         if (maxSlots <= 0 || _items.Count >= maxSlots) return false;
         addedItem = AddItem(itemId, 1, giftState, forceSeparateStack: true);
-        if (_equippedBattleItemUid == 0 && OrbData.IsOrbItem(itemId))
-            _equippedBattleItemUid = addedItem.ItemUid;
+
         return true;
     }
     /// <summary>
@@ -144,42 +141,12 @@ public class PlayerInGameInventory(long matchingId)
             GiftState = item.GiftState
         }).ToList();
         _items.Clear();
-        _equippedBattleItemUid = 0;
         return items;
     }
     [MethodImpl(MethodImplOptions.Synchronized)]
     public InGameItemInfo? GetItem(long itemUid)
     {
         return _items.GetValueOrDefault(itemUid);
-    }
-
-    [MethodImpl(MethodImplOptions.Synchronized)]
-    public bool TryEquipBattleItem(long itemUid, out InGameItemInfo? equippedItem)
-    {
-        equippedItem = null;
-        if (!_items.TryGetValue(itemUid, out var item) || item.Count <= 0 ||
-            !BattleItemCombatData.IsCombatItem(item.ItemId))
-        {
-            return false;
-        }
-
-        _equippedBattleItemUid = itemUid;
-        equippedItem = item;
-        return true;
-    }
-
-    [MethodImpl(MethodImplOptions.Synchronized)]
-    public InGameItemInfo? GetEquippedBattleItem()
-    {
-        if (_equippedBattleItemUid != 0 &&
-            _items.TryGetValue(_equippedBattleItemUid, out var item) && item.Count > 0 &&
-            BattleItemCombatData.IsCombatItem(item.ItemId))
-        {
-            return item;
-        }
-
-        _equippedBattleItemUid = 0;
-        return null;
     }
 
     [MethodImpl(MethodImplOptions.Synchronized)]
@@ -335,31 +302,14 @@ public class InGameInventoryManager
         return result;
     }
 
-    public bool TryEquipBattleItem(long playerId, long itemUid,
-        out InGameItemInfo? equippedItem)
-    {
-        var inventory = GetPlayerInventory(playerId);
-        bool result = inventory.TryEquipBattleItem(itemUid, out equippedItem);
-        if (result)
-        {
-            _logAction?.Invoke(
-                $"InGameInventoryManager: Equipped battle item (MatchingId={_matchingId}, PlayerId={playerId}, ItemId={equippedItem?.ItemId}, ItemUid={itemUid})");
-        }
-
-        return result;
-    }
-
-    public InGameItemInfo? GetEquippedBattleItem(long playerId)
-    {
-        return GetPlayerInventory(playerId).GetEquippedBattleItem();
-    }
-
-    /// <summary>장착 배틀아이템의 티어 (미장착 0) — 매치 정산의 최종 오브 티어 산정 공용 경로 (#297 중복 단일화).</summary>
-    public int GetEquippedBattleItemTier(long playerId)
-    {
-        var equippedItem = GetEquippedBattleItem(playerId);
-        return equippedItem == null ? 0 : BattleItemCombatData.Get(equippedItem.ItemId)?.Tier ?? 0;
-    }
+    /// <summary>현재 보유 오브 중 최고 티어. 오브가 없으면 0을 반환한다.</summary>
+    public int GetHighestOrbTier(long playerId) =>
+        GetPlayerInventory(playerId).GetOrderedOrbs()
+            .Select(item => OrbData.TryGetColorAndTier(item.ItemId, out _, out int tier)
+                ? tier
+                : OrbData.TryGetRecoveryTier(item.ItemId, out int recoveryTier) ? recoveryTier : 0)
+            .DefaultIfEmpty(0)
+            .Max();
 
     /// <summary>
     ///     플레이어의 전체 아이템 목록

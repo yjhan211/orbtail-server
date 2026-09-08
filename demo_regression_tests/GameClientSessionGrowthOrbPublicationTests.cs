@@ -139,7 +139,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
             Assert.True(session.Condition.TryStartSleep(DateTime.UtcNow));
             Assert.Equal(PlayerState.SLEEP, session.CaptureGameObjectInfo().State);
 
-            session.BreakSwarmSleep();
+            Assert.True(session.Condition.TryStopSleep());
+            session.Notifications.SendState();
 
             Assert.Equal(PlayerState.IDLE, session.Condition.State);
             Assert.False(session.Condition.IsSleeping);
@@ -193,10 +194,8 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         connection.BeforeSend = _ => locks.Add(Monitor.IsEntered(runtime.Sync));
         await SendAsync(session, Protocol.C_TO_G_SUMMON_ORB, new C_TO_G_SUMMON_ORB());
         await SendAsync(session, Protocol.C_TO_G_DOOR_OPEN_START, new C_TO_G_DOOR_OPEN_START { InteractId = int.MaxValue });
-        await SendAsync(session, Protocol.C_TO_G_USE_INGAME_ITEM, new C_TO_G_USE_INGAME_ITEM { ItemUid = long.MaxValue, Count = 1 });
         Assert.Contains(Protocol.G_TO_C_SUMMON_ORB_RESULT, connection.DeliveredProtocols);
         Assert.Contains(Protocol.G_TO_C_DOOR_OPEN_ACK, connection.DeliveredProtocols);
-        Assert.Contains(Protocol.G_TO_C_USE_INGAME_ITEM_RESULT, connection.DeliveredProtocols);
         Assert.NotEmpty(locks);
         Assert.All(locks, held => Assert.True(held));
     }
@@ -302,7 +301,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(
             [
                 Protocol.G_TO_C_INGAME_INVENTORY_LIST,
-                Protocol.G_TO_C_USE_INGAME_ITEM_RESULT,
                 Protocol.G_TO_C_SWARM_FAMILY_LEVELS,
                 Protocol.G_TO_C_UPGRADE_ORB_RESULT
             ],
@@ -404,7 +402,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(
             [
                 Protocol.G_TO_C_INGAME_INVENTORY_LIST,
-                Protocol.G_TO_C_USE_INGAME_ITEM_RESULT,
                 Protocol.G_TO_C_SWARM_FAMILY_LEVELS,
                 Protocol.G_TO_C_ERROR
             ],
@@ -412,7 +409,6 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
         Assert.Equal(
             [
                 Protocol.G_TO_C_INGAME_INVENTORY_LIST,
-                Protocol.G_TO_C_USE_INGAME_ITEM_RESULT,
                 Protocol.G_TO_C_ERROR
             ],
             connection.DeliveredProtocols);

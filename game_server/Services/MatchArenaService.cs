@@ -658,7 +658,7 @@ internal sealed class MatchArenaService(
             {
                 session.Condition.UpdatePeriodicBuffs(nowUtc, Config.MAX_HEALTH, health =>
                 {
-                    session.HandleHealthChanged(session.Condition.ChangeHealth(health, Config.MAX_HEALTH));
+                    session.HealthChanges.Handle(session.Condition.ChangeHealth(health, Config.MAX_HEALTH));
                     if (session.IsEliminated || session.IsGameEnded || IsMatchTerminal(matchingId))
                         session.Condition.ClearPeriodicBuffs();
                 });
@@ -679,7 +679,7 @@ internal sealed class MatchArenaService(
         {
             int recovered = session.Condition.GetSleepRecovery(nowUtc, session.IsEliminated, Config.MAX_HEALTH);
             if (recovered <= 0) continue;
-            session.HandleHealthChanged(session.Condition.Recover(recovered));
+            session.HealthChanges.Handle(session.Condition.Recover(recovered));
             if (!session.PlayerId.HasValue) continue;
 
             using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new()
@@ -1163,7 +1163,7 @@ internal sealed class MatchArenaService(
         foreach (var lost in destroyedItems)
         {
             matchRuntimes.GetRequired(matchingId).Swarm.TrailCombat.OrbDurabilityBonus.Remove((matchingId, bestOwnerId, lost.ItemUid));
-            ownerSession?.SendInGameInventoryUpdate(lost);
+            ownerSession?.Notifications.SendInventoryUpdate(lost);
         }
         // 절단 낙수 없음 (#232): 소환석·드롭·점수·웨이브 기여를 지급하지 않는다. 잃은 것은 그냥 사라진다.
 

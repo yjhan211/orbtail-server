@@ -12,7 +12,6 @@ internal static class CombatActorFactory
         ProximityCombatActor spatialActor,
         PlayerInGameInventory inventory)
     {
-        var equippedItem = inventory.GetEquippedBattleItem();
         bool addedBoardOrb = false;
 
         int attackSlotIndex = 0;
@@ -83,25 +82,6 @@ internal static class CombatActorFactory
         }
         if (addedBoardOrb)
             return;
-
-        var legacyCombatData = equippedItem == null
-            ? null
-            : BattleItemCombatData.Get(equippedItem.ItemId);
-        if (equippedItem != null && legacyCombatData != null)
-        {
-            actors.Add(spatialActor with
-            {
-                WeaponItemId = equippedItem.ItemId,
-                AttackRange = legacyCombatData.AttackRange,
-                Damage = legacyCombatData.Damage,
-                AttackIntervalSeconds = legacyCombatData.AttackIntervalSeconds *
-                                        OrbData.GetAttackIntervalMultiplier(equippedItem.ItemId),
-                ProjectileWidth = legacyCombatData.ProjectileWidth,
-                EffectDurationSeconds = legacyCombatData.EffectDurationSeconds,
-                WeaponItemUid = equippedItem.ItemUid
-            });
-            return;
-        }
 
         actors.Add(spatialActor);
     }

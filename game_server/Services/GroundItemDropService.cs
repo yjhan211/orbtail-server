@@ -31,7 +31,7 @@ internal sealed class GroundItemDropService(GameEventLogManager eventLogs)
             session.MatchingId, session.PlayerId.Value, emptyBoard.GetAllItems(), 0, session.CurrentArea.ToString(), "elimination_drop",
             isBot: false);
         foreach (var item in drop.RemovedItems)
-            session.SendInGameInventoryUpdate(new InGameItemInfo
+            session.Notifications.SendInventoryUpdate(new InGameItemInfo
             {
                 ItemUid = item.ItemUid,
                 ItemId = item.ItemId,

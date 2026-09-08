@@ -21,7 +21,7 @@ internal sealed class OrbInventoryService(GameEventLogManager eventLog)
         {
             var inventory = runtime.Inventory.GetPlayerInventory(playerId);
             eventLog.LogOrbBoardTransition(runtime.MatchingId, playerId,
-                inventory.GetAllItems(), inventory.GetEquippedBattleItem()?.ItemId ?? 0,
+                inventory.GetAllItems(), inventory.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0,
                 area.ToString(), "summon", isBot: false);
         }
 

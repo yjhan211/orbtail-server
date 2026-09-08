@@ -79,6 +79,14 @@ internal sealed class PlayerCondition
     /// <summary>지정한 시각까지 수면 진입과 회복을 차단한다.</summary>
     public void BlockHealingUntil(DateTime untilUtc) => HealLockUntilUtc = untilUtc;
 
+    /// <summary>수면 중이면 IDLE로 전환한다. 버프는 유지하며 전송은 호출자가 담당한다.</summary>
+    public bool TryStopSleep()
+    {
+        if (!IsSleeping) return false;
+        State = PlayerState.IDLE;
+        return true;
+    }
+
     public bool CanSleep(DateTime nowUtc) =>
         (nowUtc - LastCombatAtUtc).TotalSeconds >= SwarmSleepCombatLockSeconds && nowUtc >= HealLockUntilUtc;
 
@@ -162,31 +170,7 @@ internal sealed class PlayerCondition
         }
     }
 
-    public (int Health, bool Periodic) ApplyItemBuffs(int itemId)
-    {
-        int health = 0;
-        bool periodic = false;
-        foreach ((int buffId, int value, int interval) in GameItemData.Get(itemId).ConsumableBuffList)
-        {
-            var buff = GameBuffData.Get(buffId);
-            if (buff.Type == BuffType.PERIODIC && interval > 0)
-            {
-                AddPeriodicBuff(buff.SubType, value, interval, itemId == 401000003 ? 15 : 0);
-                periodic = true;
-                continue;
-            }
-            switch (buff.SubType)
-            {
-                case BuffSubType.HEALTH_ADD:
-                    health += value;
-                    break;
-                case BuffSubType.HEALTH_DOWN:
-                    health -= value;
-                    break;
-            }
-        }
-        return (health, periodic);
-    }
+
 
     private sealed class PeriodicBuffEntry(BuffSubType type, int value, int interval, int duration)
     {

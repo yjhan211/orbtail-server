@@ -106,7 +106,7 @@ internal sealed class MatchEnvironmentService(
 
             if (target.Session != null)
             {
-                target.Session.HandleHealthChanged(
+                target.Session.HealthChanges.Handle(
                     target.Session.Condition.ApplyDamage(totalDelta),
                     deferElimination: true);
             }

@@ -107,12 +107,7 @@ public partial class BotPlayerManager
                 return false;
             }
 
-            int autoEquippedItemId = 0;
-            if (addedItem != null && inventory.GetEquippedBattleItem()?.ItemUid == addedItem.ItemUid)
-            {
-                bot.EquippedBattleItemId = addedItem.ItemId;
-                autoEquippedItemId = addedItem.ItemId;
-            }
+
 
             pickup = new BotGroundItemPickup(
                 bot.PlayerId,
@@ -120,7 +115,6 @@ public partial class BotPlayerManager
                 autoUsed,
                 healthRecovery,
                 discovererPlayerId,
-                autoEquippedItemId,
                 requestedRecovery,
                 effectiveRecovery,
                 summonStonePickup ? 1 : 0,
@@ -178,7 +172,6 @@ public readonly record struct BotGroundItemPickup(
     bool AutoUsed,
     int HealthRecovery,
     long DiscovererPlayerId,
-    int AutoEquippedItemId = 0,
     int RequestedRecovery = 0,
     int EffectiveRecovery = 0,
     int SummonStoneAmount = 0,

@@ -126,34 +126,10 @@ internal sealed class SwarmBotMovementCoordinator(MatchRuntime match)
                 RecipientOrdinals(observers, observer => observer.Area == area)));
         }
 
-        var autoEquips = ImmutableArray.CreateBuilder<SwarmBotPlayerInfoDispatch>();
-        foreach (BotGroundItemPickup pickup in pickups)
-        {
-            if (pickup.AutoEquippedItemId <= 0)
-                continue;
-
-            BotPlayerState? bot = match.Bots.GetBot(matchingId, pickup.BotPlayerId);
-            PlayerInfo? botInfo = match.Bots.SynthesizePlayerInfo(matchingId, pickup.BotPlayerId);
-            GameObjectInfo? objectInfo = match.Bots.SynthesizeGameObjectInfo(matchingId, pickup.BotPlayerId);
-            if (bot == null || botInfo == null || objectInfo == null)
-                continue;
-
-            ImmutableArray<int> recipients = RecipientOrdinals(
-                observers,
-                observer => observer.Area == bot.CurrentArea);
-            if (recipients.IsEmpty)
-                continue;
-
-            autoEquips.Add(new SwarmBotPlayerInfoDispatch(
-                SwarmBotPlayerInfoSnapshot.Capture(botInfo, objectInfo),
-                recipients));
-        }
-
         return new SwarmBotMovementPlan(
             matchingId,
             movementDispatches.ToImmutable(),
             removals.ToImmutable(),
-            autoEquips.ToImmutable(),
             planningElapsedMilliseconds,
             walkingElapsedMilliseconds,
             SnapshotElapsedMilliseconds: 0d,
@@ -334,7 +310,7 @@ internal sealed class SwarmBotMovementCoordinator(MatchRuntime match)
             matchingId,
             pickup.BotPlayerId,
             boardAfterPickup.GetAllItems(),
-            boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0,
+            boardAfterPickup.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0,
             area.ToString(),
             "pickup",
             isBot: true);
@@ -431,7 +407,6 @@ internal sealed record SwarmBotMovementPlan(
     long MatchingId,
     ImmutableArray<SwarmBotMovementDispatch> Movements,
     ImmutableArray<SwarmBotGroundItemRemovalDispatch> GroundItemRemovals,
-    ImmutableArray<SwarmBotPlayerInfoDispatch> AutoEquips,
     double PlanningElapsedMilliseconds,
     double WalkingElapsedMilliseconds,
     double SnapshotElapsedMilliseconds,
@@ -465,8 +440,4 @@ internal sealed record SwarmBotGroundItemRemovalDispatch(
     long GroundItemUid,
     long BotPlayerId,
     bool AutoUsed,
-    ImmutableArray<int> RecipientOrdinals);
-
-internal sealed record SwarmBotPlayerInfoDispatch(
-    SwarmBotPlayerInfoSnapshot PlayerInfo,
     ImmutableArray<int> RecipientOrdinals);

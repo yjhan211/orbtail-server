@@ -69,7 +69,7 @@ public partial class GameClientSession
 
             if (attempt is { Success: true, AddedItem: not null })
             {
-                SendInGameInventoryUpdate(attempt.AddedItem);
+                Notifications.SendInventoryUpdate(attempt.AddedItem);
             }
 
             using var packet = Packet.Create((int)Protocol.G_TO_C_SUMMON_ORB_RESULT, PlayerId ?? 0);

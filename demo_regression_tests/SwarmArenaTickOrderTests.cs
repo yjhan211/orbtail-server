@@ -79,7 +79,7 @@ public sealed class SwarmArenaTickOrderTests
             "long matchingId = match.MatchingId;",
             "var humans = activeSessions",
             "var bots = match.Bots.GetBots(matchingId)",
-            "target.Session.HandleHealthChanged(",
+            "target.Session.HealthChanges.Handle(",
             "var eliminatedTargets = targets",
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
             "matchEliminations.Process(",
@@ -179,15 +179,14 @@ public sealed class SwarmArenaTickOrderTests
         string proximity = ReadNormalizedSource(
             root, "game_server", "Services", "OrbVisualStatePublisher.cs");
 
-        string healthNotification = ReadMethodSlice(
-            playerState,
-            "internal void HandleHealthChanged(",
-            "private void SendPlayerStatsUpdate(");
+        string healthNotification = ReadBracedBlockAfterMarker(
+            ReadNormalizedSource(root, "game_server", "Services", "PlayerHealthChangeService.cs"),
+            "public void Handle(");
         AssertInOrder(
             healthNotification,
             "if (!change.Changed) return;",
-            "SendPlayerStatsUpdate(",
-            "_matchEliminations.Process(");
+            "session.Notifications.SendStats(",
+            "eliminations.Process(");
 
         string applyProximityHit = ReadMethodSlice(
             sessionCombat,
@@ -197,7 +196,7 @@ public sealed class SwarmArenaTickOrderTests
             applyProximityHit,
             "eventLogs.LogHit(",
             "victimSession.Condition.ApplyDamage(damage);",
-            "victimSession.HandleHealthChanged(change, attackerPlayerId: sourcePlayerId);",
+            "victimSession.HealthChanges.Handle(change, attackerPlayerId: sourcePlayerId);",
             "PacketMaker.G_TO_C_COMBAT_HIT(",
             "victimSession.TrySend(packet);");
 
@@ -339,7 +338,7 @@ public sealed class SwarmArenaTickOrderTests
         Assert.DoesNotContain("Packet.Create(", orbPrepare);
         Assert.DoesNotContain("PacketMaker.", orbPrepare);
         Assert.DoesNotContain(".TrySend(", orbPrepare);
-        Assert.DoesNotContain("SendInGameInventoryUpdate(", orbPrepare);
+        Assert.DoesNotContain("Notifications.SendInventoryUpdate(", orbPrepare);
         Assert.DoesNotContain("SendSwarmRingVfx(", orbPrepare);
 
         AssertInOrder(
@@ -353,7 +352,7 @@ public sealed class SwarmArenaTickOrderTests
             "case SwarmDoorStateOutbound",
             "PacketMaker.G_TO_C_DOOR_STATE_UPDATE(",
             "case SwarmInventoryUpdateOutbound",
-            "session.SendInGameInventoryUpdate(",
+            "session.Notifications.SendInventoryUpdate(",
             "case SwarmRingVfxOutbound",
             "Protocol.G_TO_C_SWARM_ENCIRCLE_VFX");
         Assert.Contains("SendToCapturedRecipients(", dispatch);

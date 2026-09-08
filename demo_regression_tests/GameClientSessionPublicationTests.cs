@@ -38,7 +38,7 @@ public sealed class GameClientSessionPublicationTests
             var change = session.Condition.Recover(10);
             Assert.Equal(expectedHealth, session.CurrentHealth);
             Assert.Equal(Math.Min(10, missingHealth), change.Recovered);
-            session.HandleHealthChanged(change);
+            session.HealthChanges.Handle(change);
         }
         Assert.Equal(expectedHealth, session.CurrentHealth);
         var packet = fixture.ConnectionFor(session)
@@ -810,10 +810,16 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(2, CountOccurrences(playerState, "MatchInteractionService.CancelPendingInteractions(match, _interactions)"));
         Assert.DoesNotContain("MatchInteractionService.CancelPendingInteractions", rng);
         Assert.DoesNotContain("ProcessUseInGameItem", playerState);
+        Assert.DoesNotContain("HandleUseInGameItem", playerState);
+        Assert.DoesNotContain("HandleHealthChanged", playerState);
+        Assert.DoesNotContain("SendInGameInventory", playerState);
+        Assert.DoesNotContain("HandleUseInGameItem", session);
+        Assert.False(Enum.GetNames<Protocol>().Contains("C_TO_G_USE_INGAME_ITEM"));
+        Assert.False(Enum.GetNames<Protocol>().Contains("G_TO_C_USE_INGAME_ITEM_RESULT"));
         Assert.DoesNotContain("HandleRestStateRequest", playerState);
         Assert.DoesNotContain("await ", playerState);
-        Assert.Equal(2, CountOccurrences(playerState, "using (match.Enter())"));
-        Assert.Equal(2, CountOccurrences(playerState, "if (match.IsTerminal"));
+        Assert.Equal(1, CountOccurrences(playerState, "using (match.Enter())"));
+        Assert.Equal(1, CountOccurrences(playerState, "if (match.IsTerminal"));
         Assert.DoesNotContain("RunWithMatchLock(", doors);
         Assert.Contains("using (match.Enter())", doors);
         Assert.DoesNotContain("ProcessDoorOpenRequest", doors);

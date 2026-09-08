@@ -268,7 +268,7 @@ internal sealed class MatchFieldService(
                         foreach (int ordinal in inventory.RecipientOrdinals)
                         {
                             if (TryGetCapturedValue(sessions, ordinal, out GameClientSession session))
-                                session.SendInGameInventoryUpdate(inventory.Item.ToModel());
+                                session.Notifications.SendInventoryUpdate(inventory.Item.ToModel());
                         }
 
                         break;

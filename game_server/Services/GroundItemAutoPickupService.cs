@@ -114,7 +114,7 @@ internal sealed class GroundItemAutoPickupService(
             int effectiveHealthRecovery = Math.Min(pickup.HealthRecovery, Math.Max(0, Config.MAX_HEALTH - session.CurrentHealth));
             int requestedRecovery = pickup.HealthRecovery;
             int effectiveRecovery = effectiveHealthRecovery;
-            session.HandleHealthChanged(session.Condition.Recover(pickup.HealthRecovery));
+            session.HealthChanges.Handle(session.Condition.Recover(pickup.HealthRecovery));
             // 하트는 앞줄 오브 HP도 만충으로 (#222 M4) — 원작 하트의 스쿼드 회복.
             if (claimedItem.ItemId == Config.HEART_GROUND_ITEM_ID)
                 GameClientSession.SwarmHeartPickupCallback?.Invoke(session.MatchingId, session.PlayerId.Value);
@@ -128,13 +128,8 @@ internal sealed class GroundItemAutoPickupService(
         }
         else if (addedItem != null)
         {
-            session.SendInGameInventoryUpdate(addedItem);
-            if (pickup.AutoEquipped)
-            {
-                using var equippedPacket = PacketMaker.G_TO_C_USE_INGAME_ITEM_RESULT(
-                    true, addedItem.ItemUid, ErrorCode.SUCCESS);
-                session.TrySend(equippedPacket);
-            }
+            session.Notifications.SendInventoryUpdate(addedItem);
+
         }
 
         using (var removed = PacketMaker.G_TO_C_GROUND_ITEM_REMOVED(
@@ -157,7 +152,7 @@ internal sealed class GroundItemAutoPickupService(
             var boardAfterPickup = session.Match.Inventory.GetPlayerInventory(session.PlayerId.Value);
             eventLogs.LogOrbBoardTransition(
                 session.MatchingId, session.PlayerId.Value, boardAfterPickup.GetAllItems(),
-                boardAfterPickup.GetEquippedBattleItem()?.ItemId ?? 0, session.CurrentArea.ToString(), "pickup", isBot: false);
+                boardAfterPickup.GetOrderedOrbs().FirstOrDefault()?.ItemId ?? 0, session.CurrentArea.ToString(), "pickup", isBot: false);
         }
         using var result = PacketMaker.G_TO_C_GROUND_ITEM_PICKUP_RESULT(
             claimedItem.GroundItemUid, claimedItem.ItemId, true, pickup.AutoUsed, ErrorCode.SUCCESS);
