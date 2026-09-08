@@ -51,8 +51,7 @@ public abstract class SessionBase(
                 body = packet.PopBody();
             }
 
-            await ScheduleMessageAsync(protocolId, body,
-                () => ProcessMessageAsync(protocolId, playerId, body));
+            await ProcessMessageAsync(protocolId, playerId, body);
         }
         catch (MessagePackSerializationException ex)
         {
@@ -65,12 +64,6 @@ public abstract class SessionBase(
             SendErrorResponse(ErrorCode.SERVER_INTERNAL_ERROR, string.Empty);
         }
     }
-
-    /// <summary>
-    ///     기본은 즉시 처리한다. 서버별로 대기 요청을 합칠 경우에도 실제 처리는 dispatch로 수행하고,
-    ///     반환 Task는 처리 또는 취소가 끝날 때 완료해야 연결 종료가 정리를 기다릴 수 있다.
-    /// </summary>
-    protected virtual Task ScheduleMessageAsync(Protocol protocolId, byte[] body, Func<Task> dispatch) => dispatch();
 
     private async Task ProcessMessageAsync(Protocol protocolId, long playerId, byte[] body)
     {

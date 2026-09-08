@@ -49,7 +49,6 @@ public partial class GameClientSession : SessionBase
     private const int PendingOrbDraftCost = 0;
 
     private long _lastMoveReceiptTimestamp;
-    private readonly MovementPacketQueue _movementPacketQueue;
     private long _lastMoveAcknowledgementTimestamp;
     private bool _hasPendingOrbDraft;
     public int FreeSummonCharges { get; internal set; }
@@ -57,8 +56,6 @@ public partial class GameClientSession : SessionBase
     private Timer? _periodicBuffTimer;
     internal static Action<long, float, float>? SwarmDummyMoveCallback { get; set; }
     internal static Action<long, long>? SwarmHeartPickupCallback { get; set; }
-
-    private MatchDoorState? Doors => Volatile.Read(ref _match)?.Doors;
 
     internal GameClientSession(
         TcpConnection connection,
@@ -74,8 +71,7 @@ public partial class GameClientSession : SessionBase
         IMatchEntryFailureHandler entryFailureHandler,
         GameMatchEntryService matchEntry,
         MovementValidationService movementValidation,
-        Func<Packet, bool>? trySendConnectSuccessResponse = null,
-        TimeProvider? movementTimeProvider = null)
+        Func<Packet, bool>? trySendConnectSuccessResponse = null)
         : base(connection, logger, redisOperations)
     {
         _sessionLeaveHandler = sessionLeaveHandler;
@@ -83,7 +79,6 @@ public partial class GameClientSession : SessionBase
 
         _gameEventLogManager = gameEventLogManager;
         _matchEliminations = matchEliminations;
-        _movementPacketQueue = new MovementPacketQueue(() => Connection.IsAcceptingMessages, movementTimeProvider);
         _growth = growth;
 
         _matchEntry = matchEntry;

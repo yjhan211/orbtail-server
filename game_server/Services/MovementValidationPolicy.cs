@@ -8,13 +8,10 @@ namespace game_server.services;
 public static class MovementValidationPolicy
 {
     public const float InitialReceiptDeltaSeconds = 0.05f;
-    public const float MinimumReceiptDeltaSeconds = 0.01f;
+    public const float MinimumReceiptDeltaSeconds = 0f;
     public const float MaximumReceiptDeltaSeconds = 0.25f;
     public const float MaximumSpeedUnitsPerSecond = 10f;
     public const float MovementAcknowledgementIntervalSeconds = 0.25f;
-
-    // 50ms 전송이 지터로 몰려도 마지막 이동은 버리지 않고 이 간격 뒤에 처리한다.
-    public static readonly TimeSpan MinimumMovementInterval = TimeSpan.FromMilliseconds(10);
 
     public static float ClampReceiptDeltaSeconds(double elapsedSeconds)
     {

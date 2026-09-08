@@ -17,6 +17,18 @@ public class MovementValidationPolicyTests
     }
 
     [Fact]
+    public void BurstPackets_DoNotReceiveAnArtificialMinimumTimeBudget()
+    {
+        Assert.Equal(0f, MovementValidationPolicy.ClampReceiptDeltaSeconds(0d));
+        Assert.Equal(0f, MovementValidationPolicy.ClampReceiptDeltaSeconds(-1d));
+        Assert.Equal(0.001f, MovementValidationPolicy.ClampReceiptDeltaSeconds(0.001d), 6);
+        float total = 0f;
+        for (int i = 0; i < 100; i++)
+            total += MovementValidationPolicy.ClampReceiptDeltaSeconds(0.001d);
+        Assert.Equal(0.1f, total, 5);
+    }
+
+    [Fact]
     public void NonFinitePositionOrVelocityIsRejectedAtPacketBoundary()
     {
         Assert.True(MovementValidationPolicy.IsFinite(new Vector3f(1f, 2f, 0f)));

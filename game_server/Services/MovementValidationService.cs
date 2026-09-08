@@ -119,6 +119,10 @@ internal sealed class MovementValidationService(ILogger<MovementValidationServic
                 acceptedDelta.Y / deltaTime,
                 0f));
         }
+        else if (lastPosition is not null)
+        {
+            validatedVelocity = new Vector3f();
+        }
         lastValidCell = clientCell;
 
         // 검증 통과: 클라이언트 Position 사용

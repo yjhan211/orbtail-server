@@ -48,6 +48,20 @@ public sealed class MovementValidationServiceTests
     }
 
     [Fact]
+    public void ZeroElapsedTime_DoesNotMoveOrPublishNonzeroVelocity()
+    {
+        var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, MatchSpawnData.GetPhaseRoomCandidates()[0]);
+        var position = MapCoordinateConverter.CellToWorld(Config.SWARM_MATCH_MAP, cell);
+        var input = new Vector3f(position.X + 1f, position.Y, 0f);
+        var result = _service.ValidatePosition(1, Config.SWARM_MATCH_MAP, position, cell,
+            input, new Vector3f(1f, 0f, 0f), 0f);
+        Assert.Equal(position.X, result.Position.X);
+        Assert.Equal(position.Y, result.Position.Y);
+        Assert.Equal(0f, result.Velocity.Magnitude());
+        Assert.True(result.RequiresCorrection);
+    }
+
+    [Fact]
     public void UnwalkableDestinationKeepsPreviouslyAcceptedCell()
     {
         var cell = GameMapData.GetAreaSpawnCell(Config.SWARM_MATCH_MAP, MatchSpawnData.GetPhaseRoomCandidates()[0]);
