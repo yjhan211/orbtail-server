@@ -323,6 +323,21 @@ public partial class GameClientSession
             result.RefundedStones);
         return Task.CompletedTask;
     }
+    internal void SendFreeSummonState()
+    {
+        if (!PlayerId.HasValue)
+        {
+            return;
+        }
+
+        using var packet = Packet.Create((int)Protocol.G_TO_C_FREE_SUMMON_STATE, PlayerId.Value);
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_FREE_SUMMON_STATE
+        {
+            Charges = FreeSummonCharges
+        }));
+        TrySend(packet);
+    }
+
     internal void SendSummonStoneState(int awardedStones = 0, float awardSourceX = 0f, float awardSourceY = 0f)
     {
         if (!PlayerId.HasValue || MatchingId <= 0)

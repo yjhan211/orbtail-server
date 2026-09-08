@@ -1,5 +1,4 @@
 using game_server.services;
-using MessagePack;
 using network.common;
 using network.common.data.models;
 using network.packets;
@@ -8,21 +7,6 @@ namespace game_server.sessions;
 
 public partial class GameClientSession
 {
-    internal void SendFreeSummonState()
-    {
-        if (!PlayerId.HasValue)
-        {
-            return;
-        }
-
-        using var packet = Packet.Create((int)Protocol.G_TO_C_FREE_SUMMON_STATE, PlayerId.Value);
-        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_FREE_SUMMON_STATE
-        {
-            Charges = FreeSummonCharges
-        }));
-        TrySend(packet);
-    }
-
     internal void DropAllInventoryAtCurrentPosition()
     {
         if (!PlayerId.HasValue || LastValidatedPosition == null || CurrentArea == AreaType.None) return;
