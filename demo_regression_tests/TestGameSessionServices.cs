@@ -48,7 +48,7 @@ internal static class TestGameSessionServices
         Microsoft.Extensions.Logging.ILogger logger)
     {
         var results = new MatchResultService(store, logs, summaries, options, logger);
-        return new MatchEliminationService(store, logs, results, options, logger);
+        return new MatchEliminationService(store, logs, results, new GroundItemDropService(logs), options, logger);
     }
     public static GameSessionLeaveHandler CreateLeaveHandler()
     {

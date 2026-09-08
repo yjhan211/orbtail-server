@@ -826,7 +826,7 @@ public sealed class GameClientSessionPublicationTests
                 "internal void BreakDoorUnlockGauge()",
                 "private Task HandleDoorOpenRequest("));
         Assert.DoesNotContain("HandleDropGroundItem", ground);
-        Assert.Contains("internal void DropAllInventoryAtCurrentPosition(", ground);
+        Assert.DoesNotContain("DropAllInventoryAtCurrentPosition", ground);
     }
 
     [Theory]
@@ -1059,6 +1059,28 @@ public sealed class GameClientSessionPublicationTests
         Assert.Equal(0, current.FreeSummonCharges);
         Assert.NotNull(match.GroundItems.GetItem(item.GroundItemUid));
         Assert.Empty(match.GroundItemPickupCandidates);
+    }
+
+    [Fact]
+    public void GroundItemDropServiceClearsInventoryAndPublishesOnlyOnce()
+    {
+        using var fixture = new SessionFixture();
+        var eliminated = fixture.CreateSession(70001, 101, Config.SWARM_MATCH_GROUND_AREA);
+        var observer = fixture.CreateSession(70001, 102, Config.SWARM_MATCH_GROUND_AREA);
+        var match = eliminated.Match;
+        using (match.Enter())
+        {
+            Assert.True(match.Inventory.TryAddItemWithCapacity(101, 107000010, Config.GetOrbCapacity(), out _));
+            eliminated.ApplyMatchStatus(PlayerMatchStatus.ELIMINATED);
+            var drops = new GroundItemDropService(fixture.EventLog);
+            drops.DropAll(eliminated);
+            drops.DropAll(eliminated);
+
+            Assert.Empty(match.Inventory.GetAllItems(101));
+            Assert.Single(match.GroundItems.GetSnapshot(eliminated.CurrentArea));
+        }
+        Assert.Equal([Protocol.G_TO_C_INGAME_INVENTORY_UPDATE], fixture.ConnectionFor(eliminated).DeliveredProtocols);
+        Assert.Equal([Protocol.G_TO_C_GROUND_ITEM_SPAWN], fixture.ConnectionFor(observer).DeliveredProtocols);
     }
 
     private static MatchTickRunner CreatePickupTickRunner(SessionFixture fixture) =>

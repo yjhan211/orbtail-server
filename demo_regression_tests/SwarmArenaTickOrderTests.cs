@@ -234,7 +234,7 @@ public sealed class SwarmArenaTickOrderTests
         AssertInOrder(
             humanElimination,
             "Roster.TryEliminatePlayer(",
-            "eliminatedSession.DropAllInventoryAtCurrentPosition();",
+            "groundItemDrop.DropAll(eliminatedSession);",
             "session.TrySend(eliminatedPacket);",
             "session.TrySend(leavePacket);",
             "Roster.CheckGameOver(",

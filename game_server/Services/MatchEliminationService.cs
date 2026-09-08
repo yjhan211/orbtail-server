@@ -16,6 +16,7 @@ internal sealed class MatchEliminationService(
     MatchRuntimeStore _matchRuntimes,
     GameEventLogManager _gameEventLogManager,
     MatchResultService _matchResults,
+    GroundItemDropService groundItemDrop,
     GameServerDevOptions _devOptions,
     ILogger Logger)
 {
@@ -65,7 +66,7 @@ internal sealed class MatchEliminationService(
             isOvertimeElimination: isOvertimeElimination);
 
         if (eliminatedSession != null)
-            eliminatedSession.DropAllInventoryAtCurrentPosition();
+            groundItemDrop.DropAll(eliminatedSession);
         else
             DropBotInventoryAtCurrentPosition(mapId, matchingId, eliminatedPlayerId);
 

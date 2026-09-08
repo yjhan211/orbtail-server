@@ -140,6 +140,7 @@ internal static class Program
             sp.GetRequiredService<MatchRuntimeStore>(),
             sp.GetRequiredService<GameEventLogManager>(),
             sp.GetRequiredService<MatchResultService>(),
+            sp.GetRequiredService<GroundItemDropService>(),
             sp.GetRequiredService<GameServerDevOptions>(),
             sp.GetRequiredService<ILogger<MatchEliminationService>>()));
         services.AddSingleton<BotEliminationService>(sp => new BotEliminationService(
@@ -150,6 +151,7 @@ internal static class Program
         services.AddSingleton<MatchGrowthService>();
         services.AddSingleton<OrbRecoveryService>();
         services.AddSingleton<GroundItemAutoPickupService>();
+        services.AddSingleton<GroundItemDropService>();
         services.AddSingleton<OrbVisualStatePublisher>();
         services.AddSingleton<OrbTrailService>();
         services.AddSingleton<MatchCombatDamageService>();
