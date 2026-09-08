@@ -510,7 +510,7 @@ public sealed class MatchStartCountdownPublicationTests
                 new TcpConnection(),
                 NullLogger.Instance,
                 null!,
-                TestGameSessionServices.CreateLeaveHandler(),
+                static _ => false, TestGameSessionServices.CreateMatchCleanupService(),
                 static (_, _) => null,
                 null!,
                 null!,

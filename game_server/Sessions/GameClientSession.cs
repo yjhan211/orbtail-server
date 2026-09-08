@@ -23,7 +23,8 @@ namespace game_server.sessions;
 public partial class GameClientSession : SessionBase
 {
     private readonly GameMatchEntryService _matchEntry;
-    private readonly GameSessionLeaveHandler _sessionLeaveHandler;
+    private readonly Func<GameClientSession, bool> _removeSessionCallback;
+    private readonly MatchCleanupService _matchCleanup;
 
     private MatchRuntime? _match;
     internal MatchRuntime Match => Volatile.Read(ref _match) ?? throw new InvalidOperationException("Session has not entered a match.");
@@ -54,7 +55,8 @@ public partial class GameClientSession : SessionBase
         TcpConnection connection,
         ILogger logger,
         IRedisOperations redisOperations,
-        GameSessionLeaveHandler sessionLeaveHandler,
+        Func<GameClientSession, bool> removeSessionCallback,
+        MatchCleanupService matchCleanup,
         Func<long, GameClientSession, GameClientSession?> registerSessionCallback,
         GameEventLogManager gameEventLogManager,
         MatchEliminationService matchEliminations,
@@ -68,7 +70,8 @@ public partial class GameClientSession : SessionBase
         Func<Packet, bool>? trySendConnectSuccessResponse = null)
         : base(connection, logger, redisOperations)
     {
-        _sessionLeaveHandler = sessionLeaveHandler;
+        _removeSessionCallback = removeSessionCallback;
+        _matchCleanup = matchCleanup;
         _registerSessionCallback = registerSessionCallback;
 
         _gameEventLogManager = gameEventLogManager;
@@ -674,7 +677,58 @@ public partial class GameClientSession : SessionBase
                 _condition.ClearPeriodicBuffs();
             }
         }
-        _sessionLeaveHandler.Handle(this);
+        if (!PlayerId.HasValue)
+        {
+            return;
+        }
+
+        bool removed = _removeSessionCallback(this);
+        if (!removed)
+        {
+            Logger.LogDebug("Ignored removal from a superseded game session: PlayerId={PlayerId}, MatchingId={MatchingId}", PlayerId.Value, MatchingId);
+            if (MatchingId > 0)
+            {
+                _matchCleanup.CleanupIfNoHumanSessionsRemain(MatchingId);
+            }
+            return;
+        }
+
+        Logger.LogInformation("Game client session removed: PlayerId={SessionPlayerId}", PlayerId.Value);
+
+        if (MatchingId > 0 && CurrentArea != AreaType.None)
+        {
+            using var leavePacket = PacketMaker.G_TO_C_AREA_PLAYER_LEAVE(PlayerId.Value);
+            var sameAreaSessions = new List<GameClientSession>();
+            foreach (var other in Match.Sessions.Snapshot())
+            {
+                if (ReferenceEquals(other, this))
+                {
+                    continue;
+                }
+                if (other.CurrentArea != CurrentArea)
+                {
+                    continue;
+                }
+                sameAreaSessions.Add(other);
+            }
+
+            foreach (var other in sameAreaSessions)
+            {
+                other.TrySend(leavePacket);
+            }
+
+            Logger.LogInformation(
+                "Broadcasted disconnected player leave: PlayerId={PlayerId}, MatchingId={MatchingId}, Area={Area}, Receivers={ReceiverCount}",
+                PlayerId.Value,
+                MatchingId,
+                CurrentArea,
+                sameAreaSessions.Count);
+        }
+
+        if (MatchingId > 0)
+        {
+            _matchCleanup.CleanupIfNoHumanSessionsRemain(MatchingId);
+        }
     }
 
     internal void ApplyMatchStatus(PlayerMatchStatus status)

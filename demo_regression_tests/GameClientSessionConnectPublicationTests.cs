@@ -663,7 +663,7 @@ public sealed class GameClientSessionConnectPublicationTests
                 Connection,
                 NullLogger.Instance,
                 null!,
-                TestGameSessionServices.CreateLeaveHandler(),
+                static _ => false, TestGameSessionServices.CreateMatchCleanupService(),
                 static (_, _) => null,
 
                 TestGameEventLogs.Create(),

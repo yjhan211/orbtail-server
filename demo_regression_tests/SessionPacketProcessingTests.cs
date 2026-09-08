@@ -101,7 +101,7 @@ public sealed class SessionPacketProcessingTests
             connection,
             NullLogger.Instance,
             null!,
-            TestGameSessionServices.CreateLeaveHandler(),
+            static _ => false, TestGameSessionServices.CreateMatchCleanupService(),
             static (_, _) => null,
 
             logs,

@@ -765,7 +765,7 @@ public sealed class GameClientSessionGrowthOrbPublicationTests
                 connection,
                 NullLogger.Instance,
                 null!,
-                TestGameSessionServices.CreateLeaveHandler(),
+                static _ => false, TestGameSessionServices.CreateMatchCleanupService(),
                 static (_, _) => null,
 
                 EventLog,

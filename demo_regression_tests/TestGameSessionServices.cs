@@ -58,14 +58,13 @@ internal static class TestGameSessionServices
         var results = new MatchResultService(store, logs, summaries, options, logger);
         return new MatchEliminationService(store, logs, results, new GroundItemDropService(logs), options, logger);
     }
-    public static GameSessionLeaveHandler CreateLeaveHandler()
+    public static MatchCleanupService CreateMatchCleanupService()
     {
-        var sessions = new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance);
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
         var cleanup = new MatchCleanupService(store, logs,
             new MatchSummaryFileStore(), NullLogger.Instance);
-        return new GameSessionLeaveHandler(sessions, cleanup, NullLogger<GameSessionLeaveHandler>.Instance);
+        return cleanup;
     }
 }
 

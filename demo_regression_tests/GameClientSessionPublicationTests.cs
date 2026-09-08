@@ -338,18 +338,15 @@ public sealed class GameClientSessionPublicationTests
     public void SessionLeave_NotifiesOnlySameMatchAndArea_AndCleansLastHumanMatch()
     {
         using var fixture = new SessionFixture();
-        var leaving = fixture.CreateSession(70001, 101, (AreaType)50);
-        var nearby = fixture.CreateSession(70001, 102, (AreaType)50);
-        var otherArea = fixture.CreateSession(70001, 103, (AreaType)51);
-        var otherMatch = fixture.CreateSession(70002, 104, (AreaType)50);
         var registry = new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance);
+        var leaving = fixture.CreateSession(70001, 101, (AreaType)50, registry.Remove);
+        var nearby = fixture.CreateSession(70001, 102, (AreaType)50, registry.Remove);
+        var otherArea = fixture.CreateSession(70001, 103, (AreaType)51, registry.Remove);
+        var otherMatch = fixture.CreateSession(70002, 104, (AreaType)50, registry.Remove);
         foreach (var session in new[] { leaving, nearby, otherArea, otherMatch })
             registry.Register(session.PlayerId!.Value, session);
-        var cleanup = new MatchCleanupService(fixture.Store, fixture.EventLog,
-            fixture.Summaries, NullLogger.Instance);
-        var handler = new GameSessionLeaveHandler(registry, cleanup, NullLogger<GameSessionLeaveHandler>.Instance);
 
-        handler.Handle(leaving);
+        leaving.OnRemoved();
 
         Assert.False(registry.TryGetSession(101, out _));
         Assert.Equal([Protocol.G_TO_C_AREA_PLAYER_LEAVE], fixture.ConnectionFor(nearby).DeliveredProtocols);
@@ -357,8 +354,8 @@ public sealed class GameClientSessionPublicationTests
         Assert.Empty(fixture.ConnectionFor(otherMatch).DeliveredProtocols);
         Assert.NotNull(fixture.Store.Get(70001));
 
-        handler.Handle(nearby);
-        handler.Handle(otherArea);
+        nearby.OnRemoved();
+        otherArea.OnRemoved();
 
         Assert.Null(fixture.Store.Get(70001));
         Assert.NotNull(fixture.Store.Get(70002));
@@ -368,18 +365,15 @@ public sealed class GameClientSessionPublicationTests
     public void SessionLeave_PreviousSessionDoesNotRemoveReplacementOrNotifyPeers()
     {
         using var fixture = new SessionFixture();
-        var previous = fixture.CreateSession(70001, 101, (AreaType)50);
-        var replacement = fixture.CreateSession(70001, 101, (AreaType)50);
-        var peer = fixture.CreateSession(70001, 102, (AreaType)50);
         var registry = new GameSessionRegistry(Microsoft.Extensions.Logging.Abstractions.NullLogger<GameSessionRegistry>.Instance);
+        var previous = fixture.CreateSession(70001, 101, (AreaType)50, registry.Remove);
+        var replacement = fixture.CreateSession(70001, 101, (AreaType)50, registry.Remove);
+        var peer = fixture.CreateSession(70001, 102, (AreaType)50, registry.Remove);
         registry.Register(101, previous);
         registry.Register(101, replacement);
         registry.Register(102, peer);
-        var cleanup = new MatchCleanupService(fixture.Store, fixture.EventLog,
-            fixture.Summaries, NullLogger.Instance);
-        var handler = new GameSessionLeaveHandler(registry, cleanup, NullLogger<GameSessionLeaveHandler>.Instance);
 
-        handler.Handle(previous);
+        previous.OnRemoved();
 
         Assert.True(registry.TryGetSession(101, out var current));
         Assert.Same(replacement, current);
@@ -1152,7 +1146,7 @@ public sealed class GameClientSessionPublicationTests
         public GameEventLogManager EventLog { get; } = TestGameEventLogs.Create();
         public MatchSummaryFileStore Summaries => new(_summaryDirectory);
 
-        public RecordingSession CreateSession(long matchingId, long playerId, AreaType area)
+        public RecordingSession CreateSession(long matchingId, long playerId, AreaType area, Func<GameClientSession, bool>? removeSession = null)
         {
             Store.GetOrCreate(matchingId);
             Store.Get(matchingId)!.Doors.Initialize();
@@ -1165,7 +1159,7 @@ public sealed class GameClientSessionPublicationTests
 
                 EventLog,
                 Summaries,
-                Store);
+                Store, removeSession);
             SetIdentity(session, matchingId, playerId, area);
             _sessions.Add(session);
             session.Match.Sessions.Add(playerId, session);
@@ -1271,12 +1265,13 @@ public sealed class GameClientSessionPublicationTests
 
             GameEventLogManager eventLog,
             MatchSummaryFileStore summaries,
-            MatchRuntimeStore matchRuntimes)
+            MatchRuntimeStore matchRuntimes, Func<GameClientSession, bool>? removeSession = null)
             : base(
                 connection,
                 NullLogger.Instance,
                 null!,
-                TestGameSessionServices.CreateLeaveHandler(),
+                removeSession ?? (static _ => false),
+                new MatchCleanupService(matchRuntimes, eventLog, summaries, NullLogger.Instance),
                 static (_, _) => null,
 
                 eventLog,

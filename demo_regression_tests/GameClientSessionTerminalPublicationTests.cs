@@ -460,7 +460,7 @@ public sealed class GameClientSessionTerminalPublicationTests
                 connection,
                 logger,
                 null!,
-                TestGameSessionServices.CreateLeaveHandler(),
+                static _ => false, TestGameSessionServices.CreateMatchCleanupService(),
                 static (_, _) => null,
 
                 eventLog,
