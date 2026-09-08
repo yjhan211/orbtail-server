@@ -51,7 +51,7 @@ namespace network.common.data.models
     // ===== 배틀아이템 조합 =====
 
     /// <summary>
-    ///     배틀아이템 조합 결과. 중간재(IsRaceComplete=false) 또는 최종(IsRaceComplete=true).
+    ///     아이템 조합 결과. 결과 아이템 ID가 0이면 조합 실패를 나타낸다.
     /// </summary>
     [MessagePackObject]
     public class G_TO_C_ITEMS_COMBINED : IMessagePackObject
@@ -60,8 +60,6 @@ namespace network.common.data.models
         [Key("inputPartA")] public int InputItemA { get; set; }
         [Key("inputPartB")] public int InputItemB { get; set; }
         [Key("outputPartId")] public int OutputItemId { get; set; }
-        [Key("outputPartNameKr")] public string OutputItemName { get; set; }
-        [Key("isRaceComplete")] public bool IsRaceComplete { get; set; }
     }
 
     /// <summary>

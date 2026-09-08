@@ -44,6 +44,28 @@ public sealed class GameClientSessionItemCombinePublicationTests
     }
 
     [Fact]
+    public void CombineResultContainsOnlyRecipeAndItemIds()
+    {
+        byte[] bytes = MessagePackSerializer.Serialize(new G_TO_C_ITEMS_COMBINED
+        {
+            RecipeId = 123,
+            InputItemA = Bandage,
+            InputItemB = Bandage,
+            OutputItemId = CompressionBandage
+        });
+        var reader = new MessagePackReader(bytes);
+        Assert.Equal(4, reader.ReadMapHeader());
+        var keys = new HashSet<string>();
+        for (int i = 0; i < 4; i++)
+        {
+            keys.Add(reader.ReadString()!);
+            reader.Skip();
+        }
+        Assert.True(keys.SetEquals(["recipeId", "inputPartA", "inputPartB", "outputPartId"]));
+        Assert.True(reader.End);
+    }
+
+    [Fact]
     public void CombinationServiceRejectsCallsOutsideMatchLock()
     {
         var store = new MatchRuntimeStore(NullLogger.Instance);
@@ -141,8 +163,6 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(RecoveryOrbT1, combined.InputItemA);
         Assert.Equal(RecoveryOrbT1, combined.InputItemB);
         Assert.Equal(RecoveryOrbT2, combined.OutputItemId);
-        Assert.Equal("각성한 회복 오브", combined.OutputItemName);
-        Assert.False(combined.IsRaceComplete);
 
         G_TO_C_INGAME_INVENTORY_UPDATE inventoryUpdate =
             connection.DeserializeSingle<G_TO_C_INGAME_INVENTORY_UPDATE>(
@@ -848,8 +868,6 @@ public sealed class GameClientSessionItemCombinePublicationTests
         Assert.Equal(itemA, result.InputItemA);
         Assert.Equal(itemB, result.InputItemB);
         Assert.Equal(0, result.OutputItemId);
-        Assert.Equal(string.Empty, result.OutputItemName);
-        Assert.False(result.IsRaceComplete);
         G_TO_C_ERROR error = connection.DeserializeSingle<G_TO_C_ERROR>(Protocol.G_TO_C_ERROR);
         Assert.Equal(errorCode, error.ErrorCode);
         Assert.Equal("부품 결합 실패", error.Message);

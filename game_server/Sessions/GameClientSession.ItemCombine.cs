@@ -1,6 +1,5 @@
 using MessagePack;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 using network.packets;
 
@@ -49,15 +48,12 @@ public partial class GameClientSession
         bool shouldReplaceEquippedItem = outputItem != null && equippedBattleItem?.ItemUid == outputItem.ItemUid;
 
         using var combinePacket = Packet.Create((int)Protocol.G_TO_C_ITEMS_COMBINED, PlayerId.Value);
-        var itemData = GameItemData.Get(outputItemId);
         var combinedMsg = new G_TO_C_ITEMS_COMBINED
         {
             RecipeId = recipeId,
             InputItemA = msg.ItemA,
             InputItemB = msg.ItemB,
-            OutputItemId = outputItemId,
-            OutputItemName = itemData?.Name?.Kr ?? "",
-            IsRaceComplete = false
+            OutputItemId = outputItemId
         };
         combinePacket.SetBody(MessagePackSerializer.Serialize(combinedMsg));
         TrySend(combinePacket);
@@ -81,9 +77,7 @@ public partial class GameClientSession
             RecipeId = 0,
             InputItemA = partA,
             InputItemB = partB,
-            OutputItemId = 0,
-            OutputItemName = "",
-            IsRaceComplete = false
+            OutputItemId = 0
         };
         failPacket.SetBody(MessagePackSerializer.Serialize(failMsg));
         TrySend(failPacket);
