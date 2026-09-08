@@ -4,7 +4,8 @@ using network.common.data;
 namespace game_server.sessions;
 
 /// <summary>
-///     사람 플레이어 하나의 자원·수면·주기 버프 상태와 계산 규칙.
+///     사람 플레이어 하나의 체력·수면·주기 버프 상태와 변경 규칙.
+///     피해·회복은 적용 결과를 반환한다. 요청한 변화량과 실제 변화량은 구분한다.
 ///     세션이 소유하며 매치 잠금 안에서 갱신한다. 타이머·패킷·로그·탈락 처리는 소유자가 맡는다.
 /// </summary>
 internal sealed class PlayerCondition
@@ -22,9 +23,40 @@ internal sealed class PlayerCondition
     public DateTime HealLockUntilUtc { get; set; } = DateTime.MinValue;
     public bool HasPeriodicBuffs => _periodicBuffs.Count != 0;
 
-    public void ChangeHealth(int healthDelta, int maxHealth)
+    public HealthChange ApplyDamage(int damage)
     {
-        Health = Math.Clamp(Health + healthDelta, 0, maxHealth);
+        ArgumentOutOfRangeException.ThrowIfNegative(damage);
+        return ChangeHealth(-damage, Config.MAX_HEALTH);
+    }
+
+    public HealthChange Recover(int amount)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(amount);
+        return ChangeHealth(amount, Config.MAX_HEALTH);
+    }
+
+    /// <summary>체력을 변경하고 확정 결과를 반환한다. 패킷·로그·탈락 처리는 하지 않는다.</summary>
+    public HealthChange ChangeHealth(int healthDelta, int maxHealth)
+    {
+        int before = Health;
+        Health = (int)Math.Clamp((long)Health + healthDelta, 0L, maxHealth);
+        return new HealthChange(before, Health, healthDelta);
+    }
+
+    public readonly record struct HealthChange(int Before, int After, int RequestedDelta)
+    {
+        public bool Changed => Before != After;
+        public int ActualDelta => After - Before;
+        public int Recovered => Math.Max(0, ActualDelta);
+        public bool IsDepleted => After == 0;
+    }
+
+    public bool TryStartSleep(DateTime nowUtc)
+    {
+        if (IsSleeping || !CanSleep(nowUtc)) return false;
+        ResetSleep();
+        IsSleeping = true;
+        return true;
     }
 
     public bool CanSleep(DateTime nowUtc) =>

@@ -6,6 +6,51 @@ namespace demo_regression_tests;
 public sealed class PlayerConditionTests
 {
     [Fact]
+    public void RecoveryResultDistinguishesRequestedAndActualAmount()
+    {
+        var condition = new PlayerCondition { Health = Config.MAX_HEALTH - 3 };
+        var change = condition.Recover(10);
+        Assert.Equal(Config.MAX_HEALTH - 3, change.Before);
+        Assert.Equal(Config.MAX_HEALTH, change.After);
+        Assert.Equal(10, change.RequestedDelta);
+        Assert.Equal(3, change.ActualDelta);
+        Assert.Equal(3, change.Recovered);
+        Assert.True(change.Changed);
+        Assert.False(condition.Recover(10).Changed);
+    }
+
+    [Fact]
+    public void DamageResultClampsAtZeroAndDoesNotOverflow()
+    {
+        var condition = new PlayerCondition { Health = 7 };
+        var change = condition.ApplyDamage(int.MaxValue);
+        Assert.Equal(0, change.After);
+        Assert.Equal(-7, change.ActualDelta);
+        Assert.Equal(0, change.Recovered);
+        Assert.True(change.IsDepleted);
+        Assert.False(condition.ApplyDamage(1).Changed);
+        Assert.Equal(Config.MAX_HEALTH, condition.Recover(int.MaxValue).After);
+        Assert.Equal(Config.MAX_HEALTH, condition.Recover(int.MaxValue).After);
+        Assert.Throws<ArgumentOutOfRangeException>(() => condition.ApplyDamage(-1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => condition.Recover(-1));
+    }
+
+    [Fact]
+    public void StartSleepChecksCombatAndHealingLocksAndDoesNotRestartSleep()
+    {
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var condition = new PlayerCondition { Health = 50, LastCombatAtUtc = now };
+        Assert.False(condition.TryStartSleep(now.AddSeconds(2)));
+        condition.HealLockUntilUtc = now.AddSeconds(5);
+        Assert.False(condition.TryStartSleep(now.AddSeconds(4)));
+        Assert.True(condition.TryStartSleep(now.AddSeconds(5)));
+        Assert.True(condition.IsSleeping);
+        Assert.Equal(0, condition.GetSleepRecovery(now.AddSeconds(5), false, Config.MAX_HEALTH));
+        Assert.False(condition.TryStartSleep(now.AddSeconds(6)));
+        Assert.True(condition.GetSleepRecovery(now.AddSeconds(6), false, Config.MAX_HEALTH) > 0);
+    }
+
+    [Fact]
     public void HeartPickupRequiresMissingHealth()
     {
         Assert.Equal(GroundItemPickupDisposition.LeaveOnGround,

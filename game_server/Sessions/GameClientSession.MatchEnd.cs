@@ -46,8 +46,7 @@ public partial class GameClientSession
             : status;
     }
     /// <summary>
-    ///     체력이 0이면 탈락한다. 스태미나가 0이라는 이유만으로는 탈락하지 않는다.
-    ///     스태미나 부족에 따른 추가 체력 피해는 ModifyStats가 적용한다.
+    ///     체력이 0이면 기존 매치 탈락 서비스로 처리를 넘긴다.
     /// </summary>
     public void CheckResourceElimination(long attackerPlayerId = 0, bool isAreaClosureElimination = false,
         bool isOvertimeElimination = false)

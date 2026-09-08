@@ -24,6 +24,152 @@ public sealed class GameClientSessionPublicationTests
         GameDataHelper.Initialize();
     }
 
+    [Theory]
+    [InlineData(20)]
+    [InlineData(3)]
+    public void HealthNotificationPublishesResultWithoutApplyingRecoveryAgain(int missingHealth)
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        fixture.SetHealth(session, Config.MAX_HEALTH - missingHealth);
+        int expectedHealth = Config.MAX_HEALTH - missingHealth + Math.Min(10, missingHealth);
+        using (session.Match.Enter())
+        {
+            var change = session.Condition.Recover(10);
+            Assert.Equal(expectedHealth, session.CurrentHealth);
+            Assert.Equal(Math.Min(10, missingHealth), change.Recovered);
+            session.HandleHealthChanged(change);
+        }
+        Assert.Equal(expectedHealth, session.CurrentHealth);
+        var packet = fixture.ConnectionFor(session)
+            .DeserializeSingle<G_TO_C_PLAYER_STATS_UPDATE>(Protocol.G_TO_C_PLAYER_STATS_UPDATE);
+        Assert.Equal(expectedHealth, packet.Health);
+        Assert.Equal(10, packet.HealthDelta);
+    }
+
+    [Fact]
+    public void CombatHit_UsesConfirmedHealthAndExplicitDotFlag()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 102, (AreaType)50);
+        using (session.Match.Enter())
+        {
+            var combat = new MatchCombatDamageService(fixture.Store, fixture.EventLog, NullLogger<MatchCombatDamageService>.Instance);
+            combat.ApplyProximityAutoCombatHit(session, 101, (AreaType)50, 123, 5, isPeriodicDamage: true, sourceHealth: 73);
+        }
+        var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
+        Assert.Equal(101, hit.AttackerId);
+        Assert.Equal(102, hit.TargetId);
+        Assert.Equal(73, hit.AttackerHealth);
+        Assert.Equal(session.CurrentHealth, hit.TargetHealth);
+        Assert.Equal(5, hit.Damage);
+        Assert.Equal(123, hit.WeaponItemId);
+        Assert.True(hit.IsDot);
+    }
+
+    [Fact]
+    public void MonsterFeedback_DoesNotPackIdentityOrFlagsIntoHealth()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        var combat = new MatchCombatDamageService(fixture.Store, fixture.EventLog, NullLogger<MatchCombatDamageService>.Instance);
+        combat.SendMonsterHitNotification(session, 42, (AreaType)50, 123, 9, critical: true, showDamageOnly: true);
+        var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
+        Assert.Equal(CombatEntityKind.Monster, hit.TargetKind);
+        Assert.Equal(42, hit.TargetId);
+        Assert.Equal(-1, hit.TargetHealth);
+        Assert.True(hit.IsCritical);
+        Assert.True(hit.ShowDamageOnly);
+    }
+
+    [Fact]
+    public void MonsterHit_UsesOneDamageValueForHealthAndFeedback()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        int healthBefore = session.CurrentHealth;
+        using (session.Match.Enter())
+        {
+            var combat = new MatchCombatDamageService(fixture.Store, fixture.EventLog, NullLogger<MatchCombatDamageService>.Instance);
+            combat.ApplySwarmAfterimageMonsterHit(session, 42, 1);
+        }
+        var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
+        Assert.Equal(CombatEntityKind.Monster, hit.AttackerKind);
+        Assert.Equal(42, hit.AttackerId);
+        Assert.Equal(101, hit.TargetId);
+        Assert.Equal(1, hit.Damage);
+        Assert.Equal(healthBefore - 1, hit.TargetHealth);
+    }
+
+    [Fact]
+    public void PlayerHitNotification_UsesProvidedTargetHealthWithoutLookup()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        var combat = new MatchCombatDamageService(fixture.Store, fixture.EventLog, NullLogger<MatchCombatDamageService>.Instance);
+        combat.SendPlayerHitNotification(session, 999, (AreaType)50, 123, 7, targetHealth: 61);
+        var hit = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_COMBAT_HIT>(Protocol.G_TO_C_COMBAT_HIT);
+        Assert.Equal(999, hit.TargetId);
+        Assert.Equal(61, hit.TargetHealth);
+    }
+
+    [Fact]
+    public void RecoveryAndStatusEffect_HaveSeparateTypedPackets()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        fixture.SetHealth(session, Config.MAX_HEALTH - 3);
+        var recoveryService = new OrbRecoveryService(
+            fixture.Store, fixture.EventLog, NullLogger<OrbRecoveryService>.Instance);
+        var actor = new ProximityCombatActor(101, (AreaType)50, new Vector3f(0, 0, 0),
+            107000040, 0, 0, 0, WeaponItemUid: 1);
+        var now = DateTime.UtcNow;
+        using (session.Match.Enter())
+        {
+            recoveryService.Process(70001, [actor], [session], [], now);
+            recoveryService.Process(70001, [actor], [session], [], now.AddSeconds(OrbData.RecoveryTickSeconds));
+        }
+        using var packet = PacketMaker.G_TO_C_STATUS_EFFECT(new()
+        {
+            SourcePlayerId = 102,
+            TargetPlayerId = 101,
+            AreaType = (AreaType)50,
+            Effect = CombatStatusEffectKind.WaveSlow,
+            DurationMs = 1500
+        });
+        Assert.True(session.TrySend(packet));
+        var recovery = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_HEALTH_RECOVERY>(Protocol.G_TO_C_HEALTH_RECOVERY);
+        Assert.Equal(HealthRecoveryKind.Orb, recovery.Source);
+        Assert.Equal(actor.WeaponItemId, recovery.OrbItemId);
+        Assert.Equal(Math.Min(3, OrbData.GetRecoveryAmount(actor.WeaponItemId)), recovery.Amount);
+        var effect = fixture.ConnectionFor(session).DeserializeSingle<G_TO_C_STATUS_EFFECT>(Protocol.G_TO_C_STATUS_EFFECT);
+        Assert.Equal(102, effect.SourcePlayerId);
+        Assert.Equal(101, effect.TargetPlayerId);
+        Assert.Equal(CombatStatusEffectKind.WaveSlow, effect.Effect);
+        Assert.Equal(1500, effect.DurationMs);
+    }
+
+    [Fact]
+    public void SleepRecoverySendsRecoveryNotificationFromTick()
+    {
+        using var fixture = new SessionFixture();
+        var session = fixture.CreateSession(70001, 101, (AreaType)50);
+        fixture.SetHealth(session, Config.MAX_HEALTH - 1);
+        var now = DateTime.UtcNow;
+        using (session.Match.Enter())
+        {
+            Assert.True(session.Condition.TryStartSleep(now));
+            session.TickSwarmSleepRecovery(now);
+            session.TickSwarmSleepRecovery(now.AddSeconds(1));
+        }
+        var packet = fixture.ConnectionFor(session)
+            .DeserializeSingle<G_TO_C_HEALTH_RECOVERY>(Protocol.G_TO_C_HEALTH_RECOVERY);
+        Assert.Equal(101, packet.PlayerId);
+        Assert.Equal(HealthRecoveryKind.Sleep, packet.Source);
+        Assert.Equal(1, packet.Amount);
+        Assert.Equal(Config.MAX_HEALTH, session.CurrentHealth);
+    }
+
     [Fact]
     public void SessionRegistration_ReturnsPreviousWithoutClosingIt_AndUpdatesMatchMembership()
     {

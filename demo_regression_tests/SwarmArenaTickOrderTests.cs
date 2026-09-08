@@ -79,7 +79,7 @@ public sealed class SwarmArenaTickOrderTests
             "long matchingId = match.MatchingId;",
             "var humans = activeSessions",
             "var bots = match.Bots.GetBots(matchingId)",
-            "target.Session.ModifyStats(",
+            "target.Session.HandleHealthChanged(",
             "var eliminatedTargets = targets",
             "foreach (var candidate in survivorsToEliminate.AsEnumerable().Reverse())",
             "target.Session.EliminateForSettlement(",
@@ -159,7 +159,7 @@ public sealed class SwarmArenaTickOrderTests
             "CollectSwarmCrossfireAnchoredTargets(",
             "Combat.Resolve(",
             "TryScheduleSwarmCrossfire(",
-            "attackerSession?.SendSwarmAfterimageMonsterAttackFeedback(",
+            "combatDamage.SendMonsterHitNotification(attackerSession,",
             "BroadcastSwarmAttackVfxToTargetAndObservers(",
             "matchRuntimes.GetRequired(matchingId).Bots.TryFinalizeProximityAutoCombatElimination(",
             "botEliminations.Process(");
@@ -172,32 +172,34 @@ public sealed class SwarmArenaTickOrderTests
         string playerState = ReadNormalizedSource(
             root, "game_server", "Sessions", "GameClientSession.PlayerState.cs");
         string sessionCombat = ReadNormalizedSource(
-            root, "game_server", "Sessions", "GameClientSession.ProximityAutoCombat.cs");
+            root, "game_server", "Services", "MatchCombatDamageService.cs");
         string sessionMatchEnd = ReadNormalizedSource(
             root, "game_server", "Services", "MatchEliminationService.cs");
         string server = ReadNormalizedSource(root, "game_server", "GameServer.cs");
         string proximity = ReadNormalizedSource(
             root, "game_server", "Services", "OrbVisualStatePublisher.cs");
 
-        string modifyStats = ReadMethodSlice(
+        string healthNotification = ReadMethodSlice(
             playerState,
-            "public void ModifyStats(",
+            "internal void HandleHealthChanged(",
             "private void SendPlayerStatsUpdate(");
         AssertInOrder(
-            modifyStats,
-            "_condition.ChangeHealth(",
+            healthNotification,
+            "if (!change.Changed) return;",
             "SendPlayerStatsUpdate(",
             "CheckResourceElimination(");
 
         string applyProximityHit = ReadMethodSlice(
             sessionCombat,
-            "internal void ApplyProximityAutoCombatHit(",
-            "internal void SendProximityAutoCombatAttackFeedback(");
+            "public void ApplyProximityAutoCombatHit(",
+            "public void ApplySwarmAfterimageMonsterHit(");
         AssertInOrder(
             applyProximityHit,
-            "_gameEventLogManager.LogHit(",
-            "ModifyStats(healthDelta: -damage, attackerPlayerId: sourcePlayerId);",
-            "SendEncounterEvent(");
+            "eventLogs.LogHit(",
+            "victimSession.Condition.ApplyDamage(damage);",
+            "victimSession.HandleHealthChanged(change, attackerPlayerId: sourcePlayerId);",
+            "PacketMaker.G_TO_C_COMBAT_HIT(",
+            "victimSession.TrySend(packet);");
 
         string orbPublicationSteps = ReadMethodSlice(
             proximity,

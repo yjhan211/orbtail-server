@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.packets;
 
 namespace game_server.services;
 /// <summary>
@@ -76,8 +77,9 @@ internal sealed class OrbRecoveryService(
                 int previousHealth = session.CurrentHealth;
                 if (previousHealth < Config.MAX_HEALTH)
                 {
-                    session.ModifyStats(healthDelta: requestedRecovery);
-                    effectiveRecovery = session.CurrentHealth - previousHealth;
+                    var change = session.Condition.Recover(requestedRecovery);
+                    session.HandleHealthChanged(change);
+                    effectiveRecovery = change.Recovered;
                 }
             }
             else
@@ -95,9 +97,21 @@ internal sealed class OrbRecoveryService(
             if (effectiveRecovery <= 0)
                 continue;
 
-            session?.SendOrbRecoveryFeedback(representative.WeaponItemId, effectiveRecovery);
+            if (session != null && session.PlayerId.HasValue && !session.IsEliminated &&
+                representative.WeaponItemId > 0)
+            {
+                using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new()
+                {
+                    PlayerId = playerId,
+                    AreaType = session.CurrentArea,
+                    Amount = effectiveRecovery,
+                    Source = HealthRecoveryKind.Orb,
+                    OrbItemId = representative.WeaponItemId
+                });
+                session.TrySend(packet);
+            }
 
-            // Human sessions already record effective recovery inside ModifyStats.
+            // Human sessions already record effective recovery inside HandleHealthChanged.
             // Bots mutate their state directly, so only that path needs explicit telemetry.
             if (session == null)
             {

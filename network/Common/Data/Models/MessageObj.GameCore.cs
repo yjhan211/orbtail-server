@@ -7,6 +7,48 @@ using network.common.data.helpers;
 
 namespace network.common.data.models
 {
+    public enum CombatEntityKind { Player = 0, Monster = 1 }
+    public enum HealthRecoveryKind { Orb = 0, Sleep = 1 }
+    public enum CombatStatusEffectKind { WaveSlow = 0, SunBurn = 1, WindWound = 2 }
+
+    // 사람과 봇은 Player ID를, 몬스터는 Monster ID를 사용한다. 체력 -1은 정보 없음이다.
+    [MessagePackObject]
+    public class G_TO_C_COMBAT_HIT : IMessagePackObject
+    {
+        [Key("attackerId")] public long AttackerId { get; set; }
+        [Key("targetId")] public long TargetId { get; set; }
+        [Key("attackerKind")] public CombatEntityKind AttackerKind { get; set; }
+        [Key("targetKind")] public CombatEntityKind TargetKind { get; set; }
+        [Key("areaType")] public AreaType AreaType { get; set; }
+        [Key("weaponItemId")] public int WeaponItemId { get; set; }
+        [Key("damage")] public int Damage { get; set; }
+        [Key("attackerHealth")] public int AttackerHealth { get; set; } = -1;
+        [Key("targetHealth")] public int TargetHealth { get; set; } = -1;
+        [Key("isDot")] public bool IsDot { get; set; }
+        [Key("isCritical")] public bool IsCritical { get; set; }
+        [Key("showDamageOnly")] public bool ShowDamageOnly { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_HEALTH_RECOVERY : IMessagePackObject
+    {
+        [Key("playerId")] public long PlayerId { get; set; }
+        [Key("areaType")] public AreaType AreaType { get; set; }
+        [Key("amount")] public int Amount { get; set; }
+        [Key("source")] public HealthRecoveryKind Source { get; set; }
+        [Key("orbItemId")] public int OrbItemId { get; set; }
+    }
+
+    [MessagePackObject]
+    public class G_TO_C_STATUS_EFFECT : IMessagePackObject
+    {
+        [Key("sourcePlayerId")] public long SourcePlayerId { get; set; }
+        [Key("targetPlayerId")] public long TargetPlayerId { get; set; }
+        [Key("areaType")] public AreaType AreaType { get; set; }
+        [Key("effect")] public CombatStatusEffectKind Effect { get; set; }
+        [Key("durationMs")] public int DurationMs { get; set; }
+    }
+
     [MessagePackObject]
     public class G_TO_C_HEART_BEAT : IMessagePackObject
     {
@@ -76,9 +118,6 @@ namespace network.common.data.models
         [Key("eventType")] public int EventType { get; set; }
         [Key("cooldownSeconds")] public int CooldownSeconds { get; set; }
         [Key("revealDelayMs")] public int RevealDelayMs { get; set; }
-        [Key("damageValue")] public int DamageValue { get; set; }
-        /// <summary>자동전투로 공개된 대상의 현재 체력. -1이면 미공개. 몬스터 공격 등 특수 이벤트에서는 기존 이벤트 메타데이터로 사용한다.</summary>
-        [Key("targetHealth")] public int TargetHealth { get; set; } = -1;
     }
 
     /// <summary>

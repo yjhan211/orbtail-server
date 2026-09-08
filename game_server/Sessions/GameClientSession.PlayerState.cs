@@ -82,10 +82,9 @@ public partial class GameClientSession
         // 교전 직후에는 조용히 무시한다 (#229): 실패 팝업을 띄우면 전투 중에 수면 버튼을
         // 잘못 누를 때마다 "유효하지 않은 게임 상태" 창이 화면을 막는다. 버튼이 이미 클릭
         // 피드백을 줬으므로 아무 일도 안 일어나는 것 자체가 답이다.
-        if (!CanEnterSwarmSleep(DateTime.UtcNow))
+        if (!_condition.TryStartSleep(DateTime.UtcNow))
             return;
 
-        _condition.ResetSleep();
         await BroadcastSleepState(true);
         return;
     }
@@ -101,7 +100,8 @@ public partial class GameClientSession
                     StopAllPeriodicBuffs();
                     return Task.CompletedTask;
                 }
-                _condition.TickPeriodicBuffs(Config.MAX_HEALTH, health => ModifyStats(health));
+                _condition.TickPeriodicBuffs(Config.MAX_HEALTH,
+                    health => HandleHealthChanged(_condition.ChangeHealth(health, Config.MAX_HEALTH)));
                 if (!_condition.HasPeriodicBuffs)
                 {
                     if (_condition.IsSleeping) _ = BroadcastSleepState(false);
@@ -120,8 +120,6 @@ public partial class GameClientSession
     // #229 6단계 수면 회복 → 2026-08-17 재조정: 준비 1초, 회복은 1초에 한 번.
     // 중단은 이동뿐이다 — 움직이지 않는 한 피격·폐쇄로는 깨지 않는다.
 
-    private const int SwarmSleepRecoveryEventType = 28;
-
     /// <summary>
     ///     수면 중 본체 HP 회복. 진입 1초 뒤 첫 회복, 이후 1초마다 최대 HP 5%씩.
     ///     중단(이동)은 BreakSwarmSleep이 맡고 여기서는 회복만 센다.
@@ -130,8 +128,16 @@ public partial class GameClientSession
     {
         int recovered = _condition.GetSleepRecovery(nowUtc, IsEliminated, Config.MAX_HEALTH);
         if (recovered <= 0) return;
-        ModifyStats(healthDelta: recovered);
-        SendEncounterEvent(PlayerId ?? 0, CurrentArea, SwarmSleepRecoveryEventType, 0, 0, recovered);
+        HandleHealthChanged(_condition.Recover(recovered));
+        if (!PlayerId.HasValue) return;
+        using var packet = PacketMaker.G_TO_C_HEALTH_RECOVERY(new()
+        {
+            PlayerId = PlayerId.Value,
+            AreaType = CurrentArea,
+            Amount = recovered,
+            Source = HealthRecoveryKind.Sleep
+        });
+        TrySend(packet);
     }
 
     /// <summary>
@@ -364,55 +370,51 @@ public partial class GameClientSession
         var effect = _condition.ApplyItemBuffs(itemId);
         if (effect.Periodic)
             _periodicBuffTimer ??= new Timer(_ => OnPeriodicBuffTick(), null, 1000, 1000);
-        int before = Health;
-        if (effect.Health != 0) ModifyStats(effect.Health);
-        int recovered = Math.Max(0, Health - before);
-        if (PlayerId.HasValue && recovered > 0)
-            _gameEventLogManager.LogRecoveryUse(MatchingId, PlayerId.Value, itemId, recovered,
+        var change = _condition.ChangeHealth(effect.Health, Config.MAX_HEALTH);
+        HandleHealthChanged(change);
+        if (PlayerId.HasValue && change.Recovered > 0)
+            _gameEventLogManager.LogRecoveryUse(MatchingId, PlayerId.Value, itemId, change.Recovered,
                 source: "inventory_consumable", isBot: false);
         return effect.Periodic;
     }
 
     /// <summary>
-    ///     체력을 변경하고 결과를 전송한다. 체력이 0이면 탈락 처리한다.
+    ///     PlayerCondition이 확정한 체력 변경 결과를 전송·기록하고 필요하면 탈락 처리한다.
+    ///     상태 변경 직후 같은 매치 잠금 안에서 호출한다. 여기서는 체력을 변경하지 않는다.
     /// </summary>
-    public void ModifyStats(int healthDelta = 0, long attackerPlayerId = 0,
+    internal void HandleHealthChanged(PlayerCondition.HealthChange change, long attackerPlayerId = 0,
         bool isAreaClosureElimination = false, bool isOvertimeElimination = false, bool deferElimination = false)
     {
-        int oldHealth = Health;
-        _condition.ChangeHealth(healthDelta, Config.MAX_HEALTH);
-
         // 값이 변경되지 않았으면 패킷 전송 안함
-        if (Health == oldHealth) return;
+        if (!change.Changed) return;
 
         Logger.LogInformation(
             "Player {PlayerId} Health: {OldHealth}→{Health} ({Delta:+#;-#;0})",
-            PlayerId, oldHealth, Health, healthDelta);
+            PlayerId, change.Before, change.After, change.RequestedDelta);
 
         // 효과 표시에는 요청한 변화량을, 상태에는 적용 후 체력을 보낸다.
-        SendPlayerStatsUpdate(healthDelta);
+        SendPlayerStatsUpdate(change);
 
         // 운영툴 진행 로그
         if (PlayerId.HasValue)
         {
-            int recoveredHealth = Math.Max(0, Health - oldHealth);
-            if (recoveredHealth > 0)
-                _gameEventLogManager.RecordRecovery(MatchingId, PlayerId.Value, recoveredHealth);
+            if (change.Recovered > 0)
+                _gameEventLogManager.RecordRecovery(MatchingId, PlayerId.Value, change.Recovered);
 
             _gameEventLogManager.LogResource(MatchingId, PlayerId.Value,
-                healthDelta, Health, reason: "", isBot: false);
+                change.RequestedDelta, change.After, reason: "", isBot: false);
         }
 
-        if (!deferElimination)
+        if (change.IsDepleted && !deferElimination)
             CheckResourceElimination(attackerPlayerId, isAreaClosureElimination, isOvertimeElimination);
     }
 
     /// <summary>
     ///     스탯 업데이트 패킷 전송
     /// </summary>
-    private void SendPlayerStatsUpdate(int healthDelta)
+    private void SendPlayerStatsUpdate(PlayerCondition.HealthChange change)
     {
-        using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(Health, healthDelta);
+        using var packet = PacketMaker.G_TO_C_PLAYER_STATS_UPDATE(change.After, change.RequestedDelta);
         TrySend(packet);
     }
 

@@ -2,7 +2,6 @@ using game_server.services;
 using MessagePack;
 using Microsoft.Extensions.Logging;
 using network.common;
-using network.common.data;
 using network.common.data.models;
 using network.packets;
 
@@ -12,12 +11,7 @@ public partial class GameClientSession
 {
     private Task HandleGroundItemPickup(C_TO_G_GROUND_ITEM_PICKUP msg)
     {
-        if (!PlayerId.HasValue)
-        {
-            SendGroundItemPickupResult(msg.GroundItemUid, 0, false, false, ErrorCode.INVALID_GAME_STATE);
-            return Task.CompletedTask;
-        }
-        if (MatchingId <= 0)
+        if (!PlayerId.HasValue || MatchingId <= 0)
         {
             SendGroundItemPickupResult(msg.GroundItemUid, 0, false, false, ErrorCode.INVALID_GAME_STATE);
             return Task.CompletedTask;
@@ -128,7 +122,7 @@ public partial class GameClientSession
             int effectiveHealthRecovery = Math.Min(pickup.HealthRecovery, Math.Max(0, Config.MAX_HEALTH - Health));
             int requestedRecovery = pickup.HealthRecovery;
             int effectiveRecovery = effectiveHealthRecovery;
-            ModifyStats(healthDelta: pickup.HealthRecovery);
+            HandleHealthChanged(_condition.Recover(pickup.HealthRecovery));
             // 하트는 앞줄 오브 HP도 만충으로 (#222 M4) — 원작 하트의 스쿼드 회복.
             if (claimedItem.ItemId == Config.HEART_GROUND_ITEM_ID)
                 SwarmHeartPickupCallback?.Invoke(MatchingId, PlayerId.Value);

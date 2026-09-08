@@ -146,17 +146,18 @@ public class ProximityAutoCombatDataTests
         string gameServerSource = ReadNormalizedSource(
             repoRoot, "game_server", "Services", "MatchArenaService.cs");
         string sessionSource = ReadNormalizedSource(
-            repoRoot, "game_server", "Sessions", "GameClientSession.ProximityAutoCombat.cs");
+            repoRoot, "game_server", "Services", "MatchCombatDamageService.cs");
         string mapSource = ReadMapManagerSources(repoRoot);
         string playerSource = ReadNormalizedSource(
             repoRoot, "client", "Assets", "Scripts", "Components", "Player", "Player.cs");
 
-        Assert.Contains("targetSession.ApplyProximityAutoCombatHit(", gameServerSource);
+        Assert.Contains("combatDamage.ApplyProximityAutoCombatHit(targetSession,", gameServerSource);
         Assert.Contains("attack.WeaponItemId,", gameServerSource);
-        Assert.Contains("weaponItemId,\n            damage);", sessionSource);
+        Assert.Contains("WeaponItemId = weaponItemId", sessionSource);
+        Assert.Contains("Damage = damage", sessionSource);
         // 명중 전용 연출로 리팩터링되어 단일 호출 형태를 검사한다.
         Assert.Contains(
-            "PlayGuardianHitOnly(packet.PlayerId, localPlayerIsAttacker: false, packet.DamageValue);",
+            "PlayGuardianHitOnly(packet.AttackerId, localPlayerIsAttacker: false, packet.Damage);",
             mapSource);
         Assert.Contains(
             "int damageValue = authoritativeDamageValue > 0 ? authoritativeDamageValue : 0;",
@@ -304,7 +305,7 @@ public class ProximityAutoCombatDataTests
 
         // #238: 레거시 잔상 공격 파이프라인 퇴역 — 현행 스웜의 몬스터 공격 피드백 계약을 검사한다.
         string swarmSource = ReadNormalizedSource(repoRoot, "game_server", "Services", "MatchArenaService.cs");
-        Assert.Contains("SendSwarmAfterimageMonsterAttackFeedback(", swarmSource);
+        Assert.Contains("SendMonsterHitNotification(", swarmSource);
         // 봇 플레이어 ID도 음수라 플레이어 맵 우선 해석이 계약이다 (#219 봇전 연출 증발 수리)
         Assert.Contains(
             "if (packet.TargetPlayerId < 0 && !_playerMap.ContainsKey(packet.TargetPlayerId))",

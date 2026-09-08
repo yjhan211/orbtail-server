@@ -107,25 +107,38 @@ public static partial class PacketMaker
         AreaType areaType,
         int eventType,
         int cooldownSeconds,
-        int revealDelayMs = 0,
-        int damageValue = 0,
-        int targetHealth = -1)
+        int revealDelayMs = 0)
     {
         var packet = Packet.Create((int)Protocol.G_TO_C_ENCOUNTER_REVEAL);
-        G_TO_C_ENCOUNTER_REVEAL body = new()
+        packet.SetBody(MessagePackSerializer.Serialize(new G_TO_C_ENCOUNTER_REVEAL
         {
-            PlayerId = playerId,
-            AreaType = areaType,
-            EventType = eventType,
-            CooldownSeconds = cooldownSeconds,
-            RevealDelayMs = revealDelayMs,
-            DamageValue = damageValue,
-            TargetHealth = targetHealth
-        };
+            PlayerId = playerId, AreaType = areaType, EventType = eventType,
+            CooldownSeconds = cooldownSeconds, RevealDelayMs = revealDelayMs
+        }));
+        return packet;
+    }
 
+    public static Packet G_TO_C_COMBAT_HIT(G_TO_C_COMBAT_HIT body)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_COMBAT_HIT);
         packet.SetBody(MessagePackSerializer.Serialize(body));
         return packet;
     }
+
+    public static Packet G_TO_C_HEALTH_RECOVERY(G_TO_C_HEALTH_RECOVERY body)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_HEALTH_RECOVERY);
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
+    public static Packet G_TO_C_STATUS_EFFECT(G_TO_C_STATUS_EFFECT body)
+    {
+        var packet = Packet.Create((int)Protocol.G_TO_C_STATUS_EFFECT);
+        packet.SetBody(MessagePackSerializer.Serialize(body));
+        return packet;
+    }
+
 
     public static Packet G_TO_C_AREA_EXIT_BLOCKED(AreaType areaType, Cell correctedCell)
     {

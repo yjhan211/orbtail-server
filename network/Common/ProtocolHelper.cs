@@ -26,6 +26,9 @@ namespace network.common
             Protocol.C_TO_G_DOOR_OPEN_START,
             Protocol.C_TO_G_DOOR_OPEN_FINISH,
             Protocol.G_TO_C_DOOR_OPEN_ACK,
+            Protocol.G_TO_C_COMBAT_HIT,
+            Protocol.G_TO_C_HEALTH_RECOVERY,
+            Protocol.G_TO_C_STATUS_EFFECT,
             Protocol.G_TO_C_ERROR,
         };
 

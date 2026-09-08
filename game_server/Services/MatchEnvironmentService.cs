@@ -105,8 +105,8 @@ internal sealed class MatchEnvironmentService(
 
             if (target.Session != null)
             {
-                target.Session.ModifyStats(
-                    healthDelta: -totalDelta,
+                target.Session.HandleHealthChanged(
+                    target.Session.Condition.ApplyDamage(totalDelta),
                     deferElimination: true);
             }
             else if (target.Bot != null)

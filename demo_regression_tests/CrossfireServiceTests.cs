@@ -13,7 +13,7 @@ public sealed class CrossfireServiceTests
         var store = new MatchRuntimeStore(NullLogger.Instance);
         var match = store.GetOrCreate(947601);
         var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
-        var service = new CrossfireService(store, new MatchCombatDamageService(store, logs), logs);
+        var service = new CrossfireService(store, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
         var now = DateTime.UtcNow;
         var owner = new BotPlayerState { PlayerId = 11 };
         var victim = new BotPlayerState { PlayerId = 12 };
@@ -65,7 +65,7 @@ public sealed class CrossfireServiceTests
         var first = store.GetOrCreate(947602);
         var second = store.GetOrCreate(947603);
         var logs = new GameEventLogManager(id => store.Get(id)?.EventLog);
-        var service = new CrossfireService(store, new MatchCombatDamageService(store, logs), logs);
+        var service = new CrossfireService(store, new MatchCombatDamageService(store, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance), logs);
         var now = DateTime.UtcNow;
         using (store.Enter(first))
             first.Swarm.Crossfire.SetSunBurn(12, 11, 107000010, AreaType.S2Ground,

@@ -1,4 +1,5 @@
 using game_server.sessions;
+using Microsoft.Extensions.Logging;
 using network.common;
 using network.common.data;
 using network.common.data.models;
@@ -11,8 +12,107 @@ namespace game_server.services;
 ///     상태는 각 매치가 소유하며 호출자는 매치 잠금을 보유한다.
 ///     상태 변경 뒤 피격·드롭 패킷을 보내며 전송 실패로 적용한 피해를 되돌리지 않는다.
 /// </summary>
-internal sealed class MatchCombatDamageService(MatchRuntimeStore matchRuntimes, GameEventLogManager eventLogs)
+internal sealed class MatchCombatDamageService(
+    MatchRuntimeStore matchRuntimes,
+    GameEventLogManager eventLogs,
+    ILogger<MatchCombatDamageService> logger)
 {
+    public void SendPlayerHitNotification(GameClientSession? attackerSession, long targetPlayerId, AreaType area, int weaponItemId, int damage, int targetHealth, bool isPeriodicDamage = false)
+    {
+        if (attackerSession == null || !attackerSession.PlayerId.HasValue || targetPlayerId == 0)
+        {
+            return;
+        }
+        using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
+        {
+            AttackerId = attackerSession.PlayerId.Value,
+            TargetId = targetPlayerId,
+            AreaType = area,
+            WeaponItemId = weaponItemId,
+            Damage = damage,
+            AttackerHealth = attackerSession.CurrentHealth,
+            TargetHealth = targetHealth,
+            IsDot = isPeriodicDamage
+        });
+        attackerSession.TrySend(packet);
+    }
+
+    public void SendMonsterHitNotification(GameClientSession? attackerSession, int monsterId, AreaType area, int weaponItemId, int damage, bool critical = false, bool showDamageOnly = false)
+    {
+        if (attackerSession == null || !attackerSession.PlayerId.HasValue || attackerSession.IsEliminated || monsterId < 0 || weaponItemId <= 0 || damage <= 0) return;
+        using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
+        {
+            AttackerId = attackerSession.PlayerId.Value,
+            TargetId = monsterId,
+            TargetKind = CombatEntityKind.Monster,
+            AreaType = area,
+            WeaponItemId = weaponItemId,
+            Damage = damage,
+            AttackerHealth = attackerSession.CurrentHealth,
+            IsCritical = critical,
+            ShowDamageOnly = showDamageOnly
+        });
+        attackerSession.TrySend(packet);
+    }
+
+    /// <summary>일반 피격의 로그·체력 변경·결과 전송을 매치 잠금 안에서 처리한다.</summary>
+    public void ApplyProximityAutoCombatHit(
+        GameClientSession victimSession, long sourcePlayerId, AreaType area, int weaponItemId,
+        int damage, bool isPeriodicDamage = false, int sourceHealth = -1)
+    {
+        if (!victimSession.PlayerId.HasValue || victimSession.IsEliminated || damage <= 0)
+        {
+            return;
+        }
+        eventLogs.LogHit(victimSession.MatchingId, sourcePlayerId, victimSession.PlayerId.Value, weaponItemId, damage,
+            victimSession.CurrentHealth > 0 && victimSession.CurrentHealth - damage <= 0,
+            BotPlayerManager.IsBotPlayerId(sourcePlayerId), DateTimeOffset.UtcNow);
+
+        var change = victimSession.Condition.ApplyDamage(damage);
+        victimSession.HandleHealthChanged(change, attackerPlayerId: sourcePlayerId);
+        using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
+        {
+            AttackerId = sourcePlayerId,
+            TargetId = victimSession.PlayerId.Value,
+            AreaType = area,
+            WeaponItemId = weaponItemId,
+            Damage = damage,
+            AttackerHealth = sourcePlayerId == victimSession.PlayerId.Value ? victimSession.CurrentHealth : sourceHealth,
+            TargetHealth = victimSession.CurrentHealth,
+            IsDot = isPeriodicDamage
+        });
+        victimSession.TrySend(packet);
+    }
+
+
+    /// <summary>몬스터 피해를 적용하고 같은 피해량을 클라이언트에 알린다.</summary>
+    public void ApplySwarmAfterimageMonsterHit(
+        GameClientSession victimSession, int monsterId, int damage)
+    {
+        if (!victimSession.PlayerId.HasValue || victimSession.IsEliminated || monsterId <= 0 || damage <= 0) return;
+        int healthBefore = victimSession.CurrentHealth;
+        int healthAfter = Math.Max(0, healthBefore - damage);
+        bool isLethal = healthBefore > 0 && healthAfter <= 0;
+        eventLogs.LogSwarmAfterimageHit(
+            victimSession.MatchingId, monsterId, victimSession.PlayerId.Value, victimSession.CurrentArea.ToString(), damage,
+            healthBefore, healthAfter, isLethal, isBot: false, DateTimeOffset.UtcNow);
+        logger.LogInformation(
+            "Emotion afterimage attack: MatchingId={MatchingId}, MonsterId={MonsterId}, Target={Target}, TargetKind=Human, Damage={Damage}, HealthBefore={HealthBefore}, HealthAfter={HealthAfter}, Killed={Killed}",
+            victimSession.MatchingId, monsterId, victimSession.PlayerId.Value, damage, healthBefore, healthAfter, isLethal);
+        var change = victimSession.Condition.ApplyDamage(damage);
+        victimSession.HandleHealthChanged(change);
+        using var packet = PacketMaker.G_TO_C_COMBAT_HIT(new G_TO_C_COMBAT_HIT
+        {
+            AttackerId = monsterId,
+            AttackerKind = CombatEntityKind.Monster,
+            TargetId = victimSession.PlayerId.Value,
+            AreaType = victimSession.CurrentArea,
+            Damage = damage,
+            TargetHealth = victimSession.CurrentHealth
+        });
+        victimSession.TrySend(packet);
+    }
+
     private static double SwarmCriticalChance => SwarmConfigData.GetDouble("SWARM_CRITICAL_CHANCE", 0.15d);
     private static float SwarmCriticalMultiplier => SwarmConfigData.GetFloat("SWARM_CRITICAL_MULTIPLIER", 2f);
 
@@ -113,8 +213,8 @@ internal sealed class MatchCombatDamageService(MatchRuntimeStore matchRuntimes, 
 
         eventLogs.RecordMonsterHit(matchingId, attackerId, damage, damageResult.Killed);
         var attackerSession = allSessions.FirstOrDefault(session => session.PlayerId == attackerId);
-        attackerSession?.SendSwarmAfterimageMonsterAttackFeedback(
-            monsterId, area, weaponItemId, damage, critical, noProjectile: true);
+        SendMonsterHitNotification(attackerSession,
+            monsterId, area, weaponItemId, damage, critical, showDamageOnly: true);
 
         if (damageResult.Killed && damageResult.MonsterState != null)
             SettleSwarmMonsterKill(matchingId, damageResult, attackerId, damage, allSessions);
@@ -167,7 +267,7 @@ internal sealed class MatchCombatDamageService(MatchRuntimeStore matchRuntimes, 
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions,
         float damageScale = 1f,
-        bool dotTick = false)
+        bool isPeriodicDamage = false)
     {
         SwarmMatchRuntime runtime = matchRuntimes.GetRequired(matchingId).Swarm;
         // 받는 피해 배율: 고정 충격 50에 1/3을 곱한다. 태양·바람·파도 충격이 전부 이 한 곳을 지난다.
@@ -182,11 +282,13 @@ internal sealed class MatchCombatDamageService(MatchRuntimeStore matchRuntimes, 
         int healthAfter;
 
         var victimSession = aliveSessions.FirstOrDefault(session => session.PlayerId == victimId);
+        var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
+        int ownerHealth = ownerSession?.CurrentHealth ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == ownerId)?.Health ?? -1;
         if (victimSession != null)
         {
             healthBefore = victimSession.CurrentHealth;
             // 사격 피격 경로 재사용 — 체력 감소·피격 숫자·탈락 흐름이 그대로 따라온다.
-            victimSession.ApplyProximityAutoCombatHit(ownerId, area, weaponItemId, shock, dotTick);
+            ApplyProximityAutoCombatHit(victimSession, ownerId, area, weaponItemId, shock, isPeriodicDamage, ownerHealth);
             healthAfter = victimSession.CurrentHealth;
         }
         else
@@ -207,8 +309,7 @@ internal sealed class MatchCombatDamageService(MatchRuntimeStore matchRuntimes, 
             healthAfter = bot.Health;
         }
 
-        var ownerSession = allSessions.FirstOrDefault(session => session.PlayerId == ownerId);
-        ownerSession?.SendProximityAutoCombatAttackFeedback(victimId, area, weaponItemId, shock, dotTick);
+        SendPlayerHitNotification(ownerSession, victimId, area, weaponItemId, shock, healthAfter, isPeriodicDamage);
 
         eventLogs.LogSystem(
             matchingId,

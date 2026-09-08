@@ -2,6 +2,7 @@ using game_server.sessions;
 using network.common;
 using network.common.data;
 using network.common.data.models;
+using network.packets;
 
 namespace game_server.services;
 
@@ -154,8 +155,18 @@ internal sealed class WindBladeService(
         DateTime nowUtc, List<GameClientSession> aliveSessions)
     {
         windBlade.ApplyWound(victimId, nowUtc.AddSeconds(Config.SWARM_WIND_WOUND_SECONDS));
-        aliveSessions.FirstOrDefault(session => session.PlayerId == victimId)
-            ?.SendSwarmWindWound(ownerId, area, (int)(Config.SWARM_WIND_WOUND_SECONDS * 1000f));
+        var victimSession = aliveSessions.FirstOrDefault(session => session.PlayerId == victimId);
+        if (victimSession == null || !victimSession.PlayerId.HasValue || ownerId == 0) return;
+
+        using var packet = PacketMaker.G_TO_C_STATUS_EFFECT(new()
+        {
+            SourcePlayerId = ownerId,
+            TargetPlayerId = victimId,
+            AreaType = area,
+            Effect = CombatStatusEffectKind.WindWound,
+            DurationMs = (int)(Config.SWARM_WIND_WOUND_SECONDS * 1000f)
+        });
+        victimSession.TrySend(packet);
     }
 
 }

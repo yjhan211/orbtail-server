@@ -523,7 +523,7 @@ internal sealed class MatchArenaService(
                 // 못한다 — "수면은 잔상이 없는 상태를 요구하지 않는다"는 규칙과 정면으로 충돌하고,
                 // 전멸 뒤 4초 휴지 창도 3초를 잠금에 뺏겨 무의미해진다.
                 // 잠금은 내가 몸으로 지르는 절단과 피격에만 건다.
-                attackerSession?.SendSwarmAfterimageMonsterAttackFeedback(
+                combatDamage.SendMonsterHitNotification(attackerSession,
                     monsterId, attack.Area, attack.WeaponItemId, monsterDamage, critical);
 
                 // 관전자에게도 발사 연출 (#219): 공격자 피드백만으로는 봇의 사냥이 완전 무음이었다.
@@ -1142,7 +1142,7 @@ internal sealed class MatchArenaService(
         int cutterHealthAfter;
         if (cutterSession != null)
         {
-            cutterSession.ApplyProximityAutoCombatHit(
+            combatDamage.ApplyProximityAutoCombatHit(cutterSession,
                 cutterId, cutterArea, destroyedItem.ItemId, SwarmSingleCutHealthCost);
             cutterSession.BlockHealingUntil(healLockUntil);
             cutterHealthAfter = cutterSession.CurrentHealth;
@@ -1417,8 +1417,8 @@ internal sealed class MatchArenaService(
                 continue;
 
             notifiedCount++;
-            ownerSession?.SendSwarmAfterimageMonsterAttackFeedback(
-                monsterId, area, sourceItemId, monsterDamage, critical, noProjectile: true);
+            combatDamage.SendMonsterHitNotification(ownerSession,
+                monsterId, area, sourceItemId, monsterDamage, critical, showDamageOnly: true);
         }
 
         // 플레이어: 같은 반경(바닥면 타원) + 몸통 여유. 소유자 제외 — 침수 디버프 + 피해.
@@ -1441,8 +1441,18 @@ internal sealed class MatchArenaService(
             if (victimSession != null)
             {
                 // 사람: 클라가 감속을 적용하고 디버프 창에 침수를 띄운다.
-                victimSession.SendSwarmWaveSlow(
-                    ownerId, area, (int)(OrbData.WaveSlowSeconds * 1000f));
+                if (ownerId != 0)
+                {
+                    using var packet = PacketMaker.G_TO_C_STATUS_EFFECT(new()
+                    {
+                        SourcePlayerId = ownerId,
+                        TargetPlayerId = participant.PlayerId,
+                        AreaType = area,
+                        Effect = CombatStatusEffectKind.WaveSlow,
+                        DurationMs = (int)(OrbData.WaveSlowSeconds * 1000f)
+                    });
+                    victimSession.TrySend(packet);
+                }
                 continue;
             }
 
@@ -1792,7 +1802,7 @@ internal sealed class MatchArenaService(
             // #229: 문 게이지도 같이 끊는다 — 문 앞을 비우지 못하면 방을 못 연다.
             session.BreakDoorUnlockGauge();
             // 오염 경로 — 체력 감소·피격 피드백·일반 탈락 흐름까지 담당한다.
-            session.ApplySwarmAfterimageMonsterHit(damage.MonsterId, damage.Damage);
+            combatDamage.ApplySwarmAfterimageMonsterHit(session, damage.MonsterId, damage.Damage);
             return;
         }
 
@@ -1972,7 +1982,6 @@ internal sealed class MatchArenaService(
         List<BotPlayerState> aliveBots,
         List<GameClientSession> allSessions,
         bool broadcastVfx = true,
-        bool aggregateEventFeedback = false,
         bool sendAttackerFeedback = true)
     {
         // 반격 보호 (#227 7단계): 방금 이 표적의 꼬리를 자른 공격자의 본체 피해는 통과하지 못한다.
@@ -1993,19 +2002,19 @@ internal sealed class MatchArenaService(
         }
 
         int healthDamage = ConsumeSwarmPvpDamage(matchingId, attack.TargetPlayerId, attack.Damage);
+        var attackerSession = allSessions.FirstOrDefault(session => session.PlayerId == attack.AttackerPlayerId);
+        int attackerHealth = attackerSession?.CurrentHealth ?? aliveBots.FirstOrDefault(bot => bot.PlayerId == attack.AttackerPlayerId)?.Health ?? -1;
+        int targetHealth;
         var targetSession = aliveSessions.FirstOrDefault(session =>
             session.PlayerId == attack.TargetPlayerId);
         if (targetSession != null)
         {
             if (healthDamage > 0)
             {
-                if (aggregateEventFeedback)
-                    targetSession.ApplySwarmAttackEventHit(
-                        attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, healthDamage);
-                else
-                    targetSession.ApplyProximityAutoCombatHit(
-                        attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, healthDamage);
+                combatDamage.ApplyProximityAutoCombatHit(targetSession,
+                    attack.AttackerPlayerId, attack.Area, attack.WeaponItemId, healthDamage, sourceHealth: attackerHealth);
             }
+            targetHealth = targetSession.CurrentHealth;
         }
         else
         {
@@ -2029,18 +2038,13 @@ internal sealed class MatchArenaService(
                     BotPlayerManager.IsBotPlayerId(attack.AttackerPlayerId), DateTimeOffset.UtcNow);
                 bot.Health = Math.Max(0, bot.Health - healthDamage);
             }
+            targetHealth = bot.Health;
         }
 
         if (healthDamage > 0 && sendAttackerFeedback)
         {
-            var attackerSession = allSessions.FirstOrDefault(session =>
-                session.PlayerId == attack.AttackerPlayerId);
-            if (aggregateEventFeedback)
-                attackerSession?.SendSwarmAttackEventFeedback(
-                    attack.TargetPlayerId, attack.Area, attack.WeaponItemId, healthDamage);
-            else
-                attackerSession?.SendProximityAutoCombatAttackFeedback(
-                    attack.TargetPlayerId, attack.Area, attack.WeaponItemId, healthDamage);
+            combatDamage.SendPlayerHitNotification(attackerSession,
+                attack.TargetPlayerId, attack.Area, attack.WeaponItemId, healthDamage, targetHealth);
         }
         // 태양 착탄(#226)은 발사 시점에 이미 연출을 쐈다 — 이중 투사체 방지.
         if (broadcastVfx)

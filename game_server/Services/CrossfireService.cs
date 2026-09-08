@@ -520,8 +520,18 @@ internal sealed class CrossfireService(
             nowUtc,
             Config.SWARM_SUN_BURN_SECONDS,
             Config.SWARM_SUN_BURN_TICK_INTERVAL_SECONDS);
-        aliveSessions.FirstOrDefault(session => session.PlayerId == victimId)
-            ?.SendSwarmSunBurn(ownerId, area, (int)(Config.SWARM_SUN_BURN_SECONDS * 1000f));
+        var victimSession = aliveSessions.FirstOrDefault(session => session.PlayerId == victimId);
+        if (victimSession == null || !victimSession.PlayerId.HasValue || ownerId == 0) return;
+
+        using var packet = PacketMaker.G_TO_C_STATUS_EFFECT(new()
+        {
+            SourcePlayerId = ownerId,
+            TargetPlayerId = victimId,
+            AreaType = area,
+            Effect = CombatStatusEffectKind.SunBurn,
+            DurationMs = (int)(Config.SWARM_SUN_BURN_SECONDS * 1000f)
+        });
+        victimSession.TrySend(packet);
     }
 
     /// <summary>화상 틱 정산 — 초당 한 번, 충격의 0.2배. 지속이 끝나면 걷는다.</summary>
@@ -538,7 +548,7 @@ internal sealed class CrossfireService(
             (victimId, burn) =>
                 combatDamage.ApplySwarmShock(matchingId, burn.OwnerId, burn.WeaponItemId, burn.Area,
                     victimId, "SUN_BURN_TICK", aliveSessions, aliveBots, allSessions,
-                    Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER, dotTick: true));
+                    Config.SWARM_SUN_BURN_TICK_DAMAGE_MULTIPLIER, isPeriodicDamage: true));
     }
 
     /// <summary>후보 선분(벽까지 잘린 실제 길이) 위의 몹 수와 첫 적중 거리 — 좌우 선택의 근거.</summary>

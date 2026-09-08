@@ -50,7 +50,7 @@ internal static class GameServerTestAccess
         var orbUpgrades = new OrbUpgradeService(runtimes, logs, GameServerDevOptions.Disabled,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<OrbUpgradeService>.Instance);
         var orbTrails = new OrbTrailService(runtimes);
-        var combatDamage = new MatchCombatDamageService(runtimes, logs);
+        var combatDamage = new MatchCombatDamageService(runtimes, logs, Microsoft.Extensions.Logging.Abstractions.NullLogger<MatchCombatDamageService>.Instance);
         var cleanup = new MatchCleanupService(runtimes, logs, summaries, logger);
         var eliminations = new BotEliminationService( logs, logger);
         var growth = new MatchGrowthService(runtimes, logs, orbUpgrades,

@@ -119,6 +119,8 @@ public partial class GameClientSession : SessionBase
 
     internal bool IsGameEnded => Volatile.Read(ref _isGameEnded);
     internal int CurrentHealth => Health;
+    /// <summary>플레이어 상태. 읽기·변경과 결과 처리는 같은 매치 잠금 안에서 수행한다.</summary>
+    internal PlayerCondition Condition => _condition;
     public bool IsEliminated => PlayerMatchStatus is PlayerMatchStatus.ELIMINATED or PlayerMatchStatus.SPECTATING;
 
     private int Health => _condition.Health;
